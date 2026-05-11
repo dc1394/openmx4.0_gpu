@@ -50,6 +50,50 @@ typedef struct {
 } DCLNO_CuSolverCtx;
 
 static DCLNO_CuSolverCtx DCLNO_cusolver_ctx = {0};
+static int DCLNO_gpu_notice_printed = 0;
+
+static void DCLNO_AbortWithMessage(const char *message)
+{
+    fprintf(stderr, "%s\n", message);
+    fflush(stderr);
+    MPI_Abort(mpi_comm_level1, 1);
+}
+
+static size_t DCLNO_CheckedArrayBytes(size_t count, size_t elem_size, const char *label)
+{
+    if (count != 0 && elem_size > SIZE_MAX / count) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Allocation size overflow in Divide_Conquer_LNO.c: %s", label);
+        DCLNO_AbortWithMessage(msg);
+    }
+
+    return count * elem_size;
+}
+
+static size_t DCLNO_CheckedMulCount(size_t a, size_t b, const char *label)
+{
+    if (a != 0 && b > SIZE_MAX / a) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Dimension overflow in Divide_Conquer_LNO.c: %s", label);
+        DCLNO_AbortWithMessage(msg);
+    }
+
+    return a * b;
+}
+
+static void *DCLNO_MallocArray(size_t count, size_t elem_size, const char *label)
+{
+    size_t bytes = DCLNO_CheckedArrayBytes(count, elem_size, label);
+    void *ptr = malloc((bytes == 0) ? 1 : bytes);
+
+    if (ptr == NULL) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Out of memory in Divide_Conquer_LNO.c: %s (%zu bytes)", label, bytes);
+        DCLNO_AbortWithMessage(msg);
+    }
+
+    return ptr;
+}
 
 static void DCLNO_CuSolver_Destroy(void)
 {
@@ -82,6 +126,176 @@ static void DCLNO_CuSolver_Init(void)
     wait_cudafunc(cusolverDnSetStream(ctx->cusolver, ctx->stream));
     ctx->initialized = 1;
     ctx->device_id   = current_device;
+}
+
+static void DCLNO_CuSolver_EnsureMatrixCapacity(int n)
+{
+    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    size_t matrix_bytes;
+
+    if (n <= 0) {
+        DCLNO_AbortWithMessage("Invalid matrix size in DCLNO_CuSolver_EnsureMatrixCapacity.");
+    }
+
+    DCLNO_CuSolver_Init();
+    if (ctx->matrix_dim >= n) return;
+
+    if (ctx->d_S != NULL)    wait_cudafunc(cudaFree(ctx->d_S));
+    if (ctx->d_H != NULL)    wait_cudafunc(cudaFree(ctx->d_H));
+    if (ctx->d_tmp != NULL)  wait_cudafunc(cudaFree(ctx->d_tmp));
+    if (ctx->d_W != NULL)    wait_cudafunc(cudaFree(ctx->d_W));
+    if (ctx->d_info != NULL) wait_cudafunc(cudaFree(ctx->d_info));
+    ctx->d_S = NULL;
+    ctx->d_H = NULL;
+    ctx->d_tmp = NULL;
+    ctx->d_W = NULL;
+    ctx->d_info = NULL;
+
+    matrix_bytes = DCLNO_CheckedArrayBytes(
+        DCLNO_CheckedMulCount((size_t)n, (size_t)n, "CuSOLVER matrix dimensions"),
+        sizeof(double), "CuSOLVER matrix buffer");
+
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_S, matrix_bytes));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_H, matrix_bytes));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_tmp, matrix_bytes));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_W,
+                             DCLNO_CheckedArrayBytes((size_t)n, sizeof(double),
+                                                     "CuSOLVER eigenvalue buffer")));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_info, sizeof(int32_t)));
+
+    ctx->matrix_dim = n;
+}
+
+static void DCLNO_CuSolver_EnsureWorkspace(int n, int evmax)
+{
+    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cusolverEigRange_t range;
+    cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+    double vl = 0.0;
+    double vu = 0.0;
+    int64_t h_meig = 0;
+    size_t d_bytes = 0;
+    size_t h_bytes = 0;
+
+    if (n <= 0 || evmax <= 0 || n < evmax) {
+        DCLNO_AbortWithMessage("Invalid eigensolver dimensions in DCLNO_CuSolver_EnsureWorkspace.");
+    }
+
+    DCLNO_CuSolver_EnsureMatrixCapacity(n);
+    range = (n == evmax) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
+
+    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->cusolver, NULL, jobz, range, uplo,
+                                               n, CUDA_R_64F, ctx->d_S, n, &vl, &vu,
+                                               1L, evmax, &h_meig, CUDA_R_64F, ctx->d_W,
+                                               CUDA_R_64F, &d_bytes, &h_bytes));
+
+    if (ctx->d_work_bytes < d_bytes) {
+        if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
+        ctx->d_work = NULL;
+        if (0 < d_bytes) wait_cudafunc(cudaMalloc((void**)&ctx->d_work, d_bytes));
+        ctx->d_work_bytes = d_bytes;
+    }
+
+    if (h_bytes == 0) {
+        if (ctx->h_work != NULL) free(ctx->h_work);
+        ctx->h_work = NULL;
+        ctx->h_work_bytes = 0;
+    }
+    else if (ctx->h_work_bytes < h_bytes) {
+        if (ctx->h_work != NULL) free(ctx->h_work);
+        ctx->h_work = DCLNO_MallocArray(h_bytes, 1, "CuSOLVER host workspace");
+        ctx->h_work_bytes = h_bytes;
+    }
+}
+
+static void DCLNO_CuSolver_Eigen_Device(double *d_A, int n, int evmax, double *eval)
+{
+    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cusolverEigRange_t range;
+    cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+    double vl = 0.0;
+    double vu = 0.0;
+    int64_t h_meig = 0;
+    int32_t info = 0;
+
+    DCLNO_CuSolver_EnsureWorkspace(n, evmax);
+    range = (n == evmax) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
+
+    wait_cudafunc(cusolverDnXsyevdx(ctx->cusolver, NULL, jobz, range, uplo,
+                                    n, CUDA_R_64F, d_A, n, &vl, &vu, 1L, evmax,
+                                    &h_meig, CUDA_R_64F, ctx->d_W, CUDA_R_64F,
+                                    ctx->d_work, ctx->d_work_bytes,
+                                    ctx->h_work, ctx->h_work_bytes, ctx->d_info));
+
+    wait_cudafunc(cudaMemcpyAsync(eval, ctx->d_W, sizeof(double)*(size_t)evmax,
+                                  cudaMemcpyDeviceToHost, ctx->stream));
+    wait_cudafunc(cudaMemcpyAsync(&info, ctx->d_info, sizeof(int32_t),
+                                  cudaMemcpyDeviceToHost, ctx->stream));
+    wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+
+    if (info != 0) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "cusolverDnXsyevdx failed in Divide_Conquer_LNO.c: info=%d", (int)info);
+        DCLNO_AbortWithMessage(msg);
+    }
+}
+
+static void DCLNO_PackRealMatrix(double **C, int n, int cols, double *buf)
+{
+    int i,j;
+
+    for (j=1; j<=cols; j++) {
+        for (i=1; i<=n; i++) {
+            buf[(j-1)*n + (i-1)] = C[i][j];
+        }
+    }
+}
+
+static void DCLNO_UnpackRealMatrix(double *buf, int n, int cols, double **C)
+{
+    int i,j;
+
+    for (j=1; j<=cols; j++) {
+        for (i=1; i<=n; i++) {
+            C[i][j] = buf[(j-1)*n + (i-1)];
+        }
+    }
+}
+
+static void DCLNO_CuSolver_Eigen_Comm(double **C, double *ko, int n, int evmax,
+                                      double *packed, int myid, MPI_Comm comm)
+{
+    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    size_t full_bytes;
+    size_t part_bytes;
+
+    if (n <= 0 || evmax <= 0 || n < evmax) {
+        DCLNO_AbortWithMessage("Invalid eigensolver dimensions in DCLNO_CuSolver_Eigen_Comm.");
+    }
+
+    full_bytes = DCLNO_CheckedArrayBytes(
+        DCLNO_CheckedMulCount((size_t)n, (size_t)n, "CuSOLVER full matrix dimensions"),
+        sizeof(double), "CuSOLVER full matrix copy");
+    part_bytes = DCLNO_CheckedArrayBytes(
+        DCLNO_CheckedMulCount((size_t)n, (size_t)evmax, "CuSOLVER eigenvector dimensions"),
+        sizeof(double), "CuSOLVER eigenvector copy");
+
+    if (myid == 0) {
+        DCLNO_PackRealMatrix(C, n, n, packed);
+        DCLNO_CuSolver_EnsureMatrixCapacity(n);
+        wait_cudafunc(cudaMemcpyAsync(ctx->d_S, packed, full_bytes,
+                                      cudaMemcpyHostToDevice, ctx->stream));
+        DCLNO_CuSolver_Eigen_Device(ctx->d_S, n, evmax, &ko[1]);
+        wait_cudafunc(cudaMemcpyAsync(packed, ctx->d_S, part_bytes,
+                                      cudaMemcpyDeviceToHost, ctx->stream));
+        wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+    }
+
+    MPI_Bcast(&ko[1], evmax, MPI_DOUBLE, 0, comm);
+    MPI_Bcast(packed, (int)((size_t)n*(size_t)evmax), MPI_DOUBLE, 0, comm);
+    DCLNO_UnpackRealMatrix(packed, n, evmax, C);
 }
 
 
@@ -213,6 +427,7 @@ static double DC_Col(char *mode,
   int Spin_MPI_flag,Eigen_MPI_flag,bcast_flag;
   double sum1,sum2,sum4;
   int i1s, j1s;
+  int use_dclno_cusolver;
 
   MPI_Status stat;
   MPI_Request request;
@@ -261,9 +476,20 @@ static double DC_Col(char *mode,
 
     free(BLAS_OLP);
     BLAS_allocate_flag = 0;
+
+    if (DCLNO_cusolver_ctx.initialized) DCLNO_CuSolver_Destroy();
+    DCLNO_gpu_notice_printed = 0;
     
     return 0.0;
   }  
+
+  use_dclno_cusolver = (scf_eigen_lib_flag == CuSOLVER);
+  if (use_dclno_cusolver && !DCLNO_gpu_notice_printed && myid0==Host_ID && 0<level_stdout) {
+    printf("<DC-LNO> CuSOLVER GPU acceleration is enabled for local matrices with dimension >= %d.\n",
+           DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL);
+    fflush(stdout);
+    DCLNO_gpu_notice_printed = 1;
+  }
   
   /****************************************************
             find the total number of electrons 
@@ -1349,7 +1575,11 @@ static double DC_Col(char *mode,
 	}
       }
 
-      if (scf_dclno_threading==1){
+      if (use_dclno_cusolver && DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL<=NUM){
+        MPI_Comm dclno_eig_comm = (Eigen_MPI_flag==1) ? MPI_CommWD2_DCLNO[myworld2_DCLNO] : MPI_COMM_SELF;
+        DCLNO_CuSolver_Eigen_Comm(C, ko, NUM, NUM, BLAS_C, myid2, dclno_eig_comm);
+      }
+      else if (scf_dclno_threading==1){
         Eigen_lapack_d(C, ko, NUM, NUM);
       }
       else{
@@ -1493,7 +1723,11 @@ static double DC_Col(char *mode,
 
     if (measure_time) dtime(&stime);
 
-    if (scf_dclno_threading==1){
+    if (use_dclno_cusolver && DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL<=NUM){
+      MPI_Comm dclno_eig_comm = (Eigen_MPI_flag==1) ? MPI_CommWD2_DCLNO[myworld2_DCLNO] : MPI_COMM_SELF;
+      DCLNO_CuSolver_Eigen_Comm(C, ko, NUM, NUM2, BLAS_C, myid2, dclno_eig_comm);
+    }
+    else if (scf_dclno_threading==1){
       Eigen_lapack_d(C, ko, NUM, NUM2);
     }
     else{
@@ -5115,9 +5349,5 @@ void Save_DOS_NonCol(dcomplex ******Residues, double ****OLP0, double **EVal, in
   if (fp_ev)  fclose(fp_ev);
 
 }
-
-
-
-
 
 
