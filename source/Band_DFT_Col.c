@@ -100,6 +100,27 @@ static void BandCol_CuSolver_Zgemm_OpenACC(cublasOperation_t transa, cublasOpera
     }
 }
 
+static void BandCol_CuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double *ko, int n, int maxn,
+                                         const char *where)
+{
+    int info,l,copy_cols;
+
+    info = cusolver_Syevdx_Complex(A, ko, n, maxn);
+    if (info!=0){
+        fprintf(stderr,"%s: cusolver_Syevdx_Complex failed, info=%d\n",where,info);
+        fflush(stderr);
+        MPI_Abort(mpi_comm_level1,1);
+    }
+
+    for (l=maxn; 1<=l; l--) ko[l] = ko[l-1];
+
+    if (Z!=NULL){
+        copy_cols = maxn;
+        if (n<copy_cols) copy_cols = n;
+        memcpy(Z,A,sizeof(dcomplex)*(size_t)n*(size_t)copy_cols);
+    }
+}
+
 void solve_evp_real_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2, int *nblk, 
                       int *mpi_comm_rows_int, int *mpi_comm_cols_int);
 
@@ -1015,7 +1036,10 @@ diagonalize1:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        BandCol_CuSolver_DenseZheevx(Cs,Ss,ko,n,n,"Band_DFT_Col overlap");
+      }
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 	int mpiworld;
@@ -1115,7 +1139,10 @@ diagonalize1:
       F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
       ( &n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
-    else if (scf_eigen_lib_flag==2){
+    else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+      BandCol_CuSolver_DenseZheevx(Hs,Cs,ko,n,MaxN,"Band_DFT_Col Hamiltonian");
+    }
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
       int mpiworld;
@@ -2016,7 +2043,10 @@ diagonalize1:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        BandCol_CuSolver_DenseZheevx(Cs,Ss,ko,n,n,"Band_DFT_Col overlap");
+      }
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
         int mpiworld;
@@ -2106,7 +2136,10 @@ diagonalize1:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        BandCol_CuSolver_DenseZheevx(Hs,Cs,ko,n,MaxN,"Band_DFT_Col Hamiltonian");
+      }
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 	int mpiworld;

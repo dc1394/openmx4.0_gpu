@@ -50,6 +50,40 @@ typedef struct {
 
 static ClusterColCuSolverCtx ClusterCol_cusolver_ctx = {0};
 
+static void Patch2Full_Cluster(double ****RH, double *H, int *MP);
+
+static void ClusterCol_AbortWithMessage(const char *message)
+{
+    fprintf(stderr, "%s\n", message);
+    fflush(stderr);
+    MPI_Abort(mpi_comm_level1, 1);
+}
+
+static size_t ClusterCol_CheckedMulCount(size_t a, size_t b, const char *label)
+{
+    if (a != 0 && b > ((size_t)-1) / a) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Dimension overflow in Cluster_DFT_Col.c: %s", label);
+        ClusterCol_AbortWithMessage(msg);
+    }
+
+    return a * b;
+}
+
+static void *ClusterCol_MallocArray(size_t count, size_t elem_size, const char *label)
+{
+    size_t bytes = ClusterCol_CheckedMulCount(count, elem_size, label);
+    void *ptr = malloc((bytes == 0) ? 1 : bytes);
+
+    if (ptr == NULL) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Out of memory in Cluster_DFT_Col.c: %s (%zu bytes)", label, bytes);
+        ClusterCol_AbortWithMessage(msg);
+    }
+
+    return ptr;
+}
+
 static void ClusterCol_CuSolver_Destroy(void)
 {
     ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
@@ -100,6 +134,118 @@ static void ClusterCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOper
         double const beta  = 0.0;
         wait_cudafunc(openmx_gemmul8Dgemm(ClusterCol_cusolver_ctx.cublas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
     }
+}
+
+static void ClusterCol_CuSolver_CheckInfo(const char *where, int info)
+{
+    if (info != 0) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "%s failed in Cluster_DFT_Col.c: info=%d", where, info);
+        ClusterCol_AbortWithMessage(msg);
+    }
+}
+
+static void ClusterCol_CuSolverDensePath(
+    int SCF_iter,
+    int SpinP_switch,
+    double **ko,
+    double *****nh,
+    double ****CntOLP,
+    int numprocs0,
+    int myworld1,
+    int myid1,
+    int *MP,
+    int *is2,
+    int *ie2,
+    int n,
+    int MaxN,
+    double **EVec1)
+{
+    int spin, spin_start, spin_end;
+    int i, l, state, basis;
+    int local_states;
+    double alpha = 1.0;
+    double beta = 0.0;
+    double *S;
+    double *H;
+    double *tmp;
+    double *A;
+    double *C;
+    size_t dense_count;
+
+    (void)SCF_iter;
+
+    if (n <= 0 || MaxN <= 0 || MaxN > n) {
+        ClusterCol_AbortWithMessage("Invalid CuSOLVER dense dimensions in Cluster_DFT_Col.c.");
+    }
+
+    set_cuda_default_device_from_local_rank();
+    set_openacc_nvidia_device_from_local_rank();
+
+    dense_count = ClusterCol_CheckedMulCount((size_t)n, (size_t)n, "CuSOLVER dense matrix");
+    S   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER overlap matrix");
+    H   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER Hamiltonian matrix");
+    tmp = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER temporary matrix");
+    A   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER transformed Hamiltonian");
+    C   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER transformed eigenvectors");
+
+    Patch2Full_Cluster(CntOLP, S, MP);
+    ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(overlap)", cusolver_Syevdx(S, ko[0], n, n));
+
+    for (l = n; 1 <= l; l--) {
+        ko[0][l] = ko[0][l - 1];
+        if (ko[0][l] < 0.0) {
+            ko[0][l] = 1.0e-10;
+        }
+        ko[0][l] = 1.0 / sqrt(ko[0][l]);
+    }
+
+    for (l = 1; l <= n; l++) {
+        double scale = ko[0][l];
+        for (i = 0; i < n; i++) {
+            S[(size_t)(l - 1) * (size_t)n + (size_t)i] *= scale;
+        }
+    }
+
+    spin_start = 0;
+    spin_end = SpinP_switch;
+    if (SpinP_switch == 1 && numprocs0 != 1) {
+        spin_start = myworld1;
+        spin_end = myworld1;
+    }
+
+    local_states = ie2[myid1] - is2[myid1] + 1;
+    if (local_states < 0) local_states = 0;
+
+    for (spin = spin_start; spin <= spin_end; spin++) {
+        Patch2Full_Cluster(nh[spin], H, MP);
+
+        F77_NAME(dgemm, DGEMM)("N", "N", &n, &n, &n, &alpha, H, &n, S, &n, &beta, tmp, &n);
+        F77_NAME(dgemm, DGEMM)("T", "N", &n, &n, &n, &alpha, S, &n, tmp, &n, &beta, A, &n);
+
+        ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(Hamiltonian)", cusolver_Syevdx(A, ko[spin], n, MaxN));
+
+        for (l = MaxN; 1 <= l; l--) {
+            ko[spin][l] = ko[spin][l - 1];
+        }
+
+        F77_NAME(dgemm, DGEMM)("T", "T", &n, &n, &n, &alpha, A, &n, S, &n, &beta, C, &n);
+
+        if (0 < local_states) {
+            for (basis = 1; basis <= n; basis++) {
+                for (state = is2[myid1]; state <= ie2[myid1]; state++) {
+                    EVec1[spin][(basis - 1) * local_states + state - is2[myid1]] =
+                        C[(size_t)(basis - 1) * (size_t)n + (size_t)(state - 1)];
+                }
+            }
+        }
+    }
+
+    free(C);
+    free(A);
+    free(tmp);
+    free(H);
+    free(S);
 }
 
 void solve_evp_real_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2, int *nblk, 
@@ -476,7 +622,7 @@ double Cluster_DFT_Col(
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)(&n, &n, Cs, &na_rows, &ko[0][1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
     }
 
-    else if (scf_eigen_lib_flag==2){
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 
@@ -657,6 +803,13 @@ double Cluster_DFT_Col(
   }
   firsttime=0;
 
+  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n){
+    ClusterCol_CuSolverDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
+                                 numprocs0,myworld1,myid1,MP,is2,ie2,
+                                 n,MaxN,EVec1);
+    goto diagonalize_finished;
+  }
+
   /* spin=myworld1 */
 
   spin = myworld1;
@@ -707,7 +860,7 @@ double Cluster_DFT_Col(
     F77_NAME(solve_evp_real,SOLVE_EVP_REAL)(&n, &MaxN, Hs, &na_rows, &ko[spin][1], Cs, 
                                             &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
   }
-  else if (scf_eigen_lib_flag==2){
+  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
     int mpiworld;
@@ -821,6 +974,8 @@ double Cluster_DFT_Col(
     Hamiltonian_Cluster_Hs(nh[spin],Hs,MP,spin,spin);
     goto diagonalize; 
   }
+
+ diagonalize_finished:
 
   /*
   printf("EVec1\n");
@@ -4757,7 +4912,7 @@ void Patch2Full_Cluster(double ****RH, double *H, int *MP)
             
           //H[Anum+i][Bnum+j] += H1[k];
 
-          H[NUM*(Bnum+j)+Anum+i] += H1[k];
+          H[NUM*(Bnum+j-1)+Anum+i-1] += H1[k];
 
           k++;
 	}

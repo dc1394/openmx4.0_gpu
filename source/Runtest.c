@@ -32,6 +32,12 @@
 int run_main(int argc, char *argv[], int numprocs0, int myid0);
 int stringcomp( const void *a, const void *b);
 
+static int has_dat_suffix(const char *name)
+{
+  size_t len = strlen(name);
+  return (4<=len && strcmp(name + len - 4, ".dat")==0);
+}
+
 
 typedef struct {
   char fn[YOUSO10];
@@ -174,8 +180,8 @@ void Runtest(char *mode, int argc, char *argv[])
     Num_DatFiles = 0;
     while((entry = readdir(dp)) != NULL){
 
-      if ( strstr(entry->d_name,".dat")!=NULL ){ 
-          
+      if ( has_dat_suffix(entry->d_name) ){
+
         Num_DatFiles++;
       }
     }
@@ -193,8 +199,8 @@ void Runtest(char *mode, int argc, char *argv[])
 
     Num_DatFiles = 0;
     while((entry = readdir(dp)) != NULL){
- 
-      if ( strstr(entry->d_name,".dat")!=NULL ){ 
+
+      if ( has_dat_suffix(entry->d_name) ){
 
         sprintf(fndat[Num_DatFiles].fn,"%s/%s",input_dir,entry->d_name);  
         Num_DatFiles++;
@@ -244,6 +250,15 @@ void Runtest(char *mode, int argc, char *argv[])
       }  
 
       MPI_Bcast(&fname_dat, YOUSO10, MPI_CHAR, Host_ID, mpi_comm_level1);
+
+      if (myid==Host_ID){
+	input_open(fname_dat);
+	input_string("System.Name",fname_dat2,"default");
+	input_close();
+	sprintf(fname_out1,"%s.out",fname_dat2);
+	remove(fname_out1);
+      }
+      MPI_Barrier(mpi_comm_level1);
 
       /* run openmx */
 
@@ -802,8 +817,5 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
 
   return 0;
 }
-
-
-
 
 

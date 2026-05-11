@@ -22,5 +22,5 @@ _atom_site_fract_z
 _atom_site_Uiso_or_equiv
 _atom_site_adp_type
 _atom_site_occupancy
-A1     O    -0.00000   0.00000   0.00000   0.00000  Uiso   1.00
+A1     O     0.00000   0.00000   0.00000   0.00000  Uiso   1.00
 A2     C     0.16839   0.00000   0.00000   0.00000  Uiso   1.00

@@ -29,16 +29,24 @@
 
 int TRAN_SCF_Iter_Band;
 
+static int DFT_GPU_BasisCount(void);
+
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)
- * Uses MPI_COMM_TYPE_SHARED to assign GPU per node-local rank. Falls back to
- * CPU path (sets scf_eigen_lib_flag = ELPA1) if device count or memory checks
- * fail or matrix size is below GPU_CPU_SWITCH_NUM. */
+ * Uses MPI_COMM_TYPE_SHARED to assign GPU per node-local rank. Small matrices
+ * fall back only in the eigensolver paths; GPU kernels remain enabled. */
 static void DFT_GPU_DeviceInit(int basis_count)
 {
-    if (!(scf_eigen_lib_flag == CuSOLVER)) return;
-    if (basis_count < GPU_CPU_SWITCH_NUM) {
-        scf_eigen_lib_flag = ELPA1;
-        return;
+    int myid0;
+
+    if (!(scf_eigen_lib_flag_input == CuSOLVER)) return;
+
+    MPI_Comm_rank(mpi_comm_level1,&myid0);
+    scf_eigen_lib_flag = CuSOLVER;
+
+    if (basis_count < GPU_CPU_SWITCH_NUM && myid0==Host_ID && 0<level_stdout) {
+        printf("<DFT> CuSOLVER requested; matrix dimension %d is below %d, so eigensolver paths use ELPA2 while GPU kernels remain enabled.\n",
+               basis_count,GPU_CPU_SWITCH_NUM);
+        fflush(stdout);
     }
 
     MPI_Comm node_comm, device_comm = MPI_COMM_NULL;
@@ -67,8 +75,32 @@ static void DFT_GPU_DeviceInit(int basis_count)
     if (device_comm != MPI_COMM_NULL) MPI_Comm_free(&device_comm);
 
     if (!cuda_ok) {
-        scf_eigen_lib_flag = ELPA1;
+        scf_eigen_lib_flag = ELPA2;
+        if (myid0==Host_ID && 0<level_stdout) {
+            printf("<DFT> CuSOLVER requested, but no CUDA/OpenACC device is available; using ELPA2.\n");
+            fflush(stdout);
+        }
     }
+}
+
+static int DFT_GPU_EigensolverActive(void)
+{
+    return (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=DFT_GPU_BasisCount());
+}
+
+static int DFT_GPU_BasisCount(void)
+{
+    int i,wan,basis_count;
+
+    basis_count = 0;
+    for (i=1; i<=atomnum; i++) {
+        wan = WhatSpecies[i];
+        basis_count += Spe_Total_CNO[wan];
+    }
+
+    if (SpinP_switch==3) basis_count *= 2;
+
+    return basis_count;
 }
 
 /* variables for cluster and band calculations */
@@ -224,6 +256,8 @@ double DFT(int MD_iter, int Cnt_Now)
   else if (Solver==4 && SpinP_switch==3)  Allocate_Free_NEGF_NonCol(1);
   else if (Solver==12 && SpinP_switch<=1) Allocate_Free_Cluster_Col_LNO(1);
 
+  DFT_GPU_DeviceInit(DFT_GPU_BasisCount());
+
   Allocate_Free_GridData(1);
   if (Cnt_switch==1) Allocate_Free_OrbOpt(1);
 
@@ -279,7 +313,9 @@ double DFT(int MD_iter, int Cnt_Now)
   time1 = Set_OLP_Kin(OLP,H0);
 
   if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
-    printf("<MD=%2d>  Calculation of the nonlocal matrix\n",MD_iter);fflush(stdout);
+    printf("<MD=%2d>  Calculation of the nonlocal matrix%s\n",MD_iter,
+           (scf_eigen_lib_flag==CuSOLVER) ? " (GPU-accelerated)" : "");
+    fflush(stdout);
   }
 
   time2 = Set_Nonlocal(HNL,DS_NL);
@@ -670,7 +706,10 @@ double DFT(int MD_iter, int Cnt_Now)
     s_vec[9]="EGAC";          s_vec[10]="DC-LNO";  s_vec[11]="Cluster-LNO";
 
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
-      printf("<%s>  Solving the eigenvalue problem...\n",s_vec[Solver-1]);fflush(stdout);
+      printf("<%s>  Solving the eigenvalue problem%s...\n",
+             s_vec[Solver-1],
+             DFT_GPU_EigensolverActive() ? " (GPU-accelerated)" : "");
+      fflush(stdout);
     }
 
     if (Cnt_switch==0){

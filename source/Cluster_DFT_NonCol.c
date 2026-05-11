@@ -62,6 +62,48 @@ static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasO
 
 #define  measure_time   0
 
+static void ClusterNonCol_CuSolver_DenseDsyevx(double *A, double *Z, double *ko, int n, int maxn,
+                                               const char *where)
+{
+    int info,l,copy_cols;
+
+    info = cusolver_Syevdx(A, ko, n, maxn);
+    if (info!=0){
+        fprintf(stderr,"%s: cusolver_Syevdx failed, info=%d\n",where,info);
+        fflush(stderr);
+        MPI_Abort(mpi_comm_level1,1);
+    }
+
+    for (l=maxn; 1<=l; l--) ko[l] = ko[l-1];
+
+    if (Z!=NULL){
+        copy_cols = maxn;
+        if (n<copy_cols) copy_cols = n;
+        memcpy(Z,A,sizeof(double)*(size_t)n*(size_t)copy_cols);
+    }
+}
+
+static void ClusterNonCol_CuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double *ko, int n, int maxn,
+                                               const char *where)
+{
+    int info,l,copy_cols;
+
+    info = cusolver_Syevdx_Complex(A, ko, n, maxn);
+    if (info!=0){
+        fprintf(stderr,"%s: cusolver_Syevdx_Complex failed, info=%d\n",where,info);
+        fflush(stderr);
+        MPI_Abort(mpi_comm_level1,1);
+    }
+
+    for (l=maxn; 1<=l; l--) ko[l] = ko[l-1];
+
+    if (Z!=NULL){
+        copy_cols = maxn;
+        if (n<copy_cols) copy_cols = n;
+        memcpy(Z,A,sizeof(dcomplex)*(size_t)n*(size_t)copy_cols);
+    }
+}
+
 void solve_evp_real_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2, int *nblk, 
                       int *mpi_comm_rows_int, int *mpi_comm_cols_int);
 
@@ -393,7 +435,10 @@ double Cluster_DFT_NonCol(
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, 
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
-    else if (scf_eigen_lib_flag==2){
+    else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+      ClusterNonCol_CuSolver_DenseDsyevx(Cs,Ss,ko,n,n,"Cluster_DFT_NonCol overlap");
+    }
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 
@@ -580,7 +625,10 @@ double Cluster_DFT_NonCol(
     F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, 
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
-  else if (scf_eigen_lib_flag==2){
+  else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+    ClusterNonCol_CuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Cluster_DFT_NonCol Hamiltonian");
+  }
+  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 

@@ -603,8 +603,9 @@ Get_Cnt_dOrbitals.o: Get_Cnt_dOrbitals.c openmx_common.h
 	$(CC) -c Get_Cnt_dOrbitals.c
 Gaunt.o: Gaunt.c openmx_common.h
 	$(CC) -c Gaunt.c
+# NVHPC 26.3 + -acc can segfault in restart I/O under overdecomposed MPI runs.
 RestartFileDFT.o: RestartFileDFT.c openmx_common.h
-	$(CC) -c RestartFileDFT.c
+	$(CC_NOACC) -c RestartFileDFT.c
 Output_CompTime.o: Output_CompTime.c openmx_common.h
 	$(CC) -c Output_CompTime.c
 Output_Energy_Decomposition.o: Output_Energy_Decomposition.c openmx_common.h
@@ -729,8 +730,9 @@ LNO.o: LNO.c openmx_common.h
 #
 #
 #
+# NVHPC 26.3 + -acc can segfault in the MD control path after SCF.
 MD_pac.o: MD_pac.c openmx_common.h lapack_prototypes.h
-	$(CC) -c MD_pac.c
+	$(CC_NOACC) -c MD_pac.c
 #
 #
 #
