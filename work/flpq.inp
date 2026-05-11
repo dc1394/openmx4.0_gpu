@@ -1,0 +1,10 @@
+dens_origin_unit Ang
+dens_origin  -5.0 -5.0 -3.0
+Dens_Ngrid  101 101 61
+Grid_vectors.Unit   Ang
+<Grid_vectors
+10.0   0.0   0.0
+0.0   10.0   0.0
+0.0   0.0   6.0
+Grid_vectors>
+#save_memory_3d   on

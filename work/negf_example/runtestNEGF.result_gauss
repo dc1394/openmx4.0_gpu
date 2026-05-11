@@ -1,0 +1,31 @@
+gauss (Intel(R) Xeon(R) CPU E5-1650 v4 @ 3.60GHz)
+icc version 18.0.1, compiler option -O3 -xHOST -ip -no-prec-div -qopenmp
+84 processes (MPI) x 1 thread (OpenMP)
+
+   1  negf_example/Lead-Au-Chain-NC.   Elapsed time(s)=   78.61  diff Utot= 0.000000000185  diff Force= 0.000000000003
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   2  negf_example/Lead-Chain.dat      Elapsed time(s)=   24.84  diff Utot= 0.000000000001  diff Force= 0.000000000000
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   3  negf_example/Lead-Graphene.dat   Elapsed time(s)=   18.04  diff Utot= 0.000000000227  diff Force= 0.000000000000
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   4  negf_example/Lead-L-8ZGNR-NC.d   Elapsed time(s)=  256.78  diff Utot= 0.000000000001  diff Force= 0.000000000006
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   5  negf_example/Lead-L-8ZGNR.dat    Elapsed time(s)=  163.74  diff Utot= 0.000000000002  diff Force= 0.000000000002
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   6  negf_example/Lead-R-8ZGNR-NC.d   Elapsed time(s)=  252.23  diff Utot= 0.000000000001  diff Force= 0.000000000001
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   7  negf_example/Lead-R-8ZGNR.dat    Elapsed time(s)=  161.62  diff Utot= 0.000000000002  diff Force= 0.000000000000
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   8  negf_example/NEGF-8ZGNR-0.3.da   Elapsed time(s)=  233.91  diff Utot= 0.000000000001  diff Force= 0.000000000107
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+   9  negf_example/NEGF-8ZGNR-NC.dat   Elapsed time(s)= 4061.36  diff Utot= 0.000000000004  diff Force= 0.000000000112
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+  10  negf_example/NEGF-Au-Chain-NC.   Elapsed time(s)=  327.35  diff Utot= 0.000000795260  diff Force= 0.000000000026
+                                       diff EigenChannel= 0.000000590100  diff CurrentDensity= 0.000000000000
+  11  negf_example/NEGF-Chain.dat      Elapsed time(s)=  248.50  diff Utot= 0.000000000008  diff Force= 0.000000000009
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+  12  negf_example/NEGF-Graphene.dat   Elapsed time(s)=   41.14  diff Utot= 0.000000000006  diff Force= 0.000000000007
+                                       diff EigenChannel= 0.000000000000  diff CurrentDensity= 0.000000000000
+
+
+Total elapsed time (s)     5868.12

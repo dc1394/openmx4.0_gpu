@@ -1,0 +1,16 @@
+gauss (Intel(R) Xeon(R) CPU E5-1650 v4 @ 3.60GHz)
+icc version 18.0.1, compiler option -O3 -xHOST -ip -no-prec-div -qopenmp
+14 processes (MPI) x 2 thread (OpenMP)
+
+   1  wf_example/Benzene.dat           Elapsed time(s)=   29.84  diff spread= 0.000000000059  diff Omega= 0.000000000059
+   2  wf_example/GaAs.dat              Elapsed time(s)=   31.15  diff spread= 0.000000000008  diff Omega= 0.000000000008
+   3  wf_example/GaAs_NC.dat           Elapsed time(s)=   76.28  diff spread= 0.000000000001  diff Omega= 0.000000000001
+   4  wf_example/NC_CVO.dat            Elapsed time(s)=  281.46  diff spread= 0.000000000998  diff Omega= 0.000000000998
+   5  wf_example/NC_SVO.dat            Elapsed time(s)=  362.62  diff spread= 0.000000004311  diff Omega= 0.000000004311
+   6  wf_example/Si.dat                Elapsed time(s)=   98.27  diff spread= 0.000000000004  diff Omega= 0.000000000004
+   7  wf_example/VBz.dat               Elapsed time(s)=  203.14  diff spread= 0.000000079954  diff Omega= 0.000000079955
+   8  wf_example/pmCVO.dat             Elapsed time(s)=   62.54  diff spread= 0.000000000013  diff Omega= 0.000000000013
+   9  wf_example/symGra.dat            Elapsed time(s)=   23.99  diff spread= 0.000000000045  diff Omega= 0.000000000045
+
+
+Total elapsed time (s)     1169.31

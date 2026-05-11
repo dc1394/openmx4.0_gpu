@@ -1,0 +1,24 @@
+Ohtaka: ISSP super computer, AMD EPYC 7702, 2.0 GHz
+icc version 2021.8.0 (gcc version 8.5.0 compatibility), 
+compiler option: mpicc -O3 -march=core-avx2 -ip -no-prec-div -qopenmp
+256 MPI processes x 2 OMP threads
+
+   1  large_example/5_5_13COb2.dat     Elapsed time(s)=   30.65  diff Utot= 0.000000001044  diff Force= 0.000000000027
+   2  large_example/B2C62_Band.dat     Elapsed time(s)=  229.70  diff Utot= 0.000000000164  diff Force= 0.000000046279
+   3  large_example/CG15c-DC-LNO.dat   Elapsed time(s)=   29.65  diff Utot= 0.000000000072  diff Force= 0.000000000293
+   4  large_example/DIA512-1.dat       Elapsed time(s)=   13.65  diff Utot= 0.000000000057  diff Force= 0.000000000415
+   5  large_example/FeBCC.dat          Elapsed time(s)=   28.50  diff Utot= 0.000000001570  diff Force= 0.000000000018
+   6  large_example/GEL.dat            Elapsed time(s)=   24.19  diff Utot= 0.000000000189  diff Force= 0.000000000001
+   7  large_example/GFRAG.dat          Elapsed time(s)=   15.07  diff Utot= 0.000000000458  diff Force= 0.000000000008
+   8  large_example/GGFF.dat           Elapsed time(s)=  162.15  diff Utot= 0.000000000046  diff Force= 0.000000000022
+   9  large_example/MCCN.dat           Elapsed time(s)=   26.40  diff Utot= 0.000000000021  diff Force= 0.000000000033
+  10  large_example/Mn12_148_F.dat     Elapsed time(s)=   38.61  diff Utot= 0.000000000331  diff Force= 0.000000000041
+  11  large_example/N1C999.dat         Elapsed time(s)=  222.12  diff Utot= 0.000000000231  diff Force= 0.000000000130
+  12  large_example/Ni63-O64.dat       Elapsed time(s)=   39.81  diff Utot= 0.000000000668  diff Force= 0.000000000034
+  13  large_example/Pt63.dat           Elapsed time(s)=   28.28  diff Utot= 0.000000004077  diff Force= 0.000000000717
+  14  large_example/SialicAcid.dat     Elapsed time(s)=   14.84  diff Utot= 0.000000000313  diff Force= 0.000000000006
+  15  large_example/ZrB2_2x2.dat       Elapsed time(s)=   66.23  diff Utot= 0.000000000250  diff Force= 0.000000000000
+  16  large_example/nsV4Bz5.dat        Elapsed time(s)=   41.68  diff Utot= 0.000000000241  diff Force= 0.000000000003
+
+
+Total elapsed time (s)     1011.53

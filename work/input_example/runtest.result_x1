@@ -1,0 +1,20 @@
+Renovo ThinkPad X1 11th Gen Intel(R) Core (TM) i5-1145G7 @ 2.60GZ, on WSL2
+Compile option: -O3 -xHOST -fcommon -Wno-implicit-function-declaration -ipo -qopenmp
+
+   1  input_example/Benzene.dat        Elapsed time(s)=    4.84  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=   24.95  diff Utot= 0.000000000013  diff Force= 0.000000000000
+   3  input_example/CO.dat             Elapsed time(s)=    9.89  diff Utot= 0.000000000000  diff Force= 0.000000000006
+   4  input_example/Cr2.dat            Elapsed time(s)=    7.55  diff Utot= 0.000000000003  diff Force= 0.000000000002
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=   22.61  diff Utot= 0.000000000004  diff Force= 0.000000000001
+   6  input_example/GaAs.dat           Elapsed time(s)=   34.57  diff Utot= 0.000000000002  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    6.02  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   8  input_example/Graphite4.dat      Elapsed time(s)=    4.41  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    5.14  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  10  input_example/H2O.dat            Elapsed time(s)=    4.14  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=   14.91  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    3.58  diff Utot= 0.000000000019  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    9.49  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    5.45  diff Utot= 0.000000000000  diff Force= 0.000000000000
+
+
+Total elapsed time (s)      157.55

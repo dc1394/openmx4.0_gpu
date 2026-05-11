@@ -1,0 +1,39 @@
+# input file
+
+[show]
+structure = true
+isosurface = true
+lattice = false
+axis = false
+
+[structure]
+cube_header = "flpq/LPQ/LPQ.kinetic_energy_density.cube"
+bond_factor = 1.6
+color_atoms = false
+
+[isosurface]
+### For surface plot ###
+cube1 = "flpq/LPQ/LPQ.kinetic_energy_density.cube" 
+### For surface color ###
+cube2 = "flpq_ew/LPQ/LPQ.regional_chemical_potential.cube"
+isovalue = 0.00001
+max_value = -0.25
+min_value = -0.4
+periodicity = [1,1,1] # 0:off, 1:on for boundary condition
+### Color bar setting ###
+color_bar = true
+color_name = "blue_green_red"
+colors = ["#0000FF", "#00FFFF", "#00C600", "#FFFF00", "#FF0000"]
+alpha = 0.8
+shade = false
+smooth = true
+
+[view]
+roughness = 1
+supercell = [1,1,1]
+
+[save]
+interactive = false
+output_name = "RCP"
+Plotly =true 
+

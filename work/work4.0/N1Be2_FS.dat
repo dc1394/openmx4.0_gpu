@@ -1,0 +1,71 @@
+System.CurrrentDirectory         ./
+System.Name                    N1Be2_FS
+level.of.stdout                   1
+level.of.fileout                  1
+
+Species.Number                     3
+<Definition.of.Atomic.Species
+  Be    Be7.0-s2p2             Be_PBE19
+  N     N6.0_1s-s3p2d1         N_PBE19_1s
+  N1    N6.0_1s_CH-s3p2d1      N_PBE19_1s
+Definition.of.Atomic.Species>
+
+Atoms.Number                       12
+Atoms.SpeciesAndCoordinates.Unit   Ang
+<Atoms.SpeciesAndCoordinates
+  1     N1       6.4116318      0.0000000      8.5336483    3.5  3.5
+  2     Be       7.3044726      0.0000000      6.9812902    1.0  1.0
+  3     Be       1.0514700      0.0000000      7.3745837    1.0  1.0
+  4     N        4.1779713     -1.3069096      7.1779370    3.5  3.5
+  5     Be       5.5400359     -1.1478793      5.8505928    1.0  1.0
+  6     Be       2.8159067      1.1478793      8.5052811    1.0  1.0
+  7     N        4.1779713      1.3069096      7.1779370    3.5  3.5
+  8     Be       5.5400359      1.1478793      5.8505928    1.0  1.0
+  9     Be       2.8159067     -1.1478793      8.5052811    1.0  1.0
+  10    N        1.9443109      0.0000000      5.8222256    3.5  3.5
+  11    Be       3.4242319      0.0000000      6.3948815    1.0  1.0
+  12    Be       4.9317108      0.0000000      7.9609924    1.0  1.0
+Atoms.SpeciesAndCoordinates>
+
+Atoms.UnitVectors.Unit             Ang
+<Atoms.UnitVectors
+  0.0000000   0.0000000   10.0000000
+  4.1779713  -2.6455232    0.0000000
+  4.1779713   2.6455232    0.0000000
+Atoms.UnitVectors>
+
+scf.XcType                    GGA-PBE
+scf.SpinPolarization          on
+scf.ElectronicTemperature     300.0
+scf.energycutoff              400.0
+scf.maxIter                   100
+scf.EigenvalueSolver          band
+scf.Kgrid                     1  7  7
+scf.Mixing.Type               rmm-diisk
+scf.Init.Mixing.Weight        0.05
+scf.Min.Mixing.Weight         0.01
+scf.Max.Mixing.Weight         0.30
+scf.Mixing.History            25
+scf.Mixing.StartPulay         15
+scf.criterion                 1.0e-7
+
+ESM.switch             on1      # off, on1=v|v|v, on2=m|v|m, on3=v|v|m, on4=on2+EF
+ESM.buffer.range       4.5      # default=10.0 (ang),
+ESM.direction           z 
+
+MD.Type                       nomd
+MD.maxIter                    1
+MD.TimeStep                   1.0
+MD.Opt.criterion              0.0003
+
+
+scf.restart                 on
+scf.restart.filename        N1Be2_IS
+scf.coulomb.cutoff          on
+scf.core.hole               on
+
+<core.hole.state  
+  1 s 1
+core.hole.state>  
+
+scf.system.charge            1.0       # default=0.0

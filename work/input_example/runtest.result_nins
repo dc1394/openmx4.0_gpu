@@ -1,0 +1,22 @@
+Supercomputer, Research Center for Computational Science, National Institutes of Natural Sciences, 
+Okazaki Shared Research Facilities
+AMD EPYC 7763 (Zen 3, 64 cores, 2.45 GHz) [2 CPUs per node]
+64 MPI × 2 OMP threads (using 128 cores per node across 1 node)
+
+   1  input_example/Benzene.dat        Elapsed time(s)=    2.98  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=    3.97  diff Utot= 0.000000000016  diff Force= 0.000000000002
+   3  input_example/CO.dat             Elapsed time(s)=    8.11  diff Utot= 0.000000000000  diff Force= 0.000000000008
+   4  input_example/Cr2.dat            Elapsed time(s)=    5.27  diff Utot= 0.000000000000  diff Force= 0.000000000003
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=   10.32  diff Utot= 0.000000000011  diff Force= 0.000000000003
+   6  input_example/GaAs.dat           Elapsed time(s)=   16.31  diff Utot= 0.000000000011  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    2.97  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   8  input_example/Graphite4.dat      Elapsed time(s)=    2.48  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    2.58  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  10  input_example/H2O.dat            Elapsed time(s)=    2.90  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=    6.91  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    2.20  diff Utot= 0.000000000042  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    4.99  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    2.92  diff Utot= 0.000000000000  diff Force= 0.000000000000
+
+
+Total elapsed time (s)       74.90

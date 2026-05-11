@@ -1,0 +1,14 @@
+gauss (Intel(R) Xeon(R) CPU E5-1650 v4 @ 3.60GHz)
+icc version 18.0.1, compiler option -O3 -xHOST -ip -no-prec-div -qopenmp
+84 processes (MPI) x 1 thread (OpenMP)
+
+   1  cwf_example/Bi2Se3-wSO-2.dat     Elapsed time(s)=  360.34  diff DM_func= 0.000000000631
+   2  cwf_example/Cufcc-CWF0.dat       Elapsed time(s)=   58.92  diff DM_func= 0.000000000000
+   3  cwf_example/GaAs-CWF1.dat        Elapsed time(s)=   62.28  diff DM_func= 0.000000000000
+   4  cwf_example/GaAs-CWF2.dat        Elapsed time(s)=  146.87  diff DM_func= 0.000000000000
+   5  cwf_example/GaAs-CWF3.dat        Elapsed time(s)=  133.15  diff DM_func= 0.000000000000
+   6  cwf_example/Rb3C60-CWF3.dat      Elapsed time(s)=  786.22  diff DM_func= 0.000000000056
+   7  cwf_example/TTF-TCNQ-3.dat       Elapsed time(s)= 1439.83  diff DM_func= 0.000000000001
+
+
+Total elapsed time (s)     2987.61

@@ -1,0 +1,96 @@
+#
+# File Name
+#
+
+System.CurrrentDirectory         ./    # default=./
+System.Name                      cufcc-CWF0
+level.of.stdout                   1    # default=1 (1-3)
+level.of.fileout                  1    # default=1 (0-2)
+DATA.PATH                  ../DFT_DATA19
+
+scf.restart    off
+
+#
+# Definition of Atomic Species
+#
+
+Species.Number       1
+<Definition.of.Atomic.Species
+  Cu   Cu6.0H-s3p3d3f1   Cu_PBE19H
+Definition.of.Atomic.Species>
+
+#
+# Atoms
+#
+
+Atoms.Number         1
+Atoms.SpeciesAndCoordinates.Unit   Ang # Ang|AU
+<Atoms.SpeciesAndCoordinates           
+  1  Cu  0.000  0.000  0.000       9.5 9.5
+Atoms.SpeciesAndCoordinates>
+Atoms.UnitVectors.Unit             Ang # Ang|AU
+<Atoms.UnitVectors                     
+  1.8050 0.0000 1.8050 
+  1.8050 1.8050 0.0000 
+  0.0000 1.8050 1.8050 
+Atoms.UnitVectors>
+
+#
+# SCF or Electronic System
+#
+
+scf.XcType                 GGA-PBE     # LDA|LSDA-CA|LSDA-PW|GGA-PBE
+scf.SpinPolarization        off        # On|Off|NC
+scf.ElectronicTemperature  300.0       # default=300 (K)
+scf.energycutoff           250.0      # default=150 (Ry)
+scf.maxIter                200         # default=40
+scf.EigenvalueSolver       band        # DC|GDC|Cluster|Band
+scf.Kgrid                 21 21 21     # means n1 x n2 x n3
+scf.Mixing.Type           rmm-diisk    # Simple|Rmm-Diis|Gr-Pulay|Kerker|Rmm-Diisk
+scf.Init.Mixing.Weight     0.30        # default=0.30 
+scf.Min.Mixing.Weight      0.001       # default=0.001 
+scf.Max.Mixing.Weight      0.700       # default=0.40 
+scf.Mixing.History          10         # default=5
+scf.Mixing.StartPulay       5          # default=6
+scf.Mixing.EveryPulay       1          # default=5
+scf.criterion             1.0e-8       # default=1.0e-6 (Hartree) 
+
+#
+# Band dispersion 
+#
+
+Band.dispersion              on        # on|off, default=off
+<Band.KPath.UnitCell
+ 3.61  0.00  0.00
+ 0.00  3.61  0.00
+ 0.00  0.00  3.61
+Band.KPath.UnitCell>
+# if <Band.KPath.UnitCell does not exist,
+#     the reciprical lattice vector is employed. 
+Band.Nkpath                5
+<Band.kpath                
+   80  1.0 0.5 0.0   0.5 0.5 0.5     W L
+   80  0.5 0.5 0.5   0.0 0.0 0.0     L G
+   80  0.0 0.0 0.0   1.0 0.0 0.0     G X
+   80  1.0 0.0 0.0   1.0 0.5 0.0     X W
+   80  1.0 0.5 0.0   0.75 0.75 0.0   W K
+Band.kpath>
+
+
+CWF.Calc                 on
+CWF.Dis.vs.H             on
+CWF.Guiding.Orbitals     AO
+
+<CWF.Guiding.AOs
+ Cu  1s 0 2s 0 3s 0 1p 0 2p 0 3p 0 1d 1 2d 0 3d 0 1f 0 
+CWF.Guiding.AOs>
+
+CWF.window.function               Poly
+CWF.disentangling.Erange     -10.0 -6.0 -1.6 2.0
+
+CWF.fileout.flag         on
+CWF.Plot.SuperCells    1 1 1
+CWF.fileout.Num           1
+<CWF.fileout.cube
+ 1
+CWF.fileout.cube>

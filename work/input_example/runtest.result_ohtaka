@@ -1,0 +1,22 @@
+Ohtaka: ISSP super computer, AMD EPYC 7702, 2.0 GHz
+icc version 2021.8.0 (gcc version 8.5.0 compatibility), 
+compiler option: mpicc -O3 -march=core-avx2 -ip -no-prec-div -qopenmp
+14 MPI processes x 8 OMP threads
+
+   1  input_example/Benzene.dat        Elapsed time(s)=    4.26  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=    5.56  diff Utot= 0.000000000010  diff Force= 0.000000000001
+   3  input_example/CO.dat             Elapsed time(s)=    5.21  diff Utot= 0.000000000000  diff Force= 0.000000000006
+   4  input_example/Cr2.dat            Elapsed time(s)=    5.06  diff Utot= 0.000000000000  diff Force= 0.000000000004
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=    9.98  diff Utot= 0.000000000004  diff Force= 0.000000000012
+   6  input_example/GaAs.dat           Elapsed time(s)=   16.63  diff Utot= 0.000000000011  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    3.20  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   8  input_example/Graphite4.dat      Elapsed time(s)=    2.39  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    2.54  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  10  input_example/H2O.dat            Elapsed time(s)=    2.74  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=    7.62  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    1.60  diff Utot= 0.000000000148  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    5.10  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    2.11  diff Utot= 0.000000000001  diff Force= 0.000000000000
+
+
+Total elapsed time (s)       74.00

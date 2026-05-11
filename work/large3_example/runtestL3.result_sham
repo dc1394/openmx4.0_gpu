@@ -1,0 +1,27 @@
+sham: AMD EPYC 7713 64-Core Processor 2.0 GHz
+CC = mpiicc -O3 -march=core-avx2 -ip -no-prec-div -qopenmp
+384 MPI processes x 2 OMP threads
+
+   1  large3_example/5_5_13COb2.dat    Elapsed time(s)=    7.87  diff Utot= 0.000000010117  diff Force= 0.000000000115
+   2  large3_example/C1000.dat         Elapsed time(s)=   81.47  diff Utot= 0.000000000368  diff Force= 0.000000002466
+   3  large3_example/C60.dat           Elapsed time(s)=    1.87  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   4  large3_example/CG15c.dat         Elapsed time(s)=   33.20  diff Utot= 0.000000000492  diff Force= 0.000000000342
+   5  large3_example/Crys-MnO.dat      Elapsed time(s)=    5.96  diff Utot= 0.000000000001  diff Force= 0.000000000005
+   6  large3_example/DIA512-1.dat      Elapsed time(s)=   13.24  diff Utot= 0.000000000027  diff Force= 0.000000003607
+   7  large3_example/Fe1000.dat        Elapsed time(s)=   86.92  diff Utot= 0.000000004322  diff Force= 0.000000087421
+   8  large3_example/GEL.dat           Elapsed time(s)=   11.29  diff Utot= 0.000000000089  diff Force= 0.000000000197
+   9  large3_example/GFRAG.dat         Elapsed time(s)=    4.36  diff Utot= 0.000000003402  diff Force= 0.000000002245
+  10  large3_example/GGFF.dat          Elapsed time(s)=   52.90  diff Utot= 0.000000000005  diff Force= 0.000000000002
+  11  large3_example/MCCN.dat          Elapsed time(s)=   33.76  diff Utot= 0.000000003962  diff Force= 0.000000005987
+  12  large3_example/Mn12_148_F.dat    Elapsed time(s)=   10.06  diff Utot= 0.000000000542  diff Force= 0.000000000436
+  13  large3_example/N1C999.dat        Elapsed time(s)=  139.59  diff Utot= 0.000000000035  diff Force= 0.000000000015
+  14  large3_example/Ni63-O64.dat      Elapsed time(s)=    9.91  diff Utot= 0.000000001064  diff Force= 0.000000001270
+  15  large3_example/Pt500.dat         Elapsed time(s)=  144.96  diff Utot= 0.000000000517  diff Force= 0.000000000050
+  16  large3_example/Pt63.dat          Elapsed time(s)=    6.54  diff Utot= 0.000000000456  diff Force= 0.000000000109
+  17  large3_example/Si1280-LNO.dat    Elapsed time(s)=  261.45  diff Utot= 0.000000000299  diff Force= 0.000000001976
+  18  large3_example/SialicAcid.dat    Elapsed time(s)=    4.59  diff Utot= 0.000000000138  diff Force= 0.000000000042
+  19  large3_example/ZrB2_2x2.dat      Elapsed time(s)=   27.67  diff Utot= 0.000000003156  diff Force= 0.000000001171
+  20  large3_example/nsV4Bz5.dat       Elapsed time(s)=   10.55  diff Utot= 0.000000000295  diff Force= 0.000000000031
+
+
+Total elapsed time (s)      948.14

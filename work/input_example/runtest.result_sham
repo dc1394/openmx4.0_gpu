@@ -1,0 +1,21 @@
+sham: AMD EPYC 7713 64-Core Processor 2.0 GHz
+CC = mpiicc -O3 -march=core-avx2 -ip -no-prec-div -qopenmp
+16 MPI processes x 8 OMP threads
+
+   1  input_example/Benzene.dat        Elapsed time(s)=    3.97  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=    4.42  diff Utot= 0.000000000010  diff Force= 0.000000000003
+   3  input_example/CO.dat             Elapsed time(s)=    5.61  diff Utot= 0.000000000000  diff Force= 0.000000000006
+   4  input_example/Cr2.dat            Elapsed time(s)=    5.34  diff Utot= 0.000000000001  diff Force= 0.000000000002
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=    8.67  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   6  input_example/GaAs.dat           Elapsed time(s)=   13.77  diff Utot= 0.000000000012  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    2.91  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   8  input_example/Graphite4.dat      Elapsed time(s)=    2.51  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    2.50  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  10  input_example/H2O.dat            Elapsed time(s)=    2.90  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=    6.71  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    1.78  diff Utot= 0.000000000019  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    4.03  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    1.47  diff Utot= 0.000000000001  diff Force= 0.000000000000
+
+
+Total elapsed time (s)       66.59

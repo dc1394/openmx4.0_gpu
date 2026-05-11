@@ -1,0 +1,21 @@
+gauss (Intel(R) Xeon(R) CPU E5-1650 v4 @ 3.60GHz)
+icc version 18.0.1, compiler option -O3 -xHOST -ip -no-prec-div -qopenmp
+14 processes (MPI) x 2 thread (OpenMP)
+
+   1  input_example/Benzene.dat        Elapsed time(s)=    4.93  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=    8.01  diff Utot= 0.000000000004  diff Force= 0.000000000001
+   3  input_example/CO.dat             Elapsed time(s)=    6.72  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   4  input_example/Cr2.dat            Elapsed time(s)=    8.65  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=   11.59  diff Utot= 0.000000000001  diff Force= 0.000000000001
+   6  input_example/GaAs.dat           Elapsed time(s)=   21.69  diff Utot= 0.000000000013  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    4.21  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   8  input_example/Graphite4.dat      Elapsed time(s)=    2.49  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    3.61  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  10  input_example/H2O.dat            Elapsed time(s)=    3.12  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=   11.60  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    2.50  diff Utot= 0.000000000006  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    6.73  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  14  input_example/Ndia2.dat          Elapsed time(s)=    3.15  diff Utot= 0.000000000000  diff Force= 0.000000000000
+
+
+Total elapsed time (s)       99.01

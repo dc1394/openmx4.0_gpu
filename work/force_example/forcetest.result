@@ -1,0 +1,332 @@
+
+ flag           0   1   2   3   4   5   6   7   8  
+
+ Kinetic        1   0   1   1   1   1   1   1   1  
+ Non-local      1   0   0   1   0   0   0   0   0  
+ Neutral atom   1   0   0   0   1   0   0   0   0  
+ diff Hartree   1   0   0   0   0   1   0   0   0  
+ Ex-Corr        1   0   0   0   0   0   1   0   0  
+ E. Field       1   0   0   0   0   0   0   1   0  
+ Hubbard U      1   0   0   0   0   0   0   0   1  
+
+
+
+force_example/C2_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -1.675860873746 -1.396709845776 -1.117834258528
+  Numerical force      -1.675840663310 -1.396806820993 -1.117789911541
+  diff                 -0.000020210436  0.000096975217 -0.000044346988
+
+force_example/C2_LDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -1.633521029424 -1.361692568246 -1.090117333732
+  Numerical force      -1.633479966564 -1.361752146618 -1.090072812773
+  diff                 -0.000041062860  0.000059578372 -0.000044520958
+
+force_example/Cdia_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -1.077715888176 -1.405532133031 -1.737604528023
+  Numerical force      -1.077838642084 -1.405495545500 -1.737597523146
+  diff                  0.000122753908 -0.000036587531 -0.000007004877
+
+force_example/Cdia_LDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -1.023809324955 -1.337088302892 -1.654943060723
+  Numerical force      -1.023895696270 -1.337067637441 -1.654971598688
+  diff                  0.000086371315 -0.000020665451  0.000028537965
+
+force_example/CH_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.655373153980 -0.819206644144 -0.491510731189
+  Numerical force      -0.655355639828 -0.819203266012 -0.491457035758
+  diff                 -0.000017514151 -0.000003378132 -0.000053695432
+
+force_example/CH_LDA+U.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.110120382962 -0.110120382965 -0.062978574656
+  Numerical force       0.110120780718 -0.110120780632 -0.062982750581
+  diff                 -0.000000397756  0.000000397667  0.000004175925
+
+force_example/CH_LSDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.487589676237 -0.812642825374 -0.650126923300
+  Numerical force      -0.487562142334 -0.812698612044 -0.650155324157
+  diff                 -0.000027533903  0.000055786670  0.000028400857
+
+force_example/CH_NC.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -1.572413319105 -1.048254426241 -2.096623908819
+  Numerical force      -1.572834635749 -1.047861752731 -2.096593563137
+  diff                  0.000421316644 -0.000392673511 -0.000030345681
+
+force_example/Cr2.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.045525233726 -0.005528813577  0.005506994053
+  Numerical force      -0.045553122258 -0.005572041128  0.005612014130
+  diff                  0.000027888532  0.000043227551 -0.000105020077
+
+force_example/Crys-MnO_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.759041568391 -0.723567249927 -0.773678119763
+  Numerical force      -0.759074879018 -0.722434614744 -0.773614085527
+  diff                  0.000033310627 -0.001132635183 -0.000064034236
+
+force_example/Crys-MnO_LSDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.116303677838 -0.109962513099 -0.115891287012
+  Numerical force      -0.109419104604 -0.103396543381 -0.109216303485
+  diff                 -0.006884573235 -0.006565969718 -0.006674983526
+
+force_example/F2_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -2.046907336922 -1.703484360831 -1.368996179459
+  Numerical force      -2.047129659838 -1.703976297615 -1.369230480369
+  diff                  0.000222322916  0.000491936784  0.000234300910
+
+force_example/Fe2_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.099499924634 -0.067859837098  0.067859827296
+  Numerical force      -0.099516365092 -0.067898627852  0.067843100974
+  diff                  0.000016440458  0.000038790754  0.000016726322
+
+force_example/Fe2_LSDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -2.209902092822 -1.933162099069  1.380347972067
+  Numerical force      -2.209856579232 -1.933107239154  1.380393950872
+  diff                 -0.000045513590 -0.000054859915 -0.000045978805
+
+force_example/FeCrH_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.339621617587  0.114417814466  0.141074974678
+  Numerical force       0.339629847730  0.114401130797  0.141004418168
+  diff                 -0.000008230142  0.000016683670  0.000070556509
+
+force_example/FeCrH_LSDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.362945982230  0.129753492979  0.120900640057
+  Numerical force       0.362953995155  0.129737619072  0.120829546214
+  diff                 -0.000008012925  0.000015873907  0.000071093842
+
+force_example/GaAs+05.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.134632523937 -0.137146888922  0.134632464635
+  Numerical force       0.134564593329 -0.137057405330  0.134392002641
+  diff                  0.000067930608 -0.000089483592  0.000240461994
+
+force_example/GaAs_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.063794968052 -0.054939519707  0.077780417314
+  Numerical force       0.063636444641 -0.055941204664  0.078796341825
+  diff                  0.000158523411  0.001001684957 -0.001015924511
+
+force_example/GaAs_LDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.007027185747 -0.005349457110  0.010964696342
+  Numerical force       0.007988360977 -0.006638631476  0.011701813397
+  diff                 -0.000961175230  0.001289174366 -0.000737117055
+
+force_example/GaAs_NC_SO.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.167029093465 -0.167221500343  0.167029173013
+  Numerical force       0.167787178971 -0.168214856160  0.167734030280
+  diff                 -0.000758085507  0.000993355816 -0.000704857267
+
+force_example/GaAs_NC_SO+U.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.161760750393 -0.161993209071  0.161760830515
+  Numerical force       0.161855993307 -0.162295286306  0.161802575178
+  diff                 -0.000095242915  0.000302077235 -0.000041744664
+
+force_example/H2_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.071200633626 -0.053383830546  0.088993331277
+  Numerical force      -0.071237226346 -0.053380056490  0.088946801564
+  diff                  0.000036592719 -0.000003774056  0.000046529713
+
+force_example/H2_LDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.836315923883 -0.000000000000  0.000000000000
+  Numerical force      -0.836392545368 -0.000000000037 -0.000000000198
+  diff                  0.000076621485  0.000000000037  0.000000000198
+
+force_example/Hdia_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.065656336858 -0.082450573484 -0.099551191527
+  Numerical force      -0.065662591934 -0.082428072095 -0.099551306476
+  diff                  0.000006255076 -0.000022501389  0.000000114949
+
+force_example/Hdia_LDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.066099740841 -0.082994519042 -0.100221468898
+  Numerical force      -0.066106020298 -0.082972002917 -0.100221553280
+  diff                  0.000006279457 -0.000022516125  0.000000084382
+
+force_example/HHdia_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.058887038313 -0.074225610125 -0.091184749193
+  Numerical force      -0.058890142844 -0.074201847819 -0.091181958922
+  diff                  0.000003104531 -0.000023762306 -0.000002790271
+
+force_example/HHdia_LDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.059828944681 -0.075372607135 -0.092457670452
+  Numerical force      -0.059832250347 -0.075348848855 -0.092454975951
+  diff                  0.000003305666 -0.000023758280 -0.000002694501
+
+force_example/Methane_GGA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.316500875039  0.148866657462  0.132822910798
+  Numerical force      -0.316886922772  0.148484892781  0.133287560908
+  diff                  0.000386047732  0.000381764681 -0.000464650110
+
+force_example/Methane_LDA.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force       -0.316203655905  0.147216169755  0.133482640400
+  Numerical force      -0.316189828691  0.147236731787  0.133143638991
+  diff                 -0.000013827213 -0.000020562033  0.000339001409
+
+force_example/Mn2O_LDA+U.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.220952847959 -0.771854731958  0.096311990038
+  Numerical force       0.220991769358 -0.772072857274  0.096828729094
+  diff                 -0.000038921400  0.000218125316 -0.000516739056
+
+force_example/MnO_LDA+U.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.017752951121 -0.001808991299  0.001045097202
+  Numerical force       0.017737876590 -0.001860912491  0.000958703410
+  diff                  0.000015074531  0.000051921192  0.000086393792
+
+force_example/MoS2-NC2.dat
+  flag= 0
+  Numerical force= -(Utot(s+ds)-Utot(s-ds))/(2*ds)
+  ds=   0.0003000000
+  Forces (Hartree/Bohr) on atom 1
+                               x              y               z
+  Analytic force        0.000007456973 -0.000182507562  0.000000000000
+  Numerical force       0.000007453049 -0.000155217658  0.000000000284
+  diff                  0.000000003925 -0.000027289904 -0.000000000284

@@ -1,0 +1,3380 @@
+***********************************************************
+***********************************************************
+
+  This calculation was performed by OpenMX Ver. 4.0
+  using 14 MPI processes and 1 OpenMP threads.
+
+  Fri Apr 10 19:50:05 2026
+
+***********************************************************
+***********************************************************
+
+#
+#      File Name      
+#
+
+System.CurrrentDirectory         ./    # default=./
+System.Name                      NaCl-RFC5
+level.of.stdout                   1    # default=1 (1-3)
+level.of.fileout                  0    # default=1 (1-3)
+
+#
+# Definition of Atomic Species
+#
+
+Species.Number       2
+<Definition.of.Atomic.Species
+   Na   Na9.0-s3p2     Na_PBE19
+   Cl   Cl7.0-s3p2d2   Cl_PBE19
+Definition.of.Atomic.Species>
+
+#
+# Atoms
+#
+
+Atoms.Number         2
+Atoms.SpeciesAndCoordinates.Unit   Ang # Ang|AU
+<Atoms.SpeciesAndCoordinates           # Unit=Ang.
+  1   Na   0.20000 -0.10000  0.00000   4.5 4.5
+  2   Cl   2.81500  2.81500  2.81500   3.5 3.5
+Atoms.SpeciesAndCoordinates>
+Atoms.UnitVectors.Unit             Ang #  Ang|AU
+<Atoms.UnitVectors                     # unit=Ang.
+  0.00000   2.81500   2.81500 
+  2.81500   0.00000   2.81500
+  2.81500   2.81500   0.00000
+Atoms.UnitVectors>
+
+#
+# SCF or Electronic System
+#
+
+scf.XcType                 GGA-PBE     # LDA|LSDA-CA|LSDA-PW
+scf.SpinPolarization       off         # On|Off
+scf.ElectronicTemperature  300.0       # default=300 (K)
+scf.energycutoff           300.0       # default=150 (Ry)
+scf.maxIter                170         # default=40
+scf.EigenvalueSolver       band        # Recursion|Cluster|Band
+scf.Kgrid                  5 5 5       # means 4x4x4
+scf.Mixing.Type           rmm-diisk    # Simple|Rmm-Diis|Gr-Pulay
+scf.Init.Mixing.Weight     0.010       # default=0.30 
+scf.Min.Mixing.Weight      0.001       # default=0.001 
+scf.Max.Mixing.Weight      0.200       # default=0.40 
+scf.Mixing.History         32          # default=5
+scf.Mixing.StartPulay      12          # default=6
+scf.criterion             1.0e-9       # default=1.0e-6 (Hartree) 
+
+#
+# MD or Geometry Optimization
+#
+
+MD.Type                     RFC5       # Nomd|Opt|DIIS|NVE|NVT_VS|NVT_NH
+MD.Opt.DIIS.History          3         # default=7
+MD.Opt.StartDIIS            10         # default=5
+MD.Opt.EveryDIIS           10000       # default=10
+MD.maxIter                  200        # default=1
+MD.Opt.criterion          0.0003       # default=1.0e-4 (Hartree/bohr)
+
+
+***********************************************************
+***********************************************************
+
+  Required cutoff energy (Ryd) for 3D-grids = 306.3401
+      Used cutoff energy (Ryd) for 3D-grids = 306.5646, 306.6723, 305.7834
+  Num. of grids of a-, b-, and c-axes = 35, 35, 35
+
+  Num.Grid1.    35
+  Num.Grid2.    35
+  Num.Grid3.    35
+
+
+  Cell_Volume =    320.640091999728 (Bohr^3)
+  GridVol     =      0.007478486111 (Bohr^3)
+  Cell vectors (bohr) of the grid cell (gtv)
+    gtv_a = -0.001127089708,  0.154507753189,  0.154398125045
+    gtv_b =  0.155257381952, -0.000546418434,  0.154562367952
+    gtv_c =  0.155518957922,  0.154932520499, -0.000435936816
+    |gtv_a| =  0.218432362859
+    |gtv_b| =  0.219076878767
+    |gtv_c| =  0.219523170126
+
+***********************************************************
+***********************************************************
+
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 1                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.192588123207
+   SCF=   2  NormRD=  0.450793406231  Uele= -14.192588123207
+   SCF=   3  NormRD=  0.441198006644  Uele= -14.190347124680
+   SCF=   4  NormRD=  0.295788042743  Uele= -14.155984097253
+   SCF=   5  NormRD=  0.207518383872  Uele= -14.136710503083
+   SCF=   6  NormRD=  0.153470244363  Uele= -14.126333047243
+   SCF=   7  NormRD=  0.118837374165  Uele= -14.121115454899
+   SCF=   8  NormRD=  0.094951699518  Uele= -14.118825744024
+   SCF=   9  NormRD=  0.077201361441  Uele= -14.118143810320
+   SCF=  10  NormRD=  0.063270219095  Uele= -14.118298855268
+   SCF=  11  NormRD=  0.051989056509  Uele= -14.118848953193
+   SCF=  12  NormRD=  0.042782670173  Uele= -14.119547536296
+   SCF=  13  NormRD=  0.002169419299  Uele= -14.125221954556
+   SCF=  14  NormRD=  0.000200385167  Uele= -14.124367705116
+   SCF=  15  NormRD=  0.000028610259  Uele= -14.124305356065
+   SCF=  16  NormRD=  0.000003758898  Uele= -14.124315765837
+   SCF=  17  NormRD=  0.000000811331  Uele= -14.124312925474
+   SCF=  18  NormRD=  0.000000169673  Uele= -14.124312638590
+   SCF=  19  NormRD=  0.000000018005  Uele= -14.124312665418
+   SCF=  20  NormRD=  0.000000003940  Uele= -14.124312653035
+   SCF=  21  NormRD=  0.000000000742  Uele= -14.124312650294
+   SCF=  22  NormRD=  0.000000000063  Uele= -14.124312649713
+
+*******************************************************
+        Total energy (Hartree) at MD = 1        
+*******************************************************
+
+  Uele.        -14.124312649713
+
+  Ukin.         37.069156140680
+  UH0.        -725.624828781658
+  UH1.           0.009233651003
+  Una.         -18.748208441557
+  Unl.         -19.234451341513
+  Uxc0.         -5.534376799851
+  Uxc1.         -5.534376799851
+  Ucore.       674.832201452185
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.765650920562
+
+  UpV.           0.000000000000
+  Enpy.        -62.765650920562
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185459773056
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 2                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.122080410740
+   SCF=   2  NormRD=  0.000836277379  Uele= -14.122223442758
+   SCF=   3  NormRD=  0.000617566712  Uele= -14.122324858848
+   SCF=   4  NormRD=  0.000064148093  Uele= -14.122589139831
+   SCF=   5  NormRD=  0.000008291874  Uele= -14.122594084135
+   SCF=   6  NormRD=  0.000001976830  Uele= -14.122599435850
+   SCF=   7  NormRD=  0.000000757520  Uele= -14.122598305156
+   SCF=   8  NormRD=  0.000000075964  Uele= -14.122598362375
+   SCF=   9  NormRD=  0.000000003443  Uele= -14.122598366194
+   SCF=  10  NormRD=  0.000000001655  Uele= -14.122598365953
+
+*******************************************************
+        Total energy (Hartree) at MD = 2        
+*******************************************************
+
+  Uele.        -14.122598365953
+
+  Ukin.         37.067432491245
+  UH0.        -725.110873533555
+  UH1.           0.009244639617
+  Una.         -18.745416621353
+  Unl.         -19.234198203922
+  Uxc0.         -5.534119284566
+  Uxc1.         -5.534119284566
+  Ucore.       674.316310974684
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.765738822416
+
+  UpV.           0.000000000000
+  Enpy.        -62.765738822416
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185485957190
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 3                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.120464713069
+   SCF=   2  NormRD=  0.000802785784  Uele= -14.120601653781
+   SCF=   3  NormRD=  0.000593023665  Uele= -14.120698815746
+   SCF=   4  NormRD=  0.000061394725  Uele= -14.120952800300
+   SCF=   5  NormRD=  0.000007844835  Uele= -14.120957526150
+   SCF=   6  NormRD=  0.000001847796  Uele= -14.120962646804
+   SCF=   7  NormRD=  0.000000720356  Uele= -14.120961573007
+   SCF=   8  NormRD=  0.000000073143  Uele= -14.120961633696
+   SCF=   9  NormRD=  0.000000003427  Uele= -14.120961637300
+   SCF=  10  NormRD=  0.000000001634  Uele= -14.120961637127
+
+*******************************************************
+        Total energy (Hartree) at MD = 3        
+*******************************************************
+
+  Uele.        -14.120961637127
+
+  Ukin.         37.065786629878
+  UH0.        -724.617870959635
+  UH1.           0.009255379291
+  Una.         -18.742749162937
+  Unl.         -19.233956507917
+  Uxc0.         -5.533873001463
+  Uxc1.         -5.533873001463
+  Ucore.       673.821459747707
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.765820876539
+
+  UpV.           0.000000000000
+  Enpy.        -62.765820876539
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185510253068
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 4                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.119394137470
+   SCF=   2  NormRD=  0.000026662142  Uele= -14.119395382520
+   SCF=   3  NormRD=  0.000020370028  Uele= -14.119395976766
+   SCF=   4  NormRD=  0.000003744270  Uele= -14.119394013180
+   SCF=   5  NormRD=  0.000000222167  Uele= -14.119395270042
+   SCF=   6  NormRD=  0.000000048542  Uele= -14.119395137906
+   SCF=   7  NormRD=  0.000000010905  Uele= -14.119395145580
+   SCF=   8  NormRD=  0.000000001458  Uele= -14.119395149931
+   SCF=   9  NormRD=  0.000000000027  Uele= -14.119395149787
+
+*******************************************************
+        Total energy (Hartree) at MD = 4        
+*******************************************************
+
+  Uele.        -14.119395149787
+
+  Ukin.         37.064211373302
+  UH0.        -716.270845024503
+  UH1.           0.009265881695
+  Una.         -18.740195508995
+  Unl.         -19.233724551917
+  Uxc0.         -5.533637052960
+  Uxc1.         -5.533637052960
+  Ucore.       665.472664170207
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.765897766130
+
+  UpV.           0.000000000000
+  Enpy.        -62.765897766130
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185532665346
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 5                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.117890830769
+   SCF=   2  NormRD=  0.000019080761  Uele= -14.117890831926
+   SCF=   3  NormRD=  0.000015225508  Uele= -14.117890892532
+   SCF=   4  NormRD=  0.000002126853  Uele= -14.117891948955
+   SCF=   5  NormRD=  0.000000114621  Uele= -14.117891456840
+   SCF=   6  NormRD=  0.000000011504  Uele= -14.117891513593
+   SCF=   7  NormRD=  0.000000003904  Uele= -14.117891502964
+   SCF=   8  NormRD=  0.000000001120  Uele= -14.117891502673
+
+*******************************************************
+        Total energy (Hartree) at MD = 5        
+*******************************************************
+
+  Uele.        -14.117891502673
+
+  Ukin.         37.062697673329
+  UH0.        -715.820147832796
+  UH1.           0.009276136594
+  Una.         -18.737740894452
+  Unl.         -19.233501607174
+  Uxc0.         -5.533410347074
+  Uxc1.         -5.533410347074
+  Ucore.       665.020266440668
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.765970777977
+
+  UpV.           0.000000000000
+  Enpy.        -62.765970777977
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185553814517
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 6                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.114317875665
+   SCF=   2  NormRD=  0.000071345954  Uele= -14.114312607179
+   SCF=   3  NormRD=  0.000054291644  Uele= -14.114309220457
+   SCF=   4  NormRD=  0.000010847605  Uele= -14.114305378467
+   SCF=   5  NormRD=  0.000000526459  Uele= -14.114303219428
+   SCF=   6  NormRD=  0.000000137378  Uele= -14.114303064698
+   SCF=   7  NormRD=  0.000000038974  Uele= -14.114303098078
+   SCF=   8  NormRD=  0.000000003328  Uele= -14.114303097369
+
+*******************************************************
+        Total energy (Hartree) at MD = 6        
+*******************************************************
+
+  Uele.        -14.114303097369
+
+  Ukin.         37.059101678820
+  UH0.        -706.868527755351
+  UH1.           0.009301872056
+  Una.         -18.731894960400
+  Unl.         -19.232972206550
+  Uxc0.         -5.532869161185
+  Uxc1.         -5.532869161185
+  Ucore.       656.064594658697
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.766135035098
+
+  UpV.           0.000000000000
+  Enpy.        -62.766135035098
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185601662379
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 7                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.111103333877
+   SCF=   2  NormRD=  0.000090214934  Uele= -14.111092149473
+   SCF=   3  NormRD=  0.000068566944  Uele= -14.111084671343
+   SCF=   4  NormRD=  0.000013338220  Uele= -14.111071953931
+   SCF=   5  NormRD=  0.000001050664  Uele= -14.111069034559
+   SCF=   6  NormRD=  0.000000222481  Uele= -14.111068755019
+   SCF=   7  NormRD=  0.000000063899  Uele= -14.111068854868
+   SCF=   8  NormRD=  0.000000002719  Uele= -14.111068867549
+   SCF=   9  NormRD=  0.000000000655  Uele= -14.111068866758
+
+*******************************************************
+        Total energy (Hartree) at MD = 7        
+*******************************************************
+
+  Uele.        -14.111068866758
+
+  Ukin.         37.055874065200
+  UH0.        -705.893079116351
+  UH1.           0.009326234075
+  Una.         -18.726635685587
+  Unl.         -19.232497159599
+  Uxc0.         -5.532382207818
+  Uxc1.         -5.532382207818
+  Ucore.       655.085500336833
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.766275741065
+
+  UpV.           0.000000000000
+  Enpy.        -62.766275741065
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185642158613
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 8                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.108206617291
+   SCF=   2  NormRD=  0.000104383885  Uele= -14.108190321207
+   SCF=   3  NormRD=  0.000078692567  Uele= -14.108179106392
+   SCF=   4  NormRD=  0.000013857244  Uele= -14.108154668343
+   SCF=   5  NormRD=  0.000001412469  Uele= -14.108152315301
+   SCF=   6  NormRD=  0.000000197364  Uele= -14.108151915960
+   SCF=   7  NormRD=  0.000000056345  Uele= -14.108152068153
+   SCF=   8  NormRD=  0.000000009349  Uele= -14.108152069905
+   SCF=   9  NormRD=  0.000000000352  Uele= -14.108152069948
+
+*******************************************************
+        Total energy (Hartree) at MD = 8        
+*******************************************************
+
+  Uele.        -14.108152069948
+
+  Ukin.         37.052963698867
+  UH0.        -701.069876438462
+  UH1.           0.009349027292
+  Una.         -18.721889042584
+  Unl.         -19.232068037868
+  Uxc0.         -5.531942074635
+  Uxc1.         -5.531942074635
+  Ucore.       650.259008367755
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.766396574271
+
+  UpV.           0.000000000000
+  Enpy.        -62.766396574271
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185676140245
+
+***********************************************************
+***********************************************************
+                  SCF history at MD= 9                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.105529864241
+   SCF=   2  NormRD=  0.000054890140  Uele= -14.105522662348
+   SCF=   3  NormRD=  0.000042422410  Uele= -14.105517776800
+   SCF=   4  NormRD=  0.000008641339  Uele= -14.105508970711
+   SCF=   5  NormRD=  0.000000910599  Uele= -14.105506901076
+   SCF=   6  NormRD=  0.000000116814  Uele= -14.105506610964
+   SCF=   7  NormRD=  0.000000043292  Uele= -14.105506669665
+   SCF=   8  NormRD=  0.000000004242  Uele= -14.105506671169
+   SCF=   9  NormRD=  0.000000000454  Uele= -14.105506667922
+   SCF=  10  NormRD=  0.000000000107  Uele= -14.105506668075
+
+*******************************************************
+        Total energy (Hartree) at MD = 9        
+*******************************************************
+
+  Uele.        -14.105506668075
+
+  Ukin.         37.050329407841
+  UH0.        -692.389227987538
+  UH1.           0.009370548379
+  Una.         -18.717583305407
+  Unl.         -19.231680248095
+  Uxc0.         -5.531542344135
+  Uxc1.         -5.531542344135
+  Ucore.       641.575375879624
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.766500393464
+
+  UpV.           0.000000000000
+  Enpy.        -62.766500393464
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185704790056
+
+***********************************************************
+***********************************************************
+                  SCF history at MD=10                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.099618728476
+   SCF=   2  NormRD=  0.000170622544  Uele= -14.099597728376
+   SCF=   3  NormRD=  0.000130838115  Uele= -14.099583550184
+   SCF=   4  NormRD=  0.000020689802  Uele= -14.099556860339
+   SCF=   5  NormRD=  0.000002156131  Uele= -14.099552330554
+   SCF=   6  NormRD=  0.000000385310  Uele= -14.099551805103
+   SCF=   7  NormRD=  0.000000121886  Uele= -14.099551999937
+   SCF=   8  NormRD=  0.000000007900  Uele= -14.099552021408
+   SCF=   9  NormRD=  0.000000001428  Uele= -14.099552019070
+   SCF=  10  NormRD=  0.000000000305  Uele= -14.099552019329
+
+*******************************************************
+        Total energy (Hartree) at MD =10        
+*******************************************************
+
+  Uele.        -14.099552019329
+
+  Ukin.         37.044450470978
+  UH0.        -686.646773164149
+  UH1.           0.009422146886
+  Una.         -18.707940648027
+  Unl.         -19.230816128274
+  Uxc0.         -5.530646057803
+  Uxc1.         -5.530646057803
+  Ucore.       635.826236622623
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.766712815568
+
+  UpV.           0.000000000000
+  Enpy.        -62.766712815568
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185762424953
+
+***********************************************************
+***********************************************************
+                  SCF history at MD=11                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.096903739554
+   SCF=   2  NormRD=  0.004536746264  Uele= -14.097230419143
+   SCF=   3  NormRD=  0.003380130654  Uele= -14.097461183880
+   SCF=   4  NormRD=  0.000482151356  Uele= -14.098051979830
+   SCF=   5  NormRD=  0.000014407987  Uele= -14.098085808415
+   SCF=   6  NormRD=  0.000004162839  Uele= -14.098089762278
+   SCF=   7  NormRD=  0.000002096828  Uele= -14.098090195021
+   SCF=   8  NormRD=  0.000000101783  Uele= -14.098089314537
+   SCF=   9  NormRD=  0.000000018768  Uele= -14.098089381585
+   SCF=  10  NormRD=  0.000000007233  Uele= -14.098089377737
+   SCF=  11  NormRD=  0.000000000198  Uele= -14.098089378021
+
+*******************************************************
+        Total energy (Hartree) at MD =11        
+*******************************************************
+
+  Uele.        -14.098089378021
+
+  Ukin.         37.041442427907
+  UH0.        -686.048283058235
+  UH1.           0.009414221785
+  Una.         -18.703491468611
+  Unl.         -19.230341373842
+  Uxc0.         -5.530220519572
+  Uxc1.         -5.530220519572
+  Ucore.       635.224792606120
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.766907684022
+
+  UpV.           0.000000000000
+  Enpy.        -62.766907684022
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185773259727
+
+***********************************************************
+***********************************************************
+                  SCF history at MD=12                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.082389018127
+   SCF=   2  NormRD=  0.032864631246  Uele= -14.083269044366
+   SCF=   3  NormRD=  0.024627463413  Uele= -14.083908291652
+   SCF=   4  NormRD=  0.005113483235  Uele= -14.085571681326
+   SCF=   5  NormRD=  0.000157566431  Uele= -14.085753546525
+   SCF=   6  NormRD=  0.000043754506  Uele= -14.085776457675
+   SCF=   7  NormRD=  0.000012100966  Uele= -14.085765541972
+   SCF=   8  NormRD=  0.000000841659  Uele= -14.085765803879
+   SCF=   9  NormRD=  0.000000234571  Uele= -14.085765833200
+   SCF=  10  NormRD=  0.000000069009  Uele= -14.085765788436
+   SCF=  11  NormRD=  0.000000005499  Uele= -14.085765764150
+   SCF=  12  NormRD=  0.000000000595  Uele= -14.085765764855
+
+*******************************************************
+        Total energy (Hartree) at MD =12        
+*******************************************************
+
+  Uele.        -14.085765764855
+
+  Ukin.         37.024123705306
+  UH0.        -642.613183630089
+  UH1.           0.009467226941
+  Una.         -18.676189093585
+  Unl.         -19.227785427931
+  Uxc0.         -5.527644351091
+  Uxc1.         -5.527644351091
+  Ucore.       591.771170790663
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.767685130876
+
+  UpV.           0.000000000000
+  Enpy.        -62.767685130876
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185856354656
+
+***********************************************************
+***********************************************************
+                  SCF history at MD=13                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.082689880507
+   SCF=   2  NormRD=  0.000799625553  Uele= -14.082737560275
+   SCF=   3  NormRD=  0.000637510353  Uele= -14.082770114344
+   SCF=   4  NormRD=  0.000070685938  Uele= -14.082825510088
+   SCF=   5  NormRD=  0.000007520967  Uele= -14.082842282042
+   SCF=   6  NormRD=  0.000001376570  Uele= -14.082843075669
+   SCF=   7  NormRD=  0.000000432504  Uele= -14.082842693666
+   SCF=   8  NormRD=  0.000000011221  Uele= -14.082842532819
+   SCF=   9  NormRD=  0.000000002658  Uele= -14.082842533783
+
+*******************************************************
+        Total energy (Hartree) at MD =13        
+*******************************************************
+
+  Uele.        -14.082842533783
+
+  Ukin.         37.021649885882
+  UH0.        -641.776901883406
+  UH1.           0.009503456796
+  Una.         -18.671883002891
+  Unl.         -19.227454578020
+  Uxc0.         -5.527248521648
+  Uxc1.         -5.527248521648
+  Ucore.       590.931867028569
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.767716136366
+
+  UpV.           0.000000000000
+  Enpy.        -62.767716136366
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185872740112
+
+***********************************************************
+***********************************************************
+                  SCF history at MD=14                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.082701437482
+   SCF=   2  NormRD=  0.000325458239  Uele= -14.082705061174
+   SCF=   3  NormRD=  0.000255127571  Uele= -14.082706309918
+   SCF=   4  NormRD=  0.000041508629  Uele= -14.082694971236
+   SCF=   5  NormRD=  0.000002549546  Uele= -14.082701326638
+   SCF=   6  NormRD=  0.000001168099  Uele= -14.082700082470
+   SCF=   7  NormRD=  0.000000111482  Uele= -14.082700411880
+   SCF=   8  NormRD=  0.000000008728  Uele= -14.082700446545
+   SCF=   9  NormRD=  0.000000003684  Uele= -14.082700442216
+   SCF=  10  NormRD=  0.000000000695  Uele= -14.082700441580
+
+*******************************************************
+        Total energy (Hartree) at MD =14        
+*******************************************************
+
+  Uele.        -14.082700441580
+
+  Ukin.         37.021530600468
+  UH0.        -641.737002734381
+  UH1.           0.009505175420
+  Una.         -18.671676528634
+  Unl.         -19.227438339721
+  Uxc0.         -5.527229504212
+  Uxc1.         -5.527229504212
+  Ucore.       590.891823052891
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.767717782380
+
+  UpV.           0.000000000000
+  Enpy.        -62.767717782380
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185873669689
+
+***********************************************************
+***********************************************************
+                  SCF history at MD=15                    
+***********************************************************
+***********************************************************
+
+   SCF=   1  NormRD=  1.000000000000  Uele= -14.080860504851
+   SCF=   2  NormRD=  0.002659273310  Uele= -14.080957242872
+   SCF=   3  NormRD=  0.002140990375  Uele= -14.081027951330
+   SCF=   4  NormRD=  0.000235128808  Uele= -14.081229996336
+   SCF=   5  NormRD=  0.000036355700  Uele= -14.081240104265
+   SCF=   6  NormRD=  0.000003696788  Uele= -14.081240559080
+   SCF=   7  NormRD=  0.000001287849  Uele= -14.081240524108
+   SCF=   8  NormRD=  0.000000121260  Uele= -14.081240134081
+   SCF=   9  NormRD=  0.000000026823  Uele= -14.081240238317
+   SCF=  10  NormRD=  0.000000012333  Uele= -14.081240223348
+   SCF=  11  NormRD=  0.000000000426  Uele= -14.081240224789
+   SCF=  12  NormRD=  0.000000000031  Uele= -14.081240224844
+
+*******************************************************
+        Total energy (Hartree) at MD =15        
+*******************************************************
+
+  Uele.        -14.081240224844
+
+  Ukin.         37.020254908474
+  UH0.        -641.326759372424
+  UH1.           0.009522024537
+  Una.         -18.669492496231
+  Unl.         -19.227259798754
+  Uxc0.         -5.527025859043
+  Uxc1.         -5.527025859043
+  Ucore.       590.480050907398
+  Uhub.          0.000000000000
+  Ucs.           0.000000000000
+  Uzs.           0.000000000000
+  Uzo.           0.000000000000
+  Uef.           0.000000000000
+  UvdW.          0.000000000000
+  Uch.           0.000000000000
+  Utot.        -62.767735545088
+
+  UpV.           0.000000000000
+  Enpy.        -62.767735545088
+  Note:
+
+  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy
+  Uch:    penalty term to create a core hole
+
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+
+  Chemical potential (Hartree)      -0.185883435188
+
+***********************************************************
+***********************************************************
+           Eigenvalues (Hartree) of SCF KS-eq.           
+***********************************************************
+***********************************************************
+
+   Chemical Potential (Hartree) =  -0.18588343518786
+   Number of States             =  16.00000000000000
+   Eigenvalues
+              Up-spin           Down-spin
+
+   kloop=0
+   k1=   0.00000 k2=  -0.00000 k3=   0.00000
+
+    1   -2.10446569131395  -2.10446569131395
+    2   -1.07302982899652  -1.07302982899652
+    3   -1.07297173975736  -1.07297173975736
+    4   -1.07294249242538  -1.07294249242538
+    5   -0.75662694505398  -0.75662694505398
+    6   -0.29643775444639  -0.29643775444639
+    7   -0.29612179104290  -0.29612179104290
+    8   -0.29534911722496  -0.29534911722496
+    9   -0.11387492307251  -0.11387492307251
+   10    0.14464781756497   0.14464781756497
+   11    0.14648417426823   0.14648417426823
+   12    0.15079230760795   0.15079230760795
+   13    0.28067964923380   0.28067964923380
+   14    0.28429094775392   0.28429094775392
+   15    0.51059025231986   0.51059025231986
+   16    0.51377135115940   0.51377135115940
+   17    0.52873355553390   0.52873355553390
+   18    0.68216539169719   0.68216539169719
+   19    0.68436947139153   0.68436947139153
+   20    0.68898391782401   0.68898391782401
+   21    0.75867771605390   0.75867771605390
+   22    0.76286563475040   0.76286563475040
+   23    0.76695057486975   0.76695057486975
+   24    1.13713021240579   1.13713021240579
+   25    1.36002182040169   1.36002182040169
+   26    1.38917681665533   1.38917681665533
+   27    2.41323786838787   2.41323786838787
+   28    3.09453290947694   3.09453290947694
+
+   kloop=1
+   k1=   0.00000 k2=  -0.00000 k3=   0.20000
+
+    1   -2.10444227550250  -2.10444227550250
+    2   -1.07323269636167  -1.07323269636167
+    3   -1.07304520349742  -1.07304520349742
+    4   -1.07299613082317  -1.07299613082317
+    5   -0.75323028865782  -0.75323028865782
+    6   -0.32335327160899  -0.32335327160899
+    7   -0.29927589304754  -0.29927589304754
+    8   -0.29862649921417  -0.29862649921417
+    9   -0.07504052367739  -0.07504052367739
+   10    0.09060733667744   0.09060733667744
+   11    0.15686258133667   0.15686258133667
+   12    0.16320409343247   0.16320409343247
+   13    0.26949256870481   0.26949256870481
+   14    0.27353715031330   0.27353715031330
+   15    0.45012588909997   0.45012588909997
+   16    0.50319936779887   0.50319936779887
+   17    0.50622591349696   0.50622591349696
+   18    0.57788536445750   0.57788536445750
+   19    0.60432714281614   0.60432714281614
+   20    0.61015249889631   0.61015249889631
+   21    0.76169892272205   0.76169892272205
+   22    0.77448975185850   0.77448975185850
+   23    0.77865598117168   0.77865598117168
+   24    1.21242779494581   1.21242779494581
+   25    1.48505221377655   1.48505221377655
+   26    1.50031032235878   1.50031032235878
+   27    2.19958132997460   2.19958132997460
+   28    2.66442715606977   2.66442715606977
+
+   kloop=2
+   k1=   0.00000 k2=  -0.00000 k3=   0.40000
+
+    1   -2.10440472883896  -2.10440472883896
+    2   -1.07365796674077  -1.07365796674077
+    3   -1.07308005796063  -1.07308005796063
+    4   -1.07302535824129  -1.07302535824129
+    5   -0.74739764515018  -0.74739764515018
+    6   -0.35634826538556  -0.35634826538556
+    7   -0.30401004568945  -0.30401004568945
+    8   -0.30332754608075  -0.30332754608075
+    9   -0.03094203692036  -0.03094203692036
+   10    0.07093927492360   0.07093927492360
+   11    0.13200718924182   0.13200718924182
+   12    0.13808988396900   0.13808988396900
+   13    0.31828841320999   0.31828841320999
+   14    0.31913689990587   0.31913689990587
+   15    0.38028966999764   0.38028966999764
+   16    0.57551982427991   0.57551982427991
+   17    0.57704907551719   0.57704907551719
+   18    0.70197451868778   0.70197451868778
+   19    0.70641598843386   0.70641598843386
+   20    0.71051059350110   0.71051059350110
+   21    0.85881351118408   0.85881351118408
+   22    0.97663933630590   0.97663933630590
+   23    0.99020672955540   0.99020672955540
+   24    1.21879106331759   1.21879106331759
+   25    1.42281775670802   1.42281775670802
+   26    1.77338123919160   1.77338123919160
+   27    1.82754070182189   1.82754070182189
+   28    2.54129406518668   2.54129406518668
+
+   kloop=3
+   k1=   0.00000 k2=   0.20000 k3=   0.00000
+
+    1   -2.10444223262039  -2.10444223262039
+    2   -1.07327030108396  -1.07327030108396
+    3   -1.07302667366104  -1.07302667366104
+    4   -1.07297839468575  -1.07297839468575
+    5   -0.75321335800533  -0.75321335800533
+    6   -0.32321030790128  -0.32321030790128
+    7   -0.29945058101885  -0.29945058101885
+    8   -0.29869583210017  -0.29869583210017
+    9   -0.07501575010615  -0.07501575010615
+   10    0.09114593169105   0.09114593169105
+   11    0.15643573408722   0.15643573408722
+   12    0.16283207854472   0.16283207854472
+   13    0.26913993604402   0.26913993604402
+   14    0.27318291959403   0.27318291959403
+   15    0.45076136827207   0.45076136827207
+   16    0.50228670441992   0.50228670441992
+   17    0.50574542477962   0.50574542477962
+   18    0.57620808567365   0.57620808567365
+   19    0.60408362473043   0.60408362473043
+   20    0.61052584473539   0.61052584473539
+   21    0.76156536335877   0.76156536335877
+   22    0.77376930530108   0.77376930530108
+   23    0.77739602500859   0.77739602500859
+   24    1.21214759309759   1.21214759309759
+   25    1.48571153098587   1.48571153098587
+   26    1.50067116616313   1.50067116616313
+   27    2.19984922343011   2.19984922343011
+   28    2.66546351954684   2.66546351954684
+
+   kloop=4
+   k1=   0.00000 k2=   0.20000 k3=   0.20000
+
+    1   -2.10444374656493  -2.10444374656493
+    2   -1.07325415427404  -1.07325415427404
+    3   -1.07305237727398  -1.07305237727398
+    4   -1.07302726417154  -1.07302726417154
+    5   -0.75231293623728  -0.75231293623728
+    6   -0.32271676783227  -0.32271676783227
+    7   -0.30395917556162  -0.30395917556162
+    8   -0.30313314124365  -0.30313314124365
+    9   -0.06250011329186  -0.06250011329186
+   10    0.07486363343100   0.07486363343100
+   11    0.14611053469097   0.14611053469097
+   12    0.17179731486531   0.17179731486531
+   13    0.17502665594391   0.17502665594391
+   14    0.29860522413074   0.29860522413074
+   15    0.46103899006005   0.46103899006005
+   16    0.46248473854664   0.46248473854664
+   17    0.47931414243126   0.47931414243126
+   18    0.56295463920450   0.56295463920450
+   19    0.58282477479740   0.58282477479740
+   20    0.84802209876744   0.84802209876744
+   21    0.85066986315477   0.85066986315477
+   22    0.98951712567079   0.98951712567079
+   23    1.01190560382752   1.01190560382752
+   24    1.11426147033432   1.11426147033432
+   25    1.19420882757301   1.19420882757301
+   26    1.93715985383368   1.93715985383368
+   27    2.16839398577148   2.16839398577148
+   28    2.68006924263712   2.68006924263712
+
+   kloop=5
+   k1=   0.00000 k2=   0.20000 k3=   0.40000
+
+    1   -2.10441318746384  -2.10441318746384
+    2   -1.07349347289952  -1.07349347289952
+    3   -1.07314306660255  -1.07314306660255
+    4   -1.07308748210010  -1.07308748210010
+    5   -0.74760065552884  -0.74760065552884
+    6   -0.34541564180470  -0.34541564180470
+    7   -0.31263107332617  -0.31263107332617
+    8   -0.30796805173903  -0.30796805173903
+    9   -0.01384705244037  -0.01384705244037
+   10    0.05047374665673   0.05047374665673
+   11    0.08410648485665   0.08410648485665
+   12    0.17808978576432   0.17808978576432
+   13    0.24834952248594   0.24834952248594
+   14    0.30820876174798   0.30820876174798
+   15    0.37271042040159   0.37271042040159
+   16    0.42656629455515   0.42656629455515
+   17    0.48984620464095   0.48984620464095
+   18    0.54290079351472   0.54290079351472
+   19    0.61150874635922   0.61150874635922
+   20    0.86371126194224   0.86371126194224
+   21    0.86896007872080   0.86896007872080
+   22    1.03654103074108   1.03654103074108
+   23    1.12504874259416   1.12504874259416
+   24    1.20758930013600   1.20758930013600
+   25    1.38140900809514   1.38140900809514
+   26    1.52527320677903   1.52527320677903
+   27    1.83091922808070   1.83091922808070
+   28    2.70636310878675   2.70636310878675
+
+   kloop=6
+   k1=   0.00000 k2=   0.20000 k3=   0.60000
+
+    1   -2.10438400644776  -2.10438400644776
+    2   -1.07360912001975  -1.07360912001975
+    3   -1.07325080444867  -1.07325080444867
+    4   -1.07306710501304  -1.07306710501304
+    5   -0.74552860535682  -0.74552860535682
+    6   -0.35267943472944  -0.35267943472944
+    7   -0.32120178516090  -0.32120178516090
+    8   -0.30686927934159  -0.30686927934159
+    9    0.00512962780355   0.00512962780355
+   10    0.05285339546479   0.05285339546479
+   11    0.08205082903920   0.08205082903920
+   12    0.15860024886915   0.15860024886915
+   13    0.31208800522717   0.31208800522717
+   14    0.33077839464836   0.33077839464836
+   15    0.35675048583679   0.35675048583679
+   16    0.44484370846680   0.44484370846680
+   17    0.49095562287161   0.49095562287161
+   18    0.60158627101169   0.60158627101169
+   19    0.74138727587975   0.74138727587975
+   20    0.83726993122212   0.83726993122212
+   21    0.84514128737971   0.84514128737971
+   22    0.87787894834275   0.87787894834275
+   23    1.06186972226065   1.06186972226065
+   24    1.21542882820624   1.21542882820624
+   25    1.34535647322592   1.34535647322592
+   26    1.59382009346912   1.59382009346912
+   27    1.89876478298147   1.89876478298147
+   28    2.49895120295339   2.49895120295339
+
+   kloop=7
+   k1=   0.00000 k2=   0.20000 k3=   0.80000
+
+    1   -2.10441216210666  -2.10441216210666
+    2   -1.07343338141175  -1.07343338141175
+    3   -1.07319425134025  -1.07319425134025
+    4   -1.07301365095105  -1.07301365095105
+    5   -0.74911108123585  -0.74911108123585
+    6   -0.33989233919836  -0.33989233919836
+    7   -0.31386506790561  -0.31386506790561
+    8   -0.30121143660681  -0.30121143660681
+    9   -0.02824113988840  -0.02824113988840
+   10    0.06406701515109   0.06406701515109
+   11    0.10475509086804   0.10475509086804
+   12    0.18461428772341   0.18461428772341
+   13    0.23251955357625   0.23251955357625
+   14    0.31737936874376   0.31737936874376
+   15    0.41002971974459   0.41002971974459
+   16    0.45429890434948   0.45429890434948
+   17    0.55061657686353   0.55061657686353
+   18    0.63010639254481   0.63010639254481
+   19    0.67703000063362   0.67703000063362
+   20    0.69329835031726   0.69329835031726
+   21    0.74693673358123   0.74693673358123
+   22    0.97746793263213   0.97746793263213
+   23    0.97964521853736   0.97964521853736
+   24    1.19649053769091   1.19649053769091
+   25    1.52370338548887   1.52370338548887
+   26    1.71705708710252   1.71705708710252
+   27    1.97977907236912   1.97977907236912
+   28    2.72937086805614   2.72937086805614
+
+   kloop=8
+   k1=   0.00000 k2=   0.40000 k3=   0.00000
+
+    1   -2.10440449358909  -2.10440449358909
+    2   -1.07369629729466  -1.07369629729466
+    3   -1.07306176940385  -1.07306176940385
+    4   -1.07300774810298  -1.07300774810298
+    5   -0.74735009902618  -0.74735009902618
+    6   -0.35626163247860  -0.35626163247860
+    7   -0.30418963740373  -0.30418963740373
+    8   -0.30345669504173  -0.30345669504173
+    9   -0.03109241729406  -0.03109241729406
+   10    0.07145867751814   0.07145867751814
+   11    0.13145837638085   0.13145837638085
+   12    0.13746878869121   0.13746878869121
+   13    0.31832030587815   0.31832030587815
+   14    0.31946567959177   0.31946567959177
+   15    0.38095983333204   0.38095983333204
+   16    0.57526528711895   0.57526528711895
+   17    0.57684903940700   0.57684903940700
+   18    0.70093297278616   0.70093297278616
+   19    0.70552134540091   0.70552134540091
+   20    0.70980260508645   0.70980260508645
+   21    0.85790370511320   0.85790370511320
+   22    0.97381478904538   0.97381478904538
+   23    0.99121091211161   0.99121091211161
+   24    1.21675799774124   1.21675799774124
+   25    1.42387932742776   1.42387932742776
+   26    1.77472784012000   1.77472784012000
+   27    1.82724885622156   1.82724885622156
+   28    2.54292994186863   2.54292994186863
+
+   kloop=9
+   k1=   0.00000 k2=   0.40000 k3=   0.20000
+
+    1   -2.10441342925286  -2.10441342925286
+    2   -1.07353151594683  -1.07353151594683
+    3   -1.07311884178558  -1.07311884178558
+    4   -1.07307454933403  -1.07307454933403
+    5   -0.74757121823567  -0.74757121823567
+    6   -0.34541728650841  -0.34541728650841
+    7   -0.31269210424661  -0.31269210424661
+    8   -0.30801111944397  -0.30801111944397
+    9   -0.01388264158142  -0.01388264158142
+   10    0.05056187691968   0.05056187691968
+   11    0.08370294204590   0.08370294204590
+   12    0.17798495381295   0.17798495381295
+   13    0.24807321074768   0.24807321074768
+   14    0.30853883937640   0.30853883937640
+   15    0.37348764320991   0.37348764320991
+   16    0.42644616930862   0.42644616930862
+   17    0.48964727574852   0.48964727574852
+   18    0.54285453151475   0.54285453151475
+   19    0.61039530188399   0.61039530188399
+   20    0.86478656813347   0.86478656813347
+   21    0.86645791530490   0.86645791530490
+   22    1.03459834660698   1.03459834660698
+   23    1.12446686067157   1.12446686067157
+   24    1.19495250603699   1.19495250603699
+   25    1.38156692759182   1.38156692759182
+   26    1.52352190279096   1.52352190279096
+   27    1.83040345110850   1.83040345110850
+   28    2.70731398047305   2.70731398047305
+
+   kloop=10
+   k1=   0.00000 k2=   0.40000 k3=   0.40000
+
+    1   -2.10443601452201  -2.10443601452201
+    2   -1.07348717575845  -1.07348717575845
+    3   -1.07313919748602  -1.07313919748602
+    4   -1.07311666394562  -1.07311666394562
+    5   -0.74584243821563  -0.74584243821563
+    6   -0.34875809978797  -0.34875809978797
+    7   -0.31450160963574  -0.31450160963574
+    8   -0.31350070957490  -0.31350070957490
+    9   -0.01941451141768  -0.01941451141768
+   10    0.02062972279221   0.02062972279221
+   11    0.08873957458033   0.08873957458033
+   12    0.22652697987417   0.22652697987417
+   13    0.22953670252483   0.22953670252483
+   14    0.28805675300234   0.28805675300234
+   15    0.34748334260781   0.34748334260781
+   16    0.34810399401164   0.34810399401164
+   17    0.38717655632334   0.38717655632334
+   18    0.57100507708787   0.57100507708787
+   19    0.57288856899628   0.57288856899628
+   20    0.93946545123146   0.93946545123146
+   21    0.94339744090683   0.94339744090683
+   22    1.09545891242240   1.09545891242240
+   23    1.20648862878875   1.20648862878875
+   24    1.41909736927278   1.41909736927278
+   25    1.42034840168140   1.42034840168140
+   26    1.80710068611708   1.80710068611708
+   27    1.91695193818145   1.91695193818145
+   28    2.81393036572568   2.81393036572568
+
+   kloop=11
+   k1=   0.00000 k2=   0.40000 k3=   0.60000
+
+    1   -2.10440265100768  -2.10440265100768
+    2   -1.07348058765964  -1.07348058765964
+    3   -1.07329860897721  -1.07329860897721
+    4   -1.07313145574624  -1.07313145574624
+    5   -0.74456252063330  -0.74456252063330
+    6   -0.34633790535651  -0.34633790535651
+    7   -0.32867584163170  -0.32867584163170
+    8   -0.31295360836921  -0.31295360836921
+    9   -0.00143226244302  -0.00143226244302
+   10    0.03211685145095   0.03211685145095
+   11    0.08802027081682   0.08802027081682
+   12    0.20295759175521   0.20295759175521
+   13    0.25328985223645   0.25328985223645
+   14    0.32759528365334   0.32759528365334
+   15    0.35142885297541   0.35142885297541
+   16    0.35926958757025   0.35926958757025
+   17    0.38479465080575   0.38479465080575
+   18    0.55560124439543   0.55560124439543
+   19    0.61918837671556   0.61918837671556
+   20    0.88935419583189   0.88935419583189
+   21    0.95498810042559   0.95498810042559
+   22    1.00791679974252   1.00791679974252
+   23    1.11345522671471   1.11345522671471
+   24    1.30564775819177   1.30564775819177
+   25    1.55017475086276   1.55017475086276
+   26    1.81519178467545   1.81519178467545
+   27    1.97100397076140   1.97100397076140
+   28    2.83150792366117   2.83150792366117
+
+   kloop=12
+   k1=   0.00000 k2=   0.40000 k3=   0.80000
+
+    1   -2.10438399676213  -2.10438399676213
+    2   -1.07364637026100  -1.07364637026100
+    3   -1.07321643013540  -1.07321643013540
+    4   -1.07306525181768  -1.07306525181768
+    5   -0.74549858341876  -0.74549858341876
+    6   -0.35262181282507  -0.35262181282507
+    7   -0.32133003761404  -0.32133003761404
+    8   -0.30691692683336  -0.30691692683336
+    9    0.00484912673881   0.00484912673881
+   10    0.05295429067251   0.05295429067251
+   11    0.08208168736387   0.08208168736387
+   12    0.15833964435592   0.15833964435592
+   13    0.31235960477840   0.31235960477840
+   14    0.33061298684820   0.33061298684820
+   15    0.35743570565375   0.35743570565375
+   16    0.44425731069315   0.44425731069315
+   17    0.49093901569629   0.49093901569629
+   18    0.60176396262989   0.60176396262989
+   19    0.74092350341320   0.74092350341320
+   20    0.83692657904262   0.83692657904262
+   21    0.84633036973155   0.84633036973155
+   22    0.87587753980589   0.87587753980589
+   23    1.06142112786498   1.06142112786498
+   24    1.21299563834886   1.21299563834886
+   25    1.34073230035221   1.34073230035221
+   26    1.59270090403597   1.59270090403597
+   27    1.89962927023772   1.89962927023772
+   28    2.50053179014108   2.50053179014108
+
+   kloop=13
+   k1=   0.20000 k2=  -0.00000 k3=   0.00000
+
+    1   -2.10444221167419  -2.10444221167419
+    2   -1.07323959967821  -1.07323959967821
+    3   -1.07305925599256  -1.07305925599256
+    4   -1.07297659113707  -1.07297659113707
+    5   -0.75321455877105  -0.75321455877105
+    6   -0.32321954731911  -0.32321954731911
+    7   -0.29945387275500  -0.29945387275500
+    8   -0.29867272494627  -0.29867272494627
+    9   -0.07501973646533  -0.07501973646533
+   10    0.09111004775716   0.09111004775716
+   11    0.15872162449824   0.15872162449824
+   12    0.16056651646416   0.16056651646416
+   13    0.27059949317167   0.27059949317167
+   14    0.27183364980267   0.27183364980267
+   15    0.45064582781532   0.45064582781532
+   16    0.50182742847697   0.50182742847697
+   17    0.50627447006939   0.50627447006939
+   18    0.57641590527057   0.57641590527057
+   19    0.60418614884140   0.60418614884140
+   20    0.61094301679695   0.61094301679695
+   21    0.76196676378250   0.76196676378250
+   22    0.77339419734463   0.77339419734463
+   23    0.77773570470182   0.77773570470182
+   24    1.21211465605151   1.21211465605151
+   25    1.49045719315351   1.49045719315351
+   26    1.49471895848084   1.49471895848084
+   27    2.20107474396612   2.20107474396612
+   28    2.66577210523953   2.66577210523953
+
+   kloop=14
+   k1=   0.20000 k2=  -0.00000 k3=   0.20000
+
+    1   -2.10444248846464  -2.10444248846464
+    2   -1.07321634408351  -1.07321634408351
+    3   -1.07310408107980  -1.07310408107980
+    4   -1.07302693948032  -1.07302693948032
+    5   -0.75222376657313  -0.75222376657313
+    6   -0.32303963962797  -0.32303963962797
+    7   -0.30414009575583  -0.30414009575583
+    8   -0.30312605605193  -0.30312605605193
+    9   -0.06222467339823  -0.06222467339823
+   10    0.07511122983124   0.07511122983124
+   11    0.15018486467425   0.15018486467425
+   12    0.17000660865005   0.17000660865005
+   13    0.17337917933021   0.17337917933021
+   14    0.29840060101464   0.29840060101464
+   15    0.46009818154266   0.46009818154266
+   16    0.46396852731558   0.46396852731558
+   17    0.47996414947957   0.47996414947957
+   18    0.56052247985445   0.56052247985445
+   19    0.58643972538568   0.58643972538568
+   20    0.84750152482303   0.84750152482303
+   21    0.85207048547984   0.85207048547984
+   22    0.99467653320493   0.99467653320493
+   23    1.02709488524149   1.02709488524149
+   24    1.10149469696122   1.10149469696122
+   25    1.18743435629369   1.18743435629369
+   26    1.89431849304434   1.89431849304434
+   27    2.13579299832329   2.13579299832329
+   28    2.67845199373009   2.67845199373009
+
+   kloop=15
+   k1=   0.20000 k2=  -0.00000 k3=   0.40000
+
+    1   -2.10441215914933  -2.10441215914933
+    2   -1.07348757031684  -1.07348757031684
+    3   -1.07313929945812  -1.07313929945812
+    4   -1.07310781180749  -1.07310781180749
+    5   -0.74750048155155  -0.74750048155155
+    6   -0.34570553637454  -0.34570553637454
+    7   -0.31255216438313  -0.31255216438313
+    8   -0.30816918746151  -0.30816918746151
+    9   -0.01372344278470  -0.01372344278470
+   10    0.04994291989091   0.04994291989091
+   11    0.08583106079127   0.08583106079127
+   12    0.17600162464716   0.17600162464716
+   13    0.24672572870247   0.24672572870247
+   14    0.30844984567824   0.30844984567824
+   15    0.37347468343986   0.37347468343986
+   16    0.42630085217989   0.42630085217989
+   17    0.49165401778793   0.49165401778793
+   18    0.54174265924763   0.54174265924763
+   19    0.61077101898758   0.61077101898758
+   20    0.85486441814216   0.85486441814216
+   21    0.86812548999681   0.86812548999681
+   22    1.03116607308187   1.03116607308187
+   23    1.12138579390092   1.12138579390092
+   24    1.23410286891764   1.23410286891764
+   25    1.39936341734907   1.39936341734907
+   26    1.52541887329069   1.52541887329069
+   27    1.84256867294036   1.84256867294036
+   28    2.70257214101186   2.70257214101186
+
+   kloop=16
+   k1=   0.20000 k2=  -0.00000 k3=   0.60000
+
+    1   -2.10438394260656  -2.10438394260656
+    2   -1.07360735501201  -1.07360735501201
+    3   -1.07320259389732  -1.07320259389732
+    4   -1.07311599908870  -1.07311599908870
+    5   -0.74552090338491  -0.74552090338491
+    6   -0.35258269462119  -0.35258269462119
+    7   -0.32110477510720  -0.32110477510720
+    8   -0.30707504055890  -0.30707504055890
+    9    0.00496755740213   0.00496755740213
+   10    0.05246296749180   0.05246296749180
+   11    0.08337006446433   0.08337006446433
+   12    0.15698819831080   0.15698819831080
+   13    0.31184709709339   0.31184709709339
+   14    0.32948515024891   0.32948515024891
+   15    0.35778855587692   0.35778855587692
+   16    0.44612908184300   0.44612908184300
+   17    0.48846302626375   0.48846302626375
+   18    0.60125145883650   0.60125145883650
+   19    0.73694027378425   0.73694027378425
+   20    0.83569340671709   0.83569340671709
+   21    0.84326785391436   0.84326785391436
+   22    0.87039285380283   0.87039285380283
+   23    1.06200609457436   1.06200609457436
+   24    1.22073293543933   1.22073293543933
+   25    1.37088836423703   1.37088836423703
+   26    1.58697542123453   1.58697542123453
+   27    1.90562111447536   1.90562111447536
+   28    2.49798865625587   2.49798865625587
+
+   kloop=17
+   k1=   0.20000 k2=  -0.00000 k3=   0.80000
+
+    1   -2.10441213496909  -2.10441213496909
+    2   -1.07342017360205  -1.07342017360205
+    3   -1.07315485640079  -1.07315485640079
+    4   -1.07305945645665  -1.07305945645665
+    5   -0.74916487092876  -0.74916487092876
+    6   -0.33936289749505  -0.33936289749505
+    7   -0.31411411731774  -0.31411411731774
+    8   -0.30127933015462  -0.30127933015462
+    9   -0.02842865985216  -0.02842865985216
+   10    0.06531785441554   0.06531785441554
+   11    0.10433184953074   0.10433184953074
+   12    0.18289202466648   0.18289202466648
+   13    0.23094223026010   0.23094223026010
+   14    0.31676053595436   0.31676053595436
+   15    0.41049404382611   0.41049404382611
+   16    0.45540490877480   0.45540490877480
+   17    0.54796233177936   0.54796233177936
+   18    0.63312097356327   0.63312097356327
+   19    0.67698090732086   0.67698090732086
+   20    0.69001549292050   0.69001549292050
+   21    0.73798805597269   0.73798805597269
+   22    0.97500278043825   0.97500278043825
+   23    0.98125784526208   0.98125784526208
+   24    1.20568262613259   1.20568262613259
+   25    1.55264047899231   1.55264047899231
+   26    1.74697795567178   1.74697795567178
+   27    1.97431868918248   1.97431868918248
+   28    2.72911757092452   2.72911757092452
+
+   kloop=18
+   k1=   0.20000 k2=   0.20000 k3=   0.00000
+
+    1   -2.10444211456974  -2.10444211456974
+    2   -1.07321843339222  -1.07321843339222
+    3   -1.07308111010500  -1.07308111010500
+    4   -1.07305215455850  -1.07305215455850
+    5   -0.75219588829234  -0.75219588829234
+    6   -0.32314210200050  -0.32314210200050
+    7   -0.30398761115143  -0.30398761115143
+    8   -0.30333110936261  -0.30333110936261
+    9   -0.06213909755422  -0.06213909755422
+   10    0.07518010341081   0.07518010341081
+   11    0.15144583892506   0.15144583892506
+   12    0.17014298811954   0.17014298811954
+   13    0.17216879708912   0.17216879708912
+   14    0.29836743241753   0.29836743241753
+   15    0.46064788432378   0.46064788432378
+   16    0.46355054759208   0.46355054759208
+   17    0.48025116550313   0.48025116550313
+   18    0.55975757730842   0.55975757730842
+   19    0.58761034267947   0.58761034267947
+   20    0.84818935337401   0.84818935337401
+   21    0.85160509158932   0.85160509158932
+   22    1.00255687369328   1.00255687369328
+   23    1.02469971335365   1.02469971335365
+   24    1.09906842974708   1.09906842974708
+   25    1.18461658315896   1.18461658315896
+   26    1.87907881950877   1.87907881950877
+   27    2.13128289840182   2.13128289840182
+   28    2.67793220546888   2.67793220546888
+
+   kloop=19
+   k1=   0.20000 k2=   0.20000 k3=   0.20000
+
+    1   -2.10444208716101  -2.10444208716101
+    2   -1.07329475477433  -1.07329475477433
+    3   -1.07301475326718  -1.07301475326718
+    4   -1.07297116585784  -1.07297116585784
+    5   -0.75314870503764  -0.75314870503764
+    6   -0.32267339393687  -0.32267339393687
+    7   -0.29962477883819  -0.29962477883819
+    8   -0.29944227198874  -0.29944227198874
+    9   -0.07490776520397  -0.07490776520397
+   10    0.09323709101640   0.09323709101640
+   11    0.15670344512065   0.15670344512065
+   12    0.15948339544836   0.15948339544836
+   13    0.26858185440611   0.26858185440611
+   14    0.27111926167559   0.27111926167559
+   15    0.45318099023293   0.45318099023293
+   16    0.50102833115192   0.50102833115192
+   17    0.50246638540630   0.50246638540630
+   18    0.57031392856029   0.57031392856029
+   19    0.60700640775847   0.60700640775847
+   20    0.60786629413890   0.60786629413890
+   21    0.76167309252932   0.76167309252932
+   22    0.77112214545236   0.77112214545236
+   23    0.77201747538627   0.77201747538627
+   24    1.21028454254012   1.21028454254012
+   25    1.49150158276670   1.49150158276670
+   26    1.50199747642086   1.50199747642086
+   27    2.19916900153375   2.19916900153375
+   28    2.66954067664091   2.66954067664091
+
+   kloop=20
+   k1=   0.20000 k2=   0.20000 k3=   0.40000
+
+    1   -2.10441254993228  -2.10441254993228
+    2   -1.07347066548091  -1.07347066548091
+    3   -1.07313892823037  -1.07313892823037
+    4   -1.07302727475792  -1.07302727475792
+    5   -0.74908990968066  -0.74908990968066
+    6   -0.33920697834366  -0.33920697834366
+    7   -0.31402012547902  -0.31402012547902
+    8   -0.30184843772934  -0.30184843772934
+    9   -0.02832029518796  -0.02832029518796
+   10    0.06600407804826   0.06600407804826
+   11    0.10444794888369   0.10444794888369
+   12    0.17890670623561   0.17890670623561
+   13    0.22805561850159   0.22805561850159
+   14    0.31755332269268   0.31755332269268
+   15    0.41171402846454   0.41171402846454
+   16    0.45637526126206   0.45637526126206
+   17    0.54736597646696   0.54736597646696
+   18    0.63125709022510   0.63125709022510
+   19    0.67266709408153   0.67266709408153
+   20    0.68747755349727   0.68747755349727
+   21    0.72193304026205   0.72193304026205
+   22    0.97260774524162   0.97260774524162
+   23    0.98471643110589   0.98471643110589
+   24    1.19930201149547   1.19930201149547
+   25    1.55173545396350   1.55173545396350
+   26    1.75976368913022   1.75976368913022
+   27    1.98328662140494   1.98328662140494
+   28    2.73189384072856   2.73189384072856
+
+   kloop=21
+   k1=   0.20000 k2=   0.20000 k3=   0.60000
+
+    1   -2.10438313292953  -2.10438313292953
+    2   -1.07361326430292  -1.07361326430292
+    3   -1.07323617255228  -1.07323617255228
+    4   -1.07307991842798  -1.07307991842798
+    5   -0.74548191980654  -0.74548191980654
+    6   -0.35251316131363  -0.35251316131363
+    7   -0.32078470480537  -0.32078470480537
+    8   -0.30766916522190  -0.30766916522190
+    9    0.00508512712135   0.00508512712135
+   10    0.05282560854203   0.05282560854203
+   11    0.08363911982103   0.08363911982103
+   12    0.15374381879284   0.15374381879284
+   13    0.31065416372289   0.31065416372289
+   14    0.33225009366218   0.33225009366218
+   15    0.35733645216110   0.35733645216110
+   16    0.44839378438108   0.44839378438108
+   17    0.48651870750639   0.48651870750639
+   18    0.60055888713825   0.60055888713825
+   19    0.73354581263401   0.73354581263401
+   20    0.82845647146658   0.82845647146658
+   21    0.84214695477147   0.84214695477147
+   22    0.87886461022105   0.87886461022105
+   23    1.05939026377944   1.05939026377944
+   24    1.22115669500209   1.22115669500209
+   25    1.39794325210917   1.39794325210917
+   26    1.58828355495296   1.58828355495296
+   27    1.90411200214178   1.90411200214178
+   28    2.49701997099394   2.49701997099394
+
+   kloop=22
+   k1=   0.20000 k2=   0.20000 k3=   0.80000
+
+    1   -2.10441058551578  -2.10441058551578
+    2   -1.07346678909077  -1.07346678909077
+    3   -1.07317506382926  -1.07317506382926
+    4   -1.07309779959811  -1.07309779959811
+    5   -0.74749161961007  -0.74749161961007
+    6   -0.34555770997197  -0.34555770997197
+    7   -0.31217358073514  -0.31217358073514
+    8   -0.30883356750180  -0.30883356750180
+    9   -0.01400995980181  -0.01400995980181
+   10    0.05084733843194   0.05084733843194
+   11    0.08677510346918   0.08677510346918
+   12    0.17290294769019   0.17290294769019
+   13    0.24960903968190   0.24960903968190
+   14    0.30805574546592   0.30805574546592
+   15    0.37298836836139   0.37298836836139
+   16    0.42585259763316   0.42585259763316
+   17    0.49307112397325   0.49307112397325
+   18    0.54139486633283   0.54139486633283
+   19    0.61476382426099   0.61476382426099
+   20    0.85608119739456   0.85608119739456
+   21    0.86462854634782   0.86462854634782
+   22    1.02496667142615   1.02496667142615
+   23    1.11877290824841   1.11877290824841
+   24    1.27796456742393   1.27796456742393
+   25    1.39612241582733   1.39612241582733
+   26    1.53399144559352   1.53399144559352
+   27    1.84456503168056   1.84456503168056
+   28    2.69935358367673   2.69935358367673
+
+   kloop=23
+   k1=   0.20000 k2=   0.40000 k3=   0.00000
+
+    1   -2.10441175671776  -2.10441175671776
+    2   -1.07351869086860  -1.07351869086860
+    3   -1.07312009246805  -1.07312009246805
+    4   -1.07310059040946  -1.07310059040946
+    5   -0.74744586894077  -0.74744586894077
+    6   -0.34573197684828  -0.34573197684828
+    7   -0.31248753913745  -0.31248753913745
+    8   -0.30844416470857  -0.30844416470857
+    9   -0.01381778497638  -0.01381778497638
+   10    0.05015898185296   0.05015898185296
+   11    0.08605638466259   0.08605638466259
+   12    0.17461508191545   0.17461508191545
+   13    0.24680501733351   0.24680501733351
+   14    0.30871592863515   0.30871592863515
+   15    0.37426745636884   0.37426745636884
+   16    0.42596858299262   0.42596858299262
+   17    0.49226702338971   0.49226702338971
+   18    0.54132652725549   0.54132652725549
+   19    0.61051920328802   0.61051920328802
+   20    0.85327830679032   0.85327830679032
+   21    0.86516115914605   0.86516115914605
+   22    1.02678860407880   1.02678860407880
+   23    1.11936374587680   1.11936374587680
+   24    1.23810028930200   1.23810028930200
+   25    1.40226396397364   1.40226396397364
+   26    1.52453107624087   1.52453107624087
+   27    1.84444196195636   1.84444196195636
+   28    2.70170478203205   2.70170478203205
+
+   kloop=24
+   k1=   0.20000 k2=   0.40000 k3=   0.20000
+
+    1   -2.10441267012005  -2.10441267012005
+    2   -1.07349622587590  -1.07349622587590
+    3   -1.07314920390190  -1.07314920390190
+    4   -1.07299488079034  -1.07299488079034
+    5   -0.74904986714321  -0.74904986714321
+    6   -0.33936777746350  -0.33936777746350
+    7   -0.31390519624823  -0.31390519624823
+    8   -0.30196539241511  -0.30196539241511
+    9   -0.02823081257450  -0.02823081257450
+   10    0.06570132374305   0.06570132374305
+   11    0.10457516978902   0.10457516978902
+   12    0.17867091153553   0.17867091153553
+   13    0.22793877080978   0.22793877080978
+   14    0.31800859080498   0.31800859080498
+   15    0.41192180809932   0.41192180809932
+   16    0.45614773044800   0.45614773044800
+   17    0.54818500564039   0.54818500564039
+   18    0.62954492747322   0.62954492747322
+   19    0.67163444378141   0.67163444378141
+   20    0.68825955196702   0.68825955196702
+   21    0.72159360015186   0.72159360015186
+   22    0.97232771410597   0.97232771410597
+   23    0.98523088386445   0.98523088386445
+   24    1.19475191295132   1.19475191295132
+   25    1.54089416175978   1.54089416175978
+   26    1.75082816407250   1.75082816407250
+   27    1.98749592234896   1.98749592234896
+   28    2.73285891387134   2.73285891387134
+
+   kloop=25
+   k1=   0.20000 k2=   0.40000 k3=   0.40000
+
+    1   -2.10441276370291  -2.10441276370291
+    2   -1.07355130200541  -1.07355130200541
+    3   -1.07311499943784  -1.07311499943784
+    4   -1.07306411527994  -1.07306411527994
+    5   -0.74748618661853  -0.74748618661853
+    6   -0.34514476169901  -0.34514476169901
+    7   -0.31245680788170  -0.31245680788170
+    8   -0.30893482545808  -0.30893482545808
+    9   -0.01443057920449  -0.01443057920449
+   10    0.05225785133451   0.05225785133451
+   11    0.08252425444357   0.08252425444357
+   12    0.17473396901877   0.17473396901877
+   13    0.25096003225495   0.25096003225495
+   14    0.30919886135228   0.30919886135228
+   15    0.37552152212021   0.37552152212021
+   16    0.42543312295617   0.42543312295617
+   17    0.48982885649721   0.48982885649721
+   18    0.54269093297683   0.54269093297683
+   19    0.61127269013709   0.61127269013709
+   20    0.86131385731342   0.86131385731342
+   21    0.86439923068526   0.86439923068526
+   22    1.02294066782528   1.02294066782528
+   23    1.11841733824119   1.11841733824119
+   24    1.18409854824620   1.18409854824620
+   25    1.37670403316714   1.37670403316714
+   26    1.52131684778974   1.52131684778974
+   27    1.82537440556716   1.82537440556716
+   28    2.70875504833639   2.70875504833639
+
+   kloop=26
+   k1=   0.20000 k2=   0.40000 k3=   0.60000
+
+    1   -2.10438520678056  -2.10438520678056
+    2   -1.07351233059193  -1.07351233059193
+    3   -1.07326576127784  -1.07326576127784
+    4   -1.07317095823239  -1.07317095823239
+    5   -0.74487705879632  -0.74487705879632
+    6   -0.34380039093127  -0.34380039093127
+    7   -0.32801592114233  -0.32801592114233
+    8   -0.31546439990428  -0.31546439990428
+    9    0.02069815743695   0.02069815743695
+   10    0.05210603318340   0.05210603318340
+   11    0.05585659349947   0.05585659349947
+   12    0.17192087103704   0.17192087103704
+   13    0.29495141674204   0.29495141674204
+   14    0.33883472848289   0.33883472848289
+   15    0.34844417112827   0.34844417112827
+   16    0.37110420578935   0.37110420578935
+   17    0.45098585732580   0.45098585732580
+   18    0.55894444471850   0.55894444471850
+   19    0.66113396420213   0.66113396420213
+   20    0.73401762606060   0.73401762606060
+   21    0.87252921905466   0.87252921905466
+   22    0.99603872389766   0.99603872389766
+   23    1.07916576133617   1.07916576133617
+   24    1.36336360530846   1.36336360530846
+   25    1.53730171808819   1.53730171808819
+   26    1.89458027372228   1.89458027372228
+   27    2.10725809463454   2.10725809463454
+   28    2.74841629770116   2.74841629770116
+
+   kloop=27
+   k1=   0.20000 k2=   0.40000 k3=   0.80000
+
+    1   -2.10438418991440  -2.10438418991440
+    2   -1.07346173613533  -1.07346173613533
+    3   -1.07332022712074  -1.07332022712074
+    4   -1.07317230985289  -1.07317230985289
+    5   -0.74485210190617  -0.74485210190617
+    6   -0.34408043024560  -0.34408043024560
+    7   -0.32807669594608  -0.32807669594608
+    8   -0.31523142472416  -0.31523142472416
+    9    0.02043639406373   0.02043639406373
+   10    0.05006693615859   0.05006693615859
+   11    0.05870636498240   0.05870636498240
+   12    0.17269466147873   0.17269466147873
+   13    0.29409761772266   0.29409761772266
+   14    0.33799237244636   0.33799237244636
+   15    0.34864706980807   0.34864706980807
+   16    0.36924991864022   0.36924991864022
+   17    0.45314495240013   0.45314495240013
+   18    0.55589017461412   0.55589017461412
+   19    0.66458090240806   0.66458090240806
+   20    0.73391365380023   0.73391365380023
+   21    0.86934028757927   0.86934028757927
+   22    0.99067043104270   0.99067043104270
+   23    1.08515839765410   1.08515839765410
+   24    1.38181886873561   1.38181886873561
+   25    1.54728474195642   1.54728474195642
+   26    1.89353336238693   1.89353336238693
+   27    2.11772480536345   2.11772480536345
+   28    2.74428621631499   2.74428621631499
+
+   kloop=28
+   k1=   0.20000 k2=   0.60000 k3=   0.00000
+
+    1   -2.10438369226057  -2.10438369226057
+    2   -1.07364651204566  -1.07364651204566
+    3   -1.07319131509543  -1.07319131509543
+    4   -1.07308970831828  -1.07308970831828
+    5   -0.74547924166752  -0.74547924166752
+    6   -0.35248448337049  -0.35248448337049
+    7   -0.32112232087019  -0.32112232087019
+    8   -0.30732929338750  -0.30732929338750
+    9    0.00467939831893   0.00467939831893
+   10    0.05257179247938   0.05257179247938
+   11    0.08376973579782   0.08376973579782
+   12    0.15550014207706   0.15550014207706
+   13    0.31174794369902   0.31174794369902
+   14    0.32974523402941   0.32974523402941
+   15    0.35857738881216   0.35857738881216
+   16    0.44638919865210   0.44638919865210
+   17    0.48743460465164   0.48743460465164
+   18    0.60110976941266   0.60110976941266
+   19    0.73448937910038   0.73448937910038
+   20    0.83509788651035   0.83509788651035
+   21    0.84173833885987   0.84173833885987
+   22    0.86888362225594   0.86888362225594
+   23    1.06103901279749   1.06103901279749
+   24    1.22103054981450   1.22103054981450
+   25    1.37750990165471   1.37750990165471
+   26    1.58462053177300   1.58462053177300
+   27    1.90701814993534   1.90701814993534
+   28    2.49904718278939   2.49904718278939
+
+   kloop=29
+   k1=   0.20000 k2=   0.60000 k3=   0.20000
+
+    1   -2.10438293482353  -2.10438293482353
+    2   -1.07365255245404  -1.07365255245404
+    3   -1.07322994057458  -1.07322994057458
+    4   -1.07304927996518  -1.07304927996518
+    5   -0.74544470486206  -0.74544470486206
+    6   -0.35247591284166  -0.35247591284166
+    7   -0.32086778130744  -0.32086778130744
+    8   -0.30778938665373  -0.30778938665373
+    9    0.00487304928554   0.00487304928554
+   10    0.05317607409023   0.05317607409023
+   11    0.08318683606632   0.08318683606632
+   12    0.15337107899485   0.15337107899485
+   13    0.31074434539031   0.31074434539031
+   14    0.33323436071587   0.33323436071587
+   15    0.35750126210196   0.35750126210196
+   16    0.44786015861609   0.44786015861609
+   17    0.48702547475219   0.48702547475219
+   18    0.60066425320934   0.60066425320934
+   19    0.73331660223313   0.73331660223313
+   20    0.82707341796170   0.82707341796170
+   21    0.84306225146766   0.84306225146766
+   22    0.88347394351906   0.88347394351906
+   23    1.05832058257808   1.05832058257808
+   24    1.21905188686889   1.21905188686889
+   25    1.38650426729066   1.38650426729066
+   26    1.58997542999195   1.58997542999195
+   27    1.90166358759013   1.90166358759013
+   28    2.49862511877662   2.49862511877662
+
+   kloop=30
+   k1=   0.20000 k2=   0.60000 k3=   0.40000
+
+    1   -2.10438490461844  -2.10438490461844
+    2   -1.07353123189842  -1.07353123189842
+    3   -1.07327929959985  -1.07327929959985
+    4   -1.07314059733963  -1.07314059733963
+    5   -0.74486565606178  -0.74486565606178
+    6   -0.34383712238221  -0.34383712238221
+    7   -0.32787473657435  -0.32787473657435
+    8   -0.31564941414374  -0.31564941414374
+    9    0.02096814639097   0.02096814639097
+   10    0.05179728497943   0.05179728497943
+   11    0.05567086832753   0.05567086832753
+   12    0.17232496066944   0.17232496066944
+   13    0.29509577892021   0.29509577892021
+   14    0.33930409848997   0.33930409848997
+   15    0.34888143873928   0.34888143873928
+   16    0.37071734337723   0.37071734337723
+   17    0.45079783907964   0.45079783907964
+   18    0.55880968577673   0.55880968577673
+   19    0.66236060106852   0.66236060106852
+   20    0.73549488134049   0.73549488134049
+   21    0.87761131422953   0.87761131422953
+   22    0.99373393236028   0.99373393236028
+   23    1.07740839203523   1.07740839203523
+   24    1.36245717200149   1.36245717200149
+   25    1.54146056421086   1.54146056421086
+   26    1.89853246485852   1.89853246485852
+   27    2.10515650481003   2.10515650481003
+   28    2.75069252081969   2.75069252081969
+
+   kloop=31
+   k1=   0.20000 k2=   0.60000 k3=   0.60000
+
+    1   -2.10440136368900  -2.10440136368900
+    2   -1.07348348200596  -1.07348348200596
+    3   -1.07332119929382  -1.07332119929382
+    4   -1.07311087990981  -1.07311087990981
+    5   -0.74451828846373  -0.74451828846373
+    6   -0.34628363472357  -0.34628363472357
+    7   -0.32806021883289  -0.32806021883289
+    8   -0.31388167114910  -0.31388167114910
+    9   -0.00235462854950  -0.00235462854950
+   10    0.03334273403457   0.03334273403457
+   11    0.08794594993900   0.08794594993900
+   12    0.19982996373932   0.19982996373932
+   13    0.25657263847131   0.25657263847131
+   14    0.32743780930139   0.32743780930139
+   15    0.35183408538498   0.35183408538498
+   16    0.35862746705084   0.35862746705084
+   17    0.38555857641806   0.38555857641806
+   18    0.55608805795743   0.55608805795743
+   19    0.62121672818891   0.62121672818891
+   20    0.88656108593410   0.88656108593410
+   21    0.95539108958648   0.95539108958648
+   22    1.00622634362250   1.00622634362250
+   23    1.11092841025188   1.11092841025188
+   24    1.30255696708706   1.30255696708706
+   25    1.55185160845404   1.55185160845404
+   26    1.81787771626819   1.81787771626819
+   27    1.97490275844641   1.97490275844641
+   28    2.82671941614280   2.82671941614280
+
+   kloop=32
+   k1=   0.20000 k2=   0.60000 k3=   0.80000
+
+    1   -2.10438517129674  -2.10438517129674
+    2   -1.07349360337854  -1.07349360337854
+    3   -1.07328005281963  -1.07328005281963
+    4   -1.07317348821626  -1.07317348821626
+    5   -0.74492094590698  -0.74492094590698
+    6   -0.34378208741173  -0.34378208741173
+    7   -0.32807327511395  -0.32807327511395
+    8   -0.31526549433375  -0.31526549433375
+    9    0.02044829516968   0.02044829516968
+   10    0.05207258663525   0.05207258663525
+   11    0.05671774370205   0.05671774370205
+   12    0.17229339030869   0.17229339030869
+   13    0.29523218492663   0.29523218492663
+   14    0.33759082548094   0.33759082548094
+   15    0.34790727449553   0.34790727449553
+   16    0.37119492724945   0.37119492724945
+   17    0.45204695230517   0.45204695230517
+   18    0.55912040793810   0.55912040793810
+   19    0.66261463178997   0.66261463178997
+   20    0.73450435744224   0.73450435744224
+   21    0.86683281649025   0.86683281649025
+   22    0.99683242889333   0.99683242889333
+   23    1.08161279929790   1.08161279929790
+   24    1.36648889970461   1.36648889970461
+   25    1.53709253409203   1.53709253409203
+   26    1.89400432680714   1.89400432680714
+   27    2.11382571649354   2.11382571649354
+   28    2.74512638562604   2.74512638562604
+
+   kloop=33
+   k1=   0.20000 k2=   0.80000 k3=   0.00000
+
+    1   -2.10441222416344  -2.10441222416344
+    2   -1.07345011822181  -1.07345011822181
+    3   -1.07315333036422  -1.07315333036422
+    4   -1.07302995750377  -1.07302995750377
+    5   -0.74915785061743  -0.74915785061743
+    6   -0.33919803060966  -0.33919803060966
+    7   -0.31414903536322  -0.31414903536322
+    8   -0.30144315301501  -0.30144315301501
+    9   -0.02844376571750  -0.02844376571750
+   10    0.06578622575612   0.06578622575612
+   11    0.10427622455302   0.10427622455302
+   12    0.18141680989195   0.18141680989195
+   13    0.22981397227224   0.22981397227224
+   14    0.31680588035083   0.31680588035083
+   15    0.41090290025828   0.41090290025828
+   16    0.45588319649372   0.45588319649372
+   17    0.54725528605280   0.54725528605280
+   18    0.63320288233949   0.63320288233949
+   19    0.67579363905488   0.67579363905488
+   20    0.68852520441075   0.68852520441075
+   21    0.73161564568944   0.73161564568944
+   22    0.97403591692313   0.97403591692313
+   23    0.98252134001112   0.98252134001112
+   24    1.20599690870444   1.20599690870444
+   25    1.55826512174041   1.55826512174041
+   26    1.75715009734707   1.75715009734707
+   27    1.97571107248174   1.97571107248174
+   28    2.72989779205800   2.72989779205800
+
+   kloop=34
+   k1=   0.20000 k2=   0.80000 k3=   0.20000
+
+    1   -2.10441079385555  -2.10441079385555
+    2   -1.07350025791427  -1.07350025791427
+    3   -1.07316626210980  -1.07316626210980
+    4   -1.07307105290147  -1.07307105290147
+    5   -0.74749881801241  -0.74749881801241
+    6   -0.34541231755876  -0.34541231755876
+    7   -0.31216302784430  -0.31216302784430
+    8   -0.30897058767736  -0.30897058767736
+    9   -0.01417784565036  -0.01417784565036
+   10    0.05137638944518   0.05137638944518
+   11    0.08588980700867   0.08588980700867
+   12    0.17288027584084   0.17288027584084
+   13    0.25063661908026   0.25063661908026
+   14    0.30818937433537   0.30818937433537
+   15    0.37333824710079   0.37333824710079
+   16    0.42568735002028   0.42568735002028
+   17    0.49253521687521   0.49253521687521
+   18    0.54168045916239   0.54168045916239
+   19    0.61487104680497   0.61487104680497
+   20    0.85518883491461   0.85518883491461
+   21    0.86691120846006   0.86691120846006
+   22    1.02389152735880   1.02389152735880
+   23    1.11845218507388   1.11845218507388
+   24    1.26287547285173   1.26287547285173
+   25    1.39067110914233   1.39067110914233
+   26    1.53195335556424   1.53195335556424
+   27    1.83944060113885   1.83944060113885
+   28    2.70123464700568   2.70123464700568
+
+   kloop=35
+   k1=   0.20000 k2=   0.80000 k3=   0.40000
+
+    1   -2.10438408481561  -2.10438408481561
+    2   -1.07345926839155  -1.07345926839155
+    3   -1.07332824101959  -1.07332824101959
+    4   -1.07316632496119  -1.07316632496119
+    5   -0.74487552828212  -0.74487552828212
+    6   -0.34404188259061  -0.34404188259061
+    7   -0.32796373105115  -0.32796373105115
+    8   -0.31533340444109  -0.31533340444109
+    9    0.02057009312668   0.02057009312668
+   10    0.05028100439981   0.05028100439981
+   11    0.05839360386698   0.05839360386698
+   12    0.17313144817563   0.17313144817563
+   13    0.29468310379076   0.29468310379076
+   14    0.33788863683904   0.33788863683904
+   15    0.34862384423714   0.34862384423714
+   16    0.36938341761425   0.36938341761425
+   17    0.45312132191624   0.45312132191624
+   18    0.55662782202368   0.55662782202368
+   19    0.66592651460994   0.66592651460994
+   20    0.73587712110427   0.73587712110427
+   21    0.87133904507129   0.87133904507129
+   22    0.99022199073331   0.99022199073331
+   23    1.08345884597055   1.08345884597055
+   24    1.37867910718848   1.37867910718848
+   25    1.54864337647583   1.54864337647583
+   26    1.89771835802686   1.89771835802686
+   27    2.11790376795402   2.11790376795402
+   28    2.74523005179329   2.74523005179329
+
+   kloop=36
+   k1=   0.20000 k2=   0.80000 k3=   0.60000
+
+    1   -2.10438483189345  -2.10438483189345
+    2   -1.07346656240122  -1.07346656240122
+    3   -1.07328493112034  -1.07328493112034
+    4   -1.07319642983671  -1.07319642983671
+    5   -0.74494001267309  -0.74494001267309
+    6   -0.34380512356955  -0.34380512356955
+    7   -0.32798027001159  -0.32798027001159
+    8   -0.31530612752089  -0.31530612752089
+    9    0.02051147259293   0.02051147259293
+   10    0.05183993931267   0.05183993931267
+   11    0.05707296417644   0.05707296417644
+   12    0.17293520028486   0.17293520028486
+   13    0.29559423366009   0.29559423366009
+   14    0.33723099672959   0.33723099672959
+   15    0.34789666102588   0.34789666102588
+   16    0.37092318488411   0.37092318488411
+   17    0.45256106224720   0.45256106224720
+   18    0.55917314237903   0.55917314237903
+   19    0.66476509371390   0.66476509371390
+   20    0.73653502442612   0.73653502442612
+   21    0.86789253955863   0.86789253955863
+   22    0.99516156201328   0.99516156201328
+   23    1.08141978021533   1.08141978021533
+   24    1.36782226664699   1.36782226664699
+   25    1.54090841494480   1.54090841494480
+   26    1.89783957301416   1.89783957301416
+   27    2.11667469069521   2.11667469069521
+   28    2.74499428321485   2.74499428321485
+
+   kloop=37
+   k1=   0.20000 k2=   0.80000 k3=   0.80000
+
+    1   -2.10441184438537  -2.10441184438537
+    2   -1.07348813652115  -1.07348813652115
+    3   -1.07317175005436  -1.07317175005436
+    4   -1.07306700984966  -1.07306700984966
+    5   -0.74760039870096  -0.74760039870096
+    6   -0.34513257646121  -0.34513257646121
+    7   -0.31224747212271  -0.31224747212271
+    8   -0.30874255966400  -0.30874255966400
+    9   -0.01427721047937  -0.01427721047937
+   10    0.05185979035713   0.05185979035713
+   11    0.08413188815425   0.08413188815425
+   12    0.17510085644957   0.17510085644957
+   13    0.25206761789814   0.25206761789814
+   14    0.30792256551909   0.30792256551909
+   15    0.37250804670609   0.37250804670609
+   16    0.42599008014988   0.42599008014988
+   17    0.49066865621664   0.49066865621664
+   18    0.54288915724871   0.54288915724871
+   19    0.61553457707344   0.61553457707344
+   20    0.86403054997594   0.86403054997594
+   21    0.86804139972501   0.86804139972501
+   22    1.02968334571262   1.02968334571262
+   23    1.12183370311012   1.12183370311012
+   24    1.23498816355901   1.23498816355901
+   25    1.37335655737071   1.37335655737071
+   26    1.53013045918810   1.53013045918810
+   27    1.82782563645551   1.82782563645551
+   28    2.70475705737143   2.70475705737143
+
+   kloop=38
+   k1=   0.40000 k2=  -0.00000 k3=   0.00000
+
+    1   -2.10440454204761  -2.10440454204761
+    2   -1.07366843441207  -1.07366843441207
+    3   -1.07309367999873  -1.07309367999873
+    4   -1.07300384069074  -1.07300384069074
+    5   -0.74735354109944  -0.74735354109944
+    6   -0.35627429794708  -0.35627429794708
+    7   -0.30402515798077  -0.30402515798077
+    8   -0.30358420843148  -0.30358420843148
+    9   -0.03105145493623  -0.03105145493623
+   10    0.07139513728917   0.07139513728917
+   11    0.13375268957651   0.13375268957651
+   12    0.13528632092765   0.13528632092765
+   13    0.31792533862395   0.31792533862395
+   14    0.31975278532336   0.31975278532336
+   15    0.38092500691024   0.38092500691024
+   16    0.57520556104798   0.57520556104798
+   17    0.57703518302018   0.57703518302018
+   18    0.70260611686862   0.70260611686862
+   19    0.70422335736335   0.70422335736335
+   20    0.70968508848337   0.70968508848337
+   21    0.85798082584962   0.85798082584962
+   22    0.97015261756807   0.97015261756807
+   23    0.99531156880632   0.99531156880632
+   24    1.21676333514609   1.21676333514609
+   25    1.42354948157042   1.42354948157042
+   26    1.79357214423105   1.79357214423105
+   27    1.80859280185984   1.80859280185984
+   28    2.54268051533206   2.54268051533206
+
+   kloop=39
+   k1=   0.40000 k2=  -0.00000 k3=   0.20000
+
+    1   -2.10441241598430  -2.10441241598430
+    2   -1.07349853610562  -1.07349853610562
+    3   -1.07315403521978  -1.07315403521978
+    4   -1.07308305620883  -1.07308305620883
+    5   -0.74747315770685  -0.74747315770685
+    6   -0.34570832821278  -0.34570832821278
+    7   -0.31262444267762  -0.31262444267762
+    8   -0.30818695887997  -0.30818695887997
+    9   -0.01374938155785  -0.01374938155785
+   10    0.05003729953592   0.05003729953592
+   11    0.08546098428712   0.08546098428712
+   12    0.17586281719213   0.17586281719213
+   13    0.24652125388063   0.24652125388063
+   14    0.30875734805955   0.30875734805955
+   15    0.37416663626123   0.37416663626123
+   16    0.42628132594858   0.42628132594858
+   17    0.49147479953251   0.49147479953251
+   18    0.54175916417724   0.54175916417724
+   19    0.60977292073811   0.60977292073811
+   20    0.85730620239821   0.85730620239821
+   21    0.86496585918561   0.86496585918561
+   22    1.02894218030719   1.02894218030719
+   23    1.12185572718431   1.12185572718431
+   24    1.22366712286010   1.22366712286010
+   25    1.39705224820661   1.39705224820661
+   26    1.52489185633277   1.52489185633277
+   27    1.84234505453936   1.84234505453936
+   28    2.70325886441207   2.70325886441207
+
+   kloop=40
+   k1=   0.40000 k2=  -0.00000 k3=   0.40000
+
+    1   -2.10443343503793  -2.10443343503793
+    2   -1.07344939031176  -1.07344939031176
+    3   -1.07319081527543  -1.07319081527543
+    4   -1.07311885763264  -1.07311885763264
+    5   -0.74567153869176  -0.74567153869176
+    6   -0.34881551217677  -0.34881551217677
+    7   -0.31502628107113  -0.31502628107113
+    8   -0.31365761953803  -0.31365761953803
+    9   -0.01942007721036  -0.01942007721036
+   10    0.01960020456510   0.01960020456510
+   11    0.09068650627273   0.09068650627273
+   12    0.22369142370692   0.22369142370692
+   13    0.22792008886810   0.22792008886810
+   14    0.28963470641049   0.28963470641049
+   15    0.34714182188792   0.34714182188792
+   16    0.34927595927017   0.34927595927017
+   17    0.38913444311522   0.38913444311522
+   18    0.57047559550511   0.57047559550511
+   19    0.57439748931849   0.57439748931849
+   20    0.93085244210372   0.93085244210372
+   21    0.94213771890986   0.94213771890986
+   22    1.09076098091746   1.09076098091746
+   23    1.21223253370653   1.21223253370653
+   24    1.42476474951490   1.42476474951490
+   25    1.42999585397764   1.42999585397764
+   26    1.81346132252897   1.81346132252897
+   27    1.92115032459810   1.92115032459810
+   28    2.82343070451872   2.82343070451872
+
+   kloop=41
+   k1=   0.40000 k2=  -0.00000 k3=   0.60000
+
+    1   -2.10440146961573  -2.10440146961573
+    2   -1.07343953041872  -1.07343953041872
+    3   -1.07330230873943  -1.07330230873943
+    4   -1.07317602373831  -1.07317602373831
+    5   -0.74444785151995  -0.74444785151995
+    6   -0.34635943009562  -0.34635943009562
+    7   -0.32875914760789  -0.32875914760789
+    8   -0.31326099031714  -0.31326099031714
+    9   -0.00184325292003  -0.00184325292003
+   10    0.03097738446260   0.03097738446260
+   11    0.09008249363052   0.09008249363052
+   12    0.20162086159919   0.20162086159919
+   13    0.25128631381053   0.25128631381053
+   14    0.32808564268924   0.32808564268924
+   15    0.35218456292643   0.35218456292643
+   16    0.35897868567789   0.35897868567789
+   17    0.38506247350555   0.38506247350555
+   18    0.55479726723374   0.55479726723374
+   19    0.61901539976467   0.61901539976467
+   20    0.88545205935283   0.88545205935283
+   21    0.95207527998358   0.95207527998358
+   22    1.00007093387570   1.00007093387570
+   23    1.11138194567206   1.11138194567206
+   24    1.30701095897976   1.30701095897976
+   25    1.55160493518316   1.55160493518316
+   26    1.81205982436603   1.81205982436603
+   27    1.96864486671411   1.96864486671411
+   28    2.83056112144042   2.83056112144042
+
+   kloop=42
+   k1=   0.40000 k2=  -0.00000 k3=   0.80000
+
+    1   -2.10438398053787  -2.10438398053787
+    2   -1.07361729642586  -1.07361729642586
+    3   -1.07320252022277  -1.07320252022277
+    4   -1.07310721749289  -1.07310721749289
+    5   -0.74549306053520  -0.74549306053520
+    6   -0.35253514187587  -0.35253514187587
+    7   -0.32121918901924  -0.32121918901924
+    8   -0.30711240509354  -0.30711240509354
+    9    0.00475652589266   0.00475652589266
+   10    0.05255452320264   0.05255452320264
+   11    0.08336519451132   0.08336519451132
+   12    0.15673504383926   0.15673504383926
+   13    0.31205714896226   0.31205714896226
+   14    0.32935218388303   0.32935218388303
+   15    0.35844317330761   0.35844317330761
+   16    0.44564869426755   0.44564869426755
+   17    0.48844182613622   0.48844182613622
+   18    0.60145296018818   0.60145296018818
+   19    0.73695460619916   0.73695460619916
+   20    0.83274019957118   0.83274019957118
+   21    0.84771473481779   0.84771473481779
+   22    0.86749599190400   0.86749599190400
+   23    1.06200295755299   1.06200295755299
+   24    1.21923736154121   1.21923736154121
+   25    1.36586185244406   1.36586185244406
+   26    1.58678276937257   1.58678276937257
+   27    1.90664083401654   1.90664083401654
+   28    2.49914671972901   2.49914671972901
+
+   kloop=43
+   k1=   0.40000 k2=   0.20000 k3=   0.00000
+
+    1   -2.10441178057416  -2.10441178057416
+    2   -1.07348867159187  -1.07348867159187
+    3   -1.07316525554939  -1.07316525554939
+    4   -1.07308550867169  -1.07308550867169
+    5   -0.74744795810158  -0.74744795810158
+    6   -0.34573443367610  -0.34573443367610
+    7   -0.31250490947561  -0.31250490947561
+    8   -0.30841103824031  -0.30841103824031
+    9   -0.01380057378218  -0.01380057378218
+   10    0.05016333633028   0.05016333633028
+   11    0.08610240973899   0.08610240973899
+   12    0.17457702322041   0.17457702322041
+   13    0.24688835600520   0.24688835600520
+   14    0.30870082858946   0.30870082858946
+   15    0.37420080319984   0.37420080319984
+   16    0.42608191237893   0.42608191237893
+   17    0.49227564010058   0.49227564010058
+   18    0.54141339051586   0.54141339051586
+   19    0.61065075918499   0.61065075918499
+   20    0.85738922533541   0.85738922533541
+   21    0.86189725812043   0.86189725812043
+   22    1.02614869397504   1.02614869397504
+   23    1.12046065738001   1.12046065738001
+   24    1.24148665044704   1.24148665044704
+   25    1.39946785116663   1.39946785116663
+   26    1.52644140243623   1.52644140243623
+   27    1.84520874073614   1.84520874073614
+   28    2.70139694460515   2.70139694460515
+
+   kloop=44
+   k1=   0.40000 k2=   0.20000 k3=   0.20000
+
+    1   -2.10441268717393  -2.10441268717393
+    2   -1.07347071862302  -1.07347071862302
+    3   -1.07318728368871  -1.07318728368871
+    4   -1.07298917721036  -1.07298917721036
+    5   -0.74899957892067  -0.74899957892067
+    6   -0.33989436769200  -0.33989436769200
+    7   -0.31366331890681  -0.31366331890681
+    8   -0.30187131907086  -0.30187131907086
+    9   -0.02806414978563  -0.02806414978563
+   10    0.06444184625254   0.06444184625254
+   11    0.10499068031822   0.10499068031822
+   12    0.18061759054553   0.18061759054553
+   13    0.22964730915145   0.22964730915145
+   14    0.31858031813376   0.31858031813376
+   15    0.41145608389483   0.41145608389483
+   16    0.45498927197629   0.45498927197629
+   17    0.55079390231830   0.55079390231830
+   18    0.62668057536519   0.62668057536519
+   19    0.67199752688833   0.67199752688833
+   20    0.69167390382166   0.69167390382166
+   21    0.73154559599426   0.73154559599426
+   22    0.97385097886994   0.97385097886994
+   23    0.98398539561261   0.98398539561261
+   24    1.18630610297678   1.18630610297678
+   25    1.51231126534173   1.51231126534173
+   26    1.72037466338878   1.72037466338878
+   27    1.99199446803699   1.99199446803699
+   28    2.73337540022572   2.73337540022572
+
+   kloop=45
+   k1=   0.40000 k2=   0.20000 k3=   0.40000
+
+    1   -2.10441170511083  -2.10441170511083
+    2   -1.07353717528783  -1.07353717528783
+    3   -1.07313669362509  -1.07313669362509
+    4   -1.07306727337773  -1.07306727337773
+    5   -0.74738679275012  -0.74738679275012
+    6   -0.34542176368625  -0.34542176368625
+    7   -0.31237214856573  -0.31237214856573
+    8   -0.30915388706128  -0.30915388706128
+    9   -0.01434164139447  -0.01434164139447
+   10    0.05178413007234   0.05178413007234
+   11    0.08428118486674   0.08428118486674
+   12    0.17249374466546   0.17249374466546
+   13    0.24957653771160   0.24957653771160
+   14    0.30941794886803   0.30941794886803
+   15    0.37621430272861   0.37621430272861
+   16    0.42519650478336   0.42519650478336
+   17    0.49174115916748   0.49174115916748
+   18    0.54147841587719   0.54147841587719
+   19    0.61067546132031   0.61067546132031
+   20    0.85255871409749   0.85255871409749
+   21    0.86347530092209   0.86347530092209
+   22    1.01790109373741   1.01790109373741
+   23    1.11601938551572   1.11601938551572
+   24    1.21110596673847   1.21110596673847
+   25    1.39233196685721   1.39233196685721
+   26    1.52223763395745   1.52223763395745
+   27    1.83604599024206   1.83604599024206
+   28    2.70509836491136   2.70509836491136
+
+   kloop=46
+   k1=   0.40000 k2=   0.20000 k3=   0.60000
+
+    1   -2.10438550361777  -2.10438550361777
+    2   -1.07349496007265  -1.07349496007265
+    3   -1.07327417391698  -1.07327417391698
+    4   -1.07318167930067  -1.07318167930067
+    5   -0.74479933169205  -0.74479933169205
+    6   -0.34393786401665  -0.34393786401665
+    7   -0.32838600867584  -0.32838600867584
+    8   -0.31512366882501  -0.31512366882501
+    9    0.02017094118482   0.02017094118482
+   10    0.05151728727764   0.05151728727764
+   11    0.05678092732685   0.05678092732685
+   12    0.17046643922340   0.17046643922340
+   13    0.29317881032987   0.29317881032987
+   14    0.33913244728959   0.33913244728959
+   15    0.34862521297350   0.34862521297350
+   16    0.37057672295892   0.37057672295892
+   17    0.45111301981919   0.45111301981919
+   18    0.55650882434403   0.55650882434403
+   19    0.65652531922630   0.65652531922630
+   20    0.72796300247589   0.72796300247589
+   21    0.86623624344097   0.86623624344097
+   22    0.99804634248864   0.99804634248864
+   23    1.08460136222830   1.08460136222830
+   24    1.37396775114786   1.37396775114786
+   25    1.53255184158691   1.53255184158691
+   26    1.88251979942892   1.88251979942892
+   27    2.10970302235642   2.10970302235642
+   28    2.74452085826777   2.74452085826777
+
+   kloop=47
+   k1=   0.40000 k2=   0.20000 k3=   0.80000
+
+    1   -2.10438525946019  -2.10438525946019
+    2   -1.07344284648804  -1.07344284648804
+    3   -1.07328993532035  -1.07328993532035
+    4   -1.07321736296377  -1.07321736296377
+    5   -0.74483878157073  -0.74483878157073
+    6   -0.34398247387426  -0.34398247387426
+    7   -0.32846353651526  -0.32846353651526
+    8   -0.31486128738459  -0.31486128738459
+    9    0.01986469399443   0.01986469399443
+   10    0.05104766262050   0.05104766262050
+   11    0.05832841172230   0.05832841172230
+   12    0.17103755959923   0.17103755959923
+   13    0.29326145427340   0.29326145427340
+   14    0.33755146127758   0.33755146127758
+   15    0.34818498563536   0.34818498563536
+   16    0.37027033805022   0.37027033805022
+   17    0.45272110106475   0.45272110106475
+   18    0.55602846387397   0.55602846387397
+   19    0.65893465639418   0.65893465639418
+   20    0.72820105295534   0.72820105295534
+   21    0.85992508420797   0.85992508420797
+   22    0.99751937721026   0.99751937721026
+   23    1.08860865981425   1.08860865981425
+   24    1.38148002641814   1.38148002641814
+   25    1.53495209728220   1.53495209728220
+   26    1.88176565625427   1.88176565625427
+   27    2.11904281610127   2.11904281610127
+   28    2.74055626510316   2.74055626510316
+
+   kloop=48
+   k1=   0.40000 k2=   0.40000 k3=   0.00000
+
+    1   -2.10443264211695  -2.10443264211695
+    2   -1.07344726602870  -1.07344726602870
+    3   -1.07317209008204  -1.07317209008204
+    4   -1.07314467594265  -1.07314467594265
+    5   -0.74561906780632  -0.74561906780632
+    6   -0.34883111712659  -0.34883111712659
+    7   -0.31490967365921  -0.31490967365921
+    8   -0.31398692256870  -0.31398692256870
+    9   -0.01940125329908  -0.01940125329908
+   10    0.01925096076187   0.01925096076187
+   11    0.09128963850947   0.09128963850947
+   12    0.22366811538350   0.22366811538350
+   13    0.22655260864877   0.22655260864877
+   14    0.29008117868120   0.29008117868120
+   15    0.34749149270421   0.34749149270421
+   16    0.34911816145794   0.34911816145794
+   17    0.38975940265121   0.38975940265121
+   18    0.57035336607096   0.57035336607096
+   19    0.57482712798411   0.57482712798411
+   20    0.93064788011937   0.93064788011937
+   21    0.93918125490340   0.93918125490340
+   22    1.08981314702425   1.08981314702425
+   23    1.21364264661514   1.21364264661514
+   24    1.42765186447216   1.42765186447216
+   25    1.43174522459732   1.43174522459732
+   26    1.81457151517628   1.81457151517628
+   27    1.92273808412142   1.92273808412142
+   28    2.82587481833382   2.82587481833382
+
+   kloop=49
+   k1=   0.40000 k2=   0.40000 k3=   0.20000
+
+    1   -2.10441172325103  -2.10441172325103
+    2   -1.07354549075340  -1.07354549075340
+    3   -1.07310944731794  -1.07310944731794
+    4   -1.07308916279271  -1.07308916279271
+    5   -0.74735022255214  -0.74735022255214
+    6   -0.34556560986729  -0.34556560986729
+    7   -0.31243083153167  -0.31243083153167
+    8   -0.30907692439056  -0.30907692439056
+    9   -0.01422662358858  -0.01422662358858
+   10    0.05134612590934   0.05134612590934
+   11    0.08473387983086   0.08473387983086
+   12    0.17242320516439   0.17242320516439
+   13    0.24825009685816   0.24825009685816
+   14    0.30959528506521   0.30959528506521
+   15    0.37659936717573   0.37659936717573
+   16    0.42520825186125   0.42520825186125
+   17    0.49210020447520   0.49210020447520
+   18    0.54109367352565   0.54109367352565
+   19    0.60941053627350   0.60941053627350
+   20    0.85176670293267   0.85176670293267
+   21    0.86107986693183   0.86107986693183
+   22    1.01786002462897   1.01786002462897
+   23    1.11560253947224   1.11560253947224
+   24    1.21089915910159   1.21089915910159
+   25    1.39891414076050   1.39891414076050
+   26    1.52070999635721   1.52070999635721
+   27    1.83957228195552   1.83957228195552
+   28    2.70426556384376   2.70426556384376
+
+   kloop=50
+   k1=   0.40000 k2=   0.40000 k3=   0.40000
+
+    1   -2.10440357657145  -2.10440357657145
+    2   -1.07372657965705  -1.07372657965705
+    3   -1.07304893322356  -1.07304893322356
+    4   -1.07299988351541  -1.07299988351541
+    5   -0.74716899523027  -0.74716899523027
+    6   -0.35593291859816  -0.35593291859816
+    7   -0.30449081204252  -0.30449081204252
+    8   -0.30432783789887  -0.30432783789887
+    9   -0.03163825245297  -0.03163825245297
+   10    0.07344729175354   0.07344729175354
+   11    0.13053333398911   0.13053333398911
+   12    0.13384038021824   0.13384038021824
+   13    0.31918443325428   0.31918443325428
+   14    0.32005039099039   0.32005039099039
+   15    0.38343077933713   0.38343077933713
+   16    0.57437566836948   0.57437566836948
+   17    0.57598787036209   0.57598787036209
+   18    0.69829527444944   0.69829527444944
+   19    0.70107970000374   0.70107970000374
+   20    0.70681647773951   0.70681647773951
+   21    0.85446306994699   0.85446306994699
+   22    0.97464197059435   0.97464197059435
+   23    0.98385793982068   0.98385793982068
+   24    1.20829208246762   1.20829208246762
+   25    1.42850084884399   1.42850084884399
+   26    1.78690154362348   1.78690154362348
+   27    1.81884690325561   1.81884690325561
+   28    2.54934911365866   2.54934911365866
+
+   kloop=51
+   k1=   0.40000 k2=   0.40000 k3=   0.60000
+
+    1   -2.10438303710177  -2.10438303710177
+    2   -1.07367789792516  -1.07367789792516
+    3   -1.07317146811188  -1.07317146811188
+    4   -1.07308504976631  -1.07308504976631
+    5   -0.74533772068636  -0.74533772068636
+    6   -0.35223652589253  -0.35223652589253
+    7   -0.32138459867613  -0.32138459867613
+    8   -0.30791339612454  -0.30791339612454
+    9    0.00374628122809   0.00374628122809
+   10    0.05320833321893   0.05320833321893
+   11    0.08384090196796   0.08384090196796
+   12    0.15252156863848   0.15252156863848
+   13    0.31203191259708   0.31203191259708
+   14    0.33144815047191   0.33144815047191
+   15    0.36049935982751   0.36049935982751
+   16    0.44556768841645   0.44556768841645
+   17    0.48655832172539   0.48655832172539
+   18    0.60122194576848   0.60122194576848
+   19    0.73052790811068   0.73052790811068
+   20    0.83222217444377   0.83222217444377
+   21    0.84292393638611   0.84292393638611
+   22    0.87047131969493   0.87047131969493
+   23    1.05747120776803   1.05747120776803
+   24    1.21562164764923   1.21562164764923
+   25    1.36711253503190   1.36711253503190
+   26    1.58228575233989   1.58228575233989
+   27    1.90603602441107   1.90603602441107
+   28    2.50419753182467   2.50419753182467
+
+   kloop=52
+   k1=   0.40000 k2=   0.40000 k3=   0.80000
+
+    1   -2.10440002170837  -2.10440002170837
+    2   -1.07344739845951  -1.07344739845951
+    3   -1.07332752185321  -1.07332752185321
+    4   -1.07314910423206  -1.07314910423206
+    5   -0.74437641661809  -0.74437641661809
+    6   -0.34631793994719  -0.34631793994719
+    7   -0.32825813299962  -0.32825813299962
+    8   -0.31414596043624  -0.31414596043624
+    9   -0.00273667917173  -0.00273667917173
+   10    0.03165686034225   0.03165686034225
+   11    0.09065578472388   0.09065578472388
+   12    0.19856474234742   0.19856474234742
+   13    0.25348126566801   0.25348126566801
+   14    0.32812875096055   0.32812875096055
+   15    0.35270780597305   0.35270780597305
+   16    0.35837639685296   0.35837639685296
+   17    0.38572906165516   0.38572906165516
+   18    0.55501353715775   0.55501353715775
+   19    0.62054672471870   0.62054672471870
+   20    0.88187217957179   0.88187217957179
+   21    0.95140101307798   0.95140101307798
+   22    0.99696555097131   0.99696555097131
+   23    1.10821644523726   1.10821644523726
+   24    1.30491698937355   1.30491698937355
+   25    1.55502942311584   1.55502942311584
+   26    1.81083048262777   1.81083048262777
+   27    1.97189838690495   1.97189838690495
+   28    2.82671137810430   2.82671137810430
+
+   kloop=53
+   k1=   0.40000 k2=   0.60000 k3=   0.00000
+
+    1   -2.10440081368423  -2.10440081368423
+    2   -1.07343831921747  -1.07343831921747
+    3   -1.07332967220231  -1.07332967220231
+    4   -1.07315305909388  -1.07315305909388
+    5   -0.74440344258568  -0.74440344258568
+    6   -0.34635132012576  -0.34635132012576
+    7   -0.32864212644025  -0.32864212644025
+    8   -0.31356887371111  -0.31356887371111
+    9   -0.00215457883671  -0.00215457883671
+   10    0.03088658129108   0.03088658129108
+   11    0.09069380528545   0.09069380528545
+   12    0.20051588556280   0.20051588556280
+   13    0.25135855139778   0.25135855139778
+   14    0.32819172593507   0.32819172593507
+   15    0.35242710062560   0.35242710062560
+   16    0.35885762662860   0.35885762662860
+   17    0.38526058405992   0.38526058405992
+   18    0.55467896654647   0.55467896654647
+   19    0.61936893297858   0.61936893297858
+   20    0.88366583919554   0.88366583919554
+   21    0.95101061160688   0.95101061160688
+   22    0.99808670113578   0.99808670113578
+   23    1.10976170625259   1.10976170625259
+   24    1.30665675916474   1.30665675916474
+   25    1.55352715634659   1.55352715634659
+   26    1.81010984799362   1.81010984799362
+   27    1.96859809751058   1.96859809751058
+   28    2.82909445265953   2.82909445265953
+
+   kloop=54
+   k1=   0.40000 k2=   0.60000 k3=   0.20000
+
+    1   -2.10438528688337  -2.10438528688337
+    2   -1.07351518132255  -1.07351518132255
+    3   -1.07328430506359  -1.07328430506359
+    4   -1.07315383227813  -1.07315383227813
+    5   -0.74476455403996  -0.74476455403996
+    6   -0.34401245143467  -0.34401245143467
+    7   -0.32835768493270  -0.32835768493270
+    8   -0.31520786399988  -0.31520786399988
+    9    0.02029796744639   0.02029796744639
+   10    0.05097374170363   0.05097374170363
+   11    0.05690999498923   0.05690999498923
+   12    0.17043894588200   0.17043894588200
+   13    0.29272015651239   0.29272015651239
+   14    0.33976742117295   0.33976742117295
+   15    0.34903051970109   0.34903051970109
+   16    0.37004720900056   0.37004720900056
+   17    0.45094178057134   0.45094178057134
+   18    0.55562541033351   0.55562541033351
+   19    0.65631960720922   0.65631960720922
+   20    0.72767354514492   0.72767354514492
+   21    0.86912620817974   0.86912620817974
+   22    0.99624443927393   0.99624443927393
+   23    1.08450968469291   1.08450968469291
+   24    1.37627133832731   1.37627133832731
+   25    1.53523300453639   1.53523300453639
+   26    1.88225303714081   1.88225303714081
+   27    2.10733299159768   2.10733299159768
+   28    2.74557551055370   2.74557551055370
+
+   kloop=55
+   k1=   0.40000 k2=   0.60000 k3=   0.40000
+
+    1   -2.10438286429559  -2.10438286429559
+    2   -1.07368117861055  -1.07368117861055
+    3   -1.07320533807891  -1.07320533807891
+    4   -1.07304930550327  -1.07304930550327
+    5   -0.74533047685367  -0.74533047685367
+    6   -0.35225711912847  -0.35225711912847
+    7   -0.32134459889637  -0.32134459889637
+    8   -0.30798047227542  -0.30798047227542
+    9    0.00382506264488   0.00382506264488
+   10    0.05345552385601   0.05345552385601
+   11    0.08336729503796   0.08336729503796
+   12    0.15239856436526   0.15239856436526
+   13    0.31182396699403   0.31182396699403
+   14    0.33260982826703   0.33260982826703
+   15    0.36001767024259   0.36001767024259
+   16    0.44560809483703   0.44560809483703
+   17    0.48704936621300   0.48704936621300
+   18    0.60117522498258   0.60117522498258
+   19    0.73105289802513   0.73105289802513
+   20    0.82941202149881   0.82941202149881
+   21    0.84426670473306   0.84426670473306
+   22    0.87652342006163   0.87652342006163
+   23    1.05687794125539   1.05687794125539
+   24    1.21407095677257   1.21407095677257
+   25    1.36263682672871   1.36263682672871
+   26    1.58521563351887   1.58521563351887
+   27    1.90355438968555   1.90355438968555
+   28    2.50425847965099   2.50425847965099
+
+   kloop=56
+   k1=   0.40000 k2=   0.60000 k3=   0.60000
+
+    1   -2.10438297358773  -2.10438297358773
+    2   -1.07367927819012  -1.07367927819012
+    3   -1.07321429026324  -1.07321429026324
+    4   -1.07304321063714  -1.07304321063714
+    5   -0.74533973741749  -0.74533973741749
+    6   -0.35235513559921  -0.35235513559921
+    7   -0.32145680453606  -0.32145680453606
+    8   -0.30774759996616  -0.30774759996616
+    9    0.00395967672042   0.00395967672042
+   10    0.05379841675417   0.05379841675417
+   11    0.08208835504375   0.08208835504375
+   12    0.15417693396180   0.15417693396180
+   13    0.31215567534813   0.31215567534813
+   14    0.33366995198977   0.33366995198977
+   15    0.35899547322579   0.35899547322579
+   16    0.44415088074707   0.44415088074707
+   17    0.48956260573009   0.48956260573009
+   18    0.60153805440933   0.60153805440933
+   19    0.73543942708776   0.73543942708776
+   20    0.83237969730842   0.83237969730842
+   21    0.84423109061176   0.84423109061176
+   22    0.88442394705384   0.88442394705384
+   23    1.05645923907718   1.05645923907718
+   24    1.20678187423558   1.20678187423558
+   25    1.33788633843612   1.33788633843612
+   26    1.59107460077137   1.59107460077137
+   27    1.89712838538410   1.89712838538410
+   28    2.50532560403896   2.50532560403896
+
+   kloop=57
+   k1=   0.40000 k2=   0.60000 k3=   0.80000
+
+    1   -2.10438428176339  -2.10438428176339
+    2   -1.07349614898859  -1.07349614898859
+    3   -1.07331475769874  -1.07331475769874
+    4   -1.07314648011122  -1.07314648011122
+    5   -0.74478018072108  -0.74478018072108
+    6   -0.34410807913372  -0.34410807913372
+    7   -0.32797501741197  -0.32797501741197
+    8   -0.31556271175036  -0.31556271175036
+    9    0.02084851737175   0.02084851737175
+   10    0.05001223704846   0.05001223704846
+   11    0.05735249938054   0.05735249938054
+   12    0.17214236409186   0.17214236409186
+   13    0.29358229517991   0.29358229517991
+   14    0.33988270903497   0.33988270903497
+   15    0.34966902765871   0.34966902765871
+   16    0.36905419950591   0.36905419950591
+   17    0.45146745203178   0.45146745203178
+   18    0.55551937869014   0.55551937869014
+   19    0.66223353505036   0.66223353505036
+   20    0.73281704451006   0.73281704451006
+   21    0.87847125006928   0.87847125006928
+   22    0.98954128008251   0.98954128008251
+   23    1.08140606912228   1.08140606912228
+   24    1.37694228352057   1.37694228352057
+   25    1.54779055767824   1.54779055767824
+   26    1.89358996734455   1.89358996734455
+   27    2.10750705266583   2.10750705266583
+   28    2.74922104408851   2.74922104408851
+
+   kloop=58
+   k1=   0.40000 k2=   0.80000 k3=   0.00000
+
+    1   -2.10438374492590  -2.10438374492590
+    2   -1.07362005428072  -1.07362005428072
+    3   -1.07322652646407  -1.07322652646407
+    4   -1.07308102116731  -1.07308102116731
+    5   -0.74548140115850  -0.74548140115850
+    6   -0.35249465292349  -0.35249465292349
+    7   -0.32111061130858  -0.32111061130858
+    8   -0.30731674111316  -0.30731674111316
+    9    0.00475334165171   0.00475334165171
+   10    0.05256266343103   0.05256266343103
+   11    0.08373642701546   0.08373642701546
+   12    0.15550332499178   0.15550332499178
+   13    0.31167468944111   0.31167468944111
+   14    0.32978211819304   0.32978211819304
+   15    0.35856487917329   0.35856487917329
+   16    0.44648748469478   0.44648748469478
+   17    0.48741720886519   0.48741720886519
+   18    0.60114117406341   0.60114117406341
+   19    0.73509231367809   0.73509231367809
+   20    0.83148866029804   0.83148866029804
+   21    0.84595784729938   0.84595784729938
+   22    0.86773196341968   0.86773196341968
+   23    1.06148257994563   1.06148257994563
+   24    1.22102229051657   1.22102229051657
+   25    1.37826577502514   1.37826577502514
+   26    1.58562295282258   1.58562295282258
+   27    1.90752657099207   1.90752657099207
+   28    2.49863162136442   2.49863162136442
+
+   kloop=59
+   k1=   0.40000 k2=   0.80000 k3=   0.20000
+
+    1   -2.10438548673721  -2.10438548673721
+    2   -1.07347233809511  -1.07347233809511
+    3   -1.07329476658902  -1.07329476658902
+    4   -1.07318181871150  -1.07318181871150
+    5   -0.74484315987442  -0.74484315987442
+    6   -0.34392054326532  -0.34392054326532
+    7   -0.32844360385774  -0.32844360385774
+    8   -0.31492312391833  -0.31492312391833
+    9    0.01993152141917   0.01993152141917
+   10    0.05150842541118   0.05150842541118
+   11    0.05763877831619   0.05763877831619
+   12    0.17083476709687   0.17083476709687
+   13    0.29347823883592   0.29347823883592
+   14    0.33782176187000   0.33782176187000
+   15    0.34815273633101   0.34815273633101
+   16    0.37067584810748   0.37067584810748
+   17    0.45218257516382   0.45218257516382
+   18    0.55670169545473   0.55670169545473
+   19    0.65810128509467   0.65810128509467
+   20    0.72821469997479   0.72821469997479
+   21    0.86078733165976   0.86078733165976
+   22    0.99877597271914   0.99877597271914
+   23    1.08708092454730   1.08708092454730
+   24    1.37702356224747   1.37702356224747
+   25    1.53245595032052   1.53245595032052
+   26    1.88203844236162   1.88203844236162
+   27    2.11636782525127   2.11636782525127
+   28    2.74153507070706   2.74153507070706
+
+   kloop=60
+   k1=   0.40000 k2=   0.80000 k3=   0.40000
+
+    1   -2.10440012505158  -2.10440012505158
+    2   -1.07344318579425  -1.07344318579425
+    3   -1.07336330332225  -1.07336330332225
+    4   -1.07311642377876  -1.07311642377876
+    5   -0.74440210760488  -0.74440210760488
+    6   -0.34630318380862  -0.34630318380862
+    7   -0.32811385913271  -0.32811385913271
+    8   -0.31423223153598  -0.31423223153598
+    9   -0.00281620553226  -0.00281620553226
+   10    0.03228291801661   0.03228291801661
+   11    0.08999572475938   0.08999572475938
+   12    0.19836008788436   0.19836008788436
+   13    0.25479829100703   0.25479829100703
+   14    0.32794507410160   0.32794507410160
+   15    0.35260525112436   0.35260525112436
+   16    0.35835340869599   0.35835340869599
+   17    0.38579099666852   0.38579099666852
+   18    0.55535291065815   0.55535291065815
+   19    0.62102997917043   0.62102997917043
+   20    0.88246557366216   0.88246557366216
+   21    0.95245283958798   0.95245283958798
+   22    0.99812958086904   0.99812958086904
+   23    1.10904892802352   1.10904892802352
+   24    1.30396677567131   1.30396677567131
+   25    1.55423230440548   1.55423230440548
+   26    1.81393319796639   1.81393319796639
+   27    1.97389769295643   1.97389769295643
+   28    2.82634180647960   2.82634180647960
+
+   kloop=61
+   k1=   0.40000 k2=   0.80000 k3=   0.60000
+
+    1   -2.10438418858326  -2.10438418858326
+    2   -1.07349583002945  -1.07349583002945
+    3   -1.07331842362023  -1.07331842362023
+    4   -1.07314270274000  -1.07314270274000
+    5   -0.74480357350644  -0.74480357350644
+    6   -0.34406995403301  -0.34406995403301
+    7   -0.32786228920815  -0.32786228920815
+    8   -0.31566383825563  -0.31566383825563
+    9    0.02098669403943   0.02098669403943
+   10    0.05023509702277   0.05023509702277
+   11    0.05704234739409   0.05704234739409
+   12    0.17257637147208   0.17257637147208
+   13    0.29417694751102   0.29417694751102
+   14    0.33974885690140   0.33974885690140
+   15    0.34967665771633   0.34967665771633
+   16    0.36919012402224   0.36919012402224
+   17    0.45144872397242   0.45144872397242
+   18    0.55626441086272   0.55626441086272
+   19    0.66362962194704   0.66362962194704
+   20    0.73466916722829   0.73466916722829
+   21    0.88057525058354   0.88057525058354
+   22    0.98906515916352   0.98906515916352
+   23    1.07973261208220   1.07973261208220
+   24    1.37375421097618   1.37375421097618
+   25    1.54921766481242   1.54921766481242
+   26    1.89776604068420   1.89776604068420
+   27    2.10775321426533   2.10775321426533
+   28    2.75031853485927   2.75031853485927
+
+   kloop=62
+   k1=   0.40000 k2=   0.80000 k3=   0.80000
+
+    1   -2.10438307967950  -2.10438307967950
+    2   -1.07362312233409  -1.07362312233409
+    3   -1.07326705401958  -1.07326705401958
+    4   -1.07304260341598  -1.07304260341598
+    5   -0.74545619775188  -0.74545619775188
+    6   -0.35258372397163  -0.35258372397163
+    7   -0.32095995755371  -0.32095995755371
+    8   -0.30755282387637  -0.30755282387637
+    9    0.00506501273656   0.00506501273656
+   10    0.05351685031346   0.05351685031346
+   11    0.08185626041704   0.08185626041704
+   12    0.15517013682527   0.15517013682527
+   13    0.31104447931316   0.31104447931316
+   14    0.33431518158999   0.33431518158999
+   15    0.35640589871036   0.35640589871036
+   16    0.44652349540938   0.44652349540938
+   17    0.48957056805333   0.48957056805333
+   18    0.60101379601930   0.60101379601930
+   19    0.73781914920952   0.73781914920952
+   20    0.82920191745079   0.82920191745079
+   21    0.84425478603707   0.84425478603707
+   22    0.89160353975636   0.89160353975636
+   23    1.05832889047946   1.05832889047946
+   24    1.21503505664796   1.21503505664796
+   25    1.35849295821806   1.35849295821806
+   26    1.59654347383509   1.59654347383509
+   27    1.89444281875616   1.89444281875616
+   28    2.49922875969668   2.49922875969668
+
+***********************************************************
+***********************************************************
+                History of cell optimization               
+***********************************************************
+***********************************************************
+
+  MD_iter   SD_scaling     |Maximum force|   Maximum step        Utot             Enpy           Volume
+                           (Hartree/Bohr)        (Ang)         (Hartree)        (Hartree)        (Ang^3)
+
+    1       1.25981731       0.00744200       0.00496134     -62.76565092     -62.76565092      44.61338675
+    2       1.25981731       0.00729603       0.00486402     -62.76573882     -62.76573882      44.71503188
+    3       1.25981731       0.00720877       0.00480585     -62.76582088     -62.76582088      44.81277552
+    4       1.25981731       0.00718576       0.00479051     -62.76589777     -62.76589777      44.90689592
+    5       3.14954327       0.00677463       0.01129105     -62.76597078     -62.76597078      44.99783554
+    6       3.14954327       0.00638473       0.01064121     -62.76613504     -62.76613504      45.21732704
+    7       3.14954327       0.00597465       0.00995774     -62.76627574     -62.76627574      45.41766398
+    8       3.14954327       0.00565158       0.00941929     -62.76639657     -62.76639657      45.60050249
+    9       7.87385818       0.00523135       0.02179728     -62.76650039     -62.76650039      45.76831112
+   10       7.87385818       0.00460731       0.01299966     -62.76671282     -62.76671282      46.15179539
+   11       7.87385818       0.00406798       0.09653976     -62.76690768     -62.76690768      46.27081713
+   12       7.87385818       0.00075776       0.01948619     -62.76768513     -62.76768513      47.20185970
+   13       7.87385818       0.00041878       0.00101177     -62.76771614     -62.76771614      47.40338157
+   14       7.87385818       0.00034506       0.01658757     -62.76771778     -62.76771778      47.41311669
+   15       7.87385818       0.00019545       0.00000000     -62.76773555     -62.76773555      47.51396978
+
+***********************************************************
+***********************************************************
+                   Mulliken populations                    
+***********************************************************
+***********************************************************
+
+  Total spin moment (muB)   0.000000000
+
+                    Up spin      Down spin     Sum           Diff
+      1   Na      4.238395917  4.238395917   8.476791833   0.000000000
+      2   Cl      3.761604083  3.761604083   7.523208167   0.000000000
+
+ Sum of MulP: up   =     8.00000 down          =     8.00000
+              total=    16.00000 ideal(neutral)=    16.00000
+
+
+  Decomposed Mulliken populations
+
+    1   Na          Up spin      Down spin     Sum           Diff
+            multiple
+  s           0    1.002264648  1.002264648   2.004529297   0.000000000
+   sum over m      1.002264648  1.002264648   2.004529297   0.000000000
+  s           1    0.094781068  0.094781068   0.189562136   0.000000000
+   sum over m      0.094781068  0.094781068   0.189562136   0.000000000
+  s           2    0.001157821  0.001157821   0.002315643   0.000000000
+   sum over m      0.001157821  0.001157821   0.002315643   0.000000000
+   sum over m+mul  1.098203538  1.098203538   2.196407076   0.000000000
+  px          0    1.000167569  1.000167569   2.000335137   0.000000000
+  py          0    1.000141899  1.000141899   2.000283799   0.000000000
+  pz          0    1.000135976  1.000135976   2.000271953   0.000000000
+   sum over m      3.000445444  3.000445444   6.000890888   0.000000000
+  px          1    0.046582280  0.046582280   0.093164561   0.000000000
+  py          1    0.046581539  0.046581539   0.093163078   0.000000000
+  pz          1    0.046583115  0.046583115   0.093166231   0.000000000
+   sum over m      0.139746935  0.139746935   0.279493869   0.000000000
+   sum over m+mul  3.140192379  3.140192379   6.280384758   0.000000000
+
+    2   Cl          Up spin      Down spin     Sum           Diff
+            multiple
+  s           0    0.968438584  0.968438584   1.936877167   0.000000000
+   sum over m      0.968438584  0.968438584   1.936877167   0.000000000
+  s           1    0.002542273  0.002542273   0.005084546   0.000000000
+   sum over m      0.002542273  0.002542273   0.005084546   0.000000000
+  s           2    0.000189277  0.000189277   0.000378554   0.000000000
+   sum over m      0.000189277  0.000189277   0.000378554   0.000000000
+   sum over m+mul  0.971170134  0.971170134   1.942340268   0.000000000
+  px          0    0.926604350  0.926604350   1.853208701   0.000000000
+  py          0    0.926476715  0.926476715   1.852953430   0.000000000
+  pz          0    0.926443411  0.926443411   1.852886822   0.000000000
+   sum over m      2.779524476  2.779524476   5.559048952   0.000000000
+  px          1    0.002387283  0.002387283   0.004774567   0.000000000
+  py          1    0.002472615  0.002472615   0.004945230   0.000000000
+  pz          1    0.002498011  0.002498011   0.004996022   0.000000000
+   sum over m      0.007357910  0.007357910   0.014715819   0.000000000
+   sum over m+mul  2.786882386  2.786882386   5.573764772   0.000000000
+  d3z^2-r^2   0    0.000957411  0.000957411   0.001914822   0.000000000
+  dx^2-y^2    0    0.000958316  0.000958316   0.001916633   0.000000000
+  dxy         0    0.000855810  0.000855810   0.001711621   0.000000000
+  dxz         0    0.000867201  0.000867201   0.001734403   0.000000000
+  dyz         0    0.000903312  0.000903312   0.001806624   0.000000000
+   sum over m      0.004542051  0.004542051   0.009084102   0.000000000
+  d3z^2-r^2   1    0.001316487  0.001316487   0.002632975   0.000000000
+  dx^2-y^2    1    0.001229058  0.001229058   0.002458117   0.000000000
+  dxy         1   -0.001225498 -0.001225498  -0.002450995   0.000000000
+  dxz         1   -0.001197527 -0.001197527  -0.002395054   0.000000000
+  dyz         1   -0.001113009 -0.001113009  -0.002226017   0.000000000
+   sum over m     -0.000990487 -0.000990487  -0.001980975   0.000000000
+   sum over m+mul  0.003551564  0.003551564   0.007103127   0.000000000
+
+***********************************************************
+***********************************************************
+                    Dipole moment (Debye)                  
+***********************************************************
+***********************************************************
+
+ Absolute D        6.81722573
+
+                      Dx                Dy                Dz
+ Total              3.98487601        3.88048676        3.94171947
+ Core             106.06621179       93.80236020       97.58626967
+ Electron        -102.08133578      -89.92187344      -93.64455020
+ Back ground       -0.00000000       -0.00000000       -0.00000000
+
+***********************************************************
+***********************************************************
+    Cell vectors (Ang.) and derivatives of total energy    
+             with respect to them (Hartree/Bohr)           
+***********************************************************
+***********************************************************
+
+ a1 =  -0.02088    2.86167    2.85964   dE/da1 =  -0.00020   -0.00013   -0.00017
+ a2 =   2.87555   -0.01012    2.86268   dE/da2 =   0.00006   -0.00000   -0.00017
+ a3 =   2.88040    2.86954   -0.00807   dE/da3 =   0.00011   -0.00008    0.00004
+
+***********************************************************
+***********************************************************
+       xyz-coordinates (Ang) and forces (Hartree/Bohr)  
+***********************************************************
+***********************************************************
+
+<coordinates.forces
+  2
+    1    Na     0.12607  -0.03126   0.02112   0.000157981091 -0.000032669946 -0.000091140388
+    2    Cl     2.99253   2.83007   2.87526   0.000032204024 -0.000026861588  0.000064904781
+coordinates.forces>
+
+***********************************************************
+***********************************************************
+       Fractional coordinates of the final structure       
+***********************************************************
+***********************************************************
+
+     1     Na     0.97644419934262   0.03094424529380   0.01270587177510
+     2     Cl     0.47624740521385   0.53010020114925   0.51317316694160
+
+***********************************************************
+***********************************************************
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+   Elapsed.Time.       501.458
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =     2      501.455          0      501.458
+   readfile                 =     0        1.973          1        1.973
+   truncation               =    13       89.100          1       93.999
+   MD_pac                   =     0        0.076          3        0.106
+   OutData                  =     1        0.000          0        0.002
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     1      405.332         13      410.232
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     2        1.168          0       20.741
+   Set_Nonlocal             =     0       25.860          2       45.434
+   Set_ProExpn_VNA          =    11       36.291          0       69.898
+   Set_Hamiltonian          =     9       80.650          1       80.651
+   Poisson                  =     0        0.043         12        0.043
+   Diagonalization          =     0        4.733          7        4.737
+   Mixing_DM                =     6        0.211          5        0.211
+   Force                    =    11       48.009          0       48.009
+   Total_Energy             =     1       18.134          0       18.157
+   Set_Aden_Grid            =     0        0.761         11       34.286
+   Set_Orbitals_Grid        =    13        0.000          1        8.573
+   Set_Density_Grid         =    10       61.979          1       61.993
+   RestartFileDFT           =     1        0.706          2        8.678
+   Mulliken_Charge          =    10        0.036          1        0.036
+   FFT(2D)_Density          =     3        0.057          6        0.057
+   Others                   =     1       64.937          8       78.436

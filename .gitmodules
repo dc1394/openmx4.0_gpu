@@ -1,0 +1,6 @@
+[submodule "source/third_party/GEMMul8"]
+	path = source/third_party/GEMMul8
+	url = https://github.com/RIKEN-RCCS/GEMMul8
+[submodule "source/third_party/fftw3"]
+	path = source/third_party/fftw3
+	url = https://github.com/FFTW/fftw3

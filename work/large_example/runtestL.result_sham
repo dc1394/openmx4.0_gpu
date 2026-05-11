@@ -1,0 +1,23 @@
+sham: AMD EPYC 7713 64-Core Processor 2.0 GHz
+CC = mpiicc -O3 -march=core-avx2 -ip -no-prec-div -qopenmp
+128 MPI processes x 2 OMP threads
+
+   1  large_example/5_5_13COb2.dat     Elapsed time(s)=   22.93  diff Utot= 0.000000001038  diff Force= 0.000000000004
+   2  large_example/B2C62_Band.dat     Elapsed time(s)=  209.13  diff Utot= 0.000000000035  diff Force= 0.000000049738
+   3  large_example/CG15c-DC-LNO.dat   Elapsed time(s)=   39.81  diff Utot= 0.000000000015  diff Force= 0.000000000384
+   4  large_example/DIA512-1.dat       Elapsed time(s)=   22.32  diff Utot= 0.000000000107  diff Force= 0.000000006555
+   5  large_example/FeBCC.dat          Elapsed time(s)=   37.64  diff Utot= 0.000000000023  diff Force= 0.000000000004
+   6  large_example/GEL.dat            Elapsed time(s)=   19.04  diff Utot= 0.000000000195  diff Force= 0.000000000002
+   7  large_example/GFRAG.dat          Elapsed time(s)=   13.18  diff Utot= 0.000000000556  diff Force= 0.000000000007
+   8  large_example/GGFF.dat           Elapsed time(s)=  205.73  diff Utot= 0.000000000054  diff Force= 0.000000000002
+   9  large_example/MCCN.dat           Elapsed time(s)=   39.18  diff Utot= 0.000000000060  diff Force= 0.000000000031
+  10  large_example/Mn12_148_F.dat     Elapsed time(s)=   34.24  diff Utot= 0.000000000261  diff Force= 0.000000000064
+  11  large_example/N1C999.dat         Elapsed time(s)=  439.25  diff Utot= 0.000000000108  diff Force= 0.000000000049
+  12  large_example/Ni63-O64.dat       Elapsed time(s)=   31.92  diff Utot= 0.000000002885  diff Force= 0.000000000048
+  13  large_example/Pt63.dat           Elapsed time(s)=   25.63  diff Utot= 0.000000004126  diff Force= 0.000000000600
+  14  large_example/SialicAcid.dat     Elapsed time(s)=   11.23  diff Utot= 0.000000000313  diff Force= 0.000000000012
+  15  large_example/ZrB2_2x2.dat       Elapsed time(s)=   65.99  diff Utot= 0.000000000181  diff Force= 0.000000000001
+  16  large_example/nsV4Bz5.dat        Elapsed time(s)=   38.40  diff Utot= 0.000000000229  diff Force= 0.000000000007
+
+
+Total elapsed time (s)     1255.62

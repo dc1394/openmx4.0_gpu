@@ -1,0 +1,22 @@
+kugui: ISSP supercomputer consisting of AMD EPYC 7763 (2.45GHz)
+Intel(R) oneAPI DPC++/C++ Compiler 2024.1.0
+compiler option: -O3 -march=core-avx2 -fcommon -Wno-implicit-function-declaration -qopenmp
+14 MPI processes x 6 OpenMP threads
+
+   1  input_example/Benzene.dat        Elapsed time(s)=    2.96  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=    2.92  diff Utot= 0.000000000009  diff Force= 0.000000000002
+   3  input_example/CO.dat             Elapsed time(s)=    2.96  diff Utot= 0.000000000000  diff Force= 0.000000000016
+   4  input_example/Cr2.dat            Elapsed time(s)=    3.41  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=    5.28  diff Utot= 0.000000000016  diff Force= 0.000000000002
+   6  input_example/GaAs.dat           Elapsed time(s)=   13.38  diff Utot= 0.000000000010  diff Force= 0.000000000000
+   7  input_example/Glycine.dat        Elapsed time(s)=    1.74  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   8  input_example/Graphite4.dat      Elapsed time(s)=    1.25  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    1.60  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  10  input_example/H2O.dat            Elapsed time(s)=    1.51  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  11  input_example/HMn.dat            Elapsed time(s)=    4.77  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    1.11  diff Utot= 0.000000000005  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    3.05  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  14  input_example/Ndia2.dat          Elapsed time(s)=    1.67  diff Utot= 0.000000000001  diff Force= 0.000000000001
+
+
+Total elapsed time (s)       47.60

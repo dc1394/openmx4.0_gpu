@@ -1,0 +1,179 @@
+/*** global parameters ***/
+
+double *****DMmu;
+double *****iDMmu;
+//double *****DMkmu;
+//double *****iDMkmu;
+int  flag_export_DM;
+int  way_of_kpoint_DM;
+int num_kpt_DM;
+double *DM_KGrids1;
+double *DM_KGrids2;
+double *DM_KGrids3;
+int  flag_energy_range_DM;
+double DM_energy_range[2];
+double DM_energy_broadening, DM_energy_broadening_upper, DM_energy_broadening_lower;
+double DM_tilde_Beta_upper, DM_tilde_Beta_lower;
+
+
+/*** subroutines ***/
+void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double *****iCDM);
+void Allocate_DM_for_LPQ();
+void Free_Arrays_DM_for_LPQ();
+
+
+double Band_DFT_Col_DMmu(
+                    int SCF_iter,
+                    int knum_i, int knum_j, int knum_k,
+                    int SpinP_switch,
+                    double *****nh,
+                    double *****ImNL,
+                    double ****CntOLP,
+                    double *****CDM,
+                    int *MP,
+                    int *order_GA,
+                    double *ko,
+                    double *koS,
+                    double ***EIGEN,
+                    double *H1,   
+                    double *S1,   
+                    double *CDM1,  
+                    dcomplex **EVec1,
+                    dcomplex *Ss,
+                    dcomplex *Cs,
+                    dcomplex *Hs,
+                    int ***k_op,
+                    int *T_k_op,
+                    int **T_k_ID,
+                    double *T_KGrids1,
+                    double *T_KGrids2,
+                    double *T_KGrids3,
+                    int myworld1,
+                    int *NPROCS_ID1,
+                    int *Comm_World1,
+                    int *NPROCS_WD1,
+                    int *Comm_World_StartID1,
+                    MPI_Comm *MPI_CommWD1,
+                    int myworld2,
+                    int *NPROCS_ID2,
+                    int *NPROCS_WD2,
+                    int *Comm_World2,
+                    int *Comm_World_StartID2,
+                    MPI_Comm *MPI_CommWD2);
+
+double Band_DFT_NonCol_DMmu(
+                    int SCF_iter,
+                    int knum_i, int knum_j, int knum_k,
+                    int SpinP_switch,
+                    double *****nh,
+                    double *****ImNL,
+                    double ****CntOLP,
+                    double *****CDM,
+                    double *****iCDM,
+                    int *MP,
+                    int *order_GA,
+                    double *ko,
+                    double *koS,
+                    double ***EIGEN,
+                    double *H1,   
+                    dcomplex *Hs11,   
+                    dcomplex *Hs22,   
+                    dcomplex *Hs12,   
+                    dcomplex **EVec1,
+                    dcomplex *Ss,
+                    dcomplex *Cs,
+                    dcomplex *Hs,
+                    dcomplex *Ss2,
+                    dcomplex *Cs2,
+                    dcomplex *Hs2,
+                    int ***k_op,
+                    int *T_k_op,
+                    int **T_k_ID,
+                    double *T_KGrids1,
+                    double *T_KGrids2,
+                    double *T_KGrids3,
+                    int myworld1,
+                    int *NPROCS_ID1,
+                    int *Comm_World1,
+                    int *NPROCS_WD1,
+                    int *Comm_World_StartID1,
+                    MPI_Comm *MPI_CommWD1,
+                    int myworld2,
+                    int *NPROCS_ID2,
+                    int *NPROCS_WD2,
+                    int *Comm_World2,
+                    int *Comm_World_StartID2,
+                    MPI_Comm *MPI_CommWD2);
+
+double Cluster_DFT_Col_DMmu(
+                   char *mode,
+                   int SCF_iter,
+                   int SpinP_switch,
+                   double **ko,
+                   double *****nh, 
+                   double ****CntOLP,
+                   double *****CDM,
+                   int myworld1,
+                   int *NPROCS_ID1,
+                   int *Comm_World1,
+                   int *NPROCS_WD1,
+                   int *Comm_World_StartID1,
+                   MPI_Comm *MPI_CommWD1,
+                   int *MP,
+                   int *is2,
+                   int *ie2,
+                   double *Ss,
+                   double *Cs,
+                   double *Hs,
+                   double *CDM1,
+                   int size_H1,
+                   int *SP_NZeros,
+                   int *SP_Atoms,
+                   double **EVec1,
+                   double *Work1);
+
+double Cluster_DFT_NonCol_DMmu(
+                   char *mode,
+                   int SCF_iter,
+                   int SpinP_switch,
+                   double *ko,
+                   double *****nh,
+                   double *****ImNL,
+                   double ****CntOLP,
+                   double *****CDM,
+                   double *****iCDM,
+                   int *MP,
+                   int *is2,
+                   int *ie2,
+                   double *Ss,
+                   double *Cs,
+                   double *rHs11,
+                   double *rHs12,
+                   double *rHs22,
+                   double *iHs11,
+                   double *iHs12,
+                   double *iHs22,
+                   dcomplex *Ss2,
+                   dcomplex *Hs2,
+                   dcomplex *Cs2,
+                   double *DM1,
+                   int size_H1, 
+                   dcomplex *EVec1,
+                   double *Work1);
+
+double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(
+    int calc_flag,
+    int myid,
+    int numprocs,
+    int size_H1,
+    int *is2,
+    int *ie2,
+    int *MP,
+    int n,
+    int n2,
+    double *****CDM,
+    double *****iDM0,
+    double *ko,
+    double *DM1,
+    double *Work1,
+    dcomplex *EVec1 );
