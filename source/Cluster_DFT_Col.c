@@ -34,6 +34,8 @@ typedef struct {
     int                initialized;
     int                device_id;
     int                matrix_dim;
+    int                transformed_s_valid;
+    int                transformed_s_dim;
     size_t             d_work_bytes;
     size_t             h_work_bytes;
     cudaStream_t       stream;
@@ -51,6 +53,7 @@ typedef struct {
 static ClusterColCuSolverCtx ClusterCol_cusolver_ctx = {0};
 
 static void Patch2Full_Cluster(double ****RH, double *H, int *MP);
+static void Patch2Full_Cluster_Owner(double ****RH, double *H, int *MP, int owns_dense);
 
 static void ClusterCol_AbortWithMessage(const char *message)
 {
@@ -123,6 +126,177 @@ static void ClusterCol_CuSolver_Init(void)
     ctx->device_id   = current_device;
 }
 
+static void ClusterCol_CuSolver_EnsureMatrixCapacity(int n)
+{
+    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    size_t dense_count;
+    size_t matrix_bytes;
+    size_t vector_bytes;
+
+    if (n<=0){
+        ClusterCol_AbortWithMessage("Invalid matrix size in Cluster_DFT_Col.c CuSolver workspace.");
+    }
+
+    ClusterCol_CuSolver_Init();
+
+    if (n<=ctx->matrix_dim) return;
+
+    if (ctx->d_S != NULL)    wait_cudafunc(cudaFree(ctx->d_S));
+    if (ctx->d_H != NULL)    wait_cudafunc(cudaFree(ctx->d_H));
+    if (ctx->d_tmp != NULL)  wait_cudafunc(cudaFree(ctx->d_tmp));
+    if (ctx->d_W != NULL)    wait_cudafunc(cudaFree(ctx->d_W));
+    if (ctx->d_info != NULL) wait_cudafunc(cudaFree(ctx->d_info));
+
+    dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"CuSolver dense matrix");
+    matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"CuSolver dense matrix bytes");
+    vector_bytes = ClusterCol_CheckedMulCount((size_t)n,sizeof(double),"CuSolver eigenvalue bytes");
+
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_S,matrix_bytes));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_H,matrix_bytes));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_tmp,matrix_bytes));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_W,vector_bytes));
+    wait_cudafunc(cudaMalloc((void**)&ctx->d_info,sizeof(int32_t)));
+
+    ctx->matrix_dim = n;
+    ctx->transformed_s_valid = 0;
+    ctx->transformed_s_dim = 0;
+}
+
+static void ClusterCol_CuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
+{
+    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+    cusolverEigRange_t range;
+    double vl = 0.0;
+    double vu = 0.0;
+    int64_t h_meig = 0;
+    size_t d_bytes = 0;
+    size_t h_bytes = 0;
+
+    if (n<=0 || maxn<=0 || n<maxn){
+        ClusterCol_AbortWithMessage("Invalid eigensolver dimensions in Cluster_DFT_Col.c.");
+    }
+
+    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+    range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
+
+    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->cusolver,NULL,jobz,range,uplo,n,
+                                               CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
+                                               CUDA_R_64F,ctx->d_W,CUDA_R_64F,&d_bytes,&h_bytes));
+
+    if (ctx->d_work_bytes<d_bytes){
+        if (ctx->d_work!=NULL) wait_cudafunc(cudaFree(ctx->d_work));
+        ctx->d_work = NULL;
+        if (0<d_bytes) wait_cudafunc(cudaMalloc((void**)&ctx->d_work,d_bytes));
+        ctx->d_work_bytes = d_bytes;
+    }
+
+    if (h_bytes==0){
+        if (ctx->h_work!=NULL) free(ctx->h_work);
+        ctx->h_work = NULL;
+        ctx->h_work_bytes = 0;
+    }
+    else if (ctx->h_work_bytes<h_bytes){
+        if (ctx->h_work!=NULL) free(ctx->h_work);
+        ctx->h_work = ClusterCol_MallocArray(h_bytes,1,"CuSolver host workspace");
+        ctx->h_work_bytes = h_bytes;
+    }
+}
+
+static void ClusterCol_CuSolver_EigenDevice(double *d_A, int n, int maxn, double *ko)
+{
+    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+    cusolverEigRange_t range;
+    double vl = 0.0;
+    double vu = 0.0;
+    int64_t h_meig = 0;
+    int32_t info = 0;
+    char msg[256];
+
+    ClusterCol_CuSolver_EnsureWorkspace(n,maxn,d_A);
+    range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
+
+    wait_cudafunc(cusolverDnXsyevdx(ctx->cusolver,NULL,jobz,range,uplo,n,
+                                    CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
+                                    CUDA_R_64F,ctx->d_W,CUDA_R_64F,
+                                    ctx->d_work,ctx->d_work_bytes,
+                                    ctx->h_work,ctx->h_work_bytes,ctx->d_info));
+    wait_cudafunc(cudaMemcpyAsync(&info,ctx->d_info,sizeof(int32_t),cudaMemcpyDeviceToHost,ctx->stream));
+    wait_cudafunc(cudaMemcpyAsync(ko,ctx->d_W,sizeof(double)*(size_t)maxn,cudaMemcpyDeviceToHost,ctx->stream));
+    wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+
+    if (info!=0){
+        snprintf(msg,sizeof(msg),"cusolverDnXsyevdx failed in Cluster_DFT_Col.c: info=%d",(int)info);
+        ClusterCol_AbortWithMessage(msg);
+    }
+}
+
+static void ClusterCol_CuSolver_PrepareTransformedS(int rebuild, int n, double *S, double *ko0)
+{
+    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"transformed overlap");
+    size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"transformed overlap bytes");
+    double *old_s;
+    double *new_s;
+
+    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+
+    if (rebuild || !(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
+        wait_cudafunc(cudaMemcpyAsync(ctx->d_S,S,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
+        ClusterCol_CuSolver_EigenDevice(ctx->d_S,n,n,ko0+1);
+
+        for (int l=1; l<=n; l++){
+            if (ko0[l]<1.0e-10) ko0[l] = 1.0e-10;
+            ko0[l] = 1.0/sqrt(ko0[l]);
+        }
+
+        wait_cudafunc(cudaMemcpyAsync(ctx->d_W,ko0+1,sizeof(double)*(size_t)n,cudaMemcpyHostToDevice,ctx->stream));
+
+        old_s = ctx->d_S;
+        new_s = ctx->d_tmp;
+        wait_cudafunc(cublasDdgmm(ctx->cublas,CUBLAS_SIDE_RIGHT,n,n,
+                                  old_s,n,ctx->d_W,1,new_s,n));
+
+        ctx->d_S = new_s;
+        ctx->d_tmp = old_s;
+        ctx->transformed_s_valid = 1;
+        ctx->transformed_s_dim = n;
+        wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+    }
+}
+
+static void ClusterCol_CuSolver_SolveHamiltonian(int n, int maxn, const double *H, double *ko_spin, double *C)
+{
+    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"Hamiltonian");
+    size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"Hamiltonian bytes");
+    size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"eigenvectors");
+    size_t evec_bytes = ClusterCol_CheckedMulCount(evec_count,sizeof(double),"eigenvector bytes");
+    double alpha = 1.0;
+    double beta = 0.0;
+
+    if (!(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
+        ClusterCol_AbortWithMessage("Transformed overlap is not ready in Cluster_DFT_Col.c.");
+    }
+
+    wait_cudafunc(cudaMemcpyAsync(ctx->d_H,H,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
+
+    wait_cudafunc(cublasDsymm(ctx->cublas,CUBLAS_SIDE_LEFT,CUBLAS_FILL_MODE_LOWER,n,n,
+                              &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,n));
+    wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_T,CUBLAS_OP_N,n,n,n,
+                              &alpha,ctx->d_S,n,ctx->d_tmp,n,&beta,ctx->d_H,n));
+
+    ClusterCol_CuSolver_EigenDevice(ctx->d_H,n,maxn,ko_spin+1);
+
+    wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
+                              &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,maxn));
+    wait_cudafunc(cudaMemcpyAsync(C,ctx->d_tmp,evec_bytes,cudaMemcpyDeviceToHost,ctx->stream));
+    wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+}
+
 static void ClusterCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
                                             double const * A, double const * B, double * C)
 {
@@ -143,6 +317,169 @@ static void ClusterCol_CuSolver_CheckInfo(const char *where, int info)
         snprintf(msg, sizeof(msg), "%s failed in Cluster_DFT_Col.c: info=%d", where, info);
         ClusterCol_AbortWithMessage(msg);
     }
+}
+
+static void ClusterCol_SetMaxNAndPartitions(int SCF_iter, const char *mode, double TZ, int n, int numprocs1,
+                                            int *MaxN, int *is2, int *ie2)
+{
+    int ID;
+    double av_num;
+    double lumos;
+
+    if (SCF_iter==1){
+        *MaxN = n;
+    }
+    else{
+        if      (strcasecmp(mode,"scf")==0)     lumos = (double)n*0.100;
+        else if (strcasecmp(mode,"dos")==0)     lumos = (double)n*0.200;
+        else if (strcasecmp(mode,"lcaoout")==0) lumos = (double)n*0.200;
+        else if (strcasecmp(mode,"xanes")==0)   lumos = (double)n*0.200;
+        else if (strcasecmp(mode,"diag")==0)    lumos = (double)n*0.200;
+        else                                    lumos = (double)n*0.200;
+
+        if (lumos<400.0) lumos = 400.0;
+        *MaxN = (int)((TZ-system_charge)/2.0) + (int)lumos;
+        if (n<*MaxN) *MaxN = n;
+        if (cal_partial_charge) *MaxN = n;
+    }
+
+    if (numprocs1<=*MaxN){
+        av_num = (double)(*MaxN)/(double)numprocs1;
+        for (ID=0; ID<numprocs1; ID++){
+            is2[ID] = (int)(av_num*(double)ID) + 1;
+            ie2[ID] = (int)(av_num*(double)(ID+1));
+        }
+        is2[0] = 1;
+        ie2[numprocs1-1] = *MaxN;
+    }
+    else{
+        for (ID=0; ID<*MaxN; ID++){
+            is2[ID] = ID + 1;
+            ie2[ID] = ID + 1;
+        }
+        for (ID=*MaxN; ID<numprocs1; ID++){
+            is2[ID] = 1;
+            ie2[ID] = 0;
+        }
+    }
+}
+
+static void ClusterCol_DistributeDenseEvec(int n, int maxn, int myid1, int numprocs1, int *is2, int *ie2,
+                                           MPI_Comm comm, const double *dense_evec, double *EVec1)
+{
+    const int root = 0;
+    const int tag = 996;
+    int max_count = 0;
+
+    if (myid1==root){
+        double *send_buf = NULL;
+
+        for (int id=0; id<numprocs1; id++){
+            int states = ie2[id] - is2[id] + 1;
+            int count;
+            if (states<0) states = 0;
+            count = n*states;
+            if (max_count<count) max_count = count;
+        }
+
+        if (0<max_count){
+            send_buf = (double*)ClusterCol_MallocArray((size_t)max_count,sizeof(double),
+                                                       "dense eigenvector send buffer");
+        }
+
+        for (int id=0; id<numprocs1; id++){
+            int states = ie2[id] - is2[id] + 1;
+            int count;
+            double *dst;
+
+            if (states<0) states = 0;
+            count = n*states;
+            if (count==0) continue;
+
+            dst = (id==root) ? EVec1 : send_buf;
+            for (int basis=0; basis<n; basis++){
+                const double *src_col = dense_evec + (size_t)basis*(size_t)maxn + (size_t)(is2[id]-1);
+                double *dst_col = dst + (size_t)basis*(size_t)states;
+                memcpy(dst_col,src_col,sizeof(double)*(size_t)states);
+            }
+
+            if (id!=root){
+                MPI_Send(send_buf,count,MPI_DOUBLE,id,tag,comm);
+            }
+        }
+
+        free(send_buf);
+    }
+    else{
+        int states = ie2[myid1] - is2[myid1] + 1;
+        int count;
+        MPI_Status stat;
+
+        if (states<0) states = 0;
+        count = n*states;
+        if (0<count){
+            MPI_Recv(EVec1,count,MPI_DOUBLE,root,tag,comm,&stat);
+        }
+    }
+}
+
+static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, double **ko,
+                                             double *****nh, double ****CntOLP,
+                                             int numprocs0, int myid0, int myworld1,
+                                             int numprocs1, int myid1, MPI_Comm *MPI_CommWD1,
+                                             int *MP, int *is2, int *ie2,
+                                             int n, int MaxN, double **EVec1)
+{
+    int owns_dense = (myid1==0);
+    int spin_start = 0;
+    int spin_end = SpinP_switch;
+    int rebuild_s = (SCF_iter==1);
+    double *S = NULL;
+    double *H = NULL;
+    double *C = NULL;
+
+    if (SpinP_switch==1 && numprocs0!=1){
+        ClusterCol_AbortWithMessage("Root dense CuSolver path is not enabled for split spin worlds in Cluster_DFT_Col.c.");
+    }
+
+    if (owns_dense){
+        size_t nn = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"root dense matrix");
+        size_t nmax = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,"root dense eigenvectors");
+
+        H = (double*)ClusterCol_MallocArray(nn,sizeof(double),"root dense Hamiltonian");
+        C = (double*)ClusterCol_MallocArray(nmax,sizeof(double),"root dense eigenvectors");
+
+        if (rebuild_s || !(ClusterCol_cusolver_ctx.transformed_s_valid &&
+                           ClusterCol_cusolver_ctx.transformed_s_dim==n)){
+            S = (double*)ClusterCol_MallocArray(nn,sizeof(double),"root dense overlap");
+            rebuild_s = 1;
+        }
+    }
+
+    MPI_Bcast(&rebuild_s,1,MPI_INT,0,MPI_CommWD1[myworld1]);
+
+    if (rebuild_s){
+        Patch2Full_Cluster_Owner(CntOLP,S,MP,owns_dense);
+        if (owns_dense){
+            ClusterCol_CuSolver_PrepareTransformedS(1,n,S,ko[0]);
+        }
+    }
+
+    for (int spin=spin_start; spin<=spin_end; spin++){
+        Patch2Full_Cluster_Owner(nh[spin],H,MP,owns_dense);
+        if (owns_dense){
+            ClusterCol_CuSolver_SolveHamiltonian(n,MaxN,H,ko[spin],C);
+        }
+        ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+                                       MPI_CommWD1[myworld1],
+                                       owns_dense ? C : NULL,EVec1[spin]);
+    }
+
+    free(S);
+    free(C);
+    free(H);
+
+    (void)myid0;
 }
 
 static void ClusterCol_CuSolverDensePath(
@@ -479,8 +816,8 @@ double Cluster_DFT_Col(
 
   int ID0,IDS,IDR,Max_Num_Snd_EV,Max_Num_Rcv_EV;
   int *Num_Snd_EV,*Num_Rcv_EV;
-  int *index_Snd_i,*index_Snd_j,*index_Rcv_i,*index_Rcv_j;
-  double *EVec_Snd,*EVec_Rcv;
+  int *index_Snd_i=NULL,*index_Snd_j=NULL,*index_Rcv_i=NULL,*index_Rcv_j=NULL;
+  double *EVec_Snd=NULL,*EVec_Rcv=NULL;
   MPI_Status stat;
   MPI_Request request;
 
@@ -585,6 +922,16 @@ double Cluster_DFT_Col(
       is1[ID] =  1;
       ie1[ID] = -2;
     }
+  }
+
+  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n &&
+      !(SpinP_switch==1 && numprocs0!=1)){
+    ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
+    firsttime = 0;
+    ClusterCol_CuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
+                                     numprocs0,myid0,myworld1,numprocs1,myid1,
+                                     MPI_CommWD1,MP,is2,ie2,n,MaxN,EVec1);
+    goto diagonalize_finished;
   }
 
   /****************************************************
@@ -4921,6 +5268,146 @@ void Patch2Full_Cluster(double ****RH, double *H, int *MP)
   }
 
   /* freeing of arrays */
+
+  free(My_NZeros);
+  free(My_Matomnum);
+  free(is1);
+  free(ie1);
+  free(is2);
+  free(order_GA);
+  free(H1);
+}
+
+static void Patch2Full_Cluster_Owner(double ****RH, double *H, int *MP, int owns_dense)
+{
+  int i,j,k;
+  int MA_AN,GA_AN,LB_AN,GB_AN,AN;
+  int wanA,wanB,tnoA,tnoB,Anum,Bnum,NUM;
+  int num,tnum;
+  int ID,myid,numprocs;
+  int *My_NZeros;
+  int *is1,*ie1,*is2;
+  int *My_Matomnum,*order_GA;
+  double *H1;
+
+  MPI_Comm_size(mpi_comm_level1,&numprocs);
+  MPI_Comm_rank(mpi_comm_level1,&myid);
+  MPI_Barrier(mpi_comm_level1);
+
+  My_NZeros = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Full My_NZeros");
+  My_Matomnum = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Full My_Matomnum");
+  is1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Full is1");
+  ie1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Full ie1");
+  is2 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Full is2");
+  order_GA = (int*)ClusterCol_MallocArray((size_t)(atomnum+2),sizeof(int),"Patch2Full order_GA");
+
+  My_NZeros[myid] = 0;
+  for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
+    GA_AN = M2G[MA_AN];
+    wanA = WhatSpecies[GA_AN];
+    tnoA = Spe_Total_CNO[wanA];
+
+    num = 0;
+    for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+      GB_AN = natn[GA_AN][LB_AN];
+      wanB = WhatSpecies[GB_AN];
+      tnoB = Spe_Total_CNO[wanB];
+      num += tnoB;
+    }
+
+    My_NZeros[myid] += tnoA*num;
+  }
+
+  for (ID=0; ID<numprocs; ID++){
+    MPI_Bcast(&My_NZeros[ID],1,MPI_INT,ID,mpi_comm_level1);
+  }
+
+  tnum = 0;
+  for (ID=0; ID<numprocs; ID++) tnum += My_NZeros[ID];
+
+  is1[0] = 0;
+  ie1[0] = My_NZeros[0] - 1;
+  for (ID=1; ID<numprocs; ID++){
+    is1[ID] = ie1[ID-1] + 1;
+    ie1[ID] = is1[ID] + My_NZeros[ID] - 1;
+  }
+
+  My_Matomnum[myid] = Matomnum;
+  for (ID=0; ID<numprocs; ID++){
+    MPI_Bcast(&My_Matomnum[ID],1,MPI_INT,ID,mpi_comm_level1);
+  }
+
+  is2[0] = 1;
+  for (ID=1; ID<numprocs; ID++){
+    is2[ID] = is2[ID-1] + My_Matomnum[ID-1];
+  }
+
+  for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
+    order_GA[is2[myid]+MA_AN-1] = M2G[MA_AN];
+  }
+
+  for (ID=0; ID<numprocs; ID++){
+    MPI_Bcast(&order_GA[is2[ID]],My_Matomnum[ID],MPI_INT,ID,mpi_comm_level1);
+  }
+
+  Anum = 1;
+  for (i=1; i<=atomnum; i++){
+    MP[i] = Anum;
+    wanA = WhatSpecies[i];
+    Anum += Spe_Total_CNO[wanA];
+  }
+  NUM = Anum - 1;
+
+  H1 = (double*)ClusterCol_MallocArray((size_t)(tnum+1),sizeof(double),"Patch2Full sparse buffer");
+
+  k = is1[myid];
+  for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
+    GA_AN = M2G[MA_AN];
+    wanA = WhatSpecies[GA_AN];
+    tnoA = Spe_Total_CNO[wanA];
+    for (i=0; i<tnoA; i++){
+      for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+        GB_AN = natn[GA_AN][LB_AN];
+        wanB = WhatSpecies[GB_AN];
+        tnoB = Spe_Total_CNO[wanB];
+        for (j=0; j<tnoB; j++){
+          H1[k] = RH[MA_AN][LB_AN][i][j];
+          k++;
+        }
+      }
+    }
+  }
+
+  for (ID=0; ID<numprocs; ID++){
+    k = is1[ID];
+    MPI_Bcast(&H1[k], My_NZeros[ID], MPI_DOUBLE, ID, mpi_comm_level1);
+  }
+
+  if (owns_dense){
+    for (i=0; i<NUM*NUM; i++) H[i] = 0.0;
+
+    k = 0;
+    for (AN=1; AN<=atomnum; AN++){
+      GA_AN = order_GA[AN];
+      wanA = WhatSpecies[GA_AN];
+      tnoA = Spe_Total_CNO[wanA];
+      Anum = MP[GA_AN];
+
+      for (i=0; i<tnoA; i++){
+        for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+          GB_AN = natn[GA_AN][LB_AN];
+          wanB = WhatSpecies[GB_AN];
+          tnoB = Spe_Total_CNO[wanB];
+          Bnum = MP[GB_AN];
+
+          for (j=0; j<tnoB; j++){
+            H[(size_t)NUM*(size_t)(Bnum+j-1) + (size_t)(Anum+i-1)] += H1[k];
+            k++;
+          }
+        }
+      }
+    }
+  }
 
   free(My_NZeros);
   free(My_Matomnum);
