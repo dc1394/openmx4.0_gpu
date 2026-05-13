@@ -137,13 +137,12 @@ int32_t cusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
 
 int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
 {
-    int32_t * pinfo = (int32_t *)malloc(sizeof(int32_t));
+    int32_t info = 0;
 
     /* step 1: create cusolver handle, bind a stream */
-#pragma acc data      copy(pinfo[0 : 1])
 #pragma acc data      present(A[0 : m * m])
-#pragma acc data      deviceptr(W)
-#pragma acc host_data use_device(A, W, pinfo)
+#pragma acc data      present(W[0 : MaxN])
+#pragma acc host_data use_device(A, W)
     {
         cusolverDnHandle_t cusolverH = NULL;
 
@@ -172,6 +171,7 @@ int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
 
         size_t workspaceInBytesOnDevice = 0; /* size of workspace */
         size_t workspaceInBytesOnHost   = 0; /* size of workspace */
+        int32_t *d_info = NULL;
 
         wait_cudafunc(cusolverDnXsyevdx_bufferSize(cusolverH, NULL, jobz, range, uplo, m, CUDA_R_64F, A, lda, &vl, &vu,
                                                    1L, MaxN, &h_meig, CUDA_R_64F, W, CUDA_R_64F,
@@ -180,6 +180,7 @@ int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
         void * d_work = NULL; /* device workspace */
 
         wait_cudafunc(cudaMalloc((void **)(&d_work), workspaceInBytesOnDevice));
+        wait_cudafunc(cudaMalloc((void **)(&d_info), sizeof(int32_t)));
 
         void * h_work = NULL; /* host workspace for */
 
@@ -192,27 +193,24 @@ int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
         //  step 4: compute spectrum
         wait_cudafunc(cusolverDnXsyevdx(cusolverH, NULL, jobz, range, uplo, m, CUDA_R_64F, A, lda, &vl, &vu, 1L, MaxN,
                                         &h_meig, CUDA_R_64F, W, CUDA_R_64F, d_work, workspaceInBytesOnDevice, h_work,
-                                        workspaceInBytesOnHost, pinfo));
+                                        workspaceInBytesOnHost, d_info));
 
         // wait_cudafunc(cudaMemcpyAsync(A, d_A, sizeof(double) * lda * m, cudaMemcpyDeviceToHost,
         //                            stream));
         // wait_cudafunc(cudaMemcpyAsync(W, d_W, sizeof(double) * m, cudaMemcpyDeviceToHost,
         //                            stream));
-        // wait_cudafunc(cudaMemcpyAsync(&pinfo, d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+        wait_cudafunc(cudaMemcpyAsync(&info, d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
         wait_cudafunc(cudaStreamSynchronize(stream));
         /* free resources */
         // wait_cudafunc(cudaFree(d_A));
         // wait_cudafunc(cudaFree(d_W));
-        // wait_cudafunc(cudaFree(d_info));
+        wait_cudafunc(cudaFree(d_info));
         wait_cudafunc(cudaFree(d_work));
         free(h_work);
 
         wait_cudafunc(cusolverDnDestroy(cusolverH));
         wait_cudafunc(cudaStreamDestroy(stream));
     }
-
-    int32_t const info = *pinfo;
-    free(pinfo);
 
     return info;
 }
@@ -308,8 +306,8 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
     int64_t h_meig = 0;
     // int32_t* d_info = NULL;
 
-    int32_t *pinfo, info;
-    pinfo = (int32_t *)malloc(sizeof(int32_t));
+    int32_t info = 0;
+    int32_t *d_info = NULL;
 
     size_t workspaceInBytesOnDevice = 0;    /* size of workspace */
     void * d_work                   = NULL; /* device workspace */
@@ -317,10 +315,9 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
     void * h_work                   = NULL; /* host workspace for */
 
     /* step 1: create cusolver handle, bind a stream */
-#pragma acc data      copy(pinfo[0 : 1])
 #pragma acc data      present(A[0 : m * m])
-#pragma acc data      deviceptr(W)
-#pragma acc host_data use_device(A, W, pinfo)
+#pragma acc data      present(W[0 : MaxN])
+#pragma acc host_data use_device(A, W)
     {
         wait_cudafunc(cusolverDnCreate(&cusolverH));
         wait_cudafunc(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
@@ -348,6 +345,7 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
                                                    &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
         wait_cudafunc(cudaMallocAsync((void **)(&d_work), workspaceInBytesOnDevice, stream));
+        wait_cudafunc(cudaMallocAsync((void **)(&d_info), sizeof(int32_t), stream));
 
         h_work = malloc(workspaceInBytesOnHost);
         if (!h_work) {
@@ -358,7 +356,7 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
         // step 4: compute spectrum
         wait_cudafunc(cusolverDnXsyevdx(cusolverH, NULL, jobz, range, uplo, m, CUDA_C_64F, A, lda, &vl, &vu, 1L, MaxN,
                                         &h_meig, CUDA_R_64F, W, CUDA_C_64F, d_work, workspaceInBytesOnDevice, h_work,
-                                        workspaceInBytesOnHost, pinfo));
+                                        workspaceInBytesOnHost, d_info));
 
         // wait_cudafunc(cudaMemcpyAsync(A, d_A, sizeof(cuDoubleComplex) * lda * m, cudaMemcpyDeviceToHost,
         //     stream));
@@ -366,7 +364,7 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
         // wait_cudafunc(cudaMemcpyAsync(W, d_W, sizeof(double) * m, cudaMemcpyDeviceToHost,
         //     stream));
 
-        // wait_cudafunc(cudaMemcpyAsync(&info, d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+        wait_cudafunc(cudaMemcpyAsync(&info, d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
 
         /* free resources */
         // wait_cudafunc(cudaFreeAsync(d_A, stream));
@@ -375,6 +373,7 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
         wait_cudafunc(cudaStreamSynchronize(stream));
 
         wait_cudafunc(cudaFree(d_work));
+        wait_cudafunc(cudaFree(d_info));
 
         if (h_work != NULL) {
             free(h_work);
@@ -383,9 +382,6 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
         wait_cudafunc(cusolverDnDestroy(cusolverH));
         wait_cudafunc(cudaStreamDestroy(stream));
     }
-
-    info = *pinfo;
-    free(pinfo);
 
     return info;
 }

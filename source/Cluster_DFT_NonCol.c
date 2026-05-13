@@ -1,7 +1,7 @@
 /**********************************************************************
   Cluster_DFT_NonCol.c:
 
-     Cluster_DFT_NonCol.c is a subroutine to perform non-collinear 
+     Cluster_DFT_NonCol.c is a subroutine to perform non-collinear
      cluster calculations.
 
   Log of Cluster_DFT_NonCol.c:
@@ -15,6 +15,7 @@
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
+#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <openacc.h>
@@ -23,6 +24,491 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+
+#define  measure_time   0
+
+static void ClusterNonCol_AbortWithMessage(const char *message)
+{
+    fprintf(stderr, "%s\n", message);
+    fflush(stderr);
+    MPI_Abort(mpi_comm_level1, 1);
+}
+
+static size_t ClusterNonCol_CheckedMulCount(size_t a, size_t b, const char *label)
+{
+    if (a != 0 && b > SIZE_MAX / a) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Dimension overflow in Cluster_DFT_NonCol.c: %s", label);
+        ClusterNonCol_AbortWithMessage(msg);
+    }
+    return a * b;
+}
+
+static size_t ClusterNonCol_CheckedAddCount(size_t a, size_t b, const char *label)
+{
+    if (b > SIZE_MAX - a) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Count overflow in Cluster_DFT_NonCol.c: %s", label);
+        ClusterNonCol_AbortWithMessage(msg);
+    }
+    return a + b;
+}
+
+static void *ClusterNonCol_MallocArray(size_t count, size_t elem_size, const char *label)
+{
+    size_t bytes = ClusterNonCol_CheckedMulCount(count, elem_size, label);
+    void *ptr = malloc((bytes == 0) ? 1 : bytes);
+
+    if (ptr == NULL) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Out of memory in Cluster_DFT_NonCol.c: %s (%zu bytes)", label, bytes);
+        ClusterNonCol_AbortWithMessage(msg);
+    }
+    return ptr;
+}
+
+typedef struct
+{
+    int                valid;
+    int                n;
+    int                entry_count;
+    unsigned long long fingerprint;
+    int               *basis0;
+    int               *basis1;
+} ClusterNonColDMEntryCache;
+
+typedef struct
+{
+    int      max_state_capacity;
+    size_t   dm_buffer_elems;
+    double  *occ;
+    double  *occ_e;
+    double  *dm_buffer;
+} ClusterNonColRootDMWorkspace;
+
+static ClusterNonColDMEntryCache    ClusterNonCol_dm_entry_cache = {0};
+static ClusterNonColRootDMWorkspace ClusterNonCol_root_dm_workspace = {0};
+
+static void ClusterNonCol_DMEntryCache_Reset(void)
+{
+    free(ClusterNonCol_dm_entry_cache.basis0);
+    free(ClusterNonCol_dm_entry_cache.basis1);
+    memset(&ClusterNonCol_dm_entry_cache, 0, sizeof(ClusterNonCol_dm_entry_cache));
+}
+
+static unsigned long long ClusterNonCol_DMEntryFingerprint(int *MP, int n)
+{
+    unsigned long long h = 1469598103934665603ULL;
+
+#define CLUSTERNONCOL_HASH_INT(v) \
+    do { \
+        h ^= (unsigned long long)(unsigned int)(v); \
+        h *= 1099511628211ULL; \
+    } while (0)
+
+    CLUSTERNONCOL_HASH_INT(n);
+    CLUSTERNONCOL_HASH_INT(atomnum);
+
+    for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
+        int wanA = WhatSpecies[GA_AN];
+
+        CLUSTERNONCOL_HASH_INT(GA_AN);
+        CLUSTERNONCOL_HASH_INT(MP[GA_AN]);
+        CLUSTERNONCOL_HASH_INT(wanA);
+        CLUSTERNONCOL_HASH_INT(Spe_Total_CNO[wanA]);
+        CLUSTERNONCOL_HASH_INT(FNAN[GA_AN]);
+
+        for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            int GB_AN = natn[GA_AN][LB_AN];
+            int wanB  = WhatSpecies[GB_AN];
+
+            CLUSTERNONCOL_HASH_INT(GB_AN);
+            CLUSTERNONCOL_HASH_INT(wanB);
+            CLUSTERNONCOL_HASH_INT(Spe_Total_CNO[wanB]);
+            CLUSTERNONCOL_HASH_INT(MP[GB_AN]);
+        }
+    }
+
+#undef CLUSTERNONCOL_HASH_INT
+
+    return h;
+}
+
+static void ClusterNonCol_DMEntryCache_Ensure(int *MP, int n)
+{
+    ClusterNonColDMEntryCache *cache = &ClusterNonCol_dm_entry_cache;
+    unsigned long long fingerprint = ClusterNonCol_DMEntryFingerprint(MP, n);
+    int entry_count = 0;
+
+    if (cache->valid && cache->n == n && cache->fingerprint == fingerprint) {
+        return;
+    }
+
+    ClusterNonCol_DMEntryCache_Reset();
+
+    for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
+        int tnoA = Spe_Total_CNO[WhatSpecies[GA_AN]];
+
+        for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            int GB_AN = natn[GA_AN][LB_AN];
+            int tnoB  = Spe_Total_CNO[WhatSpecies[GB_AN]];
+            entry_count += tnoA * tnoB;
+        }
+    }
+
+    cache->basis0 = (int *)ClusterNonCol_MallocArray((size_t)(entry_count + 1), sizeof(int), "DM basis0 cache");
+    cache->basis1 = (int *)ClusterNonCol_MallocArray((size_t)(entry_count + 1), sizeof(int), "DM basis1 cache");
+
+    entry_count = 0;
+    for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
+        int tnoA = Spe_Total_CNO[WhatSpecies[GA_AN]];
+        int Anum = MP[GA_AN];
+
+        for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            int GB_AN = natn[GA_AN][LB_AN];
+            int tnoB  = Spe_Total_CNO[WhatSpecies[GB_AN]];
+            int Bnum  = MP[GB_AN];
+
+            for (int i = 0; i < tnoA; i++) {
+                int ibasis = Anum + i - 1;
+
+                for (int j = 0; j < tnoB; j++) {
+                    cache->basis0[entry_count] = ibasis;
+                    cache->basis1[entry_count] = Bnum + j - 1;
+                    entry_count++;
+                }
+            }
+        }
+    }
+
+    cache->valid       = 1;
+    cache->n           = n;
+    cache->fingerprint = fingerprint;
+    cache->entry_count = entry_count;
+}
+
+static void ClusterNonCol_RootDMWorkspace_Reset(void)
+{
+    free(ClusterNonCol_root_dm_workspace.occ);
+    free(ClusterNonCol_root_dm_workspace.occ_e);
+    free(ClusterNonCol_root_dm_workspace.dm_buffer);
+    memset(&ClusterNonCol_root_dm_workspace, 0, sizeof(ClusterNonCol_root_dm_workspace));
+}
+
+static void ClusterNonCol_RootDMWorkspace_Ensure(int max_state, size_t dm_buffer_elems)
+{
+    ClusterNonColRootDMWorkspace *ws = &ClusterNonCol_root_dm_workspace;
+
+    if (max_state <= ws->max_state_capacity && dm_buffer_elems <= ws->dm_buffer_elems) {
+        return;
+    }
+
+    ClusterNonCol_RootDMWorkspace_Reset();
+
+    ws->occ       = (double *)ClusterNonCol_MallocArray((size_t)max_state, sizeof(double), "root DM occupations");
+    ws->occ_e     = (double *)ClusterNonCol_MallocArray((size_t)max_state, sizeof(double), "root DM energy occupations");
+    ws->dm_buffer = (double *)ClusterNonCol_MallocArray(dm_buffer_elems, sizeof(double), "root DM buffer");
+
+    ws->max_state_capacity = max_state;
+    ws->dm_buffer_elems    = dm_buffer_elems;
+}
+
+static int ClusterNonCol_PrecomputeOccupations(int kmin, int kmax, const double *ko, double *occ, double *occ_e)
+{
+    int nk = 0;
+    double max_x = 60.0;
+
+    for (int local_k = 0, global_k = kmin; global_k <= kmax; local_k++, global_k++) {
+        double x = (ko[global_k] - ChemP) * Beta;
+        double weight;
+
+        if (x <= -max_x) x = -max_x;
+        if (max_x <= x)  x =  max_x;
+
+        weight = FermiFunc_NC(x, global_k);
+        occ[local_k]   = weight;
+        occ_e[local_k] = weight * ko[global_k];
+
+        if (1.0e-13 < weight) {
+            nk = local_k + 1;
+        }
+    }
+
+    return nk;
+}
+
+static void ClusterNonCol_StoreDMBuffer(int myid, int size_H1, int *MP, double *****CDM, double *****iDM0,
+                                        const double *dm_buffer)
+{
+    const double *rDM11 = dm_buffer;
+    const double *rDM22 = dm_buffer + (size_t)size_H1;
+    const double *rDM12 = dm_buffer + (size_t)size_H1 * 2;
+    const double *iDM12 = dm_buffer + (size_t)size_H1 * 3;
+    const double *iDM11 = dm_buffer + (size_t)size_H1 * 4;
+    const double *iDM22 = dm_buffer + (size_t)size_H1 * 5;
+    size_t p = 0;
+
+    for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
+        int MA_AN = F_G2M[GA_AN];
+        int tnoA  = Spe_Total_CNO[WhatSpecies[GA_AN]];
+        int ID    = G2ID[GA_AN];
+
+        for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            int GB_AN = natn[GA_AN][LB_AN];
+            int tnoB  = Spe_Total_CNO[WhatSpecies[GB_AN]];
+
+            if (myid == ID) {
+                for (int i = 0; i < tnoA; i++) {
+                    for (int j = 0; j < tnoB; j++, p++) {
+                        CDM[0][MA_AN][LB_AN][i][j]  = rDM11[p];
+                        CDM[1][MA_AN][LB_AN][i][j]  = rDM22[p];
+                        CDM[2][MA_AN][LB_AN][i][j]  = rDM12[p];
+                        CDM[3][MA_AN][LB_AN][i][j]  = iDM12[p];
+                        iDM0[0][MA_AN][LB_AN][i][j] = iDM11[p];
+                        iDM0[1][MA_AN][LB_AN][i][j] = iDM22[p];
+                    }
+                }
+            }
+            else {
+                p += (size_t)tnoA * (size_t)tnoB;
+            }
+        }
+    }
+}
+
+static void ClusterNonCol_StoreEDMBuffer(int myid, int size_H1, int *MP, double *****EDM, const double *edm_buffer)
+{
+    const double *rEDM11 = edm_buffer;
+    const double *rEDM22 = edm_buffer + (size_t)size_H1;
+    const double *rEDM12 = edm_buffer + (size_t)size_H1 * 2;
+    const double *iEDM12 = edm_buffer + (size_t)size_H1 * 3;
+    size_t p = 0;
+
+    for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
+        int MA_AN = F_G2M[GA_AN];
+        int tnoA  = Spe_Total_CNO[WhatSpecies[GA_AN]];
+        int ID    = G2ID[GA_AN];
+
+        for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            int GB_AN = natn[GA_AN][LB_AN];
+            int tnoB  = Spe_Total_CNO[WhatSpecies[GB_AN]];
+
+            if (myid == ID) {
+                for (int i = 0; i < tnoA; i++) {
+                    for (int j = 0; j < tnoB; j++, p++) {
+                        EDM[0][MA_AN][LB_AN][i][j] = rEDM11[p];
+                        EDM[1][MA_AN][LB_AN][i][j] = rEDM22[p];
+                        EDM[2][MA_AN][LB_AN][i][j] = rEDM12[p];
+                        EDM[3][MA_AN][LB_AN][i][j] = iEDM12[p];
+                    }
+                }
+            }
+            else {
+                p += (size_t)tnoA * (size_t)tnoB;
+            }
+        }
+    }
+}
+
+static double ClusterNonCol_CalcDMRootDense_OpenACC(int myid, int size_H1, int *MP, int n, int n2, int max_state,
+                                                    double *****CDM, double *****iDM0, double *****EDM, double *ko,
+                                                    const dcomplex *dense_evec, int calc_edm)
+{
+    ClusterNonColRootDMWorkspace *ws = &ClusterNonCol_root_dm_workspace;
+    const int dm_components = calc_edm ? 10 : 6;
+    const int dm_chunk_size = 131072;
+    size_t dm_elems = (size_t)size_H1 * (size_t)dm_components;
+    size_t evec_count = (size_t)n2 * (size_t)n2;
+    int nk_occ = 0;
+    double stime, etime;
+
+    if ((size_t)INT_MAX < dm_elems) {
+        ClusterNonCol_AbortWithMessage("Root DM buffer exceeds MPI count limit in Cluster_DFT_NonCol.c.");
+    }
+
+    ClusterNonCol_RootDMWorkspace_Ensure(max_state, dm_elems);
+
+    dtime(&stime);
+    memset(ws->dm_buffer, 0, sizeof(double) * dm_elems);
+
+    if (myid == Host_ID) {
+        ClusterNonColDMEntryCache *cache;
+        const double *occ;
+        const double *occ_e;
+        double *rDM11;
+        double *rDM22;
+        double *rDM12;
+        double *iDM12;
+        double *iDM11;
+        double *iDM22;
+        double *rEDM11;
+        double *rEDM22;
+        double *rEDM12;
+        double *iEDM12;
+
+        ClusterNonCol_DMEntryCache_Ensure(MP, n);
+        cache = &ClusterNonCol_dm_entry_cache;
+        if (cache->entry_count != size_H1) {
+            ClusterNonCol_AbortWithMessage("DM entry cache size mismatch in Cluster_DFT_NonCol.c.");
+        }
+
+        nk_occ = ClusterNonCol_PrecomputeOccupations(1, max_state, ko, ws->occ, ws->occ_e);
+        occ = ws->occ;
+        occ_e = ws->occ_e;
+
+        rDM11  = ws->dm_buffer;
+        rDM22  = ws->dm_buffer + (size_t)size_H1;
+        rDM12  = ws->dm_buffer + (size_t)size_H1 * 2;
+        iDM12  = ws->dm_buffer + (size_t)size_H1 * 3;
+        iDM11  = ws->dm_buffer + (size_t)size_H1 * 4;
+        iDM22  = ws->dm_buffer + (size_t)size_H1 * 5;
+        rEDM11 = ws->dm_buffer + (size_t)size_H1 * 6;
+        rEDM22 = ws->dm_buffer + (size_t)size_H1 * 7;
+        rEDM12 = ws->dm_buffer + (size_t)size_H1 * 8;
+        iEDM12 = ws->dm_buffer + (size_t)size_H1 * 9;
+
+        if (0 < nk_occ) {
+#pragma acc data present(dense_evec[0 : evec_count]) copyin(occ[0 : nk_occ])
+            {
+                if (calc_edm) {
+#pragma acc data copyin(occ_e[0 : nk_occ])
+                    {
+                        for (int offset = 0; offset < cache->entry_count; offset += dm_chunk_size) {
+                            const int chunk_count =
+                                (cache->entry_count - offset < dm_chunk_size) ? (cache->entry_count - offset) : dm_chunk_size;
+                            const int *basis0_chunk = cache->basis0 + offset;
+                            const int *basis1_chunk = cache->basis1 + offset;
+                            double *rDM11_chunk = rDM11 + offset;
+                            double *rDM22_chunk = rDM22 + offset;
+                            double *rDM12_chunk = rDM12 + offset;
+                            double *iDM12_chunk = iDM12 + offset;
+                            double *iDM11_chunk = iDM11 + offset;
+                            double *iDM22_chunk = iDM22 + offset;
+                            double *rEDM11_chunk = rEDM11 + offset;
+                            double *rEDM22_chunk = rEDM22 + offset;
+                            double *rEDM12_chunk = rEDM12 + offset;
+                            double *iEDM12_chunk = iEDM12 + offset;
+
+#pragma acc data copyin(basis0_chunk[0 : chunk_count], basis1_chunk[0 : chunk_count]) \
+    copyout(rDM11_chunk[0 : chunk_count], rDM22_chunk[0 : chunk_count], rDM12_chunk[0 : chunk_count], \
+            iDM12_chunk[0 : chunk_count], iDM11_chunk[0 : chunk_count], iDM22_chunk[0 : chunk_count], \
+            rEDM11_chunk[0 : chunk_count], rEDM22_chunk[0 : chunk_count], rEDM12_chunk[0 : chunk_count], \
+            iEDM12_chunk[0 : chunk_count])
+                            {
+#pragma acc parallel loop gang present(dense_evec[0 : evec_count], occ[0 : nk_occ], occ_e[0 : nk_occ])
+                                for (int p = 0; p < chunk_count; p++) {
+                                    const int ia = basis0_chunk[p];
+                                    const int ib = basis1_chunk[p];
+                                    double dm11_r = 0.0, dm22_r = 0.0, dm12_r = 0.0, dm12_i = 0.0;
+                                    double dm11_i = 0.0, dm22_i = 0.0;
+                                    double edm11_r = 0.0, edm22_r = 0.0, edm12_r = 0.0, edm12_i = 0.0;
+
+#pragma acc loop seq
+                                    for (int k = 0; k < nk_occ; k++) {
+                                        const double w  = occ[k];
+                                        const double ew = occ_e[k];
+                                        const dcomplex va_up = dense_evec[(size_t)ia * (size_t)n2 + (size_t)k];
+                                        const dcomplex vb_up = dense_evec[(size_t)ib * (size_t)n2 + (size_t)k];
+                                        const dcomplex va_dn = dense_evec[(size_t)(ia + n) * (size_t)n2 + (size_t)k];
+                                        const dcomplex vb_dn = dense_evec[(size_t)(ib + n) * (size_t)n2 + (size_t)k];
+                                        const double re11 = va_up.r * vb_up.r + va_up.i * vb_up.i;
+                                        const double im11 = va_up.r * vb_up.i - va_up.i * vb_up.r;
+                                        const double re22 = va_dn.r * vb_dn.r + va_dn.i * vb_dn.i;
+                                        const double im22 = va_dn.r * vb_dn.i - va_dn.i * vb_dn.r;
+                                        const double re12 = va_up.r * vb_dn.r + va_up.i * vb_dn.i;
+                                        const double im12 = va_up.r * vb_dn.i - va_up.i * vb_dn.r;
+
+                                        dm11_r  += w  * re11;
+                                        dm22_r  += w  * re22;
+                                        dm12_r  += w  * re12;
+                                        dm12_i  += w  * im12;
+                                        dm11_i  += w  * im11;
+                                        dm22_i  += w  * im22;
+                                        edm11_r += ew * re11;
+                                        edm22_r += ew * re22;
+                                        edm12_r += ew * re12;
+                                        edm12_i += ew * im12;
+                                    }
+
+                                    rDM11_chunk[p]  = dm11_r;
+                                    rDM22_chunk[p]  = dm22_r;
+                                    rDM12_chunk[p]  = dm12_r;
+                                    iDM12_chunk[p]  = dm12_i;
+                                    iDM11_chunk[p]  = dm11_i;
+                                    iDM22_chunk[p]  = dm22_i;
+                                    rEDM11_chunk[p] = edm11_r;
+                                    rEDM22_chunk[p] = edm22_r;
+                                    rEDM12_chunk[p] = edm12_r;
+                                    iEDM12_chunk[p] = edm12_i;
+                                }
+                            }
+                        }
+                    }
+                }
+                else {
+                    for (int offset = 0; offset < cache->entry_count; offset += dm_chunk_size) {
+                        const int chunk_count =
+                            (cache->entry_count - offset < dm_chunk_size) ? (cache->entry_count - offset) : dm_chunk_size;
+                        const int *basis0_chunk = cache->basis0 + offset;
+                        const int *basis1_chunk = cache->basis1 + offset;
+                        double *rDM11_chunk = rDM11 + offset;
+                        double *rDM22_chunk = rDM22 + offset;
+                        double *rDM12_chunk = rDM12 + offset;
+                        double *iDM12_chunk = iDM12 + offset;
+                        double *iDM11_chunk = iDM11 + offset;
+                        double *iDM22_chunk = iDM22 + offset;
+
+#pragma acc data copyin(basis0_chunk[0 : chunk_count], basis1_chunk[0 : chunk_count]) \
+    copyout(rDM11_chunk[0 : chunk_count], rDM22_chunk[0 : chunk_count], rDM12_chunk[0 : chunk_count], \
+            iDM12_chunk[0 : chunk_count], iDM11_chunk[0 : chunk_count], iDM22_chunk[0 : chunk_count])
+                        {
+#pragma acc parallel loop gang present(dense_evec[0 : evec_count], occ[0 : nk_occ])
+                            for (int p = 0; p < chunk_count; p++) {
+                                const int ia = basis0_chunk[p];
+                                const int ib = basis1_chunk[p];
+                                double dm11_r = 0.0, dm22_r = 0.0, dm12_r = 0.0, dm12_i = 0.0;
+                                double dm11_i = 0.0, dm22_i = 0.0;
+
+#pragma acc loop seq
+                                for (int k = 0; k < nk_occ; k++) {
+                                    const double w = occ[k];
+                                    const dcomplex va_up = dense_evec[(size_t)ia * (size_t)n2 + (size_t)k];
+                                    const dcomplex vb_up = dense_evec[(size_t)ib * (size_t)n2 + (size_t)k];
+                                    const dcomplex va_dn = dense_evec[(size_t)(ia + n) * (size_t)n2 + (size_t)k];
+                                    const dcomplex vb_dn = dense_evec[(size_t)(ib + n) * (size_t)n2 + (size_t)k];
+
+                                    dm11_r += w * (va_up.r * vb_up.r + va_up.i * vb_up.i);
+                                    dm22_r += w * (va_dn.r * vb_dn.r + va_dn.i * vb_dn.i);
+                                    dm12_r += w * (va_up.r * vb_dn.r + va_up.i * vb_dn.i);
+                                    dm12_i += w * (va_up.r * vb_dn.i - va_up.i * vb_dn.r);
+                                    dm11_i += w * (va_up.r * vb_up.i - va_up.i * vb_up.r);
+                                    dm22_i += w * (va_dn.r * vb_dn.i - va_dn.i * vb_dn.r);
+                                }
+
+                                rDM11_chunk[p] = dm11_r;
+                                rDM22_chunk[p] = dm22_r;
+                                rDM12_chunk[p] = dm12_r;
+                                iDM12_chunk[p] = dm12_i;
+                                iDM11_chunk[p] = dm11_i;
+                                iDM22_chunk[p] = dm22_i;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    MPI_Allreduce(MPI_IN_PLACE, ws->dm_buffer, (int)dm_elems, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    ClusterNonCol_StoreDMBuffer(myid, size_H1, MP, CDM, iDM0, ws->dm_buffer);
+
+    if (calc_edm) {
+        ClusterNonCol_StoreEDMBuffer(myid, size_H1, MP, EDM, ws->dm_buffer + (size_t)size_H1 * 6);
+    }
+
+    dtime(&etime);
+    return etime - stime;
+}
 
 /* GPU GEMM wrappers (added by H.Kawai, ported from 3.9.9 GPU) */
 static void ClusterNonCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
@@ -59,8 +545,6 @@ static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasO
         wait_cudafunc(cublasDestroy(handle));
     }
 }
-
-#define  measure_time   0
 
 static void ClusterNonCol_CuSolver_DenseDsyevx(double *A, double *Z, double *ko, int n, int maxn,
                                                const char *where)
@@ -104,17 +588,540 @@ static void ClusterNonCol_CuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double 
     }
 }
 
-void solve_evp_real_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2, int *nblk, 
+static int ClusterNonCol_ComputeLocalNZeroCount(void)
+{
+    int MA_AN, GA_AN, LB_AN, GB_AN;
+    int wanA, wanB, tnoA, tnoB;
+    size_t my_nzeros = 0;
+
+    for (MA_AN = 1; MA_AN <= Matomnum; MA_AN++) {
+        size_t orbitals_in_neighbors = 0;
+
+        GA_AN = M2G[MA_AN];
+        wanA = WhatSpecies[GA_AN];
+        tnoA = Spe_Total_CNO[wanA];
+
+        for (LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            GB_AN = natn[GA_AN][LB_AN];
+            wanB = WhatSpecies[GB_AN];
+            tnoB = Spe_Total_CNO[wanB];
+            orbitals_in_neighbors =
+                ClusterNonCol_CheckedAddCount(orbitals_in_neighbors, (size_t)tnoB, "neighbor orbital count");
+        }
+
+        my_nzeros = ClusterNonCol_CheckedAddCount(
+            my_nzeros, ClusterNonCol_CheckedMulCount((size_t)tnoA, orbitals_in_neighbors, "local H1 segment"),
+            "local H1 segment");
+    }
+
+    if (my_nzeros > (size_t)INT_MAX) {
+        ClusterNonCol_AbortWithMessage("Local H1 segment exceeds INT_MAX in Cluster_DFT_NonCol.c.");
+    }
+
+    return (int)my_nzeros;
+}
+
+static int ClusterNonCol_SetMPAndReturnNum(int *MP)
+{
+    int i, wanA;
+    size_t orbital_offset = 1;
+
+    for (i = 1; i <= atomnum; i++) {
+        if (orbital_offset > (size_t)INT_MAX) {
+            ClusterNonCol_AbortWithMessage("Orbital offsets exceed INT_MAX in Cluster_DFT_NonCol.c.");
+        }
+
+        MP[i] = (int)orbital_offset;
+        wanA = WhatSpecies[i];
+        orbital_offset =
+            ClusterNonCol_CheckedAddCount(orbital_offset, (size_t)Spe_Total_CNO[wanA], "orbital offsets");
+    }
+
+    if (orbital_offset == 0 || orbital_offset - 1u > (size_t)INT_MAX) {
+        ClusterNonCol_AbortWithMessage("Orbital count exceeds INT_MAX in Cluster_DFT_NonCol.c.");
+    }
+
+    return (int)(orbital_offset - 1u);
+}
+
+static void ClusterNonCol_PackLocalSegment(double ****RH, double *local_H1, int local_nzeros)
+{
+    int MA_AN, GA_AN, LB_AN, GB_AN;
+    int wanA, wanB, tnoA, tnoB;
+    int i, j, k;
+
+    k = 0;
+    for (MA_AN = 1; MA_AN <= Matomnum; MA_AN++) {
+        GA_AN = M2G[MA_AN];
+        wanA = WhatSpecies[GA_AN];
+        tnoA = Spe_Total_CNO[wanA];
+
+        for (i = 0; i < tnoA; i++) {
+            for (LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+                GB_AN = natn[GA_AN][LB_AN];
+                wanB = WhatSpecies[GB_AN];
+                tnoB = Spe_Total_CNO[wanB];
+
+                for (j = 0; j < tnoB; j++) {
+                    local_H1[k] = RH[MA_AN][LB_AN][i][j];
+                    k++;
+                }
+            }
+        }
+    }
+
+    if (k != local_nzeros) {
+        ClusterNonCol_AbortWithMessage("Packed H1 length mismatch in Cluster_DFT_NonCol.c.");
+    }
+}
+
+static void ClusterNonCol_BuildDenseFromGathered(const double *H1, const int *order_GA, int *MP, double *H,
+                                                 int n, int tnum)
+{
+    int AN, GA_AN, LB_AN, GB_AN;
+    int wanA, wanB, tnoA, tnoB;
+    size_t *atom_offsets;
+    size_t dense_count;
+    size_t offset;
+
+    atom_offsets = (size_t *)ClusterNonCol_MallocArray((size_t)atomnum + 2u, sizeof(size_t), "atom offsets");
+
+    offset = 0;
+    for (AN = 1; AN <= atomnum; AN++) {
+        size_t atom_block_count = 0;
+
+        atom_offsets[AN] = offset;
+        GA_AN = order_GA[AN];
+        wanA = WhatSpecies[GA_AN];
+        tnoA = Spe_Total_CNO[wanA];
+
+        for (LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            GB_AN = natn[GA_AN][LB_AN];
+            wanB = WhatSpecies[GB_AN];
+            tnoB = Spe_Total_CNO[wanB];
+            atom_block_count = ClusterNonCol_CheckedAddCount(
+                atom_block_count, ClusterNonCol_CheckedMulCount((size_t)tnoA, (size_t)tnoB, "atom block span"),
+                "atom block span");
+        }
+
+        offset = ClusterNonCol_CheckedAddCount(offset, atom_block_count, "dense assembly offsets");
+    }
+    atom_offsets[atomnum + 1] = offset;
+
+    if (offset != (size_t)tnum) {
+        ClusterNonCol_AbortWithMessage("Gathered H1 size mismatch in Cluster_DFT_NonCol.c.");
+    }
+
+    dense_count = ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "dense H size");
+    memset(H, 0, ClusterNonCol_CheckedMulCount(dense_count, sizeof(double), "dense H bytes"));
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, 1)
+#endif
+    for (AN = 1; AN <= atomnum; AN++) {
+        int GA_AN_local;
+        int wanA_local;
+        int tnoA_local;
+        int Anum_local;
+        size_t k_local;
+
+        GA_AN_local = order_GA[AN];
+        wanA_local = WhatSpecies[GA_AN_local];
+        tnoA_local = Spe_Total_CNO[wanA_local];
+        Anum_local = MP[GA_AN_local];
+        k_local = atom_offsets[AN];
+
+        for (int i = 0; i < tnoA_local; i++) {
+            int ig = Anum_local + i;
+
+            for (int LB_AN_local = 0; LB_AN_local <= FNAN[GA_AN_local]; LB_AN_local++) {
+                int GB_AN_local;
+                int wanB_local;
+                int tnoB_local;
+                int Bnum_local;
+
+                GB_AN_local = natn[GA_AN_local][LB_AN_local];
+                wanB_local = WhatSpecies[GB_AN_local];
+                tnoB_local = Spe_Total_CNO[wanB_local];
+                Bnum_local = MP[GB_AN_local];
+
+                for (int j = 0; j < tnoB_local; j++) {
+                    int jg = Bnum_local + j;
+
+                    if (ig < 1 || n < ig || jg < 1 || n < jg) {
+                        ClusterNonCol_AbortWithMessage("Dense matrix index is out of range in Cluster_DFT_NonCol.c.");
+                    }
+
+                    H[(size_t)(jg - 1) * (size_t)n + (size_t)(ig - 1)] += H1[k_local];
+                    k_local++;
+                }
+            }
+        }
+
+        if (k_local != atom_offsets[AN + 1]) {
+            ClusterNonCol_AbortWithMessage("Atom-local H1 offsets are inconsistent in Cluster_DFT_NonCol.c.");
+        }
+    }
+
+    free(atom_offsets);
+}
+
+static void Patch2Full_Cluster_NonCol_Owner(double ****RH, double *H, int *MP, int owns_dense, int n)
+{
+    int myid, numprocs;
+    int dense_root = Host_ID;
+    int NUM;
+    int local_nzeros;
+    int local_matomnum;
+    int dummy_int = 0;
+    int *recv_nzeros = NULL;
+    int *recv_matomnum = NULL;
+    int *h1_displs = NULL;
+    int *atom_displs = NULL;
+    int *order_GA = NULL;
+    double *local_H1;
+    double *gathered_H1 = NULL;
+
+    MPI_Comm_size(mpi_comm_level1, &numprocs);
+    MPI_Comm_rank(mpi_comm_level1, &myid);
+
+    NUM = ClusterNonCol_SetMPAndReturnNum(MP);
+    if (NUM != n) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Orbital count mismatch in Cluster_DFT_NonCol.c: n=%d, NUM=%d", n, NUM);
+        ClusterNonCol_AbortWithMessage(msg);
+    }
+
+    local_nzeros = ClusterNonCol_ComputeLocalNZeroCount();
+    local_matomnum = Matomnum;
+    local_H1 = (double *)ClusterNonCol_MallocArray((size_t)local_nzeros, sizeof(double), "local H1 segment");
+    ClusterNonCol_PackLocalSegment(RH, local_H1, local_nzeros);
+
+    if (myid == dense_root) {
+        recv_nzeros = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "recv_nzeros");
+        recv_matomnum = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "recv_matomnum");
+    }
+
+    MPI_Gather(&local_nzeros, 1, MPI_INT, recv_nzeros, 1, MPI_INT, dense_root, mpi_comm_level1);
+    MPI_Gather(&local_matomnum, 1, MPI_INT, recv_matomnum, 1, MPI_INT, dense_root, mpi_comm_level1);
+
+    if (myid == dense_root) {
+        size_t total_nzeros = 0;
+        size_t total_atoms = 0;
+
+        h1_displs = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "h1_displs");
+        atom_displs = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "atom_displs");
+
+        for (int ID = 0; ID < numprocs; ID++) {
+            if (recv_nzeros[ID] < 0 || recv_matomnum[ID] < 0) {
+                ClusterNonCol_AbortWithMessage("Negative gather counts detected in Cluster_DFT_NonCol.c.");
+            }
+
+            if (total_nzeros > (size_t)INT_MAX || total_atoms > (size_t)INT_MAX) {
+                ClusterNonCol_AbortWithMessage("Gather displacements exceed INT_MAX in Cluster_DFT_NonCol.c.");
+            }
+
+            h1_displs[ID] = (int)total_nzeros;
+            atom_displs[ID] = (int)total_atoms;
+            total_nzeros =
+                ClusterNonCol_CheckedAddCount(total_nzeros, (size_t)recv_nzeros[ID], "gathered H1 size");
+            total_atoms =
+                ClusterNonCol_CheckedAddCount(total_atoms, (size_t)recv_matomnum[ID], "gathered atom order");
+        }
+
+        if (total_nzeros > (size_t)INT_MAX) {
+            ClusterNonCol_AbortWithMessage("Gathered H1 size exceeds INT_MAX in Cluster_DFT_NonCol.c.");
+        }
+
+        if (total_atoms != (size_t)atomnum) {
+            ClusterNonCol_AbortWithMessage("Gathered atom order length mismatch in Cluster_DFT_NonCol.c.");
+        }
+
+        gathered_H1 = (double *)ClusterNonCol_MallocArray(total_nzeros, sizeof(double), "gathered H1");
+        order_GA = (int *)ClusterNonCol_MallocArray((size_t)atomnum + 1u, sizeof(int), "order_GA");
+    }
+
+    MPI_Gatherv(local_H1, local_nzeros, MPI_DOUBLE, gathered_H1, recv_nzeros, h1_displs, MPI_DOUBLE, dense_root,
+                mpi_comm_level1);
+    MPI_Gatherv((0 < Matomnum) ? &M2G[1] : &dummy_int, Matomnum, MPI_INT, (myid == dense_root) ? &order_GA[1] : NULL,
+                recv_matomnum, atom_displs, MPI_INT, dense_root, mpi_comm_level1);
+
+    if (myid == dense_root && owns_dense) {
+        int gathered_nzeros = 0;
+
+        if (0 < numprocs) {
+            gathered_nzeros = h1_displs[numprocs - 1] + recv_nzeros[numprocs - 1];
+        }
+
+        ClusterNonCol_BuildDenseFromGathered(gathered_H1, order_GA, MP, H, n, gathered_nzeros);
+    }
+
+    free(gathered_H1);
+    free(order_GA);
+    free(atom_displs);
+    free(h1_displs);
+    free(recv_matomnum);
+    free(recv_nzeros);
+    free(local_H1);
+}
+
+static void ClusterNonCol_BuildDenseSs2(int n, int n2, const double *S, dcomplex *S2)
+{
+    for (int col = 0; col < n2; col++) {
+        for (int row = 0; row < n2; row++) {
+            dcomplex z = {0.0, 0.0};
+
+            if (row < n && col < n) {
+                z.r = S[(size_t)row + (size_t)col * (size_t)n];
+            }
+            else if (n <= row && n <= col) {
+                z.r = S[(size_t)(row - n) + (size_t)(col - n) * (size_t)n];
+            }
+
+            S2[(size_t)row + (size_t)col * (size_t)n2] = z;
+        }
+    }
+}
+
+static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double *****nh, double *****ImNL,
+                                                double ****CntOLP, int *MP, int n, int n2, int MaxN,
+                                                int myid, dcomplex **dense_evec_out,
+                                                int *dense_evec_on_device_out)
+{
+    static int cached_n = 0;
+    static int cached_n2 = 0;
+    static int transformed_s_valid = 0;
+    static double *cached_S = NULL;
+    static dcomplex *cached_Ss2 = NULL;
+    const int owns_dense = (myid == Host_ID);
+    int rebuild_s = (SCF_iter == 1 || !transformed_s_valid || cached_n != n || cached_n2 != n2);
+    double *S = NULL;
+    double *Cs = NULL;
+    double *rHs11 = NULL, *rHs12 = NULL, *rHs22 = NULL;
+    double *iHs11 = NULL, *iHs12 = NULL, *iHs22 = NULL;
+    dcomplex *Hs2 = NULL;
+    dcomplex *dense_evec = NULL;
+    size_t nn = 0;
+    size_t n2n2 = 0;
+
+    *dense_evec_out = NULL;
+    *dense_evec_on_device_out = 0;
+
+    set_cuda_default_device_from_local_rank();
+    set_openacc_nvidia_device_from_local_rank();
+
+    if (owns_dense) {
+        nn = ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "root dense real matrix");
+        n2n2 = ClusterNonCol_CheckedMulCount((size_t)n2, (size_t)n2, "root dense complex matrix");
+
+        if (cached_n != n || cached_n2 != n2) {
+            free(cached_S);
+            free(cached_Ss2);
+            cached_S = NULL;
+            cached_Ss2 = NULL;
+            transformed_s_valid = 0;
+            rebuild_s = 1;
+        }
+
+        if (cached_S == NULL) {
+            cached_S = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "cached transformed overlap");
+        }
+        if (cached_Ss2 == NULL) {
+            cached_Ss2 = (dcomplex *)ClusterNonCol_MallocArray(n2n2, sizeof(dcomplex), "cached transformed NC overlap");
+        }
+
+        cached_n = n;
+        cached_n2 = n2;
+        S = cached_S;
+
+        Cs    = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "root dense work Cs");
+        rHs11 = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "root dense rHs11");
+        rHs12 = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "root dense rHs12");
+        rHs22 = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "root dense rHs22");
+        iHs11 = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "root dense iHs11");
+        iHs12 = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "root dense iHs12");
+        iHs22 = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "root dense iHs22");
+        Hs2 = (dcomplex *)ClusterNonCol_MallocArray(n2n2, sizeof(dcomplex), "root dense Hs2");
+        dense_evec = (dcomplex *)ClusterNonCol_MallocArray(n2n2, sizeof(dcomplex), "root dense eigenvectors");
+
+    }
+
+    MPI_Bcast(&rebuild_s, 1, MPI_INT, Host_ID, mpi_comm_level1);
+
+    if (rebuild_s) {
+        Patch2Full_Cluster_NonCol_Owner(CntOLP, S, MP, owns_dense, n);
+
+        if (owns_dense) {
+#pragma acc enter data copyin(S[0 : n * n])
+#pragma acc enter data create(ko[0 : n2 + 1])
+            Eigen_cusolver_x_openacc2(S, ko, n, n);
+
+#pragma acc kernels
+#pragma acc loop independent
+            for (int l = 1; l <= n; l++) {
+                if (ko[l] < 1.0e-10) ko[l] = 1.0e-10;
+                ko[l] = 1.0 / sqrt(ko[l]);
+            }
+
+#pragma acc kernels
+#pragma acc loop independent
+            for (int col = 0; col < n; col++) {
+#pragma acc loop independent
+                for (int row = 0; row < n; row++) {
+                    S[(size_t)row + (size_t)col * (size_t)n] *= ko[col + 1];
+                }
+            }
+
+#pragma acc update self(S[0 : n * n])
+#pragma acc exit data delete(S[0 : n * n], ko[0 : n2 + 1])
+
+            ClusterNonCol_BuildDenseSs2(n, n2, S, cached_Ss2);
+            transformed_s_valid = 1;
+        }
+    }
+
+    Patch2Full_Cluster_NonCol_Owner(nh[0],   rHs11, MP, owns_dense, n);
+    Patch2Full_Cluster_NonCol_Owner(nh[1],   rHs22, MP, owns_dense, n);
+    Patch2Full_Cluster_NonCol_Owner(nh[2],   rHs12, MP, owns_dense, n);
+    Patch2Full_Cluster_NonCol_Owner(nh[3],   iHs12, MP, owns_dense, n);
+    Patch2Full_Cluster_NonCol_Owner(ImNL[0], iHs11, MP, owns_dense, n);
+    Patch2Full_Cluster_NonCol_Owner(ImNL[1], iHs22, MP, owns_dense, n);
+    Patch2Full_Cluster_NonCol_Owner(ImNL[2], Cs,    MP, owns_dense, n);
+
+    if (owns_dense) {
+        for (size_t i = 0; i < nn; i++) {
+            iHs12[i] += Cs[i];
+        }
+
+#pragma acc enter data copyin(S[0 : n * n], rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
+                              iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n])
+#pragma acc enter data create(Cs[0 : n * n])
+
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, rHs11, S, Cs);
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) rHs11[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, rHs11);
+
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, rHs12, S, Cs);
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) rHs12[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, rHs12);
+
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, rHs22, S, Cs);
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) rHs22[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, rHs22);
+
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, iHs11, S, Cs);
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) iHs11[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, iHs11);
+
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, iHs12, S, Cs);
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) iHs12[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, iHs12);
+
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, iHs22, S, Cs);
+#pragma acc kernels
+#pragma acc loop independent
+        for (int i = 0; i < n * n; i++) iHs22[i] = 0.0;
+        ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, iHs22);
+
+#pragma acc exit data delete(S[0 : n * n], Cs[0 : n * n])
+#pragma acc enter data create(Hs2[0 : n2 * n2], ko[0 : n2 + 1])
+
+#pragma acc kernels
+#pragma acc loop independent
+        for (int col = 0; col < n2; col++) {
+#pragma acc loop independent
+            for (int row = 0; row < n2; row++) {
+                if (row < n && col < n) {
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].r = rHs11[(size_t)row + (size_t)col * (size_t)n];
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].i = iHs11[(size_t)row + (size_t)col * (size_t)n];
+                }
+                else if (row < n && n <= col) {
+                    int jj = col - n;
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].r = rHs12[(size_t)row + (size_t)jj * (size_t)n];
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].i = iHs12[(size_t)row + (size_t)jj * (size_t)n];
+                }
+                else if (n <= row && col < n) {
+                    int ii = row - n;
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].r = rHs12[(size_t)col + (size_t)ii * (size_t)n];
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].i = -iHs12[(size_t)col + (size_t)ii * (size_t)n];
+                }
+                else {
+                    int ii = row - n;
+                    int jj = col - n;
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].r = rHs22[(size_t)ii + (size_t)jj * (size_t)n];
+                    Hs2[(size_t)row + (size_t)col * (size_t)n2].i = iHs22[(size_t)ii + (size_t)jj * (size_t)n];
+                }
+            }
+        }
+
+#pragma acc exit data delete(rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
+                             iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n])
+
+        EigenBand_lapack_openacc(Hs2, ko, n2, MaxN);
+
+#pragma acc enter data copyin(cached_Ss2[0 : n2 * n2])
+#pragma acc enter data create(dense_evec[0 : n2 * n2])
+
+        ClusterNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_T, n2, n2, n2, Hs2, cached_Ss2, dense_evec);
+
+#pragma acc update self(ko[0 : n2 + 1])
+#pragma acc exit data delete(Hs2[0 : n2 * n2], cached_Ss2[0 : n2 * n2], ko[0 : n2 + 1])
+
+        *dense_evec_out = dense_evec;
+        *dense_evec_on_device_out = 1;
+    }
+
+    MPI_Bcast(ko, n2 + 1, MPI_DOUBLE, Host_ID, mpi_comm_level1);
+
+    free(Cs);
+    free(rHs11);
+    free(rHs12);
+    free(rHs22);
+    free(iHs11);
+    free(iHs12);
+    free(iHs22);
+    free(Hs2);
+}
+
+void solve_evp_real_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2, int *nblk,
                       int *mpi_comm_rows_int, int *mpi_comm_cols_int);
 
-void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2, 
+void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2,
                                               int *nblk, int *na_cols1, int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld);
 
-void solve_evp_complex_( int *n2, int *MaxN, dcomplex *Hs2, int *na_rows2_1, double *a, dcomplex *Cs2, int *na_rows2_2, 
+void solve_evp_complex_( int *n2, int *MaxN, dcomplex *Hs2, int *na_rows2_1, double *a, dcomplex *Cs2, int *na_rows2_2,
                          int *nblk2, int *mpi_comm_rows_int, int *mpi_comm_cols_int );
 
-void elpa_solve_evp_complex_2stage_double_impl_( int *n2, int *MaxN, dcomplex *Hs2, int *na_rows2_1, double *a, dcomplex *Cs2, 
-                                                 int *na_rows2_2, int *nblk2, int *na_cols2, 
+void elpa_solve_evp_complex_2stage_double_impl_( int *n2, int *MaxN, dcomplex *Hs2, int *na_rows2_1, double *a, dcomplex *Cs2,
+                                                 int *na_rows2_2, int *nblk2, int *na_cols2,
                                                  int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld );
 
 
@@ -124,7 +1131,7 @@ static void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, 
 static dcomplex Lapack_LU_Zinverse(int n, dcomplex *A);
 
 static double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], int *MP2,
-                                        int *ind2ind, 
+                                        int *ind2ind,
                                         dcomplex *Z0, dcomplex *A, dcomplex *Z,
 					dcomplex *Ax, dcomplex *Ay, dcomplex *Az,
 					double Utot1, double Utot2,
@@ -197,7 +1204,7 @@ double Cluster_DFT_NonCol(
                    dcomplex *Hs2,
                    dcomplex *Cs2,
 		   double *DM1,
-		   int size_H1, 
+		   int size_H1,
                    dcomplex *EVec1,
                    double *Work1)
 {
@@ -228,11 +1235,14 @@ double Cluster_DFT_NonCol(
   double av_num,tmp;
   int ig,jg;
   int numprocs,myid,ID;
+  int use_cusolver_direct_cluster_dm = 0;
+  int cusolver_direct_evec_on_device = 0;
   int ke,ks,nblk_m,nblk_m2;
   int ID0,IDS,IDR,Max_Num_Snd_EV,Max_Num_Rcv_EV;
   int *Num_Snd_EV,*Num_Rcv_EV;
   int *index_Snd_i,*index_Snd_j,*index_Rcv_i,*index_Rcv_j;
   double *EVec_Snd,*EVec_Rcv;
+  dcomplex *cusolver_dense_evec = NULL;
   int ZERO=0,ONE=1,info;
   double Re_alpha = 1.0; double Re_beta = 0.0;
   dcomplex alpha = {1.0,0.0}; dcomplex beta = {0.0,0.0};
@@ -265,6 +1275,12 @@ double Cluster_DFT_NonCol(
       set_cuda_default_device_from_local_rank();
       set_openacc_nvidia_device_from_local_rank();
   }
+
+  use_cusolver_direct_cluster_dm =
+    (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
+     strcasecmp(mode,"scf") == 0 &&
+     MO_fileout != 1 && xanes_calc != 1 && xanes_gs_fileout != 1 &&
+     !cal_partial_charge && !Dos_fileout && !DosGauss_fileout);
 
   /****************************************************
                   allocation of arrays
@@ -300,14 +1316,14 @@ double Cluster_DFT_NonCol(
   *************************************************** */
 
   /* find the maximum states in solved eigenvalues */
-  
+
   if (SCF_iter==1){
-    MaxN = n2; 
-  }   
+    MaxN = n2;
+  }
   else {
 
-    if      ( strcasecmp(mode,"scf")==0 ) 
-      lumos = (double)n2*0.20;      
+    if      ( strcasecmp(mode,"scf")==0 )
+      lumos = (double)n2*0.20;
     else if ( strcasecmp(mode,"dos")==0 )
       lumos = (double)n2*0.40;
     else if ( strcasecmp(mode,"lcaoout")==0 )
@@ -319,7 +1335,7 @@ double Cluster_DFT_NonCol(
     MaxN = Cluster_HOMO[0] + (int)lumos;
     if (n2<MaxN) MaxN = n2;
 
-    if (cal_partial_charge) MaxN = n2; 
+    if (cal_partial_charge) MaxN = n2;
   }
 
   if ( numprocs<=MaxN ){
@@ -327,17 +1343,17 @@ double Cluster_DFT_NonCol(
     av_num = (double)MaxN/(double)numprocs;
 
     for (ID=0; ID<numprocs; ID++){
-      is2[ID] = (int)(av_num*(double)ID) + 1; 
-      ie2[ID] = (int)(av_num*(double)(ID+1)); 
+      is2[ID] = (int)(av_num*(double)ID) + 1;
+      ie2[ID] = (int)(av_num*(double)(ID+1));
     }
 
     is2[0] = 1;
-    ie2[numprocs-1] = MaxN; 
+    ie2[numprocs-1] = MaxN;
   }
 
   else{
     for (ID=0; ID<MaxN; ID++){
-      is2[ID] = ID + 1; 
+      is2[ID] = ID + 1;
       ie2[ID] = ID + 1;
     }
     for (ID=MaxN; ID<numprocs; ID++){
@@ -387,7 +1403,7 @@ double Cluster_DFT_NonCol(
   for (ID=0; ID<numprocs; ID++){
     if (Max_Num_Snd_EV<Num_Snd_EV[ID]) Max_Num_Snd_EV = Num_Snd_EV[ID];
     if (Max_Num_Rcv_EV<Num_Rcv_EV[ID]) Max_Num_Rcv_EV = Num_Rcv_EV[ID];
-  }  
+  }
 
   Max_Num_Snd_EV++;
   Max_Num_Rcv_EV++;
@@ -413,8 +1429,24 @@ double Cluster_DFT_NonCol(
   }
   firsttime=0;
 
+  if (use_cusolver_direct_cluster_dm){
+
+    if (measure_time) dtime(&stime);
+
+    for (i1=0; i1<=n2; i1++){ ko[i1] = 1.0e+5; }
+
+    ClusterNonCol_CuSolverRootDensePath(SCF_iter,ko,nh,ImNL,CntOLP,MP,n,n2,MaxN,myid,
+                                        &cusolver_dense_evec,&cusolver_direct_evec_on_device);
+
+    if (measure_time){
+      dtime(&etime);
+      time3 += etime - stime;
+    }
+  }
+  else {
+
   /* ***************************************************
-            diagonalize the overlap matrix     
+            diagonalize the overlap matrix
   *************************************************** */
 
   if (SCF_iter==1){
@@ -432,7 +1464,7 @@ double Cluster_DFT_NonCol(
     /* diagonalize Cs */
 
     if (scf_eigen_lib_flag==1){
-      F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, 
+      F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk,
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
     else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
@@ -446,8 +1478,8 @@ double Cluster_DFT_NonCol(
       mpiworld = MPI_Comm_c2f(mpi_comm_level1);
 
       F77_NAME(elpa_solve_evp_real_2stage_double_impl,ELPA_SOLVE_EVP_REAL_2STAGE_DOUBLE_IMPL)
-	( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &na_cols, 
-          &mpi_comm_rows_int, &mpi_comm_cols_int, &mpiworld ); 
+	( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &na_cols,
+          &mpi_comm_rows_int, &mpi_comm_cols_int, &mpiworld );
 #endif
     }
 
@@ -484,14 +1516,14 @@ double Cluster_DFT_NonCol(
 
     if (measure_time){
       dtime(&etime);
-      time1 += etime - stime; 
+      time1 += etime - stime;
     }
   }
 
   /* ***************************************************
              transformation of H with Ss
 
-    in case of SO_switch==0 && Hub_U_switch==0 && Constraint_NCS_switch==0 
+    in case of SO_switch==0 && Hub_U_switch==0 && Constraint_NCS_switch==0
                && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0
 
     H[i    ][j    ].r = RH[0];
@@ -501,10 +1533,10 @@ double Cluster_DFT_NonCol(
     H[i    ][j+NUM].r = RH[2];
     H[i    ][j+NUM].i = RH[3];
 
-    in case of SO_switch==1 or Hub_U_switch==1 or 1<=Constraint_NCS_switch 
-               or Zeeman_NCS_switch==1 or Zeeman_NCO_switch==1 
+    in case of SO_switch==1 or Hub_U_switch==1 or 1<=Constraint_NCS_switch
+               or Zeeman_NCS_switch==1 or Zeeman_NCO_switch==1
 
-    H[i    ][j    ].r = RH[0];  
+    H[i    ][j    ].r = RH[0];
     H[i    ][j    ].i = IH[0];
     H[i+NUM][j+NUM].r = RH[1];
     H[i+NUM][j+NUM].i = IH[1];
@@ -535,7 +1567,7 @@ double Cluster_DFT_NonCol(
   F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) rHs11[i] = 0.0;
-  
+
   Cblacs_barrier(ictxt1,"C");
   F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs11,&ONE,&ONE,descH);
 
@@ -559,7 +1591,7 @@ double Cluster_DFT_NonCol(
   F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) rHs22[i] = 0.0;
-  
+
   Cblacs_barrier(ictxt1,"C");
   F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs22,&ONE,&ONE,descH);
 
@@ -583,7 +1615,7 @@ double Cluster_DFT_NonCol(
   F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) iHs12[i] = 0.0;
-  
+
   Cblacs_barrier(ictxt1,"C");
   F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs12,&ONE,&ONE,descH);
 
@@ -595,7 +1627,7 @@ double Cluster_DFT_NonCol(
   F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) iHs22[i] = 0.0;
-  
+
   Cblacs_barrier(ictxt1,"C");
   F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs22,&ONE,&ONE,descH);
 
@@ -609,7 +1641,7 @@ double Cluster_DFT_NonCol(
   *************************************************** */
 
   if (measure_time) dtime(&stime);
- 
+
   /* initialize ko */
   for (i1=0; i1<=n2; i1++){ ko[i1] = 1.0e+5; }
 
@@ -622,7 +1654,7 @@ double Cluster_DFT_NonCol(
   mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
   if (scf_eigen_lib_flag==1){
-    F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, 
+    F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2,
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
   else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
@@ -636,7 +1668,7 @@ double Cluster_DFT_NonCol(
     mpiworld = MPI_Comm_c2f(mpi_comm_level1);
 
     F77_NAME(elpa_solve_evp_complex_2stage_double_impl,ELPA_SOLVE_EVP_COMPLEX_2STAGE_DOUBLE_IMPL)
-      ( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, &nblk2, &na_cols2, 
+      ( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, &nblk2, &na_cols2,
         &mpi_comm_rows_int, &mpi_comm_cols_int, &mpiworld );
 
 #endif
@@ -644,7 +1676,7 @@ double Cluster_DFT_NonCol(
 
   MPI_Comm_free(&mpi_comm_rows);
   MPI_Comm_free(&mpi_comm_cols);
-  
+
   if (2<=level_stdout){
     for (i1=1; i1<=MaxN; i1++){
       printf("  Eigenvalues of Kohn-Sham %2d  %15.12f\n", i1,ko[i1]);
@@ -676,7 +1708,7 @@ double Cluster_DFT_NonCol(
   /* MPI communications of Hs2 */
 
   for (ID=0; ID<numprocs; ID++){
-    
+
     IDS = (myid + ID) % numprocs;
     IDR = (myid - ID + numprocs) % numprocs;
 
@@ -688,12 +1720,12 @@ double Cluster_DFT_NonCol(
 
         for (j=0; j<na_cols2; j++){
           jg = np_cols2*nblk2*((j)/nblk2) + (j)%nblk2 + ((np_cols2+my_pcol2)%np_cols2)*nblk2 + 1;
- 
+
           index_Snd_i[k] = ig;
           index_Snd_j[k] = jg;
           EVec_Snd[2*k  ] = Hs2[j*na_rows2+i].r;
           EVec_Snd[2*k+1] = Hs2[j*na_rows2+i].i;
-          k++; 
+          k++;
 	}
       }
     }
@@ -736,7 +1768,7 @@ double Cluster_DFT_NonCol(
         index_Rcv_j[k] = index_Snd_j[k];
         EVec_Rcv[2*k  ] = EVec_Snd[2*k  ];
         EVec_Rcv[2*k+1] = EVec_Snd[2*k+1];
-      } 
+      }
     }
 
     for(k=0; k<Num_Rcv_EV[IDR]; k++){
@@ -751,6 +1783,8 @@ double Cluster_DFT_NonCol(
   if (measure_time){
     dtime(&etime);
     time4 += etime - stime;
+  }
+
   }
 
   if ( strcasecmp(mode,"scf")==0 || strcasecmp(mode,"ParDM")==0 ){
@@ -770,7 +1804,7 @@ double Cluster_DFT_NonCol(
     po = 0;
     loopN = 0;
 
-    ChemP_MAX = 15.0;  
+    ChemP_MAX = 15.0;
     ChemP_MIN =-15.0;
 
     do {
@@ -791,15 +1825,15 @@ double Cluster_DFT_NonCol(
       else           ChemP_MAX = ChemP;
       if (fabs(Dnum)<1.0e-12) po = 1;
       loopN++;
-    } 
-    while (po==0 && loopN<1000); 
+    }
+    while (po==0 && loopN<1000);
 
     /* second, find ChemP at the temperatue, starting from the previously found ChemP. */
 
     po = 0;
     loopN = 0;
 
-    ChemP_MAX = 15.0;  
+    ChemP_MAX = 15.0;
     ChemP_MIN =-15.0;
 
     do {
@@ -824,8 +1858,8 @@ double Cluster_DFT_NonCol(
       else           ChemP_MAX = ChemP;
       if (fabs(Dnum)<1.0e-12) po = 1;
       loopN++;
-    } 
-    while (po==0 && loopN<1000); 
+    }
+    while (po==0 && loopN<1000);
 
     if (2<=level_stdout){
       printf("  ChemP=%15.12f\n",ChemP);
@@ -864,10 +1898,10 @@ double Cluster_DFT_NonCol(
       printf("  HOMO = %2d\n",Cluster_HOMO[0]);
     }
 
-    if (MO_fileout==1){  
+    if (MO_fileout==1){
 
       /* allocation of arrays */
-      double *array0;    
+      double *array0;
       int *is3,*ie3;
 
       array0 = (double*)malloc(sizeof(double)*(n2+2)*2);
@@ -880,16 +1914,16 @@ double Cluster_DFT_NonCol(
 
 	av_num = (double)MaxN/(double)numprocs;
 	for (ID=0; ID<numprocs; ID++){
-	  is3[ID] = (int)(av_num*(double)ID) + 1; 
-	  ie3[ID] = (int)(av_num*(double)(ID+1)); 
+	  is3[ID] = (int)(av_num*(double)ID) + 1;
+	  ie3[ID] = (int)(av_num*(double)(ID+1));
 	}
 
 	is3[0] = 1;
-	ie3[numprocs-1] = MaxN; 
+	ie3[numprocs-1] = MaxN;
       }
       else{
 	for (ID=0; ID<MaxN; ID++){
-	  is3[ID] = ID + 1; 
+	  is3[ID] = ID + 1;
 	  ie3[ID] = ID + 1;
 	}
 	for (ID=MaxN; ID<numprocs; ID++){
@@ -936,7 +1970,7 @@ double Cluster_DFT_NonCol(
 	  }
 
 	  /* MPI communications */
-	  MPI_Bcast(array0, n2*2, MPI_DOUBLE, ID0, mpi_comm_level1);  
+	  MPI_Bcast(array0, n2*2, MPI_DOUBLE, ID0, mpi_comm_level1);
 	}
 
 	/* store eigenvector */
@@ -953,7 +1987,7 @@ double Cluster_DFT_NonCol(
 	  }
 	}
       }
-      
+
       /* LUMOs */
 
       for (j=0; j<num_LUMOs; j++){
@@ -992,7 +2026,7 @@ double Cluster_DFT_NonCol(
 	  }
 
 	  /* MPI communications */
-	  MPI_Bcast(array0, n2*2, MPI_DOUBLE, ID0, mpi_comm_level1);  
+	  MPI_Bcast(array0, n2*2, MPI_DOUBLE, ID0, mpi_comm_level1);
 	}
 
 	/* store eigenvector */
@@ -1033,51 +2067,70 @@ double Cluster_DFT_NonCol(
 
     if (measure_time) dtime(&stime);
 
-    /* DM */
+    if (use_cusolver_direct_cluster_dm){
 
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 2, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 3, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 4, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 5, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 6, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    /* EDM */
-
-    if (Cnt_switch==1){
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 7, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 8, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 9, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-
-    time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 10, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                      CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
-    }
-
-    /* calculation of ParDM */
-
-    if ( strcasecmp(mode,"ParDM")==0 ){
-      for (i=1; i<=6; i++){    
-        time6 += Calc_ParDM_Cluster_non_collinear_ScaLAPACK( i, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                             ko, DM1, Work1, EVec1);
+      if (myid==Host_ID && !cusolver_direct_evec_on_device){
+        ClusterNonCol_AbortWithMessage("CuSOLVER device eigenvectors are not available in Cluster_DFT_NonCol.c.");
       }
-    } 
+
+      time6 += ClusterNonCol_CalcDMRootDense_OpenACC(myid,size_H1,MP,n,n2,MaxN,CDM,iDM[0],EDM,ko,
+                                                     cusolver_dense_evec,(Cnt_switch==1));
+
+      if (myid==Host_ID){
+#pragma acc exit data delete(cusolver_dense_evec[0 : n2 * n2])
+      }
+      free(cusolver_dense_evec);
+      cusolver_dense_evec = NULL;
+      cusolver_direct_evec_on_device = 0;
+    }
+    else {
+
+      /* DM */
+
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 2, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 3, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 4, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 5, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 6, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+      /* EDM */
+
+      if (Cnt_switch==1){
+
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 7, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 8, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 9, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 10, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+      }
+
+      /* calculation of ParDM */
+
+      if ( strcasecmp(mode,"ParDM")==0 ){
+        for (i=1; i<=6; i++){
+          time6 += Calc_ParDM_Cluster_non_collinear_ScaLAPACK( i, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+                                                               ko, DM1, Work1, EVec1);
+        }
+      }
+    }
 
     /****************************************************
                       Bond Energies
@@ -1085,7 +2138,7 @@ double Cluster_DFT_NonCol(
 
     My_Eele1[0] = 0.0;
     My_Eele1[1] = 0.0;
-  
+
     for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
       GA_AN = M2G[MA_AN];
       wanA = WhatSpecies[GA_AN];
@@ -1094,12 +2147,12 @@ double Cluster_DFT_NonCol(
 	wanB = WhatSpecies[natn[GA_AN][j]];
 	tnoB = Spe_Total_CNO[wanB];
 
-	/* non-spin-orbit coupling and non-LDA+U */  
-	if (SO_switch==0 && Hub_U_switch==0 && Constraint_NCS_switch==0 
+	/* non-spin-orbit coupling and non-LDA+U */
+	if (SO_switch==0 && Hub_U_switch==0 && Constraint_NCS_switch==0
 	    && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0){
 	  for (k=0; k<tnoA; k++){
 	    for (l=0; l<tnoB; l++){
-	      My_Eele1[0] += 
+	      My_Eele1[0] +=
 		+ CDM[0][MA_AN][j][k][l]*nh[0][MA_AN][j][k][l]
 		+ CDM[1][MA_AN][j][k][l]*nh[1][MA_AN][j][k][l]
 		+ 2.0*CDM[2][MA_AN][j][k][l]*nh[2][MA_AN][j][k][l]
@@ -1112,7 +2165,7 @@ double Cluster_DFT_NonCol(
 	else {
 	  for (k=0; k<tnoA; k++){
 	    for (l=0; l<tnoB; l++){
-	      My_Eele1[0] += 
+	      My_Eele1[0] +=
 		+ CDM[0][MA_AN][j][k][l]*nh[0][MA_AN][j][k][l]
 		- iDM[0][0][MA_AN][j][k][l]*ImNL[0][MA_AN][j][k][l]
 		+ CDM[1][MA_AN][j][k][l]*nh[1][MA_AN][j][k][l]
@@ -1209,7 +2262,7 @@ double Cluster_DFT_NonCol(
       }
 
       /* allocation of arrays */
-      double *array0;    
+      double *array0;
       int *is3,*ie3;
 
       array0 = (double*)malloc(sizeof(double)*(n2+2)*4);
@@ -1222,17 +2275,17 @@ double Cluster_DFT_NonCol(
 
 	av_num = (double)MaxN/(double)numprocs;
 	for (ID=0; ID<numprocs; ID++){
-	  is3[ID] = (int)(av_num*(double)ID) + 1; 
-	  ie3[ID] = (int)(av_num*(double)(ID+1)); 
+	  is3[ID] = (int)(av_num*(double)ID) + 1;
+	  ie3[ID] = (int)(av_num*(double)(ID+1));
 	}
 
 	is3[0] = 1;
-	ie3[numprocs-1] = MaxN; 
+	ie3[numprocs-1] = MaxN;
       }
 
       else{
 	for (ID=0; ID<MaxN; ID++){
-	  is3[ID] = ID + 1; 
+	  is3[ID] = ID + 1;
 	  ie3[ID] = ID + 1;
 	}
 	for (ID=MaxN; ID<numprocs; ID++){
@@ -1246,9 +2299,9 @@ double Cluster_DFT_NonCol(
 
       for (i=1; i<=num1; i++){
 
-	if (myid==Host_ID){ 
+	if (myid==Host_ID){
 
-	  /* header */ 
+	  /* header */
 
 	  fprintf(fp_EV,"\n");
 
@@ -1259,7 +2312,7 @@ double Cluster_DFT_NonCol(
 	    for (j=1; j<=num0; j++){
 	      j1 = num0*(i-1) + j;
 
-	      if (j1<=MaxN){ 
+	      if (j1<=MaxN){
 		if (i1==-2){
 		  fprintf(fp_EV," %4d",j1);
 		  fprintf(fp_EV,"                                   ");
@@ -1333,7 +2386,7 @@ double Cluster_DFT_NonCol(
 	  } /* j */
 	} /* else */
 
-        /* LCAO coefficients */ 
+        /* LCAO coefficients */
 
 	Name_Angular[0][0] = "s          ";
 	Name_Angular[1][0] = "px         ";
@@ -1368,9 +2421,9 @@ double Cluster_DFT_NonCol(
 	Name_Multiple[4] = "4";
 	Name_Multiple[5] = "5";
 
-	if (myid==Host_ID){ 
+	if (myid==Host_ID){
 
-	  i1 = 1; 
+	  i1 = 1;
 
 	  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
 
@@ -1381,10 +2434,10 @@ double Cluster_DFT_NonCol(
 		for (m=0; m<(2*l+1); m++){
 
 		  if (l==0 && mul==0 && m==0)
-		    fprintf(fp_EV,"%4d %3s %s %s", 
+		    fprintf(fp_EV,"%4d %3s %s %s",
 			    Gc_AN,SpeName[wan1],Name_Multiple[mul],Name_Angular[l][m]);
 		  else
-		    fprintf(fp_EV,"         %s %s", 
+		    fprintf(fp_EV,"         %s %s",
 			    Name_Multiple[mul],Name_Angular[l][m]);
 
 		  for (j=1; j<=num0; j++){
@@ -1417,7 +2470,7 @@ double Cluster_DFT_NonCol(
       free(array0);
       free(is3);
       free(ie3);
-	
+
       /* fclose of fp_EV */
 
       if (myid==Host_ID){
@@ -1445,7 +2498,7 @@ double Cluster_DFT_NonCol(
 
   if (measure_time){
     printf("Cluster_DFT myid=%2d time1=%7.3f time2=%7.3f time3=%7.3f time4=%7.3f time5=%7.3f time6=%7.3f time7=%7.3f\n",
-            myid,time1,time2,time3,time4,time5,time6,time7);fflush(stdout); 
+            myid,time1,time2,time3,time4,time5,time6,time7);fflush(stdout);
   }
 
   /****************************************************
@@ -1509,7 +2562,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
     DM1[i] = 0.0;
   }
 
-  /* calculation of DM1 */ 
+  /* calculation of DM1 */
 
   for (k=is2[myid]; k<=ie2[myid]; k++){
 
@@ -1542,7 +2595,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
 	  for (i=0; i<tnoA; i++){
 	    for (j=0; j<tnoB; j++){
 
-              i1 = (k-is2[myid])*n2 + Anum + i - 1; 
+              i1 = (k-is2[myid])*n2 + Anum + i - 1;
               j1 = (k-is2[myid])*n2 + Bnum + j - 1;
 
               switch (calc_flag){
@@ -1610,7 +2663,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
 	      }
 
 	      /* increment of p */
-	      p++;  
+	      p++;
 
 	    }
 	  }
@@ -1642,58 +2695,58 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
       Bnum = MP[GB_AN];
 
       if (myid==ID){
-         
+
 	for (i=0; i<tnoA; i++){
 	  for (j=0; j<tnoB; j++){
 
             switch (calc_flag){
 
-              /* Re11 */ 
+              /* Re11 */
               case 1:
 		CDM[0][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Re22 */ 
+              /* Re22 */
               case 2:
 		CDM[1][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Re12 */ 
+              /* Re12 */
               case 3:
 		CDM[2][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Im12 */ 
+              /* Im12 */
               case 4:
 		CDM[3][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Im11 */ 
+              /* Im11 */
               case 5:
 		iDM0[0][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Im22 */ 
+              /* Im22 */
               case 6:
 		iDM0[1][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* ReEDM11 */ 
+              /* ReEDM11 */
               case 7:
 		EDM[0][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* ReEDM22 */ 
+              /* ReEDM22 */
               case 8:
 		EDM[1][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* ReEDM12 */ 
+              /* ReEDM12 */
               case 9:
 		EDM[2][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* ImEDM12 */ 
+              /* ImEDM12 */
               case 10:
 		EDM[3][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
@@ -1710,7 +2763,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
 	    }
 
 	    /* increment of p */
-	    p++;  
+	    p++;
 	  }
 	}
       }
@@ -1718,7 +2771,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
 	for (i=0; i<tnoA; i++){
 	  for (j=0; j<tnoB; j++){
 	    /* increment of p */
-	    p++;  
+	    p++;
 	  }
 	}
       }
@@ -1765,27 +2818,27 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
     DM1[i] = 0.0;
   }
 
-  /* calculation of DM1 */ 
+  /* calculation of DM1 */
 
   for (k=is2[myid]; k<=ie2[myid]; k++){
 
     if (CWF_WindowF_switch==0){ // Poly
 
-      double in0,in1,out0,out1; 
+      double in0,in1,out0,out1;
       out0 = CWF_disentangling_Erange[0];
       in0 = CWF_disentangling_Erange[1];
       in1 = CWF_disentangling_Erange[2];
       out1 = CWF_disentangling_Erange[3];
       e = ko[k];
-      windowF = weight_CWF2(e,ChemP,in0,in1,out0,out1); 
+      windowF = weight_CWF2(e,ChemP,in0,in1,out0,out1);
     }
 
     else if (CWF_WindowF_switch==1){ // Fermi
       e = ko[k];
       b0 = 1.0/CWF_disentangling_smearing_kBT0;
       b1 = 1.0/CWF_disentangling_smearing_kBT1;
-      e0 = CWF_disentangling_Erange[0] + ChemP; 
-      e1 = CWF_disentangling_Erange[1] + ChemP; 
+      e0 = CWF_disentangling_Erange[0] + ChemP;
+      e1 = CWF_disentangling_Erange[1] + ChemP;
       windowF = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
     }
 
@@ -1805,7 +2858,7 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
 	  for (i=0; i<tnoA; i++){
 	    for (j=0; j<tnoB; j++){
 
-              i1 = (k-is2[myid])*n2 + Anum + i - 1; 
+              i1 = (k-is2[myid])*n2 + Anum + i - 1;
               j1 = (k-is2[myid])*n2 + Bnum + j - 1;
 
               switch (calc_flag){
@@ -1843,7 +2896,7 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
 	      }
 
 	      /* increment of p */
-	      p++;  
+	      p++;
 
 	    }
 	  }
@@ -1875,45 +2928,45 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
       Bnum = MP[GB_AN];
 
       if (myid==ID){
-         
+
 	for (i=0; i<tnoA; i++){
 	  for (j=0; j<tnoB; j++){
 
             switch (calc_flag){
 
-              /* Re11 */ 
+              /* Re11 */
               case 1:
 		ParDM[0][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Re22 */ 
+              /* Re22 */
               case 2:
 		ParDM[1][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Re12 */ 
+              /* Re12 */
               case 3:
 		ParDM[2][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Im12 */ 
+              /* Im12 */
               case 4:
 		ParDM[3][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Im11 */ 
+              /* Im11 */
               case 5:
 		iParDM[0][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 
-              /* Im22 */ 
+              /* Im22 */
               case 6:
 		iParDM[1][MA_AN][LB_AN][i][j] = DM1[p];
     	        break;
 	    }
 
 	    /* increment of p */
-	    p++;  
+	    p++;
 	  }
 	}
       }
@@ -1921,7 +2974,7 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
 	for (i=0; i<tnoA; i++){
 	  for (j=0; j<tnoB; j++){
 	    /* increment of p */
-	    p++;  
+	    p++;
 	  }
 	}
       }
@@ -1945,11 +2998,11 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
   int Anum,Bnum,tnoA,tnoB,wanA,wanB;
   int LB_AN,GB_AN,MaxL,num,num0,num1,m,po,ID0;
   int numprocs,myid,ID,tag;
-  int i_vec[10];  
+  int i_vec[10];
   double d0,d1,d2,d3,dum,av_num;
   double tmp,tmp1,tmp2,tmp3;
   double theta,phi,sit,cot,sip,cop;
-  float *array0;    
+  float *array0;
   float *SD,*Re11,*Re22,*Re12,*Im12;
   int *is3,*ie3;
   char file_eig[YOUSO10],file_ev[YOUSO10];
@@ -1983,7 +3036,7 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
     if ( (fp_eig=fopen(file_eig,"w"))==NULL ) {
       printf("cannot open a file %s\n",file_eig);
     }
-  
+
     strcpy(file_ev,".Dos.vec");
     fnjoint(filepath,filename,file_ev);
     if ( (fp_ev=fopen(file_ev,"w"))==NULL ) {
@@ -2022,17 +3075,17 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
 
     av_num = (double)MaxN/(double)numprocs;
     for (ID=0; ID<numprocs; ID++){
-      is3[ID] = (int)(av_num*(double)ID) + 1; 
-      ie3[ID] = (int)(av_num*(double)(ID+1)); 
+      is3[ID] = (int)(av_num*(double)ID) + 1;
+      ie3[ID] = (int)(av_num*(double)(ID+1));
     }
 
     is3[0] = 1;
-    ie3[numprocs-1] = MaxN; 
+    ie3[numprocs-1] = MaxN;
   }
 
   else{
     for (ID=0; ID<MaxN; ID++){
-      is3[ID] = ID + 1; 
+      is3[ID] = ID + 1;
       ie3[ID] = ID + 1;
     }
     for (ID=MaxN; ID<numprocs; ID++){
@@ -2082,7 +3135,7 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
 
     /* initialize Re11, Re22, Re12, and Im12 */
 
-    for (i=0; i<(atomnum+1)*List_YOUSO[7]; i++){ 
+    for (i=0; i<(atomnum+1)*List_YOUSO[7]; i++){
       Re11[i] = 0.0;
       Re22[i] = 0.0;
       Re12[i] = 0.0;
@@ -2098,7 +3151,7 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
 
     for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
 
-      GA_AN = M2G[MA_AN]; 
+      GA_AN = M2G[MA_AN];
       wanA = WhatSpecies[GA_AN];
       tnoA = Spe_Total_CNO[wanA];
       Anum = MP[GA_AN];
@@ -2179,7 +3232,7 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
 	  sit = sin(theta);
 	  cot = cos(theta);
 	  sip = sin(phi);
-	  cop = cos(phi);     
+	  cop = cos(phi);
 
 	  tmp1 = 0.5*(d0 + d1);
 	  tmp2 = 0.5*cot*(d0 - d1);
@@ -2190,7 +3243,7 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
 
 	}
       }
-    
+
       /* write *.Dos.vec */
 
       fwrite(&SD[0],sizeof(float),n2,fp_ev);
@@ -2207,7 +3260,7 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
     fprintf(fp_eig,"mode        1\n");
     fprintf(fp_eig,"NonCol      1\n");
     fprintf(fp_eig,"N           %d\n",n);
-    fprintf(fp_eig,"Nspin       %d\n",1); /* switch to 1 */ 
+    fprintf(fp_eig,"Nspin       %d\n",1); /* switch to 1 */
     fprintf(fp_eig,"Erange      %lf %lf\n",Dos_Erange[0],Dos_Erange[1]);
     /*  fprintf(fp_eig,"irange      %d %d\n",iemin,iemax); */
     fprintf(fp_eig,"Kgrid       %d %d %d\n",1,1,1);
@@ -2223,7 +3276,7 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
       fprintf(fp_eig,"%d ",Spe_Total_CNO[i]);
     }
     fprintf(fp_eig,"\nSpe_Total_CNO>\n");
-    MaxL=Supported_MaxL; 
+    MaxL=Supported_MaxL;
     fprintf(fp_eig,"MaxL           %d\n",Supported_MaxL);
     fprintf(fp_eig,"<Spe_Num_CBasis\n");
     for (i=0;i<SpeciesNum;i++) {
@@ -2285,9 +3338,9 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
   int spin,ie,i,j,iemin,iemax;
   int po,ID0,m,p,k;
   int numprocs,myid,ID,tag;
-  int i_vec[10],HOMO[2];  
+  int i_vec[10],HOMO[2];
   double x,FermiF,av_num;
-  double *array0;    
+  double *array0;
   int *is3,*ie3;
   double max_x=60.0;
   char operate[YOUSO10];
@@ -2315,8 +3368,8 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
     fp1 = fopen(operate,"ab");
 
     if (fp1!=NULL){
-      remove(operate); 
-      fclose(fp1); 
+      remove(operate);
+      fclose(fp1);
       fp1 = fopen(operate, "ab");
     }
   }
@@ -2355,7 +3408,7 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
                   save LCAO coefficients
   ****************************************************/
 
-  /* Save parameters */      
+  /* Save parameters */
 
   if (myid==Host_ID){
     fwrite(&n, sizeof(int), 1, fp1);
@@ -2368,8 +3421,8 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
     fwrite(&Total_SpinSz, sizeof(double),1,fp1); // S. An
   }
 
-  /* calculate N */      
-  
+  /* calculate N */
+
 
 
 
@@ -2381,17 +3434,17 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
 
     av_num = (double)MaxN/(double)numprocs;
     for (ID=0; ID<numprocs; ID++){
-      is3[ID] = (int)(av_num*(double)ID) + 1; 
-      ie3[ID] = (int)(av_num*(double)(ID+1)); 
+      is3[ID] = (int)(av_num*(double)ID) + 1;
+      ie3[ID] = (int)(av_num*(double)(ID+1));
     }
 
     is3[0] = 1;
-    ie3[numprocs-1] = MaxN; 
+    ie3[numprocs-1] = MaxN;
   }
 
   else{
     for (ID=0; ID<MaxN; ID++){
-      is3[ID] = ID + 1; 
+      is3[ID] = ID + 1;
       ie3[ID] = ID + 1;
     }
     for (ID=MaxN; ID<numprocs; ID++){
@@ -2438,7 +3491,7 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
 
     } /* else */
 
-      /* Save array0 */      
+      /* Save array0 */
 
     if (myid==Host_ID){
       fwrite(array0, sizeof(double), n2*2, fp1);
@@ -2490,7 +3543,7 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
   double Utot1,Utot2,Utot3;
   double sumr,sumi,sumxr,sumxi;
   double sumyr,sumyi,sumzr,sumzi,tmpr,tmpi;
-  double *array0;    
+  double *array0;
   dcomplex *C1,*C2,*Z,*Ax,*Ay,*Az;
   int Cluster_HOMO1[2],Num_XANES_Out,numex;
   int *ind2ind;
@@ -2506,9 +3559,9 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
   /* standard output */
 
   if (myid==Host_ID){
-    printf("\n*******************************************************\n"); 
+    printf("\n*******************************************************\n");
     printf("               Calculation of XANES spectrum            \n");
-    printf("*******************************************************\n\n"); 
+    printf("*******************************************************\n\n");
   }
 
   /* allocation of arrays */
@@ -2535,17 +3588,17 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
 
     av_num = (double)MaxN/(double)numprocs;
     for (ID=0; ID<numprocs; ID++){
-      is3[ID] = (int)(av_num*(double)ID) + 1; 
-      ie3[ID] = (int)(av_num*(double)(ID+1)); 
+      is3[ID] = (int)(av_num*(double)ID) + 1;
+      ie3[ID] = (int)(av_num*(double)(ID+1));
     }
 
     is3[0] = 1;
-    ie3[numprocs-1] = MaxN; 
+    ie3[numprocs-1] = MaxN;
   }
 
   else{
     for (ID=0; ID<MaxN; ID++){
-      is3[ID] = ID + 1; 
+      is3[ID] = ID + 1;
       ie3[ID] = ID + 1;
     }
     for (ID=MaxN; ID<numprocs; ID++){
@@ -2590,7 +3643,7 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
 
     } /* else */
 
-    /* store array0 to C2 */      
+    /* store array0 to C2 */
 
     for (k=0; k<n2; k++){
       C2[(p-iemin)*n2+k].r = array0[2*k  ];
@@ -2609,7 +3662,7 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
 
   if ((fp1 = fopen(operate,"rb")) != NULL){
 
-    /* read parameters */      
+    /* read parameters */
 
     fread(&n1, sizeof(int), 1, fp1);
     fread(&MaxN1, sizeof(int), 1, fp1);
@@ -2636,7 +3689,7 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
   }
 
   /****************************************************
-          start of calculation XANES spectrum 
+          start of calculation XANES spectrum
   ****************************************************/
 
   /* OLPmo: matrix for momentum operator */
@@ -2686,35 +3739,35 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
 
   MP2 = (int*)malloc(sizeof(int)*(atomnum+1));
 
-  p = 0; 
+  p = 0;
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
 
-    MP2[Gc_AN] = p; 
+    MP2[Gc_AN] = p;
     Cwan = WhatSpecies[Gc_AN];
     tno0 = Spe_Total_CNO[Cwan];
     p += tno0;
   }
 
   /****************************************************
-     determine the KS occupied and unoccupied states 
+     determine the KS occupied and unoccupied states
      to be included
   ****************************************************/
 
-  p = HOMO_XANES[0]; 
+  p = HOMO_XANES[0];
   UMOmax = p;
 
   for (k=p+1; k<=MaxN; k++){
     if ( (ko[k]-ko[p])<xanes_energy_range ) UMOmax = k;
-  }  
+  }
 
-  OMOmin = p - 1; 
+  OMOmin = p - 1;
   for (k=p-1; 1<=k; k--){
     if ( (ko[p]-ko[k])<xanes_energy_range ) OMOmin = k;
-  }  
+  }
 
   /* allocation of arrays */
 
-  p = HOMO_XANES[0]; 
+  p = HOMO_XANES[0];
 
   Num_Excited_States = UMOmax - p;
   Num_Occupied_States = p - OMOmin;
@@ -2734,18 +3787,18 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
   ind2ind = (int*)malloc(sizeof(int)*UMOmax);
 
   /**************************************************************
-   calculations of the overlap, px, py, and pz matrices between 
+   calculations of the overlap, px, py, and pz matrices between
    Kohn-Sham orbitals
   **************************************************************/
 
   for (ii=0; ii<UMOmax; ii++){
     for (jj=0; jj<UMOmax; jj++){
 
-      sumr  = 0.0; sumi  = 0.0; 
-      sumxr = 0.0; sumxi = 0.0; 
-      sumyr = 0.0; sumyi = 0.0; 
-      sumzr = 0.0; sumzi = 0.0; 
- 
+      sumr  = 0.0; sumi  = 0.0;
+      sumxr = 0.0; sumxi = 0.0;
+      sumyr = 0.0; sumyi = 0.0;
+      sumzr = 0.0; sumzi = 0.0;
+
       for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
 	Gc_AN = M2G[Mc_AN];
@@ -2770,10 +3823,10 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
 	      jb = Bnum + j;
 
 	      tmpr = C1_ref(ii,ia  ).r*C2_ref(jj,jb  ).r + C1_ref(ii,ia  ).i*C2_ref(jj,jb  ).i
-                   + C1_ref(ii,ia+n).r*C2_ref(jj,jb+n).r + C1_ref(ii,ia+n).i*C2_ref(jj,jb+n).i;  
+                   + C1_ref(ii,ia+n).r*C2_ref(jj,jb+n).r + C1_ref(ii,ia+n).i*C2_ref(jj,jb+n).i;
 
 	      tmpi = C1_ref(ii,ia  ).r*C2_ref(jj,jb  ).i - C1_ref(ii,ia  ).i*C2_ref(jj,jb  ).r
-                   + C1_ref(ii,ia+n).r*C2_ref(jj,jb+n).i - C1_ref(ii,ia+n).i*C2_ref(jj,jb+n).r;  
+                   + C1_ref(ii,ia+n).r*C2_ref(jj,jb+n).i - C1_ref(ii,ia+n).i*C2_ref(jj,jb+n).r;
 
 	      sumr  += tmpr*OLP[0][Mc_AN][h_AN][i][j];
 	      sumi  += tmpi*OLP[0][Mc_AN][h_AN][i][j];
@@ -2808,9 +3861,9 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
            contribution of single excitations
   ****************************************************/
 
-  /* set parameters */ 
+  /* set parameters */
 
-  p = HOMO_XANES[0]; 
+  p = HOMO_XANES[0];
   Num_Excited_States = UMOmax - p;
   Utot2 = Utot;
 
@@ -2819,15 +3872,15 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
   for (k=myid; k<Num_Excited_States; k+=numprocs){
 
     if (myid==Host_ID){
-      printf("Calc... myid=%2d %4d/%4d\n",myid,k+1,Num_Excited_States);fflush(stdout); 
+      printf("Calc... myid=%2d %4d/%4d\n",myid,k+1,Num_Excited_States);fflush(stdout);
     }
 
-    /* set parameters */ 
+    /* set parameters */
 
     for (i=0; i<(p-1); i++){
-      ind2ind[i] = i;    
+      ind2ind[i] = i;
     }
-    ind2ind[p-1] = p - 1 + k;    
+    ind2ind[p-1] = p - 1 + k;
 
     /*
     if (myid==Host_ID){
@@ -2855,15 +3908,15 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
   }
 
   /*******************************************************
-                       Output result 
+                       Output result
   *******************************************************/
 
   if (myid==Host_ID){
 
     sprintf(file1,"%s%s.xanes",filepath,filename);
-  
+
     if ((fp1 = fopen(file1,"w")) != NULL){
-  
+
       setvbuf(fp1,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
       fprintf(fp1,"#1: Excitation energy (eV) #2: Oscillator Strength (OS) #3: x-comp. of OS #4: y-comp. of OS #5: z-comp. of OS\n");
@@ -2877,8 +3930,8 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
       /* fclose of fp1 */
       fclose(fp1);
     }
-  } 
-  
+  }
+
   /*******************************************************
                     freeing of array
   *******************************************************/
@@ -2947,7 +4000,7 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
 
 
 double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], int *MP2,
-                                 int *ind2ind, 
+                                 int *ind2ind,
                                  dcomplex *Z0, dcomplex *A, dcomplex *Z,
                                  dcomplex *Ax, dcomplex *Ay, dcomplex *Az,
                                  double Utot1, double Utot2,
@@ -2963,7 +4016,7 @@ double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], int *MP
   int numprocs,myid;
 
   dtime(&stime);
-  
+
   /* MPI */
 
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -2973,7 +4026,7 @@ double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], int *MP
 
   for (jj=0; jj<Nocc[0]; jj++){
 
-    j = ind2ind[jj];        
+    j = ind2ind[jj];
 
     for (ii=0; ii<Nocc[0]; ii++){
       Z0[Nocc[0]*jj+ii].r = Z[UMOmax*j+ii].r;
@@ -2990,12 +4043,12 @@ double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], int *MP
   for (i=0; i<Nocc[0]; i++){
     for (j=0; j<Nocc[0]; j++){
 
-      tmpr = Z0[Nocc[0]*j+i].r; 
-      tmpi = Z0[Nocc[0]*j+i].i; 
+      tmpr = Z0[Nocc[0]*j+i].r;
+      tmpi = Z0[Nocc[0]*j+i].i;
       Z0[Nocc[0]*j+i].r = tmpr*det.r - tmpi*det.i;
       Z0[Nocc[0]*j+i].i = tmpr*det.i + tmpi*det.r;
-    }  
-  } 
+    }
+  }
 
   /* calculation of Ax*(Z0^{-1*det)}, Ay*(Z0^{-1}*det), and Az*(Z0^{-1}*det) */
 
@@ -3007,21 +4060,21 @@ double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], int *MP
 
       if (k==0){
 	for (jj=0; jj<Nocc[0]; jj++){
-	  j = ind2ind[jj];        
+	  j = ind2ind[jj];
 	  A[Nocc[0]*ii+jj] = Ax[UMOmax*j+ii];
 	}
       }
 
       else if (k==1){
 	for (jj=0; jj<Nocc[0]; jj++){
-	  j = ind2ind[jj];        
+	  j = ind2ind[jj];
 	  A[Nocc[0]*ii+jj] = Ay[UMOmax*j+ii];
 	}
       }
 
       else if (k==2){
 	for (jj=0; jj<Nocc[0]; jj++){
-	  j = ind2ind[jj];        
+	  j = ind2ind[jj];
 	  A[Nocc[0]*ii+jj] = Az[UMOmax*j+ii];
 	}
       }
@@ -3095,8 +4148,8 @@ dcomplex Lapack_LU_Zinverse(int n, dcomplex *A)
       if (ipiv[i] != i+1) { det.r = -det.r; det.i = -det.i; }
     }
 
-    /* 
-    printf("det %15.12f %15.12f\n",det.r,det.i);   
+    /*
+    printf("det %15.12f %15.12f\n",det.r,det.i);
 
     for (i=0; i<n; i++){
       printf("i=%2d ipiv=%2d\n",i,ipiv[i]);
