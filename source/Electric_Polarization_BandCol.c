@@ -18,6 +18,7 @@
 #include <time.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_cusolver_dense_utils.h"
 #include "lapack_prototypes.h"
 #include "tran_variables.h"
 #include <omp.h>
@@ -742,7 +743,12 @@ Calc_PFs:
 
   }
 
-  else if (scf_eigen_lib_flag==2){
+  else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+    OpenMX_CuSolver_DenseDsyevx_0based(DMs[spin],VDMs,ko,n,n,
+                                       "Electric_Polarization_BandCol DM CuSOLVER");
+  }
+
+  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 
@@ -979,7 +985,11 @@ Calc_PFs:
 	  F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
 	    ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
 	}
-	else if (scf_eigen_lib_flag==2){
+	else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+	  OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,
+					     "Electric_Polarization_BandCol overlap CuSOLVER");
+	}
+	else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 	  int mpiworld;
@@ -1079,7 +1089,11 @@ Calc_PFs:
 	F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
 	  ( &n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+	OpenMX_CuSolver_DenseZheevx_1based(Hs,Cs,ko,n,MaxN,
+					   "Electric_Polarization_BandCol Hamiltonian CuSOLVER");
+      }
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 	int mpiworld;
@@ -1343,7 +1357,11 @@ Calc_PFs:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,
+                                           "Electric_Polarization_BandCol ABC overlap CuSOLVER");
+      }
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
         int mpiworld;
@@ -1433,7 +1451,11 @@ Calc_PFs:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        OpenMX_CuSolver_DenseZheevx_1based(Hs,Cs,ko,n,MaxN,
+                                           "Electric_Polarization_BandCol ABC Hamiltonian CuSOLVER");
+      }
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 	int mpiworld;

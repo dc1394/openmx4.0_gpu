@@ -1051,6 +1051,7 @@ scf.Max.Mixing.Weight      0.200       # default=0.40
 scf.Mixing.History          40         # default=5
 scf.Mixing.StartPulay       20         # default=6
 scf.criterion             1.0e-11      # default=1.0e-6 (Hartree) 
+scf.eigen.lib             cusolver
 scf.lapack.dste            dstevx      # dstevx|dstedc|dstegr,default=dstevx
  
 #

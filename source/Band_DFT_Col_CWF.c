@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_cusolver_dense_utils.h"
 #include "lapack_prototypes.h"
 #include "tran_variables.h"
 #include "set_cuda_default_device_from_local_rank.h"
@@ -1203,7 +1204,11 @@ diagonalize1:
 	  ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
 
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,"Band_DFT_Col_CWF overlap CuSOLVER");
+      }
+
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 	int mpiworld;
@@ -1302,7 +1307,11 @@ diagonalize1:
 	  ( &n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk,
 	    &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        OpenMX_CuSolver_DenseZheevx_1based(Hs,Cs,ko,n,MaxN,"Band_DFT_Col_CWF Hamiltonian CuSOLVER");
+      }
+
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 	int mpiworld;
@@ -3640,7 +3649,14 @@ void Band_Dispersion_Col_CWF( int nkpath, int *n_perk, double ***kpath, char ***
             Cs, &na_rows_CWF5, &nblk_CWF5, &mpi_comm_rows_int, &mpi_comm_cols_int );
 	}   
 
-        else if (scf_eigen_lib_flag==2){
+        else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=TNum_CWFs
+                 && na_rows_CWF5==TNum_CWFs && na_cols_CWF5==TNum_CWFs){
+          OpenMX_CuSolver_DenseZheevx_0based(Hs,Cs,&EigenVal[ik][i_perk][spin][0],
+                                             TNum_CWFs,TNum_CWFs,
+                                             "Band_DFT_Col_CWF CWF-band Hamiltonian CuSOLVER");
+        }
+
+        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
   
 #ifndef kcomp
 	  int mpiworld;
@@ -3911,6 +3927,4 @@ void Save_Projection_Matrix(char *mode,
     }
   }
 }
-
-
 

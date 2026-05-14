@@ -32,8 +32,9 @@ int TRAN_SCF_Iter_Band;
 static int DFT_GPU_BasisCount(void);
 
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)
- * Uses MPI_COMM_TYPE_SHARED to assign GPU per node-local rank. Small matrices
- * fall back only in the eigensolver paths; GPU kernels remain enabled. */
+ * Uses MPI_COMM_TYPE_SHARED to assign GPU per node-local rank. Global dense
+ * solvers may fall back for small matrices; DC paths use their local cluster
+ * matrix sizes and thresholds. */
 static void DFT_GPU_DeviceInit(int basis_count)
 {
     int myid0;
@@ -43,8 +44,8 @@ static void DFT_GPU_DeviceInit(int basis_count)
     MPI_Comm_rank(mpi_comm_level1,&myid0);
     scf_eigen_lib_flag = CuSOLVER;
 
-    if (basis_count < GPU_CPU_SWITCH_NUM && myid0==Host_ID && 0<level_stdout) {
-        printf("<DFT> CuSOLVER requested; matrix dimension %d is below %d, so eigensolver paths use ELPA2 while GPU kernels remain enabled.\n",
+    if (Solver!=5 && Solver!=11 && basis_count < GPU_CPU_SWITCH_NUM && myid0==Host_ID && 0<level_stdout) {
+        printf("<DFT> CuSOLVER requested; global matrix dimension %d is below %d, so global dense eigensolver paths use a CPU fallback while GPU kernels remain enabled.\n",
                basis_count,GPU_CPU_SWITCH_NUM);
         fflush(stdout);
     }
@@ -85,7 +86,9 @@ static void DFT_GPU_DeviceInit(int basis_count)
 
 static int DFT_GPU_EigensolverActive(void)
 {
-    return (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=DFT_GPU_BasisCount());
+    if (scf_eigen_lib_flag!=CuSOLVER) return 0;
+    if (Solver==5 || Solver==11) return 1;
+    return (GPU_CPU_SWITCH_NUM<=DFT_GPU_BasisCount());
 }
 
 static int DFT_GPU_BasisCount(void)

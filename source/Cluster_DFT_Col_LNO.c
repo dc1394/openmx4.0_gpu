@@ -18,6 +18,7 @@
 #include <time.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_cusolver_dense_utils.h"
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
@@ -318,7 +319,12 @@ double Cluster_DFT_Col_LNO(
 					      &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
     }
 
-    else if (scf_eigen_lib_flag==2){
+    else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=TNum_LNOs && na_rows==TNum_LNOs && na_cols==TNum_LNOs){
+      OpenMX_CuSolver_DenseDsyevx_1based(Cs,Ss_LNO[spin],ko[0],TNum_LNOs,TNum_LNOs,
+                                         "Cluster_DFT_Col_LNO overlap CuSOLVER");
+    }
+
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
 
@@ -559,7 +565,12 @@ double Cluster_DFT_Col_LNO(
     F77_NAME(solve_evp_real,SOLVE_EVP_REAL)(&TNum_LNOs, &MaxN, Hs, &na_rows, &ko[spin][1], Cs, 
                                             &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
   }
-  else if (scf_eigen_lib_flag==2){
+  else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=TNum_LNOs && na_rows==TNum_LNOs && na_cols==TNum_LNOs){
+    OpenMX_CuSolver_DenseDsyevx_1based(Hs,Cs,ko[spin],TNum_LNOs,MaxN,
+                                       "Cluster_DFT_Col_LNO Hamiltonian CuSOLVER");
+  }
+
+  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
     int mpiworld;
@@ -1388,5 +1399,3 @@ double Lapack_LU_Dinverse(int n, double *A)
 
     return det;
 }
-
-

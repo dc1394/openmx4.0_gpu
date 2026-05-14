@@ -17,6 +17,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_cusolver_dense_utils.h"
 #include "lapack_prototypes.h"
 #include "tran_variables.h"
 #include "mpi.h"
@@ -822,7 +823,11 @@ diagonalize1:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,"Band_DFT_Col_DMmu overlap CuSOLVER");
+      }
+
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
         int mpiworld;
@@ -922,7 +927,11 @@ diagonalize1:
       F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
       ( &n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
-    else if (scf_eigen_lib_flag==2){
+    else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+      OpenMX_CuSolver_DenseZheevx_1based(Hs,Cs,ko,n,MaxN,"Band_DFT_Col_DMmu Hamiltonian CuSOLVER");
+    }
+
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
       int mpiworld;
@@ -1768,7 +1777,11 @@ diagonalize1:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,"Band_DFT_Col_DMmu DM overlap CuSOLVER");
+      }
+
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
         int mpiworld;
@@ -1858,7 +1871,11 @@ diagonalize1:
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
+        OpenMX_CuSolver_DenseZheevx_1based(Hs,Cs,ko,n,MaxN,"Band_DFT_Col_DMmu DM Hamiltonian CuSOLVER");
+      }
+
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
         int mpiworld;
@@ -2372,4 +2389,3 @@ diagonalize1:
   time0 = TEtime - TStime;
   return time0;
 }
-

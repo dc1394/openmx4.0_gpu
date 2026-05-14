@@ -17,6 +17,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_cusolver_dense_utils.h"
 #include "lapack_prototypes.h"
 #include "tran_variables.h"
 #include "mpi.h"
@@ -720,7 +721,11 @@ double Band_DFT_NonCol_DMmu(
           F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
             ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
         }
-        else if (scf_eigen_lib_flag==2){
+        else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+          OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,"Band_DFT_NonCol_DMmu overlap CuSOLVER");
+        }
+
+        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
           int mpiworld;
@@ -909,7 +914,11 @@ double Band_DFT_NonCol_DMmu(
         F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
         ( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==2){
+      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+        OpenMX_CuSolver_DenseZheevx_1based(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol_DMmu Hamiltonian CuSOLVER");
+      }
+
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
         int mpiworld;
@@ -1312,7 +1321,11 @@ double Band_DFT_NonCol_DMmu(
             F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
           ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
         }
-        else if (scf_eigen_lib_flag==2){
+        else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+          OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,"Band_DFT_NonCol_DMmu DM overlap CuSOLVER");
+        }
+
+        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
           int mpiworld;
@@ -1479,7 +1492,11 @@ double Band_DFT_NonCol_DMmu(
             F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
           ( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
         }
-        else if (scf_eigen_lib_flag==2){
+        else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+          OpenMX_CuSolver_DenseZheevx_1based(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol_DMmu DM Hamiltonian CuSOLVER");
+        }
+
+        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
 
 #ifndef kcomp
           int mpiworld;

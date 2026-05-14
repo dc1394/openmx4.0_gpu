@@ -5585,7 +5585,15 @@ void Force4B(double***** CDM0)
     tno2 = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
     ActiveHVNA2 = (Cnt_switch == 0) ? HVNA2 : CntHVNA2;
     ActiveHVNA3 = (Cnt_switch == 0) ? HVNA3 : CntHVNA3;
-    const int use_force4b_openacc = (scf_eigen_lib_flag == CuSOLVER);
+    /*
+     * The OpenACC Force4B path packs host-side dHVNA products into large
+     * temporary arrays and copies them to the device for a scalar reduction.
+     * In DC-LNO/CuSOLVER runs many MPI ranks can share one GPU while CuSOLVER
+     * still owns most device memory, so these transient copies can exhaust
+     * device memory.  Keep Force4B on the CPU trace path, which avoids those
+     * device buffers and matches the original contraction.
+     */
+    const int use_force4b_openacc = 0;
 
     dtime(&etime);
     if (myid == 0 && measure_time) {

@@ -4,7 +4,7 @@
   This calculation was performed by OpenMX Ver. 4.0 GPU
   using 18 MPI processes and 1 OpenMP threads.
 
-  Mon May 11 12:47:55 2026
+  Thu May 14 19:26:35 2026
 
 ***********************************************************
 ***********************************************************
@@ -371,15 +371,15 @@ MD.Opt.criterion         1.0e-4        # default=1.0e-4 (Hartree/bohr)
   OrbOpt=  1  SCF=   7  NormRD=  0.025718285739  Uele= -5.762341287961
   OrbOpt=  1  SCF=   8  NormRD=  0.035996115551  Uele= -5.732729106460
   OrbOpt=  1  SCF=   9  NormRD=  0.000297693988  Uele= -5.754687847943
-  OrbOpt=  1  SCF=  10  NormRD=  0.000265054698  Uele= -5.754634528838
+  OrbOpt=  1  SCF=  10  NormRD=  0.000265054698  Uele= -5.754634528839
   OrbOpt=  1  SCF=  11  NormRD=  0.000013297716  Uele= -5.754793476903
-  OrbOpt=  1  SCF=  12  NormRD=  0.000000526142  Uele= -5.754797581611
+  OrbOpt=  1  SCF=  12  NormRD=  0.000000526142  Uele= -5.754797581610
   OrbOpt=  1  SCF=  13  NormRD=  0.000000054920  Uele= -5.754797299210
   OrbOpt=  1  SCF=  14  NormRD=  0.000000002582  Uele= -5.754797281460
   OrbOpt=  1  SCF=  15  NormRD=  0.000000000019  Uele= -5.754797283014
   OrbOpt=  2  SCF=  16  NormRD=  0.000000000002  Uele= -5.754797283001
-  OrbOpt=  2  SCF=  17  NormRD=  0.003280897629  Uele= -5.736766487233
-  OrbOpt=  2  SCF=  18  NormRD=  0.006165426082  Uele= -5.739365958518
+  OrbOpt=  2  SCF=  17  NormRD=  0.003280897630  Uele= -5.736766487233
+  OrbOpt=  2  SCF=  18  NormRD=  0.006165426082  Uele= -5.739365958519
   OrbOpt=  2  SCF=  19  NormRD=  0.006136147938  Uele= -5.739347640958
   OrbOpt=  2  SCF=  20  NormRD=  0.003067010248  Uele= -5.737425133319
   OrbOpt=  2  SCF=  21  NormRD=  0.001059650170  Uele= -5.736153196591
@@ -389,35 +389,35 @@ MD.Opt.criterion         1.0e-4        # default=1.0e-4 (Hartree/bohr)
   OrbOpt=  2  SCF=  25  NormRD=  0.000000292474  Uele= -5.735613171510
   OrbOpt=  2  SCF=  26  NormRD=  0.000000008579  Uele= -5.735613043306
   OrbOpt=  2  SCF=  27  NormRD=  0.000000000108  Uele= -5.735613037333
-  OrbOpt=  3  SCF=  28  NormRD=  0.000000000036  Uele= -5.735613037415
-  OrbOpt=  3  SCF=  29  NormRD=  0.003282046104  Uele= -5.716870690411
-  OrbOpt=  3  SCF=  30  NormRD=  0.005537586914  Uele= -5.718699124560
-  OrbOpt=  3  SCF=  31  NormRD=  0.005511308740  Uele= -5.718682719081
-  OrbOpt=  3  SCF=  32  NormRD=  0.002757939361  Uele= -5.716959568403
+  OrbOpt=  3  SCF=  28  NormRD=  0.000000000037  Uele= -5.735613037421
+  OrbOpt=  3  SCF=  29  NormRD=  0.003282046104  Uele= -5.716870690417
+  OrbOpt=  3  SCF=  30  NormRD=  0.005537586909  Uele= -5.718699124557
+  OrbOpt=  3  SCF=  31  NormRD=  0.005511308736  Uele= -5.718682719078
+  OrbOpt=  3  SCF=  32  NormRD=  0.002757939360  Uele= -5.716959568402
   OrbOpt=  3  SCF=  33  NormRD=  0.000972035704  Uele= -5.715821459336
   OrbOpt=  3  SCF=  34  NormRD=  0.000405477776  Uele= -5.715403328780
   OrbOpt=  3  SCF=  35  NormRD=  0.000299495414  Uele= -5.715316684522
-  OrbOpt=  3  SCF=  36  NormRD=  0.000295536235  Uele= -5.715546782207
+  OrbOpt=  3  SCF=  36  NormRD=  0.000295536236  Uele= -5.715546782207
   OrbOpt=  3  SCF=  37  NormRD=  0.000000557584  Uele= -5.715358587751
   OrbOpt=  3  SCF=  38  NormRD=  0.000000005200  Uele= -5.715358246576
-  OrbOpt=  3  SCF=  39  NormRD=  0.000000000632  Uele= -5.715358249150
-  OrbOpt=  4  SCF=  40  NormRD=  0.000000000011  Uele= -5.715358249563
-  OrbOpt=  4  SCF=  41  NormRD=  0.003284311270  Uele= -5.695823931510
-  OrbOpt=  4  SCF=  42  NormRD=  0.004713163833  Uele= -5.696672507075
-  OrbOpt=  4  SCF=  43  NormRD=  0.004690853803  Uele= -5.696658611588
-  OrbOpt=  4  SCF=  44  NormRD=  0.002352913994  Uele= -5.695195322165
-  OrbOpt=  4  SCF=  45  NormRD=  0.000861901206  Uele= -5.694232449797
+  OrbOpt=  3  SCF=  39  NormRD=  0.000000000633  Uele= -5.715358249147
+  OrbOpt=  4  SCF=  40  NormRD=  0.000000000012  Uele= -5.715358249565
+  OrbOpt=  4  SCF=  41  NormRD=  0.003284311270  Uele= -5.695823931513
+  OrbOpt=  4  SCF=  42  NormRD=  0.004713163831  Uele= -5.696672507073
+  OrbOpt=  4  SCF=  43  NormRD=  0.004690853800  Uele= -5.696658611586
+  OrbOpt=  4  SCF=  44  NormRD=  0.002352913992  Uele= -5.695195322163
+  OrbOpt=  4  SCF=  45  NormRD=  0.000861901206  Uele= -5.694232449796
   OrbOpt=  4  SCF=  46  NormRD=  0.000413944451  Uele= -5.693881082715
   OrbOpt=  4  SCF=  47  NormRD=  0.000319488690  Uele= -5.693815904638
-  OrbOpt=  4  SCF=  48  NormRD=  0.000429279976  Uele= -5.694143081040
+  OrbOpt=  4  SCF=  48  NormRD=  0.000429279977  Uele= -5.694143081041
   OrbOpt=  4  SCF=  49  NormRD=  0.000000926348  Uele= -5.693871489371
   OrbOpt=  4  SCF=  50  NormRD=  0.000000029370  Uele= -5.693870881882
   OrbOpt=  4  SCF=  51  NormRD=  0.000000000074  Uele= -5.693870900558
-  OrbOpt=  5  SCF=  52  NormRD=  0.000000000002  Uele= -5.693870900557
-  OrbOpt=  5  SCF=  53  NormRD=  0.003296091506  Uele= -5.673453333859
-  OrbOpt=  5  SCF=  54  NormRD=  0.003618539719  Uele= -5.673034146939
-  OrbOpt=  5  SCF=  55  NormRD=  0.003601572923  Uele= -5.673023596599
-  OrbOpt=  5  SCF=  56  NormRD=  0.001817804900  Uele= -5.671901882845
+  OrbOpt=  5  SCF=  52  NormRD=  0.000000000002  Uele= -5.693870900559
+  OrbOpt=  5  SCF=  53  NormRD=  0.003296091506  Uele= -5.673453333860
+  OrbOpt=  5  SCF=  54  NormRD=  0.003618539718  Uele= -5.673034146939
+  OrbOpt=  5  SCF=  55  NormRD=  0.003601572922  Uele= -5.673023596599
+  OrbOpt=  5  SCF=  56  NormRD=  0.001817804901  Uele= -5.671901882845
   OrbOpt=  5  SCF=  57  NormRD=  0.000728870615  Uele= -5.671171820707
   OrbOpt=  5  SCF=  58  NormRD=  0.000426066232  Uele= -5.670910510500
   OrbOpt=  5  SCF=  59  NormRD=  0.000338089214  Uele= -5.670877473127
@@ -425,33 +425,33 @@ MD.Opt.criterion         1.0e-4        # default=1.0e-4 (Hartree/bohr)
   OrbOpt=  5  SCF=  61  NormRD=  0.000001341015  Uele= -5.670950217054
   OrbOpt=  5  SCF=  62  NormRD=  0.000000059009  Uele= -5.670949316090
   OrbOpt=  5  SCF=  63  NormRD=  0.000000001578  Uele= -5.670949352869
-  OrbOpt=  6  SCF=  64  NormRD=  0.000000000002  Uele= -5.670949353802
-  OrbOpt=  6  SCF=  65  NormRD=  0.003337370286  Uele= -5.649553109680
-  OrbOpt=  6  SCF=  66  NormRD=  0.002162522239  Uele= -5.647454446746
-  OrbOpt=  6  SCF=  67  NormRD=  0.002146069598  Uele= -5.647444116651
-  OrbOpt=  6  SCF=  68  NormRD=  0.001115177971  Uele= -5.646768582356
+  OrbOpt=  6  SCF=  64  NormRD=  0.000000000002  Uele= -5.670949353800
+  OrbOpt=  6  SCF=  65  NormRD=  0.003337370286  Uele= -5.649553109678
+  OrbOpt=  6  SCF=  66  NormRD=  0.002162522240  Uele= -5.647454446747
+  OrbOpt=  6  SCF=  67  NormRD=  0.002146069599  Uele= -5.647444116652
+  OrbOpt=  6  SCF=  68  NormRD=  0.001115177973  Uele= -5.646768582357
   OrbOpt=  6  SCF=  69  NormRD=  0.000591165580  Uele= -5.646357664190
   OrbOpt=  6  SCF=  70  NormRD=  0.000423218914  Uele= -5.646233531047
   OrbOpt=  6  SCF=  71  NormRD=  0.000313652797  Uele= -5.646265116691
-  OrbOpt=  6  SCF=  72  NormRD=  0.000081011469  Uele= -5.646293956812
+  OrbOpt=  6  SCF=  72  NormRD=  0.000081011467  Uele= -5.646293956813
   OrbOpt=  6  SCF=  73  NormRD=  0.000004128799  Uele= -5.646346594280
   OrbOpt=  6  SCF=  74  NormRD=  0.000000030794  Uele= -5.646343954345
-  OrbOpt=  6  SCF=  75  NormRD=  0.000000000393  Uele= -5.646343974436
-  OrbOpt=  6  SCF=  76  NormRD=  0.000000000010  Uele= -5.646343974730
+  OrbOpt=  6  SCF=  75  NormRD=  0.000000000393  Uele= -5.646343974435
+  OrbOpt=  6  SCF=  76  NormRD=  0.000000000001  Uele= -5.646343974674
 
 *******************************************************
         Total energy (Hartree) at MD = 3        
 *******************************************************
 
-  Uele.         -5.646343974730
+  Uele.         -5.646343974674
 
-  Ukin.         14.348637998409
+  Ukin.         14.348637998405
   UH0.         -28.302836017543
-  UH1.           0.109345658701
-  Una.         -16.062803374087
-  Unl.           3.208943761752
-  Uxc0.         -2.743616584799
-  Uxc1.         -2.743616584799
+  UH1.           0.109345658700
+  Una.         -16.062803374082
+  Unl.           3.208943761749
+  Uxc0.         -2.743616584798
+  Uxc1.         -2.743616584798
   Ucore.        10.232522513173
   Uhub.          0.000000000000
   Ucs.           0.000000000000
@@ -504,14 +504,14 @@ MD.Opt.criterion         1.0e-4        # default=1.0e-4 (Hartree/bohr)
    HOMO =  5
    Eigenvalues
                 Up-spin            Down-spin
-          1  -1.09190136726079  -1.09190136726079
-          2  -0.52026652696637  -0.52026652696637
-          3  -0.43536779075657  -0.43536779075657
-          4  -0.43536779075655  -0.43536779075655
-          5  -0.34026851162023  -0.34026851162023
-          6  -0.12834324348827  -0.12834324348827
-          7  -0.12834324348827  -0.12834324348827
-          8   0.32184063772304   0.32184063772304
+          1  -1.09190136725418  -1.09190136725418
+          2  -0.52026652696068  -0.52026652696068
+          3  -0.43536779075084  -0.43536779075084
+          4  -0.43536779075083  -0.43536779075083
+          5  -0.34026851161596  -0.34026851161596
+          6  -0.12834324348336  -0.12834324348336
+          7  -0.12834324348336  -0.12834324348336
+          8   0.32184063772900   0.32184063772900
 
 ***********************************************************
 ***********************************************************
@@ -534,10 +534,10 @@ MD.Opt.criterion         1.0e-4        # default=1.0e-4 (Hartree/bohr)
 ***********************************************************
 
    iter=   1  Gradient Norm=  0.432660579604  Uele= -5.754797283001
-   iter=   2  Gradient Norm=  0.385664226282  Uele= -5.735613037415
-   iter=   3  Gradient Norm=  0.339760840375  Uele= -5.715358249563
-   iter=   4  Gradient Norm=  0.295127413648  Uele= -5.693870900557
-   iter=   5  Gradient Norm=  0.251989380450  Uele= -5.670949353802
+   iter=   2  Gradient Norm=  0.385664226284  Uele= -5.735613037421
+   iter=   3  Gradient Norm=  0.339760840376  Uele= -5.715358249565
+   iter=   4  Gradient Norm=  0.295127413649  Uele= -5.693870900559
+   iter=   5  Gradient Norm=  0.251989380450  Uele= -5.670949353800
 
 ***********************************************************
 ***********************************************************
@@ -614,7 +614,7 @@ MD.Opt.criterion         1.0e-4        # default=1.0e-4 (Hartree/bohr)
 
 <coordinates.forces
   2
-    1     O     0.17883   0.00000   0.00000  -0.028286122898 -0.000000000008 -0.000000000000
+    1     O     0.17883   0.00000   0.00000  -0.028286122900 -0.000000000008 -0.000000000000
     2     C     1.42000  -0.00000  -0.00000   0.029730091617 -0.000000000000 -0.000000000000
 coordinates.forces>
 
@@ -633,32 +633,32 @@ coordinates.forces>
 ***********************************************************
 ***********************************************************
 
-   Elapsed.Time.        12.104
+   Elapsed.Time.        13.534
 
                                Min_ID   Min_Time       Max_ID   Max_Time
-   Total Computational Time =     9       12.015          0       12.104
-   readfile                 =    14        2.642          0        2.642
-   truncation               =    17        0.087          1        0.097
-   MD_pac                   =     0        0.001         11        0.001
-   OutData                  =     9        0.286          0        0.375
+   Total Computational Time =     7       13.381          0       13.534
+   readfile                 =    10        2.835          0        2.835
+   truncation               =     8        0.091          1        0.100
+   MD_pac                   =     0        0.008         12        0.014
+   OutData                  =     7        0.615          0        0.768
    HWF                      =     0        0.000          0        0.000
-   DFT                      =     1        8.987         17        8.996
+   DFT                      =     1        9.814          8        9.824
 
 *** In DFT ***
 
-   Set_OLP_Kin              =     7        0.141          0        0.165
-   Set_Nonlocal             =     0        0.030          7        0.055
-   Set_ProExpn_VNA          =    15        0.448          0        0.481
-   Set_Hamiltonian          =     7        6.421         11        6.421
-   Poisson                  =     0        0.434          5        0.434
-   Diagonalization          =     1        0.333          0        0.333
-   Mixing_DM                =     1        0.009         15        0.009
-   Force                    =     5        0.190         12        0.190
-   Total_Energy             =     7        0.120          0        0.121
-   Set_Aden_Grid            =     0        0.020         17        0.030
-   Set_Orbitals_Grid        =     2        0.000          0        0.160
-   Set_Density_Grid         =     0        0.536         10        0.634
-   RestartFileDFT           =     6        0.026          2        0.071
-   Mulliken_Charge          =     4        0.006          0        0.006
+   Set_OLP_Kin              =    14        0.137          0        0.160
+   Set_Nonlocal             =     0        0.030         14        0.052
+   Set_ProExpn_VNA          =    15        0.436          1        0.472
+   Set_Hamiltonian          =    15        6.223          4        6.223
+   Poisson                  =     1        0.411         17        0.411
+   Diagonalization          =     1        0.551          0        0.551
+   Mixing_DM                =     0        0.009          5        0.009
+   Force                    =     0        0.185         11        0.185
+   Total_Energy             =     1        0.125          0        0.126
+   Set_Aden_Grid            =     1        0.021          2        0.038
+   Set_Orbitals_Grid        =     2        0.000          1        0.130
+   Set_Density_Grid         =     0        0.541         10        0.619
+   RestartFileDFT           =     2        0.361         15        0.882
+   Mulliken_Charge          =    12        0.006          0        0.006
    FFT(2D)_Density          =     0        0.000          0        0.000
-   Others                   =     0        0.038         15        0.186
+   Others                   =    15        0.201          2        0.679
