@@ -554,8 +554,17 @@ static void ClusterCol_CuSolverDensePath(
     local_states = ie2[myid1] - is2[myid1] + 1;
     if (local_states < 0) local_states = 0;
 
-    for (spin = spin_start; spin <= spin_end; spin++) {
+    /*
+       Patch2Full_Cluster uses mpi_comm_level1 collectives, so all ranks must
+       assemble the same spin channel in the same order.  In spin-split runs
+       only the ranks belonging to the corresponding spin world diagonalize it.
+    */
+    for (spin = 0; spin <= SpinP_switch; spin++) {
         Patch2Full_Cluster(nh[spin], H, MP);
+
+        if (spin < spin_start || spin_end < spin) {
+            continue;
+        }
 
         F77_NAME(dgemm, DGEMM)("N", "N", &n, &n, &n, &alpha, H, &n, S, &n, &beta, tmp, &n);
         F77_NAME(dgemm, DGEMM)("T", "N", &n, &n, &n, &alpha, S, &n, tmp, &n, &beta, A, &n);

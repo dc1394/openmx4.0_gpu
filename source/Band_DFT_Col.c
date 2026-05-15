@@ -1500,6 +1500,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     int     max_tno;
     int     owns_global_dense_rank;
     int     transformed_s_ready;
+    int     use_cusolver_dense;
 
     /* for time */
     dtime(&TStime);
@@ -1573,6 +1574,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         if (max_tno < tnoA)
             max_tno = tnoA;
     }
+    use_cusolver_dense = (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n);
 
     /****************************************************
      find TZ
@@ -1969,10 +1971,10 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         all_knum = 0;
     }
 
-    owns_global_dense_rank = (scf_eigen_lib_flag == CuSOLVER && all_knum == 1 && my_prow == 0 && my_pcol == 0);
+    owns_global_dense_rank = (use_cusolver_dense && all_knum == 1 && my_prow == 0 && my_pcol == 0);
 
     // Set the device to be used by OpenACC and CUDA
-    if (scf_eigen_lib_flag == CuSOLVER) {
+    if (use_cusolver_dense) {
         // CUDA
         set_cuda_default_device_from_local_rank();
 
@@ -2023,11 +2025,11 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     //     init_cusolvermp(myworld2, MPI_CommWD2, &opts2, &opts3, &opts4);
     // }
 
-    if (all_knum != 1 && scf_eigen_lib_flag == CuSOLVER) {
+    if (all_knum != 1 && use_cusolver_dense) {
         if (n != na_cols || n != na_rows) {
             BandCol_AbortWithMessage("CuSOLVER band path requires full dense matrices in Band_DFT_Col.c.");
         }
-    } else if (scf_eigen_lib_flag != CuSOLVER) {
+    } else if (!use_cusolver_dense) {
         MPI_Comm_split(MPI_CommWD2[myworld2], my_pcol, my_prow, &mpi_comm_rows);
         MPI_Comm_split(MPI_CommWD2[myworld2], my_prow, my_pcol, &mpi_comm_cols);
 
@@ -2260,7 +2262,7 @@ diagonalize1:
 
     dtime(&SiloopTime);
 
-    if (all_knum != 1 && scf_eigen_lib_flag == CuSOLVER) {
+    if (all_knum != 1 && use_cusolver_dense) {
         for (int kloop0 = 0; kloop0 < num_kloop0; kloop0++) {
             kloop = S_knum + kloop0;
 
@@ -2330,7 +2332,7 @@ diagonalize1:
         } /* kloop0 */
     } else {
         for (kloop0 = 0; kloop0 < num_kloop0; kloop0++) {
-            if (scf_eigen_lib_flag == CuSOLVER) {
+            if (use_cusolver_dense) {
                 int my_gpu_turn;
                 kloop = S_knum + kloop0;
 
@@ -2463,7 +2465,7 @@ diagonalize1:
                     if (scf_eigen_lib_flag == 1) {
                         F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                         (&n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                    } else if (scf_eigen_lib_flag == 2) {
+                    } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
 
 #ifndef kcomp
                         int mpiworld;
@@ -2595,7 +2597,7 @@ diagonalize1:
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                } else if (scf_eigen_lib_flag == 2) {
+                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
 
 #ifndef kcomp
                     int mpiworld;
@@ -2655,7 +2657,7 @@ diagonalize1:
                 }
             }
 
-            if (all_knum == 1 && scf_eigen_lib_flag != CuSOLVER) {
+            if (all_knum == 1 && !use_cusolver_dense) {
                 /* MPI communications of Hs and store them to EVec1 */
 
                 for (ID = 0; ID < numprocs2; ID++) {
@@ -2742,7 +2744,7 @@ diagonalize1:
             if (measure_time) {
                 dtime(&Etime);
                 time5 += Etime - Stime;
-                if (scf_eigen_lib_flag == ELPA2 || (scf_eigen_lib_flag == CuSOLVER && owns_global_dense_rank)) {
+                if (scf_eigen_lib_flag == ELPA2 || (use_cusolver_dense && owns_global_dense_rank)) {
                     part2_5 += Etime - Stime;
                     if (SCF_iter != 1) {
                         part2_5sum += part2_5;
@@ -3057,7 +3059,7 @@ diagonalize1:
 
         kw = (double)T_k_op[kloop];
 
-        if (scf_eigen_lib_flag == CuSOLVER) {
+        if (use_cusolver_dense) {
             if (owns_global_dense_rank) {
                 double *occ_weight;
 
@@ -3520,7 +3522,7 @@ diagonalize1:
 
         /* for kloop */
 
-        if (scf_eigen_lib_flag == CuSOLVER) {
+        if (use_cusolver_dense) {
             for (int kloop0 = 0; kloop0 < num_kloop0; kloop0++) {
                 int kloop = kloop0 + S_knum;
 
@@ -3668,7 +3670,7 @@ diagonalize1:
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                } else if (scf_eigen_lib_flag == 2) {
+                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
 
 #ifndef kcomp
                     int mpiworld;
@@ -3761,7 +3763,7 @@ diagonalize1:
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                } else if (scf_eigen_lib_flag == 2) {
+                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
 
 #ifndef kcomp
                     int mpiworld;
@@ -4294,12 +4296,12 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
                          double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n, int owns_global_dense_rank)
 {
     const int need_s = (SCF_iter == 1 || all_knum != 1);
-    const int dense_cusolver_owner =
-        (scf_eigen_lib_flag == CuSOLVER && all_knum == 1 && owns_global_dense_rank);
+    const int use_cusolver_dense = (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n);
+    const int dense_cusolver_owner = (use_cusolver_dense && all_knum == 1 && owns_global_dense_rank);
 
     BandCol_last_construct_on_device = 0;
 
-    if (scf_eigen_lib_flag == CuSOLVER && all_knum == 1 && !owns_global_dense_rank) {
+    if (use_cusolver_dense && all_knum == 1 && !owns_global_dense_rank) {
         return;
     }
 
