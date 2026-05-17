@@ -318,6 +318,31 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
     return CUBLAS_STATUS_SUCCESS;
 }
 
+extern "C" void openmx_gemmul8ReleaseWorkspaces(void)
+{
+    std::lock_guard<std::mutex> lock(g_workspace_mutex);
+    cudaError_t                 first_error = cudaSuccess;
+
+    for (auto it = g_workspaces.begin(); it != g_workspaces.end();) {
+        cudaError_t status = release_workspace(it->second);
+        if (status == cudaSuccess) {
+            it = g_workspaces.erase(it);
+        } else {
+            if (first_error == cudaSuccess) {
+                first_error = status;
+            }
+            ++it;
+        }
+    }
+
+    if (first_error != cudaSuccess) {
+        std::fprintf(stderr,
+                     "openmx_gemmul8ReleaseWorkspaces: cudaFree failed: %s\n",
+                     cudaGetErrorString(first_error));
+        std::fflush(stderr);
+    }
+}
+
 extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
                                                cublasOperation_t transa,
                                                cublasOperation_t transb,

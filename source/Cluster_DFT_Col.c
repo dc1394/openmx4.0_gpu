@@ -1159,7 +1159,8 @@ double Cluster_DFT_Col(
   }
   firsttime=0;
 
-  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n){
+  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n &&
+      !(SpinP_switch==1 && numprocs0!=1)){
     ClusterCol_CuSolverDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
                                  numprocs0,myworld1,myid1,MP,is2,ie2,
                                  n,MaxN,EVec1);

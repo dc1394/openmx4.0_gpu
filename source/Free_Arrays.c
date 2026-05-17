@@ -21,6 +21,8 @@ void Free_Arrays(int wherefrom)
   if      (wherefrom==0) array0();
   else if (wherefrom==1) array1();
 
+  if (wherefrom==0) openmx_gemmul8ReleaseWorkspaces();
+
 }
 
 void array0()

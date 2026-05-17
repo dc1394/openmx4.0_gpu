@@ -4108,6 +4108,7 @@ cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle, cublasOperation_t tran
                                    int n, int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A, int lda,
                                    const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta, cuDoubleComplex *C,
                                    int ldc);
+void openmx_gemmul8ReleaseWorkspaces(void);
 
 int getDeviceCount();
 void Eigen_PReHH(MPI_Comm MPI_Current_Comm_WD, 

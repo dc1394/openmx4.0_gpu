@@ -66,8 +66,8 @@ int32_t cusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
 
     double *  d_A = NULL;
     double *  d_W = NULL;
-    double    vl;
-    double    vu;
+    double    vl     = 0.0;
+    double    vu     = 0.0;
     int64_t   h_meig = 0;
     int32_t * d_info = NULL;
 
@@ -105,8 +105,8 @@ int32_t cusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
                                                &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
     wait_cudafunc(cudaMalloc((void **)(&d_work), workspaceInBytesOnDevice));
-    h_work = malloc(workspaceInBytesOnHost);
-    if (!h_work) {
+    h_work = (workspaceInBytesOnHost == 0) ? NULL : malloc(workspaceInBytesOnHost);
+    if (workspaceInBytesOnHost != 0 && !h_work) {
         fprintf(stderr, "Could not allocate host memory.\n");
         exit(1);
     }
@@ -117,7 +117,7 @@ int32_t cusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
                                     workspaceInBytesOnHost, d_info));
 
     wait_cudafunc(cudaMemcpyAsync(A, d_A, sizeof(double) * lda * m, cudaMemcpyDeviceToHost, stream));
-    wait_cudafunc(cudaMemcpyAsync(W, d_W, sizeof(double) * m, cudaMemcpyDeviceToHost, stream));
+    wait_cudafunc(cudaMemcpyAsync(W, d_W, sizeof(double) * MaxN, cudaMemcpyDeviceToHost, stream));
     wait_cudafunc(cudaMemcpyAsync(&info, d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
 
     wait_cudafunc(cudaStreamSynchronize(stream));
@@ -126,7 +126,7 @@ int32_t cusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
     wait_cudafunc(cudaFree(d_W));
     wait_cudafunc(cudaFree(d_info));
     wait_cudafunc(cudaFree(d_work));
-    free(h_work);
+    if (h_work != NULL) free(h_work);
 
     wait_cudafunc(cusolverDnDestroy(cusolverH));
 
@@ -165,9 +165,9 @@ int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
         cusolverEigRange_t const range = CUSOLVER_EIG_RANGE_I;
 
         int32_t const lda = m;
-        double        vl;
-        double        vu;
-        int64_t       h_meig;
+        double        vl     = 0.0;
+        double        vu     = 0.0;
+        int64_t       h_meig = 0;
 
         size_t workspaceInBytesOnDevice = 0; /* size of workspace */
         size_t workspaceInBytesOnHost   = 0; /* size of workspace */
@@ -184,8 +184,8 @@ int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
 
         void * h_work = NULL; /* host workspace for */
 
-        h_work = malloc(workspaceInBytesOnHost);
-        if (!h_work) {
+        h_work = (workspaceInBytesOnHost == 0) ? NULL : malloc(workspaceInBytesOnHost);
+        if (workspaceInBytesOnHost != 0 && !h_work) {
             fprintf(stderr, "Could not allocate host memory.\n");
             exit(1);
         }
@@ -206,7 +206,7 @@ int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
         // wait_cudafunc(cudaFree(d_W));
         wait_cudafunc(cudaFree(d_info));
         wait_cudafunc(cudaFree(d_work));
-        free(h_work);
+        if (h_work != NULL) free(h_work);
 
         wait_cudafunc(cusolverDnDestroy(cusolverH));
         wait_cudafunc(cudaStreamDestroy(stream));
@@ -258,8 +258,8 @@ int32_t cusolver_Syevdx_Complex(dcomplex * A, double * W, int32_t m, int32_t Max
                                                &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
     wait_cudafunc(cudaMalloc((void **)(&d_work), workspaceInBytesOnDevice));
-    h_work = malloc(workspaceInBytesOnHost);
-    if (!h_work) {
+    h_work = (workspaceInBytesOnHost == 0) ? NULL : malloc(workspaceInBytesOnHost);
+    if (workspaceInBytesOnHost != 0 && !h_work) {
         fprintf(stderr, "Could not allocate host memory.\n");
         exit(1);
     }
@@ -270,7 +270,7 @@ int32_t cusolver_Syevdx_Complex(dcomplex * A, double * W, int32_t m, int32_t Max
                                     workspaceInBytesOnHost, d_info));
 
     wait_cudafunc(cudaMemcpyAsync(A, d_A, sizeof(cuDoubleComplex) * lda * m, cudaMemcpyDeviceToHost, stream));
-    wait_cudafunc(cudaMemcpyAsync(W, d_W, sizeof(double) * m, cudaMemcpyDeviceToHost, stream));
+    wait_cudafunc(cudaMemcpyAsync(W, d_W, sizeof(double) * MaxN, cudaMemcpyDeviceToHost, stream));
     wait_cudafunc(cudaMemcpyAsync(&info, d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
 
     wait_cudafunc(cudaStreamSynchronize(stream));
@@ -279,7 +279,7 @@ int32_t cusolver_Syevdx_Complex(dcomplex * A, double * W, int32_t m, int32_t Max
     wait_cudafunc(cudaFree(d_W));
     wait_cudafunc(cudaFree(d_info));
     wait_cudafunc(cudaFree(d_work));
-    free(h_work);
+    if (h_work != NULL) free(h_work);
 
     wait_cudafunc(cusolverDnDestroy(cusolverH));
 
@@ -347,8 +347,8 @@ int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int
         wait_cudafunc(cudaMallocAsync((void **)(&d_work), workspaceInBytesOnDevice, stream));
         wait_cudafunc(cudaMallocAsync((void **)(&d_info), sizeof(int32_t), stream));
 
-        h_work = malloc(workspaceInBytesOnHost);
-        if (!h_work) {
+        h_work = (workspaceInBytesOnHost == 0) ? NULL : malloc(workspaceInBytesOnHost);
+        if (workspaceInBytesOnHost != 0 && !h_work) {
             fprintf(stderr, "Could not allocate host memory.\n");
             exit(1);
         }
