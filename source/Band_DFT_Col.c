@@ -159,6 +159,13 @@ static void BandCol_AbortWithMessage(const char * msg)
     exit(1);
 }
 
+static int BandCol_SerializeCuSolverGpuTurns(void)
+{
+    const char *value = getenv("OPENMX_CUSOLVER_SERIAL_GPU_TURNS");
+
+    return (value != NULL && atoi(value) != 0);
+}
+
 static void BandCol_ConstructCache_Reset(void)
 {
     if (BandCol_construct_cache.dense_device_valid) {
@@ -2346,9 +2353,14 @@ diagonalize1:
                     dtime(&starttimesh);
                 }
 
-                my_gpu_turn = spin * T_knum + kloop;
-                for (int gpu_turn = 0; gpu_turn < Num_Comm_World1 * T_knum; gpu_turn++) {
-                    MPI_Barrier(mpi_comm_level1);
+	                my_gpu_turn = spin * T_knum + kloop;
+	                const int serialize_gpu_turns = BandCol_SerializeCuSolverGpuTurns();
+	                const int first_gpu_turn = serialize_gpu_turns ? 0 : my_gpu_turn;
+	                const int last_gpu_turn = serialize_gpu_turns ? Num_Comm_World1 * T_knum : (my_gpu_turn + 1);
+	                for (int gpu_turn = first_gpu_turn; gpu_turn < last_gpu_turn; gpu_turn++) {
+	                    if (serialize_gpu_turns) {
+	                        MPI_Barrier(mpi_comm_level1);
+	                    }
 
 	                    if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
 	                        dcomplex *evec_device;
@@ -2432,9 +2444,11 @@ diagonalize1:
                         }
                     }
                 }
-                MPI_Barrier(mpi_comm_level1);
+	                if (!serialize_gpu_turns) {
+	                    MPI_Barrier(mpi_comm_level1);
+	                }
 
-            } else {
+	            } else {
                 kloop = S_knum + kloop0;
 
                 k1 = T_KGrids1[kloop];
@@ -3100,25 +3114,32 @@ diagonalize1:
                 dtime(&Stime0);
             }
 
-            {
-                int my_gpu_turn = spin * T_knum + kloop;
+	            {
+	                int my_gpu_turn = spin * T_knum + kloop;
+	                const int serialize_gpu_turns = BandCol_SerializeCuSolverGpuTurns();
+	                const int first_gpu_turn = serialize_gpu_turns ? 0 : my_gpu_turn;
+	                const int last_gpu_turn = serialize_gpu_turns ? Num_Comm_World1 * T_knum : (my_gpu_turn + 1);
 
-                for (int gpu_turn = 0; gpu_turn < Num_Comm_World1 * T_knum; gpu_turn++) {
-                    MPI_Barrier(mpi_comm_level1);
+	                for (int gpu_turn = first_gpu_turn; gpu_turn < last_gpu_turn; gpu_turn++) {
+	                    if (serialize_gpu_turns) {
+	                        MPI_Barrier(mpi_comm_level1);
+	                    }
 
-                    if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
-                        dcomplex *evec_device = BandCol_CuSolver_UploadHostEigenvectors(n);
+	                    if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
+	                        dcomplex *evec_device = BandCol_CuSolver_UploadHostEigenvectors(n);
 
                         BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device, n,
                                                                     MP, order_GA, EIGEN,
                                                                     BandCol_dm_workspace.OccWeight, CDM1, EDM1,
                                                                     size_H1);
                         BandCol_CuSolver_ClearHostEigenvectors();
-                        BandCol_CuSolver_ReleaseDeviceMemory();
-                    }
-                }
-                MPI_Barrier(mpi_comm_level1);
-            }
+	                        BandCol_CuSolver_ReleaseDeviceMemory();
+	                    }
+	                }
+	                if (!serialize_gpu_turns) {
+	                    MPI_Barrier(mpi_comm_level1);
+	                }
+	            }
 
             if (measure_time) {
                 dtime(&Etime0);
