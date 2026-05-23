@@ -32,10 +32,16 @@ int TRAN_SCF_Iter_Band;
 
 static int DFT_GPU_BasisCount(void);
 static int DFT_SetOLPKinUseGPU(void);
+static int DFT_SetProExpnVNAUseGPU(void);
 
 static int DFT_SetOLPKinUseGPU(void)
 {
     return (scf_eigen_lib_flag == CuSOLVER && omp_get_max_threads() == 1);
+}
+
+static int DFT_SetProExpnVNAUseGPU(void)
+{
+    return (scf_eigen_lib_flag == CuSOLVER);
 }
 
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)
@@ -400,7 +406,9 @@ double DFT(int MD_iter, int Cnt_Now)
 
   if (ProExpn_VNA==1){
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
-      printf("<MD=%2d>  Calculation of the VNA projector matrix\n",MD_iter);fflush(stdout);
+      printf("<MD=%2d>  Calculation of the VNA projector matrix%s\n",MD_iter,
+             DFT_SetProExpnVNAUseGPU() ? " (GPU-accelerated)" : "");
+      fflush(stdout);
     }
     time12 = Set_ProExpn_VNA(HVNA, HVNA2, DS_VNA);  
   }
