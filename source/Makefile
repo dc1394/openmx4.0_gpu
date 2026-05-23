@@ -187,7 +187,7 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           KumoF.o Dr_KumoF.o Mulliken_Charge.o Occupation_Number_LDA_U.o Eff_Hub_Pot.o Coulomb_Interaction.o \
           EulerAngle_Spin.o Smoothing_Func.o Orbital_Moment.o Pot_NeutralAtom.o Simple_Mixing_DM.o \
           DIIS_Mixing_DM.o ADIIS_Mixing_DM.o GR_Pulay_DM.o Kerker_Mixing_Rhok.o DIIS_Mixing_Rhok.o \
-          Total_Energy.o Contract_Hamiltonian.o Contract_iHNL.o Cont_Matrix0.o Cont_Matrix1.o Cont_Matrix2.o \
+          Total_Energy.o Total_Energy_GPU.o Contract_Hamiltonian.o Contract_iHNL.o Cont_Matrix0.o Cont_Matrix1.o Cont_Matrix2.o \
           Cont_Matrix3.o Cont_Matrix4.o Opt_Contraction.o Initial_CntCoes.o Initial_CntCoes2.o \
           Set_XC_Grid.o \
           Get_Orbitals.o Get_dOrbitals.o Get_Cnt_Orbitals.o \
@@ -568,6 +568,8 @@ DIIS_Mixing_Rhok.o: DIIS_Mixing_Rhok.c openmx_common.h
 # Same LDA+U Type2/cFLL workaround as above.
 Total_Energy.o: Total_Energy.c openmx_common.h
 	$(CC_NOACC) -c Total_Energy.c
+Total_Energy_GPU.o: Total_Energy_GPU.c openmx_common.h
+	$(CC) -c Total_Energy_GPU.c
 Contract_Hamiltonian.o: Contract_Hamiltonian.c openmx_common.h
 	$(CC) -c Contract_Hamiltonian.c
 Contract_iHNL.o: Contract_iHNL.c openmx_common.h
