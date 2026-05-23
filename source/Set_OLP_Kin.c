@@ -10,7 +10,7 @@
      25/Nov./2014  Memory allocation modified by A.M. Ito (AITUNE)
 
 ***********************************************************************/
- 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -20,8 +20,10 @@
 #include <omp.h>
 
 
+static int SetOLPKinUseOpenACC(void);
+
 #ifdef kcomp
-dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3, 
+dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3,
                                           int size_4, int size_5, int size_6);
 double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4);
 dcomplex** Allocate2D_dcomplex(int size_1, int size_2);
@@ -29,7 +31,7 @@ void Free6D_dcomplex(dcomplex****** buffer);
 void Free4D_double(double**** buffer);
 void Free2D_dcomplex(dcomplex** buffer);
 #else
-static inline dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3, 
+static inline dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3,
                                                  int size_4, int size_5, int size_6);
 static inline double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4);
 static inline dcomplex** Allocate2D_dcomplex(int size_1, int size_2);
@@ -37,6 +39,12 @@ void Free6D_dcomplex(dcomplex****** buffer);
 void Free4D_double(double**** buffer);
 void Free2D_dcomplex(dcomplex** buffer);
 #endif
+
+
+static int SetOLPKinUseOpenACC(void)
+{
+  return (scf_eigen_lib_flag == CuSOLVER);
+}
 
 
 double Set_OLP_Kin(double *****OLP, double *****H0)
@@ -73,7 +81,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
     size_SumS0  = (List_YOUSO[25]+1)*List_YOUSO[24]*(List_YOUSO[25]+1)*List_YOUSO[24];
     size_TmpOLP = (List_YOUSO[25]+1)*List_YOUSO[24]*(2*(List_YOUSO[25]+1)+1)*
                   (List_YOUSO[25]+1)*List_YOUSO[24]*(2*(List_YOUSO[25]+1)+1);
- 
+
     PrintMemory("Set_OLP_Kin: SumS0",  sizeof(double)*size_SumS0,NULL);
     PrintMemory("Set_OLP_Kin: SumK0",  sizeof(double)*size_SumS0,NULL);
     PrintMemory("Set_OLP_Kin: SumSr0", sizeof(double)*size_SumS0,NULL);
@@ -93,21 +101,21 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
   OneD_Nloop = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
+    Gc_AN = M2G[Mc_AN];
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
       OneD_Nloop++;
     }
-  }  
+  }
 
   OneD2Mc_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
   OneD2h_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
 
   OneD_Nloop = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
+    Gc_AN = M2G[Mc_AN];
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD2Mc_AN[OneD_Nloop] = Mc_AN; 
-      OneD2h_AN[OneD_Nloop]  = h_AN; 
+      OneD2Mc_AN[OneD_Nloop] = Mc_AN;
+      OneD2h_AN[OneD_Nloop]  = h_AN;
       OneD_Nloop++;
     }
   }
@@ -118,31 +126,42 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 #pragma omp parallel
   {
 
-    int Nloop;
-    int OMPID,Nthrds,Nprocs;
-    int Mc_AN,h_AN,Gc_AN,Cwan;
-    int Gh_AN,Rnh,Hwan;
-    int Ls,L0,Mul0,L1,Mul1,M0,M1;
-    int Lmax_Four_Int;
-    int i,j,k,l,m,p;
-    int num0,num1; 
+	    int Nloop;
+	    int OMPID,Nthrds,Nprocs;
+	    int Mc_AN,h_AN,Gc_AN,Cwan;
+	    int Gh_AN,Rnh,Hwan;
+	    int Ls,L0,Mul0,L1,Mul1,M0,M1;
+	    int Lmax_Four_Int;
+	    int i,j,k,l,m,p;
+	    int num0,num1;
+	    int grid_dim,max_Lmax_Four_Int;
+	    int use_openacc_radial;
+	    int cached_Cwan,cached_Hwan;
+	    int combo_cached_Cwan,combo_cached_Hwan;
+	    int max_combo_count,combo_count,combo,grid_last;
+	    int *combo_L0,*combo_Mul0,*combo_L1,*combo_Mul1;
+	    int *combo_rf0_offset,*combo_rf1_offset;
 
-    double Stime_atom,Etime_atom;
-    double dx,dy,dz;
+	    double Stime_atom,Etime_atom;
+	    double dx,dy,dz;
     double S_coordinate[3];
     double theta,phi,h;
     double Bessel_Pro0,Bessel_Pro1;
     double tmp0,tmp1,tmp2,tmp3,tmp4;
     double siT,coT,siP,coP;
-    double kmin,kmax,Sk,Dk,r; 
-    double sj,sjp,coe0,coe1; 
+    double kmin,kmax,Sk,Dk,r;
+    double sj,sjp,coe0,coe1;
     double Normk,Normk2;
-    double gant,SH[2],dSHt[2],dSHp[2];
-    double **SphB,**SphBp;
-    double *tmp_SphB,*tmp_SphBp;
-    double ****SumS0;
-    double ****SumK0;
-    double ****SumSr0;
+	    double gant,SH[2],dSHt[2],dSHp[2];
+	    double **SphB,**SphBp;
+	    double *SphB_flat,*SphBp_flat;
+	    double *tmp_SphB,*tmp_SphBp;
+	    double *Normk_grid;
+	    double *RF_BesselCache0,*RF_BesselCache1;
+	    double *sumS0_flat,*sumK0_flat,*sumSr0_flat,*sumKr0_flat;
+	    double ****SumS0;
+	    double ****SumK0;
+	    double ****SumSr0;
     double ****SumKr0;
 
     dcomplex CsumS_Lx,CsumS_Ly,CsumS_Lz;
@@ -164,9 +183,10 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
     dcomplex **CmatSt;
     dcomplex **CmatSp;
     dcomplex **CmatK0;
-    dcomplex **CmatKr;
-    dcomplex **CmatKt;
-    dcomplex **CmatKp;
+	    dcomplex **CmatKr;
+	    dcomplex **CmatKt;
+	    dcomplex **CmatKp;
+	    size_t rf_cache_elems,sum_cache_elems;
 
     /****************************************************************
                           allocation of arrays:
@@ -185,27 +205,59 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
     SumK0  = Allocate4D_double(List_YOUSO[25]+1, List_YOUSO[24], (List_YOUSO[25]+1), List_YOUSO[24]);
     SumSr0 = Allocate4D_double(List_YOUSO[25]+1, List_YOUSO[24], (List_YOUSO[25]+1), List_YOUSO[24]);
     SumKr0 = Allocate4D_double(List_YOUSO[25]+1, List_YOUSO[24], (List_YOUSO[25]+1), List_YOUSO[24]);
-	
+
     CmatS0 = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
     CmatSr = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
     CmatSt = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
     CmatSp = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
     CmatK0 = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-    CmatKr = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-    CmatKt = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-    CmatKp = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
+	    CmatKr = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
+	    CmatKt = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
+	    CmatKp = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
 
-    /* get info. on OpenMP */ 
+	    grid_dim = OneD_Grid + 1;
+	    max_Lmax_Four_Int = 2*List_YOUSO[25];
+	    max_combo_count = (List_YOUSO[25]+1)*List_YOUSO[24]*(List_YOUSO[25]+1)*List_YOUSO[24];
+	    grid_last = grid_dim - 1;
+	    rf_cache_elems = (size_t)(List_YOUSO[25]+1)*(size_t)List_YOUSO[24]*(size_t)grid_dim;
+	    sum_cache_elems = (size_t)(max_Lmax_Four_Int+1)*(size_t)max_combo_count;
 
-    OMPID = omp_get_thread_num();
-    Nthrds = omp_get_num_threads();
-    Nprocs = omp_get_num_procs();
+	    Normk_grid = (double*)malloc(sizeof(double)*grid_dim);
+	    RF_BesselCache0 = (double*)malloc(sizeof(double)*rf_cache_elems);
+	    RF_BesselCache1 = (double*)malloc(sizeof(double)*rf_cache_elems);
+	    sumS0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
+	    sumK0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
+	    sumSr0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
+	    sumKr0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
+	    combo_L0 = (int*)malloc(sizeof(int)*max_combo_count);
+	    combo_Mul0 = (int*)malloc(sizeof(int)*max_combo_count);
+	    combo_L1 = (int*)malloc(sizeof(int)*max_combo_count);
+	    combo_Mul1 = (int*)malloc(sizeof(int)*max_combo_count);
+	    combo_rf0_offset = (int*)malloc(sizeof(int)*max_combo_count);
+	    combo_rf1_offset = (int*)malloc(sizeof(int)*max_combo_count);
+
+	    h = (PAO_Nkmax - Radial_kmin)/(double)OneD_Grid;
+	    for (i=0; i<grid_dim; i++){
+	      Normk_grid[i] = Radial_kmin + (double)i*h;
+	    }
+
+	    cached_Cwan = -1;
+	    cached_Hwan = -1;
+	    combo_cached_Cwan = -1;
+	    combo_cached_Hwan = -1;
+
+	    /* get info. on OpenMP */
+
+	    OMPID = omp_get_thread_num();
+	    Nthrds = omp_get_num_threads();
+	    Nprocs = omp_get_num_procs();
+	    use_openacc_radial = (SetOLPKinUseOpenACC() && Nthrds==1);
 
     /* one-dimensionalized loop */
 
     for (Nloop=OMPID*OneD_Nloop/Nthrds; Nloop<(OMPID+1)*OneD_Nloop/Nthrds; Nloop++){
 
-      dtime(&Stime_atom); 
+      dtime(&Stime_atom);
 
       /* get Mc_AN and h_AN */
 
@@ -223,11 +275,11 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
       Rnh = ncn[Gc_AN][h_AN];
       Hwan = WhatSpecies[Gh_AN];
 
-      dx = Gxyz[Gh_AN][1] + atv[Rnh][1] - Gxyz[Gc_AN][1]; 
-      dy = Gxyz[Gh_AN][2] + atv[Rnh][2] - Gxyz[Gc_AN][2]; 
+      dx = Gxyz[Gh_AN][1] + atv[Rnh][1] - Gxyz[Gc_AN][1];
+      dy = Gxyz[Gh_AN][2] + atv[Rnh][2] - Gxyz[Gc_AN][2];
       dz = Gxyz[Gh_AN][3] + atv[Rnh][3] - Gxyz[Gc_AN][3];
 
-      xyz2spherical(dx,dy,dz,0.0,0.0,0.0,S_coordinate); 
+      xyz2spherical(dx,dy,dz,0.0,0.0,0.0,S_coordinate);
       r     = S_coordinate[0];
       theta = S_coordinate[1];
       phi   = S_coordinate[2];
@@ -247,9 +299,9 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
               \int RL(k)*RL'(k)*jl(k*R) k^2 dk^3,
               \int RL(k)*RL'(k)*j'l(k*R) k^3 dk^3
 
-          Kinetic 
-              \int RL(k)*RL'(k)*jl(k*R) k^4 dk^3, 
-              \int RL(k)*RL'(k)*j'l(k*R) k^5 dk^3 
+          Kinetic
+              \int RL(k)*RL'(k)*jl(k*R) k^4 dk^3,
+              \int RL(k)*RL'(k)*j'l(k*R) k^5 dk^3
       ****************************************************/
 
       kmin = Radial_kmin;
@@ -283,21 +335,25 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
       if (Spe_MaxL_Basis[Cwan]<Spe_MaxL_Basis[Hwan])
         Lmax_Four_Int = 2*Spe_MaxL_Basis[Hwan];
-      else 
+      else
         Lmax_Four_Int = 2*Spe_MaxL_Basis[Cwan];
 
-      /* allocate SphB and SphBp */
+	      /* allocate SphB and SphBp */
 
-      SphB = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-      for(l=0; l<(Lmax_Four_Int+3); l++){ 
-        SphB[l] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-      }
+	      SphB = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
+	      SphB[0] = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3)*grid_dim);
+	      SphB_flat = SphB[0];
+	      for(l=1; l<(Lmax_Four_Int+3); l++){
+	        SphB[l] = SphB[0] + l*grid_dim;
+	      }
 
-      SphBp = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-      for(l=0; l<(Lmax_Four_Int+3); l++){ 
-        SphBp[l] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-      }
-      
+	      SphBp = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
+	      SphBp[0] = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3)*grid_dim);
+	      SphBp_flat = SphBp[0];
+	      for(l=1; l<(Lmax_Four_Int+3); l++){
+	        SphBp[l] = SphBp[0] + l*grid_dim;
+	      }
+
       tmp_SphB  = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
       tmp_SphBp = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
 
@@ -305,90 +361,190 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
       h = (kmax - kmin)/(double)OneD_Grid;
 
-      for (i=0; i<=OneD_Grid; i++){
-        Normk = kmin + (double)i*h;
-        Spherical_Bessel(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-        for(l=0; l<=Lmax_Four_Int; l++){ 
-          SphB[l][i]  = tmp_SphB[l]; 
-          SphBp[l][i] = tmp_SphBp[l]; 
+	      for (i=0; i<grid_dim; i++){
+	        Normk = Normk_grid[i];
+	        Spherical_Bessel(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
+	        for(l=0; l<=Lmax_Four_Int; l++){
+          SphB[l][i]  = tmp_SphB[l];
+          SphBp[l][i] = tmp_SphBp[l];
 	}
       }
 
-      free(tmp_SphB);
-      free(tmp_SphBp);
+	      free(tmp_SphB);
+	      free(tmp_SphBp);
 
-      /* l loop */
+	      if (cached_Cwan!=Cwan){
+	        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
+		  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+		    int rf_offset;
 
-      for(l=0; l<=Lmax_Four_Int; l++){
-
-        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-            for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-	      for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-                SumS0[L0][Mul0][L1][Mul1]  = 0.0;
-                SumK0[L0][Mul0][L1][Mul1]  = 0.0;
-                SumSr0[L0][Mul0][L1][Mul1] = 0.0;
-                SumKr0[L0][Mul0][L1][Mul1] = 0.0;
+		    rf_offset = (L0*List_YOUSO[24] + Mul0)*grid_dim;
+		    for (i=0; i<grid_dim; i++){
+		      RF_BesselCache0[rf_offset + i] = RF_BesselF(Cwan,L0,Mul0,Normk_grid[i]);
+		    }
+		  }
+		}
+		cached_Cwan = Cwan;
 	      }
-	    }
-	  }
-	}
 
-        h = (kmax - kmin)/(double)OneD_Grid;
-	for (i=0; i<=OneD_Grid; i++){
+	      if (cached_Hwan!=Hwan){
+	        for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
+		  for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
+		    int rf_offset;
 
-          if (i==0 || i==OneD_Grid) coe0 = 0.50;
-          else                      coe0 = 1.00;
+		    rf_offset = (L1*List_YOUSO[24] + Mul1)*grid_dim;
+		    for (i=0; i<grid_dim; i++){
+		      RF_BesselCache1[rf_offset + i] = RF_BesselF(Hwan,L1,Mul1,Normk_grid[i]);
+		    }
+		  }
+		}
+		cached_Hwan = Hwan;
+	      }
 
-	  Normk = kmin + (double)i*h;
-          Normk2 = Normk*Normk;
+	      if (combo_cached_Cwan!=Cwan || combo_cached_Hwan!=Hwan){
+	        combo_count = 0;
+	        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
+		  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	            for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
+		      for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
+		        combo_L0[combo_count] = L0;
+		        combo_Mul0[combo_count] = Mul0;
+		        combo_L1[combo_count] = L1;
+		        combo_Mul1[combo_count] = Mul1;
+		        combo_rf0_offset[combo_count] = (L0*List_YOUSO[24] + Mul0)*grid_dim;
+		        combo_rf1_offset[combo_count] = (L1*List_YOUSO[24] + Mul1)*grid_dim;
+		        combo_count++;
+		      }
+		    }
+		  }
+		}
+		combo_cached_Cwan = Cwan;
+		combo_cached_Hwan = Hwan;
+	      }
 
-          sj  =  SphB[l][i];
-          sjp = SphBp[l][i];
+	      if (use_openacc_radial && 0<combo_count){
+	        size_t sph_valid_elems,sum_valid_elems;
 
-	  for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	    for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	        sph_valid_elems = (size_t)(Lmax_Four_Int+1)*(size_t)grid_dim;
+	        sum_valid_elems = (size_t)(Lmax_Four_Int+1)*(size_t)combo_count;
 
-	      Bessel_Pro0 = RF_BesselF(Cwan,L0,Mul0,Normk);
+#pragma acc data copyin(Normk_grid[0:grid_dim], RF_BesselCache0[0:rf_cache_elems], \
+                        RF_BesselCache1[0:rf_cache_elems], SphB_flat[0:sph_valid_elems], \
+                        SphBp_flat[0:sph_valid_elems], combo_rf0_offset[0:combo_count], \
+                        combo_rf1_offset[0:combo_count]) \
+                 copyout(sumS0_flat[0:sum_valid_elems], sumK0_flat[0:sum_valid_elems], \
+                         sumSr0_flat[0:sum_valid_elems], sumKr0_flat[0:sum_valid_elems])
+	        {
+#pragma acc parallel loop collapse(2)
+	          for (l=0; l<=Lmax_Four_Int; l++){
+	            for (combo=0; combo<combo_count; combo++){
+	              int rf0_offset,rf1_offset;
+	              double local_sumS0,local_sumK0,local_sumSr0,local_sumKr0;
 
-              tmp0 = coe0*h*Normk2*Bessel_Pro0;
-              tmp1 = tmp0*sj;
-              tmp2 = tmp0*Normk*sjp;
+	              rf0_offset = combo_rf0_offset[combo];
+	              rf1_offset = combo_rf1_offset[combo];
+	              local_sumS0 = 0.0;
+	              local_sumK0 = 0.0;
+	              local_sumSr0 = 0.0;
+	              local_sumKr0 = 0.0;
 
-	      for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-		for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
+#pragma acc loop vector reduction(+:local_sumS0,local_sumK0,local_sumSr0,local_sumKr0)
+	              for (i=0; i<grid_dim; i++){
+	                double acc_coe0,acc_Normk,acc_Normk2;
+	                double acc_sj,acc_sjp,acc_tmp0,acc_tmp1,acc_tmp2,acc_tmp3,acc_tmp4;
 
-                  Bessel_Pro1 = RF_BesselF(Hwan,L1,Mul1,Normk);
+	                if (i==0 || i==grid_last) acc_coe0 = 0.50;
+	                else                      acc_coe0 = 1.00;
 
-                  tmp3 = tmp1*Bessel_Pro1;
-                  tmp4 = tmp2*Bessel_Pro1;
+	                acc_Normk = Normk_grid[i];
+	                acc_Normk2 = acc_Normk*acc_Normk;
+	                acc_sj  = SphB_flat[l*grid_dim + i];
+	                acc_sjp = SphBp_flat[l*grid_dim + i];
+	                acc_tmp0 = acc_coe0*h*acc_Normk2*RF_BesselCache0[rf0_offset + i];
+	                acc_tmp1 = acc_tmp0*acc_sj;
+	                acc_tmp2 = acc_tmp0*acc_Normk*acc_sjp;
+	                acc_tmp3 = acc_tmp1*RF_BesselCache1[rf1_offset + i];
+	                acc_tmp4 = acc_tmp2*RF_BesselCache1[rf1_offset + i];
+	                local_sumS0 += acc_tmp3;
+	                local_sumK0 += acc_tmp3*acc_Normk2;
+	                local_sumSr0 += acc_tmp4;
+	                local_sumKr0 += acc_tmp4*acc_Normk2;
+	              }
 
-                  SumS0[L0][Mul0][L1][Mul1] += tmp3;
-                  SumK0[L0][Mul0][L1][Mul1] += tmp3*Normk2;
+	              if (h_AN==0){
+	                local_sumSr0 = 0.0;
+	                local_sumKr0 = 0.0;
+	              }
 
-                  SumSr0[L0][Mul0][L1][Mul1] += tmp4;
-                  SumKr0[L0][Mul0][L1][Mul1] += tmp4*Normk2;
+	              sumS0_flat[l*combo_count + combo] = local_sumS0;
+	              sumK0_flat[l*combo_count + combo] = local_sumK0;
+	              sumSr0_flat[l*combo_count + combo] = local_sumSr0;
+	              sumKr0_flat[l*combo_count + combo] = local_sumKr0;
+	            }
+	          }
+	        }
+	      }
+	      else{
+	        for(l=0; l<=Lmax_Four_Int; l++){
+		  for (combo=0; combo<combo_count; combo++){
+		    int rf0_offset,rf1_offset;
+		    double local_sumS0,local_sumK0,local_sumSr0,local_sumKr0;
+
+		    rf0_offset = combo_rf0_offset[combo];
+		    rf1_offset = combo_rf1_offset[combo];
+		    local_sumS0 = 0.0;
+		    local_sumK0 = 0.0;
+		    local_sumSr0 = 0.0;
+		    local_sumKr0 = 0.0;
+
+		    for (i=0; i<grid_dim; i++){
+		      if (i==0 || i==grid_last) coe0 = 0.50;
+		      else                      coe0 = 1.00;
+
+		      Normk = Normk_grid[i];
+		      Normk2 = Normk*Normk;
+		      sj  = SphB[l][i];
+		      sjp = SphBp[l][i];
+		      tmp0 = coe0*h*Normk2*RF_BesselCache0[rf0_offset + i];
+		      tmp1 = tmp0*sj;
+		      tmp2 = tmp0*Normk*sjp;
+		      tmp3 = tmp1*RF_BesselCache1[rf1_offset + i];
+		      tmp4 = tmp2*RF_BesselCache1[rf1_offset + i];
+		      local_sumS0 += tmp3;
+		      local_sumK0 += tmp3*Normk2;
+		      local_sumSr0 += tmp4;
+		      local_sumKr0 += tmp4*Normk2;
+		    }
+
+		    if (h_AN==0){
+		      local_sumSr0 = 0.0;
+		      local_sumKr0 = 0.0;
+		    }
+
+		    sumS0_flat[l*combo_count + combo] = local_sumS0;
+		    sumK0_flat[l*combo_count + combo] = local_sumK0;
+		    sumSr0_flat[l*combo_count + combo] = local_sumSr0;
+		    sumKr0_flat[l*combo_count + combo] = local_sumKr0;
+		  }
 		}
 	      }
 
-	    }
-	  }
-	}
+	      /* l loop */
 
-        if (h_AN==0){ 
-	  for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	    for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-	      for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-		for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-		  SumSr0[L0][Mul0][L1][Mul1] = 0.0;
-		  SumKr0[L0][Mul0][L1][Mul1] = 0.0;
+	      for(l=0; l<=Lmax_Four_Int; l++){
+
+	        for (combo=0; combo<combo_count; combo++){
+	          L0 = combo_L0[combo];
+	          Mul0 = combo_Mul0[combo];
+	          L1 = combo_L1[combo];
+	          Mul1 = combo_Mul1[combo];
+	          SumS0[L0][Mul0][L1][Mul1]  = sumS0_flat[l*combo_count + combo];
+	          SumK0[L0][Mul0][L1][Mul1]  = sumK0_flat[l*combo_count + combo];
+	          SumSr0[L0][Mul0][L1][Mul1] = sumSr0_flat[l*combo_count + combo];
+	          SumKr0[L0][Mul0][L1][Mul1] = sumKr0_flat[l*combo_count + combo];
 		}
-	      }
-	    }
-	  }
-	}
 
-        /****************************************************
+	        /****************************************************
           For overlap and the derivative,
           sum_m 8*(-i)^{-L0+L1+1}*
                 C_{L0,-M0,L1,M1,l,m}*Y_{lm}
@@ -400,7 +556,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                 \int RL(k)*RL'(k)*jl(k*R) k^4 dk^3,
         ****************************************************/
 
-        for(m=-l; m<=l; m++){ 
+        for(m=-l; m<=l; m++){
 
           ComplexSH(l,m,theta,phi,SH,dSHt,dSHp);
           SH[1]   = -SH[1];
@@ -416,7 +572,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
               for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
                 for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
 
-                  Ls = -L0 + L1 + l;  
+                  Ls = -L0 + L1 + l;
 
                   if (abs(L1-l)<=L0 && L0<=(L1+l) ){
 
@@ -433,56 +589,56 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
                         gant = Gaunt(L0,M0,L1,M1,l,m);
 
-                        /* S */ 
+                        /* S */
 
                         tmp0 = gant*SumS0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CY1,tmp0);
                         TmpOLP[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
 			  Cadd(TmpOLP[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
 
-                        /* dS/dr */ 
+                        /* dS/dr */
 
                         tmp0 = gant*SumSr0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CY1,tmp0);
                         TmpOLPr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
 			  Cadd(TmpOLPr[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
 
-                        /* dS/dt */ 
+                        /* dS/dt */
 
                         tmp0 = gant*SumS0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CYt1,tmp0);
                         TmpOLPt[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
 			  Cadd(TmpOLPt[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
 
-                        /* dS/dp */ 
+                        /* dS/dp */
 
                         tmp0 = gant*SumS0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CYp1,tmp0);
                         TmpOLPp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
 			  Cadd(TmpOLPp[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
 
-                        /* K */ 
+                        /* K */
 
                         tmp0 = gant*SumK0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CY1,tmp0);
                         TmpKin[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
 			  Cadd(TmpKin[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
 
-                        /* dK/dr */ 
+                        /* dK/dr */
 
                         tmp0 = gant*SumKr0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CY1,tmp0);
                         TmpKinr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
 			  Cadd(TmpKinr[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
 
-                        /* dK/dt */ 
+                        /* dK/dt */
 
                         tmp0 = gant*SumK0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CYt1,tmp0);
                         TmpKint[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
 			  Cadd(TmpKint[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
 
-                        /* dK/dp */ 
+                        /* dK/dp */
 
                         tmp0 = gant*SumK0[L0][Mul0][L1][Mul1];
                         Ctmp2 = CRmul(CYp1,tmp0);
@@ -497,20 +653,16 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 	    }
 	  }
-        } 
+        }
       } /* l */
 
       /* free SphB and SphBp */
 
-      for(l=0; l<(Lmax_Four_Int+3); l++){ 
-        free(SphB[l]);
-      }
-      free(SphB);
+	      free(SphB[0]);
+	      free(SphB);
 
-      for(l=0; l<(Lmax_Four_Int+3); l++){ 
-        free(SphBp[l]);
-      }
-      free(SphBp);
+	      free(SphBp[0]);
+	      free(SphBp);
 
       /****************************************************
                          Complex to Real
@@ -519,11 +671,11 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
       num0 = 0;
       for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
 	for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-          
+
           num1 = 0;
           for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
 	    for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-              
+
     	      for (M0=-L0; M0<=L0; M0++){
 		for (M1=-L1; M1<=L1; M1++){
 
@@ -546,7 +698,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                     Ctmp0 = TmpOLP[L0][Mul0][L0+k][L1][Mul1][L1+M1];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumS0 = Cadd(CsumS0,Ctmp2);
- 
+
                     /* dS/dr */
 
                     Ctmp0 = TmpOLPr[L0][Mul0][L0+k][L1][Mul1][L1+M1];
@@ -621,7 +773,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
      	          for (k=-L1; k<=L1; k++){
 
-                    /*** S_Lx ***/ 
+                    /*** S_Lx ***/
 
                     /*  Y k+1 */
                     if (k<L1){
@@ -641,7 +793,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                       CsumS_Lx = Cadd(CsumS_Lx,Ctmp1);
 		    }
 
-                    /*** S_Ly ***/ 
+                    /*** S_Ly ***/
 
                     /*  Y k+1 */
 
@@ -661,59 +813,59 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                       CsumS_Ly = Cadd(CsumS_Ly,Ctmp2);
 		    }
 
-                    /*** S_Lz ***/ 
+                    /*** S_Lz ***/
 
                     Ctmp1    = Cmul(CmatS0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     Ctmp1.r = (double)k*Ctmp1.r;;
                     Ctmp1.i = (double)k*Ctmp1.i;
                     CsumS_Lz = Cadd(CsumS_Lz,Ctmp1);
 
-                    /* S */ 
+                    /* S */
 
                     Ctmp1 = Cmul(CmatS0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumS0 = Cadd(CsumS0,Ctmp1);
 
-                    /* dS/dr */ 
+                    /* dS/dr */
 
                     Ctmp1 = Cmul(CmatSr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumSr = Cadd(CsumSr,Ctmp1);
 
-                    /* dS/dt */ 
+                    /* dS/dt */
 
                     Ctmp1 = Cmul(CmatSt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumSt = Cadd(CsumSt,Ctmp1);
 
-                    /* dS/dp */ 
+                    /* dS/dp */
 
                     Ctmp1 = Cmul(CmatSp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumSp = Cadd(CsumSp,Ctmp1);
 
-                    /* K */ 
+                    /* K */
 
                     Ctmp1 = Cmul(CmatK0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumK0 = Cadd(CsumK0,Ctmp1);
 
-                    /* dK/dr */ 
+                    /* dK/dr */
 
                     Ctmp1 = Cmul(CmatKr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumKr = Cadd(CsumKr,Ctmp1);
 
-                    /* dK/dt */ 
+                    /* dK/dt */
 
                     Ctmp1 = Cmul(CmatKt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumKt = Cadd(CsumKt,Ctmp1);
 
-                    /* dK/dp */ 
+                    /* dK/dp */
 
                     Ctmp1 = Cmul(CmatKp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
                     CsumKp = Cadd(CsumKp,Ctmp1);
 
 		  }
-                  
-                  OLP_L[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Lx.i; 
-                  OLP_L[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Ly.i; 
+
+                  OLP_L[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Lx.i;
+                  OLP_L[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Ly.i;
                   OLP_L[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Lz.i;
-                  
+
                   /* add a small value for stabilization of eigenvalue routine */
 
                   OLP[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS0.r + 1.0*rnd(1.0e-13);
@@ -781,11 +933,11 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 		}
 	      }
 
-              num1 = num1 + 2*L1 + 1; 
+              num1 = num1 + 2*L1 + 1;
 	    }
 	  }
 
-          num0 = num0 + 2*L0 + 1; 
+          num0 = num0 + 2*L0 + 1;
 	}
       }
 
@@ -803,22 +955,36 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
     Free6D_dcomplex(TmpKinr);
     Free6D_dcomplex(TmpKint);
     Free6D_dcomplex(TmpKinp);
-	
+
     Free4D_double(SumS0);
     Free4D_double(SumK0);
     Free4D_double(SumSr0);
     Free4D_double(SumKr0);
-	
+
     Free2D_dcomplex(CmatS0);
     Free2D_dcomplex(CmatSr);
     Free2D_dcomplex(CmatSt);
     Free2D_dcomplex(CmatSp);
     Free2D_dcomplex(CmatK0);
-    Free2D_dcomplex(CmatKr);
-    Free2D_dcomplex(CmatKt);
-    Free2D_dcomplex(CmatKp);
-	
-  } /* #pragma omp parallel */
+	    Free2D_dcomplex(CmatKr);
+	    Free2D_dcomplex(CmatKt);
+	    Free2D_dcomplex(CmatKp);
+
+	    free(Normk_grid);
+	    free(RF_BesselCache0);
+	    free(RF_BesselCache1);
+	    free(sumS0_flat);
+	    free(sumK0_flat);
+	    free(sumSr0_flat);
+	    free(sumKr0_flat);
+	    free(combo_L0);
+	    free(combo_Mul0);
+	    free(combo_L1);
+	    free(combo_Mul1);
+	    free(combo_rf0_offset);
+	    free(combo_rf1_offset);
+
+	  } /* #pragma omp parallel */
 
   /****************************************************
                    freeing of arrays:
@@ -841,7 +1007,7 @@ dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3, int size_
 #else
 static inline dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3, int size_4, int size_5, int size_6)
 #endif
-{ 
+{
   int i, j, k, l, m, p;
 
   dcomplex****** buffer = (dcomplex******)malloc(sizeof(dcomplex*****)*size_1);
@@ -850,7 +1016,7 @@ static inline dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int siz
   buffer[0][0][0] = (dcomplex***)malloc(sizeof(dcomplex**)*size_1*size_2*size_3*size_4);
   buffer[0][0][0][0] = (dcomplex**)malloc(sizeof(dcomplex*)*size_1*size_2*size_3*size_4*size_5);
   buffer[0][0][0][0][0] = (dcomplex*)malloc(sizeof(dcomplex)*size_1*size_2*size_3*size_4*size_5*size_6);
-		
+
   for (i=0; i<size_1; i++){
     buffer[i] = buffer[0] + i * size_2;
     for (j=0; j<size_2; j++){
@@ -877,14 +1043,14 @@ double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4)
 #else
 static inline double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4)
 #endif
-{ 
+{
   int i, j, k, l;
 
   double**** buffer = (double****)malloc(sizeof(double***)*size_1);
   buffer[0] = (double***)malloc(sizeof(double**)*size_1*size_2);
   buffer[0][0] = (double**)malloc(sizeof(double*)*size_1*size_2*size_3);
   buffer[0][0][0] = (double*)malloc(sizeof(double)*size_1*size_2*size_3*size_4);
-		
+
   for (i=0; i<size_1; i++){
     buffer[i] = buffer[0] + i * size_2;
     for (j=0; j<size_2; j++){
@@ -907,7 +1073,7 @@ dcomplex** Allocate2D_dcomplex(int size_1, int size_2)
 #else
 static inline dcomplex** Allocate2D_dcomplex(int size_1, int size_2)
 #endif
-{ 
+{
   int i, j;
 
   dcomplex** buffer = (dcomplex**)malloc(sizeof(dcomplex*)*size_1);
@@ -925,7 +1091,7 @@ static inline dcomplex** Allocate2D_dcomplex(int size_1, int size_2)
 
 
 void Free6D_dcomplex(dcomplex****** buffer)
-{ 
+{
   free(buffer[0][0][0][0][0]);
   free(buffer[0][0][0][0]);
   free(buffer[0][0][0]);
@@ -936,7 +1102,7 @@ void Free6D_dcomplex(dcomplex****** buffer)
 
 
 void Free4D_double(double**** buffer)
-{ 
+{
   free(buffer[0][0][0]);
   free(buffer[0][0]);
   free(buffer[0]);
@@ -945,10 +1111,7 @@ void Free4D_double(double**** buffer)
 
 
 void Free2D_dcomplex(dcomplex** buffer)
-{ 
+{
   free(buffer[0]);
   free(buffer);
 }
-
-
-
