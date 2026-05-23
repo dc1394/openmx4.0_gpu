@@ -24,12 +24,19 @@
 #include "flpq_dm.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
+#include <omp.h>
 #include <openacc.h>
 
 
 int TRAN_SCF_Iter_Band;
 
 static int DFT_GPU_BasisCount(void);
+static int DFT_SetOLPKinUseGPU(void);
+
+static int DFT_SetOLPKinUseGPU(void)
+{
+    return (scf_eigen_lib_flag == CuSOLVER && omp_get_max_threads() == 1);
+}
 
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)
  * Uses MPI_COMM_TYPE_SHARED to assign GPU per node-local rank. Global dense
@@ -369,7 +376,9 @@ double DFT(int MD_iter, int Cnt_Now)
   ****************************************************/
 
   if (MYID_MPI_COMM_WORLD==Host_ID  && 0<level_stdout){
-    printf("<MD=%2d>  Calculation of the overlap matrix\n",MD_iter);fflush(stdout);
+    printf("<MD=%2d>  Calculation of the overlap matrix%s\n",MD_iter,
+           DFT_SetOLPKinUseGPU() ? " (GPU-accelerated)" : "");
+    fflush(stdout);
   }
 
   time1 = Set_OLP_Kin(OLP,H0);
