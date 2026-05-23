@@ -112,6 +112,16 @@ static int Set_Hamiltonian_OpenACC_Enabled(void)
     return (scf_eigen_lib_flag == CuSOLVER);
 }
 
+static int Set_Hamiltonian_MatrixElements_OpenACC_Enabled(void)
+{
+    /*
+     * The matrix-elements OpenACC path spends too much time in packing and
+     * host-device copies for the current cluster workloads.  Keep the kernel
+     * available for future tuning, but use the CPU path for this phase.
+     */
+    return 0;
+}
+
 static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *where, int myid, int use_device)
 {
     MPI_Comm node_comm, device_comm;
@@ -240,7 +250,8 @@ static int Set_Hamiltonian_MatrixElements_Use_OpenACC(int Cnt_kind, int myid)
     size_t required_bytes;
     int memory_ok;
 
-    if (!Set_Hamiltonian_OpenACC_Enabled()) {
+    if (!Set_Hamiltonian_OpenACC_Enabled() ||
+        !Set_Hamiltonian_MatrixElements_OpenACC_Enabled()) {
         return 0;
     }
 
