@@ -54,6 +54,10 @@ static ClusterColCuSolverCtx ClusterCol_cusolver_ctx = {0};
 
 static void Patch2Full_Cluster(double ****RH, double *H, int *MP);
 static void Patch2Full_Cluster_Owner(double ****RH, double *H, int *MP, int owns_dense);
+static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H);
+static void ClusterCol_BuildDenseIndex(const int *order_GA, int *MP, int n, int tnum, int *dense_index);
+static void ClusterCol_BuildDeviceDenseFromPacked(const double *H1, const int *dense_index,
+                                                  int tnum, int n, double *d_H);
 
 static void ClusterCol_AbortWithMessage(const char *message)
 {
@@ -234,18 +238,15 @@ static void ClusterCol_CuSolver_EigenDevice(double *d_A, int n, int maxn, double
     }
 }
 
-static void ClusterCol_CuSolver_PrepareTransformedS(int rebuild, int n, double *S, double *ko0)
+static void ClusterCol_CuSolver_PrepareTransformedSDevice(int rebuild, int n, double *ko0)
 {
     ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
-    size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"transformed overlap");
-    size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"transformed overlap bytes");
     double *old_s;
     double *new_s;
 
     ClusterCol_CuSolver_EnsureMatrixCapacity(n);
 
     if (rebuild || !(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
-        wait_cudafunc(cudaMemcpyAsync(ctx->d_S,S,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
         ClusterCol_CuSolver_EigenDevice(ctx->d_S,n,n,ko0+1);
 
         for (int l=1; l<=n; l++){
@@ -268,11 +269,23 @@ static void ClusterCol_CuSolver_PrepareTransformedS(int rebuild, int n, double *
     }
 }
 
-static void ClusterCol_CuSolver_SolveHamiltonian(int n, int maxn, const double *H, double *ko_spin, double *C)
+static void ClusterCol_CuSolver_PrepareTransformedS(int rebuild, int n, double *S, double *ko0)
+{
+    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"transformed overlap");
+    size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"transformed overlap bytes");
+
+    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+    if (rebuild || !(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
+        wait_cudafunc(cudaMemcpyAsync(ctx->d_S,S,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
+    }
+    ClusterCol_CuSolver_PrepareTransformedSDevice(rebuild,n,ko0);
+}
+
+static void ClusterCol_CuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C)
 {
     ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
     size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"Hamiltonian");
-    size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"Hamiltonian bytes");
     size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"eigenvectors");
     size_t evec_bytes = ClusterCol_CheckedMulCount(evec_count,sizeof(double),"eigenvector bytes");
     double alpha = 1.0;
@@ -281,8 +294,6 @@ static void ClusterCol_CuSolver_SolveHamiltonian(int n, int maxn, const double *
     if (!(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
         ClusterCol_AbortWithMessage("Transformed overlap is not ready in Cluster_DFT_Col.c.");
     }
-
-    wait_cudafunc(cudaMemcpyAsync(ctx->d_H,H,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
 
     wait_cudafunc(cublasDsymm(ctx->cublas,CUBLAS_SIDE_LEFT,CUBLAS_FILL_MODE_LOWER,n,n,
                               &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,n));
@@ -295,6 +306,17 @@ static void ClusterCol_CuSolver_SolveHamiltonian(int n, int maxn, const double *
                               &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,maxn));
     wait_cudafunc(cudaMemcpyAsync(C,ctx->d_tmp,evec_bytes,cudaMemcpyDeviceToHost,ctx->stream));
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+}
+
+static void ClusterCol_CuSolver_SolveHamiltonian(int n, int maxn, const double *H, double *ko_spin, double *C)
+{
+    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"Hamiltonian");
+    size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"Hamiltonian bytes");
+
+    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+    wait_cudafunc(cudaMemcpyAsync(ctx->d_H,H,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
+    ClusterCol_CuSolver_SolveHamiltonianDevice(n,maxn,ko_spin,C);
 }
 
 static void ClusterCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
@@ -434,24 +456,28 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
     int spin_start = 0;
     int spin_end = SpinP_switch;
     int rebuild_s = (SCF_iter==1);
-    double *S = NULL;
-    double *H = NULL;
+    int use_setham_packed_cache =
+        (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
+         Set_Hamiltonian_CuSolver_Packed_OrderMode() == 0);
     double *C = NULL;
 
     if (SpinP_switch==1 && numprocs0!=1){
-        ClusterCol_AbortWithMessage("Root dense CuSolver path is not enabled for split spin worlds in Cluster_DFT_Col.c.");
+        spin_start = myworld1;
+        spin_end = myworld1;
+    }
+
+    if (use_setham_packed_cache) {
+        Set_Hamiltonian_CuSolver_SetMP(MP);
     }
 
     if (owns_dense){
-        size_t nn = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"root dense matrix");
         size_t nmax = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,"root dense eigenvectors");
 
-        H = (double*)ClusterCol_MallocArray(nn,sizeof(double),"root dense Hamiltonian");
         C = (double*)ClusterCol_MallocArray(nmax,sizeof(double),"root dense eigenvectors");
+        ClusterCol_CuSolver_EnsureMatrixCapacity(n);
 
         if (rebuild_s || !(ClusterCol_cusolver_ctx.transformed_s_valid &&
                            ClusterCol_cusolver_ctx.transformed_s_dim==n)){
-            S = (double*)ClusterCol_MallocArray(nn,sizeof(double),"root dense overlap");
             rebuild_s = 1;
         }
     }
@@ -459,25 +485,61 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
     MPI_Bcast(&rebuild_s,1,MPI_INT,0,MPI_CommWD1[myworld1]);
 
     if (rebuild_s){
-        Patch2Full_Cluster_Owner(CntOLP,S,MP,owns_dense);
+        if (use_setham_packed_cache) {
+            if (owns_dense) {
+                int tnum = Set_Hamiltonian_CuSolver_Packed_Size();
+                int *cache_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
+                double *cache_S = Set_Hamiltonian_CuSolver_Packed_Overlap();
+                int *dense_index = NULL;
+
+                if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_S == NULL) {
+                    ClusterCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Cluster_DFT_Col.c.");
+                }
+                dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"packed overlap dense_index");
+                ClusterCol_BuildDenseIndex(cache_order_GA,MP,n,tnum,dense_index);
+                ClusterCol_BuildDeviceDenseFromPacked(cache_S,dense_index,tnum,n,ClusterCol_cusolver_ctx.d_S);
+                free(dense_index);
+            }
+        }
+        else {
+            Patch2Device_Cluster_Owner(CntOLP,MP,owns_dense,n,
+                                       owns_dense ? ClusterCol_cusolver_ctx.d_S : NULL);
+        }
         if (owns_dense){
-            ClusterCol_CuSolver_PrepareTransformedS(1,n,S,ko[0]);
+            ClusterCol_CuSolver_PrepareTransformedSDevice(1,n,ko[0]);
         }
     }
 
     for (int spin=spin_start; spin<=spin_end; spin++){
-        Patch2Full_Cluster_Owner(nh[spin],H,MP,owns_dense);
+        if (use_setham_packed_cache) {
+            if (owns_dense) {
+                int tnum = Set_Hamiltonian_CuSolver_Packed_Size();
+                int *cache_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
+                double *cache_H = Set_Hamiltonian_CuSolver_Packed_H(spin);
+                int *dense_index = NULL;
+
+                if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
+                    ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
+                }
+                dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"packed Hamiltonian dense_index");
+                ClusterCol_BuildDenseIndex(cache_order_GA,MP,n,tnum,dense_index);
+                ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_cusolver_ctx.d_H);
+                free(dense_index);
+            }
+        }
+        else {
+            Patch2Device_Cluster_Owner(nh[spin],MP,owns_dense,n,
+                                       owns_dense ? ClusterCol_cusolver_ctx.d_H : NULL);
+        }
         if (owns_dense){
-            ClusterCol_CuSolver_SolveHamiltonian(n,MaxN,H,ko[spin],C);
+            ClusterCol_CuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
         }
         ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
                                        MPI_CommWD1[myworld1],
                                        owns_dense ? C : NULL,EVec1[spin]);
     }
 
-    free(S);
     free(C);
-    free(H);
 
     (void)myid0;
 }
@@ -516,8 +578,10 @@ static void ClusterCol_CuSolverDensePath(
         ClusterCol_AbortWithMessage("Invalid CuSOLVER dense dimensions in Cluster_DFT_Col.c.");
     }
 
-    set_cuda_default_device_from_local_rank();
-    set_openacc_nvidia_device_from_local_rank();
+    if (Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
+        set_cuda_default_device_from_local_rank_noncollective();
+        set_openacc_nvidia_device_from_local_rank_noncollective();
+    }
 
     dense_count = ClusterCol_CheckedMulCount((size_t)n, (size_t)n, "CuSOLVER dense matrix");
     S   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER overlap matrix");
@@ -853,9 +917,10 @@ double Cluster_DFT_Col(
   n2 = n + 2;
 
   /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when CuSOLVER is requested */
-  if (scf_eigen_lib_flag == CuSOLVER && n >= GPU_CPU_SWITCH_NUM) {
-      set_cuda_default_device_from_local_rank();
-      set_openacc_nvidia_device_from_local_rank();
+  if (scf_eigen_lib_flag == CuSOLVER && n >= GPU_CPU_SWITCH_NUM &&
+      Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
+      set_cuda_default_device_from_local_rank_noncollective();
+      set_openacc_nvidia_device_from_local_rank_noncollective();
   }
 
   /*
@@ -933,8 +998,7 @@ double Cluster_DFT_Col(
     }
   }
 
-  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n &&
-      !(SpinP_switch==1 && numprocs0!=1)){
+  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n){
     ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
     firsttime = 0;
     ClusterCol_CuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
@@ -5375,11 +5439,11 @@ static void Patch2Full_Cluster_Owner(double ****RH, double *H, int *MP, int owns
     GA_AN = M2G[MA_AN];
     wanA = WhatSpecies[GA_AN];
     tnoA = Spe_Total_CNO[wanA];
-    for (i=0; i<tnoA; i++){
-      for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+    for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
         GB_AN = natn[GA_AN][LB_AN];
         wanB = WhatSpecies[GB_AN];
         tnoB = Spe_Total_CNO[wanB];
+      for (i=0; i<tnoA; i++){
         for (j=0; j<tnoB; j++){
           H1[k] = RH[MA_AN][LB_AN][i][j];
           k++;
@@ -5419,6 +5483,198 @@ static void Patch2Full_Cluster_Owner(double ****RH, double *H, int *MP, int owns
     }
   }
 
+  free(My_NZeros);
+  free(My_Matomnum);
+  free(is1);
+  free(ie1);
+  free(is2);
+  free(order_GA);
+  free(H1);
+}
+
+static void ClusterCol_BuildDenseIndex(const int *order_GA, int *MP, int n, int tnum, int *dense_index)
+{
+  int i,j,k;
+  int AN,GA_AN,LB_AN,GB_AN;
+  int wanA,wanB,tnoA,tnoB,Anum,Bnum;
+
+  k = 0;
+  for (AN=1; AN<=atomnum; AN++){
+    GA_AN = order_GA[AN];
+    wanA = WhatSpecies[GA_AN];
+    tnoA = Spe_Total_CNO[wanA];
+    Anum = MP[GA_AN];
+
+    for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+        GB_AN = natn[GA_AN][LB_AN];
+        wanB = WhatSpecies[GB_AN];
+        tnoB = Spe_Total_CNO[wanB];
+        Bnum = MP[GB_AN];
+
+      for (i=0; i<tnoA; i++){
+        for (j=0; j<tnoB; j++){
+          int row = Bnum + j - 1;
+          int col = Anum + i - 1;
+
+          if (row<0 || n<=row || col<0 || n<=col){
+            ClusterCol_AbortWithMessage("Dense matrix index is out of range in Cluster_DFT_Col.c.");
+          }
+          if (tnum<=k){
+            ClusterCol_AbortWithMessage("Dense index buffer overflow in Cluster_DFT_Col.c.");
+          }
+
+          dense_index[k] = row*n + col;
+          k++;
+        }
+      }
+    }
+  }
+
+  if (k!=tnum){
+    ClusterCol_AbortWithMessage("Dense index count mismatch in Cluster_DFT_Col.c.");
+  }
+}
+
+static void ClusterCol_BuildDeviceDenseFromPacked(const double *H1, const int *dense_index,
+                                                  int tnum, int n, double *d_H)
+{
+  size_t nn = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"device dense matrix");
+
+  if (d_H==NULL){
+    ClusterCol_AbortWithMessage("NULL device dense matrix in Cluster_DFT_Col.c.");
+  }
+
+#pragma acc enter data copyin(H1[0 : tnum], dense_index[0 : tnum])
+#pragma acc parallel loop deviceptr(d_H)
+  for (size_t p=0; p<nn; p++){
+    d_H[p] = 0.0;
+  }
+
+#pragma acc parallel loop deviceptr(d_H) present(H1[0 : tnum], dense_index[0 : tnum])
+  for (int p=0; p<tnum; p++){
+    int idx = dense_index[p];
+#pragma acc atomic update
+    d_H[idx] += H1[p];
+  }
+#pragma acc exit data delete(H1[0 : tnum], dense_index[0 : tnum])
+}
+
+static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H)
+{
+  int i,j,k;
+  int MA_AN,GA_AN,LB_AN,GB_AN,AN;
+  int wanA,wanB,tnoA,tnoB,Anum,NUM;
+  int num,tnum;
+  int ID,myid,numprocs;
+  int *My_NZeros;
+  int *is1,*ie1,*is2;
+  int *My_Matomnum,*order_GA;
+  double *H1;
+  int *dense_index = NULL;
+
+  MPI_Comm_size(mpi_comm_level1,&numprocs);
+  MPI_Comm_rank(mpi_comm_level1,&myid);
+  MPI_Barrier(mpi_comm_level1);
+
+  My_NZeros = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device My_NZeros");
+  My_Matomnum = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device My_Matomnum");
+  is1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device is1");
+  ie1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device ie1");
+  is2 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device is2");
+  order_GA = (int*)ClusterCol_MallocArray((size_t)(atomnum+2),sizeof(int),"Patch2Device order_GA");
+
+  My_NZeros[myid] = 0;
+  for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
+    GA_AN = M2G[MA_AN];
+    wanA = WhatSpecies[GA_AN];
+    tnoA = Spe_Total_CNO[wanA];
+
+    num = 0;
+    for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+      GB_AN = natn[GA_AN][LB_AN];
+      wanB = WhatSpecies[GB_AN];
+      tnoB = Spe_Total_CNO[wanB];
+      num += tnoB;
+    }
+
+    My_NZeros[myid] += tnoA*num;
+  }
+
+  for (ID=0; ID<numprocs; ID++){
+    MPI_Bcast(&My_NZeros[ID],1,MPI_INT,ID,mpi_comm_level1);
+  }
+
+  tnum = 0;
+  for (ID=0; ID<numprocs; ID++) tnum += My_NZeros[ID];
+
+  is1[0] = 0;
+  ie1[0] = My_NZeros[0] - 1;
+  for (ID=1; ID<numprocs; ID++){
+    is1[ID] = ie1[ID-1] + 1;
+    ie1[ID] = is1[ID] + My_NZeros[ID] - 1;
+  }
+
+  My_Matomnum[myid] = Matomnum;
+  for (ID=0; ID<numprocs; ID++){
+    MPI_Bcast(&My_Matomnum[ID],1,MPI_INT,ID,mpi_comm_level1);
+  }
+
+  is2[0] = 1;
+  for (ID=1; ID<numprocs; ID++){
+    is2[ID] = is2[ID-1] + My_Matomnum[ID-1];
+  }
+
+  for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
+    order_GA[is2[myid]+MA_AN-1] = M2G[MA_AN];
+  }
+
+  for (ID=0; ID<numprocs; ID++){
+    MPI_Bcast(&order_GA[is2[ID]],My_Matomnum[ID],MPI_INT,ID,mpi_comm_level1);
+  }
+
+  Anum = 1;
+  for (i=1; i<=atomnum; i++){
+    MP[i] = Anum;
+    wanA = WhatSpecies[i];
+    Anum += Spe_Total_CNO[wanA];
+  }
+  NUM = Anum - 1;
+  if (NUM!=n){
+    ClusterCol_AbortWithMessage("Orbital count mismatch in Cluster_DFT_Col.c Patch2Device.");
+  }
+
+  H1 = (double*)ClusterCol_MallocArray((size_t)(tnum+1),sizeof(double),"Patch2Device sparse buffer");
+
+  k = is1[myid];
+  for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
+    GA_AN = M2G[MA_AN];
+    wanA = WhatSpecies[GA_AN];
+    tnoA = Spe_Total_CNO[wanA];
+    for (i=0; i<tnoA; i++){
+      for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+        GB_AN = natn[GA_AN][LB_AN];
+        wanB = WhatSpecies[GB_AN];
+        tnoB = Spe_Total_CNO[wanB];
+        for (j=0; j<tnoB; j++){
+          H1[k] = RH[MA_AN][LB_AN][i][j];
+          k++;
+        }
+      }
+    }
+  }
+
+  for (ID=0; ID<numprocs; ID++){
+    k = is1[ID];
+    MPI_Bcast(&H1[k], My_NZeros[ID], MPI_DOUBLE, ID, mpi_comm_level1);
+  }
+
+  if (owns_dense){
+    dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"Patch2Device dense_index");
+    ClusterCol_BuildDenseIndex(order_GA,MP,n,tnum,dense_index);
+    ClusterCol_BuildDeviceDenseFromPacked(H1,dense_index,tnum,n,d_H);
+  }
+
+  free(dense_index);
   free(My_NZeros);
   free(My_Matomnum);
   free(is1);

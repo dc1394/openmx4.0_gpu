@@ -865,6 +865,187 @@ static void Patch2Full_Cluster_NonCol_Owner(double ****RH, double *H, int *MP, i
     free(local_H1);
 }
 
+static void ClusterNonCol_BuildDenseIndexFromGathered(const int *order_GA, int *MP, int n, int tnum,
+                                                      int *dense_index)
+{
+    int k = 0;
+
+    for (int AN = 1; AN <= atomnum; AN++) {
+        int GA_AN = order_GA[AN];
+        int wanA = WhatSpecies[GA_AN];
+        int tnoA = Spe_Total_CNO[wanA];
+        int Anum = MP[GA_AN];
+
+        for (int i = 0; i < tnoA; i++) {
+            int col = Anum + i - 1;
+
+            for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+                int GB_AN = natn[GA_AN][LB_AN];
+                int wanB = WhatSpecies[GB_AN];
+                int tnoB = Spe_Total_CNO[wanB];
+                int Bnum = MP[GB_AN];
+
+                for (int j = 0; j < tnoB; j++) {
+                    int row = Bnum + j - 1;
+
+                    if (row < 0 || n <= row || col < 0 || n <= col) {
+                        ClusterNonCol_AbortWithMessage("Dense matrix index is out of range in Cluster_DFT_NonCol.c.");
+                    }
+                    if (tnum <= k) {
+                        ClusterNonCol_AbortWithMessage("Dense index buffer overflow in Cluster_DFT_NonCol.c.");
+                    }
+
+                    dense_index[k] = row + col * n;
+                    k++;
+                }
+            }
+        }
+    }
+
+    if (k != tnum) {
+        ClusterNonCol_AbortWithMessage("Dense index count mismatch in Cluster_DFT_NonCol.c.");
+    }
+}
+
+static void ClusterNonCol_BuildDeviceDenseFromGathered(const double *H1, const int *dense_index,
+                                                       int tnum, int n, double *H)
+{
+    size_t nn = ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "device dense H");
+
+#pragma acc enter data copyin(H1[0 : tnum], dense_index[0 : tnum])
+#pragma acc parallel loop present(H[0 : nn])
+    for (size_t p = 0; p < nn; p++) {
+        H[p] = 0.0;
+    }
+
+#pragma acc parallel loop present(H[0 : nn], H1[0 : tnum], dense_index[0 : tnum])
+    for (int p = 0; p < tnum; p++) {
+        int idx = dense_index[p];
+#pragma acc atomic update
+        H[idx] += H1[p];
+    }
+#pragma acc exit data delete(H1[0 : tnum], dense_index[0 : tnum])
+}
+
+static void ClusterNonCol_LoadDeviceDenseFromSetHamCache(const double *H1, int *MP, int n, double *H)
+{
+    int tnum = Set_Hamiltonian_CuSolver_Packed_Size();
+    int *order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
+    int *dense_index;
+
+    if (H1 == NULL || order_GA == NULL) {
+        ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed matrix cache is missing in Cluster_DFT_NonCol.c.");
+    }
+
+    dense_index = (int *)ClusterNonCol_MallocArray((size_t)tnum, sizeof(int), "Set_Hamiltonian dense_index");
+    ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, tnum, dense_index);
+    ClusterNonCol_BuildDeviceDenseFromGathered(H1, dense_index, tnum, n, H);
+    free(dense_index);
+}
+
+static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP, int owns_dense, int n)
+{
+    int myid, numprocs;
+    int dense_root = Host_ID;
+    int NUM;
+    int local_nzeros;
+    int local_matomnum;
+    int dummy_int = 0;
+    int *recv_nzeros = NULL;
+    int *recv_matomnum = NULL;
+    int *h1_displs = NULL;
+    int *atom_displs = NULL;
+    int *order_GA = NULL;
+    int *dense_index = NULL;
+    double *local_H1;
+    double *gathered_H1 = NULL;
+
+    MPI_Comm_size(mpi_comm_level1, &numprocs);
+    MPI_Comm_rank(mpi_comm_level1, &myid);
+
+    NUM = ClusterNonCol_SetMPAndReturnNum(MP);
+    if (NUM != n) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Orbital count mismatch in Cluster_DFT_NonCol.c: n=%d, NUM=%d", n, NUM);
+        ClusterNonCol_AbortWithMessage(msg);
+    }
+
+    local_nzeros = ClusterNonCol_ComputeLocalNZeroCount();
+    local_matomnum = Matomnum;
+    local_H1 = (double *)ClusterNonCol_MallocArray((size_t)local_nzeros, sizeof(double), "local H1 segment");
+    ClusterNonCol_PackLocalSegment(RH, local_H1, local_nzeros);
+
+    if (myid == dense_root) {
+        recv_nzeros = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "recv_nzeros");
+        recv_matomnum = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "recv_matomnum");
+    }
+
+    MPI_Gather(&local_nzeros, 1, MPI_INT, recv_nzeros, 1, MPI_INT, dense_root, mpi_comm_level1);
+    MPI_Gather(&local_matomnum, 1, MPI_INT, recv_matomnum, 1, MPI_INT, dense_root, mpi_comm_level1);
+
+    if (myid == dense_root) {
+        size_t total_nzeros = 0;
+        size_t total_atoms = 0;
+
+        h1_displs = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "h1_displs");
+        atom_displs = (int *)ClusterNonCol_MallocArray((size_t)numprocs, sizeof(int), "atom_displs");
+
+        for (int ID = 0; ID < numprocs; ID++) {
+            if (recv_nzeros[ID] < 0 || recv_matomnum[ID] < 0) {
+                ClusterNonCol_AbortWithMessage("Negative gather counts detected in Cluster_DFT_NonCol.c.");
+            }
+
+            if (total_nzeros > (size_t)INT_MAX || total_atoms > (size_t)INT_MAX) {
+                ClusterNonCol_AbortWithMessage("Gather displacements exceed INT_MAX in Cluster_DFT_NonCol.c.");
+            }
+
+            h1_displs[ID] = (int)total_nzeros;
+            atom_displs[ID] = (int)total_atoms;
+            total_nzeros =
+                ClusterNonCol_CheckedAddCount(total_nzeros, (size_t)recv_nzeros[ID], "gathered H1 size");
+            total_atoms =
+                ClusterNonCol_CheckedAddCount(total_atoms, (size_t)recv_matomnum[ID], "gathered atom order");
+        }
+
+        if (total_nzeros > (size_t)INT_MAX) {
+            ClusterNonCol_AbortWithMessage("Gathered H1 size exceeds INT_MAX in Cluster_DFT_NonCol.c.");
+        }
+
+        if (total_atoms != (size_t)atomnum) {
+            ClusterNonCol_AbortWithMessage("Gathered atom order length mismatch in Cluster_DFT_NonCol.c.");
+        }
+
+        gathered_H1 = (double *)ClusterNonCol_MallocArray(total_nzeros, sizeof(double), "gathered H1");
+        order_GA = (int *)ClusterNonCol_MallocArray((size_t)atomnum + 1u, sizeof(int), "order_GA");
+    }
+
+    MPI_Gatherv(local_H1, local_nzeros, MPI_DOUBLE, gathered_H1, recv_nzeros, h1_displs, MPI_DOUBLE, dense_root,
+                mpi_comm_level1);
+    MPI_Gatherv((0 < Matomnum) ? &M2G[1] : &dummy_int, Matomnum, MPI_INT, (myid == dense_root) ? &order_GA[1] : NULL,
+                recv_matomnum, atom_displs, MPI_INT, dense_root, mpi_comm_level1);
+
+    if (myid == dense_root && owns_dense) {
+        int gathered_nzeros = 0;
+
+        if (0 < numprocs) {
+            gathered_nzeros = h1_displs[numprocs - 1] + recv_nzeros[numprocs - 1];
+        }
+
+        dense_index = (int *)ClusterNonCol_MallocArray((size_t)gathered_nzeros, sizeof(int), "dense_index");
+        ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, gathered_nzeros, dense_index);
+        ClusterNonCol_BuildDeviceDenseFromGathered(gathered_H1, dense_index, gathered_nzeros, n, H);
+    }
+
+    free(dense_index);
+    free(gathered_H1);
+    free(order_GA);
+    free(atom_displs);
+    free(h1_displs);
+    free(recv_matomnum);
+    free(recv_nzeros);
+    free(local_H1);
+}
+
 static void ClusterNonCol_BuildDenseSs2(int n, int n2, const double *S, dcomplex *S2)
 {
     for (int col = 0; col < n2; col++) {
@@ -894,6 +1075,9 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
     static double *cached_S = NULL;
     static dcomplex *cached_Ss2 = NULL;
     const int owns_dense = (myid == Host_ID);
+    const int use_setham_packed_cache =
+        (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
+         Set_Hamiltonian_CuSolver_Packed_OrderMode() == 1);
     int rebuild_s = (SCF_iter == 1 || !transformed_s_valid || cached_n != n || cached_n2 != n2);
     double *S = NULL;
     double *Cs = NULL;
@@ -907,8 +1091,13 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
     *dense_evec_out = NULL;
     *dense_evec_on_device_out = 0;
 
-    set_cuda_default_device_from_local_rank();
-    set_openacc_nvidia_device_from_local_rank();
+    if (use_setham_packed_cache) {
+        Set_Hamiltonian_CuSolver_SetMP(MP);
+    }
+    if (Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
+        set_cuda_default_device_from_local_rank_noncollective();
+        set_openacc_nvidia_device_from_local_rank_noncollective();
+    }
 
     if (owns_dense) {
         nn = ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "root dense real matrix");
@@ -949,24 +1138,34 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
     MPI_Bcast(&rebuild_s, 1, MPI_INT, Host_ID, mpi_comm_level1);
 
     if (rebuild_s) {
-        Patch2Full_Cluster_NonCol_Owner(CntOLP, S, MP, owns_dense, n);
+        if (owns_dense) {
+#pragma acc enter data create(S[0 : n * n])
+        }
+
+        if (use_setham_packed_cache) {
+            if (owns_dense) {
+                if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+                    ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is not owned by this rank.");
+                }
+                ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_Overlap(), MP, n, S);
+            }
+        }
+        else {
+            Patch2Device_Cluster_NonCol_Owner(CntOLP, S, MP, owns_dense, n);
+        }
 
         if (owns_dense) {
-#pragma acc enter data copyin(S[0 : n * n])
 #pragma acc enter data create(ko[0 : n2 + 1])
             Eigen_cusolver_x_openacc2(S, ko, n, n);
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(ko[0 : n2 + 1])
             for (int l = 1; l <= n; l++) {
                 if (ko[l] < 1.0e-10) ko[l] = 1.0e-10;
                 ko[l] = 1.0 / sqrt(ko[l]);
             }
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop collapse(2) present(S[0 : n * n], ko[0 : n2 + 1])
             for (int col = 0; col < n; col++) {
-#pragma acc loop independent
                 for (int row = 0; row < n; row++) {
                     S[(size_t)row + (size_t)col * (size_t)n] *= ko[col + 1];
                 }
@@ -980,84 +1179,91 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
         }
     }
 
-    Patch2Full_Cluster_NonCol_Owner(nh[0],   rHs11, MP, owns_dense, n);
-    Patch2Full_Cluster_NonCol_Owner(nh[1],   rHs22, MP, owns_dense, n);
-    Patch2Full_Cluster_NonCol_Owner(nh[2],   rHs12, MP, owns_dense, n);
-    Patch2Full_Cluster_NonCol_Owner(nh[3],   iHs12, MP, owns_dense, n);
-    Patch2Full_Cluster_NonCol_Owner(ImNL[0], iHs11, MP, owns_dense, n);
-    Patch2Full_Cluster_NonCol_Owner(ImNL[1], iHs22, MP, owns_dense, n);
-    Patch2Full_Cluster_NonCol_Owner(ImNL[2], Cs,    MP, owns_dense, n);
+    if (owns_dense) {
+#pragma acc enter data create(rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
+                              iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n], Cs[0 : n * n])
+    }
+
+    if (use_setham_packed_cache) {
+        if (owns_dense) {
+            if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+                ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is not owned by this rank.");
+            }
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(0), MP, n, rHs11);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(1), MP, n, rHs22);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(2), MP, n, rHs12);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(3), MP, n, iHs12);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_ImNL(0), MP, n, iHs11);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_ImNL(1), MP, n, iHs22);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_ImNL(2), MP, n, Cs);
+        }
+    }
+    else {
+        Patch2Device_Cluster_NonCol_Owner(nh[0],   rHs11, MP, owns_dense, n);
+        Patch2Device_Cluster_NonCol_Owner(nh[1],   rHs22, MP, owns_dense, n);
+        Patch2Device_Cluster_NonCol_Owner(nh[2],   rHs12, MP, owns_dense, n);
+        Patch2Device_Cluster_NonCol_Owner(nh[3],   iHs12, MP, owns_dense, n);
+        Patch2Device_Cluster_NonCol_Owner(ImNL[0], iHs11, MP, owns_dense, n);
+        Patch2Device_Cluster_NonCol_Owner(ImNL[1], iHs22, MP, owns_dense, n);
+        Patch2Device_Cluster_NonCol_Owner(ImNL[2], Cs,    MP, owns_dense, n);
+    }
 
     if (owns_dense) {
+#pragma acc parallel loop present(iHs12[0 : n * n], Cs[0 : n * n])
         for (size_t i = 0; i < nn; i++) {
             iHs12[i] += Cs[i];
         }
 
-#pragma acc enter data copyin(S[0 : n * n], rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
-                              iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n])
-#pragma acc enter data create(Cs[0 : n * n])
+#pragma acc enter data copyin(S[0 : n * n])
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(Cs[0 : n * n])
         for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, rHs11, S, Cs);
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(rHs11[0 : n * n])
         for (int i = 0; i < n * n; i++) rHs11[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, rHs11);
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(Cs[0 : n * n])
         for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, rHs12, S, Cs);
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(rHs12[0 : n * n])
         for (int i = 0; i < n * n; i++) rHs12[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, rHs12);
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(Cs[0 : n * n])
         for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, rHs22, S, Cs);
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(rHs22[0 : n * n])
         for (int i = 0; i < n * n; i++) rHs22[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, rHs22);
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(Cs[0 : n * n])
         for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, iHs11, S, Cs);
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(iHs11[0 : n * n])
         for (int i = 0; i < n * n; i++) iHs11[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, iHs11);
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(Cs[0 : n * n])
         for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, iHs12, S, Cs);
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(iHs12[0 : n * n])
         for (int i = 0; i < n * n; i++) iHs12[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, iHs12);
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(Cs[0 : n * n])
         for (int i = 0; i < n * n; i++) Cs[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, iHs22, S, Cs);
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop present(iHs22[0 : n * n])
         for (int i = 0; i < n * n; i++) iHs22[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, iHs22);
 
 #pragma acc exit data delete(S[0 : n * n], Cs[0 : n * n])
 #pragma acc enter data create(Hs2[0 : n2 * n2], ko[0 : n2 + 1])
 
-#pragma acc kernels
-#pragma acc loop independent
+#pragma acc parallel loop collapse(2) present(Hs2[0 : n2 * n2], rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
+                                             iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n])
         for (int col = 0; col < n2; col++) {
-#pragma acc loop independent
             for (int row = 0; row < n2; row++) {
                 if (row < n && col < n) {
                     Hs2[(size_t)row + (size_t)col * (size_t)n2].r = rHs11[(size_t)row + (size_t)col * (size_t)n];
@@ -1271,10 +1477,11 @@ double Cluster_DFT_NonCol(
   n2 = 2*n;
 
   /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when CuSOLVER is requested */
-  if (scf_eigen_lib_flag == CuSOLVER && n2 >= GPU_CPU_SWITCH_NUM) {
-      set_cuda_default_device_from_local_rank();
-      set_openacc_nvidia_device_from_local_rank();
-  }
+    if (scf_eigen_lib_flag == CuSOLVER && n2 >= GPU_CPU_SWITCH_NUM &&
+        Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
+      set_cuda_default_device_from_local_rank_noncollective();
+      set_openacc_nvidia_device_from_local_rank_noncollective();
+    }
 
   use_cusolver_direct_cluster_dm =
     (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&

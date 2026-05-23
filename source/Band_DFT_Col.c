@@ -1508,6 +1508,10 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     int     owns_global_dense_rank;
     int     transformed_s_ready;
     int     use_cusolver_dense;
+    int     use_setham_packed_cache = 0;
+    int *   setham_order_GA = NULL;
+    double *setham_S1 = NULL;
+    double *setham_H1 = NULL;
 
     /* for time */
     dtime(&TStime);
@@ -1979,14 +1983,25 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     }
 
     owns_global_dense_rank = (use_cusolver_dense && all_knum == 1 && my_prow == 0 && my_pcol == 0);
+    use_setham_packed_cache =
+        (use_cusolver_dense && all_knum == 1 && Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
+         Set_Hamiltonian_CuSolver_Packed_OrderMode() == 0);
+    if (use_setham_packed_cache) {
+        size_H1 = Set_Hamiltonian_CuSolver_Packed_Size();
+        Set_Hamiltonian_CuSolver_SetMP(MP);
+        if (Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+            setham_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
+            setham_S1 = Set_Hamiltonian_CuSolver_Packed_Overlap();
+        }
+    }
 
     // Set the device to be used by OpenACC and CUDA
-    if (use_cusolver_dense) {
+    if (use_cusolver_dense && Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
         // CUDA
-        set_cuda_default_device_from_local_rank();
+        set_cuda_default_device_from_local_rank_noncollective();
 
         // OpenACC
-        set_openacc_nvidia_device_from_local_rank();
+        set_openacc_nvidia_device_from_local_rank_noncollective();
     }
 
     /***********************************************
@@ -2232,7 +2247,14 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
 
     /* set S1 */
 
-    if (SCF_iter == 1 || all_knum != 1) {
+    if (use_setham_packed_cache) {
+        if (Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+            if (setham_order_GA == NULL || setham_S1 == NULL) {
+                BandCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Band_DFT_Col.c.");
+            }
+        }
+    }
+    else if (SCF_iter == 1 || all_knum != 1) {
         size_H1 = Get_OneD_HS_Col(1, CntOLP, S1, MP, order_GA, My_NZeros, SP_NZeros, SP_Atoms);
     }
 
@@ -2242,7 +2264,17 @@ diagonalize1:
 
     /* set H1 */
 
-    if (SpinP_switch == 0) {
+    if (use_setham_packed_cache) {
+        int cache_spin = (SpinP_switch == 0) ? 0 : spin;
+
+        if (Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+            setham_H1 = Set_Hamiltonian_CuSolver_Packed_H(cache_spin);
+            if (setham_H1 == NULL) {
+                BandCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Band_DFT_Col.c.");
+            }
+        }
+    }
+    else if (SpinP_switch == 0) {
         size_H1 = Get_OneD_HS_Col(1, nh[0], H1, MP, order_GA, My_NZeros, SP_NZeros, SP_Atoms);
     } else if (1 < numprocs0) {
 
@@ -2281,7 +2313,9 @@ diagonalize1:
 
             // #pragma acc kernels
             // #pragma acc loop independent
-            Construct_Band_CsHs(SCF_iter, all_knum, order_GA, MP, S1, H1, k1, k2, k3, Ss, Hs, n,
+            Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                                use_setham_packed_cache ? setham_S1 : S1,
+                                use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
                                 owns_global_dense_rank);
 
             /* for blas */
@@ -2367,7 +2401,9 @@ diagonalize1:
 	                        const int build_s = !BandCol_CuSolver_HasHostTransformedS(n);
                         const int construct_scf_iter = build_s ? 1 : SCF_iter;
 
-                        Construct_Band_CsHs(construct_scf_iter, all_knum, order_GA, MP, S1, H1, k1, k2, k3, Ss, Hs,
+                        Construct_Band_CsHs(construct_scf_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                                            use_setham_packed_cache ? setham_S1 : S1,
+                                            use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs,
                                             n, owns_global_dense_rank);
                         const int construct_on_device = BandCol_LastConstructOnDevice();
 
@@ -2457,7 +2493,9 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(SCF_iter, all_knum, order_GA, MP, S1, H1, k1, k2, k3, Cs, Hs, n,
+                Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                                    use_setham_packed_cache ? setham_S1 : S1,
+                                    use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     owns_global_dense_rank);
 
                 if (measure_time) {
@@ -3129,7 +3167,7 @@ diagonalize1:
 	                        dcomplex *evec_device = BandCol_CuSolver_UploadHostEigenvectors(n);
 
                         BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device, n,
-                                                                    MP, order_GA, EIGEN,
+                                                                    MP, use_setham_packed_cache ? setham_order_GA : order_GA, EIGEN,
                                                                     BandCol_dm_workspace.OccWeight, CDM1, EDM1,
                                                                     size_H1);
                         BandCol_CuSolver_ClearHostEigenvectors();
@@ -3553,7 +3591,9 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(SCF_iter, all_knum, order_GA, MP, S1, H1, k1, k2, k3, Ss, Hs, n,
+                Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                                    use_setham_packed_cache ? setham_S1 : S1,
+                                    use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
                                     owns_global_dense_rank);
 
                 /* diagonalize S */
@@ -3678,7 +3718,9 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(SCF_iter, all_knum, order_GA, MP, S1, H1, k1, k2, k3, Cs, Hs, n,
+                Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                                    use_setham_packed_cache ? setham_S1 : S1,
+                                    use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     owns_global_dense_rank);
 
                 // #pragma acc update device(Hs[0 : na_rows * na_cols], Cs[0 : na_rows * na_cols])

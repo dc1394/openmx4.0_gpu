@@ -3336,6 +3336,19 @@ double Set_Hamiltonian(char *mode,
                        double *****HNL,
                        double *****CDM,
 		       double *****H);
+void Set_Hamiltonian_Set_OpenACC_Rank_Selected(int selected);
+int Set_Hamiltonian_OpenACC_Rank_Is_Selected(void);
+void Set_Hamiltonian_Invalidate_CuSolver_HS_Cache(void);
+void Set_Hamiltonian_Build_CuSolver_HS_Cache(int use_contracted);
+void Set_Hamiltonian_CuSolver_SetMP(int *MP);
+int Set_Hamiltonian_CuSolver_Packed_CacheReady(void);
+int Set_Hamiltonian_CuSolver_Packed_OwnsCache(void);
+int Set_Hamiltonian_CuSolver_Packed_OrderMode(void);
+int Set_Hamiltonian_CuSolver_Packed_Size(void);
+int *Set_Hamiltonian_CuSolver_Packed_OrderGA(void);
+double *Set_Hamiltonian_CuSolver_Packed_Overlap(void);
+double *Set_Hamiltonian_CuSolver_Packed_H(int spin);
+double *Set_Hamiltonian_CuSolver_Packed_ImNL(int comp);
 
 
 double Total_Energy(int MD_iter, double ECE[]);

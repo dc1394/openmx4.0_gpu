@@ -32,6 +32,38 @@ static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double **
 static size_t Set_Hamiltonian_Base_OpenACC_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, int myid);
 
+static int Set_Hamiltonian_OpenACC_Rank_Selected = 1;
+
+void Set_Hamiltonian_Set_OpenACC_Rank_Selected(int selected)
+{
+    Set_Hamiltonian_OpenACC_Rank_Selected = selected ? 1 : 0;
+}
+
+int Set_Hamiltonian_OpenACC_Rank_Is_Selected(void)
+{
+    return Set_Hamiltonian_OpenACC_Rank_Selected;
+}
+
+enum {
+    SET_HAMILTONIAN_PACK_ORDER_COL = 0,
+    SET_HAMILTONIAN_PACK_ORDER_NONCOL = 1
+};
+
+typedef struct {
+    int ready;
+    int owns;
+    int order_mode;
+    int size;
+    int spin_count;
+    int atom_count;
+    int *order_GA;
+    double *overlap;
+    double *h[4];
+    double *imnl[3];
+} SetHamiltonianCuSolverPackedCache;
+
+static SetHamiltonianCuSolverPackedCache Set_Hamiltonian_CuSolver_Cache = {0};
+
 static void Set_Hamiltonian_abort(const char *where, const char *message, int myid)
 {
     if (myid == Host_ID) {
@@ -80,7 +112,7 @@ static int Set_Hamiltonian_OpenACC_Enabled(void)
     return (scf_eigen_lib_flag == CuSOLVER);
 }
 
-static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *where, int myid)
+static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *where, int myid, int use_device)
 {
     MPI_Comm node_comm, device_comm;
     int local_rank, cuda_device_count, acc_device_count, device_count, device_rank, device_ranks;
@@ -98,48 +130,50 @@ static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *whe
     total_bytes = 0;
     cuda_ok = 0;
 
-    cuda_err = cudaGetDeviceCount(&cuda_device_count);
-    if (cuda_err != cudaSuccess || cuda_device_count <= 0) {
-        if (myid == Host_ID || cuda_err != cudaSuccess) {
-            fprintf(stderr,
-                    "Set_Hamiltonian: rank %d %s: failed to get CUDA device count (%s); switching to CPU path.\n",
-                    myid, where, cuda_err == cudaSuccess ? "no CUDA device" : cudaGetErrorString(cuda_err));
-            fflush(stderr);
-        }
-    }
-    else {
-        acc_device_count = acc_get_num_devices(acc_device_nvidia);
-        if (acc_device_count <= 0) {
-            if (myid == Host_ID) {
+    if (use_device) {
+        cuda_err = cudaGetDeviceCount(&cuda_device_count);
+        if (cuda_err != cudaSuccess || cuda_device_count <= 0) {
+            if (myid == Host_ID || cuda_err != cudaSuccess) {
                 fprintf(stderr,
-                        "Set_Hamiltonian: %s: failed to get OpenACC NVIDIA device count; switching to CPU path.\n",
-                        where);
+                        "Set_Hamiltonian: rank %d %s: failed to get CUDA device count (%s); switching to CPU path.\n",
+                        myid, where, cuda_err == cudaSuccess ? "no CUDA device" : cudaGetErrorString(cuda_err));
                 fflush(stderr);
             }
         }
         else {
-            device_count = (cuda_device_count < acc_device_count) ? cuda_device_count : acc_device_count;
-            cuda_device = local_rank % device_count;
-
-            cuda_err = cudaSetDevice(cuda_device);
-            if (cuda_err != cudaSuccess) {
-                fprintf(stderr,
-                        "Set_Hamiltonian: rank %d %s: failed to set CUDA device %d (%s); switching to CPU path.\n",
-                        myid, where, cuda_device, cudaGetErrorString(cuda_err));
-                fflush(stderr);
+            acc_device_count = acc_get_num_devices(acc_device_nvidia);
+            if (acc_device_count <= 0) {
+                if (myid == Host_ID) {
+                    fprintf(stderr,
+                            "Set_Hamiltonian: %s: failed to get OpenACC NVIDIA device count; switching to CPU path.\n",
+                            where);
+                    fflush(stderr);
+                }
             }
             else {
-                acc_set_device_num(cuda_device, acc_device_nvidia);
-                cuda_err = cudaMemGetInfo(&free_bytes, &total_bytes);
+                device_count = (cuda_device_count < acc_device_count) ? cuda_device_count : acc_device_count;
+                cuda_device = local_rank % device_count;
+
+                cuda_err = cudaSetDevice(cuda_device);
                 if (cuda_err != cudaSuccess) {
                     fprintf(stderr,
-                            "Set_Hamiltonian: rank %d %s: failed to query CUDA memory on device %d (%s); "
-                            "switching to CPU path.\n",
+                            "Set_Hamiltonian: rank %d %s: failed to set CUDA device %d (%s); switching to CPU path.\n",
                             myid, where, cuda_device, cudaGetErrorString(cuda_err));
                     fflush(stderr);
                 }
                 else {
-                    cuda_ok = 1;
+                    acc_set_device_num(cuda_device, acc_device_nvidia);
+                    cuda_err = cudaMemGetInfo(&free_bytes, &total_bytes);
+                    if (cuda_err != cudaSuccess) {
+                        fprintf(stderr,
+                                "Set_Hamiltonian: rank %d %s: failed to query CUDA memory on device %d (%s); "
+                                "switching to CPU path.\n",
+                                myid, where, cuda_device, cudaGetErrorString(cuda_err));
+                        fflush(stderr);
+                    }
+                    else {
+                        cuda_ok = 1;
+                    }
                 }
             }
         }
@@ -147,6 +181,10 @@ static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *whe
 
     MPI_Comm_split(node_comm, cuda_ok ? cuda_device : MPI_UNDEFINED, 0, &device_comm);
     MPI_Comm_free(&node_comm);
+
+    if (!use_device) {
+        return 1;
+    }
 
     if (!cuda_ok) {
         return 0;
@@ -183,25 +221,35 @@ static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *whe
 static int Set_Hamiltonian_Base_Use_OpenACC(int SCF_iter, int myid)
 {
     size_t required_bytes;
+    int memory_ok;
 
     if (!Set_Hamiltonian_OpenACC_Enabled()) {
         return 0;
     }
 
-    required_bytes = Set_Hamiltonian_Base_OpenACC_DeviceBytes(SCF_iter, myid);
-    return Set_Hamiltonian_DeviceMemoryOK(required_bytes, "base OpenACC path", myid);
+    required_bytes = Set_Hamiltonian_OpenACC_Rank_Selected ?
+        Set_Hamiltonian_Base_OpenACC_DeviceBytes(SCF_iter, myid) : 0;
+    memory_ok = Set_Hamiltonian_DeviceMemoryOK(required_bytes, "base OpenACC path", myid,
+                                               Set_Hamiltonian_OpenACC_Rank_Selected);
+
+    return Set_Hamiltonian_OpenACC_Rank_Selected && memory_ok;
 }
 
 static int Set_Hamiltonian_MatrixElements_Use_OpenACC(int Cnt_kind, int myid)
 {
     size_t required_bytes;
+    int memory_ok;
 
     if (!Set_Hamiltonian_OpenACC_Enabled()) {
         return 0;
     }
 
-    required_bytes = Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(Cnt_kind, myid);
-    return Set_Hamiltonian_DeviceMemoryOK(required_bytes, "matrix-elements OpenACC path", myid);
+    required_bytes = Set_Hamiltonian_OpenACC_Rank_Selected ?
+        Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(Cnt_kind, myid) : 0;
+    memory_ok = Set_Hamiltonian_DeviceMemoryOK(required_bytes, "matrix-elements OpenACC path", myid,
+                                               Set_Hamiltonian_OpenACC_Rank_Selected);
+
+    return Set_Hamiltonian_OpenACC_Rank_Selected && memory_ok;
 }
 
 static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid)
@@ -220,6 +268,354 @@ static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid)
     }
 
     return p;
+}
+
+static void Set_Hamiltonian_CuSolver_Free_Cache(void)
+{
+    SetHamiltonianCuSolverPackedCache *cache = &Set_Hamiltonian_CuSolver_Cache;
+    int i;
+
+    free(cache->order_GA);
+    free(cache->overlap);
+    for (i = 0; i < 4; i++) {
+        free(cache->h[i]);
+    }
+    for (i = 0; i < 3; i++) {
+        free(cache->imnl[i]);
+    }
+
+    memset(cache, 0, sizeof(*cache));
+}
+
+void Set_Hamiltonian_Invalidate_CuSolver_HS_Cache(void)
+{
+    Set_Hamiltonian_CuSolver_Free_Cache();
+}
+
+static int Set_Hamiltonian_CuSolver_LocalPackedSize(int myid)
+{
+    size_t total = 0;
+
+    for (int MA_AN = 1; MA_AN <= Matomnum; MA_AN++) {
+        int GA_AN = M2G[MA_AN];
+        int wanA = WhatSpecies[GA_AN];
+        int tnoA = Spe_Total_CNO[wanA];
+        size_t neighbor_orbitals = 0;
+
+        for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            int GB_AN = natn[GA_AN][LB_AN];
+            int wanB = WhatSpecies[GB_AN];
+            int tnoB = Spe_Total_CNO[wanB];
+
+            neighbor_orbitals = Set_Hamiltonian_checked_add(neighbor_orbitals, (size_t)tnoB,
+                                                            "CuSolver packed neighbor orbitals", myid);
+        }
+
+        total = Set_Hamiltonian_checked_add(
+            total,
+            Set_Hamiltonian_checked_mul((size_t)tnoA, neighbor_orbitals,
+                                        "CuSolver packed local matrix segment", myid),
+            "CuSolver packed local matrix segment", myid);
+    }
+
+    if ((size_t)INT_MAX < total) {
+        Set_Hamiltonian_abort("CuSolver packed cache", "local packed matrix segment exceeds INT_MAX", myid);
+    }
+
+    return (int)total;
+}
+
+static void Set_Hamiltonian_CuSolver_PackLocalMatrix(double ****mat, double *local, int local_size, int order_mode,
+                                                     int myid)
+{
+    int k = 0;
+
+    if (mat == NULL) {
+        Set_Hamiltonian_abort("CuSolver packed cache", "NULL sparse matrix", myid);
+    }
+
+    for (int MA_AN = 1; MA_AN <= Matomnum; MA_AN++) {
+        int GA_AN = M2G[MA_AN];
+        int wanA = WhatSpecies[GA_AN];
+        int tnoA = Spe_Total_CNO[wanA];
+
+        if (order_mode == SET_HAMILTONIAN_PACK_ORDER_COL) {
+            for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+                int GB_AN = natn[GA_AN][LB_AN];
+                int wanB = WhatSpecies[GB_AN];
+                int tnoB = Spe_Total_CNO[wanB];
+
+                for (int i = 0; i < tnoA; i++) {
+                    for (int j = 0; j < tnoB; j++) {
+                        local[k++] = mat[MA_AN][LB_AN][i][j];
+                    }
+                }
+            }
+        }
+        else {
+            for (int i = 0; i < tnoA; i++) {
+                for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+                    int GB_AN = natn[GA_AN][LB_AN];
+                    int wanB = WhatSpecies[GB_AN];
+                    int tnoB = Spe_Total_CNO[wanB];
+
+                    for (int j = 0; j < tnoB; j++) {
+                        local[k++] = mat[MA_AN][LB_AN][i][j];
+                    }
+                }
+            }
+        }
+    }
+
+    if (k != local_size) {
+        Set_Hamiltonian_abort("CuSolver packed cache", "packed local matrix size mismatch", myid);
+    }
+}
+
+static void Set_Hamiltonian_CuSolver_GatherMatrixToSelected(double ****mat, double **target, int order_mode,
+                                                             int local_size, int total_size, const int *counts,
+                                                            const int *displs, const int *selected_roots,
+                                                            MPI_Comm selected_comm, int first_selected_root,
+                                                            int myid)
+{
+    double *local;
+    double *recvbuf = NULL;
+
+    *target = NULL;
+    local = (double *)Set_Hamiltonian_malloc(sizeof(double) * (size_t)(0 < local_size ? local_size : 1),
+                                             "CuSolver packed local matrix", myid);
+    Set_Hamiltonian_CuSolver_PackLocalMatrix(mat, local, local_size, order_mode, myid);
+
+    if (myid == first_selected_root) {
+        recvbuf = (double *)Set_Hamiltonian_malloc(sizeof(double) * (size_t)(0 < total_size ? total_size : 1),
+                                                   "CuSolver packed matrix cache", myid);
+    }
+
+    MPI_Gatherv(local, local_size, MPI_DOUBLE, recvbuf, (int *)counts, (int *)displs, MPI_DOUBLE, first_selected_root,
+                mpi_comm_level1);
+
+    if (selected_roots[myid]) {
+        if (myid == first_selected_root) {
+            *target = recvbuf;
+        }
+        else {
+            *target = (double *)Set_Hamiltonian_malloc(sizeof(double) * (size_t)(0 < total_size ? total_size : 1),
+                                                       "CuSolver packed matrix cache", myid);
+        }
+        MPI_Bcast(*target, total_size, MPI_DOUBLE, 0, selected_comm);
+    }
+
+    free(local);
+}
+
+void Set_Hamiltonian_CuSolver_SetMP(int *MP)
+{
+    int Anum = 1;
+
+    if (MP == NULL) {
+        return;
+    }
+
+    for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
+        int wanA = WhatSpecies[GA_AN];
+        MP[GA_AN] = Anum;
+        Anum += Spe_Total_CNO[wanA];
+    }
+}
+
+void Set_Hamiltonian_Build_CuSolver_HS_Cache(int use_contracted)
+{
+    SetHamiltonianCuSolverPackedCache *cache = &Set_Hamiltonian_CuSolver_Cache;
+    int myid, numprocs;
+    int local_selected;
+    int selected_count = 0;
+    int first_selected_root = -1;
+    int local_size, total_size = 0;
+    int local_matomnum;
+    int *selected_roots = NULL;
+    int *counts = NULL;
+    int *displs = NULL;
+    int *atom_counts = NULL;
+    int *atom_displs = NULL;
+    int dummy_atom = 0;
+    int order_mode;
+    int spin_count;
+    MPI_Comm selected_comm = MPI_COMM_NULL;
+    double ****overlap_src;
+    double *****h_src;
+    double *****imnl_src;
+
+    MPI_Comm_size(mpi_comm_level1, &numprocs);
+    MPI_Comm_rank(mpi_comm_level1, &myid);
+
+    Set_Hamiltonian_CuSolver_Free_Cache();
+
+    if (scf_eigen_lib_flag != CuSOLVER) {
+        return;
+    }
+
+    order_mode = (SpinP_switch == 3) ? SET_HAMILTONIAN_PACK_ORDER_NONCOL : SET_HAMILTONIAN_PACK_ORDER_COL;
+    spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
+    local_selected = Set_Hamiltonian_OpenACC_Rank_Selected ? 1 : 0;
+    local_size = Set_Hamiltonian_CuSolver_LocalPackedSize(myid);
+    local_matomnum = Matomnum;
+
+    selected_roots = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)numprocs, "CuSolver selected roots", myid);
+    counts = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)numprocs, "CuSolver packed counts", myid);
+    displs = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)numprocs, "CuSolver packed displacements", myid);
+    atom_counts = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)numprocs, "CuSolver atom counts", myid);
+    atom_displs = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)numprocs, "CuSolver atom displacements", myid);
+
+    MPI_Allgather(&local_selected, 1, MPI_INT, selected_roots, 1, MPI_INT, mpi_comm_level1);
+    MPI_Allgather(&local_size, 1, MPI_INT, counts, 1, MPI_INT, mpi_comm_level1);
+    MPI_Allgather(&local_matomnum, 1, MPI_INT, atom_counts, 1, MPI_INT, mpi_comm_level1);
+
+    for (int ID = 0; ID < numprocs; ID++) {
+        if (selected_roots[ID]) {
+            if (first_selected_root < 0) {
+                first_selected_root = ID;
+            }
+            selected_count++;
+        }
+        if (counts[ID] < 0 || atom_counts[ID] < 0) {
+            Set_Hamiltonian_abort("CuSolver packed cache", "negative gather count", myid);
+        }
+        if ((size_t)INT_MAX < (size_t)total_size + (size_t)counts[ID]) {
+            Set_Hamiltonian_abort("CuSolver packed cache", "packed matrix size exceeds INT_MAX", myid);
+        }
+        displs[ID] = total_size;
+        total_size += counts[ID];
+    }
+
+    {
+        int atom_total = 0;
+        for (int ID = 0; ID < numprocs; ID++) {
+            if ((size_t)INT_MAX < (size_t)atom_total + (size_t)atom_counts[ID]) {
+                Set_Hamiltonian_abort("CuSolver packed cache", "atom-order size exceeds INT_MAX", myid);
+            }
+            atom_displs[ID] = atom_total;
+            atom_total += atom_counts[ID];
+        }
+        if (atom_total != atomnum) {
+            Set_Hamiltonian_abort("CuSolver packed cache", "atom-order length mismatch", myid);
+        }
+    }
+
+    if (selected_count == 0) {
+        free(atom_displs);
+        free(atom_counts);
+        free(displs);
+        free(counts);
+        free(selected_roots);
+        return;
+    }
+
+    MPI_Comm_split(mpi_comm_level1, local_selected ? 1 : MPI_UNDEFINED, myid, &selected_comm);
+
+    cache->ready = 1;
+    cache->owns = local_selected;
+    cache->order_mode = order_mode;
+    cache->size = total_size;
+    cache->spin_count = spin_count;
+    cache->atom_count = atomnum;
+
+    if (myid == first_selected_root) {
+        cache->order_GA = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)(atomnum + 2),
+                                                        "CuSolver atom order cache", myid);
+    }
+
+    MPI_Gatherv((0 < Matomnum) ? &M2G[1] : &dummy_atom, Matomnum, MPI_INT,
+                (myid == first_selected_root) ? &cache->order_GA[1] : NULL,
+                atom_counts, atom_displs, MPI_INT, first_selected_root, mpi_comm_level1);
+
+    if (local_selected) {
+        if (myid != first_selected_root) {
+            cache->order_GA = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)(atomnum + 2),
+                                                            "CuSolver atom order cache", myid);
+        }
+        cache->order_GA[0] = 0;
+        cache->order_GA[atomnum + 1] = 0;
+        MPI_Bcast(&cache->order_GA[1], atomnum, MPI_INT, 0, selected_comm);
+    }
+
+    overlap_src = use_contracted ? CntOLP[0] : OLP[0];
+    h_src = use_contracted ? CntH : H;
+    imnl_src = use_contracted ? iCntHNL : iHNL;
+
+    Set_Hamiltonian_CuSolver_GatherMatrixToSelected(overlap_src, &cache->overlap, order_mode, local_size, total_size,
+                                                    counts, displs, selected_roots, selected_comm,
+                                                    first_selected_root, myid);
+
+    for (int spin = 0; spin < spin_count; spin++) {
+        Set_Hamiltonian_CuSolver_GatherMatrixToSelected(h_src[spin], &cache->h[spin], order_mode, local_size,
+                                                        total_size, counts, displs, selected_roots, selected_comm,
+                                                        first_selected_root, myid);
+    }
+
+    if (SpinP_switch == 3 && imnl_src != NULL) {
+        for (int comp = 0; comp < 3; comp++) {
+            Set_Hamiltonian_CuSolver_GatherMatrixToSelected(imnl_src[comp], &cache->imnl[comp], order_mode,
+                                                            local_size, total_size, counts, displs, selected_roots,
+                                                            selected_comm, first_selected_root, myid);
+        }
+    }
+
+    if (selected_comm != MPI_COMM_NULL) {
+        MPI_Comm_free(&selected_comm);
+    }
+
+    free(atom_displs);
+    free(atom_counts);
+    free(displs);
+    free(counts);
+    free(selected_roots);
+}
+
+int Set_Hamiltonian_CuSolver_Packed_CacheReady(void)
+{
+    return Set_Hamiltonian_CuSolver_Cache.ready;
+}
+
+int Set_Hamiltonian_CuSolver_Packed_OwnsCache(void)
+{
+    SetHamiltonianCuSolverPackedCache *cache = &Set_Hamiltonian_CuSolver_Cache;
+    return (cache->ready && cache->owns);
+}
+
+int Set_Hamiltonian_CuSolver_Packed_OrderMode(void)
+{
+    return Set_Hamiltonian_CuSolver_Cache.order_mode;
+}
+
+int Set_Hamiltonian_CuSolver_Packed_Size(void)
+{
+    return Set_Hamiltonian_CuSolver_Cache.size;
+}
+
+int *Set_Hamiltonian_CuSolver_Packed_OrderGA(void)
+{
+    return Set_Hamiltonian_CuSolver_Cache.order_GA;
+}
+
+double *Set_Hamiltonian_CuSolver_Packed_Overlap(void)
+{
+    return Set_Hamiltonian_CuSolver_Cache.overlap;
+}
+
+double *Set_Hamiltonian_CuSolver_Packed_H(int spin)
+{
+    if (spin < 0 || 4 <= spin) {
+        return NULL;
+    }
+    return Set_Hamiltonian_CuSolver_Cache.h[spin];
+}
+
+double *Set_Hamiltonian_CuSolver_Packed_ImNL(int comp)
+{
+    if (comp < 0 || 3 <= comp) {
+        return NULL;
+    }
+    return Set_Hamiltonian_CuSolver_Cache.imnl[comp];
 }
 
 double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
@@ -1240,11 +1636,6 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                         int j;
                         for (j = 0; j < NO1; j++) {
                             AI_tmpH[0][i][j] = H[0][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             AI_tmpH[1][i][j] = H[1][Mc_AN][h_AN][i][j];
                         }
                     }
@@ -1254,11 +1645,6 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                         int j;
                         for (j = 0; j < NO1; j++) {
                             AI_tmpH[0][i][j] = CntH[0][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             AI_tmpH[1][i][j] = CntH[1][Mc_AN][h_AN][i][j];
                         }
                     }
@@ -1280,21 +1666,17 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                     int i;
                     for (i = 0; i < NO0; i++) {
 
-                        double AI_tmp_i = AI_tmp_GVVG * orbs0[i];
+                        double orb0 = (double)orbs0[i];
+                        double AI_tmp_i0 = AI_tmp_GVVG  * orb0;
+                        double AI_tmp_i1 = AI_tmp_GVVG1 * orb0;
                         double *tmp0 = AI_tmpH[0][i];
-                        int    j;
-                        for (j = 0; j < NO1; j++) {
-                            tmp0[j] += AI_tmp_i * orbs1[j];
-                        }
-                    }
-
-                    for (i = 0; i < NO0; i++) {
-
-                        double AI_tmp_i = AI_tmp_GVVG1 * orbs0[i];
                         double *tmp1 = AI_tmpH[1][i];
                         int    j;
+
                         for (j = 0; j < NO1; j++) {
-                            tmp1[j] += AI_tmp_i * orbs1[j];
+                            double orb1 = (double)orbs1[j];
+                            tmp0[j] += AI_tmp_i0 * orb1;
+                            tmp1[j] += AI_tmp_i1 * orb1;
                         }
                     }
 
@@ -1308,11 +1690,6 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                         int j;
                         for (j = 0; j < NO1; j++) {
                             H[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             H[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
                         }
                     }
@@ -1322,11 +1699,6 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                         int j;
                         for (j = 0; j < NO1; j++) {
                             CntH[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             CntH[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
                         }
                     }
@@ -1381,41 +1753,23 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                     int i;
                     for (i = 0; i < NO0; i++) {
 
-                        double AI_tmp_i = AI_tmp_GVVG * orbs0[i];
+                        double orb0 = (double)orbs0[i];
+                        double AI_tmp_i0 = AI_tmp_GVVG  * orb0;
+                        double AI_tmp_i1 = AI_tmp_GVVG1 * orb0;
+                        double AI_tmp_i2 = AI_tmp_GVVG2 * orb0;
+                        double AI_tmp_i3 = AI_tmp_GVVG3 * orb0;
                         double *tmp0 = AI_tmpH[0][i];
-
-                        for (j = 0; j < NO1; j++) {
-                            tmp0[j] += AI_tmp_i * orbs1[j];
-                        }
-                    }
-
-                    for (i = 0; i < NO0; i++) {
-
-                        double AI_tmp_i = AI_tmp_GVVG1 * orbs0[i];
                         double *tmp1 = AI_tmpH[1][i];
-
-                        for (j = 0; j < NO1; j++) {
-                            tmp1[j] += AI_tmp_i * orbs1[j];
-                        }
-                    }
-
-                    for (i = 0; i < NO0; i++) {
-
-                        double AI_tmp_i = AI_tmp_GVVG2 * orbs0[i];
                         double *tmp2 = AI_tmpH[2][i];
-
-                        for (j = 0; j < NO1; j++) {
-                            tmp2[j] += AI_tmp_i * orbs1[j];
-                        }
-                    }
-
-                    for (i = 0; i < NO0; i++) {
-
-                        double AI_tmp_i = AI_tmp_GVVG3 * orbs0[i];
                         double *tmp3 = AI_tmpH[3][i];
+                        int    j;
 
                         for (j = 0; j < NO1; j++) {
-                            tmp3[j] += AI_tmp_i * orbs1[j];
+                            double orb1 = (double)orbs1[j];
+                            tmp0[j] += AI_tmp_i0 * orb1;
+                            tmp1[j] += AI_tmp_i1 * orb1;
+                            tmp2[j] += AI_tmp_i2 * orb1;
+                            tmp3[j] += AI_tmp_i3 * orb1;
                         }
                     }
 
@@ -1429,23 +1783,8 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                         int j;
                         for (j = 0; j < NO1; j++) {
                             H[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             H[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             H[2][Mc_AN][h_AN][i][j] = AI_tmpH[2][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             H[3][Mc_AN][h_AN][i][j] = AI_tmpH[3][i][j];
                         }
                     }
@@ -1455,23 +1794,8 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
                         int j;
                         for (j = 0; j < NO1; j++) {
                             CntH[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             CntH[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             CntH[2][Mc_AN][h_AN][i][j] = AI_tmpH[2][i][j];
-                        }
-                    }
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
                             CntH[3][Mc_AN][h_AN][i][j] = AI_tmpH[3][i][j];
                         }
                     }

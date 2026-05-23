@@ -142,6 +142,64 @@ double ****His_CntCoes,****His_D_CntCoes;
 double ****His_CntCoes_Species,****His_D_CntCoes_Species;
 double **OrbOpt_Hessian,*His_OrbOpt_Etot;
 
+static int DFT_SetHamiltonianOpenACCSelectedRank(int myid0)
+{
+    if (scf_eigen_lib_flag != CuSOLVER) {
+        return 1;
+    }
+
+    if (Solver == 2 || Solver == 12) {
+        if (SpinP_switch == 1 &&
+            Comm_World_StartID1 != NULL &&
+            0 < Num_Comm_World1 &&
+            0 <= myworld1 &&
+            myworld1 < Num_Comm_World1) {
+            return (myid0 == Comm_World_StartID1[myworld1]);
+        }
+
+        return (myid0 == Host_ID);
+    }
+
+    if (Solver == 3) {
+        if (Comm_World_StartID1 != NULL &&
+            Comm_World_StartID2 != NULL &&
+            0 < Num_Comm_World1 &&
+            0 < Num_Comm_World2 &&
+            0 <= myworld1 &&
+            myworld1 < Num_Comm_World1 &&
+            0 <= myworld2 &&
+            myworld2 < Num_Comm_World2) {
+            int root_rank;
+
+            if (SpinP_switch != 1 && myworld1 != 0) {
+                return 0;
+            }
+
+            root_rank = Comm_World_StartID1[myworld1] + Comm_World_StartID2[myworld2];
+            return (myid0 == root_rank);
+        }
+
+        return (myid0 == Host_ID);
+    }
+
+    return 1;
+}
+
+static void DFT_ConfigureSetHamiltonianOpenACC(int myid0)
+{
+    Set_Hamiltonian_Set_OpenACC_Rank_Selected(DFT_SetHamiltonianOpenACCSelectedRank(myid0));
+}
+
+static void DFT_PrepareCuSolverHSPackedCache(void)
+{
+    if (scf_eigen_lib_flag == CuSOLVER && (Solver == 2 || Solver == 3)) {
+        Set_Hamiltonian_Build_CuSolver_HS_Cache(Cnt_switch == 1);
+    }
+    else {
+        Set_Hamiltonian_Invalidate_CuSolver_HS_Cache();
+    }
+}
+
 /* for Band_DFT_NonCol_GB (added by T. B. Prayitno, supervised by Prof. F. Ishii)*/
 double *koSU,*koSL;
 dcomplex **SU_Band,**SL_Band;
@@ -260,6 +318,7 @@ double DFT(int MD_iter, int Cnt_Now)
   else if (Solver==12 && SpinP_switch<=1) Allocate_Free_Cluster_Col_LNO(1);
 
   DFT_GPU_DeviceInit(DFT_GPU_BasisCount());
+  DFT_ConfigureSetHamiltonianOpenACC(myid0);
 
   Allocate_Free_GridData(1);
   if (Cnt_switch==1) Allocate_Free_OrbOpt(1);
@@ -714,6 +773,8 @@ double DFT(int MD_iter, int Cnt_Now)
              DFT_GPU_EigensolverActive() ? " (GPU-accelerated)" : "");
       fflush(stdout);
     }
+
+    DFT_PrepareCuSolverHSPackedCache();
 
     if (Cnt_switch==0){
 
