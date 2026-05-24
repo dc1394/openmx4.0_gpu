@@ -7752,12 +7752,16 @@ void free_arrays_truncation0()
     if (ProExpn_VNA==0){
       free(VNA_Grid);
       free(VNA_Grid_B);
+      VNA_Grid = NULL;
+      VNA_Grid_B = NULL;
     }
 
     /* electric energy by electric field */
     if (E_Field_switch==1){
       free(VEF_Grid);
       free(VEF_Grid_B);
+      VEF_Grid = NULL;
+      VEF_Grid_B = NULL;
     }
 
     /* arrays for the partition D */

@@ -4,7 +4,7 @@
   This calculation was performed by OpenMX Ver. 4.0 GPU
   using 18 MPI processes and 1 OpenMP threads.
 
-  Thu May 14 19:26:22 2026
+  Sun May 24 12:36:01 2026
 
 ***********************************************************
 ***********************************************************
@@ -176,39 +176,39 @@ MD.Opt.criterion          1.0e-4       # default=1.0e-4 (Hartree/bohr)
    SCF=   3  NormRD=  5.239553137902  Uele= -88.546860870870
    SCF=   4  NormRD=  3.202599360233  Uele= -107.345582705535
    SCF=   5  NormRD=  1.972330275312  Uele= -119.288657823933
-   SCF=   6  NormRD=  0.073863328154  Uele= -141.461576953986
-   SCF=   7  NormRD=  0.026135600697  Uele= -143.376266444435
-   SCF=   8  NormRD=  0.026787806468  Uele= -143.954640463114
-   SCF=   9  NormRD=  0.014628580435  Uele= -144.266530177060
-   SCF=  10  NormRD=  0.004483756135  Uele= -144.338436640944
-   SCF=  11  NormRD=  0.002007947567  Uele= -144.333863225024
-   SCF=  12  NormRD=  0.001370919742  Uele= -144.322546583281
-   SCF=  13  NormRD=  0.000405282060  Uele= -144.321228511805
-   SCF=  14  NormRD=  0.000255690656  Uele= -144.321883358558
-   SCF=  15  NormRD=  0.000117056872  Uele= -144.322399843772
-   SCF=  16  NormRD=  0.000047864136  Uele= -144.322755366324
-   SCF=  17  NormRD=  0.000008861373  Uele= -144.322835382330
-   SCF=  18  NormRD=  0.000004338979  Uele= -144.322793803342
-   SCF=  19  NormRD=  0.000003307315  Uele= -144.322757404961
+   SCF=   6  NormRD=  0.073863327991  Uele= -141.461576955577
+   SCF=   7  NormRD=  0.026135600279  Uele= -143.376266445969
+   SCF=   8  NormRD=  0.026787806393  Uele= -143.954640464848
+   SCF=   9  NormRD=  0.014628580165  Uele= -144.266530169499
+   SCF=  10  NormRD=  0.004483756125  Uele= -144.338436636777
+   SCF=  11  NormRD=  0.002007947418  Uele= -144.333863223749
+   SCF=  12  NormRD=  0.001370919718  Uele= -144.322546583465
+   SCF=  13  NormRD=  0.000405282057  Uele= -144.321228511911
+   SCF=  14  NormRD=  0.000255690650  Uele= -144.321883358609
+   SCF=  15  NormRD=  0.000117056872  Uele= -144.322399843786
+   SCF=  16  NormRD=  0.000047864136  Uele= -144.322755366326
+   SCF=  17  NormRD=  0.000008861373  Uele= -144.322835382329
+   SCF=  18  NormRD=  0.000004338979  Uele= -144.322793803343
+   SCF=  19  NormRD=  0.000003307315  Uele= -144.322757404962
    SCF=  20  NormRD=  0.000000961565  Uele= -144.322750122253
    SCF=  21  NormRD=  0.000000442607  Uele= -144.322751312423
    SCF=  22  NormRD=  0.000000198306  Uele= -144.322753137951
-   SCF=  23  NormRD=  0.000000055185  Uele= -144.322754751248
-   SCF=  24  NormRD=  0.000000006604  Uele= -144.322755033150
-   SCF=  25  NormRD=  0.000000005755  Uele= -144.322755055994
-   SCF=  26  NormRD=  0.000000002402  Uele= -144.322755058551
-   SCF=  27  NormRD=  0.000000000390  Uele= -144.322755058753
+   SCF=  23  NormRD=  0.000000055185  Uele= -144.322754751247
+   SCF=  24  NormRD=  0.000000006604  Uele= -144.322755033149
+   SCF=  25  NormRD=  0.000000005755  Uele= -144.322755055993
+   SCF=  26  NormRD=  0.000000002402  Uele= -144.322755058550
+   SCF=  27  NormRD=  0.000000000390  Uele= -144.322755058752
 
 *******************************************************
         Total energy (Hartree) at MD = 1        
 *******************************************************
 
-  Uele.       -144.322755058753
+  Uele.       -144.322755058752
 
   Ukin.        219.148217549940
-  UH0.       -2843.055056298982
+  UH0.       -2843.055056298953
   UH1.           4.224145799932
-  Una.        -152.295155346209
+  Una.        -152.295155346210
   Unl.         -22.485311765401
   Uxc0.        -54.793346652518
   Uxc1.        -54.793346652518
@@ -220,10 +220,10 @@ MD.Opt.criterion          1.0e-4       # default=1.0e-4 (Hartree/bohr)
   Uef.           0.000000000000
   UvdW.          0.000000000000
   Uch.           0.000000000000
-  Utot.       -343.847203037017
+  Utot.       -343.847203036988
 
   UpV.           0.000000000000
-  Enpy.       -343.847203037017
+  Enpy.       -343.847203036988
   Note:
 
   Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch
@@ -1146,32 +1146,32 @@ coordinates.forces>
 ***********************************************************
 ***********************************************************
 
-   Elapsed.Time.        15.131
+   Elapsed.Time.        10.814
 
                                Min_ID   Min_Time       Max_ID   Max_Time
-   Total Computational Time =    17       14.817          0       15.131
-   readfile                 =    10        2.345          0        2.345
-   truncation               =     5        0.392          7        0.397
-   MD_pac                   =     0        0.025          3        0.077
-   OutData                  =     8        1.112          0        1.426
+   Total Computational Time =     5       10.543          0       10.814
+   readfile                 =    16        1.936          0        1.936
+   truncation               =    11        0.397          1        0.402
+   MD_pac                   =     0        0.000          5        0.003
+   OutData                  =     4        0.850          0        1.121
    HWF                      =     0        0.000          0        0.000
-   DFT                      =     7       10.885          5       10.890
+   DFT                      =     1        7.353         11        7.357
 
 *** In DFT ***
 
-   Set_OLP_Kin              =     6        0.344         10        0.459
-   Set_Nonlocal             =    10        0.682          6        0.797
-   Set_ProExpn_VNA          =     6        0.779          4        0.875
-   Set_Hamiltonian          =     0        3.301          2        3.301
-   Poisson                  =     5        0.094          9        0.094
-   Diagonalization          =     8        2.263          1        2.265
-   Mixing_DM                =    12        0.864          7        0.864
-   Force                    =     5        0.175          0        0.175
-   Total_Energy             =     7        1.002          0        1.002
-   Set_Aden_Grid            =     4        0.018          6        0.113
-   Set_Orbitals_Grid        =     6        0.074          7        0.095
-   Set_Density_Grid         =    15        0.533          7        0.573
-   RestartFileDFT           =    10        0.221          4        0.337
-   Mulliken_Charge          =     7        0.005          0        0.005
-   FFT(2D)_Density          =    14        0.096          5        0.096
-   Others                   =     4        0.054         14        0.211
+   Set_OLP_Kin              =     9        0.410          4        0.499
+   Set_Nonlocal             =     4        0.543          9        0.633
+   Set_ProExpn_VNA          =     5        0.781          1        0.878
+   Set_Hamiltonian          =     5        0.727          1        0.727
+   Poisson                  =    15        0.088          5        0.088
+   Diagonalization          =     0        2.240         10        2.243
+   Mixing_DM                =     9        0.857         13        0.857
+   Force                    =     0        0.170         11        0.170
+   Total_Energy             =     1        0.437          0        0.437
+   Set_Aden_Grid            =     1        0.018          5        0.114
+   Set_Orbitals_Grid        =    15        0.074          7        0.097
+   Set_Density_Grid         =    17        0.537         10        0.559
+   RestartFileDFT           =    14        0.004         11        0.094
+   Mulliken_Charge          =     7        0.004          2        0.004
+   FFT(2D)_Density          =     6        0.095         15        0.095
+   Others                   =    11        0.071          2        0.178

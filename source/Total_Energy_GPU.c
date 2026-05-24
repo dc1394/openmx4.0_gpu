@@ -14,13 +14,15 @@
 void TotalEnergy_EXC_EH1_Grid_OpenACC(int spinmax, double *My_Ena, double *My_Eef,
                                       double *My_EH1, double My_EXC[2])
 {
-  int BN,grid_count;
+  int BN,grid_count,vna_grid_count,vef_grid_count;
   double local_Ena,local_Eef,local_EH1,local_EXC0,local_EXC1;
   double *Density_Grid_B0,*Density_Grid_B1;
   double *PCCDensity_Grid_B0,*PCCDensity_Grid_B1;
   double *Vxc_Grid_B0,*Vxc_Grid_B1;
 
   grid_count = My_NumGridB_AB;
+  vna_grid_count = (ProExpn_VNA==0) ? grid_count : 0;
+  vef_grid_count = (E_Field_switch==1) ? grid_count : 0;
   Density_Grid_B0 = Density_Grid_B[0];
   Density_Grid_B1 = Density_Grid_B[1];
   PCCDensity_Grid_B0 = PCCDensity_Grid_B[0];
@@ -38,7 +40,8 @@ void TotalEnergy_EXC_EH1_Grid_OpenACC(int spinmax, double *My_Ena, double *My_Ee
                         ADensity_Grid_B[0:grid_count], PCCDensity_Grid_B0[0:grid_count], \
                         PCCDensity_Grid_B1[0:grid_count], dVHart_Grid_B[0:grid_count], \
                         Vxc_Grid_B0[0:grid_count], Vxc_Grid_B1[0:grid_count], \
-                        RefVxc_Grid_B[0:grid_count], VNA_Grid_B[0:grid_count], VEF_Grid_B[0:grid_count])
+                        RefVxc_Grid_B[0:grid_count], VNA_Grid_B[0:vna_grid_count], \
+                        VEF_Grid_B[0:vef_grid_count])
   {
 #pragma acc parallel loop reduction(+:local_Ena,local_Eef,local_EH1,local_EXC0,local_EXC1)
     for (BN=0; BN<grid_count; BN++){
