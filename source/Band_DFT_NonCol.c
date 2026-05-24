@@ -2287,217 +2287,248 @@ double Band_DFT_NonCol(
 
   dtime(&SiloopTime);
 
-		  if (use_root_dense_cusolver){
+  if (use_root_dense_cusolver){
 
-		    int owns_root_dense = (myid2==0);
-		    int use_setham_packed_cache =
-		      (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
-		       Set_Hamiltonian_CuSolver_Packed_OrderMode()==1);
-		    int root_s_valid = 0;
-		    int rebuild_overlap;
-		    int root_rank = Comm_World_StartID2[myworld2];
-		    BandNonColRootDenseWorkspace *rdw;
-		    double *pack_buffer = NULL;
-	    double *m_olp = NULL;
-	    double *m_h11 = NULL;
-	    double *m_h22 = NULL;
-	    double *m_h12 = NULL;
-	    double *m_h12i = NULL;
-		    double *m_i11 = NULL;
-		    double *m_i22 = NULL;
-		    double *m_i12 = NULL;
-		    int *packed_order_GA = order_GA;
+    int root_dense_serial_worlds = (1 < Num_Comm_World2);
+    int root_dense_world_start = root_dense_serial_worlds ? 0 : myworld2;
+    int root_dense_world_end = root_dense_serial_worlds ? Num_Comm_World2 : (myworld2 + 1);
+    int root_dense_owner = Host_ID;
+    int owns_root_dense = (myid0==root_dense_owner);
+    int use_setham_packed_cache =
+      (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
+       Set_Hamiltonian_CuSolver_Packed_OrderMode()==1);
+    int root_s_valid = 0;
+    int rebuild_overlap;
+    int root_rank = root_dense_owner;
+    BandNonColRootDenseWorkspace *rdw;
+    double *pack_buffer = NULL;
+    double *m_olp = NULL;
+    double *m_h11 = NULL;
+    double *m_h22 = NULL;
+    double *m_h12 = NULL;
+    double *m_h12i = NULL;
+    double *m_i11 = NULL;
+    double *m_i22 = NULL;
+    double *m_i12 = NULL;
+    int *packed_order_GA = order_GA;
 
-		    if (use_setham_packed_cache){
-		      Set_Hamiltonian_CuSolver_SetMP(MP);
-		      if (owns_root_dense){
-		        if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache()){
-		          BandNonCol_AbortWithMessage("Set_Hamiltonian packed cache is not owned by this rank in Band_DFT_NonCol.c.");
-		        }
-		        packed_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
-		        m_olp = Set_Hamiltonian_CuSolver_Packed_Overlap();
-		        m_h11 = Set_Hamiltonian_CuSolver_Packed_H(0);
-		        m_h22 = Set_Hamiltonian_CuSolver_Packed_H(1);
-		        m_h12 = Set_Hamiltonian_CuSolver_Packed_H(2);
-		        m_h12i = Set_Hamiltonian_CuSolver_Packed_H(3);
-		        m_i11 = Set_Hamiltonian_CuSolver_Packed_ImNL(0);
-		        m_i22 = Set_Hamiltonian_CuSolver_Packed_ImNL(1);
-		        m_i12 = Set_Hamiltonian_CuSolver_Packed_ImNL(2);
+    if (use_setham_packed_cache){
+      Set_Hamiltonian_CuSolver_SetMP(MP);
+      if (owns_root_dense){
+        if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache()){
+          BandNonCol_AbortWithMessage("Set_Hamiltonian packed cache is not owned by this rank in Band_DFT_NonCol.c.");
+        }
+        packed_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
+        m_olp = Set_Hamiltonian_CuSolver_Packed_Overlap();
+        m_h11 = Set_Hamiltonian_CuSolver_Packed_H(0);
+        m_h22 = Set_Hamiltonian_CuSolver_Packed_H(1);
+        m_h12 = Set_Hamiltonian_CuSolver_Packed_H(2);
+        m_h12i = Set_Hamiltonian_CuSolver_Packed_H(3);
+        m_i11 = Set_Hamiltonian_CuSolver_Packed_ImNL(0);
+        m_i22 = Set_Hamiltonian_CuSolver_Packed_ImNL(1);
+        m_i12 = Set_Hamiltonian_CuSolver_Packed_ImNL(2);
 
-		        if (packed_order_GA==NULL || m_olp==NULL || m_h11==NULL || m_h22==NULL ||
-		            m_h12==NULL || m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
-		          BandNonCol_AbortWithMessage("Set_Hamiltonian packed matrix cache is missing in Band_DFT_NonCol.c.");
-		        }
-		      }
-		    }
-		    else if (owns_root_dense){
-		      m_olp = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		      m_h11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		      m_h22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	      m_h12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	      m_h12i = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	      m_i11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	      m_i22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	      m_i12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-
-	      if (m_olp==NULL || m_h11==NULL || m_h22==NULL || m_h12==NULL ||
-	          m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
-	        free(m_olp);
-	        free(m_h11);
-	        free(m_h22);
-	        free(m_h12);
-	        free(m_h12i);
-	        free(m_i11);
-	        free(m_i22);
-	        free(m_i12);
-	        BandNonCol_AbortWithMessage("Failed to allocate root dense packed matrices in Band_DFT_NonCol.c.");
-		      }
-		    }
-		    else {
-		      pack_buffer = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		      if (pack_buffer==NULL){
-		        BandNonCol_AbortWithMessage("Failed to allocate root dense packing buffer in Band_DFT_NonCol.c.");
-		      }
-		    }
-
-		    if (!use_setham_packed_cache){
-		      BandNonCol_PackDenseM1(CntOLP, owns_root_dense ? m_olp : pack_buffer,MP,order_GA);
-		      BandNonCol_PackDenseM1(nh[0],  owns_root_dense ? m_h11 : pack_buffer,MP,order_GA);
-		      BandNonCol_PackDenseM1(nh[1],  owns_root_dense ? m_h22 : pack_buffer,MP,order_GA);
-		      BandNonCol_PackDenseM1(nh[2],  owns_root_dense ? m_h12 : pack_buffer,MP,order_GA);
-		      BandNonCol_PackDenseM1(nh[3],  owns_root_dense ? m_h12i : pack_buffer,MP,order_GA);
-		      BandNonCol_PackDenseM1(ImNL[0],owns_root_dense ? m_i11 : pack_buffer,MP,order_GA);
-		      BandNonCol_PackDenseM1(ImNL[1],owns_root_dense ? m_i22 : pack_buffer,MP,order_GA);
-		      BandNonCol_PackDenseM1(ImNL[2],owns_root_dense ? m_i12 : pack_buffer,MP,order_GA);
-		      free(pack_buffer);
-		    }
-
-	    rdw = BandNonCol_RootDenseWorkspace_Ensure(owns_root_dense,n,n2,MaxN,1,SCF_iter);
-	    if (owns_root_dense) root_s_valid = rdw->s_valid;
-	    MPI_Bcast(&root_s_valid,1,MPI_INT,0,MPI_CommWD2[myworld2]);
-	    rebuild_overlap = (SCF_iter==1 || !root_s_valid);
-
-	    kloop = S_knum;
-	    k1 = T_KGrids1[kloop];
-	    k2 = T_KGrids2[kloop];
-	    k3 = T_KGrids3[kloop];
-
-	    {
-	      dcomplex *active_S = owns_root_dense ? rdw->s_all : NULL;
-	      if (owns_root_dense){
-#pragma acc enter data create(ko[0 : n2 + 1])
-	        if (!rebuild_overlap){
-          size_t nn = (size_t)n*(size_t)n;
-#pragma acc enter data copyin(active_S[0 : nn])
+        if (packed_order_GA==NULL || m_olp==NULL || m_h11==NULL || m_h22==NULL ||
+            m_h12==NULL || m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
+          BandNonCol_AbortWithMessage("Set_Hamiltonian packed matrix cache is missing in Band_DFT_NonCol.c.");
         }
       }
+    }
+    else if (owns_root_dense){
+      m_olp = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      m_h11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      m_h22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      m_h12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      m_h12i = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      m_i11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      m_i22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      m_i12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
 
-	      if (rebuild_overlap){
+      if (m_olp==NULL || m_h11==NULL || m_h22==NULL || m_h12==NULL ||
+          m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
+        free(m_olp);
+        free(m_h11);
+        free(m_h22);
+        free(m_h12);
+        free(m_h12i);
+        free(m_i11);
+        free(m_i22);
+        free(m_i12);
+        BandNonCol_AbortWithMessage("Failed to allocate root dense packed matrices in Band_DFT_NonCol.c.");
+      }
+    }
+    else {
+      pack_buffer = (double*)malloc(sizeof(double)*(size_t)size_H1);
+      if (pack_buffer==NULL){
+        BandNonCol_AbortWithMessage("Failed to allocate root dense packing buffer in Band_DFT_NonCol.c.");
+      }
+    }
 
-		        BandNonCol_ConstructDenseMsFromPacked(0,m_olp,active_S,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+    if (!use_setham_packed_cache){
+      BandNonCol_PackDenseM1(CntOLP, owns_root_dense ? m_olp : pack_buffer,MP,order_GA);
+      BandNonCol_PackDenseM1(nh[0],  owns_root_dense ? m_h11 : pack_buffer,MP,order_GA);
+      BandNonCol_PackDenseM1(nh[1],  owns_root_dense ? m_h22 : pack_buffer,MP,order_GA);
+      BandNonCol_PackDenseM1(nh[2],  owns_root_dense ? m_h12 : pack_buffer,MP,order_GA);
+      BandNonCol_PackDenseM1(nh[3],  owns_root_dense ? m_h12i : pack_buffer,MP,order_GA);
+      BandNonCol_PackDenseM1(ImNL[0],owns_root_dense ? m_i11 : pack_buffer,MP,order_GA);
+      BandNonCol_PackDenseM1(ImNL[1],owns_root_dense ? m_i22 : pack_buffer,MP,order_GA);
+      BandNonCol_PackDenseM1(ImNL[2],owns_root_dense ? m_i12 : pack_buffer,MP,order_GA);
+      free(pack_buffer);
+    }
 
-	        if (owns_root_dense){
-	          size_t nn = (size_t)n*(size_t)n;
+    if (root_dense_serial_worlds && myid0==Host_ID){
+      printf("<Band>  Serializing non-collinear dense CuSolver k-worlds to limit GPU memory use.\n");
+      fflush(stdout);
+    }
 
-          BandNonCol_SymmetrizeDenseHermitian_OpenACC(n,active_S);
-          BandNonCol_CuSolver_DenseZheevx_Device(active_S,ko,n,n,
-                                                 "Band_DFT_NonCol root dense overlap");
+    for (int root_dense_world=root_dense_world_start;
+         root_dense_world<root_dense_world_end;
+         root_dense_world++){
 
-#pragma acc parallel loop present(ko[0 : n + 1])
-          for (l=1; l<=n; l++){
-            if (ko[l]<1.0e-10) ko[l] = 1.0e-10;
-            ko[l] = 1.0/sqrt(ko[l]);
-          }
+      if (root_dense_serial_worlds){
+        MPI_Barrier(mpi_comm_level1);
+      }
 
-#pragma acc parallel loop collapse(2) present(active_S[0 : nn], ko[0 : n + 1])
-          for (i=0; i<n; i++){
-            for (j=0; j<n; j++){
-              active_S[(size_t)j*(size_t)n + (size_t)i].r *= ko[j+1];
-              active_S[(size_t)j*(size_t)n + (size_t)i].i *= ko[j+1];
+      if (owns_root_dense || myworld2==root_dense_world){
+
+        rdw = BandNonCol_RootDenseWorkspace_Ensure(owns_root_dense,n,n2,MaxN,1,SCF_iter);
+        root_s_valid = 0;
+        if (owns_root_dense) root_s_valid = rdw->s_valid;
+        rebuild_overlap = (SCF_iter==1 || !root_s_valid || root_dense_serial_worlds);
+
+        kloop = root_dense_world;
+        k1 = T_KGrids1[kloop];
+        k2 = T_KGrids2[kloop];
+        k3 = T_KGrids3[kloop];
+
+        {
+          dcomplex *active_S = owns_root_dense ? rdw->s_all : NULL;
+          if (owns_root_dense){
+#pragma acc enter data create(ko[0 : n2 + 1])
+            if (!rebuild_overlap){
+              size_t nn = (size_t)n*(size_t)n;
+#pragma acc enter data copyin(active_S[0 : nn])
             }
           }
 
+          if (rebuild_overlap){
+
+            BandNonCol_ConstructDenseMsFromPacked(0,m_olp,active_S,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+
+            if (owns_root_dense){
+              size_t nn = (size_t)n*(size_t)n;
+
+              BandNonCol_SymmetrizeDenseHermitian_OpenACC(n,active_S);
+              BandNonCol_CuSolver_DenseZheevx_Device(active_S,ko,n,n,
+                                                     "Band_DFT_NonCol root dense overlap");
+
+#pragma acc parallel loop present(ko[0 : n + 1])
+              for (l=1; l<=n; l++){
+                if (ko[l]<1.0e-10) ko[l] = 1.0e-10;
+                ko[l] = 1.0/sqrt(ko[l]);
+              }
+
+#pragma acc parallel loop collapse(2) present(active_S[0 : nn], ko[0 : n + 1])
+              for (i=0; i<n; i++){
+                for (j=0; j<n; j++){
+                  active_S[(size_t)j*(size_t)n + (size_t)i].r *= ko[j+1];
+                  active_S[(size_t)j*(size_t)n + (size_t)i].i *= ko[j+1];
+                }
+              }
+
 #pragma acc update self(active_S[0 : nn])
-	        }
-	      }
+            }
+          }
 
-	      if (owns_root_dense){
-		        BandNonCol_ConstructDenseMsFromPacked(0,m_h11,rdw->h11,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-		        BandNonCol_ConstructDenseMsFromPacked(1,m_i11,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-	      }
-	      if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h11,rdw->work);
+          if (owns_root_dense){
+            BandNonCol_ConstructDenseMsFromPacked(0,m_h11,rdw->h11,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+            BandNonCol_ConstructDenseMsFromPacked(1,m_i11,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+          }
+          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h11,rdw->work);
 
-	      if (owns_root_dense){
-		        BandNonCol_ConstructDenseMsFromPacked(0,m_h22,rdw->h22,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-		        BandNonCol_ConstructDenseMsFromPacked(1,m_i22,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-	      }
-	      if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h22,rdw->work);
+          if (owns_root_dense){
+            BandNonCol_ConstructDenseMsFromPacked(0,m_h22,rdw->h22,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+            BandNonCol_ConstructDenseMsFromPacked(1,m_i22,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+          }
+          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h22,rdw->work);
 
-	      if (owns_root_dense){
-		        BandNonCol_ConstructDenseMsFromPacked(0,m_h12,rdw->h12,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-		        BandNonCol_ConstructDenseMsFromPacked(1,m_h12i,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-	      }
-	      if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h12,rdw->work);
-	      if (owns_root_dense){
-		        BandNonCol_ConstructDenseMsFromPacked(1,m_i12,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-	      }
-	      if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h12,rdw->work);
+          if (owns_root_dense){
+            BandNonCol_ConstructDenseMsFromPacked(0,m_h12,rdw->h12,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+            BandNonCol_ConstructDenseMsFromPacked(1,m_h12i,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+          }
+          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h12,rdw->work);
+          if (owns_root_dense){
+            BandNonCol_ConstructDenseMsFromPacked(1,m_i12,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
+          }
+          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h12,rdw->work);
 
-	      if (owns_root_dense){
-        int nn = n*n;
-        int n2n2 = n2*n2;
-        dcomplex *h11 = rdw->h11;
-        dcomplex *h22 = rdw->h22;
-        dcomplex *h12 = rdw->h12;
-        dcomplex *work = rdw->work;
-        dcomplex *hs2 = rdw->hs2;
-        dcomplex *ss2 = rdw->ss2;
-        dcomplex *cs2 = rdw->cs2;
+          if (owns_root_dense){
+            int nn = n*n;
+            int n2n2 = n2*n2;
+            dcomplex *h11 = rdw->h11;
+            dcomplex *h22 = rdw->h22;
+            dcomplex *h12 = rdw->h12;
+            dcomplex *work = rdw->work;
+            dcomplex *hs2 = rdw->hs2;
+            dcomplex *ss2 = rdw->ss2;
+            dcomplex *cs2 = rdw->cs2;
 
-        BandNonCol_DenseTripleTransform_PresentOpenACC(n,h11,active_S,work);
-        BandNonCol_DenseTripleTransform_PresentOpenACC(n,h12,active_S,work);
-	        BandNonCol_DenseTripleTransform_PresentOpenACC(n,h22,active_S,work);
+            BandNonCol_DenseTripleTransform_PresentOpenACC(n,h11,active_S,work);
+            BandNonCol_DenseTripleTransform_PresentOpenACC(n,h12,active_S,work);
+            BandNonCol_DenseTripleTransform_PresentOpenACC(n,h22,active_S,work);
 
-	        BandNonCol_BuildDenseHs2_OpenACC(n,n2,h11,h22,h12,hs2);
+            BandNonCol_BuildDenseHs2_OpenACC(n,n2,h11,h22,h12,hs2);
 #pragma acc exit data delete(h11[0 : nn], h22[0 : nn], h12[0 : nn], work[0 : nn])
 
-	        BandNonCol_SymmetrizeDenseHermitian_OpenACC(n2,hs2);
-	        BandNonCol_CuSolver_DenseZheevx_Device(hs2,ko,n2,MaxN,
-	                                               "Band_DFT_NonCol root dense Hamiltonian");
+            BandNonCol_SymmetrizeDenseHermitian_OpenACC(n2,hs2);
+            BandNonCol_CuSolver_DenseZheevx_Device(hs2,ko,n2,MaxN,
+                                                   "Band_DFT_NonCol root dense Hamiltonian");
 
 #pragma acc update self(ko[0 : MaxN + 1])
 
-        for (l=1; l<=MaxN; l++){
-          EIGEN[0][kloop][l] = ko[l];
-	        }
+            for (l=1; l<=MaxN; l++){
+              EIGEN[0][kloop][l] = ko[l];
+            }
 
-	        BandNonCol_BuildDenseSs2_OpenACC(n,n2,active_S,ss2);
+            BandNonCol_BuildDenseSs2_OpenACC(n,n2,active_S,ss2);
 #pragma acc exit data delete(active_S[0 : nn])
 
-	        BandNonCol_DenseWavefunctions_PresentOpenACC(n2,hs2,ss2,cs2);
+            BandNonCol_DenseWavefunctions_PresentOpenACC(n2,hs2,ss2,cs2);
 
 #pragma acc update self(cs2[0 : n2n2])
 #pragma acc exit data delete(hs2[0 : n2n2], ss2[0 : n2n2], cs2[0 : n2n2])
 #pragma acc exit data delete(ko[0 : n2 + 1])
-		      }
+          }
 
-	      BandNonCol_DistributeDenseEvecGlobal(kloop,n2,MaxN,myid0,myworld2,NPROCS_WD2,
-	                                           Comm_World_StartID2,root_rank,
-	                                           owns_root_dense ? rdw->cs2 : NULL,EVec1[0]);
-	    }
+          BandNonCol_DistributeDenseEvecGlobal(kloop,n2,MaxN,myid0,myworld2,NPROCS_WD2,
+                                               Comm_World_StartID2,root_rank,
+                                               owns_root_dense ? rdw->cs2 : NULL,EVec1[0]);
+        }
 
-		    if (owns_root_dense) rdw->s_valid = 1;
-		    if (!use_setham_packed_cache){
-		      free(m_olp);
-		      free(m_h11);
-		      free(m_h22);
-		      free(m_h12);
-		      free(m_h12i);
-		      free(m_i11);
-		      free(m_i22);
-		      free(m_i12);
-		    }
-		  }
+        if (owns_root_dense) rdw->s_valid = 1;
+        if (owns_root_dense && root_dense_serial_worlds){
+          BandNonCol_ConstructCache_Reset();
+          BandNonCol_CuSolver_Destroy();
+          BandNonCol_DMGpu_Destroy();
+        }
+      }
+    }
+
+    if (root_dense_serial_worlds){
+      MPI_Barrier(mpi_comm_level1);
+    }
+
+    if (!use_setham_packed_cache){
+      free(m_olp);
+      free(m_h11);
+      free(m_h22);
+      free(m_h12);
+      free(m_h12i);
+      free(m_i11);
+      free(m_i22);
+      free(m_i12);
+    }
+  }
   else {
 
   for (kloop0=0; kloop0<max_num_kloop0; kloop0++){
