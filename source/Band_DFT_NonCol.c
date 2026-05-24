@@ -594,6 +594,252 @@ static void BandNonCol_AbortWithMessage(const char *msg)
     MPI_Abort(mpi_comm_level1,1);
 }
 
+static size_t BandNonCol_CheckedAdd(size_t a, size_t b, const char *label)
+{
+    if (b>((size_t)-1)-a){
+        char msg[256];
+        snprintf(msg,sizeof(msg),"size overflow while estimating %s in Band_DFT_NonCol.c.",label);
+        BandNonCol_AbortWithMessage(msg);
+    }
+
+    return a + b;
+}
+
+static size_t BandNonCol_CheckedMul(size_t a, size_t b, const char *label)
+{
+    if (a!=0 && b>((size_t)-1)/a){
+        char msg[256];
+        snprintf(msg,sizeof(msg),"size overflow while estimating %s in Band_DFT_NonCol.c.",label);
+        BandNonCol_AbortWithMessage(msg);
+    }
+
+    return a*b;
+}
+
+static void BandNonCol_AddBytes(size_t *total, size_t bytes, const char *label)
+{
+    *total = BandNonCol_CheckedAdd(*total,bytes,label);
+}
+
+static size_t BandNonCol_ArrayBytes(size_t count, size_t elem_size, const char *label)
+{
+    return BandNonCol_CheckedMul(count,elem_size,label);
+}
+
+static size_t BandNonCol_MaxBytes(size_t a, size_t b)
+{
+    return (a<b) ? b : a;
+}
+
+static size_t BandNonCol_CuSolverWorkFallbackBytes(int n)
+{
+    size_t nn = BandNonCol_CheckedMul((size_t)n,(size_t)n,"CuSolver fallback workspace matrix count");
+    size_t matrix_bytes = BandNonCol_ArrayBytes(nn,sizeof(dcomplex),"CuSolver fallback workspace matrix");
+
+    return BandNonCol_CheckedMul(matrix_bytes,4U,"CuSolver fallback workspace");
+}
+
+static size_t BandNonCol_QueryCuSolverWorkBytes(int n, int maxn)
+{
+    cusolverDnHandle_t handle = NULL;
+    cudaStream_t stream = NULL;
+    cudaError_t cuda_status;
+    cusolverStatus_t solver_status;
+    cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+    cusolverEigRange_t range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
+    double vl = 0.0;
+    double vu = 0.0;
+    int64_t h_meig = 0;
+    size_t d_bytes = 0;
+    size_t h_bytes = 0;
+    size_t fallback = BandNonCol_CuSolverWorkFallbackBytes(n);
+
+    cuda_status = cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking);
+    if (cuda_status!=cudaSuccess) return fallback;
+
+    solver_status = cusolverDnCreate(&handle);
+    if (solver_status==CUSOLVER_STATUS_SUCCESS){
+        solver_status = cusolverDnSetStream(handle,stream);
+    }
+
+    if (solver_status==CUSOLVER_STATUS_SUCCESS){
+        solver_status = cusolverDnXsyevdx_bufferSize(handle,NULL,jobz,range,uplo,n,
+                                                     CUDA_C_64F,NULL,n,&vl,&vu,1L,maxn,&h_meig,
+                                                     CUDA_R_64F,NULL,CUDA_C_64F,&d_bytes,&h_bytes);
+    }
+
+    if (handle!=NULL) cusolverDnDestroy(handle);
+    cudaStreamDestroy(stream);
+
+    if (solver_status!=CUSOLVER_STATUS_SUCCESS || d_bytes==0) return fallback;
+
+    return d_bytes;
+}
+
+static size_t BandNonCol_RootDenseDeviceBytes(int n, int n2, int MaxN, int size_H1)
+{
+    size_t nn = BandNonCol_CheckedMul((size_t)n,(size_t)n,"root dense n*n");
+    size_t n2n2 = BandNonCol_CheckedMul((size_t)n2,(size_t)n2,"root dense n2*n2");
+    size_t matrix_bytes = BandNonCol_ArrayBytes(nn,sizeof(dcomplex),"root dense n*n matrix");
+    size_t matrix2_bytes = BandNonCol_ArrayBytes(n2n2,sizeof(dcomplex),"root dense n2*n2 matrix");
+    size_t packed_count = (0<size_H1) ? (size_t)size_H1 : 0U;
+    size_t construct_bytes = 0;
+    size_t overlap_peak = 0;
+    size_t hamiltonian_peak = 0;
+    size_t wavefunction_peak = 0;
+    size_t work_n = BandNonCol_QueryCuSolverWorkBytes(n,n);
+    size_t work_n2 = BandNonCol_QueryCuSolverWorkBytes(n2,MaxN);
+    size_t ko_bytes = BandNonCol_ArrayBytes((size_t)n2+1U,sizeof(double),"root dense eigenvalue vector");
+
+    BandNonCol_AddBytes(&construct_bytes,
+                        BandNonCol_ArrayBytes(packed_count,sizeof(BandNonColConstructEntry),
+                                              "root dense construct entries"),
+                        "root dense construct entries");
+    BandNonCol_AddBytes(&construct_bytes,
+                        BandNonCol_ArrayBytes(packed_count,2U*sizeof(double),
+                                              "root dense construct phases"),
+                        "root dense construct phases");
+    BandNonCol_AddBytes(&construct_bytes,
+                        BandNonCol_ArrayBytes(packed_count,sizeof(double),
+                                              "root dense packed matrix copy"),
+                        "root dense packed matrix copy");
+
+    BandNonCol_AddBytes(&overlap_peak,construct_bytes,"root dense overlap peak construct cache");
+    BandNonCol_AddBytes(&overlap_peak,ko_bytes,"root dense overlap peak eigenvalues");
+    BandNonCol_AddBytes(&overlap_peak,matrix_bytes,"root dense overlap matrix");
+    BandNonCol_AddBytes(&overlap_peak,work_n,"root dense overlap CuSolver workspace");
+
+    BandNonCol_AddBytes(&hamiltonian_peak,construct_bytes,"root dense Hamiltonian peak construct cache");
+    BandNonCol_AddBytes(&hamiltonian_peak,ko_bytes,"root dense Hamiltonian peak eigenvalues");
+    BandNonCol_AddBytes(&hamiltonian_peak,
+                        BandNonCol_CheckedMul(matrix_bytes,5U,"root dense Hamiltonian n*n matrices"),
+                        "root dense Hamiltonian n*n matrices");
+    BandNonCol_AddBytes(&hamiltonian_peak,matrix2_bytes,"root dense Hamiltonian n2*n2 matrix");
+    BandNonCol_AddBytes(&hamiltonian_peak,work_n2,"root dense Hamiltonian CuSolver workspace");
+    BandNonCol_AddBytes(&hamiltonian_peak,sizeof(int32_t),"root dense Hamiltonian CuSolver info");
+
+    BandNonCol_AddBytes(&wavefunction_peak,construct_bytes,"root dense wavefunction peak construct cache");
+    BandNonCol_AddBytes(&wavefunction_peak,ko_bytes,"root dense wavefunction peak eigenvalues");
+    BandNonCol_AddBytes(&wavefunction_peak,matrix_bytes,"root dense wavefunction overlap matrix");
+    BandNonCol_AddBytes(&wavefunction_peak,
+                        BandNonCol_CheckedMul(matrix2_bytes,3U,"root dense wavefunction n2*n2 matrices"),
+                        "root dense wavefunction n2*n2 matrices");
+
+    return BandNonCol_MaxBytes(overlap_peak,BandNonCol_MaxBytes(hamiltonian_peak,wavefunction_peak));
+}
+
+static size_t BandNonCol_RootDenseReserveBytes(size_t total_bytes, size_t required_bytes)
+{
+    size_t reserve = total_bytes/10U;
+    size_t min_reserve = 512U*1024U*1024U;
+    size_t required_margin = required_bytes/5U;
+
+    if (reserve<min_reserve) reserve = min_reserve;
+    if (reserve<required_margin) reserve = required_margin;
+
+    return reserve;
+}
+
+static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int size_H1,
+                                                  int myid0, int myworld2, int Num_Comm_World2,
+                                                  int *Comm_World_StartID2)
+{
+    MPI_Comm node_comm;
+    MPI_Comm device_comm = MPI_COMM_NULL;
+    int potential_owner;
+    int selected_owner;
+    int cuda_ok = 0;
+    int cuda_device = -1;
+    int local_fit = 1;
+    int global_fit = 1;
+    size_t required_bytes = 0;
+    size_t reserve_bytes = 0;
+    size_t free_bytes = 0;
+    size_t total_bytes = 0;
+
+    if (Num_Comm_World2<=1) return 1;
+
+    potential_owner =
+      (0<=myworld2 && myworld2<Num_Comm_World2 &&
+       myid0==Comm_World_StartID2[myworld2]);
+    selected_owner = potential_owner && Set_Hamiltonian_OpenACC_Rank_Is_Selected();
+
+    if (potential_owner && !selected_owner){
+        if (myid0==Comm_World_StartID2[myworld2]){
+            fprintf(stderr,
+                    "<Band>  Rank %d is a non-collinear dense CuSolver k-world owner, "
+                    "but it is not selected for CUDA/OpenACC; using serialized k-worlds.\n",
+                    myid0);
+            fflush(stderr);
+        }
+        local_fit = 0;
+    }
+
+    if (selected_owner){
+        cudaError_t cuda_status;
+
+        cuda_status = cudaGetDevice(&cuda_device);
+        if (cuda_status==cudaSuccess){
+            required_bytes = BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1);
+            cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
+        }
+
+        if (cuda_status==cudaSuccess){
+            reserve_bytes = BandNonCol_RootDenseReserveBytes(total_bytes,required_bytes);
+            cuda_ok = 1;
+        }
+        else {
+            fprintf(stderr,
+                    "<Band>  Rank %d failed to query CUDA memory for non-collinear dense CuSolver (%s); "
+                    "using serialized k-worlds.\n",
+                    myid0,cudaGetErrorString(cuda_status));
+            fflush(stderr);
+            local_fit = 0;
+        }
+    }
+
+    MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
+    MPI_Comm_split(node_comm,cuda_ok ? cuda_device : MPI_UNDEFINED,0,&device_comm);
+    MPI_Comm_free(&node_comm);
+
+    if (cuda_ok){
+        unsigned long long local_required = (unsigned long long)required_bytes;
+        unsigned long long group_required = 0ULL;
+        unsigned long long local_free = (unsigned long long)free_bytes;
+        unsigned long long group_free = 0ULL;
+        unsigned long long local_reserve = (unsigned long long)reserve_bytes;
+        unsigned long long group_reserve = 0ULL;
+        int device_rank = 0;
+        int device_ranks = 0;
+
+        MPI_Allreduce(&local_required,&group_required,1,MPI_UNSIGNED_LONG_LONG,MPI_SUM,device_comm);
+        MPI_Allreduce(&local_free,&group_free,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,device_comm);
+        MPI_Allreduce(&local_reserve,&group_reserve,1,MPI_UNSIGNED_LONG_LONG,MPI_MAX,device_comm);
+        MPI_Comm_rank(device_comm,&device_rank);
+        MPI_Comm_size(device_comm,&device_ranks);
+
+        if (group_free<group_required || group_free-group_required<group_reserve){
+            local_fit = 0;
+            if (device_rank==0){
+                printf("<Band>  Serializing non-collinear dense CuSolver k-worlds: GPU device %d is shared by %d owner rank(s), "
+                       "free %.3f MiB, need %.3f MiB plus %.3f MiB reserve.\n",
+                       cuda_device,device_ranks,
+                       (double)group_free/(1024.0*1024.0),
+                       (double)group_required/(1024.0*1024.0),
+                       (double)group_reserve/(1024.0*1024.0));
+                fflush(stdout);
+            }
+        }
+
+        MPI_Comm_free(&device_comm);
+    }
+
+    MPI_Allreduce(&local_fit,&global_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+
+    return global_fit;
+}
+
 static unsigned long long BandNonCol_HashInt(unsigned long long h, int value)
 {
     h ^= (unsigned long long)(unsigned int)value;
@@ -2290,16 +2536,16 @@ double Band_DFT_NonCol(
   if (use_root_dense_cusolver){
 
     int root_dense_serial_worlds = (1 < Num_Comm_World2);
-    int root_dense_world_start = root_dense_serial_worlds ? 0 : myworld2;
-    int root_dense_world_end = root_dense_serial_worlds ? Num_Comm_World2 : (myworld2 + 1);
-    int root_dense_owner = Host_ID;
-    int owns_root_dense = (myid0==root_dense_owner);
+    int root_dense_world_start;
+    int root_dense_world_end;
+    int root_dense_owner;
+    int owns_root_dense;
     int use_setham_packed_cache =
       (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
        Set_Hamiltonian_CuSolver_Packed_OrderMode()==1);
     int root_s_valid = 0;
     int rebuild_overlap;
-    int root_rank = root_dense_owner;
+    int root_rank;
     BandNonColRootDenseWorkspace *rdw;
     double *pack_buffer = NULL;
     double *m_olp = NULL;
@@ -2311,6 +2557,18 @@ double Band_DFT_NonCol(
     double *m_i22 = NULL;
     double *m_i12 = NULL;
     int *packed_order_GA = order_GA;
+
+    if (root_dense_serial_worlds){
+      int parallel_k_worlds_fit =
+        BandNonCol_RootDenseParallelKWorldsFit(n,n2,MaxN,size_H1,myid0,myworld2,
+                                               Num_Comm_World2,Comm_World_StartID2);
+      root_dense_serial_worlds = !parallel_k_worlds_fit;
+    }
+
+    root_dense_world_start = root_dense_serial_worlds ? 0 : myworld2;
+    root_dense_world_end = root_dense_serial_worlds ? Num_Comm_World2 : (myworld2 + 1);
+    root_dense_owner = root_dense_serial_worlds ? Host_ID : Comm_World_StartID2[myworld2];
+    owns_root_dense = (myid0==root_dense_owner);
 
     if (use_setham_packed_cache){
       Set_Hamiltonian_CuSolver_SetMP(MP);
@@ -2376,14 +2634,13 @@ double Band_DFT_NonCol(
       free(pack_buffer);
     }
 
-    if (root_dense_serial_worlds && myid0==Host_ID){
-      printf("<Band>  Serializing non-collinear dense CuSolver k-worlds to limit GPU memory use.\n");
-      fflush(stdout);
-    }
-
     for (int root_dense_world=root_dense_world_start;
          root_dense_world<root_dense_world_end;
          root_dense_world++){
+
+      root_dense_owner = root_dense_serial_worlds ? Host_ID : Comm_World_StartID2[root_dense_world];
+      owns_root_dense = (myid0==root_dense_owner);
+      root_rank = root_dense_owner;
 
       if (root_dense_serial_worlds){
         MPI_Barrier(mpi_comm_level1);
