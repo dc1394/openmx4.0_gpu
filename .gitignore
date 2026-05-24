@@ -1,0 +1,72 @@
+*.a
+*.la
+*.lo
+*.o
+*.so
+*.so.*
+*.dylib
+.libs/
+.deps/
+config.log
+config.status
+libtool
+
+# === OpenMX compiled binary ===
+/source/openmx
+/work/openmx
+
+# === Editor / IDE ===
+.vscode/
+
+# === OpenMX calculation outputs ===
+*.out
+*.ene
+*.md
+*.md2
+*.xyz
+*.cif
+*.cube
+*.DFTSCF
+*.EV
+*.MC
+*.SD
+*.UCell
+*.dpm
+*.err
+*.std
+*.std.*
+
+# === Restart files / directories ===
+*_rst/
+*.crst*
+*.rst[0-9]*
+*.adrst*
+*.ftCvna
+*.ftPEvna
+*.ftProPAO
+*.ftnlp
+*.ftpao
+*.df_re
+*.df_im
+*.SD1
+*.oopt
+
+# === Emacs/temp backups ===
+*.dat#
+*~
+
+# === Test/benchmark output dirs ===
+_runtest*/
+*.nkKkwO/
+/work/bench_*/
+/work/codex_*/
+/work/cdia_*/
+/work/dia*/
+/work/sidia*/
+/work/*_cpu/
+/work/B2C62_Band/
+/work/GGFF/
+/work/Mn12_148_F/
+/work/Mol_MnO/
+/work/N1C999/
+/work/Ni63-O64/
