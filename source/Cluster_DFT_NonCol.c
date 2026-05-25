@@ -510,6 +510,140 @@ static double ClusterNonCol_CalcDMRootDense_OpenACC(int myid, int size_H1, int *
     return etime - stime;
 }
 
+static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int n2, const int *is2, const int *ie2,
+                                                    dcomplex *dense_evec, dcomplex *EVec1)
+{
+    const int tag = 1901;
+    double stime, etime;
+    int max_local_states = 0;
+    dcomplex *sendbuf = NULL;
+
+    dtime(&stime);
+
+    for (int ID = 0; ID < numprocs; ID++) {
+        int states = ie2[ID] - is2[ID] + 1;
+        if (states < 0) states = 0;
+        if (max_local_states < states) max_local_states = states;
+    }
+
+    if (myid == Host_ID) {
+        size_t evec_count = (size_t)n2 * (size_t)n2;
+        size_t max_send_count = (size_t)max_local_states * (size_t)n2;
+
+#pragma acc update self(dense_evec[0 : evec_count])
+
+        if (0 < max_send_count) {
+            if (max_send_count > (size_t)INT_MAX / 2u) {
+                ClusterNonCol_AbortWithMessage("CuSOLVER dense eigenvector send buffer exceeds MPI count limit.");
+            }
+            sendbuf = (dcomplex *)ClusterNonCol_MallocArray(max_send_count, sizeof(dcomplex),
+                                                            "CuSOLVER dense eigenvector send buffer");
+        }
+
+        for (int ID = 0; ID < numprocs; ID++) {
+            int states = ie2[ID] - is2[ID] + 1;
+            dcomplex *target = (ID == Host_ID) ? EVec1 : sendbuf;
+
+            if (states <= 0) continue;
+
+            for (int k = 0; k < states; k++) {
+                int state = is2[ID] + k - 1;
+
+                for (int basis = 0; basis < n2; basis++) {
+                    /* Repack the dense column-major cuSOLVER vectors into the
+                       state-major EVec1 blocks used by the ELPA/ScaLAPACK DM path. */
+                    target[(size_t)k * (size_t)n2 + (size_t)basis] =
+                        dense_evec[(size_t)state + (size_t)basis * (size_t)n2];
+                }
+            }
+
+            if (ID != Host_ID) {
+                size_t send_count = (size_t)states * (size_t)n2;
+                MPI_Send(sendbuf, (int)(send_count * 2u), MPI_DOUBLE, ID, tag, mpi_comm_level1);
+            }
+        }
+    }
+    else {
+        int states = ie2[myid] - is2[myid] + 1;
+
+        if (0 < states) {
+            size_t recv_count = (size_t)states * (size_t)n2;
+            MPI_Status stat;
+
+            if (recv_count > (size_t)INT_MAX / 2u) {
+                ClusterNonCol_AbortWithMessage("CuSOLVER dense eigenvector receive buffer exceeds MPI count limit.");
+            }
+            MPI_Recv(EVec1, (int)(recv_count * 2u), MPI_DOUBLE, Host_ID, tag, mpi_comm_level1, &stat);
+        }
+    }
+
+    free(sendbuf);
+    dtime(&etime);
+    return etime - stime;
+}
+
+static dcomplex *ClusterNonCol_CachedCuSolverDenseEVec = NULL;
+static int ClusterNonCol_CachedCuSolverDenseN2 = 0;
+static int ClusterNonCol_CachedCuSolverDenseOnDevice = 0;
+
+static void ClusterNonCol_ReleaseCuSolverCachedEVec(int myid)
+{
+    dcomplex *dense_evec = ClusterNonCol_CachedCuSolverDenseEVec;
+    int n2 = ClusterNonCol_CachedCuSolverDenseN2;
+
+    if (myid == Host_ID && dense_evec != NULL) {
+        if (ClusterNonCol_CachedCuSolverDenseOnDevice) {
+            size_t evec_count = (size_t)n2 * (size_t)n2;
+#pragma acc exit data delete(dense_evec[0 : evec_count])
+        }
+        free(dense_evec);
+    }
+
+    ClusterNonCol_CachedCuSolverDenseEVec = NULL;
+    ClusterNonCol_CachedCuSolverDenseN2 = 0;
+    ClusterNonCol_CachedCuSolverDenseOnDevice = 0;
+}
+
+static void ClusterNonCol_StashCuSolverDenseEVec(int myid, int n2, dcomplex **dense_evec, int *on_device)
+{
+    ClusterNonCol_ReleaseCuSolverCachedEVec(myid);
+
+    if (myid == Host_ID) {
+        ClusterNonCol_CachedCuSolverDenseEVec = *dense_evec;
+        ClusterNonCol_CachedCuSolverDenseN2 = n2;
+        ClusterNonCol_CachedCuSolverDenseOnDevice = *on_device;
+    }
+
+    *dense_evec = NULL;
+    *on_device = 0;
+}
+
+double Cluster_DFT_NonCol_ScatterCuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1)
+{
+    int myid, numprocs;
+    int valid = 0;
+    double elapsed = 0.0;
+
+    MPI_Comm_size(mpi_comm_level1, &numprocs);
+    MPI_Comm_rank(mpi_comm_level1, &myid);
+
+    if (myid == Host_ID) {
+        valid = (ClusterNonCol_CachedCuSolverDenseEVec != NULL &&
+                 ClusterNonCol_CachedCuSolverDenseN2 == n2 &&
+                 ClusterNonCol_CachedCuSolverDenseOnDevice);
+    }
+    MPI_Bcast(&valid, 1, MPI_INT, Host_ID, mpi_comm_level1);
+
+    if (valid) {
+        elapsed = ClusterNonCol_ScatterDenseEVecToLocal(myid, numprocs, n2, is2, ie2,
+                                                        ClusterNonCol_CachedCuSolverDenseEVec, EVec1);
+    }
+
+    ClusterNonCol_ReleaseCuSolverCachedEVec(myid);
+
+    return elapsed;
+}
+
 /* GPU GEMM wrappers (added by H.Kawai, ported from 3.9.9 GPU) */
 static void ClusterNonCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
                                                int k, double const * A, double const * B, double * C)
@@ -1640,6 +1774,8 @@ double Cluster_DFT_NonCol(
 
     if (measure_time) dtime(&stime);
 
+    ClusterNonCol_ReleaseCuSolverCachedEVec(myid);
+
     for (i1=0; i1<=n2; i1++){ ko[i1] = 1.0e+5; }
 
     ClusterNonCol_CuSolverRootDensePath(SCF_iter,ko,nh,ImNL,CntOLP,MP,n,n2,MaxN,myid,
@@ -2283,12 +2419,10 @@ double Cluster_DFT_NonCol(
       time6 += ClusterNonCol_CalcDMRootDense_OpenACC(myid,size_H1,MP,n,n2,MaxN,CDM,iDM[0],EDM,ko,
                                                      cusolver_dense_evec,(Cnt_switch==1));
 
-      if (myid==Host_ID){
-#pragma acc exit data delete(cusolver_dense_evec[0 : n2 * n2])
-      }
-      free(cusolver_dense_evec);
-      cusolver_dense_evec = NULL;
-      cusolver_direct_evec_on_device = 0;
+      /* Keep the latest direct cuSOLVER eigenvectors for the post-SCF EDM/force
+         rebuild.  Scatter to EVec1 only once after SCF convergence to avoid
+         paying this MPI/data-transfer cost every SCF step. */
+      ClusterNonCol_StashCuSolverDenseEVec(myid,n2,&cusolver_dense_evec,&cusolver_direct_evec_on_device);
     }
     else {
 
