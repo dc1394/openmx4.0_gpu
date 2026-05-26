@@ -1918,6 +1918,7 @@ double Band_DFT_NonCol(
   int AN,Rn,size_H1;
   int parallel_mode;
   int use_root_dense_cusolver;
+  int root_dense_serial_cusolver_worlds = 0;
   int numprocs0,myid0;
   int ID,ID0,ID1;
   int numprocs1,myid1;
@@ -2564,6 +2565,7 @@ double Band_DFT_NonCol(
                                                Num_Comm_World2,Comm_World_StartID2);
       root_dense_serial_worlds = !parallel_k_worlds_fit;
     }
+    root_dense_serial_cusolver_worlds = root_dense_serial_worlds;
 
     root_dense_world_start = root_dense_serial_worlds ? 0 : myworld2;
     root_dense_world_end = root_dense_serial_worlds ? Num_Comm_World2 : (myworld2 + 1);
@@ -3193,8 +3195,12 @@ double Band_DFT_NonCol(
 
   for (kloop=0; kloop<T_knum; kloop++){
     /* get ID in the zeroth world */
-    if (use_root_dense_cusolver) ID = Comm_World_StartID2[kloop];
-    else                         ID = Comm_World_StartID1[0] + T_k_ID[myworld1][kloop];
+    if (use_root_dense_cusolver){
+      ID = root_dense_serial_cusolver_worlds ? Host_ID : Comm_World_StartID2[kloop];
+    }
+    else {
+      ID = Comm_World_StartID1[0] + T_k_ID[myworld1][kloop];
+    }
     MPI_Bcast(&EIGEN[0][kloop][0], MaxN+1, MPI_DOUBLE, ID, mpi_comm_level1);
   } 
 
