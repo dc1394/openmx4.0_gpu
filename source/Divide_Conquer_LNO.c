@@ -17,6 +17,7 @@
 ***********************************************************************/
 
 #include "openmx_common.h"
+#include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <math.h>
 #include <mpi.h>
@@ -71,6 +72,15 @@ static int      DCLNO_gpu_group_size = 1;
 static int      DCLNO_ngpu           = 0;
 static int      DCLNO_gpu_id         = 0;
 static int      DCLNO_is_gpu_owner   = 0;
+
+/*
+ * On nodes where many MPI ranks share one GPU, forwarding every DC-LNO
+ * eigenproblem to a single owner rank destroys the MPI task parallelism.
+ * Keep the proxy code available for the one-rank-per-GPU case, but default
+ * shared-GPU runs to owner-local GPU acceleration plus CPU work on the other
+ * ranks.
+ */
+#define DCLNO_ENABLE_SHARED_GPU_PROXY 0
 
 /* ------------------------------------------------------------------ */
 /* communicator selection                                             */
@@ -236,6 +246,51 @@ static void DCLNO_CopyPackedEigvecsToC(const double *buf, int num, int num2, dou
         for (i = 1; i <= num; i++) {
             C[j][i] = buf[(j - 1) * num + (i - 1)];
         }
+    }
+}
+
+static void DCLNO_Eigen_lapack_d_reuse(double **a,
+                                       double *ko,
+                                       int n0,
+                                       int EVmax,
+                                       double *A,
+                                       double *WORK,
+                                       INTEGER *IWORK)
+{
+    char JOBZ[] = "V";
+    char UPLO[] = "L";
+    INTEGER n = n0;
+    INTEGER LDA = n;
+    INTEGER LWORK = 1 + 6*n + 2*n*n;
+    INTEGER LIWORK = 3 + 5*n;
+    INTEGER INFO;
+    int i, j;
+
+    for (i=0; i<n0; i++) {
+        for (j=0; j<n0; j++) {
+            A[i*n0 + j] = a[i+1][j+1];
+        }
+    }
+
+    F77_NAME(dsyevd,DSYEVD)(JOBZ, UPLO, &n, A, &LDA, ko,
+                            WORK, &LWORK, IWORK, &LIWORK, &INFO);
+
+    if (INFO < 0) {
+        char msg[256];
+        snprintf(msg, sizeof(msg),
+                 "Eigen_lapack_d workspace solve failed in Divide_Conquer_LNO.c: info=%d",
+                 (int)INFO);
+        DCLNO_AbortWithMessage(msg);
+    }
+
+    for (i=0; i<EVmax; i++) {
+        for (j=0; j<n0; j++) {
+            a[j+1][i+1] = A[i*n0 + j];
+        }
+    }
+
+    for (i=EVmax; i>=1; i--) {
+        ko[i] = ko[i-1];
     }
 }
 
@@ -490,28 +545,28 @@ static void DCLNO_Solve_Col_CuSolver(int NUM, int NUM2, double *Smat, double *Hm
 /* local dense solve kernel (collinear)                               */
 /* ------------------------------------------------------------------ */
 
-static void DCLNO_Solve_Col_Local(int use_gpu,
-                                  int NUM,
+static void DCLNO_Solve_Col_Local(int NUM,
                                   int NUM2,
                                   double *Smat,
                                   double *Hmat,
                                   double **C,
-                                  double *ko)
+                                  double *ko,
+                                  double *Tmp,
+                                  double *Eig_A,
+                                  double *Eig_Work,
+                                  INTEGER *Eig_IWork)
 {
     int i1, j1, l;
-    double *Tmp;
+    int owns_tmp = 0;
     double alpha, beta;
     int BM, BN, BK;
 
-    if (use_gpu) {
-        DCLNO_Solve_Col_CuSolver(NUM, NUM2, Smat, Hmat, ko);
-        DCLNO_CopyPackedEigvecsToC(Hmat, NUM, NUM2, C);
-        return;
+    if (Tmp == NULL) {
+        Tmp = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM,
+                                                               "local DGEMM scratch dimensions"),
+                                         sizeof(double), "local DGEMM scratch");
+        owns_tmp = 1;
     }
-
-    Tmp = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM,
-                                                           "local DGEMM scratch dimensions"),
-                                     sizeof(double), "local DGEMM scratch");
 
     /* diagonalize S */
     for (i1=1; i1<=NUM; i1++) {
@@ -520,7 +575,7 @@ static void DCLNO_Solve_Col_Local(int use_gpu,
         }
     }
 
-    Eigen_lapack_d(C, ko, NUM, NUM);
+    DCLNO_Eigen_lapack_d_reuse(C, ko, NUM, NUM, Eig_A, Eig_Work, Eig_IWork);
 
     for (l=1; l<=NUM; l++) ko[l] = 1.0/sqrt(fabs(ko[l]));
 
@@ -551,7 +606,7 @@ static void DCLNO_Solve_Col_Local(int use_gpu,
         }
     }
 
-    Eigen_lapack_d(C, ko, NUM, NUM2);
+    DCLNO_Eigen_lapack_d_reuse(C, ko, NUM, NUM2, Eig_A, Eig_Work, Eig_IWork);
 
     /* Hmat (first NUM2 cols) <- transformed eigenvectors */
     for (i1=1; i1<=NUM; i1++) {
@@ -574,7 +629,7 @@ static void DCLNO_Solve_Col_Local(int use_gpu,
         }
     }
 
-    free(Tmp);
+    if (owns_tmp) free(Tmp);
 }
 
 /* ------------------------------------------------------------------ */
@@ -790,7 +845,8 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     double ******   Residues;
     double ***      PDOS_DC;
     int *           MP, *Msize, Max_Msize;
-    double *        BLAS_H, *BLAS_C;
+    double *        BLAS_H, *BLAS_C, *BLAS_Tmp, *BLAS_Eig_A, *BLAS_Eig_Work;
+    INTEGER *       BLAS_Eig_IWork;
     double *        tmp_array;
     double *        tmp_array2;
     int *           Snd_H_Size, *Rcv_H_Size;
@@ -801,10 +857,11 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     double          time0, time1, time2, time3, time6, time7, time8, time9;
     MPI_Status      stat;
     MPI_Request     request;
-    int             use_gpu_proxy;
+    int             use_gpu_accel, use_gpu_proxy;
     int             gpu_group_max_msize;
     int             group_max_atoms, atom_slot;
     int             have_local_atom, use_gpu_task;
+    size_t          eig_matrix_count, eig_work_count, eig_iwork_count;
 
     MPI_Comm_size(mpi_comm_level1, &numprocs0);
     MPI_Comm_rank(mpi_comm_level1, &myid0);
@@ -848,10 +905,12 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     time8 = 0.0;
     time9 = 0.0;
 
-    use_gpu_proxy = (scf_eigen_lib_flag == CuSOLVER);
-    if (use_gpu_proxy) {
+    use_gpu_accel = (scf_eigen_lib_flag == CuSOLVER);
+    if (use_gpu_accel) {
         DCLNO_GPUProxy_Init();
     }
+    use_gpu_proxy = (use_gpu_accel && DCLNO_ENABLE_SHARED_GPU_PROXY &&
+                     DCLNO_gpu_group_size > 1);
 
     size_Residues = 0;
 
@@ -976,6 +1035,20 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                               (size_t)(SpinP_switch + 1),
                               "Hamiltonian work buffer spin dimensions"),
         sizeof(double), "Hamiltonian work buffer");
+    BLAS_Tmp = (double*)DCLNO_MallocArray(
+        DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
+                              "local eigensolver scratch matrix dimensions"),
+        sizeof(double), "local eigensolver scratch matrix");
+    eig_matrix_count = DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
+                                             "local eigensolver LAPACK matrix dimensions");
+    eig_work_count = 1 + 6*(size_t)Max_Msize + 2*eig_matrix_count;
+    eig_iwork_count = 3 + 5*(size_t)Max_Msize;
+    BLAS_Eig_A = (double*)DCLNO_MallocArray(eig_matrix_count,
+                                            sizeof(double), "local eigensolver LAPACK matrix");
+    BLAS_Eig_Work = (double*)DCLNO_MallocArray(eig_work_count,
+                                               sizeof(double), "local eigensolver LAPACK work");
+    BLAS_Eig_IWork = (INTEGER*)DCLNO_MallocArray(eig_iwork_count,
+                                                 sizeof(INTEGER), "local eigensolver LAPACK iwork");
     BLAS_C = (double*)DCLNO_MallocArray((size_t)(Max_Msize + 1), sizeof(double), "occupation buffer");
 
     ko = (double*)DCLNO_MallocArray((size_t)(Max_Msize + 2), sizeof(double), "eigenvalue scratch");
@@ -1002,7 +1075,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     MP = (int*)DCLNO_MallocArray((size_t)List_YOUSO[2], sizeof(int), "MP map");
 
     gpu_group_max_msize = Max_Msize;
-    if (use_gpu_proxy) {
+    if (use_gpu_accel) {
         MPI_Allreduce(MPI_IN_PLACE, &gpu_group_max_msize, 1, MPI_INT, MPI_MAX, DCLNO_gpu_group_comm);
         if (DCLNO_is_gpu_owner && gpu_group_max_msize >= DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL) {
             DCLNO_CuSolver_EnsureMatrixCapacity(gpu_group_max_msize);
@@ -1595,11 +1668,12 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                     if (NUM2 < 1)   NUM2 = NUM;
                 }
 
-                use_gpu_task = (use_gpu_proxy && NUM >= DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL);
+                use_gpu_task = (use_gpu_accel && (DCLNO_is_gpu_owner || use_gpu_proxy) &&
+                                NUM >= DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL);
 
                 if (measure_time) dtime(&stime);
 
-                if (use_gpu_task && DCLNO_gpu_group_size == 1) {
+                if (use_gpu_task && !use_gpu_proxy) {
                     DCLNO_Solve_Col_CuSolver(NUM, NUM2,
                                              &BLAS_OLP[spin * NUM * NUM],
                                              &BLAS_H[spin * NUM * NUM],
@@ -1607,10 +1681,11 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                     DCLNO_CopyPackedEigvecsToC(&BLAS_H[spin * NUM * NUM], NUM, NUM2, C);
                 }
                 else if (!use_gpu_task) {
-                    DCLNO_Solve_Col_Local(0, NUM, NUM2,
+                    DCLNO_Solve_Col_Local(NUM, NUM2,
                                           &BLAS_OLP[spin * NUM * NUM],
                                           &BLAS_H[spin * NUM * NUM],
-                                          C, ko);
+                                          C, ko, BLAS_Tmp,
+                                          BLAS_Eig_A, BLAS_Eig_Work, BLAS_Eig_IWork);
                 }
             }
             else {
@@ -2007,6 +2082,10 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     free(Rcv_S_Size);
     free(Msize);
     free(BLAS_H);
+    free(BLAS_Tmp);
+    free(BLAS_Eig_A);
+    free(BLAS_Eig_Work);
+    free(BLAS_Eig_IWork);
     free(BLAS_C);
     free(ko);
     DCLNO_FreeRealMatrix1B(C, Max_Msize + 1);
