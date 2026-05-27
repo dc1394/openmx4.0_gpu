@@ -135,6 +135,7 @@ CC  = $(MPICC) $(COMMON_CFLAGS) -O3
 CC2 = $(MPICC) $(COMMON_CFLAGS) -O1
 CC3 = $(MPICC) $(COMMON_CFLAGS) -O2
 CC_NOACC = $(filter-out -Minfo=accel -acc,$(CC2))
+CC_NOACC_O3 = $(filter-out -Minfo=accel -acc,$(CC))
 CC_DFTD3 = $(MPICC) -w -O0 -std=c11 -fopenmp $(COMMON_INCLUDES)
 FC = $(MPIF90) -O2 -mtune=native -march=native -fopenmp $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include
 
@@ -724,7 +725,7 @@ $(GEMMUL8_LIB): $(GEMMUL8_OPENMX_OBJ)
 Divide_Conquer_Dosout.o: Divide_Conquer_Dosout.c openmx_common.h
 	$(CC) -c Divide_Conquer_Dosout.c
 Krylov.o: Krylov.c openmx_common.h
-	$(CC_NOACC) -c Krylov.c
+	$(CC_NOACC_O3) -c Krylov.c
 EGAC_DFT.o: EGAC_DFT.c openmx_common.h
 	$(CC) -c EGAC_DFT.c
 LNO.o: LNO.c openmx_common.h
