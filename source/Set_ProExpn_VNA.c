@@ -29,71 +29,12 @@
 static double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA);
 static double Set_VNA2(double ****HVNA, double *****HVNA2);
 static double Set_VNA3(double *****HVNA3);
-static int SetProExpnVNAUseOpenACC(void);
-static void SetProExpnVNA_Contract_NLH_OpenACC(int k_count, int tno0, int tno1, int tno2,
-                                               Type_DS_VNA *ds0_flat, Type_DS_VNA *ds1_flat,
-                                               double *ene_flat, double *nlh_flat);
 
 #ifdef kcomp
 static void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
 #else 
 inline void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
 #endif      
-
-
-static int SetProExpnVNAUseOpenACC(void)
-{
-  if (SpinP_switch==3) return 0;
-  if (atomnum<400) return 0;
-  return (scf_eigen_lib_flag == CuSOLVER);
-}
-
-
-static void SetProExpnVNA_Contract_NLH_OpenACC(int k_count, int tno0, int tno1, int tno2,
-                                               Type_DS_VNA *ds0_flat, Type_DS_VNA *ds1_flat,
-                                               double *ene_flat, double *nlh_flat)
-{
-  int mn;
-  int mn_count;
-  int kl_count;
-
-  mn_count = tno0*tno1;
-  kl_count = k_count*tno2;
-
-  if (k_count<=0){
-    for (mn=0; mn<mn_count; mn++){
-      nlh_flat[mn] = 0.0;
-    }
-    return;
-  }
-
-#pragma acc data copyin(ds0_flat[0:k_count*tno0*tno2], ds1_flat[0:k_count*tno1*tno2], \
-                        ene_flat[0:kl_count]) copyout(nlh_flat[0:mn_count])
-  {
-#pragma acc parallel loop gang
-    for (mn=0; mn<mn_count; mn++){
-      int m,n,idx;
-      double sum;
-
-      m = mn/tno1;
-      n = mn - m*tno1;
-      sum = 0.0;
-
-#pragma acc loop vector reduction(+:sum)
-      for (idx=0; idx<kl_count; idx++){
-        int k,L;
-
-        k = idx/tno2;
-        L = idx - k*tno2;
-        sum += ene_flat[idx]
-             *((double)ds0_flat[(k*tno0 + m)*tno2 + L])
-             *((double)ds1_flat[(k*tno1 + n)*tno2 + L]);
-      }
-
-      nlh_flat[mn] = sum;
-    }
-  }
-}
 
 
 double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_VNA)
@@ -150,10 +91,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
   int *VNA_List;
   int *VNA_List2;
   int Num_RVNA;
-  int use_openacc_contract,tno2_vna_max;
-  int contract_k_count;
-  Type_DS_VNA *contract_ds0,*contract_ds1;
-  double *contract_ene,*contract_nlh;
   double **NLH;
   double time0,time1,time2,time3,time4,time5;
   dcomplex sum0,sum1,sum2; 
@@ -174,12 +111,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
   ****************************************************/
 
   Num_RVNA = List_YOUSO[34]*(List_YOUSO[35] + 1);
-  use_openacc_contract = SetProExpnVNAUseOpenACC();
-  tno2_vna_max = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-  contract_ds0 = NULL;
-  contract_ds1 = NULL;
-  contract_ene = NULL;
-  contract_nlh = NULL;
 
   Snd_DS_VNA_Size = (int*)malloc(sizeof(int)*numprocs);
   Rcv_DS_VNA_Size = (int*)malloc(sizeof(int)*numprocs);
@@ -983,26 +914,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
     NLH[i] = (double*)malloc(sizeof(double)*List_YOUSO[7]); 
   }
 
-  if (use_openacc_contract){
-    size_t max_contract_ds0_size,max_contract_ds1_size,max_contract_ene_size,max_contract_nlh_size;
-
-    max_contract_ds0_size = (size_t)(Max_FNAN+1)*(size_t)List_YOUSO[7]*(size_t)tno2_vna_max;
-    max_contract_ds1_size = max_contract_ds0_size;
-    max_contract_ene_size = (size_t)(Max_FNAN+1)*(size_t)tno2_vna_max;
-    max_contract_nlh_size = (size_t)List_YOUSO[7]*(size_t)List_YOUSO[7];
-
-    contract_ds0 = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*max_contract_ds0_size);
-    contract_ds1 = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*max_contract_ds1_size);
-    contract_ene = (double*)malloc(sizeof(double)*max_contract_ene_size);
-    contract_nlh = (double*)malloc(sizeof(double)*max_contract_nlh_size);
-
-    if (contract_ds0==NULL || contract_ds1==NULL || contract_ene==NULL || contract_nlh==NULL){
-      printf("Set_ProExpn_VNA: malloc failed for OpenACC NLH contraction.\n");
-      fflush(stdout);
-      exit(1);
-    }
-  }
-
   for (ID=0; ID<numprocs; ID++){
     F_Snd_Num_WK[ID] = 0;
     F_Rcv_Num_WK[ID] = 0;
@@ -1181,107 +1092,49 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
 	      rcutB = Spe_Atom_Cut1[Hwan];
 	      rcut = rcutA + rcutB;
 
-	      if (use_openacc_contract){
-		contract_k_count = 0;
-		tno1 = Spe_Total_NO[Cwan];
-		tno2 = Spe_Total_NO[Hwan];
-		tno0 = tno2_vna_max;
+	      for (k=0; k<=fan; k++){
 
-		for (k=0; k<=fan; k++){
+		kg = natn[Gc_AN][k];
+		wakg = WhatSpecies[kg];
+		kl = RMI1[Mc_AN][j][k];
 
-		  kg = natn[Gc_AN][k];
-		  wakg = WhatSpecies[kg];
-		  kl = RMI1[Mc_AN][j][k];
-
-		  if (0<=kl){
-
-		    for (m=0; m<tno1; m++){
-		      for (L=0; L<tno0; L++){
-			contract_ds0[(contract_k_count*tno1 + m)*tno0 + L]
-			  = DS_VNA[0][Mc_AN][k][m][L];
-		      }
-		    }
-
-		    for (n=0; n<tno2; n++){
-		      for (L=0; L<tno0; L++){
-			contract_ds1[(contract_k_count*tno2 + n)*tno0 + L]
-			  = DS_VNA[0][Matomnum+1][kl][n][L];
-		      }
-		    }
-
-		    L = 0;
-		    for (L1=0; L1<Num_RVNA; L1++){
-
-		      GL = VNA_List[L1];
-		      Mul1 = VNA_List2[L1];
-		      ene = VNA_proj_ene[wakg][GL][Mul1];
-		      L2 = 2*VNA_List[L1];
-
-		      for (L3=0; L3<=L2; L3++){
-			contract_ene[contract_k_count*tno0 + L] = ene;
-			L++;
-		      }
-		    }
-
-		    contract_k_count++;
-		  }
-		}
-
-		SetProExpnVNA_Contract_NLH_OpenACC(contract_k_count, tno1, tno2, tno0,
-		                                   contract_ds0, contract_ds1,
-		                                   contract_ene, contract_nlh);
-
-		for (m=0; m<tno1; m++){
-		  for (n=0; n<tno2; n++){
-		    NLH[m][n] = contract_nlh[m*tno2 + n];
-		  }
-		}
-	      }
-	      else{
-		for (k=0; k<=fan; k++){
-
-		  kg = natn[Gc_AN][k];
-		  wakg = WhatSpecies[kg];
-		  kl = RMI1[Mc_AN][j][k];
-
-		  if (0<=kl){
+		if (0<=kl){
 #pragma omp parallel for private(m, n, sum, L ,L1, GL, Mul1, ene, L2 ,tmp0, L3) default(shared) if(Spe_Total_NO[Cwan] > 8)
-		    for (m=0; m<Spe_Total_NO[Cwan]; m++){
-		      for (n=0; n<Spe_Total_NO[Hwan]; n++){
+		  for (m=0; m<Spe_Total_NO[Cwan]; m++){
+		    for (n=0; n<Spe_Total_NO[Hwan]; n++){
 
-			sum = 0.0;
-			L = 0;
+		      sum = 0.0;
+		      L = 0;
 
-			for (L1=0; L1<Num_RVNA; L1++){
+		      for (L1=0; L1<Num_RVNA; L1++){
 
-			  GL = VNA_List[L1];
-			  Mul1 = VNA_List2[L1];
+			GL = VNA_List[L1]; 
+			Mul1 = VNA_List2[L1];
+            
+			ene = VNA_proj_ene[wakg][GL][Mul1];
+			L2 = 2*VNA_List[L1];
 
-			  ene = VNA_proj_ene[wakg][GL][Mul1];
-			  L2 = 2*VNA_List[L1];
+			tmp0 = 0.0;
 
-			  tmp0 = 0.0;
+			for (L3=0; L3<=L2; L3++){
 
-			  for (L3=0; L3<=L2; L3++){
+			  tmp0 += DS_VNA[0][Mc_AN][k][m][L]*DS_VNA[0][Matomnum+1][kl][n][L];
 
-			    tmp0 += DS_VNA[0][Mc_AN][k][m][L]*DS_VNA[0][Matomnum+1][kl][n][L];
-
-			    L++;
-			  }
-
-			  sum += ene*tmp0;
-
+			  L++;
 			}
 
-			if (k==0)  NLH[m][n]  = sum;
-			else       NLH[m][n] += sum;
+			sum += ene*tmp0; 
 
-		      } /* n */
-		    } /* m */
-		  } /* if (0<=kl)*/
-		} /* k */
-	      }
+		      }
 
+		      if (k==0)  NLH[m][n]  = sum;  
+		      else       NLH[m][n] += sum; 
+
+		    } /* n */
+		  } /* m */
+		} /* if (0<=kl)*/
+	      } /* k */ 
+       
 	      /****************************************************
                             NLH to HVNA
 	      ****************************************************/
@@ -1346,13 +1199,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
     free(NLH[i]);
   }
   free(NLH);
-
-  if (use_openacc_contract){
-    free(contract_ds0);
-    free(contract_ds1);
-    free(contract_ene);
-    free(contract_nlh);
-  }
   
   if (measure_time){
     dtime(&etime);
@@ -1374,9 +1220,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
     int Mc_AN,Gc_AN,Cwan,fan,Mj_AN,Hwan;
     int L,L1,GL,Mul1,L2,L3,i1,j1;
     int k,kg,wakg,kl,i,j,jg,m,n;
-    int thread_use_openacc_contract,contract_k_count,tno2_vna;
-    Type_DS_VNA *thread_contract_ds0,*thread_contract_ds1;
-    double *thread_contract_ene,*thread_contract_nlh;
     double **NLH;
     double rcutA,rcutB,rcut,sum,ene,tmp0,dmp;
     double Stime_atom,Etime_atom;
@@ -1393,32 +1236,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
     OMPID = omp_get_thread_num();
     Nthrds = omp_get_num_threads();
     Nprocs = omp_get_num_procs();
-    thread_use_openacc_contract = (use_openacc_contract && Nthrds==1);
-    tno2_vna = tno2_vna_max;
-    thread_contract_ds0 = NULL;
-    thread_contract_ds1 = NULL;
-    thread_contract_ene = NULL;
-    thread_contract_nlh = NULL;
-
-    if (thread_use_openacc_contract){
-      size_t max_contract_ds_size,max_contract_ene_size,max_contract_nlh_size;
-
-      max_contract_ds_size = (size_t)(Max_FNAN+1)*(size_t)List_YOUSO[7]*(size_t)tno2_vna;
-      max_contract_ene_size = (size_t)(Max_FNAN+1)*(size_t)tno2_vna;
-      max_contract_nlh_size = (size_t)List_YOUSO[7]*(size_t)List_YOUSO[7];
-
-      thread_contract_ds0 = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*max_contract_ds_size);
-      thread_contract_ds1 = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*max_contract_ds_size);
-      thread_contract_ene = (double*)malloc(sizeof(double)*max_contract_ene_size);
-      thread_contract_nlh = (double*)malloc(sizeof(double)*max_contract_nlh_size);
-
-      if (thread_contract_ds0==NULL || thread_contract_ds1==NULL ||
-          thread_contract_ene==NULL || thread_contract_nlh==NULL){
-        printf("Set_ProExpn_VNA: malloc failed for OpenACC NLH contraction.\n");
-        fflush(stdout);
-        exit(1);
-      }
-    }
 
     for (Mc_AN=(OMPID*Matomnum/Nthrds+1); Mc_AN<((OMPID+1)*Matomnum/Nthrds+1); Mc_AN++){
 
@@ -1440,102 +1257,46 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
 	  rcutB = Spe_Atom_Cut1[Hwan];
 	  rcut = rcutA + rcutB;
 
-	  if (thread_use_openacc_contract){
-	    contract_k_count = 0;
+	  for (k=0; k<=fan; k++){
 
-	    for (k=0; k<=fan; k++){
+	    kg = natn[Gc_AN][k];
+	    wakg = WhatSpecies[kg];
+	    kl = RMI1[Mc_AN][j][k];
 
-	      kg = natn[Gc_AN][k];
-	      wakg = WhatSpecies[kg];
-	      kl = RMI1[Mc_AN][j][k];
+	    if (0<=kl){
 
-	      if (0<=kl){
-
-		for (m=0; m<Spe_Total_NO[Cwan]; m++){
-		  for (L=0; L<tno2_vna; L++){
-		    thread_contract_ds0[(contract_k_count*Spe_Total_NO[Cwan] + m)*tno2_vna + L]
-		      = DS_VNA[0][Mc_AN][k][m][L];
-		  }
-		}
-
+	      for (m=0; m<Spe_Total_NO[Cwan]; m++){
 		for (n=0; n<Spe_Total_NO[Hwan]; n++){
-		  for (L=0; L<tno2_vna; L++){
-		    thread_contract_ds1[(contract_k_count*Spe_Total_NO[Hwan] + n)*tno2_vna + L]
-		      = DS_VNA[0][Mj_AN][kl][n][L];
-		  }
-		}
 
-		L = 0;
-		for (L1=0; L1<Num_RVNA; L1++){
+		  sum = 0.0;
+		  L = 0;
 
-		  GL = VNA_List[L1];
-		  Mul1 = VNA_List2[L1];
-		  ene = VNA_proj_ene[wakg][GL][Mul1];
-		  L2 = 2*VNA_List[L1];
+		  for (L1=0; L1<Num_RVNA; L1++){
 
-		  for (L3=0; L3<=L2; L3++){
-		    thread_contract_ene[contract_k_count*tno2_vna + L] = ene;
-		    L++;
-		  }
-		}
+		    GL = VNA_List[L1]; 
+		    Mul1 = VNA_List2[L1];
+            
+		    ene = VNA_proj_ene[wakg][GL][Mul1];
+		    L2 = 2*VNA_List[L1];
 
-		contract_k_count++;
-	      }
-	    }
+		    tmp0 = 0.0;
 
-	    SetProExpnVNA_Contract_NLH_OpenACC(contract_k_count,
-	                                       Spe_Total_NO[Cwan], Spe_Total_NO[Hwan], tno2_vna,
-	                                       thread_contract_ds0, thread_contract_ds1,
-	                                       thread_contract_ene, thread_contract_nlh);
-
-	    for (m=0; m<Spe_Total_NO[Cwan]; m++){
-	      for (n=0; n<Spe_Total_NO[Hwan]; n++){
-		NLH[m][n] = thread_contract_nlh[m*Spe_Total_NO[Hwan] + n];
-	      }
-	    }
-	  }
-	  else{
-	    for (k=0; k<=fan; k++){
-
-	      kg = natn[Gc_AN][k];
-	      wakg = WhatSpecies[kg];
-	      kl = RMI1[Mc_AN][j][k];
-
-	      if (0<=kl){
-
-		for (m=0; m<Spe_Total_NO[Cwan]; m++){
-		  for (n=0; n<Spe_Total_NO[Hwan]; n++){
-
-		    sum = 0.0;
-		    L = 0;
-
-		    for (L1=0; L1<Num_RVNA; L1++){
-
-		      GL = VNA_List[L1];
-		      Mul1 = VNA_List2[L1];
-
-		      ene = VNA_proj_ene[wakg][GL][Mul1];
-		      L2 = 2*VNA_List[L1];
-
-		      tmp0 = 0.0;
-
-		      for (L3=0; L3<=L2; L3++){
-			tmp0 += DS_VNA[0][Mc_AN][k][m][L]*DS_VNA[0][Mj_AN][kl][n][L];
-			L++;
-		      }
-
-		      sum += ene*tmp0;
-
+		    for (L3=0; L3<=L2; L3++){
+		      tmp0 += DS_VNA[0][Mc_AN][k][m][L]*DS_VNA[0][Mj_AN][kl][n][L]; 
+		      L++;
 		    }
 
-		    if (k==0)  NLH[m][n]  = sum;
-		    else       NLH[m][n] += sum;
+		    sum += ene*tmp0; 
 
 		  }
+
+		  if (k==0)  NLH[m][n]  = sum;  
+		  else       NLH[m][n] += sum; 
+
 		}
 	      }
-	    } /* k */
-	  }
+	    }
+	  } /* k */ 
        
 	  /****************************************************
                             NLH to HVNA
@@ -1563,13 +1324,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
       free(NLH[i]);
     }
     free(NLH);
-
-    if (thread_use_openacc_contract){
-      free(thread_contract_ds0);
-      free(thread_contract_ds1);
-      free(thread_contract_ene);
-      free(thread_contract_nlh);
-    }
 
 #pragma omp flush(HVNA)
 

@@ -42,9 +42,7 @@ static int DFT_SetOLPKinUseGPU(void)
 
 static int DFT_SetProExpnVNAUseGPU(void)
 {
-    if (SpinP_switch==3) return 0;
-    if (atomnum<400) return 0;
-    return (scf_eigen_lib_flag == CuSOLVER);
+    return 0;
 }
 
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)
