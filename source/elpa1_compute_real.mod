@@ -1,6 +1,6 @@
 V35 :0x24 elpa1_compute_real
 22 elpa1_compute_real.F90 S624 0
-05/22/2026  13:06:40
+06/11/2026  17:01:56
 use iso_fortran_env private
 use iso_c_binding private
 enduse
