@@ -151,6 +151,9 @@ LIB= $(FFTW3_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm
 
 GEMMUL8_REPO_URL ?= https://github.com/RIKEN-RCCS/GEMMul8.git
 GEMMUL8_REPO_DIR ?= third_party/GEMMul8
+# gemmul8_openmx.cu depends on the old nested-repo layout; newer upstream
+# commits restructured the repository, so the checkout must stay pinned.
+GEMMUL8_COMMIT   ?= 3115e709de0786e4cd8206753c44d71d309a6da3
 GEMMUL8_DIR      ?= $(GEMMUL8_REPO_DIR)/GEMMul8
 GEMMUL8_LIB      ?= $(GEMMUL8_DIR)/lib/libgemmul8.a
 GEMMUL8_OPENMX_OBJ ?= $(GEMMUL8_DIR)/src/gemmul8_openmx.o
@@ -715,8 +718,12 @@ my_cublasZgemm.o: my_cublasZgemm.c openmx_common.h
 gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
 $(GEMMUL8_DIR)/Makefile:
-	mkdir -p $(dir $(GEMMUL8_REPO_DIR))
-	git clone --depth 1 $(GEMMUL8_REPO_URL) $(GEMMUL8_REPO_DIR)
+	mkdir -p $(GEMMUL8_REPO_DIR)
+	cd $(GEMMUL8_REPO_DIR) && \
+	  { [ -d .git ] || git init -q .; } && \
+	  { git remote get-url origin >/dev/null 2>&1 || git remote add origin $(GEMMUL8_REPO_URL); } && \
+	  git fetch --depth 1 origin $(GEMMUL8_COMMIT) && \
+	  git checkout -q $(GEMMUL8_COMMIT)
 $(GEMMUL8_OPENMX_OBJ): gemmul8_openmx.cu $(GEMMUL8_DIR)/Makefile
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_openmx.cu -o $(GEMMUL8_OPENMX_OBJ)
 $(GEMMUL8_LIB): $(GEMMUL8_OPENMX_OBJ)
