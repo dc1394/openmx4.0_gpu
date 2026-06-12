@@ -57,7 +57,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-int32_t cusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
+int32_t gpusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
 {
     int32_t const lda = m;
 
@@ -135,7 +135,7 @@ int32_t cusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
     return info;
 }
 
-int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
+int32_t gpusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
 {
     int32_t info = 0;
 
@@ -215,7 +215,7 @@ int32_t cusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN)
     return info;
 }
 
-int32_t cusolver_Syevdx_Complex(dcomplex * A, double * W, int32_t m, int32_t MaxN)
+int32_t gpusolver_Syevdx_Complex(dcomplex * A, double * W, int32_t m, int32_t MaxN)
 {
     int32_t const lda = m;
 
@@ -288,7 +288,7 @@ int32_t cusolver_Syevdx_Complex(dcomplex * A, double * W, int32_t m, int32_t Max
     return info;
 }
 
-int32_t cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int32_t MaxN)
+int32_t gpusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, int32_t MaxN)
 {
     int32_t const lda = m;
 

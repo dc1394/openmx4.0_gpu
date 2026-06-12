@@ -65,7 +65,7 @@ int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
 static int TotalEnergyUseOpenACC(void)
 {
   if (SpinP_switch==3) return 0;
-  return (scf_eigen_lib_flag == CuSOLVER);
+  return (scf_eigen_lib_flag == GPUSOLVER);
 }
 
 

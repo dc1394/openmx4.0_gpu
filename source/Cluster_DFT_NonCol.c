@@ -534,10 +534,10 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
 
         if (0 < max_send_count) {
             if (max_send_count > (size_t)INT_MAX / 2u) {
-                ClusterNonCol_AbortWithMessage("CuSOLVER dense eigenvector send buffer exceeds MPI count limit.");
+                ClusterNonCol_AbortWithMessage("GPUSOLVER dense eigenvector send buffer exceeds MPI count limit.");
             }
             sendbuf = (dcomplex *)ClusterNonCol_MallocArray(max_send_count, sizeof(dcomplex),
-                                                            "CuSOLVER dense eigenvector send buffer");
+                                                            "GPUSOLVER dense eigenvector send buffer");
         }
 
         for (int ID = 0; ID < numprocs; ID++) {
@@ -571,7 +571,7 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
             MPI_Status stat;
 
             if (recv_count > (size_t)INT_MAX / 2u) {
-                ClusterNonCol_AbortWithMessage("CuSOLVER dense eigenvector receive buffer exceeds MPI count limit.");
+                ClusterNonCol_AbortWithMessage("GPUSOLVER dense eigenvector receive buffer exceeds MPI count limit.");
             }
             MPI_Recv(EVec1, (int)(recv_count * 2u), MPI_DOUBLE, Host_ID, tag, mpi_comm_level1, &stat);
         }
@@ -618,7 +618,7 @@ static void ClusterNonCol_StashCuSolverDenseEVec(int myid, int n2, dcomplex **de
     *on_device = 0;
 }
 
-double Cluster_DFT_NonCol_ScatterCuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1)
+double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1)
 {
     int myid, numprocs;
     int valid = 0;
@@ -685,9 +685,9 @@ static void ClusterNonCol_CuSolver_DenseDsyevx(double *A, double *Z, double *ko,
 {
     int info,l,copy_cols;
 
-    info = cusolver_Syevdx(A, ko, n, maxn);
+    info = gpusolver_Syevdx(A, ko, n, maxn);
     if (info!=0){
-        fprintf(stderr,"%s: cusolver_Syevdx failed, info=%d\n",where,info);
+        fprintf(stderr,"%s: gpusolver_Syevdx failed, info=%d\n",where,info);
         fflush(stderr);
         MPI_Abort(mpi_comm_level1,1);
     }
@@ -706,9 +706,9 @@ static void ClusterNonCol_CuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double 
 {
     int info,l,copy_cols;
 
-    info = cusolver_Syevdx_Complex(A, ko, n, maxn);
+    info = gpusolver_Syevdx_Complex(A, ko, n, maxn);
     if (info!=0){
-        fprintf(stderr,"%s: cusolver_Syevdx_Complex failed, info=%d\n",where,info);
+        fprintf(stderr,"%s: gpusolver_Syevdx_Complex failed, info=%d\n",where,info);
         fflush(stderr);
         MPI_Abort(mpi_comm_level1,1);
     }
@@ -1063,8 +1063,8 @@ static void ClusterNonCol_BuildDeviceDenseFromGathered(const double *H1, const i
 
 static void ClusterNonCol_LoadDeviceDenseFromSetHamCache(const double *H1, int *MP, int n, double *H)
 {
-    int tnum = Set_Hamiltonian_CuSolver_Packed_Size();
-    int *order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
+    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
+    int *order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
     int *dense_index;
 
     if (H1 == NULL || order_GA == NULL) {
@@ -1210,8 +1210,8 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
     static dcomplex *cached_Ss2 = NULL;
     const int owns_dense = (myid == Host_ID);
     const int use_setham_packed_cache =
-        (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
-         Set_Hamiltonian_CuSolver_Packed_OrderMode() == 1);
+        (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
+         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 1);
     int rebuild_s = (SCF_iter == 1 || !transformed_s_valid || cached_n != n || cached_n2 != n2);
     double *S = NULL;
     double *Cs = NULL;
@@ -1226,7 +1226,7 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
     *dense_evec_on_device_out = 0;
 
     if (use_setham_packed_cache) {
-        Set_Hamiltonian_CuSolver_SetMP(MP);
+        Set_Hamiltonian_GpuSolver_SetMP(MP);
     }
     if (Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
         set_cuda_default_device_from_local_rank_noncollective();
@@ -1278,10 +1278,10 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
 
         if (use_setham_packed_cache) {
             if (owns_dense) {
-                if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
                     ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is not owned by this rank.");
                 }
-                ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_Overlap(), MP, n, S);
+                ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_Overlap(), MP, n, S);
             }
         }
         else {
@@ -1290,7 +1290,7 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
 
         if (owns_dense) {
 #pragma acc enter data create(ko[0 : n2 + 1])
-            Eigen_cusolver_x_openacc2(S, ko, n, n);
+            Eigen_gpusolver_x_openacc2(S, ko, n, n);
 
 #pragma acc parallel loop present(ko[0 : n2 + 1])
             for (int l = 1; l <= n; l++) {
@@ -1320,16 +1320,16 @@ static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double
 
     if (use_setham_packed_cache) {
         if (owns_dense) {
-            if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+            if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
                 ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is not owned by this rank.");
             }
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(0), MP, n, rHs11);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(1), MP, n, rHs22);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(2), MP, n, rHs12);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_H(3), MP, n, iHs12);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_ImNL(0), MP, n, iHs11);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_ImNL(1), MP, n, iHs22);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_CuSolver_Packed_ImNL(2), MP, n, Cs);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_H(0), MP, n, rHs11);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_H(1), MP, n, rHs22);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_H(2), MP, n, rHs12);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_H(3), MP, n, iHs12);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_ImNL(0), MP, n, iHs11);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_ImNL(1), MP, n, iHs22);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(Set_Hamiltonian_GpuSolver_Packed_ImNL(2), MP, n, Cs);
         }
     }
     else {
@@ -1610,15 +1610,15 @@ double Cluster_DFT_NonCol(
   }
   n2 = 2*n;
 
-  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when CuSOLVER is requested */
-    if (scf_eigen_lib_flag == CuSOLVER && n2 >= GPU_CPU_SWITCH_NUM &&
+  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
+    if (scf_eigen_lib_flag == GPUSOLVER && n2 >= GPU_CPU_SWITCH_NUM &&
         Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
       set_cuda_default_device_from_local_rank_noncollective();
       set_openacc_nvidia_device_from_local_rank_noncollective();
     }
 
   use_cusolver_direct_cluster_dm =
-    (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
+    (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
      strcasecmp(mode,"scf") == 0 &&
      MO_fileout != 1 && xanes_calc != 1 && xanes_gs_fileout != 1 &&
      !cal_partial_charge && !Dos_fileout && !DosGauss_fileout);
@@ -1810,10 +1810,10 @@ double Cluster_DFT_NonCol(
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk,
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
-    else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+    else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
       ClusterNonCol_CuSolver_DenseDsyevx(Cs,Ss,ko,n,n,"Cluster_DFT_NonCol overlap");
     }
-    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
 
@@ -2000,10 +2000,10 @@ double Cluster_DFT_NonCol(
     F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2,
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
-  else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+  else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
     ClusterNonCol_CuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Cluster_DFT_NonCol Hamiltonian");
   }
-  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
 
@@ -2413,7 +2413,7 @@ double Cluster_DFT_NonCol(
     if (use_cusolver_direct_cluster_dm){
 
       if (myid==Host_ID && !cusolver_direct_evec_on_device){
-        ClusterNonCol_AbortWithMessage("CuSOLVER device eigenvectors are not available in Cluster_DFT_NonCol.c.");
+        ClusterNonCol_AbortWithMessage("GPUSOLVER device eigenvectors are not available in Cluster_DFT_NonCol.c.");
       }
 
       time6 += ClusterNonCol_CalcDMRootDense_OpenACC(myid,size_H1,MP,n,n2,MaxN,CDM,iDM[0],EDM,ko,

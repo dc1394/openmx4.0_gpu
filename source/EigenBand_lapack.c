@@ -22,7 +22,7 @@ void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
   else            Eigen_zheevx(A,W,N0,MaxN,ev_flag);
   */
 
-  if (scf_eigen_lib_flag == CuSOLVER && N0 >= GPU_CPU_SWITCH_NUM){
+  if (scf_eigen_lib_flag == GPUSOLVER && N0 >= GPU_CPU_SWITCH_NUM){
       info = cusolver_zheevx(A, W, N0, MaxN, ev_flag);
   } else {
       info = Eigen_zheevx(A, W, N0, MaxN, ev_flag);
@@ -654,7 +654,7 @@ void EigenBand_lapack_openacc(dcomplex* A, double* W, int N0, int MaxN)
     info = cusolver_zheevx_openacc(A, W, N0, MaxN);
 }
 
-void Eigen_cusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax)
+void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax)
 {
     int       info;
     int const n = n0;
@@ -674,7 +674,7 @@ void Eigen_cusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EV
             }
         }
 
-        info = cusolver_Syevdx_Complex_openacc(A, ko, n, EVmax);
+        info = gpusolver_Syevdx_Complex_openacc(A, ko, n, EVmax);
 
 #pragma acc kernels
 #pragma acc loop independent
@@ -713,7 +713,7 @@ int cusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag)
         }
     }
 
-    int info = cusolver_Syevdx_Complex(A0, W, N, MaxN);
+    int info = gpusolver_Syevdx_Complex(A0, W, N, MaxN);
 
     if (ev_flag == 1) {
         for (int i = 1; i <= N; i++) {
@@ -738,7 +738,7 @@ int cusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN)
 {
     int info;
 
-    info = cusolver_Syevdx_Complex_openacc(A, W, N0, MaxN);
+    info = gpusolver_Syevdx_Complex_openacc(A, W, N0, MaxN);
 
 #pragma acc data present(W[0: N0 + 1])
     {

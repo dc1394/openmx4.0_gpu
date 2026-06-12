@@ -2808,7 +2808,7 @@ typedef enum
 {
     ELPA1    = 1,
     ELPA2    = 2,
-    CuSOLVER = 3
+    GPUSOLVER = 3
 } SCF_Eigen_Lib;
 int KrylovH_order,KrylovS_order,recalc_EM,EKC_invS_flag;
 int EC_Sub_Dim,Energy_Decomposition_flag;
@@ -3338,17 +3338,17 @@ double Set_Hamiltonian(char *mode,
 		       double *****H);
 void Set_Hamiltonian_Set_OpenACC_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenACC_Rank_Is_Selected(void);
-void Set_Hamiltonian_Invalidate_CuSolver_HS_Cache(void);
-void Set_Hamiltonian_Build_CuSolver_HS_Cache(int use_contracted);
-void Set_Hamiltonian_CuSolver_SetMP(int *MP);
-int Set_Hamiltonian_CuSolver_Packed_CacheReady(void);
-int Set_Hamiltonian_CuSolver_Packed_OwnsCache(void);
-int Set_Hamiltonian_CuSolver_Packed_OrderMode(void);
-int Set_Hamiltonian_CuSolver_Packed_Size(void);
-int *Set_Hamiltonian_CuSolver_Packed_OrderGA(void);
-double *Set_Hamiltonian_CuSolver_Packed_Overlap(void);
-double *Set_Hamiltonian_CuSolver_Packed_H(int spin);
-double *Set_Hamiltonian_CuSolver_Packed_ImNL(int comp);
+void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
+void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted);
+void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
+int Set_Hamiltonian_GpuSolver_Packed_CacheReady(void);
+int Set_Hamiltonian_GpuSolver_Packed_OwnsCache(void);
+int Set_Hamiltonian_GpuSolver_Packed_OrderMode(void);
+int Set_Hamiltonian_GpuSolver_Packed_Size(void);
+int *Set_Hamiltonian_GpuSolver_Packed_OrderGA(void);
+double *Set_Hamiltonian_GpuSolver_Packed_Overlap(void);
+double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
+double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
 double Total_Energy(int MD_iter, double ECE[]);
@@ -4067,14 +4067,14 @@ void Eigen_lapack3(double *a, double *ko, int n, int EVmax);
 void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag);
 
 /* GPU eigensolver prototypes (added by H.Kawai, February 2024) */
-void Eigen_cusolver_d(double ** a, double * ko, int n, int EVmax);
-void Eigen_cusolver_x_openacc2(double * a, double * ko, int n0, int EVmax);
-void Eigen_cusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax);
-int  cusolver_Syevd(double * A, double * W, int m);
-int  cusolver_Syevdx(double * A, double * W, int m, int MaxN);
-int  cusolver_Syevdx_openacc(double * A, double * W, int m, int MaxN);
-int  cusolver_Syevdx_Complex(dcomplex * A, double * W, int m, int MaxN);
-int  cusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int m, int MaxN);
+void Eigen_gpusolver_d(double ** a, double * ko, int n, int EVmax);
+void Eigen_gpusolver_x_openacc2(double * a, double * ko, int n0, int EVmax);
+void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax);
+int  gpusolver_Syevd(double * A, double * W, int m);
+int  gpusolver_Syevdx(double * A, double * W, int m, int MaxN);
+int  gpusolver_Syevdx_openacc(double * A, double * W, int m, int MaxN);
+int  gpusolver_Syevdx_Complex(dcomplex * A, double * W, int m, int MaxN);
+int  gpusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int m, int MaxN);
 
 #define GPU_CPU_SWITCH_NUM 1000
 #define WAITTIME           (10.0 * 1.0E-6)

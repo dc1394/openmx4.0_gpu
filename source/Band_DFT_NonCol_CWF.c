@@ -21,7 +21,7 @@
 #include <sys/types.h>
 #include "mpi.h"
 #include "openmx_common.h"
-#include "openmx_cusolver_dense_utils.h"
+#include "openmx_gpusolver_dense_utils.h"
 #include "lapack_prototypes.h"
 #include "tran_variables.h"
 #include "set_cuda_default_device_from_local_rank.h"
@@ -381,8 +381,8 @@ double Band_DFT_NonCol_CWF(
   }
   n2 = n*2;
 
-  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when CuSOLVER is requested */
-  if (scf_eigen_lib_flag == CuSOLVER && n2 >= GPU_CPU_SWITCH_NUM) {
+  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
+  if (scf_eigen_lib_flag == GPUSOLVER && n2 >= GPU_CPU_SWITCH_NUM) {
       set_cuda_default_device_from_local_rank();
       set_openacc_nvidia_device_from_local_rank();
   }
@@ -906,16 +906,16 @@ double Band_DFT_NonCol_CWF(
     mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
     mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-    if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=CuSOLVER)){
+    if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=GPUSOLVER)){
       F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
 	( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
 
-    else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
-      OpenMX_CuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,"Band_DFT_NonCol_CWF overlap CuSOLVER");
+    else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+      OpenMX_GpuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,"Band_DFT_NonCol_CWF overlap GPUSOLVER");
     }
 
-    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
       int mpiworld;
@@ -1062,14 +1062,14 @@ double Band_DFT_NonCol_CWF(
       mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
       mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-      if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=CuSOLVER)){
+      if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=GPUSOLVER)){
 	F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
 	  ( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }
-      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
-	OpenMX_CuSolver_DenseZheevx_1based(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol_CWF Hamiltonian CuSOLVER");
+      else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+	OpenMX_GpuSolver_DenseZheevx_1based(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol_CWF Hamiltonian GPUSOLVER");
       }
-      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
 	int mpiworld;
@@ -3519,14 +3519,14 @@ void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char 
             Cs, &na_rows_CWF5, &nblk_CWF5, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }   
 
-      else if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=TNum_CWFs
+      else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=TNum_CWFs
                && na_rows_CWF5==TNum_CWFs && na_cols_CWF5==TNum_CWFs){
-	OpenMX_CuSolver_DenseZheevx_0based(Hs,Cs,&EigenVal[ik][i_perk][0],
+	OpenMX_GpuSolver_DenseZheevx_0based(Hs,Cs,&EigenVal[ik][i_perk][0],
 	                                   TNum_CWFs,TNum_CWFs,
-	                                   "Band_DFT_NonCol_CWF CWF-band Hamiltonian CuSOLVER");
+	                                   "Band_DFT_NonCol_CWF CWF-band Hamiltonian GPUSOLVER");
       }
 
-      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+      else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
   
 #ifndef kcomp
 	int mpiworld;

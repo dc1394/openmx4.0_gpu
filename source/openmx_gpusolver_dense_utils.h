@@ -1,24 +1,24 @@
-#ifndef OPENMX_CUSOLVER_DENSE_UTILS_H
-#define OPENMX_CUSOLVER_DENSE_UTILS_H
+#ifndef OPENMX_GPUSOLVER_DENSE_UTILS_H
+#define OPENMX_GPUSOLVER_DENSE_UTILS_H
 
 #include <stdio.h>
 #include <string.h>
 #include "mpi.h"
 
-static void OpenMX_CuSolver_DenseAbort(const char *where, int info)
+static void OpenMX_GpuSolver_DenseAbort(const char *where, int info)
 {
   fprintf(stderr,"%s failed, info=%d\n",where,info);
   fflush(stderr);
   MPI_Abort(mpi_comm_level1,1);
 }
 
-static void OpenMX_CuSolver_DenseDsyevx_1based(double *A, double *Z, double *W,
+static void OpenMX_GpuSolver_DenseDsyevx_1based(double *A, double *Z, double *W,
                                                int n, int maxn, const char *where)
 {
   int l, copy_cols;
-  int info = cusolver_Syevdx(A,W,n,maxn);
+  int info = gpusolver_Syevdx(A,W,n,maxn);
 
-  if (info!=0) OpenMX_CuSolver_DenseAbort(where,info);
+  if (info!=0) OpenMX_GpuSolver_DenseAbort(where,info);
 
   for (l=maxn; 1<=l; l--) W[l] = W[l-1];
 
@@ -29,13 +29,13 @@ static void OpenMX_CuSolver_DenseDsyevx_1based(double *A, double *Z, double *W,
   }
 }
 
-static void OpenMX_CuSolver_DenseDsyevx_0based(double *A, double *Z, double *W,
+static void OpenMX_GpuSolver_DenseDsyevx_0based(double *A, double *Z, double *W,
                                                int n, int maxn, const char *where)
 {
   int copy_cols;
-  int info = cusolver_Syevdx(A,W,n,maxn);
+  int info = gpusolver_Syevdx(A,W,n,maxn);
 
-  if (info!=0) OpenMX_CuSolver_DenseAbort(where,info);
+  if (info!=0) OpenMX_GpuSolver_DenseAbort(where,info);
 
   if (Z!=NULL && Z!=A){
     copy_cols = maxn;
@@ -44,13 +44,13 @@ static void OpenMX_CuSolver_DenseDsyevx_0based(double *A, double *Z, double *W,
   }
 }
 
-static void OpenMX_CuSolver_DenseZheevx_1based(dcomplex *A, dcomplex *Z, double *W,
+static void OpenMX_GpuSolver_DenseZheevx_1based(dcomplex *A, dcomplex *Z, double *W,
                                                int n, int maxn, const char *where)
 {
   int l, copy_cols;
-  int info = cusolver_Syevdx_Complex(A,W,n,maxn);
+  int info = gpusolver_Syevdx_Complex(A,W,n,maxn);
 
-  if (info!=0) OpenMX_CuSolver_DenseAbort(where,info);
+  if (info!=0) OpenMX_GpuSolver_DenseAbort(where,info);
 
   for (l=maxn; 1<=l; l--) W[l] = W[l-1];
 
@@ -61,13 +61,13 @@ static void OpenMX_CuSolver_DenseZheevx_1based(dcomplex *A, dcomplex *Z, double 
   }
 }
 
-static void OpenMX_CuSolver_DenseZheevx_0based(dcomplex *A, dcomplex *Z, double *W,
+static void OpenMX_GpuSolver_DenseZheevx_0based(dcomplex *A, dcomplex *Z, double *W,
                                                int n, int maxn, const char *where)
 {
   int copy_cols;
-  int info = cusolver_Syevdx_Complex(A,W,n,maxn);
+  int info = gpusolver_Syevdx_Complex(A,W,n,maxn);
 
-  if (info!=0) OpenMX_CuSolver_DenseAbort(where,info);
+  if (info!=0) OpenMX_GpuSolver_DenseAbort(where,info);
 
   if (Z!=NULL && Z!=A){
     copy_cols = maxn;

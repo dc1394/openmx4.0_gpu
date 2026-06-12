@@ -350,12 +350,12 @@ static void BandNonCol_CuSolver_DenseZheevx_Device(dcomplex *A, double *ko, int 
     BandNonCol_CuSolver_ReleaseDeviceWorkspace();
 
     if (info!=0){
-        fprintf(stderr,"%s: cusolver_Syevdx_Complex failed, info=%d\n",where,info);
+        fprintf(stderr,"%s: gpusolver_Syevdx_Complex failed, info=%d\n",where,info);
         fflush(stderr);
         MPI_Abort(mpi_comm_level1,1);
     }
     if (h_meig!=(int64_t)maxn){
-        fprintf(stderr,"%s: cusolver_Syevdx_Complex returned %lld eigenpairs, expected %d\n",
+        fprintf(stderr,"%s: gpusolver_Syevdx_Complex returned %lld eigenpairs, expected %d\n",
                 where,(long long)h_meig,maxn);
         fflush(stderr);
         MPI_Abort(mpi_comm_level1,1);
@@ -404,7 +404,7 @@ static void BandNonCol_CublasZgemm_OpenACC(cublasOperation_t transa, cublasOpera
 
 static int BandNonCol_UseDenseGpuMatrix(int n, int n2)
 {
-    return (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
+    return (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
             na_rows == n && na_cols == n && na_rows2 == n2 && na_cols2 == n2);
 }
 
@@ -578,12 +578,12 @@ static void BandNonCol_CuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double *ko
     wait_cudafunc(cudaStreamSynchronize(w->stream));
 
     if (info!=0){
-        fprintf(stderr,"%s: cusolver_Syevdx_Complex failed, info=%d\n",where,info);
+        fprintf(stderr,"%s: gpusolver_Syevdx_Complex failed, info=%d\n",where,info);
         fflush(stderr);
         MPI_Abort(mpi_comm_level1,1);
     }
     if (h_meig!=(int64_t)maxn){
-        fprintf(stderr,"%s: cusolver_Syevdx_Complex returned %lld eigenpairs, expected %d\n",
+        fprintf(stderr,"%s: gpusolver_Syevdx_Complex returned %lld eigenpairs, expected %d\n",
                 where,(long long)h_meig,maxn);
         fflush(stderr);
         MPI_Abort(mpi_comm_level1,1);
@@ -2309,8 +2309,8 @@ double Band_DFT_NonCol(
   }
   n2 = n*2;
 
-  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when CuSOLVER is requested */
-  if (scf_eigen_lib_flag == CuSOLVER && n2 >= GPU_CPU_SWITCH_NUM &&
+  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
+  if (scf_eigen_lib_flag == GPUSOLVER && n2 >= GPU_CPU_SWITCH_NUM &&
       Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
       set_cuda_default_device_from_local_rank_noncollective();
       set_openacc_nvidia_device_from_local_rank_noncollective();
@@ -2680,8 +2680,8 @@ double Band_DFT_NonCol(
 	  MPI_Allreduce(&num_kloop0, &all_knum, 1, MPI_INT, MPI_PROD, mpi_comm_level1);
 	  MPI_Allreduce(&num_kloop0, &max_num_kloop0, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
 
-	  use_root_dense_cusolver = (scf_eigen_lib_flag==CuSOLVER && all_knum==1 && GPU_CPU_SWITCH_NUM<=n2);
-	  use_k_dense_cusolver = (scf_eigen_lib_flag==CuSOLVER && all_knum!=1 &&
+	  use_root_dense_cusolver = (scf_eigen_lib_flag==GPUSOLVER && all_knum==1 && GPU_CPU_SWITCH_NUM<=n2);
+	  use_k_dense_cusolver = (scf_eigen_lib_flag==GPUSOLVER && all_knum!=1 &&
 	                          GPU_CPU_SWITCH_NUM<=n2 && strcasecmp(mode,"scf")==0);
 	  owns_dense_k_rank = (use_k_dense_cusolver && Set_Hamiltonian_OpenACC_Rank_Is_Selected());
 	  if (use_k_dense_cusolver){
@@ -2989,8 +2989,8 @@ double Band_DFT_NonCol(
     int root_dense_owner;
     int owns_root_dense;
     int use_setham_packed_cache =
-      (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
-       Set_Hamiltonian_CuSolver_Packed_OrderMode()==1);
+      (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
+       Set_Hamiltonian_GpuSolver_Packed_OrderMode()==1);
     int root_s_valid = 0;
     int rebuild_overlap;
     int root_rank;
@@ -3020,20 +3020,20 @@ double Band_DFT_NonCol(
     owns_root_dense = (myid0==root_dense_owner);
 
     if (use_setham_packed_cache){
-      Set_Hamiltonian_CuSolver_SetMP(MP);
+      Set_Hamiltonian_GpuSolver_SetMP(MP);
       if (owns_root_dense){
-        if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache()){
+        if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()){
           BandNonCol_AbortWithMessage("Set_Hamiltonian packed cache is not owned by this rank in Band_DFT_NonCol.c.");
         }
-        packed_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
-        m_olp = Set_Hamiltonian_CuSolver_Packed_Overlap();
-        m_h11 = Set_Hamiltonian_CuSolver_Packed_H(0);
-        m_h22 = Set_Hamiltonian_CuSolver_Packed_H(1);
-        m_h12 = Set_Hamiltonian_CuSolver_Packed_H(2);
-        m_h12i = Set_Hamiltonian_CuSolver_Packed_H(3);
-        m_i11 = Set_Hamiltonian_CuSolver_Packed_ImNL(0);
-        m_i22 = Set_Hamiltonian_CuSolver_Packed_ImNL(1);
-        m_i12 = Set_Hamiltonian_CuSolver_Packed_ImNL(2);
+        packed_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+        m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap();
+        m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(0);
+        m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(1);
+        m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(2);
+        m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(3);
+        m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(0);
+        m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(1);
+        m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(2);
 
         if (packed_order_GA==NULL || m_olp==NULL || m_h11==NULL || m_h22==NULL ||
             m_h12==NULL || m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
@@ -3269,15 +3269,15 @@ double Band_DFT_NonCol(
 	mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
 	mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-	if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+	if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
 	  BandNonCol_CuSolver_DenseZheevx(Cs,Ss,ko,n,n,"Band_DFT_NonCol overlap");
 	}
-	else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=CuSOLVER)){
+	else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=GPUSOLVER)){
 	  F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
 	    ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
 	}
 	
-	else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+	else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
 	  int mpiworld;
@@ -3462,15 +3462,15 @@ double Band_DFT_NonCol(
       mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
       mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-        if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+        if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
           BandNonCol_CuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol Hamiltonian");
         }
-        else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=CuSOLVER)){
+        else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=GPUSOLVER)){
 	  F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
           ( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
 	}
 
-        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
         int mpiworld;
@@ -3874,7 +3874,7 @@ double Band_DFT_NonCol(
 
     if ( strcasecmp(mode,"scf")==0 ){
 
-      if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2){
+      if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2){
         BandNonCol_CalcDMAllK1_OpenACC( myid0,myid2,size_H1,
 					is2,ie2,MP,n,n2,k1,k2,k3,
 					CDM,iDM[0],EDM,EIGEN[0][kloop],
@@ -4122,15 +4122,15 @@ double Band_DFT_NonCol(
 	mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
 	mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-        if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+        if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
           BandNonCol_CuSolver_DenseZheevx(Cs,Ss,ko,n,n,"Band_DFT_NonCol overlap");
         }
-        else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=CuSOLVER)){
+        else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=GPUSOLVER)){
   	  F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
           ( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int );
 	}
 
-        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
           int mpiworld;
@@ -4300,15 +4300,15 @@ double Band_DFT_NonCol(
 	mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
 	mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
   
-        if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+        if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
           BandNonCol_CuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol Hamiltonian");
         }
-        else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=CuSOLVER)){
+        else if (scf_eigen_lib_flag==1 || (numprocs2<5 && scf_eigen_lib_flag!=GPUSOLVER)){
 	  F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
           ( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2, &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
 	}
 
-        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+        else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
           int mpiworld;
@@ -4861,7 +4861,7 @@ static void BandNonCol_ConstructDenseMsFromPacked( int cpx_flag, const double *M
     return;
   }
 
-  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=2*n){
+  if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=2*n){
     BandNonCol_ConstructCache_Ensure(order_GA,MP,n);
     BandNonCol_ConstructDenseMs_OpenACC(cpx_flag,n,k1,k2,k3,M1,Ms);
     return;
@@ -5022,7 +5022,7 @@ static void Construct_Band_DenseMs( int cpx_flag, double ****Mat, double *M1, dc
 
   MPI_Allreduce(MPI_IN_PLACE,&M1[0],tnum,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
 
-  if (owns_dense && scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=2*n){
+  if (owns_dense && scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=2*n){
     BandNonCol_ConstructCache_Ensure(order_GA,MP,n);
     BandNonCol_ConstructDenseMs_OpenACC(cpx_flag,n,k1,k2,k3,M1,Ms);
   }

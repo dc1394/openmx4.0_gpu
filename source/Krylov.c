@@ -118,7 +118,7 @@ static int Krylov_GPU_Enabled(void)
     Keep Krylov's local dense GPU path behind one switch so it is easy to
     fall back to the CPU BLAS/LAPACK path when needed.
   */
-  return KRYLOV_ENABLE_GPU && scf_eigen_lib_flag == CuSOLVER;
+  return KRYLOV_ENABLE_GPU && scf_eigen_lib_flag == GPUSOLVER;
 }
 
 typedef struct {

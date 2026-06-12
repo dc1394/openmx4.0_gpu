@@ -109,7 +109,7 @@ static void Set_Hamiltonian_add_array_bytes(size_t *total, size_t count, size_t 
 
 static int Set_Hamiltonian_OpenACC_Enabled(void)
 {
-    return (scf_eigen_lib_flag == CuSOLVER);
+    return (scf_eigen_lib_flag == GPUSOLVER);
 }
 
 static int Set_Hamiltonian_MatrixElements_OpenACC_Enabled(void)
@@ -298,7 +298,7 @@ static void Set_Hamiltonian_CuSolver_Free_Cache(void)
     memset(cache, 0, sizeof(*cache));
 }
 
-void Set_Hamiltonian_Invalidate_CuSolver_HS_Cache(void)
+void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void)
 {
     Set_Hamiltonian_CuSolver_Free_Cache();
 }
@@ -419,7 +419,7 @@ static void Set_Hamiltonian_CuSolver_GatherMatrixToSelected(double ****mat, doub
     free(local);
 }
 
-void Set_Hamiltonian_CuSolver_SetMP(int *MP)
+void Set_Hamiltonian_GpuSolver_SetMP(int *MP)
 {
     int Anum = 1;
 
@@ -434,7 +434,7 @@ void Set_Hamiltonian_CuSolver_SetMP(int *MP)
     }
 }
 
-void Set_Hamiltonian_Build_CuSolver_HS_Cache(int use_contracted)
+void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted)
 {
     SetHamiltonianCuSolverPackedCache *cache = &Set_Hamiltonian_CuSolver_Cache;
     int myid, numprocs;
@@ -461,7 +461,7 @@ void Set_Hamiltonian_Build_CuSolver_HS_Cache(int use_contracted)
 
     Set_Hamiltonian_CuSolver_Free_Cache();
 
-    if (scf_eigen_lib_flag != CuSOLVER) {
+    if (scf_eigen_lib_flag != GPUSOLVER) {
         return;
     }
 
@@ -582,38 +582,38 @@ void Set_Hamiltonian_Build_CuSolver_HS_Cache(int use_contracted)
     free(selected_roots);
 }
 
-int Set_Hamiltonian_CuSolver_Packed_CacheReady(void)
+int Set_Hamiltonian_GpuSolver_Packed_CacheReady(void)
 {
     return Set_Hamiltonian_CuSolver_Cache.ready;
 }
 
-int Set_Hamiltonian_CuSolver_Packed_OwnsCache(void)
+int Set_Hamiltonian_GpuSolver_Packed_OwnsCache(void)
 {
     SetHamiltonianCuSolverPackedCache *cache = &Set_Hamiltonian_CuSolver_Cache;
     return (cache->ready && cache->owns);
 }
 
-int Set_Hamiltonian_CuSolver_Packed_OrderMode(void)
+int Set_Hamiltonian_GpuSolver_Packed_OrderMode(void)
 {
     return Set_Hamiltonian_CuSolver_Cache.order_mode;
 }
 
-int Set_Hamiltonian_CuSolver_Packed_Size(void)
+int Set_Hamiltonian_GpuSolver_Packed_Size(void)
 {
     return Set_Hamiltonian_CuSolver_Cache.size;
 }
 
-int *Set_Hamiltonian_CuSolver_Packed_OrderGA(void)
+int *Set_Hamiltonian_GpuSolver_Packed_OrderGA(void)
 {
     return Set_Hamiltonian_CuSolver_Cache.order_GA;
 }
 
-double *Set_Hamiltonian_CuSolver_Packed_Overlap(void)
+double *Set_Hamiltonian_GpuSolver_Packed_Overlap(void)
 {
     return Set_Hamiltonian_CuSolver_Cache.overlap;
 }
 
-double *Set_Hamiltonian_CuSolver_Packed_H(int spin)
+double *Set_Hamiltonian_GpuSolver_Packed_H(int spin)
 {
     if (spin < 0 || 4 <= spin) {
         return NULL;
@@ -621,7 +621,7 @@ double *Set_Hamiltonian_CuSolver_Packed_H(int spin)
     return Set_Hamiltonian_CuSolver_Cache.h[spin];
 }
 
-double *Set_Hamiltonian_CuSolver_Packed_ImNL(int comp)
+double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
 {
     if (comp < 0 || 3 <= comp) {
         return NULL;

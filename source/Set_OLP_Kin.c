@@ -43,7 +43,7 @@ void Free2D_dcomplex(dcomplex** buffer);
 
 static int SetOLPKinUseOpenACC(void)
 {
-  return (scf_eigen_lib_flag == CuSOLVER);
+  return (scf_eigen_lib_flag == GPUSOLVER);
 }
 
 

@@ -53,7 +53,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-int32_t cusolver_Syevd(double * A, double * W, int32_t m)
+int32_t gpusolver_Syevd(double * A, double * W, int32_t m)
 {
     int32_t deviceCount;
     wait_cudafunc(cudaGetDeviceCount(&deviceCount));

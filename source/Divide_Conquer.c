@@ -737,8 +737,8 @@ static int DC_CuSolver_EnsureMatrixCapacity(int num)
     ctx->matrix_dim   = 0;
     ctx->loaded_s_dim = 0;
 
-    matrix_bytes = DC_CheckedArrayBytes(DC_CheckedMulCount((size_t)num, (size_t)num, "CuSOLVER dense matrix"),
-                                        sizeof(double), "CuSOLVER dense matrix");
+    matrix_bytes = DC_CheckedArrayBytes(DC_CheckedMulCount((size_t)num, (size_t)num, "GPUSOLVER dense matrix"),
+                                        sizeof(double), "GPUSOLVER dense matrix");
 
     cuda_status = cudaMalloc((void **)&ctx->d_S, matrix_bytes);
     if (cuda_status != cudaSuccess) {
@@ -771,7 +771,7 @@ static int DC_CuSolver_EnsureMatrixCapacity(int num)
         return 0;
     }
     cuda_status = cudaMalloc((void **)&ctx->d_W,
-                             DC_CheckedArrayBytes((size_t)num, sizeof(double), "CuSOLVER eigenvalue buffer"));
+                             DC_CheckedArrayBytes((size_t)num, sizeof(double), "GPUSOLVER eigenvalue buffer"));
     if (cuda_status != cudaSuccess) {
         DC_CuSolver_DisableGemmPathCuda("cudaMalloc(d_W)", cuda_status);
         DC_CuSolver_Destroy();
@@ -1314,7 +1314,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
     int is_scf_mode = (strcasecmp(mode, "scf") == 0);
 
     // Set the device to be used by CUDA and OpenACC
-    if (scf_eigen_lib_flag == CuSOLVER) {
+    if (scf_eigen_lib_flag == GPUSOLVER) {
         // CUDA
         set_cuda_default_device_from_local_rank();
 
@@ -1806,7 +1806,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
 
     MPI_Allreduce(&My_TZ, &TZ, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-    if (scf_eigen_lib_flag == CuSOLVER) {
+    if (scf_eigen_lib_flag == GPUSOLVER) {
         // CUDA
         set_cuda_default_device_from_local_rank();
 
@@ -1908,7 +1908,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
             }
 
             int use_dc_gpu =
-                (scf_eigen_lib_flag == CuSOLVER && !DC_CuSolver_GemmDisabled() && !DC_CuSolver_EigenDisabled() &&
+                (scf_eigen_lib_flag == GPUSOLVER && !DC_CuSolver_GemmDisabled() && !DC_CuSolver_EigenDisabled() &&
                  DC_GPU_Threshold() <= NUM);
             if (SCF_iter <= 2) {
                 memset(S_DC_store, 0, sizeof(double) * (size_t)n2 * (size_t)n2);
@@ -2766,7 +2766,7 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
     int is_scf_mode = (strcasecmp(mode, "scf") == 0);
 
     // Set the device to be used by CUDA and OpenACC
-    if (scf_eigen_lib_flag == CuSOLVER) {
+    if (scf_eigen_lib_flag == GPUSOLVER) {
         // CUDA
         set_cuda_default_device_from_local_rank();
 
@@ -3689,7 +3689,7 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
                    transform Hamiltonian matrix
             ************************************************/
 
-            int use_dc_openacc = (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= 2*NUM);
+            int use_dc_openacc = (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= 2*NUM);
 
             if (use_dc_openacc) {
                 // compiler's bug
@@ -3858,7 +3858,7 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
 
                     NUM1 = 2 * NUM - (P_min - 1);
 
-                    Eigen_cusolver_x_complex_openacc(C, ko, NUM1, NUM1);
+                    Eigen_gpusolver_x_complex_openacc(C, ko, NUM1, NUM1);
 
                     // dtime(&timeE);
                     // printf("timeD = %.3f\n", timeE - timeD);

@@ -905,7 +905,7 @@ static dcomplex *BandCol_CuSolver_SaveDeviceEigenvectors(dcomplex *evec_device, 
     size_t              matrix_count;
 
     if (evec_device == NULL) {
-        BandCol_AbortWithMessage("CuSOLVER device eigenvectors are not available in Band_DFT_Col.c.");
+        BandCol_AbortWithMessage("GPUSOLVER device eigenvectors are not available in Band_DFT_Col.c.");
     }
 
     matrix_count = (size_t)n * (size_t)n;
@@ -937,7 +937,7 @@ static dcomplex *BandCol_CuSolver_UploadHostEigenvectors(int n)
         BandCol_AbortWithMessage("Invalid eigenvector dimension in Band_DFT_Col.c.");
     }
     if (ctx->h_evec == NULL || ctx->h_evec_dim < n) {
-        BandCol_AbortWithMessage("CuSOLVER host eigenvectors are not available in Band_DFT_Col.c.");
+        BandCol_AbortWithMessage("GPUSOLVER host eigenvectors are not available in Band_DFT_Col.c.");
     }
 
     matrix_count = (size_t)n * (size_t)n;
@@ -1237,7 +1237,7 @@ static void BandCol_CuSolver_EigenHost(dcomplex *A, double *ko, int n, int maxn)
 {
     int info;
 
-    info = cusolver_Syevdx_Complex(A, ko, n, maxn);
+    info = gpusolver_Syevdx_Complex(A, ko, n, maxn);
 
     for (int i = maxn; i >= 1; i--) {
         ko[i] = ko[i - 1];
@@ -1602,7 +1602,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         if (max_tno < tnoA)
             max_tno = tnoA;
     }
-    use_cusolver_dense = (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n);
+    use_cusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n);
 
     /****************************************************
      find TZ
@@ -2002,14 +2002,14 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     owns_dense_k_rank = (use_cusolver_dense && Set_Hamiltonian_OpenACC_Rank_Is_Selected());
     owns_global_dense_rank = (all_knum == 1 && owns_dense_k_rank);
     use_setham_packed_cache =
-        (use_cusolver_dense && all_knum == 1 && Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
-         Set_Hamiltonian_CuSolver_Packed_OrderMode() == 0);
+        (use_cusolver_dense && all_knum == 1 && Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
+         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 0);
     if (use_setham_packed_cache) {
-        size_H1 = Set_Hamiltonian_CuSolver_Packed_Size();
-        Set_Hamiltonian_CuSolver_SetMP(MP);
-        if (Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
-            setham_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
-            setham_S1 = Set_Hamiltonian_CuSolver_Packed_Overlap();
+        size_H1 = Set_Hamiltonian_GpuSolver_Packed_Size();
+        Set_Hamiltonian_GpuSolver_SetMP(MP);
+        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
+            setham_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+            setham_S1 = Set_Hamiltonian_GpuSolver_Packed_Overlap();
         }
     }
 
@@ -2067,7 +2067,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
 
     if (all_knum != 1 && use_cusolver_dense) {
         if (n != na_cols || n != na_rows) {
-            BandCol_AbortWithMessage("CuSOLVER band path requires full dense matrices in Band_DFT_Col.c.");
+            BandCol_AbortWithMessage("GPUSOLVER band path requires full dense matrices in Band_DFT_Col.c.");
         }
     } else if (!use_cusolver_dense) {
         MPI_Comm_split(MPI_CommWD2[myworld2], my_pcol, my_prow, &mpi_comm_rows);
@@ -2266,7 +2266,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     /* set S1 */
 
     if (use_setham_packed_cache) {
-        if (Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
+        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
             if (setham_order_GA == NULL || setham_S1 == NULL) {
                 BandCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Band_DFT_Col.c.");
             }
@@ -2285,8 +2285,8 @@ diagonalize1:
     if (use_setham_packed_cache) {
         int cache_spin = (SpinP_switch == 0) ? 0 : spin;
 
-        if (Set_Hamiltonian_CuSolver_Packed_OwnsCache()) {
-            setham_H1 = Set_Hamiltonian_CuSolver_Packed_H(cache_spin);
+        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
+            setham_H1 = Set_Hamiltonian_GpuSolver_Packed_H(cache_spin);
             if (setham_H1 == NULL) {
                 BandCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Band_DFT_Col.c.");
             }
@@ -2564,7 +2564,7 @@ diagonalize1:
                     if (scf_eigen_lib_flag == 1) {
                         F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                         (&n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                    } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
+                    } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == GPUSOLVER) {
 
 #ifndef kcomp
                         int mpiworld;
@@ -2696,7 +2696,7 @@ diagonalize1:
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
+                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == GPUSOLVER) {
 
 #ifndef kcomp
                     int mpiworld;
@@ -3694,7 +3694,7 @@ diagonalize1:
                     ****************************************************/
 
                     if (n != na_rows_max || n != na_cols_max) {
-                        BandCol_AbortWithMessage("CuSOLVER DM path requires full dense matrices in Band_DFT_Col.c.");
+                        BandCol_AbortWithMessage("GPUSOLVER DM path requires full dense matrices in Band_DFT_Col.c.");
                     }
 
                     if (measure_time)
@@ -3813,7 +3813,7 @@ diagonalize1:
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
+                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == GPUSOLVER) {
 
 #ifndef kcomp
                     int mpiworld;
@@ -3906,7 +3906,7 @@ diagonalize1:
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
-                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == CuSOLVER) {
+                } else if (scf_eigen_lib_flag == 2 || scf_eigen_lib_flag == GPUSOLVER) {
 
 #ifndef kcomp
                     int mpiworld;
@@ -4439,7 +4439,7 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
                          double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n, int owns_global_dense_rank)
 {
     const int need_s = (SCF_iter == 1 || all_knum != 1);
-    const int use_cusolver_dense = (scf_eigen_lib_flag == CuSOLVER && GPU_CPU_SWITCH_NUM <= n);
+    const int use_cusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n);
     const int dense_cusolver_owner =
         (use_cusolver_dense &&
          ((all_knum == 1 && owns_global_dense_rank) ||

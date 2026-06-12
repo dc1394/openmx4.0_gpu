@@ -724,7 +724,7 @@ double Force(double***** H0,
     double***** Force5_source = NULL;
     size_t* gpu_atom_terms = NULL;
     size_t gpu_total_terms;
-    const int use_force_openacc = (scf_eigen_lib_flag == CuSOLVER);
+    const int use_force_openacc = (scf_eigen_lib_flag == GPUSOLVER);
     const int use_force4_openacc = (use_force_openacc
         && F_VNA_flag == 1
         && (ProExpn_VNA == 0 || ProExpn_VNA == 1));
@@ -5588,7 +5588,7 @@ void Force4B(double***** CDM0)
     /*
      * The OpenACC Force4B path packs host-side dHVNA products into large
      * temporary arrays and copies them to the device for a scalar reduction.
-     * In DC-LNO/CuSOLVER runs many MPI ranks can share one GPU while CuSOLVER
+     * In DC-LNO/GPUSOLVER runs many MPI ranks can share one GPU while GPUSOLVER
      * still owns most device memory, so these transient copies can exhaust
      * device memory.  Keep Force4B on the CPU trace path, which avoids those
      * device buffers and matches the original contraction.

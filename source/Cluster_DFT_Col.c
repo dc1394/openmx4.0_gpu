@@ -457,8 +457,8 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
     int spin_end = SpinP_switch;
     int rebuild_s = (SCF_iter==1);
     int use_setham_packed_cache =
-        (Set_Hamiltonian_CuSolver_Packed_CacheReady() &&
-         Set_Hamiltonian_CuSolver_Packed_OrderMode() == 0);
+        (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
+         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 0);
     double *C = NULL;
 
     if (SpinP_switch==1 && numprocs0!=1){
@@ -467,7 +467,7 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
     }
 
     if (use_setham_packed_cache) {
-        Set_Hamiltonian_CuSolver_SetMP(MP);
+        Set_Hamiltonian_GpuSolver_SetMP(MP);
     }
 
     if (owns_dense){
@@ -487,12 +487,12 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
     if (rebuild_s){
         if (use_setham_packed_cache) {
             if (owns_dense) {
-                int tnum = Set_Hamiltonian_CuSolver_Packed_Size();
-                int *cache_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
-                double *cache_S = Set_Hamiltonian_CuSolver_Packed_Overlap();
+                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
+                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+                double *cache_S = Set_Hamiltonian_GpuSolver_Packed_Overlap();
                 int *dense_index = NULL;
 
-                if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_S == NULL) {
+                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_S == NULL) {
                     ClusterCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Cluster_DFT_Col.c.");
                 }
                 dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"packed overlap dense_index");
@@ -513,12 +513,12 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
     for (int spin=spin_start; spin<=spin_end; spin++){
         if (use_setham_packed_cache) {
             if (owns_dense) {
-                int tnum = Set_Hamiltonian_CuSolver_Packed_Size();
-                int *cache_order_GA = Set_Hamiltonian_CuSolver_Packed_OrderGA();
-                double *cache_H = Set_Hamiltonian_CuSolver_Packed_H(spin);
+                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
+                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+                double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(spin);
                 int *dense_index = NULL;
 
-                if (!Set_Hamiltonian_CuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
+                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
                     ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
                 }
                 dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"packed Hamiltonian dense_index");
@@ -575,7 +575,7 @@ static void ClusterCol_CuSolverDensePath(
     (void)SCF_iter;
 
     if (n <= 0 || MaxN <= 0 || MaxN > n) {
-        ClusterCol_AbortWithMessage("Invalid CuSOLVER dense dimensions in Cluster_DFT_Col.c.");
+        ClusterCol_AbortWithMessage("Invalid GPUSOLVER dense dimensions in Cluster_DFT_Col.c.");
     }
 
     if (Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
@@ -583,15 +583,15 @@ static void ClusterCol_CuSolverDensePath(
         set_openacc_nvidia_device_from_local_rank_noncollective();
     }
 
-    dense_count = ClusterCol_CheckedMulCount((size_t)n, (size_t)n, "CuSOLVER dense matrix");
-    S   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER overlap matrix");
-    H   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER Hamiltonian matrix");
-    tmp = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER temporary matrix");
-    A   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER transformed Hamiltonian");
-    C   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "CuSOLVER transformed eigenvectors");
+    dense_count = ClusterCol_CheckedMulCount((size_t)n, (size_t)n, "GPUSOLVER dense matrix");
+    S   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "GPUSOLVER overlap matrix");
+    H   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "GPUSOLVER Hamiltonian matrix");
+    tmp = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "GPUSOLVER temporary matrix");
+    A   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "GPUSOLVER transformed Hamiltonian");
+    C   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "GPUSOLVER transformed eigenvectors");
 
     Patch2Full_Cluster(CntOLP, S, MP);
-    ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(overlap)", cusolver_Syevdx(S, ko[0], n, n));
+    ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(overlap)", gpusolver_Syevdx(S, ko[0], n, n));
 
     for (l = n; 1 <= l; l--) {
         ko[0][l] = ko[0][l - 1];
@@ -633,7 +633,7 @@ static void ClusterCol_CuSolverDensePath(
         F77_NAME(dgemm, DGEMM)("N", "N", &n, &n, &n, &alpha, H, &n, S, &n, &beta, tmp, &n);
         F77_NAME(dgemm, DGEMM)("T", "N", &n, &n, &n, &alpha, S, &n, tmp, &n, &beta, A, &n);
 
-        ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(Hamiltonian)", cusolver_Syevdx(A, ko[spin], n, MaxN));
+        ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(Hamiltonian)", gpusolver_Syevdx(A, ko[spin], n, MaxN));
 
         for (l = MaxN; 1 <= l; l--) {
             ko[spin][l] = ko[spin][l - 1];
@@ -916,8 +916,8 @@ double Cluster_DFT_Col(
   }
   n2 = n + 2;
 
-  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when CuSOLVER is requested */
-  if (scf_eigen_lib_flag == CuSOLVER && n >= GPU_CPU_SWITCH_NUM &&
+  /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
+  if (scf_eigen_lib_flag == GPUSOLVER && n >= GPU_CPU_SWITCH_NUM &&
       Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
       set_cuda_default_device_from_local_rank_noncollective();
       set_openacc_nvidia_device_from_local_rank_noncollective();
@@ -998,7 +998,7 @@ double Cluster_DFT_Col(
     }
   }
 
-  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n){
+  if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n){
     ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
     firsttime = 0;
     ClusterCol_CuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
@@ -1042,7 +1042,7 @@ double Cluster_DFT_Col(
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)(&n, &n, Cs, &na_rows, &ko[0][1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
     }
 
-    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+    else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
 
@@ -1223,7 +1223,7 @@ double Cluster_DFT_Col(
   }
   firsttime=0;
 
-  if (scf_eigen_lib_flag==CuSOLVER && GPU_CPU_SWITCH_NUM<=n &&
+  if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n &&
       !(SpinP_switch==1 && numprocs0!=1)){
     ClusterCol_CuSolverDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
                                  numprocs0,myworld1,myid1,MP,is2,ie2,
@@ -1281,7 +1281,7 @@ double Cluster_DFT_Col(
     F77_NAME(solve_evp_real,SOLVE_EVP_REAL)(&n, &MaxN, Hs, &na_rows, &ko[spin][1], Cs, 
                                             &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
   }
-  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==CuSOLVER){
+  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
 #ifndef kcomp
     int mpiworld;
