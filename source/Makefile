@@ -151,10 +151,10 @@ LIB= $(FFTW3_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm
 
 GEMMUL8_REPO_URL ?= https://github.com/RIKEN-RCCS/GEMMul8.git
 GEMMUL8_REPO_DIR ?= third_party/GEMMul8
-# gemmul8_openmx.cu depends on the old nested-repo layout; newer upstream
-# commits restructured the repository, so the checkout must stay pinned.
-GEMMUL8_COMMIT   ?= 3115e709de0786e4cd8206753c44d71d309a6da3
-GEMMUL8_DIR      ?= $(GEMMUL8_REPO_DIR)/GEMMul8
+# gemmul8_openmx.cu instantiates GEMMul8 internals directly, so the
+# checkout must stay pinned to a commit whose internal layout it matches.
+GEMMUL8_COMMIT   ?= 884a28750f28ae39a20475db8c2ebe4130b4d4ef
+GEMMUL8_DIR      ?= $(GEMMUL8_REPO_DIR)
 GEMMUL8_LIB      ?= $(GEMMUL8_DIR)/lib/libgemmul8.a
 GEMMUL8_OPENMX_OBJ ?= $(GEMMUL8_DIR)/src/gemmul8_openmx.o
 GEMMUL8_CUDA_PATH ?= $(NVHPC_CUDA_HOME)
@@ -168,7 +168,7 @@ endif
 NVCC ?= $(GEMMUL8_CUDA_PATH)/bin/nvcc
 NVCC_HOST ?= $(NVHPC_COMPILER_BIN)/nvc++
 NVCC_GEMMUL8_ENV = PATH="$(PATH)" CUDA_HOME="$(NVHPC_CUDA_HOME)" CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= NVCC_PREPEND_FLAGS= NVCC_APPEND_FLAGS=
-NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
+NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(GEMMUL8_BUILD_GPU_ARCH) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
 LIB += -lcublasLt -lcuda -lnvidia-ml -lstdc++
 
 CFLAGS  = -g 
