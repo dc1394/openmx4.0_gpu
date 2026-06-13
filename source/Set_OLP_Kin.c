@@ -47,6 +47,83 @@ static int SetOLPKinUseOpenACC(void)
   return (scf_eigen_lib_flag == GPUSOLVER);
 }
 
+static int SetOLPKinRadialGpuEnabled(void)
+{
+  /* The per-pair OpenACC offload of the radial integration is dominated by
+     data-region setup and transfers (~1.2 s vs ~0.3 s on the CPU for the
+     sidia333 benchmark), so it is opt-in via OPENMX_OLPKIN_RADIAL_GPU=1. */
+  const char *value = getenv("OPENMX_OLPKIN_RADIAL_GPU");
+
+  return (value != NULL && atoi(value) != 0);
+}
+
+/* Spherical-Bessel table cache keyed on the exact pair distance r. In
+   crystalline systems many pairs share the same r bit pattern, and the
+   tables depend only on (r, Lmax, k-grid), so a hit reproduces the computed
+   values exactly. Misses just compute as before; the cache never needs
+   geometry invalidation because the key is the exact input. Used only when
+   OpenMP runs single-threaded (plain static storage). */
+#define OLPKIN_BESSEL_CACHE_MAX 1024
+
+static double *OLPKin_bessel_keys = NULL;
+static int *OLPKin_bessel_key_lmax = NULL;
+static double *OLPKin_bessel_tab = NULL;
+static int OLPKin_bessel_count = 0;
+static int OLPKin_bessel_cap = 0;
+static int OLPKin_bessel_lmax = -1;
+static int OLPKin_bessel_gdim = 0;
+static long OLPKin_bessel_hits = 0;
+static long OLPKin_bessel_misses = 0;
+
+static size_t OLPKin_Bessel_Stride(void)
+{
+  return 2u * (size_t)(OLPKin_bessel_lmax + 1) * (size_t)OLPKin_bessel_gdim;
+}
+
+static const double *OLPKin_Bessel_Lookup(double r, int lmax)
+{
+  int i;
+
+  for (i = 0; i < OLPKin_bessel_count; i++) {
+    if (OLPKin_bessel_keys[i] == r && OLPKin_bessel_key_lmax[i] == lmax) {
+      OLPKin_bessel_hits++;
+      return OLPKin_bessel_tab + (size_t)i * OLPKin_Bessel_Stride();
+    }
+  }
+  OLPKin_bessel_misses++;
+  return NULL;
+}
+
+static double *OLPKin_Bessel_Insert(double r, int lmax)
+{
+  if (OLPKin_bessel_count >= OLPKIN_BESSEL_CACHE_MAX) {
+    return NULL;
+  }
+
+  if (OLPKin_bessel_count >= OLPKin_bessel_cap) {
+    int new_cap = (OLPKin_bessel_cap == 0) ? 64 : 2 * OLPKin_bessel_cap;
+    double *new_keys;
+    int *new_lmax;
+    double *new_tab;
+
+    if (new_cap > OLPKIN_BESSEL_CACHE_MAX) new_cap = OLPKIN_BESSEL_CACHE_MAX;
+    new_keys = (double*)realloc(OLPKin_bessel_keys, sizeof(double) * (size_t)new_cap);
+    new_lmax = (int*)realloc(OLPKin_bessel_key_lmax, sizeof(int) * (size_t)new_cap);
+    new_tab = (double*)realloc(OLPKin_bessel_tab, sizeof(double) * (size_t)new_cap * OLPKin_Bessel_Stride());
+    if (new_keys != NULL) OLPKin_bessel_keys = new_keys;
+    if (new_lmax != NULL) OLPKin_bessel_key_lmax = new_lmax;
+    if (new_tab != NULL) OLPKin_bessel_tab = new_tab;
+    if (new_keys == NULL || new_lmax == NULL || new_tab == NULL) {
+      return NULL;
+    }
+    OLPKin_bessel_cap = new_cap;
+  }
+
+  OLPKin_bessel_keys[OLPKin_bessel_count] = r;
+  OLPKin_bessel_key_lmax[OLPKin_bessel_count] = lmax;
+  return OLPKin_bessel_tab + (size_t)(OLPKin_bessel_count++) * OLPKin_Bessel_Stride();
+}
+
 /* Runtime phase profiling gated by OPENMX_BAND_PROFILE=1 (one OLPKPROF line
    per rank on stderr; zero overhead when the variable is unset). */
 typedef struct
@@ -160,6 +237,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    int num0,num1;
 	    int grid_dim,max_Lmax_Four_Int;
 	    int use_openacc_radial;
+	    int use_bessel_cache;
 	    int cached_Cwan,cached_Hwan;
 	    int combo_cached_Cwan,combo_cached_Hwan;
 	    int max_combo_count,combo_count,combo,grid_last;
@@ -278,7 +356,17 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    OMPID = omp_get_thread_num();
 	    Nthrds = omp_get_num_threads();
 	    Nprocs = omp_get_num_procs();
-	    use_openacc_radial = (SetOLPKinUseOpenACC() && Nthrds==1);
+	    use_openacc_radial = (SetOLPKinRadialGpuEnabled() && SetOLPKinUseOpenACC() && Nthrds==1);
+	    use_bessel_cache = (Nthrds==1);
+	    if (use_bessel_cache) {
+	      if (OLPKin_bessel_lmax < 0) {
+	        OLPKin_bessel_lmax = max_Lmax_Four_Int;
+	        OLPKin_bessel_gdim = grid_dim;
+	      }
+	      if (OLPKin_bessel_lmax != max_Lmax_Four_Int || OLPKin_bessel_gdim != grid_dim) {
+	        use_bessel_cache = 0;
+	      }
+	    }
 
     /* one-dimensionalized loop */
 
@@ -390,14 +478,41 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
       h = (kmax - kmin)/(double)OneD_Grid;
 
-	      for (i=0; i<grid_dim; i++){
-	        Normk = Normk_grid[i];
-	        Spherical_Bessel(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-	        for(l=0; l<=Lmax_Four_Int; l++){
-          SphB[l][i]  = tmp_SphB[l];
-          SphBp[l][i] = tmp_SphBp[l];
-	}
-      }
+	      if (use_bessel_cache) {
+	        const double *hit = OLPKin_Bessel_Lookup(r, Lmax_Four_Int);
+
+	        if (hit != NULL) {
+	          for (l=0; l<=Lmax_Four_Int; l++){
+	            memcpy(SphB[l],  hit + (size_t)l*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
+	            memcpy(SphBp[l], hit + (size_t)(OLPKin_bessel_lmax+1+l)*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
+	          }
+	        } else {
+	          double *slot = OLPKin_Bessel_Insert(r, Lmax_Four_Int);
+
+	          for (i=0; i<grid_dim; i++){
+	            Spherical_Bessel(Normk_grid[i]*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
+	            for(l=0; l<=Lmax_Four_Int; l++){
+	              SphB[l][i]  = tmp_SphB[l];
+	              SphBp[l][i] = tmp_SphBp[l];
+	            }
+	            if (slot != NULL) {
+	              for(l=0; l<=Lmax_Four_Int; l++){
+	                slot[(size_t)l*(size_t)grid_dim + (size_t)i] = tmp_SphB[l];
+	                slot[(size_t)(OLPKin_bessel_lmax+1+l)*(size_t)grid_dim + (size_t)i] = tmp_SphBp[l];
+	              }
+	            }
+	          }
+	        }
+	      } else {
+	        for (i=0; i<grid_dim; i++){
+	          Normk = Normk_grid[i];
+	          Spherical_Bessel(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
+	          for(l=0; l<=Lmax_Four_Int; l++){
+	            SphB[l][i]  = tmp_SphB[l];
+	            SphBp[l][i] = tmp_SphBp[l];
+	          }
+	        }
+	      }
 
 	      free(tmp_SphB);
 	      free(tmp_SphBp);
@@ -1054,8 +1169,9 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
   ****************************************************/
 
   if (SetOLP_ProfileEnabled()) {
-    fprintf(stderr, "OLPKPROF id=%d pairs=%d bessel=%.3f radial=%.3f gaunt=%.3f c2r=%.3f\n", myid, OneD_Nloop,
-            SetOLP_prof.bessel, SetOLP_prof.radial, SetOLP_prof.gaunt, SetOLP_prof.c2r);
+    fprintf(stderr, "OLPKPROF id=%d pairs=%d bessel=%.3f radial=%.3f gaunt=%.3f c2r=%.3f bhit=%ld bmiss=%ld\n", myid,
+            OneD_Nloop, SetOLP_prof.bessel, SetOLP_prof.radial, SetOLP_prof.gaunt, SetOLP_prof.c2r,
+            OLPKin_bessel_hits, OLPKin_bessel_misses);
     memset(&SetOLP_prof, 0, sizeof(SetOLP_prof));
   }
 

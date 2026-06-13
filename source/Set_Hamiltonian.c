@@ -272,6 +272,20 @@ static int Set_Hamiltonian_Base_Use_OpenACC(int SCF_iter, int myid)
     size_t required_bytes;
     int memory_ok;
 
+    /* The packed base add costs more in packing and transfers than the
+       trivial CPU loop (measured 10 ms vs 2 ms per iteration), so the GPU
+       path is opt-in via OPENMX_SETHAM_BASE_GPU=1. The early return also
+       skips the per-iteration MPI communicator splits in
+       Set_Hamiltonian_DeviceMemoryOK; it is taken uniformly on all ranks
+       because the environment is identical across them. */
+    {
+        const char *value = getenv("OPENMX_SETHAM_BASE_GPU");
+
+        if (value == NULL || atoi(value) == 0) {
+            return 0;
+        }
+    }
+
     if (!Set_Hamiltonian_OpenACC_Enabled()) {
         return 0;
     }
@@ -1452,6 +1466,73 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenACC(int Cnt_kind)
     free(pair_Mc_AN);
 }
 
+#define SETH_ME_BLK 16
+#define SETH_ME_MAXNO 16
+
+/* Blocked spin-unpolarized quadrature for one (Mc_AN,h_AN) pair: grid points
+   are staged in panels of SETH_ME_BLK and the NO0xNO1 accumulator block stays
+   L1-resident for the whole pair, instead of re-storing all NO0*NO1 partial
+   sums for every grid point as the generic loop below does. The j dimension
+   is padded to SETH_ME_MAXNO so the inner update vectorizes with full-width
+   FMAs. Only the summation order differs from the generic path. */
+static void Set_Hamiltonian_ME_Pair_Blocked_Spin0(int Mc_AN, int h_AN, int Mh_AN, int Gh_AN_is_local, int NO0, int NO1,
+                                                  int NOLG, double *restrict acc)
+{
+    const int *restrict nc_list = GListTAtoms1[Mc_AN][h_AN];
+    const int *restrict nh_list = GListTAtoms2[Mc_AN][h_AN];
+    const int *restrict mgrid   = MGridListAtom[Mc_AN];
+    const double *restrict vpot = Vpot_Grid[0];
+    Type_Orbs_Grid **restrict og_c = Orbs_Grid[Mc_AN];
+    Type_Orbs_Grid **restrict og_h = Gh_AN_is_local ? Orbs_Grid[Mh_AN] : NULL;
+    Type_Orbs_Grid **restrict og_f = Gh_AN_is_local ? NULL : Orbs_Grid_FNAN[Mc_AN][h_AN];
+    double w[SETH_ME_BLK][SETH_ME_MAXNO];
+    double p1[SETH_ME_BLK][SETH_ME_MAXNO];
+    int    Nog0, g, i, j;
+
+    for (i = 0; i < NO0 * SETH_ME_MAXNO; i++) {
+        acc[i] = 0.0;
+    }
+
+    for (g = 0; g < SETH_ME_BLK; g++) {
+        for (j = NO1; j < SETH_ME_MAXNO; j++) {
+            p1[g][j] = 0.0;
+        }
+    }
+
+    for (Nog0 = 0; Nog0 < NOLG; Nog0 += SETH_ME_BLK) {
+        const int blk = (NOLG - Nog0 < SETH_ME_BLK) ? (NOLG - Nog0) : SETH_ME_BLK;
+
+        for (g = 0; g < blk; g++) {
+            const int Nog = Nog0 + g;
+            const int Nc  = nc_list[Nog];
+            const Type_Orbs_Grid *restrict orbs0 = og_c[Nc];
+            const Type_Orbs_Grid *restrict orbs1 = og_h ? og_h[nh_list[Nog]] : og_f[Nog];
+            const double v = GridVol * vpot[mgrid[Nc]];
+
+            for (i = 0; i < NO0; i++) {
+                w[g][i] = v * (double)orbs0[i];
+            }
+            for (j = 0; j < NO1; j++) {
+                p1[g][j] = (double)orbs1[j];
+            }
+        }
+
+        for (g = 0; g < blk; g++) {
+            const double *restrict p1g = p1[g];
+            const double *restrict wg  = w[g];
+
+            for (i = 0; i < NO0; i++) {
+                const double a = wg[i];
+                double *restrict accrow = &acc[i * SETH_ME_MAXNO];
+
+                for (j = 0; j < SETH_ME_MAXNO; j++) {
+                    accrow[j] += a * p1g[j];
+                }
+            }
+        }
+    }
+}
+
 static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
 {
     int    Mc_AN, Gc_AN, Mh_AN, h_AN, Gh_AN;
@@ -1630,7 +1711,27 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
             /* quadrature for Hij  */
 
             /* AITUNE change order of loop */
-            if (SpinP_switch == 0) {
+            if (SpinP_switch == 0 && NO0 <= SETH_ME_MAXNO && NO1 <= SETH_ME_MAXNO) {
+                double acc[SETH_ME_MAXNO * SETH_ME_MAXNO] __attribute__((aligned(64)));
+                int    i, j;
+
+                Set_Hamiltonian_ME_Pair_Blocked_Spin0(Mc_AN, h_AN, Mh_AN, Gh_AN_is_local, NO0, NO1, NOLG, acc);
+
+                if (Cnt_kind == 0) {
+                    for (i = 0; i < NO0; i++) {
+                        for (j = 0; j < NO1; j++) {
+                            H[0][Mc_AN][h_AN][i][j] += acc[i * SETH_ME_MAXNO + j];
+                        }
+                    }
+                } else {
+                    for (i = 0; i < NO0; i++) {
+                        for (j = 0; j < NO1; j++) {
+                            CntH[0][Mc_AN][h_AN][i][j] += acc[i * SETH_ME_MAXNO + j];
+                        }
+                    }
+                }
+
+            } else if (SpinP_switch == 0) {
                 /* AITUNE temporary buffer for "unroll-Jammed" HLO optimization by Intel */
 
                 if (Cnt_kind == 0) {
