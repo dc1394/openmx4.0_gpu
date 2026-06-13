@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 #include <time.h>
 #include "openmx_common.h"
 #include "mpi.h"
@@ -44,6 +45,29 @@ void Free2D_dcomplex(dcomplex** buffer);
 static int SetOLPKinUseOpenACC(void)
 {
   return (scf_eigen_lib_flag == GPUSOLVER);
+}
+
+/* Runtime phase profiling gated by OPENMX_BAND_PROFILE=1 (one OLPKPROF line
+   per rank on stderr; zero overhead when the variable is unset). */
+typedef struct
+{
+  double bessel;
+  double radial;
+  double gaunt;
+  double c2r;
+} SetOLPKinProfileCounters;
+
+static SetOLPKinProfileCounters SetOLP_prof = {0};
+
+static int SetOLP_ProfileEnabled(void)
+{
+  static int enabled = -1;
+
+  if (enabled < 0) {
+    const char *value = getenv("OPENMX_BAND_PROFILE");
+    enabled = (value != NULL && atoi(value) != 0);
+  }
+  return enabled;
 }
 
 
@@ -187,6 +211,9 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    dcomplex **CmatKt;
 	    dcomplex **CmatKp;
 	    size_t rf_cache_elems,sum_cache_elems;
+	    double prof_t0_local = 0.0, prof_t1_local = 0.0;
+	    double prof_bessel = 0.0, prof_radial = 0.0, prof_gaunt = 0.0, prof_c2r = 0.0;
+	    const int prof_enabled = SetOLP_ProfileEnabled();
 
     /****************************************************************
                           allocation of arrays:
@@ -340,6 +367,8 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 	      /* allocate SphB and SphBp */
 
+	      if (prof_enabled) dtime(&prof_t0_local);
+
 	      SphB = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
 	      SphB[0] = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3)*grid_dim);
 	      SphB_flat = SphB[0];
@@ -372,6 +401,12 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 	      free(tmp_SphB);
 	      free(tmp_SphBp);
+
+	      if (prof_enabled) {
+	        dtime(&prof_t1_local);
+	        prof_bessel += prof_t1_local - prof_t0_local;
+	        dtime(&prof_t0_local);
+	      }
 
 	      if (cached_Cwan!=Cwan){
 	        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
@@ -529,6 +564,12 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 		}
 	      }
 
+	      if (prof_enabled) {
+	        dtime(&prof_t1_local);
+	        prof_radial += prof_t1_local - prof_t0_local;
+	        dtime(&prof_t0_local);
+	      }
+
 	      /* l loop */
 
 	      for(l=0; l<=Lmax_Four_Int; l++){
@@ -663,6 +704,12 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 	      free(SphBp[0]);
 	      free(SphBp);
+
+      if (prof_enabled) {
+        dtime(&prof_t1_local);
+        prof_gaunt += prof_t1_local - prof_t0_local;
+        dtime(&prof_t0_local);
+      }
 
       /****************************************************
                          Complex to Real
@@ -941,9 +988,25 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	}
       }
 
+      if (prof_enabled) {
+        dtime(&prof_t1_local);
+        prof_c2r += prof_t1_local - prof_t0_local;
+      }
+
       dtime(&Etime_atom);
       time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
     } /* end of loop for Nloop */
+
+    if (prof_enabled) {
+#pragma omp atomic
+      SetOLP_prof.bessel += prof_bessel;
+#pragma omp atomic
+      SetOLP_prof.radial += prof_radial;
+#pragma omp atomic
+      SetOLP_prof.gaunt += prof_gaunt;
+#pragma omp atomic
+      SetOLP_prof.c2r += prof_c2r;
+    }
 
 
     /* freeing of arrays */
@@ -989,6 +1052,12 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
   /****************************************************
                    freeing of arrays:
   ****************************************************/
+
+  if (SetOLP_ProfileEnabled()) {
+    fprintf(stderr, "OLPKPROF id=%d pairs=%d bessel=%.3f radial=%.3f gaunt=%.3f c2r=%.3f\n", myid, OneD_Nloop,
+            SetOLP_prof.bessel, SetOLP_prof.radial, SetOLP_prof.gaunt, SetOLP_prof.c2r);
+    memset(&SetOLP_prof, 0, sizeof(SetOLP_prof));
+  }
 
   free(OneD2h_AN);
   free(OneD2Mc_AN);

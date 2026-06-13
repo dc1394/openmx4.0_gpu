@@ -25,6 +25,45 @@
 
 #define measure_time 0
 
+/* Runtime phase profiling gated by OPENMX_BAND_PROFILE=1 (one SETHPROF line
+   per rank per call on stderr; zero overhead when the variable is unset). */
+typedef struct
+{
+    double memok;
+    double base;
+    double vpot;
+    double matel;
+    double barrier;
+} SetHamiltonianProfileCounters;
+
+static SetHamiltonianProfileCounters SetH_prof = {0};
+
+static int SetH_ProfileEnabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENMX_BAND_PROFILE");
+        enabled = (value != NULL && atoi(value) != 0);
+    }
+    return enabled;
+}
+
+#define SETH_PROF_T0(t)                                                                                                \
+    do {                                                                                                               \
+        if (SetH_ProfileEnabled())                                                                                     \
+            dtime(&(t));                                                                                               \
+    } while (0)
+
+#define SETH_PROF_ADD(field, t)                                                                                        \
+    do {                                                                                                               \
+        if (SetH_ProfileEnabled()) {                                                                                   \
+            double _prof_t1;                                                                                           \
+            dtime(&_prof_t1);                                                                                          \
+            SetH_prof.field += _prof_t1 - (t);                                                                         \
+        }                                                                                                              \
+    } while (0)
+
 void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind);
 static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind);
 static void Calc_MatrixElements_dVH_Vxc_VNA_OpenACC(int Cnt_kind);
@@ -647,6 +686,7 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
     double time0, time1, time2, mflops;
     long   Num_C0, Num_C1;
     int    use_base_openacc;
+    double prof_t0 = 0.0;
 
     MPI_Comm_size(mpi_comm_level1, &numprocs);
     MPI_Comm_rank(mpi_comm_level1, &myid);
@@ -661,7 +701,9 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
         Set_Hamiltonian_abort("Set_Hamiltonian", "SpinP_switch must be 0, 1, or 3", myid);
     }
 
+    SETH_PROF_T0(prof_t0);
     use_base_openacc = Set_Hamiltonian_Base_Use_OpenACC(SCF_iter, myid);
+    SETH_PROF_ADD(memok, prof_t0);
 
     if (myid == Host_ID && mode != NULL && strcasecmp(mode, "stdout") == 0 && 0 < level_stdout) {
         printf("<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc%s...\n",
@@ -675,6 +717,8 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
 
     if (measure_time)
         dtime(&time1);
+
+    SETH_PROF_T0(prof_t0);
 
     if (use_base_openacc) {
         Set_Hamiltonian_Base_OpenACC(SCF_iter, H0, HNL, H);
@@ -773,6 +817,8 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
         }
     }
 
+    SETH_PROF_ADD(base, prof_t0);
+
     if (measure_time) {
         dtime(&time2);
         printf("myid=%4d Time1=%18.10f\n", myid, time2 - time1);
@@ -793,7 +839,9 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
         dtime(&time1);
 
     XC_P_switch = 1;
+    SETH_PROF_T0(prof_t0);
     Set_Vpot(MD_iter, SCF_iter, SCF_iter0, TRAN_Poisson_flag2, XC_P_switch);
+    SETH_PROF_ADD(vpot, prof_t0);
 
     if (measure_time) {
         dtime(&time2);
@@ -805,16 +853,26 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
    calculation of matrix elements for dVH + Vxc (+ VNA)
   *****************************************************/
 
+    SETH_PROF_T0(prof_t0);
     Calc_MatrixElements_dVH_Vxc_VNA(Cnt_kind);
+    SETH_PROF_ADD(matel, prof_t0);
 
     /* for time */
     if (measure_time)
         dtime(&time1);
+    SETH_PROF_T0(prof_t0);
     MPI_Barrier(mpi_comm_level1);
+    SETH_PROF_ADD(barrier, prof_t0);
     if (measure_time) {
         dtime(&time2);
         printf("myid=%4d Time Barrier=%18.10f\n", myid, time2 - time1);
         fflush(stdout);
+    }
+
+    if (SetH_ProfileEnabled()) {
+        fprintf(stderr, "SETHPROF id=%d it=%d memok=%.3f base=%.3f vpot=%.3f matel=%.3f bar=%.3f\n", myid, SCF_iter,
+                SetH_prof.memok, SetH_prof.base, SetH_prof.vpot, SetH_prof.matel, SetH_prof.barrier);
+        memset(&SetH_prof, 0, sizeof(SetH_prof));
     }
 
     dtime(&TEtime);
