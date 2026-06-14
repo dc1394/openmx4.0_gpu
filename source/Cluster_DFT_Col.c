@@ -29,7 +29,7 @@
 double *Hex0;
 double *Hex;
 
-/* GPU CuSolver context (added by H.Kawai, ported from 3.9.9 GPU) */
+/* GPU GpuSolver context (added by H.Kawai, ported from 3.9.9 GPU) */
 typedef struct {
     int                initialized;
     int                device_id;
@@ -40,7 +40,7 @@ typedef struct {
     size_t             h_work_bytes;
     cudaStream_t       stream;
     cublasHandle_t     cublas;
-    cusolverDnHandle_t cusolver;
+    cusolverDnHandle_t gpusolver;
     double *           d_S;
     double *           d_H;
     double *           d_tmp;
@@ -48,9 +48,9 @@ typedef struct {
     int32_t *          d_info;
     void *             d_work;
     void *             h_work;
-} ClusterColCuSolverCtx;
+} ClusterColGpuSolverCtx;
 
-static ClusterColCuSolverCtx ClusterCol_cusolver_ctx = {0};
+static ClusterColGpuSolverCtx ClusterCol_gpusolver_ctx = {0};
 
 static void Patch2Full_Cluster(double ****RH, double *H, int *MP);
 static void Patch2Full_Cluster_Owner(double ****RH, double *H, int *MP, int owns_dense);
@@ -91,9 +91,9 @@ static void *ClusterCol_MallocArray(size_t count, size_t elem_size, const char *
     return ptr;
 }
 
-static void ClusterCol_CuSolver_Destroy(void)
+static void ClusterCol_GpuSolver_Destroy(void)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
 
     if (ctx->d_S != NULL)        wait_cudafunc(cudaFree(ctx->d_S));
     if (ctx->d_H != NULL)        wait_cudafunc(cudaFree(ctx->d_H));
@@ -102,7 +102,7 @@ static void ClusterCol_CuSolver_Destroy(void)
     if (ctx->d_info != NULL)     wait_cudafunc(cudaFree(ctx->d_info));
     if (ctx->d_work != NULL)     wait_cudafunc(cudaFree(ctx->d_work));
     if (ctx->h_work != NULL)     free(ctx->h_work);
-    if (ctx->cusolver != NULL)   wait_cudafunc(cusolverDnDestroy(ctx->cusolver));
+    if (ctx->gpusolver != NULL)   wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
     if (ctx->cublas != NULL)     wait_cudafunc(cublasDestroy(ctx->cublas));
     if (ctx->stream != NULL)     wait_cudafunc(cudaStreamDestroy(ctx->stream));
 
@@ -110,38 +110,38 @@ static void ClusterCol_CuSolver_Destroy(void)
     ctx->device_id = -1;
 }
 
-static void ClusterCol_CuSolver_Init(void)
+static void ClusterCol_GpuSolver_Init(void)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     int                    current_device;
 
     wait_cudafunc(cudaGetDevice(&current_device));
 
     if (ctx->initialized && ctx->device_id == current_device) return;
-    if (ctx->initialized) ClusterCol_CuSolver_Destroy();
+    if (ctx->initialized) ClusterCol_GpuSolver_Destroy();
 
     wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
     wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->cusolver));
+    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
     wait_cudafunc(cublasSetStream(ctx->cublas, ctx->stream));
-    wait_cudafunc(cusolverDnSetStream(ctx->cusolver, ctx->stream));
+    wait_cudafunc(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized = 1;
     ctx->device_id   = current_device;
 }
 
-static void ClusterCol_CuSolver_EnsureMatrixCapacity(int n)
+static void ClusterCol_GpuSolver_EnsureMatrixCapacity(int n)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     size_t dense_count;
     size_t matrix_bytes;
     size_t vector_bytes;
 
     if (n<=0){
-        ClusterCol_AbortWithMessage("Invalid matrix size in Cluster_DFT_Col.c CuSolver workspace.");
+        ClusterCol_AbortWithMessage("Invalid matrix size in Cluster_DFT_Col.c GpuSolver workspace.");
     }
 
-    ClusterCol_CuSolver_Init();
+    ClusterCol_GpuSolver_Init();
 
     if (n<=ctx->matrix_dim) return;
 
@@ -151,9 +151,9 @@ static void ClusterCol_CuSolver_EnsureMatrixCapacity(int n)
     if (ctx->d_W != NULL)    wait_cudafunc(cudaFree(ctx->d_W));
     if (ctx->d_info != NULL) wait_cudafunc(cudaFree(ctx->d_info));
 
-    dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"CuSolver dense matrix");
-    matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"CuSolver dense matrix bytes");
-    vector_bytes = ClusterCol_CheckedMulCount((size_t)n,sizeof(double),"CuSolver eigenvalue bytes");
+    dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"GpuSolver dense matrix");
+    matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"GpuSolver dense matrix bytes");
+    vector_bytes = ClusterCol_CheckedMulCount((size_t)n,sizeof(double),"GpuSolver eigenvalue bytes");
 
     wait_cudafunc(cudaMalloc((void**)&ctx->d_S,matrix_bytes));
     wait_cudafunc(cudaMalloc((void**)&ctx->d_H,matrix_bytes));
@@ -166,9 +166,9 @@ static void ClusterCol_CuSolver_EnsureMatrixCapacity(int n)
     ctx->transformed_s_dim = 0;
 }
 
-static void ClusterCol_CuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
+static void ClusterCol_GpuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -182,10 +182,10 @@ static void ClusterCol_CuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
         ClusterCol_AbortWithMessage("Invalid eigensolver dimensions in Cluster_DFT_Col.c.");
     }
 
-    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->cusolver,NULL,jobz,range,uplo,n,
+    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->gpusolver,NULL,jobz,range,uplo,n,
                                                CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                                CUDA_R_64F,ctx->d_W,CUDA_R_64F,&d_bytes,&h_bytes));
 
@@ -203,14 +203,14 @@ static void ClusterCol_CuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
     }
     else if (ctx->h_work_bytes<h_bytes){
         if (ctx->h_work!=NULL) free(ctx->h_work);
-        ctx->h_work = ClusterCol_MallocArray(h_bytes,1,"CuSolver host workspace");
+        ctx->h_work = ClusterCol_MallocArray(h_bytes,1,"GpuSolver host workspace");
         ctx->h_work_bytes = h_bytes;
     }
 }
 
-static void ClusterCol_CuSolver_EigenDevice(double *d_A, int n, int maxn, double *ko)
+static void ClusterCol_GpuSolver_EigenDevice(double *d_A, int n, int maxn, double *ko)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -220,10 +220,10 @@ static void ClusterCol_CuSolver_EigenDevice(double *d_A, int n, int maxn, double
     int32_t info = 0;
     char msg[256];
 
-    ClusterCol_CuSolver_EnsureWorkspace(n,maxn,d_A);
+    ClusterCol_GpuSolver_EnsureWorkspace(n,maxn,d_A);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx(ctx->cusolver,NULL,jobz,range,uplo,n,
+    wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver,NULL,jobz,range,uplo,n,
                                     CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                     CUDA_R_64F,ctx->d_W,CUDA_R_64F,
                                     ctx->d_work,ctx->d_work_bytes,
@@ -238,16 +238,16 @@ static void ClusterCol_CuSolver_EigenDevice(double *d_A, int n, int maxn, double
     }
 }
 
-static void ClusterCol_CuSolver_PrepareTransformedSDevice(int rebuild, int n, double *ko0)
+static void ClusterCol_GpuSolver_PrepareTransformedSDevice(int rebuild, int n, double *ko0)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     double *old_s;
     double *new_s;
 
-    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
 
     if (rebuild || !(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
-        ClusterCol_CuSolver_EigenDevice(ctx->d_S,n,n,ko0+1);
+        ClusterCol_GpuSolver_EigenDevice(ctx->d_S,n,n,ko0+1);
 
         for (int l=1; l<=n; l++){
             if (ko0[l]<1.0e-10) ko0[l] = 1.0e-10;
@@ -269,22 +269,22 @@ static void ClusterCol_CuSolver_PrepareTransformedSDevice(int rebuild, int n, do
     }
 }
 
-static void ClusterCol_CuSolver_PrepareTransformedS(int rebuild, int n, double *S, double *ko0)
+static void ClusterCol_GpuSolver_PrepareTransformedS(int rebuild, int n, double *S, double *ko0)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"transformed overlap");
     size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"transformed overlap bytes");
 
-    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
     if (rebuild || !(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
         wait_cudafunc(cudaMemcpyAsync(ctx->d_S,S,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
     }
-    ClusterCol_CuSolver_PrepareTransformedSDevice(rebuild,n,ko0);
+    ClusterCol_GpuSolver_PrepareTransformedSDevice(rebuild,n,ko0);
 }
 
-static void ClusterCol_CuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C)
+static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"Hamiltonian");
     size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"eigenvectors");
     size_t evec_bytes = ClusterCol_CheckedMulCount(evec_count,sizeof(double),"eigenvector bytes");
@@ -300,7 +300,7 @@ static void ClusterCol_CuSolver_SolveHamiltonianDevice(int n, int maxn, double *
     wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_T,CUBLAS_OP_N,n,n,n,
                               &alpha,ctx->d_S,n,ctx->d_tmp,n,&beta,ctx->d_H,n));
 
-    ClusterCol_CuSolver_EigenDevice(ctx->d_H,n,maxn,ko_spin+1);
+    ClusterCol_GpuSolver_EigenDevice(ctx->d_H,n,maxn,ko_spin+1);
 
     wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
                               &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,maxn));
@@ -308,31 +308,31 @@ static void ClusterCol_CuSolver_SolveHamiltonianDevice(int n, int maxn, double *
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 }
 
-static void ClusterCol_CuSolver_SolveHamiltonian(int n, int maxn, const double *H, double *ko_spin, double *C)
+static void ClusterCol_GpuSolver_SolveHamiltonian(int n, int maxn, const double *H, double *ko_spin, double *C)
 {
-    ClusterColCuSolverCtx *ctx = &ClusterCol_cusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"Hamiltonian");
     size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"Hamiltonian bytes");
 
-    ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
     wait_cudafunc(cudaMemcpyAsync(ctx->d_H,H,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
-    ClusterCol_CuSolver_SolveHamiltonianDevice(n,maxn,ko_spin,C);
+    ClusterCol_GpuSolver_SolveHamiltonianDevice(n,maxn,ko_spin,C);
 }
 
 static void ClusterCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
                                             double const * A, double const * B, double * C)
 {
-    ClusterCol_CuSolver_Init();
+    ClusterCol_GpuSolver_Init();
 #pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
     {
         double const alpha = 1.0;
         double const beta  = 0.0;
-        wait_cudafunc(openmx_gemmul8Dgemm(ClusterCol_cusolver_ctx.cublas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
+        wait_cudafunc(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.cublas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
     }
 }
 
-static void ClusterCol_CuSolver_CheckInfo(const char *where, int info)
+static void ClusterCol_GpuSolver_CheckInfo(const char *where, int info)
 {
     if (info != 0) {
         char msg[256];
@@ -445,7 +445,7 @@ static void ClusterCol_DistributeDenseEvec(int n, int maxn, int myid1, int numpr
     }
 }
 
-static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, double **ko,
+static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, double **ko,
                                              double *****nh, double ****CntOLP,
                                              int numprocs0, int myid0, int myworld1,
                                              int numprocs1, int myid1, MPI_Comm *MPI_CommWD1,
@@ -474,10 +474,10 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
         size_t nmax = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,"root dense eigenvectors");
 
         C = (double*)ClusterCol_MallocArray(nmax,sizeof(double),"root dense eigenvectors");
-        ClusterCol_CuSolver_EnsureMatrixCapacity(n);
+        ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
 
-        if (rebuild_s || !(ClusterCol_cusolver_ctx.transformed_s_valid &&
-                           ClusterCol_cusolver_ctx.transformed_s_dim==n)){
+        if (rebuild_s || !(ClusterCol_gpusolver_ctx.transformed_s_valid &&
+                           ClusterCol_gpusolver_ctx.transformed_s_dim==n)){
             rebuild_s = 1;
         }
     }
@@ -497,16 +497,16 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
                 }
                 dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"packed overlap dense_index");
                 ClusterCol_BuildDenseIndex(cache_order_GA,MP,n,tnum,dense_index);
-                ClusterCol_BuildDeviceDenseFromPacked(cache_S,dense_index,tnum,n,ClusterCol_cusolver_ctx.d_S);
+                ClusterCol_BuildDeviceDenseFromPacked(cache_S,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_S);
                 free(dense_index);
             }
         }
         else {
             Patch2Device_Cluster_Owner(CntOLP,MP,owns_dense,n,
-                                       owns_dense ? ClusterCol_cusolver_ctx.d_S : NULL);
+                                       owns_dense ? ClusterCol_gpusolver_ctx.d_S : NULL);
         }
         if (owns_dense){
-            ClusterCol_CuSolver_PrepareTransformedSDevice(1,n,ko[0]);
+            ClusterCol_GpuSolver_PrepareTransformedSDevice(1,n,ko[0]);
         }
     }
 
@@ -523,16 +523,16 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
                 }
                 dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"packed Hamiltonian dense_index");
                 ClusterCol_BuildDenseIndex(cache_order_GA,MP,n,tnum,dense_index);
-                ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_cusolver_ctx.d_H);
+                ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_H);
                 free(dense_index);
             }
         }
         else {
             Patch2Device_Cluster_Owner(nh[spin],MP,owns_dense,n,
-                                       owns_dense ? ClusterCol_cusolver_ctx.d_H : NULL);
+                                       owns_dense ? ClusterCol_gpusolver_ctx.d_H : NULL);
         }
         if (owns_dense){
-            ClusterCol_CuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
+            ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
         }
         ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
                                        MPI_CommWD1[myworld1],
@@ -544,7 +544,7 @@ static void ClusterCol_CuSolverRootDensePath(int SCF_iter, int SpinP_switch, dou
     (void)myid0;
 }
 
-static void ClusterCol_CuSolverDensePath(
+static void ClusterCol_GpuSolverDensePath(
     int SCF_iter,
     int SpinP_switch,
     double **ko,
@@ -591,7 +591,7 @@ static void ClusterCol_CuSolverDensePath(
     C   = (double *)ClusterCol_MallocArray(dense_count, sizeof(double), "GPUSOLVER transformed eigenvectors");
 
     Patch2Full_Cluster(CntOLP, S, MP);
-    ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(overlap)", gpusolver_Syevdx(S, ko[0], n, n));
+    ClusterCol_GpuSolver_CheckInfo("cusolverDnXsyevdx(overlap)", gpusolver_Syevdx(S, ko[0], n, n));
 
     for (l = n; 1 <= l; l--) {
         ko[0][l] = ko[0][l - 1];
@@ -633,7 +633,7 @@ static void ClusterCol_CuSolverDensePath(
         F77_NAME(dgemm, DGEMM)("N", "N", &n, &n, &n, &alpha, H, &n, S, &n, &beta, tmp, &n);
         F77_NAME(dgemm, DGEMM)("T", "N", &n, &n, &n, &alpha, S, &n, tmp, &n, &beta, A, &n);
 
-        ClusterCol_CuSolver_CheckInfo("cusolverDnXsyevdx(Hamiltonian)", gpusolver_Syevdx(A, ko[spin], n, MaxN));
+        ClusterCol_GpuSolver_CheckInfo("cusolverDnXsyevdx(Hamiltonian)", gpusolver_Syevdx(A, ko[spin], n, MaxN));
 
         for (l = MaxN; 1 <= l; l--) {
             ko[spin][l] = ko[spin][l - 1];
@@ -1001,7 +1001,7 @@ double Cluster_DFT_Col(
   if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n){
     ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
     firsttime = 0;
-    ClusterCol_CuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
+    ClusterCol_GpuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
                                      numprocs0,myid0,myworld1,numprocs1,myid1,
                                      MPI_CommWD1,MP,is2,ie2,n,MaxN,EVec1);
     goto diagonalize_finished;
@@ -1225,7 +1225,7 @@ double Cluster_DFT_Col(
 
   if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n &&
       !(SpinP_switch==1 && numprocs0!=1)){
-    ClusterCol_CuSolverDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
+    ClusterCol_GpuSolverDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
                                  numprocs0,myworld1,myid1,MP,is2,ie2,
                                  n,MaxN,EVec1);
     goto diagonalize_finished;

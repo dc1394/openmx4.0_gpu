@@ -26,8 +26,8 @@ void Eigen_lapack_d(double **a, double *ko, int n, int EVmax);
 static void Eigen_lapack_r(double **a, double *ko, int n, int EVmax);
 static void Eigen_HHQR(double **ac, double *ko, int n, int EVmax);
 static void Eigen_HH(double **ac, double *ko, int n, int EVmax);
-static void Eigen_cusolver_x(double ** a, double * ko, int n, int EVmax);
-static void Eigen_cusolver_x_openacc(double ** a, double * ko, int n, int EVmax);
+static void Eigen_gpusolver_x(double ** a, double * ko, int n, int EVmax);
+static void Eigen_gpusolver_x_openacc(double ** a, double * ko, int n, int EVmax);
 
 void Eigen_lapack(double **a, double *ko, int n, int EVmax)
 {
@@ -66,7 +66,7 @@ void Eigen_lapack(double **a, double *ko, int n, int EVmax)
     if      (solver_flag==0) Eigen_lapack_x(a, ko, n, EVmax);
     else if (solver_flag==1) Eigen_HH(a, ko, n, EVmax);
     else if (solver_flag==2) Eigen_lapack_d(a, ko, n, EVmax);
-    else if (solver_flag==3) Eigen_cusolver_x(a, ko, n, EVmax);
+    else if (solver_flag==3) Eigen_gpusolver_x(a, ko, n, EVmax);
     else if (solver_flag==4) Eigen_gpusolver_d(a, ko, n, EVmax);
 
     po = 0; 
@@ -1561,7 +1561,7 @@ void Eigen_HHQR(double **ac, double *ko, int n, int EVmax)
 
 }
 
-static void Eigen_cusolver_x(double ** a, double * ko, int n0, int EVmax)
+static void Eigen_gpusolver_x(double ** a, double * ko, int n0, int EVmax)
 {
     int const n = n0;
 
@@ -1595,7 +1595,7 @@ static void Eigen_cusolver_x(double ** a, double * ko, int n0, int EVmax)
     free(A);
 }
 
-void Eigen_cusolver_x_openacc(double ** a, double * ko, int n0, int EVmax)
+void Eigen_gpusolver_x_openacc(double ** a, double * ko, int n0, int EVmax)
 {
     int       info;
     int const n = n0;

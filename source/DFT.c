@@ -204,7 +204,7 @@ static void DFT_ConfigureSetHamiltonianOpenACC(int myid0)
     Set_Hamiltonian_Set_OpenACC_Rank_Selected(DFT_SetHamiltonianOpenACCSelectedRank(myid0));
 }
 
-static void DFT_PrepareCuSolverHSPackedCache(void)
+static void DFT_PrepareGpuSolverHSPackedCache(void)
 {
     if (scf_eigen_lib_flag == GPUSOLVER && (Solver == 2 || Solver == 3)) {
         Set_Hamiltonian_Build_GpuSolver_HS_Cache(Cnt_switch == 1);
@@ -792,7 +792,7 @@ double DFT(int MD_iter, int Cnt_Now)
       fflush(stdout);
     }
 
-    DFT_PrepareCuSolverHSPackedCache();
+    DFT_PrepareGpuSolverHSPackedCache();
 
     if (Cnt_switch==0){
 

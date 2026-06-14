@@ -9,8 +9,8 @@
 static void Eigen_zheev(dcomplex **A, double *W, int N0);
 static int Eigen_zheevx(dcomplex **A, double *W, int N0, int MaxN, int ev_flag);
 static void Eigen_HH(dcomplex **ac, double *ko, int n, int EVmax, int ev_flag);
-static int cusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag);
-static int cusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN);
+static int gpusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag);
+static int gpusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN);
 
 
 void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
@@ -23,7 +23,7 @@ void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
   */
 
   if (scf_eigen_lib_flag == GPUSOLVER && N0 >= GPU_CPU_SWITCH_NUM){
-      info = cusolver_zheevx(A, W, N0, MaxN, ev_flag);
+      info = gpusolver_zheevx(A, W, N0, MaxN, ev_flag);
   } else {
       info = Eigen_zheevx(A, W, N0, MaxN, ev_flag);
   }
@@ -651,7 +651,7 @@ int Eigen_zheevx(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
 void EigenBand_lapack_openacc(dcomplex* A, double* W, int N0, int MaxN)
 {
     int info;
-    info = cusolver_zheevx_openacc(A, W, N0, MaxN);
+    info = gpusolver_zheevx_openacc(A, W, N0, MaxN);
 }
 
 void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax)
@@ -701,7 +701,7 @@ void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int E
     free(A);
 }
 
-int cusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag)
+int gpusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag)
 {
     int const N = N0;
     dcomplex* A0 = (dcomplex*)malloc(sizeof(dcomplex) * N * N);
@@ -734,7 +734,7 @@ int cusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag)
     return info;
 }
 
-int cusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN)
+int gpusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN)
 {
     int info;
 

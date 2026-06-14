@@ -65,7 +65,7 @@ int32_t gpusolver_Syevd(double * A, double * W, int32_t m)
     cusolverDnHandle_t cusolverH = NULL;
     cudaStream_t       stream    = NULL;
 
-    /* step 1: create cusolver handle, bind a stream */
+    /* step 1: create gpusolver handle, bind a stream */
     wait_cudafunc(cusolverDnCreate(&cusolverH));
 
     wait_cudafunc(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));

@@ -78,7 +78,7 @@ int32_t gpusolver_Syevdx(double * A, double * W, int32_t m, int32_t MaxN)
     size_t workspaceInBytesOnHost   = 0;    /* size of workspace */
     void * h_work                   = NULL; /* host workspace for */
 
-    /* step 1: create cusolver handle, bind a stream */
+    /* step 1: create gpusolver handle, bind a stream */
     wait_cudafunc(cusolverDnCreate(&cusolverH));
 
     wait_cudafunc(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
@@ -139,7 +139,7 @@ int32_t gpusolver_Syevdx_openacc(double * A, double * W, int32_t m, int32_t MaxN
 {
     int32_t info = 0;
 
-    /* step 1: create cusolver handle, bind a stream */
+    /* step 1: create gpusolver handle, bind a stream */
 #pragma acc data      present(A[0 : m * m])
 #pragma acc data      present(W[0 : MaxN])
 #pragma acc host_data use_device(A, W)
@@ -236,7 +236,7 @@ int32_t gpusolver_Syevdx_Complex(dcomplex * A, double * W, int32_t m, int32_t Ma
     size_t workspaceInBytesOnHost   = 0;    /* size of workspace */
     void * h_work                   = NULL; /* host workspace for */
 
-    /* step 1: create cusolver handle, bind a stream */
+    /* step 1: create gpusolver handle, bind a stream */
     wait_cudafunc(cusolverDnCreate(&cusolverH));
 
     wait_cudafunc(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
@@ -314,7 +314,7 @@ int32_t gpusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, in
     size_t workspaceInBytesOnHost   = 0;    /* size of workspace */
     void * h_work                   = NULL; /* host workspace for */
 
-    /* step 1: create cusolver handle, bind a stream */
+    /* step 1: create gpusolver handle, bind a stream */
 #pragma acc data      present(A[0 : m * m])
 #pragma acc data      present(W[0 : MaxN])
 #pragma acc host_data use_device(A, W)

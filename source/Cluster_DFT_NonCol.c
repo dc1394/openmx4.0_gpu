@@ -550,7 +550,7 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
                 int state = is2[ID] + k - 1;
 
                 for (int basis = 0; basis < n2; basis++) {
-                    /* Repack the dense column-major cuSOLVER vectors into the
+                    /* Repack the dense column-major gpuSOLVER vectors into the
                        state-major EVec1 blocks used by the ELPA/ScaLAPACK DM path. */
                     target[(size_t)k * (size_t)n2 + (size_t)basis] =
                         dense_evec[(size_t)state + (size_t)basis * (size_t)n2];
@@ -582,36 +582,36 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
     return etime - stime;
 }
 
-static dcomplex *ClusterNonCol_CachedCuSolverDenseEVec = NULL;
-static int ClusterNonCol_CachedCuSolverDenseN2 = 0;
-static int ClusterNonCol_CachedCuSolverDenseOnDevice = 0;
+static dcomplex *ClusterNonCol_CachedGpuSolverDenseEVec = NULL;
+static int ClusterNonCol_CachedGpuSolverDenseN2 = 0;
+static int ClusterNonCol_CachedGpuSolverDenseOnDevice = 0;
 
-static void ClusterNonCol_ReleaseCuSolverCachedEVec(int myid)
+static void ClusterNonCol_ReleaseGpuSolverCachedEVec(int myid)
 {
-    dcomplex *dense_evec = ClusterNonCol_CachedCuSolverDenseEVec;
-    int n2 = ClusterNonCol_CachedCuSolverDenseN2;
+    dcomplex *dense_evec = ClusterNonCol_CachedGpuSolverDenseEVec;
+    int n2 = ClusterNonCol_CachedGpuSolverDenseN2;
 
     if (myid == Host_ID && dense_evec != NULL) {
-        if (ClusterNonCol_CachedCuSolverDenseOnDevice) {
+        if (ClusterNonCol_CachedGpuSolverDenseOnDevice) {
             size_t evec_count = (size_t)n2 * (size_t)n2;
 #pragma acc exit data delete(dense_evec[0 : evec_count])
         }
         free(dense_evec);
     }
 
-    ClusterNonCol_CachedCuSolverDenseEVec = NULL;
-    ClusterNonCol_CachedCuSolverDenseN2 = 0;
-    ClusterNonCol_CachedCuSolverDenseOnDevice = 0;
+    ClusterNonCol_CachedGpuSolverDenseEVec = NULL;
+    ClusterNonCol_CachedGpuSolverDenseN2 = 0;
+    ClusterNonCol_CachedGpuSolverDenseOnDevice = 0;
 }
 
-static void ClusterNonCol_StashCuSolverDenseEVec(int myid, int n2, dcomplex **dense_evec, int *on_device)
+static void ClusterNonCol_StashGpuSolverDenseEVec(int myid, int n2, dcomplex **dense_evec, int *on_device)
 {
-    ClusterNonCol_ReleaseCuSolverCachedEVec(myid);
+    ClusterNonCol_ReleaseGpuSolverCachedEVec(myid);
 
     if (myid == Host_ID) {
-        ClusterNonCol_CachedCuSolverDenseEVec = *dense_evec;
-        ClusterNonCol_CachedCuSolverDenseN2 = n2;
-        ClusterNonCol_CachedCuSolverDenseOnDevice = *on_device;
+        ClusterNonCol_CachedGpuSolverDenseEVec = *dense_evec;
+        ClusterNonCol_CachedGpuSolverDenseN2 = n2;
+        ClusterNonCol_CachedGpuSolverDenseOnDevice = *on_device;
     }
 
     *dense_evec = NULL;
@@ -628,18 +628,18 @@ double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2,
     MPI_Comm_rank(mpi_comm_level1, &myid);
 
     if (myid == Host_ID) {
-        valid = (ClusterNonCol_CachedCuSolverDenseEVec != NULL &&
-                 ClusterNonCol_CachedCuSolverDenseN2 == n2 &&
-                 ClusterNonCol_CachedCuSolverDenseOnDevice);
+        valid = (ClusterNonCol_CachedGpuSolverDenseEVec != NULL &&
+                 ClusterNonCol_CachedGpuSolverDenseN2 == n2 &&
+                 ClusterNonCol_CachedGpuSolverDenseOnDevice);
     }
     MPI_Bcast(&valid, 1, MPI_INT, Host_ID, mpi_comm_level1);
 
     if (valid) {
         elapsed = ClusterNonCol_ScatterDenseEVecToLocal(myid, numprocs, n2, is2, ie2,
-                                                        ClusterNonCol_CachedCuSolverDenseEVec, EVec1);
+                                                        ClusterNonCol_CachedGpuSolverDenseEVec, EVec1);
     }
 
-    ClusterNonCol_ReleaseCuSolverCachedEVec(myid);
+    ClusterNonCol_ReleaseGpuSolverCachedEVec(myid);
 
     return elapsed;
 }
@@ -680,7 +680,7 @@ static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasO
     }
 }
 
-static void ClusterNonCol_CuSolver_DenseDsyevx(double *A, double *Z, double *ko, int n, int maxn,
+static void ClusterNonCol_GpuSolver_DenseDsyevx(double *A, double *Z, double *ko, int n, int maxn,
                                                const char *where)
 {
     int info,l,copy_cols;
@@ -701,7 +701,7 @@ static void ClusterNonCol_CuSolver_DenseDsyevx(double *A, double *Z, double *ko,
     }
 }
 
-static void ClusterNonCol_CuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double *ko, int n, int maxn,
+static void ClusterNonCol_GpuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double *ko, int n, int maxn,
                                                const char *where)
 {
     int info,l,copy_cols;
@@ -1198,7 +1198,7 @@ static void ClusterNonCol_BuildDenseSs2(int n, int n2, const double *S, dcomplex
     }
 }
 
-static void ClusterNonCol_CuSolverRootDensePath(int SCF_iter, double *ko, double *****nh, double *****ImNL,
+static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, double *****nh, double *****ImNL,
                                                 double ****CntOLP, int *MP, int n, int n2, int MaxN,
                                                 int myid, dcomplex **dense_evec_out,
                                                 int *dense_evec_on_device_out)
@@ -1575,14 +1575,14 @@ double Cluster_DFT_NonCol(
   double av_num,tmp;
   int ig,jg;
   int numprocs,myid,ID;
-  int use_cusolver_direct_cluster_dm = 0;
-  int cusolver_direct_evec_on_device = 0;
+  int use_gpusolver_direct_cluster_dm = 0;
+  int gpusolver_direct_evec_on_device = 0;
   int ke,ks,nblk_m,nblk_m2;
   int ID0,IDS,IDR,Max_Num_Snd_EV,Max_Num_Rcv_EV;
   int *Num_Snd_EV,*Num_Rcv_EV;
   int *index_Snd_i,*index_Snd_j,*index_Rcv_i,*index_Rcv_j;
   double *EVec_Snd,*EVec_Rcv;
-  dcomplex *cusolver_dense_evec = NULL;
+  dcomplex *gpusolver_dense_evec = NULL;
   int ZERO=0,ONE=1,info;
   double Re_alpha = 1.0; double Re_beta = 0.0;
   dcomplex alpha = {1.0,0.0}; dcomplex beta = {0.0,0.0};
@@ -1617,7 +1617,7 @@ double Cluster_DFT_NonCol(
       set_openacc_nvidia_device_from_local_rank_noncollective();
     }
 
-  use_cusolver_direct_cluster_dm =
+  use_gpusolver_direct_cluster_dm =
     (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
      strcasecmp(mode,"scf") == 0 &&
      MO_fileout != 1 && xanes_calc != 1 && xanes_gs_fileout != 1 &&
@@ -1770,16 +1770,16 @@ double Cluster_DFT_NonCol(
   }
   firsttime=0;
 
-  if (use_cusolver_direct_cluster_dm){
+  if (use_gpusolver_direct_cluster_dm){
 
     if (measure_time) dtime(&stime);
 
-    ClusterNonCol_ReleaseCuSolverCachedEVec(myid);
+    ClusterNonCol_ReleaseGpuSolverCachedEVec(myid);
 
     for (i1=0; i1<=n2; i1++){ ko[i1] = 1.0e+5; }
 
-    ClusterNonCol_CuSolverRootDensePath(SCF_iter,ko,nh,ImNL,CntOLP,MP,n,n2,MaxN,myid,
-                                        &cusolver_dense_evec,&cusolver_direct_evec_on_device);
+    ClusterNonCol_GpuSolverRootDensePath(SCF_iter,ko,nh,ImNL,CntOLP,MP,n,n2,MaxN,myid,
+                                        &gpusolver_dense_evec,&gpusolver_direct_evec_on_device);
 
     if (measure_time){
       dtime(&etime);
@@ -1811,7 +1811,7 @@ double Cluster_DFT_NonCol(
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
     else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
-      ClusterNonCol_CuSolver_DenseDsyevx(Cs,Ss,ko,n,n,"Cluster_DFT_NonCol overlap");
+      ClusterNonCol_GpuSolver_DenseDsyevx(Cs,Ss,ko,n,n,"Cluster_DFT_NonCol overlap");
     }
     else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
@@ -2001,7 +2001,7 @@ double Cluster_DFT_NonCol(
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
   else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
-    ClusterNonCol_CuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Cluster_DFT_NonCol Hamiltonian");
+    ClusterNonCol_GpuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Cluster_DFT_NonCol Hamiltonian");
   }
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
@@ -2410,19 +2410,19 @@ double Cluster_DFT_NonCol(
 
     if (measure_time) dtime(&stime);
 
-    if (use_cusolver_direct_cluster_dm){
+    if (use_gpusolver_direct_cluster_dm){
 
-      if (myid==Host_ID && !cusolver_direct_evec_on_device){
+      if (myid==Host_ID && !gpusolver_direct_evec_on_device){
         ClusterNonCol_AbortWithMessage("GPUSOLVER device eigenvectors are not available in Cluster_DFT_NonCol.c.");
       }
 
       time6 += ClusterNonCol_CalcDMRootDense_OpenACC(myid,size_H1,MP,n,n2,MaxN,CDM,iDM[0],EDM,ko,
-                                                     cusolver_dense_evec,(Cnt_switch==1));
+                                                     gpusolver_dense_evec,(Cnt_switch==1));
 
-      /* Keep the latest direct cuSOLVER eigenvectors for the post-SCF EDM/force
+      /* Keep the latest direct gpuSOLVER eigenvectors for the post-SCF EDM/force
          rebuild.  Scatter to EVec1 only once after SCF convergence to avoid
          paying this MPI/data-transfer cost every SCF step. */
-      ClusterNonCol_StashCuSolverDenseEVec(myid,n2,&cusolver_dense_evec,&cusolver_direct_evec_on_device);
+      ClusterNonCol_StashGpuSolverDenseEVec(myid,n2,&gpusolver_dense_evec,&gpusolver_direct_evec_on_device);
     }
     else {
 

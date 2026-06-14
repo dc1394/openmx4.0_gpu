@@ -29,46 +29,46 @@
 
 #define  measure_time  0
 
-/* GPU CuSolver context for Band_DFT_NonCol_DMmu (added by H.Kawai, Phase D) */
+/* GPU GpuSolver context for Band_DFT_NonCol_DMmu (added by H.Kawai, Phase D) */
 typedef struct {
     int                device_id;
     cublasHandle_t     cublas;
-    cusolverDnHandle_t cusolver;
-} BandNonColDMmuCuSolverCtx;
+    cusolverDnHandle_t gpusolver;
+} BandNonColDMmuGpuSolverCtx;
 
-static BandNonColDMmuCuSolverCtx BandNonColDMmu_cusolver_ctx = {0};
+static BandNonColDMmuGpuSolverCtx BandNonColDMmu_gpusolver_ctx = {0};
 
-static void BandNonColDMmu_CuSolver_Destroy(void)
+static void BandNonColDMmu_GpuSolver_Destroy(void)
 {
-    BandNonColDMmuCuSolverCtx *ctx = &BandNonColDMmu_cusolver_ctx;
-    if (ctx->cusolver != NULL) wait_cudafunc(cusolverDnDestroy(ctx->cusolver));
+    BandNonColDMmuGpuSolverCtx *ctx = &BandNonColDMmu_gpusolver_ctx;
+    if (ctx->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
     if (ctx->cublas != NULL)   wait_cudafunc(cublasDestroy(ctx->cublas));
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
 }
 
-static void BandNonColDMmu_CuSolver_Init(void)
+static void BandNonColDMmu_GpuSolver_Init(void)
 {
-    BandNonColDMmuCuSolverCtx *ctx = &BandNonColDMmu_cusolver_ctx;
+    BandNonColDMmuGpuSolverCtx *ctx = &BandNonColDMmu_gpusolver_ctx;
     int current_device;
     wait_cudafunc(cudaGetDevice(&current_device));
     if (ctx->device_id == current_device && ctx->cublas != NULL) return;
-    if (ctx->cublas != NULL) BandNonColDMmu_CuSolver_Destroy();
+    if (ctx->cublas != NULL) BandNonColDMmu_GpuSolver_Destroy();
     ctx->device_id = current_device;
     wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->cusolver));
+    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
 }
 
 static void BandNonColDMmu_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
                                                 dcomplex const * A, dcomplex const * B, dcomplex * C)
 {
-    BandNonColDMmu_CuSolver_Init();
+    BandNonColDMmu_GpuSolver_Init();
 #pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
     {
         cuDoubleComplex const alpha = make_cuDoubleComplex(1.0, 0.0);
         cuDoubleComplex const beta  = make_cuDoubleComplex(0.0, 0.0);
-        wait_cudafunc(openmx_gemmul8Zgemm(BandNonColDMmu_cusolver_ctx.cublas, transa, transb, m, n, k, &alpha,
+        wait_cudafunc(openmx_gemmul8Zgemm(BandNonColDMmu_gpusolver_ctx.cublas, transa, transb, m, n, k, &alpha,
                                           (cuDoubleComplex const *)A, m, (cuDoubleComplex const *)B, k, &beta,
                                           (cuDoubleComplex *)C, m));
     }

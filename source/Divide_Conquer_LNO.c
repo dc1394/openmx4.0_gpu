@@ -301,7 +301,7 @@ typedef struct {
     size_t             h_work_bytes;
     cudaStream_t       stream;
     cublasHandle_t     cublas;
-    cusolverDnHandle_t cusolver;
+    cusolverDnHandle_t gpusolver;
     double *           d_S;
     double *           d_H;
     double *           d_tmp;
@@ -309,13 +309,13 @@ typedef struct {
     int32_t *          d_info;
     void *             d_work;
     void *             h_work;
-} DCLNO_CuSolverCtx;
+} DCLNO_GpuSolverCtx;
 
-static DCLNO_CuSolverCtx DCLNO_cusolver_ctx = {0};
+static DCLNO_GpuSolverCtx DCLNO_gpusolver_ctx = {0};
 
-static void DCLNO_CuSolver_Destroy(void)
+static void DCLNO_GpuSolver_Destroy(void)
 {
-    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
 
     if (ctx->stream != NULL) wait_cudafunc(cudaStreamSynchronize(ctx->stream));
     if (ctx->d_S    != NULL) wait_cudafunc(cudaFree(ctx->d_S));
@@ -325,7 +325,7 @@ static void DCLNO_CuSolver_Destroy(void)
     if (ctx->d_info != NULL) wait_cudafunc(cudaFree(ctx->d_info));
     if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
     if (ctx->h_work != NULL) free(ctx->h_work);
-    if (ctx->cusolver != NULL) wait_cudafunc(cusolverDnDestroy(ctx->cusolver));
+    if (ctx->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
     if (ctx->cublas   != NULL) wait_cudafunc(cublasDestroy(ctx->cublas));
     if (ctx->stream   != NULL) wait_cudafunc(cudaStreamDestroy(ctx->stream));
 
@@ -336,7 +336,7 @@ static void DCLNO_GPUProxy_Finalize(void)
 {
     if (!DCLNO_gpu_proxy_initialized) return;
 
-    DCLNO_CuSolver_Destroy();
+    DCLNO_GpuSolver_Destroy();
 
     if (DCLNO_gpu_group_comm != MPI_COMM_NULL) {
         MPI_Comm_free(&DCLNO_gpu_group_comm);
@@ -357,31 +357,31 @@ static void DCLNO_GPUProxy_Finalize(void)
     DCLNO_is_gpu_owner          = 0;
 }
 
-static void DCLNO_CuSolver_Init(void)
+static void DCLNO_GpuSolver_Init(void)
 {
-    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
 
     if (ctx->initialized) return;
 
     wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
     wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->cusolver));
+    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
     wait_cudafunc(cublasSetStream(ctx->cublas, ctx->stream));
-    wait_cudafunc(cusolverDnSetStream(ctx->cusolver, ctx->stream));
+    wait_cudafunc(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized = 1;
 }
 
-static void DCLNO_CuSolver_EnsureMatrixCapacity(int num)
+static void DCLNO_GpuSolver_EnsureMatrixCapacity(int num)
 {
-    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
     size_t             matrix_bytes;
 
     if (num <= 0) {
-        DCLNO_AbortWithMessage("Invalid matrix size in DCLNO_CuSolver_EnsureMatrixCapacity.");
+        DCLNO_AbortWithMessage("Invalid matrix size in DCLNO_GpuSolver_EnsureMatrixCapacity.");
     }
 
-    DCLNO_CuSolver_Init();
+    DCLNO_GpuSolver_Init();
 
     if (num <= ctx->max_num) return;
 
@@ -406,9 +406,9 @@ static void DCLNO_CuSolver_EnsureMatrixCapacity(int num)
     ctx->max_num = num;
 }
 
-static void DCLNO_CuSolver_EnsureWorkspace(int m, int maxn)
+static void DCLNO_GpuSolver_EnsureWorkspace(int m, int maxn)
 {
-    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
     cusolverEigMode_t  jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t   uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -419,14 +419,14 @@ static void DCLNO_CuSolver_EnsureWorkspace(int m, int maxn)
     size_t             h_bytes = 0;
 
     if (m <= 0 || maxn <= 0 || maxn > m) {
-        DCLNO_AbortWithMessage("Invalid eigensolver dimensions in DCLNO_CuSolver_EnsureWorkspace.");
+        DCLNO_AbortWithMessage("Invalid eigensolver dimensions in DCLNO_GpuSolver_EnsureWorkspace.");
     }
 
-    DCLNO_CuSolver_EnsureMatrixCapacity(m);
+    DCLNO_GpuSolver_EnsureMatrixCapacity(m);
 
     range = (m == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->cusolver, NULL, jobz, range, uplo, m,
+    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->gpusolver, NULL, jobz, range, uplo, m,
                                                CUDA_R_64F, ctx->d_S, m, &vl, &vu, 1L, maxn,
                                                &h_meig, CUDA_R_64F, ctx->d_W, CUDA_R_64F,
                                                &d_bytes, &h_bytes));
@@ -452,9 +452,9 @@ static void DCLNO_CuSolver_EnsureWorkspace(int m, int maxn)
     }
 }
 
-static void DCLNO_CuSolver_Eigen(double *d_A, int m, int maxn, double *W)
+static void DCLNO_GpuSolver_Eigen(double *d_A, int m, int maxn, double *W)
 {
-    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
     cusolverEigMode_t  jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t   uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -463,11 +463,11 @@ static void DCLNO_CuSolver_Eigen(double *d_A, int m, int maxn, double *W)
     int64_t            h_meig = 0;
     int32_t            info = 0;
 
-    DCLNO_CuSolver_EnsureWorkspace(m, maxn);
+    DCLNO_GpuSolver_EnsureWorkspace(m, maxn);
 
     range = (m == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx(ctx->cusolver, NULL, jobz, range, uplo, m, CUDA_R_64F,
+    wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_R_64F,
                                     d_A, m, &vl, &vu, 1L, maxn, &h_meig, CUDA_R_64F,
                                     ctx->d_W, CUDA_R_64F, ctx->d_work, ctx->d_work_bytes,
                                     ctx->h_work, ctx->h_work_bytes, ctx->d_info));
@@ -484,9 +484,9 @@ static void DCLNO_CuSolver_Eigen(double *d_A, int m, int maxn, double *W)
     }
 }
 
-static void DCLNO_Solve_Col_CuSolver(int NUM, int NUM2, double *Smat, double *Hmat, double *ko)
+static void DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hmat, double *ko)
 {
-    DCLNO_CuSolverCtx *ctx = &DCLNO_cusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
     double             alpha = 1.0;
     double             beta = 0.0;
     size_t             full_bytes;
@@ -494,7 +494,7 @@ static void DCLNO_Solve_Col_CuSolver(int NUM, int NUM2, double *Smat, double *Hm
     int                l;
 
     if (NUM <= 0 || NUM2 <= 0 || NUM2 > NUM) {
-        DCLNO_AbortWithMessage("Invalid matrix dimensions in DCLNO_Solve_Col_CuSolver.");
+        DCLNO_AbortWithMessage("Invalid matrix dimensions in DCLNO_Solve_Col_GpuSolver.");
     }
 
     full_bytes = DCLNO_CheckedArrayBytes(DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM,
@@ -506,12 +506,12 @@ static void DCLNO_Solve_Col_CuSolver(int NUM, int NUM2, double *Smat, double *Hm
                                             sizeof(double),
                                             "GPUSOLVER partial eigenvector copy");
 
-    DCLNO_CuSolver_EnsureMatrixCapacity(NUM);
+    DCLNO_GpuSolver_EnsureMatrixCapacity(NUM);
 
     wait_cudafunc(cudaMemcpyAsync(ctx->d_S, Smat, full_bytes, cudaMemcpyHostToDevice, ctx->stream));
     wait_cudafunc(cudaMemcpyAsync(ctx->d_H, Hmat, full_bytes, cudaMemcpyHostToDevice, ctx->stream));
 
-    DCLNO_CuSolver_Eigen(ctx->d_S, NUM, NUM, ko + 1);
+    DCLNO_GpuSolver_Eigen(ctx->d_S, NUM, NUM, ko + 1);
 
     for (l = 1; l <= NUM; l++) {
         ko[l] = 1.0 / sqrt(fabs(ko[l]));
@@ -531,7 +531,7 @@ static void DCLNO_Solve_Col_CuSolver(int NUM, int NUM2, double *Smat, double *Hm
     wait_cudafunc(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_tmp, NUM,
                                      ctx->d_S, NUM, &beta, ctx->d_H, NUM));
 
-    DCLNO_CuSolver_Eigen(ctx->d_H, NUM, NUM2, ko + 1);
+    DCLNO_GpuSolver_Eigen(ctx->d_H, NUM, NUM2, ko + 1);
 
     wait_cudafunc(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM2, NUM, &alpha, ctx->d_tmp,
                                      NUM, ctx->d_H, NUM, &beta, ctx->d_S, NUM));
@@ -716,7 +716,7 @@ static void DCLNO_GPUProxy_Col_Service(int active,
 
         /* owner handles its own task first */
         if (active) {
-            DCLNO_Solve_Col_CuSolver(NUM, NUM2, Smat, Hmat, ko);
+            DCLNO_Solve_Col_GpuSolver(NUM, NUM2, Smat, Hmat, ko);
             DCLNO_CopyPackedEigvecsToC(Hmat, NUM, NUM2, C);
         }
 
@@ -740,7 +740,7 @@ static void DCLNO_GPUProxy_Col_Service(int active,
                 kbuf = (double*)DCLNO_MallocArray((size_t)(s_num + 2), sizeof(double),
                                                  "GPU proxy eigenvalue buffer");
 
-                DCLNO_Solve_Col_CuSolver(s_num, s_num2, Sbuf, Hbuf, kbuf);
+                DCLNO_Solve_Col_GpuSolver(s_num, s_num2, Sbuf, Hbuf, kbuf);
 
                 MPI_Send(&kbuf[1], s_num2, MPI_DOUBLE, src,
                          DCLNO_PROXY_TAG_COL_EVAL, DCLNO_gpu_group_comm);
@@ -1078,8 +1078,8 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     if (use_gpu_accel) {
         MPI_Allreduce(MPI_IN_PLACE, &gpu_group_max_msize, 1, MPI_INT, MPI_MAX, DCLNO_gpu_group_comm);
         if (DCLNO_is_gpu_owner && gpu_group_max_msize >= DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL) {
-            DCLNO_CuSolver_EnsureMatrixCapacity(gpu_group_max_msize);
-            DCLNO_CuSolver_EnsureWorkspace(gpu_group_max_msize, gpu_group_max_msize);
+            DCLNO_GpuSolver_EnsureMatrixCapacity(gpu_group_max_msize);
+            DCLNO_GpuSolver_EnsureWorkspace(gpu_group_max_msize, gpu_group_max_msize);
         }
     }
 
@@ -1674,7 +1674,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                 if (measure_time) dtime(&stime);
 
                 if (use_gpu_task && !use_gpu_proxy) {
-                    DCLNO_Solve_Col_CuSolver(NUM, NUM2,
+                    DCLNO_Solve_Col_GpuSolver(NUM, NUM2,
                                              &BLAS_OLP[spin * NUM * NUM],
                                              &BLAS_H[spin * NUM * NUM],
                                              ko);

@@ -124,7 +124,7 @@ static int Krylov_GPU_Enabled(void)
 typedef struct {
   int active;
   cublasHandle_t cublas;
-  cusolverDnHandle_t cusolver;
+  cusolverDnHandle_t gpusolver;
   cudaStream_t stream;
   double *d_A;
   double *d_B;
@@ -147,7 +147,7 @@ static void Krylov_GPU_InitOnce(void);
 static void Krylov_GPU_Workspace_Init(Krylov_GPU_Workspace *ws);
 static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws);
 static void Krylov_GPU_EnsureCublas(Krylov_GPU_Workspace *ws);
-static void Krylov_GPU_EnsureCusolver(Krylov_GPU_Workspace *ws);
+static void Krylov_GPU_EnsureGpusolver(Krylov_GPU_Workspace *ws);
 static void Krylov_GPU_PreparePool(int nthrds);
 static Krylov_GPU_Workspace *Krylov_GPU_GetWorkspace(int thread_id);
 static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
@@ -245,7 +245,7 @@ static void Krylov_GPU_EnsureHostWork(Krylov_GPU_Workspace *ws, size_t bytes)
     if (ws->h_work != NULL) free(ws->h_work);
     ws->h_work = (bytes == 0) ? NULL : malloc(bytes);
     if (bytes != 0 && ws->h_work == NULL){
-      fprintf(stderr,"Krylov: could not allocate cuSOLVER host workspace.\n");
+      fprintf(stderr,"Krylov: could not allocate gpuSOLVER host workspace.\n");
       MPI_Abort(MPI_COMM_WORLD,1);
     }
     ws->h_work_bytes = bytes;
@@ -286,7 +286,7 @@ static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws)
   if (ws->d_work != NULL) wait_cudafunc(cudaFree(ws->d_work));
   if (ws->h_work != NULL) free(ws->h_work);
   if (ws->h_A    != NULL) free(ws->h_A);
-  if (ws->cusolver != NULL) wait_cudafunc(cusolverDnDestroy(ws->cusolver));
+  if (ws->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(ws->gpusolver));
   if (ws->cublas   != NULL) wait_cudafunc(cublasDestroy(ws->cublas));
   if (ws->stream   != NULL) wait_cudafunc(cudaStreamDestroy(ws->stream));
   memset(ws,0,sizeof(Krylov_GPU_Workspace));
@@ -300,11 +300,11 @@ static void Krylov_GPU_EnsureCublas(Krylov_GPU_Workspace *ws)
   }
 }
 
-static void Krylov_GPU_EnsureCusolver(Krylov_GPU_Workspace *ws)
+static void Krylov_GPU_EnsureGpusolver(Krylov_GPU_Workspace *ws)
 {
-  if (ws->cusolver == NULL){
-    wait_cudafunc(cusolverDnCreate(&ws->cusolver));
-    wait_cudafunc(cusolverDnSetStream(ws->cusolver, ws->stream));
+  if (ws->gpusolver == NULL){
+    wait_cudafunc(cusolverDnCreate(&ws->gpusolver));
+    wait_cudafunc(cusolverDnSetStream(ws->gpusolver, ws->stream));
   }
 }
 
@@ -360,7 +360,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
     return;
   }
 
-  Krylov_GPU_EnsureCusolver(ws);
+  Krylov_GPU_EnsureGpusolver(ws);
 
   Krylov_GPU_EnsureHostMatrix(ws,(size_t)n*(size_t)n);
   Krylov_GPU_EnsureDouble(&ws->d_A, &ws->d_A_count, (size_t)n*(size_t)n);
@@ -385,7 +385,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   size_t h_work_bytes = 0;
 
   if (n == EVmax){
-    wait_cudafunc(cusolverDnXsyevd_bufferSize(ws->cusolver, NULL, jobz, uplo,
+    wait_cudafunc(cusolverDnXsyevd_bufferSize(ws->gpusolver, NULL, jobz, uplo,
                                               n, CUDA_R_64F, ws->d_A, n,
                                               CUDA_R_64F, ws->d_W, CUDA_R_64F,
                                               &d_work_bytes, &h_work_bytes));
@@ -394,7 +394,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   else{
     cusolverEigRange_t range = CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ws->cusolver, NULL, jobz, range, uplo,
+    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ws->gpusolver, NULL, jobz, range, uplo,
                                                n, CUDA_R_64F, ws->d_A, n,
                                                &vl, &vu, 1L, EVmax, &h_meig,
                                                CUDA_R_64F, ws->d_W, CUDA_R_64F,
@@ -405,7 +405,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   Krylov_GPU_EnsureHostWork(ws,h_work_bytes);
 
   if (n == EVmax){
-    wait_cudafunc(cusolverDnXsyevd(ws->cusolver, NULL, jobz, uplo,
+    wait_cudafunc(cusolverDnXsyevd(ws->gpusolver, NULL, jobz, uplo,
                                    n, CUDA_R_64F, ws->d_A, n,
                                    CUDA_R_64F, ws->d_W, CUDA_R_64F,
                                    ws->d_work, d_work_bytes,
@@ -414,7 +414,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   else{
     cusolverEigRange_t range = CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx(ws->cusolver, NULL, jobz, range, uplo,
+    wait_cudafunc(cusolverDnXsyevdx(ws->gpusolver, NULL, jobz, range, uplo,
                                     n, CUDA_R_64F, ws->d_A, n,
                                     &vl, &vu, 1L, EVmax, &h_meig,
                                     CUDA_R_64F, ws->d_W, CUDA_R_64F,
