@@ -540,7 +540,7 @@ scf.SpinPolarization       off         # On|Off
 scf.ElectronicTemperature  700.0       # default=300 (K)
 scf.energycutoff           180.0       # default=150 (Ry)
 scf.ProExpn.VNA             on         # default=on
-scf.maxIter                 300        # default=40
+scf.maxIter                 3          # default=40
 scf.EigenvalueSolver       cluster     # Recursion|Cluster|Band
 scf.Kgrid                 1 1 1        # means 4x4x4
 scf.Mixing.Type           rmm-diisk    # Simple|Rmm-Diis|Gr-Pulay
@@ -550,7 +550,6 @@ scf.Max.Mixing.Weight      0.200       # default=0.40
 scf.Mixing.History          30         # default=5
 scf.Mixing.StartPulay       15         # default=6
 scf.criterion             1.0e-10      # default=1.0e-6 (Hartree) 
-scf.eigen.lib             gpusolver
 
 #
 # MD or Geometry Optimization

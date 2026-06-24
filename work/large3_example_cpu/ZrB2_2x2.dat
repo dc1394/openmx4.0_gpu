@@ -127,7 +127,6 @@ scf.Max.Mixing.Weight      0.100       # default=0.40
 scf.Mixing.History         20          # default=5
 scf.Mixing.StartPulay      10          # default=6
 scf.criterion             1.0e-9       # default=1.0e-6 (Hartree) 
-scf.eigen.lib             gpusolver
 
 #
 # MD or Geometry Optimization

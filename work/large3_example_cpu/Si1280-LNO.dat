@@ -1338,7 +1338,6 @@ scf.Mixing.History          10         # default=5
 scf.Mixing.StartPulay       12         # default=6
 scf.Mixing.EveryPulay       1          # default=5
 scf.criterion             1.0e-16       # default=1.0e-6 (Hartree) 
-scf.eigen.lib             gpusolver
  
 #
 # SCF Order-N

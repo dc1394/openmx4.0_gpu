@@ -1,0 +1,15 @@
+Supercomputer at the Research Center for Computational Science, Okazaki Shared Research Facilities, 
+National Institutes of Natural Sciences
+AMD EPYC 7763 (Zen 3, 64 cores, 2.45 GHz) [2 CPUs per node]
+128 MPI processes × 2 OMP threads (using 64 cores per node across 4 nodes)
+
+　 1  large2_example/C1000.dat         Elapsed time(s)=  787.37  diff Utot= 0.000000000589  diff Force= 0.000000000704
+   2  large2_example/Fe1000.dat        Elapsed time(s)=18135.54  diff Utot= 0.000000004380  diff Force= 0.000000084074
+   3  large2_example/GRA1024.dat       Elapsed time(s)= 1217.63  diff Utot= 0.000000010369  diff Force= 0.000000002080
+   4  large2_example/Ih-Ice1200.dat    Elapsed time(s)=  372.02  diff Utot= 0.000000007774  diff Force= 0.000000001982
+   5  large2_example/Pt500.dat         Elapsed time(s)= 3746.94  diff Utot= 0.000000014530  diff Force= 0.000000002083
+   6  large2_example/R-TiO2-1050.dat   Elapsed time(s)= 1213.83  diff Utot= 0.000000001641  diff Force= 0.000000000858
+   7  large2_example/Si1000.dat        Elapsed time(s)=  787.17  diff Utot= 0.000000000007  diff Force= 0.000000000177
+
+
+Total elapsed time (s)    26260.50

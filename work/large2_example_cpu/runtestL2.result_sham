@@ -1,0 +1,14 @@
+sham: AMD EPYC 7713 64-Core Processor 2.0 GHz
+CC = mpiicc -O3 -march=core-avx2 -ip -no-prec-div -qopenmp
+192 MPI processes x 1 OMP thread
+
+   1  large2_example/C1000.dat         Elapsed time(s)=  515.02  diff Utot= 0.000000000032  diff Force= 0.000000000027
+   2  large2_example/Fe1000.dat        Elapsed time(s)= 5926.68  diff Utot= 0.000000000087  diff Force= 0.000000029820
+   3  large2_example/GRA1024.dat       Elapsed time(s)=  734.35  diff Utot= 0.000000009511  diff Force= 0.000000006285
+   4  large2_example/Ih-Ice1200.dat    Elapsed time(s)=  271.74  diff Utot= 0.000000000002  diff Force= 0.000000000057
+   5  large2_example/Pt500.dat         Elapsed time(s)= 2641.70  diff Utot= 0.000000002852  diff Force= 0.000000005471
+   6  large2_example/R-TiO2-1050.dat   Elapsed time(s)=  699.77  diff Utot= 0.000000000415  diff Force= 0.000000000075
+   7  large2_example/Si1000.dat        Elapsed time(s)=  509.63  diff Utot= 0.000000000008  diff Force= 0.000000000000
+
+
+Total elapsed time (s)    11298.90

@@ -1,0 +1,23 @@
+system C (kugui)
+intel oneAPI + intelmpi
+6nodes, 192 MPI processes x 1 OMP threads
+
+module purge
+module unuse /home/app/oneapi/compiler/2022.2.1/modulefiles
+module unuse /home/app/oneapi/compiler/2023.1.0/modulefiles
+module load oneapi/2024.0.0
+
+export I_MPI_FABRICS=shm:ofi
+export UCX_TLS='self,sm,ud'
+
+
+   1  large2_example/C1000.dat         Elapsed time(s)=  570.40  diff Utot= 0.000000000035  diff Force= 0.000000000065
+   2  large2_example/Fe1000.dat        Elapsed time(s)= 6807.34  diff Utot= 0.000000000815  diff Force= 0.000000016033
+   3  large2_example/GRA1024.dat       Elapsed time(s)=  722.10  diff Utot= 0.000000006967  diff Force= 0.000000002742
+   4  large2_example/Ih-Ice1200.dat    Elapsed time(s)=  286.65  diff Utot= 0.000000000027  diff Force= 0.000000000002
+   5  large2_example/Pt500.dat         Elapsed time(s)= 3966.18  diff Utot= 0.000000000007  diff Force= 0.000000000684
+   6  large2_example/R-TiO2-1050.dat   Elapsed time(s)=  667.66  diff Utot= 0.000000000502  diff Force= 0.000000000112
+   7  large2_example/Si1000.dat        Elapsed time(s)=  546.52  diff Utot= 0.000000000033  diff Force= 0.000000000014
+
+
+Total elapsed time (s)    13566.86
