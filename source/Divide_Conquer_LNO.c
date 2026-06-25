@@ -1,17 +1,16 @@
 /**********************************************************************
   Divide_Conquer_LNO.c
 
-  Collinear-focused version with node-local GPU-owner proxy for DC-LNO.
+  Collinear-focused version with direct per-rank GPU dispatch for DC-LNO.
 
   Policy:
     - Keep global OpenMX MPI decomposition unchanged.
     - Inside DC-LNO only, do not split one eigenproblem across many MPI ranks.
     - For large local cluster matrices:
-        * ranks sharing the same GPU form a node-local GPU-group
-        * rank 0 in that GPU-group is the GPU owner
-        * non-owner ranks send the dense eigen task to the owner
+        * each rank maps to a node-local GPU
+        * ranks sharing one GPU submit their own dense eigen tasks directly
     - For small matrices: solve locally on CPU
-    - The optimized proxy path is used for collinear calculations.
+    - The optional proxy path is kept for experiments.
     - The 4.0 noncollinear implementation is kept below.
 
 ***********************************************************************/
@@ -174,6 +173,10 @@ static void DCLNO_GPUProxy_Init(void)
         MPI_Abort(base_comm, 1);
     }
 
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < DCLNO_ngpu) {
+        DCLNO_ngpu = SCF_Gpu_Num;
+    }
+
     DCLNO_gpu_id = DCLNO_node_rank % DCLNO_ngpu;
     color = DCLNO_gpu_id;
 
@@ -183,15 +186,7 @@ static void DCLNO_GPUProxy_Init(void)
 
     DCLNO_is_gpu_owner = (DCLNO_gpu_group_rank == 0);
 
-    if (DCLNO_is_gpu_owner) {
-        /*
-         * Only the GPU owners enter this branch.
-         * set_cuda_default_device_from_local_rank() internally calls
-         * MPI_Comm_split_type(comm, ...), which is collective on comm and
-         * deadlocks if only a subset of ranks calls it.
-         */
-        wait_cudafunc(cudaSetDevice(DCLNO_gpu_id));
-    }
+    wait_cudafunc(cudaSetDevice(DCLNO_gpu_id));
 
     DCLNO_gpu_proxy_initialized = 1;
 }
@@ -912,6 +907,12 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     use_gpu_proxy = (use_gpu_accel && DCLNO_ENABLE_SHARED_GPU_PROXY &&
                      DCLNO_gpu_group_size > 1);
 
+    if (firsttime && myid0 == Host_ID && use_gpu_accel && 0 < level_stdout) {
+        printf("<DC-LNO> GPUSOLVER direct per-rank dispatch is enabled for local matrices with dimension >= %d on %d CUDA device(s).\n",
+               DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL, DCLNO_ngpu);
+        fflush(stdout);
+    }
+
     size_Residues = 0;
 
     /****************************************************
@@ -1075,12 +1076,16 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     MP = (int*)DCLNO_MallocArray((size_t)List_YOUSO[2], sizeof(int), "MP map");
 
     gpu_group_max_msize = Max_Msize;
-    if (use_gpu_accel) {
+    if (use_gpu_proxy) {
         MPI_Allreduce(MPI_IN_PLACE, &gpu_group_max_msize, 1, MPI_INT, MPI_MAX, DCLNO_gpu_group_comm);
         if (DCLNO_is_gpu_owner && gpu_group_max_msize >= DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL) {
             DCLNO_GpuSolver_EnsureMatrixCapacity(gpu_group_max_msize);
             DCLNO_GpuSolver_EnsureWorkspace(gpu_group_max_msize, gpu_group_max_msize);
         }
+    }
+    else if (use_gpu_accel && Max_Msize >= DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL) {
+        DCLNO_GpuSolver_EnsureMatrixCapacity(Max_Msize);
+        DCLNO_GpuSolver_EnsureWorkspace(Max_Msize, Max_Msize);
     }
 
     /****************************************************
@@ -1668,7 +1673,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                     if (NUM2 < 1)   NUM2 = NUM;
                 }
 
-                use_gpu_task = (use_gpu_accel && (DCLNO_is_gpu_owner || use_gpu_proxy) &&
+                use_gpu_task = (use_gpu_accel &&
                                 NUM >= DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL);
 
                 if (measure_time) dtime(&stime);
