@@ -7,7 +7,7 @@ Hiroyuki Kawai (Niigata Univ.)</br>
 X account: [@dc1394](https://x.com/dc1394)
 
 ## How to enable GPU acceleration
-To enable GPU acceleration, you must specify "cusolver" for "scf.eigen.lib" in the input file (**:warning: GPU acceleration is disabled by default!**). For example:
+To enable GPU acceleration, you must specify "gpusolver" for "scf.eigen.lib" in the input file (**:warning: GPU acceleration is disabled by default!**). For example:
 
 ```ini
 scf.XcType                  GGA-PBE    # LDA|LSDA-CA|LSDA-PW|GGA-PBE
@@ -24,7 +24,7 @@ scf.Max.Mixing.Weight      0.700       # default=0.40
 scf.Mixing.History          7          # default=5
 scf.Mixing.StartPulay       5          # default=6
 scf.criterion             1.0e-10      # default=1.0e-6 (Hartree) 
-scf.eigen.lib             cusolver     # default=elpa1
+scf.eigen.lib             gpusolver     # default=elpa1
 ```
 
 Set as shown above.
@@ -44,23 +44,23 @@ The steps are as follows:
 This should yield results like the following:
 
 ```ini
-  1  input_example/Benzene.dat        Elapsed time(s)=    6.43  diff Utot= 0.000000000044  diff Force= 0.000000000008
-  2  input_example/C60.dat            Elapsed time(s)=  49.17  diff Utot= 0.000000000002  diff Force= 0.000000000001
-  3  input_example/CO.dat            Elapsed time(s)=    9.99  diff Utot= 0.000000000072  diff Force= 0.000000001358
-  4  input_example/Cr2.dat            Elapsed time(s)=    8.04  diff Utot= 0.000000000439  diff Force= 0.000000000049
-  5  input_example/Crys-MnO.dat      Elapsed time(s)=  80.04  diff Utot= 0.000000000038  diff Force= 0.000000002306
-  6  input_example/GaAs.dat          Elapsed time(s)=  101.35  diff Utot= 0.000000000021  diff Force= 0.000000000003
-  7  input_example/Glycine.dat        Elapsed time(s)=    5.52  diff Utot= 0.000000000001  diff Force= 0.000000000001
-  8  input_example/Graphite4.dat      Elapsed time(s)=    7.52  diff Utot= 0.000000000019  diff Force= 0.000000000005
-  9  input_example/H2O-EF.dat        Elapsed time(s)=    5.11  diff Utot= 0.000000000105  diff Force= 0.000000000002
-  10  input_example/H2O.dat            Elapsed time(s)=    4.96  diff Utot= 0.000000000102  diff Force= 0.000000001624
-  11  input_example/HMn.dat            Elapsed time(s)=  12.61  diff Utot= 0.000000000345  diff Force= 0.000000000011
-  12  input_example/Methane.dat        Elapsed time(s)=    4.35  diff Utot= 0.000000000006  diff Force= 0.000000000001
-  13  input_example/Mol_MnO.dat        Elapsed time(s)=    8.89  diff Utot= 0.000000000584  diff Force= 0.000000000068
-  14  input_example/Ndia2.dat          Elapsed time(s)=  23.17  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   1  input_example/Benzene.dat        Elapsed time(s)=    6.16  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=   10.61  diff Utot= 0.000000000030  diff Force= 0.000000000002
+   3  input_example/CO.dat             Elapsed time(s)=    7.95  diff Utot= 0.000000000000  diff Force= 0.000000000004
+   4  input_example/Cr2.dat            Elapsed time(s)=    8.37  diff Utot= 0.000000000000  diff Force= 0.000000000003
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=   13.44  diff Utot= 0.000000000013  diff Force= 0.000000000002
+   6  input_example/GaAs.dat           Elapsed time(s)=   20.83  diff Utot= 0.000000000023  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    4.93  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   8  input_example/Graphite4.dat      Elapsed time(s)=    3.76  diff Utot= 0.000000000002  diff Force= 0.000000000001
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    4.69  diff Utot= 0.000000000001  diff Force= 0.000000000001
+  10  input_example/H2O.dat            Elapsed time(s)=    4.11  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  11  input_example/HMn.dat            Elapsed time(s)=   12.77  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    3.43  diff Utot= 0.000000000058  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    8.31  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    4.61  diff Utot= 0.000000000004  diff Force= 0.000000000000
 
 
-Total elapsed time (s)      327.16
+Total elapsed time (s)      113.97
 ```
 
 You can verify that the calculation is correct.
