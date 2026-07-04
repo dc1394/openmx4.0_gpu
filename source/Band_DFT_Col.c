@@ -323,6 +323,7 @@ static int BandCol_GpuTurnGroup(void)
 
 static int BandCol_MaxConcurrentKGpuTurns(void)
 {
+    const int   max_limit = 4;
     const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
     long limit;
 
@@ -332,8 +333,8 @@ static int BandCol_MaxConcurrentKGpuTurns(void)
         if (endp == value || limit < 1L) {
             return 1;
         }
-        if ((long)INT_MAX < limit) {
-            return INT_MAX;
+        if ((long)max_limit < limit) {
+            return max_limit;
         }
         return (int)limit;
     }
@@ -344,13 +345,13 @@ static int BandCol_MaxConcurrentKGpuTurns(void)
         if (limit < 1L) {
             return 1;
         }
-        if ((long)INT_MAX < limit) {
-            return INT_MAX;
+        if ((long)max_limit < limit) {
+            return max_limit;
         }
         return (int)limit;
     }
 
-    return 4;
+    return max_limit;
 }
 
 static void BandCol_ConstructCache_Reset(void)

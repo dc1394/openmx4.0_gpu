@@ -252,8 +252,10 @@ static int BandNonCol_GpuTurnGroup(int n, int n2, int MaxN, int size_H1,
 static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H1,
                                              int owns_dense_rank, int myid0)
 {
+    const int   max_requested = 4;
     const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
     long limit;
+    int requested = max_requested;
 
     if (value != NULL) {
         char *endp = NULL;
@@ -261,10 +263,14 @@ static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H
         if (endp == value || limit < 1L) {
             return 1;
         }
-        if ((long)INT_MAX < limit) {
-            return INT_MAX;
+        if ((long)max_requested < limit) {
+            requested = max_requested;
         }
-        return (int)limit;
+        else {
+            requested = (int)limit;
+        }
+        return BandNonCol_AutoGpuTurnLimit(requested,n,n2,MaxN,size_H1,
+                                           owns_dense_rank,myid0);
     }
 
     value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
@@ -273,13 +279,18 @@ static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H
         if (limit<1L){
             return 1;
         }
-        if ((long)INT_MAX<limit){
-            return INT_MAX;
+        if ((long)max_requested<limit){
+            requested = max_requested;
         }
-        return (int)limit;
+        else {
+            requested = (int)limit;
+        }
+        return BandNonCol_AutoGpuTurnLimit(requested,n,n2,MaxN,size_H1,
+                                           owns_dense_rank,myid0);
     }
 
-    return BandNonCol_AutoGpuTurnLimit(4,n,n2,MaxN,size_H1,owns_dense_rank,myid0);
+    return BandNonCol_AutoGpuTurnLimit(requested,n,n2,MaxN,size_H1,
+                                       owns_dense_rank,myid0);
 }
 
 static void BandNonCol_GpuSolver_EnsureMatrixCapacity(int n)
