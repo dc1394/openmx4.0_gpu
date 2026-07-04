@@ -282,28 +282,39 @@ static void ClusterCol_GpuSolver_PrepareTransformedS(int rebuild, int n, double 
     ClusterCol_GpuSolver_PrepareTransformedSDevice(rebuild,n,ko0);
 }
 
+static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOperation_t transb,
+                                           int m, int n, int k,
+                                           const double *A, int lda,
+                                           const double *B, int ldb,
+                                           double *C, int ldc)
+{
+    double const alpha = 1.0;
+    double const beta  = 0.0;
+
+    ClusterCol_GpuSolver_Init();
+    wait_cudafunc(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.cublas, transa, transb, m, n, k,
+                                      &alpha, A, lda, B, ldb, &beta, C, ldc));
+}
+
 static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C)
 {
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
-    size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"Hamiltonian");
     size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"eigenvectors");
     size_t evec_bytes = ClusterCol_CheckedMulCount(evec_count,sizeof(double),"eigenvector bytes");
-    double alpha = 1.0;
-    double beta = 0.0;
 
     if (!(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
         ClusterCol_AbortWithMessage("Transformed overlap is not ready in Cluster_DFT_Col.c.");
     }
 
-    wait_cudafunc(cublasDsymm(ctx->cublas,CUBLAS_SIDE_LEFT,CUBLAS_FILL_MODE_LOWER,n,n,
-                              &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,n));
-    wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_T,CUBLAS_OP_N,n,n,n,
-                              &alpha,ctx->d_S,n,ctx->d_tmp,n,&beta,ctx->d_H,n));
+    ClusterCol_GEMMul8Dgemm_Device(CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,
+                                   ctx->d_H,n,ctx->d_S,n,ctx->d_tmp,n);
+    ClusterCol_GEMMul8Dgemm_Device(CUBLAS_OP_T,CUBLAS_OP_N,n,n,n,
+                                   ctx->d_S,n,ctx->d_tmp,n,ctx->d_H,n);
 
     ClusterCol_GpuSolver_EigenDevice(ctx->d_H,n,maxn,ko_spin+1);
 
-    wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
-                              &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,maxn));
+    ClusterCol_GEMMul8Dgemm_Device(CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
+                                   ctx->d_H,n,ctx->d_S,n,ctx->d_tmp,maxn);
     wait_cudafunc(cudaMemcpyAsync(C,ctx->d_tmp,evec_bytes,cudaMemcpyDeviceToHost,ctx->stream));
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 }
@@ -322,13 +333,15 @@ static void ClusterCol_GpuSolver_SolveHamiltonian(int n, int maxn, const double 
 static void ClusterCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
                                             double const * A, double const * B, double * C)
 {
+    const int lda = (transa==CUBLAS_OP_N) ? m : k;
+    const int ldb = (transb==CUBLAS_OP_N) ? k : n;
+
     ClusterCol_GpuSolver_Init();
-#pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
+#pragma acc data      present(A[0 : lda * ((transa==CUBLAS_OP_N) ? k : m)], \
+                              B[0 : ldb * ((transb==CUBLAS_OP_N) ? n : k)], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
     {
-        double const alpha = 1.0;
-        double const beta  = 0.0;
-        wait_cudafunc(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.cublas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
+        ClusterCol_GEMMul8Dgemm_Device(transa,transb,m,n,k,A,lda,B,ldb,C,m);
     }
 }
 

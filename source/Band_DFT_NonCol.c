@@ -422,24 +422,6 @@ static void BandNonCol_GpuSolver_DenseZheevx_Device(dcomplex *A, double *ko, int
 static void BandNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
                                             dcomplex const * A, dcomplex const * B, dcomplex * C)
 {
-    cublasHandle_t handle;
-
-    wait_cudafunc(cublasCreate(&handle));
-#pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
-#pragma acc host_data use_device(A, B, C)
-    {
-        cuDoubleComplex const alpha = make_cuDoubleComplex(1.0, 0.0);
-        cuDoubleComplex const beta  = make_cuDoubleComplex(0.0, 0.0);
-        wait_cudafunc(openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &alpha,
-                                          (cuDoubleComplex const *)A, m, (cuDoubleComplex const *)B, k, &beta,
-                                          (cuDoubleComplex *)C, m));
-    }
-    wait_cudafunc(cublasDestroy(handle));
-}
-
-static void BandNonCol_CublasZgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
-                                           dcomplex const *A, dcomplex const *B, dcomplex *C)
-{
     const int lda = (transa==CUBLAS_OP_N) ? m : k;
     const int ldb = (transb==CUBLAS_OP_N) ? k : n;
 
@@ -451,10 +433,11 @@ static void BandNonCol_CublasZgemm_OpenACC(cublasOperation_t transa, cublasOpera
     {
         cuDoubleComplex const alpha = make_cuDoubleComplex(1.0, 0.0);
         cuDoubleComplex const beta  = make_cuDoubleComplex(0.0, 0.0);
-        wait_cudafunc(cublasZgemm(BandNonCol_dm_gpu_workspace.cublas, transa, transb, m, n, k, &alpha,
-                                  (cuDoubleComplex const *)A, lda,
-                                  (cuDoubleComplex const *)B, ldb,
-                                  &beta, (cuDoubleComplex *)C, m));
+        wait_cudafunc(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.cublas, transa, transb, m, n, k, &alpha,
+                                          (cuDoubleComplex const *)A, lda,
+                                          (cuDoubleComplex const *)B, ldb,
+                                          &beta,
+                                          (cuDoubleComplex *)C, m));
         wait_cudafunc(cudaStreamSynchronize(BandNonCol_dm_gpu_workspace.stream));
     }
 }
@@ -477,7 +460,7 @@ static void BandNonCol_DenseTripleTransform_OpenACC(int n, dcomplex *A, dcomplex
             Work[idx].i = 0.0;
         }
 
-        BandNonCol_CublasZgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, A, S, Work);
+        BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, A, S, Work);
 
 #pragma acc parallel loop
         for (size_t idx = 0; idx < nn; idx++) {
@@ -485,7 +468,7 @@ static void BandNonCol_DenseTripleTransform_OpenACC(int n, dcomplex *A, dcomplex
             A[idx].i = 0.0;
         }
 
-        BandNonCol_CublasZgemm_OpenACC(CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, S, Work, A);
+        BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, S, Work, A);
     }
 #pragma acc wait
 }
@@ -500,7 +483,7 @@ static void BandNonCol_DenseTripleTransform_PresentOpenACC(int n, dcomplex *A, d
         Work[idx].i = 0.0;
     }
 
-    BandNonCol_CublasZgemm_OpenACC(CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,A,S,Work);
+    BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,A,S,Work);
 
 #pragma acc parallel loop present(A[0 : nn])
     for (int idx=0; idx<nn; idx++){
@@ -508,7 +491,7 @@ static void BandNonCol_DenseTripleTransform_PresentOpenACC(int n, dcomplex *A, d
         A[idx].i = 0.0;
     }
 
-    BandNonCol_CublasZgemm_OpenACC(CUBLAS_OP_C,CUBLAS_OP_N,n,n,n,S,Work,A);
+    BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_C,CUBLAS_OP_N,n,n,n,S,Work,A);
 
 #pragma acc wait
 }
@@ -569,7 +552,7 @@ static void BandNonCol_DenseWavefunctions_OpenACC(int n2, dcomplex *Cs2, dcomple
             Hs2[idx].i = 0.0;
         }
 
-        BandNonCol_CublasZgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_T, n2, n2, n2, Cs2, Ss2, Hs2);
+        BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_T, n2, n2, n2, Cs2, Ss2, Hs2);
     }
 #pragma acc wait
 }
@@ -588,7 +571,7 @@ static void BandNonCol_DenseWavefunctions_PresentOpenACC(int n2, dcomplex *Cs2, 
         Hs2[idx].i = 0.0;
     }
 
-    BandNonCol_CublasZgemm_OpenACC(CUBLAS_OP_T,CUBLAS_OP_T,n2,n2,n2,Cs2,Ss2,Hs2);
+    BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_T,CUBLAS_OP_T,n2,n2,n2,Cs2,Ss2,Hs2);
 
 #pragma acc wait
 }

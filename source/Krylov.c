@@ -343,8 +343,8 @@ static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
   wait_cudafunc(cudaMemcpyAsync(ws->d_B, B, sizeof(double)*count_B,
                                 cudaMemcpyHostToDevice, ws->stream));
 
-  wait_cudafunc(cublasDgemm(ws->cublas, transa, transb, m, n, k,
-                            &alpha, ws->d_A, lda, ws->d_B, ldb, &beta, ws->d_C, ldc));
+  wait_cudafunc(openmx_gemmul8Dgemm(ws->cublas, transa, transb, m, n, k,
+                                    &alpha, ws->d_A, lda, ws->d_B, ldb, &beta, ws->d_C, ldc));
 
   wait_cudafunc(cudaMemcpyAsync(C, ws->d_C, sizeof(double)*count_C,
                                 cudaMemcpyDeviceToHost, ws->stream));
