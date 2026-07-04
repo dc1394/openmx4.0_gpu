@@ -297,16 +297,21 @@ static int BandCol_GemmWorkspaceTurnRelease(void)
 static int BandCol_GpuTurnGroup(void)
 {
     /* Number of GPU turns allowed to run concurrently between barriers when
-       turns are serialized (OPENMX_BAND_GPU_TURN_GROUP). Pairs overlap one
-       rank's transfers with the other's compute; larger groups re-trigger the
-       GEMMul8 workspace fallback on a 16 GB device, so default to 2. */
+       turns are serialized (OPENMX_BAND_GPU_TURN_GROUP). */
     const char *value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
     long        group;
 
     if (value == NULL) {
-        return 2;
+        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+        if (value == NULL) {
+            group = 4;
+        } else {
+            group = strtol(value, NULL, 10);
+        }
+    } else {
+        group = strtol(value, NULL, 10);
     }
-    group = strtol(value, NULL, 10);
+
     if (group < 1L) {
         return 1;
     }
@@ -325,6 +330,18 @@ static int BandCol_MaxConcurrentKGpuTurns(void)
         char *endp = NULL;
         limit = strtol(value, &endp, 10);
         if (endp == value || limit < 1L) {
+            return 1;
+        }
+        if ((long)INT_MAX < limit) {
+            return INT_MAX;
+        }
+        return (int)limit;
+    }
+
+    value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+    if (value != NULL) {
+        limit = strtol(value, NULL, 10);
+        if (limit < 1L) {
             return 1;
         }
         if ((long)INT_MAX < limit) {

@@ -19,6 +19,7 @@
 #include <math.h>
 #include <omp.h>
 #include <openacc.h>
+#include <accel.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -191,7 +192,65 @@ static void BandNonCol_SetDenseGemmul8Defaults(void)
     }
 }
 
-static int BandNonCol_MaxConcurrentKGpuTurns(void)
+static int BandNonCol_GemmWorkspaceTurnRelease(void)
+{
+    const char *value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+
+    if (value==NULL){
+        return 1;
+    }
+    return (atoi(value)!=0);
+}
+
+static void BandNonCol_ClearOpenAccFreelists(void)
+{
+#pragma acc wait
+    acc_clear_freelists();
+}
+
+static int BandNonCol_SerializeGpuSolverGpuTurns(void)
+{
+    const char *value = getenv("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
+
+    if (value==NULL){
+        return 1;
+    }
+    return (atoi(value)!=0);
+}
+
+static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, int size_H1,
+                                       int owns_dense_rank, int myid0);
+
+static int BandNonCol_GpuTurnGroup(int n, int n2, int MaxN, int size_H1,
+                                   int owns_dense_rank, int myid0)
+{
+    const char *value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
+    long group;
+
+    if (value==NULL){
+        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+        if (value==NULL){
+            return BandNonCol_AutoGpuTurnLimit(4,n,n2,MaxN,size_H1,owns_dense_rank,myid0);
+        }
+        else {
+            group = strtol(value,NULL,10);
+        }
+    }
+    else {
+        group = strtol(value,NULL,10);
+    }
+
+    if (group<1L){
+        return 1;
+    }
+    if (1024L<group){
+        return 1024;
+    }
+    return (int)group;
+}
+
+static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H1,
+                                             int owns_dense_rank, int myid0)
 {
     const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
     long limit;
@@ -208,21 +267,19 @@ static int BandNonCol_MaxConcurrentKGpuTurns(void)
         return (int)limit;
     }
 
-    {
-        int default_limit = 4;
-        int global_default_limit;
-        size_t free_bytes = 0;
-        size_t total_bytes = 0;
-        cudaError_t err = cudaMemGetInfo(&free_bytes,&total_bytes);
-
-        if (err!=cudaSuccess ||
-            total_bytes < (size_t)64ULL*1024ULL*1024ULL*1024ULL){
-            default_limit = 1;
+    value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+    if (value!=NULL){
+        limit = strtol(value,NULL,10);
+        if (limit<1L){
+            return 1;
         }
-
-        MPI_Allreduce(&default_limit,&global_default_limit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-        return global_default_limit;
+        if ((long)INT_MAX<limit){
+            return INT_MAX;
+        }
+        return (int)limit;
     }
+
+    return BandNonCol_AutoGpuTurnLimit(4,n,n2,MaxN,size_H1,owns_dense_rank,myid0);
 }
 
 static void BandNonCol_GpuSolver_EnsureMatrixCapacity(int n)
@@ -777,6 +834,116 @@ static size_t BandNonCol_RootDenseReserveBytes(size_t total_bytes, size_t requir
     return reserve;
 }
 
+static int BandNonCol_GpuTurnMemoryFits(size_t free_bytes, size_t total_bytes,
+                                        size_t required_bytes, int concurrent_ranks,
+                                        size_t *group_required, size_t *reserve_bytes)
+{
+    size_t reserve;
+    size_t required;
+
+    if (concurrent_ranks<1) concurrent_ranks = 1;
+
+    if ((size_t)concurrent_ranks!=0U &&
+        required_bytes>SIZE_MAX/(size_t)concurrent_ranks){
+        if (group_required!=NULL) *group_required = SIZE_MAX;
+        if (reserve_bytes!=NULL) *reserve_bytes = 0U;
+        return 0;
+    }
+
+    required = required_bytes*(size_t)concurrent_ranks;
+    reserve = BandNonCol_RootDenseReserveBytes(total_bytes,required);
+
+    /* Dense non-collinear turns also use OpenACC and GEMMul8 scratch space
+       around the explicitly estimated matrices. Keep a full extra turn-sized
+       cushion so the automatic limiter does not choose a group that only
+       fits on paper and then fails in cuMemAlloc. */
+    if (reserve<required) reserve = required;
+
+    if (group_required!=NULL) *group_required = required;
+    if (reserve_bytes!=NULL) *reserve_bytes = reserve;
+
+    return (required<=free_bytes && reserve<=free_bytes-required);
+}
+
+static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, int size_H1,
+                                       int owns_dense_rank, int myid0)
+{
+    MPI_Comm node_comm;
+    MPI_Comm device_comm = MPI_COMM_NULL;
+    int local_limit = requested;
+    int global_limit = requested;
+    int cuda_ok = 0;
+    int cuda_device = -1;
+    size_t required_bytes = 0;
+    size_t free_bytes = 0;
+    size_t total_bytes = 0;
+
+    if (requested<=2){
+        return requested;
+    }
+
+    if (owns_dense_rank){
+        cudaError_t cuda_status = cudaGetDevice(&cuda_device);
+
+        if (cuda_status==cudaSuccess){
+            required_bytes = BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1);
+            cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
+        }
+
+        if (cuda_status==cudaSuccess && 0<required_bytes){
+            cuda_ok = 1;
+        }
+        else {
+            local_limit = 2;
+        }
+    }
+
+    MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
+    MPI_Comm_split(node_comm,cuda_ok ? cuda_device : MPI_UNDEFINED,0,&device_comm);
+    MPI_Comm_free(&node_comm);
+
+    if (cuda_ok){
+        int device_rank = 0;
+        int device_ranks = 0;
+
+        MPI_Comm_rank(device_comm,&device_rank);
+        MPI_Comm_size(device_comm,&device_ranks);
+
+        {
+            int concurrent_ranks = (device_ranks<requested) ? device_ranks : requested;
+            size_t group_required = 0;
+            size_t reserve_bytes = 0;
+            int lacks_memory = 0;
+            int target_limit = requested;
+
+            lacks_memory = !BandNonCol_GpuTurnMemoryFits(free_bytes,total_bytes,required_bytes,
+                                                         concurrent_ranks,
+                                                         &group_required,&reserve_bytes);
+            if (lacks_memory && 2<requested){
+                int trial_ranks = (device_ranks<2) ? device_ranks : 2;
+
+                if (BandNonCol_GpuTurnMemoryFits(free_bytes,total_bytes,required_bytes,
+                                                 trial_ranks,NULL,NULL)){
+                    target_limit = 2;
+                }
+                else {
+                    target_limit = 1;
+                }
+            }
+
+            if (lacks_memory){
+                local_limit = target_limit;
+            }
+        }
+
+        MPI_Comm_free(&device_comm);
+    }
+
+    MPI_Allreduce(&local_limit,&global_limit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+
+    return global_limit;
+}
+
 static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int size_H1,
                                                   int myid0, int myworld2, int Num_Comm_World2,
                                                   int *Comm_World_StartID2)
@@ -900,6 +1067,7 @@ static void BandNonCol_ConstructCache_Reset(void)
         if (phase_r!=NULL && phase_i!=NULL && 0<phase_count){
 #pragma acc exit data delete(phase_r[0 : phase_count], phase_i[0 : phase_count])
         }
+        BandNonCol_ClearOpenAccFreelists();
     }
 
     free(cache->phase_l1);
@@ -1736,6 +1904,14 @@ static BandNonColRootDenseWorkspace *BandNonCol_RootDenseWorkspace_Ensure(int ow
     return ws;
 }
 
+static void BandNonCol_ConstructDenseMsFromPacked( int cpx_flag, const double *M1, dcomplex *Ms,
+                                                   int *order_GA, int *MP, double k1, double k2, double k3,
+                                                   int n, int owns_dense );
+static void BandNonCol_BuildDenseSs2_OpenACC(int n, int n2, const dcomplex *S, dcomplex *S2);
+static void BandNonCol_BuildDenseHs2_OpenACC(int n, int n2, const dcomplex *H11,
+                                             const dcomplex *H22, const dcomplex *H12,
+                                             dcomplex *H2);
+
 static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
                                                   int n, int n2, int MaxN, int kloop,
                                                   double k1, double k2, double k3,
@@ -1810,6 +1986,9 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
         BandNonCol_DenseTripleTransform_PresentOpenACC(n,h11,active_S,work);
         BandNonCol_DenseTripleTransform_PresentOpenACC(n,h12,active_S,work);
         BandNonCol_DenseTripleTransform_PresentOpenACC(n,h22,active_S,work);
+        if (BandNonCol_GemmWorkspaceTurnRelease()){
+            openmx_gemmul8ReleaseWorkspaces();
+        }
 
 #pragma acc exit data delete(work[0 : nn])
         BandNonCol_BuildDenseHs2_OpenACC(n,n2,h11,h22,h12,hs2);
@@ -1828,6 +2007,7 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
         if (!need_evec){
 #pragma acc exit data delete(hs2[0 : n2n2], active_S[0 : nn])
 #pragma acc exit data delete(ko[0 : n2 + 1])
+            BandNonCol_ClearOpenAccFreelists();
             return;
         }
 
@@ -1839,6 +2019,7 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
 #pragma acc update self(cs2[0 : n2n2])
 #pragma acc exit data delete(hs2[0 : n2n2], ss2[0 : n2n2], cs2[0 : n2n2])
 #pragma acc exit data delete(ko[0 : n2 + 1])
+        BandNonCol_ClearOpenAccFreelists();
     }
 }
 
@@ -2873,7 +3054,8 @@ double Band_DFT_NonCol(
 
   if (use_k_dense_gpusolver){
 
-    int max_concurrent_gpu_turns = BandNonCol_MaxConcurrentKGpuTurns();
+    int max_concurrent_gpu_turns =
+      BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,owns_dense_k_rank,myid0);
     BandNonColRootDenseWorkspace *rdw;
     double *pack_buffer = NULL;
     double *m_olp = NULL;
@@ -2976,6 +3158,7 @@ double Band_DFT_NonCol(
         m_i12 = NULL;
         BandNonCol_ConstructCache_Reset();
         BandNonCol_RootDenseWorkspace_Reset();
+        BandNonCol_GpuSolver_Destroy();
       }
 
       MPI_Barrier(mpi_comm_level1);
@@ -2983,17 +3166,20 @@ double Band_DFT_NonCol(
   }
   else if (use_root_dense_gpusolver){
 
-    int root_dense_serial_worlds = (1 < Num_Comm_World2);
-    int root_dense_world_start;
-    int root_dense_world_end;
-    int root_dense_owner;
-    int owns_root_dense;
+    const int serialize_gpu_turns = BandNonCol_SerializeGpuSolverGpuTurns();
+    const int owns_root_dense_rank =
+      (0<=myworld2 && myworld2<Num_Comm_World2 &&
+       myid0==Comm_World_StartID2[myworld2] &&
+       Set_Hamiltonian_OpenACC_Rank_Is_Selected());
+    int root_dense_turn_group =
+      serialize_gpu_turns ?
+      BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,owns_root_dense_rank,myid0) :
+      Num_Comm_World2;
     int use_setham_packed_cache =
       (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
        Set_Hamiltonian_GpuSolver_Packed_OrderMode()==1);
     int root_s_valid = 0;
     int rebuild_overlap;
-    int root_rank;
     BandNonColRootDenseWorkspace *rdw;
     double *pack_buffer = NULL;
     double *m_olp = NULL;
@@ -3006,53 +3192,126 @@ double Band_DFT_NonCol(
     double *m_i12 = NULL;
     int *packed_order_GA = order_GA;
 
-    if (root_dense_serial_worlds){
-      int parallel_k_worlds_fit =
-        BandNonCol_RootDenseParallelKWorldsFit(n,n2,MaxN,size_H1,myid0,myworld2,
-                                               Num_Comm_World2,Comm_World_StartID2);
-      root_dense_serial_worlds = !parallel_k_worlds_fit;
-    }
-    root_dense_serial_gpusolver_worlds = root_dense_serial_worlds;
-
-    root_dense_world_start = root_dense_serial_worlds ? 0 : myworld2;
-    root_dense_world_end = root_dense_serial_worlds ? Num_Comm_World2 : (myworld2 + 1);
-    root_dense_owner = root_dense_serial_worlds ? Host_ID : Comm_World_StartID2[myworld2];
-    owns_root_dense = (myid0==root_dense_owner);
+    if (root_dense_turn_group<1) root_dense_turn_group = 1;
+    root_dense_serial_gpusolver_worlds = 0;
 
     if (use_setham_packed_cache){
       Set_Hamiltonian_GpuSolver_SetMP(MP);
-      if (owns_root_dense){
-        if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()){
-          BandNonCol_AbortWithMessage("Set_Hamiltonian packed cache is not owned by this rank in Band_DFT_NonCol.c.");
-        }
-        packed_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-        m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap();
-        m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(0);
-        m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(1);
-        m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(2);
-        m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(3);
-        m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(0);
-        m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(1);
-        m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(2);
+    }
 
-        if (packed_order_GA==NULL || m_olp==NULL || m_h11==NULL || m_h22==NULL ||
-            m_h12==NULL || m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
-          BandNonCol_AbortWithMessage("Set_Hamiltonian packed matrix cache is missing in Band_DFT_NonCol.c.");
+    for (int group_first=0; group_first<Num_Comm_World2; group_first+=root_dense_turn_group){
+      int group_last =
+        (group_first + root_dense_turn_group < Num_Comm_World2) ?
+        (group_first + root_dense_turn_group) : Num_Comm_World2;
+      int owns_root_dense_group = 0;
+
+      for (int root_dense_world=group_first; root_dense_world<group_last; root_dense_world++){
+        if (myid0==Comm_World_StartID2[root_dense_world]){
+          owns_root_dense_group = 1;
+          break;
         }
       }
-    }
-    else if (owns_root_dense){
-      m_olp = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      m_h11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      m_h22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      m_h12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      m_h12i = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      m_i11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      m_i22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      m_i12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
 
-      if (m_olp==NULL || m_h11==NULL || m_h22==NULL || m_h12==NULL ||
-          m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
+      if (serialize_gpu_turns){
+        MPI_Barrier(mpi_comm_level1);
+      }
+
+      if (use_setham_packed_cache){
+        if (owns_root_dense_group){
+          if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()){
+            BandNonCol_AbortWithMessage("Set_Hamiltonian packed cache is not owned by this rank in Band_DFT_NonCol.c.");
+          }
+          packed_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+          m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap();
+          m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(0);
+          m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(1);
+          m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(2);
+          m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(3);
+          m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(0);
+          m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(1);
+          m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(2);
+
+          if (packed_order_GA==NULL || m_olp==NULL || m_h11==NULL || m_h22==NULL ||
+              m_h12==NULL || m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
+            BandNonCol_AbortWithMessage("Set_Hamiltonian packed matrix cache is missing in Band_DFT_NonCol.c.");
+          }
+        }
+      }
+      else if (owns_root_dense_group){
+        m_olp = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        m_h11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        m_h22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        m_h12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        m_h12i = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        m_i11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        m_i22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        m_i12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+
+        if (m_olp==NULL || m_h11==NULL || m_h22==NULL || m_h12==NULL ||
+            m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
+          free(m_olp);
+          free(m_h11);
+          free(m_h22);
+          free(m_h12);
+          free(m_h12i);
+          free(m_i11);
+          free(m_i22);
+          free(m_i12);
+          BandNonCol_AbortWithMessage("Failed to allocate root dense packed matrices in Band_DFT_NonCol.c.");
+        }
+      }
+      else {
+        pack_buffer = (double*)malloc(sizeof(double)*(size_t)size_H1);
+        if (pack_buffer==NULL){
+          BandNonCol_AbortWithMessage("Failed to allocate root dense packing buffer in Band_DFT_NonCol.c.");
+        }
+      }
+
+      if (!use_setham_packed_cache){
+        BandNonCol_PackDenseM1(CntOLP, owns_root_dense_group ? m_olp : pack_buffer,MP,order_GA);
+        BandNonCol_PackDenseM1(nh[0],  owns_root_dense_group ? m_h11 : pack_buffer,MP,order_GA);
+        BandNonCol_PackDenseM1(nh[1],  owns_root_dense_group ? m_h22 : pack_buffer,MP,order_GA);
+        BandNonCol_PackDenseM1(nh[2],  owns_root_dense_group ? m_h12 : pack_buffer,MP,order_GA);
+        BandNonCol_PackDenseM1(nh[3],  owns_root_dense_group ? m_h12i : pack_buffer,MP,order_GA);
+        BandNonCol_PackDenseM1(ImNL[0],owns_root_dense_group ? m_i11 : pack_buffer,MP,order_GA);
+        BandNonCol_PackDenseM1(ImNL[1],owns_root_dense_group ? m_i22 : pack_buffer,MP,order_GA);
+        BandNonCol_PackDenseM1(ImNL[2],owns_root_dense_group ? m_i12 : pack_buffer,MP,order_GA);
+        free(pack_buffer);
+        pack_buffer = NULL;
+      }
+
+      for (int root_dense_world=group_first; root_dense_world<group_last; root_dense_world++){
+        int root_dense_owner = Comm_World_StartID2[root_dense_world];
+        int owns_root_dense = (myid0==root_dense_owner);
+
+        if (owns_root_dense || myworld2==root_dense_world){
+
+          rdw = BandNonCol_RootDenseWorkspace_Ensure(owns_root_dense,n,n2,MaxN,1,SCF_iter);
+          root_s_valid = 0;
+          if (owns_root_dense) root_s_valid = rdw->s_valid;
+          rebuild_overlap = (SCF_iter==1 || !root_s_valid);
+
+          kloop = root_dense_world;
+          k1 = T_KGrids1[kloop];
+          k2 = T_KGrids2[kloop];
+          k3 = T_KGrids3[kloop];
+
+          if (owns_root_dense){
+            BandNonCol_RootDenseSolveOneK_OpenACC(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+                                                  m_olp,m_h11,m_h22,m_h12,m_h12i,
+                                                  m_i11,m_i22,m_i12,
+                                                  packed_order_GA,MP,ko,EIGEN,1,rdw);
+          }
+
+          BandNonCol_DistributeDenseEvecGlobal(kloop,n2,MaxN,myid0,myworld2,NPROCS_WD2,
+                                               Comm_World_StartID2,root_dense_owner,
+                                               owns_root_dense ? rdw->cs2 : NULL,EVec1[0]);
+
+          if (owns_root_dense) rdw->s_valid = 1;
+        }
+      }
+
+      if (!use_setham_packed_cache && owns_root_dense_group){
         free(m_olp);
         free(m_h11);
         free(m_h22);
@@ -3061,179 +3320,28 @@ double Band_DFT_NonCol(
         free(m_i11);
         free(m_i22);
         free(m_i12);
-        BandNonCol_AbortWithMessage("Failed to allocate root dense packed matrices in Band_DFT_NonCol.c.");
+        m_olp = NULL;
+        m_h11 = NULL;
+        m_h22 = NULL;
+        m_h12 = NULL;
+        m_h12i = NULL;
+        m_i11 = NULL;
+        m_i22 = NULL;
+        m_i12 = NULL;
       }
-    }
-    else {
-      pack_buffer = (double*)malloc(sizeof(double)*(size_t)size_H1);
-      if (pack_buffer==NULL){
-        BandNonCol_AbortWithMessage("Failed to allocate root dense packing buffer in Band_DFT_NonCol.c.");
+
+      if (owns_root_dense_group){
+        BandNonCol_ConstructCache_Reset();
+        BandNonCol_GpuSolver_Destroy();
       }
-    }
 
-    if (!use_setham_packed_cache){
-      BandNonCol_PackDenseM1(CntOLP, owns_root_dense ? m_olp : pack_buffer,MP,order_GA);
-      BandNonCol_PackDenseM1(nh[0],  owns_root_dense ? m_h11 : pack_buffer,MP,order_GA);
-      BandNonCol_PackDenseM1(nh[1],  owns_root_dense ? m_h22 : pack_buffer,MP,order_GA);
-      BandNonCol_PackDenseM1(nh[2],  owns_root_dense ? m_h12 : pack_buffer,MP,order_GA);
-      BandNonCol_PackDenseM1(nh[3],  owns_root_dense ? m_h12i : pack_buffer,MP,order_GA);
-      BandNonCol_PackDenseM1(ImNL[0],owns_root_dense ? m_i11 : pack_buffer,MP,order_GA);
-      BandNonCol_PackDenseM1(ImNL[1],owns_root_dense ? m_i22 : pack_buffer,MP,order_GA);
-      BandNonCol_PackDenseM1(ImNL[2],owns_root_dense ? m_i12 : pack_buffer,MP,order_GA);
-      free(pack_buffer);
-    }
-
-    for (int root_dense_world=root_dense_world_start;
-         root_dense_world<root_dense_world_end;
-         root_dense_world++){
-
-      root_dense_owner = root_dense_serial_worlds ? Host_ID : Comm_World_StartID2[root_dense_world];
-      owns_root_dense = (myid0==root_dense_owner);
-      root_rank = root_dense_owner;
-
-      if (root_dense_serial_worlds){
+      if (serialize_gpu_turns){
         MPI_Barrier(mpi_comm_level1);
       }
-
-      if (owns_root_dense || myworld2==root_dense_world){
-
-        rdw = BandNonCol_RootDenseWorkspace_Ensure(owns_root_dense,n,n2,MaxN,1,SCF_iter);
-        root_s_valid = 0;
-        if (owns_root_dense) root_s_valid = rdw->s_valid;
-        rebuild_overlap = (SCF_iter==1 || !root_s_valid || root_dense_serial_worlds);
-
-        kloop = root_dense_world;
-        k1 = T_KGrids1[kloop];
-        k2 = T_KGrids2[kloop];
-        k3 = T_KGrids3[kloop];
-
-        {
-          dcomplex *active_S = owns_root_dense ? rdw->s_all : NULL;
-          if (owns_root_dense){
-#pragma acc enter data create(ko[0 : n2 + 1])
-            if (!rebuild_overlap){
-              size_t nn = (size_t)n*(size_t)n;
-#pragma acc enter data copyin(active_S[0 : nn])
-            }
-          }
-
-          if (rebuild_overlap){
-
-            BandNonCol_ConstructDenseMsFromPacked(0,m_olp,active_S,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-
-            if (owns_root_dense){
-              size_t nn = (size_t)n*(size_t)n;
-
-              BandNonCol_SymmetrizeDenseHermitian_OpenACC(n,active_S);
-              BandNonCol_GpuSolver_DenseZheevx_Device(active_S,ko,n,n,
-                                                     "Band_DFT_NonCol root dense overlap");
-
-#pragma acc parallel loop present(ko[0 : n + 1])
-              for (l=1; l<=n; l++){
-                if (ko[l]<1.0e-10) ko[l] = 1.0e-10;
-                ko[l] = 1.0/sqrt(ko[l]);
-              }
-
-#pragma acc parallel loop collapse(2) present(active_S[0 : nn], ko[0 : n + 1])
-              for (i=0; i<n; i++){
-                for (j=0; j<n; j++){
-                  active_S[(size_t)j*(size_t)n + (size_t)i].r *= ko[j+1];
-                  active_S[(size_t)j*(size_t)n + (size_t)i].i *= ko[j+1];
-                }
-              }
-
-#pragma acc update self(active_S[0 : nn])
-            }
-          }
-
-          if (owns_root_dense){
-            BandNonCol_ConstructDenseMsFromPacked(0,m_h11,rdw->h11,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-            BandNonCol_ConstructDenseMsFromPacked(1,m_i11,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-          }
-          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h11,rdw->work);
-
-          if (owns_root_dense){
-            BandNonCol_ConstructDenseMsFromPacked(0,m_h22,rdw->h22,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-            BandNonCol_ConstructDenseMsFromPacked(1,m_i22,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-          }
-          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h22,rdw->work);
-
-          if (owns_root_dense){
-            BandNonCol_ConstructDenseMsFromPacked(0,m_h12,rdw->h12,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-            BandNonCol_ConstructDenseMsFromPacked(1,m_h12i,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-          }
-          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h12,rdw->work);
-          if (owns_root_dense){
-            BandNonCol_ConstructDenseMsFromPacked(1,m_i12,rdw->work,packed_order_GA,MP,k1,k2,k3,n,owns_root_dense);
-          }
-          if (owns_root_dense) BandNonCol_AddDense_OpenACC(n,rdw->h12,rdw->work);
-
-          if (owns_root_dense){
-            int nn = n*n;
-            int n2n2 = n2*n2;
-            dcomplex *h11 = rdw->h11;
-            dcomplex *h22 = rdw->h22;
-            dcomplex *h12 = rdw->h12;
-            dcomplex *work = rdw->work;
-            dcomplex *hs2 = rdw->hs2;
-            dcomplex *ss2 = rdw->ss2;
-            dcomplex *cs2 = rdw->cs2;
-
-            BandNonCol_DenseTripleTransform_PresentOpenACC(n,h11,active_S,work);
-            BandNonCol_DenseTripleTransform_PresentOpenACC(n,h12,active_S,work);
-            BandNonCol_DenseTripleTransform_PresentOpenACC(n,h22,active_S,work);
-
-#pragma acc exit data delete(work[0 : nn])
-            BandNonCol_BuildDenseHs2_OpenACC(n,n2,h11,h22,h12,hs2);
-#pragma acc exit data delete(h11[0 : nn], h22[0 : nn], h12[0 : nn])
-
-            BandNonCol_SymmetrizeDenseHermitian_OpenACC(n2,hs2);
-            BandNonCol_GpuSolver_DenseZheevx_Device(hs2,ko,n2,MaxN,
-                                                   "Band_DFT_NonCol root dense Hamiltonian");
-
-#pragma acc update self(ko[0 : MaxN + 1])
-
-            for (l=1; l<=MaxN; l++){
-              EIGEN[0][kloop][l] = ko[l];
-            }
-
-            BandNonCol_BuildDenseSs2_OpenACC(n,n2,active_S,ss2);
-#pragma acc exit data delete(active_S[0 : nn])
-
-            BandNonCol_DenseWavefunctions_PresentOpenACC(n2,hs2,ss2,cs2);
-
-#pragma acc update self(cs2[0 : n2n2])
-#pragma acc exit data delete(hs2[0 : n2n2], ss2[0 : n2n2], cs2[0 : n2n2])
-#pragma acc exit data delete(ko[0 : n2 + 1])
-          }
-
-          BandNonCol_DistributeDenseEvecGlobal(kloop,n2,MaxN,myid0,myworld2,NPROCS_WD2,
-                                               Comm_World_StartID2,root_rank,
-                                               owns_root_dense ? rdw->cs2 : NULL,EVec1[0]);
-        }
-
-        if (owns_root_dense) rdw->s_valid = 1;
-        if (owns_root_dense && root_dense_serial_worlds){
-          BandNonCol_ConstructCache_Reset();
-          BandNonCol_GpuSolver_Destroy();
-          BandNonCol_DMGpu_Destroy();
-        }
-      }
     }
 
-    if (root_dense_serial_worlds){
+    if (!serialize_gpu_turns){
       MPI_Barrier(mpi_comm_level1);
-    }
-
-    if (!use_setham_packed_cache){
-      free(m_olp);
-      free(m_h11);
-      free(m_h22);
-      free(m_h12);
-      free(m_h12i);
-      free(m_i11);
-      free(m_i22);
-      free(m_i12);
     }
   }
   else {
@@ -3874,7 +3982,82 @@ double Band_DFT_NonCol(
 
     if ( strcasecmp(mode,"scf")==0 ){
 
-      if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2){
+      if (use_root_dense_gpusolver){
+        const int serialize_gpu_turns = BandNonCol_SerializeGpuSolverGpuTurns();
+        const int owns_root_dense_rank =
+          (0<=myworld2 && myworld2<Num_Comm_World2 &&
+           myid0==Comm_World_StartID2[myworld2] &&
+           Set_Hamiltonian_OpenACC_Rank_Is_Selected());
+        int root_dense_turn_group =
+          serialize_gpu_turns ?
+          BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,owns_root_dense_rank,myid0) :
+          Num_Comm_World2;
+
+        if (root_dense_turn_group<1) root_dense_turn_group = 1;
+
+        memset(rDM11,0,sizeof(double)*(size_t)size_H1);
+        memset(rDM22,0,sizeof(double)*(size_t)size_H1);
+        memset(rDM12,0,sizeof(double)*(size_t)size_H1);
+        memset(iDM12,0,sizeof(double)*(size_t)size_H1);
+        memset(iDM11,0,sizeof(double)*(size_t)size_H1);
+        memset(iDM22,0,sizeof(double)*(size_t)size_H1);
+        memset(rEDM11,0,sizeof(double)*(size_t)size_H1);
+        memset(rEDM22,0,sizeof(double)*(size_t)size_H1);
+
+        for (int group_first=0; group_first<Num_Comm_World2; group_first+=root_dense_turn_group){
+          int group_last =
+            (group_first + root_dense_turn_group < Num_Comm_World2) ?
+            (group_first + root_dense_turn_group) : Num_Comm_World2;
+
+          if (serialize_gpu_turns){
+            MPI_Barrier(mpi_comm_level1);
+          }
+
+          for (int root_dense_world=group_first; root_dense_world<group_last; root_dense_world++){
+            int root_dense_owner = Comm_World_StartID2[root_dense_world];
+            int owns_root_dense = (myid0==root_dense_owner);
+
+            if (owns_root_dense){
+              BandNonColRootDenseWorkspace *rdw = &BandNonCol_root_dense_workspace;
+
+              if (!rdw->valid || rdw->cs2==NULL){
+                BandNonCol_AbortWithMessage("Root dense eigenvectors are not available for Band_DFT_NonCol DM.");
+              }
+
+              kloop = root_dense_world;
+              k1 = T_KGrids1[kloop];
+              k2 = T_KGrids2[kloop];
+              k3 = T_KGrids3[kloop];
+
+              BandNonCol_AccumulateDMRootDenseK_OpenACC(size_H1,MP,n,n2,MaxN,k1,k2,k3,
+                                                        EIGEN[0][kloop],rdw->cs2,
+                                                        rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
+                                                        rEDM11,rEDM22);
+            }
+          }
+
+          if (serialize_gpu_turns){
+            MPI_Barrier(mpi_comm_level1);
+          }
+        }
+
+        if (!serialize_gpu_turns){
+          MPI_Barrier(mpi_comm_level1);
+        }
+
+        kloop = 0;
+        k1 = T_KGrids1[0];
+        k2 = T_KGrids2[0];
+        k3 = T_KGrids3[0];
+        Calc_DM_Band_non_collinear( 0,1,
+				    myid0,myid2,size_H1,
+				    is2,ie2,MP,n,n2,MaxN,k1,k2,k3,
+				    CDM,iDM[0],EDM,EIGEN[0][0],
+				    EVec1[0],
+				    rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
+				    rEDM11,rEDM22 );
+      }
+      else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2){
         BandNonCol_CalcDMAllK1_OpenACC( myid0,myid2,size_H1,
 					is2,ie2,MP,n,n2,k1,k2,k3,
 					CDM,iDM[0],EDM,EIGEN[0][kloop],
@@ -3958,7 +4141,8 @@ double Band_DFT_NonCol(
     /* for kloop */
 
     if (use_k_dense_gpusolver){
-      int max_concurrent_gpu_turns = BandNonCol_MaxConcurrentKGpuTurns();
+      int max_concurrent_gpu_turns =
+        BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,owns_dense_k_rank,myid0);
       BandNonColRootDenseWorkspace *rdw;
       double *pack_buffer = NULL;
       double *m_olp = NULL;
@@ -4074,6 +4258,7 @@ double Band_DFT_NonCol(
           m_i12 = NULL;
           BandNonCol_ConstructCache_Reset();
           BandNonCol_RootDenseWorkspace_Reset();
+          BandNonCol_GpuSolver_Destroy();
         }
 
         MPI_Barrier(mpi_comm_level1);
