@@ -4102,18 +4102,6 @@ int  gpusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int m, int MaxN)
         }                                                                                                              \
     }
 
-void my_cublasDgemm(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, double const * A,
-                    double const * B, double * C);
-
-void my_cublasDgemm_openacc(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, double const * A,
-                            double const * B, double * C);
-
-void my_cublasZgemm(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, dcomplex const * A,
-                    dcomplex const * B, dcomplex * C);
-
-void my_cublasZgemm_openacc(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, dcomplex const * A,
-                            dcomplex const * B, dcomplex * C);
-
 cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
                                    int n, int k, const double *alpha, const double *A, int lda, const double *B,
                                    int ldb, const double *beta, double *C, int ldc);
