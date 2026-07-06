@@ -1,0 +1,1991 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenMX 4.0 GPU Version: Implementation Guide</title>
+<style>
+:root{
+  --accent:#2b5ea7; --accent-dark:#1e4479; --ink:#1c1e21; --sub:#5b6570;
+  --gpu:#2e7d32; --gpu-bg:#e7f2e8; --cond-bg:#fdf3d8; --cpu-bg:#eceef1;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:"Noto Sans CJK JP","Migu 1P","IPAexGothic",sans-serif;
+  font-size:9.6pt; line-height:1.7; color:#1c1e21;
+  text-align:justify; font-feature-settings:"palt";
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+@page{
+  size:A4; margin:19mm 16mm 18mm 16mm;
+  @top-center{content:"OpenMX 4.0 GPU Version — Implementation Guide"; font-size:7.5pt; color:#98a0aa;
+              font-family:"Noto Sans CJK JP",sans-serif;}
+  @bottom-center{content:counter(page); font-size:8.5pt; color:#6a7280;
+              font-family:"Noto Sans CJK JP",sans-serif;}
+}
+@page cover{ @top-center{content:none;} @bottom-center{content:none;} }
+.cover{page:cover; height:245mm; display:flex; flex-direction:column; justify-content:center;}
+h1{
+  font-size:16pt; color:var(--accent-dark); margin:0 0 10px 0; padding:6px 0 6px 12px;
+  border-left:6px solid var(--accent); border-bottom:1.5px solid #c9d4e4;
+  break-before:page; break-after:avoid; line-height:1.4;
+}
+h1.first{break-before:auto;}
+h2{font-size:12pt; color:var(--accent-dark); margin:20px 0 6px 0; padding-bottom:2px;
+   border-bottom:1px solid #d5dde8; break-after:avoid;}
+h3{font-size:10.5pt; color:#23324a; margin:14px 0 4px 0; break-after:avoid;}
+p{margin:5px 0;}
+ul,ol{margin:5px 0 5px 2px; padding-left:20px;}
+li{margin:2.5px 0;}
+code{
+  font-family:"Migu 1M","Noto Sans Mono CJK JP",monospace; font-size:88%;
+  background:#f1f3f6; border:1px solid #e2e6eb; border-radius:3px; padding:0 3px;
+}
+pre{
+  font-family:"Migu 1M","Noto Sans Mono CJK JP",monospace; font-size:7.7pt; line-height:1.5;
+  background:#f6f7f9; border:1px solid #dfe3e8; border-left:3px solid #b9c6da;
+  border-radius:3px; padding:7px 10px; margin:6px 0 10px 0;
+  white-space:pre-wrap; word-break:break-all; break-inside:avoid;
+}
+pre code{background:none; border:none; padding:0; font-size:inherit;}
+.src{font-size:7.6pt; color:#61708a; margin:8px 0 0 0; font-weight:bold;}
+table{width:100%; border-collapse:collapse; font-size:8.1pt; margin:8px 0 12px 0; line-height:1.5;}
+th{background:#e9eef6; color:#22314a; font-weight:bold;}
+th,td{border:1px solid #c8d0da; padding:3px 6px; vertical-align:top; text-align:left;}
+thead{display:table-header-group;}
+tr{break-inside:avoid;}
+td code, th code{font-size:85%; word-break:break-all;}
+.note,.warn,.dead{
+  border-radius:4px; padding:7px 11px; margin:8px 0; break-inside:avoid; font-size:9.2pt;
+}
+.note{background:#eef4fc; border-left:4px solid var(--accent);}
+.warn{background:#fdf3e0; border-left:4px solid #c77c00;}
+.dead{background:#f0f1f3; border-left:4px solid #8b929c; color:#3d434c;}
+.note b:first-child,.warn b:first-child,.dead b:first-child{color:#1e4479;}
+.warn b:first-child{color:#8a5600;} .dead b:first-child{color:#4a505a;}
+figure{margin:14px 0; break-inside:avoid; text-align:center;}
+figcaption{font-size:8.2pt; color:#5c6675; margin-top:5px; text-align:center;}
+svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
+.toc{page:cover;}
+.toc ol{list-style:none; padding-left:0; margin:4px 0;}
+.toc>ol>li{margin:6px 0; font-weight:bold; font-size:10pt;}
+.toc ol ol{padding-left:18px; font-weight:normal; font-size:9pt; margin:2px 0;}
+.toc a{color:#1c1e21; text-decoration:none;}
+.small{font-size:8.3pt; color:#4c5560;}
+.kbd{font-family:"Migu 1M",monospace;}
+.chip{display:inline-block; font-size:7.4pt; border-radius:3px; padding:0 5px; margin-right:4px;
+      font-weight:bold; vertical-align:1px;}
+.chip.gpu{background:var(--gpu-bg); color:#1d5a22; border:1px solid #b9d8bc;}
+.chip.cond{background:var(--cond-bg); color:#7c5a00; border:1px solid #e8d49a;}
+.chip.cpu{background:var(--cpu-bg); color:#4b5560; border:1px solid #cfd5dd;}
+.chip.dead{background:#efe9f5; color:#5b4a75; border:1px solid #d4c7e4;}
+</style>
+</head>
+<body>
+
+<!-- ==================== Cover ==================== -->
+<div class="cover">
+  <div style="border-top:3px solid var(--accent); border-bottom:1px solid var(--accent); padding:26px 8px 22px 8px;">
+    <div style="font-size:11pt; color:var(--accent-dark); letter-spacing:.08em; margin-bottom:14px;">Technical Reference</div>
+    <div style="font-size:25pt; font-weight:bold; color:#16233a; line-height:1.35;">OpenMX 4.0 GPU Version<br>Implementation Guide</div>
+    <div style="font-size:12pt; color:#3a4557; margin-top:16px; line-height:1.6;">
+      A complete picture of the NVIDIA GPU offloading implementation<br>and all changes from the original OpenMX 4.0<br>
+      <span style="font-size:10.5pt;">— How cuBLAS, GEMMul8, and cuSOLVER are used, and their caveats —</span>
+    </div>
+  </div>
+  <div style="margin-top:34px; font-size:9.5pt; color:#3a4557; line-height:1.9;">
+    <b>Target revision:</b> OpenMX 4.0 GPU version (as of 2026-07-05, commit <code>8c7801fa</code>)<br>
+    <b>Baseline for comparison:</b> the original OpenMX 4.0 source distribution<br>
+    <b>Verified environment:</b> NVHPC SDK 26.3 / CUDA 13.1 / compute capability 12.0 (Blackwell-generation GeForce)<br>
+    <b>Published:</b> July 5, 2026 (2nd edition)
+  </div>
+  <div class="note" style="margin-top:30px;">
+    <b>Note:</b> This document describes an <b>unofficial</b> port of the first-principles code <a href="http://www.openmx-square.org/">OpenMX</a> (GPL v3)
+    to NVIDIA GPUs; it is not an official document of the OpenMX development team.
+    File names and line numbers refer to the revision above and may change as development proceeds.
+  </div>
+</div>
+
+<!-- ==================== Table of Contents ==================== -->
+<nav class="toc" style="break-before:page;">
+<h1 class="first" style="break-before:auto;">Table of Contents</h1>
+<ol>
+  <li><a href="#ch1">1. Introduction</a></li>
+  <li><a href="#ch2">2. Overall Architecture</a>
+    <ol><li>Design policy / Layer structure / Enabling and dispatch / Map of GPU-offloaded targets / Handling a GPU shared by multiple ranks</li></ol></li>
+  <li><a href="#ch3">3. How cuBLAS Is Used</a>
+    <ol><li>Routines used / Handles and streams / Memory management / The actual GEMM engine per solver / Error handling / Caveats</li></ol></li>
+  <li><a href="#ch4">4. How GEMMul8 Is Used</a>
+    <ol><li>Principle and origin / Integration architecture / Precision parameters / Workspace management / Complex support / Build / Caveats</li></ol></li>
+  <li><a href="#ch5">5. How cuSOLVER (the gpusolver Layer) Is Used</a>
+    <ol><li>Layer structure and naming intent / APIs used / Generalized eigenvalue problem / devInfo handling / Concurrency control / Device assignment / Caveats</li></ol></li>
+  <li><a href="#ch6">6. OpenACC versus Raw CUDA</a>
+    <ol><li>Three patterns of data residency / host_data interoperation / openmx_cuda_kernels.cu / NVHPC-specific caveats</li></ol></li>
+  <li><a href="#ch7">7. GPU Implementation Details by Computation Path</a>
+    <ol><li>Band / Cluster / DC / DC-LNO / Krylov / Matrix-element construction / Total energy / Forces / Derived solvers</li></ol></li>
+  <li><a href="#ch8">8. Changes Unrelated to GPU Offloading</a>
+    <ol><li>OpenMP bug fixes / More robust memory management / Other fixes</li></ol></li>
+  <li><a href="#ch9">9. Build System</a>
+    <ol><li>Toolchain / Flags / Link configuration / Automatic third_party builds / ELPA / Derived Makefiles / Procedure</li></ol></li>
+  <li><a href="#ch10">10. Runtime Control Reference</a>
+    <ol><li>Input keywords / Environment variable list / Tuning guidelines</li></ol></li>
+  <li><a href="#ch11">11. Summary of Constraints and Caveats</a></li>
+  <li><a href="#appA">Appendix A. Changed Files (37 files)</a></li>
+  <li><a href="#appB">Appendix B. Newly Added Files</a></li>
+  <li><a href="#appC">Appendix C. Development History (all 51 commits)</a></li>
+  <li><a href="#refs">References</a></li>
+</ol>
+</nav>
+
+<!-- ==================== Chapter 1 ==================== -->
+<section id="ch1">
+<h1>1. Introduction</h1>
+
+<h2>1.1 Purpose and Intended Audience</h2>
+<p>This document is a public guide to the "OpenMX 4.0 GPU edition," a port of the first-principles calculation code
+<b>OpenMX 4.0</b>, based on density functional theory (DFT), to NVIDIA GPUs. Based on primary sources (the source code and diffs), it explains
+(1) the overall picture of the current implementation, (2) <b>every change</b> made relative to the original OpenMX 4.0,
+and (3) how to use — and what to watch out for in — the three core GPU libraries: <b>cuBLAS</b>, <b>GEMMul8</b>, and <b>cuSOLVER</b>.
+The intended readers are as follows.</p>
+<ul>
+  <li>Users who want to run OpenMX fast on GPUs (mainly Chapters 2, 10, and 11)</li>
+  <li>Developers who want to understand or modify this implementation (Chapters 3-9)</li>
+  <li>Developers considering ports to other vendors such as AMD GPUs (the gpusolver layer in Chapter 5, and Chapter 11)</li>
+</ul>
+<p>As prerequisites, we assume elementary knowledge of DFT and the LCAO method, the C language, MPI, and the basics of CUDA programming.</p>
+
+<h2>1.2 OpenMX and the Position of This Port</h2>
+<p>OpenMX (Open source package for Material eXplorer) is a DFT code using localized pseudo-atomic orbital (LCAO) basis sets
+and norm-conserving pseudopotentials. In addition to cluster and band calculations, it provides O(N) methods such as the
+divide-and-conquer (DC) method, the DC-LNO method, and the Krylov subspace method, as well as non-equilibrium Green's function
+(NEGF) transport calculations. It is licensed under GPL v3.</p>
+<p>This GPU edition starts from the official OpenMX 4.0 source and adds GPU offloading incrementally over <b>51 commits</b>.
+The "dense-matrix eigenvalue problems" and "matrix products (GEMM)" that dominate SCF calculations, together with grid-integration and reduction computations, are moved to the GPU,
+while everything else (sparse-matrix processing, communication, I/O, CPU-specific paths) retains the original structure.</p>
+
+<h2>1.3 Overview of the Scale of Changes</h2>
+<table>
+<thead><tr><th>Item</th><th>Value</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Modified source files</td><td>37 files (+ rename of <code>makefile</code>→<code>Makefile</code> with full overhaul)</td><td>No source files were deleted</td></tr>
+<tr><td>Changed lines (raw diff)</td><td>+33,974 / −20,839 lines</td><td>Includes full re-indentation (e.g. <code>Force.c</code>). Ignoring whitespace, the effective changes in the top files are on the order of 1,000-3,700 lines each</td></tr>
+<tr><td>New source files</td><td>13 files, 2,555 lines total</td><td>gpusolver wrappers, the GEMMul8 bridge, GPU energy kernels, etc.</td></tr>
+<tr><td>New build files</td><td>3 files</td><td><code>Makefile</code> / <code>Makefile.bunshiken</code> / <code>makefile.cpu_intel.bak</code> (an identical copy of the original)</td></tr>
+<tr><td>third_party (git submodules)</td><td>2 items</td><td>GEMMul8 (pinned to a commit), FFTW 3.3.11 (built in-tree)</td></tr>
+</tbody>
+</table>
+
+<h2>1.4 Target Environment</h2>
+<ul>
+  <li><b>Compilers:</b> NVIDIA HPC SDK (NVHPC) 26.3 — <code>mpicc</code> (nvc) + OpenACC, <code>mpif90</code> (nvfortran), nvcc (CUDA 13.1)</li>
+  <li><b>GPU:</b> CUDA-capable NVIDIA GPU. GEMMul8 uses INT8 Tensor Cores. Development and verification were done on compute capability 12.0 (Blackwell-generation GeForce)</li>
+  <li><b>Parallel model:</b> MPI process parallelism. GPUs are assigned round-robin by intra-node local rank, and the design assumes that <b>multiple ranks share one GPU</b></li>
+  <li><b>OpenMP:</b> Builds use <code>-fopenmp</code>, but parts of the GPU path (the radial-integral offload in <code>Set_OLP_Kin</code>) require single-thread execution. When using the GPU, MPI-only operation (1 thread) is assumed</li>
+</ul>
+
+<h2>1.5 Notation</h2>
+<ul>
+  <li>Source locations are given as <code>filename:line-number</code> (all relative to the <code>source/</code> directory, as of 2026-07-04).</li>
+  <li><span class="chip gpu">GPU</span> always executed on GPU, <span class="chip cond">conditional</span> opt-in via environment variables etc.,
+      <span class="chip cpu">CPU</span> CPU execution (deliberately not GPU-ported), <span class="chip dead">dormant</span> implemented but not called on the current paths.</li>
+  <li>"Original" refers to the source of the official OpenMX 4.0 distribution.</li>
+</ul>
+<div class="note"><b>How to read this document:</b> If you only want to know how the libraries are used, see Chapters 3-5;
+operational parameters are collected in Chapter 10, and known pitfalls in Chapter 11. Chapter 7 gives a vertical, per-computation-path (per-solver) explanation,
+cross-referenced with Chapters 3-6 (a horizontal, per-library/per-technique view).</div>
+</section>
+
+<!-- ==================== Chapter 2 ==================== -->
+<section id="ch2">
+<h1>2. Overall Architecture</h1>
+
+<h2>2.1 Design Principles</h2>
+<ol>
+  <li><b>Runtime switching with the CPU path fully preserved</b> — GPU porting is realized not by wholesale <code>#ifdef</code> replacement but by <b>adding branches</b> to the existing code.
+  It is enabled by a single input-file line, <code>scf.eigen.lib&nbsp;gpusolver</code>; if not specified, the same
+  ELPA/ScaLAPACK/LAPACK path as the original runs. The gate is concentrated in one point, the runtime flag <code>scf_eigen_lib_flag == GPUSOLVER</code> (enum value 3, <code>openmx_common.h:2807-2812</code>).</li>
+  <li><b>Only large dense-matrix problems are GPU-ported</b> — when the matrix dimension is below the threshold <code>GPU_CPU_SWITCH_NUM = 1000</code> (<code>openmx_common.h:4079</code>; only DC-LNO uses its own value of 800),
+  transfer costs dominate, so execution falls back to the CPU.</li>
+  <li><b>Per-MPI-rank GPU use, designed for "sharing"</b> — round-robin assignment by intra-node local rank % number of GPUs. The situation where multiple ranks share one GPU is addressed head-on,
+  with multiple layers of control: GPU-turn serialization, adaptive concurrency limiting, up-front decisions based on memory estimates, and retry on failure (§2.5).</li>
+  <li><b>GEMMul8 is the first choice for GEMM, with automatic fallback to cuBLAS FP64</b> — large GEMMs are executed via FP64 emulation on INT8 Tensor Cores (Ozaki Scheme II),
+  switching to native cuBLAS only when the workspace cannot be allocated (Chapter 4).</li>
+  <li><b>Diagonalization uses cuSOLVER's 64-bit generic API</b> — centered on <code>cusolverDnXsyevdx</code> (partial eigenvalues),
+  and the generalized eigenvalue problem <i>Hc = εSc</i> is handled by a hand-rolled GPU implementation of Löwdin (symmetric) orthogonalization via the eigendecomposition of S (Chapter 5).</li>
+  <li><b>Vendor-neutral naming (gpusolver)</b> — with future AMD GPU support in mind, the wrapper-layer identifiers and input keywords were
+  renamed wholesale from <code>cusolver</code> to <code>gpusolver</code> (commits <code>2302f965</code>, <code>d8219384</code>).
+  The cuSOLVER API calls themselves remain as implementation details of the NVIDIA build. MAGMA was also evaluated in early development but
+  has now been completely removed from the source tree (commit <code>788acb4c</code>, "Delete unnecessary files, such as the MAGMA library"; the current source contains 0 references to MAGMA).</li>
+  <li><b>Attention to numerical reproducibility</b> — the reductions in density-matrix construction keep sequential order via <code>#pragma acc loop seq</code>, spherical Bessel function tables are
+  cached with bit-pattern-exact keys, GEMMul8 itself is bitwise reproducible, and so on — care about summation order appears throughout
+  (on the other hand, some places are order-nondeterministic due to atomic additions; see §11).</li>
+</ol>
+
+<h2>2.2 Layer Structure</h2>
+<figure>
+<svg viewBox="0 0 920 640" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .lay{fill:#f4f7fb;stroke:#9db2cf;stroke-width:1.2;rx:6;}
+    .box{fill:#ffffff;stroke:#7e93b4;stroke-width:1;}
+    .gbox{fill:#e7f2e8;stroke:#7fae84;stroke-width:1;}
+    .cbox{fill:#eceef1;stroke:#a9b1bb;stroke-width:1;}
+    .t{font-size:12.5px;fill:#1c2634;}
+    .tt{font-size:13.5px;font-weight:bold;fill:#1e4479;}
+    .ts{font-size:11px;fill:#41506a;}
+    .mono{font-family:"Migu 1M","Noto Sans Mono CJK JP",monospace;}
+    .ln{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar);}
+  </style>
+  <!-- Layer 1: solvers -->
+  <rect x="10" y="8" width="900" height="150" class="lay"/>
+  <text x="24" y="30" class="tt">(1) Solver / physical-quantity layer (branches added to existing .c)</text>
+  <rect x="24" y="42" width="140" height="44" class="box"/><text x="32" y="60" class="t mono">Band_DFT_Col /</text><text x="32" y="76" class="t mono">NonCol(+CWF/DMmu)</text>
+  <rect x="172" y="42" width="150" height="44" class="box"/><text x="180" y="60" class="t mono">Cluster_DFT_Col /</text><text x="180" y="76" class="t mono">NonCol(+CWF/DMmu/LNO)</text>
+  <rect x="330" y="42" width="150" height="44" class="box"/><text x="338" y="60" class="t mono">Divide_Conquer /</text><text x="338" y="76" class="t mono">Divide_Conquer_LNO</text>
+  <rect x="488" y="42" width="92" height="44" class="box"/><text x="496" y="60" class="t mono">Krylov</text><text x="496" y="76" class="ts">(O(N) method)</text>
+  <rect x="588" y="42" width="150" height="44" class="box"/><text x="596" y="60" class="t mono">Eigen_lapack /</text><text x="596" y="76" class="t mono">EigenBand_lapack</text>
+  <rect x="746" y="42" width="152" height="44" class="box"/><text x="754" y="60" class="t mono">Electric_Polarization</text><text x="754" y="76" class="ts">(polarization)</text>
+  <rect x="24" y="96" width="200" height="44" class="box"/><text x="32" y="114" class="t mono">Set_OLP_Kin / Set_Nonlocal</text><text x="32" y="130" class="ts">overlap/kinetic/nonlocal matrix elems</text>
+  <rect x="232" y="96" width="190" height="44" class="box"/><text x="240" y="114" class="t mono">Set_Hamiltonian</text><text x="240" y="130" class="ts">grid integrals + packed H/S cache</text>
+  <rect x="430" y="96" width="220" height="44" class="box"/><text x="438" y="114" class="t mono">Total_Energy(+_GPU)</text><text x="438" y="130" class="ts">grid reductions: EXC/EH1/EH0/dipole</text>
+  <rect x="658" y="96" width="240" height="44" class="box"/><text x="666" y="114" class="t mono">Force</text><text x="666" y="130" class="ts">force #2/#4/#5 reductions (#4B on CPU)</text>
+  <!-- arrows down -->
+  <line x1="180" y1="158" x2="180" y2="188" class="ln"/>
+  <line x1="460" y1="158" x2="460" y2="188" class="ln"/>
+  <line x1="760" y1="158" x2="760" y2="188" class="ln"/>
+  <!-- Layer 2: wrappers -->
+  <rect x="10" y="190" width="900" height="128" class="lay"/>
+  <text x="24" y="212" class="tt">(2) Runtime / wrapper layer</text>
+  <rect x="24" y="224" width="270" height="82" class="box"/>
+  <text x="32" y="242" class="t"><tspan font-weight="bold">OpenACC runtime</tspan> (NVHPC -acc)</text>
+  <text x="32" y="259" class="ts">device residency via enter/exit data,</text>
+  <text x="32" y="274" class="ts">parallel loop / reduction / atomic,</text>
+  <text x="32" y="289" class="ts">pointer passing via host_data use_device</text>
+  <rect x="306" y="224" width="300" height="82" class="box"/>
+  <text x="314" y="242" class="t"><tspan font-weight="bold">gpusolver wrapper layer</tspan> (vendor-neutral)</text>
+  <text x="314" y="259" class="ts mono">gpusolver_Syevd(x).c / dense_utils.h</text>
+  <text x="314" y="274" class="ts">+ static contexts inside solvers</text>
+  <text x="314" y="289" class="ts">(persistent cudaMalloc buffers, handles)</text>
+  <rect x="618" y="224" width="280" height="82" class="box"/>
+  <text x="626" y="242" class="t"><tspan font-weight="bold">GEMM bridge</tspan> <tspan class="mono">gemmul8_bridge.cu</tspan></text>
+  <text x="626" y="259" class="ts">extern "C" / cublasDgemm-compatible API,</text>
+  <text x="626" y="274" class="ts">workspace cache (device,stream),</text>
+  <text x="626" y="289" class="ts">env-var control, cuBLAS fallback</text>
+  <!-- arrows down -->
+  <line x1="160" y1="318" x2="160" y2="348" class="ln"/>
+  <line x1="456" y1="318" x2="456" y2="348" class="ln"/>
+  <line x1="758" y1="318" x2="758" y2="348" class="ln"/>
+  <!-- Layer 3: libraries -->
+  <rect x="10" y="350" width="900" height="140" class="lay"/>
+  <text x="24" y="372" class="tt">(3) Numerical library layer</text>
+  <rect x="24" y="384" width="250" height="92" class="gbox"/>
+  <text x="32" y="402" class="t" font-weight="bold">cuSOLVER Dn</text>
+  <text x="32" y="419" class="ts mono">cusolverDnXsyevd / Xsyevdx</text>
+  <text x="32" y="434" class="ts">64-bit generic API, partial eigenvalues,</text>
+  <text x="32" y="449" class="ts">real symmetric (R_64F), Hermitian (C_64F)</text>
+  <rect x="286" y="384" width="250" height="92" class="gbox"/>
+  <text x="294" y="402" class="t" font-weight="bold">cuBLAS</text>
+  <text x="294" y="419" class="ts mono">Dgemm/Zgemm/Dsymm/Ddgmm/Zdgmm</text>
+  <text x="294" y="434" class="ts mono">ZgetrfBatched/ZgetriBatched (dormant)</text>
+  <text x="294" y="449" class="ts">direct FP64 execution + fallback target</text>
+  <rect x="548" y="384" width="250" height="92" class="gbox"/>
+  <text x="556" y="402" class="t" font-weight="bold">GEMMul8 v3.0.4 (RIKEN R-CCS)</text>
+  <text x="556" y="419" class="ts">FP64 GEMM emulation via Ozaki</text>
+  <text x="556" y="434" class="ts">Scheme II; uses cublasGemmEx inside</text>
+  <text x="556" y="449" class="ts">(INT8 Tensor Core, COMPUTE_32I)</text>
+  <rect x="810" y="384" width="88" height="92" class="cbox"/>
+  <text x="818" y="402" class="t" font-weight="bold">CPU side</text>
+  <text x="818" y="419" class="ts">ELPA 2018 /</text>
+  <text x="818" y="434" class="ts">ScaLAPACK /</text>
+  <text x="818" y="449" class="ts">BLAS/LAPACK</text>
+  <text x="818" y="464" class="ts">(fallback)</text>
+  <line x1="673" y1="476" x2="500" y2="476" stroke="#5b6570" stroke-width="1.1" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+  <text x="520" y="470" class="ts">INT8 GEMM goes through cuBLAS</text>
+  <!-- arrows down -->
+  <line x1="300" y1="490" x2="300" y2="520" class="ln"/>
+  <line x1="660" y1="490" x2="660" y2="520" class="ln"/>
+  <!-- Layer 4: HW -->
+  <rect x="10" y="522" width="900" height="106" class="lay"/>
+  <text x="24" y="544" class="tt">(4) Hardware</text>
+  <rect x="24" y="556" width="560" height="58" class="gbox"/>
+  <text x="32" y="576" class="t" font-weight="bold">NVIDIA GPU × N (shared VRAM)</text>
+  <text x="32" y="594" class="ts">MPI rank → round-robin by intra-node local rank % N (same device set for both CUDA and OpenACC runtimes)</text>
+  <rect x="600" y="556" width="298" height="58" class="cbox"/>
+  <text x="608" y="576" class="t" font-weight="bold">CPU</text>
+  <text x="608" y="594" class="ts">sparse matrices, comm, I/O, small problems, CPU fallback</text>
+</svg>
+<figcaption>Figure 1: Layer structure of the OpenMX 4.0 GPU edition. Green = GPU execution, gray = CPU execution.</figcaption>
+</figure>
+
+<p>Three forms of GPU execution are used side by side.</p>
+<ol>
+  <li><b>OpenACC directives</b> — loop parallelism for grid integrals, reductions, matrix assembly, etc. Data residency uses <code>enter data</code>/<code>exit data</code> (Chapter 6).</li>
+  <li><b>Static contexts inside solvers + raw CUDA API</b> — persistent device buffers from <code>cudaMalloc</code> and cuBLAS/cuSOLVER handles are
+  held in file-scope structs, and the libraries are called directly (<code>BandColGpuSolverCtx</code> etc.; Chapters 3 and 5).</li>
+  <li><b>GEMMul8 via an extern "C" bridge</b> — a single-translation-unit scheme for calling the C++ template library from C code (Chapter 4).</li>
+</ol>
+
+<h2>2.3 Activation Flow and GPU-Offload Points within SCF</h2>
+<p>The flow until the GPU path becomes active is as follows.</p>
+<ol>
+  <li><b>Input parsing</b> (<code>Input_std.c:777-791</code>): <code>scf.eigen.lib gpusolver</code> sets <code>scf_eigen_lib_flag = GPUSOLVER</code>.
+  The old name <code>cusolver</code> is accepted as a deprecated alias with a warning. The user-specified value is saved in <code>scf_eigen_lib_flag_input</code>.</li>
+  <li><b>Device initialization</b> (<code>DFT.c:52-99</code>; <code>DFT_GPU_DeviceInit()</code> at the SCF entry point <code>DFT.c:334</code>):
+  the intra-node local rank is obtained with <code>MPI_Comm_split_type(MPI_COMM_TYPE_SHARED)</code>, and <code>cudaSetDevice</code> and
+  <code>acc_set_device_num</code> are set <b>as a pair</b>. If no CUDA/OpenACC device is found, a warning is printed and
+  the flag is automatically demoted to <code>scf_eigen_lib_flag = ELPA2</code>.</li>
+  <li><b>Condition check at each solver entry</b>: the GPU dense-matrix path is entered only when
+  <code>GPUSOLVER flag && matrix dimension ≥ threshold && (for some paths) matrix distribution shape conditions</code> are satisfied;
+  otherwise the conventional path (ELPA2 etc.) runs unchanged.</li>
+</ol>
+
+<figure>
+<svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .fb{stroke-width:1.1;rx:5;}
+    .g{fill:#e7f2e8;stroke:#7fae84;}
+    .y{fill:#fdf3d8;stroke:#d4b45e;}
+    .c{fill:#eceef1;stroke:#a9b1bb;}
+    .w{fill:#ffffff;stroke:#7e93b4;}
+    .t2{font-size:12.5px;fill:#1c2634;}
+    .s2{font-size:11px;fill:#41506a;}
+    .a2{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar2);}
+  </style>
+  <!-- legend -->
+  <rect x="620" y="10" width="290" height="70" class="w fb"/>
+  <rect x="632" y="22" width="26" height="13" class="g fb"/><text x="664" y="33" class="s2">GPU execution (with gpusolver)</text>
+  <rect x="632" y="40" width="26" height="13" class="y fb"/><text x="664" y="51" class="s2">conditional / env-var opt-in</text>
+  <rect x="632" y="58" width="26" height="13" class="c fb"/><text x="664" y="69" class="s2">CPU execution (deliberately not on GPU)</text>
+  <!-- flow -->
+  <rect x="30" y="10" width="440" height="40" class="g fb"/>
+  <text x="42" y="27" class="t2" font-weight="bold">Init: DFT_GPU_DeviceInit()</text>
+  <text x="42" y="43" class="s2">local rank % #GPUs → cudaSetDevice + acc_set_device_num (none → ELPA2)</text>
+  <line x1="250" y1="50" x2="250" y2="72" class="a2"/>
+  <rect x="30" y="74" width="440" height="52" class="y fb"/>
+  <text x="42" y="92" class="t2" font-weight="bold">Basis matrix-element setup (before SCF)</text>
+  <text x="42" y="108" class="s2">Set_OLP_Kin (radial-integral GPU is opt-in via OPENMX_OLPKIN_RADIAL_GPU=1)</text>
+  <text x="42" y="122" class="s2">Set_Nonlocal (with GPUSOLVER, radial k-integrals run via OpenACC)</text>
+  <line x1="250" y1="126" x2="250" y2="148" class="a2"/>
+  <!-- SCF loop container -->
+  <rect x="18" y="150" width="884" height="290" fill="none" stroke="#5b6570" stroke-width="1.3" stroke-dasharray="6 4" rx="8"/>
+  <text x="34" y="170" class="t2" font-weight="bold">SCF loop</text>
+  <rect x="34" y="182" width="270" height="56" class="y fb"/>
+  <text x="44" y="200" class="t2">Set_Hamiltonian</text>
+  <text x="44" y="215" class="s2">grid integrals on CPU (GPU path disabled: slower).</text>
+  <text x="44" y="229" class="s2">Builds packed H/S cache for GPU (green part)</text>
+  <line x1="304" y1="210" x2="330" y2="210" class="a2"/>
+  <rect x="332" y="176" width="360" height="98" class="g fb"/>
+  <text x="342" y="194" class="t2" font-weight="bold">Diagonalization (GPU dense-matrix path)</text>
+  <text x="342" y="211" class="s2">(1) diagonalize S with Xsyevdx (all eigenvalues)</text>
+  <text x="342" y="226" class="s2">(2) λ → 1/√λ column scaling (cublasDdgmm/Zdgmm)</text>
+  <text x="342" y="241" class="s2">(3) H′ = Ũ†HŨ (GEMMul8 / cuBLAS)</text>
+  <text x="342" y="256" class="s2">(4) Xsyevdx on H′ (lowest MaxN) (5) back-transform C=Ũz</text>
+  <text x="342" y="270" class="s2">Condition: n ≥ 1000 (DC-LNO: 800). Below → CPU/ELPA</text>
+  <line x1="692" y1="225" x2="718" y2="225" class="a2"/>
+  <rect x="720" y="182" width="176" height="56" class="g fb"/>
+  <text x="730" y="200" class="t2">Density matrix DM/EDM</text>
+  <text x="730" y="215" class="s2">OpenACC reduction (loop seq</text>
+  <text x="730" y="229" class="s2">keeps CPU summation order)</text>
+  <rect x="34" y="290" width="270" height="56" class="g fb"/>
+  <text x="44" y="308" class="t2">Total_Energy</text>
+  <text x="44" y="323" class="s2">grid reductions for EXC/EH1, dipole, EH0</text>
+  <text x="44" y="337" class="s2">two-center terms via OpenACC (non-collinear: CPU)</text>
+  <line x1="180" y1="288" x2="180" y2="248" transform="translate(640,0)" class="a2" visibility="hidden"/>
+  <rect x="332" y="290" width="270" height="56" class="c fb"/>
+  <text x="342" y="308" class="t2">Density mixing, potential update, convergence</text>
+  <text x="342" y="323" class="s2">CPU (FFT via in-tree FFTW3 build)</text>
+  <line x1="602" y1="318" x2="640" y2="318" class="a2"/>
+  <rect x="642" y="290" width="254" height="56" class="w fb"/>
+  <text x="652" y="308" class="t2">Converged?</text>
+  <text x="652" y="323" class="s2">No → next iteration (repeat from diagonalization)</text>
+  <text x="652" y="337" class="s2">Yes → exit SCF loop</text>
+  <line x1="820" y1="238" x2="820" y2="290" class="a2" transform="translate(-350,120)" visibility="hidden"/>
+  <rect x="34" y="368" width="862" height="56" class="g fb"/>
+  <text x="44" y="386" class="t2" font-weight="bold">Post-processing (after SCF convergence)</text>
+  <text x="44" y="402" class="s2">Force: forces #2 (kinetic), #4 (VNA grid), #5 (overlap × EDM) via OpenACC reductions / #4B (projected VNA) kept on CPU to avoid VRAM exhaustion</text>
+  <text x="44" y="416" class="s2">EH0-derived forces #6/#7 are computed together with the Total_Energy GPU batch</text>
+  <line x1="460" y1="440" x2="460" y2="462" class="a2"/>
+  <rect x="30" y="464" width="440" height="40" class="c fb"/>
+  <text x="42" y="481" class="t2" font-weight="bold">Output and finalization</text>
+  <text x="42" y="497" class="s2">Free_Arrays(0) → openmx_gemmul8ReleaseWorkspaces() (frees GPU workspaces)</text>
+</svg>
+<figcaption>Figure 2: Flow of one SCF cycle and GPU-offload points (for collinear band/cluster calculations).</figcaption>
+</figure>
+
+<h2>2.4 Map of GPU-Offloaded Targets</h2>
+<p>Table 2-1 shows the GPU-porting status by computation path (<code>scf.EigenvalueSolver</code>) and by auxiliary computation. Details are in Chapter 7.</p>
+<table>
+<thead><tr><th style="width:16%;">Path / computation</th><th style="width:12%;">Main file</th><th>What is GPU-ported</th><th style="width:24%;">Activation condition</th></tr></thead>
+<tbody>
+<tr><td>Cluster (Col)</td><td><code>Cluster_DFT_Col.c</code></td><td>Dense matrices are gathered onto the root rank; S diagonalization → Löwdin orthogonalization → H′ diagonalization → back-transform run on the GPU (root-dense path). GEMM uses GEMMul8 Dgemm</td><td>GPUSOLVER and n ≥ 1000</td></tr>
+<tr><td>Cluster (NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>root-dense diagonalization (Dsyevx/Zheevx) + 12 U†HU calls via GEMMul8 + DM/EDM reduction. Eigenvectors are cached and scattered from DFT.c</td><td>GPUSOLVER and 2n ≥ 1000</td></tr>
+<tr><td>Band (Col)</td><td><code>Band_DFT_Col.c</code></td><td>The full dense-matrix diagonalization per k-point runs device-resident. GEMM uses GEMMul8 Zgemm. Caches the S transformation matrix. Supports both <code>all_knum==1</code>/<code>!=1</code> paths. GPU-turn serialization</td><td>GPUSOLVER and n ≥ 1000 (+ distribution-shape conditions)</td></tr>
+<tr><td>Band (NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC-resident root-dense path. GEMM uses GEMMul8 Zgemm. Adaptive concurrency limiting based on VRAM estimates</td><td>GPUSOLVER and 2n ≥ 1000 (+ distribution-shape conditions)</td></tr>
+<tr><td>DC method (O(N))</td><td><code>Divide_Conquer.c</code></td><td>Per-atom sub-cluster matrices diagonalized with Xsyevdx. GEMM has a multi-stage fallback GEMMul8→cuBLAS→CPU. Up-front VRAM check</td><td>GPUSOLVER and local dimension ≥ 1000 (adjustable via <code>OPENMX_DC_GPU_THRESHOLD</code>)</td></tr>
+<tr><td>DC-LNO method</td><td><code>Divide_Conquer_LNO.c</code></td><td>Each rank submits its own local eigenvalue problem directly to the GPU (direct per-rank dispatch). The GPU proxy mechanism is also preserved (default disabled)</td><td>GPUSOLVER and local dimension ≥ 800</td></tr>
+<tr><td>Krylov method (O(N))</td><td><code>Krylov.c</code></td><td>Raw CUDA implementation with per-thread workspace pools. Subspace diagonalization (Xsyevd/Xsyevdx) + GEMMul8 only for large dgemm</td><td>GPUSOLVER and n ≥ 1000 (GEMM: m·n·k ≥ 5×10⁷)</td></tr>
+<tr><td>Generic eigenvalue routines</td><td><code>Eigen_lapack.c</code><br><code>EigenBand_lapack.c</code></td><td>Branch to gpusolver_Syevdx(_Complex) when n ≥ 1000. All 20+ files calling these automatically benefit from GPU porting</td><td>GPUSOLVER and n ≥ 1000</td></tr>
+<tr><td>Polarization, DMmu, CWF, LNO family</td><td>11 files</td><td>A boilerplate GPUSOLVER branch (Dsyevx/Zheevx via dense_utils) is inserted ahead of the ELPA2 branch</td><td>GPUSOLVER and n ≥ 1000 and na_rows==n etc.</td></tr>
+<tr><td>Matrix-element construction</td><td><code>Set_Hamiltonian.c</code><br><code>Set_Nonlocal.c</code><br><code>Set_OLP_Kin.c</code></td><td>Radial integrals of nonlocal projectors run via OpenACC. GPU porting of Set_Hamiltonian's grid integrals was measured slower and disabled (the packed H/S cache construction supports the GPU solvers). Set_OLP_Kin is opt-in</td><td>GPUSOLVER (+ per-file conditions, §7.7)</td></tr>
+<tr><td>Total energy</td><td><code>Total_Energy.c</code><br><code>Total_Energy_GPU.c</code></td><td>Grid reductions for EXC/EH1, dipole, CWF-Dc, and EH0 two-center terms run via OpenACC</td><td>GPUSOLVER and SpinP_switch≠3</td></tr>
+<tr><td>Force</td><td><code>Force.c</code></td><td>Reductions for forces #2/#4/#5 run via OpenACC. #4B kept on CPU</td><td>GPUSOLVER (+ per-term conditions)</td></tr>
+<tr><td>NEGF, complex matrix inversion</td><td><code>Lapack_LU_inverse.c</code></td><td><span class="chip dead">dormant</span> A GPU LU inverse via cublasZgetrf/ZgetriBatched is implemented but the call is commented out</td><td>— (groundwork for the future)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 2-1: Map of GPU-offloaded targets</figcaption>
+
+<h2>2.5 Measures for GPUs Shared by Multiple Ranks (Overview)</h2>
+<p>A distinctive feature of this implementation is its multi-layered defense explicitly designed for configurations like "one 16 GB-class GPU shared by 8 MPI ranks."</p>
+<table>
+<thead><tr><th style="width:26%;">Mechanism</th><th>Description</th><th style="width:22%;">Location</th></tr></thead>
+<tbody>
+<tr><td>Allocation-failure retry</td><td>The <code>wait_cudafunc</code> macro retries CUDA/cuBLAS/cuSOLVER calls until success with random waits (≤10 µs), absorbing transient VRAM-allocation contention with other ranks</td><td><code>openmx_common.h:4092-4103</code></td></tr>
+<tr><td>GPU-turn serialization</td><td>Band calculations introduce a running index ("turn") over "spin × k-points" and, by default every 4 turns, insert an MPI_Barrier to execute serially (a comment notes this is about 27% faster than concurrent submission with 8 ranks/GPU)</td><td><code>Band_DFT_Col.c:218-355</code></td></tr>
+<tr><td>Adaptive concurrency limiting</td><td>Non-collinear band explicitly estimates required VRAM and, via <code>cudaMemGetInfo</code> and MPI agreement, automatically shrinks the concurrency from 4→2→1 (also applied to values explicitly set via environment variables)</td><td><code>Band_DFT_NonCol.c:729-1038</code></td></tr>
+<tr><td>Per-turn workspace release</td><td>The ~1 GiB GEMMul8 workspace is returned at the end of each turn (default enabled)</td><td><code>Band_DFT_Col.c:283-295, 2703-2705</code></td></tr>
+<tr><td>Up-front memory check + CPU fallback</td><td>The DC method checks free VRAM before allocating and, if insufficient, (stickily) disables the GPU path and continues on the CPU. Set_Hamiltonian also has an Allreduce check summed over sharing ranks</td><td><code>Divide_Conquer.c:833-880</code><br><code>Set_Hamiltonian.c:164-268</code></td></tr>
+<tr><td>Selecting the rank that runs the dense solver</td><td>In cluster/band, only the world representative rank becomes the owner of the dense-matrix GPU path</td><td><code>DFT.c:159-204</code></td></tr>
+</tbody>
+</table>
+
+<div class="note"><b>Handling of dormant code:</b> In this document, code whose definition exists but which is not called on the current paths
+(<code>gpusolver_Syevd</code>, <code>LU_Zinverse_GPU</code>,
+<code>openmx_cuda_kernels.cu</code>, some GEMMul8 helpers, etc.) is explicitly marked <span class="chip dead">dormant</span> to distinguish it.
+See §11.7 for the full list.</div>
+</section>
+<!-- ==================== Chapter 3 ==================== -->
+<section id="ch3">
+<h1>3. How cuBLAS Is Used</h1>
+
+<h2>3.1 Routines Used and Their Roles</h2>
+<p>cuBLAS serves three roles in this implementation: (1) direct execution of dense-matrix operations other than GEMM,
+such as diagonal scaling (<code>Ddgmm</code>/<code>Zdgmm</code>), (2) the FP64 fallback target when GEMMul8 cannot be used,
+and (3) the execution substrate for the INT8 Tensor Core GEMMs (<code>cublasGemmEx</code>) inside GEMMul8.
+The direct <code>cublasDgemm/Zgemm/Dsymm</code> calls that used to remain in some solvers were
+<b>all unified to go through GEMMul8</b> in commit <code>66ce1e62</code> (Use GEMMul8 for remaining GPU GEMM paths).
+Table 3-1 gives the full picture of the routines used.</p>
+<table>
+<thead><tr><th style="width:30%;">cuBLAS routine</th><th>Purpose</th><th style="width:28%;">Main call sites</th></tr></thead>
+<tbody>
+<tr><td><code>cublasDgemm</code> / <code>cublasZgemm</code></td><td>FP64 fallback target inside the GEMMul8 bridge, and the second stage of the DC method's multi-stage fallback (these are the only two direct-call sites)</td><td><code>gemmul8_bridge.cu:299,307,373,381</code>, <code>Divide_Conquer.c:607</code></td></tr>
+<tr><td><code>cublasDdgmm</code> / <code>cublasZdgmm</code></td><td>1/&radic;&lambda; column scaling (product with a diagonal matrix) in the L&ouml;wdin orthogonalization</td><td><code>Cluster_DFT_Col.c:261</code>, <code>Band_DFT_Col.c:1377</code>, <code>Divide_Conquer_LNO.c:520</code></td></tr>
+<tr><td><code>cublasZgetrfBatched</code> / <code>cublasZgetriBatched</code></td><td><span class="chip dead">dormant</span> Complex LU factorization / matrix inverse (batch=1). Groundwork for the NEGF surface Green's function (&sect;5.8)</td><td><code>Lapack_LU_inverse.c:384,400</code></td></tr>
+<tr><td><code>cublasGemmEx</code> (INT8, COMPUTE_32I)</td><td>Per-modulus INT8 matrix products inside GEMMul8 (never called directly from OpenMX)</td><td><code>third_party/GEMMul8/src/oz2/common/matmult.hpp:16-25</code></td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 3-1: List of cuBLAS routines used</figcaption>
+
+<h2>3.2 Handle and CUDA Stream Lifecycles</h2>
+<p>In the main paths of the current implementation, a <b>file-scope static context per solver</b> holds one
+lazily initialized cuBLAS/cuSOLVER handle each (one per solver type per MPI process). They are destroyed and
+recreated only when the device changes.</p>
+<p class="src">Cluster_DFT_Col.c:118-130 — lazy initialization of the context (typical form)</p>
+<pre><code>wait_cudafunc(cudaGetDevice(&amp;current_device));
+
+if (ctx-&gt;initialized &amp;&amp; ctx-&gt;device_id == current_device) return;
+if (ctx-&gt;initialized) ClusterCol_GpuSolver_Destroy();
+
+wait_cudafunc(cudaStreamCreateWithFlags(&amp;ctx-&gt;stream, cudaStreamNonBlocking));
+wait_cudafunc(cublasCreate(&amp;ctx-&gt;cublas));
+wait_cudafunc(cusolverDnCreate(&amp;ctx-&gt;gpusolver));
+wait_cudafunc(cublasSetStream(ctx-&gt;cublas, ctx-&gt;stream));
+wait_cudafunc(cusolverDnSetStream(ctx-&gt;gpusolver, ctx-&gt;stream));
+
+ctx-&gt;initialized = 1;
+ctx-&gt;device_id   = current_device;</code></pre>
+<p>Note that stream handling is <b>asymmetric</b> across solvers.</p>
+<ul>
+  <li><b>Cluster_DFT_Col / Band_DFT_NonCol (for DM) / Krylov / DC / DC-LNO:</b> create a dedicated non-blocking stream,
+  bind it via <code>cublasSetStream</code>/<code>cusolverDnSetStream</code>, and guarantee ordering of transfers with
+  <code>cudaMemcpyAsync</code> plus <code>cudaStreamSynchronize</code> at key points.</li>
+  <li><b>Band_DFT_Col:</b> the context struct (<code>Band_DFT_Col.c:1105-1132</code>) has no stream member at all,
+  and <code>cublasSetStream</code> is never called. cuBLAS runs on the default stream, and transfers use synchronous <code>cudaMemcpy</code>.</li>
+  <li><b>Ordering with OpenACC:</b> the OpenACC default queue and the library streams are not tied together
+  (<code>acc_get_cuda_stream</code>/<code>async</code> clauses are unused throughout the code). Explicit synchronization is done
+  by placing <code>#pragma acc wait</code> immediately before handing OpenACC-managed data to a library, and
+  <code>cudaStreamSynchronize</code> immediately after
+  (e.g. <code>Band_DFT_NonCol.c:433-455</code>).</li>
+</ul>
+<div class="warn"><b>Caution:</b> because stream assumptions differ between solvers, mixing synchronization conventions
+when porting a helper function from one solver to another risks race conditions. Also, each context's handles and
+persistent buffers are <b>never explicitly destroyed at normal program exit</b>
+(they are freed only on device change and at the end of a Band-family turn; at exit, cleanup is left to CUDA context teardown).
+The only thing <code>Free_Arrays(0)</code> frees is the GEMMul8 workspace.</div>
+
+<h2>3.3 Device Memory Management</h2>
+<ul>
+  <li><b>Grow-only persistent buffers:</b> in the form <code>if (n &lt;= ctx-&gt;matrix_dim) return;</code>, the buffer is reused
+  if the required size is no larger than the existing one, and free&rarr;malloc happens only when it is insufficient
+  (<code>Cluster_DFT_Col.c:146-164</code>, <code>Band_DFT_Col.c:1221-1248</code>).
+  The cuSOLVER workspace works the same way (<code>Cluster_DFT_Col.c:192-208</code>).</li>
+  <li><b>Pinned memory:</b> almost never used. The only exception is the DC method, which uses <code>cudaMallocHost</code>
+  on the host side (<code>Divide_Conquer.c:786</code>). Everything else is pageable malloc + (Async) Memcpy.</li>
+  <li><b>Consideration for shared GPUs:</b> keeping the Band-family buffers resident across SCF iterations is OFF by default
+  (<code>OPENMX_BAND_GPU_PERSISTENT</code>). An in-code comment states explicitly that "with 16 GB shared by 8 ranks,
+  GEMMul8 gets pushed into the FP64 fallback, which costs more than the 0.2 s per iteration saved"
+  (<code>Band_DFT_Col.c:233-237</code>).</li>
+</ul>
+
+<h2>3.4 The Actual GEMM Engine per Solver</h2>
+<p>Since commit <code>66ce1e62</code>, <b>every GEMM executed on the GPU goes through the GEMMul8 bridge in all solvers</b>
+(cuBLAS FP64 is used only for the in-bridge fallback and the DC method's multi-stage fallback).
+However, <b>several helpers remain that are defined but never called</b>, so to avoid being misled by grep appearances,
+Table 3-2 lays out the paths that are actually called (the live paths).</p>
+<table>
+<thead><tr><th style="width:20%;">Solver</th><th style="width:33%;">GEMM engine on the live path</th><th>Notes (dormant code)</th></tr></thead>
+<tbody>
+<tr><td>Band_DFT_Col</td><td><b>GEMMul8</b> (<code>openmx_gemmul8Zgemm</code> &times; 3, triple-product transform and back-transform. <code>Band_DFT_Col.c:1452,1456,1473</code>)</td><td>Helper <code>BandCol_GpuSolver_Zgemm_OpenACC</code> (:1398) is unused</td></tr>
+<tr><td>Band_DFT_NonCol</td><td><b>GEMMul8</b> (via <code>BandNonCol_GEMMul8Zgemm_OpenACC</code> :433 &times; 6. Switched from direct cuBLAS in <code>66ce1e62</code>)</td><td>Uses the persistent workspace's cublas handle + stream. lda/ldb are computed transpose-aware</td></tr>
+<tr><td>Cluster_DFT_Col</td><td><b>GEMMul8</b> (<code>ClusterCol_GEMMul8Dgemm_Device</code> :285. H&prime; construction &times; 2 + back-transform &times; 1. Switched from cublasDsymm+Dgemm in <code>66ce1e62</code> — exploiting symmetry via SYMM was abandoned)</td><td>The OpenACC helper (:333) is definition-only. The old path <code>ClusterCol_GpuSolverDensePath</code> (using CPU dgemm) is unreachable</td></tr>
+<tr><td>Cluster_DFT_NonCol</td><td><b>GEMMul8</b> (12 calls total, D/Z, U&dagger;HU transform)</td><td>—</td></tr>
+<tr><td>Divide_Conquer (DC)</td><td>Multi-stage <b>GEMMul8 &rarr; cuBLAS &rarr; CPU</b> (<code>DC_GpuSolver_TryGpuDgemm</code>, <code>Divide_Conquer.c:575-609</code>)</td><td>If GEMMul8 fails, it is permanently disabled for that rank from then on</td></tr>
+<tr><td>Divide_Conquer_LNO</td><td><b>GEMMul8</b> (<code>openmx_gemmul8Dgemm</code> &times; 3)</td><td>—</td></tr>
+<tr><td>Krylov</td><td><b>GEMMul8</b> (<code>openmx_gemmul8Dgemm</code>, <code>Krylov.c:346</code>. GPU only when m&middot;n&middot;k &ge; 5&times;10⁷)</td><td>Switched from cublasDgemm in <code>66ce1e62</code></td></tr>
+<tr><td>DMmu/CWF/LNO family, 11 files</td><td>GPU handles diagonalization only (GEMMs stay as before)</td><td>Each file's GEMMul8 helper is definition-only (considered preparatory)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 3-2: GEMM engine per solver (live paths vs. dormant code)</figcaption>
+
+<h2>3.5 The Removed Generic Wrappers my_cublasDgemm / my_cublasZgemm</h2>
+<p>The self-contained GEMM wrappers <code>my_cublasDgemm.c</code> / <code>my_cublasZgemm.c</code> used in early development
+(<code>cublasCreate</code> &rarr; <code>cudaMalloc</code>/<code>cudaMemcpy</code> &rarr; GEMM &rarr; destroy, on every call)
+had long been <b>dormant code with zero call sites</b>, and were then <b>completely deleted</b> — sources, declarations, and
+link targets — in commit <code>a7f8cba6</code> (Remove obsolete cuBLAS wrapper files).
+The names appear only when reading old revisions.</p>
+<p>A related simplification still present in the current helpers deserves attention: the in-solver GEMM helpers are
+<b>hard-fixed to alpha=1.0 / beta=0.0</b>, and lda/ldb handling comes in two flavors. <code>BandNonCol_GEMMul8Zgemm_OpenACC</code> /
+<code>ClusterCol_GEMMul8Dgemm_OpenACC</code> were fixed in <code>66ce1e62</code> to compute lda/ldb according to the transpose flags,
+but the live helper at <code>Cluster_DFT_NonCol.c:660,677</code> (used only with square matrices) and the dormant DMmu/CWF-family
+helpers still contain the <b>hardcoded lda=m, ldb=k</b>, which is correct with transposes only in the square case (m=n=k).
+When reusing them with non-square matrices or transposes, always verify the ld handling.</p>
+
+<h2>3.6 Error Handling — the wait_cudafunc Macro</h2>
+<p>Nearly every CUDA/cuBLAS/cuSOLVER call (47 sites in <code>Band_DFT_Col.c</code> alone) is wrapped in the following macro.</p>
+<p class="src">openmx_common.h:4079-4103 (excerpt)</p>
+<pre><code>#define GPU_CPU_SWITCH_NUM 1000
+#define WAITTIME           (10.0 * 1.0E-6)
+
+#define wait_cudafunc(call)                                                     \
+    while (true) {                                                              \
+        if (cudaSuccess == call) {                                              \
+            break;                                                              \
+        }                                                                       \
+        double wait_time    = drand48() * WAITTIME;                             \
+        double start_time   = MPI_Wtime();                                      \
+        double current_time = start_time;                                       \
+        while ((current_time - start_time) &lt; wait_time) {                       \
+            current_time = MPI_Wtime();                                         \
+        }                                                                       \
+    }</code></pre>
+<p>On failure, it inserts a random 0–10 µs wait (busy-wait) and <b>retries the same call indefinitely until it succeeds</b>.
+Since the success code 0 is common to <code>cudaError_t</code> / <code>cublasStatus_t</code> / <code>cusolverStatus_t</code>,
+the three APIs can be wrapped by the same macro. This design absorbs transient <code>cudaMalloc</code> failures when
+multiple ranks contend for the same GPU. An abort-style <code>cudacall</code> macro (<code>openmx_common.h:4082-4090</code>)
+is also defined, but it is not used on the main paths.</p>
+<p>Responses to computational failures (e.g. eigenvalue convergence failure) are handled at the solver layer, and depending
+on the path they are either <code>MPI_Abort</code>/<code>exit</code> or a CPU fallback (see the table in §5.4 for details).</p>
+
+<h2>3.7 Caveats When Using cuBLAS</h2>
+<ol>
+  <li><b><code>wait_cudafunc</code> retries forever</b> — the call expression in the argument is re-evaluated on every loop.
+  Passing it a permanent error (invalid leading dimension, lost device, etc.) results in a hang plus repeated side effects.
+  When GPU execution "appears to be stuck", suspect this first.</li>
+  <li><b>Fixed ld/alpha/beta in the simplified helpers</b> — as described in §3.5. The live helpers' lda/ldb have been
+  fixed to be transpose-aware, but some helpers still contain hardcoded values and will silently produce wrong results
+  for the combination of transpose + non-square.</li>
+  <li><b>Asymmetric stream assumptions</b> — Band_DFT_Col uses the default stream + synchronous memcpy; the others use
+  dedicated streams + explicit synchronization. When porting or unifying code, check the synchronization conventions.</li>
+  <li><b>Handles/buffers never released (a deliberate design trade-off)</b> — there is no explicit teardown path at process exit.
+  If the code is ever reworked into a long-running service, release logic must be added.</li>
+  <li><b>Zero-size matrix guard</b> — the GEMMul8 bridge returns success immediately for m,n,k &le; 0 (since all GEMMs go
+  through the bridge, this single spot protects everything).</li>
+  <li><b>cuBLAS workspace not set</b> — the <code>cublasSetWorkspace</code> (32 MiB) recommended by GEMMul8 is not set on
+  any handle (a candidate performance improvement; see the performance notes in <code>gemmul8.hpp</code>).</li>
+  <li><b>Column-major convention</b> — cuBLAS is column-major, same as Fortran BLAS. For OpenMX's real symmetric matrices,
+  some places pass the row-major flat array as-is, exploiting symmetry (it is equivalent to a transpose;
+  <code>Eigen_lapack.c:1570-1574</code>). Hermitian matrices are explicitly repacked into column-major order
+  (<code>EigenBand_lapack.c:709-714</code>).</li>
+</ol>
+</section>
+
+<!-- ==================== Chapter 4 ==================== -->
+<section id="ch4">
+<h1>4. How GEMMul8 Is Used</h1>
+
+<h2>4.1 What GEMMul8 Is — Principle and Origin</h2>
+<p><b>GEMMul8</b> (GEMMulate) is a "GEMM emulation using INT8/FP8 matrix engines" library developed by the
+RIKEN Center for Computational Science (RIKEN R-CCS) (lead developer: Yuki Uchino, MIT license).
+This implementation incorporates <b>v3.0.4</b> (pinned to upstream commit <code>884a2875…</code>).
+Upstream repository: <code>https://github.com/RIKEN-RCCS/GEMMul8</code>.</p>
+<p>The principle is <b>Ozaki Scheme II</b> (floating-point matrix-multiplication emulation based on integer modular
+techniques / the Chinese Remainder Theorem, CRT).</p>
+<ol>
+  <li><b>Scaling + quantization:</b> the FP64 matrices A, B are exponent-adjusted and, for each of the pairwise-coprime moduli
+  p = 256, 255, 253, 251, 247, 241, … (integers fitting in 8 bits, at most 20 of them; <code>src/oz2/common/table.hpp:12-31</code>),
+  reduced modulo p to produce <code>num_moduli</code> INT8 matrices.</li>
+  <li><b>Error-free integer matrix products:</b> an INT8 GEMM is executed per modulus. The actual engine is cuBLAS's
+  <code>cublasGemmEx(…, CUDA_R_8I, …, CUBLAS_COMPUTE_32I, …)</code>, i.e. the <b>INT8 Tensor Cores (IMMA)</b>.
+  Being integer arithmetic, no rounding error is introduced.</li>
+  <li><b>CRT reconstruction:</b> the integer product is recovered from the per-modulus results via the Chinese Remainder Theorem,
+  the scaling is undone, and <i>&alpha;AB + &beta;C</i> is obtained.</li>
+</ol>
+<p>Increasing <code>num_moduli</code> (the number of moduli) raises accuracy and lowers speed. Because the procedure is
+deterministic, <b>results are bitwise reproducible under identical settings</b> (stated explicitly in the upstream README).
+GEMMul8 is positioned as an implementation of Scheme II, an evolution of Ozaki Scheme I from the earlier line of work
+ozIMMU (Ootomo, Ozaki, Yokota 2024), which performs DGEMM on INT8 integer matrix engines. See the bibliography at the
+end for the references to cite.</p>
+
+<h2>4.2 Integration Architecture — the Two-File Approach</h2>
+<p>The OpenMX core is C code built with NVHPC <code>mpicc -std=c11</code> and cannot call a C++ template API directly.
+Moreover, the upstream build system generates a large number of objects, one per "routine &times; type &times; backend".
+This implementation therefore integrates via the following two files.</p>
+<h3>(a) gemmul8_openmx.cu — explicit template instantiation in a single translation unit</h3>
+<p>The upstream template <b>definition</b> headers (<code>gemm_impl.hpp</code>, <code>worksize_impl.hpp</code>, plus the
+7 kernel-definition headers that upstream splits into separate objects) are included into one translation unit, and
+<b>only the 4 symbols</b> OpenMX needs are explicitly instantiated (a small 67-line file).</p>
+<p class="src">gemmul8_openmx.cu:31-44 (double version; the cuDoubleComplex version and the two workSize variants are analogous)</p>
+<pre><code>template std::vector&lt;double&gt; gemm&lt;double, Backend::INT8, double, double&gt;(
+    cublasHandle_t,
+    cublasOperation_t, cublasOperation_t,
+    size_t, size_t, size_t,
+    const double *,
+    const double *const, size_t,
+    const double *const, size_t,
+    const double *,
+    double *const, size_t,
+    int, bool,
+    void *const,
+    void *const,
+    void *const,
+    bool, bool, bool, bool);</code></pre>
+<p>The four symbols instantiated are <code>gemm&lt;double,INT8&gt;</code>, <code>gemm&lt;cuDoubleComplex,INT8&gt;</code>,
+<code>workSize&lt;false,INT8,Func::gemm&gt;</code>, and <code>workSize&lt;true,INT8,Func::gemm&gt;</code>.
+This object alone is packed with <code>ar</code> to produce our own <code>third_party/GEMMul8/lib/libgemmul8.a</code>
+(its contents differ from the upstream library of the same name). Because this approach depends on the upstream internal
+header layout, <b>pinning the upstream commit is mandatory</b> (stated explicitly in a Makefile comment; §4.7).</p>
+<h3>(b) gemmul8_bridge.cu — the extern "C" bridge</h3>
+<p>It exports 3 functions callable from the C side (prototypes in <code>openmx_common.h:4105-4112</code>).</p>
+<ul>
+  <li><code>cublasStatus_t openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)</code>
+   — a signature <b>fully isomorphic to cublasDgemm</b> (alpha/beta and ld all arbitrary)</li>
+  <li><code>openmx_gemmul8Zgemm(…)</code> — the complex version (same shape)</li>
+  <li><code>openmx_gemmul8ReleaseWorkspaces()</code> — releases all workspaces</li>
+</ul>
+<p>The bridge is responsible for (i) interpreting environment variables, (ii) querying, allocating, and caching the workspace,
+(iii) falling back to native cuBLAS when allocation is not possible, and (iv) calling <code>gemmul8::gemm</code>.</p>
+<p class="src">gemmul8_bridge.cu:296-316 (Dgemm body; Zgemm has the same structure)</p>
+<pre><code>if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
+    report.reason = "environment disable";
+    log_workspace_fallback_once&lt;false&gt;(report);
+    return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
+cublasStatus_t status =
+    ensure_workspace&lt;false&gt;(handle, static_cast&lt;size_t&gt;(m), static_cast&lt;size_t&gt;(n), static_cast&lt;size_t&gt;(k),
+                            num_moduli, &amp;work, &amp;report);
+if (status == CUBLAS_STATUS_ALLOC_FAILED) {
+    log_workspace_fallback_once&lt;false&gt;(report);
+    return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+if (status != CUBLAS_STATUS_SUCCESS) {
+    return status;
+}
+
+(void)gemmul8::gemm&lt;double, gemmul8::Backend::INT8&gt;(handle, gemmul8_transa, gemmul8_transb, ..., num_moduli, fastmode, work);</code></pre>
+
+<figure>
+<svg viewBox="0 0 920 470" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .f3{stroke-width:1.1;rx:5;}
+    .g3{fill:#e7f2e8;stroke:#7fae84;}
+    .y3{fill:#fdf3d8;stroke:#d4b45e;}
+    .c3{fill:#eceef1;stroke:#a9b1bb;}
+    .w3{fill:#ffffff;stroke:#7e93b4;}
+    .d3{fill:#fef7ec;stroke:#c99a3c;}
+    .t3{font-size:12.5px;fill:#1c2634;}
+    .s3{font-size:11px;fill:#41506a;}
+    .a3{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar3);}
+    .lbl{font-size:10.5px;fill:#7b3d00;font-weight:bold;}
+  </style>
+  <rect x="20" y="14" width="340" height="46" class="w3 f3"/>
+  <text x="32" y="33" class="t3" font-weight="bold">openmx_gemmul8Dgemm / Zgemm call</text>
+  <text x="32" y="49" class="s3">(cublasDgemm/Zgemm-compatible signature, device ptrs)</text>
+  <line x1="190" y1="60" x2="190" y2="84" class="a3"/>
+  <path d="M190 86 L330 116 L190 146 L50 116 Z" class="d3" stroke-width="1.1"/>
+  <text x="132" y="112" class="t3">Env var disable?</text>
+  <text x="112" y="128" class="s3">(OPENMX_)GEMMUL8_DISABLE(_D/_Z)</text>
+  <line x1="330" y1="116" x2="600" y2="116" class="a3"/><text x="345" y="110" class="lbl">Yes</text>
+  <line x1="190" y1="146" x2="190" y2="172" class="a3"/><text x="198" y="166" class="lbl">No</text>
+  <rect x="20" y="174" width="340" height="42" class="w3 f3"/>
+  <text x="32" y="192" class="t3">Query size via gemmul8::workSize</text>
+  <text x="32" y="208" class="s3">Size ~proportional to num_moduli (complex ~3x)</text>
+  <line x1="190" y1="216" x2="190" y2="240" class="a3"/>
+  <path d="M190 242 L345 282 L190 322 L35 282 Z" class="d3" stroke-width="1.1"/>
+  <text x="105" y="270" class="t3">Policy violation?</text>
+  <text x="85" y="287" class="s3">- request &gt; total VRAM x 30% (default)</text>
+  <text x="85" y="302" class="s3">- free after alloc &lt; 1536 MiB (default)</text>
+  <text x="85" y="316" class="s3">- cudaMalloc failure</text>
+  <line x1="345" y1="282" x2="600" y2="282" class="a3"/><text x="360" y="276" class="lbl">Yes (ALLOC_FAILED)</text>
+  <line x1="190" y1="322" x2="190" y2="348" class="a3"/><text x="198" y="342" class="lbl">No</text>
+  <rect x="20" y="350" width="340" height="44" class="w3 f3"/>
+  <text x="32" y="368" class="t3">Fetch from workspace cache</text>
+  <text x="32" y="384" class="s3">key=(device, stream), grow-only, std::mutex guarded</text>
+  <line x1="190" y1="394" x2="190" y2="418" class="a3"/>
+  <rect x="20" y="420" width="340" height="44" class="g3 f3"/>
+  <text x="32" y="438" class="t3" font-weight="bold">Run gemmul8::gemm&lt;INT8&gt;</text>
+  <text x="32" y="454" class="s3">Quantize → per-modulus INT8 GEMM → CRT; bitwise exact</text>
+  <rect x="600" y="90" width="300" height="230" class="y3 f3"/>
+  <text x="614" y="112" class="t3" font-weight="bold">Fallback to native cuBLAS</text>
+  <text x="614" y="132" class="s3">Runs cublasDgemm / cublasZgemm (FP64).</text>
+  <text x="614" y="150" class="s3">The call itself returns success, so the</text>
+  <text x="614" y="166" class="s3">run continues, but accuracy/speed change.</text>
+  <text x="614" y="190" class="s3">Warning printed only once per process,</text>
+  <text x="614" y="206" class="s3">to stderr: reason, required, free sizes.</text>
+  <text x="614" y="230" class="s3">When validating performance/reproducibility,</text>
+  <text x="614" y="246" class="s3">always check stderr for "workspace fallback".</text>
+  <rect x="600" y="340" width="300" height="124" class="c3 f3"/>
+  <text x="614" y="362" class="t3" font-weight="bold">Workspace release points</text>
+  <text x="614" y="382" class="s3">- Band solvers: each GPU turn end (default on)</text>
+  <text x="614" y="398" class="s3">- DC: cleanup when GPU path is disabled</text>
+  <text x="614" y="414" class="s3">- DC-LNO: finalization</text>
+  <text x="614" y="430" class="s3">- Program exit: Free_Arrays(0) →</text>
+  <text x="614" y="446" class="s3">  openmx_gemmul8ReleaseWorkspaces()</text>
+</svg>
+<figcaption>Figure 3: Dispatch flow of the GEMMul8 bridge (gemmul8_bridge.cu).</figcaption>
+</figure>
+
+<h2>4.3 Call Parameters and Precision Settings</h2>
+<table>
+<thead><tr><th style="width:20%;">Parameter</th><th style="width:16%;">Default</th><th style="width:34%;">Environment variable (OPENMX_ name wins)</th><th>Meaning / behavior</th></tr></thead>
+<tbody>
+<tr><td><code>num_moduli</code></td><td><b>15</b></td><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>Number of moduli (precision). Valid range 2–20; out-of-range values silently revert to 15. D/Z can be set independently</td></tr>
+<tr><td><code>fastmode</code></td><td><b>false</b> (accurate)</td><td><code>(OPENMX_)GEMMUL8_FASTMODE_D</code> / <code>_Z</code> ("1" to enable)</td><td>Fast scaling path. Reduces accuracy</td></tr>
+<tr><td>Disable</td><td>off</td><td><code>(OPENMX_)GEMMUL8_DISABLE</code>, <code>_D</code>/<code>_Z</code></td><td>Pins execution to native cuBLAS FP64</td></tr>
+<tr><td>WS cap ratio</td><td><b>30%</b></td><td><code>(OPENMX_)GEMMUL8_MAX_WORKSPACE_PERCENT</code></td><td>Reject if the request exceeds this fraction of total VRAM (Band_DFT_NonCol setenv's 50 when unset)</td></tr>
+<tr><td>Min free after alloc</td><td><b>1536 MiB</b></td><td><code>(OPENMX_)GEMMUL8_MIN_FREE_AFTER_MB</code></td><td>Reject if free VRAM after allocation would drop below this value</td></tr>
+</tbody>
+</table>
+<ul>
+  <li>The real (D) path silently normalizes <code>CUBLAS_OP_C</code> to <code>CUBLAS_OP_T</code> (for real matrices, conjugate transpose = transpose).</li>
+  <li><code>m,n,k &le; 0</code> returns success without doing anything.</li>
+  <li>There is no code on the OpenMX side that compares or validates GEMMul8 results against a direct FP64 computation.
+  All fallbacks are triggered by memory/environment-variable conditions, never by accuracy conditions.</li>
+  <li>Upstream extensions such as skip-scaling are unused. The per-phase timing return value is also discarded.</li>
+</ul>
+
+<h2>4.4 Workspace Management</h2>
+<ul>
+  <li><b>Query:</b> on every call, the required amount is computed via <code>gemmul8::workSize&lt;is_complex,INT8&gt;(m,n,k,num_moduli)</code>.</li>
+  <li><b>Cache:</b> a process-wide <code>std::unordered_map</code> keyed by <code>(device, cudaStream_t)</code>,
+  protected by <code>std::mutex</code>, grow-only (<code>gemmul8_bridge.cu:21-44, 207-241</code>). Because the cuBLAS handle's
+  stream is part of the key, note that <b>each handle (stream) gets its own separate region</b>.</li>
+  <li><b>Size scale:</b> A side = num_moduli INT8 matrices + shift vectors, B side likewise, C side = (num_moduli&minus;1)
+  intermediate matrices + a 32 MiB internal BLAS region + INT32 accumulators. Complex is roughly another factor of 3.
+  Around n &asymp; 10,000, this is <b>about 1 GiB per rank</b>
+  (in-code comment, <code>Band_DFT_Col.c:285-288</code>).</li>
+  <li><b>Release:</b> only via <code>openmx_gemmul8ReleaseWorkspaces()</code>. Its call sites are
+  (1) <code>Free_Arrays(0)</code> (at program exit, <code>Free_Arrays.c:24</code>),
+  (2) at the end of each Band_DFT_Col GPU turn (opt out with <code>OPENMX_BAND_GEMMUL8_TURN_RELEASE=0</code>),
+  (3) when the DC method disables its GPU path, (4) DC-LNO finalization.</li>
+</ul>
+
+<h2>4.5 Complex (Z) Support</h2>
+<p>The OpenMX side does not decompose complex matrices into real ones; it passes them as <code>cuDoubleComplex</code>
+directly to <code>gemm&lt;cuDoubleComplex, INT8&gt;</code>. GEMMul8's internal native complex path keeps 3 sets of
+low-precision representations per input and builds the complex product from <b>3 real INT8 GEMMs per modulus</b>
+(a 3M/Karatsuba-style scheme, not the 4M method; for the theoretical background see the paper on CRT-based complex
+matrix-multiplication emulation in the references).
+As a result, the complex workspace and operation count are about 3&times; the real case.</p>
+
+<h2>4.6 Which GEMMs Run through GEMMul8</h2>
+<p>There is <b>no</b> matrix-size-based dispatch inside the bridge (GEMMul8 is the default; fallbacks are triggered only by
+memory/environment-variable conditions). Since commit <code>66ce1e62</code>, <b>every GEMM on the GPU goes through the bridge</b>
+(Table 3-2). The representative example is Band_DFT_Col's generalized-eigenproblem transform H&prime; = &Utilde;&dagger;H&Utilde;
+(this is the largest GEMM load).</p>
+<p class="src">Band_DFT_Col.c:1452-1458 — triple-product transform (first two calls shown; the single back-transform follows at :1473)</p>
+<pre><code>wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &amp;alpha,
+                                     (cuDoubleComplex *)ctx-&gt;d_H, n, (cuDoubleComplex *)ctx-&gt;d_S, n, &amp;beta,
+                                     (cuDoubleComplex *)ctx-&gt;d_tmp, n));
+
+wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &amp;alpha,
+                                     (cuDoubleComplex *)ctx-&gt;d_S, n, (cuDoubleComplex *)ctx-&gt;d_tmp, n, &amp;beta,
+                                     (cuDoubleComplex *)ctx-&gt;d_H, n));</code></pre>
+
+<h2>4.7 Build</h2>
+<ul>
+  <li><b>Fetching:</b> <code>make</code> runs <code>git fetch --depth 1 origin $(GEMMUL8_COMMIT)</code> &rarr;
+  <code>checkout</code> in the git submodule directory, pinning it to commit <code>884a2875…</code> (<code>Makefile:716-722</code>).
+  The reason for the pinning is stated in a Makefile comment: "because gemmul8_openmx.cu instantiates GEMMul8 internals
+  directly, the checkout must stay pinned to a commit whose internal layout matches".</li>
+  <li><b>Compilation:</b> nvcc from the CUDA 13.1 bundled with NVHPC, host compiler <code>-ccbin nvc++</code>,
+  <code>-std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(arch) -gencode arch=compute_$(arch),code=sm_$(arch)</code>.
+  The architecture is auto-detected from <code>nvidia-smi --query-gpu=compute_cap</code> (compute_120/sm_120 in this
+  development environment). Manual override such as <code>GEMMUL8_GPU_ARCH=90</code> is also possible (<code>Makefile:161-167</code>).</li>
+  <li><b>Environment sanitization:</b> <code>NVCC_GEMMUL8_ENV</code> empties <code>CPATH</code> and the like to shut out
+  contamination from NVHPC headers and flags (<code>Makefile:170</code>).</li>
+  <li><b>Extra link flags:</b> <code>-lcublasLt -lcuda -lnvidia-ml -lstdc++</code> (<code>Makefile:172</code>).</li>
+</ul>
+
+<h2>4.8 Caveats When Using GEMMul8</h2>
+<ol>
+  <li><b>Memory usage</b> — the workspace is roughly proportional to num_moduli, complex is about 3&times;, and n &asymp; 10,000
+  takes about 1 GiB per rank. On GPUs shared by multiple ranks, exhaustion is prevented by the three-layer scheme of
+  "30% cap, 1536 MiB reserve, per-turn release". When changing the defaults, keep these three consistent.</li>
+  <li><b>Silent FP64 fallback</b> — when the workspace is rejected, execution switches to cuBLAS FP64 with only a single
+  warning, and <b>both speed and numerical results (bit patterns) change</b>. If things are "mysteriously slow / results wobble",
+  check stderr for "GEMMul8 workspace fallback". For validation runs that need deterministic reproduction, either disable
+  everything with <code>OPENMX_GEMMUL8_DISABLE=1</code> or leave ample memory headroom.</li>
+  <li><b>Precision settings</b> — default is 15 moduli, accurate mode. Out-of-range settings silently revert to 15.
+  fastmode is faster but loses scaling accuracy. D and Z can be tuned independently.</li>
+  <li><b>First-call cost</b> — on the first call and whenever the size grows, GiB-scale <code>cudaMalloc</code> runs
+  synchronously. Benchmark using the second and later iterations.</li>
+  <li><b>Build pitfalls</b> — (a) unpinning the commit breaks <code>gemmul8_openmx.cu</code> via internal header layout changes.
+  (b) Failing to clean NVHPC environment variables (CPATH etc.) can make nvcc pick up NVHPC headers and fail.
+  (c) Forgetting to link <code>-lcublasLt</code> and <code>-lstdc++</code>. (d) Architecture auto-detection assumes
+  <code>nvidia-smi</code> is available. (e) With a single-architecture <code>-gencode</code>, the binary is incompatible
+  with GPUs of another generation (rebuild required).</li>
+  <li><b>Tracking the upstream API</b> — the migration from the old API to the current structure (884a287)
+  (commit <code>cb4d348d</code>) simplified <code>gemmul8_openmx.cu</code> from 149 to 67 lines. The bridge's public
+  signatures are unchanged, with no impact on the C side. For future upstream updates too, checking "the set of
+  definition headers the single TU includes" first is a good approach.</li>
+  <li><b>Hardware requirements</b> — INT8 Tensor Cores (IMMA) are mandatory. A C++20-capable nvcc (CUDA 12 series or later)
+  is effectively required (only CUDA 13.1 has been verified).</li>
+</ol>
+</section>
+<!-- ==================== Chapter 5 ==================== -->
+<section id="ch5">
+<h1>5. How cuSOLVER (the gpusolver Layer) Is Used</h1>
+
+<h2>5.1 Layer Structure and Naming Intent</h2>
+<p>Eigenvalue computation uses cuSOLVER through a wrapper layer with the vendor-neutral name <b>gpusolver</b>. The layer consists of the following three tiers.</p>
+<ol>
+  <li><b>Generic wrapper functions</b> (self-contained per call): the 5 functions in <code>gpusolver_Syevd.c</code> / <code>gpusolver_Syevdx.c</code>.
+  There are host-array versions and <code>_openacc</code> versions that directly process OpenACC device-resident arrays (Table 5-1).
+  As the 48-line license header at the top indicates, they originate as modifications of the syevd/syevdx samples from the NVIDIA CUDA Library Samples.</li>
+  <li><b>Common utility header</b>: <code>openmx_gpusolver_dense_utils.h</code> (79 lines).
+  It statically defines 4 functions — the 1-based/0-based variants of <code>OpenMX_GpuSolver_DenseDsyevx/DenseZheevx</code> —
+  and calls <code>MPI_Abort</code> if <code>info != 0</code>. It is included by 12 files in the polarization, DMmu, CWF, and LNO families.</li>
+  <li><b>Solver-resident contexts</b>: <code>BandColGpuSolverCtx</code>, <code>ClusterColGpuSolverCtx</code>,
+  <code>DCGpuSolverCtx</code>, <code>DCLNO_GpuSolverCtx</code>, the per-thread workspace pool in Krylov, and so on.
+  They cache handles and device buffers and call the cuSOLVER API directly (the same structure as in Chapter 3).</li>
+</ol>
+<p><b>Naming intent:</b> the vendor neutralization is an "abstraction by naming convention"; no switching mechanism via macros or function pointers exists yet.
+Function names, struct member names, and input keywords are unified under gpusolver (e.g. <code>cusolverDnHandle_t gpusolver;</code>),
+while cuSOLVER type names and API names remain as-is as implementation details of the NVIDIA build. AMD (hipSOLVER/rocSOLVER) support
+is intended to be implemented separately under the same naming convention. The old input keyword <code>cusolver</code> remains as a deprecated alias with a warning.
+MAGMA, evaluated early in development, has been removed and is not referenced anywhere in the current source (§2.1).</p>
+
+<table>
+<thead><tr><th style="width:34%;">Function (gpusolver_Syevd(x).c)</th><th style="width:22%;">cuSOLVER API</th><th style="width:14%;">Data location</th><th>Current callers</th></tr></thead>
+<tbody>
+<tr><td><code>gpusolver_Syevd(A,W,m)</code></td><td>Xsyevd (all eigenvalues)</td><td>Built-in host⇄device transfers</td><td><span class="chip dead">dormant</span> no callers</td></tr>
+<tr><td><code>gpusolver_Syevdx(A,W,m,MaxN)</code></td><td>Xsyevdx (lowest MaxN)</td><td>Same as above</td><td><code>Eigen_lapack.c:1576,1667</code>, <code>Cluster_DFT_Col.c:607,649</code>, many via dense_utils</td></tr>
+<tr><td><code>gpusolver_Syevdx_openacc(…)</code></td><td>Xsyevdx</td><td>OpenACC resident (present + host_data)</td><td><code>Eigen_lapack.c:1617,1645</code></td></tr>
+<tr><td><code>gpusolver_Syevdx_Complex(…)</code></td><td>Xsyevdx (CUDA_C_64F)</td><td>Built-in host⇄device transfers</td><td><code>EigenBand_lapack.c:716</code>, <code>Band_DFT_Col.c:1419</code>, many via dense_utils</td></tr>
+<tr><td><code>gpusolver_Syevdx_Complex_openacc(…)</code></td><td>Xsyevdx (CUDA_C_64F)</td><td>OpenACC resident</td><td><code>EigenBand_lapack.c:677,741</code></td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 5-1: Public API of the generic wrappers</figcaption>
+
+<h2>5.2 Details of the APIs Used</h2>
+<ul>
+  <li>Everything uses the <b>generic (X) API, 64-bit integer version</b>: <code>cusolverDnXsyevd(_bufferSize)</code> /
+  <code>cusolverDnXsyevdx(_bufferSize)</code>. The legacy API (<code>cusolverDnDsyevd</code> etc.) and the
+  <code>Zheevd</code>-family aliases are never used; complex cases also use the unified form of passing <code>CUDA_C_64F</code> to Xsyevdx.
+  The generalized eigenvalue solver <code>cusolverDnXsygvd</code> is not used either (§5.3).</li>
+  <li>Common parameters: <code>params = NULL</code>, <code>jobz = CUSOLVER_EIG_MODE_VECTOR</code>,
+  <code>uplo = CUBLAS_FILL_MODE_LOWER</code>, range selection via <code>CUSOLVER_EIG_RANGE_I</code> (il=1, iu=MaxN).
+  Some implementations switch to <code>RANGE_ALL</code> when <code>m == MaxN</code>, while others always use RANGE_I — both coexist.</li>
+  <li>Handles: the generic wrappers do <code>cusolverDnCreate</code> → create a non-blocking stream → compute → release everything, on every call.
+  Resident contexts cache them (§3.2).</li>
+  <li>Workspace: every path queries both the device and host requirements with <code>_bufferSize</code> before allocating.
+  Resident contexts use a grow-only cache. Only the DC method performs a preflight check via <code>cudaMemGetInfo</code> before allocation,
+  and if memory is insufficient it disables the GPU path and continues on the CPU (<code>Divide_Conquer.c:833-880</code>).</li>
+</ul>
+<p class="src">gpusolver_Syevdx.c:103-117 — the core call form (64-bit generic API)</p>
+<pre><code>wait_cudafunc(cusolverDnXsyevdx_bufferSize(cusolverH, NULL, jobz, range, uplo, m, CUDA_R_64F, d_A, lda, &amp;vl, &amp;vu,
+                                           1L, MaxN, &amp;h_meig, CUDA_R_64F, d_W, CUDA_R_64F,
+                                           &amp;workspaceInBytesOnDevice, &amp;workspaceInBytesOnHost));
+
+wait_cudafunc(cudaMalloc((void **)(&amp;d_work), workspaceInBytesOnDevice));
+h_work = (workspaceInBytesOnHost == 0) ? NULL : malloc(workspaceInBytesOnHost);
+...
+wait_cudafunc(cusolverDnXsyevdx(cusolverH, NULL, jobz, range, uplo, m, CUDA_R_64F, d_A, lda, &amp;vl, &amp;vu, 1L, MaxN,
+                                &amp;h_meig, CUDA_R_64F, d_W, CUDA_R_64F, d_work, workspaceInBytesOnDevice, h_work,
+                                workspaceInBytesOnHost, d_info));</code></pre>
+
+<h2>5.3 Handling the Generalized Eigenvalue Problem Hc = εSc</h2>
+<p>The cuSOLVER generalized solver is not used; instead, each path implements OpenMX's traditional <b>Löwdin (symmetric) orthogonalization via the eigendecomposition of S</b> by itself on the GPU.
+Cholesky decomposition is never used. The procedure is the following 6 steps, common to all paths (see also Figure 4).</p>
+<ol>
+  <li>Diagonalize S with Xsyevdx (all eigenvalues) → eigenvectors U, eigenvalues λ</li>
+  <li>Treat small/negative eigenvalues (<b>differs by path</b>: Band/Cluster round up to 1×10⁻¹⁰, DC discards values below <code>OLP_eigen_cut</code>,
+  DC-LNO applies <code>fabs</code>)</li>
+  <li>Scale the columns of U by 1/√λ (<code>cublasDdgmm/Zdgmm</code>) → Ũ</li>
+  <li>Build H′ = Ũ†HŨ with 2 GEMMs (GEMMul8; Table 3-2)</li>
+  <li>Diagonalize H′ with Xsyevdx (il=1..MaxN) → eigenvalues ε, eigenvectors z</li>
+  <li>Back-transform c = Ũz with a GEMM</li>
+</ol>
+<p class="src">Cluster_DFT_Col.c:249-262 — S diagonalization and 1/√λ scaling (Löwdin orthogonalization on the GPU)</p>
+<pre><code>if (rebuild || !(ctx-&gt;transformed_s_valid &amp;&amp; ctx-&gt;transformed_s_dim==n)){
+    ClusterCol_GpuSolver_EigenDevice(ctx-&gt;d_S,n,n,ko0+1);
+
+    for (int l=1; l&lt;=n; l++){
+        if (ko0[l]&lt;1.0e-10) ko0[l] = 1.0e-10;
+        ko0[l] = 1.0/sqrt(ko0[l]);
+    }
+
+    wait_cudafunc(cudaMemcpyAsync(ctx-&gt;d_W,ko0+1,sizeof(double)*(size_t)n,cudaMemcpyHostToDevice,ctx-&gt;stream));
+
+    old_s = ctx-&gt;d_S;
+    new_s = ctx-&gt;d_tmp;
+    wait_cudafunc(cublasDdgmm(ctx-&gt;cublas,CUBLAS_SIDE_RIGHT,n,n,
+                              old_s,n,ctx-&gt;d_W,1,new_s,n));</code></pre>
+<div class="warn"><b>Caution (differences in numerical behavior):</b> because the treatment of small eigenvalues of S (round-up / discard / fabs) is not unified across paths,
+for systems with ill-conditioned overlap matrices the numerical behavior of the same physical system may differ subtly depending on the solver path.</div>
+<p><b>How the number of partial eigenvalues MaxN is chosen:</b> Band (Col) uses <code>MaxN = (TZ−charge)/2 + max(0.4·Ne/2, 100)</code>
+(<code>Band_DFT_Col.c:1813-1818</code>); Cluster solves for all eigenvalues in the first SCF iteration, and afterwards
+<code>(TZ−charge)/2 + max(0.1n–0.2n, 400)</code> (<code>Cluster_DFT_Col.c:357-379</code>). Solving only for the occupied bands plus a margin
+keeps the cost of syevdx down.</p>
+
+<figure>
+<svg viewBox="0 0 920 430" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .f4{stroke-width:1.1;rx:5;}
+    .g4{fill:#e7f2e8;stroke:#7fae84;}
+    .c4{fill:#eceef1;stroke:#a9b1bb;}
+    .w4{fill:#ffffff;stroke:#7e93b4;}
+    .d4{fill:#fef7ec;stroke:#c99a3c;}
+    .t4{font-size:12.5px;fill:#1c2634;}
+    .s4{font-size:11px;fill:#41506a;}
+    .a4{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar4);}
+    .lb4{font-size:10.5px;fill:#7b3d00;font-weight:bold;}
+  </style>
+  <path d="M120 14 L235 44 L120 74 L5 44 Z" class="d4"/>
+  <text x="48" y="40" class="t4">scf.eigen.lib =</text>
+  <text x="55" y="56" class="t4">gpusolver?</text>
+  <line x1="120" y1="74" x2="120" y2="100" class="a4"/><text x="128" y="94" class="lb4">Yes</text>
+  <line x1="235" y1="44" x2="700" y2="44" class="a4"/><text x="250" y="38" class="lb4">No</text>
+  <path d="M120 102 L235 132 L120 162 L5 132 Z" class="d4"/>
+  <text x="42" y="128" class="t4">CUDA/OpenACC</text>
+  <text x="48" y="144" class="t4">device found?</text>
+  <line x1="120" y1="162" x2="120" y2="188" class="a4"/><text x="128" y="182" class="lb4">Yes</text>
+  <line x1="235" y1="132" x2="700" y2="132" class="a4"/><text x="250" y="126" class="lb4">No (warn, demote to ELPA2)</text>
+  <path d="M120 190 L235 220 L120 250 L5 220 Z" class="d4"/>
+  <text x="30" y="212" class="t4">n ≥ 1000? (800 for</text>
+  <text x="40" y="228" class="t4">DC-LNO, DC varies)</text>
+  <line x1="120" y1="250" x2="120" y2="276" class="a4"/><text x="128" y="270" class="lb4">Yes</text>
+  <line x1="235" y1="220" x2="700" y2="220" class="a4"/><text x="250" y="214" class="lb4">No</text>
+  <path d="M120 278 L235 308 L120 338 L5 308 Z" class="d4"/>
+  <text x="30" y="300" class="t4">Distribution shape OK?</text>
+  <text x="22" y="316" class="s4">(na_rows==n etc., per path)</text>
+  <line x1="120" y1="338" x2="120" y2="364" class="a4"/><text x="128" y="358" class="lb4">Yes</text>
+  <line x1="235" y1="308" x2="700" y2="308" class="a4"/><text x="250" y="302" class="lb4">No (to ELPA2)</text>
+  <rect x="700" y="20" width="205" height="310" class="c4 f4"/>
+  <text x="714" y="44" class="t4" font-weight="bold">CPU path (as before)</text>
+  <text x="714" y="66" class="s4">ELPA1 / ELPA2 /</text>
+  <text x="714" y="82" class="s4">ScaLAPACK / LAPACK</text>
+  <text x="714" y="106" class="s4">Runs the same code</text>
+  <text x="714" y="122" class="s4">path as the original</text>
+  <rect x="10" y="366" width="680" height="56" class="g4 f4"/>
+  <text x="22" y="386" class="t4" font-weight="bold">GPU dense path:</text>
+  <text x="150" y="386" class="t4">① S via Xsyevdx(ALL) → ② λ→1/√λ (Ddgmm/Zdgmm) → ③ H′=Ũ†HŨ (GEMMul8/cuBLAS)</text>
+  <text x="150" y="404" class="t4">→ ④ H′ via Xsyevdx(il=1..MaxN) → ⑤ back-transform c=Ũz (GEMM)</text>
+  <text x="22" y="418" class="s4">Multi-rank shared GPU: turn serialization (default group 4) / VRAM-based adaptive concurrency (4→2→1) / per-turn workspace release</text>
+</svg>
+<figcaption>Figure 4: Eigenvalue solver dispatch and the GPU dense-matrix path.</figcaption>
+</figure>
+
+<h2>5.4 devInfo Checking and Failure Handling (Per Path)</h2>
+<p><code>d_info</code> is allocated on the device in every path and copied back to the host for inspection after the computation, but
+<b>the failure policy differs per path</b>. Assume the following table when making modifications.</p>
+<table>
+<thead><tr><th style="width:26%;">Path</th><th style="width:18%;">info check</th><th>Behavior on failure</th></tr></thead>
+<tbody>
+<tr><td>Generic wrappers (gpusolver_Syevdx etc.)</td><td>Only returned to caller</td><td>Caller-dependent</td></tr>
+<tr><td>Via dense_utils header (11 files)</td><td>Yes</td><td>Immediate <code>MPI_Abort</code></td></tr>
+<tr><td><code>Eigen_lapack.c:1590-1593</code></td><td><b>info&lt;0 only</b> exit(10)</td><td>info&gt;0 (convergence failure) passes through. However, the higher-level <code>Eigen_lapack()</code> has a retry with an eigenvector orthogonality check, cycling the solver over to the CPU family and recomputing on failure (up to 3 times)</td></tr>
+<tr><td><code>EigenBand_lapack.c:25-32</code></td><td>Yes</td><td>Fall back to the CPU Householder method <code>Eigen_HH</code></td></tr>
+<tr><td>Band_DFT_Col / Cluster_DFT_Col</td><td>Yes (Band also checks h_meig)</td><td>Immediate abort (exit / MPI_Abort)</td></tr>
+<tr><td>Divide_Conquer (DC)</td><td>Yes (also h_meig)</td><td>Sets a <b>sticky disable flag</b>; from then on that rank uses the CPU DC solver. GEMMul8 workspace is also released</td></tr>
+<tr><td>Divide_Conquer_LNO</td><td>Yes (h_meig not checked)</td><td>exit(10) (no fallback)</td></tr>
+<tr><td>Krylov</td><td>Yes (also h_meig)</td><td>Falls back on the spot to CPU LAPACK (<code>Eigen_lapack2</code>)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 5-2: Per-path differences in devInfo checking and failure handling</figcaption>
+
+<h2>5.5 Concurrency Control — the GPU-Turn Mechanism and Adaptive Limits</h2>
+<h3>5.5.1 Band (Col): Serialization of GPU Turns</h3>
+<p>When multiple ranks (the representative ranks of spin worlds × k-point worlds) submit dense solves to the same GPU simultaneously, VRAM is exhausted,
+GEMMul8 drops to its FP64 fallback, and everything slows down. Therefore a global sequence number over "spin × k-point" —
+the <b>GPU turn</b> — was introduced, serialized by default (per an in-code comment: with 8 owner ranks per GPU this is about 27% faster than concurrent submission).</p>
+<p class="src">Band_DFT_Col.c:2637-2647 — skeleton of turn serialization</p>
+<pre><code>my_gpu_turn = spin * T_knum + kloop;
+const int serialize_gpu_turns = BandCol_SerializeGpuSolverGpuTurns();
+const int gpu_turn_group = serialize_gpu_turns ? BandCol_GpuTurnGroup() : 1;
+const int first_gpu_turn = serialize_gpu_turns ? 0 : my_gpu_turn;
+const int last_gpu_turn = serialize_gpu_turns ? Num_Comm_World1 * T_knum : (my_gpu_turn + 1);
+for (int gpu_turn = first_gpu_turn; gpu_turn &lt; last_gpu_turn; gpu_turn++) {
+    if (serialize_gpu_turns &amp;&amp; gpu_turn % gpu_turn_group == 0) {
+        MPI_Barrier(mpi_comm_level1);
+    }
+
+    if (owns_global_dense_rank &amp;&amp; my_gpu_turn == gpu_turn) {</code></pre>
+<p>The number of turns allowed to run simultaneously (the group width) is determined in the priority order <code>OPENMX_BAND_GPU_TURN_GROUP</code> →
+<code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code> → default 4.
+The first diagonalization loop for <code>all_knum != 1</code> is controlled by a separate knob, <code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> (default 4).
+The latter was <b>clamped to a maximum of 4</b> by commit <code>8c7801fa</code> (Limit band GPU k-turn concurrency);
+specifying anything higher is rounded down to 4.</p>
+<h3>5.5.2 Band (NonCol): Adaptive Limits Based on VRAM Estimation</h3>
+<p>With commit <code>43e30c65</code> (Limit band GPU solver concurrency adaptively), the non-collinear band path replaced the fixed value with
+concurrency determined by "an explicit estimate of the required device memory × the measured free capacity".</p>
+<ol>
+  <li><b>Requirement model</b> (<code>Band_DFT_NonCol.c:767-817</code>): estimates the peak of the 3 phases — overlap / Hamiltonian / wavefunction.
+  The syevdx workspace is included by actually querying <code>_bufferSize</code> (falling back to 4·n²·16 bytes if the query fails).</li>
+  <li><b>Check</b>: tests whether "per-turn requirement × number of concurrent ranks + reserve (<b>a full extra turn-sized cushion</b> for OpenACC/GEMMul8 scratch)"
+  fits in the free VRAM.</li>
+  <li><b>Decision</b>: if it does not fit, scale down in steps 4→2→1, then take <code>MPI_Allreduce(MIN)</code> over the communicator of ranks sharing the same GPU
+  (<code>MPI_Comm_split_type(SHARED)</code> + device ID),
+  so all ranks agree on <b>a unanimous limit value</b>.</li>
+</ol>
+<p>Furthermore, with commit <code>8c7801fa</code>, this adaptive limit <b>is also applied to the explicitly specified values (capped at 4)</b> of
+<code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> / <code>MAX_RANKS_PER_DEVICE</code>
+(always routed through <code>BandNonCol_AutoGpuTurnLimit</code>). Even if a large value is given via environment variable, it is automatically reduced if it does not fit in VRAM.</p>
+<p class="src">Band_DFT_NonCol.c:847-859 — the check (with original comment)</p>
+<pre><code>required = required_bytes*(size_t)concurrent_ranks;
+reserve = BandNonCol_RootDenseReserveBytes(total_bytes,required);
+
+/* Dense non-collinear turns also use OpenACC and GEMMul8 scratch space
+   around the explicitly estimated matrices. Keep a full extra turn-sized
+   cushion so the automatic limiter does not choose a group that only
+   fits on paper and then fails in cuMemAlloc. */
+if (reserve&lt;required) reserve = required;
+
+if (group_required!=NULL) *group_required = required;
+if (reserve_bytes!=NULL) *reserve_bytes = reserve;
+
+return (required&lt;=free_bytes &amp;&amp; reserve&lt;=free_bytes-required);</code></pre>
+<h3>5.5.3 DC-LNO: direct per-rank dispatch</h3>
+<p>With commit <code>f508a2a6</code> (Enable direct GPUSOLVER dispatch for DC-LNO), DC-LNO switched from
+a <b>proxy scheme</b> in which "the GPU owner rank handles other ranks' eigenvalue problems on their behalf via MPI" to
+a scheme in which "<b>every rank submits its own local problem (dimension ≥ 800) directly to the GPU</b>".
+The proxy mechanism is preserved for experiments behind <code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code> (<code>Divide_Conquer_LNO.c:82</code>).
+The number of GPUs used within a node can be capped with the input keyword <code>scf.Gpu.Num</code>.</p>
+<p class="src">Divide_Conquer_LNO.c:509-529 (excerpt) — S diagonalization → scaling → GEMMul8 transform → H diagonalization all on the GPU</p>
+<pre><code>DCLNO_GpuSolver_Eigen(ctx-&gt;d_S, NUM, NUM, ko + 1);
+
+for (l = 1; l &lt;= NUM; l++) {
+    ko[l] = 1.0 / sqrt(fabs(ko[l]));
+}
+wait_cudafunc(cudaMemcpyAsync(ctx-&gt;d_W, ko + 1, ..., cudaMemcpyHostToDevice, ctx-&gt;stream));
+
+wait_cudafunc(cublasDdgmm(ctx-&gt;cublas, CUBLAS_SIDE_RIGHT, NUM, NUM,
+                          ctx-&gt;d_S, NUM, ctx-&gt;d_W, 1, ctx-&gt;d_tmp, NUM));
+wait_cudafunc(openmx_gemmul8Dgemm(ctx-&gt;cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM, NUM, &amp;alpha, ctx-&gt;d_H, NUM,
+                                 ctx-&gt;d_tmp, NUM, &amp;beta, ctx-&gt;d_S, NUM));
+wait_cudafunc(openmx_gemmul8Dgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &amp;alpha, ctx-&gt;d_tmp, NUM,
+                                 ctx-&gt;d_S, NUM, &amp;beta, ctx-&gt;d_H, NUM));
+
+DCLNO_GpuSolver_Eigen(ctx-&gt;d_H, NUM, NUM2, ko + 1);</code></pre>
+
+<h2>5.6 MPI Rank → GPU Device Assignment</h2>
+<ul>
+  <li><b>Collective version</b> (<code>set_cuda_default_device_from_local_rank.c:34-56</code>):
+  obtains the local rank within a node via <code>MPI_Comm_split_type(MPI_COMM_TYPE_SHARED)</code> and
+  calls <code>cudaSetDevice</code> with <code>local_rank % deviceCount</code>. All ranks must call it together (calling from only one side deadlocks).</li>
+  <li><b>Noncollective version</b> (:58-73): for the hot path within SCF. Obtains the local rank from environment variables in the order
+  <code>OMPI_COMM_WORLD_LOCAL_RANK</code> → <code>MV2_COMM_WORLD_LOCAL_RANK</code> → <code>SLURM_LOCALID</code> →
+  <code>PMI_LOCAL_RANK</code>. If none are set, the global rank is used as a substitute (in that case the assignment can be skewed on multi-node runs).</li>
+  <li><b>The OpenACC side is set in tandem</b> (<code>set_openacc_device_from_local_rank.c</code>): calls
+  <code>acc_set_device_num</code> under the same rule. The design <b>requires setting the same device in both the CUDA and OpenACC runtimes</b>.</li>
+</ul>
+
+<h2>5.7 LU_Zinverse_GPU — a Dormant Implementation for NEGF</h2>
+<div class="dead"><b>Dormant code:</b> the GPU version of complex LU inversion, <code>LU_Zinverse_GPU</code>
+(<code>Lapack_LU_inverse.c:347-444</code>), is implemented not with cuSOLVER but with the <b>cuBLAS batched API</b>
+<code>cublasZgetrfBatched</code> / <code>cublasZgetriBatched</code> (batch=1).
+A is an OpenACC <code>deviceptr</code>, singular-matrix detection aborts, and the result is written back with <code>acc kernels</code>.
+However, the call from the public function <code>Lapack_LU_Zinverse</code> is commented out as
+<code>/* LU_Zinverse_GPU(n, A, handle); */</code> (:63), so the default remains the traditional CPU implementation
+(LAPACK zgetrf/zgetri). The callers are the NEGF surface Green's function computation
+(<code>TRAN_Calc_SurfGreen.c</code> and others), so this is <b>groundwork for a future GPU port of the NEGF-family complex matrix inversion</b>.</div>
+
+<h2>5.8 Caveats When Using cuSOLVER (the gpusolver Layer)</h2>
+<ol>
+  <li><b>Estimating workspace size</b> — one n×n complex matrix takes 16n² bytes, and the solver itself plus workspace plus GEMM scratch
+  requires several times that. The design assumption in the code comments is "a 16 GB-class GPU shared by 8 ranks". If the system is large relative to VRAM,
+  adjust the concurrency knobs (§5.5, Chapter 10) first.</li>
+  <li><b>Infinite-loop risk of <code>wait_cudafunc</code></b> — same as §3.7. Hangs on a permanent error.</li>
+  <li><b>Non-uniform devInfo checking</b> — as in Table 5-2, the recoverability from convergence failures differs by path.
+  The Band/Cluster/DC-LNO/dense_utils families are "failure = immediate termination".</li>
+  <li><b>Presence or absence of CPU fallback</b> — only DC (sticky disable), Krylov,
+  EigenBand_lapack (→Eigen_HH), and Eigen_lapack (retry cycling) have runtime fallbacks. Only when no device is present does the whole run demote to ELPA2.</li>
+  <li><b>Symmetry and 0/1-based conversion</b> — every call assumes symmetric/Hermitian with uplo=LOWER. The 0/1-based shift of the eigenvalue array
+  (<code>W[l]=W[l-1]</code>) is needed in many places, absorbed by dense_utils.</li>
+  <li><b>Inconsistent handling of the condition number of S across paths</b> — see the warning in §5.3.</li>
+  <li><b>Reproducibility</b> — the transform GEMMs run through GEMMul8, so the rounding behavior differs from cuBLAS FP64, and
+  memory-condition-dependent fallbacks can change the path from run to run (mitigations in §4.8-2).</li>
+  <li><b>The Band GPU path for all_knum≠1</b> requires <code>na_rows==n &amp;&amp; na_cols==n</code> and aborts if not satisfied.
+  The polarization and DMmu families silently fall back to ELPA2 when the same condition is not met.</li>
+</ol>
+</section>
+
+<!-- ==================== Chapter 6 ==================== -->
+<section id="ch6">
+<h1>6. OpenACC versus Raw CUDA</h1>
+
+<h2>6.1 Overall Picture</h2>
+<p>Loop-parallel offloading is written in NVHPC's OpenACC (<code>-acc -Minfo=accel</code>). Key points:</p>
+<ul>
+  <li><b>There are no GPU-only <code>#ifdef</code> guards</b>. Because CUDA headers (<code>cublas_v2.h</code> etc.) are
+  included unconditionally in <code>openmx_common.h:5-7</code>, <b>this tree cannot be built CPU-only</b>
+  (for CPU use the original or <code>makefile.cpu_intel.bak</code>). All gating is done via runtime flags.</li>
+  <li>There is no <code>-gpu=ccXX</code> specification; the target CC relies on auto-detection of the GPU on the build machine.
+  <b>Managed memory is not used</b>. The <code>async</code> clause and <code>acc_get_cuda_stream</code> are also unused throughout the code.</li>
+  <li>About 26 files contain <code>#pragma acc</code>. The heaviest are <code>Band_DFT_NonCol.c</code> (63 occurrences),
+  <code>Divide_Conquer.c</code> (56), <code>Cluster_DFT_NonCol.c</code> (48), <code>Band_DFT_Col.c</code> (46),
+  <code>Force.c</code> (40). <b><code>Krylov.c</code> has zero OpenACC</b> (compiled without <code>-acc</code>, raw CUDA only).</li>
+  <li>The basic form is <code>parallel loop gang</code> + <code>loop vector reduction</code>. Reductions where reproducibility matters, such as density matrix construction,
+  use <code>loop seq</code> (sequential) so the summation order matches the CPU.</li>
+</ul>
+
+<h2>6.2 Three Data-Residency Patterns</h2>
+<ol>
+  <li><b>Per-call temporary data regions (copyin/copyout)</b> — <code>Set_*</code>, <code>Force</code>,
+  <code>Total_Energy_GPU</code>. Because OpenMX's multi-dimensional pointer arrays cannot be traversed on the device,
+  the design is unified so that <b>data is always repacked into 1-D flat arrays on the host before transfer</b>.</li>
+  <li><b>SCF-scope residency via enter data / exit data + update</b> — mainly the non-collinear solvers.
+  Example: <code>Cluster_DFT_NonCol.c</code> does <code>enter data create</code> on S → diagonalize and scale on the device →
+  <code>update self</code> → <code>exit data delete</code>. Eigenvectors stay resident until DM construction.</li>
+  <li><b>Raw <code>cudaMalloc</code> + <code>deviceptr</code> bridge</b> — <code>Band_DFT_Col.c</code> /
+  <code>Cluster_DFT_Col.c</code> run the sparse→dense scatter-add against the static context's <code>d_H/d_S</code> (cudaMalloc regions)
+  from the OpenACC side with <code>#pragma acc parallel loop deviceptr(d_H)</code> + <code>acc atomic update</code>.
+  This is the only pattern where OpenACC-managed memory and cudaMalloc memory coexist within a single kernel.</li>
+</ol>
+<p><b>Passing pointers to libraries</b> is done with <code>host_data use_device</code> (23 sites in total).
+After declaring residency with <code>present</code>, inside the block the array name is replaced by its device address and can be
+passed straight to cuSOLVER/cuBLAS/GEMMul8 (no H2D/D2H transfers).</p>
+<p class="src">gpusolver_Syevdx.c:143-151 — typical form of passing an OpenACC-resident array directly to cuSOLVER</p>
+<pre><code>#pragma acc data      present(A[0 : m * m])
+#pragma acc data      present(W[0 : MaxN])
+#pragma acc host_data use_device(A, W)
+    {
+        cusolverDnHandle_t cusolverH = NULL;
+        wait_cudafunc(cusolverDnCreate(&amp;cusolverH));
+        cudaStream_t stream = NULL;
+        wait_cudafunc(cudaStreamCreateWithFlags(&amp;stream, cudaStreamNonBlocking));
+        wait_cudafunc(cusolverDnSetStream(cusolverH, stream));</code></pre>
+<div class="warn"><b>Caution (present errors):</b> the <code>_openacc</code>-style wrappers assume the caller has already established the data region.
+Calling without it crashes with an NVHPC runtime FATAL (present table lookup failed).
+The current code is unified under the convention that "the caller always issues enter data first".</div>
+
+<h2>6.3 Synchronization Design</h2>
+<p>The OpenACC default queue and the CUDA streams used by libraries are not connected. Ordering is guaranteed solely by explicit synchronization:
+(1) <code>#pragma acc wait</code> just before a library call, (2) <code>cudaStreamSynchronize</code> on the library stream,
+(3) synchronous <code>cudaMemcpy</code>.
+This design prioritizes correctness and simplicity over performance.</p>
+
+<h2>6.4 openmx_cuda_kernels.cu — a Verified But Not-Wired-In Collection of Raw CUDA Kernels</h2>
+<div class="dead"><b>Important (accurate current status):</b> <code>openmx_cuda_kernels.cu</code> / <code>.h</code> (696+103 lines) is a module
+that rewrites the OpenACC compute regions of <code>Cluster_DFT_NonCol.c</code> / <code>Set_Hamiltonian.c</code> / <code>Set_OLP_Kin.c</code>
+as raw CUDA kernels. However, as of 2026-07-04 it is <b>untracked in git, not a Makefile build target, and has
+0 call sites from the .c side</b>; <b>the current binary runs the corresponding OpenACC versions</b>.
+Bitwise-match verification is complete, but it is not wired in (a future replacement candidate).</div>
+<p>The design policy is stated in the comment at the top of the file (verbatim): "every reduction that was sequential in the OpenACC code
+is kept sequential per thread here, so the floating point summation order is unchanged; 1.0/sqrt(x) is used instead
+of the approximate rsqrt intrinsic" — that is, bitwise reproduction relative to the CPU through <b>order-preserving sequential reduction</b>
+and <b>avoidance of the approximate rsqrt instruction</b>. Main kernels:</p>
+<table>
+<thead><tr><th style="width:30%;">Kernel / wrapper</th><th>Computation</th><th style="width:26%;">Reduction design</th></tr></thead>
+<tbody>
+<tr><td><code>dense_scatter_add_kernel</code></td><td>Sparse→dense scatter-add (zero-fill + add)</td><td>atomicAdd (nondeterministic order)</td></tr>
+<tr><td><code>scale_columns_invsqrt_kernel</code></td><td>Column scaling for S^−1/2 construction</td><td>No reduction. <code>1.0/sqrt(w)</code> (no rsqrt)</td></tr>
+<tr><td><code>build_ss2_kernel</code> / <code>assemble_hs2_kernel</code></td><td>Assembly of non-collinear 2n×2n Ss2/Hs2</td><td>No reduction</td></tr>
+<tr><td><code>calc_dm_noncol_kernel&lt;CALC_EDM&gt;</code></td><td>10 DM/EDM components from dense eigenvectors</td><td><b>State-k loop sequential in 1 thread</b> (same order as the old OpenACC loop seq)</td></tr>
+<tr><td><code>setham_base_kernel</code> / <code>setham_me_kernel</code></td><td>Base coupling of H / grid-integration matrix elements</td><td>Grid-point loop sequential in 1 thread</td></tr>
+<tr><td><code>olpkin_radial_kernel</code> + table-residency helpers</td><td>Radial k integration (overlap and kinetic matrix elements)</td><td>k-grid loop sequential in 1 thread. Radial tables device-resident for process lifetime</td></tr>
+</tbody>
+</table>
+<p>As common infrastructure it has a grow-on-demand <code>DeviceBuffer</code> cache, fixed block=256, and
+<code>cudaGetLastError</code>+<code>cudaDeviceSynchronize</code> at the end of every wrapper (freely mixable with cuSOLVER/cuBLAS on other streams,
+as stated explicitly in the header). Note that the current OpenACC version, e.g. <code>Set_OLP_Kin.c:601</code>, uses
+<code>loop vector reduction</code> (parallel reduction), which follows a different summation-order convention than the sequential reduction of this CUDA version.</p>
+
+<h2>6.5 NVHPC-Specific Caveats — Real Examples of Miscompilation Avoidance</h2>
+<p>The OpenACC of NVHPC 26.3 (<code>-acc</code>) has known defects that break specific code, and the
+Makefile works around them by <b>removing <code>-acc</code> on a per-file basis</b> (with reason comments).
+These are points that must be re-verified whenever the NVHPC version is changed.</p>
+<table>
+<thead><tr><th style="width:34%;">File</th><th style="width:22%;">Compile setting</th><th>Reason from the Makefile comment (summary)</th></tr></thead>
+<tbody>
+<tr><td><code>Occupation_Number_LDA_U.c</code> / <code>Eff_Hub_Pot.c</code> / <code>Total_Energy.c</code></td><td><code>CC_NOACC</code> (-O1, no -acc)</td><td>NVHPC 26.3 + -acc miscompiles the occupation-number/potential paths of LDA+U Type2/cFLL</td></tr>
+<tr><td><code>zero_cfrac.c</code></td><td><code>CC_NOACC</code></td><td>-acc makes DSYGV fail and breaks the poles of the ON2 method</td></tr>
+<tr><td><code>RestartFileDFT.c</code></td><td><code>CC_NOACC</code></td><td>Can segfault in restart I/O of over-decomposed MPI runs</td></tr>
+<tr><td><code>MD_pac.c</code></td><td><code>CC_NOACC</code></td><td>Can segfault in the post-SCF MD control path</td></tr>
+<tr><td><code>Krylov.c</code></td><td><code>CC_NOACC_O3</code> (-O3, no -acc)</td><td>GPU acceleration is done via the raw CUDA API only (no OpenACC)</td></tr>
+<tr><td><code>Band_DFT_NonCol.c</code> / <code>Divide_Conquer.c</code></td><td><code>CC3</code> (-O2)</td><td>Optimization-level adjustment</td></tr>
+<tr><td><code>truncation.c</code> / <code>OutData.c</code></td><td><code>CC2</code> (-O1)</td><td>Same as above</td></tr>
+<tr><td><code>DFTD3vdW_init.c</code></td><td><code>CC_DFTD3</code> (-O0)</td><td>Same as above</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 6-1: Per-file compilation adjustments (including NVHPC 26.3 defect workarounds)</figcaption>
+<p>In addition, the need to build <code>Total_Energy.c</code> without <code>-acc</code> gave rise to a structure in which only the OpenACC kernel part
+is split into a separate translation unit, <code>Total_Energy_GPU.c</code> (built with <code>-acc</code>) (§7.8).
+Also, <code>Force.c</code> contains a spot that re-enables OpenMP parallelism conditionally with <code>#if NVHPC_VERSION &gt;= 250000</code>
+as a workaround for an old NVHPC OpenMP bug. The <code>if (use_dc_openacc)</code> guard at <code>Divide_Conquer.c:3695</code>
+still carries the comment "// compiler's bug".</p>
+</section>
+<!-- ==================== Chapter 7 ==================== -->
+<section id="ch7">
+<h1>7. GPU Implementation Details by Computation Path</h1>
+
+<h2>7.1 Band Calculation (Collinear) — Band_DFT_Col.c</h2>
+<p>The largest modification target (effectively about 3,700 changed lines). The condition for the GPU dense-matrix path is
+<code>scf_eigen_lib_flag==GPUSOLVER &amp;&amp; n ≥ 1000</code> (plus distribution-shape conditions). Highlights:</p>
+<ul>
+  <li><b>Dense-matrix construction cache:</b> The part that assembles the per-k-point dense matrices from the sparse matrices (H, S) is ported to OpenACC, and a cache keyed by a "fingerprint" of the pair structure (<code>entries</code>/<code>phase_r</code>/<code>phase_i</code>) is kept resident with
+  <code>enter data</code>. Only the phases are refreshed via <code>update device</code>.
+  The scatter-add uses <code>deviceptr</code> + <code>acc atomic update</code> (<code>Band_DFT_Col.c:1539-1622</code>).</li>
+  <li><b>Uses the packed H/S cache from Set_Hamiltonian:</b> The matrix aggregation before diagonalization is performed directly from the
+  packed format built by Set_Hamiltonian (§7.7).</li>
+  <li><b>Diagonalization and transforms:</b> The S transformation matrix (Ũ) is computed once at the first pass, saved to the host-side <code>transformed_s</code>,
+  and reused across SCF iterations (<code>Band_DFT_Col.c:1138-1177, 2649-2684</code>). H′ is built with GEMMul8 Zgemm × 3 (§4.6),
+  and diagonalization uses <code>cusolverDnXsyevdx</code>. The eigenvectors stay resident on the device until the DM phase (comment :2708).</li>
+  <li><b><code>all_knum != 1</code> path:</b> By design, S is re-diagonalized on every turn to reduce memory (an intentional
+  memory/compute trade-off inherited from the original). This path requires <code>na_rows==n &amp;&amp; na_cols==n</code>.</li>
+  <li><b>GPU turn serialization and VRAM measures:</b> As described in §5.5.1 and §2.5. Keeping device buffers resident across SCF iterations is OFF by default;
+  even when turned ON, it is automatically disabled if free memory falls below 2048 MiB. The GEMMul8 workspace is released after each turn.</li>
+  <li><b>DM phase:</b> Uses an OpenACC <code>gang</code> + <code>loop seq</code> reduction so the summation order matches the CPU
+  (<code>Band_DFT_Col.c:967-1001</code>).</li>
+</ul>
+
+<h2>7.2 Band Calculation (Non-collinear) — Band_DFT_NonCol.c</h2>
+<ul>
+  <li>An OpenACC resident-style (<code>enter data</code>-centric) root-dense path. Dense-matrix construction with phases (scatter-add),
+  S diagonalization + S^−1/2, assembly of the 2n×2n spinor H2/S2, U†HU (GEMMul8 Zgemm × 2), eigenvector back-transform,
+  and DM/EDM (<code>loop seq</code>) all run on the GPU.</li>
+  <li>Since <code>66ce1e62</code>, GEMM uses GEMMul8 (Table 3-2). Ordering with respect to the OpenACC queue is explicitly controlled via
+  <code>#pragma acc wait</code> → <code>openmx_gemmul8Zgemm</code> → <code>cudaStreamSynchronize</code>
+  (<code>Band_DFT_NonCol.c:433-455</code>).</li>
+  <li>Has <b>adaptive concurrency limiting (§5.5.2)</b> and a check for whether multiple k-worlds may run concurrently
+  (Allreduce SUM of the required totals vs. Allreduce MIN of the minimum free memory; if it does not fit, it prints
+  "Serializing non-collinear dense GpuSolver k-worlds" and serializes).</li>
+  <li>Has a dedicated function that queries only <code>Xsyevdx_bufferSize</code> with a temporary handle for GPU memory estimation (:729-765).</li>
+</ul>
+
+<h2>7.3 Cluster Calculations — Cluster_DFT_Col.c / Cluster_DFT_NonCol.c</h2>
+<ul>
+  <li><b>Col:</b> <code>ClusterCol_GpuSolverRootDensePath</code> (:448-545) is the active path. Only rank 0 of a spin world
+  aggregates the dense matrices and solves on the GPU (S diagonalization → Ddgmm → GEMMul8 Dgemm × 2 → Xsyevdx → back-transform also via GEMMul8 Dgemm;
+  switched from cublasDsymm+Dgemm in <code>66ce1e62</code>),
+  then distributes the eigenvectors via MPI_Send/Recv. The S transformation matrix is cached on the device.
+  The older implementation <code>ClusterCol_GpuSolverDensePath</code> (GPU only for S diagonalization, GEMM via CPU dgemm) remains in the code but is unreachable.</li>
+  <li><b>NonCol:</b> root-dense diagonalization (real Dsyevx + complex Zheevx). U†HU uses GEMMul8 D/Zgemm, 12 calls in total
+  (<code>Cluster_DFT_NonCol.c:1355-1393</code>). The dense eigenvectors <code>dense_evec</code> are cached resident via
+  <code>enter data create</code>, and later stages receive them via
+  <code>Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec</code> called from <code>DFT.c</code>. DM/EDM uses <code>loop seq</code> reductions.</li>
+  <li>MaxN (number of partial eigenvalues) is the full count only in the first SCF iteration; afterwards it is the occupied count plus a margin (§5.3).</li>
+</ul>
+
+<h2>7.4 The DC Method — Divide_Conquer.c</h2>
+<ul>
+  <li>Each rank independently processes the per-atom truncated cluster matrices (local dimension NUM). The GPU condition is
+  <code>NUM ≥ DC_GPU_Threshold()</code> (default 1000, changeable via <code>OPENMX_DC_GPU_THRESHOLD</code>).</li>
+  <li><b>The Col side is a raw CUDA implementation:</b> <code>DCGpuSolverCtx</code> holds cudaMalloc buffers plus pinned host buffers
+  (<code>cudaMallocHost</code>, the only usage in this implementation). S diagonalization (up to the 2nd SCF iteration) → H′ construction
+  (<code>DC_GpuSolver_TryGpuDgemm</code>: GEMMul8 → cublasDgemm on failure → CPU if that also fails) →
+  the active subspace is sliced within the device via <code>cudaMemcpy2DAsync</code> → Xsyevdx.</li>
+  <li><b>Multi-layered safety mechanisms:</b> a VRAM preflight before allocation (<code>GPUSOLVER_MIN_FREE_AFTER_MB</code>, default 1536 MiB),
+  detection of host malloc failure, and detection of eigendecomposition failure — any of these raises a <b>sticky disable flag</b>,
+  after which that rank continues with the CPU DC solver (the GEMMul8 workspace is also released).
+  This is the most defensive implementation among the GPU-enabled paths.</li>
+  <li><b>The NonCol side is an OpenACC implementation:</b> the subspace transforms (S transpose, H·U·M1, M1·U†HU·M1, back-transform) run with
+  <code>kernels loop independent collapse</code>, and diagonalization goes through
+  <code>Eigen_gpusolver_x_complex_openacc</code>. The old OpenACC regions on the Col side are
+  hard-disabled with <code>use_dc_openacc = 0</code> (comment: "compiler's bug").</li>
+</ul>
+
+<h2>7.5 The DC-LNO Method — Divide_Conquer_LNO.c</h2>
+<ul>
+  <li>The current scheme is <b>direct per-rank dispatch</b> (§5.5.3): every rank executes <code>cudaSetDevice</code> and
+  submits its own local problem (NUM ≥ 800 = <code>GPU_CPU_SWITCH_NUM2</code>) directly to the GPU.
+  Workspace sized for Max_Msize is pre-allocated per rank.</li>
+  <li>The old <b>GPU proxy scheme</b> (rank 0 of a group of ranks sharing the same GPU performs diagonalizations on behalf of the others via MPI tags 41001-41004) is
+  retained under <code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code>.</li>
+  <li>The number of GPUs per node is capped by <code>scf.Gpu.Num</code> (default 30 ≒ effectively unlimited). A communicator
+  <code>DCLNO_gpu_group_comm</code> is built for groups of ranks sharing the same GPU.</li>
+  <li>There is no fallback on failure — exit(10). h_meig is unchecked (Table 5-2).</li>
+</ul>
+
+<h2>7.6 The Krylov Method — Krylov.c</h2>
+<ul>
+  <li><b>No OpenACC; raw CUDA only</b> (compiled with <code>CC_NOACC_O3</code>, i.e. without <code>-acc</code>).
+  Holds a per-OpenMP-thread <code>Krylov_GPU_Workspace</code> pool (d_A/d_B/d_C/d_W/d_work + a dedicated non-blocking
+  stream).</li>
+  <li><code>Krylov_Dgemm</code> (:311): H2D Async → <code>openmx_gemmul8Dgemm</code> → D2H → StreamSynchronize
+  (switched from cublasDgemm in <code>66ce1e62</code>). If the FLOP count m·n·k &lt; 5×10⁷, CPU BLAS is used (<code>KRYLOV_GPU_DGEMM_MIN_FLOPS</code>).</li>
+  <li><code>Krylov_Eigen2</code> (:354): solves the standard eigenvalue problem of the embedded Hamiltonian with Xsyevd if n==EVmax,
+  or Xsyevdx for a partial spectrum. n &lt; 1000 goes to the CPU. On failure it falls back on the spot to <code>Eigen_lapack2</code> (CPU).</li>
+  <li>Since the S transformation is already handled during Krylov basis construction (CPU <code>Inverse_S_by_Cholesky</code>),
+  the GPU side deals only with the standard eigenvalue problem.</li>
+</ul>
+
+<h2>7.7 Matrix-Element Construction — Set_Hamiltonian.c / Set_Nonlocal.c / Set_OLP_Kin.c</h2>
+<h3>Set_Hamiltonian.c (effectively about 1,800 changed lines)</h3>
+<ul>
+  <li><b>The OpenACC version of the grid integration is implemented but permanently disabled</b> (<code>Set_Hamiltonian_MatrixElements_OpenACC_Enabled()</code>
+  does <code>return 0</code>). The reason is stated in a comment: packing and transfer costs dominate, making it slower than the CPU.
+  The GPU version of the base combination (H = F_Kin·H0 + F_VNA·HVNA + F_NL·HNL + …) is also
+  opt-in via <code>OPENMX_SETHAM_BASE_GPU=1</code> because of a measured "10 ms vs 2 ms on the CPU".</li>
+  <li><b>The main contribution is the packed H/S cache:</b> a new API family that holds H and S in a 1-D packed format for GPUSOLVER
+  (<code>Set_Hamiltonian_Build_GpuSolver_HS_Cache</code> and others, declared in <code>openmx_common.h:3339-3351</code>).
+  The Band/Cluster solvers use this cache directly for the dense-matrix assembly before diagonalization, accelerating transfer and assembly on the GPU path.
+  It is prepared each SCF iteration from <code>DFT.c:207-214</code>.</li>
+  <li><b>Memory safety mechanism:</b> <code>Set_Hamiltonian_DeviceMemoryOK</code> (:164-268) estimates the required amount and,
+  within the group of ranks sharing the same GPU, performs an Allreduce (SUM of requirements vs. MIN of free memory); if insufficient, it falls back to the CPU path with a warning.
+  OpenACC execution is restricted to world representative ranks (<code>DFT.c:159-204</code>).</li>
+</ul>
+<p class="src">Set_Hamiltonian.c:1409-1424 (excerpt) — sequential reduction of the grid integration (implemented but currently disabled OpenACC version)</p>
+<pre><code>#pragma acc loop vector
+for (e = 0; e &lt; (size_t)spin_count * mat_size; e++) {
+    ...
+    double sum = hbuf[hidx];
+    int Nog;
+#pragma acc loop seq
+    for (Nog = 0; Nog &lt; NOLG; Nog++) {
+        sum += vpotbuf[...] * orbs0buf[...] * orbs1buf[...];
+    }
+    hbuf[hidx] = sum;
+}</code></pre>
+<h3>Set_Nonlocal.c (+1,356/−306)</h3>
+<ul>
+  <li>The radial k integration of the nonlocal projector matrix elements &lt;φ|P&gt; is ported to OpenACC (<code>collapse(2)</code> +
+  <code>loop vector reduction</code>). Always enabled under GPUSOLVER. Bessel function tables are recomputed only when the species changes.</li>
+  <li>In addition, hardening was carried out that replaces fixed-size stack arrays with heap allocations with overflow checks
+  (<code>SetNonlocal_MallocArray</code> etc.).</li>
+</ul>
+<h3>Set_OLP_Kin.c (+529/−181) and Spherical_Bessel.c</h3>
+<ul>
+  <li>Offloading the radial integration of the overlap and kinetic-energy matrix elements is measured to be slower than the CPU due to being data-transfer-bound
+  (comment: about 1.2 s vs 0.3 s), so it is <b>opt-in</b> via <code>OPENMX_OLPKIN_RADIAL_GPU=1</code>.
+  It additionally requires a thread count of 1 (<code>Nthrds==1</code>).</li>
+  <li>As an effective CPU-side speedup, a <b>spherical Bessel function table cache keyed by exact bit-pattern match of the pair distance r</b>
+  was added (results are bitwise identical; single-thread only). <code>Spherical_Bessel.c</code> also had its
+  per-call malloc/free removed from the hot path.</li>
+</ul>
+
+<h2>7.8 Total Energy — Total_Energy.c + Total_Energy_GPU.c</h2>
+<p><b>Reason for the file split:</b> Because <code>-acc</code> in NVHPC 26.3 miscompiles the LDA+U path,
+the <code>Total_Energy.c</code> body has to be built without <code>-acc</code> (<code>CC_NOACC</code>).
+The OpenACC kernels alone were therefore split into a separate translation unit, <code>Total_Energy_GPU.c</code> (with <code>-acc</code>, 517 lines).
+The gate is <code>TotalEnergyUseOpenACC()</code>: disabled for non-collinear (SpinP_switch==3), otherwise follows the GPUSOLVER flag.</p>
+<p>Four kinds of grid reductions are GPU-enabled (all using a temporary data region with copyin on every call):</p>
+<ol>
+  <li><b>EXC/EH1 grid integration</b> (Ena, Eef, EH1, and EXC are reduced in a single <code>parallel loop reduction(+:5 variables)</code>)</li>
+  <li><b>The 6 dipole-moment components</b> (grid coordinates GN→(n1,n2,n3) are reconstructed on the device)</li>
+  <li><b>CWF double-counting correction</b> (dcEH1/dcEXC)</li>
+  <li><b>Batched computation of the EH0 two-center terms</b> — all atom pairs are put into arrays at once, and the per-species spherical grids, VPS meshes, and
+  V_H atom tables are flattened and transferred. A <code>gang</code> (pairs) × <code>vector reduction</code> (grid points) layout
+  computes the energy and the r derivative (equivalent to forces #6/#7) simultaneously. Spline interpolation is implemented as a
+  device function with <code>#pragma acc routine seq</code>.</li>
+</ol>
+<p class="src">Total_Energy_GPU.c:39-47 — typical form of a grid reduction</p>
+<pre><code>#pragma acc data copyin(Density_Grid_B0[0:grid_count], Density_Grid_B1[0:grid_count], \
+                        ADensity_Grid_B[0:grid_count], PCCDensity_Grid_B0[0:grid_count], \
+                        PCCDensity_Grid_B1[0:grid_count], dVHart_Grid_B[0:grid_count], \
+                        Vxc_Grid_B0[0:grid_count], Vxc_Grid_B1[0:grid_count], \
+                        RefVxc_Grid_B[0:grid_count], VNA_Grid_B[0:vna_grid_count], \
+                        VEF_Grid_B[0:vef_grid_count])
+  {
+#pragma acc parallel loop reduction(+:local_Ena,local_Eef,local_EH1,local_EXC0,local_EXC1)
+    for (BN=0; BN&lt;grid_count; BN++){</code></pre>
+
+<h2>7.9 Forces — Force.c</h2>
+<ul>
+  <li>The reductions for force #2 (kinetic-energy term Tr[DM·dH0]), #4 (VNA grid term), and #5 (overlap term −Tr[EDM·dS]) are ported to OpenACC.
+  The common helper copyins "per-atom offset tables + flattened (weight, hx, hy, hz)" and obtains the forces with a two-stage
+  <code>gang</code> (atoms) × <code>vector reduction</code> (terms) reduction.</li>
+  <li><b>Force #4B (projected VNA) is intentionally kept on the CPU.</b> Original comment: "In DC-LNO/GPUSOLVER runs many MPI ranks can share
+  one GPU while GPUSOLVER still owns most device memory, so these transient copies can exhaust device memory.
+  Keep Force4B on the CPU trace path" (<code>Force.c:5588-5596</code>).</li>
+  <li>This file has the largest number of changed lines in the diff (over ±11,000 raw lines), but most of that is a full re-indentation; the effective change is about 3,700 lines.</li>
+</ul>
+<p class="src">Force.c:166-183 (excerpt) — two-stage gang (atoms) × vector (terms) reduction</p>
+<pre><code>#pragma acc parallel loop gang
+for (Mc_AN = 0; Mc_AN &lt;= num_atoms; Mc_AN++) {
+    double sumx = 0.0;  double sumy = 0.0;  double sumz = 0.0;
+    if (Mc_AN != 0) {
+        size_t start = atom_offsets[Mc_AN - 1];
+        size_t end = atom_offsets[Mc_AN];
+        size_t idx;
+#pragma acc loop vector reduction(+:sumx, sumy, sumz)
+        for (idx = start; idx &lt; end; idx++) {
+            double weight = weights[idx];
+            sumx += weight * vx[idx];
+            sumy += weight * vy[idx];
+            sumz += weight * vz[idx];
+        }
+    }
+    Fx[Mc_AN] = sumx;  Fy[Mc_AN] = sumy;  Fz[Mc_AN] = sumz;
+}</code></pre>
+
+<h2>7.10 Derived Solvers — Polarization, DMmu, CWF, LNO (11 files with a boilerplate pattern)</h2>
+<p>The following 11 files apply the same boilerplate pattern:
+include of <code>openmx_gpusolver_dense_utils.h</code>, device assignment when GPUSOLVER is requested,
+a static context, and insertion of a
+<code>scf_eigen_lib_flag==GPUSOLVER &amp;&amp; GPU_CPU_SWITCH_NUM&lt;=n &amp;&amp; na_rows==n &amp;&amp; na_cols==n</code>
+branch <b>immediately before the ELPA2 branch</b>
+(diagonalization via <code>OpenMX_GpuSolver_DenseDsyevx/DenseZheevx</code>).
+If the conditions are not met, control flows to the conventional ELPA/ScaLAPACK.</p>
+<table>
+<thead><tr><th style="width:34%;">File</th><th style="width:16%;">Changed lines</th><th>GPU diagonalization insertion points</th></tr></thead>
+<tbody>
+<tr><td><code>Band_DFT_Col_CWF.c</code></td><td>+74/−6</td><td>Zheevx × 3 (S, H, CWF band)</td></tr>
+<tr><td><code>Band_DFT_Col_DMmu.c</code></td><td>+75/−5</td><td>Zheevx × 4</td></tr>
+<tr><td><code>Band_DFT_NonCol_CWF.c</code></td><td>+76/−11</td><td>Zheevx × 3</td></tr>
+<tr><td><code>Band_DFT_NonCol_DMmu.c</code></td><td>+76/−5</td><td>Zheevx × 4</td></tr>
+<tr><td><code>Cluster_DFT_Col_CWF.c</code></td><td>+64/−5</td><td>Dsyevx × 2</td></tr>
+<tr><td><code>Cluster_DFT_Col_DMmu.c</code></td><td>+63/−4</td><td>Dsyevx × 2</td></tr>
+<tr><td><code>Cluster_DFT_Col_LNO.c</code></td><td>+66/−5</td><td>Dsyevx × 2</td></tr>
+<tr><td><code>Cluster_DFT_NonCol_CWF.c</code></td><td>+65/−2</td><td>Dsyevx × 1 + Zheevx × 1</td></tr>
+<tr><td><code>Cluster_DFT_NonCol_DMmu.c</code></td><td>+66/−3</td><td>Dsyevx × 1 + Zheevx × 1</td></tr>
+<tr><td><code>Electric_Polarization_BandCol.c</code></td><td>+27/−5</td><td>Dsyevx × 1 + Zheevx × 4 (DM, overlap, H, ABC)</td></tr>
+<tr><td><code>Electric_Polarization_BandNonCol.c</code></td><td>+40/−14</td><td>Zheevx × 5 (also includes adjustments to the fallback conditions on the ELPA1 side)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 7-1: Files with the boilerplate GPUSOLVER branch inserted</figcaption>
+
+<h2>7.11 Generic Eigenvalue Routines — Eigen_lapack.c / EigenBand_lapack.c</h2>
+<ul>
+  <li><code>Eigen_lapack()</code> (real symmetric) branches to <code>Eigen_gpusolver_x</code> (→ <code>gpusolver_Syevdx</code>) when
+  <code>flag != ELPA1/2 &amp;&amp; n ≥ 1000</code>.
+  <b>The 20+ files that call Eigen_lapack (orbital optimization, DC, LNO, etc.) automatically benefit from the GPU port</b>.
+  A caller-level solver rotation retry with an eigenvector orthogonality check sits above it.</li>
+  <li><code>EigenBand_lapack()</code> (Hermitian) goes to <code>gpusolver_zheevx</code> when N ≥ 1000.
+  On failure it falls back to the CPU Householder method <code>Eigen_HH</code>.</li>
+  <li>Both have <code>_openacc</code> entry points that operate directly on OpenACC device-resident arrays,
+  used from paths such as the non-collinear DC OpenACC path. The repacking between 2-D arrays and 1-D device arrays is also done on the device.</li>
+</ul>
+</section>
+
+<!-- ==================== Chapter 8 ==================== -->
+<section id="ch8">
+<h1>8. Changes Unrelated to GPU Offloading</h1>
+
+<h2>8.1 OpenMP Bug Fixes — Eliminating Heap Corruption from Missing private Declarations</h2>
+<p>In the original OpenMX 4.0, <code>Stress.c</code> and <code>Total_Energy.c</code> had
+<code>#pragma omp parallel</code> constructs whose <code>private()</code> clauses did not include the loop variable <code>i</code>, resulting in
+<b>a race where multiple threads simultaneously read and write the implicitly shared <code>i</code></b>.
+If one thread advances <code>i</code> right after another thread has evaluated the loop bound, an out-of-bounds array access occurs,
+manifesting as heap corruption (corruption of malloc metadata). This was identified as the cause of runtest crashes during development of this GPU version
+and fixed (commit <code>d451eeb8</code>).</p>
+<p class="src">Stress.c:729 — the fix (appending <code>,i</code> at the end of the private list; Total_Energy.c:2085 has the same form)</p>
+<pre><code>/* before the fix (original) */
+#pragma omp parallel ... private(OMPID,Nthrds,Nprocs,Mc_AN,(...),sumt1,sumt2,sumt3,sumt4,sumt5)
+
+/* after the fix (GPU version) */
+#pragma omp parallel ... private(OMPID,Nthrds,Nprocs,Mc_AN,(...),sumt1,sumt2,sumt3,sumt4,sumt5,i)</code></pre>
+<ul>
+  <li><code>Stress.c</code>: The race site is <code>for (i=0; i&lt;9; i++){ sumt1[i]=0.0; … }</code> inside the parallel region
+  (executed on every pass of the atom loop). This one line is the only diff in this file.</li>
+  <li><code>Total_Energy.c</code>: The Lebedev spherical-grid integration parallel section in <code>Calc_EXC_EH1()</code>.
+  The racing loop is <code>for (i=0; i&lt;(FNAN[Gc_AN]+1); i++)</code>, which indexes into <code>Dr[i][ir][ia]</code> and the like,
+  so a race can point outside the allocated region (the heap corruption path).</li>
+</ul>
+<div class="note"><b>Significance:</b> These two bugs also exist in the original OpenMX 4.0 and can manifest with
+OpenMP thread parallelism (thread count ≥ 2) independently of the GPU. The fixes are also worth applying when using the CPU version of OpenMX.</div>
+
+<h2>8.2 Memory Management and Hardening</h2>
+<table>
+<thead><tr><th style="width:24%;">File</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>openmx.c</code></td><td>Calls <code>Raise_Stack_Limit()</code> immediately at startup to automatically raise the stack soft limit to the hard limit (<code>getrlimit/setrlimit(RLIMIT_STACK)</code>). A countermeasure against crashes from large stack arrays in environments where <code>ulimit -s</code> is not set</td></tr>
+<tr><td><code>truncation.c</code> / <code>Free_Arrays.c</code></td><td>Adds NULL assignment after freeing <code>VNA_Grid</code> / <code>VNA_Grid_B</code> / <code>VEF_Grid</code> / <code>VEF_Grid_B</code> (double free prevention)</td></tr>
+<tr><td><code>Set_Nonlocal.c</code></td><td>Replaces fixed-size arrays with heap allocations with overflow checks (§7.7)</td></tr>
+<tr><td><code>Free_Arrays.c</code></td><td>Calls <code>openmx_gemmul8ReleaseWorkspaces()</code> at exit (wherefrom==0) (GPU-related)</td></tr>
+</tbody>
+</table>
+<p class="src">openmx.c:75-88 — Raise_Stack_Limit (full text)</p>
+<pre><code>static void Raise_Stack_Limit(void)
+{
+#ifdef RLIMIT_STACK
+  struct rlimit limit;
+
+  if (getrlimit(RLIMIT_STACK,&amp;limit)!=0) return;
+  if (limit.rlim_cur==RLIM_INFINITY) return;
+  if (limit.rlim_max==0 || limit.rlim_cur==limit.rlim_max) return;
+
+  limit.rlim_cur = limit.rlim_max;
+  setrlimit(RLIMIT_STACK,&amp;limit);
+#endif
+}</code></pre>
+
+<h2>8.3 Other Fixes</h2>
+<table>
+<thead><tr><th style="width:24%;">File</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>Runtest.c</code></td><td>(1) Tightened input-file detection from partial matching via <code>strstr</code> to suffix matching <code>has_dat_suffix()</code> (prevents false positives such as <code>foo.dat~</code>). (2) Deletes the old <code>&lt;System.Name&gt;.out</code> before running each test to prevent contamination from previous results (with MPI_Barrier)</td></tr>
+<tr><td><code>Spherical_Bessel.c</code></td><td>Removed per-call malloc/free (recurrence coefficient arrays) from the hot path and inlined the coefficient computation (formulas unchanged)</td></tr>
+<tr><td><code>openmx_common.h</code></td><td>Added an include guard (absent in the original). Changed the version string from "4.0" to "4.0 GPU"</td></tr>
+<tr><td><code>Input_std.c</code></td><td>Added GPU-related keywords (Chapter 10)</td></tr>
+<tr><td><code>mpao.c</code></td><td>Only a one-line diff of <code>#include &lt;ctype.h&gt;</code> (a utility outside the build; no impact)</td></tr>
+</tbody>
+</table>
+</section>
+<!-- ==================== Chapter 9 ==================== -->
+<section id="ch9">
+<h1>9. Build System</h1>
+
+<h2>9.1 Complete Toolchain Overhaul</h2>
+<p>The original <code>makefile</code> (Intel oneAPI + MKL) was completely rewritten as <code>Makefile</code> (NVHPC + CUDA + self-built FFTW + GEMMul8).
+The original is preserved byte-identically as <code>makefile.cpu_intel.bak</code>.</p>
+<table>
+<thead><tr><th style="width:22%;">Item</th><th style="width:36%;">Original (makefile)</th><th>GPU version (Makefile)</th></tr></thead>
+<tbody>
+<tr><td>C compiler</td><td><code>mpiicx -O3 -xHOST -qopenmp</code></td><td><code>mpicc</code> (nvc) from the OpenMPI bundled with NVHPC + <code>-acc -Minfo=accel -std=c11 -mtune=native -march=native -fopenmp</code></td></tr>
+<tr><td>Fortran</td><td><code>mpiifx</code></td><td><code>mpif90</code> (nvfortran) <code>-O2 -fopenmp</code></td></tr>
+<tr><td>BLAS/LAPACK</td><td>MKL (static)</td><td>Static <code>liblapack_lp64.a</code> / <code>libblas_lp64.a</code> bundled with NVHPC</td></tr>
+<tr><td>ScaLAPACK</td><td>MKL ScaLAPACK</td><td><code>libscalapack_lp64.a</code> from the HPC-X OpenMPI side</td></tr>
+<tr><td>FFT</td><td>MKL FFTW wrapper</td><td>Self-built static FFTW 3.3.11 (third_party)</td></tr>
+<tr><td>GPU libraries</td><td>—</td><td><code>-lcudart -lcusolver -lcublas -lcublasLt -lcuda -lnvidia-ml -lnvJitLink -cuda</code> + <code>libgemmul8.a</code></td></tr>
+<tr><td>SDK assumptions</td><td>Intel oneAPI</td><td><code>NVHPC_ROOT ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.3</code>, <code>NVHPC_CUDA_VERSION ?= 13.1</code> (overridable via variables)</td></tr>
+</tbody>
+</table>
+<p><b>Build environment isolation:</b> <code>Makefile:69-104</code> pins <code>PATH</code> to NVHPC only and
+<code>unexport</code>s more than 30 environment variables such as <code>CPATH</code>/<code>LD_LIBRARY_PATH</code>/<code>CC</code>.
+CFLAGS and the like from the user environment have no effect (intentionally).</p>
+<p class="src">Makefile:131-140 — compiler definitions (excerpt)</p>
+<pre><code>COMMON_INCLUDES = $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_CUDA_HOME)/include
+COMMON_CFLAGS   = -w -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp $(COMMON_INCLUDES)
+
+CC  = $(MPICC) $(COMMON_CFLAGS) -O3
+CC2 = $(MPICC) $(COMMON_CFLAGS) -O1
+CC3 = $(MPICC) $(COMMON_CFLAGS) -O2
+CC_NOACC = $(filter-out -Minfo=accel -acc,$(CC2))
+CC_NOACC_O3 = $(filter-out -Minfo=accel -acc,$(CC))
+CC_DFTD3 = $(MPICC) -w -O0 -std=c11 -fopenmp $(COMMON_INCLUDES)
+FC = $(MPIF90) -O2 -mtune=native -march=native -fopenmp $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include</code></pre>
+<p>Whereas the original used a single <code>$(CC)</code> for all files, the GPU version applies <b>per-file optimization and OpenACC adjustments</b>
+(Table 6-1). There is no OpenACC target architecture specification (<code>-gpu=ccXX</code>); the GPU of the build machine is auto-detected.
+To cross-target, add it to <code>COMMON_CFLAGS</code>.</p>
+
+<h2>9.2 Link Configuration</h2>
+<p class="src">Makefile:142-150, 172 (excerpt)</p>
+<pre><code>NVPL_SCALAPACK_LIB ?= $(NVHPC_MPI_LIBDIR)/libscalapack_lp64.a
+NVPL_LAPACK_LIB    ?= $(NVHPC_COMPILER_LIB)/liblapack_lp64.a
+NVPL_BLAS_LIB      ?= $(NVHPC_COMPILER_LIB)/libblas_lp64.a
+NVPL_LIBS          ?= -Wl,--start-group $(NVPL_SCALAPACK_LIB) $(NVPL_LAPACK_LIB) $(NVPL_BLAS_LIB) -Wl,--end-group
+CUDA_LIBS          ?= ... -Wl,--no-as-needed -lnvJitLink -Wl,--as-needed -lcudart -lcusolver -lcublas -cuda
+LIB = $(FFTW3_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm -ldl $(CUDA_LIBS)
+...
+LIB += -lcublasLt -lcuda -lnvidia-ml -lstdc++</code></pre>
+<p>The link line is <code>$(CC) $(OBJS) $(GEMMUL8_LIB) $(LIB) -lm -o openmx</code> (<code>Makefile:337-338</code>).
+Additions to OBJS: <code>Total_Energy_GPU.o</code>, <code>gemmul8_bridge.o</code>,
+<code>gpusolver_Syevd.o gpusolver_Syevdx.o set_cuda_default_device_from_local_rank.o
+set_openacc_device_from_local_rank.o</code>, and <code>OutData_Binary.o</code> (a dead link with no callers).
+The formerly included <code>my_cublasDgemm.o my_cublasZgemm.o</code> were removed in <code>a7f8cba6</code>.
+<b><code>openmx_cuda_kernels.o</code> is not included</b> (§6.4).</p>
+
+<h2>9.3 Automatic Builds of third_party</h2>
+<p>Because the default target is <code>openmx: $(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS)</code>,
+a bare <code>make</code> builds everything fully automatically in the order FFTW3 → GEMMul8 → the main program. Both are git submodules
+(<code>.gitmodules</code>: RIKEN-RCCS/GEMMul8, FFTW/fftw3).</p>
+<h3>FFTW 3.3.11</h3>
+<ul>
+  <li>Since the submodule's git source lacks the generated codelets, the build checks for a sentinel file and, if absent,
+  supplements only the missing files via <code>rsync --ignore-existing</code> from
+  <code>https://fftw.org/fftw-3.3.11.tar.gz</code> (also committed to the repository).</li>
+  <li>It verifies that the checkout is exactly the tag <code>fftw-3.3.11</code> and runs <code>autoreconf</code> if necessary.
+  An out-of-tree build (<code>build/fftw3</code>) runs <code>configure --enable-static --disable-shared</code>
+  (with nvc/nvc++/nvfortran as compilers) → <code>make install</code> into <code>third_party/fftw3-install</code>.</li>
+</ul>
+<h3>GEMMul8</h3>
+<ul>
+  <li>Pinned fetch/checkout to commit <code>884a2875…</code> (rationale in §4.7). The upstream build system is not used;
+  the single file <code>gemmul8_openmx.cu</code> is compiled with nvcc and <code>ar rcs</code> produces
+  <code>libgemmul8.a</code> in-house.</li>
+</ul>
+<p class="src">Makefile:716-727 — fetching GEMMul8 and the single-TU build</p>
+<pre><code>$(GEMMUL8_DIR)/Makefile:
+	mkdir -p $(GEMMUL8_REPO_DIR)
+	cd $(GEMMUL8_REPO_DIR) &amp;&amp; \
+	  { [ -d .git ] || git init -q .; } &amp;&amp; \
+	  { git remote get-url origin &gt;/dev/null 2&gt;&amp;1 || git remote add origin $(GEMMUL8_REPO_URL); } &amp;&amp; \
+	  git fetch --depth 1 origin $(GEMMUL8_COMMIT) &amp;&amp; \
+	  git checkout -q $(GEMMUL8_COMMIT)
+$(GEMMUL8_OPENMX_OBJ): gemmul8_openmx.cu $(GEMMUL8_DIR)/Makefile
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_openmx.cu -o $(GEMMUL8_OPENMX_OBJ)
+$(GEMMUL8_LIB): $(GEMMUL8_OPENMX_OBJ)
+	mkdir -p $(GEMMUL8_DIR)/lib
+	ar rcs $(GEMMUL8_LIB) $(GEMMUL8_OPENMX_OBJ)</code></pre>
+<p><code>clean</code> was extended to include <code>fftw3-clean</code> (removes build/fftw3 and fftw3-install) and
+<code>gemmul8-clean</code> (removes libgemmul8.a). In other words, after <code>make clean</code>
+the third_party components must be rebuilt.</p>
+
+<h2>9.4 ELPA (elpa-2018.05.001)</h2>
+<p>The <code>elpa-2018.05.001/</code> directory is <b>completely identical to the original</b> (no diff).
+The object list is also identical, and the kernels remain the generic CPU versions (<b>ELPA's GPU kernels are not used</b>).
+The only difference is that the Fortran compiler changed from mpiifx to nvfortran. Even in the GPU version, ELPA is still actively used
+for systems with n &lt; 1000 and on paths that do not meet the GPU conditions, so preserving it is important.</p>
+
+<h2>9.5 Derived Makefiles</h2>
+<ul>
+  <li><b><code>makefile.cpu_intel.bak</code></b> — byte-identical copy of the original makefile (preserves the CPU/Intel configuration).</li>
+  <li><b><code>Makefile.bunshiken</code></b> — variant for a shared compute cluster (module environment: <code>nvhpc/25.9-nompi</code> +
+  <code>openmpi/5.0.8</code> + <code>gcc-toolset/15</code>). It is <b>one generation older than the main Makefile</b> in the following respects:
+  NVHPC 25.9 + external OpenMPI, CUDA 13.0,
+  g++ as the nvcc host compiler, GEMMul8 in the old layout (not pinned to a commit), and object names still using the pre-gpusolver-rename
+  <code>cusolver_*.o</code>. It serves as a reference example when porting to other environments.</li>
+</ul>
+
+<h2>9.6 Build Procedure and Caveats</h2>
+<ol>
+  <li><code>git clone --recursive</code> (submodules: fftw3, GEMMul8. Even without GEMMul8, make fetches it automatically).</li>
+  <li>Run <code>make</code> in <code>source/</code> (default goal: openmx). This executes everything in one pass: FFTW3 supplementation → configure → install,
+  GEMMul8 compilation → ar, and compilation and linking of the main program.</li>
+  <li><code>make install</code> copies the binary to <code>../work/openmx</code>. Utilities are built with <code>make all</code>.</li>
+</ol>
+<div class="warn"><b>Build caveats:</b>
+(1) Changing the NVHPC version requires re-verifying the miscompilation workarounds in §6.5.
+(2) The HPC-X paths hardcode a version string (hpcx-2.25.1) and must be updated when the SDK is upgraded.
+(3) The GEMMul8 architecture can be overridden, e.g. <code>make GEMMUL8_GPU_ARCH=90</code> (the default is nvidia-smi auto-detection).
+(4) The auxiliary targets present in the original, such as the API library (libopenmx_api) and elpa_col, have been removed.
+(5) Parallel make (-j) is possible as far as the dependency graph is concerned, but in this project's workflow it is used only when explicitly specified.</div>
+</section>
+
+<!-- ==================== Chapter 10 ==================== -->
+<section id="ch10">
+<h1>10. Runtime Control Reference</h1>
+
+<h2>10.1 Input File Keywords</h2>
+<p>Only the following two input keywords were added or extended for GPU functionality (all other tuning is done via environment variables).</p>
+<p class="src">Input_std.c:777-791 — added portion (in full)</p>
+<pre><code>/* "cusolver" is a deprecated alias of "gpusolver"; ... */
+s_vec[0]="elpa2"; s_vec[1]="lapack"; s_vec[2]="elpa1";    s_vec[3]="gpusolver"; s_vec[4]="cusolver";
+i_vec[0]=ELPA2;   i_vec[1]=0;        i_vec[2]=ELPA1;       i_vec[3]=GPUSOLVER;   i_vec[4]=-GPUSOLVER;
+input_string2int("scf.eigen.lib", &amp;scf_eigen_lib_flag, 5, s_vec,i_vec);
+if (scf_eigen_lib_flag==-GPUSOLVER){
+  if (myid==Host_ID){
+    printf("Warning: scf.eigen.lib=cusolver is deprecated; use scf.eigen.lib=gpusolver instead.\n");
+  }
+  scf_eigen_lib_flag = GPUSOLVER;
+}
+scf_eigen_lib_flag_input = scf_eigen_lib_flag;
+
+/* use GPU? (added by H.Kawai, February 2024) */
+input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
+<table>
+<thead><tr><th style="width:22%;">Keyword</th><th style="width:10%;">Type</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>elpa2</code></td><td>Adds <b><code>gpusolver</code></b> (enables the entire GPU path) to the existing <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>. <code>cusolver</code> is a deprecated alias that emits a warning. Automatically demoted to ELPA2 when no GPU is present</td></tr>
+<tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper limit on the number of GPUs used within a node. Currently used only to trim the GPU count for DC-LNO (the default of 30 effectively means "use all detected GPUs")</td></tr>
+</tbody>
+</table>
+
+<h2>10.2 Environment Variables</h2>
+<p>GPU execution tuning is by design done via environment variables (adjustable from the job script without changing the input file).
+For variables that exist in both an <code>OPENMX_</code>-prefixed and a <code>GEMMUL8_</code>-prefixed form, the OPENMX_ version takes precedence.</p>
+<table>
+<thead><tr><th style="width:34%;">Environment variable</th><th style="width:10%;">Default</th><th>Meaning (where defined)</th></tr></thead>
+<tbody>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8 (gemmul8_bridge.cu)</b></td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>Disable GEMMul8 and pin to cuBLAS FP64 (globally / real only / complex only)</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>15</td><td>Number of moduli (precision). Range 2–20; out-of-range values revert to 15</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_FASTMODE_D</code> / <code>_Z</code></td><td>0</td><td>Fast scaling mode (reduced accuracy)</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_MAX_WORKSPACE_PERCENT</code></td><td>30</td><td>Upper limit on workspace as a fraction of total VRAM (Band_DFT_NonCol setenvs 50 if unset)</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>Minimum free VRAM that must remain after workspace allocation</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>Concurrency and residency control for band calculations (Band_DFT_Col.c / Band_DFT_NonCol.c)</b></td></tr>
+<tr><td><code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS</code></td><td>1</td><td>Enable/disable GPU turn serialization (0 for concurrent submission)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_TURN_GROUP</code></td><td>4</td><td>Number of GPU turns allowed to run simultaneously (group width)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code></td><td>4</td><td>Number of simultaneous k-points in the first diagonalization loop for <code>all_knum≠1</code>. Clamped to a maximum of 4 in <code>8c7801fa</code>. In NonCol, the adaptive limit (§5.5.2) also applies on top of the specified value</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code></td><td>—</td><td>Common fallback value for the two knobs above (simultaneous ranks per GPU)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_PERSISTENT</code></td><td>0</td><td>Device buffer residency across SCF iterations (not recommended on shared GPUs)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB</code></td><td>2048</td><td>Minimum free VRAM required to allow residency</td></tr>
+<tr><td><code>OPENMX_BAND_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>Per-turn release of the GEMMul8 workspace (0 to retain)</td></tr>
+<tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>Display performance measurement counters</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>DC method (Divide_Conquer.c)</b></td></tr>
+<tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>1000</td><td>Minimum local cluster dimension for GPU offloading</td></tr>
+<tr><td><code>(OPENMX_)GPUSOLVER_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>Minimum free VRAM after eigenvalue-solver allocation (preflight)</td></tr>
+<tr><td><code>OPENMX_CUBLAS_MIN_FREE_AFTER_MB</code></td><td>—</td><td>Same as above, for cuBLAS</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>Opt-in matrix element construction (Set_Hamiltonian.c / Set_OLP_Kin.c)</b></td></tr>
+<tr><td><code>OPENMX_SETHAM_BASE_GPU</code></td><td>0</td><td>Run the base combination of H on the GPU (measurements show the CPU is faster)</td></tr>
+<tr><td><code>OPENMX_OLPKIN_RADIAL_GPU</code></td><td>0</td><td>Run the radial integrals of overlap and kinetic matrix elements on the GPU (requires thread count 1. Transfer-bound, so the CPU is usually faster)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 10-1: GPU-related environment variables</figcaption>
+
+<h2>10.3 Tuning Guidelines</h2>
+<ol>
+  <li><b>Run with the defaults first</b> — the defaults are conservatively tuned for a configuration where a 16 GB-class GPU is shared by multiple ranks.</li>
+  <li><b>Check stderr</b> — if the "GEMMul8 workspace fallback" warning appears, VRAM shortage has caused a fall back to FP64.
+  Remedies include reducing the number of ranks, lowering <code>OPENMX_BAND_GPU_TURN_GROUP</code>, or reducing <code>NUM_MOD</code>.</li>
+  <li><b>When the GPU can be dedicated</b> — <code>OPENMX_BAND_GPU_PERSISTENT=1</code> and
+  <code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS=0</code> (or a larger TURN_GROUP) may reduce transfers and synchronization.</li>
+  <li><b>When reproducibility is the top priority</b> — pinning GEMM to FP64 with <code>OPENMX_GEMMUL8_DISABLE=1</code>
+  eliminates the effect of memory-dependent engine switching (§4.8).</li>
+  <li><b>DC/DC-LNO</b> — in systems with small local clusters, few targets qualify for GPU offloading. Lowering <code>OPENMX_DC_GPU_THRESHOLD</code>
+  increases the number of targets, but for small matrices the transfer cost tends to dominate.</li>
+</ol>
+</section>
+
+<!-- ==================== Chapter 11 ==================== -->
+<section id="ch11">
+<h1>11. Summary of Constraints and Caveats</h1>
+
+<h2>11.1 Build and Runtime Environment Assumptions</h2>
+<ul>
+  <li><b>This tree cannot be built as CPU-only</b> (CUDA headers are included unconditionally). If a CPU version is needed,
+  use the original or <code>makefile.cpu_intel.bak</code>.</li>
+  <li>NVHPC 26.3 + CUDA 13.1 is the default. When changing versions, re-verify the list of miscompilation workarounds in §6.5.</li>
+  <li>GEMMul8 requires INT8 Tensor Cores and is built for a single architecture. Rebuild when changing GPU generations.</li>
+  <li>GPU execution is expected to run MPI-only (1 OpenMP thread). The GPU path of <code>Set_OLP_Kin</code>
+  explicitly requires <code>Nthrds==1</code>.</li>
+</ul>
+
+<h2>11.2 Memory Sizing Guidance</h2>
+<ul>
+  <li>VRAM demand per rank (band calculation, dimension n): several complex dense matrices of 16n² bytes each + syevdx workspace
+  + GEMMul8 workspace (about 1 GiB; complex is roughly 3× the real case).</li>
+  <li>On shared GPUs, "number of simultaneous ranks × the above" must fit within free VRAM. The Band paths have automatic control (turn serialization and the adaptive limit),
+  but Cluster root-dense and DC-LNO direct dispatch have no equivalent automatic throttling (DC has a preflight).</li>
+</ul>
+
+<h2>11.3 Numerical Reproducibility</h2>
+<ul>
+  <li><b>Factors that can break bitwise reproducibility:</b> (1) memory-dependent switching between GEMMul8 ⇄ cuBLAS FP64,
+  (2) <code>acc atomic</code>/atomicAdd in scatter-add (non-deterministic addition order), (3) path differences in the small-eigenvalue handling of S,
+  (4) differences in GEMMul8 environment variable settings (num_moduli / fastmode).</li>
+  <li><b>Design choices made for reproducibility:</b> the sequential <code>loop seq</code> reduction in DM construction, GEMMul8's own bitwise reproducibility,
+  the bit-identical Bessel table cache, and (though not wired in) the sequential-reduction kernels of openmx_cuda_kernels.cu.</li>
+  <li>For verification, the reliable approach is to fix conditions with <code>OPENMX_GEMMUL8_DISABLE=1</code> and ample VRAM headroom.</li>
+</ul>
+
+<h2>11.4 Hangs and Abnormal Termination</h2>
+<ul>
+  <li><code>wait_cudafunc</code> loops forever on a permanent error (§3.6). It is the prime suspect when "GPU execution appears stuck".</li>
+  <li>Behavior on eigenvalue computation failure differs by path: abort / CPU fallback / pass-through (Table 5-2).</li>
+  <li>The collective device-assignment functions assume all ranks call them together (calling from only one side deadlocks).</li>
+</ul>
+
+<h2>11.5 Porting Considerations for AMD and Other Vendors</h2>
+<ul>
+  <li>The gpusolver naming is in place, but the switch is not mechanized via macros or the like. The cuSOLVER dependency points are concentrated in
+  <code>gpusolver_Syevd(x).c</code> and each solver's persistent context (direct Xsyevdx calls).</li>
+  <li>The cuBLAS dependency points are Ddgmm/Zdgmm and the GEMMul8 bridge (internal INT8 GEMM and fallback GEMM). GEMMul8 has an upstream HIP/ROCm backend, but
+  this integration (single-TU instantiation) instantiates only the CUDA path.</li>
+  <li>OpenACC depends on NVHPC (for AMD, a rewrite to OpenMP target offload or similar would be needed).
+  The "return value 0 = success" assumption of <code>wait_cudafunc</code> is another point to check when porting.</li>
+</ul>
+
+<h2>11.6 Non-GPU Behavioral Differences from the Original</h2>
+<ul>
+  <li>Two heap corruption bugs under OpenMP parallelism have been fixed (§8.1) — bugs that also exist in the original.</li>
+  <li>The stack soft limit is automatically raised at startup (§8.2).</li>
+  <li>The runtest pass/fail criteria and execution procedure have been made stricter (§8.3).</li>
+  <li>The version string is "4.0 GPU".</li>
+</ul>
+
+<h2>11.7 Dormant and Preparatory Code (to Avoid Confusion When Modifying)</h2>
+<table>
+<thead><tr><th style="width:36%;">Code</th><th>Status and role</th></tr></thead>
+<tbody>
+<tr><td><code>gpusolver_Syevd</code> (Xsyevd version)</td><td>Zero callers (unified on the Syevdx version). The old-style "global rank % device count" assignment remains</td></tr>
+<tr><td><code>LU_Zinverse_GPU</code></td><td>Implementation complete, call site commented out. Groundwork for GPU offloading of the NEGF surface Green's function (§5.7)</td></tr>
+<tr><td><code>openmx_cuda_kernels.cu/.h</code></td><td>Collection of raw CUDA kernels verified for bitwise reproducibility. Untracked by git, excluded from the build, zero callers (§6.4)</td></tr>
+<tr><td><code>ClusterCol_GpuSolverDensePath</code></td><td>Unreachable legacy path (the root-dense path gotos first)</td></tr>
+<tr><td>GEMMul8 helpers for the DMmu/CWF/LNO families, <code>BandCol_GpuSolver_Zgemm_OpenACC</code>, <code>ClusterCol_GEMMul8Dgemm_OpenACC</code></td><td>Definitions only (groundwork for future GEMM GPU offloading). Note that <code>my_cublasDgemm/Zgemm</code> were removed in <code>a7f8cba6</code></td></tr>
+<tr><td>DC-LNO GPU proxy mechanism</td><td>Preserved under <code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code> (experimental)</td></tr>
+<tr><td><code>OutData_Binary.o</code> / <code>getDeviceCount()</code> declaration</td><td>Dead link / dead declaration</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">Table 11-1: Dormant and preparatory code</figcaption>
+</section>
+<!-- ==================== Appendix A ==================== -->
+<section id="appA">
+<h1>Appendix A. Changed Files (37 files)</h1>
+<p>+n/&minus;m are raw diff line counts. For files that underwent full reformatting, the substantive changed lines (whitespace-insensitive) are given in parentheses.
+Classification: <b>GPU</b>=GPU offloading, <b>OMP</b>=OpenMP fix, <b>FIX</b>=bug fix / hardening, <b>OPT</b>=CPU optimization, <b>BLD</b>=build, <b>MISC</b>=other.</p>
+<table>
+<thead><tr><th style="width:26%;">File</th><th style="width:16%;">+n/&minus;m (substantive)</th><th style="width:8%;">Class</th><th>Change summary</th></tr></thead>
+<tbody>
+<tr><td><code>Band_DFT_Col.c</code></td><td>+4,116/&minus;2,491 (3,667)</td><td>GPU</td><td>Full GPU offloading of the collinear band path: dense-matrix construction cache, Xsyevdx diagonalization, GEMMul8 triple products, S-transform cache, GPU-turn serialization, both all_knum paths</td></tr>
+<tr><td><code>Band_DFT_NonCol.c</code></td><td>+3,260/&minus;91 (2,736)</td><td>GPU</td><td>GPU offloading of the non-collinear band path: OpenACC-resident root-dense path, adaptive concurrency limit based on VRAM estimation</td></tr>
+<tr><td><code>Cluster_DFT_Col.c</code></td><td>+1,016/&minus;12 (859)</td><td>GPU</td><td>Root-dense GPU diagonalization path, device cache for the S transform, matrix construction from the packed cache, eigenvector distribution</td></tr>
+<tr><td><code>Cluster_DFT_NonCol.c</code></td><td>+1,706/&minus;218 (1,252)</td><td>GPU</td><td>Root-dense diagonalization (Dsyevx/Zheevx), GEMMul8 &times; 12, eigenvector cache and scatter, DM/EDM reduction</td></tr>
+<tr><td><code>Divide_Conquer.c</code></td><td>+4,399/&minus;2,978 (2,223)</td><td>GPU</td><td>GPU offloading of the DC method: per-atom cluster Xsyevdx, multi-stage GEMM (GEMMul8&rarr;cuBLAS&rarr;CPU), VRAM preflight and sticky disabling</td></tr>
+<tr><td><code>Divide_Conquer_LNO.c</code></td><td>+1,934/&minus;2,007 (1,879)</td><td>GPU</td><td>GPU offloading of DC-LNO: direct per-rank dispatch (the proxy mechanism is retained), threshold 800</td></tr>
+<tr><td><code>Krylov.c</code></td><td>+366/&minus;16</td><td>GPU</td><td>Per-thread GPU workspace pool, 4 dgemm call sites &rarr; GEMMul8, subspace diagonalization &rarr; gpusolver</td></tr>
+<tr><td><code>Band_DFT_Col_CWF.c</code> and 9 boilerplate files (&sect;7.10)</td><td>+63&ndash;76/&minus;2&ndash;11 each</td><td>GPU</td><td>Boilerplate GPUSOLVER branch inserted before the ELPA2 branch (Dsyevx/Zheevx via dense_utils)</td></tr>
+<tr><td><code>Electric_Polarization_BandCol.c</code> / <code>_BandNonCol.c</code></td><td>+27/&minus;5, +40/&minus;14</td><td>GPU</td><td>GPUSOLVER branch at 5 diagonalization sites in each polarization calculation</td></tr>
+<tr><td><code>Eigen_lapack.c</code></td><td>+143/&minus;8</td><td>GPU</td><td>Branch to gpusolver_Syevdx for n&ge;1000, added an OpenACC-direct variant. 20+ calling files benefit automatically</td></tr>
+<tr><td><code>EigenBand_lapack.c</code></td><td>+112/&minus;3</td><td>GPU</td><td>Complex version: gpusolver_zheevx branch, Eigen_HH fallback on failure</td></tr>
+<tr><td><code>Lapack_LU_inverse.c</code></td><td>+134/&minus;4</td><td>GPU</td><td>Added LU_Zinverse_GPU using cublasZgetrf/ZgetriBatched (call sites commented out = dormant)</td></tr>
+<tr><td><code>Set_Hamiltonian.c</code></td><td>+1,999/&minus;1,149 (1,784)</td><td>GPU</td><td>OpenACC version of the grid integration (currently disabled) + new packed H/S cache API for GPUSOLVER + memory-based Allreduce decision</td></tr>
+<tr><td><code>Set_Nonlocal.c</code></td><td>+1,356/&minus;306</td><td>GPU/FIX</td><td>OpenACC offloading of the radial k integration + fixed-size arrays moved to the heap (with overflow checks)</td></tr>
+<tr><td><code>Set_OLP_Kin.c</code></td><td>+529/&minus;181</td><td>GPU/OPT</td><td>OpenACC offloading of the radial integration (opt-in) + bit-identical Bessel table cache</td></tr>
+<tr><td><code>Total_Energy.c</code></td><td>+319/&minus;115</td><td>GPU/OMP</td><td>GPU reduction calls for the batched EH0 two-center terms, EXC/EH1, dipole, and CWF-Dc + OpenMP private fix</td></tr>
+<tr><td><code>Total_Energy_GPU.c</code> (treated as new)</td><td>517 lines</td><td>GPU</td><td>Collection of OpenACC kernels for Total_Energy (separate TU for a split -acc build)</td></tr>
+<tr><td><code>Force.c</code></td><td>+11,522/&minus;11,115 (3,672)</td><td>GPU</td><td>OpenACC reductions for forces #2/#4/#5 (#4B kept on CPU). Most raw lines come from full re-indentation</td></tr>
+<tr><td><code>Stress.c</code></td><td>+1/&minus;1</td><td>OMP</td><td>Added i to the OpenMP private list (heap corruption fix)</td></tr>
+<tr><td><code>DFT.c</code></td><td>+172/&minus;4</td><td>GPU</td><td>GPU device initialization, OpenACC executing-rank selection, packed-cache preparation, NonCol eigenvector scatter</td></tr>
+<tr><td><code>Input_std.c</code></td><td>+15/&minus;3</td><td>GPU</td><td>Added gpusolver to scf.eigen.lib (cusolver is a deprecated alias), added scf.Gpu.Num</td></tr>
+<tr><td><code>openmx_common.h</code></td><td>+93/&minus;13</td><td>GPU/MISC</td><td>CUDA header inclusion, GPUSOLVER enum, GPU_CPU_SWITCH_NUM, wait_cudafunc/cudacall, GPU-related prototypes, include guard, Version "4.0 GPU"</td></tr>
+<tr><td><code>tran_prototypes.h</code></td><td>+10/&minus;0</td><td>GPU</td><td>Added the CUDA_CHECK macro</td></tr>
+<tr><td><code>openmx.c</code></td><td>+16/&minus;0</td><td>FIX</td><td>Raise_Stack_Limit() (automatic stack-limit raising)</td></tr>
+<tr><td><code>Runtest.c</code></td><td>+19/&minus;7</td><td>FIX</td><td>Stricter .dat detection, deletion of stale .out files before tests</td></tr>
+<tr><td><code>Free_Arrays.c</code></td><td>+23/&minus;17</td><td>GPU/FIX</td><td>GEMMul8 workspace release at shutdown + NULL assignment after free</td></tr>
+<tr><td><code>truncation.c</code></td><td>+14/&minus;10</td><td>FIX</td><td>NULL assignment after freeing the VNA/VEF grids (double-free prevention)</td></tr>
+<tr><td><code>Spherical_Bessel.c</code></td><td>+12/&minus;24</td><td>OPT</td><td>Removed per-call malloc/free from the hot path</td></tr>
+<tr><td><code>mpao.c</code></td><td>+0/&minus;1</td><td>MISC</td><td>One-line include difference only (not part of the build)</td></tr>
+<tr><td><code>makefile</code> &rarr; <code>Makefile</code></td><td>+360/&minus;374</td><td>BLD</td><td>Complete rewrite from an Intel oneAPI + MKL configuration to NVHPC + CUDA + bundled FFTW + GEMMul8 (Chapter 9)</td></tr>
+</tbody>
+</table>
+<p class="small">Note: <code>Set_ProExpn_VNA.c</code> was GPU-offloaded once during development and later reverted to the CPU version (commits 17&rarr;31);
+in the current tree it has no difference from the original. Everything under <code>elpa-2018.05.001/</code> is also fully identical. No source files were deleted.</p>
+</section>
+
+<!-- ==================== Appendix B ==================== -->
+<section id="appB">
+<h1>Appendix B. Newly Added Files</h1>
+<h2>B.1 New Sources (13 files, 2,555 lines total)</h2>
+<table>
+<thead><tr><th style="width:34%;">File</th><th style="width:8%;">Lines</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>gpusolver_Syevdx.c</code></td><td>387</td><td>Partial eigendecomposition wrapper based on cusolverDnXsyevdx (4 variants: real/complex &times; host/OpenACC). The core of GPU diagonalization</td></tr>
+<tr><td><code>gpusolver_Syevd.c</code></td><td>131</td><td>cusolverDnXsyevd wrapper variant (derived from the NVIDIA CUDA Library Samples). Currently unused</td></tr>
+<tr><td><code>openmx_gpusolver_dense_utils.h</code></td><td>79</td><td>Common dispatch helper for dense diagonalization (0/1-based conversion + MPI_Abort on failure). Used by 11 files</td></tr>
+<tr><td><code>gemmul8_bridge.cu</code></td><td>393</td><td>GEMMul8 call bridge: workspace cache, environment-variable control, cuBLAS fallback</td></tr>
+<tr><td><code>gemmul8_openmx.cu</code></td><td>67</td><td>Single-TU explicit instantiation of the GEMMul8 templates (only 4 symbols)</td></tr>
+<tr><td><code>Total_Energy_GPU.c</code></td><td>517</td><td>Collection of OpenACC kernels for the total-energy calculation (EXC/EH1, dipole, CWF-Dc, batched EH0)</td></tr>
+<tr><td><code>set_cuda_default_device_from_local_rank.c/.h</code></td><td>73+9</td><td>Round-robin CUDA device assignment by intra-node local rank</td></tr>
+<tr><td><code>set_openacc_device_from_local_rank.c/.h</code></td><td>79+12</td><td>OpenACC version of the same (acc_set_device_num)</td></tr>
+<tr><td><code>LU_Zinverse_GPU.h</code></td><td>9</td><td>Declaration of the GPU complex LU inverse (dormant)</td></tr>
+<tr><td><code>openmx_cuda_kernels.cu/.h</code></td><td>696+103</td><td>Verified kernel collection converting OpenACC regions to raw CUDA (not wired in, excluded from the build; &sect;6.4)</td></tr>
+</tbody>
+</table>
+<p class="small">Note: the generic GEMM wrappers <code>my_cublasDgemm.c</code> / <code>my_cublasZgemm.c</code> that once existed (49+63 lines, no callers)
+were deleted in commit <code>a7f8cba6</code> (&sect;3.5).</p>
+<h2>B.2 Build and Documentation Files</h2>
+<table>
+<thead><tr><th style="width:34%;">File</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>Makefile</code> (1,373 lines)</td><td>The new build system itself. Includes commented configuration examples for various supercomputers. Defaults to NVHPC 26.3 + CUDA 13.1</td></tr>
+<tr><td><code>Makefile.bunshiken</code> (1,366 lines)</td><td>Variant for a shared compute system (NVHPC 25.9-nompi + OpenMPI 5.0.8 + gcc-toolset-15). One generation older configuration</td></tr>
+<tr><td><code>makefile.cpu_intel.bak</code> (1,383 lines)</td><td>Byte-identical backup of the original makefile (Intel CPU configuration)</td></tr>
+<tr><td><code>third_party/</code></td><td>GEMMul8 (submodule, pinned to commit 884a287), fftw3 (submodule, tag fftw-3.3.11), fftw-3.3.11.tar.gz (to supplement codelets)</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ==================== Appendix C ==================== -->
+<section id="appC">
+<h1>Appendix C. Development History (all 51 commits)</h1>
+<table>
+<thead><tr><th style="width:6%;">#</th><th style="width:13%;">Hash</th><th>Title (as committed)</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>0cf2acbc</code></td><td>Initial commit</td></tr>
+<tr><td>2</td><td><code>60b6aa1e</code></td><td>Performed GPU acceleration</td></tr>
+<tr><td>3</td><td><code>2f94ca06</code></td><td>Performed GPU acceleration on Divide_Conquer_LNO.c</td></tr>
+<tr><td>4</td><td><code>e3fc656e</code></td><td>Optimized Band_DFT_NonCol.c</td></tr>
+<tr><td>5</td><td><code>24e8b34f</code></td><td>Optimized Cluster_DFT_Col.c</td></tr>
+<tr><td>6</td><td><code>33e9459b</code></td><td>Optimized Cluster_DFT_Col.c</td></tr>
+<tr><td>7</td><td><code>82579d12</code></td><td>Bug fix</td></tr>
+<tr><td>8</td><td><code>33a07450</code></td><td>Fixed bugs in Band_DFT_Col.c and Cluster_DFT_Col.c</td></tr>
+<tr><td>9</td><td><code>b4221bba</code></td><td>Fixed a bug in runtestL</td></tr>
+<tr><td>10</td><td><code>18d92700</code></td><td>Bug fix</td></tr>
+<tr><td>11</td><td><code>563f69bd</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>12</td><td><code>1b020264</code></td><td>Optimized Band_DFT_Col.c and Band_DFT_NonCol.c</td></tr>
+<tr><td>13</td><td><code>f4041307</code></td><td>Optimized Set_Hamiltonian.c</td></tr>
+<tr><td>14</td><td><code>9f1633da</code></td><td>Optimized Set_OLP_Kin.c</td></tr>
+<tr><td>15</td><td><code>d6b463a8</code></td><td>Explicitly indicate that the generation of overlap matrices is GPU-accelerated</td></tr>
+<tr><td>16</td><td><code>5383544b</code></td><td>Optimized Total_Energy.c</td></tr>
+<tr><td>17</td><td><code>c9e111ea</code></td><td>Optimized Set_ProExpn_VNA.c</td></tr>
+<tr><td>18</td><td><code>8162b8ec</code></td><td>Optimized Set_ProExpn_VNA.c and Total_Energy.c</td></tr>
+<tr><td>19</td><td><code>91416fb1</code></td><td>Bug fix</td></tr>
+<tr><td>20</td><td><code>24a113a9</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>21</td><td><code>87ea7062</code></td><td>Bug fix</td></tr>
+<tr><td>22</td><td><code>faf76fa2</code></td><td>Bug fix</td></tr>
+<tr><td>23</td><td><code>a8224724</code></td><td>Add .gitignore for build artifacts and runtime output</td></tr>
+<tr><td>24</td><td><code>d3c45cb3</code></td><td>Optimized Bnad_DFT_NonCol.c</td></tr>
+<tr><td>25</td><td><code>db7b9327</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>26</td><td><code>a61f24b3</code></td><td>Bug fix</td></tr>
+<tr><td>27</td><td><code>d6d19f99</code></td><td>Add README.md</td></tr>
+<tr><td>28</td><td><code>a91f920f</code></td><td>Bug fix</td></tr>
+<tr><td>29</td><td><code>88b135f4</code></td><td>Optimized Krylov.c</td></tr>
+<tr><td>30</td><td><code>34cf8bc1</code></td><td>Optimized Divide_Conquer_LNO.c</td></tr>
+<tr><td>31</td><td><code>685a2bc9</code></td><td>Reverted Set_ProExpn_VNA.c to the CPU version</td></tr>
+<tr><td>32</td><td><code>2aa31a43</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>33</td><td><code>d3effce1</code></td><td>Bug fix of Divide_Conquer.c</td></tr>
+<tr><td>34</td><td><code>34b52269</code></td><td>GPU acceleration for paths where all_knum !=1 in Band_DFT_Col.c</td></tr>
+<tr><td>35</td><td><code>75ef67c7</code></td><td>GPU acceleration for paths where all_knum !=1 in Band_DFT_NonCol.c</td></tr>
+<tr><td>36</td><td><code>1e0c777e</code></td><td>Remove runtest.result from Git</td></tr>
+<tr><td>37</td><td><code>c8c1e3e1</code></td><td>Modify the Makefile</td></tr>
+<tr><td>38</td><td><code>cb4d348d</code></td><td>Now compatible with the latest GEMMul8</td></tr>
+<tr><td>39</td><td><code>d451eeb8</code></td><td>Fixed OpenMP bugs in Total_Energy.c and Stress.c</td></tr>
+<tr><td>40</td><td><code>2302f965</code></td><td>The name has been changed from CuSOLVER to GPUSOLVER</td></tr>
+<tr><td>41</td><td><code>d5b897fd</code></td><td>Band_DFT_Col: serialize GPU turns in pairs and release GEMMul8 workspace per turn</td></tr>
+<tr><td>42</td><td><code>788acb4c</code></td><td>Delete unnecessary files, such as the MAGMA library</td></tr>
+<tr><td>43</td><td><code>d8219384</code></td><td>Rename the identifier from cusolver to gpusolver</td></tr>
+<tr><td>44</td><td><code>8647a5ed</code></td><td>Set large2_example and Large3_example to be processed on the GPU.</td></tr>
+<tr><td>45</td><td><code>f508a2a6</code></td><td>Enable direct GPUSOLVER dispatch for DC-LNO</td></tr>
+<tr><td>46</td><td><code>3545a9d5</code></td><td>Edit README.md</td></tr>
+<tr><td>47</td><td><code>ca3d97c2</code></td><td>Edit README.md</td></tr>
+<tr><td>48</td><td><code>43e30c65</code></td><td>Limit band GPU solver concurrency adaptively</td></tr>
+<tr><td>49</td><td><code>66ce1e62</code></td><td>Use GEMMul8 for remaining GPU GEMM paths</td></tr>
+<tr><td>50</td><td><code>a7f8cba6</code></td><td>Remove obsolete cuBLAS wrapper files</td></tr>
+<tr><td>51</td><td><code>8c7801fa</code></td><td>Limit band GPU k-turn concurrency</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ==================== References ==================== -->
+<section id="refs">
+<h1>References</h1>
+<ol>
+  <li>OpenMX official site: <code>http://www.openmx-square.org/</code> (code, manual, input keywords)</li>
+  <li>GEMMul8 (GEMMulate) repository: <code>https://github.com/RIKEN-RCCS/GEMMul8</code> (MIT license, lead developer Yuki Uchino, RIKEN R-CCS)</li>
+  <li>Y. Uchino, K. Ozaki, T. Imamura,
+  "High-Performance and Power-Efficient Emulation of Matrix Multiplication using INT8 Matrix Engines",
+  SC Workshops '25, doi:10.1145/3731599.3767539</li>
+  <li>K. Ozaki, Y. Uchino, T. Imamura,
+  "Ozaki Scheme II: A GEMM-oriented emulation of floating-point matrix multiplication using an integer modular technique",
+  arXiv:2504.08009</li>
+  <li>Y. Uchino, S. Ma, T. Imamura, K. Ozaki, T. Gutsche,
+  "Emulation of Complex Matrix Multiplication based on the Chinese Remainder Theorem", arXiv:2512.08321 (theory behind the complex support)</li>
+  <li>Y. Uchino, K. Ozaki, T. Imamura,
+  "Double-Precision Matrix Multiplication Emulation via Ozaki-II Scheme with FP8 Quantization", arXiv:2603.10634</li>
+  <li>H. Ootomo, K. Ozaki, R. Yokota,
+  "DGEMM on integer matrix multiplication unit", Int. J. High Perform. Comput. Appl. (2024), doi:10.1177/10943420241239588
+  (prior work in the ozIMMU / Ozaki Scheme I line)</li>
+  <li>NVIDIA cuSOLVER Documentation (cusolverDnXsyevd/Xsyevdx): <code>https://docs.nvidia.com/cuda/cusolver/</code></li>
+  <li>NVIDIA cuBLAS Documentation: <code>https://docs.nvidia.com/cuda/cublas/</code></li>
+  <li>NVIDIA HPC SDK Documentation (OpenACC): <code>https://docs.nvidia.com/hpc-sdk/</code></li>
+  <li>ELPA (Eigenvalue soLvers for Petaflop Applications): <code>https://elpa.mpcdf.mpg.de/</code></li>
+  <li>FFTW: <code>https://www.fftw.org/</code></li>
+</ol>
+<div class="note" style="margin-top:16px;"><b>About this document:</b> This document was prepared based on an examination of the source tree as of 2026-07-05 (commit <code>8c7801fa</code>),
+a full-file diff against the original OpenMX 4.0, and the complete commit history of the development repository.
+Line numbers and default values cited herein refer to that revision. If any discrepancy is found, the source code should take precedence as the primary reference.</div>
+</section>
+
+</body>
+</html>

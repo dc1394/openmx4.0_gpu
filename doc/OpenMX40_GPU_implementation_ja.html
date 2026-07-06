@@ -1,0 +1,1971 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>OpenMX 4.0 GPU 版 実装解説書</title>
+<style>
+:root{
+  --accent:#2b5ea7; --accent-dark:#1e4479; --ink:#1c1e21; --sub:#5b6570;
+  --gpu:#2e7d32; --gpu-bg:#e7f2e8; --cond-bg:#fdf3d8; --cpu-bg:#eceef1;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:"Noto Sans CJK JP","Migu 1P","IPAexGothic",sans-serif;
+  font-size:9.6pt; line-height:1.7; color:#1c1e21;
+  text-align:justify; font-feature-settings:"palt";
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+@page{
+  size:A4; margin:19mm 16mm 18mm 16mm;
+  @top-center{content:"OpenMX 4.0 GPU 版 実装解説書"; font-size:7.5pt; color:#98a0aa;
+              font-family:"Noto Sans CJK JP",sans-serif;}
+  @bottom-center{content:counter(page); font-size:8.5pt; color:#6a7280;
+              font-family:"Noto Sans CJK JP",sans-serif;}
+}
+@page cover{ @top-center{content:none;} @bottom-center{content:none;} }
+.cover{page:cover; height:245mm; display:flex; flex-direction:column; justify-content:center;}
+h1{
+  font-size:16pt; color:var(--accent-dark); margin:0 0 10px 0; padding:6px 0 6px 12px;
+  border-left:6px solid var(--accent); border-bottom:1.5px solid #c9d4e4;
+  break-before:page; break-after:avoid; line-height:1.4;
+}
+h1.first{break-before:auto;}
+h2{font-size:12pt; color:var(--accent-dark); margin:20px 0 6px 0; padding-bottom:2px;
+   border-bottom:1px solid #d5dde8; break-after:avoid;}
+h3{font-size:10.5pt; color:#23324a; margin:14px 0 4px 0; break-after:avoid;}
+p{margin:5px 0;}
+ul,ol{margin:5px 0 5px 2px; padding-left:20px;}
+li{margin:2.5px 0;}
+code{
+  font-family:"Migu 1M","Noto Sans Mono CJK JP",monospace; font-size:88%;
+  background:#f1f3f6; border:1px solid #e2e6eb; border-radius:3px; padding:0 3px;
+}
+pre{
+  font-family:"Migu 1M","Noto Sans Mono CJK JP",monospace; font-size:7.7pt; line-height:1.5;
+  background:#f6f7f9; border:1px solid #dfe3e8; border-left:3px solid #b9c6da;
+  border-radius:3px; padding:7px 10px; margin:6px 0 10px 0;
+  white-space:pre-wrap; word-break:break-all; break-inside:avoid;
+}
+pre code{background:none; border:none; padding:0; font-size:inherit;}
+.src{font-size:7.6pt; color:#61708a; margin:8px 0 0 0; font-weight:bold;}
+table{width:100%; border-collapse:collapse; font-size:8.1pt; margin:8px 0 12px 0; line-height:1.5;}
+th{background:#e9eef6; color:#22314a; font-weight:bold;}
+th,td{border:1px solid #c8d0da; padding:3px 6px; vertical-align:top; text-align:left;}
+thead{display:table-header-group;}
+tr{break-inside:avoid;}
+td code, th code{font-size:85%; word-break:break-all;}
+.note,.warn,.dead{
+  border-radius:4px; padding:7px 11px; margin:8px 0; break-inside:avoid; font-size:9.2pt;
+}
+.note{background:#eef4fc; border-left:4px solid var(--accent);}
+.warn{background:#fdf3e0; border-left:4px solid #c77c00;}
+.dead{background:#f0f1f3; border-left:4px solid #8b929c; color:#3d434c;}
+.note b:first-child,.warn b:first-child,.dead b:first-child{color:#1e4479;}
+.warn b:first-child{color:#8a5600;} .dead b:first-child{color:#4a505a;}
+figure{margin:14px 0; break-inside:avoid; text-align:center;}
+figcaption{font-size:8.2pt; color:#5c6675; margin-top:5px; text-align:center;}
+svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
+.toc{page:cover;}
+.toc ol{list-style:none; padding-left:0; margin:4px 0;}
+.toc>ol>li{margin:6px 0; font-weight:bold; font-size:10pt;}
+.toc ol ol{padding-left:18px; font-weight:normal; font-size:9pt; margin:2px 0;}
+.toc a{color:#1c1e21; text-decoration:none;}
+.small{font-size:8.3pt; color:#4c5560;}
+.kbd{font-family:"Migu 1M",monospace;}
+.chip{display:inline-block; font-size:7.4pt; border-radius:3px; padding:0 5px; margin-right:4px;
+      font-weight:bold; vertical-align:1px;}
+.chip.gpu{background:var(--gpu-bg); color:#1d5a22; border:1px solid #b9d8bc;}
+.chip.cond{background:var(--cond-bg); color:#7c5a00; border:1px solid #e8d49a;}
+.chip.cpu{background:var(--cpu-bg); color:#4b5560; border:1px solid #cfd5dd;}
+.chip.dead{background:#efe9f5; color:#5b4a75; border:1px solid #d4c7e4;}
+</style>
+</head>
+<body>
+
+<!-- ==================== 表紙 ==================== -->
+<div class="cover">
+  <div style="border-top:3px solid var(--accent); border-bottom:1px solid var(--accent); padding:26px 8px 22px 8px;">
+    <div style="font-size:11pt; color:var(--accent-dark); letter-spacing:.08em; margin-bottom:14px;">技術解説書</div>
+    <div style="font-size:25pt; font-weight:bold; color:#16233a; line-height:1.35;">OpenMX 4.0 GPU 版<br>実装解説書</div>
+    <div style="font-size:12pt; color:#3a4557; margin-top:16px; line-height:1.6;">
+      NVIDIA GPU オフロード実装の全体像と<br>オリジナル OpenMX 4.0 からの全変更点<br>
+      <span style="font-size:10.5pt;">— cuBLAS・GEMMul8・cuSOLVER の使い方と注意点 —</span>
+    </div>
+  </div>
+  <div style="margin-top:34px; font-size:9.5pt; color:#3a4557; line-height:1.9;">
+    <b>対象リビジョン:</b> OpenMX 4.0 GPU 版(2026-07-05 時点、コミット <code>8c7801fa</code>)<br>
+    <b>比較基準:</b> オリジナル OpenMX 4.0 ソース一式<br>
+    <b>検証環境:</b> NVHPC SDK 26.3 / CUDA 13.1 / compute capability 12.0(Blackwell 世代 GeForce)<br>
+    <b>発行日:</b> 2026 年 7 月 5 日(第 2 版)
+  </div>
+  <div class="note" style="margin-top:30px;">
+    <b>注記:</b> 本書は第一原理計算コード <a href="http://www.openmx-square.org/">OpenMX</a>(GPL v3)を
+    NVIDIA GPU 向けに移植した<b>非公式版</b>の技術解説書であり、OpenMX 開発チームによる公式文書ではありません。
+    記載のファイル名・行番号は上記リビジョン時点のものであり、開発の進行に伴って変わる可能性があります。
+  </div>
+</div>
+
+<!-- ==================== 目次 ==================== -->
+<nav class="toc" style="break-before:page;">
+<h1 class="first" style="break-before:auto;">目次</h1>
+<ol>
+  <li><a href="#ch1">1. はじめに</a></li>
+  <li><a href="#ch2">2. 全体アーキテクチャ</a>
+    <ol><li>設計方針 / レイヤ構成 / 有効化とディスパッチ / GPU 化対象マップ / 複数ランク共有 GPU 対策</li></ol></li>
+  <li><a href="#ch3">3. cuBLAS の使い方</a>
+    <ol><li>使用ルーチン / ハンドルとストリーム / メモリ管理 / ソルバ別 GEMM エンジンの実像 / エラー処理 / 注意点</li></ol></li>
+  <li><a href="#ch4">4. GEMMul8 の使い方</a>
+    <ol><li>原理と出自 / 統合アーキテクチャ / 精度パラメータ / ワークスペース管理 / 複素対応 / ビルド / 注意点</li></ol></li>
+  <li><a href="#ch5">5. cuSOLVER(gpusolver 層)の使い方</a>
+    <ol><li>層の構成と命名意図 / 使用 API / 一般化固有値問題 / devInfo 処理 / 並列度制御 / デバイス割当 / 注意点</li></ol></li>
+  <li><a href="#ch6">6. OpenACC と生 CUDA の使い分け</a>
+    <ol><li>データ常駐の 3 パターン / host_data 連携 / openmx_cuda_kernels.cu / NVHPC 固有の注意</li></ol></li>
+  <li><a href="#ch7">7. 計算経路別の GPU 実装詳細</a>
+    <ol><li>Band / Cluster / DC / DC-LNO / Krylov / 行列要素構築 / 全エネルギー / 力 / 派生ソルバ群</li></ol></li>
+  <li><a href="#ch8">8. GPU 化以外の変更点</a>
+    <ol><li>OpenMP バグ修正 / メモリ管理の堅牢化 / その他の修正</li></ol></li>
+  <li><a href="#ch9">9. ビルドシステム</a>
+    <ol><li>ツールチェーン / フラグ / リンク構成 / third_party 自動ビルド / ELPA / 派生 Makefile / 手順</li></ol></li>
+  <li><a href="#ch10">10. 実行時制御リファレンス</a>
+    <ol><li>入力キーワード / 環境変数一覧 / チューニング指針</li></ol></li>
+  <li><a href="#ch11">11. 制約・注意点の総まとめ</a></li>
+  <li><a href="#appA">付録 A. 変更ファイル一覧(37 ファイル)</a></li>
+  <li><a href="#appB">付録 B. 新規追加ファイル一覧</a></li>
+  <li><a href="#appC">付録 C. 開発履歴(全 51 コミット)</a></li>
+  <li><a href="#refs">参考文献</a></li>
+</ol>
+</nav>
+
+<!-- ==================== 第 1 章 ==================== -->
+<section id="ch1">
+<h1>1. はじめに</h1>
+
+<h2>1.1 本書の目的と対象読者</h2>
+<p>本書は、密度汎関数理論(DFT)に基づく第一原理計算コード <b>OpenMX 4.0</b> を NVIDIA GPU 向けに移植した
+「OpenMX 4.0 GPU 版」について、(1) 現在の実装の全体像、(2) オリジナル OpenMX 4.0 からの<b>すべての変更点</b>、
+(3) 中核となる 3 つの GPU ライブラリ — <b>cuBLAS</b>・<b>GEMMul8</b>・<b>cuSOLVER</b> — の使い方と注意点、
+を一次情報(ソースコードと diff)に基づいて解説する公開ドキュメントです。想定読者は次のとおりです。</p>
+<ul>
+  <li>OpenMX を GPU で高速に実行したいユーザー(第 2・10・11 章が中心)</li>
+  <li>本実装を理解・改修したい開発者(第 3〜9 章)</li>
+  <li>AMD GPU など他ベンダーへの移植を検討する開発者(第 5 章の gpusolver 層、第 11 章)</li>
+</ul>
+<p>前提知識として、DFT・LCAO 法の初歩、C 言語、MPI、CUDA プログラミングの基礎を仮定します。</p>
+
+<h2>1.2 OpenMX と本移植の位置づけ</h2>
+<p>OpenMX(Open source package for Material eXplorer)は、局在擬原子軌道(LCAO)基底とノルム保存擬ポテンシャルを用いた
+DFT コードで、クラスタ計算・バンド計算に加え、発散重畳(DC)法・DC-LNO 法・Krylov 部分空間法などの O(N) 法、
+非平衡グリーン関数(NEGF)輸送計算などを備えます。ライセンスは GPL v3 です。</p>
+<p>本 GPU 版は OpenMX 4.0 の公式ソースを出発点とし、<b>51 コミット</b>の開発で GPU オフロードを段階的に追加したものです。
+SCF 計算で支配的な「密行列の固有値問題」と「行列積(GEMM)」、および格子積分・縮約系の計算を GPU に移し、
+それ以外(疎行列処理、通信、入出力、CPU 固有経路)はオリジナルの構造を保っています。</p>
+
+<h2>1.3 変更規模の概要</h2>
+<table>
+<thead><tr><th>項目</th><th>値</th><th>備考</th></tr></thead>
+<tbody>
+<tr><td>変更されたソースファイル</td><td>37 ファイル(+ <code>makefile</code>→<code>Makefile</code> の改名・全面改修)</td><td>削除されたソースは 0</td></tr>
+<tr><td>変更行数(生の diff)</td><td>+33,974 / −20,839 行</td><td>全面再インデント(<code>Force.c</code> 等)を含む。空白無視の実質変更は上位ファイルで各 1,000〜3,700 行規模</td></tr>
+<tr><td>新規ソースファイル</td><td>13 ファイル、計 2,555 行</td><td>gpusolver ラッパ、GEMMul8 ブリッジ、GPU 用エネルギーカーネルなど</td></tr>
+<tr><td>新規ビルドファイル</td><td>3 ファイル</td><td><code>Makefile</code> / <code>Makefile.bunshiken</code> / <code>makefile.cpu_intel.bak</code>(原本の同一保存)</td></tr>
+<tr><td>third_party(git submodule)</td><td>2 件</td><td>GEMMul8(コミット固定)、FFTW 3.3.11(自前ビルド)</td></tr>
+</tbody>
+</table>
+
+<h2>1.4 対象環境</h2>
+<ul>
+  <li><b>コンパイラ:</b> NVIDIA HPC SDK(NVHPC)26.3 — <code>mpicc</code>(nvc)+ OpenACC、<code>mpif90</code>(nvfortran)、nvcc(CUDA 13.1)</li>
+  <li><b>GPU:</b> CUDA 対応 NVIDIA GPU。GEMMul8 は INT8 Tensor Core を使用。開発・検証は compute capability 12.0(Blackwell 世代 GeForce)で実施</li>
+  <li><b>並列モデル:</b> MPI プロセス並列。ノード内 local rank によるラウンドロビンで GPU を割当て、<b>複数ランクが 1 GPU を共有する</b>ことを前提に設計</li>
+  <li><b>OpenMP:</b> ビルドは <code>-fopenmp</code> 付きだが、GPU 経路の一部(<code>Set_OLP_Kin</code> の動径積分オフロード)は 1 スレッド実行を要求する。GPU 利用時は MPI のみ(スレッド数 1)の運用が想定されている</li>
+</ul>
+
+<h2>1.5 表記法</h2>
+<ul>
+  <li>ソース位置は <code>ファイル名:行番号</code> で示す(すべて <code>source/</code> ディレクトリ基準、2026-07-04 時点)。</li>
+  <li><span class="chip gpu">GPU</span> 常時 GPU 実行、<span class="chip cond">条件付き</span> 環境変数などによるオプトイン、
+      <span class="chip cpu">CPU</span> CPU 実行(意図的に GPU 化しない)、<span class="chip dead">休眠</span> 実装済みだが現行経路では呼ばれないコード。</li>
+  <li>「オリジナル」は OpenMX 4.0 公式配布のソースを指す。</li>
+</ul>
+<div class="note"><b>本書の読み方:</b> ライブラリの使い方だけを知りたい場合は第 3〜5 章、
+運用パラメータは第 10 章、既知の落とし穴は第 11 章にまとまっています。第 7 章は計算経路(ソルバ)別の縦割り解説で、
+第 3〜6 章(ライブラリ・技法別の横割り)と相互参照になっています。</div>
+</section>
+
+<!-- ==================== 第 2 章 ==================== -->
+<section id="ch2">
+<h1>2. 全体アーキテクチャ</h1>
+
+<h2>2.1 設計方針</h2>
+<ol>
+  <li><b>実行時切替・CPU 経路の完全温存</b> — GPU 化は <code>#ifdef</code> による一括置換ではなく、既存コードへの<b>分岐追加</b>で実現している。
+  入力ファイルの 1 行 <code>scf.eigen.lib&nbsp;gpusolver</code> だけで有効化され、指定しなければオリジナルと同じ
+  ELPA/ScaLAPACK/LAPACK 経路が走る。ゲートは実行時フラグ <code>scf_eigen_lib_flag == GPUSOLVER</code>(enum 値 3、<code>openmx_common.h:2807-2812</code>)の一点に集約されている。</li>
+  <li><b>大規模な密行列問題のみ GPU 化</b> — 行列次元がしきい値 <code>GPU_CPU_SWITCH_NUM = 1000</code>(<code>openmx_common.h:4079</code>、DC-LNO のみ独自に 800)未満の場合は
+  転送コストが勝るため CPU にフォールバックする。</li>
+  <li><b>MPI ランク単位の GPU 利用と「共有」前提の設計</b> — ノード内 local rank % GPU 数のラウンドロビン割当。1 GPU を複数ランクが共有する状況を正面から想定し、
+  GPU ターン直列化・適応並列度制限・メモリ見積りによる事前判定・失敗時リトライという多層の制御を持つ(§2.5)。</li>
+  <li><b>GEMM は GEMMul8 を第一選択、cuBLAS FP64 へ自動フォールバック</b> — 大規模 GEMM は INT8 Tensor Core による FP64 エミュレーション(Ozaki Scheme II)で実行し、
+  ワークスペースが確保できない場合のみ native cuBLAS に切り替える(第 4 章)。</li>
+  <li><b>対角化は cuSOLVER の 64-bit generic API</b> — <code>cusolverDnXsyevdx</code>(部分固有値)を中心に使い、
+  一般化固有値問題 <i>Hc = εSc</i> は S の固有分解によるレイディン(対称)直交化を GPU 上で自前実装する(第 5 章)。</li>
+  <li><b>ベンダー中立の命名(gpusolver)</b> — 将来の AMD GPU 対応を見据え、ラッパ層の識別子・入力キーワードを
+  <code>cusolver</code> から <code>gpusolver</code> へ一括改名済み(コミット <code>2302f965</code>, <code>d8219384</code>)。
+  cuSOLVER API の呼び出し自体は NVIDIA ビルドの実装詳細として残る。なお開発初期に MAGMA も評価されたが、
+  現在はソースツリーから完全に削除されている(コミット <code>788acb4c</code>「Delete unnecessary files, such as the MAGMA library」。現行ソースに MAGMA への参照は 0 件)。</li>
+  <li><b>数値再現性への配慮</b> — 密度行列構築の縮約を <code>#pragma acc loop seq</code> で逐次順序に保つ、球ベッセル関数テーブルを
+  bit パターン一致キーでキャッシュする、GEMMul8 自体が bitwise 再現性を持つ、など加算順序への配慮が随所にある
+  (一方で atomic 加算による順序非決定箇所も存在する。§11 参照)。</li>
+</ol>
+
+<h2>2.2 レイヤ構成</h2>
+<figure>
+<svg viewBox="0 0 920 640" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .lay{fill:#f4f7fb;stroke:#9db2cf;stroke-width:1.2;rx:6;}
+    .box{fill:#ffffff;stroke:#7e93b4;stroke-width:1;}
+    .gbox{fill:#e7f2e8;stroke:#7fae84;stroke-width:1;}
+    .cbox{fill:#eceef1;stroke:#a9b1bb;stroke-width:1;}
+    .t{font-size:12.5px;fill:#1c2634;}
+    .tt{font-size:13.5px;font-weight:bold;fill:#1e4479;}
+    .ts{font-size:11px;fill:#41506a;}
+    .mono{font-family:"Migu 1M","Noto Sans Mono CJK JP",monospace;}
+    .ln{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar);}
+  </style>
+  <!-- Layer 1: solvers -->
+  <rect x="10" y="8" width="900" height="150" class="lay"/>
+  <text x="24" y="30" class="tt">① ソルバ・物理量計算層(既存 .c への分岐追加)</text>
+  <rect x="24" y="42" width="140" height="44" class="box"/><text x="32" y="60" class="t mono">Band_DFT_Col /</text><text x="32" y="76" class="t mono">NonCol(+CWF/DMmu)</text>
+  <rect x="172" y="42" width="150" height="44" class="box"/><text x="180" y="60" class="t mono">Cluster_DFT_Col /</text><text x="180" y="76" class="t mono">NonCol(+CWF/DMmu/LNO)</text>
+  <rect x="330" y="42" width="150" height="44" class="box"/><text x="338" y="60" class="t mono">Divide_Conquer /</text><text x="338" y="76" class="t mono">Divide_Conquer_LNO</text>
+  <rect x="488" y="42" width="92" height="44" class="box"/><text x="496" y="60" class="t mono">Krylov</text><text x="496" y="76" class="ts">(O(N) 法)</text>
+  <rect x="588" y="42" width="150" height="44" class="box"/><text x="596" y="60" class="t mono">Eigen_lapack /</text><text x="596" y="76" class="t mono">EigenBand_lapack</text>
+  <rect x="746" y="42" width="152" height="44" class="box"/><text x="754" y="60" class="t mono">Electric_Polarization</text><text x="754" y="76" class="ts">(分極)</text>
+  <rect x="24" y="96" width="200" height="44" class="box"/><text x="32" y="114" class="t mono">Set_OLP_Kin / Set_Nonlocal</text><text x="32" y="130" class="ts">重なり・運動・非局所行列要素</text>
+  <rect x="232" y="96" width="190" height="44" class="box"/><text x="240" y="114" class="t mono">Set_Hamiltonian</text><text x="240" y="130" class="ts">格子積分+packed H/S キャッシュ</text>
+  <rect x="430" y="96" width="220" height="44" class="box"/><text x="438" y="114" class="t mono">Total_Energy(+_GPU)</text><text x="438" y="130" class="ts">EXC/EH1/EH0/双極子の格子縮約</text>
+  <rect x="658" y="96" width="240" height="44" class="box"/><text x="666" y="114" class="t mono">Force</text><text x="666" y="130" class="ts">力 #2/#4/#5 の縮約(#4B は CPU)</text>
+  <!-- arrows down -->
+  <line x1="180" y1="158" x2="180" y2="188" class="ln"/>
+  <line x1="460" y1="158" x2="460" y2="188" class="ln"/>
+  <line x1="760" y1="158" x2="760" y2="188" class="ln"/>
+  <!-- Layer 2: wrappers -->
+  <rect x="10" y="190" width="900" height="128" class="lay"/>
+  <text x="24" y="212" class="tt">② ランタイム・ラッパ層</text>
+  <rect x="24" y="224" width="270" height="82" class="box"/>
+  <text x="32" y="242" class="t"><tspan font-weight="bold">OpenACC ランタイム</tspan>(NVHPC -acc)</text>
+  <text x="32" y="259" class="ts">enter/exit data によるデバイス常駐、</text>
+  <text x="32" y="274" class="ts">parallel loop / reduction / atomic、</text>
+  <text x="32" y="289" class="ts">host_data use_device でポインタ受け渡し</text>
+  <rect x="306" y="224" width="300" height="82" class="box"/>
+  <text x="314" y="242" class="t"><tspan font-weight="bold">gpusolver ラッパ層</tspan>(ベンダー中立命名)</text>
+  <text x="314" y="259" class="ts mono">gpusolver_Syevd(x).c / dense_utils.h</text>
+  <text x="314" y="274" class="ts">+ ソルバ内 static コンテキスト</text>
+  <text x="314" y="289" class="ts">(cudaMalloc 永続バッファ・ハンドル保持)</text>
+  <rect x="618" y="224" width="280" height="82" class="box"/>
+  <text x="626" y="242" class="t"><tspan font-weight="bold">GEMM ブリッジ</tspan> <tspan class="mono">gemmul8_bridge.cu</tspan></text>
+  <text x="626" y="259" class="ts">extern "C" / cublasDgemm 互換 API、</text>
+  <text x="626" y="274" class="ts">ワークスペースキャッシュ(device,stream)、</text>
+  <text x="626" y="289" class="ts">環境変数制御・cuBLAS フォールバック</text>
+  <!-- arrows down -->
+  <line x1="160" y1="318" x2="160" y2="348" class="ln"/>
+  <line x1="456" y1="318" x2="456" y2="348" class="ln"/>
+  <line x1="758" y1="318" x2="758" y2="348" class="ln"/>
+  <!-- Layer 3: libraries -->
+  <rect x="10" y="350" width="900" height="140" class="lay"/>
+  <text x="24" y="372" class="tt">③ 数値ライブラリ層</text>
+  <rect x="24" y="384" width="250" height="92" class="gbox"/>
+  <text x="32" y="402" class="t" font-weight="bold">cuSOLVER Dn</text>
+  <text x="32" y="419" class="ts mono">cusolverDnXsyevd / Xsyevdx</text>
+  <text x="32" y="434" class="ts">64-bit generic API、部分固有値、</text>
+  <text x="32" y="449" class="ts">実対称(R_64F)・エルミート(C_64F)</text>
+  <rect x="286" y="384" width="250" height="92" class="gbox"/>
+  <text x="294" y="402" class="t" font-weight="bold">cuBLAS</text>
+  <text x="294" y="419" class="ts mono">Dgemm/Zgemm/Dsymm/Ddgmm/Zdgmm</text>
+  <text x="294" y="434" class="ts mono">ZgetrfBatched/ZgetriBatched(休眠)</text>
+  <text x="294" y="449" class="ts">FP64 直接実行+フォールバック先</text>
+  <rect x="548" y="384" width="250" height="92" class="gbox"/>
+  <text x="556" y="402" class="t" font-weight="bold">GEMMul8 v3.0.4(RIKEN R-CCS)</text>
+  <text x="556" y="419" class="ts">Ozaki Scheme II による FP64 GEMM</text>
+  <text x="556" y="434" class="ts">エミュレーション。内部で cublasGemmEx</text>
+  <text x="556" y="449" class="ts">(INT8 Tensor Core, COMPUTE_32I)を使用</text>
+  <rect x="810" y="384" width="88" height="92" class="cbox"/>
+  <text x="818" y="402" class="t" font-weight="bold">CPU 側</text>
+  <text x="818" y="419" class="ts">ELPA 2018 /</text>
+  <text x="818" y="434" class="ts">ScaLAPACK /</text>
+  <text x="818" y="449" class="ts">BLAS/LAPACK</text>
+  <text x="818" y="464" class="ts">(フォールバック)</text>
+  <line x1="673" y1="476" x2="500" y2="476" stroke="#5b6570" stroke-width="1.1" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+  <text x="520" y="470" class="ts">INT8 GEMM は cuBLAS 経由</text>
+  <!-- arrows down -->
+  <line x1="300" y1="490" x2="300" y2="520" class="ln"/>
+  <line x1="660" y1="490" x2="660" y2="520" class="ln"/>
+  <!-- Layer 4: HW -->
+  <rect x="10" y="522" width="900" height="106" class="lay"/>
+  <text x="24" y="544" class="tt">④ ハードウェア</text>
+  <rect x="24" y="556" width="560" height="58" class="gbox"/>
+  <text x="32" y="576" class="t" font-weight="bold">NVIDIA GPU × N(VRAM 共有)</text>
+  <text x="32" y="594" class="ts">MPI ランク → ノード内 local rank % N でラウンドロビン割当(CUDA と OpenACC の両ランタイムに同一デバイスを設定)</text>
+  <rect x="600" y="556" width="298" height="58" class="cbox"/>
+  <text x="608" y="576" class="t" font-weight="bold">CPU</text>
+  <text x="608" y="594" class="ts">疎行列処理・通信・I/O・小規模問題・CPU フォールバック</text>
+</svg>
+<figcaption>図 1: OpenMX 4.0 GPU 版のレイヤ構成。緑は GPU 実行、灰は CPU 実行。</figcaption>
+</figure>
+
+<p>GPU 実行の形態は 3 種類が併用されている。</p>
+<ol>
+  <li><b>OpenACC ディレクティブ</b> — 格子積分・縮約・行列組立などのループ並列。データ常駐は <code>enter data</code>/<code>exit data</code>(第 6 章)。</li>
+  <li><b>ソルバ内 static コンテキスト+生 CUDA API</b> — <code>cudaMalloc</code> による永続デバイスバッファと cuBLAS/cuSOLVER ハンドルを
+  ファイルスコープの構造体に保持し、ライブラリを直接呼ぶ(<code>BandColGpuSolverCtx</code> など。第 3・5 章)。</li>
+  <li><b>extern "C" ブリッジ経由の GEMMul8</b> — C コードから C++ テンプレートライブラリを呼ぶための単一翻訳単位方式(第 4 章)。</li>
+</ol>
+
+<h2>2.3 有効化の流れと SCF 内の GPU 化ポイント</h2>
+<p>GPU 経路が有効になるまでの流れは次のとおり。</p>
+<ol>
+  <li><b>入力解釈</b>(<code>Input_std.c:777-791</code>): <code>scf.eigen.lib gpusolver</code> で <code>scf_eigen_lib_flag = GPUSOLVER</code>。
+  旧名 <code>cusolver</code> は非推奨エイリアスとして警告付きで受理される。ユーザー指定値は <code>scf_eigen_lib_flag_input</code> に保存。</li>
+  <li><b>デバイス初期化</b>(<code>DFT.c:52-99</code>、SCF 入口 <code>DFT.c:334</code> の <code>DFT_GPU_DeviceInit()</code>):
+  <code>MPI_Comm_split_type(MPI_COMM_TYPE_SHARED)</code> でノード内 local rank を求め、<code>cudaSetDevice</code> と
+  <code>acc_set_device_num</code> を<b>対で</b>設定する。CUDA/OpenACC デバイスが見つからなければ警告を出して
+  <code>scf_eigen_lib_flag = ELPA2</code> に自動降格する。</li>
+  <li><b>各ソルバ入口での条件判定</b>: <code>GPUSOLVER フラグ && 行列次元 ≥ しきい値 &&(経路によっては)行列分散形状の条件</code> を満たすときだけ
+  GPU 密行列経路に入り、満たさなければ従来経路(ELPA2 等)がそのまま走る。</li>
+</ol>
+
+<figure>
+<svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .fb{stroke-width:1.1;rx:5;}
+    .g{fill:#e7f2e8;stroke:#7fae84;}
+    .y{fill:#fdf3d8;stroke:#d4b45e;}
+    .c{fill:#eceef1;stroke:#a9b1bb;}
+    .w{fill:#ffffff;stroke:#7e93b4;}
+    .t2{font-size:12.5px;fill:#1c2634;}
+    .s2{font-size:11px;fill:#41506a;}
+    .a2{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar2);}
+  </style>
+  <!-- legend -->
+  <rect x="620" y="10" width="290" height="70" class="w fb"/>
+  <rect x="632" y="22" width="26" height="13" class="g fb"/><text x="664" y="33" class="s2">GPU 実行(gpusolver 指定時)</text>
+  <rect x="632" y="40" width="26" height="13" class="y fb"/><text x="664" y="51" class="s2">条件付き / 環境変数オプトイン</text>
+  <rect x="632" y="58" width="26" height="13" class="c fb"/><text x="664" y="69" class="s2">CPU 実行(意図的に GPU 化しない)</text>
+  <!-- flow -->
+  <rect x="30" y="10" width="440" height="40" class="g fb"/>
+  <text x="42" y="27" class="t2" font-weight="bold">初期化: DFT_GPU_DeviceInit()</text>
+  <text x="42" y="43" class="s2">local rank % GPU 数 → cudaSetDevice + acc_set_device_num(不在なら ELPA2 へ)</text>
+  <line x1="250" y1="50" x2="250" y2="72" class="a2"/>
+  <rect x="30" y="74" width="440" height="52" class="y fb"/>
+  <text x="42" y="92" class="t2" font-weight="bold">基底行列要素の準備(SCF 前)</text>
+  <text x="42" y="108" class="s2">Set_OLP_Kin(動径積分 GPU は OPENMX_OLPKIN_RADIAL_GPU=1 のオプトイン)</text>
+  <text x="42" y="122" class="s2">Set_Nonlocal(GPUSOLVER 時は動径 k 積分を OpenACC 実行)</text>
+  <line x1="250" y1="126" x2="250" y2="148" class="a2"/>
+  <!-- SCF loop container -->
+  <rect x="18" y="150" width="884" height="290" fill="none" stroke="#5b6570" stroke-width="1.3" stroke-dasharray="6 4" rx="8"/>
+  <text x="34" y="170" class="t2" font-weight="bold">SCF ループ</text>
+  <rect x="34" y="182" width="270" height="56" class="y fb"/>
+  <text x="44" y="200" class="t2">Set_Hamiltonian</text>
+  <text x="44" y="215" class="s2">格子積分は CPU(GPU 経路は実測遅で無効化)。</text>
+  <text x="44" y="229" class="s2">GPU 用 packed H/S キャッシュを構築(緑成分)</text>
+  <line x1="304" y1="210" x2="330" y2="210" class="a2"/>
+  <rect x="332" y="176" width="360" height="98" class="g fb"/>
+  <text x="342" y="194" class="t2" font-weight="bold">対角化(GPU 密行列経路)</text>
+  <text x="342" y="211" class="s2">① S を Xsyevdx(全固有値)で対角化</text>
+  <text x="342" y="226" class="s2">② λ → 1/√λ 列スケール(cublasDdgmm/Zdgmm)</text>
+  <text x="342" y="241" class="s2">③ H′ = Ũ†HŨ(GEMMul8 / cuBLAS)</text>
+  <text x="342" y="256" class="s2">④ H′ を Xsyevdx(下から MaxN 本) ⑤ 逆変換 C=Ũz</text>
+  <text x="342" y="270" class="s2">条件: n ≥ 1000(DC-LNO は 800)。未満なら CPU/ELPA</text>
+  <line x1="692" y1="225" x2="718" y2="225" class="a2"/>
+  <rect x="720" y="182" width="176" height="56" class="g fb"/>
+  <text x="730" y="200" class="t2">密度行列 DM/EDM</text>
+  <text x="730" y="215" class="s2">OpenACC 縮約(loop seq で</text>
+  <text x="730" y="229" class="s2">加算順序を CPU と一致)</text>
+  <rect x="34" y="290" width="270" height="56" class="g fb"/>
+  <text x="44" y="308" class="t2">Total_Energy</text>
+  <text x="44" y="323" class="s2">EXC/EH1・双極子・EH0 二中心項の</text>
+  <text x="44" y="337" class="s2">格子縮約を OpenACC 実行(非共線は CPU)</text>
+  <line x1="180" y1="288" x2="180" y2="248" transform="translate(640,0)" class="a2" visibility="hidden"/>
+  <rect x="332" y="290" width="270" height="56" class="c fb"/>
+  <text x="342" y="308" class="t2">密度混合・ポテンシャル更新・収束判定</text>
+  <text x="342" y="323" class="s2">CPU(FFT は自前ビルドの FFTW3)</text>
+  <line x1="602" y1="318" x2="640" y2="318" class="a2"/>
+  <rect x="642" y="290" width="254" height="56" class="w fb"/>
+  <text x="652" y="308" class="t2">収束?</text>
+  <text x="652" y="323" class="s2">No → 次反復(対角化から繰り返し)</text>
+  <text x="652" y="337" class="s2">Yes → SCF ループを出る</text>
+  <line x1="820" y1="238" x2="820" y2="290" class="a2" transform="translate(-350,120)" visibility="hidden"/>
+  <rect x="34" y="368" width="862" height="56" class="g fb"/>
+  <text x="44" y="386" class="t2" font-weight="bold">後処理(SCF 収束後)</text>
+  <text x="44" y="402" class="s2">Force: 力 #2(運動)・#4(VNA 格子)・#5(重なり×EDM)を OpenACC 縮約 / #4B(射影 VNA)は VRAM 枯渇回避のため CPU 維持</text>
+  <text x="44" y="416" class="s2">EH0 由来の力 #6/#7 は Total_Energy の GPU バッチと同時計算</text>
+  <line x1="460" y1="440" x2="460" y2="462" class="a2"/>
+  <rect x="30" y="464" width="440" height="40" class="c fb"/>
+  <text x="42" y="481" class="t2" font-weight="bold">出力・終了処理</text>
+  <text x="42" y="497" class="s2">Free_Arrays(0) → openmx_gemmul8ReleaseWorkspaces()(GPU ワークスペース解放)</text>
+</svg>
+<figcaption>図 2: SCF 計算 1 サイクルの流れと GPU 化ポイント(コリニア・バンド/クラスタ計算の場合)。</figcaption>
+</figure>
+
+<h2>2.4 GPU 化対象マップ</h2>
+<p>計算経路(<code>scf.EigenvalueSolver</code>)別・補助計算別の GPU 化状況を表 2-1 に示す。詳細は第 7 章。</p>
+<table>
+<thead><tr><th style="width:16%;">経路 / 計算</th><th style="width:12%;">主担当ファイル</th><th>GPU 化内容</th><th style="width:24%;">発動条件</th></tr></thead>
+<tbody>
+<tr><td>クラスタ(Col)</td><td><code>Cluster_DFT_Col.c</code></td><td>root ランクに密行列を集約し、S 対角化 → レイディン直交化 → H′ 対角化 → 逆変換を GPU 実行(root-dense 経路)。GEMM は GEMMul8 Dgemm</td><td>GPUSOLVER かつ n ≥ 1000</td></tr>
+<tr><td>クラスタ(NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>root-dense 対角化(Dsyevx/Zheevx)+ U†HU を GEMMul8 で 12 回 + DM/EDM 縮約。固有ベクトルをキャッシュし DFT.c から scatter</td><td>GPUSOLVER かつ 2n ≥ 1000</td></tr>
+<tr><td>バンド(Col)</td><td><code>Band_DFT_Col.c</code></td><td>k 点ごとの密行列対角化一式をデバイス常駐で実行。GEMM は GEMMul8 Zgemm。S 変換行列をキャッシュ。<code>all_knum==1</code>/<code>!=1</code> の両経路対応。GPU ターン直列化</td><td>GPUSOLVER かつ n ≥ 1000(+分散形状条件)</td></tr>
+<tr><td>バンド(NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC 常駐型 root-dense 経路。GEMM は GEMMul8 Zgemm。VRAM 見積りによる適応並列度制限</td><td>GPUSOLVER かつ 2n ≥ 1000(+分散形状条件)</td></tr>
+<tr><td>DC 法(O(N))</td><td><code>Divide_Conquer.c</code></td><td>原子ごとの部分クラスタ行列を Xsyevdx で対角化。GEMM は GEMMul8→cuBLAS→CPU の多段フォールバック。VRAM 事前判定</td><td>GPUSOLVER かつ局所次元 ≥ 1000(<code>OPENMX_DC_GPU_THRESHOLD</code> で変更可)</td></tr>
+<tr><td>DC-LNO 法</td><td><code>Divide_Conquer_LNO.c</code></td><td>各ランクが自分の局所固有値問題を直接 GPU に投入(direct per-rank dispatch)。GPU プロキシ機構も温存(既定無効)</td><td>GPUSOLVER かつ局所次元 ≥ 800</td></tr>
+<tr><td>Krylov 法(O(N))</td><td><code>Krylov.c</code></td><td>スレッド別ワークスペースプールによる生 CUDA 実装。部分空間対角化(Xsyevd/Xsyevdx)+ 大きい dgemm のみ GEMMul8</td><td>GPUSOLVER かつ n ≥ 1000(GEMM は m·n·k ≥ 5×10⁷)</td></tr>
+<tr><td>汎用固有値ルーチン</td><td><code>Eigen_lapack.c</code><br><code>EigenBand_lapack.c</code></td><td>n ≥ 1000 で gpusolver_Syevdx(_Complex) へ分岐。これらを呼ぶ全 20 以上のファイルが自動的に GPU 化の恩恵を受ける</td><td>GPUSOLVER かつ n ≥ 1000</td></tr>
+<tr><td>分極・DMmu・CWF・LNO 系</td><td>11 ファイル</td><td>ELPA2 分岐の手前に定型の GPUSOLVER 分岐(dense_utils 経由の Dsyevx/Zheevx)を挿入</td><td>GPUSOLVER かつ n ≥ 1000 かつ na_rows==n 等</td></tr>
+<tr><td>行列要素構築</td><td><code>Set_Hamiltonian.c</code><br><code>Set_Nonlocal.c</code><br><code>Set_OLP_Kin.c</code></td><td>非局所射影の動径積分は OpenACC 実行。Set_Hamiltonian の格子積分 GPU 化は実測で遅く無効化(packed H/S キャッシュ構築が GPU ソルバを支える)。Set_OLP_Kin はオプトイン</td><td>GPUSOLVER(+ファイル別条件、§7.7)</td></tr>
+<tr><td>全エネルギー</td><td><code>Total_Energy.c</code><br><code>Total_Energy_GPU.c</code></td><td>EXC/EH1・双極子・CWF-Dc・EH0 二中心項の格子縮約を OpenACC 実行</td><td>GPUSOLVER かつ SpinP_switch≠3</td></tr>
+<tr><td>力</td><td><code>Force.c</code></td><td>力 #2/#4/#5 の縮約を OpenACC 実行。#4B は CPU 維持</td><td>GPUSOLVER(+項別条件)</td></tr>
+<tr><td>NEGF・複素逆行列</td><td><code>Lapack_LU_inverse.c</code></td><td><span class="chip dead">休眠</span> cublasZgetrf/ZgetriBatched による GPU 版 LU 逆行列を実装済みだが呼び出しはコメントアウト</td><td>—(将来の布石)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 2-1: GPU 化対象マップ</figcaption>
+
+<h2>2.5 複数ランク共有 GPU への対策(概観)</h2>
+<p>本実装の特徴は、「16 GB 級の GPU 1 台を 8 MPI ランクで共有する」ような構成を明示的に想定した多層防御にある。</p>
+<table>
+<thead><tr><th style="width:26%;">機構</th><th>内容</th><th style="width:22%;">実装箇所</th></tr></thead>
+<tbody>
+<tr><td>アロケーション失敗リトライ</td><td><code>wait_cudafunc</code> マクロが CUDA/cuBLAS/cuSOLVER 呼び出しを成功までランダム待ち(≤10 µs)付きで再試行。他ランクとの一時的な VRAM 確保競合を吸収</td><td><code>openmx_common.h:4092-4103</code></td></tr>
+<tr><td>GPU ターン直列化</td><td>バンド計算で「スピン × k 点」の通し番号(ターン)を導入し、既定 4 ターンごとに MPI_Barrier で区切って直列実行(8 ランク/GPU では並行投入より約 27% 高速というコメントあり)</td><td><code>Band_DFT_Col.c:218-355</code></td></tr>
+<tr><td>適応並列度制限</td><td>非共線バンドでは必要 VRAM を明示的に見積り、<code>cudaMemGetInfo</code> と MPI 合意で同時実行数を 4→2→1 に自動縮小(環境変数による明示指定値にも適用)</td><td><code>Band_DFT_NonCol.c:729-1038</code></td></tr>
+<tr><td>ワークスペースのターン毎解放</td><td>約 1 GiB の GEMMul8 ワークスペースをターン終了ごとに返却(既定有効)</td><td><code>Band_DFT_Col.c:283-295, 2703-2705</code></td></tr>
+<tr><td>事前メモリ判定+CPU フォールバック</td><td>DC 法は確保前に空き VRAM を検査し、不足なら GPU 経路を(sticky に)無効化して CPU で継続。Set_Hamiltonian も共有ランク合算の Allreduce 判定を持つ</td><td><code>Divide_Conquer.c:833-880</code><br><code>Set_Hamiltonian.c:164-268</code></td></tr>
+<tr><td>密ソルバ実行ランクの選抜</td><td>クラスタ/バンドでは world 代表ランクだけが密行列 GPU 経路のオーナーになる</td><td><code>DFT.c:159-204</code></td></tr>
+</tbody>
+</table>
+
+<div class="note"><b>休眠コードの扱い:</b> 本書では、定義は存在するが現行経路では呼ばれないコード
+(<code>gpusolver_Syevd</code>、<code>LU_Zinverse_GPU</code>、
+<code>openmx_cuda_kernels.cu</code>、一部の GEMMul8 ヘルパなど)を <span class="chip dead">休眠</span> と明示して区別する。
+一覧は §11.7 を参照。</div>
+</section>
+<!-- ==================== 第 3 章 ==================== -->
+<section id="ch3">
+<h1>3. cuBLAS の使い方</h1>
+
+<h2>3.1 使用ルーチンと役割</h2>
+<p>cuBLAS は本実装で 3 つの役割を持つ: (1) 対角スケーリング(<code>Ddgmm</code>/<code>Zdgmm</code>)など
+GEMM 以外の密行列演算の直接実行、(2) GEMMul8 が使えないときの FP64 フォールバック先、
+(3) GEMMul8 内部の INT8 Tensor Core GEMM(<code>cublasGemmEx</code>)の実行基盤。
+かつて一部ソルバに残っていた <code>cublasDgemm/Zgemm/Dsymm</code> の直接呼び出しは、
+コミット <code>66ce1e62</code>(Use GEMMul8 for remaining GPU GEMM paths)で<b>すべて GEMMul8 経由に統一</b>された。
+使用ルーチンの全体像を表 3-1 に示す。</p>
+<table>
+<thead><tr><th style="width:30%;">cuBLAS ルーチン</th><th>用途</th><th style="width:28%;">主な使用箇所</th></tr></thead>
+<tbody>
+<tr><td><code>cublasDgemm</code> / <code>cublasZgemm</code></td><td>GEMMul8 ブリッジ内の FP64 フォールバック先、および DC 法の多段フォールバック 2 段目(直接呼び出しはこの 2 箇所のみ)</td><td><code>gemmul8_bridge.cu:299,307,373,381</code>、<code>Divide_Conquer.c:607</code></td></tr>
+<tr><td><code>cublasDdgmm</code> / <code>cublasZdgmm</code></td><td>レイディン直交化の 1/√λ 列スケーリング(対角行列との積)</td><td><code>Cluster_DFT_Col.c:261</code>、<code>Band_DFT_Col.c:1377</code>、<code>Divide_Conquer_LNO.c:520</code></td></tr>
+<tr><td><code>cublasZgetrfBatched</code> / <code>cublasZgetriBatched</code></td><td><span class="chip dead">休眠</span> 複素 LU 分解・逆行列(batch=1)。NEGF 表面グリーン関数向けの布石(§5.8)</td><td><code>Lapack_LU_inverse.c:384,400</code></td></tr>
+<tr><td><code>cublasGemmEx</code>(INT8, COMPUTE_32I)</td><td>GEMMul8 内部の法別 INT8 行列積(OpenMX からは直接呼ばない)</td><td><code>third_party/GEMMul8/src/oz2/common/matmult.hpp:16-25</code></td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 3-1: 使用 cuBLAS ルーチン一覧</figcaption>
+
+<h2>3.2 ハンドルと CUDA ストリームのライフサイクル</h2>
+<p>現行実装の主経路では、<b>ソルバごとのファイルスコープ static コンテキスト</b>が cuBLAS/cuSOLVER ハンドルを
+遅延初期化で 1 個ずつ保持する(MPI プロセスあたりソルバ種別ごとに 1 個)。デバイスが変わった場合のみ破棄・再生成される。</p>
+<p class="src">Cluster_DFT_Col.c:118-130 — コンテキストの遅延初期化(典型形)</p>
+<pre><code>wait_cudafunc(cudaGetDevice(&amp;current_device));
+
+if (ctx-&gt;initialized &amp;&amp; ctx-&gt;device_id == current_device) return;
+if (ctx-&gt;initialized) ClusterCol_GpuSolver_Destroy();
+
+wait_cudafunc(cudaStreamCreateWithFlags(&amp;ctx-&gt;stream, cudaStreamNonBlocking));
+wait_cudafunc(cublasCreate(&amp;ctx-&gt;cublas));
+wait_cudafunc(cusolverDnCreate(&amp;ctx-&gt;gpusolver));
+wait_cudafunc(cublasSetStream(ctx-&gt;cublas, ctx-&gt;stream));
+wait_cudafunc(cusolverDnSetStream(ctx-&gt;gpusolver, ctx-&gt;stream));
+
+ctx-&gt;initialized = 1;
+ctx-&gt;device_id   = current_device;</code></pre>
+<p>ストリームの扱いはソルバ間で<b>非対称</b>である点に注意が必要である。</p>
+<ul>
+  <li><b>Cluster_DFT_Col / Band_DFT_NonCol(DM 用)/ Krylov / DC / DC-LNO:</b> 専用の non-blocking ストリームを生成し、
+  <code>cublasSetStream</code>/<code>cusolverDnSetStream</code> で束ね、転送は <code>cudaMemcpyAsync</code> + 要所の
+  <code>cudaStreamSynchronize</code> で順序を保証する。</li>
+  <li><b>Band_DFT_Col:</b> コンテキスト構造体(<code>Band_DFT_Col.c:1105-1132</code>)に stream メンバ自体がなく、
+  <code>cublasSetStream</code> も呼ばれない。cuBLAS はデフォルトストリームで動き、転送も同期 <code>cudaMemcpy</code>。</li>
+  <li><b>OpenACC との順序制御:</b> OpenACC の既定キューとライブラリ用ストリームは束ねていない
+  (<code>acc_get_cuda_stream</code>/<code>async</code> 節は全コードで不使用)。OpenACC 管理データをライブラリに渡す直前に
+  <code>#pragma acc wait</code>、直後に <code>cudaStreamSynchronize</code> を置いて明示同期する
+  (例: <code>Band_DFT_NonCol.c:433-455</code>)。</li>
+</ul>
+<div class="warn"><b>注意:</b> ソルバ間でストリーム前提が異なるため、あるソルバのヘルパ関数を別ソルバに移植する際に
+同期規約を混ぜると競合の恐れがある。また、各コンテキストのハンドル・永続バッファは<b>プログラム正常終了時に明示破棄されない</b>
+(解放されるのはデバイス変更時と Band 系のターン終了時のみ。終了時は CUDA コンテキスト破棄任せ)。
+<code>Free_Arrays(0)</code> が解放するのは GEMMul8 ワークスペースだけである。</div>
+
+<h2>3.3 デバイスメモリ管理</h2>
+<ul>
+  <li><b>grow-only の永続バッファ:</b> <code>if (n &lt;= ctx-&gt;matrix_dim) return;</code> の形で、必要サイズが既存以下なら再利用し、
+  不足時のみ free→malloc する(<code>Cluster_DFT_Col.c:146-164</code>、<code>Band_DFT_Col.c:1221-1248</code>)。
+  cuSOLVER ワークスペースも同様(<code>Cluster_DFT_Col.c:192-208</code>)。</li>
+  <li><b>pinned メモリ:</b> ほぼ不使用。唯一 DC 法がホスト側に <code>cudaMallocHost</code> を使う(<code>Divide_Conquer.c:786</code>)。
+  他はページャブル malloc + (Async) Memcpy。</li>
+  <li><b>共有 GPU への配慮:</b> Band 系の SCF 反復間バッファ常駐は既定 OFF(<code>OPENMX_BAND_GPU_PERSISTENT</code>)。
+  コード内コメントは「16 GB を 8 ランクで共有すると GEMMul8 が FP64 フォールバックに追い込まれ、
+  反復あたり 0.2 秒の節約より高くつく」と明記する(<code>Band_DFT_Col.c:233-237</code>)。</li>
+</ul>
+
+<h2>3.4 ソルバ別 GEMM エンジンの実像</h2>
+<p>コミット <code>66ce1e62</code> 以降、<b>GPU 上で実行される GEMM は全ソルバとも GEMMul8 ブリッジ経由に統一</b>された
+(cuBLAS FP64 が使われるのはブリッジ内フォールバックと DC 法の多段フォールバックのみ)。
+ただし<b>定義だけ存在して呼ばれないヘルパが複数残る</b>ため、grep の見かけに惑わされないよう、
+実際に呼ばれる経路(ライブ経路)を表 3-2 に整理する。</p>
+<table>
+<thead><tr><th style="width:20%;">ソルバ</th><th style="width:33%;">ライブ経路の GEMM エンジン</th><th>備考(休眠コード)</th></tr></thead>
+<tbody>
+<tr><td>Band_DFT_Col</td><td><b>GEMMul8</b>(<code>openmx_gemmul8Zgemm</code> × 3、三重積変換と逆変換。<code>Band_DFT_Col.c:1452,1456,1473</code>)</td><td>ヘルパ <code>BandCol_GpuSolver_Zgemm_OpenACC</code>(:1398)は未使用</td></tr>
+<tr><td>Band_DFT_NonCol</td><td><b>GEMMul8</b>(<code>BandNonCol_GEMMul8Zgemm_OpenACC</code> :433 経由 × 6。<code>66ce1e62</code> で cuBLAS 直接から切替)</td><td>永続ワークスペースの cublas ハンドル+ストリームを使用。lda/ldb は転置対応で計算</td></tr>
+<tr><td>Cluster_DFT_Col</td><td><b>GEMMul8</b>(<code>ClusterCol_GEMMul8Dgemm_Device</code> :285。H′ 構成 × 2 + 逆変換 × 1。<code>66ce1e62</code> で cublasDsymm+Dgemm から切替 — SYMM の対称性利用は廃止)</td><td>OpenACC 版ヘルパ(:333)は定義のみ。旧経路 <code>ClusterCol_GpuSolverDensePath</code>(CPU dgemm 使用)は到達不能</td></tr>
+<tr><td>Cluster_DFT_NonCol</td><td><b>GEMMul8</b>(D/Z 合計 12 回、U†HU 変換)</td><td>—</td></tr>
+<tr><td>Divide_Conquer(DC)</td><td><b>GEMMul8 → cuBLAS → CPU</b> の多段(<code>DC_GpuSolver_TryGpuDgemm</code>、<code>Divide_Conquer.c:575-609</code>)</td><td>GEMMul8 失敗時は以後そのランクで GEMMul8 を恒久無効化</td></tr>
+<tr><td>Divide_Conquer_LNO</td><td><b>GEMMul8</b>(<code>openmx_gemmul8Dgemm</code> × 3)</td><td>—</td></tr>
+<tr><td>Krylov</td><td><b>GEMMul8</b>(<code>openmx_gemmul8Dgemm</code>、<code>Krylov.c:346</code>。m·n·k ≥ 5×10⁷ のときのみ GPU)</td><td><code>66ce1e62</code> で cublasDgemm から切替</td></tr>
+<tr><td>DMmu/CWF/LNO 系 11 ファイル</td><td>GPU は対角化のみ(GEMM は従来どおり)</td><td>各ファイルの GEMMul8 ヘルパは定義のみ(準備扱い)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 3-2: ソルバ別 GEMM エンジン(ライブ経路と休眠コードの区別)</figcaption>
+
+<h2>3.5 撤去された汎用ラッパ my_cublasDgemm / my_cublasZgemm</h2>
+<p>初期開発で使われた自己完結型 GEMM ラッパ <code>my_cublasDgemm.c</code> / <code>my_cublasZgemm.c</code>
+(呼び出しごとに <code>cublasCreate</code> → <code>cudaMalloc</code>/<code>cudaMemcpy</code> → GEMM → 破棄)は、
+長らく<b>呼び出し箇所 0 件の休眠コード</b>だったのち、コミット <code>a7f8cba6</code>
+(Remove obsolete cuBLAS wrapper files)でソース・宣言・リンク対象とも<b>完全に削除</b>された。
+古いリビジョンを読む際にのみ登場する名前である。</p>
+<p>関連して注意すべき簡約が現行ヘルパにも残る: ソルバ内 GEMM ヘルパは <b>alpha=1.0 / beta=0.0 固定</b>であり、
+lda/ldb の扱いは 2 系統ある。<code>BandNonCol_GEMMul8Zgemm_OpenACC</code> / <code>ClusterCol_GEMMul8Dgemm_OpenACC</code> は
+<code>66ce1e62</code> で転置に応じた lda/ldb 計算に修正済みだが、<code>Cluster_DFT_NonCol.c:660,677</code> のライブヘルパ
+(正方行列でのみ使用)や DMmu/CWF 系の休眠ヘルパには <b>lda=m・ldb=k のハードコード</b>が残っており、
+転置指定時に正しいのは正方行列(m=n=k)の場合だけである。非正方・転置で再利用する場合は ld の扱いを必ず確認すること。</p>
+
+<h2>3.6 エラー処理 — wait_cudafunc マクロ</h2>
+<p>CUDA/cuBLAS/cuSOLVER 呼び出しのほぼすべて(<code>Band_DFT_Col.c</code> だけで 47 箇所)が次のマクロで包まれる。</p>
+<p class="src">openmx_common.h:4079-4103(抜粋)</p>
+<pre><code>#define GPU_CPU_SWITCH_NUM 1000
+#define WAITTIME           (10.0 * 1.0E-6)
+
+#define wait_cudafunc(call)                                                     \
+    while (true) {                                                              \
+        if (cudaSuccess == call) {                                              \
+            break;                                                              \
+        }                                                                       \
+        double wait_time    = drand48() * WAITTIME;                             \
+        double start_time   = MPI_Wtime();                                      \
+        double current_time = start_time;                                       \
+        while ((current_time - start_time) &lt; wait_time) {                       \
+            current_time = MPI_Wtime();                                         \
+        }                                                                       \
+    }</code></pre>
+<p>失敗時は 0〜10 µs のランダム待ち(ビジーウェイト)を挟んで<b>成功するまで同じ呼び出しを無限に再試行</b>する。
+成功コード 0 は <code>cudaError_t</code> / <code>cublasStatus_t</code> / <code>cusolverStatus_t</code> に共通なので
+3 種の API を同一マクロで包める。これは複数ランクが同一 GPU を取り合う際の一時的な <code>cudaMalloc</code> 失敗を
+吸収するための設計である。abort 型の <code>cudacall</code> マクロ(<code>openmx_common.h:4082-4090</code>)も定義されているが、
+主要経路では使われていない。</p>
+<p>計算失敗(固有値の収束失敗など)への対応はソルバ層で行われ、経路により <code>MPI_Abort</code>/<code>exit</code> か
+CPU フォールバックかが異なる(詳細は §5.4 の表)。</p>
+
+<h2>3.7 cuBLAS 使用上の注意点</h2>
+<ol>
+  <li><b><code>wait_cudafunc</code> は無限リトライ</b> — 引数の呼び出し式は毎周再評価される。恒久的エラー
+  (不正な leading dimension、デバイス喪失など)を渡すとハング+副作用の反復になる。GPU 実行が「止まったように見える」ときは
+  まずここを疑う。</li>
+  <li><b>簡約ヘルパの ld/alpha/beta 固定</b> — §3.5 のとおり。ライブヘルパの lda/ldb は転置対応に修正済みだが、
+  一部ヘルパに固定が残り、転置 + 非正方の組み合わせで静かに誤結果になる。</li>
+  <li><b>ストリーム前提の非対称性</b> — Band_DFT_Col はデフォルトストリーム+同期 memcpy、他は専用ストリーム+明示同期。
+  コードを移植・共通化する際は同期規約を確認すること。</li>
+  <li><b>ハンドル・バッファの解放漏れ(設計上の割り切り)</b> — プロセス終了時の明示破棄経路がない。長時間サービス化する
+  改修を行う場合は解放処理の追加が必要。</li>
+  <li><b>行列サイズ 0 のガード</b> — GEMMul8 ブリッジは m,n,k ≤ 0 で即成功を返す(全 GEMM がブリッジ経由のため、この一箇所で守られる)。</li>
+  <li><b>cuBLAS ワークスペース未設定</b> — GEMMul8 が推奨する <code>cublasSetWorkspace</code>(32 MiB)は
+  どのハンドルにも設定されていない(性能改修の候補。<code>gemmul8.hpp</code> のパフォーマンスノート参照)。</li>
+  <li><b>列優先規約</b> — cuBLAS は Fortran BLAS と同じ列優先。OpenMX の実対称行列は対称性を利用して
+  行優先フラット配列をそのまま渡す箇所がある(転置と等価なため。<code>Eigen_lapack.c:1570-1574</code>)。
+  エルミート行列は明示的に列優先へ詰め替える(<code>EigenBand_lapack.c:709-714</code>)。</li>
+</ol>
+</section>
+
+<!-- ==================== 第 4 章 ==================== -->
+<section id="ch4">
+<h1>4. GEMMul8 の使い方</h1>
+
+<h2>4.1 GEMMul8 とは — 原理と出自</h2>
+<p><b>GEMMul8</b>(GEMMulate)は理化学研究所 計算科学研究センター(RIKEN R-CCS)が開発する
+「INT8/FP8 行列エンジンを用いた GEMM エミュレーション」ライブラリである(責任開発者: Yuki Uchino 氏、MIT ライセンス)。
+本実装が取り込んでいるのは <b>v3.0.4</b>(上流コミット <code>884a2875…</code> に固定)。
+上流リポジトリ: <code>https://github.com/RIKEN-RCCS/GEMMul8</code>。</p>
+<p>原理は <b>Ozaki Scheme II</b>(整数モジュラー技法/中国剰余定理 CRT に基づく浮動小数点行列積エミュレーション)である。</p>
+<ol>
+  <li><b>スケーリング+量子化:</b> FP64 行列 A, B を指数調整し、互いに素な法
+  p = 256, 255, 253, 251, 247, 241, …(8 bit に収まる整数、最大 20 個。<code>src/oz2/common/table.hpp:12-31</code>)ごとの
+  剰余をとって <code>num_moduli</code> 枚の INT8 行列に変換する。</li>
+  <li><b>誤差なし整数行列積:</b> 法ごとに INT8 GEMM を実行する。実体は cuBLAS の
+  <code>cublasGemmEx(…, CUDA_R_8I, …, CUBLAS_COMPUTE_32I, …)</code>、すなわち <b>INT8 Tensor Core(IMMA)</b>である。
+  整数演算なので丸め誤差が入らない。</li>
+  <li><b>CRT 復元:</b> 法別の結果から中国剰余定理で整数積を復元し、スケーリングを戻して
+  <i>αAB + βC</i> を得る。</li>
+</ol>
+<p><code>num_moduli</code>(法の個数)を増やすほど高精度・低速になる。手順が決定的であるため、
+<b>同一設定なら結果は bitwise に再現する</b>(上流 README が明記)。GEMMul8 は、INT8 整数行列エンジンで
+DGEMM を行う先行研究 ozIMMU(Ootomo, Ozaki, Yokota 2024)系の Ozaki Scheme I を発展させた
+Scheme II の実装という位置づけである。引用すべき文献は巻末の参考文献を参照。</p>
+
+<h2>4.2 統合アーキテクチャ — 2 ファイル方式</h2>
+<p>OpenMX 本体は NVHPC <code>mpicc -std=c11</code> でビルドされる C コードであり、C++ テンプレート API を直接呼べない。
+また上流のビルドシステムは「ルーチン × 型 × バックエンド」ごとに大量のオブジェクトを生成する。
+そこで本実装は次の 2 ファイルで統合している。</p>
+<h3>(a) gemmul8_openmx.cu — 単一翻訳単位での明示的テンプレート実体化</h3>
+<p>上流のテンプレート<b>定義</b>ヘッダ(<code>gemm_impl.hpp</code>、<code>worksize_impl.hpp</code> と、
+上流では別オブジェクトに分かれるカーネル定義ヘッダ 7 本)を 1 つの翻訳単位に include し、
+OpenMX が必要とする <b>4 シンボルだけ</b>を明示的実体化する(67 行の小さなファイル)。</p>
+<p class="src">gemmul8_openmx.cu:31-44(double 版。cuDoubleComplex 版と workSize 2 種も同様)</p>
+<pre><code>template std::vector&lt;double&gt; gemm&lt;double, Backend::INT8, double, double&gt;(
+    cublasHandle_t,
+    cublasOperation_t, cublasOperation_t,
+    size_t, size_t, size_t,
+    const double *,
+    const double *const, size_t,
+    const double *const, size_t,
+    const double *,
+    double *const, size_t,
+    int, bool,
+    void *const,
+    void *const,
+    void *const,
+    bool, bool, bool, bool);</code></pre>
+<p>実体化されるのは <code>gemm&lt;double,INT8&gt;</code>、<code>gemm&lt;cuDoubleComplex,INT8&gt;</code>、
+<code>workSize&lt;false,INT8,Func::gemm&gt;</code>、<code>workSize&lt;true,INT8,Func::gemm&gt;</code> の 4 本。
+このオブジェクトだけを <code>ar</code> で固めて <code>third_party/GEMMul8/lib/libgemmul8.a</code> を自前生成する
+(上流の同名ライブラリとは中身が異なる)。この方式は上流の内部ヘッダ構成に依存するため、
+<b>上流コミットのピン留めが必須</b>である(Makefile のコメントに明記。§4.7)。</p>
+<h3>(b) gemmul8_bridge.cu — extern "C" ブリッジ</h3>
+<p>C 側から呼べる 3 関数を輸出する(プロトタイプは <code>openmx_common.h:4105-4112</code>)。</p>
+<ul>
+  <li><code>cublasStatus_t openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)</code>
+   — <b>cublasDgemm と完全同型</b>のシグネチャ(alpha/beta・ld とも任意)</li>
+  <li><code>openmx_gemmul8Zgemm(…)</code> — 複素版(同型)</li>
+  <li><code>openmx_gemmul8ReleaseWorkspaces()</code> — 全ワークスペースの解放</li>
+</ul>
+<p>ブリッジは (i) 環境変数の解釈、(ii) ワークスペースの照会・確保・キャッシュ、(iii) 確保できない場合の
+native cuBLAS へのフォールバック、(iv) <code>gemmul8::gemm</code> 呼び出し、を担う。</p>
+<p class="src">gemmul8_bridge.cu:296-316(Dgemm 本体。Zgemm も同構造)</p>
+<pre><code>if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
+    report.reason = "environment disable";
+    log_workspace_fallback_once&lt;false&gt;(report);
+    return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
+cublasStatus_t status =
+    ensure_workspace&lt;false&gt;(handle, static_cast&lt;size_t&gt;(m), static_cast&lt;size_t&gt;(n), static_cast&lt;size_t&gt;(k),
+                            num_moduli, &amp;work, &amp;report);
+if (status == CUBLAS_STATUS_ALLOC_FAILED) {
+    log_workspace_fallback_once&lt;false&gt;(report);
+    return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+if (status != CUBLAS_STATUS_SUCCESS) {
+    return status;
+}
+
+(void)gemmul8::gemm&lt;double, gemmul8::Backend::INT8&gt;(handle, gemmul8_transa, gemmul8_transb, ..., num_moduli, fastmode, work);</code></pre>
+
+<figure>
+<svg viewBox="0 0 920 470" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .f3{stroke-width:1.1;rx:5;}
+    .g3{fill:#e7f2e8;stroke:#7fae84;}
+    .y3{fill:#fdf3d8;stroke:#d4b45e;}
+    .c3{fill:#eceef1;stroke:#a9b1bb;}
+    .w3{fill:#ffffff;stroke:#7e93b4;}
+    .d3{fill:#fef7ec;stroke:#c99a3c;}
+    .t3{font-size:12.5px;fill:#1c2634;}
+    .s3{font-size:11px;fill:#41506a;}
+    .a3{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar3);}
+    .lbl{font-size:10.5px;fill:#7b3d00;font-weight:bold;}
+  </style>
+  <rect x="20" y="14" width="340" height="46" class="w3 f3"/>
+  <text x="32" y="33" class="t3" font-weight="bold">openmx_gemmul8Dgemm / Zgemm 呼び出し</text>
+  <text x="32" y="49" class="s3">(cublasDgemm/Zgemm 互換シグネチャ、デバイスポインタ)</text>
+  <line x1="190" y1="60" x2="190" y2="84" class="a3"/>
+  <path d="M190 86 L330 116 L190 146 L50 116 Z" class="d3" stroke-width="1.1"/>
+  <text x="132" y="112" class="t3">環境変数で無効化?</text>
+  <text x="112" y="128" class="s3">(OPENMX_)GEMMUL8_DISABLE(_D/_Z)</text>
+  <line x1="330" y1="116" x2="600" y2="116" class="a3"/><text x="345" y="110" class="lbl">Yes</text>
+  <line x1="190" y1="146" x2="190" y2="172" class="a3"/><text x="198" y="166" class="lbl">No</text>
+  <rect x="20" y="174" width="340" height="42" class="w3 f3"/>
+  <text x="32" y="192" class="t3">gemmul8::workSize で必要ワークスペース照会</text>
+  <text x="32" y="208" class="s3">サイズは num_moduli にほぼ比例(複素は約 3 倍)</text>
+  <line x1="190" y1="216" x2="190" y2="240" class="a3"/>
+  <path d="M190 242 L345 282 L190 322 L35 282 Z" class="d3" stroke-width="1.1"/>
+  <text x="105" y="270" class="t3">確保ポリシー違反?</text>
+  <text x="85" y="287" class="s3">・要求 &gt; 総 VRAM × 30%(既定)</text>
+  <text x="85" y="302" class="s3">・確保後空き &lt; 1536 MiB(既定)</text>
+  <text x="85" y="316" class="s3">・cudaMalloc 失敗</text>
+  <line x1="345" y1="282" x2="600" y2="282" class="a3"/><text x="360" y="276" class="lbl">Yes(ALLOC_FAILED)</text>
+  <line x1="190" y1="322" x2="190" y2="348" class="a3"/><text x="198" y="342" class="lbl">No</text>
+  <rect x="20" y="350" width="340" height="44" class="w3 f3"/>
+  <text x="32" y="368" class="t3">ワークスペースキャッシュから取得</text>
+  <text x="32" y="384" class="s3">キー=(device, stream)、grow-only、std::mutex 保護</text>
+  <line x1="190" y1="394" x2="190" y2="418" class="a3"/>
+  <rect x="20" y="420" width="340" height="44" class="g3 f3"/>
+  <text x="32" y="438" class="t3" font-weight="bold">gemmul8::gemm&lt;INT8&gt; 実行</text>
+  <text x="32" y="454" class="s3">量子化 → 法別 INT8 GEMM(Tensor Core)→ CRT 復元。bitwise 再現</text>
+  <rect x="600" y="90" width="300" height="230" class="y3 f3"/>
+  <text x="614" y="112" class="t3" font-weight="bold">native cuBLAS へフォールバック</text>
+  <text x="614" y="132" class="s3">cublasDgemm / cublasZgemm(FP64)を実行。</text>
+  <text x="614" y="150" class="s3">呼び出し自体は成功として返るため、</text>
+  <text x="614" y="166" class="s3">計算は止まらないが精度・速度特性が変わる。</text>
+  <text x="614" y="190" class="s3">警告はプロセスあたり初回の 1 回だけ</text>
+  <text x="614" y="206" class="s3">stderr に理由・必要量・空き量を出力。</text>
+  <text x="614" y="230" class="s3">性能・再現性の検証時は stderr の</text>
+  <text x="614" y="246" class="s3">"workspace fallback" 警告を必ず確認すること。</text>
+  <rect x="600" y="340" width="300" height="124" class="c3 f3"/>
+  <text x="614" y="362" class="t3" font-weight="bold">ワークスペースの解放ポイント</text>
+  <text x="614" y="382" class="s3">・Band 系: GPU ターン終了ごと(既定有効)</text>
+  <text x="614" y="398" class="s3">・DC 系: GPU 経路無効化時の後始末</text>
+  <text x="614" y="414" class="s3">・DC-LNO: 終了処理</text>
+  <text x="614" y="430" class="s3">・プログラム終了: Free_Arrays(0) →</text>
+  <text x="614" y="446" class="s3">  openmx_gemmul8ReleaseWorkspaces()</text>
+</svg>
+<figcaption>図 3: GEMMul8 ブリッジのディスパッチフロー(gemmul8_bridge.cu)。</figcaption>
+</figure>
+
+<h2>4.3 呼び出しパラメータと精度設定</h2>
+<table>
+<thead><tr><th style="width:20%;">パラメータ</th><th style="width:16%;">既定値</th><th style="width:34%;">環境変数(OPENMX_ 名が優先)</th><th>意味・挙動</th></tr></thead>
+<tbody>
+<tr><td><code>num_moduli</code></td><td><b>15</b></td><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>法の個数(精度)。有効範囲 2〜20、範囲外は黙って 15 に戻る。D/Z 独立に設定可</td></tr>
+<tr><td><code>fastmode</code></td><td><b>false</b>(accurate)</td><td><code>(OPENMX_)GEMMUL8_FASTMODE_D</code> / <code>_Z</code>("1" で有効)</td><td>高速スケーリング経路。精度が下がる</td></tr>
+<tr><td>無効化</td><td>off</td><td><code>(OPENMX_)GEMMUL8_DISABLE</code>、<code>_D</code>/<code>_Z</code></td><td>native cuBLAS FP64 に固定</td></tr>
+<tr><td>WS 上限比率</td><td><b>30%</b></td><td><code>(OPENMX_)GEMMUL8_MAX_WORKSPACE_PERCENT</code></td><td>要求が総 VRAM のこの割合を超えたら拒否(Band_DFT_NonCol は未設定時に 50 を setenv する)</td></tr>
+<tr><td>確保後最低空き</td><td><b>1536 MiB</b></td><td><code>(OPENMX_)GEMMUL8_MIN_FREE_AFTER_MB</code></td><td>確保後の空き VRAM がこの値を割るなら拒否</td></tr>
+</tbody>
+</table>
+<ul>
+  <li>実数(D)経路は <code>CUBLAS_OP_C</code> を <code>CUBLAS_OP_T</code> に静かに正規化する(実数では共役転置=転置)。</li>
+  <li><code>m,n,k ≤ 0</code> は何もせず成功を返す。</li>
+  <li>OpenMX 側に GEMMul8 の結果を FP64 直接計算と比較・検証するコードは存在しない。フォールバックはすべて
+  メモリ/環境変数条件によるもので、精度条件によるものではない。</li>
+  <li>skip-scaling 等の上流拡張機能は未使用。フェーズ別時間の戻り値も捨てられる。</li>
+</ul>
+
+<h2>4.4 ワークスペース管理</h2>
+<ul>
+  <li><b>照会:</b> 呼び出しごとに <code>gemmul8::workSize&lt;is_complex,INT8&gt;(m,n,k,num_moduli)</code> で必要量を計算。</li>
+  <li><b>キャッシュ:</b> <code>(device, cudaStream_t)</code> をキーとする <code>std::unordered_map</code> でプロセス全体共有、
+  <code>std::mutex</code> 保護、grow-only(<code>gemmul8_bridge.cu:21-44, 207-241</code>)。cuBLAS ハンドルのストリームが
+  キーになるため、<b>ハンドル(ストリーム)ごとに別領域</b>になる点に注意。</li>
+  <li><b>サイズ感:</b> A 側 = num_moduli 枚の INT8 行列+シフトベクトル、B 側同様、C 側 = (num_moduli−1) 枚の中間行列
+  + 32 MiB の内部 BLAS 領域 + INT32 アキュムレータ。複素はさらに約 3 倍。n ≈ 1 万規模で<b>約 1 GiB/ランク</b>
+  (コード内コメント <code>Band_DFT_Col.c:285-288</code>)。</li>
+  <li><b>解放:</b> <code>openmx_gemmul8ReleaseWorkspaces()</code> のみ。呼び出し箇所は
+  (1) <code>Free_Arrays(0)</code>(プログラム終了時、<code>Free_Arrays.c:24</code>)、
+  (2) Band_DFT_Col の GPU ターン終了ごと(<code>OPENMX_BAND_GEMMUL8_TURN_RELEASE=0</code> でオプトアウト)、
+  (3) DC 法の GPU 経路無効化時、(4) DC-LNO の終了処理。</li>
+</ul>
+
+<h2>4.5 複素数(Z)対応</h2>
+<p>OpenMX 側では複素行列を実行列に分解せず、<code>cuDoubleComplex</code> のまま
+<code>gemm&lt;cuDoubleComplex, INT8&gt;</code> に渡す。GEMMul8 内部のネイティブ複素パスは、
+入力 1 個あたり低精度表現を 3 セット持ち、1 法あたり<b>実 INT8 GEMM 3 本</b>で複素積を構成する
+(4M 法ではなく 3M/Karatsuba 系。理論的背景は CRT に基づく複素行列積エミュレーションの論文、参考文献参照)。
+このため複素のワークスペースと演算量は実数の約 3 倍になる。</p>
+
+<h2>4.6 どの GEMM が GEMMul8 で実行されるか</h2>
+<p>ブリッジ内に行列サイズによる振り分けは<b>ない</b>(GEMMul8 が既定、フォールバックはメモリ/環境変数条件のみ)。
+コミット <code>66ce1e62</code> 以降は <b>GPU 上の全 GEMM がブリッジを経由する</b>(表 3-2)。
+代表例は Band_DFT_Col の一般化固有値問題変換 H′ = Ũ†HŨ である(ここが最大の GEMM 負荷)。</p>
+<p class="src">Band_DFT_Col.c:1452-1458 — 三重積変換(2 本目までを抜粋。逆変換 1 本が :1473 に続く)</p>
+<pre><code>wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &amp;alpha,
+                                     (cuDoubleComplex *)ctx-&gt;d_H, n, (cuDoubleComplex *)ctx-&gt;d_S, n, &amp;beta,
+                                     (cuDoubleComplex *)ctx-&gt;d_tmp, n));
+
+wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &amp;alpha,
+                                     (cuDoubleComplex *)ctx-&gt;d_S, n, (cuDoubleComplex *)ctx-&gt;d_tmp, n, &amp;beta,
+                                     (cuDoubleComplex *)ctx-&gt;d_H, n));</code></pre>
+
+<h2>4.7 ビルド</h2>
+<ul>
+  <li><b>取得:</b> <code>make</code> が git submodule ディレクトリで <code>git fetch --depth 1 origin $(GEMMUL8_COMMIT)</code> →
+  <code>checkout</code> を実行し、コミット <code>884a2875…</code> に固定する(<code>Makefile:716-722</code>)。
+  ピン留めの理由は Makefile コメントに明記:「gemmul8_openmx.cu が GEMMul8 内部を直接実体化するため、
+  チェックアウトは内部レイアウトが一致するコミットに固定し続けなければならない」。</li>
+  <li><b>コンパイル:</b> NVHPC 同梱 CUDA 13.1 の nvcc、ホストコンパイラ <code>-ccbin nvc++</code>、
+  <code>-std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(arch) -gencode arch=compute_$(arch),code=sm_$(arch)</code>。
+  アーキは <code>nvidia-smi --query-gpu=compute_cap</code> から自動検出(本開発環境では compute_120/sm_120)。
+  <code>GEMMUL8_GPU_ARCH=90</code> のように手動指定も可能(<code>Makefile:161-167</code>)。</li>
+  <li><b>環境サニタイズ:</b> <code>NVCC_GEMMUL8_ENV</code> が <code>CPATH</code> 等を空にして NVHPC のヘッダ・フラグ混入を遮断
+  (<code>Makefile:170</code>)。</li>
+  <li><b>リンク追加:</b> <code>-lcublasLt -lcuda -lnvidia-ml -lstdc++</code>(<code>Makefile:172</code>)。</li>
+</ul>
+
+<h2>4.8 GEMMul8 使用上の注意点</h2>
+<ol>
+  <li><b>メモリ使用量</b> — ワークスペースは num_moduli にほぼ比例、複素は約 3 倍、n ≈ 1 万で約 1 GiB/ランク。
+  複数ランク共有 GPU では「30% 上限・1536 MiB 予約・ターン毎解放」の 3 段構えで枯渇を防いでいる。既定値を変える場合は
+  この 3 つの整合を保つこと。</li>
+  <li><b>静かな FP64 フォールバック</b> — ワークスペース拒否時は警告 1 回だけで cuBLAS FP64 に切り替わり、
+  <b>速度と数値結果(ビットパターン)の両方が変わる</b>。「なぜか遅い/結果が揺れる」ときは stderr の
+  "GEMMul8 workspace fallback" を確認する。決定的な再現が必要な検証では <code>OPENMX_GEMMUL8_DISABLE=1</code>
+  で全無効化するか、メモリに十分な余裕を持たせる。</li>
+  <li><b>精度設定</b> — 既定 15 moduli・accurate モード。範囲外の指定は黙って 15 に戻る。fastmode は高速だが
+  スケーリング精度が落ちる。D と Z は独立に調整できる。</li>
+  <li><b>初回呼び出しコスト</b> — 初回およびサイズ増加時に GiB 級の <code>cudaMalloc</code> が同期的に走る。
+  ベンチマークは 2 回目以降の反復で評価すること。</li>
+  <li><b>ビルドのハマりどころ</b> — (a) コミットピンを外すと内部ヘッダ構成の変更で <code>gemmul8_openmx.cu</code> が壊れる。
+  (b) NVHPC 環境変数(CPATH 等)を掃除しないと nvcc が NVHPC ヘッダを拾って失敗し得る。
+  (c) <code>-lcublasLt</code>・<code>-lstdc++</code> のリンク忘れ。(d) アーキ自動検出は <code>nvidia-smi</code> が使える環境前提。
+  (e) 単一アーキ <code>-gencode</code> のため別世代 GPU ではバイナリ非互換(要再ビルド)。</li>
+  <li><b>上流 API 追従</b> — 旧 API から現行構造(884a287)への移行(コミット <code>cb4d348d</code>)で
+  <code>gemmul8_openmx.cu</code> は 149 行 → 67 行に簡素化された。ブリッジの公開シグネチャは不変で、C 側への影響はない。
+  今後の上流更新時も「単一 TU が include する定義ヘッダの構成」を最初に確認するとよい。</li>
+  <li><b>ハードウェア要件</b> — INT8 Tensor Core(IMMA)必須。C++20 対応 nvcc(CUDA 12 系以降)が事実上必要
+  (検証済みは CUDA 13.1 のみ)。</li>
+</ol>
+</section>
+<!-- ==================== 第 5 章 ==================== -->
+<section id="ch5">
+<h1>5. cuSOLVER(gpusolver 層)の使い方</h1>
+
+<h2>5.1 層の構成と命名の意図</h2>
+<p>固有値計算は cuSOLVER を <b>gpusolver</b> というベンダー中立名のラッパ層経由で使う。層は次の 3 階層で構成される。</p>
+<ol>
+  <li><b>汎用ラッパ関数</b>(1 呼び出し完結型): <code>gpusolver_Syevd.c</code> / <code>gpusolver_Syevdx.c</code> の 5 関数。
+  ホスト配列版と、OpenACC デバイス常駐配列を直接処理する <code>_openacc</code> 版がある(表 5-1)。
+  冒頭 48 行のライセンスヘッダが示すとおり、NVIDIA CUDA Library Samples の syevd/syevdx サンプルを改変した出自を持つ。</li>
+  <li><b>共通ユーティリティヘッダ</b>: <code>openmx_gpusolver_dense_utils.h</code>(79 行)。
+  <code>OpenMX_GpuSolver_DenseDsyevx/DenseZheevx</code> の 1-based/0-based 版 4 関数を static 定義し、
+  <code>info != 0</code> なら <code>MPI_Abort</code> する。分極・DMmu・CWF・LNO 系の 12 ファイルが include する。</li>
+  <li><b>ソルバ内常駐コンテキスト</b>: <code>BandColGpuSolverCtx</code>、<code>ClusterColGpuSolverCtx</code>、
+  <code>DCGpuSolverCtx</code>、<code>DCLNO_GpuSolverCtx</code>、Krylov のスレッド別ワークスペースプールなど。
+  ハンドル・デバイスバッファをキャッシュし、cuSOLVER API を直接呼ぶ(第 3 章と共通の構造)。</li>
+</ol>
+<p><b>命名の意図:</b> ベンダー中立化は「命名規約による抽象化」であり、マクロや関数ポインタによる切替機構はまだ存在しない。
+関数名・構造体メンバ名・入力キーワードを gpusolver に統一し(例: <code>cusolverDnHandle_t gpusolver;</code>)、
+cuSOLVER の型名・API 名は NVIDIA ビルドの実装詳細としてそのまま残す。AMD(hipSOLVER/rocSOLVER)対応は
+同一の命名規則の下で別途実装する想定である。入力キーワードの旧名 <code>cusolver</code> は警告付きの非推奨エイリアスとして残る。
+開発初期に評価された MAGMA は削除済みで、現行ソースに参照はない(§2.1)。</p>
+
+<table>
+<thead><tr><th style="width:34%;">関数(gpusolver_Syevd(x).c)</th><th style="width:22%;">cuSOLVER API</th><th style="width:14%;">データ所在</th><th>現在の呼び出し元</th></tr></thead>
+<tbody>
+<tr><td><code>gpusolver_Syevd(A,W,m)</code></td><td>Xsyevd(全固有値)</td><td>ホスト⇄デバイス転送内蔵</td><td><span class="chip dead">休眠</span> 呼び出し元なし</td></tr>
+<tr><td><code>gpusolver_Syevdx(A,W,m,MaxN)</code></td><td>Xsyevdx(下から MaxN 本)</td><td>同上</td><td><code>Eigen_lapack.c:1576,1667</code>、<code>Cluster_DFT_Col.c:607,649</code>、dense_utils 経由多数</td></tr>
+<tr><td><code>gpusolver_Syevdx_openacc(…)</code></td><td>Xsyevdx</td><td>OpenACC 常駐(present + host_data)</td><td><code>Eigen_lapack.c:1617,1645</code></td></tr>
+<tr><td><code>gpusolver_Syevdx_Complex(…)</code></td><td>Xsyevdx(CUDA_C_64F)</td><td>ホスト⇄デバイス転送内蔵</td><td><code>EigenBand_lapack.c:716</code>、<code>Band_DFT_Col.c:1419</code>、dense_utils 経由多数</td></tr>
+<tr><td><code>gpusolver_Syevdx_Complex_openacc(…)</code></td><td>Xsyevdx(CUDA_C_64F)</td><td>OpenACC 常駐</td><td><code>EigenBand_lapack.c:677,741</code></td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 5-1: 汎用ラッパの公開 API</figcaption>
+
+<h2>5.2 使用 API の詳細</h2>
+<ul>
+  <li>すべて <b>generic(X)API・64-bit 整数版</b>を使用: <code>cusolverDnXsyevd(_bufferSize)</code> /
+  <code>cusolverDnXsyevdx(_bufferSize)</code>。legacy API(<code>cusolverDnDsyevd</code> 等)や
+  <code>Zheevd</code> 系の別名 API は一切使わず、複素も Xsyevdx に <code>CUDA_C_64F</code> を渡す統一形。
+  一般化固有値ソルバ <code>cusolverDnXsygvd</code> も使わない(§5.3)。</li>
+  <li>共通パラメータ: <code>params = NULL</code>、<code>jobz = CUSOLVER_EIG_MODE_VECTOR</code>、
+  <code>uplo = CUBLAS_FILL_MODE_LOWER</code>、範囲指定は <code>CUSOLVER_EIG_RANGE_I</code>(il=1, iu=MaxN)。
+  <code>m == MaxN</code> のとき <code>RANGE_ALL</code> に切り替える実装と常に RANGE_I の実装が混在する。</li>
+  <li>ハンドル: 汎用ラッパは呼び出しごとに <code>cusolverDnCreate</code> → non-blocking ストリーム生成 → 計算 → 全解放。
+  常駐コンテキストはキャッシュする(§3.2)。</li>
+  <li>ワークスペース: 全経路で <code>_bufferSize</code> によりデバイス/ホスト両方の必要量を照会してから確保する。
+  常駐側は grow-only キャッシュ。DC 法だけは確保前に <code>cudaMemGetInfo</code> による事前判定(preflight)を行い、
+  不足なら GPU 経路を無効化して CPU で継続する(<code>Divide_Conquer.c:833-880</code>)。</li>
+</ul>
+<p class="src">gpusolver_Syevdx.c:103-117 — 中核の呼び出し形(64-bit generic API)</p>
+<pre><code>wait_cudafunc(cusolverDnXsyevdx_bufferSize(cusolverH, NULL, jobz, range, uplo, m, CUDA_R_64F, d_A, lda, &amp;vl, &amp;vu,
+                                           1L, MaxN, &amp;h_meig, CUDA_R_64F, d_W, CUDA_R_64F,
+                                           &amp;workspaceInBytesOnDevice, &amp;workspaceInBytesOnHost));
+
+wait_cudafunc(cudaMalloc((void **)(&amp;d_work), workspaceInBytesOnDevice));
+h_work = (workspaceInBytesOnHost == 0) ? NULL : malloc(workspaceInBytesOnHost);
+...
+wait_cudafunc(cusolverDnXsyevdx(cusolverH, NULL, jobz, range, uplo, m, CUDA_R_64F, d_A, lda, &amp;vl, &amp;vu, 1L, MaxN,
+                                &amp;h_meig, CUDA_R_64F, d_W, CUDA_R_64F, d_work, workspaceInBytesOnDevice, h_work,
+                                workspaceInBytesOnHost, d_info));</code></pre>
+
+<h2>5.3 一般化固有値問題 Hc = εSc の処理</h2>
+<p>cuSOLVER の一般化ソルバは使わず、OpenMX 従来の <b>S の固有分解によるレイディン(対称)直交化</b>を各経路が GPU 上で自前実装する。
+Cholesky 分解は一切使わない。手順は共通して次の 6 ステップである(図 4 も参照)。</p>
+<ol>
+  <li>S を Xsyevdx(全固有値)で対角化 → 固有ベクトル U、固有値 λ</li>
+  <li>小さい/負の固有値の処置(<b>経路により異なる</b>: Band/Cluster は 1×10⁻¹⁰ に切上げ、DC は <code>OLP_eigen_cut</code>
+  未満を切り捨て、DC-LNO は <code>fabs</code>)</li>
+  <li>U の列を 1/√λ でスケール(<code>cublasDdgmm/Zdgmm</code>)→ Ũ</li>
+  <li>H′ = Ũ†HŨ を GEMM 2 回で構成(GEMMul8。表 3-2)</li>
+  <li>H′ を Xsyevdx(il=1..MaxN)で対角化 → 固有値 ε、固有ベクトル z</li>
+  <li>逆変換 c = Ũz を GEMM で実行</li>
+</ol>
+<p class="src">Cluster_DFT_Col.c:249-262 — S 対角化と 1/√λ スケーリング(GPU 上のレイディン直交化)</p>
+<pre><code>if (rebuild || !(ctx-&gt;transformed_s_valid &amp;&amp; ctx-&gt;transformed_s_dim==n)){
+    ClusterCol_GpuSolver_EigenDevice(ctx-&gt;d_S,n,n,ko0+1);
+
+    for (int l=1; l&lt;=n; l++){
+        if (ko0[l]&lt;1.0e-10) ko0[l] = 1.0e-10;
+        ko0[l] = 1.0/sqrt(ko0[l]);
+    }
+
+    wait_cudafunc(cudaMemcpyAsync(ctx-&gt;d_W,ko0+1,sizeof(double)*(size_t)n,cudaMemcpyHostToDevice,ctx-&gt;stream));
+
+    old_s = ctx-&gt;d_S;
+    new_s = ctx-&gt;d_tmp;
+    wait_cudafunc(cublasDdgmm(ctx-&gt;cublas,CUBLAS_SIDE_RIGHT,n,n,
+                              old_s,n,ctx-&gt;d_W,1,new_s,n));</code></pre>
+<div class="warn"><b>注意(数値的挙動の差):</b> S の小さい固有値の処置(切上げ / 切捨て / fabs)が経路間で統一されていないため、
+悪条件の重なり行列を持つ系では、同じ物理系でもソルバ経路によって数値挙動が微妙に異なり得る。</div>
+<p><b>部分固有値数 MaxN の決め方:</b> Band(Col)は <code>MaxN = (TZ−charge)/2 + max(0.4·Ne/2, 100)</code>
+(<code>Band_DFT_Col.c:1813-1818</code>)、Cluster は SCF 第 1 反復で全数、以後
+<code>(TZ−charge)/2 + max(0.1n〜0.2n, 400)</code>(<code>Cluster_DFT_Col.c:357-379</code>)。占有帯+余裕分だけを解くことで
+syevdx の計算量を抑えている。</p>
+
+<figure>
+<svg viewBox="0 0 920 430" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6570"/>
+    </marker>
+  </defs>
+  <style>
+    .f4{stroke-width:1.1;rx:5;}
+    .g4{fill:#e7f2e8;stroke:#7fae84;}
+    .c4{fill:#eceef1;stroke:#a9b1bb;}
+    .w4{fill:#ffffff;stroke:#7e93b4;}
+    .d4{fill:#fef7ec;stroke:#c99a3c;}
+    .t4{font-size:12.5px;fill:#1c2634;}
+    .s4{font-size:11px;fill:#41506a;}
+    .a4{stroke:#5b6570;stroke-width:1.3;fill:none;marker-end:url(#ar4);}
+    .lb4{font-size:10.5px;fill:#7b3d00;font-weight:bold;}
+  </style>
+  <path d="M120 14 L235 44 L120 74 L5 44 Z" class="d4"/>
+  <text x="48" y="40" class="t4">scf.eigen.lib =</text>
+  <text x="55" y="56" class="t4">gpusolver?</text>
+  <line x1="120" y1="74" x2="120" y2="100" class="a4"/><text x="128" y="94" class="lb4">Yes</text>
+  <line x1="235" y1="44" x2="700" y2="44" class="a4"/><text x="250" y="38" class="lb4">No</text>
+  <path d="M120 102 L235 132 L120 162 L5 132 Z" class="d4"/>
+  <text x="42" y="128" class="t4">CUDA/OpenACC</text>
+  <text x="48" y="144" class="t4">デバイスあり?</text>
+  <line x1="120" y1="162" x2="120" y2="188" class="a4"/><text x="128" y="182" class="lb4">Yes</text>
+  <line x1="235" y1="132" x2="700" y2="132" class="a4"/><text x="250" y="126" class="lb4">No(警告して ELPA2 に降格)</text>
+  <path d="M120 190 L235 220 L120 250 L5 220 Z" class="d4"/>
+  <text x="30" y="212" class="t4">n ≥ 1000?(DC-LNO</text>
+  <text x="40" y="228" class="t4">は 800、DC は可変)</text>
+  <line x1="120" y1="250" x2="120" y2="276" class="a4"/><text x="128" y="270" class="lb4">Yes</text>
+  <line x1="235" y1="220" x2="700" y2="220" class="a4"/><text x="250" y="214" class="lb4">No</text>
+  <path d="M120 278 L235 308 L120 338 L5 308 Z" class="d4"/>
+  <text x="30" y="300" class="t4">分散形状条件 OK?</text>
+  <text x="22" y="316" class="s4">(na_rows==n 等、経路による)</text>
+  <line x1="120" y1="338" x2="120" y2="364" class="a4"/><text x="128" y="358" class="lb4">Yes</text>
+  <line x1="235" y1="308" x2="700" y2="308" class="a4"/><text x="250" y="302" class="lb4">No(ELPA2 へ)</text>
+  <rect x="700" y="20" width="205" height="310" class="c4 f4"/>
+  <text x="714" y="44" class="t4" font-weight="bold">CPU 経路(従来どおり)</text>
+  <text x="714" y="66" class="s4">ELPA1 / ELPA2 /</text>
+  <text x="714" y="82" class="s4">ScaLAPACK / LAPACK</text>
+  <text x="714" y="106" class="s4">オリジナルと同一のコード</text>
+  <text x="714" y="122" class="s4">パスが実行される</text>
+  <rect x="10" y="366" width="680" height="56" class="g4 f4"/>
+  <text x="22" y="386" class="t4" font-weight="bold">GPU 密行列経路:</text>
+  <text x="150" y="386" class="t4">① S を Xsyevdx(ALL) → ② λ→1/√λ(Ddgmm/Zdgmm) → ③ H′=Ũ†HŨ(GEMMul8/cuBLAS)</text>
+  <text x="150" y="404" class="t4">→ ④ H′ を Xsyevdx(il=1..MaxN) → ⑤ 逆変換 c=Ũz(GEMM)</text>
+  <text x="22" y="418" class="s4">複数ランク共有 GPU: ターン直列化(既定グループ 4)/ VRAM 見積りによる適応並列度(4→2→1)/ ターン毎ワークスペース解放</text>
+</svg>
+<figcaption>図 4: 固有値ソルバのディスパッチと GPU 密行列経路。</figcaption>
+</figure>
+
+<h2>5.4 devInfo の検査と失敗時処理(経路別)</h2>
+<p><code>d_info</code> は全経路でデバイスに確保し、計算後にホストへコピーして検査するが、
+<b>失敗時の方針は経路ごとに異なる</b>。改修時は次の表を前提にすること。</p>
+<table>
+<thead><tr><th style="width:26%;">経路</th><th style="width:18%;">info 検査</th><th>失敗時の挙動</th></tr></thead>
+<tbody>
+<tr><td>汎用ラッパ(gpusolver_Syevdx 等)</td><td>呼び出し元に返すのみ</td><td>呼び出し元依存</td></tr>
+<tr><td>dense_utils ヘッダ経由(11 ファイル)</td><td>あり</td><td>即 <code>MPI_Abort</code></td></tr>
+<tr><td><code>Eigen_lapack.c:1590-1593</code></td><td><b>info&lt;0 のみ</b> exit(10)</td><td>info&gt;0(収束失敗)は素通り。ただし上位の <code>Eigen_lapack()</code> に固有ベクトル直交性検査つきリトライがあり、失敗時はソルバを CPU 系へ巡回して再計算(最大 3 回)</td></tr>
+<tr><td><code>EigenBand_lapack.c:25-32</code></td><td>あり</td><td>CPU の Householder 法 <code>Eigen_HH</code> へフォールバック</td></tr>
+<tr><td>Band_DFT_Col / Cluster_DFT_Col</td><td>あり(Band は h_meig も)</td><td>即 abort(exit / MPI_Abort)</td></tr>
+<tr><td>Divide_Conquer(DC)</td><td>あり(h_meig も)</td><td><b>sticky 無効化フラグ</b>を立てて以後そのランクは CPU の DC ソルバへ。GEMMul8 ワークスペースも解放</td></tr>
+<tr><td>Divide_Conquer_LNO</td><td>あり(h_meig は未検査)</td><td>exit(10)(フォールバックなし)</td></tr>
+<tr><td>Krylov</td><td>あり(h_meig も)</td><td>CPU LAPACK(<code>Eigen_lapack2</code>)へその場でフォールバック</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 5-2: devInfo 検査と失敗時処理の経路差</figcaption>
+
+<h2>5.5 並列度制御 — GPU ターン機構と適応制限</h2>
+<h3>5.5.1 Band(Col): GPU ターンの直列化</h3>
+<p>複数ランク(スピン世界 × k 点世界の代表ランク)が同一 GPU に同時に密ソルバを投げると VRAM が枯渇し、
+GEMMul8 が FP64 フォールバックに落ちて全体が遅くなる。そこで「スピン × k 点」の大域通し番号
+<b>GPU ターン</b>を導入し、既定で直列化する(コード内コメント: 8 オーナーランク/1 GPU では並行投入より約 27% 高速)。</p>
+<p class="src">Band_DFT_Col.c:2637-2647 — ターン直列化の骨格</p>
+<pre><code>my_gpu_turn = spin * T_knum + kloop;
+const int serialize_gpu_turns = BandCol_SerializeGpuSolverGpuTurns();
+const int gpu_turn_group = serialize_gpu_turns ? BandCol_GpuTurnGroup() : 1;
+const int first_gpu_turn = serialize_gpu_turns ? 0 : my_gpu_turn;
+const int last_gpu_turn = serialize_gpu_turns ? Num_Comm_World1 * T_knum : (my_gpu_turn + 1);
+for (int gpu_turn = first_gpu_turn; gpu_turn &lt; last_gpu_turn; gpu_turn++) {
+    if (serialize_gpu_turns &amp;&amp; gpu_turn % gpu_turn_group == 0) {
+        MPI_Barrier(mpi_comm_level1);
+    }
+
+    if (owns_global_dense_rank &amp;&amp; my_gpu_turn == gpu_turn) {</code></pre>
+<p>同時に走ってよいターン数(グループ幅)は <code>OPENMX_BAND_GPU_TURN_GROUP</code> →
+<code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code> → 既定 4 の優先順位で決まる。
+<code>all_knum != 1</code> の第 1 対角化ループは別ノブ <code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code>(既定 4)で制御される。
+後者はコミット <code>8c7801fa</code>(Limit band GPU k-turn concurrency)で<b>上限 4 にクランプ</b>され、
+それ以上を指定しても 4 に丸められる。</p>
+<h3>5.5.2 Band(NonCol): VRAM 見積りに基づく適応制限</h3>
+<p>コミット <code>43e30c65</code>(Limit band GPU solver concurrency adaptively)で、非共線バンドは固定値に代わり
+「必要デバイスメモリの明示的見積り × 実測空き容量」で並列度を決めるようになった。</p>
+<ol>
+  <li><b>所要量モデル</b>(<code>Band_DFT_NonCol.c:767-817</code>): overlap / Hamiltonian / 波動関数の 3 フェーズのピークを見積る。
+  syevdx ワークスペースは実際に <code>_bufferSize</code> を照会して算入(照会失敗時は 4·n²·16 バイトで代用)。</li>
+  <li><b>判定</b>: 「1 ターン所要 × 同時ランク数 + 予約(OpenACC/GEMMul8 スクラッチ用に<b>まる 1 ターン分</b>のクッション)」が
+  空き VRAM に収まるかを検査。</li>
+  <li><b>決定</b>: 収まらなければ 4→2→1 に段階縮小し、同一 GPU 共有ランクのコミュニケータ
+  (<code>MPI_Comm_split_type(SHARED)</code> + デバイス ID)で <code>MPI_Allreduce(MIN)</code> を取り、
+  <b>全ランク一致の限界値</b>に揃える。</li>
+</ol>
+<p>さらにコミット <code>8c7801fa</code> で、<code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> /
+<code>MAX_RANKS_PER_DEVICE</code> の<b>明示指定値(上限 4)にもこの適応制限が適用</b>されるようになった
+(<code>BandNonCol_AutoGpuTurnLimit</code> を必ず経由)。環境変数で大きな値を与えても、VRAM に収まらなければ自動縮小される。</p>
+<p class="src">Band_DFT_NonCol.c:847-859 — 判定部(コメント原文つき)</p>
+<pre><code>required = required_bytes*(size_t)concurrent_ranks;
+reserve = BandNonCol_RootDenseReserveBytes(total_bytes,required);
+
+/* Dense non-collinear turns also use OpenACC and GEMMul8 scratch space
+   around the explicitly estimated matrices. Keep a full extra turn-sized
+   cushion so the automatic limiter does not choose a group that only
+   fits on paper and then fails in cuMemAlloc. */
+if (reserve&lt;required) reserve = required;
+
+if (group_required!=NULL) *group_required = required;
+if (reserve_bytes!=NULL) *reserve_bytes = reserve;
+
+return (required&lt;=free_bytes &amp;&amp; reserve&lt;=free_bytes-required);</code></pre>
+<h3>5.5.3 DC-LNO: direct per-rank dispatch</h3>
+<p>コミット <code>f508a2a6</code>(Enable direct GPUSOLVER dispatch for DC-LNO)で、DC-LNO は
+「GPU オーナーランクが他ランクの固有値問題を MPI 経由で代行する<b>プロキシ方式</b>」から、
+「<b>全ランクが自分の局所問題(次元 ≥ 800)を直接 GPU に投入する方式</b>」に転換された。
+プロキシ機構は <code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code>(<code>Divide_Conquer_LNO.c:82</code>)で実験用に温存されている。
+ノード内で使う GPU 台数は入力キーワード <code>scf.Gpu.Num</code> で上限化できる。</p>
+<p class="src">Divide_Conquer_LNO.c:509-529(抜粋)— S 対角化 → スケール → GEMMul8 変換 → H 対角化の一括 GPU 実行</p>
+<pre><code>DCLNO_GpuSolver_Eigen(ctx-&gt;d_S, NUM, NUM, ko + 1);
+
+for (l = 1; l &lt;= NUM; l++) {
+    ko[l] = 1.0 / sqrt(fabs(ko[l]));
+}
+wait_cudafunc(cudaMemcpyAsync(ctx-&gt;d_W, ko + 1, ..., cudaMemcpyHostToDevice, ctx-&gt;stream));
+
+wait_cudafunc(cublasDdgmm(ctx-&gt;cublas, CUBLAS_SIDE_RIGHT, NUM, NUM,
+                          ctx-&gt;d_S, NUM, ctx-&gt;d_W, 1, ctx-&gt;d_tmp, NUM));
+wait_cudafunc(openmx_gemmul8Dgemm(ctx-&gt;cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM, NUM, &amp;alpha, ctx-&gt;d_H, NUM,
+                                 ctx-&gt;d_tmp, NUM, &amp;beta, ctx-&gt;d_S, NUM));
+wait_cudafunc(openmx_gemmul8Dgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &amp;alpha, ctx-&gt;d_tmp, NUM,
+                                 ctx-&gt;d_S, NUM, &amp;beta, ctx-&gt;d_H, NUM));
+
+DCLNO_GpuSolver_Eigen(ctx-&gt;d_H, NUM, NUM2, ko + 1);</code></pre>
+
+<h2>5.6 MPI ランク → GPU デバイス割当</h2>
+<ul>
+  <li><b>collective 版</b>(<code>set_cuda_default_device_from_local_rank.c:34-56</code>):
+  <code>MPI_Comm_split_type(MPI_COMM_TYPE_SHARED)</code> でノード内 local rank を求め、
+  <code>local_rank % deviceCount</code> を <code>cudaSetDevice</code>。全ランクが揃って呼ぶ必要がある(片側だけ呼ぶとデッドロック)。</li>
+  <li><b>noncollective 版</b>(:58-73): SCF 内ホットパス用。環境変数
+  <code>OMPI_COMM_WORLD_LOCAL_RANK</code> → <code>MV2_COMM_WORLD_LOCAL_RANK</code> → <code>SLURM_LOCALID</code> →
+  <code>PMI_LOCAL_RANK</code> の順で local rank を取得。どれも無ければ大域 rank で代用(この場合マルチノードでは割当が偏り得る)。</li>
+  <li><b>OpenACC 側も対で設定</b>(<code>set_openacc_device_from_local_rank.c</code>): 同じ規則で
+  <code>acc_set_device_num</code>。<b>CUDA と OpenACC の両ランタイムに同一デバイスを設定することが必須</b>という設計。</li>
+</ul>
+
+<h2>5.7 LU_Zinverse_GPU — NEGF 向けの休眠実装</h2>
+<div class="dead"><b>休眠コード:</b> 複素 LU 逆行列の GPU 版 <code>LU_Zinverse_GPU</code>
+(<code>Lapack_LU_inverse.c:347-444</code>)は、cuSOLVER ではなく <b>cuBLAS のバッチ API</b>
+<code>cublasZgetrfBatched</code> / <code>cublasZgetriBatched</code>(batch=1)で実装されている。
+A は OpenACC <code>deviceptr</code>、特異行列検出時は abort、結果は <code>acc kernels</code> で書き戻す。
+しかし公開関数 <code>Lapack_LU_Zinverse</code> からの呼び出しは
+<code>/* LU_Zinverse_GPU(n, A, handle); */</code> とコメントアウトされており(:63)、既定は従来の CPU 実装
+(LAPACK zgetrf/zgetri)のまま。呼び出し元は NEGF の表面グリーン関数計算
+(<code>TRAN_Calc_SurfGreen.c</code> ほか)であり、<b>将来 NEGF 系の複素逆行列を GPU 化するための布石</b>である。</div>
+
+<h2>5.8 cuSOLVER(gpusolver 層)使用上の注意点</h2>
+<ol>
+  <li><b>ワークスペース量の見積り</b> — n×n 複素行列 1 本で 16n² バイト、ソルバ本体+ワークスペース+GEMM スクラッチで
+  その数倍が必要になる。コード内コメントの設計前提は「16 GB 級 GPU を 8 ランクで共有」。VRAM に対して系が大きい場合は
+  並列度ノブ(§5.5、第 10 章)を先に調整する。</li>
+  <li><b><code>wait_cudafunc</code> の無限ループリスク</b> — §3.7 と同じ。恒久的エラーではハングする。</li>
+  <li><b>devInfo 検査の不均一</b> — 表 5-2 のとおり、収束失敗からの回復可能性が経路により異なる。
+  Band/Cluster/DC-LNO/dense_utils 系は「失敗=即終了」である。</li>
+  <li><b>CPU フォールバックの有無</b> — 実行時フォールバックを持つのは DC(sticky 無効化)、Krylov、
+  EigenBand_lapack(→Eigen_HH)、Eigen_lapack(リトライ巡回)のみ。デバイス不在時のみ全体が ELPA2 に降格する。</li>
+  <li><b>対称性と 0/1-based の変換</b> — 全呼び出しが uplo=LOWER の対称/エルミート前提。固有値配列の
+  0/1-based ずらし(<code>W[l]=W[l-1]</code>)が各所で必要で、dense_utils が吸収している。</li>
+  <li><b>S の条件数処理が経路で不統一</b> — §5.3 の警告参照。</li>
+  <li><b>再現性</b> — 変換 GEMM は GEMMul8 で実行されるため丸め挙動が cuBLAS FP64 と異なり、メモリ状況による
+  フォールバックで実行ごとに経路が変わり得る(対策は §4.8-2)。</li>
+  <li><b>all_knum≠1 の Band GPU 経路</b>は <code>na_rows==n &amp;&amp; na_cols==n</code> を要求し、満たさないと abort する。
+  分極・DMmu 系は同条件を満たさない場合、黙って ELPA2 に落ちる。</li>
+</ol>
+</section>
+
+<!-- ==================== 第 6 章 ==================== -->
+<section id="ch6">
+<h1>6. OpenACC と生 CUDA の使い分け</h1>
+
+<h2>6.1 全体像</h2>
+<p>ループ並列のオフロードは NVHPC の OpenACC(<code>-acc -Minfo=accel</code>)で記述されている。要点:</p>
+<ul>
+  <li><b>GPU 専用の <code>#ifdef</code> ガードは存在しない</b>。CUDA ヘッダ(<code>cublas_v2.h</code> 等)は
+  <code>openmx_common.h:5-7</code> で無条件 include されるため、<b>このツリーは CPU 専用にはビルドできない</b>
+  (CPU 用はオリジナルまたは <code>makefile.cpu_intel.bak</code> を使う)。ゲートはすべて実行時フラグである。</li>
+  <li><code>-gpu=ccXX</code> 指定はなく、ターゲット CC はビルドマシンの GPU 自動検出に依存する。
+  <b>managed memory は不使用</b>。<code>async</code> 節・<code>acc_get_cuda_stream</code> も全コードで不使用。</li>
+  <li><code>#pragma acc</code> を持つファイルは約 26。最厚は <code>Band_DFT_NonCol.c</code>(63 箇所)、
+  <code>Divide_Conquer.c</code>(56)、<code>Cluster_DFT_NonCol.c</code>(48)、<code>Band_DFT_Col.c</code>(46)、
+  <code>Force.c</code>(40)。<b><code>Krylov.c</code> は OpenACC ゼロ</b>(<code>-acc</code> なしでコンパイルされ、生 CUDA のみ)。</li>
+  <li>基本形は <code>parallel loop gang</code> + <code>loop vector reduction</code>。密度行列構築など
+  再現性が重要な縮約は <code>loop seq</code>(逐次)で加算順序を CPU と一致させる。</li>
+</ul>
+
+<h2>6.2 データ常駐の 3 パターン</h2>
+<ol>
+  <li><b>呼び出し毎の一時 data 領域(copyin/copyout)</b> — <code>Set_*</code>、<code>Force</code>、
+  <code>Total_Energy_GPU</code>。OpenMX の多次元ポインタ配列はデバイスで辿れないため、
+  <b>必ずホスト側で 1 次元フラット配列に詰め替えてから転送する</b>設計で統一されている。</li>
+  <li><b>enter data / exit data + update による SCF スコープ常駐</b> — 非共線系ソルバが中心。
+  例: <code>Cluster_DFT_NonCol.c</code> は S を <code>enter data create</code> → デバイス上で対角化・スケール →
+  <code>update self</code> → <code>exit data delete</code>。固有ベクトルは DM 構築まで常駐させる。</li>
+  <li><b>生 <code>cudaMalloc</code> + <code>deviceptr</code> ブリッジ</b> — <code>Band_DFT_Col.c</code> /
+  <code>Cluster_DFT_Col.c</code> は static コンテキストの <code>d_H/d_S</code>(cudaMalloc 領域)に対し、
+  OpenACC 側から <code>#pragma acc parallel loop deviceptr(d_H)</code> + <code>acc atomic update</code> で
+  疎→密の scatter-add を実行する。OpenACC 管理メモリと cudaMalloc メモリが 1 カーネル内で混在する唯一のパターン。</li>
+</ol>
+<p><b>ライブラリへのポインタ受け渡し</b>は <code>host_data use_device</code>(全 23 箇所)で行う。
+<code>present</code> で常駐を表明したうえで、ブロック内では配列名がデバイスアドレスに置換され、
+cuSOLVER/cuBLAS/GEMMul8 にそのまま渡せる(H2D/D2H 転送なし)。</p>
+<p class="src">gpusolver_Syevdx.c:143-151 — OpenACC 常駐配列を cuSOLVER に直接渡す典型形</p>
+<pre><code>#pragma acc data      present(A[0 : m * m])
+#pragma acc data      present(W[0 : MaxN])
+#pragma acc host_data use_device(A, W)
+    {
+        cusolverDnHandle_t cusolverH = NULL;
+        wait_cudafunc(cusolverDnCreate(&amp;cusolverH));
+        cudaStream_t stream = NULL;
+        wait_cudafunc(cudaStreamCreateWithFlags(&amp;stream, cudaStreamNonBlocking));
+        wait_cudafunc(cusolverDnSetStream(cusolverH, stream));</code></pre>
+<div class="warn"><b>注意(present エラー):</b> <code>_openacc</code> 系ラッパは呼び出し側が data 領域を確立していることを
+前提とする。確立せずに呼ぶと NVHPC ランタイムの FATAL(present table lookup failed)で落ちる。
+現行コードは「呼び出し側が必ず enter data を先行させる」規約で統一されている。</div>
+
+<h2>6.3 同期の設計</h2>
+<p>OpenACC の既定キューとライブラリ用 CUDA ストリームは接続されていない。順序保証は
+(1) ライブラリ呼び出し直前の <code>#pragma acc wait</code>、(2) ライブラリ用ストリームの
+<code>cudaStreamSynchronize</code>、(3) 同期 <code>cudaMemcpy</code>、の明示同期のみで行う。
+性能よりも正しさと単純さを優先した設計である。</p>
+
+<h2>6.4 openmx_cuda_kernels.cu — 検証済み・未結線の生 CUDA カーネル集</h2>
+<div class="dead"><b>重要(現状の正確な位置づけ):</b> <code>openmx_cuda_kernels.cu</code> / <code>.h</code>(696+103 行)は、
+<code>Cluster_DFT_NonCol.c</code> / <code>Set_Hamiltonian.c</code> / <code>Set_OLP_Kin.c</code> の OpenACC 計算領域を
+生 CUDA カーネルで書き直したモジュールである。ただし 2026-07-04 時点では <b>git 未追跡・Makefile のビルド対象外・
+.c 側からの呼び出し 0 件</b>であり、<b>現行バイナリでは対応する OpenACC 版が実行される</b>。
+bitwise 一致の検証は完了しているが結線はされていない(将来の置き換え候補)。</div>
+<p>設計方針はファイル冒頭コメントに明記されている(原文): "every reduction that was sequential in the OpenACC code
+is kept sequential per thread here, so the floating point summation order is unchanged; 1.0/sqrt(x) is used instead
+of the approximate rsqrt intrinsic" — すなわち<b>逐次縮約の順序保存</b>と <b>rsqrt 近似命令の回避</b>による
+CPU との bitwise 再現である。主なカーネル:</p>
+<table>
+<thead><tr><th style="width:30%;">カーネル / ラッパ</th><th>計算内容</th><th style="width:26%;">縮約設計</th></tr></thead>
+<tbody>
+<tr><td><code>dense_scatter_add_kernel</code></td><td>疎→密の scatter-add(0 詰め+加算)</td><td>atomicAdd(順序非決定)</td></tr>
+<tr><td><code>scale_columns_invsqrt_kernel</code></td><td>S^−1/2 構築の列スケーリング</td><td>縮約なし。<code>1.0/sqrt(w)</code>(rsqrt 不使用)</td></tr>
+<tr><td><code>build_ss2_kernel</code> / <code>assemble_hs2_kernel</code></td><td>非共線 2n×2n の Ss2/Hs2 組立</td><td>縮約なし</td></tr>
+<tr><td><code>calc_dm_noncol_kernel&lt;CALC_EDM&gt;</code></td><td>密固有ベクトルから DM/EDM 10 成分</td><td><b>状態 k ループを 1 スレッド逐次</b>(旧 OpenACC loop seq と同順)</td></tr>
+<tr><td><code>setham_base_kernel</code> / <code>setham_me_kernel</code></td><td>H の base 結合 / 格子積分行列要素</td><td>格子点ループを 1 スレッド逐次</td></tr>
+<tr><td><code>olpkin_radial_kernel</code> + テーブル常駐ヘルパ</td><td>動径 k 積分(重なり・運動行列要素)</td><td>k 格子ループを 1 スレッド逐次。動径テーブルをプロセス寿命でデバイス常駐</td></tr>
+</tbody>
+</table>
+<p>共通基盤として grow-on-demand の <code>DeviceBuffer</code> キャッシュ、block=256 固定、
+全ラッパ末尾の <code>cudaGetLastError</code>+<code>cudaDeviceSynchronize</code>(他ストリームの cuSOLVER/cuBLAS と
+自由に混在可能、とヘッダに明記)を持つ。なお現行の OpenACC 版 <code>Set_OLP_Kin.c:601</code> 等は
+<code>loop vector reduction</code>(並列縮約)であり、この CUDA 版の逐次縮約とは加算順序の規約が異なる。</p>
+
+<h2>6.5 NVHPC 固有の注意 — ミスコンパイル回避の実例</h2>
+<p>NVHPC 26.3 の OpenACC(<code>-acc</code>)には特定コードを壊す既知の不具合があり、
+Makefile は<b>ファイル単位で <code>-acc</code> を外す</b>ことで回避している(理由コメント付き)。
+これは NVHPC のバージョンを変える際に必ず再検証すべきポイントである。</p>
+<table>
+<thead><tr><th style="width:34%;">ファイル</th><th style="width:22%;">コンパイル指定</th><th>Makefile コメントの理由(要約)</th></tr></thead>
+<tbody>
+<tr><td><code>Occupation_Number_LDA_U.c</code> / <code>Eff_Hub_Pot.c</code> / <code>Total_Energy.c</code></td><td><code>CC_NOACC</code>(-O1, -acc なし)</td><td>NVHPC 26.3 + -acc が LDA+U Type2/cFLL の占有数・ポテンシャル経路をミスコンパイルする</td></tr>
+<tr><td><code>zero_cfrac.c</code></td><td><code>CC_NOACC</code></td><td>-acc が DSYGV を失敗させ、ON2 法の極を壊す</td></tr>
+<tr><td><code>RestartFileDFT.c</code></td><td><code>CC_NOACC</code></td><td>過分割 MPI 実行のリスタート I/O で segfault し得る</td></tr>
+<tr><td><code>MD_pac.c</code></td><td><code>CC_NOACC</code></td><td>SCF 後の MD 制御経路で segfault し得る</td></tr>
+<tr><td><code>Krylov.c</code></td><td><code>CC_NOACC_O3</code>(-O3, -acc なし)</td><td>GPU 化は生 CUDA API のみで行う(OpenACC 不使用)</td></tr>
+<tr><td><code>Band_DFT_NonCol.c</code> / <code>Divide_Conquer.c</code></td><td><code>CC3</code>(-O2)</td><td>最適化レベル調整</td></tr>
+<tr><td><code>truncation.c</code> / <code>OutData.c</code></td><td><code>CC2</code>(-O1)</td><td>同上</td></tr>
+<tr><td><code>DFTD3vdW_init.c</code></td><td><code>CC_DFTD3</code>(-O0)</td><td>同上</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 6-1: ファイル別コンパイル調整(NVHPC 26.3 不具合回避を含む)</figcaption>
+<p>このほか、<code>Total_Energy.c</code> を <code>-acc</code> なしでビルドする必要から、OpenACC カーネル部分だけを
+別翻訳単位 <code>Total_Energy_GPU.c</code>(<code>-acc</code> 付きでビルド)に分離するという構成が生まれている(§7.8)。
+また <code>Force.c</code> には旧 NVHPC の OpenMP バグ回避として <code>#if NVHPC_VERSION &gt;= 250000</code> の
+条件付きで OpenMP 並列を再有効化する箇所がある。<code>Divide_Conquer.c:3695</code> の
+<code>if (use_dc_openacc)</code> ガードには「// compiler's bug」というコメントが残る。</p>
+</section>
+<!-- ==================== 第 7 章 ==================== -->
+<section id="ch7">
+<h1>7. 計算経路別の GPU 実装詳細</h1>
+
+<h2>7.1 バンド計算(コリニア)— Band_DFT_Col.c</h2>
+<p>最大規模の改修対象(実質約 3,700 行の変更)。GPU 密行列経路の条件は
+<code>scf_eigen_lib_flag==GPUSOLVER &amp;&amp; n ≥ 1000</code>(+分散形状条件)。特徴:</p>
+<ul>
+  <li><b>密行列構築キャッシュ:</b> 疎行列(H, S)から k 点ごとの密行列を組み立てる部分を OpenACC 化し、
+  ペア構造の「fingerprint」付きキャッシュ(<code>entries</code>/<code>phase_r</code>/<code>phase_i</code>)を
+  <code>enter data</code> で常駐させる。位相のみ <code>update device</code> で更新。
+  scatter-add は <code>deviceptr</code> + <code>acc atomic update</code>(<code>Band_DFT_Col.c:1539-1622</code>)。</li>
+  <li><b>Set_Hamiltonian の packed H/S キャッシュを利用:</b> 対角化前の行列集約を、Set_Hamiltonian が構築した
+  packed 形式(§7.7)から直接行う。</li>
+  <li><b>対角化と変換:</b> S 変換行列(Ũ)は初回に計算してホスト側 <code>transformed_s</code> に退避し、
+  SCF 反復間で再利用(<code>Band_DFT_Col.c:1138-1177, 2649-2684</code>)。H′ の構成は GEMMul8 Zgemm × 3(§4.6)、
+  対角化は <code>cusolverDnXsyevdx</code>。固有ベクトルは DM フェーズまでデバイス常駐(コメント :2708)。</li>
+  <li><b><code>all_knum != 1</code> 経路:</b> メモリ削減のため S を毎ターン再対角化する設計(オリジナル譲りの
+  意図的なメモリ/計算のトレードオフ)。この経路は <code>na_rows==n &amp;&amp; na_cols==n</code> を要求する。</li>
+  <li><b>GPU ターン直列化と VRAM 対策:</b> §5.5.1、§2.5 のとおり。SCF 反復間のデバイスバッファ常駐は既定 OFF、
+  ONにしても空き 2048 MiB 未満なら自動オフ。ターンごとに GEMMul8 ワークスペースを解放。</li>
+  <li><b>DM フェーズ:</b> OpenACC の <code>gang</code> + <code>loop seq</code> 縮約で、加算順序を CPU と一致させる
+  (<code>Band_DFT_Col.c:967-1001</code>)。</li>
+</ul>
+
+<h2>7.2 バンド計算(非コリニア)— Band_DFT_NonCol.c</h2>
+<ul>
+  <li>OpenACC 常駐型(<code>enter data</code> 中心)の root-dense 経路。位相付き密行列構築(scatter-add)、
+  S 対角化+S^−1/2、2n×2n スピノル H2/S2 の組立、U†HU(GEMMul8 Zgemm × 2)、固有ベクトル逆変換、
+  DM/EDM(<code>loop seq</code>)までを GPU で実行。</li>
+  <li>GEMM は <code>66ce1e62</code> 以降 GEMMul8(表 3-2)。OpenACC キューとの順序は
+  <code>#pragma acc wait</code> → <code>openmx_gemmul8Zgemm</code> → <code>cudaStreamSynchronize</code> で明示制御
+  (<code>Band_DFT_NonCol.c:433-455</code>)。</li>
+  <li><b>適応並列度制限(§5.5.2)</b>と、複数 k 世界の同時実行可否判定
+  (所要合計の Allreduce SUM vs 最小空きの Allreduce MIN。収まらなければ
+  「Serializing non-collinear dense GpuSolver k-worlds」と表示して直列化)を持つ。</li>
+  <li>GPU メモリ見積りのため一時ハンドルで <code>Xsyevdx_bufferSize</code> だけを照会する専用関数を持つ(:729-765)。</li>
+</ul>
+
+<h2>7.3 クラスタ計算 — Cluster_DFT_Col.c / Cluster_DFT_NonCol.c</h2>
+<ul>
+  <li><b>Col:</b> <code>ClusterCol_GpuSolverRootDensePath</code>(:448-545)が本経路。スピン世界の rank 0 だけが
+  密行列を集約して GPU で解き(S 対角化 → Ddgmm → GEMMul8 Dgemm × 2 → Xsyevdx → 逆変換も GEMMul8 Dgemm。
+  <code>66ce1e62</code> で cublasDsymm+Dgemm から切替)、
+  固有ベクトルを MPI_Send/Recv で分配する。S 変換行列はデバイス上にキャッシュ。
+  旧実装 <code>ClusterCol_GpuSolverDensePath</code>(S 対角化のみ GPU、GEMM は CPU dgemm)はコード上残るが到達不能。</li>
+  <li><b>NonCol:</b> root-dense 対角化(実 Dsyevx + 複素 Zheevx)。U†HU は GEMMul8 D/Zgemm 計 12 回
+  (<code>Cluster_DFT_NonCol.c:1355-1393</code>)。密固有ベクトル <code>dense_evec</code> を
+  <code>enter data create</code> で常駐キャッシュし、後段へは <code>DFT.c</code> から
+  <code>Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec</code> を呼んで配布する。DM/EDM は <code>loop seq</code> 縮約。</li>
+  <li>MaxN(部分固有値数)は SCF 第 1 反復のみ全数、以後は占有数+マージン(§5.3)。</li>
+</ul>
+
+<h2>7.4 DC 法 — Divide_Conquer.c</h2>
+<ul>
+  <li>原子ごとの部分クラスタ行列(局所次元 NUM)を各ランクが独立に処理する。GPU 化条件は
+  <code>NUM ≥ DC_GPU_Threshold()</code>(既定 1000、<code>OPENMX_DC_GPU_THRESHOLD</code> で変更可)。</li>
+  <li><b>Col 側は生 CUDA 実装:</b> <code>DCGpuSolverCtx</code> に cudaMalloc バッファ+pinned ホストバッファ
+  (<code>cudaMallocHost</code>、本実装唯一の使用箇所)。S 対角化(SCF 2 反復目まで)→ H′ 構成
+  (<code>DC_GpuSolver_TryGpuDgemm</code>: GEMMul8 → 失敗時 cublasDgemm → それも失敗なら CPU)→
+  活性部分空間を <code>cudaMemcpy2DAsync</code> でデバイス内切り出し → Xsyevdx。</li>
+  <li><b>多層の安全装置:</b> 確保前の VRAM preflight(<code>GPUSOLVER_MIN_FREE_AFTER_MB</code> 既定 1536 MiB)、
+  ホスト malloc 失敗検出、固有値分解失敗検出 — いずれかで <b>sticky 無効化フラグ</b>を立て、
+  以後そのランクは CPU の DC ソルバで継続する(GEMMul8 ワークスペースも解放)。
+  GPU 化された経路の中で最も防御的な実装である。</li>
+  <li><b>NonCol 側は OpenACC 実装:</b> 部分空間変換(S 転置、H·U·M1、M1·U†HU·M1、逆変換)を
+  <code>kernels loop independent collapse</code> で実行し、対角化は
+  <code>Eigen_gpusolver_x_complex_openacc</code> 経由。Col 側の旧 OpenACC 領域は
+  <code>use_dc_openacc = 0</code> でハード無効化されている(コメント「compiler's bug」)。</li>
+</ul>
+
+<h2>7.5 DC-LNO 法 — Divide_Conquer_LNO.c</h2>
+<ul>
+  <li>現行は <b>direct per-rank dispatch</b>(§5.5.3): 全ランクが <code>cudaSetDevice</code> を実行し、
+  自分の局所問題(NUM ≥ 800 = <code>GPU_CPU_SWITCH_NUM2</code>)を直接 GPU に投入する。
+  ワークスペースは Max_Msize 分をランクごとに事前確保。</li>
+  <li>旧方式の <b>GPU プロキシ機構</b>(同一 GPU 共有ランク群の rank 0 が他ランクの対角化を MPI タグ 41001-41004 で代行)は
+  <code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code> で温存。</li>
+  <li>ノード内 GPU 台数は <code>scf.Gpu.Num</code>(既定 30 ≒ 実質無制限)で上限化。同一 GPU 共有ランク群の
+  コミュニケータ <code>DCLNO_gpu_group_comm</code> を構築する。</li>
+  <li>失敗時のフォールバックはなく exit(10)。h_meig は未検査(表 5-2)。</li>
+</ul>
+
+<h2>7.6 Krylov 法 — Krylov.c</h2>
+<ul>
+  <li><b>OpenACC 不使用・生 CUDA のみ</b>(<code>-acc</code> なしの <code>CC_NOACC_O3</code> でコンパイル)。
+  OpenMP スレッドごとの <code>Krylov_GPU_Workspace</code> プール(d_A/d_B/d_C/d_W/d_work + 専用 non-blocking
+  ストリーム)を持つ。</li>
+  <li><code>Krylov_Dgemm</code>(:311): H2D Async → <code>openmx_gemmul8Dgemm</code> → D2H → StreamSynchronize
+  (<code>66ce1e62</code> で cublasDgemm から切替)。FLOP 数 m·n·k &lt; 5×10⁷ は CPU BLAS(<code>KRYLOV_GPU_DGEMM_MIN_FLOPS</code>)。</li>
+  <li><code>Krylov_Eigen2</code>(:354): 埋め込みハミルトニアンの標準固有値問題を n==EVmax なら Xsyevd、
+  部分なら Xsyevdx で解く。n &lt; 1000 は CPU。失敗時は <code>Eigen_lapack2</code>(CPU)にその場でフォールバック。</li>
+  <li>S 変換は Krylov 基底構成(CPU の <code>Inverse_S_by_Cholesky</code>)で処理済みのため、
+  GPU 側は標準固有値問題のみを扱う。</li>
+</ul>
+
+<h2>7.7 行列要素構築 — Set_Hamiltonian.c / Set_Nonlocal.c / Set_OLP_Kin.c</h2>
+<h3>Set_Hamiltonian.c(実質約 1,800 行の変更)</h3>
+<ul>
+  <li><b>格子積分の OpenACC 版は実装済みだが恒久無効</b>(<code>Set_Hamiltonian_MatrixElements_OpenACC_Enabled()</code> が
+  <code>return 0</code>)。理由はコメントに明記: パッキングと転送のコストが支配的で CPU より遅い。
+  base 結合(H = F_Kin·H0 + F_VNA·HVNA + F_NL·HNL + …)の GPU 版も
+  「実測 10 ms vs CPU 2 ms」のため <code>OPENMX_SETHAM_BASE_GPU=1</code> のオプトイン。</li>
+  <li><b>本命は packed H/S キャッシュ:</b> GPUSOLVER 用に H と S を 1 次元 packed 形式で保持する API 群を新設
+  (<code>Set_Hamiltonian_Build_GpuSolver_HS_Cache</code> ほか、宣言 <code>openmx_common.h:3339-3351</code>)。
+  Band/Cluster ソルバが対角化前の密行列組立にこのキャッシュを直接使うことで、GPU 経路の転送・組立を高速化する。
+  <code>DFT.c:207-214</code> から SCF ごとに準備される。</li>
+  <li><b>メモリ安全装置:</b> <code>Set_Hamiltonian_DeviceMemoryOK</code>(:164-268)が必要量を見積り、
+  同一 GPU 共有ランク群で Allreduce(必要量 SUM vs 空き MIN)して不足なら警告つきで CPU パスへ。
+  OpenACC 実行は world 代表ランクのみに選抜される(<code>DFT.c:159-204</code>)。</li>
+</ul>
+<p class="src">Set_Hamiltonian.c:1409-1424(抜粋)— 格子積分の逐次縮約(実装済み・現在は無効の OpenACC 版)</p>
+<pre><code>#pragma acc loop vector
+for (e = 0; e &lt; (size_t)spin_count * mat_size; e++) {
+    ...
+    double sum = hbuf[hidx];
+    int Nog;
+#pragma acc loop seq
+    for (Nog = 0; Nog &lt; NOLG; Nog++) {
+        sum += vpotbuf[...] * orbs0buf[...] * orbs1buf[...];
+    }
+    hbuf[hidx] = sum;
+}</code></pre>
+<h3>Set_Nonlocal.c(+1,356/−306)</h3>
+<ul>
+  <li>非局所射影子行列要素 &lt;φ|P&gt; の動径 k 積分を OpenACC 化(<code>collapse(2)</code> +
+  <code>loop vector reduction</code>)。GPUSOLVER 時は常時有効。ベッセル関数テーブルは species 変化時のみ再計算。</li>
+  <li>あわせて、固定サイズのスタック配列をオーバーフロー検査付きのヒープ確保に置き換える堅牢化も実施
+  (<code>SetNonlocal_MallocArray</code> 等)。</li>
+</ul>
+<h3>Set_OLP_Kin.c(+529/−181)と Spherical_Bessel.c</h3>
+<ul>
+  <li>重なり・運動エネルギー行列要素の動径積分オフロードは、データ転送律速で CPU より遅い実測
+  (コメント: 約 1.2 s vs 0.3 s)のため <code>OPENMX_OLPKIN_RADIAL_GPU=1</code> の<b>オプトイン</b>。
+  さらにスレッド数 1(<code>Nthrds==1</code>)を要求する。</li>
+  <li>CPU 側の実質的な高速化として、ペア距離 r の <b>bit パターン完全一致をキーとする球ベッセル関数テーブルキャッシュ</b>
+  を追加(結果は bitwise 同一、シングルスレッド時のみ)。<code>Spherical_Bessel.c</code> もホットパスの
+  毎呼び出し malloc/free を除去した。</li>
+</ul>
+
+<h2>7.8 全エネルギー — Total_Energy.c + Total_Energy_GPU.c</h2>
+<p><b>ファイル分離の理由:</b> NVHPC 26.3 の <code>-acc</code> が LDA+U 経路をミスコンパイルするため、
+<code>Total_Energy.c</code> 本体は <code>-acc</code> なし(<code>CC_NOACC</code>)でビルドせざるを得ない。
+そこで OpenACC カーネルだけを別翻訳単位 <code>Total_Energy_GPU.c</code>(<code>-acc</code> 付き、517 行)に分離した。
+ゲートは <code>TotalEnergyUseOpenACC()</code>: 非共線(SpinP_switch==3)では無効、それ以外は GPUSOLVER フラグに従う。</p>
+<p>GPU 化された 4 種の格子縮約(いずれも毎回 copyin の一時 data 領域方式):</p>
+<ol>
+  <li><b>EXC/EH1 格子積分</b>(Ena・Eef・EH1・EXC を単一 <code>parallel loop reduction(+:5変数)</code> で縮約)</li>
+  <li><b>双極子モーメント 6 成分</b>(格子座標は GN→(n1,n2,n3) をデバイス内で再構成)</li>
+  <li><b>CWF 二重計上補正</b>(dcEH1/dcEXC)</li>
+  <li><b>EH0 二中心項のバッチ計算</b> — 全原子ペアを一括配列化し、species ごとの球面格子・VPS メッシュ・
+  V_H 原子テーブルをフラット化して転送。<code>gang</code>(ペア)×<code>vector reduction</code>(格子点)で
+  エネルギーと r 微分(力 #6/#7 相当)を同時計算。スプライン補間は <code>#pragma acc routine seq</code> の
+  デバイス関数として実装。</li>
+</ol>
+<p class="src">Total_Energy_GPU.c:39-47 — 格子縮約の典型形</p>
+<pre><code>#pragma acc data copyin(Density_Grid_B0[0:grid_count], Density_Grid_B1[0:grid_count], \
+                        ADensity_Grid_B[0:grid_count], PCCDensity_Grid_B0[0:grid_count], \
+                        PCCDensity_Grid_B1[0:grid_count], dVHart_Grid_B[0:grid_count], \
+                        Vxc_Grid_B0[0:grid_count], Vxc_Grid_B1[0:grid_count], \
+                        RefVxc_Grid_B[0:grid_count], VNA_Grid_B[0:vna_grid_count], \
+                        VEF_Grid_B[0:vef_grid_count])
+  {
+#pragma acc parallel loop reduction(+:local_Ena,local_Eef,local_EH1,local_EXC0,local_EXC1)
+    for (BN=0; BN&lt;grid_count; BN++){</code></pre>
+
+<h2>7.9 力 — Force.c</h2>
+<ul>
+  <li>力 #2(運動エネルギー項 Tr[DM·dH0])、#4(VNA 格子項)、#5(重なり項 −Tr[EDM·dS])の縮約を OpenACC 化。
+  共通ヘルパは「原子ごとのオフセット表+フラット化した (weight, hx, hy, hz)」を copyin し、
+  <code>gang</code>(原子)× <code>vector reduction</code>(項)の 2 段縮約で力を得る。</li>
+  <li><b>力 #4B(射影 VNA)は意図的に CPU 維持。</b>コメント原文: "In DC-LNO/GPUSOLVER runs many MPI ranks can share
+  one GPU while GPUSOLVER still owns most device memory, so these transient copies can exhaust device memory.
+  Keep Force4B on the CPU trace path"(<code>Force.c:5588-5596</code>)。</li>
+  <li>diff 上の変更行数が最大(raw ±11,000 行超)だが、大半は全面再インデントで、実質変更は約 3,700 行。</li>
+</ul>
+<p class="src">Force.c:166-183(抜粋)— gang(原子)× vector(項)の 2 段縮約</p>
+<pre><code>#pragma acc parallel loop gang
+for (Mc_AN = 0; Mc_AN &lt;= num_atoms; Mc_AN++) {
+    double sumx = 0.0;  double sumy = 0.0;  double sumz = 0.0;
+    if (Mc_AN != 0) {
+        size_t start = atom_offsets[Mc_AN - 1];
+        size_t end = atom_offsets[Mc_AN];
+        size_t idx;
+#pragma acc loop vector reduction(+:sumx, sumy, sumz)
+        for (idx = start; idx &lt; end; idx++) {
+            double weight = weights[idx];
+            sumx += weight * vx[idx];
+            sumy += weight * vy[idx];
+            sumz += weight * vz[idx];
+        }
+    }
+    Fx[Mc_AN] = sumx;  Fy[Mc_AN] = sumy;  Fz[Mc_AN] = sumz;
+}</code></pre>
+
+<h2>7.10 派生ソルバ群 — 分極・DMmu・CWF・LNO(定型パターン 11 ファイル)</h2>
+<p>以下の 11 ファイルには同一の定型パターンが適用されている:
+<code>openmx_gpusolver_dense_utils.h</code> の include、GPUSOLVER 要求時のデバイス割当、
+static コンテキスト、そして <b>ELPA2 分岐の直前</b>への
+<code>scf_eigen_lib_flag==GPUSOLVER &amp;&amp; GPU_CPU_SWITCH_NUM&lt;=n &amp;&amp; na_rows==n &amp;&amp; na_cols==n</code>
+分岐の挿入(<code>OpenMX_GpuSolver_DenseDsyevx/DenseZheevx</code> による対角化)。
+条件を満たさなければ従来の ELPA/ScaLAPACK に流れる。</p>
+<table>
+<thead><tr><th style="width:34%;">ファイル</th><th style="width:16%;">変更行数</th><th>GPU 対角化の挿入箇所</th></tr></thead>
+<tbody>
+<tr><td><code>Band_DFT_Col_CWF.c</code></td><td>+74/−6</td><td>Zheevx × 3(S・H・CWF バンド)</td></tr>
+<tr><td><code>Band_DFT_Col_DMmu.c</code></td><td>+75/−5</td><td>Zheevx × 4</td></tr>
+<tr><td><code>Band_DFT_NonCol_CWF.c</code></td><td>+76/−11</td><td>Zheevx × 3</td></tr>
+<tr><td><code>Band_DFT_NonCol_DMmu.c</code></td><td>+76/−5</td><td>Zheevx × 4</td></tr>
+<tr><td><code>Cluster_DFT_Col_CWF.c</code></td><td>+64/−5</td><td>Dsyevx × 2</td></tr>
+<tr><td><code>Cluster_DFT_Col_DMmu.c</code></td><td>+63/−4</td><td>Dsyevx × 2</td></tr>
+<tr><td><code>Cluster_DFT_Col_LNO.c</code></td><td>+66/−5</td><td>Dsyevx × 2</td></tr>
+<tr><td><code>Cluster_DFT_NonCol_CWF.c</code></td><td>+65/−2</td><td>Dsyevx × 1 + Zheevx × 1</td></tr>
+<tr><td><code>Cluster_DFT_NonCol_DMmu.c</code></td><td>+66/−3</td><td>Dsyevx × 1 + Zheevx × 1</td></tr>
+<tr><td><code>Electric_Polarization_BandCol.c</code></td><td>+27/−5</td><td>Dsyevx × 1 + Zheevx × 4(DM・重なり・H・ABC)</td></tr>
+<tr><td><code>Electric_Polarization_BandNonCol.c</code></td><td>+40/−14</td><td>Zheevx × 5(ELPA1 側フォールバック条件の調整も含む)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 7-1: 定型 GPUSOLVER 分岐が挿入されたファイル群</figcaption>
+
+<h2>7.11 汎用固有値ルーチン — Eigen_lapack.c / EigenBand_lapack.c</h2>
+<ul>
+  <li><code>Eigen_lapack()</code>(実対称)は <code>flag != ELPA1/2 &amp;&amp; n ≥ 1000</code> で
+  <code>Eigen_gpusolver_x</code>(→ <code>gpusolver_Syevdx</code>)へ分岐。
+  <b>Eigen_lapack を呼ぶ 20 以上のファイル(軌道最適化・DC・LNO など)が自動的に GPU 化の恩恵を受ける</b>。
+  上位に固有ベクトル直交性検査つきのソルバ巡回リトライがある。</li>
+  <li><code>EigenBand_lapack()</code>(エルミート)は N ≥ 1000 で <code>gpusolver_zheevx</code> へ。
+  失敗時は CPU の Householder 法 <code>Eigen_HH</code> にフォールバック。</li>
+  <li>両者とも OpenACC デバイス常駐配列を直接処理する <code>_openacc</code> エントリを持ち、
+  非共線 DC の OpenACC 経路などから使われる。2 次元配列⇔1 次元デバイス配列の詰め替えも device 上で行う。</li>
+</ul>
+</section>
+
+<!-- ==================== 第 8 章 ==================== -->
+<section id="ch8">
+<h1>8. GPU 化以外の変更点</h1>
+
+<h2>8.1 OpenMP バグ修正 — private 指定漏れによるヒープ破壊の解消</h2>
+<p>オリジナル OpenMX 4.0 の <code>Stress.c</code> と <code>Total_Energy.c</code> には、
+<code>#pragma omp parallel</code> の <code>private()</code> 節にループ変数 <code>i</code> が入っておらず、
+<b>暗黙 shared の <code>i</code> を複数スレッドが同時に読み書きする競合</b>があった。
+あるスレッドがループ境界を判定した直後に別スレッドが <code>i</code> を進めると配列の範囲外アクセスが起こり、
+ヒープ破壊(malloc メタデータの破損)として顕在化する。本 GPU 版の開発中に runtest のクラッシュ原因として特定され、
+修正された(コミット <code>d451eeb8</code>)。</p>
+<p class="src">Stress.c:729 — 修正内容(private リスト末尾への <code>,i</code> 追加。Total_Energy.c:2085 も同形)</p>
+<pre><code>/* 修正前(オリジナル)*/
+#pragma omp parallel ... private(OMPID,Nthrds,Nprocs,Mc_AN,(中略),sumt1,sumt2,sumt3,sumt4,sumt5)
+
+/* 修正後(GPU 版)*/
+#pragma omp parallel ... private(OMPID,Nthrds,Nprocs,Mc_AN,(中略),sumt1,sumt2,sumt3,sumt4,sumt5,i)</code></pre>
+<ul>
+  <li><code>Stress.c</code>: 競合箇所は並列リージョン内の <code>for (i=0; i&lt;9; i++){ sumt1[i]=0.0; … }</code>
+  (原子ループ内で毎回実行)。このファイルの差分はこの 1 行のみ。</li>
+  <li><code>Total_Energy.c</code>: <code>Calc_EXC_EH1()</code> の Lebedev 球面グリッド積分並列区間。
+  競合ループは <code>for (i=0; i&lt;(FNAN[Gc_AN]+1); i++)</code> で <code>Dr[i][ir][ia]</code> 等を添字アクセスするため、
+  競合時に確保域外を指し得る(ヒープ破壊経路)。</li>
+</ul>
+<div class="note"><b>意義:</b> この 2 件はオリジナル OpenMX 4.0 にも存在するバグであり、GPU と無関係に
+OpenMP スレッド並列(スレッド数 ≥ 2)で発症し得る。CPU 版 OpenMX を使う場合にも適用価値がある修正である。</div>
+
+<h2>8.2 メモリ管理・堅牢化</h2>
+<table>
+<thead><tr><th style="width:24%;">ファイル</th><th>修正内容</th></tr></thead>
+<tbody>
+<tr><td><code>openmx.c</code></td><td>起動直後に <code>Raise_Stack_Limit()</code> を呼び、スタックのソフトリミットをハードリミットまで自動で引き上げる(<code>getrlimit/setrlimit(RLIMIT_STACK)</code>)。<code>ulimit -s</code> 未設定環境での大きなスタック配列によるクラッシュ対策</td></tr>
+<tr><td><code>truncation.c</code> / <code>Free_Arrays.c</code></td><td><code>VNA_Grid</code> / <code>VNA_Grid_B</code> / <code>VEF_Grid</code> / <code>VEF_Grid_B</code> の free 後に NULL 代入を追加(二重 free 防止)</td></tr>
+<tr><td><code>Set_Nonlocal.c</code></td><td>固定サイズ配列をオーバーフロー検査付きヒープ確保に置換(§7.7)</td></tr>
+<tr><td><code>Free_Arrays.c</code></td><td>終了時(wherefrom==0)に <code>openmx_gemmul8ReleaseWorkspaces()</code> を呼ぶ(GPU 関連)</td></tr>
+</tbody>
+</table>
+<p class="src">openmx.c:75-88 — Raise_Stack_Limit(全文)</p>
+<pre><code>static void Raise_Stack_Limit(void)
+{
+#ifdef RLIMIT_STACK
+  struct rlimit limit;
+
+  if (getrlimit(RLIMIT_STACK,&amp;limit)!=0) return;
+  if (limit.rlim_cur==RLIM_INFINITY) return;
+  if (limit.rlim_max==0 || limit.rlim_cur==limit.rlim_max) return;
+
+  limit.rlim_cur = limit.rlim_max;
+  setrlimit(RLIMIT_STACK,&amp;limit);
+#endif
+}</code></pre>
+
+<h2>8.3 その他の修正</h2>
+<table>
+<thead><tr><th style="width:24%;">ファイル</th><th>修正内容</th></tr></thead>
+<tbody>
+<tr><td><code>Runtest.c</code></td><td>(1) 入力ファイル判定を <code>strstr</code> による部分一致から末尾一致 <code>has_dat_suffix()</code> に厳密化(<code>foo.dat~</code> 等の誤検出防止)。(2) 各テスト実行前に旧 <code>&lt;System.Name&gt;.out</code> を削除し、前回結果の混入を防止(MPI_Barrier 付き)</td></tr>
+<tr><td><code>Spherical_Bessel.c</code></td><td>ホットパスの呼び出し毎 malloc/free(漸化式係数配列)を除去し、係数をインライン計算化(数式は同一)</td></tr>
+<tr><td><code>openmx_common.h</code></td><td>インクルードガードを追加(オリジナルには無かった)。バージョン文字列を "4.0" → "4.0 GPU" に変更</td></tr>
+<tr><td><code>Input_std.c</code></td><td>GPU 関連キーワードの追加(第 10 章)</td></tr>
+<tr><td><code>mpao.c</code></td><td><code>#include &lt;ctype.h&gt;</code> の 1 行差のみ(ビルド対象外のユーティリティで影響なし)</td></tr>
+</tbody>
+</table>
+</section>
+<!-- ==================== 第 9 章 ==================== -->
+<section id="ch9">
+<h1>9. ビルドシステム</h1>
+
+<h2>9.1 ツールチェーンの全面刷新</h2>
+<p>オリジナルの <code>makefile</code>(Intel oneAPI + MKL)は <code>Makefile</code>(NVHPC + CUDA + 自前 FFTW + GEMMul8)に
+全面書き換えされた。原本は <code>makefile.cpu_intel.bak</code> としてバイト単位で同一保存されている。</p>
+<table>
+<thead><tr><th style="width:22%;">項目</th><th style="width:36%;">オリジナル(makefile)</th><th>GPU 版(Makefile)</th></tr></thead>
+<tbody>
+<tr><td>C コンパイラ</td><td><code>mpiicx -O3 -xHOST -qopenmp</code></td><td>NVHPC 同梱 OpenMPI の <code>mpicc</code>(nvc)+ <code>-acc -Minfo=accel -std=c11 -mtune=native -march=native -fopenmp</code></td></tr>
+<tr><td>Fortran</td><td><code>mpiifx</code></td><td><code>mpif90</code>(nvfortran)<code>-O2 -fopenmp</code></td></tr>
+<tr><td>BLAS/LAPACK</td><td>MKL(静的)</td><td>NVHPC 同梱の静的 <code>liblapack_lp64.a</code> / <code>libblas_lp64.a</code></td></tr>
+<tr><td>ScaLAPACK</td><td>MKL ScaLAPACK</td><td>HPC-X OpenMPI 側の <code>libscalapack_lp64.a</code></td></tr>
+<tr><td>FFT</td><td>MKL FFTW ラッパ</td><td>自前ビルドの静的 FFTW 3.3.11(third_party)</td></tr>
+<tr><td>GPU ライブラリ</td><td>—</td><td><code>-lcudart -lcusolver -lcublas -lcublasLt -lcuda -lnvidia-ml -lnvJitLink -cuda</code> + <code>libgemmul8.a</code></td></tr>
+<tr><td>SDK 前提</td><td>Intel oneAPI</td><td><code>NVHPC_ROOT ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.3</code>、<code>NVHPC_CUDA_VERSION ?= 13.1</code>(変数で上書き可)</td></tr>
+</tbody>
+</table>
+<p><b>ビルド環境の隔離:</b> <code>Makefile:69-104</code> で <code>PATH</code> を NVHPC のみに固定し、
+<code>CPATH</code>/<code>LD_LIBRARY_PATH</code>/<code>CC</code> など 30 個超の環境変数を <code>unexport</code> する。
+ユーザー環境の CFLAGS 等は効かない(意図的)。</p>
+<p class="src">Makefile:131-140 — コンパイラ定義(抜粋)</p>
+<pre><code>COMMON_INCLUDES = $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_CUDA_HOME)/include
+COMMON_CFLAGS   = -w -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp $(COMMON_INCLUDES)
+
+CC  = $(MPICC) $(COMMON_CFLAGS) -O3
+CC2 = $(MPICC) $(COMMON_CFLAGS) -O1
+CC3 = $(MPICC) $(COMMON_CFLAGS) -O2
+CC_NOACC = $(filter-out -Minfo=accel -acc,$(CC2))
+CC_NOACC_O3 = $(filter-out -Minfo=accel -acc,$(CC))
+CC_DFTD3 = $(MPICC) -w -O0 -std=c11 -fopenmp $(COMMON_INCLUDES)
+FC = $(MPIF90) -O2 -mtune=native -march=native -fopenmp $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include</code></pre>
+<p>オリジナルは全ファイル <code>$(CC)</code> 一本だったのに対し、GPU 版は<b>ファイル別の最適化・OpenACC 調整</b>を行う
+(表 6-1)。OpenACC のターゲットアーキ指定(<code>-gpu=ccXX</code>)はなく、ビルドマシンの GPU を自動検出する。
+クロスターゲットしたい場合は <code>COMMON_CFLAGS</code> に追加する。</p>
+
+<h2>9.2 リンク構成</h2>
+<p class="src">Makefile:142-150, 172(抜粋)</p>
+<pre><code>NVPL_SCALAPACK_LIB ?= $(NVHPC_MPI_LIBDIR)/libscalapack_lp64.a
+NVPL_LAPACK_LIB    ?= $(NVHPC_COMPILER_LIB)/liblapack_lp64.a
+NVPL_BLAS_LIB      ?= $(NVHPC_COMPILER_LIB)/libblas_lp64.a
+NVPL_LIBS          ?= -Wl,--start-group $(NVPL_SCALAPACK_LIB) $(NVPL_LAPACK_LIB) $(NVPL_BLAS_LIB) -Wl,--end-group
+CUDA_LIBS          ?= ... -Wl,--no-as-needed -lnvJitLink -Wl,--as-needed -lcudart -lcusolver -lcublas -cuda
+LIB = $(FFTW3_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm -ldl $(CUDA_LIBS)
+...
+LIB += -lcublasLt -lcuda -lnvidia-ml -lstdc++</code></pre>
+<p>リンク行は <code>$(CC) $(OBJS) $(GEMMUL8_LIB) $(LIB) -lm -o openmx</code>(<code>Makefile:337-338</code>)。
+OBJS への追加分: <code>Total_Energy_GPU.o</code>、<code>gemmul8_bridge.o</code>、
+<code>gpusolver_Syevd.o gpusolver_Syevdx.o set_cuda_default_device_from_local_rank.o
+set_openacc_device_from_local_rank.o</code>、<code>OutData_Binary.o</code>(呼び出し元のないデッドリンク)。
+かつて含まれていた <code>my_cublasDgemm.o my_cublasZgemm.o</code> は <code>a7f8cba6</code> で削除された。
+<b><code>openmx_cuda_kernels.o</code> は含まれない</b>(§6.4)。</p>
+
+<h2>9.3 third_party の自動ビルド</h2>
+<p>既定ターゲットが <code>openmx: $(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS)</code> のため、
+素の <code>make</code> で FFTW3 → GEMMul8 → 本体の順に全自動でビルドされる。両者とも git submodule である
+(<code>.gitmodules</code>: RIKEN-RCCS/GEMMul8、FFTW/fftw3)。</p>
+<h3>FFTW 3.3.11</h3>
+<ul>
+  <li>submodule の git ソースには生成済み codelets が無いため、番兵ファイルの有無を確認し、無ければ
+  <code>https://fftw.org/fftw-3.3.11.tar.gz</code>(リポジトリにもコミット済み)から
+  <code>rsync --ignore-existing</code> で不足ファイルのみ補完する。</li>
+  <li>タグ <code>fftw-3.3.11</code> ちょうどのチェックアウトかを検証し、必要なら <code>autoreconf</code>。
+  out-of-tree(<code>build/fftw3</code>)で <code>configure --enable-static --disable-shared</code>
+  (コンパイラは nvc/nvc++/nvfortran)→ <code>make install</code> で <code>third_party/fftw3-install</code> へ。</li>
+</ul>
+<h3>GEMMul8</h3>
+<ul>
+  <li>コミット <code>884a2875…</code> に固定 fetch/checkout(理由は §4.7)。上流のビルドシステムは使わず、
+  <code>gemmul8_openmx.cu</code> 1 ファイルを nvcc でコンパイルして <code>ar rcs</code> で
+  <code>libgemmul8.a</code> を自前生成する。</li>
+</ul>
+<p class="src">Makefile:716-727 — GEMMul8 の取得と単一 TU ビルド</p>
+<pre><code>$(GEMMUL8_DIR)/Makefile:
+	mkdir -p $(GEMMUL8_REPO_DIR)
+	cd $(GEMMUL8_REPO_DIR) &amp;&amp; \
+	  { [ -d .git ] || git init -q .; } &amp;&amp; \
+	  { git remote get-url origin &gt;/dev/null 2&gt;&amp;1 || git remote add origin $(GEMMUL8_REPO_URL); } &amp;&amp; \
+	  git fetch --depth 1 origin $(GEMMUL8_COMMIT) &amp;&amp; \
+	  git checkout -q $(GEMMUL8_COMMIT)
+$(GEMMUL8_OPENMX_OBJ): gemmul8_openmx.cu $(GEMMUL8_DIR)/Makefile
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_openmx.cu -o $(GEMMUL8_OPENMX_OBJ)
+$(GEMMUL8_LIB): $(GEMMUL8_OPENMX_OBJ)
+	mkdir -p $(GEMMUL8_DIR)/lib
+	ar rcs $(GEMMUL8_LIB) $(GEMMUL8_OPENMX_OBJ)</code></pre>
+<p><code>clean</code> は <code>fftw3-clean</code>(build/fftw3 と fftw3-install を削除)と
+<code>gemmul8-clean</code>(libgemmul8.a を削除)を含むよう拡張された。つまり <code>make clean</code> 後は
+third_party の再ビルドが必要になる。</p>
+
+<h2>9.4 ELPA(elpa-2018.05.001)</h2>
+<p><code>elpa-2018.05.001/</code> ディレクトリは<b>オリジナルと完全同一</b>(diff 差分なし)。
+オブジェクトリストも同一で、カーネルは generic CPU 版のまま(<b>ELPA の GPU カーネルは使っていない</b>)。
+違いは Fortran コンパイラが mpiifx → nvfortran になった点のみ。GPU 版でも n &lt; 1000 の系や
+GPU 条件を満たさない経路では ELPA が現役で使われるため、この維持は重要である。</p>
+
+<h2>9.5 派生 Makefile</h2>
+<ul>
+  <li><b><code>makefile.cpu_intel.bak</code></b> — オリジナル makefile のバイト同一コピー(CPU/Intel 構成の保存)。</li>
+  <li><b><code>Makefile.bunshiken</code></b> — 共用計算機(モジュール環境: <code>nvhpc/25.9-nompi</code> +
+  <code>openmpi/5.0.8</code> + <code>gcc-toolset/15</code>)向けの変種。NVHPC 25.9 + 外部 OpenMPI、CUDA 13.0、
+  nvcc ホストコンパイラが g++、GEMMul8 が旧レイアウト(コミット固定なし)、オブジェクト名が gpusolver リネーム前の
+  <code>cusolver_*.o</code> のまま、という点で<b>主 Makefile より一世代古い</b>。他環境へ移植する際の参考例。</li>
+</ul>
+
+<h2>9.6 ビルド手順と注意</h2>
+<ol>
+  <li><code>git clone --recursive</code>(submodule: fftw3, GEMMul8。GEMMul8 は無くても make が自動 fetch する)。</li>
+  <li><code>source/</code> で <code>make</code>(既定ゴール openmx)。FFTW3 の補完→configure→install、
+  GEMMul8 のコンパイル→ar、本体のコンパイル→リンクまで一括実行される。</li>
+  <li><code>make install</code> で <code>../work/openmx</code> にコピー。ユーティリティ群は <code>make all</code>。</li>
+</ol>
+<div class="warn"><b>ビルド時の注意:</b>
+(1) NVHPC のバージョンを変えると §6.5 のミスコンパイル回避策の再検証が必要。
+(2) HPC-X のパスにはバージョン文字列(hpcx-2.25.1)がハードコードされており、SDK 更新時は修正が要る。
+(3) GEMMul8 のアーキは <code>make GEMMUL8_GPU_ARCH=90</code> のように上書き可能(既定は nvidia-smi 自動検出)。
+(4) オリジナルにあった API ライブラリ(libopenmx_api)・elpa_col などの補助ターゲットは削除されている。
+(5) 並列 make(-j)は依存関係上は可能な構成だが、本プロジェクトの運用では明示指定時のみ使用している。</div>
+</section>
+
+<!-- ==================== 第 10 章 ==================== -->
+<section id="ch10">
+<h1>10. 実行時制御リファレンス</h1>
+
+<h2>10.1 入力ファイルキーワード</h2>
+<p>GPU 機能に関して追加・拡張された入力キーワードは次の 2 つだけである(それ以外の調整はすべて環境変数)。</p>
+<p class="src">Input_std.c:777-791 — 追加部分(全文)</p>
+<pre><code>/* "cusolver" is a deprecated alias of "gpusolver"; ... */
+s_vec[0]="elpa2"; s_vec[1]="lapack"; s_vec[2]="elpa1";    s_vec[3]="gpusolver"; s_vec[4]="cusolver";
+i_vec[0]=ELPA2;   i_vec[1]=0;        i_vec[2]=ELPA1;       i_vec[3]=GPUSOLVER;   i_vec[4]=-GPUSOLVER;
+input_string2int("scf.eigen.lib", &amp;scf_eigen_lib_flag, 5, s_vec,i_vec);
+if (scf_eigen_lib_flag==-GPUSOLVER){
+  if (myid==Host_ID){
+    printf("Warning: scf.eigen.lib=cusolver is deprecated; use scf.eigen.lib=gpusolver instead.\n");
+  }
+  scf_eigen_lib_flag = GPUSOLVER;
+}
+scf_eigen_lib_flag_input = scf_eigen_lib_flag;
+
+/* use GPU? (added by H.Kawai, February 2024) */
+input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
+<table>
+<thead><tr><th style="width:22%;">キーワード</th><th style="width:10%;">型</th><th style="width:12%;">既定値</th><th>意味</th></tr></thead>
+<tbody>
+<tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>elpa2</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格</td></tr>
+<tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>ノード内で使用する GPU 台数の上限。現在は DC-LNO の GPU 台数切り詰めにのみ使用(既定 30 は実質「検出された全 GPU を使う」)</td></tr>
+</tbody>
+</table>
+
+<h2>10.2 環境変数一覧</h2>
+<p>GPU 実行のチューニングは環境変数で行う設計である(入力ファイルを変えずにジョブスクリプト側で調整できる)。
+<code>OPENMX_</code> 接頭辞版と <code>GEMMUL8_</code> 接頭辞版がある変数は OPENMX_ 版が優先される。</p>
+<table>
+<thead><tr><th style="width:34%;">環境変数</th><th style="width:10%;">既定値</th><th>意味(定義箇所)</th></tr></thead>
+<tbody>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8(gemmul8_bridge.cu)</b></td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>GEMMul8 を無効化し cuBLAS FP64 に固定(全体 / 実数のみ / 複素のみ)</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>15</td><td>法の個数(精度)。範囲 2〜20、範囲外は 15 に戻る</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_FASTMODE_D</code> / <code>_Z</code></td><td>0</td><td>高速スケーリングモード(精度低下)</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_MAX_WORKSPACE_PERCENT</code></td><td>30</td><td>ワークスペースの総 VRAM 比上限(Band_DFT_NonCol は未設定時 50 を setenv)</td></tr>
+<tr><td><code>(OPENMX_)GEMMUL8_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>ワークスペース確保後に残すべき最低空き VRAM</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>バンド計算の並列度・常駐制御(Band_DFT_Col.c / Band_DFT_NonCol.c)</b></td></tr>
+<tr><td><code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS</code></td><td>1</td><td>GPU ターン直列化の有効/無効(0 で並行投入)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_TURN_GROUP</code></td><td>4</td><td>同時に走ってよい GPU ターン数(グループ幅)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code></td><td>4</td><td><code>all_knum≠1</code> の第 1 対角化ループの同時 k 数。<code>8c7801fa</code> で上限 4 にクランプ。NonCol では指定値にも適応制限(§5.5.2)が掛かる</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code></td><td>—</td><td>上記 2 ノブの共通フォールバック値(1 GPU あたり同時ランク数)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_PERSISTENT</code></td><td>0</td><td>SCF 反復間のデバイスバッファ常駐(共有 GPU では非推奨)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB</code></td><td>2048</td><td>常駐を許す最低空き VRAM</td></tr>
+<tr><td><code>OPENMX_BAND_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>ターン毎の GEMMul8 ワークスペース解放(0 で保持)</td></tr>
+<tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>性能計測カウンタの表示</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>DC 法(Divide_Conquer.c)</b></td></tr>
+<tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>1000</td><td>GPU 化する局所クラスタ次元の下限</td></tr>
+<tr><td><code>(OPENMX_)GPUSOLVER_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>固有値ソルバ用確保後の最低空き VRAM(preflight)</td></tr>
+<tr><td><code>OPENMX_CUBLAS_MIN_FREE_AFTER_MB</code></td><td>—</td><td>cuBLAS 用の同上</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>行列要素構築のオプトイン(Set_Hamiltonian.c / Set_OLP_Kin.c)</b></td></tr>
+<tr><td><code>OPENMX_SETHAM_BASE_GPU</code></td><td>0</td><td>H の base 結合を GPU 実行(実測では CPU が速い)</td></tr>
+<tr><td><code>OPENMX_OLPKIN_RADIAL_GPU</code></td><td>0</td><td>重なり・運動行列要素の動径積分を GPU 実行(スレッド数 1 必須。転送律速で通常は CPU が速い)</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 10-1: GPU 関連環境変数の一覧</figcaption>
+
+<h2>10.3 チューニング指針</h2>
+<ol>
+  <li><b>まず既定値で走らせる</b> — 既定値は「16 GB 級 GPU を複数ランクで共有」する構成に合わせて保守的に調整されている。</li>
+  <li><b>stderr を確認する</b> — "GEMMul8 workspace fallback" 警告が出ていれば VRAM 不足で FP64 に落ちている。
+  ランク数を減らす、<code>OPENMX_BAND_GPU_TURN_GROUP</code> を小さくする、<code>NUM_MOD</code> を下げる、などで対処。</li>
+  <li><b>GPU を占有できる場合</b> — <code>OPENMX_BAND_GPU_PERSISTENT=1</code>、
+  <code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS=0</code>(または TURN_GROUP を大きく)で転送・同期を減らせる余地がある。</li>
+  <li><b>再現性を最優先する場合</b> — <code>OPENMX_GEMMUL8_DISABLE=1</code> で GEMM を FP64 に固定すると、
+  メモリ状況によるエンジン切替の影響を排除できる(§4.8)。</li>
+  <li><b>DC/DC-LNO</b> — 局所クラスタが小さい系では GPU 化対象が少ない。<code>OPENMX_DC_GPU_THRESHOLD</code> を下げると
+  対象は増えるが、小行列では転送コストが勝ちやすい。</li>
+</ol>
+</section>
+
+<!-- ==================== 第 11 章 ==================== -->
+<section id="ch11">
+<h1>11. 制約・注意点の総まとめ</h1>
+
+<h2>11.1 ビルド・実行環境の前提</h2>
+<ul>
+  <li><b>このツリーは CPU 専用にビルドできない</b>(CUDA ヘッダを無条件 include)。CPU 版が必要なら
+  オリジナルまたは <code>makefile.cpu_intel.bak</code> を使う。</li>
+  <li>NVHPC 26.3 + CUDA 13.1 が既定。バージョン変更時は §6.5 のミスコンパイル回避一覧を再検証すること。</li>
+  <li>GEMMul8 は INT8 Tensor Core 必須・単一アーキビルド。GPU 世代を変えたら再ビルド。</li>
+  <li>GPU 実行時は MPI のみ(OpenMP スレッド 1)の運用が想定されている。<code>Set_OLP_Kin</code> の GPU 経路は
+  <code>Nthrds==1</code> を明示的に要求する。</li>
+</ul>
+
+<h2>11.2 メモリ設計の目安</h2>
+<ul>
+  <li>1 ランクあたりの VRAM 需要(バンド計算・次元 n): 複素密行列 16n² バイト × 数本 + syevdx ワークスペース
+  + GEMMul8 ワークスペース(約 1 GiB、複素は実数の約 3 倍)。</li>
+  <li>共有 GPU では「同時ランク数 × 上記」が空き VRAM に収まる必要がある。Band 系は自動制御(ターン直列化・適応制限)が
+  働くが、Cluster root-dense や DC-LNO direct dispatch には同等の自動絞り込みはない(DC は preflight あり)。</li>
+</ul>
+
+<h2>11.3 数値再現性</h2>
+<ul>
+  <li><b>ビット単位の再現を壊し得る要因:</b> (1) GEMMul8 ⇄ cuBLAS FP64 のメモリ状況による切替、
+  (2) scatter-add の <code>acc atomic</code>/atomicAdd(加算順非決定)、(3) S の小固有値処理の経路差、
+  (4) GEMMul8 の環境変数設定差(num_moduli / fastmode)。</li>
+  <li><b>再現に配慮した設計:</b> DM 構築の <code>loop seq</code> 逐次縮約、GEMMul8 自体の bitwise 再現性、
+  ベッセルテーブルの bit 一致キャッシュ、(未結線だが)openmx_cuda_kernels.cu の逐次縮約カーネル。</li>
+  <li>検証時は <code>OPENMX_GEMMUL8_DISABLE=1</code> と十分な VRAM 余裕で条件を固定するのが確実。</li>
+</ul>
+
+<h2>11.4 ハング・異常終了</h2>
+<ul>
+  <li><code>wait_cudafunc</code> は恒久エラーで無限ループする(§3.6)。「GPU 実行が止まって見える」ときの第一容疑者。</li>
+  <li>固有値計算失敗時の挙動は経路により abort / CPU フォールバック / 素通りと異なる(表 5-2)。</li>
+  <li>collective 版デバイス割当関数は全ランク一斉呼び出しが前提(片側だけ呼ぶとデッドロック)。</li>
+</ul>
+
+<h2>11.5 AMD GPU など他ベンダーへの移植観点</h2>
+<ul>
+  <li>gpusolver 命名は準備済みだが、切替はマクロ等で機構化されていない。cuSOLVER 依存点は
+  <code>gpusolver_Syevd(x).c</code> と各ソルバの常駐コンテキスト(Xsyevdx 直接呼び出し)に集約されている。</li>
+  <li>cuBLAS 依存点は Ddgmm/Zdgmm と GEMMul8 ブリッジ(内部 INT8 GEMM とフォールバック GEMM)。GEMMul8 は上流に HIP/ROCm バックエンドがあるが、
+  本統合(単一 TU 実体化)は CUDA 経路のみを実体化している。</li>
+  <li>OpenACC は NVHPC 依存(AMD なら OpenMP target offload などへの書き換えが必要)。
+  <code>wait_cudafunc</code> の「戻り値 0 = 成功」前提も移植時の確認点。</li>
+</ul>
+
+<h2>11.6 オリジナルから挙動が変わる非 GPU 項目</h2>
+<ul>
+  <li>OpenMP 並列時のヒープ破壊バグ 2 件が修正済み(§8.1)— オリジナルにも存在するバグ。</li>
+  <li>起動時にスタックのソフトリミットが自動で引き上げられる(§8.2)。</li>
+  <li>runtest の判定・実行手順が厳密化されている(§8.3)。</li>
+  <li>バージョン文字列は "4.0 GPU"。</li>
+</ul>
+
+<h2>11.7 休眠・準備コード一覧(改修時の誤解防止)</h2>
+<table>
+<thead><tr><th style="width:36%;">コード</th><th>状態と位置づけ</th></tr></thead>
+<tbody>
+<tr><td><code>gpusolver_Syevd</code>(Xsyevd 版)</td><td>呼び出し 0 件(Syevdx 版に統一された)。旧式の「大域 rank % デバイス数」割当が残る</td></tr>
+<tr><td><code>LU_Zinverse_GPU</code></td><td>実装完了・呼び出しコメントアウト。NEGF 表面グリーン関数の GPU 化布石(§5.7)</td></tr>
+<tr><td><code>openmx_cuda_kernels.cu/.h</code></td><td>bitwise 再現検証済みの生 CUDA カーネル集。git 未追跡・ビルド対象外・呼び出し 0 件(§6.4)</td></tr>
+<tr><td><code>ClusterCol_GpuSolverDensePath</code></td><td>到達不能の旧経路(root-dense 経路が先に goto する)</td></tr>
+<tr><td>DMmu/CWF/LNO 系の GEMMul8 ヘルパ、<code>BandCol_GpuSolver_Zgemm_OpenACC</code>、<code>ClusterCol_GEMMul8Dgemm_OpenACC</code></td><td>定義のみ(将来の GEMM GPU 化の準備)。なお <code>my_cublasDgemm/Zgemm</code> は <code>a7f8cba6</code> で削除済み</td></tr>
+<tr><td>DC-LNO の GPU プロキシ機構</td><td><code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code> で温存(実験用)</td></tr>
+<tr><td><code>OutData_Binary.o</code> / <code>getDeviceCount()</code> 宣言</td><td>デッドリンク / デッド宣言</td></tr>
+</tbody>
+</table>
+<figcaption style="font-size:8.2pt;color:#5c6675;">表 11-1: 休眠・準備コードの一覧</figcaption>
+</section>
+<!-- ==================== 付録 A ==================== -->
+<section id="appA">
+<h1>付録 A. 変更ファイル一覧(37 ファイル)</h1>
+<p>+n/−m は生の diff 行数。全面再整形されたファイルは空白・空行無視の実質変更行数を括弧内に付記。
+分類: <b>GPU</b>=GPU 化、<b>OMP</b>=OpenMP 修正、<b>FIX</b>=バグ修正・堅牢化、<b>OPT</b>=CPU 最適化、<b>BLD</b>=ビルド、<b>MISC</b>=その他。</p>
+<table>
+<thead><tr><th style="width:26%;">ファイル</th><th style="width:16%;">+n/−m(実質)</th><th style="width:8%;">分類</th><th>変更概要</th></tr></thead>
+<tbody>
+<tr><td><code>Band_DFT_Col.c</code></td><td>+4,116/−2,491(3,667)</td><td>GPU</td><td>コリニアバンドの全面 GPU 化: 密行列構築キャッシュ、Xsyevdx 対角化、GEMMul8 三重積、S 変換キャッシュ、GPU ターン直列化、all_knum 両経路</td></tr>
+<tr><td><code>Band_DFT_NonCol.c</code></td><td>+3,260/−91(2,736)</td><td>GPU</td><td>非コリニアバンドの GPU 化: OpenACC 常駐 root-dense 経路、VRAM 見積りによる適応並列度制限</td></tr>
+<tr><td><code>Cluster_DFT_Col.c</code></td><td>+1,016/−12(859)</td><td>GPU</td><td>root-dense GPU 対角化経路、S 変換のデバイスキャッシュ、packed キャッシュからの行列構築、固有ベクトル分配</td></tr>
+<tr><td><code>Cluster_DFT_NonCol.c</code></td><td>+1,706/−218(1,252)</td><td>GPU</td><td>root-dense 対角化(Dsyevx/Zheevx)、GEMMul8 × 12、固有ベクトルキャッシュと scatter、DM/EDM 縮約</td></tr>
+<tr><td><code>Divide_Conquer.c</code></td><td>+4,399/−2,978(2,223)</td><td>GPU</td><td>DC 法の GPU 化: 原子別クラスタの Xsyevdx、GEMMul8→cuBLAS→CPU 多段 GEMM、VRAM preflight と sticky 無効化</td></tr>
+<tr><td><code>Divide_Conquer_LNO.c</code></td><td>+1,934/−2,007(1,879)</td><td>GPU</td><td>DC-LNO の GPU 化: direct per-rank dispatch(プロキシ機構は温存)、しきい値 800</td></tr>
+<tr><td><code>Krylov.c</code></td><td>+366/−16</td><td>GPU</td><td>スレッド別 GPU ワークスペースプール、dgemm 4 箇所→GEMMul8、部分空間対角化→gpusolver</td></tr>
+<tr><td><code>Band_DFT_Col_CWF.c</code> ほか定型 9 ファイル(§7.10)</td><td>各 +63〜76/−2〜11</td><td>GPU</td><td>ELPA2 分岐手前への定型 GPUSOLVER 分岐挿入(dense_utils 経由 Dsyevx/Zheevx)</td></tr>
+<tr><td><code>Electric_Polarization_BandCol.c</code> / <code>_BandNonCol.c</code></td><td>+27/−5、+40/−14</td><td>GPU</td><td>分極計算の対角化 5 箇所ずつに GPUSOLVER 分岐</td></tr>
+<tr><td><code>Eigen_lapack.c</code></td><td>+143/−8</td><td>GPU</td><td>n≥1000 で gpusolver_Syevdx へ分岐、OpenACC 直結版を追加。呼び出し元 20+ ファイルが自動恩恵</td></tr>
+<tr><td><code>EigenBand_lapack.c</code></td><td>+112/−3</td><td>GPU</td><td>複素版: gpusolver_zheevx 分岐、失敗時 Eigen_HH フォールバック</td></tr>
+<tr><td><code>Lapack_LU_inverse.c</code></td><td>+134/−4</td><td>GPU</td><td>cublasZgetrf/ZgetriBatched による LU_Zinverse_GPU を追加(呼び出しはコメントアウト=休眠)</td></tr>
+<tr><td><code>Set_Hamiltonian.c</code></td><td>+1,999/−1,149(1,784)</td><td>GPU</td><td>格子積分の OpenACC 版(現在無効)+GPUSOLVER 用 packed H/S キャッシュ API 新設+メモリ Allreduce 判定</td></tr>
+<tr><td><code>Set_Nonlocal.c</code></td><td>+1,356/−306</td><td>GPU/FIX</td><td>動径 k 積分の OpenACC 化+固定配列のヒープ化(オーバーフロー検査付き)</td></tr>
+<tr><td><code>Set_OLP_Kin.c</code></td><td>+529/−181</td><td>GPU/OPT</td><td>動径積分の OpenACC 化(オプトイン)+bit 一致ベッセルテーブルキャッシュ</td></tr>
+<tr><td><code>Total_Energy.c</code></td><td>+319/−115</td><td>GPU/OMP</td><td>EH0 二中心項バッチ・EXC/EH1・双極子・CWF-Dc の GPU 縮約呼び出し+OpenMP private 修正</td></tr>
+<tr><td><code>Total_Energy_GPU.c</code>(新規扱い)</td><td>517 行</td><td>GPU</td><td>Total_Energy 用 OpenACC カーネル集(-acc 分離ビルドのため別 TU)</td></tr>
+<tr><td><code>Force.c</code></td><td>+11,522/−11,115(3,672)</td><td>GPU</td><td>力 #2/#4/#5 の OpenACC 縮約(#4B は CPU 維持)。raw 行数の大半は全面再インデント</td></tr>
+<tr><td><code>Stress.c</code></td><td>+1/−1</td><td>OMP</td><td>OpenMP private リストに i を追加(ヒープ破壊修正)</td></tr>
+<tr><td><code>DFT.c</code></td><td>+172/−4</td><td>GPU</td><td>GPU デバイス初期化、OpenACC 実行ランク選抜、packed キャッシュ準備、NonCol 固有ベクトル scatter</td></tr>
+<tr><td><code>Input_std.c</code></td><td>+15/−3</td><td>GPU</td><td>scf.eigen.lib への gpusolver 追加(cusolver は非推奨エイリアス)、scf.Gpu.Num 追加</td></tr>
+<tr><td><code>openmx_common.h</code></td><td>+93/−13</td><td>GPU/MISC</td><td>CUDA ヘッダ取込、GPUSOLVER enum、GPU_CPU_SWITCH_NUM、wait_cudafunc/cudacall、GPU 系プロトタイプ、include ガード、Version "4.0 GPU"</td></tr>
+<tr><td><code>tran_prototypes.h</code></td><td>+10/−0</td><td>GPU</td><td>CUDA_CHECK マクロ追加</td></tr>
+<tr><td><code>openmx.c</code></td><td>+16/−0</td><td>FIX</td><td>Raise_Stack_Limit()(スタック上限自動引き上げ)</td></tr>
+<tr><td><code>Runtest.c</code></td><td>+19/−7</td><td>FIX</td><td>.dat 判定の厳密化、テスト前の旧 .out 削除</td></tr>
+<tr><td><code>Free_Arrays.c</code></td><td>+23/−17</td><td>GPU/FIX</td><td>終了時の GEMMul8 ワークスペース解放+free 後 NULL 代入</td></tr>
+<tr><td><code>truncation.c</code></td><td>+14/−10</td><td>FIX</td><td>VNA/VEF グリッドの free 後 NULL 代入(二重 free 防止)</td></tr>
+<tr><td><code>Spherical_Bessel.c</code></td><td>+12/−24</td><td>OPT</td><td>ホットパスの毎呼び出し malloc/free を除去</td></tr>
+<tr><td><code>mpao.c</code></td><td>+0/−1</td><td>MISC</td><td>include 1 行差のみ(ビルド対象外)</td></tr>
+<tr><td><code>makefile</code> → <code>Makefile</code></td><td>+360/−374</td><td>BLD</td><td>Intel oneAPI+MKL 構成から NVHPC+CUDA+自前 FFTW+GEMMul8 構成へ全面書き換え(第 9 章)</td></tr>
+</tbody>
+</table>
+<p class="small">補足: <code>Set_ProExpn_VNA.c</code> は開発中に一度 GPU 化されたのち CPU 版へ戻されており(コミット 17→31)、
+現行ツリーではオリジナルと差分がない。<code>elpa-2018.05.001/</code> 以下も完全同一。削除されたソースファイルはない。</p>
+</section>
+
+<!-- ==================== 付録 B ==================== -->
+<section id="appB">
+<h1>付録 B. 新規追加ファイル一覧</h1>
+<h2>B.1 新規ソース(13 ファイル、計 2,555 行)</h2>
+<table>
+<thead><tr><th style="width:34%;">ファイル</th><th style="width:8%;">行数</th><th>役割</th></tr></thead>
+<tbody>
+<tr><td><code>gpusolver_Syevdx.c</code></td><td>387</td><td>cusolverDnXsyevdx による部分固有値分解ラッパ(実/複素 × ホスト/OpenACC の 4 変種)。GPU 対角化の実体</td></tr>
+<tr><td><code>gpusolver_Syevd.c</code></td><td>131</td><td>cusolverDnXsyevd 版ラッパ(NVIDIA CUDA Library Samples 由来)。現在は未使用</td></tr>
+<tr><td><code>openmx_gpusolver_dense_utils.h</code></td><td>79</td><td>密対角化の共通ディスパッチヘルパ(0/1-based 変換+失敗時 MPI_Abort)。11 ファイルが使用</td></tr>
+<tr><td><code>gemmul8_bridge.cu</code></td><td>393</td><td>GEMMul8 呼び出しブリッジ: ワークスペースキャッシュ、環境変数制御、cuBLAS フォールバック</td></tr>
+<tr><td><code>gemmul8_openmx.cu</code></td><td>67</td><td>GEMMul8 テンプレートの単一 TU 明示的実体化(4 シンボルのみ)</td></tr>
+<tr><td><code>Total_Energy_GPU.c</code></td><td>517</td><td>全エネルギー計算の OpenACC カーネル集(EXC/EH1・双極子・CWF-Dc・EH0 バッチ)</td></tr>
+<tr><td><code>set_cuda_default_device_from_local_rank.c/.h</code></td><td>73+9</td><td>ノード内 local rank による CUDA デバイスのラウンドロビン割当</td></tr>
+<tr><td><code>set_openacc_device_from_local_rank.c/.h</code></td><td>79+12</td><td>同上の OpenACC 版(acc_set_device_num)</td></tr>
+<tr><td><code>LU_Zinverse_GPU.h</code></td><td>9</td><td>GPU 版複素 LU 逆行列の宣言(休眠)</td></tr>
+<tr><td><code>openmx_cuda_kernels.cu/.h</code></td><td>696+103</td><td>OpenACC 領域を生 CUDA 化した検証済みカーネル集(未結線・ビルド対象外。§6.4)</td></tr>
+</tbody>
+</table>
+<p class="small">補足: 過去に存在した汎用 GEMM ラッパ <code>my_cublasDgemm.c</code> / <code>my_cublasZgemm.c</code>(49+63 行、呼び出し元なし)は
+コミット <code>a7f8cba6</code> で削除された(§3.5)。</p>
+<h2>B.2 ビルド・文書ファイル</h2>
+<table>
+<thead><tr><th style="width:34%;">ファイル</th><th>役割</th></tr></thead>
+<tbody>
+<tr><td><code>Makefile</code>(1,373 行)</td><td>新ビルドシステム本体。各種スパコン向け構成例のコメント付き。NVHPC 26.3 + CUDA 13.1 既定</td></tr>
+<tr><td><code>Makefile.bunshiken</code>(1,366 行)</td><td>共用計算機向け変種(NVHPC 25.9-nompi + OpenMPI 5.0.8 + gcc-toolset-15)。一世代古い構成</td></tr>
+<tr><td><code>makefile.cpu_intel.bak</code>(1,383 行)</td><td>オリジナル makefile のバイト同一バックアップ(Intel CPU 構成)</td></tr>
+<tr><td><code>third_party/</code></td><td>GEMMul8(submodule、コミット 884a287 固定)、fftw3(submodule、タグ fftw-3.3.11)、fftw-3.3.11.tar.gz(codelets 補完用)</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ==================== 付録 C ==================== -->
+<section id="appC">
+<h1>付録 C. 開発履歴(全 51 コミット)</h1>
+<table>
+<thead><tr><th style="width:6%;">#</th><th style="width:13%;">ハッシュ</th><th>題名(原文)</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>0cf2acbc</code></td><td>Initial commit</td></tr>
+<tr><td>2</td><td><code>60b6aa1e</code></td><td>Performed GPU acceleration</td></tr>
+<tr><td>3</td><td><code>2f94ca06</code></td><td>Performed GPU acceleration on Divide_Conquer_LNO.c</td></tr>
+<tr><td>4</td><td><code>e3fc656e</code></td><td>Optimized Band_DFT_NonCol.c</td></tr>
+<tr><td>5</td><td><code>24e8b34f</code></td><td>Optimized Cluster_DFT_Col.c</td></tr>
+<tr><td>6</td><td><code>33e9459b</code></td><td>Optimized Cluster_DFT_Col.c</td></tr>
+<tr><td>7</td><td><code>82579d12</code></td><td>Bug fix</td></tr>
+<tr><td>8</td><td><code>33a07450</code></td><td>Fixed bugs in Band_DFT_Col.c and Cluster_DFT_Col.c</td></tr>
+<tr><td>9</td><td><code>b4221bba</code></td><td>Fixed a bug in runtestL</td></tr>
+<tr><td>10</td><td><code>18d92700</code></td><td>Bug fix</td></tr>
+<tr><td>11</td><td><code>563f69bd</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>12</td><td><code>1b020264</code></td><td>Optimized Band_DFT_Col.c and Band_DFT_NonCol.c</td></tr>
+<tr><td>13</td><td><code>f4041307</code></td><td>Optimized Set_Hamiltonian.c</td></tr>
+<tr><td>14</td><td><code>9f1633da</code></td><td>Optimized Set_OLP_Kin.c</td></tr>
+<tr><td>15</td><td><code>d6b463a8</code></td><td>Explicitly indicate that the generation of overlap matrices is GPU-accelerated</td></tr>
+<tr><td>16</td><td><code>5383544b</code></td><td>Optimized Total_Energy.c</td></tr>
+<tr><td>17</td><td><code>c9e111ea</code></td><td>Optimized Set_ProExpn_VNA.c</td></tr>
+<tr><td>18</td><td><code>8162b8ec</code></td><td>Optimized Set_ProExpn_VNA.c and Total_Energy.c</td></tr>
+<tr><td>19</td><td><code>91416fb1</code></td><td>Bug fix</td></tr>
+<tr><td>20</td><td><code>24a113a9</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>21</td><td><code>87ea7062</code></td><td>Bug fix</td></tr>
+<tr><td>22</td><td><code>faf76fa2</code></td><td>Bug fix</td></tr>
+<tr><td>23</td><td><code>a8224724</code></td><td>Add .gitignore for build artifacts and runtime output</td></tr>
+<tr><td>24</td><td><code>d3c45cb3</code></td><td>Optimized Bnad_DFT_NonCol.c</td></tr>
+<tr><td>25</td><td><code>db7b9327</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>26</td><td><code>a61f24b3</code></td><td>Bug fix</td></tr>
+<tr><td>27</td><td><code>d6d19f99</code></td><td>Add README.md</td></tr>
+<tr><td>28</td><td><code>a91f920f</code></td><td>Bug fix</td></tr>
+<tr><td>29</td><td><code>88b135f4</code></td><td>Optimized Krylov.c</td></tr>
+<tr><td>30</td><td><code>34cf8bc1</code></td><td>Optimized Divide_Conquer_LNO.c</td></tr>
+<tr><td>31</td><td><code>685a2bc9</code></td><td>Reverted Set_ProExpn_VNA.c to the CPU version</td></tr>
+<tr><td>32</td><td><code>2aa31a43</code></td><td>Add files that were not included in the commit</td></tr>
+<tr><td>33</td><td><code>d3effce1</code></td><td>Bug fix of Divide_Conquer.c</td></tr>
+<tr><td>34</td><td><code>34b52269</code></td><td>GPU acceleration for paths where all_knum !=1 in Band_DFT_Col.c</td></tr>
+<tr><td>35</td><td><code>75ef67c7</code></td><td>GPU acceleration for paths where all_knum !=1 in Band_DFT_NonCol.c</td></tr>
+<tr><td>36</td><td><code>1e0c777e</code></td><td>Remove runtest.result from Git</td></tr>
+<tr><td>37</td><td><code>c8c1e3e1</code></td><td>Modify the Makefile</td></tr>
+<tr><td>38</td><td><code>cb4d348d</code></td><td>Now compatible with the latest GEMMul8</td></tr>
+<tr><td>39</td><td><code>d451eeb8</code></td><td>Fixed OpenMP bugs in Total_Energy.c and Stress.c</td></tr>
+<tr><td>40</td><td><code>2302f965</code></td><td>The name has been changed from CuSOLVER to GPUSOLVER</td></tr>
+<tr><td>41</td><td><code>d5b897fd</code></td><td>Band_DFT_Col: serialize GPU turns in pairs and release GEMMul8 workspace per turn</td></tr>
+<tr><td>42</td><td><code>788acb4c</code></td><td>Delete unnecessary files, such as the MAGMA library</td></tr>
+<tr><td>43</td><td><code>d8219384</code></td><td>Rename the identifier from cusolver to gpusolver</td></tr>
+<tr><td>44</td><td><code>8647a5ed</code></td><td>Set large2_example and Large3_example to be processed on the GPU.</td></tr>
+<tr><td>45</td><td><code>f508a2a6</code></td><td>Enable direct GPUSOLVER dispatch for DC-LNO</td></tr>
+<tr><td>46</td><td><code>3545a9d5</code></td><td>Edit README.md</td></tr>
+<tr><td>47</td><td><code>ca3d97c2</code></td><td>Edit README.md</td></tr>
+<tr><td>48</td><td><code>43e30c65</code></td><td>Limit band GPU solver concurrency adaptively</td></tr>
+<tr><td>49</td><td><code>66ce1e62</code></td><td>Use GEMMul8 for remaining GPU GEMM paths</td></tr>
+<tr><td>50</td><td><code>a7f8cba6</code></td><td>Remove obsolete cuBLAS wrapper files</td></tr>
+<tr><td>51</td><td><code>8c7801fa</code></td><td>Limit band GPU k-turn concurrency</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ==================== 参考文献 ==================== -->
+<section id="refs">
+<h1>参考文献</h1>
+<ol>
+  <li>OpenMX 公式サイト: <code>http://www.openmx-square.org/</code>(コード本体・マニュアル・入力キーワード)</li>
+  <li>GEMMul8(GEMMulate)リポジトリ: <code>https://github.com/RIKEN-RCCS/GEMMul8</code>(MIT ライセンス、責任開発者 Yuki Uchino, RIKEN R-CCS)</li>
+  <li>Y. Uchino, K. Ozaki, T. Imamura,
+  "High-Performance and Power-Efficient Emulation of Matrix Multiplication using INT8 Matrix Engines",
+  SC Workshops '25, doi:10.1145/3731599.3767539</li>
+  <li>K. Ozaki, Y. Uchino, T. Imamura,
+  "Ozaki Scheme II: A GEMM-oriented emulation of floating-point matrix multiplication using an integer modular technique",
+  arXiv:2504.08009</li>
+  <li>Y. Uchino, S. Ma, T. Imamura, K. Ozaki, T. Gutsche,
+  "Emulation of Complex Matrix Multiplication based on the Chinese Remainder Theorem", arXiv:2512.08321(複素対応の理論)</li>
+  <li>Y. Uchino, K. Ozaki, T. Imamura,
+  "Double-Precision Matrix Multiplication Emulation via Ozaki-II Scheme with FP8 Quantization", arXiv:2603.10634</li>
+  <li>H. Ootomo, K. Ozaki, R. Yokota,
+  "DGEMM on integer matrix multiplication unit", Int. J. High Perform. Comput. Appl. (2024), doi:10.1177/10943420241239588
+  (ozIMMU / Ozaki Scheme I 系の先行研究)</li>
+  <li>NVIDIA cuSOLVER Documentation(cusolverDnXsyevd/Xsyevdx): <code>https://docs.nvidia.com/cuda/cusolver/</code></li>
+  <li>NVIDIA cuBLAS Documentation: <code>https://docs.nvidia.com/cuda/cublas/</code></li>
+  <li>NVIDIA HPC SDK Documentation(OpenACC): <code>https://docs.nvidia.com/hpc-sdk/</code></li>
+  <li>ELPA(Eigenvalue soLvers for Petaflop Applications): <code>https://elpa.mpcdf.mpg.de/</code></li>
+  <li>FFTW: <code>https://www.fftw.org/</code></li>
+</ol>
+<div class="note" style="margin-top:16px;"><b>本書について:</b> 本書は 2026-07-05 時点のソースツリー(コミット <code>8c7801fa</code>)と、
+オリジナル OpenMX 4.0 との全ファイル diff、および開発リポジトリの全コミット履歴の調査に基づいて作成された。
+記載の行番号・既定値は当該時点のものである。誤りを見つけた場合はソースコードを一次情報として優先されたい。</div>
+</section>
+
+</body>
+</html>
