@@ -3074,6 +3074,9 @@ double Set_dOrbitals_Grid_xyz(int Cnt_kind,int xyz);
 double Set_Orbitals_Grid(int Cnt_kind);
 double Set_Aden_Grid();
 double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0);
+int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
+                                 double **Density_Grid_B0, double *elapsed);
+void Set_Density_Grid_GPU_Invalidate(void);
 void diagonalize_nc_density(double **Density_Grid_B0);
 void Data_Grid_Copy_B2C_1(double *data_B, double *data_C); 
 void Data_Grid_Copy_B2C_2(double **data_B, double **data_C); 
@@ -3558,6 +3561,13 @@ double Cluster_DFT_NonCol(
 		   int size_H1, 
                    dcomplex *EVec1,
                    double *Work1);
+
+void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
+double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
+                   int n2,
+                   int *is2,
+                   int *ie2,
+                   dcomplex *EVec1);
 
 
 

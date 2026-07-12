@@ -39,6 +39,10 @@ double Set_Orbitals_Grid(int Cnt_kind)
   /* for OpenMP */
   int OMPID,Nthrds,Nprocs;
 
+  /* Orbital values and their grid topology back the density GPU service
+     cache.  Drop the previous epoch before any values are regenerated. */
+  Set_Density_Grid_GPU_Invalidate();
+
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);

@@ -511,7 +511,8 @@ static double ClusterNonCol_CalcDMRootDense_OpenACC(int myid, int size_H1, int *
 }
 
 static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int n2, const int *is2, const int *ie2,
-                                                    dcomplex *dense_evec, dcomplex *EVec1)
+                                                    dcomplex *dense_evec, int dense_evec_on_device,
+                                                    dcomplex *EVec1)
 {
     const int tag = 1901;
     double stime, etime;
@@ -530,7 +531,9 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
         size_t evec_count = (size_t)n2 * (size_t)n2;
         size_t max_send_count = (size_t)max_local_states * (size_t)n2;
 
+        if (dense_evec_on_device) {
 #pragma acc update self(dense_evec[0 : evec_count])
+        }
 
         if (0 < max_send_count) {
             if (max_send_count > (size_t)INT_MAX / 2u) {
@@ -618,6 +621,23 @@ static void ClusterNonCol_StashGpuSolverDenseEVec(int myid, int n2, dcomplex **d
     *on_device = 0;
 }
 
+void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void)
+{
+    dcomplex *dense_evec = ClusterNonCol_CachedGpuSolverDenseEVec;
+    int n2 = ClusterNonCol_CachedGpuSolverDenseN2;
+
+    if (dense_evec != NULL && ClusterNonCol_CachedGpuSolverDenseOnDevice) {
+        size_t evec_count = ClusterNonCol_CheckedMulCount((size_t)n2, (size_t)n2,
+                                                          "cached GPUSOLVER dense eigenvectors");
+
+        /* Preserve the vectors for the final post-SCF scatter, but release the
+           device allocation before another GPU service phase reserves memory. */
+#pragma acc update self(dense_evec[0 : evec_count])
+#pragma acc exit data delete(dense_evec[0 : evec_count])
+        ClusterNonCol_CachedGpuSolverDenseOnDevice = 0;
+    }
+}
+
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1)
 {
     int myid, numprocs;
@@ -629,14 +649,14 @@ double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2,
 
     if (myid == Host_ID) {
         valid = (ClusterNonCol_CachedGpuSolverDenseEVec != NULL &&
-                 ClusterNonCol_CachedGpuSolverDenseN2 == n2 &&
-                 ClusterNonCol_CachedGpuSolverDenseOnDevice);
+                 ClusterNonCol_CachedGpuSolverDenseN2 == n2);
     }
     MPI_Bcast(&valid, 1, MPI_INT, Host_ID, mpi_comm_level1);
 
     if (valid) {
         elapsed = ClusterNonCol_ScatterDenseEVecToLocal(myid, numprocs, n2, is2, ie2,
-                                                        ClusterNonCol_CachedGpuSolverDenseEVec, EVec1);
+                                                        ClusterNonCol_CachedGpuSolverDenseEVec,
+                                                        ClusterNonCol_CachedGpuSolverDenseOnDevice, EVec1);
     }
 
     ClusterNonCol_ReleaseGpuSolverCachedEVec(myid);

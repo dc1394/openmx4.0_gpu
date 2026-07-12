@@ -108,7 +108,12 @@ double truncation(int MD_iter,int UCell_flag)
      FNAN and SNAN at the previous MD step
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
+
+  /* The following free invalidates every pointer used by the density GPU
+     service.  Release its host/device cache while the old topology is still
+     well defined. */
+  Set_Density_Grid_GPU_Invalidate();
 
   if (MD_iter==1){
     for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++) time_per_atom[Gc_AN] = 1.0;

@@ -76,6 +76,13 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   
   dtime(&TStime);
 
+  /* A single GPU-owner rank can construct the complete B partition and
+     bypass the per-rank atom-density/A-to-B path below.  A return value of
+     zero keeps the original CPU/OpenMP implementation as the fallback. */
+  if (Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
+    return time0;
+  }
+
   /* allocation of arrays */
 
   size_Tmp_Den_Grid = 0;

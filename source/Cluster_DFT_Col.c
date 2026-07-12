@@ -94,6 +94,25 @@ static void *ClusterCol_MallocArray(size_t count, size_t elem_size, const char *
 static void ClusterCol_GpuSolver_Destroy(void)
 {
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    int current_device = -1;
+    int restore_device = 0;
+
+    /*
+       The context can outlive a phase which changes the CUDA device selected
+       by the calling rank.  CUDA streams and library handles must be destroyed
+       while their owning device is current.  Restore the caller's selection so
+       this routine is also safe when it is used from the device-switch path in
+       ClusterCol_GpuSolver_Init().
+    */
+    if (ctx->initialized && 0 <= ctx->device_id) {
+        wait_cudafunc(cudaGetDevice(&current_device));
+        if (current_device != ctx->device_id) {
+            wait_cudafunc(cudaSetDevice(ctx->device_id));
+            restore_device = 1;
+        }
+    }
+
+    if (ctx->stream != NULL)     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
     if (ctx->d_S != NULL)        wait_cudafunc(cudaFree(ctx->d_S));
     if (ctx->d_H != NULL)        wait_cudafunc(cudaFree(ctx->d_H));
@@ -108,6 +127,8 @@ static void ClusterCol_GpuSolver_Destroy(void)
 
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
+
+    if (restore_device)          wait_cudafunc(cudaSetDevice(current_device));
 }
 
 static void ClusterCol_GpuSolver_Init(void)
