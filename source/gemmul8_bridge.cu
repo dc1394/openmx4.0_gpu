@@ -356,6 +356,19 @@ extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
         static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli);
 }
 
+extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
+{
+    if (m <= 0 || n <= 0 || k <= 0 ||
+        gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
+        return 0;
+    }
+
+    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
+
+    return gemmul8::workSize<false, gemmul8::Backend::INT8>(
+        static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli);
+}
+
 extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
                                                cublasOperation_t transa,
                                                cublasOperation_t transb,

@@ -4123,6 +4123,7 @@ cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle, cublasOperation_t tran
                                    const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta, cuDoubleComplex *C,
                                    int ldc);
 size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k);
+size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k);
 void openmx_gemmul8ReleaseWorkspaces(void);
 
 int getDeviceCount();
