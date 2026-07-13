@@ -665,11 +665,48 @@ double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2,
 }
 
 /* GPU GEMM wrappers (added by H.Kawai, ported from 3.9.9 GPU) */
+static cublasHandle_t ClusterNonCol_CublasHandle(void)
+{
+    /* One cached handle per selected device instead of a create/destroy pair
+       around every GEMM (13 calls per SCF iteration in the root dense path). */
+    static cublasHandle_t handle = NULL;
+    static int handle_device = -1;
+    int current_device = -1;
+
+    wait_cudafunc(cudaGetDevice(&current_device));
+    if (handle != NULL && handle_device == current_device) {
+        return handle;
+    }
+    if (handle != NULL) {
+        wait_cudafunc(cublasDestroy(handle));
+        handle = NULL;
+    }
+    wait_cudafunc(cublasCreate(&handle));
+    handle_device = current_device;
+    return handle;
+}
+
+static int ClusterNonCol_GemmWorkspaceTurnRelease(void)
+{
+    /* Releasing the GEMMul8 workspace once the diagonalization is done keeps
+       it from occupying the shared device through the grid/force phases of
+       the SCF step; opt out with OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0
+       (falls back to the band-path knob for a single switch). */
+    const char *value = getenv("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
+
+    if (value == NULL) {
+        value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+    }
+    if (value == NULL) {
+        return 1;
+    }
+    return (atoi(value) != 0);
+}
+
 static void ClusterNonCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
                                                int k, double const * A, double const * B, double * C)
 {
-    cublasHandle_t handle;
-    wait_cudafunc(cublasCreate(&handle));
+    cublasHandle_t handle = ClusterNonCol_CublasHandle();
 
 #pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
@@ -678,15 +715,13 @@ static void ClusterNonCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasO
         double const beta  = 0.0;
 
         wait_cudafunc(openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
-        wait_cudafunc(cublasDestroy(handle));
     }
 }
 
 static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
                                                int k, dcomplex const * A, dcomplex const * B, dcomplex * C)
 {
-    cublasHandle_t handle;
-    wait_cudafunc(cublasCreate(&handle));
+    cublasHandle_t handle = ClusterNonCol_CublasHandle();
 
 #pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
@@ -696,7 +731,6 @@ static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasO
 
         wait_cudafunc(openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &alpha, (cuDoubleComplex const *)A, m,
                                           (cuDoubleComplex const *)B, k, &beta, (cuDoubleComplex *)C, m));
-        wait_cudafunc(cublasDestroy(handle));
     }
 }
 
@@ -1061,12 +1095,89 @@ static void ClusterNonCol_BuildDenseIndexFromGathered(const int *order_GA, int *
     }
 }
 
+typedef struct {
+    int valid;
+    int device_valid;
+    int n;
+    int tnum;
+    unsigned long long fingerprint;
+    int *dense_index;
+} ClusterNonColDenseIndexCache;
+
+static ClusterNonColDenseIndexCache ClusterNonCol_dense_index_cache = {0};
+
+static unsigned long long ClusterNonCol_DenseIndexFingerprint(const int *order_GA, int *MP, int n)
+{
+    unsigned long long h = 1469598103934665603ULL;
+
+#define CLUSTERNONCOL_HASH_INT(v) \
+    do { \
+        h ^= (unsigned long long)(unsigned int)(v); \
+        h *= 1099511628211ULL; \
+    } while (0)
+
+    CLUSTERNONCOL_HASH_INT(n);
+    CLUSTERNONCOL_HASH_INT(atomnum);
+    for (int AN = 1; AN <= atomnum; AN++) {
+        int GA_AN = order_GA[AN];
+
+        CLUSTERNONCOL_HASH_INT(GA_AN);
+        CLUSTERNONCOL_HASH_INT(MP[GA_AN]);
+        CLUSTERNONCOL_HASH_INT(WhatSpecies[GA_AN]);
+        CLUSTERNONCOL_HASH_INT(Spe_Total_CNO[WhatSpecies[GA_AN]]);
+        CLUSTERNONCOL_HASH_INT(FNAN[GA_AN]);
+        for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
+            CLUSTERNONCOL_HASH_INT(natn[GA_AN][LB_AN]);
+        }
+    }
+
+#undef CLUSTERNONCOL_HASH_INT
+
+    return h;
+}
+
+/* The sparse-to-dense index table only depends on the geometry, so build it
+   once and keep it resident on the device instead of rebuilding and
+   re-uploading it for each of the eight dense loads of every SCF iteration.
+   Only the dense-owner rank calls this. */
+static const int *ClusterNonCol_DenseIndexCache_Get(const int *order_GA, int *MP, int n, int tnum)
+{
+    ClusterNonColDenseIndexCache *cache = &ClusterNonCol_dense_index_cache;
+    unsigned long long fingerprint = ClusterNonCol_DenseIndexFingerprint(order_GA, MP, n);
+    int *dense_index;
+
+    if (cache->valid && cache->n == n && cache->tnum == tnum && cache->fingerprint == fingerprint) {
+        return cache->dense_index;
+    }
+
+    if (cache->device_valid) {
+        int *old_index = cache->dense_index;
+        int old_tnum = cache->tnum;
+#pragma acc exit data delete(old_index[0 : old_tnum])
+    }
+    free(cache->dense_index);
+    memset(cache, 0, sizeof(*cache));
+
+    cache->dense_index = (int *)ClusterNonCol_MallocArray((size_t)tnum, sizeof(int), "dense index cache");
+    ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, tnum, cache->dense_index);
+
+    dense_index = cache->dense_index;
+#pragma acc enter data copyin(dense_index[0 : tnum])
+
+    cache->valid = 1;
+    cache->device_valid = 1;
+    cache->n = n;
+    cache->tnum = tnum;
+    cache->fingerprint = fingerprint;
+    return cache->dense_index;
+}
+
 static void ClusterNonCol_BuildDeviceDenseFromGathered(const double *H1, const int *dense_index,
                                                        int tnum, int n, double *H)
 {
     size_t nn = ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "device dense H");
 
-#pragma acc enter data copyin(H1[0 : tnum], dense_index[0 : tnum])
+#pragma acc enter data copyin(H1[0 : tnum])
 #pragma acc parallel loop present(H[0 : nn])
     for (size_t p = 0; p < nn; p++) {
         H[p] = 0.0;
@@ -1078,23 +1189,21 @@ static void ClusterNonCol_BuildDeviceDenseFromGathered(const double *H1, const i
 #pragma acc atomic update
         H[idx] += H1[p];
     }
-#pragma acc exit data delete(H1[0 : tnum], dense_index[0 : tnum])
+#pragma acc exit data delete(H1[0 : tnum])
 }
 
 static void ClusterNonCol_LoadDeviceDenseFromSetHamCache(const double *H1, int *MP, int n, double *H)
 {
     int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
     int *order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-    int *dense_index;
+    const int *dense_index;
 
     if (H1 == NULL || order_GA == NULL) {
         ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed matrix cache is missing in Cluster_DFT_NonCol.c.");
     }
 
-    dense_index = (int *)ClusterNonCol_MallocArray((size_t)tnum, sizeof(int), "Set_Hamiltonian dense_index");
-    ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, tnum, dense_index);
+    dense_index = ClusterNonCol_DenseIndexCache_Get(order_GA, MP, n, tnum);
     ClusterNonCol_BuildDeviceDenseFromGathered(H1, dense_index, tnum, n, H);
-    free(dense_index);
 }
 
 static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP, int owns_dense, int n)
@@ -1110,7 +1219,7 @@ static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP,
     int *h1_displs = NULL;
     int *atom_displs = NULL;
     int *order_GA = NULL;
-    int *dense_index = NULL;
+    const int *dense_index = NULL;
     double *local_H1;
     double *gathered_H1 = NULL;
 
@@ -1185,12 +1294,10 @@ static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP,
             gathered_nzeros = h1_displs[numprocs - 1] + recv_nzeros[numprocs - 1];
         }
 
-        dense_index = (int *)ClusterNonCol_MallocArray((size_t)gathered_nzeros, sizeof(int), "dense_index");
-        ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, gathered_nzeros, dense_index);
+        dense_index = ClusterNonCol_DenseIndexCache_Get(order_GA, MP, n, gathered_nzeros);
         ClusterNonCol_BuildDeviceDenseFromGathered(gathered_H1, dense_index, gathered_nzeros, n, H);
     }
 
-    free(dense_index);
     free(gathered_H1);
     free(order_GA);
     free(atom_displs);
@@ -1454,6 +1561,13 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
 
 #pragma acc update self(ko[0 : n2 + 1])
 #pragma acc exit data delete(Hs2[0 : n2 * n2], cached_Ss2[0 : n2 * n2], ko[0 : n2 + 1])
+
+        /* free the GEMMul8 workspace (the n2-sized complex one from the
+           back-transform dominates) so the DM phase and the grid/force
+           phases of this SCF step see the memory. */
+        if (ClusterNonCol_GemmWorkspaceTurnRelease()) {
+            openmx_gemmul8ReleaseWorkspaces();
+        }
 
         *dense_evec_out = dense_evec;
         *dense_evec_on_device_out = 1;
