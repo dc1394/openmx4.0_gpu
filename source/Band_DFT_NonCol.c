@@ -202,6 +202,20 @@ static int BandNonCol_GemmWorkspaceTurnRelease(void)
     return (atoi(value)!=0);
 }
 
+static int BandNonCol_EigenvaluesOnlyNoVectors(void)
+{
+    /* The first (all_knum!=1) diagonalization pass only needs eigenvalues for
+       the chemical potential; jobz=CUSOLVER_EIG_MODE_NOVECTOR skips the
+       eigenvector build inside cusolverDnXsyevdx and returns identical
+       eigenvalues.  Opt out with OPENMX_BAND_SYEVDX_NOVECTOR=0. */
+    const char *value = getenv("OPENMX_BAND_SYEVDX_NOVECTOR");
+
+    if (value==NULL){
+        return 1;
+    }
+    return (atoi(value)!=0);
+}
+
 static void BandNonCol_ClearOpenAccFreelists(void)
 {
 #pragma acc wait
@@ -219,77 +233,51 @@ static int BandNonCol_SerializeGpuSolverGpuTurns(void)
 }
 
 static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, int size_H1,
-                                       int owns_dense_rank, int myid0);
+                                       int turn_mode, int owns_dense_rank, int myid0);
 
-static int BandNonCol_GpuTurnGroup(int n, int n2, int MaxN, int size_H1,
-                                   int owns_dense_rank, int myid0)
+static int BandNonCol_GpuRequestedMaxTurns(void)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
-    long group;
+    /* Requested number of concurrent GPU k-owner ranks; the memory-based
+       ladder in BandNonCol_AutoGpuTurnLimit lowers it as needed.  Matches
+       the collinear path: default 32, capped to [1, 32]. */
+    const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
+    long requested = 32L;
 
     if (value==NULL){
+        value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
+    }
+    if (value==NULL){
         value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
-        if (value==NULL){
-            return BandNonCol_AutoGpuTurnLimit(4,n,n2,MaxN,size_H1,owns_dense_rank,myid0);
-        }
-        else {
-            group = strtol(value,NULL,10);
+    }
+    if (value!=NULL && value[0]!='\0'){
+        char *end = NULL;
+        long parsed = strtol(value,&end,10);
+        if (end!=value && *end=='\0'){
+            requested = parsed;
         }
     }
-    else {
-        group = strtol(value,NULL,10);
+    if (requested<1L){
+        requested = 1L;
     }
+    if (32L<requested){
+        requested = 32L;
+    }
+    return (int)requested;
+}
 
-    if (group<1L){
-        return 1;
-    }
-    if (1024L<group){
-        return 1024;
-    }
-    return (int)group;
+static int BandNonCol_GpuTurnGroup(int n, int n2, int MaxN, int size_H1,
+                                   int turn_mode, int owns_dense_rank, int myid0)
+{
+    return BandNonCol_AutoGpuTurnLimit(BandNonCol_GpuRequestedMaxTurns(),
+                                       n,n2,MaxN,size_H1,turn_mode,
+                                       owns_dense_rank,myid0);
 }
 
 static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H1,
-                                             int owns_dense_rank, int myid0)
+                                             int turn_mode, int owns_dense_rank, int myid0)
 {
-    const int   max_requested = 4;
-    const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
-    long limit;
-    int requested = max_requested;
-
-    if (value != NULL) {
-        char *endp = NULL;
-        limit = strtol(value, &endp, 10);
-        if (endp == value || limit < 1L) {
-            return 1;
-        }
-        if ((long)max_requested < limit) {
-            requested = max_requested;
-        }
-        else {
-            requested = (int)limit;
-        }
-        return BandNonCol_AutoGpuTurnLimit(requested,n,n2,MaxN,size_H1,
-                                           owns_dense_rank,myid0);
-    }
-
-    value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
-    if (value!=NULL){
-        limit = strtol(value,NULL,10);
-        if (limit<1L){
-            return 1;
-        }
-        if ((long)max_requested<limit){
-            requested = max_requested;
-        }
-        else {
-            requested = (int)limit;
-        }
-        return BandNonCol_AutoGpuTurnLimit(requested,n,n2,MaxN,size_H1,
-                                           owns_dense_rank,myid0);
-    }
-
-    return BandNonCol_AutoGpuTurnLimit(requested,n,n2,MaxN,size_H1,
+    return BandNonCol_AutoGpuTurnLimit(BandNonCol_GpuRequestedMaxTurns(),
+                                       n,n2,MaxN,size_H1,turn_mode,
                                        owns_dense_rank,myid0);
 }
 
@@ -359,10 +347,10 @@ static void BandNonCol_GpuSolver_EnsureWorkspace(int n, int maxn)
 }
 
 static void BandNonCol_GpuSolver_DenseZheevx_Device(dcomplex *A, double *ko, int n, int maxn,
-                                                   const char *where)
+                                                   const char *where, int want_vectors)
 {
     BandNonColGpuSolverWorkspace * w = &BandNonCol_gpusolver_workspace;
-    cusolverEigMode_t  jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cusolverEigMode_t  jobz = want_vectors ? CUSOLVER_EIG_MODE_VECTOR : CUSOLVER_EIG_MODE_NOVECTOR;
     cublasFillMode_t   uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
     double vl = 0.0;
@@ -728,6 +716,13 @@ static size_t BandNonCol_GpuSolverWorkFallbackBytes(int n)
 
 static size_t BandNonCol_QueryGpuSolverWorkBytes(int n, int maxn)
 {
+    /* The query costs a cusolver handle + stream create/destroy each time and
+       runs several times per SCF iteration; memoize the (n, n)/(n2, MaxN)
+       shapes the band path asks about. */
+    static int    cached_n[2]     = {-1,-1};
+    static int    cached_maxn[2]  = {-1,-1};
+    static size_t cached_bytes[2] = {0U,0U};
+    static int    cached_next     = 0;
     cusolverDnHandle_t handle = NULL;
     cudaStream_t stream = NULL;
     cudaError_t cuda_status;
@@ -741,6 +736,12 @@ static size_t BandNonCol_QueryGpuSolverWorkBytes(int n, int maxn)
     size_t d_bytes = 0;
     size_t h_bytes = 0;
     size_t fallback = BandNonCol_GpuSolverWorkFallbackBytes(n);
+
+    for (int i=0; i<2; i++){
+        if (cached_n[i]==n && cached_maxn[i]==maxn && cached_bytes[i]!=0U){
+            return cached_bytes[i];
+        }
+    }
 
     cuda_status = cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking);
     if (cuda_status!=cudaSuccess) return fallback;
@@ -761,10 +762,35 @@ static size_t BandNonCol_QueryGpuSolverWorkBytes(int n, int maxn)
 
     if (solver_status!=CUSOLVER_STATUS_SUCCESS || d_bytes==0) return fallback;
 
+    cached_n[cached_next]     = n;
+    cached_maxn[cached_next]  = maxn;
+    cached_bytes[cached_next] = d_bytes;
+    cached_next               = (cached_next + 1) % 2;
     return d_bytes;
 }
 
-static size_t BandNonCol_RootDenseDeviceBytes(int n, int n2, int MaxN, int size_H1)
+static size_t BandNonCol_GpuRankOverheadBytes(void)
+{
+    /* CUDA context, cublas/cusolver handles, and OpenACC pool slack that sit
+       outside the explicitly estimated buffers; matches the collinear path
+       (OPENMX_BAND_GPU_RANK_OVERHEAD_MB, default 256 MiB per owner rank). */
+    const char *value = getenv("OPENMX_BAND_GPU_RANK_OVERHEAD_MB");
+    unsigned long long mib = 256ULL;
+
+    if (value!=NULL && value[0]!='\0'){
+        char *end = NULL;
+        unsigned long long parsed = strtoull(value,&end,10);
+        if (end!=value && *end=='\0'){
+            mib = parsed;
+        }
+    }
+    if ((unsigned long long)SIZE_MAX/(1024ULL*1024ULL)<mib){
+        return SIZE_MAX;
+    }
+    return (size_t)mib*1024ULL*1024ULL;
+}
+
+static size_t BandNonCol_RootDenseDeviceBytes(int n, int n2, int MaxN, int size_H1, int need_evec)
 {
     size_t nn = BandNonCol_CheckedMul((size_t)n,(size_t)n,"root dense n*n");
     size_t n2n2 = BandNonCol_CheckedMul((size_t)n2,(size_t)n2,"root dense n2*n2");
@@ -778,6 +804,12 @@ static size_t BandNonCol_RootDenseDeviceBytes(int n, int n2, int MaxN, int size_
     size_t work_n = BandNonCol_QueryGpuSolverWorkBytes(n,n);
     size_t work_n2 = BandNonCol_QueryGpuSolverWorkBytes(n2,MaxN);
     size_t ko_bytes = BandNonCol_ArrayBytes((size_t)n2+1U,sizeof(double),"root dense eigenvalue vector");
+    /* The GEMMul8 workspace is a single per-rank buffer that persists across
+       the turns of one concurrency group; the eigenvector back-transform is
+       an n2-sized GEMM, the triple transforms are n-sized. */
+    size_t gemmul8_bytes = need_evec ? openmx_gemmul8ZWorkspaceSize(n2,n2,n2)
+                                     : openmx_gemmul8ZWorkspaceSize(n,n,n);
+    size_t peak;
 
     BandNonCol_AddBytes(&construct_bytes,
                         BandNonCol_ArrayBytes(packed_count,sizeof(BandNonColConstructEntry),
@@ -806,25 +838,70 @@ static size_t BandNonCol_RootDenseDeviceBytes(int n, int n2, int MaxN, int size_
     BandNonCol_AddBytes(&hamiltonian_peak,work_n2,"root dense Hamiltonian GpuSolver workspace");
     BandNonCol_AddBytes(&hamiltonian_peak,sizeof(int32_t),"root dense Hamiltonian GpuSolver info");
 
-    BandNonCol_AddBytes(&wavefunction_peak,construct_bytes,"root dense wavefunction peak construct cache");
-    BandNonCol_AddBytes(&wavefunction_peak,ko_bytes,"root dense wavefunction peak eigenvalues");
-    BandNonCol_AddBytes(&wavefunction_peak,matrix_bytes,"root dense wavefunction overlap matrix");
-    BandNonCol_AddBytes(&wavefunction_peak,
-                        BandNonCol_CheckedMul(matrix2_bytes,3U,"root dense wavefunction n2*n2 matrices"),
-                        "root dense wavefunction n2*n2 matrices");
+    if (need_evec){
+        BandNonCol_AddBytes(&wavefunction_peak,construct_bytes,"root dense wavefunction peak construct cache");
+        BandNonCol_AddBytes(&wavefunction_peak,ko_bytes,"root dense wavefunction peak eigenvalues");
+        BandNonCol_AddBytes(&wavefunction_peak,matrix_bytes,"root dense wavefunction overlap matrix");
+        BandNonCol_AddBytes(&wavefunction_peak,
+                            BandNonCol_CheckedMul(matrix2_bytes,3U,"root dense wavefunction n2*n2 matrices"),
+                            "root dense wavefunction n2*n2 matrices");
+    }
 
-    return BandNonCol_MaxBytes(overlap_peak,BandNonCol_MaxBytes(hamiltonian_peak,wavefunction_peak));
+    peak = BandNonCol_MaxBytes(overlap_peak,BandNonCol_MaxBytes(hamiltonian_peak,wavefunction_peak));
+    peak = BandNonCol_CheckedAdd(peak,gemmul8_bytes,"root dense GEMMul8 workspace");
+    peak = BandNonCol_CheckedAdd(peak,BandNonCol_GpuRankOverheadBytes(),"root dense rank overhead");
+    return peak;
 }
 
-static size_t BandNonCol_RootDenseReserveBytes(size_t total_bytes, size_t required_bytes)
+/* turn_mode values understood by BandNonCol_AutoGpuTurnLimit */
+#define BANDNONCOL_GPU_TURN_EIGVALS 0
+#define BANDNONCOL_GPU_TURN_EIGVECS 1
+#define BANDNONCOL_GPU_TURN_DM      2
+
+static size_t BandNonCol_RootDenseDMDeviceBytes(int n, int n2, int MaxN, int size_H1)
 {
+    /* The OpenACC DM accumulation holds the dense eigenvectors, the per-pair
+       phases and occupations, and one chunk of index/output buffers on the
+       device; no GEMM runs in this phase. */
+    const size_t chunk = 131072U;
+    size_t n2n2 = BandNonCol_CheckedMul((size_t)n2,(size_t)n2,"DM dense n2*n2");
+    size_t packed_count = (0<size_H1) ? (size_t)size_H1 : 0U;
+    size_t bytes = BandNonCol_ArrayBytes(n2n2,sizeof(dcomplex),"DM dense eigenvectors");
+
+    (void)n;
+    BandNonCol_AddBytes(&bytes,
+                        BandNonCol_ArrayBytes(packed_count,2U*sizeof(double),"DM dense phases"),
+                        "DM dense phases");
+    BandNonCol_AddBytes(&bytes,
+                        BandNonCol_ArrayBytes(chunk,3U*sizeof(int)+8U*sizeof(double),"DM dense chunk buffers"),
+                        "DM dense chunk buffers");
+    BandNonCol_AddBytes(&bytes,
+                        BandNonCol_ArrayBytes((size_t)MaxN,2U*sizeof(double),"DM dense occupations"),
+                        "DM dense occupations");
+    BandNonCol_AddBytes(&bytes,BandNonCol_GpuRankOverheadBytes(),"DM dense rank overhead");
+    return bytes;
+}
+
+static size_t BandNonCol_RootDenseReserveBytes(size_t total_bytes)
+{
+    /* The per-rank estimate now covers the GEMMul8 workspace and OpenACC
+       transients explicitly, so the reserve only shields the CUDA context and
+       other GPU subsystems; matches the collinear path
+       (max(total/10, 1536 MiB), raisable via OPENMX_BAND_GPU_RESERVE_MB). */
     size_t reserve = total_bytes/10U;
-    size_t min_reserve = 512U*1024U*1024U;
-    size_t required_margin = required_bytes/5U;
+    const size_t minimum = 1536ULL*1024ULL*1024ULL;
+    const char *value = getenv("OPENMX_BAND_GPU_RESERVE_MB");
 
-    if (reserve<min_reserve) reserve = min_reserve;
-    if (reserve<required_margin) reserve = required_margin;
-
+    if (reserve<minimum) reserve = minimum;
+    if (value!=NULL && value[0]!='\0'){
+        char *end = NULL;
+        unsigned long long mib = strtoull(value,&end,10);
+        if (end!=value && *end=='\0' &&
+            mib<=(unsigned long long)SIZE_MAX/(1024ULL*1024ULL)){
+            size_t requested = (size_t)mib*1024ULL*1024ULL;
+            if (reserve<requested) reserve = requested;
+        }
+    }
     return reserve;
 }
 
@@ -845,13 +922,7 @@ static int BandNonCol_GpuTurnMemoryFits(size_t free_bytes, size_t total_bytes,
     }
 
     required = required_bytes*(size_t)concurrent_ranks;
-    reserve = BandNonCol_RootDenseReserveBytes(total_bytes,required);
-
-    /* Dense non-collinear turns also use OpenACC and GEMMul8 scratch space
-       around the explicitly estimated matrices. Keep a full extra turn-sized
-       cushion so the automatic limiter does not choose a group that only
-       fits on paper and then fails in cuMemAlloc. */
-    if (reserve<required) reserve = required;
+    reserve = BandNonCol_RootDenseReserveBytes(total_bytes);
 
     if (group_required!=NULL) *group_required = required;
     if (reserve_bytes!=NULL) *reserve_bytes = reserve;
@@ -860,8 +931,9 @@ static int BandNonCol_GpuTurnMemoryFits(size_t free_bytes, size_t total_bytes,
 }
 
 static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, int size_H1,
-                                       int owns_dense_rank, int myid0)
+                                       int turn_mode, int owns_dense_rank, int myid0)
 {
+    static const int candidates[] = {32,16,8,4,2,1};
     MPI_Comm node_comm;
     MPI_Comm device_comm = MPI_COMM_NULL;
     int local_limit = requested;
@@ -869,26 +941,26 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
     int cuda_ok = 0;
     int cuda_device = -1;
     size_t required_bytes = 0;
-    size_t free_bytes = 0;
-    size_t total_bytes = 0;
 
-    if (requested<=2){
-        return requested;
+    if (requested<=1){
+        return 1;
     }
 
     if (owns_dense_rank){
         cudaError_t cuda_status = cudaGetDevice(&cuda_device);
 
         if (cuda_status==cudaSuccess){
-            required_bytes = BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1);
-            cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
+            required_bytes = (turn_mode==BANDNONCOL_GPU_TURN_DM)
+                ? BandNonCol_RootDenseDMDeviceBytes(n,n2,MaxN,size_H1)
+                : BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1,
+                                                  turn_mode==BANDNONCOL_GPU_TURN_EIGVECS);
         }
 
-        if (cuda_status==cudaSuccess && 0<required_bytes){
+        if (cuda_status==cudaSuccess && 0<required_bytes && required_bytes!=SIZE_MAX){
             cuda_ok = 1;
         }
         else {
-            local_limit = 2;
+            local_limit = 1;
         }
     }
 
@@ -896,37 +968,108 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
     MPI_Comm_split(node_comm,cuda_ok ? cuda_device : MPI_UNDEFINED,0,&device_comm);
     MPI_Comm_free(&node_comm);
 
-    if (cuda_ok){
+    if (cuda_ok && device_comm!=MPI_COMM_NULL){
         int device_rank = 0;
         int device_ranks = 0;
+        int memory_ok = 0, group_memory_ok = 0;
+        unsigned long long local_free = 0ULL, group_free = 0ULL;
+        unsigned long long local_total = 0ULL, group_total = 0ULL;
+        cudaError_t cuda_status;
 
         MPI_Comm_rank(device_comm,&device_rank);
         MPI_Comm_size(device_comm,&device_ranks);
 
-        {
-            int concurrent_ranks = (device_ranks<requested) ? device_ranks : requested;
-            size_t group_required = 0;
-            size_t reserve_bytes = 0;
-            int lacks_memory = 0;
-            int target_limit = requested;
+        /* Trim the OpenACC freelists so cudaMemGetInfo reports the memory a
+           new concurrency group can actually claim, and let every owner rank
+           finish trimming before anyone measures. */
+        acc_wait_all();
+        cuda_status = cudaDeviceSynchronize();
+        if (cuda_status==cudaSuccess){
+            acc_clear_freelists();
+        }
+        MPI_Barrier(device_comm);
 
-            lacks_memory = !BandNonCol_GpuTurnMemoryFits(free_bytes,total_bytes,required_bytes,
-                                                         concurrent_ranks,
-                                                         &group_required,&reserve_bytes);
-            if (lacks_memory && 2<requested){
-                int trial_ranks = (device_ranks<2) ? device_ranks : 2;
+        if (cuda_status==cudaSuccess){
+            size_t free_bytes = 0U, total_bytes = 0U;
+            cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
+            if (cuda_status==cudaSuccess){
+                memory_ok = 1;
+                local_free = (unsigned long long)free_bytes;
+                local_total = (unsigned long long)total_bytes;
+            }
+        }
 
-                if (BandNonCol_GpuTurnMemoryFits(free_bytes,total_bytes,required_bytes,
-                                                 trial_ranks,NULL,NULL)){
-                    target_limit = 2;
-                }
-                else {
-                    target_limit = 1;
+        MPI_Allreduce(&memory_ok,&group_memory_ok,1,MPI_INT,MPI_MIN,device_comm);
+        MPI_Allreduce(&local_free,&group_free,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,device_comm);
+        MPI_Allreduce(&local_total,&group_total,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,device_comm);
+
+        if (group_memory_ok){
+            int selected_limit = 0;
+            size_t selected_peak = 0U;
+            size_t selected_reserve = 0U;
+
+            for (size_t ci=0; ci<sizeof(candidates)/sizeof(candidates[0]); ci++){
+                int candidate = candidates[ci];
+                int concurrent;
+                size_t group_required = 0U;
+                size_t reserve_bytes = 0U;
+
+                if (requested<candidate) continue;
+                concurrent = (device_ranks<candidate) ? device_ranks : candidate;
+                if (BandNonCol_GpuTurnMemoryFits((size_t)group_free,(size_t)group_total,
+                                                 required_bytes,concurrent,
+                                                 &group_required,&reserve_bytes)){
+                    selected_limit = candidate;
+                    selected_peak = group_required;
+                    selected_reserve = reserve_bytes;
+                    break;
                 }
             }
 
-            if (lacks_memory){
-                local_limit = target_limit;
+            if (selected_limit==0){
+                selected_limit = 1;
+                selected_peak = required_bytes;
+                selected_reserve = BandNonCol_RootDenseReserveBytes((size_t)group_total);
+                if (device_rank==0){
+                    fprintf(stderr,
+                            "<Band_DFT_NonCol> GPU device %d cannot retain the full reserve; "
+                            "forcing one GPU k-owner rank.\n",cuda_device);
+                    fflush(stderr);
+                }
+            }
+            local_limit = selected_limit;
+
+            if (device_rank==0){
+                static int last_limit[3] = {-1,-1,-1};
+                static int last_device_ranks[3] = {-1,-1,-1};
+                static const char *mode_label[3] =
+                    {"eigenvalues only","eigenvectors","density matrix"};
+                int mode_slot = (0<=turn_mode && turn_mode<3) ? turn_mode : 1;
+
+                if (last_limit[mode_slot]!=selected_limit ||
+                    last_device_ranks[mode_slot]!=device_ranks){
+                    printf("<Band_DFT_NonCol> GPU device %d: %d k-owner rank(s), "
+                           "GPU concurrency=%d (%s), per-rank=%.3f GiB, peak=%.3f GiB, "
+                           "free=%.3f GiB, reserve=%.3f GiB\n",
+                           cuda_device,device_ranks,selected_limit,
+                           mode_label[mode_slot],
+                           (double)required_bytes/(1024.0*1024.0*1024.0),
+                           (double)selected_peak/(1024.0*1024.0*1024.0),
+                           (double)group_free/(1024.0*1024.0*1024.0),
+                           (double)selected_reserve/(1024.0*1024.0*1024.0));
+                    fflush(stdout);
+                    last_limit[mode_slot] = selected_limit;
+                    last_device_ranks[mode_slot] = device_ranks;
+                }
+            }
+        }
+        else {
+            local_limit = 1;
+            if (device_rank==0){
+                fprintf(stderr,
+                        "<Band_DFT_NonCol> failed to query common GPU memory; "
+                        "using one GPU k-owner rank at a time.\n");
+                fflush(stderr);
             }
         }
 
@@ -978,12 +1121,12 @@ static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int s
 
         cuda_status = cudaGetDevice(&cuda_device);
         if (cuda_status==cudaSuccess){
-            required_bytes = BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1);
+            required_bytes = BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1,1);
             cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
         }
 
         if (cuda_status==cudaSuccess){
-            reserve_bytes = BandNonCol_RootDenseReserveBytes(total_bytes,required_bytes);
+            reserve_bytes = BandNonCol_RootDenseReserveBytes(total_bytes);
             cuda_ok = 1;
         }
         else {
@@ -1935,7 +2078,7 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
 
         BandNonCol_SymmetrizeDenseHermitian_OpenACC(n,active_S);
         BandNonCol_GpuSolver_DenseZheevx_Device(active_S,ko,n,n,
-                                               "Band_DFT_NonCol root dense overlap");
+                                               "Band_DFT_NonCol root dense overlap",1);
 
 #pragma acc parallel loop present(ko[0 : n + 1])
         for (l=1; l<=n; l++){
@@ -1977,12 +2120,12 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
         dcomplex *ss2 = rdw->ss2;
         dcomplex *cs2 = rdw->cs2;
 
+        /* The GEMMul8 workspace stays allocated across the turns of one
+           concurrency group (the auto turn limit budgets for it) and is
+           released in the group-end cleanup of each caller. */
         BandNonCol_DenseTripleTransform_PresentOpenACC(n,h11,active_S,work);
         BandNonCol_DenseTripleTransform_PresentOpenACC(n,h12,active_S,work);
         BandNonCol_DenseTripleTransform_PresentOpenACC(n,h22,active_S,work);
-        if (BandNonCol_GemmWorkspaceTurnRelease()){
-            openmx_gemmul8ReleaseWorkspaces();
-        }
 
 #pragma acc exit data delete(work[0 : nn])
         BandNonCol_BuildDenseHs2_OpenACC(n,n2,h11,h22,h12,hs2);
@@ -1990,7 +2133,8 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
 
         BandNonCol_SymmetrizeDenseHermitian_OpenACC(n2,hs2);
         BandNonCol_GpuSolver_DenseZheevx_Device(hs2,ko,n2,MaxN,
-                                               "Band_DFT_NonCol root dense Hamiltonian");
+                                               "Band_DFT_NonCol root dense Hamiltonian",
+                                               need_evec || !BandNonCol_EigenvaluesOnlyNoVectors());
 
 #pragma acc update self(ko[0 : MaxN + 1])
 
@@ -3049,7 +3193,9 @@ double Band_DFT_NonCol(
   if (use_k_dense_gpusolver){
 
     int max_concurrent_gpu_turns =
-      BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,owns_dense_k_rank,myid0);
+      BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,
+                                        BANDNONCOL_GPU_TURN_EIGVALS,
+                                        owns_dense_k_rank,myid0);
     BandNonColRootDenseWorkspace *rdw;
     double *pack_buffer = NULL;
     double *m_olp = NULL;
@@ -3150,6 +3296,9 @@ double Band_DFT_NonCol(
         m_i11 = NULL;
         m_i22 = NULL;
         m_i12 = NULL;
+        if (BandNonCol_GemmWorkspaceTurnRelease()){
+          openmx_gemmul8ReleaseWorkspaces();
+        }
         BandNonCol_ConstructCache_Reset();
         BandNonCol_RootDenseWorkspace_Reset();
         BandNonCol_GpuSolver_Destroy();
@@ -3167,7 +3316,9 @@ double Band_DFT_NonCol(
        Set_Hamiltonian_OpenACC_Rank_Is_Selected());
     int root_dense_turn_group =
       serialize_gpu_turns ?
-      BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,owns_root_dense_rank,myid0) :
+      BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,
+                              BANDNONCOL_GPU_TURN_EIGVECS,
+                              owns_root_dense_rank,myid0) :
       Num_Comm_World2;
     int use_setham_packed_cache =
       (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
@@ -3325,6 +3476,9 @@ double Band_DFT_NonCol(
       }
 
       if (owns_root_dense_group){
+        if (BandNonCol_GemmWorkspaceTurnRelease()){
+          openmx_gemmul8ReleaseWorkspaces();
+        }
         BandNonCol_ConstructCache_Reset();
         BandNonCol_GpuSolver_Destroy();
       }
@@ -3730,6 +3884,11 @@ double Band_DFT_NonCol(
 
   } /* kloop0 */
 
+  /* release the GEMMul8 workspace left behind by the per-k dense GEMMs */
+  if (BandNonCol_UseDenseGpuMatrix(n,n2) && BandNonCol_GemmWorkspaceTurnRelease()){
+    openmx_gemmul8ReleaseWorkspaces();
+  }
+
   } /* fallback distributed path */
 
   /****************************************************
@@ -3984,7 +4143,9 @@ double Band_DFT_NonCol(
            Set_Hamiltonian_OpenACC_Rank_Is_Selected());
         int root_dense_turn_group =
           serialize_gpu_turns ?
-          BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,owns_root_dense_rank,myid0) :
+          BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,
+                                  BANDNONCOL_GPU_TURN_DM,
+                                  owns_root_dense_rank,myid0) :
           Num_Comm_World2;
 
         if (root_dense_turn_group<1) root_dense_turn_group = 1;
@@ -4136,7 +4297,9 @@ double Band_DFT_NonCol(
 
     if (use_k_dense_gpusolver){
       int max_concurrent_gpu_turns =
-        BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,owns_dense_k_rank,myid0);
+        BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,
+                                          BANDNONCOL_GPU_TURN_EIGVECS,
+                                          owns_dense_k_rank,myid0);
       BandNonColRootDenseWorkspace *rdw;
       double *pack_buffer = NULL;
       double *m_olp = NULL;
@@ -4250,6 +4413,9 @@ double Band_DFT_NonCol(
           m_i11 = NULL;
           m_i22 = NULL;
           m_i12 = NULL;
+          if (BandNonCol_GemmWorkspaceTurnRelease()){
+            openmx_gemmul8ReleaseWorkspaces();
+          }
           BandNonCol_ConstructCache_Reset();
           BandNonCol_RootDenseWorkspace_Reset();
           BandNonCol_GpuSolver_Destroy();
@@ -4616,6 +4782,11 @@ double Band_DFT_NonCol(
       }
 
     } /* kloop0 */
+
+    /* release the GEMMul8 workspace left behind by the per-k dense GEMMs */
+    if (BandNonCol_UseDenseGpuMatrix(n,n2) && BandNonCol_GemmWorkspaceTurnRelease()){
+      openmx_gemmul8ReleaseWorkspaces();
+    }
 
     /* store DM and iDM */
 
