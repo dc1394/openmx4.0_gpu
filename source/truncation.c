@@ -114,6 +114,7 @@ double truncation(int MD_iter,int UCell_flag)
      service.  Release its host/device cache while the old topology is still
      well defined. */
   Set_Density_Grid_GPU_Invalidate();
+  Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
 
   if (MD_iter==1){
     for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++) time_per_atom[Gc_AN] = 1.0;

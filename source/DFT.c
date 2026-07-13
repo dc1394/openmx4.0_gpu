@@ -199,9 +199,57 @@ static int DFT_SetHamiltonianOpenACCSelectedRank(int myid0)
     return 1;
 }
 
+static int DFT_SetHamiltonianOpenACCWorkSelectedRank(int myid0)
+{
+    const char *kowner_only;
+
+    if (scf_eigen_lib_flag != GPUSOLVER) {
+        return 0;
+    }
+
+    if (Solver != 2 && Solver != 3 && Solver != 12) {
+        return 0;
+    }
+
+    /* Set_Hamiltonian is atom-distributed rather than k-distributed.  On a
+       large-memory GPU, allowing every rank with a local H segment to enter
+       the per-device memory scheduler removes the CPU critical path. */
+    kowner_only = getenv("OPENMX_SETHAM_GPU_KOWNER_ONLY");
+    if (kowner_only == NULL || atoi(kowner_only) == 0) {
+        return 1;
+    }
+
+    /* Compatibility/debug mode: retain the former k-owner-only policy. */
+    if (Solver == 2 || Solver == 12) {
+        return (myid0 == Host_ID);
+    }
+
+    if (Solver == 3) {
+        if (Comm_World_StartID1 != NULL && Comm_World_StartID2 != NULL &&
+            0 < Num_Comm_World1 && 0 < Num_Comm_World2 &&
+            0 <= myworld1 && myworld1 < Num_Comm_World1 &&
+            0 <= myworld2 && myworld2 < Num_Comm_World2) {
+            int root_rank;
+
+            /* Set_Hamiltonian constructs every spin component in one call.
+               Select only one spin world's k roots so its GPU-user count is
+               bounded by the number of distinct k-point owner processes. */
+            if (myworld1 != 0) {
+                return 0;
+            }
+            root_rank = Comm_World_StartID1[0] + Comm_World_StartID2[myworld2];
+            return (myid0 == root_rank);
+        }
+        return (myid0 == Host_ID);
+    }
+
+    return 0;
+}
+
 static void DFT_ConfigureSetHamiltonianOpenACC(int myid0)
 {
     Set_Hamiltonian_Set_OpenACC_Rank_Selected(DFT_SetHamiltonianOpenACCSelectedRank(myid0));
+    Set_Hamiltonian_Set_OpenACC_Work_Rank_Selected(DFT_SetHamiltonianOpenACCWorkSelectedRank(myid0));
 }
 
 static void DFT_PrepareGpuSolverHSPackedCache(void)

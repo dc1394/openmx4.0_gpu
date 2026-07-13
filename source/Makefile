@@ -208,7 +208,7 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           lapack_dstevx1.o lapack_dstevx2.o lapack_dstevx3.o \
           lapack_dstevx4.o lapack_dstevx5.o lapack_dsteqr1.o \
           Nonlocal_Basis.o Set_OLP_Kin.o Set_Nonlocal.o Set_ProExpn_VNA.o \
-          Set_CoreHoleMatrix.o Set_XMCD_penalty.o Set_OLP_p.o Set_Hamiltonian.o Set_Vpot.o \
+          Set_CoreHoleMatrix.o Set_XMCD_penalty.o Set_OLP_p.o Set_Hamiltonian.o set_hamiltonian_gpu.o Set_Vpot.o \
           Voronoi_Charge.o Voronoi_Orbital_Moment.o Fuzzy_Weight.o \
           dampingF.o deri_dampingF.o Spherical_Bessel.o \
           iterout.o iterout_md.o Allocate_Arrays.o Free_Arrays.o \
@@ -691,6 +691,8 @@ Set_OLP_p.o: Set_OLP_p.c openmx_common.h
 	$(CC) -c Set_OLP_p.c
 Set_Hamiltonian.o: Set_Hamiltonian.c openmx_common.h
 	$(CC) -c Set_Hamiltonian.c
+set_hamiltonian_gpu.o: set_hamiltonian_gpu.cu
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c set_hamiltonian_gpu.cu -o set_hamiltonian_gpu.o
 Set_Vpot.o: Set_Vpot.c openmx_common.h
 	$(CC) -c Set_Vpot.c
 #

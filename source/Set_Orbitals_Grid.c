@@ -42,6 +42,7 @@ double Set_Orbitals_Grid(int Cnt_kind)
   /* Orbital values and their grid topology back the density GPU service
      cache.  Drop the previous epoch before any values are regenerated. */
   Set_Density_Grid_GPU_Invalidate();
+  Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
 
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
