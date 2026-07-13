@@ -51,6 +51,48 @@ static void* Force_checked_malloc(size_t size, const char* file, int line)
     abort();
 }
 
+static int Force_env_flag(const char* name, int default_value)
+{
+    const char* value = getenv(name);
+
+    if (value == NULL || value[0] == '\0') {
+        return default_value;
+    }
+
+    return atoi(value) != 0;
+}
+
+static int Force_collective_env_flag(const char* name, int default_value,
+    MPI_Comm comm)
+{
+    int myid;
+    int value = default_value;
+
+    MPI_Comm_rank(comm, &myid);
+    if (myid == 0) {
+        value = Force_env_flag(name, default_value);
+    }
+    MPI_Bcast(&value, 1, MPI_INT, 0, comm);
+
+    return value;
+}
+
+static void Force_profile_report(const char* label, double local_elapsed,
+    MPI_Comm comm, int myid, int numprocs)
+{
+    double max_elapsed = 0.0;
+    double sum_elapsed = 0.0;
+
+    MPI_Reduce(&local_elapsed, &max_elapsed, 1, MPI_DOUBLE, MPI_MAX, 0, comm);
+    MPI_Reduce(&local_elapsed, &sum_elapsed, 1, MPI_DOUBLE, MPI_SUM, 0, comm);
+
+    if (myid == 0) {
+        printf("[Force profile] %-12s max=%10.6f s  avg=%10.6f s\n",
+            label, max_elapsed, sum_elapsed / (double)numprocs);
+        fflush(stdout);
+    }
+}
+
 static int** Force_alloc_int_matrix(int rows, int cols)
 {
     int i;
@@ -599,6 +641,177 @@ static size_t Force4B_pack_trace_terms(double***** CDM0,
     return idx;
 }
 
+static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
+    int h_AN, int q_AN, double***** CDM0, Type_DS_VNA***** DS_VNA,
+    double* dEx, double* dEy, double* dEz)
+{
+    int m, n, l;
+    const int Gh_AN = natn[Gc_AN][h_AN];
+    const int Gq_AN = natn[Gc_AN][q_AN];
+    const int Mh_AN = F_G2M[Gh_AN];
+    const int Hwan = WhatSpecies[Gh_AN];
+    const int Qwan = WhatSpecies[Gq_AN];
+    const int ian = Spe_Total_CNO[Hwan];
+    const int jan = Spe_Total_CNO[Qwan];
+    const int kl = RMI1[Mc_AN][h_AN][q_AN];
+    const int kl1 = RMI1[Mc_AN][0][h_AN];
+    const int kl2 = RMI1[Mc_AN][0][q_AN];
+    const int num_projectors = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
+    const double pref = ((Solver == 5 || Solver == 8 || Solver == 11) || q_AN == h_AN)
+        ? ((SpinP_switch == 0) ? 2.0 : 1.0)
+        : ((SpinP_switch == 0) ? 4.0 : 2.0);
+    const double rcut = Spe_Atom_Cut1[Hwan] + Spe_Atom_Cut1[Qwan];
+    const double scale0 = pref * dampingF(rcut, Dis[Gh_AN][kl]);
+
+    for (m = 0; m < ian; m++) {
+        const Type_DS_VNA* restrict h0 = DS_VNA[0][Matomnum + 1][kl1][m];
+        const Type_DS_VNA* restrict hx = DS_VNA[1][Matomnum + 1][kl1][m];
+        const Type_DS_VNA* restrict hy = DS_VNA[2][Matomnum + 1][kl1][m];
+        const Type_DS_VNA* restrict hz = DS_VNA[3][Matomnum + 1][kl1][m];
+        double* cdm0_row = CDM0[0][Mh_AN][kl][m];
+        double* cdm1_row = (SpinP_switch == 0) ? NULL : CDM0[1][Mh_AN][kl][m];
+
+        for (n = 0; n < jan; n++) {
+            const Type_DS_VNA* restrict q0 = DS_VNA[0][Matomnum + 1][kl2][n];
+            const Type_DS_VNA* restrict qx = DS_VNA[1][Matomnum + 1][kl2][n];
+            const Type_DS_VNA* restrict qy = DS_VNA[2][Matomnum + 1][kl2][n];
+            const Type_DS_VNA* restrict qz = DS_VNA[3][Matomnum + 1][kl2][n];
+            double sumx = 0.0;
+            double sumy = 0.0;
+            double sumz = 0.0;
+
+#pragma omp simd reduction(+:sumx, sumy, sumz)
+            for (l = 0; l < num_projectors; l++) {
+                sumx -= (double)(hx[l] * q0[l]) + (double)(h0[l] * qx[l]);
+                sumy -= (double)(hy[l] * q0[l]) + (double)(h0[l] * qy[l]);
+                sumz -= (double)(hz[l] * q0[l]) + (double)(h0[l] * qz[l]);
+            }
+
+            {
+                const double cdm = (SpinP_switch == 0)
+                    ? cdm0_row[n]
+                    : cdm0_row[n] + cdm1_row[n];
+                const double scale = scale0 * cdm;
+                *dEx += scale * sumx;
+                *dEy += scale * sumy;
+                *dEz += scale * sumz;
+            }
+        }
+    }
+}
+
+static void Force4B_case1_trace_fused(int Mc_AN, int Gc_AN, int q_AN,
+    double***** CDM0, Type_DS_VNA***** DS_VNA,
+    double* dEx, double* dEy, double* dEz)
+{
+    int k, m, n, l;
+    const int center_atom = natn[Gc_AN][0];
+    const int q_atom = natn[Gc_AN][q_AN];
+    const int center_local = F_G2M[center_atom];
+    const int q_local = F_G2M[q_atom];
+    const int q_storage = (q_local <= Matomnum) ? q_local : Matomnum + 1;
+    const int center_species = WhatSpecies[center_atom];
+    const int q_species = WhatSpecies[q_atom];
+    const int ian = Spe_Total_CNO[center_species];
+    const int jan = Spe_Total_CNO[q_species];
+    const int cdm_kl = RMI1[Mc_AN][0][q_AN];
+    const int num_projectors = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
+    const double pref = (SpinP_switch == 0) ? 4.0 : 2.0;
+    const double rcut = Spe_Atom_Cut1[center_species] + Spe_Atom_Cut1[q_species];
+    const double distance = Dis[Gc_AN][q_AN];
+    const double dmp = dampingF(rcut, distance);
+    double force_x = 0.0;
+    double force_y = 0.0;
+    double force_z = 0.0;
+
+    for (k = 0; k <= FNAN[Gc_AN]; k++) {
+        const int qk_kl = RMI1[Mc_AN][q_AN][k];
+        if (qk_kl >= 0) {
+            for (m = 0; m < ian; m++) {
+                double* cdm0_row = CDM0[0][center_local][cdm_kl][m];
+                double* cdm1_row = (SpinP_switch == 0) ? NULL : CDM0[1][center_local][cdm_kl][m];
+                const Type_DS_VNA* restrict hx = DS_VNA[1][Mc_AN][k][m];
+                const Type_DS_VNA* restrict hy = DS_VNA[2][Mc_AN][k][m];
+                const Type_DS_VNA* restrict hz = DS_VNA[3][Mc_AN][k][m];
+
+                for (n = 0; n < jan; n++) {
+                    const Type_DS_VNA* restrict q0 = DS_VNA[0][q_storage][qk_kl][n];
+                    double sumx = 0.0;
+                    double sumy = 0.0;
+                    double sumz = 0.0;
+
+#pragma omp simd reduction(+:sumx, sumy, sumz)
+                    for (l = 0; l < num_projectors; l++) {
+                        sumx += (double)(hx[l] * q0[l]);
+                        sumy += (double)(hy[l] * q0[l]);
+                        sumz += (double)(hz[l] * q0[l]);
+                    }
+
+                    {
+                        const double cdm = (SpinP_switch == 0)
+                            ? cdm0_row[n]
+                            : cdm0_row[n] + cdm1_row[n];
+                        const double scale = pref * cdm;
+                        force_x += scale * sumx;
+                        force_y += scale * sumy;
+                        force_z += scale * sumz;
+                    }
+                }
+            }
+        }
+    }
+
+    force_x *= dmp;
+    force_y *= dmp;
+    force_z *= dmp;
+
+    {
+        double derivative_scale = 0.0;
+        double r = distance;
+
+        if (rcut > r) {
+            derivative_scale = deri_dampingF(rcut, r) / dmp;
+        }
+        if (r < 1.0e-10) {
+            r = 1.0e-10;
+        }
+
+        if (derivative_scale != 0.0) {
+            double trace_hvna = 0.0;
+            const int center_cell = ncn[Gc_AN][0];
+            const int q_cell = ncn[Gc_AN][q_AN];
+
+            for (m = 0; m < ian; m++) {
+                double* cdm0_row = CDM0[0][center_local][cdm_kl][m];
+                double* cdm1_row = (SpinP_switch == 0) ? NULL : CDM0[1][center_local][cdm_kl][m];
+                for (n = 0; n < jan; n++) {
+                    const double cdm = (SpinP_switch == 0)
+                        ? cdm0_row[n]
+                        : cdm0_row[n] + cdm1_row[n];
+                    trace_hvna += pref * cdm * HVNA[Mc_AN][q_AN][m][n];
+                }
+            }
+
+            const double dx = derivative_scale
+                * ((Gxyz[center_atom][1] + atv[center_cell][1])
+                    - (Gxyz[q_atom][1] + atv[q_cell][1])) / r;
+            const double dy = derivative_scale
+                * ((Gxyz[center_atom][2] + atv[center_cell][2])
+                    - (Gxyz[q_atom][2] + atv[q_cell][2])) / r;
+            const double dz = derivative_scale
+                * ((Gxyz[center_atom][3] + atv[center_cell][3])
+                    - (Gxyz[q_atom][3] + atv[q_cell][3])) / r;
+            force_x += trace_hvna * dx;
+            force_y += trace_hvna * dy;
+            force_z += trace_hvna * dz;
+        }
+    }
+
+    *dEx += force_x;
+    *dEy += force_y;
+    *dEz += force_z;
+}
+
 static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP, double**** v_eff,
     double*** Hx, double*** Hy, double*** Hz);
@@ -720,11 +933,16 @@ double Force(double***** H0,
     double TStime, TEtime;
     int numprocs, myid, tag = 999, ID, IDS, IDR;
     double Stime_atom, Etime_atom;
+    double profile_stamp, profile_total_start;
     double***** Force2_source = NULL;
     double***** Force5_source = NULL;
     size_t* gpu_atom_terms = NULL;
     size_t gpu_total_terms;
-    const int use_force_openacc = (scf_eigen_lib_flag == GPUSOLVER);
+    const int force_profile = Force_collective_env_flag(
+        "OPENMX_FORCE_PROFILE", 0, mpi_comm_level1);
+    const int use_force_openacc = (scf_eigen_lib_flag == GPUSOLVER
+        && Force_collective_env_flag("OPENMX_FORCE_GPU", 1,
+            mpi_comm_level1));
     const int use_force4_openacc = (use_force_openacc
         && F_VNA_flag == 1
         && (ProExpn_VNA == 0 || ProExpn_VNA == 1));
@@ -754,6 +972,8 @@ double Force(double***** H0,
 
     MPI_Barrier(mpi_comm_level1);
     dtime(&TStime);
+    profile_total_start = TStime;
+    profile_stamp = TStime;
 
     /****************************************************
      allocation of arrays:
@@ -1260,6 +1480,14 @@ double Force(double***** H0,
 
     } /* if (use_iDM0) */
 
+    if (force_profile) {
+        double now;
+        dtime(&now);
+        Force_profile_report("setup+CDM", now - profile_stamp,
+            mpi_comm_level1, myid, numprocs);
+        profile_stamp = now;
+    }
+
     /****************************************************
                         #1 of force
 
@@ -1406,6 +1634,10 @@ double Force(double***** H0,
     } /* #pragma omp parallel */
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("force#1", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for force#1=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -2054,6 +2286,10 @@ double Force(double***** H0,
     }
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("force#2", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for force#2=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -2077,6 +2313,10 @@ double Force(double***** H0,
     Force3();
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("force#3", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for force#3=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -2092,7 +2332,8 @@ double Force(double***** H0,
     dtime(&stime);
 
     if (myid == Host_ID && 0 < level_stdout) {
-        printf("  Force calculation #4%s\n", use_force4_openacc ? " (GPU-accelerated)" : "");
+        printf("  Force calculation #4%s\n",
+            (ProExpn_VNA == 0 && use_force4_openacc) ? " (GPU reduction)" : "");
         fflush(stdout);
     }
 
@@ -2122,6 +2363,10 @@ double Force(double***** H0,
     }
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("force#4", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for force#4=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -2136,7 +2381,7 @@ double Force(double***** H0,
     dtime(&stime);
 
     if (myid == Host_ID && 0 < level_stdout) {
-        printf("  Force calculation #5%s\n", use_force_openacc ? " (GPU-accelerated)" : "");
+        printf("  Force calculation #5%s\n", use_force_openacc ? " (GPU reduction)" : "");
         fflush(stdout);
     }
 
@@ -2218,6 +2463,10 @@ double Force(double***** H0,
     }
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("force#5", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for force#5=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -2683,7 +2932,14 @@ double Force(double***** H0,
                    Force arising from HNL
     ****************************************************/
 
+    dtime(&stime);
     Force_HNL(CDM0, iDM0);
+    dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("force-HNL", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+        profile_stamp = etime;
+    }
 
     /****************************************************
           Force arising from the penalty functional
@@ -2832,6 +3088,13 @@ double Force(double***** H0,
     dtime(&TEtime);
     time0 = TEtime - TStime;
 
+    if (force_profile) {
+        Force_profile_report("cleanup", TEtime - profile_stamp,
+            mpi_comm_level1, myid, numprocs);
+        Force_profile_report("total", TEtime - profile_total_start,
+            mpi_comm_level1, myid, numprocs);
+    }
+
     return time0;
 }
 
@@ -2906,10 +3169,12 @@ void Force3()
         struct WORK_DORBITAL work_dObs;
         Get_dOrbitals_init(&work_dObs);
 
+#if measure_time
         double time1 = 0.0;
         double time2 = 0.0;
         double last_time;
         double current_time;
+#endif
 
         int Mc_AN;
         for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -2921,8 +3186,17 @@ void Force3()
             /***********************************
                          calc dOrb0
             ***********************************/
-#pragma omp barrier /* this barrier is necessary to wait (1)clearing sumx, sumy, sumz, and (2)initializing work_dObs */
+#pragma omp barrier /* wait until the previous atom's master update has completed */
+#pragma omp master
+            {
+                sumx = 0.0;
+                sumy = 0.0;
+                sumz = 0.0;
+            }
+#pragma omp barrier
+#if measure_time
             dtime(&last_time);
+#endif
 
             int Nc;
 #pragma omp for
@@ -3305,7 +3579,6 @@ void Force3()
                                 dChiQ = RF[L0][Mul0] * dAFQ[L0][M0];
                                 dChiP = RF[L0][Mul0] * dAFP[L0][M0];
 
-                                dorbs0[0][i1] = RF[L0][Mul0] * AF[L0][M0];
                                 dorbs0[1][i1] = -dRx * dChiR - dQx * dChiQ - dPx * dChiP;
                                 dorbs0[2][i1] = -dRy * dChiR - dQy * dChiQ - dPy * dChiP;
                                 dorbs0[3][i1] = -dRz * dChiR - dQz * dChiQ - dPz * dChiP;
@@ -3319,12 +3592,12 @@ void Force3()
                     Get_Cnt_dOrbitals(Mc_AN, dx, dy, dz, dorbs0);
                 }
 
-                int k;
-                for (k = 0; k < 3; k++) {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        dChi0[Nc][i][k] = dorbs0[k + 1][i];
-                    }
+                int i;
+                for (i = 0; i < NO0; i++) {
+                    double* dchi = dChi0[Nc][i];
+                    dchi[0] = dorbs0[1][i];
+                    dchi[1] = dorbs0[2][i];
+                    dchi[2] = dorbs0[3][i];
                 }
 
                 if (SpinP_switch == 0 || SpinP_switch == 1) {
@@ -3454,20 +3727,18 @@ void Force3()
 
             } /* Nc, here omp barrier is called implicitly because of end of for loop */
 
+#if measure_time
             dtime(&current_time);
             time1 += current_time - last_time;
             last_time = current_time;
-
-            double sumx1 = 0.0;
-            double sumy1 = 0.0;
-            double sumz1 = 0.0;
+#endif
 
             int h_AN;
+#pragma omp for schedule(static) reduction(+:sumx, sumy, sumz)
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
 
                 int Gh_AN = natn[Gc_AN][h_AN];
                 int Mh_AN = F_G2M[Gh_AN];
-                int Rnh = ncn[Gc_AN][h_AN];
                 int Hwan = WhatSpecies[Gh_AN];
                 int NO1 = Spe_Total_CNO[Hwan];
 
@@ -3482,20 +3753,21 @@ void Force3()
 
                     /* set orbs1 */
 
+                    const Type_Orbs_Grid* restrict orbs1_source;
                     if (G2ID[Gh_AN] == myid) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            orbs1[j] = Orbs_Grid[Mh_AN][Nh][j];
-                        }
+                        orbs1_source = Orbs_Grid[Mh_AN][Nh];
                     } else {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            orbs1[j] = Orbs_Grid_FNAN[Mc_AN][h_AN][Nog][j];
-                        }
+                        orbs1_source = Orbs_Grid_FNAN[Mc_AN][h_AN][Nog];
+                    }
+                    int j;
+#pragma omp simd
+                    for (j = 0; j < NO1; j++) {
+                        orbs1[j] = (double)orbs1_source[j];
                     }
 
                     int spin;
                     for (spin = 0; spin <= SpinP_switch; spin++) {
+                        double** dm = DM[0][spin][Mc_AN][h_AN];
 
                         double tmpx = 0.0;
                         double tmpy = 0.0;
@@ -3504,9 +3776,11 @@ void Force3()
                         int i;
                         for (i = 0; i < NO0; i++) {
                             double tmp0 = 0.0;
+                            const double* restrict dm_row = dm[i];
                             int j;
+#pragma omp simd reduction(+:tmp0)
                             for (j = 0; j < NO1; j++) {
-                                tmp0 += orbs1[j] * DM[0][spin][Mc_AN][h_AN][i][j];
+                                tmp0 += orbs1[j] * dm_row[j];
                             }
 
                             tmpx += ai_dorbs0[i][0] * tmp0;
@@ -3516,9 +3790,9 @@ void Force3()
 
                         /* due to difference in the definition between density matrix and density */
                         double Vpt = Vpot_grid[spin][Nc];
-                        sumx1 += tmpx * Vpt;
-                        sumy1 += tmpy * Vpt;
-                        sumz1 += tmpz * Vpt;
+                        sumx += tmpx * Vpt;
+                        sumy += tmpy * Vpt;
+                        sumz += tmpz * Vpt;
 
                     } /* spin */
                 } /* Nog */
@@ -3531,14 +3805,16 @@ void Force3()
 
 #pragma omp master
             {
-                Gxyz[Gc_AN][17] += sumx1 * GridVol;
-                Gxyz[Gc_AN][18] += sumy1 * GridVol;
-                Gxyz[Gc_AN][19] += sumz1 * GridVol;
+                Gxyz[Gc_AN][17] += sumx * GridVol;
+                Gxyz[Gc_AN][18] += sumy * GridVol;
+                Gxyz[Gc_AN][19] += sumz * GridVol;
             }
 
+#if measure_time
             dtime(&current_time);
             time2 += current_time - last_time;
             last_time = current_time;
+#endif
 
 #pragma omp master
             if (2 <= level_stdout) {
@@ -5514,6 +5790,8 @@ void Force4B(double***** CDM0)
     MPI_Request request;
 
     static int counter = 0;
+    const int force_profile = Force_collective_env_flag(
+        "OPENMX_FORCE_PROFILE", 0, mpi_comm_level1);
 
     counter++;
 
@@ -5594,8 +5872,14 @@ void Force4B(double***** CDM0)
      * device buffers and matches the original contraction.
      */
     const int use_force4b_openacc = 0;
+    const int use_force4b_fused = Force_collective_env_flag(
+        "OPENMX_FORCE4B_FUSED", 1, mpi_comm_level1);
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("f4b-setup", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for part1 of force#4=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -5697,6 +5981,10 @@ void Force4B(double***** CDM0)
     } /* #pragma omp parallel */
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("f4b-premul", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for part2 of force#4=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -5963,7 +6251,7 @@ void Force4B(double***** CDM0)
                         time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
                     }
                 } else {
-#pragma omp parallel shared(List_YOUSO, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, Original_Mc_AN, IDR, Rcv_GAN, F_Rcv_Num_WK, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum, ActiveHVNA2, ActiveHVNA3) private(Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, Mc_AN, Cwan, fan, h_AN, Gh_AN, Mh_AN, Hwan, ian, n, jg, j0, jg0, Mj_AN0, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, HVNAx, HVNAy, HVNAz, i, j, pref)
+#pragma omp parallel shared(use_force4b_fused, List_YOUSO, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, Original_Mc_AN, IDR, Rcv_GAN, F_Rcv_Num_WK, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum, ActiveHVNA2, ActiveHVNA3) private(Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, Mc_AN, Cwan, fan, h_AN, Gh_AN, Mh_AN, Hwan, ian, n, jg, j0, jg0, Mj_AN0, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, HVNAx, HVNAy, HVNAz, i, j, pref)
                     {
 
                         /* allocation of array */
@@ -6009,6 +6297,12 @@ void Force4B(double***** CDM0)
                                 Qwan = WhatSpecies[Gq_AN];
                                 jan = Spe_Total_CNO[Qwan];
                                 kl = RMI1[Mc_AN][h_AN][q_AN];
+
+                                if (use_force4b_fused && q_AN != 0) {
+                                    Force4B_case1_trace_fused(Mc_AN, Gc_AN, q_AN,
+                                        CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                    continue;
+                                }
 
                                 dHVNA(0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
@@ -6116,6 +6410,10 @@ void Force4B(double***** CDM0)
     } while (po != 0);
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("f4b-case1-r", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for part3 of force#4=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -6223,7 +6521,7 @@ void Force4B(double***** CDM0)
 
         } /* Mc_AN */
     } else {
-#pragma omp parallel shared(time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, FNAN, Spe_Total_CNO, WhatSpecies, F_G2M, natn, M2G, Matomnum, List_YOUSO, ActiveHVNA2, ActiveHVNA3) private(HVNAx, HVNAy, HVNAz, Mc_AN, Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, h_AN, Gh_AN, Mh_AN, Hwan, ian, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, i, j, pref)
+#pragma omp parallel shared(use_force4b_fused, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, FNAN, Spe_Total_CNO, WhatSpecies, F_G2M, natn, M2G, Matomnum, List_YOUSO, ActiveHVNA2, ActiveHVNA3) private(HVNAx, HVNAy, HVNAz, Mc_AN, Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, h_AN, Gh_AN, Mh_AN, Hwan, ian, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, i, j, pref)
         {
 
             /* allocation of array */
@@ -6258,6 +6556,12 @@ void Force4B(double***** CDM0)
                         Qwan = WhatSpecies[Gq_AN];
                         jan = Spe_Total_CNO[Qwan];
                         kl = RMI1[Mc_AN][h_AN][q_AN];
+
+                        if (use_force4b_fused && q_AN != 0) {
+                            Force4B_case1_trace_fused(Mc_AN, Gc_AN, q_AN,
+                                CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                            continue;
+                        }
 
                         dHVNA(0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
@@ -6326,6 +6630,10 @@ void Force4B(double***** CDM0)
     }
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("f4b-case1-l", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for part4 of force#4=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -6678,7 +6986,7 @@ void Force4B(double***** CDM0)
                 }
             } else {
 #if NVHPC_VERSION >= 250000
-                #pragma omp parallel shared(ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,CDM0,SpinP_switch,DS_VNA,RMI1,Spe_Total_CNO,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,ActiveHVNA2,ActiveHVNA3) private(HVNAx,HVNAy,HVNAz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,Nloop,pref) reduction(+:dEx,dEy,dEz)
+                #pragma omp parallel shared(use_force4b_fused,ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,CDM0,SpinP_switch,DS_VNA,RMI1,Spe_Total_CNO,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,ActiveHVNA2,ActiveHVNA3) private(HVNAx,HVNAy,HVNAz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,Nloop,pref) reduction(+:dEx,dEy,dEz)
 #endif
                 {
 
@@ -6712,6 +7020,12 @@ void Force4B(double***** CDM0)
                         kl = RMI1[Mc_AN][h_AN][q_AN];
 
                         if (0 <= kl) {
+
+                            if (use_force4b_fused && h_AN != 0 && q_AN != 0 && h_AN != q_AN) {
+                                Force4B_case2_trace_fused(Mc_AN, Gc_AN, h_AN, q_AN,
+                                    CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                continue;
+                            }
 
                             dHVNA(1, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
@@ -6797,6 +7111,10 @@ void Force4B(double***** CDM0)
     free(OneD2h_AN);
 
     dtime(&etime);
+    if (force_profile) {
+        Force_profile_report("f4b-case2", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+    }
     if (myid == 0 && measure_time) {
         printf("Time for part5 of force#4=%18.5f\n", etime - stime);
         fflush(stdout);
@@ -6829,6 +7147,7 @@ void Force4B(double***** CDM0)
 
     free(VNA_List);
     free(VNA_List2);
+
 }
 
 void dHNL(int where_flag,
