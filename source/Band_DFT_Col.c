@@ -16,6 +16,7 @@
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
 #include "tran_variables.h"
+#include <accel.h>
 #include <limits.h>
 #include <math.h>
 #include <openacc.h>
@@ -282,10 +283,10 @@ static int BandCol_GpuPersistentDecide(void)
 
 static int BandCol_GemmWorkspaceTurnRelease(void)
 {
-    /* Releasing the ~1 GiB GEMMul8 workspace at the end of each GPU turn keeps
-       the shared device from filling up (8 owner ranks x 1 GiB standing
-       otherwise starves later ranks into the FP64 cuBLAS fallback); opt out
-       with OPENMX_BAND_GEMMUL8_TURN_RELEASE=0. */
+    /* Releasing the ~1 GiB GEMMul8 workspace once a rank finishes its GPU
+       turns in a concurrency group keeps the shared device from filling up
+       (8 owner ranks x 1 GiB standing otherwise starves later ranks into the
+       FP64 cuBLAS fallback); opt out with OPENMX_BAND_GEMMUL8_TURN_RELEASE=0. */
     const char *value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
 
     if (value == NULL) {
@@ -294,64 +295,427 @@ static int BandCol_GemmWorkspaceTurnRelease(void)
     return (atoi(value) != 0);
 }
 
-static int BandCol_GpuTurnGroup(void)
+static int BandCol_EigenvaluesOnlyNoVectors(void)
 {
-    /* Number of GPU turns allowed to run concurrently between barriers when
-       turns are serialized (OPENMX_BAND_GPU_TURN_GROUP). */
-    const char *value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
-    long        group;
+    /* The first (all_knum!=1) diagonalization pass only needs eigenvalues for
+       the chemical potential; jobz=CUSOLVER_EIG_MODE_NOVECTOR skips the
+       eigenvector build inside cusolverDnXsyevdx and returns identical
+       eigenvalues.  Opt out with OPENMX_BAND_SYEVDX_NOVECTOR=0. */
+    const char *value = getenv("OPENMX_BAND_SYEVDX_NOVECTOR");
 
     if (value == NULL) {
-        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
-        if (value == NULL) {
-            group = 4;
-        } else {
-            group = strtol(value, NULL, 10);
-        }
-    } else {
-        group = strtol(value, NULL, 10);
-    }
-
-    if (group < 1L) {
         return 1;
     }
-    if (1024L < group) {
-        return 1024;
-    }
-    return (int)group;
+    return (atoi(value) != 0);
 }
 
-static int BandCol_MaxConcurrentKGpuTurns(void)
+typedef struct
 {
-    const int   max_limit = 4;
+    int valid;
+    unsigned char uuid[16];
+} BandColGpuUuidRecord;
+
+static size_t BandCol_SaturatingMul(size_t a, size_t b)
+{
+    if (a != 0U && SIZE_MAX / a < b) {
+        return SIZE_MAX;
+    }
+    return a * b;
+}
+
+static size_t BandCol_SaturatingAdd(size_t a, size_t b)
+{
+    if (SIZE_MAX - a < b) {
+        return SIZE_MAX;
+    }
+    return a + b;
+}
+
+static size_t BandCol_MaxSize(size_t a, size_t b)
+{
+    return (a < b) ? b : a;
+}
+
+static size_t BandCol_GpuSolverWorkFallbackBytes(int n)
+{
+    size_t matrix_count = BandCol_SaturatingMul((size_t)n, (size_t)n);
+    size_t matrix_bytes = BandCol_SaturatingMul(matrix_count, sizeof(dcomplex));
+
+    return BandCol_SaturatingMul(matrix_bytes, 4U);
+}
+
+static size_t BandCol_QueryGpuSolverWorkBytes(int n, int maxn)
+{
+    /* The query costs a cusolver handle + stream create/destroy each time and
+       runs once per SCF iteration; memoize the two (n, n)/(n, maxn) shapes. */
+    static int    cached_n[2]     = {-1, -1};
+    static int    cached_maxn[2]  = {-1, -1};
+    static size_t cached_bytes[2] = {0U, 0U};
+    static int    cached_next     = 0;
+    cusolverDnHandle_t handle = NULL;
+    cudaStream_t stream = NULL;
+    cudaError_t cuda_status;
+    cusolverStatus_t solver_status;
+    cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+    cusolverEigRange_t range = CUSOLVER_EIG_RANGE_I;
+    double vl = 0.0;
+    double vu = 0.0;
+    int64_t h_meig = 0;
+    size_t d_bytes = 0;
+    size_t h_bytes = 0;
+    size_t fallback = BandCol_GpuSolverWorkFallbackBytes(n);
+
+    if (n <= 0 || maxn <= 0 || n < maxn) {
+        return fallback;
+    }
+
+    for (int i = 0; i < 2; i++) {
+        if (cached_n[i] == n && cached_maxn[i] == maxn && cached_bytes[i] != 0U) {
+            return cached_bytes[i];
+        }
+    }
+
+    cuda_status = cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    if (cuda_status != cudaSuccess) {
+        return fallback;
+    }
+
+    solver_status = cusolverDnCreate(&handle);
+    if (solver_status == CUSOLVER_STATUS_SUCCESS) {
+        solver_status = cusolverDnSetStream(handle, stream);
+    }
+    if (solver_status == CUSOLVER_STATUS_SUCCESS) {
+        solver_status = cusolverDnXsyevdx_bufferSize(
+            handle, NULL, jobz, range, uplo, n, CUDA_C_64F, NULL, n,
+            &vl, &vu, 1L, maxn, &h_meig, CUDA_R_64F, NULL,
+            CUDA_C_64F, &d_bytes, &h_bytes);
+    }
+
+    if (handle != NULL) {
+        cusolverDnDestroy(handle);
+    }
+    cudaStreamDestroy(stream);
+
+    if (solver_status != CUSOLVER_STATUS_SUCCESS || d_bytes == 0U) {
+        return fallback;
+    }
+
+    cached_n[cached_next]     = n;
+    cached_maxn[cached_next]  = maxn;
+    cached_bytes[cached_next] = d_bytes;
+    cached_next               = (cached_next + 1) % 2;
+    return d_bytes;
+}
+
+static size_t BandCol_GpuRankOverheadBytes(void)
+{
+    const char *value = getenv("OPENMX_BAND_GPU_RANK_OVERHEAD_MB");
+    unsigned long long mib = 256ULL;
+
+    if (value != NULL && value[0] != '\0') {
+        char *end = NULL;
+        unsigned long long parsed = strtoull(value, &end, 10);
+        if (end != value && *end == '\0') {
+            mib = parsed;
+        }
+    }
+    if ((unsigned long long)SIZE_MAX / (1024ULL * 1024ULL) < mib) {
+        return SIZE_MAX;
+    }
+    return (size_t)mib * 1024ULL * 1024ULL;
+}
+
+static size_t BandCol_GpuTurnRequiredBytes(int n, int maxn, int size_H1)
+{
+    size_t matrix_count = BandCol_SaturatingMul((size_t)n, (size_t)n);
+    size_t matrix_bytes = BandCol_SaturatingMul(matrix_count, sizeof(dcomplex));
+    size_t dense_bytes = BandCol_SaturatingMul(matrix_bytes, 3U);
+    size_t vector_bytes = 0U;
+    size_t work_bytes;
+    size_t gemmul8_bytes;
+    size_t packed_count = (0 < size_H1) ? (size_t)size_H1 : 0U;
+    size_t construct_bytes;
+    size_t dm_bytes;
+    size_t transient_bytes;
+    size_t required;
+
+    vector_bytes = BandCol_SaturatingAdd(
+        BandCol_SaturatingMul((size_t)n, sizeof(dcomplex)),
+        BandCol_SaturatingMul((size_t)n, sizeof(double)));
+    vector_bytes = BandCol_SaturatingAdd(vector_bytes, sizeof(int32_t));
+
+    work_bytes = BandCol_MaxSize(BandCol_QueryGpuSolverWorkBytes(n, n),
+                                 BandCol_QueryGpuSolverWorkBytes(n, maxn));
+    gemmul8_bytes = openmx_gemmul8ZWorkspaceSize(n, n, n);
+
+    /* The dense construction data region contains the sparse-to-dense entry
+       map, phases, and the packed H/S copies.  size_H1 bounds both the entry
+       and phase counts, so this estimate is conservative for every topology. */
+    construct_bytes = BandCol_SaturatingMul(
+        packed_count, sizeof(BandColConstructEntry) + 4U * sizeof(double));
+
+    /* The GPU DM path copies three integer maps, phase pairs, eigen/occupation
+       vectors, and the packed CDM/EDM outputs. */
+    dm_bytes = BandCol_SaturatingMul(
+        packed_count, 3U * sizeof(int) + 4U * sizeof(double));
+    dm_bytes = BandCol_SaturatingAdd(
+        dm_bytes, BandCol_SaturatingMul((size_t)maxn, 2U * sizeof(double)));
+    transient_bytes = BandCol_MaxSize(construct_bytes, dm_bytes);
+
+    required = BandCol_SaturatingAdd(dense_bytes, vector_bytes);
+    required = BandCol_SaturatingAdd(required, work_bytes);
+    required = BandCol_SaturatingAdd(required, gemmul8_bytes);
+    required = BandCol_SaturatingAdd(required, transient_bytes);
+    required = BandCol_SaturatingAdd(required, BandCol_GpuRankOverheadBytes());
+    return required;
+}
+
+static size_t BandCol_GpuReserveBytes(size_t total_bytes)
+{
+    size_t reserve = total_bytes / 10U;
+    const size_t minimum = 1536ULL * 1024ULL * 1024ULL;
+    const char *value = getenv("OPENMX_BAND_GPU_RESERVE_MB");
+
+    if (reserve < minimum) {
+        reserve = minimum;
+    }
+    if (value != NULL && value[0] != '\0') {
+        char *end = NULL;
+        unsigned long long mib = strtoull(value, &end, 10);
+        if (end != value && *end == '\0' &&
+            mib <= (unsigned long long)SIZE_MAX / (1024ULL * 1024ULL)) {
+            size_t requested = (size_t)mib * 1024ULL * 1024ULL;
+            if (reserve < requested) {
+                reserve = requested;
+            }
+        }
+    }
+    return reserve;
+}
+
+static int BandCol_GpuRequestedMaxTurns(void)
+{
     const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
-    long limit;
+    long requested = 32L;
 
-    if (value != NULL) {
-        char *endp = NULL;
-        limit = strtol(value, &endp, 10);
-        if (endp == value || limit < 1L) {
-            return 1;
+    if (value == NULL) {
+        value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
+    }
+    if (value == NULL) {
+        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+    }
+    if (value != NULL && value[0] != '\0') {
+        char *end = NULL;
+        long parsed = strtol(value, &end, 10);
+        if (end != value && *end == '\0') {
+            requested = parsed;
         }
-        if ((long)max_limit < limit) {
-            return max_limit;
+    }
+    if (requested < 1L) {
+        requested = 1L;
+    }
+    if (32L < requested) {
+        requested = 32L;
+    }
+    return (int)requested;
+}
+
+static int BandCol_CompareUllDesc(const void *a, const void *b)
+{
+    const unsigned long long va = *(const unsigned long long *)a;
+    const unsigned long long vb = *(const unsigned long long *)b;
+
+    return (va < vb) ? 1 : ((vb < va) ? -1 : 0);
+}
+
+static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
+                                    int size_H1, int owns_dense_rank, int myid0)
+{
+    static const int candidates[] = {32, 16, 8, 4, 2, 1};
+    BandColGpuUuidRecord local_uuid;
+    BandColGpuUuidRecord *node_uuids = NULL;
+    MPI_Comm node_comm = MPI_COMM_NULL;
+    MPI_Comm device_comm = MPI_COMM_NULL;
+    int node_rank = 0, node_ranks = 0;
+    int cuda_ok = 0, color = MPI_UNDEFINED;
+    int local_limit = requested;
+    int global_limit = requested;
+    int cuda_device = -1;
+    size_t required_bytes = 0U;
+
+    memset(&local_uuid, 0, sizeof(local_uuid));
+    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0,
+                        MPI_INFO_NULL, &node_comm);
+    MPI_Comm_rank(node_comm, &node_rank);
+    MPI_Comm_size(node_comm, &node_ranks);
+
+    if (owns_dense_rank) {
+        int cuda_devices = 0;
+        struct cudaDeviceProp prop;
+        cudaError_t status = cudaGetDeviceCount(&cuda_devices);
+
+        if (status == cudaSuccess && 0 < cuda_devices) {
+            status = cudaGetDevice(&cuda_device);
         }
-        return (int)limit;
+        if (status == cudaSuccess && 0 <= cuda_device && cuda_device < cuda_devices) {
+            status = cudaGetDeviceProperties(&prop, cuda_device);
+        }
+        if (status == cudaSuccess && 0 <= cuda_device && cuda_device < cuda_devices) {
+            local_uuid.valid = 1;
+            memcpy(local_uuid.uuid, prop.uuid.bytes, sizeof(local_uuid.uuid));
+            required_bytes = BandCol_GpuTurnRequiredBytes(n, maxn, size_H1);
+            cuda_ok = (required_bytes != 0U && required_bytes != SIZE_MAX);
+        }
+        if (!cuda_ok) {
+            local_limit = 1;
+        }
     }
 
-    value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
-    if (value != NULL) {
-        limit = strtol(value, NULL, 10);
-        if (limit < 1L) {
-            return 1;
+    node_uuids = (BandColGpuUuidRecord *)malloc(
+        sizeof(BandColGpuUuidRecord) * (size_t)node_ranks);
+    if (node_uuids == NULL) {
+        BandCol_AbortWithMessage("Failed to allocate Band GPU UUID table.");
+    }
+    MPI_Allgather(&local_uuid, (int)sizeof(local_uuid), MPI_BYTE,
+                  node_uuids, (int)sizeof(local_uuid), MPI_BYTE, node_comm);
+
+    if (cuda_ok) {
+        for (int rank = 0; rank < node_ranks; rank++) {
+            if (node_uuids[rank].valid &&
+                memcmp(node_uuids[rank].uuid, local_uuid.uuid,
+                       sizeof(local_uuid.uuid)) == 0) {
+                color = rank + 1;
+                break;
+            }
         }
-        if ((long)max_limit < limit) {
-            return max_limit;
+    }
+    free(node_uuids);
+
+    MPI_Comm_split(node_comm, color, node_rank, &device_comm);
+    MPI_Comm_free(&node_comm);
+
+    if (cuda_ok && device_comm != MPI_COMM_NULL) {
+        int device_rank = 0, device_ranks = 0;
+        int memory_ok = 0, group_memory_ok = 0;
+        unsigned long long local_free = 0ULL, group_free = 0ULL;
+        unsigned long long local_total = 0ULL, group_total = 0ULL;
+        unsigned long long local_required = (unsigned long long)required_bytes;
+        unsigned long long *requirements;
+        cudaError_t status;
+
+        MPI_Comm_rank(device_comm, &device_rank);
+        MPI_Comm_size(device_comm, &device_ranks);
+
+        acc_wait_all();
+        status = cudaDeviceSynchronize();
+        if (status == cudaSuccess) {
+            acc_clear_freelists();
         }
-        return (int)limit;
+        MPI_Barrier(device_comm);
+
+        if (status == cudaSuccess) {
+            size_t free_bytes = 0U, total_bytes = 0U;
+            status = cudaMemGetInfo(&free_bytes, &total_bytes);
+            if (status == cudaSuccess) {
+                memory_ok = 1;
+                local_free = (unsigned long long)free_bytes;
+                local_total = (unsigned long long)total_bytes;
+            }
+        }
+
+        MPI_Allreduce(&memory_ok, &group_memory_ok, 1, MPI_INT, MPI_MIN,
+                      device_comm);
+        MPI_Allreduce(&local_free, &group_free, 1, MPI_UNSIGNED_LONG_LONG,
+                      MPI_MIN, device_comm);
+        MPI_Allreduce(&local_total, &group_total, 1, MPI_UNSIGNED_LONG_LONG,
+                      MPI_MIN, device_comm);
+
+        requirements = (unsigned long long *)malloc(
+            sizeof(unsigned long long) * (size_t)device_ranks);
+        if (requirements == NULL) {
+            BandCol_AbortWithMessage("Failed to allocate Band GPU requirement table.");
+        }
+        MPI_Allgather(&local_required, 1, MPI_UNSIGNED_LONG_LONG,
+                      requirements, 1, MPI_UNSIGNED_LONG_LONG, device_comm);
+        qsort(requirements, (size_t)device_ranks, sizeof(unsigned long long),
+              BandCol_CompareUllDesc);
+
+        if (group_memory_ok) {
+            size_t reserve = BandCol_GpuReserveBytes((size_t)group_total);
+            int selected_limit = 0;
+            unsigned long long selected_peak = 0ULL;
+
+            for (size_t ci = 0; ci < sizeof(candidates) / sizeof(candidates[0]); ci++) {
+                int candidate = candidates[ci];
+                int concurrent;
+                unsigned long long peak = 0ULL;
+
+                if (requested < candidate) {
+                    continue;
+                }
+                concurrent = (device_ranks < candidate) ? device_ranks : candidate;
+                for (int rank = 0; rank < concurrent; rank++) {
+                    if (ULLONG_MAX - peak < requirements[rank]) {
+                        peak = ULLONG_MAX;
+                        break;
+                    }
+                    peak += requirements[rank];
+                }
+                if (peak <= group_free &&
+                    (unsigned long long)reserve <= group_free - peak) {
+                    selected_limit = candidate;
+                    selected_peak = peak;
+                    break;
+                }
+            }
+
+            if (selected_limit == 0) {
+                selected_limit = 1;
+                selected_peak = requirements[0];
+                if (device_rank == 0) {
+                    fprintf(stderr,
+                            "Band_DFT_Col: GPU device %d cannot retain the full reserve; "
+                            "forcing one GPU k-owner rank.\n", cuda_device);
+                    fflush(stderr);
+                }
+            }
+            local_limit = selected_limit;
+
+            if (device_rank == 0) {
+                static int last_limit = -1;
+                static int last_device_ranks = -1;
+                if (last_limit != selected_limit || last_device_ranks != device_ranks) {
+                    printf("<Band_DFT_Col> GPU device %d: %d k-owner rank(s), "
+                           "GPU concurrency=%d, per-rank=%.3f GiB, peak=%.3f GiB, "
+                           "free=%.3f GiB, reserve=%.3f GiB\n",
+                           cuda_device, device_ranks, selected_limit,
+                           (double)required_bytes / (1024.0 * 1024.0 * 1024.0),
+                           (double)selected_peak / (1024.0 * 1024.0 * 1024.0),
+                           (double)group_free / (1024.0 * 1024.0 * 1024.0),
+                           (double)reserve / (1024.0 * 1024.0 * 1024.0));
+                    fflush(stdout);
+                    last_limit = selected_limit;
+                    last_device_ranks = device_ranks;
+                }
+            }
+        } else {
+            local_limit = 1;
+            if (device_rank == 0) {
+                fprintf(stderr,
+                        "Band_DFT_Col: failed to query common GPU memory; "
+                        "using one GPU k-owner rank at a time.\n");
+                fflush(stderr);
+            }
+        }
+
+        free(requirements);
+        MPI_Comm_free(&device_comm);
     }
 
-    return max_limit;
+    MPI_Allreduce(&local_limit, &global_limit, 1, MPI_INT, MPI_MIN,
+                  mpi_comm_level1);
+    return global_limit;
 }
 
 static void BandCol_ConstructCache_Reset(void)
@@ -1250,10 +1614,10 @@ static void BandCol_GpuSolver_EnsureMatrixCapacity(int n)
     ctx->transformed_s_dim   = 0;
 }
 
-static void BandCol_GpuSolver_EnsureWorkspace(int m, int maxn, dcomplex * d_A)
+static void BandCol_GpuSolver_EnsureWorkspace(int m, int maxn, dcomplex * d_A, int want_vectors)
 {
     BandColGpuSolverCtx * ctx  = &BandCol_gpusolver_ctx;
-    cusolverEigMode_t    jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cusolverEigMode_t    jobz = want_vectors ? CUSOLVER_EIG_MODE_VECTOR : CUSOLVER_EIG_MODE_NOVECTOR;
     cublasFillMode_t     uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t   range;
     double               vl      = 0.0;
@@ -1300,10 +1664,10 @@ static void BandCol_GpuSolver_EnsureWorkspace(int m, int maxn, dcomplex * d_A)
     }
 }
 
-static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_host)
+static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_host, int want_vectors)
 {
     BandColGpuSolverCtx * ctx  = &BandCol_gpusolver_ctx;
-    cusolverEigMode_t    jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cusolverEigMode_t    jobz = want_vectors ? CUSOLVER_EIG_MODE_VECTOR : CUSOLVER_EIG_MODE_NOVECTOR;
     cublasFillMode_t     uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t   range;
     double               vl     = 0.0;
@@ -1312,7 +1676,7 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
     int32_t              info   = 0;
     char                 msg[256];
 
-    BandCol_GpuSolver_EnsureWorkspace(m, maxn, d_A);
+    BandCol_GpuSolver_EnsureWorkspace(m, maxn, d_A, want_vectors);
     range = CUSOLVER_EIG_RANGE_I;
 
     wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F, (cuDoubleComplex *)d_A, m,
@@ -1352,7 +1716,7 @@ static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n,
         if (Ss != NULL) {
             wait_cudafunc(cudaMemcpy(ctx->d_S, Ss, matrix_bytes, cudaMemcpyHostToDevice));
         }
-        BandCol_GpuSolver_Eigen(ctx->d_S, n, n, ko + 1);
+        BandCol_GpuSolver_Eigen(ctx->d_S, n, n, ko + 1, 1);
 
         if (n > ctx->scale_dim) {
             dcomplex *new_scale = (dcomplex *)realloc(ctx->h_scale, sizeof(dcomplex) * (size_t)n);
@@ -1436,6 +1800,7 @@ static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const d
     cuDoubleComplex      alpha = make_cuDoubleComplex(1.0, 0.0);
     cuDoubleComplex      beta  = make_cuDoubleComplex(0.0, 0.0);
     double               prof_t0 = 0.0;
+    const int            want_vectors = build_eigenvectors || !BandCol_EigenvaluesOnlyNoVectors();
 
     if (!(ctx->transformed_s_valid && ctx->transformed_s_dim == n)) {
         BandCol_AbortWithMessage("Transformed overlap is not ready in BandCol_GpuSolver_SolveHamiltonian.");
@@ -1460,7 +1825,7 @@ static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const d
     BANDCOL_PROF_ADD(gemm_fwd, prof_t0);
     BANDCOL_PROF_T0(prof_t0);
 
-    BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1);
+    BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1, want_vectors);
 
     BANDCOL_PROF_ADD(syevdx, prof_t0);
 
@@ -1496,6 +1861,19 @@ static dcomplex *BandCol_GpuSolver_SolveHamiltonianDeviceOnly(int n, int maxn, c
 static dcomplex *BandCol_GpuSolver_SolveHamiltonianDeviceInput(int n, int maxn, double *ko)
 {
     return BandCol_GpuSolver_SolveHamiltonianImpl(n, maxn, NULL, ko, NULL, 1);
+}
+
+static void BandCol_GpuSolver_SolveEigenvaluesDeviceOnly(int n, int maxn,
+                                                          const dcomplex *H_in,
+                                                          double *ko)
+{
+    BandCol_GpuSolver_SolveHamiltonianImpl(n, maxn, H_in, ko, NULL, 0);
+}
+
+static void BandCol_GpuSolver_SolveEigenvaluesDeviceInput(int n, int maxn,
+                                                           double *ko)
+{
+    BandCol_GpuSolver_SolveHamiltonianImpl(n, maxn, NULL, ko, NULL, 0);
 }
 
 static dcomplex *BandCol_GpuSolver_DeviceEigenvectors(void)
@@ -1717,6 +2095,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     int     owns_global_dense_rank;
     int     transformed_s_ready;
     int     use_gpusolver_dense;
+    int     gpu_turn_limit = 1;
     int     use_setham_packed_cache = 0;
     int *   setham_order_GA = NULL;
     double *setham_S1 = NULL;
@@ -2508,6 +2887,12 @@ diagonalize1:
 
     BANDCOL_PROF_ADD(geths, prof_t0);
 
+    if (use_gpusolver_dense) {
+        gpu_turn_limit = BandCol_AutoGpuTurnLimit(
+            BandCol_GpuRequestedMaxTurns(), n, MaxN, size_H1,
+            owns_dense_k_rank, myid0);
+    }
+
     if (measure_time) {
         dtime(&Etime);
         time1 += Etime - Stime;
@@ -2520,7 +2905,7 @@ diagonalize1:
     dtime(&SiloopTime);
 
     if (all_knum != 1 && use_gpusolver_dense) {
-        const int max_concurrent_gpu_turns = BandCol_MaxConcurrentKGpuTurns();
+        const int max_concurrent_gpu_turns = gpu_turn_limit;
         const int total_gpu_turns = Num_Comm_World1 * T_knum;
 
         for (int group_first = 0; group_first < total_gpu_turns; group_first += max_concurrent_gpu_turns) {
@@ -2528,11 +2913,11 @@ diagonalize1:
                 (group_first + max_concurrent_gpu_turns < total_gpu_turns)
                     ? (group_first + max_concurrent_gpu_turns)
                     : total_gpu_turns;
+            int group_ran_gpu_turn = 0;
 
             MPI_Barrier(mpi_comm_level1);
 
             for (int gpu_turn = group_first; gpu_turn < group_last; gpu_turn++) {
-                dcomplex *evec_device;
                 int       construct_on_device;
 
                 if (!owns_dense_k_rank || gpu_turn / T_knum != spin) {
@@ -2580,12 +2965,11 @@ diagonalize1:
                     dtime(&Stime);
 
                 if (construct_on_device) {
-                    evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(n, MaxN, ko);
+                    BandCol_GpuSolver_SolveEigenvaluesDeviceInput(n, MaxN, ko);
                 } else {
-                    evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(n, MaxN, Hs, ko);
+                    BandCol_GpuSolver_SolveEigenvaluesDeviceOnly(n, MaxN, Hs, ko);
                 }
-                (void)evec_device;
-                BandCol_GpuSolver_ReleaseDeviceMemory();
+                group_ran_gpu_turn = 1;
 
                 if (measure_time) {
                     dtime(&Etime);
@@ -2617,6 +3001,17 @@ diagonalize1:
                     time5 += Etime - Stime;
                 }
             } /* gpu_turn */
+
+            /* The auto turn limit already budgets each concurrent rank for its
+               full per-turn footprint, so buffers can stay resident while this
+               rank works through its turns of the group; release them before
+               the next group so waiting ranks see the memory. */
+            if (group_ran_gpu_turn) {
+                if (BandCol_GemmWorkspaceTurnRelease()) {
+                    openmx_gemmul8ReleaseWorkspaces();
+                }
+                BandCol_GpuSolver_ReleaseDeviceMemory();
+            }
         } /* group_first */
     } else {
         for (kloop0 = 0; kloop0 < num_kloop0; kloop0++) {
@@ -2635,10 +3030,12 @@ diagonalize1:
                 }
 
 	                my_gpu_turn = spin * T_knum + kloop;
-	                const int serialize_gpu_turns = BandCol_SerializeGpuSolverGpuTurns();
-	                const int gpu_turn_group = serialize_gpu_turns ? BandCol_GpuTurnGroup() : 1;
+	                const int total_gpu_turns = Num_Comm_World1 * T_knum;
+	                const int serialize_gpu_turns =
+	                    BandCol_SerializeGpuSolverGpuTurns() || gpu_turn_limit < total_gpu_turns;
+	                const int gpu_turn_group = serialize_gpu_turns ? gpu_turn_limit : 1;
 	                const int first_gpu_turn = serialize_gpu_turns ? 0 : my_gpu_turn;
-	                const int last_gpu_turn = serialize_gpu_turns ? Num_Comm_World1 * T_knum : (my_gpu_turn + 1);
+	                const int last_gpu_turn = serialize_gpu_turns ? total_gpu_turns : (my_gpu_turn + 1);
 	                for (int gpu_turn = first_gpu_turn; gpu_turn < last_gpu_turn; gpu_turn++) {
 	                    if (serialize_gpu_turns && gpu_turn % gpu_turn_group == 0) {
 	                        MPI_Barrier(mpi_comm_level1);
@@ -3427,10 +3824,12 @@ diagonalize1:
 
 	            {
 	                int my_gpu_turn = spin * T_knum + kloop;
-	                const int serialize_gpu_turns = BandCol_SerializeGpuSolverGpuTurns();
-	                const int gpu_turn_group = serialize_gpu_turns ? BandCol_GpuTurnGroup() : 1;
+	                const int total_gpu_turns = Num_Comm_World1 * T_knum;
+	                const int serialize_gpu_turns =
+	                    BandCol_SerializeGpuSolverGpuTurns() || gpu_turn_limit < total_gpu_turns;
+	                const int gpu_turn_group = serialize_gpu_turns ? gpu_turn_limit : 1;
 	                const int first_gpu_turn = serialize_gpu_turns ? 0 : my_gpu_turn;
-	                const int last_gpu_turn = serialize_gpu_turns ? Num_Comm_World1 * T_knum : (my_gpu_turn + 1);
+	                const int last_gpu_turn = serialize_gpu_turns ? total_gpu_turns : (my_gpu_turn + 1);
 
 	                for (int gpu_turn = first_gpu_turn; gpu_turn < last_gpu_turn; gpu_turn++) {
 	                    if (serialize_gpu_turns && gpu_turn % gpu_turn_group == 0) {
@@ -3878,7 +4277,7 @@ diagonalize1:
         /* for kloop */
 
         if (use_gpusolver_dense) {
-            const int max_concurrent_gpu_turns = BandCol_MaxConcurrentKGpuTurns();
+            const int max_concurrent_gpu_turns = gpu_turn_limit;
             const int total_gpu_turns = Num_Comm_World1 * T_knum;
 
             for (int group_first = 0; group_first < total_gpu_turns; group_first += max_concurrent_gpu_turns) {
@@ -3886,6 +4285,7 @@ diagonalize1:
                     (group_first + max_concurrent_gpu_turns < total_gpu_turns)
                         ? (group_first + max_concurrent_gpu_turns)
                         : total_gpu_turns;
+                int group_ran_gpu_turn = 0;
 
                 MPI_Barrier(mpi_comm_level1);
 
@@ -4023,7 +4423,7 @@ diagonalize1:
                     BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device, n,
                                                                 MP, use_setham_packed_cache ? setham_order_GA : order_GA,
                                                                 EIGEN, occ_weight, CDM1, EDM1, size_H1);
-                    BandCol_GpuSolver_ReleaseDeviceMemory();
+                    group_ran_gpu_turn = 1;
 
                     if (measure_time) {
                         dtime(&Etime1);
@@ -4034,6 +4434,15 @@ diagonalize1:
                     }
 
                 } /* gpu_turn */
+
+                /* Release once per concurrency group (see the first
+                   diagonalization loop for the memory-budget argument). */
+                if (group_ran_gpu_turn) {
+                    if (BandCol_GemmWorkspaceTurnRelease()) {
+                        openmx_gemmul8ReleaseWorkspaces();
+                    }
+                    BandCol_GpuSolver_ReleaseDeviceMemory();
+                }
             } /* group_first */
 
         } else {
