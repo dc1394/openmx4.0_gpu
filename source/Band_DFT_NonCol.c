@@ -233,15 +233,17 @@ static int BandNonCol_SerializeGpuSolverGpuTurns(void)
 }
 
 static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, int size_H1,
-                                       int turn_mode, int owns_dense_rank, int myid0);
+                                       int turn_mode, int owns_dense_rank, int myid0,
+                                       int total_turns);
 
 static int BandNonCol_GpuRequestedMaxTurns(void)
 {
-    /* Requested number of concurrent GPU k-owner ranks; the memory-based
-       ladder in BandNonCol_AutoGpuTurnLimit lowers it as needed.  Matches
-       the collinear path: default 32, capped to [1, 32]. */
+    /* By default every k-owner rank that shares the device may solve its
+       k-point in the first wave (the plan clamps to the device-group size
+       and to the total turn count); the variables only impose an explicit
+       upper cap on the concurrency.  Matches the collinear path. */
     const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
-    long requested = 32L;
+    long requested = (long)INT_MAX;
 
     if (value==NULL){
         value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
@@ -259,26 +261,28 @@ static int BandNonCol_GpuRequestedMaxTurns(void)
     if (requested<1L){
         requested = 1L;
     }
-    if (32L<requested){
-        requested = 32L;
+    if ((long)INT_MAX<requested){
+        requested = (long)INT_MAX;
     }
     return (int)requested;
 }
 
 static int BandNonCol_GpuTurnGroup(int n, int n2, int MaxN, int size_H1,
-                                   int turn_mode, int owns_dense_rank, int myid0)
+                                   int turn_mode, int owns_dense_rank, int myid0,
+                                   int total_turns)
 {
     return BandNonCol_AutoGpuTurnLimit(BandNonCol_GpuRequestedMaxTurns(),
                                        n,n2,MaxN,size_H1,turn_mode,
-                                       owns_dense_rank,myid0);
+                                       owns_dense_rank,myid0,total_turns);
 }
 
 static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H1,
-                                             int turn_mode, int owns_dense_rank, int myid0)
+                                             int turn_mode, int owns_dense_rank, int myid0,
+                                             int total_turns)
 {
     return BandNonCol_AutoGpuTurnLimit(BandNonCol_GpuRequestedMaxTurns(),
                                        n,n2,MaxN,size_H1,turn_mode,
-                                       owns_dense_rank,myid0);
+                                       owns_dense_rank,myid0,total_turns);
 }
 
 static void BandNonCol_GpuSolver_EnsureMatrixCapacity(int n)
@@ -931,9 +935,9 @@ static int BandNonCol_GpuTurnMemoryFits(size_t free_bytes, size_t total_bytes,
 }
 
 static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, int size_H1,
-                                       int turn_mode, int owns_dense_rank, int myid0)
+                                       int turn_mode, int owns_dense_rank, int myid0,
+                                       int total_turns)
 {
-    static const int candidates[] = {32,16,8,4,2,1};
     MPI_Comm node_comm;
     MPI_Comm device_comm = MPI_COMM_NULL;
     int local_limit = requested;
@@ -1004,22 +1008,22 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
         MPI_Allreduce(&local_total,&group_total,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,device_comm);
 
         if (group_memory_ok){
+            /* Start from every k-owner rank that shares this GPU (or the
+               explicit cap) and step down one rank at a time until the wave
+               plus the reserve fits into the group's free memory. */
+            const int cmax = (device_ranks<requested) ? device_ranks : requested;
             int selected_limit = 0;
             size_t selected_peak = 0U;
             size_t selected_reserve = 0U;
 
-            for (size_t ci=0; ci<sizeof(candidates)/sizeof(candidates[0]); ci++){
-                int candidate = candidates[ci];
-                int concurrent;
+            for (int c=cmax; 1<=c; c--){
                 size_t group_required = 0U;
                 size_t reserve_bytes = 0U;
 
-                if (requested<candidate) continue;
-                concurrent = (device_ranks<candidate) ? device_ranks : candidate;
                 if (BandNonCol_GpuTurnMemoryFits((size_t)group_free,(size_t)group_total,
-                                                 required_bytes,concurrent,
+                                                 required_bytes,c,
                                                  &group_required,&reserve_bytes)){
-                    selected_limit = candidate;
+                    selected_limit = c;
                     selected_peak = group_required;
                     selected_reserve = reserve_bytes;
                     break;
@@ -1037,7 +1041,18 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
                     fflush(stderr);
                 }
             }
-            local_limit = selected_limit;
+
+            /* When every rank sharing the device fits at once, the turn
+               groups no longer bound the memory: run all turns as one group
+               so no barrier interrupts the concurrent solves.  The effective
+               concurrency stays min(ranks, turns) either way. */
+            if (selected_limit==device_ranks && device_ranks<=requested &&
+                selected_limit<total_turns){
+                local_limit = total_turns;
+            }
+            else {
+                local_limit = selected_limit;
+            }
 
             if (device_rank==0){
                 static int last_limit[3] = {-1,-1,-1};
@@ -1049,10 +1064,10 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
                 if (last_limit[mode_slot]!=selected_limit ||
                     last_device_ranks[mode_slot]!=device_ranks){
                     printf("<Band_DFT_NonCol> GPU device %d: %d k-owner rank(s), "
-                           "GPU concurrency=%d (%s), per-rank=%.3f GiB, peak=%.3f GiB, "
-                           "free=%.3f GiB, reserve=%.3f GiB\n",
+                           "GPU concurrency=%d (%s), turn group=%d, per-rank=%.3f GiB, "
+                           "peak=%.3f GiB, free=%.3f GiB, reserve=%.3f GiB\n",
                            cuda_device,device_ranks,selected_limit,
-                           mode_label[mode_slot],
+                           mode_label[mode_slot],local_limit,
                            (double)required_bytes/(1024.0*1024.0*1024.0),
                            (double)selected_peak/(1024.0*1024.0*1024.0),
                            (double)group_free/(1024.0*1024.0*1024.0),
@@ -3195,7 +3210,7 @@ double Band_DFT_NonCol(
     int max_concurrent_gpu_turns =
       BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,
                                         BANDNONCOL_GPU_TURN_EIGVALS,
-                                        owns_dense_k_rank,myid0);
+                                        owns_dense_k_rank,myid0,T_knum);
     BandNonColRootDenseWorkspace *rdw;
     double *pack_buffer = NULL;
     double *m_olp = NULL;
@@ -3318,7 +3333,7 @@ double Band_DFT_NonCol(
       serialize_gpu_turns ?
       BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,
                               BANDNONCOL_GPU_TURN_EIGVECS,
-                              owns_root_dense_rank,myid0) :
+                              owns_root_dense_rank,myid0,Num_Comm_World2) :
       Num_Comm_World2;
     int use_setham_packed_cache =
       (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
@@ -4145,7 +4160,7 @@ double Band_DFT_NonCol(
           serialize_gpu_turns ?
           BandNonCol_GpuTurnGroup(n,n2,MaxN,size_H1,
                                   BANDNONCOL_GPU_TURN_DM,
-                                  owns_root_dense_rank,myid0) :
+                                  owns_root_dense_rank,myid0,Num_Comm_World2) :
           Num_Comm_World2;
 
         if (root_dense_turn_group<1) root_dense_turn_group = 1;
@@ -4299,7 +4314,7 @@ double Band_DFT_NonCol(
       int max_concurrent_gpu_turns =
         BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,
                                           BANDNONCOL_GPU_TURN_EIGVECS,
-                                          owns_dense_k_rank,myid0);
+                                          owns_dense_k_rank,myid0,T_knum);
       BandNonColRootDenseWorkspace *rdw;
       double *pack_buffer = NULL;
       double *m_olp = NULL;
