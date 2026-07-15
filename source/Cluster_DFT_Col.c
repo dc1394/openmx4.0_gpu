@@ -48,6 +48,14 @@ typedef struct {
     int32_t *          d_info;
     void *             d_work;
     void *             h_work;
+    /* per-spin device copy of the latest dense eigenvector panel
+       (state-major, leading dimension evec_stash_maxn), so the DM
+       accumulation on the dense-owning rank can skip the host round trip */
+    double *           d_evec_stash[2];
+    size_t             evec_stash_count[2];
+    int                evec_stash_valid[2];
+    int                evec_stash_n;
+    int                evec_stash_maxn;
 } ClusterColGpuSolverCtx;
 
 static ClusterColGpuSolverCtx ClusterCol_gpusolver_ctx = {0};
@@ -112,6 +120,9 @@ static void ClusterCol_GpuSolver_Destroy(void)
 
     if (ctx->stream != NULL)     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
+    for (int spin=0; spin<2; spin++){
+        if (ctx->d_evec_stash[spin] != NULL) wait_cudafunc(cudaFree(ctx->d_evec_stash[spin]));
+    }
     if (ctx->d_S != NULL)        wait_cudafunc(cudaFree(ctx->d_S));
     if (ctx->d_H != NULL)        wait_cudafunc(cudaFree(ctx->d_H));
     if (ctx->d_tmp != NULL)      wait_cudafunc(cudaFree(ctx->d_tmp));
@@ -349,6 +360,57 @@ static void ClusterCol_GpuSolver_SolveHamiltonian(int n, int maxn, const double 
     ClusterCol_GpuSolver_SolveHamiltonianDevice(n,maxn,ko_spin,C);
 }
 
+static void ClusterCol_InvalidateDeviceEvecStash(void)
+{
+    ClusterCol_gpusolver_ctx.evec_stash_valid[0] = 0;
+    ClusterCol_gpusolver_ctx.evec_stash_valid[1] = 0;
+}
+
+/* Keep the freshly solved eigenvector panel (still in ctx->d_tmp) on the
+   device so the DM accumulation of the same SCF step can consume it without
+   the D2H/repack/H2D round trip through EVec1. */
+static void ClusterCol_StashDeviceEvec(int spin, int n, int maxn)
+{
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    size_t count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"device eigenvector stash");
+    size_t bytes = ClusterCol_CheckedMulCount(count,sizeof(double),"device eigenvector stash bytes");
+
+    if (spin<0 || 2<=spin){
+        ClusterCol_AbortWithMessage("Invalid spin for the device eigenvector stash in Cluster_DFT_Col.c.");
+    }
+
+    if (ctx->d_evec_stash[spin]==NULL || ctx->evec_stash_count[spin]<count){
+        if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(cudaFree(ctx->d_evec_stash[spin]));
+        ctx->d_evec_stash[spin] = NULL;
+        ctx->evec_stash_count[spin] = 0;
+        wait_cudafunc(cudaMalloc((void**)&ctx->d_evec_stash[spin],bytes));
+        ctx->evec_stash_count[spin] = count;
+    }
+
+    wait_cudafunc(cudaMemcpyAsync(ctx->d_evec_stash[spin],ctx->d_tmp,bytes,
+                                  cudaMemcpyDeviceToDevice,ctx->stream));
+    wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+
+    ctx->evec_stash_n = n;
+    ctx->evec_stash_maxn = maxn;
+    ctx->evec_stash_valid[spin] = 1;
+}
+
+/* Returns the stashed device panel when it covers this rank's state slice
+   (only the dense-owning rank, whose slice starts at state 1), else NULL. */
+static const double *ClusterCol_DeviceEvecStash(int spin, int n, int kmin, int kmax, int *lds)
+{
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+
+    if (spin<0 || 2<=spin) return NULL;
+    if (!ctx->evec_stash_valid[spin]) return NULL;
+    if (ctx->evec_stash_n!=n) return NULL;
+    if (kmin!=1 || kmax<kmin || ctx->evec_stash_maxn<kmax) return NULL;
+
+    *lds = ctx->evec_stash_maxn;
+    return ctx->d_evec_stash[spin];
+}
+
 static void ClusterCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
                                             double const * A, double const * B, double * C)
 {
@@ -447,11 +509,23 @@ static const int *ClusterCol_DenseIndexCache_Get(const int *order_GA, int *MP, i
         return cache->dense_index;
     }
 
-    free(cache->dense_index);
+    if (cache->dense_index!=NULL){
+        int *old_index = cache->dense_index;
+        int old_tnum = cache->tnum;
+#pragma acc exit data delete(old_index[0 : old_tnum])
+        free(old_index);
+    }
     memset(cache,0,sizeof(*cache));
 
     cache->dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"dense index cache");
     ClusterCol_BuildDenseIndex(order_GA,MP,n,tnum,cache->dense_index);
+
+    /* the scatter pattern is geometry-fixed, so keep it resident on the
+       device instead of re-uploading it with every dense build */
+    {
+        int *new_index = cache->dense_index;
+#pragma acc enter data copyin(new_index[0 : tnum])
+    }
 
     cache->valid = 1;
     cache->n = n;
@@ -527,7 +601,8 @@ static void ClusterCol_DMEntryCache_Ensure(int *MP, int n)
 
 static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
                                             const double *occ, const double *eig, const double *docc,
-                                            const double *evec, double *DM1, double *EDM1, double *PDM1)
+                                            const double *evec, const double *evec_dev, int evec_lds,
+                                            double *DM1, double *EDM1, double *PDM1)
 {
     ClusterColDMEntryCache *cache = &ClusterCol_dm_entry_cache;
     const int *basis0 = cache->basis0;
@@ -536,13 +611,22 @@ static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
     const size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)nk,"DM eigenvector slice");
     const int dm_chunk_size = 131072;
     const int with_pdm = (docc!=NULL && PDM1!=NULL);
+    /* the eigenvector slice either already lives on the device (state-major
+       panel with leading dimension evec_lds) or is uploaded from EVec1 */
+    const size_t ld = (evec_dev!=NULL) ? (size_t)evec_lds : (size_t)nk;
+    const double *evec_d = evec_dev;
 
     if (entry_count!=size_H1){
         ClusterCol_AbortWithMessage("DM entry cache size mismatch in Cluster_DFT_Col.c.");
     }
 
-#pragma acc data copyin(evec[0:evec_count], occ[0:nk], eig[0:nk])
+#pragma acc data copyin(occ[0:nk], eig[0:nk])
     {
+        if (evec_d==NULL){
+#pragma acc enter data copyin(evec[0:evec_count])
+            evec_d = (const double*)acc_deviceptr((void*)evec);
+        }
+
         if (with_pdm){
 #pragma acc enter data copyin(docc[0:nk])
         }
@@ -558,7 +642,7 @@ static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
 #pragma acc data copyin(basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count]) \
                  copyout(DM1_chunk[0:chunk_count], EDM1_chunk[0:chunk_count])
             {
-#pragma acc parallel loop gang present(evec[0:evec_count], occ[0:nk], eig[0:nk])
+#pragma acc parallel loop gang deviceptr(evec_d) present(occ[0:nk], eig[0:nk])
                 for (int p=0; p<chunk_count; p++){
                     const int ia = basis0_chunk[p];
                     const int ib = basis1_chunk[p];
@@ -567,8 +651,8 @@ static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
 
 #pragma acc loop seq
                     for (int k=0; k<nk; k++){
-                        double dum = occ[k]*evec[(size_t)ia*(size_t)nk+(size_t)k]
-                                           *evec[(size_t)ib*(size_t)nk+(size_t)k];
+                        double dum = occ[k]*evec_d[(size_t)ia*ld+(size_t)k]
+                                           *evec_d[(size_t)ib*ld+(size_t)k];
                         sum1 += dum;
                         sum2 += dum*eig[k];
                     }
@@ -580,7 +664,7 @@ static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
                 if (with_pdm){
 #pragma acc data copyout(PDM1_chunk[0:chunk_count])
                     {
-#pragma acc parallel loop gang present(evec[0:evec_count], docc[0:nk], \
+#pragma acc parallel loop gang deviceptr(evec_d) present(docc[0:nk], \
                                        basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count])
                         for (int p=0; p<chunk_count; p++){
                             const int ia = basis0_chunk[p];
@@ -589,8 +673,8 @@ static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
 
 #pragma acc loop seq
                             for (int k=0; k<nk; k++){
-                                sum1 += docc[k]*evec[(size_t)ia*(size_t)nk+(size_t)k]
-                                               *evec[(size_t)ib*(size_t)nk+(size_t)k];
+                                sum1 += docc[k]*evec_d[(size_t)ia*ld+(size_t)k]
+                                               *evec_d[(size_t)ib*ld+(size_t)k];
                             }
 
                             PDM1_chunk[p] = sum1;
@@ -602,6 +686,10 @@ static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
 
         if (with_pdm){
 #pragma acc exit data delete(docc[0:nk])
+        }
+
+        if (evec_dev==NULL){
+#pragma acc exit data delete(evec[0:evec_count])
         }
     }
 #pragma acc wait
@@ -736,6 +824,10 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
          Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 0);
     double *C = NULL;
 
+    /* the stash refers to the previous SCF step's eigenvectors until the
+       solves below refresh it */
+    ClusterCol_InvalidateDeviceEvecStash();
+
     if (SpinP_switch==1 && numprocs0!=1){
         spin_start = myworld1;
         spin_end = myworld1;
@@ -804,6 +896,7 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
         }
         if (owns_dense){
             ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
+            ClusterCol_StashDeviceEvec(spin,n,MaxN);
         }
         ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
                                        MPI_CommWD1[myworld1],
@@ -2535,8 +2628,14 @@ double Calc_DM_Cluster_collinear(
       }
     }
 
+    /* the dense-owning rank consumes the eigenvector panel still resident on
+       the device from the solve of this SCF step (bitwise the same data that
+       DistributeDenseEvec placed into EVec1) */
+    int evec_lds = nk;
+    const double *evec_dev = ClusterCol_DeviceEvecStash(spin,n,kmin,kmax,&evec_lds);
+
     ClusterCol_DMEntryCache_Ensure(MP,n);
-    ClusterCol_AccumulateDM_OpenACC(n,size_H1,nk,occ,eig,docc,EVec1[spin],
+    ClusterCol_AccumulateDM_OpenACC(n,size_H1,nk,occ,eig,docc,EVec1[spin],evec_dev,evec_lds,
                                     DM1,EDM1,cal_partial_charge ? PDM1 : NULL);
 
     free(docc);
@@ -5424,7 +5523,9 @@ static void ClusterCol_BuildDeviceDenseFromPacked(const double *H1, const int *d
     ClusterCol_AbortWithMessage("NULL device dense matrix in Cluster_DFT_Col.c.");
   }
 
-#pragma acc enter data copyin(H1[0 : tnum], dense_index[0 : tnum])
+  /* dense_index is device-resident via ClusterCol_DenseIndexCache_Get;
+     only the packed matrix values travel to the device here */
+#pragma acc enter data copyin(H1[0 : tnum])
 #pragma acc parallel loop deviceptr(d_H)
   for (size_t p=0; p<nn; p++){
     d_H[p] = 0.0;
@@ -5436,7 +5537,7 @@ static void ClusterCol_BuildDeviceDenseFromPacked(const double *H1, const int *d
 #pragma acc atomic update
     d_H[idx] += H1[p];
   }
-#pragma acc exit data delete(H1[0 : tnum], dense_index[0 : tnum])
+#pragma acc exit data delete(H1[0 : tnum])
 }
 
 static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H)
