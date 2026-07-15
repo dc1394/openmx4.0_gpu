@@ -515,3 +515,550 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int 
   free(vps_rv_flat);
   free(vh_atom_flat);
 }
+
+
+#pragma acc routine seq
+static double TotalEnergy_Exc0_XC_CA(double den, int P_switch)
+{
+  /* device copy of XC_Ceperly_Alder() */
+
+  double dum,rs,coe;
+  double Ex,Ec,dEx,dEc;
+  double tmp0,tmp1;
+  double result;
+
+  if (den<=1.0e-15){
+    result = 0.0;
+  }
+  else{
+
+    coe = 0.6203504908994;  /* pow(3.0/4.0/PI,1.0/3.0); */
+    rs = coe*pow(den,-0.3333333333333333333);
+
+    tmp0 = 0.458165293632163/rs;
+    Ex = -tmp0;
+    dEx = tmp0/rs;
+
+    if (1.0<=rs){
+      tmp0 = sqrt(rs);
+      dum = (1.0 + 1.0529*tmp0 + 0.3334*rs);
+      tmp1 = 0.1423/dum;
+      Ec = -tmp1;
+      dEc = tmp1/dum*(0.52645/tmp0 + 0.3334);
+    }
+    else{
+      tmp0 = log(rs);
+      Ec = -0.0480 + 0.0311*tmp0 + rs*(0.0020*tmp0 - 0.0116);
+      dEc = 0.0311/rs + 0.0020*tmp0 - 0.0096;
+    }
+
+    if      (P_switch==0)
+      result = Ex + Ec;
+    else if (P_switch==1)
+      result = Ex + Ec - 0.33333333333333333333*rs*(dEx + dEc);
+    else if (P_switch==2)
+      result = 0.3333333333333333333*rs*(dEx + dEc);
+    else
+      result = -0.3333333333333333333/(coe*coe*coe)*rs*rs*rs*rs*(dEx + dEc);
+  }
+
+  return result;
+}
+
+
+#pragma acc routine seq
+static double TotalEnergy_Exc0_KumoF_flat(int N, double x,
+                                          const double *xv, const double *rv,
+                                          const double *yv)
+{
+  /* device copy of KumoF() */
+
+  if (x<xv[0]){
+
+    int m;
+    double rm,h1,h2,h3,f1,f2,f3,f4,f,df,r;
+    double g1,g2,x1,x2,y1,y2,y12,y22,a,b;
+
+    r = exp(x);
+
+    m = 4;
+    rm = rv[m];
+
+    h1 = rv[m-1] - rv[m-2];
+    h2 = rv[m]   - rv[m-1];
+    h3 = rv[m+1] - rv[m];
+
+    f1 = yv[m-2];
+    f2 = yv[m-1];
+    f3 = yv[m];
+    f4 = yv[m+1];
+
+    g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
+    g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
+
+    x1 = rm - rv[m-1];
+    x2 = rm - rv[m];
+    y1 = x1/h2;
+    y2 = x2/h2;
+    y12 = y1*y1;
+    y22 = y2*y2;
+
+    f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
+
+    df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y22*(2.0*f2 + h2*g1)/h2
+       + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
+       - y12*(2.0*f3 - h2*g2)/h2;
+
+    a = 0.5*df/rm;
+    b = f - a*rm*rm;
+    return a*r*r + b;
+  }
+
+  else{
+
+    int i;
+    double t,dt;
+    double xmin,xmax;
+
+    xmin = xv[0];
+    xmax = xv[N-1];
+    if (xmax<x) x = xmax;
+    if (x<xmin) x = xmin;
+    t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    i = (int)floor(t);
+    dt = t - (double)i;
+
+    return 0.5*( ((yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
+		  -yv[i+3]+4.0*yv[i+2]-5.0*yv[i+1]+2.0*yv[i])*dt
+		 +(yv[i+2]-yv[i]))*dt
+                 +yv[i+1];
+  }
+}
+
+
+#pragma acc routine seq
+static double TotalEnergy_Exc0_Dr_KumoF_flat(int N, double x, double r,
+                                             const double *xv, const double *rv,
+                                             const double *yv)
+{
+  /* device copy of Dr_KumoF() */
+
+  if (x<xv[0]){
+
+    int m;
+    double rm,h1,h2,h3,f1,f2,f3,f4,a,b;
+    double g1,g2,x1,x2,y1,y2,y12,y22,f,df;
+
+    r = exp(x);
+
+    m = 4;
+    rm = rv[m];
+
+    h1 = rv[m-1] - rv[m-2];
+    h2 = rv[m]   - rv[m-1];
+    h3 = rv[m+1] - rv[m];
+
+    f1 = yv[m-2];
+    f2 = yv[m-1];
+    f3 = yv[m];
+    f4 = yv[m+1];
+
+    g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
+    g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
+
+    x1 = rm - rv[m-1];
+    x2 = rm - rv[m];
+    y1 = x1/h2;
+    y2 = x2/h2;
+    y12 = y1*y1;
+    y22 = y2*y2;
+
+    f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
+
+    df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y22*(2.0*f2 + h2*g1)/h2
+       + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
+       - y12*(2.0*f3 - h2*g2)/h2;
+
+    a = 0.5*df/rm;
+    b = f - a*rm*rm;
+    return 2.0*a*r;
+  }
+
+  else{
+
+    int i;
+    double t,dt,tmp;
+    double xmin,xmax;
+
+    xmin = xv[0];
+    xmax = xv[N-1];
+    if (xmax<x) x = xmax;
+    if (x<xmin) x = xmin;
+
+    tmp = ((double)N-1.0)/(xmax-xmin);
+    t = (x-xmin)*tmp;
+    i = (int)floor(t);
+    dt = t - (double)i;
+
+    return 0.5*(( 3.0*(yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
+		  +2.0*(-yv[i+3]+4.0*yv[i+2]-5.0*yv[i+1]+2.0*yv[i]))*dt
+		+(yv[i+2]-yv[i]))*tmp/r;
+  }
+}
+
+
+void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double *sum_out)
+{
+  /* fine-mesh Exc^0 correction of Calc_EXC_EH1: for every local atom,
+     integrate den0*exc(den) over the atom-centred Gauss-Legendre x
+     Lebedev grid, together with the density-gradient force terms.
+     One flattened point kernel accumulates the energy and stores the
+     per-point force prefactor; a second pair kernel contracts the
+     prefactors with the neighbour density gradients. */
+
+  int spe,Mc_AN,Gc_AN,h_AN,i,n;
+  int nr,na,npt_atom,nb_total;
+  size_t npt_total;
+  int pao_stride,den_stride;
+  int vxc_flag;
+  int *pao_n_flat,*at_fnan,*nb_off,*nb_wan;
+  double *pao_xv_flat,*pao_rv_flat,*den2_flat;
+  double *at_cx,*at_cy,*at_cz,*at_dr;
+  double *nb_x,*nb_y,*nb_z,*nb_rcut2;
+  double *leb_x,*leb_y,*leb_z,*leb_w;
+  double *pref;
+  double energy_sum;
+
+  *sum_out = 0.0;
+  if (Matomnum<1) return;
+
+  nr = CoarseGL_Mesh;
+  na = Num_Leb;
+  npt_atom = nr*na;
+  npt_total = (size_t)Matomnum*(size_t)npt_atom;
+
+  pao_stride = List_YOUSO[21];
+  den_stride = List_YOUSO[21] + 2;
+  vxc_flag = F_Vxc_flag;
+
+  /* species tables */
+
+  pao_n_flat = (int*)malloc(sizeof(int)*SpeciesNum);
+  pao_xv_flat = (double*)malloc(sizeof(double)*(size_t)SpeciesNum*pao_stride);
+  pao_rv_flat = (double*)malloc(sizeof(double)*(size_t)SpeciesNum*pao_stride);
+  den2_flat = (double*)malloc(sizeof(double)*(size_t)SpeciesNum*den_stride);
+
+  /* local atoms and their neighbour lists */
+
+  at_fnan = (int*)malloc(sizeof(int)*(Matomnum+1));
+  nb_off = (int*)malloc(sizeof(int)*(Matomnum+1));
+  at_cx = (double*)malloc(sizeof(double)*(Matomnum+1));
+  at_cy = (double*)malloc(sizeof(double)*(Matomnum+1));
+  at_cz = (double*)malloc(sizeof(double)*(Matomnum+1));
+  at_dr = (double*)malloc(sizeof(double)*(Matomnum+1));
+
+  nb_total = 0;
+  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+    nb_total += FNAN[M2G[Mc_AN]] + 1;
+  }
+
+  nb_wan = (int*)malloc(sizeof(int)*nb_total);
+  nb_x = (double*)malloc(sizeof(double)*nb_total);
+  nb_y = (double*)malloc(sizeof(double)*nb_total);
+  nb_z = (double*)malloc(sizeof(double)*nb_total);
+  nb_rcut2 = (double*)malloc(sizeof(double)*nb_total);
+
+  leb_x = (double*)malloc(sizeof(double)*na);
+  leb_y = (double*)malloc(sizeof(double)*na);
+  leb_z = (double*)malloc(sizeof(double)*na);
+  leb_w = (double*)malloc(sizeof(double)*na);
+
+  /* device-resident via create(); the host allocation is only address space */
+  pref = (double*)malloc(sizeof(double)*npt_total);
+
+  if (pao_n_flat==NULL || pao_xv_flat==NULL || pao_rv_flat==NULL || den2_flat==NULL ||
+      at_fnan==NULL || nb_off==NULL || at_cx==NULL || at_cy==NULL || at_cz==NULL ||
+      at_dr==NULL || nb_wan==NULL || nb_x==NULL || nb_y==NULL || nb_z==NULL ||
+      nb_rcut2==NULL || leb_x==NULL || leb_y==NULL || leb_z==NULL || leb_w==NULL ||
+      pref==NULL){
+    printf("TotalEnergy_Exc0_Batch_OpenACC: malloc failed.\n");
+    fflush(stdout);
+    exit(1);
+  }
+
+  for (spe=0; spe<SpeciesNum; spe++){
+    pao_n_flat[spe] = Spe_Num_Mesh_PAO[spe];
+    for (n=0; n<pao_stride; n++){
+      pao_xv_flat[(size_t)spe*pao_stride+n] = Spe_PAO_XV[spe][n];
+      pao_rv_flat[(size_t)spe*pao_stride+n] = Spe_PAO_RV[spe][n];
+    }
+    for (n=0; n<den_stride; n++){
+      den2_flat[(size_t)spe*den_stride+n] = Spe_Atomic_Den2[spe][n];
+    }
+  }
+
+  n = 0;
+  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+    int Cwan;
+
+    Gc_AN = M2G[Mc_AN];
+    Cwan = WhatSpecies[Gc_AN];
+
+    at_fnan[Mc_AN] = FNAN[Gc_AN];
+    nb_off[Mc_AN] = n;
+    at_cx[Mc_AN] = Gxyz[Gc_AN][1];
+    at_cy[Mc_AN] = Gxyz[Gc_AN][2];
+    at_cz[Mc_AN] = Gxyz[Gc_AN][3];
+    at_dr[Mc_AN] = Spe_Atom_Cut1[Cwan];
+
+    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
+      int Gh_AN = natn[Gc_AN][h_AN];
+      int Rn = ncn[Gc_AN][h_AN];
+      int Hwan = WhatSpecies[Gh_AN];
+
+      nb_wan[n] = Hwan;
+      nb_x[n] = Gxyz[Gh_AN][1] + atv[Rn][1];
+      nb_y[n] = Gxyz[Gh_AN][2] + atv[Rn][2];
+      nb_z[n] = Gxyz[Gh_AN][3] + atv[Rn][3];
+      nb_rcut2[n] = Spe_Atom_Cut1[Hwan]*Spe_Atom_Cut1[Hwan];
+      n++;
+    }
+  }
+
+  for (i=0; i<na; i++){
+    leb_x[i] = Leb_Grid_XYZW[i][0];
+    leb_y[i] = Leb_Grid_XYZW[i][1];
+    leb_z[i] = Leb_Grid_XYZW[i][2];
+    leb_w[i] = Leb_Grid_XYZW[i][3];
+  }
+
+  energy_sum = 0.0;
+
+#pragma acc data copyin(pao_n_flat[0:SpeciesNum], \
+                        pao_xv_flat[0:(size_t)SpeciesNum*pao_stride], \
+                        pao_rv_flat[0:(size_t)SpeciesNum*pao_stride], \
+                        den2_flat[0:(size_t)SpeciesNum*den_stride], \
+                        at_fnan[0:Matomnum+1], nb_off[0:Matomnum+1], \
+                        at_cx[0:Matomnum+1], at_cy[0:Matomnum+1], \
+                        at_cz[0:Matomnum+1], at_dr[0:Matomnum+1], \
+                        nb_wan[0:nb_total], nb_x[0:nb_total], nb_y[0:nb_total], \
+                        nb_z[0:nb_total], nb_rcut2[0:nb_total], \
+                        leb_x[0:na], leb_y[0:na], leb_z[0:na], leb_w[0:na], \
+                        CoarseGL_Abscissae[0:nr], CoarseGL_Weight[0:nr]) \
+                 create(pref[0:npt_total])
+  {
+
+    /* pass 1: energy and per-point force prefactors */
+
+#pragma acc parallel loop gang vector vector_length(128) reduction(+:energy_sum)
+    for (size_t pt=0; pt<npt_total; pt++){
+      int mc,ir,ia,rem,k,koff,fnan;
+      double r,x0,y0,z0,den,den0,exc0,dexc0,wpt,dr_atom;
+
+      mc = (int)(pt/(size_t)npt_atom) + 1;
+      rem = (int)(pt - (size_t)(mc-1)*(size_t)npt_atom);
+      ir = rem/na;
+      ia = rem - ir*na;
+
+      dr_atom = at_dr[mc];
+      r = 0.50*(dr_atom*CoarseGL_Abscissae[ir] + dr_atom);
+
+      x0 = r*leb_x[ia] + at_cx[mc];
+      y0 = r*leb_y[ia] + at_cy[mc];
+      z0 = r*leb_z[ia] + at_cz[mc];
+
+      koff = nb_off[mc];
+      fnan = at_fnan[mc];
+
+      den = 0.0;
+      den0 = 0.0;
+
+      for (k=0; k<=fnan; k++){
+        double dx,dy,dz,r2;
+
+        dx = nb_x[koff+k] - x0;
+        dy = nb_y[koff+k] - y0;
+        dz = nb_z[koff+k] - z0;
+        r2 = dx*dx + dy*dy + dz*dz;
+
+        if (r2<nb_rcut2[koff+k]){
+          int wan = nb_wan[koff+k];
+          double contrib;
+
+          contrib = TotalEnergy_Exc0_KumoF_flat(pao_n_flat[wan], 0.5*log(r2),
+                                                pao_xv_flat + (size_t)wan*pao_stride,
+                                                pao_rv_flat + (size_t)wan*pao_stride,
+                                                den2_flat + (size_t)wan*den_stride)
+                    *(double)vxc_flag;
+          den += contrib;
+          if (k==0) den0 = contrib;
+        }
+      }
+
+      exc0 = TotalEnergy_Exc0_XC_CA(den,0);
+      dexc0 = TotalEnergy_Exc0_XC_CA(den,3);
+
+      wpt = leb_w[ia]*r*r*CoarseGL_Weight[ir];
+
+      pref[pt] = wpt*den0*dexc0;
+      energy_sum += 2.0*PI*dr_atom*wpt*den0*exc0;
+    }
+
+    /* pass 2: contract the prefactors with the neighbour gradients */
+
+    {
+      int nitems = nb_total - Matomnum; /* h_AN != 0 entries */
+      int *item_mc,*item_k;
+      double *item_fx,*item_fy,*item_fz;
+      int p;
+
+      item_mc = (int*)malloc(sizeof(int)*(nitems==0 ? 1 : nitems));
+      item_k = (int*)malloc(sizeof(int)*(nitems==0 ? 1 : nitems));
+      item_fx = (double*)malloc(sizeof(double)*(nitems==0 ? 1 : nitems));
+      item_fy = (double*)malloc(sizeof(double)*(nitems==0 ? 1 : nitems));
+      item_fz = (double*)malloc(sizeof(double)*(nitems==0 ? 1 : nitems));
+
+      if (item_mc==NULL || item_k==NULL || item_fx==NULL || item_fy==NULL || item_fz==NULL){
+        printf("TotalEnergy_Exc0_Batch_OpenACC: malloc failed (pass 2).\n");
+        fflush(stdout);
+        exit(1);
+      }
+
+      p = 0;
+      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+        for (h_AN=1; h_AN<=at_fnan[Mc_AN]; h_AN++){
+          item_mc[p] = Mc_AN;
+          item_k[p] = h_AN;
+          p++;
+        }
+      }
+
+#pragma acc data copyin(item_mc[0:(nitems==0 ? 1 : nitems)], item_k[0:(nitems==0 ? 1 : nitems)]) \
+                 copyout(item_fx[0:(nitems==0 ? 1 : nitems)], item_fy[0:(nitems==0 ? 1 : nitems)], \
+                         item_fz[0:(nitems==0 ? 1 : nitems)])
+      {
+#pragma acc parallel loop gang vector_length(128) \
+    present(pao_n_flat[0:SpeciesNum], \
+            pao_xv_flat[0:(size_t)SpeciesNum*pao_stride], \
+            pao_rv_flat[0:(size_t)SpeciesNum*pao_stride], \
+            den2_flat[0:(size_t)SpeciesNum*den_stride], \
+            at_fnan[0:Matomnum+1], nb_off[0:Matomnum+1], \
+            at_cx[0:Matomnum+1], at_cy[0:Matomnum+1], \
+            at_cz[0:Matomnum+1], at_dr[0:Matomnum+1], \
+            nb_wan[0:nb_total], nb_x[0:nb_total], nb_y[0:nb_total], \
+            nb_z[0:nb_total], nb_rcut2[0:nb_total], \
+            leb_x[0:na], leb_y[0:na], leb_z[0:na], leb_w[0:na], \
+            CoarseGL_Abscissae[0:nr], CoarseGL_Weight[0:nr], \
+            pref[0:npt_total])
+        for (int pp=0; pp<nitems; pp++){
+          const int mc = item_mc[pp];
+          const int k = item_k[pp];
+          const int koff = nb_off[mc];
+          const int wan = nb_wan[koff+k];
+          const int pao_n = pao_n_flat[wan];
+          const double rcut2 = nb_rcut2[koff+k];
+          const double hx = nb_x[koff+k];
+          const double hy = nb_y[koff+k];
+          const double hz = nb_z[koff+k];
+          const double cx = at_cx[mc];
+          const double cy = at_cy[mc];
+          const double cz = at_cz[mc];
+          const double dr_atom = at_dr[mc];
+          const size_t pt0 = (size_t)(mc-1)*(size_t)npt_atom;
+          double sx = 0.0, sy = 0.0, sz = 0.0;
+
+#pragma acc loop vector reduction(+:sx,sy,sz)
+          for (int pt2=0; pt2<npt_atom; pt2++){
+            int ir,ia;
+            double r,x0,y0,z0,dx,dy,dz,r2;
+
+            ir = pt2/na;
+            ia = pt2 - ir*na;
+
+            r = 0.50*(dr_atom*CoarseGL_Abscissae[ir] + dr_atom);
+            x0 = r*leb_x[ia] + cx;
+            y0 = r*leb_y[ia] + cy;
+            z0 = r*leb_z[ia] + cz;
+
+            dx = hx - x0;
+            dy = hy - y0;
+            dz = hz - z0;
+            r2 = dx*dx + dy*dy + dz*dz;
+
+            if (r2<rcut2){
+              double r1,gden0,gscale;
+
+              r1 = sqrt(r2);
+              gden0 = TotalEnergy_Exc0_Dr_KumoF_flat(pao_n, 0.5*log(r2), r1,
+                                                     pao_xv_flat + (size_t)wan*pao_stride,
+                                                     pao_rv_flat + (size_t)wan*pao_stride,
+                                                     den2_flat + (size_t)wan*den_stride)
+                     *(double)vxc_flag;
+              gscale = pref[pt0 + (size_t)pt2]*gden0/r1;
+
+              sx += gscale*dx;
+              sy += gscale*dy;
+              sz += gscale*dz;
+            }
+          }
+
+          item_fx[pp] = 2.0*PI*dr_atom*sx;
+          item_fy[pp] = 2.0*PI*dr_atom*sy;
+          item_fz[pp] = 2.0*PI*dr_atom*sz;
+        }
+      }
+
+      /* host accumulation into the temporary force slots */
+
+      p = 0;
+      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+        Gc_AN = M2G[Mc_AN];
+        for (h_AN=1; h_AN<=at_fnan[Mc_AN]; h_AN++){
+          int Gh_AN = natn[Gc_AN][h_AN];
+
+          Gxyz[Gh_AN][41] += item_fx[p];
+          Gxyz[Gh_AN][42] += item_fy[p];
+          Gxyz[Gh_AN][43] += item_fz[p];
+
+          Gxyz[Gc_AN][41] -= item_fx[p];
+          Gxyz[Gc_AN][42] -= item_fy[p];
+          Gxyz[Gc_AN][43] -= item_fz[p];
+          p++;
+        }
+      }
+
+      free(item_mc);
+      free(item_k);
+      free(item_fx);
+      free(item_fy);
+      free(item_fz);
+    }
+  }
+
+  *sum_out = energy_sum;
+
+  free(pao_n_flat);
+  free(pao_xv_flat);
+  free(pao_rv_flat);
+  free(den2_flat);
+  free(at_fnan);
+  free(nb_off);
+  free(at_cx);
+  free(at_cy);
+  free(at_cz);
+  free(at_dr);
+  free(nb_wan);
+  free(nb_x);
+  free(nb_y);
+  free(nb_z);
+  free(nb_rcut2);
+  free(leb_x);
+  free(leb_y);
+  free(leb_z);
+  free(leb_w);
+  free(pref);
+}

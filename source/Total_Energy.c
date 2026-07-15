@@ -53,6 +53,7 @@ void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy
                                      double *My_E_dpz, double *My_E_dpx_BG,
                                      double *My_E_dpy_BG, double *My_E_dpz_BG);
 void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
+void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
 void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
@@ -64,8 +65,18 @@ int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
 
 static int TotalEnergyUseOpenACC(void)
 {
-  if (SpinP_switch==3) return 0;
-  return (scf_eigen_lib_flag == GPUSOLVER);
+  /* The batched EH0 integrals are spin-independent and the grid
+     reductions use the same spinmax<=1 expressions as the host loops
+     for every SpinP_switch, so the non-collinear case runs on the
+     device as well. */
+  static int env_flag = -1;
+
+  if (env_flag < 0) {
+    const char *env = getenv("OPENMX_TOTALENERGY_GPU");
+    env_flag = (env == NULL || env[0] == '\0') ? 1 : (atoi(env) != 0);
+  }
+
+  return env_flag && (scf_eigen_lib_flag == GPUSOLVER);
 }
 
 
@@ -1859,12 +1870,17 @@ void Calc_EXC_EH1(double ECE[])
 
   XC_P_switch = 0;
 
+  dtime(&time0);
   Set_XC_Grid(2, XC_P_switch,XC_switch,
 	      Density_Grid_D[0],Density_Grid_D[1],
 	      Density_Grid_D[2],Density_Grid_D[3],
 	      Vxc_Grid_D[0], Vxc_Grid_D[1],
 	      Vxc_Grid_D[2], Vxc_Grid_D[3],
 	      NULL,NULL);
+  dtime(&time1);
+  if (myid==0 && measure_time){
+    printf("Time for EXC_EH1(Set_XC_Grid)=%18.5f\n",time1-time0);fflush(stdout);
+  }
 
   /* copy Vxc_Grid_D to Vxc_Grid_B */
 
@@ -1893,12 +1909,17 @@ void Calc_EXC_EH1(double ECE[])
   *********************************************************/
 
   XC_P_switch = 0;
+  dtime(&time0);
   for (BN_AB=0; BN_AB<My_NumGridB_AB; BN_AB++){
     tot_den = ADensity_Grid_B[BN_AB] + ADensity_Grid_B[BN_AB];
     if (PCC_switch==1) {
       tot_den += PCCDensity_Grid_B[0][BN_AB] + PCCDensity_Grid_B[1][BN_AB];
     }
     RefVxc_Grid_B[BN_AB] = XC_Ceperly_Alder(tot_den,XC_P_switch);
+  }
+  dtime(&time1);
+  if (myid==0 && measure_time){
+    printf("Time for EXC_EH1(RefVxc)=%18.5f\n",time1-time0);fflush(stdout);
   }
 
   /****************************************************
@@ -1911,6 +1932,7 @@ void Calc_EXC_EH1(double ECE[])
   My_EXC[0] = 0.0;
   My_EXC[1] = 0.0;
 
+  dtime(&time0);
   if (TotalEnergyUseOpenACC()){
     TotalEnergy_EXC_EH1_Grid_OpenACC(spinmax, &My_Ena, &My_Eef, &My_EH1, My_EXC);
   }
@@ -1952,6 +1974,11 @@ void Calc_EXC_EH1(double ECE[])
       }
 
     } /* BN */
+  }
+
+  dtime(&time1);
+  if (myid==0 && measure_time){
+    printf("Time for EXC_EH1(grid reduction)=%18.5f\n",time1-time0);fflush(stdout);
   }
 
   /****************************************************
@@ -2013,6 +2040,7 @@ void Calc_EXC_EH1(double ECE[])
     to forces on the fine mesh
   ****************************************************/
 
+  dtime(&time0);
   if (Exc0_correction_flag==1){
 
     double **Leb_Grid_XYZW;
@@ -2042,6 +2070,11 @@ void Calc_EXC_EH1(double ECE[])
 
     rs = 0.0;
     sum = 0.0;
+
+    if (TotalEnergyUseOpenACC()){
+      TotalEnergy_Exc0_Batch_OpenACC(Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+    }
+    else{
 
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
@@ -2264,6 +2297,8 @@ void Calc_EXC_EH1(double ECE[])
 
     } /* Mc_AN */
 
+    } /* else (host path) */
+
     /* add Exc^0 calculated on the fine mesh to My_EXC */
 
     My_EXC[0] += 0.5*sum;
@@ -2290,6 +2325,11 @@ void Calc_EXC_EH1(double ECE[])
     }
 
   } /* if (Exc0_correction_flag==1) */
+
+  dtime(&time1);
+  if (myid==0 && measure_time){
+    printf("Time for EXC_EH1(Exc0 fine mesh)=%18.5f\n",time1-time0);fflush(stdout);
+  }
 
   /****************************************************
    MPI, Gxyz[Gc_AN][17-19]
