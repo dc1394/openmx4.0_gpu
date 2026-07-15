@@ -496,8 +496,12 @@ static size_t BandCol_GpuReserveBytes(size_t total_bytes)
 
 static int BandCol_GpuRequestedMaxTurns(void)
 {
+    /* By default every k-owner rank that shares the device may solve its
+       k-point in the first wave (the plan clamps to the device-group size
+       and to the total turn count); the variables only impose an explicit
+       upper cap on the concurrency. */
     const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
-    long requested = 32L;
+    long requested = (long)INT_MAX;
 
     if (value == NULL) {
         value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
@@ -515,8 +519,8 @@ static int BandCol_GpuRequestedMaxTurns(void)
     if (requested < 1L) {
         requested = 1L;
     }
-    if (32L < requested) {
-        requested = 32L;
+    if ((long)INT_MAX < requested) {
+        requested = (long)INT_MAX;
     }
     return (int)requested;
 }
@@ -530,9 +534,9 @@ static int BandCol_CompareUllDesc(const void *a, const void *b)
 }
 
 static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
-                                    int size_H1, int owns_dense_rank, int myid0)
+                                    int size_H1, int owns_dense_rank, int myid0,
+                                    int total_turns)
 {
-    static const int candidates[] = {32, 16, 8, 4, 2, 1};
     BandColGpuUuidRecord local_uuid;
     BandColGpuUuidRecord *node_uuids = NULL;
     MPI_Comm node_comm = MPI_COMM_NULL;
@@ -643,29 +647,27 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
 
         if (group_memory_ok) {
             size_t reserve = BandCol_GpuReserveBytes((size_t)group_total);
+            /* Start from every k-owner rank that shares this GPU (or the
+               explicit cap) and step down: the requirements are sorted in
+               descending order, so the peak of the top-c ranks grows
+               monotonically with c and one prefix scan yields the largest
+               fitting concurrency. */
+            const int cmax = (device_ranks < requested) ? device_ranks : requested;
             int selected_limit = 0;
             unsigned long long selected_peak = 0ULL;
+            unsigned long long peak = 0ULL;
 
-            for (size_t ci = 0; ci < sizeof(candidates) / sizeof(candidates[0]); ci++) {
-                int candidate = candidates[ci];
-                int concurrent;
-                unsigned long long peak = 0ULL;
-
-                if (requested < candidate) {
-                    continue;
+            for (int c = 1; c <= cmax; c++) {
+                if (ULLONG_MAX - peak < requirements[c - 1]) {
+                    break;
                 }
-                concurrent = (device_ranks < candidate) ? device_ranks : candidate;
-                for (int rank = 0; rank < concurrent; rank++) {
-                    if (ULLONG_MAX - peak < requirements[rank]) {
-                        peak = ULLONG_MAX;
-                        break;
-                    }
-                    peak += requirements[rank];
-                }
+                peak += requirements[c - 1];
                 if (peak <= group_free &&
                     (unsigned long long)reserve <= group_free - peak) {
-                    selected_limit = candidate;
+                    selected_limit = c;
                     selected_peak = peak;
+                }
+                else {
                     break;
                 }
             }
@@ -680,16 +682,26 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
                     fflush(stderr);
                 }
             }
-            local_limit = selected_limit;
+
+            /* When every rank sharing the device fits at once, the turn
+               groups no longer bound the memory: run all (spin, k) turns as
+               one group so no barrier interrupts the concurrent solves. */
+            if (selected_limit == device_ranks && device_ranks <= requested &&
+                selected_limit < total_turns) {
+                local_limit = total_turns;
+            }
+            else {
+                local_limit = selected_limit;
+            }
 
             if (device_rank == 0) {
                 static int last_limit = -1;
                 static int last_device_ranks = -1;
                 if (last_limit != selected_limit || last_device_ranks != device_ranks) {
                     printf("<Band_DFT_Col> GPU device %d: %d k-owner rank(s), "
-                           "GPU concurrency=%d, per-rank=%.3f GiB, peak=%.3f GiB, "
-                           "free=%.3f GiB, reserve=%.3f GiB\n",
-                           cuda_device, device_ranks, selected_limit,
+                           "GPU concurrency=%d, turn group=%d, per-rank=%.3f GiB, "
+                           "peak=%.3f GiB, free=%.3f GiB, reserve=%.3f GiB\n",
+                           cuda_device, device_ranks, selected_limit, local_limit,
                            (double)required_bytes / (1024.0 * 1024.0 * 1024.0),
                            (double)selected_peak / (1024.0 * 1024.0 * 1024.0),
                            (double)group_free / (1024.0 * 1024.0 * 1024.0),
@@ -2890,7 +2902,7 @@ diagonalize1:
     if (use_gpusolver_dense) {
         gpu_turn_limit = BandCol_AutoGpuTurnLimit(
             BandCol_GpuRequestedMaxTurns(), n, MaxN, size_H1,
-            owns_dense_k_rank, myid0);
+            owns_dense_k_rank, myid0, Num_Comm_World1 * T_knum);
     }
 
     if (measure_time) {
