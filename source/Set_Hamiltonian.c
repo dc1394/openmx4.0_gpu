@@ -283,8 +283,11 @@ static size_t Set_Hamiltonian_GpuReserveBytes(size_t total_bytes)
 
 static int Set_Hamiltonian_GpuRequestedMaxRanks(void)
 {
+    /* By default every MPI rank that shares the device may join the first
+       wave (the plan clamps to the actual device-group size); the variable
+       only imposes an explicit upper cap. */
     const char *value = getenv("OPENMX_SETHAM_GPU_MAX_RANKS_PER_DEVICE");
-    long requested = 32;
+    long requested = (long)INT_MAX;
 
     if (value != NULL && value[0] != '\0') {
         char *end = NULL;
@@ -292,7 +295,7 @@ static int Set_Hamiltonian_GpuRequestedMaxRanks(void)
         if (end != value && *end == '\0') requested = parsed;
     }
     if (requested < 1L) requested = 1L;
-    if (32L < requested) requested = 32L;
+    if ((long)INT_MAX < requested) requested = (long)INT_MAX;
     return (int)requested;
 }
 
@@ -427,27 +430,23 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
     plan.reserve_bytes = Set_Hamiltonian_GpuReserveBytes(plan.total_bytes);
 
     {
-        static const int candidates[] = {32, 16, 8, 4, 2, 1};
+        /* Start from every MPI rank that shares this GPU and step down until
+           the wave fits.  The requirements are sorted in descending order,
+           so the peak of the top-c ranks grows monotonically with c and one
+           prefix scan yields the largest fitting concurrency. */
         const int requested_max = Set_Hamiltonian_GpuRequestedMaxRanks();
+        const int cmax = (plan.device_ranks < requested_max) ? plan.device_ranks : requested_max;
+        unsigned long long peak = 0;
 
-        for (size_t ci = 0; ci < sizeof(candidates) / sizeof(candidates[0]); ci++) {
-            int candidate = candidates[ci];
-            int concurrent;
-            unsigned long long peak = 0;
-
-            if (requested_max < candidate) continue;
-            concurrent = (plan.device_ranks < candidate) ? plan.device_ranks : candidate;
-            for (int rank = 0; rank < concurrent; rank++) {
-                if (ULLONG_MAX - peak < requirements[rank]) {
-                    peak = ULLONG_MAX;
-                    break;
-                }
-                peak += requirements[rank];
-            }
+        for (int c = 1; c <= cmax; c++) {
+            if (ULLONG_MAX - peak < requirements[c - 1]) break;
+            peak += requirements[c - 1];
 
             if (peak <= group_free && (unsigned long long)plan.reserve_bytes <= group_free - peak) {
-                plan.concurrent_ranks = concurrent;
+                plan.concurrent_ranks = c;
                 plan.peak_bytes = (size_t)peak;
+            }
+            else {
                 break;
             }
         }
