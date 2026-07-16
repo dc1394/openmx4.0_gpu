@@ -42,7 +42,13 @@ static int DFT_SetOLPKinUseGPU(void)
 
 static int DFT_SetProExpnVNAUseGPU(void)
 {
-    return 0;
+    /* mirrors the cheap gates of the Set_ProExpn_VNA device batches; the
+       memory quota may still fall back per node, which prints its own
+       notice */
+    const char *value = getenv("OPENMX_SETPRO_GPU");
+
+    if (scf_eigen_lib_flag != GPUSOLVER) return 0;
+    return (value == NULL) ? 1 : (atoi(value) != 0);
 }
 
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)

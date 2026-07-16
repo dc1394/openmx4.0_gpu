@@ -2694,7 +2694,7 @@ double Force(double***** H0,
     dtime(&stime);
 
     if (myid == Host_ID && 0 < level_stdout) {
-        printf("  Force calculation #2\n");
+        printf("  Force calculation #2%s\n", use_force2_openacc ? " (GPU reduction)" : "");
         fflush(stdout);
     }
 
@@ -3271,7 +3271,9 @@ double Force(double***** H0,
     dtime(&stime);
 
     if (myid == Host_ID && 0 < level_stdout) {
-        printf("  Force calculation #3\n");
+        printf("  Force calculation #3%s\n",
+            (scf_eigen_lib_flag == GPUSOLVER && Force_env_flag("OPENMX_FORCE3_GPU", 1))
+                ? " (GPU-accelerated)" : "");
         fflush(stdout);
     }
 
@@ -3298,7 +3300,9 @@ double Force(double***** H0,
 
     if (myid == Host_ID && 0 < level_stdout) {
         printf("  Force calculation #4%s\n",
-            (ProExpn_VNA == 0 && use_force4_openacc) ? " (GPU reduction)" : "");
+            (ProExpn_VNA == 0 && use_force4_openacc) ? " (GPU reduction)"
+            : (ProExpn_VNA == 1 && F_VNA_flag == 1 && scf_eigen_lib_flag == GPUSOLVER &&
+               Force_env_flag("OPENMX_FORCE4B_GPU", 1)) ? " (GPU-accelerated)" : "");
         fflush(stdout);
     }
 
