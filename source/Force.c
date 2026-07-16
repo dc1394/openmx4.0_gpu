@@ -677,10 +677,12 @@ typedef struct {
 static size_t Force3_GpuChunkBudget(void)
 {
     int Mc_AN, node_ranks = 1;
-    size_t orbs_bytes = 0;
+    size_t orbs_bytes = 0, grid_pts = 0, resident_bytes;
     size_t free_bytes = 0, total_bytes = 0;
     size_t usable, budget;
-    const size_t budget_cap = (size_t)1536 * 1024 * 1024;
+    /* the chunk scratch is mirrored on the host (gl/fn/dm packing), so a
+       large cap multiplies host memory by the rank count; keep it small */
+    const size_t budget_cap = (size_t)384 * 1024 * 1024;
     const size_t budget_floor = (size_t)192 * 1024 * 1024;
     const size_t reserve = (size_t)256 * 1024 * 1024;
     MPI_Comm node_comm = MPI_COMM_NULL;
@@ -697,15 +699,21 @@ static size_t Force3_GpuChunkBudget(void)
         int Gc_AN = M2G[Mc_AN];
         orbs_bytes += (size_t)GridN_Atom[Gc_AN] * (size_t)Spe_Total_CNO[WhatSpecies[Gc_AN]]
             * sizeof(float);
+        grid_pts += (size_t)GridN_Atom[Gc_AN];
     }
+    /* device-resident tables: the orbital table, the per-spin grid
+       potentials, and (with on-device derivatives) the grid coordinates */
+    resident_bytes = orbs_bytes
+        + grid_pts * (size_t)(SpinP_switch + 1) * sizeof(double)
+        + grid_pts * 3 * sizeof(double);
 
     if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
     if (free_bytes <= reserve) return 0;
 
     usable = (free_bytes - reserve) / (size_t)node_ranks;
-    if (usable <= orbs_bytes + budget_floor) return 0;
+    if (usable <= resident_bytes + budget_floor) return 0;
 
-    budget = usable - orbs_bytes;
+    budget = usable - resident_bytes;
     if (budget_cap < budget) budget = budget_cap;
     return budget;
 }
@@ -735,14 +743,15 @@ static int Force3_GpuDorbMode(void)
 }
 
 static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
-    const double* vpot_all, const size_t* vpot_off,
-    const double* xyz_all, const size_t* xyz_off, int dorb_mode,
+    double* vpot_dev_full, const size_t* vpot_off,
+    double* xyz_dev_full, const size_t* xyz_off, int dorb_mode,
     size_t chunk_budget)
 {
     int Mc_AN, h_AN, myid;
     size_t orbs_local_count = 0;
     size_t* orb_off;
-    float* orbs_local;
+    float* orbs_dev;
+    float* orb_stage;
     int chunk_lo;
     const int spins = SpinP_switch + 1;
 
@@ -758,7 +767,8 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
 
-    /* ---- flatten the local orbital table (float, once per call) ---- */
+    /* ---- flatten the local orbital table (float) into a device-resident
+            buffer, one atom block at a time through a staging buffer ---- */
 
     orb_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)(Matomnum + 2),
         __FILE__, __LINE__);
@@ -772,22 +782,39 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
     }
     orb_off[Matomnum + 1] = orbs_local_count;
 
-    orbs_local = (float*)Force_checked_malloc(
-        sizeof(float) * (orbs_local_count == 0 ? 1 : orbs_local_count), __FILE__, __LINE__);
+    orbs_dev = (float*)acc_malloc(
+        sizeof(float) * (orbs_local_count == 0 ? 1 : orbs_local_count));
+    if (orbs_dev == NULL) {
+        Force3_gpu_abort("Force3 GPU trace: device orbital table allocation failed.");
+    }
+    {
+        size_t maxorb = 0;
 
-#pragma omp parallel for schedule(dynamic)
+        for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+            size_t cnt = orb_off[Mc_AN + 1] - orb_off[Mc_AN];
+            if (maxorb < cnt) maxorb = cnt;
+        }
+        orb_stage = (float*)Force_checked_malloc(
+            sizeof(float) * (maxorb == 0 ? 1 : maxorb), __FILE__, __LINE__);
+    }
+
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
         int NO0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
-        size_t base = orb_off[Mc_AN];
+        size_t cnt = orb_off[Mc_AN + 1] - orb_off[Mc_AN];
         int Nc;
 
+#pragma omp parallel for schedule(dynamic)
         for (Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
             const Type_Orbs_Grid* src = Orbs_Grid[Mc_AN][Nc];
-            float* dst = orbs_local + base + (size_t)Nc * (size_t)NO0;
+            float* dst = orb_stage + (size_t)Nc * (size_t)NO0;
             int i;
 
             for (i = 0; i < NO0; i++) dst[i] = (float)src[i];
+        }
+
+        if (cnt != 0) {
+            acc_memcpy_to_device(orbs_dev + orb_off[Mc_AN], orb_stage, sizeof(float) * cnt);
         }
     }
 
@@ -845,13 +872,12 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
     }
 
     {
-        const size_t orbs_n = (orbs_local_count == 0 ? 1 : orbs_local_count);
         const size_t rv_n = (pao_rv_count == 0 ? 1 : pao_rv_count);
         const size_t rwf_n = (pao_rwf_count == 0 ? 1 : pao_rwf_count);
         const size_t spn = (size_t)SpeciesNum;
         const size_t spl = (size_t)SpeciesNum * (F3_DORB_L0MAX + 1);
-        double* rv_p = (dorb_mode ? pao_rv : (double*)orbs_local);
-        double* rwf_p = (dorb_mode ? pao_rwf : (double*)orbs_local);
+        double* rv_p = (dorb_mode ? pao_rv : (double*)orb_off);
+        double* rwf_p = (dorb_mode ? pao_rwf : (double*)orb_off);
         size_t* rvo_p = (dorb_mode ? rv_off : orb_off);
         size_t* rwb_p = (dorb_mode ? rwf_base : orb_off);
         int* spm_p = (dorb_mode ? sp_mesh : (int*)orb_off);
@@ -876,7 +902,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         size_t* plan_fn = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)(Matomnum + 1), __FILE__, __LINE__);
         size_t* plan_dm = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)(Matomnum + 1), __FILE__, __LINE__);
         size_t max_pairs = 0, max_gl = 0, max_fn = 0, max_dm = 0;
-        size_t max_dchi = 0, max_vpot = 0, max_npts = 0;
+        size_t max_dchi = 0, max_npts = 0;
         size_t max_atoms = 0;
 
         chunk_bound[0] = 1;
@@ -910,8 +936,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                 chunk_bytes = (gl_count + a_gl) * 2 * sizeof(int)
                     + (fn_count + a_fn) * sizeof(float)
                     + (dm_count + a_dm) * sizeof(double)
-                    + (dchi_off[chunk_hi + 1] - dchi_off[chunk_lo]) * sizeof(double)
-                    + (vpot_off[chunk_hi + 1] - vpot_off[chunk_lo]) * sizeof(double);
+                    + (dchi_off[chunk_hi + 1] - dchi_off[chunk_lo]) * sizeof(double);
 
                 if (chunk_lo < chunk_hi && chunk_budget < chunk_bytes) break;
 
@@ -935,11 +960,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
             if (max_dm < dm_count) max_dm = dm_count;
             {
                 const size_t c_dchi = dchi_off[chunk_hi] - dchi_off[chunk_lo];
-                const size_t c_vpot = vpot_off[chunk_hi] - vpot_off[chunk_lo];
                 const size_t c_npts = (xyz_off[chunk_hi] - xyz_off[chunk_lo]) / 3;
 
                 if (max_dchi < c_dchi) max_dchi = c_dchi;
-                if (max_vpot < c_vpot) max_vpot = c_vpot;
                 if (max_npts < c_npts) max_npts = c_npts;
                 if (max_atoms < (size_t)(chunk_hi - chunk_lo)) max_atoms = (size_t)(chunk_hi - chunk_lo);
             }
@@ -969,20 +992,14 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
             size_t* a_dchi = (size_t*)Force_checked_malloc(sizeof(size_t) * am_n, __FILE__, __LINE__);
             size_t* a_pt0 = (size_t*)Force_checked_malloc(sizeof(size_t) * am_n, __FILE__, __LINE__);
             double* dchi_dev;
-            double* vpot_dev;
-            double* xyz_dev = NULL;
             int ic;
 
             dchi_dev = (double*)acc_malloc((max_dchi == 0 ? 1 : max_dchi) * sizeof(double));
-            vpot_dev = (double*)acc_malloc((max_vpot == 0 ? 1 : max_vpot) * sizeof(double));
-            if (dorb_mode) {
-                xyz_dev = (double*)acc_malloc(3 * pt_n * sizeof(double));
-            }
-            if (dchi_dev == NULL || vpot_dev == NULL || (dorb_mode && xyz_dev == NULL)) {
+            if (dchi_dev == NULL) {
                 Force3_gpu_abort("Force3 GPU trace: device scratch allocation failed.");
             }
 
-#pragma acc data copyin(orbs_local[0 : orbs_n], rv_p[0 : rv_map], rwf_p[0 : rwf_map], \
+#pragma acc data copyin(rv_p[0 : rv_map], rwf_p[0 : rwf_map], \
                         rvo_p[0 : spo_map], rwb_p[0 : spo_map], spm_p[0 : sp_map], \
                         spx_p[0 : sp_map], spb_p[0 : spl_map]) \
                  create(pm[0 : pm_n], gl1[0 : glb_n], gl2[0 : glb_n], fn_buf[0 : fnb_n], \
@@ -999,13 +1016,11 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                 const size_t dm_count = plan_dm[ic];
                 size_t gl_pos = 0, fn_pos = 0, dm_pos = 0;
                 int p = 0, mc;
-                size_t dchi_lo, dchi_len, vpot_lo, vpot_len;
+                size_t dchi_lo, dchi_len;
 
                 chunk_lo = chunk_bound[ic];
                 dchi_lo = dchi_off[chunk_lo];
                 dchi_len = dchi_off[chunk_hi] - dchi_off[chunk_lo];
-                vpot_lo = vpot_off[chunk_lo];
-                vpot_len = vpot_off[chunk_hi] - vpot_off[chunk_lo];
 
                 /* offsets first (sequential), the bulk copies in parallel */
 
@@ -1021,7 +1036,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                         int is_fnan = (G2ID[Gh_AN] != myid);
 
                         pm[p].dchi_base = dchi_off[mc] - dchi_lo;
-                        pm[p].vpot_base = vpot_off[mc] - vpot_lo;
+                        /* vpot lives in the full device-resident buffer,
+                           so its base offset is global, not chunk-relative */
+                        pm[p].vpot_base = vpot_off[mc];
                         pm[p].vpot_stride = GridN_Atom[Gc_AN];
                         pm[p].no0 = NO0;
                         pm[p].no1 = NO1;
@@ -1092,10 +1109,6 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
 #pragma acc update device(pm[0 : npairs_u], gl1[0 : gl_u], gl2[0 : gl_u], \
                           fn_buf[0 : fn_u], dm_buf[0 : dm_u])
                 }
-                if (vpot_len != 0) {
-                    acc_memcpy_to_device(vpot_dev, (void*)(vpot_all + vpot_lo),
-                        vpot_len * sizeof(double));
-                }
 
                 /* ---- the per-chunk orbital derivatives ---- */
 
@@ -1105,7 +1118,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                         int chunk_atoms = chunk_hi - chunk_lo;
                         size_t npts = (xyz_off[chunk_hi] - xyz_off[chunk_lo]) / 3;
                         const size_t xyz_lo = xyz_off[chunk_lo];
-                        const size_t xyz_len = xyz_off[chunk_hi] - xyz_off[chunk_lo];
+                        double* xyz_chunk = xyz_dev_full + xyz_lo;
                         int a;
 
                         for (a = 0; a < chunk_atoms; a++) {
@@ -1129,12 +1142,8 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
 
 #pragma acc update device(pt_aidx[0 : npts_u], a_wan[0 : am_u], a_no0[0 : am_u], \
                           a_dchi[0 : am_u], a_pt0[0 : am_u])
-                            if (xyz_len != 0) {
-                                acc_memcpy_to_device(xyz_dev, (void*)(xyz_all + xyz_lo),
-                                    xyz_len * sizeof(double));
-                            }
                             {
-#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, xyz_dev) \
+#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, xyz_chunk) \
     present(pt_aidx[0 : npts_u], a_wan[0 : am_u], a_no0[0 : am_u], \
             a_dchi[0 : am_u], a_pt0[0 : am_u], \
             rv_p[0 : rv_map], rwf_p[0 : rwf_map], rvo_p[0 : spo_map], rwb_p[0 : spo_map], \
@@ -1145,9 +1154,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                                     const int NO0 = a_no0[a2];
                                     const size_t Nc = (size_t)ip - a_pt0[a2];
                                     double* dchi = dchi_dev + a_dchi[a2] + Nc * (size_t)NO0 * 3;
-                                    const double x = xyz_dev[3 * (size_t)ip + 0];
-                                    const double y = xyz_dev[3 * (size_t)ip + 1];
-                                    const double z = xyz_dev[3 * (size_t)ip + 2];
+                                    const double x = xyz_chunk[3 * (size_t)ip + 0];
+                                    const double y = xyz_chunk[3 * (size_t)ip + 1];
+                                    const double z = xyz_chunk[3 * (size_t)ip + 2];
                                     const int mesh = spm_p[wan];
                                     const int maxl = spx_p[wan];
                                     const double* rv = rv_p + rvo_p[wan];
@@ -1456,10 +1465,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     const size_t dm_u = (dm_count == 0 ? 1 : dm_count);
 
                     {
-#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, vpot_dev) \
+#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, vpot_dev_full, orbs_dev) \
     present(pm[0 : npairs_c], gl1[0 : gl_u], gl2[0 : gl_u], fn_buf[0 : fn_u], \
             dm_buf[0 : dm_u], \
-            orbs_local[0 : (orbs_local_count == 0 ? 1 : orbs_local_count)], \
             pair_f[0 : 3 * (size_t)npairs_c])
                         for (int pp = 0; pp < npairs_c; pp++) {
                             const int NO0 = pm[pp].no0;
@@ -1480,7 +1488,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                                 const int Nh = gl2[gl_off + Nog];
                                 const float* orb1 = use_fn
                                     ? (fn_buf + obase + (size_t)Nog * (size_t)NO1)
-                                    : (orbs_local + obase + (size_t)Nh * (size_t)NO1);
+                                    : (orbs_dev + obase + (size_t)Nh * (size_t)NO1);
                                 const double* dchi = dchi_dev + dbase + (size_t)Nc * (size_t)NO0 * 3;
 
                                 for (int spin = 0; spin < spin_count; spin++) {
@@ -1501,7 +1509,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                                     }
 
                                     {
-                                        const double Vpt = vpot_dev[vbase + (size_t)spin * (size_t)vstride + Nc];
+                                        const double Vpt = vpot_dev_full[vbase + (size_t)spin * (size_t)vstride + Nc];
 
                                         fx += tmpx * Vpt;
                                         fy += tmpy * Vpt;
@@ -1550,8 +1558,6 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         }
     }
 
-            if (dorb_mode) acc_free(xyz_dev);
-            acc_free(vpot_dev);
             acc_free(dchi_dev);
 
             free(a_pt0);
@@ -1582,7 +1588,8 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
     free(rv_off);
     free(pao_rwf);
     free(pao_rv);
-    free(orbs_local);
+    acc_free(orbs_dev);
+    free(orb_stage);
     free(orb_off);
 
     /* return the pooled chunk buffers to CUDA so the next force stage
@@ -4117,16 +4124,21 @@ void Force3()
     int use_gpu_trace = 0;
     int f3_dorb = 0;
     double* dchi_all = NULL;
-    double* vpot_all = NULL;
-    double* xyz_all = NULL;
     size_t* dchi_off = NULL;
     size_t* vpot_off = NULL;
     size_t* xyz_off = NULL;
+    /* the per-spin grid potentials and grid coordinates are staged one
+       atom at a time and live on the device only; a full host copy of
+       either multiplies the node's host memory by the rank count */
+    double* vpot_stage = NULL;
+    double* xyz_stage = NULL;
+    double* vpot_dev_full = NULL;
+    double* xyz_dev_full = NULL;
 
     size_t f3_chunk_budget = Force3_GpuChunkBudget();
 
     if (f3_chunk_budget != 0) {
-        size_t dpos = 0, vpos = 0, xpos = 0;
+        size_t dpos = 0, vpos = 0, xpos = 0, maxgrid = 0;
         int mc;
 
         f3_dorb = Force3_GpuDorbMode();
@@ -4150,6 +4162,7 @@ void Force3()
             dpos += (size_t)GridN_Atom[ga] * (size_t)no0 * 3;
             vpos += (size_t)(SpinP_switch + 1) * (size_t)GridN_Atom[ga];
             xpos += (size_t)GridN_Atom[ga] * 3;
+            if (maxgrid < (size_t)GridN_Atom[ga]) maxgrid = (size_t)GridN_Atom[ga];
         }
         dchi_off[Matomnum + 1] = dpos;
         vpot_off[Matomnum + 1] = vpos;
@@ -4159,14 +4172,21 @@ void Force3()
            travel to the device; otherwise part 1 fills the flat derivative
            buffer on the host */
         if (f3_dorb) {
-            xyz_all = (double*)Force_checked_malloc(sizeof(double) * (xpos == 0 ? 1 : xpos),
-                __FILE__, __LINE__);
+            xyz_stage = (double*)Force_checked_malloc(
+                sizeof(double) * 3 * (maxgrid == 0 ? 1 : maxgrid), __FILE__, __LINE__);
+            xyz_dev_full = (double*)acc_malloc(sizeof(double) * (xpos == 0 ? 1 : xpos));
         } else {
             dchi_all = (double*)Force_checked_malloc(sizeof(double) * (dpos == 0 ? 1 : dpos),
                 __FILE__, __LINE__);
         }
-        vpot_all = (double*)Force_checked_malloc(sizeof(double) * (vpos == 0 ? 1 : vpos),
+        vpot_stage = (double*)Force_checked_malloc(
+            sizeof(double) * (size_t)(SpinP_switch + 1) * (maxgrid == 0 ? 1 : maxgrid),
             __FILE__, __LINE__);
+        vpot_dev_full = (double*)acc_malloc(sizeof(double) * (vpos == 0 ? 1 : vpos));
+
+        if (vpot_dev_full == NULL || (f3_dorb && xyz_dev_full == NULL)) {
+            Force3_gpu_abort("Force3 GPU trace: resident grid buffer allocation failed.");
+        }
         use_gpu_trace = 1;
     }
 
@@ -4208,7 +4228,7 @@ void Force3()
                 int s;
                 for (s = 0; s <= SpinP_switch; s++) {
                     vpot_dst[s] = use_gpu_trace
-                        ? (vpot_all + vpot_off[Mc_AN] + (size_t)s * (size_t)GridN_Atom[Gc_AN])
+                        ? (vpot_stage + (size_t)s * (size_t)GridN_Atom[Gc_AN])
                         : Vpot_grid[s];
                 }
             }
@@ -4247,11 +4267,11 @@ void Force3()
 
                 if (f3_dorb) {
                     /* the device kernel evaluates the derivatives itself */
-                    size_t xb = xyz_off[Mc_AN] + (size_t)Nc * 3;
+                    size_t xb = (size_t)Nc * 3;
 
-                    xyz_all[xb + 0] = dx;
-                    xyz_all[xb + 1] = dy;
-                    xyz_all[xb + 2] = dz;
+                    xyz_stage[xb + 0] = dx;
+                    xyz_stage[xb + 1] = dy;
+                    xyz_stage[xb + 2] = dz;
                 }
                 else {
 
@@ -4771,6 +4791,23 @@ void Force3()
 
             } /* Nc, here omp barrier is called implicitly because of end of for loop */
 
+            if (use_gpu_trace) {
+#pragma omp master
+                {
+                    if (0 < GridN_Atom[Gc_AN]) {
+                        acc_memcpy_to_device(vpot_dev_full + vpot_off[Mc_AN], vpot_stage,
+                            sizeof(double) * (size_t)(SpinP_switch + 1) * (size_t)GridN_Atom[Gc_AN]);
+                        if (f3_dorb) {
+                            acc_memcpy_to_device(xyz_dev_full + xyz_off[Mc_AN], xyz_stage,
+                                sizeof(double) * 3 * (size_t)GridN_Atom[Gc_AN]);
+                        }
+                    }
+                }
+                /* no barrier needed here: the next atom's leading barrier keeps
+                   the other threads from refilling the stage until the master
+                   thread has finished the upload */
+            }
+
 #if measure_time
             dtime(&current_time);
             time1 += current_time - last_time;
@@ -4899,13 +4936,15 @@ void Force3()
 
     /* batched device evaluation of the skipped part-2 traces */
     if (use_gpu_trace) {
-        Force3_GpuTrace(dchi_all, dchi_off, vpot_all, vpot_off,
-            xyz_all, xyz_off, f3_dorb, f3_chunk_budget);
+        Force3_GpuTrace(dchi_all, dchi_off, vpot_dev_full, vpot_off,
+            xyz_dev_full, xyz_off, f3_dorb, f3_chunk_budget);
     }
 
     /* free */
-    free(xyz_all);
-    free(vpot_all);
+    if (xyz_dev_full != NULL) acc_free(xyz_dev_full);
+    if (vpot_dev_full != NULL) acc_free(vpot_dev_full);
+    free(xyz_stage);
+    free(vpot_stage);
     free(dchi_all);
     free(xyz_off);
     free(vpot_off);
@@ -6853,7 +6892,13 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
    The MPI structure is untouched: the halo blocks received in the
    case-1 communication loop and the per-atom case-2 stagings are
-   archived, and one batched kernel per case runs after the loops.     */
+   archived, and one batched kernel per case runs after the loops.
+
+   All three archives live on the DEVICE only (acc_malloc); each atom
+   block is packed into a small host staging buffer and uploaded as it
+   becomes available.  Host-resident copies of the archives used to add
+   up to several GB per rank, which multiplied by the ranks sharing a
+   node exhausted host memory on large systems.                        */
 /* ------------------------------------------------------------------ */
 
 typedef struct {
@@ -6861,22 +6906,26 @@ typedef struct {
     int num_proj;
 
     /* local DS_VNA rows, direction-major: flat[dir*stride + block]    */
-    float* flat;
+    float* flat_dev;
     size_t flat_stride;
     size_t* mck_off;   /* (Mc,k) block base: mck_off[mck_base[Mc]+k]   */
     int* mck_base;     /* Mc -> first (Mc,k) slot                      */
 
     /* case-1 halo archive: direction 0 rows of every received atom    */
-    float* halo;
+    float* halo_dev;
     size_t halo_count;
     size_t* halo_off;  /* (halo_idx, k) block base                     */
     int* halo_base;    /* halo_idx -> first slot                       */
 
     /* case-2 per-centre archive: 4 directions of the staged slot;
        block sizes follow the NEIGHBOUR's orbital count                 */
-    float* c2;
+    float* c2_dev;
     size_t c2_stride;
     size_t* c2_off;    /* (Mc,k) block base, indexed via mck_base      */
+
+    /* host bounce buffer holding one atom's largest one-direction block */
+    float* stage;
+    size_t stage_len;
 } Force4BGpuContext;
 
 static Force4BGpuContext F4B_gpu = { 0 };
@@ -6901,7 +6950,7 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
 {
     Force4BGpuContext* g = &F4B_gpu;
     int Mc_AN, k, node_ranks = 1, node_rank = 0;
-    size_t pos = 0, slots = 0, halo_slots = 0;
+    size_t pos = 0, slots = 0, halo_slots = 0, c2pos = 0, maxblk = 0;
     size_t free_bytes = 0, total_bytes = 0;
     MPI_Comm node_comm = MPI_COMM_NULL;
 
@@ -6925,21 +6974,36 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
     MPI_Barrier(node_comm);
     MPI_Comm_free(&node_comm);
 
-    /* size the flat local table (4 dirs) and the halo/case-2 archives */
+    /* size the flat local table (4 dirs) and the halo/case-2 archives;
+       also find the largest one-direction atom block for the staging
+       buffer */
 
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
-        slots += (size_t)(FNAN[Gc_AN] + 1);
-        pos += (size_t)(FNAN[Gc_AN] + 1) * (size_t)Spe_Total_CNO[WhatSpecies[Gc_AN]]
+        size_t blk = (size_t)(FNAN[Gc_AN] + 1) * (size_t)Spe_Total_CNO[WhatSpecies[Gc_AN]]
             * (size_t)g->num_proj;
+        size_t c2blk = 0;
+
+        slots += (size_t)(FNAN[Gc_AN] + 1);
+        pos += blk;
+        if (maxblk < blk) maxblk = blk;
+        for (k = 0; k <= FNAN[Gc_AN]; k++) {
+            c2blk += (size_t)Spe_Total_CNO[WhatSpecies[natn[Gc_AN][k]]] * (size_t)g->num_proj;
+        }
+        c2pos += c2blk;
+        if (maxblk < c2blk) maxblk = c2blk;
     }
     g->flat_stride = pos;
+    g->c2_stride = c2pos;
 
     for (Mc_AN = Matomnum + 1; Mc_AN <= Matomnum + MatomnumF; Mc_AN++) {
         int Gc_AN = F_M2G[Mc_AN];
-        halo_slots += (size_t)(FNAN[Gc_AN] + 1);
-        g->halo_count += (size_t)(FNAN[Gc_AN] + 1) * (size_t)Spe_Total_CNO[WhatSpecies[Gc_AN]]
+        size_t blk = (size_t)(FNAN[Gc_AN] + 1) * (size_t)Spe_Total_CNO[WhatSpecies[Gc_AN]]
             * (size_t)g->num_proj;
+
+        halo_slots += (size_t)(FNAN[Gc_AN] + 1);
+        g->halo_count += blk;
+        if (maxblk < blk) maxblk = blk;
     }
 
     /* feasibility against the device memory shared by the node ranks */
@@ -6948,11 +7012,8 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
     {
         const size_t reserve = (size_t)256 * 1024 * 1024;
         const size_t transients = (size_t)192 * 1024 * 1024;
-        /* the flat table is dropped before the case-2 archive is uploaded,
-           so only the larger of the two phases must fit */
-        size_t need1 = (4U * g->flat_stride + g->halo_count) * sizeof(float) + transients;
-        size_t need2 = 4U * g->flat_stride * sizeof(float) + transients;
-        size_t need = (need1 < need2) ? need2 : need1;
+        size_t need = (4U * g->flat_stride + g->halo_count + 4U * g->c2_stride) * sizeof(float)
+            + transients;
 
         if (free_bytes <= reserve) return 0;
         if ((free_bytes - reserve) / (size_t)node_ranks <= need) {
@@ -6967,39 +7028,31 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
 
     g->mck_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 2), __FILE__, __LINE__);
     g->mck_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (slots == 0 ? 1 : slots), __FILE__, __LINE__);
-    g->flat = (float*)Force_checked_malloc(sizeof(float) * (g->flat_stride == 0 ? 4 : 4U * g->flat_stride),
-        __FILE__, __LINE__);
     g->halo_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(MatomnumF + 2), __FILE__, __LINE__);
     g->halo_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (halo_slots == 0 ? 1 : halo_slots),
         __FILE__, __LINE__);
-    g->halo = (float*)Force_checked_malloc(sizeof(float) * (g->halo_count == 0 ? 1 : g->halo_count),
-        __FILE__, __LINE__);
     g->c2_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (slots == 0 ? 1 : slots), __FILE__, __LINE__);
+    g->stage_len = (maxblk == 0 ? 1 : maxblk);
+    g->stage = (float*)Force_checked_malloc(sizeof(float) * g->stage_len, __FILE__, __LINE__);
 
     pos = 0;
     slots = 0;
-    {
-        size_t c2pos = 0;
+    c2pos = 0;
+    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+        int Gc_AN = M2G[Mc_AN];
+        int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
 
-        for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-            int Gc_AN = M2G[Mc_AN];
-            int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+        g->mck_base[Mc_AN] = (int)slots;
+        for (k = 0; k <= FNAN[Gc_AN]; k++) {
+            int nok = Spe_Total_CNO[WhatSpecies[natn[Gc_AN][k]]];
 
-            g->mck_base[Mc_AN] = (int)slots;
-            for (k = 0; k <= FNAN[Gc_AN]; k++) {
-                int nok = Spe_Total_CNO[WhatSpecies[natn[Gc_AN][k]]];
-
-                g->mck_off[slots] = pos;
-                g->c2_off[slots] = c2pos;
-                pos += (size_t)no0 * (size_t)g->num_proj;
-                c2pos += (size_t)nok * (size_t)g->num_proj;
-                slots++;
-            }
+            g->mck_off[slots] = pos;
+            g->c2_off[slots] = c2pos;
+            pos += (size_t)no0 * (size_t)g->num_proj;
+            c2pos += (size_t)nok * (size_t)g->num_proj;
+            slots++;
         }
-        g->c2_stride = c2pos;
     }
-    g->c2 = (float*)Force_checked_malloc(sizeof(float) * (g->c2_stride == 0 ? 4 : 4U * g->c2_stride),
-        __FILE__, __LINE__);
 
     halo_slots = 0;
     pos = 0;
@@ -7015,34 +7068,60 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
         }
     }
 
-    /* flatten the (premultiplied) local DS_VNA rows */
+    /* device archives */
 
-#pragma omp parallel for schedule(dynamic)
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-        int Gc_AN = M2G[Mc_AN];
-        int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
-        int kk, k2;
+    g->flat_dev = (float*)acc_malloc(sizeof(float) * (g->flat_stride == 0 ? 4 : 4U * g->flat_stride));
+    g->halo_dev = (float*)acc_malloc(sizeof(float) * (g->halo_count == 0 ? 1 : g->halo_count));
+    g->c2_dev = (float*)acc_malloc(sizeof(float) * (g->c2_stride == 0 ? 4 : 4U * g->c2_stride));
+    if (g->flat_dev == NULL || g->halo_dev == NULL || g->c2_dev == NULL) {
+        if (g->flat_dev != NULL) acc_free(g->flat_dev);
+        if (g->halo_dev != NULL) acc_free(g->halo_dev);
+        if (g->c2_dev != NULL) acc_free(g->c2_dev);
+        free(g->stage);
+        free(g->c2_off);
+        free(g->halo_off);
+        free(g->halo_base);
+        free(g->mck_off);
+        free(g->mck_base);
+        memset(g, 0, sizeof(*g));
+        fprintf(stderr, "Force4B GPU: device allocation failed; CPU fallback.\n");
+        fflush(stderr);
+        return 0;
+    }
+
+    /* upload the (premultiplied) local DS_VNA rows one atom block at a
+       time through the staging buffer */
+
+    {
+        int kk;
 
         for (kk = 0; kk <= 3; kk++) {
-            for (k2 = 0; k2 <= FNAN[Gc_AN]; k2++) {
-                size_t base = (size_t)kk * F4B_gpu.flat_stride
-                    + F4B_gpu.mck_off[F4B_gpu.mck_base[Mc_AN] + k2];
-                int i, l;
+            for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+                int Gc_AN = M2G[Mc_AN];
+                int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+                size_t base = g->mck_off[g->mck_base[Mc_AN]];
+                size_t blk = (size_t)(FNAN[Gc_AN] + 1) * (size_t)no0 * (size_t)g->num_proj;
+                int k2;
 
-                for (i = 0; i < no0; i++) {
-                    const Type_DS_VNA* src = DS_VNA[kk][Mc_AN][k2][i];
-                    float* dst = F4B_gpu.flat + base + (size_t)i * (size_t)F4B_gpu.num_proj;
+#pragma omp parallel for schedule(dynamic)
+                for (k2 = 0; k2 <= FNAN[Gc_AN]; k2++) {
+                    size_t off = g->mck_off[g->mck_base[Mc_AN] + k2] - base;
+                    int i, l;
 
-                    for (l = 0; l < F4B_gpu.num_proj; l++) dst[l] = (float)src[l];
+                    for (i = 0; i < no0; i++) {
+                        const Type_DS_VNA* src = DS_VNA[kk][Mc_AN][k2][i];
+                        float* dst = g->stage + off + (size_t)i * (size_t)g->num_proj;
+
+                        for (l = 0; l < g->num_proj; l++) dst[l] = (float)src[l];
+                    }
+                }
+
+                if (blk != 0) {
+                    acc_memcpy_to_device(g->flat_dev + (size_t)kk * g->flat_stride + base,
+                        g->stage, sizeof(float) * blk);
                 }
             }
         }
-    }
-
-    {
-        float* flat = g->flat;
-        size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
-#pragma acc enter data copyin(flat[0 : flat_len])
     }
 
     g->enabled = 1;
@@ -7055,22 +7134,15 @@ static void Force4B_GpuEnd(void)
 
     if (!g->enabled) return;
 
-    {
-        float* flat = g->flat;
-        size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
-
-        if (acc_is_present(flat, flat_len * sizeof(float))) {
-#pragma acc exit data delete(flat[0 : flat_len])
-        }
-    }
+    if (g->flat_dev != NULL) acc_free(g->flat_dev);
+    if (g->halo_dev != NULL) acc_free(g->halo_dev);
+    if (g->c2_dev != NULL) acc_free(g->c2_dev);
     acc_clear_freelists();
 
-    free(g->c2);
+    free(g->stage);
     free(g->c2_off);
-    free(g->halo);
     free(g->halo_off);
     free(g->halo_base);
-    free(g->flat);
     free(g->mck_off);
     free(g->mck_base);
     memset(g, 0, sizeof(*g));
@@ -7083,23 +7155,30 @@ static void Force4B_GpuArchiveHalo(Type_DS_VNA***** DS_VNA, int Original_Mc_AN, 
     Force4BGpuContext* g = &F4B_gpu;
     int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
     int halo_idx = Original_Mc_AN - Matomnum;
+    size_t base;
+    size_t blk = (size_t)(FNAN[Gc_AN] + 1) * (size_t)no0 * (size_t)g->num_proj;
     int k;
 
     if (halo_idx < 1 || MatomnumF < halo_idx) {
         Force4B_gpu_abort("Force4B GPU: halo index out of range.");
     }
+    base = g->halo_off[g->halo_base[halo_idx]];
 
 #pragma omp parallel for schedule(dynamic)
     for (k = 0; k <= FNAN[Gc_AN]; k++) {
-        size_t base = g->halo_off[g->halo_base[halo_idx] + k];
+        size_t off = g->halo_off[g->halo_base[halo_idx] + k] - base;
         int i, l;
 
         for (i = 0; i < no0; i++) {
             const Type_DS_VNA* src = DS_VNA[0][Matomnum + 1][k][i];
-            float* dst = g->halo + base + (size_t)i * (size_t)g->num_proj;
+            float* dst = g->stage + off + (size_t)i * (size_t)g->num_proj;
 
             for (l = 0; l < g->num_proj; l++) dst[l] = (float)src[l];
         }
+    }
+
+    if (blk != 0) {
+        acc_memcpy_to_device(g->halo_dev + base, g->stage, sizeof(float) * blk);
     }
 }
 
@@ -7107,23 +7186,34 @@ static void Force4B_GpuArchiveHalo(Type_DS_VNA***** DS_VNA, int Original_Mc_AN, 
 static void Force4B_GpuArchiveCase2(Type_DS_VNA***** DS_VNA, int Mc_AN, int Gc_AN)
 {
     Force4BGpuContext* g = &F4B_gpu;
-    int k;
+    size_t base = g->c2_off[g->mck_base[Mc_AN]];
+    size_t blk = 0;
+    int k, kk;
+
+    for (k = 0; k <= FNAN[Gc_AN]; k++) {
+        blk += (size_t)Spe_Total_CNO[WhatSpecies[natn[Gc_AN][k]]] * (size_t)g->num_proj;
+    }
+
+    for (kk = 0; kk <= 3; kk++) {
 
 #pragma omp parallel for schedule(dynamic)
-    for (k = 0; k <= FNAN[Gc_AN]; k++) {
-        int Gk_AN = natn[Gc_AN][k];
-        int nok = Spe_Total_CNO[WhatSpecies[Gk_AN]];
-        int kk, i, l;
-
-        for (kk = 0; kk <= 3; kk++) {
-            size_t base = (size_t)kk * g->c2_stride + g->c2_off[g->mck_base[Mc_AN] + k];
+        for (k = 0; k <= FNAN[Gc_AN]; k++) {
+            int Gk_AN = natn[Gc_AN][k];
+            int nok = Spe_Total_CNO[WhatSpecies[Gk_AN]];
+            size_t off = g->c2_off[g->mck_base[Mc_AN] + k] - base;
+            int i, l;
 
             for (i = 0; i < nok; i++) {
                 const Type_DS_VNA* src = DS_VNA[kk][Matomnum + 1][k][i];
-                float* dst = g->c2 + base + (size_t)i * (size_t)g->num_proj;
+                float* dst = g->stage + off + (size_t)i * (size_t)g->num_proj;
 
                 for (l = 0; l < g->num_proj; l++) dst[l] = (float)src[l];
             }
+        }
+
+        if (blk != 0) {
+            acc_memcpy_to_device(g->c2_dev + (size_t)kk * g->c2_stride + base,
+                g->stage, sizeof(float) * blk);
         }
     }
 }
@@ -7230,24 +7320,20 @@ static void Force4B_GpuCase1Run(double***** CDM0)
     }
 
     {
-        float* flat = g->flat;
-        float* halo = g->halo;
-        size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
-        size_t halo_len = (g->halo_count == 0 ? 1 : g->halo_count);
+        float* flat = g->flat_dev;
+        float* halo = g->halo_dev;
         size_t flat_stride = g->flat_stride;
         const int nitems_c = nitems;
         const size_t kslots_c = (kslots == 0 ? 1 : (size_t)kslots);
         const size_t cdm_c = (cdm_count == 0 ? 1 : cdm_count);
 
 #pragma acc data copyin(items[0 : nitems_c], krowA[0 : kslots_c], krowB[0 : kslots_c], \
-                        krow_halo[0 : kslots_c], cdm_pref[0 : cdm_c], halo[0 : halo_len]) \
-                 copyout(item_f[0 : 3 * (size_t)nitems_c]) \
-                 present(flat[0 : flat_len])
+                        krow_halo[0 : kslots_c], cdm_pref[0 : cdm_c]) \
+                 copyout(item_f[0 : 3 * (size_t)nitems_c])
         {
-#pragma acc parallel loop gang vector_length(128) \
+#pragma acc parallel loop gang vector_length(128) deviceptr(flat, halo) \
     present(items[0 : nitems_c], krowA[0 : kslots_c], krowB[0 : kslots_c], krow_halo[0 : kslots_c], \
-            cdm_pref[0 : cdm_c], halo[0 : halo_len], flat[0 : flat_len], \
-            item_f[0 : 3 * (size_t)nitems_c])
+            cdm_pref[0 : cdm_c], item_f[0 : 3 * (size_t)nitems_c])
             for (int pp = 0; pp < nitems_c; pp++) {
                 const int ian = items[pp].ian;
                 const int jan = items[pp].jan;
@@ -7370,17 +7456,17 @@ static void Force4B_GpuCase1Run(double***** CDM0)
     free(item_atom);
     free(items);
 
-    /* the flat table is no longer needed; release it before the case-2
-       archive claims device memory */
-    {
-        float* flat = g->flat;
-        size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
-
-        if (acc_is_present(flat, flat_len * sizeof(float))) {
-#pragma acc exit data delete(flat[0 : flat_len])
-        }
-        acc_clear_freelists();
+    /* the local table and the halo archive are no longer needed after
+       the case-1 batch; release the device memory early */
+    if (g->flat_dev != NULL) {
+        acc_free(g->flat_dev);
+        g->flat_dev = NULL;
     }
+    if (g->halo_dev != NULL) {
+        acc_free(g->halo_dev);
+        g->halo_dev = NULL;
+    }
+    acc_clear_freelists();
 }
 
 /* the case-2 batch: all fused-eligible (h,q) pairs of every centre,
@@ -7484,19 +7570,18 @@ static void Force4B_GpuCase2Run(double***** CDM0)
     }
 
     {
-        float* c2 = g->c2;
-        size_t c2_len = (g->c2_stride == 0 ? 4 : 4U * g->c2_stride);
+        float* c2 = g->c2_dev;
         size_t flat_stride = g->c2_stride;
         const int nitems_c = nitems;
         const size_t cdm_c = (cdm_count == 0 ? 1 : cdm_count);
 
 #pragma acc data copyin(items[0 : nitems_c], pair_h_off[0 : nitems_c], pair_q_off[0 : nitems_c], \
-                        cdm_scale[0 : cdm_c], c2[0 : c2_len]) \
+                        cdm_scale[0 : cdm_c]) \
                  copyout(item_f[0 : 3 * (size_t)nitems_c])
         {
-#pragma acc parallel loop gang vector_length(128) \
+#pragma acc parallel loop gang vector_length(128) deviceptr(c2) \
     present(items[0 : nitems_c], pair_h_off[0 : nitems_c], pair_q_off[0 : nitems_c], \
-            cdm_scale[0 : cdm_c], c2[0 : c2_len], item_f[0 : 3 * (size_t)nitems_c])
+            cdm_scale[0 : cdm_c], item_f[0 : 3 * (size_t)nitems_c])
             for (int pp = 0; pp < nitems_c; pp++) {
                 const int ian = items[pp].ian;
                 const int jan = items[pp].jan;
