@@ -20237,3 +20237,44 @@ void Set_Lebedev_Grid(int Np, double **Leb_Grid_XYZW)
   }
 
 }
+
+/* A tiny registry where GPU-heavy phases publish the device memory (bytes,
+   per physical GPU, group total) they need to run at full concurrency.
+   Long-lived GPU caches (Set_Hamiltonian's resident tables) consult the
+   maximum before claiming memory, so a sticky cache never lowers another
+   phase's achievable concurrency. */
+
+#define OPENMX_GPU_PHASE_NEED_SLOTS 8
+
+static char   OpenMX_GpuPhaseNeed_Name[OPENMX_GPU_PHASE_NEED_SLOTS][32];
+static size_t OpenMX_GpuPhaseNeed_Bytes[OPENMX_GPU_PHASE_NEED_SLOTS];
+
+void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes)
+{
+  int i;
+
+  if (phase==NULL || phase[0]=='\0') return;
+
+  for (i=0; i<OPENMX_GPU_PHASE_NEED_SLOTS; i++){
+    if (OpenMX_GpuPhaseNeed_Name[i][0]=='\0' ||
+        strncmp(OpenMX_GpuPhaseNeed_Name[i],phase,sizeof(OpenMX_GpuPhaseNeed_Name[i])-1)==0){
+      strncpy(OpenMX_GpuPhaseNeed_Name[i],phase,sizeof(OpenMX_GpuPhaseNeed_Name[i])-1);
+      OpenMX_GpuPhaseNeed_Name[i][sizeof(OpenMX_GpuPhaseNeed_Name[i])-1] = '\0';
+      OpenMX_GpuPhaseNeed_Bytes[i] = group_bytes;
+      return;
+    }
+  }
+}
+
+size_t OpenMX_GpuPhaseNeed_Max(void)
+{
+  size_t need = 0U;
+  int i;
+
+  for (i=0; i<OPENMX_GPU_PHASE_NEED_SLOTS; i++){
+    if (OpenMX_GpuPhaseNeed_Name[i][0]!='\0' && need<OpenMX_GpuPhaseNeed_Bytes[i]){
+      need = OpenMX_GpuPhaseNeed_Bytes[i];
+    }
+  }
+  return need;
+}

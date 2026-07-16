@@ -657,6 +657,22 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
             unsigned long long selected_peak = 0ULL;
             unsigned long long peak = 0ULL;
 
+            {
+                /* Publish the memory this device needs to run the full
+                   k-owner concurrency, so long-lived GPU caches
+                   (Set_Hamiltonian's resident tables) leave room for it. */
+                unsigned long long full_need = (unsigned long long)reserve;
+                int publish_ok = 1;
+
+                for (int c = 0; c < cmax; c++) {
+                    if (ULLONG_MAX - full_need < requirements[c]) { publish_ok = 0; break; }
+                    full_need += requirements[c];
+                }
+                if (publish_ok && full_need <= (unsigned long long)((size_t)-1)) {
+                    OpenMX_GpuPhaseNeed_Register("band_col", (size_t)full_need);
+                }
+            }
+
             for (int c = 1; c <= cmax; c++) {
                 if (ULLONG_MAX - peak < requirements[c - 1]) {
                     break;

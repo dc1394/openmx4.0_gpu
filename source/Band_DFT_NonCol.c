@@ -1016,6 +1016,25 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
             size_t selected_peak = 0U;
             size_t selected_reserve = 0U;
 
+            {
+                /* Publish the memory this device needs to run the full
+                   k-owner concurrency, so long-lived GPU caches
+                   (Set_Hamiltonian's resident tables) leave room for it. */
+                size_t full_required = 0U;
+                size_t full_reserve = 0U;
+                static const char *need_name[3] =
+                    {"band_noncol_ev","band_noncol_vec","band_noncol_dm"};
+                int mode_slot = (0<=turn_mode && turn_mode<3) ? turn_mode : 1;
+
+                (void)BandNonCol_GpuTurnMemoryFits(SIZE_MAX,(size_t)group_total,
+                                                   required_bytes,cmax,
+                                                   &full_required,&full_reserve);
+                if (full_required!=SIZE_MAX && full_required<=SIZE_MAX-full_reserve){
+                    OpenMX_GpuPhaseNeed_Register(need_name[mode_slot],
+                                                 full_required+full_reserve);
+                }
+            }
+
             for (int c=cmax; 1<=c; c--){
                 size_t group_required = 0U;
                 size_t reserve_bytes = 0U;

@@ -109,6 +109,18 @@ enum {
     SET_HAMILTONIAN_PACK_ORDER_NONCOL = 1
 };
 
+/* Classes of SCF-invariant arrays that can live on the device, in
+   descending order of typical size (= per-iteration transfer savings).
+   Partial residency admits a subset in this priority order when the whole
+   set does not fit beside the registered GPU-phase needs. */
+enum {
+    SETH_RES_ORBS1 = 0,
+    SETH_RES_ORBS0 = 1,
+    SETH_RES_NOLG = 2,
+    SETH_RES_META = 3,
+    SETH_RES_NCLASS = 4
+};
+
 typedef struct {
     int ready;
     int owns;
@@ -126,7 +138,8 @@ static SetHamiltonianGpuSolverPackedCache Set_Hamiltonian_GpuSolver_Cache = {0};
 
 typedef struct {
     int ready;
-    int device_resident;
+    int resident_mask;
+    int resident_blocked;
     int cnt_kind;
     int spin_count;
     int pair_count;
@@ -166,7 +179,8 @@ typedef struct {
 } SetHamiltonianMatrixElementsWork;
 
 static int Set_Hamiltonian_ME_CacheMatches(const SetHamiltonianMatrixElementsCache *cache, int Cnt_kind);
-static size_t Set_Hamiltonian_MatrixElements_ResidentBytes(int Cnt_kind, int myid);
+static void Set_Hamiltonian_MatrixElements_ResidentClassBytes(int Cnt_kind, int myid,
+                                                              size_t class_bytes[SETH_RES_NCLASS]);
 static size_t Set_Hamiltonian_MatrixElements_TransientBytes(const SetHamiltonianMatrixElementsCache *cache,
                                                             int myid);
 static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(int Cnt_kind,
@@ -249,8 +263,10 @@ typedef struct {
     int concurrent_ranks;
     int turn;
     int turns;
-    int make_resident;
+    int resident_admit_mask;
+    int release_resident;
     size_t resident_group_bytes;
+    size_t registered_need_bytes;
     size_t required_bytes;
     size_t peak_bytes;
     size_t free_bytes;
@@ -328,12 +344,16 @@ static int Set_Hamiltonian_GpuResidentEnabled(void)
     return (value == NULL) ? 1 : (atoi(value) != 0);
 }
 
-static size_t Set_Hamiltonian_GpuResidentFloorBytes(void)
+static size_t Set_Hamiltonian_GpuResidentFloorBytes(int have_registered_need)
 {
     /* Device memory that must remain free after the resident tables are
-       uploaded; it covers the diagonalization workspaces and the
-       per-iteration staging of every rank. */
-    size_t floor_bytes = 16384ULL * 1024ULL * 1024ULL;
+       uploaded.  When a GPU phase has published its full-concurrency need
+       that need is charged separately, so only a small base margin is
+       kept; without any registration the legacy conservative default
+       protects the (non-publishing) cluster solvers.  The environment
+       variable overrides both defaults. */
+    size_t floor_bytes = have_registered_need ? 4096ULL * 1024ULL * 1024ULL
+                                              : 16384ULL * 1024ULL * 1024ULL;
     const char *value = getenv("OPENMX_SETHAM_GPU_RESIDENT_FLOOR_MB");
 
     if (value != NULL && value[0] != '\0') {
@@ -346,11 +366,42 @@ static size_t Set_Hamiltonian_GpuResidentFloorBytes(void)
     return floor_bytes;
 }
 
+static size_t Set_Hamiltonian_GpuTestNeed_Now = 0;
+
+static size_t Set_Hamiltonian_GpuTestNeedBytes(int call_index)
+{
+    /* Testing hook: pretend a GPU phase registered this need (MiB) from the
+       given matrix-elements call on (1-based, default 1), so the defer,
+       partial-residency and backoff paths can be exercised on any GPU. */
+    const char *mb = getenv("OPENMX_SETHAM_GPU_TEST_NEED_MB");
+    const char *from = getenv("OPENMX_SETHAM_GPU_TEST_NEED_FROM_CALL");
+    unsigned long long mib = 0ULL;
+    long from_call = 1L;
+
+    if (mb == NULL || mb[0] == '\0') return 0;
+    {
+        char *endp = NULL;
+        mib = strtoull(mb, &endp, 10);
+        if (endp == mb || *endp != '\0') return 0;
+    }
+    if (from != NULL && from[0] != '\0') {
+        char *endp = NULL;
+        long parsed = strtol(from, &endp, 10);
+        if (endp != from && *endp == '\0') from_call = parsed;
+    }
+    if (call_index < from_call) return 0;
+    if ((unsigned long long)((size_t)-1) / (1024ULL * 1024ULL) < mib) return (size_t)-1;
+    return (size_t)mib * 1024ULL * 1024ULL;
+}
+
 static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t required_bytes,
-                                                                   size_t resident_request_bytes,
+                                                                   const size_t *resident_request_class,
+                                                                   int resident_active,
                                                                    const char *where, int myid)
 {
     SetHamiltonianGpuTurnPlan plan;
+    unsigned long long phase_need = 0ULL;
+    unsigned long long group_cls[SETH_RES_NCLASS] = {0ULL, 0ULL, 0ULL, 0ULL};
     SetHamiltonianGpuUuidRecord local_uuid;
     SetHamiltonianGpuUuidRecord *node_uuids = NULL;
     MPI_Comm node_comm = MPI_COMM_NULL;
@@ -467,6 +518,38 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
     plan.reserve_bytes = Set_Hamiltonian_GpuReserveBytes(plan.total_bytes);
 
     {
+        /* Collect the group-wide resident-class requests and the largest
+           need any GPU phase has published for this device.  Both are
+           gathered before the admission scan so a resident cache under
+           pressure can release even when no rank is admitted this call. */
+        unsigned long long local_cls[SETH_RES_NCLASS];
+        unsigned long long local_need = (unsigned long long)OpenMX_GpuPhaseNeed_Max();
+
+        for (int c = 0; c < SETH_RES_NCLASS; c++) {
+            local_cls[c] = (resident_request_class != NULL) ?
+                (unsigned long long)resident_request_class[c] : 0ULL;
+        }
+        if (local_need < (unsigned long long)Set_Hamiltonian_GpuTestNeed_Now) {
+            local_need = (unsigned long long)Set_Hamiltonian_GpuTestNeed_Now;
+        }
+
+        MPI_Allreduce(local_cls, group_cls, SETH_RES_NCLASS,
+                      MPI_UNSIGNED_LONG_LONG, MPI_SUM, plan.device_comm);
+        MPI_Allreduce(&local_need, &phase_need, 1,
+                      MPI_UNSIGNED_LONG_LONG, MPI_MAX, plan.device_comm);
+        plan.registered_need_bytes = (size_t)phase_need;
+
+        if (resident_active && 0ULL < phase_need) {
+            unsigned long long floor_bytes =
+                (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes(1);
+
+            if (group_free < phase_need || floor_bytes > group_free - phase_need) {
+                plan.release_resident = 1;
+            }
+        }
+    }
+
+    {
         /* Start from every MPI rank that shares this GPU and step down until
            the wave fits.  The requirements are sorted in descending order,
            so the peak of the top-c ranks grows monotonically with c and one
@@ -505,20 +588,55 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
     plan.turn = plan.device_rank / plan.concurrent_ranks;
     plan.turns = (plan.device_ranks + plan.concurrent_ranks - 1) / plan.concurrent_ranks;
 
-    {
-        /* Device residency is a group affair: it is worthwhile only when
-           every rank sharing this GPU runs in the single wave, and it must
-           leave the configured floor free for the other GPU consumers of
-           the SCF loop. */
-        unsigned long long local_resident = (unsigned long long)resident_request_bytes;
-        unsigned long long group_resident = 0;
+    if (!plan.release_resident && plan.concurrent_ranks == plan.device_ranks) {
+        /* Residency is a group affair: it is attempted only when every rank
+           sharing this GPU runs in the single wave.  The budget respects the
+           largest published GPU-phase need (band diagonalization) plus a
+           small base margin; without any publication the band solvers defer
+           until their first diagonalization has published, while the
+           non-publishing solvers keep the legacy conservative floor.  The
+           classes are admitted greedily in descending size order, so a
+           partial set is kept when the whole set does not fit. */
+        unsigned long long budget = 0ULL;
+        unsigned long long total_request = 0ULL;
+        int have_budget = 0;
 
-        MPI_Allreduce(&local_resident, &group_resident, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, plan.device_comm);
-        if (0 < group_resident && plan.concurrent_ranks == plan.device_ranks &&
-            group_resident <= group_free &&
-            (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes() <= group_free - group_resident) {
-            plan.make_resident = 1;
-            plan.resident_group_bytes = (size_t)group_resident;
+        for (int c = 0; c < SETH_RES_NCLASS; c++) total_request += group_cls[c];
+
+        if (0ULL < total_request) {
+            if (0ULL < phase_need) {
+                unsigned long long floor_bytes =
+                    (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes(1);
+
+                if (phase_need <= group_free && floor_bytes <= group_free - phase_need) {
+                    budget = group_free - phase_need - floor_bytes;
+                    have_budget = 1;
+                }
+            }
+            else if (Solver == 3) {
+                /* Band solvers publish their full k-concurrency need from
+                   the first diagonalization on; wait for that number
+                   instead of claiming memory the k-owners may need. */
+            }
+            else {
+                unsigned long long floor_bytes =
+                    (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes(0);
+
+                if (floor_bytes <= group_free) {
+                    budget = group_free - floor_bytes;
+                    have_budget = 1;
+                }
+            }
+        }
+
+        if (have_budget) {
+            for (int c = 0; c < SETH_RES_NCLASS; c++) {
+                if (0ULL < group_cls[c] && group_cls[c] <= budget) {
+                    plan.resident_admit_mask |= (1 << c);
+                    plan.resident_group_bytes += (size_t)group_cls[c];
+                    budget -= group_cls[c];
+                }
+            }
         }
     }
 
@@ -577,6 +695,21 @@ static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid)
     return p;
 }
 
+static void Set_Hamiltonian_ResidentMaskLabel(int mask, char *buf, size_t buf_len)
+{
+    static const char *names[SETH_RES_NCLASS] = {"orbs1", "orbs0", "nolg", "meta"};
+    size_t off = 0;
+    int c;
+
+    buf[0] = '\0';
+    for (c = 0; c < SETH_RES_NCLASS; c++) {
+        if ((mask & (1 << c)) && off + 8 < buf_len) {
+            off += (size_t)snprintf(buf + off, buf_len - off, "%s%s", (0 < off) ? "+" : "", names[c]);
+        }
+    }
+    if (buf[0] == '\0') snprintf(buf, buf_len, "none");
+}
+
 static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan *plan)
 {
     SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
@@ -595,22 +728,35 @@ static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan 
     const size_t total_nolg = cache->total_nolg;
     const size_t total_orbs0 = cache->total_orbs0;
     const size_t total_orbs1 = cache->total_orbs1;
+    const int add_mask = plan->resident_admit_mask & ~cache->resident_mask;
 
-    if (cache->device_resident || pair_count <= 0) return;
+    if (add_mask == 0 || pair_count <= 0) return;
 
+    if (add_mask & (1 << SETH_RES_ORBS1)) {
+#pragma acc enter data copyin(orbs1buf[0:total_orbs1])
+    }
+    if (add_mask & (1 << SETH_RES_ORBS0)) {
+#pragma acc enter data copyin(orbs0buf[0:total_orbs0])
+    }
+    if (add_mask & (1 << SETH_RES_NOLG)) {
+#pragma acc enter data copyin(nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg])
+    }
+    if (add_mask & (1 << SETH_RES_META)) {
 #pragma acc enter data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count],                    \
-                              nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg],                                                \
                               pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],                                 \
-                              pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count],                            \
-                              orbs0buf[0:total_orbs0], orbs1buf[0:total_orbs1])
+                              pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count])
+    }
 
-    cache->device_resident = 1;
+    cache->resident_mask |= add_mask;
 
     if (plan->device_rank == 0) {
-        printf("<Set_Hamiltonian> GPU resident cache: %d rank(s) hold %.3f GiB on device %d across SCF iterations\n",
+        char label[64];
+
+        Set_Hamiltonian_ResidentMaskLabel(cache->resident_mask, label, sizeof(label));
+        printf("<Set_Hamiltonian> GPU resident cache: %d rank(s) hold %.3f GiB (%s) on device %d across SCF iterations\n",
                plan->device_ranks,
                (double)plan->resident_group_bytes / (1024.0 * 1024.0 * 1024.0),
-               plan->cuda_device);
+               label, plan->cuda_device);
         fflush(stdout);
     }
 }
@@ -634,13 +780,24 @@ static void Set_Hamiltonian_ME_ReleaseDeviceCache(void)
     const size_t total_orbs0 = cache->total_orbs0;
     const size_t total_orbs1 = cache->total_orbs1;
 
-    if (!cache->device_resident) return;
+    const int mask = cache->resident_mask;
 
+    if (mask == 0) return;
+
+    if (mask & (1 << SETH_RES_ORBS1)) {
+#pragma acc exit data delete(orbs1buf[0:total_orbs1])
+    }
+    if (mask & (1 << SETH_RES_ORBS0)) {
+#pragma acc exit data delete(orbs0buf[0:total_orbs0])
+    }
+    if (mask & (1 << SETH_RES_NOLG)) {
+#pragma acc exit data delete(nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg])
+    }
+    if (mask & (1 << SETH_RES_META)) {
 #pragma acc exit data delete(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count],                     \
-                             nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg],                                                 \
                              pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],                                  \
-                             pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count],                             \
-                             orbs0buf[0:total_orbs0], orbs1buf[0:total_orbs1])
+                             pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count])
+    }
 
     /* return the pooled storage to CUDA so the next consumer (eigensolver,
        force batches) measures the true free device memory */
@@ -648,7 +805,7 @@ static void Set_Hamiltonian_ME_ReleaseDeviceCache(void)
     if (cudaDeviceSynchronize() == cudaSuccess) {
         acc_clear_freelists();
     }
-    cache->device_resident = 0;
+    cache->resident_mask = 0;
 }
 
 void Set_Hamiltonian_Release_OpenACC_DeviceCache(void)
@@ -1083,7 +1240,7 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
            switched that rank away from GPUSOLVER. */
         MPI_Allreduce(&local_request, &any_request, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
         if (any_request) {
-            base_plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, 0, "base OpenACC path", myid);
+            base_plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, NULL, 0, "base OpenACC path", myid);
         }
     }
     use_base_openacc = base_plan.use_gpu &&
@@ -1303,21 +1460,44 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         int enabled = Set_Hamiltonian_OpenACC_Enabled() && Set_Hamiltonian_MatrixElements_OpenACC_Enabled();
         int local_request = enabled && Set_Hamiltonian_OpenACC_Work_Rank_Selected;
         int any_request = 0;
+        int resident_active = 0;
         size_t required_bytes = 0;
-        size_t resident_request_bytes = 0;
+        size_t resident_request_class[SETH_RES_NCLASS] = {0, 0, 0, 0};
+
+        Set_Hamiltonian_GpuTestNeed_Now = 0;
 
         if (local_request) {
-            if (Set_Hamiltonian_ME_CacheMatches(&Set_Hamiltonian_ME_Cache, Cnt_kind) &&
-                Set_Hamiltonian_ME_Cache.device_resident) {
-                /* The SCF-invariant tables already live on the device; only
-                   the per-iteration staging is charged against the free
-                   memory measured by the plan. */
-                required_bytes = Set_Hamiltonian_MatrixElements_TransientBytes(&Set_Hamiltonian_ME_Cache, myid);
+            SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
+            int cache_ok = Set_Hamiltonian_ME_CacheMatches(cache, Cnt_kind);
+            int resident_mask = cache_ok ? cache->resident_mask : 0;
+            int blocked = cache_ok ? cache->resident_blocked : 0;
+            int want_more = Set_Hamiltonian_GpuResidentEnabled() && !blocked;
+            static int call_index = 0;
+
+            call_index++;
+            Set_Hamiltonian_GpuTestNeed_Now = Set_Hamiltonian_GpuTestNeedBytes(call_index);
+            resident_active = (resident_mask != 0);
+
+            if (resident_mask != 0) {
+                /* Some classes already live on the device: charge the
+                   per-iteration staging plus the classes that still travel,
+                   and offer the missing classes for admission. */
+                size_t class_bytes[SETH_RES_NCLASS];
+
+                Set_Hamiltonian_MatrixElements_ResidentClassBytes(Cnt_kind, myid, class_bytes);
+                required_bytes = Set_Hamiltonian_MatrixElements_TransientBytes(cache, myid);
+                for (int c = 0; c < SETH_RES_NCLASS; c++) {
+                    if (!(resident_mask & (1 << c))) {
+                        required_bytes = Set_Hamiltonian_checked_add(required_bytes, class_bytes[c],
+                                                                     "matrix-elements staged classes", myid);
+                        if (want_more) resident_request_class[c] = class_bytes[c];
+                    }
+                }
             }
             else {
                 required_bytes = Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(Cnt_kind, myid);
-                if (Set_Hamiltonian_GpuResidentEnabled()) {
-                    resident_request_bytes = Set_Hamiltonian_MatrixElements_ResidentBytes(Cnt_kind, myid);
+                if (want_more) {
+                    Set_Hamiltonian_MatrixElements_ResidentClassBytes(Cnt_kind, myid, resident_request_class);
                 }
             }
         }
@@ -1326,8 +1506,8 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            ranks enter it irrespective of their local accelerator state. */
         MPI_Allreduce(&local_request, &any_request, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
         if (any_request) {
-            plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, resident_request_bytes,
-                                                     "matrix-elements OpenACC path", myid);
+            plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, resident_request_class,
+                                                     resident_active, "matrix-elements OpenACC path", myid);
         }
     }
 
@@ -1337,7 +1517,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            otherwise its first-use cost is repeated on the critical path of
            every wave. */
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
-        if (plan.make_resident) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
+        if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
         for (int turn = 0; turn < plan.turns; turn++) {
             MPI_Barrier(plan.device_comm);
@@ -1352,7 +1532,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
     }
     else if (plan.use_gpu && plan.turn == 0) {
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
-        if (plan.make_resident) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
+        if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
         Set_Hamiltonian_Run_OpenACC_MatrixElements(&work);
         acc_wait_all();
@@ -1361,6 +1541,22 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
     }
     else {
         Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
+    }
+
+    if (plan.release_resident) {
+        /* A registered GPU phase can no longer reach its full concurrency
+           beside the resident tables: yield the memory now (the
+           diagonalization follows within this very SCF iteration) and stay
+           transient for the rest of this MD step. */
+        Set_Hamiltonian_ME_ReleaseDeviceCache();
+        Set_Hamiltonian_ME_Cache.resident_blocked = 1;
+        if (plan.device_rank == 0) {
+            printf("<Set_Hamiltonian> GPU resident cache released: a GPU phase needs %.3f GiB on device %d; "
+                   "staying transient for this MD step\n",
+                   (double)plan.registered_need_bytes / (1024.0 * 1024.0 * 1024.0),
+                   plan.cuda_device);
+            fflush(stdout);
+        }
     }
 
     Set_Hamiltonian_DestroyGpuTurnPlan(&plan);
@@ -1491,15 +1687,18 @@ static int Set_Hamiltonian_ME_CacheMatches(const SetHamiltonianMatrixElementsCac
             cache->matomnum == Matomnum);
 }
 
-/* Bytes of the SCF-invariant arrays that device residency would hold: the
-   pair metadata, the grid index tables and the orbital tables. */
-static size_t Set_Hamiltonian_MatrixElements_ResidentBytes(int Cnt_kind, int myid)
+/* Per-class bytes of the SCF-invariant arrays that device residency can
+   hold: the orbital tables, the grid index tables and the pair metadata. */
+static void Set_Hamiltonian_MatrixElements_ResidentClassBytes(int Cnt_kind, int myid,
+                                                              size_t class_bytes[SETH_RES_NCLASS])
 {
     const SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
     int pair_count = 0;
     size_t total_h = 0, total_nolg = 0, total_orbs0 = 0, total_orbs1 = 0, bytes;
+    int c;
 
-    if (Matomnum <= 0) return 0;
+    for (c = 0; c < SETH_RES_NCLASS; c++) class_bytes[c] = 0;
+    if (Matomnum <= 0) return;
 
     if (Set_Hamiltonian_ME_CacheMatches(cache, Cnt_kind)) {
         pair_count = cache->pair_count;
@@ -1513,6 +1712,19 @@ static size_t Set_Hamiltonian_MatrixElements_ResidentBytes(int Cnt_kind, int myi
     }
 
     bytes = 0;
+    Set_Hamiltonian_add_array_bytes(&bytes, total_orbs1, sizeof(Type_Orbs_Grid), "matrix-elements orbs1buf", myid);
+    class_bytes[SETH_RES_ORBS1] = bytes;
+
+    bytes = 0;
+    Set_Hamiltonian_add_array_bytes(&bytes, total_orbs0, sizeof(Type_Orbs_Grid), "matrix-elements orbs0buf", myid);
+    class_bytes[SETH_RES_ORBS0] = bytes;
+
+    bytes = 0;
+    Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_MN", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_Nc", myid);
+    class_bytes[SETH_RES_NOLG] = bytes;
+
+    bytes = 0;
     Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NO0", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NO1", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NOLG", myid);
@@ -1524,11 +1736,7 @@ static size_t Set_Hamiltonian_MatrixElements_ResidentBytes(int Cnt_kind, int myi
                                     "matrix-elements pair_orbs0_offset", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(size_t),
                                     "matrix-elements pair_orbs1_offset", myid);
-    Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_MN", myid);
-    Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_Nc", myid);
-    Set_Hamiltonian_add_array_bytes(&bytes, total_orbs0, sizeof(Type_Orbs_Grid), "matrix-elements orbs0buf", myid);
-    Set_Hamiltonian_add_array_bytes(&bytes, total_orbs1, sizeof(Type_Orbs_Grid), "matrix-elements orbs1buf", myid);
-    return bytes;
+    class_bytes[SETH_RES_META] = bytes;
 }
 
 /* Bytes staged per SCF iteration: the Hamiltonian blocks (both ways) and the
