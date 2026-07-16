@@ -863,10 +863,23 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         const size_t spl_map = (dorb_mode ? spl : 1);
         const size_t spo_map = (dorb_mode ? spn + 1 : 1);
 
-#pragma acc data copyin(orbs_local[0 : orbs_n], rv_p[0 : rv_map], rwf_p[0 : rwf_map], \
-                        rvo_p[0 : spo_map], rwb_p[0 : spo_map], spm_p[0 : sp_map], \
-                        spx_p[0 : sp_map], spb_p[0 : spl_map])
-    {
+        /* ---- plan the chunk partition up front; every chunk then reuses one
+                set of device buffers sized to the largest chunk.  Per-chunk
+                data regions would strand one pool block per distinct size (the
+                NVHPC freelist reuses exact sizes only), and the node ranks
+                sharing the device run it out of memory. ---- */
+
+        int n_chunks = 0;
+        int* chunk_bound = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 2), __FILE__, __LINE__);
+        int* plan_pairs = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 1), __FILE__, __LINE__);
+        size_t* plan_gl = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)(Matomnum + 1), __FILE__, __LINE__);
+        size_t* plan_fn = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)(Matomnum + 1), __FILE__, __LINE__);
+        size_t* plan_dm = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)(Matomnum + 1), __FILE__, __LINE__);
+        size_t max_pairs = 0, max_gl = 0, max_fn = 0, max_dm = 0;
+        size_t max_dchi = 0, max_vpot = 0, max_npts = 0;
+        size_t max_atoms = 0;
+
+        chunk_bound[0] = 1;
         chunk_lo = 1;
         while (chunk_lo <= Matomnum) {
 
@@ -909,28 +922,90 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                 chunk_hi++;
             }
 
-            /* ---- assemble the chunk's flat buffers ---- */
+            plan_pairs[n_chunks] = npairs;
+            plan_gl[n_chunks] = gl_count;
+            plan_fn[n_chunks] = fn_count;
+            plan_dm[n_chunks] = dm_count;
+            n_chunks++;
+            chunk_bound[n_chunks] = chunk_hi;
+
+            if (max_pairs < (size_t)npairs) max_pairs = (size_t)npairs;
+            if (max_gl < gl_count) max_gl = gl_count;
+            if (max_fn < fn_count) max_fn = fn_count;
+            if (max_dm < dm_count) max_dm = dm_count;
+            {
+                const size_t c_dchi = dchi_off[chunk_hi] - dchi_off[chunk_lo];
+                const size_t c_vpot = vpot_off[chunk_hi] - vpot_off[chunk_lo];
+                const size_t c_npts = (xyz_off[chunk_hi] - xyz_off[chunk_lo]) / 3;
+
+                if (max_dchi < c_dchi) max_dchi = c_dchi;
+                if (max_vpot < c_vpot) max_vpot = c_vpot;
+                if (max_npts < c_npts) max_npts = c_npts;
+                if (max_atoms < (size_t)(chunk_hi - chunk_lo)) max_atoms = (size_t)(chunk_hi - chunk_lo);
+            }
+
+            chunk_lo = chunk_hi;
+        }
+
+        {
+            const size_t pm_n = (max_pairs == 0 ? 1 : max_pairs);
+            const size_t glb_n = (max_gl == 0 ? 1 : max_gl);
+            const size_t fnb_n = (max_fn == 0 ? 1 : max_fn);
+            const size_t dmb_n = (max_dm == 0 ? 1 : max_dm);
+            const size_t pf_n = 3 * pm_n;
+            const size_t pt_n = ((dorb_mode && max_npts != 0) ? max_npts : 1);
+            const size_t am_n = ((dorb_mode && max_atoms != 0) ? max_atoms : 1);
+            Force3GpuPair* pm = (Force3GpuPair*)Force_checked_malloc(
+                sizeof(Force3GpuPair) * pm_n, __FILE__, __LINE__);
+            int* pm_h = (int*)Force_checked_malloc(sizeof(int) * pm_n, __FILE__, __LINE__);
+            int* gl1 = (int*)Force_checked_malloc(sizeof(int) * glb_n, __FILE__, __LINE__);
+            int* gl2 = (int*)Force_checked_malloc(sizeof(int) * glb_n, __FILE__, __LINE__);
+            float* fn_buf = (float*)Force_checked_malloc(sizeof(float) * fnb_n, __FILE__, __LINE__);
+            double* dm_buf = (double*)Force_checked_malloc(sizeof(double) * dmb_n, __FILE__, __LINE__);
+            double* pair_f = (double*)Force_checked_malloc(sizeof(double) * pf_n, __FILE__, __LINE__);
+            int* pt_aidx = (int*)Force_checked_malloc(sizeof(int) * pt_n, __FILE__, __LINE__);
+            int* a_wan = (int*)Force_checked_malloc(sizeof(int) * am_n, __FILE__, __LINE__);
+            int* a_no0 = (int*)Force_checked_malloc(sizeof(int) * am_n, __FILE__, __LINE__);
+            size_t* a_dchi = (size_t*)Force_checked_malloc(sizeof(size_t) * am_n, __FILE__, __LINE__);
+            size_t* a_pt0 = (size_t*)Force_checked_malloc(sizeof(size_t) * am_n, __FILE__, __LINE__);
+            double* dchi_dev;
+            double* vpot_dev;
+            double* xyz_dev = NULL;
+            int ic;
+
+            dchi_dev = (double*)acc_malloc((max_dchi == 0 ? 1 : max_dchi) * sizeof(double));
+            vpot_dev = (double*)acc_malloc((max_vpot == 0 ? 1 : max_vpot) * sizeof(double));
+            if (dorb_mode) {
+                xyz_dev = (double*)acc_malloc(3 * pt_n * sizeof(double));
+            }
+            if (dchi_dev == NULL || vpot_dev == NULL || (dorb_mode && xyz_dev == NULL)) {
+                Force3_gpu_abort("Force3 GPU trace: device scratch allocation failed.");
+            }
+
+#pragma acc data copyin(orbs_local[0 : orbs_n], rv_p[0 : rv_map], rwf_p[0 : rwf_map], \
+                        rvo_p[0 : spo_map], rwb_p[0 : spo_map], spm_p[0 : sp_map], \
+                        spx_p[0 : sp_map], spb_p[0 : spl_map]) \
+                 create(pm[0 : pm_n], gl1[0 : glb_n], gl2[0 : glb_n], fn_buf[0 : fnb_n], \
+                        dm_buf[0 : dmb_n], pair_f[0 : pf_n], pt_aidx[0 : pt_n], \
+                        a_wan[0 : am_n], a_no0[0 : am_n], a_dchi[0 : am_n], a_pt0[0 : am_n])
+    {
+        for (ic = 0; ic < n_chunks; ic++) {
 
             {
-                Force3GpuPair* pm = (Force3GpuPair*)Force_checked_malloc(
-                    sizeof(Force3GpuPair) * (size_t)(npairs == 0 ? 1 : npairs), __FILE__, __LINE__);
-                int* pm_h = (int*)Force_checked_malloc(
-                    sizeof(int) * (size_t)(npairs == 0 ? 1 : npairs), __FILE__, __LINE__);
-                int* gl1 = (int*)Force_checked_malloc(
-                    sizeof(int) * (gl_count == 0 ? 1 : gl_count), __FILE__, __LINE__);
-                int* gl2 = (int*)Force_checked_malloc(
-                    sizeof(int) * (gl_count == 0 ? 1 : gl_count), __FILE__, __LINE__);
-                float* fn_buf = (float*)Force_checked_malloc(
-                    sizeof(float) * (fn_count == 0 ? 1 : fn_count), __FILE__, __LINE__);
-                double* dm_buf = (double*)Force_checked_malloc(
-                    sizeof(double) * (dm_count == 0 ? 1 : dm_count), __FILE__, __LINE__);
-                double* pair_f = (double*)Force_checked_malloc(
-                    sizeof(double) * 3 * (size_t)(npairs == 0 ? 1 : npairs), __FILE__, __LINE__);
+                const int chunk_hi = chunk_bound[ic + 1];
+                const int npairs = plan_pairs[ic];
+                const size_t gl_count = plan_gl[ic];
+                const size_t fn_count = plan_fn[ic];
+                const size_t dm_count = plan_dm[ic];
                 size_t gl_pos = 0, fn_pos = 0, dm_pos = 0;
                 int p = 0, mc;
-                const size_t dchi_lo = dchi_off[chunk_lo];
-                const size_t dchi_len = dchi_off[chunk_hi] - dchi_off[chunk_lo];
-                double* dchi_dev = NULL;
+                size_t dchi_lo, dchi_len, vpot_lo, vpot_len;
+
+                chunk_lo = chunk_bound[ic];
+                dchi_lo = dchi_off[chunk_lo];
+                dchi_len = dchi_off[chunk_hi] - dchi_off[chunk_lo];
+                vpot_lo = vpot_off[chunk_lo];
+                vpot_len = vpot_off[chunk_hi] - vpot_off[chunk_lo];
 
                 /* offsets first (sequential), the bulk copies in parallel */
 
@@ -946,7 +1021,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                         int is_fnan = (G2ID[Gh_AN] != myid);
 
                         pm[p].dchi_base = dchi_off[mc] - dchi_lo;
-                        pm[p].vpot_base = vpot_off[mc];
+                        pm[p].vpot_base = vpot_off[mc] - vpot_lo;
                         pm[p].vpot_stride = GridN_Atom[Gc_AN];
                         pm[p].no0 = NO0;
                         pm[p].no1 = NO1;
@@ -1006,24 +1081,31 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     }
                 }
 
+                /* ---- stage the chunk into the fixed device buffers ---- */
+
+                {
+                    const size_t gl_u = (gl_count == 0 ? 1 : gl_count);
+                    const size_t fn_u = (fn_count == 0 ? 1 : fn_count);
+                    const size_t dm_u = (dm_count == 0 ? 1 : dm_count);
+                    const int npairs_u = (npairs == 0 ? 1 : npairs);
+
+#pragma acc update device(pm[0 : npairs_u], gl1[0 : gl_u], gl2[0 : gl_u], \
+                          fn_buf[0 : fn_u], dm_buf[0 : dm_u])
+                }
+                if (vpot_len != 0) {
+                    acc_memcpy_to_device(vpot_dev, (void*)(vpot_all + vpot_lo),
+                        vpot_len * sizeof(double));
+                }
+
                 /* ---- the per-chunk orbital derivatives ---- */
 
                 if (dorb_mode) {
-                    dchi_dev = (double*)acc_malloc((dchi_len == 0 ? 1 : dchi_len) * sizeof(double));
-                    if (dchi_dev == NULL) {
-                        Force3_gpu_abort("Force3 GPU trace: acc_malloc for dchi failed.");
-                    }
 
                     {
                         int chunk_atoms = chunk_hi - chunk_lo;
                         size_t npts = (xyz_off[chunk_hi] - xyz_off[chunk_lo]) / 3;
                         const size_t xyz_lo = xyz_off[chunk_lo];
                         const size_t xyz_len = xyz_off[chunk_hi] - xyz_off[chunk_lo];
-                        int* a_wan = (int*)Force_checked_malloc(sizeof(int) * (size_t)chunk_atoms, __FILE__, __LINE__);
-                        int* a_no0 = (int*)Force_checked_malloc(sizeof(int) * (size_t)chunk_atoms, __FILE__, __LINE__);
-                        size_t* a_dchi = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)chunk_atoms, __FILE__, __LINE__);
-                        size_t* a_pt0 = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)chunk_atoms, __FILE__, __LINE__);
-                        int* pt_aidx = (int*)Force_checked_malloc(sizeof(int) * (npts == 0 ? 1 : npts), __FILE__, __LINE__);
                         int a;
 
                         for (a = 0; a < chunk_atoms; a++) {
@@ -1042,15 +1124,19 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
 
                         {
                             const int npts_c = (int)npts;
-                            const size_t xyz_n = (xyz_len == 0 ? 1 : xyz_len);
+                            const size_t npts_u = (npts == 0 ? 1 : npts);
+                            const size_t am_u = (size_t)chunk_atoms;
 
-#pragma acc data copyin(pt_aidx[0 : (npts == 0 ? 1 : npts)], a_wan[0 : chunk_atoms], \
-                        a_no0[0 : chunk_atoms], a_dchi[0 : chunk_atoms], a_pt0[0 : chunk_atoms], \
-                        xyz_all[xyz_lo : xyz_n])
+#pragma acc update device(pt_aidx[0 : npts_u], a_wan[0 : am_u], a_no0[0 : am_u], \
+                          a_dchi[0 : am_u], a_pt0[0 : am_u])
+                            if (xyz_len != 0) {
+                                acc_memcpy_to_device(xyz_dev, (void*)(xyz_all + xyz_lo),
+                                    xyz_len * sizeof(double));
+                            }
                             {
-#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev) \
-    present(pt_aidx[0 : (npts == 0 ? 1 : npts)], a_wan[0 : chunk_atoms], a_no0[0 : chunk_atoms], \
-            a_dchi[0 : chunk_atoms], a_pt0[0 : chunk_atoms], xyz_all[xyz_lo : xyz_n], \
+#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, xyz_dev) \
+    present(pt_aidx[0 : npts_u], a_wan[0 : am_u], a_no0[0 : am_u], \
+            a_dchi[0 : am_u], a_pt0[0 : am_u], \
             rv_p[0 : rv_map], rwf_p[0 : rwf_map], rvo_p[0 : spo_map], rwb_p[0 : spo_map], \
             spm_p[0 : sp_map], spx_p[0 : sp_map], spb_p[0 : spl_map])
                                 for (int ip = 0; ip < npts_c; ip++) {
@@ -1059,9 +1145,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                                     const int NO0 = a_no0[a2];
                                     const size_t Nc = (size_t)ip - a_pt0[a2];
                                     double* dchi = dchi_dev + a_dchi[a2] + Nc * (size_t)NO0 * 3;
-                                    const double x = xyz_all[xyz_lo + 3 * (size_t)ip + 0];
-                                    const double y = xyz_all[xyz_lo + 3 * (size_t)ip + 1];
-                                    const double z = xyz_all[xyz_lo + 3 * (size_t)ip + 2];
+                                    const double x = xyz_dev[3 * (size_t)ip + 0];
+                                    const double y = xyz_dev[3 * (size_t)ip + 1];
+                                    const double z = xyz_dev[3 * (size_t)ip + 2];
                                     const int mesh = spm_p[wan];
                                     const int maxl = spx_p[wan];
                                     const double* rv = rv_p + rvo_p[wan];
@@ -1356,37 +1442,23 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                             }
                         }
 
-                        free(pt_aidx);
-                        free(a_pt0);
-                        free(a_dchi);
-                        free(a_no0);
-                        free(a_wan);
                     }
-                } else {
-                    dchi_dev = (double*)acc_copyin((void*)(dchi_all + dchi_lo),
-                        (dchi_len == 0 ? 1 : dchi_len) * sizeof(double));
-                    if (dchi_dev == NULL) {
-                        Force3_gpu_abort("Force3 GPU trace: acc_copyin for dchi failed.");
-                    }
+                } else if (dchi_len != 0) {
+                    acc_memcpy_to_device(dchi_dev, (void*)(dchi_all + dchi_lo),
+                        dchi_len * sizeof(double));
                 }
 
                 if (0 < npairs) {
-                    const size_t vpot_lo = vpot_off[chunk_lo];
-                    const size_t vpot_len = vpot_off[chunk_hi] - vpot_off[chunk_lo];
                     const int spin_count = spins;
                     const int npairs_c = npairs;
-                    const size_t gl_n = (gl_count == 0 ? 1 : gl_count);
-                    const size_t fn_n = (fn_count == 0 ? 1 : fn_count);
-                    const size_t dm_n = (dm_count == 0 ? 1 : dm_count);
+                    const size_t gl_u = (gl_count == 0 ? 1 : gl_count);
+                    const size_t fn_u = (fn_count == 0 ? 1 : fn_count);
+                    const size_t dm_u = (dm_count == 0 ? 1 : dm_count);
 
-#pragma acc data copyin(pm[0 : npairs_c], gl1[0 : gl_n], gl2[0 : gl_n], \
-                        fn_buf[0 : fn_n], dm_buf[0 : dm_n], \
-                        vpot_all[vpot_lo : vpot_len]) \
-                 copyout(pair_f[0 : 3 * (size_t)npairs_c])
                     {
-#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev) \
-    present(pm[0 : npairs_c], gl1[0 : gl_n], gl2[0 : gl_n], fn_buf[0 : fn_n], \
-            dm_buf[0 : dm_n], vpot_all[vpot_lo : vpot_len], \
+#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, vpot_dev) \
+    present(pm[0 : npairs_c], gl1[0 : gl_u], gl2[0 : gl_u], fn_buf[0 : fn_u], \
+            dm_buf[0 : dm_u], \
             orbs_local[0 : (orbs_local_count == 0 ? 1 : orbs_local_count)], \
             pair_f[0 : 3 * (size_t)npairs_c])
                         for (int pp = 0; pp < npairs_c; pp++) {
@@ -1429,7 +1501,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                                     }
 
                                     {
-                                        const double Vpt = vpot_all[vbase + (size_t)spin * (size_t)vstride + Nc];
+                                        const double Vpt = vpot_dev[vbase + (size_t)spin * (size_t)vstride + Nc];
 
                                         fx += tmpx * Vpt;
                                         fy += tmpy * Vpt;
@@ -1443,6 +1515,8 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                             pair_f[3 * (size_t)pp + 2] = fz;
                         }
                     }
+
+#pragma acc update self(pair_f[0 : 3 * (size_t)npairs_c])
 
                     {
                         int q = 0;
@@ -1472,24 +1546,33 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     }
                 }
 
-                if (dorb_mode) {
-                    acc_free(dchi_dev);
-                } else {
-                    acc_delete((void*)(dchi_all + dchi_lo), (dchi_len == 0 ? 1 : dchi_len) * sizeof(double));
-                }
-
-                free(pm_h);
-                free(pair_f);
-                free(dm_buf);
-                free(fn_buf);
-                free(gl2);
-                free(gl1);
-                free(pm);
             }
-
-            chunk_lo = chunk_hi;
         }
     }
+
+            if (dorb_mode) acc_free(xyz_dev);
+            acc_free(vpot_dev);
+            acc_free(dchi_dev);
+
+            free(a_pt0);
+            free(a_dchi);
+            free(a_no0);
+            free(a_wan);
+            free(pt_aidx);
+            free(pm_h);
+            free(pair_f);
+            free(dm_buf);
+            free(fn_buf);
+            free(gl2);
+            free(gl1);
+            free(pm);
+        }
+
+        free(plan_dm);
+        free(plan_fn);
+        free(plan_gl);
+        free(plan_pairs);
+        free(chunk_bound);
     }
 
     free(sp_nb);
@@ -1501,6 +1584,13 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
     free(pao_rv);
     free(orbs_local);
     free(orb_off);
+
+    /* return the pooled chunk buffers to CUDA so the next force stage
+       measures the true free memory */
+    acc_wait_all();
+    if (cudaDeviceSynchronize() == cudaSuccess) {
+        acc_clear_freelists();
+    }
 }
 
 static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
