@@ -72,14 +72,14 @@ static size_t Set_Hamiltonian_Base_OpenACC_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, int myid);
 static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid);
 
-int Set_Hamiltonian_Cuda_MatrixElements(int pair_count, int spin_count, size_t total_nolg,
-                                        int max_no, int max_output_count,
+int Set_Hamiltonian_Cuda_MatrixElements(int pair_count, int spin_count, size_t vpot_len,
+                                        double grid_vol, int max_no, int max_output_count,
                                         const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
-                                        const int *nolg_Nc,
+                                        const int *nolg_MN, const int *nolg_Nc,
                                         const size_t *pair_h_offset, const size_t *pair_nolg_offset,
                                         const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
                                         const Type_Orbs_Grid *orbs0buf, const Type_Orbs_Grid *orbs1buf,
-                                        const double *vpotbuf, double *hbuf);
+                                        const double *vpotgrid, double *hbuf);
 
 static int Set_Hamiltonian_OpenACC_Rank_Selected = 1;
 static int Set_Hamiltonian_OpenACC_Work_Rank_Selected = 1;
@@ -126,6 +126,7 @@ static SetHamiltonianGpuSolverPackedCache Set_Hamiltonian_GpuSolver_Cache = {0};
 
 typedef struct {
     int ready;
+    int device_resident;
     int cnt_kind;
     int spin_count;
     int pair_count;
@@ -154,7 +155,7 @@ static SetHamiltonianMatrixElementsCache Set_Hamiltonian_ME_Cache = {0};
 typedef struct {
     SetHamiltonianMatrixElementsCache *cache;
     double *hbuf;
-    double *vpotbuf;
+    double *vpotgrid;
     int cnt_kind;
     int myid;
     int max_no;
@@ -164,6 +165,10 @@ typedef struct {
     double device_seconds;
 } SetHamiltonianMatrixElementsWork;
 
+static int Set_Hamiltonian_ME_CacheMatches(const SetHamiltonianMatrixElementsCache *cache, int Cnt_kind);
+static size_t Set_Hamiltonian_MatrixElements_ResidentBytes(int Cnt_kind, int myid);
+static size_t Set_Hamiltonian_MatrixElements_TransientBytes(const SetHamiltonianMatrixElementsCache *cache,
+                                                            int myid);
 static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(int Cnt_kind,
                                                                                               int myid);
 static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work,
@@ -244,6 +249,8 @@ typedef struct {
     int concurrent_ranks;
     int turn;
     int turns;
+    int make_resident;
+    size_t resident_group_bytes;
     size_t required_bytes;
     size_t peak_bytes;
     size_t free_bytes;
@@ -310,7 +317,37 @@ static int Set_Hamiltonian_GpuSerialWaves(void)
     return (value == NULL) ? 0 : (atoi(value) != 0);
 }
 
+static int Set_Hamiltonian_GpuResidentEnabled(void)
+{
+    /* Keep the SCF-invariant tables (orbitals, grid indices, pair metadata)
+       resident on the device across SCF iterations.  Residency is attempted
+       only when every rank sharing the GPU runs in the single wave and the
+       resident total leaves the configured floor free for the eigensolver
+       and the grid routines.  Set to zero to force per-iteration staging. */
+    const char *value = getenv("OPENMX_SETHAM_GPU_RESIDENT");
+    return (value == NULL) ? 1 : (atoi(value) != 0);
+}
+
+static size_t Set_Hamiltonian_GpuResidentFloorBytes(void)
+{
+    /* Device memory that must remain free after the resident tables are
+       uploaded; it covers the diagonalization workspaces and the
+       per-iteration staging of every rank. */
+    size_t floor_bytes = 16384ULL * 1024ULL * 1024ULL;
+    const char *value = getenv("OPENMX_SETHAM_GPU_RESIDENT_FLOOR_MB");
+
+    if (value != NULL && value[0] != '\0') {
+        char *endp = NULL;
+        unsigned long long mib = strtoull(value, &endp, 10);
+        if (endp != value && *endp == '\0' && mib <= (unsigned long long)((size_t)-1) / (1024ULL * 1024ULL)) {
+            floor_bytes = (size_t)mib * 1024ULL * 1024ULL;
+        }
+    }
+    return floor_bytes;
+}
+
 static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t required_bytes,
+                                                                   size_t resident_request_bytes,
                                                                    const char *where, int myid)
 {
     SetHamiltonianGpuTurnPlan plan;
@@ -468,6 +505,23 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
     plan.turn = plan.device_rank / plan.concurrent_ranks;
     plan.turns = (plan.device_ranks + plan.concurrent_ranks - 1) / plan.concurrent_ranks;
 
+    {
+        /* Device residency is a group affair: it is worthwhile only when
+           every rank sharing this GPU runs in the single wave, and it must
+           leave the configured floor free for the other GPU consumers of
+           the SCF loop. */
+        unsigned long long local_resident = (unsigned long long)resident_request_bytes;
+        unsigned long long group_resident = 0;
+
+        MPI_Allreduce(&local_resident, &group_resident, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, plan.device_comm);
+        if (0 < group_resident && plan.concurrent_ranks == plan.device_ranks &&
+            group_resident <= group_free &&
+            (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes() <= group_free - group_resident) {
+            plan.make_resident = 1;
+            plan.resident_group_bytes = (size_t)group_resident;
+        }
+    }
+
     if (plan.device_rank == 0) {
         static int last_device_ranks = -1;
         static int last_concurrent = -1;
@@ -523,10 +577,90 @@ static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid)
     return p;
 }
 
+static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan *plan)
+{
+    SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
+    int *pair_NO0 = cache->pair_NO0;
+    int *pair_NO1 = cache->pair_NO1;
+    int *pair_NOLG = cache->pair_NOLG;
+    int *nolg_MN = cache->nolg_MN;
+    int *nolg_Nc = cache->nolg_Nc;
+    size_t *pair_h_offset = cache->pair_h_offset;
+    size_t *pair_nolg_offset = cache->pair_nolg_offset;
+    size_t *pair_orbs0_offset = cache->pair_orbs0_offset;
+    size_t *pair_orbs1_offset = cache->pair_orbs1_offset;
+    Type_Orbs_Grid *orbs0buf = cache->orbs0buf;
+    Type_Orbs_Grid *orbs1buf = cache->orbs1buf;
+    const int pair_count = cache->pair_count;
+    const size_t total_nolg = cache->total_nolg;
+    const size_t total_orbs0 = cache->total_orbs0;
+    const size_t total_orbs1 = cache->total_orbs1;
+
+    if (cache->device_resident || pair_count <= 0) return;
+
+#pragma acc enter data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count],                    \
+                              nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg],                                                \
+                              pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],                                 \
+                              pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count],                            \
+                              orbs0buf[0:total_orbs0], orbs1buf[0:total_orbs1])
+
+    cache->device_resident = 1;
+
+    if (plan->device_rank == 0) {
+        printf("<Set_Hamiltonian> GPU resident cache: %d rank(s) hold %.3f GiB on device %d across SCF iterations\n",
+               plan->device_ranks,
+               (double)plan->resident_group_bytes / (1024.0 * 1024.0 * 1024.0),
+               plan->cuda_device);
+        fflush(stdout);
+    }
+}
+
+static void Set_Hamiltonian_ME_ReleaseDeviceCache(void)
+{
+    SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
+    int *pair_NO0 = cache->pair_NO0;
+    int *pair_NO1 = cache->pair_NO1;
+    int *pair_NOLG = cache->pair_NOLG;
+    int *nolg_MN = cache->nolg_MN;
+    int *nolg_Nc = cache->nolg_Nc;
+    size_t *pair_h_offset = cache->pair_h_offset;
+    size_t *pair_nolg_offset = cache->pair_nolg_offset;
+    size_t *pair_orbs0_offset = cache->pair_orbs0_offset;
+    size_t *pair_orbs1_offset = cache->pair_orbs1_offset;
+    Type_Orbs_Grid *orbs0buf = cache->orbs0buf;
+    Type_Orbs_Grid *orbs1buf = cache->orbs1buf;
+    const int pair_count = cache->pair_count;
+    const size_t total_nolg = cache->total_nolg;
+    const size_t total_orbs0 = cache->total_orbs0;
+    const size_t total_orbs1 = cache->total_orbs1;
+
+    if (!cache->device_resident) return;
+
+#pragma acc exit data delete(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count],                     \
+                             nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg],                                                 \
+                             pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],                                  \
+                             pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count],                             \
+                             orbs0buf[0:total_orbs0], orbs1buf[0:total_orbs1])
+
+    /* return the pooled storage to CUDA so the next consumer (eigensolver,
+       force batches) measures the true free device memory */
+    acc_wait_all();
+    if (cudaDeviceSynchronize() == cudaSuccess) {
+        acc_clear_freelists();
+    }
+    cache->device_resident = 0;
+}
+
+void Set_Hamiltonian_Release_OpenACC_DeviceCache(void)
+{
+    Set_Hamiltonian_ME_ReleaseDeviceCache();
+}
+
 static void Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache(void)
 {
     SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
 
+    Set_Hamiltonian_ME_ReleaseDeviceCache();
     free(cache->pair_Mc_AN);
     free(cache->pair_h_AN);
     free(cache->pair_NO0);
@@ -949,7 +1083,7 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
            switched that rank away from GPUSOLVER. */
         MPI_Allreduce(&local_request, &any_request, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
         if (any_request) {
-            base_plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, "base OpenACC path", myid);
+            base_plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, 0, "base OpenACC path", myid);
         }
     }
     use_base_openacc = base_plan.use_gpu &&
@@ -1169,14 +1303,31 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         int enabled = Set_Hamiltonian_OpenACC_Enabled() && Set_Hamiltonian_MatrixElements_OpenACC_Enabled();
         int local_request = enabled && Set_Hamiltonian_OpenACC_Work_Rank_Selected;
         int any_request = 0;
-        size_t required_bytes = (enabled && Set_Hamiltonian_OpenACC_Work_Rank_Selected) ?
-            Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(Cnt_kind, myid) : 0;
+        size_t required_bytes = 0;
+        size_t resident_request_bytes = 0;
+
+        if (local_request) {
+            if (Set_Hamiltonian_ME_CacheMatches(&Set_Hamiltonian_ME_Cache, Cnt_kind) &&
+                Set_Hamiltonian_ME_Cache.device_resident) {
+                /* The SCF-invariant tables already live on the device; only
+                   the per-iteration staging is charged against the free
+                   memory measured by the plan. */
+                required_bytes = Set_Hamiltonian_MatrixElements_TransientBytes(&Set_Hamiltonian_ME_Cache, myid);
+            }
+            else {
+                required_bytes = Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(Cnt_kind, myid);
+                if (Set_Hamiltonian_GpuResidentEnabled()) {
+                    resident_request_bytes = Set_Hamiltonian_MatrixElements_ResidentBytes(Cnt_kind, myid);
+                }
+            }
+        }
 
         /* This routine performs node- and device-level MPI collectives, so all
            ranks enter it irrespective of their local accelerator state. */
         MPI_Allreduce(&local_request, &any_request, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
         if (any_request) {
-            plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, "matrix-elements OpenACC path", myid);
+            plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, resident_request_bytes,
+                                                     "matrix-elements OpenACC path", myid);
         }
     }
 
@@ -1186,6 +1337,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            otherwise its first-use cost is repeated on the critical path of
            every wave. */
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
+        if (plan.make_resident) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
         for (int turn = 0; turn < plan.turns; turn++) {
             MPI_Barrier(plan.device_comm);
@@ -1200,6 +1352,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
     }
     else if (plan.use_gpu && plan.turn == 0) {
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
+        if (plan.make_resident) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
         Set_Hamiltonian_Run_OpenACC_MatrixElements(&work);
         acc_wait_all();
@@ -1262,18 +1415,17 @@ static size_t Set_Hamiltonian_Base_OpenACC_DeviceBytes(int SCF_iter, int myid)
     return bytes;
 }
 
-static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, int myid)
+static void Set_Hamiltonian_MatrixElements_CountTotals(int Cnt_kind, int myid, int *pair_count_out,
+                                                       size_t *total_h_out, size_t *total_nolg_out,
+                                                       size_t *total_orbs0_out, size_t *total_orbs1_out)
 {
     int Mc_AN, h_AN;
     int spin_count, pair_count;
-    size_t total_h, total_nolg, total_orbs0, total_orbs1, bytes;
-    size_t rank_overhead_mb = 512u;
-    const char *rank_overhead_env;
+    size_t total_h, total_nolg, total_orbs0, total_orbs1;
 
     if (Cnt_kind != 0 && Cnt_kind != 1) {
         Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA_OpenACC", "Cnt_kind must be 0 or 1", myid);
     }
-    if (Matomnum <= 0) return 0;
 
     spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
 
@@ -1324,6 +1476,42 @@ static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, i
         }
     }
 
+    *pair_count_out = pair_count;
+    *total_h_out = total_h;
+    *total_nolg_out = total_nolg;
+    *total_orbs0_out = total_orbs0;
+    *total_orbs1_out = total_orbs1;
+}
+
+static int Set_Hamiltonian_ME_CacheMatches(const SetHamiltonianMatrixElementsCache *cache, int Cnt_kind)
+{
+    int spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
+
+    return (cache->ready && cache->cnt_kind == Cnt_kind && cache->spin_count == spin_count &&
+            cache->matomnum == Matomnum);
+}
+
+/* Bytes of the SCF-invariant arrays that device residency would hold: the
+   pair metadata, the grid index tables and the orbital tables. */
+static size_t Set_Hamiltonian_MatrixElements_ResidentBytes(int Cnt_kind, int myid)
+{
+    const SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
+    int pair_count = 0;
+    size_t total_h = 0, total_nolg = 0, total_orbs0 = 0, total_orbs1 = 0, bytes;
+
+    if (Matomnum <= 0) return 0;
+
+    if (Set_Hamiltonian_ME_CacheMatches(cache, Cnt_kind)) {
+        pair_count = cache->pair_count;
+        total_nolg = cache->total_nolg;
+        total_orbs0 = cache->total_orbs0;
+        total_orbs1 = cache->total_orbs1;
+    }
+    else {
+        Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &total_h, &total_nolg,
+                                                   &total_orbs0, &total_orbs1);
+    }
+
     bytes = 0;
     Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NO0", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NO1", myid);
@@ -1336,12 +1524,60 @@ static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, i
                                     "matrix-elements pair_orbs0_offset", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(size_t),
                                     "matrix-elements pair_orbs1_offset", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_MN", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_Nc", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, total_orbs0, sizeof(Type_Orbs_Grid), "matrix-elements orbs0buf", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, total_orbs1, sizeof(Type_Orbs_Grid), "matrix-elements orbs1buf", myid);
+    return bytes;
+}
+
+/* Bytes staged per SCF iteration: the Hamiltonian blocks (both ways) and the
+   rank-local grid potential slice. */
+static size_t Set_Hamiltonian_MatrixElements_TransientBytes(const SetHamiltonianMatrixElementsCache *cache,
+                                                            int myid)
+{
+    size_t bytes = 0;
+
+    Set_Hamiltonian_add_array_bytes(&bytes, cache->total_h, sizeof(double), "matrix-elements hbuf", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes,
+                                    Set_Hamiltonian_checked_mul((size_t)cache->spin_count, (size_t)My_NumGridC,
+                                                                "matrix-elements vpotgrid", myid),
+                                    sizeof(double), "matrix-elements vpotgrid", myid);
+    return bytes;
+}
+
+static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, int myid)
+{
+    int pair_count = 0;
+    size_t total_h = 0, total_nolg = 0, total_orbs0 = 0, total_orbs1 = 0, bytes;
+    size_t rank_overhead_mb = 512u;
+    const char *rank_overhead_env;
+
+    if (Matomnum <= 0) return 0;
+
+    Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &total_h, &total_nolg,
+                                               &total_orbs0, &total_orbs1);
+
+    bytes = 0;
+    Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NO0", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NO1", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(int), "matrix-elements pair_NOLG", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(size_t),
+                                    "matrix-elements pair_h_offset", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(size_t),
+                                    "matrix-elements pair_nolg_offset", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(size_t),
+                                    "matrix-elements pair_orbs0_offset", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, (size_t)pair_count, sizeof(size_t),
+                                    "matrix-elements pair_orbs1_offset", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_MN", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, total_nolg, sizeof(int), "matrix-elements nolg_Nc", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, total_h, sizeof(double), "matrix-elements hbuf", myid);
     Set_Hamiltonian_add_array_bytes(&bytes,
-                                    Set_Hamiltonian_checked_mul((size_t)spin_count, total_nolg,
-                                                                "matrix-elements vpotbuf", myid),
-                                    sizeof(double), "matrix-elements vpotbuf", myid);
+                                    Set_Hamiltonian_checked_mul((size_t)((SpinP_switch == 3) ? 4 : (SpinP_switch + 1)),
+                                                                (size_t)My_NumGridC,
+                                                                "matrix-elements vpotgrid", myid),
+                                    sizeof(double), "matrix-elements vpotgrid", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, total_orbs0, sizeof(Type_Orbs_Grid), "matrix-elements orbs0buf", myid);
     Set_Hamiltonian_add_array_bytes(&bytes, total_orbs1, sizeof(Type_Orbs_Grid), "matrix-elements orbs1buf", myid);
 
@@ -1575,8 +1811,7 @@ static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixE
         Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA_OpenACC", "SpinP_switch must be 0, 1, or 3", myid);
     }
 
-    if (cache->ready && cache->cnt_kind == Cnt_kind && cache->spin_count == spin_count &&
-        cache->matomnum == Matomnum) {
+    if (Set_Hamiltonian_ME_CacheMatches(cache, Cnt_kind)) {
         return cache;
     }
 
@@ -1720,8 +1955,9 @@ static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixE
     const int spin_count = cache->spin_count;
     const int pair_count = cache->pair_count;
     const size_t total_h = cache->total_h;
-    const size_t total_nolg = cache->total_nolg;
-    const size_t vpot_count = (size_t)spin_count * total_nolg;
+    const size_t vpot_len = (size_t)My_NumGridC;
+    const size_t vpot_count = Set_Hamiltonian_checked_mul((size_t)spin_count, vpot_len,
+                                                          "matrix-elements vpotgrid", myid);
 
     memset(work, 0, sizeof(*work));
     work->cache = cache;
@@ -1731,7 +1967,7 @@ static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixE
     if (pair_count == 0) return;
 
     work->hbuf = (double *)Set_Hamiltonian_malloc(sizeof(double) * total_h, "openacc hbuf", myid);
-    work->vpotbuf = (double *)Set_Hamiltonian_malloc(sizeof(double) * vpot_count, "openacc vpotbuf", myid);
+    work->vpotgrid = (double *)Set_Hamiltonian_malloc(sizeof(double) * vpot_count, "openacc vpotgrid", myid);
 
     for (int pair = 0; pair < pair_count; pair++) {
         int Mc_AN = cache->pair_Mc_AN[pair];
@@ -1761,17 +1997,12 @@ static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixE
         }
     }
 
-    for (int pair = 0; pair < pair_count; pair++) {
-        int NOLG = cache->pair_NOLG[pair];
-        size_t nolg_off = cache->pair_nolg_offset[pair];
-
-        for (int Nog = 0; Nog < NOLG; Nog++) {
-            int MN = cache->nolg_MN[nolg_off + (size_t)Nog];
-            for (int spin = 0; spin < spin_count; spin++) {
-                work->vpotbuf[(size_t)spin * total_nolg + nolg_off + (size_t)Nog] =
-                    GridVol * Vpot_Grid[spin][MN];
-            }
-        }
+    /* The device kernel gathers the potential directly through nolg_MN, so
+       only the rank-local grid slice is staged: one contiguous row per spin.
+       GridVol is applied inside the kernel with the same rounding order as
+       the old host-side expansion. */
+    for (int spin = 0; spin < spin_count; spin++) {
+        memcpy(work->vpotgrid + (size_t)spin * vpot_len, Vpot_Grid[spin], sizeof(double) * vpot_len);
     }
 
     if (SetH_ProfileEnabled()) {
@@ -1789,10 +2020,13 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
     const size_t total_nolg = cache->total_nolg;
     const size_t total_orbs0 = cache->total_orbs0;
     const size_t total_orbs1 = cache->total_orbs1;
-    const size_t vpot_count = (size_t)spin_count * total_nolg;
+    const size_t vpot_len = (size_t)My_NumGridC;
+    const size_t vpot_count = (size_t)spin_count * vpot_len;
+    const double grid_vol = GridVol;
     int *pair_NO0 = cache->pair_NO0;
     int *pair_NO1 = cache->pair_NO1;
     int *pair_NOLG = cache->pair_NOLG;
+    int *nolg_MN = cache->nolg_MN;
     int *nolg_Nc = cache->nolg_Nc;
     size_t *pair_h_offset = cache->pair_h_offset;
     size_t *pair_nolg_offset = cache->pair_nolg_offset;
@@ -1801,27 +2035,32 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
     Type_Orbs_Grid *orbs0buf = cache->orbs0buf;
     Type_Orbs_Grid *orbs1buf = cache->orbs1buf;
     double *hbuf = work->hbuf;
-    double *vpotbuf = work->vpotbuf;
+    double *vpotgrid = work->vpotgrid;
     double start = 0.0, finish = 0.0;
 
     if (pair_count == 0) return;
     if (SetH_ProfileEnabled()) dtime(&start);
 
+    /* The copyin clauses have present_or_copyin semantics: when the resident
+       cache holds the SCF-invariant arrays on the device they only attach,
+       so each iteration transfers the potential slice and the Hamiltonian
+       blocks alone. */
 #pragma acc data copy(hbuf[0:total_h])                                                                                      \
-    copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count], nolg_Nc[0:total_nolg],                \
+    copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count],                                       \
+           nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg],                                                                   \
            pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],                                                    \
            pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count],                                               \
-           orbs0buf[0:total_orbs0], orbs1buf[0:total_orbs1], vpotbuf[0:vpot_count])
+           orbs0buf[0:total_orbs0], orbs1buf[0:total_orbs1], vpotgrid[0:vpot_count])
     {
         int cuda_status = 1;
 
         if (work->cuda_kernel_supported && Set_Hamiltonian_MatrixElements_CudaKernel_Enabled()) {
-#pragma acc host_data use_device(hbuf, pair_NO0, pair_NO1, pair_NOLG, nolg_Nc, pair_h_offset, pair_nolg_offset,           \
-                                 pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotbuf)
+#pragma acc host_data use_device(hbuf, pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset,                    \
+                                 pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid)
             cuda_status = Set_Hamiltonian_Cuda_MatrixElements(
-                pair_count, spin_count, total_nolg, work->max_no, work->max_output_count,
-                pair_NO0, pair_NO1, pair_NOLG, nolg_Nc, pair_h_offset, pair_nolg_offset,
-                pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotbuf, hbuf);
+                pair_count, spin_count, vpot_len, grid_vol, work->max_no, work->max_output_count,
+                pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
+                pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
             if (cuda_status < 0) {
                 char message[160];
                 snprintf(message, sizeof(message), "CUDA matrix-elements kernel failed with status %d", cuda_status);
@@ -1831,11 +2070,11 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
 
         if (cuda_status != 0) {
 #pragma acc parallel loop gang present(hbuf[0:total_h], pair_NO0[0:pair_count], pair_NO1[0:pair_count],                    \
-                                           nolg_Nc[0:total_nolg],                                                          \
+                                           nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg],                                   \
                                            pair_NOLG[0:pair_count], pair_h_offset[0:pair_count],                            \
                                            pair_nolg_offset[0:pair_count], pair_orbs0_offset[0:pair_count],                 \
                                            pair_orbs1_offset[0:pair_count], orbs0buf[0:total_orbs0],                        \
-                                           orbs1buf[0:total_orbs1], vpotbuf[0:vpot_count])
+                                           orbs1buf[0:total_orbs1], vpotgrid[0:vpot_count])
             for (int pair = 0; pair < pair_count; pair++) {
                 int NO0 = pair_NO0[pair];
                 int NO1 = pair_NO1[pair];
@@ -1857,7 +2096,8 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
 
 #pragma acc loop seq
                     for (int Nog = 0; Nog < NOLG; Nog++) {
-                        sum += vpotbuf[(size_t)spin * total_nolg + nolg_off + (size_t)Nog] *
+                        sum += (grid_vol * vpotgrid[(size_t)spin * vpot_len +
+                                                    (size_t)nolg_MN[nolg_off + (size_t)Nog]]) *
                                orbs0buf[orbs0_off + (size_t)nolg_Nc[nolg_off + (size_t)Nog] * (size_t)NO0 + (size_t)i] *
                                orbs1buf[orbs1_off + (size_t)Nog * (size_t)NO1 + (size_t)j];
                     }
@@ -1900,9 +2140,9 @@ static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixEl
         }
     }
 
-    free(work->vpotbuf);
+    free(work->vpotgrid);
     free(work->hbuf);
-    work->vpotbuf = NULL;
+    work->vpotgrid = NULL;
     work->hbuf = NULL;
 
     if (SetH_ProfileEnabled()) {

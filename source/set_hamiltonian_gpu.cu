@@ -11,12 +11,14 @@ constexpr int kPreferredGridTile = 32;
 __global__ void matrix_elements_kernel(
     int pair_count,
     int spin_count,
-    std::size_t total_nolg,
+    std::size_t vpot_len,
+    double grid_vol,
     int max_no,
     int grid_tile,
     const int *__restrict__ pair_NO0,
     const int *__restrict__ pair_NO1,
     const int *__restrict__ pair_NOLG,
+    const int *__restrict__ nolg_MN,
     const int *__restrict__ nolg_Nc,
     const std::size_t *__restrict__ pair_h_offset,
     const std::size_t *__restrict__ pair_nolg_offset,
@@ -24,7 +26,7 @@ __global__ void matrix_elements_kernel(
     const std::size_t *__restrict__ pair_orbs1_offset,
     const float *__restrict__ orbs0buf,
     const float *__restrict__ orbs1buf,
-    const double *__restrict__ vpotbuf,
+    const double *__restrict__ vpotgrid,
     double *__restrict__ hbuf)
 {
     const int pair = static_cast<int>(blockIdx.x);
@@ -72,11 +74,12 @@ __global__ void matrix_elements_kernel(
             const int spin_index = index - s * spin_grid_size;
             const int grid = spin_index / NO0;
             const int orbital = spin_index - grid * NO0;
+            const std::size_t pt = nolg_off + static_cast<std::size_t>(base + grid);
             weighted0[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] =
-                vpotbuf[static_cast<std::size_t>(s) * total_nolg + nolg_off + static_cast<std::size_t>(base + grid)] *
+                (grid_vol * vpotgrid[static_cast<std::size_t>(s) * vpot_len +
+                                     static_cast<std::size_t>(nolg_MN[pt])]) *
                 static_cast<double>(orbs0buf[
-                    orbs0_off + static_cast<std::size_t>(nolg_Nc[nolg_off + static_cast<std::size_t>(base + grid)]) *
-                                    NO0 + orbital]);
+                    orbs0_off + static_cast<std::size_t>(nolg_Nc[pt]) * NO0 + orbital]);
         }
         for (int index = static_cast<int>(threadIdx.x); index < tile1_count; index += blockDim.x) {
             const int grid = index / NO1;
@@ -103,12 +106,14 @@ __global__ void matrix_elements_kernel(
 extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     int pair_count,
     int spin_count,
-    std::size_t total_nolg,
+    std::size_t vpot_len,
+    double grid_vol,
     int max_no,
     int max_output_count,
     const int *pair_NO0,
     const int *pair_NO1,
     const int *pair_NOLG,
+    const int *nolg_MN,
     const int *nolg_Nc,
     const std::size_t *pair_h_offset,
     const std::size_t *pair_nolg_offset,
@@ -116,7 +121,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     const std::size_t *pair_orbs1_offset,
     const float *orbs0buf,
     const float *orbs1buf,
-    const double *vpotbuf,
+    const double *vpotgrid,
     double *hbuf)
 {
     int device = 0;
@@ -139,9 +144,9 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     const dim3 grid(static_cast<unsigned>(pair_count),
                     static_cast<unsigned>((max_output_count + kThreads - 1) / kThreads), 1u);
     matrix_elements_kernel<<<grid, block, shared_size(grid_tile)>>>(
-        pair_count, spin_count, total_nolg, max_no, grid_tile,
-        pair_NO0, pair_NO1, pair_NOLG, nolg_Nc, pair_h_offset, pair_nolg_offset,
-        pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotbuf, hbuf);
+        pair_count, spin_count, vpot_len, grid_vol, max_no, grid_tile,
+        pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
+        pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
 
     cudaError_t status = cudaGetLastError();
     if (status != cudaSuccess) return -static_cast<int>(status);

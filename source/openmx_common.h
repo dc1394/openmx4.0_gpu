@@ -3344,6 +3344,7 @@ int Set_Hamiltonian_OpenACC_Rank_Is_Selected(void);
 void Set_Hamiltonian_Set_OpenACC_Work_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenACC_Work_Rank_Is_Selected(void);
 void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(void);
+void Set_Hamiltonian_Release_OpenACC_DeviceCache(void);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
 void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
