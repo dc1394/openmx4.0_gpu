@@ -148,7 +148,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
                                 int *VNA_List2, int Num_RVNA)
 {
   SetProGpuContext *g = &SetPro_gpu;
-  int Mc_AN,k,spe,L1,node_ranks = 1;
+  int Mc_AN,k,spe,L1,node_ranks = 1,node_rank = 0;
   size_t pos = 0,slots = 0,halo_slots = 0;
   size_t free_bytes = 0,total_bytes = 0;
   MPI_Comm node_comm = MPI_COMM_NULL;
@@ -162,6 +162,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
+  MPI_Comm_rank(node_comm,&node_rank);
   if (node_ranks<1) node_ranks = 1;
   acc_wait_all();
   if (cudaDeviceSynchronize()==cudaSuccess){
@@ -196,11 +197,11 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
 
     if (free_bytes<=reserve ||
         (free_bytes - reserve)/(size_t)node_ranks<=need){
-      fprintf(stderr,
-              "Set_ProExpn_VNA GPU: %.2f GiB free for %d rank(s) but %.2f GiB needed per rank; CPU fallback.\n",
-              (double)free_bytes/(1024.0*1024.0*1024.0),node_ranks,
-              (double)need/(1024.0*1024.0*1024.0));
-      fflush(stderr);
+      if (node_rank==0){
+        fprintf(stderr,
+                "Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.\n");
+        fflush(stderr);
+      }
       memset(g,0,sizeof(*g));
       return 0;
     }

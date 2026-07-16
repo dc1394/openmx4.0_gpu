@@ -6900,7 +6900,7 @@ typedef struct {
 static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
 {
     Force4BGpuContext* g = &F4B_gpu;
-    int Mc_AN, k, node_ranks = 1;
+    int Mc_AN, k, node_ranks = 1, node_rank = 0;
     size_t pos = 0, slots = 0, halo_slots = 0;
     size_t free_bytes = 0, total_bytes = 0;
     MPI_Comm node_comm = MPI_COMM_NULL;
@@ -6913,6 +6913,7 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_size(node_comm, &node_ranks);
+    MPI_Comm_rank(node_comm, &node_rank);
     if (node_ranks < 1) node_ranks = 1;
 
     /* return every rank's OpenACC freelist (e.g. the Force3 buffers) to CUDA
@@ -6955,11 +6956,11 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA)
 
         if (free_bytes <= reserve) return 0;
         if ((free_bytes - reserve) / (size_t)node_ranks <= need) {
-            fprintf(stderr,
-                "Force4B GPU: %.2f GiB free for %d rank(s) but %.2f GiB needed per rank; CPU fallback.\n",
-                (double)free_bytes / (1024.0 * 1024.0 * 1024.0), node_ranks,
-                (double)need / (1024.0 * 1024.0 * 1024.0));
-            fflush(stderr);
+            if (node_rank == 0) {
+                fprintf(stderr,
+                    "Force4B GPU: not enough free device memory; CPU fallback.\n");
+                fflush(stderr);
+            }
             return 0;
         }
     }
@@ -7602,7 +7603,7 @@ static ForceHNLGpuContext FHNL_gpu = { 0 };
 static int Force_HNL_GpuBegin(double****** DS_NL)
 {
     ForceHNLGpuContext* g = &FHNL_gpu;
-    int Mc_AN, k, w, node_ranks = 1;
+    int Mc_AN, k, w, node_ranks = 1, node_rank = 0;
     size_t pos = 0, slots = 0, halo_slots = 0, ene_pos = 0;
     size_t free_bytes = 0, total_bytes = 0;
     MPI_Comm node_comm = MPI_COMM_NULL;
@@ -7625,6 +7626,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_size(node_comm, &node_ranks);
+    MPI_Comm_rank(node_comm, &node_rank);
     if (node_ranks < 1) node_ranks = 1;
     acc_wait_all();
     if (cudaDeviceSynchronize() == cudaSuccess) {
@@ -7729,11 +7731,11 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 
         if (free_bytes <= reserve ||
             (free_bytes - reserve) / (size_t)node_ranks <= need) {
-            fprintf(stderr,
-                "Force_HNL GPU: %.2f GiB free for %d rank(s) but %.2f GiB needed per rank; CPU fallback.\n",
-                (double)free_bytes / (1024.0 * 1024.0 * 1024.0), node_ranks,
-                (double)need / (1024.0 * 1024.0 * 1024.0));
-            fflush(stderr);
+            if (node_rank == 0) {
+                fprintf(stderr,
+                    "Force_HNL GPU: not enough free device memory; CPU fallback.\n");
+                fflush(stderr);
+            }
             free(g->c2_off); free(g->mck_off); free(g->mck_base);
             free(g->ene); free(g->sp_nlp); free(g->ene_off);
             memset(g, 0, sizeof(*g));
