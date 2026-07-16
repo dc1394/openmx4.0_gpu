@@ -626,12 +626,6 @@ static int SDG_build_cache(int spin_count, int owner, int myid, int numprocs)
   if (myid == owner) {
     cache->cdm_counts = cdm_counts; cdm_counts = NULL;
     cache->cdm_displs = cdm_displs; cdm_displs = NULL;
-    if (0 < level_stdout) {
-      printf("<Set_Density_Grid> one-rank GPU service cache: owner=%d atoms=%zu atom-grids=%zu terms=%zu device=%.3f GiB\n",
-             owner, total_atoms, total_outputs, total_terms,
-             (double)cache->device_bytes / (1024.0 * 1024.0 * 1024.0));
-      fflush(stdout);
-    }
   }
 
   free(rank_counts);
