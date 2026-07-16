@@ -59,6 +59,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   int numprocs,myid,tag=999,ID,IDS,IDR;
   double Stime_atom, Etime_atom;
   double time0,time1,time2;
+  int use_local_gpu = 0;
 
   MPI_Status stat;
   MPI_Request request;
@@ -76,11 +77,31 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   
   dtime(&TStime);
 
+  /* Preferred GPU mode: every rank evaluates its own atoms' density on the
+     device (sharing Set_Hamiltonian's tables) and the ordinary A-to-B
+     communication below distributes it.  The single-owner GPU service and
+     the CPU/OpenMP loop remain as fallbacks, in that order. */
+  {
+    int local_ok = Set_Density_Grid_GPU_Local_Prepare(Cnt_kind,Calc_CntOrbital_ON);
+    MPI_Allreduce(&local_ok,&use_local_gpu,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+
+    if (use_local_gpu && myid==Host_ID && 0<level_stdout){
+      static int announced = 0;
+      if (!announced){
+        printf("<Set_Density_Grid> distributed GPU quadrature: every rank integrates its own atoms\n");
+        fflush(stdout);
+        announced = 1;
+      }
+    }
+  }
+
   /* A single GPU-owner rank can construct the complete B partition and
      bypass the per-rank atom-density/A-to-B path below.  A return value of
      zero keeps the original CPU/OpenMP implementation as the fallback. */
-  if (Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
-    return time0;
+  if (!use_local_gpu){
+    if (Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
+      return time0;
+    }
   }
 
   /* allocation of arrays */
@@ -303,11 +324,16 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   /**********************************************
               calculate Tmp_Den_Grid
   ***********************************************/
-    
+
   dtime(&time1);
-  
-  
-  /* AITUNE ========================== */ 
+
+  /* the distributed GPU quadrature fills Tmp_Den_Grid directly; a run-time
+     failure on any rank simply falls back to the CPU loop on that rank */
+  if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(CDM,Tmp_Den_Grid)) use_local_gpu = 0;
+
+  if (!use_local_gpu){
+
+  /* AITUNE ========================== */
   int OneD_Nloop = 0;
   int ai_MaxNc = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -612,8 +638,10 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 #pragma omp flush(Tmp_Den_Grid)
 
   } /* #pragma omp parallel */
-  
+
   free(ai_tmpDG_all);
+
+  } /* !use_local_gpu */
 
   dtime(&time2);
   if(myid==0 && measure_time){

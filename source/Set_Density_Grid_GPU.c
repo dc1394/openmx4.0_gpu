@@ -186,9 +186,12 @@ static void SDG_free_host(SetDensityGpuCache *cache)
   memset(cache, 0, sizeof(*cache));
 }
 
+static void SDG_local_free(void);
+
 void Set_Density_Grid_GPU_Invalidate(void)
 {
   SDG_free_host(&SDG_cache);
+  SDG_local_free();
 }
 
 static void SDG_disable_current_epoch(SetDensityGpuCache *cache)
@@ -962,5 +965,384 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
   Density_Grid_Copy_B2D(Density_Grid_B0);
   dtime(&end);
   *elapsed = end - start;
+  return 1;
+}
+
+/**********************************************************************
+   Distributed (per-rank) GPU quadrature for Set_Density_Grid.
+
+   Every rank evaluates the atomic-sphere density of its own atoms on
+   the device, reusing the Set_Hamiltonian matrix-elements tables (the
+   central full-sphere orbitals, the FNAN-layout neighbour orbitals and
+   the overlap index lists).  When Set_Hamiltonian keeps those tables
+   device-resident the present_or_copyin staging below only attaches,
+   so a single copy serves both routines.  The kernel reproduces the
+   CPU loop exactly: per output point the pair contributions are summed
+   in (h_AN, Nog) order and each contribution is
+   sum_i orbs0[i] * (sum_j orbs1[j] * CDM[i][j]).  The result fills
+   Tmp_Den_Grid and the ordinary A-to-B communication of
+   Set_Density_Grid.c distributes it afterwards.
+***********************************************************************/
+
+typedef struct {
+  int ready;
+  int unavailable;
+  int spin_count;
+  int cnt_kind;
+  int node_ranks;
+  size_t output_count;     /* sum of GridN_Atom over the rank's atoms */
+  size_t term_count;       /* overlap points of the rank's pairs */
+  size_t dm_count;         /* packed density-matrix doubles */
+  size_t extra_bytes;      /* device bytes owned by this mode alone */
+  uint32_t *atom_out_base; /* Matomnum+2, host only */
+  uint32_t *out_ptr;       /* CSR over the output points */
+  uint32_t *term_pt;       /* CSR payload: global overlap-point index */
+  uint32_t *pt_pair;       /* overlap point -> pair */
+  double *dm;
+  double *tmpden;
+  SetHamiltonianMETables t;
+} SDGLocalContext;
+
+static SDGLocalContext SDG_local = {0};
+
+static void SDG_local_free(void)
+{
+  SDGLocalContext *c = &SDG_local;
+
+  free(c->atom_out_base);
+  free(c->out_ptr);
+  free(c->term_pt);
+  free(c->pt_pair);
+  free(c->dm);
+  free(c->tmpden);
+  memset(c, 0, sizeof(*c));
+}
+
+static int SDG_local_build(int Cnt_kind, int spin_count)
+{
+  SDGLocalContext *c = &SDG_local;
+  uint32_t *degree = NULL;
+  unsigned long long local_need, group_need = 0ULL;
+  int ok = 1, all_ok = 1;
+  int Mc_AN, p;
+  size_t out, pos;
+
+  {
+    int device_count = 0;
+    if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count <= 0 ||
+        acc_get_num_devices(acc_device_nvidia) <= 0) ok = 0;
+  }
+
+  if (ok && !Set_Hamiltonian_GetMatrixElementsTables(Cnt_kind, &c->t)) ok = 0;
+
+  if (ok) {
+    c->spin_count = spin_count;
+    c->cnt_kind = Cnt_kind;
+    c->term_count = c->t.total_nolg;
+    c->dm_count = c->t.total_h;
+    if (c->term_count > (size_t)UINT32_MAX) ok = 0;
+  }
+
+  if (ok) {
+    c->atom_out_base = (uint32_t *)SDG_malloc((size_t)Matomnum + 2, sizeof(uint32_t));
+    ok = (c->atom_out_base != NULL);
+  }
+  if (ok) {
+    size_t base = 0;
+    c->atom_out_base[0] = 0;
+    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+      c->atom_out_base[Mc_AN] = (uint32_t)base;
+      base += (size_t)GridN_Atom[M2G[Mc_AN]];
+      if (base > (size_t)UINT32_MAX) {
+        ok = 0;
+        break;
+      }
+    }
+    if (ok) {
+      c->atom_out_base[Matomnum + 1] = (uint32_t)base;
+      c->output_count = base;
+    }
+  }
+
+  if (ok) {
+    degree = (uint32_t *)calloc(c->output_count == 0 ? 1 : c->output_count, sizeof(uint32_t));
+    c->out_ptr = (uint32_t *)SDG_malloc(c->output_count + 1, sizeof(uint32_t));
+    c->term_pt = (uint32_t *)SDG_malloc(c->term_count == 0 ? 1 : c->term_count, sizeof(uint32_t));
+    c->pt_pair = (uint32_t *)SDG_malloc(c->term_count == 0 ? 1 : c->term_count, sizeof(uint32_t));
+    c->dm = (double *)SDG_malloc(c->dm_count == 0 ? 1 : c->dm_count, sizeof(double));
+    c->tmpden = (double *)SDG_malloc((size_t)spin_count *
+                                     (c->output_count == 0 ? 1 : c->output_count), sizeof(double));
+    ok = (degree != NULL && c->out_ptr != NULL && c->term_pt != NULL && c->pt_pair != NULL &&
+          c->dm != NULL && c->tmpden != NULL);
+  }
+
+  if (ok) {
+    for (p = 0; p < c->t.pair_count && ok; p++) {
+      size_t base = c->atom_out_base[c->t.pair_Mc_AN[p]];
+      size_t lo = c->t.pair_nolg_offset[p];
+      size_t n = (size_t)c->t.pair_NOLG[p];
+
+      for (pos = 0; pos < n; pos++) {
+        size_t o = base + (size_t)c->t.nolg_Nc[lo + pos];
+        if (o >= c->output_count) {
+          ok = 0;
+          break;
+        }
+        degree[o]++;
+        c->pt_pair[lo + pos] = (uint32_t)p;
+      }
+    }
+  }
+
+  if (ok) {
+    uint64_t running = 0;
+    c->out_ptr[0] = 0;
+    for (out = 0; out < c->output_count; out++) {
+      running += (uint64_t)degree[out];
+      if (running > UINT32_MAX) {
+        ok = 0;
+        break;
+      }
+      c->out_ptr[out + 1] = (uint32_t)running;
+      degree[out] = c->out_ptr[out]; /* reuse as insertion cursor */
+    }
+    if (ok && (size_t)c->out_ptr[c->output_count] != c->term_count) ok = 0;
+  }
+
+  if (ok) {
+    for (p = 0; p < c->t.pair_count; p++) {
+      size_t base = c->atom_out_base[c->t.pair_Mc_AN[p]];
+      size_t lo = c->t.pair_nolg_offset[p];
+      size_t n = (size_t)c->t.pair_NOLG[p];
+
+      for (pos = 0; pos < n; pos++) {
+        size_t o = base + (size_t)c->t.nolg_Nc[lo + pos];
+        c->term_pt[degree[o]++] = (uint32_t)(lo + pos);
+      }
+    }
+  }
+
+  free(degree);
+  degree = NULL;
+
+  if (ok) {
+    c->extra_bytes = 0;
+    ok = SDG_add_bytes(&c->extra_bytes, c->output_count + 1, sizeof(uint32_t)) &&
+         SDG_add_bytes(&c->extra_bytes, c->term_count, sizeof(uint32_t)) &&
+         SDG_add_bytes(&c->extra_bytes, c->term_count, sizeof(uint32_t)) &&
+         SDG_add_bytes(&c->extra_bytes, c->dm_count, sizeof(double)) &&
+         SDG_add_bytes(&c->extra_bytes, (size_t)spin_count * c->output_count, sizeof(double));
+  }
+
+  {
+    MPI_Comm node_comm = MPI_COMM_NULL;
+    int node_ranks = 1;
+
+    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
+    MPI_Comm_size(node_comm, &node_ranks);
+    MPI_Comm_free(&node_comm);
+    c->node_ranks = (node_ranks < 1) ? 1 : node_ranks;
+  }
+
+  MPI_Allreduce(&ok, &all_ok, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+  if (!all_ok) {
+    SDG_local_free();
+    SDG_local.unavailable = 1;
+    return 0;
+  }
+
+  /* publish the mode's own transient need so long-lived caches
+     (Set_Hamiltonian residency) leave room for it */
+  local_need = (unsigned long long)c->extra_bytes;
+  MPI_Allreduce(&local_need, &group_need, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, mpi_comm_level1);
+  OpenMX_GpuPhaseNeed_Register("density_grid_local", (size_t)group_need);
+
+  c->ready = 1;
+  return 1;
+}
+
+/* Device bytes this call would stage on top of what is already resident. */
+static size_t SDG_local_call_bytes(const SDGLocalContext *c)
+{
+  size_t bytes = c->extra_bytes;
+
+  if (!c->t.orbs0_resident) (void)SDG_add_bytes(&bytes, c->t.total_orbs0, sizeof(Type_Orbs_Grid));
+  if (!c->t.orbs1_resident) (void)SDG_add_bytes(&bytes, c->t.total_orbs1, sizeof(Type_Orbs_Grid));
+  if (!c->t.nolg_resident) (void)SDG_add_bytes(&bytes, c->t.total_nolg, sizeof(int));
+  if (!c->t.meta_resident) {
+    (void)SDG_add_bytes(&bytes, (size_t)c->t.pair_count * 2, sizeof(int));
+    (void)SDG_add_bytes(&bytes, (size_t)c->t.pair_count * 4, sizeof(size_t));
+  }
+  return bytes;
+}
+
+int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
+{
+  SDGLocalContext *c = &SDG_local;
+  int spin_count = SpinP_switch + 1;
+  int enabled, mode = 1;
+  size_t reserve_bytes, need;
+  size_t free_bytes = 0, total_bytes = 0;
+
+  (void)Calc_CntOrbital_ON;
+
+  /* 0 = off, 1 = auto (only when the shared Set_Hamiltonian tables are
+     device-resident, so each call stages just the CSR/DM/density buffers),
+     2 = always (stage the shared tables per call too) */
+  {
+    const char *value = getenv("OPENMX_DENSITY_GRID_GPU_LOCAL");
+    if (value != NULL && value[0] != '\0') mode = atoi(value);
+  }
+
+  enabled = (mode != 0) &&
+            SDG_env_bool("OPENMX_DENSITY_GRID_GPU", SDG_env_bool("OPENMX_SETDENSITY_GPU", 1)) &&
+            scf_eigen_lib_flag == GPUSOLVER && (Solver == 2 || Solver == 3) &&
+            Cnt_switch == 0 && (Cnt_kind == 0 || Cnt_kind == 1) &&
+            (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3);
+  if (!enabled || c->unavailable) return 0;
+
+  if (c->ready && (c->spin_count != spin_count || c->cnt_kind != Cnt_kind)) {
+    SDG_local_free();
+  }
+  if (!c->ready) {
+    if (!SDG_local_build(Cnt_kind, spin_count)) return 0;
+  }
+
+  /* refresh the shared-table view: the pointers and the residency flags may
+     have changed since the epoch was built */
+  if (!Set_Hamiltonian_GetMatrixElementsTables(Cnt_kind, &c->t) ||
+      c->t.total_nolg != c->term_count || c->t.total_h != c->dm_count) {
+    SDG_local_free();
+    SDG_local.unavailable = 1;
+    return 0;
+  }
+
+  if (c->output_count == 0) return 0;
+
+  /* In auto mode the per-call staging of the multi-GiB orbital tables is
+     slower than the single-owner service, so engage only when the shared
+     tables already live on the device (Set_Hamiltonian residency). */
+  if (mode == 1 &&
+      !(c->t.orbs0_resident && c->t.orbs1_resident && c->t.nolg_resident && c->t.meta_resident)) {
+    return 0;
+  }
+
+  reserve_bytes = SDG_env_mib("OPENMX_DENSITY_GRID_GPU_RESERVE_MB", 256);
+  if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
+  need = SDG_local_call_bytes(c);
+  if (free_bytes < reserve_bytes) return 0;
+  if ((free_bytes - reserve_bytes) / (size_t)c->node_ranks < need) return 0;
+  return 1;
+}
+
+int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
+{
+  SDGLocalContext *c = &SDG_local;
+  const int spin_count = c->spin_count;
+  const int pair_count = c->t.pair_count;
+  const size_t output_count = c->output_count;
+  const size_t term_count = c->term_count;
+  const size_t dm_count = c->dm_count;
+  const size_t total_nolg = c->t.total_nolg;
+  const size_t total_orbs0 = c->t.total_orbs0;
+  const size_t total_orbs1 = c->t.total_orbs1;
+  const int *pair_NO0 = c->t.pair_NO0;
+  const int *pair_NO1 = c->t.pair_NO1;
+  const int *nolg_Nc = c->t.nolg_Nc;
+  const size_t *pair_h_offset = c->t.pair_h_offset;
+  const size_t *pair_nolg_offset = c->t.pair_nolg_offset;
+  const size_t *pair_orbs0_offset = c->t.pair_orbs0_offset;
+  const size_t *pair_orbs1_offset = c->t.pair_orbs1_offset;
+  const Type_Orbs_Grid *orbs0buf = c->t.orbs0buf;
+  const Type_Orbs_Grid *orbs1buf = c->t.orbs1buf;
+  uint32_t *out_ptr = c->out_ptr;
+  uint32_t *term_pt = c->term_pt;
+  uint32_t *pt_pair = c->pt_pair;
+  double *dm = c->dm;
+  double *tmpden = c->tmpden;
+  int Mc_AN, spin;
+
+  if (!c->ready || output_count == 0) return 0;
+  if (!SDG_pack_local_cdm(CDM, dm, dm_count, spin_count)) return 0;
+
+#pragma acc data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count],                            \
+                        pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],               \
+                        pair_orbs0_offset[0:pair_count], pair_orbs1_offset[0:pair_count],          \
+                        nolg_Nc[0:total_nolg], orbs0buf[0:total_orbs0], orbs1buf[0:total_orbs1],   \
+                        out_ptr[0:output_count+1], term_pt[0:term_count], pt_pair[0:term_count],   \
+                        dm[0:dm_count])                                                            \
+                 copyout(tmpden[0:(size_t)spin_count*output_count])
+  {
+#pragma acc parallel loop gang vector_length(128)                                                  \
+    present(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_h_offset[0:pair_count],           \
+            pair_nolg_offset[0:pair_count], pair_orbs0_offset[0:pair_count],                       \
+            pair_orbs1_offset[0:pair_count], nolg_Nc[0:total_nolg], orbs0buf[0:total_orbs0],       \
+            orbs1buf[0:total_orbs1], out_ptr[0:output_count+1], term_pt[0:term_count],             \
+            pt_pair[0:term_count], dm[0:dm_count], tmpden[0:(size_t)spin_count*output_count])
+    for (size_t out = 0; out < output_count; out++) {
+      double g0 = 0.0, g1 = 0.0, g2 = 0.0, g3 = 0.0;
+
+#pragma acc loop seq
+      for (uint32_t q = out_ptr[out]; q < out_ptr[out + 1]; q++) {
+        uint32_t pt = term_pt[q];
+        uint32_t pair = pt_pair[pt];
+        int NO0 = pair_NO0[pair];
+        int NO1 = pair_NO1[pair];
+        size_t mat = (size_t)NO0 * (size_t)NO1;
+        size_t base = pair_h_offset[pair];
+        size_t o0 = pair_orbs0_offset[pair] + (size_t)nolg_Nc[pt] * (size_t)NO0;
+        size_t o1 = pair_orbs1_offset[pair] + ((size_t)pt - pair_nolg_offset[pair]) * (size_t)NO1;
+        double e0 = 0.0, e1 = 0.0, e2 = 0.0, e3 = 0.0;
+
+#pragma acc loop seq
+        for (int ii = 0; ii < NO0; ii++) {
+          double t0 = 0.0, t1 = 0.0, t2 = 0.0, t3 = 0.0;
+#pragma acc loop seq
+          for (int jj = 0; jj < NO1; jj++) {
+            double phi1 = (double)orbs1buf[o1 + (size_t)jj];
+            size_t ij = (size_t)ii * (size_t)NO1 + (size_t)jj;
+            t0 += phi1 * dm[base + ij];
+            if (spin_count >= 2) t1 += phi1 * dm[base + mat + ij];
+            if (spin_count == 4) {
+              t2 += phi1 * dm[base + 2U * mat + ij];
+              t3 += phi1 * dm[base + 3U * mat + ij];
+            }
+          }
+          {
+            double phi0 = (double)orbs0buf[o0 + (size_t)ii];
+            e0 += phi0 * t0;
+            if (spin_count >= 2) e1 += phi0 * t1;
+            if (spin_count == 4) {
+              e2 += phi0 * t2;
+              e3 += phi0 * t3;
+            }
+          }
+        }
+        g0 += e0;
+        if (spin_count >= 2) g1 += e1;
+        if (spin_count == 4) {
+          g2 += e2;
+          g3 += e3;
+        }
+      }
+
+      tmpden[out] = g0;
+      if (spin_count >= 2) tmpden[output_count + out] = g1;
+      if (spin_count == 4) {
+        tmpden[2U * output_count + out] = g2;
+        tmpden[3U * output_count + out] = g3;
+      }
+    }
+  }
+
+  for (spin = 0; spin < spin_count; spin++) {
+    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+      size_t base = c->atom_out_base[Mc_AN];
+      size_t n = (size_t)GridN_Atom[M2G[Mc_AN]];
+
+      memcpy(Tmp_Den_Grid[spin][Mc_AN], tmpden + (size_t)spin * output_count + base,
+             sizeof(double) * n);
+    }
+  }
   return 1;
 }

@@ -20278,3 +20278,22 @@ size_t OpenMX_GpuPhaseNeed_Max(void)
   }
   return need;
 }
+
+size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix)
+{
+  size_t need = 0U;
+  size_t plen;
+  int i;
+
+  if (prefix==NULL || prefix[0]=='\0') return 0U;
+  plen = strlen(prefix);
+
+  for (i=0; i<OPENMX_GPU_PHASE_NEED_SLOTS; i++){
+    if (OpenMX_GpuPhaseNeed_Name[i][0]!='\0' &&
+        strncmp(OpenMX_GpuPhaseNeed_Name[i],prefix,plen)==0 &&
+        need<OpenMX_GpuPhaseNeed_Bytes[i]){
+      need = OpenMX_GpuPhaseNeed_Bytes[i];
+    }
+  }
+  return need;
+}

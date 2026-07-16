@@ -401,6 +401,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
 {
     SetHamiltonianGpuTurnPlan plan;
     unsigned long long phase_need = 0ULL;
+    unsigned long long diag_need = 0ULL;
     unsigned long long group_cls[SETH_RES_NCLASS] = {0ULL, 0ULL, 0ULL, 0ULL};
     SetHamiltonianGpuUuidRecord local_uuid;
     SetHamiltonianGpuUuidRecord *node_uuids = NULL;
@@ -523,20 +524,28 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
            gathered before the admission scan so a resident cache under
            pressure can release even when no rank is admitted this call. */
         unsigned long long local_cls[SETH_RES_NCLASS];
-        unsigned long long local_need = (unsigned long long)OpenMX_GpuPhaseNeed_Max();
+        unsigned long long local_needs[2], group_needs[2] = {0ULL, 0ULL};
+        unsigned long long test_need = (unsigned long long)Set_Hamiltonian_GpuTestNeed_Now;
 
         for (int c = 0; c < SETH_RES_NCLASS; c++) {
             local_cls[c] = (resident_request_class != NULL) ?
                 (unsigned long long)resident_request_class[c] : 0ULL;
         }
-        if (local_need < (unsigned long long)Set_Hamiltonian_GpuTestNeed_Now) {
-            local_need = (unsigned long long)Set_Hamiltonian_GpuTestNeed_Now;
-        }
+
+        /* [0]: the largest need of any registered GPU phase; [1]: the same
+           restricted to the diagonalization planners.  The test hook counts
+           as a diagonalization need so it exercises the same branches. */
+        local_needs[0] = (unsigned long long)OpenMX_GpuPhaseNeed_Max();
+        local_needs[1] = (unsigned long long)OpenMX_GpuPhaseNeed_MaxPrefixed("band_");
+        if (local_needs[0] < test_need) local_needs[0] = test_need;
+        if (local_needs[1] < test_need) local_needs[1] = test_need;
 
         MPI_Allreduce(local_cls, group_cls, SETH_RES_NCLASS,
                       MPI_UNSIGNED_LONG_LONG, MPI_SUM, plan.device_comm);
-        MPI_Allreduce(&local_need, &phase_need, 1,
+        MPI_Allreduce(local_needs, group_needs, 2,
                       MPI_UNSIGNED_LONG_LONG, MPI_MAX, plan.device_comm);
+        phase_need = group_needs[0];
+        diag_need = group_needs[1];
         plan.registered_need_bytes = (size_t)phase_need;
 
         if (resident_active && 0ULL < phase_need) {
@@ -604,7 +613,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
         for (int c = 0; c < SETH_RES_NCLASS; c++) total_request += group_cls[c];
 
         if (0ULL < total_request) {
-            if (0ULL < phase_need) {
+            if (0ULL < diag_need) {
                 unsigned long long floor_bytes =
                     (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes(1);
 
@@ -619,6 +628,9 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
                    instead of claiming memory the k-owners may need. */
             }
             else {
+                /* The cluster diagonalization does not publish its need, so
+                   keep the conservative legacy floor even when other phases
+                   (density-grid staging) have registered theirs. */
                 unsigned long long floor_bytes =
                     (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes(0);
 
@@ -811,6 +823,45 @@ static void Set_Hamiltonian_ME_ReleaseDeviceCache(void)
 void Set_Hamiltonian_Release_OpenACC_DeviceCache(void)
 {
     Set_Hamiltonian_ME_ReleaseDeviceCache();
+}
+
+int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables)
+{
+    SetHamiltonianMatrixElementsCache *cache;
+    int myid;
+
+    memset(tables, 0, sizeof(*tables));
+    if (Cnt_kind != 0 && Cnt_kind != 1) return 0;
+    if (SpinP_switch != 0 && SpinP_switch != 1 && SpinP_switch != 3) return 0;
+    if (Matomnum <= 0) return 0;
+
+    MPI_Comm_rank(mpi_comm_level1, &myid);
+    cache = Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
+    if (!cache->ready || cache->pair_count <= 0) return 0;
+
+    tables->pair_count = cache->pair_count;
+    tables->total_h = cache->total_h;
+    tables->total_nolg = cache->total_nolg;
+    tables->total_orbs0 = cache->total_orbs0;
+    tables->total_orbs1 = cache->total_orbs1;
+    tables->pair_Mc_AN = cache->pair_Mc_AN;
+    tables->pair_h_AN = cache->pair_h_AN;
+    tables->pair_NO0 = cache->pair_NO0;
+    tables->pair_NO1 = cache->pair_NO1;
+    tables->pair_NOLG = cache->pair_NOLG;
+    tables->nolg_MN = cache->nolg_MN;
+    tables->nolg_Nc = cache->nolg_Nc;
+    tables->pair_h_offset = cache->pair_h_offset;
+    tables->pair_nolg_offset = cache->pair_nolg_offset;
+    tables->pair_orbs0_offset = cache->pair_orbs0_offset;
+    tables->pair_orbs1_offset = cache->pair_orbs1_offset;
+    tables->orbs0buf = cache->orbs0buf;
+    tables->orbs1buf = cache->orbs1buf;
+    tables->orbs0_resident = (cache->resident_mask >> SETH_RES_ORBS0) & 1;
+    tables->orbs1_resident = (cache->resident_mask >> SETH_RES_ORBS1) & 1;
+    tables->nolg_resident = (cache->resident_mask >> SETH_RES_NOLG) & 1;
+    tables->meta_resident = (cache->resident_mask >> SETH_RES_META) & 1;
+    return 1;
 }
 
 static void Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache(void)

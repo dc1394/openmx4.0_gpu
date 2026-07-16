@@ -3347,6 +3347,39 @@ void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(void);
 void Set_Hamiltonian_Release_OpenACC_DeviceCache(void);
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
+size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
+
+/* Read-only view of Set_Hamiltonian's matrix-elements tables (the central
+   full-sphere orbitals, the FNAN-layout neighbour orbitals and the overlap
+   index lists) so other grid quadratures can share one device copy. */
+typedef struct {
+  int pair_count;
+  int orbs0_resident;
+  int orbs1_resident;
+  int nolg_resident;
+  int meta_resident;
+  size_t total_h;
+  size_t total_nolg;
+  size_t total_orbs0;
+  size_t total_orbs1;
+  const int *pair_Mc_AN;
+  const int *pair_h_AN;
+  const int *pair_NO0;
+  const int *pair_NO1;
+  const int *pair_NOLG;
+  const int *nolg_MN;
+  const int *nolg_Nc;
+  const size_t *pair_h_offset;
+  const size_t *pair_nolg_offset;
+  const size_t *pair_orbs0_offset;
+  const size_t *pair_orbs1_offset;
+  const Type_Orbs_Grid *orbs0buf;
+  const Type_Orbs_Grid *orbs1buf;
+} SetHamiltonianMETables;
+
+int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables);
+int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON);
+int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
 void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
