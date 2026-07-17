@@ -385,3 +385,132 @@ int32_t gpusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int32_t m, in
 
     return info;
 }
+
+/* Same contract as gpusolver_Syevdx_Complex_openacc (A and W must already be
+   present on the device), but the cusolver handle, stream and workspaces are
+   cached across calls.  The divide-conquer solver calls this once per atom,
+   so recreating the handle each time dominated small solves. */
+typedef struct {
+    int                initialized;
+    int                device_id;
+    size_t             d_work_bytes;
+    size_t             h_work_bytes;
+    cusolverDnHandle_t handle;
+    cudaStream_t       stream;
+    void *             d_work;
+    void *             h_work;
+    int32_t *          d_info;
+} GpusolverSyevdxCachedCtx;
+
+static GpusolverSyevdxCachedCtx gpusolver_syevdx_cached_ctx = {0};
+
+static void gpusolver_Syevdx_Cached_Destroy(void)
+{
+    GpusolverSyevdxCachedCtx *ctx = &gpusolver_syevdx_cached_ctx;
+
+    if (ctx->d_work != NULL)
+        wait_cudafunc(cudaFree(ctx->d_work));
+    if (ctx->d_info != NULL)
+        wait_cudafunc(cudaFree(ctx->d_info));
+    if (ctx->h_work != NULL)
+        free(ctx->h_work);
+    if (ctx->handle != NULL)
+        wait_cudafunc(cusolverDnDestroy(ctx->handle));
+    if (ctx->stream != NULL)
+        wait_cudafunc(cudaStreamDestroy(ctx->stream));
+
+    ctx->initialized  = 0;
+    ctx->device_id    = -1;
+    ctx->d_work_bytes = 0;
+    ctx->h_work_bytes = 0;
+    ctx->handle       = NULL;
+    ctx->stream       = NULL;
+    ctx->d_work       = NULL;
+    ctx->h_work       = NULL;
+    ctx->d_info       = NULL;
+}
+
+static void gpusolver_Syevdx_Cached_Init(void)
+{
+    GpusolverSyevdxCachedCtx *ctx = &gpusolver_syevdx_cached_ctx;
+    int                       current_device;
+
+    wait_cudafunc(cudaGetDevice(&current_device));
+
+    if (ctx->initialized && ctx->device_id == current_device) {
+        return;
+    }
+
+    if (ctx->initialized) {
+        gpusolver_Syevdx_Cached_Destroy();
+    }
+
+    wait_cudafunc(cusolverDnCreate(&ctx->handle));
+    wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
+    wait_cudafunc(cusolverDnSetStream(ctx->handle, ctx->stream));
+    wait_cudafunc(cudaMalloc((void **)&ctx->d_info, sizeof(int32_t)));
+
+    ctx->initialized = 1;
+    ctx->device_id   = current_device;
+}
+
+int32_t gpusolver_Syevdx_Complex_openacc_cached(dcomplex * A, double * W, int32_t m, int32_t MaxN)
+{
+    GpusolverSyevdxCachedCtx *ctx = &gpusolver_syevdx_cached_ctx;
+    int32_t const             lda = m;
+
+    double  vl     = 0.0;
+    double  vu     = 0.0;
+    int64_t h_meig = 0;
+    int32_t info   = 0;
+
+    size_t workspaceInBytesOnDevice = 0;
+    size_t workspaceInBytesOnHost   = 0;
+
+    gpusolver_Syevdx_Cached_Init();
+
+#pragma acc data      present(A[0 : m * m])
+#pragma acc data      present(W[0 : MaxN])
+#pragma acc host_data use_device(A, W)
+    {
+        cusolverEigMode_t const jobz = CUSOLVER_EIG_MODE_VECTOR;
+        cublasFillMode_t const  uplo = CUBLAS_FILL_MODE_LOWER;
+        cusolverEigRange_t      range;
+        if (m == MaxN) {
+            range = CUSOLVER_EIG_RANGE_ALL;
+        } else {
+            range = CUSOLVER_EIG_RANGE_I;
+        }
+
+        wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, m, CUDA_C_64F, A, lda, &vl,
+                                                   &vu, 1L, MaxN, &h_meig, CUDA_R_64F, W, CUDA_C_64F,
+                                                   &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
+
+        if (workspaceInBytesOnDevice > ctx->d_work_bytes) {
+            if (ctx->d_work != NULL)
+                wait_cudafunc(cudaFree(ctx->d_work));
+            ctx->d_work = NULL;
+            wait_cudafunc(cudaMalloc((void **)&ctx->d_work, workspaceInBytesOnDevice));
+            ctx->d_work_bytes = workspaceInBytesOnDevice;
+        }
+        if (workspaceInBytesOnHost > ctx->h_work_bytes) {
+            if (ctx->h_work != NULL)
+                free(ctx->h_work);
+            ctx->h_work = malloc(workspaceInBytesOnHost);
+            if (!ctx->h_work) {
+                fprintf(stderr, "Could not allocate host memory.\n");
+                exit(1);
+            }
+            ctx->h_work_bytes = workspaceInBytesOnHost;
+        }
+
+        wait_cudafunc(cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, m, CUDA_C_64F, A, lda, &vl, &vu, 1L,
+                                        MaxN, &h_meig, CUDA_R_64F, W, CUDA_C_64F, ctx->d_work,
+                                        workspaceInBytesOnDevice, ctx->h_work, workspaceInBytesOnHost, ctx->d_info));
+
+        wait_cudafunc(cudaMemcpyAsync(&info, ctx->d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, ctx->stream));
+        wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+    }
+
+    return info;
+}

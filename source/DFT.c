@@ -2312,6 +2312,7 @@ double DFT(int MD_iter, int Cnt_Now)
   /* return Set_Hamiltonian's device-resident tables so the force batches
      measure the true free GPU memory */
   Set_Hamiltonian_Release_OpenACC_DeviceCache();
+  Divide_Conquer_Release_GPU_SCache();
 
   if (!orbitalOpt_Force_Skip) time7 += Force(H0,DS_NL,OLP,DM[0],EDM);
   
