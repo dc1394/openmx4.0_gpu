@@ -97,6 +97,52 @@ static void *ClusterCol_MallocArray(size_t count, size_t elem_size, const char *
     return ptr;
 }
 
+/* Bounded device allocation for the cluster dense path.  wait_cudafunc()
+   retries forever, which suits the transient pressure the band-path turn
+   ladder resolves, but on a device that stays full (many ranks sharing one
+   small GPU) it spins silently while every other rank waits in MPI.  Absorb
+   short races with a few retries and report a persistent failure instead. */
+static cudaError_t ClusterCol_TryDeviceMalloc(void **ptr, size_t bytes)
+{
+    cudaError_t err = cudaErrorMemoryAllocation;
+
+    for (int attempt=0; attempt<8; attempt++){
+        err = cudaMalloc(ptr, bytes);
+        if (err == cudaSuccess) return cudaSuccess;
+        (void)cudaGetLastError();
+
+        double wait_time    = drand48() * WAITTIME;
+        double start_time   = MPI_Wtime();
+        double current_time = start_time;
+        while ((current_time - start_time) < wait_time) {
+            current_time = MPI_Wtime();
+        }
+    }
+
+    *ptr = NULL;
+    return err;
+}
+
+static void ClusterCol_DeviceOutOfMemoryAbort(const char *what, size_t bytes)
+{
+    size_t free_bytes = 0;
+    size_t total_bytes = 0;
+    char msg[512];
+
+    if (cudaMemGetInfo(&free_bytes,&total_bytes) != cudaSuccess){
+        (void)cudaGetLastError();
+    }
+    snprintf(msg, sizeof(msg),
+             "Cluster_DFT_Col.c: out of GPU memory while allocating %s "
+             "(%.1f MiB requested, %.1f MiB free of %.1f MiB). "
+             "Reduce the MPI ranks sharing the device or set "
+             "OPENMX_CLUSTER_GPU_DIAG=0 to use the CPU diagonalization.",
+             what, (double)bytes/(1024.0*1024.0),
+             (double)free_bytes/(1024.0*1024.0),
+             (double)total_bytes/(1024.0*1024.0));
+    ClusterCol_AbortWithMessage(msg);
+}
+
 static void ClusterCol_GpuSolver_Destroy(void)
 {
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
@@ -185,11 +231,20 @@ static void ClusterCol_GpuSolver_EnsureMatrixCapacity(int n)
     matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"GpuSolver dense matrix bytes");
     vector_bytes = ClusterCol_CheckedMulCount((size_t)n,sizeof(double),"GpuSolver eigenvalue bytes");
 
-    wait_cudafunc(cudaMalloc((void**)&ctx->d_S,matrix_bytes));
-    wait_cudafunc(cudaMalloc((void**)&ctx->d_H,matrix_bytes));
-    wait_cudafunc(cudaMalloc((void**)&ctx->d_tmp,matrix_bytes));
-    wait_cudafunc(cudaMalloc((void**)&ctx->d_W,vector_bytes));
-    wait_cudafunc(cudaMalloc((void**)&ctx->d_info,sizeof(int32_t)));
+    ctx->d_S = NULL;
+    ctx->d_H = NULL;
+    ctx->d_tmp = NULL;
+    ctx->d_W = NULL;
+    ctx->d_info = NULL;
+    ctx->matrix_dim = 0;
+
+    if (ClusterCol_TryDeviceMalloc((void**)&ctx->d_S,matrix_bytes)      != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc((void**)&ctx->d_H,matrix_bytes)      != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc((void**)&ctx->d_tmp,matrix_bytes)    != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc((void**)&ctx->d_W,vector_bytes)      != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc((void**)&ctx->d_info,sizeof(int32_t)) != cudaSuccess){
+        ClusterCol_DeviceOutOfMemoryAbort("the dense solver matrices",matrix_bytes);
+    }
 
     ctx->matrix_dim = n;
     ctx->transformed_s_valid = 0;
@@ -222,7 +277,10 @@ static void ClusterCol_GpuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
     if (ctx->d_work_bytes<d_bytes){
         if (ctx->d_work!=NULL) wait_cudafunc(cudaFree(ctx->d_work));
         ctx->d_work = NULL;
-        if (0<d_bytes) wait_cudafunc(cudaMalloc((void**)&ctx->d_work,d_bytes));
+        ctx->d_work_bytes = 0;
+        if (0<d_bytes && ClusterCol_TryDeviceMalloc((void**)&ctx->d_work,d_bytes) != cudaSuccess){
+            ClusterCol_DeviceOutOfMemoryAbort("the eigensolver workspace",d_bytes);
+        }
         ctx->d_work_bytes = d_bytes;
     }
 
@@ -383,7 +441,14 @@ static void ClusterCol_StashDeviceEvec(int spin, int n, int maxn)
         if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(cudaFree(ctx->d_evec_stash[spin]));
         ctx->d_evec_stash[spin] = NULL;
         ctx->evec_stash_count[spin] = 0;
-        wait_cudafunc(cudaMalloc((void**)&ctx->d_evec_stash[spin],bytes));
+        /* the stash only short-circuits the host round trip of the DM
+           accumulation; when the shared device has no room left the solve
+           is already complete, so skip stashing instead of waiting */
+        if (ClusterCol_TryDeviceMalloc((void**)&ctx->d_evec_stash[spin],bytes) != cudaSuccess){
+            ctx->d_evec_stash[spin] = NULL;
+            ctx->evec_stash_valid[spin] = 0;
+            return;
+        }
         ctx->evec_stash_count[spin] = count;
     }
 
@@ -532,6 +597,26 @@ static const int *ClusterCol_DenseIndexCache_Get(const int *order_GA, int *MP, i
     cache->tnum = tnum;
     cache->fingerprint = fingerprint;
     return cache->dense_index;
+}
+
+/* Pre-Force release: the dense solver context (matrices, eigensolver
+   workspace, eigenvector stash) and the device-resident scatter index keep
+   several GiB of the shared device between SCF cycles.  The force batches
+   size themselves from the free device memory, so return everything before
+   Force() runs; the next SCF cycle rebuilds on demand. */
+void Cluster_DFT_Col_Release_GPU_Solver(void)
+{
+    ClusterColDenseIndexCache *cache = &ClusterCol_dense_index_cache;
+
+    if (cache->dense_index != NULL) {
+        int *old_index = cache->dense_index;
+        int old_tnum = cache->tnum;
+#pragma acc exit data delete(old_index[0 : old_tnum])
+        free(old_index);
+    }
+    memset(cache, 0, sizeof(*cache));
+
+    ClusterCol_GpuSolver_Destroy();
 }
 
 typedef struct {
@@ -702,6 +787,113 @@ static void ClusterCol_GpuSolver_CheckInfo(const char *where, int info)
         snprintf(msg, sizeof(msg), "%s failed in Cluster_DFT_Col.c: info=%d", where, info);
         ClusterCol_AbortWithMessage(msg);
     }
+}
+
+static size_t ClusterCol_GpuDiagReserveBytes(void)
+{
+    const char *value = getenv("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
+    long mib = 1024;
+
+    if (value!=NULL){
+        long parsed = atol(value);
+        if (0<=parsed) mib = parsed;
+    }
+    return (size_t)mib*1024ULL*1024ULL;
+}
+
+/* Collectively decide whether the root-dense GPU diagonalization fits on
+   the device.  When many ranks share one small GPU the dense matrices may
+   never fit, and committing to the GPU path used to spin forever inside
+   wait_cudafunc(cudaMalloc(...)) while every other rank sat in MPI_Bcast.
+   The dense-owning rank of each spin world compares the allocations it
+   still needs (matrices plus a conservative eigensolver-workspace bound)
+   against the free device memory; the verdict is agreed on over
+   mpi_comm_level1 because the ScaLAPACK/ELPA fallback below uses level1
+   collectives, so both spin worlds must take the same branch.  It is
+   cached until the next SCF restart or a change of the matrix size.
+   OPENMX_CLUSTER_GPU_DIAG=1 forces the GPU path, =0 forces the fallback. */
+static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1)
+{
+    static int verdict = -1;
+    static int verdict_n = 0;
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    const char *force = getenv("OPENMX_CLUSTER_GPU_DIAG");
+    int announce = (myworld1==0 && myid1==0);
+    int my_fit = 1;
+    int fit = 0;
+
+    if (force!=NULL){
+        static int force_announced = 0;
+        int forced = (atoi(force)!=0);
+
+        if (!forced && !force_announced && announce){
+            printf("<Cluster_DFT_Col> GPU dense diagonalization disabled by OPENMX_CLUSTER_GPU_DIAG=0.\n");
+            fflush(stdout);
+        }
+        force_announced = 1;
+        return forced;
+    }
+
+    if (verdict!=-1 && verdict_n==n && 1<SCF_iter) return verdict;
+
+    if (myid1==0){
+        size_t dense_count  = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"GPU diagonalization preflight");
+        size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"GPU diagonalization preflight bytes");
+        size_t work_bytes   = ClusterCol_CheckedMulCount(dense_count,2*sizeof(double),"GPU eigensolver workspace bound");
+        size_t need = 0;
+
+        if (ctx->matrix_dim<n){
+            need += 3*matrix_bytes + (size_t)n*sizeof(double) + sizeof(int32_t);
+        }
+        if (ctx->d_work_bytes<work_bytes){
+            need += work_bytes - ctx->d_work_bytes;
+        }
+
+        if (0<need){
+            size_t free_bytes = 0;
+            size_t total_bytes = 0;
+
+            if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
+                (void)cudaGetLastError();
+                my_fit = 0;
+            }
+            else{
+                size_t reserve = ClusterCol_GpuDiagReserveBytes();
+
+                my_fit = (need+reserve<=free_bytes);
+                if (!my_fit && announce){
+                    printf("<Cluster_DFT_Col> The GPU dense solver would need %.1f MiB more device memory"
+                           " (+%.1f MiB reserve) but only %.1f MiB of %.1f MiB is free;"
+                           " falling back to the ELPA/ScaLAPACK diagonalization."
+                           " Force the GPU path with OPENMX_CLUSTER_GPU_DIAG=1 or lower"
+                           " OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB.\n",
+                           (double)need/(1024.0*1024.0),
+                           (double)reserve/(1024.0*1024.0),
+                           (double)free_bytes/(1024.0*1024.0),
+                           (double)total_bytes/(1024.0*1024.0));
+                    fflush(stdout);
+                }
+            }
+        }
+    }
+
+    MPI_Allreduce(&my_fit,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+
+    if (fit==0 && my_fit==1 && announce){
+        printf("<Cluster_DFT_Col> A dense-owning rank is short of GPU memory;"
+               " falling back to the ELPA/ScaLAPACK diagonalization.\n");
+        fflush(stdout);
+    }
+
+    if (fit==0){
+        /* a flip back to the CPU path (e.g. at an MD step boundary) must
+           return whatever device memory the solver context still holds */
+        ClusterCol_GpuSolver_Destroy();
+    }
+
+    verdict = fit;
+    verdict_n = n;
+    return verdict;
 }
 
 static void ClusterCol_SetMaxNAndPartitions(int SCF_iter, const char *mode, double TZ, int n, int numprocs1,
@@ -1252,7 +1444,8 @@ double Cluster_DFT_Col(
     }
   }
 
-  if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n){
+  if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n &&
+      ClusterCol_GpuDiagFits(SCF_iter,n,myworld1,myid1)){
     ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
     firsttime = 0;
     ClusterCol_GpuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,

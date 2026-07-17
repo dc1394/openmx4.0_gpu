@@ -3380,6 +3380,9 @@ typedef struct {
 } SetHamiltonianMETables;
 
 int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables);
+int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind);
+void Cluster_DFT_Col_Release_GPU_Solver(void);
+void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON);
 int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);

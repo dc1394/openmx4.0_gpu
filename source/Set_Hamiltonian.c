@@ -825,6 +825,18 @@ void Set_Hamiltonian_Release_OpenACC_DeviceCache(void)
     Set_Hamiltonian_ME_ReleaseDeviceCache();
 }
 
+/* Non-building probe: report whether the shared matrix-elements tables for
+   this Cnt_kind already exist.  Set_Hamiltonian_GetMatrixElementsTables
+   builds the multi-GiB host tables on first use, which consumers that only
+   want to ride on existing tables (Set_Density_Grid's distributed mode)
+   must not trigger — on a crowded device most ranks run Set_Hamiltonian on
+   the CPU and never build them, and forcing the build on every such rank
+   at once can exhaust the host memory. */
+int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind)
+{
+    return Set_Hamiltonian_ME_CacheMatches(&Set_Hamiltonian_ME_Cache, Cnt_kind);
+}
+
 int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables)
 {
     SetHamiltonianMatrixElementsCache *cache;

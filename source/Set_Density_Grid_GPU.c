@@ -1199,7 +1199,25 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
             scf_eigen_lib_flag == GPUSOLVER && (Solver == 2 || Solver == 3) &&
             Cnt_switch == 0 && (Cnt_kind == 0 || Cnt_kind == 1) &&
             (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3);
-  if (!enabled || c->unavailable) return 0;
+  if (!enabled) return 0;
+
+  /* Mode 1 rides on the tables Set_Hamiltonian has already built.  Asking
+     Set_Hamiltonian_GetMatrixElementsTables below would lazily BUILD the
+     multi-GiB host tables on every rank whose Set_Hamiltonian ran on the
+     CPU (a crowded device leaves most ranks without tables), and at
+     1000-atom scale that simultaneous build alone can exhaust the host
+     memory.  Probe for existing tables first — collectively, because
+     SDG_local_build contains collectives and every rank must take the
+     same branch. */
+  if (mode == 1) {
+    int my_ready = Set_Hamiltonian_MatrixElementsTables_Ready(Cnt_kind);
+    int all_ready = 0;
+
+    MPI_Allreduce(&my_ready, &all_ready, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+    if (!all_ready) return 0;
+  }
+
+  if (c->unavailable) return 0;
 
   if (c->ready && (c->spin_count != spin_count || c->cnt_kind != Cnt_kind)) {
     SDG_local_free();

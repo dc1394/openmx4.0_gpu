@@ -738,6 +738,13 @@ static void ClusterNonCol_GpuEigenCtx_Release(void)
     memset(ctx, 0, sizeof(*ctx));
 }
 
+/* Pre-Force release: the cached zheevdx workspace can hold multiple GiB of
+   the shared device between SCF cycles; return it before Force() runs. */
+void Cluster_DFT_NonCol_Release_GPU_Solver(void)
+{
+    ClusterNonCol_GpuEigenCtx_Release();
+}
+
 static ClusterNonColGpuEigenCtx *ClusterNonCol_GpuEigenCtx_Get(void)
 {
     ClusterNonColGpuEigenCtx *ctx = &ClusterNonCol_gpu_eigen_ctx;
@@ -787,7 +794,18 @@ static void ClusterNonCol_ZheevdxPresent(dcomplex *A, double *W, int n, int maxn
                 if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
                 ctx->d_work = NULL;
                 ctx->d_work_bytes = 0;
-                wait_cudafunc(cudaMalloc(&ctx->d_work, d_bytes));
+                /* a multi-GiB workspace on a permanently full device would
+                   make wait_cudafunc spin forever; fail with a diagnostic
+                   instead of freezing the whole run */
+                if (cudaMalloc(&ctx->d_work, d_bytes) != cudaSuccess) {
+                    char msg[256];
+                    (void)cudaGetLastError();
+                    snprintf(msg, sizeof(msg),
+                             "Cluster_DFT_NonCol.c: out of GPU memory for the %.1f MiB eigensolver workspace; "
+                             "reduce the MPI ranks sharing the device.",
+                             (double)d_bytes / (1024.0 * 1024.0));
+                    ClusterNonCol_AbortWithMessage(msg);
+                }
                 ctx->d_work_bytes = d_bytes;
             }
             if (ctx->h_work_bytes < h_bytes) {
