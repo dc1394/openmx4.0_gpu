@@ -1174,37 +1174,46 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
             double* dchi_dev;
             int ic;
 
-            /* claim the whole chunk-loop footprint (scratch, staged chunk
-               buffers, radial tables) once before the data region opens:
-               the region's own allocations would abort fatally if a peer
-               rank grabbed the memory in between */
-            {
-                size_t probe_bytes = (max_dchi == 0 ? 1 : max_dchi) * sizeof(double)
-                    + sizeof(*rv_p) * rv_map + sizeof(*rwf_p) * rwf_map
-                    + sizeof(*rvo_p) * spo_map + sizeof(*rwb_p) * spo_map
-                    + sizeof(*spm_p) * sp_map + sizeof(*spx_p) * sp_map
-                    + sizeof(*spb_p) * spl_map
-                    + sizeof(Force3GpuPair) * pm_n
-                    + 2 * sizeof(int) * glb_n + sizeof(float) * fnb_n
-                    + sizeof(double) * dmb_n + sizeof(double) * pf_n
-                    + sizeof(int) * pt_n
-                    + (2 * sizeof(int) + 2 * sizeof(size_t)) * am_n
-                    + (size_t)16 * 1024 * 1024;
-                void* probe = Force_gpu_arena_wait(probe_bytes, "GPU trace chunk buffers");
+            /* one arena claim covers the whole chunk-loop footprint
+               (scratch, staged chunk buffers, radial tables).  A data
+               region here would allocate piecemeal and abort fatally if
+               a peer rank grabbed the memory in between; the arena wait
+               is non-fatal and the kernels read the same-name shadow
+               pointers below, so the kernel bodies stay verbatim */
+            size_t arena_pos = 0;
+            const size_t o_dchi = Force_gpu_arena_off(&arena_pos, (max_dchi == 0 ? 1 : max_dchi) * sizeof(double));
+            const size_t o_rv   = Force_gpu_arena_off(&arena_pos, sizeof(*rv_p) * rv_map);
+            const size_t o_rwf  = Force_gpu_arena_off(&arena_pos, sizeof(*rwf_p) * rwf_map);
+            const size_t o_rvo  = Force_gpu_arena_off(&arena_pos, sizeof(*rvo_p) * spo_map);
+            const size_t o_rwb  = Force_gpu_arena_off(&arena_pos, sizeof(*rwb_p) * spo_map);
+            const size_t o_spm  = Force_gpu_arena_off(&arena_pos, sizeof(*spm_p) * sp_map);
+            const size_t o_spx  = Force_gpu_arena_off(&arena_pos, sizeof(*spx_p) * sp_map);
+            const size_t o_spb  = Force_gpu_arena_off(&arena_pos, sizeof(*spb_p) * spl_map);
+            const size_t o_pm   = Force_gpu_arena_off(&arena_pos, sizeof(Force3GpuPair) * pm_n);
+            const size_t o_gl1  = Force_gpu_arena_off(&arena_pos, sizeof(int) * glb_n);
+            const size_t o_gl2  = Force_gpu_arena_off(&arena_pos, sizeof(int) * glb_n);
+            const size_t o_fn   = Force_gpu_arena_off(&arena_pos, sizeof(float) * fnb_n);
+            const size_t o_dm   = Force_gpu_arena_off(&arena_pos, sizeof(double) * dmb_n);
+            const size_t o_pf   = Force_gpu_arena_off(&arena_pos, sizeof(double) * pf_n);
+            const size_t o_pt   = Force_gpu_arena_off(&arena_pos, sizeof(int) * pt_n);
+            const size_t o_awan = Force_gpu_arena_off(&arena_pos, sizeof(int) * am_n);
+            const size_t o_ano0 = Force_gpu_arena_off(&arena_pos, sizeof(int) * am_n);
+            const size_t o_adchi = Force_gpu_arena_off(&arena_pos, sizeof(size_t) * am_n);
+            const size_t o_apt0 = Force_gpu_arena_off(&arena_pos, sizeof(size_t) * am_n);
+            unsigned char* chunk_arena =
+                (unsigned char*)Force_gpu_arena_wait(arena_pos, "GPU trace chunk buffers");
 
-                acc_free(probe);
-                Force_gpu_pool_flush();
-            }
+            /* the radial tables are read-only for the whole chunk loop */
+            acc_memcpy_to_device(chunk_arena + o_rv,  rv_p,  sizeof(*rv_p) * rv_map);
+            acc_memcpy_to_device(chunk_arena + o_rwf, rwf_p, sizeof(*rwf_p) * rwf_map);
+            acc_memcpy_to_device(chunk_arena + o_rvo, rvo_p, sizeof(*rvo_p) * spo_map);
+            acc_memcpy_to_device(chunk_arena + o_rwb, rwb_p, sizeof(*rwb_p) * spo_map);
+            acc_memcpy_to_device(chunk_arena + o_spm, spm_p, sizeof(*spm_p) * sp_map);
+            acc_memcpy_to_device(chunk_arena + o_spx, spx_p, sizeof(*spx_p) * sp_map);
+            acc_memcpy_to_device(chunk_arena + o_spb, spb_p, sizeof(*spb_p) * spl_map);
 
-            dchi_dev = (double*)Force_gpu_arena_wait(
-                (max_dchi == 0 ? 1 : max_dchi) * sizeof(double), "GPU trace scratch");
+            dchi_dev = (double*)(void*)(chunk_arena + o_dchi);
 
-#pragma acc data copyin(rv_p[0 : rv_map], rwf_p[0 : rwf_map], \
-                        rvo_p[0 : spo_map], rwb_p[0 : spo_map], spm_p[0 : sp_map], \
-                        spx_p[0 : sp_map], spb_p[0 : spl_map]) \
-                 create(pm[0 : pm_n], gl1[0 : glb_n], gl2[0 : glb_n], fn_buf[0 : fnb_n], \
-                        dm_buf[0 : dmb_n], pair_f[0 : pf_n], pt_aidx[0 : pt_n], \
-                        a_wan[0 : am_n], a_no0[0 : am_n], a_dchi[0 : am_n], a_pt0[0 : am_n])
     {
         for (ic = 0; ic < n_chunks; ic++) {
 
@@ -1304,10 +1313,13 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     const size_t gl_u = (gl_count == 0 ? 1 : gl_count);
                     const size_t fn_u = (fn_count == 0 ? 1 : fn_count);
                     const size_t dm_u = (dm_count == 0 ? 1 : dm_count);
-                    const int npairs_u = (npairs == 0 ? 1 : npairs);
+                    const size_t npairs_u = (size_t)(npairs == 0 ? 1 : npairs);
 
-#pragma acc update device(pm[0 : npairs_u], gl1[0 : gl_u], gl2[0 : gl_u], \
-                          fn_buf[0 : fn_u], dm_buf[0 : dm_u])
+                    acc_memcpy_to_device(chunk_arena + o_pm,  pm,     sizeof(Force3GpuPair) * npairs_u);
+                    acc_memcpy_to_device(chunk_arena + o_gl1, gl1,    sizeof(int) * gl_u);
+                    acc_memcpy_to_device(chunk_arena + o_gl2, gl2,    sizeof(int) * gl_u);
+                    acc_memcpy_to_device(chunk_arena + o_fn,  fn_buf, sizeof(float) * fn_u);
+                    acc_memcpy_to_device(chunk_arena + o_dm,  dm_buf, sizeof(double) * dm_u);
                 }
 
                 /* ---- the per-chunk orbital derivatives ---- */
@@ -1340,14 +1352,28 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                             const size_t npts_u = (npts == 0 ? 1 : npts);
                             const size_t am_u = (size_t)chunk_atoms;
 
-#pragma acc update device(pt_aidx[0 : npts_u], a_wan[0 : am_u], a_no0[0 : am_u], \
-                          a_dchi[0 : am_u], a_pt0[0 : am_u])
+                            acc_memcpy_to_device(chunk_arena + o_pt,    pt_aidx, sizeof(int) * npts_u);
+                            acc_memcpy_to_device(chunk_arena + o_awan,  a_wan,   sizeof(int) * am_u);
+                            acc_memcpy_to_device(chunk_arena + o_ano0,  a_no0,   sizeof(int) * am_u);
+                            acc_memcpy_to_device(chunk_arena + o_adchi, a_dchi,  sizeof(size_t) * am_u);
+                            acc_memcpy_to_device(chunk_arena + o_apt0,  a_pt0,   sizeof(size_t) * am_u);
                             {
-#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, xyz_chunk) \
-    present(pt_aidx[0 : npts_u], a_wan[0 : am_u], a_no0[0 : am_u], \
-            a_dchi[0 : am_u], a_pt0[0 : am_u], \
-            rv_p[0 : rv_map], rwf_p[0 : rwf_map], rvo_p[0 : spo_map], rwb_p[0 : spo_map], \
-            spm_p[0 : sp_map], spx_p[0 : sp_map], spb_p[0 : spl_map])
+                                const int* pt_aidx = (const int*)(const void*)(chunk_arena + o_pt);
+                                const int* a_wan = (const int*)(const void*)(chunk_arena + o_awan);
+                                const int* a_no0 = (const int*)(const void*)(chunk_arena + o_ano0);
+                                const size_t* a_dchi = (const size_t*)(const void*)(chunk_arena + o_adchi);
+                                const size_t* a_pt0 = (const size_t*)(const void*)(chunk_arena + o_apt0);
+                                const double* rv_p = (const double*)(const void*)(chunk_arena + o_rv);
+                                const double* rwf_p = (const double*)(const void*)(chunk_arena + o_rwf);
+                                const size_t* rvo_p = (const size_t*)(const void*)(chunk_arena + o_rvo);
+                                const size_t* rwb_p = (const size_t*)(const void*)(chunk_arena + o_rwb);
+                                const int* spm_p = (const int*)(const void*)(chunk_arena + o_spm);
+                                const int* spx_p = (const int*)(const void*)(chunk_arena + o_spx);
+                                const int* spb_p = (const int*)(const void*)(chunk_arena + o_spb);
+
+#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, xyz_chunk, \
+    pt_aidx, a_wan, a_no0, a_dchi, a_pt0, \
+    rv_p, rwf_p, rvo_p, rwb_p, spm_p, spx_p, spb_p)
                                 for (int ip = 0; ip < npts_c; ip++) {
                                     const int a2 = pt_aidx[ip];
                                     const int wan = a_wan[a2];
@@ -1660,15 +1686,17 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                 if (0 < npairs) {
                     const int spin_count = spins;
                     const int npairs_c = npairs;
-                    const size_t gl_u = (gl_count == 0 ? 1 : gl_count);
-                    const size_t fn_u = (fn_count == 0 ? 1 : fn_count);
-                    const size_t dm_u = (dm_count == 0 ? 1 : dm_count);
 
                     {
-#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, vpot_dev_full, orbs_dev) \
-    present(pm[0 : npairs_c], gl1[0 : gl_u], gl2[0 : gl_u], fn_buf[0 : fn_u], \
-            dm_buf[0 : dm_u], \
-            pair_f[0 : 3 * (size_t)npairs_c])
+                        const Force3GpuPair* pm = (const Force3GpuPair*)(const void*)(chunk_arena + o_pm);
+                        const int* gl1 = (const int*)(const void*)(chunk_arena + o_gl1);
+                        const int* gl2 = (const int*)(const void*)(chunk_arena + o_gl2);
+                        const float* fn_buf = (const float*)(const void*)(chunk_arena + o_fn);
+                        const double* dm_buf = (const double*)(const void*)(chunk_arena + o_dm);
+                        double* pair_f = (double*)(void*)(chunk_arena + o_pf);
+
+#pragma acc parallel loop gang vector_length(128) deviceptr(dchi_dev, vpot_dev_full, orbs_dev, \
+    pm, gl1, gl2, fn_buf, dm_buf, pair_f)
                         for (int pp = 0; pp < npairs_c; pp++) {
                             const int NO0 = pm[pp].no0;
                             const int NO1 = pm[pp].no1;
@@ -1724,7 +1752,8 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                         }
                     }
 
-#pragma acc update self(pair_f[0 : 3 * (size_t)npairs_c])
+                    acc_memcpy_from_device(pair_f, chunk_arena + o_pf,
+                        sizeof(double) * 3U * (size_t)npairs_c);
 
                     {
                         int q = 0;
@@ -1758,7 +1787,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         }
     }
 
-            acc_free(dchi_dev);
+            acc_free(chunk_arena);
 
             free(a_pt0);
             free(a_dchi);
@@ -7910,6 +7939,7 @@ typedef struct {
     /* local DS_NL rows (so=0), direction-major: flat[dir*stride+block];
        the (Mc,k) block holds CNO(Gc) rows of nlp(species of natn) each */
     double* flat;
+    double* flat_dev;
     size_t flat_stride;
     size_t* mck_off;
     int* mck_base;
@@ -8125,13 +8155,10 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
     }
 
     {
-        double* flat = g->flat;
         size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
-        void* probe = Force_gpu_arena_wait(flat_len * sizeof(double), "HNL flat archive");
 
-        acc_free(probe);
-        Force_gpu_pool_flush();
-#pragma acc enter data copyin(flat[0 : flat_len])
+        g->flat_dev = (double*)Force_gpu_arena_wait(flat_len * sizeof(double), "HNL flat archive");
+        acc_memcpy_to_device(g->flat_dev, g->flat, flat_len * sizeof(double));
     }
 
     g->enabled = 1;
@@ -8144,13 +8171,9 @@ static void Force_HNL_GpuEnd(void)
 
     if (!g->enabled) return;
 
-    {
-        double* flat = g->flat;
-        size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
-
-        if (acc_is_present(flat, flat_len * sizeof(double))) {
-#pragma acc exit data delete(flat[0 : flat_len])
-        }
+    if (g->flat_dev != NULL) {
+        acc_free(g->flat_dev);
+        g->flat_dev = NULL;
     }
     acc_clear_freelists();
 
@@ -8328,8 +8351,7 @@ static void Force_HNL_GpuCase1Run(double***** CDM0)
     }
 
     {
-        double* flat = g->flat;
-        size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
+        const double* flat = g->flat_dev;
         size_t halo_len = (g->halo_count == 0 ? 1 : g->halo_count);
         size_t ene_len = (g->ene_off[SpeciesNum] == 0 ? 1 : g->ene_off[SpeciesNum]);
         size_t flat_stride = g->flat_stride;
@@ -8372,8 +8394,7 @@ static void Force_HNL_GpuCase1Run(double***** CDM0)
             double* item_f = (double*)(void*)(arena + o_itemf);
 
 #pragma acc parallel loop gang vector_length(128) \
-    deviceptr(items, krowA, krowB, krow_halo, krow_ene, krow_nlp, cdm_pref, halo, ene, item_f) \
-    present(flat[0 : flat_len])
+    deviceptr(items, krowA, krowB, krow_halo, krow_ene, krow_nlp, cdm_pref, halo, ene, item_f, flat)
             for (int pp = 0; pp < nitems_c; pp++) {
                 const int ian = items[pp].ian;
                 const int jan = items[pp].jan;
@@ -8627,8 +8648,7 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
     }
 
     {
-        double* flat = g->flat;
-        size_t flat_len = (g->flat_stride == 0 ? 4 : 4U * g->flat_stride);
+        const double* flat = g->flat_dev;
         size_t c2_len = (g->c2_stride == 0 ? 4 : 4U * g->c2_stride);
         size_t ene_len = (g->ene_off[SpeciesNum] == 0 ? 1 : g->ene_off[SpeciesNum]);
         size_t c2_stride = g->c2_stride;
@@ -8670,8 +8690,7 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
             double* item_f = (double*)(void*)(arena + o_itemf);
 
 #pragma acc parallel loop gang vector_length(128) \
-    deviceptr(items, item_h0, item_nlp, item_ene, item_a, item_b, cdm_pref, c2, ene, item_f) \
-    present(flat[0 : flat_len])
+    deviceptr(items, item_h0, item_nlp, item_ene, item_a, item_b, cdm_pref, c2, ene, item_f, flat)
             for (int pp = 0; pp < nitems_c; pp++) {
                 const int ian = items[pp].ian;
                 const int jan = items[pp].jan;
