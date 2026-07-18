@@ -533,6 +533,108 @@ static int BandCol_CompareUllDesc(const void *a, const void *b)
     return (va < vb) ? 1 : ((vb < va) ? -1 : 0);
 }
 
+/* Shared verdict of BandCol_GpuDenseFits, consulted by Construct_Band_CsHs so
+   every helper takes the same GPU-vs-CPU branch as the diagonalization. */
+static int BandCol_gpu_dense_verdict = 1;
+
+/* Collectively decide whether even ONE k-point's dense GPU solve fits on the
+   device.  The adaptive turn ladder can only reduce the concurrency to one
+   k-owner rank; when a single rank's requirement (the dense matrices plus the
+   cusolver workspace at the size cusolverDnXsyevdx_bufferSize reports, the
+   GEMMul8 workspace and the staging transients) does not fit, committing to
+   the GPU path would abort or spin inside a full device, so the whole band
+   phase falls back to the ScaLAPACK/ELPA branch instead.  The verdict is
+   collective over mpi_comm_level1 (the branch controls barrier and
+   communicator structure) and sticky until the next SCF restart or a change
+   of the matrix size.
+   OPENMX_BAND_GPU_DIAG=1 forces the GPU path, =0 forces the fallback. */
+static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int myid0)
+{
+    static int verdict = -1;
+    static int verdict_n = 0;
+    const char *force = getenv("OPENMX_BAND_GPU_DIAG");
+    unsigned long long my_required = 0ULL, req_max = 0ULL;
+    unsigned long long my_free = ULLONG_MAX, free_min = 0ULL;
+    int my_fit = 1;
+    int fit = 0;
+
+    if (force != NULL) {
+        static int force_announced = 0;
+        int forced = (atoi(force) != 0);
+
+        if (!forced && !force_announced && myid0 == Host_ID) {
+            printf("<Band_DFT_Col> GPU dense diagonalization disabled by OPENMX_BAND_GPU_DIAG=0.\n");
+            fflush(stdout);
+        }
+        force_announced = 1;
+        BandCol_gpu_dense_verdict = forced;
+        return forced;
+    }
+
+    if (verdict != -1 && verdict_n == n && 1 < SCF_iter) {
+        BandCol_gpu_dense_verdict = verdict;
+        return verdict;
+    }
+
+    if (Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
+        int cuda_device = -1;
+
+        if (cudaGetDevice(&cuda_device) == cudaSuccess) {
+            acc_wait_all();
+            if (cudaDeviceSynchronize() == cudaSuccess) {
+                acc_clear_freelists();
+            }
+        }
+    }
+    MPI_Barrier(mpi_comm_level1);
+
+    if (Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
+        int cuda_device = -1;
+
+        if (cudaGetDevice(&cuda_device) == cudaSuccess) {
+            size_t required = BandCol_GpuTurnRequiredBytes(n, maxn, size_H1);
+            size_t free_bytes = 0U, total_bytes = 0U;
+
+            if (required == 0U || required == SIZE_MAX ||
+                cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+                (void)cudaGetLastError();
+                my_fit = 0;
+            }
+            else {
+                size_t reserve = BandCol_GpuReserveBytes(total_bytes);
+
+                my_required = (unsigned long long)required;
+                my_free = (unsigned long long)free_bytes;
+                my_fit = (required <= free_bytes && reserve <= free_bytes - required);
+            }
+        }
+        else {
+            (void)cudaGetLastError();
+            my_fit = 0;
+        }
+    }
+
+    MPI_Allreduce(&my_fit, &fit, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+    MPI_Allreduce(&my_required, &req_max, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, mpi_comm_level1);
+    MPI_Allreduce(&my_free, &free_min, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, mpi_comm_level1);
+
+    if (fit == 0 && myid0 == Host_ID) {
+        printf("<Band_DFT_Col> A k-owner rank cannot fit even one k-point's dense GPU"
+               " diagonalization (%.1f MiB needed per rank, %.1f MiB free);"
+               " falling back to the ScaLAPACK/ELPA diagonalization."
+               " Force the GPU path with OPENMX_BAND_GPU_DIAG=1 or lower"
+               " OPENMX_BAND_GPU_RESERVE_MB.\n",
+               (double)req_max / (1024.0 * 1024.0),
+               (free_min == ULLONG_MAX) ? 0.0 : (double)free_min / (1024.0 * 1024.0));
+        fflush(stdout);
+    }
+
+    verdict = fit;
+    verdict_n = n;
+    BandCol_gpu_dense_verdict = fit;
+    return verdict;
+}
+
 static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
                                     int size_H1, int owns_dense_rank, int myid0,
                                     int total_turns)
@@ -2231,6 +2333,21 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     My_NZeros = (int *)malloc(sizeof(int) * numprocs0);
     SP_NZeros = (int *)malloc(sizeof(int) * numprocs0);
     SP_Atoms  = (int *)malloc(sizeof(int) * numprocs0);
+
+    if (use_gpusolver_dense) {
+        /* preflight with the same per-rank requirement model as the turn
+           ladder; the sizing probe fills MP/order_GA exactly like the later
+           Get_OneD_HS_Col(1, ...) packing calls do */
+        int probe_size_H1 = Get_OneD_HS_Col(0, nh[0], &tmp, MP, order_GA, My_NZeros, SP_NZeros, SP_Atoms);
+
+        use_gpusolver_dense = BandCol_GpuDenseFits(SCF_iter, n, MaxN, probe_size_H1, myid0);
+    }
+    else {
+        /* not a GPU-dense run; keep the shared verdict neutral so
+           Construct_Band_CsHs follows its other conditions unchanged */
+        BandCol_gpu_dense_verdict = 1;
+    }
+
     /***********************************************
                 k-points by regular mesh
     ***********************************************/
@@ -5137,7 +5254,8 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
                          double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n, int owns_global_dense_rank)
 {
     const int need_s = (SCF_iter == 1 || all_knum != 1);
-    const int use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n);
+    const int use_gpusolver_dense =
+        (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n && BandCol_gpu_dense_verdict);
     const int dense_gpusolver_owner =
         (use_gpusolver_dense &&
          ((all_knum == 1 && owns_global_dense_rank) ||
