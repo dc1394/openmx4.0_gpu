@@ -67,6 +67,100 @@ static void *ClusterNonCol_MallocArray(size_t count, size_t elem_size, const cha
     return ptr;
 }
 
+/* Bounded device allocation for the root dense path (mirrors
+   Cluster_DFT_Col.c): wait_cudafunc() retries forever, which suits transient
+   pressure but deadlocks on a device that stays full.  Absorb short races
+   with a few retries and report a persistent failure instead. */
+static cudaError_t ClusterNonCol_TryDeviceMalloc(void **ptr, size_t bytes)
+{
+    cudaError_t err = cudaErrorMemoryAllocation;
+
+    for (int attempt = 0; attempt < 8; attempt++) {
+        err = cudaMalloc(ptr, bytes);
+        if (err == cudaSuccess) return cudaSuccess;
+        (void)cudaGetLastError();
+
+        double wait_time = drand48() * WAITTIME;
+        double start_time = MPI_Wtime();
+        double current_time = start_time;
+        while ((current_time - start_time) < wait_time) {
+            current_time = MPI_Wtime();
+        }
+    }
+
+    *ptr = NULL;
+    return err;
+}
+
+/* Device arena of the root dense solve.  The dense owner reserves the whole
+   device footprint of a diagonalization cycle in ONE allocation during the
+   GPU-diag preflight and maps every device buffer of the dense path into it
+   with acc_map_data.  A positive preflight verdict therefore cannot be
+   invalidated later in the SCF cycle: no allocation the dense path depends
+   on can fail once the arena exists (the OpenACC enter-data creates this
+   replaces abort fatally on a full device). */
+typedef struct
+{
+    int            valid;
+    int            n;
+    int            n2;
+    size_t         tnum_capacity;   /* elements covered by o_dindex/o_stage */
+    size_t         total_bytes;
+    unsigned char *base;
+    size_t         o_S;
+    size_t         o_Ss2;
+    size_t         o_ko;
+    size_t         o_r[7];          /* rHs11,rHs12,rHs22,iHs11,iHs12,iHs22,Cs */
+    size_t         o_Hs2;
+    size_t         o_evec;
+    size_t         o_dindex;
+    size_t         o_stage;
+} ClusterNonColDenseArena;
+
+static ClusterNonColDenseArena ClusterNonCol_dense_arena = {0};
+
+static size_t ClusterNonCol_ArenaOff(size_t *pos, size_t bytes)
+{
+    size_t off = *pos;
+    size_t padded = ClusterNonCol_CheckedAddCount(bytes, 511u, "dense arena segment");
+
+    padded &= ~(size_t)511u;
+    *pos = ClusterNonCol_CheckedAddCount(off, padded, "dense arena layout");
+    return off;
+}
+
+static void *ClusterNonCol_ArenaPtr(size_t off)
+{
+    return (void *)(ClusterNonCol_dense_arena.base + off);
+}
+
+static void ClusterNonCol_ArenaMap(const void *host, size_t off, size_t bytes)
+{
+    acc_map_data((void *)host, ClusterNonCol_ArenaPtr(off), bytes);
+}
+
+static void ClusterNonCol_ArenaUnmap(const void *host)
+{
+    acc_unmap_data((void *)host);
+}
+
+/* Transformed-overlap cache of the root dense path, hoisted to file scope so
+   the arena release can invalidate it.  The host buffers persist across
+   cycles; the device copies live in the arena. */
+typedef struct
+{
+    int       n;
+    int       n2;
+    int       transformed_s_valid;
+    int       s_on_device;
+    double   *S;
+    dcomplex *Ss2;
+} ClusterNonColDenseSCache;
+
+static ClusterNonColDenseSCache ClusterNonCol_dense_scache = {0};
+
+static void ClusterNonCol_DenseArena_Release(void);
+
 typedef struct
 {
     int                valid;
@@ -592,12 +686,11 @@ static int ClusterNonCol_CachedGpuSolverDenseOnDevice = 0;
 static void ClusterNonCol_ReleaseGpuSolverCachedEVec(int myid)
 {
     dcomplex *dense_evec = ClusterNonCol_CachedGpuSolverDenseEVec;
-    int n2 = ClusterNonCol_CachedGpuSolverDenseN2;
 
     if (myid == Host_ID && dense_evec != NULL) {
         if (ClusterNonCol_CachedGpuSolverDenseOnDevice) {
-            size_t evec_count = (size_t)n2 * (size_t)n2;
-#pragma acc exit data delete(dense_evec[0 : evec_count])
+            /* the device copy is a mapped arena segment, not an allocation */
+            ClusterNonCol_ArenaUnmap(dense_evec);
         }
         free(dense_evec);
     }
@@ -630,10 +723,11 @@ void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void)
         size_t evec_count = ClusterNonCol_CheckedMulCount((size_t)n2, (size_t)n2,
                                                           "cached GPUSOLVER dense eigenvectors");
 
-        /* Preserve the vectors for the final post-SCF scatter, but release the
-           device allocation before another GPU service phase reserves memory. */
+        /* Preserve the vectors for the final post-SCF scatter, then drop the
+           mapping onto the arena segment (the arena itself keeps the device
+           memory reserved until the pre-Force release). */
 #pragma acc update self(dense_evec[0 : evec_count])
-#pragma acc exit data delete(dense_evec[0 : evec_count])
+        ClusterNonCol_ArenaUnmap(dense_evec);
         ClusterNonCol_CachedGpuSolverDenseOnDevice = 0;
     }
 }
@@ -738,10 +832,12 @@ static void ClusterNonCol_GpuEigenCtx_Release(void)
     memset(ctx, 0, sizeof(*ctx));
 }
 
-/* Pre-Force release: the cached zheevdx workspace can hold multiple GiB of
-   the shared device between SCF cycles; return it before Force() runs. */
+/* Pre-Force release: the dense arena and the cached zheevdx workspace can
+   hold many GiB of the shared device between SCF cycles; return them before
+   Force() runs. */
 void Cluster_DFT_NonCol_Release_GPU_Solver(void)
 {
+    ClusterNonCol_DenseArena_Release();
     ClusterNonCol_GpuEigenCtx_Release();
 }
 
@@ -765,6 +861,50 @@ static ClusterNonColGpuEigenCtx *ClusterNonCol_GpuEigenCtx_Get(void)
     return ctx;
 }
 
+/* Ensure the cached zheevdx workspaces cover an (n, maxn) solve.  A_dev and
+   W_dev are DEVICE pointers.  Returns 0 (with *need_bytes_out set) when the
+   device workspace cannot be allocated, leaving the context consistent; the
+   GPU-diag preflight uses this to reserve the full-range workspace up front
+   at the size cusolver actually reports. */
+static int ClusterNonCol_EigenWorkspace_TryEnsure(void *A_dev, double *W_dev, int n, int maxn,
+                                                  size_t *need_bytes_out)
+{
+    ClusterNonColGpuEigenCtx *ctx = ClusterNonCol_GpuEigenCtx_Get();
+    cusolverEigMode_t const   jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cublasFillMode_t const    uplo = CUBLAS_FILL_MODE_LOWER;
+    cusolverEigRange_t const  range = (n == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
+    double vl = 0.0, vu = 0.0;
+    int64_t h_meig = 0;
+    size_t d_bytes = 0;
+    size_t h_bytes = 0;
+
+    if (need_bytes_out != NULL) *need_bytes_out = 0;
+    if (ctx->last_n == n && ctx->last_maxn == maxn) return 1;
+
+    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A_dev, n,
+                                               &vl, &vu, 1L, (int64_t)maxn, &h_meig, CUDA_R_64F, W_dev,
+                                               CUDA_C_64F, &d_bytes, &h_bytes));
+
+    if (ctx->d_work_bytes < d_bytes) {
+        if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
+        ctx->d_work = NULL;
+        ctx->d_work_bytes = 0;
+        if (0 < d_bytes && ClusterNonCol_TryDeviceMalloc(&ctx->d_work, d_bytes) != cudaSuccess) {
+            if (need_bytes_out != NULL) *need_bytes_out = d_bytes;
+            return 0;
+        }
+        ctx->d_work_bytes = d_bytes;
+    }
+    if (ctx->h_work_bytes < h_bytes) {
+        free(ctx->h_work);
+        ctx->h_work = ClusterNonCol_MallocArray(h_bytes, 1u, "cuSOLVER host workspace");
+        ctx->h_work_bytes = h_bytes;
+    }
+    ctx->last_n = n;
+    ctx->last_maxn = maxn;
+    return 1;
+}
+
 /* In-place zheevx on OpenACC-present data: the eigenvectors land in the first
    maxn columns of A and ko[1..maxn] receives the eigenvalues shifted by one,
    exactly like EigenBand_lapack_openacc.  Workspace sizes are re-queried only
@@ -782,39 +922,15 @@ static void ClusterNonCol_ZheevdxPresent(dcomplex *A, double *W, int n, int maxn
 #pragma acc data      present(A[0 : (size_t)n * (size_t)n], W[0 : n + 1])
 #pragma acc host_data use_device(A, W)
     {
-        if (ctx->last_n != n || ctx->last_maxn != maxn) {
-            size_t d_bytes = 0;
-            size_t h_bytes = 0;
+        size_t need_bytes = 0;
 
-            wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A, n,
-                                                       &vl, &vu, 1L, (int64_t)maxn, &h_meig, CUDA_R_64F, W,
-                                                       CUDA_C_64F, &d_bytes, &h_bytes));
-
-            if (ctx->d_work_bytes < d_bytes) {
-                if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
-                ctx->d_work = NULL;
-                ctx->d_work_bytes = 0;
-                /* a multi-GiB workspace on a permanently full device would
-                   make wait_cudafunc spin forever; fail with a diagnostic
-                   instead of freezing the whole run */
-                if (cudaMalloc(&ctx->d_work, d_bytes) != cudaSuccess) {
-                    char msg[256];
-                    (void)cudaGetLastError();
-                    snprintf(msg, sizeof(msg),
-                             "Cluster_DFT_NonCol.c: out of GPU memory for the %.1f MiB eigensolver workspace; "
-                             "reduce the MPI ranks sharing the device.",
-                             (double)d_bytes / (1024.0 * 1024.0));
-                    ClusterNonCol_AbortWithMessage(msg);
-                }
-                ctx->d_work_bytes = d_bytes;
-            }
-            if (ctx->h_work_bytes < h_bytes) {
-                free(ctx->h_work);
-                ctx->h_work = ClusterNonCol_MallocArray(h_bytes, 1u, "cuSOLVER host workspace");
-                ctx->h_work_bytes = h_bytes;
-            }
-            ctx->last_n = n;
-            ctx->last_maxn = maxn;
+        if (!ClusterNonCol_EigenWorkspace_TryEnsure(A, W, n, maxn, &need_bytes)) {
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                     "Cluster_DFT_NonCol.c: out of GPU memory for the %.1f MiB eigensolver workspace; "
+                     "reduce the MPI ranks sharing the device.",
+                     (double)need_bytes / (1024.0 * 1024.0));
+            ClusterNonCol_AbortWithMessage(msg);
         }
 
         wait_cudafunc(cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A, n, &vl, &vu, 1L,
@@ -1295,73 +1411,87 @@ static unsigned long long ClusterNonCol_DenseIndexFingerprint(const int *order_G
 }
 
 /* The sparse-to-dense index table only depends on the geometry, so build it
-   once and keep it resident on the device instead of rebuilding and
-   re-uploading it for each of the eight dense loads of every SCF iteration.
-   Only the dense-owner rank calls this. */
-static const int *ClusterNonCol_DenseIndexCache_Get(const int *order_GA, int *MP, int n, int tnum)
+   once on the host and keep a device copy in the arena instead of rebuilding
+   and re-uploading it for each of the eight dense loads of every SCF
+   iteration.  Returns the DEVICE copy (the o_dindex arena segment).  Only the
+   dense-owner rank calls this. */
+static const int *ClusterNonCol_DenseIndexDevice_Get(const int *order_GA, int *MP, int n, int tnum)
 {
     ClusterNonColDenseIndexCache *cache = &ClusterNonCol_dense_index_cache;
+    ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
     unsigned long long fingerprint = ClusterNonCol_DenseIndexFingerprint(order_GA, MP, n);
-    int *dense_index;
 
-    if (cache->valid && cache->n == n && cache->tnum == tnum && cache->fingerprint == fingerprint) {
-        return cache->dense_index;
+    if (!arena->valid || arena->tnum_capacity < (size_t)tnum) {
+        ClusterNonCol_AbortWithMessage("The dense arena does not cover the sparse index table in Cluster_DFT_NonCol.c.");
     }
 
-    if (cache->device_valid) {
-        int *old_index = cache->dense_index;
-        int old_tnum = cache->tnum;
-#pragma acc exit data delete(old_index[0 : old_tnum])
+    if (!(cache->valid && cache->n == n && cache->tnum == tnum && cache->fingerprint == fingerprint)) {
+        free(cache->dense_index);
+        memset(cache, 0, sizeof(*cache));
+
+        cache->dense_index = (int *)ClusterNonCol_MallocArray((size_t)tnum, sizeof(int), "dense index cache");
+        ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, tnum, cache->dense_index);
+
+        cache->valid = 1;
+        cache->n = n;
+        cache->tnum = tnum;
+        cache->fingerprint = fingerprint;
     }
-    free(cache->dense_index);
-    memset(cache, 0, sizeof(*cache));
 
-    cache->dense_index = (int *)ClusterNonCol_MallocArray((size_t)tnum, sizeof(int), "dense index cache");
-    ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, tnum, cache->dense_index);
-
-    dense_index = cache->dense_index;
-#pragma acc enter data copyin(dense_index[0 : tnum])
-
-    cache->valid = 1;
-    cache->device_valid = 1;
-    cache->n = n;
-    cache->tnum = tnum;
-    cache->fingerprint = fingerprint;
-    return cache->dense_index;
+    if (!cache->device_valid) {
+        acc_memcpy_to_device(ClusterNonCol_ArenaPtr(arena->o_dindex), cache->dense_index,
+                             (size_t)tnum * sizeof(int));
+        cache->device_valid = 1;
+    }
+    return (const int *)ClusterNonCol_ArenaPtr(arena->o_dindex);
 }
 
-static void ClusterNonCol_BuildDeviceDenseFromGathered(const double *H1, const int *dense_index,
+/* Stage the gathered sparse matrix through the arena and scatter it into the
+   present dense matrix H.  H1_host is a HOST buffer; the upload goes through
+   the o_stage arena segment, so no device allocation happens here (the old
+   per-call enter-data copyin aborted fatally on a full device). */
+static void ClusterNonCol_BuildDeviceDenseFromGathered(const double *H1_host, const int *dense_index_dev,
                                                        int tnum, int n, double *H)
 {
+    ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
     size_t nn = ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "device dense H");
 
-#pragma acc enter data copyin(H1[0 : tnum])
+    if (!arena->valid || arena->tnum_capacity < (size_t)tnum) {
+        ClusterNonCol_AbortWithMessage("The dense arena does not cover the gathered matrix in Cluster_DFT_NonCol.c.");
+    }
+    acc_memcpy_to_device(ClusterNonCol_ArenaPtr(arena->o_stage), (void *)H1_host,
+                         (size_t)tnum * sizeof(double));
+
 #pragma acc parallel loop present(H[0 : nn])
     for (size_t p = 0; p < nn; p++) {
         H[p] = 0.0;
     }
 
-#pragma acc parallel loop present(H[0 : nn], H1[0 : tnum], dense_index[0 : tnum])
-    for (int p = 0; p < tnum; p++) {
-        int idx = dense_index[p];
+    {
+        const double *H1 = (const double *)ClusterNonCol_ArenaPtr(arena->o_stage);
+        const int *dense_index = dense_index_dev;
+
+#pragma acc parallel loop present(H[0 : nn]) deviceptr(H1, dense_index)
+        for (int p = 0; p < tnum; p++) {
+            int idx = dense_index[p];
 #pragma acc atomic update
-        H[idx] += H1[p];
+            H[idx] += H1[p];
+        }
     }
-#pragma acc exit data delete(H1[0 : tnum])
 }
 
 static void ClusterNonCol_LoadDeviceDenseFromSetHamCache(const double *H1, int *MP, int n, double *H)
 {
     int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
     int *order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-    const int *dense_index;
+    const int *dense_index_dev;
 
     if (H1 == NULL || order_GA == NULL) {
         ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed matrix cache is missing in Cluster_DFT_NonCol.c.");
     }
 
-    dense_index = ClusterNonCol_DenseIndexCache_Get(order_GA, MP, n, tnum);
-    ClusterNonCol_BuildDeviceDenseFromGathered(H1, dense_index, tnum, n, H);
+    dense_index_dev = ClusterNonCol_DenseIndexDevice_Get(order_GA, MP, n, tnum);
+    ClusterNonCol_BuildDeviceDenseFromGathered(H1, dense_index_dev, tnum, n, H);
 }
 
 static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP, int owns_dense, int n)
@@ -1452,7 +1582,7 @@ static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP,
             gathered_nzeros = h1_displs[numprocs - 1] + recv_nzeros[numprocs - 1];
         }
 
-        dense_index = ClusterNonCol_DenseIndexCache_Get(order_GA, MP, n, gathered_nzeros);
+        dense_index = ClusterNonCol_DenseIndexDevice_Get(order_GA, MP, n, gathered_nzeros);
         ClusterNonCol_BuildDeviceDenseFromGathered(gathered_H1, dense_index, gathered_nzeros, n, H);
     }
 
@@ -1463,6 +1593,216 @@ static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP,
     free(recv_matomnum);
     free(recv_nzeros);
     free(local_H1);
+}
+
+static size_t ClusterNonCol_GpuDiagReserveBytes(void)
+{
+    const char *value = getenv("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
+    long mib = 1024;
+
+    if (value != NULL) {
+        long parsed = atol(value);
+        if (0 <= parsed) mib = parsed;
+    }
+    return (size_t)mib * 1024ULL * 1024ULL;
+}
+
+/* Lay out and reserve the dense arena for an (n, n2) solve whose gathered
+   sparse matrices hold at most tnum elements.  Keeps an already-sufficient
+   arena.  Returns 0 when the device cannot hold the reservation. */
+static int ClusterNonCol_DenseArena_TryEnsure(int n, int n2, size_t tnum)
+{
+    ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
+    size_t nn8 = ClusterNonCol_CheckedMulCount(ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "dense arena S"),
+                                               sizeof(double), "dense arena S bytes");
+    size_t n2n2z = ClusterNonCol_CheckedMulCount(ClusterNonCol_CheckedMulCount((size_t)n2, (size_t)n2,
+                                                                               "dense arena NC matrix"),
+                                                 sizeof(dcomplex), "dense arena NC matrix bytes");
+    size_t ko8 = (size_t)(n2 + 2) * sizeof(double);
+    size_t pos = 0;
+
+    if (arena->valid && arena->n == n && arena->n2 == n2 && tnum <= arena->tnum_capacity) return 1;
+
+    ClusterNonCol_DenseArena_Release();
+
+    arena->o_S   = ClusterNonCol_ArenaOff(&pos, nn8);
+    arena->o_Ss2 = ClusterNonCol_ArenaOff(&pos, n2n2z);
+    arena->o_ko  = ClusterNonCol_ArenaOff(&pos, ko8);
+    for (int i = 0; i < 7; i++) {
+        arena->o_r[i] = ClusterNonCol_ArenaOff(&pos, nn8);
+    }
+    arena->o_Hs2    = ClusterNonCol_ArenaOff(&pos, n2n2z);
+    arena->o_evec   = ClusterNonCol_ArenaOff(&pos, n2n2z);
+    arena->o_dindex = ClusterNonCol_ArenaOff(&pos, ClusterNonCol_CheckedMulCount(tnum, sizeof(int),
+                                                                                 "dense arena index"));
+    arena->o_stage  = ClusterNonCol_ArenaOff(&pos, ClusterNonCol_CheckedMulCount(tnum, sizeof(double),
+                                                                                 "dense arena stage"));
+
+    if (ClusterNonCol_TryDeviceMalloc((void **)&arena->base, pos) != cudaSuccess) {
+        memset(arena, 0, sizeof(*arena));
+        return 0;
+    }
+    arena->valid = 1;
+    arena->n = n;
+    arena->n2 = n2;
+    arena->tnum_capacity = tnum;
+    arena->total_bytes = pos;
+    return 1;
+}
+
+static void ClusterNonCol_DenseArena_Release(void)
+{
+    ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
+    ClusterNonColDenseSCache *scache = &ClusterNonCol_dense_scache;
+
+    if (!arena->valid) return;
+
+    /* the stashed eigenvectors may still be mapped into the arena; preserve
+       their host copy for the post-SCF scatter before the memory goes away */
+    Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec();
+
+    if (scache->s_on_device) {
+        ClusterNonCol_ArenaUnmap(scache->S);
+        ClusterNonCol_ArenaUnmap(scache->Ss2);
+        scache->s_on_device = 0;
+    }
+    scache->transformed_s_valid = 0;
+
+    ClusterNonCol_dense_index_cache.device_valid = 0;
+
+    wait_cudafunc(cudaFree(arena->base));
+    memset(arena, 0, sizeof(*arena));
+}
+
+/* Collectively decide whether the root dense GPU diagonalization fits on the
+   device (mirrors ClusterCol_GpuDiagFits).  The dense owner RESERVES the
+   whole device footprint of the solve up front — one arena every device
+   buffer of the dense path is mapped into, plus the zheevdx workspace at the
+   size cusolverDnXsyevdx_bufferSize() actually reports — so a positive
+   verdict cannot be invalidated later in the SCF cycle.  On top of the
+   reservation the transient workspace of the SCF_iter 1 overlap
+   diagonalization and a configurable margin must still be free.  The verdict
+   is agreed on over mpi_comm_level1 because the ScaLAPACK/ELPA fallback uses
+   level1 collectives; it is cached until the next SCF restart or a change of
+   the matrix size.
+   OPENMX_CLUSTER_GPU_DIAG=1 forces the GPU path, =0 forces the fallback. */
+static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
+{
+    static int verdict = -1;
+    static int verdict_n2 = 0;
+    const char *force = getenv("OPENMX_CLUSTER_GPU_DIAG");
+    ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
+    long long my_nzeros = 0;
+    long long total_nzeros = 0;
+    int my_fit = 1;
+    int fit = 0;
+
+    if (force != NULL) {
+        static int force_announced = 0;
+        int forced = (atoi(force) != 0);
+
+        if (!forced && !force_announced && myid == Host_ID) {
+            printf("<Cluster_DFT_NonCol> GPU dense diagonalization disabled by OPENMX_CLUSTER_GPU_DIAG=0.\n");
+            fflush(stdout);
+        }
+        force_announced = 1;
+
+        if (forced) {
+            /* the dense path depends on the arena, so build it even when the
+               GPU path is forced and abort with a diagnostic if that fails */
+            my_nzeros = (long long)ClusterNonCol_ComputeLocalNZeroCount();
+            MPI_Allreduce(&my_nzeros, &total_nzeros, 1, MPI_LONG_LONG, MPI_SUM, mpi_comm_level1);
+
+            if (myid == Host_ID &&
+                (!ClusterNonCol_DenseArena_TryEnsure(n, n2, (size_t)total_nzeros) ||
+                 !ClusterNonCol_EigenWorkspace_TryEnsure(ClusterNonCol_ArenaPtr(arena->o_Hs2),
+                                                         (double *)ClusterNonCol_ArenaPtr(arena->o_ko),
+                                                         n2, n2, NULL))) {
+                ClusterNonCol_AbortWithMessage("Cluster_DFT_NonCol.c: OPENMX_CLUSTER_GPU_DIAG=1 forces the GPU"
+                                               " diagonalization but its device reservation failed; unset it or"
+                                               " reduce the MPI ranks sharing the device.");
+            }
+        }
+        return forced;
+    }
+
+    if (verdict != -1 && verdict_n2 == n2 && 1 < SCF_iter) return verdict;
+
+    /* capacity of the sparse-to-dense staging segments: the gathered matrix
+       and its index table scale with the total nonzero count */
+    my_nzeros = (long long)ClusterNonCol_ComputeLocalNZeroCount();
+    MPI_Allreduce(&my_nzeros, &total_nzeros, 1, MPI_LONG_LONG, MPI_SUM, mpi_comm_level1);
+
+    if (myid == Host_ID) {
+        my_fit = ClusterNonCol_DenseArena_TryEnsure(n, n2, (size_t)total_nzeros);
+
+        if (my_fit) {
+            my_fit = ClusterNonCol_EigenWorkspace_TryEnsure(ClusterNonCol_ArenaPtr(arena->o_Hs2),
+                                                            (double *)ClusterNonCol_ArenaPtr(arena->o_ko),
+                                                            n2, n2, NULL);
+        }
+
+        if (my_fit) {
+            /* the SCF_iter 1 overlap diagonalization allocates its own
+               cusolver workspace transiently; require room for it plus the
+               configured margin on top of the reservation */
+            ClusterNonColGpuEigenCtx *ctx = ClusterNonCol_GpuEigenCtx_Get();
+            cusolverEigMode_t const jobz = CUSOLVER_EIG_MODE_VECTOR;
+            cublasFillMode_t const uplo = CUBLAS_FILL_MODE_LOWER;
+            double vl = 0.0, vu = 0.0;
+            int64_t h_meig = 0;
+            size_t overlap_d_bytes = 0;
+            size_t overlap_h_bytes = 0;
+            size_t free_bytes = 0;
+            size_t total_bytes = 0;
+
+            wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, CUSOLVER_EIG_RANGE_I, uplo, n,
+                                                       CUDA_R_64F, ClusterNonCol_ArenaPtr(arena->o_S), n,
+                                                       &vl, &vu, 1L, (int64_t)n, &h_meig, CUDA_R_64F,
+                                                       ClusterNonCol_ArenaPtr(arena->o_ko), CUDA_R_64F,
+                                                       &overlap_d_bytes, &overlap_h_bytes));
+
+            if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+                (void)cudaGetLastError();
+                my_fit = 0;
+            }
+            else {
+                my_fit = (ClusterNonCol_CheckedAddCount(overlap_d_bytes, ClusterNonCol_GpuDiagReserveBytes(),
+                                                        "GPU diag margin") <= free_bytes);
+            }
+        }
+
+        if (!my_fit) {
+            size_t free_bytes = 0;
+            size_t total_bytes = 0;
+
+            if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+                (void)cudaGetLastError();
+            }
+            printf("<Cluster_DFT_NonCol> The dense owner could not reserve its GPU diagonalization"
+                   " buffers (%.1f MiB of %.1f MiB free);"
+                   " falling back to the ELPA/ScaLAPACK diagonalization."
+                   " Force the GPU path with OPENMX_CLUSTER_GPU_DIAG=1 or lower"
+                   " OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB.\n",
+                   (double)free_bytes / (1024.0 * 1024.0),
+                   (double)total_bytes / (1024.0 * 1024.0));
+            fflush(stdout);
+        }
+    }
+
+    MPI_Allreduce(&my_fit, &fit, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+
+    if (fit == 0) {
+        /* return the reservation and any stale eigenvector stash so the
+           fallback and the later GPU service phases see the memory */
+        ClusterNonCol_DenseArena_Release();
+        ClusterNonCol_GpuEigenCtx_Release();
+        ClusterNonCol_ReleaseGpuSolverCachedEVec(myid);
+    }
+
+    verdict = fit;
+    verdict_n2 = n2;
+    return verdict;
 }
 
 /* Host-side scratch matrices of the root dense solve.  They are refilled
@@ -1524,17 +1864,14 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
                                                 int myid, dcomplex **dense_evec_out,
                                                 int *dense_evec_on_device_out)
 {
-    static int cached_n = 0;
-    static int cached_n2 = 0;
-    static int transformed_s_valid = 0;
-    static int cached_s_on_device = 0;
-    static double *cached_S = NULL;
-    static dcomplex *cached_Ss2 = NULL;
+    ClusterNonColDenseSCache *scache = &ClusterNonCol_dense_scache;
+    ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
+    dcomplex *cached_Ss2 = NULL;
     const int owns_dense = (myid == Host_ID);
     const int use_setham_packed_cache =
         (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
          Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 1);
-    int rebuild_s = (SCF_iter == 1 || !transformed_s_valid || cached_n != n || cached_n2 != n2);
+    int rebuild_s = (SCF_iter == 1 || !scache->transformed_s_valid || scache->n != n || scache->n2 != n2);
     double *S = NULL;
     double *Cs = NULL;
     double *rHs11 = NULL, *rHs12 = NULL, *rHs22 = NULL;
@@ -1559,33 +1896,35 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         nn = ClusterNonCol_CheckedMulCount((size_t)n, (size_t)n, "root dense real matrix");
         n2n2 = ClusterNonCol_CheckedMulCount((size_t)n2, (size_t)n2, "root dense complex matrix");
 
-        if (cached_n != n || cached_n2 != n2) {
-            if (cached_s_on_device) {
-                double *old_S = cached_S;
-                dcomplex *old_Ss2 = cached_Ss2;
-                size_t old_nn = (size_t)cached_n * (size_t)cached_n;
-                size_t old_n2n2 = (size_t)cached_n2 * (size_t)cached_n2;
-#pragma acc exit data delete(old_S[0 : old_nn], old_Ss2[0 : old_n2n2])
-                cached_s_on_device = 0;
+        if (!arena->valid || arena->n != n || arena->n2 != n2) {
+            ClusterNonCol_AbortWithMessage("The dense arena reservation is missing in Cluster_DFT_NonCol.c.");
+        }
+
+        if (scache->n != n || scache->n2 != n2) {
+            if (scache->s_on_device) {
+                ClusterNonCol_ArenaUnmap(scache->S);
+                ClusterNonCol_ArenaUnmap(scache->Ss2);
+                scache->s_on_device = 0;
             }
-            free(cached_S);
-            free(cached_Ss2);
-            cached_S = NULL;
-            cached_Ss2 = NULL;
-            transformed_s_valid = 0;
+            free(scache->S);
+            free(scache->Ss2);
+            scache->S = NULL;
+            scache->Ss2 = NULL;
+            scache->transformed_s_valid = 0;
             rebuild_s = 1;
         }
 
-        if (cached_S == NULL) {
-            cached_S = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "cached transformed overlap");
+        if (scache->S == NULL) {
+            scache->S = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "cached transformed overlap");
         }
-        if (cached_Ss2 == NULL) {
-            cached_Ss2 = (dcomplex *)ClusterNonCol_MallocArray(n2n2, sizeof(dcomplex), "cached transformed NC overlap");
+        if (scache->Ss2 == NULL) {
+            scache->Ss2 = (dcomplex *)ClusterNonCol_MallocArray(n2n2, sizeof(dcomplex), "cached transformed NC overlap");
         }
 
-        cached_n = n;
-        cached_n2 = n2;
-        S = cached_S;
+        scache->n = n;
+        scache->n2 = n2;
+        S = scache->S;
+        cached_Ss2 = scache->Ss2;
 
         ClusterNonCol_RootSolveWorkspace_Ensure(n, n2);
         Cs    = ClusterNonCol_root_solve_workspace.Cs;
@@ -1605,12 +1944,13 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
     MPI_Bcast(&rebuild_s, 1, MPI_INT, Host_ID, mpi_comm_level1);
 
     if (rebuild_s) {
-        if (owns_dense && !cached_s_on_device) {
+        if (owns_dense && !scache->s_on_device) {
             /* The transformed overlap and its spinor expansion only change
                with the geometry, so they stay resident on the device across
                SCF iterations instead of being re-uploaded every step. */
-#pragma acc enter data create(S[0 : n * n], cached_Ss2[0 : n2 * n2])
-            cached_s_on_device = 1;
+            ClusterNonCol_ArenaMap(S, arena->o_S, nn * sizeof(double));
+            ClusterNonCol_ArenaMap(cached_Ss2, arena->o_Ss2, n2n2 * sizeof(dcomplex));
+            scache->s_on_device = 1;
         }
 
         if (use_setham_packed_cache) {
@@ -1626,7 +1966,7 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         }
 
         if (owns_dense) {
-#pragma acc enter data create(ko[0 : n2 + 1])
+            ClusterNonCol_ArenaMap(ko, arena->o_ko, (size_t)(n2 + 1) * sizeof(double));
             Eigen_gpusolver_x_openacc2(S, ko, n, n);
 
 #pragma acc parallel loop present(ko[0 : n2 + 1])
@@ -1642,7 +1982,7 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
                 }
             }
 
-#pragma acc exit data delete(ko[0 : n2 + 1])
+            ClusterNonCol_ArenaUnmap(ko);
 
 #pragma acc parallel loop collapse(2) present(cached_Ss2[0 : n2 * n2], S[0 : n * n])
             for (int col = 0; col < n2; col++) {
@@ -1661,13 +2001,18 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
                 }
             }
 
-            transformed_s_valid = 1;
+            scache->transformed_s_valid = 1;
         }
     }
 
     if (owns_dense) {
-#pragma acc enter data create(rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
-                              iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n], Cs[0 : n * n])
+        ClusterNonCol_ArenaMap(rHs11, arena->o_r[0], nn * sizeof(double));
+        ClusterNonCol_ArenaMap(rHs12, arena->o_r[1], nn * sizeof(double));
+        ClusterNonCol_ArenaMap(rHs22, arena->o_r[2], nn * sizeof(double));
+        ClusterNonCol_ArenaMap(iHs11, arena->o_r[3], nn * sizeof(double));
+        ClusterNonCol_ArenaMap(iHs12, arena->o_r[4], nn * sizeof(double));
+        ClusterNonCol_ArenaMap(iHs22, arena->o_r[5], nn * sizeof(double));
+        ClusterNonCol_ArenaMap(Cs,    arena->o_r[6], nn * sizeof(double));
     }
 
     if (use_setham_packed_cache) {
@@ -1745,8 +2090,9 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         for (int i = 0; i < n * n; i++) iHs22[i] = 0.0;
         ClusterNonCol_GEMMul8Dgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_N, n, n, n, S, Cs, iHs22);
 
-#pragma acc exit data delete(Cs[0 : n * n])
-#pragma acc enter data create(Hs2[0 : n2 * n2], ko[0 : n2 + 1])
+        ClusterNonCol_ArenaUnmap(Cs);
+        ClusterNonCol_ArenaMap(Hs2, arena->o_Hs2, n2n2 * sizeof(dcomplex));
+        ClusterNonCol_ArenaMap(ko, arena->o_ko, (size_t)(n2 + 1) * sizeof(double));
 
 #pragma acc parallel loop collapse(2) present(Hs2[0 : n2 * n2], rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
                                              iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n])
@@ -1775,12 +2121,16 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
             }
         }
 
-#pragma acc exit data delete(rHs11[0 : n * n], rHs12[0 : n * n], rHs22[0 : n * n], \
-                             iHs11[0 : n * n], iHs12[0 : n * n], iHs22[0 : n * n])
+        ClusterNonCol_ArenaUnmap(rHs11);
+        ClusterNonCol_ArenaUnmap(rHs12);
+        ClusterNonCol_ArenaUnmap(rHs22);
+        ClusterNonCol_ArenaUnmap(iHs11);
+        ClusterNonCol_ArenaUnmap(iHs12);
+        ClusterNonCol_ArenaUnmap(iHs22);
 
         ClusterNonCol_ZheevdxPresent(Hs2, ko, n2, MaxN);
 
-#pragma acc enter data create(dense_evec[0 : n2 * n2])
+        ClusterNonCol_ArenaMap(dense_evec, arena->o_evec, n2n2 * sizeof(dcomplex));
 
         if (MaxN < n2) {
             /* only the first MaxN states are back-transformed below; clear
@@ -1801,7 +2151,8 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
                                              dense_evec, n2, n2n2);
 
 #pragma acc update self(ko[0 : n2 + 1])
-#pragma acc exit data delete(Hs2[0 : n2 * n2], ko[0 : n2 + 1])
+        ClusterNonCol_ArenaUnmap(Hs2);
+        ClusterNonCol_ArenaUnmap(ko);
 
         /* free the GEMMul8 workspace (the n2-sized complex one from the
            back-transform dominates) so the DM phase and the grid/force
@@ -1987,7 +2338,8 @@ double Cluster_DFT_NonCol(
     (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
      strcasecmp(mode,"scf") == 0 &&
      MO_fileout != 1 && xanes_calc != 1 && xanes_gs_fileout != 1 &&
-     !cal_partial_charge && !Dos_fileout && !DosGauss_fileout);
+     !cal_partial_charge && !Dos_fileout && !DosGauss_fileout &&
+     ClusterNonCol_GpuDiagFits(SCF_iter,n,n2,myid));
 
   /****************************************************
                   allocation of arrays
