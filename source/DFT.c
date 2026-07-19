@@ -2316,6 +2316,7 @@ double DFT(int MD_iter, int Cnt_Now)
   Krylov_Release_GPU_KUCache();
   Cluster_DFT_Col_Release_GPU_Solver();
   Cluster_DFT_NonCol_Release_GPU_Solver();
+  Mixing_H_Release_GPU();
 
   if (!orbitalOpt_Force_Skip) time7 += Force(H0,DS_NL,OLP,DM[0],EDM);
   
