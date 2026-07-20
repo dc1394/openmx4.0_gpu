@@ -4150,6 +4150,9 @@ int  gpusolver_Syevdx_Complex_openacc_cached(dcomplex * A, double * W, int m, in
         if (cudaSuccess == call) {                                                                                     \
             break;                                                                                                     \
         }                                                                                                              \
+        /* pop the CUDA error latched by the failed attempt so it cannot be                                            \
+           misattributed by the next cudaGetLastError() caller once a retry succeeds */                                \
+        (void)cudaGetLastError();                                                                                      \
         double wait_time    = drand48() * WAITTIME;                                                                    \
         double start_time   = MPI_Wtime();                                                                             \
         double current_time = start_time;                                                                              \

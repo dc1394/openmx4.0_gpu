@@ -2334,8 +2334,23 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
                 pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
             if (cuda_status < 0) {
                 char message[160];
-                snprintf(message, sizeof(message), "CUDA matrix-elements kernel failed with status %d", cuda_status);
+                snprintf(message, sizeof(message), "CUDA matrix-elements kernel failed with unrecoverable status %d", cuda_status);
                 Set_Hamiltonian_abort("Set_Hamiltonian_Run_OpenACC_MatrixElements", message, work->myid);
+            }
+            if (cuda_status == 2) {
+                /* Transient failure (typically device memory pressure).  The
+                   kernel may have partially updated the device H blocks, so
+                   restore them from the untouched host copy before redoing
+                   this batch with the OpenACC kernel below. */
+                static int retry_reports = 0;
+                if (retry_reports < 3) {
+                    retry_reports++;
+                    fprintf(stderr,
+                            "<Set_Hamiltonian> rank %d: CUDA matrix-elements kernel failed transiently; redoing this batch with the OpenACC kernel.\n",
+                            work->myid);
+                    fflush(stderr);
+                }
+                acc_update_device(hbuf, sizeof(double) * total_h);
             }
         }
 

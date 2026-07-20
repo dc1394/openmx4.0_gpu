@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
 namespace {
 
@@ -129,6 +130,26 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     int grid_tile = kPreferredGridTile;
 
     if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_output_count <= 0) return 0;
+
+    /* cudaGetLastError() reports the last unconsumed error of the whole host
+       thread, not of the launch below.  A library that attempted a device
+       allocation, failed, and recovered by falling back (e.g. the GEMMul8
+       cuBLAS hook under memory pressure) leaves that error latched; pop it
+       here so it cannot be misattributed to this kernel. */
+    {
+        cudaError_t stale = cudaGetLastError();
+        if (stale != cudaSuccess) {
+            static int stale_reports = 0;
+            if (stale_reports < 3) {
+                stale_reports++;
+                fprintf(stderr,
+                        "Set_Hamiltonian_Cuda_MatrixElements: cleared stale CUDA error \"%s\" left by an earlier recovered failure; continuing.\n",
+                        cudaGetErrorString(stale));
+                fflush(stderr);
+            }
+        }
+    }
+
     if (cudaGetDevice(&device) != cudaSuccess) return -1;
     if (cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlock, device) != cudaSuccess) return -1;
 
@@ -149,7 +170,25 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
         pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
 
     cudaError_t status = cudaGetLastError();
-    if (status != cudaSuccess) return -static_cast<int>(status);
-    status = cudaDeviceSynchronize();
-    return (status == cudaSuccess) ? 0 : -static_cast<int>(status);
+    if (status == cudaSuccess) status = cudaDeviceSynchronize();
+    if (status == cudaSuccess) return 0;
+
+    /* The kernel may have run partially, so the device H blocks are suspect
+       either way.  Distinguish a transient failure (context still usable ->
+       the caller restores the H blocks and redoes this batch with the
+       OpenACC kernel) from a sticky, context-poisoning one. */
+    (void)cudaGetLastError();
+    if (cudaDeviceSynchronize() == cudaSuccess) {
+        static int recover_reports = 0;
+        if (recover_reports < 3) {
+            recover_reports++;
+            fprintf(stderr,
+                    "Set_Hamiltonian_Cuda_MatrixElements: CUDA kernel failed with \"%s\" but the context is healthy; deferring to the OpenACC kernel for this batch.\n",
+                    cudaGetErrorString(status));
+            fflush(stderr);
+        }
+        return 2;
+    }
+    (void)cudaGetLastError();
+    return -static_cast<int>(status);
 }

@@ -585,6 +585,10 @@ static void DC_GpuSolver_DisableGemmPath(const char *where, const char *backend,
     DC_gpusolver_eigen_disabled = 1;
     openmx_gemmul8ReleaseWorkspaces();
 
+    /* pop any latched CUDA error: this path recovers by falling back to the
+       CPU, so the error must not linger for the next cudaGetLastError() caller */
+    (void)cudaGetLastError();
+
     MPI_Comm_rank(mpi_comm_level1, &rank);
     fprintf(stderr,
             "<DC> rank %d: %s failed in %s for GEMM(m=%d,n=%d,k=%d): %s (%d). "
@@ -600,6 +604,10 @@ static void DC_GpuSolver_DisableGemmPathCuda(const char *where, cudaError_t stat
     DC_gpusolver_gemm_disabled = 1;
     DC_gpusolver_eigen_disabled = 1;
     openmx_gemmul8ReleaseWorkspaces();
+
+    /* pop any latched CUDA error: this path recovers by falling back to the
+       CPU, so the error must not linger for the next cudaGetLastError() caller */
+    (void)cudaGetLastError();
 
     MPI_Comm_rank(mpi_comm_level1, &rank);
     fprintf(stderr,
