@@ -740,85 +740,149 @@ static void ClusterCol_DMEntryCache_Ensure(int *MP, int n)
     cache->entry_count = entry_count;
 }
 
-static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
-                                            const double *occ, const double *eig, const double *docc,
-                                            const double *evec, const double *evec_dev, int evec_lds,
-                                            double *DM1, double *EDM1, double *PDM1)
+/* Returns 1 when the accumulation ran on the device, 0 when the eigenvector
+   slice could not be staged there (the caller then runs the CPU loop).  When
+   the whole slice fits the summation order is identical to the previous
+   one-shot upload; under memory pressure the state range is processed in
+   blocks whose partial sums accumulate into the caller-zeroed DM arrays. */
+static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
+                                           const double *occ, const double *eig, const double *docc,
+                                           const double *evec, const double *evec_dev, int evec_lds,
+                                           double *DM1, double *EDM1, double *PDM1)
 {
     ClusterColDMEntryCache *cache = &ClusterCol_dm_entry_cache;
     const int *basis0 = cache->basis0;
     const int *basis1 = cache->basis1;
     const int entry_count = cache->entry_count;
-    const size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)nk,"DM eigenvector slice");
     const int dm_chunk_size = 131072;
     const int with_pdm = (docc!=NULL && PDM1!=NULL);
-    /* the eigenvector slice either already lives on the device (state-major
-       panel with leading dimension evec_lds) or is uploaded from EVec1 */
-    const size_t ld = (evec_dev!=NULL) ? (size_t)evec_lds : (size_t)nk;
-    const double *evec_d = evec_dev;
+    const int stage_kb_min = 128;
+    double *d_stage = NULL;
+    double *pack = NULL;
+    int KB = nk;
 
     if (entry_count!=size_H1){
         ClusterCol_AbortWithMessage("DM entry cache size mismatch in Cluster_DFT_Col.c.");
     }
 
+    if (evec_dev==NULL){
+        /* Stage the eigenvector slice through a bounded-retry device
+           allocation instead of an enter-data copyin: the copyin is fatal
+           on OOM, and on a crowded device (e.g. while the serialized
+           two-spin dense solve keeps one large reservation alive) every
+           rank uploads its slice at the same time.  Halve the staged
+           state block until it fits; the caller falls back to the CPU
+           loop when even the smallest block cannot be staged. */
+        for (;;){
+            size_t stage_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)KB,"DM eigenvector stage");
+            size_t stage_bytes = ClusterCol_CheckedMulCount(stage_count,sizeof(double),"DM eigenvector stage bytes");
+
+            if (ClusterCol_TryDeviceMalloc((void**)&d_stage,stage_bytes)==cudaSuccess) break;
+            if (KB<=stage_kb_min){
+                static int stage_reports = 0;
+                if (stage_reports<3){
+                    stage_reports++;
+                    fprintf(stderr,"<Cluster_DFT_Col> a rank could not stage its DM eigenvector block"
+                            " (%d states) on the device; using the CPU loop for this step.\n",KB);
+                    fflush(stderr);
+                }
+                return 0;
+            }
+            KB = (KB+1)/2;
+        }
+        if (KB<nk){
+            pack = (double*)ClusterCol_MallocArray(ClusterCol_CheckedMulCount((size_t)n,(size_t)KB,
+                                                   "DM eigenvector pack"),sizeof(double),
+                                                   "DM eigenvector pack");
+        }
+    }
+
 #pragma acc data copyin(occ[0:nk], eig[0:nk])
     {
-        if (evec_d==NULL){
-#pragma acc enter data copyin(evec[0:evec_count])
-            evec_d = (const double*)acc_deviceptr((void*)evec);
-        }
-
         if (with_pdm){
 #pragma acc enter data copyin(docc[0:nk])
         }
 
-        for (int offset=0; offset<entry_count; offset+=dm_chunk_size){
-            const int chunk_count = (entry_count-offset<dm_chunk_size) ? (entry_count-offset) : dm_chunk_size;
-            const int *basis0_chunk = basis0 + offset;
-            const int *basis1_chunk = basis1 + offset;
-            double *DM1_chunk = DM1 + offset;
-            double *EDM1_chunk = EDM1 + offset;
-            double *PDM1_chunk = with_pdm ? (PDM1 + offset) : NULL;
+        for (int k0=0; k0<nk; k0+=KB){
+            const int kb = (nk-k0<KB) ? (nk-k0) : KB;
+            const double *eblk;
+            size_t ld;
+
+            if (evec_dev!=NULL){
+                /* device-resident stash: single round (KB==nk) */
+                eblk = evec_dev + k0;
+                ld = (size_t)evec_lds;
+            }
+            else{
+                const double *src;
+
+                if (kb==nk){
+                    src = evec;   /* the whole slice is contiguous */
+                }
+                else{
+                    for (int basis=0; basis<n; basis++){
+                        memcpy(pack+(size_t)basis*(size_t)kb,
+                               evec+(size_t)basis*(size_t)nk+(size_t)k0,
+                               sizeof(double)*(size_t)kb);
+                    }
+                    src = pack;
+                }
+                if (cudaMemcpy(d_stage,src,sizeof(double)*(size_t)n*(size_t)kb,
+                               cudaMemcpyHostToDevice)!=cudaSuccess){
+                    ClusterCol_AbortWithMessage("DM eigenvector stage upload failed in Cluster_DFT_Col.c.");
+                }
+                eblk = d_stage;
+                ld = (size_t)kb;
+            }
+
+            for (int offset=0; offset<entry_count; offset+=dm_chunk_size){
+                const int chunk_count = (entry_count-offset<dm_chunk_size) ? (entry_count-offset) : dm_chunk_size;
+                const int *basis0_chunk = basis0 + offset;
+                const int *basis1_chunk = basis1 + offset;
+                double *DM1_chunk = DM1 + offset;
+                double *EDM1_chunk = EDM1 + offset;
+                double *PDM1_chunk = with_pdm ? (PDM1 + offset) : NULL;
 
 #pragma acc data copyin(basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count]) \
-                 copyout(DM1_chunk[0:chunk_count], EDM1_chunk[0:chunk_count])
-            {
-#pragma acc parallel loop gang deviceptr(evec_d) present(occ[0:nk], eig[0:nk])
-                for (int p=0; p<chunk_count; p++){
-                    const int ia = basis0_chunk[p];
-                    const int ib = basis1_chunk[p];
-                    double sum1 = 0.0;
-                    double sum2 = 0.0;
+                 copy(DM1_chunk[0:chunk_count], EDM1_chunk[0:chunk_count])
+                {
+#pragma acc parallel loop gang deviceptr(eblk) present(occ[0:nk], eig[0:nk])
+                    for (int p=0; p<chunk_count; p++){
+                        const int ia = basis0_chunk[p];
+                        const int ib = basis1_chunk[p];
+                        double sum1 = 0.0;
+                        double sum2 = 0.0;
 
 #pragma acc loop seq
-                    for (int k=0; k<nk; k++){
-                        double dum = occ[k]*evec_d[(size_t)ia*ld+(size_t)k]
-                                           *evec_d[(size_t)ib*ld+(size_t)k];
-                        sum1 += dum;
-                        sum2 += dum*eig[k];
+                        for (int kk=0; kk<kb; kk++){
+                            double dum = occ[k0+kk]*eblk[(size_t)ia*ld+(size_t)kk]
+                                                   *eblk[(size_t)ib*ld+(size_t)kk];
+                            sum1 += dum;
+                            sum2 += dum*eig[k0+kk];
+                        }
+
+                        DM1_chunk[p] += sum1;
+                        EDM1_chunk[p] += sum2;
                     }
 
-                    DM1_chunk[p] = sum1;
-                    EDM1_chunk[p] = sum2;
-                }
-
-                if (with_pdm){
-#pragma acc data copyout(PDM1_chunk[0:chunk_count])
-                    {
-#pragma acc parallel loop gang deviceptr(evec_d) present(docc[0:nk], \
+                    if (with_pdm){
+#pragma acc data copy(PDM1_chunk[0:chunk_count])
+                        {
+#pragma acc parallel loop gang deviceptr(eblk) present(docc[0:nk], \
                                        basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count])
-                        for (int p=0; p<chunk_count; p++){
-                            const int ia = basis0_chunk[p];
-                            const int ib = basis1_chunk[p];
-                            double sum1 = 0.0;
+                            for (int p=0; p<chunk_count; p++){
+                                const int ia = basis0_chunk[p];
+                                const int ib = basis1_chunk[p];
+                                double sum1 = 0.0;
 
 #pragma acc loop seq
-                            for (int k=0; k<nk; k++){
-                                sum1 += docc[k]*evec_d[(size_t)ia*ld+(size_t)k]
-                                               *evec_d[(size_t)ib*ld+(size_t)k];
-                            }
+                                for (int kk=0; kk<kb; kk++){
+                                    sum1 += docc[k0+kk]*eblk[(size_t)ia*ld+(size_t)kk]
+                                                       *eblk[(size_t)ib*ld+(size_t)kk];
+                                }
 
-                            PDM1_chunk[p] = sum1;
+                                PDM1_chunk[p] += sum1;
+                            }
                         }
                     }
                 }
@@ -828,12 +892,13 @@ static void ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
         if (with_pdm){
 #pragma acc exit data delete(docc[0:nk])
         }
-
-        if (evec_dev==NULL){
-#pragma acc exit data delete(evec[0:evec_count])
-        }
     }
 #pragma acc wait
+
+    free(pack);
+    if (d_stage!=NULL) wait_cudafunc(cudaFree(d_stage));
+
+    return 1;
 }
 
 static void ClusterCol_GpuSolver_CheckInfo(const char *where, int info)
@@ -871,13 +936,67 @@ static size_t ClusterCol_GpuDiagReserveBytes(void)
    branch; when any owner falls short every owner releases its reservation
    again.  It is cached until the next SCF restart or a change of the
    matrix size.
-   OPENMX_CLUSTER_GPU_DIAG=1 forces the GPU path, =0 forces the fallback. */
-static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1)
+
+   Returns 0 for the ELPA/ScaLAPACK fallback, 1 for the concurrent GPU
+   path (each spin world's owner reserves and solves its own spin), and 2
+   for the serialized GPU path: when the device cannot hold two owner
+   reservations but can hold one, spin world 0's owner keeps the only
+   reservation and solves both spins back to back from the packed
+   Set_Hamiltonian cache (every selected rank owns all spins of it),
+   shipping the second spin's eigenpairs to spin world 1's owner.
+   OPENMX_CLUSTER_GPU_DIAG=1 forces the concurrent GPU path, =0 forces the
+   fallback.  OPENMX_CLUSTER_GPU_DIAG_SERIAL=0 disables the serialized
+   tier, =2 skips the concurrent probe and forces the serialized tier. */
+static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
+{
+    int my_fit = (ClusterCol_TryEnsureMatrixCapacity(n) &&
+                  ClusterCol_TryEnsureEigenWorkspace(n));
+
+    if (my_fit){
+        size_t free_bytes = 0;
+        size_t total_bytes = 0;
+
+        /* the solve still makes smaller incidental allocations (the
+           cusolver internals, the optional GEMMul8 workspace and
+           eigenvector stash degrade gracefully) — keep a margin free */
+        if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
+            (void)cudaGetLastError();
+            my_fit = 0;
+        }
+        else{
+            my_fit = (ClusterCol_GpuDiagReserveBytes()<=free_bytes);
+        }
+    }
+
+    if (!my_fit){
+        size_t free_bytes = 0;
+        size_t total_bytes = 0;
+
+        if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
+            (void)cudaGetLastError();
+        }
+        printf("<Cluster_DFT_Col> The dense owner of spin world %d could not reserve its GPU"
+               " diagonalization buffers%s (%.1f MiB of %.1f MiB free).\n",
+               myworld1, when,
+               (double)free_bytes/(1024.0*1024.0),
+               (double)total_bytes/(1024.0*1024.0));
+        fflush(stdout);
+    }
+
+    return my_fit;
+}
+
+static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, int numprocs0)
 {
     static int verdict = -1;
     static int verdict_n = 0;
     const char *force = getenv("OPENMX_CLUSTER_GPU_DIAG");
+    const char *serial_env = getenv("OPENMX_CLUSTER_GPU_DIAG_SERIAL");
+    int serial_knob = (serial_env!=NULL) ? atoi(serial_env) : 1;
     int announce = (myworld1==0 && myid1==0);
+    int owner = (myid1==0);
+    int solver_owner = (myworld1==0 && myid1==0);
+    int serial_allowed;
     int my_fit = 1;
     int fit = 0;
 
@@ -895,60 +1014,72 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1)
 
     if (verdict!=-1 && verdict_n==n && 1<SCF_iter) return verdict;
 
-    if (myid1==0){
-        my_fit = (ClusterCol_TryEnsureMatrixCapacity(n) &&
-                  ClusterCol_TryEnsureEigenWorkspace(n));
+    /* the serialized tier only helps when two spin worlds share the device,
+       and it rebuilds the second spin's dense Hamiltonian from the packed
+       Set_Hamiltonian cache on spin world 0's owner */
+    serial_allowed = (serial_knob!=0 && SpinP_switch==1 && numprocs0!=1 &&
+                      Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
+                      Set_Hamiltonian_GpuSolver_Packed_OrderMode()==0);
 
-        if (my_fit){
-            size_t free_bytes = 0;
-            size_t total_bytes = 0;
+    if (serial_knob==2 && serial_allowed){
+        /* testing aid: skip the concurrent probe and go straight to the
+           serialized tier */
+    }
+    else{
+        if (owner){
+            my_fit = ClusterCol_OwnerReserveProbe(n,myworld1,
+                                                  serial_allowed ? " concurrently" : "");
+        }
+        MPI_Allreduce(&my_fit,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    }
 
-            /* the solve still makes smaller incidental allocations (the
-               cusolver internals, the optional GEMMul8 workspace and
-               eigenvector stash degrade gracefully) — keep a margin free */
-            if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
-                (void)cudaGetLastError();
-                my_fit = 0;
-            }
-            else{
-                my_fit = (ClusterCol_GpuDiagReserveBytes()<=free_bytes);
+    if (fit==1){
+        verdict = 1;
+    }
+    else if (serial_allowed){
+        int my_serial = 1;
+        int serial_fit = 0;
+
+        /* only spin world 0's owner keeps a reservation in the serialized
+           mode: release the other owner's buffers first so the probe below
+           sees that memory, and order the release before the probe */
+        if (owner && !solver_owner) ClusterCol_GpuSolver_Destroy();
+        MPI_Barrier(mpi_comm_level1);
+
+        if (solver_owner){
+            my_serial = ClusterCol_OwnerReserveProbe(n,myworld1," for the serialized mode");
+        }
+        MPI_Allreduce(&my_serial,&serial_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+
+        if (serial_fit==1){
+            verdict = 2;
+            if (announce){
+                printf("<Cluster_DFT_Col> The device cannot hold both spin owners' GPU buffers at once;"
+                       " spin world 0's owner solves both spins serially on the GPU"
+                       " (disable with OPENMX_CLUSTER_GPU_DIAG_SERIAL=0).\n");
+                fflush(stdout);
             }
         }
+        else{
+            verdict = 0;
+        }
+    }
+    else{
+        verdict = 0;
+    }
 
-        if (!my_fit){
-            size_t free_bytes = 0;
-            size_t total_bytes = 0;
-
-            if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
-                (void)cudaGetLastError();
-            }
-            printf("<Cluster_DFT_Col> The dense owner of spin world %d could not reserve its GPU"
-                   " diagonalization buffers (%.1f MiB of %.1f MiB free);"
-                   " falling back to the ELPA/ScaLAPACK diagonalization."
+    if (verdict==0){
+        /* a flip back to the CPU path (e.g. at an MD step boundary) must
+           return whatever device memory the solver context still holds */
+        ClusterCol_GpuSolver_Destroy();
+        if (announce){
+            printf("<Cluster_DFT_Col> Falling back to the ELPA/ScaLAPACK diagonalization."
                    " Force the GPU path with OPENMX_CLUSTER_GPU_DIAG=1 or lower"
-                   " OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB.\n",
-                   myworld1,
-                   (double)free_bytes/(1024.0*1024.0),
-                   (double)total_bytes/(1024.0*1024.0));
+                   " OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB.\n");
             fflush(stdout);
         }
     }
 
-    MPI_Allreduce(&my_fit,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-
-    if (fit==0 && my_fit==1 && announce){
-        printf("<Cluster_DFT_Col> A dense-owning rank is short of GPU memory;"
-               " falling back to the ELPA/ScaLAPACK diagonalization.\n");
-        fflush(stdout);
-    }
-
-    if (fit==0){
-        /* a flip back to the CPU path (e.g. at an MD step boundary) must
-           return whatever device memory the solver context still holds */
-        ClusterCol_GpuSolver_Destroy();
-    }
-
-    verdict = fit;
     verdict_n = n;
     return verdict;
 }
@@ -1061,10 +1192,15 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                                              double *****nh, double ****CntOLP,
                                              int numprocs0, int myid0, int myworld1,
                                              int numprocs1, int myid1, MPI_Comm *MPI_CommWD1,
+                                             int *Comm_World_StartID1, int gpu_mode,
                                              int *MP, int *is2, int *ie2,
                                              int n, int MaxN, double **EVec1)
 {
     int owns_dense = (myid1==0);
+    /* gpu_mode 2: spin world 0's owner holds the only device reservation
+       and solves both spins back to back (see ClusterCol_GpuDiagFits) */
+    int serialized = (gpu_mode==2 && SpinP_switch==1 && numprocs0!=1);
+    int solves_dense = owns_dense && (!serialized || myworld1==0);
     int spin_start = 0;
     int spin_end = SpinP_switch;
     int rebuild_s = (SCF_iter==1);
@@ -1082,6 +1218,10 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
         spin_end = myworld1;
     }
 
+    if (serialized && !use_setham_packed_cache){
+        ClusterCol_AbortWithMessage("Cluster_DFT_Col.c: the serialized GPU diagonalization requires the Set_Hamiltonian packed cache.");
+    }
+
     if (use_setham_packed_cache) {
         Set_Hamiltonian_GpuSolver_SetMP(MP);
     }
@@ -1090,11 +1230,19 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
         size_t nmax = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,"root dense eigenvectors");
 
         C = (double*)ClusterCol_MallocArray(nmax,sizeof(double),"root dense eigenvectors");
-        ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
 
-        if (rebuild_s || !(ClusterCol_gpusolver_ctx.transformed_s_valid &&
-                           ClusterCol_gpusolver_ctx.transformed_s_dim==n)){
-            rebuild_s = 1;
+        if (solves_dense){
+            ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
+
+            if (rebuild_s || !(ClusterCol_gpusolver_ctx.transformed_s_valid &&
+                               ClusterCol_gpusolver_ctx.transformed_s_dim==n)){
+                rebuild_s = 1;
+            }
+        }
+        else{
+            /* serialized mode: this spin world's owner only receives and
+               distributes; it holds no solver context to rebuild */
+            rebuild_s = 0;
         }
     }
 
@@ -1124,32 +1272,98 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
         }
     }
 
-    for (int spin=spin_start; spin<=spin_end; spin++){
-        if (use_setham_packed_cache) {
-            if (owns_dense) {
-                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-                double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(spin);
-                const int *dense_index;
+    if (!serialized){
+        for (int spin=spin_start; spin<=spin_end; spin++){
+            if (use_setham_packed_cache) {
+                if (owns_dense) {
+                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
+                    int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+                    double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(spin);
+                    const int *dense_index;
 
-                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
-                    ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
+                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
+                        ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
+                    }
+                    dense_index = ClusterCol_DenseIndexCache_Get(cache_order_GA,MP,n,tnum);
+                    ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_H);
                 }
-                dense_index = ClusterCol_DenseIndexCache_Get(cache_order_GA,MP,n,tnum);
-                ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_H);
             }
+            else {
+                Patch2Device_Cluster_Owner(nh[spin],MP,owns_dense,n,
+                                           owns_dense ? ClusterCol_gpusolver_ctx.d_H : NULL);
+            }
+            if (owns_dense){
+                ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
+                ClusterCol_StashDeviceEvec(spin,n,MaxN);
+            }
+            ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+                                           MPI_CommWD1[myworld1],
+                                           owns_dense ? C : NULL,EVec1[spin]);
         }
-        else {
-            Patch2Device_Cluster_Owner(nh[spin],MP,owns_dense,n,
-                                       owns_dense ? ClusterCol_gpusolver_ctx.d_H : NULL);
+    }
+    else{
+        /* Serialized mode: spin world 0's owner solves both spins with its
+           single reservation, using its own packed Set_Hamiltonian cache
+           (the selected ranks own every spin of it).  The remote spin is
+           solved first so spin world 1 can distribute its eigenvectors
+           while spin 0 is still solving.  The device eigenvector stash is
+           only kept for spin 0 — spin 1's density matrix is accumulated in
+           spin world 1, whose owner has no device copy. */
+        const int remote_owner = Comm_World_StartID1[1];
+        const int home_owner = Comm_World_StartID1[0];
+        const int ko_tag = 997;
+        const int evec_tag = 998;
+        const size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,
+                                                             "serialized eigenvector panel");
+        const size_t chunk_limit = 64ULL*1024ULL*1024ULL;   /* doubles per message */
+
+        if (myworld1==0){
+            if (owns_dense){
+                for (int spin=1; 0<=spin; spin--){
+                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
+                    int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+                    double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(spin);
+                    const int *dense_index;
+
+                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
+                        ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
+                    }
+                    dense_index = ClusterCol_DenseIndexCache_Get(cache_order_GA,MP,n,tnum);
+                    ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_H);
+                    ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
+
+                    if (spin==1){
+                        MPI_Send(&ko[1][1],MaxN,MPI_DOUBLE,remote_owner,ko_tag,mpi_comm_level1);
+                        for (size_t off=0; off<evec_count; off+=chunk_limit){
+                            size_t len = evec_count - off;
+                            if (chunk_limit<len) len = chunk_limit;
+                            MPI_Send(C+off,(int)len,MPI_DOUBLE,remote_owner,evec_tag,mpi_comm_level1);
+                        }
+                    }
+                    else{
+                        ClusterCol_StashDeviceEvec(0,n,MaxN);
+                    }
+                }
+            }
+            ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+                                           MPI_CommWD1[myworld1],
+                                           owns_dense ? C : NULL,EVec1[0]);
         }
-        if (owns_dense){
-            ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
-            ClusterCol_StashDeviceEvec(spin,n,MaxN);
+        else{
+            if (owns_dense){
+                MPI_Status serial_stat;
+
+                MPI_Recv(&ko[1][1],MaxN,MPI_DOUBLE,home_owner,ko_tag,mpi_comm_level1,&serial_stat);
+                for (size_t off=0; off<evec_count; off+=chunk_limit){
+                    size_t len = evec_count - off;
+                    if (chunk_limit<len) len = chunk_limit;
+                    MPI_Recv(C+off,(int)len,MPI_DOUBLE,home_owner,evec_tag,mpi_comm_level1,&serial_stat);
+                }
+            }
+            ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+                                           MPI_CommWD1[myworld1],
+                                           owns_dense ? C : NULL,EVec1[1]);
         }
-        ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
-                                       MPI_CommWD1[myworld1],
-                                       owns_dense ? C : NULL,EVec1[spin]);
     }
 
     /* free the GEMMul8 workspace so the grid/force phases of this SCF step
@@ -1501,14 +1715,21 @@ double Cluster_DFT_Col(
     }
   }
 
-  if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n &&
-      ClusterCol_GpuDiagFits(SCF_iter,n,myworld1,myid1)){
-    ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
-    firsttime = 0;
-    ClusterCol_GpuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
-                                     numprocs0,myid0,myworld1,numprocs1,myid1,
-                                     MPI_CommWD1,MP,is2,ie2,n,MaxN,EVec1);
-    goto diagonalize_finished;
+  {
+    int gpu_diag_mode = 0;
+
+    if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n){
+      gpu_diag_mode = ClusterCol_GpuDiagFits(SCF_iter,n,myworld1,myid1,numprocs0);
+    }
+    if (gpu_diag_mode!=0){
+      ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
+      firsttime = 0;
+      ClusterCol_GpuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
+                                       numprocs0,myid0,myworld1,numprocs1,myid1,
+                                       MPI_CommWD1,Comm_World_StartID1,gpu_diag_mode,
+                                       MP,is2,ie2,n,MaxN,EVec1);
+      goto diagonalize_finished;
+    }
   }
 
   /****************************************************
@@ -2856,6 +3077,8 @@ double Calc_DM_Cluster_collinear(
 
   /* calculation of DM1 */
 
+  int gpu_dm_done = 0;
+
   if (ClusterCol_UseGpuDM(n) && kmin<=kmax){
 
     /* GPU accumulation over the packed sparse pattern; same summation order
@@ -2885,14 +3108,15 @@ double Calc_DM_Cluster_collinear(
     const double *evec_dev = ClusterCol_DeviceEvecStash(spin,n,kmin,kmax,&evec_lds);
 
     ClusterCol_DMEntryCache_Ensure(MP,n);
-    ClusterCol_AccumulateDM_OpenACC(n,size_H1,nk,occ,eig,docc,EVec1[spin],evec_dev,evec_lds,
-                                    DM1,EDM1,cal_partial_charge ? PDM1 : NULL);
+    gpu_dm_done = ClusterCol_AccumulateDM_OpenACC(n,size_H1,nk,occ,eig,docc,EVec1[spin],evec_dev,evec_lds,
+                                                  DM1,EDM1,cal_partial_charge ? PDM1 : NULL);
 
     free(docc);
     free(eig);
     free(occ);
   }
-  else{
+
+  if (!gpu_dm_done){
 
   p = 0;
   for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
