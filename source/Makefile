@@ -285,9 +285,8 @@ UTIL 	= DosMain cohp jx analysis_example esp polB calB Z2FH bandgnu13 bin2txt cu
 fftw3: $(FFTW3_LIB)
 
 $(FFTW3_SRC_ABS):
-	@echo "FFTW3 source directory was not found: $(FFTW3_SRC_ABS)"
-	@echo "Clone $(FFTW3_REPO_URL), check out $(FFTW3_TAG), or override FFTW3_SRC_DIR."
-	@false
+	@echo "FFTW3 source directory was not found; cloning $(FFTW3_REPO_URL) at $(FFTW3_TAG)."
+	git clone --branch $(FFTW3_TAG) --depth 1 $(FFTW3_REPO_URL) "$(FFTW3_SRC_ABS)"
 
 $(FFTW3_CODELET_SENTINEL): | $(FFTW3_SRC_ABS)
 	@echo "FFTW3 git source lacks generated codelets; overlaying $(FFTW3_RELEASE_URL)."
@@ -325,7 +324,7 @@ fftw3-clean:
 gemmul8-clean:
 	rm -f "$(GEMMUL8_OPENMX_OBJ)" "$(GEMMUL8_LIB)"
 
-FFTW3_USERS = Poisson.o Stress.o Poisson_ESM.o TRAN_Poisson.o TRAN_CDen_Main.o TRAN_Set_Electrode_Grid.o
+FFTW3_USERS = Poisson.o Stress.o Poisson_ESM.o TRAN_Poisson.o TRAN_CDen_Main.o TRAN_Set_Electrode_Grid.o Cluster_DFT_Col.o
 $(FFTW3_USERS): | $(FFTW3_LIB)
 
 #
@@ -724,6 +723,11 @@ $(GEMMUL8_DIR)/Makefile:
 	  { git remote get-url origin >/dev/null 2>&1 || git remote add origin $(GEMMUL8_REPO_URL); } && \
 	  git fetch --depth 1 origin $(GEMMUL8_COMMIT) && \
 	  git checkout -q $(GEMMUL8_COMMIT)
+# The header comes from the checkout above; the empty recipe gives it a rule
+# so a fresh clone of this repository builds with a single make invocation.
+# Order-only: an existing header is always up to date regardless of mtimes.
+$(GEMMUL8_DIR)/include/gemmul8.hpp: | $(GEMMUL8_DIR)/Makefile
+	@:
 $(GEMMUL8_OPENMX_OBJ): gemmul8_openmx.cu $(GEMMUL8_DIR)/Makefile
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_openmx.cu -o $(GEMMUL8_OPENMX_OBJ)
 $(GEMMUL8_LIB): $(GEMMUL8_OPENMX_OBJ)
@@ -1195,9 +1199,9 @@ mod_precision.o: $(LIBELPADIR)/mod_precision.F90
 	$(FC) -c $(LIBELPADIR)/mod_precision.F90
 elpa_utilities.o: $(LIBELPADIR)/elpa_utilities.F90
 	$(FC) -c $(LIBELPADIR)/elpa_utilities.F90
-elpa1_compute_real.o: $(LIBELPADIR)/elpa1_compute_real.F90 elpa_utilities.o
+elpa1_compute_real.o: $(LIBELPADIR)/elpa1_compute_real.F90 elpa_utilities.o mod_precision.o
 	$(FC) -c $(LIBELPADIR)/elpa1_compute_real.F90
-elpa1_compute_complex.o: $(LIBELPADIR)/elpa1_compute_complex.F90 elpa_utilities.o
+elpa1_compute_complex.o: $(LIBELPADIR)/elpa1_compute_complex.F90 elpa_utilities.o mod_precision.o
 	$(FC) -c $(LIBELPADIR)/elpa1_compute_complex.F90
 aligned_mem.o: $(LIBELPADIR)/aligned_mem.F90
 	$(FC) -c $(LIBELPADIR)/aligned_mem.F90
@@ -1217,13 +1221,13 @@ complex.o: $(LIBELPADIR)/complex.F90 mod_precision.o
 	$(FC) -c $(LIBELPADIR)/complex.F90
 mod_single_hh_trafo_real.o: $(LIBELPADIR)/mod_single_hh_trafo_real.F90 mod_precision.o
 	$(FC) -c $(LIBELPADIR)/mod_single_hh_trafo_real.F90
-mod_compute_hh_trafo_real.o: $(LIBELPADIR)/mod_compute_hh_trafo_real.F90 mod_precision.o mod_single_hh_trafo_real.o real.o
+mod_compute_hh_trafo_real.o: $(LIBELPADIR)/mod_compute_hh_trafo_real.F90 mod_precision.o mod_single_hh_trafo_real.o real.o complex.o
 	$(FC) -c $(LIBELPADIR)/mod_compute_hh_trafo_real.F90
-mod_compute_hh_trafo_complex.o: $(LIBELPADIR)/mod_compute_hh_trafo_complex.F90 mod_precision.o complex.o
+mod_compute_hh_trafo_complex.o: $(LIBELPADIR)/mod_compute_hh_trafo_complex.F90 mod_precision.o complex.o real.o mod_single_hh_trafo_real.o
 	$(FC) -c $(LIBELPADIR)/mod_compute_hh_trafo_complex.F90
 elpa2_compute_real.o: $(LIBELPADIR)/elpa2_compute_real.F90 elpa_utilities.o elpa1_compute_real.o mod_precision.o aligned_mem.o elpa2_determine_workload.o mod_redist_band_real.o mod_pack_unpack_cpu_real.o mod_compute_hh_trafo_real.o
 	$(FC) -c $(LIBELPADIR)/elpa2_compute_real.F90
-elpa2_compute_complex.o: $(LIBELPADIR)/elpa2_compute_complex.F90 elpa_utilities.o elpa1_compute_complex.o mod_precision.o aligned_mem.o mod_redist_band_complex.o mod_pack_unpack_cpu_complex.o mod_compute_hh_trafo_complex.o
+elpa2_compute_complex.o: $(LIBELPADIR)/elpa2_compute_complex.F90 elpa_utilities.o elpa1_compute_complex.o elpa1_compute_real.o mod_precision.o aligned_mem.o elpa2_determine_workload.o mod_redist_band_complex.o mod_redist_band_real.o mod_pack_unpack_cpu_complex.o mod_pack_unpack_cpu_real.o mod_compute_hh_trafo_complex.o mod_compute_hh_trafo_real.o
 	$(FC) -c $(LIBELPADIR)/elpa2_compute_complex.F90
 elpa_solve_evp_real_2stage_double_impl.o: $(LIBELPADIR)/elpa_solve_evp_real_2stage_double_impl.F90 elpa2_compute_real.o elpa1_compute_real.o mod_precision.o
 	$(FC) -c $(LIBELPADIR)/elpa_solve_evp_real_2stage_double_impl.F90
