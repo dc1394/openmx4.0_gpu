@@ -71,34 +71,90 @@ static void DFT_GPU_DeviceInit(int basis_count)
     }
 
     MPI_Comm node_comm, device_comm = MPI_COMM_NULL;
-    int local_rank, cuda_device_count = 0, acc_device_count, device_count;
-    int cuda_device = -1, cuda_ok = 0;
-    cudaError_t cuda_err;
+    int local_rank, cuda_device_count = 0, acc_device_count = 0, device_count;
+    int cuda_device = -1, cuda_ok = 0, cuda_ok_all;
+    /* fail_reason: 0=ok, 1=cudaGetDeviceCount error, 2=zero CUDA devices,
+       3=OpenACC sees no NVIDIA device, 4=cudaSetDevice error */
+    int fail_reason = 0, fail_err = 0;
+    cudaError_t cuda_err, set_err;
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_rank(node_comm, &local_rank);
 
     cuda_err = cudaGetDeviceCount(&cuda_device_count);
-    if (cuda_err == cudaSuccess && cuda_device_count > 0) {
+    if (cuda_err != cudaSuccess) {
+        fail_reason = 1;
+        fail_err = (int)cuda_err;
+    }
+    else if (cuda_device_count <= 0) {
+        fail_reason = 2;
+    }
+    else {
         acc_device_count = acc_get_num_devices(acc_device_nvidia);
-        if (acc_device_count > 0) {
+        if (acc_device_count <= 0) {
+            fail_reason = 3;
+        }
+        else {
             device_count = (cuda_device_count < acc_device_count) ? cuda_device_count : acc_device_count;
             cuda_device = local_rank % device_count;
-            if (cudaSetDevice(cuda_device) == cudaSuccess) {
+            set_err = cudaSetDevice(cuda_device);
+            if (set_err != cudaSuccess) {
+                fail_reason = 4;
+                fail_err = (int)set_err;
+            }
+            else {
                 acc_set_device_num(cuda_device, acc_device_nvidia);
                 cuda_ok = 1;
             }
         }
     }
 
-    MPI_Comm_split(node_comm, cuda_ok ? cuda_device : MPI_UNDEFINED, 0, &device_comm);
+    /* every rank must use the same eigensolver; a single rank without a
+       usable device would otherwise split the ranks between the GPU and
+       ELPA2 code paths and deadlock their collectives */
+    MPI_Allreduce(&cuda_ok, &cuda_ok_all, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+
+    MPI_Comm_split(node_comm, cuda_ok_all ? cuda_device : MPI_UNDEFINED, 0, &device_comm);
     MPI_Comm_free(&node_comm);
     if (device_comm != MPI_COMM_NULL) MPI_Comm_free(&device_comm);
 
-    if (!cuda_ok) {
+    if (!cuda_ok_all) {
+        int numprocs, my_fail, nfail, worst_err, inbuf[2], outbuf[2];
+
         scf_eigen_lib_flag = ELPA2;
+
+        MPI_Comm_size(mpi_comm_level1,&numprocs);
+        my_fail = (cuda_ok) ? 0 : 1;
+        MPI_Allreduce(&my_fail, &nfail, 1, MPI_INT, MPI_SUM, mpi_comm_level1);
+
+        /* report the failure of the rank with the most advanced reason,
+           together with its own CUDA error code */
+        inbuf[0] = fail_reason;
+        inbuf[1] = myid0;
+        MPI_Allreduce(inbuf, outbuf, 1, MPI_2INT, MPI_MAXLOC, mpi_comm_level1);
+        worst_err = fail_err;
+        MPI_Bcast(&worst_err, 1, MPI_INT, outbuf[1], mpi_comm_level1);
+
         if (myid0==Host_ID && 0<level_stdout) {
-            printf("<DFT> GPUSOLVER requested, but no CUDA/OpenACC device is available; using ELPA2.\n");
+            printf("<DFT> GPUSOLVER requested, but GPU initialization failed on %d of %d MPI ranks; using ELPA2.\n",
+                   nfail,numprocs);
+            switch (outbuf[0]) {
+            case 1:
+                printf("<DFT>   cudaGetDeviceCount failed: %s (error %d).\n",
+                       cudaGetErrorString((cudaError_t)worst_err),worst_err);
+                printf("<DFT>   nvidia-smi may still work in this state; check /dev/nvidia* and the CUDA driver stack, or restart the node/container.\n");
+                break;
+            case 2:
+                printf("<DFT>   cudaGetDeviceCount reported 0 devices; check CUDA_VISIBLE_DEVICES and the GPUs assigned to this job.\n");
+                break;
+            case 3:
+                printf("<DFT>   the OpenACC runtime reports no NVIDIA device (acc_get_num_devices=0); check ACC_DEVICE_TYPE and the NVHPC runtime installation.\n");
+                break;
+            case 4:
+                printf("<DFT>   cudaSetDevice failed: %s (error %d).\n",
+                       cudaGetErrorString((cudaError_t)worst_err),worst_err);
+                break;
+            }
             fflush(stdout);
         }
     }
