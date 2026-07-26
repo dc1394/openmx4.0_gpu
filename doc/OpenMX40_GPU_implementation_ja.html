@@ -301,7 +301,7 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
   <text x="294" y="434" class="ts mono">ZgetrfBatched/ZgetriBatched(休眠)</text>
   <text x="294" y="449" class="ts">FP64 直接実行+フォールバック先</text>
   <rect x="548" y="384" width="250" height="92" class="gbox"/>
-  <text x="556" y="402" class="t" font-weight="bold">GEMMul8 v3.0.4(RIKEN R-CCS)</text>
+  <text x="556" y="402" class="t" font-weight="bold">GEMMul8 v3.1.1(RIKEN R-CCS)</text>
   <text x="556" y="419" class="ts">Ozaki Scheme II による FP64 GEMM</text>
   <text x="556" y="434" class="ts">エミュレーション。内部で cublasGemmEx</text>
   <text x="556" y="449" class="ts">(INT8 Tensor Core, COMPUTE_32I)を使用</text>
@@ -662,7 +662,7 @@ CPU フォールバックかが異なる(詳細は §5.4 の表)。</p>
 <h2>4.1 GEMMul8 とは — 原理と出自</h2>
 <p><b>GEMMul8</b>(GEMMulate)は理化学研究所 計算科学研究センター(RIKEN R-CCS)が開発する
 「INT8/FP8 行列エンジンを用いた GEMM エミュレーション」ライブラリである(責任開発者: Yuki Uchino 氏、MIT ライセンス)。
-本実装が取り込んでいるのは <b>v3.0.4</b>(上流コミット <code>884a2875…</code> に固定)。
+本実装が取り込んでいるのは <b>v3.1.1</b>(上流コミット <code>6bf409bd…</code> に固定)。
 上流リポジトリ: <code>https://github.com/RIKEN-RCCS/GEMMul8</code>。</p>
 <p>原理は <b>Ozaki Scheme II</b>(整数モジュラー技法/中国剰余定理 CRT に基づく浮動小数点行列積エミュレーション)である。</p>
 <ol>
@@ -867,7 +867,7 @@ wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n
 <h2>4.7 ビルド</h2>
 <ul>
   <li><b>取得:</b> <code>make</code> が git submodule ディレクトリで <code>git fetch --depth 1 origin $(GEMMUL8_COMMIT)</code> →
-  <code>checkout</code> を実行し、コミット <code>884a2875…</code> に固定する。チェックアウトが無い新規クローンでも
+  <code>checkout</code> を実行し、コミット <code>6bf409bd…</code>(v3.1.1)に固定する。チェックアウトが無い新規クローンでも
   <code>gemmul8.hpp</code> の order-only ルール経由で自動取得される(コミット <code>9fe8ce13</code>)。
   ピン留めの理由は Makefile コメントに明記:「gemmul8_openmx.cu が GEMMul8 内部を直接実体化するため、
   チェックアウトは内部レイアウトが一致するコミットに固定し続けなければならない」。</li>
@@ -2263,7 +2263,7 @@ raw 行数が実質変更より大きく見える点に注意。
 <tr><td><code>Makefile</code>(1,377 行)</td><td>新ビルドシステム本体。各種スパコン向け構成例のコメント付き。NVHPC 26.3 + CUDA 13.1 既定。クリーンツリーから make 一発(-j 可)で third_party 込みの全ビルドが完走(§9.3)</td></tr>
 <tr><td><code>Makefile.bunshiken</code>(1,366 行)</td><td>共用計算機向け変種(NVHPC 25.9-nompi + OpenMPI 5.0.8 + gcc-toolset-15)。一世代以上古い構成</td></tr>
 <tr><td><code>makefile.cpu_intel.bak</code>(1,383 行)</td><td>オリジナル makefile のバイト同一バックアップ(Intel CPU 構成)</td></tr>
-<tr><td><code>third_party/</code></td><td>GEMMul8(submodule、コミット 884a287 固定)、fftw3(submodule、タグ fftw-3.3.11)、fftw-3.3.11.tar.gz(codelets 補完用)。いずれも欠けていれば make が自動取得</td></tr>
+<tr><td><code>third_party/</code></td><td>GEMMul8(submodule、コミット 6bf409b = v3.1.1 固定)、fftw3(submodule、タグ fftw-3.3.11)、fftw-3.3.11.tar.gz(codelets 補完用)。いずれも欠けていれば make が自動取得</td></tr>
 <tr><td><code>doc/</code></td><td>本書(日本語/英語、HTML/PDF)</td></tr>
 </tbody>
 </table>

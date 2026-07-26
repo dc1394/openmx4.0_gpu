@@ -310,7 +310,7 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
   <text x="294" y="434" class="ts mono">ZgetrfBatched/ZgetriBatched (dormant)</text>
   <text x="294" y="449" class="ts">direct FP64 + fallback target</text>
   <rect x="548" y="384" width="250" height="92" class="gbox"/>
-  <text x="556" y="402" class="t" font-weight="bold">GEMMul8 v3.0.4 (RIKEN R-CCS)</text>
+  <text x="556" y="402" class="t" font-weight="bold">GEMMul8 v3.1.1 (RIKEN R-CCS)</text>
   <text x="556" y="419" class="ts">FP64 GEMM emulation via Ozaki</text>
   <text x="556" y="434" class="ts">Scheme II; internally cublasGemmEx</text>
   <text x="556" y="449" class="ts">(INT8 Tensor Cores, COMPUTE_32I)</text>
@@ -683,7 +683,7 @@ means <code>MPI_Abort</code>/<code>exit</code> or a CPU fallback differs per pat
 <h2>4.1 What GEMMul8 Is — Principle and Origin</h2>
 <p><b>GEMMul8</b> (GEMMulate) is a "GEMM emulation on INT8/FP8 matrix engines" library developed at RIKEN
 Center for Computational Science (R-CCS; lead developer Yuki Uchino; MIT license). This port pins
-<b>v3.0.4</b> (upstream commit <code>884a2875…</code>). Upstream:
+<b>v3.1.1</b> (upstream commit <code>6bf409bd…</code>). Upstream:
 <code>https://github.com/RIKEN-RCCS/GEMMul8</code>.</p>
 <p>The principle is <b>Ozaki Scheme II</b> — floating-point matrix-multiplication emulation based on an
 integer modular technique and the Chinese Remainder Theorem (CRT):</p>
@@ -893,7 +893,7 @@ wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n
 <h2>4.7 Build</h2>
 <ul>
   <li><b>Fetch:</b> <code>make</code> runs <code>git fetch --depth 1 origin $(GEMMUL8_COMMIT)</code> →
-  <code>checkout</code> in the submodule directory, pinning commit <code>884a2875…</code>. A fresh clone
+  <code>checkout</code> in the submodule directory, pinning commit <code>6bf409bd…</code> (v3.1.1). A fresh clone
   without the checkout also works, via the order-only rule for <code>gemmul8.hpp</code> (commit
   <code>9fe8ce13</code>). The Makefile comment explains why the pin is mandatory: gemmul8_openmx.cu
   instantiates GEMMul8 internals directly, so the checkout must stay at a commit whose internal layout
@@ -2390,7 +2390,7 @@ this edition.</p>
 <tr><td><code>Makefile</code> (1,377 lines)</td><td>The new build system, with commented configuration examples for several supercomputers. NVHPC 26.3 + CUDA 13.1 defaults. A single make (-j allowed) from a pristine tree builds everything including third_party (§9.3)</td></tr>
 <tr><td><code>Makefile.bunshiken</code> (1,366 lines)</td><td>Variant for a shared machine (NVHPC 25.9-nompi + OpenMPI 5.0.8 + gcc-toolset-15); more than a generation old</td></tr>
 <tr><td><code>makefile.cpu_intel.bak</code> (1,383 lines)</td><td>Byte-identical backup of the original makefile (Intel CPU configuration)</td></tr>
-<tr><td><code>third_party/</code></td><td>GEMMul8 (submodule, pinned to 884a287), fftw3 (submodule, tag fftw-3.3.11), fftw-3.3.11.tar.gz (codelet overlay). All fetched automatically by make when missing</td></tr>
+<tr><td><code>third_party/</code></td><td>GEMMul8 (submodule, pinned to 6bf409b = v3.1.1), fftw3 (submodule, tag fftw-3.3.11), fftw-3.3.11.tar.gz (codelet overlay). All fetched automatically by make when missing</td></tr>
 <tr><td><code>doc/</code></td><td>This guide (Japanese/English, HTML/PDF)</td></tr>
 </tbody>
 </table>
