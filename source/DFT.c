@@ -96,6 +96,14 @@ static void DFT_GPU_DeviceInit(int basis_count)
         }
         else {
             device_count = (cuda_device_count < acc_device_count) ? cuda_device_count : acc_device_count;
+            if (0 < SCF_Gpu_Num && SCF_Gpu_Num < device_count) {
+                if (myid0==Host_ID && 0<level_stdout) {
+                    printf("<DFT> scf.Gpu.Num caps the GPUs used per node at %d of the %d detected.\n",
+                           SCF_Gpu_Num,device_count);
+                    fflush(stdout);
+                }
+                device_count = SCF_Gpu_Num;
+            }
             cuda_device = local_rank % device_count;
             set_err = cudaSetDevice(cuda_device);
             if (set_err != cudaSuccess) {

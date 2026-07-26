@@ -1,3 +1,4 @@
+#include "openmx_common.h"
 #include "set_openacc_device_from_local_rank.h"
 #include <stdlib.h>
 
@@ -41,6 +42,9 @@ int set_openacc_device_from_local_rank(acc_device_t devtype)
     int ndev = acc_get_num_devices(devtype);
     int dev  = -1;
 
+    /* scf.Gpu.Num caps the GPUs used per node (debugging aid) */
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < ndev) ndev = SCF_Gpu_Num;
+
     if (ndev > 0) {
         dev = local_rank % ndev;
         acc_set_device_num(dev, devtype);
@@ -63,6 +67,8 @@ int set_openacc_device_from_local_rank_noncollective(acc_device_t devtype)
 {
     int ndev = acc_get_num_devices(devtype);
     int dev  = -1;
+
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < ndev) ndev = SCF_Gpu_Num;
 
     if (ndev > 0) {
         int local_rank = get_local_rank_noncollective();

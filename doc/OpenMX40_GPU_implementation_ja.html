@@ -1962,7 +1962,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <thead><tr><th style="width:22%;">キーワード</th><th style="width:10%;">型</th><th style="width:12%;">既定値</th><th>意味</th></tr></thead>
 <tbody>
 <tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>elpa2</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格</td></tr>
-<tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>ノード内で使用する GPU 台数の上限。現在は DC-LNO の GPU 台数切り詰めにのみ使用(既定 30 は実質「検出された全 GPU を使う」)</td></tr>
+<tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>ノード内で使用する GPU 台数の上限。すべての rank→GPU 割り当て(GPUSOLVER 中核初期化、Band/Cluster ソルバ経路の local-rank デバイスヘルパー、DC-LNO プロキシ)に適用。<code>scf.Gpu.Num 1</code> でノードの GPU 搭載数によらず 1 台のみ使用(デバッグ用途。既定 30 は実質「検出された全 GPU を使う」)。0 以下や検出数以上の値は無視</td></tr>
 </tbody>
 </table>
 

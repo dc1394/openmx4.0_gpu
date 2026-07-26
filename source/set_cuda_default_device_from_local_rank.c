@@ -41,6 +41,9 @@ int set_cuda_default_device_from_local_rank()
     int deviceCount;
     wait_cudafunc(cudaGetDeviceCount(&deviceCount));
 
+    /* scf.Gpu.Num caps the GPUs used per node (debugging aid) */
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < deviceCount) deviceCount = SCF_Gpu_Num;
+
     int local_rank;
     MPI_Comm_rank(shmcomm, &local_rank);
 
@@ -62,6 +65,8 @@ int set_cuda_default_device_from_local_rank_noncollective(void)
     int dev = -1;
 
     wait_cudafunc(cudaGetDeviceCount(&deviceCount));
+
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < deviceCount) deviceCount = SCF_Gpu_Num;
 
     if (deviceCount > 0) {
         local_rank = get_local_rank_noncollective();

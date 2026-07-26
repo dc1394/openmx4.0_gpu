@@ -2076,7 +2076,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <thead><tr><th style="width:22%;">Keyword</th><th style="width:10%;">Type</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>elpa2</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present</td></tr>
-<tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper bound on GPUs used per node; currently only trims the DC-LNO GPU count (30 effectively means "use every GPU found")</td></tr>
+<tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper bound on GPUs used per node, applied to every rank→GPU assignment (central GPUSOLVER initialization, the local-rank device helpers of the Band/Cluster solver paths, and the DC-LNO proxy). <code>scf.Gpu.Num 1</code> confines the run to one GPU however many the node carries — a debugging aid; 30 effectively means "use every GPU found". Values ≤0 or ≥ the detected count are ignored</td></tr>
 </tbody>
 </table>
 

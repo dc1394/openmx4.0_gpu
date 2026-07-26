@@ -58,6 +58,9 @@ int32_t gpusolver_Syevd(double * A, double * W, int32_t m)
     int32_t deviceCount;
     wait_cudafunc(cudaGetDeviceCount(&deviceCount));
 
+    /* scf.Gpu.Num caps the GPUs used per node (debugging aid) */
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < deviceCount) deviceCount = SCF_Gpu_Num;
+
     int32_t rank;
     MPI_Comm_rank(mpi_comm_level1, &rank);
     wait_cudafunc(cudaSetDevice(rank % deviceCount));
