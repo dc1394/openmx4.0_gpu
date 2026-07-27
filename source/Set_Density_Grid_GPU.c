@@ -9,6 +9,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include <accel.h>
 #include <limits.h>
 #include <openacc.h>
@@ -854,7 +855,8 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
               (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3);
     if (enabled) {
       cudaError_t status = cudaGetDeviceCount(&device_count);
-      if (status != cudaSuccess || device_count <= 0 || acc_get_num_devices(acc_device_nvidia) <= 0) enabled = 0;
+      if (status != cudaSuccess || device_count <= 0 || acc_get_num_devices(acc_device_nvidia) <= 0 ||
+          !gpu_rank_device_usable()) enabled = 0;
     }
   }
   MPI_Bcast(&enabled, 1, MPI_INT, owner, mpi_comm_level1);
@@ -1198,7 +1200,8 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
             SDG_env_bool("OPENMX_DENSITY_GRID_GPU", SDG_env_bool("OPENMX_SETDENSITY_GPU", 1)) &&
             scf_eigen_lib_flag == GPUSOLVER && (Solver == 2 || Solver == 3) &&
             Cnt_switch == 0 && (Cnt_kind == 0 || Cnt_kind == 1) &&
-            (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3);
+            (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3) &&
+            gpu_rank_device_usable();
   if (!enabled) return 0;
 
   /* Mode 1 rides on the tables Set_Hamiltonian has already built.  Asking

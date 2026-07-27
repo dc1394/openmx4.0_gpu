@@ -14,6 +14,7 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "lapack_prototypes.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include <accel.h>
 #include <limits.h>
 #include <math.h>
@@ -235,7 +236,7 @@ static void Set_Hamiltonian_add_array_bytes(size_t *total, size_t count, size_t 
 
 static int Set_Hamiltonian_OpenACC_Enabled(void)
 {
-    return (scf_eigen_lib_flag == GPUSOLVER);
+    return (scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable());
 }
 
 static int Set_Hamiltonian_MatrixElements_OpenACC_Enabled(void)

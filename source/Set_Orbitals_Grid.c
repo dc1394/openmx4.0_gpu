@@ -18,6 +18,7 @@
 #include "mpi.h"
 #include <omp.h>
 #include <openacc.h>
+#include "set_cuda_default_device_from_local_rank.h"
 
 /***********************************************************************
    GPU evaluation of the primitive (Cnt_kind==0) basis orbitals.
@@ -73,11 +74,10 @@ static int SOG_gpu_eligible(int Cnt_kind)
   }
 
   if (!device_checked) {
-    int cuda_devices = 0;
-
     device_checked = 1;
-    device_ok = (cudaGetDeviceCount(&cuda_devices) == cudaSuccess &&
-                 0 < cuda_devices && 0 < acc_get_num_devices(acc_device_nvidia));
+    /* the probe, not a bare device count: a rank whose context or module
+       load cannot complete would abort inside acc_malloc otherwise */
+    device_ok = gpu_rank_device_usable();
   }
   return device_ok;
 }
@@ -691,6 +691,9 @@ static int Set_Orbitals_Grid_GPU(void)
   }
 
   acc_free(arena);
+  /* return the arena to CUDA instead of the process-local freelist, so
+     the other ranks sharing this device can actually use the memory */
+  if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
   free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
   free(pao_rv); free(pao_rwf); free(atv_flat); free(chi_host);
   free(ppr_host); free(pair_hAN); free(pair_host);

@@ -19,6 +19,7 @@
 #include "mpi.h"
 #include "omp.h"
 #include <openacc.h>
+#include "set_cuda_default_device_from_local_rank.h"
 #include "tran_prototypes.h"
 
 #define  measure_time   0
@@ -4250,11 +4251,10 @@ static int OLG_gpu_ready(void)
   static int state = -1;
 
   if (state < 0) {
-    int cuda_devices = 0;
+    /* the probe, not a bare device count: a rank whose context or module
+       load cannot complete would abort inside acc_malloc otherwise */
     state = (OLG_env_flag("OPENMX_UCELL_OLG_GPU", 1) != 0 &&
-             cudaGetDeviceCount(&cuda_devices) == cudaSuccess &&
-             0 < cuda_devices &&
-             0 < acc_get_num_devices(acc_device_nvidia));
+             gpu_rank_device_usable());
   }
   return state;
 }
@@ -4543,6 +4543,9 @@ static int UCellBox_OLG_GPU(int estimate_switch, int CpyCell,
   }
 
   acc_free(arena);
+  /* return the arena to CUDA instead of the process-local freelist, so
+     the other ranks sharing this device can actually use the memory */
+  if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
   free(pair_host); free(out_host); free(ratv_flat); free(atv_flat); free(mh_base);
 
   return 1;

@@ -71,15 +71,17 @@ static void DFT_GPU_DeviceInit(int basis_count)
     }
 
     MPI_Comm node_comm, device_comm = MPI_COMM_NULL;
-    int local_rank, cuda_device_count = 0, acc_device_count = 0, device_count;
+    int local_rank, local_size, cuda_device_count = 0, acc_device_count = 0, device_count;
     int cuda_device = -1, cuda_ok = 0, cuda_ok_all;
     /* fail_reason: 0=ok, 1=cudaGetDeviceCount error, 2=zero CUDA devices,
-       3=OpenACC sees no NVIDIA device, 4=cudaSetDevice error */
+       3=OpenACC sees no NVIDIA device, 4=cudaSetDevice error,
+       5=device context/module initialization impossible (gpu_rank_device_usable) */
     int fail_reason = 0, fail_err = 0;
     cudaError_t cuda_err, set_err;
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_rank(node_comm, &local_rank);
+    MPI_Comm_size(node_comm, &local_size);
 
     cuda_err = cudaGetDeviceCount(&cuda_device_count);
     if (cuda_err != cudaSuccess) {
@@ -104,11 +106,17 @@ static void DFT_GPU_DeviceInit(int basis_count)
                 }
                 device_count = SCF_Gpu_Num;
             }
-            cuda_device = local_rank % device_count;
+            cuda_device = openmx_gpu_map_rank_to_device(local_rank, local_size, device_count);
             set_err = cudaSetDevice(cuda_device);
             if (set_err != cudaSuccess) {
                 fail_reason = 4;
                 fail_err = (int)set_err;
+            }
+            else if (!gpu_rank_device_usable()) {
+                /* the context or the device-module load cannot complete on
+                   this rank (e.g. the node's contexts already fill the
+                   device); committing to GPUSOLVER would abort mid-SCF */
+                fail_reason = 5;
             }
             else {
                 acc_set_device_num(cuda_device, acc_device_nvidia);
@@ -161,6 +169,9 @@ static void DFT_GPU_DeviceInit(int basis_count)
             case 4:
                 printf("<DFT>   cudaSetDevice failed: %s (error %d).\n",
                        cudaGetErrorString((cudaError_t)worst_err),worst_err);
+                break;
+            case 5:
+                printf("<DFT>   some ranks could not initialize their GPU (device memory exhausted by the node's CUDA contexts, or OPENMX_GPU=0); reduce the MPI ranks per GPU or raise scf.Gpu.Num.\n");
                 break;
             }
             fflush(stdout);
@@ -907,6 +918,14 @@ double DFT(int MD_iter, int Cnt_Now)
       printf("<%s>  Solving the eigenvalue problem%s...\n",
              s_vec[Solver-1],
              DFT_GPU_EigensolverActive() ? " (GPU-accelerated)" : "");
+      if (!DFT_GPU_EigensolverActive() && GPU_CPU_SWITCH_NUM<=DFT_GPU_BasisCount()){
+        static int cpu_diag_notice_done = 0;
+        if (!cpu_diag_notice_done){
+          cpu_diag_notice_done = 1;
+          printf("<%s>  Note: the CPU eigensolver prints nothing until every k point of an SCF iteration is done (matrix dimension %d); minutes of silence here are normal.\n",
+                 s_vec[Solver-1],DFT_GPU_BasisCount());
+        }
+      }
       fflush(stdout);
     }
 

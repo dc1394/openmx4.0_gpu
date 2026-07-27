@@ -31,6 +31,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 #include <omp.h>
+#include "set_cuda_default_device_from_local_rank.h"
 
 #ifdef kcomp
 static double NLRF_BesselF(int Gensi, int L, int so, double R);
@@ -113,6 +114,27 @@ static long int SetNonlocal_SizeTToLongInt(size_t value, const char *label)
   }
 
   return (long int)value;
+}
+
+static size_t SetNonlocal_ArenaOff(size_t *pos, size_t bytes)
+{
+  size_t off = *pos;
+
+  *pos = (off + bytes + 511U) & ~(size_t)511U;
+  return off;
+}
+
+/* one shot; the caller shrinks the request or falls back to the host */
+static void *SetNonlocal_ArenaTry(size_t bytes)
+{
+  void *arena = acc_malloc(bytes);
+
+  if (arena == NULL) {
+    /* our own freelist may hoard mismatched freed blocks */
+    if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
+    arena = acc_malloc(bytes);
+  }
+  return arena;
 }
 
 static void SetNonlocal_ValidateGlobalState(void)
@@ -230,7 +252,7 @@ static int SetNonlocalUseOpenACC(void)
   const char *value = getenv("OPENMX_SETNL_OPENACC");
 
   if (value != NULL && atoi(value) == 0) return 0;
-  return (scf_eigen_lib_flag == GPUSOLVER);
+  return (scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable());
 }
 
 /*
@@ -247,8 +269,15 @@ static int SetNonlocalUseOpenACC(void)
    The previous implementation walked the pairs serially on the host and
    launched one small kernel per (pair, so) with a full re-upload of the
    Bessel tables, which left all but one host thread idle.
+
+   All transient device memory is claimed through one acc_malloc arena so
+   that an exhausted device (e.g. many MPI ranks sharing one GPU) never
+   aborts the run: acc_malloc reports NULL, the Bessel chunk is shrunk and
+   retried, and if even the smallest footprint does not fit the function
+   returns 0 and the caller runs the original host path instead.
+   Returns 1 when DS_NL was evaluated here.
 */
-static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
+static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
                                          double *Normk_grid,
                                          int basis_l_dim,
                                          int basis_m_dim,
@@ -279,13 +308,18 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
   size_t *pair_row_base;
   int *row_pair,*row_sph_off,*row_rf_base,*row_nlrf_base;
   double *sums0_all,*sums1_all;
-  double *SphB_chunk,*SphBp_chunk;
+  unsigned char *arena;
+  size_t arena_bytes;
+  size_t o_normk,o_rf,o_nlrf,o_row_pair,o_row_sph,o_row_rfb,o_row_nlb;
+  size_t o_pair_diag,o_pair_r,o_pair_nLL,o_sums0,o_sums1,o_sphb,o_sphbp;
+  int device_ok;
+  static int fail_notice_done = 0;
   int maxL0,maxL1;
   size_t gaunt_d1,gaunt_d2,gaunt_d3,gaunt_d4,gaunt_elems;
   double *gaunt_tab;
   double t_mark0,t_mark1,t_setup,t_sphb,t_acc,t_ang;
 
-  if (OneD_Nloop <= 0) return;
+  if (OneD_Nloop <= 0) return 1;
 
   t_setup = t_sphb = t_acc = t_ang = 0.0;
   if (measure_time) dtime(&t_mark0);
@@ -571,31 +605,98 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
 
   sph_stride = SetNonlocal_CheckedMulCount((size_t)run_max_nLL,(size_t)grid_dim,
                                            "OpenACC SphB stride");
-  {
+
+  /* claim the whole device footprint in one arena; when it does not fit,
+     shrink the Bessel chunk (more launches, same math) before giving up */
+  device_ok = 0;
+  arena = NULL;
+  arena_bytes = 0;
+  chunk_pairs = 1;
+
+  if (0 < total_rows){
+
     size_t budget_pairs = ((size_t)96*1024*1024)/(sph_stride*sizeof(double));
 
     if (budget_pairs < 1u) budget_pairs = 1u;
     if ((size_t)OneD_Nloop < budget_pairs) budget_pairs = (size_t)OneD_Nloop;
-    chunk_pairs = SetNonlocal_SizeTToInt(budget_pairs,"OpenACC chunk pairs");
-  }
 
-  chunk_cap_elems = SetNonlocal_CheckedMulCount((size_t)chunk_pairs,sph_stride,"OpenACC SphB chunk");
-  /* device-only scratch; the host copies just anchor the present table */
-  SphB_chunk = (double*)SetNonlocal_MallocArray(chunk_cap_elems,sizeof(double),"OpenACC SphB_chunk");
-  SphBp_chunk = (double*)SetNonlocal_MallocArray(chunk_cap_elems,sizeof(double),"OpenACC SphBp_chunk");
+    for (;;){
+      size_t pos = 0;
+
+      chunk_pairs = SetNonlocal_SizeTToInt(budget_pairs,"OpenACC chunk pairs");
+      chunk_cap_elems = SetNonlocal_CheckedMulCount((size_t)chunk_pairs,sph_stride,
+                                                    "OpenACC SphB chunk");
+
+      o_normk = SetNonlocal_ArenaOff(&pos,sizeof(double)*(size_t)grid_dim);
+      o_rf = SetNonlocal_ArenaOff(&pos,sizeof(double)*rf_all_elems);
+      o_nlrf = SetNonlocal_ArenaOff(&pos,sizeof(double)*nlrf_all_elems);
+      o_row_pair = SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)total_rows);
+      o_row_sph = SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)total_rows);
+      o_row_rfb = SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)total_rows);
+      o_row_nlb = SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)total_rows);
+      o_pair_diag = SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)OneD_Nloop);
+      o_pair_r = SetNonlocal_ArenaOff(&pos,sizeof(double)*(size_t)OneD_Nloop);
+      o_pair_nLL = SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)OneD_Nloop);
+      o_sums0 = SetNonlocal_ArenaOff(&pos,sizeof(double)*(size_t)total_rows);
+      o_sums1 = SetNonlocal_ArenaOff(&pos,sizeof(double)*(size_t)total_rows);
+      o_sphb = SetNonlocal_ArenaOff(&pos,sizeof(double)*chunk_cap_elems);
+      o_sphbp = SetNonlocal_ArenaOff(&pos,sizeof(double)*chunk_cap_elems);
+      arena_bytes = pos;
+
+      arena = (unsigned char*)SetNonlocal_ArenaTry(arena_bytes);
+      if (arena != NULL) break;
+      if (chunk_pairs == 1) break;
+
+      budget_pairs = (size_t)chunk_pairs/12u;
+      if (budget_pairs < 1u) budget_pairs = 1u;
+    }
+
+    if (arena == NULL && !fail_notice_done){
+      fail_notice_done = 1;
+      fprintf(stderr,
+              "Set_Nonlocal: %.1f MiB of device staging unavailable; using the host path.\n",
+              (double)arena_bytes/(1024.0*1024.0));
+      fflush(stderr);
+    }
+  }
+  else{
+    /* no radial integrals to batch; the assembly below just clears DS_NL */
+    device_ok = 1;
+  }
 
   if (measure_time){
     dtime(&t_mark1);
     t_setup = t_mark1 - t_mark0;
   }
 
-  if (0 < total_rows){
-#pragma acc data copyin(Normk_grid[0:grid_dim], RF_all[0:rf_all_elems], NLRF_all[0:nlrf_all_elems], \
-                        row_pair[0:total_rows], row_sph_off[0:total_rows], \
-                        row_rf_base[0:total_rows], row_nlrf_base[0:total_rows], \
-                        pair_diag[0:OneD_Nloop], pair_r[0:OneD_Nloop], pair_nLL[0:OneD_Nloop]) \
-                 create(SphB_chunk[0:chunk_cap_elems], SphBp_chunk[0:chunk_cap_elems]) \
-                 copyout(sums0_all[0:total_rows], sums1_all[0:total_rows])
+  if (arena != NULL){
+
+    double *d_normk = (double*)(void*)(arena + o_normk);
+    double *d_rf_all = (double*)(void*)(arena + o_rf);
+    double *d_nlrf_all = (double*)(void*)(arena + o_nlrf);
+    int *d_row_pair = (int*)(void*)(arena + o_row_pair);
+    int *d_row_sph_off = (int*)(void*)(arena + o_row_sph);
+    int *d_row_rf_base = (int*)(void*)(arena + o_row_rfb);
+    int *d_row_nlrf_base = (int*)(void*)(arena + o_row_nlb);
+    int *d_pair_diag = (int*)(void*)(arena + o_pair_diag);
+    double *d_pair_r = (double*)(void*)(arena + o_pair_r);
+    int *d_pair_nLL = (int*)(void*)(arena + o_pair_nLL);
+    double *d_sums0 = (double*)(void*)(arena + o_sums0);
+    double *d_sums1 = (double*)(void*)(arena + o_sums1);
+    double *d_SphB = (double*)(void*)(arena + o_sphb);
+    double *d_SphBp = (double*)(void*)(arena + o_sphbp);
+
+    acc_memcpy_to_device(d_normk,Normk_grid,sizeof(double)*(size_t)grid_dim);
+    acc_memcpy_to_device(d_rf_all,RF_all,sizeof(double)*rf_all_elems);
+    acc_memcpy_to_device(d_nlrf_all,NLRF_all,sizeof(double)*nlrf_all_elems);
+    acc_memcpy_to_device(d_row_pair,row_pair,sizeof(int)*(size_t)total_rows);
+    acc_memcpy_to_device(d_row_sph_off,row_sph_off,sizeof(int)*(size_t)total_rows);
+    acc_memcpy_to_device(d_row_rf_base,row_rf_base,sizeof(int)*(size_t)total_rows);
+    acc_memcpy_to_device(d_row_nlrf_base,row_nlrf_base,sizeof(int)*(size_t)total_rows);
+    acc_memcpy_to_device(d_pair_diag,pair_diag,sizeof(int)*(size_t)OneD_Nloop);
+    acc_memcpy_to_device(d_pair_r,pair_r,sizeof(double)*(size_t)OneD_Nloop);
+    acc_memcpy_to_device(d_pair_nLL,pair_nLL,sizeof(int)*(size_t)OneD_Nloop);
+
     {
       int p0;
 
@@ -613,13 +714,14 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
         /* spherical Bessel tables of this chunk's pairs, evaluated on the
            device with the same downward recurrence, rescalings and sin/cos
            normalization as the host Spherical_Bessel.c */
-#pragma acc parallel loop gang vector collapse(2)
+#pragma acc parallel loop gang vector collapse(2) \
+            deviceptr(d_pair_nLL,d_normk,d_pair_r,d_SphB,d_SphBp)
         for (pp=p0; pp<p1; pp++){
           for (i=0; i<grid_dim; i++){
-            int lmax = pair_nLL[pp] - 1;
+            int lmax = d_pair_nLL[pp] - 1;
 
             if (0 <= lmax){
-              double x = Normk_grid[i]*pair_r[pp];
+              double x = d_normk[i]*d_pair_r[pp];
               size_t sph_base = (size_t)(pp - p0)*sph_stride + (size_t)i;
               double tsb[SETNL_SB_ARR];
               double sbv[SETNL_SB_ARR];
@@ -700,8 +802,8 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
               }
 
               for ( n=0; n<=lmax; n++ ){
-                SphB_chunk[sph_base + (size_t)n*grid_dim] = sbv[n];
-                SphBp_chunk[sph_base + (size_t)n*grid_dim] = dsbv[n];
+                d_SphB[sph_base + (size_t)n*grid_dim] = sbv[n];
+                d_SphBp[sph_base + (size_t)n*grid_dim] = dsbv[n];
               }
             }
           }
@@ -713,12 +815,15 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
           t_mark0 = t_mark1;
         }
 
-#pragma acc parallel loop gang
+#pragma acc parallel loop gang \
+            deviceptr(d_row_pair,d_row_sph_off,d_row_rf_base,d_row_nlrf_base, \
+                      d_pair_diag,d_normk,d_rf_all,d_nlrf_all,d_SphB,d_SphBp, \
+                      d_sums0,d_sums1)
         for (row=row0; row<row1; row++){
-          int pp2 = row_pair[row];
-          size_t sph_base = (size_t)(pp2 - p0)*sph_stride + (size_t)row_sph_off[row];
-          size_t rfb = (size_t)row_rf_base[row];
-          size_t nlb = (size_t)row_nlrf_base[row];
+          int pp2 = d_row_pair[row];
+          size_t sph_base = (size_t)(pp2 - p0)*sph_stride + (size_t)d_row_sph_off[row];
+          size_t rfb = (size_t)d_row_rf_base[row];
+          size_t nlb = (size_t)d_row_nlrf_base[row];
           double local_sum0 = 0.0;
           double local_sumr = 0.0;
           int ii;
@@ -730,17 +835,17 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
             if (ii==0 || ii==(grid_dim-1)) coe0 = 0.50;
             else                           coe0 = 1.00;
 
-            Normk = Normk_grid[ii];
-            tmp0 = coe0*grid_h*Normk*Normk*RF_all[rfb + ii];
-            tmp1 = tmp0*SphB_chunk[sph_base + ii];
-            tmp2 = tmp0*Normk*SphBp_chunk[sph_base + ii];
-            Bessel_Pro1 = NLRF_all[nlb + ii];
+            Normk = d_normk[ii];
+            tmp0 = coe0*grid_h*Normk*Normk*d_rf_all[rfb + ii];
+            tmp1 = tmp0*d_SphB[sph_base + ii];
+            tmp2 = tmp0*Normk*d_SphBp[sph_base + ii];
+            Bessel_Pro1 = d_nlrf_all[nlb + ii];
             local_sum0 += tmp1*Bessel_Pro1;
             local_sumr += tmp2*Bessel_Pro1;
           }
 
-          sums0_all[row] = local_sum0;
-          sums1_all[row] = pair_diag[pp2] ? 0.0 : local_sumr;
+          d_sums0[row] = local_sum0;
+          d_sums1[row] = d_pair_diag[pp2] ? 0.0 : local_sumr;
         }
 
         if (measure_time){
@@ -749,12 +854,20 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
         }
       }
     }
+
+    acc_memcpy_from_device(sums0_all,d_sums0,sizeof(double)*(size_t)total_rows);
+    acc_memcpy_from_device(sums1_all,d_sums1,sizeof(double)*(size_t)total_rows);
+    acc_free(arena);
+    /* return the arena to CUDA instead of the process-local freelist, so
+       the other ranks sharing this device can actually use the memory */
+    if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
+    device_ok = 1;
   }
 
-  free(SphBp_chunk);
-  free(SphB_chunk);
-
   if (measure_time) dtime(&t_mark0);
+
+  /* nothing staged: leave DS_NL to the caller's host path */
+  if (!device_ok) goto cleanup;
 
   /**********************************************************************
      angular assembly, OpenMP-parallel over the pairs (same structure as
@@ -1225,6 +1338,7 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
     fflush(stdout);
   }
 
+ cleanup:
   free(gaunt_tab);
   free(sums1_all);
   free(sums0_all);
@@ -1248,6 +1362,8 @@ static void SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
   free(rf_base_sp);
   free(NLRF_all);
   free(RF_all);
+
+  return device_ok;
 }
 
 
@@ -1280,6 +1396,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   int basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim;
   int grid_dim,max_Lmax_Four_Int,max_sph_rows;
   int Mj_AN,num,size1,size2;
+  int DSNL_on_device;
   int *Snd_DS_NL_Size,*Rcv_DS_NL_Size;
   int Original_Mc_AN,po;
   double rcutA,rcutB,rcut,dmp;
@@ -1433,13 +1550,16 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   MPI_Barrier(mpi_comm_level1);
   if (measure_time) dtime(&stime);
 
+  DSNL_on_device = 0;
   if (SetNonlocalUseOpenACC()){
-    SetNonlocal_CalcDSNL_OpenACC(DS_NL,Normk_grid,
+    /* 0 means the device could not stage the batch; recompute on the host */
+    DSNL_on_device = SetNonlocal_CalcDSNL_OpenACC(DS_NL,Normk_grid,
                                  basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim,
                                  grid_dim,max_Lmax_Four_Int,max_sph_rows,
                                  OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h);
   }
-  else{
+
+  if (!DSNL_on_device){
 #pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,Spe_Num_RVPS,Spe_VPS_List,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,VPS_j_dependency,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,NormK,Spe_NLRF_Bessel)
     {
 

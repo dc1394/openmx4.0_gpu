@@ -48,6 +48,7 @@
  */
 
 #include "openmx_common.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include <cuda_runtime.h>
 #include <cusolverDn.h>
 #include <stdint.h>
@@ -61,9 +62,9 @@ int32_t gpusolver_Syevd(double * A, double * W, int32_t m)
     /* scf.Gpu.Num caps the GPUs used per node (debugging aid) */
     if (0 < SCF_Gpu_Num && SCF_Gpu_Num < deviceCount) deviceCount = SCF_Gpu_Num;
 
-    int32_t rank;
-    MPI_Comm_rank(mpi_comm_level1, &rank);
-    wait_cudafunc(cudaSetDevice(rank % deviceCount));
+    wait_cudafunc(cudaSetDevice(openmx_gpu_map_rank_to_device(
+        openmx_gpu_local_rank_noncollective(),
+        openmx_gpu_local_size_noncollective(), deviceCount)));
 
     cusolverDnHandle_t cusolverH = NULL;
     cudaStream_t       stream    = NULL;

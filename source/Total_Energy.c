@@ -18,6 +18,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 #include <omp.h>
+#include "set_cuda_default_device_from_local_rank.h"
 
 #define  measure_time   0
 
@@ -76,7 +77,7 @@ static int TotalEnergyUseOpenACC(void)
     env_flag = (env == NULL || env[0] == '\0') ? 1 : (atoi(env) != 0);
   }
 
-  return env_flag && (scf_eigen_lib_flag == GPUSOLVER);
+  return env_flag && (scf_eigen_lib_flag == GPUSOLVER) && gpu_rank_device_usable();
 }
 
 

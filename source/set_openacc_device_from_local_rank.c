@@ -1,33 +1,11 @@
 #include "openmx_common.h"
 #include "set_openacc_device_from_local_rank.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include <stdlib.h>
 
-static int get_local_rank_noncollective(void)
-{
-    const char *env_names[] = {
-        "OMPI_COMM_WORLD_LOCAL_RANK",
-        "MV2_COMM_WORLD_LOCAL_RANK",
-        "SLURM_LOCALID",
-        "PMI_LOCAL_RANK",
-        NULL
-    };
-
-    for (int i = 0; env_names[i] != NULL; i++) {
-        const char *value = getenv(env_names[i]);
-        if (value != NULL && value[0] != '\0') {
-            int local_rank = atoi(value);
-            if (0 <= local_rank) {
-                return local_rank;
-            }
-        }
-    }
-
-    {
-        int rank = 0;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        return rank;
-    }
-}
+/* The rank-to-device map lives in set_cuda_default_device_from_local_rank.c
+   (openmx_gpu_map_rank_to_device); the OpenACC binding must agree with the
+   CUDA one for the whole run, so both go through the same function. */
 
 int set_openacc_device_from_local_rank(acc_device_t devtype)
 {
@@ -37,7 +15,9 @@ int set_openacc_device_from_local_rank(acc_device_t devtype)
     MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shmcomm);
 
     int local_rank = 0;
+    int local_size = 1;
     MPI_Comm_rank(shmcomm, &local_rank);
+    MPI_Comm_size(shmcomm, &local_size);
 
     int ndev = acc_get_num_devices(devtype);
     int dev  = -1;
@@ -46,7 +26,7 @@ int set_openacc_device_from_local_rank(acc_device_t devtype)
     if (0 < SCF_Gpu_Num && SCF_Gpu_Num < ndev) ndev = SCF_Gpu_Num;
 
     if (ndev > 0) {
-        dev = local_rank % ndev;
+        dev = openmx_gpu_map_rank_to_device(local_rank, local_size, ndev);
         acc_set_device_num(dev, devtype);
 
         // 必要なら明示初期化（好み/実装依存）
@@ -71,8 +51,9 @@ int set_openacc_device_from_local_rank_noncollective(acc_device_t devtype)
     if (0 < SCF_Gpu_Num && SCF_Gpu_Num < ndev) ndev = SCF_Gpu_Num;
 
     if (ndev > 0) {
-        int local_rank = get_local_rank_noncollective();
-        dev = local_rank % ndev;
+        dev = openmx_gpu_map_rank_to_device(openmx_gpu_local_rank_noncollective(),
+                                            openmx_gpu_local_size_noncollective(),
+                                            ndev);
         acc_set_device_num(dev, devtype);
     }
 

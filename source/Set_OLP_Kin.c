@@ -19,6 +19,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 #include <omp.h>
+#include "set_cuda_default_device_from_local_rank.h"
 
 
 static int SetOLPKinUseOpenACC(void);
@@ -44,7 +45,7 @@ void Free2D_dcomplex(dcomplex** buffer);
 
 static int SetOLPKinUseOpenACC(void)
 {
-  return (scf_eigen_lib_flag == GPUSOLVER);
+  return (scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable());
 }
 
 static int SetOLPKinRadialGpuEnabled(void)
