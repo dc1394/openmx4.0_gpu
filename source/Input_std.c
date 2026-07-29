@@ -778,13 +778,26 @@ void Input_std(char *file)
      negative sentinel so that the deprecation warning can be issued below. */
   s_vec[0]="elpa2"; s_vec[1]="lapack"; s_vec[2]="elpa1";    s_vec[3]="gpusolver"; s_vec[4]="cusolver";
   i_vec[0]=ELPA2;   i_vec[1]=0;        i_vec[2]=ELPA1;       i_vec[3]=GPUSOLVER;   i_vec[4]=-GPUSOLVER;
-  input_string2int("scf.eigen.lib", &scf_eigen_lib_flag, 5, s_vec,i_vec);
+  s_vec[5]="gpusolver2";
+  i_vec[5]=GPUSOLVER2;
+  input_string2int("scf.eigen.lib", &scf_eigen_lib_flag, 6, s_vec,i_vec);
   if (scf_eigen_lib_flag==-GPUSOLVER){
     if (myid==Host_ID){
       printf("Warning: scf.eigen.lib=cusolver is deprecated; use scf.eigen.lib=gpusolver instead.\n");
     }
     scf_eigen_lib_flag = GPUSOLVER;
   }
+
+  /* gpusolver2 = gpusolver + distributed multi-GPU cluster diagonalization
+     (DLA-Future + COSMA).  Outside the mainline cluster solvers everything
+     must behave exactly like gpusolver, so the flag is folded to GPUSOLVER
+     here and the request is remembered in gpusolver2_flag. */
+  gpusolver2_flag = 0;
+  if (scf_eigen_lib_flag==GPUSOLVER2){
+    gpusolver2_flag = 1;
+    scf_eigen_lib_flag = GPUSOLVER;
+  }
+
   scf_eigen_lib_flag_input = scf_eigen_lib_flag;
 
   /* use GPU? (added by H.Kawai, February 2024) */
@@ -1142,10 +1155,22 @@ void Input_std(char *file)
 
     PeriodicGamma_flag = 1;
     Solver = 2;
-   
+
     if (myid==Host_ID){
     printf("When only the gamma point is considered, the eigenvalue solver is changed to 'Cluster' with the periodic boundary condition.\n");fflush(stdout);
     }
+  }
+
+  /* scf.eigen.lib=gpusolver2 supports only the mainline collinear and
+     non-collinear cluster calculations */
+  if (gpusolver2_flag==1 && Solver!=2){
+    if (myid==Host_ID){
+      printf("scf.eigen.lib=gpusolver2 supports only scf.EigenvalueSolver=cluster\n");
+      printf("(collinear or non-collinear).  Use gpusolver or elpa for other solvers.\n");
+      printf("Check your input file.\n\n");
+    }
+    MPI_Finalize();
+    exit(0);
   }
 
   input_double("scf.ElectronicTemperature",&E_Temp,(double)300.0);

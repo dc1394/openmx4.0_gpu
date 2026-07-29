@@ -24,6 +24,7 @@
 #include "flpq_dm.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
+#include "elpa_cosma_bridge.h"
 #include <omp.h>
 #include <openacc.h>
 
@@ -138,6 +139,9 @@ static void DFT_GPU_DeviceInit(int basis_count)
         int numprocs, my_fail, nfail, worst_err, inbuf[2], outbuf[2];
 
         scf_eigen_lib_flag = ELPA2;
+        /* without GPUs the gpusolver2 (ELPA-GPU/COSMA) cluster path is
+           demoted to the ELPA2 path as well */
+        gpusolver2_flag = 0;
 
         MPI_Comm_size(mpi_comm_level1,&numprocs);
         my_fail = (cuda_ok) ? 0 : 1;
@@ -4367,6 +4371,7 @@ void Allocate_Free_Cluster_Col(int todo_flag)
 
     /* setting for BLACS */
 
+    if (gpusolver2_flag) openmx_gs2_grid_free(ictxt1);
     Cfree_blacs_system_handle(bhandle1);
     Cblacs_gridexit(ictxt1);
 
@@ -4620,6 +4625,7 @@ void Allocate_Free_Cluster_NonCol(int todo_flag)
     free(iHs22_Re);
     free(Cs_Re);
 
+    if (gpusolver2_flag) openmx_gs2_grid_free(ictxt1);
     Cfree_blacs_system_handle(bhandle1);
     Cblacs_gridexit(ictxt1);
 
@@ -4631,6 +4637,7 @@ void Allocate_Free_Cluster_NonCol(int todo_flag)
     free(Ss2_Cx);
     free(Cs2_Cx);
 
+    if (gpusolver2_flag) openmx_gs2_grid_free(ictxt1_2);
     if (bhandle1 != bhandle1_2) Cfree_blacs_system_handle(bhandle1_2);
     Cblacs_gridexit(ictxt1_2);
   }

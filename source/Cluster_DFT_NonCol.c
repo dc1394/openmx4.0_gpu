@@ -15,6 +15,7 @@
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
+#include "elpa_cosma_bridge.h"
 #include <limits.h>
 #include <math.h>
 #include <omp.h>
@@ -2335,7 +2336,7 @@ double Cluster_DFT_NonCol(
     }
 
   use_gpusolver_direct_cluster_dm =
-    (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
+    (scf_eigen_lib_flag == GPUSOLVER && gpusolver2_flag == 0 && GPU_CPU_SWITCH_NUM <= n2 &&
      strcasecmp(mode,"scf") == 0 &&
      MO_fileout != 1 && xanes_calc != 1 && xanes_gs_fileout != 1 &&
      !cal_partial_charge && !Dos_fileout && !DosGauss_fileout &&
@@ -2524,7 +2525,16 @@ double Cluster_DFT_NonCol(
 
     /* diagonalize Cs */
 
-    if (scf_eigen_lib_flag==1){
+    if (gpusolver2_flag){
+
+      /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels) */
+      int gs2_info = openmx_gs2_eigen_real(n, n, Cs, descC, &ko[1], Ss, descS);
+      if (gs2_info!=0){
+        printf("Cluster_DFT_NonCol: the gpusolver2 overlap eigensolver failed (info=%d)\n",gs2_info);
+        MPI_Abort(mpi_comm_level1,1);
+      }
+    }
+    else if (scf_eigen_lib_flag==1){
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk,
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
@@ -2625,72 +2635,108 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("N","N",&n,&n,&n,&Re_alpha,rHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  else
+    F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) rHs11[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs11,&ONE,&ONE,descH);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs11,&ONE,&ONE,descH);
+  else
+    F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs11,&ONE,&ONE,descH);
 
   /* S^t x rHs12 x S */
 
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("N","N",&n,&n,&n,&Re_alpha,rHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  else
+    F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) rHs12[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs12,&ONE,&ONE,descH);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs12,&ONE,&ONE,descH);
+  else
+    F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs12,&ONE,&ONE,descH);
 
   /* S^t x rHs22 x S */
 
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("N","N",&n,&n,&n,&Re_alpha,rHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  else
+    F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) rHs22[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs22,&ONE,&ONE,descH);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs22,&ONE,&ONE,descH);
+  else
+    F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs22,&ONE,&ONE,descH);
 
   /* S^t x iHs11 x S */
 
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("N","N",&n,&n,&n,&Re_alpha,iHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  else
+    F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) iHs11[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs11,&ONE,&ONE,descH);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs11,&ONE,&ONE,descH);
+  else
+    F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs11,&ONE,&ONE,descH);
 
   /* S^t x iHs12 x S */
 
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("N","N",&n,&n,&n,&Re_alpha,iHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  else
+    F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) iHs12[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs12,&ONE,&ONE,descH);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs12,&ONE,&ONE,descH);
+  else
+    F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs12,&ONE,&ONE,descH);
 
   /* S^t x iHs22 x S */
 
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("N","N",&n,&n,&n,&Re_alpha,iHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
+  else
+    F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
 
   for (i=0; i<na_rows*na_cols; i++) iHs22[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs22,&ONE,&ONE,descH);
+  if (gpusolver2_flag)
+    cosma_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs22,&ONE,&ONE,descH);
+  else
+    F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs22,&ONE,&ONE,descH);
 
   if (measure_time){
     dtime(&etime);
@@ -2714,7 +2760,17 @@ double Cluster_DFT_NonCol(
   mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
   mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-  if (scf_eigen_lib_flag==1){
+  if (gpusolver2_flag){
+
+    /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels); all n2
+       eigenvalues are returned but only the lowest MaxN eigenvectors */
+    int gs2_info = openmx_gs2_eigen_complex(n2, MaxN, Hs2, descH2, &ko[1], Cs2, descC2);
+    if (gs2_info!=0){
+      printf("Cluster_DFT_NonCol: the gpusolver2 Hamiltonian eigensolver failed (info=%d)\n",gs2_info);
+      MPI_Abort(mpi_comm_level1,1);
+    }
+  }
+  else if (scf_eigen_lib_flag==1){
     F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2,
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
@@ -2762,7 +2818,12 @@ double Cluster_DFT_NonCol(
   }
 
   Cblacs_barrier(ictxt1_2,"A");
-  F77_NAME(pzgemm,PZGEMM)("T","T", &n2,&n2,&n2,&alpha,Cs2,&ONE,&ONE,
+  if (gpusolver2_flag)
+    cosma_pzgemm_("T","T", &n2,&n2,&n2,(const double*)&alpha,(const double*)Cs2,&ONE,&ONE,
+                           descC2,(const double*)Ss2,&ONE,&ONE,descS2,(const double*)&beta,
+                           (double*)Hs2,&ONE,&ONE,descH2);
+  else
+    F77_NAME(pzgemm,PZGEMM)("T","T", &n2,&n2,&n2,&alpha,Cs2,&ONE,&ONE,
 			           descC2,Ss2,&ONE,&ONE,descS2,&beta,Hs2,
 			           &ONE,&ONE,descH2);
 
