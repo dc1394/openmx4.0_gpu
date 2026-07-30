@@ -71,6 +71,7 @@
 
 #include "tran_prototypes.h"
 #include "tran_variables.h"
+#include "dlaf_cosma_bridge.h"
 
 static void Raise_Stack_Limit(void)
 {
@@ -101,7 +102,24 @@ int main(int argc, char *argv[])
   mpi_comm_level1 = MPI_COMM_WORLD; 
   MPI_COMM_WORLD1 = MPI_COMM_WORLD; 
 
-  MPI_Init(&argc,&argv);
+  /* pika, the task runtime behind the DLA-Future library of
+     scf.eigen.lib=gpusolver2, polls MPI from its worker threads, so
+     full thread support is requested; every MPI library of interest
+     provides it, and if one does not, the gpusolver2 bridge refuses
+     to run while everything else works as before. */
+  /* The UCC collective component of HPC-X Open MPI deadlocks inside
+     its broadcast when DLA-Future issues collectives from the pika
+     worker threads on duplicated communicators (spins forever in
+     ucc_tl_ucp_bcast_knomial_progress); HCOLL intercepts collectives
+     the same way.  Both are disabled before MPI_Init unless the user
+     exports the variables; MPI libraries other than Open MPI ignore
+     these parameters. */
+  setenv("OMPI_MCA_coll_ucc_enable","0",0);
+  setenv("OMPI_MCA_coll_hcoll_enable","0",0);
+  {
+    int provided;
+    MPI_Init_thread(&argc,&argv,MPI_THREAD_MULTIPLE,&provided);
+  }
   MPI_Comm_size(MPI_COMM_WORLD1,&numprocs);
   MPI_Comm_rank(MPI_COMM_WORLD1,&myid);
   NUMPROCS_MPI_COMM_WORLD = numprocs;
@@ -854,6 +872,9 @@ int main(int argc, char *argv[])
   if (myid==Host_ID){
     printf("\nThe calculation was normally finished.\n");fflush(stdout);
   }
+
+  /* shut down the DLA-Future/pika runtime of gpusolver2 (no-op otherwise) */
+  openmx_gs2_finalize();
 
   MPI_Finalize();
   exit(0);
