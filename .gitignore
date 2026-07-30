@@ -73,3 +73,4 @@ _runtest*/
 # === gpusolver2 stack build artifacts (built from source/third_party/dist) ===
 /source/third_party/gpusolver2-install/
 /source/build/
+/source/force_rpath
