@@ -101,7 +101,15 @@ int main(int argc, char *argv[])
   mpi_comm_level1 = MPI_COMM_WORLD; 
   MPI_COMM_WORLD1 = MPI_COMM_WORLD; 
 
-  MPI_Init(&argc,&argv);
+  /* SLATE, the library behind scf.eigen.lib=gpusolver2, issues MPI
+     calls from its OpenMP tasks, so full thread support is requested;
+     every MPI library of interest provides it, and if one does not,
+     the gpusolver2 bridge refuses to run while everything else works
+     as before. */
+  {
+    int provided;
+    MPI_Init_thread(&argc,&argv,MPI_THREAD_MULTIPLE,&provided);
+  }
   MPI_Comm_size(MPI_COMM_WORLD1,&numprocs);
   MPI_Comm_rank(MPI_COMM_WORLD1,&myid);
   NUMPROCS_MPI_COMM_WORLD = numprocs;

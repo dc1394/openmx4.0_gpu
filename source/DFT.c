@@ -138,6 +138,9 @@ static void DFT_GPU_DeviceInit(int basis_count)
         int numprocs, my_fail, nfail, worst_err, inbuf[2], outbuf[2];
 
         scf_eigen_lib_flag = ELPA2;
+        /* without GPUs the gpusolver2 (SLATE) cluster path is demoted
+           to the ELPA2 path as well */
+        gpusolver2_flag = 0;
 
         MPI_Comm_size(mpi_comm_level1,&numprocs);
         my_fail = (cuda_ok) ? 0 : 1;

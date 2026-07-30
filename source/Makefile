@@ -147,7 +147,7 @@ SDK_RPATH_TAGS     ?= -Wl,--disable-new-dtags
 MPI_FORTRAN_LIBS   ?= -L$(NVHPC_MPI_LIBDIR) $(SDK_RPATH_TAGS) -Wl,-rpath,$(NVHPC_MPI_LIBDIR) -lmpi_usempif08 -lmpi_usempi_ignore_tkr -lmpi_mpifh -lmpi
 CUDA_LIBS          ?= $(SDK_RPATH_TAGS) -L$(NVHPC_CUDA_TARGET)/lib -Wl,-rpath,$(NVHPC_CUDA_TARGET)/lib -L$(NVHPC_MATH_DIR)/lib -Wl,-rpath,$(NVHPC_MATH_DIR)/lib -L$(NVHPC_CUDA_TARGET)/lib/stubs -Wl,--no-as-needed -lnvJitLink -Wl,--as-needed -lcudart -lcusolver -lcublas -cuda
 
-LIB= $(FFTW3_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm -ldl $(CUDA_LIBS)
+LIB= $(FFTW3_LIBS) $(GPUSOLVER2_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm -ldl $(CUDA_LIBS)
 
 GEMMUL8_REPO_URL ?= https://github.com/RIKEN-RCCS/GEMMul8.git
 GEMMUL8_REPO_DIR ?= third_party/GEMMul8
@@ -170,9 +170,39 @@ NVCC ?= $(GEMMUL8_CUDA_PATH)/bin/nvcc
 NVCC_HOST ?= $(NVHPC_COMPILER_BIN)/nvc++
 NVCC_GEMMUL8_ENV = PATH="$(PATH)" CUDA_HOME="$(NVHPC_CUDA_HOME)" CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= NVCC_PREPEND_FLAGS= NVCC_APPEND_FLAGS=
 NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(GEMMUL8_BUILD_GPU_ARCH) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
-LIB += -lcublasLt -lcuda -lnvidia-ml -lstdc++
+LIB += -lcublasLt -lcuda -lnvidia-ml -lstdc++ -latomic
 
-CFLAGS  = -g 
+# ============================================================================
+# gpusolver2 (scf.eigen.lib=gpusolver2): distributed multi-GPU cluster
+# diagonalization and matrix products via SLATE, built from the release
+# archive bundled in third_party/dist by third_party/build_gpusolver2_stack.sh.
+# ============================================================================
+GPUSOLVER2_DIST      ?= $(CURDIR)/third_party/dist
+GPUSOLVER2_BUILD     ?= $(CURDIR)/build/gpusolver2
+GPUSOLVER2_PREFIX    ?= $(CURDIR)/third_party/gpusolver2-install
+GPUSOLVER2_SLATE_VER ?= 2025.05.28
+GPUSOLVER2_HOST_CC   ?= gcc
+GPUSOLVER2_HOST_CXX  ?= g++
+GPUSOLVER2_HOST_FC   ?= gfortran
+GPUSOLVER2_NVCC      ?= $(NVHPC_CUDA_HOME)/bin/nvcc
+GPUSOLVER2_GPU_ARCH  ?= $(GEMMUL8_BUILD_GPU_ARCH)
+GPUSOLVER2_MPI_BIN   ?= $(NVHPC_MPI_BIN)
+GPUSOLVER2_MPI_LIBDIR ?= $(NVHPC_MPI_LIBDIR)
+GPUSOLVER2_MPICXX    ?= $(GPUSOLVER2_MPI_BIN)/mpicxx
+GPUSOLVER2_CUDA_HOME ?= $(NVHPC_CUDA_HOME)
+GPUSOLVER2_MATH_DIR  ?= $(NVHPC_MATH_DIR)
+GPUSOLVER2_COMPILER_LIB ?= $(NVHPC_COMPILER_LIB)
+GPUSOLVER2_CMAKE     ?= cmake
+GPUSOLVER2_JOBS      ?= $(shell nproc 2>/dev/null || echo 8)
+GPUSOLVER2_STAMP     = $(GPUSOLVER2_BUILD)/stamp/01_slate.done
+
+GPUSOLVER2_LIBS = -Wl,--start-group \
+ $(GPUSOLVER2_PREFIX)/lib/libslate.a \
+ $(GPUSOLVER2_PREFIX)/lib/liblapackpp.a \
+ $(GPUSOLVER2_PREFIX)/lib/libblaspp.a \
+ -Wl,--end-group
+
+CFLAGS  = -g
 CPPFLAGS =
 
 OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o ReLU_inverse.o \
@@ -199,7 +229,7 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           Get_Cnt_dOrbitals.o Gaunt.o Find_CGrids.o MD_pac.o \
           RestartFileDFT.o Output_CompTime.o Merge_LogFile.o Make_FracCoord.o \
           Make_InputFile_with_FinalCoord.o Output_Energy_Decomposition.o \
-          Divide_Conquer.o Divide_Conquer_LNO.o gemmul8_bridge.o Krylov.o \
+          Divide_Conquer.o Divide_Conquer_LNO.o gemmul8_bridge.o slate_bridge.o Krylov.o \
           Divide_Conquer_Dosout.o EGAC_DFT.o LNO.o Calc_LNAO.o Calc_LNBO.o \
           Eigen_lapack.o gpusolver_Syevd.o gpusolver_Syevdx.o set_cuda_default_device_from_local_rank.o set_openacc_device_from_local_rank.o Eigen_lapack2.o Eigen_lapack3.o EigenBand_lapack.o \
           Eigen_PReHH.o BroadCast_ReMatrix.o \
@@ -717,6 +747,33 @@ Divide_Conquer_LNO.o: Divide_Conquer_LNO.c openmx_common.h
 	$(CC) -c Divide_Conquer_LNO.c
 gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
+
+.PHONY: gpusolver2-stack gpusolver2-clean
+gpusolver2-stack: $(GPUSOLVER2_STAMP)
+
+$(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
+	GPUSOLVER2_DIST="$(GPUSOLVER2_DIST)" GPUSOLVER2_BUILD="$(GPUSOLVER2_BUILD)" \
+	GPUSOLVER2_PREFIX="$(GPUSOLVER2_PREFIX)" \
+	GPUSOLVER2_SLATE_VER="$(GPUSOLVER2_SLATE_VER)" \
+	GPUSOLVER2_HOST_CC="$(GPUSOLVER2_HOST_CC)" GPUSOLVER2_HOST_CXX="$(GPUSOLVER2_HOST_CXX)" \
+	GPUSOLVER2_HOST_FC="$(GPUSOLVER2_HOST_FC)" \
+	GPUSOLVER2_NVCC="$(GPUSOLVER2_NVCC)" GPUSOLVER2_GPU_ARCH="$(GPUSOLVER2_GPU_ARCH)" \
+	GPUSOLVER2_MPI_BIN="$(GPUSOLVER2_MPI_BIN)" GPUSOLVER2_MPI_LIBDIR="$(GPUSOLVER2_MPI_LIBDIR)" \
+	GPUSOLVER2_CUDA_HOME="$(GPUSOLVER2_CUDA_HOME)" GPUSOLVER2_MATH_DIR="$(GPUSOLVER2_MATH_DIR)" \
+	GPUSOLVER2_COMPILER_LIB="$(GPUSOLVER2_COMPILER_LIB)" \
+	GPUSOLVER2_CMAKE="$(GPUSOLVER2_CMAKE)" GPUSOLVER2_JOBS="$(GPUSOLVER2_JOBS)" \
+	sh third_party/build_gpusolver2_stack.sh
+
+gpusolver2-clean:
+	rm -rf "$(GPUSOLVER2_BUILD)" "$(GPUSOLVER2_PREFIX)"
+
+# the bridge is C++ and is compiled with the same GNU toolchain as the
+# SLATE stack; its OpenMP/MPI references resolve against the NVHPC
+# runtimes at the final link
+slate_bridge.o: slate_bridge.cc slate_bridge.h $(GPUSOLVER2_STAMP)
+	OMPI_CXX=$(GPUSOLVER2_HOST_CXX) $(GPUSOLVER2_MPICXX) -O2 -std=c++17 \
+	  -I$(GPUSOLVER2_PREFIX)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include \
+	  -c slate_bridge.cc -o slate_bridge.o
 $(GEMMUL8_DIR)/Makefile:
 	mkdir -p $(GEMMUL8_REPO_DIR)
 	cd $(GEMMUL8_REPO_DIR) && \

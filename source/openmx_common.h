@@ -2808,8 +2808,15 @@ typedef enum
 {
     ELPA1    = 1,
     ELPA2    = 2,
-    GPUSOLVER = 3
+    GPUSOLVER = 3,
+    GPUSOLVER2 = 4
 } SCF_Eigen_Lib;
+/* scf.eigen.lib=gpusolver2: the mainline collinear/non-collinear cluster
+   diagonalization runs distributed over all ranks/GPUs with the SLATE
+   library (eigensolver and matrix products); everywhere else the run
+   behaves exactly like gpusolver, so scf_eigen_lib_flag itself is kept at
+   GPUSOLVER and this flag marks the gpusolver2 request (added July 2026) */
+int gpusolver2_flag;
 int KrylovH_order,KrylovS_order,recalc_EM,EKC_invS_flag;
 int EC_Sub_Dim,Energy_Decomposition_flag;
 int EKC_Exact_invS_flag,EKC_expand_core_flag,orderN_FNAN_SNAN_flag;
