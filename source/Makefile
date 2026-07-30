@@ -170,7 +170,12 @@ NVCC ?= $(GEMMUL8_CUDA_PATH)/bin/nvcc
 NVCC_HOST ?= $(NVHPC_COMPILER_BIN)/nvc++
 NVCC_GEMMUL8_ENV = PATH="$(PATH)" CUDA_HOME="$(NVHPC_CUDA_HOME)" CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= NVCC_PREPEND_FLAGS= NVCC_APPEND_FLAGS=
 NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(GEMMUL8_BUILD_GPU_ARCH) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
-LIB += -lcublasLt -lcuda -lnvidia-ml -lstdc++ -latomic
+# -lcusparse is not called directly but is a private dependency of
+# libcusolver; naming it here (shielded from --as-needed) makes it a
+# direct dependency of openmx, so the RPATH of the binary resolves it
+# (a dependency loaded through libcusolver would follow
+# LD_LIBRARY_PATH instead, which can mix CUDA library generations).
+LIB += -lcublasLt -Wl,--no-as-needed -lcusparse -Wl,--as-needed -lcuda -lnvidia-ml -lstdc++ -latomic
 
 # ============================================================================
 # gpusolver2 (scf.eigen.lib=gpusolver2): distributed multi-GPU cluster
@@ -364,8 +369,17 @@ $(FFTW3_USERS): | $(FFTW3_LIB)
 
 .DEFAULT_GOAL := openmx
 
-openmx:	$(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS)
+openmx:	$(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS) force_rpath
 	$(CC) $(OBJS) $(STACK) $(GEMMUL8_LIB) $(LIB) -lm -o openmx
+	./force_rpath openmx
+
+# The nvc link driver forces --enable-new-dtags, so the recorded
+# library search path is DT_RUNPATH, which LD_LIBRARY_PATH overrides;
+# a stray CUDA installation there (e.g. /usr/local/cuda/lib64) mixes
+# cuBLAS/cuSOLVER generations and corrupts the GPU solvers.  Flip the
+# tag to DT_RPATH after linking so the build-time libraries win.
+force_rpath: force_rpath.c
+	$(GPUSOLVER2_HOST_CC) -O2 -o force_rpath force_rpath.c
 	
 #
 #
@@ -939,7 +953,7 @@ install: $(PROG)
 #
 
 clean: fftw3-clean gemmul8-clean
-	rm -f $(PROG) $(OBJS) $(OBJS_jx) $(UTIL) *.o *.mod *.dbg
+	rm -f $(PROG) $(OBJS) $(OBJS_jx) $(UTIL) force_rpath *.o *.mod *.dbg
 
 #
 #

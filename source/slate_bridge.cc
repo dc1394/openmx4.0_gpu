@@ -41,7 +41,9 @@
 
 #include <slate/slate.hh>
 
+#include <cublas_v2.h>
 #include <cuda_runtime.h>
+#include <cusolverDn.h>
 #include <mpi.h>
 #include <omp.h>
 
@@ -195,18 +197,53 @@ int gs2_init_check()
   /* Mixing CUDA library generations corrupts the SLATE GPU path with
      asynchronous illegal-address faults (observed with a binary built
      against CUDA 13.1 picking up 13.2 libraries through
-     LD_LIBRARY_PATH, which overrides the RUNPATH of the binary), so
-     refuse to run on a runtime that differs from the build. */
+     LD_LIBRARY_PATH, which overrides a DT_RUNPATH of the binary).
+     The runtime and the math libraries resolve independently at load
+     time, so a partial override can pair the build-time cudart with a
+     foreign cuBLAS/cuSOLVER (seen with /usr/local/cuda/lib64), which
+     a cudart check alone does not catch: refuse to run whenever any
+     of the three differs from its build-time version. */
   if (gs2_target() == slate::Target::Devices) {
-    int rt = 0;
+    int rt = 0, cb[3] = {0,0,0}, cs[3] = {0,0,0};
     cudaRuntimeGetVersion(&rt);
+    cublasGetProperty(MAJOR_VERSION, &cb[0]);
+    cublasGetProperty(MINOR_VERSION, &cb[1]);
+    cublasGetProperty(PATCH_LEVEL,   &cb[2]);
+    cusolverGetProperty(MAJOR_VERSION, &cs[0]);
+    cusolverGetProperty(MINOR_VERSION, &cs[1]);
+    cusolverGetProperty(PATCH_LEVEL,   &cs[2]);
+
+    const char *lib = NULL;
+    char loaded[32], built[32];
     if (rt != CUDART_VERSION) {
+      lib = "CUDA runtime (libcudart)";
+      std::snprintf(loaded, sizeof(loaded), "%d", rt);
+      std::snprintf(built,  sizeof(built),  "%d", (int)CUDART_VERSION);
+    }
+    else if (cb[0] != CUBLAS_VER_MAJOR || cb[1] != CUBLAS_VER_MINOR ||
+             cb[2] != CUBLAS_VER_PATCH) {
+      lib = "cuBLAS library (libcublas)";
+      std::snprintf(loaded, sizeof(loaded), "%d.%d.%d", cb[0], cb[1], cb[2]);
+      std::snprintf(built,  sizeof(built),  "%d.%d.%d",
+                    (int)CUBLAS_VER_MAJOR, (int)CUBLAS_VER_MINOR, (int)CUBLAS_VER_PATCH);
+    }
+    else if (cs[0] != CUSOLVER_VER_MAJOR || cs[1] != CUSOLVER_VER_MINOR ||
+             cs[2] != CUSOLVER_VER_PATCH) {
+      lib = "cuSOLVER library (libcusolver)";
+      std::snprintf(loaded, sizeof(loaded), "%d.%d.%d", cs[0], cs[1], cs[2]);
+      std::snprintf(built,  sizeof(built),  "%d.%d.%d",
+                    (int)CUSOLVER_VER_MAJOR, (int)CUSOLVER_VER_MINOR, (int)CUSOLVER_VER_PATCH);
+    }
+
+    if (lib != NULL) {
       std::fprintf(stderr,
-                   "slate_bridge: the CUDA runtime loaded at run time (%d) differs from the\n"
-                   "one the gpusolver2 stack was built with (%d).  LD_LIBRARY_PATH probably\n"
-                   "points at another CUDA installation; put the build-time CUDA library\n"
-                   "directories first (see the RUNPATH of the openmx binary).\n",
-                   rt, (int)CUDART_VERSION);
+                   "slate_bridge: the %s loaded at run time (version %s)\n"
+                   "differs from the one the gpusolver2 stack was built with (version %s).\n"
+                   "LD_LIBRARY_PATH probably points at another CUDA installation\n"
+                   "(e.g. /usr/local/cuda/lib64); put the library directories of the\n"
+                   "build-time CUDA first, or drop the override so the RPATH of the\n"
+                   "openmx binary applies.\n",
+                   lib, loaded, built);
       state = -1;
       return 1;
     }
