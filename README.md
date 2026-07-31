@@ -27,7 +27,7 @@ scf.criterion             1.0e-10      # default=1.0e-6 (Hartree)
 scf.eigen.lib             gpusolver     # default=gpusolver
 ```
 
-To run the conventional CPU paths instead, specify "elpa2", "elpa1" or "lapack":
+To run the conventional CPU paths instead, specify "elpa2" or "elpa1":
 
 ```ini
 scf.eigen.lib             elpa2         # CPU (ELPA2) paths
@@ -51,7 +51,7 @@ You can easily try OpenMX 4.0 GPU on computers equipped with NVIDIA GPUs.
 The steps are as follows:
 1. Install [Docker](https://docs.docker.com/get-started/get-docker/).
 2. Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-3. Run: `docker run --gpus all --shm-size=4gb --rm -it -v /path/to/inputs:/work dc1394/openmx4.0-gpu-ubuntu24.04:1.0`. Ensure `/path/to/inputs` is created beforehand.
+3. Run: `docker run --gpus all --shm-size=4gb --rm -it -v /path/to/inputs:/work dc1394/openmx4.0-gpu-ubuntu24.04:1.1`. Ensure `/path/to/inputs` is created beforehand.
 4. Run tests with `cd openmx_work` and `mpirun -np 4 ./openmx -runtest`.
 
 This should yield results like the following:
