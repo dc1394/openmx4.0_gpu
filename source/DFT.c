@@ -31,9 +31,20 @@
 int TRAN_SCF_Iter_Band;
 
 static int DFT_GPU_BasisCount(void);
+static int DFT_GPU_DenseSwitchNum(void);
 static int DFT_SetOLPKinUseGPU(void);
 static int DFT_SetProExpnVNAUseGPU(void);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1);
+int Band_DFT_Col_GpuSwitchNum(void);
+
+/* effective GPU/CPU crossover of the global dense eigensolver paths; the
+   collinear band path uses its own lower default (800, tunable with
+   OPENMX_BAND_GPU_SWITCH_NUM — see Band_DFT_Col_GpuSwitchNum) */
+static int DFT_GPU_DenseSwitchNum(void)
+{
+    if (Solver==3 && SpinP_switch!=3) return Band_DFT_Col_GpuSwitchNum();
+    return GPU_CPU_SWITCH_NUM;
+}
 
 static int DFT_SetOLPKinUseGPU(void)
 {
@@ -64,9 +75,9 @@ static void DFT_GPU_DeviceInit(int basis_count)
     MPI_Comm_rank(mpi_comm_level1,&myid0);
     scf_eigen_lib_flag = GPUSOLVER;
 
-    if (Solver!=5 && Solver!=11 && basis_count < GPU_CPU_SWITCH_NUM && myid0==Host_ID && 0<level_stdout) {
+    if (Solver!=5 && Solver!=11 && basis_count < DFT_GPU_DenseSwitchNum() && myid0==Host_ID && 0<level_stdout) {
         printf("<DFT> GPUSOLVER requested; global matrix dimension %d is below %d, so global dense eigensolver paths use a CPU fallback while GPU kernels remain enabled.\n",
-               basis_count,GPU_CPU_SWITCH_NUM);
+               basis_count,DFT_GPU_DenseSwitchNum());
         fflush(stdout);
     }
 
@@ -183,7 +194,7 @@ static int DFT_GPU_EigensolverActive(void)
 {
     if (scf_eigen_lib_flag!=GPUSOLVER) return 0;
     if (Solver==5 || Solver==11) return 1;
-    return (GPU_CPU_SWITCH_NUM<=DFT_GPU_BasisCount());
+    return (DFT_GPU_DenseSwitchNum()<=DFT_GPU_BasisCount());
 }
 
 static int DFT_GPU_BasisCount(void)
@@ -918,7 +929,7 @@ double DFT(int MD_iter, int Cnt_Now)
       printf("<%s>  Solving the eigenvalue problem%s...\n",
              s_vec[Solver-1],
              DFT_GPU_EigensolverActive() ? " (GPU-accelerated)" : "");
-      if (!DFT_GPU_EigensolverActive() && GPU_CPU_SWITCH_NUM<=DFT_GPU_BasisCount()){
+      if (!DFT_GPU_EigensolverActive() && DFT_GPU_DenseSwitchNum()<=DFT_GPU_BasisCount()){
         static int cpu_diag_notice_done = 0;
         if (!cpu_diag_notice_done){
           cpu_diag_notice_done = 1;

@@ -537,6 +537,33 @@ static int BandCol_CompareUllDesc(const void *a, const void *b)
    every helper takes the same GPU-vs-CPU branch as the diagonalization. */
 static int BandCol_gpu_dense_verdict = 1;
 
+/* GPU/CPU crossover of the collinear band dense eigensolver path.  The CPU
+   fallback of this path solves every k point twice with a serial ELPA per
+   k-point world, so the GPU-dense path pays off well below the global
+   GPU_CPU_SWITCH_NUM: measured on one RTX 5080 shared by 8 ranks (14
+   irreducible k points), the GPU path is 2.0x at n=832 and 1.4x at n=416,
+   with the crossover near n=300-400.  800 matches the DC-LNO threshold
+   GPU_CPU_SWITCH_NUM2.  OPENMX_BAND_GPU_SWITCH_NUM=<dim> overrides the
+   default for this path only.  Also consulted by DFT.c so the startup
+   fallback notice reports the effective value. */
+#define BAND_GPU_CPU_SWITCH_NUM 800
+
+int Band_DFT_Col_GpuSwitchNum(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char *value = getenv("OPENMX_BAND_GPU_SWITCH_NUM");
+        int parsed;
+
+        cached = BAND_GPU_CPU_SWITCH_NUM;
+        if (value != NULL && 0 < (parsed = atoi(value))) {
+            cached = parsed;
+        }
+    }
+    return cached;
+}
+
 /* Collectively decide whether even ONE k-point's dense GPU solve fits on the
    device.  The adaptive turn ladder can only reduce the concurrency to one
    k-owner rank; when a single rank's requirement (the dense matrices plus the
@@ -2303,7 +2330,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         if (max_tno < tnoA)
             max_tno = tnoA;
     }
-    use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n);
+    use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && Band_DFT_Col_GpuSwitchNum() <= n);
 
     /****************************************************
      find TZ
@@ -5255,7 +5282,7 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
 {
     const int need_s = (SCF_iter == 1 || all_knum != 1);
     const int use_gpusolver_dense =
-        (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n && BandCol_gpu_dense_verdict);
+        (scf_eigen_lib_flag == GPUSOLVER && Band_DFT_Col_GpuSwitchNum() <= n && BandCol_gpu_dense_verdict);
     const int dense_gpusolver_owner =
         (use_gpusolver_dense &&
          ((all_knum == 1 && owns_global_dense_rank) ||
