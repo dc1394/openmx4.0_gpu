@@ -1674,6 +1674,32 @@ static void ClusterNonCol_DenseArena_Release(void)
     memset(arena, 0, sizeof(*arena));
 }
 
+/* GPU/CPU crossover of the noncollinear cluster dense eigensolver path,
+   compared against n2 = 2n.  As in the collinear path the root-dense GPU
+   solve beats the multi-rank ELPA fallback at every measured size (on one
+   RTX 5080 shared by 8 ranks: total 1.49x at n2=960 down to 1.13x at
+   n2=480, the complex n2 x n2 problem favors the GPU even more than Col),
+   so the default sits far below the global GPU_CPU_SWITCH_NUM.
+   OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM=<dim> overrides it.  Also consulted
+   by DFT.c so the startup fallback notice reports the effective value. */
+#define CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM 400
+
+int Cluster_DFT_NonCol_GpuSwitchNum(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char *value = getenv("OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM");
+        int parsed;
+
+        cached = CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM;
+        if (value != NULL && 0 < (parsed = atoi(value))) {
+            cached = parsed;
+        }
+    }
+    return cached;
+}
+
 /* Collectively decide whether the root dense GPU diagonalization fits on the
    device (mirrors ClusterCol_GpuDiagFits).  The dense owner RESERVES the
    whole device footprint of the solve up front — one arena every device
@@ -2328,14 +2354,14 @@ double Cluster_DFT_NonCol(
   n2 = 2*n;
 
   /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
-    if (scf_eigen_lib_flag == GPUSOLVER && n2 >= GPU_CPU_SWITCH_NUM &&
+    if (scf_eigen_lib_flag == GPUSOLVER && n2 >= Cluster_DFT_NonCol_GpuSwitchNum() &&
         Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
       set_cuda_default_device_from_local_rank_noncollective();
       set_openacc_nvidia_device_from_local_rank_noncollective();
     }
 
   use_gpusolver_direct_cluster_dm =
-    (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= n2 &&
+    (scf_eigen_lib_flag == GPUSOLVER && Cluster_DFT_NonCol_GpuSwitchNum() <= n2 &&
      strcasecmp(mode,"scf") == 0 &&
      MO_fileout != 1 && xanes_calc != 1 && xanes_gs_fileout != 1 &&
      !cal_partial_charge && !Dos_fileout && !DosGauss_fileout &&
@@ -2528,7 +2554,7 @@ double Cluster_DFT_NonCol(
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk,
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
-    else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
+    else if (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows==n && na_cols==n){
       ClusterNonCol_GpuSolver_DenseDsyevx(Cs,Ss,ko,n,n,"Cluster_DFT_NonCol overlap");
     }
     else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -2718,7 +2744,7 @@ double Cluster_DFT_NonCol(
     F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2,
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
-  else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
+  else if (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows2==n2 && na_cols2==n2){
     ClusterNonCol_GpuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Cluster_DFT_NonCol Hamiltonian");
   }
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){

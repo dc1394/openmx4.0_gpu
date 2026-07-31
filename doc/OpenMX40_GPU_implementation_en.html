@@ -212,11 +212,13 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
   default (<code>scf.eigen.lib</code> defaults to <code>gpusolver</code>); a single input line,
   <code>scf.eigen.lib&nbsp;elpa2</code> (or <code>elpa1</code>/<code>lapack</code>), runs the original
   ELPA/ScaLAPACK/LAPACK paths unchanged. The gate is concentrated in one runtime flag, <code>scf_eigen_lib_flag == GPUSOLVER</code> (enum value 3).</li>
-  <li><b>Only large dense problems go to the GPU</b> — below the threshold
-  <code>GPU_CPU_SWITCH_NUM = 1000</code> (<code>openmx_common.h:4135</code>) the transfer
-  cost dominates, so the code falls back to the CPU. Collinear band and DC-LNO use their own lower
-  default of 800: the band CPU fallback solves every k point twice with a serial per-world ELPA,
-  so the GPU pays off earlier (tunable with <code>OPENMX_BAND_GPU_SWITCH_NUM</code>).</li>
+  <li><b>Only large dense problems go to the GPU</b> — below a threshold dimension the transfer
+  cost dominates, so the code falls back to the CPU. Each dense path carries its own measured
+  default: band Col/NonCol 800 (vs n / 2n — the band CPU fallback solves every k point twice with
+  a serial per-world ELPA, so the GPU pays off early), cluster Col/NonCol 400 (the one-rank
+  root-dense solve beat the multi-rank ELPA at every measured size), DC-LNO 800; the remaining
+  paths keep the global <code>GPU_CPU_SWITCH_NUM = 1000</code> (<code>openmx_common.h:4135</code>).
+  Each threshold is tunable with its <code>OPENMX_*_GPU_SWITCH_NUM</code> knob (§10).</li>
   <li><b>Per-MPI-rank GPU use, designed for sharing</b> — round-robin assignment by intra-node local rank.
   The situation where several ranks share one GPU is addressed head-on: <b>device-sharing rank groups are
   detected via the physical GPU UUID</b>, and the code layers adaptive concurrency control based on VRAM
@@ -413,7 +415,7 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
   <text x="342" y="211" class="s2">① S via Xsyevdx ② λ → 1/√λ column scale (Ddgmm/Zdgmm)</text>
   <text x="342" y="226" class="s2">③ H′ = Ũ†HŨ (GEMMul8) ④ Xsyevdx on H′ (lowest MaxN)</text>
   <text x="342" y="241" class="s2">⑤ back-transform C=Ũz. Adaptive concurrency (UUID group + prefix scan)</text>
-  <text x="342" y="256" class="s2">Condition: n ≥ 1000 (band Col / DC-LNO: 800) + memory estimate / real reservation</text>
+  <text x="342" y="256" class="s2">Condition: n ≥ per-path default (band 800, cluster 400, DC-LNO 800) + memory estimate / real reservation</text>
   <text x="342" y="270" class="s2">If it does not fit: automatic ELPA/ScaLAPACK fallback (§5.6)</text>
   <line x1="692" y1="225" x2="718" y2="225" class="a2"/>
   <rect x="720" y="182" width="176" height="56" class="g fb"/>
@@ -451,10 +453,10 @@ computation. Details are in Chapter 7.</p>
 <table>
 <thead><tr><th style="width:16%;">Path / computation</th><th style="width:14%;">Main file</th><th>What runs on the GPU</th><th style="width:24%;">Trigger conditions</th></tr></thead>
 <tbody>
-<tr><td>Cluster (Col)</td><td><code>Cluster_DFT_Col.c</code></td><td>Full root-dense diagonalization (S eigendecomposition → Löwdin → H′ → back-transform) plus GPU accumulation of DM/EDM; eigenvectors stay device-resident into the DM step. When both spin owners cannot fit, spin world 0's owner solves both spins serially</td><td>GPUSOLVER and n ≥ 1000 and a <b>successful real reservation</b> (else ELPA)</td></tr>
-<tr><td>Cluster (NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>Root-dense diagonalization (Dsyevx/Zheevx) on a single cudaMalloc arena + U†HU (GEMMul8 × 12) + DM/EDM reductions. S/Ss2, sparse→dense index, cublas handle, and zheevdx workspace cached across iterations</td><td>GPUSOLVER and 2n ≥ 1000 and the arena reservation succeeds (else ELPA)</td></tr>
+<tr><td>Cluster (Col)</td><td><code>Cluster_DFT_Col.c</code></td><td>Full root-dense diagonalization (S eigendecomposition → Löwdin → H′ → back-transform) plus GPU accumulation of DM/EDM; eigenvectors stay device-resident into the DM step. When both spin owners cannot fit, spin world 0's owner solves both spins serially</td><td>GPUSOLVER and n ≥ 400 (<code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code>) and a <b>successful real reservation</b> (else ELPA)</td></tr>
+<tr><td>Cluster (NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>Root-dense diagonalization (Dsyevx/Zheevx) on a single cudaMalloc arena + U†HU (GEMMul8 × 12) + DM/EDM reductions. S/Ss2, sparse→dense index, cublas handle, and zheevdx workspace cached across iterations</td><td>GPUSOLVER and 2n ≥ 400 (<code>OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM</code>) and the arena reservation succeeds (else ELPA)</td></tr>
 <tr><td>Band (Col)</td><td><code>Band_DFT_Col.c</code></td><td>Whole per-k-point dense pipeline device-resident. GEMMs via GEMMul8 Zgemm, S-transform cached, NOVECTOR diagonalization on the first pass. Adaptive concurrency (UUID group + descending prefix scan)</td><td>GPUSOLVER and n ≥ 800 (<code>OPENMX_BAND_GPU_SWITCH_NUM</code>) and one turn's VRAM estimate fits (else ELPA)</td></tr>
-<tr><td>Band (NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC-resident root-dense path; concurrency decided separately for the eigenvalues-only / eigenvectors / DM stages</td><td>GPUSOLVER and 2n ≥ 1000 and the estimate fits (else ELPA)</td></tr>
+<tr><td>Band (NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC-resident root-dense path; concurrency decided separately for the eigenvalues-only / eigenvectors / DM stages</td><td>GPUSOLVER and 2n ≥ 800 (<code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code>) and the estimate fits (else ELPA)</td></tr>
 <tr><td>DC (O(N))</td><td><code>Divide_Conquer.c</code></td><td>Per-atom cluster matrices via Xsyevdx; GEMMul8→cuBLAS→CPU multi-stage fallback; device-resident S12 cache (S-cache) + cublasDgeam device transposes</td><td>GPUSOLVER and local dimension ≥ 1000 (<code>OPENMX_DC_GPU_THRESHOLD</code>)</td></tr>
 <tr><td>DC-LNO</td><td><code>Divide_Conquer_LNO.c</code></td><td>Direct per-rank dispatch; <b>noncollinear solves now on GPU too</b> (spin-doubling transform + GEMMul8 Zgemm × 3). Group-wide memory-fit test with CPU fallback</td><td>GPUSOLVER and local dimension ≥ 800 (<code>OPENMX_DCLNO_GPU_THRESHOLD</code>)</td></tr>
 <tr><td>Krylov (O(N))</td><td><code>Krylov.c</code></td><td>Per-atom projected-solve pipeline fused into one device visit (3 GEMMs + Xsyevd); device-resident KU basis cache</td><td>GPUSOLVER and all three GEMMs with m·n·k ≥ 5×10⁷ (device eigensolve at n ≥ 1000)</td></tr>
@@ -2103,7 +2105,8 @@ reserves, or to force.</p>
 <tr><td><code>(OPENMX_)GEMMUL8_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>Minimum free VRAM required after workspace allocation</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Band calculations (Band_DFT_Col.c / Band_DFT_NonCol.c)</b></td></tr>
 <tr><td><code>OPENMX_BAND_GPU_DIAG</code></td><td>auto</td><td><b>1</b> = force the dense GPU path ignoring the fits verdict; <b>0</b> = always ELPA/ScaLAPACK (§5.6)</td></tr>
-<tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>GPU/CPU crossover dimension of the collinear band dense path (global paths keep <code>GPU_CPU_SWITCH_NUM</code>=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>GPU/CPU crossover dimension of the collinear band dense path (paths without their own knob keep <code>GPU_CPU_SWITCH_NUM</code>=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400</td></tr>
+<tr><td><code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code></td><td>800</td><td>Same for the noncollinear band dense path, compared against 2n (measured crossover 2n ≈ 250–400)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RESERVE_MB</code></td><td>max(total/10, 1536)</td><td>Raises the reserve used by the concurrency planner and the fits verdicts</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RANK_OVERHEAD_MB</code></td><td>256</td><td>Runtime overhead added to the per-rank requirement model</td></tr>
 <tr><td><code>OPENMX_BAND_SYEVDX_NOVECTOR</code></td><td>1</td><td>Solve the eigenvalues-only first pass with NOVECTOR (0 restores the old behavior)</td></tr>
@@ -2114,6 +2117,8 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>Performance counters (also gates the Set_Hamiltonian SETHPROF lines)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Cluster calculations (Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)</b></td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG</code></td><td>auto</td><td><b>1</b> = force the GPU even if the reservation fails (then aborts with a diagnostic); <b>0</b> = always ELPA (§5.6)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code></td><td>400</td><td>GPU/CPU crossover dimension of the collinear cluster dense path (the GPU won at every measured size down to n=240)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM</code></td><td>400</td><td>Same for the noncollinear cluster dense path, compared against 2n (the GPU won down to 2n=480)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code></td><td>1024</td><td>Free VRAM required to remain after the reservation probe</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_SERIAL</code></td><td>1</td><td>Serialized mode when both spin owners cannot fit (0 = disable, 2 = force serial)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>GPU accumulation of DM/EDM (0 = CPU loop)</td></tr>

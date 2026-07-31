@@ -207,9 +207,12 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
   既定で有効(<code>scf.eigen.lib</code> の既定値が <code>gpusolver</code>)であり、入力ファイルの 1 行
   <code>scf.eigen.lib&nbsp;elpa2</code>(または <code>elpa1</code>/<code>lapack</code>)を書けばオリジナルと同じ
   ELPA/ScaLAPACK/LAPACK 経路が走る。ゲートは実行時フラグ <code>scf_eigen_lib_flag == GPUSOLVER</code>(enum 値 3)の一点に集約されている。</li>
-  <li><b>大規模な密行列問題のみ GPU 化</b> — 行列次元がしきい値 <code>GPU_CPU_SWITCH_NUM = 1000</code>(<code>openmx_common.h:4135</code>)未満の場合は
-  転送コストが勝るため CPU にフォールバックする。ただしコリニアバンドと DC-LNO は既定 800:バンドの CPU フォールバックは
-  k 点ごとにワールド内直列 ELPA を 2 回解く構造のため、GPU がより早く優位になる(<code>OPENMX_BAND_GPU_SWITCH_NUM</code> で調整可)。</li>
+  <li><b>大規模な密行列問題のみ GPU 化</b> — 行列次元がしきい値未満の場合は転送コストが勝るため CPU にフォールバックする。
+  しきい値は経路ごとに実測して決めた既定値を持つ:バンド Col/NonCol は 800(n / 2n と比較。CPU フォールバックが
+  k 点ごとにワールド内直列 ELPA を 2 回解く構造のため GPU が早く優位になる)、クラスタ Col/NonCol は 400
+  (1 ランクの root-dense 解が多ランク ELPA に測定した全サイズで勝った)、DC-LNO は 800。その他の経路は
+  <code>GPU_CPU_SWITCH_NUM = 1000</code>(<code>openmx_common.h:4135</code>)のまま。各しきい値は
+  <code>OPENMX_*_GPU_SWITCH_NUM</code> で調整できる(§10)。</li>
   <li><b>MPI ランク単位の GPU 利用と「共有」前提の設計</b> — ノード内 local rank % GPU 数のラウンドロビン割当。1 GPU を複数ランクが共有する状況を正面から想定し、
   物理 GPU の <b>UUID 単位でデバイス共有ランク群を検出</b>したうえで、VRAM 見積り/実予約に基づく適応並列度制御・
   実行時 ELPA フォールバック・失敗時リトライ・GPU フェーズ間のメモリ協調(需要公開レジストリ)という多層の制御を持つ(§2.5)。</li>
@@ -401,7 +404,7 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
   <text x="342" y="211" class="s2">① S を Xsyevdx で対角化 ② λ → 1/√λ 列スケール(Ddgmm/Zdgmm)</text>
   <text x="342" y="226" class="s2">③ H′ = Ũ†HŨ(GEMMul8) ④ H′ を Xsyevdx(下から MaxN 本)</text>
   <text x="342" y="241" class="s2">⑤ 逆変換 C=Ũz。適応並列度(UUID 共有群+プレフィックススキャン)</text>
-  <text x="342" y="256" class="s2">条件: n ≥ 1000(バンド Col / DC-LNO は 800)+メモリ見積り/実予約</text>
+  <text x="342" y="256" class="s2">条件: n ≥ 経路別既定値(バンド 800、クラスタ 400、DC-LNO 800)+メモリ見積り/実予約</text>
   <text x="342" y="270" class="s2">収まらなければ ELPA/ScaLAPACK に自動フォールバック(§5.6)</text>
   <line x1="692" y1="225" x2="718" y2="225" class="a2"/>
   <rect x="720" y="182" width="176" height="56" class="g fb"/>
@@ -438,10 +441,10 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
 <table>
 <thead><tr><th style="width:16%;">経路 / 計算</th><th style="width:14%;">主担当ファイル</th><th>GPU 化内容</th><th style="width:24%;">発動条件</th></tr></thead>
 <tbody>
-<tr><td>クラスタ(Col)</td><td><code>Cluster_DFT_Col.c</code></td><td>root-dense 対角化一式(S 対角化 → レイディン直交化 → H′ 対角化 → 逆変換)+ DM/EDM の GPU 蓄積。固有ベクトルはデバイス常駐のまま DM へ。2 スピンが同居できない場合はスピンワールド 0 のオーナーが両スピンを直列に解く</td><td>GPUSOLVER かつ n ≥ 1000 かつ<b>実予約成功</b>(不成立なら ELPA へ)</td></tr>
-<tr><td>クラスタ(NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>単一 cudaMalloc アリーナ上の root-dense 対角化(Dsyevx/Zheevx)+ U†HU(GEMMul8 × 12)+ DM/EDM 縮約。S/Ss2・疎→密 index・cublas ハンドル・zheevdx ワークスペースを反復間キャッシュ</td><td>GPUSOLVER かつ 2n ≥ 1000 かつアリーナ予約成功(不成立なら ELPA へ)</td></tr>
+<tr><td>クラスタ(Col)</td><td><code>Cluster_DFT_Col.c</code></td><td>root-dense 対角化一式(S 対角化 → レイディン直交化 → H′ 対角化 → 逆変換)+ DM/EDM の GPU 蓄積。固有ベクトルはデバイス常駐のまま DM へ。2 スピンが同居できない場合はスピンワールド 0 のオーナーが両スピンを直列に解く</td><td>GPUSOLVER かつ n ≥ 400(<code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code>)かつ<b>実予約成功</b>(不成立なら ELPA へ)</td></tr>
+<tr><td>クラスタ(NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>単一 cudaMalloc アリーナ上の root-dense 対角化(Dsyevx/Zheevx)+ U†HU(GEMMul8 × 12)+ DM/EDM 縮約。S/Ss2・疎→密 index・cublas ハンドル・zheevdx ワークスペースを反復間キャッシュ</td><td>GPUSOLVER かつ 2n ≥ 400(<code>OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM</code>)かつアリーナ予約成功(不成立なら ELPA へ)</td></tr>
 <tr><td>バンド(Col)</td><td><code>Band_DFT_Col.c</code></td><td>k 点ごとの密行列対角化一式をデバイス常駐で実行。GEMM は GEMMul8 Zgemm。S 変換行列をキャッシュ。第 1 パスは NOVECTOR 対角化。UUID 共有群+降順プレフィックススキャンの適応並列度</td><td>GPUSOLVER かつ n ≥ 800(<code>OPENMX_BAND_GPU_SWITCH_NUM</code>)かつ 1 ターン分の VRAM 見積りが成立(不成立なら ELPA へ)</td></tr>
-<tr><td>バンド(NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC 常駐型 root-dense 経路。固有値のみ/固有ベクトル/DM の 3 ステージ別 VRAM 見積りで並列度を独立に決定</td><td>GPUSOLVER かつ 2n ≥ 1000 かつ見積り成立(不成立なら ELPA へ)</td></tr>
+<tr><td>バンド(NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC 常駐型 root-dense 経路。固有値のみ/固有ベクトル/DM の 3 ステージ別 VRAM 見積りで並列度を独立に決定</td><td>GPUSOLVER かつ 2n ≥ 800(<code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code>)かつ見積り成立(不成立なら ELPA へ)</td></tr>
 <tr><td>DC 法(O(N))</td><td><code>Divide_Conquer.c</code></td><td>原子ごとの部分クラスタ行列を Xsyevdx で対角化。GEMMul8→cuBLAS→CPU の多段フォールバック。S12 パネルのデバイス常駐キャッシュ(S-cache)+ cublasDgeam デバイス転置</td><td>GPUSOLVER かつ局所次元 ≥ 1000(<code>OPENMX_DC_GPU_THRESHOLD</code>)</td></tr>
 <tr><td>DC-LNO 法</td><td><code>Divide_Conquer_LNO.c</code></td><td>direct per-rank dispatch。<b>非コリニアも GPU 化済み</b>(スピン倍化変換+GEMMul8 Zgemm × 3)。デバイス共有ランク群の合算メモリ判定で CPU フォールバック</td><td>GPUSOLVER かつ局所次元 ≥ 800(<code>OPENMX_DCLNO_GPU_THRESHOLD</code>)</td></tr>
 <tr><td>Krylov 法(O(N))</td><td><code>Krylov.c</code></td><td>原子ごとの射影解パイプラインを 1 回のデバイス訪問に融合(GEMM×3 + Xsyevd)。Krylov 基底のデバイス常駐 KU キャッシュ</td><td>GPUSOLVER かつ 3 GEMM とも m·n·k ≥ 5×10⁷(対角化は n ≥ 1000)</td></tr>
@@ -1987,7 +1990,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>(OPENMX_)GEMMUL8_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>ワークスペース確保後に残すべき最低空き VRAM</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>バンド計算(Band_DFT_Col.c / Band_DFT_NonCol.c)</b></td></tr>
 <tr><td><code>OPENMX_BAND_GPU_DIAG</code></td><td>自動</td><td><b>1</b>=見積り判定を無視して GPU 密行列経路を強制、<b>0</b>=常に ELPA/ScaLAPACK(§5.6)</td></tr>
-<tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>コリニアバンド密行列経路の GPU/CPU 切替次元(他の経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>コリニアバンド密行列経路の GPU/CPU 切替次元(専用ノブのない経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400</td></tr>
+<tr><td><code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code></td><td>800</td><td>ノンコリニアバンド密行列経路の同ノブ。2n と比較(実測クロスオーバーは 2n ≈ 250〜400)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RESERVE_MB</code></td><td>max(総VRAM/10, 1536)</td><td>並列度決定・fits 判定で空けておく予約量の引き上げ</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RANK_OVERHEAD_MB</code></td><td>256</td><td>per-rank 所要量見積りに加算するランタイムオーバーヘッド</td></tr>
 <tr><td><code>OPENMX_BAND_SYEVDX_NOVECTOR</code></td><td>1</td><td>固有値のみ必要な第 1 パスを NOVECTOR で解く(0 で旧動作)</td></tr>
@@ -1998,6 +2002,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>性能計測カウンタの表示(Set_Hamiltonian の SETHPROF 行も共用)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>クラスタ計算(Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)</b></td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG</code></td><td>自動</td><td><b>1</b>=実予約失敗でも GPU 強制(失敗時は診断つき abort)、<b>0</b>=常に ELPA(§5.6)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code></td><td>400</td><td>コリニアクラスタ密行列経路の GPU/CPU 切替次元(実測では n=240 まで全サイズで GPU が勝利)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM</code></td><td>400</td><td>ノンコリニアクラスタ密行列経路の同ノブ。2n と比較(実測では 2n=480 まで GPU が勝利)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code></td><td>1024</td><td>予約プローブ後に残すべき空き VRAM</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_SERIAL</code></td><td>1</td><td>2 スピンが同居できないときの直列化モード(0=無効、2=直列強制)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>DM/EDM の GPU 蓄積(0 で CPU ループ)</td></tr>

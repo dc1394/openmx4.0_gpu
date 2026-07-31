@@ -36,13 +36,19 @@ static int DFT_SetOLPKinUseGPU(void);
 static int DFT_SetProExpnVNAUseGPU(void);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1);
 int Band_DFT_Col_GpuSwitchNum(void);
+int Band_DFT_NonCol_GpuSwitchNum(void);
+int Cluster_DFT_Col_GpuSwitchNum(void);
+int Cluster_DFT_NonCol_GpuSwitchNum(void);
 
-/* effective GPU/CPU crossover of the global dense eigensolver paths; the
-   collinear band path uses its own lower default (800, tunable with
-   OPENMX_BAND_GPU_SWITCH_NUM — see Band_DFT_Col_GpuSwitchNum) */
+/* effective GPU/CPU crossover of the global dense eigensolver paths; each
+   band/cluster path has its own default and OPENMX_*_GPU_SWITCH_NUM knob
+   (see the *_GpuSwitchNum helpers in the solver files) */
 static int DFT_GPU_DenseSwitchNum(void)
 {
-    if (Solver==3 && SpinP_switch!=3) return Band_DFT_Col_GpuSwitchNum();
+    if (Solver==3) return (SpinP_switch==3) ? Band_DFT_NonCol_GpuSwitchNum()
+                                            : Band_DFT_Col_GpuSwitchNum();
+    if (Solver==2) return (SpinP_switch==3) ? Cluster_DFT_NonCol_GpuSwitchNum()
+                                            : Cluster_DFT_Col_GpuSwitchNum();
     return GPU_CPU_SWITCH_NUM;
 }
 

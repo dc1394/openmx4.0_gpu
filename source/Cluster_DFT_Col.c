@@ -564,9 +564,36 @@ static int ClusterCol_GemmWorkspaceTurnRelease(void)
     return (atoi(value)!=0);
 }
 
+/* GPU/CPU crossover of the collinear cluster dense eigensolver path.  The
+   cluster diagonalization runs once per SCF step and the root-dense GPU
+   solve of one rank beats the multi-rank ELPA fallback at every measured
+   size (on one RTX 5080 shared by 8 ranks: total 1.27x at n=780 down to
+   1.06x at n=240), so the default sits far below the global
+   GPU_CPU_SWITCH_NUM; below it the remaining gain is within noise of the
+   grid-dominated runtime.  OPENMX_CLUSTER_GPU_SWITCH_NUM=<dim> overrides
+   it.  Also consulted by DFT.c so the startup fallback notice reports the
+   effective value. */
+#define CLUSTER_GPU_CPU_SWITCH_NUM 400
+
+int Cluster_DFT_Col_GpuSwitchNum(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char *value = getenv("OPENMX_CLUSTER_GPU_SWITCH_NUM");
+        int parsed;
+
+        cached = CLUSTER_GPU_CPU_SWITCH_NUM;
+        if (value != NULL && 0 < (parsed = atoi(value))) {
+            cached = parsed;
+        }
+    }
+    return cached;
+}
+
 static int ClusterCol_UseGpuAccel(int n)
 {
-    return (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n &&
+    return (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_Col_GpuSwitchNum()<=n &&
             Set_Hamiltonian_OpenACC_Rank_Is_Selected());
 }
 
@@ -1634,7 +1661,7 @@ double Cluster_DFT_Col(
   n2 = n + 2;
 
   /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
-  if (scf_eigen_lib_flag == GPUSOLVER && n >= GPU_CPU_SWITCH_NUM &&
+  if (scf_eigen_lib_flag == GPUSOLVER && n >= Cluster_DFT_Col_GpuSwitchNum() &&
       Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
       set_cuda_default_device_from_local_rank_noncollective();
       set_openacc_nvidia_device_from_local_rank_noncollective();
@@ -1718,7 +1745,7 @@ double Cluster_DFT_Col(
   {
     int gpu_diag_mode = 0;
 
-    if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n){
+    if (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_Col_GpuSwitchNum()<=n){
       gpu_diag_mode = ClusterCol_GpuDiagFits(SCF_iter,n,myworld1,myid1,numprocs0);
     }
     if (gpu_diag_mode!=0){
