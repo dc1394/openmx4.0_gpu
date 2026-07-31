@@ -208,9 +208,10 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
 <h2>2.1 Design Policy</h2>
 <ol>
   <li><b>Runtime switching with the CPU paths fully preserved</b> — GPU offloading is implemented as
-  <b>added branches</b> in the existing code, not as a wholesale <code>#ifdef</code> replacement. A single input
-  line, <code>scf.eigen.lib&nbsp;gpusolver</code>, enables it; without it, the original ELPA/ScaLAPACK/LAPACK
-  paths run unchanged. The gate is concentrated in one runtime flag, <code>scf_eigen_lib_flag == GPUSOLVER</code> (enum value 3).</li>
+  <b>added branches</b> in the existing code, not as a wholesale <code>#ifdef</code> replacement. It is enabled by
+  default (<code>scf.eigen.lib</code> defaults to <code>gpusolver</code>); a single input line,
+  <code>scf.eigen.lib&nbsp;elpa2</code> (or <code>elpa1</code>/<code>lapack</code>), runs the original
+  ELPA/ScaLAPACK/LAPACK paths unchanged. The gate is concentrated in one runtime flag, <code>scf_eigen_lib_flag == GPUSOLVER</code> (enum value 3).</li>
   <li><b>Only large dense problems go to the GPU</b> — below the threshold
   <code>GPU_CPU_SWITCH_NUM = 1000</code> (<code>openmx_common.h:4135</code>; DC-LNO defaults to 800) the transfer
   cost dominates, so the code falls back to the CPU.</li>
@@ -353,9 +354,10 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
 <h2>2.3 Enabling Flow and GPU Points in the SCF Loop</h2>
 <p>The GPU paths become active as follows.</p>
 <ol>
-  <li><b>Input parsing</b> (<code>Input_std.c</code>): <code>scf.eigen.lib gpusolver</code> sets
-  <code>scf_eigen_lib_flag = GPUSOLVER</code>. The old name <code>cusolver</code> is accepted as a
-  deprecated alias with a warning; the user's choice is saved in <code>scf_eigen_lib_flag_input</code>.</li>
+  <li><b>Input parsing</b> (<code>Input_std.c</code>): <code>scf.eigen.lib gpusolver</code> — the default when
+  the keyword is absent — sets <code>scf_eigen_lib_flag = GPUSOLVER</code>. The old name <code>cusolver</code>
+  is accepted as a deprecated alias with a warning; the user's choice is saved in
+  <code>scf_eigen_lib_flag_input</code>.</li>
   <li><b>Device initialization</b> (<code>DFT_GPU_DeviceInit()</code> in <code>DFT.c</code>):
   the intra-node local rank is obtained with <code>MPI_Comm_split_type(MPI_COMM_TYPE_SHARED)</code> and
   <code>cudaSetDevice</code> and <code>acc_set_device_num</code> are set <b>as a pair</b>. If no CUDA/OpenACC
@@ -2058,9 +2060,10 @@ nvidia-smi autodetection).
 <p>Only two input keywords were added or extended for the GPU features (everything else is tuned via
 environment variables).</p>
 <p class="src">Input_std.c — the addition (complete)</p>
-<pre><code>/* "cusolver" is a deprecated alias of "gpusolver"; ... */
-s_vec[0]="elpa2"; s_vec[1]="lapack"; s_vec[2]="elpa1";    s_vec[3]="gpusolver"; s_vec[4]="cusolver";
-i_vec[0]=ELPA2;   i_vec[1]=0;        i_vec[2]=ELPA1;       i_vec[3]=GPUSOLVER;   i_vec[4]=-GPUSOLVER;
+<pre><code>/* default=gpusolver; input_string2int() returns i_vec[0] when the keyword is absent ...
+   "cusolver" is a deprecated alias of "gpusolver"; ... */
+s_vec[0]="gpusolver"; s_vec[1]="lapack"; s_vec[2]="elpa1"; s_vec[3]="elpa2"; s_vec[4]="cusolver";
+i_vec[0]=GPUSOLVER;   i_vec[1]=0;        i_vec[2]=ELPA1;   i_vec[3]=ELPA2;   i_vec[4]=-GPUSOLVER;
 input_string2int("scf.eigen.lib", &amp;scf_eigen_lib_flag, 5, s_vec,i_vec);
 if (scf_eigen_lib_flag==-GPUSOLVER){
   if (myid==Host_ID){
@@ -2075,7 +2078,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <table>
 <thead><tr><th style="width:22%;">Keyword</th><th style="width:10%;">Type</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
 <tbody>
-<tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>elpa2</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present</td></tr>
+<tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>gpusolver</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>, and is the default, so the GPU paths run unless one of the CPU eigensolvers is requested explicitly. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present</td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper bound on GPUs used per node, applied to every rank→GPU assignment (central GPUSOLVER initialization, the local-rank device helpers of the Band/Cluster solver paths, and the DC-LNO proxy). <code>scf.Gpu.Num 1</code> confines the run to one GPU however many the node carries — a debugging aid; 30 effectively means "use every GPU found". Values ≤0 or ≥ the detected count are ignored</td></tr>
 </tbody>
 </table>

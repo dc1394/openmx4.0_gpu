@@ -11,9 +11,10 @@ config.log
 config.status
 libtool
 
-# === OpenMX compiled binary ===
+# === OpenMX compiled binary and build helpers ===
 /source/openmx
 /work/openmx
+/source/force_rpath
 
 # === Editor / IDE ===
 .vscode/

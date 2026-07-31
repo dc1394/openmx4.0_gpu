@@ -56,10 +56,13 @@
 # FC = mpif90 -O2 -mtune=native -march=native -fopenmp -I${MKLROOT}/include
 # -L/home/x10402/nvpl-linux-sbsa-24.7/lib -lnvpl_scalapack_lp64 -lnvpl_blacs_lp64_openmpi4 -lnvpl_lapack_lp64_gomp -lnvpl_blas_lp64_gomp -pgf90libs -lmpi_mpifh -lfftw3 -lpthread -lgfortran -lm -ldl -L/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/lib64 -L/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/lib -lcudart -lcusolver -lcublas -cuda
 
-NVHPC_ROOT          ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.3
-NVHPC_CUDA_VERSION  ?= 13.1
+NVHPC_ROOT          ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.5
+NVHPC_CUDA_VERSION  ?= 13.2
 NVHPC_MPI_BIN       ?= $(NVHPC_ROOT)/comm_libs/mpi/bin
-NVHPC_MPI_LIBDIR    ?= $(NVHPC_ROOT)/comm_libs/$(NVHPC_CUDA_VERSION)/hpcx/hpcx-2.25.1/ompi/lib
+# The HPC-X directory is named after its release (hpcx-2.25.1 in 26.3,
+# hpcx-2.50 in 26.5), so follow the "latest" symlink; "ompi" inside it
+# selects the Open MPI generation the mpicc/mpif90 wrappers use.
+NVHPC_MPI_LIBDIR    ?= $(NVHPC_ROOT)/comm_libs/$(NVHPC_CUDA_VERSION)/hpcx/latest/ompi/lib
 NVHPC_COMPILER_BIN  ?= $(NVHPC_ROOT)/compilers/bin
 NVHPC_COMPILER_LIB  ?= $(NVHPC_ROOT)/compilers/lib
 NVHPC_MATH_DIR      ?= $(NVHPC_ROOT)/math_libs/$(NVHPC_CUDA_VERSION)/targets/x86_64-linux
@@ -170,9 +173,17 @@ NVCC ?= $(GEMMUL8_CUDA_PATH)/bin/nvcc
 NVCC_HOST ?= $(NVHPC_COMPILER_BIN)/nvc++
 NVCC_GEMMUL8_ENV = PATH="$(PATH)" CUDA_HOME="$(NVHPC_CUDA_HOME)" CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= NVCC_PREPEND_FLAGS= NVCC_APPEND_FLAGS=
 NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(GEMMUL8_BUILD_GPU_ARCH) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
-LIB += -lcublasLt -lcuda -lnvidia-ml -lstdc++
+# -lcusparse is not called directly but is a private dependency of
+# libcusolver; naming it here (shielded from --as-needed) makes it a
+# direct dependency of openmx, so the RPATH of the binary resolves it
+# (a dependency loaded through libcusolver would follow
+# LD_LIBRARY_PATH instead, which can mix CUDA library generations).
+LIB += -lcublasLt -Wl,--no-as-needed -lcusparse -Wl,--as-needed -lcuda -lnvidia-ml -lstdc++
 
-CFLAGS  = -g 
+# host compiler for the small build-time helper tools (force_rpath)
+HOST_CC ?= gcc
+
+CFLAGS  = -g
 CPPFLAGS =
 
 OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o ReLU_inverse.o \
@@ -334,9 +345,18 @@ $(FFTW3_USERS): | $(FFTW3_LIB)
 
 .DEFAULT_GOAL := openmx
 
-openmx:	$(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS)
+openmx:	$(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS) force_rpath
 	$(CC) $(OBJS) $(STACK) $(GEMMUL8_LIB) $(LIB) -lm -o openmx
-	
+	./force_rpath openmx
+
+# The nvc link driver forces --enable-new-dtags, so the recorded
+# library search path is DT_RUNPATH, which LD_LIBRARY_PATH overrides;
+# a stray CUDA installation there (e.g. /usr/local/cuda/lib64) mixes
+# cuBLAS/cuSOLVER generations and corrupts the GPU solvers.  Flip the
+# tag to DT_RPATH after linking so the build-time libraries win.
+force_rpath: force_rpath.c
+	$(HOST_CC) -O2 -o force_rpath force_rpath.c
+
 #
 #
 # all
@@ -882,7 +902,7 @@ install: $(PROG)
 #
 
 clean: fftw3-clean gemmul8-clean
-	rm -f $(PROG) $(OBJS) $(OBJS_jx) $(UTIL) *.o *.mod *.dbg
+	rm -f $(PROG) $(OBJS) $(OBJS_jx) $(UTIL) force_rpath *.o *.mod *.dbg
 
 #
 #

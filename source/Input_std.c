@@ -774,10 +774,14 @@ void Input_std(char *file)
   i_vec[0]=2;        i_vec[1]=0;        i_vec[2]=1;        i_vec[3]=3;        
   input_string2int("scf.lapack.dste", &dste_flag, 4, s_vec,i_vec);
 
-  /* "cusolver" is a deprecated alias of "gpusolver"; it is mapped to a
+  /* default=gpusolver; input_string2int() returns i_vec[0] when the keyword
+     is absent, so the GPU paths are enabled unless the input file selects a
+     CPU eigensolver.  A run that finds no usable GPU demotes itself to
+     ELPA2 in DFT.c, so this default is also safe on CPU-only machines.
+     "cusolver" is a deprecated alias of "gpusolver"; it is mapped to a
      negative sentinel so that the deprecation warning can be issued below. */
-  s_vec[0]="elpa2"; s_vec[1]="lapack"; s_vec[2]="elpa1";    s_vec[3]="gpusolver"; s_vec[4]="cusolver";
-  i_vec[0]=ELPA2;   i_vec[1]=0;        i_vec[2]=ELPA1;       i_vec[3]=GPUSOLVER;   i_vec[4]=-GPUSOLVER;
+  s_vec[0]="gpusolver"; s_vec[1]="lapack"; s_vec[2]="elpa1"; s_vec[3]="elpa2"; s_vec[4]="cusolver";
+  i_vec[0]=GPUSOLVER;   i_vec[1]=0;        i_vec[2]=ELPA1;   i_vec[3]=ELPA2;   i_vec[4]=-GPUSOLVER;
   input_string2int("scf.eigen.lib", &scf_eigen_lib_flag, 5, s_vec,i_vec);
   if (scf_eigen_lib_flag==-GPUSOLVER){
     if (myid==Host_ID){

@@ -7,7 +7,7 @@ Hiroyuki Kawai (Niigata Univ.)</br>
 X account: [@dc1394](https://x.com/dc1394)
 
 ## How to enable GPU acceleration
-To enable GPU acceleration, you must specify "gpusolver" for "scf.eigen.lib" in the input file (**:warning: GPU acceleration is disabled by default!**). For example:
+GPU acceleration is enabled by default: "scf.eigen.lib" defaults to "gpusolver", so no extra input line is required. Writing it explicitly is of course still fine:
 
 ```ini
 scf.XcType                  GGA-PBE    # LDA|LSDA-CA|LSDA-PW|GGA-PBE
@@ -24,10 +24,16 @@ scf.Max.Mixing.Weight      0.700       # default=0.40
 scf.Mixing.History          7          # default=5
 scf.Mixing.StartPulay       5          # default=6
 scf.criterion             1.0e-10      # default=1.0e-6 (Hartree) 
-scf.eigen.lib             gpusolver     # default=elpa1
+scf.eigen.lib             gpusolver     # default=gpusolver
 ```
 
-Set as shown above.
+To run the conventional CPU paths instead, specify "elpa2", "elpa1" or "lapack":
+
+```ini
+scf.eigen.lib             elpa2         # CPU (ELPA2) paths
+```
+
+A run that finds no usable GPU demotes itself to ELPA2 automatically, so the default is also safe on machines without an NVIDIA GPU.
 
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems; please refer to them. If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
@@ -72,7 +78,7 @@ https://journals.jps.jp/doi/10.7566/JPSJ.94.124003
 However, the current version offers improved performance compared to the version described in this paper.
 
 ## Important notes
-At present, GPU-accelerated OpenMX performs faster than standard OpenMX for calculations involving systems containing hundreds of atoms. For calculations involving systems with fewer than a hundred atoms, standard OpenMX should be used. Please use with caution as it may contain bugs.
+At present, GPU-accelerated OpenMX performs faster than standard OpenMX for calculations involving systems containing hundreds of atoms. For calculations involving systems with fewer than a hundred atoms, standard OpenMX should be used (or set `scf.eigen.lib elpa2` to run the CPU paths of this code). Please use with caution as it may contain bugs.
 
 ## About bug reports
 I would appreciate it if you could actively report any bugs. Please report them via GitHub issues or send them to [my X account](https://x.com/dc1394). Bug reports sent to my X account can be in English.
