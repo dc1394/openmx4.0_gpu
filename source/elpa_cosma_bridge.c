@@ -61,6 +61,21 @@ typedef struct {
     int ranks, forced;
 } gs2_mem_details;
 
+/* -1 = no forced mode, 0 = forced CPU, 1 = forced GPU */
+static int gs2_forced_mode(const char *envname)
+{
+    const char *env = getenv(envname);
+    if (env == NULL || env[0] == '\0') return -1;
+    return (atoi(env) != 0);
+}
+
+static void gs2_det_set_forced(gs2_mem_details *det)
+{
+    det->need_mb = det->free_mb = det->reserve_mb = 0;
+    det->ranks = 0;
+    det->forced = 1;
+}
+
 /* per-rank device bytes one ELPA solve is expected to allocate: the
    dominant terms are a few copies of the local block-cyclic matrix
    (a_dev/q_dev plus bandred/back-transform panels), modelled as
@@ -139,14 +154,6 @@ static int gs2_gpu_verdict(size_t need, int ranks_on_dev, MPI_Comm comm,
     det->free_mb    = 0;
     det->forced     = 0;
 
-    {
-        const char *env = getenv("OPENMX_GS2_ELPA_GPU");
-        if (env != NULL && env[0] != '\0') {
-            det->forced = 1;
-            return (atoi(env) != 0);
-        }
-    }
-
     reserve = (size_t)gs2_env_long("OPENMX_GS2_GPU_RESERVE_MB", 512) << 20;
     det->reserve_mb = (unsigned long long)(reserve >> 20);
 
@@ -224,6 +231,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     int nprow, npcol, myrow, mycol, ZERO = 0;
     int na_rows, na_cols, sysctxt;
     int want_gpu = 1, have_verdict = 0, ranks_on_dev = 1;
+    int forced = gs2_forced_mode("OPENMX_GS2_ELPA_GPU");
     size_t need = 0;
     gs2_mem_details det;
     MPI_Comm comm;
@@ -239,9 +247,15 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
                resident caches of other GPU stages keep growing), so
                re-evaluate the GPU/CPU verdict before every solve and
                rebuild the handle on the other side when it flips */
-            want_gpu = gs2_gpu_verdict(gs2_slots[i].need, gs2_slots[i].ranks_on_dev,
-                                       gs2_slots[i].comm, gs2_slots[i].gpu,
-                                       gs2_slots[i].retained, &det);
+            if (forced >= 0) {
+                want_gpu = forced;
+                gs2_det_set_forced(&det);
+            }
+            else {
+                want_gpu = gs2_gpu_verdict(gs2_slots[i].need, gs2_slots[i].ranks_on_dev,
+                                           gs2_slots[i].comm, gs2_slots[i].gpu,
+                                           gs2_slots[i].retained, &det);
+            }
             if (want_gpu == gs2_slots[i].gpu) return &gs2_slots[i];
 
             gs2_report_mode(gs2_slots[i].comm, n, nev, want_gpu, &det, "switching to");
@@ -274,7 +288,13 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     ranks_on_dev = gs2_ranks_on_device(comm);
     need = gs2_need_bytes(na_rows, na_cols, is_complex);
     if (!have_verdict) {
-        want_gpu = gs2_gpu_verdict(need, ranks_on_dev, comm, -1, 0, &det);
+        if (forced >= 0) {
+            want_gpu = forced;
+            gs2_det_set_forced(&det);
+        }
+        else {
+            want_gpu = gs2_gpu_verdict(need, ranks_on_dev, comm, -1, 0, &det);
+        }
         if (!want_gpu || gs2_env_long("OPENMX_GS2_GPU_VERBOSE", 0) != 0) {
             gs2_report_mode(comm, n, nev, want_gpu, &det, "using");
         }
@@ -400,6 +420,180 @@ int openmx_gs2_eigen_complex(int n, int nev, void *a, int *desca, double *w, voi
     }
     gs2_update_retained(s, free_before, gs2_free_now());
     return 0;
+}
+
+/* ---------------------------------------------------------------------
+   COSMA <-> ScaLAPACK p?gemm dispatch.
+
+   COSMA's GPU backend (Tiled-MM) allocates three device buffers x
+   streams per scalar type, sized by its GEMM tiles, and keeps them for
+   the rest of the run.  With many ranks per GPU those buffers are what
+   actually overflows the card (observed at np18: every rank printing
+   "error: GPU API call : out of memory" inside the first n2 x n2
+   back-transform), so the transform GEMMs get the same treatment as
+   the eigensolves: bound what Tiled-MM may allocate and, when the
+   device cannot hold it, run the ScaLAPACK p?gemm (CPU) instead.
+
+   To keep that bound tight the bridge caps COSMA's tile sizes (default
+   1024) before the first COSMA context is created; the transforms are
+   PCIe-transfer-bound at any tile size, so smaller tiles cost little.
+   --------------------------------------------------------------------- */
+
+extern void pdgemm_(const char *transa, const char *transb, const int *m, const int *n,
+                    const int *k, const double *alpha, const double *a, const int *ia,
+                    const int *ja, const int *desca, const double *b, const int *ib,
+                    const int *jb, const int *descb, const double *beta, double *c,
+                    const int *ic, const int *jc, const int *descc);
+extern void pzgemm_(const char *transa, const char *transb, const int *m, const int *n,
+                    const int *k, const double *alpha, const double *a, const int *ia,
+                    const int *ja, const int *desca, const double *b, const int *ib,
+                    const int *jb, const int *descb, const double *beta, double *c,
+                    const int *ic, const int *jc, const int *descc);
+
+static long gs2_tile_cap = 5000;    /* effective COSMA max tile dimension */
+static long gs2_gemm_streams = 2;   /* effective COSMA GPU stream count */
+static int gs2_gemm_ranks = 0;      /* ranks sharing this rank's device */
+static size_t gs2_gemm_retained[2]; /* persistent Tiled-MM bytes: [real, cplx] */
+static int gs2_gemm_mode[2] = {-1, -1};
+
+static void gs2_gemm_init_once(void)
+{
+    static int done = 0;
+    char buf[32];
+    long cap;
+
+    if (done) return;
+    done = 1;
+
+    cap = gs2_env_long("OPENMX_GS2_GPU_TILE", 1024);
+    if (cap > 0) {
+        snprintf(buf, sizeof(buf), "%ld", cap);
+        setenv("COSMA_GPU_MAX_TILE_M", buf, 0);
+        setenv("COSMA_GPU_MAX_TILE_N", buf, 0);
+        setenv("COSMA_GPU_MAX_TILE_K", buf, 0);
+    }
+
+    /* the caps actually in effect (a user-set environment wins above) */
+    gs2_tile_cap = gs2_env_long("COSMA_GPU_MAX_TILE_M", 5000);
+    {
+        long capn = gs2_env_long("COSMA_GPU_MAX_TILE_N", 5000);
+        long capk = gs2_env_long("COSMA_GPU_MAX_TILE_K", 5000);
+        if (capn > gs2_tile_cap) gs2_tile_cap = capn;
+        if (capk > gs2_tile_cap) gs2_tile_cap = capk;
+    }
+    gs2_gemm_streams = gs2_env_long("COSMA_GPU_STREAMS", 2);
+    if (gs2_gemm_streams < 1) gs2_gemm_streams = 1;
+}
+
+/* upper bound of the device bytes Tiled-MM may hold after one GEMM */
+static size_t gs2_gemm_bound(int m, int n, int k, int is_complex)
+{
+    size_t elem = is_complex ? 16 : 8;
+    size_t tm = (m < gs2_tile_cap) ? (size_t)m : (size_t)gs2_tile_cap;
+    size_t tn = (n < gs2_tile_cap) ? (size_t)n : (size_t)gs2_tile_cap;
+    size_t tk = (k < gs2_tile_cap) ? (size_t)k : (size_t)gs2_tile_cap;
+    return (size_t)gs2_gemm_streams * elem * (tm * tk + tk * tn + tm * tn);
+}
+
+static MPI_Comm gs2_ictxt_comm(int ictxt)
+{
+    int sysctxt;
+    Cblacs_get(ictxt, 10, &sysctxt); /* SGET_BLACSCONTXT: system context */
+    return Cblacs2sys_handle(sysctxt);
+}
+
+static void gs2_report_gemm(MPI_Comm comm, int m, int n, int k, int is_complex,
+                            int gpu, const gs2_mem_details *det)
+{
+    const char *name = is_complex ? "pzgemm" : "pdgemm";
+    const char *how  = gpu ? "COSMA (GPU)" : "ScaLAPACK (CPU)";
+    int r = 0;
+    MPI_Comm_rank(comm, &r);
+    if (r != 0) return;
+
+    if (det->forced) {
+        printf("<DFT> gpusolver2: %s m=%d n=%d k=%d using %s (OPENMX_GS2_GEMM_GPU)\n",
+               name, m, n, k, how);
+    }
+    else {
+        printf("<DFT> gpusolver2: %s m=%d n=%d k=%d using %s "
+               "(GPU memory: need ~%llu MB/rank x %d ranks/GPU + reserve %llu MB %s free %llu MB)\n",
+               name, m, n, k, how,
+               det->need_mb, det->ranks, det->reserve_mb,
+               gpu ? "<=" : ">", det->free_mb);
+    }
+    fflush(stdout);
+}
+
+/* uniform per-call decision; collective over the grid's parent comm */
+static int gs2_gemm_use_gpu(int m, int n, int k, int is_complex, int ictxt)
+{
+    gs2_mem_details det;
+    int t = is_complex ? 1 : 0;
+    int forced, want;
+    MPI_Comm comm;
+
+    gs2_gemm_init_once();
+    comm = gs2_ictxt_comm(ictxt);
+
+    forced = gs2_forced_mode("OPENMX_GS2_GEMM_GPU");
+    if (forced >= 0) {
+        want = forced;
+        gs2_det_set_forced(&det);
+    }
+    else {
+        if (gs2_gemm_ranks <= 0) gs2_gemm_ranks = gs2_ranks_on_device(comm);
+        want = gs2_gpu_verdict(gs2_gemm_bound(m, n, k, is_complex), gs2_gemm_ranks,
+                               comm, gs2_gemm_mode[t], gs2_gemm_retained[t], &det);
+    }
+
+    /* report transitions (and, with the verbose knob, the first verdict);
+       an initial GPU verdict is the normal case and stays silent */
+    if (want != gs2_gemm_mode[t] &&
+        (want == 0 || gs2_gemm_mode[t] == 0 ||
+         gs2_env_long("OPENMX_GS2_GPU_VERBOSE", 0) != 0)) {
+        gs2_report_gemm(comm, m, n, k, is_complex, want, &det);
+    }
+    gs2_gemm_mode[t] = want;
+    return want;
+}
+
+void openmx_gs2_pdgemm_(const char *transa, const char *transb, const int *m, const int *n,
+                        const int *k, const double *alpha, const double *a, const int *ia,
+                        const int *ja, const int *desca, const double *b, const int *ib,
+                        const int *jb, const int *descb, const double *beta, double *c,
+                        const int *ic, const int *jc, const int *descc)
+{
+    if (gs2_gemm_use_gpu(*m, *n, *k, 0, desca[1])) {
+        size_t before = gs2_free_now(), after;
+        cosma_pdgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
+                      b, ib, jb, descb, beta, c, ic, jc, descc);
+        after = gs2_free_now();
+        if (before > after) gs2_gemm_retained[0] += before - after;
+    }
+    else {
+        pdgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
+                b, ib, jb, descb, beta, c, ic, jc, descc);
+    }
+}
+
+void openmx_gs2_pzgemm_(const char *transa, const char *transb, const int *m, const int *n,
+                        const int *k, const double *alpha, const double *a, const int *ia,
+                        const int *ja, const int *desca, const double *b, const int *ib,
+                        const int *jb, const int *descb, const double *beta, double *c,
+                        const int *ic, const int *jc, const int *descc)
+{
+    if (gs2_gemm_use_gpu(*m, *n, *k, 1, desca[1])) {
+        size_t before = gs2_free_now(), after;
+        cosma_pzgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
+                      b, ib, jb, descb, beta, c, ic, jc, descc);
+        after = gs2_free_now();
+        if (before > after) gs2_gemm_retained[1] += before - after;
+    }
+    else {
+        pzgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
+                b, ib, jb, descb, beta, c, ic, jc, descc);
+    }
 }
 
 void openmx_gs2_grid_free(int ictxt)
