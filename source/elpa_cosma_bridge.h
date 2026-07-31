@@ -8,6 +8,21 @@
   The bridge keeps the ELPA handle cache and its lifecycle in one
   translation unit so that the cluster solvers only deal with plain C
   calls that mirror the embedded-ELPA calls they replace.
+
+  GPU memory guard: ELPA aborts the whole run when a device allocation
+  fails inside a solve, so before every solve the bridge estimates the
+  per-rank device demand and falls back to ELPA's CPU kernels (same
+  distributed algorithm, host BLAS) when the GPU cannot hold it.
+  Environment knobs:
+    OPENMX_GS2_ELPA_GPU        1 = always GPU (skip the preflight),
+                               0 = always CPU; unset = decide from memory
+    OPENMX_GS2_GPU_RESERVE_MB  device headroom kept free for the rest of
+                               OpenMX (default 512)
+    OPENMX_GS2_GPU_FACTOR      demand model: FACTOR x local matrix bytes
+                               (default 3) ...
+    OPENMX_GS2_GPU_FIXED_MB    ... plus this fixed head per rank (128)
+    OPENMX_GS2_GPU_VERBOSE     1 = report the verdict of every handle
+                               build even when the GPU is chosen
 ***********************************************************************/
 
 #ifndef ELPA_COSMA_BRIDGE_H
