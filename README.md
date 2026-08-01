@@ -42,6 +42,13 @@ In particular, a cluster calculation — `scf.EigenvalueSolver cluster`, i.e. `s
 
 Multiple GPUs therefore pay off for band calculations with a k-mesh; for a cluster calculation, give the job one GPU and more CPU cores / MPI ranks instead.
 
+## MPI vs. hybrid (MPI/OpenMP) parallelization
+Use flat MPI. In OpenMX 4.0 GPU, hybrid MPI/OpenMP parallelization is not effective: OpenMP threads can still be requested as usual with the `-nt` option and such runs complete correctly, but they bring no speedup — only MPI parallelization is effective. Assign all the cores you want to use to MPI ranks instead, with one OpenMP thread per rank:
+
+```sh
+mpirun -np 16 ./openmx input.dat -nt 1
+```
+
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems; please refer to them. If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
 
