@@ -1992,6 +1992,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_BAND_GPU_DIAG</code></td><td>自動</td><td><b>1</b>=見積り判定を無視して GPU 密行列経路を強制、<b>0</b>=常に ELPA/ScaLAPACK(§5.6)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>コリニアバンド密行列経路の GPU/CPU 切替次元(専用ノブのない経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400</td></tr>
 <tr><td><code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code></td><td>800</td><td>ノンコリニアバンド密行列経路の同ノブ。2n と比較(実測クロスオーバーは 2n ≈ 250〜400)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_DM</code></td><td>1</td><td><b>0</b>=コリニアバンドの ScaLAPACK/ELPA フォールバック時の DM 蓄積を CPU ループに戻す。既定ではフォールバックでも DM は GPU 上で行う(フルソルブが載らなくても固有ベクトルパネルは載るため)</td></tr>
+<tr><td><code>OPENMX_BAND_NONCOL_GPU_DM</code></td><td>1</td><td><b>0</b>=ノンコリニアの ScaLAPACK/ELPA フォールバック multi-k ループの k 点ごと DM 蓄積を CPU ループに戻す(k-dense GPU フローは元々デバイス上で DM を蓄積する)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RESERVE_MB</code></td><td>max(総VRAM/10, 1536)</td><td>並列度決定・fits 判定で空けておく予約量の引き上げ</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RANK_OVERHEAD_MB</code></td><td>256</td><td>per-rank 所要量見積りに加算するランタイムオーバーヘッド</td></tr>
 <tr><td><code>OPENMX_BAND_SYEVDX_NOVECTOR</code></td><td>1</td><td>固有値のみ必要な第 1 パスを NOVECTOR で解く(0 で旧動作)</td></tr>

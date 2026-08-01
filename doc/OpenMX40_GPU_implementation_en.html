@@ -2107,6 +2107,8 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_BAND_GPU_DIAG</code></td><td>auto</td><td><b>1</b> = force the dense GPU path ignoring the fits verdict; <b>0</b> = always ELPA/ScaLAPACK (§5.6)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>GPU/CPU crossover dimension of the collinear band dense path (paths without their own knob keep <code>GPU_CPU_SWITCH_NUM</code>=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400</td></tr>
 <tr><td><code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code></td><td>800</td><td>Same for the noncollinear band dense path, compared against 2n (measured crossover 2n ≈ 250–400)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_DM</code></td><td>1</td><td><b>0</b> = CPU loop for the DM accumulation of the collinear band ScaLAPACK/ELPA fallback. By default the fallback keeps the DM on the GPU: the eigenvector panel fits even when the full dense solve does not</td></tr>
+<tr><td><code>OPENMX_BAND_NONCOL_GPU_DM</code></td><td>1</td><td><b>0</b> = CPU loop for the per-k DM accumulation of the noncollinear ScaLAPACK/ELPA-fallback multi-k loop (the k-dense GPU flow keeps its own device DM regardless)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RESERVE_MB</code></td><td>max(total/10, 1536)</td><td>Raises the reserve used by the concurrency planner and the fits verdicts</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RANK_OVERHEAD_MB</code></td><td>256</td><td>Runtime overhead added to the per-rank requirement model</td></tr>
 <tr><td><code>OPENMX_BAND_SYEVDX_NOVECTOR</code></td><td>1</td><td>Solve the eigenvalues-only first pass with NOVECTOR (0 restores the old behavior)</td></tr>

@@ -1837,10 +1837,13 @@ static void BandNonCol_AccumulateDMKPoint_OpenACC(int myid2, int *is2, int *ie2,
             double *rEDM11_chunk = rEDM11 + offset;
             double *rEDM22_chunk = rEDM22 + offset;
 
+/* "copy" (not "copyout") + "+=" below: the kernel ACCUMULATES on top of the
+   host arrays, so a caller may invoke it once per k point; the single-k
+   callers zero their arrays first and keep the old behavior */
 #pragma acc data copyin(basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count], phase_index_chunk[0:chunk_count]) \
-                 copyout(rDM11_chunk[0:chunk_count], rDM22_chunk[0:chunk_count], rDM12_chunk[0:chunk_count], \
-                         iDM12_chunk[0:chunk_count], iDM11_chunk[0:chunk_count], iDM22_chunk[0:chunk_count], \
-                         rEDM11_chunk[0:chunk_count], rEDM22_chunk[0:chunk_count])
+                 copy(rDM11_chunk[0:chunk_count], rDM22_chunk[0:chunk_count], rDM12_chunk[0:chunk_count], \
+                      iDM12_chunk[0:chunk_count], iDM11_chunk[0:chunk_count], iDM22_chunk[0:chunk_count], \
+                      rEDM11_chunk[0:chunk_count], rEDM22_chunk[0:chunk_count])
             {
 #pragma acc parallel loop gang present(evec_ptr[0:evec_count], phase_r[0:pair_count], phase_i[0:pair_count], \
                                        occ[0:nk], eig_occ[0:nk])
@@ -1883,18 +1886,41 @@ static void BandNonCol_AccumulateDMKPoint_OpenACC(int myid2, int *is2, int *ie2,
                         edm22_i += ew*im22;
                     }
 
-                    rDM11_chunk[p]  = co*dm11_r - si*dm11_i;
-                    iDM11_chunk[p]  = co*dm11_i + si*dm11_r;
-                    rDM22_chunk[p]  = co*dm22_r - si*dm22_i;
-                    iDM22_chunk[p]  = co*dm22_i + si*dm22_r;
-                    rDM12_chunk[p]  = co*dm12_r - si*dm12_i;
-                    iDM12_chunk[p]  = co*dm12_i + si*dm12_r;
-                    rEDM11_chunk[p] = co*edm11_r - si*edm11_i;
-                    rEDM22_chunk[p] = co*edm22_r - si*edm22_i;
+                    rDM11_chunk[p]  += co*dm11_r - si*dm11_i;
+                    iDM11_chunk[p]  += co*dm11_i + si*dm11_r;
+                    rDM22_chunk[p]  += co*dm22_r - si*dm22_i;
+                    iDM22_chunk[p]  += co*dm22_i + si*dm22_r;
+                    rDM12_chunk[p]  += co*dm12_r - si*dm12_i;
+                    iDM12_chunk[p]  += co*dm12_i + si*dm12_r;
+                    rEDM11_chunk[p] += co*edm11_r - si*edm11_i;
+                    rEDM22_chunk[p] += co*edm22_r - si*edm22_i;
                 }
             }
         }
     }
+}
+
+/* GPU per-k DM accumulation for the legacy multi-k second loop, i.e. the
+   ScaLAPACK/ELPA fallback (the k-dense GPU flow already accumulates its DM
+   on the device through AccumulateDMRootDenseK).  The eigenvector panel
+   still fits on the device even when the preflight refused the full dense
+   solve.  Sizes below the noncollinear band threshold keep the CPU loop.
+   Opt out with OPENMX_BAND_NONCOL_GPU_DM=0. */
+static int BandNonCol_UseGpuFallbackDM(int n2, size_t evec_bytes)
+{
+    const char *value = getenv("OPENMX_BAND_NONCOL_GPU_DM");
+    size_t free_bytes = 0, total_bytes = 0;
+
+    if (value != NULL && atoi(value) == 0) return 0;
+    if (!(scf_eigen_lib_flag == GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum() <= n2)) return 0;
+
+    /* the copyin of the eigenvector panel aborts instead of failing softly,
+       so refuse up front when it clearly does not fit */
+    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+        (void)cudaGetLastError();
+        return 0;
+    }
+    return (evec_bytes + 256ULL*1024ULL*1024ULL <= free_bytes);
 }
 
 static void BandNonCol_AccumulateDMRootDense_OpenACC(int *MP, int n, int n2, int max_state, int size_H1,
@@ -1963,10 +1989,13 @@ static void BandNonCol_AccumulateDMRootDense_OpenACC(int *MP, int n, int n2, int
             double *rEDM11_chunk = rEDM11 + offset;
             double *rEDM22_chunk = rEDM22 + offset;
 
+/* "copy" (not "copyout") + "+=" below: the kernel ACCUMULATES on top of the
+   host arrays, so a caller may invoke it once per k point; the single-k
+   callers zero their arrays first and keep the old behavior */
 #pragma acc data copyin(basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count], phase_index_chunk[0:chunk_count]) \
-                 copyout(rDM11_chunk[0:chunk_count], rDM22_chunk[0:chunk_count], rDM12_chunk[0:chunk_count], \
-                         iDM12_chunk[0:chunk_count], iDM11_chunk[0:chunk_count], iDM22_chunk[0:chunk_count], \
-                         rEDM11_chunk[0:chunk_count], rEDM22_chunk[0:chunk_count])
+                 copy(rDM11_chunk[0:chunk_count], rDM22_chunk[0:chunk_count], rDM12_chunk[0:chunk_count], \
+                      iDM12_chunk[0:chunk_count], iDM11_chunk[0:chunk_count], iDM22_chunk[0:chunk_count], \
+                      rEDM11_chunk[0:chunk_count], rEDM22_chunk[0:chunk_count])
             {
 #pragma acc parallel loop gang present(dense_evec[0:evec_count], phase_r[0:pair_count], phase_i[0:pair_count], \
                                        occ[0:nk], eig_occ[0:nk])
@@ -2009,14 +2038,14 @@ static void BandNonCol_AccumulateDMRootDense_OpenACC(int *MP, int n, int n2, int
                         edm22_i += ew*im22;
                     }
 
-                    rDM11_chunk[p]  = co*dm11_r - si*dm11_i;
-                    iDM11_chunk[p]  = co*dm11_i + si*dm11_r;
-                    rDM22_chunk[p]  = co*dm22_r - si*dm22_i;
-                    iDM22_chunk[p]  = co*dm22_i + si*dm22_r;
-                    rDM12_chunk[p]  = co*dm12_r - si*dm12_i;
-                    iDM12_chunk[p]  = co*dm12_i + si*dm12_r;
-                    rEDM11_chunk[p] = co*edm11_r - si*edm11_i;
-                    rEDM22_chunk[p] = co*edm22_r - si*edm22_i;
+                    rDM11_chunk[p]  += co*dm11_r - si*dm11_i;
+                    iDM11_chunk[p]  += co*dm11_i + si*dm11_r;
+                    rDM22_chunk[p]  += co*dm22_r - si*dm22_i;
+                    iDM22_chunk[p]  += co*dm22_i + si*dm22_r;
+                    rDM12_chunk[p]  += co*dm12_r - si*dm12_i;
+                    iDM12_chunk[p]  += co*dm12_i + si*dm12_r;
+                    rEDM11_chunk[p] += co*edm11_r - si*edm11_i;
+                    rEDM22_chunk[p] += co*edm22_r - si*edm22_i;
                 }
             }
         }
@@ -4935,15 +4964,26 @@ double Band_DFT_NonCol(
 
       /* calculate DM and iDM */
 
-      if ( strcasecmp(mode,"scf")==0 ){ 
+      if ( strcasecmp(mode,"scf")==0 ){
 
+        if (kloop0<num_kloop0 &&
+            BandNonCol_UseGpuFallbackDM(n2,(size_t)n2*(size_t)(ie2[myid2]-is2[myid2]+1)*sizeof(dcomplex))){
+          /* accumulates this k on the GPU; EVec1 stays unscaled because the
+             kernel applies the Fermi weights itself */
+          BandNonCol_AccumulateDMKPoint_OpenACC(myid2,is2,ie2,MP,n,n2,size_H1,k1,k2,k3,
+                                                EIGEN[0][kloop],EVec1[0],
+                                                rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
+                                                rEDM11,rEDM22);
+        }
+        else{
 	Calc_DM_Band_non_collinear( (kloop0<num_kloop0),0,
 				    myid0,myid2,size_H1,
-				    is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
+				    is2,ie2,MP,n,n2,MaxN,k1,k2,k3,
 				    CDM,iDM[0],EDM,EIGEN[0][kloop],
 				    EVec1[0],
 				    rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
 				    rEDM11,rEDM22 );
+        }
       }
 
       else if ( strcasecmp(mode,"ParDM")==0 ){ 

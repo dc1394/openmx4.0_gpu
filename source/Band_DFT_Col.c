@@ -1452,7 +1452,7 @@ static void BandCol_AccumulateDenseTransposedDM(int n, int nk, int max_tno, int 
 static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n, int nk, int spin, int kloop, double k1, double k2,
                                                         double k3, const dcomplex *evec_device, int evec_stride, int *MP,
                                                         int *order_GA, double ***EIGEN, const double *occ_weight,
-                                                        double *CDM1, double *EDM1, int size_H1)
+                                                        double *CDM1, double *EDM1, int size_H1, int state_first)
 {
     BandColDMEntryCache *cache;
     const int *          basis0;
@@ -1481,7 +1481,7 @@ static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n, int nk, int spin,
     phase_index = cache->phase_index;
     phase_r     = cache->phase_r;
     phase_i     = cache->phase_i;
-    eigen       = &EIGEN[spin][kloop][1];
+    eigen       = &EIGEN[spin][kloop][state_first];
     entry_count = cache->entry_count;
     pair_count  = cache->pair_count;
 
@@ -1520,6 +1520,51 @@ static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n, int nk, int spin,
             EDM1[p] += co * d3 - si * d4;
         }
     }
+}
+
+/* GPU DM accumulation inside the ScaLAPACK/ELPA fallback of the collinear
+   band path.  The preflight refuses the full dense solve when its three
+   n x n matrices plus the cusolver workspace do not fit, but the DM step
+   only needs the eigenvector panel and the packed DM arrays, which are far
+   smaller, so it can stay on the GPU (the collinear cluster and the
+   noncollinear band already keep their fallback DM there).  Sizes below the
+   band threshold keep the CPU loop, which wins at those sizes.  Opt out
+   with OPENMX_BAND_GPU_DM=0. */
+static int BandCol_UseGpuFallbackDM(int n)
+{
+    const char *value = getenv("OPENMX_BAND_GPU_DM");
+
+    if (value != NULL && atoi(value) == 0) return 0;
+    return (scf_eigen_lib_flag == GPUSOLVER && Band_DFT_Col_GpuSwitchNum() <= n);
+}
+
+/* Uploads the host eigenvector panel of one fallback k point; returns NULL
+   (leaving no latched CUDA error behind) when the device cannot take it, so
+   the caller falls back to the CPU loop. */
+static dcomplex *BandCol_FallbackDMUpload(const dcomplex *host, size_t count)
+{
+    size_t bytes = count * sizeof(dcomplex);
+    size_t free_bytes = 0, total_bytes = 0;
+    void  *device = NULL;
+
+    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+        (void)cudaGetLastError();
+        return NULL;
+    }
+    /* keep headroom for the entry-cache copyins and the other users of the
+       shared device */
+    if (free_bytes < bytes + 256ULL * 1024ULL * 1024ULL) return NULL;
+    if (cudaMalloc(&device, bytes) != cudaSuccess) {
+        (void)cudaGetLastError();
+        return NULL;
+    }
+    if (cudaMemcpy(device, host, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
+        (void)cudaGetLastError();
+        if (cudaFree(device) != cudaSuccess)
+            (void)cudaGetLastError();
+        return NULL;
+    }
+    return (dcomplex *)device;
 }
 
 static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
@@ -4023,7 +4068,7 @@ diagonalize1:
                         BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device, n,
                                                                     MP, use_setham_packed_cache ? setham_order_GA : order_GA, EIGEN,
                                                                     BandCol_dm_workspace.OccWeight, CDM1, EDM1,
-                                                                    size_H1);
+                                                                    size_H1, 1);
                         BANDCOL_PROF_ADD(dm_kernel, prof_t0);
                         if (!BandCol_GpuPersistentDecide()) {
                             BANDCOL_PROF_T0(prof_t0);
@@ -4088,7 +4133,36 @@ diagonalize1:
                 dtime(&Stime0);
             }
 
-            if (kmin <= kmax) {
+            int gpu_dm_done = 0;
+
+            if (kmin <= kmax && BandCol_UseGpuFallbackDM(n)) {
+                /* EVec1 already carries sqrt(kw*FermiF) from the loop above,
+                   so the kernel runs with unit occupation weights */
+                const int nk     = kmax - kmin + 1;
+                const int stride = ie2[myid2] - is2[myid2] + 1;
+                dcomplex *evec_dev = BandCol_FallbackDMUpload(EVec1[spin], (size_t)n * (size_t)stride);
+
+                if (evec_dev != NULL) {
+                    double  dm_prof_t0 = 0.0;
+                    double *unit_occ;
+
+                    BandCol_DMWorkspace_Ensure(max_tno, nk);
+                    unit_occ = BandCol_dm_workspace.OccWeight;
+                    for (int k = 0; k < nk; k++)
+                        unit_occ[k] = 1.0;
+
+                    BANDCOL_PROF_T0(dm_prof_t0);
+                    BandCol_AccumulateDenseTransposedDM_OpenACC(n, nk, spin, kloop, k1, k2, k3,
+                                                                evec_dev + (kmin - is2[myid2]), stride, MP, order_GA,
+                                                                EIGEN, unit_occ, CDM1, EDM1, size_H1, kmin);
+                    BANDCOL_PROF_ADD(dm_kernel, dm_prof_t0);
+                    if (cudaFree(evec_dev) != cudaSuccess)
+                        (void)cudaGetLastError();
+                    gpu_dm_done = 1;
+                }
+            }
+
+            if (!gpu_dm_done && kmin <= kmax) {
                 const int nk      = kmax - kmin + 1;
                 double * TmpEIGEN_local;
                 double **ReEVec0_local;
@@ -4594,7 +4668,7 @@ diagonalize1:
 
                     BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device, n,
                                                                 MP, use_setham_packed_cache ? setham_order_GA : order_GA,
-                                                                EIGEN, occ_weight, CDM1, EDM1, size_H1);
+                                                                EIGEN, occ_weight, CDM1, EDM1, size_H1, 1);
                     group_ran_gpu_turn = 1;
 
                     if (measure_time) {
@@ -4827,8 +4901,30 @@ diagonalize1:
                     dtime(&Stime1);
                 }
 
-                BandCol_AccumulateDenseTransposedDM(n, MaxN, max_tno, spin, kloop, k1, k2, k3, Hs, na_rows, MP,
-                                                     EIGEN, occ_weight, CDM1, EDM1);
+                {
+                    int gpu_dm_done = 0;
+
+                    if (BandCol_UseGpuFallbackDM(n)) {
+                        dcomplex *evec_dev = BandCol_FallbackDMUpload(Hs, (size_t)n * (size_t)na_rows);
+
+                        if (evec_dev != NULL) {
+                            double dm_prof_t0 = 0.0;
+
+                            BANDCOL_PROF_T0(dm_prof_t0);
+                            BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_dev,
+                                                                        na_rows, MP, order_GA, EIGEN, occ_weight,
+                                                                        CDM1, EDM1, size_H1, 1);
+                            BANDCOL_PROF_ADD(dm_kernel, dm_prof_t0);
+                            if (cudaFree(evec_dev) != cudaSuccess)
+                                (void)cudaGetLastError();
+                            gpu_dm_done = 1;
+                        }
+                    }
+                    if (!gpu_dm_done) {
+                        BandCol_AccumulateDenseTransposedDM(n, MaxN, max_tno, spin, kloop, k1, k2, k3, Hs, na_rows,
+                                                            MP, EIGEN, occ_weight, CDM1, EDM1);
+                    }
+                }
 
                 if (measure_time) {
                     dtime(&Etime1);
