@@ -25,7 +25,9 @@
 #define  error_check    0
 #define  cutoff_value   Threshold_OLP_Eigen
 #define  KRYLOV_ENABLE_GPU  1
-#define  KRYLOV_GPU_EIGEN_MIN  GPU_CPU_SWITCH_NUM
+/* GPU/CPU crossover for the projected eigensolve, compared against Msize3;
+   overridable via OPENMX_KRYLOV_GPU_EIGEN_MIN */
+#define  KRYLOV_GPU_EIGEN_MIN  300
 #define  KRYLOV_GPU_DGEMM_MIN_FLOPS  50000000.0
 
 #include "tran_prototypes.h"

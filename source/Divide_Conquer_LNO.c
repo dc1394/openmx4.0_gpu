@@ -50,6 +50,28 @@ static int DCLNO_GpuEigenThreshold(void)
     return threshold;
 }
 
+/* noncollinear threshold, compared against the spinor dimension 2*(Anum-1);
+   kept separate from the collinear one because the CPU zheev baseline is far
+   slower, so the GPU pays off from much smaller local matrices */
+#define DCLNO_NONCOL_GPU_CPU_SWITCH_NUM 400
+
+/* runtime-tunable copy (OPENMX_DCLNO_NONCOL_GPU_THRESHOLD) */
+static int DCLNO_NonColGpuEigenThreshold(void)
+{
+    static int threshold = -1;
+
+    if (threshold < 0) {
+        const char *value = getenv("OPENMX_DCLNO_NONCOL_GPU_THRESHOLD");
+
+        threshold = DCLNO_NONCOL_GPU_CPU_SWITCH_NUM;
+        if (value != NULL && value[0] != '\0') {
+            int parsed = atoi(value);
+            if (0 < parsed) threshold = parsed;
+        }
+    }
+    return threshold;
+}
+
 /* MPI tags for node-local proxy traffic */
 #define DCLNO_PROXY_TAG_COL_S      41001
 #define DCLNO_PROXY_TAG_COL_H      41002
@@ -2741,7 +2763,7 @@ static double DC_NonCol(char *mode,
 
   if (firsttime && myid0 == Host_ID && use_gpu_accel_nc && 0 < level_stdout) {
     printf("<DC-LNO> GPUSOLVER direct per-rank dispatch (noncollinear) is enabled for local matrices with dimension >= %d on %d CUDA device(s).\n",
-           DCLNO_GpuEigenThreshold(), DCLNO_ngpu);
+           DCLNO_NonColGpuEigenThreshold(), DCLNO_ngpu);
     fflush(stdout);
   }
 
@@ -2863,7 +2885,7 @@ static double DC_NonCol(char *mode,
   }
 
   if (use_gpu_accel_nc &&
-      !DCLNO_GpuGroupMemoryFits((Eigen_MPI_flag==0 && Max_Msize >= DCLNO_GpuEigenThreshold()) ? Max_Msize : 0, 1)) {
+      !DCLNO_GpuGroupMemoryFits((Eigen_MPI_flag==0 && Max_Msize >= DCLNO_NonColGpuEigenThreshold()) ? Max_Msize : 0, 1)) {
     use_gpu_accel_nc = 0;
   }
 
@@ -4111,7 +4133,7 @@ static double DC_NonCol(char *mode,
     if (measure_time) dtime(&stime);
 
     use_gpu_task_nc = (use_gpu_accel_nc && Eigen_MPI_flag==0 &&
-                       DCLNO_GpuEigenThreshold() <= NUM);
+                       DCLNO_NonColGpuEigenThreshold() <= NUM);
 
     if (use_gpu_task_nc){
 

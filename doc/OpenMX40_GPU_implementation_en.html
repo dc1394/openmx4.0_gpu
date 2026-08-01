@@ -216,9 +216,11 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
   cost dominates, so the code falls back to the CPU. Each dense path carries its own measured
   default: band Col/NonCol 800 (vs n / 2n — the band CPU fallback solves every k point twice with
   a serial per-world ELPA, so the GPU pays off early), cluster Col/NonCol 400 (the one-rank
-  root-dense solve beat the multi-rank ELPA at every measured size), DC-LNO 800; the remaining
-  paths keep the global <code>GPU_CPU_SWITCH_NUM = 1000</code> (<code>openmx_common.h:4135</code>).
-  Each threshold is tunable with its <code>OPENMX_*_GPU_SWITCH_NUM</code> knob (§10).</li>
+  root-dense solve beat the multi-rank ELPA at every measured size), DC Col 400 / NonCol 300
+  (vs NUM / 2·NUM of the truncated cluster), DC-LNO Col 800 / NonCol 400 (LNO-contracted
+  dimensions; the collinear proxy overhead demands a higher bar), Krylov 300 (vs the projected
+  dimension Msize3); the remaining paths keep the global <code>GPU_CPU_SWITCH_NUM = 1000</code>
+  (<code>openmx_common.h:4135</code>). Each threshold is tunable with its own knob (§10).</li>
   <li><b>Per-MPI-rank GPU use, designed for sharing</b> — round-robin assignment by intra-node local rank.
   The situation where several ranks share one GPU is addressed head-on: <b>device-sharing rank groups are
   detected via the physical GPU UUID</b>, and the code layers adaptive concurrency control based on VRAM
@@ -415,7 +417,7 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
   <text x="342" y="211" class="s2">① S via Xsyevdx ② λ → 1/√λ column scale (Ddgmm/Zdgmm)</text>
   <text x="342" y="226" class="s2">③ H′ = Ũ†HŨ (GEMMul8) ④ Xsyevdx on H′ (lowest MaxN)</text>
   <text x="342" y="241" class="s2">⑤ back-transform C=Ũz. Adaptive concurrency (UUID group + prefix scan)</text>
-  <text x="342" y="256" class="s2">Condition: n ≥ per-path default (band 800, cluster 400, DC-LNO 800) + memory estimate / real reservation</text>
+  <text x="342" y="256" class="s2">Condition: n ≥ per-path default (band 800, cluster 400, DC 400/300, DC-LNO 800/400, Krylov 300) + memory estimate / real reservation</text>
   <text x="342" y="270" class="s2">If it does not fit: automatic ELPA/ScaLAPACK fallback (§5.6)</text>
   <line x1="692" y1="225" x2="718" y2="225" class="a2"/>
   <rect x="720" y="182" width="176" height="56" class="g fb"/>
@@ -457,9 +459,9 @@ computation. Details are in Chapter 7.</p>
 <tr><td>Cluster (NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>Root-dense diagonalization (Dsyevx/Zheevx) on a single cudaMalloc arena + U†HU (GEMMul8 × 12) + DM/EDM reductions. S/Ss2, sparse→dense index, cublas handle, and zheevdx workspace cached across iterations</td><td>GPUSOLVER and 2n ≥ 400 (<code>OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM</code>) and the arena reservation succeeds (else ELPA)</td></tr>
 <tr><td>Band (Col)</td><td><code>Band_DFT_Col.c</code></td><td>Whole per-k-point dense pipeline device-resident. GEMMs via GEMMul8 Zgemm, S-transform cached, NOVECTOR diagonalization on the first pass. Adaptive concurrency (UUID group + descending prefix scan)</td><td>GPUSOLVER and n ≥ 800 (<code>OPENMX_BAND_GPU_SWITCH_NUM</code>) and one turn's VRAM estimate fits (else ELPA)</td></tr>
 <tr><td>Band (NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC-resident root-dense path; concurrency decided separately for the eigenvalues-only / eigenvectors / DM stages</td><td>GPUSOLVER and 2n ≥ 800 (<code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code>) and the estimate fits (else ELPA)</td></tr>
-<tr><td>DC (O(N))</td><td><code>Divide_Conquer.c</code></td><td>Per-atom cluster matrices via Xsyevdx; GEMMul8→cuBLAS→CPU multi-stage fallback; device-resident S12 cache (S-cache) + cublasDgeam device transposes</td><td>GPUSOLVER and local dimension ≥ 1000 (<code>OPENMX_DC_GPU_THRESHOLD</code>)</td></tr>
-<tr><td>DC-LNO</td><td><code>Divide_Conquer_LNO.c</code></td><td>Direct per-rank dispatch; <b>noncollinear solves now on GPU too</b> (spin-doubling transform + GEMMul8 Zgemm × 3). Group-wide memory-fit test with CPU fallback</td><td>GPUSOLVER and local dimension ≥ 800 (<code>OPENMX_DCLNO_GPU_THRESHOLD</code>)</td></tr>
-<tr><td>Krylov (O(N))</td><td><code>Krylov.c</code></td><td>Per-atom projected-solve pipeline fused into one device visit (3 GEMMs + Xsyevd); device-resident KU basis cache</td><td>GPUSOLVER and all three GEMMs with m·n·k ≥ 5×10⁷ (device eigensolve at n ≥ 1000)</td></tr>
+<tr><td>DC (O(N))</td><td><code>Divide_Conquer.c</code></td><td>Per-atom cluster matrices via Xsyevdx; GEMMul8→cuBLAS→CPU multi-stage fallback; device-resident S12 cache (S-cache) + cublasDgeam device transposes</td><td>GPUSOLVER; collinear NUM ≥ 400 (<code>OPENMX_DC_GPU_THRESHOLD</code>), noncollinear 2·NUM ≥ 300 (<code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code>)</td></tr>
+<tr><td>DC-LNO</td><td><code>Divide_Conquer_LNO.c</code></td><td>Direct per-rank dispatch; <b>noncollinear solves now on GPU too</b> (spin-doubling transform + GEMMul8 Zgemm × 3). Group-wide memory-fit test with CPU fallback</td><td>GPUSOLVER; collinear ≥ 800 (<code>OPENMX_DCLNO_GPU_THRESHOLD</code>), noncollinear spinor dimension ≥ 400 (<code>OPENMX_DCLNO_NONCOL_GPU_THRESHOLD</code>)</td></tr>
+<tr><td>Krylov (O(N))</td><td><code>Krylov.c</code></td><td>Per-atom projected-solve pipeline fused into one device visit (3 GEMMs + Xsyevd); device-resident KU basis cache</td><td>GPUSOLVER and all three GEMMs with m·n·k ≥ 5×10⁷ (device eigensolve at Msize3 ≥ 300)</td></tr>
 <tr><td>Generic eigensolvers</td><td><code>Eigen_lapack.c</code><br><code>EigenBand_lapack.c</code></td><td>Branch to gpusolver_Syevdx(_Complex) at n ≥ 1000; every one of their 20+ callers benefits automatically</td><td>GPUSOLVER and n ≥ 1000</td></tr>
 <tr><td>Polarization / DMmu / CWF / LNO</td><td>11 files</td><td>A stereotyped GPUSOLVER branch (Dsyevx/Zheevx via dense_utils) inserted just before the ELPA2 branch</td><td>GPUSOLVER and n ≥ 1000 and na_rows==n etc.</td></tr>
 <tr><td>Matrix-element construction</td><td><code>Set_Hamiltonian.c</code><br><code>set_hamiltonian_gpu.cu</code><br><code>Set_Nonlocal.c</code><br><code>Set_OLP_Kin.c</code></td><td>The dVH+Vxc+VNA grid integrals of Set_Hamiltonian run <b>on the GPU by default</b> (shared-memory-tiled CUDA kernel + adaptive wave scheduling + device-resident SCF-invariant tables). Set_Nonlocal: device-generated spherical Bessel tables + batched reductions. Set_OLP_Kin remains opt-in</td><td>GPUSOLVER (+ memory tests, §7.7)</td></tr>
@@ -1464,7 +1466,10 @@ NonCol: +2,424).</p>
 <h2>7.4 The DC Method — Divide_Conquer.c</h2>
 <ul>
   <li>Each rank independently handles its atoms' truncated cluster matrices (local dimension NUM). GPU
-  condition: <code>NUM ≥ DC_GPU_Threshold()</code> (default 1000; <code>OPENMX_DC_GPU_THRESHOLD</code>).</li>
+  condition: collinear <code>NUM ≥ DC_GPU_Threshold()</code> (default 400; <code>OPENMX_DC_GPU_THRESHOLD</code>),
+  noncollinear <code>2·NUM ≥ DC_NonCol_GPU_Threshold()</code> (default 300;
+  <code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code> — the CPU zheev baseline loses to the GPU much earlier
+  than the collinear dsyevx one).</li>
   <li><b>The Col side is raw CUDA:</b> <code>DCGpuSolverCtx</code> holds cudaMalloc buffers plus pinned host
   buffers (<code>cudaMallocHost</code> — the only use in the code base). S diagonalization (up to SCF 2) →
   H′ build (<code>DC_GpuSolver_TryGpuDgemm</code>: GEMMul8 → cublasDgemm → CPU) → active subspace cut out
@@ -1495,8 +1500,11 @@ NonCol: +2,424).</p>
 <h2>7.5 The DC-LNO Method — Divide_Conquer_LNO.c</h2>
 <ul>
   <li>Current mode is <b>direct per-rank dispatch</b>: every rank calls <code>cudaSetDevice</code> and
-  submits its own local problems (NUM ≥ 800 = <code>GPU_CPU_SWITCH_NUM2</code>, adjustable via
-  <code>OPENMX_DCLNO_GPU_THRESHOLD</code>). The old GPU-proxy machinery (rank 0 solving for its group via
+  submits its own local problems (collinear: NUM ≥ 800 = <code>GPU_CPU_SWITCH_NUM2</code>, adjustable via
+  <code>OPENMX_DCLNO_GPU_THRESHOLD</code>; noncollinear: spinor dimension ≥ 400 =
+  <code>DCLNO_NONCOL_GPU_CPU_SWITCH_NUM</code>, via <code>OPENMX_DCLNO_NONCOL_GPU_THRESHOLD</code> —
+  measured separately because the much slower CPU zheev makes the GPU pay off from smaller
+  matrices). The old GPU-proxy machinery (rank 0 solving for its group via
   MPI tags 41001-41004) is preserved behind <code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code>.</li>
   <li><b>Noncollinear solves now on the GPU (commit <code>d62cac60</code>):</b>
   <code>DCLNO_Solve_NonCol_GpuSolver</code> executes the whole per-cluster generalized problem on the
@@ -1530,9 +1538,11 @@ NonCol: +2,424).</p>
   ⑦ back-transform c = u1·b (GEMMul8) → download.</li>
   <li><b>Engagement condition:</b> all three GEMMs must satisfy <code>m·n·k ≥ 5×10⁷</code>
   (<code>OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS</code>) — exactly the same GEMMs that would go to the GPU on the
-  per-call path, so the default is <b>bit-identical</b> to the old code. The device eigensolve requires
-  <code>m3+1 ≥ 1000</code> (<code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code>). Disable the fused path with
-  <code>OPENMX_KRYLOV_GPU_FUSED=0</code>.</li>
+  per-call path, so the GEMM dispatch is <b>bit-identical</b> to the old code. The device eigensolve
+  engages at <code>Msize3 ≥ 300</code> (<code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code>; cusolver and LAPACK
+  eigenvectors differ in the last bits, so such runs are not bitwise-reproducible against the CPU
+  eigensolve — in the crossover benchmarks Uele agreed to ≤2×10⁻⁹ up to Msize3=455 and to 2×10⁻⁶ at
+  Msize3=715). Disable the fused path with <code>OPENMX_KRYLOV_GPU_FUSED=0</code>.</li>
   <li><b>KU cache:</b> the repacked Krylov basis panels (created at SCF 1, invariant afterwards) are parked
   in a per-rank device arena, admitted politely within (free − 4096 MiB) / node ranks
   (<code>OPENMX_KRYLOV_GPU_KU_RESERVE_MB</code>); disable with <code>OPENMX_KRYLOV_GPU_KU_CACHE=0</code>.
@@ -2126,18 +2136,20 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>GPU accumulation of DM/EDM (0 = CPU loop)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>Per-solve GEMMul8 workspace release (inherits the BAND setting when unset)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC method (Divide_Conquer.c)</b></td></tr>
-<tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>1000</td><td>Minimum local cluster dimension for the GPU</td></tr>
+<tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>400</td><td>Minimum local cluster dimension NUM for the GPU (collinear)</td></tr>
+<tr><td><code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code></td><td>300</td><td>Minimum spinor dimension 2·NUM for the GPU (noncollinear)</td></tr>
 <tr><td><code>OPENMX_DC_GPU_S_CACHE</code> / <code>_RESERVE_MB</code></td><td>1 / 4096</td><td>Device-resident S12 cache and its budget reserve</td></tr>
 <tr><td><code>(OPENMX_)GPUSOLVER_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>Minimum free VRAM after eigensolver allocations (preflight)</td></tr>
 <tr><td><code>OPENMX_CUBLAS_MIN_FREE_AFTER_MB</code></td><td>—</td><td>Same for cuBLAS</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC-LNO method (Divide_Conquer_LNO.c)</b></td></tr>
-<tr><td><code>OPENMX_DCLNO_GPU_THRESHOLD</code></td><td>800</td><td>Minimum local dimension for the GPU (collinear and noncollinear)</td></tr>
+<tr><td><code>OPENMX_DCLNO_GPU_THRESHOLD</code></td><td>800</td><td>Minimum local dimension for the GPU (collinear)</td></tr>
+<tr><td><code>OPENMX_DCLNO_NONCOL_GPU_THRESHOLD</code></td><td>400</td><td>Minimum spinor dimension for the GPU (noncollinear)</td></tr>
 <tr><td><code>OPENMX_DCLNO_GPU_TURN_RELEASE</code></td><td>1</td><td>End-of-phase release of solver buffers + GEMMul8 (inherits the BAND setting when unset)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Krylov method (Krylov.c)</b></td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_FUSED</code></td><td>1</td><td>Fused per-atom pipeline (0 = per-call sequence)</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_KU_CACHE</code> / <code>_KU_RESERVE_MB</code></td><td>1 / 4096</td><td>Device-resident Krylov basis cache and its budget reserve</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS</code></td><td>5×10⁷</td><td>Minimum m·n·k for dispatching a GEMM to the GPU</td></tr>
-<tr><td><code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code></td><td>1000</td><td>Minimum dimension for the device eigensolve (lowering this can speed some systems up considerably; §7.6)</td></tr>
+<tr><td><code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code></td><td>300</td><td>Minimum projected dimension Msize3 for the device eigensolve (§7.6)</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_PROFILE</code></td><td>0</td><td>Fused-path breakdown (KRYFUSE lines)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Set_Hamiltonian (Set_Hamiltonian.c / set_hamiltonian_gpu.cu)</b></td></tr>
 <tr><td><code>OPENMX_SETHAM_MATRIX_GPU</code></td><td>1</td><td>GPU execution of the dVH+Vxc+VNA grid integrals (0 = CPU)</td></tr>
@@ -2205,8 +2217,9 @@ concurrency=1 means the sharing ranks were serialized.</div>
   <li><b>Check the stdout/stderr diagnostics</b> (§10.3) — always the starting point.</li>
   <li><b>With plenty of VRAM (exclusive GPU)</b> — <code>OPENMX_BAND_GPU_PERSISTENT=1</code>,
   <code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS=0</code>, and <code>OPENMX_*_GEMMUL8_TURN_RELEASE=0</code> can
-  reduce transfers and reallocations. On Krylov runs, lowering <code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code>
-  moves the diagonalization onto the device (measured 117.5 s → 78.8 s; §7.6).</li>
+  reduce transfers and reallocations. On Krylov runs the diagonalization now moves onto the device
+  by default (<code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code>=300; measured 117.5 s → 78.8 s; §7.6) —
+  lowering it further rarely pays.</li>
   <li><b>When VRAM is tight</b> — reducing the rank count helps most; then raise the
   <code>*_RESERVE_MB</code> knobs to avoid GEMMul8 fallbacks, or disable residency with
   <code>OPENMX_SETHAM_GPU_RESIDENT=0</code>.</li>

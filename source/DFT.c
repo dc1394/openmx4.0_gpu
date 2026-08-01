@@ -70,8 +70,8 @@ static int DFT_SetProExpnVNAUseGPU(void)
 
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)
  * Uses MPI_COMM_TYPE_SHARED to assign GPU per node-local rank. Global dense
- * solvers may fall back for small matrices; DC paths use their local cluster
- * matrix sizes and thresholds. */
+ * solvers may fall back for small matrices; DC, DC-LNO and Krylov paths use
+ * their local cluster matrix sizes and thresholds. */
 static void DFT_GPU_DeviceInit(int basis_count)
 {
     int myid0;
@@ -81,7 +81,7 @@ static void DFT_GPU_DeviceInit(int basis_count)
     MPI_Comm_rank(mpi_comm_level1,&myid0);
     scf_eigen_lib_flag = GPUSOLVER;
 
-    if (Solver!=5 && Solver!=11 && basis_count < DFT_GPU_DenseSwitchNum() && myid0==Host_ID && 0<level_stdout) {
+    if (Solver!=5 && Solver!=8 && Solver!=11 && basis_count < DFT_GPU_DenseSwitchNum() && myid0==Host_ID && 0<level_stdout) {
         printf("<DFT> GPUSOLVER requested; global matrix dimension %d is below %d, so global dense eigensolver paths use a CPU fallback while GPU kernels remain enabled.\n",
                basis_count,DFT_GPU_DenseSwitchNum());
         fflush(stdout);
@@ -199,7 +199,7 @@ static void DFT_GPU_DeviceInit(int basis_count)
 static int DFT_GPU_EigensolverActive(void)
 {
     if (scf_eigen_lib_flag!=GPUSOLVER) return 0;
-    if (Solver==5 || Solver==11) return 1;
+    if (Solver==5 || Solver==8 || Solver==11) return 1;
     return (DFT_GPU_DenseSwitchNum()<=DFT_GPU_BasisCount());
 }
 

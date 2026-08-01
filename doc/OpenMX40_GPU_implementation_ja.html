@@ -210,9 +210,11 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
   <li><b>大規模な密行列問題のみ GPU 化</b> — 行列次元がしきい値未満の場合は転送コストが勝るため CPU にフォールバックする。
   しきい値は経路ごとに実測して決めた既定値を持つ:バンド Col/NonCol は 800(n / 2n と比較。CPU フォールバックが
   k 点ごとにワールド内直列 ELPA を 2 回解く構造のため GPU が早く優位になる)、クラスタ Col/NonCol は 400
-  (1 ランクの root-dense 解が多ランク ELPA に測定した全サイズで勝った)、DC-LNO は 800。その他の経路は
+  (1 ランクの root-dense 解が多ランク ELPA に測定した全サイズで勝った)、DC は Col 400 / NonCol 300
+  (部分クラスタの NUM / 2·NUM と比較)、DC-LNO は Col 800 / NonCol 400(LNO 縮約後の次元。コリニアは
+  プロキシ的なオーバーヘッドがあるため高め)、Krylov は 300(射影次元 Msize3 と比較)。その他の経路は
   <code>GPU_CPU_SWITCH_NUM = 1000</code>(<code>openmx_common.h:4135</code>)のまま。各しきい値は
-  <code>OPENMX_*_GPU_SWITCH_NUM</code> で調整できる(§10)。</li>
+  経路ごとの環境変数で調整できる(§10)。</li>
   <li><b>MPI ランク単位の GPU 利用と「共有」前提の設計</b> — ノード内 local rank % GPU 数のラウンドロビン割当。1 GPU を複数ランクが共有する状況を正面から想定し、
   物理 GPU の <b>UUID 単位でデバイス共有ランク群を検出</b>したうえで、VRAM 見積り/実予約に基づく適応並列度制御・
   実行時 ELPA フォールバック・失敗時リトライ・GPU フェーズ間のメモリ協調(需要公開レジストリ)という多層の制御を持つ(§2.5)。</li>
@@ -404,7 +406,7 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
   <text x="342" y="211" class="s2">① S を Xsyevdx で対角化 ② λ → 1/√λ 列スケール(Ddgmm/Zdgmm)</text>
   <text x="342" y="226" class="s2">③ H′ = Ũ†HŨ(GEMMul8) ④ H′ を Xsyevdx(下から MaxN 本)</text>
   <text x="342" y="241" class="s2">⑤ 逆変換 C=Ũz。適応並列度(UUID 共有群+プレフィックススキャン)</text>
-  <text x="342" y="256" class="s2">条件: n ≥ 経路別既定値(バンド 800、クラスタ 400、DC-LNO 800)+メモリ見積り/実予約</text>
+  <text x="342" y="256" class="s2">条件: n ≥ 経路別既定値(バンド 800、クラスタ 400、DC 400/300、DC-LNO 800/400、Krylov 300)+メモリ見積り/実予約</text>
   <text x="342" y="270" class="s2">収まらなければ ELPA/ScaLAPACK に自動フォールバック(§5.6)</text>
   <line x1="692" y1="225" x2="718" y2="225" class="a2"/>
   <rect x="720" y="182" width="176" height="56" class="g fb"/>
@@ -445,8 +447,8 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
 <tr><td>クラスタ(NonCol)</td><td><code>Cluster_DFT_NonCol.c</code></td><td>単一 cudaMalloc アリーナ上の root-dense 対角化(Dsyevx/Zheevx)+ U†HU(GEMMul8 × 12)+ DM/EDM 縮約。S/Ss2・疎→密 index・cublas ハンドル・zheevdx ワークスペースを反復間キャッシュ</td><td>GPUSOLVER かつ 2n ≥ 400(<code>OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM</code>)かつアリーナ予約成功(不成立なら ELPA へ)</td></tr>
 <tr><td>バンド(Col)</td><td><code>Band_DFT_Col.c</code></td><td>k 点ごとの密行列対角化一式をデバイス常駐で実行。GEMM は GEMMul8 Zgemm。S 変換行列をキャッシュ。第 1 パスは NOVECTOR 対角化。UUID 共有群+降順プレフィックススキャンの適応並列度</td><td>GPUSOLVER かつ n ≥ 800(<code>OPENMX_BAND_GPU_SWITCH_NUM</code>)かつ 1 ターン分の VRAM 見積りが成立(不成立なら ELPA へ)</td></tr>
 <tr><td>バンド(NonCol)</td><td><code>Band_DFT_NonCol.c</code></td><td>OpenACC 常駐型 root-dense 経路。固有値のみ/固有ベクトル/DM の 3 ステージ別 VRAM 見積りで並列度を独立に決定</td><td>GPUSOLVER かつ 2n ≥ 800(<code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code>)かつ見積り成立(不成立なら ELPA へ)</td></tr>
-<tr><td>DC 法(O(N))</td><td><code>Divide_Conquer.c</code></td><td>原子ごとの部分クラスタ行列を Xsyevdx で対角化。GEMMul8→cuBLAS→CPU の多段フォールバック。S12 パネルのデバイス常駐キャッシュ(S-cache)+ cublasDgeam デバイス転置</td><td>GPUSOLVER かつ局所次元 ≥ 1000(<code>OPENMX_DC_GPU_THRESHOLD</code>)</td></tr>
-<tr><td>DC-LNO 法</td><td><code>Divide_Conquer_LNO.c</code></td><td>direct per-rank dispatch。<b>非コリニアも GPU 化済み</b>(スピン倍化変換+GEMMul8 Zgemm × 3)。デバイス共有ランク群の合算メモリ判定で CPU フォールバック</td><td>GPUSOLVER かつ局所次元 ≥ 800(<code>OPENMX_DCLNO_GPU_THRESHOLD</code>)</td></tr>
+<tr><td>DC 法(O(N))</td><td><code>Divide_Conquer.c</code></td><td>原子ごとの部分クラスタ行列を Xsyevdx で対角化。GEMMul8→cuBLAS→CPU の多段フォールバック。S12 パネルのデバイス常駐キャッシュ(S-cache)+ cublasDgeam デバイス転置</td><td>GPUSOLVER かつコリニアは NUM ≥ 400(<code>OPENMX_DC_GPU_THRESHOLD</code>)、非コリニアは 2·NUM ≥ 300(<code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code>)</td></tr>
+<tr><td>DC-LNO 法</td><td><code>Divide_Conquer_LNO.c</code></td><td>direct per-rank dispatch。<b>非コリニアも GPU 化済み</b>(スピン倍化変換+GEMMul8 Zgemm × 3)。デバイス共有ランク群の合算メモリ判定で CPU フォールバック</td><td>GPUSOLVER かつコリニアは局所次元 ≥ 800(<code>OPENMX_DCLNO_GPU_THRESHOLD</code>)、非コリニアはスピノル次元 ≥ 400(<code>OPENMX_DCLNO_NONCOL_GPU_THRESHOLD</code>)</td></tr>
 <tr><td>Krylov 法(O(N))</td><td><code>Krylov.c</code></td><td>原子ごとの射影解パイプラインを 1 回のデバイス訪問に融合(GEMM×3 + Xsyevd)。Krylov 基底のデバイス常駐 KU キャッシュ</td><td>GPUSOLVER かつ 3 GEMM とも m·n·k ≥ 5×10⁷(対角化は n ≥ 1000)</td></tr>
 <tr><td>汎用固有値ルーチン</td><td><code>Eigen_lapack.c</code><br><code>EigenBand_lapack.c</code></td><td>n ≥ 1000 で gpusolver_Syevdx(_Complex) へ分岐。これらを呼ぶ全 20 以上のファイルが自動的に GPU 化の恩恵を受ける</td><td>GPUSOLVER かつ n ≥ 1000</td></tr>
 <tr><td>分極・DMmu・CWF・LNO 系</td><td>11 ファイル</td><td>ELPA2 分岐の手前に定型の GPUSOLVER 分岐(dense_utils 経由の Dsyevx/Zheevx)を挿入</td><td>GPUSOLVER かつ n ≥ 1000 かつ na_rows==n 等</td></tr>
@@ -1385,7 +1387,9 @@ Makefile は<b>ファイル単位で <code>-acc</code> を外す</b>ことで回
 <h2>7.4 DC 法 — Divide_Conquer.c</h2>
 <ul>
   <li>原子ごとの部分クラスタ行列(局所次元 NUM)を各ランクが独立に処理する。GPU 化条件は
-  <code>NUM ≥ DC_GPU_Threshold()</code>(既定 1000、<code>OPENMX_DC_GPU_THRESHOLD</code> で変更可)。</li>
+  コリニアは <code>NUM ≥ DC_GPU_Threshold()</code>(既定 400、<code>OPENMX_DC_GPU_THRESHOLD</code> で変更可)、
+  非コリニアは <code>2·NUM ≥ DC_NonCol_GPU_Threshold()</code>(既定 300、<code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code>。
+  CPU の zheev がコリニアの dsyevx よりはるかに遅いため、GPU がより小さい行列から優位になる)。</li>
   <li><b>Col 側は生 CUDA 実装:</b> <code>DCGpuSolverCtx</code> に cudaMalloc バッファ+pinned ホストバッファ
   (<code>cudaMallocHost</code>、本実装唯一の使用箇所)。S 対角化(SCF 2 反復目まで)→ H′ 構成
   (<code>DC_GpuSolver_TryGpuDgemm</code>: GEMMul8 → 失敗時 cublasDgemm → それも失敗なら CPU)→
@@ -1414,7 +1418,9 @@ Makefile は<b>ファイル単位で <code>-acc</code> を外す</b>ことで回
 <h2>7.5 DC-LNO 法 — Divide_Conquer_LNO.c</h2>
 <ul>
   <li>現行は <b>direct per-rank dispatch</b>: 全ランクが <code>cudaSetDevice</code> を実行し、
-  自分の局所問題(NUM ≥ 800 = <code>GPU_CPU_SWITCH_NUM2</code>、<code>OPENMX_DCLNO_GPU_THRESHOLD</code> で変更可)を
+  自分の局所問題(コリニア: NUM ≥ 800 = <code>GPU_CPU_SWITCH_NUM2</code>、<code>OPENMX_DCLNO_GPU_THRESHOLD</code> で変更可。
+  非コリニア: スピノル次元 ≥ 400 = <code>DCLNO_NONCOL_GPU_CPU_SWITCH_NUM</code>、<code>OPENMX_DCLNO_NONCOL_GPU_THRESHOLD</code> で変更可
+  — CPU の zheev が大幅に遅いため別々に実測して分離した)を
   直接 GPU に投入する。旧方式の GPU プロキシ機構(rank 0 が他ランクの対角化を MPI タグ 41001-41004 で代行)は
   <code>DCLNO_ENABLE_SHARED_GPU_PROXY 0</code> で温存。</li>
   <li><b>非コリニアも GPU 化(コミット <code>d62cac60</code>):</b> <code>DCLNO_Solve_NonCol_GpuSolver</code> が
@@ -1447,8 +1453,10 @@ Makefile は<b>ファイル単位で <code>-acc</code> を外す</b>ことで回
   逆変換が読むレイアウトのままデバイスに残す。失敗時は LAPACK にフォールバックして再アップロード)、
   ⑦ 逆変換 c = u1·b(GEMMul8)→ ダウンロード。</li>
   <li><b>発動条件:</b> 3 つの GEMM すべてが <code>m·n·k ≥ 5×10⁷</code>(<code>OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS</code>)を
-  満たすこと。これにより「per-call パスと同じ GEMM だけが GPU に行く」条件が保たれ、既定では旧コードと
-  <b>ビット一致</b>する。対角化のデバイス実行は <code>m3+1 ≥ 1000</code>(<code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code>)。
+  満たすこと。これにより「per-call パスと同じ GEMM だけが GPU に行く」条件が保たれ、GEMM のディスパッチは旧コードと
+  <b>ビット一致</b>する。対角化のデバイス実行は <code>Msize3 ≥ 300</code>(<code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code>。
+  cusolver と LAPACK の固有ベクトルは最下位ビットで異なるため、この条件を満たす計算は CPU 対角化とビット同一には
+  ならない — クロスオーバー実測では Uele の一致は Msize3=455 まで ≤2×10⁻⁹、Msize3=715 で 2×10⁻⁶)。
   融合パス自体は <code>OPENMX_KRYLOV_GPU_FUSED=0</code> で無効化でき、その場合は従来の per-call シーケンスが走る。</li>
   <li><b>KU キャッシュ:</b> 再パック済み Krylov 基底パネル(SCF 1 反復目に生成、以後不変)を per-rank アリーナに
   デバイス常駐させる。採用は DC の S-cache と同じ polite 方式(予算 =(空き − 4096 MiB)/ ノード内ランク数、
@@ -2011,18 +2019,20 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>DM/EDM の GPU 蓄積(0 で CPU ループ)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>ソルブ毎の GEMMul8 ワークスペース解放(未設定時は BAND 設定を継承)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC 法(Divide_Conquer.c)</b></td></tr>
-<tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>1000</td><td>GPU 化する局所クラスタ次元の下限</td></tr>
+<tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>400</td><td>GPU 化する局所クラスタ次元 NUM の下限(コリニア)</td></tr>
+<tr><td><code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code></td><td>300</td><td>GPU 化するスピノル次元 2·NUM の下限(非コリニア)</td></tr>
 <tr><td><code>OPENMX_DC_GPU_S_CACHE</code> / <code>_RESERVE_MB</code></td><td>1 / 4096</td><td>S12 パネルのデバイス常駐キャッシュとその予算予約</td></tr>
 <tr><td><code>(OPENMX_)GPUSOLVER_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>固有値ソルバ用確保後の最低空き VRAM(preflight)</td></tr>
 <tr><td><code>OPENMX_CUBLAS_MIN_FREE_AFTER_MB</code></td><td>—</td><td>cuBLAS 用の同上</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC-LNO 法(Divide_Conquer_LNO.c)</b></td></tr>
-<tr><td><code>OPENMX_DCLNO_GPU_THRESHOLD</code></td><td>800</td><td>GPU 化する局所次元の下限(コリニア・非コリニア共通)</td></tr>
+<tr><td><code>OPENMX_DCLNO_GPU_THRESHOLD</code></td><td>800</td><td>GPU 化する局所次元の下限(コリニア)</td></tr>
+<tr><td><code>OPENMX_DCLNO_NONCOL_GPU_THRESHOLD</code></td><td>400</td><td>GPU 化するスピノル次元の下限(非コリニア)</td></tr>
 <tr><td><code>OPENMX_DCLNO_GPU_TURN_RELEASE</code></td><td>1</td><td>フェーズ末尾のソルババッファ+GEMMul8 解放(未設定時は BAND 設定を継承)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Krylov 法(Krylov.c)</b></td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_FUSED</code></td><td>1</td><td>原子別パイプラインの融合パス(0 で per-call シーケンス)</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_KU_CACHE</code> / <code>_KU_RESERVE_MB</code></td><td>1 / 4096</td><td>Krylov 基底のデバイス常駐キャッシュとその予算予約</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS</code></td><td>5×10⁷</td><td>GEMM を GPU に投げる下限(m·n·k)</td></tr>
-<tr><td><code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code></td><td>1000</td><td>部分空間対角化をデバイスで解く下限次元(下げると大幅に速くなる系がある。§7.6)</td></tr>
+<tr><td><code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code></td><td>300</td><td>部分空間対角化をデバイスで解く射影次元 Msize3 の下限(§7.6)</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_PROFILE</code></td><td>0</td><td>融合パスの内訳(KRYFUSE 行)出力</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Set_Hamiltonian(Set_Hamiltonian.c / set_hamiltonian_gpu.cu)</b></td></tr>
 <tr><td><code>OPENMX_SETHAM_MATRIX_GPU</code></td><td>1</td><td>dVH+Vxc+VNA 格子積分の GPU 実行(0 で CPU)</td></tr>
@@ -2089,8 +2099,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
   <li><b>stdout / stderr の診断行を確認する</b>(§10.3)— チューニングの出発点は常にここ。</li>
   <li><b>VRAM に余裕がある(GPU 占有)場合</b> — <code>OPENMX_BAND_GPU_PERSISTENT=1</code>、
   <code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS=0</code>、<code>OPENMX_*_GEMMUL8_TURN_RELEASE=0</code> で
-  転送・再確保を減らせる余地がある。Krylov 系では <code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code> を下げると
-  対角化がデバイスに移り大幅に速くなる系がある(実測 117.5 s → 78.8 s。§7.6)。</li>
+  転送・再確保を減らせる余地がある。Krylov 系の対角化は既定(<code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code>=300)で
+  デバイスに移るようになった(実測 117.5 s → 78.8 s。§7.6)。さらに下げて得をする系は稀。</li>
   <li><b>VRAM が厳しい場合</b> — ランク数を減らすのが最も効く。次いで予約系
   (<code>*_RESERVE_MB</code>)を既定より上げて GEMMul8 フォールバックを防ぐ、
   <code>OPENMX_SETHAM_GPU_RESIDENT=0</code> で常駐を切る、など。</li>

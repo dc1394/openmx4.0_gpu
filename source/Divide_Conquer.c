@@ -37,13 +37,37 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
 static void Save_DOS_Col(double ****** Residues, double **** OLP0, double *** EVal, int * Msize);
 static void Save_DOS_NonCol(dcomplex ****** Residues, double **** OLP0, double ** EVal, int * Msize);
 
+/* GPU/CPU crossover for the per-atom truncated-cluster eigensolves;
+   collinear compares NUM, noncollinear compares 2*NUM (spinor dimension) */
+#define DC_GPU_CPU_SWITCH_NUM         400
+#define DC_NONCOL_GPU_CPU_SWITCH_NUM  300
+
 static int DC_GPU_Threshold(void)
 {
     static int initialized = 0;
-    static int threshold   = GPU_CPU_SWITCH_NUM;
+    static int threshold   = DC_GPU_CPU_SWITCH_NUM;
 
     if (!initialized) {
         char *env = getenv("OPENMX_DC_GPU_THRESHOLD");
+        if (env != NULL && env[0] != '\0') {
+            int env_threshold = atoi(env);
+            if (0 < env_threshold) {
+                threshold = env_threshold;
+            }
+        }
+        initialized = 1;
+    }
+
+    return threshold;
+}
+
+static int DC_NonCol_GPU_Threshold(void)
+{
+    static int initialized = 0;
+    static int threshold   = DC_NONCOL_GPU_CPU_SWITCH_NUM;
+
+    if (!initialized) {
+        char *env = getenv("OPENMX_DC_NONCOL_GPU_THRESHOLD");
         if (env != NULL && env[0] != '\0') {
             int env_threshold = atoi(env);
             if (0 < env_threshold) {
@@ -4042,7 +4066,7 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
                    transform Hamiltonian matrix
             ************************************************/
 
-            int use_dc_openacc = (scf_eigen_lib_flag == GPUSOLVER && GPU_CPU_SWITCH_NUM <= 2*NUM);
+            int use_dc_openacc = (scf_eigen_lib_flag == GPUSOLVER && DC_NonCol_GPU_Threshold() <= 2*NUM);
 
 /* flat views of the contiguous stores for the device kernels; the host code
    keeps using the row-pointer arrays over the same memory */
