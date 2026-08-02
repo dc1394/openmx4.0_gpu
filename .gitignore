@@ -27,6 +27,7 @@ libtool
 *.xyz
 *.cif
 *.cube
+*.xsf
 *.DFTSCF
 *.EV
 *.MC
