@@ -190,7 +190,7 @@ scf.Kerker.factor           4.0        # default=1.0
 scf.Mixing.History          50         # default=5
 scf.Mixing.StartPulay       20         # default=6
 scf.criterion             1.0e-10      # default=1.0e-6 (Hartree) 
-scf.eigen.lib             cusolver
+scf.eigen.lib             gpusolver
 
 #
 # MD or Geometry Optimization

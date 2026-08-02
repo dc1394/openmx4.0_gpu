@@ -691,9 +691,6 @@ Atoms.UnitVectors>
 # SCF or Electronic System
 #
 
-#scf.dclno.threading           off
-#scf.eigen.lib                 elpa2
-
 scf.XcType                 GGA-PBE     # LDA|LSDA-CA|LSDA-PW
 scf.SpinPolarization       Off         # On|Off
 scf.ElectronicTemperature  700.0       # default=300 (K)
