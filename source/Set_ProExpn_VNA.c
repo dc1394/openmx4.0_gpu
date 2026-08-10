@@ -32,6 +32,9 @@ static double Set_VNA2(double ****HVNA, double *****HVNA2);
 static double Set_VNA3(double *****HVNA3);
 static int SetPro_VNA23_GpuBegin(void);
 static void SetPro_VNA23_GpuEnd(void);
+/* forward: SetPro_DSVNA_GpuBegin releases its tables through this when the
+   device-memory check sends the DS_VNA build down the CPU path */
+static void SetPro_DSVNA_GpuEnd(void);
 
 #ifdef kcomp
 static void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
@@ -689,13 +692,61 @@ typedef struct {
 
 static SetProGpu2Context SetPro_gpu2 = { 0 };
 
+/* Pair-chunk length of the DS_VNA device pipeline.  Shared by the sizing
+   estimate below and by SetPro_DSVNA_GpuRun so the two cannot drift apart --
+   an estimate computed against a different CHUNK is worse than no estimate. */
+#define SETPRO_DSVNA_CHUNK 256
+
+/* Device bytes the "#pragma acc data" region in SetPro_DSVNA_GpuRun will map.
+   Deliberately mirrors that clause term for term, in the same order, so the two
+   can be diffed by eye. */
+static size_t SetPro_DSVNA_DeviceBytes(const SetProGpu2Context *g)
+{
+  const size_t CH = (size_t)SETPRO_DSVNA_CHUNK;
+  const int nM0 = 2*g->l0max_all + 1;
+  const int nM1 = 2*g->l1max + 1;
+  const int nLL = g->lfi_max + 1;
+  const int nm  = 2*g->lfi_max + 1;
+  const int nsh = (g->lfi_max+1)*(g->lfi_max+1);
+  const int lc  = (g->l0max_all<g->l1max) ? g->l1max : g->l0max_all;
+
+  const size_t pro_len  = (size_t)SpeciesNum*g->cmb_max*GL_Mesh;
+  const size_t vnab_len = (size_t)SpeciesNum*g->num_rvna*GL_Mesh;
+  const size_t gnt_len  = (size_t)(g->l0max_all+1)*nM0*(g->l1max+1)*nM1*nLL*nm;
+  const size_t c2r_len  = 2*(size_t)g->c2r_off[lc+1];
+
+  const size_t sphb_len = CH*(size_t)nLL*(size_t)GL_Mesh;
+  const size_t sum_len  = CH*(size_t)nLL*(size_t)g->cmb_max*(size_t)g->num_rvna;
+  const size_t elem_per_pair = (size_t)g->cmb_max*nM0*g->num_rvna*nM1;
+  const size_t tmpnl_len = CH*elem_per_pair*8;
+  const size_t out_len   = CH*4*(size_t)g->mn_max;
+
+  size_t bytes = 0;
+
+  /* copyin */
+  bytes += (2*pro_len + vnab_len + gnt_len + c2r_len)*sizeof(double);
+  bytes += (size_t)GL_Mesh*sizeof(double);                       /* GL_NormK   */
+  bytes += (size_t)(lc+2)*sizeof(int);                           /* c2r_off    */
+  bytes += (size_t)(2*SpeciesNum
+                    + 2*(size_t)SpeciesNum*g->cmb_max
+                    + 2*(size_t)g->num_rvna)*sizeof(int);
+
+  /* create */
+  bytes += (2*sphb_len + 2*sum_len + tmpnl_len)*sizeof(double);
+  bytes += out_len*sizeof(float);
+  bytes += CH*5*sizeof(double) + CH*4*sizeof(int);               /* pr_*       */
+  bytes += CH*(size_t)nsh*6*sizeof(double);                      /* sh_tab     */
+
+  return bytes;
+}
+
 static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
                                  double ****Bessel_Pro00, double ****Bessel_Pro01)
 {
   SetProGpu2Context *g = &SetPro_gpu2;
   int spe,L0,Mul0,L,i,k,c;
   size_t free_bytes = 0,total_bytes = 0;
-  int node_ranks = 1;
+  int node_ranks = 1,node_rank = 0;
   MPI_Comm node_comm = MPI_COMM_NULL;
 
   memset(g,0,sizeof(*g));
@@ -705,17 +756,14 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
+  MPI_Comm_rank(node_comm,&node_rank);
   if (node_ranks<1) node_ranks = 1;
   MPI_Comm_free(&node_comm);
 
+  /* Cheap gate only.  The real device-memory decision cannot be made here --
+     every extent the acc data region is sized from is still unknown -- so it
+     happens at the end of this function, once the tables are built. */
   if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
-  {
-    const size_t reserve = (size_t)256*1024*1024;
-    const size_t need = (size_t)1024*1024*1024; /* chunk transients */
-
-    if (free_bytes<=reserve ||
-        (free_bytes - reserve)/(size_t)node_ranks<=need) return 0;
-  }
 
   g->num_proj = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
   g->num_rvna = Num_RVNA;
@@ -865,6 +913,40 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
     }
   }
 
+  /* Device-memory decision.  It has to be here rather than on entry: cmb_max,
+     lfi_max, mn_max, num_rvna and c2r_off are only settled by the tables built
+     above, and the acc data region in SetPro_DSVNA_GpuRun is sized entirely
+     from them.  The check this replaces ran on entry against a flat 1 GiB
+     placeholder, so a 650-atom run walked into a single 2.92 GiB device
+     allocation and the OpenACC runtime aborted every rank -- there is no way to
+     catch that failure once the region is entered, which is why the estimate
+     has to be right rather than merely present.
+     Divided by node_ranks because every rank on this node shares the one GPU;
+     MPS lets them run concurrently but does not pool their memory. */
+  {
+    const size_t reserve = (size_t)256*1024*1024;
+    const size_t need = SetPro_DSVNA_DeviceBytes(g);
+
+    if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
+        free_bytes<=reserve ||
+        (free_bytes - reserve)/(size_t)node_ranks<=need){
+
+      if (node_rank==0){
+        fprintf(stderr,
+                "Set_ProExpn_VNA DS_VNA GPU: needs %.3f GiB per rank, %d rank(s) share "
+                "this device and only %.3f GiB is free; CPU fallback.\n",
+                (double)need/1073741824.0,node_ranks,
+                (double)free_bytes/1073741824.0);
+        fflush(stderr);
+      }
+
+      /* GpuEnd early-returns unless enabled, so flag it to release the tables. */
+      g->enabled = 1;
+      SetPro_DSVNA_GpuEnd();
+      return 0;
+    }
+  }
+
   g->enabled = 1;
   return 1;
 }
@@ -908,7 +990,8 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
   const int nm = 2*lfi_max + 1;
   const int nsh = (lfi_max+1)*(lfi_max+1);
   const int mn_max = g->mn_max;
-  const int CHUNK = 256;
+  /* same constant SetPro_DSVNA_DeviceBytes sized the pre-flight check with */
+  const int CHUNK = SETPRO_DSVNA_CHUNK;
   int chunk_start;
 
   double *pr_r,*pr_siT,*pr_coT,*pr_siP,*pr_coP;
