@@ -197,13 +197,16 @@ typedef struct
     int                    local_count;
     int                    h_count;
     int                    dense_phase_count;
-    int                    dense_device_valid;
+    int                    has_dense;
+    int                    has_local;
     int *                  dense_phase_l1;
     int *                  dense_phase_l2;
     int *                  dense_phase_l3;
     double *               dense_phase_r;
     double *               dense_phase_i;
-    BandColConstructEntry *dense_entries;
+    /* device-resident: the entries are only ever read by the device
+       construct kernel, so no host copy is kept */
+    BandColConstructEntry *dense_entries_dev;
     BandColConstructEntry *local_entries;
 } BandColConstructCache;
 
@@ -877,22 +880,10 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
 
 static void BandCol_ConstructCache_Reset(void)
 {
-    if (BandCol_construct_cache.dense_device_valid) {
-        BandColConstructEntry *dense_entries = BandCol_construct_cache.dense_entries;
-        double *               phase_r       = BandCol_construct_cache.dense_phase_r;
-        double *               phase_i       = BandCol_construct_cache.dense_phase_i;
-        int                    dense_count   = BandCol_construct_cache.dense_count;
-        int                    phase_count   = BandCol_construct_cache.dense_phase_count;
-
-        if (dense_entries != NULL && 0 < dense_count) {
-#pragma acc exit data delete(dense_entries[0 : dense_count])
-        }
-        if (phase_r != NULL && phase_i != NULL && 0 < phase_count) {
-#pragma acc exit data delete(phase_r[0 : phase_count], phase_i[0 : phase_count])
-        }
+    if (BandCol_construct_cache.dense_entries_dev != NULL) {
+        wait_cudafunc(cudaFree(BandCol_construct_cache.dense_entries_dev));
     }
 
-    free(BandCol_construct_cache.dense_entries);
     free(BandCol_construct_cache.local_entries);
     free(BandCol_construct_cache.dense_phase_l1);
     free(BandCol_construct_cache.dense_phase_l2);
@@ -931,7 +922,7 @@ static unsigned long long BandCol_ConstructFingerprint(int *order_GA, int *MP)
     return h;
 }
 
-static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
+static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int want_dense)
 {
     BandColConstructCache *cache = &BandCol_construct_cache;
     unsigned long long     fingerprint = BandCol_ConstructFingerprint(order_GA, MP);
@@ -939,10 +930,17 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
     int                    local_count = 0;
     int                    dense_phase_count = 0;
     int                    prev_dense_l1 = 0x7fffffff, prev_dense_l2 = 0x7fffffff, prev_dense_l3 = 0x7fffffff;
+    BandColConstructEntry *dense_host = NULL;
 
+    /* Only the side this rank actually consumes is built: the dense side
+       feeds the device construct kernel of the GPU owner ranks, the local
+       side feeds the host ScaLAPACK/ELPA construction.  Building both cost
+       every ELPA rank the full dense table (~28 B per matrix element pair)
+       it never read. */
     if (cache->valid && cache->n == n && cache->na_rows == na_rows && cache->na_cols == na_cols &&
         cache->nblk == nblk && cache->np_rows == np_rows && cache->np_cols == np_cols && cache->my_prow == my_prow &&
-        cache->my_pcol == my_pcol && cache->fingerprint == fingerprint) {
+        cache->my_pcol == my_pcol && cache->fingerprint == fingerprint &&
+        ((want_dense && cache->has_dense) || (!want_dense && cache->has_local))) {
         return;
     }
 
@@ -1001,19 +999,28 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
         }
     }
 
-    cache->dense_entries = (BandColConstructEntry *)malloc(sizeof(BandColConstructEntry) * (size_t)(dense_count + 1));
-    cache->local_entries = (BandColConstructEntry *)malloc(sizeof(BandColConstructEntry) * (size_t)(local_count + 1));
-    cache->dense_phase_l1 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
-    cache->dense_phase_l2 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
-    cache->dense_phase_l3 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
-    cache->dense_phase_r  = (double *)malloc(sizeof(double) * (size_t)(dense_phase_count + 1));
-    cache->dense_phase_i  = (double *)malloc(sizeof(double) * (size_t)(dense_phase_count + 1));
+    if (want_dense) {
+        dense_host = (BandColConstructEntry *)malloc(sizeof(BandColConstructEntry) * (size_t)(dense_count + 1));
+        cache->dense_phase_l1 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
+        cache->dense_phase_l2 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
+        cache->dense_phase_l3 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
+        cache->dense_phase_r  = (double *)malloc(sizeof(double) * (size_t)(dense_phase_count + 1));
+        cache->dense_phase_i  = (double *)malloc(sizeof(double) * (size_t)(dense_phase_count + 1));
 
-    if (cache->dense_entries == NULL || cache->local_entries == NULL || cache->dense_phase_l1 == NULL ||
-        cache->dense_phase_l2 == NULL || cache->dense_phase_l3 == NULL || cache->dense_phase_r == NULL ||
-        cache->dense_phase_i == NULL) {
-        BandCol_ConstructCache_Reset();
-        BandCol_AbortWithMessage("Failed to allocate Construct_Band_CsHs cache in Band_DFT_Col.c.");
+        if (dense_host == NULL || cache->dense_phase_l1 == NULL ||
+            cache->dense_phase_l2 == NULL || cache->dense_phase_l3 == NULL || cache->dense_phase_r == NULL ||
+            cache->dense_phase_i == NULL) {
+            free(dense_host);
+            BandCol_ConstructCache_Reset();
+            BandCol_AbortWithMessage("Failed to allocate Construct_Band_CsHs cache in Band_DFT_Col.c.");
+        }
+    } else {
+        cache->local_entries = (BandColConstructEntry *)malloc(sizeof(BandColConstructEntry) * (size_t)(local_count + 1));
+
+        if (cache->local_entries == NULL) {
+            BandCol_ConstructCache_Reset();
+            BandCol_AbortWithMessage("Failed to allocate Construct_Band_CsHs cache in Band_DFT_Col.c.");
+        }
     }
 
     dense_count = 0;
@@ -1055,7 +1062,7 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
                 for (int j = 0; j < tnoB; j++, h_index++) {
                     int jg = Bnum + j;
 
-                    if (j_start <= j) {
+                    if (want_dense && j_start <= j) {
                         if (phase_index < 0) {
                             if (l1 != prev_dense_l1 || l2 != prev_dense_l2 || l3 != prev_dense_l3) {
                                 phase_index = dense_phase_count++;
@@ -1070,7 +1077,7 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
                             }
                         }
 
-                        BandColConstructEntry *entry = &cache->dense_entries[dense_count++];
+                        BandColConstructEntry *entry = &dense_host[dense_count++];
                         entry->h_index = h_index;
                         entry->index0  = (jg - 1) * n + (ig - 1);
                         entry->index1  = (jg > ig) ? (ig - 1) * n + (jg - 1) : -1;
@@ -1083,7 +1090,7 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
                     int bcol = (jg - 1) / nblk;
                     int pcol = bcol % np_cols;
 
-                    if (my_prow == prow && my_pcol == pcol) {
+                    if (!want_dense && my_prow == prow && my_pcol == pcol) {
                         int il = (brow / np_rows + 1) * nblk + 1;
                         int jl = (bcol / np_cols + 1) * nblk + 1;
 
@@ -1115,6 +1122,17 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
         }
     }
 
+    if (want_dense && 0 < dense_count) {
+        /* the dense entry table is read exclusively by the device construct
+           kernel, so it lives in device memory only; the host copy above is
+           a build scratch and is released right here */
+        size_t dense_bytes = sizeof(BandColConstructEntry) * (size_t)dense_count;
+
+        wait_cudafunc(cudaMalloc((void **)&cache->dense_entries_dev, dense_bytes));
+        wait_cudafunc(cudaMemcpy(cache->dense_entries_dev, dense_host, dense_bytes, cudaMemcpyHostToDevice));
+    }
+    free(dense_host);
+
     cache->valid       = 1;
     cache->n           = n;
     cache->na_rows     = na_rows;
@@ -1129,30 +1147,8 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
     cache->local_count = local_count;
     cache->h_count     = h_index;
     cache->dense_phase_count = dense_phase_count;
-}
-
-static void BandCol_ConstructCache_EnsureDenseDevice(void)
-{
-    BandColConstructCache *cache = &BandCol_construct_cache;
-
-    if (cache->dense_device_valid) {
-        return;
-    }
-
-    if (0 < cache->dense_count) {
-        BandColConstructEntry *entries = cache->dense_entries;
-        int count = cache->dense_count;
-#pragma acc enter data copyin(entries[0 : count])
-    }
-
-    if (0 < cache->dense_phase_count) {
-        double *phase_r = cache->dense_phase_r;
-        double *phase_i = cache->dense_phase_i;
-        int phase_count = cache->dense_phase_count;
-#pragma acc enter data create(phase_r[0 : phase_count], phase_i[0 : phase_count])
-    }
-
-    cache->dense_device_valid = 1;
+    cache->has_dense   = want_dense;
+    cache->has_local   = !want_dense;
 }
 
 static void BandCol_DMWorkspace_Reset(void)
@@ -2093,7 +2089,7 @@ static void BandCol_ConstructDenseCsHs_OpenACC(int need_s, int n, double k1, dou
 {
     BandColConstructCache *cache = &BandCol_construct_cache;
     BandColGpuSolverCtx *   ctx = &BandCol_gpusolver_ctx;
-    BandColConstructEntry *entries = cache->dense_entries;
+    BandColConstructEntry *entries = cache->dense_entries_dev;
     double *phase_r = cache->dense_phase_r;
     double *phase_i = cache->dense_phase_i;
     int count = cache->dense_count;
@@ -2102,6 +2098,10 @@ static void BandCol_ConstructDenseCsHs_OpenACC(int need_s, int n, double k1, dou
     long long matrix_count = (long long)n * (long long)n;
     dcomplex *d_H;
     dcomplex *d_S;
+
+    if (entries == NULL && 0 < count) {
+        BandCol_AbortWithMessage("The dense construct cache is not device-resident in Band_DFT_Col.c.");
+    }
 
     BandCol_GpuSolver_EnsureMatrixCapacity(n);
 
@@ -2124,9 +2124,9 @@ static void BandCol_ConstructDenseCsHs_OpenACC(int need_s, int n, double k1, dou
             d_S[idx].i = 0.0;
         }
 
-#pragma acc data copyin(entries[0 : count], phase_r[0 : phase_count], phase_i[0 : phase_count], H1[0 : h_count], S1[0 : h_count])
+#pragma acc data copyin(phase_r[0 : phase_count], phase_i[0 : phase_count], H1[0 : h_count], S1[0 : h_count])
         {
-#pragma acc parallel loop deviceptr(d_H, d_S)
+#pragma acc parallel loop deviceptr(d_H, d_S, entries)
             for (int idx = 0; idx < count; ++idx) {
                 const int h_index = entries[idx].h_index;
                 const int index0 = entries[idx].index0;
@@ -2171,9 +2171,9 @@ static void BandCol_ConstructDenseCsHs_OpenACC(int need_s, int n, double k1, dou
             d_H[idx].i = 0.0;
         }
 
-#pragma acc data copyin(entries[0 : count], phase_r[0 : phase_count], phase_i[0 : phase_count], H1[0 : h_count])
+#pragma acc data copyin(phase_r[0 : phase_count], phase_i[0 : phase_count], H1[0 : h_count])
         {
-#pragma acc parallel loop deviceptr(d_H)
+#pragma acc parallel loop deviceptr(d_H, entries)
             for (int idx = 0; idx < count; ++idx) {
                 const int h_index = entries[idx].h_index;
                 const int index0 = entries[idx].index0;
@@ -5392,7 +5392,7 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
     }
 
     BANDCOL_PROF_T0(prof_t0);
-    BandCol_ConstructCache_Ensure(order_GA, MP, n);
+    BandCol_ConstructCache_Ensure(order_GA, MP, n, dense_gpusolver_owner);
     BANDCOL_PROF_ADD(construct_cache, prof_t0);
 
     if (dense_gpusolver_owner) {

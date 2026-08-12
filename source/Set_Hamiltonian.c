@@ -20,9 +20,11 @@
 #include <math.h>
 #include <omp.h>
 #include <openacc.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <time.h>
 
 #define measure_time 0
@@ -141,6 +143,10 @@ typedef struct {
     int ready;
     int resident_mask;
     int resident_blocked;
+    /* classes whose host pages were returned to the kernel after their
+       device copy became resident; the data must be repacked from the
+       jagged sources before any host-side upload can use it again */
+    int host_discarded;
     int cnt_kind;
     int spin_count;
     int pair_count;
@@ -723,6 +729,71 @@ static void Set_Hamiltonian_ResidentMaskLabel(int mask, char *buf, size_t buf_le
     if (buf[0] == '\0') snprintf(buf, buf_len, "none");
 }
 
+/* Return the physical pages of a staging buffer to the kernel while keeping
+   its virtual range (the OpenACC present table stays keyed on it).  Used for
+   buffers whose only reader is the device once their copy is resident: the
+   host mirror would otherwise hold the same hundreds of MB per rank for the
+   whole SCF loop purely as re-upload insurance. */
+static void Set_Hamiltonian_ME_DiscardHostPages(void *ptr, size_t bytes)
+{
+    const size_t page = 4096;
+    uintptr_t lo = ((uintptr_t)ptr + page - 1) & ~(uintptr_t)(page - 1);
+    uintptr_t hi = ((uintptr_t)ptr + bytes) & ~(uintptr_t)(page - 1);
+
+    if (ptr == NULL || hi <= lo) return;
+    /* failure just means the pages stay resident, which is the status quo */
+    (void)madvise((void *)lo, (size_t)(hi - lo), MADV_DONTNEED);
+}
+
+/* Refill the orbital/grid-index tables whose host pages were discarded after
+   device residency.  Only orbs0buf/orbs1buf/nolg_MN are ever discarded;
+   nolg_Nc is rewritten too because it shares this loop, which is harmless. */
+static void Set_Hamiltonian_ME_RepackOrbTables(SetHamiltonianMatrixElementsCache *cache, int myid)
+{
+    if (cache->host_discarded == 0 || !cache->ready) {
+        cache->host_discarded = 0;
+        return;
+    }
+
+    for (int pair = 0; pair < cache->pair_count; pair++) {
+        int Mc_AN = cache->pair_Mc_AN[pair];
+        int h_AN = cache->pair_h_AN[pair];
+        int NO0 = cache->pair_NO0[pair];
+        int NO1 = cache->pair_NO1[pair];
+        int NOLG = cache->pair_NOLG[pair];
+        int Gc_AN = M2G[Mc_AN];
+        int Gh_AN = natn[Gc_AN][h_AN];
+        int Mh_AN = F_G2M[Gh_AN];
+        size_t nolg_off = cache->pair_nolg_offset[pair];
+        size_t orbs1_off = cache->pair_orbs1_offset[pair];
+
+        if (h_AN == 0) {
+            size_t orbs0_off = cache->pair_orbs0_offset[pair];
+
+            for (int Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
+                for (int i = 0; i < NO0; i++) {
+                    cache->orbs0buf[orbs0_off + (size_t)Nc * (size_t)NO0 + (size_t)i] = Orbs_Grid[Mc_AN][Nc][i];
+                }
+            }
+        }
+
+        for (int Nog = 0; Nog < NOLG; Nog++) {
+            int Nc = GListTAtoms1[Mc_AN][h_AN][Nog];
+            int MN = MGridListAtom[Mc_AN][Nc];
+            int Nh = GListTAtoms2[Mc_AN][h_AN][Nog];
+            Type_Orbs_Grid *orbs1 = (G2ID[Gh_AN] == myid) ? Orbs_Grid[Mh_AN][Nh] : Orbs_Grid_FNAN[Mc_AN][h_AN][Nog];
+
+            cache->nolg_MN[nolg_off + (size_t)Nog] = MN;
+            cache->nolg_Nc[nolg_off + (size_t)Nog] = Nc;
+            for (int j = 0; j < NO1; j++) {
+                cache->orbs1buf[orbs1_off + (size_t)Nog * (size_t)NO1 + (size_t)j] = orbs1[j];
+            }
+        }
+    }
+
+    cache->host_discarded = 0;
+}
+
 static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan *plan)
 {
     SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
@@ -747,12 +818,21 @@ static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan 
 
     if (add_mask & (1 << SETH_RES_ORBS1)) {
 #pragma acc enter data copyin(orbs1buf[0:total_orbs1])
+        /* device copy is now the only reader until release; drop the host
+           pages (the virtual range stays as the present-table key) */
+        Set_Hamiltonian_ME_DiscardHostPages(orbs1buf, sizeof(Type_Orbs_Grid) * total_orbs1);
+        cache->host_discarded |= (1 << SETH_RES_ORBS1);
     }
     if (add_mask & (1 << SETH_RES_ORBS0)) {
 #pragma acc enter data copyin(orbs0buf[0:total_orbs0])
+        Set_Hamiltonian_ME_DiscardHostPages(orbs0buf, sizeof(Type_Orbs_Grid) * total_orbs0);
+        cache->host_discarded |= (1 << SETH_RES_ORBS0);
     }
     if (add_mask & (1 << SETH_RES_NOLG)) {
 #pragma acc enter data copyin(nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg])
+        /* nolg_Nc stays intact: Set_Density_Grid_GPU reads it on the host */
+        Set_Hamiltonian_ME_DiscardHostPages(nolg_MN, sizeof(int) * total_nolg);
+        cache->host_discarded |= (1 << SETH_RES_NOLG);
     }
     if (add_mask & (1 << SETH_RES_META)) {
 #pragma acc enter data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count],                    \
@@ -774,7 +854,13 @@ static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan 
     }
 }
 
-static void Set_Hamiltonian_ME_ReleaseDeviceCache(void)
+/* repack_host = 1 when the host tables will be uploaded again within this MD
+   step (mid-step eviction): the discarded pages must be refilled right away.
+   0 when no further upload can happen before a rebuild or free; the
+   host_discarded flag then keeps Set_Hamiltonian_ME_CacheMatches false so
+   any unexpected consumer triggers a full rebuild instead of reading the
+   zero-filled pages. */
+static void Set_Hamiltonian_ME_ReleaseDeviceCache(int repack_host)
 {
     SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
     int *pair_NO0 = cache->pair_NO0;
@@ -819,11 +905,18 @@ static void Set_Hamiltonian_ME_ReleaseDeviceCache(void)
         acc_clear_freelists();
     }
     cache->resident_mask = 0;
+
+    if (repack_host && cache->host_discarded != 0) {
+        int myid;
+
+        MPI_Comm_rank(mpi_comm_level1, &myid);
+        Set_Hamiltonian_ME_RepackOrbTables(cache, myid);
+    }
 }
 
 void Set_Hamiltonian_Release_OpenACC_DeviceCache(void)
 {
-    Set_Hamiltonian_ME_ReleaseDeviceCache();
+    Set_Hamiltonian_ME_ReleaseDeviceCache(0);
 }
 
 /* Non-building probe: report whether the shared matrix-elements tables for
@@ -881,7 +974,7 @@ static void Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache(void)
 {
     SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
 
-    Set_Hamiltonian_ME_ReleaseDeviceCache();
+    Set_Hamiltonian_ME_ReleaseDeviceCache(0);
     free(cache->pair_Mc_AN);
     free(cache->pair_h_AN);
     free(cache->pair_NO0);
@@ -1612,7 +1705,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            beside the resident tables: yield the memory now (the
            diagonalization follows within this very SCF iteration) and stay
            transient for the rest of this MD step. */
-        Set_Hamiltonian_ME_ReleaseDeviceCache();
+        Set_Hamiltonian_ME_ReleaseDeviceCache(1);
         Set_Hamiltonian_ME_Cache.resident_blocked = 1;
         if (plan.device_rank == 0) {
             printf("<Set_Hamiltonian> GPU resident cache released: a GPU phase needs %.3f GiB on device %d; "
@@ -1747,8 +1840,11 @@ static int Set_Hamiltonian_ME_CacheMatches(const SetHamiltonianMatrixElementsCac
 {
     int spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
 
+    /* a class whose host pages were discarded is fine as long as its device
+       copy is still resident; once the device copy is gone too, the cache no
+       longer holds the data anywhere and must be rebuilt */
     return (cache->ready && cache->cnt_kind == Cnt_kind && cache->spin_count == spin_count &&
-            cache->matomnum == Matomnum);
+            cache->matomnum == Matomnum && (cache->host_discarded & ~cache->resident_mask) == 0);
 }
 
 /* Per-class bytes of the SCF-invariant arrays that device residency can

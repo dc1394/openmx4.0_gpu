@@ -95,16 +95,21 @@ typedef struct {
   int num_proj;
   int num_rvna;
 
-  /* local direction-0 DS_VNA rows */
-  float *flat;
+  /* local direction-0 DS_VNA rows; device-only (the batch kernel is the
+     only reader, so no host copy of the archive is kept) */
+  float *flat_dev;
   size_t *mck_off;
   int *mck_base;
 
-  /* halo archive of the received direction-0 blocks */
-  float *halo;
+  /* halo archive of the received direction-0 blocks; device-only too */
+  float *halo_dev;
   size_t halo_count;
   size_t *halo_off;
   int *halo_base;
+
+  /* one-slot host staging for uploads into the two archives */
+  float *bounce;
+  size_t bounce_count;
 
   /* per-species group energies and the group lengths */
   double *ene;
@@ -212,12 +217,40 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
 
   g->mck_base = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)(Matomnum+2));
   g->mck_off = (size_t*)SetPro_checked_malloc(sizeof(size_t)*(slots==0 ? 1 : slots));
-  g->flat = (float*)SetPro_checked_malloc(sizeof(float)*(pos==0 ? 1 : pos));
   g->halo_base = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)(MatomnumF+2));
   g->halo_off = (size_t*)SetPro_checked_malloc(sizeof(size_t)*(halo_slots==0 ? 1 : halo_slots));
-  g->halo = (float*)SetPro_checked_malloc(sizeof(float)*(g->halo_count==0 ? 1 : g->halo_count));
   g->ene = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)SpeciesNum*(size_t)Num_RVNA);
   g->l2p1 = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)Num_RVNA);
+
+  /* Both archives live on the device only: the kernel is their sole reader,
+     and a host copy would cost every rank the full archive (tens to
+     hundreds of MB) exactly while DS_VNA itself peaks.  Rows are staged
+     through one bounce slot sized for the largest (atom,neighbour) block. */
+  g->flat_dev = (float*)acc_malloc(sizeof(float)*((pos==0 ? 1 : pos)));
+  g->halo_dev = (float*)acc_malloc(sizeof(float)*((g->halo_count==0 ? 1 : g->halo_count)));
+  {
+    size_t bounce_count = 1;
+
+    for (spe=0; spe<SpeciesNum; spe++){
+      size_t cnt = (size_t)Spe_Total_NO[spe]*(size_t)g->num_proj;
+      if (bounce_count<cnt) bounce_count = cnt;
+    }
+    g->bounce_count = bounce_count;
+    g->bounce = (float*)SetPro_checked_malloc(sizeof(float)*bounce_count);
+  }
+  if (g->flat_dev==NULL || g->halo_dev==NULL){
+    if (g->flat_dev!=NULL) acc_free(g->flat_dev);
+    if (g->halo_dev!=NULL) acc_free(g->halo_dev);
+    free(g->bounce);
+    free(g->l2p1);
+    free(g->ene);
+    free(g->halo_off);
+    free(g->halo_base);
+    free(g->mck_off);
+    free(g->mck_base);
+    memset(g,0,sizeof(*g));
+    return 0;
+  }
 
   for (L1=0; L1<Num_RVNA; L1++){
     g->l2p1[L1] = 2*VNA_List[L1] + 1;
@@ -229,8 +262,6 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
   }
 
   {
-    size_t flat_len = pos;
-
     pos = 0;
     slots = 0;
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -259,29 +290,25 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
       }
     }
 
-    /* flatten the local direction-0 rows */
+    /* flatten the local direction-0 rows straight into the device archive,
+       one (atom,neighbour) block at a time through the bounce slot */
 
-#pragma omp parallel for schedule(dynamic)
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
       int Gc_AN = M2G[Mc_AN];
       int tno = Spe_Total_NO[WhatSpecies[Gc_AN]];
       int k2,i;
 
       for (k2=0; k2<=FNAN[Gc_AN]; k2++){
-        size_t base = SetPro_gpu.mck_off[SetPro_gpu.mck_base[Mc_AN]+k2];
+        size_t base = g->mck_off[g->mck_base[Mc_AN]+k2];
 
         for (i=0; i<tno; i++){
-          memcpy(SetPro_gpu.flat + base + (size_t)i*(size_t)SetPro_gpu.num_proj,
+          memcpy(g->bounce + (size_t)i*(size_t)g->num_proj,
                  DS_VNA[0][Mc_AN][k2][i],
-                 sizeof(float)*(size_t)SetPro_gpu.num_proj);
+                 sizeof(float)*(size_t)g->num_proj);
         }
+        acc_memcpy_to_device(g->flat_dev + base, g->bounce,
+                             sizeof(float)*(size_t)tno*(size_t)g->num_proj);
       }
-    }
-
-    {
-      float *flat = g->flat;
-      size_t len = (flat_len==0 ? 1 : flat_len);
-#pragma acc enter data copyin(flat[0:len])
     }
   }
 
@@ -292,33 +319,18 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
 static void SetPro_HVNA_GpuEnd(void)
 {
   SetProGpuContext *g = &SetPro_gpu;
-  size_t flat_len = 0;
-  int Mc_AN;
 
   if (!g->enabled) return;
 
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    int Gc_AN = M2G[Mc_AN];
-    flat_len += (size_t)(FNAN[Gc_AN]+1)
-              *(size_t)Spe_Total_NO[WhatSpecies[Gc_AN]]*(size_t)g->num_proj;
-  }
-
-  {
-    float *flat = g->flat;
-    size_t len = (flat_len==0 ? 1 : flat_len);
-
-    if (acc_is_present(flat,len*sizeof(float))){
-#pragma acc exit data delete(flat[0:len])
-    }
-  }
+  if (g->flat_dev!=NULL) acc_free(g->flat_dev);
+  if (g->halo_dev!=NULL) acc_free(g->halo_dev);
   acc_clear_freelists();
 
+  free(g->bounce);
   free(g->l2p1);
   free(g->ene);
-  free(g->halo);
   free(g->halo_off);
   free(g->halo_base);
-  free(g->flat);
   free(g->mck_off);
   free(g->mck_base);
   memset(g,0,sizeof(*g));
@@ -337,16 +349,20 @@ static void SetPro_HVNA_GpuArchiveHalo(Type_DS_VNA *****DS_VNA, int Original_Mc_
     SetPro_gpu_abort("Set_ProExpn_VNA GPU: halo index out of range.");
   }
 
-#pragma omp parallel for schedule(dynamic)
+  /* serial: the rows go through the shared bounce slot into the device
+     archive, and acc_memcpy_to_device is not called from inside an OpenMP
+     region anywhere else in this file either */
   for (k=0; k<=FNAN[Gc_AN]; k++){
     size_t base = g->halo_off[g->halo_base[halo_idx]+k];
     int i;
 
     for (i=0; i<tno; i++){
-      memcpy(g->halo + base + (size_t)i*(size_t)g->num_proj,
+      memcpy(g->bounce + (size_t)i*(size_t)g->num_proj,
              DS_VNA[0][Matomnum+1][k][i],
              sizeof(float)*(size_t)g->num_proj);
     }
+    acc_memcpy_to_device(g->halo_dev + base, g->bounce,
+                         sizeof(float)*(size_t)tno*(size_t)g->num_proj);
   }
 }
 
@@ -444,39 +460,30 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
   }
 
   {
-    float *flat = g->flat;
-    float *halo = g->halo;
+    const float *flat = g->flat_dev;
+    const float *halo = g->halo_dev;
     double *ene = g->ene;
     int *l2p1 = g->l2p1;
-    size_t flat_len = 0;
-    size_t halo_len = (g->halo_count==0 ? 1 : g->halo_count);
     size_t ene_len = (size_t)SpeciesNum*(size_t)num_rvna;
     const int nitems_c = nitems;
     const size_t kslots_c = (size_t)(kslots==0 ? 1 : kslots);
     const size_t out_c = out_count;
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      int Gc_AN = M2G[Mc_AN];
-      flat_len += (size_t)(FNAN[Gc_AN]+1)
-                *(size_t)Spe_Total_NO[WhatSpecies[Gc_AN]]*(size_t)num_proj;
-    }
-    if (flat_len==0) flat_len = 1;
 
 #pragma acc data copyin(item_koff[0:nitems_c], item_kn[0:nitems_c], \
                         item_tnoC[0:nitems_c], item_tnoH[0:nitems_c], \
                         item_out[0:nitems_c], \
                         krowA[0:kslots_c], krowB[0:kslots_c], \
                         krow_halo[0:kslots_c], krow_ene[0:kslots_c], \
-                        halo[0:halo_len], ene[0:ene_len], l2p1[0:num_rvna]) \
-                 copyout(out[0:out_c]) \
-                 present(flat[0:flat_len])
+                        ene[0:ene_len], l2p1[0:num_rvna]) \
+                 copyout(out[0:out_c])
     {
 #pragma acc parallel loop gang vector_length(128) \
+    deviceptr(flat, halo) \
     present(item_koff[0:nitems_c], item_kn[0:nitems_c], \
             item_tnoC[0:nitems_c], item_tnoH[0:nitems_c], item_out[0:nitems_c], \
             krowA[0:kslots_c], krowB[0:kslots_c], krow_halo[0:kslots_c], \
-            krow_ene[0:kslots_c], halo[0:halo_len], ene[0:ene_len], \
-            l2p1[0:num_rvna], flat[0:flat_len], out[0:out_c])
+            krow_ene[0:kslots_c], ene[0:ene_len], \
+            l2p1[0:num_rvna], out[0:out_c])
       for (int pp=0; pp<nitems_c; pp++){
         const int tnoC = item_tnoC[pp];
         const int tnoH = item_tnoH[pp];
