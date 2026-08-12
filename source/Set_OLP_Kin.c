@@ -61,10 +61,33 @@ static int SetOLPKinRadialGpuEnabled(void)
 /* Spherical-Bessel table cache keyed on the exact pair distance r. In
    crystalline systems many pairs share the same r bit pattern, and the
    tables depend only on (r, Lmax, k-grid), so a hit reproduces the computed
-   values exactly. Misses just compute as before; the cache never needs
-   geometry invalidation because the key is the exact input. Used only when
-   OpenMP runs single-threaded (plain static storage). */
-#define OLPKIN_BESSEL_CACHE_MAX 1024
+   values exactly. Misses just compute as before. Used only when OpenMP runs
+   single-threaded (plain static storage).
+
+   The cache lives for one Set_OLP_Kin call and is freed at its end: all
+   real hits come from pairs of the same geometry, while keeping it across
+   MD steps held the full table (~130 KB per entry, per rank) for the whole
+   run and, because the exact-r keys of a moved geometry never match again,
+   an insert-only cache would stay full of dead keys from step one onward.
+
+   The entry limit bounds the transient footprint; the high-frequency
+   distances of a crystal (the near shells) are also the first ones seen,
+   so a modest limit keeps the hits that matter. Override with
+   OPENMX_OLPKIN_BESSEL_CACHE_MAX (0 disables the cache). */
+#define OLPKIN_BESSEL_CACHE_DEFAULT 128
+
+static int OLPKin_Bessel_CacheMax(void)
+{
+  static int cached = -1;
+
+  if (cached < 0) {
+    const char *value = getenv("OPENMX_OLPKIN_BESSEL_CACHE_MAX");
+
+    cached = (value != NULL && value[0] != '\0') ? atoi(value) : OLPKIN_BESSEL_CACHE_DEFAULT;
+    if (cached < 0) cached = 0;
+  }
+  return cached;
+}
 
 static double *OLPKin_bessel_keys = NULL;
 static int *OLPKin_bessel_key_lmax = NULL;
@@ -95,9 +118,25 @@ static const double *OLPKin_Bessel_Lookup(double r, int lmax)
   return NULL;
 }
 
+static void OLPKin_Bessel_Reset(void)
+{
+  free(OLPKin_bessel_keys);
+  free(OLPKin_bessel_key_lmax);
+  free(OLPKin_bessel_tab);
+  OLPKin_bessel_keys = NULL;
+  OLPKin_bessel_key_lmax = NULL;
+  OLPKin_bessel_tab = NULL;
+  OLPKin_bessel_count = 0;
+  OLPKin_bessel_cap = 0;
+  OLPKin_bessel_lmax = -1;
+  OLPKin_bessel_gdim = 0;
+}
+
 static double *OLPKin_Bessel_Insert(double r, int lmax)
 {
-  if (OLPKin_bessel_count >= OLPKIN_BESSEL_CACHE_MAX) {
+  const int cache_max = OLPKin_Bessel_CacheMax();
+
+  if (OLPKin_bessel_count >= cache_max) {
     return NULL;
   }
 
@@ -107,7 +146,7 @@ static double *OLPKin_Bessel_Insert(double r, int lmax)
     int *new_lmax;
     double *new_tab;
 
-    if (new_cap > OLPKIN_BESSEL_CACHE_MAX) new_cap = OLPKIN_BESSEL_CACHE_MAX;
+    if (new_cap > cache_max) new_cap = cache_max;
     new_keys = (double*)realloc(OLPKin_bessel_keys, sizeof(double) * (size_t)new_cap);
     new_lmax = (int*)realloc(OLPKin_bessel_key_lmax, sizeof(int) * (size_t)new_cap);
     new_tab = (double*)realloc(OLPKin_bessel_tab, sizeof(double) * (size_t)new_cap * OLPKin_Bessel_Stride());
@@ -1175,6 +1214,10 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
             OLPKin_bessel_hits, OLPKin_bessel_misses);
     memset(&SetOLP_prof, 0, sizeof(SetOLP_prof));
   }
+
+  /* the exact-r keys cannot match once the geometry moves, so the table's
+     useful life ends with this call; give the memory back */
+  OLPKin_Bessel_Reset();
 
   free(OneD2h_AN);
   free(OneD2Mc_AN);
