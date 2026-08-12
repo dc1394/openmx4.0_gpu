@@ -1075,6 +1075,36 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                 NVHPC freelist reuses exact sizes only), and the node ranks
                 sharing the device run it out of memory. ---- */
 
+        /* ---- reuse Set_Hamiltonian's device-resident orbital table ----
+           The FNAN staging buffer packed below (fn_buf) is byte-for-byte the
+           pair-major table Set_Hamiltonian already keeps resident on the
+           device as orbs1buf (same (pair, Nog*NO1 + j) layout).  When that
+           residency is still up at force time, read it in place instead of
+           re-packing ~160 MB/rank on the host and re-uploading it: the probe
+           never triggers a build, and ranks whose Set_Hamiltonian ran on the
+           CPU simply keep the staging path. */
+        SetHamiltonianMETables f3_seth = {0};
+        int f3_use_seth_orbs1 = 0;
+        int* seth_pair_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 2), __FILE__, __LINE__);
+        {
+            const int f3_cnt_kind = (Cnt_switch == 1) ? 1 : 0;
+
+            if (Set_Hamiltonian_MatrixElementsTables_Ready(f3_cnt_kind) &&
+                Set_Hamiltonian_GetMatrixElementsTables(f3_cnt_kind, &f3_seth) &&
+                f3_seth.orbs1_resident) {
+                int base = 0;
+                int mc0;
+
+                for (mc0 = 1; mc0 <= Matomnum; mc0++) {
+                    seth_pair_base[mc0] = base;
+                    base += FNAN[M2G[mc0]] + 1;
+                }
+                if (base == f3_seth.pair_count) {
+                    f3_use_seth_orbs1 = 1;
+                }
+            }
+        }
+
         int n_chunks = 0;
         int* chunk_bound = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 2), __FILE__, __LINE__);
         int* plan_pairs = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 1), __FILE__, __LINE__);
@@ -1110,7 +1140,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     a_pairs++;
                     a_gl += nolg;
                     a_dm += (size_t)spins * (size_t)NO0 * (size_t)NO1;
-                    if (G2ID[Gh_AN] != myid) a_fn += nolg * (size_t)NO1;
+                    if (!f3_use_seth_orbs1 && G2ID[Gh_AN] != myid) a_fn += nolg * (size_t)NO1;
                 }
 
                 chunk_bytes = (gl_count + a_gl) * 2 * sizeof(int)
@@ -1254,13 +1284,25 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                         pm[p].glist_off = (int)gl_pos;
                         pm[p].n_olg = nolg;
                         pm[p].orb1_fnan = is_fnan;
-                        pm[p].orb1_base = is_fnan ? fn_pos : orb_off[Mh_AN];
+                        if (is_fnan && f3_use_seth_orbs1) {
+                            const int P = seth_pair_base[mc] + h_AN;
+
+                            /* configuration drift here would silently read the
+                               wrong orbitals, so verify the pair identity */
+                            if (f3_seth.pair_Mc_AN[P] != mc || f3_seth.pair_h_AN[P] != h_AN ||
+                                f3_seth.pair_NO1[P] != NO1 || f3_seth.pair_NOLG[P] != nolg) {
+                                Force3_gpu_abort("Force3 GPU trace: Set_Hamiltonian pair table mismatch.");
+                            }
+                            pm[p].orb1_base = f3_seth.pair_orbs1_offset[P];
+                        } else {
+                            pm[p].orb1_base = is_fnan ? fn_pos : orb_off[Mh_AN];
+                        }
                         pm[p].dm_off = dm_pos;
                         pm[p].atom = mc;
                         pm_h[p] = h_AN;
 
                         gl_pos += (size_t)nolg;
-                        if (is_fnan) fn_pos += (size_t)nolg * (size_t)NO1;
+                        if (is_fnan && !f3_use_seth_orbs1) fn_pos += (size_t)nolg * (size_t)NO1;
                         dm_pos += (size_t)spins * (size_t)NO0 * (size_t)NO1;
                         p++;
                     }
@@ -1282,7 +1324,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     memcpy(gl1 + pm[p].glist_off, GListTAtoms1[mc2][h2], sizeof(int) * (size_t)nolg);
                     memcpy(gl2 + pm[p].glist_off, GListTAtoms2[mc2][h2], sizeof(int) * (size_t)nolg);
 
-                    if (pm[p].orb1_fnan) {
+                    if (pm[p].orb1_fnan && !f3_use_seth_orbs1) {
                         int Nog, j;
 
                         for (Nog = 0; Nog < nolg; Nog++) {
@@ -1318,7 +1360,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     acc_memcpy_to_device(chunk_arena + o_pm,  pm,     sizeof(Force3GpuPair) * npairs_u);
                     acc_memcpy_to_device(chunk_arena + o_gl1, gl1,    sizeof(int) * gl_u);
                     acc_memcpy_to_device(chunk_arena + o_gl2, gl2,    sizeof(int) * gl_u);
-                    acc_memcpy_to_device(chunk_arena + o_fn,  fn_buf, sizeof(float) * fn_u);
+                    if (!f3_use_seth_orbs1) {
+                        acc_memcpy_to_device(chunk_arena + o_fn, fn_buf, sizeof(float) * fn_u);
+                    }
                     acc_memcpy_to_device(chunk_arena + o_dm,  dm_buf, sizeof(double) * dm_u);
                 }
 
@@ -1691,7 +1735,12 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                         const Force3GpuPair* pm = (const Force3GpuPair*)(const void*)(chunk_arena + o_pm);
                         const int* gl1 = (const int*)(const void*)(chunk_arena + o_gl1);
                         const int* gl2 = (const int*)(const void*)(chunk_arena + o_gl2);
-                        const float* fn_buf = (const float*)(const void*)(chunk_arena + o_fn);
+                        /* with the Set_Hamiltonian reuse the FNAN orbitals are
+                           read from the resident orbs1buf device copy; the
+                           pair orb1_base offsets were rewritten accordingly */
+                        const float* fn_buf = f3_use_seth_orbs1
+                            ? (const float*)acc_deviceptr((void*)f3_seth.orbs1buf)
+                            : (const float*)(const void*)(chunk_arena + o_fn);
                         const double* dm_buf = (const double*)(const void*)(chunk_arena + o_dm);
                         double* pair_f = (double*)(void*)(chunk_arena + o_pf);
 
@@ -1808,6 +1857,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         free(plan_gl);
         free(plan_pairs);
         free(chunk_bound);
+        free(seth_pair_base);
     }
 
     free(sp_nb);

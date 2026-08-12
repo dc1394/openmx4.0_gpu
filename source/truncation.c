@@ -3291,22 +3291,32 @@ double truncation(int MD_iter,int UCell_flag)
       }
     }
 
-    /* Orbs_Grid */
+    /* Orbs_Grid.  The rows of one atom live in a single flat block and the
+       row pointers index into it: a per-row malloc of 36-168 bytes loses
+       ~40% to allocator headers and rounding, which at millions of overlap
+       points costs GiB per node.  Row 0 owns the block, so the frees release
+       Orbs_Grid[Mc_AN][0] and the pointer array only. */
     size_Orbs_Grid = 0;
-    Orbs_Grid = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*(Matomnum+1)); 
-    Orbs_Grid[0] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1); 
-    Orbs_Grid[0][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1); 
+    Orbs_Grid = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*(Matomnum+1));
+    Orbs_Grid[0] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1);
+    Orbs_Grid[0][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1);
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
       Gc_AN = F_M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
-      /* AITUNE */
-      Orbs_Grid[Mc_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*GridN_Atom[Gc_AN]); 
-      int Nc;
-      for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
-        Orbs_Grid[Mc_AN][Nc] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*Spe_Total_NO[Cwan]); 
-	size_Orbs_Grid += Spe_Total_NO[Cwan];
+      {
+        int Nc;
+        int nrows = GridN_Atom[Gc_AN];
+        int rowlen = Spe_Total_NO[Cwan];
+        Type_Orbs_Grid *blk;
+
+        Orbs_Grid[Mc_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*(nrows==0 ? 1 : nrows));
+        blk = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*((size_t)(nrows==0 ? 1 : nrows)*(size_t)rowlen));
+        Orbs_Grid[Mc_AN][0] = blk;
+        for (Nc=0; Nc<nrows; Nc++){
+          Orbs_Grid[Mc_AN][Nc] = blk + (size_t)Nc*(size_t)rowlen;
+          size_Orbs_Grid += rowlen;
+        }
       }
-      /* AITUNE */
     }
 
     /* COrbs_Grid */
@@ -3347,19 +3357,26 @@ double truncation(int MD_iter,int UCell_flag)
 	  Hwan = WhatSpecies[Gh_AN];
           NO1 = Spe_Total_NO[Hwan];
 
-          /* AITUNE */
-	  Orbs_Grid_FNAN[Mc_AN][h_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*(NumOLG[Mc_AN][h_AN]+1)); 
-	  int Nc;
-	  for (Nc=0; Nc<(NumOLG[Mc_AN][h_AN]+1); Nc++){
-	    Orbs_Grid_FNAN[Mc_AN][h_AN][Nc] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*NO1); 
-	    size_Orbs_Grid_FNAN += NO1;
+          /* flat block per (Mc_AN,h_AN); row 0 owns it (see Orbs_Grid above).
+             The per-row mallocs of 36-168 bytes here used to cost ~40% in
+             allocator overhead -- a couple of GiB per node at this scale. */
+	  {
+	    int Nc;
+	    int nrows = NumOLG[Mc_AN][h_AN] + 1;
+	    Type_Orbs_Grid *blk;
+
+	    Orbs_Grid_FNAN[Mc_AN][h_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*nrows);
+	    blk = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*((size_t)nrows*(size_t)NO1));
+	    for (Nc=0; Nc<nrows; Nc++){
+	      Orbs_Grid_FNAN[Mc_AN][h_AN][Nc] = blk + (size_t)Nc*(size_t)NO1;
+	      size_Orbs_Grid_FNAN += NO1;
+	    }
 	  }
-          /* AITUNE */
 	}
 
         else {
-          Orbs_Grid_FNAN[Mc_AN][h_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1); 
-          Orbs_Grid_FNAN[Mc_AN][h_AN][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1); 
+          Orbs_Grid_FNAN[Mc_AN][h_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1);
+          Orbs_Grid_FNAN[Mc_AN][h_AN][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1);
           size_Orbs_Grid_FNAN += 1;
         }
       }
@@ -8143,24 +8160,13 @@ void free_arrays_truncation0()
       free(Vxc_Grid_D);
     }
 
-    /* Orbs_Grid */
+    /* Orbs_Grid: the rows of one atom share a flat block owned by row 0 */
 
     for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        num = 1;
-      }
-      else{
-        Gc_AN = F_M2G[Mc_AN];
-        num = GridN_Atom[Gc_AN];
-      }
-
-      for (Nc=0; Nc<num; Nc++){
-        free(Orbs_Grid[Mc_AN][Nc]);
-      }
-      free(Orbs_Grid[Mc_AN]); 
+      free(Orbs_Grid[Mc_AN][0]);
+      free(Orbs_Grid[Mc_AN]);
     }
-    free(Orbs_Grid); 
+    free(Orbs_Grid);
 
     /* COrbs_Grid */
 
@@ -8184,7 +8190,7 @@ void free_arrays_truncation0()
       free(COrbs_Grid);
     }
 
-    /* Orbs_Grid_FNAN */
+    /* Orbs_Grid_FNAN: each (Mc_AN,h_AN) block is owned by its row 0 */
 
     for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
 
@@ -8194,24 +8200,11 @@ void free_arrays_truncation0()
       }
       else{
 
-	Gc_AN = M2G[Mc_AN];    
+	Gc_AN = M2G[Mc_AN];
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  Gh_AN = natn[Gc_AN][h_AN];
-
-	  if (G2ID[Gh_AN]!=myid){
-            num = NumOLG[Mc_AN][h_AN] + 1;  
-	  }
-	  else {
-            num = 1;
-	  }
-
-	  for (Nc=0; Nc<num; Nc++){
-	    free(Orbs_Grid_FNAN[Mc_AN][h_AN][Nc]);
-	  }
+	  free(Orbs_Grid_FNAN[Mc_AN][h_AN][0]);
 	  free(Orbs_Grid_FNAN[Mc_AN][h_AN]);
-
 	} /* h_AN */
       } /* else */
 

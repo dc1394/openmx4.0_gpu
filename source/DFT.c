@@ -2409,9 +2409,12 @@ double DFT(int MD_iter, int Cnt_Now)
                calculation of forces
   ****************************************************/
 
-  /* return Set_Hamiltonian's device-resident tables so the force batches
-     measure the true free GPU memory */
-  Set_Hamiltonian_Release_OpenACC_DeviceCache();
+  /* The solver/mixing device caches go back before the forces so the force
+     batches measure the true free GPU memory.  Set_Hamiltonian's resident
+     orbital tables deliberately stay up through Force(): Force3's GPU trace
+     reads the FNAN orbitals straight from the resident orbs1buf instead of
+     re-packing ~160 MB/rank on the host, and its chunk planner divides
+     whatever memory is left, so keeping the tables only shrinks the chunks. */
   Divide_Conquer_Release_GPU_SCache();
   Krylov_Release_GPU_KUCache();
   Cluster_DFT_Col_Release_GPU_Solver();
@@ -2419,10 +2422,13 @@ double DFT(int MD_iter, int Cnt_Now)
   Mixing_H_Release_GPU();
 
   if (!orbitalOpt_Force_Skip) time7 += Force(H0,DS_NL,OLP,DM[0],EDM);
-  
+
   if (scf_stress_flag){
-    Stress(H0,DS_NL,OLP,DM[0],EDM); 
+    Stress(H0,DS_NL,OLP,DM[0],EDM);
   }
+
+  /* now the force batches are done with the resident tables */
+  Set_Hamiltonian_Release_OpenACC_DeviceCache();
 
   /*
   if (SpinP_switch==3) {

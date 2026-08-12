@@ -624,10 +624,8 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
     if (myid == Host_ID) {
         size_t evec_count = (size_t)n2 * (size_t)n2;
         size_t max_send_count = (size_t)max_local_states * (size_t)n2;
-
-        if (dense_evec_on_device) {
-#pragma acc update self(dense_evec[0 : evec_count])
-        }
+        dcomplex *panel_dev = NULL;
+        int pack_on_device = dense_evec_on_device;
 
         if (0 < max_send_count) {
             if (max_send_count > (size_t)INT_MAX / 2u) {
@@ -637,20 +635,54 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
                                                             "GPUSOLVER dense eigenvector send buffer");
         }
 
+        if (pack_on_device && 0 < max_send_count) {
+            /* pack each destination's state-major panel on the device so the
+               host never materialises the full 16*n2*n2 eigenvector block
+               (2.8 GiB at n2=13312) -- only one panel travels at a time */
+            panel_dev = (dcomplex *)acc_malloc(sizeof(dcomplex) * max_send_count);
+            if (panel_dev == NULL) {
+                pack_on_device = 0;
+            }
+        }
+
+        if (dense_evec_on_device && !pack_on_device) {
+            /* device momentarily full: fall back to the old full readback */
+#pragma acc update self(dense_evec[0 : evec_count])
+        }
+
         for (int ID = 0; ID < numprocs; ID++) {
             int states = ie2[ID] - is2[ID] + 1;
             dcomplex *target = (ID == Host_ID) ? EVec1 : sendbuf;
 
             if (states <= 0) continue;
 
-            for (int k = 0; k < states; k++) {
-                int state = is2[ID] + k - 1;
+            if (pack_on_device) {
+                const int is_c = is2[ID];
+                const int states_c = states;
+                const int n2_c = n2;
+                dcomplex *panel = panel_dev;
 
-                for (int basis = 0; basis < n2; basis++) {
-                    /* Repack the dense column-major gpuSOLVER vectors into the
-                       state-major EVec1 blocks used by the ELPA/ScaLAPACK DM path. */
-                    target[(size_t)k * (size_t)n2 + (size_t)basis] =
-                        dense_evec[(size_t)state + (size_t)basis * (size_t)n2];
+#pragma acc parallel loop gang vector_length(128) present(dense_evec[0 : evec_count]) deviceptr(panel)
+                for (int k = 0; k < states_c; k++) {
+#pragma acc loop vector
+                    for (int basis = 0; basis < n2_c; basis++) {
+                        panel[(size_t)k * (size_t)n2_c + (size_t)basis] =
+                            dense_evec[(size_t)(is_c + k - 1) + (size_t)basis * (size_t)n2_c];
+                    }
+                }
+                acc_memcpy_from_device(target, panel_dev,
+                                       sizeof(dcomplex) * (size_t)states * (size_t)n2);
+            }
+            else {
+                for (int k = 0; k < states; k++) {
+                    int state = is2[ID] + k - 1;
+
+                    for (int basis = 0; basis < n2; basis++) {
+                        /* Repack the dense column-major gpuSOLVER vectors into the
+                           state-major EVec1 blocks used by the ELPA/ScaLAPACK DM path. */
+                        target[(size_t)k * (size_t)n2 + (size_t)basis] =
+                            dense_evec[(size_t)state + (size_t)basis * (size_t)n2];
+                    }
                 }
             }
 
@@ -659,6 +691,8 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
                 MPI_Send(sendbuf, (int)(send_count * 2u), MPI_DOUBLE, ID, tag, mpi_comm_level1);
             }
         }
+
+        if (panel_dev != NULL) acc_free(panel_dev);
     }
     else {
         int states = ie2[myid] - is2[myid] + 1;

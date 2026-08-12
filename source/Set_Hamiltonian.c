@@ -147,6 +147,10 @@ typedef struct {
        device copy became resident; the data must be repacked from the
        jagged sources before any host-side upload can use it again */
     int host_discarded;
+    /* classes whose device copy was filled directly by the Ensure pack
+       (through the bounce slab) so the multi-GiB host arrays were never
+       written at all; a subset of host_discarded */
+    int device_filled;
     int cnt_kind;
     int spin_count;
     int pair_count;
@@ -191,7 +195,8 @@ static void Set_Hamiltonian_MatrixElements_ResidentClassBytes(int Cnt_kind, int 
 static size_t Set_Hamiltonian_MatrixElements_TransientBytes(const SetHamiltonianMatrixElementsCache *cache,
                                                             int myid);
 static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(int Cnt_kind,
-                                                                                              int myid);
+                                                                                              int myid,
+                                                                                              int direct_mask);
 static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work,
                                                             int Cnt_kind, int myid);
 static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work);
@@ -630,9 +635,21 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
                 }
             }
             else if (Solver == 3) {
-                /* Band solvers publish their full k-concurrency need from
-                   the first diagonalization on; wait for that number
-                   instead of claiming memory the k-owners may need. */
+                /* Band solvers publish their full k-concurrency need only
+                   from the first diagonalization on.  Deferring admission
+                   until then used to force the SCF-1 build through the
+                   full host pack -- the multi-GiB transient that OOMs
+                   reduced-node runs -- so admit provisionally against half
+                   of what is left above the legacy floor.  When the real
+                   need arrives next iteration, the release_resident path
+                   claws the memory back if it does not fit. */
+                unsigned long long floor_bytes =
+                    (unsigned long long)Set_Hamiltonian_GpuResidentFloorBytes(0);
+
+                if (floor_bytes <= group_free) {
+                    budget = (group_free - floor_bytes) / 2ULL;
+                    have_budget = 1;
+                }
             }
             else {
                 /* The cluster diagonalization does not publish its need, so
@@ -729,6 +746,47 @@ static void Set_Hamiltonian_ResidentMaskLabel(int mask, char *buf, size_t buf_le
     if (buf[0] == '\0') snprintf(buf, buf_len, "none");
 }
 
+/* Streaming writer used by the pack-direct path of the Ensure cache build:
+   values are staged through a small slab and flushed with
+   acc_memcpy_to_device into the enter-data-created device buffer, so the
+   multi-GiB host array is never written (its pages stay uncommitted).  This
+   is what keeps the SCF-1 table build off the host: the packed tables are
+   the node's whole-system orbital data, ~16 GiB/node for the 650-atom case
+   and ~47 GiB on a 512-atom single node, which is exactly what used to OOM
+   the reduced-node runs. */
+typedef struct {
+    char  *slab;
+    size_t cap;
+    size_t fill;
+    char  *dev_base;
+    size_t dev_off;
+} SetHamiltonianDirectWriter;
+
+static void Set_Hamiltonian_DW_Flush(SetHamiltonianDirectWriter *w)
+{
+    if (w->fill != 0) {
+        acc_memcpy_to_device(w->dev_base + w->dev_off, w->slab, w->fill);
+        w->dev_off += w->fill;
+        w->fill = 0;
+    }
+}
+
+static void Set_Hamiltonian_DW_Push(SetHamiltonianDirectWriter *w, const void *src, size_t bytes)
+{
+    const char *s = (const char *)src;
+
+    while (bytes != 0) {
+        size_t room = w->cap - w->fill;
+        size_t take = (bytes < room) ? bytes : room;
+
+        memcpy(w->slab + w->fill, s, take);
+        w->fill += take;
+        s += take;
+        bytes -= take;
+        if (w->fill == w->cap) Set_Hamiltonian_DW_Flush(w);
+    }
+}
+
 /* Return the physical pages of a staging buffer to the kernel while keeping
    its virtual range (the OpenACC present table stays keyed on it).  Used for
    buffers whose only reader is the device once their copy is resident: the
@@ -817,22 +875,35 @@ static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan 
     if (add_mask == 0 || pair_count <= 0) return;
 
     if (add_mask & (1 << SETH_RES_ORBS1)) {
+        if (cache->device_filled & (1 << SETH_RES_ORBS1)) {
+            /* the Ensure pack already created and filled the device copy;
+               the host pages were never written */
+        } else {
 #pragma acc enter data copyin(orbs1buf[0:total_orbs1])
-        /* device copy is now the only reader until release; drop the host
-           pages (the virtual range stays as the present-table key) */
-        Set_Hamiltonian_ME_DiscardHostPages(orbs1buf, sizeof(Type_Orbs_Grid) * total_orbs1);
-        cache->host_discarded |= (1 << SETH_RES_ORBS1);
+            /* device copy is now the only reader until release; drop the host
+               pages (the virtual range stays as the present-table key) */
+            Set_Hamiltonian_ME_DiscardHostPages(orbs1buf, sizeof(Type_Orbs_Grid) * total_orbs1);
+            cache->host_discarded |= (1 << SETH_RES_ORBS1);
+        }
     }
     if (add_mask & (1 << SETH_RES_ORBS0)) {
+        if (cache->device_filled & (1 << SETH_RES_ORBS0)) {
+            /* filled directly by Ensure */
+        } else {
 #pragma acc enter data copyin(orbs0buf[0:total_orbs0])
-        Set_Hamiltonian_ME_DiscardHostPages(orbs0buf, sizeof(Type_Orbs_Grid) * total_orbs0);
-        cache->host_discarded |= (1 << SETH_RES_ORBS0);
+            Set_Hamiltonian_ME_DiscardHostPages(orbs0buf, sizeof(Type_Orbs_Grid) * total_orbs0);
+            cache->host_discarded |= (1 << SETH_RES_ORBS0);
+        }
     }
     if (add_mask & (1 << SETH_RES_NOLG)) {
+        if (cache->device_filled & (1 << SETH_RES_NOLG)) {
+            /* filled directly by Ensure (nolg_Nc kept both copies) */
+        } else {
 #pragma acc enter data copyin(nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg])
-        /* nolg_Nc stays intact: Set_Density_Grid_GPU reads it on the host */
-        Set_Hamiltonian_ME_DiscardHostPages(nolg_MN, sizeof(int) * total_nolg);
-        cache->host_discarded |= (1 << SETH_RES_NOLG);
+            /* nolg_Nc stays intact: Set_Density_Grid_GPU reads it on the host */
+            Set_Hamiltonian_ME_DiscardHostPages(nolg_MN, sizeof(int) * total_nolg);
+            cache->host_discarded |= (1 << SETH_RES_NOLG);
+        }
     }
     if (add_mask & (1 << SETH_RES_META)) {
 #pragma acc enter data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count], pair_NOLG[0:pair_count],                    \
@@ -905,6 +976,10 @@ static void Set_Hamiltonian_ME_ReleaseDeviceCache(int repack_host)
         acc_clear_freelists();
     }
     cache->resident_mask = 0;
+    /* the device copies are gone; whether they were filled by copyin or by
+       the direct pack no longer matters (the repack below rebuilds any
+       missing host content from the jagged sources) */
+    cache->device_filled = 0;
 
     if (repack_host && cache->host_discarded != 0) {
         int myid;
@@ -942,7 +1017,7 @@ int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables
     if (Matomnum <= 0) return 0;
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    cache = Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
+    cache = Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, 0);
     if (!cache->ready || cache->pair_count <= 0) return 0;
 
     tables->pair_count = cache->pair_count;
@@ -1673,7 +1748,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            all selected ranks before serializing access to the physical GPU;
            otherwise its first-use cost is repeated on the critical path of
            every wave. */
-        Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
+        Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
         for (int turn = 0; turn < plan.turns; turn++) {
@@ -1688,7 +1763,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
     }
     else if (plan.use_gpu && plan.turn == 0) {
-        Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
+        Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
         Set_Hamiltonian_Run_OpenACC_MatrixElements(&work);
@@ -2163,13 +2238,23 @@ static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double **
     free(pair_Mc_AN);
 }
 
+/* direct_mask: SETH_RES_* classes the caller's turn plan is about to admit
+   as device-resident.  For those, the orbital/grid-index payload is packed
+   straight into enter-data-created device buffers through a bounce slab and
+   the host arrays are never written (META and nolg_Nc always stay host,
+   they are host-read by Finish and Set_Density_Grid_GPU).  Pass 0 when no
+   plan exists (the lazy Get...Tables build): the classic host pack runs. */
 static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(int Cnt_kind,
-                                                                                              int myid)
+                                                                                              int myid,
+                                                                                              int direct_mask)
 {
     SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
     int spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
     int pair_count = 0;
+    int direct = 0;
     size_t total_h = 0, total_nolg = 0, total_orbs0 = 0, total_orbs1 = 0;
+    SetHamiltonianDirectWriter w_orbs0 = {0}, w_orbs1 = {0}, w_mn = {0}, w_nc = {0};
+    char *slabs = NULL;
 
     if (Cnt_kind != 0 && Cnt_kind != 1) {
         Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA_OpenACC", "Cnt_kind must be 0 or 1", myid);
@@ -2233,6 +2318,41 @@ static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixE
     cache->orbs1buf =
         (Type_Orbs_Grid *)Set_Hamiltonian_malloc(sizeof(Type_Orbs_Grid) * total_orbs1, "openacc orbs1buf", myid);
 
+    direct = (pair_count > 0)
+                 ? (direct_mask & ((1 << SETH_RES_ORBS1) | (1 << SETH_RES_ORBS0) | (1 << SETH_RES_NOLG)))
+                 : 0;
+    if (direct != 0) {
+        Type_Orbs_Grid *orbs0buf = cache->orbs0buf;
+        Type_Orbs_Grid *orbs1buf = cache->orbs1buf;
+        int *nolg_MN = cache->nolg_MN;
+        int *nolg_Nc = cache->nolg_Nc;
+        const size_t slab_cap = (size_t)4 * 1024 * 1024;
+
+        slabs = (char *)Set_Hamiltonian_malloc(slab_cap * 4, "pack-direct slabs", myid);
+
+        if (direct & (1 << SETH_RES_ORBS1)) {
+#pragma acc enter data create(orbs1buf[0:total_orbs1])
+            w_orbs1.slab = slabs;
+            w_orbs1.cap = slab_cap;
+            w_orbs1.dev_base = (char *)acc_deviceptr(orbs1buf);
+        }
+        if (direct & (1 << SETH_RES_ORBS0)) {
+#pragma acc enter data create(orbs0buf[0:total_orbs0])
+            w_orbs0.slab = slabs + slab_cap;
+            w_orbs0.cap = slab_cap;
+            w_orbs0.dev_base = (char *)acc_deviceptr(orbs0buf);
+        }
+        if (direct & (1 << SETH_RES_NOLG)) {
+#pragma acc enter data create(nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg])
+            w_mn.slab = slabs + 2 * slab_cap;
+            w_mn.cap = slab_cap;
+            w_mn.dev_base = (char *)acc_deviceptr(nolg_MN);
+            w_nc.slab = slabs + 3 * slab_cap;
+            w_nc.cap = slab_cap;
+            w_nc.dev_base = (char *)acc_deviceptr(nolg_Nc);
+        }
+    }
+
     int pair = 0;
     total_h = 0;
     total_nolg = 0;
@@ -2244,10 +2364,20 @@ static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixE
         int central_NO0 = (Cnt_kind == 0) ? Spe_Total_NO[Cwan] : Spe_Total_CNO[Cwan];
         size_t central_orbs0_offset = total_orbs0;
 
-        for (int Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
-            for (int i = 0; i < central_NO0; i++) {
-                cache->orbs0buf[central_orbs0_offset + (size_t)Nc * (size_t)central_NO0 + (size_t)i] =
-                    Orbs_Grid[Mc_AN][Nc][i];
+        if (direct & (1 << SETH_RES_ORBS0)) {
+            /* Orbs_Grid rows are contiguous Type_Orbs_Grid, so a row is one
+               push into the device stream and the host orbs0buf pages stay
+               uncommitted */
+            for (int Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
+                Set_Hamiltonian_DW_Push(&w_orbs0, Orbs_Grid[Mc_AN][Nc],
+                                        sizeof(Type_Orbs_Grid) * (size_t)central_NO0);
+            }
+        } else {
+            for (int Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
+                for (int i = 0; i < central_NO0; i++) {
+                    cache->orbs0buf[central_orbs0_offset + (size_t)Nc * (size_t)central_NO0 + (size_t)i] =
+                        Orbs_Grid[Mc_AN][Nc][i];
+                }
             }
         }
         total_orbs0 += (size_t)GridN_Atom[Gc_AN] * (size_t)central_NO0;
@@ -2286,10 +2416,21 @@ static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixE
                 int Nh = GListTAtoms2[Mc_AN][h_AN][Nog];
                 Type_Orbs_Grid *orbs1 = (G2ID[Gh_AN] == myid) ? Orbs_Grid[Mh_AN][Nh] : Orbs_Grid_FNAN[Mc_AN][h_AN][Nog];
 
-                cache->nolg_MN[total_nolg + (size_t)Nog] = MN;
+                if (direct & (1 << SETH_RES_NOLG)) {
+                    Set_Hamiltonian_DW_Push(&w_mn, &MN, sizeof(int));
+                    Set_Hamiltonian_DW_Push(&w_nc, &Nc, sizeof(int));
+                } else {
+                    cache->nolg_MN[total_nolg + (size_t)Nog] = MN;
+                }
+                /* nolg_Nc always keeps a valid host copy: Set_Density_Grid_GPU
+                   reads it on the host when building its CSR tables */
                 cache->nolg_Nc[total_nolg + (size_t)Nog] = Nc;
-                for (int j = 0; j < NO1; j++) {
-                    cache->orbs1buf[total_orbs1 + (size_t)Nog * (size_t)NO1 + (size_t)j] = orbs1[j];
+                if (direct & (1 << SETH_RES_ORBS1)) {
+                    Set_Hamiltonian_DW_Push(&w_orbs1, orbs1, sizeof(Type_Orbs_Grid) * (size_t)NO1);
+                } else {
+                    for (int j = 0; j < NO1; j++) {
+                        cache->orbs1buf[total_orbs1 + (size_t)Nog * (size_t)NO1 + (size_t)j] = orbs1[j];
+                    }
                 }
             }
 
@@ -2298,6 +2439,36 @@ static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixE
             total_orbs1 += (size_t)NOLG * (size_t)NO1;
             pair++;
         }
+    }
+
+    if (direct != 0) {
+        if (direct & (1 << SETH_RES_ORBS1)) {
+            Set_Hamiltonian_DW_Flush(&w_orbs1);
+            if (w_orbs1.dev_off != sizeof(Type_Orbs_Grid) * total_orbs1) {
+                Set_Hamiltonian_abort("Ensure_OpenACC_MatrixElements_Cache",
+                                      "pack-direct orbs1 stream is out of step", myid);
+            }
+        }
+        if (direct & (1 << SETH_RES_ORBS0)) {
+            Set_Hamiltonian_DW_Flush(&w_orbs0);
+            if (w_orbs0.dev_off != sizeof(Type_Orbs_Grid) * total_orbs0) {
+                Set_Hamiltonian_abort("Ensure_OpenACC_MatrixElements_Cache",
+                                      "pack-direct orbs0 stream is out of step", myid);
+            }
+        }
+        if (direct & (1 << SETH_RES_NOLG)) {
+            Set_Hamiltonian_DW_Flush(&w_mn);
+            Set_Hamiltonian_DW_Flush(&w_nc);
+            if (w_mn.dev_off != sizeof(int) * total_nolg || w_nc.dev_off != sizeof(int) * total_nolg) {
+                Set_Hamiltonian_abort("Ensure_OpenACC_MatrixElements_Cache",
+                                      "pack-direct nolg stream is out of step", myid);
+            }
+        }
+        free(slabs);
+        /* the device copies are the only valid ones for these classes (for
+           NOLG only nolg_MN's host pages are unwritten; nolg_Nc stays valid) */
+        cache->device_filled = direct;
+        cache->host_discarded |= direct;
     }
 
     cache->ready = 1;
@@ -2319,7 +2490,7 @@ static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixE
     if (SetH_ProfileEnabled()) dtime(&start);
 
     SetHamiltonianMatrixElementsCache *cache =
-        Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid);
+        Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, 0);
     const int spin_count = cache->spin_count;
     const int pair_count = cache->pair_count;
     const size_t total_h = cache->total_h;

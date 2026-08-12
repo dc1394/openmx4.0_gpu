@@ -277,21 +277,12 @@ void array0()
     /* AITUNE */
     /* Orbs_Grid */
     for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        num = 1;
-      }
-      else{
-        Gc_AN = F_M2G[Mc_AN];
-        num = GridN_Atom[Gc_AN];
-      }
-
-      for (Nc=0; Nc<num; Nc++){
-        free(Orbs_Grid[Mc_AN][Nc]);
-      }
-      free(Orbs_Grid[Mc_AN]); 
+      /* the rows of one atom share a flat block owned by row 0
+         (see the allocation in truncation.c) */
+      free(Orbs_Grid[Mc_AN][0]);
+      free(Orbs_Grid[Mc_AN]);
     }
-    free(Orbs_Grid); 
+    free(Orbs_Grid);
 
     /* COrbs_Grid */
     if (Cnt_switch!=0){
@@ -327,25 +318,10 @@ void array0()
 	Gc_AN = M2G[Mc_AN];    
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  Gh_AN = natn[Gc_AN][h_AN];
-
-	  if (G2ID[Gh_AN]!=myid){
-
-	    Mh_AN = F_G2M[Gh_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    NO1 = Spe_Total_NO[Hwan];
-            num = NumOLG[Mc_AN][h_AN] + 1; /*AITUNE fix memory leak*/
-	  }
-	  else {
-            num = 1;
-	  }
-
-	  for (Nc=0; Nc<num; Nc++){  
-	    free(Orbs_Grid_FNAN[Mc_AN][h_AN][Nc]);
-	  }
+	  /* each (Mc_AN,h_AN) block is owned by its row 0
+	     (see the allocation in truncation.c) */
+	  free(Orbs_Grid_FNAN[Mc_AN][h_AN][0]);
 	  free(Orbs_Grid_FNAN[Mc_AN][h_AN]);
-
 	} /* h_AN */
       } /* else */
 

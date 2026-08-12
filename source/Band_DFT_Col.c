@@ -126,7 +126,9 @@ typedef struct
     dcomplex *         h_scale;
     dcomplex *         h_evec;
     int                h_evec_dim;
+    int                h_evec_cols;
     int                d_evec_dim;
+    int                d_evec_cols;
     dcomplex *         h_transformed_s;
     int                h_transformed_s_dim;
 } BandColGpuSolverCtx;
@@ -1597,6 +1599,7 @@ static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
     ctx->matrix_dim          = 0;
     ctx->scale_dim           = 0;
     ctx->d_evec_dim          = 0;
+    ctx->d_evec_cols         = 0;
     ctx->transformed_s_valid = 0;
     ctx->transformed_s_dim   = 0;
     ctx->d_work_bytes        = 0;
@@ -1622,33 +1625,46 @@ static void BandCol_GpuSolver_Destroy(void)
     BandCol_GpuSolver_ReleaseDeviceMemory();
     free(ctx->h_evec);
     free(ctx->h_transformed_s);
-    ctx->h_evec     = NULL;
-    ctx->h_evec_dim = 0;
+    ctx->h_evec      = NULL;
+    ctx->h_evec_dim  = 0;
+    ctx->h_evec_cols = 0;
     ctx->h_transformed_s     = NULL;
     ctx->h_transformed_s_dim = 0;
 }
 
-static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(dcomplex *evec_device, int n)
+/* Only the first maxn states of the (basis-major, stride n) eigenvector
+   matrix are ever consumed: the solver ran with range iu = maxn, and the DM
+   kernel reads k < nk = maxn.  Saving the n x maxn panel instead of the full
+   n x n matrix cuts both the owner-rank host buffer and the D2H/H2D round
+   trip by 1 - maxn/n (roughly 60% here). */
+static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(dcomplex *evec_device, int n, int maxn)
 {
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
-    size_t              matrix_count;
+    size_t              panel_count;
 
     if (evec_device == NULL) {
         BandCol_AbortWithMessage("GPUSOLVER device eigenvectors are not available in Band_DFT_Col.c.");
     }
+    if (maxn <= 0 || n < maxn) {
+        BandCol_AbortWithMessage("Invalid eigenvector panel width in Band_DFT_Col.c.");
+    }
 
-    matrix_count = (size_t)n * (size_t)n;
+    panel_count = (size_t)n * (size_t)maxn;
 
-    if (ctx->h_evec_dim < n) {
-        dcomplex *new_evec = (dcomplex *)realloc(ctx->h_evec, sizeof(dcomplex) * matrix_count);
+    if (ctx->h_evec_dim < n || ctx->h_evec_cols != maxn) {
+        dcomplex *new_evec = (dcomplex *)realloc(ctx->h_evec, sizeof(dcomplex) * panel_count);
         if (new_evec == NULL) {
             BandCol_AbortWithMessage("Failed to allocate host eigenvector buffer in Band_DFT_Col.c.");
         }
-        ctx->h_evec     = new_evec;
-        ctx->h_evec_dim = n;
+        ctx->h_evec      = new_evec;
+        ctx->h_evec_dim  = n;
+        ctx->h_evec_cols = maxn;
     }
 
-    wait_cudafunc(cudaMemcpy(ctx->h_evec, evec_device, sizeof(dcomplex) * matrix_count, cudaMemcpyDeviceToHost));
+    wait_cudafunc(cudaMemcpy2D(ctx->h_evec, sizeof(dcomplex) * (size_t)maxn,
+                               evec_device, sizeof(dcomplex) * (size_t)n,
+                               sizeof(dcomplex) * (size_t)maxn, (size_t)n,
+                               cudaMemcpyDeviceToHost));
     return ctx->h_evec;
 }
 
@@ -1657,29 +1673,32 @@ static dcomplex *BandCol_GpuSolver_HostEigenvectors(void)
     return BandCol_gpusolver_ctx.h_evec;
 }
 
-static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n)
+/* Re-uploads the n x maxn panel saved above; the consumer must index it with
+   stride maxn, not n. */
+static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n, int maxn)
 {
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
-    size_t              matrix_count;
+    size_t              panel_count;
 
-    if (n <= 0) {
+    if (n <= 0 || maxn <= 0) {
         BandCol_AbortWithMessage("Invalid eigenvector dimension in Band_DFT_Col.c.");
     }
-    if (ctx->h_evec == NULL || ctx->h_evec_dim < n) {
+    if (ctx->h_evec == NULL || ctx->h_evec_dim < n || ctx->h_evec_cols != maxn) {
         BandCol_AbortWithMessage("GPUSOLVER host eigenvectors are not available in Band_DFT_Col.c.");
     }
 
-    matrix_count = (size_t)n * (size_t)n;
+    panel_count = (size_t)n * (size_t)maxn;
 
-    if (ctx->d_evec_dim < n) {
+    if (ctx->d_evec_dim < n || ctx->d_evec_cols != maxn) {
         if (ctx->d_evec != NULL) {
             wait_cudafunc(cudaFree(ctx->d_evec));
         }
-        wait_cudafunc(cudaMalloc((void **)&ctx->d_evec, sizeof(dcomplex) * matrix_count));
-        ctx->d_evec_dim = n;
+        wait_cudafunc(cudaMalloc((void **)&ctx->d_evec, sizeof(dcomplex) * panel_count));
+        ctx->d_evec_dim  = n;
+        ctx->d_evec_cols = maxn;
     }
 
-    wait_cudafunc(cudaMemcpy(ctx->d_evec, ctx->h_evec, sizeof(dcomplex) * matrix_count, cudaMemcpyHostToDevice));
+    wait_cudafunc(cudaMemcpy(ctx->d_evec, ctx->h_evec, sizeof(dcomplex) * panel_count, cudaMemcpyHostToDevice));
     return ctx->d_evec;
 }
 
@@ -1742,8 +1761,9 @@ static void BandCol_GpuSolver_ClearHostEigenvectors(void)
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
 
     free(ctx->h_evec);
-    ctx->h_evec     = NULL;
-    ctx->h_evec_dim = 0;
+    ctx->h_evec      = NULL;
+    ctx->h_evec_dim  = 0;
+    ctx->h_evec_cols = 0;
 }
 
 static void BandCol_GpuSolver_Init(void)
@@ -3323,7 +3343,7 @@ diagonalize1:
                             (void)evec_device;
                         } else {
                             BANDCOL_PROF_T0(prof_t0);
-                            BandCol_GpuSolver_SaveDeviceEigenvectors(evec_device, n);
+                            BandCol_GpuSolver_SaveDeviceEigenvectors(evec_device, n, MaxN);
                             BANDCOL_PROF_ADD(evec_d2h, prof_t0);
                             BANDCOL_PROF_T0(prof_t0);
                             BandCol_ConstructCache_Reset();
@@ -4055,17 +4075,24 @@ diagonalize1:
 
 	                    if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
 	                        dcomplex *evec_device;
+	                        int       evec_stride;
 
                         if (BandCol_GpuPersistentDecide()) {
+                            /* d_tmp keeps the full basis-major matrix, stride n */
                             evec_device = BandCol_GpuSolver_DeviceEigenvectors();
+                            evec_stride = n;
                         } else {
+                            /* the round-tripped panel holds only the maxn
+                               consumed states, stride MaxN */
                             BANDCOL_PROF_T0(prof_t0);
-                            evec_device = BandCol_GpuSolver_UploadHostEigenvectors(n);
+                            evec_device = BandCol_GpuSolver_UploadHostEigenvectors(n, MaxN);
+                            evec_stride = MaxN;
                             BANDCOL_PROF_ADD(evec_h2d, prof_t0);
                         }
 
                         BANDCOL_PROF_T0(prof_t0);
-                        BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device, n,
+                        BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device,
+                                                                    evec_stride,
                                                                     MP, use_setham_packed_cache ? setham_order_GA : order_GA, EIGEN,
                                                                     BandCol_dm_workspace.OccWeight, CDM1, EDM1,
                                                                     size_H1, 1);

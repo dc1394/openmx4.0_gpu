@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <time.h>
 
 #define  measure_time  0
@@ -1489,6 +1490,19 @@ static void BandNonCol_ConstructCache_Ensure(int *order_GA, int *MP, int n)
     cache->phase_count = phase_count;
 }
 
+/* Return the physical pages of a device-resident staging buffer to the
+   kernel while keeping its virtual range (the present-table key).  Same
+   pattern as Set_Hamiltonian_ME_DiscardHostPages. */
+static void BandNonCol_DiscardHostPages(void *ptr, size_t bytes)
+{
+    const size_t page = 4096;
+    uintptr_t lo = ((uintptr_t)ptr + page - 1) & ~(uintptr_t)(page - 1);
+    uintptr_t hi = ((uintptr_t)ptr + bytes) & ~(uintptr_t)(page - 1);
+
+    if (ptr == NULL || hi <= lo) return;
+    (void)madvise((void *)lo, (size_t)(hi - lo), MADV_DONTNEED);
+}
+
 static void BandNonCol_ConstructCache_EnsureDenseDevice(void)
 {
     BandNonColConstructCache *cache = &BandNonCol_construct_cache;
@@ -1499,6 +1513,10 @@ static void BandNonCol_ConstructCache_EnsureDenseDevice(void)
         BandNonColConstructEntry *entries = cache->dense_entries;
         int dense_count = cache->dense_count;
 #pragma acc enter data copyin(entries[0 : dense_count])
+        /* only the device kernels read the entry table from here on (the
+           CPU construct fallback is unreachable once this path is live);
+           the host mirror is ~100 MB per k-owner, so give the pages back */
+        BandNonCol_DiscardHostPages(entries, sizeof(BandNonColConstructEntry)*(size_t)dense_count);
     }
 
     if (0<cache->phase_count){
@@ -2161,6 +2179,10 @@ typedef struct
 {
     int       valid;
     int       s_valid;
+    /* the solved eigenvectors stay device-resident (the host cs2 pages are
+       never written): the MPI scatter packs per-destination panels on the
+       device and the DM kernel's copyin degrades to a present hit */
+    int       cs2_on_device;
     int       n;
     int       n2;
     int       maxn;
@@ -2181,6 +2203,12 @@ static void BandNonCol_RootDenseWorkspace_Reset(void)
 {
     BandNonColRootDenseWorkspace *ws = &BandNonCol_root_dense_workspace;
 
+    if (ws->cs2_on_device && ws->cs2 != NULL){
+        dcomplex *cs2 = ws->cs2;
+        size_t n2n2 = (size_t)ws->n2*(size_t)ws->n2;
+
+#pragma acc exit data delete(cs2[0 : n2n2])
+    }
     free(ws->s_all);
     free(ws->h11);
     free(ws->h22);
@@ -2349,8 +2377,13 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
 
         BandNonCol_DenseWavefunctions_PresentOpenACC(n2,hs2,ss2,cs2);
 
-#pragma acc update self(cs2[0 : n2n2])
-#pragma acc exit data delete(hs2[0 : n2n2], ss2[0 : n2n2], cs2[0 : n2n2])
+        /* cs2 stays device-resident: the 16*n2*n2 host readback used to be
+           the biggest host-touched block of a k-owner rank, and both
+           consumers can work from the device copy (the scatter packs
+           per-destination panels there, the DM copyin turns into a
+           present hit).  The copy lives until the workspace reset. */
+        rdw->cs2_on_device = 1;
+#pragma acc exit data delete(hs2[0 : n2n2], ss2[0 : n2n2])
 #pragma acc exit data delete(ko[0 : n2 + 1])
         BandNonCol_ClearOpenAccFreelists();
     }
@@ -2377,7 +2410,8 @@ static void BandNonCol_MakeEigenRange(int id, int numprocs, int MaxN, int *is, i
 
 static void BandNonCol_DistributeDenseEvecGlobal(int active_world2, int n2, int MaxN, int myid0, int myworld2,
                                                  int *NPROCS_WD2, int *Comm_World_StartID2,
-                                                 int root, const dcomplex *dense_evec, dcomplex *EVec1)
+                                                 int root, const dcomplex *dense_evec, int evec_on_device,
+                                                 dcomplex *EVec1)
 {
     const int tag = 997;
     int target_np = NPROCS_WD2[active_world2];
@@ -2385,6 +2419,7 @@ static void BandNonCol_DistributeDenseEvecGlobal(int active_world2, int n2, int 
 
     if (myid0==root){
         dcomplex *send_buf = NULL;
+        dcomplex *panel_dev = NULL;
         int max_count = 0;
 
         for (int id=0; id<target_np; id++){
@@ -2404,6 +2439,21 @@ static void BandNonCol_DistributeDenseEvecGlobal(int active_world2, int n2, int 
             }
         }
 
+        if (evec_on_device && 0<max_count){
+            /* pack each destination's panel on the device: the host never
+               materialises the full 16*n2*n2 eigenvector block, only one
+               n2 x stride panel at a time */
+            panel_dev = (dcomplex*)acc_malloc(sizeof(dcomplex)*(size_t)max_count);
+            if (panel_dev==NULL){
+                /* device momentarily full: fall back to the old full readback */
+                dcomplex *ev = (dcomplex*)dense_evec;
+                size_t n2n2 = (size_t)n2*(size_t)n2;
+
+#pragma acc update self(ev[0 : n2n2])
+                evec_on_device = 0;
+            }
+        }
+
         for (int id=0; id<target_np; id++){
             int is,ie,stride,count;
             int target_rank = target_start + id;
@@ -2416,10 +2466,29 @@ static void BandNonCol_DistributeDenseEvecGlobal(int active_world2, int n2, int 
             if (count==0) continue;
 
             dst = (target_rank==root) ? EVec1 : send_buf;
-            for (int basis=0; basis<n2; basis++){
-                const dcomplex *src_col = dense_evec + (size_t)basis*(size_t)n2 + (size_t)(is-1);
-                dcomplex *dst_col = dst + (size_t)basis*(size_t)stride;
-                memcpy(dst_col,src_col,sizeof(dcomplex)*(size_t)stride);
+
+            if (evec_on_device){
+                const size_t n2n2 = (size_t)n2*(size_t)n2;
+                const int is_c = is;
+                const int stride_c = stride;
+                dcomplex *panel = panel_dev;
+
+#pragma acc parallel loop gang vector_length(128) present(dense_evec[0 : n2n2]) deviceptr(panel)
+                for (int basis=0; basis<n2; basis++){
+#pragma acc loop vector
+                    for (int s=0; s<stride_c; s++){
+                        panel[(size_t)basis*(size_t)stride_c + (size_t)s] =
+                            dense_evec[(size_t)basis*(size_t)n2 + (size_t)(is_c-1) + (size_t)s];
+                    }
+                }
+                acc_memcpy_from_device(dst,panel_dev,sizeof(dcomplex)*(size_t)count);
+            }
+            else {
+                for (int basis=0; basis<n2; basis++){
+                    const dcomplex *src_col = dense_evec + (size_t)basis*(size_t)n2 + (size_t)(is-1);
+                    dcomplex *dst_col = dst + (size_t)basis*(size_t)stride;
+                    memcpy(dst_col,src_col,sizeof(dcomplex)*(size_t)stride);
+                }
             }
 
             if (target_rank!=root){
@@ -2427,6 +2496,7 @@ static void BandNonCol_DistributeDenseEvecGlobal(int active_world2, int n2, int 
             }
         }
 
+        if (panel_dev!=NULL) acc_free(panel_dev);
         free(send_buf);
     }
     else if (myworld2==active_world2){
@@ -3655,7 +3725,8 @@ double Band_DFT_NonCol(
 
           BandNonCol_DistributeDenseEvecGlobal(kloop,n2,MaxN,myid0,myworld2,NPROCS_WD2,
                                                Comm_World_StartID2,root_dense_owner,
-                                               owns_root_dense ? rdw->cs2 : NULL,EVec1[0]);
+                                               owns_root_dense ? rdw->cs2 : NULL,
+                                               owns_root_dense ? rdw->cs2_on_device : 0,EVec1[0]);
 
           if (owns_root_dense) rdw->s_valid = 1;
         }
