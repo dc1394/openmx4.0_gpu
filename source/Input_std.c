@@ -794,6 +794,19 @@ void Input_std(char *file)
   /* use GPU? (added by H.Kawai, February 2024) */
   input_int("scf.Gpu.Num", &SCF_Gpu_Num, 30);
 
+  /* GEMMul8 on/off for the GPU dense-GEMM bridge, so its contribution can
+     be isolated: off routes every openmx_gemmul8{D,Z}gemm call to plain
+     cuBLAS FP64 GEMM.  Absent keyword = on (the production default). */
+  {
+    int gemmul8_enable;
+
+    input_logical("scf.gemmul8.enable", &gemmul8_enable, 1);
+    openmx_gemmul8SetEnabled(gemmul8_enable);
+    if (gemmul8_enable==0 && myid==Host_ID){
+      printf("<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain cuBLAS instead of GEMMul8.\n");
+    }
+  }
+
   if (Solver==1){
     if (myid==Host_ID){
       printf("Recursion method is not supported in this version.\n");

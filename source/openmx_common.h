@@ -4171,6 +4171,10 @@ cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle, cublasOperation_t tran
 size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k);
 size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k);
 void openmx_gemmul8ReleaseWorkspaces(void);
+/* scf.gemmul8.enable: 0 sends every openmx_gemmul8{D,Z}gemm call straight to
+   plain cuBLAS FP64 GEMM (workspace queries then report 0).  Default on;
+   set from Input_std.c on every rank. */
+void openmx_gemmul8SetEnabled(int enabled);
 
 int getDeviceCount();
 void Eigen_PReHH(MPI_Comm MPI_Current_Comm_WD, 

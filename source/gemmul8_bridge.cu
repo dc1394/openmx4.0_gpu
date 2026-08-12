@@ -43,6 +43,12 @@ struct Workspace {
 std::mutex g_workspace_mutex;
 std::unordered_map<WorkspaceKey, Workspace, WorkspaceKeyHash> g_workspaces;
 
+/* scf.gemmul8.enable from the input file; written once per input parse
+   (Input_std.c, before any GEMM runs) via openmx_gemmul8SetEnabled().
+   0 sends every call straight to plain cuBLAS FP64 GEMM, so the GEMMul8
+   contribution can be isolated without touching the environment. */
+int g_input_enabled = 1;
+
 struct WorkspaceReport {
     size_t      required_bytes = 0;
     size_t      free_bytes     = 0;
@@ -293,6 +299,12 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
     void          *work = nullptr;
     WorkspaceReport report;
 
+    if (!g_input_enabled) {
+        /* scf.gemmul8.enable off: the fallback is what the user asked for,
+           so no warning (Input_std already reported it once) */
+        return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
+
     if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
         report.reason = "environment disable";
         log_workspace_fallback_once<false>(report);
@@ -343,9 +355,15 @@ extern "C" void openmx_gemmul8ReleaseWorkspaces(void)
     }
 }
 
+/* scf.gemmul8.enable from the input file (Input_std.c); default on */
+extern "C" void openmx_gemmul8SetEnabled(int enabled)
+{
+    g_input_enabled = (enabled != 0);
+}
+
 extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
 {
-    if (m <= 0 || n <= 0 || k <= 0 ||
+    if (m <= 0 || n <= 0 || k <= 0 || !g_input_enabled ||
         gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
         return 0;
     }
@@ -358,7 +376,7 @@ extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
 
 extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
 {
-    if (m <= 0 || n <= 0 || k <= 0 ||
+    if (m <= 0 || n <= 0 || k <= 0 || !g_input_enabled ||
         gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
         return 0;
     }
@@ -392,6 +410,12 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
     const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
     void          *work = nullptr;
     WorkspaceReport report;
+
+    if (!g_input_enabled) {
+        /* scf.gemmul8.enable off: the fallback is what the user asked for,
+           so no warning (Input_std already reported it once) */
+        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
 
     if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
         report.reason = "environment disable";
