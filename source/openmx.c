@@ -71,6 +71,7 @@
 
 #include "tran_prototypes.h"
 #include "tran_variables.h"
+#include "elpa_cosma_bridge.h"
 
 static void Raise_Stack_Limit(void)
 {
@@ -854,6 +855,9 @@ int main(int argc, char *argv[])
   if (myid==Host_ID){
     printf("\nThe calculation was normally finished.\n");fflush(stdout);
   }
+
+  /* shut down the ELPA library of gpusolver2 (no-op otherwise) */
+  openmx_gs2_finalize();
 
   MPI_Finalize();
   exit(0);

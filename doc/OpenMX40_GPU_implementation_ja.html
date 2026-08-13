@@ -1976,7 +1976,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <table>
 <thead><tr><th style="width:22%;">キーワード</th><th style="width:10%;">型</th><th style="width:12%;">既定値</th><th>意味</th></tr></thead>
 <tbody>
-<tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>gpusolver</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加し、これが既定値。したがって CPU 側の固有値ソルバを明示指定しない限り GPU 経路が走る。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格</td></tr>
+<tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>gpusolver</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加し、これが既定値。したがって CPU 側の固有値ソルバを明示指定しない限り GPU 経路が走る。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格。<b><code>gpusolver2</code></b> はさらに、コリニア/ノンコリニアの<b>クラスター計算本流の対角化</b>を ELPA 2026.02(NVIDIA GPU カーネル)+ COSMA(pdgemm)で全ランク・全 GPU に分散する(Pegasus 級マルチノード向け)。クラスター以外の計算では入力エラーで停止し、クラスター対角化以外の動作は <code>gpusolver</code> と完全に同一</td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>ノード内で使用する GPU 台数の上限。すべての rank→GPU 割り当て(GPUSOLVER 中核初期化、Band/Cluster ソルバ経路の local-rank デバイスヘルパー、DC-LNO プロキシ)に適用。<code>scf.Gpu.Num 1</code> でノードの GPU 搭載数によらず 1 台のみ使用(デバッグ用途。既定 30 は実質「検出された全 GPU を使う」)。0 以下や検出数以上の値は無視</td></tr>
 </tbody>
 </table>
@@ -2063,6 +2063,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_MIX_FAST</code></td><td>1</td><td>RMM-DIIS/DIISK/DIISV/GR-Pulay/Kerker の CPU 高速パス(0 でレガシー)</td></tr>
 <tr><td><code>OPENMX_MIXH_GPU</code></td><td>自動</td><td>RMM-DIISH の層選択: 未設定=自動、0=レガシー、1=GPU 層強制、2=増分 CPU 層強制</td></tr>
 <tr><td><code>OPENMX_MIXH_GPU_RESERVE_MB</code> / <code>_VERBOSE</code></td><td>max(総/10,1536) / 0</td><td>GPU 層の予約量 / 選択結果の表示</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>gpusolver2(ELPA-GPU / COSMA)</b></td></tr>
+<tr><td><code>OPENMX_GS2_ELPA_SOLVER</code></td><td>2</td><td>gpusolver2 の ELPA ソルバ選択。1 で 1stage、それ以外は 2stage(既定)</td></tr>
 </tbody>
 </table>
 <figcaption style="font-size:8.2pt;color:#5c6675;">表 10-1: GPU 関連環境変数の一覧(サブシステム別)</figcaption>
@@ -2111,6 +2113,51 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
   (<code>OPENMX_SETHAM_MATRIX_GPU=0</code>、<code>OPENMX_FORCE_GPU=0</code>、<code>OPENMX_MIX_FAST=0</code> など)を
   1 つずつ 0 にして二分探索できる。すべての高速パスはレガシーコードを温存している。</li>
 </ol>
+
+<h2>10.5 scf.eigen.lib=gpusolver2 — マルチノード分散クラスター対角化</h2>
+<p>単一 k 点しか必要としないコリニア/ノンコリニアの<b>クラスター計算</b>では、従来の gpusolver 経路は
+対角化を 1 台の GPU(rank 0 ないしスピンオーナー)へ集約するため、GPU が何台あっても対角化では 1 台しか働かない。
+<code>scf.eigen.lib&nbsp;gpusolver2</code> はこのクラスター対角化を
+<b>ELPA 2026.02(NVIDIA GPU カーネル、新しいオブジェクト型 C API)</b>と
+<b>COSMA(通信最適分散 GEMM、GPU バックエンド)</b>へ差し替え、全ランク・全 GPU で解く。
+筑波大 CCS の Pegasus(1 ノード = H100 × 1、多ノード)のような構成が主対象である。MPI は従来どおり
+NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
+<ul>
+  <li><b>設計</b> — 既存 ELPA 経路の骨格(2 次元ブロックサイクリック分散、<code>myworld1</code> による 2 スピン並行、
+  固有ベクトル再分配、DM 構築)をそのまま流用し、差し替えは呼び出し点のみ。
+  Col: S 対角化 → <code>openmx_gs2_eigen_real(n,n,…)</code>、変換 3 GEMM → <code>cosma_pdgemm_</code>、
+  変換後 H(固有ベクトルは下位 MaxN 本、固有値は全数)→ <code>openmx_gs2_eigen_real(n,MaxN,…)</code>。
+  NonCol: 実 S 対角化 + 実 GEMM ×12 + 複素 2n×2n の <code>openmx_gs2_eigen_complex(n2,MaxN,…)</code> +
+  逆変換 <code>cosma_pzgemm_</code>。S 小固有値のクランプなど OpenMX 独自の数値処理は不変。
+  ブリッジは新設の <code>elpa_cosma_bridge.c</code> に集約(ELPA ハンドルの (BLACS ctx, n, nev, 型) 別キャッシュ、
+  <code>nvidia-gpu=1</code>/<code>use_gpu_id</code> 設定、2stage ソルバ既定)。</li>
+  <li><b>埋め込み旧 ELPA との関係</b> — 従来の <code>elpa1</code>/<code>elpa2</code> 経路はソースツリー埋め込みの
+  ELPA 2018.05 をこれまで通り使う(完全不変)。gpusolver2 だけが同梱アーカイブからビルドした ELPA 2026.02 の
+  ライブラリを新 API で使う。</li>
+  <li><b>適用範囲とエラー停止</b> — 対象はクラスター本流(Col/NonCol)のみ。<code>scf.EigenvalueSolver</code> が
+  cluster 以外だと入力段階でエラー停止する(Band + <code>scf.Kgrid 1 1 1</code> の自動クラスター化は通る)。
+  クラスター対角化以外(SetH/密度/力/混合などの GPU 経路、CWF 等の付加処理)は gpusolver と完全同一
+  (内部では <code>scf_eigen_lib_flag=GPUSOLVER</code> のまま <code>gpusolver2_flag</code> で対角化だけを切替)。
+  GPU 不在時は gpusolver 同様 ELPA2 へ降格する。</li>
+  <li><b>DLA-Future を採用しなかった理由(記録)</b> — 当初 DLA-Future + COSMA で実装・検証したが、
+  DLA-Future の非同期集団通信は HPC-X の Open MPI 4.1 では 3 ランク以上で必ず破綻する
+  (MPI_ERR_TRUNCATE/ハング。PMPI トレースで当方の通信列の正しさまで確認済み。Open MPI 5 でのみ解消)。
+  MPI 総入れ替えを避けるため、Open MPI 4 系で実績のある ELPA の GPU カーネルを採用した。
+  COSMA は Open MPI 4.1 で問題ないことを検証済み(np1/4/8 で ScaLAPACK と 1e-12 以下の一致)。</li>
+  <li><b>自己完結ビルド</b> — <code>third_party/dist/</code> に ELPA・COSMA・COSTA・Tiled-MM・cmake の
+  公式リリースアーカイブを同梱(計約 23 MB、<code>README.md</code> と <code>SHA256SUMS</code> 付き)。
+  <code>make openmx</code> が初回に <code>make gpusolver2-stack</code> を自動実行し、ネット接続なしで
+  <code>third_party/gpusolver2-install/</code> に構築する。ELPA は GitLab タグアーカイブのため
+  autoconf/automake/libtool/m4/python3 が必要(Ubuntu は標準装備)。主な Makefile 変数:
+  <code>GPUSOLVER2_GPU_ARCH</code>(既定 nvidia-smi 自動検出; H100 は 90)、
+  <code>GPUSOLVER2_HOST_CC/CXX</code>(COSMA 用 GCC、既定 gcc/g++)。</li>
+  <li><b>実行時ノブ</b> — <code>OPENMX_GS2_ELPA_SOLVER=1</code> で ELPA 1stage ソルバに切替(既定は 2stage)。
+  表 10-1 参照。</li>
+  <li><b>Pegasus での想定手順</b> — <code>module load nvhpc</code> の後、
+  <code>cd source &amp;&amp; make openmx &amp;&amp; make install</code>(初回のみスタック構築)。
+  実行は従来どおり HPC-X の <code>mpirun</code> でよい。GPU アーキは
+  <code>make GPUSOLVER2_GPU_ARCH=90 gpusolver2-stack</code> のように明示できる。</li>
+</ul>
 </section>
 <!-- ==================== 第 11 章 ==================== -->
 <section id="ch11">

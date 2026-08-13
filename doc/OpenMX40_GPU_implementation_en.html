@@ -2092,7 +2092,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <table>
 <thead><tr><th style="width:22%;">Keyword</th><th style="width:10%;">Type</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
 <tbody>
-<tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>gpusolver</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>, and is the default, so the GPU paths run unless one of the CPU eigensolvers is requested explicitly. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present</td></tr>
+<tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>gpusolver</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>, and is the default, so the GPU paths run unless one of the CPU eigensolvers is requested explicitly. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present. <b><code>gpusolver2</code></b> additionally distributes the mainline collinear/non-collinear <i>cluster</i> diagonalization over all ranks and their GPUs with ELPA 2026.02 (NVIDIA GPU kernels) and COSMA (pdgemm) — the multi-node option for Pegasus-class machines; any non-cluster calculation stops with an input error, and everything outside the cluster diagonalization behaves exactly like <code>gpusolver</code></td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper bound on GPUs used per node, applied to every rank→GPU assignment (central GPUSOLVER initialization, the local-rank device helpers of the Band/Cluster solver paths, and the DC-LNO proxy). <code>scf.Gpu.Num 1</code> confines the run to one GPU however many the node carries — a debugging aid; 30 effectively means "use every GPU found". Values ≤0 or ≥ the detected count are ignored</td></tr>
 </tbody>
 </table>
@@ -2180,6 +2180,8 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_MIX_FAST</code></td><td>1</td><td>CPU fast paths of RMM-DIIS/DIISK/DIISV/GR-Pulay/Kerker (0 = legacy)</td></tr>
 <tr><td><code>OPENMX_MIXH_GPU</code></td><td>auto</td><td>RMM-DIISH tier selection: unset=auto, 0=legacy, 1=force GPU tier, 2=force incremental CPU tier</td></tr>
 <tr><td><code>OPENMX_MIXH_GPU_RESERVE_MB</code> / <code>_VERBOSE</code></td><td>max(total/10,1536) / 0</td><td>GPU-tier reserve / print the tier decision</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>gpusolver2 (ELPA-GPU / COSMA)</b></td></tr>
+<tr><td><code>OPENMX_GS2_ELPA_SOLVER</code></td><td>2</td><td>ELPA solver used by gpusolver2: 1 = 1stage, anything else = 2stage (default)</td></tr>
 </tbody>
 </table>
 <figcaption style="font-size:8.2pt;color:#5c6675;">Table 10-1: GPU-related environment variables by subsystem</figcaption>
@@ -2230,6 +2232,55 @@ concurrency=1 means the sharing ranks were serialized.</div>
   (<code>OPENMX_SETHAM_MATRIX_GPU=0</code>, <code>OPENMX_FORCE_GPU=0</code>, <code>OPENMX_MIX_FAST=0</code>, …),
   and every fast path preserves the legacy code, so a suspected GPU issue can be bisected gate by gate.</li>
 </ol>
+
+<h2>10.5 scf.eigen.lib=gpusolver2 — Distributed Multi-Node Cluster Diagonalization</h2>
+<p>For collinear/non-collinear <b>cluster</b> calculations (a single k point), the gpusolver path
+concentrates the diagonalization on one GPU (rank 0 or the spin owner), so extra GPUs idle during it.
+<code>scf.eigen.lib&nbsp;gpusolver2</code> replaces that cluster diagonalization with
+<b>ELPA 2026.02 (NVIDIA GPU kernels, the modern object-based C API)</b> and
+<b>COSMA (communication-optimal distributed GEMM, GPU backend)</b>, engaging every rank and every GPU.
+The primary target is a Pegasus-class layout (one H100 per node, many nodes). MPI stays the HPC-X
+(Open MPI 4.1) bundled with the NVIDIA HPC SDK.</p>
+<ul>
+  <li><b>Design</b> — the existing ELPA-path skeleton (2-D block-cyclic distribution, the
+  <code>myworld1</code> two-spin split, eigenvector redistribution, DM construction) is reused verbatim;
+  only the call sites change. Col: S diagonalization → <code>openmx_gs2_eigen_real(n,n,…)</code>, the
+  three transformation GEMMs → <code>cosma_pdgemm_</code>, the transformed H (all eigenvalues, lowest
+  MaxN eigenvectors) → <code>openmx_gs2_eigen_real(n,MaxN,…)</code>. NonCol: real S solve + 12 real
+  GEMMs + the complex 2n×2n <code>openmx_gs2_eigen_complex(n2,MaxN,…)</code> + back-transform
+  <code>cosma_pzgemm_</code>. OpenMX's own numerics (small-eigenvalue clamping of S, etc.) are
+  untouched. The bridge lives in the new <code>elpa_cosma_bridge.c</code> (an ELPA-handle cache keyed by
+  (BLACS ctx, n, nev, type), <code>nvidia-gpu=1</code>/<code>use_gpu_id</code>, 2stage solver by
+  default).</li>
+  <li><b>Relation to the embedded old ELPA</b> — the conventional <code>elpa1</code>/<code>elpa2</code>
+  paths keep using the ELPA 2018.05 embedded in the source tree, completely unchanged; only gpusolver2
+  uses the bundled ELPA 2026.02 library through the new API.</li>
+  <li><b>Scope and the error stop</b> — mainline cluster (Col/NonCol) only; any other
+  <code>scf.EigenvalueSolver</code> stops with an input error (Band with <code>scf.Kgrid 1 1 1</code>,
+  which auto-converts to Cluster, is allowed). Everything outside the cluster diagonalization
+  (SetH/density/force/mixing GPU paths, CWF post-processing, …) behaves exactly like gpusolver
+  (internally <code>scf_eigen_lib_flag</code> stays GPUSOLVER and <code>gpusolver2_flag</code> switches
+  just the diagonalization). Without a GPU the run demotes to ELPA2, as with gpusolver.</li>
+  <li><b>Why not DLA-Future (for the record)</b> — the feature was first implemented and tested with
+  DLA-Future + COSMA, but DLA-Future's nonblocking collectives reliably break on the HPC-X Open MPI 4.1
+  with 3+ ranks (MPI_ERR_TRUNCATE/hangs; PMPI traces confirmed our collective streams were correct; only
+  Open MPI 5 cures it). To avoid swapping the MPI of the whole code, ELPA's GPU kernels — proven on
+  Open MPI 4 — were adopted instead. COSMA itself was verified healthy on Open MPI 4.1 (np1/4/8 agree
+  with ScaLAPACK to ≤1e-12).</li>
+  <li><b>Self-contained build</b> — <code>third_party/dist/</code> bundles the official release archives
+  of ELPA, COSMA, COSTA, Tiled-MM, and cmake (≈23 MB total, with <code>README.md</code> and
+  <code>SHA256SUMS</code>). <code>make openmx</code> triggers <code>make gpusolver2-stack</code>
+  automatically on the first build and installs into <code>third_party/gpusolver2-install/</code>
+  without network access. ELPA comes as a GitLab tag archive, so autoconf/automake/libtool/m4/python3
+  are required (standard on Ubuntu). Key Makefile variables: <code>GPUSOLVER2_GPU_ARCH</code> (default:
+  nvidia-smi autodetect; 90 for H100), <code>GPUSOLVER2_HOST_CC/CXX</code> (GCC for COSMA).</li>
+  <li><b>Runtime knob</b> — <code>OPENMX_GS2_ELPA_SOLVER=1</code> switches to ELPA's 1stage solver
+  (default 2stage); see Table 10-1.</li>
+  <li><b>Pegasus recipe</b> — after <code>module load nvhpc</code>:
+  <code>cd source &amp;&amp; make openmx &amp;&amp; make install</code> (the stack builds once), then run
+  with the usual HPC-X <code>mpirun</code>. The GPU architecture can be forced with
+  <code>make GPUSOLVER2_GPU_ARCH=90 gpusolver2-stack</code>.</li>
+</ul>
 </section>
 <!-- ==================== Chapter 11 ==================== -->
 <section id="ch11">
