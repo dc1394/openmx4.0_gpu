@@ -175,10 +175,17 @@ step_cosma() {
   [ -d "$SRC/cosma" ] || { cd "$SRC" && unzip -q "$DIST/cosma-v$V_COSMA.zip" && mv "COSMA-$V_COSMA" cosma; }
   [ -d "$SRC/COSTA" ] || { cd "$SRC" && unzip -q "$DIST/COSTA-$SHA_COSTA.zip" && mv "COSTA-$SHA_COSTA" COSTA; }
   [ -d "$SRC/Tiled-MM" ] || { cd "$SRC" && unzip -q "$DIST/Tiled-MM-$SHA_TILEDMM.zip" && mv "Tiled-MM-$SHA_TILEDMM" Tiled-MM; }
+  # COSMA_SCALAPACK=CUSTOM forces the host-BLAS vendor to "auto", whose
+  # OPENBLAS probe "succeeds" with NOTFOUND libraries on machines without
+  # OpenBLAS (FindOPENBLAS.cmake creates its target unconditionally).
+  # Predefining the probe's cache variables pins it to the NVHPC LP64 BLAS
+  # instead -- the same family the final openmx link uses.
   GenericBLAS_ROOT=$GPUSOLVER2_COMPILER_LIB \
   $CMAKE -S "$SRC/cosma" -B "$BLD/cosma" $COMMON $CUDAFLAGS $MPIARGS \
     -DCOSMA_BLAS=CUDA -DCOSMA_SCALAPACK=CUSTOM \
     -DCOSMA_SCALAPACK_LINK_LIBRARIES="$GPUSOLVER2_SCALAPACK_SO" \
+    -DCOSMA_OPENBLAS_LINK_LIBRARIES="$GPUSOLVER2_COMPILER_LIB/libblas_lp64.so" \
+    -DCOSMA_OPENBLAS_INCLUDE_DIRS="${GPUSOLVER2_COMPILER_LIB%/lib}/include" \
     -DCOSMA_WITH_TESTS=OFF -DCOSMA_WITH_APPS=OFF -DCOSMA_WITH_BENCHMARKS=OFF \
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
     -DFETCHCONTENT_SOURCE_DIR_COSTA="$SRC/COSTA" \
