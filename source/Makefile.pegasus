@@ -173,8 +173,8 @@ GEMMUL8_REPO_URL ?= https://github.com/RIKEN-RCCS/GEMMul8.git
 GEMMUL8_REPO_DIR ?= third_party/GEMMul8
 # gemmul8_openmx.cu instantiates GEMMul8 internals directly, so the
 # checkout must stay pinned to a commit whose internal layout it matches.
-# 6bf409b is the v3.1.1 release.
-GEMMUL8_COMMIT   ?= 6bf409bdc69a638970ad5f91948a8b3e44c5378b
+# 833e576 is the v3.2.0 release.
+GEMMUL8_COMMIT   ?= 833e5761c8ce303c59f673f4e28b7e6aef6a2d96
 GEMMUL8_DIR      ?= $(GEMMUL8_REPO_DIR)
 GEMMUL8_LIB      ?= $(GEMMUL8_DIR)/lib/libgemmul8.a
 GEMMUL8_OPENMX_OBJ ?= $(GEMMUL8_DIR)/src/gemmul8_openmx.o
