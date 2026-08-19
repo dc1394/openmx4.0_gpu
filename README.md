@@ -1,6 +1,12 @@
 # openmx4.0_gpu
 ## What does this code do?
-This is a GPU-accelerated version of [OpenMX](https://www.openmx-square.org/), a first-principles calculation code based on numerical atomic orbitals (NAO). Currently, only certain processes (matrix multiplication and eigenvalue problem processing) for band calculations (collinear and non-collinear) and cluster calculations (collinear and non-collinear) are GPU-accelerated.
+This is a GPU-accelerated version of [OpenMX](https://www.openmx-square.org/), a first-principles calculation code based on numerical atomic orbitals (NAO). GPU fast paths now cover most of the SCF workflow for band and cluster calculations (collinear and non-collinear):
+
+- the dense eigensolvers (cuSOLVER `Xsyevdx`) of the four global solver paths — band/cluster x collinear/non-collinear — plus per-atom GPU eigensolves in the DC, DC-LNO and Krylov solvers, and an optional distributed multi-GPU cluster path (`scf.eigen.lib gpusolver2`: ELPA GPU kernels + COSMA);
+- the Hamiltonian matrix elements (`Set_Hamiltonian`, with SCF-invariant tables kept device-resident), the nonlocal-projector and VNA-projector integrals, the electron-density grid quadrature, density-matrix accumulation, charge mixing, the total-energy terms and most force parts;
+- all dense GPU matrix multiplications can optionally run through [GEMMul8](https://github.com/RIKEN-RCCS/GEMMul8) INT8-based FP64 GEMM emulation (see below).
+
+Every phase keeps a CPU implementation and falls back per rank / per call when a gate condition or a device-memory preflight fails (memory-aware hybrid execution); each run writes a machine-readable `<System.Name>.manifest.json` that records which paths actually executed.
 
 ## Code author
 Hiroyuki Kawai (Niigata Univ.)</br>
@@ -34,6 +40,18 @@ scf.eigen.lib             elpa2         # CPU (ELPA2) paths
 ```
 
 A run that finds no usable GPU demotes itself to ELPA2 automatically, so the default is also safe on machines without an NVIDIA GPU.
+
+## FP64 GEMM emulation with GEMMul8
+On GPUs whose INT8 tensor-core throughput is much higher than their native FP64 throughput, the dense GPU matrix multiplications can be emulated at FP64 accuracy from INT8 building blocks (Ozaki scheme II). This is controlled by one input keyword:
+
+```ini
+scf.gemmul8.enable         on          # default=on; off = plain cuBLAS FP64
+```
+
+The default configuration (INT8 backend, `num_moduli=15`, fast mode off) reproduces plain cuBLAS FP64 results at the application level; when the GEMMul8 workspace does not fit beside the other device allocations, the affected GEMM silently and safely falls back to native cuBLAS (the fallback is counted in the run manifest).
+
+## Run manifest
+Every run writes `<System.Name>.manifest.json` next to its other output files: build/commit identification, the input checksum, the MPI/GPU layout (including MPS detection), which dense-solver path ran, per-phase GPU/CPU dispatch and fallback counters, GEMMul8 call/fallback statistics, peak device memory and per-rank host memory, per-phase wall times, and a snapshot of all `OPENMX_*`/`GEMMUL8_*`/`CUDA_*`/`OMP_*` environment variables. A "GPU-accelerated" label never has to be taken on faith — check the manifest.
 
 ## Multi-GPU parallelization
 How many GPUs a run can actually use is bounded by the number of k-points requested with "scf.Kgrid". The MPI ranks are divided into one group per k-point, and the dense eigenvalue problem of each group is solved on a single GPU, so the eigenvalue solver keeps at most as many GPUs busy as there are k-points; any GPU beyond that number stays idle in this part of the calculation. (The Hamiltonian matrix elements and the grid work are distributed over all MPI ranks, and therefore over all GPUs.)
@@ -120,7 +138,7 @@ This project is based on:
 
 The original OpenMX source code retains its original copyright notices and
 license headers. Modifications made in this project (GPU acceleration for
-NVIDIA CUDA and AMD HIP backends) are also licensed under GPL-3.0-or-later.
+NVIDIA CUDA backends) are also licensed under GPL-3.0-or-later.
 
 ### Third-Party Components
 
