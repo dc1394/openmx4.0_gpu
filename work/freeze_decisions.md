@@ -48,3 +48,25 @@ a hard size constraint, documented here).
   work/openmx.962f8d25.bak); after P0: 13031e1e7b075b447fe9cf345fafca92.
 - All Pegasus measurement campaigns of plan v2.6 done pre-P0; production
   tables will be re-measured from the tag with the instrumented binary.
+
+## 4. Freeze execution record (2026-08-19)
+
+- AMD audit: `source/` contains NO AMD/HIP sources (word-boundary grep for
+  hipMalloc/rocblas/__HIP/ROCm across *.c/*.cu/*.h and all branches:
+  main/develop/develop2/develop3/opt only). The only HIP-related files are
+  upstream GEMMul8's `self_hipify.hpp` inside the pinned third-party
+  submodule (833e576) — third-party content, kept.  Policy (1) therefore
+  executes as "release branch verified AMD-free by audit; nothing to
+  delete"; the README's stray "AMD HIP backends" claim was corrected on
+  main (537d895) before branching.
+- Branch: `release/v2.0_thesis` from main 537d895 (P0 manifest c12475d,
+  P2/P4/P6/P7 7f1e8a0, README 537d895, sidia.dat 3b18e54).
+- Payload commit d4fae39: 9114 files (~0.85 GiB) — all measurement decks,
+  scripts, results and evidence per sec.2; excluded: *.cube/*.xsf
+  (45.6 GiB, n=1746), *_rst/ dirs, *.dat# echoes, binaries.
+- Causality note: the tag snapshots the code plus every measurement made
+  BEFORE the freeze (preflight/methodology campaigns, manifest/P6
+  validation).  The thesis production tables are re-measured FROM the tag
+  build and land on release/v2.0_thesis as follow-up commits; the Zenodo
+  archive is built from the branch head, which then contains both.
+- GEMMul8 submodule pinned at 833e5761 (v3.2.0); fftw3 pinned d69d34f0.
