@@ -72,7 +72,8 @@ header() {  # $1=case $2=mode $3=atoms $4=N $5=b $6=scfmax
 # System: $3 Si atoms from the sec.-7.3 size search ($2 band representative);
 # deck copied from the confirmed sib_$2$3 case, with scf.criterion 1e-15 so
 # every run does exactly ${6} SCF iterations (1e-13 converged at 24 once).
-# Binary: openmx cd5f0d5 + GEMMul8 v3.2.0 (md5 962f8d2519c2e6aa5a6295513f76fee9).
+# Binary: work/openmx as deployed at submission; the authoritative build
+# identity (commit/tag/md5) is recorded in <case>.manifest.json.
 # 3 reps per production point; reps landing on bnode013/bnode033 are
 # discarded and re-measured under a new rep number.  Wall time = Max_Time
 # (slowest rank).  A crash here is a result, not a harness failure.
@@ -101,7 +102,7 @@ for mspec in $MODES; do
     [ -s "$src/$src.dat" ] || { say "FAIL missing confirmed deck $src"; fail=1; continue; }
     tpl="$src"
     for N in 1 2 4; do
-      case "$b" in w) rlist="0";; *) rlist="1 2 3 4 5 6";; esac
+      case "$b" in w) rlist="0";; *) rlist="1 2 3 4 5 6 11 12 13 14 15 16";; esac  # 11+ = thesis band (v2.0_thesis re-measurement)
       for r in $rlist; do
         [ "$b" != w ] && [ -z "$ONLY" ] && [ "$r" -gt 3 ] && continue
         wantpt "$N" "$b" "$r" || continue

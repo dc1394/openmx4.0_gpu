@@ -1,0 +1,84 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.924671.10/user_script: line 103: 2609545 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.924671.10/user_script: line 153: 2608752 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING sip_ccol216_o11 total=51.903 dft=35.304 diag=8.501 set_hamiltonian=6.373
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =     2       50.553          0       51.903
+   readfile                 =    24        3.049         17        3.057
+   truncation               =     9        8.081          5        8.104
+   MD_pac                   =     0        0.008          8        0.010
+   OutData                  =     2        4.072          0        5.421
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     5       35.281          9       35.304
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    44        0.407          4        0.630
+   Set_Nonlocal             =     4        0.281         44        0.504
+   Set_ProExpn_VNA          =    12        3.811         25        4.049
+   Set_Hamiltonian          =    12        6.373         46        6.373
+   Poisson                  =    16        0.124         39        0.124
+   Diagonalization          =    42        8.494         10        8.501
+   Mixing_DM                =    22        0.496         44        0.496
+   Force                    =    29        5.104         22        5.105
+   Total_Energy             =    39        0.199         29        0.211
+   Set_Aden_Grid            =    11        0.111         21        0.146
+   Set_Orbitals_Grid        =    32        0.612         41        0.693
+   Set_Density_Grid         =     8        7.360          5        7.419
+   RestartFileDFT           =    43        0.100          5        0.117
+   Mulliken_Charge          =    26        0.049         41        0.049
+   FFT(2D)_Density          =    25        0.146         39        0.149
+   Others                   =    41        1.014          8        1.374
+
+The calculation was normally finished.
+=== Utot (no prior reference for this system) ===
+  Utot.       -887.309609578716
+=== SCF iterations completed (of 25 max) ===
+25
+=== Cluster GPU fallback (expect none) + Set_Hamiltonian GPU lines ===
+<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s), GPU concurrency=48, CPU fallback ranks=0, peak=43.254 GiB, free=57.775 GiB, reserve=7.918 GiB
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 65/124
+host mem used/total (GiB): 65/124
+host mem used/total (GiB): 61/124
+=== peak GPU, this node ===
+5 %, 43594 MiB
+70 %, 42154 MiB
+4 %, 42154 MiB
+=== MPS server per node (post-run) ===
+bnode077: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[16:41:11] script start on bnode077
+[16:41:12] MPS up on all 1 nodes
+[16:41:12] launching mpirun: 48 ranks on 1 nodes
+[16:41:12] mpirun launched (pid 2608755)
+[16:42:22] done detected; 60 s grace for teardown
+[16:43:22] mpirun exited on its own during grace
+[16:43:22] watchdog loop exited (verdict='done'); reaping mpirun
+[16:43:22] mpirun reaped rc=0
+[16:43:22] sampler killed
+
+============================================================
+Request ID:             924671.nqsv
+Request Name:           pcc216o11
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 19 16:41:02 2026
+Started Request Time:   Wed Aug 19 16:41:11 2026
+Ended Request Time:     Wed Aug 19 16:43:23 2026
+Resources Information:
+  Elapse:               136S
+  Remaining Elapse:     2264S
+============================================================

@@ -55,7 +55,8 @@ header() {  # $1=case $2=s $3=mode $4=atoms $5=cfg
 # time = Max_Time column (slowest rank).  Reps: 3 for CPU and MPS-off,
 # 5 for the GPU o/g configs; slow-node draws (bnode013/bnode033) are
 # discarded and re-measured under a new rep number.
-# Binary: openmx cd5f0d5 + GEMMul8 v3.2.0 (md5 962f8d2519c2e6aa5a6295513f76fee9).
+# Binary: work/openmx as deployed at submission; the authoritative build
+# identity (commit/tag/md5) is recorded in <case>.manifest.json.
 # A crash here is a result, not a harness failure.
 EOF
 }

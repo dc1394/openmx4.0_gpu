@@ -69,7 +69,8 @@ header() {  # $1=case $2=sys $3=cfg
 # Compare across configs: Utot, SCF count, chemical potential, the full
 # coordinates.forces block, and spin moments where magnetic.
 # Targets (plan 13.3): |dE| <= 1e-10 Ha, |dF|max <= 1e-6 Ha/Bohr.
-# Binary: openmx cd5f0d5 + GEMMul8 v3.2.0 (md5 962f8d2519c2e6aa5a6295513f76fee9).
+# Binary: work/openmx as deployed at submission; the authoritative build
+# identity (commit/tag/md5) is recorded in <case>.manifest.json.
 EOF
 }
 

@@ -1,0 +1,9 @@
+[17:40:41] script start on bnode055
+[17:40:42] MPS up on all 4 nodes
+[17:40:42] launching mpirun: 192 ranks on 4 nodes
+[17:40:42] mpirun launched (pid 2414107)
+[17:43:08] done detected; 60 s grace for teardown
+[17:44:08] mpirun exited on its own during grace
+[17:44:08] watchdog loop exited (verdict='done'); reaping mpirun
+[17:44:08] mpirun reaped rc=0
+[17:44:08] sampler killed

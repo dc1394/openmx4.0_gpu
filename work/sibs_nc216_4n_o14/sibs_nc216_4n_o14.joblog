@@ -1,0 +1,112 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.924969.10/user_script: line 106: 1786312 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.924969.10/user_script: line 156: 1785225 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING sibs_nc216_4n_o14 total=140.227 dft=112.828 diag=65.730 set_hamiltonian=10.400
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    83      138.508          0      140.227
+   readfile                 =    57        3.311         38        3.334
+   truncation               =   151        9.355        106        9.391
+   MD_pac                   =     0        0.009         60        0.011
+   OutData                  =   114       12.965          0       14.682
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =   106      112.793        151      112.828
+
+*** In DFT ***
+
+   Set_OLP_Kin              =   161        0.167         55        0.424
+   Set_Nonlocal             =    55        0.166        161        0.423
+   Set_ProExpn_VNA          =   149        2.351         18        2.634
+   Set_Hamiltonian          =   180       10.400         40       10.400
+   Poisson                  =   166        0.049         30        0.049
+   Diagonalization          =   144       65.259          1       65.730
+   Mixing_DM                =    54        0.503         36        0.510
+   Force                    =    35        2.657         59        2.657
+   Total_Energy             =    44        0.159        163        0.167
+   Set_Aden_Grid            =   155        0.867        110        0.920
+   Set_Orbitals_Grid        =     7        0.175         67        0.267
+   Set_Density_Grid         =   151        5.015         97        5.126
+   RestartFileDFT           =    90        0.141        121        0.207
+   Mulliken_Charge          =    81        0.395        188        0.395
+   FFT(2D)_Density          =    93        0.219         94        0.243
+   Others                   =     1       23.001        168       23.708
+
+The calculation was normally finished.
+=== Utot (no prior reference for this system) ===
+  Utot.       -887.422833076519
+=== SCF iterations completed (of 25 max) ===
+25
+=== Band GPU dispatch / fallback lines ===
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (eigenvectors), turn group=8, per-rank=3.305 GiB, peak=6.610 GiB, free=52.931 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (eigenvectors), turn group=8, per-rank=3.305 GiB, peak=6.610 GiB, free=52.931 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (eigenvectors), turn group=8, per-rank=3.305 GiB, peak=6.610 GiB, free=52.931 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (eigenvectors), turn group=8, per-rank=3.305 GiB, peak=6.610 GiB, free=52.931 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (density matrix), turn group=8, per-rank=0.777 GiB, peak=1.553 GiB, free=51.853 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (density matrix), turn group=8, per-rank=0.777 GiB, peak=1.553 GiB, free=51.853 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (density matrix), turn group=8, per-rank=0.777 GiB, peak=1.553 GiB, free=51.853 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 2 k-owner rank(s), GPU concurrency=2 (density matrix), turn group=8, per-rank=0.777 GiB, peak=1.553 GiB, free=51.853 GiB, reserve=7.918 GiB
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 46/124
+host mem used/total (GiB): 46/124
+host mem used/total (GiB): 46/124
+=== peak GPU, this node ===
+66 %, 34362 MiB
+23 %, 34362 MiB
+100 %, 34362 MiB
+=== MPS server per node (post-run) ===
+bnode016: mps_server=1 gpu_mem_used=78 MiB
+bnode022: mps_server=1 gpu_mem_used=78 MiB
+bnode024: mps_server=1 gpu_mem_used=78 MiB
+bnode025: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[18:32:56] script start on bnode016
+[18:32:58] MPS up on all 4 nodes
+[18:32:58] launching mpirun: 192 ranks on 4 nodes
+[18:32:58] mpirun launched (pid 1785228)
+[18:35:39] done detected; 60 s grace for teardown
+[18:36:39] mpirun exited on its own during grace
+[18:36:39] watchdog loop exited (verdict='done'); reaping mpirun
+[18:36:39] mpirun reaped rc=0
+[18:36:39] sampler killed
+
+============================================================
+Request ID:             924969.nqsv
+Request Name:           sn216_4o14
+Queue:                  gen_S@nqsv
+Number of Jobs:         4
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 19 18:32:43 2026
+Started Request Time:   Wed Aug 19 18:32:56 2026
+Ended Request Time:     Wed Aug 19 18:36:40 2026
+Resources Information:
+  Elapse:               228S
+  Remaining Elapse:     3372S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx
+
+%NQSV(INFO): ------- Output from job:0002 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx
+
+%NQSV(INFO): ------- Output from job:0003 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

@@ -1,0 +1,102 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.924728.10/user_script: line 106: 3601625 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.924728.10/user_script: line 156: 3600704 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING sibs_col300_2n_o11 total=87.451 dft=69.429 diag=47.276 set_hamiltonian=4.881
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    79       85.878          0       87.451
+   readfile                 =    66        3.243         11        3.354
+   truncation               =    36        8.380         66        8.398
+   MD_pac                   =     0        0.010         66        0.015
+   OutData                  =    66        4.670          0        6.242
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    66       69.410         36       69.429
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    74        0.533         72        0.772
+   Set_Nonlocal             =    72        0.266         74        0.505
+   Set_ProExpn_VNA          =    46        3.244         44        3.430
+   Set_Hamiltonian          =    54        4.881         82        4.881
+   Poisson                  =    86        0.113         46        0.117
+   Diagonalization          =    72       45.953          1       47.276
+   Mixing_DM                =     3        0.319         57        0.319
+   Force                    =    40        3.831         83        3.831
+   Total_Energy             =    44        0.159         64        0.166
+   Set_Aden_Grid            =    26        0.586         71        0.671
+   Set_Orbitals_Grid        =    26        0.240         88        0.370
+   Set_Density_Grid         =    57        4.863         83        4.902
+   RestartFileDFT           =    69        0.157          7        0.196
+   Mulliken_Charge          =    11        0.084         54        0.085
+   FFT(2D)_Density          =    38        0.221         92        0.235
+   Others                   =     7        2.052         24        3.470
+
+The calculation was normally finished.
+=== Utot (no prior reference for this system) ===
+  Utot.      -1232.518569501009
+=== SCF iterations completed (of 25 max) ===
+25
+=== Band GPU dispatch / fallback lines ===
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band_DFT_Col> GPU device 0: 4 k-owner rank(s), GPU concurrency=4, turn group=8, per-rank=2.091 GiB, peak=8.364 GiB, free=47.513 GiB, reserve=7.918 GiB
+<Band_DFT_Col> GPU device 0: 4 k-owner rank(s), GPU concurrency=4, turn group=8, per-rank=2.091 GiB, peak=8.364 GiB, free=47.513 GiB, reserve=7.918 GiB
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 52/124
+host mem used/total (GiB): 52/124
+host mem used/total (GiB): 51/124
+=== peak GPU, this node ===
+92 %, 48284 MiB
+52 %, 40146 MiB
+9 %, 40010 MiB
+=== MPS server per node (post-run) ===
+bnode113: mps_server=1 gpu_mem_used=78 MiB
+bnode114: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[17:00:26] script start on bnode113
+[17:00:28] MPS up on all 2 nodes
+[17:00:28] launching mpirun: 96 ranks on 2 nodes
+[17:00:28] mpirun launched (pid 3600707)
+[17:02:09] done detected; 60 s grace for teardown
+[17:03:09] mpirun exited on its own during grace
+[17:03:09] watchdog loop exited (verdict='done'); reaping mpirun
+[17:03:09] mpirun reaped rc=0
+[17:03:09] sampler killed
+
+============================================================
+Request ID:             924728.nqsv
+Request Name:           sc300_2o11
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 19 16:59:56 2026
+Started Request Time:   Wed Aug 19 17:00:26 2026
+Ended Request Time:     Wed Aug 19 17:03:10 2026
+Resources Information:
+  Elapse:               168S
+  Remaining Elapse:     2232S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

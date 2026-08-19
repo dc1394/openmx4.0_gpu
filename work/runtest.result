@@ -1,17 +1,17 @@
-   1  input_example/Benzene.dat        Elapsed time(s)=   15.36  diff Utot= 0.000000000001  diff Force= 0.000000000000
-   2  input_example/C60.dat            Elapsed time(s)=   15.29  diff Utot= 0.000000000043  diff Force= 0.000000000007
-   3  input_example/CO.dat             Elapsed time(s)=    8.98  diff Utot= 0.000000000000  diff Force= 0.000000000006
-   4  input_example/Cr2.dat            Elapsed time(s)=    8.64  diff Utot= 0.000000000003  diff Force= 0.000000000002
-   5  input_example/Crys-MnO.dat       Elapsed time(s)=    7.19  diff Utot= 0.000000000014  diff Force= 0.000000000002
-   6  input_example/GaAs.dat           Elapsed time(s)=    9.66  diff Utot= 0.000000000022  diff Force= 0.000000000001
-   7  input_example/Glycine.dat        Elapsed time(s)=    5.58  diff Utot= 0.000000000001  diff Force= 0.000000000001
-   8  input_example/Graphite4.dat      Elapsed time(s)=    3.71  diff Utot= 0.000000000002  diff Force= 0.000000000000
-   9  input_example/H2O-EF.dat         Elapsed time(s)=    4.88  diff Utot= 0.000000000001  diff Force= 0.000000000000
-  10  input_example/H2O.dat            Elapsed time(s)=    4.92  diff Utot= 0.000000000000  diff Force= 0.000000000000
-  11  input_example/HMn.dat            Elapsed time(s)=   10.35  diff Utot= 0.000000000000  diff Force= 0.000000000000
-  12  input_example/Methane.dat        Elapsed time(s)=    4.06  diff Utot= 0.000000000047  diff Force= 0.000000000000
-  13  input_example/Mol_MnO.dat        Elapsed time(s)=    7.44  diff Utot= 0.000000000001  diff Force= 0.000000000000
-  14  input_example/Ndia2.dat          Elapsed time(s)=    3.41  diff Utot= 0.000000000004  diff Force= 0.000000000000
+   1  input_example/Benzene.dat        Elapsed time(s)=   15.12  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=   15.28  diff Utot= 0.000000000043  diff Force= 0.000000000007
+   3  input_example/CO.dat             Elapsed time(s)=    9.53  diff Utot= 0.000000000000  diff Force= 0.000000000006
+   4  input_example/Cr2.dat            Elapsed time(s)=    8.79  diff Utot= 0.000000000003  diff Force= 0.000000000002
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=    7.16  diff Utot= 0.000000000014  diff Force= 0.000000000002
+   6  input_example/GaAs.dat           Elapsed time(s)=    9.92  diff Utot= 0.000000000022  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    5.54  diff Utot= 0.000000000001  diff Force= 0.000000000001
+   8  input_example/Graphite4.dat      Elapsed time(s)=    3.67  diff Utot= 0.000000000002  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    4.89  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  10  input_example/H2O.dat            Elapsed time(s)=    4.97  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=   10.84  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    3.96  diff Utot= 0.000000000047  diff Force= 0.000000000000
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    7.43  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    3.34  diff Utot= 0.000000000004  diff Force= 0.000000000000
 
 
-Total elapsed time (s)      109.46
+Total elapsed time (s)      110.46
