@@ -819,6 +819,15 @@ int main(int argc, char *argv[])
   dtime(&TEtime);
   CompTime[myid][0] = TEtime - TStime;
   Output_CompTime();
+
+  /* run manifest: machine-readable proof of the executed fast paths
+     (work/run_manifest_design.md); collective over mpi_comm_level1 */
+  OpenMX_Manifest_SetMax(MANI_WALL_TOTAL_MS, (long long)(CompTime[myid][0]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_DFT_MS,   (long long)(CompTime[myid][3]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_DIAG_MS,  (long long)(CompTime[myid][9]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_SETHAM_MS,(long long)(CompTime[myid][7]*1000.0));
+  OpenMX_Manifest_Write(argv[1]);
+
   for (i=0; i<numprocs; i++){
     free(CompTime[i]);
   }

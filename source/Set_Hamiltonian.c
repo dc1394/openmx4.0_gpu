@@ -481,6 +481,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
 
     if (!plan.selected) return plan;
     if (!cuda_ok || plan.device_comm == MPI_COMM_NULL) {
+        OpenMX_Manifest_RankFlag(MANI_SETHAM_RANK_INIT_FAIL);   /* B54 */
         fprintf(stderr, "Set_Hamiltonian: rank %d %s cannot initialize CUDA/OpenACC; using CPU.\n", myid, where);
         fflush(stderr);
         return plan;
@@ -511,6 +512,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
 
     MPI_Allreduce(&local_memory_ok, &group_memory_ok, 1, MPI_INT, MPI_MIN, plan.device_comm);
     if (!group_memory_ok) {
+        OpenMX_Manifest_RankFlag(MANI_SETHAM_RANK_INIT_FAIL);   /* B55 */
         if (plan.device_rank == 0) {
             fprintf(stderr, "Set_Hamiltonian: %s failed to query common GPU memory; using CPU.\n", where);
             fflush(stderr);
@@ -679,6 +681,13 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
     if (plan.device_rank == 0) {
         static int last_device_ranks = -1;
         static int last_concurrent = -1;
+        OpenMX_Manifest_RankValue(MANI_SETHAM_GPU_RANKS, (long long)plan.device_ranks);   /* B50 */
+        OpenMX_Manifest_SetMax(MANI_SETHAM_CONCURRENCY, (long long)plan.concurrent_ranks);
+        OpenMX_Manifest_SetMin(MANI_SETHAM_CONCURRENCY_MIN, (long long)plan.concurrent_ranks);
+        if (!Set_Hamiltonian_GpuSerialWaves()) {
+            OpenMX_Manifest_RankValue(MANI_SETHAM_CPU_FB_RANKS,
+                                      (long long)(plan.device_ranks - plan.concurrent_ranks));
+        }
         if (last_device_ranks != plan.device_ranks || last_concurrent != plan.concurrent_ranks) {
             printf("<Set_Hamiltonian> GPU device %d: %d Hamiltonian rank(s), GPU concurrency=%d, %s=%d, "
                    "peak=%.3f GiB, free=%.3f GiB, reserve=%.3f GiB\n",
@@ -916,6 +925,8 @@ static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan 
     if (plan->device_rank == 0) {
         char label[64];
 
+        OpenMX_Manifest_RankValue(MANI_SETHAM_RESIDENT_RANKS, (long long)plan->device_ranks);   /* B51 */
+        OpenMX_Manifest_SetMax(MANI_SETHAM_RESIDENT_BYTES, (long long)plan->resident_group_bytes);
         Set_Hamiltonian_ResidentMaskLabel(cache->resident_mask, label, sizeof(label));
         printf("<Set_Hamiltonian> GPU resident cache: %d rank(s) hold %.3f GiB (%s) on device %d across SCF iterations\n",
                plan->device_ranks,
@@ -1748,6 +1759,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            all selected ranks before serializing access to the physical GPU;
            otherwise its first-use cost is repeated on the critical path of
            every wave. */
+        OpenMX_Manifest_Count(MANI_SETHAM_RANK_GPU_ITERS);
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
@@ -1763,6 +1775,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
     }
     else if (plan.use_gpu && plan.turn == 0) {
+        OpenMX_Manifest_Count(MANI_SETHAM_RANK_GPU_ITERS);
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
@@ -1772,6 +1785,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
     }
     else {
+        OpenMX_Manifest_Count(MANI_SETHAM_RANK_CPU_ITERS);
         Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
     }
 
@@ -1783,6 +1797,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         Set_Hamiltonian_ME_ReleaseDeviceCache(1);
         Set_Hamiltonian_ME_Cache.resident_blocked = 1;
         if (plan.device_rank == 0) {
+            OpenMX_Manifest_Count(MANI_SETHAM_RESIDENT_EVICT);   /* B52 */
             printf("<Set_Hamiltonian> GPU resident cache released: a GPU phase needs %.3f GiB on device %d; "
                    "staying transient for this MD step\n",
                    (double)plan.registered_need_bytes / (1024.0 * 1024.0 * 1024.0),

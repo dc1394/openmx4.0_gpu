@@ -1344,6 +1344,7 @@ double Calc_EH0(int MD_iter)
   My_EH0 = 0.0;
 
   if (TotalEnergyUseOpenACC()){
+    OpenMX_Manifest_Count(MANI_TE_GPU_CALLS);
     int pair_count,pair_index,pair_has_d;
     int Gc2_AN,h2_AN,Gh2_AN,Rn;
     int *pair_ban,*pair_wan2,*pair_has_deriv;
@@ -1935,6 +1936,7 @@ void Calc_EXC_EH1(double ECE[])
 
   dtime(&time0);
   if (TotalEnergyUseOpenACC()){
+    OpenMX_Manifest_Count(MANI_TE_GPU_CALLS);
     TotalEnergy_EXC_EH1_Grid_OpenACC(spinmax, &My_Ena, &My_Eef, &My_EH1, My_EXC);
   }
   else{
@@ -2073,6 +2075,7 @@ void Calc_EXC_EH1(double ECE[])
     sum = 0.0;
 
     if (TotalEnergyUseOpenACC()){
+      OpenMX_Manifest_Count(MANI_TE_GPU_CALLS);
       TotalEnergy_Exc0_Batch_OpenACC(Num_Leb_Grid, Leb_Grid_XYZW, &sum);
     }
     else{
@@ -2406,6 +2409,7 @@ void Calc_EXC_EH1(double ECE[])
     My_E_dpz_BG = 0.0; 
 
     if (TotalEnergyUseOpenACC()){
+      OpenMX_Manifest_Count(MANI_TE_GPU_CALLS);
       TotalEnergy_Dipole_Grid_OpenACC(GNs, &My_E_dpx, &My_E_dpy, &My_E_dpz,
                                       &My_E_dpx_BG, &My_E_dpy_BG, &My_E_dpz_BG);
     }
@@ -4423,6 +4427,7 @@ void Energy_Decomposition_CWF(double ECE[])
   My_dcEXC[1] = 0.0;
 
   if (TotalEnergyUseOpenACC()){
+    OpenMX_Manifest_Count(MANI_TE_GPU_CALLS);
     TotalEnergy_CWF_Dc_Grid_OpenACC(spinmax, My_dcEH1, My_dcEXC);
   }
   else{

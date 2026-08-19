@@ -968,6 +968,8 @@ static void ClusterNonCol_ZheevdxPresent(dcomplex *A, double *W, int n, int maxn
             ClusterNonCol_AbortWithMessage(msg);
         }
 
+        OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
+        if (jobz == CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
         wait_cudafunc(cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A, n, &vl, &vu, 1L,
                                         (int64_t)maxn, &h_meig, CUDA_R_64F, W, CUDA_C_64F, ctx->d_work,
                                         ctx->d_work_bytes, ctx->h_work, ctx->h_work_bytes, ctx->d_info));
@@ -1766,6 +1768,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
             printf("<Cluster_DFT_NonCol> GPU dense diagonalization disabled by OPENMX_CLUSTER_GPU_DIAG=0.\n");
             fflush(stdout);
         }
+        if (!forced) OpenMX_Manifest_SetMax(MANI_DENSE_FB_ENV_OFF, 1LL);   /* B33 */
         force_announced = 1;
 
         if (forced) {
@@ -1840,6 +1843,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
             if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
                 (void)cudaGetLastError();
             }
+            OpenMX_Manifest_Count(MANI_DENSE_FB_MEM_EVENTS);   /* B34 */
             printf("<Cluster_DFT_NonCol> The dense owner could not reserve its GPU diagonalization"
                    " buffers (%.1f MiB of %.1f MiB free);"
                    " falling back to the ELPA/ScaLAPACK diagonalization."
@@ -2588,6 +2592,7 @@ double Cluster_DFT_NonCol(
     if (gpusolver2_flag){
 
       /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels) */
+      OpenMX_Manifest_Count(MANI_DENSE_GS2_SOLVES);
       int gs2_info = openmx_gs2_eigen_real(n, n, Cs, descC, &ko[1], Ss, descS);
       if (gs2_info!=0){
         printf("Cluster_DFT_NonCol: the gpusolver2 overlap eigensolver failed (info=%d)\n",gs2_info);
@@ -2595,6 +2600,7 @@ double Cluster_DFT_NonCol(
       }
     }
     else if (scf_eigen_lib_flag==1){
+      OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk,
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
@@ -2603,6 +2609,7 @@ double Cluster_DFT_NonCol(
     }
     else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
+      OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
 #ifndef kcomp
 
       int mpiworld;
@@ -2824,6 +2831,7 @@ double Cluster_DFT_NonCol(
 
     /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels); all n2
        eigenvalues are returned but only the lowest MaxN eigenvectors */
+    OpenMX_Manifest_Count(MANI_DENSE_GS2_SOLVES);
     int gs2_info = openmx_gs2_eigen_complex(n2, MaxN, Hs2, descH2, &ko[1], Cs2, descC2);
     if (gs2_info!=0){
       printf("Cluster_DFT_NonCol: the gpusolver2 Hamiltonian eigensolver failed (info=%d)\n",gs2_info);
@@ -2831,6 +2839,7 @@ double Cluster_DFT_NonCol(
     }
   }
   else if (scf_eigen_lib_flag==1){
+    OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
     F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2,
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
@@ -2839,6 +2848,7 @@ double Cluster_DFT_NonCol(
   }
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
+    OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
 #ifndef kcomp
 
     int mpiworld;

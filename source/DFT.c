@@ -82,10 +82,13 @@ static void DFT_GPU_DeviceInit(int basis_count)
     MPI_Comm_rank(mpi_comm_level1,&myid0);
     scf_eigen_lib_flag = GPUSOLVER;
 
-    if (Solver!=5 && Solver!=8 && Solver!=11 && basis_count < DFT_GPU_DenseSwitchNum() && myid0==Host_ID && 0<level_stdout) {
-        printf("<DFT> GPUSOLVER requested; global matrix dimension %d is below %d, so global dense eigensolver paths use a CPU fallback while GPU kernels remain enabled.\n",
-               basis_count,DFT_GPU_DenseSwitchNum());
-        fflush(stdout);
+    if (Solver!=5 && Solver!=8 && Solver!=11 && basis_count < DFT_GPU_DenseSwitchNum()) {
+        OpenMX_Manifest_SetMax(MANI_SMALL_SYSTEM_CPU_DIAG, 1LL);   /* B04 */
+        if (myid0==Host_ID && 0<level_stdout) {
+            printf("<DFT> GPUSOLVER requested; global matrix dimension %d is below %d, so global dense eigensolver paths use a CPU fallback while GPU kernels remain enabled.\n",
+                   basis_count,DFT_GPU_DenseSwitchNum());
+            fflush(stdout);
+        }
     }
 
     MPI_Comm node_comm, device_comm = MPI_COMM_NULL;
@@ -117,6 +120,7 @@ static void DFT_GPU_DeviceInit(int basis_count)
         else {
             device_count = (cuda_device_count < acc_device_count) ? cuda_device_count : acc_device_count;
             if (0 < SCF_Gpu_Num && SCF_Gpu_Num < device_count) {
+                OpenMX_Manifest_SetMax(MANI_DEVICES_CAPPED, 1LL);   /* B05 */
                 if (myid0==Host_ID && 0<level_stdout) {
                     printf("<DFT> scf.Gpu.Num caps the GPUs used per node at %d of the %d detected.\n",
                            SCF_Gpu_Num,device_count);
@@ -139,6 +143,8 @@ static void DFT_GPU_DeviceInit(int basis_count)
             else {
                 acc_set_device_num(cuda_device, acc_device_nvidia);
                 cuda_ok = 1;
+                OpenMX_Manifest_RankFlag(MANI_GPU_RANKS);
+                OpenMX_Manifest_SetMax(MANI_DEVICES_PER_NODE, (long long)device_count);
             }
         }
     }
@@ -171,6 +177,9 @@ static void DFT_GPU_DeviceInit(int basis_count)
         MPI_Allreduce(inbuf, outbuf, 1, MPI_2INT, MPI_MAXLOC, mpi_comm_level1);
         worst_err = fail_err;
         MPI_Bcast(&worst_err, 1, MPI_INT, outbuf[1], mpi_comm_level1);
+
+        OpenMX_Manifest_SetMax(MANI_DEMOTED_ELPA2, 1LL);                  /* B06 */
+        OpenMX_Manifest_SetMax(MANI_DEMOTE_REASON, (long long)outbuf[0]); /* B07 */
 
         if (myid0==Host_ID && 0<level_stdout) {
             printf("<DFT> GPUSOLVER requested, but GPU initialization failed on %d of %d MPI ranks; using ELPA2.\n",
@@ -935,6 +944,10 @@ double DFT(int MD_iter, int Cnt_Now)
     s_vec[6]="Cluster-DIIS";  s_vec[7]="Krylov";   s_vec[8]="Cluster2";
     s_vec[9]="EGAC";          s_vec[10]="DC-LNO";  s_vec[11]="Cluster-LNO";
 
+    if (MYID_MPI_COMM_WORLD==Host_ID){                                /* B09 */
+      OpenMX_Manifest_Count(DFT_GPU_EigensolverActive() ? MANI_DIAG_GPU_ITERS
+                                                        : MANI_DIAG_CPU_ITERS);
+    }
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
       printf("<%s>  Solving the eigenvalue problem%s...\n",
              s_vec[Solver-1],
@@ -1668,6 +1681,10 @@ double DFT(int MD_iter, int Cnt_Now)
     ************************************************************************/
 
   } while (po==0 && SCF_iter<SCF_MAX);  if (po==0) scf_convergence_flag = 0; else scf_convergence_flag = 1;
+
+  OpenMX_Manifest_SetMax(MANI_SCF_ITERS, (long long)SCF_iter);
+  OpenMX_Manifest_SetMax(MANI_SCF_CONVERGED_P1, (long long)(scf_convergence_flag+1));
+  OpenMX_Manifest_SetMax(MANI_MD_STEPS, (long long)MD_iter);
 
   /*********************************************************************
    After achieving the SCF, the diagonalization with PAOs is performed

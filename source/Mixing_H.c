@@ -2228,6 +2228,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
 
   if (forced_off){
     MixH_gpu.verdict = 0;
+    OpenMX_Manifest_SetMax(MANI_MIXH_TIER_P1, 1LL);   /* legacy CPU */
     return 0;
   }
 
@@ -2238,6 +2239,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
       fflush(stdout);
     }
     MixH_gpu.verdict = 2;
+    OpenMX_Manifest_SetMax(MANI_MIXH_TIER_P1, 2LL);   /* B63: incremental CPU */
     return 2;
   }
 
@@ -2345,11 +2347,13 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
       fflush(stdout);
     }
     MixH_gpu.verdict = 1;
+    OpenMX_Manifest_SetMax(MANI_MIXH_TIER_P1, 3LL);   /* B64: GPU arena */
     return 1;
   }
 
   MixH_IncBuild(nslot);
   MixH_gpu.verdict = 2;
+  OpenMX_Manifest_SetMax(MANI_MIXH_TIER_P1, 2LL);     /* B62: incremental CPU */
   return 2;
 }
 

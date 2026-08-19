@@ -598,6 +598,7 @@ static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int 
             printf("<Band_DFT_Col> GPU dense diagonalization disabled by OPENMX_BAND_GPU_DIAG=0.\n");
             fflush(stdout);
         }
+        if (!forced) OpenMX_Manifest_SetMax(MANI_DENSE_FB_ENV_OFF, 1LL);   /* B20 */
         force_announced = 1;
         BandCol_gpu_dense_verdict = forced;
         return forced;
@@ -651,6 +652,7 @@ static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int 
     MPI_Allreduce(&my_free, &free_min, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, mpi_comm_level1);
 
     if (fit == 0 && myid0 == Host_ID) {
+        OpenMX_Manifest_Count(MANI_DENSE_FB_MEM_EVENTS);   /* B21 */
         printf("<Band_DFT_Col> A k-owner rank cannot fit even one k-point's dense GPU"
                " diagonalization (%.1f MiB needed per rank, %.1f MiB free);"
                " falling back to the ScaLAPACK/ELPA diagonalization."
@@ -847,6 +849,8 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
             if (device_rank == 0) {
                 static int last_limit = -1;
                 static int last_device_ranks = -1;
+                OpenMX_Manifest_SetMax(MANI_DIAG_CONCURRENCY_PLAN, (long long)selected_limit);   /* B22 */
+                OpenMX_Manifest_SetMin(MANI_DIAG_CONCURRENCY_MIN,  (long long)selected_limit);
                 if (last_limit != selected_limit || last_device_ranks != device_ranks) {
                     printf("<Band_DFT_Col> GPU device %d: %d k-owner rank(s), "
                            "GPU concurrency=%d, turn group=%d, per-rank=%.3f GiB, "
@@ -864,6 +868,7 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
         } else {
             local_limit = 1;
             if (device_rank == 0) {
+                OpenMX_Manifest_SetMin(MANI_DIAG_CONCURRENCY_MIN, 1LL);   /* B23 */
                 fprintf(stderr,
                         "Band_DFT_Col: failed to query common GPU memory; "
                         "using one GPU k-owner rank at a time.\n");
@@ -1897,6 +1902,8 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
     BandCol_GpuSolver_EnsureWorkspace(m, maxn, d_A, want_vectors);
     range = CUSOLVER_EIG_RANGE_I;
 
+    OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
+    if (jobz == CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
     wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F, (cuDoubleComplex *)d_A, m,
                                     &vl, &vu, 1L, maxn, &h_meig, CUDA_R_64F, ctx->d_W, CUDA_C_64F, ctx->d_work,
                                     ctx->d_work_bytes, ctx->h_work, ctx->h_work_bytes, ctx->d_info));
@@ -2807,7 +2814,10 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         all_knum = 0;
     }
 
+    OpenMX_Manifest_SetMax(MANI_BAND_ALL_KNUM_P1, (long long)(all_knum+1));
+    OpenMX_Manifest_SetMax(MANI_BAND_T_KNUM, (long long)T_knum);
     owns_dense_k_rank = (use_gpusolver_dense && Set_Hamiltonian_OpenACC_Rank_Is_Selected());
+    if (owns_dense_k_rank) OpenMX_Manifest_RankFlag(MANI_KOWNER_RANKS);
     owns_global_dense_rank = (all_knum == 1 && owns_dense_k_rank);
     use_setham_packed_cache =
         (use_gpusolver_dense && all_knum == 1 && Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
@@ -3411,6 +3421,7 @@ diagonalize1:
                     dtime(&Stime);
 
                 if (parallel_mode == 0 || (SCF_iter == 1 || all_knum != 1)) {
+                    OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
                     if (scf_eigen_lib_flag == 1) {
                         F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                         (&n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
@@ -3543,6 +3554,7 @@ diagonalize1:
                 if (measure_time)
                     dtime(&Stime);
 
+                OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
@@ -4165,6 +4177,7 @@ diagonalize1:
             if (kmin <= kmax && BandCol_UseGpuFallbackDM(n)) {
                 /* EVec1 already carries sqrt(kw*FermiF) from the loop above,
                    so the kernel runs with unit occupation weights */
+                OpenMX_Manifest_Count(MANI_DM_GPU_CALLS);
                 const int nk     = kmax - kmin + 1;
                 const int stride = ie2[myid2] - is2[myid2] + 1;
                 dcomplex *evec_dev = BandCol_FallbackDMUpload(EVec1[spin], (size_t)n * (size_t)stride);
@@ -4741,6 +4754,7 @@ diagonalize1:
                 if (measure_time)
                     dtime(&Stime);
 
+                OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
@@ -4834,6 +4848,7 @@ diagonalize1:
                 if (measure_time)
                     dtime(&Stime);
 
+                OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
                 if (scf_eigen_lib_flag == 1) {
                     F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)
                     (&n, &MaxN, Hs, &na_rows, &ko[1], Cs, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
@@ -4933,6 +4948,7 @@ diagonalize1:
 
                     if (BandCol_UseGpuFallbackDM(n)) {
                         dcomplex *evec_dev = BandCol_FallbackDMUpload(Hs, (size_t)n * (size_t)na_rows);
+                        OpenMX_Manifest_Count(MANI_DM_GPU_CALLS);
 
                         if (evec_dev != NULL) {
                             double dm_prof_t0 = 0.0;

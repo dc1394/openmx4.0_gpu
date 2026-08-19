@@ -161,6 +161,7 @@ int gpu_rank_device_usable(void)
     if (cudaSetDevice(dev) != cudaSuccess) {
         (void)cudaGetLastError();
         acc_set_device_type(acc_device_host);
+        OpenMX_Manifest_RankFlag(MANI_GPU_PROBE_FAIL_RANKS);   /* B12 */
         fprintf(stderr,
                 "gpu_rank_device_usable: cudaSetDevice(%d) failed on this rank; using host paths.\n",
                 dev);
@@ -202,6 +203,7 @@ int gpu_rank_device_usable(void)
            never touches the device again */
         (void)cudaDeviceReset();
         acc_set_device_type(acc_device_host);
+        OpenMX_Manifest_RankFlag(MANI_GPU_PROBE_FAIL_RANKS);   /* B13 */
         if (devices_seen) {
             fprintf(stderr,
                     "gpu_rank_device_usable: GPU %d cannot be initialized on this rank"

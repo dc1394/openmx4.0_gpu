@@ -85,6 +85,10 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
     int local_ok = Set_Density_Grid_GPU_Local_Prepare(Cnt_kind,Calc_CntOrbital_ON);
     MPI_Allreduce(&local_ok,&use_local_gpu,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
+    if (use_local_gpu){                                   /* B60 */
+      OpenMX_Manifest_SetMax(MANI_SDG_MODE, 2LL);
+      OpenMX_Manifest_RankFlag(MANI_SDG_LOCAL_RANKS);
+    }
     if (use_local_gpu && myid==Host_ID && 0<level_stdout){
       static int announced = 0;
       if (!announced){
@@ -100,6 +104,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
      zero keeps the original CPU/OpenMP implementation as the fallback. */
   if (!use_local_gpu){
     if (Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
+      OpenMX_Manifest_SetMax(MANI_SDG_MODE, 1LL);
       return time0;
     }
   }

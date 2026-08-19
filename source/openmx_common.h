@@ -3358,6 +3358,115 @@ void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
 size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
 
+/* Run manifest (work/run_manifest_design.md): a flat per-rank counter
+   registry proving which fast paths actually executed.  Counters are
+   incremented beside the banners inventoried in work/gpu_phase_audit.md
+   sec.4 ("one banner = one counter"); <System.Name>.manifest.json is
+   written by Host_ID at the end of openmx.c main.
+   The reduce class of each key lives in openmx_common.c:
+     SUM keys   -> OpenMX_Manifest_Count / OpenMX_Manifest_Add
+     MAX keys   -> OpenMX_Manifest_SetMax
+     MIN keys   -> OpenMX_Manifest_SetMin
+     FSUM keys  -> OpenMX_Manifest_RankFlag / OpenMX_Manifest_RankValue
+                   (local max, reduced with SUM: "how many ranks / total
+                   over device leaders") */
+enum OpenMX_ManifestKey {
+  /* run/meta */
+  MANI_SCF_ITERS = 0,            /* MAX  last SCF iteration count */
+  MANI_SCF_CONVERGED_P1,         /* MAX  scf_convergence_flag+1 */
+  MANI_MD_STEPS,                 /* MAX  MD iteration count */
+  MANI_WALL_TOTAL_MS,            /* MAX  CompTime[0] */
+  MANI_WALL_DFT_MS,              /* MAX  CompTime[3] */
+  MANI_WALL_DIAG_MS,             /* MAX  CompTime[9] */
+  MANI_WALL_SETHAM_MS,           /* MAX  CompTime[7] */
+  MANI_VMHWM_KB,                 /* MAX  per-rank peak host RSS (VmHWM) */
+  /* GPU init (DFT.c B04-B07, probe B12/B13) */
+  MANI_GPU_RANKS,                /* FSUM ranks with a usable device */
+  MANI_GPU_PROBE_FAIL_RANKS,     /* FSUM ranks whose probe failed */
+  MANI_DEVICES_PER_NODE,         /* MAX  devices used per node */
+  MANI_DEVICES_CAPPED,           /* MAX  scf.Gpu.Num cap engaged (B05) */
+  MANI_DEMOTED_ELPA2,            /* MAX  whole-run demotion (B06) */
+  MANI_DEMOTE_REASON,            /* MAX  demotion reason code 1-5 (B07) */
+  MANI_SMALL_SYSTEM_CPU_DIAG,    /* MAX  below-switch-num notice (B04) */
+  /* per-iteration solver banner (B09) */
+  MANI_DIAG_GPU_ITERS,           /* SUM  iterations with (GPU-accelerated) */
+  MANI_DIAG_CPU_ITERS,           /* SUM  iterations without */
+  /* dense eigensolver dispatch (audit sec.1) */
+  MANI_DENSE_GPU_SOLVES,         /* SUM  cusolverDnXsyevdx executions */
+  MANI_DENSE_GPU_NOVECTOR,       /* SUM  subset with jobz=NOVECTOR */
+  MANI_DENSE_CPU_SOLVES,         /* SUM  ELPA/ScaLAPACK dense eigensolves */
+  MANI_DENSE_GS2_SOLVES,         /* SUM  gpusolver2 (ELPA-GPU) eigensolves */
+  MANI_DENSE_FB_ENV_OFF,         /* MAX  OPENMX_*_GPU_DIAG=0 (B20/25/30/33) */
+  MANI_DENSE_FB_MEM_EVENTS,      /* SUM  memory-preflight fallbacks
+                                          (B21/B26/B32/B34) */
+  MANI_CLUSTER_SPIN_SERIALIZED,  /* MAX  serialized two-spin tier (B31) */
+  MANI_BAND_KWORLD_SERIALIZED,   /* SUM  serialized k-worlds (B28) */
+  MANI_BAND_ALL_KNUM_P1,         /* MAX  all_knum+1 */
+  MANI_BAND_T_KNUM,              /* MAX  T_knum */
+  MANI_KOWNER_RANKS,             /* FSUM dense k-owner ranks */
+  MANI_DIAG_CONCURRENCY_PLAN,    /* MAX  planned GPU concurrency (B22/B27) */
+  MANI_DIAG_CONCURRENCY_MIN,     /* MIN  ... over SCF iterations */
+  /* Set_Hamiltonian (B50-B55) */
+  MANI_SETHAM_RANK_GPU_ITERS,    /* SUM  rank-iterations on the GPU path */
+  MANI_SETHAM_RANK_CPU_ITERS,    /* SUM  rank-iterations on the CPU path */
+  MANI_SETHAM_GPU_RANKS,         /* FSUM device_ranks (leader-set) */
+  MANI_SETHAM_CPU_FB_RANKS,      /* FSUM CPU-fallback ranks (leader-set) */
+  MANI_SETHAM_CONCURRENCY,       /* MAX  plan concurrent_ranks */
+  MANI_SETHAM_CONCURRENCY_MIN,   /* MIN  plan concurrent_ranks */
+  MANI_SETHAM_RESIDENT_RANKS,    /* FSUM resident-cache ranks (B51) */
+  MANI_SETHAM_RESIDENT_BYTES,    /* MAX  resident group bytes (B51) */
+  MANI_SETHAM_RESIDENT_EVICT,    /* SUM  mid-step evictions (B52) */
+  MANI_SETHAM_RANK_INIT_FAIL,    /* FSUM ranks hitting B54/B55 */
+  /* other GPU phases */
+  MANI_SETNL_GPU_CALLS,          /* SUM  DS_NL OpenACC batches */
+  MANI_SETNL_CPU_FB,             /* SUM  silent arena fallbacks */
+  MANI_VNA_HVNA_GPU,             /* SUM  HVNA device batches */
+  MANI_VNA_HVNA_FB,              /* SUM  HVNA memory fallbacks (B58) */
+  MANI_VNA_DSVNA_GPU,            /* SUM  DS_VNA device batches */
+  MANI_VNA_DSVNA_FB,             /* SUM  DS_VNA memory fallbacks (B59) */
+  MANI_VNA_VNA23_GPU,            /* SUM  VNA23 device batches */
+  MANI_VNA_VNA23_FB,             /* SUM  VNA23 fallbacks (was silent) */
+  MANI_SDG_MODE,                 /* MAX  2=distributed 1=owner 0=cpu */
+  MANI_SDG_LOCAL_RANKS,          /* FSUM ranks in the distributed tier */
+  MANI_SDG_OWNER_FB,             /* SUM  owner-service fallbacks (B61) */
+  MANI_DM_GPU_CALLS,             /* SUM  GPU DM accumulation entries */
+  MANI_MIXH_TIER_P1,             /* MAX  1=legacy 2=incremental 3=gpu */
+  MANI_TE_GPU_CALLS,             /* SUM  Total_Energy OpenACC batches */
+  MANI_FORCE3_GPU,               /* SUM  Force3 GPU traces */
+  MANI_FORCE3_FB,                /* SUM  Force3 budget fallbacks */
+  MANI_FORCE4_GPU,               /* SUM  Force4 GPU reductions */
+  MANI_FORCE4B_GPU,              /* SUM  Force4B separable-VNA batches */
+  MANI_FORCEHNL_GPU,             /* SUM  HNL force GPU batches */
+  /* GEMMul8 (pulled from gemmul8_bridge.cu at write time) */
+  MANI_G8_D_CALLS,               /* SUM  GEMMul8 D executions */
+  MANI_G8_Z_CALLS,               /* SUM  GEMMul8 Z executions */
+  MANI_G8_D_FB,                  /* SUM  D fallbacks to cuBLAS (B70) */
+  MANI_G8_Z_FB,                  /* SUM  Z fallbacks to cuBLAS (B70) */
+  MANI_G8_FB_FRACTION,           /* SUM  reason: workspace fraction policy */
+  MANI_G8_FB_RESERVE,            /* SUM  reason: free memory reserve policy */
+  MANI_G8_FB_CUDAMALLOC,         /* SUM  reason: cudaMalloc failure */
+  MANI_G8_FB_ENVDIS,             /* SUM  reason: environment disable */
+  MANI_G8_INPUT_OFF_CALLS,       /* SUM  calls while scf.gemmul8.enable=off */
+  MANI_G8_WS_PEAK_BYTES,         /* MAX  peak GEMMul8 workspace bytes */
+  MANI_NKEYS
+};
+
+void OpenMX_Manifest_Count(int key);
+void OpenMX_Manifest_Add(int key, long long v);
+void OpenMX_Manifest_SetMax(int key, long long v);
+void OpenMX_Manifest_SetMin(int key, long long v);
+void OpenMX_Manifest_RankFlag(int key);
+void OpenMX_Manifest_RankValue(int key, long long v);
+void OpenMX_Manifest_Write(const char *input_path);
+
+/* rank-local GEMMul8 statistics of gemmul8_bridge.cu (see the slot list
+   at its definition); filled into the registry by OpenMX_Manifest_Write */
+void openmx_gemmul8GetStats(long long out[16]);
+void openmx_gemmul8GetConfig(int *enabled, int *num_moduli_d, int *num_moduli_z,
+                             int *fastmode_d, int *fastmode_z,
+                             unsigned *max_workspace_percent,
+                             unsigned long long *min_free_after_mib);
+
 /* Read-only view of Set_Hamiltonian's matrix-elements tables (the central
    full-sphere orbitals, the FNAN-layout neighbour orbitals and the overlap
    index lists) so other grid quadratures can share one device copy. */

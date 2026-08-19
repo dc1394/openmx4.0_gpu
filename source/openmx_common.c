@@ -20297,3 +20297,580 @@ size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix)
   }
   return need;
 }
+
+
+
+/*=====================================================================*
+ |  Run manifest (work/run_manifest_design.md, plan sec.10 / WBS 3)    |
+ |                                                                     |
+ |  A flat long long counter registry; every counter is incremented    |
+ |  beside a banner of work/gpu_phase_audit.md sec.4 or at the actual  |
+ |  dispatch site of a fast path, so <System.Name>.manifest.json is a  |
+ |  machine-readable proof of which paths executed.  Increments happen |
+ |  at per-SCF or per-phase granularity only (no hot loops).           |
+ *=====================================================================*/
+
+#include <limits.h>
+#include <time.h>
+#include <unistd.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+#if defined(__has_include)
+# if __has_include("manifest_buildinfo.h")
+#  include "manifest_buildinfo.h"
+# endif
+#endif
+#ifndef OPENMX_BUILD_GIT_COMMIT
+#define OPENMX_BUILD_GIT_COMMIT "unknown"
+#endif
+#ifndef OPENMX_BUILD_RELEASE_TAG
+#define OPENMX_BUILD_RELEASE_TAG ""
+#endif
+#ifndef OPENMX_BUILD_GEMMUL8_COMMIT
+#define OPENMX_BUILD_GEMMUL8_COMMIT "unknown"
+#endif
+
+static long long Manifest_local[MANI_NKEYS];
+static int       Manifest_touch[MANI_NKEYS];
+
+/* reduce class per key: 'S' = SUM of local sums, 'M' = MAX, 'm' = MIN,
+   'F' = SUM of local maxima (rank flags / per-device-leader values) */
+static const char Manifest_class[MANI_NKEYS] = {
+  [MANI_SCF_ITERS]              = 'M',
+  [MANI_SCF_CONVERGED_P1]       = 'M',
+  [MANI_MD_STEPS]               = 'M',
+  [MANI_WALL_TOTAL_MS]          = 'M',
+  [MANI_WALL_DFT_MS]            = 'M',
+  [MANI_WALL_DIAG_MS]           = 'M',
+  [MANI_WALL_SETHAM_MS]         = 'M',
+  [MANI_VMHWM_KB]               = 'M',
+  [MANI_GPU_RANKS]              = 'F',
+  [MANI_GPU_PROBE_FAIL_RANKS]   = 'F',
+  [MANI_DEVICES_PER_NODE]       = 'M',
+  [MANI_DEVICES_CAPPED]         = 'M',
+  [MANI_DEMOTED_ELPA2]          = 'M',
+  [MANI_DEMOTE_REASON]          = 'M',
+  [MANI_SMALL_SYSTEM_CPU_DIAG]  = 'M',
+  [MANI_DIAG_GPU_ITERS]         = 'S',
+  [MANI_DIAG_CPU_ITERS]         = 'S',
+  [MANI_DENSE_GPU_SOLVES]       = 'S',
+  [MANI_DENSE_GPU_NOVECTOR]     = 'S',
+  [MANI_DENSE_CPU_SOLVES]       = 'S',
+  [MANI_DENSE_GS2_SOLVES]       = 'S',
+  [MANI_DENSE_FB_ENV_OFF]       = 'M',
+  [MANI_DENSE_FB_MEM_EVENTS]    = 'S',
+  [MANI_CLUSTER_SPIN_SERIALIZED]= 'M',
+  [MANI_BAND_KWORLD_SERIALIZED] = 'S',
+  [MANI_BAND_ALL_KNUM_P1]       = 'M',
+  [MANI_BAND_T_KNUM]            = 'M',
+  [MANI_KOWNER_RANKS]           = 'F',
+  [MANI_DIAG_CONCURRENCY_PLAN]  = 'M',
+  [MANI_DIAG_CONCURRENCY_MIN]   = 'm',
+  [MANI_SETHAM_RANK_GPU_ITERS]  = 'S',
+  [MANI_SETHAM_RANK_CPU_ITERS]  = 'S',
+  [MANI_SETHAM_GPU_RANKS]       = 'F',
+  [MANI_SETHAM_CPU_FB_RANKS]    = 'F',
+  [MANI_SETHAM_CONCURRENCY]     = 'M',
+  [MANI_SETHAM_CONCURRENCY_MIN] = 'm',
+  [MANI_SETHAM_RESIDENT_RANKS]  = 'F',
+  [MANI_SETHAM_RESIDENT_BYTES]  = 'M',
+  [MANI_SETHAM_RESIDENT_EVICT]  = 'S',
+  [MANI_SETHAM_RANK_INIT_FAIL]  = 'F',
+  [MANI_SETNL_GPU_CALLS]        = 'S',
+  [MANI_SETNL_CPU_FB]           = 'S',
+  [MANI_VNA_HVNA_GPU]           = 'S',
+  [MANI_VNA_HVNA_FB]            = 'S',
+  [MANI_VNA_DSVNA_GPU]          = 'S',
+  [MANI_VNA_DSVNA_FB]           = 'S',
+  [MANI_VNA_VNA23_GPU]          = 'S',
+  [MANI_VNA_VNA23_FB]           = 'S',
+  [MANI_SDG_MODE]               = 'M',
+  [MANI_SDG_LOCAL_RANKS]        = 'F',
+  [MANI_SDG_OWNER_FB]           = 'S',
+  [MANI_DM_GPU_CALLS]           = 'S',
+  [MANI_MIXH_TIER_P1]           = 'M',
+  [MANI_TE_GPU_CALLS]           = 'S',
+  [MANI_FORCE3_GPU]             = 'S',
+  [MANI_FORCE3_FB]              = 'S',
+  [MANI_FORCE4_GPU]             = 'S',
+  [MANI_FORCE4B_GPU]            = 'S',
+  [MANI_FORCEHNL_GPU]           = 'S',
+  [MANI_G8_D_CALLS]             = 'S',
+  [MANI_G8_Z_CALLS]             = 'S',
+  [MANI_G8_D_FB]                = 'S',
+  [MANI_G8_Z_FB]                = 'S',
+  [MANI_G8_FB_FRACTION]         = 'S',
+  [MANI_G8_FB_RESERVE]          = 'S',
+  [MANI_G8_FB_CUDAMALLOC]       = 'S',
+  [MANI_G8_FB_ENVDIS]           = 'S',
+  [MANI_G8_INPUT_OFF_CALLS]     = 'S',
+  [MANI_G8_WS_PEAK_BYTES]       = 'M',
+};
+
+/* key names of the flat "counters" dump (validate_manifest.sh keys) */
+static const char *Manifest_name[MANI_NKEYS] = {
+  [MANI_SCF_ITERS]              = "scf_iters",
+  [MANI_SCF_CONVERGED_P1]       = "scf_converged_p1",
+  [MANI_MD_STEPS]               = "md_steps",
+  [MANI_WALL_TOTAL_MS]          = "wall_total_ms",
+  [MANI_WALL_DFT_MS]            = "wall_dft_ms",
+  [MANI_WALL_DIAG_MS]           = "wall_diag_ms",
+  [MANI_WALL_SETHAM_MS]         = "wall_setham_ms",
+  [MANI_VMHWM_KB]               = "vmhwm_kb_max",
+  [MANI_GPU_RANKS]              = "gpu_ranks",
+  [MANI_GPU_PROBE_FAIL_RANKS]   = "gpu_probe_fail_ranks",
+  [MANI_DEVICES_PER_NODE]       = "devices_per_node",
+  [MANI_DEVICES_CAPPED]         = "devices_capped",
+  [MANI_DEMOTED_ELPA2]          = "demoted_elpa2",
+  [MANI_DEMOTE_REASON]          = "demote_reason",
+  [MANI_SMALL_SYSTEM_CPU_DIAG]  = "small_system_cpu_diag",
+  [MANI_DIAG_GPU_ITERS]         = "diag_gpu_iters",
+  [MANI_DIAG_CPU_ITERS]         = "diag_cpu_iters",
+  [MANI_DENSE_GPU_SOLVES]       = "dense_gpu_solves",
+  [MANI_DENSE_GPU_NOVECTOR]     = "dense_gpu_novector",
+  [MANI_DENSE_CPU_SOLVES]       = "dense_cpu_solves",
+  [MANI_DENSE_GS2_SOLVES]       = "dense_gs2_solves",
+  [MANI_DENSE_FB_ENV_OFF]       = "dense_fb_env_off",
+  [MANI_DENSE_FB_MEM_EVENTS]    = "dense_fb_mem_events",
+  [MANI_CLUSTER_SPIN_SERIALIZED]= "cluster_spin_serialized",
+  [MANI_BAND_KWORLD_SERIALIZED] = "band_kworld_serialized",
+  [MANI_BAND_ALL_KNUM_P1]       = "band_all_knum_p1",
+  [MANI_BAND_T_KNUM]            = "band_t_knum",
+  [MANI_KOWNER_RANKS]           = "kowner_ranks",
+  [MANI_DIAG_CONCURRENCY_PLAN]  = "diag_concurrency_plan",
+  [MANI_DIAG_CONCURRENCY_MIN]   = "diag_concurrency_min",
+  [MANI_SETHAM_RANK_GPU_ITERS]  = "setham_rank_gpu_iters",
+  [MANI_SETHAM_RANK_CPU_ITERS]  = "setham_rank_cpu_iters",
+  [MANI_SETHAM_GPU_RANKS]       = "setham_gpu_ranks",
+  [MANI_SETHAM_CPU_FB_RANKS]    = "setham_cpu_fb_ranks",
+  [MANI_SETHAM_CONCURRENCY]     = "setham_concurrency",
+  [MANI_SETHAM_CONCURRENCY_MIN] = "setham_concurrency_min",
+  [MANI_SETHAM_RESIDENT_RANKS]  = "setham_resident_ranks",
+  [MANI_SETHAM_RESIDENT_BYTES]  = "setham_resident_bytes",
+  [MANI_SETHAM_RESIDENT_EVICT]  = "setham_resident_evictions",
+  [MANI_SETHAM_RANK_INIT_FAIL]  = "setham_rank_init_fail",
+  [MANI_SETNL_GPU_CALLS]        = "setnl_gpu_calls",
+  [MANI_SETNL_CPU_FB]           = "setnl_cpu_fallbacks",
+  [MANI_VNA_HVNA_GPU]           = "vna_hvna_gpu",
+  [MANI_VNA_HVNA_FB]            = "vna_hvna_fallbacks",
+  [MANI_VNA_DSVNA_GPU]          = "vna_dsvna_gpu",
+  [MANI_VNA_DSVNA_FB]           = "vna_dsvna_fallbacks",
+  [MANI_VNA_VNA23_GPU]          = "vna_vna23_gpu",
+  [MANI_VNA_VNA23_FB]           = "vna_vna23_fallbacks",
+  [MANI_SDG_MODE]               = "density_grid_mode",
+  [MANI_SDG_LOCAL_RANKS]        = "density_grid_local_ranks",
+  [MANI_SDG_OWNER_FB]           = "density_grid_owner_fallbacks",
+  [MANI_DM_GPU_CALLS]           = "dm_gpu_calls",
+  [MANI_MIXH_TIER_P1]           = "mixh_tier_p1",
+  [MANI_TE_GPU_CALLS]           = "total_energy_gpu_calls",
+  [MANI_FORCE3_GPU]             = "force3_gpu",
+  [MANI_FORCE3_FB]              = "force3_fallbacks",
+  [MANI_FORCE4_GPU]             = "force4_gpu",
+  [MANI_FORCE4B_GPU]            = "force4b_gpu",
+  [MANI_FORCEHNL_GPU]           = "forcehnl_gpu",
+  [MANI_G8_D_CALLS]             = "gemmul8_d_calls",
+  [MANI_G8_Z_CALLS]             = "gemmul8_z_calls",
+  [MANI_G8_D_FB]                = "gemmul8_d_fallbacks",
+  [MANI_G8_Z_FB]                = "gemmul8_z_fallbacks",
+  [MANI_G8_FB_FRACTION]         = "gemmul8_fb_fraction_policy",
+  [MANI_G8_FB_RESERVE]          = "gemmul8_fb_reserve_policy",
+  [MANI_G8_FB_CUDAMALLOC]       = "gemmul8_fb_cudamalloc",
+  [MANI_G8_FB_ENVDIS]           = "gemmul8_fb_env_disable",
+  [MANI_G8_INPUT_OFF_CALLS]     = "gemmul8_input_off_calls",
+  [MANI_G8_WS_PEAK_BYTES]       = "gemmul8_ws_peak_bytes",
+};
+
+void OpenMX_Manifest_Add(int key, long long v)
+{
+  if (key<0 || MANI_NKEYS<=key) return;
+#pragma omp critical(openmx_manifest)
+  {
+    Manifest_local[key] += v;
+    Manifest_touch[key] = 1;
+  }
+}
+
+void OpenMX_Manifest_Count(int key)
+{
+  OpenMX_Manifest_Add(key, 1LL);
+}
+
+void OpenMX_Manifest_SetMax(int key, long long v)
+{
+  if (key<0 || MANI_NKEYS<=key) return;
+#pragma omp critical(openmx_manifest)
+  {
+    if (!Manifest_touch[key] || Manifest_local[key]<v) Manifest_local[key] = v;
+    Manifest_touch[key] = 1;
+  }
+}
+
+void OpenMX_Manifest_SetMin(int key, long long v)
+{
+  if (key<0 || MANI_NKEYS<=key) return;
+#pragma omp critical(openmx_manifest)
+  {
+    if (!Manifest_touch[key] || v<Manifest_local[key]) Manifest_local[key] = v;
+    Manifest_touch[key] = 1;
+  }
+}
+
+void OpenMX_Manifest_RankValue(int key, long long v)
+{
+  OpenMX_Manifest_SetMax(key, v);
+}
+
+void OpenMX_Manifest_RankFlag(int key)
+{
+  OpenMX_Manifest_SetMax(key, 1LL);
+}
+
+static long long Manifest_VmHWM_kB(void)
+{
+  FILE *fp = fopen("/proc/self/status","r");
+  char line[256];
+  long long kb = 0;
+
+  if (fp==NULL) return 0;
+  while (fgets(line,sizeof(line),fp)!=NULL){
+    if (strncmp(line,"VmHWM:",6)==0){
+      sscanf(line+6,"%lld",&kb);
+      break;
+    }
+  }
+  fclose(fp);
+  return kb;
+}
+
+/* first whitespace-delimited token of `cmd 'path'` (sha256sum/md5sum) */
+static void Manifest_HashFile(const char *cmd, const char *path,
+                              char *out, size_t outsz)
+{
+  char full[YOUSO10*2+64], buf[512];
+  FILE *p;
+
+  out[0] = '\0';
+  if (path==NULL || path[0]=='\0' || strchr(path,'\'')!=NULL) return;
+  snprintf(full,sizeof(full),"%s '%s' 2>/dev/null",cmd,path);
+  p = popen(full,"r");
+  if (p==NULL) return;
+  if (fgets(buf,sizeof(buf),p)!=NULL){
+    char tok[160];
+    if (sscanf(buf,"%159s",tok)==1 && strlen(tok)<outsz) strcpy(out,tok);
+  }
+  pclose(p);
+}
+
+static void Manifest_JsonEscape(const char *in, char *out, size_t outsz)
+{
+  size_t o = 0;
+
+  if (in==NULL) in = "";
+  while (*in!='\0' && o+2<outsz){
+    unsigned char c = (unsigned char)*in++;
+    if (c=='"' || c=='\\'){ out[o++]='\\'; out[o++]=(char)c; }
+    else if (c<0x20)      { out[o++]=' '; }
+    else                  { out[o++]=(char)c; }
+  }
+  out[o] = '\0';
+}
+
+void OpenMX_Manifest_Write(const char *input_path)
+{
+  long long red_sum[MANI_NKEYS], red_max[MANI_NKEYS], red_min[MANI_NKEYS];
+  long long snd_sum[MANI_NKEYS], snd_max[MANI_NKEYS], snd_min[MANI_NKEYS];
+  long long val[MANI_NKEYS];
+  int tch[MANI_NKEYS], red_tch[MANI_NKEYS];
+  long long node0_rss_kb = 0;
+  int myid, numprocs, nodes = 0, k;
+
+  MPI_Comm_rank(mpi_comm_level1,&myid);
+  MPI_Comm_size(mpi_comm_level1,&numprocs);
+
+  /* fold the rank-local GEMMul8 bridge statistics into the registry */
+  {
+    long long st[16];
+    openmx_gemmul8GetStats(st);
+    OpenMX_Manifest_Add(MANI_G8_D_CALLS,        st[0]);
+    OpenMX_Manifest_Add(MANI_G8_Z_CALLS,        st[1]);
+    OpenMX_Manifest_Add(MANI_G8_D_FB,           st[2]);
+    OpenMX_Manifest_Add(MANI_G8_Z_FB,           st[3]);
+    OpenMX_Manifest_Add(MANI_G8_FB_FRACTION,    st[4]);
+    OpenMX_Manifest_Add(MANI_G8_FB_RESERVE,     st[5]);
+    OpenMX_Manifest_Add(MANI_G8_FB_CUDAMALLOC,  st[6]);
+    OpenMX_Manifest_Add(MANI_G8_FB_ENVDIS,      st[7]);
+    OpenMX_Manifest_Add(MANI_G8_INPUT_OFF_CALLS,st[8]+st[9]);
+    OpenMX_Manifest_SetMax(MANI_G8_WS_PEAK_BYTES,st[10]);
+  }
+
+  OpenMX_Manifest_SetMax(MANI_VMHWM_KB, Manifest_VmHWM_kB());
+
+  for (k=0; k<MANI_NKEYS; k++){
+    char cls = Manifest_class[k];
+    tch[k]     = Manifest_touch[k];
+    snd_sum[k] = (tch[k] && (cls=='S' || cls=='F')) ? Manifest_local[k] : 0LL;
+    snd_max[k] = (tch[k] && cls=='M') ? Manifest_local[k] : LLONG_MIN;
+    snd_min[k] = (tch[k] && cls=='m') ? Manifest_local[k] : LLONG_MAX;
+  }
+  MPI_Reduce(snd_sum,red_sum,MANI_NKEYS,MPI_LONG_LONG,MPI_SUM,Host_ID,mpi_comm_level1);
+  MPI_Reduce(snd_max,red_max,MANI_NKEYS,MPI_LONG_LONG,MPI_MAX,Host_ID,mpi_comm_level1);
+  MPI_Reduce(snd_min,red_min,MANI_NKEYS,MPI_LONG_LONG,MPI_MIN,Host_ID,mpi_comm_level1);
+  MPI_Reduce(tch,red_tch,MANI_NKEYS,MPI_INT,MPI_MAX,Host_ID,mpi_comm_level1);
+
+  /* node census + the summed peak host RSS of Host_ID's node */
+  {
+    MPI_Comm node_comm;
+    long long my_rss = Manifest_VmHWM_kB(), node_sum = 0, contrib = 0, red = 0;
+    int node_rank, leader, host_here = (myid==Host_ID), node_has_host = 0;
+
+    MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
+    MPI_Comm_rank(node_comm,&node_rank);
+    MPI_Allreduce(&my_rss,&node_sum,1,MPI_LONG_LONG,MPI_SUM,node_comm);
+    MPI_Allreduce(&host_here,&node_has_host,1,MPI_INT,MPI_MAX,node_comm);
+    MPI_Comm_free(&node_comm);
+
+    leader = (node_rank==0) ? 1 : 0;
+    MPI_Reduce(&leader,&nodes,1,MPI_INT,MPI_SUM,Host_ID,mpi_comm_level1);
+    contrib = (node_rank==0 && node_has_host) ? node_sum : 0;
+    MPI_Reduce(&contrib,&red,1,MPI_LONG_LONG,MPI_MAX,Host_ID,mpi_comm_level1);
+    node0_rss_kb = red;
+  }
+
+  if (myid!=Host_ID) return;
+
+  for (k=0; k<MANI_NKEYS; k++){
+    char cls = Manifest_class[k];
+    if      (cls=='S' || cls=='F') val[k] = red_sum[k];
+    else if (cls=='M')             val[k] = red_tch[k] ? red_max[k] : 0LL;
+    else                           val[k] = red_tch[k] ? red_min[k] : 0LL;
+  }
+
+  {
+    char fn[YOUSO10*2], esc[1024], esc2[1024];
+    char sha256[160]="", md5[160]="", mpiver[512]="", compiler[128]="";
+    const char *solver_name[13] = {"?","recursion","cluster","band","negf","dc",
+                                   "gdc","cluster-diis","krylov","cluster2",
+                                   "egac","dc-lno","cluster-lno"};
+    const char *spin_name, *eigen_in, *eigen_eff, *dense_path;
+    const char *mps_dir;
+    int mps_detected, g8_enabled=0, g8_md=0, g8_mz=0, g8_fd=0, g8_fz=0;
+    unsigned g8_pct=0;
+    unsigned long long g8_res=0ULL;
+    int cuda_rt=0, cuda_drv=0, mpilen=0;
+    time_t now = time(NULL);
+    char stamp[64];
+    FILE *fp;
+
+    Manifest_HashFile("sha256sum",input_path,sha256,sizeof(sha256));
+    {
+      /* resolve the symlink here: passed verbatim, /proc/self/exe would
+         name the hashing child process instead of openmx */
+      char exepath[1024];
+      ssize_t L = readlink("/proc/self/exe",exepath,sizeof(exepath)-1);
+      if (0<L){ exepath[L]='\0'; Manifest_HashFile("md5sum",exepath,md5,sizeof(md5)); }
+    }
+    {
+      char raw[MPI_MAX_LIBRARY_VERSION_STRING];
+      MPI_Get_library_version(raw,&mpilen);
+      raw[strcspn(raw,"\n")] = '\0';
+      if (128<strlen(raw)) raw[128] = '\0';
+      Manifest_JsonEscape(raw,mpiver,sizeof(mpiver));
+    }
+#if defined(__NVCOMPILER_MAJOR__) && defined(__NVCOMPILER_MINOR__)
+    snprintf(compiler,sizeof(compiler),"nvc %d.%d",
+             __NVCOMPILER_MAJOR__,__NVCOMPILER_MINOR__);
+#elif defined(__VERSION__)
+    snprintf(compiler,sizeof(compiler),"%.100s",__VERSION__);
+#endif
+    if (cudaRuntimeGetVersion(&cuda_rt)!=cudaSuccess) cuda_rt = 0;
+    if (cudaDriverGetVersion(&cuda_drv)!=cudaSuccess) cuda_drv = 0;
+    openmx_gemmul8GetConfig(&g8_enabled,&g8_md,&g8_mz,&g8_fd,&g8_fz,
+                            &g8_pct,&g8_res);
+
+    spin_name = (SpinP_switch==3) ? "nc" : ((SpinP_switch==1) ? "on" : "off");
+    eigen_in  = (scf_eigen_lib_flag_input==3)
+                  ? (gpusolver2_flag ? "gpusolver2" : "gpusolver")
+                  : ((scf_eigen_lib_flag_input==2) ? "elpa2"
+                  :  (scf_eigen_lib_flag_input==1) ? "elpa1" : "lapack");
+    eigen_eff = (scf_eigen_lib_flag==3)
+                  ? (gpusolver2_flag ? "gpusolver2" : "gpusolver")
+                  : ((scf_eigen_lib_flag==2) ? "elpa2"
+                  :  (scf_eigen_lib_flag==1) ? "elpa1" : "lapack");
+
+    if (scf_eigen_lib_flag!=3){
+      dense_path = val[MANI_DEMOTED_ELPA2] ? "elpa2-demoted" : eigen_eff;
+    }
+    else if (0LL<val[MANI_DENSE_GS2_SOLVES]) dense_path = "gpusolver2";
+    else if (0LL<val[MANI_DENSE_GPU_SOLVES] && val[MANI_DENSE_CPU_SOLVES]==0LL)
+      dense_path = "gpusolver-gpu-dense";
+    else if (0LL<val[MANI_DENSE_GPU_SOLVES]) dense_path = "gpusolver-mixed";
+    else if (0LL<val[MANI_DENSE_CPU_SOLVES]) dense_path = "gpusolver-cpu-fallback";
+    else dense_path = "gpusolver-no-dense-solve";
+
+    mps_dir = getenv("CUDA_MPS_PIPE_DIRECTORY");
+    mps_detected = (mps_dir!=NULL) || (access("/tmp/nvidia-mps/control",F_OK)==0);
+
+    strftime(stamp,sizeof(stamp),"%Y-%m-%dT%H:%M:%S%z",localtime(&now));
+
+    snprintf(fn,sizeof(fn),"%s%s.manifest.json",filepath,filename);
+    fp = fopen(fn,"w");
+    if (fp==NULL){
+      fprintf(stderr,"OpenMX_Manifest_Write: could not open %s\n",fn);
+      return;
+    }
+
+    fprintf(fp,"{\n");
+    fprintf(fp,"  \"manifest_version\": 1,\n");
+    fprintf(fp,"  \"written_at\": \"%s\",\n",stamp);
+    Manifest_JsonEscape(OPENMX_BUILD_GIT_COMMIT,esc,sizeof(esc));
+    fprintf(fp,"  \"source_commit\": \"%s\",\n",esc);
+    Manifest_JsonEscape(OPENMX_BUILD_RELEASE_TAG,esc,sizeof(esc));
+    fprintf(fp,"  \"release_tag\": \"%s\",\n",esc);
+    Manifest_JsonEscape(OPENMX_BUILD_GEMMUL8_COMMIT,esc,sizeof(esc));
+    fprintf(fp,"  \"gemmul8_commit\": \"%s\",\n",esc);
+
+    Manifest_JsonEscape(compiler,esc,sizeof(esc));
+    fprintf(fp,"  \"build\": {\"compiler\": \"%s\", \"cuda_runtime\": %d, "
+               "\"cuda_driver\": %d, \"mpi\": \"%s\", \"md5\": \"%s\"},\n",
+            esc,cuda_rt,cuda_drv,mpiver,md5);
+
+    Manifest_JsonEscape(input_path?input_path:"",esc,sizeof(esc));
+    Manifest_JsonEscape(filename,esc2,sizeof(esc2));
+    fprintf(fp,"  \"input\": {\"file\": \"%s\", \"sha256\": \"%s\", "
+               "\"system_name\": \"%s\",\n",esc,sha256,esc2);
+    fprintf(fp,"    \"solver\": \"%s\", \"spin\": \"%s\", "
+               "\"kgrid\": [%d,%d,%d], \"atoms\": %d,\n",
+            (1<=Solver && Solver<=12) ? solver_name[Solver] : "?",
+            spin_name,Kspace_grid1,Kspace_grid2,Kspace_grid3,atomnum);
+    fprintf(fp,"    \"scf_maxiter\": %d, \"criterion\": %.6e, "
+               "\"eigen_lib\": \"%s\", \"gemmul8_enable\": %s},\n",
+            DFTSCF_loop,SCF_Criterion,eigen_in,g8_enabled?"true":"false");
+
+    fprintf(fp,"  \"layout\": {\"ranks\": %d, \"threads\": %d, \"nodes\": %d, "
+               "\"gpus_per_node\": %lld,\n",
+            numprocs,
+#ifdef _OPENMP
+            omp_get_max_threads(),
+#else
+            1,
+#endif
+            nodes,val[MANI_DEVICES_PER_NODE]);
+    Manifest_JsonEscape(getenv("OPENMX_GPU_RANK_MAP")?getenv("OPENMX_GPU_RANK_MAP"):"",
+                        esc,sizeof(esc));
+    fprintf(fp,"    \"rank_to_gpu\": \"%s\", \"gpu_ranks\": %lld, "
+               "\"gpu_probe_fail_ranks\": %lld,\n",
+            (esc[0]=='m'||esc[0]=='M') ? "mod" : "block",
+            val[MANI_GPU_RANKS],val[MANI_GPU_PROBE_FAIL_RANKS]);
+    Manifest_JsonEscape(mps_dir?mps_dir:"",esc,sizeof(esc));
+    fprintf(fp,"    \"mps\": {\"detected\": %s, \"pipe_dir\": \"%s\"}},\n",
+            mps_detected?"true":"false",esc);
+
+    if (Solver==3){
+      fprintf(fp,"  \"kpoints\": {\"t_knum\": %lld, \"all_knum\": %lld, "
+                 "\"kowner_ranks\": %lld},\n",
+              val[MANI_BAND_T_KNUM],val[MANI_BAND_ALL_KNUM_P1]-1LL,
+              val[MANI_KOWNER_RANKS]);
+    }
+
+    fprintf(fp,"  \"dense_solver\": {\"path\": \"%s\", \"eigen_lib_effective\": \"%s\",\n",
+            dense_path,eigen_eff);
+    fprintf(fp,"    \"gpu_solves\": %lld, \"novector_solves\": %lld, "
+               "\"cpu_solves\": %lld, \"gs2_solves\": %lld,\n",
+            val[MANI_DENSE_GPU_SOLVES],val[MANI_DENSE_GPU_NOVECTOR],
+            val[MANI_DENSE_CPU_SOLVES],val[MANI_DENSE_GS2_SOLVES]);
+    fprintf(fp,"    \"concurrency_plan\": %lld, \"concurrency_min\": %lld,\n",
+            val[MANI_DIAG_CONCURRENCY_PLAN],val[MANI_DIAG_CONCURRENCY_MIN]);
+    fprintf(fp,"    \"fb_env_off\": %lld, \"fb_mem_events\": %lld, "
+               "\"cluster_spin_serialized\": %lld, \"band_kworld_serialized\": %lld,\n",
+            val[MANI_DENSE_FB_ENV_OFF],val[MANI_DENSE_FB_MEM_EVENTS],
+            val[MANI_CLUSTER_SPIN_SERIALIZED],val[MANI_BAND_KWORLD_SERIALIZED]);
+    fprintf(fp,"    \"demoted_elpa2\": %s, \"demote_reason\": %lld, "
+               "\"small_system_cpu_diag\": %s},\n",
+            val[MANI_DEMOTED_ELPA2]?"true":"false",val[MANI_DEMOTE_REASON],
+            val[MANI_SMALL_SYSTEM_CPU_DIAG]?"true":"false");
+
+    fprintf(fp,"  \"phases\": {\n");
+    fprintf(fp,"    \"solver_iters\": {\"gpu\": %lld, \"cpu\": %lld},\n",
+            val[MANI_DIAG_GPU_ITERS],val[MANI_DIAG_CPU_ITERS]);
+    fprintf(fp,"    \"set_hamiltonian\": {\"rank_gpu_iters\": %lld, "
+               "\"rank_cpu_iters\": %lld, \"gpu_ranks\": %lld, "
+               "\"cpu_fb_ranks\": %lld, \"concurrency\": %lld, "
+               "\"concurrency_min\": %lld,\n",
+            val[MANI_SETHAM_RANK_GPU_ITERS],val[MANI_SETHAM_RANK_CPU_ITERS],
+            val[MANI_SETHAM_GPU_RANKS],val[MANI_SETHAM_CPU_FB_RANKS],
+            val[MANI_SETHAM_CONCURRENCY],val[MANI_SETHAM_CONCURRENCY_MIN]);
+    fprintf(fp,"      \"resident_ranks\": %lld, \"resident_bytes\": %lld, "
+               "\"resident_evictions\": %lld, \"rank_init_fail\": %lld},\n",
+            val[MANI_SETHAM_RESIDENT_RANKS],val[MANI_SETHAM_RESIDENT_BYTES],
+            val[MANI_SETHAM_RESIDENT_EVICT],val[MANI_SETHAM_RANK_INIT_FAIL]);
+    fprintf(fp,"    \"set_nonlocal\": {\"gpu_calls\": %lld, \"cpu_fallbacks\": %lld},\n",
+            val[MANI_SETNL_GPU_CALLS],val[MANI_SETNL_CPU_FB]);
+    fprintf(fp,"    \"set_proexpn_vna\": {\"hvna_gpu\": %lld, \"hvna_fb\": %lld, "
+               "\"dsvna_gpu\": %lld, \"dsvna_fb\": %lld, "
+               "\"vna23_gpu\": %lld, \"vna23_fb\": %lld},\n",
+            val[MANI_VNA_HVNA_GPU],val[MANI_VNA_HVNA_FB],
+            val[MANI_VNA_DSVNA_GPU],val[MANI_VNA_DSVNA_FB],
+            val[MANI_VNA_VNA23_GPU],val[MANI_VNA_VNA23_FB]);
+    fprintf(fp,"    \"set_density_grid\": {\"mode\": %lld, \"local_ranks\": %lld, "
+               "\"owner_fallbacks\": %lld},\n",
+            val[MANI_SDG_MODE],val[MANI_SDG_LOCAL_RANKS],val[MANI_SDG_OWNER_FB]);
+    fprintf(fp,"    \"dm_edm\": {\"gpu_calls\": %lld},\n",val[MANI_DM_GPU_CALLS]);
+    fprintf(fp,"    \"mixing\": {\"tier\": \"%s\"},\n",
+            (val[MANI_MIXH_TIER_P1]==3LL) ? "gpu" :
+            (val[MANI_MIXH_TIER_P1]==2LL) ? "incremental" :
+            (val[MANI_MIXH_TIER_P1]==1LL) ? "legacy" : "unused");
+    fprintf(fp,"    \"total_energy\": {\"gpu_calls\": %lld},\n",
+            val[MANI_TE_GPU_CALLS]);
+    fprintf(fp,"    \"force\": {\"force3_gpu\": %lld, \"force3_fb\": %lld, "
+               "\"force4_gpu\": %lld, \"force4b_gpu\": %lld, \"forcehnl_gpu\": %lld}\n",
+            val[MANI_FORCE3_GPU],val[MANI_FORCE3_FB],val[MANI_FORCE4_GPU],
+            val[MANI_FORCE4B_GPU],val[MANI_FORCEHNL_GPU]);
+    fprintf(fp,"  },\n");
+
+    fprintf(fp,"  \"gemmul8\": {\"enabled\": %s, \"backend\": \"int8\", "
+               "\"num_moduli_d\": %d, \"num_moduli_z\": %d, "
+               "\"fastmode_d\": %s, \"fastmode_z\": %s,\n",
+            g8_enabled?"true":"false",g8_md,g8_mz,
+            g8_fd?"true":"false",g8_fz?"true":"false");
+    fprintf(fp,"    \"workspace_percent\": %u, \"min_free_after_mib\": %llu, "
+               "\"workspace_peak_bytes\": %lld,\n",
+            g8_pct,g8_res,val[MANI_G8_WS_PEAK_BYTES]);
+    fprintf(fp,"    \"d_calls\": %lld, \"z_calls\": %lld, "
+               "\"d_fallbacks\": %lld, \"z_fallbacks\": %lld, "
+               "\"input_off_calls\": %lld,\n",
+            val[MANI_G8_D_CALLS],val[MANI_G8_Z_CALLS],
+            val[MANI_G8_D_FB],val[MANI_G8_Z_FB],val[MANI_G8_INPUT_OFF_CALLS]);
+    fprintf(fp,"    \"fb_reasons\": {\"fraction_policy\": %lld, "
+               "\"reserve_policy\": %lld, \"cudamalloc\": %lld, "
+               "\"env_disable\": %lld}},\n",
+            val[MANI_G8_FB_FRACTION],val[MANI_G8_FB_RESERVE],
+            val[MANI_G8_FB_CUDAMALLOC],val[MANI_G8_FB_ENVDIS]);
+
+    fprintf(fp,"  \"memory\": {\"peak_rank_vmhwm_kb_max\": %lld, "
+               "\"peak_node0_rss_sum_kb\": %lld},\n",
+            val[MANI_VMHWM_KB],node0_rss_kb);
+
+    fprintf(fp,"  \"wall\": {\"total_s\": %.3f, \"dft_s\": %.3f, "
+               "\"diag_s\": %.3f, \"set_hamiltonian_s\": %.3f, "
+               "\"scf_iters\": %lld, \"md_steps\": %lld, \"scf_converged\": %s},\n",
+            (double)val[MANI_WALL_TOTAL_MS]/1000.0,
+            (double)val[MANI_WALL_DFT_MS]/1000.0,
+            (double)val[MANI_WALL_DIAG_MS]/1000.0,
+            (double)val[MANI_WALL_SETHAM_MS]/1000.0,
+            val[MANI_SCF_ITERS],val[MANI_MD_STEPS],
+            (val[MANI_SCF_CONVERGED_P1]==2LL)?"true":"false");
+
+    fprintf(fp,"  \"counters\": {\n");
+    for (k=0; k<MANI_NKEYS; k++){
+      fprintf(fp,"    \"%s\": %lld%s\n",
+              Manifest_name[k]?Manifest_name[k]:"?",val[k],
+              (k<MANI_NKEYS-1)?",":"");
+    }
+    fprintf(fp,"  },\n");
+    fprintf(fp,"  \"exit_status\": 0\n");
+    fprintf(fp,"}\n");
+    fclose(fp);
+  }
+}

@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <unordered_map>
 
@@ -48,6 +49,42 @@ std::unordered_map<WorkspaceKey, Workspace, WorkspaceKeyHash> g_workspaces;
    0 sends every call straight to plain cuBLAS FP64 GEMM, so the GEMMul8
    contribution can be isolated without touching the environment. */
 int g_input_enabled = 1;
+
+/* rank-local statistics for the run manifest (openmx_gemmul8GetStats).
+   Slot layout (keep in sync with OpenMX_Manifest_Write):
+     0 d_calls (GEMMul8 executed)   1 z_calls
+     2 d_fallbacks (to cuBLAS)      3 z_fallbacks
+     4 reason: workspace fraction   5 reason: free memory reserve
+     6 reason: cudaMalloc/alloc     7 reason: environment disable
+     8 d input-off calls            9 z input-off calls
+    10 peak workspace bytes        11-15 reserved */
+long long g_manifest_stats[16] = {0};
+std::mutex g_manifest_stats_mutex;
+
+void stats_add(int slot, long long v)
+{
+    std::lock_guard<std::mutex> lock(g_manifest_stats_mutex);
+    g_manifest_stats[slot] += v;
+}
+
+void stats_max(int slot, long long v)
+{
+    std::lock_guard<std::mutex> lock(g_manifest_stats_mutex);
+    if (g_manifest_stats[slot] < v) {
+        g_manifest_stats[slot] = v;
+    }
+}
+
+/* one of the five B70 reason strings -> stats slot; "allocation failure"
+   and "cudaMalloc failure" share slot 6 (both are device allocation) */
+int stats_reason_slot(const char *reason)
+{
+    if (reason == nullptr) return 6;
+    if (std::strcmp(reason, "workspace fraction policy") == 0) return 4;
+    if (std::strcmp(reason, "free memory reserve policy") == 0) return 5;
+    if (std::strcmp(reason, "environment disable") == 0) return 7;
+    return 6;
+}
 
 struct WorkspaceReport {
     size_t      required_bytes = 0;
@@ -302,12 +339,15 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
     if (!g_input_enabled) {
         /* scf.gemmul8.enable off: the fallback is what the user asked for,
            so no warning (Input_std already reported it once) */
+        stats_add(8, 1);
         return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
     if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
         report.reason = "environment disable";
         log_workspace_fallback_once<false>(report);
+        stats_add(2, 1);
+        stats_add(7, 1);
         return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
@@ -316,6 +356,8 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
                                 num_moduli, &work, &report);
     if (status == CUBLAS_STATUS_ALLOC_FAILED) {
         log_workspace_fallback_once<false>(report);
+        stats_add(2, 1);
+        stats_add(stats_reason_slot(report.reason), 1);
         return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -327,6 +369,8 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
                                                         static_cast<size_t>(lda), B, static_cast<size_t>(ldb), beta, C,
                                                         static_cast<size_t>(ldc), num_moduli, fastmode, work);
 
+    stats_add(0, 1);
+    stats_max(10, static_cast<long long>(report.required_bytes));
     return CUBLAS_STATUS_SUCCESS;
 }
 
@@ -414,12 +458,15 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
     if (!g_input_enabled) {
         /* scf.gemmul8.enable off: the fallback is what the user asked for,
            so no warning (Input_std already reported it once) */
+        stats_add(9, 1);
         return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
     if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
         report.reason = "environment disable";
         log_workspace_fallback_once<true>(report);
+        stats_add(3, 1);
+        stats_add(7, 1);
         return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
@@ -428,6 +475,8 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
                                num_moduli, &work, &report);
     if (status == CUBLAS_STATUS_ALLOC_FAILED) {
         log_workspace_fallback_once<true>(report);
+        stats_add(3, 1);
+        stats_add(stats_reason_slot(report.reason), 1);
         return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -439,5 +488,47 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
         static_cast<size_t>(lda), B, static_cast<size_t>(ldb), beta, C, static_cast<size_t>(ldc), num_moduli, fastmode,
         work);
 
+    stats_add(1, 1);
+    stats_max(10, static_cast<long long>(report.required_bytes));
     return CUBLAS_STATUS_SUCCESS;
+}
+
+/* rank-local counters for the run manifest; slot layout documented at
+   g_manifest_stats.  Called once per run by OpenMX_Manifest_Write. */
+extern "C" void openmx_gemmul8GetStats(long long out[16])
+{
+    std::lock_guard<std::mutex> lock(g_manifest_stats_mutex);
+    for (int i = 0; i < 16; i++) {
+        out[i] = g_manifest_stats[i];
+    }
+}
+
+/* effective GEMMul8 configuration exactly as the wrappers resolve it */
+extern "C" void openmx_gemmul8GetConfig(int *enabled, int *num_moduli_d, int *num_moduli_z,
+                                        int *fastmode_d, int *fastmode_z,
+                                        unsigned *max_workspace_percent,
+                                        unsigned long long *min_free_after_mib)
+{
+    if (enabled != nullptr) *enabled = g_input_enabled;
+    if (num_moduli_d != nullptr) {
+        *num_moduli_d = (int)gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
+    }
+    if (num_moduli_z != nullptr) {
+        *num_moduli_z = (int)gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
+    }
+    if (fastmode_d != nullptr) {
+        *fastmode_d = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false)) ? 1 : 0;
+    }
+    if (fastmode_z != nullptr) {
+        *fastmode_z = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false)) ? 1 : 0;
+    }
+    if (max_workspace_percent != nullptr) {
+        *max_workspace_percent = env_percent("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT",
+                                             "GEMMUL8_MAX_WORKSPACE_PERCENT", kDefaultMaxWorkspacePercent);
+    }
+    if (min_free_after_mib != nullptr) {
+        *min_free_after_mib = (unsigned long long)(env_mib("OPENMX_GEMMUL8_MIN_FREE_AFTER_MB",
+                                                           "GEMMUL8_MIN_FREE_AFTER_MB",
+                                                           kDefaultMinFreeAfterMiB) / kMiB);
+    }
 }

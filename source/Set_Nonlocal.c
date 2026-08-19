@@ -1557,6 +1557,10 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
                                  basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim,
                                  grid_dim,max_Lmax_Four_Int,max_sph_rows,
                                  OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h);
+    /* the arena fallback is silent by design (audit sec.2); the manifest
+       still records it */
+    if (DSNL_on_device) OpenMX_Manifest_Count(MANI_SETNL_GPU_CALLS);
+    else                OpenMX_Manifest_Count(MANI_SETNL_CPU_FB);
   }
 
   if (!DSNL_on_device){

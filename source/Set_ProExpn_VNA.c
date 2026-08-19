@@ -206,6 +206,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
     if (free_bytes<=reserve ||
         (free_bytes - reserve)/(size_t)node_ranks<=need){
       if (node_rank==0){
+        OpenMX_Manifest_Count(MANI_VNA_HVNA_FB);   /* B58 */
         fprintf(stderr,
                 "Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.\n");
         fflush(stderr);
@@ -313,6 +314,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
   }
 
   g->enabled = 1;
+  OpenMX_Manifest_Count(MANI_VNA_HVNA_GPU);
   return 1;
 }
 
@@ -939,6 +941,7 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
         (free_bytes - reserve)/(size_t)node_ranks<=need){
 
       if (node_rank==0){
+        OpenMX_Manifest_Count(MANI_VNA_DSVNA_FB);   /* B59 */
         fprintf(stderr,
                 "Set_ProExpn_VNA DS_VNA GPU: needs %.3f GiB per rank, %d rank(s) share "
                 "this device and only %.3f GiB is free; CPU fallback.\n",
@@ -955,6 +958,7 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
   }
 
   g->enabled = 1;
+  OpenMX_Manifest_Count(MANI_VNA_DSVNA_GPU);
   return 1;
 }
 
@@ -1480,16 +1484,36 @@ static int SetPro_VNA23_GpuBegin(void)
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
-  if (node_ranks<1) node_ranks = 1;
-  MPI_Comm_free(&node_comm);
-
-  if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
   {
-    const size_t reserve = (size_t)256*1024*1024;
-    const size_t need = (size_t)512*1024*1024;
+    int node_rank = 0;
+    MPI_Comm_rank(node_comm,&node_rank);
+    if (node_ranks<1) node_ranks = 1;
+    MPI_Comm_free(&node_comm);
 
-    if (free_bytes<=reserve ||
-        (free_bytes - reserve)/(size_t)node_ranks<=need) return 0;
+    if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
+    {
+      const size_t reserve = (size_t)256*1024*1024;
+      const size_t need = (size_t)512*1024*1024;
+
+      if (free_bytes<=reserve ||
+          (free_bytes - reserve)/(size_t)node_ranks<=need){
+        /* was a silent fallback (audit quirk list); now banner + counter */
+        if (node_rank==0){
+          static int warned = 0;
+          OpenMX_Manifest_Count(MANI_VNA_VNA23_FB);
+          if (!warned){
+            warned = 1;
+            fprintf(stderr,
+                    "Set_ProExpn_VNA VNA23 GPU: needs %.3f GiB per rank, %d rank(s) share "
+                    "this device and only %.3f GiB is free; CPU fallback.\n",
+                    (double)need/1073741824.0,node_ranks,
+                    (double)free_bytes/1073741824.0);
+            fflush(stderr);
+          }
+        }
+        return 0;
+      }
+    }
   }
 
   g->sp_lfi = (int*)SetPro_checked_malloc(sizeof(int)*SpeciesNum);
@@ -1632,6 +1656,7 @@ static int SetPro_VNA23_GpuBegin(void)
   }
 
   g->enabled = 1;
+  OpenMX_Manifest_Count(MANI_VNA_VNA23_GPU);
   return 1;
 }
 

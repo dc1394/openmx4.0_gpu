@@ -1,0 +1,208 @@
+=== manifest validation (design sec.4-1 unit + sec.4-3 fallbacks) ===
+binary: 2a5fe4a2bba54e79182b866b9094076d  openmx
+
+[simani_bg]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (52.478) ~ TIMING (52.478)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (3+0) == scf_iters
+  PASS  dense_solver.path (gpusolver-gpu-dense) == gpusolver-gpu-dense
+  PASS  counters.dense_gpu_solves (32) > 0
+  PASS  counters.dense_cpu_solves (0) == 0
+  PASS  gemmul8.enabled (true) == true
+  PASS  gemmul8.z_calls (72) > 0
+  PASS  counters.kowner_ranks (8) > 0
+  PASS  phases.set_hamiltonian.rank_gpu_iters (144) > 0
+  PASS  layout.gpu_ranks (48) == 48
+  PASS  dense_solver.demoted_elpa2 (false) == false
+
+[simani_bo]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (52.549) ~ TIMING (52.550)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (3+0) == scf_iters
+  PASS  dense_solver.path (gpusolver-gpu-dense) == gpusolver-gpu-dense
+  PASS  counters.dense_gpu_solves (32) > 0
+  PASS  gemmul8.enabled (false) == false
+  PASS  gemmul8.z_calls (0) == 0
+  PASS  gemmul8.input_off_calls (72) > 0
+
+[simani_nc]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (65.706) ~ TIMING (65.706)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (3+0) == scf_iters
+  PASS  dense_solver.path (gpusolver-gpu-dense) == gpusolver-gpu-dense
+  PASS  counters.dense_gpu_solves (32) > 0
+  PASS  counters.dense_cpu_solves (0) == 0
+  PASS  gemmul8.enabled (true) == true
+  PASS  gemmul8.z_calls (168) > 0
+  PASS  counters.kowner_ranks (8) > 0
+
+[simani_cc]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (44.386) ~ TIMING (44.386)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (3+0) == scf_iters
+  PASS  setham gpu_ranks (48) == banner (48)
+  PASS  dense_solver.path (gpusolver-gpu-dense) == gpusolver-gpu-dense
+  PASS  counters.dense_gpu_solves (4) > 0
+  PASS  counters.dense_cpu_solves (0) == 0
+  PASS  gemmul8.enabled (false) == false
+  PASS  gemmul8.input_off_calls (9) > 0
+  PASS  counters.dm_gpu_calls (3) > 0
+
+[simani_cn]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (57.573) ~ TIMING (57.573)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (3+0) == scf_iters
+  PASS  setham gpu_ranks (48) == banner (48)
+  PASS  dense_solver.path (gpusolver-gpu-dense) == gpusolver-gpu-dense
+  PASS  counters.dense_gpu_solves (3) > 0
+  PASS  counters.dense_cpu_solves (0) == 0
+  PASS  gemmul8.enabled (true) == true
+  PASS  gemmul8.z_calls (3) > 0
+
+[simani_cpu]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (117.844) ~ TIMING (117.845)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (0+3) == scf_iters
+  PASS  input.eigen_lib (elpa2) == elpa2
+  PASS  dense_solver.path (elpa2) == elpa2
+  PASS  counters.dense_cpu_solves (192) > 0
+  PASS  counters.dense_gpu_solves (0) == 0
+  PASS  counters.gpu_ranks (0) == 0
+  PASS  phases.set_hamiltonian.rank_gpu_iters (0) == 0
+  PASS  phases.set_hamiltonian.rank_cpu_iters (144) > 0
+  PASS  gemmul8.z_calls (0) == 0
+  PASS  counters.total_energy_gpu_calls (0) == 0
+
+[simani_fb1]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (94.737) ~ TIMING (94.737)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (3+0) == scf_iters
+  PASS  dense_solver.path (gpusolver-cpu-fallback) == gpusolver-cpu-fallback
+  PASS  counters.dense_fb_env_off (1) == 1
+  PASS  counters.dense_gpu_solves (0) == 0
+  PASS  counters.dense_cpu_solves (192) > 0
+
+[simani_fb2]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (50.468) ~ TIMING (50.469)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (3+0) == scf_iters
+  PASS  setham gpu_ranks (48) == banner (48)
+  PASS  dense_solver.path (gpusolver-cpu-fallback) == gpusolver-cpu-fallback
+  PASS  counters.dense_fb_mem_events (1) > 0
+  PASS  counters.dense_gpu_solves (0) == 0
+  PASS  counters.dense_cpu_solves (192) > 0
+
+[simani_fb3]
+  PASS  manifest file exists
+  PASS  JSON parses
+  PASS  wall.total_s (13.711) ~ TIMING (13.712)
+  PASS  scf_iters (3) == joblog (3)
+  PASS  input.sha256 matches deck
+  PASS  build.md5 matches work/openmx
+  PASS  diag_gpu+cpu iters (0+3) == scf_iters
+  PASS  setham gpu_ranks (2) == banner (2)
+  PASS  dense_solver.small_system_cpu_diag (true) == true
+  PASS  counters.dense_gpu_solves (0) == 0
+
+=== noise reps (25 SCF bnc216 o; pre-manifest mean 253.39 +- 1.74 s) ===
+  simani_noise1   total=257.916  nodes=bnode091 
+  simani_noise2   total=256.400  nodes=bnode092 
+  simani_noise3   total=252.007  nodes=bnode093 
+  (accept: mean within ~1%% of 253.39 s after slow-node screening;
+   bnode013/bnode033 draws are discarded per site convention)
+
+=== runtest ===
+The comparison can be found in a file 'runtest.result'.
+   1  input_example/Benzene.dat        Elapsed time(s)=   15.50  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=   16.24  diff Utot= 0.000000000043  diff Force= 0.000000000007
+   3  input_example/CO.dat             Elapsed time(s)=    8.69  diff Utot= 0.000000000000  diff Force= 0.000000000006
+   4  input_example/Cr2.dat            Elapsed time(s)=    8.79  diff Utot= 0.000000000003  diff Force= 0.000000000002
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=    7.30  diff Utot= 0.000000000014  diff Force= 0.000000000002
+   6  input_example/GaAs.dat           Elapsed time(s)=    9.90  diff Utot= 0.000000000022  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    5.74  diff Utot= 0.000000000001  diff Force= 0.000000000001
+   8  input_example/Graphite4.dat      Elapsed time(s)=    3.85  diff Utot= 0.000000000002  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    5.00  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  10  input_example/H2O.dat            Elapsed time(s)=    5.28  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=   10.54  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    3.93  diff Utot= 0.000000000047  diff Force= 0.000000000000
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    7.53  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    3.46  diff Utot= 0.000000000004  diff Force= 0.000000000000
+
+
+Total elapsed time (s)      111.76
+
+=== summary: PASS=117 FAIL=0 ===
+
+=====================================================================
+PROVENANCE NOTE (appended by hand, 2026-08-19)
+1. P0 run-manifest implementation per work/run_manifest_design.md
+   (sec.6 lists the touched files and deviations); counters sit beside
+   the audited banners of work/gpu_phase_audit.md ("one banner = one
+   counter") or at the dispatch sites themselves.
+2. Binary under test: cd5f0d5-dirty + GEMMul8 v3.2.0/833e576, NVHPC
+   26.5 / CUDA 13.2, md5 2a5fe4a2bba54e79182b866b9094076d (deployed as
+   work/openmx). Wave 1 ran md5 13031e1e... whose manifests exposed
+   the /proc/self/exe-in-child md5 bug; wave 2 (job IDs 924497-924505)
+   re-ran all nine unit cases on the fixed binary and is what this
+   file validates. Pre-manifest production binary backed up as
+   work/openmx.962f8d25.bak.
+3. Unit cases (3 SCF, decks byte-derived from the sip_/siacc_ campaign
+   dirs by gen_simani.sh): bg/bo (band col 300 G8/cuBLAS), nc (band NC
+   216 G8), cc (cluster col 360 cuBLAS), cn (cluster NC 300 G8), cpu
+   (band col 300 elpa2 flat-48). Deliberate fallbacks (design sec.4-3):
+   fb1 OPENMX_BAND_GPU_DIAG=0 -> fb_env_off=1; fb2
+   OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB=999999 -> fb_mem_events=1;
+   fb3 Cr2 (below switch-num) -> small_system_cpu_diag=true. All three
+   also show gpu_solves=0 with the CPU path counted.
+4. Cross-checks per case: wall.total_s == TIMING line (<=0.02 rel),
+   scf_iters == joblog, input.sha256 == sha256sum(deck), build.md5 ==
+   md5sum(work/openmx), diag_gpu+cpu iters == scf_iters,
+   set_hamiltonian.gpu_ranks == B50 banner value where printed.
+5. Production-noise check (25 SCF, bnc216 o config, wave-1 binary whose
+   hot paths are identical): 257.916/256.400/252.007 s on
+   bnode091/092/093 -> 255.44 +- 3.07 s vs pre-manifest 253.39 +-
+   1.74 s (n=5): +0.81%, ~1.1 combined-sigma -> no significant
+   overhead. Diag 156.61 s mean vs 154.53 s: same conclusion.
+6. runtest 14/14 with the instrumented binary; max diff Utot 4.7e-11,
+   max diff Force 7e-12 (numerics untouched).
+7. Semantics recorded in run_manifest_design.md sec.6: dense_cpu_solves
+   counts per-rank participations in distributed ELPA solves;
+   peak_node0_rss_sum_kb is an upper bound (sum of per-rank VmHWM);
+   -runtest manifests accumulate the whole suite.
+8. Manifest fields matching the known campaign facts out of the box:
+   bcol300 concurrency plan 8 / min 7; bnc216 plan 8 / min 4 (the
+   device concurrency ladders measured in the size search); band col
+   uses Z GEMMs only (d_calls=0), cluster col D, cluster NC D+Z --
+   exactly the audit sec.5 call-site table.

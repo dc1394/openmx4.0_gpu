@@ -368,6 +368,8 @@ static void ClusterCol_GpuSolver_EigenDevice(double *d_A, int n, int maxn, doubl
     ClusterCol_GpuSolver_EnsureWorkspace(n,maxn,d_A);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
+    OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
+    if (jobz==CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
     wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver,NULL,jobz,range,uplo,n,
                                     CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                     CUDA_R_64F,ctx->d_W,CUDA_R_64F,
@@ -1036,6 +1038,7 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
             printf("<Cluster_DFT_Col> GPU dense diagonalization disabled by OPENMX_CLUSTER_GPU_DIAG=0.\n");
             fflush(stdout);
         }
+        if (!forced) OpenMX_Manifest_SetMax(MANI_DENSE_FB_ENV_OFF, 1LL);   /* B30 */
         force_announced = 1;
         return forced;
     }
@@ -1081,6 +1084,7 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
 
         if (serial_fit==1){
             verdict = 2;
+            OpenMX_Manifest_SetMax(MANI_CLUSTER_SPIN_SERIALIZED, 1LL);   /* B31 */
             if (announce){
                 printf("<Cluster_DFT_Col> The device cannot hold both spin owners' GPU buffers at once;"
                        " spin world 0's owner solves both spins serially on the GPU"
@@ -1101,6 +1105,7 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
            return whatever device memory the solver context still holds */
         ClusterCol_GpuSolver_Destroy();
         if (announce){
+            OpenMX_Manifest_Count(MANI_DENSE_FB_MEM_EVENTS);   /* B32 */
             printf("<Cluster_DFT_Col> Falling back to the ELPA/ScaLAPACK diagonalization."
                    " Force the GPU path with OPENMX_CLUSTER_GPU_DIAG=1 or lower"
                    " OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB.\n");
@@ -1793,6 +1798,7 @@ double Cluster_DFT_Col(
     if (gpusolver2_flag){
 
       /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels) */
+      OpenMX_Manifest_Count(MANI_DENSE_GS2_SOLVES);
       int gs2_info = openmx_gs2_eigen_real(n, n, Cs, descC, &ko[0][1], Ss, descS);
       if (gs2_info!=0){
         printf("Cluster_DFT_Col: the gpusolver2 overlap eigensolver failed (info=%d)\n",gs2_info);
@@ -1802,11 +1808,13 @@ double Cluster_DFT_Col(
 
     else if (scf_eigen_lib_flag==1){
 
+      OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)(&n, &n, Cs, &na_rows, &ko[0][1], Ss, &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
     }
 
     else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
+      OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
 #ifndef kcomp
 
       int mpiworld;
@@ -2042,6 +2050,7 @@ double Cluster_DFT_Col(
 
     /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels); all n
        eigenvalues are returned but only the lowest MaxN eigenvectors */
+    OpenMX_Manifest_Count(MANI_DENSE_GS2_SOLVES);
     int gs2_info = openmx_gs2_eigen_real(n, MaxN, Hs, descH, &ko[spin][1], Cs, descC);
     if (gs2_info!=0){
       printf("Cluster_DFT_Col: the gpusolver2 Hamiltonian eigensolver failed (info=%d)\n",gs2_info);
@@ -2049,11 +2058,13 @@ double Cluster_DFT_Col(
     }
   }
   else if (scf_eigen_lib_flag==1){
+    OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
     F77_NAME(solve_evp_real,SOLVE_EVP_REAL)(&n, &MaxN, Hs, &na_rows, &ko[spin][1], Cs,
                                             &na_rows, &nblk, &mpi_comm_rows_int, &mpi_comm_cols_int);
   }
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
+    OpenMX_Manifest_Count(MANI_DENSE_CPU_SOLVES);
 #ifndef kcomp
     int mpiworld;
     mpiworld = MPI_Comm_c2f(MPI_CommWD1[myworld1]);
@@ -3137,6 +3148,7 @@ double Calc_DM_Cluster_collinear(
   int gpu_dm_done = 0;
 
   if (ClusterCol_UseGpuDM(n) && kmin<=kmax){
+    OpenMX_Manifest_Count(MANI_DM_GPU_CALLS);
 
     /* GPU accumulation over the packed sparse pattern; same summation order
        over the local states as the CPU loop below. */

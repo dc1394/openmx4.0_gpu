@@ -405,8 +405,21 @@ all: $(PROG) $(UTIL)
 
 openmx.o: openmx.c openmx_common.h tran_variables.h tran_prototypes.h 
 	$(CC) -c openmx.c
-openmx_common.o: openmx_common.c openmx_common.h
+openmx_common.o: openmx_common.c openmx_common.h manifest_buildinfo.h
 	$(CC) -c openmx_common.c
+
+# Build stamp of the run manifest (openmx_common.c picks it up through
+# __has_include and falls back to "unknown" without it).  The recipe runs
+# on every make but rewrites the header only when its content changes, so
+# it never causes spurious recompiles.
+manifest_buildinfo.h: manifest-buildinfo-force
+	@{ printf '#define OPENMX_BUILD_GIT_COMMIT "%s"\n' "$$(git describe --always --dirty 2>/dev/null || echo unknown)"; \
+	   printf '#define OPENMX_BUILD_RELEASE_TAG "%s"\n' "$$(git describe --tags --exact-match 2>/dev/null || true)"; \
+	   printf '#define OPENMX_BUILD_GEMMUL8_COMMIT "%s"\n' "$(GEMMUL8_COMMIT)"; } > manifest_buildinfo.h.tmp; \
+	if cmp -s manifest_buildinfo.h.tmp manifest_buildinfo.h 2>/dev/null; then rm -f manifest_buildinfo.h.tmp; else mv -f manifest_buildinfo.h.tmp manifest_buildinfo.h; fi
+
+.PHONY: manifest-buildinfo-force
+manifest-buildinfo-force:
 Input_std.o: Input_std.c openmx_common.h Inputtools.h tran_prototypes.h 
 	$(CC) -c Input_std.c
 Inputtools.o: Inputtools.c

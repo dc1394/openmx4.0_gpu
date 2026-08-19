@@ -3595,6 +3595,7 @@ double Force(double***** H0,
 
     if (ProExpn_VNA == 0 && F_VNA_flag == 1) {
         if (use_force_openacc) {
+            OpenMX_Manifest_Count(MANI_FORCE4_GPU);
             gpu_atom_terms = (size_t*)malloc(sizeof(size_t) * (Matomnum + 1));
 
             dtime(&Stime_atom);
@@ -4427,6 +4428,9 @@ void Force3()
     double* xyz_dev_full = NULL;
 
     size_t f3_chunk_budget = Force3_GpuChunkBudget();
+
+    if (f3_chunk_budget != 0) OpenMX_Manifest_Count(MANI_FORCE3_GPU);
+    else if (scf_eigen_lib_flag == GPUSOLVER) OpenMX_Manifest_Count(MANI_FORCE3_FB);
 
     if (f3_chunk_budget != 0) {
         size_t dpos = 0, vpos = 0, xpos = 0, maxgrid = 0;
@@ -5795,6 +5799,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
     /* batched device path for the scalar-relativistic traces */
 
     fhnl_gpu = Force_HNL_GpuBegin(DS_NL);
+    if (fhnl_gpu) OpenMX_Manifest_Count(MANI_FORCEHNL_GPU);
 
     /*****************************************}**********************
         THE FIRST CASE:
@@ -9160,6 +9165,7 @@ void Force4B(double***** CDM0)
 
     if (use_force4b_fused) {
         f4b_gpu = Force4B_GpuBegin(DS_VNA);
+        if (f4b_gpu) OpenMX_Manifest_Count(MANI_FORCE4B_GPU);
     }
 
     /*****************************************}**********************

@@ -912,6 +912,7 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
     if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
         free_bytes < cache->device_bytes || reserve_bytes > free_bytes - cache->device_bytes) {
       ok = 0;
+      OpenMX_Manifest_Count(MANI_SDG_OWNER_FB);   /* B61 */
       if (0 < level_stdout) {
         fprintf(stderr,
                 "Set_Density_Grid GPU owner needs %.3f GiB plus %.3f GiB reserve, but only %.3f GiB is free; CPU fallback.\n",
