@@ -420,6 +420,11 @@ force_rpath: force_rpath.c
 all: $(PROG) $(UTIL)
 	cp $(PROG) $(UTIL) $(DESTDIR)/
 
+# The utility links consume $(FFTW3_LIB) through $(LIB) without declaring
+# it, so `make -j all` from a clean tree could link them while fftw3 was
+# still configuring.  Order-only: build fftw3 first, never relink on it.
+$(UTIL): | $(FFTW3_LIB)
+
 openmx.o: openmx.c openmx_common.h tran_variables.h tran_prototypes.h 
 	$(CC) -c openmx.c
 openmx_common.o: openmx_common.c openmx_common.h manifest_buildinfo.h
