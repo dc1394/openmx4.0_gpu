@@ -370,6 +370,7 @@ static void ClusterCol_GpuSolver_EigenDevice(double *d_A, int n, int maxn, doubl
 
     OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
     if (jobz==CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
+    OpenMX_Manifest_VramSample();
     wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver,NULL,jobz,range,uplo,n,
                                     CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                     CUDA_R_64F,ctx->d_W,CUDA_R_64F,
@@ -443,6 +444,67 @@ static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOpera
                                       &alpha, A, lda, B, ldb, &beta, C, ldc));
 }
 
+/* P6 small accuracy dump (plan sec. 13.2-C): with OPENMX_ACC_DUMP=1 the
+   dense owner writes, at SCF iteration OPENMX_ACC_DUMP_SCF (default 3),
+   the orthonormal-basis Hamiltonian H~ = S~^T H S~ and its eigenpairs
+   (Y~, ko) as raw column-major FP64 files.  The offline analysis
+   (work/accdump_analysis.py) builds K~ = Y~ f Y~^T from them and forms
+   eps_K and the commutator residual r_HK between two runs. */
+static int ClusterCol_accdump_scf_iter = -1;
+static int ClusterCol_accdump_spin = 0;
+
+static int ClusterCol_AccDumpActive(void)
+{
+    static int want = -1, want_scf = 3;
+
+    if (want<0){
+        const char *e = getenv("OPENMX_ACC_DUMP");
+        const char *s = getenv("OPENMX_ACC_DUMP_SCF");
+        want = (e!=NULL && atoi(e)!=0) ? 1 : 0;
+        if (s!=NULL && 0<atoi(s)) want_scf = atoi(s);
+    }
+    return (want && ClusterCol_accdump_scf_iter==want_scf);
+}
+
+static void ClusterCol_AccDumpDevice(const char *stage, const double *dev,
+                                     int n, int ncols, int maxn,
+                                     const double *ko_or_null)
+{
+    size_t count = ClusterCol_CheckedMulCount((size_t)n,(size_t)ncols,"accuracy dump");
+    double *host = (double*)malloc(count*sizeof(double));
+    char fn[YOUSO10*2];
+    FILE *fp;
+
+    if (host==NULL) return;
+    wait_cudafunc(cudaMemcpy(host,dev,count*sizeof(double),cudaMemcpyDeviceToHost));
+
+    snprintf(fn,sizeof(fn),"%s%s.accdump.scf%d.spin%d.%s.bin",
+             filepath,filename,ClusterCol_accdump_scf_iter,
+             ClusterCol_accdump_spin,stage);
+    fp = fopen(fn,"wb");
+    if (fp!=NULL){ fwrite(host,sizeof(double),count,fp); fclose(fp); }
+    free(host);
+
+    if (ko_or_null!=NULL){
+        snprintf(fn,sizeof(fn),"%s%s.accdump.scf%d.spin%d.ko.bin",
+                 filepath,filename,ClusterCol_accdump_scf_iter,
+                 ClusterCol_accdump_spin);
+        fp = fopen(fn,"wb");
+        if (fp!=NULL){ fwrite(ko_or_null,sizeof(double),(size_t)maxn,fp); fclose(fp); }
+
+        snprintf(fn,sizeof(fn),"%s%s.accdump.scf%d.spin%d.meta.txt",
+                 filepath,filename,ClusterCol_accdump_scf_iter,
+                 ClusterCol_accdump_spin);
+        fp = fopen(fn,"w");
+        if (fp!=NULL){
+            fprintf(fp,"n %d\nmaxn %d\nscf_iter %d\nspin %d\n"
+                       "basis orthonormal (S~^T H S~; Y~ = first maxn columns, column-major FP64)\n",
+                    n,maxn,ClusterCol_accdump_scf_iter,ClusterCol_accdump_spin);
+            fclose(fp);
+        }
+    }
+}
+
 static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C)
 {
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
@@ -458,7 +520,17 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
     ClusterCol_GEMMul8Dgemm_Device(CUBLAS_OP_T,CUBLAS_OP_N,n,n,n,
                                    ctx->d_S,n,ctx->d_tmp,n,ctx->d_H,n);
 
+    if (ClusterCol_AccDumpActive()){
+        wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+        ClusterCol_AccDumpDevice("Htilde",ctx->d_H,n,n,maxn,NULL);
+    }
+
     ClusterCol_GpuSolver_EigenDevice(ctx->d_H,n,maxn,ko_spin+1);
+
+    if (ClusterCol_AccDumpActive()){
+        wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+        ClusterCol_AccDumpDevice("Ytilde",ctx->d_H,n,maxn,maxn,ko_spin+1);
+    }
 
     ClusterCol_GEMMul8Dgemm_Device(CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
                                    ctx->d_H,n,ctx->d_S,n,ctx->d_tmp,maxn);
@@ -1326,6 +1398,8 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                                            owns_dense ? ClusterCol_gpusolver_ctx.d_H : NULL);
             }
             if (owns_dense){
+                ClusterCol_accdump_scf_iter = SCF_iter;
+                ClusterCol_accdump_spin = spin;
                 ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
                 ClusterCol_StashDeviceEvec(spin,n,MaxN);
             }
@@ -1363,6 +1437,8 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                     }
                     dense_index = ClusterCol_DenseIndexCache_Get(cache_order_GA,MP,n,tnum);
                     ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_H);
+                    ClusterCol_accdump_scf_iter = SCF_iter;
+                    ClusterCol_accdump_spin = spin;
                     ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C);
 
                     if (spin==1){

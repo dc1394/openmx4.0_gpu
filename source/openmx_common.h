@@ -3448,6 +3448,20 @@ enum OpenMX_ManifestKey {
   MANI_G8_FB_ENVDIS,             /* SUM  reason: environment disable */
   MANI_G8_INPUT_OFF_CALLS,       /* SUM  calls while scf.gemmul8.enable=off */
   MANI_G8_WS_PEAK_BYTES,         /* MAX  peak GEMMul8 workspace bytes */
+  /* P2 lightweight phase timing: remaining CompTime slots (ms, MAX) */
+  MANI_WALL_OLPKIN_MS,           /* MAX  CompTime[5]  Set_OLP_Kin */
+  MANI_WALL_SETNL_MS,            /* MAX  CompTime[6]  Set_Nonlocal */
+  MANI_WALL_VNA_MS,              /* MAX  CompTime[16] Set_ProExpn_VNA */
+  MANI_WALL_POISSON_MS,          /* MAX  CompTime[8]  Poisson */
+  MANI_WALL_MIXING_MS,           /* MAX  CompTime[10] Mixing_DM */
+  MANI_WALL_FORCE_MS,            /* MAX  CompTime[11] Force */
+  MANI_WALL_TE_MS,               /* MAX  CompTime[12] Total_Energy */
+  MANI_WALL_ADEN_MS,             /* MAX  CompTime[13] Set_Aden_Grid */
+  MANI_WALL_ORBSGRID_MS,         /* MAX  CompTime[14] Set_Orbitals_Grid */
+  MANI_WALL_SDG_MS,              /* MAX  CompTime[15] Set_Density_Grid */
+  /* P4 VRAM peak: sampled at GPU-path sites (never creates a context) */
+  MANI_VRAM_MIN_FREE_KB,         /* MIN  smallest cudaMemGetInfo free */
+  MANI_VRAM_TOTAL_KB,            /* MAX  device total */
   MANI_NKEYS
 };
 
@@ -3458,6 +3472,10 @@ void OpenMX_Manifest_SetMin(int key, long long v);
 void OpenMX_Manifest_RankFlag(int key);
 void OpenMX_Manifest_RankValue(int key, long long v);
 void OpenMX_Manifest_Write(const char *input_path);
+/* P4: one cheap cudaMemGetInfo sample; call ONLY from code already on the
+   GPU path of a rank with an established context (an implicit context
+   creation on a host-fallback rank would perturb the device) */
+void OpenMX_Manifest_VramSample(void);
 
 /* rank-local GEMMul8 statistics of gemmul8_bridge.cu (see the slot list
    at its definition); filled into the registry by OpenMX_Manifest_Write */

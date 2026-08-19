@@ -402,6 +402,7 @@ static void BandNonCol_GpuSolver_DenseZheevx_Device(dcomplex *A, double *ko, int
 
         OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
         if (jobz==CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
+        OpenMX_Manifest_VramSample();
         wait_cudafunc(cusolverDnXsyevdx(w->gpusolver,NULL,jobz,range,uplo,n,
                                         CUDA_C_64F,(cuDoubleComplex*)A,n,&vl,&vu,1L,maxn,&h_meig,
                                         CUDA_R_64F,ko+1,CUDA_C_64F,
@@ -647,6 +648,7 @@ static void BandNonCol_GpuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double *k
 
     OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
     if (jobz==CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
+    OpenMX_Manifest_VramSample();
     wait_cudafunc(cusolverDnXsyevdx(w->gpusolver,NULL,jobz,range,uplo,n,
                                     CUDA_C_64F,(cuDoubleComplex*)w->d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                     CUDA_R_64F,w->d_W,CUDA_C_64F,

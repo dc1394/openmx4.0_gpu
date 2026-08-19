@@ -20407,6 +20407,18 @@ static const char Manifest_class[MANI_NKEYS] = {
   [MANI_G8_FB_ENVDIS]           = 'S',
   [MANI_G8_INPUT_OFF_CALLS]     = 'S',
   [MANI_G8_WS_PEAK_BYTES]       = 'M',
+  [MANI_WALL_OLPKIN_MS]         = 'M',
+  [MANI_WALL_SETNL_MS]          = 'M',
+  [MANI_WALL_VNA_MS]            = 'M',
+  [MANI_WALL_POISSON_MS]        = 'M',
+  [MANI_WALL_MIXING_MS]         = 'M',
+  [MANI_WALL_FORCE_MS]          = 'M',
+  [MANI_WALL_TE_MS]             = 'M',
+  [MANI_WALL_ADEN_MS]           = 'M',
+  [MANI_WALL_ORBSGRID_MS]       = 'M',
+  [MANI_WALL_SDG_MS]            = 'M',
+  [MANI_VRAM_MIN_FREE_KB]       = 'm',
+  [MANI_VRAM_TOTAL_KB]          = 'M',
 };
 
 /* key names of the flat "counters" dump (validate_manifest.sh keys) */
@@ -20480,6 +20492,18 @@ static const char *Manifest_name[MANI_NKEYS] = {
   [MANI_G8_FB_ENVDIS]           = "gemmul8_fb_env_disable",
   [MANI_G8_INPUT_OFF_CALLS]     = "gemmul8_input_off_calls",
   [MANI_G8_WS_PEAK_BYTES]       = "gemmul8_ws_peak_bytes",
+  [MANI_WALL_OLPKIN_MS]         = "wall_set_olp_kin_ms",
+  [MANI_WALL_SETNL_MS]          = "wall_set_nonlocal_ms",
+  [MANI_WALL_VNA_MS]            = "wall_set_proexpn_vna_ms",
+  [MANI_WALL_POISSON_MS]        = "wall_poisson_ms",
+  [MANI_WALL_MIXING_MS]         = "wall_mixing_dm_ms",
+  [MANI_WALL_FORCE_MS]          = "wall_force_ms",
+  [MANI_WALL_TE_MS]             = "wall_total_energy_ms",
+  [MANI_WALL_ADEN_MS]           = "wall_set_aden_grid_ms",
+  [MANI_WALL_ORBSGRID_MS]       = "wall_set_orbitals_grid_ms",
+  [MANI_WALL_SDG_MS]            = "wall_set_density_grid_ms",
+  [MANI_VRAM_MIN_FREE_KB]       = "vram_min_free_kb",
+  [MANI_VRAM_TOTAL_KB]          = "vram_total_kb",
 };
 
 void OpenMX_Manifest_Add(int key, long long v)
@@ -20525,6 +20549,25 @@ void OpenMX_Manifest_RankValue(int key, long long v)
 void OpenMX_Manifest_RankFlag(int key)
 {
   OpenMX_Manifest_SetMax(key, 1LL);
+}
+
+/* P4 VRAM peak: sample the device free/total at GPU-path sites.  Callers
+   guarantee an established CUDA context (see the header note); after one
+   failure the sampler turns itself off for the rest of the run. */
+void OpenMX_Manifest_VramSample(void)
+{
+  static int state = 0;   /* 0 = untested, 1 = ok, -1 = disabled */
+  size_t free_b = 0, total_b = 0;
+
+  if (state<0) return;
+  if (cudaMemGetInfo(&free_b,&total_b)!=cudaSuccess){
+    (void)cudaGetLastError();
+    state = -1;
+    return;
+  }
+  state = 1;
+  OpenMX_Manifest_SetMin(MANI_VRAM_MIN_FREE_KB,(long long)(free_b/1024U));
+  OpenMX_Manifest_SetMax(MANI_VRAM_TOTAL_KB,(long long)(total_b/1024U));
 }
 
 static long long Manifest_VmHWM_kB(void)
@@ -20603,6 +20646,11 @@ void OpenMX_Manifest_Write(const char *input_path)
     OpenMX_Manifest_Add(MANI_G8_FB_ENVDIS,      st[7]);
     OpenMX_Manifest_Add(MANI_G8_INPUT_OFF_CALLS,st[8]+st[9]);
     OpenMX_Manifest_SetMax(MANI_G8_WS_PEAK_BYTES,st[10]);
+    /* the bridge samples free/total inside ensure_workspace (P4) */
+    if (0LL<st[12]){
+      OpenMX_Manifest_SetMin(MANI_VRAM_MIN_FREE_KB,st[11]/1024LL);
+      OpenMX_Manifest_SetMax(MANI_VRAM_TOTAL_KB,st[12]/1024LL);
+    }
   }
 
   OpenMX_Manifest_SetMax(MANI_VMHWM_KB, Manifest_VmHWM_kB());
@@ -20849,18 +20897,99 @@ void OpenMX_Manifest_Write(const char *input_path)
             val[MANI_G8_FB_CUDAMALLOC],val[MANI_G8_FB_ENVDIS]);
 
     fprintf(fp,"  \"memory\": {\"peak_rank_vmhwm_kb_max\": %lld, "
-               "\"peak_node0_rss_sum_kb\": %lld},\n",
+               "\"peak_node0_rss_sum_kb\": %lld,\n",
             val[MANI_VMHWM_KB],node0_rss_kb);
+    if (0LL<val[MANI_VRAM_TOTAL_KB]){
+      fprintf(fp,"    \"vram_total_mb\": %lld, \"vram_min_free_mb\": %lld, "
+                 "\"peak_device_vram_used_mb\": %lld},\n",
+              val[MANI_VRAM_TOTAL_KB]/1024LL,val[MANI_VRAM_MIN_FREE_KB]/1024LL,
+              (val[MANI_VRAM_TOTAL_KB]-val[MANI_VRAM_MIN_FREE_KB])/1024LL);
+    }
+    else {
+      fprintf(fp,"    \"vram_total_mb\": 0, \"vram_min_free_mb\": 0, "
+                 "\"peak_device_vram_used_mb\": 0},\n");
+    }
 
     fprintf(fp,"  \"wall\": {\"total_s\": %.3f, \"dft_s\": %.3f, "
                "\"diag_s\": %.3f, \"set_hamiltonian_s\": %.3f, "
-               "\"scf_iters\": %lld, \"md_steps\": %lld, \"scf_converged\": %s},\n",
+               "\"scf_iters\": %lld, \"md_steps\": %lld, \"scf_converged\": %s,\n",
             (double)val[MANI_WALL_TOTAL_MS]/1000.0,
             (double)val[MANI_WALL_DFT_MS]/1000.0,
             (double)val[MANI_WALL_DIAG_MS]/1000.0,
             (double)val[MANI_WALL_SETHAM_MS]/1000.0,
             val[MANI_SCF_ITERS],val[MANI_MD_STEPS],
             (val[MANI_SCF_CONVERGED_P1]==2LL)?"true":"false");
+    fprintf(fp,"    \"phases_s\": {\"set_olp_kin\": %.3f, \"set_nonlocal\": %.3f, "
+               "\"set_proexpn_vna\": %.3f, \"poisson\": %.3f, \"mixing_dm\": %.3f,\n",
+            (double)val[MANI_WALL_OLPKIN_MS]/1000.0,
+            (double)val[MANI_WALL_SETNL_MS]/1000.0,
+            (double)val[MANI_WALL_VNA_MS]/1000.0,
+            (double)val[MANI_WALL_POISSON_MS]/1000.0,
+            (double)val[MANI_WALL_MIXING_MS]/1000.0);
+    fprintf(fp,"      \"force\": %.3f, \"total_energy\": %.3f, \"set_aden_grid\": %.3f, "
+               "\"set_orbitals_grid\": %.3f, \"set_density_grid\": %.3f}},\n",
+            (double)val[MANI_WALL_FORCE_MS]/1000.0,
+            (double)val[MANI_WALL_TE_MS]/1000.0,
+            (double)val[MANI_WALL_ADEN_MS]/1000.0,
+            (double)val[MANI_WALL_ORBSGRID_MS]/1000.0,
+            (double)val[MANI_WALL_SDG_MS]/1000.0);
+
+    /* P2: production/profiling separation is auditable from the manifest */
+    {
+      static const char *prof_knobs[] = {
+        "OPENMX_BAND_PROFILE","OPENMX_FORCE_PROFILE","OPENMX_KRYLOV_GPU_PROFILE",
+        "OPENMX_MIXH_GPU_VERBOSE","OPENMX_GS2_GPU_VERBOSE",
+        "OPENMX_ORBS_GRID_GPU_VERBOSE","OPENMX_UCELL_OLG_GPU_VERBOSE",NULL};
+      static const char *inj_vars[] = {
+        "CUDA_INJECTION64_PATH","NSYS_PROFILING_SESSION_ID",
+        "NVTX_INJECTION64_PATH",NULL};
+      int i, prof_on = 0, external = 0;
+      const char *v;
+
+      for (i=0; prof_knobs[i]!=NULL; i++){
+        v = getenv(prof_knobs[i]);
+        if (v!=NULL && v[0]!='\0' && atoi(v)!=0) prof_on = 1;
+      }
+      for (i=0; inj_vars[i]!=NULL; i++){
+        if (getenv(inj_vars[i])!=NULL) external = 1;
+      }
+      fprintf(fp,"  \"profiling\": {\"mode\": \"%s\", \"external_profiler\": %s,\n",
+              prof_on ? "profiling" : "production", external ? "true" : "false");
+      fprintf(fp,"    \"knobs\": {");
+      for (i=0; prof_knobs[i]!=NULL; i++){
+        v = getenv(prof_knobs[i]);
+        fprintf(fp,"%s\"%s\": %s",(i==0)?"":", ",prof_knobs[i],
+                (v!=NULL && v[0]!='\0' && atoi(v)!=0) ? "true" : "false");
+      }
+      fprintf(fp,"}},\n");
+    }
+
+    /* P7: environment snapshot -- every set OPENMX_/GEMMUL8_/CUDA_/OMP_
+       variable as seen by Host_ID (mpirun -x forwards them identically) */
+    {
+      extern char **environ;
+      static const char *prefixes[] = {"OPENMX_","GEMMUL8_","CUDA_","OMP_",NULL};
+      int i, p, first = 1;
+      char en[256];
+
+      fprintf(fp,"  \"environment\": {");
+      for (i=0; environ[i]!=NULL; i++){
+        const char *eq = strchr(environ[i],'=');
+        size_t nl;
+        if (eq==NULL) continue;
+        nl = (size_t)(eq-environ[i]);
+        if (sizeof(en)<=nl) continue;
+        for (p=0; prefixes[p]!=NULL; p++){
+          if (strncmp(environ[i],prefixes[p],strlen(prefixes[p]))==0) break;
+        }
+        if (prefixes[p]==NULL) continue;
+        memcpy(en,environ[i],nl); en[nl] = '\0';
+        Manifest_JsonEscape(eq+1,esc,sizeof(esc));
+        fprintf(fp,"%s\n    \"%s\": \"%s\"",first?"":",",en,esc);
+        first = 0;
+      }
+      fprintf(fp,"%s},\n",first?"":"\n  ");
+    }
 
     fprintf(fp,"  \"counters\": {\n");
     for (k=0; k<MANI_NKEYS; k++){

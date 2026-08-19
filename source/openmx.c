@@ -826,6 +826,16 @@ int main(int argc, char *argv[])
   OpenMX_Manifest_SetMax(MANI_WALL_DFT_MS,   (long long)(CompTime[myid][3]*1000.0));
   OpenMX_Manifest_SetMax(MANI_WALL_DIAG_MS,  (long long)(CompTime[myid][9]*1000.0));
   OpenMX_Manifest_SetMax(MANI_WALL_SETHAM_MS,(long long)(CompTime[myid][7]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_OLPKIN_MS,  (long long)(CompTime[myid][5]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_SETNL_MS,   (long long)(CompTime[myid][6]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_VNA_MS,     (long long)(CompTime[myid][16]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_POISSON_MS, (long long)(CompTime[myid][8]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_MIXING_MS,  (long long)(CompTime[myid][10]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_FORCE_MS,   (long long)(CompTime[myid][11]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_TE_MS,      (long long)(CompTime[myid][12]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_ADEN_MS,    (long long)(CompTime[myid][13]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_ORBSGRID_MS,(long long)(CompTime[myid][14]*1000.0));
+  OpenMX_Manifest_SetMax(MANI_WALL_SDG_MS,     (long long)(CompTime[myid][15]*1000.0));
   OpenMX_Manifest_Write(argv[1]);
 
   for (i=0; i<numprocs; i++){

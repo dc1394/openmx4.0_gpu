@@ -1760,6 +1760,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            otherwise its first-use cost is repeated on the critical path of
            every wave. */
         OpenMX_Manifest_Count(MANI_SETHAM_RANK_GPU_ITERS);
+        OpenMX_Manifest_VramSample();
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
@@ -1776,6 +1777,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
     }
     else if (plan.use_gpu && plan.turn == 0) {
         OpenMX_Manifest_Count(MANI_SETHAM_RANK_GPU_ITERS);
+        OpenMX_Manifest_VramSample();
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
         Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);

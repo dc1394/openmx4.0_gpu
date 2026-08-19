@@ -206,3 +206,30 @@ PROVENANCE NOTE (appended by hand, 2026-08-19)
    device concurrency ladders measured in the size search); band col
    uses Z GEMMs only (d_calls=0), cluster col D, cluster NC D+Z --
    exactly the audit sec.5 call-site table.
+
+=====================================================================
+WAVE 3 ADDENDUM (P2/P4/P6/P7, binary 2b099ed5, jobs 924523-924529)
+1. P2/P4/P7 fields live in simani_bg's manifest: wall.phases_s (10
+   CompTime slots), profiling {mode=production, all 7 knobs false,
+   external_profiler=false}, environment (the 4 set CUDA_/OMP_ vars),
+   memory.peak_device_vram_used_mb = 70539 of 81079 MB (matches the
+   .smi-observed ~70-76 GiB of bcol300 g runs).
+2. P6 accuracy dump (plan 13.2-C), Si 64-atom Gamma cluster (n=832,
+   maxn=528, nocc=128), dump at SCF 3, GEMMul8 (A) vs cuBLAS (B):
+     HOMO-LUMO gap (B)  1.858e-02 Ha (no degeneracy at the edge)
+     eps_K              5.889e-15
+     max|dK|            1.240e-14
+     max|dHtilde|       9.859e-14  (rel 2.10e-14)
+     max|d eigenvalue|  1.277e-15 Ha
+     r_HK(A)/r_HK(B)    3.4435e-12 / 3.4435e-12
+     max|Y^T Y - I|     3.55e-15 both
+   -> K-matrix-level FP64 equivalence; the commutator residual is set
+   by the eigensolver, not by the GEMM backend.  Tools:
+   gen_siacc64.sh, accdump_analysis.py; manifests self-document the
+   dump via the environment section (OPENMX_ACC_DUMP*).
+3. runtest 14/14 again on 2b099ed5 (109.46 s).
+4. Overhead recheck (bnc216 o, 25 SCF): DFT 232.6+-1.9 s / Diag
+   155.6 s vs wave-1 232.8+-2.9 / 156.6 and pre-manifest 253.39
+   (Total) -- unchanged.  noise6's Total (273.2 s) with clean
+   DFT/Diag is the known /work I/O-contention pattern (Total-only
+   perturbation), not instrumentation.

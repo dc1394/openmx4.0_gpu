@@ -1904,6 +1904,7 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
 
     OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
     if (jobz == CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
+    OpenMX_Manifest_VramSample();
     wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F, (cuDoubleComplex *)d_A, m,
                                     &vl, &vu, 1L, maxn, &h_meig, CUDA_R_64F, ctx->d_W, CUDA_C_64F, ctx->d_work,
                                     ctx->d_work_bytes, ctx->h_work, ctx->h_work_bytes, ctx->d_info));

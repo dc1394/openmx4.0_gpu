@@ -75,6 +75,20 @@ void stats_max(int slot, long long v)
     }
 }
 
+/* slots 11/12: min observed device free / device total (P4 VRAM peak);
+   slot 11 needs min semantics with 0 = "never sampled" */
+void stats_vram_sample(size_t free_bytes, size_t total_bytes)
+{
+    std::lock_guard<std::mutex> lock(g_manifest_stats_mutex);
+    long long f = (long long)free_bytes;
+    if (g_manifest_stats[12] == 0 || f < g_manifest_stats[11]) {
+        g_manifest_stats[11] = f;
+    }
+    if (g_manifest_stats[12] < (long long)total_bytes) {
+        g_manifest_stats[12] = (long long)total_bytes;
+    }
+}
+
 /* one of the five B70 reason strings -> stats slot; "allocation failure"
    and "cudaMalloc failure" share slot 6 (both are device allocation) */
 int stats_reason_slot(const char *reason)
@@ -234,6 +248,9 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
     if (cuda_status == cudaSuccess && report != nullptr) {
         report->free_bytes  = free_bytes;
         report->total_bytes = total_bytes;
+    }
+    if (cuda_status == cudaSuccess) {
+        stats_vram_sample(free_bytes, total_bytes);
     }
 
     if (cuda_status == cudaSuccess &&

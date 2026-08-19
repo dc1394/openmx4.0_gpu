@@ -158,3 +158,36 @@ What was built, and where it deviates from sections 1-3:
 - Validation: `work/gen_simani.sh` + `work/validate_manifest.sh`;
   campaign simani_{bg,bo,nc,cc,cn,cpu,fb1,fb2,fb3,noise1-3} + runtest
   (job IDs in work/siband_jobids.txt).
+
+## 7. P2 / P4 / P6 / P7 additions (landed 2026-08-19, same day)
+
+- **P2 lightweight phase timing**: the manifest's `wall` section now
+  carries all remaining CompTime slots (`phases_s`: Set_OLP_Kin,
+  Set_Nonlocal, Set_ProExpn_VNA, Poisson, Mixing_DM, Force, Total_Energy,
+  Set_Aden_Grid, Set_Orbitals_Grid, Set_Density_Grid) — zero new timers,
+  MAX over ranks like the Max_Time column. A `profiling` section records
+  the seven detailed-profiling knobs (OPENMX_BAND_PROFILE etc.), derives
+  `mode: production|profiling`, and flags external injection
+  (CUDA_INJECTION64_PATH / NSYS_PROFILING_SESSION_ID / NVTX_...), so the
+  never-pool-profiled-runs rule is machine-checkable.
+- **P4 VRAM peak**: `OpenMX_Manifest_VramSample()` (openmx_common.c) takes
+  one cudaMemGetInfo sample; called only from GPU-path sites with an
+  established context (the five Xsyevdx sites, the Set_Hamiltonian GPU
+  branches) and additionally inside the GEMMul8 bridge's ensure_workspace
+  (free/total already queried there; stats slots 11/12). memory section
+  emits vram_total_mb / vram_min_free_mb / peak_device_vram_used_mb —
+  device-global under MPS, which is the meaningful number when 48 ranks
+  share one H100.
+- **P7 environment snapshot**: the `environment` section dumps every set
+  OPENMX_/GEMMUL8_/CUDA_/OMP_ variable as Host_ID sees it (mpirun -x
+  forwards identically on this site).
+- **P6 small accuracy dump** (Cluster_DFT_Col.c): OPENMX_ACC_DUMP=1 +
+  OPENMX_ACC_DUMP_SCF=N make the dense owner write
+  `<name>.accdump.scfN.spinS.{Htilde,Ytilde,ko}.bin` (+meta.txt) —
+  the orthonormal-basis H~ right after the S~^T H S~ transform and the
+  eigenpairs right after cusolver, before the back-transform.  Offline:
+  `work/accdump_analysis.py` builds K~ = Y~ f Y~^T and reports eps_K,
+  max|dK|, max|dH~|, max|d eps_i| and r_HK per plan sec. 13.2-C.
+  Scope: cluster collinear GPU dense path only (the plan's Gamma-cluster
+  representative); generator `work/gen_siacc64.sh` (Si 64-atom cluster,
+  n=832, nocc=128).

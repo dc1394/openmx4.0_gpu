@@ -970,6 +970,7 @@ static void ClusterNonCol_ZheevdxPresent(dcomplex *A, double *W, int n, int maxn
 
         OpenMX_Manifest_Count(MANI_DENSE_GPU_SOLVES);
         if (jobz == CUSOLVER_EIG_MODE_NOVECTOR) OpenMX_Manifest_Count(MANI_DENSE_GPU_NOVECTOR);
+        OpenMX_Manifest_VramSample();
         wait_cudafunc(cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A, n, &vl, &vu, 1L,
                                         (int64_t)maxn, &h_meig, CUDA_R_64F, W, CUDA_C_64F, ctx->d_work,
                                         ctx->d_work_bytes, ctx->h_work, ctx->h_work_bytes, ctx->d_info));
