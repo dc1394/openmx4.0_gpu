@@ -493,3 +493,6 @@ sibs_nc216_4n_g15 Request 924972.nqsv submitted to queue: gen_S.
 Request 924980.nqsv submitted to queue: gen_S.
 === 2026-08-19 18:45:23 THESIS campaign complete: 97 sip + 44 sibs + 23 siacc + runtest; results in *_thesis_result.txt ===
 rbudgetcheck REMAIN 360.55 ESTIMATE 0.00
+=== 2026-08-19 19:24:39 P6 tag pair: siacc64_{o,g}2 from v2.0_thesis build (REMAIN 360.55) ===
+siacc64_o2 Request 925006.nqsv submitted to queue: gen_S.
+siacc64_g2 Request 925007.nqsv submitted to queue: gen_S.

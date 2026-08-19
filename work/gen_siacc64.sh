@@ -78,9 +78,10 @@ mkcase() { # $1=tag $2=srcdir
   echo "OK  $dst (from $src)"
 }
 
-mkcase o1 sip_ccol360_o1
-mkcase g1 sip_ccol360_g1
+REP=${1:-1}   # rep suffix: 1 = P0-P7 validation pair, 2 = v2.0_thesis tag pair
+mkcase "o$REP" sip_ccol360_o1
+mkcase "g$REP" sip_ccol360_g1
 # sanity: the two decks must differ ONLY in names and the gemmul8 line
-d=$(diff <(sed 's/siacc64_o1/CASE/g' siacc64_o1/siacc64_o1.dat) \
-         <(sed 's/siacc64_g1/CASE/g' siacc64_g1/siacc64_g1.dat) | grep -cE "^[<>]" )
+d=$(diff <(sed "s/siacc64_o$REP/CASE/g" "siacc64_o$REP/siacc64_o$REP.dat") \
+         <(sed "s/siacc64_g$REP/CASE/g" "siacc64_g$REP/siacc64_g$REP.dat") | grep -cE "^[<>]" )
 echo "deck diff lines (expect <=2, the scf.gemmul8.enable pair): $d"

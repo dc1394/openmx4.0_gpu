@@ -1,0 +1,19 @@
+# accdump comparison  scf=3 spin=0 n=832 maxn=528 nocc=128
+# A = siacc64_g2   B(reference) = siacc64_o2
+HOMO-LUMO gap (B): 1.858203e-02 Ha 
+eps_K              = 5.889373e-15
+max|dK|            = 1.239907e-14
+max|dHtilde|       = 9.858616e-14   (rel 2.104e-14)
+max|d eigenvalue|  = 1.276756e-15 Ha
+r_HK(A)            = 3.443476e-12
+r_HK(B)            = 3.443478e-12
+max|Y^T Y - I| (A)  = 3.552714e-15
+max|Y^T Y - I| (B)  = 3.552714e-15
+siacc64_o2 v2.0_thesis 11227640dc6f8a8b194ddcd9ab811917
+siacc64_g2 v2.0_thesis 11227640dc6f8a8b194ddcd9ab811917
+
+PROVENANCE: pair siacc64_{o,g}2 measured from the v2.0_thesis tag build
+(manifests above). The diagnostics agree with the pre-tag validation pair
+siacc64_{o,g}1 (binary 2b099ed5) to EVERY printed digit -- the two binaries
+produce bitwise-identical SCF trajectories, so this is simultaneously the
+plan-13.2-C K-matrix result and a cross-binary determinism check.

@@ -1,0 +1,5 @@
+n 832
+maxn 528
+scf_iter 3
+spin 0
+basis orthonormal (S~^T H S~; Y~ = first maxn columns, column-major FP64)
