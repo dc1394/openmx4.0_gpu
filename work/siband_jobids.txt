@@ -1,0 +1,320 @@
+# siband size-search job IDs, 2026-08-19 09:07
+Request 923296.nqsv submitted to queue: gen_S.
+Request 923297.nqsv submitted to queue: gen_S.
+Request 923298.nqsv submitted to queue: gen_S.
+Request 923299.nqsv submitted to queue: gen_S.
+Request 923301.nqsv submitted to queue: gen_S.
+Request 923302.nqsv submitted to queue: gen_S.
+Request 923303.nqsv submitted to queue: gen_S.
+Request 923304.nqsv submitted to queue: gen_S.
+Request 923305.nqsv submitted to queue: gen_S.
+Request 923306.nqsv submitted to queue: gen_S.
+Request 923307.nqsv submitted to queue: gen_S.
+Request 923308.nqsv submitted to queue: gen_S.
+Request 923309.nqsv submitted to queue: gen_S.
+# --- 2026-08-19 ~09:4x: all 12 probes above ran the f5fb5b3 build with the
+# --- bundled GEMMul8 v3.1.1.  User ordered git pull (-> cd5f0d5, GEMMul8
+# --- v3.2.0) + rebuild + full re-measurement; those case dirs are archived
+# --- in siband_v311_superseded/ and their numbers must not be pooled with
+# --- the v3.2.0 campaign.  They remain useful as priors and as a cross-
+# --- binary Utot consistency check for the cuBLAS path.
+# --- v3.2.0 campaign (binary 962f8d2519c2e6aa5a6295513f76fee9), col probe wave 09:26
+Request 923316.nqsv submitted to queue: gen_S.
+Request 923317.nqsv submitted to queue: gen_S.
+Request 923318.nqsv submitted to queue: gen_S.
+Request 923319.nqsv submitted to queue: gen_S.
+Request 923320.nqsv submitted to queue: gen_S.
+Request 923321.nqsv submitted to queue: gen_S.
+Request 923322.nqsv submitted to queue: gen_S.
+Request 923323.nqsv submitted to queue: gen_S.
+# --- nc probe wave 09:30
+Request 923329.nqsv submitted to queue: gen_S.
+Request 923330.nqsv submitted to queue: gen_S.
+Request 923331.nqsv submitted to queue: gen_S.
+Request 923332.nqsv submitted to queue: gen_S.
+Request 923333.nqsv submitted to queue: gen_S.
+Request 923334.nqsv submitted to queue: gen_S.
+Request 923335.nqsv submitted to queue: gen_S.
+Request 923336.nqsv submitted to queue: gen_S.
+Request 923337.nqsv submitted to queue: gen_S.
+Request 923338.nqsv submitted to queue: gen_S.
+Request 923339.nqsv submitted to queue: gen_S.
+Request 923342.nqsv submitted to queue: gen_S.
+Request 923343.nqsv submitted to queue: gen_S.
+Request 923345.nqsv submitted to queue: gen_S.
+Request 923346.nqsv submitted to queue: gen_S.
+# --- budget before step-6 completion + col preflights 09:47:
+GPU2026        395.36       1.00     500.00
+Request 923350.nqsv submitted to queue: gen_S.
+Request 923351.nqsv submitted to queue: gen_S.
+Request 923352.nqsv submitted to queue: gen_S.
+Request 923353.nqsv submitted to queue: gen_S.
+# --- budget before nc preflights 09:54:
+GPU2026        395.08       2.00     500.00
+Request 923356.nqsv submitted to queue: gen_S.
+Request 923357.nqsv submitted to queue: gen_S.
+Request 923358.nqsv submitted to queue: gen_S.
+# --- budget before production wave 1 09:58:
+GPU2026        394.88       3.00     500.00
+Request 923363.nqsv submitted to queue: gen_S.
+Request 923364.nqsv submitted to queue: gen_S.
+Request 923365.nqsv submitted to queue: gen_S.
+Request 923366.nqsv submitted to queue: gen_S.
+Request 923367.nqsv submitted to queue: gen_S.
+Request 923368.nqsv submitted to queue: gen_S.
+Request 923369.nqsv submitted to queue: gen_S.
+Request 923370.nqsv submitted to queue: gen_S.
+Request 923371.nqsv submitted to queue: gen_S.
+Request 923372.nqsv submitted to queue: gen_S.
+Request 923373.nqsv submitted to queue: gen_S.
+Request 923374.nqsv submitted to queue: gen_S.
+# --- budget before wave 2 + nc216_1n_g4 replacement (g1 drew bnode033) 10:05:
+GPU2026        393.11       1.00     500.00
+Request 923435.nqsv submitted to queue: gen_S.
+Request 923437.nqsv submitted to queue: gen_S.
+Request 923439.nqsv submitted to queue: gen_S.
+Request 923441.nqsv submitted to queue: gen_S.
+Request 923443.nqsv submitted to queue: gen_S.
+Request 923445.nqsv submitted to queue: gen_S.
+Request 923447.nqsv submitted to queue: gen_S.
+Request 923449.nqsv submitted to queue: gen_S.
+Request 923451.nqsv submitted to queue: gen_S.
+Request 923453.nqsv submitted to queue: gen_S.
+Request 923455.nqsv submitted to queue: gen_S.
+Request 923457.nqsv submitted to queue: gen_S.
+Request 923459.nqsv submitted to queue: gen_S.
+# --- budget before wave 3 10:11:
+GPU2026        391.55       3.00     500.00
+Request 923551.nqsv submitted to queue: gen_S.
+Request 923552.nqsv submitted to queue: gen_S.
+Request 923553.nqsv submitted to queue: gen_S.
+Request 923554.nqsv submitted to queue: gen_S.
+Request 923555.nqsv submitted to queue: gen_S.
+Request 923556.nqsv submitted to queue: gen_S.
+Request 923557.nqsv submitted to queue: gen_S.
+Request 923558.nqsv submitted to queue: gen_S.
+Request 923559.nqsv submitted to queue: gen_S.
+Request 923560.nqsv submitted to queue: gen_S.
+Request 923561.nqsv submitted to queue: gen_S.
+Request 923562.nqsv submitted to queue: gen_S.
+# --- budget before nc216_1n_g5 (g3 also drew bnode033) 10:19:
+GPU2026        389.68       0.00     500.00
+Request 923571.nqsv submitted to queue: gen_S.
+# --- budget before CV top-up wave (col300 2n_o/4n_o/4n_g +2 reps) 10:26:
+GPU2026        389.68       1.00     500.00
+Request 923704.nqsv submitted to queue: gen_S.
+Request 923705.nqsv submitted to queue: gen_S.
+Request 923706.nqsv submitted to queue: gen_S.
+Request 923707.nqsv submitted to queue: gen_S.
+Request 923708.nqsv submitted to queue: gen_S.
+Request 923709.nqsv submitted to queue: gen_S.
+Request 923714.nqsv submitted to queue: gen_S.
+# --- final budget after scaling campaign 10:36:
+GPU2026        388.51       0.00     500.00
+# --- budget before step-10 preflights (cluster ladder 14 + CPU config 8) 10:53:
+GPU2026        388.51       0.00     500.00
+Request 923852.nqsv submitted to queue: gen_S.
+Request 923853.nqsv submitted to queue: gen_S.
+Request 923854.nqsv submitted to queue: gen_S.
+Request 923855.nqsv submitted to queue: gen_S.
+Request 923856.nqsv submitted to queue: gen_S.
+Request 923857.nqsv submitted to queue: gen_S.
+Request 923858.nqsv submitted to queue: gen_S.
+Request 923859.nqsv submitted to queue: gen_S.
+Request 923860.nqsv submitted to queue: gen_S.
+Request 923861.nqsv submitted to queue: gen_S.
+Request 923862.nqsv submitted to queue: gen_S.
+Request 923863.nqsv submitted to queue: gen_S.
+Request 923864.nqsv submitted to queue: gen_S.
+Request 923865.nqsv submitted to queue: gen_S.
+Request 923866.nqsv submitted to queue: gen_S.
+Request 923867.nqsv submitted to queue: gen_S.
+Request 923868.nqsv submitted to queue: gen_S.
+Request 923869.nqsv submitted to queue: gen_S.
+Request 923870.nqsv submitted to queue: gen_S.
+Request 923871.nqsv submitted to queue: gen_S.
+Request 923872.nqsv submitted to queue: gen_S.
+Request 923873.nqsv submitted to queue: gen_S.
+# --- budget before cluster step-5/6 10:57:
+GPU2026        388.14       7.00     500.00
+Request 923879.nqsv submitted to queue: gen_S.
+Request 923880.nqsv submitted to queue: gen_S.
+Request 923881.nqsv submitted to queue: gen_S.
+Request 923882.nqsv submitted to queue: gen_S.
+Request 923888.nqsv submitted to queue: gen_S.
+Request 923890.nqsv submitted to queue: gen_S.
+# --- budget before production wave P1 (Layer-1/3 + MPS ablation) 11:06:
+GPU2026        387.47       1.00     500.00
+Request 923899.nqsv submitted to queue: gen_S.
+Request 923900.nqsv submitted to queue: gen_S.
+Request 923901.nqsv submitted to queue: gen_S.
+Request 923902.nqsv submitted to queue: gen_S.
+Request 923903.nqsv submitted to queue: gen_S.
+Request 923904.nqsv submitted to queue: gen_S.
+Request 923905.nqsv submitted to queue: gen_S.
+Request 923906.nqsv submitted to queue: gen_S.
+Request 923907.nqsv submitted to queue: gen_S.
+Request 923908.nqsv submitted to queue: gen_S.
+Request 923909.nqsv submitted to queue: gen_S.
+Request 923910.nqsv submitted to queue: gen_S.
+Request 923911.nqsv submitted to queue: gen_S.
+Request 923912.nqsv submitted to queue: gen_S.
+Request 923913.nqsv submitted to queue: gen_S.
+Request 923914.nqsv submitted to queue: gen_S.
+Request 923915.nqsv submitted to queue: gen_S.
+Request 923916.nqsv submitted to queue: gen_S.
+Request 923917.nqsv submitted to queue: gen_S.
+Request 923918.nqsv submitted to queue: gen_S.
+Request 923919.nqsv submitted to queue: gen_S.
+Request 923920.nqsv submitted to queue: gen_S.
+Request 923921.nqsv submitted to queue: gen_S.
+# --- budget before wave P2 11:25:
+GPU2026        385.53       0.00     500.00
+Request 923961.nqsv submitted to queue: gen_S.
+Request 923962.nqsv submitted to queue: gen_S.
+Request 923963.nqsv submitted to queue: gen_S.
+Request 923964.nqsv submitted to queue: gen_S.
+Request 923965.nqsv submitted to queue: gen_S.
+Request 923966.nqsv submitted to queue: gen_S.
+Request 923967.nqsv submitted to queue: gen_S.
+Request 923968.nqsv submitted to queue: gen_S.
+Request 923969.nqsv submitted to queue: gen_S.
+Request 923970.nqsv submitted to queue: gen_S.
+Request 923971.nqsv submitted to queue: gen_S.
+Request 923972.nqsv submitted to queue: gen_S.
+Request 923973.nqsv submitted to queue: gen_S.
+Request 923974.nqsv submitted to queue: gen_S.
+Request 923975.nqsv submitted to queue: gen_S.
+Request 923976.nqsv submitted to queue: gen_S.
+Request 923977.nqsv submitted to queue: gen_S.
+Request 923978.nqsv submitted to queue: gen_S.
+Request 923979.nqsv submitted to queue: gen_S.
+Request 923980.nqsv submitted to queue: gen_S.
+Request 923981.nqsv submitted to queue: gen_S.
+Request 923982.nqsv submitted to queue: gen_S.
+Request 923983.nqsv submitted to queue: gen_S.
+# --- budget before wave P3 11:43:
+GPU2026        383.93       1.33     500.00
+Request 924022.nqsv submitted to queue: gen_S.
+Request 924023.nqsv submitted to queue: gen_S.
+Request 924024.nqsv submitted to queue: gen_S.
+Request 924025.nqsv submitted to queue: gen_S.
+Request 924026.nqsv submitted to queue: gen_S.
+Request 924027.nqsv submitted to queue: gen_S.
+Request 924028.nqsv submitted to queue: gen_S.
+Request 924029.nqsv submitted to queue: gen_S.
+Request 924030.nqsv submitted to queue: gen_S.
+Request 924031.nqsv submitted to queue: gen_S.
+Request 924032.nqsv submitted to queue: gen_S.
+Request 924033.nqsv submitted to queue: gen_S.
+Request 924034.nqsv submitted to queue: gen_S.
+Request 924035.nqsv submitted to queue: gen_S.
+Request 924036.nqsv submitted to queue: gen_S.
+Request 924037.nqsv submitted to queue: gen_S.
+Request 924038.nqsv submitted to queue: gen_S.
+Request 924039.nqsv submitted to queue: gen_S.
+Request 924040.nqsv submitted to queue: gen_S.
+Request 924041.nqsv submitted to queue: gen_S.
+Request 924042.nqsv submitted to queue: gen_S.
+Request 924043.nqsv submitted to queue: gen_S.
+Request 924044.nqsv submitted to queue: gen_S.
+# --- budget before wave P4 12:02:
+GPU2026        382.05       1.33     500.00
+Request 924063.nqsv submitted to queue: gen_S.
+Request 924064.nqsv submitted to queue: gen_S.
+Request 924065.nqsv submitted to queue: gen_S.
+Request 924066.nqsv submitted to queue: gen_S.
+Request 924067.nqsv submitted to queue: gen_S.
+Request 924068.nqsv submitted to queue: gen_S.
+Request 924069.nqsv submitted to queue: gen_S.
+Request 924070.nqsv submitted to queue: gen_S.
+Request 924071.nqsv submitted to queue: gen_S.
+Request 924072.nqsv submitted to queue: gen_S.
+Request 924073.nqsv submitted to queue: gen_S.
+Request 924074.nqsv submitted to queue: gen_S.
+Request 924075.nqsv submitted to queue: gen_S.
+Request 924076.nqsv submitted to queue: gen_S.
+# --- budget before wave P5 (final) 12:08:
+GPU2026        381.21       2.00     500.00
+Request 924081.nqsv submitted to queue: gen_S.
+Request 924082.nqsv submitted to queue: gen_S.
+Request 924083.nqsv submitted to queue: gen_S.
+Request 924084.nqsv submitted to queue: gen_S.
+Request 924085.nqsv submitted to queue: gen_S.
+Request 924086.nqsv submitted to queue: gen_S.
+Request 924087.nqsv submitted to queue: gen_S.
+Request 924088.nqsv submitted to queue: gen_S.
+Request 924089.nqsv submitted to queue: gen_S.
+Request 924090.nqsv submitted to queue: gen_S.
+Request 924091.nqsv submitted to queue: gen_S.
+Request 924092.nqsv submitted to queue: gen_S.
+Request 924093.nqsv submitted to queue: gen_S.
+Request 924094.nqsv submitted to queue: gen_S.
+# --- budget before ccol216 c48 CV top-up 12:15:
+GPU2026        380.29       0.00     500.00
+Request 924100.nqsv submitted to queue: gen_S.
+Request 924101.nqsv submitted to queue: gen_S.
+# --- final budget after production matrix 12:20:
+GPU2026        380.20       0.00     500.00
+# --- budget before accuracy campaign (23 runs) 12:28:
+GPU2026        380.20       0.00     500.00
+Request 924122.nqsv submitted to queue: gen_S.
+Request 924123.nqsv submitted to queue: gen_S.
+Request 924124.nqsv submitted to queue: gen_S.
+Request 924125.nqsv submitted to queue: gen_S.
+Request 924126.nqsv submitted to queue: gen_S.
+Request 924127.nqsv submitted to queue: gen_S.
+Request 924128.nqsv submitted to queue: gen_S.
+Request 924129.nqsv submitted to queue: gen_S.
+Request 924130.nqsv submitted to queue: gen_S.
+Request 924131.nqsv submitted to queue: gen_S.
+Request 924132.nqsv submitted to queue: gen_S.
+Request 924133.nqsv submitted to queue: gen_S.
+Request 924134.nqsv submitted to queue: gen_S.
+Request 924135.nqsv submitted to queue: gen_S.
+Request 924136.nqsv submitted to queue: gen_S.
+Request 924137.nqsv submitted to queue: gen_S.
+Request 924138.nqsv submitted to queue: gen_S.
+Request 924139.nqsv submitted to queue: gen_S.
+Request 924140.nqsv submitted to queue: gen_S.
+Request 924141.nqsv submitted to queue: gen_S.
+Request 924142.nqsv submitted to queue: gen_S.
+Request 924143.nqsv submitted to queue: gen_S.
+Request 924144.nqsv submitted to queue: gen_S.
+Request 924146.nqsv submitted to queue: gen_S.
+# --- budget after accuracy + nsys campaigns 13:08:
+GPU2026        377.99       0.00     500.00
+=== 2026-08-19 15:36:11 P0 manifest validation wave (rbudgetcheck REMAIN 377.99) ===
+simani_bg Request 924479.nqsv submitted to queue: gen_S.
+simani_bo Request 924480.nqsv submitted to queue: gen_S.
+simani_nc Request 924481.nqsv submitted to queue: gen_S.
+simani_cc Request 924482.nqsv submitted to queue: gen_S.
+simani_cn Request 924483.nqsv submitted to queue: gen_S.
+simani_cpu Request 924484.nqsv submitted to queue: gen_S.
+simani_fb1 Request 924485.nqsv submitted to queue: gen_S.
+simani_fb2 Request 924486.nqsv submitted to queue: gen_S.
+simani_fb3 Request 924487.nqsv submitted to queue: gen_S.
+simani_noise1 Request 924488.nqsv submitted to queue: gen_S.
+simani_noise2 Request 924489.nqsv submitted to queue: gen_S.
+simani_noise3 Request 924490.nqsv submitted to queue: gen_S.
+runtest_np48 Request 924491.nqsv submitted to queue: gen_S.
+=== 2026-08-19 15:44:53 P0 manifest validation wave 2 (md5 fix, binary 2a5fe4a2; rbudgetcheck REMAIN 377.36) ===
+simani_bg Request 924497.nqsv submitted to queue: gen_S.
+simani_bo Request 924498.nqsv submitted to queue: gen_S.
+simani_nc Request 924499.nqsv submitted to queue: gen_S.
+simani_cc Request 924500.nqsv submitted to queue: gen_S.
+simani_cn Request 924501.nqsv submitted to queue: gen_S.
+simani_cpu Request 924502.nqsv submitted to queue: gen_S.
+simani_fb1 Request 924503.nqsv submitted to queue: gen_S.
+simani_fb2 Request 924504.nqsv submitted to queue: gen_S.
+simani_fb3 Request 924505.nqsv submitted to queue: gen_S.
+=== 2026-08-19 15:49:56 P0 validation complete: 117 PASS / 0 FAIL (manifest_validation_result.txt) ===
+rbudgetcheck REMAIN 376.99 ESTIMATE 0.00
+=== 2026-08-19 16:08:59 P2/P4/P6/P7 validation wave 3 (binary 2b099ed5; rbudgetcheck REMAIN 376.99) ===
+siacc64_o1 Request 924523.nqsv submitted to queue: gen_S.
+siacc64_g1 Request 924524.nqsv submitted to queue: gen_S.
+simani_bg Request 924525.nqsv submitted to queue: gen_S.
+simani_noise4 Request 924526.nqsv submitted to queue: gen_S.
+simani_noise5 Request 924527.nqsv submitted to queue: gen_S.
+simani_noise6 Request 924528.nqsv submitted to queue: gen_S.
+runtest_np48 Request 924529.nqsv submitted to queue: gen_S.

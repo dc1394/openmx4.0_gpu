@@ -1,0 +1,5 @@
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 22308.052 MiB, CUDA free 21133.312 MiB / total 81079.125 MiB, reserve 1536.000 MiB, max-workspace 30%. Falling back to native cuBLAS.
+--------------------------------------------------------------------------
+prterun noticed that process rank 0 with PID 3205198 on node bnode068 exited on
+signal 9 (Killed).
+--------------------------------------------------------------------------

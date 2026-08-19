@@ -1,0 +1,61 @@
+================================================================================
+cghelgeo benchmark: GPU path (gpusolver + MPS) vs CPU path (elpa2)
+Measured 2026-08-11 on Pegasus (gen_S, -A GPU2026), 3 repetitions per path
+Layout : 2 nodes x 48 ranks/node = 96 MPI ranks (mpirun -np 96 -npernode 48),
+         1 OpenMP thread/rank; GPU runs use 1x H100 per node with MPS enabled
+Input  : cghelgeo (650 atoms, matrix dim 10430, collinear, Band solver,
+         k-grid 1x1x3, 70 SCF iterations to 1e-13); only System.Name and
+         scf.eigen.lib differ between paths
+Jobs   : GPU 902985-902987 (cghelgeo_rep1..3),
+         CPU 902988-902990 (cghelgeo_nogpu_rep1..3)
+Source : work/summarize_cghelgeo_reps.sh (rerun to regenerate the body below)
+================================================================================
+
+cghelgeo, 2 nodes x 48 ranks = 96 ranks, three repetitions per path
+Max_Time column (slowest rank), seconds
+
+--- per-run ---
+case                          total        DFT       Diag    Set_Ham  status
+cghelgeo_rep1               552.868    536.554    448.157     21.560  OK
+cghelgeo_rep2               552.786    540.756    450.696     22.043  OK
+cghelgeo_rep3               566.006    553.272    459.055     23.887  OK
+cghelgeo_nogpu_rep1        2763.520   2747.736   2530.817     69.026  OK
+cghelgeo_nogpu_rep2        2745.316   2729.791   2513.458     70.109  OK
+cghelgeo_nogpu_rep3        2765.380   2749.872   2528.835     70.171  OK
+
+--- statistics ---
+GPU (gpusolver+MPS)  (n=3)
+  phase                    mean        sd       min       max  sd/mean
+  Total                  557.22      7.61    552.79    566.01    1.37%
+  DFT                    543.53      8.70    536.55    553.27    1.60%
+  Diagonalization        452.64      5.70    448.16    459.06    1.26%
+  Set_Hamiltonian         22.50      1.23     21.56     23.89    5.46%
+
+CPU (elpa2)  (n=3)
+  phase                    mean        sd       min       max  sd/mean
+  Total                 2758.07     11.09   2745.32   2765.38    0.40%
+  DFT                   2742.47     11.03   2729.79   2749.87    0.40%
+  Diagonalization       2524.37      9.50   2513.46   2530.82    0.38%
+  Set_Hamiltonian         69.77      0.64     69.03     70.17    0.92%
+
+--- GPU speedup (CPU mean / GPU mean), +- from both SDs in quadrature ---
+  Total              4.95x +- 0.07
+  DFT                5.05x +- 0.08
+  Diagonalization    5.58x +- 0.07
+  Set_Hamiltonian    3.10x +- 0.17
+
+--- Utot (within a path: bit-identical; across paths: ~12 digits) ---
+  cghelgeo_rep1            -4154.835898598240
+  cghelgeo_rep2            -4154.835898598240
+  cghelgeo_rep3            -4154.835898598240
+  cghelgeo_nogpu_rep1      -4154.835898595155
+  cghelgeo_nogpu_rep2      -4154.835898595155
+  cghelgeo_nogpu_rep3      -4154.835898595155
+
+--- peak host memory, node 0 (GiB) ---
+  cghelgeo_rep1            104/124
+  cghelgeo_rep2            104/124
+  cghelgeo_rep3            105/124
+  cghelgeo_nogpu_rep1      99/124
+  cghelgeo_nogpu_rep2      99/124
+  cghelgeo_nogpu_rep3      99/124

@@ -1,0 +1,8 @@
+[08:44:06] script start on bnode109
+[08:44:09] launching mpirun: 144 ranks
+[08:44:09] mpirun launched (pid 1451579)
+[08:51:11] completion banner seen; 60 s grace
+[08:52:11] mpirun exited on its own during grace
+[08:52:11] watchdog loop exited; reaping mpirun
+[08:52:11] mpirun reaped rc=0
+[08:52:11] sampler killed

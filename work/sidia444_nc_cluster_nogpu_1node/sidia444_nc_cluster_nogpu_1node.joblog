@@ -1,0 +1,37 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.902045.10/user_script: line 107: 2290038 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.902045.10/user_script: line 161: 2289554 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 119/124
+host mem used/total (GiB): 114/124
+host mem used/total (GiB): 110/124
+=== SCF iterations completed (of 25 max) ===
+1
+=== Utot (no reference yet; must agree across all eight runs) ===
+=== timing ===
+=== progress markers ===
+[10:56:37] script start on bnode098
+[10:56:38] launching mpirun: 48 ranks
+[10:56:38] mpirun launched (pid 2289557)
+[10:58:08] watchdog loop exited; reaping mpirun
+[10:58:08] mpirun reaped rc=137
+[10:58:08] sampler killed
+
+============================================================
+Request ID:             902045.nqsv
+Request Name:           s333_2node_nogpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 10:56:25 2026
+Started Request Time:   Tue Aug 11 10:56:37 2026
+Ended Request Time:     Tue Aug 11 10:58:08 2026
+Resources Information:
+  Elapse:               95S
+  Remaining Elapse:     21505S
+============================================================

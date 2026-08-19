@@ -1,0 +1,58 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.911880.10/user_script: line 103: 131542 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.911880.10/user_script: line 153: 129946 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s443nc_2n_ds2 INCOMPLETE
+=== full timing block ===
+=== Utot (1n24/1n36 probes: -1577.61926591245x) ===
+=== SCF iterations completed (of 25 max) ===
+1
+=== Set_Hamiltonian GPU / residency lines ===
+<Set_Hamiltonian> GPU device 0: 36 Hamiltonian rank(s), GPU concurrency=36, CPU fallback ranks=0, peak=36.389 GiB, free=63.108 GiB, reserve=7.918 GiB
+<Set_Hamiltonian> GPU device 0: 36 Hamiltonian rank(s), GPU concurrency=36, CPU fallback ranks=0, peak=36.382 GiB, free=63.108 GiB, reserve=7.918 GiB
+<Set_Hamiltonian> GPU resident cache: 36 rank(s) hold 17.261 GiB (orbs1+orbs0+nolg+meta) on device 0 across SCF iterations
+<Set_Hamiltonian> GPU resident cache: 36 rank(s) hold 17.261 GiB (orbs1+orbs0+nolg+meta) on device 0 across SCF iterations
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 53/124
+host mem used/total (GiB): 53/124
+host mem used/total (GiB): 53/124
+=== peak GPU, this node ===
+85 %, 41119 MiB
+0 %, 34337 MiB
+0 %, 34337 MiB
+=== MPS server per node (post-run) ===
+bnode034: mps_server=1 gpu_mem_used=77 MiB
+bnode035: mps_server=1 gpu_mem_used=77 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[15:21:04] script start on bnode034
+[15:21:05] MPS up on all 2 nodes
+[15:21:05] launching mpirun: 72 ranks on 2 nodes
+[15:21:05] mpirun launched (pid 129949)
+[15:28:11] watchdog loop exited (verdict='none'); reaping mpirun
+[15:28:11] mpirun reaped rc=241
+[15:28:11] sampler killed
+
+============================================================
+Request ID:             911880.nqsv
+Request Name:           s443_2ds2
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Sat Aug 15 15:20:52 2026
+Started Request Time:   Sat Aug 15 15:21:04 2026
+Ended Request Time:     Sat Aug 15 15:28:12 2026
+Resources Information:
+  Elapse:               432S
+  Remaining Elapse:     3168S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

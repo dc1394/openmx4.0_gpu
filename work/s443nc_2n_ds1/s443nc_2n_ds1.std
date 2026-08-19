@@ -1,0 +1,290 @@
+
+The number of threads in each node for OpenMP parallelization is 1.
+
+
+*******************************************************
+*******************************************************
+ Welcome to OpenMX   Ver. 4.0 GPU                           
+ Copyright (C), 2002-2026, T. Ozaki                    
+ OpenMX comes with ABSOLUTELY NO WARRANTY.             
+ This is free software, and you are welcome to         
+ redistribute it under the constitution of the GNU-GPL.
+*******************************************************
+*******************************************************
+
+Automatic determination of Kerker_factor:   4.573585491786
+3.560000 0.000000 0.000000
+0.000000 3.560000 0.000000
+0.000000 0.000000 3.560000
+kpath (converted)
+(0.000000 0.000000 0.000000) (6.102247 0.000000 0.000000)
+(6.102247 0.000000 0.000000) (6.102247 3.051124 0.000000)
+(6.102247 3.051124 0.000000) (3.051124 3.051124 2.288343)
+(3.051124 3.051124 2.288343) (0.000000 0.000000 0.000000)
+(0.000000 0.000000 0.000000) (6.102247 0.000000 0.000000)
+kpoint at which wave functions are calculated (converted)
+0.000000 0.000000 0.000000
+0.000000 0.000000 0.915337
+
+
+<Input_std>  Your input file was normally read.
+<Input_std>  The system includes 1 species and 384 atoms.
+
+*******************************************************
+                     PAO and VPS                       
+*******************************************************
+
+<SetPara_DFT>  PAOs of species Si were normally found.
+<SetPara_DFT>  VPSs of species Si were normally found.
+               Si_PBE19.vps is j-dependent.
+               In case of scf.SpinOrbit.Coupling=off,
+               j-dependent pseudo potentials are averaged by j-degeneracy,
+               which corresponds to a scalar relativistic treatment.
+
+*******************************************************
+     Fourier transform of PAO and projectors of VNL    
+*******************************************************
+
+<FT_PAO>          Fourier transform of pseudo atomic orbitals
+<FT_NLP>          Fourier transform of non-local projectors
+<FT_ProExpn_VNA>  Fourier transform of VNA separable projectors
+<FT_VNA>          Fourier transform of VNA potentials
+<FT_ProductPAO>   Fourier transform of product of PAOs
+
+*******************************************************
+  Allocation of atoms to processors at MD_iter=    1     
+*******************************************************
+
+ proc =   0  # of atoms=   5  estimated weight=         5.00000
+ proc =   1  # of atoms=   6  estimated weight=         6.00000
+ proc =   2  # of atoms=   5  estimated weight=         5.00000
+ proc =   3  # of atoms=   6  estimated weight=         6.00000
+ proc =   4  # of atoms=   5  estimated weight=         5.00000
+ proc =   5  # of atoms=   5  estimated weight=         5.00000
+ proc =   6  # of atoms=   5  estimated weight=         5.00000
+ proc =   7  # of atoms=   6  estimated weight=         6.00000
+ proc =   8  # of atoms=   5  estimated weight=         5.00000
+ proc =   9  # of atoms=   5  estimated weight=         5.00000
+ proc =  10  # of atoms=   6  estimated weight=         6.00000
+ proc =  11  # of atoms=   5  estimated weight=         5.00000
+ proc =  12  # of atoms=   6  estimated weight=         6.00000
+ proc =  13  # of atoms=   5  estimated weight=         5.00000
+ proc =  14  # of atoms=   6  estimated weight=         6.00000
+ proc =  15  # of atoms=   5  estimated weight=         5.00000
+ proc =  16  # of atoms=   5  estimated weight=         5.00000
+ proc =  17  # of atoms=   5  estimated weight=         5.00000
+ proc =  18  # of atoms=   5  estimated weight=         5.00000
+ proc =  19  # of atoms=   6  estimated weight=         6.00000
+ proc =  20  # of atoms=   5  estimated weight=         5.00000
+ proc =  21  # of atoms=   6  estimated weight=         6.00000
+ proc =  22  # of atoms=   5  estimated weight=         5.00000
+ proc =  23  # of atoms=   5  estimated weight=         5.00000
+ proc =  24  # of atoms=   5  estimated weight=         5.00000
+ proc =  25  # of atoms=   6  estimated weight=         6.00000
+ proc =  26  # of atoms=   5  estimated weight=         5.00000
+ proc =  27  # of atoms=   5  estimated weight=         5.00000
+ proc =  28  # of atoms=   6  estimated weight=         6.00000
+ proc =  29  # of atoms=   5  estimated weight=         5.00000
+ proc =  30  # of atoms=   6  estimated weight=         6.00000
+ proc =  31  # of atoms=   5  estimated weight=         5.00000
+ proc =  32  # of atoms=   5  estimated weight=         5.00000
+ proc =  33  # of atoms=   5  estimated weight=         5.00000
+ proc =  34  # of atoms=   5  estimated weight=         5.00000
+ proc =  35  # of atoms=   6  estimated weight=         6.00000
+ proc =  36  # of atoms=   6  estimated weight=         6.00000
+ proc =  37  # of atoms=   5  estimated weight=         5.00000
+ proc =  38  # of atoms=   5  estimated weight=         5.00000
+ proc =  39  # of atoms=   6  estimated weight=         6.00000
+ proc =  40  # of atoms=   5  estimated weight=         5.00000
+ proc =  41  # of atoms=   5  estimated weight=         5.00000
+ proc =  42  # of atoms=   6  estimated weight=         6.00000
+ proc =  43  # of atoms=   5  estimated weight=         5.00000
+ proc =  44  # of atoms=   5  estimated weight=         5.00000
+ proc =  45  # of atoms=   5  estimated weight=         5.00000
+ proc =  46  # of atoms=   6  estimated weight=         6.00000
+ proc =  47  # of atoms=   5  estimated weight=         5.00000
+ proc =  48  # of atoms=   6  estimated weight=         6.00000
+ proc =  49  # of atoms=   5  estimated weight=         5.00000
+ proc =  50  # of atoms=   5  estimated weight=         5.00000
+ proc =  51  # of atoms=   5  estimated weight=         5.00000
+ proc =  52  # of atoms=   5  estimated weight=         5.00000
+ proc =  53  # of atoms=   6  estimated weight=         6.00000
+ proc =  54  # of atoms=   6  estimated weight=         6.00000
+ proc =  55  # of atoms=   5  estimated weight=         5.00000
+ proc =  56  # of atoms=   5  estimated weight=         5.00000
+ proc =  57  # of atoms=   6  estimated weight=         6.00000
+ proc =  58  # of atoms=   5  estimated weight=         5.00000
+ proc =  59  # of atoms=   5  estimated weight=         5.00000
+ proc =  60  # of atoms=   5  estimated weight=         5.00000
+ proc =  61  # of atoms=   6  estimated weight=         6.00000
+ proc =  62  # of atoms=   5  estimated weight=         5.00000
+ proc =  63  # of atoms=   6  estimated weight=         6.00000
+ proc =  64  # of atoms=   5  estimated weight=         5.00000
+ proc =  65  # of atoms=   5  estimated weight=         5.00000
+ proc =  66  # of atoms=   6  estimated weight=         6.00000
+ proc =  67  # of atoms=   5  estimated weight=         5.00000
+ proc =  68  # of atoms=   5  estimated weight=         5.00000
+ proc =  69  # of atoms=   6  estimated weight=         6.00000
+ proc =  70  # of atoms=   5  estimated weight=         5.00000
+ proc =  71  # of atoms=   5  estimated weight=         5.00000
+
+
+
+
+*******************************************************
+        Analysis of neighbors and setting of grids        
+*******************************************************
+
+TFNAN=   33024   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 1 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+TFNAN=   33024   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+TFNAN=   33024   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+<Check_System> The system is bulk.
+lattice vectors (bohr)
+A  = 41.052407375889,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 41.052407375889,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 30.789305531916
+reciprocal lattice vectors (bohr^-1)
+RA =  0.153052785666,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.153052785666,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.204070380888
+Grid_Origin  0.108604252317  0.108604252317  0.109961805471
+Cell_Volume =  51889.221273081959 (Bohr^3)
+GridVol     =      0.010375893587 (Bohr^3)
+Grid_Origin  0.108604252317  0.108604252317  0.109961805471
+Cell_Volume =  51889.221273081959 (Bohr^3)
+GridVol     =      0.010375893587 (Bohr^3)
+<UCell_Box> Info. of cutoff energy and num. of grids
+lattice vectors (bohr)
+A  = 41.052407375889,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 41.052407375889,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 30.789305531916
+reciprocal lattice vectors (bohr^-1)
+RA =  0.153052785666,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.153052785666,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.204070380888
+Required cutoff energy (Ryd) for 3D-grids = 200.0000
+    Used cutoff energy (Ryd) for 3D-grids = 209.1925, 209.1925, 204.0591
+Num. of grids of a-, b-, and c-axes = 189, 189, 140
+Grid_Origin  0.108604252317  0.108604252317  0.109961805471
+Cell_Volume =  51889.221273081959 (Bohr^3)
+GridVol     =      0.010375893587 (Bohr^3)
+Cell vectors (bohr) of the grid cell (gtv)
+  gtv_a =  0.217208504634,  0.000000000000,  0.000000000000
+  gtv_b =  0.000000000000,  0.217208504634,  0.000000000000
+  gtv_c =  0.000000000000,  0.000000000000,  0.219923610942
+  |gtv_a| =  0.217208504634
+  |gtv_b| =  0.217208504634
+  |gtv_c| =  0.219923610942
+Num. of grids overlapping with atom    1 = 138492
+Num. of grids overlapping with atom    2 = 138467
+Num. of grids overlapping with atom    3 = 138467
+Num. of grids overlapping with atom    4 = 138431
+Num. of grids overlapping with atom    5 = 138484
+Num. of grids overlapping with atom    6 = 138451
+Num. of grids overlapping with atom    7 = 138457
+Num. of grids overlapping with atom    8 = 138484
+Num. of grids overlapping with atom    9 = 138494
+Num. of grids overlapping with atom   10 = 138467
+Num. of grids overlapping with atom   11 = 138467
+Num. of grids overlapping with atom   12 = 138537
+Num. of grids overlapping with atom   13 = 138461
+Num. of grids overlapping with atom   14 = 138523
+Num. of grids overlapping with atom   15 = 138478
+Num. of grids overlapping with atom   16 = 138461
+Num. of grids overlapping with atom   17 = 138492
+Num. of grids overlapping with atom   18 = 138419
+Num. of grids overlapping with atom   19 = 138419
+Num. of grids overlapping with atom   20 = 138431
+     ..........
+     ......
+
+
+*******************************************************
+             SCF calculation at MD = 1                
+*******************************************************
+
+<MD= 1>  Calculation of the overlap matrix (GPU-accelerated)
+<MD= 1>  Calculation of the nonlocal matrix (GPU-accelerated)
+<MD= 1>  Calculation of the VNA projector matrix (GPU-accelerated)
+
+******************* MD= 1  SCF= 1 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian> GPU device 0: 36 Hamiltonian rank(s), GPU concurrency=36, CPU fallback ranks=0, peak=36.389 GiB, free=63.108 GiB, reserve=7.918 GiB
+<Set_Hamiltonian> GPU device 0: 36 Hamiltonian rank(s), GPU concurrency=36, CPU fallback ranks=0, peak=36.382 GiB, free=63.108 GiB, reserve=7.918 GiB
+<Set_Hamiltonian> GPU resident cache: 36 rank(s) hold 17.261 GiB (orbs1+orbs0+nolg+meta) on device 0 across SCF iterations
+<Set_Hamiltonian> GPU resident cache: 36 rank(s) hold 17.261 GiB (orbs1+orbs0+nolg+meta) on device 0 across SCF iterations
+<Cluster>  Solving the eigenvalue problem (GPU-accelerated)...
+<DFT> gpusolver2: eigensolves on a 2x1 sub-grid (2 of 72 ranks; first 1 rank(s) of every node) (OPENMX_GS2_SOLVE_RPN)
+=== openmx exit status = 241 (Sat Aug 15 14:34:50 JST 2026) ===

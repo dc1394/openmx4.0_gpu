@@ -1,0 +1,7 @@
+[09:27:07] script start on bnode021
+[09:27:07] MPS up on all 1 nodes
+[09:27:07] launching mpirun: 48 ranks on 1 nodes
+[09:27:07] mpirun launched (pid 1672691)
+[09:28:28] watchdog loop exited (verdict='none'); reaping mpirun
+[09:28:28] mpirun reaped rc=137
+[09:28:28] sampler killed

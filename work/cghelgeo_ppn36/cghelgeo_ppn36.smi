@@ -1,0 +1,236 @@
+--- 14:45:15
+host mem used/total (GiB): 3/124
+0 %, 1 MiB
+
+--- 14:45:25
+host mem used/total (GiB): 5/124
+0 %, 1 MiB
+
+--- 14:45:35
+host mem used/total (GiB): 12/124
+0 %, 73 MiB
+      1 nvidia-cuda-mps-server;
+--- 14:45:45
+host mem used/total (GiB): 12/124
+0 %, 73 MiB
+      1 nvidia-cuda-mps-server;
+--- 14:45:55
+host mem used/total (GiB): 18/124
+86 %, 18797 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:46:05
+host mem used/total (GiB): 55/124
+0 %, 16385 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:46:15
+host mem used/total (GiB): 70/124
+100 %, 28671 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:46:25
+host mem used/total (GiB): 82/124
+75 %, 18669 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:46:35
+host mem used/total (GiB): 89/124
+9 %, 44931 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:46:45
+host mem used/total (GiB): 88/124
+100 %, 58743 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:46:56
+host mem used/total (GiB): 88/124
+0 %, 35081 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:47:06
+host mem used/total (GiB): 88/124
+100 %, 58743 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:47:16
+host mem used/total (GiB): 88/124
+100 %, 58743 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:47:26
+host mem used/total (GiB): 89/124
+9 %, 44931 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:47:36
+host mem used/total (GiB): 88/124
+100 %, 58743 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:47:46
+host mem used/total (GiB): 88/124
+63 %, 35081 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:47:56
+host mem used/total (GiB): 88/124
+100 %, 58743 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:48:06
+host mem used/total (GiB): 88/124
+100 %, 58743 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:48:16
+host mem used/total (GiB): 89/124
+28 %, 33129 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:48:26
+host mem used/total (GiB): 88/124
+100 %, 58743 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:48:37
+host mem used/total (GiB): 88/124
+0 %, 34139 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:48:47
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:48:57
+host mem used/total (GiB): 88/124
+85 %, 54439 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:49:07
+host mem used/total (GiB): 89/124
+8 %, 47289 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:49:17
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:49:27
+host mem used/total (GiB): 89/124
+1 %, 35625 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:49:37
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:49:47
+host mem used/total (GiB): 88/124
+21 %, 54439 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:49:57
+host mem used/total (GiB): 89/124
+10 %, 47289 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:50:07
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:50:18
+host mem used/total (GiB): 92/124
+19 %, 37285 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:50:28
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:50:38
+host mem used/total (GiB): 88/124
+100 %, 37439 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:50:48
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:50:58
+host mem used/total (GiB): 88/124
+13 %, 40627 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:51:08
+host mem used/total (GiB): 88/124
+9 %, 47289 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:51:18
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:51:28
+host mem used/total (GiB): 89/124
+35 %, 35487 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:51:38
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:51:48
+host mem used/total (GiB): 88/124
+100 %, 37439 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:51:58
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:52:09
+host mem used/total (GiB): 88/124
+69 %, 54439 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:52:19
+host mem used/total (GiB): 89/124
+8 %, 47289 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:52:29
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:52:39
+host mem used/total (GiB): 88/124
+0 %, 35625 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:52:49
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:52:59
+host mem used/total (GiB): 88/124
+0 %, 40537 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:53:09
+host mem used/total (GiB): 88/124
+9 %, 47289 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:53:19
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:53:29
+host mem used/total (GiB): 92/124
+57 %, 37285 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:53:39
+host mem used/total (GiB): 88/124
+100 %, 61101 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:53:49
+host mem used/total (GiB): 88/124
+20 %, 41405 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:54:00
+host mem used/total (GiB): 62/124
+0 %, 18189 MiB
+     36 ../openmx;      1 nvidia-cuda-mps-server;
+--- 14:54:10
+host mem used/total (GiB): 3/124
+0 %, 77 MiB
+      1 nvidia-cuda-mps-server;
+--- 14:54:20
+host mem used/total (GiB): 3/124
+0 %, 77 MiB
+      1 nvidia-cuda-mps-server;
+--- 14:54:30
+host mem used/total (GiB): 3/124
+0 %, 77 MiB
+      1 nvidia-cuda-mps-server;
+--- 14:54:40
+host mem used/total (GiB): 3/124
+0 %, 77 MiB
+      1 nvidia-cuda-mps-server;
+--- 14:54:50
+host mem used/total (GiB): 3/124
+0 %, 77 MiB
+      1 nvidia-cuda-mps-server;
+--- 14:55:00
+host mem used/total (GiB): 3/124
+0 %, 77 MiB
+      1 nvidia-cuda-mps-server;

@@ -1,0 +1,58 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.901544.10/user_script: line 131: 3228882 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.901544.10/user_script: line 189: 3227863 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; nvidia-smi --query-compute-apps=process_name --format=csv,noheader | sort | uniq -c | tr '\n' ';'; echo; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== MPS server per node (post-run) ===
+bnode047: mps_server=1 gpu_mem_used=78 MiB
+bnode052: mps_server=1 gpu_mem_used=78 MiB
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 74/124
+host mem used/total (GiB): 74/124
+host mem used/total (GiB): 74/124
+=== peak GPU, this node ===
+100 %, 48862 MiB
+100 %, 48862 MiB
+100 %, 48862 MiB
+=== SCF iterations completed (of 25 max) ===
+25
+=== Utot (earlier 1-node gpusolver run: -887.422830856493) ===
+  Utot.       -887.422830856498
+=== timing (earlier 1-node gpusolver: total 250.3 / DFT 238.5 / Diag 162.9 s) ===
+   Total Computational Time =    20      162.953          0      162.962
+   DFT                      =    10      150.591         21      150.687
+   Set_Hamiltonian          =    89       10.729         37       10.742
+   Diagonalization          =    24       96.030          1       96.626
+=== progress markers ===
+[08:49:31] script start on bnode047
+[08:49:33] MPS up on all 2 node(s)
+[08:49:33] launching mpirun: 96 ranks
+[08:49:33] mpirun launched (pid 3227866)
+[08:52:34] completion banner seen; 60 s grace
+[08:53:34] mpirun exited on its own during grace
+[08:53:34] watchdog loop exited; reaping mpirun
+[08:53:34] mpirun reaped rc=0
+[08:53:34] sampler killed
+
+============================================================
+Request ID:             901544.nqsv
+Request Name:           s333nc_2node
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 08:43:52 2026
+Started Request Time:   Tue Aug 11 08:49:31 2026
+Ended Request Time:     Tue Aug 11 08:53:35 2026
+Resources Information:
+  Elapse:               248S
+  Remaining Elapse:     3352S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

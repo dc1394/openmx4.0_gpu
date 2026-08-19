@@ -1,0 +1,79 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.902986.10/user_script: line 109: 2434431 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.902986.10/user_script: line 172: 2428938 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 1000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING cghelgeo_nogpu_rep1 total=2763.520 dft=2747.736 diag=2530.817 set_hamiltonian=69.026
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    40     2763.503          0     2763.520
+   readfile                 =    47        3.962          2        3.969
+   truncation               =     4       11.652         42       11.980
+   MD_pac                   =     0        0.039         60        0.043
+   OutData                  =    62        0.000          0        0.016
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    42     2747.408          4     2747.736
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     4        0.958         90        2.268
+   Set_Nonlocal             =    90        3.362          4        4.671
+   Set_ProExpn_VNA          =     4       29.985         42       32.582
+   Set_Hamiltonian          =    84       68.985         41       69.026
+   Poisson                  =     0        2.465         89        2.480
+   Diagonalization          =    51     2530.783         81     2530.817
+   Mixing_DM                =    89       43.624         51       43.649
+   Force                    =    15       18.431         87       18.431
+   Total_Energy             =    78        3.347          0        3.349
+   Set_Aden_Grid            =    42        0.298          4        2.909
+   Set_Orbitals_Grid        =    51        1.669         88        2.746
+   Set_Density_Grid         =    94       33.844         50       37.908
+   RestartFileDFT           =    62        0.195         77        0.235
+   Mulliken_Charge          =    57        0.092         44        0.093
+   FFT(2D)_Density          =     0        0.000          0        0.000
+   Others                   =    57        0.341         93        5.354
+
+The calculation was normally finished.
+=== Utot (reference: -4154.835898598240) ===
+  Utot.      -4154.835898595155
+=== SCF iterations completed (of 70 max) ===
+70
+=== peak host memory, this node (GiB); single-sample reference 100/124 ===
+host mem used/total (GiB): 99/124
+host mem used/total (GiB): 99/124
+host mem used/total (GiB): 97/124
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[15:03:02] script start on bnode051
+[15:03:03] launching mpirun: 96 ranks on 2 nodes
+[15:03:03] mpirun launched (pid 2428941)
+[15:49:32] watchdog loop exited (verdict='none'); reaping mpirun
+[15:49:32] mpirun reaped rc=0
+[15:49:32] sampler killed
+
+============================================================
+Request ID:             902986.nqsv
+Request Name:           cghelgeo_c1
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 15:02:50 2026
+Started Request Time:   Tue Aug 11 15:03:02 2026
+Ended Request Time:     Tue Aug 11 15:49:32 2026
+Resources Information:
+  Elapse:               2795S
+  Remaining Elapse:     4405S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

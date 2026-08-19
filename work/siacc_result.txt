@@ -1,0 +1,162 @@
+Accuracy campaign: displaced Si 216 (4 solver paths), Crys-MnO
+(collinear AFM), Cr2 and GaAs (NC+SOC, tiny -> below GPU dispatch
+thresholds: correctness check, not GPU numerics).
+configs: c = CPU elpa2-48 | o = GPU cuBLAS + MPS | g = GPU GEMMul8 + MPS
+targets (plan 13.3): |dE| <= 1e-10 Ha, |dF|max <= 1e-6 Ha/Bohr
+binary: cd5f0d5 + GEMMul8 v3.2.0, md5 962f8d2519c2e6aa5a6295513f76fee9
+
+=== displaced Si, 216 atoms (atom 1 +0.05 Ang x; forces are non-zero) ===
+case                SCF Utot                     ChemPot        |F|max      
+siacc_bcol_c1        54 -887.422192334297        -0.10427027498982 0.01355445  
+siacc_bcol_o1        58 -887.422192334248        -0.10427027469936 0.01355445  
+siacc_bcol_g1        56 -887.422192334248        -0.10427027469932 0.01355445  
+siacc_bnc_c1         60 -887.422192334259        -0.10427027474266 0.01355445  
+siacc_bnc_o1         47 -887.422192334249        -0.10427027474407 0.01355445  
+siacc_bnc_g1         47 -887.422192334248        -0.10427027474407 0.01355445  
+siacc_ccol_c1        60 -887.308965193632        -0.10131953947440 0.01363150  
+siacc_ccol_o1        60 -887.308965193586        -0.10131953945774 0.01363150  
+siacc_ccol_g1        55 -887.308965193585        -0.10131953945772 0.01363150  
+siacc_cnc_c1         60 -887.308965193465        -0.10131953924869 0.01363150  
+siacc_cnc_o1         51 -887.308965193583        -0.10131953923886 0.01363150  
+siacc_cnc_g1         56 -887.308965193584        -0.10131953923886 0.01363150  
+siacc_bnc_o2         47 -887.422192334249        -0.10427027474407 0.01355445  
+siacc_bnc_g2         47 -887.422192334248        -0.10427027474407 0.01355445  
+
+--- cross-config differences per solver path (Ha / Ha per Bohr) ---
+  path   dE(CPU-cuB)    dFmax(CPU-cuB) dE(G8-cuB)     dFmax(G8-cuB) 
+  bcol   4.900e-11      5.600e-11      0.000e+00      3.000e-12     
+  bnc    1.000e-11      4.200e-11      9.095e-13      0.000e+00     
+  ccol   4.604e-11      1.680e-10      1.023e-12      8.000e-12     
+  cnc    1.180e-10      1.200e-10      9.095e-13      1.300e-11     
+
+--- run-to-run baseline (bnc, same config twice) ---
+  cuBLAS o1-o2:  dE=0.000e+00  dFmax=0.000e+00
+  GEMMul8 g1-g2: dE=0.000e+00  dFmax=0.000e+00
+
+=== Crys-MnO (collinear AFM, band 5x5x5; plan 7.5-2) ===
+siacc_mno_c1     SCF=40   Utot=-242.850530357202      |F|max=0.00000000  
+                 Total spin moment (muB)  -0.000000000
+                         1   Mn      7.551403594  6.501418416  14.052822010   1.049985178
+                         2   Mn      6.501418416  7.551403594  14.052822011  -1.049985178
+siacc_mno_o1     SCF=40   Utot=-242.850530357207      |F|max=0.00000000  
+                 Total spin moment (muB)  -0.000000000
+                         1   Mn      7.551403594  6.501418416  14.052822010   1.049985178
+                         2   Mn      6.501418416  7.551403594  14.052822011  -1.049985178
+siacc_mno_g1     SCF=40   Utot=-242.850530357207      |F|max=0.00000000  
+                 Total spin moment (muB)  -0.000000000
+                         1   Mn      7.551403594  6.501418416  14.052822010   1.049985178
+                         2   Mn      6.501418416  7.551403594  14.052822011  -1.049985178
+  dE(CPU-cuB)=5.002e-12 dFmax=0.000e+00 | dE(G8-cuB)=0.000e+00 dFmax=0.000e+00
+  (AFM: the TOTAL moment is 0 by construction; the per-atom rows above
+   carry the sublattice moments that discriminate the configs)
+
+=== NC + SOC (plan 7.5-3; tiny systems, correctness check) ===
+siacc_cr2_c1     SCF=21   Utot=-174.535258909145      |F|max=0.04189784  
+                 Total spin moment (muB)   0.000000000   Angles (Deg) 118.053931803  131.277438953
+                       1   Cr   9.37738  4.62262  14.00000   4.75477   138.00003  259.00034
+                       2   Cr   9.37738  4.62262  14.00000   4.75477    41.99997   79.00034
+siacc_cr2_o1     SCF=21   Utot=-174.535258909142      |F|max=0.04189784  
+                 Total spin moment (muB)   0.000000000   Angles (Deg) 118.052928059  131.276814924
+                       1   Cr   9.37738  4.62262  14.00000   4.75477   138.00003  259.00034
+                       2   Cr   9.37738  4.62262  14.00000   4.75477    41.99997   79.00034
+siacc_cr2_g1     SCF=21   Utot=-174.535258909142      |F|max=0.04189784  
+                 Total spin moment (muB)   0.000000000   Angles (Deg) 118.052928059  131.276814924
+                       1   Cr   9.37738  4.62262  14.00000   4.75477   138.00003  259.00034
+                       2   Cr   9.37738  4.62262  14.00000   4.75477    41.99997   79.00034
+  dE(CPU-cuB)=3.013e-12 dFmax=0.000e+00 | dE(G8-cuB)=0.000e+00 dFmax=0.000e+00
+siacc_gaas_c1    SCF=13   Utot=-182.930867025039      |F|max=0.00000001  
+                 Total spin moment (muB)   0.000000000   Angles (Deg) 131.962059785  250.083554682
+                       1   Ga   6.52746  6.52746  13.05493   0.00000    43.15235  140.31596
+                       2   As   7.47254  7.47254  14.94507   0.00000   137.14446  -40.82028
+siacc_gaas_o1    SCF=13   Utot=-182.930867025055      |F|max=0.00000001  
+                 Total spin moment (muB)   0.000000000   Angles (Deg) 37.278904420  17.712074976
+                       1   Ga   6.52746  6.52746  13.05493   0.00000     7.45895   97.30601
+                       2   As   7.47254  7.47254  14.94507   0.00000   172.50884  -76.82263
+siacc_gaas_g1    SCF=13   Utot=-182.930867025055      |F|max=0.00000001  
+                 Total spin moment (muB)   0.000000000   Angles (Deg) 37.278904420  17.712074976
+                       1   Ga   6.52746  6.52746  13.05493   0.00000     7.45895   97.30601
+                       2   As   7.47254  7.47254  14.94507   0.00000   172.50884  -76.82263
+  dE(CPU-cuB)=1.600e-11 dFmax=5.000e-12 | dE(G8-cuB)=0.000e+00 dFmax=0.000e+00
+
+=== GPU dispatch evidence (displaced-Si GPU runs must engage; tiny
+    systems are EXPECTED to stay below the dispatch threshold) ===
+  siacc_bcol_o1    [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s)] fallback-lines=0
+  siacc_bnc_o1     [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s)] fallback-lines=0
+  siacc_ccol_o1    [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s)] fallback-lines=0
+  siacc_cnc_o1     [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s)] fallback-lines=0
+  siacc_mno_o1     [<Set_Hamiltonian> GPU device 0: 4 Hamiltonian rank(s)] fallback-lines=0
+  siacc_cr2_o1     [<Set_Hamiltonian> GPU device 0: 2 Hamiltonian rank(s)] fallback-lines=0
+  siacc_gaas_o1    [<Set_Hamiltonian> GPU device 0: 2 Hamiltonian rank(s)] fallback-lines=0
+
+--- node landings (slow: bnode013, bnode033; accuracy values are
+    node-independent, listed for completeness) ---
+  siacc_bcol_c1    bnode033 
+  siacc_bcol_g1    bnode046 
+  siacc_bcol_o1    bnode042 
+  siacc_bnc_c1     bnode076 
+  siacc_bnc_g1     bnode081 
+  siacc_bnc_g2     bnode091 
+  siacc_bnc_o1     bnode080 
+  siacc_bnc_o2     bnode090 
+  siacc_ccol_c1    bnode084 
+  siacc_ccol_g1    bnode086 
+  siacc_ccol_o1    bnode085 
+  siacc_cnc_c1     bnode087 
+  siacc_cnc_g1     bnode089 
+  siacc_cnc_o1     bnode088 
+  siacc_cr2_c1     bnode095 
+  siacc_cr2_g1     bnode097 
+  siacc_cr2_o1     bnode096 
+  siacc_gaas_c1    bnode098 
+  siacc_gaas_g1    bnode100 
+  siacc_gaas_o1    bnode099 
+  siacc_mno_c1     bnode092 
+  siacc_mno_g1     bnode094 
+  siacc_mno_o1     bnode093 
+
+PROVENANCE NOTE (hand-written; read before quoting anything above)
+----------------------------------------------------------------------
+1. 23 runs (request IDs 924102..924145), zero abnormal terminations;
+   binary 962f8d2519c2e6aa5a6295513f76fee9 (cd5f0d5 + GEMMul8 v3.2.0).
+   siacc_bcol_c1 landed on slow node bnode033 -- harmless here: accuracy
+   values are node-independent (only wall time is affected, and this
+   campaign never quotes wall times).
+2. Verdicts vs plan 13.3 targets (|dE| <= 1e-10 Ha, |dF|max <= 1e-6
+   Ha/Bohr):
+   - GEMMul8 vs cuBLAS: dE <= 1.0e-12, dFmax <= 1.3e-11 across all four
+     displaced-Si solver paths and all three small systems -- 2-5 orders
+     inside the targets, with run-to-run baseline EXACTLY 0 (bnc o1-o2
+     and g1-g2 bitwise-identical energies AND forces).
+   - CPU vs GPU: dFmax <= 1.7e-10 (passes); dE <= 1.18e-10, where the
+     cnc value 1.18e-10 nominally grazes the 1e-10 line.  Plan 13.3's
+     envelope rule applies: at 216 atoms |Utot| ~ 887 Ha, so 1.2e-10 is
+     1.3e-13 in relative terms -- summation-order scale for two code
+     paths with entirely different reduction orders (ELPA2 vs
+     cuSOLVER).  Claim supported: "FP64-equivalent at the application
+     level"; bitwise identity is NOT claimed across configs (and is
+     claimed, correctly, for repeat runs of the same config).
+3. Displaced Si is the GPU-numerics force check: atom 1 moved +0.05 Ang
+   along x, |F|max ~ 0.0136 Ha/Bohr (band) / 0.0136 (cluster), GPU
+   dispatch banners present and fallback lines zero in all GPU runs.
+4. MnO / Cr2 / GaAs are correctness checks, NOT GPU-numerics checks:
+   their dense dimensions sit below the dispatch thresholds
+   (cluster 400 / band 800; see gpu_phase_audit.md), so the dense solve
+   runs on the CPU path inside all three configs.  Set_Hamiltonian's
+   GPU path does engage (banners with 2-4 ranks).
+5. NC+SOC system of record is Cr2: per-atom moments 4.75477 muB at
+   theta 138.0/42.0 deg, phi 259.0/79.0 deg (>= 2 non-zero Cartesian
+   components, plan 7.5-3), identical to every printed digit across
+   CPU/cuBLAS/GEMMul8.  GaAs turned out NONMAGNETIC (per-atom Diff =
+   0.00000): the wildly different "Total spin moment angles" between
+   configs are angles of a ~zero-length vector, i.e. numerical noise,
+   not a discrepancy; GaAs is retained only as a nonmagnetic NC+SOC
+   correctness check and does NOT satisfy plan 7.5-3 by itself.
+6. MnO: collinear AFM -- TOTAL moment is 0 by construction; the
+   discriminating quantity is the sublattice moment, +-1.049985178 muB,
+   identical to all printed digits across the three configs.
+7. Deviations from the bundled example decks, applied identically to
+   every config: DATA.PATH -> ../../DFT_DATA19; MD.Type nomd -> Opt with
+   MD.maxIter 1 (site convention: the force step must run); Crys-MnO
+   scf.maxIter 3 -> 100 (the bundled deck is a 3-iteration smoke test).
+8. SCF counts differ between configs (converged runs, criterion
+   1e-13/1e-10): this campaign measures accuracy, never wall time.

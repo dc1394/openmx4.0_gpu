@@ -1,0 +1,167 @@
+================================================================================
+sidia444_cluster node-scaling benchmark: GPU (gpusolver+MPS) vs CPU (elpa2)
+Measured 2026-08-12 on Pegasus (gen_S, -A GPU2026), 3 repetitions per point
+Layout : 1/2/3/4 nodes x 48 ranks/node, 1 OpenMP thread/rank;
+         GPU runs use 1x H100 per node with MPS enabled
+Binary : host-memory-reduced openmx (commits dd40d46 + 28ae7f8)
+Input  : sidia444_cluster (512 Si, matrix dim 6656, Cluster solver, gamma
+         point, collinear, 25 SCF iterations to 1e-13, 200 Ry); only
+         System.Name and scf.eigen.lib differ between paths
+Jobs   : s444cl_{1..4}n_{g,c}{1..3} (24 requests, submitted 2026-08-12)
+Note   : the three 1-node GPU runs died in host OOM during SCF 1 (rc=137,
+         peak 119/124 GiB) -- 48 GPU ranks on one 124 GiB node do not fit
+         this case; the 1-node CPU runs complete (~110 GiB peak).
+Source : work/summarize_s444cl_reps.sh (rerun to regenerate the body below)
+================================================================================
+
+sidia444_cluster node scaling, 48 ranks/node, 3 repetitions per point
+host-memory-reduced binary; Max_Time column (slowest rank), seconds
+
+--- per-run ---
+case                  total        DFT       Diag    Set_Ham  status
+s444cl_1n_g1              -          -          -          -  INCOMPLETE
+s444cl_1n_g2              -          -          -          -  INCOMPLETE
+s444cl_1n_g3              -          -          -          -  INCOMPLETE
+s444cl_1n_c1        274.532    254.760    129.964     27.443  OK
+s444cl_1n_c2        269.538    251.153    130.637     27.449  OK
+s444cl_1n_c3        267.941    248.264    130.376     25.547  OK
+s444cl_2n_g1         80.829     65.819     29.589      8.946  OK
+s444cl_2n_g2         79.144     65.496     28.822      8.740  OK
+s444cl_2n_g3         81.303     66.132     29.102      8.594  OK
+s444cl_2n_c1        172.817    154.531     85.534     14.732  OK
+s444cl_2n_c2        172.366    154.020     85.625     14.782  OK
+s444cl_2n_c3        176.802    158.381     86.014     15.546  OK
+s444cl_3n_g1         76.690     62.867     31.147      7.604  OK
+s444cl_3n_g2         78.457     61.594     29.231      8.018  OK
+s444cl_3n_g3         76.939     61.287     29.543      7.910  OK
+s444cl_3n_c1        141.850    124.357     74.201     10.691  OK
+s444cl_3n_c2        139.706    122.525     72.465     10.730  OK
+s444cl_3n_c3        141.878    123.828     73.680     10.847  OK
+s444cl_4n_g1         72.596     58.562     29.325      7.688  OK
+s444cl_4n_g2         73.540     58.536     29.934      7.337  OK
+s444cl_4n_g3         74.869     58.367     29.574      7.347  OK
+s444cl_4n_c1        142.134    123.320     82.224      9.332  OK
+s444cl_4n_c2        138.567    121.102     81.659      8.499  OK
+s444cl_4n_c3        140.608    123.909     82.952      8.476  OK
+
+--- statistics (mean +- sample SD over 3 runs) ---
+  1 node(s), GPU+MPS     no usable runs: s444cl_1n_g1 s444cl_1n_g2 s444cl_1n_g3
+  1 node(s), CPU elpa2   (n=3)
+    phase                  mean       sd       min       max
+    Total                270.67     3.44    267.94    274.53
+    Diagonalization      130.33     0.34    129.96    130.64
+  2 node(s), GPU+MPS     (n=3)
+    phase                  mean       sd       min       max
+    Total                 80.43     1.13     79.14     81.30
+    Diagonalization       29.17     0.39     28.82     29.59
+  2 node(s), CPU elpa2   (n=3)
+    phase                  mean       sd       min       max
+    Total                174.00     2.44    172.37    176.80
+    Diagonalization       85.72     0.25     85.53     86.01
+  3 node(s), GPU+MPS     (n=3)
+    phase                  mean       sd       min       max
+    Total                 77.36     0.96     76.69     78.46
+    Diagonalization       29.97     1.03     29.23     31.15
+  3 node(s), CPU elpa2   (n=3)
+    phase                  mean       sd       min       max
+    Total                141.14     1.25    139.71    141.88
+    Diagonalization       73.45     0.89     72.47     74.20
+  4 node(s), GPU+MPS     (n=3)
+    phase                  mean       sd       min       max
+    Total                 73.67     1.14     72.60     74.87
+    Diagonalization       29.61     0.31     29.32     29.93
+  4 node(s), CPU elpa2   (n=3)
+    phase                  mean       sd       min       max
+    Total                140.44     1.79    138.57    142.13
+    Diagonalization       82.28     0.65     81.66     82.95
+
+--- GPU speedup per node count (CPU mean / GPU mean, +- in quadrature) ---
+  2 node(s)  Total              2.16x +- 0.04
+  2 node(s)  Diagonalization    2.94x +- 0.04
+  3 node(s)  Total              1.82x +- 0.03
+  3 node(s)  Diagonalization    2.45x +- 0.09
+  4 node(s)  Total              1.91x +- 0.04
+  4 node(s)  Diagonalization    2.78x +- 0.04
+
+--- Utot (within a (path, node count): identical; across: ~12 digits) ---
+  s444cl_1n_g1     (no .out)
+  s444cl_1n_g2     (no .out)
+  s444cl_1n_g3     (no .out)
+  s444cl_1n_c1     -2103.477858563328
+  s444cl_1n_c2     -2103.477858563328
+  s444cl_1n_c3     -2103.477858563328
+  s444cl_2n_g1     -2103.477858563235
+  s444cl_2n_g2     -2103.477858563235
+  s444cl_2n_g3     -2103.477858563235
+  s444cl_2n_c1     -2103.477858563317
+  s444cl_2n_c2     -2103.477858563317
+  s444cl_2n_c3     -2103.477858563317
+  s444cl_3n_g1     -2103.477858563230
+  s444cl_3n_g2     -2103.477858563230
+  s444cl_3n_g3     -2103.477858563230
+  s444cl_3n_c1     -2103.477858563323
+  s444cl_3n_c2     -2103.477858563323
+  s444cl_3n_c3     -2103.477858563323
+  s444cl_4n_g1     -2103.477858563228
+  s444cl_4n_g2     -2103.477858563228
+  s444cl_4n_g3     -2103.477858563228
+  s444cl_4n_c1     -2103.477858563311
+  s444cl_4n_c2     -2103.477858563311
+  s444cl_4n_c3     -2103.477858563311
+
+--- peak host memory, node 0 (GiB); old refs: GPU 1n OOM at >=99, CPU 1n 110 ---
+  s444cl_1n_g1     119/124
+  s444cl_1n_g2     94/124
+  s444cl_1n_g3     119/124
+  s444cl_1n_c1     110/124
+  s444cl_1n_c2     109/124
+  s444cl_1n_c3     110/124
+  s444cl_2n_g1     84/124
+  s444cl_2n_g2     83/124
+  s444cl_2n_g3     84/124
+  s444cl_2n_c1     74/124
+  s444cl_2n_c2     75/124
+  s444cl_2n_c3     76/124
+  s444cl_3n_g1     80/124
+  s444cl_3n_g2     69/124
+  s444cl_3n_g3     69/124
+  s444cl_3n_c1     63/124
+  s444cl_3n_c2     63/124
+  s444cl_3n_c3     64/124
+  s444cl_4n_g1     62/124
+  s444cl_4n_g2     62/124
+  s444cl_4n_g3     69/124
+  s444cl_4n_c1     58/124
+  s444cl_4n_c2     56/124
+  s444cl_4n_c3     57/124
+
+================================================================================
+SUMMARY -- 3-run means (+- sample SD), Max_Time, seconds
+================================================================================
+
+ nodes | GPU Total      GPU Diag      | CPU Total      CPU Diag      | speedup Total / Diag
+ ------+------------------------------+------------------------------+---------------------
+   1   | OOM (all 3)    --            | 270.67+-3.44   130.33+-0.34  |   --      /   --
+   2   |  80.43+-1.13   29.17+-0.39   | 174.00+-2.44    85.72+-0.25  | 2.16+-0.04 / 2.94+-0.04
+   3   |  77.36+-0.96   29.97+-1.03   | 141.14+-1.25    73.45+-0.89  | 1.82+-0.03 / 2.45+-0.09
+   4   |  73.67+-1.14   29.61+-0.31   | 140.44+-1.79    82.28+-0.65  | 1.91+-0.04 / 2.78+-0.04
+
+Findings
+--------
+1. 1-node GPU still hits the host OOM killer (all three runs, killed during
+   SCF 1 at a 119/124 GiB peak).  The memory-reduced binary gets further than
+   the old one (which died in setup), but 48 GPU ranks on one 124 GiB node do
+   not fit this case.  1-node CPU completes at a 109-110 GiB peak.
+2. Scaling saturates at 2 nodes on the GPU path: Diagonalization stays at
+   ~29-30 s from 2 to 4 nodes (the 6656-dim real-symmetric solve is already
+   GPU-bound); the Total gain 80.4 -> 73.7 s comes from the distributed
+   phases (Set_Hamiltonian etc.).  The CPU path stops improving at 3 nodes,
+   and its Diagonalization gets WORSE at 4 nodes (73.5 -> 82.3 s, ELPA2
+   communication).
+3. Best cost/performance: GPU 2 nodes (80.4 s, 2.16x over CPU).  Going to
+   4 nodes buys only 9% more for twice the nodes.
+4. Utot is bit-identical within every (path, node count) triple; across
+   paths/node counts the values agree to ~12 digits as expected.
+5. Consistency with the pre-fix single samples (GPU 2n 77.9 / 3n 74.6 /
+   4n 74.0; CPU 1n 264.4 / 2n 171.0 / 3n 139.0 / 4n 143.7): all within
+   ~2 sigma of the new means -- the host-memory reduction did not cost speed.

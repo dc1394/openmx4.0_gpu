@@ -1,0 +1,1787 @@
+
+The number of threads in each node for OpenMP parallelization is 1.
+
+
+*******************************************************
+*******************************************************
+ Welcome to OpenMX   Ver. 4.0 GPU                           
+ Copyright (C), 2002-2026, T. Ozaki                    
+ OpenMX comes with ABSOLUTELY NO WARRANTY.             
+ This is free software, and you are welcome to         
+ redistribute it under the constitution of the GNU-GPL.
+*******************************************************
+*******************************************************
+
+<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain cuBLAS instead of GEMMul8.
+
+
+<Input_std>  Your input file was normally read.
+<Input_std>  The system includes 1 species and 64 atoms.
+
+*******************************************************
+                     PAO and VPS                       
+*******************************************************
+
+<SetPara_DFT>  PAOs of species C were normally found.
+<SetPara_DFT>  VPSs of species C were normally found.
+               C_PBE19.vps is j-dependent.
+               In case of scf.SpinOrbit.Coupling=off,
+               j-dependent pseudo potentials are averaged by j-degeneracy,
+               which corresponds to a scalar relativistic treatment.
+
+*******************************************************
+     Fourier transform of PAO and projectors of VNL    
+*******************************************************
+
+<FT_PAO>          Fourier transform of pseudo atomic orbitals
+<FT_NLP>          Fourier transform of non-local projectors
+<FT_ProExpn_VNA>  Fourier transform of VNA separable projectors
+<FT_VNA>          Fourier transform of VNA potentials
+<FT_ProductPAO>   Fourier transform of product of PAOs
+
+*******************************************************
+  Allocation of atoms to processors at MD_iter=    1     
+*******************************************************
+
+ proc =   0  # of atoms=   1  estimated weight=         1.00000
+ proc =   1  # of atoms=   0  estimated weight=         0.00000
+ proc =   2  # of atoms=   0  estimated weight=         0.00000
+ proc =   3  # of atoms=   1  estimated weight=         1.00000
+ proc =   4  # of atoms=   0  estimated weight=         0.00000
+ proc =   5  # of atoms=   0  estimated weight=         0.00000
+ proc =   6  # of atoms=   1  estimated weight=         1.00000
+ proc =   7  # of atoms=   0  estimated weight=         0.00000
+ proc =   8  # of atoms=   0  estimated weight=         0.00000
+ proc =   9  # of atoms=   1  estimated weight=         1.00000
+ proc =  10  # of atoms=   0  estimated weight=         0.00000
+ proc =  11  # of atoms=   0  estimated weight=         0.00000
+ proc =  12  # of atoms=   1  estimated weight=         1.00000
+ proc =  13  # of atoms=   0  estimated weight=         0.00000
+ proc =  14  # of atoms=   0  estimated weight=         0.00000
+ proc =  15  # of atoms=   1  estimated weight=         1.00000
+ proc =  16  # of atoms=   0  estimated weight=         0.00000
+ proc =  17  # of atoms=   0  estimated weight=         0.00000
+ proc =  18  # of atoms=   1  estimated weight=         1.00000
+ proc =  19  # of atoms=   0  estimated weight=         0.00000
+ proc =  20  # of atoms=   0  estimated weight=         0.00000
+ proc =  21  # of atoms=   1  estimated weight=         1.00000
+ proc =  22  # of atoms=   0  estimated weight=         0.00000
+ proc =  23  # of atoms=   0  estimated weight=         0.00000
+ proc =  24  # of atoms=   1  estimated weight=         1.00000
+ proc =  25  # of atoms=   0  estimated weight=         0.00000
+ proc =  26  # of atoms=   0  estimated weight=         0.00000
+ proc =  27  # of atoms=   1  estimated weight=         1.00000
+ proc =  28  # of atoms=   0  estimated weight=         0.00000
+ proc =  29  # of atoms=   0  estimated weight=         0.00000
+ proc =  30  # of atoms=   1  estimated weight=         1.00000
+ proc =  31  # of atoms=   0  estimated weight=         0.00000
+ proc =  32  # of atoms=   0  estimated weight=         0.00000
+ proc =  33  # of atoms=   1  estimated weight=         1.00000
+ proc =  34  # of atoms=   0  estimated weight=         0.00000
+ proc =  35  # of atoms=   0  estimated weight=         0.00000
+ proc =  36  # of atoms=   1  estimated weight=         1.00000
+ proc =  37  # of atoms=   0  estimated weight=         0.00000
+ proc =  38  # of atoms=   0  estimated weight=         0.00000
+ proc =  39  # of atoms=   1  estimated weight=         1.00000
+ proc =  40  # of atoms=   0  estimated weight=         0.00000
+ proc =  41  # of atoms=   0  estimated weight=         0.00000
+ proc =  42  # of atoms=   1  estimated weight=         1.00000
+ proc =  43  # of atoms=   0  estimated weight=         0.00000
+ proc =  44  # of atoms=   0  estimated weight=         0.00000
+ proc =  45  # of atoms=   1  estimated weight=         1.00000
+ proc =  46  # of atoms=   0  estimated weight=         0.00000
+ proc =  47  # of atoms=   0  estimated weight=         0.00000
+ proc =  48  # of atoms=   1  estimated weight=         1.00000
+ proc =  49  # of atoms=   0  estimated weight=         0.00000
+ proc =  50  # of atoms=   0  estimated weight=         0.00000
+ proc =  51  # of atoms=   1  estimated weight=         1.00000
+ proc =  52  # of atoms=   0  estimated weight=         0.00000
+ proc =  53  # of atoms=   0  estimated weight=         0.00000
+ proc =  54  # of atoms=   1  estimated weight=         1.00000
+ proc =  55  # of atoms=   0  estimated weight=         0.00000
+ proc =  56  # of atoms=   0  estimated weight=         0.00000
+ proc =  57  # of atoms=   1  estimated weight=         1.00000
+ proc =  58  # of atoms=   0  estimated weight=         0.00000
+ proc =  59  # of atoms=   0  estimated weight=         0.00000
+ proc =  60  # of atoms=   1  estimated weight=         1.00000
+ proc =  61  # of atoms=   0  estimated weight=         0.00000
+ proc =  62  # of atoms=   0  estimated weight=         0.00000
+ proc =  63  # of atoms=   1  estimated weight=         1.00000
+ proc =  64  # of atoms=   0  estimated weight=         0.00000
+ proc =  65  # of atoms=   0  estimated weight=         0.00000
+ proc =  66  # of atoms=   1  estimated weight=         1.00000
+ proc =  67  # of atoms=   0  estimated weight=         0.00000
+ proc =  68  # of atoms=   0  estimated weight=         0.00000
+ proc =  69  # of atoms=   1  estimated weight=         1.00000
+ proc =  70  # of atoms=   0  estimated weight=         0.00000
+ proc =  71  # of atoms=   0  estimated weight=         0.00000
+ proc =  72  # of atoms=   1  estimated weight=         1.00000
+ proc =  73  # of atoms=   0  estimated weight=         0.00000
+ proc =  74  # of atoms=   0  estimated weight=         0.00000
+ proc =  75  # of atoms=   1  estimated weight=         1.00000
+ proc =  76  # of atoms=   0  estimated weight=         0.00000
+ proc =  77  # of atoms=   0  estimated weight=         0.00000
+ proc =  78  # of atoms=   1  estimated weight=         1.00000
+ proc =  79  # of atoms=   0  estimated weight=         0.00000
+ proc =  80  # of atoms=   0  estimated weight=         0.00000
+ proc =  81  # of atoms=   1  estimated weight=         1.00000
+ proc =  82  # of atoms=   0  estimated weight=         0.00000
+ proc =  83  # of atoms=   0  estimated weight=         0.00000
+ proc =  84  # of atoms=   1  estimated weight=         1.00000
+ proc =  85  # of atoms=   0  estimated weight=         0.00000
+ proc =  86  # of atoms=   0  estimated weight=         0.00000
+ proc =  87  # of atoms=   1  estimated weight=         1.00000
+ proc =  88  # of atoms=   0  estimated weight=         0.00000
+ proc =  89  # of atoms=   0  estimated weight=         0.00000
+ proc =  90  # of atoms=   1  estimated weight=         1.00000
+ proc =  91  # of atoms=   0  estimated weight=         0.00000
+ proc =  92  # of atoms=   0  estimated weight=         0.00000
+ proc =  93  # of atoms=   1  estimated weight=         1.00000
+ proc =  94  # of atoms=   0  estimated weight=         0.00000
+ proc =  95  # of atoms=   0  estimated weight=         0.00000
+ proc =  96  # of atoms=   1  estimated weight=         1.00000
+ proc =  97  # of atoms=   0  estimated weight=         0.00000
+ proc =  98  # of atoms=   0  estimated weight=         0.00000
+ proc =  99  # of atoms=   1  estimated weight=         1.00000
+ proc = 100  # of atoms=   0  estimated weight=         0.00000
+ proc = 101  # of atoms=   0  estimated weight=         0.00000
+ proc = 102  # of atoms=   1  estimated weight=         1.00000
+ proc = 103  # of atoms=   0  estimated weight=         0.00000
+ proc = 104  # of atoms=   0  estimated weight=         0.00000
+ proc = 105  # of atoms=   1  estimated weight=         1.00000
+ proc = 106  # of atoms=   0  estimated weight=         0.00000
+ proc = 107  # of atoms=   0  estimated weight=         0.00000
+ proc = 108  # of atoms=   1  estimated weight=         1.00000
+ proc = 109  # of atoms=   0  estimated weight=         0.00000
+ proc = 110  # of atoms=   0  estimated weight=         0.00000
+ proc = 111  # of atoms=   1  estimated weight=         1.00000
+ proc = 112  # of atoms=   0  estimated weight=         0.00000
+ proc = 113  # of atoms=   0  estimated weight=         0.00000
+ proc = 114  # of atoms=   1  estimated weight=         1.00000
+ proc = 115  # of atoms=   0  estimated weight=         0.00000
+ proc = 116  # of atoms=   0  estimated weight=         0.00000
+ proc = 117  # of atoms=   1  estimated weight=         1.00000
+ proc = 118  # of atoms=   0  estimated weight=         0.00000
+ proc = 119  # of atoms=   0  estimated weight=         0.00000
+ proc = 120  # of atoms=   1  estimated weight=         1.00000
+ proc = 121  # of atoms=   0  estimated weight=         0.00000
+ proc = 122  # of atoms=   0  estimated weight=         0.00000
+ proc = 123  # of atoms=   1  estimated weight=         1.00000
+ proc = 124  # of atoms=   0  estimated weight=         0.00000
+ proc = 125  # of atoms=   0  estimated weight=         0.00000
+ proc = 126  # of atoms=   1  estimated weight=         1.00000
+ proc = 127  # of atoms=   0  estimated weight=         0.00000
+ proc = 128  # of atoms=   0  estimated weight=         0.00000
+ proc = 129  # of atoms=   1  estimated weight=         1.00000
+ proc = 130  # of atoms=   0  estimated weight=         0.00000
+ proc = 131  # of atoms=   0  estimated weight=         0.00000
+ proc = 132  # of atoms=   1  estimated weight=         1.00000
+ proc = 133  # of atoms=   0  estimated weight=         0.00000
+ proc = 134  # of atoms=   0  estimated weight=         0.00000
+ proc = 135  # of atoms=   1  estimated weight=         1.00000
+ proc = 136  # of atoms=   0  estimated weight=         0.00000
+ proc = 137  # of atoms=   0  estimated weight=         0.00000
+ proc = 138  # of atoms=   1  estimated weight=         1.00000
+ proc = 139  # of atoms=   0  estimated weight=         0.00000
+ proc = 140  # of atoms=   0  estimated weight=         0.00000
+ proc = 141  # of atoms=   1  estimated weight=         1.00000
+ proc = 142  # of atoms=   0  estimated weight=         0.00000
+ proc = 143  # of atoms=   0  estimated weight=         0.00000
+ proc = 144  # of atoms=   1  estimated weight=         1.00000
+ proc = 145  # of atoms=   0  estimated weight=         0.00000
+ proc = 146  # of atoms=   0  estimated weight=         0.00000
+ proc = 147  # of atoms=   1  estimated weight=         1.00000
+ proc = 148  # of atoms=   0  estimated weight=         0.00000
+ proc = 149  # of atoms=   0  estimated weight=         0.00000
+ proc = 150  # of atoms=   1  estimated weight=         1.00000
+ proc = 151  # of atoms=   0  estimated weight=         0.00000
+ proc = 152  # of atoms=   0  estimated weight=         0.00000
+ proc = 153  # of atoms=   1  estimated weight=         1.00000
+ proc = 154  # of atoms=   0  estimated weight=         0.00000
+ proc = 155  # of atoms=   0  estimated weight=         0.00000
+ proc = 156  # of atoms=   1  estimated weight=         1.00000
+ proc = 157  # of atoms=   0  estimated weight=         0.00000
+ proc = 158  # of atoms=   0  estimated weight=         0.00000
+ proc = 159  # of atoms=   1  estimated weight=         1.00000
+ proc = 160  # of atoms=   0  estimated weight=         0.00000
+ proc = 161  # of atoms=   0  estimated weight=         0.00000
+ proc = 162  # of atoms=   1  estimated weight=         1.00000
+ proc = 163  # of atoms=   0  estimated weight=         0.00000
+ proc = 164  # of atoms=   0  estimated weight=         0.00000
+ proc = 165  # of atoms=   1  estimated weight=         1.00000
+ proc = 166  # of atoms=   0  estimated weight=         0.00000
+ proc = 167  # of atoms=   0  estimated weight=         0.00000
+ proc = 168  # of atoms=   1  estimated weight=         1.00000
+ proc = 169  # of atoms=   0  estimated weight=         0.00000
+ proc = 170  # of atoms=   0  estimated weight=         0.00000
+ proc = 171  # of atoms=   1  estimated weight=         1.00000
+ proc = 172  # of atoms=   0  estimated weight=         0.00000
+ proc = 173  # of atoms=   0  estimated weight=         0.00000
+ proc = 174  # of atoms=   1  estimated weight=         1.00000
+ proc = 175  # of atoms=   0  estimated weight=         0.00000
+ proc = 176  # of atoms=   0  estimated weight=         0.00000
+ proc = 177  # of atoms=   1  estimated weight=         1.00000
+ proc = 178  # of atoms=   0  estimated weight=         0.00000
+ proc = 179  # of atoms=   0  estimated weight=         0.00000
+ proc = 180  # of atoms=   1  estimated weight=         1.00000
+ proc = 181  # of atoms=   0  estimated weight=         0.00000
+ proc = 182  # of atoms=   0  estimated weight=         0.00000
+ proc = 183  # of atoms=   1  estimated weight=         1.00000
+ proc = 184  # of atoms=   0  estimated weight=         0.00000
+ proc = 185  # of atoms=   0  estimated weight=         0.00000
+ proc = 186  # of atoms=   1  estimated weight=         1.00000
+ proc = 187  # of atoms=   0  estimated weight=         0.00000
+ proc = 188  # of atoms=   0  estimated weight=         0.00000
+ proc = 189  # of atoms=   1  estimated weight=         1.00000
+ proc = 190  # of atoms=   0  estimated weight=         0.00000
+ proc = 191  # of atoms=   0  estimated weight=         0.00000
+
+
+
+
+*******************************************************
+        Analysis of neighbors and setting of grids        
+*******************************************************
+
+TFNAN=   10624   Average FNAN= 166.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 1 ct_AN=   1 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   2 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   3 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   4 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   5 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   6 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   7 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   8 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   9 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  10 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  11 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  12 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  13 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  14 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  15 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  16 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  17 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  18 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  19 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  20 FNAN SNAN 166   0
+     ..........
+     ......
+
+TFNAN=   10624   Average FNAN= 166.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN 166   0
+     ..........
+     ......
+
+TFNAN=   10624   Average FNAN= 166.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN 166   0
+     ..........
+     ......
+
+<Check_System> The system is bulk.
+lattice vectors (bohr)
+A  = 13.481305202522,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 13.481305202522,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 13.481305202522
+reciprocal lattice vectors (bohr^-1)
+RA =  0.466066542726,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.466066542726,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.466066542726
+Grid_Origin -0.702151312631 -0.702151312631 -0.702151312631
+Cell_Volume =   2450.167767511014 (Bohr^3)
+GridVol     =      0.022155018152 (Bohr^3)
+Grid_Origin -0.702151312631 -0.702151312631 -0.702151312631
+Cell_Volume =   2450.167767511014 (Bohr^3)
+GridVol     =      0.022155018152 (Bohr^3)
+<UCell_Box> Info. of cutoff energy and num. of grids
+lattice vectors (bohr)
+A  = 13.481305202522,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 13.481305202522,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 13.481305202522
+reciprocal lattice vectors (bohr^-1)
+RA =  0.466066542726,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.466066542726,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.466066542726
+Required cutoff energy (Ryd) for 3D-grids = 120.0000
+    Used cutoff energy (Ryd) for 3D-grids = 125.1176, 125.1176, 125.1176
+Num. of grids of a-, b-, and c-axes = 48, 48, 48
+Grid_Origin -0.702151312631 -0.702151312631 -0.702151312631
+Cell_Volume =   2450.167767511014 (Bohr^3)
+GridVol     =      0.022155018152 (Bohr^3)
+Cell vectors (bohr) of the grid cell (gtv)
+  gtv_a =  0.280860525053,  0.000000000000,  0.000000000000
+  gtv_b =  0.000000000000,  0.280860525053,  0.000000000000
+  gtv_c =  0.000000000000,  0.000000000000,  0.280860525053
+  |gtv_a| =  0.280860525053
+  |gtv_b| =  0.280860525053
+  |gtv_c| =  0.280860525053
+Num. of grids overlapping with atom    1 = 40800
+Num. of grids overlapping with atom    2 = 40800
+Num. of grids overlapping with atom    3 = 40800
+Num. of grids overlapping with atom    4 = 40800
+Num. of grids overlapping with atom    5 = 40800
+Num. of grids overlapping with atom    6 = 40800
+Num. of grids overlapping with atom    7 = 40800
+Num. of grids overlapping with atom    8 = 40800
+Num. of grids overlapping with atom    9 = 40800
+Num. of grids overlapping with atom   10 = 40800
+Num. of grids overlapping with atom   11 = 40800
+Num. of grids overlapping with atom   12 = 40800
+Num. of grids overlapping with atom   13 = 40800
+Num. of grids overlapping with atom   14 = 40800
+Num. of grids overlapping with atom   15 = 40800
+Num. of grids overlapping with atom   16 = 40800
+Num. of grids overlapping with atom   17 = 40800
+Num. of grids overlapping with atom   18 = 40800
+Num. of grids overlapping with atom   19 = 40800
+Num. of grids overlapping with atom   20 = 40800
+     ..........
+     ......
+
+
+*******************************************************
+             SCF calculation at MD = 1                
+*******************************************************
+
+<MD= 1>  Calculation of the overlap matrix (GPU-accelerated)
+<MD= 1>  Calculation of the nonlocal matrix (GPU-accelerated)
+<MD= 1>  Calculation of the VNA projector matrix (GPU-accelerated)
+
+******************* MD= 1  SCF= 1 *******************
+<Poisson>  Poisson's equation using FFT...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+<DC-LNO> GPUSOLVER direct per-rank dispatch is enabled for local matrices with dimension >= 800 on 1 CUDA device(s).
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.050000000000
+<DFT>  Uele   = -100.117283460018  dUele     =   1.000000000000
+<DFT>  NormRD =    1.000000000000  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 2 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+<DC-LNO> GPUSOLVER direct per-rank dispatch is enabled for local matrices with dimension >= 800 on 1 CUDA device(s).
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.050578397369
+<DFT>  Uele   = -100.415946142761  dUele     =   0.298662682743
+<DFT>  NormRD =    0.106937646633  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 3 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -101.520589245565  dUele     =   1.104643102804
+<DFT>  NormRD =    0.099806076057  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 4 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -102.332300407983  dUele     =   0.811711162418
+<DFT>  NormRD =    0.073527802686  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 5 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -102.926899362433  dUele     =   0.594598954450
+<DFT>  NormRD =    0.054175336556  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 6 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -103.361049584994  dUele     =   0.434150222561
+<DFT>  NormRD =    0.039928981768  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 7 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -103.676963186112  dUele     =   0.315913601118
+<DFT>  NormRD =    0.029447907380  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 8 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -103.905992523517  dUele     =   0.229029337405
+<DFT>  NormRD =    0.021742207661  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 9 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.071359067082  dUele     =   0.165366543565
+<DFT>  NormRD =    0.016080584244  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=10 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.190216442092  dUele     =   0.118857375010
+<DFT>  NormRD =    0.011922814523  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=11 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.275203326114  dUele     =   0.084986884021
+<DFT>  NormRD =    0.008870031235  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=12 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.335607948179  dUele     =   0.060404622065
+<DFT>  NormRD =    0.006627985159  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=13 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.378238455088  dUele     =   0.042630506910
+<DFT>  NormRD =    0.004979853217  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=14 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.408071541494  dUele     =   0.029833086406
+<DFT>  NormRD =    0.003766100974  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=15 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.428734572961  dUele     =   0.020663031467
+<DFT>  NormRD =    0.002869570552  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=16 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.442863095177  dUele     =   0.014128522216
+<DFT>  NormRD =    0.002204438253  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=17 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.452365353144  dUele     =   0.009502257967
+<DFT>  NormRD =    0.001708031801  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=18 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.458617595102  dUele     =   0.006252241958
+<DFT>  NormRD =    0.001334755388  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=19 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.462607973549  dUele     =   0.003990378446
+<DFT>  NormRD =    0.001051567709  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=20 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463475755780  dUele     =   0.000867782232
+<DFT>  NormRD =    0.000825574624  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=21 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463461647022  dUele     =   0.000014108759
+<DFT>  NormRD =    0.000001052702  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=22 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456880749  dUele     =   0.000004766272
+<DFT>  NormRD =    0.000000236417  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=23 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456669559  dUele     =   0.000000211190
+<DFT>  NormRD =    0.000000010633  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=24 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456642798  dUele     =   0.000000026761
+<DFT>  NormRD =    0.000000001396  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=25 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456635510  dUele     =   0.000000007287
+<DFT>  NormRD =    0.000000000389  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=26 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456631383  dUele     =   0.000000004128
+<DFT>  NormRD =    0.000000000171  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=27 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456627773  dUele     =   0.000000003609
+<DFT>  NormRD =    0.000000000076  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=28 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456626509  dUele     =   0.000000001264
+<DFT>  NormRD =    0.000000000057  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=29 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456629092  dUele     =   0.000000002583
+<DFT>  NormRD =    0.000000000072  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=30 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456613933  dUele     =   0.000000015159
+<DFT>  NormRD =    0.000000000036  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=31 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456632123  dUele     =   0.000000018190
+<DFT>  NormRD =    0.000000000330  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=32 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456633809  dUele     =   0.000000001686
+<DFT>  NormRD =    0.000000000066  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=33 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456630077  dUele     =   0.000000003732
+<DFT>  NormRD =    0.000000000103  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=34 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456629678  dUele     =   0.000000000399
+<DFT>  NormRD =    0.000000000024  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=35 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<DC-LNO>  Solving the eigenvalue problem (GPU-accelerated)...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456629595  dUele     =   0.000000000083
+<DFT>  NormRD =    0.000000000019  Criterion =   0.000000000100
+<MD= 1>  Force calculation
+  Force calculation #1
+  Force calculation #2 (GPU reduction)
+  Force calculation #3 (GPU-accelerated)
+  Force calculation #4 (GPU-accelerated)
+  Force calculation #5 (GPU reduction)
+<MD= 1>  Total Energy
+  Force calculation #6 (GPU-accelerated)
+  Force calculation #7 (GPU-accelerated)
+
+*******************************************************
+                  Dipole moment (Debye)                 
+*******************************************************
+
+ Absolute D        0.01499981
+
+                      Dx                Dy                Dz
+ Total              0.00866014        0.00866014        0.00866014
+ Core            3837.80065764     3837.80065764     3837.80065764
+ Electron       -3837.79199750    -3837.79199750    -3837.79199750
+ Back ground       -0.00000000       -0.00000000       -0.00000000
+
+*******************************************************
+             Total Energy (Hartree) at MD = 1           
+*******************************************************
+
+  Uele  =    -104.463456629595
+
+  Ukin  =     270.002628417081
+  UH0   =  -11042.080358287418
+  UH1   =       0.785364126833
+  Una   =    -185.152616644488
+  Unl   =     -34.412453463367
+  Uxc0  =     -62.803170139676
+  Uxc1  =     -62.803170139676
+  Ucore =   10743.006325462764
+  Uhub  =       0.000000000000
+  Ucs   =       0.000000000000
+  Uzs   =       0.000000000000
+  Uzo   =       0.000000000000
+  Uef   =       0.000000000000
+  UvdW  =       0.000000000000
+  Uch   =       0.000000000000
+  Utot  =    -373.457450667947
+
+  UpV   =       0.000000000000
+  Enpy  =    -373.457450667947
+  Note:
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy 
+  Uch:    penalty term to create a core hole
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+*******************************************************
+           Computational times (s) at MD = 1            
+*******************************************************
+
+  DFT in total      =   56.63547
+
+  Set_OLP_Kin       =    0.27867
+  Set_Nonlocal      =    0.21630
+  Set_ProExpn_VNA   =    1.13280
+  Set_Hamiltonian   =    1.43202
+  Poisson           =    0.11783
+  diagonalization   =   48.48226
+  Mixing_DM         =    0.06429
+  Force             =    1.42484
+  Total_Energy      =    0.04497
+  Set_Aden_Grid     =    0.35853
+  Set_Orbitals_Grid =    0.06896
+  Set_Density_Grid  =    2.31376
+  RestartFileDFT    =    0.07561
+  Mulliken_Charge   =    0.17191
+  FFT(2D)_Density   =    0.00000
+
+The SCF was achieved at MD=   1
+
+*******************************************************
+             MD or geometry opt. at MD = 1              
+*******************************************************
+
+
+The geometry optimization was achieved.
+<Steepest_Descent>  SD_scaling= 0.250197135758
+<Steepest_Descent>  |Maximum force| (Hartree/Bohr) = 0.000000000025
+<Steepest_Descent>  Criterion       (Hartree/Bohr) = 0.000100000000
+
+  atom=  1, XYZ(ang) Fxyz(a.u.)=  -0.0000   -0.0000   -0.0000     0.0000    0.0000   -0.0000
+  atom=  2, XYZ(ang) Fxyz(a.u.)=  -0.0000    1.7835    1.7835     0.0000    0.0000    0.0000
+  atom=  3, XYZ(ang) Fxyz(a.u.)=   1.7835   -0.0000    1.7835     0.0000    0.0000   -0.0000
+  atom=  4, XYZ(ang) Fxyz(a.u.)=   1.7835    1.7835   -0.0000     0.0000    0.0000   -0.0000
+  atom=  5, XYZ(ang) Fxyz(a.u.)=   0.8917    0.8917    0.8917     0.0000   -0.0000   -0.0000
+  atom=  6, XYZ(ang) Fxyz(a.u.)=   0.8917    2.6753    2.6753     0.0000    0.0000   -0.0000
+  atom=  7, XYZ(ang) Fxyz(a.u.)=   2.6753    0.8917    2.6753     0.0000    0.0000   -0.0000
+  atom=  8, XYZ(ang) Fxyz(a.u.)=   2.6753    2.6753    0.8917     0.0000   -0.0000   -0.0000
+  atom=  9, XYZ(ang) Fxyz(a.u.)=  -0.0000   -0.0000    3.5670     0.0000   -0.0000    0.0000
+  atom= 10, XYZ(ang) Fxyz(a.u.)=  -0.0000    1.7835    5.3505     0.0000   -0.0000    0.0000
+  atom= 11, XYZ(ang) Fxyz(a.u.)=   1.7835   -0.0000    5.3505     0.0000    0.0000    0.0000
+  atom= 12, XYZ(ang) Fxyz(a.u.)=   1.7835    1.7835    3.5670     0.0000   -0.0000    0.0000
+  atom= 13, XYZ(ang) Fxyz(a.u.)=   0.8917    0.8917    4.4588     0.0000   -0.0000    0.0000
+  atom= 14, XYZ(ang) Fxyz(a.u.)=   0.8917    2.6753    6.2423     0.0000   -0.0000    0.0000
+  atom= 15, XYZ(ang) Fxyz(a.u.)=   2.6753    0.8917    6.2423     0.0000   -0.0000   -0.0000
+  atom= 16, XYZ(ang) Fxyz(a.u.)=   2.6753    2.6753    4.4588     0.0000   -0.0000   -0.0000
+  atom= 17, XYZ(ang) Fxyz(a.u.)=  -0.0000    3.5670   -0.0000     0.0000   -0.0000   -0.0000
+  atom= 18, XYZ(ang) Fxyz(a.u.)=  -0.0000    5.3505    1.7835     0.0000    0.0000    0.0000
+  atom= 19, XYZ(ang) Fxyz(a.u.)=   1.7835    3.5670    1.7835     0.0000    0.0000    0.0000
+  atom= 20, XYZ(ang) Fxyz(a.u.)=   1.7835    5.3505   -0.0000     0.0000    0.0000   -0.0000
+  atom= 21, XYZ(ang) Fxyz(a.u.)=   0.8917    4.4588    0.8917     0.0000   -0.0000   -0.0000
+  atom= 22, XYZ(ang) Fxyz(a.u.)=   0.8917    6.2423    2.6753     0.0000   -0.0000    0.0000
+  atom= 23, XYZ(ang) Fxyz(a.u.)=   2.6753    4.4588    2.6753     0.0000   -0.0000   -0.0000
+  atom= 24, XYZ(ang) Fxyz(a.u.)=   2.6753    6.2423    0.8917     0.0000   -0.0000   -0.0000
+  atom= 25, XYZ(ang) Fxyz(a.u.)=  -0.0000    3.5670    3.5670     0.0000   -0.0000   -0.0000
+  atom= 26, XYZ(ang) Fxyz(a.u.)=  -0.0000    5.3505    5.3505     0.0000    0.0000    0.0000
+  atom= 27, XYZ(ang) Fxyz(a.u.)=   1.7835    3.5670    5.3505     0.0000   -0.0000   -0.0000
+  atom= 28, XYZ(ang) Fxyz(a.u.)=   1.7835    5.3505    3.5670     0.0000    0.0000   -0.0000
+  atom= 29, XYZ(ang) Fxyz(a.u.)=   0.8917    4.4588    4.4588     0.0000   -0.0000   -0.0000
+  atom= 30, XYZ(ang) Fxyz(a.u.)=   0.8917    6.2423    6.2423     0.0000    0.0000    0.0000
+  atom= 31, XYZ(ang) Fxyz(a.u.)=   2.6753    4.4588    6.2423     0.0000   -0.0000   -0.0000
+  atom= 32, XYZ(ang) Fxyz(a.u.)=   2.6753    6.2423    4.4588     0.0000    0.0000    0.0000
+  atom= 33, XYZ(ang) Fxyz(a.u.)=   3.5670   -0.0000   -0.0000     0.0000    0.0000   -0.0000
+  atom= 34, XYZ(ang) Fxyz(a.u.)=   3.5670    1.7835    1.7835     0.0000    0.0000   -0.0000
+  atom= 35, XYZ(ang) Fxyz(a.u.)=   5.3505   -0.0000    1.7835     0.0000   -0.0000   -0.0000
+  atom= 36, XYZ(ang) Fxyz(a.u.)=   5.3505    1.7835   -0.0000     0.0000   -0.0000    0.0000
+  atom= 37, XYZ(ang) Fxyz(a.u.)=   4.4588    0.8917    0.8917     0.0000    0.0000   -0.0000
+  atom= 38, XYZ(ang) Fxyz(a.u.)=   4.4588    2.6753    2.6753     0.0000    0.0000    0.0000
+  atom= 39, XYZ(ang) Fxyz(a.u.)=   6.2423    0.8917    2.6753     0.0000    0.0000    0.0000
+  atom= 40, XYZ(ang) Fxyz(a.u.)=   6.2423    2.6753    0.8917     0.0000    0.0000   -0.0000
+  atom= 41, XYZ(ang) Fxyz(a.u.)=   3.5670   -0.0000    3.5670     0.0000    0.0000    0.0000
+  atom= 42, XYZ(ang) Fxyz(a.u.)=   3.5670    1.7835    5.3505     0.0000   -0.0000    0.0000
+  atom= 43, XYZ(ang) Fxyz(a.u.)=   5.3505   -0.0000    5.3505     0.0000    0.0000    0.0000
+  atom= 44, XYZ(ang) Fxyz(a.u.)=   5.3505    1.7835    3.5670     0.0000    0.0000    0.0000
+  atom= 45, XYZ(ang) Fxyz(a.u.)=   4.4588    0.8917    4.4588     0.0000   -0.0000   -0.0000
+  atom= 46, XYZ(ang) Fxyz(a.u.)=   4.4588    2.6753    6.2423     0.0000    0.0000    0.0000
+  atom= 47, XYZ(ang) Fxyz(a.u.)=   6.2423    0.8917    6.2423     0.0000   -0.0000    0.0000
+  atom= 48, XYZ(ang) Fxyz(a.u.)=   6.2423    2.6753    4.4588     0.0000    0.0000    0.0000
+  atom= 49, XYZ(ang) Fxyz(a.u.)=   3.5670    3.5670   -0.0000     0.0000   -0.0000    0.0000
+  atom= 50, XYZ(ang) Fxyz(a.u.)=   3.5670    5.3505    1.7835     0.0000   -0.0000   -0.0000
+  atom= 51, XYZ(ang) Fxyz(a.u.)=   5.3505    3.5670    1.7835     0.0000   -0.0000    0.0000
+  atom= 52, XYZ(ang) Fxyz(a.u.)=   5.3505    5.3505   -0.0000     0.0000   -0.0000   -0.0000
+  atom= 53, XYZ(ang) Fxyz(a.u.)=   4.4588    4.4588    0.8917     0.0000   -0.0000   -0.0000
+  atom= 54, XYZ(ang) Fxyz(a.u.)=   4.4588    6.2423    2.6753     0.0000   -0.0000   -0.0000
+  atom= 55, XYZ(ang) Fxyz(a.u.)=   6.2423    4.4588    2.6753     0.0000    0.0000    0.0000
+  atom= 56, XYZ(ang) Fxyz(a.u.)=   6.2423    6.2423    0.8917     0.0000    0.0000    0.0000
+  atom= 57, XYZ(ang) Fxyz(a.u.)=   3.5670    3.5670    3.5670     0.0000   -0.0000   -0.0000
+  atom= 58, XYZ(ang) Fxyz(a.u.)=   3.5670    5.3505    5.3505     0.0000    0.0000    0.0000
+  atom= 59, XYZ(ang) Fxyz(a.u.)=   5.3505    3.5670    5.3505     0.0000   -0.0000   -0.0000
+  atom= 60, XYZ(ang) Fxyz(a.u.)=   5.3505    5.3505    3.5670     0.0000   -0.0000   -0.0000
+  atom= 61, XYZ(ang) Fxyz(a.u.)=   4.4588    4.4588    4.4588     0.0000   -0.0000    0.0000
+  atom= 62, XYZ(ang) Fxyz(a.u.)=   4.4588    6.2423    6.2423     0.0000   -0.0000   -0.0000
+  atom= 63, XYZ(ang) Fxyz(a.u.)=   6.2423    4.4588    6.2423     0.0000   -0.0000    0.0000
+  atom= 64, XYZ(ang) Fxyz(a.u.)=   6.2423    6.2423    4.4588     0.0000    0.0000    0.0000
+
+outputting data on grids to files...
+
+
+***********************************************************
+***********************************************************
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =   103       66.923          0       66.937
+   readfile                 =   126        2.752         77        2.759
+   truncation               =    88        7.471        165        7.526
+   MD_pac                   =     0        0.006        120        0.008
+   OutData                  =   163        0.000          0        0.003
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =   165       56.617         88       56.673
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    44        0.112         99        0.290
+   Set_Nonlocal             =    99        0.205         44        0.383
+   Set_ProExpn_VNA          =    67        0.122         63        1.176
+   Set_Hamiltonian          =   180        1.416        113        1.436
+   Poisson                  =   180        0.102        174        0.127
+   Diagonalization          =   131       47.338        177       48.635
+   Mixing_DM                =    34        0.059        114        0.064
+   Force                    =    59        1.425         18        1.425
+   Total_Energy             =    33        0.035          0        0.045
+   Set_Aden_Grid            =   117        0.335         52        0.385
+   Set_Orbitals_Grid        =    74        0.000        183        0.074
+   Set_Density_Grid         =   156        2.294         86        2.348
+   RestartFileDFT           =    32        0.047        179        0.085
+   Mulliken_Charge          =    90        0.156        138        0.188
+   FFT(2D)_Density          =     0        0.000          0        0.000
+   Others                   =   153        0.285        178        2.741
+
+The calculation was normally finished.
+=== openmx exit status = 0 (Sun Aug 16 11:25:16 JST 2026) ===

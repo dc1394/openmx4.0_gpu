@@ -1,0 +1,9 @@
+--------------------------------------------------------------------------
+The user-provided time limit for job execution has been reached:
+
+  Timeout: 1800 seconds
+
+The job will now be aborted.  Please check your code and/or
+adjust/remove the job execution time limit (as specified by --timeout
+command line option or MPIEXEC_TIMEOUT environment variable).
+--------------------------------------------------------------------------

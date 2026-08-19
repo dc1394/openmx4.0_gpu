@@ -1,0 +1,54 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.901549.10/user_script: line 95: 1452723 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.901549.10/user_script: line 149: 1451576 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 57/124
+host mem used/total (GiB): 57/124
+host mem used/total (GiB): 57/124
+=== SCF iterations completed (of 25 max) ===
+25
+=== Utot (earlier 1-node gpusolver run: -887.422830856493) ===
+  Utot.       -887.422830856505
+=== timing (earlier 1-node gpusolver: total 250.3 / DFT 238.5 / Diag 162.9 s) ===
+   Total Computational Time =   101      398.838          0      398.852
+   DFT                      =    66      382.866         47      382.992
+   Set_Hamiltonian          =    97       14.221         53       14.226
+   Diagonalization          =   130      333.382         10      333.406
+=== progress markers ===
+[08:44:06] script start on bnode109
+[08:44:09] launching mpirun: 144 ranks
+[08:44:09] mpirun launched (pid 1451579)
+[08:51:11] completion banner seen; 60 s grace
+[08:52:11] mpirun exited on its own during grace
+[08:52:11] watchdog loop exited; reaping mpirun
+[08:52:11] mpirun reaped rc=0
+[08:52:11] sampler killed
+
+============================================================
+Request ID:             901549.nqsv
+Request Name:           s333_3node_nogpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         3
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 08:43:52 2026
+Started Request Time:   Tue Aug 11 08:44:05 2026
+Ended Request Time:     Tue Aug 11 08:52:11 2026
+Resources Information:
+  Elapse:               490S
+  Remaining Elapse:     6710S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx
+
+%NQSV(INFO): ------- Output from job:0002 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

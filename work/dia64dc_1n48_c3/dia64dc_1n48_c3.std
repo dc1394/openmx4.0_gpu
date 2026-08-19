@@ -1,0 +1,996 @@
+
+The number of threads in each node for OpenMP parallelization is 1.
+
+
+*******************************************************
+*******************************************************
+ Welcome to OpenMX   Ver. 4.0 GPU                           
+ Copyright (C), 2002-2026, T. Ozaki                    
+ OpenMX comes with ABSOLUTELY NO WARRANTY.             
+ This is free software, and you are welcome to         
+ redistribute it under the constitution of the GNU-GPL.
+*******************************************************
+*******************************************************
+
+
+
+<Input_std>  Your input file was normally read.
+<Input_std>  The system includes 1 species and 64 atoms.
+
+*******************************************************
+                     PAO and VPS                       
+*******************************************************
+
+<SetPara_DFT>  PAOs of species C were normally found.
+<SetPara_DFT>  VPSs of species C were normally found.
+               C_PBE19.vps is j-dependent.
+               In case of scf.SpinOrbit.Coupling=off,
+               j-dependent pseudo potentials are averaged by j-degeneracy,
+               which corresponds to a scalar relativistic treatment.
+
+*******************************************************
+     Fourier transform of PAO and projectors of VNL    
+*******************************************************
+
+<FT_PAO>          Fourier transform of pseudo atomic orbitals
+<FT_NLP>          Fourier transform of non-local projectors
+<FT_ProExpn_VNA>  Fourier transform of VNA separable projectors
+<FT_VNA>          Fourier transform of VNA potentials
+<FT_ProductPAO>   Fourier transform of product of PAOs
+
+*******************************************************
+  Allocation of atoms to processors at MD_iter=    1     
+*******************************************************
+
+ proc =   0  # of atoms=   2  estimated weight=         2.00000
+ proc =   1  # of atoms=   1  estimated weight=         1.00000
+ proc =   2  # of atoms=   1  estimated weight=         1.00000
+ proc =   3  # of atoms=   2  estimated weight=         2.00000
+ proc =   4  # of atoms=   1  estimated weight=         1.00000
+ proc =   5  # of atoms=   1  estimated weight=         1.00000
+ proc =   6  # of atoms=   2  estimated weight=         2.00000
+ proc =   7  # of atoms=   1  estimated weight=         1.00000
+ proc =   8  # of atoms=   1  estimated weight=         1.00000
+ proc =   9  # of atoms=   1  estimated weight=         1.00000
+ proc =  10  # of atoms=   2  estimated weight=         2.00000
+ proc =  11  # of atoms=   1  estimated weight=         1.00000
+ proc =  12  # of atoms=   1  estimated weight=         1.00000
+ proc =  13  # of atoms=   2  estimated weight=         2.00000
+ proc =  14  # of atoms=   1  estimated weight=         1.00000
+ proc =  15  # of atoms=   2  estimated weight=         2.00000
+ proc =  16  # of atoms=   1  estimated weight=         1.00000
+ proc =  17  # of atoms=   1  estimated weight=         1.00000
+ proc =  18  # of atoms=   2  estimated weight=         2.00000
+ proc =  19  # of atoms=   1  estimated weight=         1.00000
+ proc =  20  # of atoms=   1  estimated weight=         1.00000
+ proc =  21  # of atoms=   2  estimated weight=         2.00000
+ proc =  22  # of atoms=   1  estimated weight=         1.00000
+ proc =  23  # of atoms=   1  estimated weight=         1.00000
+ proc =  24  # of atoms=   1  estimated weight=         1.00000
+ proc =  25  # of atoms=   2  estimated weight=         2.00000
+ proc =  26  # of atoms=   1  estimated weight=         1.00000
+ proc =  27  # of atoms=   2  estimated weight=         2.00000
+ proc =  28  # of atoms=   1  estimated weight=         1.00000
+ proc =  29  # of atoms=   1  estimated weight=         1.00000
+ proc =  30  # of atoms=   1  estimated weight=         1.00000
+ proc =  31  # of atoms=   2  estimated weight=         2.00000
+ proc =  32  # of atoms=   1  estimated weight=         1.00000
+ proc =  33  # of atoms=   1  estimated weight=         1.00000
+ proc =  34  # of atoms=   2  estimated weight=         2.00000
+ proc =  35  # of atoms=   1  estimated weight=         1.00000
+ proc =  36  # of atoms=   1  estimated weight=         1.00000
+ proc =  37  # of atoms=   2  estimated weight=         2.00000
+ proc =  38  # of atoms=   1  estimated weight=         1.00000
+ proc =  39  # of atoms=   2  estimated weight=         2.00000
+ proc =  40  # of atoms=   1  estimated weight=         1.00000
+ proc =  41  # of atoms=   1  estimated weight=         1.00000
+ proc =  42  # of atoms=   1  estimated weight=         1.00000
+ proc =  43  # of atoms=   2  estimated weight=         2.00000
+ proc =  44  # of atoms=   1  estimated weight=         1.00000
+ proc =  45  # of atoms=   2  estimated weight=         2.00000
+ proc =  46  # of atoms=   1  estimated weight=         1.00000
+ proc =  47  # of atoms=   1  estimated weight=         1.00000
+
+
+
+
+*******************************************************
+        Analysis of neighbors and setting of grids        
+*******************************************************
+
+TFNAN=   10624   Average FNAN= 166.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 1 ct_AN=   1 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   2 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   3 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   4 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   5 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   6 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   7 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   8 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=   9 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  10 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  11 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  12 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  13 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  14 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  15 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  16 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  17 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  18 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  19 FNAN SNAN 166   0
+<truncation> CpyCell= 1 ct_AN=  20 FNAN SNAN 166   0
+     ..........
+     ......
+
+TFNAN=   10624   Average FNAN= 166.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN 166   0
+     ..........
+     ......
+
+TFNAN=   10624   Average FNAN= 166.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN 166   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN 166   0
+     ..........
+     ......
+
+<Check_System> The system is bulk.
+lattice vectors (bohr)
+A  = 13.481305202522,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 13.481305202522,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 13.481305202522
+reciprocal lattice vectors (bohr^-1)
+RA =  0.466066542726,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.466066542726,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.466066542726
+Grid_Origin -0.702151312631 -0.702151312631 -0.702151312631
+Cell_Volume =   2450.167767511014 (Bohr^3)
+GridVol     =      0.022155018152 (Bohr^3)
+Grid_Origin -0.702151312631 -0.702151312631 -0.702151312631
+Cell_Volume =   2450.167767511014 (Bohr^3)
+GridVol     =      0.022155018152 (Bohr^3)
+<UCell_Box> Info. of cutoff energy and num. of grids
+lattice vectors (bohr)
+A  = 13.481305202522,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 13.481305202522,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 13.481305202522
+reciprocal lattice vectors (bohr^-1)
+RA =  0.466066542726,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.466066542726,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.466066542726
+Required cutoff energy (Ryd) for 3D-grids = 120.0000
+    Used cutoff energy (Ryd) for 3D-grids = 125.1176, 125.1176, 125.1176
+Num. of grids of a-, b-, and c-axes = 48, 48, 48
+Grid_Origin -0.702151312631 -0.702151312631 -0.702151312631
+Cell_Volume =   2450.167767511014 (Bohr^3)
+GridVol     =      0.022155018152 (Bohr^3)
+Cell vectors (bohr) of the grid cell (gtv)
+  gtv_a =  0.280860525053,  0.000000000000,  0.000000000000
+  gtv_b =  0.000000000000,  0.280860525053,  0.000000000000
+  gtv_c =  0.000000000000,  0.000000000000,  0.280860525053
+  |gtv_a| =  0.280860525053
+  |gtv_b| =  0.280860525053
+  |gtv_c| =  0.280860525053
+Num. of grids overlapping with atom    1 = 40800
+Num. of grids overlapping with atom    2 = 40800
+Num. of grids overlapping with atom    3 = 40800
+Num. of grids overlapping with atom    4 = 40800
+Num. of grids overlapping with atom    5 = 40800
+Num. of grids overlapping with atom    6 = 40800
+Num. of grids overlapping with atom    7 = 40800
+Num. of grids overlapping with atom    8 = 40800
+Num. of grids overlapping with atom    9 = 40800
+Num. of grids overlapping with atom   10 = 40800
+Num. of grids overlapping with atom   11 = 40800
+Num. of grids overlapping with atom   12 = 40800
+Num. of grids overlapping with atom   13 = 40800
+Num. of grids overlapping with atom   14 = 40800
+Num. of grids overlapping with atom   15 = 40800
+Num. of grids overlapping with atom   16 = 40800
+Num. of grids overlapping with atom   17 = 40800
+Num. of grids overlapping with atom   18 = 40800
+Num. of grids overlapping with atom   19 = 40800
+Num. of grids overlapping with atom   20 = 40800
+     ..........
+     ......
+
+
+*******************************************************
+             SCF calculation at MD = 1                
+*******************************************************
+
+<MD= 1>  Calculation of the overlap matrix
+<MD= 1>  Calculation of the nonlocal matrix
+<MD= 1>  Calculation of the VNA projector matrix
+
+******************* MD= 1  SCF= 1 *******************
+<Poisson>  Poisson's equation using FFT...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.050000000000
+<DFT>  Uele   = -100.117283460097  dUele     =   1.000000000000
+<DFT>  NormRD =    1.000000000000  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 2 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.050578397369
+<DFT>  Uele   = -100.415946142839  dUele     =   0.298662682743
+<DFT>  NormRD =    0.106937646633  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 3 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -101.520589245640  dUele     =   1.104643102800
+<DFT>  NormRD =    0.099806076057  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 4 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -102.332300408053  dUele     =   0.811711162413
+<DFT>  NormRD =    0.073527802686  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 5 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -102.926899362501  dUele     =   0.594598954448
+<DFT>  NormRD =    0.054175336556  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 6 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -103.361049585060  dUele     =   0.434150222559
+<DFT>  NormRD =    0.039928981768  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 7 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -103.676963186177  dUele     =   0.315913601117
+<DFT>  NormRD =    0.029447907380  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 8 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -103.905992523579  dUele     =   0.229029337403
+<DFT>  NormRD =    0.021742207661  Criterion =   0.000000000100
+
+******************* MD= 1  SCF= 9 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.071359067146  dUele     =   0.165366543567
+<DFT>  NormRD =    0.016080584244  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=10 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.190216442156  dUele     =   0.118857375010
+<DFT>  NormRD =    0.011922814523  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=11 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.275203326177  dUele     =   0.084986884021
+<DFT>  NormRD =    0.008870031235  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=12 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.335607948242  dUele     =   0.060404622065
+<DFT>  NormRD =    0.006627985159  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=13 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.378238455151  dUele     =   0.042630506909
+<DFT>  NormRD =    0.004979853217  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=14 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.408071541556  dUele     =   0.029833086405
+<DFT>  NormRD =    0.003766100974  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=15 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.428734573025  dUele     =   0.020663031469
+<DFT>  NormRD =    0.002869570552  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=16 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.442863095239  dUele     =   0.014128522214
+<DFT>  NormRD =    0.002204438253  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=17 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.452365353207  dUele     =   0.009502257968
+<DFT>  NormRD =    0.001708031801  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=18 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.458617595165  dUele     =   0.006252241958
+<DFT>  NormRD =    0.001334755388  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=19 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.462607973612  dUele     =   0.003990378447
+<DFT>  NormRD =    0.001051567709  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=20 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463475746763  dUele     =   0.000867773151
+<DFT>  NormRD =    0.000825574624  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=21 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463461590440  dUele     =   0.000014156322
+<DFT>  NormRD =    0.000001052122  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=22 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+    1    C  MulP   2.0000  2.0000 sum   4.0000
+    2    C  MulP   2.0000  2.0000 sum   4.0000
+    3    C  MulP   2.0000  2.0000 sum   4.0000
+    4    C  MulP   2.0000  2.0000 sum   4.0000
+    5    C  MulP   2.0000  2.0000 sum   4.0000
+    6    C  MulP   2.0000  2.0000 sum   4.0000
+    7    C  MulP   2.0000  2.0000 sum   4.0000
+    8    C  MulP   2.0000  2.0000 sum   4.0000
+    9    C  MulP   2.0000  2.0000 sum   4.0000
+   10    C  MulP   2.0000  2.0000 sum   4.0000
+   11    C  MulP   2.0000  2.0000 sum   4.0000
+   12    C  MulP   2.0000  2.0000 sum   4.0000
+   13    C  MulP   2.0000  2.0000 sum   4.0000
+   14    C  MulP   2.0000  2.0000 sum   4.0000
+   15    C  MulP   2.0000  2.0000 sum   4.0000
+   16    C  MulP   2.0000  2.0000 sum   4.0000
+   17    C  MulP   2.0000  2.0000 sum   4.0000
+   18    C  MulP   2.0000  2.0000 sum   4.0000
+   19    C  MulP   2.0000  2.0000 sum   4.0000
+   20    C  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   128.00000 down          =   128.00000
+              total=   256.00000 ideal(neutral)=   256.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.200000000000
+<DFT>  Uele   = -104.463456876835  dUele     =   0.000004713605
+<DFT>  NormRD =    0.000000233425  Criterion =   0.000000000100
+
+******************* MD= 1  SCF=23 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<DC-LNO>  Solving the eigenvalue problem...
+=== openmx exit status = 143 (Sun Aug 16 10:53:38 JST 2026) ===

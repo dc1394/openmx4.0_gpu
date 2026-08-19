@@ -1,0 +1,44 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.900300.10/user_script: line 92: 2048508 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.900300.10/user_script: line 146: 2047626 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 68/124
+host mem used/total (GiB): 68/124
+host mem used/total (GiB): 68/124
+=== SCF iterations completed (of 25 max) ===
+25
+=== Utot (1-node gpusolver reference: -887.422830856492) ===
+  Utot.       -887.422830856498
+=== timing (1-node gpusolver: total 79.7 / DFT 68.0 / Diag 40.4 s) ===
+   Total Computational Time =    42      234.591          0      234.598
+   DFT                      =    15      219.839          8      219.918
+   Set_Hamiltonian          =    27       10.947          1       10.947
+   Diagonalization          =     0      169.355         44      169.373
+=== progress markers ===
+[18:00:10] script start on bnode093
+[18:00:11] launching mpirun: 48 ranks
+[18:00:11] mpirun launched (pid 2047629)
+[18:04:32] completion banner seen; 60 s grace
+[18:05:32] mpirun exited on its own during grace
+[18:05:32] watchdog loop exited; reaping mpirun
+[18:05:32] mpirun reaped rc=0
+[18:05:32] sampler killed
+
+============================================================
+Request ID:             900300.nqsv
+Request Name:           s333_1node_nogpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Mon Aug 10 18:00:02 2026
+Started Request Time:   Mon Aug 10 18:00:10 2026
+Ended Request Time:     Mon Aug 10 18:05:32 2026
+Resources Information:
+  Elapse:               326S
+  Remaining Elapse:     3274S
+============================================================

@@ -1,0 +1,49 @@
+=== MPS server sightings in sidia333_nc.smi ===
+9
+=== highest GPU utilisation samples ===
+100 %, 47718 MiB
+100 %, 47718 MiB
+100 %, 47718 MiB
+100 %, 42168 MiB
+100 %, 30902 MiB
+=== tail of openmx stdout ===
+   OutData                  =     3        0.000          0        0.011
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    46      238.533         35      238.633
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     9        0.340         42        0.508
+   Set_Nonlocal             =    42        0.307          9        0.475
+   Set_ProExpn_VNA          =     8        3.119         39        3.444
+   Set_Hamiltonian          =    47       24.149         25       24.158
+   Poisson                  =    34        0.138         10        0.138
+   Diagonalization          =    24      162.940          1      163.354
+   Mixing_DM                =    20        1.605          0        1.605
+   Force                    =    31        5.118          0        5.118
+   Total_Energy             =    24        0.282          0        0.283
+   Set_Aden_Grid            =    33        0.166         44        0.222
+   Set_Orbitals_Grid        =     8        0.532         36        0.633
+   Set_Density_Grid         =    12       32.263         34       32.310
+   RestartFileDFT           =     0        0.149         19        0.168
+   Mulliken_Charge          =    18        0.604         14        0.604
+   FFT(2D)_Density          =    32        0.349         35        0.349
+   Others                   =    20        5.508         12        6.241
+
+The calculation was normally finished.
+=== openmx exit status = 0 (Mon Aug 10 12:14:40 JST 2026) ===
+
+============================================================
+Request ID:             899361.nqsv
+Request Name:           sidia333_nc
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Mon Aug 10 12:09:46 2026
+Started Request Time:   Mon Aug 10 12:09:54 2026
+Ended Request Time:     Mon Aug 10 12:38:56 2026
+Resources Information:
+  Elapse:               1746S
+  Remaining Elapse:     5454S
+============================================================

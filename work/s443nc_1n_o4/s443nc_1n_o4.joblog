@@ -1,0 +1,85 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.910196.10/user_script: line 101: 2416273 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.910196.10/user_script: line 151: 2415174 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s443nc_1n_o4 total=185.613 dft=175.182 diag=95.649 set_hamiltonian=26.440
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    12      185.602          0      185.613
+   readfile                 =     0        2.972          9        2.976
+   truncation               =    25        7.381         35        7.426
+   MD_pac                   =     0        0.009          2        0.012
+   OutData                  =    12        0.000          0        0.009
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    35      175.137         25      175.182
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     4        0.473          1        0.602
+   Set_Nonlocal             =     1        0.602          4        0.732
+   Set_ProExpn_VNA          =    32        4.231          6        4.669
+   Set_Hamiltonian          =    12       26.440         21       26.440
+   Poisson                  =    20        0.319          8        0.319
+   Diagonalization          =     4       95.648         31       95.649
+   Mixing_DM                =    16        3.479         34        3.479
+   Force                    =    10       10.621          2       10.621
+   Total_Energy             =    11        0.414          6        0.421
+   Set_Aden_Grid            =    13        0.307         18        0.400
+   Set_Orbitals_Grid        =     0        0.867         34        0.964
+   Set_Density_Grid         =    19       18.264         29       18.877
+   RestartFileDFT           =    27        0.232          9        0.248
+   Mulliken_Charge          =     7        0.685         31        0.685
+   FFT(2D)_Density          =    28        0.903         34        0.903
+   Others                   =    29       10.402         13       11.278
+
+The calculation was normally finished.
+=== Utot (1n24/1n36 probes: -1577.61926591245x) ===
+  Utot.      -1577.619265912467
+=== SCF iterations completed (of 25 max) ===
+25
+=== Set_Hamiltonian GPU / residency lines ===
+<Set_Hamiltonian> GPU device 0: 36 Hamiltonian rank(s), GPU concurrency=36, CPU fallback ranks=0, peak=54.375 GiB, free=63.108 GiB, reserve=7.918 GiB
+<Set_Hamiltonian> GPU resident cache: 36 rank(s) hold 34.523 GiB (orbs1+orbs0+nolg+meta) on device 0 across SCF iterations
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 111/124
+host mem used/total (GiB): 111/124
+host mem used/total (GiB): 105/124
+=== peak GPU, this node ===
+5 %, 71019 MiB
+0 %, 71019 MiB
+29 %, 71003 MiB
+=== MPS server per node (post-run) ===
+bnode002: mps_server=1 gpu_mem_used=77 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[09:37:06] script start on bnode002
+[09:37:07] MPS up on all 1 nodes
+[09:37:07] launching mpirun: 36 ranks on 1 nodes
+[09:37:07] mpirun launched (pid 2415177)
+[09:40:32] done detected; 60 s grace for teardown
+[09:41:32] mpirun exited on its own during grace
+[09:41:32] watchdog loop exited (verdict='done'); reaping mpirun
+[09:41:32] mpirun reaped rc=0
+[09:41:32] sampler killed
+
+============================================================
+Request ID:             910196.nqsv
+Request Name:           s443_1o4
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Fri Aug 14 09:36:53 2026
+Started Request Time:   Fri Aug 14 09:37:06 2026
+Ended Request Time:     Fri Aug 14 09:41:33 2026
+Resources Information:
+  Elapse:               271S
+  Remaining Elapse:     2129S
+============================================================

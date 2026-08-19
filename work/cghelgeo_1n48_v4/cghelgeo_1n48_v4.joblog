@@ -1,0 +1,48 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.906615.10/user_script: line 146: 79992 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.906615.10/user_script: line 211: 79327 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 10;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING cghelgeo_1n48_v4 INCOMPLETE
+=== full timing block ===
+=== Utot (reference: -4154.835898598240) ===
+=== SCF iterations completed (of 70 max) ===
+1
+=== peak host memory, this node (GiB); single-sample reference 105/124 ===
+host mem used/total (GiB): 117/124
+host mem used/total (GiB): 116/124
+host mem used/total (GiB): 114/124
+=== peak GPU, this node (reference 65.1 GiB) ===
+5 %, 52818 MiB
+4 %, 52818 MiB
+100 %, 34340 MiB
+=== DS_VNA GPU/CPU decision (expect CPU fallback) ===
+Set_ProExpn_VNA DS_VNA GPU: needs 3.274 GiB per rank, 48 rank(s) share this device and only 57.868 GiB is free; CPU fallback.
+=== MPS server per node (post-run) ===
+bnode106: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[17:34:37] script start on bnode106
+[17:34:38] MPS up on all 1 nodes
+[17:34:38] launching mpirun: 48 ranks on 1 nodes
+[17:34:38] mpirun launched (pid 79330)
+[17:36:29] watchdog loop exited (verdict='none'); reaping mpirun
+[17:36:29] mpirun reaped rc=137
+[17:36:29] sampler killed
+
+============================================================
+Request ID:             906615.nqsv
+Request Name:           cghel1n48
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 12 17:33:06 2026
+Started Request Time:   Wed Aug 12 17:34:37 2026
+Ended Request Time:     Wed Aug 12 17:36:29 2026
+Resources Information:
+  Elapse:               117S
+  Remaining Elapse:     3483S
+============================================================

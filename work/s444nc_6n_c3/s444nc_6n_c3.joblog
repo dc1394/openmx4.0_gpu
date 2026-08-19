@@ -1,0 +1,97 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.905375.10/user_script: line 93: 1288366 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.905375.10/user_script: line 150: 1285998 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s444nc_6n_c3 total=739.345 dft=719.813 diag=663.148 set_hamiltonian=17.652
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    40      739.333          0      739.345
+   readfile                 =   251        3.137          0        3.153
+   truncation               =   197       16.274        182       16.416
+   MD_pac                   =     0        0.016        242        0.019
+   OutData                  =    57        0.000          0        0.012
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =   182      719.671        197      719.813
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    46        0.166        209        0.290
+   Set_Nonlocal             =   209        0.873         46        0.997
+   Set_ProExpn_VNA          =   233        6.589        161        7.340
+   Set_Hamiltonian          =    61       17.648         14       17.652
+   Poisson                  =    71        0.101         77        0.113
+   Diagonalization          =    74      663.128        108      663.148
+   Mixing_DM                =   147        1.042        198        1.049
+   Force                    =   251        5.273         23        5.273
+   Total_Energy             =   125        1.248          0        1.250
+   Set_Aden_Grid            =   154        0.838        233        1.643
+   Set_Orbitals_Grid        =   153        0.068         17        1.373
+   Set_Density_Grid         =    49       16.080        281       16.228
+   RestartFileDFT           =   110        0.160        258        0.211
+   Mulliken_Charge          =   283        0.520        213        0.520
+   FFT(2D)_Density          =   101        0.270         46        0.271
+   Others                   =    22        3.280        153        4.763
+
+The calculation was normally finished.
+=== Utot (reference: -2103.47785856316x) ===
+  Utot.      -2103.477858563283
+=== SCF iterations completed (of 25 max) ===
+25
+=== peak host memory, this node (GiB); old single-sample 2n peak 90 ===
+host mem used/total (GiB): 56/124
+host mem used/total (GiB): 56/124
+host mem used/total (GiB): 56/124
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[12:04:11] script start on bnode013
+[12:04:12] launching mpirun: 288 ranks on 6 nodes
+[12:04:12] mpirun launched (pid 1286001)
+[12:16:40] done detected; 60 s grace for teardown
+[12:17:40] mpirun exited on its own during grace
+[12:17:40] watchdog loop exited (verdict='done'); reaping mpirun
+[12:17:40] mpirun reaped rc=0
+[12:17:40] sampler killed
+
+============================================================
+Request ID:             905375.nqsv
+Request Name:           s444nc_6c3
+Queue:                  gen_S@nqsv
+Number of Jobs:         6
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 12 11:51:37 2026
+Started Request Time:   Wed Aug 12 12:04:11 2026
+Ended Request Time:     Wed Aug 12 12:17:40 2026
+Resources Information:
+  Elapse:               814S
+  Remaining Elapse:     2186S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx
+
+%NQSV(INFO): ------- Output from job:0002 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx
+
+%NQSV(INFO): ------- Output from job:0003 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx
+
+%NQSV(INFO): ------- Output from job:0004 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx
+
+%NQSV(INFO): ------- Output from job:0005 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

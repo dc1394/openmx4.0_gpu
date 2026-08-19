@@ -1,0 +1,53 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.905354.10/user_script: line 140: 248190 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.905354.10/user_script: line 199: 246893 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s444nc_2n_g2 INCOMPLETE
+=== full timing block ===
+=== Utot (reference: -2103.477858563170; elpa2 gives ...316x) ===
+=== SCF iterations completed (of 25 max) ===
+25
+=== peak host memory, this node (GiB); old peaks: 2n 96, 3n OOM at 119, 4n 97 ===
+host mem used/total (GiB): 119/124
+host mem used/total (GiB): 119/124
+host mem used/total (GiB): 109/124
+=== peak GPU, this node ===
+100 %, 72480 MiB
+0 %, 72480 MiB
+0 %, 72480 MiB
+=== MPS server per node (post-run) ===
+bnode073: mps_server=1 gpu_mem_used=78 MiB
+bnode074: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[11:51:48] script start on bnode073
+[11:51:50] MPS up on all 2 nodes
+[11:51:50] launching mpirun: 96 ranks on 2 nodes
+[11:51:50] mpirun launched (pid 246896)
+[11:56:43] watchdog loop exited (verdict='none'); reaping mpirun
+[11:56:43] mpirun reaped rc=137
+[11:56:43] sampler killed
+
+============================================================
+Request ID:             905354.nqsv
+Request Name:           s444nc_2g2
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 12 11:51:36 2026
+Started Request Time:   Wed Aug 12 11:51:48 2026
+Ended Request Time:     Wed Aug 12 11:56:46 2026
+Resources Information:
+  Elapse:               302S
+  Remaining Elapse:     2698S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

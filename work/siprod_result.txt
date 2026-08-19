@@ -1,0 +1,528 @@
+H100 1-node production matrix: Layer 1 (CPU vs GPU), Layer 3 (cuBLAS
+vs GEMMul8), MPS ablation.  48 ranks (-nt 1) everywhere; CPU = elpa2
+flat MPI (best config, step-10 preflights: 48 beat 36 by 8-23%).
+Fixed 25 SCF (criterion 1e-15), MD.Type Opt x1, Max_Time column (s).
+binary: openmx cd5f0d5 + GEMMul8 v3.2.0, md5 962f8d2519c2e6aa5a6295513f76fee9
+
+--- per-run ---
+case                      total        DFT       Diag    Set_Ham  status
+sip_bcol216_c481        239.163    219.526    169.754     10.034  OK
+sip_bcol216_c482        240.510    220.589    170.282     10.123  OK
+sip_bcol216_c483        238.159    218.604    169.177      9.934  OK
+sip_bcol216_o1           80.009     63.578     36.174      6.423  OK
+sip_bcol216_o2           81.562     64.855     36.583      6.385  OK
+sip_bcol216_o3           85.106     67.782     40.238      6.475  OK
+sip_bcol216_o4           80.123     63.444     35.997      6.390  OK
+sip_bcol216_o5           80.642     63.892     36.011      6.536  OK
+sip_bcol216_g1           79.423     62.837     35.315      6.440  OK
+sip_bcol216_g2           81.166     64.568     36.810      6.312  OK
+sip_bcol216_g3           80.064     63.505     35.963      6.361  OK
+sip_bcol216_g4           80.049     63.388     35.663      6.524  OK
+sip_bcol216_g5           84.910     68.181     37.804      7.063  OK
+sip_bcol300_c481        489.344    469.342    408.658     10.810  OK
+sip_bcol300_c482        488.617    468.409    407.662     10.753  OK
+sip_bcol300_c483        489.297    469.151    409.193     10.484  OK
+sip_bcol300_o1          131.190    114.413     82.430      6.378  OK
+sip_bcol300_o2          131.138    114.339     82.626      6.027  OK
+sip_bcol300_o3          130.621    113.878     82.532      5.877  OK
+sip_bcol300_o4          131.584    115.014     83.137      6.161  OK
+sip_bcol300_o5          131.574    114.661     82.384      6.389  OK
+sip_bcol300_g1          148.251    131.330     80.600     16.515  OK
+sip_bcol300_g2          147.292    129.989     79.473     16.433  OK
+sip_bcol300_g3          146.964    130.284     79.887     16.470  OK
+sip_bcol300_g4          148.931    131.955     80.890     16.466  OK
+sip_bcol300_g5          146.901    130.038     79.683     16.331  OK
+sip_bnc216_c481         941.423    915.875    814.744     31.814  OK
+sip_bnc216_c482         948.779    923.347    813.060     37.040  OK
+sip_bnc216_c483         946.609    920.452    817.525     32.689  OK
+sip_bnc216_o1           255.164    232.896    155.897     24.089  OK
+sip_bnc216_o2           253.727    231.433    155.322     23.777  OK
+sip_bnc216_o3           251.501    229.198    153.518     23.766  OK
+sip_bnc216_o4           251.662    229.384    153.581     23.665  OK
+sip_bnc216_o5           254.886    230.154    154.351     23.776  OK
+sip_bnc216_g1           256.930    233.846    157.387     23.973  OK
+sip_bnc216_g2           255.538    233.039    156.587     24.006  OK
+sip_bnc216_g3           255.209    232.913    157.493     23.892  OK
+sip_bnc216_g4           254.978    232.735    157.376     23.807  OK
+sip_bnc216_g5           254.113    231.713    156.351     23.736  OK
+sip_bnc216_om1          425.915    400.529    198.165     53.005  OK
+sip_bnc216_om2          423.869    398.467    197.257     52.320  OK
+sip_bnc216_om3          422.312    396.527    195.053     52.398  OK
+sip_ccol216_c481         86.734     66.755     17.129     10.087  OK
+sip_ccol216_c482         90.071     70.387     16.996      9.779  OK
+sip_ccol216_c483         86.603     66.818     17.431      9.904  OK
+sip_ccol216_c484         87.683     68.053     17.280     10.468  OK
+sip_ccol216_c485         86.644     66.356     17.231      9.753  OK
+sip_ccol216_o1           50.827     34.229      7.446      6.243  OK
+sip_ccol216_o2           50.657     33.991      7.321      6.376  OK
+sip_ccol216_o3           51.837     35.144      7.614      6.287  OK
+sip_ccol216_o4           50.731     33.910      7.204      6.433  OK
+sip_ccol216_o5           51.059     34.149      7.157      6.615  OK
+sip_ccol216_g1           50.981     34.429      7.425      6.223  OK
+sip_ccol216_g2           52.712     36.200      9.360      6.365  OK
+sip_ccol216_g3           51.720     34.913      8.297      6.237  OK
+sip_ccol216_g4           51.610     34.739      7.763      6.370  OK
+sip_ccol216_g5           50.580     33.960      7.207      6.284  OK
+sip_ccol360_c481        139.764    118.092     47.115     12.067  OK
+sip_ccol360_c482        139.729    117.851     46.973     11.824  OK
+sip_ccol360_c483        139.756    118.167     47.044     12.312  OK
+sip_ccol360_o1           70.243     52.086     16.133      6.746  OK
+sip_ccol360_o2           69.312     51.359     15.781      6.576  OK
+sip_ccol360_o3           69.134     51.143     15.655      6.572  OK
+sip_ccol360_o4           68.778     50.756     15.550      6.489  OK
+sip_ccol360_o5           69.678     51.421     15.898      6.645  OK
+sip_ccol360_g1           70.884     52.856     16.824      6.833  OK
+sip_ccol360_g2           70.038     51.919     16.061      6.590  OK
+sip_ccol360_g3           70.514     51.705     16.322      6.641  OK
+sip_ccol360_g4           70.269     52.205     16.211      7.033  OK
+sip_ccol360_g5           70.045     51.837     15.924      6.457  OK
+sip_cnc216_c481         326.636    301.152    192.907     38.288  OK
+sip_cnc216_c482         320.141    294.446    191.518     31.857  OK
+sip_cnc216_c483         326.728    301.028    196.471     33.367  OK
+sip_cnc216_o1            99.130     76.591     30.633     14.933  OK
+sip_cnc216_o2           100.328     77.989     31.618     14.988  OK
+sip_cnc216_o3            99.504     76.948     30.321     15.000  OK
+sip_cnc216_o4            99.053     76.665     30.351     14.980  OK
+sip_cnc216_o5            98.034     75.584     30.016     14.912  OK
+sip_cnc216_g1           100.312     76.809     30.723     14.985  OK
+sip_cnc216_g2            98.376     76.128     30.213     14.936  OK
+sip_cnc216_g3           100.261     77.950     31.938     14.941  OK
+sip_cnc216_g4            98.839     76.529     30.397     14.985  OK
+sip_cnc216_g5            98.484     76.139     30.028     15.036  OK
+sip_cnc216_om1          227.924    202.091     31.033     43.073  OK
+sip_cnc216_om2          226.719    201.213     29.991     43.143  OK
+sip_cnc216_om3          226.351    200.748     29.922     43.139  OK
+sip_cnc300_c481         566.651    540.807    422.963     34.895  OK
+sip_cnc300_c482         563.634    537.659    417.700     37.029  OK
+sip_cnc300_c483         564.159    538.156    417.556     38.184  OK
+sip_cnc300_o1           137.492    114.835     58.525     16.053  OK
+sip_cnc300_o2           136.377    113.786     57.542     15.973  OK
+sip_cnc300_o3           134.283    111.515     56.081     15.942  OK
+sip_cnc300_o4           135.112    112.599     56.916     15.978  OK
+sip_cnc300_o5           136.800    114.189     56.901     16.703  OK
+sip_cnc300_g1           136.276    113.689     57.179     15.981  OK
+sip_cnc300_g2           135.221    112.636     56.423     16.029  OK
+sip_cnc300_g3           135.032    112.555     56.790     15.884  OK
+sip_cnc300_g4           135.375    112.752     56.803     16.113  OK
+sip_cnc300_g5           135.515    112.542     56.391     15.804  OK
+
+--- statistics (mean +- sample SD; CV flag at >2%) ---
+  [bcol216: band col 216 atoms (n=2808)]
+    c48  (n=3)  Total    239.28+- 1.18  Diag    169.74+- 0.55  Set_Ham     10.03+- 0.09
+    o    (n=5)  Total     81.49+- 2.11 (CV 2.6%% **>2%%**)  Diag     37.00+- 1.83  Set_Ham      6.44+- 0.06
+    g    (n=5)  Total     81.12+- 2.21 (CV 2.7%% **>2%%**)  Diag     36.31+- 1.00  Set_Ham      6.54+- 0.30
+  [bcol300: band col 300 atoms (n=3900, representative)]
+    c48  (n=3)  Total    489.09+- 0.41  Diag    408.50+- 0.78  Set_Ham     10.68+- 0.17
+    o    (n=5)  Total    131.22+- 0.40  Diag     82.62+- 0.30  Set_Ham      6.17+- 0.22
+    g    (n=5)  Total    147.67+- 0.89  Diag     80.11+- 0.61  Set_Ham     16.44+- 0.07
+  [bnc216: band NC 216 atoms (2n=5616, representative)]
+    c48  (n=3)  Total    945.60+- 3.78  Diag    815.11+- 2.25  Set_Ham     33.85+- 2.80
+    o    (n=5)  Total    253.39+- 1.74  Diag    154.53+- 1.06  Set_Ham     23.81+- 0.16
+    g    (n=5)  Total    255.35+- 1.03  Diag    157.04+- 0.53  Set_Ham     23.88+- 0.11
+    om   (n=3)  Total    424.03+- 1.81  Diag    196.83+- 1.60  Set_Ham     52.57+- 0.38
+  [ccol216: cluster col 216 atoms (n=2808)]
+    c48  (n=5)  Total     87.55+- 1.48  Diag     17.21+- 0.16  Set_Ham     10.00+- 0.29
+    o    (n=5)  Total     51.02+- 0.48  Diag      7.35+- 0.19  Set_Ham      6.39+- 0.15
+    g    (n=5)  Total     51.52+- 0.81  Diag      8.01+- 0.86  Set_Ham      6.30+- 0.07
+  [ccol360: cluster col 360 atoms (n=4680, representative)]
+    c48  (n=3)  Total    139.75+- 0.02  Diag     47.04+- 0.07  Set_Ham     12.07+- 0.24
+    o    (n=5)  Total     69.43+- 0.56  Diag     15.80+- 0.23  Set_Ham      6.61+- 0.10
+    g    (n=5)  Total     70.35+- 0.36  Diag     16.27+- 0.35  Set_Ham      6.71+- 0.23
+  [cnc216: cluster NC 216 atoms (2n=5616)]
+    c48  (n=3)  Total    324.50+- 3.78  Diag    193.63+- 2.55  Set_Ham     34.50+- 3.36
+    o    (n=5)  Total     99.21+- 0.83  Diag     30.59+- 0.62  Set_Ham     14.96+- 0.04
+    g    (n=5)  Total     99.25+- 0.96  Diag     30.66+- 0.76  Set_Ham     14.98+- 0.04
+    om   (n=3)  Total    227.00+- 0.82  Diag     30.32+- 0.62  Set_Ham     43.12+- 0.04
+  [cnc300: cluster NC 300 atoms (2n=7800, representative)]
+    c48  (n=3)  Total    564.81+- 1.61  Diag    419.41+- 3.08  Set_Ham     36.70+- 1.67
+    o    (n=5)  Total    136.01+- 1.30  Diag     57.19+- 0.91  Set_Ham     16.13+- 0.32
+    g    (n=5)  Total    135.48+- 0.48  Diag     56.72+- 0.32  Set_Ham     15.96+- 0.12
+
+--- Layer 1 / Layer 3 / MPS ratios (Total and Diag; +- in quadrature) ---
+  [bcol216]
+    Layer1 CPU/GPU speedup     Total   2.936 +- 0.078
+    Layer1 CPU/GPU speedup     Diag    4.587 +- 0.227
+    Layer3 G8/cuBLAS (>1 slower) Total   0.996 +- 0.037  [not significant]
+    Layer3 G8/cuBLAS (>1 slower) Diag    0.981 +- 0.055  [not significant]
+  [bcol300]
+    Layer1 CPU/GPU speedup     Total   3.727 +- 0.012
+    Layer1 CPU/GPU speedup     Diag    4.944 +- 0.020
+    Layer3 G8/cuBLAS (>1 slower) Total   1.125 +- 0.008
+    Layer3 G8/cuBLAS (>1 slower) Diag    0.970 +- 0.008
+  [bnc216]
+    Layer1 CPU/GPU speedup     Total   3.732 +- 0.030
+    Layer1 CPU/GPU speedup     Diag    5.275 +- 0.039
+    Layer3 G8/cuBLAS (>1 slower) Total   1.008 +- 0.008  [not significant]
+    Layer3 G8/cuBLAS (>1 slower) Diag    1.016 +- 0.008
+    MPSoff/MPSon (>1 = MPS helps) Total   1.673 +- 0.014
+    MPSoff/MPSon (>1 = MPS helps) Diag    1.274 +- 0.014
+  [ccol216]
+    Layer1 CPU/GPU speedup     Total   1.716 +- 0.033
+    Layer1 CPU/GPU speedup     Diag    2.342 +- 0.063
+    Layer3 G8/cuBLAS (>1 slower) Total   1.010 +- 0.019  [not significant]
+    Layer3 G8/cuBLAS (>1 slower) Diag    1.090 +- 0.120  [not significant]
+  [ccol360]
+    Layer1 CPU/GPU speedup     Total   2.013 +- 0.016
+    Layer1 CPU/GPU speedup     Diag    2.977 +- 0.043
+    Layer3 G8/cuBLAS (>1 slower) Total   1.013 +- 0.010
+    Layer3 G8/cuBLAS (>1 slower) Diag    1.029 +- 0.026
+  [cnc216]
+    Layer1 CPU/GPU speedup     Total   3.271 +- 0.047
+    Layer1 CPU/GPU speedup     Diag    6.330 +- 0.152
+    Layer3 G8/cuBLAS (>1 slower) Total   1.000 +- 0.013  [not significant]
+    Layer3 G8/cuBLAS (>1 slower) Diag    1.002 +- 0.032  [not significant]
+    MPSoff/MPSon (>1 = MPS helps) Total   2.288 +- 0.021
+    MPSoff/MPSon (>1 = MPS helps) Diag    0.991 +- 0.029  [not significant]
+  [cnc300]
+    Layer1 CPU/GPU speedup     Total   4.153 +- 0.041
+    Layer1 CPU/GPU speedup     Diag    7.333 +- 0.128
+    Layer3 G8/cuBLAS (>1 slower) Total   0.996 +- 0.010  [not significant]
+    Layer3 G8/cuBLAS (>1 slower) Diag    0.992 +- 0.017  [not significant]
+
+--- Utot consistency (per combo: each cfg's last-rep value) ---
+  bcol216   c48=-887.422833076573  o=-887.422833076522  g=-887.422833076521
+  bcol300   c48=-1232.518569501100  o=-1232.518569501012  g=-1232.518569501011
+  bnc216    c48=-887.422833076536  o=-887.422833076519  g=-887.422833076518  om=-887.422833076519
+  ccol216   c48=-887.309609578783  o=-887.309609578716  g=-887.309609578715
+  ccol360   c48=-1478.876283752618  o=-1478.876283752634  g=-1478.876283752633
+  cnc216    c48=-887.309609578824  o=-887.309609578715  g=-887.309609578715  om=-887.309609578715
+  cnc300    c48=-1232.325167059451  o=-1232.325167059161  g=-1232.325167059160
+
+--- Utot spread across reps within each cfg (max-min, Hartree) ---
+  (configs not listed: bitwise identical across reps)
+
+--- GPU engagement / fallback (first line per GPU case) ---
+  sip_bcol216_o1       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_o2       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_o3       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_o4       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_o5       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_g1       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_g2       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_g3       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_g4       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol216_g5       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_o1       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_o2       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_o3       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_o4       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_o5       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_g1       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_g2       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_g3       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_g4       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bcol300_g5       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_o1        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_o2        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_o3        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_o4        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_o5        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_g1        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_g2        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_g3        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_g4        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_g5        [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_om1       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_om2       [GPU device 0: 8 k-owner rank] fb=0
+  sip_bnc216_om3       [GPU device 0: 8 k-owner rank] fb=0
+  sip_ccol216_o1       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_o2       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_o3       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_o4       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_o5       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_g1       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_g2       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_g3       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_g4       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol216_g5       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_o1       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_o2       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_o3       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_o4       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_o5       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_g1       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_g2       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_g3       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_g4       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_ccol360_g5       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_o1        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_o2        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_o3        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_o4        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_o5        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_g1        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_g2        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_g3        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_g4        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_g5        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_om1       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_om2       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc216_om3       [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_o1        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_o2        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_o3        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_o4        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_o5        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_g1        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_g2        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_g3        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_g4        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+  sip_cnc300_g5        [<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank] fb=0
+
+--- node landings (slow: bnode013, bnode033) ---
+  sip_bcol216_c481     bnode084 
+  sip_bcol216_c482     bnode020 
+  sip_bcol216_c483     bnode046 
+  sip_bcol216_o1       bnode085 
+  sip_bcol216_o2       bnode085 
+  sip_bcol216_o3       bnode076 
+  sip_bcol216_o4       bnode080 
+  sip_bcol216_o5       bnode002 
+  sip_bcol216_g1       bnode086 
+  sip_bcol216_g2       bnode086 
+  sip_bcol216_g3       bnode084 
+  sip_bcol216_g4       bnode084 
+  sip_bcol216_g5       bnode015 
+  sip_bcol300_c481     bnode087 
+  sip_bcol300_c482     bnode087 
+  sip_bcol300_c483     bnode085 
+  sip_bcol300_o1       bnode088 
+  sip_bcol300_o2       bnode088 
+  sip_bcol300_o3       bnode086 
+  sip_bcol300_o4       bnode085 
+  sip_bcol300_o5       bnode042 
+  sip_bcol300_g1       bnode089 
+  sip_bcol300_g2       bnode089 
+  sip_bcol300_g3       bnode087 
+  sip_bcol300_g4       bnode086 
+  sip_bcol300_g5       bnode080 
+  sip_bnc216_c481      bnode090 
+  sip_bnc216_c482      bnode090 
+  sip_bnc216_c483      bnode088 
+  sip_bnc216_o1        bnode091 
+  sip_bnc216_o2        bnode091 
+  sip_bnc216_o3        bnode089 
+  sip_bnc216_o4        bnode087 
+  sip_bnc216_o5        bnode081 
+  sip_bnc216_g1        bnode092 
+  sip_bnc216_g2        bnode092 
+  sip_bnc216_g3        bnode090 
+  sip_bnc216_g4        bnode088 
+  sip_bnc216_g5        bnode084 
+  sip_bnc216_om1       bnode105 
+  sip_bnc216_om2       bnode105 
+  sip_bnc216_om3       bnode103 
+  sip_ccol216_c481     bnode093 
+  sip_ccol216_c482     bnode093 
+  sip_ccol216_c483     bnode091 
+  sip_ccol216_c484     bnode015 
+  sip_ccol216_c485     bnode030 
+  sip_ccol216_o1       bnode094 
+  sip_ccol216_o2       bnode094 
+  sip_ccol216_o3       bnode092 
+  sip_ccol216_o4       bnode089 
+  sip_ccol216_o5       bnode085 
+  sip_ccol216_g1       bnode095 
+  sip_ccol216_g2       bnode095 
+  sip_ccol216_g3       bnode093 
+  sip_ccol216_g4       bnode002 
+  sip_ccol216_g5       bnode086 
+  sip_ccol360_c481     bnode096 
+  sip_ccol360_c482     bnode096 
+  sip_ccol360_c483     bnode094 
+  sip_ccol360_o1       bnode097 
+  sip_ccol360_o2       bnode097 
+  sip_ccol360_o3       bnode095 
+  sip_ccol360_o4       bnode090 
+  sip_ccol360_o5       bnode087 
+  sip_ccol360_g1       bnode098 
+  sip_ccol360_g2       bnode098 
+  sip_ccol360_g3       bnode096 
+  sip_ccol360_g4       bnode091 
+  sip_ccol360_g5       bnode088 
+  sip_cnc216_c481      bnode099 
+  sip_cnc216_c482      bnode099 
+  sip_cnc216_c483      bnode097 
+  sip_cnc216_o1        bnode100 
+  sip_cnc216_o2        bnode100 
+  sip_cnc216_o3        bnode098 
+  sip_cnc216_o4        bnode092 
+  sip_cnc216_o5        bnode089 
+  sip_cnc216_g1        bnode101 
+  sip_cnc216_g2        bnode101 
+  sip_cnc216_g3        bnode099 
+  sip_cnc216_g4        bnode093 
+  sip_cnc216_g5        bnode090 
+  sip_cnc216_om1       bnode106 
+  sip_cnc216_om2       bnode106 
+  sip_cnc216_om3       bnode104 
+  sip_cnc300_c481      bnode102 
+  sip_cnc300_c482      bnode102 
+  sip_cnc300_c483      bnode100 
+  sip_cnc300_o1        bnode103 
+  sip_cnc300_o2        bnode103 
+  sip_cnc300_o3        bnode101 
+  sip_cnc300_o4        bnode094 
+  sip_cnc300_o5        bnode091 
+  sip_cnc300_g1        bnode104 
+  sip_cnc300_g2        bnode104 
+  sip_cnc300_g3        bnode102 
+  sip_cnc300_g4        bnode095 
+  sip_cnc300_g5        bnode092 
+
+--- peak host RSS / peak GPU mem ---
+  sip_bcol216_c481     RSS 66/124    GPU - MiB
+  sip_bcol216_c482     RSS 65/124    GPU - MiB
+  sip_bcol216_c483     RSS 65/124    GPU - MiB
+  sip_bcol216_o1       RSS 67/124    GPU 50158 MiB
+  sip_bcol216_o2       RSS 67/124    GPU 50158 MiB
+  sip_bcol216_o3       RSS 68/124    GPU 51770 MiB
+  sip_bcol216_o4       RSS 69/124    GPU 59710 MiB
+  sip_bcol216_o5       RSS 68/124    GPU 50158 MiB
+  sip_bcol216_g1       RSS 68/124    GPU 58270 MiB
+  sip_bcol216_g2       RSS 71/124    GPU 58270 MiB
+  sip_bcol216_g3       RSS 69/124    GPU 58270 MiB
+  sip_bcol216_g4       RSS 69/124    GPU 58270 MiB
+  sip_bcol216_g5       RSS 67/124    GPU 58270 MiB
+  sip_bcol300_c481     RSS 72/124    GPU - MiB
+  sip_bcol300_c482     RSS 72/124    GPU - MiB
+  sip_bcol300_c483     RSS 72/124    GPU - MiB
+  sip_bcol300_o1       RSS 74/124    GPU 58118 MiB
+  sip_bcol300_o2       RSS 74/124    GPU 58118 MiB
+  sip_bcol300_o3       RSS 75/124    GPU 58134 MiB
+  sip_bcol300_o4       RSS 74/124    GPU 58118 MiB
+  sip_bcol300_o5       RSS 75/124    GPU 58134 MiB
+  sip_bcol300_g1       RSS 93/124    GPU 65008 MiB
+  sip_bcol300_g2       RSS 93/124    GPU 65008 MiB
+  sip_bcol300_g3       RSS 93/124    GPU 64002 MiB
+  sip_bcol300_g4       RSS 94/124    GPU 62968 MiB
+  sip_bcol300_g5       RSS 94/124    GPU 57130 MiB
+  sip_bnc216_c481      RSS 94/124    GPU - MiB
+  sip_bnc216_c482      RSS 98/124    GPU - MiB
+  sip_bnc216_c483      RSS 93/124    GPU - MiB
+  sip_bnc216_o1        RSS 107/124   GPU 62134 MiB
+  sip_bnc216_o2        RSS 101/124   GPU 67550 MiB
+  sip_bnc216_o3        RSS 100/124   GPU 67550 MiB
+  sip_bnc216_o4        RSS 100/124   GPU 62134 MiB
+  sip_bnc216_o5        RSS 101/124   GPU 67550 MiB
+  sip_bnc216_g1        RSS 107/124   GPU 58566 MiB
+  sip_bnc216_g2        RSS 102/124   GPU 62538 MiB
+  sip_bnc216_g3        RSS 103/124   GPU 62538 MiB
+  sip_bnc216_g4        RSS 101/124   GPU 62538 MiB
+  sip_bnc216_g5        RSS 103/124   GPU 58566 MiB
+  sip_bnc216_om1       RSS 107/124   GPU 67802 MiB
+  sip_bnc216_om2       RSS 107/124   GPU 67802 MiB
+  sip_bnc216_om3       RSS 107/124   GPU 67802 MiB
+  sip_ccol216_c481     RSS 61/124    GPU - MiB
+  sip_ccol216_c482     RSS 61/124    GPU - MiB
+  sip_ccol216_c483     RSS 61/124    GPU - MiB
+  sip_ccol216_c484     RSS 61/124    GPU - MiB
+  sip_ccol216_c485     RSS 62/124    GPU - MiB
+  sip_ccol216_o1       RSS 65/124    GPU 51770 MiB
+  sip_ccol216_o2       RSS 64/124    GPU 45130 MiB
+  sip_ccol216_o3       RSS 65/124    GPU 51770 MiB
+  sip_ccol216_o4       RSS 64/124    GPU 51770 MiB
+  sip_ccol216_o5       RSS 64/124    GPU 45130 MiB
+  sip_ccol216_g1       RSS 65/124    GPU 45130 MiB
+  sip_ccol216_g2       RSS 65/124    GPU 47942 MiB
+  sip_ccol216_g3       RSS 65/124    GPU 45130 MiB
+  sip_ccol216_g4       RSS 66/124    GPU 45130 MiB
+  sip_ccol216_g5       RSS 65/124    GPU 45130 MiB
+  sip_ccol360_c481     RSS 72/124    GPU - MiB
+  sip_ccol360_c482     RSS 72/124    GPU - MiB
+  sip_ccol360_c483     RSS 71/124    GPU - MiB
+  sip_ccol360_o1       RSS 77/124    GPU 62142 MiB
+  sip_ccol360_o2       RSS 77/124    GPU 59712 MiB
+  sip_ccol360_o3       RSS 78/124    GPU 59712 MiB
+  sip_ccol360_o4       RSS 80/124    GPU 59712 MiB
+  sip_ccol360_o5       RSS 79/124    GPU 59712 MiB
+  sip_ccol360_g1       RSS 78/124    GPU 59712 MiB
+  sip_ccol360_g2       RSS 79/124    GPU 59712 MiB
+  sip_ccol360_g3       RSS 78/124    GPU 59712 MiB
+  sip_ccol360_g4       RSS 77/124    GPU 59712 MiB
+  sip_ccol360_g5       RSS 77/124    GPU 59712 MiB
+  sip_cnc216_c481      RSS 75/124    GPU - MiB
+  sip_cnc216_c482      RSS 75/124    GPU - MiB
+  sip_cnc216_c483      RSS 74/124    GPU - MiB
+  sip_cnc216_o1        RSS 85/124    GPU 51770 MiB
+  sip_cnc216_o2        RSS 85/124    GPU 49324 MiB
+  sip_cnc216_o3        RSS 85/124    GPU 52430 MiB
+  sip_cnc216_o4        RSS 88/124    GPU 55304 MiB
+  sip_cnc216_o5        RSS 84/124    GPU 49324 MiB
+  sip_cnc216_g1        RSS 86/124    GPU 52430 MiB
+  sip_cnc216_g2        RSS 86/124    GPU 62142 MiB
+  sip_cnc216_g3        RSS 85/124    GPU 52430 MiB
+  sip_cnc216_g4        RSS 86/124    GPU 51770 MiB
+  sip_cnc216_g5        RSS 86/124    GPU 49324 MiB
+  sip_cnc216_om1       RSS 86/124    GPU 52022 MiB
+  sip_cnc216_om2       RSS 86/124    GPU 52022 MiB
+  sip_cnc216_om3       RSS 86/124    GPU 52022 MiB
+  sip_cnc300_c481      RSS 82/124    GPU - MiB
+  sip_cnc300_c482      RSS 82/124    GPU - MiB
+  sip_cnc300_c483      RSS 81/124    GPU - MiB
+  sip_cnc300_o1        RSS 95/124    GPU 57672 MiB
+  sip_cnc300_o2        RSS 96/124    GPU 57380 MiB
+  sip_cnc300_o3        RSS 96/124    GPU 57130 MiB
+  sip_cnc300_o4        RSS 95/124    GPU 57130 MiB
+  sip_cnc300_o5        RSS 94/124    GPU 57130 MiB
+  sip_cnc300_g1        RSS 94/124    GPU 57130 MiB
+  sip_cnc300_g2        RSS 95/124    GPU 57130 MiB
+  sip_cnc300_g3        RSS 95/124    GPU 57130 MiB
+  sip_cnc300_g4        RSS 95/124    GPU 57130 MiB
+  sip_cnc300_g5        RSS 95/124    GPU 57130 MiB
+
+PROVENANCE NOTE (hand-written; read before quoting anything above)
+----------------------------------------------------------------------
+1. This file implements plan v2.6 steps 12/14/15 (secs. 8.1/8.3): the
+   H100 1-node matrix over the four dense-solver paths at 216 atoms plus
+   each solver's representative safe size from the step-8/9/10 searches
+   (siband_search_result.txt, sicluster_search_result.txt).  97 + 2
+   production runs, request IDs 923891..924101 in siband_jobids.txt
+   (with an rbudgetcheck snapshot before every wave); binary
+   962f8d2519c2e6aa5a6295513f76fee9 (cd5f0d5 + GEMMul8 v3.2.0)
+   throughout; fixed 25 SCF via scf.criterion 1e-15; MD.Type Opt x1.
+2. Wave discipline: five waves (one rep of every point per wave), then
+   one CV top-up (ccol216 c48 -> 5 reps).  ZERO slow-node draws in the
+   whole campaign (bnode013/bnode033 never appeared); no run was
+   discarded.  bcol216 o/g carry Total CV 2.6-2.7% at the plan's n=5 --
+   +-2 s of fixed-overhead scatter on 81-s runs; it does not move any
+   conclusion (their Layer-3 ratio is not significant either way).
+3. CPU baseline = elpa2, flat MPI 48 ranks (-nt 1): the step-10
+   preflights had 48 beating 36 by 8% (bcol300) and 23% (bnc216) with a
+   tie at cnc216, and CPU RSS 62-91 GiB, so the plan's preferred flat
+   config stands.  The matched-rank supplementary CPU series (sec. 6.2)
+   is intentionally deferred, to run only if the budget stays >= 300
+   points after the remaining program.
+4. Layer 1 (CPU-best / GPU-cuBLAS, Total, mean +- quadrature error):
+   band col216 2.94x, col300 3.73x, NC216 3.73x; cluster col216 1.72x,
+   col360 2.01x, NC216 3.27x, NC300 4.15x.  Diagonalization-only
+   speedups run 2.3-7.3x; the Total ratios are diluted by the
+   non-diagonal phases (Amdahl), most visibly on cluster col where the
+   dense solve is only ~15-23 s of a 51-140 s run.
+5. Layer 3 (GEMMul8/cuBLAS): the ONLY significant Total effect on H100
+   is band col300, 1.125+-0.008x SLOWER with GEMMul8 -- its
+   Diagonalization is actually FASTER (0.970+-0.008) but Set_Ham
+   nearly triples (6.2 -> 16.4 s), the same workspace-pressure
+   interaction seen in the scaling series.  Every other combo is
+   statistically flat (0.996-1.013 with error bars crossing 1).  This
+   is the plan's expected H100 negative result, now with error bars.
+6. MPS ablation (off/on, cuBLAS): band NC216 1.673+-0.014x, cluster
+   NC216 2.288+-0.021x slower without MPS.  On cluster the
+   Diagonalization is unchanged (0.991+-0.029, owner-rank solve), so
+   the entire loss sits in the 48-rank shared GPU phases (Set_Ham
+   14.96 -> 43.12 s, grids, DM) -- confirming plan 12.4's hypothesis
+   that MPS matters on cluster even though the dense solve is
+   single-owner.  MPS-off Utot is bitwise identical to MPS-on.
+7. Accuracy: within every (combo, cfg) the 25-SCF Utot is bitwise
+   identical across reps.  Across cfgs: CPU vs GPU differ by 5e-14 to
+   6e-13 Ha, cuBLAS vs GEMMul8 by <= 1e-12 Ha -- inside the plan-13.3
+   baseline envelope (run-to-run difference is exactly 0 here).
+   Forces are zero by symmetry (ideal diamond); Utot is the accuracy
+   check.
+8. GPU path evidence: all 76 GPU runs show the expected engagement
+   line (band: k-owner banner; cluster: Set_Hamiltonian GPU device
+   line) and zero fallback banners.
+9. Everything here is preflight-grade for the paper: production tables
+   must be re-measured from the v2.0_thesis tag once instrumentation
+   (run manifest, P0-P7) lands.  These runs fix sizes, configs, wave
+   methodology and expected values.

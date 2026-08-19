@@ -1,0 +1,16 @@
+Terminated
+
+============================================================
+Request ID:             899548.nqsv
+Request Name:           sidia444_nc
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Mon Aug 10 12:54:27 2026
+Started Request Time:   Mon Aug 10 12:54:37 2026
+Ended Request Time:     Mon Aug 10 12:57:47 2026
+Resources Information:
+  Elapse:               194S
+  Remaining Elapse:     14206S
+============================================================

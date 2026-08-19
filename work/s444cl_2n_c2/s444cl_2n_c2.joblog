@@ -1,0 +1,81 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.905332.10/user_script: line 92: 3827526 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.905332.10/user_script: line 149: 3826585 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s444cl_2n_c2 total=172.366 dft=154.020 diag=85.625 set_hamiltonian=14.782
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =     7      172.354          0      172.366
+   readfile                 =    32        4.396         25        4.402
+   truncation               =    77       13.844         42       13.944
+   MD_pac                   =     0        0.021         47        0.024
+   OutData                  =    92        0.000          0        0.011
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    42      153.920         77      154.020
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    80        0.316         70        0.394
+   Set_Nonlocal             =    70        2.365         80        2.442
+   Set_ProExpn_VNA          =     2       15.266         61       16.007
+   Set_Hamiltonian          =    50       14.778         83       14.782
+   Poisson                  =    50        0.290         53        0.321
+   Diagonalization          =    71       85.625         33       85.625
+   Mixing_DM                =    16        0.840         74        0.855
+   Force                    =    57        8.427          0        8.427
+   Total_Energy             =    28        3.299          0        3.300
+   Set_Aden_Grid            =    34        0.474         82        1.214
+   Set_Orbitals_Grid        =    26        1.740         85        2.536
+   Set_Density_Grid         =    32       17.903         79       18.097
+   RestartFileDFT           =    66        0.142          0        0.169
+   Mulliken_Charge          =     3        0.028         57        0.028
+   FFT(2D)_Density          =    50        0.316          2        0.334
+   Others                   =    85        0.256         26        1.166
+
+The calculation was normally finished.
+=== Utot (reference: -2103.47785856333x) ===
+  Utot.      -2103.477858563317
+=== SCF iterations completed (of 25 max) ===
+25
+=== peak host memory, this node (GiB); old single-sample peaks 1n 110 / 4n 58 ===
+host mem used/total (GiB): 75/124
+host mem used/total (GiB): 74/124
+host mem used/total (GiB): 74/124
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[11:35:33] script start on bnode078
+[11:35:34] launching mpirun: 96 ranks on 2 nodes
+[11:35:34] mpirun launched (pid 3826588)
+[11:38:41] done detected; 60 s grace for teardown
+[11:39:41] mpirun exited on its own during grace
+[11:39:41] watchdog loop exited (verdict='done'); reaping mpirun
+[11:39:41] mpirun reaped rc=0
+[11:39:41] sampler killed
+
+============================================================
+Request ID:             905332.nqsv
+Request Name:           s444cl_2c2
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 12 11:34:35 2026
+Started Request Time:   Wed Aug 12 11:35:33 2026
+Ended Request Time:     Wed Aug 12 11:39:41 2026
+Resources Information:
+  Elapse:               252S
+  Remaining Elapse:     1548S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

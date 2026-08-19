@@ -1,0 +1,33 @@
+--- 16:22:20
+host mem used/total (GiB): 3/124
+0 %, 1 MiB
+--- 16:22:25
+host mem used/total (GiB): 4/124
+0 %, 1 MiB
+--- 16:22:30
+host mem used/total (GiB): 8/124
+0 %, 1 MiB
+--- 16:22:36
+host mem used/total (GiB): 12/124
+0 %, 73 MiB
+--- 16:22:41
+host mem used/total (GiB): 17/124
+0 %, 73 MiB
+--- 16:22:46
+host mem used/total (GiB): 30/124
+0 %, 725 MiB
+--- 16:22:53
+host mem used/total (GiB): 54/124
+0 %, 21822 MiB
+--- 16:22:58
+host mem used/total (GiB): 54/124
+30 %, 63976 MiB
+--- 16:23:03
+host mem used/total (GiB): 54/124
+100 %, 21918 MiB
+--- 16:23:08
+host mem used/total (GiB): 118/124
+0 %, 24542 MiB
+--- 16:23:13
+host mem used/total (GiB): 119/124
+0 %, 21009 MiB

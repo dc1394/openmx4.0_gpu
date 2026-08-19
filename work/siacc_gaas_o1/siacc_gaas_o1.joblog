@@ -1,0 +1,91 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.924143.10/user_script: line 103: 3269382 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.924143.10/user_script: line 153: 3268669 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING siacc_gaas_o1 total=16.140 dft=6.172 diag=2.052 set_hamiltonian=0.232
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    30       16.087          0       16.140
+   readfile                 =    16        3.071         37        3.082
+   truncation               =    17        6.229          1        6.241
+   MD_pac                   =     0        0.005          2        0.006
+   OutData                  =     1        0.589          0        0.641
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     1        6.160         17        6.172
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     3        0.253          0        0.262
+   Set_Nonlocal             =     0        0.167          3        0.176
+   Set_ProExpn_VNA          =    14        0.035          0        0.059
+   Set_Hamiltonian          =    22        0.227         42        0.232
+   Poisson                  =     1        0.003         11        0.003
+   Diagonalization          =    30        2.051          0        2.052
+   Mixing_DM                =     5        0.018         29        0.018
+   Force                    =     2        2.704         38        2.704
+   Total_Energy             =     1        0.069          0        0.071
+   Set_Aden_Grid            =     1        0.007          5        0.010
+   Set_Orbitals_Grid        =     7        0.000          1        0.015
+   Set_Density_Grid         =     7        0.139          0        0.148
+   RestartFileDFT           =    25        0.068          0        0.094
+   Mulliken_Charge          =    30        0.100         38        0.101
+   FFT(2D)_Density          =    12        0.035         38        0.035
+   Others                   =     0        0.200         25        0.282
+
+The calculation was normally finished.
+=== Utot (no prior reference for this system) ===
+  Utot.       -182.930867025055
+=== SCF iterations completed (of 60-100 max) ===
+13
+=== GPU dispatch / fallback lines ===
+<Set_Hamiltonian> GPU device 0: 2 Hamiltonian rank(s), GPU concurrency=2, CPU fallback ranks=0, peak=1.087 GiB, free=57.865 GiB, reserve=7.918 GiB
+<Band>  Solving the eigenvalue problem...
+<Band>  Solving the eigenvalue problem...
+<Band>  Solving the eigenvalue problem...
+<Band>  Solving the eigenvalue problem...
+<Band>  Solving the eigenvalue problem...
+<Band>  Solving the eigenvalue problem...
+<Band>  Solving the eigenvalue problem...
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 23/124
+host mem used/total (GiB): 23/124
+host mem used/total (GiB): 19/124
+=== peak GPU, this node ===
+0 %, 21914 MiB
+0 %, 21846 MiB
+0 %, 683 MiB
+=== MPS server per node (post-run) ===
+bnode099: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[12:29:08] script start on bnode099
+[12:29:08] MPS up on all 1 nodes
+[12:29:08] launching mpirun: 48 ranks on 1 nodes
+[12:29:08] mpirun launched (pid 3268672)
+[12:29:34] done detected; 60 s grace for teardown
+[12:30:34] mpirun exited on its own during grace
+[12:30:34] watchdog loop exited (verdict='done'); reaping mpirun
+[12:30:34] mpirun reaped rc=0
+[12:30:34] sampler killed
+
+============================================================
+Request ID:             924143.nqsv
+Request Name:           agaaso1
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 19 12:28:53 2026
+Started Request Time:   Wed Aug 19 12:29:08 2026
+Ended Request Time:     Wed Aug 19 12:30:34 2026
+Resources Information:
+  Elapse:               90S
+  Remaining Elapse:     2310S
+============================================================

@@ -1,0 +1,6 @@
+ You requested the GPU version, thus the GPU kernel is activated
+ You requested the GPU version, thus the GPU kernel is activated
+--------------------------------------------------------------------------
+prterun noticed that process rank 0 with PID 3381353 on node bnode122 exited on
+signal 9 (Killed).
+--------------------------------------------------------------------------

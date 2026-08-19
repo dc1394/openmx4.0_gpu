@@ -1,0 +1,213 @@
+sidia333_nc node scaling, 48 ranks/node, 3 repetitions per point
+216 Si non-collinear (matrix dim 5616), BAND solver k-grid 2x2x2, 25 SCF
+round-3 binary (e227507); Max_Time column (slowest rank), seconds
+configs: g = GPU gpusolver+MPS, gemmul8 on (default) | o = same but
+         scf.gemmul8.enable off (plain cuBLAS) | c = CPU elpa2, no GPU
+1-node g8-on = re-measurement of 2026-08-14 (g4/g5/g6, all on clean nodes:
+bnode002/025/026); the original g1/g2/g3 triple is in the .bak file -- its
+g1 (283.1 s) ran on slow node bnode013 and was discarded per instruction.
+
+--- per-run ---
+case                  total        DFT       Diag    Set_Ham  status
+s333nc_1n_g4        247.353    235.857    159.293     24.028  OK
+s333nc_1n_g5        246.266    234.443    158.555     24.037  OK
+s333nc_1n_g6        246.694    235.116    158.743     24.237  OK
+s333nc_1n_o1        242.122    229.617    154.028     23.884  OK
+s333nc_1n_o2        242.327    230.882    155.302     23.829  OK
+s333nc_1n_o3        242.480    230.902    154.307     23.788  OK
+s333nc_1n_c1        936.380    921.673    818.953     32.936  OK
+s333nc_1n_c2        922.637    908.017    808.217     31.136  OK
+s333nc_1n_c3        925.630    910.994    810.507     31.197  OK
+s333nc_2n_g1        159.495    147.600     95.642     10.446  OK
+s333nc_2n_g2        156.545    144.507     93.662     10.365  OK
+s333nc_2n_g3        158.130    146.348     93.264     10.404  OK
+s333nc_2n_o1        157.114    144.152     93.699     10.442  OK
+s333nc_2n_o2        161.928    149.264     95.982     10.559  OK
+s333nc_2n_o3        155.177    142.101     92.945     10.096  OK
+s333nc_2n_c1        541.217    525.751    458.917     21.708  OK
+s333nc_2n_c2        540.847    524.442    459.590     19.414  OK
+s333nc_2n_c3        544.581    528.419    460.446     22.558  OK
+s333nc_3n_g1        138.663    124.761     77.068     10.373  OK
+s333nc_3n_g2        135.553    122.718     76.092     10.425  OK
+s333nc_3n_g3        137.171    123.621     76.607     10.296  OK
+s333nc_3n_o1        137.559    124.480     77.704     10.192  OK
+s333nc_3n_o2        137.867    124.192     76.984     10.610  OK
+s333nc_3n_o3        142.514    129.565     79.158     10.642  OK
+s333nc_3n_c1        394.887    378.659    331.199     13.788  OK
+s333nc_3n_c2        399.837    383.582    335.060     13.942  OK
+s333nc_3n_c3        402.386    384.347    335.857     14.259  OK
+s333nc_4n_g1        123.562    109.717     63.019     10.208  OK
+s333nc_4n_g2        124.188    111.089     64.011     10.717  OK
+s333nc_4n_g3        122.821    107.574     62.020     10.479  OK
+s333nc_4n_o1        120.492    107.182     62.331     10.140  OK
+s333nc_4n_o2        123.545    108.688     62.516     10.686  OK
+s333nc_4n_o3        121.693    107.896     62.451     10.259  OK
+s333nc_4n_c1        328.949    311.827    265.015     14.776  OK
+s333nc_4n_c2        330.033    313.122    267.299     13.446  OK
+s333nc_4n_c3        325.693    309.968    264.742     13.732  OK
+
+--- statistics (mean +- sample SD over 3 runs) ---
+  1 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                246.77     0.55    246.27    247.35
+    Diagonalization      158.86     0.38    158.56    159.29
+  1 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                242.31     0.18    242.12    242.48
+    Diagonalization      154.55     0.67    154.03    155.30
+  1 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                928.22     7.23    922.64    936.38
+    Diagonalization      812.56     5.65    808.22    818.95
+  2 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                158.06     1.48    156.54    159.50
+    Diagonalization       94.19     1.27     93.26     95.64
+  2 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                158.07     3.48    155.18    161.93
+    Diagonalization       94.21     1.58     92.94     95.98
+  2 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                542.22     2.06    540.85    544.58
+    Diagonalization      459.65     0.77    458.92    460.45
+  3 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                137.13     1.56    135.55    138.66
+    Diagonalization       76.59     0.49     76.09     77.07
+  3 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                139.31     2.78    137.56    142.51
+    Diagonalization       77.95     1.11     76.98     79.16
+  3 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                399.04     3.81    394.89    402.39
+    Diagonalization      334.04     2.49    331.20    335.86
+  4 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                123.52     0.68    122.82    124.19
+    Diagonalization       63.02     1.00     62.02     64.01
+  4 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                121.91     1.54    120.49    123.55
+    Diagonalization       62.43     0.09     62.33     62.52
+  4 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                328.22     2.26    325.69    330.03
+    Diagonalization      265.69     1.40    264.74    267.30
+
+--- ratios per node count (mean/mean, +- in quadrature) ---
+  1 node(s)  CPU / GPU(g8-on)  [speedup]  Total              3.76x +- 0.03
+  1 node(s)  CPU / GPU(g8-off) [speedup]  Total              3.83x +- 0.03
+  1 node(s)  GPU g8-off / g8-on           Total              0.98x +- 0.00
+  1 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    5.11x +- 0.04
+  1 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    5.26x +- 0.04
+  1 node(s)  GPU g8-off / g8-on           Diagonalization    0.97x +- 0.00
+  2 node(s)  CPU / GPU(g8-on)  [speedup]  Total              3.43x +- 0.03
+  2 node(s)  CPU / GPU(g8-off) [speedup]  Total              3.43x +- 0.08
+  2 node(s)  GPU g8-off / g8-on           Total              1.00x +- 0.02
+  2 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    4.88x +- 0.07
+  2 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    4.88x +- 0.08
+  2 node(s)  GPU g8-off / g8-on           Diagonalization    1.00x +- 0.02
+  3 node(s)  CPU / GPU(g8-on)  [speedup]  Total              2.91x +- 0.04
+  3 node(s)  CPU / GPU(g8-off) [speedup]  Total              2.86x +- 0.06
+  3 node(s)  GPU g8-off / g8-on           Total              1.02x +- 0.02
+  3 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    4.36x +- 0.04
+  3 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    4.29x +- 0.07
+  3 node(s)  GPU g8-off / g8-on           Diagonalization    1.02x +- 0.02
+  4 node(s)  CPU / GPU(g8-on)  [speedup]  Total              2.66x +- 0.02
+  4 node(s)  CPU / GPU(g8-off) [speedup]  Total              2.69x +- 0.04
+  4 node(s)  GPU g8-off / g8-on           Total              0.99x +- 0.01
+  4 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    4.22x +- 0.07
+  4 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    4.26x +- 0.02
+  4 node(s)  GPU g8-off / g8-on           Diagonalization    0.99x +- 0.02
+
+--- Utot (old-binary refs: GPU -887.422830856493, CPU -887.422830856506) ---
+  s333nc_1n_g4     -887.422830856493
+  s333nc_1n_g5     -887.422830856493
+  s333nc_1n_g6     -887.422830856493
+  s333nc_1n_o1     -887.422830856494
+  s333nc_1n_o2     -887.422830856494
+  s333nc_1n_o3     -887.422830856494
+  s333nc_1n_c1     -887.422830856506
+  s333nc_1n_c2     -887.422830856506
+  s333nc_1n_c3     -887.422830856506
+  s333nc_2n_g1     -887.422830856498
+  s333nc_2n_g2     -887.422830856498
+  s333nc_2n_g3     -887.422830856498
+  s333nc_2n_o1     -887.422830856498
+  s333nc_2n_o2     -887.422830856498
+  s333nc_2n_o3     -887.422830856498
+  s333nc_2n_c1     -887.422830856546
+  s333nc_2n_c2     -887.422830856546
+  s333nc_2n_c3     -887.422830856546
+  s333nc_3n_g1     -887.422830856497
+  s333nc_3n_g2     -887.422830856497
+  s333nc_3n_g3     -887.422830856497
+  s333nc_3n_o1     -887.422830856498
+  s333nc_3n_o2     -887.422830856498
+  s333nc_3n_o3     -887.422830856498
+  s333nc_3n_c1     -887.422830856505
+  s333nc_3n_c2     -887.422830856505
+  s333nc_3n_c3     -887.422830856505
+  s333nc_4n_g1     -887.422830856498
+  s333nc_4n_g2     -887.422830856498
+  s333nc_4n_g3     -887.422830856498
+  s333nc_4n_o1     -887.422830856498
+  s333nc_4n_o2     -887.422830856498
+  s333nc_4n_o3     -887.422830856498
+  s333nc_4n_c1     -887.422830856554
+  s333nc_4n_c2     -887.422830856554
+  s333nc_4n_c3     -887.422830856554
+
+--- peak host memory, node 0 (GiB); old-binary GPU 1n48 completed fine ---
+  s333nc_1n_g4     102/124
+  s333nc_1n_g5     108/124
+  s333nc_1n_g6     101/124
+  s333nc_1n_o1     101/124
+  s333nc_1n_o2     100/124
+  s333nc_1n_o3     101/124
+  s333nc_1n_c1     94/124
+  s333nc_1n_c2     96/124
+  s333nc_1n_c3     95/124
+  s333nc_2n_g1     59/124
+  s333nc_2n_g2     59/124
+  s333nc_2n_g3     60/124
+  s333nc_2n_o1     59/124
+  s333nc_2n_o2     60/124
+  s333nc_2n_o3     59/124
+  s333nc_2n_c1     65/124
+  s333nc_2n_c2     67/124
+  s333nc_2n_c3     65/124
+  s333nc_3n_g1     52/124
+  s333nc_3n_g2     52/124
+  s333nc_3n_g3     52/124
+  s333nc_3n_o1     51/124
+  s333nc_3n_o2     52/124
+  s333nc_3n_o3     52/124
+  s333nc_3n_c1     61/124
+  s333nc_3n_c2     60/124
+  s333nc_3n_c3     61/124
+  s333nc_4n_g1     48/124
+  s333nc_4n_g2     47/124
+  s333nc_4n_g3     47/124
+  s333nc_4n_o1     47/124
+  s333nc_4n_o2     48/124
+  s333nc_4n_o3     46/124
+  s333nc_4n_c1     56/124
+  s333nc_4n_c2     56/124
+  s333nc_4n_c3     51/124
+
+PROVENANCE NOTE
+---------------
+The 1-node g8-on triple above (g4/g5/g6, 2026-08-14) replaces the original
+g1/g2/g3 measurement, preserved in s333nc_reps_result.txt.bak: g1 (283.106 s)
+ran on bnode013, a node with three confirmed slow samples (+15-19%), and was
+discarded.  The clean siblings of the discarded triple agree with the
+re-measurement: pooling g2/g3 with g4/g5/g6 (n=5, all clean nodes) gives
+Total 246.11 +- 1.00, Diag 158.57 +- 0.49.  All six clean g8-on runs and the
+discarded g1 share the bit-identical Utot -887.422830856493.
+
+At 1 node, g8-off (242.31 +- 0.18) is ~2% faster than g8-on (246.77 +- 0.55);
+the gap is real relative to the rep scatter but comparable to node-to-node
+variability, and disappears at 2-4 nodes (off/on = 1.00 +- 0.02).

@@ -1,0 +1,75 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.905326.10/user_script: line 92: 3538685 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.905326.10/user_script: line 149: 3537461 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s444cl_1n_c2 total=269.538 dft=251.153 diag=130.637 set_hamiltonian=27.449
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    46      269.527          0      269.538
+   readfile                 =    32        3.009         22        3.019
+   truncation               =    42       15.253         38       15.366
+   MD_pac                   =     0        0.010          1        0.013
+   OutData                  =    29        0.000          0        0.011
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    38      251.039         42      251.153
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    27        0.469         35        0.543
+   Set_Nonlocal             =    35        4.198         27        4.272
+   Set_ProExpn_VNA          =    13       25.778         25       26.537
+   Set_Hamiltonian          =    29       27.442         42       27.449
+   Poisson                  =     7        0.397         47        0.397
+   Diagonalization          =     6      130.637          0      130.637
+   Mixing_DM                =    36        1.756         15        1.756
+   Force                    =     0       13.781         24       13.781
+   Total_Energy             =    28        5.980          0        5.982
+   Set_Aden_Grid            =    25        0.236         13        0.993
+   Set_Orbitals_Grid        =    10        4.335         16        4.887
+   Set_Density_Grid         =    19       33.499          2       33.625
+   RestartFileDFT           =    10        0.200         32        0.220
+   Mulliken_Charge          =    43        0.040         11        0.040
+   FFT(2D)_Density          =    21        0.440         34        0.440
+   Others                   =    32        0.352         10        1.047
+
+The calculation was normally finished.
+=== Utot (reference: -2103.47785856333x) ===
+  Utot.      -2103.477858563328
+=== SCF iterations completed (of 25 max) ===
+25
+=== peak host memory, this node (GiB); old single-sample peaks 1n 110 / 4n 58 ===
+host mem used/total (GiB): 109/124
+host mem used/total (GiB): 109/124
+host mem used/total (GiB): 109/124
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[11:34:42] script start on bnode068
+[11:34:43] launching mpirun: 48 ranks on 1 nodes
+[11:34:43] mpirun launched (pid 3537464)
+[11:39:31] done detected; 60 s grace for teardown
+[11:40:31] mpirun exited on its own during grace
+[11:40:31] watchdog loop exited (verdict='done'); reaping mpirun
+[11:40:31] mpirun reaped rc=0
+[11:40:31] sampler killed
+
+============================================================
+Request ID:             905326.nqsv
+Request Name:           s444cl_1c2
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 12 11:34:35 2026
+Started Request Time:   Wed Aug 12 11:34:42 2026
+Ended Request Time:     Wed Aug 12 11:40:31 2026
+Resources Information:
+  Elapse:               354S
+  Remaining Elapse:     1446S
+============================================================

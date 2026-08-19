@@ -1,0 +1,3 @@
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 22308.052 MiB, CUDA free 13185.312 MiB / total 81079.125 MiB, reserve 1536.000 MiB, max-workspace 30%. Falling back to native cuBLAS.
+Force4B GPU: not enough free device memory; CPU fallback.
+Force4B GPU: not enough free device memory; CPU fallback.

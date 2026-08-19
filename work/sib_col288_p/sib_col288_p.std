@@ -1,0 +1,805 @@
+
+The number of threads in each node for OpenMP parallelization is 1.
+
+
+*******************************************************
+*******************************************************
+ Welcome to OpenMX   Ver. 4.0 GPU                           
+ Copyright (C), 2002-2026, T. Ozaki                    
+ OpenMX comes with ABSOLUTELY NO WARRANTY.             
+ This is free software, and you are welcome to         
+ redistribute it under the constitution of the GNU-GPL.
+*******************************************************
+*******************************************************
+
+<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain cuBLAS instead of GEMMul8.
+Automatic determination of Kerker_factor:   4.454791063428
+3.560000 0.000000 0.000000
+0.000000 3.560000 0.000000
+0.000000 0.000000 3.560000
+kpath (converted)
+(0.000000 0.000000 0.000000) (6.102247 0.000000 0.000000)
+(6.102247 0.000000 0.000000) (6.102247 2.288343 0.000000)
+(6.102247 2.288343 0.000000) (3.051124 2.288343 2.288343)
+(3.051124 2.288343 2.288343) (0.000000 0.000000 0.000000)
+(0.000000 0.000000 0.000000) (6.102247 0.000000 0.000000)
+kpoint at which wave functions are calculated (converted)
+0.000000 0.000000 0.000000
+0.000000 0.000000 0.915337
+
+
+<Input_std>  Your input file was normally read.
+<Input_std>  The system includes 1 species and 288 atoms.
+
+*******************************************************
+                     PAO and VPS                       
+*******************************************************
+
+<SetPara_DFT>  PAOs of species Si were normally found.
+<SetPara_DFT>  VPSs of species Si were normally found.
+               Si_PBE19.vps is j-dependent.
+               In case of scf.SpinOrbit.Coupling=off,
+               j-dependent pseudo potentials are averaged by j-degeneracy,
+               which corresponds to a scalar relativistic treatment.
+
+*******************************************************
+     Fourier transform of PAO and projectors of VNL    
+*******************************************************
+
+<FT_PAO>          Fourier transform of pseudo atomic orbitals
+<FT_NLP>          Fourier transform of non-local projectors
+<FT_ProExpn_VNA>  Fourier transform of VNA separable projectors
+<FT_VNA>          Fourier transform of VNA potentials
+<FT_ProductPAO>   Fourier transform of product of PAOs
+
+*******************************************************
+  Allocation of atoms to processors at MD_iter=    1     
+*******************************************************
+
+ proc =   0  # of atoms=   6  estimated weight=         6.00000
+ proc =   1  # of atoms=   6  estimated weight=         6.00000
+ proc =   2  # of atoms=   6  estimated weight=         6.00000
+ proc =   3  # of atoms=   6  estimated weight=         6.00000
+ proc =   4  # of atoms=   6  estimated weight=         6.00000
+ proc =   5  # of atoms=   6  estimated weight=         6.00000
+ proc =   6  # of atoms=   6  estimated weight=         6.00000
+ proc =   7  # of atoms=   6  estimated weight=         6.00000
+ proc =   8  # of atoms=   6  estimated weight=         6.00000
+ proc =   9  # of atoms=   6  estimated weight=         6.00000
+ proc =  10  # of atoms=   6  estimated weight=         6.00000
+ proc =  11  # of atoms=   6  estimated weight=         6.00000
+ proc =  12  # of atoms=   6  estimated weight=         6.00000
+ proc =  13  # of atoms=   6  estimated weight=         6.00000
+ proc =  14  # of atoms=   6  estimated weight=         6.00000
+ proc =  15  # of atoms=   6  estimated weight=         6.00000
+ proc =  16  # of atoms=   6  estimated weight=         6.00000
+ proc =  17  # of atoms=   6  estimated weight=         6.00000
+ proc =  18  # of atoms=   6  estimated weight=         6.00000
+ proc =  19  # of atoms=   6  estimated weight=         6.00000
+ proc =  20  # of atoms=   6  estimated weight=         6.00000
+ proc =  21  # of atoms=   6  estimated weight=         6.00000
+ proc =  22  # of atoms=   6  estimated weight=         6.00000
+ proc =  23  # of atoms=   6  estimated weight=         6.00000
+ proc =  24  # of atoms=   6  estimated weight=         6.00000
+ proc =  25  # of atoms=   6  estimated weight=         6.00000
+ proc =  26  # of atoms=   6  estimated weight=         6.00000
+ proc =  27  # of atoms=   6  estimated weight=         6.00000
+ proc =  28  # of atoms=   6  estimated weight=         6.00000
+ proc =  29  # of atoms=   6  estimated weight=         6.00000
+ proc =  30  # of atoms=   6  estimated weight=         6.00000
+ proc =  31  # of atoms=   6  estimated weight=         6.00000
+ proc =  32  # of atoms=   6  estimated weight=         6.00000
+ proc =  33  # of atoms=   6  estimated weight=         6.00000
+ proc =  34  # of atoms=   6  estimated weight=         6.00000
+ proc =  35  # of atoms=   6  estimated weight=         6.00000
+ proc =  36  # of atoms=   6  estimated weight=         6.00000
+ proc =  37  # of atoms=   6  estimated weight=         6.00000
+ proc =  38  # of atoms=   6  estimated weight=         6.00000
+ proc =  39  # of atoms=   6  estimated weight=         6.00000
+ proc =  40  # of atoms=   6  estimated weight=         6.00000
+ proc =  41  # of atoms=   6  estimated weight=         6.00000
+ proc =  42  # of atoms=   6  estimated weight=         6.00000
+ proc =  43  # of atoms=   6  estimated weight=         6.00000
+ proc =  44  # of atoms=   6  estimated weight=         6.00000
+ proc =  45  # of atoms=   6  estimated weight=         6.00000
+ proc =  46  # of atoms=   6  estimated weight=         6.00000
+ proc =  47  # of atoms=   6  estimated weight=         6.00000
+
+
+
+
+*******************************************************
+        Analysis of neighbors and setting of grids        
+*******************************************************
+
+TFNAN=   24768   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 1 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+TFNAN=   24768   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+TFNAN=   24768   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+<Check_System> The system is bulk.
+lattice vectors (bohr)
+A  = 41.052407375889,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 30.789305531916,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 30.789305531916
+reciprocal lattice vectors (bohr^-1)
+RA =  0.153052785666,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.204070380888,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.204070380888
+Grid_Origin  0.000000000000  0.000000000000  0.000000000000
+Cell_Volume =  38916.915954811477 (Bohr^3)
+GridVol     =      0.010505592256 (Bohr^3)
+Grid_Origin  0.000000000000  0.000000000000  0.000000000000
+Cell_Volume =  38916.915954811477 (Bohr^3)
+GridVol     =      0.010505592256 (Bohr^3)
+<UCell_Box> Info. of cutoff energy and num. of grids
+lattice vectors (bohr)
+A  = 41.052407375889,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 30.789305531916,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 30.789305531916
+reciprocal lattice vectors (bohr^-1)
+RA =  0.153052785666,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.204070380888,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.204070380888
+Required cutoff energy (Ryd) for 3D-grids = 200.0000
+    Used cutoff energy (Ryd) for 3D-grids = 209.1925, 204.0591, 204.0591
+Num. of grids of a-, b-, and c-axes = 189, 140, 140
+Grid_Origin  0.000000000000  0.000000000000  0.000000000000
+Cell_Volume =  38916.915954811477 (Bohr^3)
+GridVol     =      0.010505592256 (Bohr^3)
+Cell vectors (bohr) of the grid cell (gtv)
+  gtv_a =  0.217208504634,  0.000000000000,  0.000000000000
+  gtv_b =  0.000000000000,  0.219923610942,  0.000000000000
+  gtv_c =  0.000000000000,  0.000000000000,  0.219923610942
+  |gtv_a| =  0.217208504634
+  |gtv_b| =  0.219923610942
+  |gtv_c| =  0.219923610942
+Num. of grids overlapping with atom    1 = 136713
+Num. of grids overlapping with atom    2 = 136726
+Num. of grids overlapping with atom    3 = 136713
+Num. of grids overlapping with atom    4 = 136726
+Num. of grids overlapping with atom    5 = 136676
+Num. of grids overlapping with atom    6 = 136716
+Num. of grids overlapping with atom    7 = 136780
+Num. of grids overlapping with atom    8 = 136780
+Num. of grids overlapping with atom    9 = 136786
+Num. of grids overlapping with atom   10 = 136726
+Num. of grids overlapping with atom   11 = 136713
+Num. of grids overlapping with atom   12 = 136812
+Num. of grids overlapping with atom   13 = 136764
+Num. of grids overlapping with atom   14 = 136764
+Num. of grids overlapping with atom   15 = 136732
+Num. of grids overlapping with atom   16 = 136708
+Num. of grids overlapping with atom   17 = 136713
+Num. of grids overlapping with atom   18 = 136812
+Num. of grids overlapping with atom   19 = 136786
+Num. of grids overlapping with atom   20 = 136726
+     ..........
+     ......
+
+
+*******************************************************
+             SCF calculation at MD = 1                
+*******************************************************
+
+<MD= 1>  Calculation of the overlap matrix (GPU-accelerated)
+<MD= 1>  Calculation of the nonlocal matrix (GPU-accelerated)
+<MD= 1>  Calculation of the VNA projector matrix (GPU-accelerated)
+
+******************* MD= 1  SCF= 1 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s), GPU concurrency=47, CPU fallback ranks=1, peak=48.921 GiB, free=57.775 GiB, reserve=7.918 GiB
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT_Col> GPU device 0: 8 k-owner rank(s), GPU concurrency=8, turn group=8, per-rank=1.956 GiB, peak=15.651 GiB, free=57.759 GiB, reserve=7.918 GiB
+<Band_DFT>  Eigen, time=5.409562
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP   2.0001  2.0001 sum   4.0001
+    2   Si  MulP   2.0000  2.0000 sum   4.0000
+    3   Si  MulP   2.0001  2.0001 sum   4.0001
+    4   Si  MulP   2.0000  2.0000 sum   4.0000
+    5   Si  MulP   2.0000  2.0000 sum   4.0000
+    6   Si  MulP   2.0000  2.0000 sum   4.0000
+    7   Si  MulP   2.0000  2.0000 sum   3.9999
+    8   Si  MulP   2.0000  2.0000 sum   3.9999
+    9   Si  MulP   2.0000  2.0000 sum   3.9999
+   10   Si  MulP   2.0000  2.0000 sum   4.0000
+   11   Si  MulP   2.0001  2.0001 sum   4.0001
+   12   Si  MulP   2.0000  2.0000 sum   3.9999
+   13   Si  MulP   2.0000  2.0000 sum   3.9999
+   14   Si  MulP   2.0000  2.0000 sum   3.9999
+   15   Si  MulP   2.0000  2.0000 sum   4.0000
+   16   Si  MulP   2.0000  2.0000 sum   4.0001
+   17   Si  MulP   2.0001  2.0001 sum   4.0001
+   18   Si  MulP   2.0000  2.0000 sum   3.9999
+   19   Si  MulP   2.0000  2.0000 sum   3.9999
+   20   Si  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   576.00000 down          =   576.00000
+              total=  1152.00000 ideal(neutral)=  1152.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.300000000000
+<DFT>  Uele   = -330.944538066847  dUele     =   1.000000000000
+<DFT>  NormRD =    1.000000000000  Criterion =   0.000000000000
+
+******************* MD= 1  SCF= 2 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=2.635764
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP   2.0001  2.0001 sum   4.0001
+    2   Si  MulP   2.0000  2.0000 sum   4.0000
+    3   Si  MulP   2.0001  2.0001 sum   4.0001
+    4   Si  MulP   2.0000  2.0000 sum   4.0000
+    5   Si  MulP   2.0000  2.0000 sum   4.0000
+    6   Si  MulP   2.0000  2.0000 sum   4.0000
+    7   Si  MulP   2.0000  2.0000 sum   3.9999
+    8   Si  MulP   2.0000  2.0000 sum   3.9999
+    9   Si  MulP   2.0000  2.0000 sum   3.9999
+   10   Si  MulP   2.0000  2.0000 sum   4.0000
+   11   Si  MulP   2.0001  2.0001 sum   4.0001
+   12   Si  MulP   2.0000  2.0000 sum   3.9999
+   13   Si  MulP   2.0000  2.0000 sum   3.9999
+   14   Si  MulP   2.0000  2.0000 sum   3.9999
+   15   Si  MulP   2.0000  2.0000 sum   4.0000
+   16   Si  MulP   2.0000  2.0000 sum   4.0001
+   17   Si  MulP   2.0001  2.0001 sum   4.0001
+   18   Si  MulP   2.0000  2.0000 sum   3.9999
+   19   Si  MulP   2.0000  2.0000 sum   3.9999
+   20   Si  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   576.00000 down          =   576.00000
+              total=  1152.00000 ideal(neutral)=  1152.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.004210789209
+<DFT>  Uele   = -330.944538066847  dUele     =   0.000000000000
+<DFT>  NormRD =    8.381261935652  Criterion =   0.000000000000
+
+******************* MD= 1  SCF= 3 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=2.665324
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP   2.0001  2.0001 sum   4.0001
+    2   Si  MulP   2.0000  2.0000 sum   4.0000
+    3   Si  MulP   2.0001  2.0001 sum   4.0001
+    4   Si  MulP   2.0000  2.0000 sum   4.0000
+    5   Si  MulP   2.0000  2.0000 sum   4.0000
+    6   Si  MulP   2.0000  2.0000 sum   4.0000
+    7   Si  MulP   2.0000  2.0000 sum   3.9999
+    8   Si  MulP   2.0000  2.0000 sum   3.9999
+    9   Si  MulP   2.0000  2.0000 sum   3.9999
+   10   Si  MulP   2.0000  2.0000 sum   4.0000
+   11   Si  MulP   2.0001  2.0001 sum   4.0001
+   12   Si  MulP   2.0000  2.0000 sum   3.9999
+   13   Si  MulP   2.0000  2.0000 sum   3.9999
+   14   Si  MulP   2.0000  2.0000 sum   3.9999
+   15   Si  MulP   2.0000  2.0000 sum   4.0000
+   16   Si  MulP   2.0000  2.0000 sum   4.0001
+   17   Si  MulP   2.0001  2.0001 sum   4.0001
+   18   Si  MulP   2.0000  2.0000 sum   3.9999
+   19   Si  MulP   2.0000  2.0000 sum   3.9999
+   20   Si  MulP   2.0000  2.0000 sum   4.0000
+     ..........
+     ......
+
+ Sum of MulP: up   =   576.00000 down          =   576.00000
+              total=  1152.00000 ideal(neutral)=  1152.00000
+<DFT>  Total Spin Moment (muB) =  0.000000000000
+<DFT>  Mixing_weight= 0.519782286046
+<DFT>  Uele   = -331.034636898379  dUele     =   0.090098831531
+<DFT>  NormRD =    8.347244334071  Criterion =   0.000000000000
+<MD= 1>  Force calculation
+  Force calculation #1
+  Force calculation #2 (GPU reduction)
+  Force calculation #3 (GPU-accelerated)
+  Force calculation #4 (GPU-accelerated)
+  Force calculation #5 (GPU reduction)
+<MD= 1>  Total Energy
+  Force calculation #6 (GPU-accelerated)
+  Force calculation #7 (GPU-accelerated)
+
+*******************************************************
+                  Dipole moment (Debye)                 
+*******************************************************
+
+ Absolute D      605.03029477
+
+                      Dx                Dy                Dz
+ Total            346.42939720      350.74800818      350.74800797
+ Core           60102.64194640    45076.98145980    45076.98145980
+ Electron      -59756.21254920   -44726.23345162   -44726.23345182
+ Back ground       -0.00000000       -0.00000000       -0.00000000
+
+*******************************************************
+             Total Energy (Hartree) at MD = 1           
+*******************************************************
+
+  Uele  =    -331.034636898379
+
+  Ukin  =     430.102315346307
+  UH0   =  -21023.566925103318
+  UH1   =       0.016155235320
+  Una   =    -479.082862817615
+  Unl   =     174.888425435752
+  Uxc0  =    -204.355933751933
+  Uxc1  =    -204.355933751933
+  Ucore =   20115.830756088471
+  Uhub  =       0.000000000000
+  Ucs   =       0.000000000000
+  Uzs   =       0.000000000000
+  Uzo   =       0.000000000000
+  Uef   =       0.000000000000
+  UvdW  =       0.000000000000
+  Uch   =       0.000000000000
+  Utot  =   -1190.524003318950
+
+  UpV   =       0.000000000000
+  Enpy  =   -1190.524003318950
+  Note:
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy 
+  Uch:    penalty term to create a core hole
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+*******************************************************
+           Computational times (s) at MD = 1            
+*******************************************************
+
+  DFT in total      =   34.54182
+
+  Set_OLP_Kin       =    0.73501
+  Set_Nonlocal      =    0.38075
+  Set_ProExpn_VNA   =    4.54000
+  Set_Hamiltonian   =    3.01263
+  Poisson           =    0.02744
+  diagonalization   =   10.88581
+  Mixing_DM         =    0.08259
+  Force             =    6.73158
+  Total_Energy      =    0.31185
+  Set_Aden_Grid     =    0.16452
+  Set_Orbitals_Grid =    0.85515
+  Set_Density_Grid  =    5.85768
+  RestartFileDFT    =    0.13627
+  Mulliken_Charge   =    0.01117
+  FFT(2D)_Density   =    0.04941
+
+The SCF was not fully achieved at MD=   1
+
+*******************************************************
+             MD or geometry opt. at MD = 1              
+*******************************************************
+
+<Steepest_Descent>  SD_scaling= 1.259810689316
+<Steepest_Descent>  |Maximum force| (Hartree/Bohr) = 0.000018983335
+<Steepest_Descent>  Criterion       (Hartree/Bohr) = 0.000010000000
+
+  atom=  1, XYZ(ang) Fxyz(a.u.)=   0.6789    0.6789    0.6789     0.0000    0.0000    0.0000
+  atom=  2, XYZ(ang) Fxyz(a.u.)=   3.3944    0.6789    3.3944     0.0000    0.0000   -0.0000
+  atom=  3, XYZ(ang) Fxyz(a.u.)=   0.6789    3.3944    3.3944     0.0000   -0.0000   -0.0000
+  atom=  4, XYZ(ang) Fxyz(a.u.)=   3.3944    3.3944    0.6789     0.0000   -0.0000    0.0000
+  atom=  5, XYZ(ang) Fxyz(a.u.)=   4.7521    2.0366    2.0366     0.0000    0.0000    0.0000
+  atom=  6, XYZ(ang) Fxyz(a.u.)=   4.7521    4.7521    4.7521     0.0000    0.0000    0.0000
+  atom=  7, XYZ(ang) Fxyz(a.u.)=   2.0366    2.0366    4.7521    -0.0000    0.0000    0.0000
+  atom=  8, XYZ(ang) Fxyz(a.u.)=   2.0366    4.7521    2.0366    -0.0000    0.0000    0.0000
+  atom=  9, XYZ(ang) Fxyz(a.u.)=   0.6789    0.6789    6.1099    -0.0000   -0.0000    0.0000
+  atom= 10, XYZ(ang) Fxyz(a.u.)=   3.3944    0.6789    8.8254     0.0000    0.0000    0.0000
+  atom= 11, XYZ(ang) Fxyz(a.u.)=   0.6789    3.3944    8.8254     0.0000   -0.0000    0.0000
+  atom= 12, XYZ(ang) Fxyz(a.u.)=   3.3944    3.3944    6.1099    -0.0000   -0.0000   -0.0000
+  atom= 13, XYZ(ang) Fxyz(a.u.)=   4.7521    2.0366    7.4676    -0.0000    0.0000   -0.0000
+  atom= 14, XYZ(ang) Fxyz(a.u.)=   4.7521    4.7521   10.1831    -0.0000    0.0000   -0.0000
+  atom= 15, XYZ(ang) Fxyz(a.u.)=   2.0366    2.0366   10.1831     0.0000    0.0000    0.0000
+  atom= 16, XYZ(ang) Fxyz(a.u.)=   2.0366    4.7521    7.4676     0.0000    0.0000   -0.0000
+  atom= 17, XYZ(ang) Fxyz(a.u.)=   0.6789    0.6789   11.5409     0.0000    0.0000   -0.0000
+  atom= 18, XYZ(ang) Fxyz(a.u.)=   3.3944    0.6789   14.2564    -0.0000    0.0000    0.0000
+  atom= 19, XYZ(ang) Fxyz(a.u.)=   0.6789    3.3944   14.2564    -0.0000    0.0000   -0.0000
+  atom= 20, XYZ(ang) Fxyz(a.u.)=   3.3944    3.3944   11.5409     0.0000   -0.0000   -0.0000
+  atom= 21, XYZ(ang) Fxyz(a.u.)=   4.7521    2.0366   12.8986    -0.0000   -0.0000    0.0000
+  atom= 22, XYZ(ang) Fxyz(a.u.)=   4.7521    4.7521   15.6141     0.0000    0.0000   -0.0000
+  atom= 23, XYZ(ang) Fxyz(a.u.)=   2.0366    2.0366   15.6141    -0.0000   -0.0000   -0.0000
+  atom= 24, XYZ(ang) Fxyz(a.u.)=   2.0366    4.7521   12.8986    -0.0000    0.0000    0.0000
+  atom= 25, XYZ(ang) Fxyz(a.u.)=   0.6789    6.1099    0.6789    -0.0000    0.0000   -0.0000
+  atom= 26, XYZ(ang) Fxyz(a.u.)=   3.3944    6.1099    3.3944    -0.0000   -0.0000   -0.0000
+  atom= 27, XYZ(ang) Fxyz(a.u.)=   0.6789    8.8254    3.3944     0.0000    0.0000   -0.0000
+  atom= 28, XYZ(ang) Fxyz(a.u.)=   3.3944    8.8254    0.6789     0.0000    0.0000    0.0000
+  atom= 29, XYZ(ang) Fxyz(a.u.)=   4.7521    7.4676    2.0366    -0.0000   -0.0000    0.0000
+  atom= 30, XYZ(ang) Fxyz(a.u.)=   4.7521   10.1831    4.7521    -0.0000   -0.0000    0.0000
+  atom= 31, XYZ(ang) Fxyz(a.u.)=   2.0366    7.4676    4.7521     0.0000   -0.0000    0.0000
+  atom= 32, XYZ(ang) Fxyz(a.u.)=   2.0366   10.1831    2.0366     0.0000    0.0000    0.0000
+  atom= 33, XYZ(ang) Fxyz(a.u.)=   0.6789    6.1099    6.1099     0.0000    0.0000    0.0000
+  atom= 34, XYZ(ang) Fxyz(a.u.)=   3.3944    6.1099    8.8254    -0.0000    0.0000    0.0000
+  atom= 35, XYZ(ang) Fxyz(a.u.)=   0.6789    8.8254    8.8254     0.0000    0.0000    0.0000
+  atom= 36, XYZ(ang) Fxyz(a.u.)=   3.3944    8.8254    6.1099    -0.0000    0.0000    0.0000
+  atom= 37, XYZ(ang) Fxyz(a.u.)=   4.7521    7.4676    7.4676     0.0000   -0.0000   -0.0000
+  atom= 38, XYZ(ang) Fxyz(a.u.)=   4.7521   10.1831   10.1831     0.0000    0.0000   -0.0000
+  atom= 39, XYZ(ang) Fxyz(a.u.)=   2.0366    7.4676   10.1831    -0.0000   -0.0000   -0.0000
+  atom= 40, XYZ(ang) Fxyz(a.u.)=   2.0366   10.1831    7.4676    -0.0000   -0.0000   -0.0000
+  atom= 41, XYZ(ang) Fxyz(a.u.)=   0.6789    6.1099   11.5409    -0.0000   -0.0000    0.0000
+  atom= 42, XYZ(ang) Fxyz(a.u.)=   3.3944    6.1099   14.2564    -0.0000   -0.0000    0.0000
+  atom= 43, XYZ(ang) Fxyz(a.u.)=   0.6789    8.8254   14.2564    -0.0000   -0.0000    0.0000
+  atom= 44, XYZ(ang) Fxyz(a.u.)=   3.3944    8.8254   11.5409     0.0000    0.0000   -0.0000
+  atom= 45, XYZ(ang) Fxyz(a.u.)=   4.7521    7.4676   12.8986     0.0000   -0.0000    0.0000
+  atom= 46, XYZ(ang) Fxyz(a.u.)=   4.7521   10.1831   15.6141    -0.0000    0.0000   -0.0000
+  atom= 47, XYZ(ang) Fxyz(a.u.)=   2.0366    7.4676   15.6141    -0.0000   -0.0000   -0.0000
+  atom= 48, XYZ(ang) Fxyz(a.u.)=   2.0366   10.1831   12.8986    -0.0000    0.0000    0.0000
+  atom= 49, XYZ(ang) Fxyz(a.u.)=   0.6789   11.5409    0.6789     0.0000   -0.0000    0.0000
+  atom= 50, XYZ(ang) Fxyz(a.u.)=   3.3944   11.5409    3.3944     0.0000   -0.0000   -0.0000
+  atom= 51, XYZ(ang) Fxyz(a.u.)=   0.6789   14.2564    3.3944    -0.0000   -0.0000    0.0000
+  atom= 52, XYZ(ang) Fxyz(a.u.)=   3.3944   14.2564    0.6789    -0.0000    0.0000    0.0000
+  atom= 53, XYZ(ang) Fxyz(a.u.)=   4.7521   12.8986    2.0366    -0.0000    0.0000   -0.0000
+  atom= 54, XYZ(ang) Fxyz(a.u.)=   4.7521   15.6141    4.7521     0.0000   -0.0000    0.0000
+  atom= 55, XYZ(ang) Fxyz(a.u.)=   2.0366   12.8986    4.7521    -0.0000    0.0000    0.0000
+  atom= 56, XYZ(ang) Fxyz(a.u.)=   2.0366   15.6141    2.0366    -0.0000   -0.0000   -0.0000
+  atom= 57, XYZ(ang) Fxyz(a.u.)=   0.6789   11.5409    6.1099    -0.0000    0.0000   -0.0000
+  atom= 58, XYZ(ang) Fxyz(a.u.)=   3.3944   11.5409    8.8254     0.0000   -0.0000    0.0000
+  atom= 59, XYZ(ang) Fxyz(a.u.)=   0.6789   14.2564    8.8254    -0.0000    0.0000   -0.0000
+  atom= 60, XYZ(ang) Fxyz(a.u.)=   3.3944   14.2564    6.1099    -0.0000    0.0000    0.0000
+  atom= 61, XYZ(ang) Fxyz(a.u.)=   4.7521   12.8986    7.4676     0.0000    0.0000   -0.0000
+  atom= 62, XYZ(ang) Fxyz(a.u.)=   4.7521   15.6141   10.1831    -0.0000   -0.0000    0.0000
+  atom= 63, XYZ(ang) Fxyz(a.u.)=   2.0366   12.8986   10.1831    -0.0000    0.0000    0.0000
+  atom= 64, XYZ(ang) Fxyz(a.u.)=   2.0366   15.6141    7.4676    -0.0000   -0.0000   -0.0000
+  atom= 65, XYZ(ang) Fxyz(a.u.)=   0.6789   11.5409   11.5409     0.0000   -0.0000   -0.0000
+  atom= 66, XYZ(ang) Fxyz(a.u.)=   3.3944   11.5409   14.2564    -0.0000   -0.0000   -0.0000
+  atom= 67, XYZ(ang) Fxyz(a.u.)=   0.6789   14.2564   14.2564     0.0000    0.0000   -0.0000
+  atom= 68, XYZ(ang) Fxyz(a.u.)=   3.3944   14.2564   11.5409    -0.0000   -0.0000   -0.0000
+  atom= 69, XYZ(ang) Fxyz(a.u.)=   4.7521   12.8986   12.8986     0.0000    0.0000    0.0000
+  atom= 70, XYZ(ang) Fxyz(a.u.)=   4.7521   15.6141   15.6141     0.0000   -0.0000   -0.0000
+  atom= 71, XYZ(ang) Fxyz(a.u.)=   2.0366   12.8986   15.6141     0.0000    0.0000   -0.0000
+  atom= 72, XYZ(ang) Fxyz(a.u.)=   2.0366   15.6141   12.8986     0.0000   -0.0000    0.0000
+  atom= 73, XYZ(ang) Fxyz(a.u.)=   6.1099    0.6789    0.6789     0.0000    0.0000    0.0000
+  atom= 74, XYZ(ang) Fxyz(a.u.)=   8.8254    0.6789    3.3944    -0.0000    0.0000   -0.0000
+  atom= 75, XYZ(ang) Fxyz(a.u.)=   6.1099    3.3944    3.3944     0.0000   -0.0000   -0.0000
+  atom= 76, XYZ(ang) Fxyz(a.u.)=   8.8254    3.3944    0.6789    -0.0000   -0.0000    0.0000
+  atom= 77, XYZ(ang) Fxyz(a.u.)=  10.1831    2.0366    2.0366     0.0000   -0.0000   -0.0000
+  atom= 78, XYZ(ang) Fxyz(a.u.)=  10.1831    4.7521    4.7521    -0.0000    0.0000    0.0000
+  atom= 79, XYZ(ang) Fxyz(a.u.)=   7.4676    2.0366    4.7521    -0.0000   -0.0000    0.0000
+  atom= 80, XYZ(ang) Fxyz(a.u.)=   7.4676    4.7521    2.0366    -0.0000    0.0000   -0.0000
+  atom= 81, XYZ(ang) Fxyz(a.u.)=   6.1099    0.6789    6.1099     0.0000   -0.0000   -0.0000
+  atom= 82, XYZ(ang) Fxyz(a.u.)=   8.8254    0.6789    8.8254    -0.0000    0.0000    0.0000
+  atom= 83, XYZ(ang) Fxyz(a.u.)=   6.1099    3.3944    8.8254     0.0000   -0.0000    0.0000
+  atom= 84, XYZ(ang) Fxyz(a.u.)=   8.8254    3.3944    6.1099     0.0000   -0.0000   -0.0000
+  atom= 85, XYZ(ang) Fxyz(a.u.)=  10.1831    2.0366    7.4676     0.0000    0.0000   -0.0000
+  atom= 86, XYZ(ang) Fxyz(a.u.)=  10.1831    4.7521   10.1831     0.0000    0.0000   -0.0000
+  atom= 87, XYZ(ang) Fxyz(a.u.)=   7.4676    2.0366   10.1831    -0.0000    0.0000    0.0000
+  atom= 88, XYZ(ang) Fxyz(a.u.)=   7.4676    4.7521    7.4676    -0.0000   -0.0000    0.0000
+  atom= 89, XYZ(ang) Fxyz(a.u.)=   6.1099    0.6789   11.5409     0.0000    0.0000   -0.0000
+  atom= 90, XYZ(ang) Fxyz(a.u.)=   8.8254    0.6789   14.2564     0.0000    0.0000    0.0000
+  atom= 91, XYZ(ang) Fxyz(a.u.)=   6.1099    3.3944   14.2564     0.0000    0.0000    0.0000
+  atom= 92, XYZ(ang) Fxyz(a.u.)=   8.8254    3.3944   11.5409    -0.0000   -0.0000   -0.0000
+  atom= 93, XYZ(ang) Fxyz(a.u.)=  10.1831    2.0366   12.8986     0.0000   -0.0000    0.0000
+  atom= 94, XYZ(ang) Fxyz(a.u.)=  10.1831    4.7521   15.6141    -0.0000    0.0000   -0.0000
+  atom= 95, XYZ(ang) Fxyz(a.u.)=   7.4676    2.0366   15.6141    -0.0000    0.0000   -0.0000
+  atom= 96, XYZ(ang) Fxyz(a.u.)=   7.4676    4.7521   12.8986    -0.0000   -0.0000   -0.0000
+  atom= 97, XYZ(ang) Fxyz(a.u.)=   6.1099    6.1099    0.6789     0.0000   -0.0000   -0.0000
+  atom= 98, XYZ(ang) Fxyz(a.u.)=   8.8254    6.1099    3.3944     0.0000   -0.0000   -0.0000
+  atom= 99, XYZ(ang) Fxyz(a.u.)=   6.1099    8.8254    3.3944     0.0000    0.0000   -0.0000
+  atom=100, XYZ(ang) Fxyz(a.u.)=   8.8254    8.8254    0.6789    -0.0000    0.0000    0.0000
+  atom=101, XYZ(ang) Fxyz(a.u.)=  10.1831    7.4676    2.0366     0.0000   -0.0000    0.0000
+  atom=102, XYZ(ang) Fxyz(a.u.)=  10.1831   10.1831    4.7521     0.0000   -0.0000    0.0000
+  atom=103, XYZ(ang) Fxyz(a.u.)=   7.4676    7.4676    4.7521    -0.0000    0.0000   -0.0000
+  atom=104, XYZ(ang) Fxyz(a.u.)=   7.4676   10.1831    2.0366    -0.0000    0.0000   -0.0000
+  atom=105, XYZ(ang) Fxyz(a.u.)=   6.1099    6.1099    6.1099     0.0000    0.0000   -0.0000
+  atom=106, XYZ(ang) Fxyz(a.u.)=   8.8254    6.1099    8.8254     0.0000    0.0000    0.0000
+  atom=107, XYZ(ang) Fxyz(a.u.)=   6.1099    8.8254    8.8254     0.0000    0.0000    0.0000
+  atom=108, XYZ(ang) Fxyz(a.u.)=   8.8254    8.8254    6.1099     0.0000    0.0000    0.0000
+  atom=109, XYZ(ang) Fxyz(a.u.)=  10.1831    7.4676    7.4676    -0.0000   -0.0000   -0.0000
+  atom=110, XYZ(ang) Fxyz(a.u.)=  10.1831   10.1831   10.1831     0.0000    0.0000    0.0000
+  atom=111, XYZ(ang) Fxyz(a.u.)=   7.4676    7.4676   10.1831    -0.0000   -0.0000    0.0000
+  atom=112, XYZ(ang) Fxyz(a.u.)=   7.4676   10.1831    7.4676    -0.0000    0.0000   -0.0000
+  atom=113, XYZ(ang) Fxyz(a.u.)=   6.1099    6.1099   11.5409     0.0000    0.0000    0.0000
+  atom=114, XYZ(ang) Fxyz(a.u.)=   8.8254    6.1099   14.2564    -0.0000    0.0000   -0.0000
+  atom=115, XYZ(ang) Fxyz(a.u.)=   6.1099    8.8254   14.2564     0.0000   -0.0000   -0.0000
+  atom=116, XYZ(ang) Fxyz(a.u.)=   8.8254    8.8254   11.5409    -0.0000    0.0000   -0.0000
+  atom=117, XYZ(ang) Fxyz(a.u.)=  10.1831    7.4676   12.8986    -0.0000   -0.0000    0.0000
+  atom=118, XYZ(ang) Fxyz(a.u.)=  10.1831   10.1831   15.6141     0.0000    0.0000   -0.0000
+  atom=119, XYZ(ang) Fxyz(a.u.)=   7.4676    7.4676   15.6141    -0.0000    0.0000    0.0000
+  atom=120, XYZ(ang) Fxyz(a.u.)=   7.4676   10.1831   12.8986    -0.0000   -0.0000    0.0000
+  atom=121, XYZ(ang) Fxyz(a.u.)=   6.1099   11.5409    0.6789     0.0000   -0.0000    0.0000
+  atom=122, XYZ(ang) Fxyz(a.u.)=   8.8254   11.5409    3.3944    -0.0000   -0.0000   -0.0000
+  atom=123, XYZ(ang) Fxyz(a.u.)=   6.1099   14.2564    3.3944     0.0000    0.0000    0.0000
+  atom=124, XYZ(ang) Fxyz(a.u.)=   8.8254   14.2564    0.6789     0.0000    0.0000    0.0000
+  atom=125, XYZ(ang) Fxyz(a.u.)=  10.1831   12.8986    2.0366     0.0000    0.0000   -0.0000
+  atom=126, XYZ(ang) Fxyz(a.u.)=  10.1831   15.6141    4.7521    -0.0000   -0.0000    0.0000
+  atom=127, XYZ(ang) Fxyz(a.u.)=   7.4676   12.8986    4.7521    -0.0000   -0.0000   -0.0000
+  atom=128, XYZ(ang) Fxyz(a.u.)=   7.4676   15.6141    2.0366    -0.0000   -0.0000    0.0000
+  atom=129, XYZ(ang) Fxyz(a.u.)=   6.1099   11.5409    6.1099     0.0000    0.0000    0.0000
+  atom=130, XYZ(ang) Fxyz(a.u.)=   8.8254   11.5409    8.8254    -0.0000   -0.0000    0.0000
+  atom=131, XYZ(ang) Fxyz(a.u.)=   6.1099   14.2564    8.8254     0.0000   -0.0000   -0.0000
+  atom=132, XYZ(ang) Fxyz(a.u.)=   8.8254   14.2564    6.1099    -0.0000   -0.0000   -0.0000
+  atom=133, XYZ(ang) Fxyz(a.u.)=  10.1831   12.8986    7.4676    -0.0000    0.0000   -0.0000
+  atom=134, XYZ(ang) Fxyz(a.u.)=  10.1831   15.6141   10.1831     0.0000   -0.0000    0.0000
+  atom=135, XYZ(ang) Fxyz(a.u.)=   7.4676   12.8986   10.1831    -0.0000    0.0000   -0.0000
+  atom=136, XYZ(ang) Fxyz(a.u.)=   7.4676   15.6141    7.4676    -0.0000    0.0000    0.0000
+  atom=137, XYZ(ang) Fxyz(a.u.)=   6.1099   11.5409   11.5409     0.0000   -0.0000   -0.0000
+  atom=138, XYZ(ang) Fxyz(a.u.)=   8.8254   11.5409   14.2564     0.0000   -0.0000   -0.0000
+  atom=139, XYZ(ang) Fxyz(a.u.)=   6.1099   14.2564   14.2564     0.0000    0.0000   -0.0000
+  atom=140, XYZ(ang) Fxyz(a.u.)=   8.8254   14.2564   11.5409     0.0000   -0.0000   -0.0000
+  atom=141, XYZ(ang) Fxyz(a.u.)=  10.1831   12.8986   12.8986    -0.0000    0.0000    0.0000
+  atom=142, XYZ(ang) Fxyz(a.u.)=  10.1831   15.6141   15.6141    -0.0000   -0.0000   -0.0000
+  atom=143, XYZ(ang) Fxyz(a.u.)=   7.4676   12.8986   15.6141    -0.0000   -0.0000    0.0000
+  atom=144, XYZ(ang) Fxyz(a.u.)=   7.4676   15.6141   12.8986    -0.0000    0.0000   -0.0000
+  atom=145, XYZ(ang) Fxyz(a.u.)=  11.5409    0.6789    0.6789     0.0000    0.0000    0.0000
+  atom=146, XYZ(ang) Fxyz(a.u.)=  14.2564    0.6789    3.3944     0.0000   -0.0000    0.0000
+  atom=147, XYZ(ang) Fxyz(a.u.)=  11.5409    3.3944    3.3944     0.0000   -0.0000   -0.0000
+  atom=148, XYZ(ang) Fxyz(a.u.)=  14.2564    3.3944    0.6789     0.0000    0.0000   -0.0000
+  atom=149, XYZ(ang) Fxyz(a.u.)=  15.6141    2.0366    2.0366    -0.0000    0.0000   -0.0000
+  atom=150, XYZ(ang) Fxyz(a.u.)=  15.6141    4.7521    4.7521    -0.0000    0.0000    0.0000
+  atom=151, XYZ(ang) Fxyz(a.u.)=  12.8986    2.0366    4.7521    -0.0000    0.0000    0.0000
+  atom=152, XYZ(ang) Fxyz(a.u.)=  12.8986    4.7521    2.0366    -0.0000    0.0000    0.0000
+  atom=153, XYZ(ang) Fxyz(a.u.)=  11.5409    0.6789    6.1099    -0.0000    0.0000   -0.0000
+  atom=154, XYZ(ang) Fxyz(a.u.)=  14.2564    0.6789    8.8254     0.0000   -0.0000   -0.0000
+  atom=155, XYZ(ang) Fxyz(a.u.)=  11.5409    3.3944    8.8254     0.0000   -0.0000    0.0000
+  atom=156, XYZ(ang) Fxyz(a.u.)=  14.2564    3.3944    6.1099     0.0000   -0.0000    0.0000
+  atom=157, XYZ(ang) Fxyz(a.u.)=  15.6141    2.0366    7.4676    -0.0000    0.0000    0.0000
+  atom=158, XYZ(ang) Fxyz(a.u.)=  15.6141    4.7521   10.1831    -0.0000   -0.0000   -0.0000
+  atom=159, XYZ(ang) Fxyz(a.u.)=  12.8986    2.0366   10.1831     0.0000    0.0000   -0.0000
+  atom=160, XYZ(ang) Fxyz(a.u.)=  12.8986    4.7521    7.4676     0.0000    0.0000   -0.0000
+  atom=161, XYZ(ang) Fxyz(a.u.)=  11.5409    0.6789   11.5409     0.0000    0.0000   -0.0000
+  atom=162, XYZ(ang) Fxyz(a.u.)=  14.2564    0.6789   14.2564     0.0000    0.0000   -0.0000
+  atom=163, XYZ(ang) Fxyz(a.u.)=  11.5409    3.3944   14.2564    -0.0000   -0.0000    0.0000
+  atom=164, XYZ(ang) Fxyz(a.u.)=  14.2564    3.3944   11.5409     0.0000    0.0000    0.0000
+  atom=165, XYZ(ang) Fxyz(a.u.)=  15.6141    2.0366   12.8986    -0.0000   -0.0000   -0.0000
+  atom=166, XYZ(ang) Fxyz(a.u.)=  15.6141    4.7521   15.6141    -0.0000    0.0000   -0.0000
+  atom=167, XYZ(ang) Fxyz(a.u.)=  12.8986    2.0366   15.6141    -0.0000   -0.0000   -0.0000
+  atom=168, XYZ(ang) Fxyz(a.u.)=  12.8986    4.7521   12.8986     0.0000    0.0000    0.0000
+  atom=169, XYZ(ang) Fxyz(a.u.)=  11.5409    6.1099    0.6789    -0.0000   -0.0000    0.0000
+  atom=170, XYZ(ang) Fxyz(a.u.)=  14.2564    6.1099    3.3944     0.0000    0.0000   -0.0000
+  atom=171, XYZ(ang) Fxyz(a.u.)=  11.5409    8.8254    3.3944     0.0000    0.0000   -0.0000
+  atom=172, XYZ(ang) Fxyz(a.u.)=  14.2564    8.8254    0.6789     0.0000   -0.0000   -0.0000
+  atom=173, XYZ(ang) Fxyz(a.u.)=  15.6141    7.4676    2.0366    -0.0000    0.0000    0.0000
+  atom=174, XYZ(ang) Fxyz(a.u.)=  15.6141   10.1831    4.7521    -0.0000   -0.0000   -0.0000
+  atom=175, XYZ(ang) Fxyz(a.u.)=  12.8986    7.4676    4.7521     0.0000   -0.0000    0.0000
+  atom=176, XYZ(ang) Fxyz(a.u.)=  12.8986   10.1831    2.0366     0.0000    0.0000    0.0000
+  atom=177, XYZ(ang) Fxyz(a.u.)=  11.5409    6.1099    6.1099    -0.0000   -0.0000    0.0000
+  atom=178, XYZ(ang) Fxyz(a.u.)=  14.2564    6.1099    8.8254     0.0000   -0.0000    0.0000
+  atom=179, XYZ(ang) Fxyz(a.u.)=  11.5409    8.8254    8.8254     0.0000    0.0000    0.0000
+  atom=180, XYZ(ang) Fxyz(a.u.)=  14.2564    8.8254    6.1099     0.0000    0.0000   -0.0000
+  atom=181, XYZ(ang) Fxyz(a.u.)=  15.6141    7.4676    7.4676    -0.0000   -0.0000   -0.0000
+  atom=182, XYZ(ang) Fxyz(a.u.)=  15.6141   10.1831   10.1831    -0.0000   -0.0000   -0.0000
+  atom=183, XYZ(ang) Fxyz(a.u.)=  12.8986    7.4676   10.1831    -0.0000   -0.0000   -0.0000
+  atom=184, XYZ(ang) Fxyz(a.u.)=  12.8986   10.1831    7.4676    -0.0000   -0.0000   -0.0000
+  atom=185, XYZ(ang) Fxyz(a.u.)=  11.5409    6.1099   11.5409    -0.0000    0.0000   -0.0000
+  atom=186, XYZ(ang) Fxyz(a.u.)=  14.2564    6.1099   14.2564     0.0000   -0.0000    0.0000
+  atom=187, XYZ(ang) Fxyz(a.u.)=  11.5409    8.8254   14.2564    -0.0000    0.0000   -0.0000
+  atom=188, XYZ(ang) Fxyz(a.u.)=  14.2564    8.8254   11.5409     0.0000   -0.0000    0.0000
+  atom=189, XYZ(ang) Fxyz(a.u.)=  15.6141    7.4676   12.8986    -0.0000   -0.0000    0.0000
+  atom=190, XYZ(ang) Fxyz(a.u.)=  15.6141   10.1831   15.6141    -0.0000    0.0000    0.0000
+  atom=191, XYZ(ang) Fxyz(a.u.)=  12.8986    7.4676   15.6141     0.0000   -0.0000   -0.0000
+  atom=192, XYZ(ang) Fxyz(a.u.)=  12.8986   10.1831   12.8986    -0.0000    0.0000    0.0000
+  atom=193, XYZ(ang) Fxyz(a.u.)=  11.5409   11.5409    0.6789     0.0000   -0.0000    0.0000
+  atom=194, XYZ(ang) Fxyz(a.u.)=  14.2564   11.5409    3.3944     0.0000    0.0000    0.0000
+  atom=195, XYZ(ang) Fxyz(a.u.)=  11.5409   14.2564    3.3944    -0.0000    0.0000   -0.0000
+  atom=196, XYZ(ang) Fxyz(a.u.)=  14.2564   14.2564    0.6789     0.0000   -0.0000    0.0000
+  atom=197, XYZ(ang) Fxyz(a.u.)=  15.6141   12.8986    2.0366    -0.0000   -0.0000   -0.0000
+  atom=198, XYZ(ang) Fxyz(a.u.)=  15.6141   15.6141    4.7521    -0.0000   -0.0000    0.0000
+  atom=199, XYZ(ang) Fxyz(a.u.)=  12.8986   12.8986    4.7521     0.0000    0.0000    0.0000
+  atom=200, XYZ(ang) Fxyz(a.u.)=  12.8986   15.6141    2.0366    -0.0000   -0.0000   -0.0000
+  atom=201, XYZ(ang) Fxyz(a.u.)=  11.5409   11.5409    6.1099    -0.0000   -0.0000    0.0000
+  atom=202, XYZ(ang) Fxyz(a.u.)=  14.2564   11.5409    8.8254     0.0000    0.0000   -0.0000
+  atom=203, XYZ(ang) Fxyz(a.u.)=  11.5409   14.2564    8.8254    -0.0000   -0.0000    0.0000
+  atom=204, XYZ(ang) Fxyz(a.u.)=  14.2564   14.2564    6.1099     0.0000   -0.0000   -0.0000
+  atom=205, XYZ(ang) Fxyz(a.u.)=  15.6141   12.8986    7.4676    -0.0000    0.0000   -0.0000
+  atom=206, XYZ(ang) Fxyz(a.u.)=  15.6141   15.6141   10.1831    -0.0000    0.0000    0.0000
+  atom=207, XYZ(ang) Fxyz(a.u.)=  12.8986   12.8986   10.1831    -0.0000    0.0000    0.0000
+  atom=208, XYZ(ang) Fxyz(a.u.)=  12.8986   15.6141    7.4676     0.0000   -0.0000   -0.0000
+  atom=209, XYZ(ang) Fxyz(a.u.)=  11.5409   11.5409   11.5409     0.0000   -0.0000   -0.0000
+  atom=210, XYZ(ang) Fxyz(a.u.)=  14.2564   11.5409   14.2564     0.0000   -0.0000    0.0000
+  atom=211, XYZ(ang) Fxyz(a.u.)=  11.5409   14.2564   14.2564    -0.0000   -0.0000    0.0000
+  atom=212, XYZ(ang) Fxyz(a.u.)=  14.2564   14.2564   11.5409     0.0000    0.0000   -0.0000
+  atom=213, XYZ(ang) Fxyz(a.u.)=  15.6141   12.8986   12.8986    -0.0000    0.0000    0.0000
+  atom=214, XYZ(ang) Fxyz(a.u.)=  15.6141   15.6141   15.6141    -0.0000   -0.0000   -0.0000
+  atom=215, XYZ(ang) Fxyz(a.u.)=  12.8986   12.8986   15.6141     0.0000    0.0000   -0.0000
+  atom=216, XYZ(ang) Fxyz(a.u.)=  12.8986   15.6141   12.8986     0.0000   -0.0000    0.0000
+  atom=217, XYZ(ang) Fxyz(a.u.)=  16.9719    0.6789    0.6789    -0.0000    0.0000    0.0000
+  atom=218, XYZ(ang) Fxyz(a.u.)=  19.6874    0.6789    3.3944    -0.0000    0.0000   -0.0000
+  atom=219, XYZ(ang) Fxyz(a.u.)=  16.9719    3.3944    3.3944    -0.0000   -0.0000   -0.0000
+  atom=220, XYZ(ang) Fxyz(a.u.)=  19.6874    3.3944    0.6789    -0.0000   -0.0000    0.0000
+  atom=221, XYZ(ang) Fxyz(a.u.)=  21.0451    2.0366    2.0366    -0.0000   -0.0000    0.0000
+  atom=222, XYZ(ang) Fxyz(a.u.)=  21.0451    4.7521    4.7521    -0.0000    0.0000    0.0000
+  atom=223, XYZ(ang) Fxyz(a.u.)=  18.3296    2.0366    4.7521     0.0000    0.0000    0.0000
+  atom=224, XYZ(ang) Fxyz(a.u.)=  18.3296    4.7521    2.0366     0.0000    0.0000    0.0000
+  atom=225, XYZ(ang) Fxyz(a.u.)=  16.9719    0.6789    6.1099     0.0000    0.0000   -0.0000
+  atom=226, XYZ(ang) Fxyz(a.u.)=  19.6874    0.6789    8.8254     0.0000    0.0000    0.0000
+  atom=227, XYZ(ang) Fxyz(a.u.)=  16.9719    3.3944    8.8254    -0.0000   -0.0000    0.0000
+  atom=228, XYZ(ang) Fxyz(a.u.)=  19.6874    3.3944    6.1099     0.0000   -0.0000   -0.0000
+  atom=229, XYZ(ang) Fxyz(a.u.)=  21.0451    2.0366    7.4676     0.0000   -0.0000    0.0000
+  atom=230, XYZ(ang) Fxyz(a.u.)=  21.0451    4.7521   10.1831     0.0000   -0.0000    0.0000
+  atom=231, XYZ(ang) Fxyz(a.u.)=  18.3296    2.0366   10.1831     0.0000    0.0000    0.0000
+  atom=232, XYZ(ang) Fxyz(a.u.)=  18.3296    4.7521    7.4676    -0.0000    0.0000   -0.0000
+  atom=233, XYZ(ang) Fxyz(a.u.)=  16.9719    0.6789   11.5409    -0.0000    0.0000   -0.0000
+  atom=234, XYZ(ang) Fxyz(a.u.)=  19.6874    0.6789   14.2564     0.0000    0.0000    0.0000
+  atom=235, XYZ(ang) Fxyz(a.u.)=  16.9719    3.3944   14.2564     0.0000   -0.0000    0.0000
+  atom=236, XYZ(ang) Fxyz(a.u.)=  19.6874    3.3944   11.5409     0.0000   -0.0000   -0.0000
+  atom=237, XYZ(ang) Fxyz(a.u.)=  21.0451    2.0366   12.8986     0.0000    0.0000   -0.0000
+  atom=238, XYZ(ang) Fxyz(a.u.)=  21.0451    4.7521   15.6141    -0.0000    0.0000   -0.0000
+  atom=239, XYZ(ang) Fxyz(a.u.)=  18.3296    2.0366   15.6141     0.0000   -0.0000   -0.0000
+  atom=240, XYZ(ang) Fxyz(a.u.)=  18.3296    4.7521   12.8986    -0.0000    0.0000    0.0000
+  atom=241, XYZ(ang) Fxyz(a.u.)=  16.9719    6.1099    0.6789     0.0000   -0.0000    0.0000
+  atom=242, XYZ(ang) Fxyz(a.u.)=  19.6874    6.1099    3.3944     0.0000   -0.0000   -0.0000
+  atom=243, XYZ(ang) Fxyz(a.u.)=  16.9719    8.8254    3.3944    -0.0000    0.0000   -0.0000
+  atom=244, XYZ(ang) Fxyz(a.u.)=  19.6874    8.8254    0.6789     0.0000    0.0000    0.0000
+  atom=245, XYZ(ang) Fxyz(a.u.)=  21.0451    7.4676    2.0366     0.0000    0.0000   -0.0000
+  atom=246, XYZ(ang) Fxyz(a.u.)=  21.0451   10.1831    4.7521     0.0000    0.0000   -0.0000
+  atom=247, XYZ(ang) Fxyz(a.u.)=  18.3296    7.4676    4.7521    -0.0000   -0.0000    0.0000
+  atom=248, XYZ(ang) Fxyz(a.u.)=  18.3296   10.1831    2.0366     0.0000   -0.0000   -0.0000
+  atom=249, XYZ(ang) Fxyz(a.u.)=  16.9719    6.1099    6.1099    -0.0000    0.0000   -0.0000
+  atom=250, XYZ(ang) Fxyz(a.u.)=  19.6874    6.1099    8.8254     0.0000    0.0000    0.0000
+  atom=251, XYZ(ang) Fxyz(a.u.)=  16.9719    8.8254    8.8254    -0.0000    0.0000    0.0000
+  atom=252, XYZ(ang) Fxyz(a.u.)=  19.6874    8.8254    6.1099     0.0000    0.0000    0.0000
+  atom=253, XYZ(ang) Fxyz(a.u.)=  21.0451    7.4676    7.4676    -0.0000   -0.0000   -0.0000
+  atom=254, XYZ(ang) Fxyz(a.u.)=  21.0451   10.1831   10.1831    -0.0000    0.0000    0.0000
+  atom=255, XYZ(ang) Fxyz(a.u.)=  18.3296    7.4676   10.1831     0.0000   -0.0000   -0.0000
+  atom=256, XYZ(ang) Fxyz(a.u.)=  18.3296   10.1831    7.4676     0.0000   -0.0000   -0.0000
+  atom=257, XYZ(ang) Fxyz(a.u.)=  16.9719    6.1099   11.5409     0.0000    0.0000   -0.0000
+  atom=258, XYZ(ang) Fxyz(a.u.)=  19.6874    6.1099   14.2564    -0.0000   -0.0000    0.0000
+  atom=259, XYZ(ang) Fxyz(a.u.)=  16.9719    8.8254   14.2564     0.0000    0.0000   -0.0000
+  atom=260, XYZ(ang) Fxyz(a.u.)=  19.6874    8.8254   11.5409    -0.0000    0.0000   -0.0000
+  atom=261, XYZ(ang) Fxyz(a.u.)=  21.0451    7.4676   12.8986    -0.0000   -0.0000    0.0000
+  atom=262, XYZ(ang) Fxyz(a.u.)=  21.0451   10.1831   15.6141     0.0000   -0.0000    0.0000
+  atom=263, XYZ(ang) Fxyz(a.u.)=  18.3296    7.4676   15.6141    -0.0000   -0.0000   -0.0000
+  atom=264, XYZ(ang) Fxyz(a.u.)=  18.3296   10.1831   12.8986     0.0000    0.0000    0.0000
+  atom=265, XYZ(ang) Fxyz(a.u.)=  16.9719   11.5409    0.6789    -0.0000   -0.0000    0.0000
+  atom=266, XYZ(ang) Fxyz(a.u.)=  19.6874   11.5409    3.3944     0.0000   -0.0000   -0.0000
+  atom=267, XYZ(ang) Fxyz(a.u.)=  16.9719   14.2564    3.3944     0.0000    0.0000   -0.0000
+  atom=268, XYZ(ang) Fxyz(a.u.)=  19.6874   14.2564    0.6789     0.0000    0.0000    0.0000
+  atom=269, XYZ(ang) Fxyz(a.u.)=  21.0451   12.8986    2.0366     0.0000   -0.0000    0.0000
+  atom=270, XYZ(ang) Fxyz(a.u.)=  21.0451   15.6141    4.7521    -0.0000   -0.0000    0.0000
+  atom=271, XYZ(ang) Fxyz(a.u.)=  18.3296   12.8986    4.7521    -0.0000    0.0000    0.0000
+  atom=272, XYZ(ang) Fxyz(a.u.)=  18.3296   15.6141    2.0366     0.0000   -0.0000   -0.0000
+  atom=273, XYZ(ang) Fxyz(a.u.)=  16.9719   11.5409    6.1099     0.0000   -0.0000    0.0000
+  atom=274, XYZ(ang) Fxyz(a.u.)=  19.6874   11.5409    8.8254    -0.0000   -0.0000    0.0000
+  atom=275, XYZ(ang) Fxyz(a.u.)=  16.9719   14.2564    8.8254     0.0000   -0.0000    0.0000
+  atom=276, XYZ(ang) Fxyz(a.u.)=  19.6874   14.2564    6.1099    -0.0000    0.0000    0.0000
+  atom=277, XYZ(ang) Fxyz(a.u.)=  21.0451   12.8986    7.4676    -0.0000    0.0000   -0.0000
+  atom=278, XYZ(ang) Fxyz(a.u.)=  21.0451   15.6141   10.1831     0.0000    0.0000   -0.0000
+  atom=279, XYZ(ang) Fxyz(a.u.)=  18.3296   12.8986   10.1831     0.0000    0.0000    0.0000
+  atom=280, XYZ(ang) Fxyz(a.u.)=  18.3296   15.6141    7.4676    -0.0000   -0.0000   -0.0000
+  atom=281, XYZ(ang) Fxyz(a.u.)=  16.9719   11.5409   11.5409    -0.0000   -0.0000   -0.0000
+  atom=282, XYZ(ang) Fxyz(a.u.)=  19.6874   11.5409   14.2564     0.0000   -0.0000   -0.0000
+  atom=283, XYZ(ang) Fxyz(a.u.)=  16.9719   14.2564   14.2564    -0.0000    0.0000    0.0000
+  atom=284, XYZ(ang) Fxyz(a.u.)=  19.6874   14.2564   11.5409     0.0000   -0.0000   -0.0000
+  atom=285, XYZ(ang) Fxyz(a.u.)=  21.0451   12.8986   12.8986    -0.0000    0.0000    0.0000
+  atom=286, XYZ(ang) Fxyz(a.u.)=  21.0451   15.6141   15.6141    -0.0000   -0.0000   -0.0000
+  atom=287, XYZ(ang) Fxyz(a.u.)=  18.3296   12.8986   15.6141    -0.0000    0.0000   -0.0000
+  atom=288, XYZ(ang) Fxyz(a.u.)=  18.3296   15.6141   12.8986    -0.0000   -0.0000    0.0000
+
+outputting data on grids to files...
+
+
+***********************************************************
+***********************************************************
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    14       51.791          0       53.551
+   readfile                 =    24        2.999         14        3.004
+   truncation               =    47        8.760         22        8.774
+   MD_pac                   =     0        0.124         30        0.126
+   OutData                  =    16        5.314          0        7.074
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    22       34.534         47       34.548
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    21        0.538         25        0.743
+   Set_Nonlocal             =    25        0.373         21        0.577
+   Set_ProExpn_VNA          =    23        4.277          4        4.598
+   Set_Hamiltonian          =    32        3.013         12        3.013
+   Poisson                  =    41        0.027         26        0.027
+   Diagonalization          =    36       10.849          1       11.021
+   Mixing_DM                =    32        0.083          4        0.083
+   Force                    =     1        6.732         34        6.732
+   Total_Energy             =    19        0.301          0        0.312
+   Set_Aden_Grid            =    16        0.140         24        0.175
+   Set_Orbitals_Grid        =    14        0.803         41        0.885
+   Set_Density_Grid         =    15        5.852         45        5.858
+   RestartFileDFT           =    31        0.125         20        0.145
+   Mulliken_Charge          =    32        0.011         31        0.011
+   FFT(2D)_Density          =    45        0.049         33        0.049
+   Others                   =     4        0.574         18        0.984
+
+The calculation was normally finished.
+=== openmx exit status = 0 (Wed Aug 19 09:29:23 JST 2026) ===

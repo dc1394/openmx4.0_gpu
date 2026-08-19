@@ -1,0 +1,417 @@
+dia64_dc-lno node scaling, 48 ranks/node, 3 repetitions per point
+64 C atoms, C6.0-s2p2d1 -> 832 basis functions, scf.EigenvalueSolver dc-lno
+Gamma-only, 50 SCF max to 1e-10, orderN.HoppingRanges 6.0 Ang
+MD.Type Opt, MD.maxIter 1 -- one geometry step, so forces are computed
+binary: gpusolver2 merge, commit f5fb5b3; Max_Time column (slowest rank), s
+configs: g = GPU gpusolver + MPS, scf.gemmul8.enable on (default)
+         o = GPU gpusolver + MPS, scf.gemmul8.enable off (plain cuBLAS FP64)
+         c = CPU elpa2, no GPU reserved
+atom-owning ranks = min(48n, 64): 48 at 1 node, 64 at 2, 3 and 4 nodes.
+1-node g8-off uses reps o2/o3/o4; o1 drew slow node bnode013 and was
+discarded and re-measured as o4, per standing convention.
+Supersedes dia64dc_1n48_*, which ran the same deck with MD.Type nomd.
+
+--- per-run ---
+case                    total        DFT       Diag    Set_Ham  status
+dia64dc_1n_g1         204.533    194.673    177.563      2.680  OK
+dia64dc_1n_g2         202.561    193.274    175.873      2.647  OK
+dia64dc_1n_g3         202.982    193.259    176.428      2.690  OK
+dia64dc_1n_o2         201.432    191.851    173.369      2.921  OK
+dia64dc_1n_o3         200.382    190.658    173.061      2.683  OK
+dia64dc_1n_o4         198.611    189.233    172.586      2.658  OK
+dia64dc_1n_c1         614.422    602.604    571.601      2.654  OK
+dia64dc_1n_c2         611.787    599.910    569.534      2.594  OK
+dia64dc_1n_c3         611.888    600.070    569.673      2.586  OK
+dia64dc_2n_g1         116.887    106.685     94.387      1.766  OK
+dia64dc_2n_g2         116.189    106.065     94.086      1.640  OK
+dia64dc_2n_g3         114.968    104.833     93.781      1.552  OK
+dia64dc_2n_o1         116.510    106.154     93.963      1.655  OK
+dia64dc_2n_o2         112.549    102.362     91.989      1.413  OK
+dia64dc_2n_o3         111.650    101.742     91.100      1.454  OK
+dia64dc_2n_c1         304.848    292.040    274.655      1.422  OK
+dia64dc_2n_c2         305.126    292.410    275.096      1.452  OK
+dia64dc_2n_c3         307.801    294.860    275.881      1.540  OK
+dia64dc_3n_g1          85.336     74.728     65.687      1.474  OK
+dia64dc_3n_g2          84.684     74.260     65.016      1.520  OK
+dia64dc_3n_g3          85.352     74.993     65.652      1.490  OK
+dia64dc_3n_o1          85.101     74.403     65.080      1.601  OK
+dia64dc_3n_o2          83.792     73.336     64.013      1.387  OK
+dia64dc_3n_o3          84.347     73.929     64.498      1.572  OK
+dia64dc_3n_c1         242.034    229.016    211.716      1.380  OK
+dia64dc_3n_c2         241.136    228.262    210.950      1.383  OK
+dia64dc_3n_c3         244.269    231.273    212.802      1.332  OK
+dia64dc_4n_g1          69.402     58.668     49.957      1.570  OK
+dia64dc_4n_g2          68.818     58.171     49.528      1.528  OK
+dia64dc_4n_g3          68.588     58.232     49.647      1.487  OK
+dia64dc_4n_o1          68.250     57.691     49.063      1.573  OK
+dia64dc_4n_o2          67.660     57.366     48.792      1.589  OK
+dia64dc_4n_o3          66.937     56.673     48.635      1.436  OK
+dia64dc_4n_c1         210.674    197.579    182.820      1.363  OK
+dia64dc_4n_c2         213.621    200.716    185.999      1.400  OK
+dia64dc_4n_c3         211.584    198.534    183.631      1.445  OK
+
+--- statistics (mean +- sample SD over 3 runs) ---
+  1 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                203.36     1.04    202.56    204.53
+    Diagonalization      176.62     0.86    175.87    177.56
+  1 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                200.14     1.43    198.61    201.43
+    Diagonalization      173.01     0.39    172.59    173.37
+  1 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                612.70     1.49    611.79    614.42
+    Diagonalization      570.27     1.16    569.53    571.60
+  2 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                116.01     0.97    114.97    116.89
+    Diagonalization       94.08     0.30     93.78     94.39
+  2 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                113.57     2.59    111.65    116.51
+    Diagonalization       92.35     1.47     91.10     93.96
+  2 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                305.92     1.63    304.85    307.80
+    Diagonalization      275.21     0.62    274.65    275.88
+  3 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                 85.12     0.38     84.68     85.35
+    Diagonalization       65.45     0.38     65.02     65.69
+  3 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                 84.41     0.66     83.79     85.10
+    Diagonalization       64.53     0.53     64.01     65.08
+  3 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                242.48     1.61    241.14    244.27
+    Diagonalization      211.82     0.93    210.95    212.80
+  4 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                 68.94     0.42     68.59     69.40
+    Diagonalization       49.71     0.22     49.53     49.96
+  4 node(s), GPU g8-off    (n=3)
+    phase                  mean       sd       min       max
+    Total                 67.62     0.66     66.94     68.25
+    Diagonalization       48.83     0.22     48.63     49.06
+  4 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                211.96     1.51    210.67    213.62
+    Diagonalization      184.15     1.65    182.82    186.00
+
+--- ratios per node count (mean/mean, +- in quadrature) ---
+  1 node(s)  CPU / GPU(g8-on)  [speedup]  Total              3.01x +- 0.02
+  1 node(s)  CPU / GPU(g8-off) [speedup]  Total              3.06x +- 0.02
+  1 node(s)  GPU g8-on / g8-off           Total              1.02x +- 0.01
+  1 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    3.23x +- 0.02
+  1 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    3.30x +- 0.01
+  1 node(s)  GPU g8-on / g8-off           Diagonalization    1.02x +- 0.01
+  2 node(s)  CPU / GPU(g8-on)  [speedup]  Total              2.64x +- 0.03
+  2 node(s)  CPU / GPU(g8-off) [speedup]  Total              2.69x +- 0.06
+  2 node(s)  GPU g8-on / g8-off           Total              1.02x +- 0.02
+  2 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    2.93x +- 0.01
+  2 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    2.98x +- 0.05
+  2 node(s)  GPU g8-on / g8-off           Diagonalization    1.02x +- 0.02
+  3 node(s)  CPU / GPU(g8-on)  [speedup]  Total              2.85x +- 0.02
+  3 node(s)  CPU / GPU(g8-off) [speedup]  Total              2.87x +- 0.03
+  3 node(s)  GPU g8-on / g8-off           Total              1.01x +- 0.01
+  3 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    3.24x +- 0.02
+  3 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    3.28x +- 0.03
+  3 node(s)  GPU g8-on / g8-off           Diagonalization    1.01x +- 0.01
+  4 node(s)  CPU / GPU(g8-on)  [speedup]  Total              3.07x +- 0.03
+  4 node(s)  CPU / GPU(g8-off) [speedup]  Total              3.13x +- 0.04
+  4 node(s)  GPU g8-on / g8-off           Total              1.02x +- 0.01
+  4 node(s)  CPU / GPU(g8-on)  [speedup]  Diagonalization    3.70x +- 0.04
+  4 node(s)  CPU / GPU(g8-off) [speedup]  Diagonalization    3.77x +- 0.04
+  4 node(s)  GPU g8-on / g8-off           Diagonalization    1.02x +- 0.01
+
+  Note on the last ratio: >1 means GEMMul8 on is SLOWER than plain cuBLAS.
+  GEMMul8 intercepts only the three DGEMMs per cluster solve in
+  DCLNO_Solve_Col_GpuSolver; the cusolverDn eigendecomposition between
+  them is untouched, so its leverage on this workload is limited.
+
+--- strong scaling (T(1 node) / T(n nodes)) ---
+  GPU-g8-on      Total             1n  1.00x  2n  1.75x  3n  2.39x  4n  2.95x
+  GPU-g8-off     Total             1n  1.00x  2n  1.76x  3n  2.37x  4n  2.96x
+  CPU-elpa2      Total             1n  1.00x  2n  2.00x  3n  2.53x  4n  2.89x
+  GPU-g8-on      Diagonalization   1n  1.00x  2n  1.88x  3n  2.70x  4n  3.55x
+  GPU-g8-off     Diagonalization   1n  1.00x  2n  1.87x  3n  2.68x  4n  3.54x
+  CPU-elpa2      Diagonalization   1n  1.00x  2n  2.07x  3n  2.69x  4n  3.10x
+  (ideal 1/2/3/4; owners are capped at 64 from 2 nodes on, so the
+   gain past 2 nodes is thinner packing per node, not more owners)
+
+--- GPU engagement evidence (g/o only) ---
+  dia64dc_1n_g1      peak 67 %, 55070 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_1n_g2      peak 63 %, 55088 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_1n_g3      peak 50 %, 58334 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_2n_g1      peak 100 %, 43966 MiB max util 100%   GPU-accel banners 4
+  dia64dc_2n_g2      peak 100 %, 43966 MiB max util 100%   GPU-accel banners 4
+  dia64dc_2n_g3      peak 100 %, 43966 MiB max util 100%   GPU-accel banners 4
+  dia64dc_3n_g1      peak 100 %, 37046 MiB max util 100%   GPU-accel banners 4
+  dia64dc_3n_g2      peak 43 %, 37046 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_3n_g3      peak 100 %, 37046 MiB max util 100%   GPU-accel banners 4
+  dia64dc_4n_g1      peak 100 %, 32894 MiB max util 100%   GPU-accel banners 4
+  dia64dc_4n_g2      peak 100 %, 32894 MiB max util 100%   GPU-accel banners 4
+  dia64dc_4n_g3      peak 100 %, 32894 MiB max util 100%   GPU-accel banners 4
+  dia64dc_1n_o2      peak 79 %, 46782 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_1n_o3      peak 43 %, 58334 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_1n_o4      peak 45 %, 58334 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_2n_o1      peak 98 %, 35390 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_2n_o2      peak 59 %, 48702 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_2n_o3      peak 71 %, 35390 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_3n_o1      peak 70 %, 31150 MiB  max util 100%   GPU-accel banners 4
+  dia64dc_3n_o2      peak 100 %, 31150 MiB max util 100%   GPU-accel banners 4
+  dia64dc_3n_o3      peak 100 %, 31150 MiB max util 100%   GPU-accel banners 4
+  dia64dc_4n_o1      peak 100 %, 28606 MiB max util 100%   GPU-accel banners 4
+  dia64dc_4n_o2      peak 100 %, 28606 MiB max util 100%   GPU-accel banners 4
+  dia64dc_4n_o3      peak 100 %, 28606 MiB max util 100%   GPU-accel banners 4
+
+--- node(s) each run landed on (slow: bnode013, bnode033) ---
+  dia64dc_1n_g1      bnode001 
+  dia64dc_1n_g2      bnode014 
+  dia64dc_1n_g3      bnode016 
+  dia64dc_1n_o2      bnode015 
+  dia64dc_1n_o3      bnode020 
+  dia64dc_1n_o4      bnode089 
+  dia64dc_1n_c1      bnode014 
+  dia64dc_1n_c2      bnode016 
+  dia64dc_1n_c3      bnode021 
+  dia64dc_2n_g1      bnode015 bnode016 
+  dia64dc_2n_g2      bnode017 bnode020 
+  dia64dc_2n_g3      bnode024 bnode025 
+  dia64dc_2n_o1      bnode017 bnode020 
+  dia64dc_2n_o2      bnode021 bnode024 
+  dia64dc_2n_o3      bnode026 bnode027 
+  dia64dc_2n_c1      bnode021 bnode024 
+  dia64dc_2n_c2      bnode025 bnode026 
+  dia64dc_2n_c3      bnode028 bnode031 
+  dia64dc_3n_g1      bnode025 bnode026 bnode027 
+  dia64dc_3n_g2      bnode027 bnode028 bnode031 
+  dia64dc_3n_g3      bnode035 bnode038 bnode037 
+  dia64dc_3n_o1      bnode028 bnode035 bnode031 
+  dia64dc_3n_o2      bnode035 bnode038 bnode037 
+  dia64dc_3n_o3      bnode042 bnode045 bnode043 
+  dia64dc_3n_c1      bnode037 bnode038 bnode042 
+  dia64dc_3n_c2      bnode042 bnode045 bnode043 
+  dia64dc_3n_c3      bnode047 bnode057 bnode056 
+  dia64dc_4n_g1      bnode043 bnode045 bnode047 bnode056 
+  dia64dc_4n_g2      bnode047 bnode056 bnode057 bnode058 
+  dia64dc_4n_g3      bnode058 bnode073 bnode075 bnode066 
+  dia64dc_4n_o1      bnode057 bnode073 bnode066 bnode058 
+  dia64dc_4n_o2      bnode066 bnode073 bnode075 bnode076 
+  dia64dc_4n_o3      bnode076 bnode080 bnode077 bnode085 
+  dia64dc_4n_c1      bnode075 bnode076 bnode077 bnode080 
+  dia64dc_4n_c2      bnode077 bnode085 bnode088 bnode080 
+  dia64dc_4n_c3      bnode088 bnode089 bnode091 bnode093 
+
+--- Utot ---
+  dia64dc_1n_g1      -373.457450667954
+  dia64dc_1n_g2      -373.457450667954
+  dia64dc_1n_g3      -373.457450667954
+  dia64dc_1n_o2      -373.457450667954
+  dia64dc_1n_o3      -373.457450667954
+  dia64dc_1n_o4      -373.457450667954
+  dia64dc_1n_c1      -373.457450668025
+  dia64dc_1n_c2      -373.457450668025
+  dia64dc_1n_c3      -373.457450668025
+  dia64dc_2n_g1      -373.457450667946
+  dia64dc_2n_g2      -373.457450667946
+  dia64dc_2n_g3      -373.457450667946
+  dia64dc_2n_o1      -373.457450667946
+  dia64dc_2n_o2      -373.457450667946
+  dia64dc_2n_o3      -373.457450667946
+  dia64dc_2n_c1      -373.457450668032
+  dia64dc_2n_c2      -373.457450668032
+  dia64dc_2n_c3      -373.457450668032
+  dia64dc_3n_g1      -373.457450667945
+  dia64dc_3n_g2      -373.457450667945
+  dia64dc_3n_g3      -373.457450667945
+  dia64dc_3n_o1      -373.457450667945
+  dia64dc_3n_o2      -373.457450667945
+  dia64dc_3n_o3      -373.457450667945
+  dia64dc_3n_c1      -373.457450668030
+  dia64dc_3n_c2      -373.457450668030
+  dia64dc_3n_c3      -373.457450668030
+  dia64dc_4n_g1      -373.457450667947
+  dia64dc_4n_g2      -373.457450667947
+  dia64dc_4n_g3      -373.457450667947
+  dia64dc_4n_o1      -373.457450667947
+  dia64dc_4n_o2      -373.457450667947
+  dia64dc_4n_o3      -373.457450667947
+  dia64dc_4n_c1      -373.457450668032
+  dia64dc_4n_c2      -373.457450668032
+  dia64dc_4n_c3      -373.457450668032
+
+--- Maximum force (Hartree/Bohr): printed (8 dp) / recomputed (12 dp) ---
+  dia64dc_1n_g1      0.00000000   0.000000000024
+  dia64dc_1n_g2      0.00000000   0.000000000024
+  dia64dc_1n_g3      0.00000000   0.000000000024
+  dia64dc_1n_o2      0.00000000   0.000000000025
+  dia64dc_1n_o3      0.00000000   0.000000000025
+  dia64dc_1n_o4      0.00000000   0.000000000025
+  dia64dc_1n_c1      0.00000000   0.000000000037
+  dia64dc_1n_c2      0.00000000   0.000000000037
+  dia64dc_1n_c3      0.00000000   0.000000000037
+  dia64dc_2n_g1      0.00000000   0.000000000025
+  dia64dc_2n_g2      0.00000000   0.000000000025
+  dia64dc_2n_g3      0.00000000   0.000000000025
+  dia64dc_2n_o1      0.00000000   0.000000000025
+  dia64dc_2n_o2      0.00000000   0.000000000025
+  dia64dc_2n_o3      0.00000000   0.000000000025
+  dia64dc_2n_c1      0.00000000   0.000000000037
+  dia64dc_2n_c2      0.00000000   0.000000000037
+  dia64dc_2n_c3      0.00000000   0.000000000037
+  dia64dc_3n_g1      0.00000000   0.000000000025
+  dia64dc_3n_g2      0.00000000   0.000000000025
+  dia64dc_3n_g3      0.00000000   0.000000000025
+  dia64dc_3n_o1      0.00000000   0.000000000025
+  dia64dc_3n_o2      0.00000000   0.000000000025
+  dia64dc_3n_o3      0.00000000   0.000000000025
+  dia64dc_3n_c1      0.00000000   0.000000000037
+  dia64dc_3n_c2      0.00000000   0.000000000037
+  dia64dc_3n_c3      0.00000000   0.000000000037
+  dia64dc_4n_g1      0.00000000   0.000000000025
+  dia64dc_4n_g2      0.00000000   0.000000000025
+  dia64dc_4n_g3      0.00000000   0.000000000025
+  dia64dc_4n_o1      0.00000000   0.000000000025
+  dia64dc_4n_o2      0.00000000   0.000000000025
+  dia64dc_4n_o3      0.00000000   0.000000000025
+  dia64dc_4n_c1      0.00000000   0.000000000037
+  dia64dc_4n_c2      0.00000000   0.000000000037
+  dia64dc_4n_c3      0.00000000   0.000000000037
+
+  comparison per node count (recomputed |F|max):
+  1 node(s):  on 0.000000000024 | off 0.000000000025 | CPU 0.000000000037  -> off-on = +1.0e-12, CPU-on = +1.3e-11
+  2 node(s):  on 0.000000000025 | off 0.000000000025 | CPU 0.000000000037  -> off-on = +0.0e+00, CPU-on = +1.2e-11
+  3 node(s):  on 0.000000000025 | off 0.000000000025 | CPU 0.000000000037  -> off-on = +0.0e+00, CPU-on = +1.2e-11
+  4 node(s):  on 0.000000000025 | off 0.000000000025 | CPU 0.000000000037  -> off-on = +0.0e+00, CPU-on = +1.2e-11
+
+--- peak host memory, node 0 (GiB) ---
+  dia64dc_1n_g1      55/124
+  dia64dc_1n_g2      52/124
+  dia64dc_1n_g3      51/124
+  dia64dc_1n_o2      48/124
+  dia64dc_1n_o3      46/124
+  dia64dc_1n_o4      44/124
+  dia64dc_1n_c1      51/124
+  dia64dc_1n_c2      52/124
+  dia64dc_1n_c3      52/124
+  dia64dc_2n_g1      35/124
+  dia64dc_2n_g2      33/124
+  dia64dc_2n_g3      33/124
+  dia64dc_2n_o1      35/124
+  dia64dc_2n_o2      35/124
+  dia64dc_2n_o3      33/124
+  dia64dc_2n_c1      40/124
+  dia64dc_2n_c2      39/124
+  dia64dc_2n_c3      40/124
+  dia64dc_3n_g1      29/124
+  dia64dc_3n_g2      32/124
+  dia64dc_3n_g3      29/124
+  dia64dc_3n_o1      31/124
+  dia64dc_3n_o2      28/124
+  dia64dc_3n_o3      30/124
+  dia64dc_3n_c1      36/124
+  dia64dc_3n_c2      36/124
+  dia64dc_3n_c3      35/124
+  dia64dc_4n_g1      28/124
+  dia64dc_4n_g2      29/124
+  dia64dc_4n_g3      26/124
+  dia64dc_4n_o1      27/124
+  dia64dc_4n_o2      27/124
+  dia64dc_4n_o3      28/124
+  dia64dc_4n_c1      32/124
+  dia64dc_4n_c2      33/124
+  dia64dc_4n_c3      32/124
+
+PROVENANCE NOTE (2026-08-16): how this file was produced
+--------------------------------------------------------
+Generated by ./summarize_dia64dc_nodes.sh; this note is appended by hand.
+Cases come from ./gen_dia64dc_nodes.sh, which derives each script from
+dia64dc_1n48_{g,o,c}1 and asserts 22 fields per case, including MD.Type=Opt
+and MD.maxIter=1 -- the generator refuses to emit anything if the deck is not
+doing the single optimisation step that produces forces, since that omission
+is what invalidated the previous attempt.  All 36 cases: 792 PASS / 0 FAIL.
+
+Jobs 913066..913121 plus 913097 (the o4 replacement), submitted 2026-08-16 in
+three waves, queue gen_S, account GPU2026.  Each wave was one repetition of
+all 12 (node count, config) points, 12-13 jobs at a time rather than all 36 at
+once: the earlier 33-job burst on this machine put ~25 s of shared-filesystem
+contention into Total, which matters more here where the fastest runs are
+under 70 s.  Submitting a whole repetition per wave also means any residual
+contention hits all three configs symmetrically instead of biasing one.
+
+Superseded runs
+---------------
+dia64dc_1n48_{g,o,c}{1,2,3} ran the same deck with MD.Type nomd, i.e. without
+the geometry step, and were stopped mid-campaign.  They are still on disk and
+must not be pooled with these means.  For the record their 1-node Totals were
+205.7/204.4 (g), 199.7/200.3 (o), 613.8/621.1 (c) -- within noise of the
+MD.Type Opt numbers here, so the omission cost accuracy of intent, not time.
+
+Slow-node screening
+-------------------
+Every run screened on the full node list in its .env.  One draw was rejected:
+dia64dc_1n_o1 on bnode013.  It was discarded unmeasured-in-the-mean and
+re-run as dia64dc_1n_o4 (bnode089, clean), so the 1-node g8-off point is
+o2/o3/o4.  Its timing, 200.069 s, was in fact indistinguishable from the
+replacement's 198.611 s -- bnode013 does not appear to penalise this workload
+-- but the convention is applied regardless rather than case by case.
+No other run touched bnode013 or bnode033.
+
+GPU engagement is confirmed, not assumed
+-----------------------------------------
+DC-LNO dispatches a cluster to the GPU only when its local matrix dimension
+is >= 800 (Divide_Conquer_LNO.c, OPENMX_DCLNO_GPU_THRESHOLD).  Had this system
+fallen below that, all three configs would have run the same CPU eigensolver
+and the g/o/c spread would have been noise.  It did not: every g and o run
+shows the "(GPU-accelerated)" banner and 100% peak GPU utilisation, with
+28.6-58.3 GiB of device memory in use.  The comparison is real.
+
+What the ranks are actually doing
+----------------------------------
+Set_Allocate_Atom2CPU.c caps atom-owning ranks at min(numprocs, atomnum), and
+this system has 64 atoms.  So 1 node has 48 owners and 2, 3 and 4 nodes all
+have 64 -- the 96, 144 and 192 ranks launched at 2/3/4 nodes perform the same
+64 cluster solves.  Solver==11 (DC-LNO) additionally takes the ID2ID spreading
+remap at Set_Allocate_Atom2CPU.c:333, which distributes those owners across
+the nodes instead of packing them onto the first ones.
+
+That cap does NOT flatten the curve, and it was wrong to expect it would:
+CPU Diagonalization runs 570.3 / 275.2 / 211.8 / 184.2 s over 1-4 nodes, a
+3.10x gain.  Spreading 64 owners over more nodes drops the per-node owner
+count from 48 to 16, so each owner gets more memory bandwidth and cache, and
+on the GPU path more devices.  The scaling is real but its mechanism is
+thinner packing, not more parallelism -- which is why it decays toward the
+node count rather than tracking it, and why a larger system would scale
+differently.
+
+GEMMul8 is a small net loss on this workload
+---------------------------------------------
+gemmul8-on is 1.01-1.02x SLOWER than plain cuBLAS at every node count, in
+both Total and Diagonalization, and the effect is larger than the run-to-run
+SD at 1, 3 and 4 nodes.  The reason is structural: GEMMul8 intercepts only
+the three DGEMM calls per cluster solve in DCLNO_Solve_Col_GpuSolver, while
+the cusolverDn eigendecomposition sitting between them -- the dominant cost --
+is untouched.  A per-call overhead spread over three GEMMs of dimension ~832
+has nothing large enough to amortise against.  Contrast the s443nc cluster
+solver, where on and off were indistinguishable.
+Utot is bit-identical between on and off at every node count, so this is
+purely a speed question with no accuracy trade to weigh against it.
+
+Verification
+------------
+Utot bit-identical across the three reps of all 12 points.  gemmul8-on and
+gemmul8-off agree bit-for-bit with each other; elpa2 differs from both by
+7.1e-11 Hartree on a total of -373.46, i.e. the 13th significant digit.
+
+|Maximum force| is reported but does not discriminate here.  MD.Type Opt now
+produces the MD table, and it reads 0.00000000 at 8 dp for all 36 runs; the
+12-dp recomputation gives 2.4-2.5e-11 (GPU) and 3.7e-11 (CPU).  This is not a
+harness limitation -- the deck is ideal diamond with every atom on a symmetry
+site, so the exact forces are zero and what is tabulated is roundoff.  To get
+forces that separate the solver paths the structure has to be displaced off
+its symmetry sites.  Utot remains the accuracy check that actually bites.
+
+Host memory is not a constraint at any point measured: 26-55 GiB of 124.

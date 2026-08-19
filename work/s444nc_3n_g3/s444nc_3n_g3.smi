@@ -1,0 +1,198 @@
+--- 11:51:51
+host mem used/total (GiB): 3/124
+0 %, 1 MiB
+--- 11:51:56
+host mem used/total (GiB): 5/124
+0 %, 1 MiB
+--- 11:52:02
+host mem used/total (GiB): 12/124
+0 %, 73 MiB
+--- 11:52:07
+host mem used/total (GiB): 15/124
+0 %, 73 MiB
+--- 11:52:12
+host mem used/total (GiB): 24/124
+1 %, 916 MiB
+--- 11:52:18
+host mem used/total (GiB): 55/124
+83 %, 50152 MiB
+--- 11:52:23
+host mem used/total (GiB): 65/124
+100 %, 37766 MiB
+--- 11:52:29
+host mem used/total (GiB): 60/124
+100 %, 62018 MiB
+--- 11:52:34
+host mem used/total (GiB): 79/124
+0 %, 59956 MiB
+--- 11:52:39
+host mem used/total (GiB): 80/124
+100 %, 62018 MiB
+--- 11:52:44
+host mem used/total (GiB): 79/124
+0 %, 59948 MiB
+--- 11:52:49
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:52:54
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:52:59
+host mem used/total (GiB): 92/124
+83 %, 59958 MiB
+--- 11:53:05
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:53:10
+host mem used/total (GiB): 82/124
+0 %, 60020 MiB
+--- 11:53:15
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:53:20
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:53:25
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:53:30
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:53:35
+host mem used/total (GiB): 93/124
+0 %, 59958 MiB
+--- 11:53:40
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:53:46
+host mem used/total (GiB): 83/124
+100 %, 60160 MiB
+--- 11:53:51
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:53:56
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:01
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:06
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:11
+host mem used/total (GiB): 93/124
+0 %, 59958 MiB
+--- 11:54:16
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:22
+host mem used/total (GiB): 83/124
+100 %, 59948 MiB
+--- 11:54:27
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:32
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:37
+host mem used/total (GiB): 80/124
+100 %, 72926 MiB
+--- 11:54:42
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:47
+host mem used/total (GiB): 83/124
+100 %, 63036 MiB
+--- 11:54:52
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:54:57
+host mem used/total (GiB): 80/124
+16 %, 62020 MiB
+--- 11:55:03
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:08
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:13
+host mem used/total (GiB): 92/124
+87 %, 59956 MiB
+--- 11:55:18
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:23
+host mem used/total (GiB): 83/124
+87 %, 60958 MiB
+--- 11:55:28
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:33
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:38
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:44
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:49
+host mem used/total (GiB): 83/124
+0 %, 59958 MiB
+--- 11:55:54
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:55:59
+host mem used/total (GiB): 80/124
+0 %, 59948 MiB
+--- 11:56:04
+host mem used/total (GiB): 80/124
+100 %, 62020 MiB
+--- 11:56:09
+host mem used/total (GiB): 85/124
+9 %, 63036 MiB
+--- 11:56:14
+host mem used/total (GiB): 85/124
+0 %, 63036 MiB
+--- 11:56:20
+host mem used/total (GiB): 92/124
+0 %, 63036 MiB
+--- 11:56:25
+host mem used/total (GiB): 104/124
+100 %, 35644 MiB
+--- 11:56:30
+host mem used/total (GiB): 86/124
+0 %, 22372 MiB
+--- 11:56:35
+host mem used/total (GiB): 39/124
+4 %, 78 MiB
+--- 11:56:41
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:56:46
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:56:51
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:56:57
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:57:02
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:57:07
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:57:12
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:57:17
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:57:22
+host mem used/total (GiB): 3/124
+0 %, 78 MiB
+--- 11:57:27
+host mem used/total (GiB): 3/124
+0 %, 78 MiB

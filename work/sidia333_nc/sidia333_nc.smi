@@ -1,0 +1,557 @@
+--- 12:09:54
+0 %, 1 MiB
+--- 12:10:25
+0 %, 936 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 448 MiB
+3761266, ../openmx, 90 MiB
+3761230, ../openmx, 448 MiB
+3761223, ../openmx, 448 MiB
+3761222, ../openmx, 448 MiB
+3761229, ../openmx, 448 MiB
+3761254, ../openmx, 636 MiB
+3761243, ../openmx, 448 MiB
+3761257, ../openmx, 448 MiB
+3761263, ../openmx, 448 MiB
+3761259, ../openmx, 448 MiB
+3761250, ../openmx, 30 MiB
+3761256, ../openmx, 448 MiB
+3761225, ../openmx, 448 MiB
+3761247, ../openmx, 448 MiB
+3761237, ../openmx, 448 MiB
+3761264, ../openmx, 448 MiB
+3761252, ../openmx, 448 MiB
+3761228, ../openmx, 448 MiB
+3761241, ../openmx, 448 MiB
+3761242, ../openmx, 448 MiB
+3761245, ../openmx, 30 MiB
+3761251, ../openmx, 448 MiB
+3761231, ../openmx, 448 MiB
+3761235, ../openmx, 448 MiB
+3761240, ../openmx, 448 MiB
+3761244, ../openmx, 448 MiB
+3761267, ../openmx, 448 MiB
+3761248, ../openmx, 448 MiB
+3761233, ../openmx, 448 MiB
+3761239, ../openmx, 448 MiB
+3761224, ../openmx, 448 MiB
+3761232, ../openmx, 448 MiB
+3761220, ../openmx, 448 MiB
+3761249, ../openmx, 448 MiB
+3761255, ../openmx, 448 MiB
+3761262, ../openmx, 448 MiB
+3761258, ../openmx, 448 MiB
+3761236, ../openmx, 452 MiB
+3761246, ../openmx, 448 MiB
+3761234, ../openmx, 448 MiB
+3761260, ../openmx, 448 MiB
+3761238, ../openmx, 448 MiB
+3761253, ../openmx, 90 MiB
+3761226, ../openmx, 448 MiB
+3761227, ../openmx, 448 MiB
+3761261, ../openmx, 448 MiB
+3761221, ../openmx, 448 MiB
+--- 12:10:56
+100 %, 26414 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 454 MiB
+3761266, ../openmx, 454 MiB
+3761230, ../openmx, 454 MiB
+3761223, ../openmx, 454 MiB
+3761222, ../openmx, 454 MiB
+3761229, ../openmx, 454 MiB
+3761254, ../openmx, 454 MiB
+3761243, ../openmx, 454 MiB
+3761257, ../openmx, 454 MiB
+3761263, ../openmx, 454 MiB
+3761259, ../openmx, 454 MiB
+3761250, ../openmx, 1016 MiB
+3761256, ../openmx, 1016 MiB
+3761225, ../openmx, 454 MiB
+3761247, ../openmx, 454 MiB
+3761237, ../openmx, 454 MiB
+3761264, ../openmx, 454 MiB
+3761252, ../openmx, 454 MiB
+3761228, ../openmx, 454 MiB
+3761241, ../openmx, 454 MiB
+3761242, ../openmx, 454 MiB
+3761245, ../openmx, 454 MiB
+3761251, ../openmx, 454 MiB
+3761231, ../openmx, 454 MiB
+3761235, ../openmx, 454 MiB
+3761240, ../openmx, 454 MiB
+3761244, ../openmx, 1016 MiB
+3761267, ../openmx, 454 MiB
+3761248, ../openmx, 454 MiB
+3761233, ../openmx, 454 MiB
+3761239, ../openmx, 454 MiB
+3761224, ../openmx, 454 MiB
+3761232, ../openmx, 1016 MiB
+3761220, ../openmx, 1016 MiB
+3761249, ../openmx, 454 MiB
+3761255, ../openmx, 454 MiB
+3761262, ../openmx, 1016 MiB
+3761258, ../openmx, 454 MiB
+3761236, ../openmx, 454 MiB
+3761246, ../openmx, 454 MiB
+3761234, ../openmx, 454 MiB
+3761260, ../openmx, 454 MiB
+3761238, ../openmx, 1016 MiB
+3761253, ../openmx, 454 MiB
+3761226, ../openmx, 1016 MiB
+3761227, ../openmx, 454 MiB
+3761261, ../openmx, 454 MiB
+3761221, ../openmx, 454 MiB
+--- 12:11:27
+100 %, 47718 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 454 MiB
+3761266, ../openmx, 454 MiB
+3761230, ../openmx, 454 MiB
+3761223, ../openmx, 454 MiB
+3761222, ../openmx, 454 MiB
+3761229, ../openmx, 454 MiB
+3761254, ../openmx, 454 MiB
+3761243, ../openmx, 454 MiB
+3761257, ../openmx, 454 MiB
+3761263, ../openmx, 454 MiB
+3761259, ../openmx, 454 MiB
+3761250, ../openmx, 4730 MiB
+3761256, ../openmx, 526 MiB
+3761225, ../openmx, 454 MiB
+3761247, ../openmx, 454 MiB
+3761237, ../openmx, 454 MiB
+3761264, ../openmx, 454 MiB
+3761252, ../openmx, 454 MiB
+3761228, ../openmx, 454 MiB
+3761241, ../openmx, 454 MiB
+3761242, ../openmx, 454 MiB
+3761245, ../openmx, 454 MiB
+3761251, ../openmx, 454 MiB
+3761231, ../openmx, 454 MiB
+3761235, ../openmx, 454 MiB
+3761240, ../openmx, 454 MiB
+3761244, ../openmx, 4730 MiB
+3761267, ../openmx, 454 MiB
+3761248, ../openmx, 454 MiB
+3761233, ../openmx, 454 MiB
+3761239, ../openmx, 454 MiB
+3761224, ../openmx, 454 MiB
+3761232, ../openmx, 4730 MiB
+3761220, ../openmx, 4730 MiB
+3761249, ../openmx, 454 MiB
+3761255, ../openmx, 454 MiB
+3761262, ../openmx, 526 MiB
+3761258, ../openmx, 454 MiB
+3761236, ../openmx, 454 MiB
+3761246, ../openmx, 454 MiB
+3761234, ../openmx, 454 MiB
+3761260, ../openmx, 454 MiB
+3761238, ../openmx, 4730 MiB
+3761253, ../openmx, 454 MiB
+3761226, ../openmx, 4730 MiB
+3761227, ../openmx, 454 MiB
+3761261, ../openmx, 454 MiB
+3761221, ../openmx, 454 MiB
+--- 12:11:57
+100 %, 30902 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 454 MiB
+3761266, ../openmx, 454 MiB
+3761230, ../openmx, 454 MiB
+3761223, ../openmx, 454 MiB
+3761222, ../openmx, 454 MiB
+3761229, ../openmx, 454 MiB
+3761254, ../openmx, 454 MiB
+3761243, ../openmx, 454 MiB
+3761257, ../openmx, 454 MiB
+3761263, ../openmx, 454 MiB
+3761259, ../openmx, 454 MiB
+3761250, ../openmx, 526 MiB
+3761256, ../openmx, 4730 MiB
+3761225, ../openmx, 454 MiB
+3761247, ../openmx, 454 MiB
+3761237, ../openmx, 454 MiB
+3761264, ../openmx, 454 MiB
+3761252, ../openmx, 454 MiB
+3761228, ../openmx, 454 MiB
+3761241, ../openmx, 454 MiB
+3761242, ../openmx, 454 MiB
+3761245, ../openmx, 454 MiB
+3761251, ../openmx, 454 MiB
+3761231, ../openmx, 454 MiB
+3761235, ../openmx, 454 MiB
+3761240, ../openmx, 454 MiB
+3761244, ../openmx, 526 MiB
+3761267, ../openmx, 454 MiB
+3761248, ../openmx, 454 MiB
+3761233, ../openmx, 454 MiB
+3761239, ../openmx, 454 MiB
+3761224, ../openmx, 454 MiB
+3761232, ../openmx, 526 MiB
+3761220, ../openmx, 526 MiB
+3761249, ../openmx, 454 MiB
+3761255, ../openmx, 454 MiB
+3761262, ../openmx, 4730 MiB
+3761258, ../openmx, 454 MiB
+3761236, ../openmx, 454 MiB
+3761246, ../openmx, 454 MiB
+3761234, ../openmx, 454 MiB
+3761260, ../openmx, 454 MiB
+3761238, ../openmx, 526 MiB
+3761253, ../openmx, 454 MiB
+3761226, ../openmx, 526 MiB
+3761227, ../openmx, 454 MiB
+3761261, ../openmx, 454 MiB
+3761221, ../openmx, 454 MiB
+--- 12:12:27
+100 %, 42168 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 908 MiB
+3761266, ../openmx, 908 MiB
+3761230, ../openmx, 820 MiB
+3761223, ../openmx, 820 MiB
+3761222, ../openmx, 820 MiB
+3761229, ../openmx, 908 MiB
+3761254, ../openmx, 820 MiB
+3761243, ../openmx, 908 MiB
+3761257, ../openmx, 820 MiB
+3761263, ../openmx, 820 MiB
+3761259, ../openmx, 820 MiB
+3761250, ../openmx, 980 MiB
+3761256, ../openmx, 980 MiB
+3761225, ../openmx, 908 MiB
+3761247, ../openmx, 820 MiB
+3761237, ../openmx, 820 MiB
+3761264, ../openmx, 820 MiB
+3761252, ../openmx, 908 MiB
+3761228, ../openmx, 820 MiB
+3761241, ../openmx, 908 MiB
+3761242, ../openmx, 820 MiB
+3761245, ../openmx, 908 MiB
+3761251, ../openmx, 820 MiB
+3761231, ../openmx, 908 MiB
+3761235, ../openmx, 820 MiB
+3761240, ../openmx, 908 MiB
+3761244, ../openmx, 890 MiB
+3761267, ../openmx, 820 MiB
+3761248, ../openmx, 820 MiB
+3761233, ../openmx, 908 MiB
+3761239, ../openmx, 820 MiB
+3761224, ../openmx, 908 MiB
+3761232, ../openmx, 890 MiB
+3761220, ../openmx, 980 MiB
+3761249, ../openmx, 908 MiB
+3761255, ../openmx, 908 MiB
+3761262, ../openmx, 980 MiB
+3761258, ../openmx, 820 MiB
+3761236, ../openmx, 908 MiB
+3761246, ../openmx, 908 MiB
+3761234, ../openmx, 908 MiB
+3761260, ../openmx, 908 MiB
+3761238, ../openmx, 890 MiB
+3761253, ../openmx, 820 MiB
+3761226, ../openmx, 980 MiB
+3761227, ../openmx, 820 MiB
+3761261, ../openmx, 908 MiB
+3761221, ../openmx, 820 MiB
+--- 12:12:57
+100 %, 47718 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 454 MiB
+3761266, ../openmx, 454 MiB
+3761230, ../openmx, 454 MiB
+3761223, ../openmx, 454 MiB
+3761222, ../openmx, 454 MiB
+3761229, ../openmx, 454 MiB
+3761254, ../openmx, 454 MiB
+3761243, ../openmx, 454 MiB
+3761257, ../openmx, 454 MiB
+3761263, ../openmx, 454 MiB
+3761259, ../openmx, 454 MiB
+3761250, ../openmx, 4730 MiB
+3761256, ../openmx, 526 MiB
+3761225, ../openmx, 454 MiB
+3761247, ../openmx, 454 MiB
+3761237, ../openmx, 454 MiB
+3761264, ../openmx, 454 MiB
+3761252, ../openmx, 454 MiB
+3761228, ../openmx, 454 MiB
+3761241, ../openmx, 454 MiB
+3761242, ../openmx, 454 MiB
+3761245, ../openmx, 454 MiB
+3761251, ../openmx, 454 MiB
+3761231, ../openmx, 454 MiB
+3761235, ../openmx, 454 MiB
+3761240, ../openmx, 454 MiB
+3761244, ../openmx, 4730 MiB
+3761267, ../openmx, 454 MiB
+3761248, ../openmx, 454 MiB
+3761233, ../openmx, 454 MiB
+3761239, ../openmx, 454 MiB
+3761224, ../openmx, 454 MiB
+3761232, ../openmx, 4730 MiB
+3761220, ../openmx, 4730 MiB
+3761249, ../openmx, 454 MiB
+3761255, ../openmx, 454 MiB
+3761262, ../openmx, 526 MiB
+3761258, ../openmx, 454 MiB
+3761236, ../openmx, 454 MiB
+3761246, ../openmx, 454 MiB
+3761234, ../openmx, 454 MiB
+3761260, ../openmx, 454 MiB
+3761238, ../openmx, 4730 MiB
+3761253, ../openmx, 454 MiB
+3761226, ../openmx, 4730 MiB
+3761227, ../openmx, 454 MiB
+3761261, ../openmx, 454 MiB
+3761221, ../openmx, 454 MiB
+--- 12:13:27
+2 %, 27862 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 454 MiB
+3761266, ../openmx, 454 MiB
+3761230, ../openmx, 454 MiB
+3761223, ../openmx, 454 MiB
+3761222, ../openmx, 454 MiB
+3761229, ../openmx, 454 MiB
+3761254, ../openmx, 454 MiB
+3761243, ../openmx, 454 MiB
+3761257, ../openmx, 454 MiB
+3761263, ../openmx, 454 MiB
+3761259, ../openmx, 454 MiB
+3761250, ../openmx, 1016 MiB
+3761256, ../openmx, 1016 MiB
+3761225, ../openmx, 454 MiB
+3761247, ../openmx, 454 MiB
+3761237, ../openmx, 454 MiB
+3761264, ../openmx, 454 MiB
+3761252, ../openmx, 454 MiB
+3761228, ../openmx, 454 MiB
+3761241, ../openmx, 454 MiB
+3761242, ../openmx, 454 MiB
+3761245, ../openmx, 454 MiB
+3761251, ../openmx, 454 MiB
+3761231, ../openmx, 454 MiB
+3761235, ../openmx, 454 MiB
+3761240, ../openmx, 454 MiB
+3761244, ../openmx, 1016 MiB
+3761267, ../openmx, 454 MiB
+3761248, ../openmx, 454 MiB
+3761233, ../openmx, 454 MiB
+3761239, ../openmx, 454 MiB
+3761224, ../openmx, 454 MiB
+3761232, ../openmx, 1016 MiB
+3761220, ../openmx, 2464 MiB
+3761249, ../openmx, 454 MiB
+3761255, ../openmx, 454 MiB
+3761262, ../openmx, 1016 MiB
+3761258, ../openmx, 454 MiB
+3761236, ../openmx, 454 MiB
+3761246, ../openmx, 454 MiB
+3761234, ../openmx, 454 MiB
+3761260, ../openmx, 454 MiB
+3761238, ../openmx, 1016 MiB
+3761253, ../openmx, 454 MiB
+3761226, ../openmx, 1016 MiB
+3761227, ../openmx, 454 MiB
+3761261, ../openmx, 454 MiB
+3761221, ../openmx, 454 MiB
+--- 12:13:57
+100 %, 47718 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 454 MiB
+3761266, ../openmx, 454 MiB
+3761230, ../openmx, 454 MiB
+3761223, ../openmx, 454 MiB
+3761222, ../openmx, 454 MiB
+3761229, ../openmx, 454 MiB
+3761254, ../openmx, 454 MiB
+3761243, ../openmx, 454 MiB
+3761257, ../openmx, 454 MiB
+3761263, ../openmx, 454 MiB
+3761259, ../openmx, 454 MiB
+3761250, ../openmx, 4730 MiB
+3761256, ../openmx, 526 MiB
+3761225, ../openmx, 454 MiB
+3761247, ../openmx, 454 MiB
+3761237, ../openmx, 454 MiB
+3761264, ../openmx, 454 MiB
+3761252, ../openmx, 454 MiB
+3761228, ../openmx, 454 MiB
+3761241, ../openmx, 454 MiB
+3761242, ../openmx, 454 MiB
+3761245, ../openmx, 454 MiB
+3761251, ../openmx, 454 MiB
+3761231, ../openmx, 454 MiB
+3761235, ../openmx, 454 MiB
+3761240, ../openmx, 454 MiB
+3761244, ../openmx, 4730 MiB
+3761267, ../openmx, 454 MiB
+3761248, ../openmx, 454 MiB
+3761233, ../openmx, 454 MiB
+3761239, ../openmx, 454 MiB
+3761224, ../openmx, 454 MiB
+3761232, ../openmx, 4730 MiB
+3761220, ../openmx, 4730 MiB
+3761249, ../openmx, 454 MiB
+3761255, ../openmx, 454 MiB
+3761262, ../openmx, 526 MiB
+3761258, ../openmx, 454 MiB
+3761236, ../openmx, 454 MiB
+3761246, ../openmx, 454 MiB
+3761234, ../openmx, 454 MiB
+3761260, ../openmx, 454 MiB
+3761238, ../openmx, 4730 MiB
+3761253, ../openmx, 454 MiB
+3761226, ../openmx, 4730 MiB
+3761227, ../openmx, 454 MiB
+3761261, ../openmx, 454 MiB
+3761221, ../openmx, 454 MiB
+--- 12:14:28
+0 %, 22862 MiB
+3761463, nvidia-cuda-mps-server, 64 MiB
+3761265, ../openmx, 462 MiB
+3761266, ../openmx, 462 MiB
+3761230, ../openmx, 462 MiB
+3761223, ../openmx, 462 MiB
+3761222, ../openmx, 462 MiB
+3761229, ../openmx, 462 MiB
+3761254, ../openmx, 462 MiB
+3761243, ../openmx, 462 MiB
+3761257, ../openmx, 462 MiB
+3761263, ../openmx, 462 MiB
+3761259, ../openmx, 462 MiB
+3761250, ../openmx, 532 MiB
+3761256, ../openmx, 532 MiB
+3761225, ../openmx, 462 MiB
+3761247, ../openmx, 462 MiB
+3761237, ../openmx, 462 MiB
+3761264, ../openmx, 462 MiB
+3761252, ../openmx, 462 MiB
+3761228, ../openmx, 462 MiB
+3761241, ../openmx, 462 MiB
+3761242, ../openmx, 462 MiB
+3761245, ../openmx, 462 MiB
+3761251, ../openmx, 462 MiB
+3761231, ../openmx, 462 MiB
+3761235, ../openmx, 462 MiB
+3761240, ../openmx, 462 MiB
+3761244, ../openmx, 532 MiB
+3761267, ../openmx, 462 MiB
+3761248, ../openmx, 462 MiB
+3761233, ../openmx, 462 MiB
+3761239, ../openmx, 462 MiB
+3761224, ../openmx, 462 MiB
+3761232, ../openmx, 532 MiB
+3761220, ../openmx, 532 MiB
+3761249, ../openmx, 462 MiB
+3761255, ../openmx, 462 MiB
+3761262, ../openmx, 532 MiB
+3761258, ../openmx, 462 MiB
+3761236, ../openmx, 462 MiB
+3761246, ../openmx, 462 MiB
+3761234, ../openmx, 462 MiB
+3761260, ../openmx, 462 MiB
+3761238, ../openmx, 532 MiB
+3761253, ../openmx, 462 MiB
+3761226, ../openmx, 532 MiB
+3761227, ../openmx, 462 MiB
+3761261, ../openmx, 462 MiB
+3761221, ../openmx, 462 MiB
+--- 12:14:58
+0 %, 0 MiB
+--- 12:15:28
+0 %, 0 MiB
+--- 12:15:58
+0 %, 0 MiB
+--- 12:16:28
+0 %, 0 MiB
+--- 12:16:58
+0 %, 0 MiB
+--- 12:17:28
+0 %, 0 MiB
+--- 12:17:58
+0 %, 0 MiB
+--- 12:18:28
+0 %, 0 MiB
+--- 12:18:58
+0 %, 0 MiB
+--- 12:19:28
+0 %, 0 MiB
+--- 12:19:59
+0 %, 0 MiB
+--- 12:20:29
+0 %, 0 MiB
+--- 12:20:59
+0 %, 0 MiB
+--- 12:21:29
+0 %, 0 MiB
+--- 12:21:59
+0 %, 0 MiB
+--- 12:22:29
+0 %, 0 MiB
+--- 12:22:59
+0 %, 0 MiB
+--- 12:23:29
+0 %, 0 MiB
+--- 12:23:59
+0 %, 0 MiB
+--- 12:24:29
+0 %, 0 MiB
+--- 12:24:59
+0 %, 0 MiB
+--- 12:25:29
+0 %, 0 MiB
+--- 12:26:00
+0 %, 0 MiB
+--- 12:26:30
+0 %, 0 MiB
+--- 12:27:00
+0 %, 0 MiB
+--- 12:27:30
+0 %, 0 MiB
+--- 12:28:00
+0 %, 0 MiB
+--- 12:28:30
+0 %, 0 MiB
+--- 12:29:00
+0 %, 0 MiB
+--- 12:29:30
+0 %, 0 MiB
+--- 12:30:00
+0 %, 0 MiB
+--- 12:30:30
+0 %, 0 MiB
+--- 12:31:00
+0 %, 0 MiB
+--- 12:31:30
+0 %, 0 MiB
+--- 12:32:00
+0 %, 0 MiB
+--- 12:32:31
+0 %, 0 MiB
+--- 12:33:01
+0 %, 0 MiB
+--- 12:33:31
+0 %, 0 MiB
+--- 12:34:01
+0 %, 0 MiB
+--- 12:34:31
+0 %, 0 MiB
+--- 12:35:01
+0 %, 0 MiB
+--- 12:35:31
+0 %, 0 MiB
+--- 12:36:01
+0 %, 0 MiB
+--- 12:36:31
+0 %, 0 MiB
+--- 12:37:01
+0 %, 0 MiB
+--- 12:37:31
+0 %, 0 MiB
+--- 12:38:01
+0 %, 0 MiB
+--- 12:38:32
+0 %, 0 MiB

@@ -1,0 +1,195 @@
+======================================================================
+Si diamond BAND-solver 1-node size search  (research plan v2.6, 7.3)
+======================================================================
+goal      : per mode (col band / NC band), the largest ladder candidate
+            that runs SAFELY at 1 node x 48 ranks x 1 H100 (MPS on),
+            then 25-SCF confirmation with cuBLAS and with GEMMul8.
+gate      : node peak host RSS <= 102 GiB (80% of 128 GB); exit 0; no
+            'cannot fit' GPU fallback.  Probes are single samples:
+            GO/NO-GO only, never a timing ranking.
+binary    : work/openmx md5 962f8d2519c2e6aa5a6295513f76fee9
+            (openmx cd5f0d5 + bundled GEMMul8 v3.2.0/833e576,
+            NVHPC 26.5 / CUDA 13.2, sm_90; built 2026-08-19 09:26)
+deck      : from ../sidia.dat -- Si7.0-s2p2d1 (13 basis/atom), GGA-PBE,
+            200 Ry, Band solver, Kgrid 2x2x2 (8 computed k), rmm-diisk
+            history 7, scf.criterion 1e-13, MD.Type Opt / MD.maxIter 1;
+            probes truncate to scf.maxIter 3, confirmations run 25.
+ladder    : see siband_candidates.txt (frozen before measurement)
+
+# Si diamond band-search candidate ladder, frozen 2026-08-19 09:06
+# from sidia.dat (8-atom conventional cell, a=5.431 Ang, Si7.0-s2p2d1)
+# atoms family m1 m2 m3   n=13N   2n=26N
+   216  conv  3 3 3     2808    5616
+   250  prim  5 5 5     3250    6500
+   288  conv  4 3 3     3744    7488
+   300  prim  6 5 5     3900    7800
+   360  prim  6 6 5     4680    9360
+   384  conv  4 4 3     4992    9984
+   432  prim  6 6 6     5616   11232
+   512  conv  4 4 4     6656   13312
+
+--- probe / confirmation table -------------------------------------
+  case              RSS(GiB)  devPk    total    SCF  cfit  verdict
+  [col band: n = 13*N real]
+  sib_col216_p        68/124    48G   38.656      3     0   PASS
+  sib_col250_p        67/124    53G   42.178      3     0   PASS
+  sib_col288_p       107/124    53G   53.551      3     0   FAIL-gate
+  sib_col300_p        76/124    56G   48.690      3     0   PASS
+  sib_col360_p        82/124    62G   62.992      3     0   PASS
+  sib_col384_p       119/124    58G        -      1     0   FAIL-OOM
+  sib_col432_p       113/124    62G        -      3     0   FAIL-OOM
+  sib_col512_p       115/124    64G        -      1     0   FAIL-OOM
+  sib_col300_p8       93/124    68G   51.069      3     0   PASS
+  sib_col360_p8      105/124    67G   61.599      3     0   FAIL-gate
+  sib_col300_o        76/124    56G  131.969     25     0   PASS
+  sib_col300_g        93/124    68G  149.673     25     0   PASS
+  sib_col360_o        84/124    62G  183.162     25     0   PASS
+  [NC band: 2n = 26*N complex]
+  sib_nc216_p         99/124    65G   64.386      3     0   PASS
+  sib_nc250_p         99/124    67G   76.650      3     0   PASS
+  sib_nc288_p        112/124    65G        -      2     0   FAIL-OOM
+  sib_nc300_p        112/124    69G   94.212      3     0   FAIL-gate
+  sib_nc360_p        113/124    70G        -      2     0   FAIL-OOM
+  sib_nc384_p        119/124    58G        -      1     0   FAIL-OOM
+  sib_nc216_p8        99/124    57G   64.611      3     0   PASS
+  sib_nc250_p8       100/124    63G   75.445      3     0   PASS
+  sib_nc216_o        100/124    65G  254.547     25     0   PASS
+  sib_nc216_g        101/124    61G  256.510     25     0   PASS
+  sib_nc250_o        104/124    67G  298.848     24     0   FAIL-gate
+
+  RSS = node peak host 'used' from the 5-s sampler (rank-level RSS is
+  not sampled; the gate is applied at node level).  devPk = peak GPU
+  memory.used.  total = wall seconds, Max_Time column, single run.
+  cfit = count of 'cannot fit' dense-GPU fallback banners (must be 0).
+  FAIL-OOM = a rank was SIGKILLed by the host OOM killer mid-run.
+  FAIL-gate = run completed but exceeded the 102-GiB safety gate.
+
+--- GPU engagement (chosen candidates) ------------------------------
+  sib_col300_p     <Band_DFT_Col> GPU device 0: 8 k-owner rank(s), GPU concurrency=8, turn group=8, per-rank=2.091 GiB, peak=16.728 GiB, free=37.486 GiB, reserve=7.918 GiB
+  sib_col300_p8    <Band_DFT_Col> GPU device 0: 8 k-owner rank(s), GPU concurrency=7, turn group=7, per-rank=4.090 GiB, peak=28.629 GiB, free=37.486 GiB, reserve=7.918 GiB
+  sib_col360_p     <Band_DFT_Col> GPU device 0: 8 k-owner rank(s), GPU concurrency=8, turn group=8, per-rank=2.840 GiB, peak=22.719 GiB, free=38.587 GiB, reserve=7.918 GiB
+  sib_col360_p8    <Band_DFT_Col> GPU device 0: 8 k-owner rank(s), GPU concurrency=5, turn group=5, per-rank=5.676 GiB, peak=28.379 GiB, free=38.587 GiB, reserve=7.918 GiB
+  sib_nc250_p      <Band_DFT_NonCol> GPU device 0: 8 k-owner rank(s), GPU concurrency=7 (eigenvectors), turn group=7, per-rank=4.321 GiB, peak=30.246 GiB, free=40.669 GiB, reserve=7.918 GiB
+  sib_nc250_p8     <Band_DFT_NonCol> GPU device 0: 8 k-owner rank(s), GPU concurrency=3 (eigenvectors), turn group=3, per-rank=9.683 GiB, peak=29.049 GiB, free=40.669 GiB, reserve=7.918 GiB
+
+--- Utot cross-checks ------------------------------------------------
+  (3-SCF probes, unconverged by construction: byte-comparison across
+   binaries / backends at identical iteration counts)
+  col216     v3.2.0-build -892.691815140309      v3.1.1-build -892.691815140309      IDENTICAL
+  nc216      v3.2.0-build -892.710698666024      v3.1.1-build -892.710698666024      IDENTICAL
+  col250     v3.2.0-build -1033.179393268025     v3.1.1-build -1033.179393268025     IDENTICAL
+  nc250      v3.2.0-build -1033.203586586871     v3.1.1-build -1033.203586586871     IDENTICAL
+  col288     v3.2.0-build -1190.524003318950     v3.1.1-build -1190.524003318950     IDENTICAL
+  col300     v3.2.0-build -1239.972812915154     v3.1.1-build -1239.972812915154     IDENTICAL
+  nc300      v3.2.0-build -1239.996353713360     v3.1.1-build -1239.996353713360     IDENTICAL
+  col360     v3.2.0-build -1487.989235482118     v3.1.1-build -1487.989235482118     IDENTICAL
+  col300     cuBLAS -1239.972812915154           GEMMul8 -1239.972812915154          
+  col360     cuBLAS -1487.989235482118           GEMMul8 -1487.989235482117          
+  nc216      cuBLAS -892.710698666024            GEMMul8 -892.710698666024           
+  nc250      cuBLAS -1033.203586586871           GEMMul8 -1033.203586586870          
+
+--- node landings (slow: bnode013, bnode033) -------------------------
+  sib_col216_p     bnode010 
+  sib_col250_p     bnode011 
+  sib_col288_p     bnode012 
+  sib_col300_p     bnode016 
+  sib_col360_p     bnode018 
+  sib_col384_p     bnode020 
+  sib_col432_p     bnode021 
+  sib_col512_p     bnode022 
+  sib_nc216_p      bnode011 
+  sib_nc250_p      bnode012 
+  sib_nc288_p      bnode016 
+  sib_nc300_p      bnode018 
+  sib_nc360_p      bnode020 
+  sib_nc384_p      bnode021 
+  sib_col300_p8    bnode011 
+  sib_col360_p8    bnode022 
+  sib_nc216_p8     bnode010 
+  sib_nc250_p8     bnode006 
+  sib_col300_o     bnode012 
+  sib_col360_o     bnode024 
+  sib_nc216_o      bnode020 
+  sib_nc250_o      bnode010 
+  sib_col300_g     bnode016 
+  sib_nc216_g      bnode006 
+
+======================================================================
+CHOSEN REPRESENTATIVES (plan 7.3.2 step 7)
+======================================================================
+  col band : 300 Si atoms  (prim 6x5x5 fcc supercell, n = 3900)
+             25-SCF confirmed: cuBLAS 76 GiB / 131.97 s, GEMMul8 93 GiB /
+             149.67 s, both SCF=25, fallback 0.
+  NC band  : 216 Si atoms  (conv 3x3x3 cubic supercell, 2n = 5616)
+             25-SCF confirmed: cuBLAS 100 GiB / 254.55 s, GEMMul8 101 GiB /
+             256.51 s, both SCF=25, fallback 0.
+  The 1/2/4-node limited strong-scaling series uses these two inputs
+  unchanged at every node count (plan 7.4 / 8.5).
+
+PROVENANCE NOTE (hand-written; read before quoting anything above)
+----------------------------------------------------------------------
+1. Two campaigns ran today.  The first used the previous binary
+   (f5fb5b3 + bundled GEMMul8 v3.1.1); after 12 probes the user ordered
+   git pull (-> cd5f0d5, GEMMul8 v3.2.0), rebuild, and a full re-measure.
+   The v3.1.1-era case dirs are quarantined in siband_v311_superseded/
+   and are NOT in the table above.  Where both binaries completed the
+   same cuBLAS probe, Utot is bitwise identical (col216, nc216, nc250;
+   see Utot cross-checks) -- expected, since cd5f0d5 touches only the
+   GEMMul8 build pin.  NOTE: `make` does NOT re-checkout GEMMul8 when
+   the pin changes (target is the existing third_party/GEMMul8/Makefile);
+   the v3.2.0 build required a manual checkout + rm of the stale .o/.a.
+2. Toolchain: NVHPC 26.5 / CUDA 13.2 at runtime (plan 3.1 satisfied).
+   Plan 3.1 pins "current main = 353b01f...", which exists in no local
+   or remote history; actual GitHub main at measurement time = cd5f0d5.
+   The paper's v2.0_thesis tag does not exist yet, so everything here
+   is PREFLIGHT (GO/NO-GO + size selection), to be re-measured from the
+   tag for production tables.
+3. Probes are single samples; their wall times are never a ranking
+   (site convention).  Only the 3-rep scaling series ranks backends.
+4. Monotonicity of RSS vs atom count is broken by cell family: conv
+   (cubic 8-atom) supercells carry much higher node RSS than prim (fcc
+   2-atom) supercells of MORE atoms -- col288(conv)=107 GiB FAILs while
+   col300/col360(prim)=76/82 GiB PASS.  The plan's boundary-adjacency
+   re-check (7.3.1) is what caught this; a pure index bisection under a
+   monotonicity assumption would have returned col=250 or worse.
+5. Run-to-run RSS swing: col288 measured 99 GiB (v3.1.1 run) and
+   107 GiB (v3.2.0 run) on identical solver code -- ~8 GiB spread on a
+   124-GiB node.  This is why the 102-GiB (80%) gate exists and why
+   near-gate passes are treated as fails.
+6. 3-SCF probes under-estimate 25-SCF RSS: nc250 went 99 -> 104 GiB
+   (rmm-diisk history=7 fills only after iteration ~8).  This is why
+   plan step 6 (25-SCF confirmation) is mandatory; it demoted nc250,
+   and NC stepped down to 216 per "1候補下げて再検証".
+7. GEMMul8 host-memory cost is mode-asymmetric and decided col's size:
+   col300 +17 GiB (76->93), col360 +23 GiB (82->105, gate FAIL ->
+   step-down 360->300 per plan step 5); NC +0..1 GiB (nc216 99->99,
+   nc250 99->100).  Hypothesis only: the device concurrency ladder cuts
+   NC much deeper under GEMMul8 (nc216 8->4, nc250 7->3 turns vs col300
+   8->7), so fewer per-rank workspaces exist at once; col360 cuBLAS-only
+   remains feasible (25-SCF: 84 GiB) but the representative must carry
+   BOTH backends.  Consequence worth reporting under RQ6: on a 128-GB
+   host, enabling GEMMul8 shrinks the largest safe col-band system from
+   360 to 300 atoms while leaving NC unchanged.
+8. Fixed-iteration caveat: with the template's scf.criterion 1e-13,
+   nc250_o CONVERGED at SCF=24, so 25-SCF wall times are not guaranteed
+   comparable across configs.  The scaling-series decks pin
+   scf.criterion 1e-15 (documented deviation from sidia.dat) so every
+   run does exactly 25 iterations.  All four confirmation runs of the
+   chosen representatives did complete SCF=25 under 1e-13.
+9. Forces: ideal diamond, every atom on a symmetry site -> exact forces
+   are zero; the MD.Type Opt / MD.maxIter 1 step runs (force code is
+   exercised) but the force column cannot discriminate backends.  Utot
+   is the accuracy check: cuBLAS vs GEMMul8 at 25 SCF differs by 1 ulp
+   (col300: ...501012 vs ...501011) or matches bitwise (3-SCF nc216,
+   col300 probes).
+10. GPU engagement: every PASS row shows the <Band_DFT_Col/NonCol> GPU
+   device banner with 8 k-owner ranks and 100% peak utilisation; zero
+   "cannot fit" fallbacks anywhere in the campaign.  Multi-node
+   preflights confirm the owner map thins as 8/4/2 k per GPU at 1/2/4
+   nodes (plan 7.4).
+11. Jobs: v3.2.0 campaign request IDs 923316..923358 (see
+   siband_jobids.txt, which also carries rbudgetcheck snapshots taken
+   before each wave: 395.36 -> 395.08 points remaining; the entire
+   search consumed ~1 point).  No run landed on the known slow nodes
+   bnode013/bnode033 -- and verdicts here are GO/NO-GO, so a slow node
+   could not change them anyway.

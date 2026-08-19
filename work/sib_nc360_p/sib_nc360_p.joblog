@@ -1,0 +1,51 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.923333.10/user_script: line 111: 619458 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.923333.10/user_script: line 161: 618775 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING sib_nc360_p INCOMPLETE
+=== full timing block ===
+=== Utot (no prior reference for this system) ===
+=== SCF iterations completed (of 3 max) ===
+2
+=== Band GPU dispatch / fallback lines ===
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band_DFT_NonCol> GPU device 0: 8 k-owner rank(s), GPU concurrency=3 (eigenvectors), turn group=3, per-rank=8.605 GiB, peak=25.815 GiB, free=38.587 GiB, reserve=7.918 GiB
+<Band_DFT_NonCol> GPU device 0: 8 k-owner rank(s), GPU concurrency=8 (density matrix), turn group=8, per-rank=1.644 GiB, peak=13.149 GiB, free=27.618 GiB, reserve=7.918 GiB
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 113/124
+host mem used/total (GiB): 106/124
+host mem used/total (GiB): 99/124
+=== peak GPU, this node ===
+100 %, 71752 MiB
+100 %, 67540 MiB
+100 %, 67306 MiB
+=== MPS server per node (post-run) ===
+bnode020: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[09:30:41] script start on bnode020
+[09:30:41] MPS up on all 1 nodes
+[09:30:41] launching mpirun: 48 ranks on 1 nodes
+[09:30:41] mpirun launched (pid 618778)
+[09:32:03] watchdog loop exited (verdict='none'); reaping mpirun
+[09:32:03] mpirun reaped rc=137
+[09:32:03] sampler killed
+
+============================================================
+Request ID:             923333.nqsv
+Request Name:           sb_n360p
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 19 09:30:33 2026
+Started Request Time:   Wed Aug 19 09:30:41 2026
+Ended Request Time:     Wed Aug 19 09:32:03 2026
+Resources Information:
+  Elapse:               87S
+  Remaining Elapse:     5913S
+============================================================

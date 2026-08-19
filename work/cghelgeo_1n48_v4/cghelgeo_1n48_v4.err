@@ -1,0 +1,5 @@
+Set_ProExpn_VNA DS_VNA GPU: needs 3.274 GiB per rank, 48 rank(s) share this device and only 57.868 GiB is free; CPU fallback.
+--------------------------------------------------------------------------
+prterun noticed that process rank 24 with PID 79397 on node bnode106 exited on
+signal 9 (Killed).
+--------------------------------------------------------------------------

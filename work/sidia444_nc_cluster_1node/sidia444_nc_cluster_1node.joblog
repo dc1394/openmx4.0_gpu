@@ -1,0 +1,44 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.902041.10/user_script: line 143: 1371990 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.902041.10/user_script: line 201: 1371452 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; nvidia-smi --query-compute-apps=process_name --format=csv,noheader | sort | uniq -c | tr '\n' ';'; echo; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== MPS server per node (post-run) ===
+bnode021: mps_server=1 gpu_mem_used=78 MiB
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 117/124
+host mem used/total (GiB): 31/124
+host mem used/total (GiB): 9/124
+=== peak GPU, this node ===
+0 %, 24078 MiB
+0 %, 686 MiB
+0 %, 1 MiB
+=== SCF iterations completed (of 25 max) ===
+0
+=== Utot (no reference yet; must agree across all eight runs) ===
+=== timing ===
+=== progress markers ===
+[10:56:37] script start on bnode021
+[10:56:38] MPS up on all 1 node(s)
+[10:56:38] launching mpirun: 48 ranks
+[10:56:38] mpirun launched (pid 1371455)
+[10:57:18] watchdog loop exited; reaping mpirun
+[10:57:18] mpirun reaped rc=137
+[10:57:18] sampler killed
+
+============================================================
+Request ID:             902041.nqsv
+Request Name:           s444cl_2n
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 10:56:25 2026
+Started Request Time:   Tue Aug 11 10:56:37 2026
+Ended Request Time:     Tue Aug 11 10:57:18 2026
+Resources Information:
+  Elapse:               46S
+  Remaining Elapse:     7154S
+============================================================

@@ -1,0 +1,47 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.902005.10/user_script: line 155: 2964281 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 75/124
+host mem used/total (GiB): 74/124
+host mem used/total (GiB): 74/124
+=== SCF iterations completed (of 25 max) ===
+25
+=== Utot (no reference yet; must agree across all eight runs) ===
+  Utot.      -2103.477858563317
+=== timing ===
+   Total Computational Time =     5      170.991          0      171.003
+   DFT                      =    81      154.009         21      154.092
+   Set_Hamiltonian          =    23       14.409          2       14.412
+   Diagonalization          =    19       85.751         91       85.767
+=== progress markers ===
+[10:40:41] script start on bnode113
+[10:40:42] launching mpirun: 96 ranks
+[10:40:42] mpirun launched (pid 2964284)
+[10:43:53] watchdog loop exited; reaping mpirun
+[10:43:53] mpirun reaped rc=0
+[10:43:53] sampler killed
+
+============================================================
+Request ID:             902005.nqsv
+Request Name:           s333_2node_nogpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 10:40:26 2026
+Started Request Time:   Tue Aug 11 10:40:41 2026
+Ended Request Time:     Tue Aug 11 10:43:53 2026
+Resources Information:
+  Elapse:               196S
+  Remaining Elapse:     10604S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

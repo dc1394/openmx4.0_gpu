@@ -1,0 +1,22 @@
+Nsight Systems toolchain GO/NO-GO (plan v2.6 sec. 9.2) -- result: GO
+----------------------------------------------------------------------
+Case sinsys_bnc216: band NC 216, 3-SCF cuBLAS + MPS, 48 ranks, 1 H100;
+ranks 0 and 1 ran under nsys (NVHPC 26.5 bundle, Nsight Systems 13.2
+target-linux-x64), all other ranks unprofiled.  Request ID 924146.
+
+- Captures: sinsys_bnc216.rank0.nsys-rep (11.1 MB), rank1 (5.1 MB).
+- CUDA timeline is complete under MPS: kernel summary (rank 0) shows the
+  whole pipeline -- Set_Density_Grid_GPU kernel 19.5% of GPU time,
+  cusolverDn Zheevd internals (cuds_symv 15.7%, sytrd4_gpu blocks,
+  laed2_par divide-and-conquer), Band_DFT_NonCol DM accumulation 6.1%,
+  Set_Hamiltonian matrix_elements_kernel 2.8%, Force3_GpuTrace 2.8%,
+  cuBLAS her2k/gemm sm90 tiles.
+- Profiling overhead: this run's Total was 92.8 s vs ~64 s for the same
+  deck unprofiled (sib_nc216_p / sibs preflights) -- ~45% on the
+  profiled ranks' critical path.  Confirms the plan's rule: production
+  wall times and profiling runs must never mix.
+- nsys stats works on the login node against the same install
+  (cuda_gpu_kern_sum report used here).
+Next (WBS P5, not done today): per-rank capture of ALL ranks on a
+representative point + the SQLite union/overlap script for the MPS
+R_overlap analysis.

@@ -1,0 +1,379 @@
+sidia443_nc_cluster node scaling, 16 ranks/node, 3 repetitions per point
+384 Si non-collinear (matrix dim 9984), Cluster solver, 25 SCF
+single binary throughout: gpusolver2 merge, commit f5fb5b3
+Max_Time column (slowest rank), seconds
+configs: g = GPU gpusolver + MPS, gemmul8 on (default)
+         c = CPU elpa2, no GPU reserved
+         d = GPU gpusolver2 (distributed ELPA 2026.02 + COSMA), MPS
+Whole nodes are reserved (--cpunum-lhost=48) even though only 16 ranks
+are launched, so the 32 idle cores are not handed to another job.
+The 1-node d point reuses s443nc_1n16_d2..4 (2026-08-15, same rank count
+and same binary).  All other points are the 2026-08-16 submission.
+Multi-node runs are screened for slow nodes (bnode013/bnode033) on the
+FULL node list in each .env, not just the node the script starts on.
+
+--- per-run ---
+case                    total        DFT       Diag    Set_Ham  status
+s443nc_1n16_g1        185.909    177.105     95.844     28.945  OK
+s443nc_1n16_g2        184.082    175.150     94.052     28.913  OK
+s443nc_1n16_g3        184.078    175.207     94.213     28.870  OK
+s443nc_1n16_c1       1751.599   1741.677   1342.865    125.673  OK
+s443nc_1n16_c2       1748.091   1737.987   1340.280    125.822  OK
+s443nc_1n16_c3       1752.831   1742.802   1344.301    126.716  OK
+s443nc_1n16_d2        662.399    652.353    563.194     28.969  OK
+s443nc_1n16_d3        665.111    655.361    565.301     28.963  OK
+s443nc_1n16_d4        673.915    664.314    570.845     29.846  OK
+s443nc_2n16_g1        147.712    140.418     90.186     16.120  OK
+s443nc_2n16_g2        147.724    140.508     90.065     16.105  OK
+s443nc_2n16_g3        147.476    140.269     89.978     16.157  OK
+s443nc_2n16_c1        961.712    953.596    748.147     64.994  OK
+s443nc_2n16_c2        965.957    957.838    752.696     64.254  OK
+s443nc_2n16_c3        962.530    954.255    749.047     64.896  OK
+s443nc_2n16_d1        412.239    404.942    358.063     15.891  OK
+s443nc_2n16_d2        413.767    406.309    359.016     16.175  OK
+s443nc_2n16_d3        437.613    419.487    359.296     16.135  OK
+s443nc_3n16_g1        133.737    126.938     87.993     11.933  OK
+s443nc_3n16_g2        135.304    128.434     89.535     11.793  OK
+s443nc_3n16_g3        135.208    128.354     89.613     11.801  OK
+s443nc_3n16_c1        699.365    691.801    552.279     43.221  OK
+s443nc_3n16_c2        701.228    693.630    553.102     44.392  OK
+s443nc_3n16_c3        706.706    699.251    553.040     49.987  OK
+s443nc_3n16_d1        314.758    307.954    271.906     11.855  OK
+s443nc_3n16_d2        314.201    307.323    271.344     11.879  OK
+s443nc_3n16_d3        315.757    308.864    272.981     11.854  OK
+s443nc_4n16_g1        127.864    121.436     88.025      9.327  OK
+s443nc_4n16_g2        127.650    121.250     87.816      9.347  OK
+s443nc_4n16_g3        127.931    121.511     88.244      9.350  OK
+s443nc_4n16_c1        561.642    554.431    448.133     32.896  OK
+s443nc_4n16_c2        558.803    551.579    445.183     32.946  OK
+s443nc_4n16_c3        561.971    554.769    448.218     33.097  OK
+s443nc_4n16_d1        263.866    257.375    227.254      9.509  OK
+s443nc_4n16_d2        261.312    254.861    224.708      9.473  OK
+s443nc_4n16_d3        260.816    254.410    224.230      9.494  OK
+
+--- statistics (mean +- sample SD over 3 runs) ---
+  1 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                184.69     1.06    184.08    185.91
+    Diagonalization       94.70     0.99     94.05     95.84
+  1 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total               1750.84     2.46   1748.09   1752.83
+    Diagonalization     1342.48     2.04   1340.28   1344.30
+  1 node(s), gpusolver2    (n=3)
+    phase                  mean       sd       min       max
+    Total                667.14     6.02    662.40    673.91
+    Diagonalization      566.45     3.95    563.19    570.85
+  2 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                147.64     0.14    147.48    147.72
+    Diagonalization       90.08     0.10     89.98     90.19
+  2 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                963.40     2.25    961.71    965.96
+    Diagonalization      749.96     2.41    748.15    752.70
+  2 node(s), gpusolver2    (n=3)
+    phase                  mean       sd       min       max
+    Total                421.21    14.23    412.24    437.61
+    Diagonalization      358.79     0.65    358.06    359.30
+  3 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                134.75     0.88    133.74    135.30
+    Diagonalization       89.05     0.91     87.99     89.61
+  3 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                702.43     3.82    699.37    706.71
+    Diagonalization      552.81     0.46    552.28    553.10
+  3 node(s), gpusolver2    (n=3)
+    phase                  mean       sd       min       max
+    Total                314.91     0.79    314.20    315.76
+    Diagonalization      272.08     0.83    271.34    272.98
+  4 node(s), GPU g8-on     (n=3)
+    phase                  mean       sd       min       max
+    Total                127.81     0.15    127.65    127.93
+    Diagonalization       88.03     0.21     87.82     88.24
+  4 node(s), CPU elpa2     (n=3)
+    phase                  mean       sd       min       max
+    Total                560.81     1.74    558.80    561.97
+    Diagonalization      447.18     1.73    445.18    448.22
+  4 node(s), gpusolver2    (n=3)
+    phase                  mean       sd       min       max
+    Total                262.00     1.64    260.82    263.87
+    Diagonalization      225.40     1.63    224.23    227.25
+
+--- ratios per node count (mean/mean, +- in quadrature) ---
+  1 node(s)  CPU / gpusolver   [speedup]  Total              9.48x +- 0.06
+  1 node(s)  CPU / gpusolver2  [speedup]  Total              2.62x +- 0.02
+  1 node(s)  gpusolver2 / gpusolver       Total              3.61x +- 0.04
+  1 node(s)  CPU / gpusolver   [speedup]  Diagonalization   14.18x +- 0.15
+  1 node(s)  CPU / gpusolver2  [speedup]  Diagonalization    2.37x +- 0.02
+  1 node(s)  gpusolver2 / gpusolver       Diagonalization    5.98x +- 0.08
+  2 node(s)  CPU / gpusolver   [speedup]  Total              6.53x +- 0.02
+  2 node(s)  CPU / gpusolver2  [speedup]  Total              2.29x +- 0.08
+  2 node(s)  gpusolver2 / gpusolver       Total              2.85x +- 0.10
+  2 node(s)  CPU / gpusolver   [speedup]  Diagonalization    8.33x +- 0.03
+  2 node(s)  CPU / gpusolver2  [speedup]  Diagonalization    2.09x +- 0.01
+  2 node(s)  gpusolver2 / gpusolver       Diagonalization    3.98x +- 0.01
+  3 node(s)  CPU / gpusolver   [speedup]  Total              5.21x +- 0.04
+  3 node(s)  CPU / gpusolver2  [speedup]  Total              2.23x +- 0.01
+  3 node(s)  gpusolver2 / gpusolver       Total              2.34x +- 0.02
+  3 node(s)  CPU / gpusolver   [speedup]  Diagonalization    6.21x +- 0.06
+  3 node(s)  CPU / gpusolver2  [speedup]  Diagonalization    2.03x +- 0.01
+  3 node(s)  gpusolver2 / gpusolver       Diagonalization    3.06x +- 0.03
+  4 node(s)  CPU / gpusolver   [speedup]  Total              4.39x +- 0.01
+  4 node(s)  CPU / gpusolver2  [speedup]  Total              2.14x +- 0.01
+  4 node(s)  gpusolver2 / gpusolver       Total              2.05x +- 0.01
+  4 node(s)  CPU / gpusolver   [speedup]  Diagonalization    5.08x +- 0.02
+  4 node(s)  CPU / gpusolver2  [speedup]  Diagonalization    1.98x +- 0.02
+  4 node(s)  gpusolver2 / gpusolver       Diagonalization    2.56x +- 0.02
+
+--- strong scaling within this campaign (T(1 node) / T(n nodes)) ---
+  gpusolver        Total             1n  1.00x  2n  1.25x  3n  1.37x  4n  1.44x  (ideal 1/2/3/4)
+  CPU-elpa2        Total             1n  1.00x  2n  1.82x  3n  2.49x  4n  3.12x  (ideal 1/2/3/4)
+  gpusolver2       Total             1n  1.00x  2n  1.58x  3n  2.12x  4n  2.55x  (ideal 1/2/3/4)
+  gpusolver        Diagonalization   1n  1.00x  2n  1.05x  3n  1.06x  4n  1.08x  (ideal 1/2/3/4)
+  CPU-elpa2        Diagonalization   1n  1.00x  2n  1.79x  3n  2.43x  4n  3.00x  (ideal 1/2/3/4)
+  gpusolver2       Diagonalization   1n  1.00x  2n  1.58x  3n  2.08x  4n  2.51x  (ideal 1/2/3/4)
+
+--- nodes each run landed on (slow: bnode013, bnode033) ---
+  s443nc_1n16_g1     bnode001 
+  s443nc_1n16_g2     bnode002 
+  s443nc_1n16_g3     bnode003 
+  s443nc_1n16_c1     bnode014 
+  s443nc_1n16_c2     bnode024 
+  s443nc_1n16_c3     bnode047 
+  s443nc_1n16_d2     bnode120 
+  s443nc_1n16_d3     bnode100 
+  s443nc_1n16_d4     bnode117 
+  s443nc_2n16_g1     bnode077 bnode080 
+  s443nc_2n16_g2     bnode085 bnode088 
+  s443nc_2n16_g3     bnode089 bnode091 
+  s443nc_2n16_c1     bnode093 bnode098 
+  s443nc_2n16_c2     bnode100 bnode101 
+  s443nc_2n16_c3     bnode102 bnode111 
+  s443nc_2n16_d1     bnode056 bnode057 
+  s443nc_2n16_d2     bnode058 bnode066 
+  s443nc_2n16_d3     bnode073 bnode076 
+  s443nc_3n16_g1     bnode134 bnode137 bnode136 
+  s443nc_3n16_g2     bnode139 bnode141 bnode142 
+  s443nc_3n16_g3     bnode143 bnode144 bnode146 
+  s443nc_3n16_c1     bnode147 bnode148 bnode149 
+  s443nc_3n16_c2     bnode001 bnode002 bnode003 
+  s443nc_3n16_c3     bnode077 bnode080 bnode085 
+  s443nc_3n16_d1     bnode113 bnode120 bnode117 
+  s443nc_3n16_d2     bnode122 bnode123 bnode125 
+  s443nc_3n16_d3     bnode126 bnode131 bnode128 
+  s443nc_4n16_g1     bnode122 bnode123 bnode125 bnode126 
+  s443nc_4n16_g2     bnode120 bnode128 bnode117 bnode113 
+  s443nc_4n16_g3     bnode136 bnode139 bnode141 bnode142 
+  s443nc_4n16_c1     bnode143 bnode131 bnode144 bnode146 
+  s443nc_4n16_c2     bnode056 bnode058 bnode057 bnode066 
+  s443nc_4n16_c3     bnode122 bnode123 bnode073 bnode076 
+  s443nc_4n16_d1     bnode088 bnode089 bnode091 bnode134 
+  s443nc_4n16_d2     bnode134 bnode137 bnode136 bnode139 
+  s443nc_4n16_d3     bnode141 bnode142 bnode143 bnode144 
+
+--- Utot (36-rank campaign reference: -1577.619265912xx) ---
+  s443nc_1n16_g1     -1577.619265912483
+  s443nc_1n16_g2     -1577.619265912483
+  s443nc_1n16_g3     -1577.619265912483
+  s443nc_1n16_c1     -1577.619265912616
+  s443nc_1n16_c2     -1577.619265912616
+  s443nc_1n16_c3     -1577.619265912616
+  s443nc_1n16_d2     -1577.619265912703
+  s443nc_1n16_d3     -1577.619265912703
+  s443nc_1n16_d4     -1577.619265912703
+  s443nc_2n16_g1     -1577.619265912460
+  s443nc_2n16_g2     -1577.619265912460
+  s443nc_2n16_g3     -1577.619265912460
+  s443nc_2n16_c1     -1577.619265912999
+  s443nc_2n16_c2     -1577.619265912999
+  s443nc_2n16_c3     -1577.619265912999
+  s443nc_2n16_d1     -1577.619265912554
+  s443nc_2n16_d2     -1577.619265912554
+  s443nc_2n16_d3     -1577.619265912554
+  s443nc_3n16_g1     -1577.619265912466
+  s443nc_3n16_g2     -1577.619265912466
+  s443nc_3n16_g3     -1577.619265912466
+  s443nc_3n16_c1     -1577.619265912814
+  s443nc_3n16_c2     -1577.619265912814
+  s443nc_3n16_c3     -1577.619265912814
+  s443nc_3n16_d1     -1577.619265912747
+  s443nc_3n16_d2     -1577.619265912747
+  s443nc_3n16_d3     -1577.619265912747
+  s443nc_4n16_g1     -1577.619265912467
+  s443nc_4n16_g2     -1577.619265912467
+  s443nc_4n16_g3     -1577.619265912467
+  s443nc_4n16_c1     -1577.619265912581
+  s443nc_4n16_c2     -1577.619265912581
+  s443nc_4n16_c3     -1577.619265912581
+  s443nc_4n16_d1     -1577.619265912844
+  s443nc_4n16_d2     -1577.619265912844
+  s443nc_4n16_d3     -1577.619265912844
+
+--- Maximum force (Hartree/Bohr): gpusolver vs gpusolver2 vs CPU ---
+  per run: printed |Maximum force| (8 dp) / recomputed from 12-dp forces
+  s443nc_1n16_g1     0.00001086   0.000010864024
+  s443nc_1n16_g2     0.00001086   0.000010864024
+  s443nc_1n16_g3     0.00001086   0.000010864024
+  s443nc_1n16_c1     0.00001086   0.000010864291
+  s443nc_1n16_c2     0.00001086   0.000010864291
+  s443nc_1n16_c3     0.00001086   0.000010864291
+  s443nc_1n16_d2     0.00001086   0.000010864358
+  s443nc_1n16_d3     0.00001086   0.000010864358
+  s443nc_1n16_d4     0.00001086   0.000010864358
+  s443nc_2n16_g1     0.00001086   0.000010864024
+  s443nc_2n16_g2     0.00001086   0.000010864024
+  s443nc_2n16_g3     0.00001086   0.000010864024
+  s443nc_2n16_c1     0.00001086   0.000010864011
+  s443nc_2n16_c2     0.00001086   0.000010864011
+  s443nc_2n16_c3     0.00001086   0.000010864011
+  s443nc_2n16_d1     0.00001086   0.000010864057
+  s443nc_2n16_d2     0.00001086   0.000010864057
+  s443nc_2n16_d3     0.00001086   0.000010864057
+  s443nc_3n16_g1     0.00001086   0.000010864024
+  s443nc_3n16_g2     0.00001086   0.000010864024
+  s443nc_3n16_g3     0.00001086   0.000010864024
+  s443nc_3n16_c1     0.00001086   0.000010864085
+  s443nc_3n16_c2     0.00001086   0.000010864085
+  s443nc_3n16_c3     0.00001086   0.000010864085
+  s443nc_3n16_d1     0.00001086   0.000010863976
+  s443nc_3n16_d2     0.00001086   0.000010863976
+  s443nc_3n16_d3     0.00001086   0.000010863976
+  s443nc_4n16_g1     0.00001086   0.000010864025
+  s443nc_4n16_g2     0.00001086   0.000010864025
+  s443nc_4n16_g3     0.00001086   0.000010864025
+  s443nc_4n16_c1     0.00001086   0.000010864183
+  s443nc_4n16_c2     0.00001086   0.000010864183
+  s443nc_4n16_c3     0.00001086   0.000010864183
+  s443nc_4n16_d1     0.00001086   0.000010864143
+  s443nc_4n16_d2     0.00001086   0.000010864143
+  s443nc_4n16_d3     0.00001086   0.000010864143
+
+  comparison per node count (recomputed |F|max):
+  1 node(s):  gpusolver 0.000010864024 | CPU 0.000010864291 | gpusolver2 0.000010864358  -> CPU-gpusolver = +2.7e-10, g2-gpusolver = +3.3e-10
+  2 node(s):  gpusolver 0.000010864024 | CPU 0.000010864011 | gpusolver2 0.000010864057  -> CPU-gpusolver = -1.3e-11, g2-gpusolver = +3.3e-11
+  3 node(s):  gpusolver 0.000010864024 | CPU 0.000010864085 | gpusolver2 0.000010863976  -> CPU-gpusolver = +6.1e-11, g2-gpusolver = -4.8e-11
+  4 node(s):  gpusolver 0.000010864025 | CPU 0.000010864183 | gpusolver2 0.000010864143  -> CPU-gpusolver = +1.6e-10, g2-gpusolver = +1.2e-10
+
+--- peak host memory, node 0 (GiB) ---
+  s443nc_1n16_g1     87/124
+  s443nc_1n16_g2     85/124
+  s443nc_1n16_g3     85/124
+  s443nc_1n16_d2     116/124
+  s443nc_1n16_d3     115/124
+  s443nc_1n16_d4     115/124
+  s443nc_1n16_c1     73/124
+  s443nc_1n16_c2     73/124
+  s443nc_1n16_c3     74/124
+  s443nc_2n16_g1     60/124
+  s443nc_2n16_g2     55/124
+  s443nc_2n16_g3     56/124
+  s443nc_2n16_d1     76/124
+  s443nc_2n16_d2     76/124
+  s443nc_2n16_d3     77/124
+  s443nc_2n16_c1     49/124
+  s443nc_2n16_c2     49/124
+  s443nc_2n16_c3     49/124
+  s443nc_3n16_g1     49/124
+  s443nc_3n16_g2     50/124
+  s443nc_3n16_g3     49/124
+  s443nc_3n16_d1     58/124
+  s443nc_3n16_d2     58/124
+  s443nc_3n16_d3     60/124
+  s443nc_3n16_c1     39/124
+  s443nc_3n16_c2     40/124
+  s443nc_3n16_c3     40/124
+  s443nc_4n16_g1     40/124
+  s443nc_4n16_g2     40/124
+  s443nc_4n16_g3     40/124
+  s443nc_4n16_d1     50/124
+  s443nc_4n16_d2     51/124
+  s443nc_4n16_d3     51/124
+  s443nc_4n16_c1     31/124
+  s443nc_4n16_c2     31/124
+  s443nc_4n16_c3     32/124
+
+PROVENANCE NOTE (2026-08-16): how this file was produced
+--------------------------------------------------------
+Generated by ./summarize_s443nc16_reps.sh; this note is appended by hand.
+Cases were produced by ./gen_s443nc16.sh, which derives each script from the
+corresponding 36-rank case and then asserts 17 fields per case (System.Name,
+scf.eigen.lib, PPN=16, NNODE, #PBS -b/-N/-o, elapstim, --timeout, GPU/CPU
+reservation, no template residue, no surviving "36", mps_node.sh presence,
+bash -n).  All 33 cases passed: 561 PASS / 0 FAIL.
+
+Jobs 912850..912882, submitted together on 2026-08-16 09:2x, queue gen_S,
+account GPU2026.  All 33 completed; none was resubmitted.
+
+Slow-node screening
+-------------------
+Every run was screened on the FULL node list in its .env, not just the node
+the batch script starts on.  None of the 33 new runs touched bnode013 or
+bnode033 -- see the node table above.  The only slow-node draw in this
+namespace is s443nc_1n16_d1 (bnode013), which predates this campaign and is
+already outside the reps set.
+
+The 1-node gpusolver2 point is reused, not re-run
+-------------------------------------------------
+s443nc_1n16_d2/d3/d4 were measured 2026-08-15 at exactly the rank count and
+on exactly the binary this campaign specifies, on slow-node-free hosts.
+Re-running them would have produced a second sample of the same
+configuration, not new information, so they are carried over unchanged.
+Their Utot (-1577.619265912703) is the value quoted in the Utot table.
+
+s443nc_2n16_d3 is a filesystem outlier, kept as measured
+--------------------------------------------------------
+Its Total (437.613 s) is ~25 s above its two siblings (412.239 / 413.767 s)
+although it ran on clean nodes (bnode073, bnode076).  The excess is entirely
+outside the solver: readfile 13.755 vs 2.956 s, Mulliken_Charge 5.324 vs
+0.510, RestartFileDFT 3.636 vs 0.163, Others 11.400 vs 6.780.  Its
+Diagonalization is 359.296 s against 358.063 / 359.016 -- a 1.2 s spread.
+The cause is shared-filesystem contention: 33 jobs were writing to /work at
+once.  It is a real measurement on a healthy node, so it is not discarded;
+it is why the 2-node gpusolver2 row shows SD 14.23 s on Total but 0.65 s on
+Diagonalization.  Read the Diagonalization column when comparing solvers at
+2 nodes.
+
+Binary uniformity, and how this differs from the 36-rank table
+---------------------------------------------------------------
+Every point here -- gpusolver, elpa2 and gpusolver2 alike -- was produced by
+one binary, the gpusolver2 merge (commit f5fb5b3, work/openmx, md5
+62e7900cf8ff4c68090c2f1879d8cdbd).  In work/s443nc_reps_result.txt the g/o/c
+columns came from e227507 and only the d column from f5fb5b3, so every
+gpusolver-vs-gpusolver2 ratio in that file crossed a binary boundary.  No
+ratio in this file does.
+
+The 36-rank table also had one bar that was not 36 ranks: its 1-node
+gpusolver2 point, which is host-OOM-killed at 24, 36 and 48 ranks/node on
+these 124-GiB nodes and had to be taken at 16.  That made its 1-node column
+internally inconsistent and made a strong-scaling curve for gpusolver2
+impossible.  At 16 ranks/node every configuration runs at every node count,
+so the strong-scaling section above is meaningful for all three paths.
+
+Rank count is not free: what changed from 36 ranks/node
+--------------------------------------------------------
+Total, mean of 3, seconds (36 rk -> 16 rk):
+  gpusolver    1n 183.79 -> 184.69   2n 154.88 -> 147.64
+               3n 139.53 -> 134.75   4n 134.30 -> 127.81
+  CPU elpa2    1n 1060.59 -> 1750.84 2n 671.79 -> 963.40
+               3n 501.38 -> 702.43   4n 425.17 -> 560.81
+  gpusolver2   1n 667.14 -> 667.14 (same runs)  2n 381.56 -> 421.21
+               3n 321.26 -> 314.91   4n 281.34 -> 262.00
+The CPU path loses 1.3-1.6x, as expected when 20 of 48 cores per node go
+unused.  The gpusolver path is unchanged to slightly FASTER at 16 ranks: its
+Set_Hamiltonian and diagonalization both run on the GPU, so the ranks it
+loses were mostly adding MPI traffic rather than work.  gpusolver2 is a wash.
+
+Verification
+------------
+Utot is bit-identical across the three reps of every (node count, config)
+point -- 12 of 12 -- so each triple is a repetition of one deterministic
+calculation, not three different ones.  |F|max agrees across all three
+solver paths to 3.3e-10 Hartree/Bohr or better at every node count, against
+a value of 1.09e-5, i.e. five orders of magnitude below the quantity itself.
+
+Host memory (node 0 peak, of 124 GiB) leaves headroom everywhere at this
+rank count: gpusolver 40-87, elpa2 31-74, gpusolver2 50-116.  The 1-node
+gpusolver2 figure (115-116) is the one point still close to the ceiling --
+that is the measurement that forced 16 ranks/node in the first place.

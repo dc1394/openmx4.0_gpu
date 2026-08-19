@@ -1,0 +1,65 @@
+cghelgeo GEMMul8 A/B (scf.gemmul8.enable on vs off), round-3 binary (commit e227507)
+=====================================================================================
+Date: 2026-08-13.  Layout: 2 nodes x -npernode 48 = 96 ranks, 1 H100/node, MPS on,
+scf.eigen.lib gpusolver.  650 atoms, matrix dimension 10430, collinear Band solver,
+k-grid 1x1x3, 70 SCF iterations to 1e-13.  Seconds, Max_Time column (slowest rank).
+"on" = input has no scf.gemmul8.enable line (default on, INT8 GEMMul8 gemm backend);
+"off" = scf.gemmul8.enable off (plain cuBLAS FP64 fallback, workspace need -> 0).
+
+--- per-run ---
+case              total        DFT       Diag    Set_Ham  node0     note
+on  (gemmul8, default)
+cghelgeo_v3     441.819    429.277    341.947     21.295  -         e227507 verification run
+cghelgeo_v3b    444.859    430.108    342.198     21.641  -         e227507 verification run
+cghelgeo_v3c    443.320    429.799    342.503     20.938  -         e227507 verification run
+cghelgeo_v4_g1  490.148    476.287    378.564     24.764  bnode011  slow-node outlier (+10%)
+cghelgeo_v4_g2  446.471    434.022    345.721     23.249  bnode023
+cghelgeo_v4_g3  442.331    430.124    341.585     23.396  bnode043
+off (plain cuBLAS)
+cghelgeo_v4_o1  464.749    452.632    366.917     20.861  bnode052
+cghelgeo_v4_o2  462.801    450.907    365.741     20.826  bnode054
+cghelgeo_v4_o3  465.801    452.669    365.756     21.039  bnode056
+cghelgeo_g8off  527.800    511.178    409.718     27.159  bnode013  RETRACTED single sample,
+                                                          slow node (bnode013 also produced the
+                                                          s443nc 1n36 220 s outlier); excluded
+
+--- statistics (mean +- sample SD) ---
+                              Total              DFT               Diag            Set_Ham
+on,  v4 series as-run (n=3)   459.65 +- 26.49    446.81 +- 25.60   355.29 +- 20.26  23.80 +- 0.84
+on,  pooled e227507 (n=5,     443.76 +-  1.91    (not pooled)      342.79 +-  1.67  (not pooled)
+     v3/v3b/v3c/v4_g2/v4_g3;
+     v4_g1 outlier excluded)
+off, fresh reps (n=3)         464.45 +-  1.52    452.07 +-  1.01   366.14 +-  0.67  20.91 +- 0.11
+
+--- ratios (mean/mean, +- relative SDs in quadrature) ---
+off / on  (vs v4 n=3 as-run)      Total 1.010 +- 0.058     Diag 1.031 +- 0.059   (inconclusive:
+                                  the on-side SD is inflated by the v4_g1 slow-node run)
+off / on  (vs pooled n=5)         Total 1.047 +- 0.006     Diag 1.068 +- 0.006
+
+VERDICT: GEMMul8 ON is genuinely faster on cghelgeo: off costs +4.7 % Total
+(+20.7 s) and +6.8 % Diagonalization (+23.4 s).  The previously quoted "+19 %
+if off" came from the single bnode013 sample (527.8 s) and is retracted as a
+slow-node artifact.  Set_Hamiltonian is ~2.9 s FASTER with gemmul8 off
+(20.91 vs 23.80): with the workspace-size registration at 0, the resident
+cache admits with a larger budget -- but this small gain is swamped by the
+slower FP64 gemms in the solver.
+
+--- Utot (bit-identical within each config across reps) ---
+on  (all 6 runs)   -4154.835898597094
+off (all 3 reps
+     and the retracted bnode013 run)  -4154.835898593483
+CPU elpa2 reference                   -4154.835898595155
+|off - CPU| = 1.7e-9 Ha, |on - CPU| = 1.9e-9 Ha -- both within normal
+GPU-vs-CPU rounding; the on/off difference reflects the different gemm
+split/accumulation order, deterministic per config.
+
+--- peak host memory, node 0 (GiB) ---
+on : 84-86/124 (v4 series)      off: 83-84/124
+No memory penalty either way; device-side gemmul8 workspaces are per-call
+cached but capped, and with off the workspace registration drops to zero.
+
+Conclusion: keep scf.gemmul8.enable at its default (on) for cghelgeo-class
+collinear Band workloads; the INT8 backend is worth ~5 % total.  (Contrast:
+on the memory-tight sidia444_nc 2n case, off won by ~15 %, and on sidia443_nc
+on/off were indistinguishable at every node count -- the knob is workload-
+dependent and worth A/B-ing per system.)

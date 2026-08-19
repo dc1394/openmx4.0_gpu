@@ -1,0 +1,50 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.901548.10/user_script: line 95: 2278376 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.901548.10/user_script: line 149: 2276970 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 70/124
+host mem used/total (GiB): 69/124
+host mem used/total (GiB): 69/124
+=== SCF iterations completed (of 25 max) ===
+25
+=== Utot (earlier 1-node gpusolver run: -887.422830856493) ===
+  Utot.       -887.422830856546
+=== timing (earlier 1-node gpusolver: total 250.3 / DFT 238.5 / Diag 162.9 s) ===
+   Total Computational Time =    37      542.115         49      542.131
+   DFT                      =    45      526.845         49      526.942
+   Set_Hamiltonian          =    43       20.140         92       20.140
+   Diagonalization          =     0      461.695         33      461.696
+=== progress markers ===
+[08:44:05] script start on bnode098
+[08:44:06] launching mpirun: 96 ranks
+[08:44:06] mpirun launched (pid 2276973)
+[08:53:29] completion banner seen; 60 s grace
+[08:54:29] mpirun exited on its own during grace
+[08:54:29] watchdog loop exited; reaping mpirun
+[08:54:29] mpirun reaped rc=0
+[08:54:29] sampler killed
+
+============================================================
+Request ID:             901548.nqsv
+Request Name:           s333_2node_nogpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 08:43:52 2026
+Started Request Time:   Tue Aug 11 08:44:05 2026
+Ended Request Time:     Tue Aug 11 08:54:29 2026
+Resources Information:
+  Elapse:               628S
+  Remaining Elapse:     6572S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

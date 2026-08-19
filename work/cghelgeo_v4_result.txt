@@ -1,0 +1,65 @@
+================================================================================
+cghelgeo re-benchmark with the round-3 binary (commit e227507)
+Measured 2026-08-12 on Pegasus (gen_S, -A GPU2026), 3 repetitions per path
+Layout : 2 nodes x 48 ranks/node = 96 ranks (mpirun -np 96 -npernode 48),
+         GPU runs use 1x H100 per node with MPS enabled; CPU = elpa2
+Jobs   : cghelgeo_v4_{g,c}{1..3} (906600-906605)
+History of 3-run means on this case (same layout):
+  original binary : GPU DFT 543.53+-8.70, Diag 452.64+-5.70, peak 104-105 GiB
+                    CPU DFT 2742.47+-11.03, Diag 2524.37+-9.50, peak 99 GiB
+  v2 (madvise)    : GPU DFT 535.42+-2.79, Diag 447.08+-1.80, peak 97-99 GiB
+                    CPU DFT 2745.30+-2.09, Diag 2527.32+-1.94, peak 90-91 GiB
+Note   : GPU rep g1 (Diag 378.6 s) is a slow-node outlier; the six v3+v4
+         samples of this binary are 441.8/442.3/443.3/444.9/446.5/490.1 s
+         (five cluster tightly at 443.8+-1.9, one at +10%).
+Source : work/summarize_cghelgeo_v4.sh
+================================================================================
+
+cghelgeo, 2 nodes x 48 ranks = 96 ranks, three repetitions per path
+Max_Time column (slowest rank), seconds
+
+--- per-run ---
+case                          total        DFT       Diag    Set_Ham  status
+cghelgeo_v4_g1              490.148    476.287    378.564     24.764  OK
+cghelgeo_v4_g2              446.471    434.022    345.721     23.249  OK
+cghelgeo_v4_g3              442.331    430.124    341.585     23.396  OK
+cghelgeo_v4_c1             2779.775   2764.548   2545.325     71.181  OK
+cghelgeo_v4_c2             2790.242   2769.218   2548.648     70.191  OK
+cghelgeo_v4_c3             2769.372   2753.942   2531.630     72.206  OK
+
+--- statistics ---
+GPU (gpusolver+MPS)  (n=3)
+  phase                    mean        sd       min       max  sd/mean
+  Total                  459.65     26.49    442.33    490.15    5.76%
+  DFT                    446.81     25.60    430.12    476.29    5.73%
+  Diagonalization        355.29     20.26    341.58    378.56    5.70%
+  Set_Hamiltonian         23.80      0.84     23.25     24.76    3.51%
+
+CPU (elpa2)  (n=3)
+  phase                    mean        sd       min       max  sd/mean
+  Total                 2779.80     10.44   2769.37   2790.24    0.38%
+  DFT                   2762.57      7.83   2753.94   2769.22    0.28%
+  Diagonalization       2541.87      9.02   2531.63   2548.65    0.35%
+  Set_Hamiltonian         71.19      1.01     70.19     72.21    1.42%
+
+--- GPU speedup (CPU mean / GPU mean), +- from both SDs in quadrature ---
+  Total              6.05x +- 0.35
+  DFT                6.18x +- 0.35
+  Diagonalization    7.15x +- 0.41
+  Set_Hamiltonian    2.99x +- 0.11
+
+--- Utot (within a path: bit-identical; across paths: ~12 digits) ---
+  cghelgeo_v4_g1           -4154.835898597094
+  cghelgeo_v4_g2           -4154.835898597094
+  cghelgeo_v4_g3           -4154.835898597094
+  cghelgeo_v4_c1           -4154.835898595155
+  cghelgeo_v4_c2           -4154.835898595155
+  cghelgeo_v4_c3           -4154.835898595155
+
+--- peak host memory, node 0 (GiB) ---
+  cghelgeo_v4_g1           85/124
+  cghelgeo_v4_g2           85/124
+  cghelgeo_v4_g3           84/124
+  cghelgeo_v4_c1           90/124
+  cghelgeo_v4_c2           86/124
+  cghelgeo_v4_c3           89/124

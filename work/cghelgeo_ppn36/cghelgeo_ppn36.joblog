@@ -1,0 +1,75 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.899963.10/user_script: line 151: 2813554 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.899963.10/user_script: line 214: 2811813 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; nvidia-smi --query-compute-apps=process_name --format=csv,noheader | sort | uniq -c | tr '\n' ';'; echo; } >> "$SMILOG" 2>&1; sleep 10;
+done )
+=== MPS server per node (post-run) ===
+bnode041: mps_server=1 gpu_mem_used=77 MiB
+bnode043: mps_server=1 gpu_mem_used=77 MiB
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 92/124
+host mem used/total (GiB): 92/124
+host mem used/total (GiB): 89/124
+=== peak GPU, this node ===
+100 %, 61101 MiB
+100 %, 61101 MiB
+100 %, 61101 MiB
+=== Utot (no reference value: first run of this case) ===
+  Utot.      -4154.835898597378
+=== SCF iterations completed (of 70 max) ===
+70
+=== progress markers ===
+[14:45:12] script start on bnode041
+[14:45:15] mpirun launched (pid 2811814)
+[14:54:05] completion banner seen; 60 s grace
+[14:55:05] mpirun exited on its own during grace
+[14:55:05] watchdog loop exited; reaping mpirun
+[14:55:05] mpirun reaped rc=0
+[14:55:05] sampler killed
+=== tail of openmx stdout ===
+   OutData                  =     5        0.000          0        0.014
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    28      481.411         17      481.732
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    17        1.296         67        2.749
+   Set_Nonlocal             =    67        1.403         17        2.857
+   Set_ProExpn_VNA          =    39        9.460         67       10.338
+   Set_Hamiltonian          =    43       21.271         28       21.271
+   Poisson                  =     0        2.438         61        2.438
+   Diagonalization          =    36      400.907         37      403.853
+   Mixing_DM                =    43        2.442         15        2.443
+   Force                    =    43        6.435         21        6.435
+   Total_Energy             =    24        0.316          0        0.317
+   Set_Aden_Grid            =    59        0.183         33        0.252
+   Set_Orbitals_Grid        =     4        0.272         66        0.415
+   Set_Density_Grid         =    11       20.965         41       21.411
+   RestartFileDFT           =    34        0.167         64        0.185
+   Mulliken_Charge          =    44        0.085         19        0.086
+   FFT(2D)_Density          =     0        0.000          0        0.000
+   Others                   =    40        8.264         36       11.477
+
+The calculation was normally finished.
+=== openmx exit status = 0 (Mon Aug 10 14:55:05 JST 2026) ===
+
+============================================================
+Request ID:             899963.nqsv
+Request Name:           cghelgeo_ppn36
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Mon Aug 10 14:45:00 2026
+Started Request Time:   Mon Aug 10 14:45:12 2026
+Ended Request Time:     Mon Aug 10 14:55:06 2026
+Resources Information:
+  Elapse:               598S
+  Remaining Elapse:     3002S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

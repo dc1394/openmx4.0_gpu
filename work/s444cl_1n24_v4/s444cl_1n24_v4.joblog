@@ -1,0 +1,82 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.907476.10/user_script: line 138: 2817051 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.907476.10/user_script: line 197: 2816317 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s444cl_1n24_v4 total=98.862 dft=88.726 diag=28.934 set_hamiltonian=12.605
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    10       98.844          0       98.862
+   readfile                 =    16        3.008          4        3.011
+   truncation               =    21        7.049          5        7.075
+   MD_pac                   =     0        0.009          4        0.012
+   OutData                  =    15        0.000          0        0.017
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     5       88.699         21       88.726
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    14        0.701          6        0.756
+   Set_Nonlocal             =     6        1.097         14        1.153
+   Set_ProExpn_VNA          =    23        4.408         21        4.951
+   Set_Hamiltonian          =    21       12.605          3       12.605
+   Poisson                  =     0        0.552         13        0.552
+   Diagonalization          =    16       28.933          0       28.934
+   Mixing_DM                =    16        1.671         13        1.671
+   Force                    =     0       16.124          8       16.124
+   Total_Energy             =    21        0.463          9        0.472
+   Set_Aden_Grid            =    19        0.416          0        0.470
+   Set_Orbitals_Grid        =    21        1.041          5        1.138
+   Set_Density_Grid         =    19       17.115          1       17.386
+   RestartFileDFT           =    19        0.206          0        0.213
+   Mulliken_Charge          =     1        0.167          6        0.167
+   FFT(2D)_Density          =    19        0.578         23        0.578
+   Others                   =    22        1.686         14        2.361
+
+The calculation was normally finished.
+=== Utot (reference: -2103.47785856322x, elpa2 gives ...333x) ===
+  Utot.      -2103.477858563238
+=== SCF iterations completed (of 25 max) ===
+25
+=== peak host memory, this node (GiB); old 1-node GPU died at >=99/124 ===
+host mem used/total (GiB): 95/124
+host mem used/total (GiB): 95/124
+host mem used/total (GiB): 95/124
+=== peak GPU, this node ===
+100 %, 75985 MiB
+81 %, 68715 MiB
+34 %, 68715 MiB
+=== MPS server per node (post-run) ===
+bnode014: mps_server=1 gpu_mem_used=75 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[19:37:16] script start on bnode014
+[19:37:18] MPS up on all 1 nodes
+[19:37:18] launching mpirun: 24 ranks on 1 nodes
+[19:37:18] mpirun launched (pid 2816320)
+[19:39:18] done detected; 60 s grace for teardown
+[19:40:18] mpirun exited on its own during grace
+[19:40:18] watchdog loop exited (verdict='done'); reaping mpirun
+[19:40:18] mpirun reaped rc=0
+[19:40:18] sampler killed
+
+============================================================
+Request ID:             907476.nqsv
+Request Name:           s444cl24v4
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 12 19:37:09 2026
+Started Request Time:   Wed Aug 12 19:37:16 2026
+Ended Request Time:     Wed Aug 12 19:40:18 2026
+Resources Information:
+  Elapse:               186S
+  Remaining Elapse:     2514S
+============================================================

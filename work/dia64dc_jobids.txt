@@ -1,0 +1,9 @@
+dia64dc_1n48_g1      rc=0  Request 912961.nqsv submitted to queue: gen_S.
+dia64dc_1n48_o1      rc=0  Request 912962.nqsv submitted to queue: gen_S.
+dia64dc_1n48_c1      rc=0  Request 912964.nqsv submitted to queue: gen_S.
+dia64dc_1n48_g2      Request 912992.nqsv submitted to queue: gen_S.
+dia64dc_1n48_o2      Request 912993.nqsv submitted to queue: gen_S.
+dia64dc_1n48_c2      Request 912994.nqsv submitted to queue: gen_S.
+dia64dc_1n48_g3      Request 913061.nqsv submitted to queue: gen_S.
+dia64dc_1n48_o3      Request 913062.nqsv submitted to queue: gen_S.
+dia64dc_1n48_c3      Request 913063.nqsv submitted to queue: gen_S.

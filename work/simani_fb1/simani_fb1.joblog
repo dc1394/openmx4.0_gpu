@@ -1,0 +1,87 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.924503.10/user_script: line 104: 1620801 Killed                  sleep 5
+/var/opt/nec/nqsv/jsv/jobfile/0.924503.10/user_script: line 154: 1619820 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING simani_fb1 total=94.737 dft=77.816 diag=57.774 set_hamiltonian=1.254
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    25       93.344          0       94.737
+   readfile                 =    12        2.986          3        2.996
+   truncation               =    42        8.222         21        8.245
+   MD_pac                   =     0        0.010          4        0.012
+   OutData                  =    21        4.204          0        5.592
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    21       77.793         42       77.816
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    28        0.811         24        1.170
+   Set_Nonlocal             =    24        0.391         28        0.750
+   Set_ProExpn_VNA          =    47        4.457         30        4.833
+   Set_Hamiltonian          =    21        1.254         45        1.254
+   Poisson                  =    21        0.021          2        0.021
+   Diagonalization          =    30       57.618          1       57.774
+   Mixing_DM                =     7        0.071         40        0.071
+   Force                    =     0        6.703          1        6.703
+   Total_Energy             =    27        0.242         44        0.248
+   Set_Aden_Grid            =    35        0.118         43        0.138
+   Set_Orbitals_Grid        =    35        0.594         31        0.666
+   Set_Density_Grid         =    29        3.752          1        3.769
+   RestartFileDFT           =    42        0.133         19        0.151
+   Mulliken_Charge          =    22        0.009         13        0.009
+   FFT(2D)_Density          =    37        0.050         18        0.068
+   Others                   =    37        0.611         47        0.989
+
+The calculation was normally finished.
+=== Utot (no prior reference for this system) ===
+  Utot.      -1239.972812915218
+=== SCF iterations completed (of 25 max) ===
+3
+=== Band GPU dispatch / fallback lines ===
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band_DFT_Col> GPU dense diagonalization disabled by OPENMX_BAND_GPU_DIAG=0.
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 82/124
+host mem used/total (GiB): 82/124
+host mem used/total (GiB): 78/124
+=== peak GPU, this node ===
+100 %, 57130 MiB
+91 %, 49110 MiB
+7 %, 46464 MiB
+=== MPS server per node (post-run) ===
+bnode087: mps_server=1 gpu_mem_used=78 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[15:45:07] script start on bnode087
+[15:45:08] MPS up on all 1 nodes
+[15:45:08] launching mpirun: 48 ranks on 1 nodes
+[15:45:08] mpirun launched (pid 1619823)
+[15:46:49] done detected; 60 s grace for teardown
+[15:47:49] mpirun exited on its own during grace
+[15:47:49] watchdog loop exited (verdict='done'); reaping mpirun
+[15:47:49] mpirun reaped rc=0
+[15:47:49] sampler killed
+
+============================================================
+Request ID:             924503.nqsv
+Request Name:           pmfb1
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Wed Aug 19 15:44:53 2026
+Started Request Time:   Wed Aug 19 15:45:07 2026
+Ended Request Time:     Wed Aug 19 15:47:49 2026
+Resources Information:
+  Elapse:               167S
+  Remaining Elapse:     1033S
+============================================================

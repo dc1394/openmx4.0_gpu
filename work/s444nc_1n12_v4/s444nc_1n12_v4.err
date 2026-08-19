@@ -1,0 +1,7 @@
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 22308.052 MiB, CUDA free 5865.812 MiB / total 81079.125 MiB, reserve 1536.000 MiB, max-workspace 30%. Falling back to native cuBLAS.
+Set_Density_Grid GPU owner needs 7.471 GiB plus 0.250 GiB reserve, but only 5.728 GiB is free; CPU fallback.
+Set_Hamiltonian: matrix-elements OpenACC path does not fit even one GPU rank: free 5.728 GiB, reserve 7.918 GiB; using CPU.
+--------------------------------------------------------------------------
+prterun noticed that process rank 0 with PID 1788549 on node bnode012 exited on
+signal 9 (Killed).
+--------------------------------------------------------------------------

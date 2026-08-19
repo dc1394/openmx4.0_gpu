@@ -1,0 +1,11 @@
+# Si diamond band-search candidate ladder, frozen 2026-08-19 09:06
+# from sidia.dat (8-atom conventional cell, a=5.431 Ang, Si7.0-s2p2d1)
+# atoms family m1 m2 m3   n=13N   2n=26N
+   216  conv  3 3 3     2808    5616
+   250  prim  5 5 5     3250    6500
+   288  conv  4 3 3     3744    7488
+   300  prim  6 5 5     3900    7800
+   360  prim  6 6 5     4680    9360
+   384  conv  4 4 3     4992    9984
+   432  prim  6 6 6     5616   11232
+   512  conv  4 4 4     6656   13312

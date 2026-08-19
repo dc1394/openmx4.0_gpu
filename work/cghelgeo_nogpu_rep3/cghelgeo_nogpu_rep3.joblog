@@ -1,0 +1,81 @@
+
+%NQSV(INFO): ------- Output from job:0000 -------
+/var/opt/nec/nqsv/jsv/jobfile/0.902990.10/user_script: line 109: 2182368 Killed                  sleep 10
+/var/opt/nec/nqsv/jsv/jobfile/0.902990.10/user_script: line 172: 2176764 Killed                  ( trap - EXIT INT TERM; for _ in $(seq 1 1000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$MEMLOG" 2>&1; sleep 10;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING cghelgeo_nogpu_rep3 total=2765.380 dft=2749.872 diag=2528.835 set_hamiltonian=70.171
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    17     2765.348         55     2765.380
+   readfile                 =    49        3.564          1        3.578
+   truncation               =     4       11.777         42       12.095
+   MD_pac                   =     0        0.017         56        0.020
+   OutData                  =    46        0.000         55        0.031
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    42     2749.553          4     2749.872
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     4        0.959         90        2.265
+   Set_Nonlocal             =    90        3.351          4        4.657
+   Set_ProExpn_VNA          =     4       30.046         88       32.632
+   Set_Hamiltonian          =    55       70.161         21       70.171
+   Poisson                  =    15        2.447         70        2.448
+   Diagonalization          =    71     2528.811         86     2528.835
+   Mixing_DM                =    31       46.724         82       46.749
+   Force                    =    61       18.513         31       18.514
+   Total_Energy             =    86        3.347          0        3.348
+   Set_Aden_Grid            =    42        0.263          4        2.863
+   Set_Orbitals_Grid        =    51        1.661         90        2.721
+   Set_Density_Grid         =    94       34.679         49       37.100
+   RestartFileDFT           =    20        0.697         42        0.746
+   Mulliken_Charge          =    23        0.202         85        0.234
+   FFT(2D)_Density          =     0        0.000          0        0.000
+   Others                   =    42        0.355         93        3.833
+
+The calculation was normally finished.
+=== Utot (reference: -4154.835898598240) ===
+  Utot.      -4154.835898595155
+=== SCF iterations completed (of 70 max) ===
+70
+=== peak host memory, this node (GiB); single-sample reference 100/124 ===
+host mem used/total (GiB): 99/124
+host mem used/total (GiB): 98/124
+host mem used/total (GiB): 97/124
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[15:03:02] script start on bnode074
+[15:03:04] launching mpirun: 96 ranks on 2 nodes
+[15:03:04] mpirun launched (pid 2176767)
+[15:49:33] done detected; 60 s grace for teardown
+[15:50:33] mpirun exited on its own during grace
+[15:50:33] watchdog loop exited (verdict='done'); reaping mpirun
+[15:50:33] mpirun reaped rc=0
+[15:50:33] sampler killed
+
+============================================================
+Request ID:             902990.nqsv
+Request Name:           cghelgeo_c3
+Queue:                  gen_S@nqsv
+Number of Jobs:         2
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Tue Aug 11 15:02:50 2026
+Started Request Time:   Tue Aug 11 15:03:02 2026
+Ended Request Time:     Tue Aug 11 15:50:33 2026
+Resources Information:
+  Elapse:               2855S
+  Remaining Elapse:     4345S
+============================================================
+
+%NQSV(INFO): ------- Output from job:0001 -------
+Loading openmpi/nvhpc-hpcx-cuda13/25.11
+  Loading requirement: hpcx

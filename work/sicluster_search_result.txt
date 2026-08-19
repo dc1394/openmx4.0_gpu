@@ -1,0 +1,142 @@
+======================================================================
+Si diamond CLUSTER-solver 1-node size search  (research plan v2.6, step 10 (7.3 gates))
+======================================================================
+goal      : per mode (col band / NC band), the largest ladder candidate
+            that runs SAFELY at 1 node x 48 ranks x 1 H100 (MPS on),
+            then 25-SCF confirmation with cuBLAS and with GEMMul8.
+gate      : node peak host RSS <= 102 GiB (80% of 128 GB); exit 0; no
+            'cannot fit' GPU fallback.  Probes are single samples:
+            GO/NO-GO only, never a timing ranking.
+binary    : work/openmx md5 962f8d2519c2e6aa5a6295513f76fee9
+            (openmx cd5f0d5 + bundled GEMMul8 v3.2.0/833e576,
+            NVHPC 26.5 / CUDA 13.2, sm_90; built 2026-08-19 09:26)
+deck      : from ../sidia.dat -- Si7.0-s2p2d1 (13 basis/atom), GGA-PBE,
+            200 Ry, Band solver, Kgrid 2x2x2 (8 computed k), rmm-diisk
+            history 7, scf.criterion 1e-13, MD.Type Opt / MD.maxIter 1;
+            probes truncate to scf.maxIter 3, confirmations run 25.
+ladder    : see siband_candidates.txt (frozen before measurement)
+
+# Si diamond band-search candidate ladder, frozen 2026-08-19 09:06
+# from sidia.dat (8-atom conventional cell, a=5.431 Ang, Si7.0-s2p2d1)
+# atoms family m1 m2 m3   n=13N   2n=26N
+   216  conv  3 3 3     2808    5616
+   250  prim  5 5 5     3250    6500
+   288  conv  4 3 3     3744    7488
+   300  prim  6 5 5     3900    7800
+   360  prim  6 6 5     4680    9360
+   384  conv  4 4 3     4992    9984
+   432  prim  6 6 6     5616   11232
+   512  conv  4 4 4     6656   13312
+
+--- probe / confirmation table -------------------------------------
+  case              RSS(GiB)  devPk    total    SCF  cfit  verdict
+  [col cluster: n = 13*N real]
+  sic_col216_p        67/124    50G   36.250      3     0   PASS
+  sic_col250_p        65/124    41G   36.300      3     0   PASS
+  sic_col288_p       107/124    53G   43.326      3     0   FAIL-gate
+  sic_col300_p        70/124    55G   38.801      3     0   PASS
+  sic_col360_p        77/124    58G   45.048      3     0   PASS
+  sic_col384_p       119/124    58G        -      3     0   FAIL-OOM
+  sic_col432_p       111/124    62G   53.506      3     0   FAIL-gate
+  sic_col512_p       119/124    64G        -      1     0   FAIL-OOM
+  sic_col360_p8       80/124    58G   46.720      3     0   PASS
+  sic_col360_o        77/124    58G   69.635     25     0   PASS
+  sic_col360_g        80/124    58G   69.098     25     0   PASS
+  [NC cluster: 2n = 26*N complex]
+  sic_nc216_p         86/124    54G   49.096      3     0   PASS
+  sic_nc250_p         85/124    46G   48.682      3     0   PASS
+  sic_nc288_p        119/124    53G        -      3     0   FAIL-OOM
+  sic_nc300_p         95/124    55G   57.531      3     0   PASS
+  sic_nc360_p        109/124    61G   69.750      3     0   FAIL-gate
+  sic_nc384_p        119/124    58G        -      1     0   FAIL-OOM
+  sic_nc300_p8        95/124    55G   57.648      3     0   PASS
+  sic_nc300_o         94/124    55G  134.988     25     0   PASS
+  sic_nc300_g         98/124    60G  141.320     25     0   PASS
+
+  RSS = node peak host 'used' from the 5-s sampler (rank-level RSS is
+  not sampled; the gate is applied at node level).  devPk = peak GPU
+  memory.used.  total = wall seconds, Max_Time column, single run.
+  cfit = count of 'cannot fit' dense-GPU fallback banners (must be 0).
+  FAIL-OOM = a rank was SIGKILLed by the host OOM killer mid-run.
+  FAIL-gate = run completed but exceeded the 102-GiB safety gate.
+
+--- GPU engagement (chosen candidates) ------------------------------
+  sic_col360_p     <Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s), GPU concurrency=48, CPU fallback ranks=0, peak=48.273 GiB, free=57.775 GiB, reserve=7.918 GiB
+  sic_col360_p8    <Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s), GPU concurrency=48, CPU fallback ranks=0, peak=48.273 GiB, free=57.775 GiB, reserve=7.918 GiB
+  sic_nc300_p      <Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s), GPU concurrency=48, CPU fallback ranks=0, peak=45.620 GiB, free=57.775 GiB, reserve=7.918 GiB
+  sic_nc300_p8     <Set_Hamiltonian> GPU device 0: 48 Hamiltonian rank(s), GPU concurrency=48, CPU fallback ranks=0, peak=45.620 GiB, free=57.775 GiB, reserve=7.918 GiB
+
+--- Utot cross-checks ------------------------------------------------
+  (3-SCF probes, unconverged by construction: byte-comparison across
+   binaries / backends at identical iteration counts)
+  col360     cuBLAS -1487.786471840115           GEMMul8 -1487.786471840114          
+
+--- node landings (slow: bnode013, bnode033) -------------------------
+  sic_col216_p     bnode081 
+  sic_col250_p     bnode085 
+  sic_col288_p     bnode086 
+  sic_col300_p     bnode087 
+  sic_col360_p     bnode088 
+  sic_col384_p     bnode089 
+  sic_col432_p     bnode090 
+  sic_col512_p     bnode091 
+  sic_nc216_p      bnode092 
+  sic_nc250_p      bnode093 
+  sic_nc288_p      bnode094 
+  sic_nc300_p      bnode095 
+  sic_nc360_p      bnode096 
+  sic_nc384_p      bnode097 
+  sic_col360_p8    bnode084 
+  sic_nc300_p8     bnode086 
+  sic_col360_o     bnode085 
+  sic_nc300_o      bnode087 
+  sic_col360_g     bnode084 
+  sic_nc300_g      bnode002 
+
+--- CPU best-config preflights (plan 6.2 / step 10; 3-SCF, single samples) ---
+  case                     RSS      total     Diag    verdict
+  sicpu_bcol300_r48        73/124    122.299   60.238
+  sicpu_bcol300_r36        65/124    132.535   66.619
+  sicpu_bcol216_r48        65/124     73.055   24.807
+  sicpu_bnc216_r48         91/124    164.279  100.846
+  sicpu_bnc216_r36         81/124    202.067  139.935
+  sicpu_ccol216_r48        62/124     52.014    3.309
+  sicpu_cnc216_r48         75/124     91.197   27.947
+  sicpu_cnc216_r36         64/124     91.247   29.067
+  48 vs 36 ranks (same 3-SCF deck, different nodes, single samples --
+  only gaps >10% treated as real): bcol300 48 wins by 8% (122.3 vs
+  132.5 s), bnc216 48 wins by 23% (164.3 vs 202.1 s), cnc216 tie
+  (91.2 vs 91.2 s).  CPU RSS 62-91 GiB everywhere -> flat MPI is
+  feasible, hybrid not needed.
+  => CPU best config for every Layer-1 combo: flat MPI, 48 ranks, -nt 1
+     (the plan's preferred default; no comparison contradicted it).
+
+CHOSEN CLUSTER REPRESENTATIVES (same gates as the band search)
+----------------------------------------------------------------------
+  col cluster : 360 Si atoms (prim 6x6x5, n = 4680)
+                25-SCF: cuBLAS 77 GiB / 69.6 s, GEMMul8 80 GiB / 69.1 s
+  NC cluster  : 300 Si atoms (prim 6x5x5, 2n = 7800)
+                25-SCF: cuBLAS 94 GiB / 135.0 s, GEMMul8 98 GiB / 141.3 s
+  Notable vs the band search: without band k-buffers the NC wall moves
+  up (216 -> 300), and the col-band GEMMul8 host penalty (+17..23 GiB)
+  almost vanishes on the cluster path (+3 GiB at col360, +0 at nc300):
+  it tracks the number of CONCURRENT per-rank GEMMul8 workspaces (8
+  k-owners on band vs 1-2 dense owners on cluster).  conv-cell 288
+  FAILs in both modes while larger prim cells PASS, exactly as in the
+  band ladder.
+
+PROVENANCE NOTE
+----------------------------------------------------------------------
+1. Request IDs 923857..923890 (14 GPU ladder probes, 8 CPU config
+   probes, 5 step-5/6 confirmations); binary as in the band search
+   (962f8d2519c2e6aa5a6295513f76fee9); budget snapshots in
+   siband_jobids.txt.  No slow-node draws in this batch.
+2. Cluster GPU-path evidence differs from band: the cluster solver
+   prints only negative banners; feasibility requires ZERO
+   <Cluster_DFT_*> lines (cfit column counts them plus "cannot fit" /
+   "Falling back") together with the <Set_Hamiltonian> GPU device line
+   and 100% .smi utilisation.  All PASS rows satisfy this.
+3. Probes are single samples: GO/NO-GO only.  The 48-vs-36 CPU numbers
+   are the plan's own 1-3-SCF preflight method, not 3-rep rankings.
+4. These sizes feed the sip_ production matrix (Layer 1/3 + MPS
+   ablation); see siprod_result.txt once that campaign completes.
