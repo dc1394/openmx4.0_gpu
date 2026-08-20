@@ -1,8 +1,9 @@
 #!/bin/bash
 # Si diamond BAND limited strong scaling (research plan v2.6 sec. 7.4 / 8.5):
-# generate 1/2/4-node cases at the mode representatives fixed by the sec.-7.3
-# size search, 48 ranks/node, -nt 1, MPS on, 3 reps per point plus one 3-SCF
-# preflight per (mode, node count).
+# generate 1/2/4/8-node cases at the mode representatives fixed by the
+# sec.-7.3 size search, 48 ranks/node, -nt 1, MPS on, reps per point plus one
+# 3-SCF preflight per (mode, node count).  8 nodes = 1 k-owner per GPU, the
+# natural endpoint of the 8-computed-k parallelism (thesis extension).
 #
 #   sibs_<mode><atoms>_<N>n_<b><r>   b: o = gemmul8 off (cuBLAS FP64)
 #                                       g = gemmul8 on  (INT8 emulation)
@@ -68,7 +69,7 @@ header() {  # $1=case $2=mode $3=atoms $4=N $5=b $6=scfmax
 # Si diamond BAND limited strong scaling (plan v2.6 sec. 7.4/8.5): $1.
 # ${4} node(s) x 48 ranks (-nt 1), 1 H100/node, MPS on; same input at every
 # node count (strong scaling, k-point parallelism over the 8 computed
-# k points: 8/4/2 k per GPU at 1/2/4 nodes).  Config: ${what}.
+# k points: 8/4/2/1 k per GPU at 1/2/4/8 nodes).  Config: ${what}.
 # System: $3 Si atoms from the sec.-7.3 size search ($2 band representative);
 # deck copied from the confirmed sib_$2$3 case, with scf.criterion 1e-15 so
 # every run does exactly ${6} SCF iterations (1e-13 converged at 24 once).
@@ -101,8 +102,8 @@ for mspec in $MODES; do
     esac
     [ -s "$src/$src.dat" ] || { say "FAIL missing confirmed deck $src"; fail=1; continue; }
     tpl="$src"
-    for N in 1 2 4; do
-      case "$b" in w) rlist="0";; *) rlist="1 2 3 4 5 6 11 12 13 14 15 16";; esac  # 11+ = thesis band (v2.0_thesis re-measurement)
+    for N in 1 2 4 8; do
+      case "$b" in w) rlist="0";; *) rlist="1 2 3 4 5 6 11 12 13 14 15 16 17 18 19 20";; esac  # 11+ = thesis band (v2.0_thesis re-measurement)
       for r in $rlist; do
         [ "$b" != w ] && [ -z "$ONLY" ] && [ "$r" -gt 3 ] && continue
         wantpt "$N" "$b" "$r" || continue

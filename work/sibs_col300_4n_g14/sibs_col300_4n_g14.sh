@@ -15,7 +15,7 @@
 # Si diamond BAND limited strong scaling (plan v2.6 sec. 7.4/8.5): sibs_col300_4n_g14.
 # 4 node(s) x 48 ranks (-nt 1), 1 H100/node, MPS on; same input at every
 # node count (strong scaling, k-point parallelism over the 8 computed
-# k points: 8/4/2 k per GPU at 1/2/4 nodes).  Config: gemmul8 on, INT8-based FP64 emulation (production rep).
+# k points: 8/4/2/1 k per GPU at 1/2/4/8 nodes).  Config: gemmul8 on, INT8-based FP64 emulation (production rep).
 # System: 300 Si atoms from the sec.-7.3 size search (col band representative);
 # deck copied from the confirmed sib_col300 case, with scf.criterion 1e-15 so
 # every run does exactly 25 SCF iterations (1e-13 converged at 24 once).

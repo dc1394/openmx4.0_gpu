@@ -496,3 +496,66 @@ rbudgetcheck REMAIN 360.55 ESTIMATE 0.00
 === 2026-08-19 19:24:39 P6 tag pair: siacc64_{o,g}2 from v2.0_thesis build (REMAIN 360.55) ===
 siacc64_o2 Request 925006.nqsv submitted to queue: gen_S.
 siacc64_g2 Request 925007.nqsv submitted to queue: gen_S.
+=== 2026-08-20 09:26:58 8-NODE EXTENSION wave 0: GO/NO-GO preflights sibs_{col300,nc216}_8n_w (REMAIN 360.48) ===
+sibs_col300_8n_w Request 925949.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_w Request 925950.nqsv submitted to queue: gen_S.
+=== 2026-08-20 09:28:00 8-NODE EXTENSION wave A: detail rep14 x8 (all points to n=5; REMAIN 360.48) ===
+sibs_col300_1n_o14 Request 925951.nqsv submitted to queue: gen_S.
+sibs_col300_1n_g14 Request 925952.nqsv submitted to queue: gen_S.
+sibs_col300_2n_o14 Request 925953.nqsv submitted to queue: gen_S.
+sibs_col300_4n_o14 Request 925954.nqsv submitted to queue: gen_S.
+sibs_col300_4n_g14 Request 925955.nqsv submitted to queue: gen_S.
+sibs_nc216_1n_o14 Request 925956.nqsv submitted to queue: gen_S.
+sibs_nc216_1n_g14 Request 925957.nqsv submitted to queue: gen_S.
+sibs_nc216_2n_o14 Request 925958.nqsv submitted to queue: gen_S.
+=== 2026-08-20 09:37:41 8n wave B: 8n rep11 x4 + detail rep15 x8; preflights GO, 1 k-owner/GPU (REMAIN 359.04) ===
+sibs_col300_8n_o11 Request 925964.nqsv submitted to queue: gen_S.
+sibs_col300_8n_g11 Request 925965.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_o11 Request 925966.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g11 Request 925967.nqsv submitted to queue: gen_S.
+sibs_col300_1n_o15 Request 925968.nqsv submitted to queue: gen_S.
+sibs_col300_1n_g15 Request 925969.nqsv submitted to queue: gen_S.
+sibs_col300_2n_o15 Request 925970.nqsv submitted to queue: gen_S.
+sibs_col300_4n_o15 Request 925971.nqsv submitted to queue: gen_S.
+sibs_col300_4n_g15 Request 925972.nqsv submitted to queue: gen_S.
+sibs_nc216_1n_o15 Request 925973.nqsv submitted to queue: gen_S.
+sibs_nc216_1n_g15 Request 925974.nqsv submitted to queue: gen_S.
+sibs_nc216_2n_o15 Request 925975.nqsv submitted to queue: gen_S.
+=== 2026-08-20 09:44:37 8n wave C: rep12 x4 (REMAIN 356.19) ===
+sibs_col300_8n_o12 Request 926071.nqsv submitted to queue: gen_S.
+sibs_col300_8n_g12 Request 926072.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_o12 Request 926073.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g12 Request 926074.nqsv submitted to queue: gen_S.
+=== 2026-08-20 09:50:59 8n wave D: rep13 x4 (REMAIN 354.02) ===
+sibs_col300_8n_o13 Request 926077.nqsv submitted to queue: gen_S.
+sibs_col300_8n_g13 Request 926078.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_o13 Request 926079.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g13 Request 926080.nqsv submitted to queue: gen_S.
+=== 2026-08-20 09:57:19 8n wave E: rep14 x4 (REMAIN 353.33) ===
+sibs_col300_8n_o14 Request 926084.nqsv submitted to queue: gen_S.
+sibs_col300_8n_g14 Request 926085.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_o14 Request 926086.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g14 Request 926087.nqsv submitted to queue: gen_S.
+=== 2026-08-20 10:03:37 8n wave F: rep15 x4, final (REMAIN 350.82) ===
+sibs_col300_8n_o15 Request 926097.nqsv submitted to queue: gen_S.
+sibs_col300_8n_g15 Request 926098.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_o15 Request 926099.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g15 Request 926100.nqsv submitted to queue: gen_S.
+=== 2026-08-20 10:11:28 8n wave G1: CV round rep x5 (REMAIN 348.20) ===
+sibs_col300_4n_o16 Request 926114.nqsv submitted to queue: gen_S.
+sibs_col300_4n_g16 Request 926115.nqsv submitted to queue: gen_S.
+sibs_col300_8n_o16 Request 926116.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_o16 Request 926117.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g16 Request 926118.nqsv submitted to queue: gen_S.
+=== 2026-08-20 10:24:31 8n wave G2: CV round rep x5 (REMAIN 346.85) ===
+sibs_col300_4n_o17 Request 926131.nqsv submitted to queue: gen_S.
+sibs_col300_4n_g17 Request 926132.nqsv submitted to queue: gen_S.
+sibs_col300_8n_o17 Request 926133.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_o17 Request 926134.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g17 Request 926135.nqsv submitted to queue: gen_S.
+=== 2026-08-20 10:31:09 slow-node replacements: col300_4n_o16/o17 + nc216_8n_g16 drew bnode033 -> DISCARDED; re-measuring as o18/o19, g18 (REMAIN 344.24) ===
+sibs_col300_4n_o18 Request 926148.nqsv submitted to queue: gen_S.
+sibs_nc216_8n_g18 Request 926149.nqsv submitted to queue: gen_S.
+sibs_col300_4n_o19 Request 926154.nqsv submitted to queue: gen_S.
+=== 2026-08-20 10:41:33 col300_4n_o19 drew bnode033 again -> DISCARDED; re-measuring as o20 ===
+sibs_col300_4n_o20 Request 926156.nqsv submitted to queue: gen_S.

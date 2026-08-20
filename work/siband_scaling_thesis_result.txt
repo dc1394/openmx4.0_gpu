@@ -1,7 +1,7 @@
 Si diamond BAND limited strong scaling, 48 ranks/node, -nt 1, MPS on
 col = sibs_col300 (300 atoms, prim 6x5x5, n=3900, spin off)
 nc  = sibs_nc216  (216 atoms, conv 3x3x3, 2n=5616, spin NC)
-8 computed k points; k-owner map 8/4/2 per GPU at 1/2/4 nodes
+8 computed k points; k-owner map 8/4/2/1 per GPU at 1/2/4/8 nodes
 binary: v2.0_thesis tag build, md5 11227640dc6f8a8b194ddcd9ab811917
 deck: fixed 25 SCF (scf.criterion 1e-15), MD.Type Opt x1; Max_Time (s)
 o = scf.gemmul8.enable off (cuBLAS FP64), g = gemmul8 on (INT8 emulation)
@@ -11,12 +11,18 @@ case                        total        DFT       Diag    Set_Ham  status
 sibs_col300_1n_o11        133.706    116.456     85.082      5.829  OK
 sibs_col300_1n_o12        130.101    113.054     81.958      5.850  OK
 sibs_col300_1n_o13        129.857    113.068     82.357      5.811  OK
+sibs_col300_1n_o14        132.184    115.443     83.386      5.964  OK
+sibs_col300_1n_o15        130.489    113.794     82.478      5.832  OK
 sibs_col300_1n_g11        147.128    129.900     79.780     16.392  OK
 sibs_col300_1n_g12        147.367    130.415     79.864     16.536  OK
 sibs_col300_1n_g13        146.497    129.813     79.568     16.389  OK
+sibs_col300_1n_g14        148.835    132.030     80.177     16.976  OK
+sibs_col300_1n_g15        148.595    131.312     80.341     16.647  OK
 sibs_col300_2n_o11         87.451     69.429     47.276      4.881  OK
 sibs_col300_2n_o12         87.203     68.474     47.081      4.916  OK
 sibs_col300_2n_o13         86.052     68.289     46.779      4.965  OK
+sibs_col300_2n_o14         88.451     70.504     48.886      5.080  OK
+sibs_col300_2n_o15         88.068     70.252     47.219      5.917  OK
 sibs_col300_2n_g11         85.777     67.096     45.327      5.263  OK
 sibs_col300_2n_g12         89.511     71.378     50.183      4.843  OK
 sibs_col300_2n_g13         85.723     67.594     45.672      4.892  OK
@@ -25,18 +31,44 @@ sibs_col300_2n_g15         91.331     72.853     50.729      4.790  OK
 sibs_col300_4n_o11         67.393     47.539     29.649      4.446  OK
 sibs_col300_4n_o12         67.666     47.910     29.953      4.046  OK
 sibs_col300_4n_o13         67.329     47.791     30.023      4.403  OK
+sibs_col300_4n_o14         69.595     49.697     31.398      4.759  OK
+sibs_col300_4n_o15         68.854     48.983     30.662      4.597  OK
+sibs_col300_4n_o18         66.436     47.045     28.934      4.698  OK
+sibs_col300_4n_o20         69.881     50.040     32.328      4.434  OK
 sibs_col300_4n_g11         65.743     46.295     28.712      4.069  OK
 sibs_col300_4n_g12         65.239     45.207     28.388      3.978  OK
 sibs_col300_4n_g13         65.833     46.225     28.432      4.263  OK
+sibs_col300_4n_g14         70.157     50.503     30.811      4.477  OK
+sibs_col300_4n_g15         67.246     47.569     30.008      4.081  OK
+sibs_col300_4n_g16         69.167     49.485     31.681      4.449  OK
+sibs_col300_4n_g17         65.358     46.135     28.386      4.488  OK
+sibs_col300_8n_o11         74.105     51.911     22.864      3.578  OK
+sibs_col300_8n_o12         75.993     53.825     24.013      4.060  OK
+sibs_col300_8n_o13         72.756     50.427     21.901      3.655  OK
+sibs_col300_8n_o14         73.386     51.112     22.147      3.680  OK
+sibs_col300_8n_o15         74.410     51.451     21.871      3.594  OK
+sibs_col300_8n_o16         75.103     50.462     21.651      3.626  OK
+sibs_col300_8n_o17         72.990     50.531     21.772      3.563  OK
+sibs_col300_8n_g11         74.556     50.371     21.600      3.597  OK
+sibs_col300_8n_g12         74.547     50.773     21.234      3.601  OK
+sibs_col300_8n_g13         72.967     50.852     21.933      3.761  OK
+sibs_col300_8n_g14         73.251     50.900     21.544      3.937  OK
+sibs_col300_8n_g15         72.865     49.762     21.526      3.565  OK
 sibs_nc216_1n_o11         251.173    228.547    153.330     23.603  OK
 sibs_nc216_1n_o12         252.745    229.931    155.180     23.757  OK
 sibs_nc216_1n_o13         252.177    229.597    155.236     23.487  OK
+sibs_nc216_1n_o14         252.674    229.847    154.411     23.731  OK
+sibs_nc216_1n_o15         251.784    228.963    153.291     23.816  OK
 sibs_nc216_1n_g11         252.576    229.970    155.725     23.570  OK
 sibs_nc216_1n_g12         253.863    230.825    155.622     23.496  OK
 sibs_nc216_1n_g13         255.112    232.584    157.728     23.854  OK
+sibs_nc216_1n_g14         256.677    233.666    158.106     23.729  OK
+sibs_nc216_1n_g15         253.289    230.547    156.118     23.567  OK
 sibs_nc216_2n_o11         163.583    139.247     91.911     10.034  OK
 sibs_nc216_2n_o12         164.852    139.907     92.632     10.097  OK
 sibs_nc216_2n_o13         166.605    142.385     94.047     10.227  OK
+sibs_nc216_2n_o14         169.731    144.883     94.752     10.310  OK
+sibs_nc216_2n_o15         165.139    140.212     92.254     10.090  OK
 sibs_nc216_2n_g11         163.532    138.851     91.477     10.109  OK
 sibs_nc216_2n_g12         164.569    140.298     91.563     10.070  OK
 sibs_nc216_2n_g13         170.405    145.729     95.520     10.669  OK
@@ -52,32 +84,55 @@ sibs_nc216_4n_g12         142.931    115.020     68.485     10.731  OK
 sibs_nc216_4n_g13         140.442    112.537     68.136     10.085  OK
 sibs_nc216_4n_g14         140.122    111.989     65.526     10.622  OK
 sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
+sibs_nc216_8n_o11         195.602    163.416     56.111      8.609  OK
+sibs_nc216_8n_o12         188.351    156.662     56.862      8.369  OK
+sibs_nc216_8n_o13         186.716    154.895     54.085      8.746  OK
+sibs_nc216_8n_o14         184.999    154.062     54.652      8.503  OK
+sibs_nc216_8n_o15         186.641    153.462     53.783      8.398  OK
+sibs_nc216_8n_o16         187.409    155.882     55.389      8.709  OK
+sibs_nc216_8n_o17         185.896    154.128     54.507      8.880  OK
+sibs_nc216_8n_g11         193.875    161.827     56.727      8.583  OK
+sibs_nc216_8n_g12         190.347    158.627     56.994      8.611  OK
+sibs_nc216_8n_g13         188.247    157.036     54.902      9.411  OK
+sibs_nc216_8n_g14         190.904    158.909     57.347      8.893  OK
+sibs_nc216_8n_g15         196.569    164.170     60.471      8.823  OK
+sibs_nc216_8n_g17         188.456    156.522     55.681      8.656  OK
+sibs_nc216_8n_g18         194.495    163.077     57.944      9.141  OK
 
 --- statistics (mean +- sample SD; CV flag at >2%) ---
-  col300_1n_o    (n=3)   Total   131.22 +-  2.16 (CV 1.6%)   Diag    83.13 +-  1.70 (CV 2.0% **>2%: add 2 reps**)
-  col300_1n_g    (n=3)   Total   147.00 +-  0.45 (CV 0.3%)   Diag    79.74 +-  0.15 (CV 0.2%)
-  col300_2n_o    (n=3)   Total    86.90 +-  0.75 (CV 0.9%)   Diag    47.05 +-  0.25 (CV 0.5%)
+  col300_1n_o    (n=5)   Total   131.27 +-  1.64 (CV 1.2%)   Diag    83.05 +-  1.25 (CV 1.5%)
+  col300_1n_g    (n=5)   Total   147.68 +-  1.00 (CV 0.7%)   Diag    79.95 +-  0.31 (CV 0.4%)
+  col300_2n_o    (n=5)   Total    87.45 +-  0.92 (CV 1.1%)   Diag    47.45 +-  0.83 (CV 1.7%)
   col300_2n_g    (n=5)   Total    88.17 +-  2.43 (CV 2.8% **>2%: add 2 reps**)   Diag    47.96 +-  2.49 (CV 5.2% **>2%: add 2 reps**)
-  col300_4n_o    (n=3)   Total    67.46 +-  0.18 (CV 0.3%)   Diag    29.88 +-  0.20 (CV 0.7%)
-  col300_4n_g    (n=3)   Total    65.61 +-  0.32 (CV 0.5%)   Diag    28.51 +-  0.18 (CV 0.6%)
-  nc216_1n_o     (n=3)   Total   252.03 +-  0.80 (CV 0.3%)   Diag   154.58 +-  1.08 (CV 0.7%)
-  nc216_1n_g     (n=3)   Total   253.85 +-  1.27 (CV 0.5%)   Diag   156.36 +-  1.19 (CV 0.8%)
-  nc216_2n_o     (n=3)   Total   165.01 +-  1.52 (CV 0.9%)   Diag    92.86 +-  1.09 (CV 1.2%)
+  col300_4n_o    (n=7)   Total    68.16 +-  1.29 (CV 1.9%)   Diag    30.42 +-  1.14 (CV 3.8% **>2%: add 2 reps**)
+  col300_4n_g    (n=7)   Total    66.96 +-  1.98 (CV 3.0% **>2%: add 2 reps**)   Diag    29.49 +-  1.35 (CV 4.6% **>2%: add 2 reps**)
+  col300_8n_o    (n=7)   Total    74.11 +-  1.17 (CV 1.6%)   Diag    22.32 +-  0.85 (CV 3.8% **>2%: add 2 reps**)
+  col300_8n_g    (n=5)   Total    73.64 +-  0.85 (CV 1.1%)   Diag    21.57 +-  0.25 (CV 1.2%)
+  nc216_1n_o     (n=5)   Total   252.11 +-  0.65 (CV 0.3%)   Diag   154.29 +-  0.95 (CV 0.6%)
+  nc216_1n_g     (n=5)   Total   254.30 +-  1.62 (CV 0.6%)   Diag   156.66 +-  1.17 (CV 0.7%)
+  nc216_2n_o     (n=5)   Total   165.98 +-  2.36 (CV 1.4%)   Diag    93.12 +-  1.22 (CV 1.3%)
   nc216_2n_g     (n=5)   Total   167.08 +-  3.24 (CV 1.9%)   Diag    93.30 +-  1.98 (CV 2.1% **>2%: add 2 reps**)
   nc216_4n_o     (n=5)   Total   139.22 +-  3.54 (CV 2.5% **>2%: add 2 reps**)   Diag    65.58 +-  2.75 (CV 4.2% **>2%: add 2 reps**)
   nc216_4n_g     (n=5)   Total   140.72 +-  3.99 (CV 2.8% **>2%: add 2 reps**)   Diag    66.52 +-  2.66 (CV 4.0% **>2%: add 2 reps**)
+  nc216_8n_o     (n=7)   Total   187.94 +-  3.54 (CV 1.9%)   Diag    55.06 +-  1.12 (CV 2.0% **>2%: add 2 reps**)
+  nc216_8n_g     (n=7)   Total   191.84 +-  3.19 (CV 1.7%)   Diag    57.15 +-  1.78 (CV 3.1% **>2%: add 2 reps**)
 
 --- GEMMul8 effect per node count: T(g8-on)/T(g8-off) ---
-  col300  Total:  1n 1.120+-0.019  2n 1.015+-0.029  4n 0.972+-0.005   (>1 = gemmul8 slower)
-  col300  Diag :  1n 0.959+-0.020  2n 1.019+-0.053  4n 0.954+-0.009   (>1 = gemmul8 slower)
-  nc216   Total:  1n 1.007+-0.006  2n 1.012+-0.022  4n 1.011+-0.039   (>1 = gemmul8 slower)
-  nc216   Diag :  1n 1.011+-0.010  2n 1.005+-0.024  4n 1.014+-0.059   (>1 = gemmul8 slower)
+  col300  Total:  1n 1.125+-0.016  2n 1.008+-0.030  4n 0.982+-0.034  8n 0.994+-0.019   (>1 = gemmul8 slower)
+  col300  Diag :  1n 0.963+-0.015  2n 1.011+-0.055  4n 0.969+-0.057  8n 0.966+-0.038   (>1 = gemmul8 slower)
+  nc216   Total:  1n 1.009+-0.007  2n 1.007+-0.024  4n 1.011+-0.039  8n 1.021+-0.026   (>1 = gemmul8 slower)
+  nc216   Diag :  1n 1.015+-0.010  2n 1.002+-0.025  4n 1.014+-0.059  8n 1.038+-0.039   (>1 = gemmul8 slower)
 
---- strong scaling (plan 7.4: S_p=T1/Tp, E_p=T1/(p*Tp), node-hours=p*Tp) ---
-  col300  cuBLAS :  1n T=131.2s S=1.00 E=100% nh=0.0365  2n T=86.9s S=1.51 E=75% nh=0.0483  4n T=67.5s S=1.95 E=49% nh=0.0750
-  col300  GEMMul8:  1n T=147.0s S=1.00 E=100% nh=0.0408  2n T=88.2s S=1.67 E=83% nh=0.0490  4n T=65.6s S=2.24 E=56% nh=0.0729
-  nc216   cuBLAS :  1n T=252.0s S=1.00 E=100% nh=0.0700  2n T=165.0s S=1.53 E=76% nh=0.0917  4n T=139.2s S=1.81 E=45% nh=0.1547
-  nc216   GEMMul8:  1n T=253.9s S=1.00 E=100% nh=0.0705  2n T=167.1s S=1.52 E=76% nh=0.0928  4n T=140.7s S=1.80 E=45% nh=0.1564
+--- strong scaling (plan 7.4: S_p=T1/Tp, E_p=T1/(p*Tp), node-hours=p*Tp;
+    Diag rows scale the Diag column alone - the k-parallel part) ---
+  col300  cuBLAS  Total:  1n T=131.3s S=1.00 E=100% nh=0.0365  2n T=87.4s S=1.50 E=75% nh=0.0486  4n T=68.2s S=1.93 E=48% nh=0.0757  8n T=74.1s S=1.77 E=22% nh=0.1647
+  col300  cuBLAS  Diag :  1n T=83.1s S=1.00  2n T=47.4s S=1.75  4n T=30.4s S=2.73  8n T=22.3s S=3.72
+  col300  GEMMul8 Total:  1n T=147.7s S=1.00 E=100% nh=0.0410  2n T=88.2s S=1.67 E=84% nh=0.0490  4n T=67.0s S=2.21 E=55% nh=0.0744  8n T=73.6s S=2.01 E=25% nh=0.1636
+  col300  GEMMul8 Diag :  1n T=79.9s S=1.00  2n T=48.0s S=1.67  4n T=29.5s S=2.71  8n T=21.6s S=3.71
+  nc216   cuBLAS  Total:  1n T=252.1s S=1.00 E=100% nh=0.0700  2n T=166.0s S=1.52 E=76% nh=0.0922  4n T=139.2s S=1.81 E=45% nh=0.1547  8n T=187.9s S=1.34 E=17% nh=0.4177
+  nc216   cuBLAS  Diag :  1n T=154.3s S=1.00  2n T=93.1s S=1.66  4n T=65.6s S=2.35  8n T=55.1s S=2.80
+  nc216   GEMMul8 Total:  1n T=254.3s S=1.00 E=100% nh=0.0706  2n T=167.1s S=1.52 E=76% nh=0.0928  4n T=140.7s S=1.81 E=45% nh=0.1564  8n T=191.8s S=1.33 E=17% nh=0.4263
+  nc216   GEMMul8 Diag :  1n T=156.7s S=1.00  2n T=93.3s S=1.68  4n T=66.5s S=2.35  8n T=57.2s S=2.74
 
 --- k-owner evidence (first banner per case) + fallback count ---
   sibs_col300_1n_o11     [GPU device 0: 8 k-owner rank] cfit=0
@@ -86,17 +141,29 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
 0
   sibs_col300_1n_o13     [GPU device 0: 8 k-owner rank] cfit=0
 0
+  sibs_col300_1n_o14     [GPU device 0: 8 k-owner rank] cfit=0
+0
+  sibs_col300_1n_o15     [GPU device 0: 8 k-owner rank] cfit=0
+0
   sibs_col300_1n_g11     [GPU device 0: 8 k-owner rank] cfit=0
 0
   sibs_col300_1n_g12     [GPU device 0: 8 k-owner rank] cfit=0
 0
   sibs_col300_1n_g13     [GPU device 0: 8 k-owner rank] cfit=0
 0
+  sibs_col300_1n_g14     [GPU device 0: 8 k-owner rank] cfit=0
+0
+  sibs_col300_1n_g15     [GPU device 0: 8 k-owner rank] cfit=0
+0
   sibs_col300_2n_o11     [GPU device 0: 4 k-owner rank] cfit=0
 0
   sibs_col300_2n_o12     [GPU device 0: 4 k-owner rank] cfit=0
 0
   sibs_col300_2n_o13     [GPU device 0: 4 k-owner rank] cfit=0
+0
+  sibs_col300_2n_o14     [GPU device 0: 4 k-owner rank] cfit=0
+0
+  sibs_col300_2n_o15     [GPU device 0: 4 k-owner rank] cfit=0
 0
   sibs_col300_2n_g11     [GPU device 0: 4 k-owner rank] cfit=0
 0
@@ -114,11 +181,51 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
 0
   sibs_col300_4n_o13     [GPU device 0: 2 k-owner rank] cfit=0
 0
+  sibs_col300_4n_o14     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_4n_o15     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_4n_o18     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_4n_o20     [GPU device 0: 2 k-owner rank] cfit=0
+0
   sibs_col300_4n_g11     [GPU device 0: 2 k-owner rank] cfit=0
 0
   sibs_col300_4n_g12     [GPU device 0: 2 k-owner rank] cfit=0
 0
   sibs_col300_4n_g13     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_4n_g14     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_4n_g15     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_4n_g16     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_4n_g17     [GPU device 0: 2 k-owner rank] cfit=0
+0
+  sibs_col300_8n_o11     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_o12     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_o13     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_o14     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_o15     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_o16     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_o17     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_g11     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_g12     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_g13     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_g14     [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_col300_8n_g15     [GPU device 0: 1 k-owner rank] cfit=0
 0
   sibs_nc216_1n_o11      [GPU device 0: 8 k-owner rank] cfit=0
 0
@@ -126,17 +233,29 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
 0
   sibs_nc216_1n_o13      [GPU device 0: 8 k-owner rank] cfit=0
 0
+  sibs_nc216_1n_o14      [GPU device 0: 8 k-owner rank] cfit=0
+0
+  sibs_nc216_1n_o15      [GPU device 0: 8 k-owner rank] cfit=0
+0
   sibs_nc216_1n_g11      [GPU device 0: 8 k-owner rank] cfit=0
 0
   sibs_nc216_1n_g12      [GPU device 0: 8 k-owner rank] cfit=0
 0
   sibs_nc216_1n_g13      [GPU device 0: 8 k-owner rank] cfit=0
 0
+  sibs_nc216_1n_g14      [GPU device 0: 8 k-owner rank] cfit=0
+0
+  sibs_nc216_1n_g15      [GPU device 0: 8 k-owner rank] cfit=0
+0
   sibs_nc216_2n_o11      [GPU device 0: 4 k-owner rank] cfit=0
 0
   sibs_nc216_2n_o12      [GPU device 0: 4 k-owner rank] cfit=0
 0
   sibs_nc216_2n_o13      [GPU device 0: 4 k-owner rank] cfit=0
+0
+  sibs_nc216_2n_o14      [GPU device 0: 4 k-owner rank] cfit=0
+0
+  sibs_nc216_2n_o15      [GPU device 0: 4 k-owner rank] cfit=0
 0
   sibs_nc216_2n_g11      [GPU device 0: 4 k-owner rank] cfit=0
 0
@@ -168,17 +287,51 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
 0
   sibs_nc216_4n_g15      [GPU device 0: 2 k-owner rank] cfit=0
 0
+  sibs_nc216_8n_o11      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_o12      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_o13      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_o14      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_o15      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_o16      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_o17      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_g11      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_g12      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_g13      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_g14      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_g15      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_g17      [GPU device 0: 1 k-owner rank] cfit=0
+0
+  sibs_nc216_8n_g18      [GPU device 0: 1 k-owner rank] cfit=0
+0
 
 --- node landings (slow: bnode013, bnode033) ---
   sibs_col300_1n_o11     bnode111 
   sibs_col300_1n_o12     bnode119 
   sibs_col300_1n_o13     bnode133 
+  sibs_col300_1n_o14     bnode097 
+  sibs_col300_1n_o15     bnode113 
   sibs_col300_1n_g11     bnode112 
   sibs_col300_1n_g12     bnode120 
   sibs_col300_1n_g13     bnode134 
+  sibs_col300_1n_g14     bnode098 
+  sibs_col300_1n_g15     bnode114 
   sibs_col300_2n_o11     bnode113 bnode114 
   sibs_col300_2n_o12     bnode121 bnode122 
   sibs_col300_2n_o13     bnode135 bnode137 
+  sibs_col300_2n_o14     bnode099 bnode100 
+  sibs_col300_2n_o15     bnode115 bnode116 
   sibs_col300_2n_g11     bnode115 bnode116 
   sibs_col300_2n_g12     bnode123 bnode124 
   sibs_col300_2n_g13     bnode138 bnode139 
@@ -187,18 +340,44 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
   sibs_col300_4n_o11     bnode117 bnode118 bnode119 bnode120 
   sibs_col300_4n_o12     bnode125 bnode127 bnode128 bnode126 
   sibs_col300_4n_o13     bnode140 bnode143 bnode142 bnode141 
+  sibs_col300_4n_o14     bnode101 bnode103 bnode102 bnode104 
+  sibs_col300_4n_o15     bnode117 bnode119 bnode118 bnode120 
+  sibs_col300_4n_o18     bnode062 bnode081 bnode099 bnode100 
+  sibs_col300_4n_o20     bnode038 bnode039 bnode040 bnode048 
   sibs_col300_4n_g11     bnode121 bnode124 bnode122 bnode123 
   sibs_col300_4n_g12     bnode129 bnode132 bnode131 bnode130 
   sibs_col300_4n_g13     bnode144 bnode146 bnode147 bnode145 
+  sibs_col300_4n_g14     bnode105 bnode106 bnode107 bnode108 
+  sibs_col300_4n_g15     bnode121 bnode123 bnode124 bnode122 
+  sibs_col300_4n_g16     bnode102 bnode103 bnode104 bnode105 
+  sibs_col300_4n_g17     bnode099 bnode102 bnode101 bnode100 
+  sibs_col300_8n_o11     bnode018 bnode019 bnode087 bnode084 bnode088 bnode052 bnode086 bnode077 
+  sibs_col300_8n_o12     bnode014 bnode100 bnode098 bnode099 bnode103 bnode102 bnode101 bnode104 
+  sibs_col300_8n_o13     bnode014 bnode104 bnode103 bnode102 bnode101 bnode100 bnode098 bnode099 
+  sibs_col300_8n_o14     bnode098 bnode099 bnode104 bnode102 bnode103 bnode101 bnode100 bnode105 
+  sibs_col300_8n_o15     bnode099 bnode100 bnode107 bnode104 bnode105 bnode101 bnode102 bnode103 
+  sibs_col300_8n_o16     bnode107 bnode110 bnode108 bnode109 bnode111 bnode125 bnode120 bnode112 
+  sibs_col300_8n_o17     bnode103 bnode104 bnode105 bnode107 bnode109 bnode111 bnode110 bnode108 
+  sibs_col300_8n_g11     bnode089 bnode090 bnode092 bnode093 bnode091 bnode094 bnode096 bnode095 
+  sibs_col300_8n_g12     bnode105 bnode108 bnode106 bnode107 bnode111 bnode112 bnode110 bnode109 
+  sibs_col300_8n_g13     bnode105 bnode112 bnode109 bnode111 bnode110 bnode108 bnode106 bnode107 
+  sibs_col300_8n_g14     bnode106 bnode120 bnode112 bnode111 bnode109 bnode110 bnode107 bnode108 
+  sibs_col300_8n_g15     bnode108 bnode125 bnode120 bnode126 bnode112 bnode111 bnode110 bnode109 
   sibs_nc216_1n_o11      bnode125 
   sibs_nc216_1n_o12      bnode133 
   sibs_nc216_1n_o13      bnode148 
+  sibs_nc216_1n_o14      bnode109 
+  sibs_nc216_1n_o15      bnode125 
   sibs_nc216_1n_g11      bnode126 
   sibs_nc216_1n_g12      bnode134 
   sibs_nc216_1n_g13      bnode149 
+  sibs_nc216_1n_g14      bnode110 
+  sibs_nc216_1n_g15      bnode126 
   sibs_nc216_2n_o11      bnode127 bnode128 
   sibs_nc216_2n_o12      bnode135 bnode137 
   sibs_nc216_2n_o13      bnode112 bnode113 
+  sibs_nc216_2n_o14      bnode111 bnode112 
+  sibs_nc216_2n_o15      bnode127 bnode128 
   sibs_nc216_2n_g11      bnode129 bnode130 
   sibs_nc216_2n_g12      bnode138 bnode139 
   sibs_nc216_2n_g13      bnode114 bnode115 
@@ -214,23 +393,43 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
   sibs_nc216_4n_g13      bnode129 bnode130 bnode120 bnode136 
   sibs_nc216_4n_g14      bnode036 bnode040 bnode037 bnode042 
   sibs_nc216_4n_g15      bnode043 bnode046 bnode045 bnode044 
+  sibs_nc216_8n_o11      bnode097 bnode098 bnode100 bnode099 bnode102 bnode104 bnode101 bnode103 
+  sibs_nc216_8n_o12      bnode120 bnode125 bnode126 bnode127 bnode128 bnode135 bnode136 bnode137 
+  sibs_nc216_8n_o13      bnode120 bnode125 bnode136 bnode126 bnode135 bnode137 bnode128 bnode127 
+  sibs_nc216_8n_o14      bnode125 bnode126 bnode138 bnode135 bnode136 bnode137 bnode127 bnode128 
+  sibs_nc216_8n_o15      bnode127 bnode128 bnode135 bnode139 bnode136 bnode137 bnode140 bnode138 
+  sibs_nc216_8n_o16      bnode126 bnode128 bnode127 bnode136 bnode135 bnode138 bnode139 bnode137 
+  sibs_nc216_8n_o17      bnode112 bnode125 bnode120 bnode126 bnode127 bnode128 bnode136 bnode135 
+  sibs_nc216_8n_g11      bnode105 bnode106 bnode111 bnode108 bnode109 bnode107 bnode110 bnode112 
+  sibs_nc216_8n_g12      bnode138 bnode139 bnode143 bnode142 bnode144 bnode140 bnode141 bnode145 
+  sibs_nc216_8n_g13      bnode138 bnode140 bnode144 bnode139 bnode141 bnode142 bnode143 bnode145 
+  sibs_nc216_8n_g14      bnode139 bnode140 bnode144 bnode141 bnode142 bnode143 bnode145 bnode146 
+  sibs_nc216_8n_g15      bnode141 bnode144 bnode142 bnode145 bnode143 bnode146 bnode148 bnode147 
+  sibs_nc216_8n_g17      bnode137 bnode144 bnode142 bnode141 bnode143 bnode139 bnode138 bnode140 
+  sibs_nc216_8n_g18      bnode101 bnode103 bnode104 bnode102 bnode105 bnode109 bnode108 bnode107 
 
 --- Utot (per config; must be identical across reps and across node counts) ---
-  col300 o: -1232.518569501012 -1232.518569501012 -1232.518569501012 -1232.518569501009 -1232.518569501009 -1232.518569501009 -1232.518569501006 -1232.518569501006 -1232.518569501006
-  col300 g: -1232.518569501011 -1232.518569501011 -1232.518569501011 -1232.518569501007 -1232.518569501007 -1232.518569501007 -1232.518569501007 -1232.518569501007 -1232.518569501005 -1232.518569501005 -1232.518569501005
-  nc216 o: -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519
-  nc216 g: -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518
+  col300 o: -1232.518569501012 -1232.518569501012 -1232.518569501012 -1232.518569501012 -1232.518569501012 -1232.518569501009 -1232.518569501009 -1232.518569501009 -1232.518569501009 -1232.518569501009 -1232.518569501006 -1232.518569501006 -1232.518569501006 -1232.518569501006 -1232.518569501006 -1232.518569501006 -1232.518569501006 -1232.518569501003 -1232.518569501003 -1232.518569501003 -1232.518569501003 -1232.518569501003 -1232.518569501003 -1232.518569501003
+  col300 g: -1232.518569501011 -1232.518569501011 -1232.518569501011 -1232.518569501011 -1232.518569501011 -1232.518569501007 -1232.518569501007 -1232.518569501007 -1232.518569501007 -1232.518569501007 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005 -1232.518569501005
+  nc216 o: -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076519 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514
+  nc216 g: -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076518 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514 -887.422833076514
 
 --- peak host RSS node0 / peak GPU mem (GiB / MiB) ---
   sibs_col300_1n_o11     RSS 75/124    GPU 58118 MiB
   sibs_col300_1n_o12     RSS 74/124    GPU 58134 MiB
   sibs_col300_1n_o13     RSS 75/124    GPU 58118 MiB
+  sibs_col300_1n_o14     RSS 74/124    GPU 58118 MiB
+  sibs_col300_1n_o15     RSS 74/124    GPU 58134 MiB
   sibs_col300_1n_g11     RSS 100/124   GPU 57130 MiB
   sibs_col300_1n_g12     RSS 93/124    GPU 70540 MiB
   sibs_col300_1n_g13     RSS 93/124    GPU 57130 MiB
+  sibs_col300_1n_g14     RSS 93/124    GPU 64002 MiB
+  sibs_col300_1n_g15     RSS 93/124    GPU 63990 MiB
   sibs_col300_2n_o11     RSS 52/124    GPU 48284 MiB
   sibs_col300_2n_o12     RSS 51/124    GPU 48284 MiB
   sibs_col300_2n_o13     RSS 52/124    GPU 48284 MiB
+  sibs_col300_2n_o14     RSS 52/124    GPU 48284 MiB
+  sibs_col300_2n_o15     RSS 53/124    GPU 48284 MiB
   sibs_col300_2n_g11     RSS 54/124    GPU 63288 MiB
   sibs_col300_2n_g12     RSS 53/124    GPU 63288 MiB
   sibs_col300_2n_g13     RSS 53/124    GPU 63288 MiB
@@ -239,18 +438,44 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
   sibs_col300_4n_o11     RSS 41/124    GPU 42362 MiB
   sibs_col300_4n_o12     RSS 41/124    GPU 42362 MiB
   sibs_col300_4n_o13     RSS 41/124    GPU 42362 MiB
+  sibs_col300_4n_o14     RSS 43/124    GPU 42362 MiB
+  sibs_col300_4n_o15     RSS 41/124    GPU 42362 MiB
+  sibs_col300_4n_o18     RSS 43/124    GPU 31156 MiB
+  sibs_col300_4n_o20     RSS 43/124    GPU 37218 MiB
   sibs_col300_4n_g11     RSS 41/124    GPU 42362 MiB
   sibs_col300_4n_g12     RSS 42/124    GPU 50008 MiB
   sibs_col300_4n_g13     RSS 42/124    GPU 50008 MiB
+  sibs_col300_4n_g14     RSS 42/124    GPU 50008 MiB
+  sibs_col300_4n_g15     RSS 41/124    GPU 42362 MiB
+  sibs_col300_4n_g16     RSS 44/124    GPU 42362 MiB
+  sibs_col300_4n_g17     RSS 43/124    GPU 50008 MiB
+  sibs_col300_8n_o11     RSS 37/124    GPU 62142 MiB
+  sibs_col300_8n_o12     RSS 37/124    GPU 44578 MiB
+  sibs_col300_8n_o13     RSS 37/124    GPU 44578 MiB
+  sibs_col300_8n_o14     RSS 38/124    GPU 39582 MiB
+  sibs_col300_8n_o15     RSS 38/124    GPU 44578 MiB
+  sibs_col300_8n_o16     RSS 37/124    GPU 28706 MiB
+  sibs_col300_8n_o17     RSS 39/124    GPU 44578 MiB
+  sibs_col300_8n_g11     RSS 36/124    GPU 39582 MiB
+  sibs_col300_8n_g12     RSS 37/124    GPU 44578 MiB
+  sibs_col300_8n_g13     RSS 37/124    GPU 44578 MiB
+  sibs_col300_8n_g14     RSS 37/124    GPU 44578 MiB
+  sibs_col300_8n_g15     RSS 37/124    GPU 44578 MiB
   sibs_nc216_1n_o11      RSS 101/124   GPU 67550 MiB
   sibs_nc216_1n_o12      RSS 101/124   GPU 62538 MiB
   sibs_nc216_1n_o13      RSS 101/124   GPU 67550 MiB
+  sibs_nc216_1n_o14      RSS 101/124   GPU 67550 MiB
+  sibs_nc216_1n_o15      RSS 100/124   GPU 67550 MiB
   sibs_nc216_1n_g11      RSS 101/124   GPU 62538 MiB
   sibs_nc216_1n_g12      RSS 101/124   GPU 62538 MiB
   sibs_nc216_1n_g13      RSS 107/124   GPU 58566 MiB
+  sibs_nc216_1n_g14      RSS 107/124   GPU 60774 MiB
+  sibs_nc216_1n_g15      RSS 101/124   GPU 62538 MiB
   sibs_nc216_2n_o11      RSS 58/124    GPU 46734 MiB
   sibs_nc216_2n_o12      RSS 58/124    GPU 46734 MiB
   sibs_nc216_2n_o13      RSS 59/124    GPU 60888 MiB
+  sibs_nc216_2n_o14      RSS 59/124    GPU 60888 MiB
+  sibs_nc216_2n_o15      RSS 58/124    GPU 46734 MiB
   sibs_nc216_2n_g11      RSS 58/124    GPU 60888 MiB
   sibs_nc216_2n_g12      RSS 58/124    GPU 50790 MiB
   sibs_nc216_2n_g13      RSS 58/124    GPU 50790 MiB
@@ -266,22 +491,72 @@ sibs_nc216_4n_g15         145.408    117.294     68.204     10.755  OK
   sibs_nc216_4n_g13      RSS 47/124    GPU 47842 MiB
   sibs_nc216_4n_g14      RSS 47/124    GPU 62142 MiB
   sibs_nc216_4n_g15      RSS 47/124    GPU 36390 MiB
-
-=====================================================================
-PROVENANCE NOTE (appended by hand, 2026-08-19)
+  sibs_nc216_8n_o11      RSS 47/124    GPU 45992 MiB
+  sibs_nc216_8n_o12      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_o13      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_o14      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_o15      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_o16      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_o17      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_g11      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_g12      RSS 47/124    GPU 31092 MiB
+  sibs_nc216_8n_g13      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_g14      RSS 48/124    GPU 32608 MiB
+  sibs_nc216_8n_g15      RSS 47/124    GPU 45992 MiB
+  sibs_nc216_8n_g17      RSS 47/124    GPU 39582 MiB
+  sibs_nc216_8n_g18      RSS 48/124    GPU 45992 MiB
+PROVENANCE NOTE (appended by hand, 2026-08-20; supersedes the 2026-08-19 note)
 1. THESIS band strong-scaling series from the v2.0_thesis tag build
-   (md5 11227640...); reps 11-13 everywhere, +2 reps (one CV round,
-   plan 9.2) at col300_2n_g, nc216_2n_g, nc216_4n_o, nc216_4n_g;
-   sibs_nc216_2n_g15 drew bnode013 -> discarded, replaced by g16
-   (bnode003/008, 166.398 s).
-2. Residual Total CV of 2.5-2.8% at the 4-node points (and col300_2n_g)
-   persists after 5 reps, exactly as in the pre-freeze series: node-SET
-   variance of multi-node draws, documented, one CV round only per the
-   plan.  Conclusions unchanged.
-3. Headline: col300 cuBLAS S4=1.95 (E=49%), GEMMul8 S4=2.24 (E=56%);
-   nc216 S4=1.81/1.80.  GEMMul8-vs-cuBLAS flips from 1.120+-0.019
-   slower at 1 node to 0.973+-0.005 FASTER at 4 nodes (col300) -- the
-   Set_Hamiltonian interference vanishes when the per-node k-owner
-   count drops; reproduces the pre-freeze observation.
-4. Every run manifest-verified: v2.0_thesis, gpusolver-gpu-dense, zero
-   fallbacks, production mode, MPS detected.
+   (md5 11227640...).  History of the rep bands:
+     - 2026-08-19 thesis campaign: reps 11-13 at 1/2/4 nodes; +2 reps
+       (one CV round, plan 9.2) at col300_2n_g, nc216_2n_g, nc216_4n_o,
+       nc216_4n_g; nc216_2n_g15 drew bnode013 -> discarded, g16 instead.
+     - 2026-08-20 extension (user request: spend part of the remaining
+       budget on 8 nodes + denser 2-4-node statistics): EVERY 1/2/4-node
+       point brought to n=5 (reps 14-15 added where missing), and the
+       8-node series added at n=5 (reps 11-15) after two 3-SCF GO
+       preflights (sibs_{col300,nc216}_8n_w).
+     - Points first flagged CV>2% at n=5 got their single CV round as
+       reps 16-17 (n=7): col300_4n_o, col300_4n_g, col300_8n_o,
+       nc216_8n_o, nc216_8n_g.  Points already CV-rounded on 08-19 were
+       NOT re-rounded (one round only per plan 9.2).
+2. Slow-node discards this extension: bnode033 was drawn four times --
+   col300_4n_o16, col300_4n_o17, col300_4n_o19, nc216_8n_g16 -- all
+   DISCARDED per site convention and re-measured as col300_4n_o18/o20
+   and nc216_8n_g18.  The discarded run directories are retained on
+   disk/in git for provenance but are excluded from every statistic.
+3. 8-node GO evidence: both preflights and all 26 kept 8n production
+   runs show exactly "GPU device 0: 1 k-owner rank" (the natural
+   endpoint of the 8-computed-k parallelism), zero cannot-fit banners,
+   zero GEMMul8 fallbacks.
+4. Headline scaling (Total, Max_Time): col300 cuBLAS S2/S4/S8 =
+   1.50/1.93/1.77, GEMMul8 2n/4n/8n = 1.67/2.21/2.01; nc216 (both
+   backends) 1.52/1.81/1.33-1.34.  TOTAL TIME SATURATES AT 4 NODES and
+   regresses at 8 (col300 +8.7%, nc216 +35% vs 4n): the k-parallel
+   Diag keeps improving (Diag S8 = 3.7 col300 / 2.8 nc216) but the
+   non-diagonalization remainder (grid/communication, dft-diag) grows
+   from 74s (2n) to 133s (8n) in nc216.  Production recommendation
+   stays 4 nodes for turnaround, 1-2 nodes for node-hour efficiency
+   (E8 = 22-25% col300, 17% nc216).
+5. REVISION of the 08-19 headline (item 3 of the old note): with n=7
+   the col300 4-node GEMMul8 advantage is NOT significant: T(g8)/T(o)
+   = 0.982 +- 0.034 (was 0.973 +- 0.005 at n=3).  The robust Layer-3
+   statement is: GEMMul8 costs 12.5 +- 1.6% Total at 1 node (Set_Ham
+   interference), is at PARITY at 2-8 nodes (Total ratios 0.98-1.02,
+   all n.s.), and its 1-node Diag advantage 0.963 +- 0.015 in col300
+   IS significant.  nc216 ratios are 1.01-1.04 (n.s.) at every node
+   count.  8n adds no G8-specific effect.
+6. Residual CV>2% flags after the (single) CV round are documented
+   node-SET variance of multi-node draws, same floor as the pre-freeze
+   series: col300_2n_g 2.8%, col300_4n_g 3.0%, nc216_4n 2.5-2.8%
+   (Total); several Diag CVs 2-5%.  Conclusions unchanged.
+7. Every kept rep is manifest-verified (90/90 OK): release_tag
+   v2.0_thesis, path gpusolver-gpu-dense, cpu_solves=0, zero GEMMul8
+   fallbacks (g points: calls>0; o points: calls=0), production mode,
+   MPS detected.  Utot is digit-identical across reps and backends
+   within every (mode, node count); the last-digit (1e-12 Ha) drift
+   ACROSS node counts is the MPI reduction-order effect already noted
+   pre-freeze.
+8. Wave/budget log in work/siband_jobids.txt (waves 0,A-F,G1,G2,H1,H2
+   + replacements); binary never rebuilt during the campaign (md5
+   asserted in every manifest).
