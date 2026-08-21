@@ -1,0 +1,53 @@
+s5p_ccol216_c1611.sh: 84 行: 1528205 強制終了            ( for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s5p_ccol216_c1611 total=178.540 dft=165.971 diag=36.078 set_hamiltonian=32.223
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    11      177.376          0      178.540
+   readfile                 =    10        2.431          0        2.431
+   truncation               =    14        5.010         15        5.044
+   MD_pac                   =     0        0.002          1        0.003
+   OutData                  =     4        3.929          0        5.092
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =    15      165.937         14      165.971
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     9        0.838          7        1.009
+   Set_Nonlocal             =     7        4.170          9        4.341
+   Set_ProExpn_VNA          =    12       28.823         10       29.609
+   Set_Hamiltonian          =     7       32.223         12       32.223
+   Poisson                  =     7        0.495          2        0.495
+   Diagonalization          =     4       36.078          0       36.078
+   Mixing_DM                =     7        2.197         14        2.197
+   Force                    =     3       14.733         12       14.733
+   Total_Energy             =    12        9.835          0        9.835
+   Set_Aden_Grid            =    10        0.282         12        1.064
+   Set_Orbitals_Grid        =    11        1.268         15        1.403
+   Set_Density_Grid         =     6       33.240          2       33.321
+   RestartFileDFT           =     7        0.006          2        0.006
+   Mulliken_Charge          =     1        0.030         14        0.030
+   FFT(2D)_Density          =    10        0.499          4        0.499
+   Others                   =    13        0.071          6        0.238
+
+The calculation was normally finished.
+=== Utot ===
+  Utot.       -887.309609578865
+=== SCF iterations completed ===
+25
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 40/251
+host mem used/total (GiB): 40/251
+host mem used/total (GiB): 40/251
+=== progress markers ===
+[01:32:39] script start on dc1394-desktop
+[01:32:39] launching mpirun: 16 ranks
+[01:32:39] mpirun launched (pid 1528208)
+[01:35:45] mpirun reaped rc=0

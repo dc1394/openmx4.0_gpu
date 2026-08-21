@@ -1,0 +1,3 @@
+Set_ProExpn_VNA DS_VNA GPU: needs 0.816 GiB per rank, 16 rank(s) share this device and only 11.047 GiB is free; CPU fallback.
+Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.
+Force4B GPU: not enough free device memory; CPU fallback.

@@ -1,0 +1,67 @@
+s5p_cnc216_o14.sh: 136 行: 1357023 強制終了            ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s5p_cnc216_o14 total=350.628 dft=332.945 diag=132.411 set_hamiltonian=103.227
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    13      349.459          0      350.628
+   readfile                 =    15        2.429          0        2.430
+   truncation               =    14        5.072          7        5.125
+   MD_pac                   =     0        0.002          1        0.003
+   OutData                  =     1        8.975          0       10.144
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     7      332.892         14      332.945
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     9        0.838          7        1.007
+   Set_Nonlocal             =     7        0.835          9        1.004
+   Set_ProExpn_VNA          =    12       24.288         10       24.728
+   Set_Hamiltonian          =     7      103.227          0      103.227
+   Poisson                  =     8        0.502         14        0.502
+   Diagonalization          =     9      132.410          3      132.411
+   Mixing_DM                =     1        5.471          3        5.471
+   Force                    =     1       15.226         12       15.226
+   Total_Energy             =    10        1.487          0        1.487
+   Set_Aden_Grid            =    11        0.395         15        0.413
+   Set_Orbitals_Grid        =     2        1.013          4        1.125
+   Set_Density_Grid         =     4       38.175          1       38.190
+   RestartFileDFT           =    10        0.024         14        0.024
+   Mulliken_Charge          =     0        0.754         15        0.754
+   FFT(2D)_Density          =    13        1.469          9        1.469
+   Others                   =    10        6.141         12        6.588
+
+The calculation was normally finished.
+=== Utot ===
+  Utot.       -887.309609578737
+=== SCF iterations completed ===
+25
+=== Cluster GPU fallback (expect none) + Set_Hamiltonian GPU lines ===
+<Set_Hamiltonian> GPU device 0: 16 Hamiltonian rank(s), GPU concurrency=5, CPU fallback ranks=11, peak=8.989 GiB, free=11.056 GiB, reserve=1.546 GiB
+<Set_Hamiltonian> GPU device 0: 16 Hamiltonian rank(s), GPU concurrency=3, CPU fallback ranks=13, peak=5.411 GiB, free=7.083 GiB, reserve=1.546 GiB
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 62/251
+host mem used/total (GiB): 61/251
+host mem used/total (GiB): 60/251
+=== peak GPU, this node ===
+100 %, 13061 MiB
+0 %, 12195 MiB
+100 %, 11710 MiB
+=== MPS server (post-run) ===
+dc1394-desktop: mps_server=1 gpu_mem_used=310 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[21:22:48] script start on dc1394-desktop
+[21:22:49] MPS state verified (control_pipe=yes)
+[21:22:49] launching mpirun: 16 ranks
+[21:22:49] mpirun launched (pid 1357026)
+[21:28:44] watchdog loop exited (verdict='none'); reaping mpirun
+[21:28:44] mpirun reaped rc=0
+[21:28:44] sampler killed

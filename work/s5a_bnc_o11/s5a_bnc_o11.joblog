@@ -1,0 +1,77 @@
+s5a_bnc_o11.sh: 137 行: 1848446 強制終了            ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s5a_bnc_o11 total=3013.326 dft=2995.023 diag=2629.768 set_hamiltonian=210.292
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =     7     3012.159          0     3013.326
+   readfile                 =     4        2.446          1        2.446
+   truncation               =    10        5.092          4        5.137
+   MD_pac                   =     0        0.002          1        0.003
+   OutData                  =     2        9.563          0       10.730
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     4     2994.978         10     2995.023
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    15        0.830         12        1.679
+   Set_Nonlocal             =    12        0.836         15        1.685
+   Set_ProExpn_VNA          =     0       24.465          1       24.828
+   Set_Hamiltonian          =     9      210.292          0      210.292
+   Poisson                  =    14        1.037          4        1.037
+   Diagonalization          =     8     2628.351          5     2629.768
+   Mixing_DM                =    12       11.751         13       11.751
+   Force                    =    14       15.070          0       15.070
+   Total_Energy             =     6        1.433          0        1.433
+   Set_Aden_Grid            =     2        0.397          6        0.413
+   Set_Orbitals_Grid        =    10        1.005          4        1.111
+   Set_Density_Grid         =     4       75.390          1       75.421
+   RestartFileDFT           =    12        0.024          7        0.024
+   Mulliken_Charge          =     0        1.546         11        1.546
+   FFT(2D)_Density          =    10        2.919          4        2.919
+   Others                   =     1       17.002          8       18.613
+
+The calculation was normally finished.
+=== Utot ===
+  Utot.       -887.422192334247
+=== SCF iterations completed ===
+52
+=== Band GPU dispatch / fallback lines ===
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band_DFT_NonCol> GPU device 0: 8 k-owner rank(s), GPU concurrency=2 (eigenvectors), turn group=2, per-rank=3.305 GiB, peak=6.610 GiB, free=11.036 GiB, reserve=1.546 GiB
+<Band_DFT_NonCol> GPU device 0: 8 k-owner rank(s), GPU concurrency=6 (density matrix), turn group=6, per-rank=0.777 GiB, peak=4.660 GiB, free=6.712 GiB, reserve=1.546 GiB
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band_DFT_NonCol> GPU device 0: 8 k-owner rank(s), GPU concurrency=1 (eigenvectors), turn group=1, per-rank=3.305 GiB, peak=3.305 GiB, free=6.712 GiB, reserve=1.546 GiB
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 65/251
+host mem used/total (GiB): 65/251
+host mem used/total (GiB): 64/251
+=== peak GPU, this node ===
+100 %, 15437 MiB
+100 %, 14377 MiB
+100 %, 13273 MiB
+=== MPS server (post-run) ===
+dc1394-desktop: mps_server=1 gpu_mem_used=316 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[09:46:29] script start on dc1394-desktop
+[09:46:29] MPS state verified (control_pipe=yes)
+[09:46:29] launching mpirun: 16 ranks
+[09:46:29] mpirun launched (pid 1848449)
+[10:36:49] watchdog loop exited (verdict='none'); reaping mpirun
+[10:36:49] mpirun reaped rc=0
+[10:36:49] sampler killed

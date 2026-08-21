@@ -1,0 +1,77 @@
+s5a_bcol_g11.sh: 137 行: 1826783 強制終了            ( trap - EXIT INT TERM; for _ in $(seq 1 3000);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "$SMILOG" 2>&1; sleep 5;
+done )
+=== TIMING (machine-readable; Max_Time column, seconds) ===
+TIMING s5a_bcol_g11 total=471.515 dft=458.880 diag=264.195 set_hamiltonian=79.746
+=== full timing block ===
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =    11      470.342          0      471.515
+   readfile                 =    15        2.440          0        2.440
+   truncation               =     2        4.925          4        4.954
+   MD_pac                   =     0        0.002          3        0.003
+   OutData                  =     7        4.066          0        5.239
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     4      458.850          2      458.880
+
+*** In DFT ***
+
+   Set_OLP_Kin              =    15        0.825         12        1.681
+   Set_Nonlocal             =    12        0.831         15        1.687
+   Set_ProExpn_VNA          =     0       24.472          1       24.848
+   Set_Hamiltonian          =    11       79.746          4       79.746
+   Poisson                  =     7        1.174         15        1.174
+   Diagonalization          =     8      263.346          5      264.195
+   Mixing_DM                =     9        4.425         13        4.425
+   Force                    =     6       13.742         13       13.742
+   Total_Energy             =    12        1.402          0        1.402
+   Set_Aden_Grid            =    11        0.292         14        0.301
+   Set_Orbitals_Grid        =    10        1.019         14        1.135
+   Set_Density_Grid         =    12       62.970          1       62.988
+   RestartFileDFT           =     6        0.006         13        0.006
+   Mulliken_Charge          =     1        0.063         11        0.063
+   FFT(2D)_Density          =     6        1.122          4        1.122
+   Others                   =     1        1.323          6        2.418
+
+The calculation was normally finished.
+=== Utot ===
+  Utot.       -887.422192334248
+=== SCF iterations completed ===
+60
+=== Band GPU dispatch / fallback lines ===
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band_DFT_Col> GPU device 0: 8 k-owner rank(s), GPU concurrency=4, turn group=4, per-rank=2.245 GiB, peak=8.981 GiB, free=11.041 GiB, reserve=1.546 GiB
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+<Band>  Solving the eigenvalue problem (GPU-accelerated)...
+=== peak host memory, this node (GiB) ===
+host mem used/total (GiB): 58/251
+host mem used/total (GiB): 57/251
+host mem used/total (GiB): 57/251
+=== peak GPU, this node ===
+100 %, 13061 MiB
+100 %, 13061 MiB
+100 %, 13061 MiB
+=== MPS server (post-run) ===
+dc1394-desktop: mps_server=1 gpu_mem_used=309 MiB
+=== teardown hang? (watchdog line present => yes) ===
+0
+=== progress markers ===
+[09:13:59] script start on dc1394-desktop
+[09:13:59] MPS state verified (control_pipe=yes)
+[09:13:59] launching mpirun: 16 ranks
+[09:13:59] mpirun launched (pid 1826786)
+[09:21:55] watchdog loop exited (verdict='none'); reaping mpirun
+[09:21:55] mpirun reaped rc=0
+[09:21:55] sampler killed

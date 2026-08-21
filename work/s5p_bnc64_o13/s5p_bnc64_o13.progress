@@ -1,0 +1,7 @@
+[18:12:50] script start on dc1394-desktop
+[18:12:51] MPS state verified (control_pipe=yes)
+[18:12:51] launching mpirun: 16 ranks
+[18:12:51] mpirun launched (pid 1224457)
+[18:14:21] watchdog loop exited (verdict='none'); reaping mpirun
+[18:14:21] mpirun reaped rc=0
+[18:14:21] sampler killed

@@ -1,0 +1,5 @@
+[03:24:30] script start on dc1394-desktop
+[03:24:30] launching mpirun: 16 ranks
+[03:24:30] mpirun launched (pid 1598461)
+[03:34:56] done detected; 60 s grace for teardown
+[03:35:56] mpirun reaped rc=0

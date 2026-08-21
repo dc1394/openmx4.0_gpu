@@ -1,0 +1,40 @@
+RTX 5080 accuracy campaign (v2.0_thesis tag build): displaced Si 216
+(atom 1 +0.05 Ang x; forces are non-zero), four dense-solver paths,
+run to convergence (criterion 1e-13, up to 60 SCF), np16 nt1.
+configs: c16 = CPU elpa2-16 | o = GPU cuBLAS + MPS | g = GPU GEMMul8 + MPS
+targets (plan 13.3): |dE| <= 1e-10 Ha, |dF|max <= 1e-6 Ha/Bohr
+binary: v2.0_thesis tag build, md5 e3e64c35f48a9058cd98b5e923810ae3
+
+=== displaced Si, 216 atoms ===
+case                SCF Utot                     ChemPot        |F|max        manifest
+s5a_bcol_c1611       60 -887.422192334298        -0.10427027470103 0.01355445    OK
+s5a_bcol_o11         60 -887.422192334248        -0.10427027469936 0.01355445    OK
+s5a_bcol_g11         60 -887.422192334248        -0.10427027469936 0.01355445    OK
+s5a_bnc_c1611        60 -887.422192334281        -0.10427027474391 0.01355445    OK
+s5a_bnc_o11          52 -887.422192334247        -0.10427027474406 0.01355445    OK
+s5a_bnc_g11          48 -887.422192334246        -0.10427027474408 0.01355445    g8_fb=377
+s5a_ccol_c1611       58 -887.308965193634        -0.10131953947054 0.01363150    OK
+s5a_ccol_o11         55 -887.308965193589        -0.10131953945772 0.01363150    OK
+s5a_ccol_g11         55 -887.308965193589        -0.10131953945772 0.01363150    OK
+s5a_cnc_c1611        60 -887.308965193764        -0.10131953923739 0.01363150    OK
+s5a_cnc_o11          60 -887.308965193585        -0.10131953923886 0.01363150    OK
+s5a_cnc_g11          60 -887.308965193584        -0.10131953923886 0.01363150    OK
+s5a_bnc_o12          52 -887.422192334247        -0.10427027474406 0.01355445    OK
+s5a_bnc_g12          48 -887.422192334246        -0.10427027474408 0.01355445    g8_fb=377
+
+--- cross-config differences per solver path (Ha / Ha per Bohr) ---
+  path   dE(CPU-cuB)    dFmax(CPU-cuB) dE(G8-cuB)     dFmax(G8-cuB) 
+  bcol   4.991e-11      5.100e-11      0.000e+00      0.000e+00     
+  bnc    3.399e-11      4.500e-11      1.023e-12      3.000e-12     
+  ccol   4.502e-11      1.460e-10      0.000e+00      1.000e-12     
+  cnc    1.791e-10      1.220e-10      1.023e-12      0.000e+00     
+
+--- run-to-run baseline (bnc, same config twice) ---
+  cuBLAS o11-o12:  dE=0.000e+00  dFmax=0.000e+00
+  GEMMul8 g11-g12: dE=0.000e+00  dFmax=0.000e+00
+
+=== GPU dispatch evidence (all four displaced-Si GPU runs must engage) ===
+  s5a_bcol_o11     [GPU device 0: 8 k-owner rank(s)] fallback-lines=0
+  s5a_bnc_o11      [GPU device 0: 8 k-owner rank(s)] fallback-lines=0
+  s5a_ccol_o11     [<Set_Hamiltonian> GPU device 0: 16 Hamiltonian rank(s)] fallback-lines=0
+  s5a_cnc_o11      [<Set_Hamiltonian> GPU device 0: 16 Hamiltonian rank(s)] fallback-lines=0
