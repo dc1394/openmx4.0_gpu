@@ -1,0 +1,19 @@
+=== leg o: exit 0, BANDPROF lines: 240
+=== leg g: exit 0, BANDPROF lines: 240
+=== MPS server (post-run) ===
+bnode004: mps_server=1 gpu_mem_used=78 MiB
+
+============================================================
+Request ID:             952703.nqsv
+Request Name:           prof_bc300
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Thu Aug 27 14:41:55 2026
+Started Request Time:   Thu Aug 27 14:42:11 2026
+Ended Request Time:     Thu Aug 27 14:44:49 2026
+Resources Information:
+  Elapse:               162S
+  Remaining Elapse:     2538S
+============================================================

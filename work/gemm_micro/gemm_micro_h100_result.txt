@@ -1,0 +1,123 @@
+Single-GEMM microbenchmark + lightweight Amdahl assembly, H100 PCIe leg
+(2026-08-27) -- the Pegasus counterpart of gemm_micro_5080_result.txt.
+Together the two legs close the "f and s_GEMM are not measured" gap on BOTH
+campaign GPUs and turn the cross-GPU speedup contrast into one measured
+mechanism.  Artifacts:
+
+  gemm_micro_h100.csv   (M2)  per-shape cuBLAS-FP64 vs GEMMul8 times, 59 shapes
+  amdahl_h100.csv       (M3)  per-system f, s_eff, S_pred vs S_meas (siprod walls)
+  gemm_micro_sgemm.*    Fig.-6 source: s_GEMM vs n, both GPUs, D and Z
+
+=== method (identical to the 5080 leg) ===
+Same bench_gemm.cu, 7 reps interleaved ABAB, median; num_moduli 15, fastmode
+false, alpha=1 beta=0, natural leading dims; single process on an idle
+dedicated H100 PCIe (bnode029, 41 C at start), no MPS; library =
+source/third_party/GEMMul8/lib/libgemmul8.a (v3.2.0, 833e5761) -- the exact
+.a linked into the v2.0_thesis work/openmx -- rebuilt only bench_gemm for
+sm_90.  build.sh gained one -I line (Pegasus keeps the cuBLAS headers out of
+nvcc's default path); flags otherwise unchanged.  Shapes: shapes_h100.txt =
+the full 5080 grid (both GPUs share one shape set) + the H100
+production-matrix systems the 5080 never ran, with counts from the
+sip_*_g11 manifests and MaxN from the solver formulas verified against the
+known 832/1689/1987:
+  bcol300  z 600 = 3 x 200 at 3900^3
+  ccol360  d  75 = 25+25+24+1, back (1188, 4680, 4680)
+  cnc300   d 300 = 150+150 at 3900^3; z 25 = 24 at (2760, 7800, 7800) + 1 at 7800^3
+Jobs 952702 (bench) / 952703 (BANDPROF pair), h100_jobids.txt.
+
+=== M2 highlights (gemm_micro_h100.csv, 59 shapes) ===
+cuBLAS FP64 runs at 28-40 TFLOPS on the H100 (tensor-core DGEMM; the 5080
+plateaued at ~0.83 TFLOPS, a 1:64 FP64:FP32 part).  GEMMul8 reaches
+5.8 -> 52 TFLOPS with size.  s_GEMM (cuBLAS/G8, median-vs-median):
+  D (real):    1024: 0.21  2808: 0.66  3900: 0.70  5616: 0.91  6656: 1.05  7800: 1.09
+  Z (complex): 1024: 0.25  2808: 0.91  3900: 1.17  5616: 1.29  6656: 1.48  7800: 1.52
+Crossover to G8-faster: Z at n ~= 3300, D at n ~= 6656.  Campaign shapes:
+bcol216_back 1.04, bcol300 1.16-1.25, bnc216_back(5616) 1.28, ccol216 0.66,
+ccol512 1.04, ccol360 0.64-0.79, cnc300_zback1(7800) 1.55.  Same accuracy as
+on the 5080: max relerr 1.379e-14 over all 59 shapes (moduli-15 INT8
+emulation is FP64-equivalent on both GPUs).
+Contrast: the 5080's s_GEMM on the same grid is 6.6-25.4x.  That single
+contrast -- s collapses from ~20 to ~1 while f stays structural -- is the
+paper's cross-GPU explanation.
+
+=== M3: lightweight Amdahl model (plan sec. 14.3), siprod walls, np48 ===
+S_pred = 1/((1-f) + f/s_eff); f = sum(count x t_cuBLAS_iso)/T_diag(o-leg);
+walls = siprod_thesis_result.txt n=5 means; every H100 g run has ZERO
+GEMMul8 fallbacks (80 GB), so the g leg is pure G8 -- bnc216 on the H100
+realizes the 5080 doc's "bnc216*" zero-fallback hypothetical.
+
+system    T_gemm_cu T_gemm_g8  s_eff f_diag Sp_diag Sm_diag  f_tot Sp_tot Sm_tot
+bcol216        3.04      3.24   0.94  0.082   0.995   1.008  0.037  0.998  1.001
+bcol300        9.85      8.27   1.19  0.119   1.019   1.017  0.075  1.012  0.870
+bnc216        13.47     12.51   1.08  0.088   1.006   0.978  0.053  1.004  0.986
+ccol216        0.07      0.11   0.64  0.008   0.995   1.018  0.001  0.999  0.989
+ccol360        0.33      0.41   0.79  0.020   0.995   0.987  0.005  0.999  1.000
+cnc216         0.81      0.91   0.89  0.026   0.997   1.008  0.008  0.999  1.006
+cnc300         2.18      2.18   1.00  0.038   1.000   1.003  0.016  1.000  1.003
+
+Reading (the H100 sentences the referees will want):
+- WHY the H100 campaign shows G8 ~= parity everywhere (Sm 0.98-1.02): a
+  DOUBLE collapse.  s_eff is 0.64-1.19 (native FP64 tensor cores remove the
+  emulation's advantage), AND f_diag is only 0.008-0.119 (the same cuBLAS
+  speed makes the GEMM share of the diag bucket small -- syevdx dominates).
+  S_pred_diag lands at 0.995-1.019 against S_meas_diag 0.978-1.018; at
+  these effect sizes the residuals (<= 3%) are within the rep-to-rep SDs of
+  the walls themselves.  The model's content on the H100 is explanatory:
+  it predicts, correctly, that nothing moves.
+- bnc216: the 16 GB fallback story disappears on 80 GB (z_fallbacks 0,
+  back-transform runs G8 at s = 1.28) -- but s_eff 1.08 means recovering
+  the G8 path is worth ~0.6% of diag, not the 5080's hypothetical 1.83x.
+  Memory headroom restores the path; native FP64 strength removes the
+  incentive.  One sentence for the paper: GEMMul8 pays where FP64 is weak
+  and fits where memory is large -- the two GPUs each lack one condition.
+- bcol300 total: S_meas_tot 0.870 vs S_pred_tot 1.012 is NOT a GEMM-model
+  failure -- the g leg's Set_Hamiltonian rises 5.95 -> 16.56 s while diag
+  closes at S 1.017 as predicted.  This is the documented Set_Ham
+  device-residency interference (GEMMul8 workspaces evict SCF-invariant
+  tables; see the device-headroom analysis), i.e. the h term of plan 14.3
+  living OUTSIDE the GEMM sites.  The sibs scaling series reproduces it
+  independently (0.889 +- for the same config).  Paper: quote bcol300@H100
+  as the measured cost of the workspace-vs-residency conflict, not as a
+  GEMMul8 kernel deficit.
+- Wall provenance: siprod n=5 np48 means; the sibs series' n=7 rep set
+  puts bcol300 S_meas_diag at 1.039 (g-leg CV 4.2% was flagged in siprod)
+  -- both inside the same band as Sp_diag 1.019; the closure statement is
+  rep-set-independent.
+
+=== BANDPROF cross-check (prof_h100/, bcol300 o/g, 5 SCF, np48, MPS on) ===
+Owner ranks (8), steady iterations 2-4: the gemmF+syevdx+gemmB block reads
+o: 0.000 + 2.37 + 0.000 = 2.37 s/it   (async-attribution caveat as on the
+                                       5080: cuBLAS Zgemm is asynchronous,
+                                       its time is absorbed into syevdx)
+g: 0.18  + 2.06 + 0.08  = 2.32 s/it
+i.e. the in-app counterpart of s_eff ~= 1: replacing the GEMMs changes the
+bucket by -2% on the H100, versus the 5080's 6.8 -> 1.3 s/it collapse.
+syevdx itself (~2.0-2.1 s/it) dominates the H100 diag bucket, consistent
+with f_diag ~= 0.12.  In-app per-owner GEMM walls under 8-way MPS
+concurrency are again stretched (~0.26 s/it observed vs ~0.04 s isolated
+x counts), which is why the model uses isolated microbench times x manifest
+counts, exactly as documented for the 5080.
+
+=== paper-writing notes (user-fixed, 2026-08-27; carried verbatim) ===
+1. bnc216@5080 has fallback != 0: the NC-band flagship number is the
+   128-atom point; present 216 honestly as 16 GB boundary behaviour
+   ("memory-aware hybrid execution"), with bnc216* as the headroom case --
+   and bnc216@H100 (this file) as its measured realization.
+2. State the fixed-work methodology explicitly: performance runs use
+   criterion 1e-15 with 25 SCF -- intentionally non-convergent = fixed
+   workload per run.
+3. Headline TOTAL number is 1.8x (bcol384 total, np16, RTX 5080); ">2x"
+   claims are diagonalization-bucket only.  H100 headline is parity at
+   equal accuracy (and the Fig.-6 mechanism explains both).
+
+=== files / reproduction ===
+shapes_h100.txt gemmb_h100.sh gemmb_h100.joblog bench_env_h100.txt
+gemm_micro_h100.csv gemm_micro_h100.log      (bnode029, idle, 41 C)
+analysis_h100.py amdahl_h100.csv             (walls: siprod n=5; counts: manifests)
+gemm_micro_sgemm.{pdat,plt,png}              (Fig.-6 source, both GPUs)
+prof_h100/prof_bcol300_{o,g}.{dat,stdout,stderr} + .sh/.env/.joblog
+                                             (tag binary 11227640dc6f,
+                                              runtime OPENMX_BAND_PROFILE=1,
+                                              no rebuild; bnode004)
+Binaries untouched: work/openmx and libgemmul8.a are the frozen campaign
+artifacts; only bench_gemm was compiled (sm_90).

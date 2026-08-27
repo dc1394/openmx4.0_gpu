@@ -1,0 +1,19 @@
+=== exit 0; csv lines: 60 ===
+sweep_z_5616,z,N,N,5616,5616,5616,7,15,39.569,39.126,30.665,30.044,1.290,35811.3,46208.7,3985.5,9.129e-15
+sweep_z_6656,z,N,N,6656,6656,6656,7,15,67.938,66.133,45.808,44.848,1.483,34723.1,51497.9,5577.0,9.991e-15
+sweep_z_7800,z,N,N,7800,7800,7800,7,15,111.206,110.242,73.025,71.084,1.523,34138.5,51987.6,7838.7,1.146e-14
+
+============================================================
+Request ID:             952702.nqsv
+Request Name:           gemmb_h100
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Thu Aug 27 14:41:54 2026
+Started Request Time:   Thu Aug 27 14:42:11 2026
+Ended Request Time:     Thu Aug 27 14:44:02 2026
+Resources Information:
+  Elapse:               115S
+  Remaining Elapse:     5285S
+============================================================

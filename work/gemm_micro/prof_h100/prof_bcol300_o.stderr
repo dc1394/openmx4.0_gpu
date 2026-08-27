@@ -1,0 +1,769 @@
+OLPKPROF id=28 pairs=522 bessel=0.575 radial=0.107 gaunt=0.016 c2r=0.023 bhit=356 bmiss=166
+OLPKPROF id=7 pairs=522 bessel=0.583 radial=0.107 gaunt=0.016 c2r=0.023 bhit=356 bmiss=166
+OLPKPROF id=44 pairs=522 bessel=0.602 radial=0.107 gaunt=0.016 c2r=0.023 bhit=345 bmiss=177
+OLPKPROF id=9 pairs=522 bessel=0.602 radial=0.107 gaunt=0.017 c2r=0.023 bhit=347 bmiss=175
+OLPKPROF id=22 pairs=522 bessel=0.639 radial=0.107 gaunt=0.016 c2r=0.023 bhit=341 bmiss=181
+OLPKPROF id=30 pairs=522 bessel=0.654 radial=0.107 gaunt=0.016 c2r=0.023 bhit=334 bmiss=188
+OLPKPROF id=37 pairs=609 bessel=0.632 radial=0.124 gaunt=0.018 c2r=0.026 bhit=429 bmiss=180
+OLPKPROF id=38 pairs=522 bessel=0.657 radial=0.107 gaunt=0.016 c2r=0.023 bhit=330 bmiss=192
+OLPKPROF id=26 pairs=522 bessel=0.660 radial=0.107 gaunt=0.015 c2r=0.023 bhit=331 bmiss=191
+OLPKPROF id=29 pairs=522 bessel=0.661 radial=0.107 gaunt=0.016 c2r=0.023 bhit=329 bmiss=193
+OLPKPROF id=25 pairs=522 bessel=0.662 radial=0.107 gaunt=0.016 c2r=0.023 bhit=333 bmiss=189
+OLPKPROF id=15 pairs=522 bessel=0.665 radial=0.107 gaunt=0.016 c2r=0.023 bhit=333 bmiss=189
+OLPKPROF id=14 pairs=522 bessel=0.666 radial=0.107 gaunt=0.016 c2r=0.023 bhit=330 bmiss=192
+OLPKPROF id=19 pairs=522 bessel=0.673 radial=0.107 gaunt=0.016 c2r=0.023 bhit=327 bmiss=195
+OLPKPROF id=20 pairs=522 bessel=0.673 radial=0.107 gaunt=0.016 c2r=0.023 bhit=328 bmiss=194
+OLPKPROF id=18 pairs=522 bessel=0.673 radial=0.107 gaunt=0.016 c2r=0.023 bhit=327 bmiss=195
+OLPKPROF id=2 pairs=522 bessel=0.686 radial=0.107 gaunt=0.016 c2r=0.023 bhit=322 bmiss=200
+OLPKPROF id=35 pairs=522 bessel=0.693 radial=0.107 gaunt=0.015 c2r=0.023 bhit=321 bmiss=201
+OLPKPROF id=6 pairs=609 bessel=0.671 radial=0.124 gaunt=0.019 c2r=0.026 bhit=412 bmiss=197
+OLPKPROF id=27 pairs=522 bessel=0.698 radial=0.107 gaunt=0.016 c2r=0.023 bhit=318 bmiss=204
+OLPKPROF id=46 pairs=522 bessel=0.706 radial=0.107 gaunt=0.016 c2r=0.023 bhit=319 bmiss=203
+OLPKPROF id=36 pairs=522 bessel=0.707 radial=0.107 gaunt=0.016 c2r=0.023 bhit=318 bmiss=204
+OLPKPROF id=40 pairs=609 bessel=0.686 radial=0.124 gaunt=0.019 c2r=0.026 bhit=411 bmiss=198
+OLPKPROF id=41 pairs=522 bessel=0.709 radial=0.107 gaunt=0.017 c2r=0.023 bhit=314 bmiss=208
+OLPKPROF id=13 pairs=522 bessel=0.714 radial=0.107 gaunt=0.016 c2r=0.023 bhit=318 bmiss=204
+OLPKPROF id=17 pairs=522 bessel=0.723 radial=0.107 gaunt=0.016 c2r=0.023 bhit=315 bmiss=207
+OLPKPROF id=0 pairs=522 bessel=0.724 radial=0.107 gaunt=0.016 c2r=0.023 bhit=314 bmiss=208
+OLPKPROF id=33 pairs=609 bessel=0.701 radial=0.124 gaunt=0.019 c2r=0.026 bhit=407 bmiss=202
+OLPKPROF id=43 pairs=609 bessel=0.713 radial=0.124 gaunt=0.018 c2r=0.026 bhit=402 bmiss=207
+OLPKPROF id=4 pairs=522 bessel=0.739 radial=0.107 gaunt=0.016 c2r=0.023 bhit=306 bmiss=216
+OLPKPROF id=11 pairs=522 bessel=0.743 radial=0.107 gaunt=0.016 c2r=0.023 bhit=306 bmiss=216
+OLPKPROF id=39 pairs=522 bessel=0.745 radial=0.107 gaunt=0.016 c2r=0.023 bhit=304 bmiss=218
+OLPKPROF id=45 pairs=522 bessel=0.761 radial=0.107 gaunt=0.016 c2r=0.023 bhit=300 bmiss=222
+OLPKPROF id=42 pairs=522 bessel=0.772 radial=0.107 gaunt=0.016 c2r=0.023 bhit=299 bmiss=223
+OLPKPROF id=23 pairs=522 bessel=0.784 radial=0.107 gaunt=0.016 c2r=0.023 bhit=302 bmiss=220
+OLPKPROF id=8 pairs=522 bessel=0.788 radial=0.107 gaunt=0.016 c2r=0.023 bhit=295 bmiss=227
+OLPKPROF id=10 pairs=609 bessel=0.769 radial=0.124 gaunt=0.019 c2r=0.027 bhit=385 bmiss=224
+OLPKPROF id=47 pairs=522 bessel=0.804 radial=0.107 gaunt=0.016 c2r=0.023 bhit=289 bmiss=233
+OLPKPROF id=1 pairs=522 bessel=0.821 radial=0.107 gaunt=0.016 c2r=0.023 bhit=286 bmiss=236
+OLPKPROF id=32 pairs=522 bessel=0.822 radial=0.107 gaunt=0.016 c2r=0.023 bhit=284 bmiss=238
+OLPKPROF id=5 pairs=522 bessel=0.836 radial=0.107 gaunt=0.016 c2r=0.023 bhit=283 bmiss=239
+OLPKPROF id=34 pairs=522 bessel=0.867 radial=0.107 gaunt=0.016 c2r=0.023 bhit=274 bmiss=248
+OLPKPROF id=3 pairs=609 bessel=0.845 radial=0.124 gaunt=0.018 c2r=0.027 bhit=360 bmiss=249
+OLPKPROF id=16 pairs=609 bessel=0.855 radial=0.124 gaunt=0.019 c2r=0.026 bhit=364 bmiss=245
+OLPKPROF id=21 pairs=609 bessel=0.859 radial=0.124 gaunt=0.019 c2r=0.026 bhit=364 bmiss=245
+OLPKPROF id=31 pairs=609 bessel=0.882 radial=0.124 gaunt=0.018 c2r=0.027 bhit=348 bmiss=261
+OLPKPROF id=12 pairs=609 bessel=0.894 radial=0.124 gaunt=0.018 c2r=0.027 bhit=351 bmiss=258
+OLPKPROF id=24 pairs=609 bessel=0.909 radial=0.124 gaunt=0.019 c2r=0.027 bhit=348 bmiss=261
+SETHMEPROF id=32 cache_pack=0.001 device=0.022 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.002 device=0.024 unpack=0.000
+SETHMEPROF id=15 cache_pack=0.002 device=0.030 unpack=0.000
+SETHMEPROF id=26 cache_pack=0.002 device=0.029 unpack=0.000
+SETHMEPROF id=42 cache_pack=0.003 device=0.030 unpack=0.000
+SETHMEPROF id=46 cache_pack=0.003 device=0.035 unpack=0.000
+SETHMEPROF id=8 cache_pack=0.002 device=0.038 unpack=0.000
+SETHMEPROF id=18 cache_pack=0.003 device=0.038 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.002 device=0.037 unpack=0.000
+SETHMEPROF id=7 cache_pack=0.003 device=0.037 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.002 device=0.039 unpack=0.000
+SETHMEPROF id=45 cache_pack=0.003 device=0.040 unpack=0.000
+SETHMEPROF id=13 cache_pack=0.003 device=0.040 unpack=0.000
+SETHMEPROF id=29 cache_pack=0.003 device=0.040 unpack=0.000
+SETHMEPROF id=34 cache_pack=0.001 device=0.042 unpack=0.000
+SETHMEPROF id=9 cache_pack=0.003 device=0.043 unpack=0.000
+SETHMEPROF id=41 cache_pack=0.002 device=0.045 unpack=0.000
+SETHMEPROF id=44 cache_pack=0.003 device=0.046 unpack=0.000
+SETHMEPROF id=11 cache_pack=0.002 device=0.049 unpack=0.000
+SETHMEPROF id=14 cache_pack=0.002 device=0.050 unpack=0.000
+SETHMEPROF id=5 cache_pack=0.002 device=0.054 unpack=0.000
+SETHMEPROF id=35 cache_pack=0.001 device=0.052 unpack=0.000
+SETHMEPROF id=19 cache_pack=0.003 device=0.053 unpack=0.000
+SETHMEPROF id=17 cache_pack=0.003 device=0.052 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.002 device=0.050 unpack=0.000
+SETHMEPROF id=39 cache_pack=0.002 device=0.059 unpack=0.000
+SETHMEPROF id=36 cache_pack=0.002 device=0.057 unpack=0.000
+SETHMEPROF id=20 cache_pack=0.001 device=0.056 unpack=0.000
+SETHMEPROF id=47 cache_pack=0.001 device=0.057 unpack=0.000
+SETHMEPROF id=23 cache_pack=0.002 device=0.050 unpack=0.000
+SETHMEPROF id=22 cache_pack=0.001 device=0.052 unpack=0.000
+SETHMEPROF id=27 cache_pack=0.002 device=0.065 unpack=0.000
+SETHMEPROF id=25 cache_pack=0.001 device=0.056 unpack=0.000
+SETHMEPROF id=24 cache_pack=0.001 device=0.035 unpack=0.000
+SETHMEPROF id=38 cache_pack=0.002 device=0.059 unpack=0.000
+SETHMEPROF id=30 cache_pack=0.002 device=0.055 unpack=0.000
+SETHMEPROF id=40 cache_pack=0.001 device=0.033 unpack=0.000
+SETHMEPROF id=28 cache_pack=0.001 device=0.064 unpack=0.000
+SETHMEPROF id=10 cache_pack=0.001 device=0.034 unpack=0.000
+SETHMEPROF id=12 cache_pack=0.001 device=0.037 unpack=0.000
+SETHMEPROF id=21 cache_pack=0.002 device=0.036 unpack=0.000
+SETHMEPROF id=31 cache_pack=0.001 device=0.040 unpack=0.000
+SETHMEPROF id=6 cache_pack=0.001 device=0.037 unpack=0.000
+SETHMEPROF id=37 cache_pack=0.001 device=0.035 unpack=0.000
+SETHMEPROF id=16 cache_pack=0.001 device=0.038 unpack=0.000
+SETHMEPROF id=43 cache_pack=0.001 device=0.034 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.001 device=0.033 unpack=0.000
+SETHMEPROF id=33 cache_pack=0.001 device=0.033 unpack=0.000
+SETHPROF id=3 it=1 memok=0.000 base=0.001 vpot=0.101 matel=0.773 bar=0.000
+SETHPROF id=6 it=1 memok=0.000 base=0.002 vpot=0.098 matel=0.772 bar=0.003
+SETHPROF id=0 it=1 memok=0.000 base=0.002 vpot=0.099 matel=0.756 bar=0.019
+SETHPROF id=14 it=1 memok=0.000 base=0.001 vpot=0.100 matel=0.749 bar=0.025
+SETHPROF id=1 it=1 memok=0.000 base=0.001 vpot=0.099 matel=0.733 bar=0.042
+SETHPROF id=35 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.753 bar=0.023
+SETHPROF id=16 it=1 memok=0.000 base=0.002 vpot=0.098 matel=0.773 bar=0.003
+SETHPROF id=17 it=1 memok=0.000 base=0.001 vpot=0.097 matel=0.756 bar=0.021
+SETHPROF id=11 it=1 memok=0.000 base=0.001 vpot=0.102 matel=0.746 bar=0.026
+SETHPROF id=7 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.733 bar=0.042
+SETHPROF id=43 it=1 memok=0.000 base=0.002 vpot=0.099 matel=0.774 bar=0.001
+SETHPROF id=31 it=1 memok=0.000 base=0.002 vpot=0.100 matel=0.769 bar=0.005
+SETHPROF id=2 it=1 memok=0.000 base=0.001 vpot=0.100 matel=0.734 bar=0.040
+SETHPROF id=37 it=1 memok=0.000 base=0.002 vpot=0.102 matel=0.768 bar=0.003
+SETHPROF id=45 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.736 bar=0.039
+SETHPROF id=9 it=1 memok=0.000 base=0.001 vpot=0.097 matel=0.743 bar=0.034
+SETHPROF id=46 it=1 memok=0.000 base=0.002 vpot=0.099 matel=0.728 bar=0.047
+SETHPROF id=38 it=1 memok=0.000 base=0.001 vpot=0.103 matel=0.762 bar=0.010
+SETHPROF id=22 it=1 memok=0.000 base=0.001 vpot=0.092 matel=0.770 bar=0.012
+SETHPROF id=27 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.764 bar=0.011
+SETHPROF id=40 it=1 memok=0.000 base=0.002 vpot=0.098 matel=0.767 bar=0.009
+SETHPROF id=44 it=1 memok=0.000 base=0.001 vpot=0.100 matel=0.744 bar=0.031
+SETHPROF id=30 it=1 memok=0.000 base=0.002 vpot=0.098 matel=0.767 bar=0.009
+SETHPROF id=29 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.738 bar=0.038
+SETHPROF id=28 it=1 memok=0.000 base=0.001 vpot=0.100 matel=0.766 bar=0.008
+SETHPROF id=33 it=1 memok=0.000 base=0.002 vpot=0.102 matel=0.772 bar=0.000
+SETHPROF id=20 it=1 memok=0.000 base=0.001 vpot=0.099 matel=0.760 bar=0.015
+SETHPROF id=21 it=1 memok=0.000 base=0.002 vpot=0.102 matel=0.767 bar=0.005
+SETHPROF id=25 it=1 memok=0.000 base=0.001 vpot=0.100 matel=0.763 bar=0.011
+SETHPROF id=23 it=1 memok=0.000 base=0.001 vpot=0.095 matel=0.766 bar=0.014
+SETHPROF id=47 it=1 memok=0.000 base=0.001 vpot=0.099 matel=0.760 bar=0.015
+SETHPROF id=18 it=1 memok=0.000 base=0.001 vpot=0.100 matel=0.730 bar=0.044
+SETHPROF id=36 it=1 memok=0.000 base=0.001 vpot=0.099 matel=0.758 bar=0.017
+SETHPROF id=34 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.740 bar=0.036
+SETHPROF id=15 it=1 memok=0.000 base=0.001 vpot=0.101 matel=0.717 bar=0.056
+SETHPROF id=41 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.743 bar=0.033
+SETHPROF id=39 it=1 memok=0.000 base=0.001 vpot=0.102 matel=0.754 bar=0.018
+SETHPROF id=42 it=1 memok=0.000 base=0.001 vpot=0.093 matel=0.728 bar=0.053
+SETHPROF id=13 it=1 memok=0.000 base=0.001 vpot=0.097 matel=0.739 bar=0.038
+SETHPROF id=32 it=1 memok=0.000 base=0.002 vpot=0.098 matel=0.693 bar=0.082
+SETHPROF id=12 it=1 memok=0.000 base=0.002 vpot=0.099 matel=0.767 bar=0.008
+SETHPROF id=19 it=1 memok=0.000 base=0.001 vpot=0.096 matel=0.756 bar=0.022
+SETHPROF id=26 it=1 memok=0.000 base=0.001 vpot=0.097 matel=0.723 bar=0.055
+SETHPROF id=5 it=1 memok=0.000 base=0.001 vpot=0.101 matel=0.749 bar=0.024
+SETHPROF id=4 it=1 memok=0.000 base=0.001 vpot=0.098 matel=0.713 bar=0.063
+SETHPROF id=24 it=1 memok=0.000 base=0.002 vpot=0.101 matel=0.763 bar=0.010
+SETHPROF id=10 it=1 memok=0.000 base=0.001 vpot=0.101 matel=0.765 bar=0.008
+SETHPROF id=8 it=1 memok=0.000 base=0.001 vpot=0.102 matel=0.727 bar=0.045
+BANDPROF id=28 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.531 store=0.001
+BANDPROF id=46 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=44 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=43 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=38 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=33 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.527 store=0.002
+BANDPROF id=7 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=9 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=26 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=15 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.531 store=0.001
+BANDPROF id=32 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.528 store=0.001
+BANDPROF id=40 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=11 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.035 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=47 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=31 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.531 store=0.001
+BANDPROF id=17 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=14 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=1 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=20 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=16 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.035 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=27 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=41 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.035 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=29 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.531 store=0.001
+BANDPROF id=21 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=5 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=10 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=35 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.528 store=0.001
+BANDPROF id=23 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=45 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=39 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=4 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=8 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.035 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=25 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=34 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.528 store=0.001
+BANDPROF id=3 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=22 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.035 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=2 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.035 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=13 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.035 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=24 it=1 geths=0.000 ccache=0.048 cgpu=0.015 prepS=3.475 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.450 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.000 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.357 rel2=0.002 ar=0.161 store=0.001
+BANDPROF id=30 it=1 geths=0.000 ccache=0.048 cgpu=0.015 prepS=3.477 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.357 gemmB=0.000 evD2H=0.043 rel1=0.001 bcast=0.094 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.281 rel2=0.001 ar=0.238 store=0.001
+BANDPROF id=19 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.529 store=0.001
+BANDPROF id=42 it=1 geths=0.000 ccache=0.047 cgpu=0.014 prepS=3.479 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.305 gemmB=0.000 evD2H=0.043 rel1=0.001 bcast=0.145 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.089 rel2=0.001 ar=0.428 store=0.001
+BANDPROF id=36 it=1 geths=0.000 ccache=0.048 cgpu=0.016 prepS=3.478 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.333 gemmB=0.000 evD2H=0.043 rel1=0.001 bcast=0.116 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.166 rel2=0.001 ar=0.353 store=0.001
+BANDPROF id=12 it=1 geths=0.000 ccache=0.048 cgpu=0.016 prepS=3.476 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.395 gemmB=0.000 evD2H=0.045 rel1=0.001 bcast=0.052 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.320 rel2=0.001 ar=0.199 store=0.001
+BANDPROF id=37 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=6.034 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.530 store=0.001
+BANDPROF id=6 it=1 geths=0.000 ccache=0.048 cgpu=0.016 prepS=3.480 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.372 gemmB=0.000 evD2H=0.043 rel1=0.001 bcast=0.073 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.128 rel2=0.001 ar=0.391 store=0.001
+BANDPROF id=18 it=1 geths=0.000 ccache=0.048 cgpu=0.014 prepS=3.478 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.413 gemmB=0.000 evD2H=0.063 rel1=0.001 bcast=0.016 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.205 rel2=0.002 ar=0.313 store=0.001
+BANDPROF id=0 it=1 geths=0.000 ccache=0.048 cgpu=0.015 prepS=3.477 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=2.395 gemmB=0.000 evD2H=0.063 rel1=0.001 bcast=0.034 chemp=0.005 occw=0.000 evH2D=0.010 dmk=0.243 rel2=0.001 ar=0.276 store=0.001
+SETHMEPROF id=22 cache_pack=0.003 device=0.034 unpack=0.000
+SETHMEPROF id=16 cache_pack=0.004 device=0.034 unpack=0.000
+SETHMEPROF id=42 cache_pack=0.004 device=0.037 unpack=0.000
+SETHMEPROF id=32 cache_pack=0.004 device=0.037 unpack=0.000
+SETHMEPROF id=30 cache_pack=0.004 device=0.040 unpack=0.000
+SETHMEPROF id=13 cache_pack=0.004 device=0.044 unpack=0.000
+SETHMEPROF id=26 cache_pack=0.004 device=0.044 unpack=0.000
+SETHMEPROF id=35 cache_pack=0.004 device=0.044 unpack=0.000
+SETHMEPROF id=17 cache_pack=0.004 device=0.046 unpack=0.000
+SETHMEPROF id=23 cache_pack=0.004 device=0.047 unpack=0.000
+SETHMEPROF id=25 cache_pack=0.004 device=0.048 unpack=0.000
+SETHMEPROF id=47 cache_pack=0.004 device=0.048 unpack=0.000
+SETHMEPROF id=41 cache_pack=0.005 device=0.049 unpack=0.000
+SETHMEPROF id=34 cache_pack=0.004 device=0.050 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.004 device=0.053 unpack=0.000
+SETHMEPROF id=19 cache_pack=0.005 device=0.053 unpack=0.000
+SETHMEPROF id=45 cache_pack=0.005 device=0.055 unpack=0.000
+SETHMEPROF id=9 cache_pack=0.004 device=0.058 unpack=0.000
+SETHMEPROF id=20 cache_pack=0.004 device=0.059 unpack=0.000
+SETHMEPROF id=15 cache_pack=0.005 device=0.065 unpack=0.000
+SETHMEPROF id=29 cache_pack=0.004 device=0.071 unpack=0.000
+SETHMEPROF id=36 cache_pack=0.005 device=0.071 unpack=0.000
+SETHMEPROF id=27 cache_pack=0.005 device=0.075 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.004 device=0.076 unpack=0.000
+SETHMEPROF id=40 cache_pack=0.005 device=0.077 unpack=0.000
+SETHMEPROF id=46 cache_pack=0.005 device=0.077 unpack=0.000
+SETHMEPROF id=14 cache_pack=0.005 device=0.078 unpack=0.000
+SETHMEPROF id=18 cache_pack=0.005 device=0.079 unpack=0.000
+SETHMEPROF id=12 cache_pack=0.005 device=0.079 unpack=0.000
+SETHMEPROF id=43 cache_pack=0.005 device=0.080 unpack=0.000
+SETHMEPROF id=7 cache_pack=0.004 device=0.081 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.004 device=0.081 unpack=0.000
+SETHMEPROF id=6 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=11 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=31 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.005 device=0.084 unpack=0.000
+SETHMEPROF id=44 cache_pack=0.005 device=0.084 unpack=0.000
+SETHMEPROF id=28 cache_pack=0.005 device=0.085 unpack=0.000
+SETHMEPROF id=8 cache_pack=0.005 device=0.084 unpack=0.000
+SETHMEPROF id=37 cache_pack=0.005 device=0.085 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.005 device=0.085 unpack=0.000
+SETHMEPROF id=33 cache_pack=0.005 device=0.086 unpack=0.000
+SETHMEPROF id=21 cache_pack=0.005 device=0.087 unpack=0.000
+SETHMEPROF id=39 cache_pack=0.005 device=0.086 unpack=0.000
+SETHMEPROF id=10 cache_pack=0.005 device=0.087 unpack=0.000
+SETHMEPROF id=24 cache_pack=0.005 device=0.087 unpack=0.000
+SETHMEPROF id=5 cache_pack=0.005 device=0.089 unpack=0.000
+SETHMEPROF id=38 cache_pack=0.005 device=0.089 unpack=0.000
+SETHPROF id=1 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.101 bar=0.014
+SETHPROF id=9 it=2 memok=0.000 base=0.001 vpot=0.090 matel=0.087 bar=0.032
+SETHPROF id=10 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.112 bar=0.003
+SETHPROF id=0 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.106 bar=0.008
+SETHPROF id=2 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.076 bar=0.038
+SETHPROF id=12 it=2 memok=0.000 base=0.001 vpot=0.092 matel=0.107 bar=0.010
+SETHPROF id=7 it=2 memok=0.000 base=0.001 vpot=0.093 matel=0.108 bar=0.009
+SETHPROF id=21 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.112 bar=0.003
+SETHPROF id=5 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.114 bar=0.000
+SETHPROF id=24 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.111 bar=0.002
+SETHPROF id=17 it=2 memok=0.000 base=0.001 vpot=0.092 matel=0.073 bar=0.044
+SETHPROF id=3 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.111 bar=0.004
+SETHPROF id=45 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.080 bar=0.035
+SETHPROF id=32 it=2 memok=0.000 base=0.001 vpot=0.090 matel=0.066 bar=0.053
+SETHPROF id=41 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.073 bar=0.041
+SETHPROF id=6 it=2 memok=0.000 base=0.001 vpot=0.092 matel=0.109 bar=0.008
+SETHPROF id=46 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.103 bar=0.012
+SETHPROF id=39 it=2 memok=0.000 base=0.001 vpot=0.097 matel=0.110 bar=0.003
+SETHPROF id=11 it=2 memok=0.000 base=0.001 vpot=0.092 matel=0.109 bar=0.008
+SETHPROF id=34 it=2 memok=0.000 base=0.001 vpot=0.093 matel=0.076 bar=0.041
+SETHPROF id=47 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.073 bar=0.042
+SETHPROF id=18 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.104 bar=0.011
+SETHPROF id=36 it=2 memok=0.000 base=0.001 vpot=0.092 matel=0.099 bar=0.019
+SETHPROF id=42 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.061 bar=0.054
+SETHPROF id=43 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.104 bar=0.010
+SETHPROF id=25 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.071 bar=0.043
+SETHPROF id=14 it=2 memok=0.000 base=0.001 vpot=0.091 matel=0.108 bar=0.011
+SETHPROF id=8 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.109 bar=0.005
+SETHPROF id=44 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.109 bar=0.006
+SETHPROF id=15 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.091 bar=0.024
+SETHPROF id=13 it=2 memok=0.000 base=0.001 vpot=0.089 matel=0.073 bar=0.048
+SETHPROF id=30 it=2 memok=0.000 base=0.001 vpot=0.091 matel=0.067 bar=0.050
+SETHPROF id=19 it=2 memok=0.000 base=0.001 vpot=0.091 matel=0.081 bar=0.037
+SETHPROF id=38 it=2 memok=0.000 base=0.001 vpot=0.096 matel=0.113 bar=0.000
+SETHPROF id=33 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.111 bar=0.004
+SETHPROF id=26 it=2 memok=0.000 base=0.001 vpot=0.089 matel=0.074 bar=0.047
+SETHPROF id=22 it=2 memok=0.000 base=0.001 vpot=0.089 matel=0.063 bar=0.058
+SETHPROF id=4 it=2 memok=0.000 base=0.001 vpot=0.085 matel=0.118 bar=0.006
+SETHPROF id=20 it=2 memok=0.000 base=0.001 vpot=0.091 matel=0.087 bar=0.031
+SETHPROF id=31 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.107 bar=0.007
+SETHPROF id=16 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.059 bar=0.057
+SETHPROF id=40 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.101 bar=0.013
+SETHPROF id=35 it=2 memok=0.000 base=0.001 vpot=0.091 matel=0.072 bar=0.047
+SETHPROF id=23 it=2 memok=0.000 base=0.001 vpot=0.091 matel=0.075 bar=0.044
+SETHPROF id=27 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.100 bar=0.015
+SETHPROF id=29 it=2 memok=0.000 base=0.001 vpot=0.089 matel=0.101 bar=0.019
+SETHPROF id=37 it=2 memok=0.000 base=0.001 vpot=0.095 matel=0.110 bar=0.004
+SETHPROF id=28 it=2 memok=0.000 base=0.001 vpot=0.094 matel=0.110 bar=0.005
+BANDPROF id=12 it=2 geths=0.000 ccache=0.048 cgpu=0.008 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.374 gemmB=0.000 evD2H=0.045 rel1=0.001 bcast=0.071 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.149 rel2=0.001 ar=0.316 store=0.001
+BANDPROF id=18 it=2 geths=0.000 ccache=0.049 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.408 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.036 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.110 rel2=0.001 ar=0.354 store=0.001
+BANDPROF id=6 it=2 geths=0.000 ccache=0.049 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.318 gemmB=0.000 evD2H=0.045 rel1=0.001 bcast=0.125 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.188 rel2=0.002 ar=0.277 store=0.001
+BANDPROF id=36 it=2 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.353 gemmB=0.000 evD2H=0.046 rel1=0.001 bcast=0.090 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.072 rel2=0.001 ar=0.392 store=0.001
+BANDPROF id=42 it=2 geths=0.000 ccache=0.048 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.319 gemmB=0.000 evD2H=0.061 rel1=0.001 bcast=0.109 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.305 rel2=0.002 ar=0.159 store=0.001
+BANDPROF id=30 it=2 geths=0.000 ccache=0.049 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.390 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.054 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.342 rel2=0.002 ar=0.121 store=0.001
+BANDPROF id=24 it=2 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.427 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.017 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.226 rel2=0.002 ar=0.239 store=0.001
+BANDPROF id=7 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=1 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=2 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=39 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=45 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=3 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=22 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=10 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=28 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=17 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=20 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=11 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=21 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=43 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=5 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=35 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=16 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=19 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=38 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=4 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=23 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=34 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=33 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=31 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=41 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=44 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=27 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.488 store=0.001
+BANDPROF id=14 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=37 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=25 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.488 store=0.001
+BANDPROF id=32 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=8 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=13 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=47 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=26 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=29 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=40 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=15 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=9 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.486 store=0.001
+BANDPROF id=46 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.487 store=0.001
+BANDPROF id=0 it=2 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.445 gemmB=0.000 evD2H=0.043 rel1=0.001 bcast=0.000 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.266 rel2=0.002 ar=0.198 store=0.001
+SETHMEPROF id=22 cache_pack=0.003 device=0.017 unpack=0.000
+SETHMEPROF id=42 cache_pack=0.004 device=0.031 unpack=0.000
+SETHMEPROF id=35 cache_pack=0.004 device=0.032 unpack=0.000
+SETHMEPROF id=32 cache_pack=0.004 device=0.033 unpack=0.000
+SETHMEPROF id=26 cache_pack=0.004 device=0.035 unpack=0.000
+SETHMEPROF id=27 cache_pack=0.004 device=0.037 unpack=0.000
+SETHMEPROF id=7 cache_pack=0.004 device=0.038 unpack=0.000
+SETHMEPROF id=41 cache_pack=0.004 device=0.039 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.004 device=0.041 unpack=0.000
+SETHMEPROF id=34 cache_pack=0.004 device=0.042 unpack=0.000
+SETHMEPROF id=20 cache_pack=0.004 device=0.045 unpack=0.000
+SETHMEPROF id=9 cache_pack=0.005 device=0.045 unpack=0.000
+SETHMEPROF id=45 cache_pack=0.004 device=0.046 unpack=0.000
+SETHMEPROF id=17 cache_pack=0.004 device=0.049 unpack=0.000
+SETHMEPROF id=23 cache_pack=0.004 device=0.049 unpack=0.000
+SETHMEPROF id=30 cache_pack=0.004 device=0.050 unpack=0.000
+SETHMEPROF id=43 cache_pack=0.004 device=0.053 unpack=0.000
+SETHMEPROF id=16 cache_pack=0.004 device=0.054 unpack=0.000
+SETHMEPROF id=25 cache_pack=0.005 device=0.054 unpack=0.000
+SETHMEPROF id=14 cache_pack=0.005 device=0.057 unpack=0.000
+SETHMEPROF id=15 cache_pack=0.005 device=0.057 unpack=0.000
+SETHMEPROF id=28 cache_pack=0.005 device=0.058 unpack=0.000
+SETHMEPROF id=46 cache_pack=0.005 device=0.061 unpack=0.000
+SETHMEPROF id=6 cache_pack=0.005 device=0.061 unpack=0.000
+SETHMEPROF id=19 cache_pack=0.005 device=0.062 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.005 device=0.062 unpack=0.000
+SETHMEPROF id=47 cache_pack=0.004 device=0.064 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.005 device=0.064 unpack=0.000
+SETHMEPROF id=31 cache_pack=0.005 device=0.068 unpack=0.000
+SETHMEPROF id=13 cache_pack=0.004 device=0.070 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.004 device=0.071 unpack=0.000
+SETHMEPROF id=40 cache_pack=0.005 device=0.072 unpack=0.000
+SETHMEPROF id=29 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=44 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=11 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=36 cache_pack=0.005 device=0.074 unpack=0.000
+SETHMEPROF id=18 cache_pack=0.005 device=0.075 unpack=0.000
+SETHMEPROF id=12 cache_pack=0.005 device=0.076 unpack=0.000
+SETHMEPROF id=37 cache_pack=0.005 device=0.077 unpack=0.000
+SETHMEPROF id=39 cache_pack=0.005 device=0.078 unpack=0.000
+SETHMEPROF id=24 cache_pack=0.005 device=0.079 unpack=0.000
+SETHMEPROF id=10 cache_pack=0.005 device=0.079 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=21 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=33 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=8 cache_pack=0.005 device=0.083 unpack=0.000
+SETHMEPROF id=38 cache_pack=0.005 device=0.085 unpack=0.000
+SETHMEPROF id=5 cache_pack=0.005 device=0.085 unpack=0.000
+SETHPROF id=12 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.099 bar=0.010
+SETHPROF id=8 it=3 memok=0.000 base=0.001 vpot=0.095 matel=0.106 bar=0.002
+SETHPROF id=2 it=3 memok=0.000 base=0.001 vpot=0.092 matel=0.087 bar=0.023
+SETHPROF id=17 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.072 bar=0.037
+SETHPROF id=18 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.099 bar=0.010
+SETHPROF id=24 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.102 bar=0.007
+SETHPROF id=11 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.097 bar=0.012
+SETHPROF id=1 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.096 bar=0.015
+SETHPROF id=36 it=3 memok=0.000 base=0.001 vpot=0.092 matel=0.100 bar=0.012
+SETHPROF id=22 it=3 memok=0.000 base=0.001 vpot=0.090 matel=0.043 bar=0.070
+SETHPROF id=21 it=3 memok=0.000 base=0.001 vpot=0.095 matel=0.105 bar=0.004
+SETHPROF id=13 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.094 bar=0.016
+SETHPROF id=38 it=3 memok=0.000 base=0.001 vpot=0.095 matel=0.108 bar=0.000
+SETHPROF id=16 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.078 bar=0.032
+SETHPROF id=3 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.105 bar=0.005
+SETHPROF id=0 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.064 bar=0.045
+SETHPROF id=6 it=3 memok=0.000 base=0.001 vpot=0.092 matel=0.087 bar=0.024
+SETHPROF id=4 it=3 memok=0.000 base=0.001 vpot=0.089 matel=0.093 bar=0.021
+SETHPROF id=5 it=3 memok=0.000 base=0.002 vpot=0.094 matel=0.108 bar=0.000
+SETHPROF id=30 it=3 memok=0.000 base=0.001 vpot=0.090 matel=0.077 bar=0.036
+SETHPROF id=10 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.103 bar=0.006
+SETHPROF id=14 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.080 bar=0.029
+SETHPROF id=19 it=3 memok=0.000 base=0.001 vpot=0.089 matel=0.091 bar=0.023
+SETHPROF id=47 it=3 memok=0.000 base=0.001 vpot=0.092 matel=0.089 bar=0.022
+SETHPROF id=15 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.081 bar=0.028
+SETHPROF id=26 it=3 memok=0.000 base=0.001 vpot=0.091 matel=0.061 bar=0.051
+SETHPROF id=37 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.100 bar=0.009
+SETHPROF id=44 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.097 bar=0.012
+SETHPROF id=31 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.091 bar=0.018
+SETHPROF id=43 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.076 bar=0.034
+SETHPROF id=35 it=3 memok=0.000 base=0.001 vpot=0.085 matel=0.063 bar=0.055
+SETHPROF id=40 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.096 bar=0.013
+SETHPROF id=32 it=3 memok=0.000 base=0.001 vpot=0.088 matel=0.061 bar=0.054
+SETHPROF id=25 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.079 bar=0.031
+SETHPROF id=20 it=3 memok=0.000 base=0.001 vpot=0.084 matel=0.077 bar=0.041
+SETHPROF id=45 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.070 bar=0.040
+SETHPROF id=33 it=3 memok=0.000 base=0.001 vpot=0.094 matel=0.105 bar=0.003
+SETHPROF id=46 it=3 memok=0.000 base=0.001 vpot=0.092 matel=0.086 bar=0.025
+SETHPROF id=23 it=3 memok=0.000 base=0.001 vpot=0.092 matel=0.074 bar=0.037
+SETHPROF id=27 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.060 bar=0.050
+SETHPROF id=34 it=3 memok=0.000 base=0.001 vpot=0.091 matel=0.067 bar=0.045
+SETHPROF id=28 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.082 bar=0.028
+SETHPROF id=7 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.061 bar=0.049
+SETHPROF id=42 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.055 bar=0.055
+SETHPROF id=9 it=3 memok=0.000 base=0.001 vpot=0.091 matel=0.071 bar=0.041
+SETHPROF id=29 it=3 memok=0.000 base=0.001 vpot=0.090 matel=0.100 bar=0.013
+SETHPROF id=39 it=3 memok=0.000 base=0.001 vpot=0.095 matel=0.101 bar=0.007
+SETHPROF id=41 it=3 memok=0.000 base=0.001 vpot=0.093 matel=0.063 bar=0.047
+BANDPROF id=6 it=3 geths=0.000 ccache=0.049 cgpu=0.008 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.312 gemmB=0.000 evD2H=0.043 rel1=0.001 bcast=0.141 chemp=0.005 occw=0.000 evH2D=0.020 dmk=0.301 rel2=0.002 ar=0.198 store=0.001
+BANDPROF id=12 it=3 geths=0.000 ccache=0.048 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.420 gemmB=0.000 evD2H=0.066 rel1=0.001 bcast=0.009 chemp=0.005 occw=0.000 evH2D=0.031 dmk=0.252 rel2=0.002 ar=0.235 store=0.001
+BANDPROF id=18 it=3 geths=0.000 ccache=0.049 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.437 gemmB=0.000 evD2H=0.058 rel1=0.001 bcast=0.000 chemp=0.006 occw=0.000 evH2D=0.027 dmk=0.332 rel2=0.002 ar=0.159 store=0.001
+BANDPROF id=24 it=3 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.385 gemmB=0.000 evD2H=0.058 rel1=0.006 bcast=0.048 chemp=0.005 occw=0.000 evH2D=0.020 dmk=0.224 rel2=0.001 ar=0.273 store=0.001
+BANDPROF id=42 it=3 geths=0.000 ccache=0.048 cgpu=0.007 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.331 gemmB=0.000 evD2H=0.042 rel1=0.001 bcast=0.124 chemp=0.005 occw=0.000 evH2D=0.020 dmk=0.069 rel2=0.001 ar=0.429 store=0.001
+BANDPROF id=36 it=3 geths=0.000 ccache=0.049 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.347 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.104 chemp=0.005 occw=0.000 evH2D=0.020 dmk=0.147 rel2=0.001 ar=0.357 store=0.000
+BANDPROF id=45 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=11 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=2 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=32 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=47 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=15 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=21 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=1 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=9 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=22 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.521 store=0.001
+BANDPROF id=4 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=7 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.521 store=0.000
+BANDPROF id=44 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=8 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=20 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.521 store=0.001
+BANDPROF id=33 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=5 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.521 store=0.000
+BANDPROF id=38 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.525 store=0.000
+BANDPROF id=39 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.525 store=0.000
+BANDPROF id=27 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=17 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=19 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=23 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.521 store=0.001
+BANDPROF id=25 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=3 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=10 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=34 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=14 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=37 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.521 store=0.001
+BANDPROF id=13 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=40 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=41 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=26 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.519 store=0.001
+BANDPROF id=35 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=43 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=46 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.520 store=0.001
+BANDPROF id=0 it=3 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.385 gemmB=0.000 evD2H=0.092 rel1=0.002 bcast=0.018 chemp=0.005 occw=0.000 evH2D=0.020 dmk=0.185 rel2=0.002 ar=0.312 store=0.001
+BANDPROF id=30 it=3 geths=0.000 ccache=0.048 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.365 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.086 chemp=0.005 occw=0.000 evH2D=0.020 dmk=0.108 rel2=0.001 ar=0.412 store=0.000
+BANDPROF id=28 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.541 store=0.000
+BANDPROF id=29 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.541 store=0.000
+BANDPROF id=31 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.541 store=0.000
+BANDPROF id=16 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.595 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.518 store=0.001
+SETHMEPROF id=22 cache_pack=0.004 device=0.030 unpack=0.000
+SETHMEPROF id=26 cache_pack=0.003 device=0.032 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.003 device=0.036 unpack=0.000
+SETHMEPROF id=34 cache_pack=0.004 device=0.036 unpack=0.000
+SETHMEPROF id=32 cache_pack=0.004 device=0.036 unpack=0.000
+SETHMEPROF id=35 cache_pack=0.004 device=0.036 unpack=0.000
+SETHMEPROF id=7 cache_pack=0.004 device=0.040 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.004 device=0.041 unpack=0.000
+SETHMEPROF id=47 cache_pack=0.004 device=0.041 unpack=0.000
+SETHMEPROF id=41 cache_pack=0.004 device=0.043 unpack=0.000
+SETHMEPROF id=42 cache_pack=0.004 device=0.045 unpack=0.000
+SETHMEPROF id=30 cache_pack=0.004 device=0.047 unpack=0.000
+SETHMEPROF id=9 cache_pack=0.004 device=0.051 unpack=0.000
+SETHMEPROF id=25 cache_pack=0.004 device=0.051 unpack=0.000
+SETHMEPROF id=23 cache_pack=0.004 device=0.051 unpack=0.000
+SETHMEPROF id=40 cache_pack=0.005 device=0.053 unpack=0.000
+SETHMEPROF id=13 cache_pack=0.004 device=0.053 unpack=0.000
+SETHMEPROF id=16 cache_pack=0.004 device=0.056 unpack=0.000
+SETHMEPROF id=15 cache_pack=0.005 device=0.060 unpack=0.000
+SETHMEPROF id=43 cache_pack=0.004 device=0.062 unpack=0.000
+SETHMEPROF id=20 cache_pack=0.004 device=0.061 unpack=0.000
+SETHMEPROF id=6 cache_pack=0.004 device=0.063 unpack=0.000
+SETHMEPROF id=46 cache_pack=0.005 device=0.063 unpack=0.000
+SETHMEPROF id=17 cache_pack=0.004 device=0.064 unpack=0.000
+SETHMEPROF id=14 cache_pack=0.005 device=0.067 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.005 device=0.068 unpack=0.000
+SETHMEPROF id=19 cache_pack=0.004 device=0.068 unpack=0.000
+SETHMEPROF id=44 cache_pack=0.005 device=0.072 unpack=0.000
+SETHMEPROF id=28 cache_pack=0.005 device=0.076 unpack=0.000
+SETHMEPROF id=45 cache_pack=0.005 device=0.078 unpack=0.000
+SETHMEPROF id=31 cache_pack=0.005 device=0.077 unpack=0.000
+SETHMEPROF id=27 cache_pack=0.005 device=0.078 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.005 device=0.080 unpack=0.000
+SETHMEPROF id=39 cache_pack=0.005 device=0.079 unpack=0.000
+SETHMEPROF id=11 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=36 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=29 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=12 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=10 cache_pack=0.005 device=0.083 unpack=0.000
+SETHMEPROF id=18 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=21 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=37 cache_pack=0.005 device=0.083 unpack=0.000
+SETHMEPROF id=33 cache_pack=0.005 device=0.085 unpack=0.000
+SETHMEPROF id=24 cache_pack=0.005 device=0.085 unpack=0.000
+SETHMEPROF id=8 cache_pack=0.005 device=0.086 unpack=0.000
+SETHMEPROF id=5 cache_pack=0.005 device=0.088 unpack=0.000
+SETHMEPROF id=38 cache_pack=0.005 device=0.087 unpack=0.000
+SETHPROF id=8 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.111 bar=0.002
+SETHPROF id=12 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.105 bar=0.006
+SETHPROF id=2 it=4 memok=0.000 base=0.001 vpot=0.085 matel=0.105 bar=0.020
+SETHPROF id=0 it=4 memok=0.000 base=0.001 vpot=0.085 matel=0.076 bar=0.049
+SETHPROF id=6 it=4 memok=0.000 base=0.001 vpot=0.095 matel=0.089 bar=0.026
+SETHPROF id=3 it=4 memok=0.000 base=0.001 vpot=0.086 matel=0.118 bar=0.006
+SETHPROF id=4 it=4 memok=0.000 base=0.001 vpot=0.085 matel=0.117 bar=0.008
+SETHPROF id=19 it=4 memok=0.000 base=0.001 vpot=0.098 matel=0.091 bar=0.020
+SETHPROF id=21 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.105 bar=0.005
+SETHPROF id=9 it=4 memok=0.000 base=0.001 vpot=0.095 matel=0.077 bar=0.038
+SETHPROF id=18 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.106 bar=0.005
+SETHPROF id=33 it=4 memok=0.000 base=0.001 vpot=0.098 matel=0.109 bar=0.003
+SETHPROF id=10 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.105 bar=0.006
+SETHPROF id=5 it=4 memok=0.000 base=0.001 vpot=0.086 matel=0.123 bar=0.000
+SETHPROF id=44 it=4 memok=0.000 base=0.001 vpot=0.095 matel=0.098 bar=0.016
+SETHPROF id=32 it=4 memok=0.000 base=0.001 vpot=0.095 matel=0.062 bar=0.053
+SETHPROF id=11 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.104 bar=0.007
+SETHPROF id=47 it=4 memok=0.000 base=0.001 vpot=0.094 matel=0.068 bar=0.047
+SETHPROF id=38 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.111 bar=0.000
+SETHPROF id=45 it=4 memok=0.000 base=0.001 vpot=0.095 matel=0.105 bar=0.010
+SETHPROF id=22 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.054 bar=0.059
+SETHPROF id=15 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.083 bar=0.028
+SETHPROF id=28 it=4 memok=0.000 base=0.001 vpot=0.096 matel=0.101 bar=0.012
+SETHPROF id=36 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.106 bar=0.007
+SETHPROF id=7 it=4 memok=0.000 base=0.001 vpot=0.096 matel=0.065 bar=0.049
+SETHPROF id=29 it=4 memok=0.000 base=0.001 vpot=0.096 matel=0.107 bar=0.007
+SETHPROF id=43 it=4 memok=0.000 base=0.001 vpot=0.093 matel=0.089 bar=0.027
+SETHPROF id=20 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.085 bar=0.027
+SETHPROF id=35 it=4 memok=0.000 base=0.001 vpot=0.094 matel=0.063 bar=0.053
+SETHPROF id=42 it=4 memok=0.000 base=0.001 vpot=0.093 matel=0.074 bar=0.043
+SETHPROF id=39 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.103 bar=0.008
+SETHPROF id=41 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.068 bar=0.046
+SETHPROF id=27 it=4 memok=0.000 base=0.001 vpot=0.098 matel=0.102 bar=0.010
+SETHPROF id=14 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.090 bar=0.021
+SETHPROF id=16 it=4 memok=0.000 base=0.001 vpot=0.098 matel=0.080 bar=0.032
+SETHPROF id=37 it=4 memok=0.000 base=0.001 vpot=0.098 matel=0.107 bar=0.005
+SETHPROF id=25 it=4 memok=0.000 base=0.001 vpot=0.096 matel=0.076 bar=0.038
+SETHPROF id=46 it=4 memok=0.000 base=0.001 vpot=0.095 matel=0.090 bar=0.025
+SETHPROF id=26 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.055 bar=0.058
+SETHPROF id=24 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.108 bar=0.003
+SETHPROF id=17 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.088 bar=0.024
+SETHPROF id=34 it=4 memok=0.000 base=0.001 vpot=0.096 matel=0.061 bar=0.053
+SETHPROF id=1 it=4 memok=0.000 base=0.001 vpot=0.085 matel=0.072 bar=0.053
+SETHPROF id=30 it=4 memok=0.000 base=0.001 vpot=0.095 matel=0.073 bar=0.042
+SETHPROF id=40 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.077 bar=0.036
+SETHPROF id=13 it=4 memok=0.000 base=0.001 vpot=0.097 matel=0.078 bar=0.035
+SETHPROF id=23 it=4 memok=0.000 base=0.001 vpot=0.096 matel=0.077 bar=0.038
+SETHPROF id=31 it=4 memok=0.000 base=0.001 vpot=0.099 matel=0.101 bar=0.010
+BANDPROF id=24 it=4 geths=0.000 ccache=0.052 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.409 gemmB=0.000 evD2H=0.046 rel1=0.001 bcast=0.034 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.146 rel2=0.002 ar=0.313 store=0.001
+BANDPROF id=30 it=4 geths=0.000 ccache=0.052 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.371 gemmB=0.000 evD2H=0.063 rel1=0.001 bcast=0.054 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.223 rel2=0.001 ar=0.237 store=0.001
+BANDPROF id=12 it=4 geths=0.000 ccache=0.052 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.371 gemmB=0.000 evD2H=0.045 rel1=0.001 bcast=0.072 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.106 rel2=0.001 ar=0.352 store=0.001
+BANDPROF id=6 it=4 geths=0.000 ccache=0.052 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.349 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.094 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.300 rel2=0.001 ar=0.159 store=0.001
+BANDPROF id=18 it=4 geths=0.000 ccache=0.052 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.426 gemmB=0.000 evD2H=0.062 rel1=0.001 bcast=0.000 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.068 rel2=0.001 ar=0.391 store=0.001
+BANDPROF id=42 it=4 geths=0.000 ccache=0.052 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.315 gemmB=0.000 evD2H=0.058 rel1=0.001 bcast=0.114 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.184 rel2=0.002 ar=0.275 store=0.001
+BANDPROF id=36 it=4 geths=0.000 ccache=0.052 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.314 gemmB=0.000 evD2H=0.042 rel1=0.001 bcast=0.131 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.262 rel2=0.002 ar=0.197 store=0.001
+BANDPROF id=1 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=22 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=2 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=4 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=33 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=20 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=25 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=37 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=3 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=43 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=19 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=38 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=7 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=23 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=45 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.478 store=0.001
+BANDPROF id=26 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=13 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.480 store=0.001
+BANDPROF id=17 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=39 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=21 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=34 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=27 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=35 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=8 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=32 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=31 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=47 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.479 store=0.001
+BANDPROF id=16 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=11 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=5 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=44 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.479 store=0.001
+BANDPROF id=14 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.480 store=0.001
+BANDPROF id=46 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.479 store=0.001
+BANDPROF id=10 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=41 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=28 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=40 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=29 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=9 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.481 store=0.001
+BANDPROF id=15 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.591 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.480 store=0.001
+BANDPROF id=0 it=4 geths=0.000 ccache=0.052 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.426 gemmB=0.000 evD2H=0.046 rel1=0.001 bcast=0.017 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.338 rel2=0.001 ar=0.121 store=0.001
+SETHMEPROF id=17 cache_pack=0.003 device=0.020 unpack=0.000
+SETHMEPROF id=18 cache_pack=0.004 device=0.019 unpack=0.000
+SETHMEPROF id=36 cache_pack=0.005 device=0.019 unpack=0.000
+SETHMEPROF id=39 cache_pack=0.005 device=0.020 unpack=0.000
+SETHMEPROF id=22 cache_pack=0.004 device=0.031 unpack=0.000
+SETHMEPROF id=32 cache_pack=0.004 device=0.032 unpack=0.000
+SETHMEPROF id=30 cache_pack=0.004 device=0.033 unpack=0.000
+SETHMEPROF id=42 cache_pack=0.004 device=0.035 unpack=0.000
+SETHMEPROF id=20 cache_pack=0.004 device=0.038 unpack=0.000
+SETHMEPROF id=35 cache_pack=0.004 device=0.040 unpack=0.000
+SETHMEPROF id=43 cache_pack=0.004 device=0.041 unpack=0.000
+SETHMEPROF id=16 cache_pack=0.004 device=0.042 unpack=0.000
+SETHMEPROF id=26 cache_pack=0.004 device=0.044 unpack=0.000
+SETHMEPROF id=37 cache_pack=0.005 device=0.044 unpack=0.000
+SETHMEPROF id=24 cache_pack=0.005 device=0.046 unpack=0.000
+SETHMEPROF id=7 cache_pack=0.004 device=0.048 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.004 device=0.050 unpack=0.000
+SETHMEPROF id=34 cache_pack=0.004 device=0.051 unpack=0.000
+SETHMEPROF id=13 cache_pack=0.004 device=0.054 unpack=0.000
+SETHMEPROF id=41 cache_pack=0.004 device=0.057 unpack=0.000
+SETHMEPROF id=45 cache_pack=0.004 device=0.060 unpack=0.000
+SETHMEPROF id=9 cache_pack=0.004 device=0.064 unpack=0.000
+SETHMEPROF id=44 cache_pack=0.005 device=0.067 unpack=0.000
+SETHMEPROF id=12 cache_pack=0.005 device=0.068 unpack=0.000
+SETHMEPROF id=14 cache_pack=0.005 device=0.069 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.004 device=0.071 unpack=0.000
+SETHMEPROF id=28 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=23 cache_pack=0.004 device=0.073 unpack=0.000
+SETHMEPROF id=19 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=25 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=29 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=6 cache_pack=0.004 device=0.073 unpack=0.000
+SETHMEPROF id=40 cache_pack=0.005 device=0.073 unpack=0.000
+SETHMEPROF id=46 cache_pack=0.005 device=0.074 unpack=0.000
+SETHMEPROF id=31 cache_pack=0.005 device=0.074 unpack=0.000
+SETHMEPROF id=27 cache_pack=0.005 device=0.074 unpack=0.000
+SETHMEPROF id=15 cache_pack=0.005 device=0.075 unpack=0.000
+SETHMEPROF id=47 cache_pack=0.004 device=0.077 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.005 device=0.078 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.004 device=0.079 unpack=0.000
+SETHMEPROF id=11 cache_pack=0.005 device=0.079 unpack=0.000
+SETHMEPROF id=10 cache_pack=0.005 device=0.079 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.005 device=0.078 unpack=0.000
+SETHMEPROF id=21 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=33 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=8 cache_pack=0.005 device=0.081 unpack=0.000
+SETHMEPROF id=38 cache_pack=0.005 device=0.082 unpack=0.000
+SETHMEPROF id=5 cache_pack=0.005 device=0.084 unpack=0.000
+SETHPROF id=2 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.103 bar=0.006
+SETHPROF id=0 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.074 bar=0.035
+SETHPROF id=1 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.095 bar=0.014
+SETHPROF id=10 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.102 bar=0.005
+SETHPROF id=3 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.102 bar=0.005
+SETHPROF id=14 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.094 bar=0.015
+SETHPROF id=45 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.085 bar=0.024
+SETHPROF id=5 it=5 memok=0.000 base=0.001 vpot=0.092 matel=0.107 bar=0.000
+SETHPROF id=12 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.093 bar=0.016
+SETHPROF id=7 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.072 bar=0.037
+SETHPROF id=41 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.081 bar=0.027
+SETHPROF id=33 it=5 memok=0.000 base=0.001 vpot=0.092 matel=0.105 bar=0.002
+SETHPROF id=11 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.103 bar=0.006
+SETHPROF id=16 it=5 memok=0.000 base=0.001 vpot=0.089 matel=0.067 bar=0.043
+SETHPROF id=24 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.070 bar=0.038
+SETHPROF id=35 it=5 memok=0.000 base=0.001 vpot=0.087 matel=0.067 bar=0.045
+SETHPROF id=36 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.044 bar=0.065
+SETHPROF id=8 it=5 memok=0.000 base=0.001 vpot=0.092 matel=0.105 bar=0.002
+SETHPROF id=9 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.089 bar=0.020
+SETHPROF id=40 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.098 bar=0.011
+SETHPROF id=43 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.064 bar=0.044
+SETHPROF id=4 it=5 memok=0.000 base=0.001 vpot=0.089 matel=0.104 bar=0.007
+SETHPROF id=13 it=5 memok=0.000 base=0.001 vpot=0.089 matel=0.079 bar=0.032
+SETHPROF id=19 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.098 bar=0.011
+SETHPROF id=15 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.098 bar=0.010
+SETHPROF id=25 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.098 bar=0.011
+SETHPROF id=44 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.091 bar=0.018
+SETHPROF id=22 it=5 memok=0.000 base=0.001 vpot=0.088 matel=0.057 bar=0.054
+SETHPROF id=23 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.098 bar=0.012
+SETHPROF id=39 it=5 memok=0.000 base=0.001 vpot=0.092 matel=0.043 bar=0.064
+SETHPROF id=46 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.099 bar=0.010
+SETHPROF id=20 it=5 memok=0.000 base=0.001 vpot=0.088 matel=0.065 bar=0.047
+SETHPROF id=42 it=5 memok=0.000 base=0.001 vpot=0.089 matel=0.060 bar=0.050
+SETHPROF id=47 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.102 bar=0.007
+SETHPROF id=28 it=5 memok=0.000 base=0.001 vpot=0.089 matel=0.098 bar=0.012
+SETHPROF id=18 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.043 bar=0.066
+SETHPROF id=6 it=5 memok=0.000 base=0.001 vpot=0.088 matel=0.100 bar=0.011
+SETHPROF id=21 it=5 memok=0.000 base=0.001 vpot=0.092 matel=0.104 bar=0.003
+SETHPROF id=38 it=5 memok=0.000 base=0.001 vpot=0.092 matel=0.106 bar=0.001
+SETHPROF id=32 it=5 memok=0.000 base=0.001 vpot=0.088 matel=0.059 bar=0.053
+SETHPROF id=37 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.068 bar=0.040
+SETHPROF id=34 it=5 memok=0.000 base=0.001 vpot=0.088 matel=0.077 bar=0.034
+SETHPROF id=26 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.069 bar=0.041
+SETHPROF id=30 it=5 memok=0.000 base=0.001 vpot=0.088 matel=0.059 bar=0.052
+SETHPROF id=31 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.098 bar=0.010
+SETHPROF id=29 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.098 bar=0.011
+SETHPROF id=17 it=5 memok=0.000 base=0.001 vpot=0.090 matel=0.043 bar=0.066
+SETHPROF id=27 it=5 memok=0.000 base=0.001 vpot=0.091 matel=0.099 bar=0.010
+BANDPROF id=6 it=5 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.039 gemmF=0.000 syevdx=2.336 gemmB=0.000 evD2H=0.044 rel1=0.001 bcast=0.108 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.263 rel2=0.001 ar=0.197 store=0.001
+BANDPROF id=30 it=5 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.039 gemmF=0.000 syevdx=2.390 gemmB=0.000 evD2H=0.064 rel1=0.001 bcast=0.034 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.147 rel2=0.002 ar=0.315 store=0.000
+BANDPROF id=42 it=5 geths=0.000 ccache=0.047 cgpu=0.005 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.342 gemmB=0.000 evD2H=0.062 rel1=0.001 bcast=0.091 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.069 rel2=0.001 ar=0.391 store=0.001
+BANDPROF id=12 it=5 geths=0.000 ccache=0.049 cgpu=0.008 prepS=0.000 lsAl=0.000 lsH2D=0.039 gemmF=0.000 syevdx=2.372 gemmB=0.000 evD2H=0.047 rel1=0.001 bcast=0.070 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.224 rel2=0.002 ar=0.237 store=0.001
+BANDPROF id=36 it=5 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.039 gemmF=0.000 syevdx=2.319 gemmB=0.000 evD2H=0.043 rel1=0.001 bcast=0.127 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.339 rel2=0.002 ar=0.121 store=0.001
+BANDPROF id=18 it=5 geths=0.000 ccache=0.049 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.039 gemmF=0.000 syevdx=2.390 gemmB=0.000 evD2H=0.047 rel1=0.001 bcast=0.051 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.185 rel2=0.002 ar=0.277 store=0.001
+BANDPROF id=24 it=5 geths=0.000 ccache=0.047 cgpu=0.005 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.431 gemmB=0.000 evD2H=0.046 rel1=0.001 bcast=0.017 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.108 rel2=0.001 ar=0.353 store=0.001
+BANDPROF id=28 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.000
+BANDPROF id=37 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=34 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=1 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=45 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=26 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.484 store=0.001
+BANDPROF id=2 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=33 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=43 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=47 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=17 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.000
+BANDPROF id=41 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=15 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=19 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.484 store=0.001
+BANDPROF id=35 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=29 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.000
+BANDPROF id=13 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.484 store=0.001
+BANDPROF id=38 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=4 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=14 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=22 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=8 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.000
+BANDPROF id=39 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=27 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.484 store=0.001
+BANDPROF id=7 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=21 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=23 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=3 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=25 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.484 store=0.001
+BANDPROF id=32 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=40 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=5 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=16 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.001
+BANDPROF id=9 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.001
+BANDPROF id=20 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.483 store=0.001
+BANDPROF id=44 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=10 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.001
+BANDPROF id=11 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.485 store=0.000
+BANDPROF id=46 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.482 store=0.001
+BANDPROF id=31 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.587 chemp=0.005 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.484 store=0.001
+BANDPROF id=0 it=5 geths=0.000 ccache=0.049 cgpu=0.008 prepS=0.000 lsAl=0.000 lsH2D=0.040 gemmF=0.000 syevdx=2.444 gemmB=0.000 evD2H=0.045 rel1=0.001 bcast=0.000 chemp=0.005 occw=0.000 evH2D=0.021 dmk=0.301 rel2=0.001 ar=0.160 store=0.001
+Force4B GPU: not enough free device memory; CPU fallback.

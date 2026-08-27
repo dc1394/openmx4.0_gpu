@@ -1,0 +1,76 @@
+# M2 microbenchmark shapes, H100 edition: the full 5080 campaign list
+# (shapes_campaign.txt, kept verbatim so both GPUs share one shape grid)
+# plus the H100 thesis production-matrix systems that the 5080 campaign did
+# not run (siprod_thesis_result.txt: bcol300, ccol360, cnc300).  Counts per
+# 25-SCF np48 production run, from the sip_*_g11 manifests (all H100 runs
+# have zero GEMMul8 fallbacks -- 80 GB):
+#   bcol300  z_calls  600 = 3 x 200        (band col, n = 3900)
+#   ccol360  d_calls   75 = 25+25+24+1     (cluster col, n = 4680)
+#   cnc300   d_calls  300 = 150+150, z_calls 25 = 24+1  (cluster NC, n2 = 7800)
+# MaxN from the solver formulas (Cluster_DFT_Col.c ClusterCol_SetMaxNAndPartitions,
+# scf mode: TZ/2 + max(400, 0.1 n); Cluster_DFT_NonCol.c scf: TZ + 0.2 n2),
+# verified against the known ccol216=832 / ccol512=1689 / cnc216=1987:
+#   ccol360: 1440/2 + max(400,468) = 1188;  cnc300: 1200 + 1560 = 2760.
+#
+# label          type opA opB  m    n    k
+bcol216_fwd1     z    N   N   2808 2808 2808
+bcol216_fwd2     z    C   N   2808 2808 2808
+bcol216_back     z    T   T   2808 2808 2808
+bcol384_fwd1     z    N   N   4992 4992 4992
+bcol384_fwd2     z    C   N   4992 4992 4992
+bcol384_back     z    T   T   4992 4992 4992
+bnc128_fwd1      z    N   N   1664 1664 1664
+bnc128_fwd2      z    C   N   1664 1664 1664
+bnc128_back      z    T   T   3328 3328 3328
+bnc216_fwd1      z    N   N   2808 2808 2808
+bnc216_fwd2      z    C   N   2808 2808 2808
+bnc216_back      z    T   T   5616 5616 5616
+ccol216_fwd1     d    N   N   2808 2808 2808
+ccol216_fwd2     d    T   N   2808 2808 2808
+ccol216_back     d    T   T   832  2808 2808
+ccol216_back1    d    T   T   2808 2808 2808
+ccol512_fwd1     d    N   N   6656 6656 6656
+ccol512_fwd2     d    T   N   6656 6656 6656
+ccol512_back     d    T   T   1689 6656 6656
+ccol512_back1    d    T   T   6656 6656 6656
+cnc216_dfwd1     d    N   N   2808 2808 2808
+cnc216_dfwd2     d    T   N   2808 2808 2808
+cnc216_zback     z    T   T   1987 5616 5616
+cnc216_zback1    z    T   T   5616 5616 5616
+# ---- H100 production-matrix additions (siprod systems) ----
+bcol300_fwd1     z    N   N   3900 3900 3900
+bcol300_fwd2     z    C   N   3900 3900 3900
+bcol300_back     z    T   T   3900 3900 3900
+ccol360_fwd1     d    N   N   4680 4680 4680
+ccol360_fwd2     d    T   N   4680 4680 4680
+ccol360_back     d    T   T   1188 4680 4680
+ccol360_back1    d    T   T   4680 4680 4680
+cnc300_dfwd1     d    N   N   3900 3900 3900
+cnc300_dfwd2     d    T   N   3900 3900 3900
+cnc300_zback     z    T   T   2760 7800 7800
+cnc300_zback1    z    T   T   7800 7800 7800
+# ---- s_GEMM-vs-dimension sweep (Fig. 6 support), square NN, both types ----
+sweep_d_1024     d    N   N   1024 1024 1024
+sweep_d_1664     d    N   N   1664 1664 1664
+sweep_d_2048     d    N   N   2048 2048 2048
+sweep_d_2808     d    N   N   2808 2808 2808
+sweep_d_3328     d    N   N   3328 3328 3328
+sweep_d_3900     d    N   N   3900 3900 3900
+sweep_d_4096     d    N   N   4096 4096 4096
+sweep_d_4680     d    N   N   4680 4680 4680
+sweep_d_4992     d    N   N   4992 4992 4992
+sweep_d_5616     d    N   N   5616 5616 5616
+sweep_d_6656     d    N   N   6656 6656 6656
+sweep_d_7800     d    N   N   7800 7800 7800
+sweep_z_1024     z    N   N   1024 1024 1024
+sweep_z_1664     z    N   N   1664 1664 1664
+sweep_z_2048     z    N   N   2048 2048 2048
+sweep_z_2808     z    N   N   2808 2808 2808
+sweep_z_3328     z    N   N   3328 3328 3328
+sweep_z_3900     z    N   N   3900 3900 3900
+sweep_z_4096     z    N   N   4096 4096 4096
+sweep_z_4680     z    N   N   4680 4680 4680
+sweep_z_4992     z    N   N   4992 4992 4992
+sweep_z_5616     z    N   N   5616 5616 5616
+sweep_z_6656     z    N   N   6656 6656 6656
+sweep_z_7800     z    N   N   7800 7800 7800

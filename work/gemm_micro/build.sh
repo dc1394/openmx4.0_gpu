@@ -13,9 +13,11 @@ GPU_ARCH=${GPU_ARCH:-$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 
 [ -f "$G8_DIR/lib/libgemmul8.a" ] || { echo "missing $G8_DIR/lib/libgemmul8.a" >&2; exit 1; }
 
 MATHLIB="$NVROOT/math_libs/13.2/targets/x86_64-linux/lib"
+MATHINC="$NVROOT/math_libs/13.2/targets/x86_64-linux/include"  # Pegasus keeps
+    # the cuBLAS headers out of nvcc's default path; harmless where they are on it
 "$NVROOT/cuda/13.2/bin/nvcc" -ccbin "$NVROOT/compilers/bin/nvc++" \
     -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH="$GPU_ARCH" \
-    -I"$G8_DIR/include" -I"$G8_DIR/src" \
+    -I"$G8_DIR/include" -I"$G8_DIR/src" -I"$MATHINC" \
     -gencode arch=compute_"$GPU_ARCH",code=sm_"$GPU_ARCH" \
     bench_gemm.cu "$G8_DIR/lib/libgemmul8.a" \
     -L"$MATHLIB" -Xlinker -rpath -Xlinker "$MATHLIB" -lcublas -lcublasLt -o bench_gemm

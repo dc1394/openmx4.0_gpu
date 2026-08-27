@@ -1,0 +1,7 @@
+=== gemm_micro H100 leg, 2026-08-27 14:41 ===
+REMAIN before submit: 340.69 of 500.00
+gemmb_h100: Request 952702.nqsv submitted to queue: gen_S.
+prof_bcol300: Request 952703.nqsv submitted to queue: gen_S.
+=== done 14:50: bench 952702 bnode029 exit0 59 shapes relerr<=1.4e-14; prof 952703 bnode004 both legs 240 BANDPROF lines ===
+s_GEMM(H100): D 0.21->1.09, Z 0.25->1.52 (5080: 6.6-25.4).  M3: Sp_diag 0.995-1.019 vs Sm 0.978-1.018, all 7 systems closed;
+bcol300 Sm_tot 0.870 = Set_Ham interference outside GEMM sites (documented).  REMAIN after: 340.62
