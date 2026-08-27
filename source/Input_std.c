@@ -793,9 +793,9 @@ void Input_std(char *file)
   }
 
   /* gpusolver2 = gpusolver + distributed multi-GPU cluster diagonalization
-     (DLA-Future + COSMA).  Outside the mainline cluster solvers everything
-     must behave exactly like gpusolver, so the flag is folded to GPUSOLVER
-     here and the request is remembered in gpusolver2_flag. */
+     (ELPA GPU kernels + COSMA).  Outside the mainline cluster solvers
+     everything must behave exactly like gpusolver, so the flag is folded to
+     GPUSOLVER here and the request is remembered in gpusolver2_flag. */
   gpusolver2_flag = 0;
   if (scf_eigen_lib_flag==GPUSOLVER2){
     gpusolver2_flag = 1;
