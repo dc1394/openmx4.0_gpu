@@ -1,0 +1,35 @@
+=== runtestL.result ===
+   1  large_example/5_5_13COb2.dat     Elapsed time(s)=   52.66  diff Utot= 0.000000000032  diff Force= 0.000000000017
+   2  large_example/B2C62_Band.dat     Elapsed time(s)=  320.14  diff Utot= 0.000000000103  diff Force= 0.000000046042
+   3  large_example/CG15c-DC-LNO.dat   Elapsed time(s)=   65.92  diff Utot= 0.000000001239  diff Force= 0.000000002225
+   4  large_example/DIA512-1.dat       Elapsed time(s)=   68.28  diff Utot= 0.000000000017  diff Force= 0.000000001806
+   5  large_example/FeBCC.dat          Elapsed time(s)=   78.78  diff Utot= 0.000000000035  diff Force= 0.000000000000
+   6  large_example/GEL.dat            Elapsed time(s)=   31.23  diff Utot= 0.000000000002  diff Force= 0.000000000002
+   7  large_example/GFRAG.dat          Elapsed time(s)=   23.22  diff Utot= 0.000000000063  diff Force= 0.000000000026
+   8  large_example/GGFF.dat           Elapsed time(s)=  573.69  diff Utot= 0.000000000048  diff Force= 0.000000000040
+   9  large_example/MCCN.dat           Elapsed time(s)=  123.87  diff Utot= 0.000000000004  diff Force= 0.000000000019
+  10  large_example/Mn12_148_F.dat     Elapsed time(s)=   57.85  diff Utot= 0.000000000002  diff Force= 0.000000000083
+  11  large_example/N1C999.dat         Elapsed time(s)=  489.76  diff Utot= 0.000000000099  diff Force= 0.000000000460
+  12  large_example/Ni63-O64.dat       Elapsed time(s)=   53.18  diff Utot= 0.000000000075  diff Force= 0.000000000040
+  13  large_example/Pt63.dat           Elapsed time(s)=   31.42  diff Utot= 0.000000022706  diff Force= 0.000000013553
+  14  large_example/SialicAcid.dat     Elapsed time(s)=   14.33  diff Utot= 0.000000000002  diff Force= 0.000000000009
+  15  large_example/ZrB2_2x2.dat       Elapsed time(s)=  137.12  diff Utot= 0.000000000069  diff Force= 0.000000000000
+  16  large_example/nsV4Bz5.dat        Elapsed time(s)=   82.15  diff Utot= 0.000000000039  diff Force= 0.000000000006
+
+
+Total elapsed time (s)     2203.59
+
+============================================================
+Request ID:             951856.nqsv
+Request Name:           rtb_L_cpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Thu Aug 27 09:53:21 2026
+Started Request Time:   Thu Aug 27 09:53:29 2026
+Ended Request Time:     Thu Aug 27 10:30:54 2026
+Resources Information:
+  Elapse:               2249S
+  Remaining Elapse:     12151S
+============================================================

@@ -1,0 +1,33 @@
+=== runtest.result ===
+   1  input_example/Benzene.dat        Elapsed time(s)=   13.63  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=    7.36  diff Utot= 0.000000000014  diff Force= 0.000000000003
+   3  input_example/CO.dat             Elapsed time(s)=    7.25  diff Utot= 0.000000000000  diff Force= 0.000000000011
+   4  input_example/Cr2.dat            Elapsed time(s)=    8.31  diff Utot= 0.000000000000  diff Force= 0.000000000002
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=   10.84  diff Utot= 0.000000000008  diff Force= 0.000000000002
+   6  input_example/GaAs.dat           Elapsed time(s)=   16.36  diff Utot= 0.000000000006  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    4.65  diff Utot= 0.000000000000  diff Force= 0.000000000001
+   8  input_example/Graphite4.dat      Elapsed time(s)=    4.16  diff Utot= 0.000000000000  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    4.79  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  10  input_example/H2O.dat            Elapsed time(s)=    4.37  diff Utot= 0.000000000000  diff Force= 0.000000000001
+  11  input_example/HMn.dat            Elapsed time(s)=   10.53  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    3.64  diff Utot= 0.000000000005  diff Force= 0.000000000001
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    7.50  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    5.01  diff Utot= 0.000000000000  diff Force= 0.000000000000
+
+
+Total elapsed time (s)      108.41
+
+============================================================
+Request ID:             951854.nqsv
+Request Name:           rtb_s_cpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Thu Aug 27 09:53:21 2026
+Started Request Time:   Thu Aug 27 09:55:31 2026
+Ended Request Time:     Thu Aug 27 09:57:46 2026
+Resources Information:
+  Elapse:               139S
+  Remaining Elapse:     3461S
+============================================================

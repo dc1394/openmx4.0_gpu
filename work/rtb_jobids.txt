@@ -1,0 +1,19 @@
+=== rtb README-benchmark campaign, 2026-08-27 09:53 ===
+REMAIN before submit: 343.08 of 500.00 (rbudgetcheck)
+binary: work/openmx v2.0_thesis tag build, md5 11227640dc6f8a8b194ddcd9ab811917
+4 jobs: -runtest/-runtestL x CPU(OPENMX_GPU=0, no GPU)/GPU(defaults=G8 on, MPS)
+rtb_s_cpu: Request 951854.nqsv submitted to queue: gen_S.
+rtb_s_gpu: Request 951855.nqsv submitted to queue: gen_S.
+rtb_L_cpu: Request 951856.nqsv submitted to queue: gen_S.
+rtb_L_gpu: Request 951857.nqsv submitted to queue: gen_S.
+Request 951903.nqsv submitted to queue: gen_S.
+Request 951927.nqsv submitted to queue: gen_S.
+NOTE: rtb_s_mps_ab (951903) drew bnode013 (slow node) -> DISCARDED per site convention; ab2 is the replacement. ab1 dir kept for provenance.
+=== rtb final (10:39) ===
+results: runtest CPU 108.41 / GPU+MPS 89.59; runtestL CPU 2203.59 / GPU+MPS 1481.62 (all pass)
+MPS A/B: ab1 nomps 108.91 -> mps 89.71; ab2 nomps 107.89 -> mps 90.66 (both pairs on bnode013).
+DECISION: ab1+ab2 both drew bnode013; kept BOTH as a same-node back-to-back A/B pair mean
+  (108.4 -> 90.2 s, -17%) -- the ratio is node-internal, and the MPS-on totals agree with
+  the clean-node rtb_s_gpu run (89.59 s, bnode117) to 0.7%, so bnode013 does not distort
+  this suite.  This supersedes the earlier ab1 DISCARDED note (that note applied the
+  pooled-mean convention, which this same-node pair design does not need).

@@ -1,0 +1,50 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.951857.10/user_script: line 79: 2466892 Killed                  sleep 5
+=== runtestL.result ===
+   1  large_example/5_5_13COb2.dat     Elapsed time(s)=   35.60  diff Utot= 0.000000000340  diff Force= 0.000000000000
+   2  large_example/B2C62_Band.dat     Elapsed time(s)=  157.35  diff Utot= 0.000000000069  diff Force= 0.000000021871
+   3  large_example/CG15c-DC-LNO.dat   Elapsed time(s)=   49.83  diff Utot= 0.000000001065  diff Force= 0.000000002228
+   4  large_example/DIA512-1.dat       Elapsed time(s)=   56.04  diff Utot= 0.000000000687  diff Force= 0.000000001821
+   5  large_example/FeBCC.dat          Elapsed time(s)=   66.27  diff Utot= 0.000000000093  diff Force= 0.000000000000
+   6  large_example/GEL.dat            Elapsed time(s)=   22.00  diff Utot= 0.000000000002  diff Force= 0.000000000001
+   7  large_example/GFRAG.dat          Elapsed time(s)=   15.50  diff Utot= 0.000000000423  diff Force= 0.000000000001
+   8  large_example/GGFF.dat           Elapsed time(s)=  332.88  diff Utot= 0.000000000065  diff Force= 0.000000000036
+   9  large_example/MCCN.dat           Elapsed time(s)=   95.15  diff Utot= 0.000000000336  diff Force= 0.000000000014
+  10  large_example/Mn12_148_F.dat     Elapsed time(s)=   29.04  diff Utot= 0.000000000201  diff Force= 0.000000000017
+  11  large_example/N1C999.dat         Elapsed time(s)=  458.58  diff Utot= 0.000000001439  diff Force= 0.000000000465
+  12  large_example/Ni63-O64.dat       Elapsed time(s)=   24.09  diff Utot= 0.000000000846  diff Force= 0.000000000025
+  13  large_example/Pt63.dat           Elapsed time(s)=   23.43  diff Utot= 0.000000002276  diff Force= 0.000000000657
+  14  large_example/SialicAcid.dat     Elapsed time(s)=   12.96  diff Utot= 0.000000000001  diff Force= 0.000000000011
+  15  large_example/ZrB2_2x2.dat       Elapsed time(s)=   68.31  diff Utot= 0.000000000160  diff Force= 0.000000000002
+  16  large_example/nsV4Bz5.dat        Elapsed time(s)=   34.59  diff Utot= 0.000000000100  diff Force= 0.000000000017
+
+
+Total elapsed time (s)     1481.62
+/var/opt/nec/nqsv/jsv/jobfile/0.951857.10/user_script: line 99: 2462855 Killed                  ( for _ in $(seq 1 2900);
+do
+    { date '+--- %H:%M:%S'; free -g | awk '/^Mem:/ {print "host mem used/total (GiB): " $3 "/" $2}'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "${CASE}.smi" 2>&1; sleep 5;
+done )
+=== MPS server (post-run; mps_server>=1 proves the ranks attached) ===
+bnode123: mps_server=1 gpu_mem_used=78 MiB
+=== peak GPU (util %, MiB) ===
+100 %, 60246 MiB
+17 %, 58412 MiB
+100 %, 50880 MiB
+=== peak host memory (GiB) ===
+host mem used/total (GiB): 85/124
+host mem used/total (GiB): 85/124
+host mem used/total (GiB): 85/124
+
+============================================================
+Request ID:             951857.nqsv
+Request Name:           rtb_L_gpu
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Thu Aug 27 09:53:22 2026
+Started Request Time:   Thu Aug 27 10:00:15 2026
+Ended Request Time:     Thu Aug 27 10:25:29 2026
+Resources Information:
+  Elapse:               1519S
+  Remaining Elapse:     12881S
+============================================================

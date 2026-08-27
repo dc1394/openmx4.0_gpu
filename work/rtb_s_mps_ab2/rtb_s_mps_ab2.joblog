@@ -1,0 +1,31 @@
+=== A/B summary ===
+--- warmup ---
+  14  input_example/Ndia2.dat          Elapsed time(s)=    3.32  diff Utot= 0.000000000004  diff Force= 0.000000000000
+
+
+Total elapsed time (s)      110.34
+--- nomps ---
+  14  input_example/Ndia2.dat          Elapsed time(s)=    3.28  diff Utot= 0.000000000004  diff Force= 0.000000000000
+
+
+Total elapsed time (s)      107.89
+--- mps ---
+  14  input_example/Ndia2.dat          Elapsed time(s)=    3.07  diff Utot= 0.000000000004  diff Force= 0.000000000000
+
+
+Total elapsed time (s)       90.66
+
+============================================================
+Request ID:             951927.nqsv
+Request Name:           rtb_s_mps_ab2
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Thu Aug 27 10:32:32 2026
+Started Request Time:   Thu Aug 27 10:32:40 2026
+Ended Request Time:     Thu Aug 27 10:38:23 2026
+Resources Information:
+  Elapse:               347S
+  Remaining Elapse:     5053S
+============================================================
