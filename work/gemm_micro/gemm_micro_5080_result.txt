@@ -1,0 +1,110 @@
+Single-GEMM microbenchmark + lightweight Amdahl assembly, RTX 5080
+(2026-08-27) -- closes the "f and s_GEMM are not measured" gap flagged for
+the paper: the campaign zip had no GEMM-level logs, so the speedup ratios
+were descriptive only.  This directory adds the two missing artifacts:
+
+  gemm_micro_5080.csv  (M2)  per-shape cuBLAS-FP64 vs GEMMul8 times
+  amdahl_5080.csv      (M3)  per-system f, s_eff, S_pred vs S_meas
+
+=== method ===
+bench_gemm.cu replicates source/gemmul8_bridge.cu exactly: gemmul8::gemm
+<double|cuDoubleComplex, Backend::INT8>, num_moduli 15, fastmode false
+(the manifest-recorded production config), alpha=1 beta=0, natural leading
+dims, one preallocated device workspace of gemmul8::workSize bytes; cuBLAS
+side = plain cublasDgemm/Zgemm.  7 reps interleaved ABAB (equal thermal
+footing), median; idle GPU, no MPS (single process), campaign library
+third_party/GEMMul8/lib/libgemmul8.a (v3.2.0, 833e5761), nvcc 26.5 sm_120.
+Shapes are the exact dense-solver calls, reconstructed from the run
+manifests (gemmul8.d_calls/z_calls) + the call sites, and the counts close
+exactly (shapes_campaign.txt header documents the per-solve structure):
+  band col     3 Z/solve: NN,CN,TT all (n,n,n)            -> 600 Z/run = 8x25x3
+  band NC      7 Z/solve: 3 blocks x {NN,CN} at (n2/2)^3
+               + back TT (n2,n2,n2)                       -> 1400 Z/run
+  cluster col  3 D/solve: NN,TN (n,n,n); back TT (MaxN,n,n),
+               SCF1 MaxN=n                                -> 75 D/run
+  cluster NC   12 D/solve at (n2/2)^3 + 1 Z back TT
+               (MaxN,n2,n2), SCF1 MaxN=n2                 -> 300 D + 25 Z/run
+  MaxN: ccol216 832 (=TZ/2+400), ccol512 1689 (=1024+0.1n), cnc216 1987
+  (=864+0.2*n2); band back-transforms are full-n (MaxN affects syevdx only).
+
+=== M2 highlights (gemm_micro_5080.csv, 42 shapes) ===
+cuBLAS FP64 plateaus at ~820-836 GFLOPS on every shape >= 2048 (the RTX
+5080's FP64 ceiling, 1:64 of FP32); GEMMul8 reaches 15.3-21.2 TFLOPS.
+s_GEMM (cuBLAS/G8, median-vs-median) grows with size:
+  D (real):    1024: 6.6x   2048: 10.4x  2808: 13.0x  4992: 16.7x  6656: 18.6x
+  Z (complex): 1024: 10.3x  2048: 15.3x  2808: 18.6x  4992: 23.7x  6656: 25.4x
+Campaign shapes: bcol216 18.6-19.2x, bcol384 23.7-24.6x, bnc128 11.6x(fwd)/
+17.5x(back), bnc216 18.6-19.1x(fwd)/24.0x(back 5616), ccol216 8.3-13.5x,
+ccol512 15.3-18.8x, cnc216 13.1-13.4x(D)/19.7-23.9x(Z back).
+Max |C_G8 - C_FP64| / max|C_FP64| <= 1.4e-14 on every shape (moduli-15
+emulation is FP64-equivalent at the single-GEMM level too).
+
+=== M3: lightweight Amdahl model (plan sec. 14.3), per-system-best np ===
+S_pred = 1/((1-f) + f/s_eff);  f = sum(count x t_cuBLAS_iso)/T_diag(o-leg);
+s_eff over the run's shape mix; bnc216's g leg modelled with its REAL mix
+(193 of 200 back-transform 5616^3 ZGEMMs fell back to cuBLAS, 7 ran G8).
+
+system    T_gemm_cu T_gemm_g8  s_eff f_diag Sp_diag Sm_diag  f_tot Sp_tot Sm_tot
+bcol216      129.27      6.87  18.81  0.549   2.083   2.096  0.367  1.534  1.540
+bcol384      714.58     29.79  23.99  0.585   2.275   2.107  0.497  1.911  1.807
+bnc128       128.22      8.99  14.27  0.465   1.763   1.674  0.337  1.457  1.409
+bnc216       599.59    343.15   1.75  0.475   1.255   1.251  0.404  1.209  1.205
+ccol216        3.40      0.28  12.33  0.243   1.287   1.284  0.026  1.025  1.025
+ccol512       40.47      2.22  18.25  0.365   1.527   1.532  0.102  1.107  1.108
+cnc216        33.72      2.13  15.86  0.255   1.314   1.300  0.100  1.103  1.103
+bnc216*      599.59     27.92  21.48  0.475   1.827    ---   (*zero-fallback)
+
+Agreement: 5 of 7 systems within 1.5% on the diag speedup (bcol216 2.083
+pred vs 2.096 meas; bnc216 1.255 vs 1.251 with the fallback mix; ccol216,
+ccol512, cnc216 all <=1.4%); bcol384 +8% and bnc128 +5% over-predictions =
+the h term of plan 14.3 (in-app integration overhead; largest matrices /
+most calls).  Equivalent per-iteration statement: the modelled diag saving
+(T_gemm_cu - T_gemm_g8)/25 matches the measured (diag_o - diag_g)/25 to
+-0.6% (bcol216: 4.90 vs 4.92 s/it), +1.1% (bnc216), +1.0% (ccol216),
+-0.7% (ccol512), +3.5% (cnc216), +6.7/+7.4% (bcol384/bnc128).
+
+This answers the expected referee question quantitatively:
+- WHY bcol ~2.1x diag: f_diag = 0.55-0.59 with s_GEMM ~19-24 -> the Amdahl
+  ceiling 1/(1-f) is 2.2-2.4 and the campaign sits essentially on it.
+- WHY bnc216 only 1.25x: SAME f (0.475) but s_eff collapses 21.5 -> 1.75
+  because the dominant 5616^3 back-transform (1.70 s/call cuBLAS, 71 ms
+  G8) ran on cuBLAS in 193 of 200 calls (16 GB reserve-policy fallback);
+  the zero-fallback hypothetical recovers S_pred 1.83, consistent with
+  bnc128's measured 1.67 and a direct prediction for the 80 GB H100.
+- WHY ccol216 total barely moves (1.03x): f_total = 0.026 -- at np18 the
+  diag bucket is 11% of total and cuSOLVER syevdx dominates it.
+
+=== BANDPROF cross-check (prof/, bcol216 o/g, 5 SCF, np18, MPS on) ===
+g leg, owner ranks: gemmF+syevdx+gemmB collapses 6.8 -> 1.3 s/it vs the o
+leg -- the in-app counterpart of the GEMM replacement.  Caveat discovered:
+in the o leg the per-call gemmF/gemmB buckets read 0.000 because
+cublasZgemm is asynchronous and wait_cudafunc() only retries on the return
+status (no device sync), so the cuBLAS GEMM execution is absorbed into the
+next synchronizing bucket (syevdx's blocking memcpy).  gemmul8::gemm
+synchronizes internally (it returns its stage timings), so the g leg's
+buckets are real.  Per-call in-app GEMM walls under 8-way MPS concurrency
+are stretched ~3x vs isolated, which is why the model uses isolated
+microbench times x manifest counts (aggregate GPU throughput) rather than
+in-app dtime -- the per-iteration closure above justifies this.
+
+=== paper-writing notes (user-fixed, 2026-08-27) ===
+1. bnc216@5080 has fallback != 0: the NC-band flagship number is the
+   128-atom point; present 216 honestly as 16 GB boundary behaviour
+   ("memory-aware hybrid execution"), with bnc216* as the headroom case.
+2. State the fixed-work methodology explicitly: performance runs use
+   criterion 1e-15 with 25 SCF -- intentionally non-convergent = fixed
+   workload per run.
+3. Headline TOTAL number is 1.8x (bcol384 total, np16); ">2x" claims are
+   diagonalization-bucket only (bcol216/384 diag 2.10x).
+
+=== files / reproduction ===
+bench_gemm.cu build.sh shapes_campaign.txt   (H100: NVROOT=<nvhpc26.5>
+  GPU_ARCH=90 G8_DIR=<tree>/source/third_party/GEMMul8 ./build.sh, then
+  ./bench_gemm shapes_campaign.txt 7 15 > gemm_micro_h100.csv; expected:
+  smaller s_GEMM (native FP64 ~1:2) -> the same model explains the smaller
+  H100 Layer-3 gains, and bnc216's back-transform should NOT fall back)
+gemm_micro_5080.csv gemm_micro_5080.log bench_env_5080.txt (idle, 42-52 C)
+analysis.py amdahl_5080.csv
+prof/prof_bcol216_{o,g}.{dat,stdout,stderr}  (BANDPROF pair, tag binary
+  e3e64c35, np18, MPS on, maxIter 5)
+All uncommitted; the campaign tree and binaries are untouched.

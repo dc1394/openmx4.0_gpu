@@ -1,0 +1,226 @@
+OLPKPROF id=14 pairs=1044 bessel=0.283 radial=0.298 gaunt=0.051 c2r=0.072 bhit=938 bmiss=106
+OLPKPROF id=10 pairs=1044 bessel=0.292 radial=0.296 gaunt=0.051 c2r=0.070 bhit=941 bmiss=103
+OLPKPROF id=17 pairs=1044 bessel=0.307 radial=0.298 gaunt=0.051 c2r=0.070 bhit=931 bmiss=113
+OLPKPROF id=11 pairs=1044 bessel=0.314 radial=0.300 gaunt=0.052 c2r=0.069 bhit=932 bmiss=112
+OLPKPROF id=6 pairs=1044 bessel=0.319 radial=0.297 gaunt=0.050 c2r=0.069 bhit=926 bmiss=118
+OLPKPROF id=15 pairs=1044 bessel=0.334 radial=0.297 gaunt=0.050 c2r=0.070 bhit=925 bmiss=119
+OLPKPROF id=7 pairs=1044 bessel=0.334 radial=0.302 gaunt=0.053 c2r=0.070 bhit=924 bmiss=120
+OLPKPROF id=3 pairs=1044 bessel=0.341 radial=0.297 gaunt=0.051 c2r=0.070 bhit=921 bmiss=123
+OLPKPROF id=4 pairs=1044 bessel=0.340 radial=0.298 gaunt=0.052 c2r=0.070 bhit=924 bmiss=120
+OLPKPROF id=12 pairs=1044 bessel=0.347 radial=0.297 gaunt=0.051 c2r=0.069 bhit=922 bmiss=122
+OLPKPROF id=13 pairs=1044 bessel=0.345 radial=0.299 gaunt=0.052 c2r=0.070 bhit=920 bmiss=124
+OLPKPROF id=16 pairs=1044 bessel=0.349 radial=0.296 gaunt=0.051 c2r=0.069 bhit=917 bmiss=127
+OLPKPROF id=9 pairs=1044 bessel=0.350 radial=0.299 gaunt=0.055 c2r=0.071 bhit=919 bmiss=125
+OLPKPROF id=2 pairs=1044 bessel=0.373 radial=0.296 gaunt=0.051 c2r=0.069 bhit=906 bmiss=138
+OLPKPROF id=5 pairs=1044 bessel=0.371 radial=0.299 gaunt=0.051 c2r=0.069 bhit=910 bmiss=134
+OLPKPROF id=0 pairs=1044 bessel=0.373 radial=0.297 gaunt=0.051 c2r=0.070 bhit=911 bmiss=133
+OLPKPROF id=1 pairs=1044 bessel=0.437 radial=0.297 gaunt=0.051 c2r=0.070 bhit=886 bmiss=158
+OLPKPROF id=8 pairs=1044 bessel=0.449 radial=0.301 gaunt=0.052 c2r=0.069 bhit=882 bmiss=162
+Set_ProExpn_VNA DS_VNA GPU: needs 0.816 GiB per rank, 18 rank(s) share this device and only 10.557 GiB is free; CPU fallback.
+Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.
+SETHMEPROF id=0 cache_pack=0.003 device=0.499 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.003 device=0.516 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.003 device=0.532 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.005 device=0.532 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.005 device=0.539 unpack=0.000
+SETHPROF id=2 it=1 memok=0.000 base=0.002 vpot=0.237 matel=1.288 bar=0.017
+SETHPROF id=1 it=1 memok=0.000 base=0.002 vpot=0.236 matel=1.298 bar=0.008
+SETHPROF id=3 it=1 memok=0.000 base=0.002 vpot=0.235 matel=1.307 bar=0.000
+SETHPROF id=4 it=1 memok=0.000 base=0.002 vpot=0.235 matel=1.273 bar=0.034
+SETHPROF id=0 it=1 memok=0.000 base=0.002 vpot=0.236 matel=1.253 bar=0.053
+SETHPROF id=8 it=1 memok=0.000 base=0.002 vpot=0.240 matel=0.983 bar=0.319
+SETHPROF id=11 it=1 memok=0.000 base=0.002 vpot=0.239 matel=0.999 bar=0.305
+SETHPROF id=5 it=1 memok=0.000 base=0.002 vpot=0.238 matel=1.009 bar=0.295
+SETHPROF id=6 it=1 memok=0.000 base=0.002 vpot=0.239 matel=1.014 bar=0.289
+SETHPROF id=16 it=1 memok=0.000 base=0.002 vpot=0.236 matel=0.987 bar=0.320
+SETHPROF id=17 it=1 memok=0.000 base=0.002 vpot=0.241 matel=0.986 bar=0.315
+SETHPROF id=14 it=1 memok=0.000 base=0.002 vpot=0.239 matel=1.002 bar=0.301
+SETHPROF id=12 it=1 memok=0.000 base=0.002 vpot=0.234 matel=0.995 bar=0.313
+SETHPROF id=9 it=1 memok=0.000 base=0.002 vpot=0.233 matel=0.991 bar=0.318
+SETHPROF id=15 it=1 memok=0.000 base=0.002 vpot=0.237 matel=0.975 bar=0.330
+SETHPROF id=7 it=1 memok=0.000 base=0.002 vpot=0.239 matel=0.975 bar=0.328
+SETHPROF id=10 it=1 memok=0.000 base=0.002 vpot=0.236 matel=0.988 bar=0.318
+SETHPROF id=13 it=1 memok=0.000 base=0.002 vpot=0.237 matel=0.979 bar=0.326
+BANDPROF id=10 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.192 store=0.002
+BANDPROF id=5 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.193 store=0.002
+BANDPROF id=8 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.191 store=0.002
+BANDPROF id=6 it=1 geths=0.000 ccache=0.047 cgpu=0.020 prepS=4.142 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=6.011 gemmB=0.000 evD2H=0.235 rel1=0.003 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.414 rel2=0.000 ar=0.191 store=0.002
+BANDPROF id=1 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.191 store=0.002
+BANDPROF id=11 it=1 geths=0.000 ccache=0.051 cgpu=0.020 prepS=4.914 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=4.999 gemmB=0.000 evD2H=0.232 rel1=0.003 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.468 rel2=0.000 ar=0.192 store=0.002
+BANDPROF id=7 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.191 store=0.002
+BANDPROF id=9 it=1 geths=0.000 ccache=0.054 cgpu=0.027 prepS=5.589 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=5.002 gemmB=0.000 evD2H=0.235 rel1=0.003 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.129 rel2=0.000 ar=0.192 store=0.002
+BANDPROF id=17 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.191 store=0.002
+BANDPROF id=4 it=1 geths=0.000 ccache=0.054 cgpu=0.026 prepS=5.650 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=5.202 gemmB=0.000 evD2H=0.234 rel1=0.003 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.245 rel2=0.001 ar=0.193 store=0.002
+BANDPROF id=16 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.191 store=0.002
+BANDPROF id=3 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.193 store=0.002
+BANDPROF id=2 it=1 geths=0.000 ccache=0.053 cgpu=0.026 prepS=4.132 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=6.233 gemmB=0.000 evD2H=0.234 rel1=0.003 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.187 rel2=0.000 ar=0.191 store=0.002
+BANDPROF id=14 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.193 store=0.002
+BANDPROF id=13 it=1 geths=0.000 ccache=0.052 cgpu=0.024 prepS=6.634 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=4.450 gemmB=0.000 evD2H=0.232 rel1=0.003 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.302 rel2=0.000 ar=0.193 store=0.002
+BANDPROF id=12 it=1 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.193 store=0.002
+BANDPROF id=15 it=1 geths=0.000 ccache=0.032 cgpu=0.009 prepS=0.994 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.880 gemmB=0.000 evD2H=0.230 rel1=0.003 bcast=0.000 chemp=0.006 occw=0.000 evH2D=0.007 dmk=0.092 rel2=0.000 ar=0.092 store=0.002
+BANDPROF id=0 it=1 geths=0.000 ccache=0.054 cgpu=0.027 prepS=6.639 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=4.662 gemmB=0.000 evD2H=0.232 rel1=0.003 bcast=2.148 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.358 rel2=0.000 ar=0.191 store=0.002
+SETHMEPROF id=3 cache_pack=0.003 device=0.535 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.003 device=0.554 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.003 device=0.571 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.003 device=0.585 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.003 device=0.586 unpack=0.000
+SETHPROF id=2 it=2 memok=0.000 base=0.002 vpot=0.233 matel=0.595 bar=0.395
+SETHPROF id=16 it=2 memok=0.000 base=0.002 vpot=0.232 matel=0.974 bar=0.016
+SETHPROF id=3 it=2 memok=0.000 base=0.002 vpot=0.229 matel=0.548 bar=0.446
+SETHPROF id=15 it=2 memok=0.000 base=0.002 vpot=0.233 matel=0.958 bar=0.032
+SETHPROF id=11 it=2 memok=0.000 base=0.002 vpot=0.234 matel=0.989 bar=0.000
+SETHPROF id=12 it=2 memok=0.000 base=0.002 vpot=0.231 matel=0.989 bar=0.003
+SETHPROF id=8 it=2 memok=0.000 base=0.002 vpot=0.234 matel=0.977 bar=0.012
+SETHPROF id=7 it=2 memok=0.000 base=0.002 vpot=0.234 matel=0.969 bar=0.020
+SETHPROF id=0 it=2 memok=0.000 base=0.002 vpot=0.230 matel=0.583 bar=0.409
+SETHPROF id=17 it=2 memok=0.000 base=0.002 vpot=0.233 matel=0.982 bar=0.008
+SETHPROF id=6 it=2 memok=0.000 base=0.002 vpot=0.234 matel=0.980 bar=0.009
+SETHPROF id=14 it=2 memok=0.000 base=0.002 vpot=0.234 matel=0.971 bar=0.018
+SETHPROF id=9 it=2 memok=0.000 base=0.002 vpot=0.226 matel=0.984 bar=0.013
+SETHPROF id=5 it=2 memok=0.000 base=0.002 vpot=0.233 matel=0.977 bar=0.013
+SETHPROF id=10 it=2 memok=0.000 base=0.002 vpot=0.233 matel=0.977 bar=0.013
+SETHPROF id=4 it=2 memok=0.000 base=0.002 vpot=0.221 matel=0.576 bar=0.427
+SETHPROF id=1 it=2 memok=0.000 base=0.002 vpot=0.232 matel=0.599 bar=0.392
+SETHPROF id=13 it=2 memok=0.000 base=0.002 vpot=0.221 matel=0.983 bar=0.019
+BANDPROF id=6 it=2 geths=0.000 ccache=0.045 cgpu=0.011 prepS=0.000 lsAl=0.000 lsH2D=0.064 gemmF=0.000 syevdx=6.561 gemmB=0.000 evD2H=0.224 rel1=0.003 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.398 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=4 it=2 geths=0.000 ccache=0.050 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.065 gemmF=0.000 syevdx=5.887 gemmB=0.000 evD2H=0.234 rel1=0.003 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.172 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=13 it=2 geths=0.000 ccache=0.054 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.060 gemmF=0.000 syevdx=6.990 gemmB=0.000 evD2H=0.231 rel1=0.003 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.229 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=15 it=2 geths=0.000 ccache=0.032 cgpu=0.005 prepS=0.000 lsAl=0.000 lsH2D=0.016 gemmF=0.000 syevdx=0.867 gemmB=0.000 evD2H=0.224 rel1=0.003 bcast=0.000 chemp=0.006 occw=0.000 evH2D=0.011 dmk=0.079 rel2=0.000 ar=0.089 store=0.002
+BANDPROF id=2 it=2 geths=0.000 ccache=0.054 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.060 gemmF=0.000 syevdx=6.117 gemmB=0.000 evD2H=0.232 rel1=0.003 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.112 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=11 it=2 geths=0.000 ccache=0.054 cgpu=0.019 prepS=0.000 lsAl=0.000 lsH2D=0.059 gemmF=0.000 syevdx=5.652 gemmB=0.000 evD2H=0.234 rel1=0.003 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.453 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=9 it=2 geths=0.000 ccache=0.051 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.065 gemmF=0.000 syevdx=6.124 gemmB=0.000 evD2H=0.444 rel1=0.003 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.343 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=16 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=1 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=3 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.176 store=0.002
+BANDPROF id=10 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.010 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=8 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=5 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=7 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=14 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=12 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=17 it=2 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=0 it=2 geths=0.000 ccache=0.053 cgpu=0.016 prepS=0.000 lsAl=0.000 lsH2D=0.062 gemmF=0.000 syevdx=6.773 gemmB=0.000 evD2H=0.225 rel1=0.003 bcast=1.146 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.286 rel2=0.000 ar=0.177 store=0.002
+SETHMEPROF id=1 cache_pack=0.003 device=0.522 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.003 device=0.543 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.003 device=0.556 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.003 device=0.570 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.003 device=0.578 unpack=0.000
+SETHPROF id=14 it=3 memok=0.000 base=0.002 vpot=0.233 matel=0.974 bar=0.019
+SETHPROF id=3 it=3 memok=0.000 base=0.002 vpot=0.231 matel=0.554 bar=0.442
+SETHPROF id=16 it=3 memok=0.000 base=0.002 vpot=0.231 matel=0.977 bar=0.018
+SETHPROF id=1 it=3 memok=0.000 base=0.002 vpot=0.231 matel=0.533 bar=0.462
+SETHPROF id=2 it=3 memok=0.000 base=0.002 vpot=0.232 matel=0.566 bar=0.428
+SETHPROF id=4 it=3 memok=0.000 base=0.002 vpot=0.225 matel=0.586 bar=0.414
+SETHPROF id=9 it=3 memok=0.000 base=0.002 vpot=0.227 matel=0.987 bar=0.012
+SETHPROF id=7 it=3 memok=0.000 base=0.002 vpot=0.233 matel=0.972 bar=0.021
+SETHPROF id=17 it=3 memok=0.000 base=0.002 vpot=0.233 matel=0.982 bar=0.010
+SETHPROF id=13 it=3 memok=0.000 base=0.002 vpot=0.227 matel=0.979 bar=0.020
+SETHPROF id=5 it=3 memok=0.000 base=0.002 vpot=0.233 matel=0.979 bar=0.014
+SETHPROF id=8 it=3 memok=0.000 base=0.002 vpot=0.232 matel=0.981 bar=0.012
+SETHPROF id=10 it=3 memok=0.000 base=0.002 vpot=0.231 matel=0.980 bar=0.014
+SETHPROF id=15 it=3 memok=0.000 base=0.002 vpot=0.232 matel=0.970 bar=0.024
+SETHPROF id=11 it=3 memok=0.000 base=0.002 vpot=0.233 matel=0.993 bar=0.000
+SETHPROF id=0 it=3 memok=0.000 base=0.002 vpot=0.231 matel=0.589 bar=0.406
+SETHPROF id=12 it=3 memok=0.000 base=0.002 vpot=0.230 matel=0.992 bar=0.004
+SETHPROF id=6 it=3 memok=0.000 base=0.002 vpot=0.233 matel=0.984 bar=0.009
+BANDPROF id=9 it=3 geths=0.000 ccache=0.053 cgpu=0.014 prepS=0.000 lsAl=0.000 lsH2D=0.062 gemmF=0.000 syevdx=6.778 gemmB=0.000 evD2H=0.432 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.285 rel2=0.000 ar=0.182 store=0.002
+BANDPROF id=11 it=3 geths=0.000 ccache=0.054 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.060 gemmF=0.000 syevdx=5.664 gemmB=0.000 evD2H=0.219 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.452 rel2=0.000 ar=0.182 store=0.002
+BANDPROF id=2 it=3 geths=0.000 ccache=0.054 cgpu=0.017 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=6.344 gemmB=0.000 evD2H=0.437 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.108 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=15 it=3 geths=0.000 ccache=0.032 cgpu=0.005 prepS=0.000 lsAl=0.000 lsH2D=0.016 gemmF=0.000 syevdx=0.868 gemmB=0.000 evD2H=0.218 rel1=0.003 bcast=0.000 chemp=0.006 occw=0.000 evH2D=0.011 dmk=0.083 rel2=0.000 ar=0.087 store=0.002
+BANDPROF id=6 it=3 geths=0.000 ccache=0.045 cgpu=0.010 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=6.142 gemmB=0.000 evD2H=0.437 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.396 rel2=0.000 ar=0.181 store=0.002
+BANDPROF id=13 it=3 geths=0.000 ccache=0.054 cgpu=0.017 prepS=0.000 lsAl=0.000 lsH2D=0.060 gemmF=0.000 syevdx=6.120 gemmB=0.000 evD2H=0.223 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.225 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=4 it=3 geths=0.000 ccache=0.052 cgpu=0.007 prepS=0.000 lsAl=0.000 lsH2D=0.065 gemmF=0.000 syevdx=5.674 gemmB=0.000 evD2H=0.437 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.167 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=10 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.182 store=0.002
+BANDPROF id=16 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.181 store=0.002
+BANDPROF id=7 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.181 store=0.002
+BANDPROF id=14 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=1 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=17 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.181 store=0.002
+BANDPROF id=8 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.181 store=0.002
+BANDPROF id=3 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=5 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=12 it=3 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.183 store=0.002
+BANDPROF id=0 it=3 geths=0.000 ccache=0.054 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.060 gemmF=0.000 syevdx=6.774 gemmB=0.000 evD2H=0.219 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.340 rel2=0.000 ar=0.183 store=0.002
+SETHMEPROF id=4 cache_pack=0.003 device=0.528 unpack=0.000
+SETHMEPROF id=1 cache_pack=0.003 device=0.544 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.003 device=0.566 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.003 device=0.569 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.003 device=0.581 unpack=0.000
+SETHPROF id=3 it=4 memok=0.000 base=0.002 vpot=0.230 matel=0.577 bar=0.417
+SETHPROF id=12 it=4 memok=0.000 base=0.002 vpot=0.229 matel=0.991 bar=0.004
+SETHPROF id=1 it=4 memok=0.000 base=0.002 vpot=0.231 matel=0.555 bar=0.439
+SETHPROF id=9 it=4 memok=0.000 base=0.002 vpot=0.228 matel=0.986 bar=0.011
+SETHPROF id=15 it=4 memok=0.000 base=0.002 vpot=0.232 matel=0.962 bar=0.031
+SETHPROF id=13 it=4 memok=0.000 base=0.002 vpot=0.229 matel=0.975 bar=0.020
+SETHPROF id=8 it=4 memok=0.000 base=0.002 vpot=0.233 matel=0.980 bar=0.012
+SETHPROF id=14 it=4 memok=0.000 base=0.002 vpot=0.233 matel=0.973 bar=0.019
+SETHPROF id=4 it=4 memok=0.000 base=0.002 vpot=0.225 matel=0.545 bar=0.455
+SETHPROF id=6 it=4 memok=0.000 base=0.002 vpot=0.233 matel=0.982 bar=0.010
+SETHPROF id=5 it=4 memok=0.000 base=0.002 vpot=0.233 matel=0.980 bar=0.012
+SETHPROF id=7 it=4 memok=0.000 base=0.002 vpot=0.233 matel=0.970 bar=0.022
+SETHPROF id=10 it=4 memok=0.000 base=0.002 vpot=0.231 matel=0.982 bar=0.011
+SETHPROF id=17 it=4 memok=0.000 base=0.002 vpot=0.233 matel=0.983 bar=0.008
+SETHPROF id=16 it=4 memok=0.000 base=0.002 vpot=0.231 matel=0.975 bar=0.018
+SETHPROF id=0 it=4 memok=0.000 base=0.002 vpot=0.231 matel=0.593 bar=0.401
+SETHPROF id=2 it=4 memok=0.000 base=0.002 vpot=0.232 matel=0.579 bar=0.414
+SETHPROF id=11 it=4 memok=0.000 base=0.002 vpot=0.233 matel=0.992 bar=0.000
+BANDPROF id=9 it=4 geths=0.000 ccache=0.055 cgpu=0.017 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=6.990 gemmB=0.000 evD2H=0.219 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.276 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=11 it=4 geths=0.000 ccache=0.055 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=6.330 gemmB=0.000 evD2H=0.222 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.443 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=13 it=4 geths=0.000 ccache=0.054 cgpu=0.012 prepS=0.000 lsAl=0.000 lsH2D=0.064 gemmF=0.000 syevdx=5.880 gemmB=0.000 evD2H=0.221 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.218 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=6 it=4 geths=0.000 ccache=0.046 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.059 gemmF=0.000 syevdx=6.577 gemmB=0.000 evD2H=0.432 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.389 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=2 it=4 geths=0.000 ccache=0.055 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=5.644 gemmB=0.000 evD2H=0.229 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.107 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=15 it=4 geths=0.000 ccache=0.032 cgpu=0.005 prepS=0.000 lsAl=0.000 lsH2D=0.016 gemmF=0.000 syevdx=0.868 gemmB=0.000 evD2H=0.218 rel1=0.003 bcast=0.000 chemp=0.006 occw=0.000 evH2D=0.011 dmk=0.079 rel2=0.000 ar=0.088 store=0.002
+BANDPROF id=4 it=4 geths=0.000 ccache=0.055 cgpu=0.014 prepS=0.000 lsAl=0.000 lsH2D=0.063 gemmF=0.000 syevdx=6.109 gemmB=0.000 evD2H=0.227 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.162 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=7 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=8 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=1 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=10 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=16 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=3 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=12 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=5 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=14 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=17 it=4 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=0 it=4 geths=0.000 ccache=0.055 cgpu=0.017 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=6.557 gemmB=0.000 evD2H=0.219 rel1=0.003 bcast=1.143 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.333 rel2=0.000 ar=0.178 store=0.002
+SETHMEPROF id=1 cache_pack=0.003 device=0.535 unpack=0.000
+SETHMEPROF id=3 cache_pack=0.003 device=0.552 unpack=0.000
+SETHMEPROF id=2 cache_pack=0.003 device=0.561 unpack=0.000
+SETHMEPROF id=4 cache_pack=0.003 device=0.572 unpack=0.000
+SETHMEPROF id=0 cache_pack=0.003 device=0.576 unpack=0.000
+SETHPROF id=1 it=5 memok=0.000 base=0.002 vpot=0.232 matel=0.545 bar=0.450
+SETHPROF id=10 it=5 memok=0.000 base=0.002 vpot=0.232 matel=0.979 bar=0.017
+SETHPROF id=16 it=5 memok=0.000 base=0.002 vpot=0.232 matel=0.976 bar=0.020
+SETHPROF id=8 it=5 memok=0.000 base=0.002 vpot=0.234 matel=0.981 bar=0.013
+SETHPROF id=17 it=5 memok=0.000 base=0.002 vpot=0.235 matel=0.983 bar=0.010
+SETHPROF id=13 it=5 memok=0.000 base=0.002 vpot=0.228 matel=0.980 bar=0.020
+SETHPROF id=9 it=5 memok=0.000 base=0.002 vpot=0.227 matel=0.985 bar=0.016
+SETHPROF id=6 it=5 memok=0.000 base=0.002 vpot=0.234 matel=0.983 bar=0.011
+SETHPROF id=2 it=5 memok=0.000 base=0.002 vpot=0.233 matel=0.571 bar=0.424
+SETHPROF id=5 it=5 memok=0.000 base=0.002 vpot=0.234 matel=0.978 bar=0.016
+SETHPROF id=12 it=5 memok=0.000 base=0.002 vpot=0.231 matel=0.988 bar=0.009
+SETHPROF id=4 it=5 memok=0.000 base=0.002 vpot=0.230 matel=0.586 bar=0.413
+SETHPROF id=14 it=5 memok=0.000 base=0.002 vpot=0.234 matel=0.972 bar=0.022
+SETHPROF id=3 it=5 memok=0.000 base=0.002 vpot=0.231 matel=0.564 bar=0.433
+SETHPROF id=15 it=5 memok=0.000 base=0.002 vpot=0.233 matel=0.960 bar=0.036
+SETHPROF id=11 it=5 memok=0.000 base=0.002 vpot=0.234 matel=0.994 bar=0.000
+SETHPROF id=0 it=5 memok=0.000 base=0.002 vpot=0.232 matel=0.588 bar=0.408
+SETHPROF id=7 it=5 memok=0.000 base=0.002 vpot=0.234 matel=0.972 bar=0.022
+BANDPROF id=13 it=5 geths=0.000 ccache=0.055 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=6.553 gemmB=0.000 evD2H=0.219 rel1=0.003 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.230 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=2 it=5 geths=0.000 ccache=0.055 cgpu=0.013 prepS=0.000 lsAl=0.000 lsH2D=0.063 gemmF=0.000 syevdx=5.887 gemmB=0.000 evD2H=0.225 rel1=0.003 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.112 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=15 it=5 geths=0.000 ccache=0.032 cgpu=0.005 prepS=0.000 lsAl=0.000 lsH2D=0.016 gemmF=0.000 syevdx=0.875 gemmB=0.000 evD2H=0.218 rel1=0.003 bcast=0.000 chemp=0.006 occw=0.000 evH2D=0.012 dmk=0.078 rel2=0.000 ar=0.088 store=0.002
+BANDPROF id=4 it=5 geths=0.000 ccache=0.055 cgpu=0.016 prepS=0.000 lsAl=0.000 lsH2D=0.062 gemmF=0.000 syevdx=6.105 gemmB=0.000 evD2H=0.226 rel1=0.003 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.172 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=6 it=5 geths=0.000 ccache=0.046 cgpu=0.009 prepS=0.000 lsAl=0.000 lsH2D=0.060 gemmF=0.000 syevdx=5.665 gemmB=0.000 evD2H=0.219 rel1=0.003 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.399 rel2=0.000 ar=0.176 store=0.002
+BANDPROF id=9 it=5 geths=0.000 ccache=0.054 cgpu=0.011 prepS=0.000 lsAl=0.000 lsH2D=0.063 gemmF=0.000 syevdx=6.336 gemmB=0.000 evD2H=0.223 rel1=0.003 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.014 dmk=0.288 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=11 it=5 geths=0.000 ccache=0.055 cgpu=0.018 prepS=0.000 lsAl=0.000 lsH2D=0.060 gemmF=0.000 syevdx=6.990 gemmB=0.000 evD2H=0.219 rel1=0.003 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.455 rel2=0.000 ar=0.180 store=0.002
+BANDPROF id=8 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.176 store=0.002
+BANDPROF id=14 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=12 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=1 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=7 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.176 store=0.002
+BANDPROF id=17 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=3 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=10 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.177 store=0.002
+BANDPROF id=16 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.178 store=0.002
+BANDPROF id=5 it=5 geths=0.000 ccache=0.000 cgpu=0.000 prepS=0.000 lsAl=0.000 lsH2D=0.000 gemmF=0.000 syevdx=0.000 gemmB=0.000 evD2H=0.000 rel1=0.000 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.000 dmk=0.000 rel2=0.000 ar=0.179 store=0.002
+BANDPROF id=0 it=5 geths=0.000 ccache=0.055 cgpu=0.017 prepS=0.000 lsAl=0.000 lsH2D=0.061 gemmF=0.000 syevdx=6.767 gemmB=0.000 evD2H=0.223 rel1=0.003 bcast=1.149 chemp=0.006 occw=0.000 evH2D=0.015 dmk=0.344 rel2=0.000 ar=0.178 store=0.002
+Force4B GPU: not enough free device memory; CPU fallback.

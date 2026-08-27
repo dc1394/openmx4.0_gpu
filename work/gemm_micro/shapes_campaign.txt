@@ -1,0 +1,55 @@
+# M2 microbenchmark shapes: the exact dense-solver GEMM calls of the
+# production campaign (source/{Band,Cluster}_DFT_{Col,NonCol}.c call sites),
+# alpha=1 beta=0, ld = natural dims.  "counts per 25-SCF production run" in
+# the comments come from the run manifests (gemmul8.d_calls/z_calls) and the
+# per-solve call structure:
+#   band col      3 Z/solve  (NN, CN at n^3; back TT at n^3),  8 k-owners
+#   band NC       7 Z/solve  (3 blocks x {NN,CN} at (n2/2)^3; back TT at n2^3)
+#   cluster col   3 D/solve  (NN, TN at n^3; back TT (MaxN,n,n); SCF1 MaxN=n)
+#   cluster NC   12 D + 1 Z  (6 blocks x {NN,TN} at (n2/2)^3; back TT (MaxN,n2,n2))
+# MaxN: ccol216 832 = 864/2+400; ccol512 1689 = 2048/2+665; cnc216 1987 = 864+0.2*5616.
+#
+# label          type opA opB  m    n    k
+bcol216_fwd1     z    N   N   2808 2808 2808
+bcol216_fwd2     z    C   N   2808 2808 2808
+bcol216_back     z    T   T   2808 2808 2808
+bcol384_fwd1     z    N   N   4992 4992 4992
+bcol384_fwd2     z    C   N   4992 4992 4992
+bcol384_back     z    T   T   4992 4992 4992
+bnc128_fwd1      z    N   N   1664 1664 1664
+bnc128_fwd2      z    C   N   1664 1664 1664
+bnc128_back      z    T   T   3328 3328 3328
+bnc216_fwd1      z    N   N   2808 2808 2808
+bnc216_fwd2      z    C   N   2808 2808 2808
+bnc216_back      z    T   T   5616 5616 5616
+ccol216_fwd1     d    N   N   2808 2808 2808
+ccol216_fwd2     d    T   N   2808 2808 2808
+ccol216_back     d    T   T   832  2808 2808
+ccol216_back1    d    T   T   2808 2808 2808
+ccol512_fwd1     d    N   N   6656 6656 6656
+ccol512_fwd2     d    T   N   6656 6656 6656
+ccol512_back     d    T   T   1689 6656 6656
+ccol512_back1    d    T   T   6656 6656 6656
+cnc216_dfwd1     d    N   N   2808 2808 2808
+cnc216_dfwd2     d    T   N   2808 2808 2808
+cnc216_zback     z    T   T   1987 5616 5616
+cnc216_zback1    z    T   T   5616 5616 5616
+# ---- S_G8-vs-dimension sweep (Fig. 4 support), square NN, both types ----
+sweep_d_1024     d    N   N   1024 1024 1024
+sweep_d_1664     d    N   N   1664 1664 1664
+sweep_d_2048     d    N   N   2048 2048 2048
+sweep_d_2808     d    N   N   2808 2808 2808
+sweep_d_3328     d    N   N   3328 3328 3328
+sweep_d_4096     d    N   N   4096 4096 4096
+sweep_d_4992     d    N   N   4992 4992 4992
+sweep_d_5616     d    N   N   5616 5616 5616
+sweep_d_6656     d    N   N   6656 6656 6656
+sweep_z_1024     z    N   N   1024 1024 1024
+sweep_z_1664     z    N   N   1664 1664 1664
+sweep_z_2048     z    N   N   2048 2048 2048
+sweep_z_2808     z    N   N   2808 2808 2808
+sweep_z_3328     z    N   N   3328 3328 3328
+sweep_z_4096     z    N   N   4096 4096 4096
+sweep_z_4992     z    N   N   4992 4992 4992
+sweep_z_5616     z    N   N   5616 5616 5616
+sweep_z_6656     z    N   N   6656 6656 6656
