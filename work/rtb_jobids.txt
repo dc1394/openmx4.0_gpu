@@ -17,3 +17,12 @@ DECISION: ab1+ab2 both drew bnode013; kept BOTH as a same-node back-to-back A/B 
   the clean-node rtb_s_gpu run (89.59 s, bnode117) to 0.7%, so bnode013 does not distort
   this suite.  This supersedes the earlier ab1 DISCARDED note (that note applied the
   pooled-mean convention, which this same-node pair design does not need).
+=== MPS-off columns, 2026-08-27 10:46 ===
+REMAIN before submit: 341.77 of 500.00
+rtb_s_gpu_nomps: Request 951948.nqsv submitted to queue: gen_S.
+rtb_L_gpu_nomps: Request 951949.nqsv submitted to queue: gen_S.
+=== MPS-off columns done (11:50) ===
+rtb_s_gpu_nomps (951948, bnode054): 108.45 s, 14/14 pass, maxdiffUtot 4.7e-11
+rtb_L_gpu_nomps (951949, bnode098): 3684.69 s, 16/16 pass, maxdiffUtot 2.3e-9
+cross-check: s nomps 108.45 (clean node) vs A/B-pair nomps 108.91/107.89 (bnode013) -> consistent
+README rewritten: CPU / GPU-noMPS / GPU-MPS columns in both tables.

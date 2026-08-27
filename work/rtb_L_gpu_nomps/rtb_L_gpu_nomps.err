@@ -1,0 +1,4 @@
+Set_ProExpn_VNA DS_VNA GPU: needs 1.412 GiB per rank, 48 rank(s) share this device and only 49.348 GiB is free; CPU fallback.
+Set_ProExpn_VNA DS_VNA GPU: needs 0.968 GiB per rank, 48 rank(s) share this device and only 46.310 GiB is free; CPU fallback.
+Set_ProExpn_VNA DS_VNA GPU: needs 1.133 GiB per rank, 48 rank(s) share this device and only 46.310 GiB is free; CPU fallback.
+Set_ProExpn_VNA DS_VNA GPU: needs 1.935 GiB per rank, 48 rank(s) share this device and only 46.310 GiB is free; CPU fallback.

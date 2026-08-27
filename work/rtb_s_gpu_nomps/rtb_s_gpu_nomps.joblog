@@ -1,0 +1,42 @@
+/var/opt/nec/nqsv/jsv/jobfile/0.951948.10/user_script: line 49: 1229731 Killed                  sleep 5
+=== runtest.result ===
+   1  input_example/Benzene.dat        Elapsed time(s)=   15.92  diff Utot= 0.000000000001  diff Force= 0.000000000000
+   2  input_example/C60.dat            Elapsed time(s)=   15.33  diff Utot= 0.000000000043  diff Force= 0.000000000007
+   3  input_example/CO.dat             Elapsed time(s)=    8.34  diff Utot= 0.000000000000  diff Force= 0.000000000006
+   4  input_example/Cr2.dat            Elapsed time(s)=    8.44  diff Utot= 0.000000000003  diff Force= 0.000000000002
+   5  input_example/Crys-MnO.dat       Elapsed time(s)=    7.08  diff Utot= 0.000000000014  diff Force= 0.000000000002
+   6  input_example/GaAs.dat           Elapsed time(s)=    9.45  diff Utot= 0.000000000022  diff Force= 0.000000000001
+   7  input_example/Glycine.dat        Elapsed time(s)=    5.51  diff Utot= 0.000000000001  diff Force= 0.000000000001
+   8  input_example/Graphite4.dat      Elapsed time(s)=    3.58  diff Utot= 0.000000000002  diff Force= 0.000000000000
+   9  input_example/H2O-EF.dat         Elapsed time(s)=    4.87  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  10  input_example/H2O.dat            Elapsed time(s)=    5.21  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  11  input_example/HMn.dat            Elapsed time(s)=   10.33  diff Utot= 0.000000000000  diff Force= 0.000000000000
+  12  input_example/Methane.dat        Elapsed time(s)=    3.81  diff Utot= 0.000000000047  diff Force= 0.000000000000
+  13  input_example/Mol_MnO.dat        Elapsed time(s)=    7.27  diff Utot= 0.000000000001  diff Force= 0.000000000000
+  14  input_example/Ndia2.dat          Elapsed time(s)=    3.31  diff Utot= 0.000000000004  diff Force= 0.000000000000
+
+
+Total elapsed time (s)      108.45
+/var/opt/nec/nqsv/jsv/jobfile/0.951948.10/user_script: line 66: 1229117 Killed                  ( for _ in $(seq 1 700);
+do
+    { date '+--- %H:%M:%S'; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; } >> "${CASE}.smi" 2>&1; sleep 5;
+done )
+=== peak GPU (util %, MiB) ===
+98 %, 22814 MiB
+0 %, 22362 MiB
+0 %, 22294 MiB
+
+============================================================
+Request ID:             951948.nqsv
+Request Name:           rtb_s_gnom
+Queue:                  gen_S@nqsv
+Number of Jobs:         1
+User Name:              dc1394
+Group Name:             GPU2026
+Created Request Time:   Thu Aug 27 10:46:12 2026
+Started Request Time:   Thu Aug 27 10:46:20 2026
+Ended Request Time:     Thu Aug 27 10:48:41 2026
+Resources Information:
+  Elapse:               146S
+  Remaining Elapse:     3454S
+============================================================
