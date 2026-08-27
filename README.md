@@ -70,6 +70,31 @@ Use flat MPI. In OpenMX 4.0 GPU, hybrid MPI/OpenMP parallelization is not effect
 mpirun -np 16 ./openmx input.dat -nt 1
 ```
 
+## NVIDIA MPS: recommended whenever several ranks share a GPU
+With flat MPI, all the MPI ranks of a node normally share one GPU — so run the
+[NVIDIA CUDA Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/).
+Without MPS the kernels of the different ranks are serialized by context
+switching on the device; under MPS they execute concurrently.
+The effect is large: with 48 ranks sharing one H100 PCIe, the `-runtest`
+suite below completes in 108.4 s without MPS and 90.2 s with it (17% faster;
+mean of two back-to-back A/B pairs on the same node), and the `-runtestL`
+suite drops from 3684.7 s without MPS to 1481.6 s with it — 2.5x faster.
+Without MPS the 48 time-sliced CUDA contexts make the GPU `-runtestL` run
+even slower than the CPU-only run (2203.6 s), so on bigger systems MPS is
+not a tweak but a requirement for the GPU to pay off.
+Start the control daemon once per node before `mpirun`, and stop it afterwards:
+
+```sh
+nvidia-cuda-mps-control -d             # start the MPS control daemon
+mpirun -np 48 ./openmx input.dat -nt 1
+echo quit | nvidia-cuda-mps-control    # stop it
+```
+
+On a multi-node batch job, start one daemon on every node (`/tmp` is usually
+node-local, so per-node `CUDA_MPS_PIPE_DIRECTORY`/`CUDA_MPS_LOG_DIRECTORY`
+paths work well). MPS requires native Linux; it is not available under WSL2.
+The benchmark tables below list the H100 GPU columns both without and with MPS.
+
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems (for the Pegasus supercomputer at the University of Tsukuba, a ready-made `Makefile.pegasus` is included); please refer to them. Since v2.0 the first `make` also builds the bundled ELPA/COSMA stack for "gpusolver2" automatically, which adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
 
@@ -113,62 +138,69 @@ https://journals.jps.jp/doi/10.7566/JPSJ.94.124003
 However, the current version offers improved performance compared to the version described in this paper.
 
 ### Built-in test suites (-runtest / -runtestL)
-The two standard OpenMX test suites were run on a machine with a Core i9-10980XE (18 cores), a GeForce RTX 5080 (16 GB) and the NVIDIA HPC SDK 26.5 (CUDA 13.2), using flat MPI with all 18 ranks sharing the single GPU. The same binary was used for both columns; `OPENMX_GPU=0` demotes the whole run to the CPU (ELPA2) paths, and the GPU runs use the defaults (`scf.eigen.lib gpusolver`, GEMMul8 on):
+The two standard OpenMX test suites were run on two machines, both with the NVIDIA HPC SDK 26.5 (CUDA 13.2) and flat MPI:
+
+- **PC** — Core i9-10980XE (18 cores) + GeForce RTX 5080 (16 GB), 18 ranks sharing the single GPU;
+- **Pegasus (CCS, Univ. of Tsukuba) node** — Xeon Platinum 8468 (48 cores) + H100 PCIe (80 GB), 48 ranks sharing the single GPU; the GPU suite was run twice, without CUDA MPS (time-sliced contexts) and with it (see above).
+
+On each machine the same binary was used for both columns: `OPENMX_GPU=0` demotes the whole run to the CPU (ELPA2) paths (the Pegasus CPU jobs additionally had no GPU allocated at all), and the GPU runs use the input-file defaults (`scf.eigen.lib gpusolver`, GEMMul8 on):
 
 ```sh
-# GPU (defaults; GEMMul8 enabled)
-mpirun -np 18 ./openmx -runtest  -nt 1
-mpirun -np 18 ./openmx -runtestL -nt 1
+# GPU (defaults; GEMMul8 enabled); N = 18 on the PC, 48 on the Pegasus node.
+# On the Pegasus node the GPU suites were run twice: with the MPS daemon up
+# ("MPS" columns) and without it ("no MPS" columns).
+mpirun -np N ./openmx -runtest  -nt 1
+mpirun -np N ./openmx -runtestL -nt 1
 # CPU reference (same binary)
-OPENMX_GPU=0 mpirun -np 18 ./openmx -runtest  -nt 1
-OPENMX_GPU=0 mpirun -np 18 ./openmx -runtestL -nt 1
+OPENMX_GPU=0 mpirun -np N ./openmx -runtest  -nt 1
+OPENMX_GPU=0 mpirun -np N ./openmx -runtestL -nt 1
 ```
 
 `-runtest` (14 small systems, 2–60 atoms; elapsed seconds from runtest.result):
 
-| input | CPU (s) | GPU (s) |
-|---|---:|---:|
-| Benzene | 6.14 | 7.41 |
-| C60 | 10.29 | 9.96 |
-| CO | 7.97 | 9.13 |
-| Cr2 | 8.07 | 7.96 |
-| Crys-MnO | 13.07 | 9.73 |
-| GaAs | 21.37 | 13.73 |
-| Glycine | 4.86 | 5.38 |
-| Graphite4 | 3.91 | 2.86 |
-| H2O-EF | 4.49 | 4.49 |
-| H2O | 3.85 | 3.88 |
-| HMn | 12.82 | 11.26 |
-| Methane | 3.15 | 3.16 |
-| Mol_MnO | 8.17 | 7.42 |
-| Ndia2 | 4.64 | 2.60 |
-| **Total** | **112.80** | **98.94** |
+| input | i9 CPU (s) | 5080 GPU (s) | Xeon CPU (s) | H100 GPU, no MPS (s) | H100 GPU, MPS (s) |
+|---|---:|---:|---:|---:|---:|
+| Benzene | 6.14 | 7.41 | 13.63 | 15.92 | 11.78 |
+| C60 | 10.29 | 9.96 | 7.36 | 15.33 | 6.35 |
+| CO | 7.97 | 9.13 | 7.25 | 8.34 | 7.47 |
+| Cr2 | 8.07 | 7.96 | 8.31 | 8.44 | 7.90 |
+| Crys-MnO | 13.07 | 9.73 | 10.84 | 7.08 | 6.44 |
+| GaAs | 21.37 | 13.73 | 16.36 | 9.45 | 9.28 |
+| Glycine | 4.86 | 5.38 | 4.65 | 5.51 | 4.59 |
+| Graphite4 | 3.91 | 2.86 | 4.16 | 3.58 | 3.30 |
+| H2O-EF | 4.49 | 4.49 | 4.79 | 4.87 | 4.54 |
+| H2O | 3.85 | 3.88 | 4.37 | 5.21 | 4.47 |
+| HMn | 12.82 | 11.26 | 10.53 | 10.33 | 10.00 |
+| Methane | 3.15 | 3.16 | 3.64 | 3.81 | 3.44 |
+| Mol_MnO | 8.17 | 7.42 | 7.50 | 7.27 | 6.99 |
+| Ndia2 | 4.64 | 2.60 | 5.01 | 3.31 | 3.04 |
+| **Total** | **112.80** | **98.94** | **108.41** | **108.45** | **89.59** |
 
-These systems are far below the GPU/CPU switching thresholds of the dense eigensolvers, so the diagonalization automatically falls back to the CPU and only the GPU-accelerated matrix-construction stages differ — the point of this table is that the whole suite passes on the GPU build with the same accuracy as the CPU paths (max diff Utot = 5.5e-11 Hartree in both columns).
+These systems are far below the GPU/CPU switching thresholds of the dense eigensolvers, so the diagonalization automatically falls back to the CPU and only the GPU-accelerated matrix-construction stages differ — the point of this table is that the whole suite passes on the GPU build with the same accuracy as the CPU paths (max diff Utot ≤ 5.5e-11 Hartree in all five columns). On these tiny systems the GPU pays off only under MPS (108.45 s → 89.59 s); the elevated first one or two cases of each Pegasus column are the one-time warm-up of the batch node (input-file cache, CUDA context creation).
 
-`-runtestL` (16 medium/large systems):
+`-runtestL` (16 medium/large systems; each "ratio" column is CPU/GPU on the same machine — for the H100, CPU / MPS-on GPU):
 
-| input | atoms | solver | CPU (s) | GPU (s) | CPU/GPU |
-|---|---:|---|---:|---:|---:|
-| 5_5_13COb2 | 155 | band | 106.33 | 78.80 | 1.35 |
-| B2C62_Band | 64 | band | 704.51 | 540.50 | 1.30 |
-| CG15c-DC-LNO | 650 | dc-lno | 161.87 | 136.06 | 1.19 |
-| DIA512-1 | 512 | krylov | 184.10 | 185.44 | 0.99 |
-| FeBCC | 16 | band (sp) | 183.65 | 190.18 | 0.97 |
-| GEL | 40 | band | 56.58 | 52.34 | 1.08 |
-| GFRAG | 54 | cluster | 45.10 | 43.25 | 1.04 |
-| GGFF | 40 | band (NC) | 1657.70 | 1304.17 | 1.27 |
-| MCCN | 564 | krylov | 313.57 | 327.93 | 0.96 |
-| Mn12_148_F | 148 | cluster (sp) | 121.04 | 88.59 | 1.37 |
-| N1C999 | 1000 | dc-lno (sp) | 1663.46 | 1568.67 | 1.06 |
-| Ni63-O64 | 127 | band (sp) | 104.33 | 68.53 | 1.52 |
-| Pt63 | 63 | cluster | 83.42 | 60.11 | 1.39 |
-| SialicAcid | 40 | cluster | 25.57 | 23.05 | 1.11 |
-| ZrB2_2x2 | 76 | band | 307.99 | 222.72 | 1.38 |
-| nsV4Bz5 | 64 | cluster | 138.14 | 115.06 | 1.20 |
-| **Total** | | | **5857.35** | **5005.41** | **1.17** |
+| input | atoms | solver | i9 CPU (s) | 5080 GPU (s) | ratio | Xeon CPU (s) | H100 GPU, no MPS (s) | H100 GPU, MPS (s) | ratio |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 5_5_13COb2 | 155 | band | 106.33 | 78.80 | 1.35 | 52.66 | 65.14 | 35.60 | 1.48 |
+| B2C62_Band | 64 | band | 704.51 | 540.50 | 1.30 | 320.14 | 878.20 | 157.35 | 2.03 |
+| CG15c-DC-LNO | 650 | dc-lno | 161.87 | 136.06 | 1.19 | 65.92 | 95.57 | 49.83 | 1.32 |
+| DIA512-1 | 512 | krylov | 184.10 | 185.44 | 0.99 | 68.28 | 353.95 | 56.04 | 1.22 |
+| FeBCC | 16 | band (sp) | 183.65 | 190.18 | 0.97 | 78.78 | 83.68 | 66.27 | 1.19 |
+| GEL | 40 | band | 56.58 | 52.34 | 1.08 | 31.23 | 52.37 | 22.00 | 1.42 |
+| GFRAG | 54 | cluster | 45.10 | 43.25 | 1.04 | 23.22 | 41.56 | 15.50 | 1.50 |
+| GGFF | 40 | band (NC) | 1657.70 | 1304.17 | 1.27 | 573.69 | 591.56 | 332.88 | 1.72 |
+| MCCN | 564 | krylov | 313.57 | 327.93 | 0.96 | 123.87 | 176.05 | 95.15 | 1.30 |
+| Mn12_148_F | 148 | cluster (sp) | 121.04 | 88.59 | 1.37 | 57.85 | 70.06 | 29.04 | 1.99 |
+| N1C999 | 1000 | dc-lno (sp) | 1663.46 | 1568.67 | 1.06 | 489.76 | 828.62 | 458.58 | 1.07 |
+| Ni63-O64 | 127 | band (sp) | 104.33 | 68.53 | 1.52 | 53.18 | 112.07 | 24.09 | 2.21 |
+| Pt63 | 63 | cluster | 83.42 | 60.11 | 1.39 | 31.42 | 74.37 | 23.43 | 1.34 |
+| SialicAcid | 40 | cluster | 25.57 | 23.05 | 1.11 | 14.33 | 32.42 | 12.96 | 1.11 |
+| ZrB2_2x2 | 76 | band | 307.99 | 222.72 | 1.38 | 137.12 | 142.96 | 68.31 | 2.01 |
+| nsV4Bz5 | 64 | cluster | 138.14 | 115.06 | 1.20 | 82.15 | 86.10 | 34.59 | 2.37 |
+| **Total** | | | **5857.35** | **5005.41** | **1.17** | **2203.59** | **3684.69** | **1481.62** | **1.49** |
 
-All 16 inputs pass on the GPU (GEMMul8 on) with max diff Utot = 2.0e-9 Hartree — the same order as the official CPU reference results bundled in `work/large_example/runtestL.result_*`. On the larger inputs the dense band/cluster diagonalizations run on the GPU through GEMMul8; with 18 ranks sharing one 16 GB GPU, some construction stages transiently fall back to the CPU when device memory is tight (by design — the run continues and stays correct). Keep in mind that these test inputs are correctness tests, not performance showcases: they are small-to-medium systems dominated by stages other than the dense diagonalization, which is where the GPU gains the most. The speedup grows with the system size (see "Important notes" below), and calculations with hundreds of atoms and a dense solver benefit far more than this 1.17x.
+All 16 inputs pass on the GPU (GEMMul8 on) on both machines — max diff Utot = 2.0e-9 Hartree on the RTX 5080 and 2.3e-9 on the H100 (identical with and without MPS), the same order as the official CPU reference results bundled in `work/large_example/runtestL.result_*` (whose largest deviation is also on Pt63, the case that reaches 2.3e-8 in our 48-rank CPU reference column). The no-MPS column is the "NVIDIA MPS" section above in numbers: 48 time-sliced CUDA contexts drag the suite to 3684.69 s — 2.5x the MPS-on time, slower than the CPU-only run, with per-case penalties up to 6.3x (DIA512-1) — while accuracy is unaffected. On the larger inputs the dense band/cluster diagonalizations run on the GPU through GEMMul8; when many ranks share one GPU, some construction stages transiently fall back to the CPU where the device-memory preflight says they do not fit (by design — the run continues and stays correct; this happens on the 16 GB RTX 5080 and, at 48 ranks, even on the 80 GB H100). Keep in mind that these test inputs are correctness tests, not performance showcases: they are small-to-medium systems dominated by stages other than the dense diagonalization, which is where the GPU gains the most. The speedup grows with the system size (see "Important notes" below), and calculations with hundreds of atoms and a dense solver benefit far more than the 1.17x / 1.49x totals above.
 
 ## Important notes
 At present, GPU-accelerated OpenMX performs faster than standard OpenMX for calculations involving systems containing hundreds of atoms. For calculations involving systems with fewer than a hundred atoms, standard OpenMX should be used (or set `scf.eigen.lib elpa2` to run the CPU paths of this code). Please use with caution as it may contain bugs.
@@ -232,6 +264,26 @@ based on the Ozaki Scheme II.
 If you use this project in academic work, please also cite the GEMMul8
 upstream references (see the GEMMul8 repository).
 
+#### ELPA / COSMA (the "gpusolver2" stack, since v2.0)
+
+The distributed multi-GPU cluster diagonalization (`scf.eigen.lib gpusolver2`)
+links four additional libraries, bundled as source archives under
+`source/third_party/dist/` and built automatically by the first `make`; each
+archive carries its original license file:
+
+- **ELPA** 2026.02 — <https://elpa.mpcdf.mpg.de/> — Copyright (c) the ELPA
+  consortium — **GNU Lesser General Public License v3.0 (`LGPL-3.0`)**
+  (`COPYING/` inside the archive). The conventional "elpa1"/"elpa2" CPU paths
+  use the ELPA 2018.05 source embedded in upstream OpenMX under the same
+  license.
+- **COSMA** 2.8.4 — <https://github.com/eth-cscs/COSMA> — Copyright (c) ETH
+  Zürich (parts: Advanced Micro Devices, Inc.) — **BSD 3-Clause License
+  (`BSD-3-Clause`)**
+- **COSTA** and **Tiled-MM** (COSMA dependencies) —
+  <https://github.com/eth-cscs/COSTA>,
+  <https://github.com/eth-cscs/Tiled-MM> — Copyright (c) ETH Zürich —
+  **BSD 3-Clause License (`BSD-3-Clause`)**
+
 ### License Compatibility Summary
 
 | Component | Original License | Compatible with GPL v3 |
@@ -240,5 +292,7 @@ upstream references (see the GEMMul8 repository).
 | GPU modifications (this project) | GPL-3.0-or-later | — (same license) |
 | FFTW3 | GPL-2.0-or-later | Yes (via "or later" clause) |
 | GEMMul8 | MIT | Yes (permissive → strong copyleft) |
+| ELPA (2018.05 embedded; 2026.02 for "gpusolver2") | LGPL-3.0 | Yes (LGPL v3 code may be conveyed under GPL v3) |
+| COSMA (with COSTA, Tiled-MM) | BSD-3-Clause | Yes (permissive → strong copyleft) |
 
 The combined work is distributed under the terms of GPL v3 or later.
