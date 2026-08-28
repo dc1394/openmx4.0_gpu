@@ -396,3 +396,63 @@ sub-grid of fewer ranks (1 rank/GPU was 2.4x slower than all 36; the
 optimum is the full grid) and the ELPA 1-stage solver (1.5x slower AND a
 300x worse SCF residual at iteration 25).  gpusolver2's value here is
 reach, not speed: it is the path for systems too large for one GPU.
+
+PROVENANCE NOTE 3 (2026-08-28): binary lineage on the commit graph
+------------------------------------------------------------------
+Added in response to the pre-submission review, which correctly
+observed that this file names two binaries (e227507 for g/o/c, f5fb5b3
+for d) without relating either to the v2.0_thesis tag.  The relation:
+
+  e227507 --[gpusolver2 merge 2f43e57]--> f5fb5b3
+          --[GEMMul8 v3.1.1 -> v3.2.0, cd5f0d5]
+          --[manifest instrumentation c12475d, 7f1e8a0]--> db72cd4
+                                              = tag v2.0_thesis
+
+* e227507 ("Round 2 of GPU-path host-memory cuts" -- the binary this
+  campaign labels "round-3", its third measurement build) is a DIRECT
+  LINEAR ANCESTOR of the tag, 16 commits behind it.  It is NOT the
+  same commit as the tag.  f5fb5b3 is likewise a direct linear
+  ancestor, 8 commits behind the tag.
+* Every source change between e227507 and the tag falls into three
+  classes, none of which touches the code the g/o/c runs execute:
+  (1) the gpusolver2 solver addition -- absent from e227507 entirely,
+      and at f5fb5b3 guarded by scf.eigen.lib: the gpusolver dispatch
+      requires gpusolver2_flag==0 (Cluster_DFT_NonCol.c:2399), so it
+      is inert unless selected;
+  (2) the GEMMul8 v3.1.1 (6bf409b) -> v3.2.0 (833e576) bump cd5f0d5,
+      verified inert for OpenMX: upstream changed only the FP8
+      emulation and the hook mode, neither of which gemmul8_openmx.cu
+      instantiates, and the bump commit records bitwise-identical
+      Uele, NormRD and |F|max with unchanged wall clock on the
+      216-atom NC bench;
+  (3) manifest/phase-timer instrumentation and docs/data payload
+      (c12475d, 7f1e8a0, d4fae39, ...), absent from BOTH binaries
+      used here.
+* Binary identity per run: every job script in this campaign records
+  its commit in its header ("# Binary: round-3 (commit e227507)"; the
+  gpusolver2 scripts name f5fb5b3).  An md5 of the e227507 build was
+  not recorded -- that practice began with s443nc16 (f5fb5b3 build:
+  md5 62e7900cf8ff4c68090c2f1879d8cdbd).  The thesis production
+  tables (siprod_thesis_*, siband_scaling_thesis_*, siacc_thesis_*)
+  use the tag build, md5 11227640dc6f8a8b194ddcd9ab811917.
+* Single-binary companion table: s443nc16_reps_result.txt re-measured
+  g, c and d at 1..4 nodes on ONE binary (f5fb5b3, 16 ranks/node,
+  jobs 912850..912882, 2026-08-16), so no gpusolver-vs-gpusolver2
+  ratio there crosses a binary boundary.  Cite that table for solver
+  comparisons; this table remains the rank-matched 36-ranks/node
+  g/o/c reference.  (A 48-ranks/node attempt was aborted at the
+  1-node host-OOM wall: s443nc48_status.txt.)
+* Evidence classes for this pre-manifest campaign: per-run .env (full
+  node list), .smi, .joblog, and .std carrying the per-run
+  "<Set_Hamiltonian> GPU ... CPU fallback ranks=N" line -- N=0 in
+  every retained run of this campaign; manifest.json and the GEMMul8
+  workspace-fallback counter did not exist yet (they arrived with the
+  instrumentation commits above).  GEMMul8 engagement in g is fixed
+  by the deck flag (o sets scf.gemmul8.enable off) and visible as the
+  g-vs-o last-digit Utot differences at 1, 2 and 4 nodes (identical
+  at 3 nodes).
+Verify:  git merge-base --is-ancestor e227507 v2.0_thesis
+         git rev-list --count e227507..v2.0_thesis    # = 16
+         git rev-list --count f5fb5b3..v2.0_thesis    # = 8
+         git diff --stat f5fb5b3 v2.0_thesis -- source/
+Slow-node policy, quantified: slow_node_policy.txt.

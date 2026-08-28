@@ -70,3 +70,14 @@ a hard size constraint, documented here).
   build and land on release/v2.0_thesis as follow-up commits; the Zenodo
   archive is built from the branch head, which then contains both.
 - GEMMul8 submodule pinned at 833e5761 (v3.2.0); fftw3 pinned d69d34f0.
+- Addendum 2026-08-28 (pre-submission review response): the sec. 2
+  "`*.bak`" exclusion is clarified to mean BINARY backups
+  (work/openmx.962f8d25.bak).  The two TEXT provenance files
+  s333nc_reps_result.txt.bak and s443nc_reps_result.txt.bak -- the
+  preserved discarded slow-node triples that their summaries cite --
+  are tracked from this commit on.  Binary lineage of the s443nc
+  campaign relative to the tag: PROVENANCE NOTE 3 in
+  work/s443nc_reps_result.txt (e227507 and f5fb5b3 are direct linear
+  ancestors of the tag, 16 and 8 commits behind).  Quantified
+  slow-node policy: work/slow_node_policy.txt.  Aborted 48-rank
+  campaign documented: work/s443nc48_status.txt.

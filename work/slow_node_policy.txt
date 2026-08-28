@@ -1,0 +1,80 @@
+Slow-node screening policy, quantified
+======================================
+Recorded 2026-08-28, in response to the pre-submission review's request
+to state numerically what "slow node" means.  Nothing here is new
+methodology: every event below was already recorded in the campaign
+file it cites; this file only aggregates the numbers in one place.
+
+The rule as applied (all Pegasus gen_S campaigns in this repository)
+--------------------------------------------------------------------
+1. A standing blocklist of known-slow nodes is kept: bnode013 (first),
+   and -- after s443nc_1n_o3 exposed a second slow node -- bnode033.
+2. Screening is by NODE IDENTITY, never by the run's own timing: a run
+   whose allocation includes a blocklisted node -- checked on the FULL
+   "=== nodes ===" list of the run's .env, i.e. every node of a
+   multi-node job, not just the node the batch script starts on -- is
+   discarded and re-measured, before its timing is inspected and
+   regardless of what that timing turns out to be.  Because the
+   trigger is identity, not timing, no per-run judgment (and hence no
+   opportunity for selective discarding) is involved.
+3. Discarded raw data is preserved and auditable: superseded summary
+   tables stay in *_result.txt.bak, discarded run directories stay on
+   disk and in the archive.
+
+Entry criterion: what put a node on the list
+--------------------------------------------
+A node was blocklisted after single-node Total-time excursions of
++15% or more against clean-node repetition triples whose own relative
+sample SD is <= 2% -- an excess an order of magnitude above the
+clean-node run-to-run spread -- confirmed by repetition (bnode013:
+three events) or by an unambiguous single event against tight siblings
+(bnode033: +17%), later independently reconfirmed.
+
+  bnode013 (three founding events, +16..20%):
+    - cghelgeo_g8off single sample 527.800 s vs the clean pooled
+      e227507 series 443.76 +- 1.91 s (+19%); RETRACTED
+      (cghelgeo_v4_gemmul8_ab_result.txt).
+    - s443nc 1n36 GPU probe 220 s vs the clean 36-rank g triple
+      183.79 +- 1.60 s (+20%) (same file; s333nc_reps_result.txt.bak).
+    - s333nc_1n_g1 283.106 s vs clean siblings 244.9-245.3 s (+16%)
+      (s333nc_reps_result.txt; its .bak preserves the discarded
+      triple).
+  bnode033:
+    - s443nc_1n_o3 217.008 s vs the clean replacement triple
+      185.19 +- 0.48 s (+17%) (s443nc_reps_result.txt; .bak).
+    - Reconfirmed at 4 nodes: gpusolver2 reps whose allocation
+      included bnode033 ran 293.7-303.5 s vs 279.0-282.6 s clean
+      (+5..8%) (s443nc_reps_result.txt, PROVENANCE NOTE 2).
+
+The identity rule cuts both ways (why it is a priori, not post hoc)
+-------------------------------------------------------------------
+Runs on blocklisted nodes were discarded even when their timing was
+indistinguishable from clean:
+  - dia64dc_1n_o1 on bnode013: 200.069 s vs replacement 198.611 s
+    (+0.7%); discarded per convention (dia64dc_nodes_result.txt).
+  - s443nc 4-node gpusolver2 reps containing bnode013: 278.2-282.5 s,
+    inside the clean range 279.0-282.6 s; discarded per convention
+    (s443nc_reps_result.txt, PROVENANCE NOTE 2 -- which also records
+    that in that workload bnode013 is NOT measurably slow while
+    bnode033 is).
+Conversely, below-threshold outliers did NOT extend the blocklist and
+their runs were KEPT in the recorded statistics:
+  - cghelgeo_v4_g1 on bnode011 (+10% Total): annotated in
+    cghelgeo_v4_result.txt and retained; bnode011 was not blocklisted.
+  - s443nc_2n16_d3 (+6% Total on clean nodes): shown to be shared-
+    filesystem contention entirely outside the solver and retained
+    (s443nc16_reps_result.txt).
+
+Physics is unaffected; only wall clock is
+-----------------------------------------
+Where a slow-node run completed, its Utot and |F|max are bit-identical
+to its clean siblings (e.g. all six s443nc 1-node o runs, including
+the discarded o3, share Utot -1577.619265912467).  The discard
+convention protects the timing statistics only.
+
+Exemption
+---------
+Same-node A/B ratio measurements (the cghelgeo gemmul8 on/off pairs,
+cghelgeo_v4_gemmul8_ab_result.txt) compare two runs on the SAME node,
+so a slow node cancels in the ratio; a single-sample ABSOLUTE timing
+drawn on a blocklisted node there is retracted, the ratios stand.

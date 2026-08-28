@@ -1,0 +1,32 @@
+s443nc48: the 48-ranks/node re-measurement attempt -- status
+============================================================
+Recorded 2026-08-28.  This namespace (36 case directories,
+s443nc48_{1..4}n_{d,g,c}{1..3}) is an ABORTED campaign: no summary
+table was ever produced from it and no number from it is cited
+anywhere.  This note exists so the archive contains no undocumented
+run directories.
+
+What it was: gen_s443nc48.sh derived the 36 cases from the proven
+s443nc templates to re-measure the 384-atom NC cluster point at the
+production rank density (-npernode 48 instead of that campaign's 36),
+all on the single gpusolver2-merge binary f5fb5b3:
+{d = gpusolver2, g = gpusolver, c = CPU elpa2} x {1..4} nodes x 3 reps.
+
+Outcome of the 2026-08-15 submission wave:
+  - s443nc48_1n_g1 and s443nc48_1n_d1: host-OOM-killed in SCF 1
+    (prterun: rank killed by signal 9; openmx exit status 137).  The
+    g1 .std additionally shows GPU residency already degraded at this
+    density: "<Set_Hamiltonian> ... 48 Hamiltonian rank(s), GPU
+    concurrency=39, CPU fallback ranks=9".
+  - s443nc48_2n_g1 and s443nc48_2n_d1: completed normally; retained
+    as evidence, never summarized or used.
+  - The remaining 32 cases: cancelled before starting (no .std).
+
+Disposition: at 48 ranks/node the 384-atom NC problem does not fit
+the 124-GiB hosts at 1 node, so a complete 1..4-node scaling table is
+impossible at that density.  The campaign was aborted on 2026-08-15
+and replaced by the 16-ranks/node campaign (submitted 2026-08-16) --
+s443nc16_reps_result.txt -- the densest configuration at which all
+three solver paths complete at every node count; its "Rank count is
+not free" section quantifies the 36->16 rank effect.  The
+36-ranks/node g/o/c table remains in s443nc_reps_result.txt.

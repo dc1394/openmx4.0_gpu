@@ -377,3 +377,18 @@ Host memory (node 0 peak, of 124 GiB) leaves headroom everywhere at this
 rank count: gpusolver 40-87, elpa2 31-74, gpusolver2 50-116.  The 1-node
 gpusolver2 figure (115-116) is the one point still close to the ceiling --
 that is the measurement that forced 16 ranks/node in the first place.
+
+ADDENDUM (2026-08-28): relation of f5fb5b3 to the v2.0_thesis tag
+-----------------------------------------------------------------
+f5fb5b3 is a direct linear ancestor of the v2.0_thesis tag (db72cd4),
+8 commits behind it.  Between the two, the only source changes are the
+GEMMul8 v3.1.1 -> v3.2.0 bump (cd5f0d5: verified inert for OpenMX --
+bitwise-identical results, unchanged wall clock on the 216-atom NC
+bench) and the additive manifest/phase-timer instrumentation (c12475d,
+7f1e8a0; absent from this binary; overhead checks in
+manifest_validation_result.txt), plus build-system and documentation
+commits -- enumerate with: git diff --stat f5fb5b3 v2.0_thesis -- source/
+Full commit-graph lineage (including e227507, the 36-rank campaign's
+g/o/c binary): PROVENANCE NOTE 3 in s443nc_reps_result.txt.
+Slow-node policy, quantified: slow_node_policy.txt.
+The aborted 48-ranks/node attempt: s443nc48_status.txt.
