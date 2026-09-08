@@ -1,28 +1,34 @@
 openmx40gpu_v2.0_thesis_measurements_20260908.zip -- split for GitHub
 =====================================================================
-Revision 3 of the measurement-distribution zip (supersedes the 20260828
-revision whose parts sit alongside).  The single file is 297,707,562
-bytes (283.9 MB), which exceeds GitHub's 100 MB per-file limit, so it is
-stored on this branch as three split(1) parts.  Reassemble it
-byte-identically with:
+Revision 4 of the measurement-distribution zip (same filename as
+revision 3, which it supersedes; the 20260828 revision's parts sit
+alongside).  The single file is 299,656,001 bytes (285.8 MB), which
+exceeds GitHub's 100 MB per-file limit, so it is stored on this branch
+as four split(1) parts.  Reassemble it byte-identically with:
 
   cat openmx40gpu_v2.0_thesis_measurements_20260908.zip.part?? \
       > openmx40gpu_v2.0_thesis_measurements_20260908.zip
 
 md5 checksums:
-  8c98ef4b7b0b9450d8d3fdce14bd4e04  openmx40gpu_v2.0_thesis_measurements_20260908.zip  (reassembled)
-  bb9137df0f9b7ffa27ddd0d7094032d8  openmx40gpu_v2.0_thesis_measurements_20260908.zip.part00
-  a959d50e6bdb887ed8cb078687a23c0d  openmx40gpu_v2.0_thesis_measurements_20260908.zip.part01
-  a18feeb6ef2676e4e1b87626ea3aafa4  openmx40gpu_v2.0_thesis_measurements_20260908.zip.part02
+  4554614b8ceac813e58aef62d6b9e5b3  openmx40gpu_v2.0_thesis_measurements_20260908.zip  (reassembled)
+  d0c7b38c4a3d136263c415264d1092fa  openmx40gpu_v2.0_thesis_measurements_20260908.zip.part00
+  9bee8b360ddaf265a517fed188a7c114  openmx40gpu_v2.0_thesis_measurements_20260908.zip.part01
+  7fc64f05184c9e28cb407ff5472fb02b  openmx40gpu_v2.0_thesis_measurements_20260908.zip.part02
+  47c06d8c791a4c71124c4c0def867a60  openmx40gpu_v2.0_thesis_measurements_20260908.zip.part03
 
 Contents (see PACKING_NOTE.txt inside the zip for the full itemization):
-tracked payload = git archive of this branch @ 6d83a4ee (the commit hash
+tracked payload = git archive of this branch @ e6f4c9f4 (the commit hash
 is stored as the zip's archive comment), pathspecs `work/` and
-`README.md` -- now including the practical-convergence verification
-(work/s5a8_* reruns at scf.criterion 1.0e-8 / maxIter 200, gen/summary
-scripts, s5a8_thesis_result.txt: all 36 series match thesis
-tab:practical-convergence, i_conv^(8) = 23/23/20/23) -- plus the same
-appended untracked evidence as revision 2 (Pegasus .mem/.OM/nsys-sqlite
-extras and the RTX 5080 np-audit / rtb_5080 / gemm_micro-prof sets), all
-enumerated in EXTRAS_FILELIST.txt (1580 files).  20248 entries,
-unzip -t clean.
+`README.md` -- the revision-3 payload plus its revision-4 addition, the
+H100 leg of the practical-convergence verification (work/siacc8_*
+reruns at scf.criterion 1.0e-8 / maxIter 200, gen/summary scripts,
+siacc8_thesis_result.txt).  Thesis tab:practical-convergence is now
+verified operationally on BOTH campaign machines: the RTX 5080 s5a8_*
+reruns (revision 3, commit 6d83a4e) and the H100 siacc8_* reruns
+(commit e6f4c9f) each stop exactly at i_conv^(8) = 23/23/20/23
+(bcol/bnc/ccol/cnc), and with the post-hoc evaluation of the 24
+canonical criterion-1e-13 histories ALL 48 SERIES MATCH.  On top of the
+tracked payload the same appended untracked evidence as revision 3
+(Pegasus .mem/.OM/nsys-sqlite extras and the RTX 5080 np-audit /
+rtb_5080 / gemm_micro-prof sets), enumerated in EXTRAS_FILELIST.txt
+(1580 files).  19329 file entries, unzip -t clean.
