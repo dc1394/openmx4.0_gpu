@@ -1,0 +1,25 @@
+openmx40gpu_v2.0_thesis_measurements_20260828.zip -- split for GitHub
+=====================================================================
+The measurement-distribution zip is 295,751,595 bytes (282.05 MB), which
+exceeds GitHub's 100 MB per-file limit (push rejected with GH001), so it
+is stored on this branch as three split(1) parts.  Reassemble it
+byte-identically with:
+
+  cat openmx40gpu_v2.0_thesis_measurements_20260828.zip.part?? \
+      > openmx40gpu_v2.0_thesis_measurements_20260828.zip
+
+md5 checksums:
+  8f1681b261ae7a9c2ee5fe1b966b3196  openmx40gpu_v2.0_thesis_measurements_20260828.zip  (reassembled)
+  5eaafb3c386604820ad7e6e7e7131188  openmx40gpu_v2.0_thesis_measurements_20260828.zip.part00
+  add5c291b8ccb3448c24e7154a6ac089  openmx40gpu_v2.0_thesis_measurements_20260828.zip.part01
+  761dbeb9b37b6a9c32bee51ca870d47b  openmx40gpu_v2.0_thesis_measurements_20260828.zip.part02
+
+Contents: git archive of this branch @ 8b52d681 (that commit hash is
+stored as the zip's archive comment) plus the RTX 5080 PC's local
+campaign data appended under the same root prefix: the np16/np18 audit
+reruns (54 s5p_* + 24 s5x_* directories, campaign file-type conventions
+applied), the v2 aggregates and their generator scripts, the updated
+work/s5_queue.progress, work/rtb_5080/ (raw artifacts behind the README
+test-suite tables, with a provenance README.txt), and the 5080 prof/
+geometry files matching the prof_h100/ convention.  20033 entries,
+unzip -t clean.
