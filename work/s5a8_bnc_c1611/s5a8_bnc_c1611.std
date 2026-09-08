@@ -1,0 +1,1525 @@
+
+The number of threads in each node for OpenMP parallelization is 1.
+
+
+*******************************************************
+*******************************************************
+ Welcome to OpenMX   Ver. 4.0 GPU                           
+ Copyright (C), 2002-2026, T. Ozaki                    
+ OpenMX comes with ABSOLUTELY NO WARRANTY.             
+ This is free software, and you are welcome to         
+ redistribute it under the constitution of the GNU-GPL.
+*******************************************************
+*******************************************************
+
+Automatic determination of Kerker_factor:   2.450135084886
+3.560000 0.000000 0.000000
+0.000000 3.560000 0.000000
+0.000000 0.000000 3.560000
+kpath (converted)
+(0.000000 0.000000 0.000000) (4.576685 0.000000 0.000000)
+(4.576685 0.000000 0.000000) (4.576685 2.288343 0.000000)
+(4.576685 2.288343 0.000000) (2.288343 2.288343 2.288343)
+(2.288343 2.288343 2.288343) (0.000000 0.000000 0.000000)
+(0.000000 0.000000 0.000000) (4.576685 0.000000 0.000000)
+kpoint at which wave functions are calculated (converted)
+0.000000 0.000000 0.000000
+0.000000 0.000000 0.915337
+
+
+<Input_std>  Your input file was normally read.
+<Input_std>  The system includes 1 species and 216 atoms.
+
+*******************************************************
+                     PAO and VPS                       
+*******************************************************
+
+<SetPara_DFT>  PAOs of species Si were normally found.
+<SetPara_DFT>  VPSs of species Si were normally found.
+               Si_PBE19.vps is j-dependent.
+               In case of scf.SpinOrbit.Coupling=off,
+               j-dependent pseudo potentials are averaged by j-degeneracy,
+               which corresponds to a scalar relativistic treatment.
+
+*******************************************************
+     Fourier transform of PAO and projectors of VNL    
+*******************************************************
+
+<FT_PAO>          Fourier transform of pseudo atomic orbitals
+<FT_NLP>          Fourier transform of non-local projectors
+<FT_ProExpn_VNA>  Fourier transform of VNA separable projectors
+<FT_VNA>          Fourier transform of VNA potentials
+<FT_ProductPAO>   Fourier transform of product of PAOs
+
+*******************************************************
+  Allocation of atoms to processors at MD_iter=    1     
+*******************************************************
+
+ proc =   0  # of atoms=  13  estimated weight=        13.00000
+ proc =   1  # of atoms=  14  estimated weight=        14.00000
+ proc =   2  # of atoms=  13  estimated weight=        13.00000
+ proc =   3  # of atoms=  14  estimated weight=        14.00000
+ proc =   4  # of atoms=  14  estimated weight=        14.00000
+ proc =   5  # of atoms=  13  estimated weight=        13.00000
+ proc =   6  # of atoms=  13  estimated weight=        13.00000
+ proc =   7  # of atoms=  14  estimated weight=        14.00000
+ proc =   8  # of atoms=  13  estimated weight=        13.00000
+ proc =   9  # of atoms=  14  estimated weight=        14.00000
+ proc =  10  # of atoms=  13  estimated weight=        13.00000
+ proc =  11  # of atoms=  14  estimated weight=        14.00000
+ proc =  12  # of atoms=  14  estimated weight=        14.00000
+ proc =  13  # of atoms=  13  estimated weight=        13.00000
+ proc =  14  # of atoms=  14  estimated weight=        14.00000
+ proc =  15  # of atoms=  13  estimated weight=        13.00000
+
+
+
+
+*******************************************************
+        Analysis of neighbors and setting of grids        
+*******************************************************
+
+TFNAN=   18576   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 1 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 1 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+TFNAN=   18576   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+TFNAN=   18576   Average FNAN=  86.00000
+TSNAN=       0   Average SNAN=   0.00000
+<truncation> CpyCell= 2 ct_AN=   1 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   2 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   3 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   4 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   5 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   6 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   7 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   8 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=   9 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  10 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  11 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  12 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  13 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  14 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  15 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  16 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  17 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  18 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  19 FNAN SNAN  86   0
+<truncation> CpyCell= 2 ct_AN=  20 FNAN SNAN  86   0
+     ..........
+     ......
+
+<Check_System> The system is bulk.
+lattice vectors (bohr)
+A  = 30.789305531916,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 30.789305531916,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 30.789305531916
+reciprocal lattice vectors (bohr^-1)
+RA =  0.204070380888,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.204070380888,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.204070380888
+Grid_Origin  0.000000000000  0.000000000000  0.000000000000
+Cell_Volume =  29187.686966108606 (Bohr^3)
+GridVol     =      0.010636912160 (Bohr^3)
+Grid_Origin  0.000000000000  0.000000000000  0.000000000000
+Cell_Volume =  29187.686966108606 (Bohr^3)
+GridVol     =      0.010636912160 (Bohr^3)
+<UCell_Box> Info. of cutoff energy and num. of grids
+lattice vectors (bohr)
+A  = 30.789305531916,  0.000000000000,  0.000000000000
+B  =  0.000000000000, 30.789305531916,  0.000000000000
+C  =  0.000000000000,  0.000000000000, 30.789305531916
+reciprocal lattice vectors (bohr^-1)
+RA =  0.204070380888,  0.000000000000,  0.000000000000
+RB =  0.000000000000,  0.204070380888,  0.000000000000
+RC =  0.000000000000,  0.000000000000,  0.204070380888
+Required cutoff energy (Ryd) for 3D-grids = 200.0000
+    Used cutoff energy (Ryd) for 3D-grids = 204.0591, 204.0591, 204.0591
+Num. of grids of a-, b-, and c-axes = 140, 140, 140
+Grid_Origin  0.000000000000  0.000000000000  0.000000000000
+Cell_Volume =  29187.686966108606 (Bohr^3)
+GridVol     =      0.010636912160 (Bohr^3)
+Cell vectors (bohr) of the grid cell (gtv)
+  gtv_a =  0.219923610942,  0.000000000000,  0.000000000000
+  gtv_b =  0.000000000000,  0.219923610942,  0.000000000000
+  gtv_c =  0.000000000000,  0.000000000000,  0.219923610942
+  |gtv_a| =  0.219923610942
+  |gtv_b| =  0.219923610942
+  |gtv_c| =  0.219923610942
+Num. of grids overlapping with atom    1 = 135052
+Num. of grids overlapping with atom    2 = 134977
+Num. of grids overlapping with atom    3 = 134977
+Num. of grids overlapping with atom    4 = 134977
+Num. of grids overlapping with atom    5 = 135056
+Num. of grids overlapping with atom    6 = 134977
+Num. of grids overlapping with atom    7 = 135056
+Num. of grids overlapping with atom    8 = 135056
+Num. of grids overlapping with atom    9 = 135036
+Num. of grids overlapping with atom   10 = 134977
+Num. of grids overlapping with atom   11 = 134977
+Num. of grids overlapping with atom   12 = 135036
+Num. of grids overlapping with atom   13 = 135036
+Num. of grids overlapping with atom   14 = 135036
+Num. of grids overlapping with atom   15 = 134952
+Num. of grids overlapping with atom   16 = 135036
+Num. of grids overlapping with atom   17 = 134977
+Num. of grids overlapping with atom   18 = 135036
+Num. of grids overlapping with atom   19 = 135036
+Num. of grids overlapping with atom   20 = 134977
+     ..........
+     ......
+
+
+*******************************************************
+             SCF calculation at MD = 1                
+*******************************************************
+
+<MD= 1>  Calculation of the overlap matrix
+<MD= 1>  Calculation of the nonlocal matrix
+<MD= 1>  Calculation of the VNA projector matrix
+
+******************* MD= 1  SCF= 1 *******************
+<Poisson>  Poisson's equation using FFT...
+<Band>  Solving the eigenvalue problem...
+<Band>  Note: the CPU eigensolver prints nothing until every k point of an SCF iteration is done (matrix dimension 5616); minutes of silence here are normal.
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=214.698379
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 53.93  63.29)  Ml+s 0.00 (175.69  63.29)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 60.86 259.03)  Ml+s 0.00 (114.95 259.03)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (165.85 218.71)  Ml+s 0.00 (157.85 218.71)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 (163.97 153.08)  Ml+s 0.00 (169.81 153.08)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 74.69  90.75)  Ml+s 0.00 (148.49  90.75)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (101.98 132.99)  Ml+s 0.00 ( 48.46 132.99)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 72.27 124.49)  Ml+s 0.00 (122.03 124.49)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 72.29 112.17)  Ml+s 0.00 (144.67 112.17)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 83.76 253.32)  Ml+s 0.00 ( 99.11 253.32)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 94.61  84.35)  Ml+s 0.00 (148.78  84.35)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 (104.56 -41.39)  Ml+s 0.00 (132.52 -41.39)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (118.44  54.66)  Ml+s 0.00 ( 59.49  54.66)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 58.82 168.49)  Ml+s 0.00 (153.47 168.49)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 82.48  -2.23)  Ml+s 0.00 ( 87.48  -2.23)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (119.40  -5.58)  Ml+s 0.00 ( 96.45  -5.58)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 (101.78 -33.13)  Ml+s 0.00 (169.37 -33.13)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 73.77  82.58)  Ml+s 0.00 (120.08  82.58)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 ( 94.24 -25.68)  Ml+s 0.00 ( 90.27 -25.68)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 59.24 -49.81)  Ml+s 0.00 (140.94 -49.81)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 87.44 -40.87)  Ml+s 0.00 (138.98 -40.87)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles  180.000000000     0.000000000
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   88.335435156    97.154581370
+<DFT>  Total Moment         (muB)  0.000000001   Angles   88.360468736    97.154581370
+<DFT>  Mixing_weight= 0.300000000000
+<DFT>  Uele   = -248.208105643216  dUele     =   1.000000000000
+<DFT>  NormRD =    1.000000000000  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 2 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=194.165166
+<Band_DFT>  DM, time=0.000002
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 54.47  61.55)  Ml+s 0.00 (175.64  61.55)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 61.10 259.64)  Ml+s 0.00 (114.88 259.64)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (165.88 219.22)  Ml+s 0.00 (157.84 219.22)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 (163.78 153.75)  Ml+s 0.00 (169.73 153.75)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 74.46  90.67)  Ml+s 0.00 (148.33  90.67)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (102.00 132.77)  Ml+s 0.00 ( 48.48 132.77)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 72.03 124.58)  Ml+s 0.00 (122.12 124.58)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 71.49 112.05)  Ml+s 0.00 (144.61 112.05)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 84.34 253.51)  Ml+s 0.00 ( 99.13 253.51)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 94.37  84.32)  Ml+s 0.00 (148.65  84.32)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 (104.92 -41.54)  Ml+s 0.00 (132.76 -41.54)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (118.55  54.85)  Ml+s 0.00 ( 59.32  54.85)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 58.88 169.09)  Ml+s 0.00 (153.71 169.09)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 82.51  -2.10)  Ml+s 0.00 ( 87.46  -2.10)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 (119.64  -5.66)  Ml+s 0.00 ( 96.97  -5.66)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 (100.32 -33.48)  Ml+s 0.00 (169.42 -33.48)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 73.43  82.87)  Ml+s 0.00 (119.96  82.87)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  0.00   0.00)  Ml 0.00 ( 94.50 -25.35)  Ml+s 0.00 ( 90.62 -25.35)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 59.25 -50.02)  Ml+s 0.00 (141.24 -50.02)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (180.00   0.00)  Ml 0.00 ( 88.03 -40.72)  Ml+s 0.00 (138.89 -40.72)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles  180.000000000     0.000000000
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   88.377992626    96.991950522
+<DFT>  Total Moment         (muB)  0.000000001   Angles   88.398115815    96.991950522
+<DFT>  Mixing_weight= 0.003025421529
+<DFT>  Uele   = -248.208105643216  dUele     =   0.000000000000
+<DFT>  NormRD =    9.907559537109  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 3 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=193.128626
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 40.44   0.35)  Ml 0.00 ( 96.69 182.55)  Ml+s 0.00 ( 36.70  -0.00)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (128.76  21.09)  Ml 0.00 ( 33.02 232.20)  Ml+s 0.00 (118.08  12.03)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 63.55 178.45)  Ml 0.00 ( 40.67  34.41)  Ml+s 0.00 ( 59.32 176.39)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (179.92 103.06)  Ml 0.00 ( 47.26 228.01)  Ml+s 0.00 (167.71 227.64)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (164.91 -18.03)  Ml 0.00 (120.03 -88.01)  Ml+s 0.00 (161.85 -43.03)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (155.23  -0.39)  Ml 0.00 ( 51.21  66.88)  Ml+s 0.00 (146.67  17.37)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (133.97 175.05)  Ml 0.00 ( 90.79  31.60)  Ml+s 0.00 (140.97 162.27)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (110.49   3.23)  Ml 0.00 (114.34  85.37)  Ml+s 0.00 (118.74  56.26)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 91.47 200.45)  Ml 0.00 ( 23.10 231.93)  Ml+s 0.00 ( 83.04 202.32)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (145.03 171.30)  Ml 0.00 ( 47.85   9.21)  Ml+s 0.00 (148.06 164.09)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (168.31 -18.90)  Ml 0.00 (  9.22 191.19)  Ml+s 0.00 (168.15 -19.88)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (133.45 197.08)  Ml 0.00 ( 85.52  99.50)  Ml+s 0.00 (132.66 180.51)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 30.60   2.63)  Ml 0.00 ( 42.80  -7.92)  Ml+s 0.00 ( 32.42   0.55)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (166.88 262.92)  Ml 0.00 ( 50.18 -76.82)  Ml+s 0.00 (143.67 -85.40)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 17.12  21.39)  Ml 0.00 ( 74.68 261.46)  Ml+s 0.00 ( 14.41  -6.49)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 62.32  -1.88)  Ml 0.00 ( 17.21   4.09)  Ml+s 0.00 ( 59.50  -1.74)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 14.59 188.74)  Ml 0.00 ( 39.62 146.74)  Ml+s 0.00 ( 19.65 169.26)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 25.66  39.30)  Ml 0.00 ( 46.02  97.60)  Ml+s 0.00 ( 27.73  59.47)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 67.34  -6.53)  Ml 0.00 ( 57.19 -41.11)  Ml+s 0.00 ( 62.62 -18.44)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (130.69 175.54)  Ml 0.00 ( 65.44  76.11)  Ml+s 0.00 (128.35 165.55)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   87.437406247     0.123260085
+<DFT>  Total Orbital Moment (muB)  0.000000000   Angles  100.950323752    61.826562258
+<DFT>  Total Moment         (muB)  0.000000001   Angles   94.545294076    29.227774696
+<DFT>  Mixing_weight= 0.505750663765
+<DFT>  Uele   = -248.259769569922  dUele     =   0.051663926706
+<DFT>  NormRD =    9.877881369690  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 4 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=191.498627
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  6.13  56.67)  Ml 0.00 ( 89.44  29.17)  Ml+s 0.00 (  8.72  48.02)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 24.81  27.98)  Ml 0.00 (103.25 181.70)  Ml+s 0.00 ( 17.22  45.62)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 58.64 159.56)  Ml 0.00 ( 98.38 -35.01)  Ml+s 0.00 ( 52.43 164.87)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (157.35 185.33)  Ml 0.00 (148.06 263.55)  Ml+s 0.00 (159.04 200.48)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (174.99  37.62)  Ml 0.00 (125.29 -29.61)  Ml+s 0.00 (171.74   1.80)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (106.85  33.71)  Ml 0.00 ( 34.55 -41.79)  Ml+s 0.00 ( 77.14  14.68)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 32.00 -60.57)  Ml 0.00 ( 71.44  24.07)  Ml+s 0.00 ( 41.32  -8.80)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 46.98 -24.17)  Ml 0.00 (120.92 140.85)  Ml+s 0.00 ( 44.23 -19.39)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (142.13   7.24)  Ml 0.00 ( 80.65 266.76)  Ml+s 0.00 (141.35  -9.71)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (154.42 179.78)  Ml 0.00 (124.45 143.98)  Ml+s 0.00 (150.81 170.68)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (166.60 185.00)  Ml 0.00 (153.33 142.35)  Ml+s 0.00 (165.94 178.69)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 55.68 181.39)  Ml 0.00 ( 69.55 147.06)  Ml+s 0.00 ( 57.85 173.36)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 49.55   4.06)  Ml 0.00 ( 57.28 -89.46)  Ml+s 0.00 ( 43.99 -15.39)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 64.40 199.31)  Ml 0.00 ( 56.42 136.09)  Ml+s 0.00 ( 60.67 188.91)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 19.68 -55.64)  Ml 0.00 (153.72  45.73)  Ml+s 0.00 ( 22.63 -43.03)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 81.00   6.44)  Ml 0.00 (111.36 -27.55)  Ml+s 0.00 ( 86.05   1.00)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 39.87  66.03)  Ml 0.00 ( 56.82 -70.14)  Ml+s 0.00 ( 24.75  34.37)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 22.03  -2.82)  Ml 0.00 ( 64.71 217.55)  Ml+s 0.00 ( 13.48 -40.26)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 33.37  -3.25)  Ml 0.00 ( 40.84 -53.59)  Ml+s 0.00 ( 33.04 -12.71)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (142.51 169.62)  Ml 0.00 ( 87.00 -21.22)  Ml+s 0.00 (163.65 189.13)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.912190542   -19.891723257
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   54.252237423    86.052228694
+<DFT>  Total Moment         (muB)  0.000000001   Angles   53.982244955    83.691291458
+<DFT>  Mixing_weight= 0.675105780259
+<DFT>  Uele   = -256.393957585815  dUele     =   8.134188015893
+<DFT>  NormRD =    4.947400331800  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 5 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=193.514398
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 96.48 186.63)  Ml 0.00 ( 91.18   1.54)  Ml+s 0.00 ( 97.39 187.24)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 72.63 161.03)  Ml 0.00 (143.88 122.98)  Ml+s 0.00 (103.29 149.10)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (135.18   0.17)  Ml 0.00 ( 83.27 -52.57)  Ml+s 0.00 (126.89 -14.08)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (150.45 196.91)  Ml 0.00 ( 36.99 195.35)  Ml+s 0.00 (136.22 196.54)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (119.73   1.54)  Ml 0.00 (127.92  59.29)  Ml+s 0.00 (121.27   5.37)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (163.32 233.29)  Ml 0.00 ( 64.13  78.97)  Ml+s 0.00 (167.38 221.40)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 50.11 184.04)  Ml 0.00 ( 39.99  14.86)  Ml+s 0.00 ( 17.76 171.63)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 29.43 188.13)  Ml 0.00 (123.07  86.12)  Ml+s 0.00 ( 29.85 183.40)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 48.57 114.40)  Ml 0.00 (105.70 107.75)  Ml+s 0.00 ( 69.12 111.53)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (149.59 197.87)  Ml 0.00 ( 76.75 126.03)  Ml+s 0.00 (147.36 189.14)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (160.70 148.92)  Ml 0.00 ( 54.77 -36.45)  Ml+s 0.00 (175.84 178.51)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 54.16 165.00)  Ml 0.00 (126.44 -65.24)  Ml+s 0.00 ( 55.22 169.14)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 67.90 116.79)  Ml 0.00 (103.63 106.24)  Ml+s 0.00 ( 79.31 113.25)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 26.83 -51.95)  Ml 0.00 ( 17.07 116.03)  Ml+s 0.00 (  8.35 -40.68)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 70.18  22.00)  Ml 0.00 ( 48.41 100.34)  Ml+s 0.00 ( 61.70  35.01)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (163.89 -34.68)  Ml 0.00 (107.01  71.90)  Ml+s 0.00 (155.29  40.83)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  8.20  23.56)  Ml 0.00 ( 54.73 150.15)  Ml+s 0.00 (  6.97  91.80)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  5.73 107.22)  Ml 0.00 ( 77.40 258.42)  Ml+s 0.00 (  2.79 182.39)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.62 140.45)  Ml 0.00 ( 21.08  85.20)  Ml+s 0.00 ( 12.79 130.14)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 98.87 182.41)  Ml 0.00 (110.30 244.14)  Ml+s 0.00 (105.00 203.82)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.220481018    63.005275739
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   90.211445607   209.539492441
+<DFT>  Total Moment         (muB)  0.000000001   Angles   90.205992912   209.254005481
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -260.350925257894  dUele     =   3.956967672079
+<DFT>  NormRD =    0.970451220165  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 6 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.157970
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.22 -52.02)  Ml 0.00 (103.78 -83.54)  Ml+s 0.00 (  5.32 -58.94)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (174.13 -27.25)  Ml 0.00 (110.53 193.48)  Ml+s 0.00 (175.61 -45.94)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 18.83  -5.66)  Ml 0.00 ( 48.22 116.70)  Ml+s 0.00 ( 18.35  -4.03)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (143.67  -1.62)  Ml 0.00 ( 78.18  81.10)  Ml+s 0.00 (142.82   3.68)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 28.17   4.27)  Ml 0.00 (117.22 138.99)  Ml+s 0.00 ( 25.67  17.95)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 81.59 186.65)  Ml 0.00 ( 60.07  70.65)  Ml+s 0.00 ( 77.41 180.51)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 24.23 170.89)  Ml 0.00 ( 93.69 192.28)  Ml+s 0.00 ( 25.59 172.19)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  5.00   1.07)  Ml 0.00 ( 72.02 188.73)  Ml+s 0.00 (  2.75  -5.14)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 21.85 207.23)  Ml 0.00 (118.31 198.08)  Ml+s 0.00 ( 23.26 206.72)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (168.26 164.42)  Ml 0.00 (115.92  92.98)  Ml+s 0.00 (168.02 160.09)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (120.20  -3.98)  Ml 0.00 ( 50.44  49.82)  Ml+s 0.00 (115.21   0.35)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (166.49 -35.34)  Ml 0.00 (125.22 -36.99)  Ml+s 0.00 (164.22 -35.64)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 42.56 166.02)  Ml 0.00 ( 39.10 -19.64)  Ml+s 0.00 ( 37.72 166.52)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 66.68  -2.39)  Ml 0.00 ( 29.09 117.16)  Ml+s 0.00 ( 61.02   0.67)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (105.16   9.72)  Ml 0.00 (  9.40 265.88)  Ml+s 0.00 ( 97.49   8.42)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.16   1.29)  Ml 0.00 ( 93.69 -46.39)  Ml+s 0.00 (  4.79  -6.46)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (109.24 182.74)  Ml 0.00 ( 85.34 193.61)  Ml+s 0.00 (108.59 183.07)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (173.11 152.85)  Ml 0.00 (120.32 128.16)  Ml+s 0.00 (171.03 146.34)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 30.02  -4.91)  Ml 0.00 ( 37.61  12.24)  Ml+s 0.00 ( 30.05  -4.82)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.80  20.79)  Ml 0.00 ( 74.30 247.55)  Ml+s 0.00 ( 12.04  17.03)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   93.573403807    16.186086394
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   76.239204982   123.896265683
+<DFT>  Total Moment         (muB)  0.000000001   Angles   76.238120921   123.803986128
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.136980797220  dUele     =   0.786055539325
+<DFT>  NormRD =    0.021044780349  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 7 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.382520
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  5.87 -39.50)  Ml 0.00 ( 85.60 207.37)  Ml+s 0.00 (  5.67 -44.71)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (173.83 192.96)  Ml 0.00 (149.03  93.56)  Ml+s 0.00 (174.02 186.40)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  9.81 -19.89)  Ml 0.00 (158.21 112.00)  Ml+s 0.00 (  9.75 -18.80)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (144.21   2.84)  Ml 0.00 (126.38 102.16)  Ml+s 0.00 (145.01   5.36)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 33.45   1.19)  Ml 0.00 (159.44 268.52)  Ml+s 0.00 ( 34.36   0.06)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 96.04 184.12)  Ml 0.00 ( 25.64  37.89)  Ml+s 0.00 ( 91.93 182.98)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.74 156.10)  Ml 0.00 ( 44.93 161.56)  Ml+s 0.00 ( 13.94 156.74)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 10.63   2.71)  Ml 0.00 ( 67.44 -56.32)  Ml+s 0.00 ( 11.66  -6.14)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 28.55 208.82)  Ml 0.00 ( 71.53 -38.22)  Ml+s 0.00 ( 27.82 211.79)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (169.45 159.63)  Ml 0.00 (100.29  84.16)  Ml+s 0.00 (168.70 147.70)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (120.28  -3.89)  Ml 0.00 ( 66.57   5.35)  Ml+s 0.00 (117.35  -3.28)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (173.69 -69.61)  Ml 0.00 ( 65.28  24.70)  Ml+s 0.00 (173.67 -63.97)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 47.05 165.41)  Ml 0.00 ( 42.53   8.47)  Ml+s 0.00 ( 38.86 161.82)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 52.41  -7.32)  Ml 0.00 ( 73.57 116.75)  Ml+s 0.00 ( 49.05  -0.55)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (133.42  15.51)  Ml 0.00 (138.57 123.69)  Ml+s 0.00 (136.50  19.70)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  3.08 -15.34)  Ml 0.00 ( 42.67  -9.47)  Ml+s 0.00 (  3.20 -15.12)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (127.52 184.90)  Ml 0.00 ( 65.97  17.39)  Ml+s 0.00 (128.22 184.10)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (176.78 157.27)  Ml 0.00 ( 27.45 234.62)  Ml+s 0.00 (176.19 175.58)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 28.94  -5.95)  Ml 0.00 ( 54.51  41.86)  Ml+s 0.00 ( 29.18  -4.53)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 21.73  12.29)  Ml 0.00 (123.19  13.59)  Ml+s 0.00 ( 23.02  12.35)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   95.590627297    17.158653573
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   65.692233956    60.808636781
+<DFT>  Total Moment         (muB)  0.000000001   Angles   65.705403040    60.782874324
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.119347649891  dUele     =   0.017633147329
+<DFT>  NormRD =    0.009506786305  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 8 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=191.540751
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  1.15  10.33)  Ml 0.00 ( 80.25  79.44)  Ml+s 0.00 (  2.26  51.27)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (156.13 199.48)  Ml 0.00 (126.67 224.94)  Ml+s 0.00 (153.45 204.25)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.15 -22.67)  Ml 0.00 ( 14.05 -50.62)  Ml+s 0.00 (  4.56 -26.66)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (146.75   0.03)  Ml 0.00 ( 60.26 -40.85)  Ml+s 0.00 (144.17  -2.98)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 48.98   5.72)  Ml 0.00 (150.49 -64.88)  Ml+s 0.00 ( 55.51   0.99)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 83.55 177.18)  Ml 0.00 ( 85.70  40.65)  Ml+s 0.00 ( 81.61 168.12)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 16.09 166.97)  Ml 0.00 ( 59.71 -57.76)  Ml+s 0.00 ( 13.69 176.04)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  9.57  -4.52)  Ml 0.00 ( 76.22 228.41)  Ml+s 0.00 (  8.16 -19.64)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 26.93 198.63)  Ml 0.00 ( 42.57 269.61)  Ml+s 0.00 ( 26.48 204.70)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (162.24 172.00)  Ml 0.00 ( 90.50  96.18)  Ml+s 0.00 (160.68 158.49)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (138.03  -1.22)  Ml 0.00 ( 47.73 123.76)  Ml+s 0.00 (137.35   2.82)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (172.10 -28.42)  Ml 0.00 (164.32 120.74)  Ml+s 0.00 (172.36 -27.67)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 56.34 170.85)  Ml 0.00 ( 50.22 269.10)  Ml+s 0.00 ( 50.80 180.62)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 52.47  -9.89)  Ml 0.00 ( 36.02   0.28)  Ml+s 0.00 ( 51.58  -9.49)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (138.00  18.09)  Ml 0.00 ( 31.62 136.67)  Ml+s 0.00 (131.68  27.57)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  7.53  -8.25)  Ml 0.00 (112.12 -82.69)  Ml+s 0.00 (  8.09 -17.80)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (109.24 184.18)  Ml 0.00 ( 21.20  27.16)  Ml+s 0.00 (105.30 183.43)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (171.37  18.97)  Ml 0.00 (121.14 167.86)  Ml+s 0.00 (174.60  40.61)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 24.37   4.44)  Ml 0.00 ( 56.40 -87.18)  Ml+s 0.00 ( 23.80  -1.05)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  1.44 147.06)  Ml 0.00 ( 79.16 119.83)  Ml+s 0.00 ( 11.45 122.97)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.175636215    72.565023298
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   48.112980015   114.360440336
+<DFT>  Total Moment         (muB)  0.000000001   Angles   48.155337952   114.284700907
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.112716092444  dUele     =   0.006631557447
+<DFT>  NormRD =    0.015972377469  Criterion =   0.000000010000
+
+******************* MD= 1  SCF= 9 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=191.709091
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.22 -19.81)  Ml 0.00 ( 73.63   2.62)  Ml+s 0.00 (  5.33 -14.82)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (152.21 200.41)  Ml 0.00 (117.58  80.43)  Ml+s 0.00 (154.46 193.30)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  7.75 -63.34)  Ml 0.00 ( 64.18 127.16)  Ml+s 0.00 (  5.08 -68.66)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (148.85   6.76)  Ml 0.00 ( 79.02 151.20)  Ml+s 0.00 (152.80  15.82)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 55.66  14.74)  Ml 0.00 ( 85.64 204.93)  Ml+s 0.00 ( 51.34  13.16)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 73.12 177.26)  Ml 0.00 ( 80.89 114.79)  Ml+s 0.00 ( 73.10 169.67)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 15.57 163.07)  Ml 0.00 (123.47  12.08)  Ml+s 0.00 ( 11.53 146.39)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  6.80  19.16)  Ml 0.00 (103.41 217.53)  Ml+s 0.00 (  3.15  -6.52)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 29.54 213.66)  Ml 0.00 (108.63 181.27)  Ml+s 0.00 ( 35.03 208.12)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (166.31 162.72)  Ml 0.00 (149.45  40.71)  Ml+s 0.00 (167.99 154.75)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (130.62  -6.14)  Ml 0.00 ( 47.78  38.27)  Ml+s 0.00 (128.63  -4.59)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (173.00 -57.06)  Ml 0.00 (142.15  11.45)  Ml+s 0.00 (172.28 -41.79)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 29.60 175.10)  Ml 0.00 ( 16.55  15.60)  Ml+s 0.00 ( 23.78 173.06)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.41 -24.61)  Ml 0.00 (100.56  70.53)  Ml+s 0.00 ( 16.31  19.49)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (125.55  10.14)  Ml 0.00 ( 53.46 257.55)  Ml+s 0.00 (123.79   5.27)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.22   2.15)  Ml 0.00 (135.86 -73.17)  Ml+s 0.00 (  4.77 -12.12)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (107.85 184.39)  Ml 0.00 ( 17.47 -11.51)  Ml+s 0.00 (101.22 185.07)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (173.72   2.54)  Ml 0.00 ( 57.91  10.40)  Ml+s 0.00 (169.65   5.47)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 16.58   1.09)  Ml 0.00 (156.48 143.19)  Ml+s 0.00 ( 16.57   1.36)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 44.55   6.49)  Ml 0.00 ( 51.09 -73.67)  Ml+s 0.00 ( 43.00   1.00)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.630529307    54.164731164
+<DFT>  Total Orbital Moment (muB)  0.000000000   Angles   57.287269146    29.979775474
+<DFT>  Total Moment         (muB)  0.000000000   Angles   57.431686535    30.119481021
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.112607346304  dUele     =   0.000108746140
+<DFT>  NormRD =    0.004184893548  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=10 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.615353
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  2.89 -89.29)  Ml 0.00 ( 89.97  70.66)  Ml+s 0.00 (  1.20 -53.45)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (131.89 184.09)  Ml 0.00 (139.88  53.78)  Ml+s 0.00 (140.13 176.45)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  8.76 -12.59)  Ml 0.00 ( 38.22 120.04)  Ml+s 0.00 (  7.87  -6.78)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (150.84  -4.49)  Ml 0.00 ( 93.20 151.02)  Ml+s 0.00 (156.51   2.90)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 50.88   0.66)  Ml 0.00 (133.49  99.94)  Ml+s 0.00 ( 54.67   7.52)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 44.14 184.27)  Ml 0.00 ( 61.51  40.99)  Ml+s 0.00 ( 23.24 140.45)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 16.89 177.19)  Ml 0.00 ( 56.80 -57.50)  Ml+s 0.00 ( 15.04 185.75)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  9.84   6.79)  Ml 0.00 (115.48   4.60)  Ml+s 0.00 ( 14.33   6.14)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  9.67 -60.63)  Ml 0.00 (117.17 -41.84)  Ml+s 0.00 ( 15.53 -53.85)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (165.39 170.65)  Ml 0.00 ( 87.71 107.14)  Ml+s 0.00 (162.82 156.36)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (141.85   2.49)  Ml 0.00 ( 97.47 142.45)  Ml+s 0.00 (143.78   5.64)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (175.10 175.07)  Ml 0.00 (132.01  84.80)  Ml+s 0.00 (174.46 142.09)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 22.73 152.26)  Ml 0.00 ( 39.40 -43.39)  Ml+s 0.00 (  9.46 168.82)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 60.45  -2.91)  Ml 0.00 ( 27.66 189.62)  Ml+s 0.00 ( 51.81  -4.02)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (112.14  12.44)  Ml 0.00 ( 21.40 128.07)  Ml+s 0.00 ( 97.04  18.57)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  3.20 -64.14)  Ml 0.00 (113.09 -27.26)  Ml+s 0.00 (  4.48 -52.92)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 53.37 185.55)  Ml 0.00 ( 52.20 -22.71)  Ml+s 0.00 ( 49.01 187.95)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (168.88  13.17)  Ml 0.00 (136.69  89.78)  Ml+s 0.00 (168.33  29.79)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  9.07  -6.50)  Ml 0.00 ( 36.81 -12.38)  Ml+s 0.00 ( 10.89  -7.78)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  2.37 199.95)  Ml 0.00 (133.56  54.35)  Ml+s 0.00 (  1.61 176.44)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.547891725    94.416076137
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   70.914328039    61.570742307
+<DFT>  Total Moment         (muB)  0.000000001   Angles   70.971498075    61.686264874
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.110794658023  dUele     =   0.001812688281
+<DFT>  NormRD =    0.003399068275  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=11 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.946692
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  2.02 237.72)  Ml 0.00 ( 62.70 148.13)  Ml+s 0.00 (  5.25 169.64)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 74.27 199.92)  Ml 0.00 ( 74.42 167.59)  Ml+s 0.00 ( 74.08 196.96)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 30.07 207.92)  Ml 0.00 (112.12 231.38)  Ml+s 0.00 ( 36.32 212.08)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (169.75 -32.89)  Ml 0.00 ( 85.86 139.91)  Ml+s 0.00 (178.68  55.48)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (107.90   9.68)  Ml 0.00 ( 85.30  -6.64)  Ml+s 0.00 (101.50   4.81)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 96.06  23.15)  Ml 0.00 ( 65.87  80.89)  Ml+s 0.00 ( 78.80  52.31)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 46.56 184.70)  Ml 0.00 (151.69 177.19)  Ml+s 0.00 ( 59.10 183.77)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 17.50  74.91)  Ml 0.00 ( 68.77  74.01)  Ml+s 0.00 ( 21.20  74.72)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 31.82   5.82)  Ml 0.00 (129.45 111.52)  Ml+s 0.00 ( 32.40  10.25)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (172.59  58.61)  Ml 0.00 ( 74.30  43.30)  Ml+s 0.00 (163.79  50.38)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (172.26 -31.59)  Ml 0.00 (142.09  81.10)  Ml+s 0.00 (173.36  -3.42)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (171.86  24.58)  Ml 0.00 ( 50.75 238.54)  Ml+s 0.00 (174.08   4.48)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  3.06 -27.20)  Ml 0.00 ( 59.52 232.81)  Ml+s 0.00 ( 18.42 240.08)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (147.90  64.25)  Ml 0.00 ( 29.70  48.29)  Ml+s 0.00 (122.63  59.70)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 58.37  57.04)  Ml 0.00 ( 64.80 157.15)  Ml+s 0.00 ( 49.95 109.79)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.86 120.19)  Ml 0.00 ( 77.58 -89.20)  Ml+s 0.00 (  7.37 148.19)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 45.14 179.67)  Ml 0.00 ( 77.97 -63.70)  Ml+s 0.00 ( 40.42 197.66)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 75.56  58.99)  Ml 0.00 ( 48.13 182.96)  Ml+s 0.00 ( 65.68  68.07)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 13.37 -19.47)  Ml 0.00 ( 39.02 -56.33)  Ml+s 0.00 ( 14.63 -25.19)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  3.15 185.57)  Ml 0.00 ( 88.10  14.19)  Ml+s 0.00 (  2.44  25.32)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.627167758    22.195608569
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   46.564967909    72.165044948
+<DFT>  Total Moment         (muB)  0.000000001   Angles   46.853661738    71.496564797
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.109068081759  dUele     =   0.001726576264
+<DFT>  NormRD =    0.001265123696  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=12 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.241467
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  2.52 -25.04)  Ml 0.00 ( 88.09 269.90)  Ml+s 0.00 (  9.90 -76.93)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 44.71 211.98)  Ml 0.00 ( 64.41 189.71)  Ml+s 0.00 ( 47.48 207.67)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 44.19 183.21)  Ml 0.00 (114.41 224.87)  Ml+s 0.00 ( 55.27 193.23)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (167.50 179.16)  Ml 0.00 ( 51.48 141.16)  Ml+s 0.00 (156.88 162.83)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (157.44   1.90)  Ml 0.00 (105.36 -76.19)  Ml+s 0.00 (151.82 -32.19)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 41.11  -1.14)  Ml 0.00 ( 32.22  38.57)  Ml+s 0.00 ( 37.77   6.99)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 40.79 166.60)  Ml 0.00 ( 89.95  21.65)  Ml+s 0.00 ( 42.40  54.47)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 18.39 193.41)  Ml 0.00 (117.46  79.53)  Ml+s 0.00 ( 25.17 132.49)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 26.46  88.30)  Ml 0.00 (131.04 150.47)  Ml+s 0.00 ( 83.48 130.51)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 93.69  57.77)  Ml 0.00 (102.24 -26.11)  Ml+s 0.00 (102.42 -10.54)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (173.10  21.46)  Ml 0.00 ( 74.87  -7.28)  Ml+s 0.00 (167.59   8.49)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (165.79  -8.88)  Ml 0.00 (108.79  44.81)  Ml+s 0.00 (150.14  27.06)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 66.98  41.25)  Ml 0.00 ( 81.69 -11.87)  Ml+s 0.00 ( 69.42  26.31)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 68.06 157.16)  Ml 0.00 (107.88 248.29)  Ml+s 0.00 ( 68.66 159.30)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 79.80 151.22)  Ml 0.00 (  4.07  25.04)  Ml+s 0.00 ( 70.54 150.65)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 15.71 161.76)  Ml 0.00 ( 50.11 246.45)  Ml+s 0.00 ( 18.44 203.32)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 14.24 190.27)  Ml 0.00 ( 68.40 212.76)  Ml+s 0.00 ( 20.10 198.20)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 39.00  19.93)  Ml 0.00 ( 34.59 -81.13)  Ml+s 0.00 ( 35.11  13.40)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.70   9.57)  Ml 0.00 ( 54.47 248.50)  Ml+s 0.00 (  5.21 -65.89)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 22.55 227.11)  Ml 0.00 ( 53.04  13.47)  Ml+s 0.00 ( 12.70 254.67)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.583392327    17.489980965
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles  101.983062141   131.234895219
+<DFT>  Total Moment         (muB)  0.000000001   Angles  102.007598957   130.932714586
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108698627148  dUele     =   0.000369454611
+<DFT>  NormRD =    0.000252248375  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=13 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.774527
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 11.08 240.55)  Ml 0.00 (109.09 250.83)  Ml+s 0.00 ( 12.10 241.39)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 28.34 200.65)  Ml 0.00 (105.10 107.15)  Ml+s 0.00 ( 31.54 176.57)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 79.99 195.81)  Ml 0.00 ( 71.83 179.97)  Ml+s 0.00 ( 77.67 191.62)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (141.22 201.00)  Ml 0.00 (119.08 228.22)  Ml+s 0.00 (138.49 206.22)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (131.57 -13.05)  Ml 0.00 (151.01 -10.69)  Ml+s 0.00 (134.37 -12.81)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 29.16 183.33)  Ml 0.00 ( 91.89  30.91)  Ml+s 0.00 ( 35.60  52.92)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (117.28 258.09)  Ml 0.00 ( 57.17 -44.04)  Ml+s 0.00 ( 81.52 -69.38)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 13.73 -68.75)  Ml 0.00 ( 82.08 101.52)  Ml+s 0.00 (  2.43  31.37)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (117.43  21.63)  Ml 0.00 (117.15 153.12)  Ml+s 0.00 (139.73  67.28)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 78.44 181.94)  Ml 0.00 (171.73 -13.68)  Ml+s 0.00 ( 92.83 182.53)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (162.75 -24.09)  Ml 0.00 ( 31.94  87.31)  Ml+s 0.00 (160.94  -5.08)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (125.41 241.26)  Ml 0.00 ( 50.48  63.04)  Ml+s 0.00 (123.25 240.41)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (102.13  19.45)  Ml 0.00 (107.45 -46.58)  Ml+s 0.00 (104.84   6.57)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (136.27 -38.50)  Ml 0.00 (116.78 257.02)  Ml+s 0.00 (132.43 -70.97)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (144.06  89.41)  Ml 0.00 ( 24.93  22.79)  Ml+s 0.00 (101.40  67.83)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 43.69 109.92)  Ml 0.00 ( 40.29  99.29)  Ml+s 0.00 ( 42.87 107.73)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  2.52 217.19)  Ml 0.00 ( 84.78 226.33)  Ml+s 0.00 ( 14.66 224.83)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 19.62   8.30)  Ml 0.00 ( 96.67 -70.74)  Ml+s 0.00 ( 22.84 -12.93)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 20.27 -32.61)  Ml 0.00 ( 56.59  85.62)  Ml+s 0.00 ( 17.68 -19.46)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 35.84 210.26)  Ml 0.00 ( 24.71  -1.76)  Ml+s 0.00 ( 26.93 215.63)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.019412924    31.894411232
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles  139.523447971   113.081504277
+<DFT>  Total Moment         (muB)  0.000000001   Angles  139.287508818   110.409976537
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108772816981  dUele     =   0.000074189833
+<DFT>  NormRD =    0.000222628256  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=14 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=193.276772
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 13.03 -55.06)  Ml 0.00 (103.14 240.20)  Ml+s 0.00 ( 17.37 -76.28)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 24.24 174.11)  Ml 0.00 (106.86 141.07)  Ml+s 0.00 ( 29.28 167.97)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 50.44 152.35)  Ml 0.00 ( 49.98 142.97)  Ml+s 0.00 ( 50.18 148.93)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (128.17 168.48)  Ml 0.00 ( 14.80 134.79)  Ml+s 0.00 (107.57 165.13)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (125.14 -37.77)  Ml 0.00 (103.89 233.34)  Ml+s 0.00 (126.56 -56.02)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (118.35 -17.89)  Ml 0.00 ( 44.28  84.06)  Ml+s 0.00 ( 88.58  13.44)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (113.21 175.66)  Ml 0.00 ( 21.60 -15.01)  Ml+s 0.00 ( 67.00 179.97)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 46.44 -20.14)  Ml 0.00 (112.62 101.25)  Ml+s 0.00 ( 73.19  56.96)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 56.24  55.57)  Ml 0.00 ( 25.07  81.96)  Ml+s 0.00 ( 43.03  62.33)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 59.02   3.46)  Ml 0.00 ( 68.79  49.07)  Ml+s 0.00 ( 60.85  21.35)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (167.02   9.35)  Ml 0.00 ( 30.26 -84.76)  Ml+s 0.00 (163.78 -13.75)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 50.15 216.51)  Ml 0.00 ( 70.84  -1.98)  Ml+s 0.00 ( 40.45 229.42)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 69.02  62.67)  Ml 0.00 (107.80 262.01)  Ml+s 0.00 ( 68.24  52.34)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (114.42  56.19)  Ml 0.00 ( 50.71 246.73)  Ml+s 0.00 (110.42  53.90)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (103.26 218.13)  Ml 0.00 (110.56 167.50)  Ml+s 0.00 (107.51 199.80)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (154.05 119.14)  Ml 0.00 ( 16.09 -57.63)  Ml+s 0.00 ( 61.29 113.23)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 13.73 119.41)  Ml 0.00 ( 66.60 -54.60)  Ml+s 0.00 (  2.33 -20.73)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 10.97  24.56)  Ml 0.00 ( 89.54  12.38)  Ml+s 0.00 ( 20.77  18.56)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  7.60 108.19)  Ml 0.00 ( 85.33 -25.98)  Ml+s 0.00 (  5.86  85.90)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  5.74   2.25)  Ml 0.00 ( 51.25 264.93)  Ml+s 0.00 (  7.99 -55.15)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.011138012   117.301197912
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   90.929011314   119.845147430
+<DFT>  Total Moment         (muB)  0.000000001   Angles   90.917746821   119.830201057
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108732520675  dUele     =   0.000040296306
+<DFT>  NormRD =    0.000158694960  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=15 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=191.744547
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  3.79 -53.71)  Ml 0.00 ( 50.88 -53.77)  Ml+s 0.00 (  8.07 -53.75)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 95.74 -62.94)  Ml 0.00 ( 72.08 167.94)  Ml+s 0.00 ( 86.60 -89.41)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 49.40 220.35)  Ml 0.00 ( 88.14 117.42)  Ml+s 0.00 ( 54.92 167.64)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (150.75 184.75)  Ml 0.00 ( 68.71  66.13)  Ml+s 0.00 (149.23 142.55)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (149.72 -34.35)  Ml 0.00 ( 42.96 251.49)  Ml+s 0.00 (142.90 -46.94)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (126.19 -48.46)  Ml 0.00 ( 85.66 191.11)  Ml+s 0.00 (128.00 -58.86)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 89.40 157.77)  Ml 0.00 ( 45.62  80.39)  Ml+s 0.00 ( 78.17 146.28)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 52.59  61.07)  Ml 0.00 (104.39  54.22)  Ml+s 0.00 ( 69.75  58.41)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 85.24  67.21)  Ml 0.00 (106.28 204.92)  Ml+s 0.00 ( 89.30  78.89)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 97.67  20.26)  Ml 0.00 (137.30 -26.40)  Ml+s 0.00 (109.40  11.00)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (160.23  15.37)  Ml 0.00 ( 57.84 231.37)  Ml+s 0.00 (161.67  10.25)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 58.81 -36.06)  Ml 0.00 ( 69.11  78.73)  Ml+s 0.00 ( 49.49  -9.53)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (107.94 156.65)  Ml 0.00 (132.55 205.11)  Ml+s 0.00 (110.73 160.03)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (102.34  98.02)  Ml 0.00 ( 25.78 155.55)  Ml+s 0.00 ( 74.51 108.96)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (109.80 261.97)  Ml 0.00 ( 58.03 266.94)  Ml+s 0.00 ( 95.77 263.28)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (114.49  90.33)  Ml 0.00 ( 20.14  65.26)  Ml+s 0.00 ( 83.13  85.88)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 23.86 162.94)  Ml 0.00 ( 54.82 241.39)  Ml+s 0.00 ( 23.93 177.38)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.12 -29.12)  Ml 0.00 ( 66.60 266.23)  Ml+s 0.00 ( 14.36 -80.46)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 19.63 130.81)  Ml 0.00 (  9.40 -16.22)  Ml+s 0.00 ( 15.86 128.14)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.61 218.64)  Ml 0.00 (141.98  66.10)  Ml+s 0.00 ( 10.83 121.48)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.550560567   184.024466910
+<DFT>  Total Orbital Moment (muB)  0.000000002   Angles   53.543325825    32.829569156
+<DFT>  Total Moment         (muB)  0.000000002   Angles   53.166800285    33.260563505
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108730304949  dUele     =   0.000002215727
+<DFT>  NormRD =    0.000077426966  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=16 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=193.303198
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 17.31  57.11)  Ml 0.00 (136.00   1.96)  Ml+s 0.00 ( 31.83  34.41)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 54.77 -61.52)  Ml 0.00 ( 34.79 -46.36)  Ml+s 0.00 ( 49.55 -58.61)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (133.37 -84.69)  Ml 0.00 (120.45  52.67)  Ml+s 0.00 (152.57   3.22)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (115.58 117.20)  Ml 0.00 ( 92.03 -83.29)  Ml+s 0.00 (124.57 126.20)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (130.08 -83.50)  Ml 0.00 (113.44 221.69)  Ml+s 0.00 (128.70 262.47)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 67.17 -70.20)  Ml 0.00 ( 33.27  10.16)  Ml+s 0.00 ( 49.22 -51.91)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 86.76 161.90)  Ml 0.00 (165.88 -29.50)  Ml+s 0.00 (110.38 163.13)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 79.84  56.72)  Ml 0.00 ( 75.64 156.96)  Ml+s 0.00 ( 75.73  73.07)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (104.43  73.22)  Ml 0.00 ( 74.65  -6.65)  Ml+s 0.00 ( 85.80  24.62)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (105.00  30.84)  Ml 0.00 (101.02  58.19)  Ml+s 0.00 (103.90  40.89)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (172.83 -17.60)  Ml 0.00 ( 78.07 202.58)  Ml+s 0.00 (162.13 218.46)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 74.24  21.34)  Ml 0.00 (103.89 117.86)  Ml+s 0.00 ( 85.03  59.67)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 94.21 187.03)  Ml 0.00 ( 96.45 218.60)  Ml+s 0.00 ( 95.12 197.39)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (130.04  97.42)  Ml 0.00 ( 74.82 -12.71)  Ml+s 0.00 (126.75  68.77)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (111.70 -68.13)  Ml 0.00 (132.24  46.66)  Ml+s 0.00 (137.95 -24.13)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (135.06 -57.77)  Ml 0.00 ( 88.51  22.62)  Ml+s 0.00 (114.38  -5.19)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.91 235.73)  Ml 0.00 (110.49  81.58)  Ml+s 0.00 (  2.52 143.45)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 23.71 182.65)  Ml 0.00 ( 22.76 -56.40)  Ml+s 0.00 ( 17.01 197.59)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 21.81 220.46)  Ml 0.00 ( 61.54 -50.26)  Ml+s 0.00 ( 23.02 254.67)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 43.06  69.94)  Ml 0.00 ( 78.26 212.11)  Ml+s 0.00 ( 29.67  98.21)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.132960124   240.803334621
+<DFT>  Total Orbital Moment (muB)  0.000000002   Angles   43.813093966   132.994117424
+<DFT>  Total Moment         (muB)  0.000000002   Angles   43.561682167   134.655187376
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108730863873  dUele     =   0.000000558925
+<DFT>  NormRD =    0.000032623334  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=17 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.540001
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 20.10 -31.87)  Ml 0.00 (117.72 210.05)  Ml+s 0.00 ( 19.31 -54.77)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 53.66 -82.38)  Ml 0.00 ( 76.01  25.24)  Ml+s 0.00 ( 50.20 -68.45)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 85.59  25.62)  Ml 0.00 (127.33 -49.06)  Ml+s 0.00 (102.13   4.92)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (156.42  66.46)  Ml 0.00 (122.45 -76.99)  Ml+s 0.00 (165.13 -32.20)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (128.64 -84.34)  Ml 0.00 (117.75 255.37)  Ml+s 0.00 (126.39 -89.60)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 38.85 -48.08)  Ml 0.00 ( 54.74 207.74)  Ml+s 0.00 ( 37.58 235.17)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (102.34 171.49)  Ml 0.00 (132.61  27.94)  Ml+s 0.00 (131.59 149.71)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 96.28  94.69)  Ml 0.00 (100.96 136.06)  Ml+s 0.00 ( 98.95 113.05)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (170.88 257.41)  Ml 0.00 ( 48.80 -14.56)  Ml+s 0.00 ( 74.98 -20.09)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 40.99  83.51)  Ml 0.00 (147.40 119.83)  Ml+s 0.00 ( 87.79  98.31)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (166.29 -45.19)  Ml 0.00 (149.69 236.17)  Ml+s 0.00 (166.33 -69.75)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 88.85  31.09)  Ml 0.00 ( 58.11 195.23)  Ml+s 0.00 ( 78.48  35.59)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (109.52 217.18)  Ml 0.00 ( 34.34 226.37)  Ml+s 0.00 ( 95.52 218.48)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 90.97 101.98)  Ml 0.00 (105.44 -29.06)  Ml+s 0.00 (101.45  72.46)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (146.82 256.55)  Ml 0.00 (130.54  39.77)  Ml+s 0.00 (165.17 -31.47)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (117.59 195.74)  Ml 0.00 ( 98.40  37.10)  Ml+s 0.00 (148.06  94.39)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 10.26  -0.60)  Ml 0.00 ( 95.89  74.19)  Ml+s 0.00 ( 16.09  36.10)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 26.12 203.51)  Ml 0.00 ( 13.25  85.77)  Ml+s 0.00 ( 21.68 198.79)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 28.54 185.05)  Ml 0.00 ( 84.71 -62.64)  Ml+s 0.00 ( 26.46 202.33)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 41.56  34.99)  Ml 0.00 (133.74 -86.40)  Ml+s 0.00 ( 46.51  17.75)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.800501020   238.749566686
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   74.860690882    70.565668983
+<DFT>  Total Moment         (muB)  0.000000001   Angles   73.840306749    71.406874091
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108731726248  dUele     =   0.000000862374
+<DFT>  NormRD =    0.000039047378  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=18 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=193.169937
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 16.29 -18.25)  Ml 0.00 (110.97 -40.00)  Ml+s 0.00 ( 30.72 -28.35)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 51.86  -8.79)  Ml 0.00 (116.33 -62.98)  Ml+s 0.00 ( 66.82 -24.89)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 74.96  46.08)  Ml 0.00 (138.90 -64.13)  Ml+s 0.00 (115.15   8.62)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (119.94  49.89)  Ml 0.00 ( 23.67  90.99)  Ml+s 0.00 (103.97  54.41)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (143.24 242.26)  Ml 0.00 (131.55 221.91)  Ml+s 0.00 (141.00 236.95)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 57.26  56.64)  Ml 0.00 ( 37.08   7.50)  Ml+s 0.00 ( 44.04  35.23)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (142.79 157.48)  Ml 0.00 (149.35  53.16)  Ml+s 0.00 (153.69 134.53)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 71.55  69.59)  Ml 0.00 ( 52.21  83.36)  Ml+s 0.00 ( 63.17  74.84)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (136.26 237.98)  Ml 0.00 (137.89 -44.22)  Ml+s 0.00 (139.03 245.25)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 45.74  60.65)  Ml 0.00 (112.56  -4.00)  Ml+s 0.00 ( 49.01  54.43)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (152.10 215.47)  Ml 0.00 (117.13  50.07)  Ml+s 0.00 (163.38 206.26)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 78.55  28.02)  Ml 0.00 (  8.16 116.97)  Ml+s 0.00 ( 65.86  30.04)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (119.62 218.34)  Ml 0.00 ( 81.13 256.80)  Ml+s 0.00 (111.22 228.55)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 65.36 -75.28)  Ml 0.00 (119.65 256.08)  Ml+s 0.00 (100.98 266.62)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (105.68 -80.95)  Ml 0.00 (156.55  81.82)  Ml+s 0.00 (142.72 -74.11)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (137.50 -51.76)  Ml 0.00 (109.54  15.77)  Ml+s 0.00 (132.96 -23.68)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.93 -10.76)  Ml 0.00 ( 45.86  31.83)  Ml+s 0.00 (  9.60  13.72)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 19.48 197.39)  Ml 0.00 (118.75  32.55)  Ml+s 0.00 ( 12.88 186.33)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 21.83 175.35)  Ml 0.00 ( 19.60  -9.83)  Ml+s 0.00 ( 14.45 176.70)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 36.58  43.36)  Ml 0.00 ( 89.17  51.70)  Ml+s 0.00 ( 45.95  45.75)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.900991244   222.873249742
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   26.996661630    12.056865345
+<DFT>  Total Moment         (muB)  0.000000001   Angles   24.693273708     8.294187347
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108728153002  dUele     =   0.000003573246
+<DFT>  NormRD =    0.000011309844  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=19 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.355130
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  5.20 -10.48)  Ml 0.00 (105.94 -87.34)  Ml+s 0.00 ( 15.82 -67.78)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 56.13   5.53)  Ml 0.00 ( 70.74  -1.47)  Ml+s 0.00 ( 58.10   4.46)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 87.27  33.05)  Ml 0.00 (153.14 -70.13)  Ml+s 0.00 (121.14  14.27)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (132.51  69.26)  Ml 0.00 ( 53.48 233.06)  Ml+s 0.00 (133.76  74.41)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (113.94 256.29)  Ml 0.00 (108.57 -18.17)  Ml+s 0.00 (117.16 -86.65)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 46.54  62.36)  Ml 0.00 ( 30.15  60.08)  Ml+s 0.00 ( 39.65  61.60)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (122.09 117.82)  Ml 0.00 ( 63.62 244.75)  Ml+s 0.00 (118.66 136.45)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 54.08 152.87)  Ml 0.00 ( 96.77 -85.98)  Ml+s 0.00 ( 52.13 182.40)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (140.23 206.58)  Ml 0.00 ( 19.14 124.57)  Ml+s 0.00 (120.43 195.50)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 44.80  50.76)  Ml 0.00 (137.28  -3.51)  Ml+s 0.00 ( 57.81  40.64)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (155.17 222.13)  Ml 0.00 (105.89  15.16)  Ml+s 0.00 (165.08 242.95)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (111.11  57.06)  Ml 0.00 (119.25  98.47)  Ml+s 0.00 (115.35  71.12)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (121.50 236.96)  Ml 0.00 ( 48.14 184.02)  Ml+s 0.00 (110.34 228.42)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 84.41 240.12)  Ml 0.00 ( 78.48 -72.81)  Ml+s 0.00 ( 80.46 265.18)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (113.40 -65.23)  Ml 0.00 (110.28 116.92)  Ml+s 0.00 (121.09 -65.69)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (152.83   7.54)  Ml 0.00 (113.05  47.08)  Ml+s 0.00 (136.20  32.74)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 22.20   7.26)  Ml 0.00 (141.94 105.42)  Ml+s 0.00 ( 25.06  21.72)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 13.06 225.16)  Ml 0.00 ( 90.61 154.84)  Ml+s 0.00 ( 19.23 193.69)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 28.55 230.22)  Ml 0.00 ( 68.56  79.09)  Ml+s 0.00 ( 22.30 221.60)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 52.46  61.12)  Ml 0.00 (157.32 140.37)  Ml+s 0.00 ( 57.98  64.27)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.970745168   252.771863696
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   59.540895854   105.928850132
+<DFT>  Total Moment         (muB)  0.000000001   Angles   58.671531628   107.249138309
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108726314224  dUele     =   0.000001838778
+<DFT>  NormRD =    0.000006022505  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=20 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.566712
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  4.14 241.47)  Ml 0.00 (136.18 -32.25)  Ml+s 0.00 ( 13.91 -53.34)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (105.39  33.95)  Ml 0.00 ( 91.58  52.50)  Ml+s 0.00 (101.58  39.37)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (106.98  58.51)  Ml 0.00 (149.48 199.99)  Ml+s 0.00 (152.07  90.06)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (138.55  86.87)  Ml 0.00 (147.03 219.88)  Ml+s 0.00 (152.44 101.93)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (121.54 -58.76)  Ml 0.00 (125.58 265.77)  Ml+s 0.00 (123.45 -67.03)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 81.97  77.46)  Ml 0.00 ( 10.26  57.95)  Ml+s 0.00 ( 62.24  76.09)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (158.13  92.65)  Ml 0.00 ( 85.81 -45.18)  Ml+s 0.00 (133.93 -28.64)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (111.94 166.21)  Ml 0.00 ( 32.89 253.84)  Ml+s 0.00 ( 40.76 226.55)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (143.43 261.08)  Ml 0.00 ( 10.28  19.54)  Ml+s 0.00 (119.92 268.96)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 34.78 119.69)  Ml 0.00 ( 60.00  14.47)  Ml+s 0.00 ( 29.85  80.69)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (159.01 213.05)  Ml 0.00 ( 88.63  61.97)  Ml+s 0.00 (168.18 178.89)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (116.56  51.36)  Ml 0.00 ( 69.55 113.09)  Ml+s 0.00 ( 94.96  81.36)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (152.85 -77.16)  Ml 0.00 (103.55 149.49)  Ml+s 0.00 (160.86 225.65)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 87.19 256.94)  Ml 0.00 ( 54.18  65.96)  Ml+s 0.00 ( 84.59 257.58)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (121.77 -21.46)  Ml 0.00 (131.85 233.56)  Ml+s 0.00 (127.84 -30.11)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (134.98  -4.39)  Ml 0.00 ( 55.04  32.66)  Ml+s 0.00 (113.00   8.40)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 11.13 -54.24)  Ml 0.00 (117.14  67.65)  Ml+s 0.00 ( 11.53   3.00)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 18.13 237.84)  Ml 0.00 (102.51 111.95)  Ml+s 0.00 ( 17.29 232.74)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 24.56 -88.49)  Ml 0.00 (114.90  54.02)  Ml+s 0.00 ( 18.36 -50.18)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 35.92  96.17)  Ml 0.00 (119.35  24.79)  Ml+s 0.00 ( 55.02  67.37)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.027796098   261.336609538
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   61.575711906    98.011766682
+<DFT>  Total Moment         (muB)  0.000000001   Angles   60.658890292    98.675379139
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108725808118  dUele     =   0.000000506106
+<DFT>  NormRD =    0.000003070400  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=21 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.624469
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  5.75 -67.28)  Ml 0.00 (140.10 -81.97)  Ml+s 0.00 ( 15.45 -75.66)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 70.77  -0.34)  Ml 0.00 ( 87.98  76.09)  Ml+s 0.00 ( 75.29  33.64)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (117.59  74.25)  Ml 0.00 (131.79 246.49)  Ml+s 0.00 (158.78  85.64)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (151.21  90.60)  Ml 0.00 (123.81 -84.86)  Ml+s 0.00 (160.92  88.64)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (116.05 -48.35)  Ml 0.00 (120.51 259.29)  Ml+s 0.00 (117.79 -54.82)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (114.04  55.59)  Ml 0.00 (  8.12  81.14)  Ml+s 0.00 ( 65.99  58.56)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (118.06 122.60)  Ml 0.00 ( 54.48 -55.69)  Ml+s 0.00 ( 60.51 112.26)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (133.63 -70.44)  Ml 0.00 ( 37.92 -54.25)  Ml+s 0.00 ( 85.13 -62.93)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (137.12 -89.52)  Ml 0.00 (  4.44 252.29)  Ml+s 0.00 (103.20 269.40)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (  7.02   4.17)  Ml 0.00 ( 91.71  26.80)  Ml+s 0.00 ( 19.55  19.08)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (164.73 227.94)  Ml 0.00 ( 93.27  90.57)  Ml+s 0.00 (169.45 168.74)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (154.89 103.48)  Ml 0.00 ( 84.24 117.88)  Ml+s 0.00 (129.82 111.91)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (168.92 183.40)  Ml 0.00 ( 83.06 141.08)  Ml+s 0.00 (151.22 155.62)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 44.50 233.11)  Ml 0.00 ( 40.36 -41.85)  Ml+s 0.00 ( 37.44 251.16)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (145.32 -51.47)  Ml 0.00 (102.32  28.49)  Ml+s 0.00 (141.98 -25.05)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (128.75 -22.61)  Ml 0.00 (143.70  52.64)  Ml+s 0.00 (136.35  -9.76)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.81 -14.65)  Ml 0.00 (132.85 112.85)  Ml+s 0.00 ( 11.78  24.92)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 27.15 194.99)  Ml 0.00 (121.01 170.84)  Ml+s 0.00 ( 39.06 188.05)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 44.61 251.51)  Ml 0.00 (118.46  34.17)  Ml+s 0.00 ( 42.23 -82.13)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 19.39  76.57)  Ml 0.00 (106.20  60.66)  Ml+s 0.00 ( 44.49  67.25)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   89.802476216   252.342821178
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   52.161558615    84.191978469
+<DFT>  Total Moment         (muB)  0.000000001   Angles   49.961197100    85.172058992
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108725855015  dUele     =   0.000000046897
+<DFT>  NormRD =    0.000000735943  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=22 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.464015
+<Band_DFT>  DM, time=0.000000
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 36.12 -61.56)  Ml 0.00 ( 73.54 251.46)  Ml+s 0.00 ( 40.55 -73.05)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 85.83  28.26)  Ml 0.00 ( 76.52 178.76)  Ml+s 0.00 ( 77.84  41.84)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (115.74 -55.67)  Ml 0.00 ( 28.27  11.05)  Ml+s 0.00 ( 77.32 -37.83)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (151.38 132.09)  Ml 0.00 ( 38.32 -34.13)  Ml+s 0.00 (160.54  84.17)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (120.08 -67.13)  Ml 0.00 ( 74.76 199.46)  Ml+s 0.00 (115.94 -83.80)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (135.33  46.31)  Ml 0.00 ( 52.12 123.62)  Ml+s 0.00 ( 90.51  90.58)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (101.64 188.13)  Ml 0.00 ( 66.60  44.42)  Ml+s 0.00 ( 76.53 134.63)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 51.55   3.14)  Ml 0.00 (132.51  86.65)  Ml+s 0.00 ( 84.14  36.66)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (159.54 -23.86)  Ml 0.00 ( 40.95 198.43)  Ml+s 0.00 (158.00 -81.60)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 46.34 -32.87)  Ml 0.00 ( 84.61   6.73)  Ml+s 0.00 ( 52.57 -22.88)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (165.05 168.75)  Ml 0.00 ( 85.41 175.95)  Ml+s 0.00 (157.63 171.23)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 32.36 -44.43)  Ml 0.00 ( 67.40 148.89)  Ml+s 0.00 ( 25.16 -48.18)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (144.46 119.80)  Ml 0.00 ( 82.72 261.64)  Ml+s 0.00 (149.12 130.72)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 42.03 124.44)  Ml 0.00 ( 21.78  61.38)  Ml+s 0.00 ( 31.78 110.60)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (141.51 -31.67)  Ml 0.00 (121.86 134.16)  Ml+s 0.00 (159.64 -20.47)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (142.46 239.11)  Ml 0.00 ( 99.07 -35.99)  Ml+s 0.00 (139.70 266.12)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 15.68  25.23)  Ml 0.00 (120.98  54.70)  Ml+s 0.00 ( 29.96  38.54)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 20.27 183.15)  Ml 0.00 (117.08 140.17)  Ml+s 0.00 ( 38.25 162.81)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 12.45  30.56)  Ml 0.00 (116.44  40.39)  Ml+s 0.00 ( 51.79  37.89)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (158.99 209.19)  Ml 0.00 (105.43  34.54)  Ml+s 0.00 (173.92  51.75)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   90.906421518   204.352274283
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   46.247520248   182.242109725
+<DFT>  Total Moment         (muB)  0.000000001   Angles   46.709976917   182.608344053
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108725933567  dUele     =   0.000000078552
+<DFT>  NormRD =    0.000001440883  Criterion =   0.000000010000
+
+******************* MD= 1  SCF=23 *******************
+<Poisson>  Poisson's equation using FFT...
+<Set_Hamiltonian>  Hamiltonian matrix for VNA+dVH+Vxc...
+<Band>  Solving the eigenvalue problem...
+ KGrids1:   0.00000   0.50000 
+ KGrids2:  -0.00000   0.50000 
+ KGrids3:   0.00000   0.50000 
+<Band_DFT>  Eigen, time=192.810132
+<Band_DFT>  DM, time=0.000001
+    1   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 16.67 -76.05)  Ml 0.00 (114.16 195.53)  Ml+s 0.00 ( 22.25 249.41)
+    2   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (152.22 -65.52)  Ml 0.00 ( 96.74 135.98)  Ml+s 0.00 (150.75 153.75)
+    3   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 16.81  78.75)  Ml 0.00 ( 52.66 113.53)  Ml+s 0.00 ( 37.07 106.61)
+    4   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (168.86 211.83)  Ml 0.00 (104.13 235.59)  Ml+s 0.00 (163.97 219.98)
+    5   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (133.88  -1.36)  Ml 0.00 ( 90.87 145.71)  Ml+s 0.00 (150.46  46.00)
+    6   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (110.80 -16.68)  Ml 0.00 ( 54.78 127.39)  Ml+s 0.00 ( 84.42  19.77)
+    7   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (138.62 187.31)  Ml 0.00 ( 11.93  21.28)  Ml+s 0.00 (126.06 185.76)
+    8   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 97.27   6.19)  Ml 0.00 (102.49  39.28)  Ml+s 0.00 (100.30  22.64)
+    9   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (149.20   1.88)  Ml 0.00 ( 31.66  18.65)  Ml+s 0.00 (132.71   5.73)
+   10   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 59.43 -57.21)  Ml 0.00 (110.61 126.09)  Ml+s 0.00 ( 58.19 -57.67)
+   11   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (161.91 182.71)  Ml 0.00 ( 20.44 118.20)  Ml+s 0.00 (152.41 168.90)
+   12   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 22.03 260.63)  Ml 0.00 ( 98.81 -60.56)  Ml+s 0.00 ( 40.21 -79.32)
+   13   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (126.49  81.86)  Ml 0.00 ( 46.57 -89.29)  Ml+s 0.00 (124.05  79.28)
+   14   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 83.80 112.78)  Ml 0.00 ( 90.26  -8.39)  Ml+s 0.00 ( 82.92  83.99)
+   15   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (123.23  27.16)  Ml 0.00 (148.74 -18.69)  Ml+s 0.00 (130.50  20.11)
+   16   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (138.96 250.33)  Ml 0.00 ( 99.26 -58.36)  Ml+s 0.00 (126.74 -84.97)
+   17   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 17.44  44.83)  Ml 0.00 ( 71.54 183.02)  Ml+s 0.00 ( 16.20  48.56)
+   18   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 16.80 170.21)  Ml 0.00 (103.88 -18.08)  Ml+s 0.00 (  8.88 178.78)
+   19   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 ( 22.60 -51.45)  Ml 0.00 (144.44  47.29)  Ml+s 0.00 ( 26.25 -35.70)
+   20   Si  MulP 2.00 2.00 sum  4.00 diff  0.00 (113.48 236.22)  Ml 0.00 ( 40.92  48.74)  Ml+s 0.00 ( 95.57 239.69)
+     ..........
+     ......
+
+ Sum of MulP: up   =   432.00000 down          =   432.00000
+              total=   864.00000 ideal(neutral)=   864.00000
+<DFT>  Total Spin Moment    (muB)  0.000000000   Angles   94.899681765   -49.594577715
+<DFT>  Total Orbital Moment (muB)  0.000000001   Angles   58.377909025   178.041452432
+<DFT>  Total Moment         (muB)  0.000000001   Angles   58.358770055   178.100753461
+<DFT>  Mixing_weight= 0.070000000000
+<DFT>  Uele   = -261.108725934600  dUele     =   0.000000001032
+<DFT>  NormRD =    0.000000736733  Criterion =   0.000000010000
+<MD= 1>  Force calculation
+  Force calculation #1
+  Force calculation #2
+  Force calculation #3
+  Force calculation #4
+  Force calculation #5
+<MD= 1>  Total Energy
+  Force calculation #6
+  Force calculation #7
+
+*******************************************************
+                  Dipole moment (Debye)                 
+*******************************************************
+
+ Absolute D      460.64816722
+
+                      Dx                Dy                Dz
+ Total            269.58274549      264.12296107      264.12296139
+ Core           33808.69673541    33807.73609485    33807.73609485
+ Electron      -33539.11398992   -33543.61313377   -33543.61313346
+ Back ground       -0.00000000       -0.00000000       -0.00000000
+
+*******************************************************
+             Total Energy (Hartree) at MD = 1           
+*******************************************************
+
+  Uele  =    -261.108725934600
+
+  Ukin  =     328.003263655561
+  UH0   =  -15767.674440125676
+  UH1   =       3.368339524999
+  Una   =    -365.333215349427
+  Unl   =     134.013973083443
+  Uxc0  =    -153.336589500774
+  Uxc1  =    -153.336589482750
+  Ucore =   15086.873065869964
+  Uhub  =       0.000000000000
+  Ucs   =       0.000000000000
+  Uzs   =       0.000000000000
+  Uzo   =       0.000000000000
+  Uef   =       0.000000000000
+  UvdW  =       0.000000000000
+  Uch   =       0.000000000000
+  Utot  =    -887.422192324662
+
+  UpV   =       0.000000000000
+  Enpy  =    -887.422192324662
+  Note:
+
+  Uele:   band energy
+  Ukin:   kinetic energy
+  UH0:    electric part of screened Coulomb energy
+  UH1:    difference electron-electron Coulomb energy
+  Una:    neutral atom potential energy
+  Unl:    non-local potential energy
+  Uxc0:   exchange-correlation energy for alpha spin
+  Uxc1:   exchange-correlation energy for beta spin
+  Ucore:  core-core Coulomb energy
+  Uhub:   LDA+U energy
+  Ucs:    constraint energy for spin orientation
+  Uzs:    Zeeman term for spin magnetic moment
+  Uzo:    Zeeman term for orbital magnetic moment
+  Uef:    electric energy by electric field
+  UvdW:   semi-empirical vdW energy 
+  Uch:    penalty term to create a core hole
+  UpV:    pressure times volume
+  Enpy:   Enthalpy = Utot + UpV
+  (see also PRB 72, 045121(2005) for the energy contributions)
+
+
+*******************************************************
+           Computational times (s) at MD = 1            
+*******************************************************
+
+  DFT in total      = 4731.92919
+
+  Set_OLP_Kin       =    0.89822
+  Set_Nonlocal      =    4.92806
+  Set_ProExpn_VNA   =   29.05605
+  Set_Hamiltonian   =   97.71772
+  Poisson           =    0.46588
+  diagonalization   = 4455.97596
+  Mixing_DM         =    6.31596
+  Force             =   19.50792
+  Total_Energy      =   11.14169
+  Set_Aden_Grid     =    1.10634
+  Set_Orbitals_Grid =    1.35259
+  Set_Density_Grid  =   97.47112
+  RestartFileDFT    =    0.02389
+  Mulliken_Charge   =    0.72855
+  FFT(2D)_Density   =    1.36420
+
+The SCF was achieved at MD=   1
+
+*******************************************************
+             MD or geometry opt. at MD = 1              
+*******************************************************
+
+<Steepest_Descent>  SD_scaling= 1.259817316425
+<Steepest_Descent>  |Maximum force| (Hartree/Bohr) = 0.013554452080
+<Steepest_Descent>  Criterion       (Hartree/Bohr) = 0.000010000000
+
+  atom=  1, XYZ(ang) Fxyz(a.u.)=   0.7289    0.6789    0.6789     0.0136    0.0000    0.0000
+  atom=  2, XYZ(ang) Fxyz(a.u.)=   3.3944    0.6789    3.3944    -0.0002    0.0001   -0.0002
+  atom=  3, XYZ(ang) Fxyz(a.u.)=   0.6789    3.3944    3.3944     0.0004   -0.0001   -0.0001
+  atom=  4, XYZ(ang) Fxyz(a.u.)=   3.3944    3.3944    0.6789    -0.0002   -0.0002    0.0001
+  atom=  5, XYZ(ang) Fxyz(a.u.)=   4.7521    2.0366    2.0366     0.0000    0.0000    0.0000
+  atom=  6, XYZ(ang) Fxyz(a.u.)=   4.7521    4.7521    4.7521     0.0000    0.0000    0.0000
+  atom=  7, XYZ(ang) Fxyz(a.u.)=   2.0366    2.0366    4.7521     0.0000   -0.0000    0.0000
+  atom=  8, XYZ(ang) Fxyz(a.u.)=   2.0366    4.7521    2.0366     0.0000    0.0000   -0.0000
+  atom=  9, XYZ(ang) Fxyz(a.u.)=   0.6789    0.6789    6.1099    -0.0000    0.0000    0.0000
+  atom= 10, XYZ(ang) Fxyz(a.u.)=   3.3944    0.6789    8.8254    -0.0000    0.0000    0.0000
+  atom= 11, XYZ(ang) Fxyz(a.u.)=   0.6789    3.3944    8.8254    -0.0000   -0.0000    0.0000
+  atom= 12, XYZ(ang) Fxyz(a.u.)=   3.3944    3.3944    6.1099    -0.0000    0.0000   -0.0000
+  atom= 13, XYZ(ang) Fxyz(a.u.)=   4.7521    2.0366    7.4676     0.0000   -0.0000   -0.0000
+  atom= 14, XYZ(ang) Fxyz(a.u.)=   4.7521    4.7521   10.1831     0.0000   -0.0000   -0.0000
+  atom= 15, XYZ(ang) Fxyz(a.u.)=   2.0366    2.0366   10.1831     0.0000    0.0000    0.0000
+  atom= 16, XYZ(ang) Fxyz(a.u.)=   2.0366    4.7521    7.4676     0.0000   -0.0000    0.0000
+  atom= 17, XYZ(ang) Fxyz(a.u.)=   0.6789    0.6789   11.5409    -0.0000    0.0000   -0.0000
+  atom= 18, XYZ(ang) Fxyz(a.u.)=   3.3944    0.6789   14.2564    -0.0002   -0.0001    0.0002
+  atom= 19, XYZ(ang) Fxyz(a.u.)=   0.6789    3.3944   14.2564     0.0004    0.0001   -0.0001
+  atom= 20, XYZ(ang) Fxyz(a.u.)=   3.3944    3.3944   11.5409    -0.0000    0.0000    0.0000
+  atom= 21, XYZ(ang) Fxyz(a.u.)=   4.7521    2.0366   12.8986    -0.0000    0.0001    0.0000
+  atom= 22, XYZ(ang) Fxyz(a.u.)=   4.7521    4.7521   15.6141    -0.0000   -0.0000   -0.0001
+  atom= 23, XYZ(ang) Fxyz(a.u.)=   2.0366    2.0366   15.6141    -0.0034   -0.0025    0.0025
+  atom= 24, XYZ(ang) Fxyz(a.u.)=   2.0366    4.7521   12.8986    -0.0002    0.0001   -0.0000
+  atom= 25, XYZ(ang) Fxyz(a.u.)=   0.6789    6.1099    0.6789    -0.0000    0.0000    0.0000
+  atom= 26, XYZ(ang) Fxyz(a.u.)=   3.3944    6.1099    3.3944    -0.0000   -0.0000    0.0000
+  atom= 27, XYZ(ang) Fxyz(a.u.)=   0.6789    8.8254    3.3944    -0.0000    0.0000   -0.0000
+  atom= 28, XYZ(ang) Fxyz(a.u.)=   3.3944    8.8254    0.6789    -0.0000    0.0000    0.0000
+  atom= 29, XYZ(ang) Fxyz(a.u.)=   4.7521    7.4676    2.0366     0.0000   -0.0000   -0.0000
+  atom= 30, XYZ(ang) Fxyz(a.u.)=   4.7521   10.1831    4.7521     0.0000   -0.0000   -0.0000
+  atom= 31, XYZ(ang) Fxyz(a.u.)=   2.0366    7.4676    4.7521     0.0000    0.0000   -0.0000
+  atom= 32, XYZ(ang) Fxyz(a.u.)=   2.0366   10.1831    2.0366     0.0000    0.0000    0.0000
+  atom= 33, XYZ(ang) Fxyz(a.u.)=   0.6789    6.1099    6.1099     0.0001   -0.0000   -0.0000
+  atom= 34, XYZ(ang) Fxyz(a.u.)=   3.3944    6.1099    8.8254    -0.0000    0.0000    0.0000
+  atom= 35, XYZ(ang) Fxyz(a.u.)=   0.6789    8.8254    8.8254     0.0001    0.0000    0.0000
+  atom= 36, XYZ(ang) Fxyz(a.u.)=   3.3944    8.8254    6.1099    -0.0000    0.0000    0.0000
+  atom= 37, XYZ(ang) Fxyz(a.u.)=   4.7521    7.4676    7.4676     0.0000   -0.0000   -0.0000
+  atom= 38, XYZ(ang) Fxyz(a.u.)=   4.7521   10.1831   10.1831     0.0000    0.0000    0.0000
+  atom= 39, XYZ(ang) Fxyz(a.u.)=   2.0366    7.4676   10.1831    -0.0001   -0.0000   -0.0000
+  atom= 40, XYZ(ang) Fxyz(a.u.)=   2.0366   10.1831    7.4676    -0.0001   -0.0000   -0.0000
+  atom= 41, XYZ(ang) Fxyz(a.u.)=   0.6789    6.1099   11.5409     0.0001    0.0000   -0.0000
+  atom= 42, XYZ(ang) Fxyz(a.u.)=   3.3944    6.1099   14.2564    -0.0000   -0.0000   -0.0000
+  atom= 43, XYZ(ang) Fxyz(a.u.)=   0.6789    8.8254   14.2564    -0.0000   -0.0000    0.0000
+  atom= 44, XYZ(ang) Fxyz(a.u.)=   3.3944    8.8254   11.5409    -0.0000    0.0000   -0.0000
+  atom= 45, XYZ(ang) Fxyz(a.u.)=   4.7521    7.4676   12.8986     0.0000   -0.0000    0.0000
+  atom= 46, XYZ(ang) Fxyz(a.u.)=   4.7521   10.1831   15.6141     0.0000   -0.0000    0.0000
+  atom= 47, XYZ(ang) Fxyz(a.u.)=   2.0366    7.4676   15.6141     0.0000   -0.0000   -0.0000
+  atom= 48, XYZ(ang) Fxyz(a.u.)=   2.0366   10.1831   12.8986     0.0000   -0.0000    0.0000
+  atom= 49, XYZ(ang) Fxyz(a.u.)=   0.6789   11.5409    0.6789    -0.0000   -0.0000    0.0000
+  atom= 50, XYZ(ang) Fxyz(a.u.)=   3.3944   11.5409    3.3944    -0.0000    0.0000    0.0000
+  atom= 51, XYZ(ang) Fxyz(a.u.)=   0.6789   14.2564    3.3944     0.0004   -0.0001    0.0001
+  atom= 52, XYZ(ang) Fxyz(a.u.)=   3.3944   14.2564    0.6789    -0.0002    0.0002   -0.0001
+  atom= 53, XYZ(ang) Fxyz(a.u.)=   4.7521   12.8986    2.0366    -0.0000    0.0000    0.0001
+  atom= 54, XYZ(ang) Fxyz(a.u.)=   4.7521   15.6141    4.7521    -0.0000   -0.0001   -0.0000
+  atom= 55, XYZ(ang) Fxyz(a.u.)=   2.0366   12.8986    4.7521    -0.0002   -0.0000    0.0001
+  atom= 56, XYZ(ang) Fxyz(a.u.)=   2.0366   15.6141    2.0366    -0.0034    0.0025   -0.0025
+  atom= 57, XYZ(ang) Fxyz(a.u.)=   0.6789   11.5409    6.1099     0.0001   -0.0000    0.0000
+  atom= 58, XYZ(ang) Fxyz(a.u.)=   3.3944   11.5409    8.8254    -0.0000   -0.0000    0.0000
+  atom= 59, XYZ(ang) Fxyz(a.u.)=   0.6789   14.2564    8.8254    -0.0000    0.0000   -0.0000
+  atom= 60, XYZ(ang) Fxyz(a.u.)=   3.3944   14.2564    6.1099    -0.0000   -0.0000   -0.0000
+  atom= 61, XYZ(ang) Fxyz(a.u.)=   4.7521   12.8986    7.4676     0.0000    0.0000   -0.0000
+  atom= 62, XYZ(ang) Fxyz(a.u.)=   4.7521   15.6141   10.1831     0.0000    0.0000   -0.0000
+  atom= 63, XYZ(ang) Fxyz(a.u.)=   2.0366   12.8986   10.1831     0.0000    0.0000   -0.0000
+  atom= 64, XYZ(ang) Fxyz(a.u.)=   2.0366   15.6141    7.4676     0.0000   -0.0000   -0.0000
+  atom= 65, XYZ(ang) Fxyz(a.u.)=   0.6789   11.5409   11.5409     0.0001    0.0000    0.0000
+  atom= 66, XYZ(ang) Fxyz(a.u.)=   3.3944   11.5409   14.2564    -0.0000    0.0000   -0.0000
+  atom= 67, XYZ(ang) Fxyz(a.u.)=   0.6789   14.2564   14.2564     0.0004    0.0001    0.0001
+  atom= 68, XYZ(ang) Fxyz(a.u.)=   3.3944   14.2564   11.5409    -0.0000   -0.0000    0.0000
+  atom= 69, XYZ(ang) Fxyz(a.u.)=   4.7521   12.8986   12.8986     0.0000    0.0000    0.0000
+  atom= 70, XYZ(ang) Fxyz(a.u.)=   4.7521   15.6141   15.6141     0.0000   -0.0000   -0.0000
+  atom= 71, XYZ(ang) Fxyz(a.u.)=   2.0366   12.8986   15.6141     0.0000   -0.0000    0.0000
+  atom= 72, XYZ(ang) Fxyz(a.u.)=   2.0366   15.6141   12.8986     0.0000    0.0000   -0.0000
+  atom= 73, XYZ(ang) Fxyz(a.u.)=   6.1099    0.6789    0.6789    -0.0000    0.0000    0.0000
+  atom= 74, XYZ(ang) Fxyz(a.u.)=   8.8254    0.6789    3.3944     0.0000    0.0000   -0.0000
+  atom= 75, XYZ(ang) Fxyz(a.u.)=   6.1099    3.3944    3.3944     0.0000   -0.0000   -0.0000
+  atom= 76, XYZ(ang) Fxyz(a.u.)=   8.8254    3.3944    0.6789     0.0000   -0.0000    0.0000
+  atom= 77, XYZ(ang) Fxyz(a.u.)=  10.1831    2.0366    2.0366     0.0000    0.0000    0.0000
+  atom= 78, XYZ(ang) Fxyz(a.u.)=  10.1831    4.7521    4.7521    -0.0000    0.0000    0.0000
+  atom= 79, XYZ(ang) Fxyz(a.u.)=   7.4676    2.0366    4.7521     0.0000    0.0000    0.0000
+  atom= 80, XYZ(ang) Fxyz(a.u.)=   7.4676    4.7521    2.0366     0.0000    0.0000    0.0000
+  atom= 81, XYZ(ang) Fxyz(a.u.)=   6.1099    0.6789    6.1099    -0.0000    0.0000   -0.0000
+  atom= 82, XYZ(ang) Fxyz(a.u.)=   8.8254    0.6789    8.8254     0.0000    0.0000    0.0000
+  atom= 83, XYZ(ang) Fxyz(a.u.)=   6.1099    3.3944    8.8254     0.0000    0.0000    0.0000
+  atom= 84, XYZ(ang) Fxyz(a.u.)=   8.8254    3.3944    6.1099     0.0000   -0.0000    0.0000
+  atom= 85, XYZ(ang) Fxyz(a.u.)=  10.1831    2.0366    7.4676    -0.0000   -0.0000   -0.0000
+  atom= 86, XYZ(ang) Fxyz(a.u.)=  10.1831    4.7521   10.1831     0.0000    0.0000   -0.0000
+  atom= 87, XYZ(ang) Fxyz(a.u.)=   7.4676    2.0366   10.1831    -0.0000    0.0000   -0.0000
+  atom= 88, XYZ(ang) Fxyz(a.u.)=   7.4676    4.7521    7.4676    -0.0000    0.0000   -0.0000
+  atom= 89, XYZ(ang) Fxyz(a.u.)=   6.1099    0.6789   11.5409    -0.0000   -0.0000    0.0000
+  atom= 90, XYZ(ang) Fxyz(a.u.)=   8.8254    0.6789   14.2564     0.0000    0.0000    0.0000
+  atom= 91, XYZ(ang) Fxyz(a.u.)=   6.1099    3.3944   14.2564     0.0000   -0.0000    0.0000
+  atom= 92, XYZ(ang) Fxyz(a.u.)=   8.8254    3.3944   11.5409     0.0000   -0.0000   -0.0000
+  atom= 93, XYZ(ang) Fxyz(a.u.)=  10.1831    2.0366   12.8986     0.0000   -0.0000    0.0000
+  atom= 94, XYZ(ang) Fxyz(a.u.)=  10.1831    4.7521   15.6141     0.0000    0.0000    0.0000
+  atom= 95, XYZ(ang) Fxyz(a.u.)=   7.4676    2.0366   15.6141    -0.0000   -0.0000   -0.0000
+  atom= 96, XYZ(ang) Fxyz(a.u.)=   7.4676    4.7521   12.8986    -0.0000    0.0000    0.0000
+  atom= 97, XYZ(ang) Fxyz(a.u.)=   6.1099    6.1099    0.6789    -0.0000   -0.0000    0.0000
+  atom= 98, XYZ(ang) Fxyz(a.u.)=   8.8254    6.1099    3.3944     0.0000    0.0000   -0.0000
+  atom= 99, XYZ(ang) Fxyz(a.u.)=   6.1099    8.8254    3.3944     0.0000    0.0000    0.0000
+  atom=100, XYZ(ang) Fxyz(a.u.)=   8.8254    8.8254    0.6789     0.0000    0.0000    0.0000
+  atom=101, XYZ(ang) Fxyz(a.u.)=  10.1831    7.4676    2.0366    -0.0000   -0.0000   -0.0000
+  atom=102, XYZ(ang) Fxyz(a.u.)=  10.1831   10.1831    4.7521     0.0000   -0.0000    0.0000
+  atom=103, XYZ(ang) Fxyz(a.u.)=   7.4676    7.4676    4.7521    -0.0000   -0.0000    0.0000
+  atom=104, XYZ(ang) Fxyz(a.u.)=   7.4676   10.1831    2.0366    -0.0000   -0.0000    0.0000
+  atom=105, XYZ(ang) Fxyz(a.u.)=   6.1099    6.1099    6.1099    -0.0000    0.0000    0.0000
+  atom=106, XYZ(ang) Fxyz(a.u.)=   8.8254    6.1099    8.8254     0.0000    0.0000    0.0000
+  atom=107, XYZ(ang) Fxyz(a.u.)=   6.1099    8.8254    8.8254    -0.0000    0.0000    0.0000
+  atom=108, XYZ(ang) Fxyz(a.u.)=   8.8254    8.8254    6.1099     0.0000    0.0000    0.0000
+  atom=109, XYZ(ang) Fxyz(a.u.)=  10.1831    7.4676    7.4676    -0.0000   -0.0000   -0.0000
+  atom=110, XYZ(ang) Fxyz(a.u.)=  10.1831   10.1831   10.1831    -0.0000   -0.0000   -0.0000
+  atom=111, XYZ(ang) Fxyz(a.u.)=   7.4676    7.4676   10.1831    -0.0000   -0.0000   -0.0000
+  atom=112, XYZ(ang) Fxyz(a.u.)=   7.4676   10.1831    7.4676    -0.0000   -0.0000   -0.0000
+  atom=113, XYZ(ang) Fxyz(a.u.)=   6.1099    6.1099   11.5409    -0.0000    0.0000   -0.0000
+  atom=114, XYZ(ang) Fxyz(a.u.)=   8.8254    6.1099   14.2564     0.0000   -0.0000   -0.0000
+  atom=115, XYZ(ang) Fxyz(a.u.)=   6.1099    8.8254   14.2564     0.0000    0.0000   -0.0000
+  atom=116, XYZ(ang) Fxyz(a.u.)=   8.8254    8.8254   11.5409     0.0000    0.0000   -0.0000
+  atom=117, XYZ(ang) Fxyz(a.u.)=  10.1831    7.4676   12.8986     0.0000    0.0000   -0.0000
+  atom=118, XYZ(ang) Fxyz(a.u.)=  10.1831   10.1831   15.6141    -0.0000    0.0000   -0.0000
+  atom=119, XYZ(ang) Fxyz(a.u.)=   7.4676    7.4676   15.6141    -0.0000   -0.0000   -0.0000
+  atom=120, XYZ(ang) Fxyz(a.u.)=   7.4676   10.1831   12.8986    -0.0000    0.0000    0.0000
+  atom=121, XYZ(ang) Fxyz(a.u.)=   6.1099   11.5409    0.6789    -0.0000    0.0000   -0.0000
+  atom=122, XYZ(ang) Fxyz(a.u.)=   8.8254   11.5409    3.3944     0.0000   -0.0000   -0.0000
+  atom=123, XYZ(ang) Fxyz(a.u.)=   6.1099   14.2564    3.3944     0.0000    0.0000   -0.0000
+  atom=124, XYZ(ang) Fxyz(a.u.)=   8.8254   14.2564    0.6789     0.0000    0.0000    0.0000
+  atom=125, XYZ(ang) Fxyz(a.u.)=  10.1831   12.8986    2.0366     0.0000    0.0000   -0.0000
+  atom=126, XYZ(ang) Fxyz(a.u.)=  10.1831   15.6141    4.7521     0.0000    0.0000    0.0000
+  atom=127, XYZ(ang) Fxyz(a.u.)=   7.4676   12.8986    4.7521    -0.0000    0.0000    0.0000
+  atom=128, XYZ(ang) Fxyz(a.u.)=   7.4676   15.6141    2.0366    -0.0000   -0.0000   -0.0000
+  atom=129, XYZ(ang) Fxyz(a.u.)=   6.1099   11.5409    6.1099    -0.0000   -0.0000    0.0000
+  atom=130, XYZ(ang) Fxyz(a.u.)=   8.8254   11.5409    8.8254     0.0000   -0.0000    0.0000
+  atom=131, XYZ(ang) Fxyz(a.u.)=   6.1099   14.2564    8.8254     0.0000   -0.0000    0.0000
+  atom=132, XYZ(ang) Fxyz(a.u.)=   8.8254   14.2564    6.1099     0.0000   -0.0000   -0.0000
+  atom=133, XYZ(ang) Fxyz(a.u.)=  10.1831   12.8986    7.4676     0.0000   -0.0000    0.0000
+  atom=134, XYZ(ang) Fxyz(a.u.)=  10.1831   15.6141   10.1831    -0.0000   -0.0000    0.0000
+  atom=135, XYZ(ang) Fxyz(a.u.)=   7.4676   12.8986   10.1831    -0.0000    0.0000    0.0000
+  atom=136, XYZ(ang) Fxyz(a.u.)=   7.4676   15.6141    7.4676    -0.0000   -0.0000   -0.0000
+  atom=137, XYZ(ang) Fxyz(a.u.)=   6.1099   11.5409   11.5409    -0.0000   -0.0000   -0.0000
+  atom=138, XYZ(ang) Fxyz(a.u.)=   8.8254   11.5409   14.2564     0.0000   -0.0000    0.0000
+  atom=139, XYZ(ang) Fxyz(a.u.)=   6.1099   14.2564   14.2564     0.0000    0.0000    0.0000
+  atom=140, XYZ(ang) Fxyz(a.u.)=   8.8254   14.2564   11.5409     0.0000    0.0000   -0.0000
+  atom=141, XYZ(ang) Fxyz(a.u.)=  10.1831   12.8986   12.8986    -0.0000    0.0000    0.0000
+  atom=142, XYZ(ang) Fxyz(a.u.)=  10.1831   15.6141   15.6141    -0.0000   -0.0000   -0.0000
+  atom=143, XYZ(ang) Fxyz(a.u.)=   7.4676   12.8986   15.6141    -0.0000    0.0000   -0.0000
+  atom=144, XYZ(ang) Fxyz(a.u.)=   7.4676   15.6141   12.8986    -0.0000   -0.0000    0.0000
+  atom=145, XYZ(ang) Fxyz(a.u.)=  11.5409    0.6789    0.6789    -0.0000    0.0000    0.0000
+  atom=146, XYZ(ang) Fxyz(a.u.)=  14.2564    0.6789    3.3944    -0.0002    0.0001    0.0002
+  atom=147, XYZ(ang) Fxyz(a.u.)=  11.5409    3.3944    3.3944    -0.0000   -0.0000   -0.0000
+  atom=148, XYZ(ang) Fxyz(a.u.)=  14.2564    3.3944    0.6789    -0.0002    0.0002    0.0001
+  atom=149, XYZ(ang) Fxyz(a.u.)=  15.6141    2.0366    2.0366    -0.0032    0.0022    0.0022
+  atom=150, XYZ(ang) Fxyz(a.u.)=  15.6141    4.7521    4.7521    -0.0002   -0.0000   -0.0000
+  atom=151, XYZ(ang) Fxyz(a.u.)=  12.8986    2.0366    4.7521    -0.0000   -0.0001    0.0000
+  atom=152, XYZ(ang) Fxyz(a.u.)=  12.8986    4.7521    2.0366    -0.0000    0.0000   -0.0001
+  atom=153, XYZ(ang) Fxyz(a.u.)=  11.5409    0.6789    6.1099    -0.0000    0.0000    0.0000
+  atom=154, XYZ(ang) Fxyz(a.u.)=  14.2564    0.6789    8.8254    -0.0000    0.0000    0.0000
+  atom=155, XYZ(ang) Fxyz(a.u.)=  11.5409    3.3944    8.8254    -0.0000   -0.0000    0.0000
+  atom=156, XYZ(ang) Fxyz(a.u.)=  14.2564    3.3944    6.1099    -0.0000   -0.0000    0.0000
+  atom=157, XYZ(ang) Fxyz(a.u.)=  15.6141    2.0366    7.4676     0.0000   -0.0000   -0.0000
+  atom=158, XYZ(ang) Fxyz(a.u.)=  15.6141    4.7521   10.1831     0.0000    0.0000    0.0000
+  atom=159, XYZ(ang) Fxyz(a.u.)=  12.8986    2.0366   10.1831     0.0000    0.0000    0.0000
+  atom=160, XYZ(ang) Fxyz(a.u.)=  12.8986    4.7521    7.4676     0.0000    0.0000   -0.0000
+  atom=161, XYZ(ang) Fxyz(a.u.)=  11.5409    0.6789   11.5409    -0.0000   -0.0000   -0.0000
+  atom=162, XYZ(ang) Fxyz(a.u.)=  14.2564    0.6789   14.2564    -0.0002   -0.0001   -0.0002
+  atom=163, XYZ(ang) Fxyz(a.u.)=  11.5409    3.3944   14.2564    -0.0000    0.0000   -0.0000
+  atom=164, XYZ(ang) Fxyz(a.u.)=  14.2564    3.3944   11.5409    -0.0000   -0.0000   -0.0000
+  atom=165, XYZ(ang) Fxyz(a.u.)=  15.6141    2.0366   12.8986     0.0000    0.0000    0.0000
+  atom=166, XYZ(ang) Fxyz(a.u.)=  15.6141    4.7521   15.6141     0.0000   -0.0000   -0.0000
+  atom=167, XYZ(ang) Fxyz(a.u.)=  12.8986    2.0366   15.6141     0.0000   -0.0000    0.0000
+  atom=168, XYZ(ang) Fxyz(a.u.)=  12.8986    4.7521   12.8986     0.0000    0.0000    0.0000
+  atom=169, XYZ(ang) Fxyz(a.u.)=  11.5409    6.1099    0.6789    -0.0000    0.0000    0.0000
+  atom=170, XYZ(ang) Fxyz(a.u.)=  14.2564    6.1099    3.3944    -0.0000    0.0000   -0.0000
+  atom=171, XYZ(ang) Fxyz(a.u.)=  11.5409    8.8254    3.3944    -0.0000    0.0000   -0.0000
+  atom=172, XYZ(ang) Fxyz(a.u.)=  14.2564    8.8254    0.6789    -0.0000    0.0000    0.0000
+  atom=173, XYZ(ang) Fxyz(a.u.)=  15.6141    7.4676    2.0366     0.0000   -0.0000   -0.0000
+  atom=174, XYZ(ang) Fxyz(a.u.)=  15.6141   10.1831    4.7521     0.0000    0.0000    0.0000
+  atom=175, XYZ(ang) Fxyz(a.u.)=  12.8986    7.4676    4.7521     0.0000   -0.0000    0.0000
+  atom=176, XYZ(ang) Fxyz(a.u.)=  12.8986   10.1831    2.0366     0.0000    0.0000    0.0000
+  atom=177, XYZ(ang) Fxyz(a.u.)=  11.5409    6.1099    6.1099    -0.0000   -0.0000   -0.0000
+  atom=178, XYZ(ang) Fxyz(a.u.)=  14.2564    6.1099    8.8254    -0.0000   -0.0000    0.0000
+  atom=179, XYZ(ang) Fxyz(a.u.)=  11.5409    8.8254    8.8254    -0.0000    0.0000    0.0000
+  atom=180, XYZ(ang) Fxyz(a.u.)=  14.2564    8.8254    6.1099    -0.0000    0.0000   -0.0000
+  atom=181, XYZ(ang) Fxyz(a.u.)=  15.6141    7.4676    7.4676    -0.0001   -0.0000   -0.0000
+  atom=182, XYZ(ang) Fxyz(a.u.)=  15.6141   10.1831   10.1831    -0.0001    0.0000    0.0000
+  atom=183, XYZ(ang) Fxyz(a.u.)=  12.8986    7.4676   10.1831     0.0000    0.0000   -0.0000
+  atom=184, XYZ(ang) Fxyz(a.u.)=  12.8986   10.1831    7.4676     0.0000   -0.0000    0.0000
+  atom=185, XYZ(ang) Fxyz(a.u.)=  11.5409    6.1099   11.5409    -0.0000   -0.0000    0.0000
+  atom=186, XYZ(ang) Fxyz(a.u.)=  14.2564    6.1099   14.2564    -0.0000    0.0000    0.0000
+  atom=187, XYZ(ang) Fxyz(a.u.)=  11.5409    8.8254   14.2564    -0.0000    0.0000    0.0000
+  atom=188, XYZ(ang) Fxyz(a.u.)=  14.2564    8.8254   11.5409    -0.0000   -0.0000    0.0000
+  atom=189, XYZ(ang) Fxyz(a.u.)=  15.6141    7.4676   12.8986     0.0000   -0.0000   -0.0000
+  atom=190, XYZ(ang) Fxyz(a.u.)=  15.6141   10.1831   15.6141     0.0000   -0.0000   -0.0000
+  atom=191, XYZ(ang) Fxyz(a.u.)=  12.8986    7.4676   15.6141     0.0000   -0.0000   -0.0000
+  atom=192, XYZ(ang) Fxyz(a.u.)=  12.8986   10.1831   12.8986     0.0000    0.0000   -0.0000
+  atom=193, XYZ(ang) Fxyz(a.u.)=  11.5409   11.5409    0.6789    -0.0000   -0.0000   -0.0000
+  atom=194, XYZ(ang) Fxyz(a.u.)=  14.2564   11.5409    3.3944    -0.0000   -0.0000   -0.0000
+  atom=195, XYZ(ang) Fxyz(a.u.)=  11.5409   14.2564    3.3944    -0.0000   -0.0000    0.0000
+  atom=196, XYZ(ang) Fxyz(a.u.)=  14.2564   14.2564    0.6789    -0.0002   -0.0002   -0.0001
+  atom=197, XYZ(ang) Fxyz(a.u.)=  15.6141   12.8986    2.0366     0.0000    0.0000    0.0000
+  atom=198, XYZ(ang) Fxyz(a.u.)=  15.6141   15.6141    4.7521     0.0000   -0.0000   -0.0000
+  atom=199, XYZ(ang) Fxyz(a.u.)=  12.8986   12.8986    4.7521     0.0000    0.0000    0.0000
+  atom=200, XYZ(ang) Fxyz(a.u.)=  12.8986   15.6141    2.0366     0.0000    0.0000   -0.0000
+  atom=201, XYZ(ang) Fxyz(a.u.)=  11.5409   11.5409    6.1099    -0.0000    0.0000   -0.0000
+  atom=202, XYZ(ang) Fxyz(a.u.)=  14.2564   11.5409    8.8254    -0.0000    0.0000   -0.0000
+  atom=203, XYZ(ang) Fxyz(a.u.)=  11.5409   14.2564    8.8254    -0.0000    0.0000    0.0000
+  atom=204, XYZ(ang) Fxyz(a.u.)=  14.2564   14.2564    6.1099    -0.0000    0.0000    0.0000
+  atom=205, XYZ(ang) Fxyz(a.u.)=  15.6141   12.8986    7.4676     0.0000   -0.0000   -0.0000
+  atom=206, XYZ(ang) Fxyz(a.u.)=  15.6141   15.6141   10.1831     0.0000   -0.0000   -0.0000
+  atom=207, XYZ(ang) Fxyz(a.u.)=  12.8986   12.8986   10.1831     0.0000   -0.0000    0.0000
+  atom=208, XYZ(ang) Fxyz(a.u.)=  12.8986   15.6141    7.4676     0.0000   -0.0000   -0.0000
+  atom=209, XYZ(ang) Fxyz(a.u.)=  11.5409   11.5409   11.5409    -0.0000   -0.0000   -0.0000
+  atom=210, XYZ(ang) Fxyz(a.u.)=  14.2564   11.5409   14.2564    -0.0000   -0.0000    0.0000
+  atom=211, XYZ(ang) Fxyz(a.u.)=  11.5409   14.2564   14.2564    -0.0000   -0.0000   -0.0000
+  atom=212, XYZ(ang) Fxyz(a.u.)=  14.2564   14.2564   11.5409    -0.0000    0.0000   -0.0000
+  atom=213, XYZ(ang) Fxyz(a.u.)=  15.6141   12.8986   12.8986    -0.0002    0.0001    0.0001
+  atom=214, XYZ(ang) Fxyz(a.u.)=  15.6141   15.6141   15.6141    -0.0032   -0.0022   -0.0022
+  atom=215, XYZ(ang) Fxyz(a.u.)=  12.8986   12.8986   15.6141    -0.0000   -0.0000    0.0000
+  atom=216, XYZ(ang) Fxyz(a.u.)=  12.8986   15.6141   12.8986    -0.0000    0.0000   -0.0000
+
+outputting data on grids to files...
+
+
+***********************************************************
+***********************************************************
+               Computational Time (second)                 
+***********************************************************
+***********************************************************
+
+                               Min_ID   Min_Time       Max_ID   Max_Time
+   Total Computational Time =     1     4755.470          0     4756.697
+   readfile                 =     3        2.455          0        2.455
+   truncation               =    10        5.123          4        5.166
+   MD_pac                   =     0        0.002          3        0.003
+   OutData                  =     9       15.697          0       16.924
+   HWF                      =     0        0.000          0        0.000
+   DFT                      =     4     4731.909         10     4731.953
+
+*** In DFT ***
+
+   Set_OLP_Kin              =     2        0.828         12        1.659
+   Set_Nonlocal             =    12        4.167          2        4.998
+   Set_ProExpn_VNA          =    13       29.044          1       29.759
+   Set_Hamiltonian          =     9       97.718          0       97.718
+   Poisson                  =     2        0.466          5        0.466
+   Diagonalization          =     0     4455.976          9     4455.976
+   Mixing_DM                =    14        6.316          7        6.316
+   Force                    =     2       19.508         15       19.508
+   Total_Energy             =    14       11.141          0       11.142
+   Set_Aden_Grid            =    11        0.382         13        1.118
+   Set_Orbitals_Grid        =    10        1.255         14        1.374
+   Set_Density_Grid         =     9       97.200          2       97.601
+   RestartFileDFT           =     8        0.024         13        0.024
+   Mulliken_Charge          =     0        0.729         10        0.729
+   FFT(2D)_Density          =     3        1.364         14        1.364
+   Others                   =     4        3.783         10        4.134
+
+The calculation was normally finished.
+=== openmx exit status = 0 (2026年  9月  8日 火曜日 19:17:12 JST) ===

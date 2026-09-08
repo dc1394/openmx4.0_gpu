@@ -1,0 +1,33 @@
+Set_ProExpn_VNA DS_VNA GPU: needs 0.816 GiB per rank, 16 rank(s) share this device and only 11.070 GiB is free; CPU fallback.
+Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5152.875 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5151.375 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5151.375 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5149.250 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5147.125 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5145.000 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5143.000 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+openmx_gemmul8Zgemm: GEMMul8 workspace fallback by free memory reserve policy; need 3985.546 MiB, CUDA free 5141.000 MiB / total 15833.812 MiB, reserve 1536.000 MiB, max-workspace 50%. Falling back to native cuBLAS.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+<Band_DFT_NonCol> GPU device 0 cannot retain the full reserve; forcing one GPU k-owner rank.
+Force4B GPU: not enough free device memory; CPU fallback.

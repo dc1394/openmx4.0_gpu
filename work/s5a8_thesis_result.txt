@@ -1,0 +1,60 @@
+RTX 5080 practical-convergence reruns (v2.0_thesis tag build):
+displaced Si 216 (atom 1 +0.05 Ang x), four dense-solver paths,
+scf.criterion 1.0e-8, scf.maxIter 200, np16 nt1.
+configs: c16 = CPU elpa2-16 | o = GPU cuBLAS + MPS | g = GPU GEMMul8 + MPS
+binary: v2.0_thesis tag build, md5 e3e64c35f48a9058cd98b5e923810ae3
+(same binary and decks as the s5a criterion-1e-13 campaign; only
+ scf.criterion/scf.maxIter differ)
+
+=== reruns at criterion 1.0e-8 ===
+case               SCF  i_conv8   dUele@stop  NormRD@stop Utot                   ChemPot        |F|max       manifest
+s5a8_bcol_c1611     23       23 1.302000e-09 7.897840e-07 -887.422192332585      -0.10427027470824 0.01355446   OK
+s5a8_bcol_o11       23       23 1.300000e-09 7.897970e-07 -887.422192332529      -0.10427027470654 0.01355446   OK
+s5a8_bcol_g11       23       23 1.299000e-09 7.898050e-07 -887.422192332530      -0.10427027470654 0.01355446   OK
+s5a8_bnc_c1611      23       23 1.032000e-09 7.367330e-07 -887.422192324662      -0.10427027476297 0.01355445   OK
+s5a8_bnc_o11        23       23 1.021000e-09 7.357840e-07 -887.422192324674      -0.10427027476204 0.01355445   OK
+s5a8_bnc_g11        23       23 1.019000e-09 7.352520e-07 -887.422192324675      -0.10427027476204 0.01355445   g8_fb=177
+s5a8_ccol_c1611     20       20 4.144000e-09 2.008115e-06 -887.308965181462      -0.10131953954610 0.01363151   OK
+s5a8_ccol_o11       20       20 4.143000e-09 2.008137e-06 -887.308965181409      -0.10131953953343 0.01363151   OK
+s5a8_ccol_g11       20       20 4.143000e-09 2.008131e-06 -887.308965181409      -0.10131953953343 0.01363151   OK
+s5a8_cnc_c1611      23       23 7.944000e-09 1.897514e-06 -887.308965193727      -0.10131953923270 0.01363150   OK
+s5a8_cnc_o11        23       23 7.959000e-09 1.901737e-06 -887.308965193780      -0.10131953924328 0.01363150   OK
+s5a8_cnc_g11        23       23 7.958000e-09 1.902073e-06 -887.308965193778      -0.10131953924328 0.01363150   OK
+
+--- practical-stop truncation vs the 1e-13 parents (same path+cfg) ---
+  path   cfg   dE(8 vs 13)    dFmax(8 vs 13)
+  bcol   c16   1.713e-09      5.693e-09     
+  bcol   o     1.719e-09      5.695e-09     
+  bcol   g     1.718e-09      5.695e-09     
+  bnc    c16   9.619e-09      7.815e-09     
+  bnc    o     9.573e-09      7.807e-09     
+  bnc    g     9.571e-09      7.803e-09     
+  ccol   c16   1.217e-08      1.427e-08     
+  ccol   o     1.218e-08      1.426e-08     
+  ccol   g     1.218e-08      1.426e-08     
+  cnc    c16   3.706e-11      1.824e-08     
+  cnc    o     1.950e-10      1.827e-08     
+  cnc    g     1.941e-10      1.828e-08     
+
+--- cross-config differences at criterion 1e-8 (Ha / Ha per Bohr) ---
+  path   dE(CPU-cuB)    dFmax(CPU-cuB) dE(G8-cuB)     dFmax(G8-cuB) 
+  bcol   5.605e-11      5.000e-11      1.023e-12      1.000e-12     
+  bnc    1.205e-11      4.900e-11      1.023e-12      7.000e-12     
+  ccol   5.298e-11      1.410e-10      0.000e+00      2.000e-12     
+  cnc    5.298e-11      1.670e-10      1.933e-12      4.000e-12     
+
+=== i_conv8 post hoc over the canonical criterion-1e-13 histories ===
+(rule: min{ i>=3 : dUele(i) <= 1e-8 }; SCF-2 artifact excluded)
+       | H100 (siacc_*)         | RTX 5080 (s5a_*)      
+path   |    CPU cuBLAS GEMMul8 |    CPU cuBLAS GEMMul8
+bcol   |     23     23      23 |     23     23      23
+bnc    |     23     23      23 |     23     23      23
+ccol   |     20     20      20 |     20     20      20
+cnc    |     23     23      23 |     23     23      23
+
+=== verdict vs thesis tab:practical-convergence (bcol 23, bnc 23, ccol 20, cnc 23) ===
+  bcol  want 23 got: 23 23 23 23 23 23 23 23 23
+  bnc   want 23 got: 23 23 23 23 23 23 23 23 23
+  ccol  want 20 got: 20 20 20 20 20 20 20 20 20
+  cnc   want 23 got: 23 23 23 23 23 23 23 23 23
+  ALL 36 SERIES MATCH (24 canonical 1e-13 histories + 12 criterion-1e-8 reruns)
