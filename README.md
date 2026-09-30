@@ -102,6 +102,161 @@ The benchmark tables below list the GPU columns of both machines without and wit
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems (for the Pegasus supercomputer at the University of Tsukuba, a ready-made `Makefile.pegasus` is included); please refer to them. Since v2.0 the first `make` also builds the bundled ELPA/COSMA stack for "gpusolver2" automatically, which adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
 
+### HPC SDK 26.9 / CUDA 13.4 update
+
+The default `source/Makefile` now uses HPC SDK 26.9 and CUDA 13.4. The
+SDK's bundled toolkit and the separately installed toolkit can differ: on
+this machine SDK 26.9 bundles CUDA 13.3, while CUDA 13.4.2 is installed at
+`/usr/local/cuda-13.4`. The build selects one consistent set of CUDA headers,
+runtime and math libraries, and obtains the MPI library path from the SDK's
+MPI wrapper. Compiler/toolkit changes invalidate cached build products.
+
+```sh
+cd source
+make -j18 GEMMUL8_GPU_ARCH=120             # RTX 5080; use 90 for H100
+# An older installation remains selectable:
+make -j18 NVHPC_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/26.5 \
+  NVHPC_CUDA_VERSION=13.2 \
+  NVHPC_CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/26.5/cuda/13.2 \
+  GEMMUL8_GPU_ARCH=120
+```
+
+GEMMul8 is pinned to upstream **v3.5.2**
+(`603b52363715796a0af5e4aa1ed8d386349b4251`). Initialize/update submodules
+with `git submodule update --init --recursive` after updating the repository.
+The OpenMX adapter includes v3.5.2's memory-saving configuration and K-block
+modular-reduction implementation. The adapter also enables memory-saving
+blocking with a 256 MiB default target (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`),
+and divides the available-memory budget between ranks sharing each GPU.
+
+cuSOLVER handles enable FP64 fixed-point emulation with the performant
+strategy and dynamic mantissa selection. With CUDA 13.4 Update 1 or later
+(cuSOLVER 12.3.4+), complete-spectrum real and complex dense solves use
+`CUSOLVER_ALG_0`: cuSOLVER automatically chooses the one-stage or two-stage
+reduction from the matrix dimension, GPU architecture and math mode. No
+fixed starting dimension or startup calibration is required. Partial-spectrum
+requests retain SYEVDX, avoiding an unnecessary full eigendecomposition.
+Explicit `two-stage` mode also supports leading partial spectra by computing
+the full spectrum and returning the requested eigenpairs. The library chooses Ozaki-II when
+beneficial; there is no public API to force Ozaki-II for every internal GEMM.
+See [NVIDIA's cuSOLVER documentation](https://docs.nvidia.com/cuda/cusolver/)
+and [CUDA release notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/).
+Older cuSOLVER headers/libraries retain the existing SYEVD/SYEVDX path, and unsupported
+algorithm selection or emulation modes fall back to the compatible implementation.
+The cuSOLVER layer compiles against CUDA 12.3 as well; the complete bundled
+GEMMul8 build requires newer cuBLASLt APIs, as the previous bundled version
+already did. CUDA 13.2 and 13.4 GEMMul8 builds are verified.
+
+For controlled comparisons:
+
+```sh
+OPENMX_CUSOLVER_VERBOSE=1 mpirun -np 18 ./openmx input.dat -nt 1
+OPENMX_CUSOLVER_ALGORITHM=legacy OPENMX_CUSOLVER_EMULATION=0 \
+  mpirun -np 18 ./openmx input.dat -nt 1
+```
+
+`OPENMX_CUSOLVER_ALGORITHM` accepts `auto` (default), `one-stage`,
+`two-stage` and `legacy`. For a manual crossover,
+`OPENMX_CUSOLVER_TWO_STAGE_MIN_N` alone selects two-stage dispatch at or
+above that dimension; smaller full spectra use one-stage and smaller partial
+spectra use SYEVDX. Explicit `auto` takes precedence over this manual minimum.
+The automatic crossover belongs to cuSOLVER and can change with its version
+and the GPU. `OPENMX_CUSOLVER_CACHE_MB` caps retained generic-solver
+scratch per rank (default 64 MiB; 0 releases scratch after every solve).
+`OPENMX_CUSOLVER_EMULATION=0` disables cuSOLVER emulation;
+`scf.gemmul8.enable` independently controls OpenMX's GEMMul8 products.
+
+The AMD version's run-boundary cache cleanup has been ported to the CUDA
+band, cluster, DC, DC-LNO and Krylov paths. Small density-grid tables are
+retained across SCF iterations; the defaults cap the global and local caches
+at 64 MiB and 32 MiB, with a further free-memory allowance per sharing rank.
+Set `OPENMX_DENSITY_GRID_GPU_CACHE_MB=0` and
+`OPENMX_DENSITY_GRID_GPU_LOCAL_CACHE_MB=0` to disable this retention for an
+A/B comparison. Nonlocal spin-orbit force assembly also avoids redundant
+pointer traversal and clears only the active orbital block.
+
+Multi-k band calculations also reuse transformed overlap matrices (collinear)
+and eigenvectors between the eigenvalue and density-matrix passes (collinear
+and noncollinear). Host memory is bounded by the per-rank limits below and
+the available node memory divided among local ranks. Uncached k points use
+the existing solve path; eigenvector panels expire after each SCF call, and
+overlap entries expire when the geometry or input changes.
+
+| Setting | Default per-rank cap |
+|---|---:|
+| `OPENMX_BAND_COL_OVERLAP_CACHE_MB` | 512 MiB |
+| `OPENMX_BAND_COL_KCACHE_MB` | 1024 MiB |
+| `OPENMX_BAND_NONCOL_KCACHE_MB` | 1024 MiB |
+
+Set a cap to `0` to disable that cache. The two collinear caches each use at
+most 1/64 of available node RAM in total; the noncollinear cache uses at most
+1/32. `OPENMX_BAND_CACHE_TRACE=1` and
+`OPENMX_BAND_NONCOL_CACHE_TRACE=1` report reuse counts. Solver and GEMMul8
+scratch is released before force evaluation. Band runs release shared orbital
+and density caches after Force3; `OPENMX_FORCE_RELEASE_SCF_CACHES=0` disables
+this latter release for comparisons.
+
+VNA projector construction reduces its pair batch to fit each rank's GPU
+memory budget. The HVNA contraction also admits ranks in turns when their
+combined buffers do not fit. This keeps the existing kernel and accumulation
+order; only the scheduling and archive placement change. Turn execution
+uses host archives with a node-wide budget of half of available RAM,
+and falls back to the CPU if one rank cannot fit. Set
+`OPENMX_SETPRO_HVNA_TURNS=0` to disable rank turns, or use the existing
+`OPENMX_SETPRO_GPU=0` to disable the VNA GPU stages.
+
+Large collinear cluster solves release disposable matrices, eigenvector panels
+and solver workspace after forming the density matrix when less than half of
+the GPU memory is free. The transformed overlap stays cached. Memory admission
+is checked again before the next solve, including serialized spin execution.
+`OPENMX_CLUSTER_GPU_RETAIN_SCRATCH=1` keeps the previous retention policy for
+comparisons; `0` releases scratch at every SCF boundary, and leaving it unset
+uses the automatic policy. `OPENMX_CUSOLVER_VERBOSE=1` reports released scratch.
+
+### Reproducible GPU regression runs
+
+`tools/run_gpu_suites.py` and `tools/compare_gpu_suites.py` adapt the AMD
+version's isolated suite runner and force-component comparison. They cover
+all four built-in suites (`S`, `L`, `L2`, `L3`), preserve input/reference files,
+and record binary hashes, launch settings, elapsed time, memory usage and
+interruptions. Each input is a separate MPI job invoking its original
+`-runtest*` option; this mode does not measure cache reuse between inputs.
+Add `--together` to execute all selected inputs in one native suite call and
+check cache cleanup between systems; the comparator supports both layouts.
+
+```sh
+python3 tools/run_gpu_suites.py --binary source/openmx --suite S --ranks 18 \
+  --mpirun /opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun \
+  --output work/bench_after_S
+python3 tools/compare_gpu_suites.py work/bench_after_S --reference
+# After recording an equivalent before run:
+python3 tools/compare_gpu_suites.py work/bench_before_S work/bench_after_S
+```
+
+Use identical MPI ranks, MPS settings and input data for timing comparisons.
+The comparator checks every force component, since the built-in scalar
+`diff Force` can hide cancellation. Large tests stop individually if the
+memory reserve or per-input timeout is reached; interrupted cases are
+reported as incomplete, never as passes.
+
+Standalone GPU accuracy checks are also included:
+
+```sh
+tests/run_cusolver_smoke.sh 257
+tests/run_gemmul8_smoke.sh
+# Exercise a GPU first SCF step followed by a memory-admission CPU fallback:
+tests/run_cluster_fallback_smoke.sh
+```
+
+The scripts support `CUDA_HOME`, `CUDA_MATH_ROOT` and `NVHPC_ROOT` for
+cross-version checks. They isolate the selected CUDA runtime from unrelated
+`LD_LIBRARY_PATH` entries. GEMMul8's template translation unit takes several
+minutes to compile. The cluster fallback injection check requires CUDA 13.4
+Update 1 or later and a built OpenMX executable.
+
+Measured results, accuracy checks, version coverage and remaining limitations
+are recorded in [the CUDA 13.4 validation report](doc/cuda_13_4_validation.txt).
+
 ## Docker image
 I have released the OpenMX 4.0 GPU Docker image.
 You can easily try OpenMX 4.0 GPU on computers equipped with NVIDIA GPUs.

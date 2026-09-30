@@ -50,86 +50,20 @@
 #include "openmx_common.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <cuda_runtime.h>
-#include <cusolverDn.h>
 #include <stdint.h>
-#include <stdlib.h>
 
-int32_t gpusolver_Syevd(double * A, double * W, int32_t m)
+int32_t gpusolver_Syevd(double *A, double *W, int32_t m)
 {
-    int32_t deviceCount;
-    wait_cudafunc(cudaGetDeviceCount(&deviceCount));
-
-    /* scf.Gpu.Num caps the GPUs used per node (debugging aid) */
-    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < deviceCount) deviceCount = SCF_Gpu_Num;
-
-    wait_cudafunc(cudaSetDevice(openmx_gpu_map_rank_to_device(
-        openmx_gpu_local_rank_noncollective(),
-        openmx_gpu_local_size_noncollective(), deviceCount)));
-
-    cusolverDnHandle_t cusolverH = NULL;
-    cudaStream_t       stream    = NULL;
-
-    /* step 1: create gpusolver handle, bind a stream */
-    wait_cudafunc(cusolverDnCreate(&cusolverH));
-
-    wait_cudafunc(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-    wait_cudafunc(cusolverDnSetStream(cusolverH, stream));
-
-    int32_t const lda    = m;
-    double *      d_A    = NULL;
-    double *      d_W    = NULL;
-    int32_t *     d_info = NULL;
-
-    wait_cudafunc(cudaMalloc((void **)(&d_A), sizeof(double) * lda * m));
-    wait_cudafunc(cudaMalloc((void **)(&d_W), sizeof(double) * m));
-    wait_cudafunc(cudaMalloc((void **)(&d_info), sizeof(int32_t)));
-
-    wait_cudafunc(cudaMemcpyAsync(d_A, A, sizeof(double) * lda * m, cudaMemcpyHostToDevice, stream));
-
-    // step 3: query working space of syevd
-    cusolverEigMode_t const jobz = CUSOLVER_EIG_MODE_VECTOR;  // compute eigenvalues and eigenvectors.
-    cublasFillMode_t  const uplo = CUBLAS_FILL_MODE_LOWER;
-
-    size_t d_lwork = 0; /* size of workspace */
-    size_t h_lwork = 0; /* size of workspace */
-
-    wait_cudafunc(cusolverDnXsyevd_bufferSize(cusolverH, NULL, jobz, uplo, m, CUDA_R_64F, d_A, lda, CUDA_R_64F, d_W,
-                                              CUDA_R_64F, &d_lwork, &h_lwork));
-
-    void * d_work = NULL; /* device workspace */
-
-    wait_cudafunc(cudaMalloc((void **)(&d_work), d_lwork));
-
-    // host workspace for
-    void * h_work = malloc(h_lwork);
-    if (!h_work) {
-        fprintf(stderr, "Could not allocate host memory.\n");
-        exit(1);
-    }
-
-    // step 4: compute spectrum
-    wait_cudafunc(cusolverDnXsyevd(cusolverH, NULL, jobz, uplo, m, CUDA_R_64F, d_A, lda, CUDA_R_64F, d_W, CUDA_R_64F,
-                                   d_work, d_lwork, h_work, h_lwork, d_info));
-
-    wait_cudafunc(cudaMemcpyAsync(A, d_A, sizeof(double) * lda * m, cudaMemcpyDeviceToHost, stream));
-    wait_cudafunc(cudaMemcpyAsync(W, d_W, sizeof(double) * m, cudaMemcpyDeviceToHost, stream));
-
-    int32_t info;
-
-    wait_cudafunc(cudaMemcpyAsync(&info, d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
-
-    wait_cudafunc(cudaStreamSynchronize(stream));
-
-    /* free resources */
-    wait_cudafunc(cudaFree(d_A));
-    wait_cudafunc(cudaFree(d_W));
-    wait_cudafunc(cudaFree(d_info));
-    wait_cudafunc(cudaFree(d_work));
-    free(h_work);
-
-    wait_cudafunc(cusolverDnDestroy(cusolverH));
-
-    wait_cudafunc(cudaStreamDestroy(stream));
-
-    return info;
+    int count;
+    cudaError_t status;
+    if (m < 0) return -1;
+    if (m == 0) return 0;
+    status = cudaGetDeviceCount(&count);
+    if (status != cudaSuccess) return -1000-(int)status;
+    if (count < 1) return -1000-(int)cudaErrorNoDevice;
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < count) count = SCF_Gpu_Num;
+    status = cudaSetDevice(openmx_gpu_map_rank_to_device(
+        openmx_gpu_local_rank_noncollective(), openmx_gpu_local_size_noncollective(), count));
+    if (status != cudaSuccess) return -1000-(int)status;
+    return gpusolver_Syevdx(A, W, m, m);
 }

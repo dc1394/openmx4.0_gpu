@@ -11,6 +11,8 @@
  */
 #include "gemm/gemm_impl.hpp"
 #include "worksize/worksize_impl.hpp"
+/* GEMMul8 3.5 uses handle-local workspace configuration in GEMM. */
+#include "worksize/cu_recipe/memory_saving.cu"
 
 /*
  * The include chain above only declares the device-kernel launchers
@@ -19,6 +21,7 @@
  * here so the explicit instantiations below reach them implicitly.
  */
 #include "oz2/mod/mod_hi2mid.hpp"
+#include "oz2/mod/mod_reduce_matprod.hpp"
 #include "oz2/scaling/fast/scaling.hpp"
 #include "oz2/scaling/accu/extract.hpp"
 #include "oz2/scaling/accu/scaling.hpp"
@@ -59,9 +62,9 @@ template std::vector<double> gemm<cuDoubleComplex, Backend::INT8, cuDoubleComple
     bool, bool, bool, bool);
 
 template size_t workSize<false, Backend::INT8, Func::gemm>(
-    size_t, size_t, size_t, int, bool, bool, size_t *, size_t *);
+    size_t, size_t, size_t, int, bool, bool, size_t *, size_t *, bool);
 
 template size_t workSize<true, Backend::INT8, Func::gemm>(
-    size_t, size_t, size_t, int, bool, bool, size_t *, size_t *);
+    size_t, size_t, size_t, int, bool, bool, size_t *, size_t *, bool);
 
 } // namespace gemmul8

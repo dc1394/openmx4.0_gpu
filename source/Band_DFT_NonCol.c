@@ -217,6 +217,34 @@ static int BandNonCol_EigenvaluesOnlyNoVectors(void)
     return (atoi(value)!=0);
 }
 
+/* AMD's multi-k cache avoids diagonalizing H(k) again after finding the
+   chemical potential. Keep only n2*MaxN backtransformed states within this
+   SCF call, capped by both the user limit and available node RAM. */
+static size_t BandNonCol_KCacheLimit(void)
+{
+    const char *env = getenv("OPENMX_BAND_NONCOL_KCACHE_MB");
+    double cap = env == NULL ? 1024.0 : atof(env);
+    unsigned long long available_kib = 0;
+    int ranks = openmx_gpu_local_size_noncollective();
+    FILE *file;
+    char line[256];
+    size_t limit;
+
+    if (!(cap > 0.0) || cap >= (double)SIZE_MAX / 1048576.0) return 0;
+    limit = (size_t)(cap * 1048576.0);
+    file = fopen("/proc/meminfo", "r");
+    if (file == NULL) return 0;
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (sscanf(line, "MemAvailable: %llu kB", &available_kib) == 1) break;
+    }
+    fclose(file);
+    if (ranks < 1) ranks = 1;
+    available_kib /= (unsigned)ranks * 32ULL;
+    if (available_kib < limit / 1024U)
+        limit = (size_t)available_kib * 1024U;
+    return limit;
+}
+
 static void BandNonCol_ClearOpenAccFreelists(void)
 {
 #pragma acc wait
@@ -2199,16 +2227,22 @@ typedef struct
 
 static BandNonColRootDenseWorkspace BandNonCol_root_dense_workspace = {0};
 
-static void BandNonCol_RootDenseWorkspace_Reset(void)
+static void BandNonCol_RootDenseEigenvectorsRelease(BandNonColRootDenseWorkspace *ws)
 {
-    BandNonColRootDenseWorkspace *ws = &BandNonCol_root_dense_workspace;
-
     if (ws->cs2_on_device && ws->cs2 != NULL){
         dcomplex *cs2 = ws->cs2;
         size_t n2n2 = (size_t)ws->n2*(size_t)ws->n2;
 
 #pragma acc exit data delete(cs2[0 : n2n2])
     }
+    ws->cs2_on_device = 0;
+}
+
+static void BandNonCol_RootDenseWorkspace_Reset(void)
+{
+    BandNonColRootDenseWorkspace *ws = &BandNonCol_root_dense_workspace;
+
+    BandNonCol_RootDenseEigenvectorsRelease(ws);
     free(ws->s_all);
     free(ws->h11);
     free(ws->h22);
@@ -2262,6 +2296,33 @@ static BandNonColRootDenseWorkspace *BandNonCol_RootDenseWorkspace_Ensure(int ow
     if (SCF_iter==1) ws->s_valid = 0;
 
     return ws;
+}
+
+static void BandNonCol_KCacheSave(dcomplex *panel, BandNonColRootDenseWorkspace *ws)
+{
+    const size_t pitch = sizeof(dcomplex)*(size_t)ws->n2;
+    const size_t width = sizeof(dcomplex)*(size_t)ws->maxn;
+
+#pragma acc wait
+    wait_cudafunc(cudaMemcpy2D(panel,width,acc_deviceptr(ws->cs2),pitch,
+                               width,(size_t)ws->n2,cudaMemcpyDeviceToHost));
+    /* A rank can own several k points in one concurrency group. Release
+       this mapping before the next solve creates another cs2 mapping. */
+    BandNonCol_RootDenseEigenvectorsRelease(ws);
+}
+
+static void BandNonCol_KCacheRestore(const dcomplex *panel, BandNonColRootDenseWorkspace *ws)
+{
+    dcomplex *cs2 = ws->cs2;
+    const size_t n2n2 = (size_t)ws->n2*(size_t)ws->n2;
+    const size_t pitch = sizeof(dcomplex)*(size_t)ws->n2;
+    const size_t width = sizeof(dcomplex)*(size_t)ws->maxn;
+
+    BandNonCol_RootDenseEigenvectorsRelease(ws);
+#pragma acc enter data create(cs2[0 : n2n2])
+    ws->cs2_on_device = 1;
+    wait_cudafunc(cudaMemcpy2D(acc_deviceptr(cs2),pitch,panel,width,
+                               width,(size_t)ws->n2,cudaMemcpyHostToDevice));
 }
 
 static void BandNonCol_ConstructDenseMsFromPacked( int cpx_flag, const double *M1, dcomplex *Ms,
@@ -2815,6 +2876,9 @@ double Band_DFT_NonCol(
   int root_dense_serial_gpusolver_worlds = 0;
   int owns_dense_k_rank;
   int *dense_k_owner = NULL;
+  dcomplex **k_evec_cache = NULL;
+  size_t k_cache_bytes = 0, k_cache_used = 0;
+  int k_cache_hits = 0;
   int numprocs0,myid0;
   int ID,ID0,ID1;
   int numprocs1,myid1;
@@ -3467,9 +3531,20 @@ double Band_DFT_NonCol(
 
   if (use_k_dense_gpusolver){
 
+    int local_cache_vectors = 0, cache_vectors = 0;
+    if (owns_dense_k_rank && n2 > 0 && MaxN > 0 &&
+        (size_t)n2 <= SIZE_MAX / (size_t)MaxN / sizeof(dcomplex)){
+      k_cache_bytes = (size_t)n2 * (size_t)MaxN * sizeof(dcomplex);
+      if (k_cache_bytes <= BandNonCol_KCacheLimit())
+        k_evec_cache = (dcomplex**)calloc((size_t)T_knum,sizeof(dcomplex*));
+      local_cache_vectors = (k_evec_cache != NULL);
+    }
+    /* Every rank must use the same concurrency schedule. If any owner can
+       retain vectors, budget the backtransform's larger peak in pass one. */
+    MPI_Allreduce(&local_cache_vectors,&cache_vectors,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     int max_concurrent_gpu_turns =
       BandNonCol_MaxConcurrentKGpuTurns(n,n2,MaxN,size_H1,
-                                        BANDNONCOL_GPU_TURN_EIGVALS,
+                                        cache_vectors ? BANDNONCOL_GPU_TURN_EIGVECS : BANDNONCOL_GPU_TURN_EIGVALS,
                                         owns_dense_k_rank,myid0,T_knum);
     BandNonColRootDenseWorkspace *rdw;
     double *pack_buffer = NULL;
@@ -3548,10 +3623,22 @@ double Band_DFT_NonCol(
         k3 = T_KGrids3[kloop];
 
         rdw = BandNonCol_RootDenseWorkspace_Ensure(1,n,n2,MaxN,1,SCF_iter);
-        BandNonCol_RootDenseSolveOneK_OpenACC(1,n,n2,MaxN,kloop,k1,k2,k3,
+        if (k_evec_cache != NULL){
+          size_t limit = BandNonCol_KCacheLimit();
+          if (k_cache_used <= limit && k_cache_bytes <= limit - k_cache_used)
+            k_evec_cache[kloop] = (dcomplex*)malloc(k_cache_bytes);
+        }
+        {
+          int save_evec = (k_evec_cache != NULL && k_evec_cache[kloop] != NULL);
+          BandNonCol_RootDenseSolveOneK_OpenACC(1,n,n2,MaxN,kloop,k1,k2,k3,
                                               m_olp,m_h11,m_h22,m_h12,m_h12i,
                                               m_i11,m_i22,m_i12,
-                                              order_GA,MP,ko,EIGEN,0,rdw);
+                                              order_GA,MP,ko,EIGEN,save_evec,rdw);
+          if (save_evec){
+            BandNonCol_KCacheSave(k_evec_cache[kloop],rdw);
+            k_cache_used += k_cache_bytes;
+          }
+        }
       }
 
       if (owns_dense_k_group){
@@ -4664,14 +4751,23 @@ double Band_DFT_NonCol(
           k3 = T_KGrids3[kloop];
 
           rdw = BandNonCol_RootDenseWorkspace_Ensure(1,n,n2,MaxN,1,SCF_iter);
-          BandNonCol_RootDenseSolveOneK_OpenACC(1,n,n2,MaxN,kloop,k1,k2,k3,
+          if (k_evec_cache != NULL && k_evec_cache[kloop] != NULL){
+            BandNonCol_KCacheRestore(k_evec_cache[kloop],rdw);
+            free(k_evec_cache[kloop]);
+            k_evec_cache[kloop] = NULL;
+            ++k_cache_hits;
+          }
+          else {
+            BandNonCol_RootDenseSolveOneK_OpenACC(1,n,n2,MaxN,kloop,k1,k2,k3,
                                                 m_olp,m_h11,m_h22,m_h12,m_h12i,
                                                 m_i11,m_i22,m_i12,
                                                 order_GA,MP,ko,EIGEN,1,rdw);
+          }
           BandNonCol_AccumulateDMRootDenseK_OpenACC(size_H1,MP,n,n2,MaxN,k1,k2,k3,
                                                     EIGEN[0][kloop],rdw->cs2,
                                                     rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
                                                       rEDM11,rEDM22);
+          BandNonCol_RootDenseEigenvectorsRelease(rdw);
         }
 
         if (owns_dense_k_group){
@@ -5346,6 +5442,16 @@ double Band_DFT_NonCol(
   free(index_Rcv_j);
   free(EVec_Rcv);
   free(dense_k_owner);
+  if (k_evec_cache != NULL){
+    for (int point=0; point<T_knum; ++point) free(k_evec_cache[point]);
+    free(k_evec_cache);
+  }
+  if (use_k_dense_gpusolver){
+    const char *trace = getenv("OPENMX_BAND_NONCOL_CACHE_TRACE");
+    if (trace != NULL && atoi(trace) != 0)
+      printf("BAND_NONCOL_CACHE rank=%d SCF=%d evec_hits=%d evec=%.1f MiB\n",
+             myid0,SCF_iter,k_cache_hits,k_cache_used/1048576.0);
+  }
 
   /* for PrintMemory and allocation */
   firsttime=0;
@@ -6570,4 +6676,19 @@ double Calc_ParDM_Band_non_collinear(
 
   dtime(&etime);
   return (etime-stime);
+}
+
+/* Run-boundary reset: geometry and device state must not survive into the
+   next -runtest input, whose host allocations can reuse the same addresses.
+   Called on every rank before Free_Arrays(0) frees the current system. */
+void Band_DFT_NonCol_Release_GPU_Caches(void)
+{
+    BandNonCol_ConstructCache_Reset();
+    BandNonCol_DMEntryCache_Reset();
+    BandNonCol_RootDenseWorkspace_Reset();
+    BandNonCol_GpuSolver_Destroy();
+    BandNonCol_DMGpu_Destroy();
+    free(BandNonCol_dm_occ_workspace.occ);
+    free(BandNonCol_dm_occ_workspace.eig_occ);
+    memset(&BandNonCol_dm_occ_workspace, 0, sizeof(BandNonCol_dm_occ_workspace));
 }

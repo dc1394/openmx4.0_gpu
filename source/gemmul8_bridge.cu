@@ -17,6 +17,8 @@ constexpr unsigned kMaxNumModuli     = 20u;
 constexpr unsigned kDefaultMinFreeAfterMiB = 1536u;
 constexpr unsigned kDefaultMaxWorkspacePercent = 30u;
 constexpr size_t   kMiB = 1024u * 1024u;
+constexpr unsigned kDefaultMemorySavingMiB = 256u;
+constexpr size_t   kMinMemorySavingBytes = size_t(256) * kMiB;
 
 struct WorkspaceKey {
     int          device;
@@ -55,6 +57,7 @@ struct WorkspaceReport {
     size_t      total_bytes    = 0;
     size_t      reserve_bytes  = 0;
     unsigned    max_workspace_percent = 0;
+    unsigned    ranks_per_gpu = 1;
     const char *reason = "allocation failure";
 };
 
@@ -84,6 +87,14 @@ bool env_bool(const char *name, bool fallback)
     }
 
     return value[0] == '1';
+}
+
+bool verbose_logging_enabled()
+{
+    bool verbose = env_bool("OPENMX_GPU_VERBOSE", false);
+    verbose = env_bool("OPENMX_GEMM_VERBOSE", verbose);
+    verbose = env_bool("OPENMX_GEMMUL8_VERBOSE", verbose);
+    return env_bool("GEMMUL8_VERBOSE", verbose);
 }
 
 unsigned env_percent(const char *openmx_env, const char *gemmul8_env, unsigned fallback)
@@ -116,6 +127,57 @@ bool gemmul8_disabled(const char *openmx_env, const char *gemmul8_env)
     return disabled;
 }
 
+/* Ported from the AMD bridge: keep Ozaki-II enabled for large matrices by
+   letting GEMMul8 block within a per-rank workspace cap.  Zero restores the
+   uncapped policy.  Smaller nonzero caps are raised to a viable block size. */
+size_t memory_saving_cap_bytes()
+{
+    static const size_t cap = [] {
+        size_t bytes = env_mib("OPENMX_GEMMUL8_MAX_WORKSPACE_MB", "GEMMUL8_MAX_WORKSPACE_MB",
+                               kDefaultMemorySavingMiB);
+        if (bytes != 0 && bytes < kMinMemorySavingBytes) {
+            std::fprintf(stderr,
+                         "openmx_gemmul8: workspace cap below %zu MiB; using %zu MiB.\n",
+                         kMinMemorySavingBytes / kMiB, kMinMemorySavingBytes / kMiB);
+            bytes = kMinMemorySavingBytes;
+        }
+        return bytes;
+    }();
+    return cap;
+}
+
+size_t capped_workspace_size(size_t required)
+{
+    const size_t cap = memory_saving_cap_bytes();
+    return cap != 0 && cap < required ? cap : required;
+}
+
+void apply_memory_saving(cublasHandle_t handle)
+{
+    const size_t cap = memory_saving_cap_bytes();
+    gemmul8::set_memory_saving(handle, cap != 0);
+    if (cap != 0) {
+        gemmul8::set_max_worksize(handle, cap);
+    }
+}
+
+/* Each MPI process owns a workspace.  Budget the aggregate allocation on a
+   shared GPU, rounding up for uneven rank placement. */
+unsigned ranks_sharing_gpu()
+{
+    static const unsigned ranks = [] {
+        unsigned local_size = env_u32("OPENMX_GEMMUL8_LOCAL_RANKS", 0u);
+        if (local_size == 0u) local_size = env_u32("OMPI_COMM_WORLD_LOCAL_SIZE", 0u);
+        if (local_size == 0u) local_size = env_u32("SLURM_NTASKS_PER_NODE", 0u);
+        if (local_size == 0u) local_size = 1u;
+        int count = 0;
+        if (cudaGetDeviceCount(&count) != cudaSuccess || count < 1) count = 1;
+        const unsigned devices = static_cast<unsigned>(count);
+        return local_size / devices + (local_size % devices != 0u);
+    }();
+    return ranks;
+}
+
 unsigned gemmul8_num_moduli(const char *openmx_env, const char *gemmul8_env)
 {
     unsigned num_moduli = env_u32(gemmul8_env, kDefaultNumModuli);
@@ -144,9 +206,10 @@ cudaError_t release_workspace(Workspace &workspace)
     return status;
 }
 
-bool workspace_exceeds_fraction(size_t required, size_t total, unsigned max_percent)
+bool workspace_exceeds_fraction(size_t required, size_t total, unsigned max_percent, unsigned ranks_per_gpu)
 {
-    return total != 0 && max_percent != 0 && (total * static_cast<size_t>(max_percent)) / 100u < required;
+    return total != 0 && max_percent != 0 &&
+           (total * static_cast<size_t>(max_percent)) / 100u / ranks_per_gpu < required;
 }
 
 bool free_after_workspace_is_too_low(size_t free_bytes, size_t workspace_size, size_t required, size_t reserve)
@@ -160,8 +223,8 @@ bool free_after_workspace_is_too_low(size_t free_bytes, size_t workspace_size, s
 }
 
 template <bool is_complex>
-cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_t k, unsigned num_moduli, void **work,
-                                WorkspaceReport *report)
+cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_t k, unsigned num_moduli,
+                                bool fastmode, void **work, WorkspaceReport *report)
 {
     cudaStream_t stream = nullptr;
     int          device = -1;
@@ -176,8 +239,10 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
         return CUBLAS_STATUS_INTERNAL_ERROR;
     }
 
-    const size_t required = gemmul8::workSize<is_complex, gemmul8::Backend::INT8>(m, n, k, num_moduli);
+    const size_t required = capped_workspace_size(gemmul8::workSize<is_complex, gemmul8::Backend::INT8>(
+        m, n, k, num_moduli, false, false, nullptr, nullptr, fastmode));
     WorkspaceKey key      = {device, stream};
+    const unsigned ranks_per_gpu = ranks_sharing_gpu();
 
     if (report != nullptr) {
         report->required_bytes = required;
@@ -186,6 +251,7 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
         report->max_workspace_percent = env_percent("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT",
                                                      "GEMMUL8_MAX_WORKSPACE_PERCENT",
                                                      kDefaultMaxWorkspacePercent);
+        report->ranks_per_gpu = ranks_per_gpu;
     }
 
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
@@ -200,7 +266,8 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
     }
 
     if (cuda_status == cudaSuccess &&
-        workspace_exceeds_fraction(required, total_bytes, report != nullptr ? report->max_workspace_percent : 0u)) {
+        workspace_exceeds_fraction(required, total_bytes, report != nullptr ? report->max_workspace_percent : 0u,
+                                   ranks_per_gpu)) {
         if (report != nullptr) {
             report->reason = "workspace fraction policy";
         }
@@ -255,6 +322,10 @@ void log_workspace_fallback_once(const WorkspaceReport &report)
 {
     static bool warned = false;
 
+    if (!verbose_logging_enabled()) {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
     if (warned) {
         return;
@@ -263,10 +334,10 @@ void log_workspace_fallback_once(const WorkspaceReport &report)
     fprintf(stderr,
             "openmx_gemmul8%sgemm: GEMMul8 workspace fallback by %s; "
             "need %.3f MiB, CUDA free %.3f MiB / total %.3f MiB, "
-            "reserve %.3f MiB, max-workspace %u%%. Falling back to native cuBLAS.\n",
+            "reserve %.3f MiB, max-workspace %u%% shared by %u rank(s). Falling back to native cuBLAS.\n",
             is_complex ? "Z" : "D", report.reason, (double)report.required_bytes / (1024.0 * 1024.0),
             (double)report.free_bytes / (1024.0 * 1024.0), (double)report.total_bytes / (1024.0 * 1024.0),
-            (double)report.reserve_bytes / (1024.0 * 1024.0), report.max_workspace_percent);
+            (double)report.reserve_bytes / (1024.0 * 1024.0), report.max_workspace_percent, report.ranks_per_gpu);
     fflush(stderr);
     warned = true;
 }
@@ -311,9 +382,11 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
         return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
+    apply_memory_saving(handle);
+
     cublasStatus_t status =
         ensure_workspace<false>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
-                                num_moduli, &work, &report);
+                                num_moduli, fastmode, &work, &report);
     if (status == CUBLAS_STATUS_ALLOC_FAILED) {
         log_workspace_fallback_once<false>(report);
         return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
@@ -369,9 +442,11 @@ extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
     }
 
     const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
+    const bool fastmode = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
 
-    return gemmul8::workSize<true, gemmul8::Backend::INT8>(
-        static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli);
+    return capped_workspace_size(gemmul8::workSize<true, gemmul8::Backend::INT8>(
+        static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli,
+        false, false, nullptr, nullptr, fastmode));
 }
 
 extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
@@ -382,9 +457,11 @@ extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
     }
 
     const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
+    const bool fastmode = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
 
-    return gemmul8::workSize<false, gemmul8::Backend::INT8>(
-        static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli);
+    return capped_workspace_size(gemmul8::workSize<false, gemmul8::Backend::INT8>(
+        static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli,
+        false, false, nullptr, nullptr, fastmode));
 }
 
 extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
@@ -423,9 +500,11 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
         return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
+    apply_memory_saving(handle);
+
     cublasStatus_t status =
         ensure_workspace<true>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
-                               num_moduli, &work, &report);
+                               num_moduli, fastmode, &work, &report);
     if (status == CUBLAS_STATUS_ALLOC_FAILED) {
         log_workspace_fallback_once<true>(report);
         return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);

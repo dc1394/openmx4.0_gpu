@@ -652,6 +652,10 @@ void EigenBand_lapack_openacc(dcomplex* A, double* W, int N0, int MaxN)
 {
     int info;
     info = gpusolver_zheevx_openacc(A, W, N0, MaxN);
+    if (info != 0) {
+        fprintf(stderr, "EigenBand_lapack_openacc: eigensolver failed, info=%d\n", info);
+        MPI_Abort(mpi_comm_level1, 1);
+    }
 }
 
 void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax)
@@ -676,6 +680,12 @@ void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int E
 
         info = gpusolver_Syevdx_Complex_openacc(A, ko, n, EVmax);
 
+        if (info != 0) {
+            fprintf(stderr, "Complex OpenACC eigensolver failed, info=%d\n", info);
+            MPI_Abort(mpi_comm_level1, 1);
+            exit(10);
+        }
+
 #pragma acc kernels
 #pragma acc loop independent
         for (int i = 0; i < EVmax; i++) {
@@ -691,11 +701,6 @@ void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int E
         for (int i = EVmax; i >= 1; i--) {
             ko[i] = ko[i - 1];
         }
-    }
-
-    if (info < 0) {
-        printf("cusolverDnXsyevdx: info=%d\n", info);
-        exit(10);
     }
 
     free(A);
@@ -714,6 +719,10 @@ int gpusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag)
     }
 
     int info = gpusolver_Syevdx_Complex(A0, W, N, MaxN);
+    if (info != 0) {
+        free(A0);
+        return info; /* EigenBand_lapack retries on the original host matrix. */
+    }
 
     if (ev_flag == 1) {
         for (int i = 1; i <= N; i++) {
@@ -739,6 +748,7 @@ int gpusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN)
     int info;
 
     info = gpusolver_Syevdx_Complex_openacc(A, W, N0, MaxN);
+    if (info != 0) return info;
 
 #pragma acc data present(W[0: N0 + 1])
     {
@@ -751,4 +761,3 @@ int gpusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN)
 
     return info;
 }
-

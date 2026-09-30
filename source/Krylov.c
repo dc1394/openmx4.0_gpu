@@ -11471,3 +11471,18 @@ int Eigen_lapack_r(double **a, double *ko, int n0, int EVmax)
 
   return INFO;
 }
+
+/* Run-boundary reset: geometry and device state must not survive into the
+   next -runtest input, whose host allocations can reuse the same addresses.
+   Called on every rank before Free_Arrays(0) frees the current system. */
+void Krylov_Release_GPU_Caches(void)
+{
+    for (int i = 0; i < Krylov_gpu_ws_pool_size; ++i)
+        Krylov_GPU_Workspace_Free(&Krylov_gpu_ws_pool[i]);
+    free(Krylov_gpu_ws_pool);
+    Krylov_gpu_ws_pool = NULL;
+    Krylov_gpu_ws_pool_size = 0;
+    Krylov_Release_GPU_KUCache();
+    /* A memory admission failure in one input must not disable later ones. */
+    memset(&Krylov_kucache, 0, sizeof(Krylov_kucache));
+}

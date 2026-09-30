@@ -2415,15 +2415,18 @@ double DFT(int MD_iter, int Cnt_Now)
 
   /* The solver/mixing device caches go back before the forces so the force
      batches measure the true free GPU memory.  Set_Hamiltonian's resident
-     orbital tables deliberately stay up through Force(): Force3's GPU trace
-     reads the FNAN orbitals straight from the resident orbs1buf instead of
-     re-packing ~160 MB/rank on the host, and its chunk planner divides
-     whatever memory is left, so keeping the tables only shrinks the chunks. */
+     orbital tables stay available through Force3: its GPU trace reads the
+     FNAN orbitals directly from orbs1buf.  Band runs release these tables
+     after Force3 so later VNA batches can use that device memory. */
   Divide_Conquer_Release_GPU_SCache();
   Krylov_Release_GPU_KUCache();
   Cluster_DFT_Col_Release_GPU_Solver();
   Cluster_DFT_NonCol_Release_GPU_Solver();
+  openmx_gpusolver_cache_release();
   Mixing_H_Release_GPU();
+  /* Only scratch storage is released; later dense work recreates it on
+     demand and the host eigenvectors/packed matrices remain intact. */
+  openmx_gemmul8ReleaseWorkspaces();
 
   if (!orbitalOpt_Force_Skip) time7 += Force(H0,DS_NL,OLP,DM[0],EDM);
 
@@ -2431,7 +2434,7 @@ double DFT(int MD_iter, int Cnt_Now)
     Stress(H0,DS_NL,OLP,DM[0],EDM);
   }
 
-  /* now the force batches are done with the resident tables */
+  /* Release any tables retained through Force3 by non-band runs or opt-out. */
   Set_Hamiltonian_Release_OpenACC_DeviceCache();
 
   /*

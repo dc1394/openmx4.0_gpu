@@ -56,18 +56,27 @@
 # FC = mpif90 -O2 -mtune=native -march=native -fopenmp -I${MKLROOT}/include
 # -L/home/x10402/nvpl-linux-sbsa-24.7/lib -lnvpl_scalapack_lp64 -lnvpl_blacs_lp64_openmpi4 -lnvpl_lapack_lp64_gomp -lnvpl_blas_lp64_gomp -pgf90libs -lmpi_mpifh -lfftw3 -lpthread -lgfortran -lm -ldl -L/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/lib64 -L/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/lib -lcudart -lcusolver -lcublas -cuda
 
-NVHPC_ROOT          ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.5
-NVHPC_CUDA_VERSION  ?= 13.2
-NVHPC_MPI_BIN       ?= $(NVHPC_ROOT)/comm_libs/mpi/bin
-# The HPC-X directory is named after its release (hpcx-2.25.1 in 26.3,
-# hpcx-2.50 in 26.5), so follow the "latest" symlink; "ompi" inside it
-# selects the Open MPI generation the mpicc/mpif90 wrappers use.
-NVHPC_MPI_LIBDIR    ?= $(NVHPC_ROOT)/comm_libs/$(NVHPC_CUDA_VERSION)/hpcx/latest/ompi/lib
+# CUDA may be installed separately from the SDK (26.9 bundles CUDA 13.3).
+# Override these variables to build against an older SDK/toolkit.
+NVHPC_ROOT          ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.9
+NVHPC_CUDA_VERSION  ?= 13.4
+NVHPC_CUDA_HOME     ?= $(if $(wildcard /usr/local/cuda-$(NVHPC_CUDA_VERSION)/include/cuda.h),/usr/local/cuda-$(NVHPC_CUDA_VERSION),$(NVHPC_ROOT)/cuda/$(NVHPC_CUDA_VERSION))
+NVHPC_CUDA_TARGET   ?= $(NVHPC_CUDA_HOME)/targets/x86_64-linux
 NVHPC_COMPILER_BIN  ?= $(NVHPC_ROOT)/compilers/bin
 NVHPC_COMPILER_LIB  ?= $(NVHPC_ROOT)/compilers/lib
-NVHPC_MATH_DIR      ?= $(NVHPC_ROOT)/math_libs/$(NVHPC_CUDA_VERSION)/targets/x86_64-linux
-NVHPC_CUDA_HOME     ?= $(NVHPC_ROOT)/cuda/$(NVHPC_CUDA_VERSION)
-NVHPC_CUDA_TARGET   ?= $(NVHPC_CUDA_HOME)/targets/x86_64-linux
+NVHPC_MPI_BIN       ?= $(NVHPC_ROOT)/comm_libs/mpi/bin
+NVHPC_COMM_HOME     ?= $(or $(wildcard $(NVHPC_ROOT)/comm_libs/$(NVHPC_CUDA_VERSION)),$(lastword $(dir $(wildcard $(NVHPC_ROOT)/comm_libs/*/hpcx))))
+export NVCOMPILER_COMM_LIBS_HOME := $(NVHPC_COMM_HOME)
+# Resolve the wrapper's MPI library directory; its CUDA version need not
+# match the external toolkit. In particular 26.9 uses comm_libs/13.3.
+NVHPC_MPI_LIBDIR    ?= $(shell $(NVHPC_MPI_BIN)/mpicc --showme:libdirs 2>/dev/null | awk '{print $$1}')
+# Prefer the toolkit's math libraries so headers and shared objects agree.
+NVHPC_MATH_DIR      ?= $(if $(wildcard $(NVHPC_CUDA_TARGET)/include/cusolverDn.h),$(NVHPC_CUDA_TARGET),$(NVHPC_ROOT)/math_libs/$(NVHPC_CUDA_VERSION)/targets/x86_64-linux)
+# nvc/nvfortran ignore CUDA_HOME. Export their documented override as well
+# as explicit include/link paths; otherwise OpenACC silently uses CUDA 13.3.
+export NVHPC_CUDA_HOME
+export NVCOMPILER_CUDA_HOME := $(NVHPC_CUDA_HOME)
+export NVCOMPILER_MATH_LIBS_HOME := $(NVHPC_MATH_DIR)
 
 GPUSOLVER2_PREFIX ?= $(CURDIR)/third_party/gpusolver2-install
 
@@ -134,7 +143,8 @@ FFTW3_INCLUDE  ?= -I$(FFTW3_PREFIX)/include
 FFTW3_LIBS     ?= $(FFTW3_LIB)
 
 COMMON_INCLUDES = $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_CUDA_HOME)/include
-COMMON_CFLAGS   = -w -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp $(COMMON_INCLUDES)
+NVHPC_GPU_FLAGS ?= $(if $(GEMMUL8_BUILD_GPU_ARCH),-gpu=cc$(GEMMUL8_BUILD_GPU_ARCH))
+COMMON_CFLAGS   = -w -Minfo=accel -acc $(NVHPC_GPU_FLAGS) -std=c11 -mtune=native -march=native -fopenmp $(COMMON_INCLUDES)
 
 CC  = $(MPICC) $(COMMON_CFLAGS) -O3
 CC2 = $(MPICC) $(COMMON_CFLAGS) -O1
@@ -158,14 +168,14 @@ GEMMUL8_REPO_URL ?= https://github.com/RIKEN-RCCS/GEMMul8.git
 GEMMUL8_REPO_DIR ?= third_party/GEMMul8
 # gemmul8_openmx.cu instantiates GEMMul8 internals directly, so the
 # checkout must stay pinned to a commit whose internal layout it matches.
-# 833e576 is the v3.2.0 release.
-GEMMUL8_COMMIT   ?= 833e5761c8ce303c59f673f4e28b7e6aef6a2d96
+# 603b523 is the v3.5.2 release.
+GEMMUL8_COMMIT   ?= 603b52363715796a0af5e4aa1ed8d386349b4251
 GEMMUL8_DIR      ?= $(GEMMUL8_REPO_DIR)
 GEMMUL8_LIB      ?= $(GEMMUL8_DIR)/lib/libgemmul8.a
 GEMMUL8_OPENMX_OBJ ?= $(GEMMUL8_DIR)/src/gemmul8_openmx.o
 GEMMUL8_CUDA_PATH ?= $(NVHPC_CUDA_HOME)
 GEMMUL8_GPU_ARCH ?= auto
-GEMMUL8_DETECTED_GPU_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 | tr -d '.')
+GEMMUL8_DETECTED_GPU_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | awk '/^[0-9]+[.][0-9]+$$/ {gsub(/[.]/, ""); print; exit}')
 ifeq ($(GEMMUL8_GPU_ARCH),auto)
 GEMMUL8_BUILD_GPU_ARCH := $(GEMMUL8_DETECTED_GPU_ARCH)
 else
@@ -203,6 +213,7 @@ GPUSOLVER2_MPI_LIBDIR ?= $(NVHPC_MPI_LIBDIR)
 GPUSOLVER2_CUDA_HOME ?= $(NVHPC_CUDA_HOME)
 GPUSOLVER2_MATH_DIR  ?= $(NVHPC_MATH_DIR)
 GPUSOLVER2_COMPILER_LIB ?= $(NVHPC_COMPILER_LIB)
+GPUSOLVER2_COMPILER_BIN ?= $(NVHPC_COMPILER_BIN)
 GPUSOLVER2_SCALAPACK_SO ?= $(NVHPC_MPI_LIBDIR)/libscalapack_lp64.so
 GPUSOLVER2_CMAKE     ?=
 GPUSOLVER2_JOBS      ?= $(shell nproc 2>/dev/null || echo 8)
@@ -249,7 +260,7 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           Make_InputFile_with_FinalCoord.o Output_Energy_Decomposition.o \
           Divide_Conquer.o Divide_Conquer_LNO.o gemmul8_bridge.o elpa_cosma_bridge.o Krylov.o \
           Divide_Conquer_Dosout.o EGAC_DFT.o LNO.o Calc_LNAO.o Calc_LNBO.o \
-          Eigen_lapack.o gpusolver_Syevd.o gpusolver_Syevdx.o set_cuda_default_device_from_local_rank.o set_openacc_device_from_local_rank.o Eigen_lapack2.o Eigen_lapack3.o EigenBand_lapack.o \
+          Eigen_lapack.o gpusolver_Syevd.o gpusolver_Syevdx.o openmx_cusolver_compat.o set_cuda_default_device_from_local_rank.o set_openacc_device_from_local_rank.o Eigen_lapack2.o Eigen_lapack3.o EigenBand_lapack.o \
           Eigen_PReHH.o BroadCast_ReMatrix.o \
           Eigen_PHH.o BroadCast_ComplexMatrix.o \
           lapack_dstedc1.o lapack_dstedc2.o lapack_dstedc3.o\
@@ -347,6 +358,7 @@ $(FFTW3_CODELET_SENTINEL): | $(FFTW3_SRC_ABS)
 	  rm -rf "$$tmpdir"
 
 $(FFTW3_BUILD_DIR)/config.status: $(FFTW3_CODELET_SENTINEL) | $(FFTW3_SRC_ABS)
+	@if [ -f "$(FFTW3_BUILD_ABS)/Makefile" ]; then $(FFTW3_BUILD_ENV) $(MAKE) -C "$(FFTW3_BUILD_ABS)" clean; fi
 	@if [ -d "$(FFTW3_SRC_ABS)/.git" ]; then \
 	  tag=$$(git -C "$(FFTW3_SRC_ABS)" describe --tags --exact-match 2>/dev/null || true); \
 	  if [ "$$tag" != "$(FFTW3_TAG)" ]; then \
@@ -375,6 +387,31 @@ gemmul8-clean:
 
 FFTW3_USERS = Poisson.o Stress.o Poisson_ESM.o TRAN_Poisson.o TRAN_CDen_Main.o TRAN_Set_Electrode_Grid.o Cluster_DFT_Col.o
 $(FFTW3_USERS): | $(FFTW3_LIB)
+
+# Rebuild when switching SDK, toolkit, architecture, or bundled GEMMul8.
+# Updating the file only when its contents change preserves incremental builds.
+OPENMX_BUILD_CONFIG := $(CURDIR)/build/openmx-toolchain.conf
+.PHONY: openmx-toolchain-force
+$(OPENMX_BUILD_CONFIG): openmx-toolchain-force
+	@test -n "$(GEMMUL8_BUILD_GPU_ARCH)" || { echo "GPU architecture unavailable; set GEMMUL8_GPU_ARCH (e.g. 120 for RTX 5080, 90 for H100)."; exit 1; }
+	@mkdir -p "$(dir $(OPENMX_BUILD_CONFIG))"
+	@printf '%s\n' '$(NVHPC_ROOT)' '$(NVHPC_CUDA_HOME)' '$(NVHPC_MATH_DIR)' '$(NVHPC_MPI_BIN)' '$(NVHPC_MPI_LIBDIR)' '$(GEMMUL8_BUILD_GPU_ARCH)' '$(GEMMUL8_COMMIT)' '$(CC)' '$(FC)' '$(NVCC)' '$(NVCC_HOST)' '$(CC2)' '$(CC3)' '$(LIB)' '$(GPUSOLVER2_PREFIX)' '$(GPUSOLVER2_COMPILER_BIN)' '$(GPUSOLVER2_SCALAPACK_SO)' '$(GPUSOLVER2_ELPA_VER)' > "$@.tmp"
+	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
+
+$(OBJS) $(GEMMUL8_OPENMX_OBJ) $(FFTW3_BUILD_DIR)/config.status: $(OPENMX_BUILD_CONFIG)
+
+# Stack-only overrides must reach the dependency builder without rebuilding
+# unrelated OpenMX objects or FFTW. Keep these fields in sync with its
+# toolchain.conf signature; parallelism does not affect the build products.
+GPUSOLVER2_BUILD_CONFIG := $(GPUSOLVER2_BUILD)/make-toolchain.conf
+.PHONY: gpusolver2-toolchain-force
+$(GPUSOLVER2_BUILD_CONFIG): gpusolver2-toolchain-force
+	@test -n "$(GPUSOLVER2_GPU_ARCH)" || { echo "GPU architecture unavailable; set GEMMUL8_GPU_ARCH or GPUSOLVER2_GPU_ARCH."; exit 1; }
+	@mkdir -p "$(dir $(GPUSOLVER2_BUILD_CONFIG))"
+	@printf '%s\n' '$(GPUSOLVER2_COMPILER_LIB)' '$(GPUSOLVER2_MPI_BIN)' '$(GPUSOLVER2_MPI_LIBDIR)' '$(GPUSOLVER2_CUDA_HOME)' '$(GPUSOLVER2_MATH_DIR)' '$(GPUSOLVER2_NVCC)' '$(GPUSOLVER2_GPU_ARCH)' '$(GPUSOLVER2_ELPA_VER)' '$(GPUSOLVER2_HOST_CC)' '$(GPUSOLVER2_HOST_CXX)' '$(GPUSOLVER2_PREFIX)' '$(GPUSOLVER2_COMPILER_BIN)' '$(GPUSOLVER2_SCALAPACK_SO)' > "$@.tmp"
+	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
+
+$(GPUSOLVER2_STAMP): $(GPUSOLVER2_BUILD_CONFIG)
 
 #
 # OpenMX
@@ -688,6 +725,11 @@ QuickSort.o: QuickSort.c openmx_common.h
 	$(CC) -c QuickSort.c
 Eigen_lapack.o: Eigen_lapack.c openmx_common.h lapack_prototypes.h
 	$(CC) -c Eigen_lapack.c
+openmx_cusolver_compat.o: openmx_cusolver_compat.c openmx_cusolver_compat.h
+	$(CC) -c openmx_cusolver_compat.c
+
+$(OBJS): openmx_cusolver_compat.h
+
 gpusolver_Syevd.o: gpusolver_Syevd.c openmx_common.h
 	$(CC) -c gpusolver_Syevd.c
 gpusolver_Syevdx.o: gpusolver_Syevdx.c openmx_common.h
@@ -785,11 +827,12 @@ $(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
 	GPUSOLVER2_NVCC="$(GPUSOLVER2_NVCC)" GPUSOLVER2_GPU_ARCH="$(GPUSOLVER2_GPU_ARCH)" \
 	GPUSOLVER2_MPI_BIN="$(GPUSOLVER2_MPI_BIN)" GPUSOLVER2_MPI_LIBDIR="$(GPUSOLVER2_MPI_LIBDIR)" \
 	GPUSOLVER2_CUDA_HOME="$(GPUSOLVER2_CUDA_HOME)" GPUSOLVER2_MATH_DIR="$(GPUSOLVER2_MATH_DIR)" \
-	GPUSOLVER2_COMPILER_LIB="$(GPUSOLVER2_COMPILER_LIB)" \
+	GPUSOLVER2_COMPILER_LIB="$(GPUSOLVER2_COMPILER_LIB)" GPUSOLVER2_COMPILER_BIN="$(GPUSOLVER2_COMPILER_BIN)" \
 	GPUSOLVER2_SCALAPACK_SO="$(GPUSOLVER2_SCALAPACK_SO)" \
 	GPUSOLVER2_ELPA_VER="$(GPUSOLVER2_ELPA_VER)" \
 	GPUSOLVER2_CMAKE="$(GPUSOLVER2_CMAKE)" GPUSOLVER2_JOBS="$(GPUSOLVER2_JOBS)" \
 	sh third_party/build_gpusolver2_stack.sh
+	@touch "$@"
 
 gpusolver2-clean:
 	rm -rf "$(GPUSOLVER2_BUILD)" "$(GPUSOLVER2_PREFIX)"
@@ -808,7 +851,10 @@ $(GEMMUL8_DIR)/Makefile:
 # Order-only: an existing header is always up to date regardless of mtimes.
 $(GEMMUL8_DIR)/include/gemmul8.hpp: | $(GEMMUL8_DIR)/Makefile
 	@:
-$(GEMMUL8_OPENMX_OBJ): gemmul8_openmx.cu $(GEMMUL8_DIR)/Makefile
+# GEMMul8's implementation includes nested oz2 and precision headers.
+openmx_rwildcard = $(foreach d,$(wildcard $1*),$(call openmx_rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
+GEMMUL8_SOURCES = $(call openmx_rwildcard,$(GEMMUL8_DIR)/include/,*.hpp) $(call openmx_rwildcard,$(GEMMUL8_DIR)/src/,*.hpp *.cu)
+$(GEMMUL8_OPENMX_OBJ): gemmul8_openmx.cu $(GEMMUL8_DIR)/Makefile $(GEMMUL8_SOURCES)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_openmx.cu -o $(GEMMUL8_OPENMX_OBJ)
 $(GEMMUL8_LIB): $(GEMMUL8_OPENMX_OBJ)
 	mkdir -p $(GEMMUL8_DIR)/lib

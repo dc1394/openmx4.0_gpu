@@ -92,17 +92,21 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
 
 typedef struct {
   int enabled;
+  int turn, turns, host_archive;
   int num_proj;
   int num_rvna;
 
-  /* local direction-0 DS_VNA rows; device-only (the batch kernel is the
-     only reader, so no host copy of the archive is kept) */
+  /* Local direction-0 DS_VNA rows. Keep them only on the device when all
+     local ranks fit; otherwise archive on the host until the rank's turn. */
   float *flat_dev;
+  float *flat_host;       /* used only when GPU ranks execute in turns */
+  size_t flat_count;
   size_t *mck_off;
   int *mck_base;
 
-  /* halo archive of the received direction-0 blocks; device-only too */
+  /* Halo archive of the received direction-0 blocks, with the same policy. */
   float *halo_dev;
+  float *halo_host;
   size_t halo_count;
   size_t *halo_off;
   int *halo_base;
@@ -160,6 +164,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
   size_t pos = 0,slots = 0,halo_slots = 0;
   size_t free_bytes = 0,total_bytes = 0;
   MPI_Comm node_comm = MPI_COMM_NULL;
+  int allow_turns;
 
   memset(g,0,sizeof(*g));
   g->num_proj = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
@@ -167,6 +172,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
 
   if (scf_eigen_lib_flag!=GPUSOLVER) return 0;
   if (!SetPro_collective_env_flag("OPENMX_SETPRO_GPU",1)) return 0;
+  allow_turns = SetPro_collective_env_flag("OPENMX_SETPRO_HVNA_TURNS",1);
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
@@ -177,7 +183,6 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
     acc_clear_freelists();
   }
   MPI_Barrier(node_comm);
-  MPI_Comm_free(&node_comm);
 
   /* sizes of the flat local table and the halo archive */
 
@@ -197,23 +202,80 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
     g->halo_count += (size_t)(FNAN[Gc_AN]+1)*(size_t)tno*(size_t)g->num_proj;
   }
 
-  if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
+  g->flat_count = pos==0 ? 1 : pos;
+  if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) free_bytes = 0;
   {
     const size_t reserve = (size_t)256*1024*1024;
-    const size_t transients = (size_t)192*1024*1024;
-    size_t need = (pos + g->halo_count)*sizeof(float) + transients;
+    size_t items = 0, kslots = 0, outputs = 0;
+    unsigned long long need, max_need, available = free_bytes, min_available;
+    int admitted = 0, fit, global_fit, local_turns;
 
-    if (free_bytes<=reserve ||
-        (free_bytes - reserve)/(size_t)node_ranks<=need){
-      if (node_rank==0){
+    /* AMD's rank-turn admission, with the actual OpenACC transient arrays.
+       Counting all neighbours also covers large halos that exceeded the
+       old fixed 192 MiB allowance. Node-wide grouping is conservative when
+       a node has several GPUs, as in the previous admission policy. */
+    for (Mc_AN=1; Mc_AN<=Matomnum; ++Mc_AN){
+      int gc = M2G[Mc_AN];
+      int tno = Spe_Total_NO[WhatSpecies[gc]];
+      for (int j=0; j<=FNAN[gc]; ++j){
+        ++items;
+        outputs += (size_t)tno*Spe_Total_NO[WhatSpecies[natn[gc][j]]];
+        for (int kk=0; kk<=FNAN[gc]; ++kk)
+          if (0<=RMI1[Mc_AN][j][kk]) ++kslots;
+      }
+    }
+    if (kslots==0) kslots = 1;
+    need = (g->flat_count + (g->halo_count==0 ? 1 : g->halo_count))*sizeof(float)
+         + items*(4*sizeof(int) + sizeof(size_t)) + outputs*sizeof(double)
+         + kslots*(2*sizeof(size_t) + 2*sizeof(int))
+         + (size_t)SpeciesNum*Num_RVNA*sizeof(double) + (size_t)Num_RVNA*sizeof(int)
+         + (size_t)64*1024*1024;
+    MPI_Allreduce(&need,&max_need,1,MPI_UNSIGNED_LONG_LONG,MPI_MAX,node_comm);
+    MPI_Allreduce(&available,&min_available,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,node_comm);
+    if (min_available>reserve){
+      unsigned long long count = (min_available-reserve)/max_need;
+      admitted = count<(unsigned)node_ranks ? (int)count : node_ranks;
+    }
+    fit = admitted>0 && (allow_turns || admitted==node_ranks);
+    local_turns = fit ? (node_ranks+admitted-1)/admitted : 0;
+    if (local_turns>1){
+      /* Turn execution must archive received halo rows on the host. Bound
+         its node-wide storage plus batch tables by 1/2 of available RAM. */
+      unsigned long long host_available = 0, min_host, total_need;
+      char line[256];
+      FILE *file = fopen("/proc/meminfo","r");
+      if (file!=NULL){
+        while (fgets(line,sizeof(line),file)!=NULL)
+          if (sscanf(line,"MemAvailable: %llu kB",&host_available)==1) break;
+        fclose(file);
+      }
+      MPI_Allreduce(&host_available,&min_host,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,node_comm);
+      MPI_Allreduce(&need,&total_need,1,MPI_UNSIGNED_LONG_LONG,MPI_SUM,node_comm);
+      if (total_need > min_host*512ULL) fit = 0;
+    }
+    MPI_Allreduce(&fit,&global_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    if (!global_fit){
+      if (!fit && node_rank==0){
         fprintf(stderr,
-                "Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.\n");
+                "Set_ProExpn_VNA HVNA GPU: %.3f GiB maximum per rank, %.3f GiB device free; "
+                "insufficient device/host budget or rank turns disabled; CPU fallback.\n",
+                (double)max_need/1073741824.0,(double)min_available/1073741824.0);
         fflush(stderr);
       }
+      MPI_Comm_free(&node_comm);
       memset(g,0,sizeof(*g));
       return 0;
     }
+    g->turn = node_rank/admitted;
+    g->host_archive = local_turns>1;
+    MPI_Allreduce(&local_turns,&g->turns,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+    if (node_rank==0 && local_turns>1){
+      fprintf(stderr,"Set_ProExpn_VNA HVNA GPU: %d rank(s) per turn, %d turns, %.3f GiB maximum per rank.\n",
+              admitted,local_turns,(double)max_need/1073741824.0);
+      fflush(stderr);
+    }
   }
+  MPI_Comm_free(&node_comm);
 
   g->mck_base = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)(Matomnum+2));
   g->mck_off = (size_t*)SetPro_checked_malloc(sizeof(size_t)*(slots==0 ? 1 : slots));
@@ -222,12 +284,17 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
   g->ene = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)SpeciesNum*(size_t)Num_RVNA);
   g->l2p1 = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)Num_RVNA);
 
-  /* Both archives live on the device only: the kernel is their sole reader,
-     and a host copy would cost every rank the full archive (tens to
-     hundreds of MB) exactly while DS_VNA itself peaks.  Rows are staged
+  /* Keep the original device-only archive when all ranks fit. Rank turns
+     use host archives with the RAM budget checked above. Rows are staged
      through one bounce slot sized for the largest (atom,neighbour) block. */
-  g->flat_dev = (float*)acc_malloc(sizeof(float)*((pos==0 ? 1 : pos)));
-  g->halo_dev = (float*)acc_malloc(sizeof(float)*((g->halo_count==0 ? 1 : g->halo_count)));
+  if (g->host_archive){
+    g->flat_host = (float*)SetPro_checked_malloc(sizeof(float)*g->flat_count);
+    g->halo_host = (float*)SetPro_checked_malloc(sizeof(float)*(g->halo_count==0 ? 1 : g->halo_count));
+  }
+  else{
+    g->flat_dev = (float*)acc_malloc(sizeof(float)*g->flat_count);
+    g->halo_dev = (float*)acc_malloc(sizeof(float)*(g->halo_count==0 ? 1 : g->halo_count));
+  }
   {
     size_t bounce_count = 1;
 
@@ -238,18 +305,26 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
     g->bounce_count = bounce_count;
     g->bounce = (float*)SetPro_checked_malloc(sizeof(float)*bounce_count);
   }
-  if (g->flat_dev==NULL || g->halo_dev==NULL){
-    if (g->flat_dev!=NULL) acc_free(g->flat_dev);
-    if (g->halo_dev!=NULL) acc_free(g->halo_dev);
-    free(g->bounce);
-    free(g->l2p1);
-    free(g->ene);
-    free(g->halo_off);
-    free(g->halo_base);
-    free(g->mck_off);
-    free(g->mck_base);
-    memset(g,0,sizeof(*g));
-    return 0;
+  {
+    int allocated = g->host_archive || (g->flat_dev!=NULL && g->halo_dev!=NULL);
+    int all_allocated;
+    MPI_Allreduce(&allocated,&all_allocated,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    if (!all_allocated){
+      if (g->flat_dev!=NULL) acc_free(g->flat_dev);
+      if (g->halo_dev!=NULL) acc_free(g->halo_dev);
+      acc_clear_freelists();
+      free(g->flat_host);
+      free(g->halo_host);
+      free(g->bounce);
+      free(g->l2p1);
+      free(g->ene);
+      free(g->halo_off);
+      free(g->halo_base);
+      free(g->mck_off);
+      free(g->mck_base);
+      memset(g,0,sizeof(*g));
+      return 0;
+    }
   }
 
   for (L1=0; L1<Num_RVNA; L1++){
@@ -306,8 +381,11 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
                  DS_VNA[0][Mc_AN][k2][i],
                  sizeof(float)*(size_t)g->num_proj);
         }
-        acc_memcpy_to_device(g->flat_dev + base, g->bounce,
-                             sizeof(float)*(size_t)tno*(size_t)g->num_proj);
+        if (g->host_archive)
+          memcpy(g->flat_host + base, g->bounce,sizeof(float)*(size_t)tno*(size_t)g->num_proj);
+        else
+          acc_memcpy_to_device(g->flat_dev + base, g->bounce,
+                               sizeof(float)*(size_t)tno*(size_t)g->num_proj);
       }
     }
   }
@@ -326,6 +404,8 @@ static void SetPro_HVNA_GpuEnd(void)
   if (g->halo_dev!=NULL) acc_free(g->halo_dev);
   acc_clear_freelists();
 
+  free(g->flat_host);
+  free(g->halo_host);
   free(g->bounce);
   free(g->l2p1);
   free(g->ene);
@@ -361,8 +441,11 @@ static void SetPro_HVNA_GpuArchiveHalo(Type_DS_VNA *****DS_VNA, int Original_Mc_
              DS_VNA[0][Matomnum+1][k][i],
              sizeof(float)*(size_t)g->num_proj);
     }
-    acc_memcpy_to_device(g->halo_dev + base, g->bounce,
-                         sizeof(float)*(size_t)tno*(size_t)g->num_proj);
+    if (g->host_archive)
+      memcpy(g->halo_host + base, g->bounce,sizeof(float)*(size_t)tno*(size_t)g->num_proj);
+    else
+      acc_memcpy_to_device(g->halo_dev + base, g->bounce,
+                           sizeof(float)*(size_t)tno*(size_t)g->num_proj);
   }
 }
 
@@ -457,6 +540,17 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
 
   if (p!=nitems || kpos!=kslots || opos!=out_count){
     SetPro_gpu_abort("Set_ProExpn_VNA GPU: inconsistent batch.");
+  }
+
+  if (g->host_archive){
+    size_t flat_bytes = sizeof(float)*g->flat_count;
+    size_t halo_bytes = sizeof(float)*(g->halo_count==0 ? 1 : g->halo_count);
+    g->flat_dev = (float*)acc_malloc(flat_bytes);
+    g->halo_dev = (float*)acc_malloc(halo_bytes);
+    if (g->flat_dev==NULL || g->halo_dev==NULL)
+      SetPro_gpu_abort("Set_ProExpn_VNA: GPU rank-turn archive allocation failed.");
+    acc_memcpy_to_device(g->flat_dev,g->flat_host,flat_bytes);
+    acc_memcpy_to_device(g->halo_dev,g->halo_host,halo_bytes);
   }
 
   {
@@ -560,6 +654,12 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
   free(item_koff);
   free(item_j);
   free(item_atom);
+  if (g->host_archive){
+    acc_free(g->flat_dev);
+    acc_free(g->halo_dev);
+    g->flat_dev = g->halo_dev = NULL;
+    acc_clear_freelists();
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -673,6 +773,7 @@ static void SetPro_Spherical_Bessel2_dev(double x, int lmax, double *sb, double 
 /* per-species combo/block tables of the DS_VNA construction batch */
 typedef struct {
   int enabled;
+  int chunk;           /* admitted pair batch, shared by sizing and execution */
   int num_proj;
   int num_rvna;
   int lfi_max;          /* max Lmax_Four_Int over species             */
@@ -709,7 +810,7 @@ static SetProGpu2Context SetPro_gpu2 = { 0 };
    can be diffed by eye. */
 static size_t SetPro_DSVNA_DeviceBytes(const SetProGpu2Context *g)
 {
-  const size_t CH = (size_t)SETPRO_DSVNA_CHUNK;
+  const size_t CH = (size_t)g->chunk;
   const int nM0 = 2*g->l0max_all + 1;
   const int nM1 = 2*g->l1max + 1;
   const int nLL = g->lfi_max + 1;
@@ -932,11 +1033,19 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
      MPS lets them run concurrently but does not pool their memory. */
   {
     const size_t reserve = (size_t)256*1024*1024;
-    const size_t need = SetPro_DSVNA_DeviceBytes(g);
+    size_t need, budget = 0;
+    g->chunk = SETPRO_DSVNA_CHUNK;
+    if (cudaMemGetInfo(&free_bytes,&total_bytes)==cudaSuccess && free_bytes>reserve)
+      budget = (free_bytes - reserve)/(size_t)node_ranks;
+    need = SetPro_DSVNA_DeviceBytes(g);
+    /* Each pair is independent. Port the AMD batch admission: shrink
+       transient arrays before abandoning the GPU for a fixed-size batch. */
+    while (g->chunk>1 && budget<=need){
+      g->chunk /= 2;
+      need = SetPro_DSVNA_DeviceBytes(g);
+    }
 
-    if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
-        free_bytes<=reserve ||
-        (free_bytes - reserve)/(size_t)node_ranks<=need){
+    if (budget<=need){
 
       if (node_rank==0){
         fprintf(stderr,
@@ -951,6 +1060,11 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
       g->enabled = 1;
       SetPro_DSVNA_GpuEnd();
       return 0;
+    }
+    if (node_rank==0 && g->chunk<SETPRO_DSVNA_CHUNK){
+      fprintf(stderr,"Set_ProExpn_VNA DS_VNA GPU: pair batch %d, %.3f GiB per rank within %.3f GiB budget.\n",
+              g->chunk,(double)need/1073741824.0,(double)budget/1073741824.0);
+      fflush(stderr);
     }
   }
 
@@ -998,7 +1112,7 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
   const int nsh = (lfi_max+1)*(lfi_max+1);
   const int mn_max = g->mn_max;
   /* same constant SetPro_DSVNA_DeviceBytes sized the pre-flight check with */
-  const int CHUNK = SETPRO_DSVNA_CHUNK;
+  const int CHUNK = g->chunk;
   int chunk_start;
 
   double *pr_r,*pr_siT,*pr_coT,*pr_siP,*pr_coP;
@@ -3427,7 +3541,10 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
   } /* if (!setpro_gpu) */
 
   if (setpro_gpu){
-    SetPro_HVNA_GpuRun(HVNA);
+    for (int turn=0; turn<SetPro_gpu.turns; ++turn){
+      if (turn==SetPro_gpu.turn) SetPro_HVNA_GpuRun(HVNA);
+      if (SetPro_gpu.turns>1) MPI_Barrier(mpi_comm_level1);
+    }
     SetPro_HVNA_GpuEnd();
     setpro_gpu = 0;
   }

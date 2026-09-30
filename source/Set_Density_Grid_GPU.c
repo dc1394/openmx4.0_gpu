@@ -955,7 +955,10 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
     return 0;
   }
 
-  persistent = SDG_env_bool("OPENMX_DENSITY_GRID_GPU_PERSISTENT", 0);
+  /* Reuse small geometry tables across SCF steps. Large epochs still yield
+     their storage to the dense eigensolver after each density contraction. */
+  persistent = SDG_env_bool("OPENMX_DENSITY_GRID_GPU_PERSISTENT",
+      cache->device_bytes <= SDG_env_mib("OPENMX_DENSITY_GRID_GPU_CACHE_MB", 64));
   if (myid == owner && !persistent) SDG_delete_device(cache);
 
   for (int spin = 0; spin < spin_count; spin++) {
@@ -1002,15 +1005,52 @@ typedef struct {
   uint32_t *pt_pair;       /* overlap point -> pair */
   double *dm;
   double *tmpden;
+  int device_resident;
+  int device_id;
   SetHamiltonianMETables t;
 } SDGLocalContext;
 
 static SDGLocalContext SDG_local = {0};
 
+static void SDG_local_delete_device(SDGLocalContext *c)
+{
+  int current_device;
+
+  if (!c->device_resident) return;
+  current_device = acc_get_device_num(acc_device_nvidia);
+  if (current_device != c->device_id)
+    acc_set_device_num(c->device_id, acc_device_nvidia);
+  SDG_acc_delete_if_present(c->out_ptr, (c->output_count + 1) * sizeof(uint32_t));
+  SDG_acc_delete_if_present(c->term_pt, c->term_count * sizeof(uint32_t));
+  SDG_acc_delete_if_present(c->pt_pair, c->term_count * sizeof(uint32_t));
+  SDG_acc_delete_if_present(c->dm, c->dm_count * sizeof(double));
+  SDG_acc_delete_if_present(c->tmpden, (size_t)c->spin_count * c->output_count * sizeof(double));
+  c->device_resident = 0;
+  if (current_device != c->device_id)
+    acc_set_device_num(current_device, acc_device_nvidia);
+}
+
+static int SDG_local_upload(SDGLocalContext *c)
+{
+  if (c->device_resident) return 1;
+  c->device_id = acc_get_device_num(acc_device_nvidia);
+  c->device_resident = 1; /* include partially uploaded tables in cleanup */
+  if (acc_copyin(c->out_ptr, (c->output_count + 1) * sizeof(uint32_t)) == NULL ||
+      acc_copyin(c->term_pt, c->term_count * sizeof(uint32_t)) == NULL ||
+      acc_copyin(c->pt_pair, c->term_count * sizeof(uint32_t)) == NULL ||
+      acc_create(c->dm, c->dm_count * sizeof(double)) == NULL ||
+      acc_create(c->tmpden, (size_t)c->spin_count * c->output_count * sizeof(double)) == NULL) {
+    SDG_local_delete_device(c);
+    return 0;
+  }
+  return 1;
+}
+
 static void SDG_local_free(void)
 {
   SDGLocalContext *c = &SDG_local;
 
+  SDG_local_delete_device(c);
   free(c->atom_out_base);
   free(c->out_ptr);
   free(c->term_pt);
@@ -1166,7 +1206,7 @@ static int SDG_local_build(int Cnt_kind, int spin_count)
 /* Device bytes this call would stage on top of what is already resident. */
 static size_t SDG_local_call_bytes(const SDGLocalContext *c)
 {
-  size_t bytes = c->extra_bytes;
+  size_t bytes = c->device_resident ? 0 : c->extra_bytes;
 
   if (!c->t.orbs0_resident) (void)SDG_add_bytes(&bytes, c->t.total_orbs0, sizeof(Type_Orbs_Grid));
   if (!c->t.orbs1_resident) (void)SDG_add_bytes(&bytes, c->t.total_orbs1, sizeof(Type_Orbs_Grid));
@@ -1249,6 +1289,8 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
   }
 
   reserve_bytes = SDG_env_mib("OPENMX_DENSITY_GRID_GPU_RESERVE_MB", 256);
+  if (c->device_resident && acc_get_device_num(acc_device_nvidia) != c->device_id)
+    SDG_local_delete_device(c);
   if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
   need = SDG_local_call_bytes(c);
   if (free_bytes < reserve_bytes) return 0;
@@ -1285,6 +1327,24 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
 
   if (!c->ready || output_count == 0) return 0;
   if (!SDG_pack_local_cdm(CDM, dm, dm_count, spin_count)) return 0;
+
+  /* This CSR and its buffers are invariant in size until geometry changes.
+     Bound all ranks' retained storage to a small fraction of free VRAM, so
+     a crowded device still leaves room for the next dense solve. */
+  {
+    size_t cap = SDG_env_mib("OPENMX_DENSITY_GRID_GPU_LOCAL_CACHE_MB", 32);
+    size_t free_bytes = 0, total_bytes = 0;
+    int keep_resident = cap != 0 && c->extra_bytes <= cap;
+
+    if (keep_resident && !c->device_resident)
+      keep_resident = cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess &&
+                     c->extra_bytes <= free_bytes / 32U / (size_t)c->node_ranks;
+    /* Nonempty output with no terms takes the original transient path. */
+    keep_resident = keep_resident && term_count != 0 && dm_count != 0;
+    if (!keep_resident) SDG_local_delete_device(c);
+    else if (!SDG_local_upload(c)) return 0;
+    if (c->device_resident) acc_update_device(dm, dm_count * sizeof(double));
+  }
 
 #pragma acc data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count],                            \
                         pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],               \
@@ -1354,6 +1414,9 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
         tmpden[3U * output_count + out] = g3;
       }
     }
+    /* copyout on an already-present mapping does not transfer its contents. */
+    if (c->device_resident)
+      acc_update_self(tmpden, (size_t)spin_count * output_count * sizeof(double));
   }
 
   for (spin = 0; spin < spin_count; spin++) {

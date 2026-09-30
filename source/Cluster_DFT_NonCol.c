@@ -5351,3 +5351,31 @@ dcomplex Lapack_LU_Zinverse(int n, dcomplex *A)
 
     return det;
 }
+
+/* Run-boundary reset: geometry and device state must not survive into the
+   next -runtest input, whose host allocations can reuse the same addresses.
+   Called on every rank before Free_Arrays(0) frees the current system. */
+void Cluster_DFT_NonCol_Release_GPU_Caches(void)
+{
+    ClusterNonColRootSolveWorkspace *ws = &ClusterNonCol_root_solve_workspace;
+
+    ClusterNonCol_DMEntryCache_Reset();
+    ClusterNonCol_RootDMWorkspace_Reset();
+    /* Discard the completed input's vectors before returning its arena. */
+    ClusterNonCol_ReleaseGpuSolverCachedEVec(Host_ID);
+    Cluster_DFT_NonCol_Release_GPU_Solver();
+    free(ClusterNonCol_dense_scache.S);
+    free(ClusterNonCol_dense_scache.Ss2);
+    memset(&ClusterNonCol_dense_scache, 0, sizeof(ClusterNonCol_dense_scache));
+    free(ClusterNonCol_dense_index_cache.dense_index);
+    memset(&ClusterNonCol_dense_index_cache, 0, sizeof(ClusterNonCol_dense_index_cache));
+    free(ws->Cs);
+    free(ws->rHs11);
+    free(ws->rHs12);
+    free(ws->rHs22);
+    free(ws->iHs11);
+    free(ws->iHs12);
+    free(ws->iHs22);
+    free(ws->Hs2);
+    memset(ws, 0, sizeof(*ws));
+}

@@ -1,0 +1,291 @@
+OpenMX 4.0 GPU (NVIDIA): CUDA 13.4 更新の検証記録
+検証日: 2026-09-30〜2026-10-01
+ログ基点: work/codex_20260930/ (以下のログ名はこのディレクトリからの相対パス)
+
+確認した構成
+  GPU: NVIDIA GeForce RTX 5080, compute capability 12.0, 16303 MiB
+  NVIDIA driver: 595.91.07
+  NVIDIA HPC SDK: 26.9
+  CUDA: /usr/local/cuda-13.4, toolkit 13.4.2, runtime 13040
+  cuSOLVER: 12.3.4.7; cuBLAS: 実行時バージョン値 130800
+  MPI: SDK 26.9 の comm_libs/13.3/HPC-X 2.50/Open MPI 5
+  GEMMul8: v3.5.2, commit 603b52363715796a0af5e4aa1ed8d386349b4251
+
+SDK 26.9 同梱 CUDA 13.3 と外部 CUDA 13.4 を区別し、コンパイラ・ヘッダ・
+リンクライブラリを後者へ統一した。MPI は SDK が提供する 13.3 用を使用する。
+OpenMX 全体のビルドと最終リンクが成功し、変更なしの make では再ビルドしない。
+DT_RPATH を設定して、既存 LD_LIBRARY_PATH による旧 CUDA ライブラリの混入を防ぐ。
+ビルドログ: build_final.log, build_auto_ready.log, build_band_cache.log,
+            build_noop_band.log, build_vna_admission.log, build_noop_vna.log,
+            build_vna_host_budget.log, build_cluster_trim_final.log
+元バイナリは openmx_before に保存した。
+最終版を make install で work/openmx に設置済み。source/openmx と同一SHA256:
+  5f7d340a49e736a352c493579adf0f11bf2b4f72b71b13ab2af55add0a9c431e
+このSHA256は下記の最終S・L・大規模L3測定に使用したバイナリと一致する。
+設置時に再コンパイルはなく、その後のmakeも再ビルドなしで正常終了した。
+ログ: install_final_20261001.log, build_noop_final_20261001.log
+
+追加のVNAメモリ改善 (GPU実行検証は後述)
+  AMD版のDS_VNA pair batch縮小とHVNAのrank turnをOpenACCへ移植。
+  DS_VNAは既定256 pairから空きGPUメモリ予算に収まるまで半減する。
+  HVNAは実際のarchive/隣接表/出力サイズで同時実行ランク数を決める。
+  全ランクが同時に収まる場合は従来どおりdevice-only archiveを使い、
+  分割実行が必要な場合だけhost archiveを使う。host側の追加領域も
+  ノードのMemAvailableの1/2を上限にする。1ランクも収まらない場合はCPUへ戻す。
+  全MPIランクで実行可否とturn数を合意し、空のランクも同じbarrierに参加する。
+  OPENMX_SETPRO_HVNA_TURNS=0でrank turnを無効化できる。
+  GPUカーネルの演算順序は変更していない。
+
+大規模Cluster計算のSCF境界でのメモリ解放
+  既定ではGPU空き容量が全体の半分未満、かつ解放対象が512 MiB以上の場合、
+  変換済みoverlapを保持してH・一時行列・固有ベクトルpanel・作業領域を解放する。
+  次の反復では実際のメモリ確保によるGPU使用可否判定を再実行する。
+  CPUへ切り替わる場合、GPUで開始したため未作成だったCPU overlapも構築する。
+  OPENMX_CLUSTER_GPU_RETAIN_SCRATCH=1で従来の保持、0で常時解放、未設定で自動。
+  C1000 (-runtestL3, 8 ranks + private MPS) で再確保を3 SCFとも確認。
+  7.556 GiBのscratchを解放し、密度計算のCPU fallbackを回避した。
+  同条件・無負荷の前後比較で全体269.73→242.25秒（10.2%短縮）、
+  Set_Density_GridのMPI Max_Timeは52.844→24.815秒（2.13倍）。
+  新旧 |ΔE|=4.55e-12 Ha、max|ΔF|=1.00e-12 Ha/bohr。
+  追加ホストRAMを使うためRSSピークは115.83→125.23 GiBとなった。
+  ログ: after_L3_large_vna8_mps/, after_L3_large_trim8_mps/
+
+  tests/run_cluster_fallback_smoke.sh は、Benzeneを2 MPI ranksでGPU実行し、
+  overlapと最初のHamiltonian対角化が成功した後のcudaMemGetInfoだけを
+  LD_PRELOADで64 MiBに制限する試験。製品コードや入力値は変更しない。
+  最初のSCFのGPU実行 → scratch解放 → 次のSCFのCPU fallbackをログで確認した。
+  正常終了し、参照との差 |ΔE|=9.95e-13 Ha、全力成分差0でPASS。
+  ログ: cluster_fallback_smoke.log
+
+現在の固有値ソルバの選択仕様
+  全固有対: CUDA 13.4 Update 1 以降では CUSOLVER_ALG_0 が既定。
+  cuSOLVER が行列次元・GPU architecture・math mode に応じて一段階法と二段階法を
+  自動選択する。OpenMX 独自の起動時ベンチマークや固定の切替次元は設けない。
+  部分固有対: auto では SYEVDX を維持し、要求していない全固有対を計算しない。
+  自動選択の内部判断や単一の数値閾値を OpenMX が取得・表示する仕様ではない。
+
+  OPENMX_CUSOLVER_ALGORITHM=two-stage は明示的に二段階法を指定する。
+  この場合、部分要求も全固有対を計算して先頭の要求個数だけ返す。
+  legacy / one-stage による手動選択も可能。
+  OPENMX_CUSOLVER_TWO_STAGE_MIN_N を単独指定すると手動閾値モードになる。
+  ALGORITHM=auto を明示した場合はライブラリの自動選択を優先する。
+  query と実行は同じ固定設定・行列次元・要求範囲から経路を決める。
+
+  FP64 fixed-point emulation は cuSOLVER handle に直接設定する。
+  strategy は PERFORMANT、仮数選択は DYNAMIC。cuBLAS が利益のある演算で
+  Ozaki-II を選ぶ。個々の内部 GEMM が Ozaki-II を使用したことをプロファイラで
+  確認したわけではなく、Ozaki-II を常時強制する実装でもない。
+  OPENMX_CUSOLVER_EMULATION=0 で無効化できる。
+
+  OPENMX_CUSOLVER_VERBOSE=1 の auto 表示:
+    crossover=cuSOLVER automatic (size/architecture/math mode)
+  数値の minimum n は手動 two-stage の場合だけ表示する。
+  保存済みの先行ログには、この文言修正前の minimum n=0 表示がある。
+  数値計算の実装は、この表示修正では変更していない。
+
+cuSOLVER の精度・境界・再利用試験
+  CUDA 13.4: auto / two-stage / legacy、各モードを合わせて
+  42 wrapper ケースと 12 API ケースが成功した。
+  実対称・複素 Hermitian、全固有対・部分固有対、host/OpenACC、行列サイズ変更、
+  cache release/reuse、OpenMP 2 thread、出力配列境界の guard を含む。
+  n=257 API 試験の最大正規化残差 6.934e-16、最大直交性誤差 2.109e-15。
+  API の残差・直交性は各ケース先頭最大16固有ベクトルを評価した。
+  解析解のある wrapper 試験の最大固有値絶対誤差 1.776e-15。
+  wrapper 試験は要求した固有値すべてを解析解と比較した。
+  手動 MIN_N=0 と 512 を n=257 で試し、直接 SYEVD と部分 SYEVDX の計8ケースも成功。
+  scratch cache 上限 0 の再確保試験も成功。既定の保持上限は 64 MiB/rank。
+  OpenMP worker の context は呼出後に解放し、通常の context も suite 境界で解放する。
+  ログ: cusolver_auto_final.log, cusolver_auto_manual_min.log,
+        cusolver_threshold_cache0.log
+
+GEMMul8 v3.5.2 の確認
+  CUDA 13.4 と 13.2 でそれぞれ 39 ケースが成功。
+  実数/複素数 GEMM、fast/accurate scaling、N/T/C、余白付き leading dimension、
+  K blocking を検証した。最大相対誤差は両構成とも 3.702e-13。
+  ログの実行時ライブラリ値で、13.4 は runtime 13040 / cuBLAS 130800、
+  13.2 は runtime 13020 / cuBLAS 130401 であることを確認した。
+  ログ: gemmul8_smoke_cuda134.log, gemmul8_smoke_cuda132.log
+
+n=8192 単体ソルバの実測 (秒)
+  条件: 各ケース2回計算し、1回目を warm-up として2回目を CUDA event で計時。
+  native は legacy + emulation=0、two-stage と auto は emulation=1。
+  部分要求は先頭16固有対。行列生成やCPU残差検証は計時対象外。
+
+  型       固有対      native       two-stage       auto
+  実数     全8192       4.823924      3.790342        4.077836
+  実数     先頭16       3.310833      3.801431        2.675004
+  複素数   全8192      13.300024     13.374633       12.453886
+  複素数   先頭16       7.426348     13.380306        6.740497
+
+  auto の最大正規化残差は 2.400e-16、最大直交性誤差は 1.088e-14。
+  小さい行列や部分要求では二段階の強制が遅くなる場合がある。
+  上記は単一GPUでの参考測定であり、統計的な反復測定や OpenMX 全体の時間ではない。
+  一部の測定時はCPU側でビルドが進行していた。GPU単体試験同士は同時実行しなかった。
+  ログ: cusolver_benchmark.tsv, cusolver_two_stage_8192.log, cusolver_auto_8192.log
+
+旧バージョンで確認した範囲
+  CUDA 13.2 / cuSOLVER 12.2.0: 上記 auto/two-stage/legacy の指定を含む
+  42 wrapper + 12 API ケースが互換経路で成功。最大固有値絶対誤差 1.332e-15。
+  CUDA 12.3 / cuSOLVER 11.5.4.101: SDK 24.3 のヘッダを使い、GCC 14.2 と
+  nvc 26.9 で共通層および wrapper のコンパイルを確認。
+  旧ヘッダの object は新しい MathMode/Emulation/AdvOptions の symbol を参照しない。
+  CUDA 12.3 のGPU実行、および旧CUDAでの OpenMX 全体の再ビルドは未検証。
+  GEMMul8 は 13.2/13.4 の構成を検証し、12.3 対応を保証する記録ではない。
+  ログ: cusolver_auto_modes_cuda132.log, cusolver_compile_checks.log
+
+-runtest (S) の途中版比較: 参考値
+  18 MPI ranks、各1 thread、14ケースを個別プロセスで実行。
+  before_S_repeat: 旧版、SDK 26.5、OpenMX 報告 elapsed_seconds 合計 125.39秒。
+  after_S: 新版の途中段階、SDK 26.9、同合計 121.55秒 (約3.1%短縮)。
+  14ケースとも正常終了。before/after の最大 |ΔE| は 9.95e-13 Ha、
+  最大成分 |ΔF| は 2.0e-12 Ha/bohr。
+  after_S は auto 導入前で、二段階強制が既定だったスナップショットである。
+  現在の auto 版の suite 性能・全機能を証明する値としては扱わない。
+  初回 before_S の168.82秒はCPUビルド負荷の影響があり、速度比較には再測定値を用いた。
+  ログ: before_S_repeat/results.json, after_S/results.json, compare_S_repeat.txt
+
+多k点 band キャッシュの実測
+  -runtestL の B2C62_Band を変更せず使用。最新版の同一バイナリ、8 MPI ranks、
+  各1 thread、private MPS。キャッシュ2種の上限だけを変更したA/B比較。
+  無効: OPENMX_BAND_COL_OVERLAP_CACHE_MB=0 / OPENMX_BAND_COL_KCACHE_MB=0
+  有効: 両方とも既定値。両試験とも11 MDステップ・203 SCFステップを完了。
+
+                              無効         有効
+  OpenMX elapsed (秒)          549.83       304.75     1.804倍 (44.6%短縮)
+  Diagonalization (秒)         384.836      136.000    2.830倍
+  DFT (秒)                     541.074      295.806
+
+  両試験間の |ΔE|=0、max|ΔF|=2.9800e-8 Ha/bohr、原子座標は一致。
+  有効側の参照に対する |ΔE|=7.1e-11 Ha、max|ΔF|=3.19e-8 Ha/bohr。
+  各MDステップのSCF1でoverlap cacheが無効化され、SCF2以降に再利用されることを
+  traceでも確認した。重複する対角化を省く効果であり、Ozaki-II単独の効果ではない。
+  ログ: after_L_B2_cacheoff8_mps/, after_L_B2_cache8_mps/,
+        compare_B2_cache.txt, phase_B2_cache.txt
+  別条件の18 ranksではVNAやForceのGPUメモリ不足によるCPU fallbackがあった。
+  8 ranksではこれらのfallbackがなく、この16 GiB GPUでのランク数の影響も大きい。
+  18 ranksとの速度差は、キャッシュ単独の速度向上としては扱わない。
+
+  非共線経路は-runtestL3のGGFF (元の10x10x10 k mesh、SCF3回) で検証。
+  18 ranks + private MPSで330.33秒、参照との差は |ΔE|=5.0e-11 Ha、
+  max|ΔF|=9.3e-11 Ha/bohr。各SCFで全1000 k点のcache hitを確認した。
+  全ランクの固有ベクトルcache合計は約6012 MiB、プロセスRSSピークは42.14 GiB。
+  この測定には同条件のcache無効側がないため、非共線経路の速度向上率は未確定。
+  ログ: after_L3_GGFF_cache_mps/, reference_L3_GGFF_cache.txt
+
+  cuSOLVERの作業領域APIを、実数/複素数、n=257/8192/9200/12500/13000/15750、
+  全固有対/先頭n÷3/先頭n-1について照会。全36照会が成功し、この構成のautoでは
+  全固有対の予約量が部分要求も覆うことを確認した。
+  ログ: cusolver_workspace_query.txt
+
+suite 検証 (途中版と最終版を区別)
+  S / -runtest, Cluster scratch解放を含む最終版、18 ranks + private MPS。
+  全14入力を同一MPIジョブで連続実行し、全14参照比較PASS。
+  最大 |ΔE|=5.5e-11 Ha、max|ΔF|=7.7e-11 Ha/bohr。
+  OpenMX elapsed合計89.43秒、ジョブ全体92.70秒、RSSピーク10.17 GiB。
+  ログ: after_S_trim_final_mps/, reference_after_S_trim_final_mps.txt
+
+  S / -runtest, VNA改善後・Cluster scratch解放追加前、18 ranks + private MPSで全14入力を連続実行。
+  全14入力の参照比較PASS。最大 |ΔE|=5.5e-11 Ha、max|ΔF|=7.7e-11 Ha/bohr。
+  OpenMX elapsed合計89.03秒、ジョブ全体91.89秒。RSSピーク10.20 GiB。
+  ログ: after_S_vna_together_mps/, reference_S_vna_together.txt
+
+  S / -runtest, auto、連続実行: 全14ケース正常終了・参照比較PASS。
+  最大 |ΔE|=5.5e-11 Ha、最大成分 |ΔF|=7.7e-11 Ha/bohr。
+  一つのMPIジョブ内で異なる入力へのcache解放・再初期化を確認。
+  このS測定は多k点band cache追加前のauto版。
+  ログ: after_S_auto_together/, reference_S_auto_together.txt
+  L / -runtestL: 最終版、18 ranks + private MPSで全16入力が正常終了・参照比較PASS。
+  原本入力を変更せず、各入力を独立したMPIジョブとして実行した。
+  OpenMX elapsed合計3942.28秒、ジョブwall合計3987.59秒。
+  最大 |ΔE|=1.98725e-9 Ha、max|ΔF|=3.29520e-8 Ha/bohr。
+  RSSピーク45.11 GiB、MemAvailable最小200.04 GiB。
+  ログ: after_L_final18_mps/, reference_after_L_final18_mps.txt
+  B2C62_Bandは11 MD / 203 SCFで359.09秒、参照 max|ΔF|=3.30e-8でPASS。
+  同じ18 ranksのVNA改善前は465.81秒 / 204 SCF、VNAのMPI Max_Timeは
+  132.837→30.146秒、対角化は143.438→141.296秒だった。
+  この18 ranksでの短縮の主因はVNA batch調整で、cuSOLVER単独の効果ではない。
+  8 ranksのcache有効側304.75秒のほうが速い。この16 GiB GPU・入力では、
+  MPI rankを増やすとGPUメモリ圧迫とForce4B CPU fallbackが増える。
+  全体を通した同条件のcache有無比較には、前述の8 ranksの1.804倍を使う。
+  ログ: after_L_final18_mps/, after_L_force_mps/
+  GGFF (64 k点)は101 SCFで675.40秒、|ΔE|=6.30e-11 Ha、max|ΔF|=1.34e-10でPASS。
+  RSSピーク38.03 GiB、MemAvailable最小207.77 GiB。
+  参照は98 SCFのため、過去記録との速度比をcache単独の効果とは扱わない。
+  N1C999は59 SCFで1564.20秒、|ΔE|=1.99e-9、max|ΔF|=2.80e-11でPASS。
+  RSSピーク45.11 GiB、MemAvailable最小200.04 GiB。
+  Lの収束入力Ni63-O64も |ΔE|=8.46e-10、max|ΔF|=3.41e-10でPASS。
+  下記L3の3 SCF入力での既存の参照差とは区別する。
+  L2 / -runtestL2: Ih-Ice1200を元の入力のまま8 ranks + private MPSで完了。
+  VNA追加改善前、band cache追加後のバイナリ。n=9200、36 SCF、1522.51秒。
+  参照との差は |ΔE|=2.372e-9 Ha、max|ΔF|=3.52e-10 Ha/bohrでPASS。
+  プロセスRSSピーク116.22 GiB、MemAvailable最小127.74 GiB。
+  対角化はGPUで実行、HVNA・Set_Hamiltonian・Force4Bはメモリ不足でCPUを使用。
+  MPI Max_Time: Set_ProExpn_VNA 177.040秒、Set_Hamiltonian 459.708秒、
+  Diagonalization 249.756秒、Force 117.089秒。
+  VNA phase完了後、MPIが使わない物理core 17でVNAの単一ファイル更新をビルドした。
+  この全体時間は、他の無負荷・同条件測定との厳密な速度比較には用いない。
+  ログ: after_L2_Ice8_mps/, reference_L2_Ice8.txt
+  残るL2入力: C1000, Fe1000, GRA1024, Pt500, R-TiO2-1050, Si1000。
+  L3 / -runtestL3: 18 ranks + private MPS、選択11入力の連続実行が正常終了。
+  Band multi-k cache追加後のバイナリ。OpenMX elapsed_seconds合計189.11秒。
+  10入力は参照に対して |ΔE|、全力成分とも1e-7以内。
+  Ni63-O64は参照に対する力成分差が1.1080058e-5 Ha/bohrで、この基準ではFAIL。
+  保存した旧バイナリを同じ18 ranks + MPSで再測定すると同差1.1028501e-5であり、
+  この大きな参照差は既存。新旧比較は |ΔE|=1.8e-11 Ha、max|ΔF|=5.1626e-8、
+  RMS|ΔF|=9.8100e-9 Ha/bohrで、座標127原子は全て一致した。
+  SCF3回で終了する入力であり、参照との差を隠すため許容値を緩和してはいない。
+  ログ: after_L3_cache_together_mps/, before_L3_Ni_mps/,
+        reference_L3_cache_together.txt
+  L3 / 大規模4入力、VNA rank turn追加後・Cluster scratch解放追加前、8 ranks + MPS。
+    C1000    269.73秒、|ΔE|=2.47e-9、max|ΔF|=6.21e-10、PASS。
+    Fe1000   358.42秒、|ΔE|=1.15e-7、max|ΔF|=6.03e-7、FAIL（旧版でも参照差を再現、下記参照）。
+    Pt500   1182.80秒、|ΔE|=1.38e-10、max|ΔF|=8.78e-10、PASS。
+    DIA512-1  54.56秒、|ΔE|=9.36e-10、max|ΔF|=3.76e-9、PASS。
+  Fe1000ではHVNAを5 ranks/turn、2 turnsでGPU実行した。
+  この版のhost archive上限はMemAvailableの1/4。Pt500は上限によりCPU HVNAとなった。
+  最終版は上限を1/2にし、Pt500の必要量約58.8 GiBを予算内で許可する。
+  C1000は他のビルドがない状態で測定。Fe1000・Pt500の実行中には、
+  MPIが使わないcore 17でCluster_DFT_Colの単一ファイルをビルドしたため、
+  この2ケースの速度比はビルド負荷がない厳密なA/B比較としては扱わない。
+  ログ: after_L3_large_vna8_mps/, reference_L3_large_vna8.txt
+  L3 / 同じ4入力でCluster scratch解放とhost archive上限1/2の最終版を確認。
+    C1000    242.25秒、|ΔE|=2.47e-9、max|ΔF|=6.21e-10、PASS。
+    Fe1000   329.18秒、|ΔE|=1.15e-7、max|ΔF|=6.03e-7、FAIL（参照差は旧版でも再現、下記参照）。
+    Pt500    653.13秒、|ΔE|=1.46e-10、max|ΔF|=8.78e-10、PASS。
+    DIA512-1  54.70秒、|ΔE|=9.36e-10、max|ΔF|=3.76e-9、PASS。
+  この4入力の前後比較は全てPASS（最大 |ΔE|=5.82e-11、max|ΔF|=1.00e-12）。
+  Fe1000のGPU使用可否判定は再確保時もserialized spin経路を維持した。
+  Pt500はHVNAを1 rank/turn、8 turnsで実行し、Set_ProExpn_VNAのMPI Max_Timeは
+  554.146→52.490秒、密度計算は56.447→29.929秒になった。
+  Pt500全体の短縮率は44.8%だが、前述の比較側のビルド負荷という留保がある。
+  Pt500のRSSピーク151.49 GiB、MemAvailable最小92.21 GiBで、設定予算内だった。
+  ログ: after_L3_large_trim8_mps/, reference_L3_large_trim8.txt,
+        compare_L3_large_trim8.txt, phase_L3_large_trim8.txt
+  Fe1000の旧版を同じ8 ranks + private MPSで比較した。
+  旧版554.41秒、新版329.18秒（40.6%短縮）。この2測定には並行ビルドなし。
+  旧版にも参照との差 |ΔE|=1.17710e-7 Ha、max|ΔF|=5.95531e-7 Ha/bohrがある。
+  新旧差は |ΔE|=2.32831e-9 Ha、max|ΔF|=5.79570e-8、RMS|ΔF|=1.97927e-8でPASS。
+  座標1000原子と積分グリッドは全て一致。参照比較のFAILはそのまま記録する。
+  旧版のGEMMul8は約7942 MiBを要求してnative cuBLASへfallbackしていた。
+  速度差にはSDK/CUDA、GEMMul8、VNA実行、メモリ解放など複数の変更が含まれ、
+  cuSOLVERやOzaki-II単独の速度向上率ではない。
+  保存済み旧バイナリは作業開始時の実行ファイルであり、直前のGit HEADから
+  再ビルドしたものではない。対応するSDK 26.5 / CUDA 13.2 / MPIを使用した。
+  ログ: before_L3_Fe8_mps/, reference_before_L3_Fe8_mps.txt
+  未実施L3入力: CG15c, MCCN, N1C999, Si1280-LNO。
+
+再現用の主な入口
+  tests/run_cluster_fallback_smoke.sh
+  tests/run_cusolver_smoke.sh 257
+  CUDA_HOME=/usr/local/cuda-13.2 tests/run_cusolver_smoke.sh 257
+  tests/run_cusolver_smoke.sh 8192
+  tools/run_gpu_suites.py と tools/compare_gpu_suites.py
+  正確な suite の起動引数と binary SHA256 は各実行ディレクトリの command.json に保存。
+
+出典
+  CUDA 13.4 Update 1 の SYEVD 自動選択、CUDA 13.4 の cuBLAS Ozaki-II:
+  https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/
+  cuSOLVER の math mode と floating-point emulation:
+  https://docs.nvidia.com/cuda/cusolver/
+  GEMMul8 の固定ソース:
+  https://github.com/RIKEN-RCCS/GEMMul8/tree/603b52363715796a0af5e4aa1ed8d386349b4251

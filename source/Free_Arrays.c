@@ -19,6 +19,18 @@ void Free_Arrays(int wherefrom)
 {
 
   if (wherefrom==0) {
+    /* A suite executes multiple systems in one process; discard all
+       geometry-derived caches before their host arrays can be reused. */
+    Band_DFT_Col_Release_GPU_Caches();
+    Band_DFT_NonCol_Release_GPU_Caches();
+    Cluster_DFT_Col_Release_GPU_Caches();
+    Cluster_DFT_NonCol_Release_GPU_Caches();
+    Divide_Conquer_Release_GPU_Caches();
+    Divide_Conquer_LNO_Release_GPU_Caches();
+    Krylov_Release_GPU_Caches();
+    openmx_gpusolver_cache_release();
+    Mixing_H_Release_GPU();
+    Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache();
     Set_Density_Grid_GPU_Invalidate();
     Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
   }

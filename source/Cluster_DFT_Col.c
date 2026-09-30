@@ -35,6 +35,7 @@ typedef struct {
     int                initialized;
     int                device_id;
     int                matrix_dim;
+    int                scratch_released;
     int                transformed_s_valid;
     int                transformed_s_dim;
     size_t             d_work_bytes;
@@ -60,6 +61,9 @@ typedef struct {
 } ClusterColGpuSolverCtx;
 
 static ClusterColGpuSolverCtx ClusterCol_gpusolver_ctx = {0};
+/* The CPU overlap is not constructed when the first SCF solve uses the
+   GPU. A later memory-admission fallback must build it before using Ss. */
+static int ClusterCol_cpu_overlap_n = 0;
 
 static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H);
 static void ClusterCol_BuildDenseIndex(const int *order_GA, int *MP, int n, int tnum, int *dense_index);
@@ -220,7 +224,23 @@ static int ClusterCol_TryEnsureMatrixCapacity(int n)
 
     ClusterCol_GpuSolver_Init();
 
-    if (n<=ctx->matrix_dim) return 1;
+    if (n<=ctx->matrix_dim){
+        /* Under device pressure the SCF boundary retains only the
+           transformed overlap. Recreate scratch without invalidating S. */
+        matrix_bytes = ClusterCol_CheckedMulCount(
+            ClusterCol_CheckedMulCount((size_t)ctx->matrix_dim,(size_t)ctx->matrix_dim,
+                                       "retained overlap dimensions"),
+            sizeof(double),"dense scratch bytes");
+        if ((ctx->d_H==NULL && ClusterCol_TryDeviceMalloc((void**)&ctx->d_H,matrix_bytes)!=cudaSuccess) ||
+            (ctx->d_tmp==NULL && ClusterCol_TryDeviceMalloc((void**)&ctx->d_tmp,matrix_bytes)!=cudaSuccess)){
+            if (ctx->d_H!=NULL) wait_cudafunc(cudaFree(ctx->d_H));
+            if (ctx->d_tmp!=NULL) wait_cudafunc(cudaFree(ctx->d_tmp));
+            ctx->d_H = ctx->d_tmp = NULL;
+            return 0;
+        }
+        ctx->scratch_released = 0;
+        return 1;
+    }
 
     if (ctx->d_S != NULL)    wait_cudafunc(cudaFree(ctx->d_S));
     if (ctx->d_H != NULL)    wait_cudafunc(cudaFree(ctx->d_H));
@@ -260,6 +280,7 @@ static int ClusterCol_TryEnsureMatrixCapacity(int n)
     }
 
     ctx->matrix_dim = n;
+    ctx->scratch_released = 0;
     ctx->transformed_s_valid = 0;
     ctx->transformed_s_dim = 0;
     return 1;
@@ -479,6 +500,52 @@ static void ClusterCol_InvalidateDeviceEvecStash(void)
 {
     ClusterCol_gpusolver_ctx.evec_stash_valid[0] = 0;
     ClusterCol_gpusolver_ctx.evec_stash_valid[1] = 0;
+}
+
+/* Large dense scratch can displace the following density-grid/Hamiltonian
+   phases from the GPU. Once the density matrix and output are complete,
+   retain S (which is reused across SCF steps) but return disposable storage
+   when less than half of the device remains free. Small contexts stay hot. */
+static void ClusterCol_TrimScratch(void)
+{
+    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    const char *retain = getenv("OPENMX_CLUSTER_GPU_RETAIN_SCRATCH");
+    const int release_always = retain!=NULL && atoi(retain)==0;
+    size_t free_bytes, total_bytes, bytes;
+    int device;
+
+    if (!ctx->initialized || ctx->matrix_dim<=0 || ctx->scratch_released ||
+        (retain!=NULL && atoi(retain)!=0)) return;
+    if (cudaGetDevice(&device)!=cudaSuccess || device!=ctx->device_id) return;
+    bytes = sizeof(double)*(size_t)ctx->matrix_dim*(size_t)ctx->matrix_dim;
+    bytes = (ctx->d_H!=NULL ? bytes : 0) + (ctx->d_tmp!=NULL ? bytes : 0)
+          + ctx->d_work_bytes;
+    for (int spin=0; spin<2; ++spin)
+        bytes += sizeof(double)*ctx->evec_stash_count[spin];
+    if (!release_always && bytes<512ULL*1024ULL*1024ULL) return;
+    if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
+        (!release_always && free_bytes>=total_bytes/2)) return;
+
+    wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+    if (ctx->d_H!=NULL) wait_cudafunc(cudaFree(ctx->d_H));
+    if (ctx->d_tmp!=NULL) wait_cudafunc(cudaFree(ctx->d_tmp));
+    if (ctx->d_work!=NULL) wait_cudafunc(cudaFree(ctx->d_work));
+    ctx->d_H = ctx->d_tmp = NULL;
+    ctx->d_work = NULL;
+    ctx->d_work_bytes = 0;
+    for (int spin=0; spin<2; ++spin){
+        if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(cudaFree(ctx->d_evec_stash[spin]));
+        ctx->d_evec_stash[spin] = NULL;
+        ctx->evec_stash_count[spin] = 0;
+        ctx->evec_stash_valid[spin] = 0;
+    }
+    ctx->scratch_released = 1;
+    {
+        const char *verbose = getenv("OPENMX_CUSOLVER_VERBOSE");
+        if (verbose!=NULL && atoi(verbose)!=0)
+            fprintf(stderr,"<Cluster_DFT_Col> Released %.3f GiB of SCF scratch; retained transformed overlap (n=%d).\n",
+                    (double)bytes/1073741824.0,ctx->matrix_dim);
+    }
 }
 
 /* Keep the freshly solved eigenvector panel (still in ctx->d_tmp) on the
@@ -1040,7 +1107,17 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
         return forced;
     }
 
-    if (verdict!=-1 && verdict_n==n && 1<SCF_iter) return verdict;
+    if (verdict!=-1 && verdict_n==n && 1<SCF_iter){
+        int any_released = 0;
+        if (verdict==0) return verdict;
+        MPI_Allreduce(&ClusterCol_gpusolver_ctx.scratch_released,&any_released,
+                      1,MPI_INT,MPI_MAX,mpi_comm_level1);
+        if (!any_released) return verdict;
+        /* Memory admission must be repeated after a trim. Preserve the
+           previous serialized spin layout rather than allocating both
+           owners merely to discover again that only one can fit. */
+        if (verdict==2) serial_knob = 2;
+    }
 
     /* the serialized tier only helps when two spin worlds share the device,
        and it rebuilds the second spin's dense Hamiltonian from the packed
@@ -1650,6 +1727,8 @@ double Cluster_DFT_Col(
   MPI_Comm_size(MPI_CommWD1[myworld1],&numprocs1);
   MPI_Comm_rank(MPI_CommWD1[myworld1],&myid1);
 
+  if (SCF_iter==1) ClusterCol_cpu_overlap_n = 0;
+
   /****************************************************
              calculation of the array size
   ****************************************************/
@@ -1767,7 +1846,7 @@ double Cluster_DFT_Col(
 
   MPI_Barrier(mpi_comm_level1);
 
-  if (SCF_iter==1){
+  if (ClusterCol_cpu_overlap_n!=n){
     Overlap_Cluster_Ss(CntOLP,Cs,MP,myworld1);
   }
 
@@ -1780,7 +1859,7 @@ double Cluster_DFT_Col(
     } 
   }
 
-  if (SCF_iter==1){
+  if (ClusterCol_cpu_overlap_n!=n){
 
     if (measure_time) dtime(&stime);
 
@@ -1848,6 +1927,7 @@ double Cluster_DFT_Col(
 	Ss[j*na_rows+i] = Ss[j*na_rows+i]*ko[0][jg];
       }
     }
+    ClusterCol_cpu_overlap_n = n;
 
     if (measure_time){
       dtime(&etime);
@@ -3016,6 +3096,8 @@ double Cluster_DFT_Col(
   free(Num_Snd_EV);
   free(ie1);
   free(is1);
+
+  if (strcasecmp(mode,"scf")==0) ClusterCol_TrimScratch();
 
   /* for elapsed time */
 
@@ -6192,4 +6274,16 @@ static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, i
   free(is2);
   free(order_GA);
   free(H1);
+}
+
+/* Run-boundary reset: geometry and device state must not survive into the
+   next -runtest input, whose host allocations can reuse the same addresses.
+   Called on every rank before Free_Arrays(0) frees the current system. */
+void Cluster_DFT_Col_Release_GPU_Caches(void)
+{
+    ClusterCol_cpu_overlap_n = 0;
+    free(ClusterCol_dm_entry_cache.basis0);
+    free(ClusterCol_dm_entry_cache.basis1);
+    memset(&ClusterCol_dm_entry_cache, 0, sizeof(ClusterCol_dm_entry_cache));
+    Cluster_DFT_Col_Release_GPU_Solver();
 }

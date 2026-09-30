@@ -58,6 +58,22 @@ P=$GPUSOLVER2_PREFIX
 J=$GPUSOLVER2_JOBS
 mkdir -p "$SRC" "$BLD" "$STAMP" "$LOGS" "$P"
 
+# Stamps from another compiler/CUDA/MPI installation cannot be reused.
+# Keep extracted sources; rerun configure/CMake and compilation on a change.
+printf '%s\n' "$GPUSOLVER2_COMPILER_LIB" "$GPUSOLVER2_MPI_BIN" "$GPUSOLVER2_MPI_LIBDIR" \
+  "$GPUSOLVER2_CUDA_HOME" "$GPUSOLVER2_MATH_DIR" "$GPUSOLVER2_NVCC" \
+  "$GPUSOLVER2_GPU_ARCH" "$GPUSOLVER2_ELPA_VER" "$GPUSOLVER2_HOST_CC" "$GPUSOLVER2_HOST_CXX" \
+  "$GPUSOLVER2_PREFIX" "${GPUSOLVER2_COMPILER_BIN:-}" "$GPUSOLVER2_SCALAPACK_SO" \
+  > "$STAMP/toolchain.tmp"
+if ! cmp -s "$STAMP/toolchain.tmp" "$STAMP/toolchain.conf"; then
+  rm -f "$STAMP/01_elpa.done" "$STAMP/02_cosma.done"
+  # CMake/autoconf caches embed absolute compiler and MPI paths.
+  rm -rf "$BLD/elpa" "$BLD/cosma"
+  mv "$STAMP/toolchain.tmp" "$STAMP/toolchain.conf"
+else
+  rm -f "$STAMP/toolchain.tmp"
+fi
+
 V_CMAKE=3.31.12
 V_COSMA=2.8.4
 SHA_COSTA=2484769535772f807d402901ffca63bb6678dd42
@@ -70,7 +86,11 @@ unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS FCFLAGS
 unset I_MPI_ROOT MPI_HOME MPI_ROOT PKG_CONFIG_PATH ONEAPI_ROOT CMAKE_PREFIX_PATH
 unset FI_PROVIDER_PATH CCL_ROOT TBBROOT MKLROOT NLSPATH CMPLR_ROOT
-NVCOMP_BIN=$(dirname "$GPUSOLVER2_NVCC")/../../../compilers/bin
+NVCOMP_BIN=${GPUSOLVER2_COMPILER_BIN:-$(dirname "$GPUSOLVER2_COMPILER_LIB")/bin}
+export NVHPC_CUDA_HOME="$GPUSOLVER2_CUDA_HOME"
+export NVCOMPILER_CUDA_HOME="$GPUSOLVER2_CUDA_HOME"
+export NVCOMPILER_MATH_LIBS_HOME="$GPUSOLVER2_MATH_DIR"
+# Preserve the Makefile's NVCOMPILER_COMM_LIBS_HOME for the SDK MPI selector.
 export PATH="$GPUSOLVER2_MPI_BIN:$NVCOMP_BIN:$GPUSOLVER2_CUDA_HOME/bin:/usr/bin:/bin"
 export LD_LIBRARY_PATH="$GPUSOLVER2_MPI_LIBDIR:$GPUSOLVER2_COMPILER_LIB:$GPUSOLVER2_CUDA_HOME/targets/x86_64-linux/lib:$GPUSOLVER2_MATH_DIR/lib"
 
@@ -80,7 +100,11 @@ run_step() {
   step=$1; shift
   [ -f "$STAMP/$step.done" ] && return 0
   echo "gpusolver2 stack: $step"
-  ( "$@" ) > "$LOGS/$step.log" 2>&1 || fail "$step"
+  # Do not put the subshell in an || condition: POSIX sh then disables
+  # errexit throughout the called function and can stamp a failed build.
+  ( set -e; "$@" ) > "$LOGS/$step.log" 2>&1
+  step_status=$?
+  [ "$step_status" -eq 0 ] || fail "$step"
   touch "$STAMP/$step.done"
 }
 
@@ -89,11 +113,26 @@ step_elpa() {
   for tool in autoconf automake libtoolize m4 python3; do
     command -v $tool > /dev/null || { echo "ERROR: '$tool' is required to build the bundled ELPA"; exit 1; }
   done
-  if [ ! -x "$SRC/elpa/configure" ]; then
-    rm -rf "$SRC/elpa" "$SRC"/elpa-"$ELPA_TAG"-*
-    ( cd "$SRC" && unzip -q "$DIST/elpa-$ELPA_TAG.zip" && mv elpa-"$ELPA_TAG"-* elpa )
-    ( cd "$SRC/elpa" && sh autogen.sh )
+  # configure survives between builds; its existence alone does not prove
+  # that the extracted sources match a newly selected ELPA release. Accept
+  # pre-stamp source trees through the release's own version metadata.
+  elpa_source_version=""
+  if [ -f "$SRC/elpa/.openmx-source-version" ]; then
+    elpa_source_version=$(cat "$SRC/elpa/.openmx-source-version")
+  elif [ -f "$SRC/elpa/elpa.spec" ]; then
+    elpa_source_version=$(awk '$1 == "Version:" {print $2; exit}' "$SRC/elpa/elpa.spec")
   fi
+  if [ "$elpa_source_version" != "$GPUSOLVER2_ELPA_VER" ] || [ ! -x "$SRC/elpa/configure" ]; then
+    if [ ! -f "$DIST/elpa-$ELPA_TAG.zip" ]; then
+      echo "ERROR: missing ELPA release archive: $DIST/elpa-$ELPA_TAG.zip"
+      return 1
+    fi
+    rm -rf "$SRC/elpa" "$SRC"/elpa-"$ELPA_TAG"-*
+    rm -rf "$BLD/elpa"
+    ( cd "$SRC" && unzip -q "$DIST/elpa-$ELPA_TAG.zip" && mv elpa-"$ELPA_TAG"-* elpa ) || return 1
+    ( cd "$SRC/elpa" && sh autogen.sh ) || return 1
+  fi
+  printf '%s\n' "$GPUSOLVER2_ELPA_VER" > "$SRC/elpa/.openmx-source-version" || return 1
   SM80=""
   [ "$GPUSOLVER2_GPU_ARCH" -ge 80 ] 2>/dev/null && SM80="--enable-nvidia-sm80-gpu"
   mkdir -p "$BLD/elpa" && cd "$BLD/elpa"
@@ -143,6 +182,9 @@ elif cmake_ok cmake; then
 elif [ -x "$P/cmake-bootstrap/bin/cmake" ]; then
   CMAKE=$P/cmake-bootstrap/bin/cmake
 else
+  # The installation prefix may have changed since an earlier bootstrap,
+  # or its installed binary may have been removed independently of stamps.
+  rm -f "$STAMP/00_cmake_bootstrap.done"
   step_cmake_bootstrap() {
     rm -rf "$SRC/cmake" && mkdir -p "$SRC/cmake"
     tar xzf "$DIST/cmake-$V_CMAKE.tar.gz" -C "$SRC/cmake" --strip-components=1

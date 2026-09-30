@@ -5495,3 +5495,12 @@ void Save_DOS_NonCol(dcomplex ******Residues, double ****OLP0, double **EVal, in
   if (fp_ev)  fclose(fp_ev);
 
 }
+
+/* Run-boundary reset: geometry and device state must not survive into the
+   next -runtest input, whose host allocations can reuse the same addresses.
+   Called on every rank before Free_Arrays(0) frees the current system. */
+void Divide_Conquer_LNO_Release_GPU_Caches(void)
+{
+    /* The communicator frees are collective on the participating ranks. */
+    DCLNO_GPUProxy_Finalize();
+}

@@ -5236,3 +5236,19 @@ void Save_DOS_NonCol(dcomplex ****** Residues, double **** OLP0, double ** EVal,
     if (fp_ev)
         fclose(fp_ev);
 }
+
+/* Run-boundary reset: geometry and device state must not survive into the
+   next -runtest input, whose host allocations can reuse the same addresses.
+   Called on every rank before Free_Arrays(0) frees the current system. */
+void Divide_Conquer_Release_GPU_Caches(void)
+{
+    DC_GpuSolver_Destroy();
+    memset(&DC_scache, 0, sizeof(DC_scache));
+    /* Memory admission failures are specific to the completed system. */
+    DC_gpusolver_gemm_disabled = 0;
+    DC_gpusolver_gemmul8_disabled = 0;
+    DC_gpusolver_eigen_disabled = 0;
+    DC_gpusolver_approved_gemm_n = 0;
+    DC_gpusolver_approved_gemm_num1 = 0;
+    DC_gpusolver_native_approved = 0;
+}

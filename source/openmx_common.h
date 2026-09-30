@@ -3354,6 +3354,14 @@ void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(void);
 void Set_Hamiltonian_Release_OpenACC_DeviceCache(void);
 void Divide_Conquer_Release_GPU_SCache(void);
 void Krylov_Release_GPU_KUCache(void);
+/* Release geometry-dependent GPU caches between inputs in a test suite. */
+void Band_DFT_Col_Release_GPU_Caches(void);
+void Band_DFT_NonCol_Release_GPU_Caches(void);
+void Cluster_DFT_Col_Release_GPU_Caches(void);
+void Cluster_DFT_NonCol_Release_GPU_Caches(void);
+void Divide_Conquer_Release_GPU_Caches(void);
+void Divide_Conquer_LNO_Release_GPU_Caches(void);
+void Krylov_Release_GPU_Caches(void);
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
 size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
@@ -5253,5 +5261,7 @@ double Cluster_DFT_Optical_ScaLAPACK(
 
 
 /* YTL-end */
+
+#include "openmx_cusolver_compat.h"
 
 #endif /* _OPENMX_COMMON_H_ */
