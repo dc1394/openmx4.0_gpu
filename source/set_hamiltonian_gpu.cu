@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <limits>
 
 namespace {
 
@@ -191,4 +193,112 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     }
     (void)cudaGetLastError();
     return -static_cast<int>(status);
+}
+
+namespace {
+
+/* A phase-local arena keeps streamed batches bounded without entering them
+   into OpenACC's persistent present table.  The potential is uploaded once
+   and all pair arrays reuse the same allocation for every batch. */
+struct StreamWorkspace {
+    unsigned char *arena;
+    double *potential;
+    std::size_t bytes;
+};
+
+int stream_status(cudaError_t status)
+{
+    if (status == cudaSuccess) return 0;
+    (void)cudaGetLastError();
+    if (cudaDeviceSynchronize() == cudaSuccess) return 2;
+    (void)cudaGetLastError();
+    return -static_cast<int>(status);
+}
+
+template<typename T>
+T *stream_upload(StreamWorkspace *work, std::size_t &offset, const T *source,
+                 std::size_t count, cudaError_t &status)
+{
+    if (status != cudaSuccess) return nullptr;
+    if (count > std::numeric_limits<std::size_t>::max() / sizeof(T) ||
+        offset > std::numeric_limits<std::size_t>::max() - 255) {
+        status = cudaErrorInvalidValue;
+        return nullptr;
+    }
+    offset = (offset + 255) & ~std::size_t(255);
+    const std::size_t bytes = count * sizeof(T);
+    if (offset > work->bytes || bytes > work->bytes - offset) {
+        status = cudaErrorInvalidValue;
+        return nullptr;
+    }
+    T *target = reinterpret_cast<T *>(work->arena + offset);
+    if (bytes) status = cudaMemcpy(target, source, bytes, cudaMemcpyHostToDevice);
+    offset += bytes;
+    return target;
+}
+
+} // namespace
+
+extern "C" void Set_Hamiltonian_Cuda_StreamDestroy(void *opaque)
+{
+    auto *work = static_cast<StreamWorkspace *>(opaque);
+    if (!work) return;
+    if (work->potential) cudaFree(work->potential);
+    if (work->arena) cudaFree(work->arena);
+    std::free(work);
+}
+
+extern "C" void *Set_Hamiltonian_Cuda_StreamCreate(std::size_t workspace_bytes,
+                                                   std::size_t vpot_count, const double *vpotgrid)
+{
+    if (!workspace_bytes || vpot_count > std::numeric_limits<std::size_t>::max() / sizeof(double)) return nullptr;
+    auto *work = static_cast<StreamWorkspace *>(std::calloc(1, sizeof(StreamWorkspace)));
+    if (!work) return nullptr;
+    work->bytes = workspace_bytes;
+    cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&work->arena), workspace_bytes);
+    if (status == cudaSuccess && vpot_count)
+        status = cudaMalloc(reinterpret_cast<void **>(&work->potential), vpot_count * sizeof(double));
+    if (status == cudaSuccess && vpot_count)
+        status = cudaMemcpy(work->potential, vpotgrid, vpot_count * sizeof(double), cudaMemcpyHostToDevice);
+    if (status != cudaSuccess) {
+        Set_Hamiltonian_Cuda_StreamDestroy(work);
+        (void)cudaGetLastError();
+        return nullptr;
+    }
+    return work;
+}
+
+extern "C" int Set_Hamiltonian_Cuda_StreamRun(
+    void *opaque, int pair_count, int spin_count, std::size_t vpot_len,
+    double grid_vol, int max_no, int max_output_count,
+    std::size_t total_h, std::size_t total_nolg, std::size_t total_orbs0, std::size_t total_orbs1,
+    const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+    const int *nolg_MN, const int *nolg_Nc,
+    const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
+    const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
+    const float *orbs0buf, const float *orbs1buf, double *hbuf)
+{
+    auto *work = static_cast<StreamWorkspace *>(opaque);
+    if (!work || pair_count < 0) return 1;
+    std::size_t offset = 0;
+    cudaError_t status = cudaSuccess;
+    const auto *d_NO0 = stream_upload(work, offset, pair_NO0, pair_count, status);
+    const auto *d_NO1 = stream_upload(work, offset, pair_NO1, pair_count, status);
+    const auto *d_NOLG = stream_upload(work, offset, pair_NOLG, pair_count, status);
+    const auto *d_h_off = stream_upload(work, offset, pair_h_offset, pair_count, status);
+    const auto *d_nolg_off = stream_upload(work, offset, pair_nolg_offset, pair_count, status);
+    const auto *d_orbs0_off = stream_upload(work, offset, pair_orbs0_offset, pair_count, status);
+    const auto *d_orbs1_off = stream_upload(work, offset, pair_orbs1_offset, pair_count, status);
+    const auto *d_MN = stream_upload(work, offset, nolg_MN, total_nolg, status);
+    const auto *d_Nc = stream_upload(work, offset, nolg_Nc, total_nolg, status);
+    const auto *d_orbs0 = stream_upload(work, offset, orbs0buf, total_orbs0, status);
+    const auto *d_orbs1 = stream_upload(work, offset, orbs1buf, total_orbs1, status);
+    auto *d_h = stream_upload(work, offset, hbuf, total_h, status);
+    if (status != cudaSuccess) return stream_status(status);
+    const int result = Set_Hamiltonian_Cuda_MatrixElements(pair_count, spin_count, vpot_len,
+        grid_vol, max_no, max_output_count, d_NO0, d_NO1, d_NOLG, d_MN, d_Nc,
+        d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_orbs0, d_orbs1, work->potential, d_h);
+    if (result) return result;
+    status = cudaMemcpy(hbuf, d_h, total_h * sizeof(double), cudaMemcpyDeviceToHost);
+    return stream_status(status);
 }

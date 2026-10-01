@@ -83,6 +83,16 @@ int Set_Hamiltonian_Cuda_MatrixElements(int pair_count, int spin_count, size_t v
                                         const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
                                         const Type_Orbs_Grid *orbs0buf, const Type_Orbs_Grid *orbs1buf,
                                         const double *vpotgrid, double *hbuf);
+void *Set_Hamiltonian_Cuda_StreamCreate(size_t workspace_bytes, size_t vpot_count, const double *vpotgrid);
+void Set_Hamiltonian_Cuda_StreamDestroy(void *stream);
+int Set_Hamiltonian_Cuda_StreamRun(void *stream, int pair_count, int spin_count, size_t vpot_len,
+                                   double grid_vol, int max_no, int max_output_count,
+                                   size_t total_h, size_t total_nolg, size_t total_orbs0, size_t total_orbs1,
+                                   const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+                                   const int *nolg_MN, const int *nolg_Nc,
+                                   const size_t *pair_h_offset, const size_t *pair_nolg_offset,
+                                   const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
+                                   const Type_Orbs_Grid *orbs0buf, const Type_Orbs_Grid *orbs1buf, double *hbuf);
 
 static int Set_Hamiltonian_OpenACC_Rank_Selected = 1;
 static int Set_Hamiltonian_OpenACC_Work_Rank_Selected = 1;
@@ -185,6 +195,7 @@ typedef struct {
     int max_no;
     int max_output_count;
     int cuda_kernel_supported;
+    int quiet_profile;
     double pack_seconds;
     double device_seconds;
 } SetHamiltonianMatrixElementsWork;
@@ -285,6 +296,9 @@ typedef struct {
     size_t total_bytes;
     size_t reserve_bytes;
 } SetHamiltonianGpuTurnPlan;
+
+static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
+                                                  int Cnt_kind, int myid);
 
 typedef struct {
     int valid;
@@ -597,7 +611,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
     if (plan.concurrent_ranks == 0) {
         if (plan.device_rank == 0) {
             fprintf(stderr,
-                    "Set_Hamiltonian: %s does not fit even one GPU rank: free %.3f GiB, reserve %.3f GiB; using CPU.\n",
+                    "Set_Hamiltonian: %s does not fit even one whole GPU rank: free %.3f GiB, reserve %.3f GiB.\n",
                     where, (double)plan.free_bytes / (1024.0 * 1024.0 * 1024.0),
                     (double)plan.reserve_bytes / (1024.0 * 1024.0 * 1024.0));
             fflush(stderr);
@@ -1680,6 +1694,7 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
 void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
 {
     int myid;
+    int prefer_streaming = 0;
     SetHamiltonianGpuTurnPlan plan;
     SetHamiltonianMatrixElementsWork work;
 
@@ -1743,7 +1758,29 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         }
     }
 
-    if (plan.use_gpu && Set_Hamiltonian_GpuSerialWaves()) {
+    if (plan.device_comm != MPI_COMM_NULL && plan.device_ranks > 1) {
+        const char *stream_env = getenv("OPENMX_SETHAM_STREAMING");
+        int can_stream = plan.use_gpu && plan.concurrent_ranks == 1 &&
+            !Set_Hamiltonian_GpuSerialWaves() &&
+            Set_Hamiltonian_GpuRequestedMaxRanks() > 1 &&
+            (stream_env == NULL || atoi(stream_env) != 0) &&
+            Set_Hamiltonian_MatrixElements_CudaKernel_Enabled();
+
+        /* One whole-rank GPU allocation leaves every peer on the CPU.
+           Prefer bounded batches across the device, while respecting an
+           explicit one-rank cap or serialized waves. Agree before any H
+           update so a disabled peer cannot retain the full allocation
+           beside the other ranks' streaming arenas. */
+        MPI_Allreduce(&can_stream, &prefer_streaming, 1, MPI_INT, MPI_MIN, plan.device_comm);
+    }
+
+    if (prefer_streaming) {
+        /* Once the group chooses streaming, an allocation failure falls
+           back to the CPU, never to a competing whole-rank GPU buffer. */
+        if (!Set_Hamiltonian_Stream_MatrixElements(&plan, Cnt_kind, myid))
+            Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
+    }
+    else if (plan.use_gpu && Set_Hamiltonian_GpuSerialWaves()) {
         /* The orbital/topology cache is host-only.  Build it concurrently on
            all selected ranks before serializing access to the physical GPU;
            otherwise its first-use cost is repeated on the critical path of
@@ -1772,7 +1809,14 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
     }
     else {
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
+        /* A rank's full orbital table can exceed the entire device.  In
+           that case waves alone cannot help: stream bounded pair batches
+           without constructing the full host/device table cache. */
+        int streamed = 0;
+        if (plan.selected && plan.device_comm != MPI_COMM_NULL && plan.concurrent_ranks == 0) {
+            streamed = Set_Hamiltonian_Stream_MatrixElements(&plan, Cnt_kind, myid);
+        }
+        if (!streamed) Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
     }
 
     if (plan.release_resident) {
@@ -1993,7 +2037,7 @@ static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, i
 {
     int pair_count = 0;
     size_t total_h = 0, total_nolg = 0, total_orbs0 = 0, total_orbs1 = 0, bytes;
-    size_t rank_overhead_mb = 512u;
+    size_t rank_overhead_mb = Set_Hamiltonian_MatrixElements_CudaKernel_Enabled() ? 128u : 512u;
     const char *rank_overhead_env;
 
     if (Matomnum <= 0) return 0;
@@ -2672,9 +2716,10 @@ static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixEl
     SetHamiltonianMatrixElementsCache *cache = work->cache;
     const int spin_count = cache->spin_count;
     const int pair_count = cache->pair_count;
+    const int profile = SetH_ProfileEnabled() && !work->quiet_profile;
     double start = 0.0, finish = 0.0;
 
-    if (SetH_ProfileEnabled()) dtime(&start);
+    if (profile) dtime(&start);
     for (int pair = 0; pair < pair_count; pair++) {
         int NO0 = cache->pair_NO0[pair];
         int NO1 = cache->pair_NO1[pair];
@@ -2699,12 +2744,313 @@ static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixEl
     work->vpotgrid = NULL;
     work->hbuf = NULL;
 
-    if (SetH_ProfileEnabled()) {
+    if (profile) {
         dtime(&finish);
         fprintf(stderr, "SETHMEPROF id=%d cache_pack=%.3f device=%.3f unpack=%.3f\n",
                 work->myid, work->pack_seconds, work->device_seconds, finish - start);
         fflush(stderr);
     }
+}
+
+/* Fallback for a single pair larger than the streaming budget, or for a
+   recoverable CUDA failure.  The initial H and the grid accumulation order
+   agree with the device kernel; no partially computed batch is committed. */
+static void Set_Hamiltonian_Stream_PairCPU(int Cnt_kind, int Mc_AN, int h_AN, int myid)
+{
+    const int Gc_AN = M2G[Mc_AN];
+    const int Gh_AN = natn[Gc_AN][h_AN];
+    const int Mh_AN = F_G2M[Gh_AN];
+    const int NO0 = Cnt_kind == 0 ? Spe_Total_NO[WhatSpecies[Gc_AN]] : Spe_Total_CNO[WhatSpecies[Gc_AN]];
+    const int NO1 = Cnt_kind == 0 ? Spe_Total_NO[WhatSpecies[Gh_AN]] : Spe_Total_CNO[WhatSpecies[Gh_AN]];
+    const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
+    double *****target = Cnt_kind == 0 ? H : CntH;
+
+    for (int spin = 0; spin < spin_count; spin++) {
+        for (int i = 0; i < NO0; i++) {
+            for (int j = 0; j < NO1; j++) {
+                double sum = target[spin][Mc_AN][h_AN][i][j];
+                for (int Nog = 0; Nog < NumOLG[Mc_AN][h_AN]; Nog++) {
+                    const int Nc = GListTAtoms1[Mc_AN][h_AN][Nog];
+                    const int Nh = GListTAtoms2[Mc_AN][h_AN][Nog];
+                    const Type_Orbs_Grid *orb1 = G2ID[Gh_AN] == myid ?
+                        Orbs_Grid[Mh_AN][Nh] : Orbs_Grid_FNAN[Mc_AN][h_AN][Nog];
+                    sum += (GridVol * Vpot_Grid[spin][MGridListAtom[Mc_AN][Nc]]) *
+                           Orbs_Grid[Mc_AN][Nc][i] * orb1[j];
+                }
+                target[spin][Mc_AN][h_AN][i][j] = sum;
+            }
+        }
+    }
+}
+
+static void Set_Hamiltonian_Stream_FreeBatch(SetHamiltonianMatrixElementsCache *cache)
+{
+    free(cache->pair_Mc_AN);
+    free(cache->pair_h_AN);
+    free(cache->pair_NO0);
+    free(cache->pair_NO1);
+    free(cache->pair_NOLG);
+    free(cache->pair_h_offset);
+    free(cache->pair_nolg_offset);
+    free(cache->pair_orbs0_offset);
+    free(cache->pair_orbs1_offset);
+    free(cache->nolg_MN);
+    free(cache->nolg_Nc);
+    free(cache->orbs0buf);
+    free(cache->orbs1buf);
+}
+
+static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
+                                                  int Cnt_kind, int myid)
+{
+    const char *enabled = getenv("OPENMX_SETHAM_STREAMING");
+    const char *limit_env = getenv("OPENMX_SETHAM_STREAM_MB");
+    const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
+    const size_t vpot_len = (size_t)My_NumGridC;
+    const size_t vpot_count = Set_Hamiltonian_checked_mul((size_t)spin_count, vpot_len, "stream potential", myid);
+    const size_t vpot_bytes = Set_Hamiltonian_array_bytes(vpot_count, sizeof(double), "stream potential", myid);
+    const size_t runtime_slack = 64ULL * 1024ULL * 1024ULL;
+    /* The CUDA arena aligns each of twelve arrays to 256 bytes. */
+    const size_t alignment_slack = 4096;
+    size_t limit = 256ULL * 1024ULL * 1024ULL;
+    size_t fair_bytes, workspace_bytes, payload_bytes;
+    size_t unused_h, unused_nolg, unused_orbs0, unused_orbs1;
+    int pair_count = 0, batch_count = 0, cpu_pairs = 0;
+    int *mc_table, *h_table;
+    double *vpotgrid;
+    const int profile = SetH_ProfileEnabled();
+    double start = 0.0, finish = 0.0, stamp = 0.0;
+    double pack_seconds = 0.0, device_seconds = 0.0, unpack_seconds = 0.0, cpu_seconds = 0.0;
+    void *stream;
+
+    /* One summary per streamed phase, including arena/potential setup and
+       teardown in device time.  Batch Finish calls suppress the full-cache
+       profile, whose pack/device counters do not describe this path. */
+#define SETH_STREAM_PROFILE_ADD(counter) \
+    do { \
+        if (profile) { \
+            dtime(&finish); \
+            (counter) += finish - stamp; \
+            stamp = finish; \
+        } \
+    } while (0)
+
+    if ((enabled && atoi(enabled) == 0) || !Set_Hamiltonian_MatrixElements_CudaKernel_Enabled() ||
+        plan->device_ranks <= 0 || plan->free_bytes <= plan->reserve_bytes || Matomnum <= 0) return 0;
+    if (limit_env && limit_env[0]) {
+        char *end = NULL;
+        unsigned long long mib = strtoull(limit_env, &end, 10);
+        if (end != limit_env && *end == '\0' && mib >= 8 && mib <= (size_t)-1 / (1024ULL * 1024ULL)) {
+            limit = (size_t)mib * 1024ULL * 1024ULL;
+        }
+    }
+    fair_bytes = (plan->free_bytes - plan->reserve_bytes) / (size_t)plan->device_ranks;
+    if (fair_bytes <= runtime_slack || fair_bytes - runtime_slack <= vpot_bytes) return 0;
+    workspace_bytes = fair_bytes - runtime_slack - vpot_bytes;
+    if (limit < workspace_bytes) workspace_bytes = limit;
+    if (workspace_bytes <= alignment_slack) return 0;
+    payload_bytes = workspace_bytes - alignment_slack;
+
+    Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
+                                               &unused_orbs0, &unused_orbs1);
+    if (pair_count <= 0) return 0;
+    if (profile) {
+        dtime(&start);
+        stamp = start;
+    }
+    vpotgrid = (double *)Set_Hamiltonian_malloc(vpot_bytes, "stream potential", myid);
+    for (int spin = 0; spin < spin_count; spin++) {
+        memcpy(vpotgrid + (size_t)spin * vpot_len, Vpot_Grid[spin], sizeof(double) * vpot_len);
+    }
+    /* CUDA allocation failure is recoverable and occurs before any H block
+       changes.  Other ranks can stream or use the CPU independently: there
+       are no per-batch MPI collectives. */
+    SETH_STREAM_PROFILE_ADD(pack_seconds);
+    stream = Set_Hamiltonian_Cuda_StreamCreate(workspace_bytes, vpot_count, vpotgrid);
+    SETH_STREAM_PROFILE_ADD(device_seconds);
+    free(vpotgrid);
+    if (!stream) return 0;
+
+    if (plan->device_rank == 0) {
+        static size_t last_workspace = 0;
+        if (last_workspace != workspace_bytes) {
+            printf("<Set_Hamiltonian> GPU streamed pair batches: %d rank(s), %.1f MiB workspace/rank on device %d\n",
+                   plan->device_ranks, (double)workspace_bytes / (1024.0 * 1024.0), plan->cuda_device);
+            fflush(stdout);
+            last_workspace = workspace_bytes;
+        }
+    }
+    mc_table = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)pair_count, "stream atom table", myid);
+    h_table = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)pair_count, "stream neighbor table", myid);
+    {
+        int p = 0;
+        for (int Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+            for (int h_AN = 0; h_AN <= FNAN[M2G[Mc_AN]]; h_AN++) {
+                mc_table[p] = Mc_AN;
+                h_table[p++] = h_AN;
+            }
+        }
+    }
+
+    for (int first = 0; first < pair_count;) {
+        SetHamiltonianMatrixElementsCache cache;
+        SetHamiltonianMatrixElementsWork work;
+        size_t bytes = 0;
+        int last = first, previous_mc = -1;
+        memset(&cache, 0, sizeof(cache));
+        memset(&work, 0, sizeof(work));
+        work.quiet_profile = 1;
+        cache.cnt_kind = Cnt_kind;
+        cache.spin_count = spin_count;
+        while (last < pair_count) {
+            const int Mc_AN = mc_table[last], h_AN = h_table[last];
+            const int Gc_AN = M2G[Mc_AN], Gh_AN = natn[Gc_AN][h_AN];
+            const int NO0 = Cnt_kind == 0 ? Spe_Total_NO[WhatSpecies[Gc_AN]] : Spe_Total_CNO[WhatSpecies[Gc_AN]];
+            const int NO1 = Cnt_kind == 0 ? Spe_Total_NO[WhatSpecies[Gh_AN]] : Spe_Total_CNO[WhatSpecies[Gh_AN]];
+            const size_t nolg = (size_t)NumOLG[Mc_AN][h_AN];
+            const size_t hcount = Set_Hamiltonian_checked_mul((size_t)spin_count,
+                Set_Hamiltonian_checked_mul((size_t)NO0, (size_t)NO1, "stream matrix", myid), "stream H", myid);
+            const size_t orbs0 = Mc_AN == previous_mc ? 0 : Set_Hamiltonian_checked_mul(
+                (size_t)GridN_Atom[Gc_AN], (size_t)NO0, "stream orbitals 0", myid);
+            const size_t orbs1 = Set_Hamiltonian_checked_mul(nolg, (size_t)NO1, "stream orbitals 1", myid);
+            size_t increment = 3 * sizeof(int) + 4 * sizeof(size_t);
+            Set_Hamiltonian_add_array_bytes(&increment, hcount, sizeof(double), "stream H", myid);
+            Set_Hamiltonian_add_array_bytes(&increment, nolg, 2 * sizeof(int), "stream grid indices", myid);
+            Set_Hamiltonian_add_array_bytes(&increment, orbs0, sizeof(Type_Orbs_Grid), "stream orbitals 0", myid);
+            Set_Hamiltonian_add_array_bytes(&increment, orbs1, sizeof(Type_Orbs_Grid), "stream orbitals 1", myid);
+            if (payload_bytes - bytes < increment) break;
+            bytes += increment;
+            cache.total_h += hcount;
+            cache.total_nolg += nolg;
+            cache.total_orbs0 += orbs0;
+            cache.total_orbs1 += orbs1;
+            previous_mc = Mc_AN;
+            last++;
+        }
+        if (last == first) {
+            SETH_STREAM_PROFILE_ADD(pack_seconds);
+            Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[first], h_table[first], myid);
+            SETH_STREAM_PROFILE_ADD(cpu_seconds);
+            cpu_pairs++;
+            first++;
+            continue;
+        }
+        cache.pair_count = last - first;
+#define SETH_STREAM_ALLOC(field, type, count) \
+        cache.field = (type *)Set_Hamiltonian_malloc(sizeof(type) * (size_t)(count), "stream " #field, myid)
+        SETH_STREAM_ALLOC(pair_Mc_AN, int, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_h_AN, int, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_NO0, int, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_NO1, int, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_NOLG, int, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_h_offset, size_t, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_nolg_offset, size_t, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_orbs0_offset, size_t, cache.pair_count);
+        SETH_STREAM_ALLOC(pair_orbs1_offset, size_t, cache.pair_count);
+        SETH_STREAM_ALLOC(nolg_MN, int, cache.total_nolg);
+        SETH_STREAM_ALLOC(nolg_Nc, int, cache.total_nolg);
+        SETH_STREAM_ALLOC(orbs0buf, Type_Orbs_Grid, cache.total_orbs0);
+        SETH_STREAM_ALLOC(orbs1buf, Type_Orbs_Grid, cache.total_orbs1);
+#undef SETH_STREAM_ALLOC
+        work.cache = &cache;
+        work.cnt_kind = Cnt_kind;
+        work.myid = myid;
+        work.hbuf = (double *)Set_Hamiltonian_malloc(sizeof(double) * cache.total_h, "stream H", myid);
+        {
+            size_t h_off = 0, nolg_off = 0, orbs0_off = 0, orbs1_off = 0, atom_off = 0;
+            previous_mc = -1;
+            for (int p = 0; p < cache.pair_count; p++) {
+                const int Mc_AN = mc_table[first + p], h_AN = h_table[first + p];
+                const int Gc_AN = M2G[Mc_AN], Gh_AN = natn[Gc_AN][h_AN], Mh_AN = F_G2M[Gh_AN];
+                const int NO0 = Cnt_kind == 0 ? Spe_Total_NO[WhatSpecies[Gc_AN]] : Spe_Total_CNO[WhatSpecies[Gc_AN]];
+                const int NO1 = Cnt_kind == 0 ? Spe_Total_NO[WhatSpecies[Gh_AN]] : Spe_Total_CNO[WhatSpecies[Gh_AN]];
+                const int NOLG = NumOLG[Mc_AN][h_AN];
+                const size_t mat_size = (size_t)NO0 * (size_t)NO1;
+                if (Mc_AN != previous_mc) {
+                    atom_off = orbs0_off;
+                    for (int Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
+                        memcpy(cache.orbs0buf + orbs0_off, Orbs_Grid[Mc_AN][Nc], sizeof(Type_Orbs_Grid) * (size_t)NO0);
+                        orbs0_off += (size_t)NO0;
+                    }
+                    previous_mc = Mc_AN;
+                }
+                cache.pair_Mc_AN[p] = Mc_AN;
+                cache.pair_h_AN[p] = h_AN;
+                cache.pair_NO0[p] = NO0;
+                cache.pair_NO1[p] = NO1;
+                cache.pair_NOLG[p] = NOLG;
+                cache.pair_h_offset[p] = h_off;
+                cache.pair_nolg_offset[p] = nolg_off;
+                cache.pair_orbs0_offset[p] = atom_off;
+                cache.pair_orbs1_offset[p] = orbs1_off;
+                if (work.max_no < NO0) work.max_no = NO0;
+                if (work.max_no < NO1) work.max_no = NO1;
+                if ((size_t)INT_MAX < (size_t)spin_count * mat_size)
+                    Set_Hamiltonian_abort("stream matrix elements", "pair output exceeds INT_MAX", myid);
+                if (work.max_output_count < (int)((size_t)spin_count * mat_size))
+                    work.max_output_count = (int)((size_t)spin_count * mat_size);
+                for (int Nog = 0; Nog < NOLG; Nog++) {
+                    const int Nc = GListTAtoms1[Mc_AN][h_AN][Nog];
+                    const int Nh = GListTAtoms2[Mc_AN][h_AN][Nog];
+                    const Type_Orbs_Grid *orb1 = G2ID[Gh_AN] == myid ?
+                        Orbs_Grid[Mh_AN][Nh] : Orbs_Grid_FNAN[Mc_AN][h_AN][Nog];
+                    cache.nolg_MN[nolg_off + (size_t)Nog] = MGridListAtom[Mc_AN][Nc];
+                    cache.nolg_Nc[nolg_off + (size_t)Nog] = Nc;
+                    memcpy(cache.orbs1buf + orbs1_off + (size_t)Nog * (size_t)NO1,
+                           orb1, sizeof(Type_Orbs_Grid) * (size_t)NO1);
+                }
+                for (int spin = 0; spin < spin_count; spin++) {
+                    for (int i = 0; i < NO0; i++) {
+                        const double *row = Cnt_kind == 0 ? H[spin][Mc_AN][h_AN][i] : CntH[spin][Mc_AN][h_AN][i];
+                        memcpy(work.hbuf + h_off + (size_t)spin * mat_size + (size_t)i * (size_t)NO1,
+                               row, sizeof(double) * (size_t)NO1);
+                    }
+                }
+                h_off += (size_t)spin_count * mat_size;
+                nolg_off += (size_t)NOLG;
+                orbs1_off += (size_t)NOLG * (size_t)NO1;
+            }
+        }
+        {
+            SETH_STREAM_PROFILE_ADD(pack_seconds);
+            const int status = Set_Hamiltonian_Cuda_StreamRun(stream, cache.pair_count, spin_count, vpot_len,
+                GridVol, work.max_no, work.max_output_count, cache.total_h, cache.total_nolg,
+                cache.total_orbs0, cache.total_orbs1, cache.pair_NO0, cache.pair_NO1, cache.pair_NOLG,
+                cache.nolg_MN, cache.nolg_Nc, cache.pair_h_offset, cache.pair_nolg_offset,
+                cache.pair_orbs0_offset, cache.pair_orbs1_offset, cache.orbs0buf, cache.orbs1buf, work.hbuf);
+            SETH_STREAM_PROFILE_ADD(device_seconds);
+            if (status < 0) Set_Hamiltonian_abort("stream matrix elements", "unrecoverable CUDA failure", myid);
+            if (status == 0) {
+                Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
+            }
+            else {
+                /* H is only committed after a successful device result. */
+                free(work.hbuf);
+                for (int p = first; p < last; p++)
+                    Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[p], h_table[p], myid);
+                cpu_pairs += last - first;
+                SETH_STREAM_PROFILE_ADD(cpu_seconds);
+            }
+        }
+        Set_Hamiltonian_Stream_FreeBatch(&cache);
+        SETH_STREAM_PROFILE_ADD(unpack_seconds);
+        batch_count++;
+        first = last;
+    }
+    free(h_table);
+    free(mc_table);
+    SETH_STREAM_PROFILE_ADD(unpack_seconds);
+    Set_Hamiltonian_Cuda_StreamDestroy(stream);
+    SETH_STREAM_PROFILE_ADD(device_seconds);
+    if (profile) {
+        dtime(&finish);
+        fprintf(stderr, "SETHSTREAMPROF id=%d batches=%d cpu_pairs=%d workspace_mib=%.1f "
+                        "pack=%.3f device=%.3f unpack=%.3f cpu=%.3f total=%.3f\n",
+                myid, batch_count, cpu_pairs, (double)workspace_bytes / (1024.0 * 1024.0),
+                pack_seconds, device_seconds, unpack_seconds, cpu_seconds, finish - start);
+    }
+#undef SETH_STREAM_PROFILE_ADD
+    return 1;
 }
 
 #define SETH_ME_BLK 16

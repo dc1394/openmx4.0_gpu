@@ -1,0 +1,501 @@
+OpenMX 4.0 NVIDIA GPU: 標準回帰入力を用いた追加チューニング
+開始日: 2026-10-01
+ログ基点: work/codex_20261001/
+
+性能調整版: candidate6
+  SHA256: daf00bf283ad703901d1a3784f75780d2121740f141366026b616b233f8e69ad
+最終修正版: candidate7（下記の実機再検証完了）
+  SHA256: 9b3f8f2b14bb570b69058fd290edf5a91d7e442f0b363ef40794a6a29d607335
+  candidate6からcollinear DC-LNOのcuSOLVER非収束時CPU再計算を追加した。
+  通常成功時のGPU演算・コピー順序と、他の性能調整部分は変更していない。
+  以下の性能表はcandidate6の実測。最終版の追加検証はcandidate7節に記載する。
+
+性能調整版で確認した主な結果（秒、単回測定）
+  suite / case            MPI ranks   変更前       candidate6   短縮率
+  -runtest 全14件             18        89.43         91.58       -2.4%
+  -runtestL3 GGFF             18       340.70        190.63       44.0%
+  -runtestL3 Pt500             8       653.13        437.38       33.0%
+  -runtestL3 Fe1000            8       329.18        286.01       13.1%
+  -runtestL3 C1000             8       242.25        239.52        1.1%
+  -runtestL3 DIA512-1          8        54.70         52.14        4.7%
+  -runtestL3 CG15c             8       149.59        124.73       16.6%
+  -runtestL3 MCCN              8       157.75        132.07       16.3%
+  すべて下記commit 25d2eda0の保存バイナリと比較した。小規模suite全体の
+  高速化は確認されていない。GGFFとlarge4件はともに3 SCFを維持。
+  単回測定のため数%の差には実行時の変動も含む。全入力や他GPUに対する
+  最適性・一様な高速化を保証する結果ではない。
+
+検証範囲と解釈
+  -runtest: candidate6通常18 ranksと強制2-rank wave/streamingの4 ranksで
+    各14/14参照比較合格。通常設定は変更前との比較も14/14合格。
+  -runtestL: candidate5で全16件の参照比較・変更前比較が合格。
+    native合計3942.28 -> 3727.67秒 (5.4%短縮)。candidate6はForceのwave幅
+    のみ変更し、同経路を通ったDIA512-1/N1C999/ZrB2_2x2を再実行して、
+    3件とも同梱参照・candidate5・変更前コミットとの比較に合格。
+    残り13件はこの最終変更の経路を通らないことをcandidate5のログで確認。
+    candidate5の全suite時間をcandidate6の全suite実測値として扱わない。
+  -runtestL2: Ih-Ice1200の1/7件を測定・参照比較合格。残り6件は未実行。
+    candidate5/SetHam streaming無効1320.61秒からcandidate6既定1234.45秒へ
+    6.5%短縮。ただし36 -> 35 SCFとForce wave幅変更を含む複合比較。
+    SetHamの1 SCF平均は12.862 -> 11.362秒、Forceは65.278 -> 58.922秒。
+    変更前後の位置・格子一致、Delta E=2.73e-12、maxDelta F=1e-12。
+  -runtestL3: large4、GGFF、small11の全16件が完了。
+    同梱参照は14件合格、Fe1000とNi63-O64は従来からの参照差が残る。
+    Fe1000: |Delta E|=1.15e-7、max|Delta F|=6.03e-7。
+    Ni63-O64: |Delta E|=5.73e-10、max|Delta F|=1.11e-5。
+    いずれも変更前後のDelta E=0、maxDelta F=1e-12で合格し、位置・格子も
+    一致。参照との差を合格と扱ったり、許容差を緩めたりしていない。
+    CG15c/MCCNも完了し、変更前後のDelta E=0、maxDelta F=1e-12で合格。
+    N1C999は独立再実行で1355.60秒、同梱参照比較合格。
+    |Delta E|=2.97e-9、max|Delta F|=5.80e-11、位置・格子も一致。
+    Si1280-LNOはcandidate7で1 rank再実行し、規定の3 SCFを完了。
+    3038.28秒、同梱参照とのDelta E=1.22e-8、maxDelta F=2.64e-10で合格。
+    これでcandidate6/7を合わせて20/20件が完了し、18件参照比較合格・
+    2件既存参照差となる。candidate7で全20件を再測定した値ではない。
+    N1C999には同条件の完了した旧版測定がなく、速度向上率は算出しない。
+
+実装の要点
+  非共線Bandのoverlap/packed行列再利用とk点ownerの処理順序を改善。
+  Set_Hamiltonianを上限付きpair batchで処理し、大規模入力でも複数rankが
+  GPUを使えるようにした。Force4Bはcase1/case2の確保期間を分離し、hostに
+  保存したhaloと空きGPU容量に応じたrank wave、source/centre単位のbatchを
+  使用する。DC-LNOのCPU固有ベクトルコピーとResiduesの細かな確保を削減。
+  演算順序・数値条件を維持し、既存のCPU fallbackと明示設定を残した。
+  部分固有対要求でのtwo-stage強制は実入力で遅くなったため、既定の
+  CUDA自動選択/部分要求SYEVDXを維持する。詳細はcandidate3と独立測定を参照。
+
+比較条件
+  変更前: commit 25d2eda0708c539c0e08643c4949a9dd69dc08a8
+  保存バイナリ: openmx_before_25d2eda0
+  SHA256: 5f7d340a49e736a352c493579adf0f11bf2b4f72b71b13ab2af55add0a9c431e
+  GPU: GeForce RTX 5080, 16303 MiB, driver 595.91.07
+  CPU: Core i9-10980XE, 18 physical cores; RAM 約251 GiB
+  SDK 26.9 / CUDA 13.4.2 / GEMMul8 3.5.2
+  SDK 26.9 MPI、各rank 1 OpenMP thread、core binding、実行ごとのprivate MPS。
+  入力、基底データ、SCF条件、k点、積分格子は測定のために変更していない。
+  tools/run_gpu_suites.py で元の -runtest/-runtestL/-runtestL2/-runtestL3
+  を起動。標準入力はシンボリックリンクで参照し、出力は隔離ディレクトリへ保存。
+  通常は入力ごとにMPI起動。--together は同一MPIジョブで全指定入力を処理する。
+  GPUジョブを重ねず、時間測定中のプロジェクトビルドも避けた。
+  時間はnative elapsed、phase時間はMPI Max_Time。異なるphaseの最大rankは
+  一致するとは限らず、phase時間を単純に足して全体時間と比較しない。
+
+精度判定
+  tools/compare_gpu_suites.py で全原子の全力成分と全エネルギーを比較。
+  既定許容差は各1e-7 (Ha, Ha/bohr)。位置・格子の一致も確認する。
+  同梱参照の座標は表示の丸めを考慮して1.000001e-5以内を許容する。
+  変更前後の座標と、すべての比較での積分格子点数には完全一致を要求する。
+  native diff Force の単一値だけでは合否を決めない。
+  未完了・中断・未実行の入力は合格に含めない。
+
+candidate1
+  保存バイナリ: openmx_candidate1
+  SHA256: 41d3a963cae7b1f71430bccf2432fe98ebae127f407b94d52dcfc5a87d243190
+  ハミルトニアンの有界pair batch、Force4B case2のcentre単位batch、
+  非共線Bandの変換済みoverlap再利用と密度行列passの不要gather省略、
+  DC-LNO CPU固有ベクトルの余分な多次元配列コピー省略を含む。
+
+  -runtest、18 ranks、--together: 14/14件が参照比較に合格。
+    native合計90.96秒、wall94.10秒。
+    前回の同条件89.43秒に対して小規模suiteの高速化は確認されていない。
+    ログ: candidate1_S18/, reference_candidate1_S18.txt
+
+  -runtest、4 ranks、--together、分割経路の強制:
+    OPENMX_FORCE4B_CASE2_STREAM=1
+    OPENMX_SETHAM_GPU_RANK_OVERHEAD_MB=16384
+    OPENMX_SETHAM_STREAM_MB=8
+    14/14件が参照比較に合格。空rank、collinear/noncollinearも含む。
+    ログ: candidate1_S_stream4/, reference_candidate1_S_stream4.txt
+
+  GaAs、4 ranks、非共線GPUと部分cacheの強制:
+    OPENMX_BAND_NONCOL_GPU_SWITCH_NUM=1
+    OPENMX_BAND_NONCOL_OVERLAP_CACHE_MB=0.02
+    OPENMX_BAND_NONCOL_KCACHE_MB=0.08
+    各ownerで1 k点だけを保持し、hit/missが混在する13 SCFが参照比較に合格。
+    ログ: candidate1_NC_partial4/, reference_candidate1_NC_partial4.txt
+
+  -runtestL3 Pt500、8 ranks:
+    全体653.13 -> 557.50秒 (14.6%短縮、1.17倍)。
+    Set_Hamiltonian 60.774 -> 34.577秒 (1.76倍)。
+    Force 343.755 -> 273.144秒。
+    旧版との |Delta E|=0、max|Delta F|=1e-12。
+    ハミルトニアンは全rankでGPU分割処理、CPU pair fallbackは0。
+    Force4B case2は最大81.4 MiB/rankのworkspaceで全rank GPU処理。
+    case1は全体archiveが10.160 GiB/rank必要なため依然CPU処理。
+    case1 remote/local 157.528/43.952秒、case2 58.088秒。
+    RSSピーク151.52 GiB、最低MemAvailable92.03 GiB。
+    比較元: work/codex_20260930/after_L3_large_trim8_mps/Pt500/
+    今回: candidate1_L3_Pt_Fe8/Pt500/ (phase profiling有効)。
+
+  -runtestL3 Fe1000、8 ranks:
+    全体329.18 -> 321.51秒、Force 74.858 -> 66.032秒。
+    旧版との |Delta E|=0、max|Delta F|=1e-12。
+    同梱参照との差は |Delta E|=1.15e-7、max|Delta F|=6.03e-7 であり、
+    旧版でも存在した差。参照比較の合格とは扱わず、旧版との一致を別途確認。
+    ログ: candidate1_L3_Pt_Fe8/Fe1000/
+
+  -runtestL3 GGFF、18 ranks:
+    1000 k点・3 SCF、291.00秒、全力成分の参照比較に合格。
+    第2/3 SCFで各rankの全担当k点のoverlap再利用を確認。
+    Diagonalization265.118秒、Force11.535秒、Set_Hamiltonian3.050秒。
+    ログ: candidate1_L3_GGFF18/, reference_candidate1_L3_GGFF18.txt
+    前回の330.33秒はそれ以前の版による結果で、今回の単一変更A/Bではない。
+
+  -runtestL3 CG15c/MCCN、8 ranks:
+    CG15c: 149.59 -> 131.59秒、Force38.318 -> 20.079秒。
+    MCCN:  157.75 -> 132.36秒、Force39.941 -> 14.528秒。
+    両方とも旧版との |Delta E|=0、max|Delta F|=1e-12。
+    主な短縮はForceにあり、Diagonalizationの変化は1秒未満。
+    比較元: before_L3_remaining8/ の完了した2件。
+    今回: candidate1_L3_dclno8/ の完了した2件。
+    同runのSi1280-LNOは最初のSCFのGPU寸法2495を確認後、152.66秒で
+    診断実行を中断。N1C999は未起動。このrun全体は合格に含めない。
+
+candidate2
+  保存バイナリ: openmx_candidate2
+  SHA256: f111a3592c43ad3555ce7d43ef7f0691809ca5ebbb22925e97733fea931707aa
+  candidate1に加え、Force4B case1の有界受信source別batch、
+  DC-LNO Residuesのatom/spin単位連続確保、非共線BandのSCF内packed行列再利用、
+  k点ownerを交互に進めるGPU groupの処理順序変更を含む。
+  k点の原番号と各rank内の元の積算順序は維持する。
+  Set_Hamiltonian streamingの計測はbatchごとではなくphaseごとの
+  pack/device/unpack/cpu/totalに変更。数値処理には変更なし。
+  ビルド: build_candidate2.log, build_candidate2_checked.log
+
+  -runtest、18 ranks、--together: 14/14件参照比較合格、native89.40秒。
+  両Force streamを強制し、SetHam 8 MiB batchを強制した4 ranksも14/14合格。
+  GaAsの部分cache/全cache無効・group concurrency=2も各参照比較合格。
+  ログ: candidate2_S18/, candidate2_S_stream4/, candidate2_NC_partial4/,
+        candidate2_NC_nocache4/
+
+  -runtestL3 GGFF、18 ranks:
+    candidate1 291.00 -> candidate2 193.02秒 (33.7%短縮、1.51倍)。
+    Diagonalization265.118 -> 167.454秒。変更前後のDelta E/Fとも出力精度で0。
+    packed行列cacheとowner交互scheduleの組合せによる改善。
+    SetHam rank overheadのみ512 -> 128 MiBにした対照は190.07秒、
+    Set_Hamiltonian3.001 -> 1.676秒、全18 ranks GPU処理、参照比較合格。
+    後者のDiagonalization165.733秒との差は同phaseのコード変更ではなく
+    測定変動を含む。CUDA専用kernelのworkspace計上を再点検した上で、
+    次版からCUDA専用kernelのみ128 MiB、OpenACC経路は512 MiBを維持する。
+    ログ: candidate2_L3_GGFF18/, candidate2_L3_GGFF128_18/
+
+  -runtestL3 Pt500、8 ranks、case1 source streaming比較:
+    256 MiB: native636.87秒、case1 remote217.483/local64.382秒。
+    1024 MiB: native543.88秒、case1 remote143.291/local46.077秒。
+    両方参照比較合格、max|Delta F|=8.78e-10。
+    candidate1 (case1 CPU)557.50秒に比べ、256 MiBは遅く、1024 MiBは2.4%短縮。
+    次版では上限を1024 MiBに変更する。GPU空き容量による追加制限は維持。
+    ログ: candidate2_L3_Pt8/, candidate2_L3_Pt1024_8/
+
+candidate3
+  保存バイナリ: openmx_candidate3
+  SHA256: fc9c1b2222797cc3af8e0b53236453d993255f26d538b8d5a227a0de27d37cd6
+  CUDA専用SetHam kernelのrank overhead128 MiB、case1 source arena1024 MiB、
+  host halo保存と物理GPUごとのrank交代実行を追加。
+  host追加領域はnodeのMemAvailableの3/4以下かつ32 GiBを残す範囲。
+  全量一括処理が同時に載らない場合に限り自動試行し、device arena確保に
+  失敗したrankは保存済みhaloから旧CPU式で完遂する。
+  ビルド: build_candidate3.log (GEMMUL8_GPU_ARCH=120)
+  Force CPU tests: case1 126 + rank turns 126 + case2 252 = 504比較、
+    ASan/UBSan付きで合格。rank-turn検査は受信slotをNaNで上書きして、
+    GPU packing/CPU fallbackとも保存haloを使うことも確認。
+    ログ: candidate3_force_case1_asan.log, candidate3_force_turns_asan.log,
+          candidate3_force_case2_asan.log
+  Residuesの異常系fixtureを補強し、60配置と5種類の診断検査を再実行して合格。
+    fixtureのINT_MAX加算をsize_tへ変更し、本番overflow検査より前にテスト
+    自身がoverflowする問題を修正。ログ: candidate3_residue_pool_asan.log
+  合成solver検査のn=1/H=[0]で残差正規化0/0となるテスト側の問題を修正。
+    CPU/GPUとも誤差0で合格。ログ: dclno_scalar_check.log
+  -runtest、4 ranks、--together、case1 turnsとcase2 streamを強制:
+    14/14件参照比較合格、native118.76秒、wall121.10秒。
+    空rankを含む2/4有効rank、4/4有効rankを実MPI/GPUで検証。
+    ログ: candidate3_S_turns4/, reference_candidate3_S_turns4.txt
+  -runtest、18 ranks、--together、通常設定: 14/14件参照比較合格。
+    native90.65秒、wall93.39秒。変更前89.43秒からの差は+1.4%。
+    全入力で変更前とのDelta E/Fとも出力精度で0。小規模suiteの高速化は主張しない。
+    ログ: candidate3_S18/, reference_candidate3_S18.txt
+  -runtestL3 Pt500、8 ranks:
+    変更前653.13 -> 448.35秒 (31.4%短縮、1.46倍)、参照比較合格。
+    case1 remote8.244/local69.650秒、host追加claim49.623 GiB/node、
+    最大device arena10.143 GiB、全8rankがGPU rank turnsを使用。
+    RSSピーク197.38 GiB、最低MemAvailable44.70 GiB。
+    同梱参照との差は|Delta E|=1.46e-10、max|Delta F|=8.78e-10。
+    ログ: candidate3_L3_Pt8/, reference_candidate3_L3_Pt8.txt
+  -runtestL3 Fe1000、8 ranks、auto:
+    変更前329.18 -> 298.38秒。旧版との|Delta E|=0、max|Delta F|=1e-12。
+    既存の同梱参照差は|Delta E|=1.15e-7、max|Delta F|=6.03e-7で依然FAIL。
+    ログ: candidate3_L3_Fe_auto8/
+  実要求数でのsolver選択A/B:
+    Fe1000はn=13000、SCF2以降MaxN=8300 (63.85%)、2spin。
+    Pt500はn=12500、SCF2以降MaxN=5250 (42.00%)、1spin。
+    L2/L3でこのshapeは同じ。SCF1はいずれも全固有対を求める。
+    Fe1000 auto298.38秒に対し、two-stage強制337.87秒 (13.2%遅い)。
+    Pt500 auto448.35秒に対し、two-stage強制464.07秒 (3.5%遅い)。
+    したがって、部分要求を常に全固有対へ拡張する変更は行わない。
+    全固有対はcuSOLVERのdimension/architecture/math-modeによる自動選択、
+    部分要求はSYEVDXを維持する既定値を採用する。
+    ログ: candidate3_L3_Fe_auto8/, candidate3_L3_Fe_two-stage8/,
+          candidate3_L3_Pt8/, candidate3_L3_Pt_two-stage8/
+
+candidate4
+  保存バイナリ: openmx_candidate4
+  SHA256: c2687b69643b0b983d9494b4d2ddc92fa418cc2cc6c396fc8e83d45283d4f692
+  candidate3からSetHamの配分だけを調整。
+  Pt500では128 MiB overheadにより最初のSCFだけ1/8 rankが全量GPUに載り、
+  残り7rankがCPUとなったため、同phase21秒に対し全rank streamingは約11秒。
+  全量GPUが1rankだけとなる場合も、複数peerでstreaming可否を合意して
+  bounded batchを優先する。1rank admission時の優先切替では、明示serial
+  waves/1rank上限を維持する。0rank admissionではこれらの設定でもstreamingを
+  試みる。OPENMX_SETHAM_STREAMING=0は両方のstreamingを無効にする。
+  新collectiveはdevice communicatorの全peerが必ず参加し、rankごとの
+  capや環境変数の差によって参加集合を変えない。
+  ビルド: build_candidate4.log
+  -runtest、18 ranks、通常設定と4 ranks/1rank全量admissionの強制条件で、
+    各14/14件の参照比較に合格。
+    強制条件: OPENMX_SETHAM_GPU_RANK_OVERHEAD_MB=9000、
+              OPENMX_SETHAM_STREAM_MB=8。
+    実ログでconcurrency=1から全peer streamingへ切替、oversized pairだけの
+    CPU fallbackと空rankを確認。
+    ログ: candidate4_S18/, candidate4_S_one_rank4/
+  MPI rank 0のみMAX_RANKS_PER_DEVICE=1、他rank=4としたGaAsも完了し、
+    参照比較合格。device communicator内でadmissionが異なる場合の
+    collective参加を実機で確認。ログ: candidate4_S_mixed_cap4/
+  -runtestL3 Pt500、8 ranks:
+    変更前653.13 -> 433.96秒 (33.6%短縮、1.505倍)、参照比較合格。
+    Force343.755 -> 151.209秒、Set_Hamiltonian60.774 -> 33.470秒。
+    旧版との|Delta E|=0、max|Delta F|=1e-12、位置・格子一致。
+    RSSピーク186.50 GiB、最低MemAvailable56.61 GiB。
+    ログ: candidate4_L3_Pt8/, reference_candidate4_L3_Pt8.txt
+
+candidate5
+  保存バイナリ: openmx_candidate5
+  SHA256: 3ecbaab2e1c2bf55892ba1abff34cec8a4502f2d391a471389a659893a93cb6d
+  candidate4の-runtestL/B2C62_Bandで359.09 -> 387.66秒の回帰を検出。
+  Force72.614 -> 87.550秒、Set_Hamiltonian40.577 -> 51.374秒。
+  11 MDのSCF合計は203 -> 204。位置・格子一致、Delta E=0、maxDelta F=3.109e-8。
+  正確なworkspaceを計上するようにした後も残っていたForce4Bの最低192 MiB
+  予約量を64 MiBへ削減した。実workspaceが64 MiBを超える場合は実量を使用し、
+  共有GPU全体の256 MiB reserveも維持する。B2の全量GPU処理が可能になる。
+  build_candidate5.log、-runtest18 ranks全14件参照比較合格、native合計89.23秒。
+  ログ: candidate5_S18/, reference_candidate5_S18.txt
+
+  B2C62_Bandの独立コピーでMD.maxIterだけを1へ変更した診断（標準suite結果ではない）:
+    設定                    SetHam   Force   Total (秒、MPI Max_Time)
+    既定overhead128          5.754    5.116   40.056
+    overhead512             4.728    5.108   39.057
+    resident floor512       5.702    5.137   40.565
+    全条件23 SCF、全原子位置・格子一致、maxDelta E=1.02e-12、maxDelta F=1e-12。
+    overhead512は14GPU/4CPU、他は18GPU。resident floor512は2.185 GiBを
+    一度保持した後、登録済みGPU phase need8.610 GiBとの競合で解放される。
+    residentの既定値は変更しない。overheadの一律512への復帰も、他ケースの
+    改善を失うため行わない。全体の評価には未変更の標準入力を使う。
+    ログ: b2c62_candidate5_diag_md1/summary.json と各条件run.log
+
+  -runtestL全16件、18 ranks: 同梱参照比較・変更前との比較とも全件合格。
+    native合計3942.28 -> 3727.67秒 (5.4%短縮)、wall3772.95秒。
+    peak RSS48.63 GiB、最低MemAvailable195.89 GiB。
+    全ケースで位置・格子一致、最大Delta E=1.15e-9、最大Delta F=3.57e-8。
+    GGFFは101 SCFを維持して675.40 -> 506.40秒。Diagonalization474.819 ->
+    353.742秒、Set_Hamiltonian102.027 -> 54.102秒。
+    B2C62は203 SCFに一致し、359.09 -> 355.26秒、Force72.614 -> 55.728秒。
+    Pt63は65 -> 67 SCFとなり、57.42 -> 63.63秒。SetHam22.520 -> 27.504秒。
+    DIA512-1は120.83 -> 125.80秒、Force8.042 -> 12.077秒。
+    N1C999は1564.20 -> 1534.53秒、Force15.588 -> 20.978秒。
+    このsuiteでcase1 rank turnsを使ったのはDIA512-1、N1C999、ZrB2_2x2の3件。
+    これらのForceの逐次host packingを次のcandidateで改善する。
+    ログ: final5_L18/, compare_final5_L.txt, phases_final5_L.json
+
+  -runtestL2 Ih-Ice1200、8 ranks、OPENMX_SETHAM_STREAMING=0:
+    1320.61秒、36 SCF、同梱参照比較合格。
+    peak RSS149.21 GiB、最低MemAvailable93.99 GiB。
+    case1 rank turnsは8/8、最大arena6.257 GiB、追加host claim26.970 GiB。
+    ログ: final5_L2_Ice_off8/, reference_final5_L2_Ice_off8.txt
+    同candidateの有効側は修正版への切替のため初期化中に中断した。
+    final5_L2_Ice_on8/は完了・合格として扱わない。L3 queueは未起動。
+
+candidate6 (性能調整版)
+  保存バイナリ: openmx_candidate6
+  SHA256: daf00bf283ad703901d1a3784f75780d2121740f141366026b616b233f8e69ad
+  candidate5からForce case1 rank turnsの同時実行数のみを変更。
+  先行するcase1領域の解放を全device peerで待ち、空きGPU容量の最小値と
+  有効rankの最大arenaを取得する。256 MiB共有reserveと64 MiB/active-rank
+  allowanceを残してwave幅を決める。Pt500のような大きなarenaは幅1を維持。
+  rankごとのOPENMX_FORCE4B_CASE1_TURN_MAX_RANKSはdevice内の最小値へ合意し、
+  全peerが同じbarrierに参加する。確保失敗時のcached-halo CPU処理は維持。
+  sizeof/overflow境界・正数/不正な上限値を含むCPU harnessをASan/UBSan/
+  LeakSanitizer付きで再実行。126比較、最大力成分差1.22e-15で合格。
+  ログ: build_candidate6.log, candidate6_force_turns_asan.log
+  L2有効側はこのcandidateを使用するため、candidate5無効側との比較には
+  SetHam streamingの有無とForce wave幅の変更を両方含む。同一binaryでの
+  単一設定A/Bとしては扱わず、phase時間も分けて確認する。
+
+  性能調整版のphase比較（MPI Max_Time、変更前 -> candidate6）:
+    L3/GGFF: Diagonalization314.302 -> 166.195秒、SetHam3.021 -> 1.668秒。
+    L3/Pt500: Force343.755 -> 151.402秒、SetHam60.774 -> 34.511秒。
+    L3/Fe1000: Force74.858 -> 37.094秒、SetHam26.707 -> 22.022秒。
+    L3/CG15c: Force38.318 -> 14.108秒、Diagonalization58.975 -> 58.497秒。
+    L3/MCCN: Force39.941 -> 14.461秒、Diagonalization69.869 -> 69.403秒。
+    いずれも3 SCF。GGFFはcacheとschedule、後者4件はForceで主に短縮。
+    Force case1のwave幅はPt500 1/8、Fe1000 3/8、L2/Ih-Ice1200 2/8。
+    最大arenaはそれぞれ10.143、4.028、6.257 GiB、空き容量は約12.89 GiB。
+    L3/large4の最大RSS186.41 GiB、最低MemAvailable56.34 GiB。
+    L2/Ih-Ice1200の最大RSS138.37 GiB、最低MemAvailable104.69 GiB。
+  再現ログと比較:
+    final6_S18/, final6_S_turns4/, compare_final6_S.txt
+    final6_L2_Ice8/, compare_final6_L2_Ice.txt, phases_final6_L2_Ice.json
+    final6_L3_large8/, compare_final6_L3_large.txt, phases_final6_L3_large.json
+    before_L3_GGFF18/, final6_L3_GGFF18/, compare_final6_L3_GGFF.txt,
+      phases_final6_L3_GGFF.json
+    final6_L3_small18/, before_L3_Ni18/, compare_final6_L3_Ni.txt
+    final6_L3_dclno8/, compare_final6_L3_CG_MCCN.txt,
+      phases_final6_L3_CG_MCCN.json
+    final6_L3_N1_retry8/: 3 SCF、各SCFとも2000 GPU solves、全局所行列n=2100。
+      CPU solver fallbackは0。最大RSS77.66 GiB、最低MemAvailable165.19 GiB。
+    参照比較はreference_<run名>.txtに保存。全runを合格と見なさず、
+    上述の個別完了・数値比較結果を用いる。
+
+  -runtestLでwave幅変更の影響を受ける3件、18 ranksで再検証:
+    case       SCF数  変更前native   candidate5    candidate6 (秒)
+    DIA512-1     29      120.83        125.80        123.52
+    N1C999       59     1564.20       1534.53       1535.33
+    ZrB2_2x2     49      197.77        185.92        185.61
+    全3件でSCF数・位置・格子一致、同梱参照比較合格。
+    変更前との最大Delta E=9.09e-13、最大Delta F=1e-12。
+    candidate5との最大Delta E=9.09e-13、最大Delta F=0。
+    Forceはcandidate5から順に12.077 -> 9.122、20.978 -> 16.406、
+    13.363 -> 11.413秒。DIA/N1のwave幅は8/18。
+    変更前コミットのForceはDIA8.042秒、N1 15.588秒であり、最終版でも
+    小幅な遅延は残る。N1の全体時間はcandidate5から0.80秒増加し、
+    Diagonalizationの実行変動などを含む。全ケースの一様な改善とはしない。
+    ログ: final6_L_changed18/, reference_final6_L_changed18.txt,
+      compare_final6_L_changed_before.txt, compare_final6_L_changed_c5.txt,
+      phases_final6_L_changed_before.json, phases_final6_L_changed_c5.json
+
+candidate7 (非収束時の復旧)
+  保存バイナリ: openmx_candidate7
+  SHA256: 9b3f8f2b14bb570b69058fd290edf5a91d7e442f0b363ef40794a6a29d607335
+  Si1280-LNOの1 rank再試行でGPU固有値計算が正INFO=122を返したため、
+  collinear DC-LNOの該当局所問題だけを元のhost S/H行列からCPUで解き直す。
+  失敗したdevice固有ベクトルは使用せず、既存のCPU作業領域を再利用する。
+  optional proxyではstatusをoriginへ返し、origin側の寸法に合う作業領域で
+  再計算する。GPU ownerの小さな領域へremoteの大きな行列を渡さない。
+  負INFO・cuSOLVER API失敗・成功時の固有値数不一致はMPI abortする。
+  既定algorithm、math mode、正常時のGPU演算と転送順序は変えていない。
+  profileのCPU/GPU件数は最初に選択したbackendの件数。GPU-solve時間は
+  発生したCPU retryを含み、retryそのものは個別ログにも出力する。
+
+  tests/run_dclno_solver_retry.py:
+    本番helperを抽出し、CUDA APIのhost stubでoverlap/H段階の正INFO、
+    負INFO、meig不一致、solve/query API失敗を注入する。
+    実LAPACK/BLASのCPU再計算を独立したDSYGV解・generalized residual・
+    S直交性で検査。host原本の保持、失敗後の再利用、出力境界も確認。
+    60故障注入・78数値検証、最大誤差2.89e-15。
+    ASan/UBSan/LeakSanitizer付きで合格。
+    実CUDAやMPI通信を模擬テストで検証したとは扱わない。
+    ログ: candidate7_dclno_retry_asan.log, build_candidate7.log
+
+  tools/bench_dclno_solver.pyは新しい戻り値を検査し、非収束をbenchmarkの
+  エラーとして扱う。CPU再計算時間をGPU時間へ混ぜない。
+  build_dclno_bench_candidate7.logに再ビルドを記録。
+  2 ranks/n=800/要求400の実CUDA検査は最大誤差2.998e-15で合格。
+    ログ: candidate7_synthetic.log（機能検証用の1 warmup + 1測定）。
+  -runtest、18 ranks、--together: 14/14参照比較合格、変更前との比較も
+    全件合格。Delta E/Fは出力精度で全件0、位置・格子一致。
+    native合計92.67秒。小規模suiteの高速化は確認されていない。
+    ログ: final7_S18/, reference_final7_S18.txt, compare_final7_S.txt
+  -runtestL3 CG15c/MCCN、8 ranks:
+    CG15c 125.77秒、MCCN132.47秒、各3 SCF、同梱参照比較合格。
+    candidate6とのDelta E/Fは出力精度で0、位置・格子一致。
+    変更前とのDelta E=0、最大Delta F=1e-12で合格。
+    ログ: final7_L3_CG_MCCN8/, reference_final7_L3_CG_MCCN8.txt,
+      compare_final7_L3_CG_MCCN_before.txt, compare_final7_L3_CG_MCCN_c6.txt,
+      phases_final7_L3_CG_MCCN_c6.json
+  -runtestL3 Si1280-LNO、1 rank:
+    native3038.28秒、wall3044.49秒、規定の3 SCFを完了して正常終了。
+    各SCFで1280局所問題、行列次元2495。SCF1/2は全固有対要求、
+    SCF3のサンプルでは1357固有対要求を確認した。
+    SCF2でHamiltonian固有値計算が正INFO=122を4回返し、いずれも
+    host原本からのCPU再計算で復旧。SCF1/3ではCPU retryは0。
+    同梱参照比較はDelta E=1.22e-8、maxDelta F=2.64e-10で合格。
+    位置は参照の表示丸め許容内、積分格子点数は一致。
+    最大RSS211.95 GiB、最低MemAvailable28.86 GiBで、16 GiB guardを
+    維持して完走した。同条件の旧版は未完了のため速度向上率は算出しない。
+    Diagonalization2030.099秒、SetHam301.808秒、Force45.019秒。
+    ログ: final7_L3_Si1/, reference_final7_L3_Si1.txt,
+      final7_validation_queue.log
+
+単体検証
+  tests/run_set_hamiltonian_stream_smoke.sh:
+    実際のCUDA APIと独立したlong double CPU積分を44ケースで比較。
+    spin 1/2/4、非整列の軌道数/積分点数、offset/padding、arena再利用、
+    サイズ超過時のhost出力保持とその後の正常呼出しを含む。
+    CUDA 13.4.2 + compute-sanitizer: 44 PASS、最大scaled誤差1.104e-14、
+    memcheck 0 errors。
+    CUDA 13.2: 同じ44ケース PASS。
+    ログ: setham_stream_smoke_cuda134.log, setham_stream_smoke_cuda132.log
+
+  Force4B CPU harness (GPU/MPIの試験とは別):
+    case2: 252比較、最大力成分差2.22e-15。
+    case1: 126比較、最大力成分差1.22e-15。
+    mixed species/spin、周期q重複、最小arenaによる分割、空rank、OOM、
+    各mode、SIZE_MAX/INT_MAX境界を検査。ASan/UBSan付きで合格。
+    ログ: force_case1_cpu_asan.log, force_case2_cpu_asan.log
+  DC-LNO Residues: 60個の不均一なrow配置、単一確保、非alias、値・収縮一致、
+    解放、5種類の不正寸法/overflowの拒否をASan/UBSanで確認。
+    ログ: dclno_pool_cpu_asan_stack.log
+  k点schedule: 25391配置で順列、各owner内の順序、owner不変を確認。
+    1000点/18owner/group18では平均稼働owner数が1.286 -> 17.857。
+    これは処理順序の検査であり、実測の速度向上率ではない。
+    ログ: band_noncol_k_order_cpu.log
+  sanitizer補足: sandbox内のLeakSanitizerはptrace制約で実行不可だった。
+    ホストで再実行し、ASan shadow配置が無制限stackと衝突したテストは、
+    そのテストshellだけ ulimit -s 8192 として正常に検証した。
+
+DC-LNOのCPU/GPU切替の独立測定
+  tools/bench_dclno_solver.py は本番関数を抽出し、既存のcuSOLVER/GEMMul8/
+  BLAS objectへリンクする。行列はrankごとに異なる合成SPD S/対称H。
+  行列生成・残差検査は時間に含めず、転送・本番solveの同期完了を含む。
+  2 warmup + 3測定。下表は全固有対の最遅rank時間の反復平均（秒）。
+
+  次元       8 ranks CPU / GPU        18 ranks CPU / GPU
+   400        0.037 / 0.087              0.052 / 0.181
+   600        0.112 / 0.156              0.200 / 0.339
+   800        0.266 / 0.243              0.495 / 0.535
+  1024        0.625 / 0.359              1.203 / 0.810
+  1536        2.314 / 0.834              4.609 / SKIP
+  2100        6.177 / 1.728             12.173 / SKIP
+
+  要求固有対を半数にしても傾向は同じ。18 ranksの1536/2100は本番の
+  メモリ判定でGPUをスキップ。実行できたケースの最大数値検証誤差3.109e-15。
+  固有値比較、選択固有対のgeneralized residualとS直交性を検査した。
+  CUDA algorithm=auto は全固有対にcuSOLVERの自動選択を使い、部分要求は
+  SYEVDXを維持する。部分要求を全固有対へ拡張する設定ではない。
+  L/N1C999の局所行列は636以下であり、GPUへの切替閾値を256へ下げる
+  判断を支持しない。既定800を維持する。この合成測定をOpenMX全体の
+  性能向上率や汎用的な最適閾値としては扱わない。
+  ログ: dclno_solver_bench8.log, dclno_solver_bench18.log
+
+未完了の対照試験
+  candidate6のfinal6_L3_Si1/は1 rank、同じ16 GiB guardでの再試行。
+    SCF1の全1280 GPU solvesを完了したが、SCF2のatom864の表示後に
+    cuSOLVERの正INFO=122で終了した。wall1741.27秒、returncode10、
+    最大RSS204.65 GiB、最低MemAvailable36.69 GiB。メモリ保護による停止
+    ではなく、固有値計算の非収束。完了・参照比較合格には含めない。
+    正INFOの意味はNVIDIA cuSOLVER公式仕様に従う:
+      https://docs.nvidia.com/cuda/cusolver/
+    既存compat層がfull-spectrum要求をSYEVDへ渡す場合にも、呼出し側の
+    診断名はXsyevdxと表示される。このログだけでは実algorithmは識別しない。
+  candidate6のfinal6_L3_dclno8/Si1280-LNOはSCF1でhost memory guardが作動。
+    wall422.55秒、最大RSS227.82 GiB、最低MemAvailable15.00 GiB。
+    終了直後のN1C999も空き容量回復前にguard判定され、起動未完了。
+    このrunの2件は完了・参照比較合格には含めない。停止後にRAM解放を確認し、
+    N1C999は別runのfinal6_L3_N1_retry8/で完走・参照比較合格。
+    16 GiBの保護基準は緩めていない。
+  candidate4のfinal_L18/は5_5_13COb2、B2C62_Band、CG15c-DC-LNOの3件が
+  完了。DIA512-1を48.31秒で中断し、残り12件は未起動。B2で見つけた回帰を
+  修正するため検証queueを停止した。このrun全体は合格として扱わない。
+  before_L3_remaining8/ のCG15c 149.59秒、MCCN157.75秒は完了。
+  同runのN1C999は最初のSCFで467.07秒後に意図的に中断し、Si1280-LNOは
+  起動していない。このrun全体を合格・性能測定完了としては扱わない。
+  -runtestL のN1C999と -runtestL3 のN1C999は近傍範囲と局所行列サイズが
+  異なるため、互いを性能比較の対照にはしない。

@@ -175,10 +175,10 @@ Set `OPENMX_DENSITY_GRID_GPU_CACHE_MB=0` and
 A/B comparison. Nonlocal spin-orbit force assembly also avoids redundant
 pointer traversal and clears only the active orbital block.
 
-Multi-k band calculations also reuse transformed overlap matrices (collinear)
-and eigenvectors between the eigenvalue and density-matrix passes (collinear
-and noncollinear). Host memory is bounded by the per-rank limits below and
-the available node memory divided among local ranks. Uncached k points use
+Collinear and noncollinear multi-k band calculations also retain transformed
+overlap matrices across SCF iterations and reuse eigenvectors between the
+eigenvalue and density-matrix passes. Host memory is bounded by the per-rank
+limits below and the available node memory divided among local ranks. Uncached k points use
 the existing solve path; eigenvector panels expire after each SCF call, and
 overlap entries expire when the geometry or input changes.
 
@@ -186,15 +186,41 @@ overlap entries expire when the geometry or input changes.
 |---|---:|
 | `OPENMX_BAND_COL_OVERLAP_CACHE_MB` | 512 MiB |
 | `OPENMX_BAND_COL_KCACHE_MB` | 1024 MiB |
+| `OPENMX_BAND_NONCOL_OVERLAP_CACHE_MB` | 512 MiB |
 | `OPENMX_BAND_NONCOL_KCACHE_MB` | 1024 MiB |
+| `OPENMX_BAND_NONCOL_PACK_CACHE_MB` | 128 MiB |
 
-Set a cap to `0` to disable that cache. The two collinear caches each use at
-most 1/64 of available node RAM in total; the noncollinear cache uses at most
-1/32. `OPENMX_BAND_CACHE_TRACE=1` and
+Set a cap to `0` to disable that cache. Each collinear cache and the
+noncollinear overlap cache is further capped at 1/64 of available node RAM
+divided by the number of local MPI ranks; the noncollinear eigenvector cache
+uses 1/32. Overlap caches reset at the first SCF iteration and system cleanup;
+noncollinear entries also require matching matrix dimensions and k points.
+The noncollinear packed-matrix cache gathers the eight real-space matrices
+once per SCF and reuses them across k-point groups and both passes. It is
+also limited to 1/64 of available node RAM divided by local ranks. All owners
+must fit; otherwise the existing per-group gathers remain in use. Its storage
+is released at the end of each SCF call.
+Noncollinear k-point groups interleave their owner ranks to use the admitted
+GPU concurrency while preserving each rank's original k-point accumulation
+order. `OPENMX_BAND_NONCOL_INTERLEAVE_K=0` restores consecutive k-point groups
+for timing comparisons.
+`OPENMX_BAND_CACHE_TRACE=1` and
 `OPENMX_BAND_NONCOL_CACHE_TRACE=1` report reuse counts. Solver and GEMMul8
 scratch is released before force evaluation. Band runs release shared orbital
 and density caches after Force3; `OPENMX_FORCE_RELEASE_SCF_CACHES=0` disables
 this latter release for comparisons.
+
+When no complete Hamiltonian rank fits on its GPU, or only one rank would
+use the GPU while its peers fall back to the CPU, matrix construction
+automatically streams bounded pair batches through the CUDA kernel.
+For the one-rank case, explicit serial waves and a one-rank GPU limit keep
+their existing schedule. If no complete rank fits, streaming is still tried.
+`OPENMX_SETHAM_STREAM_MB` caps the workspace per rank (default 256 MiB;
+values must be at least 8 MiB), with a further limit from each rank's share
+of free GPU memory after reserving space for the potential and runtime.
+Oversized pairs or recoverable CUDA failures use the CPU for those pairs.
+`OPENMX_SETHAM_STREAMING=0` disables this fallback; it also requires the
+CUDA matrix kernel to be enabled (`OPENMX_SETHAM_CUDA_KERNEL`, default 1).
 
 VNA projector construction reduces its pair batch to fit each rank's GPU
 memory budget. The HVNA contraction also admits ranks in turns when their
@@ -205,6 +231,32 @@ and falls back to the CPU if one rank cannot fit. Set
 `OPENMX_SETPRO_HVNA_TURNS=0` to disable rank turns, or use the existing
 `OPENMX_SETPRO_GPU=0` to disable the VNA GPU stages.
 
+For VNA forces, `OPENMX_FORCE4B_CASE2_STREAM=auto` (also the unset default)
+streams case-2 projector traces one centre at a time when the full GPU batch
+does not fit. Set it to `0` to disable streaming or `1` to request streaming
+even when the full batch fits. Memory admission still applies, with CPU
+fallback if a rank's largest centre does not fit; `OPENMX_FORCE4B_GPU=0`
+disables both the full-batch and streamed GPU paths.
+For case 1, `OPENMX_FORCE4B_CASE1_TURNS=auto` (the unset default) can
+retain received projector rows in host memory and run bounded groups of ranks
+on each physical GPU when concurrent full archives do not fit. Group size
+uses the free memory measured after earlier buffers are released, the largest
+rank arena, a 256 MiB reserve and 64 MiB allowance per active rank.
+`OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS=1` restores one rank at a time for comparisons.
+Each rank
+uploads its local rows and halo once, using the existing kernel. The added
+host allocations must fit both three quarters of available node RAM and
+the amount remaining after reserving 32 GiB. Device allocation failure uses
+the cached halo in the CPU contraction. Set this mode to `0` to disable it
+or `1` to force it; `OPENMX_FORCE4B_CASE1_STREAM=1` takes precedence.
+`OPENMX_FORCE4B_CASE1_STREAM=auto` similarly streams case-1 traces when the
+full archive and rank turns are unavailable. It packs only the projector rows needed for each
+received source, then accumulates results in the original atom/pair order.
+`OPENMX_FORCE4B_CASE1_STREAM_MB` caps its per-rank arena at 1024 MiB by default;
+`0` prevents streaming. The case-1 mode also accepts `0` (disabled) and `1`
+(forced), independently of the case-2 mode. Both respect the parent GPU switch
+and fall back to the CPU if their workspace cannot fit.
+
 Large collinear cluster solves release disposable matrices, eigenvector panels
 and solver workspace after forming the density matrix when less than half of
 the GPU memory is free. The transformed overlap stays cached. Memory admission
@@ -212,6 +264,21 @@ is checked again before the next solve, including serialized spin execution.
 `OPENMX_CLUSTER_GPU_RETAIN_SCRATCH=1` keeps the previous retention policy for
 comparisons; `0` releases scratch at every SCF boundary, and leaving it unset
 uses the automatic policy. `OPENMX_CUSOLVER_VERBOSE=1` reports released scratch.
+
+`OPENMX_DCLNO_PROFILE=1` reports collinear DC-LNO CPU/GPU task counts,
+matrix-dimension ranges and histograms, and SCF phase times aggregated as
+MPI-rank maxima and means. Profiling is off by default. The existing
+`OPENMX_DCLNO_GPU_THRESHOLD` overrides the collinear local-matrix GPU
+crossover (default dimension 800) for controlled comparisons.
+Collinear DC-LNO keeps LAPACK eigenvectors in their packed layout and stores
+each atom/spin residue window in one contiguous allocation, preserving the
+existing row layout and accumulation order.
+If a local cuSOLVER solve returns positive INFO (numerical nonconvergence),
+it retries that generalized eigenproblem on the CPU using the original host
+matrices and existing workspace. The optional proxy path returns the retry
+to the originating rank. Invalid arguments, API errors and inconsistent
+eigenpair counts remain fatal. Profiling counts the initially selected backend;
+its solve time includes any CPU retry, which is also reported in the log.
 
 ### Reproducible GPU regression runs
 
@@ -244,6 +311,10 @@ Standalone GPU accuracy checks are also included:
 ```sh
 tests/run_cusolver_smoke.sh 257
 tests/run_gemmul8_smoke.sh
+# Check bounded Hamiltonian batches, buffer reuse and recoverable overflow:
+tests/run_set_hamiltonian_stream_smoke.sh
+# Add CUDA device memory checking:
+SETHAMILTONIAN_SANITIZE=1 tests/run_set_hamiltonian_stream_smoke.sh
 # Exercise a GPU first SCF step followed by a memory-admission CPU fallback:
 tests/run_cluster_fallback_smoke.sh
 ```
@@ -254,8 +325,34 @@ cross-version checks. They isolate the selected CUDA runtime from unrelated
 minutes to compile. The cluster fallback injection check requires CUDA 13.4
 Update 1 or later and a built OpenMX executable.
 
+CPU checks for the new packing, allocation and scheduling paths use functions
+extracted from the production sources:
+
+```sh
+python3 tests/run_force4b_stream_cpu.py
+python3 tests/run_force4b_case1_cpu.py
+python3 tests/run_force4b_case1_turns_cpu.py
+python3 tests/run_dclno_residue_pool_smoke.py --sanitize
+python3 tests/run_dclno_solver_retry.py --sanitize
+python3 tests/run_band_noncol_k_order_cpu.py
+```
+
+These check arithmetic against independent CPU contractions, buffer boundaries,
+allocation failure, empty ranks and preservation of each owner's k-point order.
+The solver retry check injects CUDA failures through host stubs and checks the
+recovery against independent LAPACK generalized eigenpairs; it needs LP64
+LAPACK/BLAS libraries (`LAPACK_LIBS` can override `-llapack -lblas`).
+They complement the GPU/MPI suite runs. `tools/bench_dclno_solver.py --build`
+also prepares a CPU/GPU crossover benchmark using the production DC-LNO solver
+functions and existing libraries. It prints the separate MPI launch command;
+synthetic-matrix timings guide experiments and do not change the default
+threshold. Use the same thread, MPI binding and MPS settings as the suite runs.
+The timing harness rejects GPU nonconvergence instead of reporting CPU retry
+time as a GPU measurement.
+
 Measured results, accuracy checks, version coverage and remaining limitations
-are recorded in [the CUDA 13.4 validation report](doc/cuda_13_4_validation.txt).
+are recorded in [the CUDA 13.4 validation report](doc/cuda_13_4_validation.txt)
+and [the subsequent GPU tuning measurements](doc/gpu_tuning_20261001.txt).
 
 ## Docker image
 I have released the OpenMX 4.0 GPU Docker image.
