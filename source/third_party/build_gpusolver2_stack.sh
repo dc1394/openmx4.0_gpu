@@ -20,13 +20,20 @@
 #   GPUSOLVER2_CUDA_HOME / GPUSOLVER2_MATH_DIR / GPUSOLVER2_COMPILER_LIB
 #                        NVHPC CUDA, math_libs (cublas), compiler lib dirs
 #   GPUSOLVER2_SCALAPACK_SO shared ScaLAPACK used for CMake/configure probes
+#                        (its directory need not be the MPI library directory)
 #   GPUSOLVER2_ELPA_VER  ELPA version (tag new_release_<ver with underscores>)
 #   GPUSOLVER2_CMAKE     cmake >= 3.24 for COSMA (bootstrapped from the
 #                        bundled source archive when not available)
 #   GPUSOLVER2_JOBS      parallel build jobs
+#   GPUSOLVER2_TOOL_PATH directories searched before /usr/bin for the build
+#                        tools, e.g. newer autotools than the system ones
+#                        (see build_host_autotools.sh)
+#   GPUSOLVER2_HOST_LIBDIR runtime library directory of GPUSOLVER2_HOST_CXX
+#                        when it is not the system GCC
 #
-# ELPA is built from the GitLab tag archive, so autoconf/automake/libtool/m4
-# and python3 must be available (standard on Ubuntu; module/apt otherwise).
+# ELPA is built from the GitLab tag archive, so autoconf (>= 2.71), automake,
+# libtool, m4 and python3 must be available (standard on Ubuntu; module/apt or
+# GPUSOLVER2_TOOL_PATH otherwise).
 #
 # Each step leaves a stamp in $GPUSOLVER2_BUILD/stamp and is skipped when the
 # stamp exists, so a failed build resumes where it stopped.
@@ -48,6 +55,8 @@ set -u
 : "${GPUSOLVER2_ELPA_VER:=2026.02.002}"
 : "${GPUSOLVER2_CMAKE:=}"
 : "${GPUSOLVER2_JOBS:=$(nproc 2>/dev/null || echo 8)}"
+: "${GPUSOLVER2_TOOL_PATH:=}"
+: "${GPUSOLVER2_HOST_LIBDIR:=}"
 
 DIST=$GPUSOLVER2_DIST
 SRC=$GPUSOLVER2_BUILD/src
@@ -91,8 +100,11 @@ export NVHPC_CUDA_HOME="$GPUSOLVER2_CUDA_HOME"
 export NVCOMPILER_CUDA_HOME="$GPUSOLVER2_CUDA_HOME"
 export NVCOMPILER_MATH_LIBS_HOME="$GPUSOLVER2_MATH_DIR"
 # Preserve the Makefile's NVCOMPILER_COMM_LIBS_HOME for the SDK MPI selector.
-export PATH="$GPUSOLVER2_MPI_BIN:$NVCOMP_BIN:$GPUSOLVER2_CUDA_HOME/bin:/usr/bin:/bin"
-export LD_LIBRARY_PATH="$GPUSOLVER2_MPI_LIBDIR:$GPUSOLVER2_COMPILER_LIB:$GPUSOLVER2_CUDA_HOME/targets/x86_64-linux/lib:$GPUSOLVER2_MATH_DIR/lib"
+# The ScaLAPACK directory is searched after the MPI one: it may be another
+# MPI installation's tree, whose libmpi must not shadow the selected MPI.
+SCALAPACK_DIR=$(dirname "$GPUSOLVER2_SCALAPACK_SO")
+export PATH="${GPUSOLVER2_TOOL_PATH:+$GPUSOLVER2_TOOL_PATH:}$GPUSOLVER2_MPI_BIN:$NVCOMP_BIN:$GPUSOLVER2_CUDA_HOME/bin:/usr/bin:/bin"
+export LD_LIBRARY_PATH="$GPUSOLVER2_MPI_LIBDIR:$SCALAPACK_DIR:$GPUSOLVER2_COMPILER_LIB:$GPUSOLVER2_CUDA_HOME/targets/x86_64-linux/lib:$GPUSOLVER2_MATH_DIR/lib${GPUSOLVER2_HOST_LIBDIR:+:$GPUSOLVER2_HOST_LIBDIR}"
 
 fail() { echo "gpusolver2 stack: FAILED at step $1 (see $LOGS/$1.log)"; exit 1; }
 
@@ -136,11 +148,14 @@ step_elpa() {
   SM80=""
   [ "$GPUSOLVER2_GPU_ARCH" -ge 80 ] 2>/dev/null && SM80="--enable-nvidia-sm80-gpu"
   mkdir -p "$BLD/elpa" && cd "$BLD/elpa"
+  # ELPA's nvcc rule does not see CPPFLAGS; the cuBLAS headers of an SDK
+  # layout with separate math_libs have to reach it through NVCCFLAGS.
   "$SRC/elpa/configure" --prefix="$P" \
     FC="$GPUSOLVER2_MPI_BIN/mpif90" CC="$GPUSOLVER2_MPI_BIN/mpicc" CXX="$GPUSOLVER2_MPI_BIN/mpicxx" \
     FCFLAGS="-O2" CFLAGS="-O2" CXXFLAGS="-O2" \
     CPPFLAGS="-I$GPUSOLVER2_MATH_DIR/include -I$GPUSOLVER2_CUDA_HOME/targets/x86_64-linux/include" \
-    LDFLAGS="-L$GPUSOLVER2_MPI_LIBDIR -L$GPUSOLVER2_COMPILER_LIB -L$GPUSOLVER2_MATH_DIR/lib" \
+    NVCCFLAGS="-I$GPUSOLVER2_MATH_DIR/include" \
+    LDFLAGS="-L$GPUSOLVER2_MPI_LIBDIR -L$SCALAPACK_DIR -L$GPUSOLVER2_COMPILER_LIB -L$GPUSOLVER2_MATH_DIR/lib" \
     LIBS="-lscalapack_lp64 -llapack_lp64 -lblas_lp64 -lstdc++" \
     --enable-nvidia-gpu-kernels --with-NVIDIA-GPU-compute-capability=sm_$GPUSOLVER2_GPU_ARCH $SM80 \
     --with-cuda-path="$GPUSOLVER2_CUDA_HOME" --disable-shared --enable-static \
@@ -198,7 +213,10 @@ else
 fi
 echo "gpusolver2 stack: using cmake: $CMAKE ($($CMAKE --version | head -n1))"
 
+# The OpenMX Makefile links $P/lib/*.a; without the explicit libdir, CMake
+# installs into lib64 on RHEL-family systems.
 COMMON="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_PREFIX_PATH=$P \
+ -DCMAKE_INSTALL_LIBDIR=lib \
  -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
  -DCMAKE_C_COMPILER=$GPUSOLVER2_HOST_CC -DCMAKE_CXX_COMPILER=$GPUSOLVER2_HOST_CXX \
  -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF"

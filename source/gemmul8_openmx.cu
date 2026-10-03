@@ -9,6 +9,29 @@
  *
  * Compile with -I<GEMMul8>/include -I<GEMMul8>/src.
  */
+#include <cublas_v2.h>
+#include <cublasLt.h>
+
+/*
+ * GEMMul8's handle header also compiles its cuBLASLt (Lt-handle) setup,
+ * which names attributes added in cuBLAS 12.8 (matrix scale modes) and
+ * 12.9 (batch modes).  The cublasHandle_t entry points instantiated below
+ * never execute that setup, so declaring the names with their upstream
+ * values lets this TU build against older CUDA 12 toolkits.
+ */
+#if CUBLAS_VERSION < 120900
+typedef enum {
+    CUBLASLT_BATCH_MODE_STRIDED       = 0,
+    CUBLASLT_BATCH_MODE_POINTER_ARRAY = 1
+} cublasLtBatchMode_t;
+inline constexpr auto CUBLASLT_MATRIX_LAYOUT_BATCH_MODE = static_cast<cublasLtMatrixLayoutAttribute_t>(8);
+#endif
+#if CUBLAS_VERSION < 120800
+inline constexpr int  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F = 0;
+inline constexpr auto CUBLASLT_MATMUL_DESC_A_SCALE_MODE = static_cast<cublasLtMatmulDescAttributes_t>(31);
+inline constexpr auto CUBLASLT_MATMUL_DESC_B_SCALE_MODE = static_cast<cublasLtMatmulDescAttributes_t>(32);
+#endif
+
 #include "gemm/gemm_impl.hpp"
 #include "worksize/worksize_impl.hpp"
 /* GEMMul8 3.5 uses handle-local workspace configuration in GEMM. */

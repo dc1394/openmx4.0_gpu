@@ -1,0 +1,74 @@
+###################################################################
+# System C (Kugui) at ISSP, Univ. of Tokyo: site settings for the stock
+# Makefile, which is included unchanged below.
+#
+#   GPU nodes   A100-SXM4-40GB (sm_80) with driver 560.35, i.e. CUDA 12.x
+#               only; the login nodes have no GPU (no nvidia-smi)
+#   SDK         NVHPC 24.7 with its CUDA 12.5 (no modulefile needed)
+#   nvc 24.x    two code-generation problems decide the flags:
+#               - 24.5 and 24.7 vectorize a[i][i+c] accesses of pointer
+#                 arrays as if the row were fixed
+#                 (tests/nvc_diag_vectorizer_bug.c); the Krylov starting
+#                 vectors are one victim, so the host vectorizer is off
+#               - 24.5 and older turn device divisions into reciprocal
+#                 multiplications at -O3, which the orbital kernels (phi =
+#                 asin(y/r1)) amplify to several 1e-8 Ha/bohr in the
+#                 forces; 24.7 divides exactly, older ones need
+#                 -Mnofprelaxed in NVHPC_GPU_FLAGS
+#   MPI         the site Open MPI built with that SDK (PBS tm, UCX)
+#   ScaLAPACK   the SDK's LP64 build; it sits in the tree of the SDK's own
+#               Open MPI 4.1.5, whose ABI the site Open MPI 4.1.6 shares
+#   C++20 host  GCC 12.2 from /opt/gcc: the system GCC 8.5 has no C++20
+#               library, and nvcc 12.5 ignores -std=c++20 with nvc++
+#   autotools   the bundled ELPA needs autoconf >= 2.71 (RHEL 8 has 2.69),
+#               so a private copy is built once into build/host-tools
+#
+# Build from source/ with:  make -f Makefile.kugui -j16 all
+# (plain "make -f Makefile.kugui" builds only openmx; run one build at a
+# time: the login nodes allow 300 processes per user)
+###################################################################
+
+NVHPC_ROOT          ?= /home/app/hpc_sdk/Linux_x86_64/24.7
+NVHPC_CUDA_VERSION  ?= 12.5
+KUGUI_MPI_ROOT      ?= /home/app/openmpi/4.1.6_24.7_cuda11.8
+NVHPC_MPI_BIN       ?= $(KUGUI_MPI_ROOT)/bin
+KUGUI_SCALAPACK_DIR ?= $(NVHPC_ROOT)/comm_libs/$(NVHPC_CUDA_VERSION)/openmpi4/openmpi-4.1.5/lib
+NVPL_SCALAPACK_LIB  ?= $(KUGUI_SCALAPACK_DIR)/libscalapack_lp64.a
+GPUSOLVER2_SCALAPACK_SO ?= $(KUGUI_SCALAPACK_DIR)/libscalapack_lp64.so
+GEMMUL8_GPU_ARCH    ?= 80
+
+KUGUI_GCC_ROOT      ?= /opt/gcc/12.2.0
+KUGUI_GCC_LIBDIR    ?= $(KUGUI_GCC_ROOT)/snos/lib64
+NVCC_HOST           ?= $(KUGUI_GCC_ROOT)/bin/g++
+GPUSOLVER2_HOST_CC  ?= $(KUGUI_GCC_ROOT)/bin/gcc
+GPUSOLVER2_HOST_CXX ?= $(KUGUI_GCC_ROOT)/bin/g++
+export GPUSOLVER2_HOST_LIBDIR ?= $(KUGUI_GCC_LIBDIR)
+
+# The stock default is nproc, which follows OMP_NUM_THREADS (1 in the
+# login environment).
+GPUSOLVER2_JOBS     ?= 16
+
+HOST_TOOLS          ?= $(CURDIR)/build/host-tools
+export GPUSOLVER2_TOOL_PATH ?= $(HOST_TOOLS)/bin
+
+include Makefile
+
+# See "nvc 24.x" above.  No -Mvect suboption short of nosimd avoids the
+# miscompilation, and the flag only works after the -O level.
+CC  += -Mnovect
+CC3 += -Mnovect
+
+# The GCC 12 objects (GEMMul8, COSMA) need its libstdc++ at link and run
+# time; /opt/gcc is also present on the compute nodes.
+LIB += -L$(KUGUI_GCC_LIBDIR) -Wl,-rpath,$(KUGUI_GCC_LIBDIR)
+
+$(GPUSOLVER2_STAMP): | $(HOST_TOOLS)/.libtool-2.4.7.done
+$(HOST_TOOLS)/.libtool-2.4.7.done:
+	sh third_party/build_host_autotools.sh "$(HOST_TOOLS)" $(GPUSOLVER2_JOBS)
+
+# Kugui has no makeinfo.  The FFTW manual overlaid from the release tarball
+# keeps its release mtime and so looks older than the checked-out .texi
+# sources; mark it current instead of letting the FFTW build regenerate it.
+$(FFTW3_BUILD_DIR)/config.status: | $(FFTW3_SRC_ABS)/doc/.info-current
+$(FFTW3_SRC_ABS)/doc/.info-current: $(FFTW3_CODELET_SENTINEL)
+	touch "$(FFTW3_SRC_ABS)"/doc/fftw3.info* "$@"
