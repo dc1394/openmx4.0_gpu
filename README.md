@@ -410,7 +410,7 @@ On each machine the same binary was used for all of its columns, and the GPU sui
 
 ```sh
 # GPU (defaults; GEMMul8 enabled); N = 18 on the PC, 48 on the Pegasus node, 64 or 48 on the Kugui node.
-# On both machines the GPU suites were run twice: with the MPS daemon up
+# On all three machines the GPU suites were run twice: with the MPS daemon up
 # ("MPS" columns) and without it ("no MPS" columns).
 mpirun -np N ./openmx -runtest  -nt 1
 mpirun -np N ./openmx -runtestL -nt 1
@@ -466,6 +466,57 @@ These systems are far below the GPU/CPU switching thresholds of the dense eigens
 All 16 inputs pass on the GPU (GEMMul8 on) on both machines — max diff Utot = 2.0e-9 Hartree on the RTX 5080 and 2.3e-9 on the H100 (on both machines identical with and without MPS), the same order as the official CPU reference results bundled in `work/large_example/runtestL.result_*` (whose largest deviation is also on Pt63, the case that reaches 2.3e-8 in our 48-rank CPU reference column). The H100 no-MPS column is the "NVIDIA MPS" section above in numbers: 48 time-sliced CUDA contexts drag the suite to 3684.69 s — 2.5x the MPS-on time, slower than the CPU-only run, with per-case penalties up to 6.3x (DIA512-1) — while accuracy is unaffected. On the 18-rank RTX 5080 the no-MPS run is a milder 15% slower overall, but the pattern is the same, with the krylov inputs hit hardest (DIA512-1: 185.44 vs 116.49 s). On the larger inputs the dense band/cluster diagonalizations run on the GPU through GEMMul8; when many ranks share one GPU, some construction stages transiently fall back to the CPU where the device-memory preflight says they do not fit (by design — the run continues and stays correct; this happens on the 16 GB RTX 5080 and, at 48 ranks, even on the 80 GB H100). Keep in mind that these test inputs are correctness tests, not performance showcases: they are small-to-medium systems dominated by stages other than the dense diagonalization, which is where the GPU gains the most. The speedup grows with the system size (see "Important notes" below), and calculations with hundreds of atoms and a dense solver benefit far more than the 1.34x / 1.49x totals above.
 
 The Kugui columns add a 40 GB GPU to the picture. With 64 ranks on one A100 the MPS daemon cannot be used (48-client limit, see above), and without it the 64 time-sliced contexts leave about 13 GB of the 40 GB free, so the force and Hamiltonian stages fall back to the CPU on most inputs and the GPU run ends up 10% slower than the CPU run (2670.86 vs 2436.27 s). With 48 ranks and MPS the same binary completes the suite in 1719.87 s — 1.62x the 48-rank CPU run (2785.91 s) and 1.42x the 64-rank one — with the largest gains on the band inputs (GGFF 2.93x, B2C62_Band 2.00x) and none on N1C999 (1.06x), as on the H100. All 16 inputs pass in all four Kugui columns; the two GPU columns stay within max diff Utot = 2.3e-9 Hartree, and the 48-rank CPU column reaches 2.3e-8 on Pt63, exactly as the Pegasus CPU column does.
+
+### Large test suites on two Kugui nodes (-runtestL3 / -runtestL2)
+The two largest built-in suites were run on two Kugui GPU nodes (each AMD EPYC 7763, 64 cores, 4 × A100-SXM4-40GB, 251 GiB; F2acc queue) with the same binary as above and two layouts of 64 MPI ranks:
+
+- **CPU** — 32 ranks × 2 OpenMP threads per node, `OPENMX_GPU=0`, `-nt 2`;
+- **GPU** — 32 flat-MPI ranks per node sharing one of the node's A100s, with an MPS daemon on each node.
+
+Both layouts give every rank two cores (`mpirun --map-by ppr:32:node:PE=2`), and every input ran as a separate MPI job through `tools/run_gpu_suites.py`; the times are those of the native result files.
+
+`-runtestL3` (20 inputs, 4–1280 atoms; every input is capped at 3 SCF iterations; "ratio" is CPU / GPU):
+
+| input | atoms | solver | CPU (s) | GPU, MPS (s) | ratio |
+|---|---:|---|---:|---:|---:|
+| 5_5_13COb2 | 155 | band | 15.68 | 16.34 | 0.96 |
+| C1000 | 1000 | cluster | 153.21 | 95.53 | 1.60 |
+| C60 | 60 | dc | 11.15 | 10.75 | 1.04 |
+| CG15c | 650 | dc-lno | 70.79 | 42.49 | 1.67 |
+| Crys-MnO | 4 | band (sp) | 13.91 | 11.21 | 1.24 |
+| DIA512-1 | 512 | krylov | 30.21 | 21.86 | 1.38 |
+| Fe1000 | 1000 | cluster (sp) | 267.59 | 100.74 | 2.66 |
+| GEL | 40 | band | 19.13 | 14.48 | 1.32 |
+| GFRAG | 54 | cluster | 12.80 | 12.31 | 1.04 |
+| GGFF | 40 | band (NC) | 139.41 | 54.66 | 2.55 |
+| MCCN | 564 | dc-lno | 65.83 | 42.13 | 1.56 |
+| Mn12_148_F | 148 | cluster (sp) | 19.41 | 14.81 | 1.31 |
+| N1C999 | 1000 | dc-lno (sp) | 487.56 | 285.44 | 1.71 |
+| Ni63-O64 | 127 | band (sp) | 18.63 | 15.87 | 1.17 |
+| Pt500 | 500 | cluster | 360.56 | 300.98 | 1.20 |
+| Pt63 | 63 | cluster | 14.72 | 13.64 | 1.08 |
+| Si1280-LNO | 1280 | dc-lno | 605.02 | 641.41 | 0.94 |
+| SialicAcid | 40 | cluster | 13.14 | 12.88 | 1.02 |
+| ZrB2_2x2 | 76 | band | 45.59 | 24.12 | 1.89 |
+| nsV4Bz5 | 64 | cluster | 18.34 | 15.83 | 1.16 |
+| **Total** | | | **2382.68** | **1747.48** | **1.36** |
+
+`-runtestL2` (7 clusters of 500–1200 atoms converged to 1e-10 Hartree; "SCF" counts the iterations in the `.out` history, the last number being the bundled reference):
+
+| input | atoms | solver | CPU (s) | GPU, MPS (s) | ratio | SCF (CPU / GPU / ref) |
+|---|---:|---|---:|---:|---:|---:|
+| C1000 | 1000 | cluster | 1088.21 | 621.75 | 1.75 | 41 / 41 / 41 |
+| Fe1000 | 1000 | cluster (sp) | 26053.42 | 6488.62 | 4.02 | 507 / 409 / 366 |
+| GRA1024 | 1024 | cluster | 1429.67 | 624.62 | 2.29 | 57 / 48 / 53 |
+| Ih-Ice1200 | 1200 | cluster | 520.04 | 319.85 | 1.63 | 36 / 35 / 36 |
+| Pt500 | 500 | cluster | 8676.55 | 4118.84 | 2.11 | 300 / 215 / 199 |
+| R-TiO2-1050 | 1050 | cluster | 1564.01 | 729.24 | 2.14 | 36 / 39 / 41 |
+| Si1000 | 1000 | cluster | 1156.51 | 648.14 | 1.78 | 42 / 41 / 42 |
+| **Total** | | | **40488.41** | **13551.06** | **2.99** | |
+
+On `-runtestL3` the GPU layout is 1.36x faster overall, with the largest gains on the big cluster and band inputs (Fe1000 2.66x, GGFF 2.55x) and no gain on Si1280-LNO (0.94x) or the small 5_5_13COb2 (0.96x). On `-runtestL2` it is 2.99x faster, but part of that gap is the SCF path rather than the hardware: the CPU run of Pt500 reached its `scf.maxIter` of 300 without meeting the criterion (it still agrees with the reference to 1.6e-8 Hartree), and Fe1000 needed 507 iterations on the CPU against 409 on the GPU and 366 in the reference. The final convergence of these metallic clusters is erratic — the energy change hovers between 1e-8 and 1e-7 Hartree for a hundred iterations or more before it drops below 1e-10 — so the time per iteration is the fairer comparison: Fe1000 51.4 s on the CPU vs 15.9 s on the GPU (3.2x), Pt500 28.9 vs 19.2 s (1.5x); the other five inputs take 35–57 iterations in both layouts and run 1.6–2.3x faster on the GPU. Two GPU nodes thus complete `-runtestL2` in about the time of the bundled Kugui reference `runtestL2.result_kugui` (13566.86 s; Intel oneAPI + Intel MPI, 6 nodes, 192 MPI processes).
+
+All seven `-runtestL2` inputs agree with the references in both layouts (max diff Utot = 1.6e-8 Hartree, max diff Force = 1.5e-8 Hartree/bohr). On `-runtestL3` the force differences of Fe1000 and Pt500 in both layouts and of C1000 on the GPU (up to 8.5e-7 Hartree/bohr on the GPU and 4.8e-7 on the CPU, both for Fe1000) exceed the 1e-7 default tolerance of `tools/compare_gpu_suites.py`; with only 3 SCF iterations their forces are far from converged, and the bundled results of other machines differ from the reference by the same amount (Fe1000: 4.9e-7 Hartree/bohr). Host memory was not a constraint: the largest run (L3 Pt500 on the GPU) peaked at 166 GiB on its first node.
 
 ## Important notes
 At present, GPU-accelerated OpenMX performs faster than standard OpenMX for calculations involving systems containing hundreds of atoms. For calculations involving systems with fewer than a hundred atoms, standard OpenMX should be used (or set `scf.eigen.lib elpa2` to run the CPU paths of this code). Please use with caution as it may contain bugs.
