@@ -20,6 +20,9 @@ python=${PYTHON:-python3}
 moduli=${MODULI:-8,10,12,14,15,16,20}
 fast=${FAST:-0,1}
 reps=${REPS:-3}
+# the build's defaults, for the record in environment.txt
+nvcc=${NVCC:-${CUDA_HOME:-/usr/local/cuda-13.4}/bin/nvcc}
+host_cxx=${NVCC_HOST:-${NVHPC_ROOT:-/opt/nvidia/hpc_sdk/Linux_x86_64/26.9}/compilers/bin/nvc++}
 
 mkdir -p "$out"
 out=$(CDPATH= cd -- "$out" && pwd)
@@ -29,10 +32,13 @@ sh "$repo/tests/run_gemmul8_reuse_probe.sh" "$bin"
 {
   echo "date: $(date)"
   echo "host: $(hostname)"
+  echo "cpu: $(sed -n 's/^model name[^:]*: *//p' /proc/cpuinfo 2>/dev/null | head -1)"
   echo "commit: $(git -C "$repo" log --oneline -1 2>/dev/null)"
   echo "modified: $(git -C "$repo" status --short -uno -- source tests tools 2>/dev/null | tr '\n' ';')"
   echo "GEMMul8: $(git -C "$repo/source/third_party/GEMMul8" describe --tags --always 2>/dev/null)"
-  echo "host compiler: ${NVCC_HOST:-default}"
+  echo "toolkit: $("$nvcc" --version 2>/dev/null | tail -1)"
+  echo "host compiler: $host_cxx: $("$host_cxx" --version 2>/dev/null | awk 'NF {print; exit}')"
+  echo "environment: $(env | grep -E '^(CUBLAS|CUSOLVER|CUDA|NVHPC|NVCC|GEMMUL8|OPENMX|OMP)_' | sort | tr '\n' ';')"
   nvidia-smi --query-gpu=name,compute_cap,driver_version,memory.total,memory.used --format=csv 2>/dev/null
 } > "$out/environment.txt"
 cat "$out/environment.txt"

@@ -55,12 +55,17 @@ export OMP_NUM_THREADS=1
 {
   echo "date: $(date)"
   echo "host: $(hostname)"
+  echo "cpu: $(sed -n 's/^model name[^:]*: *//p' /proc/cpuinfo 2>/dev/null | head -1)"
+  echo "memory: $(awk '/^MemTotal/ {printf "%.0f GiB", $2 / 1048576}' /proc/meminfo 2>/dev/null)"
   echo "binary: $binary"
   echo "sha256: $(sha256sum "$binary" | cut -d' ' -f1)"
   echo "commit: $(git -C "$repo" log --oneline -1 2>/dev/null)"
   echo "modified: $(git -C "$repo" status --short -uno -- source tests tools 2>/dev/null | tr '\n' ';')"
   echo "ranks: $ranks, launcher: $launcher"
   echo "settings of every variant: ${common:-none}"
+  echo "libraries: $(ldd "$binary" 2>/dev/null | awk '/cublas|cusolver|cudart|libmpi[.]/ {print $3}' | tr '\n' ' ')"
+  echo "MPS daemon: $(pgrep -x nvidia-cuda-mps > /dev/null 2>&1 && echo running || echo not running)"
+  echo "environment: $(env | grep -E '^(CUBLAS|CUSOLVER|CUDA|NVHPC|GEMMUL8|OPENMX|OMP)_' | sort | tr '\n' ';')"
   nvidia-smi --query-gpu=name,compute_cap,driver_version,memory.total --format=csv 2>/dev/null
 } > "$out/environment.txt"
 cat "$out/environment.txt"
