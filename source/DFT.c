@@ -1355,16 +1355,24 @@ double DFT(int MD_iter, int Cnt_Now)
 
     if (openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
 
-      po = openmx_gemmul8AdaptiveStopCheck(po);
+      char stage[64];
+      long long before[5],after[5];
+      int restart;
 
-      /* the mixing history holds GEMMul8 iterations: restart it as the
-         control of the electronic temperature does */
-      if (openmx_gemmul8AdaptiveTakeHistoryReset()){
+      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),before);
+      po = openmx_gemmul8AdaptiveStopCheck(po);
+      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),after);
+
+      /* the mixing history holds iterations of the lower stages: restart it
+         as the control of the electronic temperature does */
+      restart = openmx_gemmul8AdaptiveTakeHistoryReset();
+      if (restart){
         int shift = LSCF_iter - Pulay_SCF + 2;
         if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
-        if (myid0==Host_ID && 0<level_stdout){
-          printf("<DFT>  forward GEMMs: FP64 from the next SCF step, mixing history restarted\n");fflush(stdout);
-        }
+      }
+      if (before[0]!=after[0] && myid0==Host_ID && 0<level_stdout){
+        printf("<DFT>  forward GEMMs: final stage %lld (%s) from the next SCF step%s\n",
+               after[0],stage,restart ? ", mixing history restarted" : "");fflush(stdout);
       }
     }
 

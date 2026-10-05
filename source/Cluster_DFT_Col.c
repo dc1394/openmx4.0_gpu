@@ -572,11 +572,14 @@ static double ClusterCol_ProbeEta(int n, int b)
     return difference/((reference<floor_norm) ? floor_norm : reference);
 }
 
+static int ClusterCol_GemmWorkspaceTurnRelease(void);
+
 static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C)
 {
     static double prof[5] = {0.0,0.0,0.0,0.0,0.0};
     static long prof_solves = 0;
     const int profile = ClusterCol_ProfileEnabled();
+    const int trim_scratch = ClusterCol_GemmWorkspaceTurnRelease();
     const int probe_b = openmx_gemmul8AdaptiveProbeColumns();
     double t0 = 0.0;
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
@@ -592,13 +595,24 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
     if (0<probe_b) ClusterCol_ProbeReference(n,probe_b);
     if (profile) prof[4] += ClusterCol_ProfileLap(&t0);
 
-    /* forward transform X^T (H X): X = d_S stays fixed during the SCF */
+    /* forward transform X^T (H X): X = d_S stays fixed during the SCF.  The
+       two products take a full GEMMul8 workspace when the device has room,
+       several times the capped one of the other products.  It is returned
+       before the eigensolver and the eigenvector stash allocate, so they
+       find the memory they found before; when the GEMMul8 workspaces are
+       kept across the SCF step (OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0) the
+       eigensolver workspace is secured first instead. */
+    if (!trim_scratch) ClusterCol_GpuSolver_EnsureWorkspace(n,maxn,ctx->d_H);
     wait_cudafunc(openmx_gemmul8DgemmFixed(ctx->cublas,0,CUBLAS_OP_N,n,n,n,
                                            ctx->d_S,n,ctx->d_H,n,ctx->d_tmp,n,
                                            0,ctx->transformed_s_version));
     wait_cudafunc(openmx_gemmul8DgemmFixed(ctx->cublas,1,CUBLAS_OP_T,n,n,n,
                                            ctx->d_S,n,ctx->d_tmp,n,ctx->d_H,n,
                                            0,ctx->transformed_s_version));
+    if (trim_scratch){
+        wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+        openmx_gemmul8TrimWorkspaces();
+    }
     if (profile) prof[0] += ClusterCol_ProfileLap(&t0);
 
     if (0<probe_b) openmx_gemmul8AdaptiveReport(ClusterCol_ProbeEta(n,probe_b),0);

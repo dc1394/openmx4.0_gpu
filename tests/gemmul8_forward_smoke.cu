@@ -25,7 +25,8 @@ extern "C" void openmx_gemmul8SetForwardStage(int,int,int,int,int);
 extern "C" size_t openmx_gemmul8ForwardCounters(long long*,double*);
 extern "C" void openmx_gemmul8ReleasePrepared();
 extern "C" void openmx_gemmul8ReleaseWorkspaces();
-extern "C" void openmx_gemmul8AdaptiveConfigure(int,const int*,const int*,const double*,const double*,int,int,int,int,int,int,int,int,int,double);
+extern "C" void openmx_gemmul8TrimWorkspaces();
+extern "C" void openmx_gemmul8AdaptiveConfigure(int,int,const int*,const int*,const double*,const double*,int,int,int,int,int,int,int,int,int,double);
 extern "C" int openmx_gemmul8AdaptiveEnabled();
 extern "C" void openmx_gemmul8AdaptiveStart();
 extern "C" int openmx_gemmul8AdaptiveBeginTrial();
@@ -201,7 +202,9 @@ template <class T> void run(cublasHandle_t handle, const Shape &s, const char *t
     /* stages without reuse are the existing paths, bit for bit */
     bench.upload(X1, V1);
     openmx_gemmul8SetForwardStage(DEFAULT, 0, 0, 0, 0);
-    expect(same(bench.fixed(0, 1), bench.general(true)), "default stage differs from openmx_gemmul8?gemm", type, s.name);
+    expect(same(bench.fixed(0, 1), bench.general(true)), "capped default stage differs from openmx_gemmul8?gemm", type, s.name);
+    openmx_gemmul8SetForwardStage(DEFAULT, 0, 0, 0, 1);
+    expect(same(bench.fixed(0, 1), bench.general(true)), "default stage differs from openmx_gemmul8?gemm below the cap", type, s.name);
     openmx_gemmul8SetForwardStage(FP64, 0, 0, 0, 0);
     expect(same(bench.fixed(0, 1), bench.general(false)), "fp64 stage differs from cuBLAS", type, s.name);
     openmx_gemmul8SetForwardStage(GEMMUL8, L, 0, 0, 0);
@@ -278,6 +281,45 @@ template <class T> void run(cublasHandle_t handle, const Shape &s, const char *t
 }
 
 /* the precision controller: three GEMMul8 stages, then FP64 */
+/* Above the workspace cap (256 MiB in this test) the default stage takes the
+   full workspace, and that scratch can be returned without touching the
+   capped workspace of the general entry points.  The memory tells the two
+   paths apart: at this size the blocked product splits only the columns of
+   C and agrees with the full-workspace one bit for bit. */
+void above_the_cap(cublasHandle_t handle)
+{
+    const Shape   s = {"square above the cap, X right, N", false, CUBLAS_OP_N, 3000, 3000, 3000};
+    const char   *type = "real";
+    const size_t  count = size_t(s.m) * s.n, cap = size_t(256) << 20, slack = size_t(64) << 20;
+    Bench<double> bench(handle, s);
+    size_t        before = 0, now = 0, total = 0;
+    const auto    used = [&]() {
+        check(cudaMemGetInfo(&now, &total));
+        return before > now ? before - now : size_t(0);
+    };
+
+    bench.upload(fill<double>(count, 0.3), fill<double>(count, 0.9));
+    openmx_gemmul8SetForwardStage(GEMMUL8, 15, 0, 0, 1);
+    const std::vector<double> full = bench.fixed(0, 1);
+    openmx_gemmul8SetForwardStage(GEMMUL8, 15, 0, 0, 0);
+    const std::vector<double> blocked = bench.fixed(0, 1);
+    openmx_gemmul8ReleaseWorkspaces();
+    check(cudaMemGetInfo(&before, &total));
+
+    openmx_gemmul8SetForwardStage(DEFAULT, 0, 0, 0, 1);
+    expect(same(bench.fixed(0, 1), full), "default stage does not take the full workspace above the cap", type, s.name);
+    expect(used() > cap + slack, "no scratch above the cap after the default stage", type, s.name);
+    openmx_gemmul8TrimWorkspaces();
+    expect(used() < slack, "trim does not return the scratch", type, s.name);
+
+    openmx_gemmul8SetForwardStage(DEFAULT, 0, 0, 0, 0);
+    expect(same(bench.fixed(0, 1), blocked), "capped default stage differs from the blocked GEMMul8 stage", type, s.name);
+    expect(same(bench.general(true), blocked), "openmx_gemmul8Dgemm differs from the blocked GEMMul8 stage", type, s.name);
+    expect(cap - slack < used() && used() < cap + slack, "capped workspace of unexpected size", type, s.name);
+    openmx_gemmul8TrimWorkspaces();
+    expect(cap - slack < used(), "trim frees the capped workspace", type, s.name);
+}
+
 void controller_logic()
 {
     const char  *type = "controller", *shape = "logic";
@@ -287,10 +329,13 @@ void controller_logic()
     long long    counters[5];
     int          rejected;
     double       eta;
-    const auto   configure = [&](int nstage, int stall, int budget) {
-        openmx_gemmul8AdaptiveConfigure(nstage, moduli, fast, promote, tolerance, 1, 1, 2, stall, budget, 2, 1, 8, 5, 1e-8);
+    const double early[] = {1e-2, 1e-5, 1e-7};
+    const auto   configure_with = [&](int nstage, int final_fp64, const double *thresholds, int stall, int budget, int final_window) {
+        openmx_gemmul8AdaptiveConfigure(nstage, final_fp64, moduli, fast, thresholds, tolerance, 1, 1, 2, stall, budget,
+                                        final_window, 1, 8, 5, 1e-8);
         openmx_gemmul8AdaptiveStart();
     };
+    const auto   configure = [&](int nstage, int stall, int budget) { configure_with(nstage, 1, promote, stall, budget, 2); };
     const auto accept = [&](int stop, double residual) { /* one accepted iteration that does not end the SCF */
         const int may_stop = openmx_gemmul8AdaptiveStopCheck(stop);
         return may_stop ? -1 : openmx_gemmul8AdaptiveAfterMixing(residual);
@@ -367,6 +412,47 @@ void controller_logic()
     openmx_gemmul8AdaptiveBeginTrial();
     expect(accept(0, 1e-9) == 0 && openmx_gemmul8AdaptiveBeginTrial() == 0, "a single stage stays", type, shape);
 
+    /* a threshold on the last GEMMul8 stage moves to FP64 before the stop condition */
+    configure_with(3, 1, early, 0, 0, 2);
+    openmx_gemmul8AdaptiveBeginTrial(); accept(0, 5e-3);
+    openmx_gemmul8AdaptiveBeginTrial(); accept(0, 5e-3);
+    openmx_gemmul8AdaptiveBeginTrial(); accept(0, 5e-6);
+    openmx_gemmul8AdaptiveBeginTrial();
+    expect(accept(0, 5e-6) == 1 && openmx_gemmul8AdaptiveBeginTrial() == 2, "second promotion", type, shape);
+    expect(accept(0, 5e-8) == 0, "one iteration below the last threshold", type, shape);
+    openmx_gemmul8AdaptiveBeginTrial();
+    expect(accept(0, 5e-8) == 1 && openmx_gemmul8AdaptiveBeginTrial() == 3, "the last threshold enters FP64 early", type, shape);
+    expect(openmx_gemmul8AdaptiveStopCheck(1) == 0 && openmx_gemmul8AdaptiveTakeHistoryReset() == 1,
+           "the early switch restarts the mixing at the first FP64 step", type, shape);
+
+    /* no native FP64: the last listed stage is the final one */
+    configure_with(2, 0, promote, 0, 0, 2);
+    expect(openmx_gemmul8AdaptiveBeginTrial() == 0, "two stages, the second final", type, shape);
+    expect(openmx_gemmul8AdaptiveStopCheck(1) == 0 && openmx_gemmul8AdaptiveTakeHistoryReset() == 1 &&
+               openmx_gemmul8AdaptiveBeginTrial() == 1,
+           "the stop condition in the first stage enters the final GEMMul8 stage", type, shape);
+    openmx_gemmul8AdaptiveDescribe(text, sizeof(text), counters);
+    expect(strcmp(text, "moduli=10 fast reuse") == 0 && openmx_gemmul8AdaptiveProbeColumns() == 8, "the final GEMMul8 stage is probed", type, shape);
+    expect(openmx_gemmul8AdaptiveStopCheck(1) == 0 && openmx_gemmul8AdaptiveAfterMixing(1e-12) == 0, "no promotion out of the final stage", type, shape);
+    expect(openmx_gemmul8AdaptiveStopCheck(1) == 0 && openmx_gemmul8AdaptiveStopCheck(1) == 1, "the final GEMMul8 stage ends the SCF", type, shape);
+    openmx_gemmul8AdaptiveBeginTrial();
+    openmx_gemmul8AdaptiveReport(1.0, 0);
+    openmx_gemmul8AdaptiveTrialStatus(&rejected, &eta);
+    openmx_gemmul8AdaptiveReject();
+    expect(rejected == 1 && openmx_gemmul8AdaptiveBeginTrial() == 2, "a rejected final GEMMul8 trial falls back to FP64", type, shape);
+    openmx_gemmul8AdaptiveDescribe(text, sizeof(text), counters);
+    expect(strcmp(text, "fp64") == 0, "description of the fallback stage", type, shape);
+
+    /* a single final stage is the plain fixed setting */
+    configure_with(1, 0, promote, 0, 0, 1);
+    openmx_gemmul8AdaptiveBeginTrial();
+    expect(openmx_gemmul8AdaptiveStopCheck(0) == 0 && openmx_gemmul8AdaptiveTakeHistoryReset() == 0 &&
+               openmx_gemmul8AdaptiveStopCheck(1) == 1,
+           "a single final stage stops like the plain SCF", type, shape);
+    configure_with(1, 0, promote, 0, 0, 2);
+    expect(openmx_gemmul8AdaptiveStopCheck(1) == 0 && openmx_gemmul8AdaptiveStopCheck(1) == 1,
+           "a single final stage with a window of two", type, shape);
+
     /* disabled: the SCF stops as usual */
     configure(0, 0, 0);
     expect(openmx_gemmul8AdaptiveEnabled() == 0 && openmx_gemmul8AdaptiveBeginTrial() == -1 &&
@@ -402,6 +488,8 @@ int main(int argc, char **argv)
         run<double>(handle, shape, "real");
         run<cuDoubleComplex>(handle, shape, "complex");
     }
+
+    above_the_cap(handle);
 
     openmx_gemmul8ReleasePrepared();
     openmx_gemmul8ReleaseWorkspaces();

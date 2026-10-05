@@ -4206,12 +4206,17 @@ cublasStatus_t openmx_gemmul8ZgemmFixed(cublasHandle_t handle, int x_is_left, cu
 void openmx_gemmul8SetForwardStage(int mode, int num_moduli, int fastmode, int reuse, int unblocked);
 size_t openmx_gemmul8ForwardCounters(long long counters[5], double seconds[2]);
 void openmx_gemmul8ReleasePrepared(void);
+/* frees the workspaces above the cap of the blocked path, i.e. the scratch
+   of unblocked forward products */
+void openmx_gemmul8TrimWorkspaces(void);
 /* Precision controller of the forward transform during an SCF
    (scf.gemmul8.adaptive, see gemmul8_bridge.cu): GEMMul8 stages of
-   increasing precision followed by a cuBLAS FP64 stage that alone may end
-   the SCF.  Every rank runs it on the same global quantities. */
+   increasing precision; only the final stage (cuBLAS FP64, or the last
+   listed stage) may end the SCF.  Every rank runs it on the same global
+   quantities. */
 #define OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES 8
-void openmx_gemmul8AdaptiveConfigure(int nstage, const int *moduli, const int *fastmode, const double *promote,
+void openmx_gemmul8AdaptiveConfigure(int nstage, int final_fp64, const int *moduli, const int *fastmode,
+                                     const double *promote,
                                      const double *eta_tolerance, int reuse, int unblocked, int window, int stall,
                                      int budget, int final_window, int clear_history, int probe_columns,
                                      int probe_interval, double probe_floor);

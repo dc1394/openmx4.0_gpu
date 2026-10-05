@@ -431,6 +431,23 @@ extern "C" void openmx_gemmul8ReleaseWorkspaces(void)
     }
 }
 
+/* Frees the scratch of unblocked forward products: every workspace larger
+   than the cap of the blocked path.  The capped workspace of the other
+   products stays, and without a cap nothing is freed. */
+extern "C" void openmx_gemmul8TrimWorkspaces(void)
+{
+    const size_t                cap = memory_saving_cap_bytes();
+    std::lock_guard<std::mutex> lock(g_workspace_mutex);
+
+    if (cap == 0) return;
+    for (auto &item : g_workspaces) {
+        if (cap < item.second.size && release_workspace(item.second) != cudaSuccess) {
+            std::fprintf(stderr, "openmx_gemmul8TrimWorkspaces: cudaFree failed\n");
+            std::fflush(stderr);
+        }
+    }
+}
+
 /* scf.gemmul8.enable from the input file (Input_std.c); default on */
 extern "C" void openmx_gemmul8SetEnabled(int enabled)
 {
@@ -539,21 +556,25 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
  * Stage (openmx_gemmul8SetForwardStage, or the environment until it is
  * called):
  *   OPENMX_GEMMUL8_FORWARD            default | fp64 | gemmul8
- *     default  same path and settings as openmx_gemmul8{D,Z}gemm
+ *     default  the settings of openmx_gemmul8{D,Z}gemm
  *     fp64     plain cuBLAS FP64
  *     gemmul8  GEMMul8 with the settings below
  *   OPENMX_GEMMUL8_FORWARD_NUM_MOD    moduli count (2..20, default 15)
  *   OPENMX_GEMMUL8_FORWARD_FASTMODE   1: fast scaling (default 0)
  *   OPENMX_GEMMUL8_FORWARD_REUSE      1: retain the prepared X (default 0)
- *   OPENMX_GEMMUL8_FORWARD_UNBLOCKED  1: full workspace instead of the
- *                                     capped, blocked one (implied by reuse:
- *                                     GEMMul8 disables skip_scal in its
- *                                     memory-saving mode)
+ *   OPENMX_GEMMUL8_FORWARD_UNBLOCKED  0: always the capped, blocked workspace
+ *                                     of openmx_gemmul8{D,Z}gemm (default 1,
+ *                                     and implied by reuse: GEMMul8 disables
+ *                                     skip_scal in its memory-saving mode)
  *   OPENMX_GEMMUL8_FORWARD_TIMING     1: synchronize around each call and
  *                                     report the accumulated wall time
- * A retained form or a full workspace that does not fit falls back to the
- * next path of the same precision (re-preparing every call, then blocked),
- * and is counted; capacity never lowers the precision.
+ * By default these two products take the full workspace whenever the device
+ * has room for it: only the rank that owns the dense solve reaches them, and
+ * under the cap every block of the blocked product rescales its operands,
+ * which doubles the time of a large product.  A retained form or a full
+ * workspace that does not fit falls back to the next path of the same
+ * precision (re-preparing every call, then blocked), and is counted;
+ * capacity never lowers the precision.
  * ---------------------------------------------------------------------- */
 namespace {
 
@@ -564,7 +585,7 @@ struct ForwardStage {
     unsigned num_moduli = kDefaultNumModuli;
     bool     fastmode   = false;
     bool     reuse      = false;
-    bool     unblocked  = false;
+    bool     unblocked  = true;
 };
 
 struct PreparedKey {
@@ -624,7 +645,7 @@ ForwardStage forward_stage()
         stage.num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_FORWARD_NUM_MOD", "OPENMX_GEMMUL8_FORWARD_NUM_MOD");
         stage.fastmode   = env_bool("OPENMX_GEMMUL8_FORWARD_FASTMODE", false);
         stage.reuse      = env_bool("OPENMX_GEMMUL8_FORWARD_REUSE", false);
-        stage.unblocked  = stage.reuse || env_bool("OPENMX_GEMMUL8_FORWARD_UNBLOCKED", false);
+        stage.unblocked  = stage.reuse || env_bool("OPENMX_GEMMUL8_FORWARD_UNBLOCKED", true);
         g_forward_stage     = stage;
         g_forward_stage_set = true;
     }
@@ -735,13 +756,32 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
     if (timing && cudaStreamSynchronize(stream) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
     const auto start = std::chrono::steady_clock::now();
 
-    if (stage.mode == kForwardDefault) {
+    /* the default stage follows the settings of openmx_gemmul8{D,Z}gemm */
+    const bool default_stage = stage.mode == kForwardDefault;
+    const bool reuse_stage   = !default_stage && stage.reuse;
+    unsigned   num_moduli    = stage.num_moduli;
+    bool       fastmode      = stage.fastmode;
+    bool       native        = stage.mode == kForwardFp64 || !g_input_enabled;
+
+    if (default_stage) {
+        num_moduli = gemmul8_num_moduli(is_complex ? "OPENMX_GEMMUL8_NUM_MOD_Z" : "OPENMX_GEMMUL8_NUM_MOD_D",
+                                        is_complex ? "GEMMUL8_NUM_MOD_Z" : "GEMMUL8_NUM_MOD_D");
+        fastmode   = env_bool(is_complex ? "OPENMX_GEMMUL8_FASTMODE_Z" : "OPENMX_GEMMUL8_FASTMODE_D",
+                              env_bool(is_complex ? "GEMMUL8_FASTMODE_Z" : "GEMMUL8_FASTMODE_D", false));
+        native     = native || gemmul8_disabled(is_complex ? "OPENMX_GEMMUL8_DISABLE_Z" : "OPENMX_GEMMUL8_DISABLE_D",
+                                                is_complex ? "GEMMUL8_DISABLE_Z" : "GEMMUL8_DISABLE_D");
+    }
+    const auto general_entry = [&]() {
         if constexpr (is_complex) {
-            status = openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc);
+            return openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc);
         } else {
-            status = openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc);
+            return openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc);
         }
-    } else if (stage.mode == kForwardFp64 || !g_input_enabled) {
+    };
+
+    if (default_stage && (native || !stage.unblocked)) {
+        status = general_entry();
+    } else if (native) {
         status = native_gemm<T>(handle, transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc);
     } else {
         const cublasOperation_t gemmul8_transa = (!is_complex && transa == CUBLAS_OP_C) ? CUBLAS_OP_T : transa;
@@ -755,18 +795,18 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
             Prepared *entry = nullptr;
             size_t    keep = 0, size_a = 0, size_b = 0;
             size_t    total = gemmul8::workSize<is_complex, gemmul8::Backend::INT8>(
-                sm, sn, sk, stage.num_moduli, stage.reuse && x_is_left, stage.reuse && !x_is_left, &size_a, &size_b,
-                stage.fastmode);
+                sm, sn, sk, num_moduli, reuse_stage && x_is_left, reuse_stage && !x_is_left, &size_a, &size_b,
+                fastmode);
 
-            if (stage.reuse && cudaGetDevice(&device) == cudaSuccess) {
+            if (reuse_stage && cudaGetDevice(&device) == cudaSuccess) {
                 keep  = x_is_left ? size_a : size_b;
                 entry = ensure_prepared(PreparedKey{device, x_id, x_is_left ? 1 : 0, is_complex ? 1 : 0}, keep);
             }
-            if (stage.reuse && entry == nullptr) {
+            if (reuse_stage && entry == nullptr) {
                 /* no room for the retained form: prepare X on every call */
                 keep  = 0;
-                total = gemmul8::workSize<is_complex, gemmul8::Backend::INT8>(sm, sn, sk, stage.num_moduli, false,
-                                                                              false, nullptr, nullptr, stage.fastmode);
+                total = gemmul8::workSize<is_complex, gemmul8::Backend::INT8>(sm, sn, sk, num_moduli, false, false,
+                                                                              nullptr, nullptr, fastmode);
                 std::lock_guard<std::mutex> lock(g_workspace_mutex);
                 ++g_forward_counters.capacity_fallbacks;
             }
@@ -776,13 +816,13 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
                 const bool reuse = entry != nullptr;
                 const bool skip  = reuse && entry->valid && entry->version == x_version && entry->m == m &&
                                    entry->n == n && entry->k == k && entry->op == static_cast<int>(op_x) &&
-                                   entry->num_moduli == stage.num_moduli && entry->fastmode == stage.fastmode;
+                                   entry->num_moduli == num_moduli && entry->fastmode == fastmode;
 
                 gemmul8::set_memory_saving(handle, false);
                 (void)gemmul8::gemm<T, gemmul8::Backend::INT8>(
                     handle, gemmul8_transa, gemmul8_transb, sm, sn, sk, &one, A, static_cast<size_t>(lda), B,
-                    static_cast<size_t>(ldb), &zero, C, static_cast<size_t>(ldc), static_cast<int>(stage.num_moduli),
-                    stage.fastmode, work, (reuse && x_is_left) ? entry->ptr : nullptr,
+                    static_cast<size_t>(ldb), &zero, C, static_cast<size_t>(ldc), static_cast<int>(num_moduli),
+                    fastmode, work, (reuse && x_is_left) ? entry->ptr : nullptr,
                     (reuse && !x_is_left) ? entry->ptr : nullptr, reuse && x_is_left, reuse && !x_is_left,
                     skip && x_is_left, skip && !x_is_left);
 
@@ -796,8 +836,8 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
                     entry->n          = n;
                     entry->k          = k;
                     entry->op         = static_cast<int>(op_x);
-                    entry->num_moduli = stage.num_moduli;
-                    entry->fastmode   = stage.fastmode;
+                    entry->num_moduli = num_moduli;
+                    entry->fastmode   = fastmode;
                     ++g_forward_counters.prepared;
                 }
                 done = true;
@@ -810,19 +850,21 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
             }
         }
 
-        if (!done) {
+        if (!done && default_stage) {
+            status = general_entry();
+        } else if (!done) {
             WorkspaceReport report;
 
             apply_memory_saving(handle);
-            status = ensure_workspace<is_complex>(handle, sm, sn, sk, stage.num_moduli, stage.fastmode, &work, &report);
+            status = ensure_workspace<is_complex>(handle, sm, sn, sk, num_moduli, fastmode, &work, &report);
             if (status == CUBLAS_STATUS_ALLOC_FAILED) {
                 log_workspace_fallback_once<is_complex>(report);
                 status = native_gemm<T>(handle, transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc);
             } else if (status == CUBLAS_STATUS_SUCCESS) {
                 (void)gemmul8::gemm<T, gemmul8::Backend::INT8>(
                     handle, gemmul8_transa, gemmul8_transb, sm, sn, sk, &one, A, static_cast<size_t>(lda), B,
-                    static_cast<size_t>(ldb), &zero, C, static_cast<size_t>(ldc), static_cast<int>(stage.num_moduli),
-                    stage.fastmode, work);
+                    static_cast<size_t>(ldb), &zero, C, static_cast<size_t>(ldc), static_cast<int>(num_moduli),
+                    fastmode, work);
             }
         }
     }
@@ -909,11 +951,17 @@ extern "C" void openmx_gemmul8ReleasePrepared(void)
     if (c.calls[0] + c.calls[1] > 0 &&
         (verbose_logging_enabled() || env_bool("OPENMX_GEMMUL8_FORWARD_TIMING", false))) {
         const ForwardStage &s = g_forward_stage;
+        /* the default stage uses the settings of the real products */
+        const bool     general  = s.mode == kForwardDefault;
+        const unsigned moduli   = general ? gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D")
+                                          : s.num_moduli;
+        const bool     fastmode = general ? env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false))
+                                          : s.fastmode;
         std::printf("<openmx_gemmul8> forward transform: mode=%s moduli=%u scaling=%s reuse=%d unblocked=%d; "
                     "calls %lld + %lld, prepared %lld, reused %lld, capacity fallbacks %lld, retained %.1f MiB, "
                     "wall %.6f + %.6f s\n",
                     s.mode == kForwardFp64 ? "fp64" : (s.mode == kForwardGemmul8 ? "gemmul8" : "default"),
-                    s.num_moduli, s.fastmode ? "fast" : "accurate", int(s.reuse), int(s.unblocked), c.calls[0],
+                    moduli, fastmode ? "fast" : "accurate", int(s.reuse), int(s.unblocked), c.calls[0],
                     c.calls[1], c.prepared, c.reused, c.capacity_fallbacks, double(bytes) / double(kMiB),
                     c.seconds[0], c.seconds[1]);
         std::fflush(stdout);
@@ -935,13 +983,17 @@ extern "C" void openmx_gemmul8ReleasePrepared(void)
  *                the solve, rejects the trial: Reject moves to the next
  *                stage and the caller repeats the solve from the same H.
  *   promotion    AfterMixing moves up when the SCF residual has stayed below
- *                the stage's threshold for `window` iterations, or when the
- *                residual has not improved for `stall` iterations.
- *   FP64 tail    StopCheck never lets a GEMMul8 stage end the SCF: when the
- *                usual stop condition holds (or the iteration budget is
- *                spent) it switches to the FP64 stage, and the SCF stops
- *                only after the stop condition has held `final_window`
- *                times in a row for differences between FP64 iterations.
+ *                the stage's threshold (if it has one) for `window`
+ *                iterations, or when the residual has not improved for
+ *                `stall` iterations.
+ *   final stage  Only the final stage may end the SCF: FP64, or the last
+ *                listed GEMMul8 stage when the policy uses no native FP64
+ *                (FP64 then remains the stage a rejection falls back to).
+ *                When the usual stop condition holds in an earlier stage (or
+ *                the iteration budget is spent), StopCheck switches to the
+ *                final stage instead, and the SCF stops only after the stop
+ *                condition has held `final_window` times in a row for
+ *                differences between final-stage iterations.
  * The controller never returns to a lower stage.
  * ---------------------------------------------------------------------- */
 namespace {
@@ -958,6 +1010,7 @@ struct AdaptiveStage {
 struct AdaptivePolicy {
     bool          enabled = false;
     int           nstage  = 0; /* GEMMul8 stages; index nstage is FP64 */
+    int           final_stage = 0; /* nstage (FP64) or nstage - 1 (no native FP64) */
     AdaptiveStage stage[kMaxAdaptiveStages];
     bool          reuse          = true;
     bool          unblocked      = true;
@@ -974,11 +1027,11 @@ struct AdaptivePolicy {
 struct AdaptiveState {
     int    stage               = 0;
     int    iterations_in_stage = 0; /* accepted iterations */
-    int    iterations_gemmul8  = 0;
+    int    iterations_before_final = 0;
     int    below               = 0;
     int    since_improvement   = 0;
     double best_residual       = -1.0;
-    int    fp64_iterations     = 0;
+    int    final_iterations    = 0;
     int    final_ok            = 0;
     bool   probe_requested     = false;
     bool   probe_this_trial    = false;
@@ -987,7 +1040,7 @@ struct AdaptiveState {
     double eta_local           = -1.0;
     /* statistics of this SCF */
     long long trials = 0, rejections = 0, probes = 0;
-    int       switch_iteration = 0; /* accepted iterations before the FP64 stage */
+    int       switch_iteration = 0; /* accepted iterations before the final stage */
 };
 
 AdaptivePolicy g_adaptive_policy;
@@ -1001,20 +1054,22 @@ void adaptive_enter_stage(int stage)
     g_adaptive.since_improvement   = 0;
     g_adaptive.best_residual       = -1.0;
     g_adaptive.probe_requested     = true;
-    if (stage >= g_adaptive_policy.nstage) {
-        g_adaptive.fp64_iterations  = 0;
+    if (stage >= g_adaptive_policy.final_stage) {
+        /* a single-stage policy starts in its final stage: nothing to restart */
+        g_adaptive.history_reset    = g_adaptive_policy.clear_history && g_adaptive.iterations_before_final > 0;
+        g_adaptive.final_iterations = 0;
         g_adaptive.final_ok         = 0;
-        g_adaptive.history_reset    = g_adaptive_policy.clear_history;
-        g_adaptive.switch_iteration = g_adaptive.iterations_gemmul8;
+        g_adaptive.switch_iteration = g_adaptive.iterations_before_final;
     }
 }
 
 } // namespace
 
 /* One line per stage: moduli count, scaling mode (0 accurate, 1 fast), the
-   SCF residual below which the next stage starts, and the largest accepted
-   error indicator (0: none).  nstage 0 disables the controller. */
-extern "C" void openmx_gemmul8AdaptiveConfigure(int nstage, const int *moduli, const int *fastmode,
+   SCF residual below which the next stage starts (0: not by the residual),
+   and the largest accepted error indicator (0: none).  final_fp64 0 makes
+   the last listed stage the final one.  nstage 0 disables the controller. */
+extern "C" void openmx_gemmul8AdaptiveConfigure(int nstage, int final_fp64, const int *moduli, const int *fastmode,
                                                  const double *promote, const double *eta_tolerance, int reuse,
                                                  int unblocked, int window, int stall, int budget, int final_window,
                                                  int clear_history, int probe_columns, int probe_interval,
@@ -1023,8 +1078,9 @@ extern "C" void openmx_gemmul8AdaptiveConfigure(int nstage, const int *moduli, c
     AdaptivePolicy policy;
 
     if (nstage > kMaxAdaptiveStages) nstage = kMaxAdaptiveStages;
-    policy.enabled = nstage > 0;
-    policy.nstage  = nstage > 0 ? nstage : 0;
+    policy.enabled     = nstage > 0;
+    policy.nstage      = nstage > 0 ? nstage : 0;
+    policy.final_stage = final_fp64 != 0 ? policy.nstage : policy.nstage - 1;
     for (int i = 0; i < policy.nstage; ++i) {
         if (2 <= moduli[i] && moduli[i] <= static_cast<int>(kMaxNumModuli))
             policy.stage[i].num_moduli = static_cast<unsigned>(moduli[i]);
@@ -1097,7 +1153,7 @@ extern "C" void openmx_gemmul8AdaptiveReport(double eta, int failed)
     const AdaptivePolicy &p = g_adaptive_policy;
     AdaptiveState        &s = g_adaptive;
 
-    if (!p.enabled || s.stage >= p.nstage) return;
+    if (!p.enabled || s.stage >= p.nstage) return; /* nothing above FP64 */
     if (eta >= 0.0) {
         const double tolerance = p.stage[s.stage].eta_tolerance;
         ++s.probes;
@@ -1132,20 +1188,22 @@ extern "C" int openmx_gemmul8AdaptiveStopCheck(int stop_condition)
     if (!p.enabled) return stop_condition;
     ++s.iterations_in_stage;
     s.probe_requested = false;
-    if (s.stage < p.nstage) {
-        ++s.iterations_gemmul8;
-        if (stop_condition != 0 || (p.budget > 0 && s.iterations_gemmul8 >= p.budget)) adaptive_enter_stage(p.nstage);
+    if (s.stage < p.final_stage) {
+        ++s.iterations_before_final;
+        if (stop_condition != 0 || (p.budget > 0 && s.iterations_before_final >= p.budget))
+            adaptive_enter_stage(p.final_stage);
         return 0;
     }
-    ++s.fp64_iterations;
-    /* the first FP64 iteration compares its energy with a GEMMul8 one */
-    if (stop_condition != 0 && s.fp64_iterations >= 2) ++s.final_ok;
+    ++s.final_iterations;
+    /* the first iteration of the final stage compares its energy with one
+       of a lower stage (not so when the policy starts in its final stage) */
+    if (stop_condition != 0 && (s.final_iterations >= 2 || s.iterations_before_final == 0)) ++s.final_ok;
     else s.final_ok = 0;
     return s.final_ok >= p.final_window ? 1 : 0;
 }
 
-/* returns 1 once after the switch to the FP64 stage: the caller restarts the
-   mixing history, which was built from GEMMul8 iterations */
+/* returns 1 once after the switch to the final stage: the caller restarts the
+   mixing history, which was built from iterations of the lower stages */
 extern "C" int openmx_gemmul8AdaptiveTakeHistoryReset(void)
 {
     const bool reset = g_adaptive_policy.enabled && g_adaptive.history_reset;
@@ -1160,7 +1218,7 @@ extern "C" int openmx_gemmul8AdaptiveAfterMixing(double residual)
     const AdaptivePolicy &p = g_adaptive_policy;
     AdaptiveState        &s = g_adaptive;
 
-    if (!p.enabled || s.stage >= p.nstage) return 0;
+    if (!p.enabled || s.stage >= p.final_stage) return 0;
 
     if (s.best_residual < 0.0 || residual < 0.7 * s.best_residual) {
         s.best_residual     = residual;
@@ -1171,7 +1229,7 @@ extern "C" int openmx_gemmul8AdaptiveAfterMixing(double residual)
     if (residual < p.stage[s.stage].promote) ++s.below;
     else s.below = 0;
 
-    const bool promote = s.stage + 1 < p.nstage && s.below >= p.window;
+    const bool promote = s.below >= p.window;
     const bool stalled = p.stall > 0 && s.since_improvement >= p.stall;
     if (promote || stalled) {
         adaptive_enter_stage(s.stage + 1);
@@ -1184,7 +1242,7 @@ extern "C" int openmx_gemmul8AdaptiveAfterMixing(double residual)
 
 /* description of the current stage and the statistics of this SCF:
    counters[0..4] = stage index, trials, rejections, indicator evaluations,
-   accepted GEMMul8 iterations before the FP64 stage (or so far) */
+   accepted iterations before the final stage (or so far) */
 extern "C" void openmx_gemmul8AdaptiveDescribe(char *text, int size, long long counters[5])
 {
     const AdaptivePolicy &p = g_adaptive_policy;
@@ -1202,5 +1260,5 @@ extern "C" void openmx_gemmul8AdaptiveDescribe(char *text, int size, long long c
     counters[1] = s.trials;
     counters[2] = s.rejections;
     counters[3] = s.probes;
-    counters[4] = s.stage >= p.nstage ? s.switch_iteration : s.iterations_gemmul8;
+    counters[4] = s.stage >= p.final_stage ? s.switch_iteration : s.iterations_before_final;
 }

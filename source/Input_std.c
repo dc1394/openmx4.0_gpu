@@ -896,16 +896,23 @@ void Input_std(char *file)
 
   /* Precision controller of the forward transform X^T (H X) during the SCF
      (collinear cluster calculations on the GPU): GEMMul8 stages of
-     increasing precision, then a cuBLAS FP64 stage that alone may end the
-     SCF.  One line per stage:
+     increasing precision; only the final stage may end the SCF.  One line
+     per stage:
        <scf.gemmul8.adaptive.stages
          10  fast      1.0e-3  1.0e-7   # moduli, scaling (fast|accurate),
          12  fast      1.0e-6  1.0e-9   # residual (NormRD) below which the next
-         15  fast      0.0     1.0e-12  # stage starts, largest accepted error
-       scf.gemmul8.adaptive.stages>     # indicator (0: none)
-     A single stage gives a fixed setting with the same FP64 tail. */
+         15  fast      0.0     1.0e-12  # stage starts (0: not by the residual),
+       scf.gemmul8.adaptive.stages>     # largest accepted error indicator (0: none)
+     scf.gemmul8.adaptive.final fp64 (default) appends a cuBLAS FP64 stage as
+     the final one; "last" makes the last listed stage final, so that no
+     native FP64 product is used unless a trial of that stage is rejected.
+     A single stage gives a fixed setting under the same rules.
+     scf.gemmul8.adaptive.final.restart.mixing on restarts the mixing history
+     at the switch to the final stage.  It is off by default: in the
+     calibration runs the restart cost 7 to 16 SCF steps, and once the small
+     steps after it met the stop condition early, 4e-10 Ha off. */
   {
-    int adaptive,nstage,reuse,unblocked,window,stall,budget,final_window,clear_history;
+    int adaptive,nstage,final_fp64,reuse,unblocked,window,stall,budget,final_window,clear_history;
     int probe_columns,probe_interval;
     int moduli[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES],fast[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES];
     double promote[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES],eta_tolerance[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES];
@@ -914,13 +921,16 @@ void Input_std(char *file)
 
     input_logical("scf.gemmul8.adaptive",&adaptive,0);
     input_int("scf.gemmul8.adaptive.stages.number",&nstage,0);
+    s_vec[0]="FP64"; s_vec[1]="last";
+    i_vec[0]=1     ; i_vec[1]=0;
+    input_string2int("scf.gemmul8.adaptive.final",&final_fp64,2,s_vec,i_vec);
     input_logical("scf.gemmul8.adaptive.reuse",&reuse,1);
     input_logical("scf.gemmul8.adaptive.unblocked",&unblocked,1);
     input_int("scf.gemmul8.adaptive.window",&window,2);
     input_int("scf.gemmul8.adaptive.stall",&stall,0);
     input_int("scf.gemmul8.adaptive.budget",&budget,0);
     input_int("scf.gemmul8.adaptive.final.window",&final_window,2);
-    input_logical("scf.gemmul8.adaptive.final.restart.mixing",&clear_history,1);
+    input_logical("scf.gemmul8.adaptive.final.restart.mixing",&clear_history,0);
     input_int("scf.gemmul8.adaptive.indicator.columns",&probe_columns,8);
     input_int("scf.gemmul8.adaptive.indicator.interval",&probe_interval,5);
     input_double("scf.gemmul8.adaptive.indicator.floor",&probe_floor,(double)1.0e-8);
@@ -965,19 +975,22 @@ void Input_std(char *file)
         nstage = 0;
       }
       else if (myid==Host_ID){
-        printf("<Input_std> scf.gemmul8.adaptive: %d GEMMul8 stage(s) for the forward transform, then FP64\n",nstage);
+        printf("<Input_std> scf.gemmul8.adaptive: %d GEMMul8 stage(s) for the forward transform, final stage: %s\n",
+               nstage,final_fp64 ? "FP64" : "the last one");
         for (i=0; i<nstage; i++){
           printf("<Input_std>   stage %d: moduli=%d %s, next stage below NormRD=%8.1e, indicator tolerance=%8.1e\n",
                  i,moduli[i],fast[i] ? "fast" : "accurate",promote[i],eta_tolerance[i]);
         }
       }
 
-      openmx_gemmul8AdaptiveConfigure(nstage,moduli,fast,promote,eta_tolerance,reuse,unblocked,window,stall,
-                                      budget,final_window,clear_history,probe_columns,probe_interval,probe_floor);
+      openmx_gemmul8AdaptiveConfigure(nstage,final_fp64,moduli,fast,promote,eta_tolerance,reuse,unblocked,window,
+                                      stall,budget,final_window,clear_history,probe_columns,probe_interval,
+                                      probe_floor);
     }
     else{
-      openmx_gemmul8AdaptiveConfigure(0,moduli,fast,promote,eta_tolerance,reuse,unblocked,window,stall,
-                                      budget,final_window,clear_history,probe_columns,probe_interval,probe_floor);
+      openmx_gemmul8AdaptiveConfigure(0,final_fp64,moduli,fast,promote,eta_tolerance,reuse,unblocked,window,
+                                      stall,budget,final_window,clear_history,probe_columns,probe_interval,
+                                      probe_floor);
     }
   }
 

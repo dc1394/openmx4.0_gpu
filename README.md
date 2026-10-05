@@ -56,6 +56,14 @@ The large dense matrix multiplications of the GPU eigensolver path are executed 
 scf.gemmul8.enable         off           # default=on
 ```
 
+### Forward transform of the collinear cluster solver
+The two products of the orthogonalization transform, `B = H X` and `X^T B`, have entry points of their own (`openmx_gemmul8DgemmFixed`), because `X` stays fixed during the SCF.
+
+- **Workspace.** These two products take the full GEMMul8 workspace whenever the device has room for it; every other GEMM keeps the capped, blocked workspace (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`, 256 MiB). Under the cap each block of a blocked product rescales its operands, which about doubled the time of the transform: on an A100 it now takes 76 ms instead of 145 ms per SCF step at 7332 basis functions, and 421 ms instead of 810 ms at 13000. The workspace is returned right after the transform, so the eigensolver finds the memory it found before, and a workspace that does not fit falls back to the capped path at the same precision. `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0` restores the capped path. Below the cap the results are bit-identical to the previous ones.
+- **Precision stage**, for measurements: `OPENMX_GEMMUL8_FORWARD=fp64|gemmul8` selects plain cuBLAS FP64 or GEMMul8 with `OPENMX_GEMMUL8_FORWARD_NUM_MOD` moduli and `OPENMX_GEMMUL8_FORWARD_FASTMODE`; `OPENMX_GEMMUL8_FORWARD_REUSE=1` retains the prepared `X` across SCF steps (exact with fast scaling only); `OPENMX_GEMMUL8_FORWARD_TIMING=1` reports calls, preparations, reuses and wall time, and `OPENMX_CLUSTER_PROFILE=1` the phases of each dense solve.
+- **Precision controller** (experimental, off by default): `scf.gemmul8.adaptive on` with a block `<scf.gemmul8.adaptive.stages` raises the moduli count as the SCF residual falls and repeats a solve at the next stage when a random-direction error indicator exceeds its tolerance; the comment in `source/Input_std.c` lists the keywords.
+- **Tools.** `tools/measure_gemm_probe.sh` (matrix-level times, phases and errors against a double-double reference), `tools/run_forward_variants.sh` (the same input under several settings, with a comparison table), and the checks `tests/run_gemmul8_forward_smoke.sh`.
+
 ## Multi-GPU parallelization
 How many GPUs a run can actually use is bounded by the number of k-points requested with "scf.Kgrid". The MPI ranks are divided into one group per k-point, and the dense eigenvalue problem of each group is solved on a single GPU, so the eigenvalue solver keeps at most as many GPUs busy as there are k-points; any GPU beyond that number stays idle in this part of the calculation. (The Hamiltonian matrix elements and the grid work are distributed over all MPI ranks, and therefore over all GPUs.)
 
