@@ -14,6 +14,11 @@ set -eu
 # where nvidia-smi is missing.  GEMMUL8_TEST_OBJECT names an existing object
 # of source/gemmul8_openmx.cu built without profiling, HOST_LIBDIR the
 # run-time library directory of a host compiler that is not the system one.
+# The double-double reference of the probe needs a host compiler that does
+# not contract a*b+c on its own: GCC gets -ffp-contract=off, which nvc++
+# does not know (set NVCC_HOST=g++ where possible).  "selftest" tells whether
+# the reference arithmetic survived the compiler; PROBE_HOST_FLAGS replaces
+# the host flags.
 [ $# -ge 1 ] || { echo "usage: $0 <bindir> [probe arguments]" >&2; exit 2; }
 bin_dir=$1
 shift
@@ -45,9 +50,17 @@ if [ ! -x "$bin_dir/gemmul8_reuse_probe" ] || [ ! -x "$bin_dir/gemmul8_reuse_pro
             -I"$gemmul8_root/include" -I"$gemmul8_root/src" -I"$math_root/include" \
             -c "$test_root/source/gemmul8_openmx.cu" -o "$output"
     }
+    if [ -n "${PROBE_HOST_FLAGS:-}" ]; then
+        host_flags=$PROBE_HOST_FLAGS
+    elif "$host_cxx" --version 2>/dev/null | grep -q -i -E 'nvc\+\+|nvidia|pgi'; then
+        host_flags="-mp"
+    else
+        host_flags="-fopenmp -mfma -ffp-contract=off"
+    fi
+    xcompiler=
+    for flag in $host_flags; do xcompiler="$xcompiler -Xcompiler $flag"; done
     probe() {  # probe <output> <GEMMul8 object>
-        "$nvcc" -ccbin "$host_cxx" -std=c++20 -O2 -arch="sm_$gpu_arch" \
-            -Xcompiler -fopenmp -Xcompiler -mfma -Xcompiler -ffp-contract=off \
+        "$nvcc" -ccbin "$host_cxx" -std=c++20 -O2 -arch="sm_$gpu_arch" $xcompiler \
             -I"$gemmul8_root/include" -I"$math_root/include" \
             "$test_root/tests/gemmul8_reuse_probe.cu" "$2" \
             -L"$math_root/lib64" -L"$cuda_root/lib64" -lcublas -lcublasLt $rpath -o "$1"

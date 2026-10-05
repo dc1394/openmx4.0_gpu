@@ -20,7 +20,6 @@
 #include <cublas_v2.h>
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
-#include <thrust/functional.h>
 #include <thrust/inner_product.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/transform_reduce.h>
@@ -325,6 +324,17 @@ int selftest()
 /* ------------------------------------------------------------------------
  * Device side
  * ---------------------------------------------------------------------- */
+/* own reduction operators: the functional types of Thrust differ between
+   the CUDA 12 and CUDA 13 toolkits */
+template <typename T> struct Sum {
+    __host__ __device__ T operator()(T a, T b) const { return a + b; }
+};
+struct Larger {
+    __host__ __device__ double operator()(double a, double b) const { return a < b ? b : a; }
+};
+struct Product {
+    __host__ __device__ double operator()(double a, double b) const { return a * b; }
+};
 struct BitsDiffer {
     __host__ __device__ long long operator()(uint64_t a, uint64_t b) const { return a != b ? 1 : 0; }
 };
@@ -350,25 +360,25 @@ long long bit_mismatches(const double *a, const double *b, size_t count)
 {
     const auto pa = thrust::device_pointer_cast(reinterpret_cast<const uint64_t *>(a));
     const auto pb = thrust::device_pointer_cast(reinterpret_cast<const uint64_t *>(b));
-    return thrust::inner_product(pa, pa + count, pb, 0LL, thrust::plus<long long>(), BitsDiffer());
+    return thrust::inner_product(pa, pa + count, pb, 0LL, Sum<long long>(), BitsDiffer());
 }
 
 double max_abs_difference(const double *a, const double *b, size_t count)
 {
     const auto pa = thrust::device_pointer_cast(a), pb = thrust::device_pointer_cast(b);
-    return thrust::inner_product(pa, pa + count, pb, 0.0, thrust::maximum<double>(), AbsDifference());
+    return thrust::inner_product(pa, pa + count, pb, 0.0, Larger(), AbsDifference());
 }
 
 double frobenius_difference(const double *a, const double *b, size_t count)
 {
     const auto pa = thrust::device_pointer_cast(a), pb = thrust::device_pointer_cast(b);
-    return std::sqrt(thrust::inner_product(pa, pa + count, pb, 0.0, thrust::plus<double>(), SquaredDifference()));
+    return std::sqrt(thrust::inner_product(pa, pa + count, pb, 0.0, Sum<double>(), SquaredDifference()));
 }
 
 double frobenius(const double *a, size_t count)
 {
     const auto pa = thrust::device_pointer_cast(a);
-    return std::sqrt(thrust::inner_product(pa, pa + count, pa, 0.0));
+    return std::sqrt(thrust::inner_product(pa, pa + count, pa, 0.0, Sum<double>(), Product()));
 }
 
 /* || A - A^T ||_F */
@@ -376,7 +386,7 @@ double asymmetry(const double *a, size_t n)
 {
     return std::sqrt(2.0 * thrust::transform_reduce(thrust::device, thrust::counting_iterator<size_t>(0),
                                                     thrust::counting_iterator<size_t>(n * n), AsymmetrySquared{a, n},
-                                                    0.0, thrust::plus<double>()));
+                                                    0.0, Sum<double>()));
 }
 
 enum class Reuse { off, prepare, use };
