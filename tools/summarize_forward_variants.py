@@ -9,7 +9,9 @@ the first one): total energy, largest force-component difference, chemical
 potential and total spin moment.  When the runs report the bridge's
 forward-transform counters (OPENMX_GEMMUL8_FORWARD_TIMING=1), the wall time of
 the two forward GEMMs and the preparation/reuse counts are listed too, and
-with OPENMX_CLUSTER_PROFILE=1 the phases of the dense solve.
+with OPENMX_CLUSTER_PROFILE=1 the phases of the dense solve.  The first solve
+of a run carries one-time costs (the preparation of X, the first use of a
+library routine), so the phase times are means over the later solves.
 """
 import math
 import re
@@ -63,15 +65,24 @@ def read_run(folder):
                 'retained': sum(float(l[10]) for l in lines),
                 'wall': sum(float(l[11]) + float(l[12]) for l in lines),
             }
-    # OPENMX_CLUSTER_PROFILE=1: cumulative phase times, last line of each rank
+    # OPENMX_CLUSTER_PROFILE=1: cumulative phase times, one line per solve and rank
     run['phases'] = None
     if stds:
-        last = {}
+        first, last = {}, {}
         for m in re.finditer(r'CLUSTERPROF rank=(\d+) solves=(\d+) n=\d+ forward=(\S+) eigen=(\S+) back=(\S+) evec_d2h=(\S+)',
                              stds[0].read_text(errors='replace')):
-            last[m[1]] = [float(m[i]) for i in (3, 4, 5, 6)]
+            values = [int(m[2])] + [float(m[i]) for i in (3, 4, 5, 6)]
+            first.setdefault(m[1], values)
+            last[m[1]] = values
         if last:
-            run['phases'] = [sum(v[i] for v in last.values()) for i in range(4)]
+            later = sum(v[0] - first[k][0] for k, v in last.items())
+            run['phases'] = {
+                'solves': sum(v[0] for v in last.values()),
+                'first': 1e3 * sum(v[1] / v[0] for v in first.values()) / len(first),
+                # ms per solve: over the later solves, or over all of a single-solve run
+                'mean': [1e3 * sum(v[i] - first[k][i] for k, v in last.items()) / later for i in range(1, 5)] if later
+                        else [1e3 * sum(v[i] for v in last.values()) / sum(v[0] for v in last.values()) for i in range(1, 5)],
+            }
     block = re.search(r'<coordinates.forces\s*\n\s*(\d+)\s*\n', text)
     if block:
         forces = []
@@ -116,13 +127,15 @@ def summarize(case, ref_label):
               f"{df} | {diff(r['mu'], ref['mu'])} | {diff(r['spin'], ref['spin'])} | {time} |" + extra)
     print()
     if any(r['phases'] for r in runs):
-        print('Phases of the dense solve (OPENMX_CLUSTER_PROFILE=1, cumulative over the run):\n')
-        print('| run | forward (s) | eigensolver (s) | back transform (s) | eigenvector download (s) | forward share |')
-        print('|---|---:|---:|---:|---:|---:|')
+        print('Phases of the dense solve (OPENMX_CLUSTER_PROFILE=1), ms per solve: the forward transform of the first solve, '
+              'then means over the later solves:\n')
+        print('| run | solves | forward, first solve | forward | eigensolver | back transform | eigenvector download | forward share |')
+        print('|---|---:|---:|---:|---:|---:|---:|---:|')
         for r in runs:
             if r['phases']:
-                f, e, b, d = r['phases']
-                print(f"| {r['label']} | {f:.3f} | {e:.3f} | {b:.3f} | {d:.3f} | {100 * f / (f + e + b + d):.1f}% |")
+                f, e, b, d = r['phases']['mean']
+                print(f"| {r['label']} | {r['phases']['solves']} | {r['phases']['first']:.3f} | {f:.3f} | {e:.3f} | {b:.3f} | {d:.3f} | "
+                      f"{100 * f / (f + e + b + d):.1f}% |")
         print()
 
 
