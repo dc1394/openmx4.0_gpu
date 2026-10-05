@@ -11,7 +11,11 @@ forward-transform counters (OPENMX_GEMMUL8_FORWARD_TIMING=1), the wall time of
 the two forward GEMMs and the preparation/reuse counts are listed too, and
 with OPENMX_CLUSTER_PROFILE=1 the phases of the dense solve.  The first solve
 of a run carries one-time costs (the preparation of X, the first use of a
-library routine), so the phase times are means over the later solves.
+library routine), so the phase times are means over the later solves; the
+forward transform also gets the median of the later solves, which an
+occasional slow solve does not move.  Runs
+of the precision controller (scf.gemmul8.adaptive) also list the accepted
+SCF steps per stage and the rejected trials.
 """
 import math
 import re
@@ -68,21 +72,41 @@ def read_run(folder):
     # OPENMX_CLUSTER_PROFILE=1: cumulative phase times, one line per solve and rank
     run['phases'] = None
     if stds:
-        first, last = {}, {}
+        first, last, steps = {}, {}, []
         for m in re.finditer(r'CLUSTERPROF rank=(\d+) solves=(\d+) n=\d+ forward=(\S+) eigen=(\S+) back=(\S+) evec_d2h=(\S+)',
                              stds[0].read_text(errors='replace')):
             values = [int(m[2])] + [float(m[i]) for i in (3, 4, 5, 6)]
+            if m[1] in last:
+                steps.append(values[1] - last[m[1]][1])
             first.setdefault(m[1], values)
             last[m[1]] = values
         if last:
             later = sum(v[0] - first[k][0] for k, v in last.items())
+            steps.sort()
             run['phases'] = {
                 'solves': sum(v[0] for v in last.values()),
                 'first': 1e3 * sum(v[1] / v[0] for v in first.values()) / len(first),
+                'median': 1e3 * (steps[len(steps) // 2] if len(steps) % 2 else 0.5 * sum(steps[len(steps) // 2 - 1:len(steps) // 2 + 1]))
+                          if steps else None,
                 # ms per solve: over the later solves, or over all of a single-solve run
                 'mean': [1e3 * sum(v[i] - first[k][i] for k, v in last.items()) / later for i in range(1, 5)] if later
                         else [1e3 * sum(v[i] for v in last.values()) / sum(v[0] for v in last.values()) for i in range(1, 5)],
             }
+    # scf.gemmul8.adaptive: one line per trial, "... stage 1 (moduli=12 fast reuse), eta=..., rejected"
+    run['stages'] = None
+    if stds:
+        stages, rejected, eta = {}, 0, {}
+        for m in re.finditer(r'forward GEMMs: stage \d+ \(([^)]*)\)(?:, eta=\s*(\S+?))?(, rejected)?\s*$',
+                             stds[0].read_text(errors='replace'), re.M):
+            name = re.sub(r'moduli=(\d+) (\w)\w*.*', r'L\1\2', m[1])
+            if m[3]:
+                rejected += 1
+            else:
+                stages[name] = stages.get(name, 0) + 1
+            if m[2]:
+                eta[name] = max(eta.get(name, 0.0), float(m[2]))
+        if stages or rejected:
+            run['stages'] = {'steps': stages, 'rejected': rejected, 'eta': eta}
     block = re.search(r'<coordinates.forces\s*\n\s*(\d+)\s*\n', text)
     if block:
         forces = []
@@ -126,16 +150,29 @@ def summarize(case, ref_label):
         print(f"| {r['label']} | {r['criterion']} | {r['gemmul8']} | {steps} | {r['utot']:.12f} | {diff(r['utot'], ref['utot'])} | "
               f"{df} | {diff(r['mu'], ref['mu'])} | {diff(r['spin'], ref['spin'])} | {time} |" + extra)
     print()
+    if any(r['stages'] for r in runs):
+        print('Precision controller: accepted SCF steps per stage of the forward transform (L<moduli><a|f>: accurate or '
+              'fast scaling), rejected trials, and the largest error indicator seen in each stage:\n')
+        print('| run | steps per stage | rejected trials | largest indicator |')
+        print('|---|---|---:|---|')
+        for r in runs:
+            if r['stages']:
+                t = r['stages']
+                print(f"| {r['label']} | " + ', '.join(f'{k}: {v}' for k, v in t['steps'].items()) + f" | {t['rejected']} | "
+                      + (', '.join(f'{k}: {v:.1e}' for k, v in t['eta'].items()) or '-') + ' |')
+        print()
     if any(r['phases'] for r in runs):
         print('Phases of the dense solve (OPENMX_CLUSTER_PROFILE=1), ms per solve: the forward transform of the first solve, '
-              'then means over the later solves:\n')
-        print('| run | solves | forward, first solve | forward | eigensolver | back transform | eigenvector download | forward share |')
-        print('|---|---:|---:|---:|---:|---:|---:|---:|')
+              'the median of the later ones, then means over the later solves:\n')
+        print('| run | solves | forward, first solve | forward, median | forward | eigensolver | back transform | eigenvector download | '
+              'forward share |')
+        print('|---|---:|---:|---:|---:|---:|---:|---:|---:|')
         for r in runs:
             if r['phases']:
                 f, e, b, d = r['phases']['mean']
-                print(f"| {r['label']} | {r['phases']['solves']} | {r['phases']['first']:.3f} | {f:.3f} | {e:.3f} | {b:.3f} | {d:.3f} | "
-                      f"{100 * f / (f + e + b + d):.1f}% |")
+                median = '-' if r['phases']['median'] is None else format(r['phases']['median'], '.3f')
+                print(f"| {r['label']} | {r['phases']['solves']} | {r['phases']['first']:.3f} | {median} | {f:.3f} | {e:.3f} | {b:.3f} | "
+                      f"{d:.3f} | {100 * f / (f + e + b + d):.1f}% |")
         print()
 
 
