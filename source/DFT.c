@@ -581,6 +581,7 @@ double DFT(int MD_iter, int Cnt_Now)
   ETemp_controller = 0;
   SCF_iter_shift = 0;
   NormRD[0] = 100.0;
+  openmx_gemmul8AdaptiveStart();
 
   SCF_RENZOKU = -1;
   po = 0;
@@ -964,13 +965,44 @@ double DFT(int MD_iter, int Cnt_Now)
 
 	if (SpinP_switch<=1){
 
-	  time5 += Cluster_DFT_Col("scf",LSCF_iter,SpinP_switch,
-				   ko_col,H,OLP[0],DM[0],EDM,
-				   Eele0,Eele1,
-				   myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
-				   Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
-				   Ss_Re,Cs_Re,Hs_Re,
-				   CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1);
+	  /* scf.gemmul8.adaptive: a trial whose forward transform is rejected
+	     is solved again from the same Hamiltonian, one precision stage up */
+	  int gemm_rejected;
+
+	  do {
+
+	    gemm_rejected = 0;
+	    openmx_gemmul8AdaptiveBeginTrial();
+
+	    time5 += Cluster_DFT_Col("scf",LSCF_iter,SpinP_switch,
+				     ko_col,H,OLP[0],DM[0],EDM,
+				     Eele0,Eele1,
+				     myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+				     Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
+				     Ss_Re,Cs_Re,Hs_Re,
+				     CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1);
+
+	    if (openmx_gemmul8AdaptiveEnabled()){
+	      int my_rejected;
+	      double my_eta,eta;
+	      char stage[64];
+	      long long counters[5];
+
+	      openmx_gemmul8AdaptiveTrialStatus(&my_rejected,&my_eta);
+	      MPI_Allreduce(&my_rejected,&gemm_rejected,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+	      MPI_Allreduce(&my_eta,&eta,1,MPI_DOUBLE,MPI_MAX,mpi_comm_level1);
+	      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),counters);
+	      if (myid0==Host_ID && 0<level_stdout){
+	        if (0.0<=eta) printf("<DFT>  forward GEMMs: stage %lld (%s), eta=%10.3e%s\n",
+	                             counters[0],stage,eta,gemm_rejected ? ", rejected" : "");
+	        else          printf("<DFT>  forward GEMMs: stage %lld (%s)%s\n",
+	                             counters[0],stage,gemm_rejected ? ", rejected" : "");
+	        fflush(stdout);
+	      }
+	      if (gemm_rejected) openmx_gemmul8AdaptiveReject();
+	    }
+
+	  } while (gemm_rejected);
 
 	}
 
@@ -1321,6 +1353,21 @@ double DFT(int MD_iter, int Cnt_Now)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
+    if (openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
+
+      po = openmx_gemmul8AdaptiveStopCheck(po);
+
+      /* the mixing history holds GEMMul8 iterations: restart it as the
+         control of the electronic temperature does */
+      if (openmx_gemmul8AdaptiveTakeHistoryReset()){
+        int shift = LSCF_iter - Pulay_SCF + 2;
+        if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
+        if (myid0==Host_ID && 0<level_stdout){
+          printf("<DFT>  forward GEMMs: FP64 from the next SCF step, mixing history restarted\n");fflush(stdout);
+        }
+      }
+    }
+
     /*****************************************************
                      orbital optimization
     *****************************************************/
@@ -1637,6 +1684,15 @@ double DFT(int MD_iter, int Cnt_Now)
     }
 
     outputfile1(1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0); 
+
+    if (po==0 && openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
+      if (openmx_gemmul8AdaptiveAfterMixing(sqrt(fabs(NormRD[0]))) && myid0==Host_ID && 0<level_stdout){
+        char stage[64];
+        long long counters[5];
+        openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),counters);
+        printf("<DFT>  forward GEMMs: stage %lld (%s) from the next SCF step\n",counters[0],stage);fflush(stdout);
+      }
+    }
 
     /*****************************************************
                          Uele -> pUele
@@ -2425,8 +2481,10 @@ double DFT(int MD_iter, int Cnt_Now)
   openmx_gpusolver_cache_release();
   Mixing_H_Release_GPU();
   /* Only scratch storage is released; later dense work recreates it on
-     demand and the host eigenvectors/packed matrices remain intact. */
+     demand and the host eigenvectors/packed matrices remain intact.  The
+     retained forms of the transformed overlap belong to this geometry. */
   openmx_gemmul8ReleaseWorkspaces();
+  openmx_gemmul8ReleasePrepared();
 
   if (!orbitalOpt_Force_Skip) time7 += Force(H0,DS_NL,OLP,DM[0],EDM);
 

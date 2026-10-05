@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include "openmx_common.h"
 #include "Inputtools.h"
@@ -892,6 +893,93 @@ void Input_std(char *file)
   if      (SpinP_switch==0) List_YOUSO[23] = 1;  
   else if (SpinP_switch==1) List_YOUSO[23] = 2;
   else if (SpinP_switch==3) List_YOUSO[23] = 4;
+
+  /* Precision controller of the forward transform X^T (H X) during the SCF
+     (collinear cluster calculations on the GPU): GEMMul8 stages of
+     increasing precision, then a cuBLAS FP64 stage that alone may end the
+     SCF.  One line per stage:
+       <scf.gemmul8.adaptive.stages
+         10  fast      1.0e-3  1.0e-7   # moduli, scaling (fast|accurate),
+         12  fast      1.0e-6  1.0e-9   # residual (NormRD) below which the next
+         15  fast      0.0     1.0e-12  # stage starts, largest accepted error
+       scf.gemmul8.adaptive.stages>     # indicator (0: none)
+     A single stage gives a fixed setting with the same FP64 tail. */
+  {
+    int adaptive,nstage,reuse,unblocked,window,stall,budget,final_window,clear_history;
+    int probe_columns,probe_interval;
+    int moduli[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES],fast[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES];
+    double promote[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES],eta_tolerance[OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES];
+    double probe_floor;
+    char scaling[YOUSO10];
+
+    input_logical("scf.gemmul8.adaptive",&adaptive,0);
+    input_int("scf.gemmul8.adaptive.stages.number",&nstage,0);
+    input_logical("scf.gemmul8.adaptive.reuse",&reuse,1);
+    input_logical("scf.gemmul8.adaptive.unblocked",&unblocked,1);
+    input_int("scf.gemmul8.adaptive.window",&window,2);
+    input_int("scf.gemmul8.adaptive.stall",&stall,0);
+    input_int("scf.gemmul8.adaptive.budget",&budget,0);
+    input_int("scf.gemmul8.adaptive.final.window",&final_window,2);
+    input_logical("scf.gemmul8.adaptive.final.restart.mixing",&clear_history,1);
+    input_int("scf.gemmul8.adaptive.indicator.columns",&probe_columns,8);
+    input_int("scf.gemmul8.adaptive.indicator.interval",&probe_interval,5);
+    input_double("scf.gemmul8.adaptive.indicator.floor",&probe_floor,(double)1.0e-8);
+
+    if (adaptive){
+
+      if (nstage<1 || OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES<nstage){
+        if (myid==Host_ID){
+          printf("scf.gemmul8.adaptive.stages.number should be 1 to %d.\n",OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES);
+        }
+        MPI_Finalize();
+        exit(0);
+      }
+
+      if ( (fp=input_find("<scf.gemmul8.adaptive.stages")) != NULL ) {
+
+        for (i=0; i<nstage; i++){
+          fscanf(fp,"%d %s %lf %lf",&moduli[i],scaling,&promote[i],&eta_tolerance[i]);
+          fast[i] = (strcasecmp(scaling,"fast")==0);
+          if (moduli[i]<2 || 20<moduli[i] || (!fast[i] && strcasecmp(scaling,"accurate")!=0)){
+            printf("Format error for scf.gemmul8.adaptive.stages (moduli 2..20, fast|accurate)\n");
+            po++;
+          }
+        }
+
+        if (! input_last("scf.gemmul8.adaptive.stages>") ) {
+          /* format error */
+          printf("Format error for scf.gemmul8.adaptive.stages\n");
+          po++;
+        }
+      }
+      else{
+        if (myid==Host_ID) printf("scf.gemmul8.adaptive needs the block <scf.gemmul8.adaptive.stages\n");
+        MPI_Finalize();
+        exit(0);
+      }
+
+      if (Solver!=2 || 1<SpinP_switch || scf_eigen_lib_flag!=GPUSOLVER || gpusolver2_flag!=0){
+        if (myid==Host_ID){
+          printf("<Input_std> scf.gemmul8.adaptive applies to collinear cluster calculations with scf.eigen.lib=gpusolver; ignored.\n");
+        }
+        nstage = 0;
+      }
+      else if (myid==Host_ID){
+        printf("<Input_std> scf.gemmul8.adaptive: %d GEMMul8 stage(s) for the forward transform, then FP64\n",nstage);
+        for (i=0; i<nstage; i++){
+          printf("<Input_std>   stage %d: moduli=%d %s, next stage below NormRD=%8.1e, indicator tolerance=%8.1e\n",
+                 i,moduli[i],fast[i] ? "fast" : "accurate",promote[i],eta_tolerance[i]);
+        }
+      }
+
+      openmx_gemmul8AdaptiveConfigure(nstage,moduli,fast,promote,eta_tolerance,reuse,unblocked,window,stall,
+                                      budget,final_window,clear_history,probe_columns,probe_interval,probe_floor);
+    }
+    else{
+      openmx_gemmul8AdaptiveConfigure(0,moduli,fast,promote,eta_tolerance,reuse,unblocked,window,stall,
+                                      budget,final_window,clear_history,probe_columns,probe_interval,probe_floor);
+    }
+  }
 
   if (XC_switch==3 && Solver==8){
     if (myid==Host_ID){
