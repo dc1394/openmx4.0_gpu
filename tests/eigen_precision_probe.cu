@@ -49,7 +49,13 @@
    PROBE_OA_OCC_TOL (default 1e-12) is only orthonormalized, as a cluster: the
    density matrix needs the occupied subspace, not the rotations inside it.
    A refinement mode may override these per mode with suffixes: :fp64 or
-   :gemmul8 (products), :occ or :noocc, :d<scale> (e.g. fp32soa1:occ:d10).
+   :gemmul8 (products), :occ or :noocc, :d<scale> (e.g. fp32soa1:occ:d10),
+   and :rr, which ends the refinement with a Rayleigh-Ritz step inside every
+   cluster of the wanted states (consecutive estimates closer than the last
+   delta) that holds a partially occupied state: there the refinement only
+   orthonormalizes, the vectors stay mixtures, and different occupations
+   make the density matrix see it.  The cluster's H and overlap are formed in
+   cuBLAS FP64 and the small generalized problem is solved by cuSOLVER.
    The report of a refinement step counts the pairs treated as a cluster and
    the corrected pairs with |E_ij| > 0.01 (large_E), for which a Newton step is
    inaccurate.
@@ -260,6 +266,7 @@ struct Mode {
     int oa_gemm = -1;        /* refinement products: 1 cuBLAS FP64, 0 GEMMul8, -1 PROBE_OA_GEMM */
     int oa_occ = -1;         /* occupation clusters: 1 on, 0 off, -1 PROBE_OA_OCC */
     double oa_scale = -1.0;  /* delta scale, < 0: PROBE_OA_DELTA_SCALE */
+    bool oa_rr = false;      /* Rayleigh-Ritz inside partially occupied clusters at the end */
 };
 
 bool parse_mode(const std::string &full, Mode *mode)
@@ -277,6 +284,7 @@ bool parse_mode(const std::string &full, Mode *mode)
             else if (option == "gemmul8") mode->oa_gemm = 0;
             else if (option == "occ") mode->oa_occ = 1;
             else if (option == "noocc") mode->oa_occ = 0;
+            else if (option == "rr") mode->oa_rr = true;
             else if (option.size() > 1 && option[0] == 'd' && std::atof(option.c_str() + 1) >= 0.0)
                 mode->oa_scale = std::atof(option.c_str() + 1);
             else return false;
@@ -639,6 +647,7 @@ int main(int argc, char **argv)
                 if (use_fp64) openmx_gemmul8SetEnabled(0);
                 auto t0 = std::chrono::steady_clock::now();
                 std::string report;
+                double last_delta = 0.0;
                 for (int it = 0; it < mode.oa_iters; it++) {
                     gemm(CUBLAS_OP_N, n, kc, n, d_ref, d_a, false, d_y);    /* Y = H X1 */
                     gemm(herm, n, kc, n, d_a, d_a, false, d_g);             /* G = X^H X1 */
@@ -652,6 +661,7 @@ int main(int argc, char **argv)
                     std::memcpy(&max_s, &bits[0], sizeof(double));
                     std::memcpy(&max_r, &bits[1], sizeof(double));
                     const double delta = scale * (max_s + anorm * max_r);
+                    last_delta = delta;
                     oa_correction<<<1024, 256>>>(d_s, d_g, d_lam, delta, n, kc, cplx, d_occ, oa_occ_tol, d_e,
                                                  d_counters + 2);
                     check(cudaMemcpy(d_xn, d_a, block * sizeof(double), cudaMemcpyDeviceToDevice), "copy X1");
@@ -663,6 +673,95 @@ int main(int argc, char **argv)
                     char buf[192];
                     std::snprintf(buf, sizeof(buf), " it%d:max_r=%.1e,max_s=%.1e,delta=%.1e,cluster_pairs=%llu,large_E=%llu",
                                   it + 1, max_r, max_s, delta, pairs[0], pairs[1]);
+                    report += buf;
+                }
+                if (mode.oa_rr) {
+                    /* Rayleigh-Ritz inside the clusters with a partially occupied state */
+                    std::vector<double> lam_h(kc);
+                    check(cudaMemcpy(lam_h.data(), d_lam, kc * sizeof(double), cudaMemcpyDeviceToHost),
+                          "download lambda");
+                    double mu_rr = 0.0;
+                    const std::vector<double> f_rr = occupations(lam_h, electrons, occupancy, kT, &mu_rr);
+                    int clusters = 0, largest = 0;
+                    for (int c0 = 0; c0 < kc;) {
+                        int c1 = c0;
+                        while (c1 + 1 < kc && std::fabs(lam_h[c1 + 1] - lam_h[c1]) <= last_delta) c1++;
+                        const int m = c1 - c0 + 1;
+                        bool partial = false;
+                        for (int j = c0; j <= c1; j++)
+                            partial = partial || (f_rr[j] > oa_occ_tol * occupancy &&
+                                                  f_rr[j] < (1.0 - oa_occ_tol) * occupancy);
+                        if (m >= 2 && partial) {
+                            const size_t col = static_cast<size_t>(c0) * n * width;
+                            double *xc = d_a + col;                 /* the cluster's columns of X1 */
+                            double *z = d_y;                        /* H X_C, then X_C Y */
+                            double *hm = d_g, *nm = d_g + static_cast<size_t>(m) * m * width;
+                            double *w = d_e;
+                            int *d_rr_info = nullptr;
+                            check(cudaMalloc(&d_rr_info, sizeof(int)), "cudaMalloc info");
+                            if (cplx) {
+                                const cuDoubleComplex one = make_cuDoubleComplex(1.0, 0.0);
+                                const cuDoubleComplex zero = make_cuDoubleComplex(0.0, 0.0);
+                                auto zc = [](double *p) { return reinterpret_cast<cuDoubleComplex *>(p); };
+                                check(cublasZgemm(blas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, n, &one, zc(d_ref), n, zc(xc), n,
+                                                  &zero, zc(z), n), "H X_C");
+                                check(cublasZgemm(blas, CUBLAS_OP_C, CUBLAS_OP_N, m, m, n, &one, zc(xc), n, zc(z), n,
+                                                  &zero, zc(hm), m), "X_C^H H X_C");
+                                check(cublasZgemm(blas, CUBLAS_OP_C, CUBLAS_OP_N, m, m, n, &one, zc(xc), n, zc(xc), n,
+                                                  &zero, zc(nm), m), "X_C^H X_C");
+                                int lwork = 0;
+                                check(cusolverDnZhegvd_bufferSize(handle, CUSOLVER_EIG_TYPE_1, CUSOLVER_EIG_MODE_VECTOR,
+                                                                  CUBLAS_FILL_MODE_LOWER, m, zc(hm), m, zc(nm), m, w,
+                                                                  &lwork), "zhegvd buffer");
+                                cuDoubleComplex *work = nullptr;
+                                check(cudaMalloc(&work, std::max(lwork, 1) * sizeof(cuDoubleComplex)), "cudaMalloc zhegvd");
+                                check(cusolverDnZhegvd(handle, CUSOLVER_EIG_TYPE_1, CUSOLVER_EIG_MODE_VECTOR,
+                                                       CUBLAS_FILL_MODE_LOWER, m, zc(hm), m, zc(nm), m, w, work, lwork,
+                                                       d_rr_info), "zhegvd");
+                                check(cudaFree(work), "cudaFree zhegvd");
+                                check(cublasZgemm(blas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, m, &one, zc(xc), n, zc(hm), m,
+                                                  &zero, zc(z), n), "X_C Y");
+                            }
+                            else {
+                                const double one = 1.0, zero = 0.0;
+                                check(cublasDgemm(blas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, n, &one, d_ref, n, xc, n, &zero,
+                                                  z, n), "H X_C");
+                                check(cublasDgemm(blas, CUBLAS_OP_T, CUBLAS_OP_N, m, m, n, &one, xc, n, z, n, &zero, hm,
+                                                  m), "X_C^T H X_C");
+                                check(cublasDgemm(blas, CUBLAS_OP_T, CUBLAS_OP_N, m, m, n, &one, xc, n, xc, n, &zero, nm,
+                                                  m), "X_C^T X_C");
+                                int lwork = 0;
+                                check(cusolverDnDsygvd_bufferSize(handle, CUSOLVER_EIG_TYPE_1, CUSOLVER_EIG_MODE_VECTOR,
+                                                                  CUBLAS_FILL_MODE_LOWER, m, hm, m, nm, m, w, &lwork),
+                                      "dsygvd buffer");
+                                double *work = nullptr;
+                                check(cudaMalloc(&work, std::max(lwork, 1) * sizeof(double)), "cudaMalloc dsygvd");
+                                check(cusolverDnDsygvd(handle, CUSOLVER_EIG_TYPE_1, CUSOLVER_EIG_MODE_VECTOR,
+                                                       CUBLAS_FILL_MODE_LOWER, m, hm, m, nm, m, w, work, lwork,
+                                                       d_rr_info), "dsygvd");
+                                check(cudaFree(work), "cudaFree dsygvd");
+                                check(cublasDgemm(blas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, m, &one, xc, n, hm, m, &zero, z,
+                                                  n), "X_C Y");
+                            }
+                            int rr_info = 0;
+                            check(cudaMemcpy(&rr_info, d_rr_info, sizeof(int), cudaMemcpyDeviceToHost), "download info");
+                            check(cudaFree(d_rr_info), "cudaFree info");
+                            if (rr_info != 0) {
+                                std::fprintf(stderr, "cluster Rayleigh-Ritz failed: info %d (m=%d)\n", rr_info, m);
+                                std::exit(1);
+                            }
+                            check(cudaMemcpy(xc, z, static_cast<size_t>(n) * m * width * sizeof(double),
+                                             cudaMemcpyDeviceToDevice), "rotate X_C");
+                            check(cudaMemcpy(lam_h.data() + c0, w, m * sizeof(double), cudaMemcpyDeviceToHost),
+                                  "download cluster eigenvalues");
+                            clusters++;
+                            largest = std::max(largest, m);
+                        }
+                        c0 = c1 + 1;
+                    }
+                    check(cudaMemcpy(d_lam, lam_h.data(), kc * sizeof(double), cudaMemcpyHostToDevice), "upload lambda");
+                    char buf[96];
+                    std::snprintf(buf, sizeof(buf), " rr:clusters=%d,largest=%d", clusters, largest);
                     report += buf;
                 }
                 check(cudaDeviceSynchronize(), "synchronize");
