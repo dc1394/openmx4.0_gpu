@@ -991,6 +991,130 @@ static void ClusterNonCol_ZheevdxPresent(dcomplex *A, double *W, int n, int maxn
     }
 }
 
+/* OPENMX_EIGEN_FP32_STEPS=N (experimental; unset or 0: off): the root dense
+   path solves the Hamiltonian eigenproblem of the first N steps of every SCF
+   cycle (each geometry or MD step starts a new one) in FP32, for the study
+   of an adaptive eigensolver precision.  The overlap eigenproblem and all
+   transforms stay in FP64.  Nothing forces an FP64 step at the end: an SCF
+   that stops within the first N steps keeps FP32 results.  On sidia333 only
+   N = 1 left the SCF path unchanged; FP32 eigenvectors of later steps alter
+   the DIIS mixing and cost extra steps. */
+static int ClusterNonCol_EigenFp32Steps(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char *value = getenv("OPENMX_EIGEN_FP32_STEPS");
+        cached = (value != NULL && 0 < atoi(value)) ? atoi(value) : 0;
+    }
+    return cached;
+}
+
+/* FP32 variant of ClusterNonCol_ZheevdxPresent.  A (n x n complex, present)
+   is rounded to single precision in scratch, a device segment of at least
+   8 n^2 + 4 (n + 1) bytes, and solved with CHEEVDX for the maxn lowest
+   eigenpairs; the eigenvectors come back to the first maxn columns of A in
+   FP64, each normalized in FP64, and W[1..maxn] receives the eigenvalues as
+   in the FP64 path.  A is left untouched until the FP32 solve has succeeded,
+   so a failure (info, fewer eigenpairs, no room for the workspace) falls
+   back to the FP64 solve.  The cached workspace grows if the FP32 query asks
+   for more than it holds. */
+static void ClusterNonCol_CheevdxPresent(dcomplex *A, double *W, int n, int maxn, void *scratch)
+{
+    ClusterNonColGpuEigenCtx *ctx = ClusterNonCol_GpuEigenCtx_Get();
+    cusolverEigMode_t const   jobz = CUSOLVER_EIG_MODE_VECTOR;
+    cublasFillMode_t const    uplo = CUBLAS_FILL_MODE_LOWER;
+    cusolverEigRange_t const  range = (n == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
+    size_t const nn = (size_t)n * (size_t)n;
+    float *af = (float *)scratch;     /* 2 nn floats, real and imaginary parts interleaved */
+    float *wf = af + 2 * nn;          /* n + 1 floats */
+    float vl = 0.0f, vu = 0.0f;
+    int64_t h_meig = 0;
+    int32_t info = 0;
+    size_t d_bytes = 0, h_bytes = 0;
+    cusolverStatus_t status;
+
+#pragma acc parallel loop present(A[0 : nn]) deviceptr(af)
+    for (size_t i = 0; i < nn; i++) {
+        af[2 * i]     = (float)A[i].r;
+        af[2 * i + 1] = (float)A[i].i;
+    }
+
+    status = cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_32F, af, n, &vl, &vu, 1L,
+                                          (int64_t)maxn, &h_meig, CUDA_R_32F, wf, CUDA_C_32F, &d_bytes, &h_bytes);
+    if (status != CUSOLVER_STATUS_SUCCESS) {
+        printf("<Cluster_DFT_NonCol> FP32 eigensolver workspace query failed (status %d); solving in FP64\n",
+               (int)status);
+        fflush(stdout);
+        ClusterNonCol_ZheevdxPresent(A, W, n, maxn);
+        return;
+    }
+    if (ctx->d_work_bytes < d_bytes) {
+        void *grown = NULL;
+
+        if (ClusterNonCol_TryDeviceMalloc(&grown, d_bytes) != cudaSuccess) {
+            printf("<Cluster_DFT_NonCol> no room for the %.1f MiB FP32 eigensolver workspace; solving in FP64\n",
+                   (double)d_bytes / (1024.0 * 1024.0));
+            fflush(stdout);
+            ClusterNonCol_ZheevdxPresent(A, W, n, maxn);
+            return;
+        }
+        if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
+        ctx->d_work = grown;
+        ctx->d_work_bytes = d_bytes;
+    }
+    if (ctx->h_work_bytes < h_bytes) {
+        free(ctx->h_work);
+        ctx->h_work = ClusterNonCol_MallocArray(h_bytes, 1u, "cuSOLVER host workspace");
+        ctx->h_work_bytes = h_bytes;
+    }
+
+    /* a failure status falls back to FP64 instead of being retried */
+    status = cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_32F, af, n, &vl, &vu, 1L,
+                               (int64_t)maxn, &h_meig, CUDA_R_32F, wf, CUDA_C_32F, ctx->d_work, ctx->d_work_bytes,
+                               ctx->h_work, ctx->h_work_bytes, ctx->d_info);
+    if (status == CUSOLVER_STATUS_SUCCESS) {
+        wait_cudafunc(cudaMemcpyAsync(&info, ctx->d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, ctx->stream));
+        wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+    }
+
+    if (status != CUSOLVER_STATUS_SUCCESS || info != 0 || h_meig < (int64_t)maxn) {
+        printf("<Cluster_DFT_NonCol> FP32 eigensolver failed (status %d, info %d, %lld of %d eigenpairs); "
+               "solving in FP64\n",
+               (int)status, (int)info, (long long)h_meig, maxn);
+        fflush(stdout);
+        ClusterNonCol_ZheevdxPresent(A, W, n, maxn);
+        return;
+    }
+
+#pragma acc parallel loop gang present(A[0 : nn]) deviceptr(af)
+    for (int l = 0; l < maxn; l++) {
+        size_t const col = (size_t)l * (size_t)n;
+        double norm2 = 0.0;
+
+#pragma acc loop vector reduction(+ : norm2)
+        for (int i = 0; i < n; i++) {
+            double const re = (double)af[2 * (col + i)];
+            double const im = (double)af[2 * (col + i) + 1];
+            norm2 += re * re + im * im;
+        }
+        {
+            double const scale = (0.0 < norm2) ? 1.0 / sqrt(norm2) : 1.0;
+
+#pragma acc loop vector
+            for (int i = 0; i < n; i++) {
+                A[col + i].r = scale * (double)af[2 * (col + i)];
+                A[col + i].i = scale * (double)af[2 * (col + i) + 1];
+            }
+        }
+    }
+
+#pragma acc parallel loop present(W[0 : n + 1]) deviceptr(wf)
+    for (int i = 0; i < maxn; i++) {
+        W[i + 1] = (double)wf[i];
+    }
+}
+
 static void ClusterNonCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
                                                int k, double const * A, double const * B, double * C)
 {
@@ -2293,7 +2417,16 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         /* the sampled steps' copy and write are charged to no phase */
         if (ClusterNonCol_SampleHamiltonian(SCF_iter, Hs2, n2, MaxN) && profile) ClusterNonCol_ProfileLap(-1, &t0);
 
-        ClusterNonCol_ZheevdxPresent(Hs2, ko, n2, MaxN);
+        if (SCF_iter <= ClusterNonCol_EigenFp32Steps()) {
+            /* the transpose segment of the back transform is free until then */
+            printf("<Cluster_DFT_NonCol> SCF step %d: FP32 eigensolver (OPENMX_EIGEN_FP32_STEPS=%d)\n", SCF_iter,
+                   ClusterNonCol_EigenFp32Steps());
+            fflush(stdout);
+            ClusterNonCol_CheevdxPresent(Hs2, ko, n2, MaxN, ClusterNonCol_ArenaPtr(arena->o_vt));
+        }
+        else {
+            ClusterNonCol_ZheevdxPresent(Hs2, ko, n2, MaxN);
+        }
         if (profile) ClusterNonCol_ProfileLap(NCPROF_EIGEN, &t0);
 
         /* Back-transform only the MaxN solved states (the eigensolver already
