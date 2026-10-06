@@ -1150,8 +1150,9 @@ static int ClusterNonCol_CheevdxPresent(dcomplex *A, double *W, int n, int maxn,
    cluster (chained more widely, see below) that holds a partially occupied
    state then gets a Rayleigh-Ritz step of its own
    (ClusterNonCol_ClusterRayleighRitz), since there the mixing does reach
-   the density matrix.  The first step of a cycle takes the
-   plain FP32 solve.  On sidia333 two steps give the FP64 density matrix to
+   the density matrix.  The first step of a cycle, which
+   solves for all 2n states, is refined too (its product buffers are
+   allocated for the step; FP64 when there is no room).  On sidia333 two steps give the FP64 density matrix to
    3e-12, and Mn12 and Si1000 samples to 3e-13 and 4e-12.  The vectors inside
    the other clusters stay FP32 mixtures, which the energy density matrix
    rebuilt after the SCF would see, so the solver returns to the FP64
@@ -1204,8 +1205,13 @@ static void ClusterNonCol_RefineConfigure(void)
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (myid == Host_ID) {
-        if (value != NULL) {
+        if (value != NULL && value[0] != '\0') {
             config[0] = (0 < atoi(value)) ? atoi(value) : 0;
+            if (0 < level_stdout) {
+                printf("<Cluster_DFT_NonCol> OPENMX_EIGEN_REFINE=%s: refined FP32 eigensolver %s\n", value,
+                       config[0] ? "on" : "off");
+                fflush(stdout);
+            }
         }
         else {
             int device = 0, ratio = 0;
@@ -1469,13 +1475,15 @@ static int ClusterNonCol_ClusterRayleighRitz(cublasHandle_t handle, dcomplex con
    ClusterNonCol_ZheevdxPresent.  Blocks that do not fit into region get an
    allocation of their own for this call only.  Returns 0, leaving the lower
    triangle of A as it was, when the FP32 solve fails or no memory is left
-   for the blocks, setting *persistent to 1 then, and also, setting it to 1,
-   when a partially occupied cluster is too large for the Rayleigh-Ritz step
-   (the spectrum near the Fermi level is too dense for this solver) or
-   LAPACK fails on one; *persistent is 2 when the refinement is only on by
-   default and its products fell back to plain cuBLAS FP64. */
+   for the blocks, setting *persistent to 1 then (0 with transient set: the
+   first step of a cycle solves for all states and needs buffers of its own
+   that a later step does not), and also, setting it to 1, when a partially
+   occupied cluster is too large for the Rayleigh-Ritz step (the spectrum
+   near the Fermi level is too dense for this solver) or its solve fails;
+   *persistent is 2 when the refinement is only on by default and its
+   products fell back to plain cuBLAS FP64. */
 static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int maxn, int iterations, void *fp32,
-                                             size_t region, dcomplex *x, int *persistent)
+                                             size_t region, dcomplex *x, int transient, int *persistent)
 {
     ClusterNonColRefineState *st = &ClusterNonCol_refine;
     cublasHandle_t handle = ClusterNonCol_CublasHandle();
@@ -1523,10 +1531,10 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
         st->capacity = 0;
         if (ClusterNonCol_TryDeviceMalloc((void **)&st->lam, (size_t)n * sizeof(double)) != cudaSuccess ||
             ClusterNonCol_TryDeviceMalloc((void **)&st->occ, (size_t)n * sizeof(double)) != cudaSuccess) {
-            printf("<Cluster_DFT_NonCol> no room for the refinement eigenvalues; FP64 eigensolver for the rest "
-                   "of the SCF cycle\n");
+            printf("<Cluster_DFT_NonCol> no room for the refinement eigenvalues; FP64 eigensolver%s\n",
+                   transient ? "" : " for the rest of the SCF cycle");
             fflush(stdout);
-            *persistent = 1;
+            *persistent = transient ? 0 : 1;
             return 0;
         }
         st->capacity = n;
@@ -1541,10 +1549,10 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
     }
     else {
         if (ClusterNonCol_TryDeviceMalloc(&own, 2 * block_bytes) != cudaSuccess) {
-            printf("<Cluster_DFT_NonCol> no room for the %.1f MiB of refinement products; FP64 eigensolver for "
-                   "the rest of the SCF cycle\n", 2.0 * (double)block_bytes / (1024.0 * 1024.0));
+            printf("<Cluster_DFT_NonCol> no room for the %.1f MiB of refinement products; FP64 eigensolver%s\n",
+                   2.0 * (double)block_bytes / (1024.0 * 1024.0), transient ? "" : " for the rest of the SCF cycle");
             fflush(stdout);
-            *persistent = 1;
+            *persistent = transient ? 0 : 1;
             return 0;
         }
         b1 = (dcomplex *)own;
@@ -1552,7 +1560,9 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
     b2 = (dcomplex *)((unsigned char *)b1 + block_bytes);
 
     if (!ClusterNonCol_Fp32Solve(A, n, n, af, wf)) {
+        /* a failure of the solve recurs on the same kind of matrix */
         if (own != NULL) wait_cudafunc(cudaFree(own));
+        *persistent = transient ? 0 : 1;
         return 0;
     }
 
@@ -1689,12 +1699,18 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
         wait_cudafunc(cudaMemcpy(lh, lam, (size_t)maxn * sizeof(double), cudaMemcpyDeviceToHost));
         ClusterNonCol_RefineOccupations(lh, maxn, maxn, fh);
         for (int c0 = 0; c0 < maxn;) {
-            int c1 = c0, partial = 0;
+            int c1 = c0, partial;
+            double f_low = fh[c0], f_high = fh[c0];
 
             while (c1 + 1 < maxn && fabs(lh[c1 + 1] - lh[c1]) <= chain) c1++;
+            /* the occupations differ inside the cluster: for Fermi occupations
+               the same as holding a partially occupied state, and also true of
+               an orbital emptied by index (empty.occupation.flag) */
             for (int j = c0; j <= c1; j++) {
-                if (1.0e-12 < fh[j] && fh[j] < 1.0 - 1.0e-12) partial = 1;
+                f_low = fmin(f_low, fh[j]);
+                f_high = fmax(f_high, fh[j]);
             }
+            partial = (1.0e-12 <= f_high - f_low);
             if (c0 < c1 && partial) {
                 c0s[clusters] = c0;
                 ms[clusters] = c1 - c0 + 1;
@@ -3056,30 +3072,29 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         /* the sampled steps' copy and write are charged to no phase */
         if (ClusterNonCol_SampleHamiltonian(SCF_iter, Hs2, n2, MaxN) && profile) ClusterNonCol_ProfileLap(-1, &t0);
 
-        if (ClusterNonCol_refine.last_refined && 1 < SCF_iter) {
+        if (ClusterNonCol_refine.last_refined) {
             /* the forward-transform segments (o_r, contiguous) are free until
                the next step, the transpose segment of the back transform
-               until then */
+               until then; the first step (all states) needs product buffers
+               of its own */
             size_t const region = arena->o_r[6] + nn * sizeof(double) - arena->o_r[0];
 
-            printf("<Cluster_DFT_NonCol> SCF step %d: FP32 eigensolver, %d refinement steps (OPENMX_EIGEN_REFINE)\n",
-                   SCF_iter, ClusterNonCol_RefineIterations());
+            printf("<Cluster_DFT_NonCol> SCF step %d: FP32 eigensolver, %d refinement steps%s (OPENMX_EIGEN_REFINE)\n",
+                   SCF_iter, ClusterNonCol_RefineIterations(), SCF_iter == 1 ? " of all states" : "");
             fflush(stdout);
             if (ClusterNonCol_RefinedEigenPresent(Hs2, ko, n2, MaxN, ClusterNonCol_RefineIterations(),
                                                   ClusterNonCol_ArenaPtr(arena->o_r[0]), region,
-                                                  (dcomplex *)ClusterNonCol_ArenaPtr(arena->o_vt), &solve_state[1])) {
+                                                  (dcomplex *)ClusterNonCol_ArenaPtr(arena->o_vt), SCF_iter == 1,
+                                                  &solve_state[1])) {
                 solve_state[0] = 1;
             }
             else {
                 ClusterNonCol_ZheevdxPresent(Hs2, ko, n2, MaxN);
             }
         }
-        else if (ClusterNonCol_refine.last_refined ||
-                 (ClusterNonCol_RefineIterations() == 0 && SCF_iter <= ClusterNonCol_EigenFp32Steps())) {
+        else if (ClusterNonCol_RefineIterations() == 0 && SCF_iter <= ClusterNonCol_EigenFp32Steps()) {
             /* the transpose segment of the back transform is free until then */
-            printf("<Cluster_DFT_NonCol> SCF step %d: FP32 eigensolver%s\n", SCF_iter,
-                   ClusterNonCol_refine.last_refined ? " (OPENMX_EIGEN_REFINE, first step)"
-                                                      : " (OPENMX_EIGEN_FP32_STEPS)");
+            printf("<Cluster_DFT_NonCol> SCF step %d: FP32 eigensolver (OPENMX_EIGEN_FP32_STEPS)\n", SCF_iter);
             fflush(stdout);
             solve_state[0] = ClusterNonCol_CheevdxPresent(Hs2, ko, n2, MaxN, ClusterNonCol_ArenaPtr(arena->o_vt));
         }
