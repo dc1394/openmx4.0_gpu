@@ -1022,6 +1022,57 @@ static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasO
     }
 }
 
+/* OPENMX_CLUSTER_PROFILE=1 (as in Cluster_DFT_Col.c): cumulative wall time of
+   the phases of the root dense solve on its owner rank, one NCCLUSTERPROF
+   line per solve: the transformed overlap (rebuilt at SCF_iter 1 and after a
+   size change), the gather of the Hamiltonian blocks, the forward transform
+   with the assembly of Hs2, the eigensolver, the back transform, the
+   release (eigenvalue download, remapping and the release of the GEMMul8
+   workspace) and the density matrices.  The device is synchronized around
+   each phase, so the times are not those of an unprofiled run. */
+enum { NCPROF_OVERLAP, NCPROF_GATHER, NCPROF_FORWARD, NCPROF_EIGEN, NCPROF_BACK, NCPROF_RELEASE, NCPROF_DM,
+       NCPROF_COUNT };
+
+static double ClusterNonCol_prof[NCPROF_COUNT];
+static long ClusterNonCol_prof_solves = 0;
+
+static int ClusterNonCol_ProfileEnabled(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char *value = getenv("OPENMX_CLUSTER_PROFILE");
+        cached = (value != NULL && atoi(value) != 0);
+    }
+    return cached;
+}
+
+/* charges the time since *t0 to phase (none if negative) after synchronizing
+   the device, and restarts *t0 */
+static void ClusterNonCol_ProfileLap(int phase, double *t0)
+{
+    double now;
+
+    wait_cudafunc(cudaDeviceSynchronize());
+    now = MPI_Wtime();
+    if (0 <= phase) ClusterNonCol_prof[phase] += now - *t0;
+    *t0 = now;
+}
+
+static void ClusterNonCol_ProfileReport(int myid, int n2, int MaxN, double dm_seconds)
+{
+    if (myid != Host_ID || !ClusterNonCol_ProfileEnabled()) return;
+
+    ClusterNonCol_prof[NCPROF_DM] += dm_seconds;
+    ClusterNonCol_prof_solves++;
+    printf("NCCLUSTERPROF rank=%d solves=%ld n2=%d maxn=%d overlap=%.6f gather=%.6f forward=%.6f eigen=%.6f "
+           "back=%.6f release=%.6f dm=%.6f (s, cumulative)\n",
+           myid, ClusterNonCol_prof_solves, n2, MaxN, ClusterNonCol_prof[NCPROF_OVERLAP],
+           ClusterNonCol_prof[NCPROF_GATHER], ClusterNonCol_prof[NCPROF_FORWARD], ClusterNonCol_prof[NCPROF_EIGEN],
+           ClusterNonCol_prof[NCPROF_BACK], ClusterNonCol_prof[NCPROF_RELEASE], ClusterNonCol_prof[NCPROF_DM]);
+    fflush(stdout);
+}
+
 /* Back transform of the root dense solve, on device pointers.  On entry the
    n2 x n2 segment zv holds the eigenvectors of the transformed problem in
    its first MaxN columns; on return it holds dense_evec, state l in the
@@ -1955,6 +2006,8 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
     ClusterNonColDenseSCache *scache = &ClusterNonCol_dense_scache;
     ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
     const int owns_dense = (myid == Host_ID);
+    const int profile = owns_dense && ClusterNonCol_ProfileEnabled();
+    double t0 = 0.0;
     const int use_setham_packed_cache =
         (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
          Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 1);
@@ -2023,6 +2076,8 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
 
     MPI_Bcast(&rebuild_s, 1, MPI_INT, Host_ID, mpi_comm_level1);
 
+    if (profile) ClusterNonCol_ProfileLap(-1, &t0);
+
     if (rebuild_s) {
         if (owns_dense && !scache->s_on_device) {
             /* The transformed overlap only changes with the geometry, so it
@@ -2067,6 +2122,8 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         }
     }
 
+    if (profile) ClusterNonCol_ProfileLap(NCPROF_OVERLAP, &t0);
+
     if (owns_dense) {
         ClusterNonCol_ArenaMap(rHs11, arena->o_r[0], nn * sizeof(double));
         ClusterNonCol_ArenaMap(rHs12, arena->o_r[1], nn * sizeof(double));
@@ -2100,6 +2157,8 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         Patch2Device_Cluster_NonCol_Owner(ImNL[1], iHs22, MP, owns_dense, n);
         Patch2Device_Cluster_NonCol_Owner(ImNL[2], Cs,    MP, owns_dense, n);
     }
+
+    if (profile) ClusterNonCol_ProfileLap(NCPROF_GATHER, &t0);
 
     if (owns_dense) {
 #pragma acc parallel loop present(iHs12[0 : n * n], Cs[0 : n * n])
@@ -2189,8 +2248,10 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         ClusterNonCol_ArenaUnmap(iHs11);
         ClusterNonCol_ArenaUnmap(iHs12);
         ClusterNonCol_ArenaUnmap(iHs22);
+        if (profile) ClusterNonCol_ProfileLap(NCPROF_FORWARD, &t0);
 
         ClusterNonCol_ZheevdxPresent(Hs2, ko, n2, MaxN);
+        if (profile) ClusterNonCol_ProfileLap(NCPROF_EIGEN, &t0);
 
         /* Back-transform only the MaxN solved states (the eigensolver already
            limits itself to MaxN).  The result takes the place of the solved
@@ -2198,6 +2259,7 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         ClusterNonCol_BackTransform((dcomplex *)ClusterNonCol_ArenaPtr(arena->o_Hs2),
                                     (dcomplex *)ClusterNonCol_ArenaPtr(arena->o_vt),
                                     (double const *)ClusterNonCol_ArenaPtr(arena->o_S), n, n2, MaxN);
+        if (profile) ClusterNonCol_ProfileLap(NCPROF_BACK, &t0);
 
 #pragma acc update self(ko[0 : n2 + 1])
         ClusterNonCol_ArenaUnmap(Hs2);
@@ -2210,6 +2272,7 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         if (ClusterNonCol_GemmWorkspaceTurnRelease()) {
             openmx_gemmul8ReleaseWorkspaces();
         }
+        if (profile) ClusterNonCol_ProfileLap(NCPROF_RELEASE, &t0);
 
         *dense_evec_out = dense_evec;
         *dense_evec_on_device_out = 1;
@@ -3244,8 +3307,13 @@ double Cluster_DFT_NonCol(
         ClusterNonCol_AbortWithMessage("GPUSOLVER device eigenvectors are not available in Cluster_DFT_NonCol.c.");
       }
 
-      time6 += ClusterNonCol_CalcDMRootDense_OpenACC(myid,size_H1,MP,n,n2,MaxN,CDM,iDM[0],EDM,ko,
-                                                     gpusolver_dense_evec,(Cnt_switch==1));
+      {
+        double dm_time = ClusterNonCol_CalcDMRootDense_OpenACC(myid,size_H1,MP,n,n2,MaxN,CDM,iDM[0],EDM,ko,
+                                                               gpusolver_dense_evec,(Cnt_switch==1));
+
+        time6 += dm_time;
+        ClusterNonCol_ProfileReport(myid,n2,MaxN,dm_time);
+      }
 
       /* Keep the latest direct gpuSOLVER eigenvectors for the post-SCF EDM/force
          rebuild.  Scatter to EVec1 only once after SCF convergence to avoid

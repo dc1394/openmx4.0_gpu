@@ -9,7 +9,8 @@ the first one): total energy, largest force-component difference, chemical
 potential and total spin moment.  When the runs report the bridge's
 forward-transform counters (OPENMX_GEMMUL8_FORWARD_TIMING=1), the wall time of
 the two forward GEMMs and the preparation/reuse counts are listed too, and
-with OPENMX_CLUSTER_PROFILE=1 the phases of the dense solve.  The first solve
+with OPENMX_CLUSTER_PROFILE=1 the phases of the dense solve (collinear and
+non-collinear cluster solvers).  The first solve
 of a run carries one-time costs (the preparation of X, the first use of a
 library routine), so the phase times are means over the later solves; the
 forward transform also gets the median of the later solves, which an
@@ -120,6 +121,30 @@ def read_run(folder):
                 'ranks': len(per_rank),
                 'setting': setting,
             }
+    # OPENMX_CLUSTER_PROFILE=1 in the non-collinear cluster solver: cumulative
+    # phase times of the owner rank, one line per solve (older binaries print
+    # no release field)
+    run['ncphases'] = None
+    if stds:
+        lines = list(re.finditer(r'NCCLUSTERPROF rank=\d+ solves=(\d+) n2=(\d+) maxn=(\d+) overlap=(\S+) gather=(\S+) '
+                                 r'forward=(\S+) eigen=(\S+) back=(\S+)(?: release=(\S+))? dm=(\S+)',
+                                 stds[0].read_text(errors='replace')))
+        if lines:
+            values = lambda m: [float(m[i]) if m[i] is not None else 0.0 for i in range(4, 11)]
+            cumulative = [values(m) for m in lines]
+            # per-solve times of the solves after the first (the first rebuilds the
+            # overlap and solves all n2 states)
+            later = [[b - a for a, b in zip(x, y)] for x, y in zip(cumulative, cumulative[1:])]
+            median = lambda v: sorted(v)[len(v) // 2] if len(v) % 2 else 0.5 * sum(sorted(v)[len(v) // 2 - 1:len(v) // 2 + 1])
+            run['ncphases'] = {
+                'solves': int(lines[-1][1]),
+                'first': cumulative[0],
+                'maxn': (int(lines[0][3]), int(lines[-1][3])),
+                'release': lines[0][9] is not None,
+                'median': [1e3 * median([t[i] for t in later]) for i in range(7)] if later else None,
+                'max': [1e3 * max(t[i] for t in later) for i in range(7)] if later else None,
+                'sum_median': 1e3 * median([sum(t) for t in later]) if later else None,
+            }
     # scf.gemmul8.adaptive: one line per trial, "... stage 1 (moduli=12 fast reuse), eta=..., rejected"
     run['stages'] = None
     if stds:
@@ -216,6 +241,30 @@ def summarize(case, ref_label):
                 print(f"| {r['label']} | {r['phases']['solves']} | {r['phases']['first']:.3f} | {median} | {f:.3f} | {e:.3f} | {b:.3f} | "
                       f"{d:.3f} | {100 * f / (f + e + b + d):.1f}% |")
         print()
+    print_ncphases(runs)
+
+
+def print_ncphases(runs):
+    if not any(r.get('ncphases') for r in runs):
+        return
+    print('Phases of the non-collinear dense solve (OPENMX_CLUSTER_PROFILE=1, owner rank): the first solve in s (it rebuilds '
+          'the transformed overlap and solves all 2n states), then ms per later solve, median (maximum); "release" is the '
+          'eigenvalue download and the release of the GEMMul8 workspace:\n')
+    print('| run | solves | states, first / later | first solve (s) | overlap | gather | forward transform | eigensolver | '
+          'back transform | release | density matrix | sum (median) |')
+    print('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
+    for r in runs:
+        t = r.get('ncphases')
+        if not t:
+            continue
+        if t['median'] is None:
+            cells = ['-'] * 8
+        else:
+            cells = [f"{a:.1f} ({b:.1f})" for a, b in zip(t['median'], t['max'])] + [f"{t['sum_median']:.1f}"]
+            if not t['release']:
+                cells[5] = '-'
+        print(f"| {r['label']} | {t['solves']} | {t['maxn'][0]} / {t['maxn'][1]} | {sum(t['first']):.2f} | " + ' | '.join(cells) + ' |')
+    print()
 
 
 def main():
