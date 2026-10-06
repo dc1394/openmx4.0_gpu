@@ -1145,9 +1145,10 @@ static void ClusterNonCol_CheevdxPresent(dcomplex *A, double *W, int n, int maxn
    eigenvalues) agree to 1e-12, is only orthonormalized, E_ij = r_ij / 2: the
    density matrix needs the occupied subspace, not the rotations inside it,
    and nearly degenerate pairs inside it are where one Newton step fails.  A
-   cluster that holds a partially occupied state then gets a Rayleigh-Ritz
-   step of its own (ClusterNonCol_ClusterRayleighRitz), since there the
-   mixing does reach the density matrix.  The first step of a cycle takes the
+   cluster (chained more widely, see below) that holds a partially occupied
+   state then gets a Rayleigh-Ritz step of its own
+   (ClusterNonCol_ClusterRayleighRitz), since there the mixing does reach
+   the density matrix.  The first step of a cycle takes the
    plain FP32 solve.  On sidia333 two steps give the FP64 density matrix to
    3e-12, and Mn12 and Si1000 samples to 3e-13 and 4e-12.  The vectors inside
    the other clusters stay FP32 mixtures, which the energy density matrix
@@ -1358,7 +1359,7 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
     dcomplex *b1, *b2;
     double *lam, *occ;
     double *e0, *f0;
-    double anorm, max_s = 0.0, max_r = 0.0, delta = 0.0;
+    double anorm, max_s = 0.0, max_r = 0.0, delta = 0.0, first_delta = 0.0, chain;
     int rr_clusters = 0, rr_largest = 0, rr_failed = 0;
 
 #pragma acc parallel loop collapse(2) present(A[0 : nn])
@@ -1467,6 +1468,7 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
             }
         }
         delta = 2.0 * (max_s + anorm * max_r);
+        if (it == 0) first_delta = delta;
 
         /* E in place of G */
 #pragma acc parallel loop collapse(2) deviceptr(b1, b2, lam, occ)
@@ -1501,11 +1503,17 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
         for (size_t i = 0; i < nk; i++) x[i] = b2[i];
     }
 
-    /* Rayleigh-Ritz inside every cluster (consecutive estimates closer than
-       delta) that holds a partially occupied state: there the refinement
+    /* Rayleigh-Ritz inside every cluster of consecutive estimates closer
+       than chain that holds a partially occupied state: there the refinement
        only orthonormalizes, and different occupations let the density
        matrix see the mixing (on sidia333, Mn12 and Si1000 this takes the
-       density matrix from up to 9e-9 to 4e-12) */
+       density matrix from up to 9e-9 to 4e-12).  chain is the larger of 30
+       times the first delta and the last delta: pairs just above delta
+       start with mixings near 0.1 that two Newton steps do not remove (with
+       the last delta alone, sidia333 with 866 electrons kept 8e-11; with
+       this 5e-12), and the last delta swings with the overlaps of the
+       unrefined states. */
+    chain = fmax(30.0 * first_delta, delta);
     {
         double *lh = (double *)ClusterNonCol_MallocArray((size_t)maxn, sizeof(double), "refined eigenvalues");
         double *fh = (double *)ClusterNonCol_MallocArray((size_t)maxn, sizeof(double), "refined occupations");
@@ -1515,7 +1523,7 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
         for (int c0 = 0; c0 < maxn;) {
             int c1 = c0, partial = 0;
 
-            while (c1 + 1 < maxn && fabs(lh[c1 + 1] - lh[c1]) <= delta) c1++;
+            while (c1 + 1 < maxn && fabs(lh[c1 + 1] - lh[c1]) <= chain) c1++;
             for (int j = c0; j <= c1; j++) {
                 if (1.0e-12 < fh[j] && fh[j] < 1.0 - 1.0e-12) partial = 1;
             }
@@ -1548,8 +1556,8 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
 
     if (0 < level_stdout || rr_failed) {
         printf("<Cluster_DFT_NonCol> refinement step %d: max |r| %.1e, max |s| %.1e, delta %.1e; Rayleigh-Ritz in %d "
-               "partially occupied clusters (largest %d)%s\n",
-               iterations, max_r, max_s, delta, rr_clusters, rr_largest,
+               "partially occupied clusters (largest %d, chained within %.1e)%s\n",
+               iterations, max_r, max_s, delta, rr_clusters, rr_largest, chain,
                rr_failed ? ", LAPACK failed in some: they stay mixed" : "");
         fflush(stdout);
     }
