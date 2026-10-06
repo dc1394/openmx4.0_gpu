@@ -22,10 +22,27 @@
      emuFb   FP64 emulation with b fixed mantissa bits (e.g. emuF32)
      emuOk   FP64 emulation, dynamic, mantissa bit offset k (e.g. emuO-16)
      fp32    an FP32 copy of the matrix (CHEEVDX / SSYEVDX)
-   The emulation modes need cuSOLVER >= 12.2 and are skipped otherwise.
+     fp32oaK  FP32 solve of all n eigenpairs, then K Ogita-Aishima refinement
+             steps of all of them (RefSyEv: R = I - X^H X, S = X^H H X,
+             lambda_i = s_ii / (1 - r_ii), E_ij = (s_ij + lambda_j r_ij) /
+             (lambda_j - lambda_i), or r_ij / 2 for |lambda_j - lambda_i| <=
+             delta, X <- X + X E)
+     fp32soaK the same for the maxn wanted eigenpairs only, with the other FP32
+             eigenvectors as the rest of the correction basis (their
+             eigenvalues taken from the FP32 solve): products of n x n x maxn
+   The emulation modes need cuSOLVER >= 12.2 and are skipped otherwise.  The
+   products of the refinement go through the GEMMul8 bridge
+   (openmx_gemmul8Zgemm / Dgemm, settings from OPENMX_GEMMUL8_NUM_MOD_Z/D and
+   _FASTMODE_Z/D), or plain cuBLAS FP64 with PROBE_OA_GEMM=fp64; delta is
+   PROBE_OA_DELTA_SCALE (default 2) times (largest off-diagonal |s_ij| +
+   spectral radius times largest |r_ij|).  With PROBE_OA_OCC=1 a pair whose
+   Fermi occupations (from the FP32 eigenvalues) differ by less than
+   PROBE_OA_OCC_TOL (default 1e-12) is only orthonormalized, as a cluster: the
+   density matrix needs the occupied subspace, not the rotations inside it.
 
    Per mode: the median wall time of the eigensolver call over REPS calls
-   after one warm-up (the matrix is copied in before each call, untimed), the
+   after one warm-up (the matrix is copied in before each call, untimed; the
+   refinement modes add the median time of their refinement), the
    number of eigenpairs, and against fp64 the largest eigenvalue difference
    over the MaxN states, the band energy difference sum_i f_i e_i, and the
    largest element (|Re| + |Im| for complex) and the Frobenius norm of the
@@ -45,6 +62,17 @@
 #include <cstring>
 #include <string>
 #include <vector>
+
+extern "C" {
+cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+                                   int n, int k, const double *alpha, const double *A, int lda, const double *B,
+                                   int ldb, const double *beta, double *C, int ldc);
+cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+                                   int n, int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A, int lda,
+                                   const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta, cuDoubleComplex *C,
+                                   int ldc);
+void openmx_gemmul8SetEnabled(int enabled);
+}
 
 namespace {
 
@@ -96,6 +124,76 @@ __global__ void scale_columns(double *v, const double *s, size_t rows, int cols)
         v[i] *= s[i / rows];
 }
 
+/* Ogita-Aishima refinement on the n x kc block of the wanted columns.  Matrices
+   are column-major with leading dimension n; a complex element is two
+   doubles.  G = X^H X(:, 0:kc), S = X^H H X(:, 0:kc). */
+__device__ inline double magnitude(const double *m, size_t at, bool cplx)
+{
+    return cplx ? hypot(m[2 * at], m[2 * at + 1]) : fabs(m[at]);
+}
+
+/* lambda_j = Re s_jj / Re g_jj (= s_jj / (1 - r_jj)) for the wanted j < kc */
+__global__ void oa_lambda(const double *S, const double *G, int n, int kc, bool cplx, double *lam)
+{
+    for (int j = blockIdx.x * blockDim.x + threadIdx.x; j < kc; j += gridDim.x * blockDim.x) {
+        const size_t at = static_cast<size_t>(j) + static_cast<size_t>(j) * n;
+        lam[j] = cplx ? S[2 * at] / G[2 * at] : S[at] / G[at];
+    }
+}
+
+/* largest off-diagonal |s_ij| and largest |r_ij| = |delta_ij - g_ij| over the
+   block, as the bit patterns of non-negative doubles (ordered like integers) */
+__global__ void oa_maxima(const double *S, const double *G, int n, int kc, bool cplx, unsigned long long *out)
+{
+    double ms = 0.0, mr = 0.0;
+    const size_t count = static_cast<size_t>(n) * kc;
+    for (size_t at = blockIdx.x * static_cast<size_t>(blockDim.x) + threadIdx.x; at < count;
+         at += static_cast<size_t>(gridDim.x) * blockDim.x) {
+        const size_t i = at % n, j = at / n;
+        if (i != j) ms = fmax(ms, magnitude(S, at, cplx));
+        const double gr = (cplx ? G[2 * at] : G[at]) - (i == j ? 1.0 : 0.0);
+        const double gi = cplx ? G[2 * at + 1] : 0.0;
+        mr = fmax(mr, hypot(gr, gi));
+    }
+    atomicMax(&out[0], static_cast<unsigned long long>(__double_as_longlong(ms)));
+    atomicMax(&out[1], static_cast<unsigned long long>(__double_as_longlong(mr)));
+}
+
+/* E_ij = (s_ij + lambda_j r_ij) / (lambda_j - lambda_i), or r_ij / 2 when the
+   two eigenvalues are within delta (and on the diagonal); counts the pairs
+   treated as a cluster */
+__global__ void oa_correction(const double *S, const double *G, const double *lam, double delta, int n, int kc,
+                              bool cplx, const double *occ, double occ_tol, double *E, unsigned long long *clustered)
+{
+    unsigned long long local = 0;
+    const size_t count = static_cast<size_t>(n) * kc;
+    for (size_t at = blockIdx.x * static_cast<size_t>(blockDim.x) + threadIdx.x; at < count;
+         at += static_cast<size_t>(gridDim.x) * blockDim.x) {
+        const size_t i = at % n, j = at / n;
+        const double rr = (i == j ? 1.0 : 0.0) - (cplx ? G[2 * at] : G[at]);
+        const double ri = cplx ? -G[2 * at + 1] : 0.0;
+        double er = 0.5 * rr, ei = 0.5 * ri;
+        if (i != j) {
+            const double d = lam[j] - lam[i];
+            if (fabs(d) > delta && (occ == nullptr || fabs(occ[i] - occ[j]) >= occ_tol)) {
+                er = ((cplx ? S[2 * at] : S[at]) + lam[j] * rr) / d;
+                ei = cplx ? (S[2 * at + 1] + lam[j] * ri) / d : 0.0;
+            }
+            else {
+                local++;
+            }
+        }
+        if (cplx) {
+            E[2 * at] = er;
+            E[2 * at + 1] = ei;
+        }
+        else {
+            E[at] = er;
+        }
+    }
+    if (local) atomicAdd(clustered, local);
+}
+
 struct Mode {
     std::string name;
     bool fp32 = false;
@@ -103,6 +201,8 @@ struct Mode {
     int fixed_bits = 0;      /* > 0: fixed mantissa control */
     int offset = 0;          /* dynamic control with this offset */
     bool has_offset = false;
+    int oa_iters = 0;        /* > 0: FP32 solve of all pairs and this many refinement steps */
+    bool oa_subset = false;  /* refine the maxn wanted pairs only */
 };
 
 bool parse_mode(const std::string &text, Mode *mode)
@@ -110,6 +210,12 @@ bool parse_mode(const std::string &text, Mode *mode)
     mode->name = text;
     if (text == "fp64") return true;
     if (text == "fp32") { mode->fp32 = true; return true; }
+    if ((text.rfind("fp32oa", 0) == 0 && text.size() > 6) || (text.rfind("fp32soa", 0) == 0 && text.size() > 7)) {
+        mode->fp32 = true;
+        mode->oa_subset = text[4] == 's';
+        mode->oa_iters = std::atoi(text.c_str() + (mode->oa_subset ? 7 : 6));
+        return mode->oa_iters > 0;
+    }
     if (text == "emu") { mode->emulated = true; return true; }
     if (text.rfind("emuF", 0) == 0 && text.size() > 4) {
         mode->emulated = true;
@@ -288,10 +394,16 @@ int main(int argc, char **argv)
     double *d_w = nullptr;
     check(cudaMalloc(&d_info, sizeof(int)), "cudaMalloc info");
     check(cudaMalloc(&d_w, (static_cast<size_t>(n) + 1) * sizeof(double)), "cudaMalloc eigenvalues");
-    const int64_t il = 1, iu = maxn;
-    const cusolverEigRange_t range = (maxn == n) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
     double vl = 0.0, vu = 0.0;
     float vl32 = 0.0f, vu32 = 0.0f;
+    const char *oa_gemm_env = std::getenv("PROBE_OA_GEMM");
+    const bool oa_fp64 = oa_gemm_env != nullptr && std::strcmp(oa_gemm_env, "fp64") == 0;
+    const char *oa_scale_env = std::getenv("PROBE_OA_DELTA_SCALE");
+    const double oa_scale = oa_scale_env != nullptr ? std::atof(oa_scale_env) : 2.0;
+    const char *oa_occ_env = std::getenv("PROBE_OA_OCC");
+    const bool oa_occ = oa_occ_env != nullptr && std::atoi(oa_occ_env) != 0;
+    const char *oa_occ_tol_env = std::getenv("PROBE_OA_OCC_TOL");
+    const double oa_occ_tol = oa_occ_tol_env != nullptr ? std::atof(oa_occ_tol_env) : 1e-12;
 
     std::printf("# %s %s n=%d maxn=%d electrons=%g occupancy=%g kT=%g reps=%d cuSOLVER %d\n", argv[1], argv[2], n, maxn,
                 electrons, occupancy, kT, reps, CUSOLVER_VERSION);
@@ -301,6 +413,10 @@ int main(int argc, char **argv)
         cusolverDnHandle_t handle = nullptr;
         check(cusolverDnCreate(&handle), "cusolverDnCreate");
         configure(handle, mode);
+        /* the refinement modes solve for all n pairs: the rest serve as correction basis */
+        const int solved = mode.oa_iters > 0 ? n : maxn;
+        const int64_t il = 1, iu = solved;
+        const cusolverEigRange_t range = (solved == n) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
         const cudaDataType type = mode.fp32 ? type32 : type64;
         const cudaDataType wtype = mode.fp32 ? CUDA_R_32F : CUDA_R_64F;
         void *a = mode.fp32 ? static_cast<void *>(d_a32) : static_cast<void *>(d_a);
@@ -347,7 +463,7 @@ int main(int argc, char **argv)
         }
         int info = 0;
         check(cudaMemcpy(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost), "download info");
-        if (info != 0 || meig < maxn) {
+        if (info != 0 || meig < solved) {
             std::printf("%s n=%d maxn=%d mode=%s FAILED info=%d meig=%lld\n", argv[2], n, maxn, mode.name.c_str(), info,
                         static_cast<long long>(meig));
             if (&mode == &modes.front()) {
@@ -365,7 +481,103 @@ int main(int argc, char **argv)
         res.ms = times[times.size() / 2];
         res.meig = meig;
         res.eig.resize(maxn);
-        if (mode.fp32) {
+        std::string oa_report;
+        if (mode.oa_iters > 0) {
+            /* Ogita-Aishima refinement of the FP32 pairs (all n, or the maxn wanted) */
+            const int kc = mode.oa_subset ? maxn : n;
+            const size_t block = static_cast<size_t>(n) * kc * width;
+            double *d_x0 = nullptr, *d_y = nullptr, *d_g = nullptr, *d_s = nullptr, *d_e = nullptr, *d_xn = nullptr;
+            double *d_lam = nullptr, *d_occ = nullptr;
+            unsigned long long *d_counters = nullptr;
+            check(cudaMalloc(&d_x0, reals * sizeof(double)), "cudaMalloc X0");
+            for (double **b : {&d_y, &d_g, &d_s, &d_e, &d_xn})
+                check(cudaMalloc(b, block * sizeof(double)), "cudaMalloc refinement block");
+            check(cudaMalloc(&d_lam, static_cast<size_t>(n) * sizeof(double)), "cudaMalloc lambda");
+            check(cudaMalloc(&d_counters, 3 * sizeof(unsigned long long)), "cudaMalloc counters");
+            std::vector<float> w32(n);
+            check(cudaMemcpy(w32.data(), d_w32, n * sizeof(float), cudaMemcpyDeviceToHost), "download FP32 eigenvalues");
+            std::vector<double> lam32(w32.begin(), w32.end());
+            const double anorm = std::max(std::fabs(lam32.front()), std::fabs(lam32.back()));
+            if (oa_occ) {
+                /* occupations of all n FP32 states, for the occupation clusters */
+                double mu32 = 0.0;
+                const std::vector<double> f32 = occupations(lam32, electrons, occupancy, kT, &mu32);
+                check(cudaMalloc(&d_occ, static_cast<size_t>(n) * sizeof(double)), "cudaMalloc occupations");
+                check(cudaMemcpy(d_occ, f32.data(), n * sizeof(double), cudaMemcpyHostToDevice), "upload occupations");
+            }
+            to_double<<<1024, 256>>>(d_a32, d_x0, reals);
+            check(cudaDeviceSynchronize(), "synchronize");
+
+            const cublasOperation_t herm = cplx ? CUBLAS_OP_C : CUBLAS_OP_T;
+            auto gemm = [&](cublasOperation_t op_a, int m, int nc, int k, const double *A, const double *B, bool add,
+                            double *C) {
+                if (cplx) {
+                    const cuDoubleComplex one = make_cuDoubleComplex(1.0, 0.0);
+                    const cuDoubleComplex beta = make_cuDoubleComplex(add ? 1.0 : 0.0, 0.0);
+                    check(openmx_gemmul8Zgemm(blas, op_a, CUBLAS_OP_N, m, nc, k, &one,
+                                              reinterpret_cast<const cuDoubleComplex *>(A), n,
+                                              reinterpret_cast<const cuDoubleComplex *>(B), n, &beta,
+                                              reinterpret_cast<cuDoubleComplex *>(C), n), "refinement GEMM");
+                }
+                else {
+                    const double one = 1.0, beta = add ? 1.0 : 0.0;
+                    check(openmx_gemmul8Dgemm(blas, op_a, CUBLAS_OP_N, m, nc, k, &one, A, n, B, n, &beta, C, n),
+                          "refinement GEMM");
+                }
+            };
+            std::vector<double> oa_times;
+            for (int r = 0; r <= reps; r++) {
+                check(cudaMemcpy(d_a, d_x0, reals * sizeof(double), cudaMemcpyDeviceToDevice), "restore X");
+                check(cudaMemcpy(d_lam, lam32.data(), n * sizeof(double), cudaMemcpyHostToDevice), "upload lambda");
+                check(cudaDeviceSynchronize(), "synchronize");
+                if (oa_fp64) openmx_gemmul8SetEnabled(0);
+                auto t0 = std::chrono::steady_clock::now();
+                std::string report;
+                for (int it = 0; it < mode.oa_iters; it++) {
+                    gemm(CUBLAS_OP_N, n, kc, n, d_ref, d_a, false, d_y);    /* Y = H X1 */
+                    gemm(herm, n, kc, n, d_a, d_a, false, d_g);             /* G = X^H X1 */
+                    gemm(herm, n, kc, n, d_a, d_y, false, d_s);             /* S = X^H Y */
+                    oa_lambda<<<256, 256>>>(d_s, d_g, n, kc, cplx, d_lam);
+                    check(cudaMemset(d_counters, 0, 3 * sizeof(unsigned long long)), "clear counters");
+                    oa_maxima<<<1024, 256>>>(d_s, d_g, n, kc, cplx, d_counters);
+                    unsigned long long bits[2];
+                    check(cudaMemcpy(bits, d_counters, sizeof(bits), cudaMemcpyDeviceToHost), "download maxima");
+                    double max_s, max_r;
+                    std::memcpy(&max_s, &bits[0], sizeof(double));
+                    std::memcpy(&max_r, &bits[1], sizeof(double));
+                    const double delta = oa_scale * (max_s + anorm * max_r);
+                    oa_correction<<<1024, 256>>>(d_s, d_g, d_lam, delta, n, kc, cplx, d_occ, oa_occ_tol, d_e,
+                                                 d_counters + 2);
+                    check(cudaMemcpy(d_xn, d_a, block * sizeof(double), cudaMemcpyDeviceToDevice), "copy X1");
+                    gemm(CUBLAS_OP_N, n, kc, n, d_a, d_e, true, d_xn);      /* X1 += X E */
+                    check(cudaMemcpy(d_a, d_xn, block * sizeof(double), cudaMemcpyDeviceToDevice), "update X1");
+                    unsigned long long clustered = 0;
+                    check(cudaMemcpy(&clustered, d_counters + 2, sizeof(clustered), cudaMemcpyDeviceToHost),
+                          "download cluster count");
+                    char buf[160];
+                    std::snprintf(buf, sizeof(buf), " it%d:max_r=%.1e,max_s=%.1e,delta=%.1e,cluster_pairs=%llu", it + 1,
+                                  max_r, max_s, delta, clustered);
+                    report += buf;
+                }
+                check(cudaDeviceSynchronize(), "synchronize");
+                if (oa_fp64) openmx_gemmul8SetEnabled(1);
+                if (r > 0)
+                    oa_times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                oa_report = report;
+            }
+            std::sort(oa_times.begin(), oa_times.end());
+            const double t_oa = oa_times[oa_times.size() / 2];
+            char buf[160];
+            std::snprintf(buf, sizeof(buf), " solve_ms=%.1f refine_ms=%.1f gemm=%s delta_scale=%g occ=%s", res.ms,
+                          t_oa, oa_fp64 ? "fp64" : "gemmul8", oa_scale, oa_occ ? "on" : "off");
+            oa_report = std::string(buf) + oa_report;
+            res.ms += t_oa;
+            check(cudaMemcpy(res.eig.data(), d_lam, maxn * sizeof(double), cudaMemcpyDeviceToHost), "download lambda");
+            for (double *b : {d_x0, d_y, d_g, d_s, d_e, d_xn, d_lam}) check(cudaFree(b), "cudaFree refinement");
+            if (d_occ) check(cudaFree(d_occ), "cudaFree occupations");
+            check(cudaFree(d_counters), "cudaFree counters");
+        }
+        else if (mode.fp32) {
             std::vector<float> e32(maxn);
             check(cudaMemcpy(e32.data(), d_w32, maxn * sizeof(float), cudaMemcpyDeviceToHost), "download eigenvalues");
             for (int i = 0; i < maxn; i++) res.eig[i] = e32[i];
@@ -378,7 +590,7 @@ int main(int argc, char **argv)
 
         /* the eigenvectors in FP64, the first maxn columns */
         double *vec = d_a;
-        if (mode.fp32) to_double<<<1024, 256>>>(d_a32, d_a, reals);
+        if (mode.fp32 && mode.oa_iters == 0) to_double<<<1024, 256>>>(d_a32, d_a, reals);
         check(cudaDeviceSynchronize(), "synchronize");
 
         /* density matrix V diag(f) V^H = W W^H with W = V diag(sqrt f) */
@@ -441,9 +653,9 @@ int main(int argc, char **argv)
                 largest = std::fabs(largest);
             }
             std::printf("%s n=%d maxn=%d mode=%s ms=%.1f speedup=%.2f meig=%lld max_dE=%.2e dmu=%.2e dband=%.2e "
-                        "dDM_max=%.2e dDM_F=%.2e\n",
+                        "dDM_max=%.2e dDM_F=%.2e%s\n",
                         argv[2], n, maxn, mode.name.c_str(), res.ms, ref.ms / res.ms, res.meig, de, res.mu - ref.mu,
-                        res.band - ref.band, largest, norm);
+                        res.band - ref.band, largest, norm, oa_report.c_str());
         }
         std::fflush(stdout);
         check(cudaFree(d_work), "cudaFree workspace");

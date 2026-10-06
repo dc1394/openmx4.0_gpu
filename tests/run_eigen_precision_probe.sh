@@ -3,9 +3,10 @@ set -eu
 # Build tests/eigen_precision_probe.cu and run it on matrices sampled from an
 # OpenMX run (OPENMX_GEMM_SAMPLE_DIR / OPENMX_GEMM_SAMPLE_ITERS): the dense
 # eigensolve of the cluster solvers in native FP64, FP64 emulation (dynamic,
-# with a mantissa bit offset, or with fixed mantissa bits; cuSOLVER >= 12.2)
-# and FP32, each compared with native FP64.  Toolkit selection as in
-# tests/run_gemmul8_smoke.sh.
+# with a mantissa bit offset, or with fixed mantissa bits; cuSOLVER >= 12.2),
+# FP32, and FP32 followed by Ogita-Aishima refinement (fp32oaK, fp32soaK, with
+# the products through the GEMMul8 bridge), each compared with native FP64.
+# Toolkit selection and GEMMUL8_TEST_OBJECT as in tests/run_gemmul8_smoke.sh.
 #
 #   tests/run_eigen_precision_probe.sh <kind> <n> <maxn first step> <maxn> <electrons> <occupancy> <kT> <X|-> <sample> ...
 #
@@ -15,8 +16,10 @@ set -eu
 # (the first SCF step), the others for maxn.  occupancy is 1 for
 # non-collinear and spin-polarized blocks, 2 otherwise; kT in Hartree
 # (3.166811563e-6 times the electronic temperature in K).  REPS (default 3)
-# sets the timed calls per mode, MODES a comma-separated subset of the
-# probe's modes.  Example, sidia333_nc_cluster sampled into samples/:
+# sets the timed calls per mode, MODES a comma-separated list of the probe's
+# modes (default: fp64, the emulation modes and fp32), PROBE_OA_GEMM=fp64 the
+# refinement products in plain cuBLAS FP64.  Example, sidia333_nc_cluster
+# sampled into samples/:
 #
 #   tests/run_eigen_precision_probe.sh complex 5616 5616 1987 864 1 9.50043e-4 - samples/Hs2_scf*.bin
 if [ $# -lt 9 ]; then
@@ -31,13 +34,22 @@ math_root=${CUDA_MATH_ROOT:-$cuda_root}
 sdk_root=${NVHPC_ROOT:-/opt/nvidia/hpc_sdk/Linux_x86_64/26.9}
 nvcc=${NVCC:-$cuda_root/bin/nvcc}
 host_cxx=${NVCC_HOST:-$sdk_root/compilers/bin/nvc++}
+gemmul8_root=${GEMMUL8_DIR:-$test_root/source/third_party/GEMMul8}
 gpu_arch=${GPU_ARCH:-$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | awk '/^[0-9]+[.][0-9]+$/ {gsub(/[.]/, ""); print; exit}')}
 test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/openmx-eigen-probe.XXXXXX")
 trap 'rm -rf "$test_tmp"' EXIT HUP INT TERM
 unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH
 unset NVCC_PREPEND_FLAGS NVCC_APPEND_FLAGS
-"$nvcc" -ccbin "$host_cxx" -std=c++17 -O2 -arch="sm_$gpu_arch" -I"$math_root/include" \
-    "$test_root/tests/eigen_precision_probe.cu" -L"$math_root/lib64" -L"$cuda_root/lib64" -lcusolver -lcublas \
+gemmul8_object=${GEMMUL8_TEST_OBJECT:-$test_tmp/gemmul8.o}
+if [ -z "${GEMMUL8_TEST_OBJECT:-}" ]; then
+    "$nvcc" -ccbin "$host_cxx" -std=c++20 -O3 -diag-suppress 177 \
+        -DGPU_ARCH="$gpu_arch" -arch="sm_$gpu_arch" \
+        -I"$gemmul8_root/include" -I"$gemmul8_root/src" -I"$math_root/include" \
+        -c "$test_root/source/gemmul8_openmx.cu" -o "$gemmul8_object"
+fi
+"$nvcc" -ccbin "$host_cxx" -std=c++20 -O2 -arch="sm_$gpu_arch" -I"$gemmul8_root/include" -I"$math_root/include" \
+    "$test_root/tests/eigen_precision_probe.cu" "$test_root/source/gemmul8_bridge.cu" "$gemmul8_object" \
+    -L"$math_root/lib64" -L"$cuda_root/lib64" -lcusolver -lcublas -lcublasLt \
     -Xlinker -rpath -Xlinker "$math_root/lib64" \
     -Xlinker -rpath -Xlinker "$cuda_root/lib64" -o "$test_tmp/probe"
 
