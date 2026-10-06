@@ -2018,6 +2018,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_SERIAL</code></td><td>1</td><td>2 スピンが同居できないときの直列化モード(0=無効、2=直列強制)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>DM/EDM の GPU 蓄積(0 で CPU ループ)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>ソルブ毎の GEMMul8 ワークスペース解放(未設定時は BAND 設定を継承)</td></tr>
+<tr><td><code>OPENMX_EIGEN_REFINE</code></td><td>FP32:FP64 の性能比が 8 以上の GPU(GeForce、RTX PRO 6000 Blackwell など)で複素の GEMMul8 が有効なら 2、それ以外は 0</td><td>非共線クラスタの密な固有値計算: K &gt; 0 で 2n 個の固有対を FP32 で解き、必要な MaxN 個を荻田・相島法で K 回補正(積は GEMMul8)、部分占有のクラスタはレイリー・リッツで回転。SCF の 1 ステップ目は FP32 のみ、NormRD &lt; <code>OPENMX_EIGEN_REFINE_UNTIL</code> 以降と SCF を終えるステップは FP64 の固有値計算。<b>0</b> でオフ。RTX 5080(18 ランク)の sidia333(2n = 5616)で SCF ステップ数は同じまま 261.3 秒が 220.8 秒</td></tr>
+<tr><td><code>OPENMX_EIGEN_REFINE_UNTIL</code></td><td>1e-8</td><td>この値を表示上の NormRD が下回ると、その SCF サイクルの残りを FP64 の固有値計算に戻す</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC 法(Divide_Conquer.c)</b></td></tr>
 <tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>400</td><td>GPU 化する局所クラスタ次元 NUM の下限(コリニア)</td></tr>
 <tr><td><code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code></td><td>300</td><td>GPU 化するスピノル次元 2·NUM の下限(非コリニア)</td></tr>

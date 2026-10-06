@@ -2135,6 +2135,8 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_SERIAL</code></td><td>1</td><td>Serialized mode when both spin owners cannot fit (0 = disable, 2 = force serial)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>GPU accumulation of DM/EDM (0 = CPU loop)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>Per-solve GEMMul8 workspace release (inherits the BAND setting when unset)</td></tr>
+<tr><td><code>OPENMX_EIGEN_REFINE</code></td><td>2 on GPUs whose FP32:FP64 throughput ratio is at least 8 (GeForce, RTX PRO 6000 Blackwell, ...) when the complex GEMMul8 products are on; else 0</td><td>Noncollinear cluster dense path: K &gt; 0 solves all 2n pairs in FP32 and refines the MaxN wanted ones by K Ogita&ndash;Aishima steps (products through GEMMul8) plus a Rayleigh&ndash;Ritz step in partially occupied clusters; the first SCF step is plain FP32, the FP64 eigensolver returns once NormRD &lt; <code>OPENMX_EIGEN_REFINE_UNTIL</code> and always solves the step that ends the SCF. <b>0</b> = off. On an RTX 5080 (18 ranks) sidia333 (2n = 5616) takes 220.8 s instead of 261.3 s with the same SCF steps</td></tr>
+<tr><td><code>OPENMX_EIGEN_REFINE_UNTIL</code></td><td>1e-8</td><td>Printed NormRD below which the refined eigensolver hands the rest of the SCF cycle to the FP64 eigensolver</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC method (Divide_Conquer.c)</b></td></tr>
 <tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>400</td><td>Minimum local cluster dimension NUM for the GPU (collinear)</td></tr>
 <tr><td><code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code></td><td>300</td><td>Minimum spinor dimension 2·NUM for the GPU (noncollinear)</td></tr>

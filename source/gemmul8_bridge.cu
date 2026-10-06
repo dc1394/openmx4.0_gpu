@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
@@ -66,6 +67,9 @@ struct GeneralCounters {
     double    flops[2][2]   = {{0.0, 0.0}, {0.0, 0.0}};
 };
 GeneralCounters g_general_counters;
+/* calls of openmx_gemmul8{D,Z}gemm that ran in plain cuBLAS FP64, timed or
+   not: [real, complex] */
+std::atomic<long long> g_general_native[2];
 
 struct WorkspaceReport {
     size_t      required_bytes = 0;
@@ -366,7 +370,11 @@ cublasStatus_t timed_general_gemm(cublasHandle_t handle, int is_complex, double 
     static const bool timing = env_bool("OPENMX_GEMMUL8_TIMING", false);
     bool              native = false;
 
-    if (!timing) return body(&native);
+    if (!timing) {
+        const cublasStatus_t status = body(&native);
+        if (native) g_general_native[is_complex].fetch_add(1, std::memory_order_relaxed);
+        return status;
+    }
 
     cudaStream_t   stream = nullptr;
     cublasStatus_t status = cublasGetStream(handle, &stream);
@@ -374,6 +382,7 @@ cublasStatus_t timed_general_gemm(cublasHandle_t handle, int is_complex, double 
     if (cudaStreamSynchronize(stream) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
     const auto start = std::chrono::steady_clock::now();
     status = body(&native);
+    if (native) g_general_native[is_complex].fetch_add(1, std::memory_order_relaxed);
     if (cudaStreamSynchronize(stream) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
@@ -507,6 +516,21 @@ extern "C" void openmx_gemmul8TrimWorkspaces(void)
 extern "C" void openmx_gemmul8SetEnabled(int enabled)
 {
     g_input_enabled = (enabled != 0);
+}
+
+/* 1 when openmx_gemmul8Zgemm takes the GEMMul8 path at all: scf.gemmul8.enable
+   on and the complex products not disabled from the environment (a call can
+   still fall back for want of workspace) */
+extern "C" int openmx_gemmul8ZgemmEnabled(void)
+{
+    return g_input_enabled && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z") ? 1 : 0;
+}
+
+/* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
+   far that ran in plain cuBLAS FP64: switched off, or a workspace fallback */
+extern "C" long long openmx_gemmul8NativeCalls(int is_complex)
+{
+    return g_general_native[is_complex ? 1 : 0].load(std::memory_order_relaxed);
 }
 
 extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)

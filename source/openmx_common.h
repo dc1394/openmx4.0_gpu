@@ -4192,6 +4192,12 @@ void openmx_gemmul8ReleaseWorkspaces(void);
    plain cuBLAS FP64 GEMM (workspace queries then report 0).  Default on;
    set from Input_std.c on every rank. */
 void openmx_gemmul8SetEnabled(int enabled);
+/* 1 when openmx_gemmul8Zgemm takes the GEMMul8 path at all (scf.gemmul8.enable
+   on, complex products not disabled from the environment). */
+int openmx_gemmul8ZgemmEnabled(void);
+/* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
+   far that ran in plain cuBLAS FP64 (switched off or a workspace fallback). */
+long long openmx_gemmul8NativeCalls(int is_complex);
 /* Forward transform of the dense eigensolver, B = H X and C = X^+ B, with
    its own precision stage (mode 0: as the calls above, 1: cuBLAS FP64,
    2: GEMMul8 with the given moduli count and scaling mode) and optional
