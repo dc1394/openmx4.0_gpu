@@ -18,8 +18,11 @@ set -eu
 # (3.166811563e-6 times the electronic temperature in K).  REPS (default 3)
 # sets the timed calls per mode, MODES a comma-separated list of the probe's
 # modes (default: fp64, the emulation modes and fp32), PROBE_OA_GEMM=fp64 the
-# refinement products in plain cuBLAS FP64.  Example, sidia333_nc_cluster
-# sampled into samples/:
+# refinement products in plain cuBLAS FP64; the GEMMul8 settings of the
+# refinement products come from the environment as in OpenMX
+# (OPENMX_GEMMUL8_NUM_MOD_Z, ..._FASTMODE_Z, ..._MAX_WORKSPACE_MB), and a
+# fallback to native cuBLAS is reported on stderr.  Example,
+# sidia333_nc_cluster sampled into samples/:
 #
 #   tests/run_eigen_precision_probe.sh complex 5616 5616 1987 864 1 9.50043e-4 - samples/Hs2_scf*.bin
 if [ $# -lt 9 ]; then
@@ -53,6 +56,7 @@ fi
     -Xlinker -rpath -Xlinker "$math_root/lib64" \
     -Xlinker -rpath -Xlinker "$cuda_root/lib64" -o "$test_tmp/probe"
 
+export OPENMX_GEMMUL8_VERBOSE="${OPENMX_GEMMUL8_VERBOSE:-1}"
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 status=0
 for sample in "$@"; do
