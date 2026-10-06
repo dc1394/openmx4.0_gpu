@@ -1073,6 +1073,46 @@ static void ClusterNonCol_ProfileReport(int myid, int n2, int MaxN, double dm_se
     fflush(stdout);
 }
 
+/* OPENMX_GEMM_SAMPLE_DIR=<existing directory>, as in Cluster_DFT_Col.c: writes
+   the transformed Hamiltonian the eigensolver receives, Hs2 (n2 x n2 complex,
+   column-major, real and imaginary parts interleaved), for the SCF steps
+   listed in OPENMX_GEMM_SAMPLE_ITERS (comma separated, default "1"), as
+   Hs2_scf<step>.bin.  The files feed the offline eigensolver precision study
+   tests/eigen_precision_probe.cu.  Returns 1 when it wrote a file. */
+static int ClusterNonCol_SampleHamiltonian(int SCF_iter, dcomplex *Hs2, int n2, int MaxN)
+{
+    const char *dir = getenv("OPENMX_GEMM_SAMPLE_DIR");
+    const char *list = getenv("OPENMX_GEMM_SAMPLE_ITERS");
+    size_t count = (size_t)n2 * (size_t)n2;
+    char path[4096];
+    int wanted = 0;
+    FILE *fp;
+
+    if (dir == NULL || dir[0] == '\0') return 0;
+    if (list == NULL || list[0] == '\0') list = "1";
+
+    while (*list != '\0' && !wanted) {
+        char *end;
+        long step = strtol(list, &end, 10);
+        if (end == list) break;
+        wanted = (step == SCF_iter);
+        list = (*end == ',') ? end + 1 : end;
+    }
+    if (!wanted) return 0;
+
+#pragma acc update self(Hs2[0 : count])
+    snprintf(path, sizeof(path), "%s/Hs2_scf%03d.bin", dir, SCF_iter);
+    fp = fopen(path, "wb");
+    if (fp == NULL || fwrite(Hs2, sizeof(dcomplex), count, fp) != count || fclose(fp) != 0) {
+        char msg[4200];
+        snprintf(msg, sizeof(msg), "Cluster_DFT_NonCol.c: could not write the sampled matrix %s", path);
+        ClusterNonCol_AbortWithMessage(msg);
+    }
+    printf("<Cluster_DFT_NonCol> sampled %s (n2=%d, MaxN=%d)\n", path, n2, MaxN);
+    fflush(stdout);
+    return 1;
+}
+
 /* Back transform of the root dense solve, on device pointers.  On entry the
    n2 x n2 segment zv holds the eigenvectors of the transformed problem in
    its first MaxN columns; on return it holds dense_evec, state l in the
@@ -2249,6 +2289,9 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         ClusterNonCol_ArenaUnmap(iHs12);
         ClusterNonCol_ArenaUnmap(iHs22);
         if (profile) ClusterNonCol_ProfileLap(NCPROF_FORWARD, &t0);
+
+        /* the sampled steps' copy and write are charged to no phase */
+        if (ClusterNonCol_SampleHamiltonian(SCF_iter, Hs2, n2, MaxN) && profile) ClusterNonCol_ProfileLap(-1, &t0);
 
         ClusterNonCol_ZheevdxPresent(Hs2, ko, n2, MaxN);
         if (profile) ClusterNonCol_ProfileLap(NCPROF_EIGEN, &t0);
