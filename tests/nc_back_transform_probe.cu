@@ -10,17 +10,20 @@
    halves form, per spin half, one complex GEMM of V's rows of that half
    with a complex copy of S (openmx_gemmul8Zgemm, T T, maxn x n x n): half
    the work of the old form, no transpose.  V (n2 x n2 complex, n2 = 2n)
-   and S (n x n real) are random; the results are compared with the old
-   form and all forms timed: the median of REPS calls after one warm-up, the
-   device synchronized around each call.  With --release the bridge's
-   workspaces are released before every call, as the solver does once per
-   SCF step, so the timed call allocates them again.
+   and S (n x n real) are random.  All forms are timed: the median of REPS
+   calls after one warm-up, the device synchronized around each call.  With
+   --release the bridge's workspaces are released before every call, as the
+   solver does once per SCF step, so the timed call allocates them again.
+   Each result is then compared with the old form computed in plain cuBLAS
+   FP64 (err_*: largest absolute difference over the largest absolute value
+   of that reference).
 
-     nc_back_transform_probe <n> <maxn> [reps] [--fp64] [--release]
+     nc_back_transform_probe <n> <maxn> [reps] [--fp64] [--release] [--label NAME]
 
-   --fp64 sends both forms to plain cuBLAS FP64 (scf.gemmul8.enable off);
+   --fp64 sends all forms to plain cuBLAS FP64 (scf.gemmul8.enable off);
    otherwise the GEMMul8 settings come from the bridge's environment
-   variables (OPENMX_GEMMUL8_NUM_MOD_D/Z, OPENMX_GEMMUL8_FASTMODE_D/Z, ...). */
+   variables (OPENMX_GEMMUL8_NUM_MOD_D/Z, OPENMX_GEMMUL8_FASTMODE_D/Z, ...).
+   NAME labels the result line (default: fp64 or gemmul8). */
 #include <cublas_v2.h>
 #include <cuComplex.h>
 #include <cuda_runtime.h>
@@ -97,19 +100,24 @@ int main(int argc, char **argv)
 {
     int positional[3] = {0, 0, 5};
     int count = 0;
-    bool fp64 = false, release = false;
+    bool fp64 = false, release = false, bad = false;
+    const char *label = nullptr;
 
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--fp64") == 0) fp64 = true;
         else if (std::strcmp(argv[i], "--release") == 0) release = true;
+        else if (std::strcmp(argv[i], "--label") == 0 && i + 1 < argc) label = argv[++i];
         else if (count < 3) positional[count++] = std::atoi(argv[i]);
+        else bad = true;
     }
     const int n = positional[0], maxn = positional[1], reps = std::max(1, positional[2]);
     const int n2 = 2 * n;
-    if (count < 2 || n < 1 || maxn < 1 || n2 < maxn) {
-        std::fprintf(stderr, "usage: %s <n> <maxn> [reps] [--fp64] [--release]   (maxn <= 2n)\n", argv[0]);
+    if (bad || count < 2 || n < 1 || maxn < 1 || n2 < maxn) {
+        std::fprintf(stderr, "usage: %s <n> <maxn> [reps] [--fp64] [--release] [--label NAME]   (maxn <= 2n)\n",
+                     argv[0]);
         return 2;
     }
+    if (label == nullptr) label = fp64 ? "fp64" : "gemmul8";
     if (fp64) openmx_gemmul8SetEnabled(0);
 
     const size_t nn = static_cast<size_t>(n) * n, n2n2 = static_cast<size_t>(n2) * n2;
@@ -187,19 +195,28 @@ int main(int argc, char **argv)
     const double t_new = median_ms(reps, release, [&] { transpose(); real_gemms(); });
     const double t_halves = median_ms(reps, release, halves_form);
 
-    std::vector<cuDoubleComplex> c_old(n2n2), c_new(n2n2), c_halves(n2n2);
+    std::vector<cuDoubleComplex> c_old(n2n2), c_new(n2n2), c_halves(n2n2), c_ref(n2n2);
     check(cudaMemcpy(c_old.data(), d_old, n2n2 * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost), "download old");
     check(cudaMemcpy(c_new.data(), d_new, n2n2 * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost), "download new");
     check(cudaMemcpy(c_halves.data(), d_halves, n2n2 * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost),
           "download halves");
-    double max_ref = 0.0, diff_new = 0.0, diff_halves = 0.0;
+    /* the reference: the old form once more, in plain cuBLAS FP64 */
+    openmx_gemmul8SetEnabled(0);
+    old_form();
+    check(cudaDeviceSynchronize(), "synchronize");
+    if (!fp64) openmx_gemmul8SetEnabled(1);
+    check(cudaMemcpy(c_ref.data(), d_old, n2n2 * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost), "download reference");
+    double max_ref = 0.0, err_old = 0.0, err_new = 0.0, err_halves = 0.0;
+    auto distance = [](cuDoubleComplex a, cuDoubleComplex b) {
+        return std::hypot(cuCreal(a) - cuCreal(b), cuCimag(a) - cuCimag(b));
+    };
     for (int col = 0; col < n2; col++) {
         for (int row = 0; row < maxn; row++) {
             const size_t at = row + static_cast<size_t>(col) * n2;
-            const cuDoubleComplex a = c_old[at], b = c_new[at], c = c_halves[at];
-            max_ref = std::max(max_ref, std::hypot(cuCreal(a), cuCimag(a)));
-            diff_new = std::max(diff_new, std::hypot(cuCreal(a) - cuCreal(b), cuCimag(a) - cuCimag(b)));
-            diff_halves = std::max(diff_halves, std::hypot(cuCreal(a) - cuCreal(c), cuCimag(a) - cuCimag(c)));
+            max_ref = std::max(max_ref, std::hypot(cuCreal(c_ref[at]), cuCimag(c_ref[at])));
+            err_old = std::max(err_old, distance(c_old[at], c_ref[at]));
+            err_new = std::max(err_new, distance(c_new[at], c_ref[at]));
+            err_halves = std::max(err_halves, distance(c_halves[at], c_ref[at]));
         }
     }
     const double scale = max_ref > 0.0 ? 1.0 / max_ref : 1.0;
@@ -207,9 +224,9 @@ int main(int argc, char **argv)
     const double gflop_new = 2.0 * 2.0 * (2.0 * maxn) * static_cast<double>(n) * n * 1e-9;
 
     std::printf("n=%d n2=%d maxn=%d %s%s old_ms=%.3f real_ms=%.3f (transpose_ms=%.3f) halves_ms=%.3f "
-                "old_GFlop=%.1f real_GFlop=%.1f halves_GFlop=%.1f diff_real=%.2e diff_halves=%.2e\n",
-                n, n2, maxn, fp64 ? "fp64" : "gemmul8", release ? " release" : "", t_old, t_new, t_geam, t_halves,
-                gflop_old, gflop_new, gflop_old / 2.0, diff_new * scale, diff_halves * scale);
+                "old_GFlop=%.1f real_GFlop=%.1f halves_GFlop=%.1f err_old=%.2e err_real=%.2e err_halves=%.2e\n",
+                n, n2, maxn, label, release ? " release" : "", t_old, t_new, t_geam, t_halves, gflop_old, gflop_new,
+                gflop_old / 2.0, err_old * scale, err_new * scale, err_halves * scale);
 
     cublasDestroy(handle);
     cudaFree(d_s);

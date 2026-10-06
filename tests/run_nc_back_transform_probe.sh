@@ -2,11 +2,13 @@
 set -eu
 # Build and run tests/nc_back_transform_probe.cu: the back transform of the
 # non-collinear cluster solver as one complex GEMM against diag(S, S) (the
-# old form) and as a transpose plus two real GEMMs (the new form), on random
-# matrices, for cuBLAS FP64 and the GEMMul8 settings L=15 accurate, L=15
-# fast and L=12 fast, each without and with the release of the bridge's
-# workspaces before every call (the solver releases them once per SCF step).
-# Toolkit selection and GEMMUL8_TEST_OBJECT as in tests/run_gemmul8_smoke.sh.
+# old form), as a transpose plus two real GEMMs (the solver's form) and as
+# two complex GEMMs against a complex S, on random matrices, for cuBLAS FP64
+# and the GEMMul8 settings L=15 accurate, L=15 fast and L=12 fast, each
+# without and with the release of the bridge's workspaces before every call
+# (the solver releases them once per SCF step).  The GEMMul8 runs report a
+# fallback to native cuBLAS on stderr.  Toolkit selection and
+# GEMMUL8_TEST_OBJECT as in tests/run_gemmul8_smoke.sh.
 #
 #   tests/run_nc_back_transform_probe.sh [n maxn] ...
 #
@@ -16,6 +18,11 @@ set -eu
 # (default 18) sets OPENMX_GEMMUL8_LOCAL_RANKS, the number of ranks the
 # bridge assumes to share the GPU when it budgets its workspace; REPS (5)
 # the timed calls per form.
+[ $# -gt 0 ] || set -- 1088 1087 1088 2176 2808 1987 2808 5616
+if [ $(($# % 2)) -ne 0 ]; then
+    echo "usage: $0 [n maxn] ..." >&2
+    exit 2
+fi
 test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cuda_root=${CUDA_HOME:-/usr/local/cuda-13.4}
 math_root=${CUDA_MATH_ROOT:-$cuda_root}
@@ -41,8 +48,12 @@ fi
     -Xlinker -rpath -Xlinker "$math_root/lib64" \
     -Xlinker -rpath -Xlinker "$cuda_root/lib64" -o "$test_tmp/probe"
 
-[ $# -ge 2 ] || set -- 1088 1087 1088 2176 2808 1987 2808 5616
-unset OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT OPENMX_GEMMUL8_MAX_WORKSPACE_MB
+# the bridge's defaults, whatever the calling environment holds
+unset OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT OPENMX_GEMMUL8_MAX_WORKSPACE_MB OPENMX_GEMMUL8_MIN_FREE_AFTER_MB \
+      GEMMUL8_MAX_WORKSPACE_PERCENT GEMMUL8_MAX_WORKSPACE_MB GEMMUL8_MIN_FREE_AFTER_MB \
+      GEMMUL8_DISABLE GEMMUL8_DISABLE_D GEMMUL8_DISABLE_Z GEMMUL8_NUM_MOD_D GEMMUL8_NUM_MOD_Z \
+      GEMMUL8_FASTMODE_D GEMMUL8_FASTMODE_Z
+export OPENMX_GEMMUL8_DISABLE=0 OPENMX_GEMMUL8_DISABLE_D=0 OPENMX_GEMMUL8_DISABLE_Z=0 OPENMX_GEMMUL8_VERBOSE=1
 export OPENMX_GEMMUL8_LOCAL_RANKS="${PROBE_RANKS:-18}"
 reps=${REPS:-5}
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
@@ -55,7 +66,7 @@ while [ $# -ge 2 ]; do
             set -- $setting "$@"
             OPENMX_GEMMUL8_NUM_MOD_D=$1 OPENMX_GEMMUL8_NUM_MOD_Z=$1 \
             OPENMX_GEMMUL8_FASTMODE_D=$2 OPENMX_GEMMUL8_FASTMODE_Z=$2 \
-                "$test_tmp/probe" "$n" "$maxn" "$reps" $release | sed "s/ gemmul8/ $3/"
+                "$test_tmp/probe" "$n" "$maxn" "$reps" $release --label "$3"
             shift 3
         done
     done
