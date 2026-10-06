@@ -1,8 +1,9 @@
 # Non-collinear calculations: every GEMM routed through the GEMMul8 bridge
-# (the twelve real transform GEMMs and the complex back transform of the
-# cluster solver, the complex transforms of the band solver) under one
-# global setting.  OPENMX_GEMMUL8_TIMING=1 counts and times them; the
-# summary lists them per run.
+# (the twelve real transform GEMMs and the two real back-transform GEMMs of
+# the cluster solver, which follow the _D settings; the complex transforms
+# of the band solver, which follow the _Z settings) under one global
+# setting.  OPENMX_GEMMUL8_TIMING=1 counts and times them; the summary
+# lists them per run.
 #   A_fp64  scf.gemmul8.enable off: plain cuBLAS FP64
 #   D15a    the default: 15 moduli, accurate scaling
 #   D15f / D12f / D10f   15 / 12 / 10 moduli, fast scaling

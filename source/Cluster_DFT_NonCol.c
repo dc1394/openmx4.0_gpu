@@ -109,11 +109,10 @@ typedef struct
     size_t         total_bytes;
     unsigned char *base;
     size_t         o_S;
-    size_t         o_Ss2;
     size_t         o_ko;
     size_t         o_r[7];          /* rHs11,rHs12,rHs22,iHs11,iHs12,iHs22,Cs */
-    size_t         o_Hs2;
-    size_t         o_evec;
+    size_t         o_Hs2;           /* Hs2 and its eigenvectors, then the back-transformed dense_evec */
+    size_t         o_vt;            /* the eigenvectors transposed for the back transform */
     size_t         o_dindex;
     size_t         o_stage;
 } ClusterNonColDenseArena;
@@ -146,8 +145,8 @@ static void ClusterNonCol_ArenaUnmap(const void *host)
 }
 
 /* Transformed-overlap cache of the root dense path, hoisted to file scope so
-   the arena release can invalidate it.  The host buffers persist across
-   cycles; the device copies live in the arena. */
+   the arena release can invalidate it.  The host buffer persists across
+   cycles; the device copy lives in the arena. */
 typedef struct
 {
     int       n;
@@ -155,7 +154,6 @@ typedef struct
     int       transformed_s_valid;
     int       s_on_device;
     double   *S;
-    dcomplex *Ss2;
 } ClusterNonColDenseSCache;
 
 static ClusterNonColDenseSCache ClusterNonCol_dense_scache = {0};
@@ -797,7 +795,8 @@ double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2,
 static cublasHandle_t ClusterNonCol_CublasHandle(void)
 {
     /* One cached handle per selected device instead of a create/destroy pair
-       around every GEMM (13 calls per SCF iteration in the root dense path). */
+       around every GEMM (14 calls and a transpose per SCF iteration in the
+       root dense path). */
     static cublasHandle_t handle = NULL;
     static int handle_device = -1;
     int current_device = -1;
@@ -1023,23 +1022,53 @@ static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasO
     }
 }
 
-/* Same as above but with explicit leading dimensions and present extents, so
-   a GEMM can target a sub-panel (m < ldc) of a larger present array. */
-static void ClusterNonCol_GEMMul8ZgemmLd_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
-                                                 int k, dcomplex const * A, int lda, size_t a_count,
-                                                 dcomplex const * B, int ldb, size_t b_count,
-                                                 dcomplex * C, int ldc, size_t c_count)
+/* Back transform of the root dense solve, on device pointers.  On entry the
+   n2 x n2 segment zv holds the eigenvectors of the transformed problem in
+   its first MaxN columns; on return it holds dense_evec, state l in the
+   original basis on row l,
+
+       dense_evec[l + i n2] = sum_j zv[j + l n2] Ss2[i + j n2],   l < MaxN,
+
+   and zeros on the rows from MaxN on.  Ss2 = diag(S, S) carries the real
+   transformed overlap S (n x n) on both spin blocks, so a complex GEMM
+   against the n2 x n2 Ss2 does four times the work of the product.  Here
+   the vectors are transposed into vt (MaxN x n2); the real view of vt
+   (2 MaxN x n2, the real and imaginary parts of a state on consecutive
+   rows) times S^T is the real view of a spin half of dense_evec, one real
+   GEMM per half.  Being real GEMMs, they follow the GEMMul8 settings of the
+   real products (OPENMX_GEMMUL8_NUM_MOD_D, _FASTMODE_D, _DISABLE_D), like
+   the forward transform; the complex settings (_Z) no longer apply here. */
+static void ClusterNonCol_BackTransform(dcomplex *zv, dcomplex *vt, double const *S, int n, int n2, int MaxN)
 {
     cublasHandle_t handle = ClusterNonCol_CublasHandle();
+    cuDoubleComplex const one  = make_cuDoubleComplex(1.0, 0.0);
+    cuDoubleComplex const zero = make_cuDoubleComplex(0.0, 0.0);
+    double const alpha = 1.0;
+    double const beta  = 0.0;
 
-#pragma acc data      present(A[0 : a_count], B[0 : b_count], C[0 : c_count])
-#pragma acc host_data use_device(A, B, C)
-    {
-        cuDoubleComplex const alpha = make_cuDoubleComplex(1.0, 0.0);
-        cuDoubleComplex const beta  = make_cuDoubleComplex(0.0, 0.0);
+    /* vt = zv(:, 0:MaxN)^T; the second operand (zv again, scaled by 0) only
+       completes the call */
+    wait_cudafunc(cublasZgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, MaxN, n2, &one, (cuDoubleComplex const *)zv, n2,
+                              &zero, (cuDoubleComplex const *)zv, n2, (cuDoubleComplex *)vt, MaxN));
 
-        wait_cudafunc(openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &alpha, (cuDoubleComplex const *)A, lda,
-                                          (cuDoubleComplex const *)B, ldb, &beta, (cuDoubleComplex *)C, ldc));
+    if (MaxN < n2) {
+        /* the rows of the unsolved states are never computed; clear them so
+           no consumer ever sees stale values */
+#pragma acc parallel loop collapse(2) deviceptr(zv)
+        for (int col = 0; col < n2; col++) {
+            for (int row = MaxN; row < n2; row++) {
+                zv[(size_t)row + (size_t)col * (size_t)n2].r = 0.0;
+                zv[(size_t)row + (size_t)col * (size_t)n2].i = 0.0;
+            }
+        }
+    }
+
+    for (int half = 0; half < 2; half++) {
+        size_t const col = (size_t)half * (size_t)n;
+
+        wait_cudafunc(openmx_gemmul8Dgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, 2 * MaxN, n, n, &alpha,
+                                          (double const *)vt + 2 * (size_t)MaxN * col, 2 * MaxN, S, n, &beta,
+                                          (double *)zv + 2 * (size_t)n2 * col, 2 * n2));
     }
 }
 
@@ -1661,13 +1690,12 @@ static int ClusterNonCol_DenseArena_TryEnsure(int n, int n2, size_t tnum)
     ClusterNonCol_DenseArena_Release();
 
     arena->o_S   = ClusterNonCol_ArenaOff(&pos, nn8);
-    arena->o_Ss2 = ClusterNonCol_ArenaOff(&pos, n2n2z);
     arena->o_ko  = ClusterNonCol_ArenaOff(&pos, ko8);
     for (int i = 0; i < 7; i++) {
         arena->o_r[i] = ClusterNonCol_ArenaOff(&pos, nn8);
     }
     arena->o_Hs2    = ClusterNonCol_ArenaOff(&pos, n2n2z);
-    arena->o_evec   = ClusterNonCol_ArenaOff(&pos, n2n2z);
+    arena->o_vt     = ClusterNonCol_ArenaOff(&pos, n2n2z);
     arena->o_dindex = ClusterNonCol_ArenaOff(&pos, ClusterNonCol_CheckedMulCount(tnum, sizeof(int),
                                                                                  "dense arena index"));
     arena->o_stage  = ClusterNonCol_ArenaOff(&pos, ClusterNonCol_CheckedMulCount(tnum, sizeof(double),
@@ -1698,7 +1726,6 @@ static void ClusterNonCol_DenseArena_Release(void)
 
     if (scache->s_on_device) {
         ClusterNonCol_ArenaUnmap(scache->S);
-        ClusterNonCol_ArenaUnmap(scache->Ss2);
         scache->s_on_device = 0;
     }
     scache->transformed_s_valid = 0;
@@ -1927,7 +1954,6 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
 {
     ClusterNonColDenseSCache *scache = &ClusterNonCol_dense_scache;
     ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
-    dcomplex *cached_Ss2 = NULL;
     const int owns_dense = (myid == Host_ID);
     const int use_setham_packed_cache =
         (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
@@ -1964,13 +1990,10 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         if (scache->n != n || scache->n2 != n2) {
             if (scache->s_on_device) {
                 ClusterNonCol_ArenaUnmap(scache->S);
-                ClusterNonCol_ArenaUnmap(scache->Ss2);
                 scache->s_on_device = 0;
             }
             free(scache->S);
-            free(scache->Ss2);
             scache->S = NULL;
-            scache->Ss2 = NULL;
             scache->transformed_s_valid = 0;
             rebuild_s = 1;
         }
@@ -1978,14 +2001,10 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         if (scache->S == NULL) {
             scache->S = (double *)ClusterNonCol_MallocArray(nn, sizeof(double), "cached transformed overlap");
         }
-        if (scache->Ss2 == NULL) {
-            scache->Ss2 = (dcomplex *)ClusterNonCol_MallocArray(n2n2, sizeof(dcomplex), "cached transformed NC overlap");
-        }
 
         scache->n = n;
         scache->n2 = n2;
         S = scache->S;
-        cached_Ss2 = scache->Ss2;
 
         ClusterNonCol_RootSolveWorkspace_Ensure(n, n2);
         Cs    = ClusterNonCol_root_solve_workspace.Cs;
@@ -2006,11 +2025,10 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
 
     if (rebuild_s) {
         if (owns_dense && !scache->s_on_device) {
-            /* The transformed overlap and its spinor expansion only change
-               with the geometry, so they stay resident on the device across
-               SCF iterations instead of being re-uploaded every step. */
+            /* The transformed overlap only changes with the geometry, so it
+               stays resident on the device across SCF iterations instead of
+               being re-uploaded every step. */
             ClusterNonCol_ArenaMap(S, arena->o_S, nn * sizeof(double));
-            ClusterNonCol_ArenaMap(cached_Ss2, arena->o_Ss2, n2n2 * sizeof(dcomplex));
             scache->s_on_device = 1;
         }
 
@@ -2044,23 +2062,6 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
             }
 
             ClusterNonCol_ArenaUnmap(ko);
-
-#pragma acc parallel loop collapse(2) present(cached_Ss2[0 : n2 * n2], S[0 : n * n])
-            for (int col = 0; col < n2; col++) {
-                for (int row = 0; row < n2; row++) {
-                    double v = 0.0;
-
-                    if (row < n && col < n) {
-                        v = S[(size_t)row + (size_t)col * (size_t)n];
-                    }
-                    else if (n <= row && n <= col) {
-                        v = S[(size_t)(row - n) + (size_t)(col - n) * (size_t)n];
-                    }
-
-                    cached_Ss2[(size_t)row + (size_t)col * (size_t)n2].r = v;
-                    cached_Ss2[(size_t)row + (size_t)col * (size_t)n2].i = 0.0;
-                }
-            }
 
             scache->transformed_s_valid = 1;
         }
@@ -2191,33 +2192,21 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
 
         ClusterNonCol_ZheevdxPresent(Hs2, ko, n2, MaxN);
 
-        ClusterNonCol_ArenaMap(dense_evec, arena->o_evec, n2n2 * sizeof(dcomplex));
-
-        if (MaxN < n2) {
-            /* only the first MaxN states are back-transformed below; clear
-               the rest so no consumer ever sees uninitialized rows */
-#pragma acc parallel loop present(dense_evec[0 : n2 * n2])
-            for (size_t i = 0; i < n2n2; i++) {
-                dense_evec[i].r = 0.0;
-                dense_evec[i].i = 0.0;
-            }
-        }
-
         /* Back-transform only the MaxN solved states (the eigensolver already
-           limits itself to MaxN); the remaining rows of dense_evec are never
-           read by the DM/scatter consumers. */
-        ClusterNonCol_GEMMul8ZgemmLd_OpenACC(CUBLAS_OP_T, CUBLAS_OP_T, MaxN, n2, n2,
-                                             Hs2, n2, n2n2,
-                                             cached_Ss2, n2, n2n2,
-                                             dense_evec, n2, n2n2);
+           limits itself to MaxN).  The result takes the place of the solved
+           vectors in their arena segment, where dense_evec is then mapped. */
+        ClusterNonCol_BackTransform((dcomplex *)ClusterNonCol_ArenaPtr(arena->o_Hs2),
+                                    (dcomplex *)ClusterNonCol_ArenaPtr(arena->o_vt),
+                                    (double const *)ClusterNonCol_ArenaPtr(arena->o_S), n, n2, MaxN);
 
 #pragma acc update self(ko[0 : n2 + 1])
         ClusterNonCol_ArenaUnmap(Hs2);
         ClusterNonCol_ArenaUnmap(ko);
+        ClusterNonCol_ArenaMap(dense_evec, arena->o_Hs2, n2n2 * sizeof(dcomplex));
 
-        /* free the GEMMul8 workspace (the n2-sized complex one from the
-           back-transform dominates) so the DM phase and the grid/force
-           phases of this SCF step see the memory. */
+        /* free the GEMMul8 workspace (the back transform's, with 2 MaxN
+           rows, is the largest) so the DM phase and the grid/force phases
+           of this SCF step see the memory. */
         if (ClusterNonCol_GemmWorkspaceTurnRelease()) {
             openmx_gemmul8ReleaseWorkspaces();
         }
@@ -5365,7 +5354,6 @@ void Cluster_DFT_NonCol_Release_GPU_Caches(void)
     ClusterNonCol_ReleaseGpuSolverCachedEVec(Host_ID);
     Cluster_DFT_NonCol_Release_GPU_Solver();
     free(ClusterNonCol_dense_scache.S);
-    free(ClusterNonCol_dense_scache.Ss2);
     memset(&ClusterNonCol_dense_scache, 0, sizeof(ClusterNonCol_dense_scache));
     free(ClusterNonCol_dense_index_cache.dense_index);
     memset(&ClusterNonCol_dense_index_cache, 0, sizeof(ClusterNonCol_dense_index_cache));
