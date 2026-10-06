@@ -89,7 +89,10 @@ for item in "$@"; do
       key=${setting%%=*}; value=${setting#*=}
       case "$key" in
         @append) printf '\n' >> "$name.dat"; cat "$variants_dir/$value" >> "$name.dat"; cp "$variants_dir/$value" "$out/" ;;
-        *.*) if grep -q -i "^$key " "$name.dat"; then sed -i "s/^$key .*/$key   $value/I" "$name.dat"
+        *.*) if grep -q -i "^$key " "$name.dat"; then
+               # values may hold slashes (paths): '|' delimits, and | & \ in the value are escaped
+               escaped=$(printf '%s' "$value" | sed -e 's/[|&\\]/\\&/g')
+               sed -i "s|^$key .*|$key   $escaped|I" "$name.dat"
              else printf '\n%s   %s\n' "$key" "$value" >> "$name.dat"; fi ;;
         *)   exports="$exports $key=$value" ;;
       esac
