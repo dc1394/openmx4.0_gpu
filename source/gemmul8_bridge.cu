@@ -54,6 +54,19 @@ std::unordered_map<WorkspaceKey, Workspace, WorkspaceKeyHash> g_workspaces;
    contribution can be isolated without touching the environment. */
 int g_input_enabled = 1;
 
+/* OPENMX_GEMMUL8_TIMING=1: every call of openmx_gemmul8{D,Z}gemm is timed
+   with a stream synchronization before and after it, and counted by type
+   (real, complex) and path (GEMMul8, plain cuBLAS); the release of the
+   prepared forms reports and resets the totals.  The synchronization keeps
+   the products from overlapping other work, so the totals describe the
+   products, not a run without the option. */
+struct GeneralCounters {
+    long long calls[2][2]   = {{0, 0}, {0, 0}}; /* [real, complex][GEMMul8, cuBLAS] */
+    double    seconds[2][2] = {{0.0, 0.0}, {0.0, 0.0}};
+    double    flops[2][2]   = {{0.0, 0.0}, {0.0, 0.0}};
+};
+GeneralCounters g_general_counters;
+
 struct WorkspaceReport {
     size_t      required_bytes = 0;
     size_t      free_bytes     = 0;
@@ -345,6 +358,84 @@ void log_workspace_fallback_once(const WorkspaceReport &report)
     warned = true;
 }
 
+/* body(&native) performs the product and sets native when it took plain
+   cuBLAS; flops counts the real floating-point operations of the product */
+template <class Body>
+cublasStatus_t timed_general_gemm(cublasHandle_t handle, int is_complex, double flops, Body body)
+{
+    static const bool timing = env_bool("OPENMX_GEMMUL8_TIMING", false);
+    bool              native = false;
+
+    if (!timing) return body(&native);
+
+    cudaStream_t   stream = nullptr;
+    cublasStatus_t status = cublasGetStream(handle, &stream);
+    if (status != CUBLAS_STATUS_SUCCESS) return status;
+    if (cudaStreamSynchronize(stream) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
+    const auto start = std::chrono::steady_clock::now();
+    status = body(&native);
+    if (cudaStreamSynchronize(stream) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+    std::lock_guard<std::mutex> lock(g_workspace_mutex);
+    const int path = native ? 1 : 0;
+    ++g_general_counters.calls[is_complex][path];
+    g_general_counters.seconds[is_complex][path] += seconds;
+    g_general_counters.flops[is_complex][path] += flops;
+    return status;
+}
+
+} // namespace
+
+namespace {
+
+cublasStatus_t general_dgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n,
+                             int k, const double *alpha, const double *A, int lda, const double *B, int ldb,
+                             const double *beta, double *C, int ldc, bool *native)
+{
+    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
+    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
+    const cublasOperation_t gemmul8_transa = (transa == CUBLAS_OP_C) ? CUBLAS_OP_T : transa;
+    const cublasOperation_t gemmul8_transb = (transb == CUBLAS_OP_C) ? CUBLAS_OP_T : transb;
+    void          *work = nullptr;
+    WorkspaceReport report;
+
+    if (!g_input_enabled) {
+        /* scf.gemmul8.enable off: the fallback is what the user asked for,
+           so no warning (Input_std already reported it once) */
+        *native = true;
+        return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
+
+    if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
+        report.reason = "environment disable";
+        log_workspace_fallback_once<false>(report);
+        *native = true;
+        return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
+
+    apply_memory_saving(handle);
+
+    cublasStatus_t status =
+        ensure_workspace<false>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
+                                num_moduli, fastmode, &work, &report);
+    if (status == CUBLAS_STATUS_ALLOC_FAILED) {
+        log_workspace_fallback_once<false>(report);
+        *native = true;
+        return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        return status;
+    }
+
+    (void)gemmul8::gemm<double, gemmul8::Backend::INT8>(handle, gemmul8_transa, gemmul8_transb, static_cast<size_t>(m),
+                                                        static_cast<size_t>(n), static_cast<size_t>(k), alpha, A,
+                                                        static_cast<size_t>(lda), B, static_cast<size_t>(ldb), beta, C,
+                                                        static_cast<size_t>(ldc), num_moduli, fastmode, work);
+
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 } // namespace
 
 extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
@@ -365,45 +456,9 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
     if (m <= 0 || n <= 0 || k <= 0) {
         return CUBLAS_STATUS_SUCCESS;
     }
-
-    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
-    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
-    const cublasOperation_t gemmul8_transa = (transa == CUBLAS_OP_C) ? CUBLAS_OP_T : transa;
-    const cublasOperation_t gemmul8_transb = (transb == CUBLAS_OP_C) ? CUBLAS_OP_T : transb;
-    void          *work = nullptr;
-    WorkspaceReport report;
-
-    if (!g_input_enabled) {
-        /* scf.gemmul8.enable off: the fallback is what the user asked for,
-           so no warning (Input_std already reported it once) */
-        return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
-
-    if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
-        report.reason = "environment disable";
-        log_workspace_fallback_once<false>(report);
-        return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
-
-    apply_memory_saving(handle);
-
-    cublasStatus_t status =
-        ensure_workspace<false>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
-                                num_moduli, fastmode, &work, &report);
-    if (status == CUBLAS_STATUS_ALLOC_FAILED) {
-        log_workspace_fallback_once<false>(report);
-        return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        return status;
-    }
-
-    (void)gemmul8::gemm<double, gemmul8::Backend::INT8>(handle, gemmul8_transa, gemmul8_transb, static_cast<size_t>(m),
-                                                        static_cast<size_t>(n), static_cast<size_t>(k), alpha, A,
-                                                        static_cast<size_t>(lda), B, static_cast<size_t>(ldb), beta, C,
-                                                        static_cast<size_t>(ldc), num_moduli, fastmode, work);
-
-    return CUBLAS_STATUS_SUCCESS;
+    return timed_general_gemm(handle, 0, 2.0 * m * n * k, [&](bool *native) {
+        return general_dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, native);
+    });
 }
 
 extern "C" void openmx_gemmul8ReleaseWorkspaces(void)
@@ -484,6 +539,56 @@ extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
         false, false, nullptr, nullptr, fastmode));
 }
 
+namespace {
+
+cublasStatus_t general_zgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n,
+                             int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A, int lda,
+                             const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta, cuDoubleComplex *C,
+                             int ldc, bool *native)
+{
+    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
+    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
+    void          *work = nullptr;
+    WorkspaceReport report;
+
+    if (!g_input_enabled) {
+        /* scf.gemmul8.enable off: the fallback is what the user asked for,
+           so no warning (Input_std already reported it once) */
+        *native = true;
+        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
+
+    if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
+        report.reason = "environment disable";
+        log_workspace_fallback_once<true>(report);
+        *native = true;
+        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
+
+    apply_memory_saving(handle);
+
+    cublasStatus_t status =
+        ensure_workspace<true>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
+                               num_moduli, fastmode, &work, &report);
+    if (status == CUBLAS_STATUS_ALLOC_FAILED) {
+        log_workspace_fallback_once<true>(report);
+        *native = true;
+        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        return status;
+    }
+
+    (void)gemmul8::gemm<cuDoubleComplex, gemmul8::Backend::INT8>(
+        handle, transa, transb, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), alpha, A,
+        static_cast<size_t>(lda), B, static_cast<size_t>(ldb), beta, C, static_cast<size_t>(ldc), num_moduli, fastmode,
+        work);
+
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+} // namespace
+
 extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
                                                cublasOperation_t transa,
                                                cublasOperation_t transb,
@@ -502,43 +607,9 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
     if (m <= 0 || n <= 0 || k <= 0) {
         return CUBLAS_STATUS_SUCCESS;
     }
-
-    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
-    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
-    void          *work = nullptr;
-    WorkspaceReport report;
-
-    if (!g_input_enabled) {
-        /* scf.gemmul8.enable off: the fallback is what the user asked for,
-           so no warning (Input_std already reported it once) */
-        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
-
-    if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
-        report.reason = "environment disable";
-        log_workspace_fallback_once<true>(report);
-        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
-
-    apply_memory_saving(handle);
-
-    cublasStatus_t status =
-        ensure_workspace<true>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
-                               num_moduli, fastmode, &work, &report);
-    if (status == CUBLAS_STATUS_ALLOC_FAILED) {
-        log_workspace_fallback_once<true>(report);
-        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        return status;
-    }
-
-    (void)gemmul8::gemm<cuDoubleComplex, gemmul8::Backend::INT8>(
-        handle, transa, transb, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), alpha, A,
-        static_cast<size_t>(lda), B, static_cast<size_t>(ldb), beta, C, static_cast<size_t>(ldc), num_moduli, fastmode,
-        work);
-
-    return CUBLAS_STATUS_SUCCESS;
+    return timed_general_gemm(handle, 1, 8.0 * m * n * k, [&](bool *native) {
+        return general_zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, native);
+    });
 }
 
 /* ------------------------------------------------------------------------
@@ -967,6 +1038,25 @@ extern "C" void openmx_gemmul8ReleasePrepared(void)
         std::fflush(stdout);
     }
     g_forward_counters = ForwardCounters{};
+
+    const GeneralCounters &g = g_general_counters;
+    if (g.calls[0][0] + g.calls[0][1] + g.calls[1][0] + g.calls[1][1] > 0 &&
+        env_bool("OPENMX_GEMMUL8_TIMING", false)) {
+        const char *rank = std::getenv("OMPI_COMM_WORLD_RANK");
+        if (rank == nullptr) rank = std::getenv("PMI_RANK");
+        std::printf("<openmx_gemmul8> general GEMMs, rank %s: real %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop; "
+                    "complex %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop (GEMMul8 + cuBLAS); "
+                    "moduli %u / %u, scaling %s / %s (real / complex)\n",
+                    rank != nullptr ? rank : "-", g.calls[0][0], g.calls[0][1], g.seconds[0][0], g.seconds[0][1],
+                    1e-9 * g.flops[0][0], 1e-9 * g.flops[0][1], g.calls[1][0], g.calls[1][1], g.seconds[1][0],
+                    g.seconds[1][1], 1e-9 * g.flops[1][0], 1e-9 * g.flops[1][1],
+                    gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D"),
+                    gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z"),
+                    env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false)) ? "fast" : "accurate",
+                    env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false)) ? "fast" : "accurate");
+        std::fflush(stdout);
+    }
+    g_general_counters = GeneralCounters{};
 }
 
 /* ------------------------------------------------------------------------

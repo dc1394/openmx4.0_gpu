@@ -15,7 +15,10 @@ library routine), so the phase times are means over the later solves; the
 forward transform also gets the median of the later solves, which an
 occasional slow solve does not move.  Runs
 of the precision controller (scf.gemmul8.adaptive) also list the accepted
-SCF steps per stage and the rejected trials.
+SCF steps per stage and the rejected trials.  With OPENMX_GEMMUL8_TIMING=1
+the runs report every GEMM routed through the GEMMul8 bridge (count, time and
+operations per rank, GEMMul8 and plain cuBLAS apart), listed in a further
+table.
 """
 import math
 import re
@@ -92,6 +95,31 @@ def read_run(folder):
                 'mean': [1e3 * sum(v[i] - first[k][i] for k, v in last.items()) / later for i in range(1, 5)] if later
                         else [1e3 * sum(v[i] for v in last.values()) / sum(v[0] for v in last.values()) for i in range(1, 5)],
             }
+    # OPENMX_GEMMUL8_TIMING=1: one line per rank and report, summed per rank
+    run['general'] = None
+    if stds:
+        per_rank, setting = {}, ''
+        for m in re.finditer(r'general GEMMs, rank (\S+): real (\d+) \+ (\d+) calls, (\S+) \+ (\S+) s, (\S+) \+ (\S+) GFlop; '
+                             r'complex (\d+) \+ (\d+) calls, (\S+) \+ (\S+) s, (\S+) \+ (\S+) GFlop \(GEMMul8 \+ cuBLAS\); '
+                             r'moduli (\d+) / (\d+), scaling (\S+) / (\S+)', stds[0].read_text(errors='replace')):
+            v = per_rank.setdefault(m[1], [0, 0, 0.0, 0.0, 0.0])
+            v[0] += int(m[2]) + int(m[3])
+            v[1] += int(m[8]) + int(m[9])
+            v[2] += float(m[4]) + float(m[5]) + float(m[10]) + float(m[11])
+            v[3] += float(m[6]) + float(m[7]) + float(m[12]) + float(m[13])
+            v[4] += float(m[5]) + float(m[11])
+            setting = f'L={m[14]} {m[16]} / L={m[15]} {m[17]}'
+        if per_rank:
+            run['general'] = {
+                'real': sum(v[0] for v in per_rank.values()),
+                'complex': sum(v[1] for v in per_rank.values()),
+                'seconds': sum(v[2] for v in per_rank.values()),
+                'busiest': max(v[2] for v in per_rank.values()),
+                'gflop': sum(v[3] for v in per_rank.values()),
+                'cublas_seconds': sum(v[4] for v in per_rank.values()),
+                'ranks': len(per_rank),
+                'setting': setting,
+            }
     # scf.gemmul8.adaptive: one line per trial, "... stage 1 (moduli=12 fast reuse), eta=..., rejected"
     run['stages'] = None
     if stds:
@@ -150,6 +178,20 @@ def summarize(case, ref_label):
         print(f"| {r['label']} | {r['criterion']} | {r['gemmul8']} | {steps} | {r['utot']:.12f} | {diff(r['utot'], ref['utot'])} | "
               f"{df} | {diff(r['mu'], ref['mu'])} | {diff(r['spin'], ref['spin'])} | {time} |" + extra)
     print()
+    if any(r['general'] for r in runs):
+        print('GEMMs routed through the GEMMul8 bridge (OPENMX_GEMMUL8_TIMING=1; each call timed between stream '
+              'synchronizations): calls and time summed over the ranks, the busiest rank, and its share of the run time:\n')
+        print('| run | GEMMul8 setting (real / complex) | real calls | complex calls | ranks | GFlop | time, all ranks (s) | '
+              'of which cuBLAS (s) | busiest rank (s) | busiest rank / run time | busiest rank per SCF step (ms) |')
+        print('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
+        for r in runs:
+            g = r['general']
+            if g:
+                share = '-' if not r['time'] else f"{100 * g['busiest'] / r['time']:.1f}%"
+                print(f"| {r['label']} | {g['setting']} | {g['real']} | {g['complex']} | {g['ranks']} | {g['gflop']:.1f} | "
+                      f"{g['seconds']:.3f} | {g['cublas_seconds']:.3f} | {g['busiest']:.3f} | {share} | "
+                      f"{1e3 * g['busiest'] / max(1, r['scf']):.2f} |")
+        print()
     if any(r['stages'] for r in runs):
         print('Precision controller: accepted SCF steps per stage of the forward transform (L<moduli><a|f>: accurate or '
               'fast scaling), rejected trials, and the largest error indicator seen in each stage:\n')
