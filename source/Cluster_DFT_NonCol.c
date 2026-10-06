@@ -1144,12 +1144,16 @@ static void ClusterNonCol_CheevdxPresent(dcomplex *A, double *W, int n, int maxn
    + spectral radius * max |r_ij|), or whose Fermi occupations (from the FP32
    eigenvalues) agree to 1e-12, is only orthonormalized, E_ij = r_ij / 2: the
    density matrix needs the occupied subspace, not the rotations inside it,
-   and nearly degenerate pairs inside it are where one Newton step fails.  The
-   first step of a cycle takes the plain FP32 solve.  On sidia333 two steps
-   give the FP64 density matrix to 2e-11.  The vectors inside such a cluster
-   stay FP32 mixtures, which the energy density matrix rebuilt after the SCF
-   would see, so the solver returns to the FP64 eigensolver for the rest of
-   the cycle once the printed NormRD falls below OPENMX_EIGEN_REFINE_UNTIL
+   and nearly degenerate pairs inside it are where one Newton step fails.  A
+   cluster that holds a partially occupied state then gets a Rayleigh-Ritz
+   step of its own (ClusterNonCol_ClusterRayleighRitz), since there the
+   mixing does reach the density matrix.  The first step of a cycle takes the
+   plain FP32 solve.  On sidia333 two steps give the FP64 density matrix to
+   3e-12, and Mn12 and Si1000 samples to 3e-13 and 4e-12.  The vectors inside
+   the other clusters stay FP32 mixtures, which the energy density matrix
+   rebuilt after the SCF would see, so the solver returns to the FP64
+   eigensolver for the rest of the cycle once the printed NormRD falls below
+   OPENMX_EIGEN_REFINE_UNTIL
    (default 1e-8), an SCF that meets its stop condition on a refined step
    runs one more step in FP64 (Cluster_DFT_NonCol_RefineStopCheck), and the
    last step scf.maxIter allows is FP64 in any case.  OPENMX_EIGEN_FP32_STEPS
@@ -1272,6 +1276,57 @@ static void ClusterNonCol_RefineOccupations(const double *e, int n, int maxn, do
     }
 }
 
+/* Rayleigh-Ritz inside one cluster of the refined vectors: the m columns xc
+   (n x m, device) span an invariant subspace to the accuracy of the
+   refinement, but inside it they are the FP32 mixtures the refinement only
+   orthonormalized.  The cluster's H and overlap (m x m) are formed in cuBLAS
+   FP64 through z (n x m) and small (2 m^2, device), the generalized problem
+   is solved by LAPACK on the host, and xc is rotated onto the eigenvectors,
+   whose eigenvalues go to w.  Returns 0 (xc unchanged) if LAPACK fails. */
+static int ClusterNonCol_ClusterRayleighRitz(cublasHandle_t handle, dcomplex const *a, dcomplex *xc, int n, int m,
+                                             dcomplex *z, dcomplex *small, double *w)
+{
+    cuDoubleComplex const one  = make_cuDoubleComplex(1.0, 0.0);
+    cuDoubleComplex const zero = make_cuDoubleComplex(0.0, 0.0);
+    size_t const mm = (size_t)m * (size_t)m;
+    size_t const nm = (size_t)n * (size_t)m;
+    dcomplex *h = (dcomplex *)ClusterNonCol_MallocArray(2 * mm, sizeof(dcomplex), "cluster Rayleigh-Ritz");
+    dcomplex *s = h + mm;
+    dcomplex query;
+    double *rwork = (double *)ClusterNonCol_MallocArray((size_t)(3 * m), sizeof(double), "cluster Rayleigh-Ritz");
+    dcomplex *work;
+    INTEGER itype = 1, dim = m, lwork = -1, info = 0;
+
+    wait_cudafunc(cublasZgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, n, m, n, &one, (cuDoubleComplex const *)a, n,
+                              (cuDoubleComplex const *)xc, n, &zero, (cuDoubleComplex *)z, n));
+    wait_cudafunc(cublasZgemm(handle, CUBLAS_OP_C, CUBLAS_OP_N, m, m, n, &one, (cuDoubleComplex const *)xc, n,
+                              (cuDoubleComplex const *)z, n, &zero, (cuDoubleComplex *)small, m));
+    wait_cudafunc(cublasZgemm(handle, CUBLAS_OP_C, CUBLAS_OP_N, m, m, n, &one, (cuDoubleComplex const *)xc, n,
+                              (cuDoubleComplex const *)xc, n, &zero, (cuDoubleComplex *)small + mm, m));
+    wait_cudafunc(cudaMemcpy(h, small, 2 * mm * sizeof(dcomplex), cudaMemcpyDeviceToHost));
+
+    zhegv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, &query, &lwork, rwork, &info);
+    lwork = (info == 0 && 1.0 <= query.r) ? (INTEGER)query.r : 2 * m;
+    work = (dcomplex *)ClusterNonCol_MallocArray((size_t)lwork, sizeof(dcomplex), "cluster Rayleigh-Ritz");
+    zhegv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, rwork, &info);
+    free(work);
+    free(rwork);
+    if (info != 0) {
+        free(h);
+        return 0;
+    }
+
+    /* xc <- xc Y through z */
+    wait_cudafunc(cudaMemcpy(small, h, mm * sizeof(dcomplex), cudaMemcpyHostToDevice));
+    free(h);
+    wait_cudafunc(cublasZgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, n, m, m, &one, (cuDoubleComplex const *)xc, n,
+                              (cuDoubleComplex const *)small, m, &zero, (cuDoubleComplex *)z, n));
+    wait_cudafunc(cudaDeviceSynchronize());
+#pragma acc parallel loop deviceptr(xc, z)
+    for (size_t i = 0; i < nm; i++) xc[i] = z[i];
+    return 1;
+}
+
 /* FP32 eigensolve of all n pairs of A (n x n complex, present) and K
    refinement steps of the maxn lowest (see OPENMX_EIGEN_REFINE).  A is first
    made Hermitian from its lower triangle, the part every solve reads, so that
@@ -1304,6 +1359,7 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
     double *lam, *occ;
     double *e0, *f0;
     double anorm, max_s = 0.0, max_r = 0.0, delta = 0.0;
+    int rr_clusters = 0, rr_largest = 0, rr_failed = 0;
 
 #pragma acc parallel loop collapse(2) present(A[0 : nn])
     for (int col = 0; col < n; col++) {
@@ -1445,6 +1501,43 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
         for (size_t i = 0; i < nk; i++) x[i] = b2[i];
     }
 
+    /* Rayleigh-Ritz inside every cluster (consecutive estimates closer than
+       delta) that holds a partially occupied state: there the refinement
+       only orthonormalizes, and different occupations let the density
+       matrix see the mixing (on sidia333, Mn12 and Si1000 this takes the
+       density matrix from up to 9e-9 to 4e-12) */
+    {
+        double *lh = (double *)ClusterNonCol_MallocArray((size_t)maxn, sizeof(double), "refined eigenvalues");
+        double *fh = (double *)ClusterNonCol_MallocArray((size_t)maxn, sizeof(double), "refined occupations");
+
+        wait_cudafunc(cudaMemcpy(lh, lam, (size_t)maxn * sizeof(double), cudaMemcpyDeviceToHost));
+        ClusterNonCol_RefineOccupations(lh, maxn, maxn, fh);
+        for (int c0 = 0; c0 < maxn;) {
+            int c1 = c0, partial = 0;
+
+            while (c1 + 1 < maxn && fabs(lh[c1 + 1] - lh[c1]) <= delta) c1++;
+            for (int j = c0; j <= c1; j++) {
+                if (1.0e-12 < fh[j] && fh[j] < 1.0 - 1.0e-12) partial = 1;
+            }
+            if (c0 < c1 && partial) {
+                int const m = c1 - c0 + 1;
+
+                if (ClusterNonCol_ClusterRayleighRitz(handle, a_dev, x + (size_t)c0 * (size_t)n, n, m, b1, b2,
+                                                      lh + c0)) {
+                    rr_clusters++;
+                    if (rr_largest < m) rr_largest = m;
+                }
+                else {
+                    rr_failed++;
+                }
+            }
+            c0 = c1 + 1;
+        }
+        wait_cudafunc(cudaMemcpy(lam, lh, (size_t)maxn * sizeof(double), cudaMemcpyHostToDevice));
+        free(lh);
+        free(fh);
+    }
+
 #pragma acc parallel loop present(A[0 : nn]) deviceptr(x)
     for (size_t i = 0; i < nk; i++) A[i] = x[i];
 
@@ -1453,9 +1546,11 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
 
     if (own != NULL) wait_cudafunc(cudaFree(own));
 
-    if (0 < level_stdout) {
-        printf("<Cluster_DFT_NonCol> refinement step %d: max |r| %.1e, max |s| %.1e, delta %.1e\n", iterations, max_r,
-               max_s, delta);
+    if (0 < level_stdout || rr_failed) {
+        printf("<Cluster_DFT_NonCol> refinement step %d: max |r| %.1e, max |s| %.1e, delta %.1e; Rayleigh-Ritz in %d "
+               "partially occupied clusters (largest %d)%s\n",
+               iterations, max_r, max_s, delta, rr_clusters, rr_largest,
+               rr_failed ? ", LAPACK failed in some: they stay mixed" : "");
         fflush(stdout);
     }
     return 1;
