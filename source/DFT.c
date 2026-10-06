@@ -1353,6 +1353,10 @@ double DFT(int MD_iter, int Cnt_Now)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
+    /* the experimental refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the
+       non-collinear cluster solver: no stop on a refined step */
+    if (Cnt_switch==0 && Solver==2 && SpinP_switch==3) po = Cluster_DFT_NonCol_RefineStopCheck(po);
+
     if (openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
 
       char stage[64];
@@ -1692,6 +1696,10 @@ double DFT(int MD_iter, int Cnt_Now)
     }
 
     outputfile1(1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0); 
+
+    if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
+      Cluster_DFT_NonCol_RefineAfterMixing(sqrt(fabs(NormRD[0])));
+    }
 
     if (po==0 && openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
       if (openmx_gemmul8AdaptiveAfterMixing(sqrt(fabs(NormRD[0]))) && myid0==Host_ID && 0<level_stdout){

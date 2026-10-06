@@ -3623,6 +3623,8 @@ double Cluster_DFT_NonCol(
                    double *Work1);
 
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
+int Cluster_DFT_NonCol_RefineStopCheck(int stop_condition);
+void Cluster_DFT_NonCol_RefineAfterMixing(double normrd);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
                    int n2,
                    int *is2,
