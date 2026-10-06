@@ -56,6 +56,10 @@
    orthonormalizes, the vectors stay mixtures, and different occupations
    make the density matrix see it.  The cluster's H and overlap are formed in
    cuBLAS FP64 and the small generalized problem is solved by cuSOLVER.
+   :rr<c> chains the clusters with c times the last delta instead (pairs just
+   above delta start with mixings of about 0.1, which two Newton steps leave
+   at 1e-4), :rf<c> with the larger of c times the first delta and the last
+   delta (the last one swings with the overlaps of the unrefined states).
    The report of a refinement step counts the pairs treated as a cluster and
    the corrected pairs with |E_ij| > 0.01 (large_E), for which a Newton step is
    inaccurate.
@@ -267,6 +271,8 @@ struct Mode {
     int oa_occ = -1;         /* occupation clusters: 1 on, 0 off, -1 PROBE_OA_OCC */
     double oa_scale = -1.0;  /* delta scale, < 0: PROBE_OA_DELTA_SCALE */
     bool oa_rr = false;      /* Rayleigh-Ritz inside partially occupied clusters at the end */
+    double oa_rr_scale = 1.0; /* their chaining threshold in units of the last delta */
+    double oa_rf_scale = 0.0; /* > 0: max(this times the first delta, the last delta) instead */
 };
 
 bool parse_mode(const std::string &full, Mode *mode)
@@ -285,6 +291,14 @@ bool parse_mode(const std::string &full, Mode *mode)
             else if (option == "occ") mode->oa_occ = 1;
             else if (option == "noocc") mode->oa_occ = 0;
             else if (option == "rr") mode->oa_rr = true;
+            else if (option.size() > 2 && option.compare(0, 2, "rr") == 0 && std::atof(option.c_str() + 2) >= 1.0) {
+                mode->oa_rr = true;
+                mode->oa_rr_scale = std::atof(option.c_str() + 2);
+            }
+            else if (option.size() > 2 && option.compare(0, 2, "rf") == 0 && std::atof(option.c_str() + 2) >= 1.0) {
+                mode->oa_rr = true;
+                mode->oa_rf_scale = std::atof(option.c_str() + 2);
+            }
             else if (option.size() > 1 && option[0] == 'd' && std::atof(option.c_str() + 1) >= 0.0)
                 mode->oa_scale = std::atof(option.c_str() + 1);
             else return false;
@@ -647,7 +661,7 @@ int main(int argc, char **argv)
                 if (use_fp64) openmx_gemmul8SetEnabled(0);
                 auto t0 = std::chrono::steady_clock::now();
                 std::string report;
-                double last_delta = 0.0;
+                double last_delta = 0.0, first_delta = 0.0;
                 for (int it = 0; it < mode.oa_iters; it++) {
                     gemm(CUBLAS_OP_N, n, kc, n, d_ref, d_a, false, d_y);    /* Y = H X1 */
                     gemm(herm, n, kc, n, d_a, d_a, false, d_g);             /* G = X^H X1 */
@@ -662,6 +676,7 @@ int main(int argc, char **argv)
                     std::memcpy(&max_r, &bits[1], sizeof(double));
                     const double delta = scale * (max_s + anorm * max_r);
                     last_delta = delta;
+                    if (it == 0) first_delta = delta;
                     oa_correction<<<1024, 256>>>(d_s, d_g, d_lam, delta, n, kc, cplx, d_occ, oa_occ_tol, d_e,
                                                  d_counters + 2);
                     check(cudaMemcpy(d_xn, d_a, block * sizeof(double), cudaMemcpyDeviceToDevice), "copy X1");
@@ -683,9 +698,11 @@ int main(int argc, char **argv)
                     double mu_rr = 0.0;
                     const std::vector<double> f_rr = occupations(lam_h, electrons, occupancy, kT, &mu_rr);
                     int clusters = 0, largest = 0;
+                    const double chain = mode.oa_rf_scale > 0.0 ? std::max(mode.oa_rf_scale * first_delta, last_delta)
+                                                                : mode.oa_rr_scale * last_delta;
                     for (int c0 = 0; c0 < kc;) {
                         int c1 = c0;
-                        while (c1 + 1 < kc && std::fabs(lam_h[c1 + 1] - lam_h[c1]) <= last_delta) c1++;
+                        while (c1 + 1 < kc && std::fabs(lam_h[c1 + 1] - lam_h[c1]) <= chain) c1++;
                         const int m = c1 - c0 + 1;
                         bool partial = false;
                         for (int j = c0; j <= c1; j++)
@@ -761,7 +778,7 @@ int main(int argc, char **argv)
                     }
                     check(cudaMemcpy(d_lam, lam_h.data(), kc * sizeof(double), cudaMemcpyHostToDevice), "upload lambda");
                     char buf[96];
-                    std::snprintf(buf, sizeof(buf), " rr:clusters=%d,largest=%d", clusters, largest);
+                    std::snprintf(buf, sizeof(buf), " rr:clusters=%d,largest=%d,chain=%.1e", clusters, largest, chain);
                     report += buf;
                 }
                 check(cudaDeviceSynchronize(), "synchronize");
