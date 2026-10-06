@@ -715,39 +715,71 @@ static void BandNonCol_SymmetrizeDenseHermitian_OpenACC(int n, dcomplex *A)
     }
 }
 
-static void BandNonCol_DenseWavefunctions_OpenACC(int n2, dcomplex *Cs2, dcomplex *Ss2, dcomplex *Hs2)
+/* Wave functions of a dense solve, on present arrays: for the MaxN solved
+   states l
+
+       Hs2[l + i n2] = sum_j Cs2[j + l n2] Ss2[i + j n2],
+
+   with the rows from MaxN on cleared.  Ss2 = diag(S, S) holds the
+   transformed overlap S (n x n) on both spin blocks, so instead of one
+   n2 x n2 x n2 GEMM against Ss2 each spin half of Hs2 is one MaxN x n x n
+   GEMM against S: half the work for all n2 states, and MaxN / n2 of that
+   for MaxN of them.  Only the first MaxN columns of Cs2 need to be present;
+   Hs2 is created on the device unless it already is. */
+static void BandNonCol_DenseWavefunctions_PresentOpenACC(int n, int n2, int MaxN, dcomplex *Cs2, dcomplex *S,
+                                                        dcomplex *Hs2)
 {
-    size_t nn = (size_t)n2 * (size_t)n2;
+    size_t const nn = (size_t)n*(size_t)n;
+    size_t const n2n2 = (size_t)n2*(size_t)n2;
+    size_t const c_count = (size_t)n2*(size_t)MaxN;
 
-#pragma acc data copyin(Cs2[0 : nn], Ss2[0 : nn]) copyout(Hs2[0 : nn])
-    {
-#pragma acc parallel loop
-        for (size_t idx = 0; idx < nn; idx++) {
-            Hs2[idx].r = 0.0;
-            Hs2[idx].i = 0.0;
-        }
-
-        BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_T, CUBLAS_OP_T, n2, n2, n2, Cs2, Ss2, Hs2);
+    if (!acc_is_present(Hs2,sizeof(dcomplex)*n2n2)){
+#pragma acc enter data create(Hs2[0 : n2n2])
     }
+
+    if (MaxN<n2){
+#pragma acc parallel loop collapse(2) present(Hs2[0 : n2n2])
+        for (int col=0; col<n2; col++){
+            for (int row=MaxN; row<n2; row++){
+                Hs2[(size_t)row + (size_t)col*(size_t)n2].r = 0.0;
+                Hs2[(size_t)row + (size_t)col*(size_t)n2].i = 0.0;
+            }
+        }
+    }
+
+    BandNonCol_DMGpu_Init();
 #pragma acc wait
+#pragma acc data      present(Cs2[0 : c_count], S[0 : nn], Hs2[0 : n2n2])
+#pragma acc host_data use_device(Cs2, S, Hs2)
+    {
+        cuDoubleComplex const alpha = make_cuDoubleComplex(1.0, 0.0);
+        cuDoubleComplex const beta  = make_cuDoubleComplex(0.0, 0.0);
+
+        for (int half=0; half<2; half++){
+            size_t const off = (size_t)half*(size_t)n;
+
+            wait_cudafunc(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.cublas, CUBLAS_OP_T, CUBLAS_OP_T,
+                                              MaxN, n, n, &alpha,
+                                              (cuDoubleComplex const *)Cs2 + off, n2,
+                                              (cuDoubleComplex const *)S, n,
+                                              &beta,
+                                              (cuDoubleComplex *)Hs2 + off*(size_t)n2, n2));
+        }
+        wait_cudafunc(cudaStreamSynchronize(BandNonCol_dm_gpu_workspace.stream));
+    }
 }
 
-static void BandNonCol_DenseWavefunctions_PresentOpenACC(int n2, dcomplex *Cs2, dcomplex *Ss2, dcomplex *Hs2)
+static void BandNonCol_DenseWavefunctions_OpenACC(int n, int n2, int MaxN, dcomplex *Cs2, dcomplex *S,
+                                                 dcomplex *Hs2)
 {
-    int nn = n2*n2;
+    size_t const nn = (size_t)n*(size_t)n;
+    size_t const n2n2 = (size_t)n2*(size_t)n2;
+    size_t const c_count = (size_t)n2*(size_t)MaxN;
 
-    if (!acc_is_present(Hs2,sizeof(dcomplex)*(size_t)nn)){
-#pragma acc enter data create(Hs2[0 : nn])
+#pragma acc data copyin(Cs2[0 : c_count], S[0 : nn]) copyout(Hs2[0 : n2n2])
+    {
+        BandNonCol_DenseWavefunctions_PresentOpenACC(n,n2,MaxN,Cs2,S,Hs2);
     }
-
-#pragma acc parallel loop present(Hs2[0 : nn])
-    for (int idx=0; idx<nn; idx++){
-        Hs2[idx].r = 0.0;
-        Hs2[idx].i = 0.0;
-    }
-
-    BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_T,CUBLAS_OP_T,n2,n2,n2,Cs2,Ss2,Hs2);
-
 #pragma acc wait
 }
 
@@ -981,10 +1013,11 @@ static size_t BandNonCol_RootDenseDeviceBytes(int n, int n2, int MaxN, int size_
     size_t work_n2 = BandNonCol_QueryGpuSolverWorkBytes(n2,MaxN);
     size_t ko_bytes = BandNonCol_ArrayBytes((size_t)n2+1U,sizeof(double),"root dense eigenvalue vector");
     /* The GEMMul8 workspace is a single per-rank buffer that persists across
-       the turns of one concurrency group; the eigenvector back-transform is
-       an n2-sized GEMM, the triple transforms are n-sized. */
-    size_t gemmul8_bytes = need_evec ? openmx_gemmul8ZWorkspaceSize(n2,n2,n2)
-                                     : openmx_gemmul8ZWorkspaceSize(n,n,n);
+       the turns of one concurrency group, sized by its largest GEMM: the
+       triple transforms are n x n x n, the eigenvector back transform is
+       MaxN x n x n per spin half. */
+    size_t gemmul8_bytes = BandNonCol_MaxBytes(openmx_gemmul8ZWorkspaceSize(n,n,n),
+                                               need_evec ? openmx_gemmul8ZWorkspaceSize(MaxN,n,n) : 0U);
     size_t peak;
 
     BandNonCol_AddBytes(&construct_bytes,
@@ -1019,7 +1052,7 @@ static size_t BandNonCol_RootDenseDeviceBytes(int n, int n2, int MaxN, int size_
         BandNonCol_AddBytes(&wavefunction_peak,ko_bytes,"root dense wavefunction peak eigenvalues");
         BandNonCol_AddBytes(&wavefunction_peak,matrix_bytes,"root dense wavefunction overlap matrix");
         BandNonCol_AddBytes(&wavefunction_peak,
-                            BandNonCol_CheckedMul(matrix2_bytes,3U,"root dense wavefunction n2*n2 matrices"),
+                            BandNonCol_CheckedMul(matrix2_bytes,2U,"root dense wavefunction n2*n2 matrices"),
                             "root dense wavefunction n2*n2 matrices");
     }
 
@@ -2332,7 +2365,6 @@ typedef struct
     dcomplex *h12;
     dcomplex *work;
     dcomplex *hs2;
-    dcomplex *ss2;
     dcomplex *cs2;
 } BandNonColRootDenseWorkspace;
 
@@ -2360,7 +2392,6 @@ static void BandNonCol_RootDenseWorkspace_Reset(void)
     free(ws->h12);
     free(ws->work);
     free(ws->hs2);
-    free(ws->ss2);
     free(ws->cs2);
     memset(ws,0,sizeof(*ws));
 }
@@ -2387,11 +2418,10 @@ static BandNonColRootDenseWorkspace *BandNonCol_RootDenseWorkspace_Ensure(int ow
         ws->h12   = (dcomplex*)malloc(sizeof(dcomplex)*nn);
         ws->work  = (dcomplex*)malloc(sizeof(dcomplex)*nn);
         ws->hs2   = (dcomplex*)malloc(sizeof(dcomplex)*n2n2);
-        ws->ss2   = (dcomplex*)malloc(sizeof(dcomplex)*n2n2);
         ws->cs2   = (dcomplex*)malloc(sizeof(dcomplex)*n2n2);
 
         if (ws->s_all==NULL || ws->h11==NULL || ws->h22==NULL || ws->h12==NULL ||
-            ws->work==NULL || ws->hs2==NULL || ws->ss2==NULL || ws->cs2==NULL){
+            ws->work==NULL || ws->hs2==NULL || ws->cs2==NULL){
             BandNonCol_RootDenseWorkspace_Reset();
             BandNonCol_AbortWithMessage("Failed to allocate root dense GpuSolver workspace in Band_DFT_NonCol.c.");
         }
@@ -2439,7 +2469,6 @@ static void BandNonCol_KCacheRestore(const dcomplex *panel, BandNonColRootDenseW
 static void BandNonCol_ConstructDenseMsFromPacked( int cpx_flag, const double *M1, dcomplex *Ms,
                                                    int *order_GA, int *MP, double k1, double k2, double k3,
                                                    int n, int owns_dense );
-static void BandNonCol_BuildDenseSs2_OpenACC(int n, int n2, const dcomplex *S, dcomplex *S2);
 static void BandNonCol_BuildDenseHs2_OpenACC(int n, int n2, const dcomplex *H11,
                                              const dcomplex *H22, const dcomplex *H12,
                                              dcomplex *H2);
@@ -2512,7 +2541,6 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
         dcomplex *h12 = rdw->h12;
         dcomplex *work = rdw->work;
         dcomplex *hs2 = rdw->hs2;
-        dcomplex *ss2 = rdw->ss2;
         dcomplex *cs2 = rdw->cs2;
 
         /* The GEMMul8 workspace stays allocated across the turns of one
@@ -2544,10 +2572,8 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
             return;
         }
 
-        BandNonCol_BuildDenseSs2_OpenACC(n,n2,active_S,ss2);
+        BandNonCol_DenseWavefunctions_PresentOpenACC(n,n2,MaxN,hs2,active_S,cs2);
 #pragma acc exit data delete(active_S[0 : nn])
-
-        BandNonCol_DenseWavefunctions_PresentOpenACC(n2,hs2,ss2,cs2);
 
         /* cs2 stays device-resident: the 16*n2*n2 host readback used to be
            the biggest host-touched block of a k-owner rank, and both
@@ -2555,7 +2581,7 @@ static void BandNonCol_RootDenseSolveOneK_OpenACC(int rebuild_overlap,
            per-destination panels there, the DM copyin turns into a
            present hit).  The copy lives until the workspace reset. */
         rdw->cs2_on_device = 1;
-#pragma acc exit data delete(hs2[0 : n2n2], ss2[0 : n2n2])
+#pragma acc exit data delete(hs2[0 : n2n2])
 #pragma acc exit data delete(ko[0 : n2 + 1])
         BandNonCol_ClearOpenAccFreelists();
     }
@@ -2697,36 +2723,6 @@ static void BandNonCol_BuildDenseSs2(int n, int n2, const dcomplex *S, dcomplex 
             }
             else if (n<=i && i<n2 && n<=j && j<n2){
                 size_t idx = (size_t)n*(size_t)(i-n) + (size_t)(j-n);
-                S2[idx2] = S[idx];
-            }
-            else{
-                S2[idx2].r = 0.0;
-                S2[idx2].i = 0.0;
-            }
-        }
-    }
-}
-
-static void BandNonCol_BuildDenseSs2_OpenACC(int n, int n2, const dcomplex *S, dcomplex *S2)
-{
-    int nn = n*n;
-    int n2n2 = n2*n2;
-
-    if (!acc_is_present(S2,sizeof(dcomplex)*(size_t)n2n2)){
-#pragma acc enter data create(S2[0 : n2n2])
-    }
-
-#pragma acc parallel loop collapse(2) present(S[0 : nn], S2[0 : n2n2])
-    for (int i=0; i<n2; i++){
-        for (int j=0; j<n2; j++){
-            int idx2 = n2*i + j;
-
-            if (i<n && j<n){
-                int idx = n*i + j;
-                S2[idx2] = S[idx];
-            }
-            else if (n<=i && n<=j){
-                int idx = n*(i-n) + (j-n);
                 S2[idx2] = S[idx];
             }
             else{
@@ -4324,7 +4320,7 @@ double Band_DFT_NonCol(
     if (all_knum==1){
 
       if (BandNonCol_UseDenseGpuMatrix(n,n2)){
-        BandNonCol_DenseWavefunctions_OpenACC(n2,Cs2,Ss2,Hs2);
+        BandNonCol_DenseWavefunctions_OpenACC(n,n2,MaxN,Cs2,Ss,Hs2);
       }
       else {
         for(k=0; k<na_rows2*na_cols2; k++){
@@ -5262,7 +5258,7 @@ double Band_DFT_NonCol(
         **************************************************/
 
         if (BandNonCol_UseDenseGpuMatrix(n,n2)){
-          BandNonCol_DenseWavefunctions_OpenACC(n2,Cs2,Ss2,Hs2);
+          BandNonCol_DenseWavefunctions_OpenACC(n,n2,MaxN,Cs2,Ss,Hs2);
         }
         else {
 	  for(k=0; k<na_rows2*na_cols2; k++){
