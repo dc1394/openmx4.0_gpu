@@ -3624,6 +3624,9 @@ double Cluster_DFT_NonCol(
 
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
 int Cluster_DFT_NonCol_RefineLastRefined(void);
+int Cluster_DFT_Col_RefineLastRefined(void);
+void Cluster_DFT_Col_RefineForceFP64(int on);
+void Cluster_DFT_Col_RefineAfterMixing(double normrd);
 void Cluster_DFT_NonCol_RefineAfterMixing(double normrd);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
                    int n2,
@@ -4195,6 +4198,7 @@ void openmx_gemmul8SetEnabled(int enabled);
 /* 1 when openmx_gemmul8Zgemm takes the GEMMul8 path at all (scf.gemmul8.enable
    on, complex products not disabled from the environment). */
 int openmx_gemmul8ZgemmEnabled(void);
+int openmx_gemmul8DgemmEnabled(void);
 /* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
    far that ran in plain cuBLAS FP64 (switched off or a workspace fallback). */
 long long openmx_gemmul8NativeCalls(int is_complex);
@@ -4204,6 +4208,9 @@ cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cublasOperati
                                             int m, int n, int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A,
                                             int lda, const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta,
                                             cuDoubleComplex *C, int ldc);
+cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                            int m, int n, int k, const double *alpha, const double *A, int lda,
+                                            const double *B, int ldb, const double *beta, double *C, int ldc);
 /* Forward transform of the dense eigensolver, B = H X and C = X^+ B, with
    its own precision stage (mode 0: as the calls above, 1: cuBLAS FP64,
    2: GEMMul8 with the given moduli count and scaling mode) and optional

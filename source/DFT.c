@@ -1353,6 +1353,31 @@ double DFT(int MD_iter, int Cnt_Now)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
+    /* the refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the collinear
+       cluster solver: an SCF that stops on a refined step has the step's
+       Hamiltonian solved once more in FP64, and the density matrices, the
+       band energy and the chemical potential recomputed from the vectors */
+    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined()){
+      if (myid0==Host_ID && 0<level_stdout){
+        printf("<DFT>  eigensolver: converged on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
+        fflush(stdout);
+      }
+      Cluster_DFT_Col_RefineForceFP64(1);
+      time5 += Cluster_DFT_Col("scf",LSCF_iter,SpinP_switch,
+			       ko_col,H,OLP[0],DM[0],EDM,
+			       Eele0,Eele1,
+			       myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+			       Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
+			       Ss_Re,Cs_Re,Hs_Re,
+			       CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1);
+      Cluster_DFT_Col_RefineForceFP64(0);
+      Uele_OS0 = Eele0[0];
+      Uele_OS1 = Eele0[1];
+      Uele_IS0 = Eele1[0];
+      Uele_IS1 = Eele1[1];
+      Uele = Uele_IS0 + Uele_IS1;
+    }
+
     /* the refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the non-collinear
        cluster solver: an SCF that stops on a refined step has the step's
        Hamiltonian solved once more in FP64, for the vectors the post-SCF
@@ -1715,6 +1740,9 @@ double DFT(int MD_iter, int Cnt_Now)
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
       Cluster_DFT_NonCol_RefineAfterMixing(sqrt(fabs(NormRD[0])));
     }
+    if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
+      Cluster_DFT_Col_RefineAfterMixing(sqrt(fabs(NormRD[0])));
+    }
 
     if (po==0 && openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
       if (openmx_gemmul8AdaptiveAfterMixing(sqrt(fabs(NormRD[0]))) && myid0==Host_ID && 0<level_stdout){
@@ -1758,6 +1786,26 @@ double DFT(int MD_iter, int Cnt_Now)
 
   /* an SCF cut by scf.maxIter (changed through the _SCF_keywords file) on a
      refined FP32 eigensolve: the same FP64 re-solve as at a stop */
+  if (Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined()){
+    if (myid0==Host_ID && 0<level_stdout){
+      printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
+      fflush(stdout);
+    }
+    Cluster_DFT_Col_RefineForceFP64(1);
+    time5 += Cluster_DFT_Col("scf",LSCF_iter,SpinP_switch,
+			       ko_col,H,OLP[0],DM[0],EDM,
+			       Eele0,Eele1,
+			       myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+			       Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
+			       Ss_Re,Cs_Re,Hs_Re,
+			       CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1);
+    Cluster_DFT_Col_RefineForceFP64(0);
+    Uele_OS0 = Eele0[0];
+    Uele_OS1 = Eele0[1];
+    Uele_IS0 = Eele1[0];
+    Uele_IS1 = Eele1[1];
+    Uele = Uele_IS0 + Uele_IS1;
+  }
   if (Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()){
     if (myid0==Host_ID && 0<level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");

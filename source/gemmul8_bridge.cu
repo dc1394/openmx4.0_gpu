@@ -526,6 +526,12 @@ extern "C" int openmx_gemmul8ZgemmEnabled(void)
     return g_input_enabled && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z") ? 1 : 0;
 }
 
+/* the same for openmx_gemmul8Dgemm */
+extern "C" int openmx_gemmul8DgemmEnabled(void)
+{
+    return g_input_enabled && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D") ? 1 : 0;
+}
+
 /* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
    far that ran in plain cuBLAS FP64: switched off, or a workspace fallback */
 extern "C" long long openmx_gemmul8NativeCalls(int is_complex)
@@ -1028,6 +1034,38 @@ extern "C" cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cu
         }
         if (status != CUBLAS_STATUS_ALLOC_FAILED) return status;
         return general_zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, native);
+    });
+}
+
+/* the same for real products (openmx_gemmul8Dgemm) */
+extern "C" cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa,
+                                                       cublasOperation_t transb, int m, int n, int k,
+                                                       const double *alpha, const double *A, int lda, const double *B,
+                                                       int ldb, const double *beta, double *C, int ldc)
+{
+    if (m <= 0 || n <= 0 || k <= 0) return CUBLAS_STATUS_SUCCESS;
+    if (!g_input_enabled || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D"))
+        return openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    return timed_general_gemm(handle, 0, 2.0 * m * n * k, [&](bool *native) -> cublasStatus_t {
+        const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
+        const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
+        const cublasOperation_t ta = (transa == CUBLAS_OP_C) ? CUBLAS_OP_T : transa;
+        const cublasOperation_t tb = (transb == CUBLAS_OP_C) ? CUBLAS_OP_T : transb;
+        const size_t   sm = static_cast<size_t>(m), sn = static_cast<size_t>(n), sk = static_cast<size_t>(k);
+        const size_t   total = gemmul8::workSize<false, gemmul8::Backend::INT8>(sm, sn, sk, num_moduli, false, false,
+                                                                                 nullptr, nullptr, fastmode);
+        void          *work = nullptr;
+        cublasStatus_t status = ensure_scratch(handle, total, &work);
+
+        if (status == CUBLAS_STATUS_SUCCESS) {
+            gemmul8::set_memory_saving(handle, false);
+            (void)gemmul8::gemm<double, gemmul8::Backend::INT8>(
+                handle, ta, tb, sm, sn, sk, alpha, A, static_cast<size_t>(lda), B, static_cast<size_t>(ldb), beta, C,
+                static_cast<size_t>(ldc), num_moduli, fastmode, work);
+            return CUBLAS_STATUS_SUCCESS;
+        }
+        if (status != CUBLAS_STATUS_ALLOC_FAILED) return status;
+        return general_dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, native);
     });
 }
 
