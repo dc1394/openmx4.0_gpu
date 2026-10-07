@@ -105,6 +105,10 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
 int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, const EigenRefineProblem *pb,
                                const double *f0, EigenRefineReport *report);
 
+/* A prepare whose finish will not follow (the solve goes to FP64 after
+   all): releases what prepare left behind. */
+void openmx_eigen_refine_abandon(EigenRefineState *st);
+
 void openmx_eigen_refine_state_release(EigenRefineState *st);
 void openmx_eigen_refine_device_release(EigenRefineDevice *dev);
 

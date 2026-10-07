@@ -1353,6 +1353,30 @@ double DFT(int MD_iter, int Cnt_Now)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
+
+    if (openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
+
+      char stage[64];
+      long long before[5],after[5];
+      int restart;
+
+      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),before);
+      po = openmx_gemmul8AdaptiveStopCheck(po);
+      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),after);
+
+      /* the mixing history holds iterations of the lower stages: restart it
+         as the control of the electronic temperature does */
+      restart = openmx_gemmul8AdaptiveTakeHistoryReset();
+      if (restart){
+        int shift = LSCF_iter - Pulay_SCF + 2;
+        if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
+      }
+      if (before[0]!=after[0] && myid0==Host_ID && 0<level_stdout){
+        printf("<DFT>  forward GEMMs: final stage %lld (%s) from the next SCF step%s\n",
+               after[0],stage,restart ? ", mixing history restarted" : "");fflush(stdout);
+      }
+    }
+
     /* the refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the collinear
        cluster solver: an SCF that stops on a refined step has the step's
        Hamiltonian solved once more in FP64, and the density matrices, the
@@ -1395,29 +1419,6 @@ double DFT(int MD_iter, int Cnt_Now)
 				  rHs11_Re,rHs12_Re,rHs22_Re,iHs11_Re,iHs12_Re,iHs22_Re,
 				  Ss2_Cx,Hs2_Cx,Cs2_Cx,
 				  CDM1,size_H1,EVec1_NonCol,Work1);
-    }
-
-    if (openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
-
-      char stage[64];
-      long long before[5],after[5];
-      int restart;
-
-      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),before);
-      po = openmx_gemmul8AdaptiveStopCheck(po);
-      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),after);
-
-      /* the mixing history holds iterations of the lower stages: restart it
-         as the control of the electronic temperature does */
-      restart = openmx_gemmul8AdaptiveTakeHistoryReset();
-      if (restart){
-        int shift = LSCF_iter - Pulay_SCF + 2;
-        if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
-      }
-      if (before[0]!=after[0] && myid0==Host_ID && 0<level_stdout){
-        printf("<DFT>  forward GEMMs: final stage %lld (%s) from the next SCF step%s\n",
-               after[0],stage,restart ? ", mixing history restarted" : "");fflush(stdout);
-      }
     }
 
     /*****************************************************

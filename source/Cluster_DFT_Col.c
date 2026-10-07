@@ -141,6 +141,12 @@ static int ClusterCol_RefineIterations(void)
     return (0 < ClusterCol_refine.iterations) ? ClusterCol_refine.iterations : 0;
 }
 
+/* what the refined solve adds to the dense owner's device memory: the basis */
+static size_t ClusterCol_RefineBasisBytes(int n)
+{
+    return (0 < ClusterCol_RefineIterations()) ? sizeof(double) * (size_t)n * (size_t)n : 0;
+}
+
 /* every rank, at the start of the root dense path of a solve */
 static void ClusterCol_RefineBeginSolve(int SCF_iter, int spin_mode, int peer)
 {
@@ -158,8 +164,12 @@ static void ClusterCol_RefineBeginSolve(int SCF_iter, int spin_mode, int peer)
     st->peer = peer;
     st->solved[0] = st->solved[1] = 0;
     st->persistent = 0;
+    /* the occupations of the refinement are the plain Fermi function of
+       one chemical potential: XANES and emptied orbitals or states keep
+       the FP64 eigensolver */
     st->last_refined = (st->scf_mode && 0 < ClusterCol_RefineIterations() && !st->final_stage && !st->force_fp64 &&
-                        Cnt_switch == 0 && SCF_iter < DFTSCF_loop && spin_mode != 2);
+                        Cnt_switch == 0 && SCF_iter < DFTSCF_loop && spin_mode != 2 && xanes_calc == 0 &&
+                        empty_occupation_flag == 0 && empty_states_flag == 0);
 }
 
 /* every rank, at the end of the root dense path: the solves of the owners
@@ -857,6 +867,7 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
             printf("<Cluster_DFT_Col> spin %d: the other spin's solve is not refined this step; FP64 eigensolver\n",
                    spin);
             fflush(stdout);
+            openmx_eigen_refine_abandon(&ClusterCol_refine_state[spin]);
             rc = 0;
         }
     }
@@ -996,6 +1007,9 @@ static void ClusterCol_TrimScratch(void)
           + ctx->d_work_bytes;
     for (int spin=0; spin<2; ++spin)
         bytes += sizeof(double)*ctx->evec_stash_count[spin];
+    for (int spin=0; spin<2; ++spin)
+        if (ClusterCol_refine_x[spin]!=NULL)
+            bytes += sizeof(double)*(size_t)ClusterCol_refine_x_n*(size_t)ClusterCol_refine_x_n;
     if (!release_always && bytes<512ULL*1024ULL*1024ULL) return;
     if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
         (!release_always && free_bytes>=total_bytes/2)) return;
@@ -1007,6 +1021,14 @@ static void ClusterCol_TrimScratch(void)
     ctx->d_H = ctx->d_tmp = NULL;
     ctx->d_work = NULL;
     ctx->d_work_bytes = 0;
+    /* the bases of the refined eigensolver go with the scratch; the next
+       refined solve starts from an FP32 solve */
+    for (int spin=0; spin<2; ++spin){
+        if (ClusterCol_refine_x[spin]!=NULL) wait_cudafunc(cudaFree(ClusterCol_refine_x[spin]));
+        ClusterCol_refine_x[spin] = NULL;
+        ClusterCol_refine_state[spin].basis_valid = 0;
+    }
+    ClusterCol_refine_x_n = 0;
     for (int spin=0; spin<2; ++spin){
         if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(cudaFree(ctx->d_evec_stash[spin]));
         ctx->d_evec_stash[spin] = NULL;
@@ -1533,7 +1555,7 @@ static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
             my_fit = 0;
         }
         else{
-            my_fit = (ClusterCol_GpuDiagReserveBytes()<=free_bytes);
+            my_fit = (ClusterCol_GpuDiagReserveBytes()+ClusterCol_RefineBasisBytes(n)<=free_bytes);
         }
     }
 
@@ -1568,6 +1590,9 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
     int serial_allowed;
     int my_fit = 1;
     int fit = 0;
+
+    /* the reservation probe counts the refined eigensolver's basis */
+    ClusterCol_RefineConfigure();
 
     if (force!=NULL){
         static int force_announced = 0;

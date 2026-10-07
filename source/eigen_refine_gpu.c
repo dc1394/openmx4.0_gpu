@@ -36,6 +36,8 @@
    solve the step that ends the SCF in FP64. */
 #include "eigen_refine_gpu.h"
 
+#include <mpi.h>
+
 #include <math.h>
 #include <openacc.h>
 #include <stdio.h>
@@ -80,7 +82,7 @@ static void refine_check(cudaError_t status, const char *what)
     if (status != cudaSuccess) {
         fprintf(stderr, "eigen_refine_gpu: %s: %s\n", what, cudaGetErrorString(status));
         fflush(stderr);
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 }
 
@@ -89,7 +91,7 @@ static void refine_check_blas(cublasStatus_t status, const char *what)
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "eigen_refine_gpu: %s: cuBLAS status %d\n", what, (int)status);
         fflush(stderr);
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 }
 
@@ -180,6 +182,11 @@ static int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, co
     }
     st->b2 = (double *)((unsigned char *)st->b1 + block_bytes);
     return 1;
+}
+
+void openmx_eigen_refine_abandon(EigenRefineState *st)
+{
+    refine_blocks_release(st);
 }
 
 void openmx_eigen_refine_state_release(EigenRefineState *st)
@@ -411,6 +418,11 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
     memset(report, 0, sizeof(*report));
     st->cplx = cplx;
 
+    /* the caller's products that built a may still run on its streams
+       (cuBLAS on a non-blocking stream is not ordered with the OpenACC
+       kernels below) */
+    refine_check(cudaDeviceSynchronize(), "synchronize before the refined solve");
+
     /* symmetric or Hermitian from the lower triangle, the part every solve
        reads: the matrix comes from products and is so only to rounding */
     if (cplx) {
@@ -569,7 +581,12 @@ static int refine_rayleigh_ritz(EigenRefineDevice *dev, int cplx, const void *a,
         else dsygv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, &info);
         free(work);
         free(rwork);
-        if (info == 0) refine_check(cudaMemcpy(small, h, width * mm * sizeof(double), cudaMemcpyHostToDevice), "upload Y");
+        if (info == 0) {
+            /* complete before the products on the solver's stream read it */
+            refine_check(cudaMemcpyAsync(small, h, width * mm * sizeof(double), cudaMemcpyHostToDevice, dev->stream),
+                         "upload Y");
+            refine_check(cudaStreamSynchronize(dev->stream), "synchronize");
+        }
         free(h);
         if (info != 0) return 0;
     }
