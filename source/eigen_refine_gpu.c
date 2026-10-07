@@ -152,7 +152,22 @@ int openmx_eigen_refine_warm_enabled(void)
 
 int openmx_eigen_refine_warm_band_enabled(void)
 {
-    return openmx_eigen_refine_warm_enabled() && env_flag("OPENMX_EIGEN_REFINE_WARM_BAND", 0);
+    return openmx_eigen_refine_warm_enabled() && env_flag("OPENMX_EIGEN_REFINE_WARM_BAND", 1);
+}
+
+int openmx_eigen_refine_warm_band_period(void)
+{
+    const char *value = getenv("OPENMX_EIGEN_REFINE_WARM_PERIOD");
+
+    if (value == NULL || value[0] == '\0') return 4;
+    return (0 < atoi(value)) ? atoi(value) : 0;
+}
+
+int openmx_eigen_refine_warm_band_step(int scf_iter)
+{
+    int const period = openmx_eigen_refine_warm_band_period();
+
+    return openmx_eigen_refine_warm_band_enabled() && !(0 < period && scf_iter % period == 0);
 }
 
 static void refine_blocks_release(EigenRefineState *st)
@@ -168,7 +183,7 @@ static void refine_blocks_release(EigenRefineState *st)
 static int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, const EigenRefineProblem *pb,
                                 EigenRefineReport *report)
 {
-    size_t const nk = (size_t)pb->n * (size_t)pb->maxn;
+    size_t const nk = (size_t)pb->n * (size_t)(env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? pb->n : pb->maxn);
     size_t const block_bytes = (nk * (pb->cplx ? 2 : 1) * sizeof(double) + 511u) / 512u * 512u;
 
     refine_blocks_release(st);

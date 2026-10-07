@@ -84,13 +84,18 @@ typedef struct {
    decision on stdout when verbose.  Called on the root rank only. */
 int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio);
 
-/* OPENMX_EIGEN_REFINE_UNTIL (printed NormRD, 0 = off), OPENMX_EIGEN_REFINE_WARM
-   (the cluster solvers, default 1), OPENMX_EIGEN_REFINE_WARM_BAND (the band
-   solvers, default 0: their warm-started solves settle about 2e-10 Ha away
-   from the FP64 self-consistent energy, see the records of 2026-10-07) */
+/* OPENMX_EIGEN_REFINE_UNTIL (printed NormRD, 0 = off); OPENMX_EIGEN_REFINE_WARM
+   (default 1); OPENMX_EIGEN_REFINE_WARM_BAND (the band solvers, default 1);
+   OPENMX_EIGEN_REFINE_WARM_PERIOD (the band solvers solve in FP32 again every
+   so many SCF steps instead of warm-starting, default 4: a chain of warm
+   starts settles about 2e-10 Ha away from the FP64 self-consistent energy of
+   sidia333, a cold solve every 4 steps keeps it within 1e-11 Ha; 0 = never) */
 double openmx_eigen_refine_until(void);
 int    openmx_eigen_refine_warm_enabled(void);
 int    openmx_eigen_refine_warm_band_enabled(void);
+int    openmx_eigen_refine_warm_band_period(void);
+/* a band solve of SCF step scf_iter may start warm */
+int    openmx_eigen_refine_warm_band_step(int scf_iter);
 
 /* The first half of a refined solve: a is made symmetric or Hermitian from
    its lower triangle, then either (warm) the previous estimates are read

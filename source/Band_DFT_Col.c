@@ -2659,7 +2659,8 @@ static int BandCol_KDenseRefinedPass1(int n, int maxn, const dcomplex *H_in, dou
     if (!BandCol_RefineEnsureDeviceBasis(n)) return 0;
     BandCol_GpuSolver_ForwardTransformDevice(n, H_in);
     BANDCOL_PROF_T0(prof_t0);
-    slot->refined = BandCol_KDenseRefinedSolve(n, maxn, ko, slot, openmx_eigen_refine_warm_band_enabled(), ChemP, 1);
+    slot->refined = BandCol_KDenseRefinedSolve(n, maxn, ko, slot, openmx_eigen_refine_warm_band_step(BandCol_refine.scf_iter),
+                                               ChemP, 1);
     if (!slot->refined) {
         BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1, !BandCol_EigenvaluesOnlyNoVectors());
     }
@@ -2769,14 +2770,8 @@ static dcomplex *BandCol_RefinedFirstHalf(int n, int maxn, const dcomplex *H_in,
         pb->region = sizeof(dcomplex) * nn;
         pb->x = BandCol_refine_x;
         pb->transient = st->transient;
-        pb->warm = (openmx_eigen_refine_warm_band_enabled() && BandCol_refine_state.basis_valid &&
+        pb->warm = (openmx_eigen_refine_warm_band_step(st->scf_iter) && BandCol_refine_state.basis_valid &&
                     BandCol_refine_state.basis_n == n && !st->transient);
-        {
-            /* diagnostic: a cold FP32 solve every OPENMX_EIGEN_REFINE_WARM_PERIOD steps */
-            const char *period = getenv("OPENMX_EIGEN_REFINE_WARM_PERIOD");
-
-            if (period != NULL && 0 < atoi(period) && st->scf_iter % atoi(period) == 0) pb->warm = 0;
-        }
         pb->defaulted = st->defaulted;
         pb->occupation = BandCol_RefineFermi;
         pb->occupation_ctx = &BandCol_refine_occ;

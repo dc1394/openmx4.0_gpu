@@ -132,6 +132,7 @@ typedef struct
     int     solved;        /* this rank's k-point was refined this step */
     int     persistent;    /* the strongest persistent failure of this step on this rank */
     int     kdense;        /* this call refines the k-dense path (several k-points per rank) */
+    int     scf_iter;      /* the step of the call */
 } BandNonColRefineState;
 
 /* The k-dense path keeps, per k-point of this rank, the basis of the latest
@@ -158,7 +159,7 @@ typedef struct
     double mu;
 } BandNonColOccupationCtx;
 
-static BandNonColRefineState   BandNonCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static BandNonColRefineState   BandNonCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static EigenRefineState        BandNonCol_refine_state = {0};
 static EigenRefineDevice       BandNonCol_refine_dev = {0};
 static EigenRefineProblem      BandNonCol_refine_pb;           /* the solve in progress, first to second half */
@@ -228,6 +229,7 @@ static void BandNonCol_RefineBeginStep(int SCF_iter, int possible, int possible_
         BandNonCol_KRefReset();
     }
     st->transient = (SCF_iter == 1);
+    st->scf_iter = SCF_iter;
     st->pending = 0;
     st->solved = 0;
     st->persistent = 0;
@@ -2794,7 +2796,7 @@ static int BandNonCol_RefinedPrepare(int n2, int MaxN, dcomplex *hs2, dcomplex *
         pb->region = sizeof(dcomplex) * n2n2;
         pb->x = BandNonCol_refine_x;
         pb->transient = st->transient;
-        pb->warm = ((openmx_eigen_refine_warm_band_enabled() || BandNonCol_refine_force_warm) &&
+        pb->warm = ((openmx_eigen_refine_warm_band_step(st->scf_iter) || BandNonCol_refine_force_warm) &&
                     BandNonCol_refine_state.basis_valid && BandNonCol_refine_state.basis_n == n2 && !st->transient);
         pb->defaulted = st->defaulted;
         pb->occupation = BandNonCol_RefineFermi;
@@ -3001,7 +3003,7 @@ static void BandNonCol_KDenseRefinedSolveOneK(int rebuild_overlap, int n, int n2
        step, across steps only with OPENMX_EIGEN_REFINE_WARM_BAND */
     rs->basis_valid = 0;
     BandNonCol_refine_force_warm = 0;
-    if (slot->valid && slot->basis != NULL && (vectors || openmx_eigen_refine_warm_band_enabled()) &&
+    if (slot->valid && slot->basis != NULL && (vectors || openmx_eigen_refine_warm_band_step(st->scf_iter)) &&
         BandNonCol_RefineEnsureDeviceBasis(n2) && rs->lam != NULL) {
         wait_cudafunc(cudaMemcpy(BandNonCol_refine_x, slot->basis, sizeof(dcomplex) * n2n2, cudaMemcpyHostToDevice));
         wait_cudafunc(cudaMemcpy(rs->lam, slot->lam, sizeof(double) * (size_t)n2, cudaMemcpyHostToDevice));
