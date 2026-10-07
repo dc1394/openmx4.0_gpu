@@ -133,6 +133,8 @@ typedef struct
     int     persistent;    /* the strongest persistent failure of this step on this rank */
     int     kdense;        /* this call refines the k-dense path (several k-points per rank) */
     int     scf_iter;      /* the step of the call */
+    int     staged;        /* this call refines the root-dense path in serialized GPU turns: pass 1 and pass 2 as
+                              on the k-dense path, the bases on the host between them */
 } BandNonColRefineState;
 
 /* The k-dense path keeps, per k-point of this rank, the basis of the latest
@@ -159,7 +161,7 @@ typedef struct
     double mu;
 } BandNonColOccupationCtx;
 
-static BandNonColRefineState   BandNonCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static BandNonColRefineState   BandNonCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static EigenRefineState        BandNonCol_refine_state = {0};
 static EigenRefineDevice       BandNonCol_refine_dev = {0};
 static EigenRefineProblem      BandNonCol_refine_pb;           /* the solve in progress, first to second half */
@@ -217,7 +219,7 @@ static size_t BandNonCol_RefineBasisBytes(int n2)
 
 /* every rank, before the solves of a call: possible says whether the call
    takes the one-k-point-per-world path with resident buffers */
-static void BandNonCol_RefineBeginStep(int SCF_iter, int possible, int possible_kdense)
+static void BandNonCol_RefineBeginStep(int SCF_iter, int possible, int possible_kdense, int possible_staged)
 {
     BandNonColRefineState *st = &BandNonCol_refine;
 
@@ -240,6 +242,9 @@ static void BandNonCol_RefineBeginStep(int SCF_iter, int possible, int possible_
     /* the k-dense path gates its first pass with the previous step's
        chemical potential, so it starts at the second step */
     st->kdense = (possible_kdense && 2 <= SCF_iter && 0 < BandNonCol_RefineIterations() && !st->final_stage &&
+                  !st->force_fp64 && Cnt_switch == 0 && SCF_iter < DFTSCF_loop && xanes_calc == 0 &&
+                  empty_states_flag == 0);
+    st->staged = (possible_staged && 2 <= SCF_iter && 0 < BandNonCol_RefineIterations() && !st->final_stage &&
                   !st->force_fp64 && Cnt_switch == 0 && SCF_iter < DFTSCF_loop && xanes_calc == 0 &&
                   empty_states_flag == 0);
     if (BandNonCol_kref != NULL) {
@@ -2992,7 +2997,7 @@ static void BandNonCol_KDenseRefinedSolveOneK(int rebuild_overlap, int n, int n2
                                               const double *m_i22, const double *m_i12,
                                               int *packed_order_GA, int *MP, double *ko, double ***EIGEN,
                                               BandNonColRootDenseWorkspace *rdw, BandNonColKRefineSlot *slot,
-                                              int vectors)
+                                              int vectors, double mu)
 {
     BandNonColRefineState *st = &BandNonCol_refine;
     EigenRefineState *rs = &BandNonCol_refine_state;
@@ -3020,7 +3025,7 @@ static void BandNonCol_KDenseRefinedSolveOneK(int rebuild_overlap, int n, int n2
         slot->valid = 0;
         return;
     }
-    BandNonCol_RootDenseSolveOneK_SecondHalf(n,n2,MaxN,kloop,ko,EIGEN,ChemP,rdw,vectors);
+    BandNonCol_RootDenseSolveOneK_SecondHalf(n,n2,MaxN,kloop,ko,EIGEN,mu,rdw,vectors);
     if (st->solved && rs->basis_valid) {
         if (!vectors) slot->refined = 1;
         if ((!vectors || openmx_eigen_refine_warm_band_enabled()) && BandNonCol_KRefSlotAllocate(slot, n2)) {
@@ -4054,7 +4059,7 @@ double Band_DFT_NonCol(
 	                          BandNonCol_gpu_dense_verdict);
 	  if (use_k_dense_gpusolver){
 	    /* the refined eigensolver on the k-dense path (every rank) */
-	    BandNonCol_RefineBeginStep(SCF_iter, 0, 1);
+	    BandNonCol_RefineBeginStep(SCF_iter, 0, 1, 0);
 	    if (BandNonCol_refine.kdense) BandNonCol_KRefEnsure(T_knum, n2);
 	  }
 	  owns_dense_k_rank = (use_k_dense_gpusolver && Set_Hamiltonian_OpenACC_Rank_Is_Selected());
@@ -4402,7 +4407,7 @@ double Band_DFT_NonCol(
             BandNonCol_KDenseRefinedSolveOneK(!reuse_overlap,n,n2,MaxN,kloop,k1,k2,k3,
                                               m_olp,m_h11,m_h22,m_h12,m_h12i,
                                               m_i11,m_i22,m_i12,
-                                              order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],0);
+                                              order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],0,ChemP);
             if (!reuse_overlap) BandNonCol_KOverlapSave(kloop,k1,k2,k3,rdw->s_all);
             if (save_evec){
               free(k_evec_cache[kloop]);
@@ -4488,11 +4493,36 @@ double Band_DFT_NonCol(
     root_dense_serial_gpusolver_worlds = 0;
 
     /* the refined eigensolver: every owner's buffers stay on the device
-       between the two halves, so all k-worlds must form one turn group */
-    BandNonCol_RefineBeginStep(SCF_iter, strcasecmp(mode,"scf")==0 && Num_Comm_World2<=root_dense_turn_group, 0);
+       between the two halves when all k-worlds form one turn group; with
+       several groups the solve is staged (pass 1 and pass 2 as on the k-dense
+       path, the bases on the host between them) */
+    BandNonCol_RefineBeginStep(SCF_iter, strcasecmp(mode,"scf")==0 && Num_Comm_World2<=root_dense_turn_group, 0,
+                               strcasecmp(mode,"scf")==0 && root_dense_turn_group<Num_Comm_World2);
+    if (BandNonCol_refine.staged) BandNonCol_KRefEnsure(T_knum, n2);
 
     if (use_setham_packed_cache){
       Set_Hamiltonian_GpuSolver_SetMP(MP);
+    }
+
+    double root_dense_mu = 0.0;
+
+    for (int root_dense_pass=0; root_dense_pass<(BandNonCol_refine.staged ? 2 : 1); root_dense_pass++){
+
+    if (root_dense_pass==1){
+      /* the staged refined eigensolver: the chemical potential of all
+         k-points from the estimates of pass 1 */
+      static int announced = 0;
+
+      for (kloop=0; kloop<T_knum; kloop++){
+        MPI_Bcast(&EIGEN[0][kloop][0], MaxN+1, MPI_DOUBLE, Comm_World_StartID2[kloop], mpi_comm_level1);
+      }
+      root_dense_mu = BandNonCol_RefineChemP(EIGEN,T_knum,MaxN,T_k_op,sum_weights,TZ);
+      if (!announced && myid0==0 && 0<level_stdout){
+        printf("<Band_DFT_NonCol> refined eigensolver in serialized GPU turns (%d k-worlds in groups of %d): the "
+               "bases stay on the host between the passes\n", Num_Comm_World2, root_dense_turn_group);
+        fflush(stdout);
+        announced = 1;
+      }
     }
 
     for (int group_first=0; group_first<Num_Comm_World2; group_first+=root_dense_turn_group){
@@ -4595,7 +4625,17 @@ double Band_DFT_NonCol(
           k2 = T_KGrids2[kloop];
           k3 = T_KGrids3[kloop];
 
-          if (owns_root_dense){
+          if (owns_root_dense && BandNonCol_refine.staged){
+            /* pass 1: the refinement gated with the previous step's
+               chemical potential, the basis to the host slot; pass 2: from
+               that basis with this step's, the wavefunctions into cs2 */
+            BandNonCol_KDenseRefinedSolveOneK(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+                                              m_olp,m_h11,m_h22,m_h12,m_h12i,m_i11,m_i22,m_i12,
+                                              packed_order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],
+                                              root_dense_pass, root_dense_pass ? root_dense_mu : ChemP);
+            rdw->s_valid = 1;
+          }
+          else if (owns_root_dense){
             (void)BandNonCol_RootDenseSolveOneK_FirstHalf(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
                                                           m_olp,m_h11,m_h22,m_h12,m_h12i,
                                                           m_i11,m_i22,m_i12,
@@ -4622,6 +4662,8 @@ double Band_DFT_NonCol(
         BandNonCol_RefineEndStep();
       }
 
+      /* no wavefunctions after pass 1 of a staged solve */
+      if (!(BandNonCol_refine.staged && root_dense_pass==0))
       for (int root_dense_world=group_first; root_dense_world<group_last; root_dense_world++){
         int root_dense_owner = Comm_World_StartID2[root_dense_world];
         int owns_root_dense = (myid0==root_dense_owner);
@@ -4662,12 +4704,18 @@ double Band_DFT_NonCol(
         }
         BandNonCol_ConstructCache_Reset();
         BandNonCol_GpuSolver_Destroy();
+        /* a staged solve keeps its basis in the host slot */
+        if (BandNonCol_refine.staged) BandNonCol_RefineDropBasis();
       }
 
       if (serialize_gpu_turns){
         MPI_Barrier(mpi_comm_level1);
       }
     }
+
+    } /* root_dense_pass */
+    /* the staged solves of this step decide the stage for all ranks */
+    if (BandNonCol_refine.staged) BandNonCol_RefineEndStep();
 
     if (!serialize_gpu_turns){
       MPI_Barrier(mpi_comm_level1);
@@ -5591,7 +5639,7 @@ double Band_DFT_NonCol(
               BandNonCol_KDenseRefinedSolveOneK(!reuse_overlap,n,n2,MaxN,kloop,k1,k2,k3,
                                                 m_olp,m_h11,m_h22,m_h12,m_h12i,
                                                 m_i11,m_i22,m_i12,
-                                                order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],1);
+                                                order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],1,ChemP);
             }
             else {
             BandNonCol_RootDenseSolveOneK_OpenACC(!reuse_overlap,n,n2,MaxN,kloop,k1,k2,k3,

@@ -19,7 +19,8 @@
    pairs left as clusters keep their residuals), while the estimates of the
    states left as clusters are off by at most the width of their cluster.
    Pairs of equal occupation are left alone because the density matrix needs
-   the occupied subspace, not the rotations inside it, and nearly degenerate
+   the occupied subspace, not the rotations inside it (rotating them breaks
+   the orthonormality of nearly degenerate pairs), and nearly degenerate
    pairs inside it are where one Newton step fails.  Afterwards every
    cluster of consecutive estimates closer than 30 delta whose occupations
    differ gets a Rayleigh-Ritz step (its H and overlap, the small generalized
@@ -33,7 +34,16 @@
    2e-11 of FP64, the SCF takes the FP64 path; the energy density matrix
    of the refined vectors is off by up to 2e-6 (the vectors inside the
    fully occupied clusters stay FP32 mixtures), which is why the solvers
-   solve the step that ends the SCF in FP64. */
+   solve the step that ends the SCF in FP64.
+
+   When fewer than n columns are refined (the band solvers: maxn of n), the
+   unrefined columns are rotated against the refined ones with the same
+   formula every step: left alone, their FP32-level components along the
+   occupied subspace and the first-order mixing inside the occupied block
+   tilt the refined columns' fixed point out of the occupied subspace by
+   about 1e-8 (sidia333: an SCF floor of 1e-7, 2-5 more SCF steps, and a
+   bias of 2e-10 Ha across warm starts; OPENMX_EIGEN_REFINE_COMPLEMENT).
+*/
 #include "eigen_refine_gpu.h"
 
 #include <mpi.h>
@@ -159,7 +169,7 @@ int openmx_eigen_refine_warm_band_period(void)
 {
     const char *value = getenv("OPENMX_EIGEN_REFINE_WARM_PERIOD");
 
-    if (value == NULL || value[0] == '\0') return 4;
+    if (value == NULL || value[0] == '\0') return 0;
     return (0 < atoi(value)) ? atoi(value) : 0;
 }
 
@@ -174,7 +184,7 @@ static void refine_blocks_release(EigenRefineState *st)
 {
     if (st->own != NULL) refine_check(cudaFree(st->own), "cudaFree blocks");
     st->own = NULL;
-    st->b1 = st->b2 = NULL;
+    st->b1 = st->b2 = st->b3 = NULL;
     st->products_ready = 0;
 }
 
@@ -183,17 +193,20 @@ static void refine_blocks_release(EigenRefineState *st)
 static int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, const EigenRefineProblem *pb,
                                 EigenRefineReport *report)
 {
-    size_t const nk = (size_t)pb->n * (size_t)(env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? pb->n : pb->maxn);
+    int const    kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? pb->n : pb->maxn;
+    int const    blocks = (kc < pb->n && env_flag("OPENMX_EIGEN_REFINE_COMPLEMENT", 1)) ? 3 : 2;
+    size_t const nk = (size_t)pb->n * (size_t)kc;
     size_t const block_bytes = (nk * (pb->cplx ? 2 : 1) * sizeof(double) + 511u) / 512u * 512u;
 
     refine_blocks_release(st);
-    if (2 * block_bytes <= pb->region) {
+    if ((size_t)blocks * block_bytes <= pb->region) {
         st->b1 = (double *)pb->fp32;
     }
     else {
-        if (dev->try_malloc(&st->own, 2 * block_bytes) != cudaSuccess) {
+        if (dev->try_malloc(&st->own, (size_t)blocks * block_bytes) != cudaSuccess) {
             printf("<eigen_refine_gpu> no room for the %.1f MiB of refinement products; FP64 eigensolver%s\n",
-                   2.0 * (double)block_bytes / (1024.0 * 1024.0), pb->transient ? "" : " for the rest of the SCF cycle");
+                   (double)blocks * (double)block_bytes / (1024.0 * 1024.0),
+                   pb->transient ? "" : " for the rest of the SCF cycle");
             fflush(stdout);
             report->persistent = pb->transient ? 0 : 1;
             return 0;
@@ -201,6 +214,7 @@ static int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, co
         st->b1 = (double *)st->own;
     }
     st->b2 = (double *)((unsigned char *)st->b1 + block_bytes);
+    st->b3 = (blocks == 3) ? (double *)((unsigned char *)st->b2 + block_bytes) : NULL;
     return 1;
 }
 
@@ -495,14 +509,15 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
         int const kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : pb->maxn;   /* diagnostic: refine every column */
         long long const native0 = openmx_gemmul8NativeCalls(cplx);
         double max_s = 0.0, max_r = 0.0;
-        double *b1, *b2;
+        double *b1, *b2, *yb;
 
         refine_check(cudaMemcpy(e0, st->lam, (size_t)n * sizeof(double), cudaMemcpyDeviceToHost), "download lam");
         if (!refine_blocks_ensure(st, dev, pb, report)) return 0;
         b1 = st->b1;
         b2 = st->b2;
-        refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, a, n, x, n, 0.0, b1, n), "A X1");
-        refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, b1, n, 0.0, b2, n), "X^H Y");
+        yb = (st->b3 != NULL) ? st->b3 : b1;
+        refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, a, n, x, n, 0.0, yb, n), "A X1");
+        refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, yb, n, 0.0, b2, n), "X^H Y");
         refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, x, n, 0.0, b1, n), "X^H X1");
         refine_check(cudaDeviceSynchronize(), "synchronize");
         if (pb->defaulted && openmx_gemmul8NativeCalls(cplx) != native0) {
@@ -675,7 +690,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
     double      *a = (double *)pb->a;
     double      *x = (double *)pb->x;
     double      *lam = st->lam, *occ = st->occ;
-    double      *b1, *b2;
+    double      *b1, *b2, *yb;
     double       max_s = 0.0, max_r = 0.0, delta = 0.0, first_delta = 0.0, chain;
     double const anorm = refine_anorm;
     long long    native0;
@@ -692,14 +707,15 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
     if (st->b1 == NULL && !refine_blocks_ensure(st, dev, pb, report)) return 0;
     b1 = st->b1;
     b2 = st->b2;
+    yb = (st->b3 != NULL) ? st->b3 : b1;
 
     native0 = openmx_gemmul8NativeCalls(cplx);
     for (int it = 0; it < pb->iterations; it++) {
-        /* Y = A X1 to b1, S = X^H Y to b2, G = X^H X1 to b1 (a warm prepare
-           left the first step's) */
+        /* Y = A X1 to b3 (b1 without a complement), S = X^H Y to b2,
+           G = X^H X1 to b1 (a warm prepare left the first step's) */
         if (!(it == 0 && st->products_ready)) {
-            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, a, n, x, n, 0.0, b1, n), "A X1");
-            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, b1, n, 0.0, b2, n), "X^H Y");
+            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, a, n, x, n, 0.0, yb, n), "A X1");
+            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, yb, n, 0.0, b2, n), "X^H Y");
             refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, x, n, 0.0, b1, n), "X^H X1");
             refine_check(cudaDeviceSynchronize(), "synchronize");
         }
@@ -760,6 +776,51 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                 b1[width * at] = er;
                 if (cplx) b1[width * at + 1] = ei;
             }
+        }
+
+        if (st->b3 != NULL && kc < n) {
+            /* The unrefined columns are rotated against the refined ones with
+               the same formula (E_rc, refined rows i, unrefined columns j):
+               left alone, they keep their FP32-level components along the
+               occupied subspace, and the refined columns, whose rotations
+               inside the occupied block are left to first order, then settle
+               at a fixed point tilted out of the occupied subspace by
+               sum_k d_ki (lambda_k - lambda_j) v_kj / (lambda_j - lambda_i),
+               about 1e-8 for sidia333: an SCF floor of 1e-7 in the residual
+               norm and 2 to 5 more SCF steps (2026-10-07).  S_rc = Y^H X_c
+               and G_rc = X_r^H X_c (kc x nc) go to b2 and b3, E_rc in place
+               of G_rc, then X_c += X_r E_rc.  OPENMX_EIGEN_REFINE_COMPLEMENT=0
+               leaves the unrefined columns alone. */
+            int const    nc = n - kc;
+            double      *b3 = st->b3;
+            double      *xc = x + (size_t)width * (size_t)kc * (size_t)n;
+
+            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, kc, nc, n, b3, n, xc, n, 0.0, b2, kc),
+                              "Y^H X_c");
+            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, kc, nc, n, x, n, xc, n, 0.0, b3, kc),
+                              "X_r^H X_c");
+            refine_check(cudaDeviceSynchronize(), "synchronize");
+#pragma acc parallel loop collapse(2) deviceptr(b2, b3, lam, occ)
+            for (int jc = 0; jc < nc; jc++) {
+                for (int i = 0; i < kc; i++) {
+                    size_t const at = (size_t)i + (size_t)jc * (size_t)kc;
+                    int const    j = kc + jc;
+                    double const rr = -b3[width * at];
+                    double const ri = cplx ? -b3[width * at + 1] : 0.0;
+                    double const d = lam[j] - lam[i];
+                    double       er = 0.5 * rr, ei = 0.5 * ri;
+
+                    if (delta < fabs(d) && 1.0e-12 <= fabs(occ[i] - occ[j])) {
+                        er = (b2[width * at] + lam[j] * rr) / d;
+                        ei = cplx ? (b2[width * at + 1] + lam[j] * ri) / d : 0.0;
+                    }
+                    b3[width * at] = er;
+                    if (cplx) b3[width * at + 1] = ei;
+                }
+            }
+            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, nc, kc, x, n, b3, kc, 1.0, xc, n),
+                              "X_c + X_r E_rc");
+            refine_check(cudaDeviceSynchronize(), "synchronize");
         }
 
         /* X1 + X E, through b2 */
@@ -831,6 +892,69 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
             }
         }
         if (rr_ok) refine_check(cudaMemcpy(lam, lh, (size_t)kc * sizeof(double), cudaMemcpyHostToDevice), "upload lam");
+        if (rr_ok && env_flag("OPENMX_EIGEN_REFINE_CHECK", 0)) {
+            /* diagnostic: the residuals |A x_j - lam_j x_j| / |x_j| and the
+               orthogonality max_i |x_i^H x_j - delta_ij| of the refined
+               columns by occupation class, with plain cuBLAS FP64 products
+               (occ is free: it holds the per-column values) */
+            double *rh = (double *)dev->host_malloc((size_t)kc, sizeof(double), "refinement check");
+            double  res_occ = 0.0, res_part = 0.0, res_empty = 0.0, orth = 0.0;
+            int     n_part = 0, worst_occ = -1;
+
+            refine_check_blas(native_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, a, n, x, n, b1, n),
+                              "check A X");
+#pragma acc parallel loop deviceptr(b1, x, lam, occ)
+            for (int j = 0; j < kc; j++) {
+                double num = 0.0, den = 0.0;
+
+                for (int i = 0; i < n; i++) {
+                    size_t const at = (size_t)i + (size_t)j * (size_t)n;
+                    double const xr = x[width * at], xi = cplx ? x[width * at + 1] : 0.0;
+                    double const yr = b1[width * at] - lam[j] * xr;
+                    double const yi = cplx ? b1[width * at + 1] - lam[j] * xi : 0.0;
+
+                    num += yr * yr + yi * yi;
+                    den += xr * xr + xi * xi;
+                }
+                occ[j] = sqrt(num / den);
+            }
+            refine_check(cudaMemcpy(rh, occ, (size_t)kc * sizeof(double), cudaMemcpyDeviceToHost), "download check");
+            for (int j = 0; j < kc; j++) {
+                if (0.5 < fh[j]) {
+                    if (res_occ < rh[j]) worst_occ = j;
+                    res_occ = fmax(res_occ, rh[j]);
+                }
+                else if (1.0e-12 <= fh[j]) {
+                    res_part = fmax(res_part, rh[j]);
+                    n_part++;
+                }
+                else {
+                    res_empty = fmax(res_empty, rh[j]);
+                }
+            }
+            refine_check_blas(native_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, x, n, b2, n),
+                              "check X^H X");
+#pragma acc parallel loop deviceptr(b2, occ)
+            for (int j = 0; j < kc; j++) {
+                double worst = 0.0;
+
+                for (int i = 0; i < n; i++) {
+                    size_t const at = (size_t)i + (size_t)j * (size_t)n;
+                    double const gr = b2[width * at] - ((i == j) ? 1.0 : 0.0);
+                    double const gi = cplx ? b2[width * at + 1] : 0.0;
+
+                    worst = fmax(worst, hypot(gr, gi));
+                }
+                occ[j] = worst;
+            }
+            refine_check(cudaMemcpy(rh, occ, (size_t)kc * sizeof(double), cudaMemcpyDeviceToHost), "download check");
+            for (int j = 0; j < kc; j++) orth = fmax(orth, rh[j]);
+            printf("<eigen_refine_gpu> check: %d columns; residual max occupied %.1e (column %d), partial %.1e (%d "
+                   "columns), empty %.1e; orthogonality max %.1e\n",
+                   kc, res_occ, worst_occ + 1, res_part, n_part, res_empty, orth);
+            fflush(stdout);
+            free(rh);
+        }
         free(lh);
         free(fh);
         free(c0s);

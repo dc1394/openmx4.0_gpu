@@ -43,7 +43,9 @@ typedef struct {
     double *occ;           /* their occupations, device (scratch) */
     int     basis_valid;   /* x holds the n vectors of the latest refined solve */
     int     basis_n;
-    double *b1, *b2;       /* the product blocks of the solve in progress (prepare to finish) */
+    double *b1, *b2, *b3;  /* the product blocks of the solve in progress (prepare to finish); b3 holds
+                              Y = A X1 while the unrefined columns are rotated against the refined ones
+                              (NULL when every column is refined) */
     void   *own;           /* their allocation when the FP32 scratch has no room */
     int     products_ready; /* a warm prepare left the first step's products G in b1 and S in b2 */
     double  delta_cold;    /* delta of the first refinement step after the latest FP32 solve: a warm start's floor */
@@ -87,9 +89,10 @@ int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio);
 /* OPENMX_EIGEN_REFINE_UNTIL (printed NormRD, 0 = off); OPENMX_EIGEN_REFINE_WARM
    (default 1); OPENMX_EIGEN_REFINE_WARM_BAND (the band solvers, default 1);
    OPENMX_EIGEN_REFINE_WARM_PERIOD (the band solvers solve in FP32 again every
-   so many SCF steps instead of warm-starting, default 4: a chain of warm
-   starts settles about 2e-10 Ha away from the FP64 self-consistent energy of
-   sidia333, a cold solve every 4 steps keeps it within 1e-11 Ha; 0 = never) */
+   so many SCF steps instead of warm-starting; default 0 = never: with the
+   unrefined columns rotated against the refined ones a chain of warm starts
+   agrees with FP64 to 2e-12 Ha on sidia333, where it used to settle 2e-10 Ha
+   away) */
 double openmx_eigen_refine_until(void);
 int    openmx_eigen_refine_warm_enabled(void);
 int    openmx_eigen_refine_warm_band_enabled(void);
