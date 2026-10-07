@@ -27,6 +27,11 @@
      emuFb   FP64 emulation with b fixed mantissa bits (e.g. emuF32)
      emuOk   FP64 emulation, dynamic, mantissa bit offset k (e.g. emuO-16)
      fp32    an FP32 copy of the matrix (CHEEVDX / SSYEVDX)
+     fp32d   the same through cusolverDnXsyevd (all eigenpairs; a full-range
+             fp32 solve goes through Xsyevdx, which OpenMX's compatibility
+             layer routes to Xsyevd only for FP64); fp32d0 and fp32d2 with
+             the algorithm selector CUSOLVER_ALG_0 (automatic) and ALG_2
+             (two-stage), cuSOLVER >= 12.3.4
      fp32oaK  FP32 solve of all n eigenpairs, then K Ogita-Aishima refinement
              steps of all of them (RefSyEv: R = I - X^H X, S = X^H H X,
              lambda_i = s_ii / (1 - r_ii), E_ij = (s_ij + lambda_j r_ij) /
@@ -265,6 +270,7 @@ struct Mode {
     int fixed_bits = 0;      /* > 0: fixed mantissa control */
     int offset = 0;          /* dynamic control with this offset */
     bool has_offset = false;
+    int syevd = -1;          /* >= 0: fp32d: Xsyevd for all pairs, with this algorithm (9: default params) */
     int oa_iters = 0;        /* > 0: solve of all pairs and this many refinement steps */
     bool oa_subset = false;  /* refine the maxn wanted pairs only */
     int oa_gemm = -1;        /* refinement products: 1 cuBLAS FP64, 0 GEMMul8, -1 PROBE_OA_GEMM */
@@ -315,6 +321,9 @@ bool parse_mode(const std::string &full, Mode *mode)
     if (colon != std::string::npos) return false;
     if (text == "fp64") return true;
     if (text == "fp32") { mode->fp32 = true; return true; }
+    if (text == "fp32d") { mode->fp32 = true; mode->syevd = 9; return true; }
+    if (text == "fp32d0") { mode->fp32 = true; mode->syevd = 0; return true; }
+    if (text == "fp32d2") { mode->fp32 = true; mode->syevd = 2; return true; }
     if (text == "emu") { mode->emulated = true; return true; }
     if (text.rfind("emuF", 0) == 0 && text.size() > 4) {
         mode->emulated = true;
@@ -530,7 +539,19 @@ int main(int argc, char **argv)
         check(cusolverDnCreate(&handle), "cusolverDnCreate");
         configure(handle, mode);
         /* the refinement modes solve for all n pairs: the rest serve as correction basis */
-        const int solved = mode.oa_iters > 0 ? n : maxn;
+        const int solved = (mode.oa_iters > 0 || mode.syevd >= 0) ? n : maxn;
+        cusolverDnParams_t params = nullptr;
+        if (mode.syevd >= 0 && mode.syevd != 9) {
+#if CUSOLVER_VERSION >= 12304
+            check(cusolverDnCreateParams(&params), "cusolverDnCreateParams");
+            check(cusolverDnSetAdvOptions(params, CUSOLVERDN_SYEVD, static_cast<cusolverAlgMode_t>(mode.syevd)),
+                  "cusolverDnSetAdvOptions");
+#else
+            std::printf("# %s skipped: cuSOLVER %d has no algorithm selector\n", mode.name.c_str(), CUSOLVER_VERSION);
+            cusolverDnDestroy(handle);
+            continue;
+#endif
+        }
         const int64_t il = 1, iu = solved;
         const cusolverEigRange_t range = (solved == n) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
         const cudaDataType type = mode.fp32 ? type32 : type64;
@@ -550,9 +571,15 @@ int main(int argc, char **argv)
         void *pvu = mode.fp32 ? static_cast<void *>(&vu32) : static_cast<void *>(&vu);
         size_t dbytes = 0, hbytes = 0;
         int64_t meig = 0;
-        check(cusolverDnXsyevdx_bufferSize(handle, nullptr, CUSOLVER_EIG_MODE_VECTOR, range, CUBLAS_FILL_MODE_LOWER, n,
-                                           type, a, n, pvl, pvu, il, iu, &meig, wtype, w, type, &dbytes, &hbytes),
-              "cusolverDnXsyevdx_bufferSize");
+        if (mode.syevd >= 0)
+            check(cusolverDnXsyevd_bufferSize(handle, params, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, n, type,
+                                              a, n, wtype, w, type, &dbytes, &hbytes),
+                  "cusolverDnXsyevd_bufferSize");
+        else
+            check(cusolverDnXsyevdx_bufferSize(handle, nullptr, CUSOLVER_EIG_MODE_VECTOR, range, CUBLAS_FILL_MODE_LOWER,
+                                               n, type, a, n, pvl, pvu, il, iu, &meig, wtype, w, type, &dbytes,
+                                               &hbytes),
+                  "cusolverDnXsyevdx_bufferSize");
         void *d_work = nullptr;
         std::vector<char> h_work(std::max<size_t>(hbytes, 1));
         check(cudaMalloc(&d_work, std::max<size_t>(dbytes, 1)), "cudaMalloc workspace");
@@ -563,10 +590,18 @@ int main(int argc, char **argv)
             check(cudaDeviceSynchronize(), "synchronize");
         };
         auto solve = [&] {
-            check(cusolverDnXsyevdx(handle, nullptr, CUSOLVER_EIG_MODE_VECTOR, range, CUBLAS_FILL_MODE_LOWER, n, type,
-                                    a, n, pvl, pvu, il, iu, &meig, wtype, w, type, d_work, dbytes, h_work.data(),
-                                    hbytes, d_info),
-                  "cusolverDnXsyevdx");
+            if (mode.syevd >= 0) {
+                check(cusolverDnXsyevd(handle, params, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, n, type, a, n,
+                                       wtype, w, type, d_work, dbytes, h_work.data(), hbytes, d_info),
+                      "cusolverDnXsyevd");
+                meig = n;
+            }
+            else {
+                check(cusolverDnXsyevdx(handle, nullptr, CUSOLVER_EIG_MODE_VECTOR, range, CUBLAS_FILL_MODE_LOWER, n,
+                                        type, a, n, pvl, pvu, il, iu, &meig, wtype, w, type, d_work, dbytes,
+                                        h_work.data(), hbytes, d_info),
+                      "cusolverDnXsyevdx");
+            }
         };
         std::vector<double> times;
         for (int r = 0; r <= reps; r++) {
@@ -907,6 +942,7 @@ int main(int argc, char **argv)
         std::fflush(stdout);
         check(cudaFree(d_work), "cudaFree workspace");
         if (d_w32) check(cudaFree(d_w32), "cudaFree FP32 eigenvalues");
+        if (params) cusolverDnDestroyParams(params);
         cusolverDnDestroy(handle);
     }
 
