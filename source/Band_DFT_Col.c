@@ -2373,7 +2373,8 @@ static void BandCol_GpuSolver_BackTransformDevice(int n)
 
 /* After a dense solve of the one-k-point-per-rank path: the GEMMul8
    workspace goes, and the eigenvectors stay on the device or go to the
-   host with the device buffers released (the memory model of the path). */
+   host with the device buffers released (the memory model of the path);
+   the refined eigensolver's basis stays only for a warm start. */
 static void BandCol_AfterDenseSolve(dcomplex *evec_device, int n, int maxn)
 {
     double prof_t0 = 0.0;
@@ -2391,7 +2392,9 @@ static void BandCol_AfterDenseSolve(dcomplex *evec_device, int n, int maxn)
         BANDCOL_PROF_T0(prof_t0);
         BandCol_ConstructCache_Reset();
         BandCol_GpuSolver_ReleaseDeviceMemory();
-        BandCol_RefineDropBasis();   /* the basis would be the only resident buffer */
+        /* the basis of the refined eigensolver stays only for a warm start
+           of the next step (OPENMX_EIGEN_REFINE_WARM_BAND) */
+        if (!openmx_eigen_refine_warm_band_enabled()) BandCol_RefineDropBasis();
         BANDCOL_PROF_ADD(release1, prof_t0);
     }
 }
@@ -2474,7 +2477,7 @@ static dcomplex *BandCol_RefinedFirstHalf(int n, int maxn, const dcomplex *H_in,
         pb->region = sizeof(dcomplex) * nn;
         pb->x = BandCol_refine_x;
         pb->transient = st->transient;
-        pb->warm = (openmx_eigen_refine_warm_enabled() && BandCol_refine_state.basis_valid &&
+        pb->warm = (openmx_eigen_refine_warm_band_enabled() && BandCol_refine_state.basis_valid &&
                     BandCol_refine_state.basis_n == n && !st->transient);
         pb->defaulted = st->defaulted;
         pb->occupation = BandCol_RefineFermi;

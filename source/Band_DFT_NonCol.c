@@ -2764,7 +2764,7 @@ static int BandNonCol_RefinedPrepare(int n2, int MaxN, dcomplex *hs2, dcomplex *
         pb->region = sizeof(dcomplex) * n2n2;
         pb->x = BandNonCol_refine_x;
         pb->transient = st->transient;
-        pb->warm = (openmx_eigen_refine_warm_enabled() && BandNonCol_refine_state.basis_valid &&
+        pb->warm = (openmx_eigen_refine_warm_band_enabled() && BandNonCol_refine_state.basis_valid &&
                     BandNonCol_refine_state.basis_n == n2 && !st->transient);
         pb->defaulted = st->defaulted;
         pb->occupation = BandNonCol_RefineFermi;
@@ -2836,6 +2836,9 @@ static void BandNonCol_RootDenseSolveOneK_SecondHalf(int n, int n2, int MaxN, in
         BandNonCol_GpuSolver_DenseZheevx_Device(hs2,ko,n2,MaxN,
                                                "Band_DFT_NonCol root dense Hamiltonian",1);
     }
+    /* the basis (n2^2 complex numbers) stays only for a warm start of the
+       next step (OPENMX_EIGEN_REFINE_WARM_BAND) */
+    if (!openmx_eigen_refine_warm_band_enabled()) BandNonCol_RefineDropBasis();
 #pragma acc update self(ko[0 : MaxN + 1])
     for (l=1; l<=MaxN; l++){
         EIGEN[0][kloop][l] = ko[l];

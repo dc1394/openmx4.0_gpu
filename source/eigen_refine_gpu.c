@@ -150,6 +150,11 @@ int openmx_eigen_refine_warm_enabled(void)
     return env_flag("OPENMX_EIGEN_REFINE_WARM", 1);
 }
 
+int openmx_eigen_refine_warm_band_enabled(void)
+{
+    return openmx_eigen_refine_warm_enabled() && env_flag("OPENMX_EIGEN_REFINE_WARM_BAND", 0);
+}
+
 static void refine_blocks_release(EigenRefineState *st)
 {
     if (st->own != NULL) refine_check(cudaFree(st->own), "cudaFree blocks");
