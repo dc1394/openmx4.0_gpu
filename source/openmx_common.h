@@ -3623,7 +3623,7 @@ double Cluster_DFT_NonCol(
                    double *Work1);
 
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
-int Cluster_DFT_NonCol_RefineStopCheck(int stop_condition);
+int Cluster_DFT_NonCol_RefineLastRefined(void);
 void Cluster_DFT_NonCol_RefineAfterMixing(double normrd);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
                    int n2,
@@ -4198,6 +4198,12 @@ int openmx_gemmul8ZgemmEnabled(void);
 /* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
    far that ran in plain cuBLAS FP64 (switched off or a workspace fallback). */
 long long openmx_gemmul8NativeCalls(int is_complex);
+/* openmx_gemmul8Zgemm with the full GEMMul8 workspace when the device has room
+   for it (no blocking), else the same as openmx_gemmul8Zgemm. */
+cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                            int m, int n, int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A,
+                                            int lda, const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta,
+                                            cuDoubleComplex *C, int ldc);
 /* Forward transform of the dense eigensolver, B = H X and C = X^+ B, with
    its own precision stage (mode 0: as the calls above, 1: cuBLAS FP64,
    2: GEMMul8 with the given moduli count and scaling mode) and optional

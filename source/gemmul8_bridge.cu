@@ -994,6 +994,43 @@ extern "C" cublasStatus_t openmx_gemmul8ZgemmFixed(cublasHandle_t handle, int x_
 }
 
 /* mode: 0 default, 1 fp64, 2 gemmul8 (see the block comment above) */
+/* openmx_gemmul8Zgemm with the full GEMMul8 workspace when the device has
+   room for it (the scratch of the forward transform; free memory of at
+   least the workspace plus the reserve of OPENMX_GEMMUL8_MIN_FREE_AFTER_MB),
+   so that no block rescales its operands: about 1.7x faster than the
+   blocked product at the 256 MiB cap for the n2 x MaxN x n2 products of the
+   refined eigensolver.  Otherwise, and when GEMMul8 is off, the same as
+   openmx_gemmul8Zgemm, native fallbacks counted alike. */
+extern "C" cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa,
+                                                       cublasOperation_t transb, int m, int n, int k,
+                                                       const cuDoubleComplex *alpha, const cuDoubleComplex *A, int lda,
+                                                       const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta,
+                                                       cuDoubleComplex *C, int ldc)
+{
+    if (m <= 0 || n <= 0 || k <= 0) return CUBLAS_STATUS_SUCCESS;
+    if (!g_input_enabled || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z"))
+        return openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    return timed_general_gemm(handle, 1, 8.0 * m * n * k, [&](bool *native) -> cublasStatus_t {
+        const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
+        const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
+        const size_t   sm = static_cast<size_t>(m), sn = static_cast<size_t>(n), sk = static_cast<size_t>(k);
+        const size_t   total = gemmul8::workSize<true, gemmul8::Backend::INT8>(sm, sn, sk, num_moduli, false, false,
+                                                                                nullptr, nullptr, fastmode);
+        void          *work = nullptr;
+        cublasStatus_t status = ensure_scratch(handle, total, &work);
+
+        if (status == CUBLAS_STATUS_SUCCESS) {
+            gemmul8::set_memory_saving(handle, false);
+            (void)gemmul8::gemm<cuDoubleComplex, gemmul8::Backend::INT8>(
+                handle, transa, transb, sm, sn, sk, alpha, A, static_cast<size_t>(lda), B, static_cast<size_t>(ldb),
+                beta, C, static_cast<size_t>(ldc), num_moduli, fastmode, work);
+            return CUBLAS_STATUS_SUCCESS;
+        }
+        if (status != CUBLAS_STATUS_ALLOC_FAILED) return status;
+        return general_zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, native);
+    });
+}
+
 extern "C" void openmx_gemmul8SetForwardStage(int mode, int num_moduli, int fastmode, int reuse, int unblocked)
 {
     std::lock_guard<std::mutex> lock(g_workspace_mutex);

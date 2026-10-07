@@ -1353,9 +1353,24 @@ double DFT(int MD_iter, int Cnt_Now)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
-    /* the experimental refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the
-       non-collinear cluster solver: no stop on a refined step */
-    if (Cnt_switch==0 && Solver==2 && SpinP_switch==3) po = Cluster_DFT_NonCol_RefineStopCheck(po);
+    /* the refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the non-collinear
+       cluster solver: an SCF that stops on a refined step has the step's
+       Hamiltonian solved once more in FP64, for the vectors the post-SCF
+       energy density matrix is built from */
+    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()){
+      if (myid0==Host_ID && 0<level_stdout){
+        printf("<DFT>  eigensolver: converged on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
+        fflush(stdout);
+      }
+      time5 += Cluster_DFT_NonCol("fp64",LSCF_iter,SpinP_switch,
+				  ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
+				  Eele0,Eele1,
+				  MP,is2,ie2,
+				  Ss_Re,Cs_Re,
+				  rHs11_Re,rHs12_Re,rHs22_Re,iHs11_Re,iHs12_Re,iHs22_Re,
+				  Ss2_Cx,Hs2_Cx,Cs2_Cx,
+				  CDM1,size_H1,EVec1_NonCol,Work1);
+    }
 
     if (openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
 
@@ -1740,6 +1755,23 @@ double DFT(int MD_iter, int Cnt_Now)
     ************************************************************************/
 
   } while (po==0 && SCF_iter<SCF_MAX);  if (po==0) scf_convergence_flag = 0; else scf_convergence_flag = 1;
+
+  /* an SCF cut by scf.maxIter (changed through the _SCF_keywords file) on a
+     refined FP32 eigensolve: the same FP64 re-solve as at a stop */
+  if (Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()){
+    if (myid0==Host_ID && 0<level_stdout){
+      printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
+      fflush(stdout);
+    }
+    time5 += Cluster_DFT_NonCol("fp64",LSCF_iter,SpinP_switch,
+				  ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
+				  Eele0,Eele1,
+				  MP,is2,ie2,
+				  Ss_Re,Cs_Re,
+				  rHs11_Re,rHs12_Re,rHs22_Re,iHs11_Re,iHs12_Re,iHs22_Re,
+				  Ss2_Cx,Hs2_Cx,Cs2_Cx,
+				  CDM1,size_H1,EVec1_NonCol,Work1);
+  }
 
   /*********************************************************************
    After achieving the SCF, the diagonalization with PAOs is performed
