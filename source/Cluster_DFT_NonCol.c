@@ -972,6 +972,8 @@ typedef struct
     size_t             h_work_bytes;
     void              *h_work;
     int32_t           *d_info;
+    cusolverDnParams_t params32;      /* two-stage algorithm of the FP32 full solve; NULL if unavailable */
+    int                params32_tried;
 } ClusterNonColGpuEigenCtx;
 
 static ClusterNonColGpuEigenCtx ClusterNonCol_gpu_eigen_ctx = {0};
@@ -985,6 +987,7 @@ static void ClusterNonCol_GpuEigenCtx_Release(void)
     if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
     if (ctx->d_info != NULL) wait_cudafunc(cudaFree(ctx->d_info));
     free(ctx->h_work);
+    if (ctx->params32 != NULL) (void)cusolverDnDestroyParams(ctx->params32);
     wait_cudafunc(cusolverDnDestroy(ctx->handle));
     wait_cudafunc(cudaStreamDestroy(ctx->stream));
     memset(ctx, 0, sizeof(*ctx));
@@ -1156,6 +1159,7 @@ static int ClusterNonCol_Fp32Solve(dcomplex *A, int n, int maxn, float *af, floa
     int32_t info = 0;
     size_t d_bytes = 0, h_bytes = 0;
     cusolverStatus_t status;
+    int two_stage = 0;
 
 #pragma acc parallel loop present(A[0 : nn]) deviceptr(af)
     for (size_t i = 0; i < nn; i++) {
@@ -1163,8 +1167,42 @@ static int ClusterNonCol_Fp32Solve(dcomplex *A, int n, int maxn, float *af, floa
         af[2 * i + 1] = (float)A[i].i;
     }
 
-    status = cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_32F, af, n, &vl, &vu, 1L,
-                                          (int64_t)maxn, &h_meig, CUDA_R_32F, wf, CUDA_C_32F, &d_bytes, &h_bytes);
+#if CUSOLVER_VERSION >= 12304
+    /* The two-stage algorithm of cusolverDnXsyevd for a full FP32 solve:
+       on an RTX 5080, 323 ms instead of 638 for 2n = 5616, at a somewhat
+       larger error (eigenvalues 4e-6 instead of 1e-6 Ha) that the
+       refinement removes.  OPENMX_EIGEN_FP32_TWO_STAGE=0 keeps the
+       one-stage solve. */
+    if (n == maxn) {
+        static int wanted = -1;
+
+        if (wanted < 0) {
+            const char *value = getenv("OPENMX_EIGEN_FP32_TWO_STAGE");
+
+            wanted = (value == NULL || value[0] == '\0' || atoi(value) != 0);
+        }
+        if (wanted && !ctx->params32_tried) {
+            ctx->params32_tried = 1;
+            if (cusolverDnCreateParams(&ctx->params32) == CUSOLVER_STATUS_SUCCESS &&
+                cusolverDnSetAdvOptions(ctx->params32, CUSOLVERDN_SYEVD, CUSOLVER_ALG_2) != CUSOLVER_STATUS_SUCCESS) {
+                (void)cusolverDnDestroyParams(ctx->params32);
+                ctx->params32 = NULL;
+            }
+        }
+        two_stage = (wanted && ctx->params32 != NULL);
+    }
+#endif
+
+    if (two_stage) {
+#if CUSOLVER_VERSION >= 12304
+        status = cusolverDnXsyevd_bufferSize(ctx->handle, ctx->params32, jobz, uplo, n, CUDA_C_32F, af, n, CUDA_R_32F,
+                                             wf, CUDA_C_32F, &d_bytes, &h_bytes);
+#endif
+    }
+    else {
+        status = cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_32F, af, n, &vl, &vu, 1L,
+                                              (int64_t)maxn, &h_meig, CUDA_R_32F, wf, CUDA_C_32F, &d_bytes, &h_bytes);
+    }
     if (status != CUSOLVER_STATUS_SUCCESS) {
         printf("<Cluster_DFT_NonCol> FP32 eigensolver workspace query failed (status %d); solving in FP64\n",
                (int)status);
@@ -1191,9 +1229,19 @@ static int ClusterNonCol_Fp32Solve(dcomplex *A, int n, int maxn, float *af, floa
     }
 
     /* a failure status falls back to FP64 instead of being retried */
-    status = cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_32F, af, n, &vl, &vu, 1L,
-                               (int64_t)maxn, &h_meig, CUDA_R_32F, wf, CUDA_C_32F, ctx->d_work, ctx->d_work_bytes,
-                               ctx->h_work, ctx->h_work_bytes, ctx->d_info);
+    if (two_stage) {
+#if CUSOLVER_VERSION >= 12304
+        status = cusolverDnXsyevd(ctx->handle, ctx->params32, jobz, uplo, n, CUDA_C_32F, af, n, CUDA_R_32F, wf,
+                                  CUDA_C_32F, ctx->d_work, ctx->d_work_bytes, ctx->h_work, ctx->h_work_bytes,
+                                  ctx->d_info);
+        h_meig = n;
+#endif
+    }
+    else {
+        status = cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_32F, af, n, &vl, &vu, 1L,
+                                   (int64_t)maxn, &h_meig, CUDA_R_32F, wf, CUDA_C_32F, ctx->d_work, ctx->d_work_bytes,
+                                   ctx->h_work, ctx->h_work_bytes, ctx->d_info);
+    }
     if (status == CUSOLVER_STATUS_SUCCESS) {
         wait_cudafunc(cudaMemcpyAsync(&info, ctx->d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, ctx->stream));
         wait_cudafunc(cudaStreamSynchronize(ctx->stream));
