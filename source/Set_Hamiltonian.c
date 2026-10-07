@@ -1760,7 +1760,12 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
 
     if (plan.device_comm != MPI_COMM_NULL && plan.device_ranks > 1) {
         const char *stream_env = getenv("OPENMX_SETHAM_STREAMING");
-        int can_stream = plan.use_gpu && plan.concurrent_ranks == 1 &&
+        /* OPENMX_SETHAM_STREAMING=2: stream whenever the device cannot hold
+           every rank's whole allocation (the hybrid policy would leave the
+           remaining ranks on the CPU), not only when it holds a single one */
+        const int stream_short = (stream_env != NULL && atoi(stream_env) == 2 &&
+                                  plan.concurrent_ranks < plan.device_ranks);
+        int can_stream = plan.use_gpu && (plan.concurrent_ranks == 1 || stream_short) &&
             !Set_Hamiltonian_GpuSerialWaves() &&
             Set_Hamiltonian_GpuRequestedMaxRanks() > 1 &&
             (stream_env == NULL || atoi(stream_env) != 0) &&

@@ -477,7 +477,7 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
            residual of the old vectors on the new matrix: above 2e-5 (an
            FP32 solve leaves 4e-6) that solve follows after all, else finish
            starts from these products */
-        int const kc = pb->maxn;
+        int const kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : pb->maxn;   /* diagnostic: refine every column */
         long long const native0 = openmx_gemmul8NativeCalls(cplx);
         double max_s = 0.0, max_r = 0.0;
         double *b1, *b2;
@@ -654,7 +654,8 @@ static int refine_rayleigh_ritz(EigenRefineDevice *dev, int cplx, const void *a,
 int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, const EigenRefineProblem *pb,
                                const double *f0, EigenRefineReport *report)
 {
-    int const    cplx = pb->cplx, n = pb->n, maxn = pb->maxn, kc = pb->maxn, width = cplx ? 2 : 1;
+    int const    cplx = pb->cplx, n = pb->n, maxn = pb->maxn, width = cplx ? 2 : 1;
+    int const    kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : pb->maxn;   /* diagnostic: refine every column */
     size_t const nk = (size_t)n * (size_t)kc;
     double      *a = (double *)pb->a;
     double      *x = (double *)pb->x;
@@ -708,7 +709,20 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
 
         refine_maxima(cplx, b1, b2, n, kc, &max_s, &max_r);
         delta = 2.0 * (max_s + anorm * max_r);
-        if (it == 0) first_delta = delta;
+        if (it == 0) {
+            /* a warm start's residual is far below an FP32 solve's, which
+               would shrink delta and the cluster chain to nothing: keep the
+               FP32 solve's delta as the floor, so nearly degenerate pairs are
+               treated as after a cold start (OPENMX_EIGEN_REFINE_WARM_DELTA_FLOOR=0
+               drops the floor) */
+            if (pb->warm) {
+                if (env_flag("OPENMX_EIGEN_REFINE_WARM_DELTA_FLOOR", 1) && delta < st->delta_cold) delta = st->delta_cold;
+            }
+            else {
+                st->delta_cold = delta;
+            }
+            first_delta = delta;
+        }
         delta = first_delta;
 
         /* E in place of G */

@@ -518,9 +518,9 @@ XC_EX.o: XC_EX.c openmx_common.h
 
 DFT.o: DFT.c openmx_common.h tran_prototypes.h
 	$(CC) -c DFT.c
-Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h
+Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h eigen_refine_gpu.h
 	$(CC) -c Cluster_DFT_Col.c
-Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h
+Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h
 	$(CC) -c Cluster_DFT_NonCol.c
 Cluster_DFT_Dosout.o: Cluster_DFT_Dosout.c openmx_common.h
 	$(CC) -c Cluster_DFT_Dosout.c
@@ -536,7 +536,7 @@ Cluster_DFT_Col_DMmu.o: Cluster_DFT_Col_DMmu.c openmx_common.h
 	$(CC) -c Cluster_DFT_Col_DMmu.c
 Cluster_DFT_NonCol_DMmu.o: Cluster_DFT_NonCol_DMmu.c openmx_common.h
 	$(CC) -c Cluster_DFT_NonCol_DMmu.c
-Band_DFT_Col.o: Band_DFT_Col.c openmx_common.h
+Band_DFT_Col.o: Band_DFT_Col.c openmx_common.h eigen_refine_gpu.h
 	$(CC) -c Band_DFT_Col.c
 Band_DFT_Col_CWF.o: Band_DFT_Col_CWF.c openmx_common.h
 	$(CC) -c Band_DFT_Col_CWF.c
@@ -566,7 +566,7 @@ Overlap_Cluster_LNO_Ss.o: Overlap_Cluster_LNO_Ss.c openmx_common.h
 	$(CC) -c Overlap_Cluster_LNO_Ss.c
 leakdetect.o: leakdetect.c leakdetect.h
 	$(CC) -c leakdetect.c
-Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h
+Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c

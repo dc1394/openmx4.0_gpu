@@ -131,14 +131,34 @@ typedef struct
     int     pending;       /* this rank's k-point: prepared, waiting for the chemical potential */
     int     solved;        /* this rank's k-point was refined this step */
     int     persistent;    /* the strongest persistent failure of this step on this rank */
+    int     kdense;        /* this call refines the k-dense path (several k-points per rank) */
 } BandNonColRefineState;
+
+/* The k-dense path keeps, per k-point of this rank, the basis of the latest
+   refined solve on the host (the device workspace goes with every turn
+   group): pass 2 starts its refinement from it, and the next step's pass 1
+   as well when OPENMX_EIGEN_REFINE_WARM_BAND is on.  The budget is
+   OPENMX_BAND_REFINE_BASIS_MB per rank (default 1024). */
+typedef struct
+{
+    dcomplex *basis;       /* n2 x n2, host */
+    double   *lam;         /* n2 eigenvalue estimates */
+    int       valid;
+    int       refined;     /* pass 1 of this step refined the k-point */
+} BandNonColKRefineSlot;
+
+static BandNonColKRefineSlot *BandNonCol_kref = NULL;
+static int                    BandNonCol_kref_slots = 0, BandNonCol_kref_n2 = 0;
+static size_t                 BandNonCol_kref_used = 0;
+static int                    BandNonCol_refine_force_warm = 0;   /* pass 2 of the k-dense path: the same Hamiltonian */
+static void BandNonCol_KRefReset(void);
 
 typedef struct
 {
     double mu;
 } BandNonColOccupationCtx;
 
-static BandNonColRefineState   BandNonCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static BandNonColRefineState   BandNonCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static EigenRefineState        BandNonCol_refine_state = {0};
 static EigenRefineDevice       BandNonCol_refine_dev = {0};
 static EigenRefineProblem      BandNonCol_refine_pb;           /* the solve in progress, first to second half */
@@ -159,6 +179,7 @@ static void BandNonCol_RefineDropBasis(void)
 static void BandNonCol_RefineRelease(void)
 {
     openmx_eigen_refine_state_release(&BandNonCol_refine_state);
+    BandNonCol_KRefReset();
     openmx_eigen_refine_device_release(&BandNonCol_refine_dev);
     BandNonCol_RefineDropBasis();
     free(BandNonCol_refine_e0);
@@ -195,7 +216,7 @@ static size_t BandNonCol_RefineBasisBytes(int n2)
 
 /* every rank, before the solves of a call: possible says whether the call
    takes the one-k-point-per-world path with resident buffers */
-static void BandNonCol_RefineBeginStep(int SCF_iter, int possible)
+static void BandNonCol_RefineBeginStep(int SCF_iter, int possible, int possible_kdense)
 {
     BandNonColRefineState *st = &BandNonCol_refine;
 
@@ -204,6 +225,7 @@ static void BandNonCol_RefineBeginStep(int SCF_iter, int possible)
         st->final_stage = 0;
         st->cycle_refined = 0;
         BandNonCol_refine_state.basis_valid = 0;   /* a new cycle may come with a new geometry */
+        BandNonCol_KRefReset();
     }
     st->transient = (SCF_iter == 1);
     st->pending = 0;
@@ -213,6 +235,14 @@ static void BandNonCol_RefineBeginStep(int SCF_iter, int possible)
        potential: XANES and emptied states keep the FP64 eigensolver */
     st->last_refined = (possible && 0 < BandNonCol_RefineIterations() && !st->final_stage && !st->force_fp64 &&
                         Cnt_switch == 0 && SCF_iter < DFTSCF_loop && xanes_calc == 0 && empty_states_flag == 0);
+    /* the k-dense path gates its first pass with the previous step's
+       chemical potential, so it starts at the second step */
+    st->kdense = (possible_kdense && 2 <= SCF_iter && 0 < BandNonCol_RefineIterations() && !st->final_stage &&
+                  !st->force_fp64 && Cnt_switch == 0 && SCF_iter < DFTSCF_loop && xanes_calc == 0 &&
+                  empty_states_flag == 0);
+    if (BandNonCol_kref != NULL) {
+        for (int slot = 0; slot < BandNonCol_kref_slots; slot++) BandNonCol_kref[slot].refined = 0;
+    }
 }
 
 /* every rank, after the second halves: the owners' solves decide the stage
@@ -2764,8 +2794,8 @@ static int BandNonCol_RefinedPrepare(int n2, int MaxN, dcomplex *hs2, dcomplex *
         pb->region = sizeof(dcomplex) * n2n2;
         pb->x = BandNonCol_refine_x;
         pb->transient = st->transient;
-        pb->warm = (openmx_eigen_refine_warm_band_enabled() && BandNonCol_refine_state.basis_valid &&
-                    BandNonCol_refine_state.basis_n == n2 && !st->transient);
+        pb->warm = ((openmx_eigen_refine_warm_band_enabled() || BandNonCol_refine_force_warm) &&
+                    BandNonCol_refine_state.basis_valid && BandNonCol_refine_state.basis_n == n2 && !st->transient);
         pb->defaulted = st->defaulted;
         pb->occupation = BandNonCol_RefineFermi;
         pb->occupation_ctx = &BandNonCol_refine_occ;
@@ -2799,7 +2829,7 @@ static int BandNonCol_RefinedPrepare(int n2, int MaxN, dcomplex *hs2, dcomplex *
    unrefined solve. */
 static void BandNonCol_RootDenseSolveOneK_SecondHalf(int n, int n2, int MaxN, int kloop, double *ko,
                                                      double ***EIGEN, double mu,
-                                                     BandNonColRootDenseWorkspace *rdw)
+                                                     BandNonColRootDenseWorkspace *rdw, int vectors)
 {
     int nn = n*n;
     int n2n2 = n2*n2;
@@ -2834,21 +2864,175 @@ static void BandNonCol_RootDenseSolveOneK_SecondHalf(int n, int n2, int MaxN, in
         /* hs2 still holds the Hermitian matrix */
         BandNonCol_refine_state.basis_valid = 0;
         BandNonCol_GpuSolver_DenseZheevx_Device(hs2,ko,n2,MaxN,
-                                               "Band_DFT_NonCol root dense Hamiltonian",1);
+                                               "Band_DFT_NonCol root dense Hamiltonian",vectors);
     }
-    /* the basis (n2^2 complex numbers) stays only for a warm start of the
-       next step (OPENMX_EIGEN_REFINE_WARM_BAND) */
-    if (!openmx_eigen_refine_warm_band_enabled()) BandNonCol_RefineDropBasis();
 #pragma acc update self(ko[0 : MaxN + 1])
     for (l=1; l<=MaxN; l++){
         EIGEN[0][kloop][l] = ko[l];
     }
-    BandNonCol_DenseWavefunctions_PresentOpenACC(n,n2,MaxN,hs2,active_S,cs2);
+    if (vectors){
+        BandNonCol_DenseWavefunctions_PresentOpenACC(n,n2,MaxN,hs2,active_S,cs2);
+        rdw->cs2_on_device = 1;
+    }
+    else {
+        /* the device copy of cs2 was only the scratch of the refinement */
+        rdw->cs2_on_device = 1;
+        BandNonCol_RootDenseEigenvectorsRelease(rdw);
+    }
 #pragma acc exit data delete(active_S[0 : nn])
-    rdw->cs2_on_device = 1;
 #pragma acc exit data delete(hs2[0 : n2n2])
 #pragma acc exit data delete(ko[0 : n2 + 1])
     BandNonCol_ClearOpenAccFreelists();
+}
+
+/* the device basis buffer of the refined solves (n2 x n2 complex); 0 when the
+   device has no room */
+static int BandNonCol_RefineEnsureDeviceBasis(int n2)
+{
+    size_t const n2n2 = (size_t)n2 * (size_t)n2;
+
+    if (BandNonCol_refine_x != NULL && BandNonCol_refine_x_n != n2) BandNonCol_RefineDropBasis();
+    if (BandNonCol_refine_x == NULL) {
+        if (BandNonCol_TryDeviceMalloc((void **)&BandNonCol_refine_x, sizeof(dcomplex) * n2n2) != cudaSuccess) {
+            return 0;
+        }
+        BandNonCol_refine_x_n = n2;
+    }
+    return 1;
+}
+
+static void BandNonCol_KRefReset(void)
+{
+    if (BandNonCol_kref != NULL) {
+        for (int slot = 0; slot < BandNonCol_kref_slots; slot++) {
+            free(BandNonCol_kref[slot].basis);
+            free(BandNonCol_kref[slot].lam);
+        }
+        free(BandNonCol_kref);
+    }
+    BandNonCol_kref = NULL;
+    BandNonCol_kref_slots = 0;
+    BandNonCol_kref_n2 = 0;
+    BandNonCol_kref_used = 0;
+}
+
+static void BandNonCol_KRefEnsure(int slots, int n2)
+{
+    if (BandNonCol_kref != NULL && (BandNonCol_kref_slots != slots || BandNonCol_kref_n2 != n2)) BandNonCol_KRefReset();
+    if (BandNonCol_kref == NULL) {
+        BandNonCol_kref = (BandNonColKRefineSlot *)BandNonCol_MallocArray((size_t)slots, sizeof(BandNonColKRefineSlot),
+                                                                          "refined basis slots");
+        memset(BandNonCol_kref, 0, sizeof(BandNonColKRefineSlot) * (size_t)slots);
+        BandNonCol_kref_slots = slots;
+        BandNonCol_kref_n2 = n2;
+    }
+}
+
+static int BandNonCol_KRefSlotAllocate(BandNonColKRefineSlot *slot, int n2)
+{
+    size_t const bytes = sizeof(dcomplex) * (size_t)n2 * (size_t)n2 + sizeof(double) * (size_t)n2;
+
+    if (slot->basis != NULL) return 1;
+    {
+        size_t const limit = BandNonCol_HostCacheLimit("OPENMX_BAND_REFINE_BASIS_MB", 1024.0, 32);
+
+        if (limit < BandNonCol_kref_used || bytes > limit - BandNonCol_kref_used) return 0;
+    }
+    slot->basis = (dcomplex *)malloc(sizeof(dcomplex) * (size_t)n2 * (size_t)n2);
+    slot->lam = (double *)malloc(sizeof(double) * (size_t)n2);
+    if (slot->basis == NULL || slot->lam == NULL) {
+        free(slot->basis);
+        free(slot->lam);
+        slot->basis = NULL;
+        slot->lam = NULL;
+        return 0;
+    }
+    BandNonCol_kref_used += bytes;
+    return 1;
+}
+
+static void BandNonCol_KRefSlotFree(BandNonColKRefineSlot *slot, int n2)
+{
+    if (slot->basis != NULL) {
+        BandNonCol_kref_used -= sizeof(dcomplex) * (size_t)n2 * (size_t)n2 + sizeof(double) * (size_t)n2;
+    }
+    free(slot->basis);
+    free(slot->lam);
+    slot->basis = NULL;
+    slot->lam = NULL;
+    slot->valid = 0;
+}
+
+static int BandNonCol_RootDenseSolveOneK_FirstHalf(int rebuild_overlap,
+                                                   int n, int n2, int MaxN, int kloop,
+                                                   double k1, double k2, double k3,
+                                                   const double *m_olp,
+                                                   const double *m_h11, const double *m_h22,
+                                                   const double *m_h12, const double *m_h12i,
+                                                   const double *m_i11, const double *m_i22,
+                                                   const double *m_i12,
+                                                   int *packed_order_GA, int *MP,
+                                                   double *ko, double ***EIGEN,
+                                                   int need_evec,
+                                                   BandNonColRootDenseWorkspace *rdw,
+                                                   int refine);
+
+/* One k-point of the k-dense path, refined.  Pass 1 (vectors 0): the
+   refinement gated with the previous step's chemical potential (the
+   eigenvalues are second order in the vectors' error), EIGEN, and the basis
+   kept on the host for pass 2.  Pass 2 (vectors 1): the refinement from that
+   basis with the step's chemical potential, the wavefunctions into cs2.  The
+   FP64 eigensolver takes over inside when the refinement fails. */
+static void BandNonCol_KDenseRefinedSolveOneK(int rebuild_overlap, int n, int n2, int MaxN, int kloop,
+                                              double k1, double k2, double k3,
+                                              const double *m_olp, const double *m_h11, const double *m_h22,
+                                              const double *m_h12, const double *m_h12i, const double *m_i11,
+                                              const double *m_i22, const double *m_i12,
+                                              int *packed_order_GA, int *MP, double *ko, double ***EIGEN,
+                                              BandNonColRootDenseWorkspace *rdw, BandNonColKRefineSlot *slot,
+                                              int vectors)
+{
+    BandNonColRefineState *st = &BandNonCol_refine;
+    EigenRefineState *rs = &BandNonCol_refine_state;
+    size_t const n2n2 = (size_t)n2 * (size_t)n2;
+    int pending;
+
+    /* the slot's basis as the warm start: always between the passes of one
+       step, across steps only with OPENMX_EIGEN_REFINE_WARM_BAND */
+    rs->basis_valid = 0;
+    BandNonCol_refine_force_warm = 0;
+    if (slot->valid && slot->basis != NULL && (vectors || openmx_eigen_refine_warm_band_enabled()) &&
+        BandNonCol_RefineEnsureDeviceBasis(n2) && rs->lam != NULL) {
+        wait_cudafunc(cudaMemcpy(BandNonCol_refine_x, slot->basis, sizeof(dcomplex) * n2n2, cudaMemcpyHostToDevice));
+        wait_cudafunc(cudaMemcpy(rs->lam, slot->lam, sizeof(double) * (size_t)n2, cudaMemcpyHostToDevice));
+        rs->basis_valid = 1;
+        rs->basis_n = n2;
+        BandNonCol_refine_force_warm = vectors;
+    }
+    pending = BandNonCol_RootDenseSolveOneK_FirstHalf(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+                                                      m_olp,m_h11,m_h22,m_h12,m_h12i,m_i11,m_i22,m_i12,
+                                                      packed_order_GA,MP,ko,EIGEN,vectors,rdw,1);
+    BandNonCol_refine_force_warm = 0;
+    if (!vectors) slot->refined = 0;
+    if (!pending) {
+        slot->valid = 0;
+        return;
+    }
+    BandNonCol_RootDenseSolveOneK_SecondHalf(n,n2,MaxN,kloop,ko,EIGEN,ChemP,rdw,vectors);
+    if (st->solved && rs->basis_valid) {
+        if (!vectors) slot->refined = 1;
+        if ((!vectors || openmx_eigen_refine_warm_band_enabled()) && BandNonCol_KRefSlotAllocate(slot, n2)) {
+            wait_cudafunc(cudaMemcpy(slot->basis, BandNonCol_refine_x, sizeof(dcomplex) * n2n2, cudaMemcpyDeviceToHost));
+            wait_cudafunc(cudaMemcpy(slot->lam, rs->lam, sizeof(double) * (size_t)n2, cudaMemcpyDeviceToHost));
+            slot->valid = 1;
+        }
+        else {
+            BandNonCol_KRefSlotFree(slot, n2);
+        }
+    }
+    else {
+        BandNonCol_KRefSlotFree(slot, n2);
+    }
 }
 
 /* The solve of one k-point; with refine, the first half of a refined one
@@ -2936,7 +3120,7 @@ static int BandNonCol_RootDenseSolveOneK_FirstHalf(int rebuild_overlap,
 #pragma acc exit data delete(h11[0 : nn], h22[0 : nn], h12[0 : nn])
 
         BandNonCol_SymmetrizeDenseHermitian_OpenACC(n2,hs2);
-        if (refine && need_evec && BandNonCol_RefinedPrepare(n2,MaxN,hs2,cs2,ko,kloop,EIGEN)){
+        if (refine && BandNonCol_RefinedPrepare(n2,MaxN,hs2,cs2,ko,kloop,EIGEN)){
             /* pending: hs2, active_S and ko stay present for the second half */
             return 1;
         }
@@ -3866,6 +4050,11 @@ double Band_DFT_NonCol(
 	  use_k_dense_gpusolver = (scf_eigen_lib_flag==GPUSOLVER && all_knum!=1 &&
 	                          Band_DFT_NonCol_GpuSwitchNum()<=n2 && strcasecmp(mode,"scf")==0 &&
 	                          BandNonCol_gpu_dense_verdict);
+	  if (use_k_dense_gpusolver){
+	    /* the refined eigensolver on the k-dense path (every rank) */
+	    BandNonCol_RefineBeginStep(SCF_iter, 0, 1);
+	    if (BandNonCol_refine.kdense) BandNonCol_KRefEnsure(T_knum, n2);
+	  }
 	  owns_dense_k_rank = (use_k_dense_gpusolver && Set_Hamiltonian_OpenACC_Rank_Is_Selected());
 	  if (use_k_dense_gpusolver){
 	    dense_k_owner = (int*)malloc(sizeof(int)*(size_t)T_knum);
@@ -4206,6 +4395,19 @@ double Band_DFT_NonCol(
           int save_evec = (k_evec_cache != NULL && k_evec_cache[kloop] != NULL);
           int reuse_overlap = BandNonCol_KOverlapRestore(kloop,k1,k2,k3,rdw->s_all);
           k_overlap_hits += reuse_overlap;
+          if (BandNonCol_refine.kdense){
+            /* the refined pass 2 recomputes the vectors from the kept basis */
+            BandNonCol_KDenseRefinedSolveOneK(!reuse_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+                                              m_olp,m_h11,m_h22,m_h12,m_h12i,
+                                              m_i11,m_i22,m_i12,
+                                              order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],0);
+            if (!reuse_overlap) BandNonCol_KOverlapSave(kloop,k1,k2,k3,rdw->s_all);
+            if (save_evec){
+              free(k_evec_cache[kloop]);
+              k_evec_cache[kloop] = NULL;
+            }
+          }
+          else {
           BandNonCol_RootDenseSolveOneK_OpenACC(!reuse_overlap,n,n2,MaxN,kloop,k1,k2,k3,
                                               m_olp,m_h11,m_h22,m_h12,m_h12i,
                                               m_i11,m_i22,m_i12,
@@ -4214,6 +4416,7 @@ double Band_DFT_NonCol(
           if (save_evec){
             BandNonCol_KCacheSave(k_evec_cache[kloop],rdw);
             k_cache_used += k_cache_bytes;
+          }
           }
         }
       }
@@ -4243,6 +4446,7 @@ double Band_DFT_NonCol(
         BandNonCol_ConstructCache_Reset();
         BandNonCol_RootDenseWorkspace_Reset();
         BandNonCol_GpuSolver_Destroy();
+        BandNonCol_RefineDropBasis();
       }
 
       MPI_Barrier(mpi_comm_level1);
@@ -4283,7 +4487,7 @@ double Band_DFT_NonCol(
 
     /* the refined eigensolver: every owner's buffers stay on the device
        between the two halves, so all k-worlds must form one turn group */
-    BandNonCol_RefineBeginStep(SCF_iter, strcasecmp(mode,"scf")==0 && Num_Comm_World2<=root_dense_turn_group);
+    BandNonCol_RefineBeginStep(SCF_iter, strcasecmp(mode,"scf")==0 && Num_Comm_World2<=root_dense_turn_group, 0);
 
     if (use_setham_packed_cache){
       Set_Hamiltonian_GpuSolver_SetMP(MP);
@@ -4408,7 +4612,10 @@ double Band_DFT_NonCol(
         mu = BandNonCol_RefineChemP(EIGEN,T_knum,MaxN,T_k_op,sum_weights,TZ);
         if (owns_root_dense_rank && BandNonCol_refine.pending){
           kloop = myworld2;
-          BandNonCol_RootDenseSolveOneK_SecondHalf(n,n2,MaxN,kloop,ko,EIGEN,mu,&BandNonCol_root_dense_workspace);
+          BandNonCol_RootDenseSolveOneK_SecondHalf(n,n2,MaxN,kloop,ko,EIGEN,mu,&BandNonCol_root_dense_workspace,1);
+          /* the basis (n2^2 complex numbers) stays only for a warm start of
+             the next step (OPENMX_EIGEN_REFINE_WARM_BAND) */
+          if (!openmx_eigen_refine_warm_band_enabled()) BandNonCol_RefineDropBasis();
         }
         BandNonCol_RefineEndStep();
       }
@@ -5378,10 +5585,18 @@ double Band_DFT_NonCol(
           else {
             int reuse_overlap = BandNonCol_KOverlapRestore(kloop,k1,k2,k3,rdw->s_all);
             k_overlap_hits += reuse_overlap;
+            if (BandNonCol_kref != NULL && BandNonCol_kref[kloop].refined){
+              BandNonCol_KDenseRefinedSolveOneK(!reuse_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+                                                m_olp,m_h11,m_h22,m_h12,m_h12i,
+                                                m_i11,m_i22,m_i12,
+                                                order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],1);
+            }
+            else {
             BandNonCol_RootDenseSolveOneK_OpenACC(!reuse_overlap,n,n2,MaxN,kloop,k1,k2,k3,
                                                 m_olp,m_h11,m_h22,m_h12,m_h12i,
                                                 m_i11,m_i22,m_i12,
                                                 order_GA,MP,ko,EIGEN,1,rdw);
+            }
             if (!reuse_overlap) BandNonCol_KOverlapSave(kloop,k1,k2,k3,rdw->s_all);
           }
           BandNonCol_AccumulateDMRootDenseK_OpenACC(size_H1,MP,n,n2,MaxN,k1,k2,k3,
@@ -5416,11 +5631,14 @@ double Band_DFT_NonCol(
           BandNonCol_ConstructCache_Reset();
           BandNonCol_RootDenseWorkspace_Reset();
           BandNonCol_GpuSolver_Destroy();
+          BandNonCol_RefineDropBasis();
         }
 
         MPI_Barrier(mpi_comm_level1);
       }
 
+      /* the k-dense refined solves of this step decide the stage for all ranks */
+      if (BandNonCol_refine.kdense) BandNonCol_RefineEndStep();
       kloop = 0;
       k1 = T_KGrids1[0];
       k2 = T_KGrids2[0];

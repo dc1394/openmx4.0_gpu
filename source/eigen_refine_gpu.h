@@ -46,6 +46,7 @@ typedef struct {
     double *b1, *b2;       /* the product blocks of the solve in progress (prepare to finish) */
     void   *own;           /* their allocation when the FP32 scratch has no room */
     int     products_ready; /* a warm prepare left the first step's products G in b1 and S in b2 */
+    double  delta_cold;    /* delta of the first refinement step after the latest FP32 solve: a warm start's floor */
 } EigenRefineState;
 
 /* Fermi occupation of a state with estimate e and 1-based index (for
