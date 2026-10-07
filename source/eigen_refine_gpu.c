@@ -903,6 +903,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
 
             refine_check_blas(native_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, a, n, x, n, b1, n),
                               "check A X");
+            refine_check(cudaDeviceSynchronize(), "synchronize");
 #pragma acc parallel loop deviceptr(b1, x, lam, occ)
             for (int j = 0; j < kc; j++) {
                 double num = 0.0, den = 0.0;
@@ -918,6 +919,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                 }
                 occ[j] = sqrt(num / den);
             }
+            refine_check(cudaDeviceSynchronize(), "synchronize");
             refine_check(cudaMemcpy(rh, occ, (size_t)kc * sizeof(double), cudaMemcpyDeviceToHost), "download check");
             for (int j = 0; j < kc; j++) {
                 if (0.5 < fh[j]) {
@@ -934,6 +936,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
             }
             refine_check_blas(native_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, x, n, b2, n),
                               "check X^H X");
+            refine_check(cudaDeviceSynchronize(), "synchronize");
 #pragma acc parallel loop deviceptr(b2, occ)
             for (int j = 0; j < kc; j++) {
                 double worst = 0.0;
@@ -947,6 +950,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                 }
                 occ[j] = worst;
             }
+            refine_check(cudaDeviceSynchronize(), "synchronize");
             refine_check(cudaMemcpy(rh, occ, (size_t)kc * sizeof(double), cudaMemcpyDeviceToHost), "download check");
             for (int j = 0; j < kc; j++) orth = fmax(orth, rh[j]);
             printf("<eigen_refine_gpu> check: %d columns; residual max occupied %.1e (column %d), partial %.1e (%d "

@@ -1381,6 +1381,36 @@ double DFT(int MD_iter, int Cnt_Now)
        cluster solver: an SCF that stops on a refined step has the step's
        Hamiltonian solved once more in FP64, and the density matrices, the
        band energy and the chemical potential recomputed from the vectors */
+    /* a stop on a refined FP32 step also needs the residual norm of a
+       converged FP64 run: the test on dUele alone can fire on a coincidence
+       (RTX 5080, sidia333_col_cluster, 2026-10-07: dUele 7e-12 at step 15
+       with NormRD 4.3e-8, five steps early and 2e-9 Ha off).  The bound is
+       OPENMX_EIGEN_REFINE_STOP_GUARD (default 100) times scf.criterion; 0
+       turns the guard off. */
+    if (po==1 && Cnt_switch==0 && SCF_iter<SCF_MAX &&
+        ((Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined()) ||
+         (Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()) ||
+         (Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined()) ||
+         (Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()))){
+      static double guard_factor = -1.0;
+      double bound, normrd = sqrt(fabs(NormRD[0]));
+
+      if (guard_factor<0.0){
+        const char *value = getenv("OPENMX_EIGEN_REFINE_STOP_GUARD");
+        guard_factor = (value!=NULL && value[0]!='\0') ? atof(value) : 100.0;
+        if (guard_factor<0.0) guard_factor = 0.0;
+      }
+      bound = guard_factor*SCF_Criterion;
+      if (0.0<bound && bound<normrd){
+        if (myid0==Host_ID && 0<level_stdout){
+          printf("<DFT>  eigensolver: the stop test passed on a refined FP32 step with NormRD %.1e above %.1e; the SCF goes on\n",
+                 normrd,bound);
+          fflush(stdout);
+        }
+        po = 0;
+      }
+    }
+
     if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined()){
       if (myid0==Host_ID && 0<level_stdout){
         printf("<DFT>  eigensolver: converged on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
@@ -1909,6 +1939,11 @@ double DFT(int MD_iter, int Cnt_Now)
 				  Ss2_Cx,Hs2_Cx,Cs2_Cx,
 				  CDM1,size_H1,EVec1_NonCol,Work1);
   }
+
+  /* the end of the SCF cycle: the band solvers' warm-start bases go, so
+     the forces (and the next cycle) start with the device memory free */
+  if (Solver==3 && SpinP_switch<=1) Band_DFT_Col_RefineEndCycle();
+  if (Solver==3 && SpinP_switch==3) Band_DFT_NonCol_RefineEndCycle();
 
   /*********************************************************************
    After achieving the SCF, the diagonalization with PAOs is performed

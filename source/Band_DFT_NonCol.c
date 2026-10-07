@@ -281,6 +281,16 @@ void Band_DFT_NonCol_RefineForceFP64(int on)
     BandNonCol_refine.force_fp64 = on;
 }
 
+/* the end of an SCF cycle: the warm-start bases go (the device one and the
+   host slots), so the forces and the next cycle's first step start with the
+   device memory free */
+void Band_DFT_NonCol_RefineEndCycle(void)
+{
+    BandNonCol_RefineDropBasis();
+    BandNonCol_KRefReset();
+    BandNonCol_refine_state.basis_valid = 0;
+}
+
 /* DFT.c, after the mixing of an SCF step that goes on: normrd is the printed
    NormRD */
 void Band_DFT_NonCol_RefineAfterMixing(double normrd)

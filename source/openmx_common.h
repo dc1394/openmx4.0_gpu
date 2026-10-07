@@ -3633,6 +3633,8 @@ void Band_DFT_Col_RefineAfterMixing(double normrd);
 int Band_DFT_NonCol_RefineLastRefined(void);
 void Band_DFT_NonCol_RefineForceFP64(int on);
 void Band_DFT_NonCol_RefineAfterMixing(double normrd);
+void Band_DFT_Col_RefineEndCycle(void);
+void Band_DFT_NonCol_RefineEndCycle(void);
 void Cluster_DFT_NonCol_RefineAfterMixing(double normrd);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
                    int n2,
