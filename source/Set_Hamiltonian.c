@@ -2913,7 +2913,7 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     const size_t vpot_len = (size_t)My_NumGridC;
     const size_t vpot_count = Set_Hamiltonian_checked_mul((size_t)spin_count, vpot_len, "on-the-fly potential", myid);
     const size_t vpot_bytes = Set_Hamiltonian_array_bytes(vpot_count, sizeof(double), "on-the-fly potential", myid);
-    const size_t runtime_slack = 64ULL * 1024ULL * 1024ULL;
+    const size_t runtime_slack = 32ULL * 1024ULL * 1024ULL;
     const size_t alignment_slack = 16 * 512;
     const int profile = SetH_ProfileEnabled();
     size_t limit = 256ULL * 1024ULL * 1024ULL;
@@ -2951,20 +2951,34 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     /* the share of what is free now (the resident ranks have taken their
        tables since the plan was made), the plan's reserve kept */
     {
-        /* the resident ranks may not have taken their tables yet: count them
-           out of the plan's free memory as well as out of what is free now */
+        /* The resident ranks may not have taken their tables (the plan's
+           peak) yet: count the peak out of the plan's free memory, and take
+           the smaller of that and what is free now.  The workspace is
+           transient (freed before the solvers run), so only a margin
+           (OPENMX_SETHAM_ONTHEFLY_MARGIN_MB, default 256) is kept, not the
+           plan's reserve; on a 16 GB card with 7 resident and 11 on-the-fly
+           ranks this gives about 100 MiB per rank (RTX 5080, 2026-10-08:
+           256 MiB each left the resident ranks without memory). */
+        const char *margin_env = getenv("OPENMX_SETHAM_ONTHEFLY_MARGIN_MB");
+        size_t margin = 256ULL * 1024ULL * 1024ULL;
         size_t free_now = 0, total_now = 0, base;
 
+        if (margin_env && margin_env[0]) {
+            char *end = NULL;
+            unsigned long long mib = strtoull(margin_env, &end, 10);
+            if (end != margin_env && *end == '\0' && mib <= (size_t)-1 / (1024ULL * 1024ULL))
+                margin = (size_t)mib * 1024ULL * 1024ULL;
+        }
         if (cudaMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
-        base = (plan->resident_group_bytes < plan->free_bytes) ? plan->free_bytes - plan->resident_group_bytes : 0;
+        base = (plan->peak_bytes < plan->free_bytes) ? plan->free_bytes - plan->peak_bytes : 0;
         if (free_now < base) base = free_now;
-        if (base <= plan->reserve_bytes) return 0;
-        fair_bytes = (base - plan->reserve_bytes) / (size_t)nonresident_ranks;
+        if (base <= margin) return 0;
+        fair_bytes = (base - margin) / (size_t)nonresident_ranks;
     }
     if (fair_bytes <= runtime_slack || fair_bytes - runtime_slack <= vpot_bytes) return 0;
     workspace_bytes = fair_bytes - runtime_slack - vpot_bytes;
     if (limit < workspace_bytes) workspace_bytes = limit;
-    if (workspace_bytes <= alignment_slack + 32ULL * 1024ULL * 1024ULL) return 0;
+    if (workspace_bytes <= alignment_slack + 48ULL * 1024ULL * 1024ULL) return 0;
     payload_bytes = workspace_bytes - alignment_slack;
     if (!Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid)) return 0;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
@@ -3244,6 +3258,15 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     return 1;
 }
 
+
+/* the end of an SCF cycle: the on-the-fly state (the atoms' sphere indices,
+   the species' tables) goes, so the forces find the device memory free
+   (RTX 5080, 2026-10-08: Force3's kernel launch had 207 MB left) */
+void Set_Hamiltonian_OnTheFly_EndCycle(void)
+{
+    Set_Hamiltonian_OTF_Release();
+    SOG_Device_Release();
+}
 
 /* ---- the density on the grid from the same on-the-fly tiles ---------- */
 

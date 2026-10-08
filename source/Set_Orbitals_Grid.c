@@ -137,49 +137,38 @@ static void SOG_point_eval(int wan, int no, double gx, double gy, double gz,
     int po = 0;
     int L0, Mul0, M0, i1;
 
-    /* xyz2spherical */
+    /* xyz2spherical, without the angles: the real harmonics below need
+       only cos/sin of theta and phi, which are z/r, r1/r, x/r1, y/r1 (the
+       host path goes through acos/asin and sin/cos, which agrees with this
+       to the last bits of the double value) */
+    double siQ, coQ, siP, coP;
     {
       const double Min_r = 10e-15;
       double dum = x * x + y * y;
       double r = sqrt(dum + z * z);
       double r1 = sqrt(dum);
-      double dum1, theta, phi;
 
       if (Min_r <= r) {
-
-        if (r < fabs(z)) dum1 = (z < 0.0 ? -1.0 : 1.0) * 1.0;
-        else dum1 = z / r;
-
-        theta = acos(dum1);
-
+        if (r < fabs(z)) { coQ = (z < 0.0 ? -1.0 : 1.0); siQ = 0.0; }
+        else { coQ = z / r; siQ = r1 / r; }
         if (Min_r <= r1) {
-          if (0.0 <= x) {
-
-            if (r1 < fabs(y)) dum1 = (y < 0.0 ? -1.0 : 1.0) * 1.0;
-            else dum1 = y / r1;
-
-            phi = asin(dum1);
-          }
-          else {
-
-            if (r1 < fabs(y)) dum1 = (y < 0.0 ? -1.0 : 1.0) * 1.0;
-            else dum1 = y / r1;
-
-            phi = PI - asin(dum1);
-          }
+          if (r1 < fabs(y)) { siP = (y < 0.0 ? -1.0 : 1.0); coP = 0.0; }
+          else { siP = y / r1; coP = x / r1; }
         }
         else {
-          phi = 0.0;
+          siP = 0.0;
+          coP = 1.0;
         }
       }
       else {
-        theta = 0.5 * PI;
-        phi = 0.0;
+        coQ = 0.0;
+        siQ = 1.0;
+        siP = 0.0;
+        coP = 1.0;
       }
-
       R = r;
-      Q = theta;
-      P = phi;
+      Q = 0.0;
+      P = 0.0;
     }
 
     /* radial spline of every (L0, Mul0) */
@@ -208,15 +197,16 @@ static void SOG_point_eval(int wan, int no, double gx, double gy, double gz,
         x2 = rm - rv[m];
       }
       else {
-        int mp_min = 0, mp_max = mesh - 1;
-
-        do {
-          m = (mp_min + mp_max) / 2;
-          if (rv[m] < R) mp_min = m;
-          else mp_max = m;
-        }
-        while ((mp_max - mp_min) != 1);
-        m = mp_max;
+        /* the first mesh index with rv[m] >= R (what the bisection of the
+           host path finds): an estimate from the logarithmic mesh, then
+           the exact neighbours */
+        const double x0 = log(rv[0]);
+        const double dx = (log(rv[mesh - 1]) - x0) / (double)(mesh - 1);
+        m = (int)((log(R) - x0) / dx) + 1;
+        if (m < 1) m = 1;
+        if (mesh - 1 < m) m = mesh - 1;
+        while (1 < m && R <= rv[m - 1]) m--;
+        while (m < mesh - 1 && rv[m] < R) m++;
 
         h1 = rv[m - 1] - rv[m - 2];
         h2 = rv[m] - rv[m - 1];
@@ -307,10 +297,7 @@ static void SOG_point_eval(int wan, int no, double gx, double gy, double gz,
     if (po == 0) {
 
       /* Angular */
-      const double siQ = sin(Q);
-      const double coQ = cos(Q);
-      const double siP = sin(P);
-      const double coP = cos(P);
+      /* siQ, coQ, siP, coP: from the coordinates above */
       double dum, dum1, dum2;
 
       for (L0 = 0; L0 <= maxl; L0++) {

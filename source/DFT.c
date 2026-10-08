@@ -1958,6 +1958,10 @@ double DFT(int MD_iter, int Cnt_Now)
   if (Solver==3 && SpinP_switch<=1) Band_DFT_Col_RefineEndCycle();
   if (Solver==3 && SpinP_switch==3) Band_DFT_NonCol_RefineEndCycle();
   Grid_Precision_EndCycle();
+  /* the on-the-fly state of the grid integrals and the density's resident
+     device buffers go as well, before the forces */
+  Set_Hamiltonian_OnTheFly_EndCycle();
+  Set_Density_Grid_GPU_EndCycle();
 
   /*********************************************************************
    After achieving the SCF, the diagonalization with PAOs is performed

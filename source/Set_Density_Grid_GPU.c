@@ -1228,6 +1228,13 @@ static size_t SDG_local_call_bytes(const SDGLocalContext *c)
   return bytes;
 }
 
+/* the end of an SCF cycle: the resident device buffers of the local mode go
+   (the next cycle stages them again) */
+void Set_Density_Grid_GPU_EndCycle(void)
+{
+  SDG_local_delete_device(&SDG_local);
+}
+
 int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
 {
   SDGLocalContext *c = &SDG_local;
