@@ -425,9 +425,15 @@ static size_t Set_Hamiltonian_GpuTestNeedBytes(int call_index)
     return (size_t)mib * 1024ULL * 1024ULL;
 }
 
+/* the on-the-fly share (bytes per non-resident rank) the matrix-elements
+   plan keeps free beside the staged wave; defined with the on-the-fly code */
+static size_t Set_Hamiltonian_OTF_ShareTarget(int Cnt_kind, int myid);
+static size_t Set_Hamiltonian_OTF_MarginBytes(void);
+
 static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t required_bytes,
                                                                    const size_t *resident_request_class,
                                                                    int resident_active,
+                                                                   size_t otf_share_bytes,
                                                                    const char *where, int myid)
 {
     SetHamiltonianGpuTurnPlan plan;
@@ -608,6 +614,34 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
             }
             else {
                 break;
+            }
+        }
+
+        /* The hybrid wave: the ranks left out of it evaluate their orbitals
+           on the fly, and they, not the staged ranks, set the time of the
+           phase (RTX 5080, 2026-10-08: staged ranks 0.65 s per step and
+           0.8 s waiting at the barrier, on-the-fly ranks 1.4 s with their
+           full workspace, 2.1 s with half of it).  Extra staged ranks
+           therefore buy nothing, while each one takes a table's worth of
+           memory from the on-the-fly budget.  Shrink the wave until every
+           rank outside it gets its target workspace; a wave of one is
+           always kept. */
+        if (0 < otf_share_bytes && 0 < plan.concurrent_ranks && plan.concurrent_ranks < plan.device_ranks) {
+            const unsigned long long margin = (unsigned long long)Set_Hamiltonian_OTF_MarginBytes();
+            int c = plan.concurrent_ranks;
+
+            peak = (unsigned long long)plan.peak_bytes;
+            while (1 < c) {
+                const unsigned long long outside = (unsigned long long)(plan.device_ranks - c);
+                unsigned long long left = (peak + margin <= group_free) ? group_free - peak - margin : 0ULL;
+
+                if ((unsigned long long)otf_share_bytes <= left / outside) break;
+                peak -= requirements[c - 1];
+                c--;
+            }
+            if (c < plan.concurrent_ranks) {
+                plan.concurrent_ranks = c;
+                plan.peak_bytes = (size_t)peak;
             }
         }
     }
@@ -1491,7 +1525,7 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
            switched that rank away from GPUSOLVER. */
         MPI_Allreduce(&local_request, &any_request, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
         if (any_request) {
-            base_plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, NULL, 0, "base OpenACC path", myid);
+            base_plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, NULL, 0, 0, "base OpenACC path", myid);
         }
     }
     use_base_openacc = base_plan.use_gpu &&
@@ -1759,7 +1793,8 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         MPI_Allreduce(&local_request, &any_request, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
         if (any_request) {
             plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, resident_request_class,
-                                                     resident_active, "matrix-elements OpenACC path", myid);
+                                                     resident_active, Set_Hamiltonian_OTF_ShareTarget(Cnt_kind, myid),
+                                                     "matrix-elements OpenACC path", myid);
         }
     }
 
@@ -2843,6 +2878,72 @@ typedef struct {
 
 static SetHamiltonianOnTheFlyCache Set_Hamiltonian_OTF = {0};
 
+/* the smallest batch workspace an on-the-fly rank is given: below it a
+   rank would still take the device (the allocation decides), but the
+   batches become too small to be worth it */
+#define SETH_OTF_FLOOR_BYTES (48ULL * 1024ULL * 1024ULL)
+
+/* the ranks of this node that integrate the density on the fly at the same
+   time (Set_Density_Grid_GPU_Local_Prepare counts them each step) */
+static int Set_Hamiltonian_OTF_density_ranks = 0;
+
+void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks)
+{
+    Set_Hamiltonian_OTF_density_ranks = otf_ranks;
+}
+
+/* OPENMX_SETHAM_ONTHEFLY_MB: the upper bound of a rank's batch workspace
+   (default 128 MiB, at least 32) */
+static size_t Set_Hamiltonian_OTF_LimitBytes(void)
+{
+    const char *limit_env = getenv("OPENMX_SETHAM_ONTHEFLY_MB");
+    size_t limit = 128ULL * 1024ULL * 1024ULL;
+
+    if (limit_env && limit_env[0]) {
+        char *end = NULL;
+        unsigned long long mib = strtoull(limit_env, &end, 10);
+        if (end != limit_env && *end == '\0' && mib >= 32 && mib <= (size_t)-1 / (1024ULL * 1024ULL))
+            limit = (size_t)mib * 1024ULL * 1024ULL;
+    }
+    return limit;
+}
+
+/* OPENMX_SETHAM_ONTHEFLY_MARGIN_MB: device memory kept out of the
+   on-the-fly budget (default 0: the workspaces are transient and go
+   before the solvers run) */
+static size_t Set_Hamiltonian_OTF_MarginBytes(void)
+{
+    const char *margin_env = getenv("OPENMX_SETHAM_ONTHEFLY_MARGIN_MB");
+    size_t margin = 0;
+
+    if (margin_env && margin_env[0]) {
+        char *end = NULL;
+        unsigned long long mib = strtoull(margin_env, &end, 10);
+        if (end != margin_env && *end == '\0' && mib <= (size_t)-1 / (1024ULL * 1024ULL))
+            margin = (size_t)mib * 1024ULL * 1024ULL;
+    }
+    return margin;
+}
+
+/* what an on-the-fly rank needs on the device for a step: the workspace
+   bound plus the potential and the slack the batches take beside it; zero
+   when the on-the-fly path is not available, so the plan does not shrink
+   its wave for ranks that would compute on the CPU anyway */
+static size_t Set_Hamiltonian_OTF_ShareTarget(int Cnt_kind, int myid)
+{
+    const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
+    const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
+    const size_t runtime_slack = 32ULL * 1024ULL * 1024ULL;
+    const size_t alignment_slack = 16 * 512;
+    size_t vpot_count, vpot_bytes;
+
+    if ((enabled && atoi(enabled) == 0) || !Set_Hamiltonian_MatrixElements_CudaKernel_Enabled() ||
+        Cnt_kind != 0 || Matomnum <= 0) return 0;
+    vpot_count = Set_Hamiltonian_checked_mul((size_t)spin_count, (size_t)My_NumGridC, "on-the-fly potential", myid);
+    vpot_bytes = Set_Hamiltonian_array_bytes(vpot_count, sizeof(double), "on-the-fly potential", myid);
+    return Set_Hamiltonian_OTF_LimitBytes() + runtime_slack + vpot_bytes + alignment_slack;
+}
+
 static void Set_Hamiltonian_OTF_Release(void)
 {
     SetHamiltonianOnTheFlyCache *c = &Set_Hamiltonian_OTF;
@@ -2908,7 +3009,6 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
                                                     int Cnt_kind, int myid)
 {
     const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
-    const char *limit_env = getenv("OPENMX_SETHAM_ONTHEFLY_MB");
     const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
     const size_t vpot_len = (size_t)My_NumGridC;
     const size_t vpot_count = Set_Hamiltonian_checked_mul((size_t)spin_count, vpot_len, "on-the-fly potential", myid);
@@ -2916,7 +3016,7 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     const size_t runtime_slack = 32ULL * 1024ULL * 1024ULL;
     const size_t alignment_slack = 16 * 512;
     const int profile = SetH_ProfileEnabled();
-    size_t limit = 256ULL * 1024ULL * 1024ULL;
+    const size_t limit = Set_Hamiltonian_OTF_LimitBytes();
     size_t fair_bytes, workspace_bytes, payload_bytes, arena_bytes;
     int nonresident_ranks;
     int pair_count = 0, batch_count = 0, cpu_pairs = 0;
@@ -2939,46 +3039,32 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     if ((enabled && atoi(enabled) == 0) || !Set_Hamiltonian_MatrixElements_CudaKernel_Enabled() ||
         !plan->selected || plan->device_comm == MPI_COMM_NULL || plan->device_ranks <= 0 ||
         plan->free_bytes <= plan->reserve_bytes || Matomnum <= 0 || Cnt_kind != 0) return 0;
-    if (limit_env && limit_env[0]) {
-        char *end = NULL;
-        unsigned long long mib = strtoull(limit_env, &end, 10);
-        if (end != limit_env && *end == '\0' && mib >= 32 && mib <= (size_t)-1 / (1024ULL * 1024ULL))
-            limit = (size_t)mib * 1024ULL * 1024ULL;
-    }
     nonresident_ranks = plan->device_ranks - plan->concurrent_ranks;
     if (nonresident_ranks <= 0) nonresident_ranks = plan->device_ranks;
     Set_Hamiltonian_OTF.nonresident_ranks = nonresident_ranks;
-    /* the share of what is free now (the resident ranks have taken their
-       tables since the plan was made), the plan's reserve kept */
+    /* the share of the plan's free memory left beside the staged wave */
     {
-        /* The resident ranks may not have taken their tables (the plan's
-           peak) yet: count the peak out of the plan's free memory, and take
-           the smaller of that and what is free now.  The workspace is
+        /* The budget is taken from the plan, not from cudaMemGetInfo() at
+           this moment: the ranks of the first wave stage their tables while
+           the on-the-fly ranks size their workspaces, so a live reading
+           differs from rank to rank and from step to step (RTX 5080,
+           2026-10-08: the workspace changed on 21 of 23 steps and 3 of 14
+           ranks ended on the CPU).  The plan's free memory minus the wave's
+           peak is what every rank sees the same way.  The workspace is
            transient (freed before the solvers run), so only a margin
-           (OPENMX_SETHAM_ONTHEFLY_MARGIN_MB, default 256) is kept, not the
-           plan's reserve; on a 16 GB card with 7 resident and 11 on-the-fly
-           ranks this gives about 100 MiB per rank (RTX 5080, 2026-10-08:
-           256 MiB each left the resident ranks without memory). */
-        const char *margin_env = getenv("OPENMX_SETHAM_ONTHEFLY_MARGIN_MB");
-        size_t margin = 256ULL * 1024ULL * 1024ULL;
-        size_t free_now = 0, total_now = 0, base;
+           (OPENMX_SETHAM_ONTHEFLY_MARGIN_MB, default 0) is kept, not the
+           plan's reserve; a share below the floor still gets the floor
+           (the allocation, not the estimate, decides), and only a failed
+           allocation sends the rank to the CPU. */
+        const size_t margin = Set_Hamiltonian_OTF_MarginBytes();
+        size_t base;
 
-        if (margin_env && margin_env[0]) {
-            char *end = NULL;
-            unsigned long long mib = strtoull(margin_env, &end, 10);
-            if (end != margin_env && *end == '\0' && mib <= (size_t)-1 / (1024ULL * 1024ULL))
-                margin = (size_t)mib * 1024ULL * 1024ULL;
-        }
-        if (cudaMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
         base = (plan->peak_bytes < plan->free_bytes) ? plan->free_bytes - plan->peak_bytes : 0;
-        if (free_now < base) base = free_now;
-        if (base <= margin) return 0;
-        fair_bytes = (base - margin) / (size_t)nonresident_ranks;
+        fair_bytes = (margin < base) ? (base - margin) / (size_t)nonresident_ranks : 0;
     }
-    if (fair_bytes <= runtime_slack || fair_bytes - runtime_slack <= vpot_bytes) return 0;
-    workspace_bytes = fair_bytes - runtime_slack - vpot_bytes;
+    workspace_bytes = (runtime_slack + vpot_bytes < fair_bytes) ? fair_bytes - runtime_slack - vpot_bytes : 0;
     if (limit < workspace_bytes) workspace_bytes = limit;
-    if (workspace_bytes <= alignment_slack + 48ULL * 1024ULL * 1024ULL) return 0;
+    if (workspace_bytes < alignment_slack + SETH_OTF_FLOOR_BYTES) workspace_bytes = alignment_slack + SETH_OTF_FLOOR_BYTES;
     payload_bytes = workspace_bytes - alignment_slack;
     if (!Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid)) return 0;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
@@ -3001,13 +3087,20 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     }
     SETH_OTF_PROFILE_ADD(pack_seconds);
     if (plan->device_rank == 0 || (plan->concurrent_ranks == plan->device_rank)) {
+        /* announced once, and again only when the workspace moves by more
+           than a sixteenth (the plan's free memory drifts by a few MiB
+           from step to step) or the wave changes */
         static size_t last_workspace = 0;
-        if (last_workspace != workspace_bytes) {
+        static int last_nonresident = -1;
+        const size_t drift = (last_workspace < workspace_bytes) ? workspace_bytes - last_workspace
+                                                                 : last_workspace - workspace_bytes;
+        if (last_nonresident != nonresident_ranks || last_workspace / 16 < drift) {
             printf("<Set_Hamiltonian> GPU on-the-fly orbital tiles: %d rank(s) without resident tables, "
                    "%.1f MiB workspace/rank on device %d\n",
                    nonresident_ranks, (double)workspace_bytes / (1024.0 * 1024.0), plan->cuda_device);
             fflush(stdout);
             last_workspace = workspace_bytes;
+            last_nonresident = nonresident_ranks;
         }
     }
     mc_table = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)pair_count, "on-the-fly atom table", myid);
@@ -3476,13 +3569,13 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid)
 {
-    const char *limit_env = getenv("OPENMX_SETHAM_ONTHEFLY_MB");
+    const char *limit_env = getenv("OPENMX_SETDEN_ONTHEFLY_MB");
     const size_t runtime_slack = 64ULL * 1024ULL * 1024ULL;
     const size_t alignment_slack = 16 * 512;
     const int profile = SetH_ProfileEnabled();
     const int mode = Grid_Precision_Kernel();
     const int fp32 = (mode == 1);
-    size_t limit = 256ULL * 1024ULL * 1024ULL;
+    size_t limit = 128ULL * 1024ULL * 1024ULL;
     size_t fair_bytes, workspace_bytes, payload_bytes, arena_bytes, fixed_bytes;
     size_t dm_bytes = sizeof(double) * dm_count;
     size_t dmf_bytes = (mode == 1) ? sizeof(float) * dm_count : (mode == 2) ? 2 * sizeof(float) * dm_count : 0;
@@ -3514,20 +3607,26 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
         if (end != limit_env && *end == '\0' && mib >= 32 && mib <= (size_t)-1 / (1024ULL * 1024ULL))
             limit = (size_t)mib * 1024ULL * 1024ULL;
     }
-    nonresident_ranks = Set_Hamiltonian_OTF.nonresident_ranks > 0 ? Set_Hamiltonian_OTF.nonresident_ranks : 1;
+    /* the ranks that take this path at the same time: every rank without
+       resident tables (Set_Density_Grid_GPU_Local_Prepare counts them), not
+       the last Set_Hamiltonian plan's non-resident count -- in the hybrid
+       mode the staged ranks have no resident tables either, so all of them
+       integrate on the fly (RTX 5080, 2026-10-08: 18 ranks shared a budget
+       meant for 14 and one or two lost the device every step) */
+    nonresident_ranks = Set_Hamiltonian_OTF_density_ranks > 0 ? Set_Hamiltonian_OTF_density_ranks :
+                        Set_Hamiltonian_OTF.nonresident_ranks > 0 ? Set_Hamiltonian_OTF.nonresident_ranks : 1;
     fixed_bytes = dm_bytes + dmf_bytes + den_bytes + 3 * 512;
     {
         size_t free_now = 0, total_now = 0;
         const size_t reserve = 512ULL * 1024ULL * 1024ULL;
 
         if (cudaMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
-        if (free_now <= reserve) return 0;
-        fair_bytes = (free_now - reserve) / (size_t)nonresident_ranks;
+        fair_bytes = (reserve < free_now) ? (free_now - reserve) / (size_t)nonresident_ranks : 0;
     }
-    if (fair_bytes <= runtime_slack || fair_bytes - runtime_slack <= fixed_bytes) return 0;
-    workspace_bytes = fair_bytes - runtime_slack - fixed_bytes;
+    workspace_bytes = (runtime_slack + fixed_bytes < fair_bytes) ? fair_bytes - runtime_slack - fixed_bytes : 0;
     if (limit < workspace_bytes) workspace_bytes = limit;
-    if (workspace_bytes <= alignment_slack + 32ULL * 1024ULL * 1024ULL) return 0;
+    /* a share below the floor still gets the floor: the allocation decides */
+    if (workspace_bytes < alignment_slack + SETH_OTF_FLOOR_BYTES) workspace_bytes = alignment_slack + SETH_OTF_FLOOR_BYTES;
     payload_bytes = workspace_bytes - alignment_slack;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
                                                &unused_orbs0, &unused_orbs1);

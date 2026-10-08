@@ -3398,6 +3398,7 @@ int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables
 int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind);
 int Set_Hamiltonian_OnTheFly_DensityPossible(int Cnt_kind, int myid);
 void Set_Hamiltonian_OnTheFly_EndCycle(void);
+void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks);
 void Set_Density_Grid_GPU_EndCycle(void);
 size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
 int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double *dm, size_t dm_count,

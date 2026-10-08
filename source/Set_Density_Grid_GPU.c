@@ -1288,6 +1288,20 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
     my_capable = my_ready || my_otf;
     MPI_Allreduce(&my_capable, &all_capable, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
     if (!all_capable) return 0;
+    {
+      /* how many ranks of this node integrate on the fly: they share the
+         device's free memory, so the on-the-fly density budget is divided
+         by this count (the node's ranks all share one device in the
+         configurations run so far; several devices per node make the
+         share smaller than necessary, never larger) */
+      MPI_Comm node_comm = MPI_COMM_NULL;
+      int node_otf = 0;
+
+      MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
+      MPI_Allreduce(&my_otf, &node_otf, 1, MPI_INT, MPI_SUM, node_comm);
+      MPI_Comm_free(&node_comm);
+      Set_Hamiltonian_OnTheFly_SetDensityRanks(node_otf);
+    }
     if (my_otf) {
       if (c->ready && !c->otf) SDG_local_free();
       if (!c->otf || c->spin_count != spin_count || c->cnt_kind != Cnt_kind) {
