@@ -1,0 +1,1067 @@
+% !TeX program = lualatex
+% Encoding: UTF-8
+% Build: lualatex adaptive_precision_research_plan_v1.4.tex (run twice)
+% Requires TeX Live with Japanese support (LuaTeX-ja).
+% Japanese fonts: Harano Aji, or IPAex Mincho/Gothic.
+% Bibliography is embedded; no external .bib file or figures are required.
+\RequirePackage{fix-cm}
+\documentclass[a4paper,11pt]{ltjsarticle}
+\usepackage[top=20mm,bottom=20mm,left=21mm,right=21mm,headheight=15pt,headsep=7mm,footskip=10mm]{geometry}
+\usepackage{luatexja-fontspec}
+\setmainfont{Latin Modern Roman}
+\setsansfont{Latin Modern Sans}
+\setmonofont{Latin Modern Mono}[Scale=0.88]
+\IfFontExistsTF{HaranoAjiMincho-Regular}{%
+  \setmainjfont{HaranoAjiMincho-Regular}[BoldFont=HaranoAjiGothic-Medium]
+  \setsansjfont{HaranoAjiGothic-Medium}
+}{%
+  \setmainjfont{IPAexMincho}[BoldFont=IPAexGothic]
+  \setsansjfont{IPAexGothic}
+}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs,tabularx,array,longtable}
+\usepackage[table]{xcolor}
+\usepackage{enumitem,fancyhdr,lastpage,needspace}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{hyperref}
+\definecolor{Ink}{HTML}{173D55}
+\definecolor{Pale}{HTML}{EFF5F8}
+\definecolor{Rule}{HTML}{9EB4BF}
+\hypersetup{unicode=true,colorlinks=true,linkcolor=Ink,citecolor=Ink,urlcolor=Ink,
+  pdftitle={OpenMX + GEMMul8: Adaptive precision research plan v1.4},
+  pdfsubject={Adaptive precision and reusable residue representations for GPU-accelerated DFT},
+  pdfauthor={Research plan prepared for Hiroyuki Kawai},bookmarksnumbered=true}
+\urlstyle{same}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\sffamily OpenMX + GEMMul8 / Adaptive precision}
+\fancyhead[R]{\small\sffamily 研究計画 v1.4}
+\fancyfoot[L]{\small 2026年10月7日}
+\fancyfoot[R]{\small\thepage\,/\,\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.25em}
+\linespread{1.10}
+\setlength{\emergencystretch}{2em}
+\widowpenalty=10000
+\clubpenalty=10000
+\setcounter{secnumdepth}{2}
+\setlist[itemize]{leftmargin=1.6em,itemsep=0.15em,topsep=0.3em,parsep=0pt}
+\setlist[enumerate]{leftmargin=1.8em,itemsep=0.18em,topsep=0.3em,parsep=0pt}
+\renewcommand{\arraystretch}{1.24}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\FP}{\mathrm{FP64}}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\E}[1]{\times10^{#1}}
+\newtcolorbox{keybox}{colback=Pale,colframe=Rule,boxrule=0.4pt,arc=1mm,
+  left=3mm,right=3mm,top=2mm,bottom=2mm,before skip=5pt,after skip=7pt}
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
+  frame=single,rulecolor=\color{Rule},backgroundcolor=\color{Pale},
+  breaklines=true,showstringspaces=false,xleftmargin=2mm,xrightmargin=2mm,
+  aboveskip=6pt,belowskip=6pt}
+\begin{document}
+
+\begin{center}
+{\small\sffamily\color{Ink} 研究計画 / 2026年10月7日 / v1.4}\par\vspace{3mm}
+{\LARGE\bfseries 固定行列の剰余表現再利用と\\[2mm]
+収束に応じた適応精度による\\[2mm]
+局在基底DFTのGPU高速化}\par\vspace{3mm}
+{\normalsize Convergence-aware adaptive precision and reusable residue\\
+representations for GPU-accelerated localized-basis DFT}\par\vspace{2mm}
+{\small 対象：OpenMX + GEMMul8\quad 開発：kugui / NVIDIA A100\quad 評価：GeForce RTX 5080}
+\end{center}
+
+\begin{keybox}
+\textbf{v1.2の中心仮説}\quad SCFの進行に応じたGEMM精度の選択と、固定された直交化行列の前処理再利用を組み合わせることで、最終精度を満たす固定設定よりも必要精度への到達時間を短縮できる。
+
+\medskip
+\textbf{第1段階（A100）とRTX 5080の第1回測定の結論（v1.3）}\quad 前処理の再利用で減らせる時間は二つのGEMMの2〜8\,\%、適応精度は固定設定を上回らず、二つのGEMMが密行列解法に占める割合は全量確保後で3〜10\,\%にとどまった。両GPUとも中心仮説を支持する結果は得られず、「全量確保＋fast modeの固定設定」を実用上の結論として、対象を密行列解法の9割を占める固有値解法へ移した。
+
+\medskip
+\textbf{第2段階（2026年10月6〜7日）：固有値解法のFP32化と補正（第\ref{sec:eig}節）}
+\begin{itemize}
+\item すべての固有対をFP32で解き、必要なMaxN個を荻田・相島の反復改良（積はGEMMul8）で2回補正し、部分占有の縮退クラスタをレイリー・リッツで回転する。前のステップの固有ベクトルから補正を始めるウォームスタートを加えた。
+\item A100の\code{sidia333}（非共線、$2n=5616$）で、全エネルギーはFP64と$10^{-12}$\,Haの桁で一致し、SCF反復は23回から22回になった。固有値解法の段階は1ステップ873\,msから140\,msになった。
+\item RTX 5080（18ランク）では、全計算が261.3秒から173.9秒（中性、反復23回→21回）、電荷$-2$で236.1秒から173.7秒になり、固有値解法の段階は1ステップ3,189\,msから163\,msになった。残る時間の大半は\code{Set\_Hamiltonian}（79秒、1ステップ3.8秒）と\code{Set\_Density\_Grid}（33秒）である。
+\item 同じ補正を共線クラスター（スピンごと）、共線バンド、非共線バンド（1ランク1k点の経路）に広げ、A100で検証した。GeForceなどFP32:FP64比が8以上のGPUでは既定で有効にした。
+\end{itemize}
+\end{keybox}
+
+\noindent{\small v1.4は、v1.3の方針転換（固有値解法への移行）を受けて2026年10月6〜7日に実装・検証した補正つきFP32固有値解法と、その結果を反映した改訂である。v1.3までの内容（GEMMの再利用と適応精度）は第\ref{sec:facts}〜\ref{sec:control}節にそのまま残し、固有値解法は第\ref{sec:eig}節に新設した。変更点は第\ref{sec:changes}節にまとめる。}
+
+\section{目的、位置づけ、研究質問}
+\subsection{研究対象と精度の意味}
+本研究は、OpenMX 4.0 GPU版\cite{openmxgpu}の直交化変換に現れる二つのGEMMを対象とする。対象commitを監査した結果、現行実装の設定は次のとおりであった。v1.2が開始設定とした$L=20$は、このリポジトリの履歴には存在しない。
+\begin{itemize}
+\item moduli数の既定は$L=15$、fast mode off（accurate）。指定範囲は2〜20（\code{OPENMX\_GEMMUL8\_NUM\_MOD\_D/Z}、\code{OPENMX\_GEMMUL8\_FASTMODE\_D/Z}）。
+\item 省メモリモードが既定で有効（作業領域の上限256\,MiB、\code{OPENMX\_GEMMUL8\_MAX\_WORKSPACE\_MB}）。上限を超える積は分割して実行される。
+\item 組み込まれているGEMMul8はタグv3.5.2（commit 603b523）で、2026年10月5日時点の最新タグである。upstreamのmainはREADMEだけを変更したcommitが一つ先行している。
+\end{itemize}
+
+GEMMul8の公開READMEが示す有効ビット数は固定小数点エミュレーションの目安であり、出力の精度を保証するものではない\cite{gemmul8,ozaki}。v1.2はこの点を研究課題とした。第1段階では、SCFから採取した実行列について倍々精度の参照値との差を測り、moduli数と達成精度の関係を得た（第\ref{sec:facts}節）。以後の精度の議論はこの実測値に基づく。
+
+主対象はINT8バックエンド、単一GPU上の既存の密行列経路とする。実装と測定は、実行列を扱う共線スピンのクラスター解法から始めた。FP8、逆変換の適応精度化、部分キャッシュ、多GPU分散、Kokkos化は初期成果の必須条件に含めない。
+
+\subsection{既存機能・先行研究との差分}
+公開版GEMMul8には、前処理済みデータを保持する\code{skip\_scalA/B}が既にある。再利用には入力内容と演算条件の不変性が必要で、内容の一致は呼出し側が保証する。省メモリモードではskipによる再利用が無効になる\cite{gemmul8}。従って、量子化結果を再利用する機能そのものの初出は主張しない。
+
+HuangらはPySCFの密度フィッティングによる交換行列構築で、SCF中のエネルギー変化に応じて精度を単調に引き上げ、最後に通常のFP64へ戻す方式を報告している\cite{huang}。適応精度・単調な昇格・最終FP64への移行は、いずれも本研究単独の新規性とはしない。
+
+本研究の差分は、局在基底DFTの一般化固有値問題における固定直交化行列に着目し、moduli制御と準備済み表現の寿命管理を結び付ける点にある。第1段階の結果から、貢献として確実に示せるのは次の四つである。(1) 実行列での精度・時間・容量の測定と、精度を下げられる範囲。(2) 再利用が厳密に成立する条件（スケーリング方式への依存）と、その削減上限。(3) 作業領域の確保方針が再利用や適応化より大きく効くという事実。(4) 適応精度が固定設定を上回らなかったという結果と、その理由（順変換の比重の小ささと、反復の増加）。RTX 5080の測定（第\ref{sec:rtx}節）を受けて、準備済み行列APIの提案と適応精度の研究は打ち切ることを提案する。
+
+\noindent\begin{tabularx}{\linewidth}{@{}p{11mm}L{47mm}Y@{}}
+\toprule
+ & 研究質問 & 答え（A100とRTX 5080）\\
+\midrule
+RQ1 & 各SCF段階でどこまで精度を下げられるか & 全反復を$L=12$ fastに固定しても反復数は増えず、エネルギー差はFP64自身の揺らぎ（$5\E{-11}$\,Ha以下）の範囲。$L=10$は0〜4回増、$L=8$は最大48回増\\
+RQ2 & 固定行列の前処理再利用はいつ有効か & fast modeでのみ厳密（両GPU）。削減は二つのGEMMのA100で2〜5\,\%、RTX 5080で4〜8\,\%。保持に4.9\,GiB（$n=13{,}000$、$L=15$）\\
+RQ3 & 適応化は最良の固定設定より有利か & A100では有利でなかった（未調整入力で反復が0〜3回増え、順変換の差は計算全体の0.1\,\%程度）。RTX 5080では順変換が密行列解法の3\,\%前後しかなく、有利になる余地がない\\
+RQ4（v1.4で追加） & 固有値解法の精度を下げてSCFの精度を保てるか & FP32の固有対を2回の反復改良（積はGEMMul8）で補正すると、全エネルギーはFP64と$10^{-12}$\,Haの桁で一致し、反復数は増えない（A100・RTX 5080、第\ref{sec:eig}節）。固有値解法の段階はA100で6分の1、RTX 5080で4分の1（ウォームスタート前）になった\\
+\bottomrule
+\end{tabularx}
+
+以下では入力のスケーリングと低精度表現への変換をquantと呼ぶ。
+
+\subsection{2026年10月5日の決定事項}
+第1段階の報告に対して、次の五点を決めた。本版はこれを前提とする。
+\begin{enumerate}
+\item 再利用APIを続けるかどうかは、RTX 5080での測定を見て判断する。
+\item 実装はブランチ\code{adaptive-precision}に置く。
+\item fast modeを主設定とする。
+\item 最終段階の規則（混合履歴を再開しない、早めにFP64へ移る、ネイティブFP64を一切使わない）は較正で比べて決める。
+\item メモリが足りるときは作業領域を全量確保する動作に切り替える。
+\end{enumerate}
+
+\section{第1段階で確定した事実（kugui / A100）}\label{sec:facts}
+\subsection{環境と入力}
+ISSP kuguiのGPUノード（NVIDIA A100-SXM4-40GB、NVHPC 24.7、CUDA 12.5、cuBLAS 12.5.3、cuSOLVER 11.6.3）を使った。このcuSOLVERにはFP64のエミュレーションがなく、固有値解法はネイティブFP64で動く。MPIは16ランク（1000原子の入力は24ランク）で、GPUはMPSを介して共有する。密行列解法は一つのランクが担当する。
+
+\noindent\begin{tabularx}{\linewidth}{@{}p{26mm}rp{22mm}Y@{}}
+\toprule
+入力 & 基底数$n$ & 用途 & 性質\\
+\midrule
+\code{GFRAG} & 702 & 較正 & 非磁性、グラフェン片\\
+\code{Pt63} & 819 & 較正 & 金属クラスター\\
+\code{Mn12\_148\_F} & 1,088 & 較正 & 磁性（スピン分極）\\
+\code{nsV4Bz5} & 730 & 評価 & V$_4$(C$_6$H$_6$)$_5$分子（遷移金属を含む）\\
+\code{DIA512-1} & 2,048 & 評価 & ダイヤモンド512原子。Krylov法用の入力をクラスター解法で\\
+\code{MCCN} & 2,820 & 評価 & 多重連結カーボンナノチューブ。同上\\
+\code{CG15c}、\code{MCCN}$'$ & 6,530、7,332 & 時間のみ & SCFを3回で打ち切る入力（\code{MCCN}$'$は基底の大きい版）\\
+\code{C1000} & 13,000 & 時間・行列 & 3回で打ち切る入力と行列採取\\
+\code{Si1000} & 13,000 & 評価・行列 & 収束まで41回\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+現行のクラスター経路では、$S$の固有値を$10^{-10}$で下から抑えて$X=Us^{-1/2}$を作るので、常に$r=n$の実正方行列である。$X$は各構造の最初のSCFで作られ、以後のSCFでは同じデバイス上の領域に保持される。
+
+\subsection{行列単体：精度}
+SCFの初期・中期・終盤で$H_t$と$X$を採取し、$C=X^{\mathsf T}H_tX$を倍々精度の参照値（標本列）と比べた。表は$C$の相対誤差の最大値である（fast mode、再利用なし）。
+
+{\small\setlength{\tabcolsep}{4.5pt}
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrrrr@{}}
+\toprule
+入力 & $n$ & FP64 & $L=8$ & $L=10$ & $L=12$ & $L=14$ & $L=15$ & $L=16$\\
+\midrule
+\code{Pt63} & 819 & 9.4e-15 & 8.4e-8 & 4.0e-10 & 1.7e-12 & 7.0e-15 & 4.9e-16 & 1.2e-16\\
+\code{Mn12\_148\_F} & 1,088 & 1.8e-14 & 6.1e-8 & 2.7e-10 & 1.5e-12 & 6.3e-15 & 4.2e-16 & 1.2e-16\\
+\code{GFRAG} & 702 & 1.8e-14 & 3.9e-7 & 1.4e-9 & 7.8e-12 & 3.9e-14 & 1.9e-15 & 1.9e-16\\
+\code{C1000} & 13,000 & 6.6e-14 & 6.2e-7 & 2.3e-9 & 2.0e-11 & 7.1e-14 & 4.3e-15 & 3.5e-16\\
+\code{Si1000} & 13,000 & 6.6e-14 & 7.3e-7 & 3.7e-9 & 2.1e-11 & 8.0e-14 & 4.3e-15 & 4.1e-16\\
+\bottomrule
+\end{tabularx}}
+
+\medskip
+\begin{itemize}
+\item moduliを1個増やすごとに誤差は1桁強下がり、$L=16$で参照値との比較の限界に達する。
+\item $L=14$でcuBLAS FP64と同程度、$L=15$ではFP64より9〜44倍正確である。「最終段階はFP64でなければならない」という数値的な理由は、この五つの系には見当たらない。
+\item 誤差はSCFの段階（初期・中期・終盤）に依存しなかった。
+\item 採取した$H_t$自体が、相対$4\E{-10}$程度の非対称性を持つ（要素あたり最大$10^{-9}$\,Ha程度）。$L\ge12$の積の誤差よりはるかに大きい。
+\end{itemize}
+
+\subsection{行列単体：再利用の成立条件}
+同じ$X$を前処理して保持し、$H_t$だけを変えて通常経路と比べた（moduli数8〜20、他のSCF反復・他方のスピンの$H$を含む）。
+\begin{itemize}
+\item \textbf{fast mode}：再利用した積は通常経路と全要素がビット単位で一致した。
+\item \textbf{accurate mode}：前処理を行う呼出しは通常経路と一致するが、再利用する呼出しはほぼ全要素が変わり、誤差は8〜33倍に増えた。moduliを1個減らした場合に相当する。
+\end{itemize}
+原因はGEMMul8 v3.5.2のスケーリング規則にある。fast modeは$A$と$B$を独立にスケールするので、準備済みの$X$は$X$だけで決まる。accurate modeは、再利用する側のシフトを準備時の相手行列と合わせて決めた値に固定し、相手側を呼出しごとに補正する。相手に依存する情報が残るので、v1.2の第2.2節が警告した場合に当たる。
+
+\subsection{行列単体：時間と容量}
+$n=13{,}000$（\code{C1000}）での二つのGEMMの合計時間を示す。作業領域を全量確保した「通常」、$X$を再利用した場合、256\,MiB上限で分割した場合である。cuBLAS FP64は499\,msであった。\code{Si1000}でも同じ値（差は1\,\%以内）が得られた。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{fast mode（ms）} & \multicolumn{3}{c}{accurate mode（ms）}\\
+\cmidrule(lr){2-4}\cmidrule(l){5-7}
+$L$ & 通常 & 再利用 & 分割 & 通常 & 再利用 & 分割\\
+\midrule
+8 & 190 & 188 & 315 & 217 & 209 & 380\\
+10 & 240 & 232 & 405 & 264 & 256 & 474\\
+12 & 284 & 276 & 509 & 311 & 301 & 595\\
+14 & 330 & 323 & 625 & 357 & 347 & 714\\
+15 & 354 & 346 & 698 & 379 & 371 & 784\\
+20 & 470 & 461 & 937 & 497 & 484 & 1,032\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\begin{itemize}
+\item 時間はmoduli数にほぼ比例する（1個あたり約23\,ms）。$L=15$ fastはFP64の0.71倍、$L=12$ fastは0.57倍である。
+\item 再利用による短縮は1.4〜3.9\,\%で、表の主要な設定では2〜3\,\%である。スケーリングの時間は全体の6\,\%（fast）、13\,\%（accurate）しかなく、そのうち$X$の分だけが再利用で消える。
+\item 分割実行は全量確保の1.7〜2.1倍かかる。分割した各ブロックが被演算子をスケールし直すためで、スケーリングの時間は49\,msから276\,msに増える。分割実行の$L=15$はFP64より遅い。
+\item 合成行列でも同じ傾向である。再利用の短縮は$n=4000$で5〜7\,\%、$n=8000$で3〜4\,\%。スケーリングは$O(n^2)$、積は$O(n^3)$なので、行列が大きいほど再利用の取り分は減る。
+\end{itemize}
+
+\subsection{SCF内部：密行列解法の内訳}
+OpenMXの中で、密行列解法1回あたりの時間を段階ごとに測った（各段階の前後でストリームを同期、単位はms）。順変換が対象の二つのGEMMである。「旧既定」は256\,MiB上限での分割、「新既定」は第\ref{sec:fullws}節の全量確保、「$L=15$ fast」は再利用ありである。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrrr@{}}
+\toprule
+ & & \multicolumn{4}{c}{順変換} & 固有値 & 順変換の割合\\
+\cmidrule(lr){3-6}
+入力 & $n$ & FP64 & 旧既定 & 新既定 & $L=15$ fast & 解法 & 旧既定 → $L=15$ fast\\
+\midrule
+\code{GFRAG} & 702 & 0.24 & 0.72 & 0.74 & 0.6 & 12 & 5\,\% → 4\,\%\\
+\code{DIA512-1} & 2,048 & 2.0 & 3.1 & 3.0 & 2.5 & 42 & 6\,\% → 5\,\%\\
+\code{CG15c} & 6,530 & 62 & 106 & 56 & 49 & 628 & 14\,\% → 7\,\%\\
+\code{MCCN}$'$ & 7,332 & 84 & 145 & 76 & 67 & 823 & 14\,\% → 7\,\%\\
+\code{C1000} & 13,000 & 517 & 810 & 421 & 370 & 3,620 & 17\,\% → 9\,\%\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\begin{itemize}
+\item 密行列解法の時間の大半は固有値解法である。順変換の割合は旧既定で最大17\,\%、$L=15$ fastで9\,\%（$n=13{,}000$）。
+\item $n\lesssim2000$では、A100のFP64のほうがGEMMul8より速い。GEMMul8がFP64を上回るのは$n$が数千を超えてからである。
+\item 各実行の最初の1回には、一度だけの初期化（GEMMul8で約40\,ms）と$X$の前処理が加わる。SCFを3回で打ち切る入力では、これを分けないと比較を誤る。集計は2回目以降を使う。
+\item GEMMul8の呼出しは、ときどき30〜300\,ms遅れる回がある（MPS下のA100で観測。原因は未確認）。FP64の積では見ていない。平均が動くので、時間の比較には2回目以降の中央値も使う。
+\item OpenMXの中での値は、行列単体の測定より7〜11\,\%大きい（FP64もGEMMul8も増える）。GPUが数秒休んだ直後の演算であることが原因と考えているが、確認していない。
+\end{itemize}
+
+\subsection{計算全体}
+\begin{itemize}
+\item \textbf{FP64基準の変動}：同じ入力のFP64計算を3回繰り返すと、全エネルギーは最後の桁まで一致した。\code{scf.criterion}を$10^{-10}$から$10^{-12}$に厳しくしたときの変化は、\code{Pt63}と\code{Mn12\_148\_F}で$2\E{-12}$\,Ha以下、\code{GFRAG}で$3\E{-11}$\,Ha（力は$1\E{-10}$\,Ha/Bohr）である。目標の$10^{-10}$\,Haに対する余裕は\code{GFRAG}で3倍しかないので、基準は$10^{-12}$で作る。
+\item \textbf{固定設定}：順変換だけを固定設定に替えた結果を下の表に示す。$L=12$以上では反復数はFP64より増えず、差は基準の変動以下である。
+\item \textbf{全体に占める割合}：\code{Si1000}の全計算（41反復、24ランク）は約1,260秒で、このうち対角化が383秒（OpenMXの計時）である。順変換は、FP64で22秒（1.8\,\%）、固定$L=12$ fastで13秒（1.0\,\%）だった。旧既定では約33秒（2.6\,\%）、全量確保の新既定では約17秒（1.4\,\%）と見積もられる。
+\end{itemize}
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrr@{}}
+\toprule
+ & \multicolumn{5}{c}{SCF反復数（括弧内は$|\Delta E|$、Ha）}\\
+\cmidrule(l){2-6}
+入力 & FP64 & $L=15$ fast & $L=12$ fast & $L=10$ fast & $L=8$ fast\\
+\midrule
+\code{GFRAG} & 60 & 60（$0$） & 60（$0$） & 60（$2\E{-11}$） & 73（$7\E{-10}$）\\
+\code{Mn12\_148\_F} & 61 & 61（$0$） & 61（$9\E{-13}$） & 65（$9\E{-13}$） & 109（$4\E{-10}$）\\
+\code{Pt63}（$10^{-9}$） & 70 & 70（$8\E{-12}$） & 66（$2\E{-9}$） & 67（$4\E{-10}$） & 71（$1\E{-8}$）\\
+\bottomrule
+\end{tabularx}
+
+\smallskip
+{\small \code{Pt63}は入力の収束条件$10^{-9}$のままの値で、$10^{-9}$\,Ha程度の差は収束の揺らぎである。較正（第\ref{sec:calib}節）では全入力を$10^{-10}$にそろえた。}
+
+\section{RTX 5080での第1回測定}\label{sec:rtx}
+\subsection{条件}
+作業手順書v1.1の三つの測定を、READMEの「PC」で行った（2026年10月5日、コミット\code{a350140}）。
+\begin{itemize}
+\item GeForce RTX 5080 16\,GB（ドライバ595.91.07）、Core i9-10980XE、CUDA 13.4（cuBLAS 13.8）、HPC SDK 26.9、GCC 14.2。
+\item OpenMXは18ランクで、MPSを介してGPUを共有した。cuBLASのエミュレーションに関する環境変数は設定していない。固有値解法（cuSOLVER）は既定の設定のままである。
+\item 比較のため、A100でも同じコミットのバイナリで測定3を繰り返した（16ランク）。
+\end{itemize}
+測定2（回帰試験）は、RTX 5080でも260項目すべて合格した。
+
+\Needspace{24\baselineskip}
+\subsection{行列単体（測定1）}
+合成行列での二つのGEMMの合計時間（ms）を、A100の値と並べて示す。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{$n=4000$} & \multicolumn{2}{c}{$n=8000$}\\
+\cmidrule(lr){2-3}\cmidrule(l){4-5}
+ & A100 & RTX 5080 & A100 & RTX 5080\\
+\midrule
+cuBLAS FP64 & 17.6 & 315.7 & 114.6 & 2,457\\
+$L=15$ fast、全量確保 & 13.3 & 15.8 & 90.8 & 95.8\\
+$L=15$ fast、再利用 & 12.5 & 14.8 & 88.0 & 91.4\\
+$L=15$ fast、分割（256\,MiB） & 19.1 & 22.2 & 153.2 & 164.9\\
+$L=12$ fast、全量確保 & 10.7 & 12.7 & 72.4 & 78.0\\
+\midrule
+再利用による短縮（$L=15$ fast） & 5.4\,\% & 6.1\,\% & 3.1\,\% & 4.6\,\%\\
+分割／全量確保 & 1.44 & 1.41 & 1.69 & 1.72\\
+GEMMul8／FP64 & 0.75 & 0.050 & 0.79 & 0.039\\
+スケーリングの割合 & 12.9\,\% & 13.7\,\% & 8.0\,\% & 9.8\,\%\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\begin{itemize}
+\item cuBLAS FP64は、RTX 5080でA100の18〜21倍遅い。GEMMul8はA100とほぼ同じ速さ（1.05〜1.2倍）で、RTX 5080ではFP64の20〜26倍速い。
+\item 再利用による短縮は4.6〜6.1\,\%（A100は3.1〜5.4\,\%）、スケーリングの割合は10〜14\,\%で、どちらも目安（短縮10\,\%、スケーリング20\,\%）に届かない。
+\item 分割実行は全量確保の1.4〜1.7倍で、A100と同じである。
+\item fast modeの再利用は、RTX 5080（CUDA 13.4）でもすべての$L$で通常経路とビット単位で一致した。
+\end{itemize}
+
+\Needspace{24\baselineskip}
+\subsection{OpenMXの中（測定3）}
+密行列解法1回あたりの時間（ms）を示す。順変換は2回目以降の中央値、固有値解法は平均である。旧既定は256\,MiB上限での分割（\code{blocked}）、新既定は全量確保（\code{B15a}、コミット\code{2c9cdcd}以降の既定と同じ経路）、C15f・C12fはfast mode・再利用ありの$L=15$・12である。\code{CG15c}と\code{MCCN}$'$はSCFを3回で打ち切る入力なので、値は2回分の中央値である。
+
+{\small\setlength{\tabcolsep}{4pt}
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrrrr@{}}
+\toprule
+ & & \multicolumn{5}{c}{順変換} & 固有値 & 順変換の割合\\
+\cmidrule(lr){3-7}
+入力 & $n$ & FP64 & 旧既定 & 新既定 & C15f & C12f & 解法 & 旧既定→C15f\\
+\midrule
+\multicolumn{9}{@{}l}{\textit{A100（16ランク）}}\\
+\code{GFRAG} & 702 & 0.24 & 0.76 & 0.73 & 0.56 & 0.49 & 12.5 & 5.6\,\% → 4.0\,\%\\
+\code{Pt63} & 819 & 0.29 & 0.86 & 0.86 & 0.64 & 0.60 & 14.8 & 5.2\,\% → 3.8\,\%\\
+\code{Mn12\_148\_F} & 1,088 & 0.52 & 2.14 & 1.92 & 1.59 & 1.26 & 27.9 & 7.2\,\% → 5.1\,\%\\
+\code{DIA512-1} & 2,048 & 1.98 & 3.07 & 3.07 & 2.51 & 2.06 & 43.0 & 6.3\,\% → 5.1\,\%\\
+\code{CG15c} & 6,530 & 62.1 & 107 & 56.2 & 49.1 & 39.6 & 630 & 13.5\,\% → 6.7\,\%\\
+\code{MCCN}$'$ & 7,332 & 84.5 & 145 & 75.9 & 66.9 & 54.7 & 828 & 14.1\,\% → 7.0\,\%\\
+\midrule
+\multicolumn{9}{@{}l}{\textit{RTX 5080（18ランク）}}\\
+\code{GFRAG} & 702 & 2.61 & 0.61 & 0.55 & 0.48 & 0.44 & 18.5 & 3.1\,\% → 2.4\,\%\\
+\code{Pt63} & 819 & 3.55 & 0.70 & 0.66 & 0.55 & 0.50 & 23.6 & 2.8\,\% → 2.2\,\%\\
+\code{Mn12\_148\_F} & 1,088 & 12.0 & 1.69 & 1.68 & 1.30 & 1.11 & 53.1 & 3.2\,\% → 2.3\,\%\\
+\code{DIA512-1} & 2,048 & 44.7 & 3.41 & 3.37 & 2.61 & 2.15 & 109 & 2.9\,\% → 2.2\,\%\\
+\code{CG15c} & 6,530 & 1,401 & 127 & 65.1 & 55.7 & 44.8 & 1,750 & 6.6\,\% → 3.0\,\%\\
+\code{MCCN}$'$ & 7,332 & 1,946 & 159 & 87.2 & 75.5 & 60.4 & 2,252 & 6.4\,\% → 3.1\,\%\\
+\bottomrule
+\end{tabularx}}
+
+\medskip
+\begin{itemize}
+\item 全量確保の効果はRTX 5080でも同じで、$n\approx7000$では順変換が1.8〜1.9倍速くなった。
+\item RTX 5080では、FP64の順変換は密行列解法の28〜46\,\%を占める（$n\ge2048$）。GEMMul8はこれを、旧既定で3〜7\,\%、新既定で3〜4\,\%に抑えている。
+\item 固有値解法は、RTX 5080でA100の約2.7倍遅く（$n=7332$で2.25秒）、密行列解法の9割以上を占める。このため、GEMMul8を使う設定どうしの差（分割と全量確保、再利用、moduli数）は、RTX 5080のほうがA100より小さく見える。
+\item 再利用（C15fとB15f）の差は、RTX 5080の$n\approx7000$で4〜5\,\%、密行列解法の0.2\,\%以下である。
+\item 精度：\code{GFRAG}、\code{Mn12\_148\_F}、\code{DIA512-1}では、FP64と$L\ge12$のすべての設定が同じ反復数で止まり、エネルギー差は$3\E{-12}$\,Ha以下だった。$L=10$は\code{Mn12\_148\_F}で4回増えた。\code{Pt63}（収束条件$10^{-9}$）は66〜70回で、差は$10^{-9}$\,Ha程度の収束の揺らぎである。
+\item 同じ入力のFP64どうしでも、A100とRTX 5080の全エネルギーは$10^{-11}$\,Ha程度違う（固有値解法とGEMMの実装が異なるため）。差は各GPUのFP64に対して測った。
+\item A100で見られたGEMMul8の呼出しの突発的な遅れは、RTX 5080では一度も出なかった。A100でもノードを専有したジョブでは再現しなかったので、他のジョブとノードを共有する環境の影響とみられる。
+\end{itemize}
+
+\subsection{判断}
+第\ref{sec:api}節と第\ref{sec:next}節で定めた目安に照らすと、次のようになる。
+\begin{enumerate}
+\item \textbf{再利用API}：RTX 5080でも短縮は二つのGEMMの4.6〜6.1\,\%で、目安の10\,\%に届かない。upstreamへのAPI提案は行わず、OpenMX側の実装（\code{OPENMX\_GEMMUL8\_FORWARD\_REUSE}）にとどめる。
+\item \textbf{適応精度}：RTX 5080ではEとFを直接比べていないが、GEMMul8の順変換は密行列解法の3\,\%前後しかなく、E対Fの差が目安の5\,\%に届くことはない。A100の評価では反復の増加も確認された。適応精度の研究は打ち切り、制御の実装は実験用に残す。
+\item \textbf{固定設定の既定値}：順変換の既定を$L=15$ accurateからfast modeに変えると、RTX 5080で順変換が約1割（$L=12$ fastなら約3割）短くなるが、密行列解法では0.3〜1\,\%である。精度は変わらないので変えてもよいが、急ぐ理由はない。
+\item \textbf{全量確保の他経路への拡張}：逆変換はRTX 5080で順変換の4分の1程度（$n\approx7000$で17〜20\,ms）しかなく、効果は小さい。複数k点のバンド計算（複素数、k点ごとの順変換）は未測定である。
+\end{enumerate}
+
+\section{固有値解法のFP32化と補正}\label{sec:eig}
+v1.3の方針（第\ref{sec:next}節の旧版）に従い、2026年10月6〜7日に密行列解法の固有値解法を対象にした。本節はその方法、実装、A100での検証、RTX 5080での測定をまとめる。実装はブランチ\code{adaptive-precision}（2026年10月7日時点のコミット\code{f2128528}以降）にある。
+
+\subsection{方法の選択}
+密行列解法の時間の9割前後は、変換後のハミルトニアン$\tilde H=X^{\dagger}H_tX$（非共線では$2n\times2n$の複素エルミート行列）の固有値解法（cuSOLVERの\code{Xsyevdx}）である。RTX 5080ではFP64の演算器が少ないため、\code{sidia333}（$2n=5616$、必要な固有対MaxN$=1987$）でこの部分が1ステップ3.2秒かかる。次の二案を比べた。
+\begin{enumerate}
+\item[案A] SCFの前半をFP32の固有値解法で進め、残差が小さくなったらFP64へ切り替える。
+\item[案B] すべての固有対をFP32で解き、必要なMaxN個を反復改良でFP64相当の精度まで補正する。
+\end{enumerate}
+案Aは、FP32の固有ベクトルの誤差（$10^{-6}$程度）が密度行列に残るため、切替えの時点で反復をやり直す必要があり、\code{scf.criterion}$=10^{-10}$の精度に対して反復が増えた。案Bは、荻田・相島の対称固有値分解の反復改良\cite{ogita2018,ogita2019}が1回の改良で誤差を2乗のオーダーに落とすので、$10^{-6}$の初期誤差が2回で$10^{-12}$以下になる。改良の本体は$n\times n$行列と$n\times$MaxNの固有ベクトルの積で、これはGEMMul8（$L=15$、FP64相当の精度）で実行できる。案Bを採用した。
+
+\subsection{アルゴリズム}
+$A=\tilde H$（エルミート化済み）、$X$をFP32の固有ベクトル（全$n$個）、$X_1$を補正対象の最初のMaxN列とする。1回の改良は次のとおりである。
+\begin{enumerate}
+\item $Y=AX_1$、$S=X^{\dagger}Y$、$G=X^{\dagger}X_1$（$R=I-G$）をGEMMul8で計算する（$n\times n\times$MaxNの積が3回、更新で1回）。
+\item 固有値の推定を$\tilde\lambda_j=\mathrm{Re}\,s_{jj}/\mathrm{Re}\,g_{jj}$で更新する。
+\item 補正$E_{ij}=(s_{ij}+\lambda_j r_{ij})/(\lambda_j-\lambda_i)$を、$|\lambda_j-\lambda_i|>\delta$かつ占有数の差$|f_i-f_j|\ge10^{-12}$のときに使い、それ以外は$E_{ij}=r_{ij}/2$（正規直交化だけ）とする。$\delta=2(\max_{i\ne j}|s_{ij}|+\norm{A}\max|r_{ij}|)$は最初の改良で決め、以後固定する。
+\item $X_1\leftarrow X_1+XE$。
+\end{enumerate}
+占有数の差で回転を省くのは、同じ占有数の状態どうしの回転は密度行列を変えないからである。これにより、ほぼ縮退した占有状態の対に大きな補正を入れる必要がなくなる。改良を2回行った後、推定固有値が$30\delta$以内で連なる「クラスタ」のうち、占有数の広がりが$10^{-12}$以上のもの（フェルミ準位近傍の部分占有状態）だけをレイリー・リッツで回転する（クラスタの大きさ$m<256$はホストの\code{zhegv}、それ以上はデバイスの\code{zhegvd}、上限$\min(2048,\sqrt{n\,\mathrm{MaxN}/2})$）。$\delta$を2回目の改良で取り直すと、縮退クラスタの連なりが1,436状態にまで膨らむ例があったため、1回目の値に固定した。
+
+占有数は、FP32の固有値推定からソルバーと同じ探索（電子数、電子温度、$k$点の重み）で化学ポテンシャルを求めて計算する。推定の誤差$10^{-6}$\,Haは、判定の境界（$|f_i-f_j|\sim10^{-12}$）にある対の判定しか変えず、その対の密度行列への寄与は$10^{-18}$以下である。
+
+\subsection{実装}
+\begin{itemize}
+\item \textbf{共有モジュール}：\code{source/eigen\_refine\_gpu.c}に、実対称・複素エルミートの両方を扱う形で実装した（準備＝エルミート化とFP32解法またはウォームスタート、仕上げ＝改良とレイリー・リッツ）。クラスター法・バンド法の各ソルバーは、行列と作業領域を渡す薄いアダプタで呼ぶ。
+\item \textbf{FP32の解法}：cuSOLVER 12.3.4以降では二段階アルゴリズム（\code{cusolverDnXsyevd}、\code{CUSOLVER\_ALG\_2}）を使う。RTX 5080の$2n=5616$で、一段階の638\,msが323\,msになった。A100のcuSOLVER 11.6では一段階のままである。
+\item \textbf{ウォームスタート}：2ステップ目以降は、前のステップの補正済み固有ベクトルを$X$とし、最初の改良の残差（$\max|s_{ij}|$、$\max|r_{ij}|$）が$2\E{-5}$以下（FP32解法は$4\E{-6}$を残す）ならFP32の解法を省く。超えたときはFP32で解き直す。A100の\code{sidia333}では22ステップ中20回が該当し、固有値解法の段階は706\,msから140\,msになった。クラスター法だけの既定とし、バンド法では使わない（後述）。
+\item \textbf{段階制御}：すべてのSCFステップを補正つきで解く（1ステップ目も）。SCFが補正ステップで収束したときは、同じハミルトニアンをFP64でもう一度解いて密度行列を作り直す（SCF後のエネルギー密度行列と力がFP64の固有ベクトルから出るように）。\code{scf.maxIter}の最後のステップはFP64で解く。GPUメモリ不足やFP32解法の失敗はFP64に戻る（1ステップ目は一時的、以後はそのSCFサイクルの残り）。GEMMul8の積がcuBLASのFP64に退避した場合は、GeForceでは補正の意味がないので以後の実行をFP64に戻す。
+\item \textbf{既定値}：FP32:FP64の性能比（\code{cudaDevAttrSingleToDoublePrecisionPerfRatio}）が8以上のGPU（GeForce RTX 5080は64、RTX PRO 6000 Blackwellも該当。A100は2）で、GEMMul8の積が有効なら既定で有効にする。\code{OPENMX\_EIGEN\_REFINE}=0で無効、$=K$で改良回数の指定。
+\item \textbf{密度行列の積化}（非共線クラスター）：密度行列を状態ごとの和ではなく、占有状態の重み付き固有ベクトル$W=\mathrm{diag}(\sqrt f)\,V$の積$W^{\dagger}W$（GEMMul8）1回と疎な成分の取り出しで作り、全ランクの総和の代わりにルートのバッファを配る。A100で1ステップ385\,msから123\,ms、RTX 5080で432\,msから120\,ms程度になった。
+\item \textbf{他の経路への拡張}：共線クラスター（スピンごとに実対称、2つのスピンワールドのオーナーが固有値推定を交換して化学ポテンシャルを求める）、共線バンドと非共線バンド（1ランク（$k$ワールド）1k点の経路。全オーナーのFP32推定を集めて化学ポテンシャルを求めてから仕上げる）。1ランクに複数k点を持つ経路、GPUメモリの都合でターンが直列化される場合、XANES・空軌道指定、1ランクで両スピンを解く場合はFP64のままである。
+\end{itemize}
+
+\subsection{A100での検証（2026年10月6〜7日）}
+kuguiのA100（8ランク、MPS）で、\code{sidia333}の各経路をFP64と比べた。\code{scf.criterion}$=10^{-10}$、A100はFP64が速いのでGEMMul8の積を使う補正の効果は小さく、ここでは精度と反復数の確認が目的である。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrr@{}}
+\toprule
+経路（\code{sidia333}） & 設定 & SCF反復 & 全エネルギー（Ha） & FP64との差 & 対角化の時間（s）\\
+\midrule
+非共線クラスター（$2n=5616$） & FP64 & 23 & $-887.309607369118$ & --- & 29.6\\
+ & 補正 & 22 & $-887.309607369117$ & $1\E{-12}$ & 21.7\\
+同、\code{scf.system.charge}$=-2$ & FP64 & 21 & $-887.481166961872$ & --- & ---\\
+ & 補正 & 21 & $-887.481166961884$ & $1\E{-11}$ & 20.0\\
+共線クラスター、スピンOff（$n=2808$） & FP64 & 20 & $-887.309607369113$ & --- & 15.0\\
+ & 補正 & 20 & $-887.309607369116$ & $3\E{-12}$ & 13.6\\
+共線クラスター、スピンOn & FP64 & 20 & $-887.309607369092$ & --- & 26.2\\
+ & 補正 & 20 & $-887.309607369097$ & $5\E{-12}$ & 25.3\\
+共線バンド、スピンOff（$2\times2\times2$、8k点） & FP64 & 19 & $-887.422830856531$ & --- & 40.1\\
+ & 補正 & 22 & $-887.422830856483$ & $5\E{-11}$ & 41.1\\
+共線バンド、スピンOn（$2\times2\times1$、4k点） & FP64 & 22 & $-887.415346166372$ & --- & 48.8\\
+ & 補正 & 24 & $-887.415346166357$ & $2\E{-11}$ & 45.0\\
+非共線バンド（$2\times1\times1$、2k点） & FP64 & 23 & $-887.377746939165$ & --- & 62.0\\
+ & 補正 & 24 & $-887.377746939172$ & $7\E{-12}$ & 61.4\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\begin{itemize}
+\item 非共線クラスターの固有値解法の段階（密行列解法のうち固有値解法だけ）は、1ステップ873\,ms（FP64）が、補正のみで706\,ms、ウォームスタートを加えて140\,msになった（最初のステップは全$2n$状態を補正するので2.9秒）。
+\item 非共線バンドの$2\times2\times2$（8k点、8オーナー）と、スピンOnの共線バンドを16ランクで走らせる試みは、ジョブのホストメモリ上限（60\,GB）を超えて止まったため、非共線は$2\times1\times1$（2k点）、スピンOnは$2\times2\times1$（4k点×2スピン＝8オーナー）で検証した。バンドの補正つき実行はSCF反復がFP64より1〜3回多い（共線Off 19→22、On 22→24、非共線 23→24）。軌道の違いは収束末期の混合（RMM-DIISK）が$10^{-10}$程度のステップごとの差を増幅したもので、全エネルギーの差は$6\E{-11}$\,Ha以下である。改良回数を3・4回にしても反復数（22回）も軌道も変わらないので、この差は補正の精度ではなく、混合の感度によるものである（クラスターの補正つき実行でも反復は$-2$〜$+0$回ずれる）。
+\item バンドで補正版のSCF反復がFP64より2〜5回増え（A100の共線バンド、\code{scf.criterion}$=10^{-12}$でFP64の23回に対し28回。RTX 5080でも+2〜+5回）、ステップをまたぐウォームスタートが$2.5\E{-10}$\,Haの偏りを持つ原因を突き止めた。GEMMul8の法の数（20）、改良回数（$K=3$）、積のブロック化は無関係で、全列を補正するとFP64の履歴と一致することから、補正する列数$\mathrm{maxn}<n$（共線バンドは2808列中604列、非共線は5616列中1036列。クラスターは全列）が原因であった。占有ブロック内の回転を1次までにとどめる設計（同じ占有数の対は直交化のみ）のため占有ベクトルはFP32程度の混合$v_{kj}$を残し、補正しない列は占有部分空間に沿うFP32程度の成分$d_{ki}$を持ち続ける。このとき占有列$j$の補正$E_{ij}$の不動点は0ではなく$\sum_k d_{ki}(\lambda_k-\lambda_j)v_{kj}/(\lambda_j-\lambda_i)$、sidia333で$10^{-8}$程度となり、密度の誤差$10^{-7}$（NormRDの床）とウォームスタートでの偏りを生んでいた（補正後の列と補正しない列の直交性はFP32程度の$4\E{-6}$）。同じ占有数の対も回転させる案は近接した対の補正が0.5に達して直交性を壊し収束しなかった。採った対策は、補正しない列を毎ステップ補正済みの列に対して同じ式で回転させること（$S_{rc}=Y^{H}X_c$、$G_{rc}=X_r^{H}X_c$、$E_{rc}$、$X_c\leftarrow X_c+X_rE_{rc}$。$Y=AX_1$を保持する3つ目のブロックを使う。積は約6割増、$3n\,\mathrm{maxn}\le n^2$ならメモリ増なし。\code{OPENMX\_EIGEN\_REFINE\_COMPLEMENT}）で、共線バンド（$10^{-12}$）はコールド24回、ウォーム23回でFP64（23回）と$4\E{-12}$\,Ha以内、NormRDの履歴は毎ステップ3〜4桁一致し、直交性は$4\E{-15}$になった。ウォームスタートの偏りも消えたので、周期的な解き直しは不要になった（\code{OPENMX\_EIGEN\_REFINE\_WARM\_PERIOD}の既定を0に戻した）。RTX 5080（18ランク）でこの版（10136f1e）を測り直すと、共線バンド（8オーナー、直列ターン版6+2）は19反復でFP64と同じ、差$1\E{-12}$\,Ha、173秒から141秒（$-19\%$）、スピン分極バンドは22反復（FP64は23）で220秒から173秒（$-21\%$）、k点を減らした2入力も反復増が消えて146秒から118秒、143秒から119秒、非共線バンドは23反復で322秒から224秒（$-31\%$）となり、固有値計算の時間は各セットで35〜60\%減った。同時に、非共線バンドのウォームスタート用基底（2k点で約1\,GB）がSCF後もGPUに残って力の計算がメモリ不足で落ちる不具合と、OpenMXの停止判定（dUeleのみ）が偶然通って共線クラスターが5反復早く止まる事象（NormRD $4\E{-8}$で$2\E{-9}$\,Haのずれ）が見つかり、SCFサイクル終端での基底解放と、補正ステップでの停止に「NormRD $\le 100\times$\code{scf.criterion}」を課すガード（\code{OPENMX\_EIGEN\_REFINE\_STOP\_GUARD}）で対処した（9f75c70e）。RTX 5080で9f75c70eを測り直すと全9セット・20本が正常終了し、非共線バンドは23反復でFP64と同じエネルギー、325秒から213秒（$-35\%$）、共線クラスターは停止ガードが1回働いて20反復でFP64と一致した。全セットの短縮は非共線クラスター$-24\%$、バンド$-16$〜$-35\%$、共線クラスター$-2$〜$-3\%$で、エネルギー差は最大$1.4\E{-11}$\,Ha、反復数はFP64と同じか1回少ない。残る律速はRTX 5080では\code{Set\_Hamiltonian}（非共線クラスターで190秒中89秒）と\code{Set\_Density\_Grid}である。8オーナーの実行でも補正の経路自体は動いている（各オーナーのFP32解法と改良、部分占有クラスタ2個のレイリー・リッツまで確認）。
+\item 電荷$-2$の系はフェルミ準位に部分占有の縮退状態を持ち、レイリー・リッツの対象になる。反復数は同じで、差は$10^{-11}$\,Ha以下である。最終NormRDはFP64と同じ桁（$4\E{-9}$）で止まる。
+\item 補正つきの解法にはFP64との一致を確かめる探針（\code{tests/eigen\_precision\_probe.cu}）を用意し、改良回数、GEMMul8と倍精度の積、占有数の扱い、レイリー・リッツの有無、$\delta$の倍率を組み合わせて固有値・固有ベクトル・密度行列の誤差を測った。実装の前に、SCFから採取した$2n=5616$の行列で2回の改良が$10^{-12}$の精度に達することを確認している。
+\item 実装中に見つけた問題は、2回目の改良で$\delta$を取り直すとクラスタが膨らむこと、占有状態だけを補正すると密度行列の精度が$10^{-10}$まで落ちること（全MaxN状態の補正に戻した）、スピン分極の両オーナーが同じ化学ポテンシャルを使う必要があること、cuBLASを非同期ストリームに置くソルバーではOpenACCのカーネルとの順序付けに同期が要ることである。
+\end{itemize}
+
+\subsection{RTX 5080での測定（2026年10月6〜7日）}
+\code{sidia333}を18ランク・MPSで測った（GeForce RTX 5080 16\,GB、ドライバ595.91.07、CUDA 13.4）。D＝既定（補正あり。GeForceでは自動で有効になる）、R0＝\code{OPENMX\_EIGEN\_REFINE=0}（FP64の固有値解法、ほかは同じ）、Dw0＝ウォームスタートなし、Dt0＝二段階FP32解法なし、旧＝v1.3時点の既定である。最終版（コミット\code{1f424114}）の全計算の時間と、途中の版の値を示す。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{中性} & \multicolumn{2}{c}{\code{scf.system.charge}$=-2$}\\
+\cmidrule(lr){2-3}\cmidrule(l){4-5}
+コミット・設定 & 反復 & 全計算（s） & 反復 & 全計算（s）\\
+\midrule
+旧既定（v1.3、FP64の固有値解法、密度行列は状態和） & 23 & 261.3 & 21 & 236.1\\
+\code{88f1b8dd} D（補正のみ） & 23 & 218.7 & 21 & 194.6\\
+\code{1009bf80} D（補正＋密度行列の積化） & 23 & 197.9 & 21 & 185.9\\
+\code{1f424114} R0（FP64、密度行列の積化） & 23 & 249.8 & 21 & 232.4\\
+\code{1f424114} Dw0（ウォームスタートなし） & 21 & 179.7 & --- & ---\\
+\code{1f424114} Dt0（一段階FP32解法） & 23 & 186.9 & --- & ---\\
+\code{1f424114} D（最終版） & 21 & 173.9 & 21 & 173.7\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+密行列解法1回あたりの段階の時間（ms、2回目以降の中央値）と、全計算の内訳（s）は次のとおりである。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrr@{}}
+\toprule
+\code{1f424114}、中性 & 固有値解法 & 密度行列 & 順変換 & 密行列解法の合計 & \code{Set\_Hamiltonian} & \code{Set\_Density\_Grid}\\
+\midrule
+R0 & 3,189 & 135 & 56 & 3,421 & 86.5 & 35.5\\
+Dw0 & 490 & 133 & 56 & 720 & 80.9 & 32.8\\
+Dt0 & 163 & 134 & 56 & 395 & 85.3 & 35.6\\
+D & 163 & 133 & 56 & 395 & 79.4 & 32.9\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\begin{itemize}
+\item 精度：全エネルギーの差はFP64に対して中性で$7\E{-12}$\,Ha、電荷$-2$で$1\E{-11}$\,Ha、力の最大差は$2\E{-12}$（中性）と$2\E{-11}$\,Ha/bohr（電荷$-2$）、化学ポテンシャルとスピンモーメントの差は$10^{-12}$以下である。最終NormRDはFP64と同じ桁で止まった。Dは中性で反復が2回少なく（21回）、収束先は同じである。
+\item 速度：固有値解法の段階は3,189\,msから163\,ms（ウォームスタートの採用は21回中19回、拒否は初期の5回）、密行列解法1回は3.42秒から0.40秒になった。全計算は30\,\%短い。Dw0との差（490\,ms対163\,ms）がウォームスタートの効果、Dt0との差が二段階FP32解法の効果である（一段階ではFP32解法が1回900\,ms、二段階では550\,ms）。
+\item 密度行列の積化（\code{1009bf80}）は、状態ごとの和の427\,msを133\,msにした。全計算では約20秒である。
+\item 共線クラスター（$n=2808$）：スピンOffで固有値解法が187\,msから38\,ms、全計算は94.6秒から92.2秒（20反復、差$0$）。スピンOnで326\,msから66\,ms、116.6秒から111.5秒（差$8\E{-12}$\,Ha）。この大きさでは固有値解法は全計算の数\,\%で、残りは格子上の処理（\code{Set\_Hamiltonian}30〜43秒、\code{Set\_Density\_Grid}23秒、力11秒）である。
+\item Dの内訳（173.9秒）は、\code{Set\_Hamiltonian}が79.4秒（1ステップ3.8秒、46\,\%）、\code{Set\_Density\_Grid}が32.9秒（19\,\%）、対角化が19.8秒（11\,\%。うち密行列解法が8.3秒）、力が12.1秒、\code{Set\_ProExpn\_VNA}が6.0秒、混合が4.6秒である。固有値解法はもう最大の項ではなく、格子上のFP64の処理が全体の3分の2を占める。
+\item 共線バンド・非共線バンドのRTX 5080での測定は、A100の検証を終えてから手順書に加える。
+\end{itemize}
+
+\subsection{制限と次の対象}
+\begin{itemize}
+\item 1ランクに複数のk点を持つバンドの経路（\code{all\_knum}$\ne1$）にも実装した。1回目のパスでは各k点をFP32で解いて前のステップの化学ポテンシャルで補正し（固有値は固有ベクトルの誤差の2次なのでこれで足りる）、基底をホストに保持する（ランクあたり\code{OPENMX\_BAND\_REFINE\_BASIS\_MB}、既定1024\,MB）。2回目のパスではその基底からこのステップの化学ポテンシャルで補正して固有ベクトルを作る。A100の検証（共線Off、4ランクで2k点／ランク：FP64と$9\E{-12}$\,Ha；非共線、2ランクで2k点／ランク：$2\E{-11}$\,Ha）で一致した。1ランク1k点の経路で全オーナーのバッファが同時にGPUに載らない（ターンが直列化される）場合も、複数k点経路と同じ2パス（1パス目は前ステップの化学ポテンシャルで補正して基底をホストへ退避、全k点の推定値から化学ポテンシャルを決め、2パス目はその基底から補正）に分けて補正するようにした。RTX 5080（16\,GB）では8オーナーのバンド入力で6〜7オーナーしか1ターン群に入らず補正が使われていなかったが、A100でターン群を4に制限して模擬すると（共線バンド、8オーナー、$10^{-10}$）、FP64（直列）19反復$-887.422830856532$\,Haに対し補正版は21反復$-887.422830856499$\,Ha（差$3.3\E{-11}$）で動作した。
+\item 補正の積はGEMMul8の精度に依存する。積がcuBLASのFP64に退避した場合、GeForceでは補正の利点が消えるので実行全体をFP64に戻す。
+\item RTX 5080で残る時間の大半は\code{Set\_Hamiltonian}と\code{Set\_Density\_Grid}である。ただしその原因はFP64演算の遅さではない。\code{Set\_Hamiltonian}のGPU経路は軌道の格子値などの表（1ランクあたり約2.4\,GiB、A100では8ランクで18.9\,GiB）をGPUに常駐させる方式で、16\,GBのRTX 5080では18ランクのうち4〜7ランクしかGPUに入らず、残りはCPUで計算している（ログの\code{CPU fallback ranks=11}〜14）。\code{Set\_Density\_Grid}の分散GPU積分はこの常駐表を前提にするため、RTX 5080ではGPUを使えていない。A100（8ランク、すべてGPU）では両者が1ステップ1.4秒＋1.0秒、RTX 5080では3.8秒＋1.5秒である。次の対象はこの二つの格子処理のメモリ設計（直列ウェーブ、ストリーミング、軌道値のGPU上での再計算）と、対角化のうち密行列解法以外の0.4〜0.7秒／ステップである。
+\end{itemize}
+
+\section{格子上の処理のGPU化：軌道値のその場計算とdouble-float}\label{sec:grid}
+\subsection{RTX 5080での時間の内訳と原因}
+run4（コミット9f75c70e）の非共線クラスターDの190秒は、\code{Set\_Hamiltonian}が89秒、\code{Set\_Density\_Grid}が36秒、対角化が22秒、力が12秒である。\code{Set\_Hamiltonian}のステップごとの内訳（\code{SETHPROF}）を見ると、表をGPUに常駐できた4〜7ランクは行列要素の計算に0.5〜0.7秒、常駐できずCPUで計算する11〜14ランクは3.1〜3.6秒かかり、全ランクがその終了を待っている。軌道の格子値の表（\code{orbs1+orbs0+nolg}）は1ランク1.24\,GiB、18ランクで22\,GiBあり、16\,GBのカードには入らない。GPU側のカーネル（原子対ごとに格子点の和をFP64で累積）はRTX 5080ではFP64のFMA性能（FP32の1/64）で律速され、1ステップ約$1.2\E{12}$回のFP64 FMAに2.7秒程度を要する。すなわち、(1)全ランクをGPUに載せること、(2)FP64演算量を減らすこと、の2つが必要である。
+\subsection{却下した案：SCF序盤のFP32化}
+固有値解法と同じ発想で、SCF序盤はFP32（補償付き和）で格子積分し、NormRDが閾値を切ったらFP64に切り替える段階的精度を実装して試した（\code{OPENMX\_GRID\_FP32}、閾値\code{OPENMX\_GRID\_FP32\_UNTIL}、切替時に混合履歴を再開）。A100の非共線クラスター（8ランク、$10^{-10}$）では、FP64の23反復に対し、閾値$10^{-4}$で27、$10^{-5}$で34、$10^{-6}$で40反復になった。FP32のステップはカーネルの誤差水準（NormRDで$10^{-4}$〜$10^{-5}$）でSCFが停滞し、節約できる以上に反復が増える。固有値解法では「解を補正で真値に戻す」のでFP32が使えたが、格子積分ではFP32の誤差がそのまま密度に入るため、この方式は不適と判断した（実装は実験用に残し既定はオフ）。
+\subsection{軌道値のその場計算（表を持たない）}
+\code{Set\_Orbitals\_Grid.c}には表を作るための軌道値のGPU計算（ホストの\code{Get\_Orbitals}の忠実な転記、FP64で計算してfloatで格納）がすでにある。これを共用部品（\code{orbs\_grid\_gpu.h}：種ごとのPAO動径表・セル並進・格子の枠をデバイスに常駐させ、原子対のバッチの重なり格子点で軌道値を評価する）にし、表を常駐できないランクは\code{Set\_Hamiltonian}の行列要素を原子対のバッチ（作業領域256\,MiB）ごとに「軌道値の評価→既存のカーネル」で計算するようにした（\code{OPENMX\_SETHAM\_ONTHEFLY}、既定オン）。デバイスに残るのは自分の原子の球内格子点の索引（数MiB）だけで、転送も表のホスト詰め替えも要らない。他ランクの原子の軌道値は表を作るのと同じ計算なのでビット単位で一致し、自ランクの近傍原子については格子枠の取り方（中心原子の枠か近傍原子の枠か）が違うため最下位ビットで一部異なる。\code{Set\_Density\_Grid}の分散GPU積分も、常駐表のないランクでは同じタイルから対ごとに密度を足し込む（原子的加算）方式にし、常駐ランクと混在できるようにした。
+A100でRTX 5080のメモリ上限を模擬した結果（非共線クラスター、8ランクのうち3ランク常駐、12反復の\code{Set\_Hamiltonian}）は、全常駐17.3秒、その場計算19.0秒（1ランク1ステップ：詰め替え0.17秒＋評価0.26秒＋カーネル0.41秒）、従来のCPU退避165秒で、固有値和は12反復目で常駐版と$2\E{-12}$\,Ha以内に一致した（途中の反復では最下位ビットの差がSCFの軌跡で増幅され最大$4\E{-8}$\,Haずれるが、収束先は同じ）。
+\subsection{double-floatカーネル}
+FP64演算を減らすため、行列要素と密度のカーネルにdouble-float版を入れた（\code{OPENMX\_GRID\_PRECISION=df}。FP32:FP64の性能比が8以上のGPUで既定）。重み付き軌道値や密度行列をhi/loの2つのfloatに分け、積はFMAで誤差なしに作り（TwoProd）、タイル内の和はNeumaierの補償付き加算、タイル間の累積はFP64で行う。1項あたりFP32命令約12個で、RTX 5080ではFP64 FMA 1個（FP32の64命令分）より約5倍速い計算量になる。誤差はタイルあたり$32\,\epsilon_{32}^2\approx4\E{-13}$の相対誤差で、FP64カーネルと同程度の結果を期待している（A100での精度検証とRTX 5080での時間測定は本稿執筆時点で進行中）。
+\subsection{RTX 5080での測定（run5、2026年10月8日）}
+非共線クラスターD（18ランク、23反復）は、run4の189.8秒（\code{Set\_Hamiltonian}89.0秒、\code{Set\_Density\_Grid}35.6秒）から、その場計算＋FP64カーネルで159.3秒（54.1秒、39.3秒）、その場計算＋double-floatで139.5秒（42.8秒、31.3秒）になり、4本のエネルギーは完全に一致した。他のセットもDはR0より15〜30\,\%短く、エネルギー差は最大$3\E{-11}$\,Haである。1ランク1ステップの内訳は詰め替え0.19秒、軌道値の評価0.70秒、カーネル0.50秒で、評価が最大の項目になった。同時に、(1)作業領域の既定256\,MiB×11ランクが常駐ランクの分と合わせて16\,GBを超え常駐ランクのカーネルが落ちる（128\,MiBなら入る）、(2)非共線バンドでSCF後の力の計算がメモリ不足で落ちる（その場計算の索引や密度の常駐バッファが数百MB残る）、の2点が見つかり、作業領域を「空き−常駐ランクの必要量−余裕256\,MiB」の分け前で自動決定すること、SCFサイクル終端でその場計算の状態と密度の常駐バッファを解放すること、評価から三角関数と二分探索を除くこと（値はdoubleの最下位ビットまで同じ。A100で表が同一のエネルギーを与えることを確認）で対処した（29f1a7ca。RTX 5080での再測定待ち）。
+
+\subsection{RTX 5080での再測定（run6）と開発の移管}
+修正後（29f1a7ca）の全9セットは判定基準を満たし、非共線バンドも力の計算まで完走した（R0 320.3秒→D 212.1秒）。一方、作業領域の自動予算は16\,GBのカードでは小さすぎた（54〜63\,MiB）。2ステップ目から常駐ランクが7から4に減り（1ステップ目にその場計算のランクが確保した索引と密度のバッファの分だけ空きが減るため）、余裕256\,MiBを引くと14の非常駐ランクのうち9〜11しか作業領域を得られず、残りはCPUに落ちた。非共線クラスターDは既定で197.3秒、余裕0で165.0秒、上限128\,MiBと余裕0で149.1秒（run5の139.5秒には届かない）。密度側の作業領域も既定256\,MiBでは毎ステップ1〜2ランクがGPU積分を失い、128\,MiBなら全ランクがGPUで積分する（41〜53秒→31.8秒）。三角関数と二分探索を除いた評価は値を変えずに同じ時間だった（1ランク1ステップ0.6〜0.7秒）。評価する値の数あたりの速さがA100とRTXで等しいことから、評価はFP64演算律速ではなく、占有率・ローカルメモリ・転送か、MPS下の時分割によるものと推定される。以後の開発はRTX 5080側で行うこととし（2026年10月8日）、予算と計画の安定化、密度側の予算、Nsightによる評価カーネルの分析を優先課題として引き継いだ（引き継ぎ文書 HANDOVER\_RTX5080\_20261008.md）。
+
+\subsection{RTX 5080側での修正（2026年10月8日、コミットa55baab4）}
+開発をRTX 5080側へ移した後、run6で残った「既定値のままでは遅い」問題を次の三点で直した。
+(1) その場計算の予算を、ステージング組が確保中に測った\code{cudaMemGetInfo}の値ではなく計画値（計画時の空き$-$ステージング組のピーク）だけから決める。測った値はランクごと・ステップごとに揺れ、作業領域がほぼ毎ステップ変わり（バナー23回中21回）、256\,MiBの余裕のもとでは14ランク中3ランクが領域を得られずCPUに落ちていた。余裕\code{OPENMX\_SETHAM\_ONTHEFLY\_MARGIN\_MB}の既定を0、上限\code{OPENMX\_SETHAM\_ONTHEFLY\_MB}の既定を128\,MiBとし、分け前が48\,MiBを下回っても48\,MiBを与える（CPUに落ちるのは確保に失敗したときだけ）。
+(2) 相の時間を決めるのはステージング組ではなくその場計算のランクである（run5bのランク別計時：ステージング組は1ステップ0.6〜0.7秒の後にバリアで0.8秒待ち、その場計算のランクは1.4秒。ステージング組を3・2・1ランクに制限する実験でも\code{Set\_Hamiltonian}は43〜45秒で変わらない）。そこで行列要素の計画は、波の外の各ランクが上限分の作業領域を得られるまでステージング組を縮める（全ランクが1波に載るGPUでは発動しない）。波は1ステップ目6ランク、2ステップ目以降3ランクで固定され、作業領域は128\,MiBに保たれる。
+(3) 密度のその場計算は、計画の非常駐数ではなく実際にその場計算を取るランク数（常駐テーブルのない全ランク＝ハイブリッド時は18ランク）で予算を割り、専用の上限\code{OPENMX\_SETDEN\_ONTHEFLY\_MB}（既定128\,MiB）を持つ。256\,MiBでは毎ステップ1〜2ランクがGPU積分を失っていた。
+
+結果（18ランク、MPS、環境変数なし、エネルギーはすべてFP64と$10^{-12}$\,Haで一致）：非共線クラスターDは197.3秒から141.4秒（\code{Set\_Hamiltonian} 78.1→43.0秒、\code{Set\_Density\_Grid} 53.1→32.5秒。run5bの128\,MiB指定時139.5秒と同等）、非共線バンドDは210.6秒から167.5秒（\code{Set\_Hamiltonian} 85.9→42.9秒）。その場計算のランクは毎ステップ全員がGPUに載り（SETHOTFPROF 15/15、SETHOTFDENPROF 18/18）、バナーは1runに2回である。なお非共線バンドのR0（cuSOLVERのFP64エミュレーション）が18ステップ目に\code{cusolverDnXsyevdx}の非収束（info=126）で1回落ちたが再実行では完走しており、散発的な非収束と判断した。固有値解法の呼び出しは\code{info}$\ne0$で中止するだけなので、ネイティブFP64で解き直す再試行（解く前のデバイス上の行列の退避が要る）を候補とする。
+
+\subsection{軌道値評価のdouble-float化（2026年10月8日）}
+RTX 5080側でのプロファイル（1ランク、Nsight Systems）では、その場計算の軌道値評価カーネル（\code{SOG\_Device\_EvalPairTiles}）が全GPU時間の29\,\%を占め、18ランクではランク・ステップあたり0.75秒（ハミルトニアン）と0.42秒（密度）であった。評価点数（1ステップ約$4\times10^8$点）と1点あたりのFP64命令数（スプライン・対数・平方根・除算で約800）から見積もると、GeForceのFP64パイプ（FP32の1/64、RTX 5080で約0.9\,TFLOPS）がちょうど飽和する時間と一致する。つまり\code{Get\_Orbitals}の忠実なFP64転記は、GeForceではFP64演算そのものに律速されている。
+
+そこで評価をdouble-float（float の対 hi+lo、相対誤差$\sim2^{-48}$）に書き換えた（\code{OPENMX\_ORBS\_EVAL\_PRECISION}、既定 df、\code{fp64}で従来の経路）。FP64のまま残すのは格子座標（大きな座標の差で桁落ちするため）とメッシュ添字の比較だけで、PAOの動径テーブルとメッシュ点ごとのスプライン定数（$h_2$、$\mathrm{dum}_{1\ldots4}$）は対として事前にデバイスに置き、メッシュ添字はFP32の対数で見積もって添字探索で確定する。書き出す float は積の hi 部であり、FP64値が float の丸め境界の$10^{-14}$以内にある場合（約$10^6$個に1個）だけ1\,ulp異なる。テーブル（常駐ランクの\code{Orbs\_Grid}）は従来どおりFP64で作る。
+
+結果（18ランク、MPS、環境変数なし）：非共線クラスターでは評価がランク・ステップあたり0.77秒→0.41秒（ハミルトニアン）、0.42秒→0.07秒（密度）、\code{Set\_Hamiltonian}が43.5秒→35.8秒、\code{Set\_Density\_Grid}が32.6秒→24.1秒、Dが141.4秒→129.5秒で、Utot はFP64評価（R0、\code{fp64}指定）と$10^{-12}$\,Haまで同一（1ランク3ステップでも$10^{-12}$\,Ha）。非共線バンドのDは167.5秒→156.8秒（Utot差$10^{-12}$\,Ha）。ハミルトニアンの評価が密度ほど縮まないのは、同時に走る他ランクの行列要素カーネル（次項）がFP64パイプを占有しているためである。
+
+\subsection{格子積分カーネルからのFP64の除去}
+double-float の行列要素カーネル（\code{matrix\_elements\_kernel<2>}）は、各タイルの各点・各軌道について $V(\mathbf r)\,\phi_i(\mathbf r)\,dV$ をFP64で掛けてから hi/lo に分けており、しかもこれを出力ブロック（256スレッド、非共線では3ブロック）ごとに繰り返していた。1点あたりFP64命令約470で、GeForceでは1ステップ0.45秒に相当し、観測された「device」0.5秒の大半を説明する。密度カーネル（\code{Set\_Hamiltonian\_OTF\_DensityKernel}）も行の和 $f_0\,t$ をFP64で累積していた（1点あたり156命令、0.15秒）。前者はタイルの点ごとに $V\,dV$ を一度だけ hi/lo に分け（カーネル内で唯一のFP64）、軌道との積はFMAで float の対として作る形に、後者は行の和を float の対（TwoSum）で累積して原子的加算のときだけFP64にする形に改め、両者とも lo 側の積は補償なしの単純加算にした（lo は hi の$2^{-24}$倍で、タイルあたりの誤差は従来と同じ$32\,\varepsilon_{32}^2$の次数）。結果（18ランク、MPS、環境変数なし）：非共線クラスターでは、その場計算ランクのステップあたりの行列要素が1.42秒→0.61秒（評価0.41→0.15秒、積分0.52→0.23秒）、\code{Set\_Hamiltonian}が35.8秒→24.9秒、\code{Set\_Density\_Grid}が24.1秒→22.0秒となり、Dは129.5秒→\textbf{116.3秒}（run4の189.8秒の61\,\%）、R0は192.2秒→183.4秒。FP64カーネル（\code{OPENMX\_GRID\_PRECISION=fp64}）のR0f64 208.2秒・Df64 145.7秒と比べたUtotの差は$10^{-12}$\,Haである。非共線バンドはR0 266.6秒→254.3秒、D 156.8秒→\textbf{144.4秒}（Utot差$2\times10^{-12}$\,Ha）。残るのは各ランク共通の\code{Set\_Vpot}（CPUの交換相関、0.36秒/ステップ）、密度カーネル（0.37秒）、対の束の詰め替え（0.23秒）である。
+
+\subsection{見込み}
+RTX 5080では、全ランクがGPUに載ることで\code{Set\_Hamiltonian}の1ステップがCPU退避の3.6秒から「評価＋カーネル」に置き換わり、double-floatでカーネルがさらに縮むので、89秒が20〜30秒程度、\code{Set\_Density\_Grid}の36秒も同程度に縮むと見込む。残る未知数はGeForceでの軌道値評価（FP64の三角関数・スプライン）の速さで、A100では演算律速ではなくメモリ遅延律速だった。
+
+\section{数学的対象と再利用の成立条件}
+\subsection{固定された直交化行列}
+SCF反復番号を$t$とし、基底数$n$、保持する部分空間の次元$r\le n$について、
+\begin{equation}
+ H_tC_t=SC_t\varepsilon_t,\qquad
+ X^\dagger SX=I_r,\qquad X\in\mathbb C^{n\times r}
+\end{equation}
+を考える。標準固有値問題への変換と逆変換は
+\begin{equation}
+ \widetilde H_t=X^\dagger H_tX,\qquad
+ \widetilde H_tY_t=Y_t\varepsilon_t,\qquad C_t=XY_t .
+ \label{eq:transform}
+\end{equation}
+最初の対象は
+\begin{equation}
+ B_t=H_tX\in\mathbb C^{n\times r},\qquad
+ \widetilde H_t=X^\dagger B_t\in\mathbb C^{r\times r}
+ \label{eq:two_gemm}
+\end{equation}
+の二演算である。固有値ソルバーと$C_t=XY_t$は対象外とし、現行の経路のまま実行する。
+
+監査で確認した$X$の扱いは経路ごとに異なる。
+\begin{itemize}
+\item \textbf{共線クラスター}：実正方行列（$r=n$）。構造ごとに一度作られ、SCFの間は同じデバイス領域に残る。実装はここから始めた。スピン分極では、スピンごとに別のランクが同じ$X$で解く。
+\item \textbf{非共線クラスター}：同じ実行列$X$で六つの実ブロックを変換する（1反復あたり12個のGEMM）。未着手。
+\item \textbf{複数k点のバンド計算}：$X(\bm k)$はホスト側のキャッシュにあり、k点ごとに同じデバイス領域へ転送される。一つのポインタが異なる$X(\bm k)$を指すので、再利用にはk点ごとの保持領域が要る。未着手。
+\end{itemize}
+このため$X$はポインタではなく、識別番号と更新番号で区別する。$X$を作り直すたびに更新番号が増え、古い準備済み表現は使われない。
+
+\subsection{不変な行列と不変な剰余表現を区別する}
+moduli集合を$\{m_\ell\}_{\ell=1}^{L}$とすると、CRTの復元範囲は$M_L=\prod_{\ell=1}^{L}m_\ell$に依存し、スケーリングは整数化した積をこの範囲に収めるために使われる\cite{ozaki}。moduli数やスケーリング方式を変えれば、準備済み表現は作り直す。これは実装でも確認した。準備済み表現には（更新番号、形状、op、左右の役割、moduli数、スケーリング方式）を付け、一つでも違えば前処理をやり直す。
+
+v1.2は「準備処理が固定行列だけから決まるのか、相手行列にも依存するのか」を監査項目とした。答えはスケーリング方式による（第\ref{sec:facts}節）。
+\begin{itemize}
+\item fast modeでは固定行列だけで決まり、再利用は厳密である。
+\item accurate modeでは相手行列に依存する。再利用すると結果が変わり、精度が約1 modulus分落ちる。
+\end{itemize}
+従って\textbf{fast modeを主設定}とし、accurate modeでは再利用を行わない。accurate modeで再利用する方式は、別の数値方式として扱う。なお、測定した五つの系では、fast modeの誤差はaccurate modeと同等かそれより小さかった。
+
+\begin{keybox}
+\textbf{再利用単位}\quad 構造・値・演算条件・精度設定が同じ区間で、役割（$HX$の右側、$X^\dagger B$の左側）ごとに一つの準備済み表現を再利用する。実測では、60反復の\code{GFRAG}で前処理2回・再利用118回、3段階の精度制御では前処理6回であった。スピン分極の場合はスピンを担当するランクごとに同じ回数になる。
+\end{keybox}
+
+\subsection{変換誤差と悪条件性}\label{sec:errorprop}
+計算された二つの積を$\widehat B_t=H_tX+E_{1,t}$、$\widehat H_t=X^\dagger\widehat B_t+E_{2,t}$と書くと、
+\begin{equation}
+ \Delta_t=\widehat H_t-X^\dagger H_tX
+ =X^\dagger E_{1,t}+E_{2,t},\qquad
+ \norm{\Delta_t}_F\le\norm{X}_2\norm{E_{1,t}}_F+\norm{E_{2,t}}_F .
+ \label{eq:error}
+\end{equation}
+保持した最小固有値が小さいと$\norm{X}_2=1/\sqrt{s_{\min}}$が大きくなるため、$S$の固有値の範囲を記録する（プローブが出力する）。
+
+v1.2は、誤差監視の対象を「ソルバーが読む三角部分から作ったエルミート行列」とした。実測では、これは使えなかった。$H_t$自体が$4\E{-10}$程度の非対称性を持つため、三角部分から作った行列と参照値の差は、積の精度によらず$3\E{-10}$〜$9\E{-10}$で頭打ちになる（cuBLAS FP64でも同じ）。そこで\textbf{誤差監視は計算されたままの全行列$\widehat H_t$を対象とする}。ソルバーが読む行列との違いは$H_t$の非対称性に由来するもので、A〜Fのすべての条件に共通である。この非対称性そのものの由来と影響は、精度制御とは別の課題として記録する。
+
+\section{実装の現状とGEMMul8へのAPI追加案}
+\subsection{OpenMX側に実装したもの}
+ブランチ\code{adaptive-precision}に次を実装した。いずれも共線クラスター経路が対象である。
+
+\noindent\begin{tabularx}{\linewidth}{@{}p{37mm}Y@{}}
+\toprule
+機能 & 内容\\
+\midrule
+順変換専用の入口 & 二つのGEMMだけが通る入口。精度段階（既定・FP64・GEMMul8）を他のGEMMと独立に選ぶ\\
+固定設定での再利用 & 既存の\code{skip\_scalA/B}を使い、準備済みの$X$を専用の領域に保持する。識別番号と更新番号で管理し、回数・時間・保持量を数える\\
+全量確保の既定化 & 第\ref{sec:fullws}節\\
+精度制御 & 段階列、残差による昇格、試行の棄却と再計算、最終段階の規則（第\ref{sec:control}節）。入力キーワード\code{scf.gemmul8.adaptive.*}\\
+誤差指標 & 乱数方向による検査（第\ref{sec:monitor}節）\\
+測定の道具 & 行列採取、行列単体のプローブ（倍々精度の参照、ビット比較、内部計時、容量表）、密行列解法の段階別計時、設定を変えた実行の一括比較\\
+回帰試験 & 260項目。実数・複素数、長方形、転置・共役転置、左右の役割、値の更新、複数の$X$の交互利用、moduli数の変更、容量不足時の切替、上限の前後、精度制御の状態遷移\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+v1.2の回帰項目のうち、複数k点、ストリーム間の依存関係、準備途中の失敗は試験していない。
+
+\subsection{既定動作の変更：メモリが足りるときは全量確保}\label{sec:fullws}
+順変換の二つのGEMMは、既定の精度設定のまま、デバイスに空きがあれば作業領域を全量確保して実行するように変えた。
+\begin{itemize}
+\item 空きが「必要量＋予備1.5\,GiB」に満たなければ、従来の分割実行に戻る。精度は変えない。
+\item 作業領域は順変換の直後に返し、固有値解法と固有ベクトルの保持が従来と同じ空きを見るようにした。
+\item 256\,MiB以下で足りる大きさでは、従来の経路とビット単位で同じ結果になる（\code{GFRAG}、\code{Pt63}、\code{Mn12\_148\_F}、\code{DIA512-1}で確認）。
+\item \code{OPENMX\_GEMMUL8\_FORWARD\_UNBLOCKED=0}で従来の動作に戻せる。
+\end{itemize}
+効果は第\ref{sec:facts}節の表の「旧既定」と「新既定」の差である。順変換は\code{CG15c}で106\,msから56\,ms、\code{MCCN}$'$で145\,msから76\,msになった。$n=13{,}000$（\code{C1000}）では810\,msから421\,msになり、密行列解法に占める割合は17\,\%から10\,\%に下がった。24ランクがMPSで共有する40\,GBのA100で、容量による切替は起きなかった。 順変換以外のGEMM（逆変換など）は従来どおり上限つきで動く。全ランクが作業領域を持つ経路に同じ変更を広げるかどうかは、ランク数とGPUメモリの関係を見て別に判断する。
+
+\subsection{GEMMul8への明示的なAPI：提案しない}\label{sec:api}
+v1.2が提案した概念APIを再掲する。既存の関数名ではない。
+\begin{lstlisting}
+# Once per valid geometry / precision interval
+XR = prepare_matrix(X, role=RIGHT, op=N, p=p, ctx=ctx_R)
+XL = prepare_matrix(X, role=LEFT,  op=C, p=p, ctx=ctx_L)
+
+# Each SCF trial
+B      = gemm_prepared(H, XR)
+Hraw   = gemm_prepared(XL, B)
+\end{lstlisting}
+\code{skip\_scalA/B}を使った実装で、この動作そのものは得られた。明示的なAPIにする利点は、所有権・寿命・容量照会をライブラリ側で定義できることにある。一方、得られる時間は小さい。判断の目安は次のように定めていた。
+\begin{itemize}
+\item RTX 5080で、再利用の短縮が二つのGEMMの10\,\%以上（スケーリングの割合が20\,\%以上）なら、API提案に進む。
+\item それ未満なら、OpenMX側の実装にとどめ、「fast modeでは再利用が厳密に成立するが、削減は$O(n^2)/O(n^3)$の比で小さくなる」という結果として報告する。
+\end{itemize}
+RTX 5080の測定では、短縮は4.6〜6.1\,\%、スケーリングの割合は10〜14\,\%だった（第\ref{sec:rtx}節）。従って\textbf{API提案は行わず}、OpenMX側の実装にとどめる。準備済み表現の責任範囲（下表）は、OpenMX側の実装が満たす条件として残す。
+
+\noindent\begin{tabularx}{\linewidth}{@{}p{34mm}Yp{22mm}@{}}
+\toprule
+責任 & 内容 & 実装\\
+\midrule
+準備済み表現 & 更新番号、形状、op、役割、moduli数、方式が一致するときだけ使う & 済\\
+寿命と所有権 & scratchとは独立に保持し、別のGEMMで上書きしない。SCFの終わりに解放 & 済\\
+容量 & 保持量と一時領域を別々に見積もり、足りなければ同じ精度の別経路へ & 済\\
+失敗の扱い & 条件不一致は再準備、容量不足は通常経路。回数を記録 & 済\\
+非同期実行 & 準備完了・使用完了の依存関係、ストリーム間の共有 & 未（単一ストリーム）\\
+\bottomrule
+\end{tabularx}
+
+\section{適応精度制御と誤差監視}\label{sec:control}
+\subsection{実装した制御}\label{sec:impl-control}
+v1.2の方針どおり、再計算と最終段階への移行を先に実装し、それを使って低精度化を評価した。制御は次の要素からなる。
+\begin{itemize}
+\item \textbf{段階列}：入力ファイルに、段階ごとの（moduli数、スケーリング方式、次の段階へ進む残差の閾値、誤差指標の許容値）を書く。段階は上にしか進まない。
+\item \textbf{昇格}：SCFの残差（OpenMXが表示する\code{NormRD}）が閾値を連続$w$回下回ったら、次の段階へ進む（既定$w=2$）。停滞による昇格と、反復予算による移行も指定できる。
+\item \textbf{棄却と再計算}：誤差指標が許容値を超えた場合と、固有値に非数が出た場合は、その試行を捨て、同じ$H_t$から一つ上の段階で解き直す。密度・混合履歴に入る前なので、状態の復元は不要である。
+\item \textbf{最終段階}：SCFを終了できるのは最終段階だけである。最終段階はcuBLAS FP64か、段階列の最後のGEMMul8段階かを選べる（\code{scf.gemmul8.adaptive.final}）。後者ではネイティブFP64は棄却時の退避先としてだけ残る。
+\item \textbf{全ランクの同期}：全ランクが同じ大域量で同じ状態遷移を行うので、段階の配布は不要である。棄却と指標はMPIで集約する。
+\end{itemize}
+停止条件は対象commitで確認した。\code{dUele < scf.criterion}かつ\code{NormRD[0] < 10*scf.criterion}で、\code{NormRD[0]}は二乗量である（表示は平方根）。
+
+\subsection{誤差監視}\label{sec:monitor}
+少数列$b\ll n$の試験行列$\Omega$について、$Z=X\Omega$を$X$が変わるまで保持し、
+\begin{equation}
+ V_t=X^\dagger\bigl[H_t(X\Omega)\bigr],\qquad
+ \eta_t=\frac{\norm{\widehat H_t\Omega-V_t}_F}
+ {\max(\norm{V_t}_F,h_{\mathrm{floor}}\norm{\Omega}_F)}
+ \label{eq:eta}
+\end{equation}
+をcuBLAS FP64で計算する。v1.2との違いは、左辺に計算されたままの$\widehat H_t$を使う点である（第\ref{sec:errorprop}節）。実測で分かったことを挙げる。
+\begin{itemize}
+\item $\eta_t$は、$10^{-7}$からFP64の検出限界まで、真の相対誤差に係数2以内で追随する。検出限界は$3\E{-15}$〜$2\E{-14}$（$n\approx700$〜1,100）、$6\E{-14}$〜$7\E{-14}$（$n=13{,}000$）で、cuBLAS FP64自身の誤差と同程度である。
+\item 4方向と16方向で値はほとんど変わらない。既定は$b=8$とした。
+\item 費用は$n=13{,}000$、16方向で3.7\,ms（順変換の1\,\%）である。A100では無視できる。RTX 5080ではFP64が遅いので、測り直す。
+\item 段階ごとの典型値（\code{GFRAG}）は、$L=8$で$2\E{-7}$、$L=10$で$9\E{-10}$、$L=12$で$5\E{-12}$、$L=15$で$2\E{-14}$である。許容値はこの10〜60倍に置いた。$n=13{,}000$の採取行列では指標が大きくなり（$L=10$で$2\E{-9}$、$L=12$で$1\E{-11}$）、余裕は4〜11倍に縮む。
+\end{itemize}
+検査は各段階の最初と、以後$q$反復ごと（既定$q=5$）に行う。この指標は有限個の方向の検査であり、行列全体の厳密な上界ではない。
+
+\subsection{最終段階の規則の較正}\label{sec:calib}
+較正用の三つの入力をすべて\code{scf.criterion}$=10^{-10}$で実行し、$10^{-12}$のFP64計算を基準にして、最終段階の規則を比べた。fast mode、再利用ありである。段階列と昇格の閾値（\code{NormRD}）は次の四つを用意した。
+
+\noindent\begin{tabularx}{\linewidth}{@{}p{12mm}Y@{}}
+\toprule
+名前 & 段階列（括弧内は次の段階へ進む閾値）\\
+\midrule
+N1 & $L=10$（$10^{-4}$）→ 12（$10^{-7}$）→ 15。閾値は各段階の誤差指標の約$10^{5}$倍\\
+N1a & N1と同じ段階列で、閾値を約$10^{3}$倍まで詰めたもの（$10^{-6}$、$10^{-9}$）\\
+N2 & $L=8$（$10^{-2}$）→ 10（$10^{-4}$）→ 12（$10^{-7}$）→ 15\\
+N4 & $L=10$（$10^{-5}$）→ 14\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+結果を示す。反復数は、同じ収束条件のFP64計算（\code{GFRAG} 60回、\code{Mn12\_148\_F} 61回、\code{Pt63} 78回）からの増減である。$|\Delta E|$は三つの入力での最大値で、FP64計算自身も基準から$3.0\E{-11}$\,Ha離れている。力の差はすべて$2\E{-10}$\,Ha/Bohr以下であった。
+
+{\small
+\noindent\begin{tabularx}{\linewidth}{@{}p{11mm}Yccrrrr@{}}
+\toprule
+ & & 履歴の & 連続 & \multicolumn{3}{c}{反復数の増減} & 最大$|\Delta E|$\\
+\cmidrule(lr){5-7}
+名前 & 最終段階 & 再開 & 回数 & \code{GFRAG} & \code{Mn12} & \code{Pt63} & （Ha）\\
+\midrule
+F15 & 固定$L=15$（制御なし） & -- & 1 & 0 & 0 & $-6$ & $3.0\E{-11}$\\
+F12 & 固定$L=12$（制御なし） & -- & 1 & 0 & 0 & $-5$ & $3.2\E{-11}$\\
+\midrule
+N1 & 最後のGEMMul8段階 & なし & 1 & 0 & 0 & 0 & $3.0\E{-11}$\\
+N1a & 最後のGEMMul8段階 & なし & 1 & $+4$ & 0 & 0 & $2.4\E{-11}$\\
+N2 & 最後のGEMMul8段階 & なし & 1 & 0 & 0 & $+1$ & $3.0\E{-11}$\\
+N4 & 最後のGEMMul8段階 & なし & 1 & 0 & 0 & 0 & $3.0\E{-11}$\\
+N1g & 最後のGEMMul8段階 & あり & 2 & $+16$ & $-6$ & $+11$ & $4.4\E{-10}$\\
+\midrule
+T1 & N1のあとFP64 & あり & 2 & $+9$ & $+7$ & $+8$ & $2.7\E{-11}$\\
+T2 & N1のあとFP64 & なし & 2 & $+4$ & $+3$ & $+3$ & $1.8\E{-12}$\\
+T3 & 早めにFP64（$10^{-8}$） & なし & 1 & $+3$ & 0 & 0 & $2.0\E{-11}$\\
+\bottomrule
+\end{tabularx}}
+
+\medskip
+\begin{itemize}
+\item \textbf{混合履歴の再開は採用しない。}反復が7〜16回増える。さらに\code{Mn12\_148\_F}では、再開直後の小さな更新で停止条件が成立し、6回早く止まって$|\Delta E|=4.4\E{-10}$\,Haになった。目標を超える唯一の例である。v1.2の「最終FP64移行時に低精度の混合履歴をクリアする」は撤回し、既定を再開なしに変えた。
+\item \textbf{FP64末尾（再開なし）は3〜4回増える。}「FP64どうしの比較が2回続くまで止めない」という規則そのものの費用である。
+\item \textbf{早めにFP64へ移る方式は0〜3回増。}代わりに4〜11回をFP64で反復する。
+\item \textbf{ネイティブFP64を使わない方式は、閾値を指標の約$10^{5}$倍に置けば0〜1回増}（N1、N2、N4）。最終段階を$L=15$ fastにすると、全エネルギーは同じ収束条件のFP64計算と同じ範囲に入る（\code{GFRAG}と\code{Mn12\_148\_F}では最後の桁まで一致）。
+\item $L=8$から始めても反復は増えない（N2）。閾値を詰めすぎると増える（N1a）。
+\item 誤差指標による棄却は一度も起きなかった。
+\item \code{Pt63}の反復数は、設定によって72〜79回の幅で変わる（FP64は78回）。金属クラスターの収束経路は丸め程度の違いで数回変わるので、この幅の差は優劣としない。
+\end{itemize}
+
+\subsection{初期ポリシー}
+以上から、評価に使う設定を次のように固定した。評価用入力の結果を見る前に決めたものである。
+
+\begin{keybox}
+\textbf{E（適応精度）}\quad 段階列N2（$L=8\to10\to12\to15$、fast mode、閾値$10^{-2}$、$10^{-4}$、$10^{-7}$、連続2回で昇格）。最終段階は$L=15$で、ネイティブFP64は棄却時の退避先としてだけ使う。混合履歴は再開せず、通常の停止条件で終了する。誤差指標は8方向・5反復ごと、許容値は$5\E{-6}$、$10^{-8}$、$10^{-10}$、$10^{-12}$。
+
+\textbf{F（固定設定）}\quad $L=12$ fast、再利用あり。
+\end{keybox}
+
+N2での段階ごとの反復数は、\code{GFRAG}で$L=8$が36回・10が8回・12が12回・15が4回、\code{Mn12\_148\_F}で29・9・12・11回、\code{Pt63}で35・10・18・16回であった。反復の約半分を$L=8$で済ませている。
+
+\subsection{未調整入力での評価}\label{sec:eval}
+較正に使っていない四つの入力で、E、固定設定F（$L=12$ fast、再利用あり）、FP64を比べた。ポリシーは較正の結果だけで決め、評価の結果を見て変えていない。収束条件はすべて\code{scf.criterion}$=10^{-10}$で、基準は$10^{-12}$のFP64計算である（\code{Si1000}は計算量の都合で、$10^{-10}$のFP64を基準とした）。\code{DIA512-1}と\code{MCCN}は、Krylov法用の入力をクラスター解法に切り替えて使った。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrrr@{}}
+\toprule
+ & & \multicolumn{3}{c}{SCF反復数} & \multicolumn{3}{c}{$|\Delta E|$（Ha）}\\
+\cmidrule(lr){3-5}\cmidrule(l){6-8}
+入力 & $n$ & FP64 & F & E & FP64 & F & E\\
+\midrule
+\code{nsV4Bz5} & 730 & 57 & 57 & 60 & $4.6\E{-11}$ & $4.5\E{-11}$ & $<10^{-12}$\\
+\code{DIA512-1} & 2,048 & 28 & 28 & 30 & $<10^{-12}$ & $<10^{-12}$ & $9\E{-13}$\\
+\code{MCCN} & 2,820 & 63 & 63 & 63 & $1.4\E{-12}$ & $3.2\E{-12}$ & $1.4\E{-12}$\\
+\code{Si1000} & 13,000 & 41 & 41 & 42 & （基準） & $1.0\E{-11}$ & $2.7\E{-12}$\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{順変換（ms、中央値）} & \multicolumn{3}{c}{計算全体（秒）} & Eの段階別\\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+入力 & FP64 & F & E & FP64 & F & E & 反復数\\
+\midrule
+\code{nsV4Bz5} & 0.21 & 0.44 & 0.39 & 84.2 & 84.1 & 91.2 & 39/6/10/5\\
+\code{DIA512-1} & 1.98 & 2.06 & 1.81 & 39.6 & 41.9 & 41.1 & 15/4/9/2\\
+\code{MCCN} & 5.03 & 5.13 & 4.44 & 124.2 & 126.5 & 125.4 & 32/8/13/10\\
+\code{Si1000} & 535 & 309 & 305 & 1,259 & 1,247 & 1,287 & 14/5/16/7\\
+\bottomrule
+\end{tabularx}
+
+\smallskip
+{\small 段階別反復数は$L=8$/10/12/15の順。計算全体の時間は各1回の実行で、1〜2秒程度ばらつく。}
+
+\begin{itemize}
+\item \textbf{精度}：FもEも、全入力で目標の範囲に入った。差はFP64自身の収束の揺らぎと同程度で、力の差は$10^{-11}$\,Ha/Bohr以下である。誤差指標による棄却は一度も起きなかった。
+\item \textbf{反復数}：FはどれもFP64と同じ反復数で止まった。Eは0〜3回増えた（\code{nsV4Bz5}で3回、\code{DIA512-1}で2回、\code{Si1000}で1回）。較正用入力では0〜1回だった。低精度の段階を通ると、収束の経路が少し変わる。
+\item \textbf{順変換}：$n\ge2048$では、EはFより12〜14\,\%短い（中央値）。$n=730$ではFP64がいちばん速い。
+\item \textbf{計算全体}：順変換でEが稼ぐ時間は、$n\le2820$では1反復あたり1\,ms未満で、1反復の時間（1.4〜2秒）に比べて無視できる。反復が増えた\code{nsV4Bz5}では、Eは8\,\%遅かった。
+\item \textbf{\code{Si1000}}：Eは42回で、FP64とFより1回多い。段階別の順変換（中央値）は$L=8$で220\,ms、10で284\,ms、12で317\,ms、15で385\,msで、42回の半分以上を$L=12$と15で過ごしたため、1反復あたりの順変換はF（309\,ms）とほぼ同じだった。1回多い反復の分だけ、Eは計算全体でFより40秒（3.3\,\%）長かった。誤差指標の余裕は、$L=10$で4倍、$L=12$で8倍まで縮んだ。
+\end{itemize}
+
+\begin{keybox}
+\textbf{評価の結論（A100）}\quad 適応精度は、固定設定Fに対して順変換を1割強短くするが、それは計算全体の0.1\,\%程度であり、未調整入力では反復の増加（0〜3回）のほうが大きく効いた。A100では、EがFより速い入力はなかった。実用上の最良は、全量確保・fast modeの固定設定（$L=12$〜15）である。RTX 5080の第1回測定では、GEMMul8の順変換が密行列解法に占める割合はさらに小さく（3\,\%前後）、この結論は変わらなかった（第\ref{sec:rtx}節）。
+\end{keybox}
+
+
+\subsection{受理・再計算の規則}
+\noindent\begin{tabularx}{\linewidth}{@{}p{48mm}Y@{}}
+\toprule
+事象 & 動作\\
+\midrule
+正常な試行 & 密度・エネルギー・混合履歴を受理し、昇格条件を判定\\
+$\eta_t$超過、NaN/Inf & 試行を破棄し、同じ$H_t$から上位段階で再計算\\
+残差の停滞 & 指定した反復数だけ改善がなければ昇格（既定では無効）\\
+通常の停止条件を検出 & 最終段階でなければ終了せず、最終段階へ移行\\
+適応段階の反復予算を超過 & 最終段階へ移行\\
+最終段階でも収束しない & 不収束として報告し、成功例の速度集計に入れない\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+棄却から再計算までの経路は、許容値を故意に厳しくした入力で確認した。棄却された試行のあと上位段階で解き直した結果は、最初からその段階で計算した結果と一致した。
+
+\section{メモリ設計と開発環境}
+\subsection{実測した必要量}
+GEMMul8 v3.5.2の作業領域の照会値を示す（実数、正方、fast mode、MiB）。「保持」は二つの役割の準備済み$X$の合計、「合計」は$X$・$H$・$B$・$C$のFP64行列を含む。固有値解法の作業領域は含まない。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrrrrr@{}}
+\toprule
+ & & 再利用なし & \multicolumn{2}{c}{再利用あり} & \multicolumn{2}{c}{合計}\\
+\cmidrule(lr){4-5}\cmidrule(l){6-7}
+$n$ & $L$ & 作業領域 & 作業領域 & 保持 & なし & あり\\
+\midrule
+8,000 & 12 & 3,268 & 2,518 & 1,518 & 5,221 & 5,989\\
+8,000 & 15 & 3,648 & 2,710 & 1,898 & 5,601 & 6,561\\
+10,000 & 12 & 4,164 & 2,992 & 2,372 & 7,216 & 8,416\\
+10,000 & 15 & 4,757 & 3,292 & 2,965 & 7,809 & 9,309\\
+13,000 & 12 & 6,353 & 4,411 & 3,893 & 11,511 & 13,461\\
+13,000 & 15 & 7,812 & 5,384 & 4,867 & 12,970 & 15,408\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+16\,GBのRTX 5080では、$n=13{,}000$・$L=15$の再利用は入らない見込みで、全量確保も固有値解法の作業領域と合わせると収まらず、分割実行に戻るはずである。RTX 5080の測定（$n\le7332$、18ランク）では、全量確保と再利用のどちらでも容量による切替は起きなかった。ただしGPUメモリの最大使用量は14.0\,GiB（16\,GBのうち）で、余裕は大きくない。$n=10{,}000$前後の境界は測っていない。
+
+\begin{keybox}
+\textbf{容量方針（実装済み）}\quad 容量不足を理由に精度を下げない。保持領域が取れなければ毎回前処理する経路へ、全量の作業領域が取れなければ分割実行へ、同じ精度のまま移る。移った回数は記録され、集計表に出る。
+\end{keybox}
+
+メモリの確保と解放そのものの費用も測った。8\,GiBの確保は1\,ms未満、解放は4\,msで、SCFごとに作業領域を取り直しても問題にならない。ただし、間を置かずに確保と解放を繰り返す試験では、6\,GiB以上で1回に数百msかかる場合があった（原因は未確認）。作業領域の取り直しをSCFあたり一度に抑える現在の設計は変えない。
+
+\subsection{kuguiと手元環境の役割}
+\noindent\begin{tabularx}{\linewidth}{@{}p{43mm}Y@{}}
+\toprule
+環境 & 主な役割\\
+\midrule
+kugui / NVIDIA A100 & 実装、数値回帰、SCF制御の較正、初期プロファイリング（本版まで）\\
+手元 / GeForce RTX 5080 & 主要ベンチマーク、容量制約、監視費用、収束までの総時間（第1回測定済み、第\ref{sec:rtx}節）\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+A100で得た性能比をRTX 5080へ移し替えない。実際に、(1) ネイティブFP64はRTX 5080でA100の18〜21倍遅く、GEMMul8との差が大きい。(2) 固有値解法もRTX 5080でA100の約2.7倍遅く、密行列解法の内訳が変わる（第\ref{sec:rtx}節）。RTX 5080での測定の手順は、作業手順書v1.1（\code{rtx5080\_measurement\_procedure\_v1.1.pdf}）にまとめた。
+
+\section{比較実験と対象系}
+\subsection{比較条件}
+決定事項と測定結果に合わせて、比較条件を次のように改める。A以外はすべてGEMMul8で、対象は順変換の二つのGEMMだけである。
+
+\noindent\begin{tabularx}{\linewidth}{@{}p{8mm}L{52mm}p{14mm}Y@{}}
+\toprule
+条件 & 順変換の設定 & 再利用 & 目的\\
+\midrule
+A & 全反復をcuBLAS FP64 & 対象外 & 基準物理量と総時間\\
+B0 & 旧既定：$L=15$ accurate、256\,MiB分割 & なし & 変更前の実装（参考）\\
+B & 新既定：$L=15$ accurate、全量確保 & なし & 固定設定の出発点\\
+B$'$ & $L=15$ fast、全量確保 & なし & スケーリング方式の寄与\\
+C & B$'$と同じ & あり & 再利用単独の効果\\
+D & 適応精度（fast） & なし & 適応精度単独の効果\\
+E & 適応精度（fast） & あり & 提案方式の総合効果\\
+F & 許容される最速の固定設定（fast） & あり & 適応化そのものの意義\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+v1.2は「B〜Fに同じ規則の最終FP64段階を設ける」とした。較正の結果（第\ref{sec:calib}節）、最終FP64段階は必須としない。最終段階の規則は条件ごとに明記し、FP64末尾つきの結果は別の条件として併記する。E対Fを適応化の中心的比較、B$'$対Cを再利用の比較、B0対Bを既定変更の効果とする。Fの候補は、較正用入力では$L=12$ fastである。
+
+\subsection{FP64基準と呼出し範囲}
+Aは、同じOpenMX GPU経路・ソルバー・物理入力で、順変換の二つのGEMMだけを通常のcuBLAS FP64にする。呼出し箇所ごとの切替は実装した（\code{OPENMX\_GEMMUL8\_FORWARD=fp64}）。cuBLAS側のエミュレーションを環境変数で有効にしていないことを確認し、関連する環境変数を結果と一緒に記録する。対象外の演算（逆変換、$X$の構成、固有値解法）はA〜Fで共通にする。
+
+\subsection{対象系と較正・評価の分離}
+\noindent\begin{tabularx}{\linewidth}{@{}p{40mm}Yp{30mm}@{}}
+\toprule
+対象 & 確認する性質 & 現状\\
+\midrule
+非磁性半導体・絶縁体 & 基本収束、サイズ依存 & 測定済み（A100、RTX 5080）\\
+金属 & 占有数、フェルミ準位、振動・停滞 & \code{Pt63}のみ\\
+磁性体 & 磁気量、初期状態、準安定状態 & \code{Mn12\_148\_F}のみ\\
+非共線・SOC入力 & 複素数経路、共役転置 & 未着手\\
+悪条件な重なり行列 & 基底選別と変換誤差の感度 & 未着手\\
+複数k点 & k点ごとの準備済み表現 & 未着手\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+較正には\code{GFRAG}、\code{Pt63}、\code{Mn12\_148\_F}を使った。評価用には\code{nsV4Bz5}（$n=730$）、\code{DIA512-1}（2,048）、\code{MCCN}（2,820）、\code{Si1000}（13,000）を残した（第\ref{sec:eval}節）。評価結果を見て閾値を修正した場合、その入力は以後の独立評価には用いない。
+
+\subsection{三層の測定}
+\begin{enumerate}
+\item \textbf{保存行列：} \code{tests/gemmul8\_reuse\_probe}。速度、倍々精度の参照との差、ビット比較、監視の検出能力、GEMMul8の内部計時。合成行列でも実行できる。
+\item \textbf{SCF内部：} 順変換・固有値解法・逆変換・固有ベクトル転送・誤差指標の段階別計時と、順変換の回数・前処理・再利用・容量による切替の計数。前者は環境変数\code{OPENMX\_CLUSTER\_PROFILE}で、後者は\code{OPENMX\_GEMMUL8\_FORWARD\_TIMING}で有効にする。
+\item \textbf{計算全体：} \code{tools/run\_forward\_variants.sh}。同じ入力を設定だけ変えて実行し、反復数、全エネルギー・力・化学ポテンシャル・磁気量の差、段階ごとの反復数、棄却回数、時間をまとめる。
+\end{enumerate}
+各実行の最初の1回は一度だけの費用を含むので、時間は2回目以降の中央値と平均で比べる。主条件は独立に3〜5回測り、速度差がばらつき以内なら優位とは判断しない。A100では、$n=13{,}000$での再利用の効果（2\,\%）は3反復の実行のばらつき（$\pm2\,\%$）と区別できなかった。
+
+\section{精度基準、性能モデル、再現性}
+\subsection{最終精度の合否}
+目標は変えない。
+\begin{equation}
+ |\Delta E|\le10^{-10}\ \mathrm{Ha},\qquad
+ \max_{I,\alpha}|\Delta F_{I\alpha}|\le10^{-6}\ \mathrm{Ha/Bohr}.
+ \label{eq:targets}
+\end{equation}
+基準は\code{scf.criterion}$=10^{-12}$のFP64計算とする。$10^{-10}$で止めたFP64自身が、この基準から最大$3\E{-11}$\,Ha離れる（\code{GFRAG}）。全エネルギーと力に加え、化学ポテンシャル、磁気量、反復数を比較する。固有値残差と直交性の検査は未実装である。
+
+反復数の一致は合否条件にしない。必要精度への到達時間を評価し、不収束、別の磁気状態への収束、容量超過を区別する。
+
+\subsection{再利用による削減余地}
+固定設定・同じ反復数$N$で、対象範囲の時間に占める再利用可能な固定側quantの割合を$f$、作り直す回数を$K$とすると、
+\begin{equation}
+ \mathrm{speedup}_{\mathrm{cache}}\simeq\frac{1}{1-f+fK/N}.
+ \label{eq:amdahl}
+\end{equation}
+実測した$f$（二つのGEMMに対する割合、$L=15$）は次のとおりである。前処理を再利用したときに消えるスケーリングの時間から求めた。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrrr@{}}
+\toprule
+ & $n=4000$ & $n=8000$ & $n=13{,}000$\\
+\midrule
+A100、fast mode & 5.8\,\% & 3.4\,\% & 2.3\,\%\\
+A100、accurate mode（参考） & 7.3\,\% & 4.5\,\% & 3.0\,\%\\
+RTX 5080、fast mode & 6.0\,\% & 4.6\,\% & --\\
+RTX 5080、accurate mode（参考） & 9.4\,\% & 6.3\,\% & --\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+$K/N\to0$でも、二つのGEMMの速度向上はA100で1.02〜1.06倍、RTX 5080で1.05〜1.06倍である。密行列解法全体では、順変換の割合（A100で10\,\%以下、RTX 5080で3〜4\,\%）を掛けて0.5\,\%以下になる。再利用は、保持に必要な容量（$n=13{,}000$で4.9\,GiB）に見合わない。
+
+\subsection{適応精度による削減余地}
+二つのGEMMの時間はmoduli数にほぼ比例する（$n=13{,}000$で約23\,ms/個）。反復の内訳が分かれば、順変換の時間は段階ごとの反復数から見積もれる。較正で得た段階ごとの反復数（第\ref{sec:calib}節）に$n=13{,}000$の時間を当てはめると、1反復あたりの順変換は、E（N2）で222〜246\,ms、固定$L=12$で276\,ms、固定$L=15$で346\,msになる。EはFより11〜20\,\%、固定$L=15$より29〜36\,\%短い。密行列解法（約4.2秒）に対しては、それぞれ0.7〜1.3\,\%、2.4〜3.0\,\%である。ただし\code{Si1000}での実測では、Eは反復の半分以上を$L=12$と15で過ごし、1反復あたりの順変換（305\,ms）はFとほぼ同じだった（第\ref{sec:eval}節）。
+
+\Needspace{12\baselineskip}
+全体に対する比率をまとめる。$n=13{,}000$、A100の値である。
+
+\noindent\begin{tabularx}{\linewidth}{@{}Yrr@{}}
+\toprule
+変更 & 順変換の時間 & 密行列解法に対する差\\
+\midrule
+旧既定（$L=15$ accurate、分割）→ 新既定（全量確保） & 810 → 421\,ms & $-8.3\,\%$\\
+新既定 → $L=15$ fast & 421 → 391\,ms & $-0.7\,\%$\\
+$L=15$ fast → 再利用 & 391 → 370\,ms & $-0.5\,\%$\\
+$L=15$ fast → $L=12$ fast（固定、再利用） & $-20\,\%$（行列単体） & $-1.7\,\%$\\
+$L=12$ fast → E（見積り） & $-11$〜$-20\,\%$ & $-0.7$〜$-1.3\,\%$\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+既定の変更が支配的で、残りは合わせても密行列解法の数\,\%である。固有値解法（3.6秒）が動かない限り、順変換だけを対象にした改良の上限はここにある。さらに、最後の行の利点は反復1回分（$n=13{,}000$で約31秒）より小さい。評価用入力ではEが反復を0〜3回増やしたので（第\ref{sec:eval}節）、この利点は消える。RTX 5080では固有値解法がさらに大きな割合を占めるので、順変換の改良の上限はA100より小さい（第\ref{sec:rtx}節）。
+
+\subsection{保存する情報}
+ソースcommit、依存ライブラリ、コンパイラ、GPU、MPSの状態、関連する環境変数、入力、制御設定、各反復の段階・切替理由・受理状態、準備回数、再利用回数、検査値、容量による切替、時間内訳、最終物理量を、実行ごとの\code{environment.txt}・標準出力・集計表に残す。測定用のスクリプトがこれを自動で行う。
+
+\section{工程と判断点}
+\subsection{進み具合}
+\noindent\begin{tabularx}{\linewidth}{@{}p{16mm}YY@{}}
+\toprule
+期間 & 作業 & 状況\\
+\midrule
+1--2週 & 版・形状・スケール依存性の監査、行列採取、FP64基準 & 完了（A100）\\
+3--4週 & 固定精度の再利用、状態保存・FP64復帰 & 共線クラスター経路で完了。明示的APIは提案しない\\
+5--6週 & moduli制御、誤差監視、再試行、較正 & 実装完了。較正3入力、評価4入力（第\ref{sec:eval}節）\\
+7--8週 & fast mode、複素数・磁性、容量、RTXで予備測定 & fast modeは主設定に決定。複素数は未着手。RTXで第1回測定（第\ref{sec:rtx}節）\\
+9--10週 & RTX 5080でA--Fを反復測定 & 固定設定のみ測定済み。続けるかは第\ref{sec:next}節の判断による\\
+11--12週 & 解析、論文図表、API提案準備 & API提案は行わない（第\ref{sec:api}節）。まとめは未着手\\
+\midrule
+10月6〜7日 & 固有値解法のFP32化と補正（第\ref{sec:eig}節） & 非共線クラスターで実装・検証（A100、RTX 5080）。共線クラスター、共線バンド、非共線バンド（1ランク1k点と複数k点の両経路）へ拡張しA100で検証。RTX 5080の共線クラスターは測定済み、バンドは依頼中\\
+\bottomrule
+\end{tabularx}
+
+\subsection{今後の方針（提案）}\label{sec:next}
+v1.3の方針1〜3（全量確保を成果として確定、再利用APIは提案しない、適応精度は打ち切る）はそのままとし、方針4の対象を次のように具体化する。
+\begin{enumerate}
+\item \textbf{固有値解法}：補正つきFP32固有値解法（第\ref{sec:eig}節）を成果として確定する。RTX 5080での共線クラスター・バンドの測定を受け取り、A100の精度検証と合わせて反復数・全エネルギー・力の差を表にする。
+\item \textbf{バンドの複数k点経路}：実装と検証を終えた（第\ref{sec:eig}節）。ウォームスタートの偏りとSCF反復の増加の原因（補正しない列の古い成分）は特定して修正した（第\ref{sec:eig}節）。
+\item \textbf{格子上の処理}：第\ref{sec:grid}節のとおり、軌道値のその場計算とdouble-floatカーネルを実装し、RTX 5080での測定を残すのみである。以下は着手前の検討の記録である。RTX 5080で全体の6割を占める\code{Set\_Hamiltonian}（1ステップ3.8秒）と\code{Set\_Density\_Grid}を対象にする。原因はGPUメモリ不足によるCPUへの退避（第\ref{sec:eig}節の制限の項）なので、精度ではなくメモリ設計の問題である。候補は、(a) 既存の直列ウェーブ方式（\code{OPENMX\_SETHAM\_GPU\_SERIAL\_WAVES=1}：全ランクが順番にGPUを使う）、(b) ストリーミング方式（表を小さな束で送りながら計算する。現状は1ランクしか入らないときだけ選ばれるので、入りきらないとき全般に広げる）、(c) 軌道の格子値をGPU上でその場で再計算する方式（表を持たない。FP32の軌道値は現状の\code{Type\_Orbs\_Grid}と同じ精度）。A100でGPUメモリの上限を模擬して比べた結果（\code{sidia333}非共線、8ランク、12反復の\code{Set\_Hamiltonian}の時間）は、上限なし17.4秒、上限ありのハイブリッド（既定。2〜3ランクがGPU、残りがCPU）165秒、直列ウェーブ37.6秒、ストリーミング52.3秒で、直列ウェーブが既定の4.4倍速かった。RTX 5080では\code{OPENMX\_SETHAM\_GPU\_SERIAL\_WAVES=1}の測定を手順書に加えた（変種DW）。
+\item \textbf{成果のまとめ}：GEMMの再利用・適応精度の結果（v1.3）と固有値解法の補正（v1.4）を一つの技術報告にまとめる。主張は「GeForce級のGPUで、FP64の固有値解法をFP32解法＋GEMMul8による反復改良で置き換え、SCFの精度を保ったまま全計算を25\,\%短縮した」とし、適用条件（FP32:FP64比、GEMMul8の精度、縮退クラスタの扱い）を明記する。
+\end{enumerate}
+
+\subsection{段階ごとの判断}
+\noindent\begin{tabularx}{\linewidth}{@{}p{46mm}Y@{}}
+\toprule
+観測結果 & 対応\\
+\midrule
+固定側quantが小さい & 両GPUで観測した（A100で2〜6\,\%、RTX 5080で10〜14\,\%）。API提案は行わない\\
+特定modeで独立準備が成立しない & accurate modeで観測した。fast modeに対象を限定した\\
+キャッシュで16\,GBを超える & $n=13{,}000$・$L=15$で超える見込み（RTX 5080では$n\le7332$だけ測定）。同じ精度の別経路へ戻る\\
+監視・最終FP64の費用が大きい & 監視は小さい。最終FP64は反復を3〜4回増やすので、既定では使わない（最後のGEMMul8段階を最終とする）\\
+EがFより速くない & A100の評価用入力で観測し、RTX 5080でも余地がないことを確認した。固定設定を結論とする\\
+磁気状態・収束先が変わる & これまで観測していない。失敗を分類し、条件を満たす例だけで速度を比較\\
+\midrule
+補正後も全エネルギーがFP64と$10^{-10}$\,Ha以上違う & 観測していない（第\ref{sec:eig}節）。起きた場合は改良回数を3にし、クラスタの占有数判定を緩める\\
+縮退クラスタが大きすぎてレイリー・リッツが遅い & $\delta$の固定で解消。上限（$\min(2048,\sqrt{n\,\mathrm{MaxN}/2})$）を超えたステップはFP64に戻る\\
+ウォームスタートの拒否が続く & 残差$2\E{-5}$超のステップはFP32で解き直す（A100の\code{sidia333}で25回中5回、いずれも初期のステップ）\\
+GPUメモリ不足でターンが直列化される（バンド） & 補正は使わずFP64。$k$点数を減らすか、複数k点経路の退避方式（方針2）を待つ\\
+\bottomrule
+\end{tabularx}
+
+\subsection{論文に必要な図表}
+\begin{enumerate}
+\item moduli数と達成精度・時間の関係（実行列、FP64との比較）。
+\item 再利用の成立条件（スケーリング方式）と、行列サイズに対する削減率・保持容量。
+\item 作業領域の確保方針（分割・全量）による時間の違いと、その内訳。
+\item SCF残差・監視値・精度段階の履歴と、最終段階の規則ごとの反復数。
+\item A--Fの総時間と内訳、最終物理量の差、FP64基準の変動。
+\item 補正つきFP32固有値解法：改良回数と固有値・密度行列の誤差（探針）、SCFの反復数と全エネルギー・力の差（A100、RTX 5080）、密行列解法1回あたりの内訳（FP64、FP32解法、改良、レイリー・リッツ、密度行列）、ウォームスタートの採用率。
+\item RTX 5080の全計算の内訳（\code{Set\_Hamiltonian}、\code{Set\_Density\_Grid}、対角化、力）と、固有値解法の置き換え前後の比較。
+\end{enumerate}
+「常に高速」「有効ビット数だけで精度を保証」「再利用やSCF適応精度の初出」は主張しない。
+
+\section{v1.3からの主な改訂点}\label{sec:changes}
+\noindent\begin{tabularx}{\linewidth}{@{}p{34mm}Y@{}}
+\toprule
+項目 & v1.4での加筆・修正\\
+\midrule
+中心仮説の扱い & v1.2の仮説とv1.3の結論を冒頭に要約し、第2段階（固有値解法）の結果を加えた\\
+研究質問 & RQ4（固有値解法の精度を下げてSCFの精度を保てるか）を追加\\
+固有値解法 & 第\ref{sec:eig}節を新設。案A・Bの比較、荻田・相島の反復改良と占有数によるクラスタの扱い、実装（共有モジュール、二段階FP32解法、ウォームスタート、段階制御、既定値、密度行列の積化）、A100の検証、RTX 5080の測定、制限\\
+他の経路 & 共線クラスター、共線バンド、非共線バンドへの拡張とその検証結果を記載\\
+今後の方針 & 対象を固有値解法から、バンドの複数k点経路と格子上の処理（\code{Set\_Hamiltonian}、\code{Set\_Density\_Grid}）へ具体化\\
+段階ごとの判断・図表 & 補正つき固有値解法に関する行と図表を追加\\
+参考文献 & 荻田・相島の反復改良（2018、2019）を追加\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+v1.2からv1.3への改訂点はv1.3の第9節にある。本版の測定値は、kugui（A100、CUDA 12.5、cuSOLVER 11.6、GEMMul8 v3.5.2）と手元のPC（RTX 5080、CUDA 13.4）でブランチ\code{adaptive-precision}を用いて得た。生データと集計は\code{work/bench\_adaptive}の記録（\code{eigcol1\_20261007\_results.md}、\code{rtx5080\_nc\_20261007/}、\code{eigoa\_20261006/}など）にある。
+
+\clearpage
+\begin{thebibliography}{9}
+\small
+\bibitem{gemmul8}
+RIKEN R-CCS, \textit{GEMMul8: GEMM emulation and its extension to BLAS-like matrix operations using INT8/FP8 matrix engines}, public README.\par
+\url{https://github.com/RIKEN-RCCS/GEMMul8}\par
+参照箇所：Scaling Modes、Accuracy Guidelines、Complex-valued operations、Return value、Workspace query、Memory-saving mode、Behavior of skip\_scalA / skip\_scalB。参照日：2026年10月5日。本版の測定はタグv3.5.2（commit 603b523）による。
+
+\bibitem{ozaki}
+K. Ozaki, Y. Uchino, and T. Imamura,
+\textit{Ozaki Scheme II: A GEMM-oriented emulation of floating-point matrix multiplication using an integer modular technique},
+The International Journal of High Performance Computing Applications (2026), OnlineFirst（2026年7月28日公開）.\par
+\url{https://doi.org/10.1177/10943420261467787}\par
+本文はarXiv:2504.08009v4（2026年9月16日改訂）を参照。特にスケーリング、CRT復元、入力分布と達成精度の関係。\par
+\url{https://arxiv.org/html/2504.08009v4}
+
+\bibitem{huang}
+H. Huang, W. Shao, and J. Hammond,
+\textit{Accelerating Density Fitting with Adaptive Precision and 8-Bit Integer on AI Accelerators},
+The Journal of Physical Chemistry A \textbf{130}(17), 3483--3493 (2026).\par
+\url{https://doi.org/10.1021/acs.jpca.6c00225}\par
+本文はarXiv:2601.08077v3（2026年4月17日改訂）を参照。適応精度、単調昇格、FP64への復帰、他ライブラリでの実装に関する節。\par
+\url{https://arxiv.org/html/2601.08077v3}
+
+\bibitem{ogita2018}
+T. Ogita and K. Aishima,
+\textit{Iterative refinement for symmetric eigenvalue decomposition},
+Japan Journal of Industrial and Applied Mathematics \textbf{35}, 1007--1035 (2018).\par
+\url{https://doi.org/10.1007/s13160-018-0310-3}\par
+対称固有値分解の反復改良。残差$R=I-X^{\dagger}X$、$S=X^{\dagger}AX$から補正$E$を作り、1回の改良で誤差が2乗のオーダーになること。
+
+\bibitem{ogita2019}
+T. Ogita and K. Aishima,
+\textit{Iterative refinement for symmetric eigenvalue decomposition II: clustered eigenvalues},
+Japan Journal of Industrial and Applied Mathematics \textbf{36}, 435--459 (2019).\par
+\url{https://doi.org/10.1007/s13160-019-00348-4}\par
+縮退・近接固有値のクラスタに対する扱い。本研究のクラスタの判定（$\delta$、連なりの幅）とレイリー・リッツはこれに基づく。
+
+\bibitem{openmx}
+OpenMX, \textit{User's manual of OpenMX Ver. 4.0}, Section 16.1, SCF convergence basics.\par
+\url{https://openmx-square.org/openmx_man4.0/s16_1_scf-convergence-overview.html}\par
+参照日：2026年10月5日。NormRDとscf.criterionの説明を参照。実際の停止条件は対象commitで確認した（第\ref{sec:impl-control}節）。
+
+\bibitem{openmxgpu}
+H. Kawai (dc1394), \textit{openmx4.0\_gpu}, public README.\par
+\url{https://github.com/dc1394/openmx4.0_gpu/blob/main/README.md}\par
+参照日：2026年10月5日。\code{gpusolver}経路とGEMMul8の利用・切替を参照。本研究の実装はブランチ\code{adaptive-precision}にある。
+
+\bibitem{rtx5080}
+NVIDIA, \textit{GeForce RTX 5080 Graphics Cards}, official specifications.\par
+\url{https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5080/}\par
+参照日：2026年10月5日。標準メモリ構成16GB GDDR7。
+\end{thebibliography}
+
+\vspace{4mm}
+\begin{keybox}
+\textbf{TeXソースの再コンパイル}\par
+UTF-8の本ソースを、日本語対応のTeX Live（LuaTeX-jaを含む）でコンパイルする。原ノ味フォントがなければIPAex明朝・ゴシックを使う。参考文献はソース内に含み、外部画像やBibTeXファイルは不要。\par\medskip
+\code{lualatex adaptive\_precision\_research\_plan\_v1.4.tex}\par
+相互参照と総ページ数を確定するため、同じコマンドを2回実行する。
+\end{keybox}
+\end{document}

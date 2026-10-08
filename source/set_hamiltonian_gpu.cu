@@ -18,10 +18,15 @@ constexpr int kPreferredGridTile = 32;
    product into the sum, which the compensation relies on. */
 /* MODE 2 (double-float): the weighted orbital is split into two floats
    (hi + lo = the FP64 value to 1e-14), each product with the FP32 orbital
-   is formed exactly (TwoProd through FMA) and the terms of a tile are
-   summed with Neumaier's compensation; the tile's (sum, compensation) go
-   into the FP64 accumulator.  The error per tile is of order 32 x eps32^2,
-   so the result is FP64-grade at FP32 cost. */
+   is formed exactly (TwoProd through FMA): the hi parts of a tile are
+   summed with Neumaier's compensation and the lo parts (2^-24 smaller)
+   plainly; the tile's (sum, compensation, lo sum) go into the FP64
+   accumulator.  The error per tile is of order 32 x eps32^2, so the
+   result is FP64-grade at FP32 cost.  The potential of a tile's points
+   is split once into (hi, lo) (the kernel's only FP64 arithmetic: on a
+   GeForce, with FP64 at 1/64 of the FP32 rate, the former FP64
+   weighting of every orbital of every point by every y-block bounded
+   the kernel). */
 __device__ __forceinline__ void neumaier_add(float &s, float &c, float t)
 {
     const float u = __fadd_rn(s, t);
@@ -71,6 +76,9 @@ __global__ void matrix_elements_kernel(
     float *tile1 = (MODE == 1) ? (weighted0f + weighted_count)
                  : (MODE == 2) ? reinterpret_cast<float *>(weighted0d + weighted_count)
                  : reinterpret_cast<float *>(weighted0 + weighted_count);
+    /* MODE 2: grid_vol * vpot of the tile's points per spin as (hi, lo) */
+    float2 *vtile = (MODE == 2) ? reinterpret_cast<float2 *>(tile1 + static_cast<std::size_t>(grid_tile) * max_no)
+                                : nullptr;
 
     const bool active = e < output_count;
     int spin = 0;
@@ -96,6 +104,19 @@ __global__ void matrix_elements_kernel(
         const int weighted0_count = spin_count * count * NO0;
         const int tile1_count = count * NO1;
 
+        if (MODE == 2) {
+            for (int index = static_cast<int>(threadIdx.x); index < spin_count * count; index += blockDim.x) {
+                const int s = index / count;
+                const int grid = index - s * count;
+                const std::size_t pt = nolg_off + static_cast<std::size_t>(base + grid);
+                const double v = grid_vol * vpotgrid[static_cast<std::size_t>(s) * vpot_len +
+                                                     static_cast<std::size_t>(nolg_MN[pt])];
+                const float hi = static_cast<float>(v);
+                vtile[static_cast<std::size_t>(s) * grid_tile + grid] =
+                    make_float2(hi, static_cast<float>(v - static_cast<double>(hi)));
+            }
+            __syncthreads();
+        }
         for (int index = static_cast<int>(threadIdx.x); index < weighted0_count; index += blockDim.x) {
             const int spin_grid_size = count * NO0;
             const int s = index / spin_grid_size;
@@ -103,6 +124,15 @@ __global__ void matrix_elements_kernel(
             const int grid = spin_index / NO0;
             const int orbital = spin_index - grid * NO0;
             const std::size_t pt = nolg_off + static_cast<std::size_t>(base + grid);
+            if (MODE == 2) {
+                /* (v.x + v.y) * phi0 as (hi, lo): the product exact through an FMA */
+                const float2 v = vtile[static_cast<std::size_t>(s) * grid_tile + grid];
+                const float p0 = orbs0buf[orbs0_off + static_cast<std::size_t>(nolg_Nc[pt]) * NO0 + orbital];
+                const float hi = __fmul_rn(v.x, p0);
+                const float lo = __fadd_rn(__fmaf_rn(v.x, p0, -hi), __fmul_rn(v.y, p0));
+                weighted0d[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] = make_float2(hi, lo);
+                continue;
+            }
             const double w =
                 (grid_vol * vpotgrid[static_cast<std::size_t>(s) * vpot_len +
                                      static_cast<std::size_t>(nolg_MN[pt])]) *
@@ -110,11 +140,6 @@ __global__ void matrix_elements_kernel(
                     orbs0_off + static_cast<std::size_t>(nolg_Nc[pt]) * NO0 + orbital]);
             if (MODE == 1) {
                 weighted0f[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] = static_cast<float>(w);
-            }
-            else if (MODE == 2) {
-                const float hi = static_cast<float>(w);
-                const float lo = static_cast<float>(w - static_cast<double>(hi));
-                weighted0d[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] = make_float2(hi, lo);
             }
             else {
                 weighted0[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] = w;
@@ -137,7 +162,7 @@ __global__ void matrix_elements_kernel(
                 }
             }
             else if (MODE == 2) {
-                float ts = 0.0f, tc = 0.0f;
+                float ts = 0.0f, tc = 0.0f, qs = 0.0f;
                 for (int grid = 0; grid < count; grid++) {
                     const float2 w = weighted0d[(static_cast<std::size_t>(spin) * grid_tile + grid) * max_no + i];
                     const float t1 = tile1[static_cast<std::size_t>(grid) * max_no + j];
@@ -145,9 +170,9 @@ __global__ void matrix_elements_kernel(
                     const float e = __fmaf_rn(w.x, t1, -p);        /* p + e = w.x * t1 exactly */
                     const float q = __fmaf_rn(w.y, t1, e);         /* the small part */
                     neumaier_add(ts, tc, p);
-                    neumaier_add(ts, tc, q);
+                    qs = __fadd_rn(qs, q);
                 }
-                sum += static_cast<double>(ts) + static_cast<double>(tc);
+                sum += static_cast<double>(ts) + static_cast<double>(tc) + static_cast<double>(qs);
             }
             else {
                 for (int grid = 0; grid < count; grid++) {
@@ -216,7 +241,8 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
 
     auto shared_size = [=](int tile) {
         return static_cast<std::size_t>(tile) * static_cast<std::size_t>(max_no) *
-               (static_cast<std::size_t>(spin_count) * (mode == 1 ? sizeof(float) : sizeof(double)) + sizeof(float));
+               (static_cast<std::size_t>(spin_count) * (mode == 1 ? sizeof(float) : sizeof(double)) + sizeof(float)) +
+               (mode == 2 ? static_cast<std::size_t>(tile) * static_cast<std::size_t>(spin_count) * sizeof(float2) : 0);
     };
 
     while (1 < grid_tile && static_cast<std::size_t>(max_shared) < shared_size(grid_tile)) grid_tile /= 2;

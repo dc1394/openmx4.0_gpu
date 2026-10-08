@@ -32,6 +32,8 @@ typedef struct {
   const double *rv, *rwf, *atv;
   const size_t *rvo, *rwb;
   const int *spm, *spx, *spb;
+  const float *rwd, *mcd, *spl; /* double-float tables: radial (hi, lo), per-mesh spline constants, log-mesh (x0, dx) */
+  int eval_df;          /* the tiles are evaluated in double-float (OPENMX_ORBS_EVAL_PRECISION) */
   int ng23, ng3;
   double g[3][3];
   double org[3];
@@ -41,6 +43,7 @@ int SOG_Device_Prepare(void);
 void SOG_Device_Release(void);
 const SOG_DeviceTables *SOG_Device_Tables(void);
 size_t SOG_Device_Bytes(void);
+const char *SOG_Device_EvalPrecisionName(void);
 void SOG_Device_EvalPairTiles(int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
                               const size_t *nolg_off, const size_t *out_off, const size_t *gla_off,
                               const int *nolg_Nc, const int *gla, const int *cla, float *out);

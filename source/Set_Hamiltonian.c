@@ -3096,8 +3096,9 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
                                                                  : last_workspace - workspace_bytes;
         if (last_nonresident != nonresident_ranks || last_workspace / 16 < drift) {
             printf("<Set_Hamiltonian> GPU on-the-fly orbital tiles: %d rank(s) without resident tables, "
-                   "%.1f MiB workspace/rank on device %d\n",
-                   nonresident_ranks, (double)workspace_bytes / (1024.0 * 1024.0), plan->cuda_device);
+                   "%.1f MiB workspace/rank on device %d, %s evaluation\n",
+                   nonresident_ranks, (double)workspace_bytes / (1024.0 * 1024.0), plan->cuda_device,
+                   SOG_Device_EvalPrecisionName());
             fflush(stdout);
             last_workspace = workspace_bytes;
             last_nonresident = nonresident_ranks;
@@ -3395,8 +3396,13 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, co
 
     if (mode == 2) {
         /* double-float: the density matrix as hi (d_dmf) + lo (d_dml) floats,
-           every product exact through an FMA, the sum over j compensated
-           (Neumaier), the sum over i in FP64 */
+           every product exact through an FMA, the hi products of a row
+           summed with Neumaier's compensation and the lo products plainly
+           (they are 2^-24 smaller), the rows accumulated over i as a
+           float pair (hi + lo, TwoSum); the only FP64 operation per point
+           and spin is the atomic add of the pair (a GeForce runs FP64 at
+           1/64 of the FP32 rate: the former FP64 row accumulation cost as
+           much as the FP32 products) */
 #pragma acc parallel loop gang deviceptr(d_NO0, d_NO1, d_NOLG, d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, \
                                         d_out_base, d_Nc, d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden)
         for (p = 0; p < pair_count; p++) {
@@ -3410,47 +3416,55 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, co
                 const int Nc = d_Nc[noff + (size_t)k];
                 const float *phi1 = d_orbs1 + o1 + (size_t)k * (size_t)NO1;
                 const float *phi0 = d_orbs0 + o0 + (size_t)Nc * (size_t)NO0;
-                double e0 = 0.0, e1 = 0.0, e2 = 0.0, e3 = 0.0;
+                float e0h = 0.0f, e0l = 0.0f, e1h = 0.0f, e1l = 0.0f, e2h = 0.0f, e2l = 0.0f, e3h = 0.0f, e3l = 0.0f;
                 int ii, jj, sp;
 
                 for (ii = 0; ii < NO0; ii++) {
-                    const double f0 = (double)phi0[ii];
+                    const float f0 = phi0[ii];
                     for (sp = 0; sp < spin_count; sp++) {
                         const float *hi = d_dmf + hoff + (size_t)sp * mat + (size_t)ii * (size_t)NO1;
                         const float *lo = d_dml + hoff + (size_t)sp * mat + (size_t)ii * (size_t)NO1;
-                        float ts = 0.0f, tc = 0.0f;
-                        double t;
+                        float ts = 0.0f, tc = 0.0f, qs = 0.0f;
+                        float ph, pl, eh, el, su, v;
 
                         for (jj = 0; jj < NO1; jj++) {
                             const float f = phi1[jj];
                             const float pr = f * hi[jj];
                             const float er = fmaf(f, hi[jj], -pr);
                             const float q = fmaf(f, lo[jj], er);
-                            float u = ts + pr;
+                            const float u = ts + pr;
                             if (fabsf(ts) >= fabsf(pr)) tc += (ts - u) + pr; else tc += (pr - u) + ts;
                             ts = u;
-                            u = ts + q;
-                            if (fabsf(ts) >= fabsf(q)) tc += (ts - u) + q; else tc += (q - u) + ts;
-                            ts = u;
+                            qs += q;
                         }
-                        t = (double)ts + (double)tc;
-                        if (sp == 0) e0 += f0 * t;
-                        else if (sp == 1) e1 += f0 * t;
-                        else if (sp == 2) e2 += f0 * t;
-                        else e3 += f0 * t;
+                        /* f0 * (ts + tc + qs) as (ph, pl), added to the spin's pair by TwoSum */
+                        ph = f0 * ts;
+                        pl = fmaf(f0, ts, -ph) + f0 * (tc + qs);
+                        if (sp == 0) { eh = e0h; el = e0l; }
+                        else if (sp == 1) { eh = e1h; el = e1l; }
+                        else if (sp == 2) { eh = e2h; el = e2l; }
+                        else { eh = e3h; el = e3l; }
+                        su = eh + ph;
+                        v = su - eh;
+                        el += ((eh - (su - v)) + (ph - v)) + pl;
+                        eh = su;
+                        if (sp == 0) { e0h = eh; e0l = el; }
+                        else if (sp == 1) { e1h = eh; e1l = el; }
+                        else if (sp == 2) { e2h = eh; e2l = el; }
+                        else { e3h = eh; e3l = el; }
                     }
                 }
 #pragma acc atomic update
-                d_tmpden[obase + (size_t)Nc] += e0;
+                d_tmpden[obase + (size_t)Nc] += (double)e0h + (double)e0l;
                 if (spin_count >= 2) {
 #pragma acc atomic update
-                    d_tmpden[output_count + obase + (size_t)Nc] += e1;
+                    d_tmpden[output_count + obase + (size_t)Nc] += (double)e1h + (double)e1l;
                 }
                 if (spin_count == 4) {
 #pragma acc atomic update
-                    d_tmpden[2 * output_count + obase + (size_t)Nc] += e2;
+                    d_tmpden[2 * output_count + obase + (size_t)Nc] += (double)e2h + (double)e2l;
 #pragma acc atomic update
-                    d_tmpden[3 * output_count + obase + (size_t)Nc] += e3;
+                    d_tmpden[3 * output_count + obase + (size_t)Nc] += (double)e3h + (double)e3l;
                 }
             }
         }
