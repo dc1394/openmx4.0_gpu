@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "grid_precision.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "tran_prototypes.h"
@@ -605,6 +606,14 @@ double DFT(int MD_iter, int Cnt_Now)
 
     SCF_iter++;
     LSCF_iter++;
+
+    /* the precision stage of the grid integrals of this step
+       (grid_precision.h): FP32 while the previous step's residual is large */
+    Grid_Precision_BeginStep(SCF_iter, sqrt(fabs(NormRD[0])), myid0, level_stdout);
+    if (Grid_Precision_TakeHistoryReset()){
+      int shift = LSCF_iter - Pulay_SCF + 2;
+      if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
+    }
 
     /*****************************************************
                          print stdout
@@ -1381,6 +1390,10 @@ double DFT(int MD_iter, int Cnt_Now)
        cluster solver: an SCF that stops on a refined step has the step's
        Hamiltonian solved once more in FP64, and the density matrices, the
        band energy and the chemical potential recomputed from the vectors */
+    /* an SCF cannot end on a step whose grid integrals were summed in FP32:
+       the stage goes to FP64 and the SCF goes on */
+    po = Grid_Precision_StopCheck(po, myid0, level_stdout);
+
     /* a stop on a refined FP32 step also needs the residual norm of a
        converged FP64 run: the test on dUele alone can fire on a coincidence
        (RTX 5080, sidia333_col_cluster, 2026-10-07: dUele 7e-12 at step 15
@@ -1944,6 +1957,7 @@ double DFT(int MD_iter, int Cnt_Now)
      the forces (and the next cycle) start with the device memory free */
   if (Solver==3 && SpinP_switch<=1) Band_DFT_Col_RefineEndCycle();
   if (Solver==3 && SpinP_switch==3) Band_DFT_NonCol_RefineEndCycle();
+  Grid_Precision_EndCycle();
 
   /*********************************************************************
    After achieving the SCF, the diagonalization with PAOs is performed

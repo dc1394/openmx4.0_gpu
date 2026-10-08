@@ -14,11 +14,13 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <string.h>
 #include "openmx_common.h"
 #include "mpi.h"
 #include <omp.h>
 #include <openacc.h>
 #include "set_cuda_default_device_from_local_rank.h"
+#include "orbs_grid_gpu.h"
 
 /***********************************************************************
    GPU evaluation of the primitive (Cnt_kind==0) basis orbitals.
@@ -36,15 +38,7 @@
 #define SOG_L0MAX  3
 #define SOG_MULMAX 8
 
-typedef struct {
-  int wan;              /* species of the evaluated atom */
-  int no;               /* orbitals per grid point */
-  int pt0;              /* first flat point index of this pair */
-  int pad;
-  size_t out;           /* first output slot in the chi buffer */
-  double gx, gy, gz;    /* Gxyz of the evaluated atom */
-  double ax, ay, az;    /* atv[Rnh]; zero for the part-1 self evaluation */
-} SOG_GpuPair;
+/* SOG_GpuPair: orbs_grid_gpu.h */
 
 static int SOG_env_flag(const char *name, int default_value)
 {
@@ -103,50 +97,35 @@ static void *SOG_arena_try(size_t bytes)
   return arena;
 }
 
-/* One launch evaluates every grid point of one atom (part 1:
-   single_pair && identity_idx, pairs[0] describes the atom itself) or
-   every overlap point of all remote neighbours of one atom (part 2).
-   The body mirrors the inlined Get_Orbitals of the host loops below;
-   keep the two in sync. */
-static void SOG_gpu_eval(int npts, int identity_idx, int single_pair,
-                         const int *nog, const int *ppr, const SOG_GpuPair *pairs,
-                         const int *gla, const int *cla, const double *atvf,
-                         const double *rv_all, const double *rwf_all,
-                         const size_t *rv_off, const size_t *rwf_base,
-                         const int *sp_mesh, const int *sp_maxl, const int *sp_nb,
-                         int ng23, int ng3,
-                         double g11, double g12, double g13,
-                         double g21, double g22, double g23,
-                         double g31, double g32, double g33,
-                         double org1, double org2, double org3,
-                         float *chi)
+/* The orbitals of species wan at the grid point (GNc, cell GRc) about the
+   atom at (gx, gy, gz) shifted by (ax, ay, az): a verbatim transcription
+   of the inlined Get_Orbitals of the host loops below (keep the two in
+   sync).  Shared by the table construction and the on-the-fly tiles of
+   the grid integrals (SOG_Device_* below). */
+#pragma acc routine seq
+static void SOG_point_eval(int wan, int no, double gx, double gy, double gz,
+                           double ax, double ay, double az, int GNc, int GRc,
+                           const double *atvf, const double *rv_all, const double *rwf_all,
+                           const size_t *rv_off, const size_t *rwf_base,
+                           const int *sp_mesh, const int *sp_maxl, const int *sp_nb,
+                           int ng23, int ng3,
+                           double g11, double g12, double g13,
+                           double g21, double g22, double g23,
+                           double g31, double g32, double g33,
+                           double org1, double org2, double org3,
+                           float *out)
 {
-  int ip;
-
-#pragma acc parallel loop gang vector vector_length(128) \
-  deviceptr(nog, ppr, pairs, gla, cla, atvf, rv_all, rwf_all, rv_off, rwf_base, \
-            sp_mesh, sp_maxl, sp_nb, chi)
-  for (ip = 0; ip < npts; ip++) {
-
-    const int pair = (single_pair ? 0 : ppr[ip]);
-    const SOG_GpuPair pr = pairs[pair];
-    const int wan = pr.wan;
-    const int Nc = (identity_idx ? ip : nog[ip]);
-    const int GNc = gla[Nc];
-    const int GRc = cla[Nc];
-    float *out = chi + pr.out + (size_t)(ip - pr.pt0) * (size_t)pr.no;
-
     /* Get_Grid_XYZ */
     const int n1 = GNc / ng23;
     const int n2 = (GNc - n1 * ng23) / ng3;
     const int n3 = GNc - n1 * ng23 - n2 * ng3;
 
     const double x = ((double)n1 * g11 + (double)n2 * g21 + (double)n3 * g31 + org1)
-                     + atvf[3 * (size_t)GRc + 0] - pr.gx - pr.ax;
+                     + atvf[3 * (size_t)GRc + 0] - gx - ax;
     const double y = ((double)n1 * g12 + (double)n2 * g22 + (double)n3 * g32 + org2)
-                     + atvf[3 * (size_t)GRc + 1] - pr.gy - pr.ay;
+                     + atvf[3 * (size_t)GRc + 1] - gy - ay;
     const double z = ((double)n1 * g13 + (double)n2 * g23 + (double)n3 * g33 + org3)
-                     + atvf[3 * (size_t)GRc + 2] - pr.gz - pr.az;
+                     + atvf[3 * (size_t)GRc + 2] - gz - az;
 
     const int mesh = sp_mesh[wan];
     const int maxl = sp_maxl[wan];
@@ -379,11 +358,40 @@ static void SOG_gpu_eval(int npts, int identity_idx, int single_pair,
       }
     }
     else {
-      for (i1 = 0; i1 < pr.no; i1++) out[i1] = 0.0f;
+      for (i1 = 0; i1 < no; i1++) out[i1] = 0.0f;
     }
-  }
 }
 
+/* One launch evaluates every grid point of one atom (part 1:
+   single_pair && identity_idx, pairs[0] describes the atom itself) or
+   every overlap point of all remote neighbours of one atom (part 2). */
+static void SOG_gpu_eval(int npts, int identity_idx, int single_pair,
+                         const int *nog, const int *ppr, const SOG_GpuPair *pairs,
+                         const int *gla, const int *cla, const double *atvf,
+                         const double *rv_all, const double *rwf_all,
+                         const size_t *rv_off, const size_t *rwf_base,
+                         const int *sp_mesh, const int *sp_maxl, const int *sp_nb,
+                         int ng23, int ng3,
+                         double g11, double g12, double g13,
+                         double g21, double g22, double g23,
+                         double g31, double g32, double g33,
+                         double org1, double org2, double org3,
+                         float *chi)
+{
+  int ip;
+#pragma acc parallel loop gang vector vector_length(128) \
+  deviceptr(nog, ppr, pairs, gla, cla, atvf, rv_all, rwf_all, rv_off, rwf_base, \
+            sp_mesh, sp_maxl, sp_nb, chi)
+  for (ip = 0; ip < npts; ip++) {
+    const int pair = (single_pair ? 0 : ppr[ip]);
+    const SOG_GpuPair pr = pairs[pair];
+    const int Nc = (identity_idx ? ip : nog[ip]);
+    float *out = chi + pr.out + (size_t)(ip - pr.pt0) * (size_t)pr.no;
+    SOG_point_eval(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az, gla[Nc], cla[Nc],
+                   atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
+                   ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3, out);
+  }
+}
 /* returns 1 when the whole update ran on the device; 0 keeps the host path */
 static int Set_Orbitals_Grid_GPU(void)
 {
@@ -717,8 +725,201 @@ host_fallback:
 
 
 
+
+/* ---------------------------------------------------------------------
+   On-the-fly orbital tiles for the grid integrals (orbs_grid_gpu.h): the
+   species' PAO tables, the cell translations and the grid frame stay on
+   the device; Set_Hamiltonian evaluates the orbitals of each batch of
+   atom pairs from them instead of holding the multi-GiB tables.
+   --------------------------------------------------------------------- */
+static SOG_DeviceTables SOG_dev = {0};
+
+void SOG_Device_Release(void)
+{
+  if (SOG_dev.arena != NULL) {
+    acc_free(SOG_dev.arena);
+    if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
+  }
+  memset(&SOG_dev, 0, sizeof(SOG_dev));
+}
+
+int SOG_Device_Prepare(void)
+{
+  int w, L0, Mul0, i;
+  size_t rv_cnt = 0, rwf_cnt = 0, atv_rows, r, pos = 0;
+  size_t *rv_off_h, *rwf_base_h;
+  int *sp_mesh_h, *sp_maxl_h, *sp_nb_h;
+  double *pao_rv, *pao_rwf, *atv_flat;
+  size_t o_rv, o_rwf, o_rvo, o_rwb, o_spm, o_spx, o_spb, o_atv;
+  unsigned char *arena;
+
+  if (SOG_dev.ready) return 1;
+  if (SOG_dev.unavailable) return 0;
+  if (!SOG_gpu_eligible(0)) { SOG_dev.unavailable = 1; return 0; }
+
+  rv_off_h = (size_t*)malloc(sizeof(size_t) * (size_t)(SpeciesNum + 1));
+  rwf_base_h = (size_t*)malloc(sizeof(size_t) * (size_t)(SpeciesNum + 1));
+  sp_mesh_h = (int*)malloc(sizeof(int) * (size_t)SpeciesNum);
+  sp_maxl_h = (int*)malloc(sizeof(int) * (size_t)SpeciesNum);
+  sp_nb_h = (int*)malloc(sizeof(int) * (size_t)SpeciesNum * (SOG_L0MAX + 1));
+  for (w = 0; w < SpeciesNum; w++) {
+    rv_off_h[w] = rv_cnt;
+    rwf_base_h[w] = rwf_cnt;
+    sp_mesh_h[w] = Spe_Num_Mesh_PAO[w];
+    sp_maxl_h[w] = Spe_MaxL_Basis[w];
+    for (L0 = 0; L0 <= SOG_L0MAX; L0++) {
+      int nb = (L0 <= Spe_MaxL_Basis[w] ? Spe_Num_Basis[w][L0] : 0);
+      sp_nb_h[w * (SOG_L0MAX + 1) + L0] = nb;
+      rwf_cnt += (size_t)nb * (size_t)Spe_Num_Mesh_PAO[w];
+    }
+    rv_cnt += (size_t)Spe_Num_Mesh_PAO[w];
+  }
+  rv_off_h[SpeciesNum] = rv_cnt;
+  rwf_base_h[SpeciesNum] = rwf_cnt;
+  pao_rv = (double*)malloc(sizeof(double) * (rv_cnt == 0 ? 1 : rv_cnt));
+  pao_rwf = (double*)malloc(sizeof(double) * (rwf_cnt == 0 ? 1 : rwf_cnt));
+  atv_rows = (size_t)TCpyCell + 1;
+  atv_flat = (double*)malloc(sizeof(double) * atv_rows * 3);
+  for (w = 0; w < SpeciesNum; w++) {
+    size_t rpos = rwf_base_h[w];
+    for (i = 0; i < Spe_Num_Mesh_PAO[w]; i++) pao_rv[rv_off_h[w] + (size_t)i] = Spe_PAO_RV[w][i];
+    for (L0 = 0; L0 <= Spe_MaxL_Basis[w]; L0++)
+      for (Mul0 = 0; Mul0 < Spe_Num_Basis[w][L0]; Mul0++)
+        for (i = 0; i < Spe_Num_Mesh_PAO[w]; i++) pao_rwf[rpos++] = Spe_PAO_RWF[w][L0][Mul0][i];
+  }
+  for (r = 0; r < atv_rows; r++) {
+    atv_flat[3 * r + 0] = atv[r][1];
+    atv_flat[3 * r + 1] = atv[r][2];
+    atv_flat[3 * r + 2] = atv[r][3];
+  }
+  o_rv = SOG_arena_off(&pos, sizeof(double) * (rv_cnt == 0 ? 1 : rv_cnt));
+  o_rwf = SOG_arena_off(&pos, sizeof(double) * (rwf_cnt == 0 ? 1 : rwf_cnt));
+  o_rvo = SOG_arena_off(&pos, sizeof(size_t) * (size_t)(SpeciesNum + 1));
+  o_rwb = SOG_arena_off(&pos, sizeof(size_t) * (size_t)(SpeciesNum + 1));
+  o_spm = SOG_arena_off(&pos, sizeof(int) * (size_t)SpeciesNum);
+  o_spx = SOG_arena_off(&pos, sizeof(int) * (size_t)SpeciesNum);
+  o_spb = SOG_arena_off(&pos, sizeof(int) * (size_t)SpeciesNum * (SOG_L0MAX + 1));
+  o_atv = SOG_arena_off(&pos, sizeof(double) * atv_rows * 3);
+  arena = (unsigned char*)SOG_arena_try(pos);
+  if (arena == NULL) {
+    free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
+    free(pao_rv); free(pao_rwf); free(atv_flat);
+    return 0;
+  }
+  acc_memcpy_to_device(arena + o_rv, pao_rv, sizeof(double) * (rv_cnt == 0 ? 1 : rv_cnt));
+  acc_memcpy_to_device(arena + o_rwf, pao_rwf, sizeof(double) * (rwf_cnt == 0 ? 1 : rwf_cnt));
+  acc_memcpy_to_device(arena + o_rvo, rv_off_h, sizeof(size_t) * (size_t)(SpeciesNum + 1));
+  acc_memcpy_to_device(arena + o_rwb, rwf_base_h, sizeof(size_t) * (size_t)(SpeciesNum + 1));
+  acc_memcpy_to_device(arena + o_spm, sp_mesh_h, sizeof(int) * (size_t)SpeciesNum);
+  acc_memcpy_to_device(arena + o_spx, sp_maxl_h, sizeof(int) * (size_t)SpeciesNum);
+  acc_memcpy_to_device(arena + o_spb, sp_nb_h, sizeof(int) * (size_t)SpeciesNum * (SOG_L0MAX + 1));
+  acc_memcpy_to_device(arena + o_atv, atv_flat, sizeof(double) * atv_rows * 3);
+  SOG_dev.arena = arena;
+  SOG_dev.bytes = pos;
+  SOG_dev.rv = (const double*)(const void*)(arena + o_rv);
+  SOG_dev.rwf = (const double*)(const void*)(arena + o_rwf);
+  SOG_dev.rvo = (const size_t*)(const void*)(arena + o_rvo);
+  SOG_dev.rwb = (const size_t*)(const void*)(arena + o_rwb);
+  SOG_dev.spm = (const int*)(const void*)(arena + o_spm);
+  SOG_dev.spx = (const int*)(const void*)(arena + o_spx);
+  SOG_dev.spb = (const int*)(const void*)(arena + o_spb);
+  SOG_dev.atv = (const double*)(const void*)(arena + o_atv);
+  SOG_dev.ng23 = Ngrid2 * Ngrid3;
+  SOG_dev.ng3 = Ngrid3;
+  for (i = 0; i < 3; i++) {
+    SOG_dev.g[i][0] = gtv[i + 1][1];
+    SOG_dev.g[i][1] = gtv[i + 1][2];
+    SOG_dev.g[i][2] = gtv[i + 1][3];
+    SOG_dev.org[i] = Grid_Origin[i + 1];
+  }
+  SOG_dev.ready = 1;
+  free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
+  free(pao_rv); free(pao_rwf); free(atv_flat);
+  return 1;
+}
+
+const SOG_DeviceTables *SOG_Device_Tables(void)
+{
+  return SOG_dev.ready ? &SOG_dev : NULL;
+}
+
+size_t SOG_Device_Bytes(void)
+{
+  return SOG_dev.ready ? SOG_dev.bytes : 0;
+}
+
+/* The orbitals of the neighbour of every pair at the pair's overlap points:
+   pair p has NOLG[p] points, the k-th at the central atom's sphere index
+   nolg_Nc[nolg_off[p] + k] (its global grid index and cell in gla / cla at
+   gla_off[p] + that index), and writes no[p] values per point from
+   out[out_off[p] + k * no[p]]. */
+void SOG_Device_EvalPairTiles(int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
+                              const size_t *nolg_off, const size_t *out_off, const size_t *gla_off,
+                              const int *nolg_Nc, const int *gla, const int *cla, float *out)
+{
+  const SOG_DeviceTables *t = &SOG_dev;
+  const double *atvf = t->atv, *rv_all = t->rv, *rwf_all = t->rwf;
+  const size_t *rv_off = t->rvo, *rwf_base = t->rwb;
+  const int *sp_mesh = t->spm, *sp_maxl = t->spx, *sp_nb = t->spb;
+  const int ng23 = t->ng23, ng3 = t->ng3;
+  const double g11 = t->g[0][0], g12 = t->g[0][1], g13 = t->g[0][2];
+  const double g21 = t->g[1][0], g22 = t->g[1][1], g23 = t->g[1][2];
+  const double g31 = t->g[2][0], g32 = t->g[2][1], g33 = t->g[2][2];
+  const double org1 = t->org[0], org2 = t->org[1], org3 = t->org[2];
+  int p;
+
+  if (!t->ready || pair_count <= 0) return;
+#pragma acc parallel loop gang \
+  deviceptr(pairs, pair_NOLG, nolg_off, out_off, gla_off, nolg_Nc, gla, cla, out, \
+            atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
+  for (p = 0; p < pair_count; p++) {
+    const SOG_GpuPair pr = pairs[p];
+    const int nolg = pair_NOLG[p];
+    const size_t noff = nolg_off[p], ooff = out_off[p], goff = gla_off[p];
+    int k;
+#pragma acc loop vector
+    for (k = 0; k < nolg; k++) {
+      const int Nc = nolg_Nc[noff + (size_t)k];
+      SOG_point_eval(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az,
+                     gla[goff + (size_t)Nc], cla[goff + (size_t)Nc],
+                     atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
+                     ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
+                     out + ooff + (size_t)k * (size_t)pr.no);
+    }
+  }
+}
+
+/* The orbitals of one atom (pair: its species, orbital count and position,
+   no shift) at all npts points of its sphere (gla / cla), no values per
+   point from out */
+void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair, int npts, const int *gla, const int *cla, float *out)
+{
+  const SOG_DeviceTables *t = &SOG_dev;
+  const double *atvf = t->atv, *rv_all = t->rv, *rwf_all = t->rwf;
+  const size_t *rv_off = t->rvo, *rwf_base = t->rwb;
+  const int *sp_mesh = t->spm, *sp_maxl = t->spx, *sp_nb = t->spb;
+  const int ng23 = t->ng23, ng3 = t->ng3;
+  const double g11 = t->g[0][0], g12 = t->g[0][1], g13 = t->g[0][2];
+  const double g21 = t->g[1][0], g22 = t->g[1][1], g23 = t->g[1][2];
+  const double g31 = t->g[2][0], g32 = t->g[2][1], g33 = t->g[2][2];
+  const double org1 = t->org[0], org2 = t->org[1], org3 = t->org[2];
+  const SOG_GpuPair pr = *pair;
+  int ip;
+
+  if (!t->ready || npts <= 0) return;
+#pragma acc parallel loop gang vector vector_length(128) \
+  deviceptr(gla, cla, out, atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
+  for (ip = 0; ip < npts; ip++) {
+    SOG_point_eval(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, 0.0, 0.0, 0.0, gla[ip], cla[ip],
+                   atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
+                   ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
+                   out + (size_t)ip * (size_t)pr.no);
+  }
+}
+
 double Set_Orbitals_Grid(int Cnt_kind)
 {
+  SOG_Device_Release();   /* the grid frame may have changed */
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
   long int k,Nc;

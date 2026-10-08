@@ -11,6 +11,26 @@ namespace {
 constexpr int kThreads = 256;
 constexpr int kPreferredGridTile = 32;
 
+/* FP32: the weighted orbital tile is float, the products are FP32 and the
+   sum is compensated (Neumaier), so the result is within a few FP32 ulps
+   of the exact sum of the FP32 products; the FP64 base of the block is
+   kept apart.  __fmul_rn / __fadd_rn keep the compiler from fusing the
+   product into the sum, which the compensation relies on. */
+/* MODE 2 (double-float): the weighted orbital is split into two floats
+   (hi + lo = the FP64 value to 1e-14), each product with the FP32 orbital
+   is formed exactly (TwoProd through FMA) and the terms of a tile are
+   summed with Neumaier's compensation; the tile's (sum, compensation) go
+   into the FP64 accumulator.  The error per tile is of order 32 x eps32^2,
+   so the result is FP64-grade at FP32 cost. */
+__device__ __forceinline__ void neumaier_add(float &s, float &c, float t)
+{
+    const float u = __fadd_rn(s, t);
+    if (fabsf(s) >= fabsf(t)) c = __fadd_rn(c, __fadd_rn(__fadd_rn(s, -u), t));
+    else c = __fadd_rn(c, __fadd_rn(__fadd_rn(t, -u), s));
+    s = u;
+}
+
+template <int MODE>
 __global__ void matrix_elements_kernel(
     int pair_count,
     int spin_count,
@@ -43,16 +63,21 @@ __global__ void matrix_elements_kernel(
     if (output_count <= static_cast<std::size_t>(blockIdx.y) * blockDim.x) return;
 
     extern __shared__ unsigned char shared_bytes[];
+    const std::size_t weighted_count =
+        static_cast<std::size_t>(spin_count) * static_cast<std::size_t>(grid_tile) * static_cast<std::size_t>(max_no);
     double *weighted0 = reinterpret_cast<double *>(shared_bytes);
-    float *tile1 = reinterpret_cast<float *>(
-        weighted0 + static_cast<std::size_t>(spin_count) * static_cast<std::size_t>(grid_tile) *
-                    static_cast<std::size_t>(max_no));
+    float *weighted0f = reinterpret_cast<float *>(shared_bytes);
+    float2 *weighted0d = reinterpret_cast<float2 *>(shared_bytes);
+    float *tile1 = (MODE == 1) ? (weighted0f + weighted_count)
+                 : (MODE == 2) ? reinterpret_cast<float *>(weighted0d + weighted_count)
+                 : reinterpret_cast<float *>(weighted0 + weighted_count);
 
     const bool active = e < output_count;
     int spin = 0;
     int i = 0;
     int j = 0;
     double sum = 0.0;
+    float sumf = 0.0f, compf = 0.0f;
     const std::size_t h_off = pair_h_offset[pair];
     const std::size_t nolg_off = pair_nolg_offset[pair];
     const std::size_t orbs0_off = pair_orbs0_offset[pair];
@@ -78,11 +103,22 @@ __global__ void matrix_elements_kernel(
             const int grid = spin_index / NO0;
             const int orbital = spin_index - grid * NO0;
             const std::size_t pt = nolg_off + static_cast<std::size_t>(base + grid);
-            weighted0[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] =
+            const double w =
                 (grid_vol * vpotgrid[static_cast<std::size_t>(s) * vpot_len +
                                      static_cast<std::size_t>(nolg_MN[pt])]) *
                 static_cast<double>(orbs0buf[
                     orbs0_off + static_cast<std::size_t>(nolg_Nc[pt]) * NO0 + orbital]);
+            if (MODE == 1) {
+                weighted0f[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] = static_cast<float>(w);
+            }
+            else if (MODE == 2) {
+                const float hi = static_cast<float>(w);
+                const float lo = static_cast<float>(w - static_cast<double>(hi));
+                weighted0d[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] = make_float2(hi, lo);
+            }
+            else {
+                weighted0[(static_cast<std::size_t>(s) * grid_tile + grid) * max_no + orbital] = w;
+            }
         }
         for (int index = static_cast<int>(threadIdx.x); index < tile1_count; index += blockDim.x) {
             const int grid = index / NO1;
@@ -93,15 +129,37 @@ __global__ void matrix_elements_kernel(
         __syncthreads();
 
         if (active) {
-            for (int grid = 0; grid < count; grid++) {
-                sum += weighted0[(static_cast<std::size_t>(spin) * grid_tile + grid) * max_no + i] *
-                       static_cast<double>(tile1[static_cast<std::size_t>(grid) * max_no + j]);
+            if (MODE == 1) {
+                for (int grid = 0; grid < count; grid++) {
+                    const float t = __fmul_rn(weighted0f[(static_cast<std::size_t>(spin) * grid_tile + grid) * max_no + i],
+                                              tile1[static_cast<std::size_t>(grid) * max_no + j]);
+                    neumaier_add(sumf, compf, t);
+                }
+            }
+            else if (MODE == 2) {
+                float ts = 0.0f, tc = 0.0f;
+                for (int grid = 0; grid < count; grid++) {
+                    const float2 w = weighted0d[(static_cast<std::size_t>(spin) * grid_tile + grid) * max_no + i];
+                    const float t1 = tile1[static_cast<std::size_t>(grid) * max_no + j];
+                    const float p = __fmul_rn(w.x, t1);
+                    const float e = __fmaf_rn(w.x, t1, -p);        /* p + e = w.x * t1 exactly */
+                    const float q = __fmaf_rn(w.y, t1, e);         /* the small part */
+                    neumaier_add(ts, tc, p);
+                    neumaier_add(ts, tc, q);
+                }
+                sum += static_cast<double>(ts) + static_cast<double>(tc);
+            }
+            else {
+                for (int grid = 0; grid < count; grid++) {
+                    sum += weighted0[(static_cast<std::size_t>(spin) * grid_tile + grid) * max_no + i] *
+                           static_cast<double>(tile1[static_cast<std::size_t>(grid) * max_no + j]);
+                }
             }
         }
         __syncthreads();
     }
 
-    if (active) hbuf[h_off + e] = sum;
+    if (active) hbuf[h_off + e] = (MODE == 1) ? (sum + static_cast<double>(sumf) + static_cast<double>(compf)) : sum;
 }
 
 } // namespace
@@ -125,7 +183,8 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     const float *orbs0buf,
     const float *orbs1buf,
     const double *vpotgrid,
-    double *hbuf)
+    double *hbuf,
+    int mode)
 {
     int device = 0;
     int max_shared = 0;
@@ -157,7 +216,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
 
     auto shared_size = [=](int tile) {
         return static_cast<std::size_t>(tile) * static_cast<std::size_t>(max_no) *
-               (static_cast<std::size_t>(spin_count) * sizeof(double) + sizeof(float));
+               (static_cast<std::size_t>(spin_count) * (mode == 1 ? sizeof(float) : sizeof(double)) + sizeof(float));
     };
 
     while (1 < grid_tile && static_cast<std::size_t>(max_shared) < shared_size(grid_tile)) grid_tile /= 2;
@@ -166,10 +225,21 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     const dim3 block(kThreads, 1u, 1u);
     const dim3 grid(static_cast<unsigned>(pair_count),
                     static_cast<unsigned>((max_output_count + kThreads - 1) / kThreads), 1u);
-    matrix_elements_kernel<<<grid, block, shared_size(grid_tile)>>>(
-        pair_count, spin_count, vpot_len, grid_vol, max_no, grid_tile,
-        pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
-        pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
+    if (mode == 1)
+        matrix_elements_kernel<1><<<grid, block, shared_size(grid_tile)>>>(
+            pair_count, spin_count, vpot_len, grid_vol, max_no, grid_tile,
+            pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
+            pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
+    else if (mode == 2)
+        matrix_elements_kernel<2><<<grid, block, shared_size(grid_tile)>>>(
+            pair_count, spin_count, vpot_len, grid_vol, max_no, grid_tile,
+            pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
+            pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
+    else
+        matrix_elements_kernel<0><<<grid, block, shared_size(grid_tile)>>>(
+            pair_count, spin_count, vpot_len, grid_vol, max_no, grid_tile,
+            pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
+            pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
 
     cudaError_t status = cudaGetLastError();
     if (status == cudaSuccess) status = cudaDeviceSynchronize();
@@ -276,7 +346,7 @@ extern "C" int Set_Hamiltonian_Cuda_StreamRun(
     const int *nolg_MN, const int *nolg_Nc,
     const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
     const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
-    const float *orbs0buf, const float *orbs1buf, double *hbuf)
+    const float *orbs0buf, const float *orbs1buf, double *hbuf, int mode)
 {
     auto *work = static_cast<StreamWorkspace *>(opaque);
     if (!work || pair_count < 0) return 1;
@@ -297,7 +367,7 @@ extern "C" int Set_Hamiltonian_Cuda_StreamRun(
     if (status != cudaSuccess) return stream_status(status);
     const int result = Set_Hamiltonian_Cuda_MatrixElements(pair_count, spin_count, vpot_len,
         grid_vol, max_no, max_output_count, d_NO0, d_NO1, d_NOLG, d_MN, d_Nc,
-        d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_orbs0, d_orbs1, work->potential, d_h);
+        d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_orbs0, d_orbs1, work->potential, d_h, mode);
     if (result) return result;
     status = cudaMemcpy(hbuf, d_h, total_h * sizeof(double), cudaMemcpyDeviceToHost);
     return stream_status(status);
