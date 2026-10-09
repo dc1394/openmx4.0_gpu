@@ -19,7 +19,7 @@ extern "C" int Set_Hamiltonian_Cuda_StreamRun(
     std::size_t, std::size_t, std::size_t, std::size_t,
     const int *, const int *, const int *, const int *, const int *,
     const std::size_t *, const std::size_t *, const std::size_t *, const std::size_t *,
-    const float *, const float *, double *);
+    const float *, const float *, double *, int);
 
 namespace {
 
@@ -146,20 +146,20 @@ std::vector<long double> reference(const Batch &batch, const std::vector<double>
     return result;
 }
 
-int run(void *workspace, Batch &batch)
+int run(void *workspace, Batch &batch, int mode = 0)
 {
     return Set_Hamiltonian_Cuda_StreamRun(workspace, kPairs, batch.spins, kPotentialLength,
         kGridVolume, batch.max_no, batch.max_output, batch.h.size(), batch.mn.size(),
         batch.orbs0.size(), batch.orbs1.size(), batch.no0.data(), batch.no1.data(), batch.nolg.data(),
         batch.mn.data(), batch.nc.data(), batch.h_offset.data(), batch.nolg_offset.data(),
-        batch.orbs0_offset.data(), batch.orbs1_offset.data(), batch.orbs0.data(), batch.orbs1.data(), batch.h.data());
+        batch.orbs0_offset.data(), batch.orbs1_offset.data(), batch.orbs0.data(), batch.orbs1.data(), batch.h.data(), mode);
 }
 
-double verify(void *workspace, Batch &batch, const std::vector<double> &potential)
+double verify(void *workspace, Batch &batch, const std::vector<double> &potential, int mode = 0)
 {
     const auto initial = batch.h;
     const auto expected = reference(batch, potential);
-    if (run(workspace, batch) != 0) fail("valid batch failed");
+    if (run(workspace, batch, mode) != 0) fail("valid batch failed");
     double worst = 0;
     for (std::size_t i = 0; i < batch.h.size(); i++) {
         if (!batch.active[i]) {
@@ -202,16 +202,18 @@ int main()
     if (!workspace) fail("cannot create streaming workspace");
     double worst = 0;
     int cases = 0;
-    for (int spins : {1, 2, 4}) {
+    for (int mode : {0, 2}) {
+      for (int spins : {1, 2, 4}) {
         for (int seed = 0; seed < kPairs; seed++) {
             auto batch = make_batch(spins, seed);
-            worst = std::max(worst, verify(workspace, batch, potential));
+            worst = std::max(worst, verify(workspace, batch, potential, mode));
             cases++;
             // Reusing the same batch must add its contribution to the updated
             // H, not an arena's previous H or a freshly zeroed accumulator.
-            worst = std::max(worst, verify(workspace, batch, potential));
+            worst = std::max(worst, verify(workspace, batch, potential, mode));
             cases++;
         }
+    }
     }
     {
         auto oversized = make_batch(4, 3);
@@ -236,7 +238,7 @@ int main()
     Set_Hamiltonian_Cuda_StreamDestroy(nullptr);
     check(cudaDeviceSynchronize());
     check(cudaGetLastError());
-    std::printf("PASS: %d quadrature cases, spins 1/2/4, irregular orbitals/grids, arena reuse, "
+    std::printf("PASS: %d FP64/DF quadrature cases, spins 1/2/4, irregular orbitals/grids, arena reuse, "
                 "H accumulation/padding, 2 recoverable overflows; max scaled error %.3e\n", cases, worst);
     return 0;
 }

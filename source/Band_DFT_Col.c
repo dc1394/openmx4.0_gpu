@@ -4015,12 +4015,17 @@ diagonalize1:
 
     /* the refined eigensolver takes the one-k-point-per-rank path when every
        rank's buffers may stay on the device between its two halves: the
-       turns run concurrently, or as one group of the serialized schedule */
+       turns run concurrently, or as one group of the serialized schedule.
+       A single rank's spin loop re-enters BeginStep and clears the first
+       spin's pending/slot state; keep both spins on the FP64 path. */
     BandCol_RefineBeginStep(SCF_iter,
-                            use_gpusolver_dense && all_knum == 1 && ParDM_flag == 0 &&
+                            use_gpusolver_dense && !(SpinP_switch == 1 && numprocs0 == 1) &&
+                            all_knum == 1 && ParDM_flag == 0 &&
                             Num_Comm_World1 * T_knum <= gpu_turn_limit,
-                            use_gpusolver_dense && all_knum != 1 && ParDM_flag == 0,
-                            use_gpusolver_dense && all_knum == 1 && ParDM_flag == 0 &&
+                            use_gpusolver_dense && !(SpinP_switch == 1 && numprocs0 == 1) &&
+                            all_knum != 1 && ParDM_flag == 0,
+                            use_gpusolver_dense && !(SpinP_switch == 1 && numprocs0 == 1) &&
+                            all_knum == 1 && ParDM_flag == 0 &&
                             gpu_turn_limit < Num_Comm_World1 * T_knum);
     if (BandCol_refine.kdense || BandCol_refine.staged) BandCol_KRefEnsure(Num_Comm_World1 * T_knum, n);
 
@@ -4101,17 +4106,17 @@ diagonalize1:
                     dtime(&Stime);
 
                 size_t cache_slot = (size_t)spin * T_knum + kloop;
+                int refined_pass1 = BandCol_refine.kdense &&
+                    BandCol_KDenseRefinedPass1(n, MaxN, construct_on_device ? NULL : Hs, ko, (int)cache_slot);
                 dcomplex *host_panel = NULL;
-                if (k_evec_cache != NULL) {
+                if (k_evec_cache != NULL && !refined_pass1) {
                     size_t limit = BandCol_HostCacheLimit("OPENMX_BAND_COL_KCACHE_MB", 1024.0);
                     if (limit > k_cache_limit) limit = k_cache_limit;
                     if (k_cache_used <= limit && k_cache_bytes <= limit - k_cache_used)
                         host_panel = (dcomplex*)malloc(k_cache_bytes);
                 }
-                if (BandCol_refine.kdense &&
-                    BandCol_KDenseRefinedPass1(n, MaxN, construct_on_device ? NULL : Hs, ko, (int)cache_slot)) {
+                if (refined_pass1) {
                     /* the refined pass 2 recomputes the vectors from the kept basis */
-                    free(host_panel);
                 } else if (host_panel != NULL) {
                     dcomplex *evec_device = BandCol_GpuSolver_SolveHamiltonianImpl(
                         n, MaxN, construct_on_device ? NULL : Hs, ko, NULL, 1);

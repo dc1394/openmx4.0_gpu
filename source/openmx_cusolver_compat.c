@@ -269,25 +269,30 @@ static cusolverStatus_t openmx_solver_retry(cusolverDnHandle_t handle, cudaDataT
     void *copy = NULL;
     int copy_host = 0;
     cudaStream_t stream = 0;
-    const size_t abytes = (type == CUDA_C_64F ? sizeof(cuDoubleComplex) : sizeof(double)) *
-                          (size_t)lda * (size_t)n;
+    size_t abytes = 0;
 
     if (n > 0 && lda > 0 && info != NULL && openmx_solver_emulated(handle, type)) {
-        if (cusolverDnGetStream(handle, &stream) != CUSOLVER_STATUS_SUCCESS) stream = 0;
+        size_t const width = type == CUDA_C_64F ? sizeof(cuDoubleComplex) : sizeof(double);
+        if ((uint64_t)lda > SIZE_MAX / width ||
+            (uint64_t)n > SIZE_MAX / (width * (size_t)lda))
+            return CUSOLVER_STATUS_INVALID_VALUE;
+        abytes = width * (size_t)lda * (size_t)n;
+        st = cusolverDnGetStream(handle, &stream);
+        if (st != CUSOLVER_STATUS_SUCCESS) return st;
         if (cudaMalloc(&copy, abytes) == cudaSuccess) {
             if (cudaMemcpyAsync(copy, A, abytes, cudaMemcpyDeviceToDevice, stream) != cudaSuccess) {
                 (void)cudaFree(copy);
-                copy = NULL;
+                return CUSOLVER_STATUS_EXECUTION_FAILED;
             }
         }
         else {
             (void)cudaGetLastError();
             copy = malloc(abytes);
             copy_host = 1;
-            if (copy == NULL || cudaStreamSynchronize(stream) != cudaSuccess ||
-                cudaMemcpy(copy, A, abytes, cudaMemcpyDeviceToHost) != cudaSuccess) {
+            if (copy != NULL && (cudaStreamSynchronize(stream) != cudaSuccess ||
+                cudaMemcpy(copy, A, abytes, cudaMemcpyDeviceToHost) != cudaSuccess)) {
                 free(copy);
-                copy = NULL;
+                return CUSOLVER_STATUS_EXECUTION_FAILED;
             }
         }
     }
@@ -296,38 +301,54 @@ static cusolverStatus_t openmx_solver_retry(cusolverDnHandle_t handle, cudaDataT
         if (st == CUSOLVER_STATUS_SUCCESS) {
             int h_info = 0;
             const int forced = openmx_solver_retry_test();
-            if (cudaStreamSynchronize(stream) == cudaSuccess &&
-                cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost) == cudaSuccess &&
-                (h_info != 0 || forced)) {
-                cudaError_t ce;
-                cusolverStatus_t ms = CUSOLVER_STATUS_INTERNAL_ERROR;
+            if (cudaStreamSynchronize(stream) != cudaSuccess ||
+                cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost) != cudaSuccess) {
+                st = CUSOLVER_STATUS_EXECUTION_FAILED;
+            }
+            else if (h_info > 0 || (h_info == 0 && forced)) {
+                cusolverStatus_t restore_status;
                 fprintf(stderr, "OpenMX: cuSOLVER FP64 emulation %s (info=%d, n=%lld); "
                         "solving again in native FP64.\n",
-                        (h_info != 0) ? "did not converge" : "retry test", h_info, (long long)n);
+                        (h_info > 0) ? "did not converge" : "retry test", h_info, (long long)n);
                 fflush(stderr);
-                ce = cudaMemcpyAsync(A, copy, abytes,
-                                     copy_host ? cudaMemcpyHostToDevice : cudaMemcpyDeviceToDevice, stream);
-                if (ce == cudaSuccess) ms = cusolverDnSetMathMode(handle, CUSOLVER_DEFAULT_MATH);
-                if (ce == cudaSuccess && ms == CUSOLVER_STATUS_SUCCESS) {
-                    st = fn(ctx);
-                    (void)cusolverDnSetMathMode(handle, CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH);
-                    if (st == CUSOLVER_STATUS_SUCCESS && cudaStreamSynchronize(stream) == cudaSuccess &&
-                        cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost) == cudaSuccess) {
-                        if (h_info != 0) openmx_solver_report_matrix(copy, copy_host, type, lda, n, h_info);
-                        else fprintf(stderr, "OpenMX: the native FP64 solve succeeded (n=%lld).\n", (long long)n);
-                    }
-                    else {
-                        fprintf(stderr, "OpenMX: the native FP64 solve returned status %d.\n", (int)st);
-                    }
+                if (cudaMemcpyAsync(A, copy, abytes,
+                                    copy_host ? cudaMemcpyHostToDevice : cudaMemcpyDeviceToDevice,
+                                    stream) != cudaSuccess) {
+                    st = CUSOLVER_STATUS_EXECUTION_FAILED;
                 }
                 else {
-                    fprintf(stderr, "OpenMX: no retry possible (restore %d, math mode %d).\n", (int)ce, (int)ms);
+                    st = cusolverDnSetMathMode(handle, CUSOLVER_DEFAULT_MATH);
+                    if (st == CUSOLVER_STATUS_SUCCESS) {
+                        st = fn(ctx);
+                        /* Complete the solve and any host-backed restore before
+                           freeing its input or changing the handle's mode. */
+                        if (cudaStreamSynchronize(stream) != cudaSuccess)
+                            st = CUSOLVER_STATUS_EXECUTION_FAILED;
+                        if (st == CUSOLVER_STATUS_SUCCESS &&
+                            cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost) != cudaSuccess)
+                            st = CUSOLVER_STATUS_EXECUTION_FAILED;
+                        restore_status = cusolverDnSetMathMode(handle, CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH);
+                        if (st == CUSOLVER_STATUS_SUCCESS) st = restore_status;
+                        if (st == CUSOLVER_STATUS_SUCCESS) {
+                            if (h_info != 0) openmx_solver_report_matrix(copy, copy_host, type, lda, n, h_info);
+                            else fprintf(stderr, "OpenMX: the native FP64 solve succeeded (n=%lld).\n", (long long)n);
+                        }
+                    }
+                    else {
+                        /* The restore may still be queued even when changing
+                           the math mode failed; do not free a host copy yet. */
+                        if (cudaStreamSynchronize(stream) != cudaSuccess)
+                            st = CUSOLVER_STATUS_EXECUTION_FAILED;
+                    }
                 }
+                if (st != CUSOLVER_STATUS_SUCCESS)
+                    fprintf(stderr, "OpenMX: native FP64 retry failed (status %d).\n", (int)st);
                 fflush(stderr);
             }
         }
         if (copy_host) free(copy);
-        else (void)cudaFree(copy);
+        else if (cudaFree(copy) != cudaSuccess && st == CUSOLVER_STATUS_SUCCESS)
+            st = CUSOLVER_STATUS_EXECUTION_FAILED;
     }
 #else
     (void)handle; (void)type; (void)A; (void)lda; (void)n; (void)info;
@@ -337,15 +358,18 @@ static cusolverStatus_t openmx_solver_retry(cusolverDnHandle_t handle, cudaDataT
 }
 
 /* the larger of the emulated and native workspace requirements */
-static void openmx_solver_both_modes(cusolverDnHandle_t handle, cudaDataType type,
+static cusolverStatus_t openmx_solver_both_modes(cusolverDnHandle_t handle, cudaDataType type,
                                      openmx_solver_once_fn fn, void *ctx,
                                      size_t *dbytes, size_t *hbytes)
 {
 #if CUSOLVER_VERSION >= 12200
     size_t d0 = *dbytes, h0 = *hbytes;
-    if (!openmx_solver_emulated(handle, type)) return;
-    if (cusolverDnSetMathMode(handle, CUSOLVER_DEFAULT_MATH) != CUSOLVER_STATUS_SUCCESS) return;
-    if (fn(ctx) == CUSOLVER_STATUS_SUCCESS) {
+    cusolverStatus_t st, restore_status;
+    if (!openmx_solver_emulated(handle, type)) return CUSOLVER_STATUS_SUCCESS;
+    st = cusolverDnSetMathMode(handle, CUSOLVER_DEFAULT_MATH);
+    if (st != CUSOLVER_STATUS_SUCCESS) return st;
+    st = fn(ctx);
+    if (st == CUSOLVER_STATUS_SUCCESS) {
         if (*dbytes < d0) *dbytes = d0;
         if (*hbytes < h0) *hbytes = h0;
     }
@@ -353,9 +377,11 @@ static void openmx_solver_both_modes(cusolverDnHandle_t handle, cudaDataType typ
         *dbytes = d0;
         *hbytes = h0;
     }
-    (void)cusolverDnSetMathMode(handle, CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH);
+    restore_status = cusolverDnSetMathMode(handle, CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH);
+    return st == CUSOLVER_STATUS_SUCCESS ? restore_status : st;
 #else
     (void)handle; (void)type; (void)fn; (void)ctx; (void)dbytes; (void)hbytes;
+    return CUSOLVER_STATUS_SUCCESS;
 #endif
 }
 
@@ -403,7 +429,7 @@ cusolverStatus_t openmx_cusolverDnXsyevd_bufferSize(
     if (st != CUSOLVER_STATUS_SUCCESS) return st;
     st = openmx_syevd_bufferSize_once(&c);
     if (st == CUSOLVER_STATUS_SUCCESS)
-        openmx_solver_both_modes(handle, type, openmx_syevd_bufferSize_once, &c, dbytes, hbytes);
+        st = openmx_solver_both_modes(handle, type, openmx_syevd_bufferSize_once, &c, dbytes, hbytes);
     return st;
 }
 
@@ -479,7 +505,7 @@ cusolverStatus_t openmx_cusolverDnXsyevdx_bufferSize(
     if (st != CUSOLVER_STATUS_SUCCESS) return st;
     st = openmx_syevdx_bufferSize_once(&c);
     if (st == CUSOLVER_STATUS_SUCCESS)
-        openmx_solver_both_modes(handle, type, openmx_syevdx_bufferSize_once, &c, dbytes, hbytes);
+        st = openmx_solver_both_modes(handle, type, openmx_syevdx_bufferSize_once, &c, dbytes, hbytes);
     return st;
 }
 

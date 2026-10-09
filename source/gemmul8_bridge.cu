@@ -4,11 +4,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <limits>
 #include <type_traits>
 #include <unordered_map>
 
@@ -1335,7 +1337,7 @@ extern "C" int openmx_gemmul8AdaptiveProbeColumns(void)
 extern "C" double openmx_gemmul8AdaptiveProbeFloor(void) { return g_adaptive_policy.probe_floor; }
 
 /* The rank performing the dense solve reports the error indicator of a
-   forward transform (eta < 0: not evaluated) and whether the solve failed
+   forward transform (finite eta < 0: not evaluated) and whether the solve failed
    (non-finite eigenvalues).  Several reports per trial keep the worst. */
 extern "C" void openmx_gemmul8AdaptiveReport(double eta, int failed)
 {
@@ -1343,11 +1345,18 @@ extern "C" void openmx_gemmul8AdaptiveReport(double eta, int failed)
     AdaptiveState        &s = g_adaptive;
 
     if (!p.enabled || s.stage >= p.nstage) return; /* nothing above FP64 */
-    if (eta >= 0.0) {
+    if (!std::isfinite(eta)) {
+        ++s.probes;
+        /* MPI_MAX must carry a deterministic worst error, not a NaN whose
+           reduction depends on operand order.  A disabled finite tolerance
+           never makes a non-finite probe acceptable. */
+        s.eta_local = std::numeric_limits<double>::infinity();
+        s.rejected_local = true;
+    } else if (eta >= 0.0) {
         const double tolerance = p.stage[s.stage].eta_tolerance;
         ++s.probes;
         if (eta > s.eta_local) s.eta_local = eta;
-        if (!(eta == eta) || (tolerance > 0.0 && eta > tolerance)) s.rejected_local = true;
+        if (tolerance > 0.0 && eta > tolerance) s.rejected_local = true;
     }
     if (failed != 0) s.rejected_local = true;
 }

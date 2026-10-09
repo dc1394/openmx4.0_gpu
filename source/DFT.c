@@ -609,7 +609,7 @@ double DFT(int MD_iter, int Cnt_Now)
 
     /* the precision stage of the grid integrals of this step
        (grid_precision.h): FP32 while the previous step's residual is large */
-    Grid_Precision_BeginStep(SCF_iter, sqrt(fabs(NormRD[0])), myid0, level_stdout);
+    Grid_Precision_BeginStep(SCF_iter, SCF_MAX, sqrt(fabs(NormRD[0])), myid0, level_stdout);
     if (Grid_Precision_TakeHistoryReset()){
       int shift = LSCF_iter - Pulay_SCF + 2;
       if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
@@ -1411,6 +1411,7 @@ double DFT(int MD_iter, int Cnt_Now)
       if (guard_factor<0.0){
         const char *value = getenv("OPENMX_EIGEN_REFINE_STOP_GUARD");
         guard_factor = (value!=NULL && value[0]!='\0') ? atof(value) : 100.0;
+        if (!isfinite(guard_factor)) guard_factor = 100.0;
         if (guard_factor<0.0) guard_factor = 0.0;
       }
       bound = guard_factor*SCF_Criterion;

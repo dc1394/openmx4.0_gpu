@@ -439,13 +439,14 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
 static double refine_anorm = 0.0;   /* spectral radius of the latest prepare, per process */
 
 /* max offdiag |S| and max |I - G| of the products S (b2) and G (b1), n x kc */
-static void refine_maxima(int cplx, const double *b1, const double *b2, int n, int kc, double *max_s_out,
+static int refine_maxima(int cplx, const double *b1, const double *b2, int n, int kc, double *max_s_out,
                           double *max_r_out)
 {
     int const width = cplx ? 2 : 1;
     double max_s = 0.0, max_r = 0.0;
+    int finite = 1;
 
-#pragma acc parallel loop collapse(2) deviceptr(b1, b2) reduction(max : max_s, max_r)
+#pragma acc parallel loop collapse(2) deviceptr(b1, b2) reduction(max : max_s, max_r) reduction(min : finite)
     for (int j = 0; j < kc; j++) {
         for (int i = 0; i < n; i++) {
             size_t const at = (size_t)i + (size_t)j * (size_t)n;
@@ -454,12 +455,42 @@ static void refine_maxima(int cplx, const double *b1, const double *b2, int n, i
             double const sr = b2[width * at];
             double const si = cplx ? b2[width * at + 1] : 0.0;
 
+            /* fmax alone discards NaNs, so an invalid product would look
+               perfectly converged and overwrite the FP64 fallback input. */
+            if (!isfinite(gr) || !isfinite(gi) || !isfinite(sr) || !isfinite(si)) finite = 0;
+            if (i == j && b1[width * at] <= 0.0) finite = 0;
             if (i != j) max_s = fmax(max_s, hypot(sr, si));
             max_r = fmax(max_r, hypot(gr, gi));
         }
     }
     *max_s_out = max_s;
     *max_r_out = max_r;
+    return finite && isfinite(max_s) && isfinite(max_r);
+}
+
+static int refine_nonfinite(EigenRefineState *st, const EigenRefineProblem *pb, EigenRefineReport *report)
+{
+    printf("<eigen_refine_gpu> invalid refinement values; solving the preserved matrix in FP64\n");
+    fflush(stdout);
+    refine_blocks_release(st);
+    st->basis_valid = 0;
+    report->persistent = pb->transient ? 0 : 1;
+    return 0;
+}
+
+/* Check the final vectors before they replace a. The last Newton update
+   and Rayleigh-Ritz rotation run after the last product check. */
+static int refine_result_finite(int width, const double *x, const double *lam, int n, int kc)
+{
+    size_t const count = (size_t)width * (size_t)n * (size_t)kc;
+    int finite = 1;
+
+#pragma acc parallel loop deviceptr(x, lam) reduction(min : finite)
+    for (size_t i = 0; i < count; i++) {
+        if (!isfinite(x[i])) finite = 0;
+        if (i < (size_t)kc && !isfinite(lam[i])) finite = 0;
+    }
+    return finite;
 }
 
 int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, const EigenRefineProblem *pb, double *e0,
@@ -552,7 +583,8 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
             report->persistent = 2;
             return 0;
         }
-        refine_maxima(cplx, b1, b2, n, kc, &max_s, &max_r);
+        if (!refine_maxima(cplx, b1, b2, n, kc, &max_s, &max_r))
+            return refine_nonfinite(st, pb, report);
         if (2.0e-5 < max_s || 2.0e-5 < max_r) {
             printf("<eigen_refine_gpu> warm start: residual %.1e above 2e-5; FP32 eigensolver\n", fmax(max_s, max_r));
             fflush(stdout);
@@ -581,6 +613,9 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
         refine_check(cudaMemcpy(w, wf, (size_t)n * sizeof(float), cudaMemcpyDeviceToHost), "download eigenvalues");
         for (int i = 0; i < n; i++) e0[i] = (double)w[i];
         free(w);
+        for (int i = 0; i < n; i++) {
+            if (!isfinite(e0[i])) return refine_nonfinite(st, pb, report);
+        }
         refine_check(cudaMemcpy(st->lam, e0, (size_t)n * sizeof(double), cudaMemcpyHostToDevice), "upload lam");
     }
     refine_anorm = fmax(fabs(e0[0]), fabs(e0[n - 1]));
@@ -723,6 +758,9 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
        saves on a GeForce */
     int const    rr_limit = (int)fmin(2048.0, sqrt(0.5 * (double)n * (double)kc));
 
+    for (int i = 0; i < n; i++) {
+        if (!isfinite(f0[i])) return refine_nonfinite(st, pb, report);
+    }
     refine_check(cudaMemcpy(occ, f0, (size_t)n * sizeof(double), cudaMemcpyHostToDevice), "upload occupations");
 
     /* the product blocks: the FP32 scratch now that its vectors are in x
@@ -761,8 +799,10 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
             lam[j] = b2[width * at] / b1[width * at];
         }
 
-        refine_maxima(cplx, b1, b2, n, kc, &max_s, &max_r);
+        if (!refine_maxima(cplx, b1, b2, n, kc, &max_s, &max_r))
+            return refine_nonfinite(st, pb, report);
         delta = 2.0 * (max_s + anorm * max_r);
+        if (!isfinite(delta)) return refine_nonfinite(st, pb, report);
         if (it == 0) {
             /* a warm start's residual is far below an FP32 solve's, which
                would shrink delta and the cluster chain to nothing: keep the
@@ -863,6 +903,8 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
             for (size_t i = 0; i < count; i++) x[i] = b2[i];
         }
     }
+
+    if (!refine_result_finite(width, x, lam, n, kc)) return refine_nonfinite(st, pb, report);
 
     /* Rayleigh-Ritz inside every cluster of consecutive estimates closer
        than chain whose occupations differ (for Fermi occupations the same
@@ -994,6 +1036,9 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
         report->persistent = 1;
         return 0;
     }
+
+    if (rr_clusters && !refine_result_finite(width, x, lam, n, kc))
+        return refine_nonfinite(st, pb, report);
 
     {
         size_t const count = (size_t)width * (size_t)n * (size_t)maxn;

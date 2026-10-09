@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <cuda_runtime.h>
 #include "grid_precision.h"
 
@@ -41,8 +42,8 @@ static void configure(void)
     }
     value = getenv("OPENMX_GRID_FP32_UNTIL");
     if (value != NULL && value[0] != '\0') {
-        until = atof(value);
-        if (until < 0.0) until = 0.0;
+        double parsed = atof(value);
+        if (isfinite(parsed)) until = fmax(0.0, parsed);
     }
     value = getenv("OPENMX_GRID_FP32_RESTART");
     if (value != NULL && value[0] != '\0') restart = atoi(value) != 0;
@@ -60,7 +61,7 @@ int Grid_Precision_Kernel(void)
     return df_mode ? 2 : 0;
 }
 
-void Grid_Precision_BeginStep(int SCF_iter, double normrd_prev, int myid, int verbose)
+void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int myid, int verbose)
 {
     int next;
 
@@ -77,7 +78,10 @@ void Grid_Precision_BeginStep(int SCF_iter, double normrd_prev, int myid, int ve
             df_announced = 1;
         }
     }
-    next = enabled && !switched && (SCF_iter == 1 || until < normrd_prev);
+    /* Even an unconverged run publishes energies and forces at the limit.
+       Its last allowed step must use the non-lossy kernels as well. */
+    next = enabled && !switched && SCF_iter < SCF_max &&
+           (SCF_iter == 1 || (isfinite(normrd_prev) && until < normrd_prev));
     if (next && !announced && myid == 0 && 0 < verbose) {
         printf("<DFT>  grid integrals: FP32 (compensated sums) while NormRD > %.1e (OPENMX_GRID_FP32, "
                "OPENMX_GRID_FP32_UNTIL)\n", until);

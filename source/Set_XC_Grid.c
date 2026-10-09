@@ -285,7 +285,8 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
   const int rotate = (SpinP_switch == 3 && (XC_P_switch == 1 || XC_P_switch == 2));
   const int second = (XC_P_switch == 1 || XC_P_switch == 2);
   const double den_min = SXG_DEN_MIN;
-  double **Mat, **InvMat, inv[27 * 27];
+  double mat_storage[30][30], inv_storage[30][30];
+  double *Mat[30], *InvMat[30], inv[27 * 27];
   double *d_den0, *d_den1, *d_den2, *d_den3, *d_pcc0, *d_pcc1, *d_dden, *d_dexc, *d_vxc0, *d_vxc1, *d_vxc2, *d_vxc3, *d_inv;
   unsigned char *arena;
   size_t pos = 0, nb, o_den0, o_den1, o_den2, o_den3, o_pcc0, o_pcc1, o_dden, o_dexc, o_vxc0, o_vxc1, o_vxc2, o_vxc3, o_inv;
@@ -298,11 +299,10 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
   if (n <= 0) return 1;
 
   /* the 27-point interpolation matrix of the host path */
-  Mat = (double**)malloc(sizeof(double*) * 30);
-  InvMat = (double**)malloc(sizeof(double*) * 30);
+  /* Fixed-size host scratch avoids 62 unchecked allocations per call. */
   for (i = 0; i < 30; i++) {
-    Mat[i] = (double*)malloc(sizeof(double) * 30);
-    InvMat[i] = (double*)malloc(sizeof(double) * 30);
+    Mat[i] = mat_storage[i];
+    InvMat[i] = inv_storage[i];
   }
   p = 0;
   for (i1 = -1; i1 <= 1; i1++) {
@@ -330,8 +330,6 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
   Inverse(26, Mat, InvMat);
   for (p = 0; p < 27; p++)
     for (q = 0; q < 27; q++) inv[p * 27 + q] = InvMat[p][q];
-  for (i = 0; i < 30; i++) { free(Mat[i]); free(InvMat[i]); }
-  free(Mat); free(InvMat);
 
   nb = sizeof(double) * (size_t)n;
   o_den0 = SXG_arena_off(&pos, nb);
@@ -542,11 +540,17 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
     }
   }
 
-  acc_memcpy_from_device(Vxc0, d_vxc0, nb);
-  acc_memcpy_from_device(Vxc1, d_vxc1, nb);
+  /* Match the host rotation's store order: callers may alias the output
+     arrays, and in that case the diagonal Vxc0 must be written last. */
   if (rotate) {
-    acc_memcpy_from_device(Vxc2, d_vxc2, nb);
     acc_memcpy_from_device(Vxc3, d_vxc3, nb);
+    acc_memcpy_from_device(Vxc2, d_vxc2, nb);
+    acc_memcpy_from_device(Vxc1, d_vxc1, nb);
+    acc_memcpy_from_device(Vxc0, d_vxc0, nb);
+  }
+  else {
+    acc_memcpy_from_device(Vxc0, d_vxc0, nb);
+    acc_memcpy_from_device(Vxc1, d_vxc1, nb);
   }
   if (dDen_Grid != NULL) {
     for (i = 0; i < 6; i++) acc_memcpy_from_device(dDen_Grid[i / 3][i % 3], d_dden + (size_t)i * n, nb);

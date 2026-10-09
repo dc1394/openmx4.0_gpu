@@ -435,6 +435,7 @@ static size_t Set_Hamiltonian_GpuTestNeedBytes(int call_index)
 /* the on-the-fly share (bytes per non-resident rank) the matrix-elements
    plan keeps free beside the staged wave; defined with the on-the-fly code */
 static size_t Set_Hamiltonian_OTF_ShareTarget(int Cnt_kind, int myid);
+static void Set_Hamiltonian_OTF_Release(void);
 static size_t Set_Hamiltonian_OTF_MarginBytes(void);
 
 static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t required_bytes,
@@ -1129,6 +1130,9 @@ static void Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache(void)
 void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(void)
 {
     Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache();
+    /* The OTF indices and cached pair descriptors use the same geometry.
+       SOG tables may already have been recreated before the next ensure. */
+    Set_Hamiltonian_OTF_Release();
 }
 
 static void Set_Hamiltonian_GpuSolver_Free_Cache(void)
@@ -3067,6 +3071,7 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
 {
     SetHOTFPlan *plan = &Set_Hamiltonian_OTF_Plan[kind];
     int pair_count = 0, batch_cap = 16;
+    size_t density_h_base = 0;
     size_t unused_h, unused_nolg, unused_orbs0, unused_orbs1;
 
     if (plan->ready && plan->cnt_kind == Cnt_kind && plan->matomnum == Matomnum &&
@@ -3125,7 +3130,9 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
             last++;
         }
         if (plan->batch_count == batch_cap) {
-            batch_cap *= 2;
+            if (batch_cap == INT_MAX)
+                Set_Hamiltonian_abort("on-the-fly plan", "too many batches", myid);
+            batch_cap = batch_cap <= INT_MAX / 2 ? batch_cap * 2 : INT_MAX;
             plan->batch = (SetHOTFBatch *)realloc(plan->batch, sizeof(SetHOTFBatch) * (size_t)batch_cap);
             if (plan->batch == NULL) Set_Hamiltonian_abort("on-the-fly plan", "out of host memory", myid);
         }
@@ -3196,15 +3203,9 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
             int *Nc_all = (int *)(bt->image + bt->off_Nc);
             int *MN_all = (kind == 0) ? (int *)(bt->image + bt->off_MN) : NULL;
             size_t h_off = 0, nolg_off = 0, orbs0_off = 0, orbs1_off = 0, atom_off = 0;
-            if (kind == 1) {
-                /* the density-matrix offset of a pair is its H offset in the full pair order */
-                for (int q = 0; q < first; q++) {
-                    const int Mc_AN = plan->mc_table[q], h_AN = plan->h_table[q];
-                    const int Gc_AN = M2G[Mc_AN], Gh_AN = natn[Gc_AN][h_AN];
-                    h_off += (size_t)spin_count * (size_t)Spe_Total_NO[WhatSpecies[Gc_AN]] *
-                             (size_t)Spe_Total_NO[WhatSpecies[Gh_AN]];
-                }
-            }
+            /* Density blocks use the full pair order; carry its prefix
+               forward instead of rescanning all previous batches. */
+            if (kind == 1) h_off = density_h_base;
             previous_mc = -1;
             for (int q = 0; q < bt->pair_count; q++) {
                 const int Mc_AN = plan->mc_table[first + q], h_AN = plan->h_table[first + q];
@@ -3260,6 +3261,7 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
             }
         }
         if (plan->max_total_h < bt->total_h) plan->max_total_h = bt->total_h;
+        density_h_base += bt->total_h;
         plan->batch_count++;
         first = last;
     }
@@ -3395,6 +3397,8 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     workspace_bytes = (runtime_slack + vpot_bytes < fair_bytes) ? fair_bytes - runtime_slack - vpot_bytes : 0;
     if (limit < workspace_bytes) workspace_bytes = limit;
     if (workspace_bytes < alignment_slack + SETH_OTF_FLOOR_BYTES) workspace_bytes = alignment_slack + SETH_OTF_FLOOR_BYTES;
+    /* A user-specified cap below the preferred floor remains a cap. */
+    if (limit < workspace_bytes) workspace_bytes = limit;
     payload_bytes = workspace_bytes - alignment_slack;
     if (!Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid)) return 0;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
@@ -3458,10 +3462,8 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
         for (int b = 0; b < otf_plan->batch_count; b++) {
             const SetHOTFBatch *bt = &otf_plan->batch[b];
             const unsigned char *img = bt->image;
-            const int *pair_NO0 = (const int *)(const void *)(img + bt->off_NO0);
-            const int *pair_NO1 = (const int *)(const void *)(img + bt->off_NO1);
-            const size_t *pair_h_offset = (const size_t *)(const void *)(img + bt->off_h_off);
-            const size_t *pair_orbs0_offset = (const size_t *)(const void *)(img + bt->off_orbs0_off);
+            const int *pair_NO0, *pair_NO1;
+            const size_t *pair_h_offset, *pair_orbs0_offset;
             unsigned char *dev;
             size_t pos;
             int *d_NO0, *d_NO1, *d_NOLG, *d_Nc, *d_MN;
@@ -3479,6 +3481,10 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
                 cpu_pairs++;
                 continue;
             }
+            pair_NO0 = (const int *)(const void *)(img + bt->off_NO0);
+            pair_NO1 = (const int *)(const void *)(img + bt->off_NO1);
+            pair_h_offset = (const size_t *)(const void *)(img + bt->off_h_off);
+            pair_orbs0_offset = (const size_t *)(const void *)(img + bt->off_orbs0_off);
             /* the static image of the batch, then the tiles and the H blocks */
             pos = (vpot_bytes + 512 + 511) & ~(size_t)511;
             dev = arena + pos;
@@ -3833,7 +3839,9 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
     const int fp32 = (mode == 1);
     size_t limit = 128ULL * 1024ULL * 1024ULL;
     size_t fair_bytes, workspace_bytes, payload_bytes, arena_bytes, fixed_bytes;
-    size_t dm_bytes = sizeof(double) * dm_count;
+    /* DF/FP32 kernels consume the split/float DM only, including their
+       OpenACC fallback.  Do not allocate/upload an unused FP64 duplicate. */
+    size_t dm_bytes = (mode == 0) ? sizeof(double) * dm_count : 0;
     size_t dmf_bytes = (mode == 1) ? sizeof(float) * dm_count : (mode == 2) ? 2 * sizeof(float) * dm_count : 0;
     size_t den_bytes = sizeof(double) * (size_t)spin_count * output_count;
     int nonresident_ranks;
@@ -3882,6 +3890,8 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
     if (limit < workspace_bytes) workspace_bytes = limit;
     /* a share below the floor still gets the floor: the allocation decides */
     if (workspace_bytes < alignment_slack + SETH_OTF_FLOOR_BYTES) workspace_bytes = alignment_slack + SETH_OTF_FLOOR_BYTES;
+    /* A user-specified cap below the preferred floor remains a cap. */
+    if (limit < workspace_bytes) workspace_bytes = limit;
     payload_bytes = workspace_bytes - alignment_slack;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
                                                &unused_orbs0, &unused_orbs1);
@@ -3897,9 +3907,9 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
         arena = (unsigned char *)acc_malloc(arena_bytes);
     }
     if (arena == NULL) return 0;
-    d_dm = (double *)(void *)arena;
+    d_dm = (mode == 0) ? (double *)(void *)arena : NULL;
     d_tmpden = (double *)(void *)(arena + ((dm_bytes + 511) & ~(size_t)511));
-    acc_memcpy_to_device(d_dm, (void *)dm, dm_bytes);
+    if (dm_bytes != 0) acc_memcpy_to_device(d_dm, (void *)dm, dm_bytes);
     if (mode == 1 || mode == 2) {
         size_t q;
         dmf = (float *)Set_Hamiltonian_malloc(dmf_bytes, "on-the-fly float density matrix", myid);

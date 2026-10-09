@@ -4403,7 +4403,7 @@ double Band_DFT_NonCol(
         k3 = T_KGrids3[kloop];
 
         rdw = BandNonCol_RootDenseWorkspace_Ensure(1,n,n2,MaxN,1,SCF_iter);
-        if (k_evec_cache != NULL){
+        if (k_evec_cache != NULL && !BandNonCol_refine.kdense){
           size_t limit = BandNonCol_KCacheLimit();
           if (k_cache_used <= limit && k_cache_bytes <= limit - k_cache_used)
             k_evec_cache[kloop] = (dcomplex*)malloc(k_cache_bytes);

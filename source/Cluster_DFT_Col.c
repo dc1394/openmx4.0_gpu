@@ -861,8 +861,12 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
         e_peer = (double *)ClusterCol_MallocArray((size_t)n, sizeof(double), "peer eigenvalues");
         MPI_Sendrecv(status, 1, MPI_INT, st->peer, 2101, &status[1], 1, MPI_INT, st->peer, 2101, mpi_comm_level1,
                      &mpi_status);
-        MPI_Sendrecv(e0, n, MPI_DOUBLE, st->peer, 2102, e_peer, n, MPI_DOUBLE, st->peer, 2102, mpi_comm_level1,
-                     &mpi_status);
+        /* A failed prepare may leave e0 uninitialized.  Both owners know
+           both status values now, so they skip this exchange together. */
+        if (status[0] == 1 && status[1] == 1) {
+            MPI_Sendrecv(e0, n, MPI_DOUBLE, st->peer, 2102, e_peer, n, MPI_DOUBLE, st->peer, 2102,
+                         mpi_comm_level1, &mpi_status);
+        }
         if (status[0] == 1 && status[1] != 1) {
             printf("<Cluster_DFT_Col> spin %d: the other spin's solve is not refined this step; FP64 eigensolver\n",
                    spin);

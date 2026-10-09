@@ -453,14 +453,15 @@ static inline SOG_df SOG_radial_df(const float *rw2, int m, int mesh, SOG_df h2,
                                    SOG_df dum1, SOG_df dum2, SOG_df dum3, SOG_df dum4,
                                    SOG_df y1, SOG_df y2, SOG_df y12, SOG_df y22)
 {
-  SOG_df f1 = SOG_df_mk(rw2[2 * (m - 2)], rw2[2 * (m - 2) + 1]);
+  /* Correct the boundary indices before loading: replacing f1/f4 after
+     the load still reads outside the radial table at the end intervals. */
+  const int i1 = m == 1 ? m + 1 : m - 2;
+  const int i4 = m == mesh - 1 ? m - 2 : m + 1;
+  const SOG_df f1 = SOG_df_mk(rw2[2 * i1], rw2[2 * i1 + 1]);
   const SOG_df f2 = SOG_df_mk(rw2[2 * (m - 1)], rw2[2 * (m - 1) + 1]);
   const SOG_df f3 = SOG_df_mk(rw2[2 * m], rw2[2 * m + 1]);
-  SOG_df f4 = SOG_df_mk(rw2[2 * (m + 1)], rw2[2 * (m + 1) + 1]);
+  const SOG_df f4 = SOG_df_mk(rw2[2 * i4], rw2[2 * i4 + 1]);
   SOG_df d32, g1, g2, P, Q, t, u;
-
-  if (m == 1) f1 = f4;
-  else if (m == mesh - 1) f4 = f1;
   d32 = SOG_df_sub(f3, f2);
   g1 = SOG_df_add(SOG_df_mul(d32, dum1), SOG_df_mul(SOG_df_sub(f2, f1), dum2));
   g2 = SOG_df_add(SOG_df_mul(SOG_df_sub(f4, f3), dum3), SOG_df_mul(d32, dum4));
@@ -1075,10 +1076,10 @@ int SOG_Device_Prepare(void)
 {
   int w, L0, Mul0, i;
   size_t rv_cnt = 0, rwf_cnt = 0, atv_rows, r, pos = 0;
-  size_t *rv_off_h, *rwf_base_h;
-  int *sp_mesh_h, *sp_maxl_h, *sp_nb_h;
-  double *pao_rv, *pao_rwf, *atv_flat;
-  float *rwd_h, *mcd_h, *spl_h;
+  size_t *rv_off_h = NULL, *rwf_base_h = NULL;
+  int *sp_mesh_h = NULL, *sp_maxl_h = NULL, *sp_nb_h = NULL;
+  double *pao_rv = NULL, *pao_rwf = NULL, *atv_flat = NULL;
+  float *rwd_h = NULL, *mcd_h = NULL, *spl_h = NULL;
   size_t o_rv, o_rwf, o_rvo, o_rwb, o_spm, o_spx, o_spb, o_atv, o_rwd, o_mcd, o_spl;
   unsigned char *arena;
 
@@ -1092,6 +1093,7 @@ int SOG_Device_Prepare(void)
   sp_mesh_h = (int*)malloc(sizeof(int) * (size_t)SpeciesNum);
   sp_maxl_h = (int*)malloc(sizeof(int) * (size_t)SpeciesNum);
   sp_nb_h = (int*)malloc(sizeof(int) * (size_t)SpeciesNum * (SOG_L0MAX + 1));
+  if (!rv_off_h || !rwf_base_h || !sp_mesh_h || !sp_maxl_h || !sp_nb_h) goto host_fallback;
   for (w = 0; w < SpeciesNum; w++) {
     rv_off_h[w] = rv_cnt;
     rwf_base_h[w] = rwf_cnt;
@@ -1110,6 +1112,7 @@ int SOG_Device_Prepare(void)
   pao_rwf = (double*)malloc(sizeof(double) * (rwf_cnt == 0 ? 1 : rwf_cnt));
   atv_rows = (size_t)TCpyCell + 1;
   atv_flat = (double*)malloc(sizeof(double) * atv_rows * 3);
+  if (!pao_rv || !pao_rwf || !atv_flat) goto host_fallback;
   for (w = 0; w < SpeciesNum; w++) {
     size_t rpos = rwf_base_h[w];
     for (i = 0; i < Spe_Num_Mesh_PAO[w]; i++) pao_rv[rv_off_h[w] + (size_t)i] = Spe_PAO_RV[w][i];
@@ -1129,6 +1132,7 @@ int SOG_Device_Prepare(void)
   rwd_h = (float*)malloc(sizeof(float) * 2 * (rwf_cnt == 0 ? 1 : rwf_cnt));
   mcd_h = (float*)malloc(sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
   spl_h = (float*)malloc(sizeof(float) * 2 * (size_t)SpeciesNum);
+  if (!rwd_h || !mcd_h || !spl_h) goto host_fallback;
   for (r = 0; r < rwf_cnt; r++) {
     const float hi = (float)pao_rwf[r];
     rwd_h[2 * r] = hi;
@@ -1184,11 +1188,7 @@ int SOG_Device_Prepare(void)
   o_mcd = SOG_arena_off(&pos, sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
   o_spl = SOG_arena_off(&pos, sizeof(float) * 2 * (size_t)SpeciesNum);
   arena = (unsigned char*)SOG_arena_try(pos);
-  if (arena == NULL) {
-    free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
-    free(pao_rv); free(pao_rwf); free(atv_flat); free(rwd_h); free(mcd_h); free(spl_h);
-    return 0;
-  }
+  if (arena == NULL) goto host_fallback;
   acc_memcpy_to_device(arena + o_rv, pao_rv, sizeof(double) * (rv_cnt == 0 ? 1 : rv_cnt));
   acc_memcpy_to_device(arena + o_rwf, pao_rwf, sizeof(double) * (rwf_cnt == 0 ? 1 : rwf_cnt));
   acc_memcpy_to_device(arena + o_rvo, rv_off_h, sizeof(size_t) * (size_t)(SpeciesNum + 1));
@@ -1225,6 +1225,11 @@ int SOG_Device_Prepare(void)
   free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
   free(pao_rv); free(pao_rwf); free(atv_flat); free(rwd_h); free(mcd_h); free(spl_h);
   return 1;
+
+host_fallback:
+  free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
+  free(pao_rv); free(pao_rwf); free(atv_flat); free(rwd_h); free(mcd_h); free(spl_h);
+  return 0;
 }
 
 const char *SOG_Device_EvalPrecisionName(void)
