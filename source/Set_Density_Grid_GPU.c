@@ -828,6 +828,22 @@ static void SDG_run_kernel(SetDensityGpuCache *cache)
   }
 }
 
+/* Eigensolvers whose density matrix the device paths integrate.  Every
+   solver hands Set_Density_Grid the same DM[spin][Mc_AN][h_AN][i][j] over
+   the FNAN neighbours, so the quadrature itself is solver-independent.
+   The distributed local mode (each rank its own atoms, Set_Hamiltonian's
+   resident tables or the on-the-fly tiles) takes the cluster and band
+   solvers and, since 2026-10-09, DC (5), Krylov (8) and DC-LNO (11); the
+   single-owner service, which builds the whole grid's orbital tables on
+   one device, stays with the cluster and band solvers: at the O(N)
+   solvers' sizes those tables fit neither the device nor comfortably the
+   host. */
+static int SDG_solver_supported(int local_mode)
+{
+  if (Solver == 2 || Solver == 3) return 1;
+  return local_mode && (Solver == 5 || Solver == 8 || Solver == 11);
+}
+
 int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed)
 {
@@ -851,7 +867,7 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
   if (myid == owner) {
     int requested = SDG_env_bool("OPENMX_DENSITY_GRID_GPU",
                                 SDG_env_bool("OPENMX_SETDENSITY_GPU", 1));
-    enabled = requested && scf_eigen_lib_flag == GPUSOLVER && (Solver == 2 || Solver == 3) &&
+    enabled = requested && scf_eigen_lib_flag == GPUSOLVER && SDG_solver_supported(0) &&
               Cnt_switch == 0 && (Cnt_kind == 0 || Cnt_kind == 1) &&
               (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3);
     if (enabled) {
@@ -1255,7 +1271,7 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
 
   enabled = (mode != 0) &&
             SDG_env_bool("OPENMX_DENSITY_GRID_GPU", SDG_env_bool("OPENMX_SETDENSITY_GPU", 1)) &&
-            scf_eigen_lib_flag == GPUSOLVER && (Solver == 2 || Solver == 3) &&
+            scf_eigen_lib_flag == GPUSOLVER && SDG_solver_supported(1) &&
             Cnt_switch == 0 && (Cnt_kind == 0 || Cnt_kind == 1) &&
             (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3) &&
             gpu_rank_device_usable();

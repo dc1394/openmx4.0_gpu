@@ -1576,7 +1576,7 @@ DFT.c のステージバナーは <code>&lt;MD=…&gt;  Calculation of the VNA p
 <p>電子密度のグリッド構築(ρ(r) = Σ DM·φφ)が新規ファイル <code>Set_Density_Grid_GPU.c</code>(1,366 行)で
 GPU 化された。<b>3 段のフォールバック連鎖</b>で動く(<code>Set_Density_Grid.c</code> のコメントに明記):
 <b>分散 GPU 求積 → 単一ランク GPU サービス → CPU/OpenMP ループ</b>。共通の有効化条件は
-GPUSOLVER かつ Cluster/Band ソルバかつ <code>Cnt_switch==0</code>(<code>OPENMX_DENSITY_GRID_GPU=0</code> で全体無効)。</p>
+GPUSOLVER かつ <code>Cnt_switch==0</code>(<code>OPENMX_DENSITY_GRID_GPU=0</code> で全体無効)。分散 GPU 求積は Cluster/Band ソルバに加えて 2026-10-09 から DC・Krylov・DC-LNO でも使う(どのソルバも Set_Density_Grid にFNAN 近接までの同じ DM を渡すので求積はソルバに依らない)。単一ランク GPU サービス(全格子の軌道値テーブルを 1 台のデバイスに作る)はCluster/Band のまま。</p>
 <h3>(a) 分散 GPU 求積(コミット <code>d14ef297</code>)</h3>
 <ul>
   <li>各ランクが自分の原子の原子球密度 <code>Tmp_Den_Grid</code> をデバイスで積分し、既存の A→B 通信に流す

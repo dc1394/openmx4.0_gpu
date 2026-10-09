@@ -513,6 +513,9 @@ double-float の行列要素カーネル（\code{matrix\_elements\_kernel<2>}）
 \subsection{FP64エミュレーション参照解法の再試行}
 GeForceでのFP64参照（R0）はcuSOLVERの固定小数点FP64エミュレーションで解いているが、この解法はまれに収束しない（RTX 5080で2026年10月8日に約700回中2回：バンドColでinfo=395、バンドNonColでinfo=126）。従来は呼び出し側が\code{info}$\ne0$で中止していたため、測定の途中でR0が落ちることがあった。\code{cusolverDnXsyevd}/\code{Xsyevdx}の互換ラッパーで、エミュレーションハンドルでのFP64解法の前に行列の写し（デバイス、足りなければホスト）を取り、\code{info}$>0$なら行列を戻してネイティブFP64で解き直し、ハンドルをエミュレーションに戻すようにした（作業領域は両モードの大きい方を確保）。失敗は散発的で、再試行の費用は失敗時のネイティブ解1回分と、毎回の写し（デバイス上では1\,ms未満）だけである。
 
+\subsection{DC・Krylov・DC-LNOへの密度GPU経路の適用（2026年10月9日）}
+\code{Set\_Hamiltonian}のその場計算・double-floatカーネル・GPU交換相関はソルバに依らず効くが、\code{Set\_Density\_Grid}のGPU経路（分散求積と単一ランクサービス）はクラスター・バンドソルバに限定されていた。どのソルバも\code{Set\_Density\_Grid}にFNAN近接までの同じ密度行列を渡すので、分散求積（各ランクが自分の原子を、常駐テーブルかその場計算のタイルで積分）の条件をDC・Krylov・DC-LNOにも広げた。単一ランクサービスは全格子のテーブルを1台のデバイスに作るためO($N$)ソルバの系では収まらず、クラスター・バンドのままとした。RTX 5080（18ランク、MPS）のruntestのdeckで、\code{Set\_Density\_Grid}はDIA512-1（Krylov、512原子）8.42秒→6.02秒、MCCN（Krylov）14.55秒→8.75秒、CG15c-DC-LNO 10.35秒→7.41秒、非共線DC-LNO（216原子、3ステップ）13.73秒→7.39秒で、UtotはCPU密度の計算と$10^{-12}$〜$3\times10^{-11}$\,Haで一致した（C60のDCでは$1.2\times10^{-10}$\,Ha：1\,ulpの密度差をrmm-diisk混合が増幅する既知の性質）。
+
 \subsection{見込み}
 RTX 5080では、全ランクがGPUに載ることで\code{Set\_Hamiltonian}の1ステップがCPU退避の3.6秒から「評価＋カーネル」に置き換わり、double-floatでカーネルがさらに縮むので、89秒が20〜30秒程度、\code{Set\_Density\_Grid}の36秒も同程度に縮むと見込む。残る未知数はGeForceでの軌道値評価（FP64の三角関数・スプライン）の速さで、A100では演算律速ではなくメモリ遅延律速だった。
 

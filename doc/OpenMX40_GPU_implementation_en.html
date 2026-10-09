@@ -1674,8 +1674,11 @@ Three independent batches, each with its own memory test and CPU fallback:</p>
 <p>Building the electron density on the grid (ρ(r) = Σ DM·φφ) was GPU-offloaded in the new file
 <code>Set_Density_Grid_GPU.c</code> (1,366 lines). It runs as a <b>three-stage fallback chain</b>
 (documented in a Set_Density_Grid.c comment): <b>distributed GPU quadrature → one-rank GPU service →
-CPU/OpenMP loop</b>. Common enabling conditions: GPUSOLVER, Cluster/Band solver, and
-<code>Cnt_switch==0</code> (<code>OPENMX_DENSITY_GRID_GPU=0</code> disables everything).</p>
+CPU/OpenMP loop</b>. Common enabling conditions: GPUSOLVER and <code>Cnt_switch==0</code>
+(<code>OPENMX_DENSITY_GRID_GPU=0</code> disables everything). The distributed quadrature takes the Cluster and Band
+solvers and, since 2026-10-09, DC, Krylov and DC-LNO as well (every solver hands Set_Density_Grid the same
+DM over the FNAN neighbours, so the quadrature is solver-independent); the one-rank service, which builds the whole
+grid's orbital tables on one device, stays with Cluster and Band.</p>
 <h3>(a) Distributed GPU quadrature (commit <code>d14ef297</code>)</h3>
 <ul>
   <li>Each rank integrates its own atoms' atomic-sphere densities <code>Tmp_Den_Grid</code> on the device
