@@ -2995,29 +2995,34 @@ typedef struct {
 
 static SetHOTFPlan Set_Hamiltonian_OTF_Plan[2];
 
-/* the potential rows Vpot_Grid[spin] are uploaded every step: register them
-   as pinned once (again when the arrays move); a failure just leaves them
-   pageable */
-static void SETH_OTF_PinPotential(int spin_count, size_t vpot_len)
+/* the potential rows Vpot_Grid[spin] are uploaded every step: through a
+   pinned staging buffer of this file's own (cudaHostRegister on the
+   OpenMX-owned rows was tried first; a registration that outlives or
+   partly overlaps a later allocation makes the driver refuse an unrelated
+   copy with CUDA_ERROR_INVALID_VALUE -- nsV4Bz5's Force reduction on
+   2026-10-09 -- so no foreign memory is pinned).  Returns the staging
+   buffer, or NULL when pinned memory is not available (the rows are then
+   copied as they are). */
+static double *SETH_OTF_StagePotential(int spin_count, size_t vpot_len)
 {
-    static double *pinned[4] = {NULL, NULL, NULL, NULL};
-    static size_t pinned_len[4] = {0, 0, 0, 0};
-    for (int spin = 0; spin < spin_count && spin < 4; spin++) {
-        if (pinned[spin] == Vpot_Grid[spin] && pinned_len[spin] == vpot_len) continue;
-        if (pinned[spin] != NULL) {
-            (void)cudaHostUnregister(pinned[spin]);
-            pinned[spin] = NULL;
-            pinned_len[spin] = 0;
-        }
-        if (Vpot_Grid[spin] == NULL || vpot_len == 0) continue;
-        if (cudaHostRegister(Vpot_Grid[spin], sizeof(double) * vpot_len, cudaHostRegisterDefault) == cudaSuccess) {
-            pinned[spin] = Vpot_Grid[spin];
-            pinned_len[spin] = vpot_len;
-        }
-        else {
+    static double *stage = NULL;
+    static size_t stage_count = 0;
+    const size_t count = (size_t)spin_count * vpot_len;
+    if (count == 0) return NULL;
+    if (stage_count < count) {
+        if (stage != NULL) (void)cudaFreeHost(stage);
+        stage = NULL;
+        stage_count = 0;
+        if (cudaMallocHost((void **)&stage, sizeof(double) * count) != cudaSuccess) {
             (void)cudaGetLastError();
+            stage = NULL;
+            return NULL;
         }
+        stage_count = count;
     }
+    for (int spin = 0; spin < spin_count; spin++)
+        memcpy(stage + (size_t)spin * vpot_len, Vpot_Grid[spin], sizeof(double) * vpot_len);
+    return stage;
 }
 
 static int SETH_OTF_PlanCacheEnabled(void)
@@ -3407,9 +3412,16 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     }
     if (arena == NULL) return 0;
     d_vpot = (double *)(void *)arena;
-    SETH_OTF_PinPotential(spin_count, vpot_len);
-    for (int spin = 0; spin < spin_count; spin++) {
-        acc_memcpy_to_device(d_vpot + (size_t)spin * vpot_len, Vpot_Grid[spin], sizeof(double) * vpot_len);
+    {
+        double *stage = SETH_OTF_StagePotential(spin_count, vpot_len);
+        if (stage != NULL) {
+            acc_memcpy_to_device(d_vpot, stage, sizeof(double) * vpot_count);
+        }
+        else {
+            for (int spin = 0; spin < spin_count; spin++) {
+                acc_memcpy_to_device(d_vpot + (size_t)spin * vpot_len, Vpot_Grid[spin], sizeof(double) * vpot_len);
+            }
+        }
     }
     SETH_OTF_PROFILE_ADD(pack_seconds);
     if (plan->device_rank == 0 || (plan->concurrent_ranks == plan->device_rank)) {
