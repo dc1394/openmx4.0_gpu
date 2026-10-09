@@ -1414,9 +1414,36 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
     /* the on-the-fly mode: the packed density matrix and the density in
        transient host buffers, the tiles on the device */
     const size_t n_out = c->otf_output_count;
-    double *dm_otf = (double *)SDG_malloc(c->otf_dm_count ? c->otf_dm_count : 1, sizeof(double));
-    double *den_otf = (double *)SDG_malloc((size_t)spin_count * (n_out ? n_out : 1), sizeof(double));
-    int ok = dm_otf != NULL && den_otf != NULL && n_out != 0;
+    /* persistent, pinned when possible: dm_otf goes up and den_otf comes
+       back every step (tens of MiB; a pageable transfer runs at a fraction
+       of the PCIe rate), so they are kept across calls (grow-only) */
+    static double *dm_otf = NULL, *den_otf = NULL;
+    static size_t dm_cap = 0, den_cap = 0;
+    static int dm_pageable = 0, den_pageable = 0;
+    const size_t dm_need = c->otf_dm_count ? c->otf_dm_count : 1;
+    const size_t den_need = (size_t)spin_count * (n_out ? n_out : 1);
+    int ok;
+    if (dm_cap < dm_need) {
+      if (dm_otf != NULL) { if (dm_pageable) free(dm_otf); else (void)cudaFreeHost(dm_otf); }
+      dm_otf = NULL; dm_cap = 0; dm_pageable = 0;
+      if (cudaMallocHost((void **)&dm_otf, sizeof(double) * dm_need) != cudaSuccess) {
+        (void)cudaGetLastError();
+        dm_otf = (double *)SDG_malloc(dm_need, sizeof(double));
+        dm_pageable = 1;
+      }
+      if (dm_otf != NULL) dm_cap = dm_need;
+    }
+    if (den_cap < den_need) {
+      if (den_otf != NULL) { if (den_pageable) free(den_otf); else (void)cudaFreeHost(den_otf); }
+      den_otf = NULL; den_cap = 0; den_pageable = 0;
+      if (cudaMallocHost((void **)&den_otf, sizeof(double) * den_need) != cudaSuccess) {
+        (void)cudaGetLastError();
+        den_otf = (double *)SDG_malloc(den_need, sizeof(double));
+        den_pageable = 1;
+      }
+      if (den_otf != NULL) den_cap = den_need;
+    }
+    ok = dm_otf != NULL && den_otf != NULL && n_out != 0;
     int myid = 0;
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
@@ -1433,8 +1460,7 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
         }
       }
     }
-    free(dm_otf);
-    free(den_otf);
+    /* dm_otf / den_otf persist */
     return ok;
   }
 
