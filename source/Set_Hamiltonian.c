@@ -77,6 +77,13 @@ static size_t Set_Hamiltonian_Base_OpenACC_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, int myid);
 static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid);
 
+int Set_Hamiltonian_Cuda_Density(int pair_count, int spin_count, int max_no, int max_nolg,
+                                 const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+                                 const size_t *pair_h_offset, const size_t *pair_nolg_offset,
+                                 const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
+                                 const size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf,
+                                 const float *orbs1buf, const float *dmf, const float *dml, double *tmpden,
+                                 size_t output_count);
 int Set_Hamiltonian_Cuda_MatrixElements(int pair_count, int spin_count, size_t vpot_len,
                                         double grid_vol, int max_no, int max_output_count,
                                         const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
@@ -3385,7 +3392,7 @@ size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid)
 /* rho(r) += sum_ij DM_ij phi_i(r) phi_j(r) over the pairs of a batch, into
    tmpden[spin * output_count + out_base + Nc] (atomic: the pairs of one
    atom share its points) */
-static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, const int *d_NO0, const int *d_NO1,
+static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, int max_no, int max_nolg, const int *d_NO0, const int *d_NO1,
                                               const int *d_NOLG, const size_t *d_h_off, const size_t *d_nolg_off,
                                               const size_t *d_orbs0_off, const size_t *d_orbs1_off,
                                               const size_t *d_out_base, const int *d_Nc, const float *d_orbs0,
@@ -3394,6 +3401,19 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, co
 {
     int p;
 
+    if (mode == 2) {
+        /* the CUDA kernel (shared-memory density matrix, register-resident
+           orbital rows); 1 = not taken, so the OpenACC kernel below runs */
+        const int status = Set_Hamiltonian_Cuda_Density(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
+                                                        d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc,
+                                                        d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden, output_count);
+        if (status == 0) return;
+        if (status < 0) {
+            int myid = 0;
+            MPI_Comm_rank(mpi_comm_level1, &myid);
+            Set_Hamiltonian_abort("on-the-fly density", "unrecoverable CUDA failure in the density kernel", myid);
+        }
+    }
     if (mode == 2) {
         /* double-float: the density matrix as hi (d_dmf) + lo (d_dml) floats,
            every product exact through an FMA, the hi products of a row
@@ -3858,9 +3878,17 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
                                  Set_Hamiltonian_OTF.d_gla, Set_Hamiltonian_OTF.d_cla, d_orbs1);
         acc_wait_all();
         SETH_OTF_PROFILE_ADD(eval_seconds);
-        Set_Hamiltonian_OTF_DensityKernel(cache.pair_count, spin_count, d_NO0, d_NO1, d_NOLG, d_h_off, d_nolg_off,
+        {
+            int max_no = 0, max_nolg = 0;
+            for (int p = 0; p < cache.pair_count; p++) {
+                if (max_no < cache.pair_NO0[p]) max_no = cache.pair_NO0[p];
+                if (max_no < cache.pair_NO1[p]) max_no = cache.pair_NO1[p];
+                if (max_nolg < cache.pair_NOLG[p]) max_nolg = cache.pair_NOLG[p];
+            }
+            Set_Hamiltonian_OTF_DensityKernel(cache.pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG, d_h_off, d_nolg_off,
                                           d_orbs0_off, d_orbs1_off, d_out_base, d_Nc, d_orbs0, d_orbs1, d_dm, d_dmf,
                                           d_dml, d_tmpden, output_count, mode);
+        }
         acc_wait_all();
         SETH_OTF_PROFILE_ADD(device_seconds);
         free(pairs);

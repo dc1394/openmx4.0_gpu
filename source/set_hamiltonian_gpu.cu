@@ -187,7 +187,163 @@ __global__ void matrix_elements_kernel(
     if (active) hbuf[h_off + e] = (MODE == 1) ? (sum + static_cast<double>(sumf) + static_cast<double>(compf)) : sum;
 }
 
+
+/* The on-the-fly density of a batch of atom pairs, double-float (the
+   density matrix as hi + lo floats): one thread per overlap point, the
+   pair's density matrix staged once per block in shared memory (float2),
+   the point's orbital rows phi1 (NO1) and phi0 (NO0) in registers.  Per
+   point and spin: rho += sum_i phi0[i] * (sum_j DM[i][j] phi1[j]); the
+   products are formed exactly (TwoProd through FMA), the hi parts of a row
+   summed with Neumaier's compensation, the lo parts plainly, the rows
+   accumulated as a float pair (TwoSum), and the pair goes into the FP64
+   density by one atomic add.  Register arrays need compile-time bounds,
+   so the kernel comes in tiers NMAX = 16, 32, 48 chosen by the batch's
+   largest orbital count; the loops are unrolled with a break at the
+   pair's counts so that every index is static.  The OpenACC kernel of
+   Set_Hamiltonian.c (same arithmetic, DM read from global memory per
+   product) stays as the fallback and the FP64 / plain-FP32 modes. */
+template <int NMAX>
+__global__ void density_kernel(
+    int spin_count,
+    const int *__restrict__ pair_NO0,
+    const int *__restrict__ pair_NO1,
+    const int *__restrict__ pair_NOLG,
+    const std::size_t *__restrict__ pair_h_offset,
+    const std::size_t *__restrict__ pair_nolg_offset,
+    const std::size_t *__restrict__ pair_orbs0_offset,
+    const std::size_t *__restrict__ pair_orbs1_offset,
+    const std::size_t *__restrict__ pair_out_base,
+    const int *__restrict__ nolg_Nc,
+    const float *__restrict__ orbs0buf,
+    const float *__restrict__ orbs1buf,
+    const float *__restrict__ dmf,
+    const float *__restrict__ dml,
+    double *__restrict__ tmpden,
+    std::size_t output_count)
+{
+    const int pair = static_cast<int>(blockIdx.x);
+    const int NO0 = pair_NO0[pair];
+    const int NO1 = pair_NO1[pair];
+    const int NOLG = pair_NOLG[pair];
+    const int k = static_cast<int>(blockIdx.y) * static_cast<int>(blockDim.x) + static_cast<int>(threadIdx.x);
+
+    if (static_cast<int>(blockIdx.y) * static_cast<int>(blockDim.x) >= NOLG) return;
+
+    extern __shared__ float2 dm_s[];
+    const std::size_t mat = static_cast<std::size_t>(NO0) * static_cast<std::size_t>(NO1);
+    const std::size_t hoff = pair_h_offset[pair];
+    const std::size_t dm_count = static_cast<std::size_t>(spin_count) * mat;
+    for (std::size_t idx = threadIdx.x; idx < dm_count; idx += blockDim.x)
+        dm_s[idx] = make_float2(dmf[hoff + idx], dml[hoff + idx]);
+    __syncthreads();
+    if (k >= NOLG) return;
+
+    const int Nc = nolg_Nc[pair_nolg_offset[pair] + static_cast<std::size_t>(k)];
+    const float *phi1 = orbs1buf + pair_orbs1_offset[pair] + static_cast<std::size_t>(k) * NO1;
+    const float *phi0 = orbs0buf + pair_orbs0_offset[pair] + static_cast<std::size_t>(Nc) * NO0;
+    float f1[NMAX], f0[NMAX];
+#pragma unroll
+    for (int j = 0; j < NMAX; j++) f1[j] = (j < NO1) ? phi1[j] : 0.0f;
+#pragma unroll
+    for (int i = 0; i < NMAX; i++) f0[i] = (i < NO0) ? phi0[i] : 0.0f;
+    const std::size_t out = pair_out_base[pair] + static_cast<std::size_t>(Nc);
+
+    for (int s = 0; s < spin_count; s++) {
+        const float2 *dms = dm_s + static_cast<std::size_t>(s) * mat;
+        float eh = 0.0f, el = 0.0f;
+#pragma unroll
+        for (int i = 0; i < NMAX; i++) {
+            if (i >= NO0) break;
+            const float2 *row = dms + static_cast<std::size_t>(i) * NO1;
+            float ts = 0.0f, tc = 0.0f, qs = 0.0f;
+#pragma unroll
+            for (int j = 0; j < NMAX; j++) {
+                if (j >= NO1) break;
+                const float2 d = row[j];
+                const float p = __fmul_rn(f1[j], d.x);
+                const float e = __fmaf_rn(f1[j], d.x, -p);
+                const float q = __fmaf_rn(f1[j], d.y, e);
+                neumaier_add(ts, tc, p);
+                qs = __fadd_rn(qs, q);
+            }
+            {
+                const float ph = __fmul_rn(f0[i], ts);
+                const float pl = __fadd_rn(__fmaf_rn(f0[i], ts, -ph), __fmul_rn(f0[i], __fadd_rn(tc, qs)));
+                const float su = __fadd_rn(eh, ph);
+                const float v = __fadd_rn(su, -eh);
+                el = __fadd_rn(el, __fadd_rn(__fadd_rn(__fadd_rn(eh, -__fadd_rn(su, -v)), __fadd_rn(ph, -v)), pl));
+                eh = su;
+            }
+        }
+        atomicAdd(tmpden + static_cast<std::size_t>(s) * output_count + out,
+                  static_cast<double>(eh) + static_cast<double>(el));
+    }
+}
+
+template <int NMAX>
+static int density_launch(int pair_count, int spin_count, int max_nolg, std::size_t shared_bytes,
+    const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+    const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
+    const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
+    const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
+    const float *dmf, const float *dml, double *tmpden, std::size_t output_count)
+{
+    constexpr int kDensityThreads = 128;
+    static std::size_t attribute_bytes = 0;
+    if (shared_bytes > 48 * 1024 && shared_bytes > attribute_bytes) {
+        if (cudaFuncSetAttribute(density_kernel<NMAX>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                 static_cast<int>(shared_bytes)) != cudaSuccess) {
+            (void)cudaGetLastError();
+            return 1;
+        }
+        attribute_bytes = shared_bytes;
+    }
+    const dim3 block(kDensityThreads, 1u, 1u);
+    const dim3 grid(static_cast<unsigned>(pair_count),
+                    static_cast<unsigned>((max_nolg + kDensityThreads - 1) / kDensityThreads), 1u);
+    density_kernel<NMAX><<<grid, block, shared_bytes>>>(spin_count, pair_NO0, pair_NO1, pair_NOLG,
+        pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+        orbs0buf, orbs1buf, dmf, dml, tmpden, output_count);
+    {
+        const cudaError_t launch = cudaGetLastError();
+        if (launch != cudaSuccess) return 1;   /* nothing ran: the caller takes the OpenACC kernel */
+    }
+    return (cudaDeviceSynchronize() == cudaSuccess) ? 0 : -1;
+}
+
 } // namespace
+
+/* 0 = done, 1 = not taken (nothing was written; use the OpenACC kernel),
+   -1 = the kernel failed after running (the density is suspect) */
+extern "C" int Set_Hamiltonian_Cuda_Density(
+    int pair_count, int spin_count, int max_no, int max_nolg,
+    const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+    const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
+    const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
+    const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
+    const float *dmf, const float *dml, double *tmpden, std::size_t output_count)
+{
+    if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0) return 0;
+    if (max_no > 48) return 1;
+    (void)cudaGetLastError();
+    const std::size_t shared_bytes = static_cast<std::size_t>(spin_count) * static_cast<std::size_t>(max_no) *
+                                     static_cast<std::size_t>(max_no) * sizeof(float2);
+    int device = 0, max_shared = 0;
+    if (cudaGetDevice(&device) != cudaSuccess) return 1;
+    if (cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device) != cudaSuccess) return 1;
+    if (shared_bytes > static_cast<std::size_t>(max_shared)) return 1;
+    if (max_no <= 16)
+        return density_launch<16>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
+            pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+            orbs0buf, orbs1buf, dmf, dml, tmpden, output_count);
+    if (max_no <= 32)
+        return density_launch<32>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
+            pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+            orbs0buf, orbs1buf, dmf, dml, tmpden, output_count);
+    return density_launch<48>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
+        pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+        orbs0buf, orbs1buf, dmf, dml, tmpden, output_count);
+}
 
 extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     int pair_count,
