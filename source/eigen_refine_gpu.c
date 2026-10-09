@@ -297,14 +297,13 @@ static cublasStatus_t native_gemm(const EigenRefineDevice *dev, int cplx, cublas
 
 /* ------------------------------------------------------------------ */
 
-/* The FP32 solve of all n eigenpairs of a (n x n, device) into af (the
-   vectors) and wf (the eigenvalues), through the two-stage algorithm where
-   cuSOLVER has it (12.3.4 and later; on an RTX 5080 323 ms instead of 638
-   for n = 5616, at eigenvalue errors of 4e-6 instead of 1e-6 Ha that the
-   refinement removes; OPENMX_EIGEN_FP32_TWO_STAGE=0 keeps the one-stage
-   solve).  a is left untouched.  Returns 1 on success; otherwise says why
-   and returns 0. */
-static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void *a, float *af, float *wf)
+/* One FP32 solve of all n eigenpairs of a (n x n, device) into af (the
+   vectors) and wf (the eigenvalues): the two-stage cusolverDnXsyevd when
+   two_stage is set, else the one-stage cusolverDnXsyevdx.  a is left
+   untouched (af is converted from it here).  Returns 1 on success;
+   otherwise says why, leaves cuSOLVER's info in *info_out and returns 0. */
+static int refine_fp32_attempt(EigenRefineDevice *dev, int cplx, int n, const void *a, float *af, float *wf,
+                               int two_stage, int32_t *info_out)
 {
     cusolverEigMode_t const jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t const  uplo = CUBLAS_FILL_MODE_LOWER;
@@ -316,40 +315,11 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
     int64_t h_meig = 0;
     int32_t info = 0;
     size_t d_bytes = 0, h_bytes = 0;
-    cusolverStatus_t status;
-    int two_stage = 0;
+    cusolverStatus_t status = CUSOLVER_STATUS_NOT_SUPPORTED;
 
+    *info_out = 0;
 #pragma acc parallel loop deviceptr(ad, af)
     for (size_t i = 0; i < count; i++) af[i] = (float)ad[i];
-
-#if CUSOLVER_VERSION >= 12304
-    {
-        static int wanted = -1;
-
-        if (wanted < 0) wanted = env_flag("OPENMX_EIGEN_FP32_TWO_STAGE", 1);
-        if (wanted && !dev->params32_tried) {
-            dev->params32_tried = 1;
-            if (cusolverDnCreateParams(&dev->params32) == CUSOLVER_STATUS_SUCCESS &&
-                cusolverDnSetAdvOptions(dev->params32, CUSOLVERDN_SYEVD, CUSOLVER_ALG_2) != CUSOLVER_STATUS_SUCCESS) {
-                (void)cusolverDnDestroyParams(dev->params32);
-                dev->params32 = NULL;
-            }
-        }
-        two_stage = (wanted && dev->params32 != NULL);
-    }
-#endif
-    {
-        static int announced = 0;
-
-        if (!announced) {
-            announced = 1;
-            printf("<eigen_refine_gpu> FP32 full solve: %s\n",
-                   two_stage ? "two-stage cusolverDnXsyevd (CUSOLVER_ALG_2)"
-                             : "one-stage cusolverDnXsyevdx (cuSOLVER before 12.3.4, or OPENMX_EIGEN_FP32_TWO_STAGE=0)");
-            fflush(stdout);
-        }
-    }
-
     if (two_stage) {
 #if CUSOLVER_VERSION >= 12304
         status = cusolverDnXsyevd_bufferSize(dev->cusolver, dev->params32, jobz, uplo, n, type, af, n, CUDA_R_32F, wf,
@@ -362,15 +332,14 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
                                               &h_bytes);
     }
     if (status != CUSOLVER_STATUS_SUCCESS) {
-        printf("<eigen_refine_gpu> FP32 eigensolver workspace query failed (status %d); solving in FP64\n", (int)status);
+        printf("<eigen_refine_gpu> FP32 eigensolver workspace query failed (status %d)\n", (int)status);
         fflush(stdout);
         return 0;
     }
     if (*dev->d_work_bytes < d_bytes) {
         void *grown = NULL;
-
         if (dev->try_malloc(&grown, d_bytes) != cudaSuccess) {
-            printf("<eigen_refine_gpu> no room for the %.1f MiB FP32 eigensolver workspace; solving in FP64\n",
+            printf("<eigen_refine_gpu> no room for the %.1f MiB FP32 eigensolver workspace\n",
                    (double)d_bytes / (1024.0 * 1024.0));
             fflush(stdout);
             return 0;
@@ -384,7 +353,6 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
         *dev->h_work = dev->host_malloc(h_bytes, 1, "cuSOLVER host workspace");
         *dev->h_work_bytes = h_bytes;
     }
-
     if (two_stage) {
 #if CUSOLVER_VERSION >= 12304
         status = cusolverDnXsyevd(dev->cusolver, dev->params32, jobz, uplo, n, type, af, n, CUDA_R_32F, wf, type,
@@ -402,13 +370,68 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
                      "download info");
     }
     refine_check(cudaStreamSynchronize(dev->stream), "synchronize");
+    *info_out = info;
     if (status != CUSOLVER_STATUS_SUCCESS || info != 0 || h_meig < (int64_t)n) {
-        printf("<eigen_refine_gpu> FP32 eigensolver failed (status %d, info %d, %lld of %d eigenpairs); solving in "
-               "FP64\n", (int)status, (int)info, (long long)h_meig, n);
+        printf("<eigen_refine_gpu> FP32 %s eigensolver failed (status %d, info %d, %lld of %d eigenpairs)\n",
+               two_stage ? "two-stage" : "one-stage", (int)status, (int)info, (long long)h_meig, n);
         fflush(stdout);
         return 0;
     }
     return 1;
+}
+
+/* The FP32 solve of all n eigenpairs of a: the two-stage algorithm where
+   cuSOLVER has it (12.3.4 and later; on an RTX 5080 323 ms instead of 638
+   for n = 5616, at eigenvalue errors of 4e-6 instead of 1e-6 Ha that the
+   refinement removes; OPENMX_EIGEN_FP32_TWO_STAGE=0 keeps the one-stage
+   solve), and when that one fails to converge (info > 0: sporadic on the
+   RTX 5080, e.g. info=297 on a 2808 x 2808 band problem) the one-stage
+   solve from a fresh conversion of a, before anything falls to FP64 -- a
+   failed FP32 solve used to leave the rest of the SCF cycle in FP64
+   (+27 s on sidia333 band_on).  a is left untouched.  Returns 1 on
+   success; otherwise says why and returns 0. */
+static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void *a, float *af, float *wf)
+{
+    int two_stage = 0;
+    int32_t info = 0;
+#if CUSOLVER_VERSION >= 12304
+    {
+        static int wanted = -1;
+        if (wanted < 0) wanted = env_flag("OPENMX_EIGEN_FP32_TWO_STAGE", 1);
+        if (wanted && !dev->params32_tried) {
+            dev->params32_tried = 1;
+            if (cusolverDnCreateParams(&dev->params32) == CUSOLVER_STATUS_SUCCESS &&
+                cusolverDnSetAdvOptions(dev->params32, CUSOLVERDN_SYEVD, CUSOLVER_ALG_2) != CUSOLVER_STATUS_SUCCESS) {
+                (void)cusolverDnDestroyParams(dev->params32);
+                dev->params32 = NULL;
+            }
+        }
+        two_stage = (wanted && dev->params32 != NULL);
+    }
+#endif
+    {
+        static int announced = 0;
+        if (!announced) {
+            announced = 1;
+            printf("<eigen_refine_gpu> FP32 full solve: %s\n",
+                   two_stage ? "two-stage cusolverDnXsyevd (CUSOLVER_ALG_2)"
+                             : "one-stage cusolverDnXsyevdx (cuSOLVER before 12.3.4, or OPENMX_EIGEN_FP32_TWO_STAGE=0)");
+            fflush(stdout);
+        }
+    }
+    if (refine_fp32_attempt(dev, cplx, n, a, af, wf, two_stage, &info)) return 1;
+    if (two_stage && info > 0) {
+        printf("<eigen_refine_gpu> retrying the FP32 solve with the one-stage algorithm\n");
+        fflush(stdout);
+        if (refine_fp32_attempt(dev, cplx, n, a, af, wf, 0, &info)) {
+            printf("<eigen_refine_gpu> the one-stage FP32 solve succeeded\n");
+            fflush(stdout);
+            return 1;
+        }
+    }
+    printf("<eigen_refine_gpu> FP32 eigensolver failed; solving in FP64\n");
+    fflush(stdout);
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
