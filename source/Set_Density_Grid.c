@@ -77,6 +77,15 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   
   dtime(&TStime);
 
+  /* stage profile: OPENMX_BAND_PROFILE=1 prints one SETDENPROF line per rank
+     and call (pre = GPU-mode decision + allocation, quad = the atom-sphere
+     quadrature, a2b = the atom-to-B communication, sup = the superposition
+     into the B partition, b2d = the B-to-D copy and the rest) */
+  double sd_t0, sd_t1, sd_pre = 0.0, sd_quad = 0.0, sd_a2b = 0.0, sd_sup = 0.0, sd_b2d = 0.0;
+  static int sd_prof = -1;
+  if (sd_prof < 0) { const char *e = getenv("OPENMX_BAND_PROFILE"); sd_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
+  sd_t0 = TStime;
+
   /* Preferred GPU mode: every rank evaluates its own atoms' density on the
      device (sharing Set_Hamiltonian's tables) and the ordinary A-to-B
      communication below distributes it.  The single-owner GPU service and
@@ -326,6 +335,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   ***********************************************/
 
   dtime(&time1);
+  sd_pre = time1 - sd_t0; sd_t0 = time1;
 
   /* the distributed GPU quadrature fills Tmp_Den_Grid directly; a run-time
      failure on any rank simply falls back to the CPU loop on that rank */
@@ -647,6 +657,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   if(myid==0 && measure_time){
     printf("Time for Part1=%18.5f\n",(time2-time1));fflush(stdout);
   }
+  sd_quad = time2 - sd_t0; sd_t0 = time2;
 
   /******************************************************
       MPI communication from the partitions A to B 
@@ -729,6 +740,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
     Den_Rcv_Grid_A2B[myid][i] = Den_Snd_Grid_A2B[myid][i];
   }
 
+  dtime(&sd_t1); sd_a2b = sd_t1 - sd_t0; sd_t0 = sd_t1;
   /******************************************************
    superposition of rho_i to calculate charge density 
    in the partition B.
@@ -791,6 +803,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
     }
   }
 
+  dtime(&sd_t1); sd_sup = sd_t1 - sd_t0; sd_t0 = sd_t1;
   /******************************************************
              MPI: from the partitions B to D
   ******************************************************/
@@ -820,6 +833,11 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   /* elapsed time */
   dtime(&TEtime);
   time0 = TEtime - TStime;
+  sd_b2d = TEtime - sd_t0;
+  if (sd_prof) {
+    fprintf(stderr, "SETDENPROF id=%d mode=%s pre=%.3f quad=%.3f a2b=%.3f sup=%.3f b2d=%.3f total=%.3f\n", myid,
+            use_local_gpu ? "gpu-local" : "cpu", sd_pre, sd_quad, sd_a2b, sd_sup, sd_b2d, time0);
+  }
   if(myid==0 && measure_time) printf("time0=%18.5f\n",time0);
 
   return time0;
@@ -845,10 +863,19 @@ void Data_Grid_Copy_B2C_2(double **data_B, double **data_C)
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
   /* allocation of arrays */
-  
-  Work_Array_Snd_Grid_B2C = (double*)malloc(sizeof(double)*GP_B2C_S[NN_B2C_S]*(SpinP_switch+1)); 
-  Work_Array_Rcv_Grid_B2C = (double*)malloc(sizeof(double)*GP_B2C_R[NN_B2C_R]*(SpinP_switch+1)); 
-
+  /* the work arrays and the request/status arrays persist across calls
+     (grow-only): this copy runs every SCF step and the allocation and the
+     first touch of the tens of MiB were a measurable part of its time */
+  {
+    static double *snd_keep = NULL, *rcv_keep = NULL;
+    static size_t snd_cap = 0, rcv_cap = 0;
+    const size_t snd_need = (size_t)GP_B2C_S[NN_B2C_S]*(size_t)(SpinP_switch+1);
+    const size_t rcv_need = (size_t)GP_B2C_R[NN_B2C_R]*(size_t)(SpinP_switch+1);
+    if (snd_cap < snd_need) { free(snd_keep); snd_keep = (double*)malloc(sizeof(double)*(snd_need ? snd_need : 1)); snd_cap = snd_need; }
+    if (rcv_cap < rcv_need) { free(rcv_keep); rcv_keep = (double*)malloc(sizeof(double)*(rcv_need ? rcv_need : 1)); rcv_cap = rcv_need; }
+    Work_Array_Snd_Grid_B2C = snd_keep;
+    Work_Array_Rcv_Grid_B2C = rcv_keep;
+  }
   if (firsttime==1){
     PrintMemory("Data_Grid_Copy_B2C_2: Work_Array_Snd_Grid_B2C",
 		sizeof(double)*GP_B2C_S[NN_B2C_S]*(SpinP_switch+1), NULL);
@@ -998,8 +1025,8 @@ void Data_Grid_Copy_B2C_2(double **data_B, double **data_C)
   }
 
   /* freeing of arrays */
-  free(Work_Array_Snd_Grid_B2C);
-  free(Work_Array_Rcv_Grid_B2C);
+  /* Work_Array_Snd_Grid_B2C persists */
+  /* Work_Array_Rcv_Grid_B2C persists */
 }
 
 

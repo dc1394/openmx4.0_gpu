@@ -56,6 +56,14 @@ The large dense matrix multiplications of the GPU eigensolver path are executed 
 scf.gemmul8.enable         off           # default=on
 ```
 
+### Forward transform of the collinear cluster solver
+The two products of the orthogonalization transform, `B = H X` and `X^T B`, have entry points of their own (`openmx_gemmul8DgemmFixed`), because `X` stays fixed during the SCF.
+
+- **Workspace.** These two products take the full GEMMul8 workspace whenever the device has room for it; every other GEMM keeps the capped, blocked workspace (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`, 256 MiB). Under the cap each block of a blocked product rescales its operands, which about doubled the time of the transform: on an A100 it now takes 76 ms instead of 145 ms per SCF step at 7332 basis functions, and 421 ms instead of 810 ms at 13000. The workspace is returned right after the transform, so the eigensolver finds the memory it found before, and a workspace that does not fit falls back to the capped path at the same precision. `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0` restores the capped path. Below the cap the results are bit-identical to the previous ones.
+- **Precision stage**, for measurements: `OPENMX_GEMMUL8_FORWARD=fp64|gemmul8` selects plain cuBLAS FP64 or GEMMul8 with `OPENMX_GEMMUL8_FORWARD_NUM_MOD` moduli and `OPENMX_GEMMUL8_FORWARD_FASTMODE`; `OPENMX_GEMMUL8_FORWARD_REUSE=1` retains the prepared `X` across SCF steps (exact with fast scaling only); `OPENMX_GEMMUL8_FORWARD_TIMING=1` reports calls, preparations, reuses and wall time, and `OPENMX_CLUSTER_PROFILE=1` the phases of each dense solve.
+- **Precision controller** (experimental, off by default): `scf.gemmul8.adaptive on` with a block `<scf.gemmul8.adaptive.stages` raises the moduli count as the SCF residual falls and repeats a solve at the next stage when a random-direction error indicator exceeds its tolerance; the comment in `source/Input_std.c` lists the keywords.
+- **Tools.** `tools/measure_gemm_probe.sh` (matrix-level times, phases and errors against a double-double reference), `tools/run_forward_variants.sh` (the same input under several settings, with a comparison table), and the checks `tests/run_gemmul8_forward_smoke.sh`. `OPENMX_GEMMUL8_TIMING=1` counts and times every GEMM routed through the GEMMul8 bridge, in any solver, and reports the totals per rank at the end of each SCF.
+
 ## Multi-GPU parallelization
 How many GPUs a run can actually use is bounded by the number of k-points requested with "scf.Kgrid". The MPI ranks are divided into one group per k-point, and the dense eigenvalue problem of each group is solved on a single GPU, so the eigenvalue solver keeps at most as many GPUs busy as there are k-points; any GPU beyond that number stays idle in this part of the calculation. (The Hamiltonian matrix elements and the grid work are distributed over all MPI ranks, and therefore over all GPUs.)
 
@@ -104,6 +112,22 @@ failed on 16 of 64 MPI ranks; using ELPA2`), so keep at most 48 ranks per GPU
 under MPS; a larger rank count can use the GPU only without MPS (see the
 Kugui columns below).
 The benchmark tables below list the GPU columns of all three machines without and with MPS.
+
+## WSL2 and other WDDM platforms
+
+Under WSL2 the CUDA runtime's `cudaMemGetInfo` reports a per-process view of
+the device memory: the allocations of other processes — the other ranks'
+CUDA contexts and arrays — are not subtracted, and an allocation beyond the
+physical VRAM does not fail but is paged through system memory at a small
+fraction of the speed. Every device-memory budget of this code divides the
+free memory among the ranks of the node, so with the CUDA figure 12 ranks on
+a 12 GB GeForce each believed the whole card was theirs, oversubscribed it
+and stalled for minutes. The budgets therefore use the physically free
+memory reported by NVML (`nvidia-smi`'s library) whenever it is lower than
+the CUDA figure; on native Linux the two agree. A one-time line
+`<GPU> device memory: the CUDA runtime reports ... but ... is physically
+free (NVML)` on stdout says that the cap is active;
+`OPENMX_GPU_MEMINFO_NVML=0` restores the plain CUDA figure.
 
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems, and ready-made site makefiles are included for the Pegasus supercomputer at the University of Tsukuba (`Makefile.pegasus`) and for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to them. Since v2.0 the first `make` also builds the bundled ELPA/COSMA stack for "gpusolver2" automatically, which adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.

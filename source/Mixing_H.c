@@ -5,6 +5,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include "lapack_prototypes.h"
 
 
@@ -2260,7 +2261,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
   acc_wait_all();
   cudaDeviceSynchronize();
   MPI_Barrier(mpi_comm_level1);
-  cudaMemGetInfo(&free_b, &total_b);
+  OpenMX_GpuMemGetInfo(&free_b, &total_b);
 
   {
     MPI_Comm node_comm = MPI_COMM_NULL, device_comm = MPI_COMM_NULL;

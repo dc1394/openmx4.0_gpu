@@ -519,7 +519,7 @@ static int DC_GpuSolver_HasCublasMemoryForSolve(const char *where)
     }
 
     reserve_bytes = DC_GpuSolver_CublasReserveBytes();
-    status        = cudaMemGetInfo(&free_bytes, &total_bytes);
+    status        = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes);
     if (status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMemGetInfo(native cuBLAS preflight)", status);
         return 0;
@@ -571,7 +571,7 @@ static int DC_GpuSolver_PrepareGemmBackendForSolve(int n, int num1)
         estimate_bytes = estimate2;
     }
 
-    status = cudaMemGetInfo(&free_bytes, &total_bytes);
+    status = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes);
     if (status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMemGetInfo(GEMM preflight)", status);
         return 0;
@@ -794,7 +794,7 @@ static void DCCol_SCache_Prepare(int matomnum, const int *Msize, int scf_iter, i
     memset(DC_scache.valid, 0, sizeof(int) * (size_t)(matomnum + 1));
     memset(DC_scache.off, 0, sizeof(size_t) * (size_t)(matomnum + 1));
 
-    cuda_status = cudaMemGetInfo(&free_bytes, &total_bytes);
+    cuda_status = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes);
     if (cuda_status != cudaSuccess) {
         DCCol_SCache_FreeHostTables();
         DC_scache.state = -1;
@@ -1067,7 +1067,7 @@ static int DC_GpuSolver_EnsureWorkspace(int m, int maxn, double *d_A, const char
 
     if (d_bytes > ctx->d_work_bytes) {
         reserve_bytes    = DC_GpuSolver_EigenReserveBytes();
-        cuda_status      = cudaMemGetInfo(&free_bytes, &total_bytes);
+        cuda_status      = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes);
         releasable_bytes = (ctx->d_work != NULL) ? ctx->d_work_bytes : 0;
         available_bytes  = (SIZE_MAX - free_bytes < releasable_bytes) ? SIZE_MAX : free_bytes + releasable_bytes;
 
@@ -2365,7 +2365,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                 needmemsize += sizeof(double) * (NUM + 1) * (NUM + 1);
 
                 while (true) {
-                    cudaMemGetInfo(&free_memory, &total_memory);
+                    OpenMX_GpuMemGetInfo(&free_memory, &total_memory);
                     if (free_memory > needmemsize) {
                         break;
                     }

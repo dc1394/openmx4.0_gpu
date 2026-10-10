@@ -1176,7 +1176,7 @@ static int DCLNO_GpuGroupMemoryFits(int max_msize, int is_complex)
                        : openmx_gemmul8DWorkspaceSize(max_msize, max_msize, max_msize);
     need += overhead;
 
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
         free_bytes = 0;
     }
 

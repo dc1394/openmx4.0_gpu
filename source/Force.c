@@ -12,6 +12,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include <math.h>
 #include <omp.h>
 #include <openacc.h>
@@ -238,7 +239,7 @@ static void* Force_gpu_arena_wait(size_t bytes, const char* what)
         if (max_wait_ms <= waited_ms) {
             size_t free_b = 0, total_b = 0;
 
-            (void)cudaMemGetInfo(&free_b, &total_b);
+            (void)OpenMX_GpuMemGetInfo(&free_b, &total_b);
             fprintf(stderr,
                 "Force %s: %.1f MiB of device memory did not free up within %d s (%.1f MiB free); "
                 "reduce the MPI ranks sharing the device.\n",
@@ -263,7 +264,7 @@ static void Force_gpu_reduce_fallback_notice(size_t bytes)
 
     if (printed) return;
     printed = 1;
-    (void)cudaMemGetInfo(&free_b, &total_b);
+    (void)OpenMX_GpuMemGetInfo(&free_b, &total_b);
     fprintf(stderr,
         "Force: a %.1f MiB GPU reduction buffer does not fit (%.1f MiB free); using the host for this reduction.\n",
         (double)bytes / (1024.0 * 1024.0), (double)free_b / (1024.0 * 1024.0));
@@ -890,7 +891,7 @@ static size_t Force3_GpuChunkBudget(void)
         + grid_pts * (size_t)(SpinP_switch + 1) * sizeof(double)
         + grid_pts * 3 * sizeof(double);
 
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
     if (free_bytes <= reserve) return 0;
 
     usable = (free_bytes - reserve) / (size_t)node_ranks;
@@ -7387,7 +7388,7 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
 
     /* feasibility against the device memory shared by the node ranks */
 
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
     {
         const size_t reserve = (size_t)256 * 1024 * 1024;
         /* WorkspaceSizes counts both complete aligned device workspaces.
@@ -7992,7 +7993,7 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
         }
         if (max_source < plan.bytes) max_source = plan.bytes;
     }
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess || free_bytes <= reserve)
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess || free_bytes <= reserve)
         goto report;
     capacity = (free_bytes - reserve) / (size_t)node_ranks;
     if (cap_mb <= SIZE_MAX / (1024U * 1024U)
@@ -8391,7 +8392,7 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
     if (g->device_comm != MPI_COMM_NULL) {
         MPI_Comm_rank(g->device_comm, &g->device_rank);
         MPI_Comm_size(g->device_comm, &g->device_ranks);
-        if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) free_bytes = 0;
+        if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) free_bytes = 0;
         device_free = (unsigned long long)free_bytes;
         MPI_Allreduce(&device_free, &min_device_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, g->device_comm);
         wanted = !full_batch && Matomnum > 0;
@@ -8557,7 +8558,7 @@ static void Force4B_GpuCase1TurnsRun(double***** CDM0, Type_DS_VNA***** DS_VNA)
     /* Resident/streamed peers release their case-1 arenas before arriving
        here. Case-2 allocation cannot begin until these barriers finish. */
     MPI_Barrier(g->device_comm);
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) free_bytes = 0;
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) free_bytes = 0;
     local_free = (unsigned long long)free_bytes;
     local_arena = g->enabled ? (unsigned long long)g->plan.bytes : 0;
     MPI_Allreduce(&local_free, &min_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, g->device_comm);
@@ -8919,7 +8920,7 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
             if (max_neighbors < neighbors) max_neighbors = neighbors;
         }
         wanted = need != 0;
-        if (need != 0 && cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess
+        if (need != 0 && OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess
             && free_bytes > reserve
             && need <= (free_bytes - reserve) / (size_t)node_ranks) {
             /* Unlike the mandatory full-batch allocations, a failed
@@ -9351,7 +9352,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
         }
     }
 
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
         free(g->ene); free(g->sp_nlp); free(g->ene_off);
         memset(g, 0, sizeof(*g));
         return 0;

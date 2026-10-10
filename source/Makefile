@@ -258,7 +258,7 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           Get_Cnt_dOrbitals.o Gaunt.o Find_CGrids.o MD_pac.o \
           RestartFileDFT.o Output_CompTime.o Merge_LogFile.o Make_FracCoord.o \
           Make_InputFile_with_FinalCoord.o Output_Energy_Decomposition.o \
-          Divide_Conquer.o Divide_Conquer_LNO.o gemmul8_bridge.o elpa_cosma_bridge.o Krylov.o \
+          Divide_Conquer.o Divide_Conquer_LNO.o gemmul8_bridge.o eigen_refine_gpu.o grid_precision.o elpa_cosma_bridge.o Krylov.o \
           Divide_Conquer_Dosout.o EGAC_DFT.o LNO.o Calc_LNAO.o Calc_LNBO.o \
           Eigen_lapack.o gpusolver_Syevd.o gpusolver_Syevdx.o openmx_cusolver_compat.o set_cuda_default_device_from_local_rank.o set_openacc_device_from_local_rank.o Eigen_lapack2.o Eigen_lapack3.o EigenBand_lapack.o \
           Eigen_PReHH.o BroadCast_ReMatrix.o \
@@ -516,11 +516,11 @@ XC_EX.o: XC_EX.c openmx_common.h
 # SCF
 #
 
-DFT.o: DFT.c openmx_common.h tran_prototypes.h
+DFT.o: DFT.c openmx_common.h tran_prototypes.h grid_precision.h
 	$(CC) -c DFT.c
-Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h
+Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h eigen_refine_gpu.h
 	$(CC) -c Cluster_DFT_Col.c
-Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h
+Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h
 	$(CC) -c Cluster_DFT_NonCol.c
 Cluster_DFT_Dosout.o: Cluster_DFT_Dosout.c openmx_common.h
 	$(CC) -c Cluster_DFT_Dosout.c
@@ -536,7 +536,7 @@ Cluster_DFT_Col_DMmu.o: Cluster_DFT_Col_DMmu.c openmx_common.h
 	$(CC) -c Cluster_DFT_Col_DMmu.c
 Cluster_DFT_NonCol_DMmu.o: Cluster_DFT_NonCol_DMmu.c openmx_common.h
 	$(CC) -c Cluster_DFT_NonCol_DMmu.c
-Band_DFT_Col.o: Band_DFT_Col.c openmx_common.h
+Band_DFT_Col.o: Band_DFT_Col.c openmx_common.h eigen_refine_gpu.h
 	$(CC) -c Band_DFT_Col.c
 Band_DFT_Col_CWF.o: Band_DFT_Col_CWF.c openmx_common.h
 	$(CC) -c Band_DFT_Col_CWF.c
@@ -566,7 +566,7 @@ Overlap_Cluster_LNO_Ss.o: Overlap_Cluster_LNO_Ss.c openmx_common.h
 	$(CC) -c Overlap_Cluster_LNO_Ss.c
 leakdetect.o: leakdetect.c leakdetect.h
 	$(CC) -c leakdetect.c
-Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h
+Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c
@@ -638,11 +638,17 @@ RF_BesselF.o: RF_BesselF.c openmx_common.h
 Nonlocal_RadialF.o: Nonlocal_RadialF.c openmx_common.h
 	$(CC) -c Nonlocal_RadialF.c
 
-Set_Orbitals_Grid.o: Set_Orbitals_Grid.c openmx_common.h
-	$(CC) -c Set_Orbitals_Grid.c
+# The double-float orbital evaluator (SOG_point_eval_df, the GeForce default
+# of the on-the-fly tiles) is built from error-free transformations that
+# reuse each rounded product.  nvc contracts device code into FMAs by
+# default, which fuses those products into some of their uses and leaves
+# the tiles at FP32 accuracy (-runtest: diff Utot up to 4e-7 Hartree on an
+# RTX 4070 Ti).  The explicit fmaf() calls stay fused.
+Set_Orbitals_Grid.o: Set_Orbitals_Grid.c openmx_common.h orbs_grid_gpu.h
+	$(CC) -gpu=nofma -c Set_Orbitals_Grid.c
 Set_Density_Grid.o: Set_Density_Grid.c openmx_common.h
 	$(CC) -c Set_Density_Grid.c
-Set_Density_Grid_GPU.o: Set_Density_Grid_GPU.c openmx_common.h
+Set_Density_Grid_GPU.o: Set_Density_Grid_GPU.c openmx_common.h grid_precision.h
 	$(CC) -c Set_Density_Grid_GPU.c
 Set_Aden_Grid.o: Set_Aden_Grid.c openmx_common.h
 	$(CC) -c Set_Aden_Grid.c
@@ -734,7 +740,7 @@ gpusolver_Syevd.o: gpusolver_Syevd.c openmx_common.h
 	$(CC) -c gpusolver_Syevd.c
 gpusolver_Syevdx.o: gpusolver_Syevdx.c openmx_common.h
 	$(CC) -c gpusolver_Syevdx.c
-set_cuda_default_device_from_local_rank.o: set_cuda_default_device_from_local_rank.c openmx_common.h
+set_cuda_default_device_from_local_rank.o: set_cuda_default_device_from_local_rank.c set_cuda_default_device_from_local_rank.h openmx_common.h
 	$(CC) -c set_cuda_default_device_from_local_rank.c
 set_openacc_device_from_local_rank.o: set_openacc_device_from_local_rank.c openmx_common.h
 	$(CC) -c set_openacc_device_from_local_rank.c
@@ -788,7 +794,7 @@ Set_CoreHoleMatrix.o: Set_CoreHoleMatrix.c openmx_common.h
 	$(CC) -c Set_CoreHoleMatrix.c
 Set_OLP_p.o: Set_OLP_p.c openmx_common.h 
 	$(CC) -c Set_OLP_p.c
-Set_Hamiltonian.o: Set_Hamiltonian.c openmx_common.h
+Set_Hamiltonian.o: Set_Hamiltonian.c openmx_common.h grid_precision.h orbs_grid_gpu.h
 	$(CC) -c Set_Hamiltonian.c
 set_hamiltonian_gpu.o: set_hamiltonian_gpu.cu
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c set_hamiltonian_gpu.cu -o set_hamiltonian_gpu.o
@@ -814,6 +820,11 @@ Divide_Conquer.o: Divide_Conquer.c openmx_common.h
 	$(CC3) -c Divide_Conquer.c
 Divide_Conquer_LNO.o: Divide_Conquer_LNO.c openmx_common.h
 	$(CC) -c Divide_Conquer_LNO.c
+eigen_refine_gpu.o: eigen_refine_gpu.c eigen_refine_gpu.h
+	$(CC) -c eigen_refine_gpu.c
+grid_precision.o: grid_precision.c grid_precision.h
+	$(CC) -c grid_precision.c
+
 gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
 

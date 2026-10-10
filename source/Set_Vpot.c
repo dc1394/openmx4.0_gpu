@@ -53,6 +53,15 @@ void Set_Vpot(int MD_iter,
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
+
+  /* stage profile of this routine: OPENMX_BAND_PROFILE=1 prints one
+     SETVPOTPROF line per rank and SCF step (xc = Set_XC_Grid, d2b = the
+     Vxc D->B copy, vna, asm = the Vpot_Grid_B assembly, mix = the
+     Mixing_switch==7 FFT+Mixing_V, b2c = the B->C redistribution) */
+  double vp_t0, vp_t1, vp_xc = 0.0, vp_d2b = 0.0, vp_vna = 0.0, vp_asm = 0.0, vp_mix = 0.0, vp_b2c = 0.0;
+  static int vp_prof = -1;
+  if (vp_prof < 0) { const char *e = getenv("OPENMX_BAND_PROFILE"); vp_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
+  dtime(&vp_t0);
   /****************************************************
                        Vxc on grid
   ****************************************************/
@@ -64,6 +73,7 @@ void Set_Vpot(int MD_iter,
 	      Vxc_Grid_D[2], Vxc_Grid_D[3],
 	      NULL,NULL);
 
+  dtime(&vp_t1); vp_xc = vp_t1 - vp_t0; vp_t0 = vp_t1;
   /* copy Vxc_Grid_D to Vxc_Grid_B */
 
   Ng1 = Max_Grid_Index_D[1] - Min_Grid_Index_D[1] + 1;
@@ -89,7 +99,9 @@ void Set_Vpot(int MD_iter,
           The neutral atom potential on grids
   ****************************************************/
 
+  dtime(&vp_t1); vp_d2b = vp_t1 - vp_t0; vp_t0 = vp_t1;
   if (SCF_iter<=2 && ProExpn_VNA==0) Make_VNA_Grid();
+  dtime(&vp_t1); vp_vna = vp_t1 - vp_t0; vp_t0 = vp_t1;
 
   /****************************************************
                 external electric field
@@ -270,6 +282,7 @@ void Set_Vpot(int MD_iter,
     mixing of potential is performed here.
   *****************************************************/
 
+  dtime(&vp_t1); vp_asm = vp_t1 - vp_t0; vp_t0 = vp_t1;
   if ( Mixing_switch==7 ){
 
     time15 = 0.0;
@@ -307,7 +320,13 @@ void Set_Vpot(int MD_iter,
              MPI: from the partitions B to C
   ******************************************************/
 
+  dtime(&vp_t1); vp_mix = vp_t1 - vp_t0; vp_t0 = vp_t1;
   Data_Grid_Copy_B2C_2( Vpot_Grid_B, Vpot_Grid );
+  dtime(&vp_t1); vp_b2c = vp_t1 - vp_t0;
+  if (vp_prof) {
+    fprintf(stderr, "SETVPOTPROF id=%d it=%d xc=%.3f d2b=%.3f vna=%.3f asm=%.3f mix=%.3f b2c=%.3f\n", myid, SCF_iter,
+            vp_xc, vp_d2b, vp_vna, vp_asm, vp_mix, vp_b2c);
+  }
 
 }
 

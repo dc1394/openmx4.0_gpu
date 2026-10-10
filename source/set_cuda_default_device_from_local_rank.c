@@ -1,8 +1,10 @@
 #include "openmx_common.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <cuda_runtime.h>
+#include <nvml.h>
 #include <mpi.h>
 #include <openacc.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -110,6 +112,121 @@ static size_t gpu_probe_reserve_bytes(void)
     return (size_t)GPU_PROBE_DEFAULT_RESERVE_MB * 1024U * 1024U;
 }
 
+/* The physical free-memory cap of OpenMX_GpuMemGetInfo (see the header).
+   NVML is resolved at run time: a load-time dependency on libnvidia-ml.so.1
+   would keep the binary from starting on hosts without the driver (login
+   nodes, CPU-only nodes), which the GPU build otherwise handles by taking
+   the host paths.  nvml.h supplies only the types.  The library is opened
+   and initialized once per process and the handle of a CUDA device is
+   resolved once, through its PCI bus id.  A failure of any step only
+   disables the cap. */
+#define GPU_MEMINFO_MAX_DEVICES 64
+
+static nvmlReturn_t (*gpu_meminfo_nvmlInit)(void);
+static nvmlReturn_t (*gpu_meminfo_nvmlDeviceGetHandleByPciBusId)(const char *, nvmlDevice_t *);
+static nvmlReturn_t (*gpu_meminfo_nvmlDeviceGetMemoryInfo)(nvmlDevice_t, nvmlMemory_t *);
+
+static int gpu_meminfo_nvml_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENMX_GPU_MEMINFO_NVML");
+        enabled = (value != NULL && value[0] != '\0' && atoi(value) == 0) ? 0 : 1;
+    }
+    return enabled;
+}
+
+static int gpu_meminfo_nvml_load(void)
+{
+    void *lib = dlopen("libnvidia-ml.so.1", RTLD_NOW | RTLD_LOCAL);
+
+    if (lib == NULL) return 0;
+    /* the exported names; nvml.h maps the unversioned ones onto these */
+    gpu_meminfo_nvmlInit =
+        (nvmlReturn_t (*)(void))dlsym(lib, "nvmlInit_v2");
+    gpu_meminfo_nvmlDeviceGetHandleByPciBusId =
+        (nvmlReturn_t (*)(const char *, nvmlDevice_t *))dlsym(lib, "nvmlDeviceGetHandleByPciBusId_v2");
+    gpu_meminfo_nvmlDeviceGetMemoryInfo =
+        (nvmlReturn_t (*)(nvmlDevice_t, nvmlMemory_t *))dlsym(lib, "nvmlDeviceGetMemoryInfo");
+    if (gpu_meminfo_nvmlInit == NULL || gpu_meminfo_nvmlDeviceGetHandleByPciBusId == NULL ||
+        gpu_meminfo_nvmlDeviceGetMemoryInfo == NULL)
+        return 0;
+    return gpu_meminfo_nvmlInit() == NVML_SUCCESS;
+}
+
+static int gpu_meminfo_nvml_device(int dev, nvmlDevice_t *handle)
+{
+    static int nvml_state = 0;                               /* 0 untried, 1 up, -1 unavailable */
+    static int known[GPU_MEMINFO_MAX_DEVICES];               /* 0 untried, 1 resolved, -1 failed */
+    static nvmlDevice_t handles[GPU_MEMINFO_MAX_DEVICES];
+    char bus_id[32];
+
+    if (dev < 0 || GPU_MEMINFO_MAX_DEVICES <= dev) return 0;
+    if (nvml_state == 0) nvml_state = gpu_meminfo_nvml_load() ? 1 : -1;
+    if (nvml_state < 0) return 0;
+    if (known[dev] == 0) {
+        known[dev] = (cudaDeviceGetPCIBusId(bus_id, (int)sizeof(bus_id), dev) == cudaSuccess &&
+                      gpu_meminfo_nvmlDeviceGetHandleByPciBusId(bus_id, &handles[dev]) == NVML_SUCCESS) ? 1 : -1;
+        if (known[dev] < 0) (void)cudaGetLastError();
+    }
+    if (known[dev] < 0) return 0;
+    *handle = handles[dev];
+    return 1;
+}
+
+cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
+{
+    static int announced = 0;
+    const size_t gap_min = (size_t)256 * 1024 * 1024;
+    size_t cuda_free = 0, cuda_total = 0;
+    cudaError_t status = cudaMemGetInfo(&cuda_free, &cuda_total);
+    nvmlDevice_t handle;
+    nvmlMemory_t memory;
+    int dev = -1;
+
+    if (status != cudaSuccess) return status;
+    if (free_bytes != NULL) *free_bytes = cuda_free;
+    if (total_bytes != NULL) *total_bytes = cuda_total;
+    if (!gpu_meminfo_nvml_enabled() || free_bytes == NULL) return cudaSuccess;
+    if (cudaGetDevice(&dev) != cudaSuccess) {
+        (void)cudaGetLastError();
+        return cudaSuccess;
+    }
+    if (!gpu_meminfo_nvml_device(dev, &handle)) return cudaSuccess;
+    if (gpu_meminfo_nvmlDeviceGetMemoryInfo(handle, &memory) != NVML_SUCCESS) return cudaSuccess;
+    if ((size_t)memory.free < cuda_free) {
+        if (!announced && gap_min < cuda_free - (size_t)memory.free) {
+            /* On Linux the two figures agree, but a peer's allocation that
+               lands between the two queries shows as a gap too; a second
+               CUDA query after the NVML one tells the two apart (it already
+               includes that allocation), so only a gap that persists is
+               reported.  The cap itself needs no such care: the newer
+               figure is the right one either way. */
+            size_t again_free = 0, again_total = 0;
+
+            if (cudaMemGetInfo(&again_free, &again_total) == cudaSuccess &&
+                gap_min < again_free - (size_t)memory.free) {
+                int initialized = 0, myid = 0;
+
+                announced = 1;
+                MPI_Initialized(&initialized);
+                if (initialized) MPI_Comm_rank(mpi_comm_level1, &myid);
+                if (myid == 0 && 0 < level_stdout) {
+                    printf("<GPU> device memory: the CUDA runtime reports %.2f GiB free on device %d but %.2f GiB is physically free (NVML);"
+                           " on WDDM platforms such as WSL2 the CUDA figure omits the allocations of other processes,"
+                           " so the device-memory budgets use the smaller figure (OPENMX_GPU_MEMINFO_NVML=0 restores the CUDA one).\n",
+                           (double)(again_free < cuda_free ? again_free : cuda_free) / 1073741824.0, dev,
+                           (double)memory.free / 1073741824.0);
+                    fflush(stdout);
+                }
+            }
+        }
+        *free_bytes = (size_t)memory.free;
+    }
+    return cudaSuccess;
+}
+
 /* Many ranks sharing one device can exhaust it with their CUDA contexts
    alone (~200-300 MiB each); past that point the OpenACC entry points do
    not fail, they abort ("Could not find symbol ... Rebuild this file
@@ -176,7 +293,7 @@ int gpu_rank_device_usable(void)
     }
 
     if (cudaFree(0) == cudaSuccess &&                   /* context creation */
-        cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess &&
+        OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess &&
         gpu_probe_reserve_bytes() <= free_bytes) {
 
         void *touch;

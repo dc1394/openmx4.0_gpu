@@ -1,7 +1,9 @@
 #ifndef _SET_CUDA_DEFAULT_DEVICE_FROM_LOCAL_RANK_H_
 #define _SET_CUDA_DEFAULT_DEVICE_FROM_LOCAL_RANK_H_
 
+#include <stddef.h>
 #include <mpi.h>
+#include <cuda_runtime.h>
 
 int set_cuda_default_device_from_local_rank();
 int set_cuda_default_device_from_local_rank_noncollective(void);
@@ -33,5 +35,23 @@ int openmx_gpu_local_size_noncollective(void);
    directives abort instead of failing.  Ranks that fail keep the host
    as their OpenACC compute device and must take the host code paths. */
 int gpu_rank_device_usable(void);
+
+/* cudaMemGetInfo() whose free figure is capped at the device memory that is
+   physically free according to NVML.  Every device-memory budget of the GPU
+   paths starts from this figure and divides it among the ranks of the node,
+   which presumes that it is the same physical quantity for every rank.  On
+   WDDM-based platforms (WSL2, Windows) the CUDA runtime reports a per-process
+   view in which the allocations of other processes -- the other ranks'
+   contexts and arrays -- are invisible, and an allocation past the physical
+   memory does not fail but is paged through system memory at a fraction of
+   the speed: 12 ranks on a 12 GB RTX 4070 Ti each saw 10.8 GiB "free", took
+   836 MiB each for the DS_VNA batch and stalled Set_ProExpn_VNA for minutes.
+   NVML (nvidia-smi's library) reports the physical figure on every platform;
+   on Linux the two agree and this is cudaMemGetInfo().  The CUDA status is
+   returned unchanged; NVML failures leave the CUDA figures as they are.
+   libnvidia-ml.so.1 is opened at run time (dlopen), so the binary keeps
+   starting on hosts without the driver.  OPENMX_GPU_MEMINFO_NVML=0
+   restores the plain cudaMemGetInfo(). */
+cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes);
 
 #endif // _SET_CUDA_DEFAULT_DEVICE_FROM_LOCAL_RANK_H_

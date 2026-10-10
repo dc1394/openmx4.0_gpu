@@ -3396,6 +3396,14 @@ typedef struct {
 
 int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables);
 int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind);
+int Set_Hamiltonian_OnTheFly_DensityPossible(int Cnt_kind, int myid);
+void Set_Hamiltonian_OnTheFly_EndCycle(void);
+void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks);
+void Set_Density_Grid_GPU_EndCycle(void);
+size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
+int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
+                                     double *tmpden, size_t output_count, const unsigned int *atom_out_base,
+                                     int myid);
 void Cluster_DFT_Col_Release_GPU_Solver(void);
 void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 void Mixing_H_Release_GPU(void);
@@ -3623,6 +3631,19 @@ double Cluster_DFT_NonCol(
                    double *Work1);
 
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
+int Cluster_DFT_NonCol_RefineLastRefined(void);
+int Cluster_DFT_Col_RefineLastRefined(void);
+void Cluster_DFT_Col_RefineForceFP64(int on);
+void Cluster_DFT_Col_RefineAfterMixing(double normrd);
+int Band_DFT_Col_RefineLastRefined(void);
+void Band_DFT_Col_RefineForceFP64(int on);
+void Band_DFT_Col_RefineAfterMixing(double normrd);
+int Band_DFT_NonCol_RefineLastRefined(void);
+void Band_DFT_NonCol_RefineForceFP64(int on);
+void Band_DFT_NonCol_RefineAfterMixing(double normrd);
+void Band_DFT_Col_RefineEndCycle(void);
+void Band_DFT_NonCol_RefineEndCycle(void);
+void Cluster_DFT_NonCol_RefineAfterMixing(double normrd);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
                    int n2,
                    int *is2,
@@ -4190,6 +4211,64 @@ void openmx_gemmul8ReleaseWorkspaces(void);
    plain cuBLAS FP64 GEMM (workspace queries then report 0).  Default on;
    set from Input_std.c on every rank. */
 void openmx_gemmul8SetEnabled(int enabled);
+/* 1 when openmx_gemmul8Zgemm takes the GEMMul8 path at all (scf.gemmul8.enable
+   on, complex products not disabled from the environment). */
+int openmx_gemmul8ZgemmEnabled(void);
+int openmx_gemmul8DgemmEnabled(void);
+/* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
+   far that ran in plain cuBLAS FP64 (switched off or a workspace fallback). */
+long long openmx_gemmul8NativeCalls(int is_complex);
+/* openmx_gemmul8Zgemm with the full GEMMul8 workspace when the device has room
+   for it (no blocking), else the same as openmx_gemmul8Zgemm. */
+cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                            int m, int n, int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A,
+                                            int lda, const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta,
+                                            cuDoubleComplex *C, int ldc);
+cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                            int m, int n, int k, const double *alpha, const double *A, int lda,
+                                            const double *B, int ldb, const double *beta, double *C, int ldc);
+/* Forward transform of the dense eigensolver, B = H X and C = X^+ B, with
+   its own precision stage (mode 0: as the calls above, 1: cuBLAS FP64,
+   2: GEMMul8 with the given moduli count and scaling mode) and optional
+   reuse of the prepared X.  C = op_x(X) V when x_is_left, else C = V op_x(X);
+   x_id names the X (one per k-point/spin block) and x_version must change
+   whenever its contents do.  See gemmul8_bridge.cu for the environment
+   variables that set the stage until openmx_gemmul8SetForwardStage is called. */
+cublasStatus_t openmx_gemmul8DgemmFixed(cublasHandle_t handle, int x_is_left, cublasOperation_t op_x, int m, int n,
+                                        int k, const double *X, int ldx, const double *V, int ldv, double *C,
+                                        int ldc, int x_id, unsigned long long x_version);
+cublasStatus_t openmx_gemmul8ZgemmFixed(cublasHandle_t handle, int x_is_left, cublasOperation_t op_x, int m, int n,
+                                        int k, const cuDoubleComplex *X, int ldx, const cuDoubleComplex *V, int ldv,
+                                        cuDoubleComplex *C, int ldc, int x_id, unsigned long long x_version);
+void openmx_gemmul8SetForwardStage(int mode, int num_moduli, int fastmode, int reuse, int unblocked);
+size_t openmx_gemmul8ForwardCounters(long long counters[5], double seconds[2]);
+void openmx_gemmul8ReleasePrepared(void);
+/* frees the workspaces above the cap of the blocked path, i.e. the scratch
+   of unblocked forward products */
+void openmx_gemmul8TrimWorkspaces(void);
+/* Precision controller of the forward transform during an SCF
+   (scf.gemmul8.adaptive, see gemmul8_bridge.cu): GEMMul8 stages of
+   increasing precision; only the final stage (cuBLAS FP64, or the last
+   listed stage) may end the SCF.  Every rank runs it on the same global
+   quantities. */
+#define OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES 8
+void openmx_gemmul8AdaptiveConfigure(int nstage, int final_fp64, const int *moduli, const int *fastmode,
+                                     const double *promote,
+                                     const double *eta_tolerance, int reuse, int unblocked, int window, int stall,
+                                     int budget, int final_window, int clear_history, int probe_columns,
+                                     int probe_interval, double probe_floor);
+int openmx_gemmul8AdaptiveEnabled(void);
+void openmx_gemmul8AdaptiveStart(void);
+int openmx_gemmul8AdaptiveBeginTrial(void);
+int openmx_gemmul8AdaptiveProbeColumns(void);
+double openmx_gemmul8AdaptiveProbeFloor(void);
+void openmx_gemmul8AdaptiveReport(double eta, int failed);
+void openmx_gemmul8AdaptiveTrialStatus(int *rejected, double *eta);
+void openmx_gemmul8AdaptiveReject(void);
+int openmx_gemmul8AdaptiveStopCheck(int stop_condition);
+int openmx_gemmul8AdaptiveTakeHistoryReset(void);
+int openmx_gemmul8AdaptiveAfterMixing(double residual);
+void openmx_gemmul8AdaptiveDescribe(char *text, int size, long long counters[5]);
 
 int getDeviceCount();
 void Eigen_PReHH(MPI_Comm MPI_Current_Comm_WD, 
