@@ -638,8 +638,14 @@ RF_BesselF.o: RF_BesselF.c openmx_common.h
 Nonlocal_RadialF.o: Nonlocal_RadialF.c openmx_common.h
 	$(CC) -c Nonlocal_RadialF.c
 
+# The double-float orbital evaluator (SOG_point_eval_df, the GeForce default
+# of the on-the-fly tiles) is built from error-free transformations that
+# reuse each rounded product.  nvc contracts device code into FMAs by
+# default, which fuses those products into some of their uses and leaves
+# the tiles at FP32 accuracy (-runtest: diff Utot up to 4e-7 Hartree on an
+# RTX 4070 Ti).  The explicit fmaf() calls stay fused.
 Set_Orbitals_Grid.o: Set_Orbitals_Grid.c openmx_common.h orbs_grid_gpu.h
-	$(CC) -c Set_Orbitals_Grid.c
+	$(CC) -gpu=nofma -c Set_Orbitals_Grid.c
 Set_Density_Grid.o: Set_Density_Grid.c openmx_common.h
 	$(CC) -c Set_Density_Grid.c
 Set_Density_Grid_GPU.o: Set_Density_Grid_GPU.c openmx_common.h grid_precision.h
