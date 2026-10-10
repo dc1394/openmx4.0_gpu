@@ -891,7 +891,7 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
   if (myid == owner && !cache->device_resident) {
     cudaGetDevice(&device);
     acc_set_device_num(device, acc_device_nvidia);
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
         free_bytes < cache->device_bytes || reserve_bytes > free_bytes - cache->device_bytes) need_release = 1;
   }
   MPI_Bcast(&need_release, 1, MPI_INT, owner, mpi_comm_level1);
@@ -909,7 +909,7 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
 
     if (myid == owner) {
       need_release =
-          (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
+          (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
            free_bytes < cache->device_bytes || reserve_bytes > free_bytes - cache->device_bytes);
     }
     MPI_Bcast(&need_release, 1, MPI_INT, owner, mpi_comm_level1);
@@ -926,7 +926,7 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
   }
 
   if (myid == owner && !cache->device_resident) {
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
         free_bytes < cache->device_bytes || reserve_bytes > free_bytes - cache->device_bytes) {
       ok = 0;
       if (0 < level_stdout) {
@@ -1349,7 +1349,7 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
   reserve_bytes = SDG_env_mib("OPENMX_DENSITY_GRID_GPU_RESERVE_MB", 256);
   if (c->device_resident && acc_get_device_num(acc_device_nvidia) != c->device_id)
     SDG_local_delete_device(c);
-  if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
+  if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
   need = SDG_local_call_bytes(c);
   if (free_bytes < reserve_bytes) return 0;
   if ((free_bytes - reserve_bytes) / (size_t)c->node_ranks < need) return 0;
@@ -1488,7 +1488,7 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
     int keep_resident = cap != 0 && c->extra_bytes <= cap;
 
     if (keep_resident && !c->device_resident)
-      keep_resident = cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess &&
+      keep_resident = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess &&
                      c->extra_bytes <= free_bytes / 32U / (size_t)c->node_ranks;
     /* Nonempty output with no terms takes the original transient path. */
     keep_resident = keep_resident && term_count != 0 && dm_count != 0;

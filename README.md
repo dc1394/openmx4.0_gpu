@@ -113,6 +113,22 @@ under MPS; a larger rank count can use the GPU only without MPS (see the
 Kugui columns below).
 The benchmark tables below list the GPU columns of all three machines without and with MPS.
 
+## WSL2 and other WDDM platforms
+
+Under WSL2 the CUDA runtime's `cudaMemGetInfo` reports a per-process view of
+the device memory: the allocations of other processes — the other ranks'
+CUDA contexts and arrays — are not subtracted, and an allocation beyond the
+physical VRAM does not fail but is paged through system memory at a small
+fraction of the speed. Every device-memory budget of this code divides the
+free memory among the ranks of the node, so with the CUDA figure 12 ranks on
+a 12 GB GeForce each believed the whole card was theirs, oversubscribed it
+and stalled for minutes. The budgets therefore use the physically free
+memory reported by NVML (`nvidia-smi`'s library) whenever it is lower than
+the CUDA figure; on native Linux the two agree. A one-time line
+`<GPU> device memory: the CUDA runtime reports ... but ... is physically
+free (NVML)` on stdout says that the cap is active;
+`OPENMX_GPU_MEMINFO_NVML=0` restores the plain CUDA figure.
+
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems, and ready-made site makefiles are included for the Pegasus supercomputer at the University of Tsukuba (`Makefile.pegasus`) and for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to them. Since v2.0 the first `make` also builds the bundled ELPA/COSMA stack for "gpusolver2" automatically, which adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
 

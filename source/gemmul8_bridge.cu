@@ -1,5 +1,16 @@
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
+
+/* cudaMemGetInfo capped at the physically free device memory (NVML); see
+   set_cuda_default_device_from_local_rank.h.  A weak reference: the
+   standalone probe builds (tests/run_gemmul8_smoke.sh and friends) link
+   this file without that object and take the plain runtime call. */
+extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes);
+static inline cudaError_t device_mem_get_info(size_t *free_bytes, size_t *total_bytes)
+{
+    return OpenMX_GpuMemGetInfo != nullptr ? OpenMX_GpuMemGetInfo(free_bytes, total_bytes)
+                                           : cudaMemGetInfo(free_bytes, total_bytes);
+}
 #include <cuComplex.h>
 
 #include <atomic>
@@ -281,7 +292,7 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
 
     size_t free_bytes  = 0;
     size_t total_bytes = 0;
-    cuda_status        = cudaMemGetInfo(&free_bytes, &total_bytes);
+    cuda_status        = device_mem_get_info(&free_bytes, &total_bytes);
     if (cuda_status == cudaSuccess && report != nullptr) {
         report->free_bytes  = free_bytes;
         report->total_bytes = total_bytes;
@@ -305,7 +316,7 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
             return CUBLAS_STATUS_INTERNAL_ERROR;
         }
 
-        cuda_status = cudaMemGetInfo(&free_bytes, &total_bytes);
+        cuda_status = device_mem_get_info(&free_bytes, &total_bytes);
         if (cuda_status == cudaSuccess && report != nullptr) {
             report->free_bytes  = free_bytes;
             report->total_bytes = total_bytes;
@@ -777,7 +788,7 @@ cublasStatus_t ensure_scratch(cublasHandle_t handle, size_t required, void **wor
         size_t free_bytes = 0, total_bytes = 0;
 
         if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
-        if (cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess && free_bytes < required + reserve)
+        if (device_mem_get_info(&free_bytes, &total_bytes) == cudaSuccess && free_bytes < required + reserve)
             return CUBLAS_STATUS_ALLOC_FAILED;
         if (cudaMalloc(&workspace.ptr, required) != cudaSuccess) {
             workspace.ptr = nullptr;
@@ -804,7 +815,7 @@ Prepared *ensure_prepared(const PreparedKey &key, size_t bytes)
 
         if (entry.ptr != nullptr) (void)cudaFree(entry.ptr);
         entry = Prepared{};
-        if (cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess && free_bytes < bytes + reserve) return nullptr;
+        if (device_mem_get_info(&free_bytes, &total_bytes) == cudaSuccess && free_bytes < bytes + reserve) return nullptr;
         if (cudaMalloc(&entry.ptr, bytes) != cudaSuccess) {
             entry.ptr = nullptr;
             (void)cudaGetLastError();

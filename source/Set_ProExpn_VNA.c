@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <math.h>
 #include <string.h>
 #include <time.h>
@@ -23,6 +24,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "openmx_common.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include "mpi.h"
 #include <omp.h>
 #include <openacc.h>
@@ -35,6 +37,8 @@ static void SetPro_VNA23_GpuEnd(void);
 /* forward: SetPro_DSVNA_GpuBegin releases its tables through this when the
    device-memory check sends the DS_VNA build down the CPU path */
 static void SetPro_DSVNA_GpuEnd(void);
+/* forward: the OPENMX_SETPRO_VERBOSE diagnostics (defined below the driver) */
+static void SetPro_note(const char *stage, const char *fmt, ...) __attribute__((noinline));
 
 #ifdef kcomp
 static void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
@@ -47,6 +51,8 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
 {
   double time1,time2,time3;
   int vna23_gpu;
+
+  SetPro_note("entry","");
 
   /* separable form */
 
@@ -65,6 +71,8 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
   time3 = Set_VNA3(HVNA3);
 
   if (vna23_gpu) SetPro_VNA23_GpuEnd();
+
+  SetPro_note("exit","Set_ProExpn %.2f s, Set_VNA2 %.2f s, Set_VNA3 %.2f s",time1,time2,time3);
 
   if (measure_time){
     printf("Time Set_ProExpn=%7.3f Set_VNA2=%7.3f Set_VNA3=%7.3f\n",time1,time2,time3);
@@ -156,6 +164,53 @@ static int SetPro_collective_env_flag(const char *name, int default_value)
   return value;
 }
 
+/* OPENMX_SETPRO_VERBOSE=1: every rank reports each device stage of this
+   file (the admission figures, the batch sizes, the elapsed time) together
+   with the device memory free at that moment, on stderr */
+static int SetPro_verbose(void)
+{
+  static int verbose = -1;
+
+  if (verbose<0){
+    const char *env = getenv("OPENMX_SETPRO_VERBOSE");
+    verbose = (env!=NULL && env[0]!='\0' && atoi(env)!=0) ? 1 : 0;
+  }
+  return verbose;
+}
+
+static double SetPro_free_mib(void)
+{
+  size_t free_bytes = 0,total_bytes = 0;
+
+  /* a CPU run must not create a CUDA context for a diagnostic */
+  if (scf_eigen_lib_flag!=GPUSOLVER) return -1.0;
+  if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return -1.0;
+  return (double)free_bytes/1048576.0;
+}
+
+/* kept out of line: nvc 26.9 miscompiles the inlined copies (an undefined
+   value for the formatted buffer in its LLVM IR) */
+static void SetPro_note(const char *stage, const char *fmt, ...) __attribute__((noinline));
+static void SetPro_note(const char *stage, const char *fmt, ...)
+{
+  char detail[512];
+  va_list ap;
+  int myid;
+
+  if (!SetPro_verbose()) return;
+  va_start(ap,fmt);
+  vsnprintf(detail,sizeof(detail),fmt,ap);
+  va_end(ap);
+  MPI_Comm_rank(mpi_comm_level1,&myid);
+  {
+    const double mib = SetPro_free_mib();
+
+    if (mib<0.0) fprintf(stderr,"<Set_ProExpn_VNA> rank %d %s: %s\n",myid,stage,detail);
+    else fprintf(stderr,"<Set_ProExpn_VNA> rank %d %s: %s; device free %.0f MiB\n",myid,stage,detail,mib);
+  }
+  fflush(stderr);
+}
+
 static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
                                 int *VNA_List2, int Num_RVNA)
 {
@@ -203,7 +258,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
   }
 
   g->flat_count = pos==0 ? 1 : pos;
-  if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) free_bytes = 0;
+  if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) free_bytes = 0;
   {
     const size_t reserve = (size_t)256*1024*1024;
     size_t items = 0, kslots = 0, outputs = 0;
@@ -254,6 +309,10 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
       if (total_need > min_host*512ULL) fit = 0;
     }
     MPI_Allreduce(&fit,&global_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    SetPro_note("HVNA GPU admission",
+                "need %.0f MiB (node max %.0f), node min free %.0f MiB, %d of %d rank(s) per turn, %d turn(s), fit %d (global %d)",
+                (double)need/1048576.0,(double)max_need/1048576.0,(double)min_available/1048576.0,
+                admitted,node_ranks,local_turns,fit,global_fit);
     if (!global_fit){
       if (!fit && node_rank==0){
         fprintf(stderr,
@@ -390,6 +449,11 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
     }
   }
 
+  SetPro_note("HVNA GPU archives","local archive %.0f MiB, halo archive %.0f MiB on the %s",
+              (double)g->flat_count*sizeof(float)/1048576.0,
+              (double)g->halo_count*sizeof(float)/1048576.0,
+              g->host_archive ? "host (rank turns)" : "device");
+
   g->enabled = 1;
   return 1;
 }
@@ -484,6 +548,11 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
   }
 
   if (nitems==0) return;
+
+  double hvna_t0;
+  dtime(&hvna_t0);
+  SetPro_note("HVNA GPU batch begin","%d (atom,neighbour) items, %d k slots, %.0f MiB of outputs",
+              nitems,kslots,(double)out_count*sizeof(double)/1048576.0);
 
   item_atom = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)nitems);
   item_j = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)nitems);
@@ -659,6 +728,11 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
     acc_free(g->halo_dev);
     g->flat_dev = g->halo_dev = NULL;
     acc_clear_freelists();
+  }
+  {
+    double t1;
+    dtime(&t1);
+    SetPro_note("HVNA GPU batch end","%.2f s",t1-hvna_t0);
   }
 }
 
@@ -871,7 +945,7 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
   /* Cheap gate only.  The real device-memory decision cannot be made here --
      every extent the acc data region is sized from is still unknown -- so it
      happens at the end of this function, once the tables are built. */
-  if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
+  if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
 
   g->num_proj = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
   g->num_rvna = Num_RVNA;
@@ -1035,7 +1109,7 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
     const size_t reserve = (size_t)256*1024*1024;
     size_t need, budget = 0;
     g->chunk = SETPRO_DSVNA_CHUNK;
-    if (cudaMemGetInfo(&free_bytes,&total_bytes)==cudaSuccess && free_bytes>reserve)
+    if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)==cudaSuccess && free_bytes>reserve)
       budget = (free_bytes - reserve)/(size_t)node_ranks;
     need = SetPro_DSVNA_DeviceBytes(g);
     /* Each pair is independent. Port the AMD batch admission: shrink
@@ -1044,6 +1118,11 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
       g->chunk /= 2;
       need = SetPro_DSVNA_DeviceBytes(g);
     }
+
+    SetPro_note("DS_VNA GPU admission",
+                "need %.0f MiB at pair batch %d, budget %.0f MiB (free %.0f MiB less %.0f MiB reserve over %d rank(s)): %s",
+                (double)need/1048576.0,g->chunk,(double)budget/1048576.0,(double)free_bytes/1048576.0,
+                (double)reserve/1048576.0,node_ranks,budget<=need ? "CPU fallback" : "admitted");
 
     if (budget<=need){
 
@@ -1167,6 +1246,11 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
     const size_t c2r_len = 2*(size_t)c2r_off[((l0max_all<l1max)?l1max:l0max_all)+1];
     const int lc_max = (l0max_all<l1max) ? l1max : l0max_all;
 
+    double dsvna_t0;
+    dtime(&dsvna_t0);
+    SetPro_note("DS_VNA GPU batch begin","%d pairs in batches of %d, estimated %.0f MiB on the device",
+                OneD_Nloop,CHUNK,(double)SetPro_DSVNA_DeviceBytes(g)/1048576.0);
+
 #pragma acc data copyin(pro00[0:pro_len], pro01[0:pro_len], vnab[0:vnab_len], \
                         gnt[0:gnt_len], c2r[0:c2r_len], c2r_off[0:lc_max+2], \
                         sp_lfi[0:SpeciesNum], sp_ncmb[0:SpeciesNum], \
@@ -1184,6 +1268,8 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
 
       const int np = ((OneD_Nloop-chunk_start)<CHUNK) ? (OneD_Nloop-chunk_start) : CHUNK;
       int pp,LLh,mh;
+
+      if (chunk_start==0) SetPro_note("DS_VNA GPU batch","device arrays mapped");
 
       /* host: pair geometry and the spherical harmonics of every pair */
 
@@ -1527,6 +1613,12 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
       }
 
     } /* chunk_start */
+
+    {
+      double t1;
+      dtime(&t1);
+      SetPro_note("DS_VNA GPU batch end","%.2f s",t1-dsvna_t0);
+    }
   }
 
   free(outbuf);
@@ -1558,6 +1650,7 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
 
 typedef struct {
   int enabled;
+  int chunk;            /* admitted pair batch, shared by sizing and execution */
   int l0max;            /* max Spe_MaxL_Basis                          */
   int lfi_max;          /* 2*l0max                                     */
   int cmb_max;
@@ -1579,31 +1672,77 @@ typedef struct {
 
 static SetProGpu3Context SetPro_gpu3 = { 0 };
 
+/* full pair-chunk length of the HVNA2/HVNA3 device pipeline; the admitted
+   length g->chunk (halved until the footprint fits the rank's budget) is
+   shared by the estimate below and by SetPro_VNA23_GpuRun */
+#define SETPRO_VNA23_CHUNK 512
+
+/* Device bytes the "#pragma acc data" region of SetPro_VNA23_GpuRun maps,
+   term for term in the order of that clause (valid once the per-species
+   tables of SetPro_VNA23_GpuBegin are built). */
+static size_t SetPro_VNA23_DeviceBytes(const SetProGpu3Context *g)
+{
+  const size_t CH = (size_t)g->chunk;
+  const int nM = 2*g->l0max + 1;
+  const int nLL = g->lfi_max + 1;
+  const int nsh = (g->lfi_max+1)*(g->lfi_max+1);
+  const size_t crude_len = (size_t)SpeciesNum*GL_Mesh;
+  const size_t prod_len = (size_t)SpeciesNum*g->cmb_max*g->cmb_max*nLL*GL_Mesh;
+  const size_t gnt2_len = (size_t)(g->l0max+1)*nM*(g->l0max+1)*nM*nLL;
+  const size_t c2r_len = 2*(size_t)g->c2r_off[g->l0max+1];
+  const size_t sphb_len = CH*nLL*GL_Mesh;
+  const size_t sum_len = CH*nLL*g->cmb_max*g->cmb_max;
+  const size_t elem_per_pair = (size_t)g->cmb_max*nM*g->cmb_max*nM;
+  const size_t tmpnl_len = CH*elem_per_pair*8;
+  const size_t out_len = CH*4*(size_t)g->mn_max;
+  size_t bytes = 0;
+
+  /* copyin */
+  bytes += (crude_len + prod_len + gnt2_len + c2r_len)*sizeof(double);
+  bytes += (size_t)(g->l0max+2)*sizeof(int);                                 /* c2r_off   */
+  bytes += (size_t)(2*SpeciesNum + 2*(size_t)SpeciesNum*g->cmb_max)*sizeof(int);
+  bytes += (size_t)2*GL_Mesh*sizeof(double);                                 /* GL_NormK, GL_Weight */
+
+  /* create */
+  bytes += (2*sphb_len + 2*sum_len + tmpnl_len + out_len)*sizeof(double);
+  bytes += CH*5*sizeof(double) + CH*3*sizeof(int);                           /* pr_*      */
+  bytes += CH*(size_t)nsh*6*sizeof(double);                                  /* sh_tab    */
+
+  return bytes;
+}
+
 static int SetPro_VNA23_GpuBegin(void)
 {
   SetProGpu3Context *g = &SetPro_gpu3;
   int spe,L0,Mul0,L1,Mul1,LL,i,c0,c1,k;
   size_t free_bytes = 0,total_bytes = 0;
-  int node_ranks = 1;
+  int node_ranks = 1,node_rank = 0;
   MPI_Comm node_comm = MPI_COMM_NULL;
 
   memset(g,0,sizeof(*g));
+  g->chunk = SETPRO_VNA23_CHUNK;
 
   if (scf_eigen_lib_flag!=GPUSOLVER) return 0;
   if (!SetPro_collective_env_flag("OPENMX_SETPRO_GPU",1)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
+  MPI_Comm_rank(node_comm,&node_rank);
   if (node_ranks<1) node_ranks = 1;
   MPI_Comm_free(&node_comm);
 
-  if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
+  /* Cheap gate only: the footprint is known once the tables below exist,
+     so the real decision follows them. */
+  if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
   {
     const size_t reserve = (size_t)256*1024*1024;
-    const size_t need = (size_t)512*1024*1024;
+    const size_t floor_bytes = (size_t)64*1024*1024;
+    const int admitted = !(free_bytes<=reserve || (free_bytes - reserve)/(size_t)node_ranks<=floor_bytes);
 
-    if (free_bytes<=reserve ||
-        (free_bytes - reserve)/(size_t)node_ranks<=need) return 0;
+    SetPro_note("HVNA2/3 GPU gate","(free %.0f MiB less %.0f MiB reserve) over %d rank(s) against a %.0f MiB floor: %s",
+                (double)free_bytes/1048576.0,(double)reserve/1048576.0,node_ranks,(double)floor_bytes/1048576.0,
+                admitted ? "building the tables" : "CPU fallback");
+    if (!admitted) return 0;
   }
 
   g->sp_lfi = (int*)SetPro_checked_malloc(sizeof(int)*SpeciesNum);
@@ -1745,6 +1884,47 @@ static int SetPro_VNA23_GpuBegin(void)
     }
   }
 
+  /* The real decision, as for the DS_VNA batch: the footprint of the data
+     region against this rank's share of the free memory, the pair batch
+     halved before the device is abandoned.  Every large term of the region
+     scales with the batch; the tables are a few MiB. */
+  {
+    const size_t reserve = (size_t)256*1024*1024;
+    size_t need, budget = 0;
+
+    if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)==cudaSuccess && free_bytes>reserve)
+      budget = (free_bytes - reserve)/(size_t)node_ranks;
+    need = SetPro_VNA23_DeviceBytes(g);
+    while (g->chunk>1 && budget<=need){
+      g->chunk /= 2;
+      need = SetPro_VNA23_DeviceBytes(g);
+    }
+
+    SetPro_note("HVNA2/3 GPU admission",
+                "need %.0f MiB at pair batch %d, budget %.0f MiB (free %.0f MiB less %.0f MiB reserve over %d rank(s)): %s",
+                (double)need/1048576.0,g->chunk,(double)budget/1048576.0,(double)free_bytes/1048576.0,
+                (double)reserve/1048576.0,node_ranks,budget<=need ? "CPU fallback" : "admitted");
+
+    if (budget<=need){
+      if (node_rank==0){
+        fprintf(stderr,
+                "Set_ProExpn_VNA HVNA2/HVNA3 GPU: needs %.3f GiB per rank, %d rank(s) share "
+                "this device and only %.3f GiB is free; CPU fallback.\n",
+                (double)need/1073741824.0,node_ranks,(double)free_bytes/1073741824.0);
+        fflush(stderr);
+      }
+      /* GpuEnd early-returns unless enabled, so flag it to release the tables. */
+      g->enabled = 1;
+      SetPro_VNA23_GpuEnd();
+      return 0;
+    }
+    if (node_rank==0 && g->chunk<SETPRO_VNA23_CHUNK){
+      fprintf(stderr,"Set_ProExpn_VNA HVNA2/HVNA3 GPU: pair batch %d, %.3f GiB per rank within %.3f GiB budget.\n",
+              g->chunk,(double)need/1073741824.0,(double)budget/1073741824.0);
+      fflush(stderr);
+    }
+  }
+
   g->enabled = 1;
   return 1;
 }
@@ -1781,9 +1961,10 @@ static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
   const int nM = 2*l0max + 1;
   const int nLL = lfi_max + 1;
   const int nsh = (lfi_max+1)*(lfi_max+1);
-  const int CHUNK = 512;
+  const int CHUNK = g->chunk;   /* the admitted batch SetPro_VNA23_GpuBegin sized the region with */
   const double Dk = PAO_Nkmax - Radial_kmin;
   int chunk_start;
+  double vna23_t0;
 
   double *pr_r,*pr_siT,*pr_coT,*pr_siP,*pr_coP;
   int *pr_spe,*pr_vspe,*pr_h0;
@@ -1800,6 +1981,9 @@ static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
   const size_t out_len = (size_t)CHUNK*4*(size_t)mn_max;
 
   if (!g->enabled || OneD_Nloop<=0) return;
+
+  dtime(&vna23_t0);
+  SetPro_note("HVNA2/3 GPU batch begin","HVNA%d: %d pairs in batches of %d",mirror ? 3 : 2,OneD_Nloop,CHUNK);
 
   pr_r = (double*)SetPro_checked_malloc(sizeof(double)*CHUNK);
   pr_siT = (double*)SetPro_checked_malloc(sizeof(double)*CHUNK);
@@ -2223,6 +2407,12 @@ static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
       }
 
     } /* chunk_start */
+
+    {
+      double t1;
+      dtime(&t1);
+      SetPro_note("HVNA2/3 GPU batch end","HVNA%d: %.2f s",mirror ? 3 : 2,t1-vna23_t0);
+    }
   }
 
   free(outbuf);

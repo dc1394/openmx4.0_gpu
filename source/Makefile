@@ -740,7 +740,7 @@ gpusolver_Syevd.o: gpusolver_Syevd.c openmx_common.h
 	$(CC) -c gpusolver_Syevd.c
 gpusolver_Syevdx.o: gpusolver_Syevdx.c openmx_common.h
 	$(CC) -c gpusolver_Syevdx.c
-set_cuda_default_device_from_local_rank.o: set_cuda_default_device_from_local_rank.c openmx_common.h
+set_cuda_default_device_from_local_rank.o: set_cuda_default_device_from_local_rank.c set_cuda_default_device_from_local_rank.h openmx_common.h
 	$(CC) -c set_cuda_default_device_from_local_rank.c
 set_openacc_device_from_local_rank.o: set_openacc_device_from_local_rank.c openmx_common.h
 	$(CC) -c set_openacc_device_from_local_rank.c

@@ -69,7 +69,7 @@ static int cudaGetDeviceCount(int *p) { *p=1; return 0; }
 static int acc_get_num_devices(int x) { (void)x; return 1; }
 static int acc_get_device_num(int x) { (void)x; return 0; }
 static int gpu_rank_device_usable(void) { return 1; }
-static int cudaMemGetInfo(size_t *f,size_t *t) { *f=*t=(size_t)16*1024*1024*1024; return 0; }
+static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { *f=*t=(size_t)16*1024*1024*1024; return 0; }
 static void OpenMX_GpuPhaseNeed_Register(const char *n,size_t b) { (void)n; registered_need=b; }
 static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { (void)k; return resident; }
 static int Set_Hamiltonian_OnTheFly_DensityPossible(int k,int r) { (void)k; (void)r; return !resident; }

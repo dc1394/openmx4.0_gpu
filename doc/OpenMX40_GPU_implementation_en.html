@@ -1669,6 +1669,17 @@ Three independent batches, each with its own memory test and CPU fallback:</p>
 <code>Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.</code> The DFT.c stage banner reads
 <code>&lt;MD=…&gt;  Calculation of the VNA projector matrix (GPU-accelerated)</code> (commit
 <code>30148e1e</code>).</p>
+<p>The free memory these tests divide among the node's ranks — like every other device-memory budget of
+the GPU paths — comes from <code>OpenMX_GpuMemGetInfo()</code>, i.e. <code>cudaMemGetInfo()</code> capped
+at the physically free memory NVML reports (§10.2, <code>OPENMX_GPU_MEMINFO_NVML</code>). The cap was added
+after 12 ranks on a 12 GB RTX 4070 Ti under WSL2 stalled here: the WDDM driver showed every rank 10.8 GiB
+"free" although the twelve contexts had left 0.6 GiB, the DS_VNA batches of 836 MiB per rank were paged
+through system memory, and one batch took anywhere from 0.4 s to several minutes. With the physical figure
+the batch shrinks to 128 pairs (423 MiB) and takes 2.7 s. The HVNA2/HVNA3 batch, which used to be admitted
+against a fixed 512 MiB, now sizes its admission the same way: the footprint of its data region
+(<code>SetPro_VNA23_DeviceBytes</code>, 36 MiB for Si s2p2d1 at the full 512-pair batch) against the rank's
+share of the free memory, the pair batch halved until it fits. <code>OPENMX_SETPRO_VERBOSE=1</code> prints
+these admission figures and the elapsed time of each batch per rank.</p>
 
 <h2>7.9 Density Grid — Set_Density_Grid.c + Set_Density_Grid_GPU.c</h2>
 <p>Building the electron density on the grid (ρ(r) = Σ DM·φφ) was GPU-offloaded in the new file
@@ -2110,6 +2121,8 @@ reserves, or to force.</p>
 <table>
 <thead><tr><th style="width:36%;">Environment variable</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
 <tbody>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>Device-memory accounting (set_cuda_default_device_from_local_rank.c)</b></td></tr>
+<tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>Every device-memory budget of the GPU paths starts from <code>OpenMX_GpuMemGetInfo()</code>: <code>cudaMemGetInfo()</code> with the free figure capped at the memory that is physically free according to NVML. On WDDM platforms (WSL2) the CUDA runtime reports a per-process view in which the other ranks' contexts and arrays are invisible, and an allocation past the physical memory is paged through system memory at a fraction of the speed instead of failing: 12 ranks on a 12 GB RTX 4070 Ti each saw 10.8 GiB "free", took 836 MiB each for the DS_VNA batch and stalled Set_ProExpn_VNA for minutes (0.6 GiB was left after the contexts). On Linux the two figures agree. A one-time stdout notice reports both figures when they differ by more than 256 MiB. 0 = plain <code>cudaMemGetInfo()</code></td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8 (gemmul8_bridge.cu)</b></td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>Disable GEMMul8, pin to cuBLAS FP64 (all / real only / complex only)</td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>15</td><td>Number of moduli (precision); range 2–20, out-of-range resets to 15</td></tr>
@@ -2184,6 +2197,7 @@ reserves, or to force.</p>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Other matrix-element construction</b></td></tr>
 <tr><td><code>OPENMX_SETNL_OPENACC</code></td><td>1</td><td>The Set_Nonlocal GPU batch (0 = CPU path)</td></tr>
 <tr><td><code>OPENMX_SETPRO_GPU</code></td><td>1</td><td>The three Set_ProExpn_VNA batches (0 = CPU)</td></tr>
+<tr><td><code>OPENMX_SETPRO_VERBOSE</code></td><td>0</td><td>One stderr line per rank and device stage of Set_ProExpn_VNA: the admission figures (need, budget, free memory, pair batch, rank turns), the batch sizes, the elapsed time and the device memory free at that point</td></tr>
 <tr><td><code>OPENMX_OLPKIN_RADIAL_GPU</code></td><td>0</td><td>GPU radial integrals in Set_OLP_Kin (single thread required; usually slower — transfer-bound)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Density grid (Set_Density_Grid_GPU.c)</b></td></tr>
 <tr><td><code>OPENMX_DENSITY_GRID_GPU</code> (alias <code>OPENMX_SETDENSITY_GPU</code>)</td><td>1</td><td>Master gate for the density-grid GPU code</td></tr>

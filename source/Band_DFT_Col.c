@@ -643,7 +643,7 @@ static int BandCol_GpuPersistentDecide(void)
                 }
             }
 
-            if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+            if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
                 decided = 0;
             } else if (free_bytes < min_free) {
                 fprintf(stderr,
@@ -1001,7 +1001,7 @@ static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int 
             size_t free_bytes = 0U, total_bytes = 0U;
 
             if (required == 0U || required == SIZE_MAX ||
-                cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+                OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
                 (void)cudaGetLastError();
                 my_fit = 0;
             }
@@ -1127,7 +1127,7 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
 
         if (status == cudaSuccess) {
             size_t free_bytes = 0U, total_bytes = 0U;
-            status = cudaMemGetInfo(&free_bytes, &total_bytes);
+            status = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes);
             if (status == cudaSuccess) {
                 memory_ok = 1;
                 local_free = (unsigned long long)free_bytes;
@@ -1918,7 +1918,7 @@ static dcomplex *BandCol_FallbackDMUpload(const dcomplex *host, size_t count)
     size_t free_bytes = 0, total_bytes = 0;
     void  *device = NULL;
 
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
         (void)cudaGetLastError();
         return NULL;
     }

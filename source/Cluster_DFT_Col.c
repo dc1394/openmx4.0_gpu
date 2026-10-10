@@ -341,7 +341,7 @@ static void ClusterCol_DeviceOutOfMemoryAbort(const char *what, size_t bytes)
     size_t total_bytes = 0;
     char msg[512];
 
-    if (cudaMemGetInfo(&free_bytes,&total_bytes) != cudaSuccess){
+    if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes) != cudaSuccess){
         (void)cudaGetLastError();
     }
     snprintf(msg, sizeof(msg),
@@ -1015,7 +1015,7 @@ static void ClusterCol_TrimScratch(void)
         if (ClusterCol_refine_x[spin]!=NULL)
             bytes += sizeof(double)*(size_t)ClusterCol_refine_x_n*(size_t)ClusterCol_refine_x_n;
     if (!release_always && bytes<512ULL*1024ULL*1024ULL) return;
-    if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
+    if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
         (!release_always && free_bytes>=total_bytes/2)) return;
 
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
@@ -1554,7 +1554,7 @@ static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
         /* the solve still makes smaller incidental allocations (the
            cusolver internals, the optional GEMMul8 workspace and
            eigenvector stash degrade gracefully) — keep a margin free */
-        if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
+        if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
             (void)cudaGetLastError();
             my_fit = 0;
         }
@@ -1567,7 +1567,7 @@ static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
         size_t free_bytes = 0;
         size_t total_bytes = 0;
 
-        if (cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
+        if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
             (void)cudaGetLastError();
         }
         printf("<Cluster_DFT_Col> The dense owner of spin world %d could not reserve its GPU"

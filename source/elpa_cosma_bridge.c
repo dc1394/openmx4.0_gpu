@@ -10,6 +10,7 @@
 #include <elpa/elpa.h>
 
 #include <cuda_runtime.h>
+#include "set_cuda_default_device_from_local_rank.h"
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,7 +161,7 @@ static int gs2_gpu_verdict(size_t need, int ranks_on_dev, MPI_Comm comm,
     want_free = need * (size_t)ranks_on_dev + reserve;
     if (current_mode == 0) want_free += want_free / 4;
 
-    if (cudaMemGetInfo(&free_b, &total_b) != cudaSuccess) {
+    if (OpenMX_GpuMemGetInfo(&free_b, &total_b) != cudaSuccess) {
         free_b = 0;
         ok = 0;
     }
@@ -368,7 +369,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
 static size_t gs2_free_now(void)
 {
     size_t free_b = 0, total_b = 0;
-    if (cudaMemGetInfo(&free_b, &total_b) != cudaSuccess) return 0;
+    if (OpenMX_GpuMemGetInfo(&free_b, &total_b) != cudaSuccess) return 0;
     return free_b;
 }
 

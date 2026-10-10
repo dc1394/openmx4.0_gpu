@@ -532,7 +532,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
 
     if (cuda_status == cudaSuccess) {
         size_t free_bytes = 0, total_bytes = 0;
-        cuda_status = cudaMemGetInfo(&free_bytes, &total_bytes);
+        cuda_status = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes);
         if (cuda_status == cudaSuccess && required_bytes <= (size_t)ULLONG_MAX &&
             free_bytes <= (size_t)ULLONG_MAX && total_bytes <= (size_t)ULLONG_MAX) {
             local_memory_ok = 1;
@@ -3883,7 +3883,7 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
         size_t free_now = 0, total_now = 0;
         const size_t reserve = 512ULL * 1024ULL * 1024ULL;
 
-        if (cudaMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
+        if (OpenMX_GpuMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
         fair_bytes = (reserve < free_now) ? (free_now - reserve) / (size_t)nonresident_ranks : 0;
     }
     workspace_bytes = (runtime_slack + fixed_bytes < fair_bytes) ? fair_bytes - runtime_slack - fixed_bytes : 0;

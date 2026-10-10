@@ -18,6 +18,7 @@
 #include <time.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include "lapack_prototypes.h"
 #include <omp.h>
 
@@ -632,7 +633,7 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize, co
   memset(Krylov_kucache.valid,0,sizeof(int)*nslot);
   memset(Krylov_kucache.off,0,sizeof(size_t)*nslot);
 
-  cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
+  cuda_status = OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes);
   if (cuda_status != cudaSuccess){
     Krylov_Release_GPU_KUCache();
     Krylov_kucache.state = -1;

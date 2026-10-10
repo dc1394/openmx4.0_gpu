@@ -2290,7 +2290,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
                                                        ClusterNonCol_ArenaPtr(arena->o_ko), CUDA_R_64F,
                                                        &overlap_d_bytes, &overlap_h_bytes));
 
-            if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+            if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
                 (void)cudaGetLastError();
                 my_fit = 0;
             }
@@ -2304,7 +2304,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
             size_t free_bytes = 0;
             size_t total_bytes = 0;
 
-            if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+            if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
                 (void)cudaGetLastError();
             }
             printf("<Cluster_DFT_NonCol> The dense owner could not reserve its GPU diagonalization"

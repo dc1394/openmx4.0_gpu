@@ -1447,7 +1447,7 @@ static int BandNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int MaxN, int siz
             size_t free_bytes = 0U, total_bytes = 0U;
 
             if (required==0U || required==SIZE_MAX ||
-                cudaMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
+                OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess){
                 (void)cudaGetLastError();
                 my_fit = 0;
             }
@@ -1547,7 +1547,7 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
 
         if (cuda_status==cudaSuccess){
             size_t free_bytes = 0U, total_bytes = 0U;
-            cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
+            cuda_status = OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes);
             if (cuda_status==cudaSuccess){
                 memory_ok = 1;
                 local_free = (unsigned long long)free_bytes;
@@ -1708,7 +1708,7 @@ static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int s
         cuda_status = cudaGetDevice(&cuda_device);
         if (cuda_status==cudaSuccess){
             required_bytes = BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1,1);
-            cuda_status = cudaMemGetInfo(&free_bytes,&total_bytes);
+            cuda_status = OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes);
         }
 
         if (cuda_status==cudaSuccess){
@@ -2353,7 +2353,7 @@ static int BandNonCol_UseGpuFallbackDM(int n2, size_t evec_bytes)
 
     /* the copyin of the eigenvector panel aborts instead of failing softly,
        so refuse up front when it clearly does not fit */
-    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
         (void)cudaGetLastError();
         return 0;
     }

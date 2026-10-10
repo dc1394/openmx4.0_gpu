@@ -98,7 +98,7 @@ static int MPI_Reduce(void* a, void* b, int n, int t, int op, int root, int comm
     memcpy(b, a, n * (t == MPI_UNSIGNED_LONG_LONG ? sizeof(unsigned long long) : sizeof(int)));
     return 0;
 }
-static int cudaMemGetInfo(size_t* free_bytes, size_t* total_bytes)
+static int OpenMX_GpuMemGetInfo(size_t* free_bytes, size_t* total_bytes)
 {
     *free_bytes = low_memory ? 0 : 1024ULL * 1024 * 1024;
     *total_bytes = 1024ULL * 1024 * 1024;

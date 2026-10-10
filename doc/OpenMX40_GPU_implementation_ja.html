@@ -1571,6 +1571,15 @@ stale エラーを pop し、失敗時もコンテキストが健全なら「回
 <code>Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.</code>
 DFT.c のステージバナーは <code>&lt;MD=…&gt;  Calculation of the VNA projector matrix (GPU-accelerated)</code> となる
 (コミット <code>30148e1e</code>)。</p>
+<p>これらの判定がノード内ランクで分け合う空き容量は、GPU 経路の他のすべてのデバイスメモリ予算と同じく
+<code>OpenMX_GpuMemGetInfo()</code>、すなわち NVML が報告する物理的な空き容量で頭打ちにした
+<code>cudaMemGetInfo()</code> から取る(§10.2 <code>OPENMX_GPU_MEMINFO_NVML</code>)。この頭打ちは、WSL2 上の
+12 GB RTX 4070 Ti で 12 ランクがここで止まった事例から入った: WDDM ドライバは 12 個のコンテキストで残り
+0.6 GiB の状態でも各ランクに「空き 10.8 GiB」を見せ、ランクあたり 836 MiB の DS_VNA バッチがシステムメモリへ
+退避して、1 バッチが 0.4 秒から数分までばらついた。物理的な値を使うとバッチは 128 ペア(423 MiB)に縮み
+2.7 秒で終わる。固定の 512 MiB で判定していた HVNA2/HVNA3 バッチも同じ方式になった: データ領域の実測見積り
+(<code>SetPro_VNA23_DeviceBytes</code>、Si s2p2d1 の 512 ペアで 36 MiB)をランクの取り分と比べ、収まるまで
+ペアバッチを半減する。<code>OPENMX_SETPRO_VERBOSE=1</code> でこれらの判定値と各バッチの所要時間がランクごとに出る。</p>
 
 <h2>7.9 密度グリッド — Set_Density_Grid.c + Set_Density_Grid_GPU.c</h2>
 <p>電子密度のグリッド構築(ρ(r) = Σ DM·φφ)が新規ファイル <code>Set_Density_Grid_GPU.c</code>(1,366 行)で
@@ -1990,6 +1999,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <table>
 <thead><tr><th style="width:36%;">環境変数</th><th style="width:12%;">既定値</th><th>意味</th></tr></thead>
 <tbody>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>デバイスメモリの計上(set_cuda_default_device_from_local_rank.c)</b></td></tr>
+<tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>GPU 経路のデバイスメモリ予算はすべて <code>OpenMX_GpuMemGetInfo()</code> から始まる。これは <code>cudaMemGetInfo()</code> の空き容量を、NVML が報告する物理的な空き容量で頭打ちにしたもの。WDDM 系プラットフォーム(WSL2)では CUDA ランタイムがプロセスごとの見え方を返し、他ランクのコンテキストや配列が空き容量に反映されず、物理メモリを超える確保も失敗せずにシステムメモリへ退避して数十分の一の速度になる: 12 GB の RTX 4070 Ti で 12 ランクが各自「空き 10.8 GiB」(実際はコンテキストの後に 0.6 GiB)と見て DS_VNA バッチに 836 MiB ずつ確保し、Set_ProExpn_VNA が数分間止まった。Linux では両者は一致する。両者が 256 MiB 以上違うとき標準出力に 1 回だけ通知する。0 で素の <code>cudaMemGetInfo()</code></td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8(gemmul8_bridge.cu)</b></td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>GEMMul8 を無効化し cuBLAS FP64 に固定(全体 / 実数のみ / 複素のみ)</td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>15</td><td>法の個数(精度)。範囲 2〜20、範囲外は 15 に戻る</td></tr>
@@ -2064,6 +2075,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>その他の行列要素構築</b></td></tr>
 <tr><td><code>OPENMX_SETNL_OPENACC</code></td><td>1</td><td>Set_Nonlocal の GPU バッチ(0 で CPU パス)</td></tr>
 <tr><td><code>OPENMX_SETPRO_GPU</code></td><td>1</td><td>Set_ProExpn_VNA の 3 バッチ(0 で CPU)</td></tr>
+<tr><td><code>OPENMX_SETPRO_VERBOSE</code></td><td>0</td><td>Set_ProExpn_VNA のデバイス段ごとにランク 1 行を stderr へ: 採用判定の数値(必要量、予算、空き、ペアバッチ、ランクターン)、バッチの大きさ、所要時間、その時点のデバイス空き容量</td></tr>
 <tr><td><code>OPENMX_OLPKIN_RADIAL_GPU</code></td><td>0</td><td>Set_OLP_Kin の動径積分を GPU 実行(スレッド数 1 必須。転送律速で通常は CPU が速い)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>密度グリッド(Set_Density_Grid_GPU.c)</b></td></tr>
 <tr><td><code>OPENMX_DENSITY_GRID_GPU</code>(別名 <code>OPENMX_SETDENSITY_GPU</code>)</td><td>1</td><td>密度グリッド GPU 全体のゲート</td></tr>
