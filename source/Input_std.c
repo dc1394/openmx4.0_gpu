@@ -816,7 +816,7 @@ void Input_std(char *file)
 
     input_logical("scf.gemmul8.enable", &gemmul8_enable, 1);
     openmx_gemmul8SetEnabled(gemmul8_enable);
-    if (gemmul8_enable==0 && myid==Host_ID){
+    if (gemmul8_enable==0 && myid==Host_ID && 2<=level_stdout){
       printf("<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain cuBLAS instead of GEMMul8.\n");
     }
   }
@@ -974,7 +974,7 @@ void Input_std(char *file)
         }
         nstage = 0;
       }
-      else if (myid==Host_ID){
+      else if (myid==Host_ID && 2<=level_stdout){
         printf("<Input_std> scf.gemmul8.adaptive: %d GEMMul8 stage(s) for the forward transform, final stage: %s\n",
                nstage,final_fp64 ? "FP64" : "the last one");
         for (i=0; i<nstage; i++){

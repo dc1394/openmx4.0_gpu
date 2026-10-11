@@ -731,7 +731,7 @@ QuickSort.o: QuickSort.c openmx_common.h
 	$(CC) -c QuickSort.c
 Eigen_lapack.o: Eigen_lapack.c openmx_common.h lapack_prototypes.h
 	$(CC) -c Eigen_lapack.c
-openmx_cusolver_compat.o: openmx_cusolver_compat.c openmx_cusolver_compat.h
+openmx_cusolver_compat.o: openmx_cusolver_compat.c openmx_cusolver_compat.h openmx_stdout_level.h
 	$(CC) -c openmx_cusolver_compat.c
 
 $(OBJS): openmx_cusolver_compat.h
@@ -796,7 +796,7 @@ Set_OLP_p.o: Set_OLP_p.c openmx_common.h
 	$(CC) -c Set_OLP_p.c
 Set_Hamiltonian.o: Set_Hamiltonian.c openmx_common.h grid_precision.h orbs_grid_gpu.h
 	$(CC) -c Set_Hamiltonian.c
-set_hamiltonian_gpu.o: set_hamiltonian_gpu.cu
+set_hamiltonian_gpu.o: set_hamiltonian_gpu.cu openmx_stdout_level.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c set_hamiltonian_gpu.cu -o set_hamiltonian_gpu.o
 Set_Vpot.o: Set_Vpot.c openmx_common.h
 	$(CC) -c Set_Vpot.c
@@ -820,12 +820,12 @@ Divide_Conquer.o: Divide_Conquer.c openmx_common.h
 	$(CC3) -c Divide_Conquer.c
 Divide_Conquer_LNO.o: Divide_Conquer_LNO.c openmx_common.h
 	$(CC) -c Divide_Conquer_LNO.c
-eigen_refine_gpu.o: eigen_refine_gpu.c eigen_refine_gpu.h
+eigen_refine_gpu.o: eigen_refine_gpu.c eigen_refine_gpu.h openmx_stdout_level.h
 	$(CC) -c eigen_refine_gpu.c
 grid_precision.o: grid_precision.c grid_precision.h
 	$(CC) -c grid_precision.c
 
-gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
+gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h openmx_stdout_level.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
 
 .PHONY: gpusolver2-stack gpusolver2-clean
@@ -848,7 +848,7 @@ $(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
 gpusolver2-clean:
 	rm -rf "$(GPUSOLVER2_BUILD)" "$(GPUSOLVER2_PREFIX)"
 
-elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h $(GPUSOLVER2_STAMP)
+elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h openmx_stdout_level.h $(GPUSOLVER2_STAMP)
 	$(CC_NOACC_O3) -I$(GPUSOLVER2_ELPA_INCLUDE) -c elpa_cosma_bridge.c
 $(GEMMUL8_DIR)/Makefile:
 	mkdir -p $(GEMMUL8_REPO_DIR)

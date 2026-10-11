@@ -2323,7 +2323,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
       unsigned long long diag_bytes = group_bytes, diag_free = group_free;
       MPI_Allreduce(&group_bytes, &diag_bytes, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, mpi_comm_level1);
       MPI_Allreduce(&group_free, &diag_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, mpi_comm_level1);
-      if (myid == Host_ID){
+      if (myid == Host_ID && 2 <= level_stdout){
         printf("<Mixing_H> The RMM-DIISH residual history (%.1f MiB per device) does not fit on the GPU (%.1f MiB free); using the incremental CPU Pulay mixing instead. OPENMX_MIXH_GPU=0 restores the legacy CPU mixing, OPENMX_MIXH_GPU=1 forces the GPU path.\n",
                (double)diag_bytes/(1024.0*1024.0),
                (double)diag_free/(1024.0*1024.0));

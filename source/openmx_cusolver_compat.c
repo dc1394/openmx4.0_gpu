@@ -12,6 +12,7 @@
  */
 #define OPENMX_CUSOLVER_IMPLEMENTATION
 #include "openmx_cusolver_compat.h"
+#include "openmx_stdout_level.h"
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <math.h>
@@ -307,10 +308,12 @@ static cusolverStatus_t openmx_solver_retry(cusolverDnHandle_t handle, cudaDataT
             }
             else if (h_info > 0 || (h_info == 0 && forced)) {
                 cusolverStatus_t restore_status;
-                fprintf(stderr, "OpenMX: cuSOLVER FP64 emulation %s (info=%d, n=%lld); "
-                        "solving again in native FP64.\n",
-                        (h_info > 0) ? "did not converge" : "retry test", h_info, (long long)n);
-                fflush(stderr);
+                if (OPENMX_STDOUT_LEVEL(2)) {
+                    fprintf(stderr, "OpenMX: cuSOLVER FP64 emulation %s (info=%d, n=%lld); "
+                            "solving again in native FP64.\n",
+                            (h_info > 0) ? "did not converge" : "retry test", h_info, (long long)n);
+                    fflush(stderr);
+                }
                 if (cudaMemcpyAsync(A, copy, abytes,
                                     copy_host ? cudaMemcpyHostToDevice : cudaMemcpyDeviceToDevice,
                                     stream) != cudaSuccess) {
@@ -331,7 +334,8 @@ static cusolverStatus_t openmx_solver_retry(cusolverDnHandle_t handle, cudaDataT
                         if (st == CUSOLVER_STATUS_SUCCESS) st = restore_status;
                         if (st == CUSOLVER_STATUS_SUCCESS) {
                             if (h_info != 0) openmx_solver_report_matrix(copy, copy_host, type, lda, n, h_info);
-                            else fprintf(stderr, "OpenMX: the native FP64 solve succeeded (n=%lld).\n", (long long)n);
+                            else if (OPENMX_STDOUT_LEVEL(2))
+                                fprintf(stderr, "OpenMX: the native FP64 solve succeeded (n=%lld).\n", (long long)n);
                         }
                     }
                     else {

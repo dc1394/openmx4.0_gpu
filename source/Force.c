@@ -229,7 +229,7 @@ static void* Force_gpu_arena_wait(size_t bytes, const char* what)
         if (arena != NULL) return arena;
         Force_gpu_pool_flush();
 
-        if (!warned && 2000 <= waited_ms) {
+        if (!warned && 2000 <= waited_ms && 2 <= level_stdout) {
             warned = 1;
             fprintf(stderr,
                 "Force %s: waiting for %.1f MiB of device memory held by peer ranks...\n",
@@ -262,7 +262,7 @@ static void Force_gpu_reduce_fallback_notice(size_t bytes)
     static int printed = 0;
     size_t free_b = 0, total_b = 0;
 
-    if (printed) return;
+    if (printed || level_stdout < 2) return;
     printed = 1;
     (void)OpenMX_GpuMemGetInfo(&free_b, &total_b);
     fprintf(stderr,
@@ -7410,7 +7410,14 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
 
         if (free_bytes <= reserve) return 0;
         if ((free_bytes - reserve) / (size_t)node_ranks <= need) {
-            if (node_rank == 0) {
+            if (3 <= level_stdout) {
+                fprintf(stderr,
+                    "Force4B GPU: %.2f GiB free for %d rank(s) but %.2f GiB needed per rank; CPU fallback.\n",
+                    (double)free_bytes / (1024.0 * 1024.0 * 1024.0), node_ranks,
+                    (double)need / (1024.0 * 1024.0 * 1024.0));
+                fflush(stderr);
+            }
+            else if (node_rank == 0 && 2 <= level_stdout) {
                 fprintf(stderr,
                     "Force4B GPU: not enough free device memory "
                     "(%.3f GiB needed, %.3f GiB per rank); CPU fallback.\n",
@@ -7483,8 +7490,10 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
         free(g->mck_off);
         free(g->mck_base);
         memset(g, 0, sizeof(*g));
-        fprintf(stderr, "Force4B GPU: device allocation failed; CPU fallback.\n");
-        fflush(stderr);
+        if (2 <= level_stdout) {
+            fprintf(stderr, "Force4B GPU: device allocation failed; CPU fallback.\n");
+            fflush(stderr);
+        }
         return 0;
     }
 
@@ -8014,7 +8023,7 @@ report:
     MPI_Reduce(&reported, &max_reported, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, node_comm);
     MPI_Reduce(&enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
     MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
-    if (node_rank == 0 && wanted_ranks != 0) {
+    if (node_rank == 0 && wanted_ranks != 0 && 2 <= level_stdout) {
         fprintf(stderr,
             "Force4B GPU: streamed case 1 on %d/%d rank(s), %.1f MiB maximum arena/minimum failed item; "
             "CPU fallback on %d rank(s).\n",
@@ -8420,7 +8429,7 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
     MPI_Reduce(&device_need, &max_device_need, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, node_comm);
     MPI_Reduce(&g->enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
     MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
-    if (rank == 0 && wanted_ranks != 0) {
+    if (rank == 0 && wanted_ranks != 0 && 2 <= level_stdout) {
         fprintf(stderr, "Force4B GPU: case-1 rank turns on %d/%d rank(s), "
             "%.3f GiB host budget claim/node, %.3f GiB maximum device arena; "
             "bounded rank waves per physical GPU.\n",
@@ -8572,7 +8581,7 @@ static void Force4B_GpuCase1TurnsRun(double***** CDM0, Type_DS_VNA***** DS_VNA)
         (size_t)max_arena, g->device_ranks, requested);
     /* Rank-local overrides must not change collective participation. */
     MPI_Allreduce(&local_concurrency, &concurrency, 1, MPI_INT, MPI_MIN, g->device_comm);
-    if (g->device_rank == 0) {
+    if (g->device_rank == 0 && 2 <= level_stdout) {
         fprintf(stderr, "Force4B GPU: case-1 rank-turn concurrency=%d/%d, "
             "free=%.3f GiB, maximum arena=%.3f GiB.\n", concurrency, g->device_ranks,
             (double)min_free / 1073741824.0, (double)max_arena / 1073741824.0);
@@ -8588,8 +8597,10 @@ static void Force4B_GpuCase1TurnsRun(double***** CDM0, Type_DS_VNA***** DS_VNA)
     }
     if (g->enabled) {
         if (!on_device) {
-            fprintf(stderr, "Force4B GPU: rank-turn device allocation failed; using cached-halo CPU trace.\n");
-            fflush(stderr);
+            if (2 <= level_stdout) {
+                fprintf(stderr, "Force4B GPU: rank-turn device allocation failed; using cached-halo CPU trace.\n");
+                fflush(stderr);
+            }
         }
         Force4B_GpuCase1TurnsAccumulate(CDM0, DS_VNA, on_device);
     }
@@ -8943,7 +8954,7 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
     MPI_Reduce(&reported, &max_reported, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, node_comm);
     MPI_Reduce(&enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
     MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
-    if (node_rank == 0 && wanted_ranks != 0) {
+    if (node_rank == 0 && wanted_ranks != 0 && 2 <= level_stdout) {
         fprintf(stderr,
             "Force4B GPU: streamed case 2 on %d/%d rank(s), %.1f MiB maximum per rank; "
             "CPU fallback on %d rank(s).\n",
@@ -9395,7 +9406,14 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 
         if (free_bytes <= reserve ||
             (free_bytes - reserve) / (size_t)node_ranks <= need) {
-            if (node_rank == 0) {
+            if (3 <= level_stdout) {
+                fprintf(stderr,
+                    "Force_HNL GPU: %.2f GiB free for %d rank(s) but %.2f GiB needed per rank; CPU fallback.\n",
+                    (double)free_bytes / (1024.0 * 1024.0 * 1024.0), node_ranks,
+                    (double)need / (1024.0 * 1024.0 * 1024.0));
+                fflush(stderr);
+            }
+            else if (node_rank == 0 && 2 <= level_stdout) {
                 fprintf(stderr,
                     "Force_HNL GPU: not enough free device memory; CPU fallback.\n");
                 fflush(stderr);

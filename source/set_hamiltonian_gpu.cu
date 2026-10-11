@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <limits>
 
+#include "openmx_stdout_level.h"
+
 namespace {
 
 constexpr int kThreads = 256;
@@ -539,7 +541,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
         cudaError_t stale = cudaGetLastError();
         if (stale != cudaSuccess) {
             static int stale_reports = 0;
-            if (stale_reports < 3) {
+            if (stale_reports < 3 && OPENMX_STDOUT_LEVEL(2)) {
                 stale_reports++;
                 fprintf(stderr,
                         "Set_Hamiltonian_Cuda_MatrixElements: cleared stale CUDA error \"%s\" left by an earlier recovered failure; continuing.\n",
@@ -604,7 +606,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     (void)cudaGetLastError();
     if (cudaDeviceSynchronize() == cudaSuccess) {
         static int recover_reports = 0;
-        if (recover_reports < 3) {
+        if (recover_reports < 3 && OPENMX_STDOUT_LEVEL(2)) {
             recover_reports++;
             fprintf(stderr,
                     "Set_Hamiltonian_Cuda_MatrixElements: CUDA kernel failed with \"%s\" but the context is healthy; deferring to the OpenACC kernel for this batch.\n",

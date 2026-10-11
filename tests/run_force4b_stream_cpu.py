@@ -86,6 +86,7 @@ static int Matomnum = 3, SpinP_switch, Solver, List_YOUSO[50];
 static int *M2G, *FNAN, *Spe_Total_CNO, *WhatSpecies, *F_G2M, **natn, ***RMI1;
 static double *Spe_Atom_Cut1, **Dis, **Gxyz;
 static int allocation_fail, host_allocation_fail, low_memory, device_live;
+static int level_stdout = 3;
 
 static int MPI_Comm_split_type(int a, int b, int c, int d, int* e) { *e = 1; return 0; }
 static int MPI_Comm_rank(int a, int* b) { *b = 0; return 0; }

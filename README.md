@@ -35,6 +35,8 @@ scf.eigen.lib             elpa2         # CPU (ELPA2) paths
 
 A run that finds no usable GPU demotes itself to ELPA2 automatically, so the default is also safe on machines without an NVIDIA GPU. The environment variable `OPENMX_GPU=0` forces the same demotion on a machine with a GPU, which is convenient for CPU-vs-GPU comparisons with unmodified input files.
 
+The GPU paths follow OpenMX's `level.of.stdout` keyword. At the default (1) they print only errors, a GPU that cannot be used, and a GPU eigensolver given up for lack of device memory; `level.of.stdout 2` adds the device plans, the precision switches and the CPU fallbacks of single stages, and 3 adds the per-step, per-k-point and per-rank details of the refined FP32 eigensolver. Note that OpenMX itself prints per-atom debugging output from level 2 on.
+
 ## New in v2.0: distributed multi-GPU cluster diagonalization (ELPA GPU + COSMA)
 A cluster calculation has only one k-point, so with the default "gpusolver" its dense eigenvalue problem is solved on a single GPU and, on a multi-GPU machine or a multi-node GPU cluster, the other GPUs idle during the diagonalization (see "Multi-GPU parallelization" below). Since v2.0, selecting
 
@@ -126,7 +128,8 @@ and stalled for minutes. The budgets therefore use the physically free
 memory reported by NVML (`nvidia-smi`'s library) whenever it is lower than
 the CUDA figure; on native Linux the two agree. A one-time line
 `<GPU> device memory: the CUDA runtime reports ... but ... is physically
-free (NVML)` on stdout says that the cap is active;
+free (NVML)` on stdout (`level.of.stdout 2` and above) says that the cap is
+active;
 `OPENMX_GPU_MEMINFO_NVML=0` restores the plain CUDA figure.
 
 ## Build and install

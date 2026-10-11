@@ -199,7 +199,7 @@ static void BandNonCol_RefineConfigure(void)
 
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(1, 0 < level_stdout, &config[1]);
+    if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(1, 2 <= level_stdout, &config[1]);
     MPI_Bcast(config, 2, MPI_INT, Host_ID, mpi_comm_level1);
     st->iterations = config[0];
     st->defaulted = (0 < config[1]);
@@ -301,7 +301,7 @@ void Band_DFT_NonCol_RefineAfterMixing(double normrd)
     if (!st->cycle_refined || st->final_stage || st->until <= 0.0 || st->until <= normrd) return;
     st->final_stage = 1;
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    if (myid == Host_ID && 0 < level_stdout) {
+    if (myid == Host_ID && 2 <= level_stdout) {
         printf("<DFT>  eigensolver: NormRD %.3e < %.3e, FP64 eigensolver from the next SCF step\n", normrd,
                st->until);
         fflush(stdout);
@@ -1411,7 +1411,7 @@ static int BandNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int MaxN, int siz
         static int force_announced = 0;
         int forced = (atoi(force)!=0);
 
-        if (!forced && !force_announced && myid0==Host_ID){
+        if (!forced && !force_announced && myid0==Host_ID && 2<=level_stdout){
             printf("<Band_DFT_NonCol> GPU dense diagonalization disabled by OPENMX_BAND_GPU_DIAG=0.\n");
             fflush(stdout);
         }
@@ -1605,7 +1605,7 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
                 selected_limit = 1;
                 selected_peak = required_bytes;
                 selected_reserve = BandNonCol_RootDenseReserveBytes((size_t)group_total);
-                if (device_rank==0){
+                if (device_rank==0 && 2<=level_stdout){
                     fprintf(stderr,
                             "<Band_DFT_NonCol> GPU device %d cannot retain the full reserve; "
                             "forcing one GPU k-owner rank.\n",cuda_device);
@@ -1625,7 +1625,7 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
                 local_limit = selected_limit;
             }
 
-            if (device_rank==0){
+            if (device_rank==0 && 2<=level_stdout){
                 static int last_limit[3] = {-1,-1,-1};
                 static int last_device_ranks[3] = {-1,-1,-1};
                 static const char *mode_label[3] =
@@ -1651,7 +1651,7 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
         }
         else {
             local_limit = 1;
-            if (device_rank==0){
+            if (device_rank==0 && 2<=level_stdout){
                 fprintf(stderr,
                         "<Band_DFT_NonCol> failed to query common GPU memory; "
                         "using one GPU k-owner rank at a time.\n");
@@ -1692,7 +1692,7 @@ static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int s
     selected_owner = potential_owner && Set_Hamiltonian_OpenACC_Rank_Is_Selected();
 
     if (potential_owner && !selected_owner){
-        if (myid0==Comm_World_StartID2[myworld2]){
+        if (myid0==Comm_World_StartID2[myworld2] && 2<=level_stdout){
             fprintf(stderr,
                     "<Band>  Rank %d is a non-collinear dense GpuSolver k-world owner, "
                     "but it is not selected for CUDA/OpenACC; using serialized k-worlds.\n",
@@ -1716,11 +1716,13 @@ static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int s
             cuda_ok = 1;
         }
         else {
-            fprintf(stderr,
-                    "<Band>  Rank %d failed to query CUDA memory for non-collinear dense GpuSolver (%s); "
-                    "using serialized k-worlds.\n",
-                    myid0,cudaGetErrorString(cuda_status));
-            fflush(stderr);
+            if (2<=level_stdout) {
+                fprintf(stderr,
+                        "<Band>  Rank %d failed to query CUDA memory for non-collinear dense GpuSolver (%s); "
+                        "using serialized k-worlds.\n",
+                        myid0,cudaGetErrorString(cuda_status));
+                fflush(stderr);
+            }
             local_fit = 0;
         }
     }
@@ -1747,7 +1749,7 @@ static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int s
 
         if (group_free<group_required || group_free-group_required<group_reserve){
             local_fit = 0;
-            if (device_rank==0){
+            if (device_rank==0 && 2<=level_stdout){
                 printf("<Band>  Serializing non-collinear dense GpuSolver k-worlds: GPU device %d is shared by %d owner rank(s), "
                        "free %.3f MiB, need %.3f MiB plus %.3f MiB reserve.\n",
                        cuda_device,device_ranks,
@@ -2771,10 +2773,12 @@ static int BandNonCol_RefinedPrepare(int n2, int MaxN, dcomplex *hs2, dcomplex *
     if (BandNonCol_refine_x != NULL && BandNonCol_refine_x_n != n2) BandNonCol_RefineDropBasis();
     if (BandNonCol_refine_x == NULL) {
         if (BandNonCol_TryDeviceMalloc((void **)&BandNonCol_refine_x, sizeof(dcomplex) * n2n2) != cudaSuccess) {
-            printf("<Band_DFT_NonCol> no room for the %.1f MiB basis of the refined eigensolver; FP64 eigensolver%s\n",
-                   (double)(sizeof(dcomplex) * n2n2) / (1024.0 * 1024.0),
-                   st->transient ? "" : " for the rest of the SCF cycle");
-            fflush(stdout);
+            if (2 <= level_stdout) {
+                printf("<Band_DFT_NonCol> no room for the %.1f MiB basis of the refined eigensolver; FP64 eigensolver%s\n",
+                       (double)(sizeof(dcomplex) * n2n2) / (1024.0 * 1024.0),
+                       st->transient ? "" : " for the rest of the SCF cycle");
+                fflush(stdout);
+            }
             if (!st->transient && st->persistent < 1) st->persistent = 1;
             rc = 0;
         }
@@ -2816,7 +2820,7 @@ static int BandNonCol_RefinedPrepare(int n2, int MaxN, dcomplex *hs2, dcomplex *
         pb->defaulted = st->defaulted;
         pb->occupation = BandNonCol_RefineFermi;
         pb->occupation_ctx = &BandNonCol_refine_occ;
-        if (0 < level_stdout) {
+        if (3 <= level_stdout) {
             printf("<Band_DFT_NonCol> k-point %d: %s, %d refinement steps (OPENMX_EIGEN_REFINE)\n", kloop,
                    pb->warm ? "warm start from the previous vectors" : "FP32 eigensolver", pb->iterations);
             fflush(stdout);
@@ -2868,7 +2872,7 @@ static void BandNonCol_RootDenseSolveOneK_SecondHalf(int n, int n2, int MaxN, in
     st->pending = 0;
     if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
     if (rc == 1) {
-        if (0 < level_stdout) {
+        if (3 <= level_stdout) {
             printf("<Band_DFT_NonCol> k-point %d: refinement step %d of %d columns: max |r| %.1e, max |s| %.1e, "
                    "delta %.1e; Rayleigh-Ritz in %d partially occupied clusters (largest %d, chained within %.1e)\n",
                    kloop, pb->iterations, rep.columns, rep.max_r, rep.max_s, rep.delta, rep.rr_clusters,
@@ -4527,7 +4531,7 @@ double Band_DFT_NonCol(
         MPI_Bcast(&EIGEN[0][kloop][0], MaxN+1, MPI_DOUBLE, Comm_World_StartID2[kloop], mpi_comm_level1);
       }
       root_dense_mu = BandNonCol_RefineChemP(EIGEN,T_knum,MaxN,T_k_op,sum_weights,TZ);
-      if (!announced && myid0==0 && 0<level_stdout){
+      if (!announced && myid0==0 && 2<=level_stdout){
         printf("<Band_DFT_NonCol> refined eigensolver in serialized GPU turns (%d k-worlds in groups of %d): the "
                "bases stay on the host between the passes\n", Num_Comm_World2, root_dense_turn_group);
         fflush(stdout);

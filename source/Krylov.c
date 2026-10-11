@@ -466,11 +466,11 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   wait_cudafunc(cudaStreamSynchronize(ws->stream));
 
   if (info != 0 || h_meig != (int64_t)EVmax){
-    if (info != 0){
+    if (info != 0 && 2 <= level_stdout){
       fprintf(stderr,"Krylov: %s failed, info=%d; falling back to LAPACK.\n",
               (n == EVmax) ? "cusolverDnXsyevd" : "cusolverDnXsyevdx",(int)info);
     }
-    else{
+    else if (2 <= level_stdout){
       fprintf(stderr,"Krylov: cusolverDnXsyevdx returned %lld eigenpairs, expected %d; falling back to LAPACK.\n",
               (long long)h_meig,EVmax);
     }
@@ -676,7 +676,7 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize, co
     int myid = -1;
 
     MPI_Comm_rank(mpi_comm_level1,&myid);
-    if (myid == Host_ID){
+    if (myid == Host_ID && 2 <= level_stdout){
       printf("<Krylov> GPU KU-cache: rank %d keeps %d of %d basis panels on the device (%.1f MiB)\n",
              myid,admitted,(int)(nslot-(size_t)nspin),
              (double)(used_elems*sizeof(double))/(1024.0*1024.0));
@@ -769,7 +769,9 @@ static int Krylov_Eigen2_Device(Krylov_GPU_Workspace *ws, double *a, int csize, 
   wait_cudafunc(cudaStreamSynchronize(ws->stream));
 
   if (info != 0 || h_meig != (int64_t)n){
-    fprintf(stderr,"Krylov: cusolverDnXsyevd failed, info=%d; falling back to LAPACK.\n",(int)info);
+    if (2 <= level_stdout) {
+      fprintf(stderr,"Krylov: cusolverDnXsyevd failed, info=%d; falling back to LAPACK.\n",(int)info);
+    }
     return 0;
   }
 

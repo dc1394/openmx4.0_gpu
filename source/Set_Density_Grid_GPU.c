@@ -631,6 +631,12 @@ static int SDG_build_cache(int spin_count, int owner, int myid, int numprocs)
   if (myid == owner) {
     cache->cdm_counts = cdm_counts; cdm_counts = NULL;
     cache->cdm_displs = cdm_displs; cdm_displs = NULL;
+    if (2 <= level_stdout) {
+      printf("<Set_Density_Grid> one-rank GPU service cache: owner=%d atoms=%zu atom-grids=%zu terms=%zu device=%.3f GiB\n",
+             owner, total_atoms, total_outputs, total_terms,
+             (double)cache->device_bytes / (1024.0 * 1024.0 * 1024.0));
+      fflush(stdout);
+    }
   }
 
   free(rank_counts);
@@ -929,7 +935,7 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
     if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
         free_bytes < cache->device_bytes || reserve_bytes > free_bytes - cache->device_bytes) {
       ok = 0;
-      if (0 < level_stdout) {
+      if (2 <= level_stdout) {
         fprintf(stderr,
                 "Set_Density_Grid GPU owner needs %.3f GiB plus %.3f GiB reserve, but only %.3f GiB is free; CPU fallback.\n",
                 (double)cache->device_bytes / (1024.0 * 1024.0 * 1024.0),

@@ -11,6 +11,7 @@
 
 #include <cuda_runtime.h>
 #include "set_cuda_default_device_from_local_rank.h"
+#include "openmx_stdout_level.h"
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -185,7 +186,7 @@ static void gs2_report_mode(MPI_Comm comm, int n, int nev, int gpu,
 {
     int r = 0;
     MPI_Comm_rank(comm, &r);
-    if (r != 0) return;
+    if (r != 0 || !OPENMX_STDOUT_LEVEL(2)) return;
 
     if (det->forced) {
         printf("<DFT> gpusolver2: ELPA n=%d nev=%d %s %s kernels (OPENMX_GS2_ELPA_GPU)\n",
@@ -215,7 +216,7 @@ static int gs2_elpa_init_once(void)
     {
         int myid = 0;
         MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-        if (myid == 0) {
+        if (myid == 0 && OPENMX_STDOUT_LEVEL(2)) {
             printf("<DFT> gpusolver2: ELPA (API %d) with NVIDIA GPU kernels + COSMA initialized\n",
                    ELPA_API_VERSION);
             fflush(stdout);
@@ -510,7 +511,7 @@ static void gs2_report_gemm(MPI_Comm comm, int m, int n, int k, int is_complex,
     const char *how  = gpu ? "COSMA (GPU)" : "ScaLAPACK (CPU)";
     int r = 0;
     MPI_Comm_rank(comm, &r);
-    if (r != 0) return;
+    if (r != 0 || !OPENMX_STDOUT_LEVEL(2)) return;
 
     if (det->forced) {
         printf("<DFT> gpusolver2: %s m=%d n=%d k=%d using %s (OPENMX_GS2_GEMM_GPU)\n",

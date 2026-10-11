@@ -129,7 +129,7 @@ static void ClusterCol_RefineConfigure(void)
 
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(0, 0 < level_stdout, &config[1]);
+    if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(0, 2 <= level_stdout, &config[1]);
     MPI_Bcast(config, 2, MPI_INT, Host_ID, mpi_comm_level1);
     st->iterations = config[0];
     st->defaulted = (0 < config[1]);
@@ -211,7 +211,7 @@ void Cluster_DFT_Col_RefineAfterMixing(double normrd)
     if (!st->cycle_refined || st->final_stage || st->until <= 0.0 || st->until <= normrd) return;
     st->final_stage = 1;
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    if (myid == Host_ID && 0 < level_stdout) {
+    if (myid == Host_ID && 2 <= level_stdout) {
         printf("<DFT>  eigensolver: NormRD %.3e < %.3e, FP64 eigensolver from the next SCF step\n", normrd,
                st->until);
         fflush(stdout);
@@ -799,9 +799,11 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
     }
     if (ClusterCol_refine_x[spin] == NULL &&
         ClusterCol_TryDeviceMalloc((void **)&ClusterCol_refine_x[spin], nn * sizeof(double)) != cudaSuccess) {
-        printf("<Cluster_DFT_Col> no room for the %.1f MiB basis of the refined eigensolver; FP64 eigensolver%s\n",
-               (double)(nn * sizeof(double)) / (1024.0 * 1024.0), st->transient ? "" : " for the rest of the SCF cycle");
-        fflush(stdout);
+        if (2 <= level_stdout) {
+            printf("<Cluster_DFT_Col> no room for the %.1f MiB basis of the refined eigensolver; FP64 eigensolver%s\n",
+                   (double)(nn * sizeof(double)) / (1024.0 * 1024.0), st->transient ? "" : " for the rest of the SCF cycle");
+            fflush(stdout);
+        }
         if (!st->transient && st->persistent < 1) st->persistent = 1;
         rc = 0;
     }
@@ -841,7 +843,7 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
     e0 = (double *)ClusterCol_MallocArray((size_t)n, sizeof(double), "refinement eigenvalues");
     f0 = (double *)ClusterCol_MallocArray((size_t)n, sizeof(double), "refinement occupations");
     if (rc) {
-        if (0 < level_stdout) {
+        if (3 <= level_stdout) {
             printf("<Cluster_DFT_Col> spin %d: %s, %d refinement steps (OPENMX_EIGEN_REFINE)\n", spin,
                    pb.warm ? "warm start from the previous vectors" : "FP32 eigensolver", pb.iterations);
             fflush(stdout);
@@ -868,9 +870,11 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
                          mpi_comm_level1, &mpi_status);
         }
         if (status[0] == 1 && status[1] != 1) {
-            printf("<Cluster_DFT_Col> spin %d: the other spin's solve is not refined this step; FP64 eigensolver\n",
-                   spin);
-            fflush(stdout);
+            if (2 <= level_stdout) {
+                printf("<Cluster_DFT_Col> spin %d: the other spin's solve is not refined this step; FP64 eigensolver\n",
+                       spin);
+                fflush(stdout);
+            }
             openmx_eigen_refine_abandon(&ClusterCol_refine_state[spin]);
             rc = 0;
         }
@@ -885,7 +889,7 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
     free(e_peer);
     if (rc == 1) {
         wait_cudafunc(cudaMemcpy(ko_spin + 1, ctx->d_W, sizeof(double) * (size_t)maxn, cudaMemcpyDeviceToHost));
-        if (0 < level_stdout) {
+        if (3 <= level_stdout) {
             printf("<Cluster_DFT_Col> spin %d: refinement step %d of %d columns: max |r| %.1e, max |s| %.1e, delta "
                    "%.1e; Rayleigh-Ritz in %d partially occupied clusters (largest %d, chained within %.1e)\n",
                    spin, pb.iterations, rep.columns, rep.max_r, rep.max_s, rep.delta, rep.rr_clusters, rep.rr_largest,
@@ -1375,7 +1379,7 @@ static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
             if (ClusterCol_TryDeviceMalloc((void**)&d_stage,stage_bytes)==cudaSuccess) break;
             if (KB<=stage_kb_min){
                 static int stage_reports = 0;
-                if (stage_reports<3){
+                if (stage_reports<3 && 2<=level_stdout){
                     stage_reports++;
                     fprintf(stderr,"<Cluster_DFT_Col> a rank could not stage its DM eigenvector block"
                             " (%d states) on the device; using the CPU loop for this step.\n",KB);
@@ -1602,7 +1606,7 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
         static int force_announced = 0;
         int forced = (atoi(force)!=0);
 
-        if (!forced && !force_announced && announce){
+        if (!forced && !force_announced && announce && 2<=level_stdout){
             printf("<Cluster_DFT_Col> GPU dense diagonalization disabled by OPENMX_CLUSTER_GPU_DIAG=0.\n");
             fflush(stdout);
         }
@@ -1661,7 +1665,7 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
 
         if (serial_fit==1){
             verdict = 2;
-            if (announce){
+            if (announce && 2<=level_stdout){
                 printf("<Cluster_DFT_Col> The device cannot hold both spin owners' GPU buffers at once;"
                        " spin world 0's owner solves both spins serially on the GPU"
                        " (disable with OPENMX_CLUSTER_GPU_DIAG_SERIAL=0).\n");

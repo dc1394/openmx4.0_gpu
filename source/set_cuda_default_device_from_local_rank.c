@@ -212,7 +212,7 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
                 announced = 1;
                 MPI_Initialized(&initialized);
                 if (initialized) MPI_Comm_rank(mpi_comm_level1, &myid);
-                if (myid == 0 && 0 < level_stdout) {
+                if (myid == 0 && 2 <= level_stdout) {
                     printf("<GPU> device memory: the CUDA runtime reports %.2f GiB free on device %d but %.2f GiB is physically free (NVML);"
                            " on WDDM platforms such as WSL2 the CUDA figure omits the allocations of other processes,"
                            " so the device-memory budgets use the smaller figure (OPENMX_GPU_MEMINFO_NVML=0 restores the CUDA one).\n",

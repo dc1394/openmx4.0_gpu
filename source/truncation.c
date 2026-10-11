@@ -4428,7 +4428,7 @@ static int UCellBox_OLG_GPU(int estimate_switch, int CpyCell,
   arena = OLG_arena_try(arena_bytes);
   if (arena == NULL) {
     static int notice_done = 0;
-    if (!notice_done) {
+    if (!notice_done && 2<=level_stdout) {
       notice_done = 1;
       fprintf(stderr,
               "UCell_Box: %.1f MiB of device staging unavailable; using the host path.\n",
