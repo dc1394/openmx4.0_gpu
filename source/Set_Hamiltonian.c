@@ -3063,6 +3063,35 @@ static void SETH_OTF_FreePlans(void)
     SETH_OTF_FreePlan(&Set_Hamiltonian_OTF_Plan[1]);
 }
 
+/* what one pair adds to a batch of kind (0 = matrix elements, 1 = density):
+   its bytes in the workspace and the counts the batch totals carry;
+   opens_atom when the pair brings its atom's orbital tile into the batch
+   (the first pair of an atom in the batch) */
+typedef struct {
+    size_t bytes, hcount, nolg, orbs0, orbs1;
+} SetHOTFPairCost;
+
+static void SETH_OTF_PairCost(int kind, int spin_count, int Mc_AN, int h_AN, int opens_atom, int myid,
+                              SetHOTFPairCost *cost)
+{
+    const int Gc_AN = M2G[Mc_AN], Gh_AN = natn[Gc_AN][h_AN];
+    const int NO0 = Spe_Total_NO[WhatSpecies[Gc_AN]];
+    const int NO1 = Spe_Total_NO[WhatSpecies[Gh_AN]];
+    size_t increment = 3 * sizeof(int) + (kind == 0 ? 5 : 6) * sizeof(size_t) + sizeof(SOG_GpuPair) + 16 * 512;
+
+    cost->nolg = (size_t)NumOLG[Mc_AN][h_AN];
+    cost->hcount = Set_Hamiltonian_checked_mul((size_t)spin_count,
+        Set_Hamiltonian_checked_mul((size_t)NO0, (size_t)NO1, "on-the-fly matrix", myid), "on-the-fly H", myid);
+    cost->orbs0 = opens_atom ? Set_Hamiltonian_checked_mul(
+        (size_t)GridN_Atom[Gc_AN], (size_t)NO0, "on-the-fly orbitals 0", myid) : 0;
+    cost->orbs1 = Set_Hamiltonian_checked_mul(cost->nolg, (size_t)NO1, "on-the-fly orbitals 1", myid);
+    if (kind == 0) Set_Hamiltonian_add_array_bytes(&increment, cost->hcount, sizeof(double), "on-the-fly H", myid);
+    Set_Hamiltonian_add_array_bytes(&increment, cost->nolg, (kind == 0 ? 2 : 1) * sizeof(int), "on-the-fly grid indices", myid);
+    Set_Hamiltonian_add_array_bytes(&increment, cost->orbs0, sizeof(float), "on-the-fly orbitals 0", myid);
+    Set_Hamiltonian_add_array_bytes(&increment, cost->orbs1, sizeof(float), "on-the-fly orbitals 1", myid);
+    cost->bytes = increment;
+}
+
 /* the plan of kind for the current partition, workspace and spin count:
    the cached one when it still applies, else a new one (NULL: a pair of the
    density beyond the workspace, which the old per-step path also refused) */
@@ -3106,26 +3135,14 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
            (the same accounting as the per-step path had) */
         while (last < pair_count) {
             const int Mc_AN = plan->mc_table[last], h_AN = plan->h_table[last];
-            const int Gc_AN = M2G[Mc_AN], Gh_AN = natn[Gc_AN][h_AN];
-            const int NO0 = Spe_Total_NO[WhatSpecies[Gc_AN]];
-            const int NO1 = Spe_Total_NO[WhatSpecies[Gh_AN]];
-            const size_t nolg = (size_t)NumOLG[Mc_AN][h_AN];
-            const size_t hcount = Set_Hamiltonian_checked_mul((size_t)spin_count,
-                Set_Hamiltonian_checked_mul((size_t)NO0, (size_t)NO1, "on-the-fly matrix", myid), "on-the-fly H", myid);
-            const size_t orbs0 = Mc_AN == previous_mc ? 0 : Set_Hamiltonian_checked_mul(
-                (size_t)GridN_Atom[Gc_AN], (size_t)NO0, "on-the-fly orbitals 0", myid);
-            const size_t orbs1 = Set_Hamiltonian_checked_mul(nolg, (size_t)NO1, "on-the-fly orbitals 1", myid);
-            size_t increment = 3 * sizeof(int) + (kind == 0 ? 5 : 6) * sizeof(size_t) + sizeof(SOG_GpuPair) + 16 * 512;
-            if (kind == 0) Set_Hamiltonian_add_array_bytes(&increment, hcount, sizeof(double), "on-the-fly H", myid);
-            Set_Hamiltonian_add_array_bytes(&increment, nolg, (kind == 0 ? 2 : 1) * sizeof(int), "on-the-fly grid indices", myid);
-            Set_Hamiltonian_add_array_bytes(&increment, orbs0, sizeof(float), "on-the-fly orbitals 0", myid);
-            Set_Hamiltonian_add_array_bytes(&increment, orbs1, sizeof(float), "on-the-fly orbitals 1", myid);
-            if (payload_bytes - bytes < increment) break;
-            bytes += increment;
-            h_total += hcount;
-            nolg_total += nolg;
-            orbs0_total += orbs0;
-            orbs1_total += orbs1;
+            SetHOTFPairCost cost;
+            SETH_OTF_PairCost(kind, spin_count, Mc_AN, h_AN, Mc_AN != previous_mc, myid, &cost);
+            if (payload_bytes - bytes < cost.bytes) break;
+            bytes += cost.bytes;
+            h_total += cost.hcount;
+            nolg_total += cost.nolg;
+            orbs0_total += cost.orbs0;
+            orbs1_total += cost.orbs1;
             previous_mc = Mc_AN;
             last++;
         }
@@ -3619,6 +3636,202 @@ size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid)
     return total_h;
 }
 
+/* ---- the batch workspace of the on-the-fly density ------------------------
+   A rank takes the smaller of OPENMX_SETDEN_ONTHEFLY_MB (default 128 MiB) and
+   its share of the free device memory, less a 512 MiB reserve, among the
+   node's on-the-fly ranks.  A batch holds at least one whole pair with its
+   atom's orbital tile, and that alone can exceed the default bound: the Eu
+   atom of a one-atom bcc cell (41 orbitals, an 8.0 bohr sphere) on a 64^3
+   grid has 1,691,481 sphere points, and its pair with itself takes 536 MiB.
+   The rank then gave up the device and integrated on the CPU every step
+   without a word (Eubcc8-Band, RTX 5080, 2026-10-11: 3.5 s per step against
+   0.11 s on the device).  Set_Density_Grid_GPU_Local_Prepare now plans the
+   workspace before the quadrature: the ranks whose pairs fit the bound keep
+   it, the others share what the node's other ranks leave of the free memory,
+   each up to one batch of all its pairs.  A rank that still cannot hold a
+   pair, or whose bound was given explicitly, declines the distributed
+   quadrature there, so the one-rank service can take the density instead
+   of the CPU loop. */
+
+#define SETH_OTF_DEN_RESERVE_BYTES (512ULL * 1024ULL * 1024ULL)
+#define SETH_OTF_DEN_RUNTIME_SLACK (64ULL * 1024ULL * 1024ULL)
+#define SETH_OTF_DEN_ALIGNMENT_SLACK ((size_t)(16 * 512))
+/* a grown workspace that the share limits is rounded down to this, so the
+   drift of the free memory between steps keeps the cached batch plan */
+#define SETH_OTF_DEN_GROW_QUANTUM (64ULL * 1024ULL * 1024ULL)
+
+typedef struct {
+    int valid;                /* planned for the coming Set_Hamiltonian_OnTheFly_Density */
+    int matomnum, spin_count;
+    int explicit_limit;
+    size_t largest;           /* the batch bytes of the largest pair, with its atom's tile */
+    size_t all;               /* the batch bytes of all the rank's pairs */
+    size_t fixed;             /* the density matrix and the output beside the batches */
+    size_t free_bytes;        /* the free device memory at the preparation */
+    size_t default_workspace; /* the bound's workspace at the preparation */
+    size_t grown;             /* 0, or the workspace that replaces the bound's */
+} SetHOTFDensityPlan;
+
+static SetHOTFDensityPlan Set_Hamiltonian_OTF_DenPlan = {0};
+
+/* OPENMX_SETDEN_ONTHEFLY_MB: the bound of the density's batch workspace
+   (default 128 MiB, at least 32); *explicit_limit when it was given */
+static size_t SETH_OTF_DensityLimitBytes(int *explicit_limit)
+{
+    const char *limit_env = getenv("OPENMX_SETDEN_ONTHEFLY_MB");
+    size_t limit = 128ULL * 1024ULL * 1024ULL;
+
+    *explicit_limit = 0;
+    if (limit_env && limit_env[0]) {
+        char *end = NULL;
+        unsigned long long mib = strtoull(limit_env, &end, 10);
+        if (end != limit_env && *end == '\0' && mib >= 32 && mib <= (size_t)-1 / (1024ULL * 1024ULL)) {
+            limit = (size_t)mib * 1024ULL * 1024ULL;
+            *explicit_limit = 1;
+        }
+    }
+    return limit;
+}
+
+/* the device storage beside the batches: the density matrix in the form
+   the kernel reads (FP64, float, or hi and lo floats) and the output */
+static size_t SETH_OTF_DensityFixedBytes(int spin_count, size_t dm_count, size_t output_count)
+{
+    const int mode = Grid_Precision_Kernel();
+    const size_t dm_bytes = (mode == 0) ? sizeof(double) * dm_count : 0;
+    const size_t dmf_bytes = (mode == 1) ? sizeof(float) * dm_count : (mode == 2) ? 2 * sizeof(float) * dm_count : 0;
+    const size_t den_bytes = sizeof(double) * (size_t)spin_count * output_count;
+
+    return dm_bytes + dmf_bytes + den_bytes + 3 * 512;
+}
+
+/* the bound's workspace: the rank's share of free_bytes less the reserve
+   among otf_ranks, at most the bound, preferably at least the floor */
+static size_t SETH_OTF_DensityBoundWorkspace(size_t limit, size_t fixed_bytes, int otf_ranks, size_t free_bytes)
+{
+    const size_t fair_bytes = (SETH_OTF_DEN_RESERVE_BYTES < free_bytes)
+                              ? (free_bytes - SETH_OTF_DEN_RESERVE_BYTES) / (size_t)(otf_ranks > 0 ? otf_ranks : 1) : 0;
+    size_t workspace_bytes = (SETH_OTF_DEN_RUNTIME_SLACK + fixed_bytes < fair_bytes)
+                             ? fair_bytes - SETH_OTF_DEN_RUNTIME_SLACK - fixed_bytes : 0;
+
+    if (limit < workspace_bytes) workspace_bytes = limit;
+    /* a share below the floor still gets the floor: the allocation decides */
+    if (workspace_bytes < SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES)
+        workspace_bytes = SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES;
+    /* A user-specified cap below the preferred floor remains a cap. */
+    if (limit < workspace_bytes) workspace_bytes = limit;
+    return workspace_bytes;
+}
+
+/* the batch bytes, in the planner's own accounting, of the rank's largest
+   pair (opening its atom's tile, as the first pair of a batch does) and of
+   all its pairs in one batch */
+static void SETH_OTF_DensityPairBytes(int spin_count, int myid, size_t *largest, size_t *all)
+{
+    *largest = 0;
+    *all = 0;
+    for (int Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+        for (int h_AN = 0; h_AN <= FNAN[M2G[Mc_AN]]; h_AN++) {
+            SetHOTFPairCost opening, cost;
+
+            SETH_OTF_PairCost(1, spin_count, Mc_AN, h_AN, 1, myid, &opening);
+            if (*largest < opening.bytes) *largest = opening.bytes;
+            if (h_AN == 0) {
+                *all += opening.bytes;
+            }
+            else {
+                SETH_OTF_PairCost(1, spin_count, Mc_AN, h_AN, 0, myid, &cost);
+                *all += cost.bytes;
+            }
+        }
+    }
+}
+
+/* Set_Density_Grid_GPU_Local_Prepare on a rank that is to integrate on the
+   fly (no collectives): plans the workspace of the coming call from the
+   free device memory now.  Returns the device bytes the rank takes when the
+   bound holds its largest pair (*grow = 0); otherwise 0 with *grow = 1 when
+   the workspace may grow (Set_Hamiltonian_OnTheFly_DensityGrow sizes it once
+   the node's needs are known) or *grow = -1 when it cannot (an explicit
+   bound, or no reading of the free memory).  *need_bytes and *avail_bytes:
+   the largest pair and the payload the bound leaves. */
+size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, size_t output_count, int otf_ranks,
+                                              int *grow, size_t *need_bytes, size_t *avail_bytes, int myid)
+{
+    SetHOTFDensityPlan *p = &Set_Hamiltonian_OTF_DenPlan;
+    size_t limit, free_now = 0, total_now = 0;
+
+    memset(p, 0, sizeof(*p));
+    *grow = -1;
+    *avail_bytes = 0;
+    limit = SETH_OTF_DensityLimitBytes(&p->explicit_limit);
+    p->fixed = SETH_OTF_DensityFixedBytes(spin_count, dm_count, output_count);
+    SETH_OTF_DensityPairBytes(spin_count, myid, &p->largest, &p->all);
+    *need_bytes = p->largest;
+    {
+        /* the bound's workspace is never below the smaller of the bound and
+           the floor: a pair that fits there fits whatever the free memory
+           is, and the rank takes at most the bound (no query of the device) */
+        const size_t least = (limit < SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES)
+                             ? limit : SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES;
+
+        if (p->largest + SETH_OTF_DEN_ALIGNMENT_SLACK <= least) {
+            p->default_workspace = limit;
+            p->matomnum = Matomnum;
+            p->spin_count = spin_count;
+            p->valid = 1;
+            *avail_bytes = limit - SETH_OTF_DEN_ALIGNMENT_SLACK;
+            *grow = 0;
+            return limit + p->fixed + SETH_OTF_DEN_RUNTIME_SLACK;
+        }
+    }
+    if (OpenMX_GpuMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
+    p->free_bytes = free_now;
+    p->default_workspace = SETH_OTF_DensityBoundWorkspace(limit, p->fixed, otf_ranks, free_now);
+    p->matomnum = Matomnum;
+    p->spin_count = spin_count;
+    p->valid = 1;
+    *avail_bytes = p->default_workspace - SETH_OTF_DEN_ALIGNMENT_SLACK;
+    if (p->largest <= *avail_bytes) {
+        *grow = 0;
+        return p->default_workspace + p->fixed + SETH_OTF_DEN_RUNTIME_SLACK;
+    }
+    *grow = p->explicit_limit ? -1 : 1;
+    return 0;
+}
+
+/* the grown workspace of a rank whose largest pair exceeds the bound: an
+   equal share, among the node's grow_ranks such ranks, of the free memory at
+   the preparation less the reserve and the others_bytes that the node's
+   other ranks take, up to all the rank's pairs in one batch.  Returns 1 when
+   it holds the largest pair (the coming call takes it); *avail_bytes is the
+   payload it leaves. */
+int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, size_t *avail_bytes)
+{
+    SetHOTFDensityPlan *p = &Set_Hamiltonian_OTF_DenPlan;
+    const size_t slack = SETH_OTF_DEN_ALIGNMENT_SLACK;
+    size_t left, share, room, grown;
+
+    *avail_bytes = 0;
+    if (!p->valid || grow_ranks <= 0) return 0;
+    left = (SETH_OTF_DEN_RESERVE_BYTES + others_bytes < p->free_bytes)
+           ? p->free_bytes - SETH_OTF_DEN_RESERVE_BYTES - others_bytes : 0;
+    share = left / (size_t)grow_ranks;
+    room = (SETH_OTF_DEN_RUNTIME_SLACK + p->fixed < share) ? share - SETH_OTF_DEN_RUNTIME_SLACK - p->fixed : 0;
+    if (p->all + slack <= room) {
+        /* one batch: the size depends on the geometry alone */
+        grown = p->all + slack;
+    }
+    else {
+        grown = room - room % SETH_OTF_DEN_GROW_QUANTUM;
+        if (grown < p->largest + slack) grown = p->largest + slack;
+        if (room < grown) grown = 0;
+    }
+    p->grown = grown;
+    *avail_bytes = grown ? grown - slack : (slack < room ? room - slack : 0);
+    return grown != 0;
+}
+
 /* rho(r) += sum_ij DM_ij phi_i(r) phi_j(r) over the pairs of a batch, into
    tmpden[spin * output_count + out_base + Nc] (atomic: the pairs of one
    atom share its points) */
@@ -3833,14 +4046,14 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid)
 {
-    const char *limit_env = getenv("OPENMX_SETDEN_ONTHEFLY_MB");
-    const size_t runtime_slack = 64ULL * 1024ULL * 1024ULL;
-    const size_t alignment_slack = 16 * 512;
+    const size_t alignment_slack = SETH_OTF_DEN_ALIGNMENT_SLACK;
     const int profile = SetH_ProfileEnabled();
     const int mode = Grid_Precision_Kernel();
     const int fp32 = (mode == 1);
-    size_t limit = 128ULL * 1024ULL * 1024ULL;
-    size_t fair_bytes, workspace_bytes, payload_bytes, arena_bytes, fixed_bytes;
+    SetHOTFDensityPlan *den_plan = &Set_Hamiltonian_OTF_DenPlan;
+    int explicit_limit = 0, planned;
+    const size_t limit = SETH_OTF_DensityLimitBytes(&explicit_limit);
+    size_t workspace_bytes, payload_bytes, arena_bytes, fixed_bytes, largest = 0, all_pairs = 0;
     /* DF/FP32 kernels consume the split/float DM only, including their
        OpenACC fallback.  Do not allocate/upload an unused FP64 duplicate. */
     size_t dm_bytes = (mode == 0) ? sizeof(double) * dm_count : 0;
@@ -3864,14 +4077,11 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
         } \
     } while (0)
 
+    /* the workspace plan of Set_Density_Grid_GPU_Local_Prepare serves one call */
+    planned = den_plan->valid && den_plan->matomnum == Matomnum && den_plan->spin_count == spin_count;
+    den_plan->valid = 0;
     if (Cnt_kind != 0 || Matomnum <= 0 || output_count == 0) return 0;
     if (!Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid)) return 0;
-    if (limit_env && limit_env[0]) {
-        char *end = NULL;
-        unsigned long long mib = strtoull(limit_env, &end, 10);
-        if (end != limit_env && *end == '\0' && mib >= 32 && mib <= (size_t)-1 / (1024ULL * 1024ULL))
-            limit = (size_t)mib * 1024ULL * 1024ULL;
-    }
     /* the ranks that take this path at the same time: every rank without
        resident tables (Set_Density_Grid_GPU_Local_Prepare counts them), not
        the last Set_Hamiltonian plan's non-resident count -- in the hybrid
@@ -3883,18 +4093,32 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
     fixed_bytes = dm_bytes + dmf_bytes + den_bytes + 3 * 512;
     {
         size_t free_now = 0, total_now = 0;
-        const size_t reserve = 512ULL * 1024ULL * 1024ULL;
 
         if (OpenMX_GpuMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
-        fair_bytes = (reserve < free_now) ? (free_now - reserve) / (size_t)nonresident_ranks : 0;
+        workspace_bytes = SETH_OTF_DensityBoundWorkspace(limit, fixed_bytes, nonresident_ranks, free_now);
     }
-    workspace_bytes = (runtime_slack + fixed_bytes < fair_bytes) ? fair_bytes - runtime_slack - fixed_bytes : 0;
-    if (limit < workspace_bytes) workspace_bytes = limit;
-    /* a share below the floor still gets the floor: the allocation decides */
-    if (workspace_bytes < alignment_slack + SETH_OTF_FLOOR_BYTES) workspace_bytes = alignment_slack + SETH_OTF_FLOOR_BYTES;
-    /* A user-specified cap below the preferred floor remains a cap. */
-    if (limit < workspace_bytes) workspace_bytes = limit;
     payload_bytes = workspace_bytes - alignment_slack;
+    /* a batch holds at least the largest pair: when the bound's workspace
+       cannot, the one the preparation grew for this call replaces it, and
+       without one the rank integrates on the CPU */
+    if (planned) largest = den_plan->largest;
+    else SETH_OTF_DensityPairBytes(spin_count, myid, &largest, &all_pairs);
+    if (payload_bytes < largest) {
+        if (planned && largest + alignment_slack <= den_plan->grown) {
+            workspace_bytes = den_plan->grown;
+            payload_bytes = workspace_bytes - alignment_slack;
+        }
+        else {
+            if (3 <= level_stdout) {
+                fprintf(stderr,
+                        "<Set_Density_Grid> rank %d: an atom pair needs %.1f MiB of on-the-fly workspace, "
+                        "%.1f MiB available on the device; CPU loop\n",
+                        myid, (double)largest / (1024.0 * 1024.0), (double)payload_bytes / (1024.0 * 1024.0));
+                fflush(stderr);
+            }
+            return 0;
+        }
+    }
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
                                                &unused_orbs0, &unused_orbs1);
     if (pair_count <= 0 || unused_h != dm_count) return 0;
@@ -3908,7 +4132,14 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
         if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
         arena = (unsigned char *)acc_malloc(arena_bytes);
     }
-    if (arena == NULL) return 0;
+    if (arena == NULL) {
+        if (3 <= level_stdout) {
+            fprintf(stderr, "<Set_Density_Grid> rank %d: %.1f MiB of on-the-fly workspace could not be allocated "
+                    "on the device; CPU loop\n", myid, (double)arena_bytes / (1024.0 * 1024.0));
+            fflush(stderr);
+        }
+        return 0;
+    }
     d_dm = (mode == 0) ? (double *)(void *)arena : NULL;
     d_tmpden = (double *)(void *)(arena + ((dm_bytes + 511) & ~(size_t)511));
     if (dm_bytes != 0) acc_memcpy_to_device(d_dm, (void *)dm, dm_bytes);

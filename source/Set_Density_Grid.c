@@ -60,6 +60,8 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   double Stime_atom, Etime_atom;
   double time0,time1,time2;
   int use_local_gpu = 0;
+  int local_ok = 0, local_any = 0, local_path = 0, local_failed = 0, failed_ranks = 0;
+  MPI_Request failed_request = MPI_REQUEST_NULL;
 
   MPI_Status stat;
   MPI_Request request;
@@ -91,8 +93,15 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
      communication below distributes it.  The single-owner GPU service and
      the CPU/OpenMP loop remain as fallbacks, in that order. */
   {
-    int local_ok = Set_Density_Grid_GPU_Local_Prepare(Cnt_kind,Calc_CntOrbital_ON);
-    MPI_Allreduce(&local_ok,&use_local_gpu,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    int flags[2], reduced[2];
+
+    local_ok = Set_Density_Grid_GPU_Local_Prepare(Cnt_kind,Calc_CntOrbital_ON);
+    /* every rank capable (the minimum of ok) and any rank capable (that of -ok) */
+    flags[0] = local_ok;
+    flags[1] = -local_ok;
+    MPI_Allreduce(flags,reduced,2,MPI_INT,MPI_MIN,mpi_comm_level1);
+    use_local_gpu = reduced[0];
+    local_any = -reduced[1];
 
     if (use_local_gpu && myid==Host_ID && 2<=level_stdout){
       static int announced = 0;
@@ -109,8 +118,13 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
      zero keeps the original CPU/OpenMP implementation as the fallback. */
   if (!use_local_gpu){
     if (Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
+      if (local_any) Set_Density_Grid_GPU_Local_Report(1,0);
       return time0;
     }
+    /* Without the service, the ranks that can integrate their own atoms on
+       the device still do; only the others take the CPU loop. */
+    use_local_gpu = local_ok;
+    local_path = 2;
   }
 
   /* allocation of arrays */
@@ -339,7 +353,10 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 
   /* the distributed GPU quadrature fills Tmp_Den_Grid directly; a run-time
      failure on any rank simply falls back to the CPU loop on that rank */
-  if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(CDM,Tmp_Den_Grid)) use_local_gpu = 0;
+  if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(CDM,Tmp_Den_Grid)){
+    use_local_gpu = 0;
+    local_failed = 1;
+  }
 
   if (!use_local_gpu){
 
@@ -659,6 +676,14 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   }
   sd_quad = time2 - sd_t0; sd_t0 = time2;
 
+  /* the ranks with atoms whose GPU quadrature failed, for the level-2
+     line at the end: a non-blocking sum, which the communication below
+     completes without holding any rank back */
+  if (local_any){
+    local_failed = (0<Matomnum && local_failed);
+    MPI_Iallreduce(&local_failed,&failed_ranks,1,MPI_INT,MPI_SUM,mpi_comm_level1,&failed_request);
+  }
+
   /******************************************************
       MPI communication from the partitions A to B 
   ******************************************************/
@@ -809,6 +834,13 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   ******************************************************/
 
   Density_Grid_Copy_B2D(Density_Grid_B0);
+
+  /* a level-2 line when ranks with atoms took the CPU loop beside the GPU
+     quadrature */
+  if (local_any){
+    MPI_Wait(&failed_request,MPI_STATUS_IGNORE);
+    Set_Density_Grid_GPU_Local_Report(local_path,failed_ranks);
+  }
 
   /* freeing of arrays */
 

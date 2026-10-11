@@ -1362,14 +1362,28 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
   return 1;
 }
 
+/* what the last Set_Density_Grid_GPU_Local_Prepare found, the same on
+   every rank: the ranks with atoms, those that declined the distributed
+   quadrature, and those among them whose largest atom pair did not fit an
+   on-the-fly workspace (the largest such need and the smallest payload) */
+static struct {
+  int atom_ranks;
+  int declined;
+  int ws_declined;
+  unsigned long long ws_need;
+  unsigned long long ws_avail;
+} SDG_census = {0};
+
 /* Every rank participates, including OTF ranks, empty partitions and
    ranks whose local preparation failed.  A collective inside the CSR
    builder deadlocks when any other rank reuses a cache or chooses OTF. */
 int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
 {
   MPI_Comm node_comm = MPI_COMM_NULL;
-  int node_ranks = 1, node_otf = 0, my_otf, ok;
-  unsigned long long local_need, group_need = 0;
+  int node_ranks = 1, node_otf = 0, my_otf, ok, myid = 0, grow = 0, ws_declined = 0;
+  size_t ws_need = 0, ws_avail = 0;
+  unsigned long long mine[2] = {0ULL, 0ULL}, node[2] = {0ULL, 0ULL};
+  unsigned long long counts[4], totals[4], extremes[2], worst[2];
 
   /* Input and DFT_GPU_DeviceInit set this flag identically on every rank
      (device initialization failures are reduced collectively).  CPU runs
@@ -1378,23 +1392,132 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
   if (scf_eigen_lib_flag != GPUSOLVER) {
     Set_Hamiltonian_OnTheFly_SetDensityRanks(0);
     OpenMX_GpuPhaseNeed_Register("density_grid_local", 0);
+    memset(&SDG_census, 0, sizeof(SDG_census));
     return 0;
   }
 
+  MPI_Comm_rank(mpi_comm_level1, &myid);
   MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
   MPI_Comm_size(node_comm, &node_ranks);
   ok = SDG_local_prepare(Cnt_kind, Calc_CntOrbital_ON, node_ranks);
   my_otf = ok && Matomnum > 0 && SDG_local.otf;
   MPI_Allreduce(&my_otf, &node_otf, 1, MPI_INT, MPI_SUM, node_comm);
-  MPI_Comm_free(&node_comm);
   Set_Hamiltonian_OnTheFly_SetDensityRanks(node_otf);
 
+  /* The on-the-fly workspaces of the node.  A batch holds at least one
+     whole atom pair, which the default bound cannot always take (a large
+     sphere on a fine grid with many orbitals: hundreds of MiB).  The ranks
+     whose pairs fit keep the bound; the others share the free memory that
+     the rest of the node leaves (the bound's ranks and the CSR staging of
+     the ranks with resident tables).  A rank that still cannot hold its
+     largest pair declines here, before the quadrature, so the one-rank
+     service can take the density instead of the CPU loop. */
+  if (my_otf) {
+    mine[0] = (unsigned long long)Set_Hamiltonian_OnTheFly_DensityBudget(
+        SDG_local.spin_count, SDG_local.otf_dm_count, SDG_local.otf_output_count, node_otf,
+        &grow, &ws_need, &ws_avail, myid);
+    if (0 < grow) mine[1] = 1ULL;
+  }
+  else if (ok && Matomnum > 0) {
+    mine[0] = (unsigned long long)SDG_local_call_bytes(&SDG_local);
+  }
+  MPI_Allreduce(mine, node, 2, MPI_UNSIGNED_LONG_LONG, MPI_SUM, node_comm);
+  MPI_Comm_free(&node_comm);
+  if (0 < grow && !Set_Hamiltonian_OnTheFly_DensityGrow((size_t)node[0], (int)node[1], &ws_avail)) grow = -1;
+  if (grow < 0) {
+    ok = 0;
+    ws_declined = 1;
+    if (3 <= level_stdout) {
+      fprintf(stderr,
+              "<Set_Density_Grid> rank %d: an atom pair needs %.1f MiB of on-the-fly workspace, %.1f MiB "
+              "available on the device; the rank declines the distributed GPU quadrature\n",
+              myid, (double)ws_need / (1024.0 * 1024.0), (double)ws_avail / (1024.0 * 1024.0));
+      fflush(stderr);
+    }
+  }
+
   /* Publish CSR needs on the same communicator as the original policy;
-     ranks without CSR buffers contribute zero. */
-  local_need = SDG_local.ready && !SDG_local.otf ? (unsigned long long)SDG_local.extra_bytes : 0ULL;
-  MPI_Allreduce(&local_need, &group_need, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, mpi_comm_level1);
-  OpenMX_GpuPhaseNeed_Register("density_grid_local", (size_t)group_need);
+     ranks without CSR buffers contribute zero.  The census rides along. */
+  counts[0] = SDG_local.ready && !SDG_local.otf ? (unsigned long long)SDG_local.extra_bytes : 0ULL;
+  counts[1] = Matomnum > 0 ? 1ULL : 0ULL;
+  counts[2] = (Matomnum > 0 && !ok) ? 1ULL : 0ULL;
+  counts[3] = (unsigned long long)ws_declined;
+  MPI_Allreduce(counts, totals, 4, MPI_UNSIGNED_LONG_LONG, MPI_SUM, mpi_comm_level1);
+  worst[0] = 0ULL;
+  worst[1] = ULLONG_MAX;
+  if (0ULL < totals[3]) {
+    /* the same count on every rank: the extremes of the declined ranks */
+    extremes[0] = ws_declined ? (unsigned long long)ws_need : 0ULL;
+    extremes[1] = ws_declined ? ULLONG_MAX - (unsigned long long)ws_avail : 0ULL;
+    MPI_Allreduce(extremes, worst, 2, MPI_UNSIGNED_LONG_LONG, MPI_MAX, mpi_comm_level1);
+  }
+  OpenMX_GpuPhaseNeed_Register("density_grid_local", (size_t)totals[0]);
+  SDG_census.atom_ranks = (int)totals[1];
+  SDG_census.declined = (int)totals[2];
+  SDG_census.ws_declined = (int)totals[3];
+  SDG_census.ws_need = worst[0];
+  SDG_census.ws_avail = totals[3] ? ULLONG_MAX - worst[1] : 0ULL;
   return ok;
+}
+
+/* The level-2 line of a Set_Density_Grid call in which ranks with atoms
+   could not hold an atom pair in an on-the-fly workspace or failed on the
+   device, on Host_ID when the situation changes.  path 1: the one-rank
+   service integrated the density.  path 0 or 2: the distributed quadrature
+   ran (2: without the service, so every declined rank took the CPU loop),
+   and failed is the number of ranks with atoms whose quadrature failed on
+   the device and took the CPU loop (summed by Set_Density_Grid).  The
+   designed routes stay silent: ranks without a device path for the call
+   (the final call of an MD step, Cnt_kind 1, has neither resident tables
+   nor on-the-fly tiles) take the service or the CPU loop as ever.  No
+   collectives; every rank keeps the same state. */
+void Set_Density_Grid_GPU_Local_Report(int path, int failed)
+{
+  static int last_path = -1, last_cpu = -1, last_ws = -1, last_failed = -1;
+  int myid, cpu, other;
+  const int ws = SDG_census.ws_declined;
+  char what[192] = "";
+
+  MPI_Comm_rank(mpi_comm_level1, &myid);
+  if (ws == 0 && failed == 0) {
+    /* a later departure is announced again */
+    last_path = -1;
+    return;
+  }
+  cpu = (path == 2 ? SDG_census.declined : 0) + failed;
+  if (path == last_path && cpu == last_cpu && ws == last_ws && failed == last_failed) return;
+  last_path = path;
+  last_cpu = cpu;
+  last_ws = ws;
+  last_failed = failed;
+  if (myid != Host_ID || level_stdout < 2) return;
+
+  if (0 < ws) {
+    snprintf(what, sizeof(what),
+             "cannot hold an atom pair in an on-the-fly workspace (up to %.1f MiB needed, %.1f MiB available)",
+             (double)SDG_census.ws_need / (1024.0 * 1024.0), (double)SDG_census.ws_avail / (1024.0 * 1024.0));
+  }
+  if (path == 1) {
+    printf("<Set_Density_Grid> %d of %d rank(s) with atoms %s; the one-rank GPU service integrates the density\n",
+           ws, SDG_census.atom_ranks, what);
+  }
+  else {
+    const char *sep = ": ";
+
+    other = cpu - failed - (path == 2 ? ws : 0);
+    printf("<Set_Density_Grid> CPU loop on %d of %d rank(s) with atoms", cpu, SDG_census.atom_ranks);
+    if (path == 2 && 0 < ws) {
+      printf("%s%d %s and the one-rank GPU service is not available", sep, ws, what);
+      sep = "; ";
+    }
+    if (0 < failed) {
+      printf("%s%d failed on the device", sep, failed);
+      sep = "; ";
+    }
+    if (0 < other) printf("%s%d without a device path for this call", sep, other);
+    printf("\n");
+  }
+  fflush(stdout);
 }
 
 int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)

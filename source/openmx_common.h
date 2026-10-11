@@ -3399,6 +3399,9 @@ int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind);
 int Set_Hamiltonian_OnTheFly_DensityPossible(int Cnt_kind, int myid);
 void Set_Hamiltonian_OnTheFly_EndCycle(void);
 void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks);
+size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, size_t output_count, int otf_ranks,
+                                              int *grow, size_t *need_bytes, size_t *avail_bytes, int myid);
+int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, size_t *avail_bytes);
 void Set_Density_Grid_GPU_EndCycle(void);
 size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
 int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
@@ -3409,6 +3412,7 @@ void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 void Mixing_H_Release_GPU(void);
 int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON);
 int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid);
+void Set_Density_Grid_GPU_Local_Report(int path, int failed);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
 void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
