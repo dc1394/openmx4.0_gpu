@@ -196,33 +196,37 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
     if (!gpu_meminfo_nvml_device(dev, &handle)) return cudaSuccess;
     if (gpu_meminfo_nvmlDeviceGetMemoryInfo(handle, &memory) != NVML_SUCCESS) return cudaSuccess;
     if ((size_t)memory.free < cuda_free) {
+        size_t capped_free = (size_t)memory.free;
         if (!announced && gap_min < cuda_free - (size_t)memory.free) {
             /* On Linux the two figures agree, but a peer's allocation that
                lands between the two queries shows as a gap too; a second
                CUDA query after the NVML one tells the two apart (it already
                includes that allocation), so only a gap that persists is
-               reported.  The cap itself needs no such care: the newer
-               figure is the right one either way. */
+               reported.  Keep the smaller second CUDA reading as well:
+               another allocation may have landed after the NVML query. */
             size_t again_free = 0, again_total = 0;
 
-            if (cudaMemGetInfo(&again_free, &again_total) == cudaSuccess &&
-                gap_min < again_free - (size_t)memory.free) {
-                int initialized = 0, myid = 0;
+            if (cudaMemGetInfo(&again_free, &again_total) == cudaSuccess) {
+                if (again_free < capped_free) capped_free = again_free;
+                if ((size_t)memory.free < again_free &&
+                    gap_min < again_free - (size_t)memory.free) {
+                    int initialized = 0, myid = 0;
 
-                announced = 1;
-                MPI_Initialized(&initialized);
-                if (initialized) MPI_Comm_rank(mpi_comm_level1, &myid);
-                if (myid == 0 && 2 <= level_stdout) {
-                    printf("<GPU> device memory: the CUDA runtime reports %.2f GiB free on device %d but %.2f GiB is physically free (NVML);"
-                           " on WDDM platforms such as WSL2 the CUDA figure omits the allocations of other processes,"
-                           " so the device-memory budgets use the smaller figure (OPENMX_GPU_MEMINFO_NVML=0 restores the CUDA one).\n",
-                           (double)(again_free < cuda_free ? again_free : cuda_free) / 1073741824.0, dev,
-                           (double)memory.free / 1073741824.0);
-                    fflush(stdout);
+                    announced = 1;
+                    MPI_Initialized(&initialized);
+                    if (initialized) MPI_Comm_rank(mpi_comm_level1, &myid);
+                    if (myid == 0 && 2 <= level_stdout) {
+                        printf("<GPU> device memory: the CUDA runtime reports %.2f GiB free on device %d but %.2f GiB is physically free (NVML);"
+                               " on WDDM platforms such as WSL2 the CUDA figure omits the allocations of other processes,"
+                               " so the device-memory budgets use the smaller figure (OPENMX_GPU_MEMINFO_NVML=0 restores the CUDA one).\n",
+                               (double)(again_free < cuda_free ? again_free : cuda_free) / 1073741824.0, dev,
+                               (double)memory.free / 1073741824.0);
+                        fflush(stdout);
+                    }
                 }
             }
         }
-        *free_bytes = (size_t)memory.free;
+        *free_bytes = capped_free;
     }
     return cudaSuccess;
 }

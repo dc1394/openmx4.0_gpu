@@ -1279,7 +1279,7 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
   if (mode == 1) {
     /* a rank with resident tables takes the CSR kernel, one without them the
        on-the-fly tiles (its Set_Hamiltonian evaluated its orbitals on the
-       device as well); every rank must be able to take one of the two */
+       device as well); other ranks may keep their CPU quadrature */
     int myid = 0;
     int my_ready, my_otf = 0;
 
@@ -1364,8 +1364,8 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
 
 /* what the last Set_Density_Grid_GPU_Local_Prepare found, the same on
    every rank: the ranks with atoms, those that declined the distributed
-   quadrature, and those among them whose largest atom pair did not fit an
-   on-the-fly workspace (the largest such need and the smallest payload) */
+   quadrature, and those among them without space for the minimum compact
+   on-the-fly chunk (the largest such need and the smallest payload) */
 static struct {
   int atom_ranks;
   int declined;
@@ -1404,14 +1404,14 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
   MPI_Allreduce(&my_otf, &node_otf, 1, MPI_INT, MPI_SUM, node_comm);
   Set_Hamiltonian_OnTheFly_SetDensityRanks(node_otf);
 
-  /* The on-the-fly workspaces of the node.  A batch holds at least one
-     whole atom pair, which the default bound cannot always take (a large
-     sphere on a fine grid with many orbitals: hundreds of MiB).  The ranks
-     whose pairs fit keep the bound; the others share the free memory that
-     the rest of the node leaves (the bound's ranks and the CSR staging of
-     the ranks with resident tables).  A rank that still cannot hold its
-     largest pair declines here, before the quadrature, so the one-rank
-     service can take the density instead of the CPU loop. */
+  /* Plan the node's on-the-fly workspaces before any quadrature starts.
+     Prefer full atom tiles when they fit; otherwise compact overlap-point
+     chunks fit the physical share or an explicit workspace cap.  Without
+     an explicit cap, ranks whose full tiles exceed the default may grow
+     into space left by bounded OTF workspaces and resident-table CSR
+     staging.  A rank declines only when even its minimum compact chunk
+     cannot fit, or its memory budget is unavailable.  It then takes its
+     CPU loop while the other ranks retain their distributed work. */
   if (my_otf) {
     mine[0] = (unsigned long long)Set_Hamiltonian_OnTheFly_DensityBudget(
         SDG_local.spin_count, SDG_local.otf_dm_count, SDG_local.otf_output_count, node_otf,
@@ -1429,7 +1429,7 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
     ws_declined = 1;
     if (3 <= level_stdout) {
       fprintf(stderr,
-              "<Set_Density_Grid> rank %d: an atom pair needs %.1f MiB of on-the-fly workspace, %.1f MiB "
+              "<Set_Density_Grid> rank %d: a minimum on-the-fly chunk needs %.3f MiB, %.3f MiB "
               "available on the device; the rank declines the distributed GPU quadrature\n",
               myid, (double)ws_need / (1024.0 * 1024.0), (double)ws_avail / (1024.0 * 1024.0));
       fflush(stderr);
@@ -1460,11 +1460,23 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
   return ok;
 }
 
+/* The census was reduced by Prepare, so every rank makes the same choice
+   without another collective.  Memory pressure must not funnel all atoms
+   through a single-owner service, nor discard useful distributed GPU work
+   merely because another rank cannot use it.  Empty partitions do not
+   count as capable atom ranks.  With the local mode explicitly disabled,
+   or without a distributed implementation for this call, both conditions
+   are false and the existing service remains available. */
+int Set_Density_Grid_GPU_Local_KeepDistributed(void)
+{
+  return SDG_census.ws_declined > 0 || SDG_census.declined < SDG_census.atom_ranks;
+}
+
 /* The level-2 line of a Set_Density_Grid call in which ranks with atoms
-   could not hold an atom pair in an on-the-fly workspace or failed on the
+   could not hold a minimum on-the-fly chunk or failed on the
    device, on Host_ID when the situation changes.  path 1: the one-rank
    service integrated the density.  path 0 or 2: the distributed quadrature
-   ran (2: without the service, so every declined rank took the CPU loop),
+   ran (2: without using the service, so every declined rank took the CPU loop),
    and failed is the number of ranks with atoms whose quadrature failed on
    the device and took the CPU loop (summed by Set_Density_Grid).  The
    designed routes stay silent: ranks without a device path for the call
@@ -1478,7 +1490,6 @@ void Set_Density_Grid_GPU_Local_Report(int path, int failed)
   const int ws = SDG_census.ws_declined;
   char what[192] = "";
 
-  MPI_Comm_rank(mpi_comm_level1, &myid);
   if (ws == 0 && failed == 0) {
     /* a later departure is announced again */
     last_path = -1;
@@ -1490,11 +1501,12 @@ void Set_Density_Grid_GPU_Local_Report(int path, int failed)
   last_cpu = cpu;
   last_ws = ws;
   last_failed = failed;
+  MPI_Comm_rank(mpi_comm_level1, &myid);
   if (myid != Host_ID || level_stdout < 2) return;
 
   if (0 < ws) {
     snprintf(what, sizeof(what),
-             "cannot hold an atom pair in an on-the-fly workspace (up to %.1f MiB needed, %.1f MiB available)",
+             "cannot hold a minimum on-the-fly chunk (up to %.3f MiB needed, %.3f MiB available)",
              (double)SDG_census.ws_need / (1024.0 * 1024.0), (double)SDG_census.ws_avail / (1024.0 * 1024.0));
   }
   if (path == 1) {
@@ -1507,7 +1519,7 @@ void Set_Density_Grid_GPU_Local_Report(int path, int failed)
     other = cpu - failed - (path == 2 ? ws : 0);
     printf("<Set_Density_Grid> CPU loop on %d of %d rank(s) with atoms", cpu, SDG_census.atom_ranks);
     if (path == 2 && 0 < ws) {
-      printf("%s%d %s and the one-rank GPU service is not available", sep, ws, what);
+      printf("%s%d %s; keeping distributed quadrature", sep, ws, what);
       sep = "; ";
     }
     if (0 < failed) {

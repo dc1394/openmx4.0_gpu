@@ -1603,28 +1603,26 @@ GPUSOLVER かつ <code>Cnt_switch==0</code>(<code>OPENMX_DENSITY_GRID_GPU=0</cod
   <li>参加決定は全ランクの Allreduce(MIN) で合意し、初回に
   <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code> と表示(<code>level.of.stdout</code> 2 以上)。
   自身の一時需要は <code>OpenMX_GpuPhaseNeed_Register("density_grid_local", …)</code> で公開する。</li>
-  <li><b>その場計算のランクと作業領域(2026-10-11):</b> 常駐テーブルのないランクはその場計算で積分する
-  (<code>Set_Hamiltonian_OnTheFly_Density</code>: 原子対のバッチごとに軌道値をデバイスで評価する。
-  <code>OPENMX_SETHAM_ONTHEFLY</code> 参照)。1 バッチには少なくとも原子対 1 組とその原子の軌道タイルが入る必要があり、
-  既定の上限 <code>OPENMX_SETDEN_ONTHEFLY_MB</code>(128 MiB)では 1 組も入らないことがある: 1 原子 bcc セルの Eu
-  (41 軌道、8.0 bohr)を 64³ 格子に置くと原子球内は 1,691,481 点で、自身との対だけで 536 MiB 要る。
-  以前はこのランクが実行時にデバイスをあきらめ、毎ステップ何も表示せずに CPU で積分していた
-  (RTX 5080・18 ランクの Eubcc8-Band: 1 ステップ 3.5 s、実行時間の 76%。Intel ビルドの CPU 版より遅い)。
-  現在は準備段階で作業領域を計画する: 対が上限に収まるランクは上限のまま、収まらないランクはノード内の
-  他のランク(上限のランクと CSR のステージング)が残す空きメモリを等分し、全対を 1 バッチに収める大きさまで広げる
-  (Eubcc8-Band: 2041 MiB・1 バッチ・1 ステップ 0.11 s。実行全体は 540.7 s → 112.2 s、1 SCF ステップ 1.29 s で、
-  Intel ビルドの CPU 版の 10.2 s に対し約 8 倍)。それでも最大の対が入らないランクと、上限を明示した
-  ランクは、準備段階で分散求積を辞退し、単一ランク GPU サービスが密度を引き受ける。サービスが使えないとき
-  (DC・Krylov・DC-LNO、またはオーナーに空きがない)は、辞退したランクだけが CPU ループに回り、他のランクは分散求積を続ける。</li>
-  <li>表示: <code>level.of.stdout</code> 2 では、原子を持つランクが対を収められないかデバイスで失敗したときに、
-  Host_ID が 1 行を状況が変わったときだけ出す。例:
-  <code>&lt;Set_Density_Grid&gt; 1 of 1 rank(s) with atoms cannot hold an atom pair in an on-the-fly workspace (up
-  to 535.6 MiB needed, 256.0 MiB available); the one-rank GPU service integrates the density</code>、
-  <code>&lt;Set_Density_Grid&gt; CPU loop on 1 of 2 rank(s) with atoms: 1 cannot hold an atom pair in an
-  on-the-fly workspace (…) and the one-rank GPU service is not available</code>。level 3 では該当ランク自身の行
-  (<code>&lt;Set_Density_Grid&gt; rank 1: an atom pair needs … MiB of on-the-fly workspace, … MiB available on
-  the device; …</code>)も出る。設計どおりの経路は表示しない: MD ステップ最後の密度(<code>Cnt_kind</code> 1)は
-  どのランクにもデバイスの経路がなく、従来どおりサービスか CPU ループで計算する。</li>
+  <li><b>その場計算のランクと作業領域(2026-10-11):</b> 常駐軌道テーブルのないランクは、バッチごとに
+  デバイスで軌道を評価する。中央原子の軌道タイル全体が入るときは、複数の原子対で再利用する。
+  対が作業領域を超えるときは、重なり格子点を分割し、その点だけで両原子の軌道を評価する。
+  元の格子点順序を保ち、同じ H ブロック・密度格子点に加算する。行列カーネルの回復可能な失敗では、
+  失敗した分割部分だけを CPU で計算する。分割軌道の評価と OpenACC の密度フォールバックは格子点を
+  複数の GPU gang に分配し、1 原子対でも GPU 全体を使う。したがって原子球全体のタイルを収める必要はない
+  (Eu: 41 軌道、8.0 bohr。自身との対全体は 500 MiB を超えることがある)。</li>
+  <li>密度の既定作業領域は 128 MiB。大きい原子に対しては、空きメモリがあれば従来どおり準備段階で
+  全対を 1 バッチに収める大きさまで拡張する。これにより Eubcc8-Band の既存の高速化
+  (2041 MiB・1 バッチ・密度 1 ステップ 0.11 s)を維持する。拡張しても対全体が入らなければ、
+  格子点を分割して GPU 計算を続ける。明示した <code>OPENMX_SETDEN_ONTHEFLY_MB</code> は上限を保ち、
+  その範囲内で分割する。固定の密度行列・出力領域と実行時の余裕は別途予算化し、48 MiB という最低目安が
+  実際の空きメモリの取り分を超えることはない。</li>
+  <li>それでも作業領域不足で参加できないランクは CPU ループを取り、残りのランクは GPU を続ける。
+  全ランクが作業領域不足で辞退しても、単一 GPU に集約せず分散計算を維持する。
+  分散実装が使えない <code>Cnt_kind</code> 1 や、ローカル求積を明示的に無効化した場合には、
+  従来どおり単一ランク GPU サービスを利用できる。</li>
+  <li><code>level.of.stdout</code> 2 では、作業領域不足・デバイス失敗を状況が変わったときに Host_ID が表示する。
+  全ランク辞退時も表示し、level 3 では各ランクの必要量と利用可能な容量も示す。
+  通常実行や設計どおりのサービス経路は表示しない。</li>
 </ul>
 <h3>(b) 単一ランク GPU サービス(コミット <code>bff93d08</code>)</h3>
 <ul>
@@ -2084,8 +2082,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_SETHAM_GPU_MAX_RANKS_PER_DEVICE</code></td><td>制限なし</td><td>波の同時ランク数の明示上限</td></tr>
 <tr><td><code>OPENMX_SETHAM_GPU_SERIAL_WAVES</code></td><td>0</td><td>1 で全波を GPU 直列実行(既定は第 1 波 GPU+残余ランク CPU 並行のハイブリッド)。A100 でメモリ不足を模擬すると(8 ランク中 2〜3 ランクだけが丸ごと GPU に入る)、sidia333 の 12 反復で既定のハイブリッド 165 秒に対し直列ウェーブは 37.6 秒だった。RTX 5080 で 11〜14 ランクが CPU に退避している状況はこれと同じ</td></tr>
 <tr><td><code>OPENMX_SETHAM_STREAMING</code></td><td>1</td><td>GPU に丸ごと入るランクが 1 つだけのとき、対の束をストリーミングして計算する(ランクあたり 256 MiB、<code>OPENMX_SETHAM_STREAM_MB</code>)。<b>2</b> で、全ランクが入りきらないとき全般にストリーミングする(A100 の模擬: ハイブリッド 165 秒、直列ウェーブ 37.6 秒に対し 52 秒)。<b>0</b> でオフ</td></tr>
-<tr><td><code>OPENMX_SETHAM_ONTHEFLY</code></td><td>1</td><td>軌道テーブルがデバイスに入りきらないランクは、CPU で計算したりテーブルをストリーミングしたりする代わりに、原子対のバッチごとに軌道の値をデバイス上で計算する(Set_Orbitals_Grid のデバイスコード、orbs_grid_gpu.h)。常駐するのは自分の原子の球内格子点の索引(数 MiB)と <code>OPENMX_SETHAM_ONTHEFLY_MB</code>(既定 128)MiB のバッチ作業領域だけ。Set_Density_Grid の密度もそのランクでは同じタイルから計算する。0 でオフ(従来どおり CPU かストリーミング)。各ランクの作業領域はこの上限と「計画時の空きからステージング組のピークと余裕 <code>OPENMX_SETHAM_ONTHEFLY_MARGIN_MB</code>(既定 0)MiB を除いた分け前」の小さいほうで、原則として最低 48 MiB(ただし明示した作業領域上限を超えない。予算はステージング組が確保中に測った値ではなく計画値から決めるので全ランクで同じになり、確保の失敗や作業領域より大きいバッチは CPU にフォールバックする)。全ランクのテーブルが載らない GPU では、波の外のランクが上限分の作業領域を得られるまでステージング組を縮める(相の時間を決めるのはステージング組ではなくその場計算のランク: RTX 5080 で 1 ステップ 0.65 s 対 1.4 s)。その場計算の状態は SCF サイクルの終わりに解放する。評価は角度の cos/sin を座標から直接作り、動径メッシュの索引は対数メッシュから直接求める(二分探索なし)。ホストの Get_Orbitals と double の最下位ビットまで一致する</td></tr>
-<tr><td><code>OPENMX_SETDEN_ONTHEFLY_MB</code></td><td>128</td><td>Set_Density_Grid のその場計算の密度でランクが取るバッチ作業領域の上限(MiB)。予算は「その時点の空き − 512 MiB」をノード内でその場計算を取るランク数(常駐テーブルのない全ランク。毎ステップ数える)で割った値で、原則として最低 48 MiB(ただし明示した上限を超えない)。明示する上限は 32 MiB 以上で、それ未満は既定値のままとなる。上限はバッチ作業領域に対するもので、固定の密度行列・出力領域は別途必要。256 MiB では 16 GB のカードで 18 ランク中 1〜2 ランクが毎ステップデバイスを失った。1 バッチには少なくとも原子対 1 組とその原子の軌道タイルが入る必要があり、既定の上限ではランクの最大の対が入らないとき(大きな原子球・細かい格子・多い軌道: Eu、41 軌道、8.0 bohr、球内 169 万点で 536 MiB)は、そのランクの作業領域をノード内の他のランクが残す空きメモリの取り分まで、全対を 1 バッチに収める大きさを上限に広げる(2026-10-11)。明示した値は従来どおり上限で、対がそれを超えるランクは分散求積を辞退する(§7.9)</td></tr>
+<tr><td><code>OPENMX_SETHAM_ONTHEFLY</code></td><td>1</td><td>軌道テーブルがデバイスに入りきらないランクは、CPU で計算したりテーブルをストリーミングしたりする代わりに、原子対のバッチごとに軌道の値をデバイス上で計算する(Set_Orbitals_Grid のデバイスコード、orbs_grid_gpu.h)。常駐するのは自分の原子の球内格子点の索引(数 MiB)と <code>OPENMX_SETHAM_ONTHEFLY_MB</code>(既定 128)MiB のバッチ作業領域だけ。Set_Density_Grid の密度もそのランクでは同じタイルから計算する。0 でオフ(従来どおり CPU かストリーミング)。各ランクの作業領域はこの上限と「計画時の空きからステージング組のピークと余裕 <code>OPENMX_SETHAM_ONTHEFLY_MARGIN_MB</code>(既定 0)MiB を除いた分け前」の小さいほうで、明示した上限と実際の空きメモリの取り分を超えない(予算はステージング組が確保中に測った値ではなく計画値から決めるので全ランクで同じになる)。大きい原子対は重なり格子点を分割し、確保の失敗時は CPU にフォールバックする。全ランクのテーブルが載らない GPU では、波の外のランクが上限分の作業領域を得られるまでステージング組を縮める(相の時間を決めるのはステージング組ではなくその場計算のランク: RTX 5080 で 1 ステップ 0.65 s 対 1.4 s)。その場計算の状態は SCF サイクルの終わりに解放する。評価は角度の cos/sin を座標から直接作り、動径メッシュの索引は対数メッシュから直接求める(二分探索なし)。ホストの Get_Orbitals と double の最下位ビットまで一致する</td></tr>
+<tr><td><code>OPENMX_SETDEN_ONTHEFLY_MB</code></td><td>128</td><td>その場計算の密度のバッチ作業領域上限(MiB)。実際の予算は空きからノード共通の 512 MiB を除いてその場計算のランクで等分し、各ランクの固定密度行列・出力領域と実行時の余裕 64 MiB を引く。明示する上限は 32 MiB 以上で、それ未満は既定値を保つ。対全体が既定の上限を超える場合は、空きメモリを利用して全対が 1 バッチに収まる大きさまで自動拡張する。明示した上限は拡張しない。なお収まらない対は重なり格子点を分割するため、大きい原子や明示した上限だけを理由にランクが辞退することはない(§7.9)</td></tr>
 <tr><td><code>OPENMX_SETHAM_ONTHEFLY_PLAN_CACHE</code></td><td>1</td><td>その場計算の経路はランクごとに「計画」を保持する: バッチ(どの対か、各オフセット)、対の記述子、点ごとの索引(Nc、行列要素ではポテンシャルの格子添字 MN も)を、デバイスのアリーナと同じ配置のピン留めホスト画像としてバッチごとに 1 つ持ち、バッチごとに 1 回の転送で送る。毎ステップ動くのは H ブロック(ピン留めバッファ)、ポテンシャル行(コード自身のピン留めステージングバッファ経由。OpenMX が持つ行を cudaHostRegister で登録する方式は、後の無関係な転送が CUDA_ERROR_INVALID_VALUE で散発的に失敗した)、タイルだけで、密度の累積配列はデバイス側でゼロ化し、そのホストバッファはピン留めして持ち越す。計画は SCF サイクルの終わりまで、または作業領域・スピン数・原子分割・軌道格子の形状が変わるまで生きる(ランクの対の重なり点あたりホストメモリ約 8 バイト)。以前は毎ステップ各バッチを組み直し、約 90 回の小さな同期転送(Nc リストは対ごと)で送っており、18 ランクの MPS 下では 1 回約 0.3 ms かかっていた: RTX 5080(sidia333 非共線クラスター)で行列要素の詰め替えがランク・ステップあたり 0.25 秒→0.10 秒、密度の詰め替えが 0.20 秒→0.02 秒、その場計算ランクの行列要素 0.68 秒→0.48 秒、密度 0.41 秒→0.26 秒、Set_Density_Grid 18.1 秒→14.8 秒、D 107.7 秒→103.2 秒(band_nc の D は 144.4 秒→133.8 秒)、Utot は 1e-12 Ha 以内。<b>0</b> = 呼び出しごとに計画を作り直す</td></tr>
 <tr><td><code>OPENMX_SETHAM_MATEL_SPLIT</code></td><td>4</td><td>df 行列要素カーネルで、対の格子点を何ブロックに分けるか(各ブロックは自分の分の 32 点タイルを積分し、部分和を H ブロックへ原子的に加える)。1 = 対あたり 1 ブロック、上限 64</td></tr>
 <tr><td><code>OPENMX_ORBS_EVAL_PRECISION</code></td><td>df / fp64</td><td>その場計算の軌道値評価(常駐テーブルのないランクがハミルトニアンと密度のタイルに使う Set_Orbitals_Grid のデバイスコード)の演算。<b>df</b> = double-float(既定)。FP64 で求めた格子座標の後はすべて float の対(hi + lo、相対 2^-48 程度)で計算する: PAO の動径テーブルとメッシュ点ごとのスプライン定数を対で保持し、メッシュ添字は FP32 の対数で見積もって添字探索で確定し、軌道値として書く float は積の hi 部、すなわち FP64 値に最も近い float(FP64 値が丸め境界の ~1e-14 以内にあるときだけ 1 ulp 異なる。約 10^6 個に 1 個。最初のメッシュ点より内側の点は FP64 ルーチンで計算)。<b>fp64</b> = ホストの Get_Orbitals のFP64 転記(テーブルの値とビット一致)。GeForce は FP64 が FP32 の 1/64 で、FP64 評価はそのパイプで律速される: RTX 5080 の sidia333 非共線クラスター(18 ランク + MPS、23 ステップ)で、ランク・ステップあたりの評価が 0.77 秒→0.41 秒(ハミルトニアンのタイル)、0.42 秒→0.07 秒(密度のタイル)、Set_Hamiltonian 43.5 秒→35.8 秒、Set_Density_Grid 32.6 秒→24.1 秒、D 141.4 秒→129.5 秒で Utot は 1e-12 Ha まで同一。band_nc の D は 167.5 秒→156.8 秒。テーブル自体(常駐ランクの Orbs_Grid)は常に FP64 で作る</td></tr>
@@ -2164,7 +2162,7 @@ Force4B・Force_HNL・HVNA のフォールバック通知と Set_Density_Grid �
   <code>Force4B GPU: not enough free device memory …; CPU fallback.</code>(level 2 はノードごとに 1 回、level 3 は各ランクが
   <code>Force4B GPU: … GiB free for … rank(s) but … GiB needed per rank; CPU fallback.</code> を出力)、
   <code>&lt;Mixing_H&gt; The RMM-DIISH residual history … does not fit on the GPU …</code>(level 2)、
-  <code>&lt;Set_Density_Grid&gt; … cannot hold an atom pair in an on-the-fly workspace …</code> と
+  <code>&lt;Set_Density_Grid&gt; … cannot hold a minimum on-the-fly chunk …</code> と
   <code>&lt;Set_Density_Grid&gt; CPU loop on … rank(s) with atoms: …</code>(level 2 は状況が変わったときに Host_ID が 1 行、
   level 3 は各ランク自身の行も。§7.9)、
   GEMMul8 の <code>workspace fallback</code>(stderr、level 2 または <code>OPENMX_GEMMUL8_VERBOSE=1</code>)</li>

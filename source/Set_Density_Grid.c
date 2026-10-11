@@ -90,8 +90,9 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 
   /* Preferred GPU mode: every rank evaluates its own atoms' density on the
      device (sharing Set_Hamiltonian's tables) and the ordinary A-to-B
-     communication below distributes it.  The single-owner GPU service and
-     the CPU/OpenMP loop remain as fallbacks, in that order. */
+     communication below distributes it.  Memory pressure keeps this
+     distributed path, with the CPU/OpenMP loop on ranks without workspace.
+     The single-owner service handles calls without a distributed path. */
   {
     int flags[2], reduced[2];
 
@@ -117,12 +118,13 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
      bypass the per-rank atom-density/A-to-B path below.  A return value of
      zero keeps the original CPU/OpenMP implementation as the fallback. */
   if (!use_local_gpu){
-    if (Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
-      if (local_any) Set_Density_Grid_GPU_Local_Report(1,0);
+    if (!Set_Density_Grid_GPU_Local_KeepDistributed() &&
+        Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
+      Set_Density_Grid_GPU_Local_Report(1,0);
       return time0;
     }
-    /* Without the service, the ranks that can integrate their own atoms on
-       the device still do; only the others take the CPU loop. */
+    /* Ranks that can integrate their own atoms on the device still do;
+       the others take the parallel CPU loop. */
     use_local_gpu = local_ok;
     local_path = 2;
   }
@@ -839,8 +841,8 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
      quadrature */
   if (local_any){
     MPI_Wait(&failed_request,MPI_STATUS_IGNORE);
-    Set_Density_Grid_GPU_Local_Report(local_path,failed_ranks);
   }
+  Set_Density_Grid_GPU_Local_Report(local_path,failed_ranks);
 
   /* freeing of arrays */
 
