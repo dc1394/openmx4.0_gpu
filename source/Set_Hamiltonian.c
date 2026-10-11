@@ -656,7 +656,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
     free(requirements);
 
     if (plan.concurrent_ranks == 0) {
-        if (plan.device_rank == 0) {
+        if (plan.device_rank == 0 && 2 <= level_stdout) {
             fprintf(stderr,
                     "Set_Hamiltonian: %s does not fit even one whole GPU rank: free %.3f GiB, reserve %.3f GiB.\n",
                     where, (double)plan.free_bytes / (1024.0 * 1024.0 * 1024.0),
@@ -737,7 +737,7 @@ static SetHamiltonianGpuTurnPlan Set_Hamiltonian_CreateGpuTurnPlan(size_t requir
         }
     }
 
-    if (plan.device_rank == 0) {
+    if (plan.device_rank == 0 && 2 <= level_stdout) {
         static int last_device_ranks = -1;
         static int last_concurrent = -1;
         if (last_device_ranks != plan.device_ranks || last_concurrent != plan.concurrent_ranks) {
@@ -974,7 +974,7 @@ static void Set_Hamiltonian_ME_EnterDeviceCache(const SetHamiltonianGpuTurnPlan 
 
     cache->resident_mask |= add_mask;
 
-    if (plan->device_rank == 0) {
+    if (plan->device_rank == 0 && 2 <= level_stdout) {
         char label[64];
 
         Set_Hamiltonian_ResidentMaskLabel(cache->resident_mask, label, sizeof(label));
@@ -1889,7 +1889,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
            transient for the rest of this MD step. */
         Set_Hamiltonian_ME_ReleaseDeviceCache(1);
         Set_Hamiltonian_ME_Cache.resident_blocked = 1;
-        if (plan.device_rank == 0) {
+        if (plan.device_rank == 0 && 2 <= level_stdout) {
             printf("<Set_Hamiltonian> GPU resident cache released: a GPU phase needs %.3f GiB on device %d; "
                    "staying transient for this MD step\n",
                    (double)plan.registered_need_bytes / (1024.0 * 1024.0 * 1024.0),
@@ -2718,7 +2718,7 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
                    restore them from the untouched host copy before redoing
                    this batch with the OpenACC kernel below. */
                 static int retry_reports = 0;
-                if (retry_reports < 3) {
+                if (retry_reports < 3 && 2 <= level_stdout) {
                     retry_reports++;
                     fprintf(stderr,
                             "<Set_Hamiltonian> rank %d: CUDA matrix-elements kernel failed transiently; redoing this batch with the OpenACC kernel.\n",
@@ -3428,15 +3428,17 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
         }
     }
     SETH_OTF_PROFILE_ADD(pack_seconds);
-    if (plan->device_rank == 0 || (plan->concurrent_ranks == plan->device_rank)) {
+    if (2 <= level_stdout && (plan->device_rank == 0 || plan->concurrent_ranks == plan->device_rank)) {
         /* announced once, and again only when the workspace moves by more
            than a sixteenth (the plan's free memory drifts by a few MiB
-           from step to step) or the wave changes */
+           from step to step) or the wave changes; level.of.stdout 3
+           announces every change */
         static size_t last_workspace = 0;
         static int last_nonresident = -1;
         const size_t drift = (last_workspace < workspace_bytes) ? workspace_bytes - last_workspace
                                                                  : last_workspace - workspace_bytes;
-        if (last_nonresident != nonresident_ranks || last_workspace / 16 < drift) {
+        if (last_nonresident != nonresident_ranks || last_workspace / 16 < drift ||
+            (3 <= level_stdout && drift != 0)) {
             printf("<Set_Hamiltonian> GPU on-the-fly orbital tiles: %d rank(s) without resident tables, "
                    "%.1f MiB workspace/rank on device %d, %s evaluation\n",
                    nonresident_ranks, (double)workspace_bytes / (1024.0 * 1024.0), plan->cuda_device,
@@ -4097,7 +4099,7 @@ static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan
     free(vpotgrid);
     if (!stream) return 0;
 
-    if (plan->device_rank == 0) {
+    if (plan->device_rank == 0 && 2 <= level_stdout) {
         static size_t last_workspace = 0;
         if (last_workspace != workspace_bytes) {
             printf("<Set_Hamiltonian> GPU streamed pair batches: %d rank(s), %.1f MiB workspace/rank on device %d\n",

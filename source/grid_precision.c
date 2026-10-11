@@ -71,7 +71,7 @@ void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int
 
         switched = 0;
         pending_reset = 0;
-        if (df_mode && !df_announced && myid == 0 && 0 < verbose) {
+        if (df_mode && !df_announced && myid == 0 && 2 <= verbose) {
             printf("<DFT>  grid integrals: double-float kernels (FP32 arithmetic with error-free transformations; "
                    "OPENMX_GRID_PRECISION=fp64 restores the FP64 kernels)\n");
             fflush(stdout);
@@ -82,7 +82,7 @@ void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int
        Its last allowed step must use the non-lossy kernels as well. */
     next = enabled && !switched && SCF_iter < SCF_max &&
            (SCF_iter == 1 || (isfinite(normrd_prev) && until < normrd_prev));
-    if (next && !announced && myid == 0 && 0 < verbose) {
+    if (next && !announced && myid == 0 && 2 <= verbose) {
         printf("<DFT>  grid integrals: FP32 (compensated sums) while NormRD > %.1e (OPENMX_GRID_FP32, "
                "OPENMX_GRID_FP32_UNTIL)\n", until);
         fflush(stdout);
@@ -91,7 +91,7 @@ void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int
     if (fp32_now && !next) {
         switched = 1;
         pending_reset = restart;
-        if (myid == 0 && 0 < verbose) {
+        if (myid == 0 && 2 <= verbose) {
             printf("<DFT>  grid integrals: FP64 from SCF step %d (NormRD %.1e)%s\n", SCF_iter, normrd_prev,
                    restart ? ", mixing history restarted" : "");
             fflush(stdout);
@@ -105,7 +105,7 @@ int Grid_Precision_StopCheck(int po, int myid, int verbose)
     if (!po || !fp32_now) return po;
     switched = 1;
     pending_reset = restart;
-    if (myid == 0 && 0 < verbose) {
+    if (myid == 0 && 2 <= verbose) {
         printf("<DFT>  grid integrals: the stop test passed on an FP32 step; FP64 from the next step, the SCF goes on\n");
         fflush(stdout);
     }

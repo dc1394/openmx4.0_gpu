@@ -851,7 +851,7 @@ static int Set_Orbitals_Grid_GPU(void)
 
   arena = (unsigned char*)SOG_arena_try(arena_bytes);
   if (arena == NULL) {
-    if (!fail_notice_done) {
+    if (!fail_notice_done && 2 <= level_stdout) {
       fail_notice_done = 1;
       fprintf(stderr,
               "Set_Orbitals_Grid: %.1f MiB of device staging unavailable; using the host path.\n",

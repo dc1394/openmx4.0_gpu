@@ -1170,7 +1170,7 @@ static void ClusterNonCol_RefineConfigure(void)
 
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(1, 0 < level_stdout, &config[1]);
+    if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(1, 2 <= level_stdout, &config[1]);
     MPI_Bcast(config, 2, MPI_INT, Host_ID, mpi_comm_level1);
     st->iterations = config[0];
     st->defaulted = (0 < config[1]);
@@ -1229,7 +1229,7 @@ void Cluster_DFT_NonCol_RefineAfterMixing(double normrd)
     if (!st->cycle_refined || st->final_stage || st->until <= 0.0 || st->until <= normrd) return;
     st->final_stage = 1;
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    if (myid == Host_ID && 0 < level_stdout) {
+    if (myid == Host_ID && 2 <= level_stdout) {
         printf("<DFT>  eigensolver: NormRD %.3e < %.3e, FP64 eigensolver from the next SCF step\n", normrd,
                st->until);
         fflush(stdout);
@@ -1330,7 +1330,7 @@ static int ClusterNonCol_RefinedEigenPresent(dcomplex *A, double *W, int n, int 
     free(e0);
     free(f0);
     *persistent = rep.persistent;
-    if (rc == 1 && 0 < level_stdout) {
+    if (rc == 1 && 3 <= level_stdout) {
         printf("<Cluster_DFT_NonCol> refinement step %d of %d columns: max |r| %.1e, max |s| %.1e, delta %.1e; "
                "Rayleigh-Ritz in %d partially occupied clusters (largest %d, chained within %.1e)\n",
                iterations, rep.columns, rep.max_r, rep.max_s, rep.delta, rep.rr_clusters, rep.rr_largest, rep.chain);
@@ -2229,7 +2229,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
         static int force_announced = 0;
         int forced = (atoi(force) != 0);
 
-        if (!forced && !force_announced && myid == Host_ID) {
+        if (!forced && !force_announced && myid == Host_ID && 2 <= level_stdout) {
             printf("<Cluster_DFT_NonCol> GPU dense diagonalization disabled by OPENMX_CLUSTER_GPU_DIAG=0.\n");
             fflush(stdout);
         }
@@ -2653,10 +2653,12 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
                              ClusterNonCol_refine_state.basis_n == n2 && 1 < SCF_iter;
             int rc;
 
-            printf("<Cluster_DFT_NonCol> SCF step %d: %s, %d refinement steps%s (OPENMX_EIGEN_REFINE)\n", SCF_iter,
-                   warm ? "warm start from the previous vectors" : "FP32 eigensolver",
-                   ClusterNonCol_RefineIterations(), SCF_iter == 1 ? " of all states" : "");
-            fflush(stdout);
+            if (3 <= level_stdout) {
+                printf("<Cluster_DFT_NonCol> SCF step %d: %s, %d refinement steps%s (OPENMX_EIGEN_REFINE)\n", SCF_iter,
+                       warm ? "warm start from the previous vectors" : "FP32 eigensolver",
+                       ClusterNonCol_RefineIterations(), SCF_iter == 1 ? " of all states" : "");
+                fflush(stdout);
+            }
             rc = ClusterNonCol_RefinedEigenPresent(Hs2, ko, n2, MaxN, ClusterNonCol_RefineIterations(),
                                                    ClusterNonCol_ArenaPtr(arena->o_r[0]), region,
                                                    (dcomplex *)ClusterNonCol_ArenaPtr(arena->o_vt), SCF_iter == 1,

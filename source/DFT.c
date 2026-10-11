@@ -83,7 +83,7 @@ static void DFT_GPU_DeviceInit(int basis_count)
     MPI_Comm_rank(mpi_comm_level1,&myid0);
     scf_eigen_lib_flag = GPUSOLVER;
 
-    if (Solver!=5 && Solver!=8 && Solver!=11 && basis_count < DFT_GPU_DenseSwitchNum() && myid0==Host_ID && 0<level_stdout) {
+    if (Solver!=5 && Solver!=8 && Solver!=11 && basis_count < DFT_GPU_DenseSwitchNum() && myid0==Host_ID && 2<=level_stdout) {
         printf("<DFT> GPUSOLVER requested; global matrix dimension %d is below %d, so global dense eigensolver paths use a CPU fallback while GPU kernels remain enabled.\n",
                basis_count,DFT_GPU_DenseSwitchNum());
         fflush(stdout);
@@ -118,7 +118,7 @@ static void DFT_GPU_DeviceInit(int basis_count)
         else {
             device_count = (cuda_device_count < acc_device_count) ? cuda_device_count : acc_device_count;
             if (0 < SCF_Gpu_Num && SCF_Gpu_Num < device_count) {
-                if (myid0==Host_ID && 0<level_stdout) {
+                if (myid0==Host_ID && 2<=level_stdout) {
                     printf("<DFT> scf.Gpu.Num caps the GPUs used per node at %d of the %d detected.\n",
                            SCF_Gpu_Num,device_count);
                     fflush(stdout);
@@ -951,7 +951,7 @@ double DFT(int MD_iter, int Cnt_Now)
              DFT_GPU_EigensolverActive() ? " (GPU-accelerated)" : "");
       if (!DFT_GPU_EigensolverActive() && DFT_GPU_DenseSwitchNum()<=DFT_GPU_BasisCount()){
         static int cpu_diag_notice_done = 0;
-        if (!cpu_diag_notice_done){
+        if (!cpu_diag_notice_done && 2<=level_stdout){
           cpu_diag_notice_done = 1;
           printf("<%s>  Note: the CPU eigensolver prints nothing until every k point of an SCF iteration is done (matrix dimension %d); minutes of silence here are normal.\n",
                  s_vec[Solver-1],DFT_GPU_BasisCount());
@@ -1001,7 +1001,7 @@ double DFT(int MD_iter, int Cnt_Now)
 	      MPI_Allreduce(&my_rejected,&gemm_rejected,1,MPI_INT,MPI_MAX,mpi_comm_level1);
 	      MPI_Allreduce(&my_eta,&eta,1,MPI_DOUBLE,MPI_MAX,mpi_comm_level1);
 	      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),counters);
-	      if (myid0==Host_ID && 0<level_stdout){
+	      if (myid0==Host_ID && 3<=level_stdout){
 	        if (0.0<=eta) printf("<DFT>  forward GEMMs: stage %lld (%s), eta=%10.3e%s\n",
 	                             counters[0],stage,eta,gemm_rejected ? ", rejected" : "");
 	        else          printf("<DFT>  forward GEMMs: stage %lld (%s)%s\n",
@@ -1380,7 +1380,7 @@ double DFT(int MD_iter, int Cnt_Now)
         int shift = LSCF_iter - Pulay_SCF + 2;
         if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
       }
-      if (before[0]!=after[0] && myid0==Host_ID && 0<level_stdout){
+      if (before[0]!=after[0] && myid0==Host_ID && 2<=level_stdout){
         printf("<DFT>  forward GEMMs: final stage %lld (%s) from the next SCF step%s\n",
                after[0],stage,restart ? ", mixing history restarted" : "");fflush(stdout);
       }
@@ -1416,7 +1416,7 @@ double DFT(int MD_iter, int Cnt_Now)
       }
       bound = guard_factor*SCF_Criterion;
       if (0.0<bound && bound<normrd){
-        if (myid0==Host_ID && 0<level_stdout){
+        if (myid0==Host_ID && 2<=level_stdout){
           printf("<DFT>  eigensolver: the stop test passed on a refined FP32 step with NormRD %.1e above %.1e; the SCF goes on\n",
                  normrd,bound);
           fflush(stdout);
@@ -1426,7 +1426,7 @@ double DFT(int MD_iter, int Cnt_Now)
     }
 
     if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined()){
-      if (myid0==Host_ID && 0<level_stdout){
+      if (myid0==Host_ID && 2<=level_stdout){
         printf("<DFT>  eigensolver: converged on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
         fflush(stdout);
       }
@@ -1449,7 +1449,7 @@ double DFT(int MD_iter, int Cnt_Now)
     /* the refined FP32 eigensolver of the collinear band solver: the same
        FP64 re-solve of the stop step through a repeated call */
     if (po==1 && Cnt_switch==0 && Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()){
-      if (myid0==Host_ID && 0<level_stdout){
+      if (myid0==Host_ID && 2<=level_stdout){
         printf("<DFT>  eigensolver: converged on a refined FP32 step; the Hamiltonians are solved once more in FP64\n");
         fflush(stdout);
       }
@@ -1471,7 +1471,7 @@ double DFT(int MD_iter, int Cnt_Now)
     /* the refined FP32 eigensolver of the non-collinear band solver: the
        same FP64 re-solve of the stop step through a repeated call */
     if (po==1 && Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined()){
-      if (myid0==Host_ID && 0<level_stdout){
+      if (myid0==Host_ID && 2<=level_stdout){
         printf("<DFT>  eigensolver: converged on a refined FP32 step; the Hamiltonians are solved once more in FP64\n");
         fflush(stdout);
       }
@@ -1495,7 +1495,7 @@ double DFT(int MD_iter, int Cnt_Now)
        Hamiltonian solved once more in FP64, for the vectors the post-SCF
        energy density matrix is built from */
     if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()){
-      if (myid0==Host_ID && 0<level_stdout){
+      if (myid0==Host_ID && 2<=level_stdout){
         printf("<DFT>  eigensolver: converged on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
         fflush(stdout);
       }
@@ -1840,7 +1840,7 @@ double DFT(int MD_iter, int Cnt_Now)
     }
 
     if (po==0 && openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
-      if (openmx_gemmul8AdaptiveAfterMixing(sqrt(fabs(NormRD[0]))) && myid0==Host_ID && 0<level_stdout){
+      if (openmx_gemmul8AdaptiveAfterMixing(sqrt(fabs(NormRD[0]))) && myid0==Host_ID && 2<=level_stdout){
         char stage[64];
         long long counters[5];
         openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),counters);
@@ -1882,7 +1882,7 @@ double DFT(int MD_iter, int Cnt_Now)
   /* an SCF cut by scf.maxIter (changed through the _SCF_keywords file) on a
      refined FP32 eigensolve: the same FP64 re-solve as at a stop */
   if (Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined()){
-    if (myid0==Host_ID && 0<level_stdout){
+    if (myid0==Host_ID && 2<=level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
       fflush(stdout);
     }
@@ -1902,7 +1902,7 @@ double DFT(int MD_iter, int Cnt_Now)
     Uele = Uele_IS0 + Uele_IS1;
   }
   if (Cnt_switch==0 && Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()){
-    if (myid0==Host_ID && 0<level_stdout){
+    if (myid0==Host_ID && 2<=level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonians are solved once more in FP64\n");
       fflush(stdout);
     }
@@ -1921,7 +1921,7 @@ double DFT(int MD_iter, int Cnt_Now)
     Uele = Uele_IS0 + Uele_IS1;
   }
   if (Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined()){
-    if (myid0==Host_ID && 0<level_stdout){
+    if (myid0==Host_ID && 2<=level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonians are solved once more in FP64\n");
       fflush(stdout);
     }
@@ -1940,7 +1940,7 @@ double DFT(int MD_iter, int Cnt_Now)
     Uele = Uele_IS0 + Uele_IS1;
   }
   if (Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()){
-    if (myid0==Host_ID && 0<level_stdout){
+    if (myid0==Host_ID && 2<=level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
       fflush(stdout);
     }

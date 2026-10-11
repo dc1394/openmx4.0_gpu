@@ -45,6 +45,7 @@
    bias of 2e-10 Ha across warm starts; OPENMX_EIGEN_REFINE_COMPLEMENT).
 */
 #include "eigen_refine_gpu.h"
+#include "openmx_stdout_level.h"
 
 #include <mpi.h>
 
@@ -204,10 +205,12 @@ static int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, co
     }
     else {
         if (dev->try_malloc(&st->own, (size_t)blocks * block_bytes) != cudaSuccess) {
-            printf("<eigen_refine_gpu> no room for the %.1f MiB of refinement products; FP64 eigensolver%s\n",
-                   (double)blocks * (double)block_bytes / (1024.0 * 1024.0),
-                   pb->transient ? "" : " for the rest of the SCF cycle");
-            fflush(stdout);
+            if (OPENMX_STDOUT_LEVEL(2)) {
+                printf("<eigen_refine_gpu> no room for the %.1f MiB of refinement products; FP64 eigensolver%s\n",
+                       (double)blocks * (double)block_bytes / (1024.0 * 1024.0),
+                       pb->transient ? "" : " for the rest of the SCF cycle");
+                fflush(stdout);
+            }
             report->persistent = pb->transient ? 0 : 1;
             return 0;
         }
@@ -332,16 +335,20 @@ static int refine_fp32_attempt(EigenRefineDevice *dev, int cplx, int n, const vo
                                               &h_bytes);
     }
     if (status != CUSOLVER_STATUS_SUCCESS) {
-        printf("<eigen_refine_gpu> FP32 eigensolver workspace query failed (status %d)\n", (int)status);
-        fflush(stdout);
+        if (OPENMX_STDOUT_LEVEL(2)) {
+            printf("<eigen_refine_gpu> FP32 eigensolver workspace query failed (status %d)\n", (int)status);
+            fflush(stdout);
+        }
         return 0;
     }
     if (*dev->d_work_bytes < d_bytes) {
         void *grown = NULL;
         if (dev->try_malloc(&grown, d_bytes) != cudaSuccess) {
-            printf("<eigen_refine_gpu> no room for the %.1f MiB FP32 eigensolver workspace\n",
-                   (double)d_bytes / (1024.0 * 1024.0));
-            fflush(stdout);
+            if (OPENMX_STDOUT_LEVEL(2)) {
+                printf("<eigen_refine_gpu> no room for the %.1f MiB FP32 eigensolver workspace\n",
+                       (double)d_bytes / (1024.0 * 1024.0));
+                fflush(stdout);
+            }
             return 0;
         }
         if (*dev->d_work != NULL) refine_check(cudaFree(*dev->d_work), "cudaFree workspace");
@@ -372,9 +379,11 @@ static int refine_fp32_attempt(EigenRefineDevice *dev, int cplx, int n, const vo
     refine_check(cudaStreamSynchronize(dev->stream), "synchronize");
     *info_out = info;
     if (status != CUSOLVER_STATUS_SUCCESS || info != 0 || h_meig < (int64_t)n) {
-        printf("<eigen_refine_gpu> FP32 %s eigensolver failed (status %d, info %d, %lld of %d eigenpairs)\n",
-               two_stage ? "two-stage" : "one-stage", (int)status, (int)info, (long long)h_meig, n);
-        fflush(stdout);
+        if (OPENMX_STDOUT_LEVEL(2)) {
+            printf("<eigen_refine_gpu> FP32 %s eigensolver failed (status %d, info %d, %lld of %d eigenpairs)\n",
+                   two_stage ? "two-stage" : "one-stage", (int)status, (int)info, (long long)h_meig, n);
+            fflush(stdout);
+        }
         return 0;
     }
     return 1;
@@ -411,7 +420,7 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
 #endif
     {
         static int announced = 0;
-        if (!announced) {
+        if (!announced && OPENMX_STDOUT_LEVEL(2)) {
             announced = 1;
             printf("<eigen_refine_gpu> FP32 full solve: %s\n",
                    two_stage ? "two-stage cusolverDnXsyevd (CUSOLVER_ALG_2)"
@@ -421,16 +430,22 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
     }
     if (refine_fp32_attempt(dev, cplx, n, a, af, wf, two_stage, &info)) return 1;
     if (two_stage && info > 0) {
-        printf("<eigen_refine_gpu> retrying the FP32 solve with the one-stage algorithm\n");
-        fflush(stdout);
-        if (refine_fp32_attempt(dev, cplx, n, a, af, wf, 0, &info)) {
-            printf("<eigen_refine_gpu> the one-stage FP32 solve succeeded\n");
+        if (OPENMX_STDOUT_LEVEL(2)) {
+            printf("<eigen_refine_gpu> retrying the FP32 solve with the one-stage algorithm\n");
             fflush(stdout);
+        }
+        if (refine_fp32_attempt(dev, cplx, n, a, af, wf, 0, &info)) {
+            if (OPENMX_STDOUT_LEVEL(2)) {
+                printf("<eigen_refine_gpu> the one-stage FP32 solve succeeded\n");
+                fflush(stdout);
+            }
             return 1;
         }
     }
-    printf("<eigen_refine_gpu> FP32 eigensolver failed; solving in FP64\n");
-    fflush(stdout);
+    if (OPENMX_STDOUT_LEVEL(2)) {
+        printf("<eigen_refine_gpu> FP32 eigensolver failed; solving in FP64\n");
+        fflush(stdout);
+    }
     return 0;
 }
 
@@ -470,8 +485,10 @@ static int refine_maxima(int cplx, const double *b1, const double *b2, int n, in
 
 static int refine_nonfinite(EigenRefineState *st, const EigenRefineProblem *pb, EigenRefineReport *report)
 {
-    printf("<eigen_refine_gpu> invalid refinement values; solving the preserved matrix in FP64\n");
-    fflush(stdout);
+    if (OPENMX_STDOUT_LEVEL(2)) {
+        printf("<eigen_refine_gpu> invalid refinement values; solving the preserved matrix in FP64\n");
+        fflush(stdout);
+    }
     refine_blocks_release(st);
     st->basis_valid = 0;
     report->persistent = pb->transient ? 0 : 1;
@@ -544,9 +561,11 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
         openmx_eigen_refine_state_release(st);
         if (dev->try_malloc((void **)&st->lam, (size_t)n * sizeof(double)) != cudaSuccess ||
             dev->try_malloc((void **)&st->occ, (size_t)n * sizeof(double)) != cudaSuccess) {
-            printf("<eigen_refine_gpu> no room for the refinement eigenvalues; FP64 eigensolver%s\n",
-                   pb->transient ? "" : " for the rest of the SCF cycle");
-            fflush(stdout);
+            if (OPENMX_STDOUT_LEVEL(2)) {
+                printf("<eigen_refine_gpu> no room for the refinement eigenvalues; FP64 eigensolver%s\n",
+                       pb->transient ? "" : " for the rest of the SCF cycle");
+                fflush(stdout);
+            }
             report->persistent = pb->transient ? 0 : 1;
             return 0;
         }
@@ -575,9 +594,11 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
         refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_C, CUBLAS_OP_N, n, kc, n, x, n, x, n, 0.0, b1, n), "X^H X1");
         refine_check(cudaDeviceSynchronize(), "synchronize");
         if (pb->defaulted && openmx_gemmul8NativeCalls(cplx) != native0) {
-            printf("<eigen_refine_gpu> the refinement products fell back to plain cuBLAS FP64 (GEMMul8 workspace "
-                   "policy); FP64 eigensolver for the rest of the run\n");
-            fflush(stdout);
+            if (OPENMX_STDOUT_LEVEL(2)) {
+                printf("<eigen_refine_gpu> the refinement products fell back to plain cuBLAS FP64 (GEMMul8 workspace "
+                       "policy); FP64 eigensolver for the rest of the run\n");
+                fflush(stdout);
+            }
             refine_blocks_release(st);
             st->basis_valid = 0;
             report->persistent = 2;
@@ -586,8 +607,10 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
         if (!refine_maxima(cplx, b1, b2, n, kc, &max_s, &max_r))
             return refine_nonfinite(st, pb, report);
         if (2.0e-5 < max_s || 2.0e-5 < max_r) {
-            printf("<eigen_refine_gpu> warm start: residual %.1e above 2e-5; FP32 eigensolver\n", fmax(max_s, max_r));
-            fflush(stdout);
+            if (OPENMX_STDOUT_LEVEL(3)) {
+                printf("<eigen_refine_gpu> warm start: residual %.1e above 2e-5; FP32 eigensolver\n", fmax(max_s, max_r));
+                fflush(stdout);
+            }
             refine_blocks_release(st);
             return -1;
         }
@@ -783,9 +806,11 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
         if (pb->defaulted && openmx_gemmul8NativeCalls(cplx) != native0) {
             /* plain FP64 products cost more than the FP64 eigensolver on the
                GPUs this default is for */
-            printf("<eigen_refine_gpu> the refinement products fell back to plain cuBLAS FP64 (GEMMul8 workspace "
-                   "policy); FP64 eigensolver for the rest of the run\n");
-            fflush(stdout);
+            if (OPENMX_STDOUT_LEVEL(2)) {
+                printf("<eigen_refine_gpu> the refinement products fell back to plain cuBLAS FP64 (GEMMul8 workspace "
+                       "policy); FP64 eigensolver for the rest of the run\n");
+                fflush(stdout);
+            }
             refine_blocks_release(st);
             st->basis_valid = 0;
             report->persistent = 2;
@@ -938,9 +963,11 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
             c0 = c1 + 1;
         }
         if (rr_limit < rr_largest) {
-            printf("<eigen_refine_gpu> a partially occupied cluster of %d states (limit %d) is too large for the "
-                   "refined FP32 eigensolver; FP64 eigensolver for the rest of the SCF cycle\n", rr_largest, rr_limit);
-            fflush(stdout);
+            if (OPENMX_STDOUT_LEVEL(2)) {
+                printf("<eigen_refine_gpu> a partially occupied cluster of %d states (limit %d) is too large for the "
+                       "refined FP32 eigensolver; FP64 eigensolver for the rest of the SCF cycle\n", rr_largest, rr_limit);
+                fflush(stdout);
+            }
             rr_ok = 0;
         }
         for (int c = 0; rr_ok && c < clusters; c++) {
@@ -950,9 +977,11 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                 rr_clusters++;
             }
             else {
-                printf("<eigen_refine_gpu> the Rayleigh-Ritz step of a cluster of %d states failed; FP64 eigensolver "
-                       "for the rest of the SCF cycle\n", ms[c]);
-                fflush(stdout);
+                if (OPENMX_STDOUT_LEVEL(2)) {
+                    printf("<eigen_refine_gpu> the Rayleigh-Ritz step of a cluster of %d states failed; FP64 eigensolver "
+                           "for the rest of the SCF cycle\n", ms[c]);
+                    fflush(stdout);
+                }
                 rr_ok = 0;
             }
         }

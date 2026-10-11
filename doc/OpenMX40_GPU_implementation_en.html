@@ -825,8 +825,8 @@ if (status != CUBLAS_STATUS_SUCCESS) {
   <text x="614" y="132" class="s3">runs cublasDgemm / cublasZgemm (FP64).</text>
   <text x="614" y="150" class="s3">The call itself returns success, so the</text>
   <text x="614" y="166" class="s3">run continues — but speed and rounding change.</text>
-  <text x="614" y="190" class="s3">The warning is printed once per process,</text>
-  <text x="614" y="206" class="s3">with reason, requested and free amounts.</text>
+  <text x="614" y="190" class="s3">At level.of.stdout ≥ 2 the warning is printed</text>
+  <text x="614" y="206" class="s3">once per process, with reason and amounts.</text>
   <text x="614" y="230" class="s3">Always check stderr for "workspace fallback"</text>
   <text x="614" y="246" class="s3">when validating performance or reproducibility.</text>
   <rect x="600" y="340" width="300" height="124" class="c3 f3"/>
@@ -924,7 +924,8 @@ wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n
   <code>openmx_gemmul8D/ZWorkspaceSize</code> — keep these consistent if you change defaults.</li>
   <li><b>Silent FP64 fallback</b> — on workspace refusal the bridge switches to cuBLAS FP64 with a single
   warning, changing <b>both speed and bit patterns</b>. When a run is "mysteriously slow / numerically
-  jittery", check stderr for "GEMMul8 workspace fallback". For strictly deterministic comparisons, set
+  jittery", run it with <code>level.of.stdout 2</code> (or <code>OPENMX_GEMMUL8_VERBOSE=1</code>) and check stderr for
+  "GEMMul8 workspace fallback". For strictly deterministic comparisons, set
   <code>OPENMX_GEMMUL8_DISABLE=1</code> or leave ample memory headroom.</li>
   <li><b>Precision settings</b> — default 15 moduli, accurate mode. Out-of-range values silently reset to
   15. fastmode is faster but less accurate. D and Z are tunable independently.</li>
@@ -1665,7 +1666,8 @@ Three independent batches, each with its own memory test and CPU fallback:</p>
   as mirror images (swapping the PAO-product species and the sign of the direction vector), in 512-pair
   chunks.</li>
 </ol>
-<p>The insufficient-memory notice is printed once per node (commit <code>b569f272</code>):
+<p>The insufficient-memory notice is printed once per node at <code>level.of.stdout</code> 2 (commit <code>b569f272</code>;
+level 3 prints every rank's own figures, §10.3):
 <code>Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.</code> The DFT.c stage banner reads
 <code>&lt;MD=…&gt;  Calculation of the VNA projector matrix (GPU-accelerated)</code> (commit
 <code>30148e1e</code>).</p>
@@ -1704,7 +1706,7 @@ grid's orbital tables on one device, stays with Cluster and Band.</p>
   In mode 1, an Allreduce(MIN) over <code>Set_Hamiltonian_MatrixElementsTables_Ready</code> ensures every
   rank already built its tables, so CPU-executing ranks are never forced into multi-GiB host builds
   (commit <code>ae3dd189</code>). A per-node quota — (free − 256 MiB)/node ranks — must also hold.</li>
-  <li>Participation is agreed by Allreduce(MIN); the first engagement prints
+  <li>Participation is agreed by Allreduce(MIN); the first engagement prints (at <code>level.of.stdout</code> 2 and above)
   <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code>.
   Its transient demand is published as <code>OpenMX_GpuPhaseNeed_Register("density_grid_local", …)</code>.</li>
 </ul>
@@ -1800,7 +1802,8 @@ The fix removes the fatal window itself rather than dodging the timing:</p>
   <li>Chunk buffers are allocated once at the per-chunk maximum and reused — the countermeasure to the
   NVHPC OpenACC pool's same-size-only reuse (§6.3, commit <code>28361f7e</code>).</li>
 </ul>
-<p><b>Also:</b> the Force4B/HNL/ProExpn "not enough memory, CPU fallback" notices print once per node
+<p><b>Also:</b> the Force4B/HNL/ProExpn "not enough memory, CPU fallback" notices print once per node at
+<code>level.of.stdout</code> 2 (every rank's figures at 3)
 (commit <code>b569f272</code>). <code>OPENMX_FORCE_PROFILE=1</code> prints per-stage
 <code>[Force profile]</code> lines (max/avg seconds). Commit <code>098adddc</code> reworked the Force3/4B
 staging from host-resident mirrors to device-resident buffers with one-atom staging, fixing multi-GB/rank
@@ -2085,7 +2088,8 @@ nvidia-smi autodetection).
 <h1>10. Runtime Control Reference</h1>
 
 <h2>10.1 Input-File Keywords</h2>
-<p>Only two input keywords were added or extended for the GPU features (everything else is tuned via
+<p>Besides OpenMX's own <code>level.of.stdout</code>, which now also sets how much of the GPU diagnostics is
+printed (§10.3), only two input keywords were added or extended for the GPU features (everything else is tuned via
 environment variables).</p>
 <p class="src">Input_std.c — the addition (complete)</p>
 <pre><code>/* default=gpusolver; input_string2int() returns i_vec[0] when the keyword is absent ...
@@ -2108,6 +2112,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tbody>
 <tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>gpusolver</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>, and is the default, so the GPU paths run unless one of the CPU eigensolvers is requested explicitly. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present. <b><code>gpusolver2</code></b> additionally distributes the mainline collinear/non-collinear <i>cluster</i> diagonalization over all ranks and their GPUs with ELPA 2026.02 (NVIDIA GPU kernels) and COSMA (pdgemm) — the multi-node option for Pegasus-class machines; any non-cluster calculation stops with an input error, and everything outside the cluster diagonalization behaves exactly like <code>gpusolver</code></td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper bound on GPUs used per node, applied to every rank→GPU assignment (central GPUSOLVER initialization, the local-rank device helpers of the Band/Cluster solver paths, and the DC-LNO proxy). <code>scf.Gpu.Num 1</code> confines the run to one GPU however many the node carries — a debugging aid; 30 effectively means "use every GPU found". Values ≤0 or ≥ the detected count are ignored</td></tr>
+<tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX's amount of standard output (−1 to 3), extended to the GPU diagnostics (§10.3): 1 prints only errors, a GPU that cannot be used and a GPU eigensolver given up; 2 adds the device plans and banners, the stage switches of the adaptive precision and the fallbacks and retries of single stages and solves; 3 adds the per-step, per-k-point and per-rank details</td></tr>
 </tbody>
 </table>
 
@@ -2122,7 +2127,7 @@ reserves, or to force.</p>
 <thead><tr><th style="width:36%;">Environment variable</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Device-memory accounting (set_cuda_default_device_from_local_rank.c)</b></td></tr>
-<tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>Every device-memory budget of the GPU paths starts from <code>OpenMX_GpuMemGetInfo()</code>: <code>cudaMemGetInfo()</code> with the free figure capped at the memory that is physically free according to NVML. On WDDM platforms (WSL2) the CUDA runtime reports a per-process view in which the other ranks' contexts and arrays are invisible, and an allocation past the physical memory is paged through system memory at a fraction of the speed instead of failing: 12 ranks on a 12 GB RTX 4070 Ti each saw 10.8 GiB "free", took 836 MiB each for the DS_VNA batch and stalled Set_ProExpn_VNA for minutes (0.6 GiB was left after the contexts). On Linux the two figures agree. A one-time stdout notice reports both figures when they differ by more than 256 MiB. 0 = plain <code>cudaMemGetInfo()</code></td></tr>
+<tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>Every device-memory budget of the GPU paths starts from <code>OpenMX_GpuMemGetInfo()</code>: <code>cudaMemGetInfo()</code> with the free figure capped at the memory that is physically free according to NVML. On WDDM platforms (WSL2) the CUDA runtime reports a per-process view in which the other ranks' contexts and arrays are invisible, and an allocation past the physical memory is paged through system memory at a fraction of the speed instead of failing: 12 ranks on a 12 GB RTX 4070 Ti each saw 10.8 GiB "free", took 836 MiB each for the DS_VNA batch and stalled Set_ProExpn_VNA for minutes (0.6 GiB was left after the contexts). On Linux the two figures agree. A one-time stdout notice (level.of.stdout 2 and above) reports both figures when they differ by more than 256 MiB. 0 = plain <code>cudaMemGetInfo()</code></td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8 (gemmul8_bridge.cu)</b></td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>Disable GEMMul8, pin to cuBLAS FP64 (all / real only / complex only)</td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>15</td><td>Number of moduli (precision); range 2–20, out-of-range resets to 15</td></tr>
@@ -2222,28 +2227,52 @@ reserves, or to force.</p>
 
 <h2>10.3 GPU Diagnostic Lines on stdout</h2>
 <p>Commit <code>30148e1e</code> and friends made it possible to read off which stages ran on the GPU.
-Representative lines (printed by Host_ID or each device's lead rank):</p>
+How many of these lines appear follows OpenMX's input keyword <code>level.of.stdout</code> (the notices on stderr
+included; the <code>OPENMX_*_PROFILE</code> and <code>*_VERBOSE</code> variables of §10.2 work independently of it):</p>
+<table>
+<thead><tr><th style="width:16%;"><code>level.of.stdout</code></th><th>GPU lines printed</th></tr></thead>
+<tbody>
+<tr><td>1 (default)</td><td>The "(GPU-accelerated)" and "(GPU reduction)" marks on OpenMX's own stage lines, errors, a GPU
+that cannot be used (<code>GPUSOLVER requested, but GPU initialization failed on … MPI ranks; using ELPA2.</code>), and a
+GPU eigensolver given up for lack of device memory or after a failure (<code>Falling back to the ELPA/ScaLAPACK
+diagonalization…</code>, a DC or DC-LNO rank that falls back to the CPU solver)</td></tr>
+<tr><td>2</td><td>Also the device plans, cache admissions and banners, the stage switches of the adaptive precision
+(forward GEMM stages, the FP64 re-solve of the step that ends the SCF), and the fallbacks and retries of single stages
+and solves, one line per node (Force4B, Force_HNL, Set_ProExpn_VNA, Set_Density_Grid, Mixing_H, GEMMul8's workspace
+fallback, the cuSOLVER emulation and FP32 retries)</td></tr>
+<tr><td>3</td><td>Also the per-step, per-k-point and per-rank details: the refinement residuals and warm starts of the
+refined FP32 eigensolver (about 38,000 of the 85,600 lines of an 18-rank <code>-runtestL</code> before this gating),
+the forward GEMM stage of every step with its indicator, every rank's own figures in the Force4B, Force_HNL and HVNA
+fallback notices, and the on-the-fly banner at every change of the workspace</td></tr>
+</tbody>
+</table>
+<p>From level 2 on, OpenMX itself prints its per-atom debugging output (the 216-atom noncollinear sidia333 cluster,
+4 SCF steps on 18 ranks: 726 lines at level 1, about 51,000 at level 2 or 3), so the GPU details of level 3 add
+little. <code>tools/run_forward_variants.sh</code> runs at level 3 unless told otherwise, as its summary reads these
+lines. Representative lines (printed by Host_ID or each device's lead rank):</p>
 <ul>
-  <li>Stage banners: <code>&lt;Set_Hamiltonian&gt;  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...</code>,
+  <li>Stage banners (level 1): <code>&lt;Set_Hamiltonian&gt;  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...</code>,
   <code>&lt;MD=…&gt;  Calculation of the VNA projector matrix (GPU-accelerated)</code>,
   <code>Force calculation #2 (GPU reduction)</code> / <code>#3 (GPU-accelerated)</code> /
   <code>#4 (GPU-accelerated)</code> / <code>#5 (GPU reduction)</code>,
-  <code>Force calculation #6/#7 (GPU-accelerated)</code> (Total_Energy side),
-  <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code></li>
-  <li>Concurrency decisions (printed only on change): <code>&lt;Band_DFT_Col&gt; GPU device 0: 8 k-owner
+  <code>Force calculation #6/#7 (GPU-accelerated)</code> (Total_Energy side)</li>
+  <li>Concurrency decisions (level 2, printed only on change): <code>&lt;Band_DFT_Col&gt; GPU device 0: 8 k-owner
   rank(s), GPU concurrency=3, turn group=3, per-rank=1.9 GiB, peak=5.7 GiB, free=7.4 GiB, reserve=1.5 GiB</code>
   (NonCol adds the mode name; Set_Hamiltonian says "Hamiltonian rank(s)")</li>
-  <li>Cache admissions: <code>&lt;DC&gt; GPU S-cache: rank 0 keeps 12 of 16 cluster overlaps on the device (812.5 MiB)</code>,
-  <code>&lt;Krylov&gt; GPU KU-cache: …</code>, <code>&lt;Set_Hamiltonian&gt; GPU resident cache: …</code></li>
-  <li>Fallback notices (once, or once per node): <code>Falling back to the ELPA/ScaLAPACK diagonalization…</code>
-  (§5.6), <code>Force4B GPU: not enough free device memory; CPU fallback.</code>,
-  <code>&lt;Mixing_H&gt; The RMM-DIISH residual history … does not fit on the GPU …</code>,
-  and GEMMul8's <code>workspace fallback</code> (stderr)</li>
+  <li>Plans and cache admissions (level 2): <code>&lt;DC&gt; GPU S-cache: rank 0 keeps 12 of 16 cluster overlaps on the device (812.5 MiB)</code>,
+  <code>&lt;Krylov&gt; GPU KU-cache: …</code>, <code>&lt;Set_Hamiltonian&gt; GPU resident cache: …</code>,
+  <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code>,
+  <code>&lt;Set_Density_Grid&gt; one-rank GPU service cache: owner=… atoms=… atom-grids=… terms=… device=… GiB</code></li>
+  <li>Fallback notices: <code>Falling back to the ELPA/ScaLAPACK diagonalization…</code> (§5.6, level 1),
+  <code>Force4B GPU: not enough free device memory …; CPU fallback.</code> (level 2, once per node; level 3 prints every
+  rank's <code>Force4B GPU: … GiB free for … rank(s) but … GiB needed per rank; CPU fallback.</code>),
+  <code>&lt;Mixing_H&gt; The RMM-DIISH residual history … does not fit on the GPU …</code> (level 2),
+  and GEMMul8's <code>workspace fallback</code> (stderr, level 2 or <code>OPENMX_GEMMUL8_VERBOSE=1</code>)</li>
 </ul>
-<div class="note"><b>How to read them:</b> when a run that "should be on the GPU" is slow, check these
-lines first. The three classic cases: (a) an ELPA-fallback line means diagonalization dropped to the CPU
-for lack of VRAM; (b) a GEMMul8 workspace-fallback line means the GEMMs dropped to FP64; (c)
-concurrency=1 means the sharing ranks were serialized.</div>
+<div class="note"><b>How to read them:</b> when a run that "should be on the GPU" is slow, run it with
+<code>level.of.stdout 2</code> and check these lines first. The three classic cases: (a) an ELPA-fallback line means
+diagonalization dropped to the CPU for lack of VRAM; (b) a GEMMul8 workspace-fallback line means the GEMMs dropped to
+FP64; (c) concurrency=1 means the sharing ranks were serialized.</div>
 
 <h2>10.4 Tuning Guidelines</h2>
 <ol>

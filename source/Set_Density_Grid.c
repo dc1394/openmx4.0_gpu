@@ -94,7 +94,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
     int local_ok = Set_Density_Grid_GPU_Local_Prepare(Cnt_kind,Calc_CntOrbital_ON);
     MPI_Allreduce(&local_ok,&use_local_gpu,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    if (use_local_gpu && myid==Host_ID && 0<level_stdout){
+    if (use_local_gpu && myid==Host_ID && 2<=level_stdout){
       static int announced = 0;
       if (!announced){
         printf("<Set_Density_Grid> distributed GPU quadrature: every rank integrates its own atoms\n");

@@ -67,6 +67,7 @@ extern void dsygv_(const int *, const char *, const char *, const int *, double 
 
 static jmp_buf fatal_jump;
 static int fatal_expected, fatal_seen;
+static int level_stdout = 3;
 static int fault_stage, fault_kind, solver_calls, device_allocations;
 static const double sentinel = -12345.25;
 static void DCLNO_AbortWithMessage(const char *message)

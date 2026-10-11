@@ -683,8 +683,10 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
 
     info = DCLNO_GpuSolver_Eigen(ctx->d_S, NUM, NUM, ko + 1);
     if (info > 0) {
-        fprintf(stderr, "<DC-LNO> GPU overlap eigensolve did not converge: "
-                "info=%d n=%d; retrying on CPU.\n", info, NUM);
+        if (2 <= level_stdout) {
+            fprintf(stderr, "<DC-LNO> GPU overlap eigensolve did not converge: "
+                    "info=%d n=%d; retrying on CPU.\n", info, NUM);
+        }
         return info;
     }
 
@@ -708,8 +710,10 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
 
     info = DCLNO_GpuSolver_Eigen(ctx->d_H, NUM, NUM2, ko + 1);
     if (info > 0) {
-        fprintf(stderr, "<DC-LNO> GPU Hamiltonian eigensolve did not converge: "
-                "info=%d n=%d requested=%d; retrying on CPU.\n", info, NUM, NUM2);
+        if (2 <= level_stdout) {
+            fprintf(stderr, "<DC-LNO> GPU Hamiltonian eigensolve did not converge: "
+                    "info=%d n=%d requested=%d; retrying on CPU.\n", info, NUM, NUM2);
+        }
         return info;
     }
 
@@ -1503,7 +1507,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     use_gpu_proxy = (use_gpu_accel && DCLNO_ENABLE_SHARED_GPU_PROXY &&
                      DCLNO_gpu_group_size > 1);
 
-    if (firsttime && myid0 == Host_ID && use_gpu_accel && 0 < level_stdout) {
+    if (firsttime && myid0 == Host_ID && use_gpu_accel && 2 <= level_stdout) {
         printf("<DC-LNO> GPUSOLVER direct per-rank dispatch is enabled for local matrices with dimension >= %d on %d CUDA device(s).\n",
                DCLNO_GpuEigenThreshold(), DCLNO_ngpu);
         fflush(stdout);
@@ -2938,7 +2942,7 @@ static double DC_NonCol(char *mode,
     DCLNO_GPUProxy_Init();
   }
 
-  if (firsttime && myid0 == Host_ID && use_gpu_accel_nc && 0 < level_stdout) {
+  if (firsttime && myid0 == Host_ID && use_gpu_accel_nc && 2 <= level_stdout) {
     printf("<DC-LNO> GPUSOLVER direct per-rank dispatch (noncollinear) is enabled for local matrices with dimension >= %d on %d CUDA device(s).\n",
            DCLNO_NonColGpuEigenThreshold(), DCLNO_ngpu);
     fflush(stdout);

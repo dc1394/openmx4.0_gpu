@@ -801,8 +801,8 @@ if (status != CUBLAS_STATUS_SUCCESS) {
   <text x="614" y="132" class="s3">cublasDgemm / cublasZgemm(FP64)を実行。</text>
   <text x="614" y="150" class="s3">呼び出し自体は成功として返るため、</text>
   <text x="614" y="166" class="s3">計算は止まらないが精度・速度特性が変わる。</text>
-  <text x="614" y="190" class="s3">警告はプロセスあたり初回の 1 回だけ</text>
-  <text x="614" y="206" class="s3">stderr に理由・必要量・空き量を出力。</text>
+  <text x="614" y="190" class="s3">level.of.stdout 2 以上で、警告を初回 1 回だけ</text>
+  <text x="614" y="206" class="s3">stderr に出力(理由・必要量・空き量)。</text>
   <text x="614" y="230" class="s3">性能・再現性の検証時は stderr の</text>
   <text x="614" y="246" class="s3">"workspace fallback" 警告を必ず確認すること。</text>
   <rect x="600" y="340" width="300" height="124" class="c3 f3"/>
@@ -894,8 +894,8 @@ wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n
   並列度プランナが <code>openmx_gemmul8D/ZWorkspaceSize</code> でワークスペース分を事前算入するため、
   既定値を変える場合は見積りとの整合を保つこと。</li>
   <li><b>静かな FP64 フォールバック</b> — ワークスペース拒否時は警告 1 回だけで cuBLAS FP64 に切り替わり、
-  <b>速度と数値結果(ビットパターン)の両方が変わる</b>。「なぜか遅い/結果が揺れる」ときは stderr の
-  "GEMMul8 workspace fallback" を確認する。決定的な再現が必要な検証では <code>OPENMX_GEMMUL8_DISABLE=1</code>
+  <b>速度と数値結果(ビットパターン)の両方が変わる</b>。「なぜか遅い/結果が揺れる」ときは
+  <code>level.of.stdout 2</code>(または <code>OPENMX_GEMMUL8_VERBOSE=1</code>)で実行して stderr の "GEMMul8 workspace fallback" を確認する。決定的な再現が必要な検証では <code>OPENMX_GEMMUL8_DISABLE=1</code>
   で全無効化するか、メモリに十分な余裕を持たせる。</li>
   <li><b>精度設定</b> — 既定 15 moduli・accurate モード。範囲外の指定は黙って 15 に戻る。fastmode は高速だが
   スケーリング精度が落ちる。D と Z は独立に調整できる。</li>
@@ -1567,7 +1567,8 @@ stale エラーを pop し、失敗時もコンテキストが健全なら「回
   <li><b>Set_VNA2 / Set_VNA3 バッチ:</b> &lt;Φ|VNA&gt; と &lt;VNA|Φ&gt; は「PAO 積側の種と方向ベクトルの符号を
   入れ替えた鏡像」として同一カーネル群(mirror 引数)で処理。512 ペアずつのチャンク。</li>
 </ol>
-<p>メモリ不足時の通知はノードごと 1 回(コミット <code>b569f272</code>):
+<p>メモリ不足時の通知は <code>level.of.stdout</code> 2 でノードごと 1 回(コミット <code>b569f272</code>。level 3 では各ランクが
+自身の数値を出力、§10.3):
 <code>Set_ProExpn_VNA GPU: not enough free device memory; CPU fallback.</code>
 DFT.c のステージバナーは <code>&lt;MD=…&gt;  Calculation of the VNA projector matrix (GPU-accelerated)</code> となる
 (コミット <code>30148e1e</code>)。</p>
@@ -1600,7 +1601,7 @@ GPUSOLVER かつ <code>Cnt_switch==0</code>(<code>OPENMX_DENSITY_GRID_GPU=0</cod
   ときだけ進む(CPU 実行ランクに数 GiB のホストテーブルを作らせないため。コミット <code>ae3dd189</code>)。
   さらにノード共有クォータ(空き − 256 MiB を ノード内ランク数で割った値)に収まることも要求。</li>
   <li>参加決定は全ランクの Allreduce(MIN) で合意し、初回に
-  <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code> と表示。
+  <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code> と表示(<code>level.of.stdout</code> 2 以上)。
   自身の一時需要は <code>OpenMX_GpuPhaseNeed_Register("density_grid_local", …)</code> で公開する。</li>
 </ul>
 <h3>(b) 単一ランク GPU サービス(コミット <code>bff93d08</code>)</h3>
@@ -1690,8 +1691,8 @@ abort させていた。現行実装はタイミング回避ではなく<b>致�
   <li>チャンクバッファは per-chunk 最大値で 1 回だけ確保して再利用(NVHPC OpenACC プールの
   「同一サイズのみ再利用」問題への対処。§6.3、コミット <code>28361f7e</code>)。</li>
 </ul>
-<p><b>そのほか:</b> Force4B/HNL/ProExpn の「メモリ不足で CPU フォールバック」通知はノードごと 1 回
-(コミット <code>b569f272</code>)。<code>OPENMX_FORCE_PROFILE=1</code> でステージ別の
+<p><b>そのほか:</b> Force4B/HNL/ProExpn の「メモリ不足で CPU フォールバック」通知は <code>level.of.stdout</code> 2 でノードごと 1 回
+(コミット <code>b569f272</code>。level 3 では各ランクの数値)。<code>OPENMX_FORCE_PROFILE=1</code> でステージ別の
 <code>[Force profile]</code> 行(max/avg 秒)が出る。コミット <code>098adddc</code> は
 Force3/4B のステージングを「ホスト常駐ミラー方式」から「デバイス常駐+1 原子ステージ方式」に改め、
 ランク数倍で効いていたホストメモリ消費(数 GB/rank)と予算計上漏れを修正した。
@@ -1965,7 +1966,8 @@ ELPA は現役で使われるため、この維持は以前にも増して重要
 <h1>10. 実行時制御リファレンス</h1>
 
 <h2>10.1 入力ファイルキーワード</h2>
-<p>GPU 機能に関して追加・拡張された入力キーワードは次の 2 つだけである(それ以外の調整はすべて環境変数)。</p>
+<p>GPU 機能に関して追加・拡張された入力キーワードは、GPU 診断行をどこまで出力するかも決めるようになった OpenMX 本来の
+<code>level.of.stdout</code>(§10.3)を除けば、次の 2 つだけである(それ以外の調整はすべて環境変数)。</p>
 <p class="src">Input_std.c — 追加部分(全文)</p>
 <pre><code>/* default=gpusolver; input_string2int() returns i_vec[0] when the keyword is absent ...
    "cusolver" is a deprecated alias of "gpusolver"; ... */
@@ -1987,6 +1989,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tbody>
 <tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>gpusolver</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加し、これが既定値。したがって CPU 側の固有値ソルバを明示指定しない限り GPU 経路が走る。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格。<b><code>gpusolver2</code></b> はさらに、コリニア/ノンコリニアの<b>クラスター計算本流の対角化</b>を ELPA 2026.02(NVIDIA GPU カーネル)+ COSMA(pdgemm)で全ランク・全 GPU に分散する(Pegasus 級マルチノード向け)。クラスター以外の計算では入力エラーで停止し、クラスター対角化以外の動作は <code>gpusolver</code> と完全に同一</td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>ノード内で使用する GPU 台数の上限。すべての rank→GPU 割り当て(GPUSOLVER 中核初期化、Band/Cluster ソルバ経路の local-rank デバイスヘルパー、DC-LNO プロキシ)に適用。<code>scf.Gpu.Num 1</code> でノードの GPU 搭載数によらず 1 台のみ使用(デバッグ用途。既定 30 は実質「検出された全 GPU を使う」)。0 以下や検出数以上の値は無視</td></tr>
+<tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX 本来の標準出力量(−1〜3)を GPU 診断行にも適用する(§10.3)。1 はエラー、GPU が使えないこと、GPU 固有値ソルバを断念したことだけを出力し、2 でデバイス計画とバナー、適応精度の段の切り替え、個々のステージ・求解のフォールバックと再試行を加え、3 でさらに SCF ステップごと・k 点ごと・ランクごとの詳細を加える</td></tr>
 </tbody>
 </table>
 
@@ -2000,7 +2003,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <thead><tr><th style="width:36%;">環境変数</th><th style="width:12%;">既定値</th><th>意味</th></tr></thead>
 <tbody>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>デバイスメモリの計上(set_cuda_default_device_from_local_rank.c)</b></td></tr>
-<tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>GPU 経路のデバイスメモリ予算はすべて <code>OpenMX_GpuMemGetInfo()</code> から始まる。これは <code>cudaMemGetInfo()</code> の空き容量を、NVML が報告する物理的な空き容量で頭打ちにしたもの。WDDM 系プラットフォーム(WSL2)では CUDA ランタイムがプロセスごとの見え方を返し、他ランクのコンテキストや配列が空き容量に反映されず、物理メモリを超える確保も失敗せずにシステムメモリへ退避して数十分の一の速度になる: 12 GB の RTX 4070 Ti で 12 ランクが各自「空き 10.8 GiB」(実際はコンテキストの後に 0.6 GiB)と見て DS_VNA バッチに 836 MiB ずつ確保し、Set_ProExpn_VNA が数分間止まった。Linux では両者は一致する。両者が 256 MiB 以上違うとき標準出力に 1 回だけ通知する。0 で素の <code>cudaMemGetInfo()</code></td></tr>
+<tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>GPU 経路のデバイスメモリ予算はすべて <code>OpenMX_GpuMemGetInfo()</code> から始まる。これは <code>cudaMemGetInfo()</code> の空き容量を、NVML が報告する物理的な空き容量で頭打ちにしたもの。WDDM 系プラットフォーム(WSL2)では CUDA ランタイムがプロセスごとの見え方を返し、他ランクのコンテキストや配列が空き容量に反映されず、物理メモリを超える確保も失敗せずにシステムメモリへ退避して数十分の一の速度になる: 12 GB の RTX 4070 Ti で 12 ランクが各自「空き 10.8 GiB」(実際はコンテキストの後に 0.6 GiB)と見て DS_VNA バッチに 836 MiB ずつ確保し、Set_ProExpn_VNA が数分間止まった。Linux では両者は一致する。両者が 256 MiB 以上違うとき標準出力に 1 回だけ通知する(level.of.stdout 2 以上)。0 で素の <code>cudaMemGetInfo()</code></td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8(gemmul8_bridge.cu)</b></td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>GEMMul8 を無効化し cuBLAS FP64 に固定(全体 / 実数のみ / 複素のみ)</td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code></td><td>15</td><td>法の個数(精度)。範囲 2〜20、範囲外は 15 に戻る</td></tr>
@@ -2100,25 +2103,48 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 
 <h2>10.3 標準出力の GPU 診断行</h2>
 <p>コミット <code>30148e1e</code> ほかで、どのステージが GPU 実行されたかが標準出力から読み取れるよう整備された。
+どこまで出力するかは OpenMX の入力キーワード <code>level.of.stdout</code> に従う(stderr への通知も含む。§10.2 の
+<code>OPENMX_*_PROFILE</code> と <code>*_VERBOSE</code> 系の環境変数はこれとは独立に働く):</p>
+<table>
+<thead><tr><th style="width:16%;"><code>level.of.stdout</code></th><th>出力される GPU 関連の行</th></tr></thead>
+<tbody>
+<tr><td>1(既定)</td><td>OpenMX 本来のステージ行に付く "(GPU-accelerated)"・"(GPU reduction)" の表記、エラー、GPU が使えないこと
+(<code>GPUSOLVER requested, but GPU initialization failed on … MPI ranks; using ELPA2.</code>)、デバイスメモリ不足や失敗で
+GPU 固有値ソルバを断念したこと(<code>Falling back to the ELPA/ScaLAPACK diagonalization…</code>、DC・DC-LNO のランクが
+CPU ソルバへ切り替えたこと)</td></tr>
+<tr><td>2</td><td>さらにデバイス計画・キャッシュ採用・バナー、適応精度の段の切り替え(順変換 GEMM の段、SCF を終えるステップの
+FP64 再求解)、個々のステージ・求解のフォールバックと再試行(ノードごとに 1 行。Force4B、Force_HNL、Set_ProExpn_VNA、
+Set_Density_Grid、Mixing_H、GEMMul8 の workspace fallback、cuSOLVER のエミュレーション再試行と FP32 再試行)</td></tr>
+<tr><td>3</td><td>さらに SCF ステップごと・k 点ごと・ランクごとの詳細: 精錬 FP32 固有値ソルバの精錬残差とウォームスタート
+(このゲート導入前の 18 ランク <code>-runtestL</code> では 85,600 行中約 38,000 行)、各ステップの順変換 GEMM の段と指標、
+Force4B・Force_HNL・HVNA のフォールバック通知での各ランク自身の数値、作業領域が変わるたびのその場計算バナー</td></tr>
+</tbody>
+</table>
+<p>level 2 以上では OpenMX 自体が原子ごとのデバッグ出力を出す(216 原子のノンコリニア sidia333 クラスター、18 ランクで
+4 SCF ステップ: level 1 で 726 行、level 2・3 で約 51,000 行)ので、level 3 の GPU 詳細が増やす量はわずかである。
+<code>tools/run_forward_variants.sh</code> は要約がこれらの行を読むため、指定がなければ level 3 で実行する。
 代表的な行(いずれも Host_ID または各デバイスの代表ランクが出力):</p>
 <ul>
-  <li>ステージバナー: <code>&lt;Set_Hamiltonian&gt;  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...</code>、
+  <li>ステージバナー(level 1): <code>&lt;Set_Hamiltonian&gt;  Hamiltonian matrix for VNA+dVH+Vxc (GPU-accelerated)...</code>、
   <code>&lt;MD=…&gt;  Calculation of the VNA projector matrix (GPU-accelerated)</code>、
   <code>Force calculation #2 (GPU reduction)</code> / <code>#3 (GPU-accelerated)</code> /
   <code>#4 (GPU-accelerated)</code> / <code>#5 (GPU reduction)</code>、
-  <code>Force calculation #6/#7 (GPU-accelerated)</code>(Total_Energy 側)、
-  <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code></li>
-  <li>並列度の決定(値が変わったときのみ): <code>&lt;Band_DFT_Col&gt; GPU device 0: 8 k-owner rank(s),
+  <code>Force calculation #6/#7 (GPU-accelerated)</code>(Total_Energy 側)</li>
+  <li>並列度の決定(level 2、値が変わったときのみ): <code>&lt;Band_DFT_Col&gt; GPU device 0: 8 k-owner rank(s),
   GPU concurrency=3, turn group=3, per-rank=1.9 GiB, peak=5.7 GiB, free=7.4 GiB, reserve=1.5 GiB</code>
   (NonCol はモード名付き、Set_Hamiltonian は Hamiltonian rank(s) 表記)</li>
-  <li>キャッシュ採用: <code>&lt;DC&gt; GPU S-cache: rank 0 keeps 12 of 16 cluster overlaps on the device (812.5 MiB)</code>、
-  <code>&lt;Krylov&gt; GPU KU-cache: …</code>、<code>&lt;Set_Hamiltonian&gt; GPU resident cache: …</code></li>
-  <li>フォールバック通知(1 回のみ/ノードごと 1 回): <code>Falling back to the ELPA/ScaLAPACK diagonalization…</code>(§5.6)、
-  <code>Force4B GPU: not enough free device memory; CPU fallback.</code>、
-  <code>&lt;Mixing_H&gt; The RMM-DIISH residual history … does not fit on the GPU …</code>、
-  GEMMul8 の <code>workspace fallback</code>(stderr)</li>
+  <li>計画とキャッシュ採用(level 2): <code>&lt;DC&gt; GPU S-cache: rank 0 keeps 12 of 16 cluster overlaps on the device (812.5 MiB)</code>、
+  <code>&lt;Krylov&gt; GPU KU-cache: …</code>、<code>&lt;Set_Hamiltonian&gt; GPU resident cache: …</code>、
+  <code>&lt;Set_Density_Grid&gt; distributed GPU quadrature: every rank integrates its own atoms</code>、
+  <code>&lt;Set_Density_Grid&gt; one-rank GPU service cache: owner=… atoms=… atom-grids=… terms=… device=… GiB</code></li>
+  <li>フォールバック通知: <code>Falling back to the ELPA/ScaLAPACK diagonalization…</code>(§5.6、level 1)、
+  <code>Force4B GPU: not enough free device memory …; CPU fallback.</code>(level 2 はノードごとに 1 回、level 3 は各ランクが
+  <code>Force4B GPU: … GiB free for … rank(s) but … GiB needed per rank; CPU fallback.</code> を出力)、
+  <code>&lt;Mixing_H&gt; The RMM-DIISH residual history … does not fit on the GPU …</code>(level 2)、
+  GEMMul8 の <code>workspace fallback</code>(stderr、level 2 または <code>OPENMX_GEMMUL8_VERBOSE=1</code>)</li>
 </ul>
-<div class="note"><b>読み方:</b> 「GPU で走っているつもりなのに遅い」ときは、まずこれらの行を確認する。
+<div class="note"><b>読み方:</b> 「GPU で走っているつもりなのに遅い」ときは、<code>level.of.stdout 2</code> で実行して
+まずこれらの行を確認する。
 (a) ELPA フォールバック行が出ていれば VRAM 不足で対角化が CPU に落ちている、
 (b) GEMMul8 の workspace fallback が出ていれば GEMM が FP64 に落ちている、
 (c) concurrency=1 が出ていれば共有ランクが直列化されている — の 3 つが典型である。</div>

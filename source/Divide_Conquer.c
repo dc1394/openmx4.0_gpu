@@ -582,14 +582,16 @@ static int DC_GpuSolver_PrepareGemmBackendForSolve(int n, int num1)
         openmx_gemmul8ReleaseWorkspaces();
 
         MPI_Comm_rank(mpi_comm_level1, &rank);
-        fprintf(stderr,
-                "<DC> rank %d: GEMMul8 is unsafe before DC Hamiltonian GEMM; "
-                "estimated GEMMul8 workspace %.3f MiB, "
-                "CUDA free %.3f MiB / total %.3f MiB, reserve %.3f MiB. "
-                "Trying native cuBLAS instead.\n",
-                rank, (double)estimate_bytes / (1024.0 * 1024.0), (double)free_bytes / (1024.0 * 1024.0),
-                (double)total_bytes / (1024.0 * 1024.0), (double)reserve_bytes / (1024.0 * 1024.0));
-        fflush(stderr);
+        if (2 <= level_stdout) {
+            fprintf(stderr,
+                    "<DC> rank %d: GEMMul8 is unsafe before DC Hamiltonian GEMM; "
+                    "estimated GEMMul8 workspace %.3f MiB, "
+                    "CUDA free %.3f MiB / total %.3f MiB, reserve %.3f MiB. "
+                    "Trying native cuBLAS instead.\n",
+                    rank, (double)estimate_bytes / (1024.0 * 1024.0), (double)free_bytes / (1024.0 * 1024.0),
+                    (double)total_bytes / (1024.0 * 1024.0), (double)reserve_bytes / (1024.0 * 1024.0));
+            fflush(stderr);
+        }
         return DC_GpuSolver_HasCublasMemoryForSolve("DC Hamiltonian GEMM");
     }
 
@@ -662,11 +664,13 @@ static int DC_GpuSolver_TryGpuDgemm(cublasHandle_t handle, cublasOperation_t tra
         openmx_gemmul8ReleaseWorkspaces();
 
         MPI_Comm_rank(mpi_comm_level1, &rank);
-        fprintf(stderr,
-                "<DC> rank %d: GEMMul8 failed in %s for GEMM(m=%d,n=%d,k=%d): %s (%d). "
-                "Retrying this DC Hamiltonian solve with native cuBLAS.\n",
-                rank, where, m, n, k, DC_GpuSolver_CublasStatusName(status), (int)status);
-        fflush(stderr);
+        if (2 <= level_stdout) {
+            fprintf(stderr,
+                    "<DC> rank %d: GEMMul8 failed in %s for GEMM(m=%d,n=%d,k=%d): %s (%d). "
+                    "Retrying this DC Hamiltonian solve with native cuBLAS.\n",
+                    rank, where, m, n, k, DC_GpuSolver_CublasStatusName(status), (int)status);
+            fflush(stderr);
+        }
 
         if (!DC_GpuSolver_HasCublasMemoryForSolve(where)) {
             return 0;
@@ -838,7 +842,7 @@ static void DCCol_SCache_Prepare(int matomnum, const int *Msize, int scf_iter, i
         int myid = -1;
 
         MPI_Comm_rank(mpi_comm_level1, &myid);
-        if (myid == Host_ID) {
+        if (myid == Host_ID && 2 <= level_stdout) {
             printf("<DC> GPU S-cache: rank %d keeps %d of %d cluster overlaps on the device (%.1f MiB)\n",
                    myid, admitted, matomnum, (double)(used_elems * sizeof(double)) / (1024.0 * 1024.0));
             fflush(stdout);

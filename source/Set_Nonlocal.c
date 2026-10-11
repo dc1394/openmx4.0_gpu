@@ -651,7 +651,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
       if (budget_pairs < 1u) budget_pairs = 1u;
     }
 
-    if (arena == NULL && !fail_notice_done){
+    if (arena == NULL && !fail_notice_done && 2<=level_stdout){
       fail_notice_done = 1;
       fprintf(stderr,
               "Set_Nonlocal: %.1f MiB of device staging unavailable; using the host path.\n",

@@ -18,6 +18,8 @@
 #   -s "..."   settings of the same form applied to every variant, e.g.
 #              -s "scf.EigenvalueSolver=cluster" to run an input written for
 #              another solver through the cluster solver
+#              (level.of.stdout is 3 unless set here or by a variant: the
+#              summary reads the per-step GPU diagnostics printed at 3)
 #   -r LABEL   reference variant of the summary (default: the first one)
 #   -m "CMD"   MPI launcher with its options (default: "mpirun --bind-to core")
 #   case       <input>:<example directory under work/> of this repository
@@ -36,11 +38,11 @@ while getopts o:b:n:v:s:r:m: option; do
     s) common=$OPTARG ;;
     r) reference=$OPTARG ;;
     m) launcher=$OPTARG ;;
-    *) sed -n '2,27p' "$0"; exit 2 ;;
+    *) sed -n '2,28p' "$0"; exit 2 ;;
   esac
 done
 shift $((OPTIND - 1))
-if [ -z "$out" ] || [ -z "$variants" ] || [ $# -lt 1 ]; then sed -n '2,27p' "$0"; exit 2; fi
+if [ -z "$out" ] || [ -z "$variants" ] || [ $# -lt 1 ]; then sed -n '2,28p' "$0"; exit 2; fi
 [ -x "$binary" ] || { echo "no executable $binary" >&2; exit 2; }
 [ -f "$variants" ] || { echo "no variants file $variants" >&2; exit 2; }
 python=${PYTHON:-python3}
@@ -85,7 +87,7 @@ for item in "$@"; do
     cd "$run" || exit 1
     cp "$input" "$name.dat"
     exports=
-    for setting in $common $settings; do
+    for setting in level.of.stdout=3 $common $settings; do
       key=${setting%%=*}; value=${setting#*=}
       case "$key" in
         @append) printf '\n' >> "$name.dat"; cat "$variants_dir/$value" >> "$name.dat"; cp "$variants_dir/$value" "$out/" ;;
