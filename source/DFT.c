@@ -582,7 +582,6 @@ double DFT(int MD_iter, int Cnt_Now)
   ETemp_controller = 0;
   SCF_iter_shift = 0;
   NormRD[0] = 100.0;
-  openmx_gemmul8AdaptiveStart();
 
   SCF_RENZOKU = -1;
   po = 0;
@@ -974,44 +973,13 @@ double DFT(int MD_iter, int Cnt_Now)
 
 	if (SpinP_switch<=1){
 
-	  /* scf.gemmul8.adaptive: a trial whose forward transform is rejected
-	     is solved again from the same Hamiltonian, one precision stage up */
-	  int gemm_rejected;
-
-	  do {
-
-	    gemm_rejected = 0;
-	    openmx_gemmul8AdaptiveBeginTrial();
-
-	    time5 += Cluster_DFT_Col("scf",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_Col("scf",LSCF_iter,SpinP_switch,
 				     ko_col,H,OLP[0],DM[0],EDM,
 				     Eele0,Eele1,
 				     myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
 				     Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
 				     Ss_Re,Cs_Re,Hs_Re,
 				     CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1);
-
-	    if (openmx_gemmul8AdaptiveEnabled()){
-	      int my_rejected;
-	      double my_eta,eta;
-	      char stage[64];
-	      long long counters[5];
-
-	      openmx_gemmul8AdaptiveTrialStatus(&my_rejected,&my_eta);
-	      MPI_Allreduce(&my_rejected,&gemm_rejected,1,MPI_INT,MPI_MAX,mpi_comm_level1);
-	      MPI_Allreduce(&my_eta,&eta,1,MPI_DOUBLE,MPI_MAX,mpi_comm_level1);
-	      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),counters);
-	      if (myid0==Host_ID && 3<=level_stdout){
-	        if (0.0<=eta) printf("<DFT>  forward GEMMs: stage %lld (%s), eta=%10.3e%s\n",
-	                             counters[0],stage,eta,gemm_rejected ? ", rejected" : "");
-	        else          printf("<DFT>  forward GEMMs: stage %lld (%s)%s\n",
-	                             counters[0],stage,gemm_rejected ? ", rejected" : "");
-	        fflush(stdout);
-	      }
-	      if (gemm_rejected) openmx_gemmul8AdaptiveReject();
-	    }
-
-	  } while (gemm_rejected);
 
 	}
 
@@ -1362,29 +1330,6 @@ double DFT(int MD_iter, int Cnt_Now)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
-
-    if (openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
-
-      char stage[64];
-      long long before[5],after[5];
-      int restart;
-
-      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),before);
-      po = openmx_gemmul8AdaptiveStopCheck(po);
-      openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),after);
-
-      /* the mixing history holds iterations of the lower stages: restart it
-         as the control of the electronic temperature does */
-      restart = openmx_gemmul8AdaptiveTakeHistoryReset();
-      if (restart){
-        int shift = LSCF_iter - Pulay_SCF + 2;
-        if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
-      }
-      if (before[0]!=after[0] && myid0==Host_ID && 2<=level_stdout){
-        printf("<DFT>  forward GEMMs: final stage %lld (%s) from the next SCF step%s\n",
-               after[0],stage,restart ? ", mixing history restarted" : "");fflush(stdout);
-      }
-    }
 
     /* the refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the collinear
        cluster solver: an SCF that stops on a refined step has the step's
@@ -1837,15 +1782,6 @@ double DFT(int MD_iter, int Cnt_Now)
     }
     if (po==0 && Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0){
       Band_DFT_NonCol_RefineAfterMixing(sqrt(fabs(NormRD[0])));
-    }
-
-    if (po==0 && openmx_gemmul8AdaptiveEnabled() && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
-      if (openmx_gemmul8AdaptiveAfterMixing(sqrt(fabs(NormRD[0]))) && myid0==Host_ID && 2<=level_stdout){
-        char stage[64];
-        long long counters[5];
-        openmx_gemmul8AdaptiveDescribe(stage,sizeof(stage),counters);
-        printf("<DFT>  forward GEMMs: stage %lld (%s) from the next SCF step\n",counters[0],stage);fflush(stdout);
-      }
     }
 
     /*****************************************************

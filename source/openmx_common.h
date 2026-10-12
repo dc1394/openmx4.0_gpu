@@ -3411,6 +3411,7 @@ void Cluster_DFT_Col_Release_GPU_Solver(void);
 void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 void Mixing_H_Release_GPU(void);
 int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON);
+int Set_Density_Grid_GPU_Local_KeepDistributed(void);
 int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid);
 void Set_Density_Grid_GPU_Local_Report(int path, int failed);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
@@ -4250,29 +4251,6 @@ void openmx_gemmul8ReleasePrepared(void);
 /* frees the workspaces above the cap of the blocked path, i.e. the scratch
    of unblocked forward products */
 void openmx_gemmul8TrimWorkspaces(void);
-/* Precision controller of the forward transform during an SCF
-   (scf.gemmul8.adaptive, see gemmul8_bridge.cu): GEMMul8 stages of
-   increasing precision; only the final stage (cuBLAS FP64, or the last
-   listed stage) may end the SCF.  Every rank runs it on the same global
-   quantities. */
-#define OPENMX_GEMMUL8_ADAPTIVE_MAX_STAGES 8
-void openmx_gemmul8AdaptiveConfigure(int nstage, int final_fp64, const int *moduli, const int *fastmode,
-                                     const double *promote,
-                                     const double *eta_tolerance, int reuse, int unblocked, int window, int stall,
-                                     int budget, int final_window, int clear_history, int probe_columns,
-                                     int probe_interval, double probe_floor);
-int openmx_gemmul8AdaptiveEnabled(void);
-void openmx_gemmul8AdaptiveStart(void);
-int openmx_gemmul8AdaptiveBeginTrial(void);
-int openmx_gemmul8AdaptiveProbeColumns(void);
-double openmx_gemmul8AdaptiveProbeFloor(void);
-void openmx_gemmul8AdaptiveReport(double eta, int failed);
-void openmx_gemmul8AdaptiveTrialStatus(int *rejected, double *eta);
-void openmx_gemmul8AdaptiveReject(void);
-int openmx_gemmul8AdaptiveStopCheck(int stop_condition);
-int openmx_gemmul8AdaptiveTakeHistoryReset(void);
-int openmx_gemmul8AdaptiveAfterMixing(double residual);
-void openmx_gemmul8AdaptiveDescribe(char *text, int size, long long counters[5]);
 
 int getDeviceCount();
 void Eigen_PReHH(MPI_Comm MPI_Current_Comm_WD, 

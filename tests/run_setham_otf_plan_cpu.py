@@ -51,6 +51,12 @@ static int natn[4][3], ncn[4][3], NumOLG[4][3], glist[4][3][60], *GListTAtoms1[4
 static int mglist[4][60], *MGridListAtom[4];
 static double Gxyz[4][4], atv[3][4];
 static int alloc_count, live_alloc, force_pageable;
+static size_t gpu_free=16ULL*1024*1024*1024;
+static int gpu_query_error;
+static int Grid_Precision_Kernel(void) { return 2; }
+static int OpenMX_GpuMemGetInfo(size_t *free_bytes,size_t *total_bytes) {
+  *free_bytes=gpu_free; *total_bytes=16ULL*1024*1024*1024; return gpu_query_error;
+}
 static void check(int ok,const char *msg) { if(!ok) { fprintf(stderr,"FAIL: %s\n",msg); exit(1); } }
 static void *alloc(size_t n) { void *p=calloc(1,n?n:1); check(p!=NULL,"host allocation"); alloc_count++; live_alloc++; return p; }
 static void release(void *p) { if(p) { live_alloc--; free(p); } }
@@ -73,9 +79,11 @@ static void Set_Hamiltonian_MatrixElements_CountTotals(int k,int r,int *n,size_t
 }
 static void Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache(void) {}
 '''
-parts = [prefix, typedef("SetHamiltonianOnTheFlyCache"), typedef("SetHOTFBatch"), typedef("SetHOTFPlan"),
-         "static SetHamiltonianOnTheFlyCache Set_Hamiltonian_OTF;\nstatic SetHOTFPlan Set_Hamiltonian_OTF_Plan[2];"]
-for name in ["SETH_OTF_FreePlan", "SETH_OTF_FreePlans", "SETH_OTF_GetPlan", "Set_Hamiltonian_OTF_Release", "Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache"]:
+parts = [prefix, typedef("SetHamiltonianOnTheFlyCache"), typedef("SetHOTFBatch"), typedef("SetHOTFPlan"), typedef("SetHOTFPairCost"), typedef("SetHOTFDensityPlan"),
+         "static SetHamiltonianOnTheFlyCache Set_Hamiltonian_OTF;\nstatic SetHOTFPlan Set_Hamiltonian_OTF_Plan[2];\nstatic SetHOTFDensityPlan Set_Hamiltonian_OTF_DenPlan;"]
+for name in ["SETH_OTF_DEN_RESERVE_BYTES", "SETH_OTF_DEN_RUNTIME_SLACK", "SETH_OTF_DEN_ALIGNMENT_SLACK", "SETH_OTF_DEN_GROW_QUANTUM"]:
+    parts.append(re.search(r"^#define " + name + r"[^\n]*", source, re.M).group(0))
+for name in ["SETH_OTF_PairCost", "SETH_OTF_CompactCost", "SETH_OTF_DensityLimitBytes", "SETH_OTF_DensityFixedBytes", "SETH_OTF_DensityBoundWorkspace", "SETH_OTF_DensityPairBytes", "Set_Hamiltonian_OnTheFly_DensityBudget", "Set_Hamiltonian_OnTheFly_DensityGrow", "SETH_OTF_FreePlan", "SETH_OTF_FreePlans", "SETH_OTF_GetPlan", "Set_Hamiltonian_OTF_Release", "Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache"]:
     body = function(name).replace("free(", "release(")
     # Device-release stub already accounts for its allocation.
     body = body.replace("acc_release(", "acc_free(")
@@ -131,12 +139,115 @@ int main(void) {
     check(!Set_Hamiltonian_OTF_Plan[0].ready && !Set_Hamiltonian_OTF_Plan[1].ready,"geometry invalidation");
     check(live_alloc==0,"cached host allocations leaked");
   }
+  /* Eu-sized central spheres cannot fit 128 MiB.  Overlap lists deliberately
+     contain gaps, repeats, and reverse order; chunking must preserve them. */
+  for(int a=1;a<=3;a++) {
+    GridN_Atom[a]=1691481;
+    Spe_Total_NO[a]=41;
+    for(int h=0;h<3;h++) {
+      NumOLG[a][h]=53-h;
+      for(int k=0;k<NumOLG[a][h];k++) glist[a][h][k]=(59-k*7+a+h+420)%60;
+    }
+  }
+  NumOLG[2][1]=0; /* zero-overlap pair still advances the packed DM offset */
+  for(int spins=1;spins<=4;spins*=2) for(int pageable=0;pageable<2;pageable++) {
+    force_pageable=pageable;
+    Set_Hamiltonian_OTF.atom_gla_off=alloc(4*sizeof(size_t));
+    Set_Hamiltonian_OTF.atom_gla_off[1]=0;
+    Set_Hamiltonian_OTF.atom_gla_off[2]=1691481;
+    Set_Hamiltonian_OTF.atom_gla_off[3]=3382962;
+    for(int kind=0;kind<2;kind++) {
+      SetHOTFPairCost chunkcost;
+      SETH_OTF_CompactCost(kind,spins,1,0,13,0,&chunkcost);
+      const size_t payload=chunkcost.bytes;
+      SetHOTFPlan *plan=SETH_OTF_GetPlan(kind,0,spins,payload,out_base,0);
+      check(plan && plan->batch_count>9,"large spheres use bounded chunks");
+      int nextpair=0, nextpoint=0, zero_seen=0;
+      size_t dm_prefix=0;
+      double sums[9]={0};
+      for(int b=0;b<plan->batch_count;b++) {
+        const SetHOTFBatch *bt=&plan->batch[b];
+        check(bt->compact_orbs0 && bt->pair_count==1,"large pair stays on device");
+        check(bt->first==nextpair && bt->last==nextpair+1,"original pair order");
+        check(bt->first_nolg==nextpoint,"contiguous overlap chunk order");
+        const int a=bt->pair_Mc_AN[0], h=bt->pair_h_AN[0];
+        const int n=((int*)(bt->image+bt->off_NOLG))[0];
+        const int *nc=(const int*)(bt->image+bt->off_Nc);
+        const SOG_GpuPair *central=(const SOG_GpuPair*)(bt->image+bt->off_central_pairs);
+        check(n<=13 && (n>0 || NumOLG[a][h]==0),"bounded chunk size");
+        check(bt->total_orbs0_tiles==(size_t)n*41 && bt->total_orbs1==(size_t)n*41,"compact tile sizes");
+        check(((size_t*)(bt->image+bt->off_h_off))[0]==(kind?dm_prefix:0),"same DM block across chunks");
+        check(central->wan==a && central->no==41 && central->gx==Gxyz[a][1] &&
+              central->ax==0 && central->ay==0 && central->az==0,"central descriptor");
+        if(kind) check(((size_t*)(bt->image+bt->off_out_base))[0]==out_base[a],"absolute density output base");
+        for(int k=0;k<n;k++) {
+          check(nc[k]==glist[a][h][nextpoint+k],"absolute original overlap gather");
+          if(!kind) {
+            check(((int*)(bt->image+bt->off_orb_Nc))[k]==k,"compact orbital gather");
+            check(((int*)(bt->image+bt->off_MN))[k]==mglist[a][nc[k]],"absolute potential gather");
+          }
+          sums[nextpair]+=(double)(nc[k]+1)*(double)(nextpoint+k+1);
+        }
+        /* Recreate the arena layout independently of cost estimates. */
+        size_t pos=bt->image_bytes;
+        pos=(pos+511)&~(size_t)511; pos+=sizeof(float)*bt->total_orbs0_tiles;
+        pos=(pos+511)&~(size_t)511; pos+=sizeof(float)*bt->total_orbs1;
+        if(!kind) { pos=(pos+511)&~(size_t)511; pos+=sizeof(double)*bt->total_h; }
+        check(pos<=payload,"chunk arena within requested payload");
+        nextpoint+=n;
+        if(nextpoint==NumOLG[a][h]) {
+          double expect=0;
+          for(int k=0;k<NumOLG[a][h];k++) expect+=(double)(glist[a][h][k]+1)*(double)(k+1);
+          check(sums[nextpair]==expect,"every overlap exactly once");
+          if(!n) zero_seen++;
+          dm_prefix+=(size_t)spins*41*41;
+          nextpair++; nextpoint=0;
+        }
+      }
+      check(nextpair==9 && zero_seen==1,"all large and empty pairs covered");
+      cases++;
+    }
+    Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
+    check(live_alloc==0,"large-pair cleanup");
+  }
+  {
+    const size_t mib=1024ULL*1024ULL, dm_count=9*41*41, output_count=3*1691481;
+    size_t need=0, avail=0, take=0;
+    int grow=0;
+    unsetenv("OPENMX_SETDEN_ONTHEFLY_MB");
+    gpu_free=16ULL*1024*mib;
+    take=Set_Hamiltonian_OnTheFly_DensityBudget(1,dm_count,output_count,1,&grow,&need,&avail,0);
+    check(take==0 && grow==1 && Set_Hamiltonian_OTF_DenPlan.largest>128*mib,"large atom prefers growth");
+    check(Set_Hamiltonian_OnTheFly_DensityGrow(0,1,&avail),"abundant-memory growth admitted");
+    check(avail==Set_Hamiltonian_OTF_DenPlan.all,"full-batch growth retained");
+    gpu_free=4ULL*1024*mib;
+    take=Set_Hamiltonian_OnTheFly_DensityBudget(1,dm_count,output_count,18,&grow,&need,&avail,0);
+    check(take==0 && grow==1,"18 large ranks request growth");
+    check(Set_Hamiltonian_OnTheFly_DensityGrow(0,18,&avail),"18 large ranks all admit compact chunks");
+    check(avail<Set_Hamiltonian_OTF_DenPlan.largest && avail>=need,"compact chunk below full atom size");
+    check(Set_Hamiltonian_OTF_DenPlan.grown+Set_Hamiltonian_OTF_DenPlan.fixed+
+          SETH_OTF_DEN_RUNTIME_SLACK <= (gpu_free-SETH_OTF_DEN_RESERVE_BYTES)/18,"grown workspace within physical share");
+    setenv("OPENMX_SETDEN_ONTHEFLY_MB","32",1);
+    take=Set_Hamiltonian_OnTheFly_DensityBudget(1,dm_count,output_count,18,&grow,&need,&avail,0);
+    check(take>0 && grow==0 && Set_Hamiltonian_OTF_DenPlan.default_workspace<=32*mib,"explicit cap admits bounded chunks");
+    gpu_free=512*mib+18*(SETH_OTF_DEN_RUNTIME_SLACK+Set_Hamiltonian_OTF_DenPlan.fixed+16*mib);
+    take=Set_Hamiltonian_OnTheFly_DensityBudget(1,dm_count,output_count,18,&grow,&need,&avail,0);
+    check(take>0 && grow==0 && Set_Hamiltonian_OTF_DenPlan.default_workspace==16*mib,"preferred floor does not exceed physical share");
+    gpu_free=1024*mib;
+    take=Set_Hamiltonian_OnTheFly_DensityBudget(1,dm_count,output_count,18,&grow,&need,&avail,0);
+    check(take==0 && grow==-1 && avail==0,"insufficient physical share declines without unsigned underflow");
+    gpu_query_error=1;
+    take=Set_Hamiltonian_OnTheFly_DensityBudget(1,dm_count,output_count,18,&grow,&need,&avail,0);
+    check(take==0 && grow==-1 && !Set_Hamiltonian_OTF_DenPlan.valid,"failed physical query declines");
+    gpu_query_error=0;
+    unsetenv("OPENMX_SETDEN_ONTHEFLY_MB");
+  }
   SetHOTFPlan *p=SETH_OTF_GetPlan(0,0,1,1,out_base,0);
   check(p && p->batch_count==9,"oversized Hamiltonian pairs");
   for(int b=0;b<p->batch_count;b++) check(p->batch[b].pair_count==0 && !p->batch[b].image,"CPU fallback placeholder");
   check(SETH_OTF_GetPlan(1,0,1,1,out_base,0)==NULL,"oversized density rejection");
   Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(); check(live_alloc==0,"fallback cleanup");
-  printf("PASS: %d cached OTF plans, multibatch DM offsets, images, geometry invalidation, pinned/pageable cleanup, oversized pairs\n",cases);
+  printf("PASS: %d cached OTF plans, multibatch DM offsets, images, geometry invalidation, pinned/pageable cleanup, Eu-sized compact chunks, 18-rank physical budgets/growth, impossible-budget fallback\n",cases);
   return 0;
 }
 ''')

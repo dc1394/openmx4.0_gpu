@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run OpenMX once per case and variant and compare the runs: the SCF-level
 # measurement of the forward-transform settings of the cluster solver
-# (precision stage, reuse of the prepared X, precision controller).  Works on
+# (fixed precision mode and reuse of the prepared X).  Works on
 # a workstation and inside a batch job; one GPU node.
 #
 #   tools/run_forward_variants.sh -o out -n 18 -v tools/forward_variants/stage1.txt \
@@ -13,7 +13,7 @@
 #   -v FILE    variants file, one variant per line: <label> [NAME=VALUE ...]
 #                NAME with a dot is an input keyword (replaced or appended in
 #                the copied input file), @append=FILE appends a file from the
-#                directory of the variants file (e.g. a precision policy),
+#                directory of the variants file (e.g. a block of keywords),
 #                any other NAME is an environment variable of the run.
 #   -s "..."   settings of the same form applied to every variant, e.g.
 #              -s "scf.EigenvalueSolver=cluster" to run an input written for
@@ -107,7 +107,6 @@ for item in "$@"; do
       "$(grep -c -E '^ +SCF= +[0-9]+ ' "$name.out" 2>/dev/null)" \
       "$(grep -E '^ *Utot\.' "$name.out" 2>/dev/null | head -1)"
     grep -h 'forward transform' "$name.std" | cut -c1-230 | sed 's/^/      /'
-    grep -h -E 'forward GEMMs: (stage [0-9]+ .* from the next|final stage|.*rejected)' "$name.std" | sed 's/^/      /' | head -12
     cd "$out" || exit 1
   done < "$out/variants.txt"
 done

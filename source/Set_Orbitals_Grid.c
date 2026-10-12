@@ -1350,6 +1350,48 @@ void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair, int npts, const int *gla, 
   }
 }
 
+/* One compact pair chunk, distributed across the device by grid point.
+   The descriptor is on the host, all arrays on the device; nolg_Nc maps
+   chunk rows back to the central atom's sphere.  PairTiles assigns a gang
+   per pair and would leave nearly the whole GPU idle for a single chunk. */
+void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair, int npts, const int *nolg_Nc,
+                              const int *gla, const int *cla, float *out)
+{
+  const SOG_DeviceTables *t = &SOG_dev;
+  const double *atvf = t->atv, *rv_all = t->rv, *rwf_all = t->rwf;
+  const size_t *rv_off = t->rvo, *rwf_base = t->rwb;
+  const int *sp_mesh = t->spm, *sp_maxl = t->spx, *sp_nb = t->spb;
+  const int ng23 = t->ng23, ng3 = t->ng3;
+  const double g11 = t->g[0][0], g12 = t->g[0][1], g13 = t->g[0][2];
+  const double g21 = t->g[1][0], g22 = t->g[1][1], g23 = t->g[1][2];
+  const double g31 = t->g[2][0], g32 = t->g[2][1], g33 = t->g[2][2];
+  const double org1 = t->org[0], org2 = t->org[1], org3 = t->org[2];
+  const SOG_GpuPair pr = *pair;
+  int ip;
+
+  if (!t->ready || npts <= 0) return;
+  if (t->eval_df) {
+    const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
+#pragma acc parallel loop gang vector vector_length(128) \
+  deviceptr(nolg_Nc, gla, cla, out, atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
+    for (ip = 0; ip < npts; ip++) {
+      SOG_point_eval_df(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az, gla[nolg_Nc[ip]], cla[nolg_Nc[ip]],
+                        atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
+                        ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
+                        out + (size_t)ip * (size_t)pr.no);
+    }
+    return;
+  }
+#pragma acc parallel loop gang vector vector_length(128) \
+  deviceptr(nolg_Nc, gla, cla, out, atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
+  for (ip = 0; ip < npts; ip++) {
+    SOG_point_eval(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az, gla[nolg_Nc[ip]], cla[nolg_Nc[ip]],
+                   atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
+                   ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
+                   out + (size_t)ip * (size_t)pr.no);
+  }
+}
+
 double Set_Orbitals_Grid(int Cnt_kind)
 {
   SOG_Device_Release();   /* the grid frame may have changed */

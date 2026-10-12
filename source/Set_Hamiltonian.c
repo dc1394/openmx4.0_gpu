@@ -83,7 +83,7 @@ int Set_Hamiltonian_Cuda_Density(int pair_count, int spin_count, int max_no, int
                                  const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
                                  const size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf,
                                  const float *orbs1buf, const float *dmf, const float *dml, double *tmpden,
-                                 size_t output_count);
+                                 size_t output_count, int compact_orbs0);
 int Set_Hamiltonian_Cuda_MatrixElements(int pair_count, int spin_count, size_t vpot_len,
                                         double grid_vol, int max_no, int max_output_count,
                                         const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
@@ -2818,7 +2818,7 @@ static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixEl
 /* Fallback for a single pair larger than the streaming budget, or for a
    recoverable CUDA failure.  The initial H and the grid accumulation order
    agree with the device kernel; no partially computed batch is committed. */
-static void Set_Hamiltonian_Stream_PairCPU(int Cnt_kind, int Mc_AN, int h_AN, int myid)
+static void Set_Hamiltonian_Stream_PairRangeCPU(int Cnt_kind, int Mc_AN, int h_AN, int first_nolg, int nolg, int myid)
 {
     const int Gc_AN = M2G[Mc_AN];
     const int Gh_AN = natn[Gc_AN][h_AN];
@@ -2832,7 +2832,7 @@ static void Set_Hamiltonian_Stream_PairCPU(int Cnt_kind, int Mc_AN, int h_AN, in
         for (int i = 0; i < NO0; i++) {
             for (int j = 0; j < NO1; j++) {
                 double sum = target[spin][Mc_AN][h_AN][i][j];
-                for (int Nog = 0; Nog < NumOLG[Mc_AN][h_AN]; Nog++) {
+                for (int Nog = first_nolg; Nog < first_nolg + nolg; Nog++) {
                     const int Nc = GListTAtoms1[Mc_AN][h_AN][Nog];
                     const int Nh = GListTAtoms2[Mc_AN][h_AN][Nog];
                     const Type_Orbs_Grid *orb1 = G2ID[Gh_AN] == myid ?
@@ -2844,6 +2844,11 @@ static void Set_Hamiltonian_Stream_PairCPU(int Cnt_kind, int Mc_AN, int h_AN, in
             }
         }
     }
+}
+
+static void Set_Hamiltonian_Stream_PairCPU(int Cnt_kind, int Mc_AN, int h_AN, int myid)
+{
+    Set_Hamiltonian_Stream_PairRangeCPU(Cnt_kind, Mc_AN, h_AN, 0, NumOLG[Mc_AN][h_AN], myid);
 }
 
 static void Set_Hamiltonian_Stream_FreeBatch(SetHamiltonianMatrixElementsCache *cache)
@@ -2875,7 +2880,7 @@ static void Set_Hamiltonian_Stream_FreeBatch(SetHamiltonianMatrixElementsCache *
    ranks (the same evaluation), and agree to the last bits for the local
    ones (a different but equivalent grid frame).  OPENMX_SETHAM_ONTHEFLY=0
    turns it off (the CPU or the streamed path follow),
-   OPENMX_SETHAM_ONTHEFLY_MB bounds the workspace (default 256).
+   OPENMX_SETHAM_ONTHEFLY_MB bounds the workspace (default 128 MiB).
    --------------------------------------------------------------------- */
 typedef struct {
     int ready;
@@ -2888,11 +2893,6 @@ typedef struct {
 } SetHamiltonianOnTheFlyCache;
 
 static SetHamiltonianOnTheFlyCache Set_Hamiltonian_OTF = {0};
-
-/* the smallest batch workspace an on-the-fly rank is given: below it a
-   rank would still take the device (the allocation decides), but the
-   batches become too small to be worth it */
-#define SETH_OTF_FLOOR_BYTES (48ULL * 1024ULL * 1024ULL)
 
 /* the ranks of this node that integrate the density on the fly at the same
    time (Set_Density_Grid_GPU_Local_Prepare counts them each step) */
@@ -2974,12 +2974,14 @@ static size_t Set_Hamiltonian_OTF_ShareTarget(int Cnt_kind, int myid)
 typedef struct {
     int first, last;          /* [first, last) of the full pair order; last == first: a pair beyond the workspace */
     int pair_count;
+    int compact_orbs0;        /* one large pair, central orbitals only at its overlap points */
+    int first_nolg;           /* first overlap point of that compact pair chunk */
     size_t total_h, total_nolg, total_orbs0_tiles, total_orbs1;
     int max_no, max_output_count, max_nolg;
     unsigned char *image;     /* the static sub-allocations, from the batch's aligned base */
     size_t image_bytes;
     size_t off_NO0, off_NO1, off_NOLG, off_h_off, off_nolg_off, off_orbs0_off, off_orbs1_off;
-    size_t off_gla_off, off_out_base, off_pairs, off_Nc, off_MN;
+    size_t off_gla_off, off_out_base, off_pairs, off_Nc, off_MN, off_central_pairs, off_orb_Nc;
     int *pair_Mc_AN, *pair_h_AN;
     int image_pageable;       /* cudaMallocHost failed: a pageable image */
 } SetHOTFBatch;
@@ -3092,14 +3094,38 @@ static void SETH_OTF_PairCost(int kind, int spin_count, int Mc_AN, int h_AN, int
     cost->bytes = increment;
 }
 
-/* the plan of kind for the current partition, workspace and spin count:
-   the cached one when it still applies, else a new one (NULL: a pair of the
-   density beyond the workspace, which the old per-step path also refused) */
+/* An oversized atom must not force its entire sphere into a batch.  A
+   compact pair chunk evaluates both atoms only at the requested overlap
+   points, in the original order.  The extra central descriptor and (for
+   H) compact orbital indices are covered here, including alignment. */
+static void SETH_OTF_CompactCost(int kind, int spin_count, int Mc_AN, int h_AN, size_t nolg, int myid,
+                                SetHOTFPairCost *cost)
+{
+    const int Gc_AN = M2G[Mc_AN], Gh_AN = natn[Gc_AN][h_AN];
+    const int NO0 = Spe_Total_NO[WhatSpecies[Gc_AN]];
+    const int NO1 = Spe_Total_NO[WhatSpecies[Gh_AN]];
+    size_t bytes = 3 * sizeof(int) + (kind == 0 ? 5 : 6) * sizeof(size_t) + 2 * sizeof(SOG_GpuPair) + 16 * 512;
+
+    cost->nolg = nolg;
+    cost->hcount = Set_Hamiltonian_checked_mul((size_t)spin_count,
+        Set_Hamiltonian_checked_mul((size_t)NO0, (size_t)NO1, "compact on-the-fly matrix", myid), "compact on-the-fly H", myid);
+    cost->orbs0 = Set_Hamiltonian_checked_mul(nolg, (size_t)NO0, "compact on-the-fly orbitals 0", myid);
+    cost->orbs1 = Set_Hamiltonian_checked_mul(nolg, (size_t)NO1, "compact on-the-fly orbitals 1", myid);
+    if (kind == 0) Set_Hamiltonian_add_array_bytes(&bytes, cost->hcount, sizeof(double), "compact on-the-fly H", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, nolg, (kind == 0 ? 3 : 1) * sizeof(int), "compact on-the-fly indices", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, cost->orbs0, sizeof(float), "compact on-the-fly orbitals 0", myid);
+    Set_Hamiltonian_add_array_bytes(&bytes, cost->orbs1, sizeof(float), "compact on-the-fly orbitals 1", myid);
+    cost->bytes = bytes;
+}
+
+/* The plan of kind for the current partition, workspace and spin count.
+   Retain full central spheres when they fit, otherwise use compact chunks
+   in overlap order.  NULL means even one compact density point cannot fit. */
 static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, size_t payload_bytes,
                                      const unsigned int *atom_out_base, int myid)
 {
     SetHOTFPlan *plan = &Set_Hamiltonian_OTF_Plan[kind];
-    int pair_count = 0, batch_cap = 16;
+    int pair_count = 0, batch_cap = 16, first_nolg = 0;
     size_t density_h_base = 0;
     size_t unused_h, unused_nolg, unused_orbs0, unused_orbs1;
 
@@ -3130,10 +3156,10 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
     for (int first = 0; first < pair_count;) {
         SetHOTFBatch *bt;
         size_t bytes = 0, h_total = 0, nolg_total = 0, orbs0_total = 0, orbs1_total = 0;
-        int last = first, previous_mc = -1;
+        int last = first, previous_mc = -1, compact = 0, chunk_nolg = 0;
         /* the batch: pairs in atom order while the tiles fit the workspace
            (the same accounting as the per-step path had) */
-        while (last < pair_count) {
+        while (first_nolg == 0 && last < pair_count) {
             const int Mc_AN = plan->mc_table[last], h_AN = plan->h_table[last];
             SetHOTFPairCost cost;
             SETH_OTF_PairCost(kind, spin_count, Mc_AN, h_AN, Mc_AN != previous_mc, myid, &cost);
@@ -3146,6 +3172,26 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
             previous_mc = Mc_AN;
             last++;
         }
+        if (last == first) {
+            const int Mc_AN = plan->mc_table[first], h_AN = plan->h_table[first];
+            const size_t remaining = (size_t)(NumOLG[Mc_AN][h_AN] - first_nolg);
+            SetHOTFPairCost empty, point, chunk;
+            size_t capacity = 0;
+            SETH_OTF_CompactCost(kind, spin_count, Mc_AN, h_AN, 0, myid, &empty);
+            SETH_OTF_CompactCost(kind, spin_count, Mc_AN, h_AN, 1, myid, &point);
+            if (empty.bytes <= payload_bytes) capacity = (payload_bytes - empty.bytes) / (point.bytes - empty.bytes);
+            if (remaining < capacity) capacity = remaining;
+            if (capacity > 0 || (remaining == 0 && empty.bytes <= payload_bytes)) {
+                compact = 1;
+                chunk_nolg = (int)capacity;
+                SETH_OTF_CompactCost(kind, spin_count, Mc_AN, h_AN, capacity, myid, &chunk);
+                h_total = chunk.hcount;
+                nolg_total = chunk.nolg;
+                orbs0_total = chunk.orbs0;
+                orbs1_total = chunk.orbs1;
+                last = first + 1;
+            }
+        }
         if (plan->batch_count == batch_cap) {
             if (batch_cap == INT_MAX)
                 Set_Hamiltonian_abort("on-the-fly plan", "too many batches", myid);
@@ -3157,6 +3203,8 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
         memset(bt, 0, sizeof(*bt));
         bt->first = first;
         bt->last = last;
+        bt->compact_orbs0 = compact;
+        bt->first_nolg = first_nolg;
         if (last == first) {
             /* a single pair beyond the workspace */
             if (kind == 1) {
@@ -3191,8 +3239,10 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
             SETH_OTF_IMG(bt->off_gla_off, size_t, bt->pair_count);
             if (kind == 1) SETH_OTF_IMG(bt->off_out_base, size_t, bt->pair_count);
             SETH_OTF_IMG(bt->off_pairs, SOG_GpuPair, bt->pair_count);
+            if (compact) SETH_OTF_IMG(bt->off_central_pairs, SOG_GpuPair, bt->pair_count);
             SETH_OTF_IMG(bt->off_Nc, int, bt->total_nolg);
             if (kind == 0) SETH_OTF_IMG(bt->off_MN, int, bt->total_nolg);
+            if (compact && kind == 0) SETH_OTF_IMG(bt->off_orb_Nc, int, bt->total_nolg);
 #undef SETH_OTF_IMG
             bt->image_bytes = pos;
             /* pinned: the image goes up every step, and a pageable copy of
@@ -3229,11 +3279,11 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
                 const int Gc_AN = M2G[Mc_AN], Gh_AN = natn[Gc_AN][h_AN], Rnh = ncn[Gc_AN][h_AN];
                 const int NO0 = Spe_Total_NO[WhatSpecies[Gc_AN]];
                 const int NO1 = Spe_Total_NO[WhatSpecies[Gh_AN]];
-                const int NOLG = NumOLG[Mc_AN][h_AN];
+                const int NOLG = compact ? chunk_nolg : NumOLG[Mc_AN][h_AN];
                 const size_t mat_size = (size_t)NO0 * (size_t)NO1;
                 if (Mc_AN != previous_mc) {
                     atom_off = orbs0_off;
-                    orbs0_off += (size_t)GridN_Atom[Gc_AN] * (size_t)NO0;
+                    orbs0_off += (size_t)(compact ? NOLG : GridN_Atom[Gc_AN]) * (size_t)NO0;
                     previous_mc = Mc_AN;
                 }
                 bt->pair_Mc_AN[q] = Mc_AN;
@@ -3258,8 +3308,22 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
                 pairs[q].ax = atv[Rnh][1];
                 pairs[q].ay = atv[Rnh][2];
                 pairs[q].az = atv[Rnh][3];
+                if (compact) {
+                    SOG_GpuPair *central = (SOG_GpuPair *)(bt->image + bt->off_central_pairs);
+                    central[q] = pairs[q];
+                    central[q].wan = WhatSpecies[Gc_AN];
+                    central[q].no = NO0;
+                    central[q].gx = Gxyz[Gc_AN][1];
+                    central[q].gy = Gxyz[Gc_AN][2];
+                    central[q].gz = Gxyz[Gc_AN][3];
+                    central[q].ax = central[q].ay = central[q].az = 0.0;
+                    if (kind == 0) {
+                        int *orb_Nc = (int *)(bt->image + bt->off_orb_Nc);
+                        for (int k = 0; k < NOLG; k++) orb_Nc[k] = k;
+                    }
+                }
                 if (NOLG > 0) {
-                    const int *Nc_list = GListTAtoms1[Mc_AN][h_AN];
+                    const int *Nc_list = GListTAtoms1[Mc_AN][h_AN] + (compact ? first_nolg : 0);
                     const int *mgla = MGridListAtom[Mc_AN];
                     memcpy(Nc_all + nolg_off, Nc_list, sizeof(int) * (size_t)NOLG);
                     if (MN_all != NULL)
@@ -3278,9 +3342,15 @@ static SetHOTFPlan *SETH_OTF_GetPlan(int kind, int Cnt_kind, int spin_count, siz
             }
         }
         if (plan->max_total_h < bt->total_h) plan->max_total_h = bt->total_h;
-        density_h_base += bt->total_h;
         plan->batch_count++;
-        first = last;
+        if (compact && first_nolg + chunk_nolg < NumOLG[plan->mc_table[first]][plan->h_table[first]]) {
+            first_nolg += chunk_nolg;
+        }
+        else {
+            density_h_base += bt->total_h;
+            first = last;
+            first_nolg = 0;
+        }
     }
     if (kind == 0 && plan->max_total_h > 0) {
         if (cudaMallocHost((void **)&plan->hbuf, sizeof(double) * plan->max_total_h) != cudaSuccess) {
@@ -3402,9 +3472,8 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
            peak is what every rank sees the same way.  The workspace is
            transient (freed before the solvers run), so only a margin
            (OPENMX_SETHAM_ONTHEFLY_MARGIN_MB, default 0) is kept, not the
-           plan's reserve; a share below the floor still gets the floor
-           (the allocation, not the estimate, decides), and only a failed
-           allocation sends the rank to the CPU. */
+           plan's reserve.  This physical share is a hard bound; when it
+           cannot hold even one compact overlap point the CPU takes over. */
         const size_t margin = Set_Hamiltonian_OTF_MarginBytes();
         size_t base;
 
@@ -3413,9 +3482,9 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
     }
     workspace_bytes = (runtime_slack + vpot_bytes < fair_bytes) ? fair_bytes - runtime_slack - vpot_bytes : 0;
     if (limit < workspace_bytes) workspace_bytes = limit;
-    if (workspace_bytes < alignment_slack + SETH_OTF_FLOOR_BYTES) workspace_bytes = alignment_slack + SETH_OTF_FLOOR_BYTES;
-    /* A user-specified cap below the preferred floor remains a cap. */
-    if (limit < workspace_bytes) workspace_bytes = limit;
+    /* The physical free-memory share is a hard bound: a preferred floor
+       must not manufacture memory when other GPU processes occupy it. */
+    if (workspace_bytes <= alignment_slack) return 0;
     payload_bytes = workspace_bytes - alignment_slack;
     if (!Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid)) return 0;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
@@ -3537,7 +3606,16 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
             acc_memcpy_to_device(d_h, otf_plan->hbuf, sizeof(double) * bt->total_h);
             SETH_OTF_PROFILE_ADD(pack_seconds);
             /* the orbital tiles: the central atoms' spheres, the neighbours at the overlap points */
-            for (int q = 0; q < bt->pair_count; q++) {
+            if (bt->compact_orbs0) {
+                const size_t goff = Set_Hamiltonian_OTF.atom_gla_off[bt->pair_Mc_AN[0]];
+                SOG_Device_EvalPairChunk((const SOG_GpuPair *)(const void *)(img + bt->off_central_pairs),
+                                         (int)bt->total_nolg, d_Nc, Set_Hamiltonian_OTF.d_gla + goff,
+                                         Set_Hamiltonian_OTF.d_cla + goff, d_orbs0);
+                SOG_Device_EvalPairChunk((const SOG_GpuPair *)(const void *)(img + bt->off_pairs),
+                                         (int)bt->total_nolg, d_Nc, Set_Hamiltonian_OTF.d_gla + goff,
+                                         Set_Hamiltonian_OTF.d_cla + goff, d_orbs1);
+            }
+            for (int q = 0; !bt->compact_orbs0 && q < bt->pair_count; q++) {
                 const int Mc_AN = bt->pair_Mc_AN[q];
                 if (Mc_AN != previous_mc) {
                     const int Gc_AN = M2G[Mc_AN];
@@ -3556,13 +3634,15 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
                     previous_mc = Mc_AN;
                 }
             }
-            SOG_Device_EvalPairTiles(bt->pair_count, d_pairs, d_NOLG, d_nolg_off, d_orbs1_off, d_gla_off, d_Nc,
-                                     Set_Hamiltonian_OTF.d_gla, Set_Hamiltonian_OTF.d_cla, d_orbs1);
+            if (!bt->compact_orbs0)
+                SOG_Device_EvalPairTiles(bt->pair_count, d_pairs, d_NOLG, d_nolg_off, d_orbs1_off, d_gla_off, d_Nc,
+                                         Set_Hamiltonian_OTF.d_gla, Set_Hamiltonian_OTF.d_cla, d_orbs1);
             acc_wait_all();
             SETH_OTF_PROFILE_ADD(eval_seconds);
             {
                 const int status = Set_Hamiltonian_Cuda_MatrixElements(bt->pair_count, spin_count, vpot_len, GridVol,
-                    bt->max_no, bt->max_output_count, d_NO0, d_NO1, d_NOLG, d_MN, d_Nc, d_h_off, d_nolg_off,
+                    bt->max_no, bt->max_output_count, d_NO0, d_NO1, d_NOLG, d_MN,
+                    bt->compact_orbs0 ? (int *)(void *)(dev + bt->off_orb_Nc) : d_Nc, d_h_off, d_nolg_off,
                     d_orbs0_off, d_orbs1_off, d_orbs0, d_orbs1, d_vpot, d_h, Grid_Precision_Kernel());
                 SETH_OTF_PROFILE_ADD(device_seconds);
                 if (status < 0) Set_Hamiltonian_abort("on-the-fly matrix elements", "unrecoverable CUDA failure", myid);
@@ -3580,8 +3660,11 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
                     }
                 }
                 else {
-                    for (int q = bt->first; q < bt->last; q++)
-                        Set_Hamiltonian_Stream_PairCPU(Cnt_kind, otf_plan->mc_table[q], otf_plan->h_table[q], myid);
+                    for (int q = bt->first; q < bt->last; q++) {
+                        const int Mc_AN = otf_plan->mc_table[q], h_AN = otf_plan->h_table[q];
+                        Set_Hamiltonian_Stream_PairRangeCPU(Cnt_kind, Mc_AN, h_AN, bt->first_nolg,
+                            bt->compact_orbs0 ? (int)bt->total_nolg : NumOLG[Mc_AN][h_AN], myid);
+                    }
                     cpu_pairs += bt->pair_count;
                     SETH_OTF_PROFILE_ADD(cpu_seconds);
                 }
@@ -3638,20 +3721,11 @@ size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid)
 
 /* ---- the batch workspace of the on-the-fly density ------------------------
    A rank takes the smaller of OPENMX_SETDEN_ONTHEFLY_MB (default 128 MiB) and
-   its share of the free device memory, less a 512 MiB reserve, among the
-   node's on-the-fly ranks.  A batch holds at least one whole pair with its
-   atom's orbital tile, and that alone can exceed the default bound: the Eu
-   atom of a one-atom bcc cell (41 orbitals, an 8.0 bohr sphere) on a 64^3
-   grid has 1,691,481 sphere points, and its pair with itself takes 536 MiB.
-   The rank then gave up the device and integrated on the CPU every step
-   without a word (Eubcc8-Band, RTX 5080, 2026-10-11: 3.5 s per step against
-   0.11 s on the device).  Set_Density_Grid_GPU_Local_Prepare now plans the
-   workspace before the quadrature: the ranks whose pairs fit the bound keep
-   it, the others share what the node's other ranks leave of the free memory,
-   each up to one batch of all its pairs.  A rank that still cannot hold a
-   pair, or whose bound was given explicitly, declines the distributed
-   quadrature there, so the one-rank service can take the density instead
-   of the CPU loop. */
+   its share of free device memory, less a 512 MiB reserve.  A large atom
+   no longer has to fit its whole orbital sphere: compact overlap chunks
+   bound both orbital tiles, even with an explicit workspace cap.  Keep
+   the preparation's budget for the coming quadrature so ranks allocating
+   later do not divide the remaining memory a second time. */
 
 #define SETH_OTF_DEN_RESERVE_BYTES (512ULL * 1024ULL * 1024ULL)
 #define SETH_OTF_DEN_RUNTIME_SLACK (64ULL * 1024ULL * 1024ULL)
@@ -3664,7 +3738,8 @@ typedef struct {
     int valid;                /* planned for the coming Set_Hamiltonian_OnTheFly_Density */
     int matomnum, spin_count;
     int explicit_limit;
-    size_t largest;           /* the batch bytes of the largest pair, with its atom's tile */
+    size_t largest;           /* preferred largest pair, including its full central tile */
+    size_t minimum;           /* largest minimum feasible compact pair chunk */
     size_t all;               /* the batch bytes of all the rank's pairs */
     size_t fixed;             /* the density matrix and the output beside the batches */
     size_t free_bytes;        /* the free device memory at the preparation */
@@ -3705,36 +3780,35 @@ static size_t SETH_OTF_DensityFixedBytes(int spin_count, size_t dm_count, size_t
     return dm_bytes + dmf_bytes + den_bytes + 3 * 512;
 }
 
-/* the bound's workspace: the rank's share of free_bytes less the reserve
-   among otf_ranks, at most the bound, preferably at least the floor */
+/* The bound's workspace: the rank's share of physical free memory less
+   the reserve and fixed storage, capped by the configured limit. */
 static size_t SETH_OTF_DensityBoundWorkspace(size_t limit, size_t fixed_bytes, int otf_ranks, size_t free_bytes)
 {
     const size_t fair_bytes = (SETH_OTF_DEN_RESERVE_BYTES < free_bytes)
                               ? (free_bytes - SETH_OTF_DEN_RESERVE_BYTES) / (size_t)(otf_ranks > 0 ? otf_ranks : 1) : 0;
-    size_t workspace_bytes = (SETH_OTF_DEN_RUNTIME_SLACK + fixed_bytes < fair_bytes)
-                             ? fair_bytes - SETH_OTF_DEN_RUNTIME_SLACK - fixed_bytes : 0;
-
+    size_t workspace_bytes = SETH_OTF_DEN_RUNTIME_SLACK < fair_bytes ? fair_bytes - SETH_OTF_DEN_RUNTIME_SLACK : 0;
+    workspace_bytes = fixed_bytes < workspace_bytes ? workspace_bytes - fixed_bytes : 0;
     if (limit < workspace_bytes) workspace_bytes = limit;
-    /* a share below the floor still gets the floor: the allocation decides */
-    if (workspace_bytes < SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES)
-        workspace_bytes = SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES;
-    /* A user-specified cap below the preferred floor remains a cap. */
-    if (limit < workspace_bytes) workspace_bytes = limit;
+    /* A preferred floor cannot exceed the physical free-memory share. */
     return workspace_bytes;
 }
 
-/* the batch bytes, in the planner's own accounting, of the rank's largest
-   pair (opening its atom's tile, as the first pair of a batch does) and of
-   all its pairs in one batch */
-static void SETH_OTF_DensityPairBytes(int spin_count, int myid, size_t *largest, size_t *all)
+/* Preferred full-tile workspace, and the minimum workspace required by any
+   pair (one compact overlap point suffices).  Preserve beneficial growth
+   for large atoms when memory permits, without requiring it for admission. */
+static void SETH_OTF_DensityPairBytes(int spin_count, int myid, size_t *largest, size_t *all, size_t *minimum)
 {
     *largest = 0;
     *all = 0;
+    *minimum = 0;
     for (int Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         for (int h_AN = 0; h_AN <= FNAN[M2G[Mc_AN]]; h_AN++) {
             SetHOTFPairCost opening, cost;
 
             SETH_OTF_PairCost(1, spin_count, Mc_AN, h_AN, 1, myid, &opening);
+            SETH_OTF_CompactCost(1, spin_count, Mc_AN, h_AN, NumOLG[Mc_AN][h_AN] > 0 ? 1 : 0, myid, &cost);
+            if (opening.bytes < cost.bytes) cost.bytes = opening.bytes;
+            if (*minimum < cost.bytes) *minimum = cost.bytes;
             if (*largest < opening.bytes) *largest = opening.bytes;
             if (h_AN == 0) {
                 *all += opening.bytes;
@@ -3747,14 +3821,12 @@ static void SETH_OTF_DensityPairBytes(int spin_count, int myid, size_t *largest,
     }
 }
 
-/* Set_Density_Grid_GPU_Local_Prepare on a rank that is to integrate on the
-   fly (no collectives): plans the workspace of the coming call from the
-   free device memory now.  Returns the device bytes the rank takes when the
-   bound holds its largest pair (*grow = 0); otherwise 0 with *grow = 1 when
-   the workspace may grow (Set_Hamiltonian_OnTheFly_DensityGrow sizes it once
-   the node's needs are known) or *grow = -1 when it cannot (an explicit
-   bound, or no reading of the free memory).  *need_bytes and *avail_bytes:
-   the largest pair and the payload the bound leaves. */
+/* Plan one density call before ranks allocate their workspaces.  Return
+   the rank's bytes with grow=0 if the preferred pair fits, or an explicit
+   cap permits compact chunks.  Otherwise grow=1 requests optional growth
+   once other ranks' needs are known.  grow=-1 means even a compact point
+   cannot fit, or the physical memory query failed.  need_bytes is that
+   minimum feasible chunk, avail_bytes the current payload. */
 size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, size_t output_count, int otf_ranks,
                                               int *grow, size_t *need_bytes, size_t *avail_bytes, int myid)
 {
@@ -3766,46 +3838,28 @@ size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, s
     *avail_bytes = 0;
     limit = SETH_OTF_DensityLimitBytes(&p->explicit_limit);
     p->fixed = SETH_OTF_DensityFixedBytes(spin_count, dm_count, output_count);
-    SETH_OTF_DensityPairBytes(spin_count, myid, &p->largest, &p->all);
-    *need_bytes = p->largest;
-    {
-        /* the bound's workspace is never below the smaller of the bound and
-           the floor: a pair that fits there fits whatever the free memory
-           is, and the rank takes at most the bound (no query of the device) */
-        const size_t least = (limit < SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES)
-                             ? limit : SETH_OTF_DEN_ALIGNMENT_SLACK + SETH_OTF_FLOOR_BYTES;
-
-        if (p->largest + SETH_OTF_DEN_ALIGNMENT_SLACK <= least) {
-            p->default_workspace = limit;
-            p->matomnum = Matomnum;
-            p->spin_count = spin_count;
-            p->valid = 1;
-            *avail_bytes = limit - SETH_OTF_DEN_ALIGNMENT_SLACK;
-            *grow = 0;
-            return limit + p->fixed + SETH_OTF_DEN_RUNTIME_SLACK;
-        }
-    }
+    SETH_OTF_DensityPairBytes(spin_count, myid, &p->largest, &p->all, &p->minimum);
+    *need_bytes = p->minimum;
     if (OpenMX_GpuMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
     p->free_bytes = free_now;
     p->default_workspace = SETH_OTF_DensityBoundWorkspace(limit, p->fixed, otf_ranks, free_now);
     p->matomnum = Matomnum;
     p->spin_count = spin_count;
     p->valid = 1;
-    *avail_bytes = p->default_workspace - SETH_OTF_DEN_ALIGNMENT_SLACK;
-    if (p->largest <= *avail_bytes) {
+    *avail_bytes = SETH_OTF_DEN_ALIGNMENT_SLACK < p->default_workspace ?
+                   p->default_workspace - SETH_OTF_DEN_ALIGNMENT_SLACK : 0;
+    if (p->minimum > *avail_bytes) return 0;
+    if (p->largest <= *avail_bytes || p->explicit_limit) {
         *grow = 0;
         return p->default_workspace + p->fixed + SETH_OTF_DEN_RUNTIME_SLACK;
     }
-    *grow = p->explicit_limit ? -1 : 1;
+    *grow = 1;
     return 0;
 }
 
-/* the grown workspace of a rank whose largest pair exceeds the bound: an
-   equal share, among the node's grow_ranks such ranks, of the free memory at
-   the preparation less the reserve and the others_bytes that the node's
-   other ranks take, up to all the rank's pairs in one batch.  Returns 1 when
-   it holds the largest pair (the coming call takes it); *avail_bytes is the
-   payload it leaves. */
+/* Share the remaining physical memory among ranks requesting growth.
+   Prefer a whole batch, then whole pairs; otherwise retain bounded compact
+   chunks.  Return 1 whenever at least one compact point fits. */
 int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, size_t *avail_bytes)
 {
     SetHOTFDensityPlan *p = &Set_Hamiltonian_OTF_DenPlan;
@@ -3814,18 +3868,24 @@ int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, si
 
     *avail_bytes = 0;
     if (!p->valid || grow_ranks <= 0) return 0;
-    left = (SETH_OTF_DEN_RESERVE_BYTES + others_bytes < p->free_bytes)
-           ? p->free_bytes - SETH_OTF_DEN_RESERVE_BYTES - others_bytes : 0;
+    left = SETH_OTF_DEN_RESERVE_BYTES < p->free_bytes ? p->free_bytes - SETH_OTF_DEN_RESERVE_BYTES : 0;
+    left = others_bytes < left ? left - others_bytes : 0;
     share = left / (size_t)grow_ranks;
-    room = (SETH_OTF_DEN_RUNTIME_SLACK + p->fixed < share) ? share - SETH_OTF_DEN_RUNTIME_SLACK - p->fixed : 0;
-    if (p->all + slack <= room) {
-        /* one batch: the size depends on the geometry alone */
+    room = SETH_OTF_DEN_RUNTIME_SLACK < share ? share - SETH_OTF_DEN_RUNTIME_SLACK : 0;
+    room = p->fixed < room ? room - p->fixed : 0;
+    if (p->all <= room && slack <= room - p->all) {
+        /* One full batch: retain the fast path when spare memory allows it. */
         grown = p->all + slack;
     }
-    else {
+    else if (p->largest <= room && slack <= room - p->largest) {
         grown = room - room % SETH_OTF_DEN_GROW_QUANTUM;
         if (grown < p->largest + slack) grown = p->largest + slack;
-        if (room < grown) grown = 0;
+    }
+    else {
+        /* All large-atom ranks may need compact chunks simultaneously.
+           Keep their bounded workspaces rather than making all decline. */
+        grown = p->default_workspace < room ? p->default_workspace : room;
+        if (grown <= slack || grown - slack < p->minimum) grown = 0;
     }
     p->grown = grown;
     *avail_bytes = grown ? grown - slack : (slack < room ? room - slack : 0);
@@ -3840,16 +3900,23 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
                                               const size_t *d_orbs0_off, const size_t *d_orbs1_off,
                                               const size_t *d_out_base, const int *d_Nc, const float *d_orbs0,
                                               const float *d_orbs1, const double *d_dm, const float *d_dmf,
-                                              const float *d_dml, double *d_tmpden, size_t output_count, int mode)
+                                              const float *d_dml, double *d_tmpden, size_t output_count, int mode,
+                                              int compact_orbs0)
 {
-    int p;
+    /* A compact batch has one pair but may contain millions of points.
+       Distribute those points across gangs instead of serializing every
+       vector-sized row on one gang.  Full batches retain their pair gangs. */
+    const int points_per_gang = 256;
+    const int gang_count = compact_orbs0 ?
+        (max_nolg > 0 ? 1 + (max_nolg - 1) / points_per_gang : 0) : pair_count;
+    int gang;
 
     if (mode == 2) {
         /* the CUDA kernel (shared-memory density matrix, register-resident
            orbital rows); 1 = not taken, so the OpenACC kernel below runs */
         const int status = Set_Hamiltonian_Cuda_Density(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
                                                         d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc,
-                                                        d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden, output_count);
+                                                        d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden, output_count, compact_orbs0);
         if (status == 0) return;
         if (status < 0) {
             int myid = 0;
@@ -3868,17 +3935,21 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
            much as the FP32 products) */
 #pragma acc parallel loop gang deviceptr(d_NO0, d_NO1, d_NOLG, d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, \
                                         d_out_base, d_Nc, d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden)
-        for (p = 0; p < pair_count; p++) {
+        for (gang = 0; gang < gang_count; gang++) {
+            const int p = compact_orbs0 ? 0 : gang;
             const int NO0 = d_NO0[p], NO1 = d_NO1[p], nolg = d_NOLG[p];
+            const int first_k = compact_orbs0 ? gang * points_per_gang : 0;
+            const int last_k = compact_orbs0 && points_per_gang < nolg - first_k ?
+                               first_k + points_per_gang : nolg;
             const size_t mat = (size_t)NO0 * (size_t)NO1;
             const size_t hoff = d_h_off[p], noff = d_nolg_off[p], o0 = d_orbs0_off[p], o1 = d_orbs1_off[p];
             const size_t obase = d_out_base[p];
             int k;
 #pragma acc loop vector
-            for (k = 0; k < nolg; k++) {
+            for (k = first_k; k < last_k; k++) {
                 const int Nc = d_Nc[noff + (size_t)k];
                 const float *phi1 = d_orbs1 + o1 + (size_t)k * (size_t)NO1;
-                const float *phi0 = d_orbs0 + o0 + (size_t)Nc * (size_t)NO0;
+                const float *phi0 = d_orbs0 + o0 + (size_t)(compact_orbs0 ? k : Nc) * (size_t)NO0;
                 float e0h = 0.0f, e0l = 0.0f, e1h = 0.0f, e1l = 0.0f, e2h = 0.0f, e2l = 0.0f, e3h = 0.0f, e3l = 0.0f;
                 int ii, jj, sp;
 
@@ -3935,17 +4006,21 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
     else if (mode == 1) {
 #pragma acc parallel loop gang deviceptr(d_NO0, d_NO1, d_NOLG, d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, \
                                         d_out_base, d_Nc, d_orbs0, d_orbs1, d_dmf, d_tmpden)
-        for (p = 0; p < pair_count; p++) {
+        for (gang = 0; gang < gang_count; gang++) {
+            const int p = compact_orbs0 ? 0 : gang;
             const int NO0 = d_NO0[p], NO1 = d_NO1[p], nolg = d_NOLG[p];
+            const int first_k = compact_orbs0 ? gang * points_per_gang : 0;
+            const int last_k = compact_orbs0 && points_per_gang < nolg - first_k ?
+                               first_k + points_per_gang : nolg;
             const size_t mat = (size_t)NO0 * (size_t)NO1;
             const size_t hoff = d_h_off[p], noff = d_nolg_off[p], o0 = d_orbs0_off[p], o1 = d_orbs1_off[p];
             const size_t obase = d_out_base[p];
             int k;
 #pragma acc loop vector
-            for (k = 0; k < nolg; k++) {
+            for (k = first_k; k < last_k; k++) {
                 const int Nc = d_Nc[noff + (size_t)k];
                 const float *phi1 = d_orbs1 + o1 + (size_t)k * (size_t)NO1;
-                const float *phi0 = d_orbs0 + o0 + (size_t)Nc * (size_t)NO0;
+                const float *phi0 = d_orbs0 + o0 + (size_t)(compact_orbs0 ? k : Nc) * (size_t)NO0;
                 float e0 = 0.0f, e1 = 0.0f, e2 = 0.0f, e3 = 0.0f;
                 int ii, jj;
 
@@ -3987,17 +4062,21 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
     else {
 #pragma acc parallel loop gang deviceptr(d_NO0, d_NO1, d_NOLG, d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, \
                                         d_out_base, d_Nc, d_orbs0, d_orbs1, d_dm, d_tmpden)
-        for (p = 0; p < pair_count; p++) {
+        for (gang = 0; gang < gang_count; gang++) {
+            const int p = compact_orbs0 ? 0 : gang;
             const int NO0 = d_NO0[p], NO1 = d_NO1[p], nolg = d_NOLG[p];
+            const int first_k = compact_orbs0 ? gang * points_per_gang : 0;
+            const int last_k = compact_orbs0 && points_per_gang < nolg - first_k ?
+                               first_k + points_per_gang : nolg;
             const size_t mat = (size_t)NO0 * (size_t)NO1;
             const size_t hoff = d_h_off[p], noff = d_nolg_off[p], o0 = d_orbs0_off[p], o1 = d_orbs1_off[p];
             const size_t obase = d_out_base[p];
             int k;
 #pragma acc loop vector
-            for (k = 0; k < nolg; k++) {
+            for (k = first_k; k < last_k; k++) {
                 const int Nc = d_Nc[noff + (size_t)k];
                 const float *phi1 = d_orbs1 + o1 + (size_t)k * (size_t)NO1;
-                const float *phi0 = d_orbs0 + o0 + (size_t)Nc * (size_t)NO0;
+                const float *phi0 = d_orbs0 + o0 + (size_t)(compact_orbs0 ? k : Nc) * (size_t)NO0;
                 double e0 = 0.0, e1 = 0.0, e2 = 0.0, e3 = 0.0;
                 int ii, jj;
 
@@ -4053,7 +4132,7 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
     SetHOTFDensityPlan *den_plan = &Set_Hamiltonian_OTF_DenPlan;
     int explicit_limit = 0, planned;
     const size_t limit = SETH_OTF_DensityLimitBytes(&explicit_limit);
-    size_t workspace_bytes, payload_bytes, arena_bytes, fixed_bytes, largest = 0, all_pairs = 0;
+    size_t workspace_bytes, payload_bytes, arena_bytes, fixed_bytes, largest = 0, all_pairs = 0, minimum = 0;
     /* DF/FP32 kernels consume the split/float DM only, including their
        OpenACC fallback.  Do not allocate/upload an unused FP64 duplicate. */
     size_t dm_bytes = (mode == 0) ? sizeof(double) * dm_count : 0;
@@ -4091,34 +4170,23 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
     nonresident_ranks = Set_Hamiltonian_OTF_density_ranks > 0 ? Set_Hamiltonian_OTF_density_ranks :
                         Set_Hamiltonian_OTF.nonresident_ranks > 0 ? Set_Hamiltonian_OTF.nonresident_ranks : 1;
     fixed_bytes = dm_bytes + dmf_bytes + den_bytes + 3 * 512;
-    {
+    if (planned) {
+        /* All ranks admitted the prepared budget before allocations began.
+           Re-reading free memory here makes later ranks shrink their share
+           after earlier ranks have already allocated theirs. */
+        workspace_bytes = den_plan->grown ? den_plan->grown : den_plan->default_workspace;
+    }
+    else {
         size_t free_now = 0, total_now = 0;
-
         if (OpenMX_GpuMemGetInfo(&free_now, &total_now) != cudaSuccess) return 0;
         workspace_bytes = SETH_OTF_DensityBoundWorkspace(limit, fixed_bytes, nonresident_ranks, free_now);
     }
+    if (workspace_bytes <= alignment_slack) return 0;
     payload_bytes = workspace_bytes - alignment_slack;
-    /* a batch holds at least the largest pair: when the bound's workspace
-       cannot, the one the preparation grew for this call replaces it, and
-       without one the rank integrates on the CPU */
-    if (planned) largest = den_plan->largest;
-    else SETH_OTF_DensityPairBytes(spin_count, myid, &largest, &all_pairs);
-    if (payload_bytes < largest) {
-        if (planned && largest + alignment_slack <= den_plan->grown) {
-            workspace_bytes = den_plan->grown;
-            payload_bytes = workspace_bytes - alignment_slack;
-        }
-        else {
-            if (3 <= level_stdout) {
-                fprintf(stderr,
-                        "<Set_Density_Grid> rank %d: an atom pair needs %.1f MiB of on-the-fly workspace, "
-                        "%.1f MiB available on the device; CPU loop\n",
-                        myid, (double)largest / (1024.0 * 1024.0), (double)payload_bytes / (1024.0 * 1024.0));
-                fflush(stderr);
-            }
-            return 0;
-        }
-    }
+    /* A compact point is sufficient; large overlaps are split by the plan. */
+    if (planned) minimum = den_plan->minimum;
+    else SETH_OTF_DensityPairBytes(spin_count, myid, &largest, &all_pairs, &minimum);
+    if (payload_bytes < minimum) return 0;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
                                                &unused_orbs0, &unused_orbs1);
     if (pair_count <= 0 || unused_h != dm_count) return 0;
@@ -4211,7 +4279,16 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
             if (arena_bytes < pos) Set_Hamiltonian_abort("on-the-fly density", "batch exceeds its workspace", myid);
             acc_memcpy_to_device(dev, (void *)img, bt->image_bytes);
             SETH_OTF_PROFILE_ADD(pack_seconds);
-            for (int q = 0; q < bt->pair_count; q++) {
+            if (bt->compact_orbs0) {
+                const size_t goff = Set_Hamiltonian_OTF.atom_gla_off[bt->pair_Mc_AN[0]];
+                SOG_Device_EvalPairChunk((const SOG_GpuPair *)(const void *)(img + bt->off_central_pairs),
+                                         (int)bt->total_nolg, d_Nc, Set_Hamiltonian_OTF.d_gla + goff,
+                                         Set_Hamiltonian_OTF.d_cla + goff, d_orbs0);
+                SOG_Device_EvalPairChunk((const SOG_GpuPair *)(const void *)(img + bt->off_pairs),
+                                         (int)bt->total_nolg, d_Nc, Set_Hamiltonian_OTF.d_gla + goff,
+                                         Set_Hamiltonian_OTF.d_cla + goff, d_orbs1);
+            }
+            for (int q = 0; !bt->compact_orbs0 && q < bt->pair_count; q++) {
                 const int Mc_AN = bt->pair_Mc_AN[q];
                 if (Mc_AN != previous_mc) {
                     const int Gc_AN = M2G[Mc_AN];
@@ -4230,13 +4307,14 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
                     previous_mc = Mc_AN;
                 }
             }
-            SOG_Device_EvalPairTiles(bt->pair_count, d_pairs, d_NOLG, d_nolg_off, d_orbs1_off, d_gla_off, d_Nc,
-                                     Set_Hamiltonian_OTF.d_gla, Set_Hamiltonian_OTF.d_cla, d_orbs1);
+            if (!bt->compact_orbs0)
+                SOG_Device_EvalPairTiles(bt->pair_count, d_pairs, d_NOLG, d_nolg_off, d_orbs1_off, d_gla_off, d_Nc,
+                                         Set_Hamiltonian_OTF.d_gla, Set_Hamiltonian_OTF.d_cla, d_orbs1);
             acc_wait_all();
             SETH_OTF_PROFILE_ADD(eval_seconds);
             Set_Hamiltonian_OTF_DensityKernel(bt->pair_count, spin_count, bt->max_no, bt->max_nolg, d_NO0, d_NO1, d_NOLG,
                                               d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc, d_orbs0,
-                                              d_orbs1, d_dm, d_dmf, d_dml, d_tmpden, output_count, mode);
+                                              d_orbs1, d_dm, d_dmf, d_dml, d_tmpden, output_count, mode, bt->compact_orbs0);
             acc_wait_all();
             SETH_OTF_PROFILE_ADD(device_seconds);
             batch_count++;

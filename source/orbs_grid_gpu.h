@@ -49,4 +49,8 @@ void SOG_Device_EvalPairTiles(int pair_count, const SOG_GpuPair *pairs, const in
                               const int *nolg_Nc, const int *gla, const int *cla, float *out);
 void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair, int npts, const int *gla, const int *cla, float *out);
 
+/* Host descriptor; device overlap indices, sphere indices, and compact output. */
+void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair, int npts, const int *nolg_Nc,
+                              const int *gla, const int *cla, float *out);
+
 #endif
