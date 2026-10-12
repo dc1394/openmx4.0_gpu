@@ -474,6 +474,98 @@ static int density_launch(int pair_count, int spin_count, int max_nolg, std::siz
     return (cudaDeviceSynchronize() == cudaSuccess) ? 0 : -1;
 }
 
+/* Native FP64 quadrature for A100-class devices.  The former FP64 path
+   assigned a whole pair to one OpenACC gang, serializing large overlaps
+   and rereading DM from global memory for every point.  Tile the points
+   across blocks and share DM just as the DF kernel does.  Only phi1 needs
+   an array of registers: each phi0 element is consumed by its own row. */
+template <int NMAX, bool SPLIT_SPIN>
+__global__ void density_fp64_kernel(
+    int spin_count,
+    const int *__restrict__ pair_NO0, const int *__restrict__ pair_NO1,
+    const int *__restrict__ pair_NOLG,
+    const std::size_t *__restrict__ pair_h_offset,
+    const std::size_t *__restrict__ pair_nolg_offset,
+    const std::size_t *__restrict__ pair_orbs0_offset,
+    const std::size_t *__restrict__ pair_orbs1_offset,
+    const std::size_t *__restrict__ pair_out_base,
+    const int *__restrict__ nolg_Nc,
+    const float *__restrict__ orbs0buf, const float *__restrict__ orbs1buf,
+    const double *__restrict__ dm, double *__restrict__ tmpden,
+    std::size_t output_count, int compact_orbs0)
+{
+    const int pair = static_cast<int>(blockIdx.x);
+    const int NO0 = pair_NO0[pair], NO1 = pair_NO1[pair];
+    const int NOLG = pair_NOLG[pair];
+    const int first = static_cast<int>(blockIdx.y) * static_cast<int>(blockDim.x);
+    if (first >= NOLG) return;
+    const int k = first + static_cast<int>(threadIdx.x);
+    const std::size_t mat = static_cast<std::size_t>(NO0) * NO1;
+    const std::size_t hoff = pair_h_offset[pair];
+    const int first_spin = SPLIT_SPIN ? static_cast<int>(blockIdx.z) : 0;
+    const int last_spin = SPLIT_SPIN ? first_spin + 1 : spin_count;
+    extern __shared__ double dm64_s[];
+    for (std::size_t idx = threadIdx.x; idx < static_cast<std::size_t>(last_spin - first_spin) * mat; idx += blockDim.x)
+        dm64_s[idx] = dm[hoff + static_cast<std::size_t>(first_spin) * mat + idx];
+    __syncthreads();
+    if (k >= NOLG) return;
+
+    const int Nc = nolg_Nc[pair_nolg_offset[pair] + static_cast<std::size_t>(k)];
+    const std::size_t left_row = static_cast<std::size_t>(compact_orbs0 ? k : Nc);
+    const float *phi0 = orbs0buf + pair_orbs0_offset[pair] + left_row * NO0;
+    const float *phi1 = orbs1buf + pair_orbs1_offset[pair] + static_cast<std::size_t>(k) * NO1;
+    float f1[NMAX];
+#pragma unroll
+    for (int j = 0; j < NMAX; ++j) f1[j] = j < NO1 ? phi1[j] : 0.0f;
+    const std::size_t out = pair_out_base[pair] + static_cast<std::size_t>(Nc);
+
+    for (int s = first_spin; s < last_spin; ++s) {
+        double rho = 0.0;
+        const double *dms = dm64_s + static_cast<std::size_t>(s - first_spin) * mat;
+        for (int i = 0; i < NO0; ++i) {
+            double row_sum = 0.0;
+            const double *row = dms + static_cast<std::size_t>(i) * NO1;
+#pragma unroll
+            for (int j = 0; j < NMAX; ++j) {
+                if (j >= NO1) break;
+                row_sum = __fma_rn(static_cast<double>(f1[j]), row[j], row_sum);
+            }
+            rho = __fma_rn(static_cast<double>(phi0[i]), row_sum, rho);
+        }
+        atomicAdd(tmpden + static_cast<std::size_t>(s) * output_count + out, rho);
+    }
+}
+
+template <int NMAX>
+static int density_fp64_launch(int pair_count, int spin_count, int max_nolg, std::size_t shared_bytes,
+    const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+    const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
+    const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
+    const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
+    const double *dm, double *tmpden, std::size_t output_count, int compact_orbs0, bool split_spin)
+{
+    constexpr int threads = 128;
+    if (shared_bytes > 48 * 1024 &&
+        cudaFuncSetAttribute(split_spin ? density_fp64_kernel<NMAX, true> : density_fp64_kernel<NMAX, false>,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(shared_bytes)) != cudaSuccess) {
+        (void)cudaGetLastError();
+        return 1;
+    }
+    const dim3 grid(static_cast<unsigned>(pair_count),
+                    static_cast<unsigned>(1 + (max_nolg - 1) / threads),
+                    static_cast<unsigned>(split_spin ? spin_count : 1));
+    if (split_spin)
+        density_fp64_kernel<NMAX, true><<<grid, threads, shared_bytes>>>(spin_count, pair_NO0, pair_NO1, pair_NOLG,
+            pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0);
+    else
+        density_fp64_kernel<NMAX, false><<<grid, threads, shared_bytes>>>(spin_count, pair_NO0, pair_NO1, pair_NOLG,
+            pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0);
+    if (cudaGetLastError() != cudaSuccess) return 1;
+    return cudaDeviceSynchronize() == cudaSuccess ? 0 : -1;
+}
+
 } // namespace
 
 /* 0 = done, 1 = not taken (nothing was written; use the OpenACC kernel),
@@ -506,6 +598,51 @@ extern "C" int Set_Hamiltonian_Cuda_Density(
     return density_launch<48>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
         pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
         orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0);
+}
+
+/* Same fallback contract as the DF entry point; separate symbols preserve
+   callers that explicitly request the double-float arithmetic. */
+extern "C" int Set_Hamiltonian_Cuda_Density_FP64(
+    int pair_count, int spin_count, int max_no, int max_nolg,
+    const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+    const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
+    const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
+    const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
+    const double *dm, double *tmpden, std::size_t output_count, int compact_orbs0)
+{
+    if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0) return 0;
+    const char *enabled = std::getenv("OPENMX_SETDEN_FP64_CUDA");
+    if (enabled != nullptr && enabled[0] != '\0' && std::atoi(enabled) == 0) return 1;
+    if (max_no > 48 || spin_count > 4) return 1;
+    (void)cudaGetLastError();
+    /* A100 measurements favor splitting the 48-orbital kernel tier:
+       48 orbitals with 2/4 spins took 0.556/1.598 ms unsplit and
+       0.474/0.914 ms split.  A four-spin DM then uses 18 rather than
+       72 KiB of shared memory.  Keep the smaller tiers unsplit: extra
+       orbital reads outweighed this benefit for 26 orbitals / 2 spins.
+       Explicit 0/1 overrides retain both paths for other workloads. */
+    const char *split = std::getenv("OPENMX_SETDEN_FP64_SPLIT_SPIN");
+    const bool split_spin = spin_count > 1 &&
+        ((split != nullptr && split[0] != '\0') ? std::atoi(split) != 0 : max_no > 32);
+    const std::size_t shared_bytes = static_cast<std::size_t>(split_spin ? 1 : spin_count) * max_no * max_no * sizeof(double);
+    int device = 0, max_shared = 0;
+    if (cudaGetDevice(&device) != cudaSuccess) return 1;
+    if (cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device) != cudaSuccess) return 1;
+    if (shared_bytes > static_cast<std::size_t>(max_shared)) return 1;
+    /* CUDA's y dimension is bounded even when compact workspaces can hold
+       a much longer overlap.  The OpenACC fallback handles those cases. */
+    if (1 + (max_nolg - 1) / 128 > 65535) return 1;
+    if (max_no <= 16)
+        return density_fp64_launch<16>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
+            pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin);
+    if (max_no <= 32)
+        return density_fp64_launch<32>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
+            pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin);
+    return density_fp64_launch<48>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
+        pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
+        orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin);
 }
 
 extern "C" int Set_Hamiltonian_Cuda_MatrixElements(

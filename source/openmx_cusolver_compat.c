@@ -3,10 +3,12 @@
  * architecture/math-mode/problem-size dependent selector in algorithm 0.
  * Default to that selector for complete spectra; preserve SYEVDX's subset
  * computation for partial spectra. Explicit settings retain manual control.
- * FP64
- * emulation is enabled on the solver handle: cuBLAS environment variables
- * alone do not configure cuSOLVER's private cuBLAS handles. CUDA 13.4 cuBLAS
- * chooses Ozaki-II when it is faster than Ozaki-I/native FP64.
+ * FP64 emulation is enabled by default only on devices without fast native
+ * FP64. A100/H100 keep native math, including native FP64 Tensor Cores,
+ * and avoid the emulation retry's full-matrix backup on every solve.
+ * cuBLAS environment variables alone do not configure cuSOLVER's private
+ * cuBLAS handles. CUDA 13.4 cuBLAS chooses Ozaki-II when it is faster than
+ * Ozaki-I/native FP64.
  * https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/
  * https://docs.nvidia.com/cuda/cusolver/#floating-point-emulation
  */
@@ -130,6 +132,24 @@ static cusolverStatus_t openmx_solver_policy_init(void)
     return CUSOLVER_STATUS_SUCCESS;
 }
 
+#if CUSOLVER_VERSION >= 12200
+static int openmx_solver_emulation_default(void)
+{
+    int device, ratio;
+    /* A100's FP32:FP64 instruction throughput ratio is 2. Its native FP64
+       Tensor Cores make integer emulation particularly unattractive; merely
+       setting a performant emulation strategy still incurs our n*n retry
+       backup. Keep the prior default if querying an unfamiliar device fails.
+       Do not cache this decision: a thread may create handles on several
+       different devices. Explicit OPENMX_CUSOLVER_EMULATION takes precedence. */
+    if (cudaGetDevice(&device) == cudaSuccess &&
+        cudaDeviceGetAttribute(&ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio,
+                               device) == cudaSuccess && ratio > 0 && ratio < 8)
+        return 0;
+    return 1;
+}
+#endif
+
 cusolverStatus_t openmx_cusolverDnCreate(cusolverDnHandle_t *handle)
 {
     cusolverStatus_t st = cusolverDnCreate(handle);
@@ -137,7 +157,8 @@ cusolverStatus_t openmx_cusolverDnCreate(cusolverDnHandle_t *handle)
 #if CUSOLVER_VERSION >= 12200
     {
         const char *s = getenv("OPENMX_CUSOLVER_EMULATION");
-        if (!s || atoi(s) != 0) {
+        int emulate = s && *s ? atoi(s) != 0 : openmx_solver_emulation_default();
+        if (emulate) {
             st = cusolverDnSetMathMode(*handle, CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH);
             if (st == CUSOLVER_STATUS_SUCCESS)
                 st = cusolverDnSetEmulationStrategy(*handle, CUDA_EMULATION_STRATEGY_PERFORMANT);
@@ -155,6 +176,9 @@ cusolverStatus_t openmx_cusolverDnCreate(cusolverDnHandle_t *handle)
                 return st;
             }
         }
+        else if (openmx_solver_verbose())
+            fprintf(stderr, "OpenMX: cuSOLVER native FP64 (%s); no emulation retry backup.\n",
+                    s && *s ? "OPENMX_CUSOLVER_EMULATION override" : "fast native FP64 device");
     }
 #endif
     return CUSOLVER_STATUS_SUCCESS;

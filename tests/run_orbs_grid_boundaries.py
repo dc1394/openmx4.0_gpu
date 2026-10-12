@@ -39,7 +39,8 @@ static double *Spe_PAO_RV[] = {rv};
 static double *mul[] = {rw}, **angular[] = {mul}, ***Spe_PAO_RWF[] = {angular};
 static double atv[1][4], gtv[4][4], Grid_Origin[4];
 static int SOG_gpu_eligible(int kind) { return 1; }
-static int SOG_eval_double_float(void) { return 1; }
+static int eval_df = 1;
+static int SOG_eval_double_float(void) { return eval_df; }
 static size_t SOG_arena_off(size_t *pos, size_t bytes) {
   size_t off = *pos; *pos = (off + bytes + 511U) & ~(size_t)511U; return off;
 }
@@ -84,8 +85,22 @@ int main(void) {
       assert(fabs((double)result.hi + result.lo - reference) < 2e-12);
     }
   }
+  const size_t df_bytes = SOG_dev.bytes;
   free(radial); free(SOG_dev.arena);
-  puts("PASS: orbital end intervals, 11 allocation failures, device OOM, retry");
+  memset(&SOG_dev, 0, sizeof(SOG_dev));
+  eval_df = 0;
+  for (int failure = 1; failure <= 8; ++failure) {
+    fail_at = failure; allocation = 0;
+    assert(!SOG_Device_Prepare()); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
+    assert(live == 0);
+  }
+  fail_at = 0; allocation = 0;
+  assert(SOG_Device_Prepare()); assert(live == 0); assert(allocation == 8);
+  assert(SOG_dev.bytes < df_bytes);
+  assert(!SOG_dev.rwd && !SOG_dev.mcd && !SOG_dev.spl);
+  assert(SOG_dev.rv && SOG_dev.rwf && !SOG_dev.eval_df);
+  free(SOG_dev.arena);
+  puts("PASS: orbital end intervals, DF/FP64 allocation failures, device OOM, retry, FP64 table savings");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-orbs-test-') as tmp:

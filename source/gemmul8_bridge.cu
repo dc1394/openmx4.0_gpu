@@ -35,6 +35,7 @@ constexpr unsigned kDefaultMaxWorkspacePercent = 30u;
 constexpr size_t   kMiB = 1024u * 1024u;
 constexpr unsigned kDefaultMemorySavingMiB = 256u;
 constexpr size_t   kMinMemorySavingBytes = size_t(256) * kMiB;
+constexpr unsigned kDefaultA100ForwardMinN = 6144u;
 
 struct WorkspaceKey {
     int          device;
@@ -63,9 +64,9 @@ std::unordered_map<WorkspaceKey, Workspace, WorkspaceKeyHash> g_workspaces;
 
 /* scf.gemmul8.enable from the input file; written once per input parse
    (Input_std.c, before any GEMM runs) via openmx_gemmul8SetEnabled().
-   0 sends every call straight to plain cuBLAS FP64 GEMM, so the GEMMul8
-   contribution can be isolated without touching the environment. */
-int g_input_enabled = 1;
+   -1 selects the device default, 0 forces plain cuBLAS FP64 GEMM, and
+   1 enables GEMMul8 subject to the existing environment overrides. */
+int g_input_enabled = -1;
 
 /* OPENMX_GEMMUL8_TIMING=1: every call of openmx_gemmul8{D,Z}gemm is timed
    with a stream synchronization before and after it, and counted by type
@@ -149,14 +150,84 @@ size_t env_mib(const char *openmx_env, const char *gemmul8_env, unsigned fallbac
     return static_cast<size_t>(mib) * kMiB;
 }
 
+/* General GEMMs on A100 and other GPUs with full-rate FP64 use native
+   double-precision GEMM (including its FP64 Tensor Core kernels).  The
+   INT8 decomposition is intended for GPUs with weak FP64 hardware.  Use
+   the same throughput boundary as grid_precision and eigen_refine_gpu,
+   rather than assuming every Ampere device has A100's FP64 hardware.
+   Cache the current device per thread; cudaSetDevice must not leave a
+   previous device's policy active.  Unknown hardware keeps the old default. */
+bool native_fp64_device_default()
+{
+    static thread_local int cached_device = -1;
+    static thread_local bool native = false;
+    int device = -1;
+
+    if (cudaGetDevice(&device) != cudaSuccess) return false;
+    if (device != cached_device) {
+        int ratio = 0;
+        if (cudaDeviceGetAttribute(&ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio, device) != cudaSuccess)
+            return false;
+        native = 0 < ratio && ratio < 8;
+        cached_device = device;
+        if (native && (verbose_logging_enabled() || OPENMX_STDOUT_LEVEL(2))) {
+            std::fprintf(stderr,
+                         "openmx_gemmul8: device %d uses native cuBLAS FP64 for general GEMMs by default "
+                         "(FP32:FP64 throughput ratio %d); scf.gemmul8.enable=on or "
+                         "OPENMX_GEMMUL8_DISABLE=0 enables GEMMul8.\n", device, ratio);
+        }
+    }
+    return native;
+}
+
+bool gemmul8_environment_override(const char *openmx_env, const char *gemmul8_env, bool *disabled)
+{
+    /* Highest-priority override first.  In particular, an explicit zero
+       opts back into GEMMul8 even on native-FP64 devices. */
+    for (const char *name : {openmx_env, gemmul8_env, "OPENMX_GEMMUL8_DISABLE", "GEMMUL8_DISABLE"}) {
+        const char *value = std::getenv(name);
+        if (value != nullptr && *value != '\0') {
+            *disabled = value[0] == '1';
+            return true;
+        }
+    }
+    return false;
+}
+
 bool gemmul8_disabled(const char *openmx_env, const char *gemmul8_env)
 {
-    bool disabled = env_bool("GEMMUL8_DISABLE", false);
-    disabled      = env_bool("OPENMX_GEMMUL8_DISABLE", disabled);
-    disabled      = env_bool(gemmul8_env, disabled);
-    disabled      = env_bool(openmx_env, disabled);
+    bool disabled = false;
+    if (gemmul8_environment_override(openmx_env, gemmul8_env, &disabled)) return disabled;
+    return g_input_enabled < 0 && native_fp64_device_default();
+}
 
-    return disabled;
+/* Measured on full A100 sm_80: native FP64 wins small forward products,
+   while full-workspace Ozaki wins large real square products even after
+   the production scratch trim. Do not extrapolate that crossover to MIG,
+   A30, GeForce, other architectures, complex products or capped workspaces.
+   Explicit arithmetic choices are handled before considering this policy. */
+bool a100_large_forward_candidate(int m, int n, int k)
+{
+    const unsigned min_n = env_u32("OPENMX_GEMMUL8_A100_FORWARD_MIN_N", kDefaultA100ForwardMinN);
+    bool disabled = false;
+    if (g_input_enabled >= 0 || min_n == 0 || m != n || m != k || m <= 0 ||
+        static_cast<unsigned>(m) < min_n ||
+        gemmul8_environment_override("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D", &disabled)) return false;
+    if (!native_fp64_device_default()) return false;
+
+    static thread_local int cached_device = -1;
+    static thread_local bool full_a100 = false;
+    int device = -1;
+    if (cudaGetDevice(&device) != cudaSuccess) return false;
+    if (device != cached_device) {
+        int major = 0, minor = 0, sms = 0;
+        if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
+            cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device) != cudaSuccess ||
+            cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) return false;
+        full_a100 = major == 8 && minor == 0 && sms >= 100;
+        cached_device = device;
+    }
+    return full_a100;
 }
 
 /* Ported from the AMD bridge: keep Ozaki-II enabled for large matrices by
@@ -414,14 +485,10 @@ cublasStatus_t general_dgemm(cublasHandle_t handle, cublasOperation_t transa, cu
                              int k, const double *alpha, const double *A, int lda, const double *B, int ldb,
                              const double *beta, double *C, int ldc, bool *native)
 {
-    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
-    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
     const cublasOperation_t gemmul8_transa = (transa == CUBLAS_OP_C) ? CUBLAS_OP_T : transa;
     const cublasOperation_t gemmul8_transb = (transb == CUBLAS_OP_C) ? CUBLAS_OP_T : transb;
-    void          *work = nullptr;
-    WorkspaceReport report;
 
-    if (!g_input_enabled) {
+    if (g_input_enabled == 0) {
         /* scf.gemmul8.enable off: the fallback is what the user asked for,
            so no warning (Input_std already reported it once) */
         *native = true;
@@ -429,12 +496,14 @@ cublasStatus_t general_dgemm(cublasHandle_t handle, cublasOperation_t transa, cu
     }
 
     if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
-        report.reason = "environment disable";
-        log_workspace_fallback_once<false>(report);
         *native = true;
         return cublasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
+    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
+    const bool fastmode = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
+    void *work = nullptr;
+    WorkspaceReport report;
     apply_memory_saving(handle);
 
     cublasStatus_t status =
@@ -524,24 +593,23 @@ extern "C" void openmx_gemmul8TrimWorkspaces(void)
     }
 }
 
-/* scf.gemmul8.enable from the input file (Input_std.c); default on */
+/* scf.gemmul8.enable: absent=-1 (device default), off=0, on=1. */
 extern "C" void openmx_gemmul8SetEnabled(int enabled)
 {
-    g_input_enabled = (enabled != 0);
+    g_input_enabled = enabled < 0 ? -1 : (enabled != 0);
 }
 
-/* 1 when openmx_gemmul8Zgemm takes the GEMMul8 path at all: scf.gemmul8.enable
-   on and the complex products not disabled from the environment (a call can
-   still fall back for want of workspace) */
+/* General-GEMM policy only; large A100 Fixed transforms may select GEMMul8
+   separately. A permitted call can still fall back for want of workspace. */
 extern "C" int openmx_gemmul8ZgemmEnabled(void)
 {
-    return g_input_enabled && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z") ? 1 : 0;
+    return g_input_enabled != 0 && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z") ? 1 : 0;
 }
 
 /* the same for openmx_gemmul8Dgemm */
 extern "C" int openmx_gemmul8DgemmEnabled(void)
 {
-    return g_input_enabled && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D") ? 1 : 0;
+    return g_input_enabled != 0 && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D") ? 1 : 0;
 }
 
 /* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
@@ -553,7 +621,7 @@ extern "C" long long openmx_gemmul8NativeCalls(int is_complex)
 
 extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
 {
-    if (m <= 0 || n <= 0 || k <= 0 || !g_input_enabled ||
+    if (m <= 0 || n <= 0 || k <= 0 || g_input_enabled == 0 ||
         gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
         return 0;
     }
@@ -568,7 +636,7 @@ extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
 
 extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
 {
-    if (m <= 0 || n <= 0 || k <= 0 || !g_input_enabled ||
+    if (m <= 0 || n <= 0 || k <= 0 || g_input_enabled == 0 ||
         gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
         return 0;
     }
@@ -588,12 +656,7 @@ cublasStatus_t general_zgemm(cublasHandle_t handle, cublasOperation_t transa, cu
                              const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta, cuDoubleComplex *C,
                              int ldc, bool *native)
 {
-    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
-    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
-    void          *work = nullptr;
-    WorkspaceReport report;
-
-    if (!g_input_enabled) {
+    if (g_input_enabled == 0) {
         /* scf.gemmul8.enable off: the fallback is what the user asked for,
            so no warning (Input_std already reported it once) */
         *native = true;
@@ -601,12 +664,14 @@ cublasStatus_t general_zgemm(cublasHandle_t handle, cublasOperation_t transa, cu
     }
 
     if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
-        report.reason = "environment disable";
-        log_workspace_fallback_once<true>(report);
         *native = true;
         return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
+    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
+    const bool fastmode = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
+    void *work = nullptr;
+    WorkspaceReport report;
     apply_memory_saving(handle);
 
     cublasStatus_t status =
@@ -769,7 +834,7 @@ ForwardStage forward_stage()
    grown to `required` bytes.  Only the free-memory reserve applies; the
    rank-share policy of ensure_workspace() assumes every rank holds such a
    workspace, whereas only the dense-owning rank reaches these products. */
-cublasStatus_t ensure_scratch(cublasHandle_t handle, size_t required, void **work)
+cublasStatus_t ensure_scratch(cublasHandle_t handle, size_t required, void **work, bool automatic_forward = false)
 {
     cudaStream_t stream = nullptr;
     int          device = -1;
@@ -783,11 +848,29 @@ cublasStatus_t ensure_scratch(cublasHandle_t handle, size_t required, void **wor
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
     Workspace &workspace = g_workspaces[WorkspaceKey{device, stream}];
 
+    if (automatic_forward) {
+        size_t free_bytes = 0, total_bytes = 0;
+        unsigned percent = env_percent("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT", "GEMMUL8_MAX_WORKSPACE_PERCENT",
+                                       0u);
+        /* Only dense owners reach this short-lived scratch (one, or two
+           spin owners for a cluster), not every local MPI rank. Follow
+           the existing full-workspace free/reserve budget by default;
+           honor an explicit percentage cap with its existing rank share. */
+        if (device_mem_get_info(&free_bytes, &total_bytes) != cudaSuccess || total_bytes == 0 ||
+            (percent != 0 && workspace_exceeds_fraction(required, total_bytes, percent, ranks_sharing_gpu())) ||
+            free_after_workspace_is_too_low(free_bytes, workspace.size, required, reserve)) {
+            if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
+            return CUBLAS_STATUS_ALLOC_FAILED;
+        }
+    }
+
     if (workspace.size < required) {
         size_t free_bytes = 0, total_bytes = 0;
 
         if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
-        if (device_mem_get_info(&free_bytes, &total_bytes) == cudaSuccess && free_bytes < required + reserve)
+        const cudaError_t memory_status = device_mem_get_info(&free_bytes, &total_bytes);
+        if ((automatic_forward && memory_status != cudaSuccess) ||
+            (memory_status == cudaSuccess && free_bytes < required + reserve))
             return CUBLAS_STATUS_ALLOC_FAILED;
         if (cudaMalloc(&workspace.ptr, required) != cudaSuccess) {
             workspace.ptr = nullptr;
@@ -874,7 +957,7 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
     const bool reuse_stage   = !default_stage && stage.reuse;
     unsigned   num_moduli    = stage.num_moduli;
     bool       fastmode      = stage.fastmode;
-    bool       native        = stage.mode == kForwardFp64 || !g_input_enabled;
+    bool       native        = stage.mode == kForwardFp64 || g_input_enabled == 0;
 
     if (default_stage) {
         num_moduli = gemmul8_num_moduli(is_complex ? "OPENMX_GEMMUL8_NUM_MOD_Z" : "OPENMX_GEMMUL8_NUM_MOD_D",
@@ -884,6 +967,9 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
         native     = native || gemmul8_disabled(is_complex ? "OPENMX_GEMMUL8_DISABLE_Z" : "OPENMX_GEMMUL8_DISABLE_D",
                                                 is_complex ? "GEMMUL8_DISABLE_Z" : "GEMMUL8_DISABLE_D");
     }
+    const bool automatic_forward = !is_complex && default_stage && native && stage.unblocked &&
+                                   a100_large_forward_candidate(m, n, k);
+    if (automatic_forward) native = false;
     const auto general_entry = [&]() {
         if constexpr (is_complex) {
             return openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc);
@@ -924,7 +1010,7 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
                 ++g_forward_counters.capacity_fallbacks;
             }
 
-            status = ensure_scratch(handle, total - keep, &work);
+            status = ensure_scratch(handle, total - keep, &work, automatic_forward);
             if (status == CUBLAS_STATUS_SUCCESS) {
                 const bool reuse = entry != nullptr;
                 const bool skip  = reuse && entry->valid && entry->version == x_version && entry->m == m &&
@@ -1026,7 +1112,7 @@ extern "C" cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cu
                                                        cuDoubleComplex *C, int ldc)
 {
     if (m <= 0 || n <= 0 || k <= 0) return CUBLAS_STATUS_SUCCESS;
-    if (!g_input_enabled || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z"))
+    if (g_input_enabled == 0 || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z"))
         return openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     return timed_general_gemm(handle, 1, 8.0 * m * n * k, [&](bool *native) -> cublasStatus_t {
         const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
@@ -1056,7 +1142,7 @@ extern "C" cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cu
                                                        int ldb, const double *beta, double *C, int ldc)
 {
     if (m <= 0 || n <= 0 || k <= 0) return CUBLAS_STATUS_SUCCESS;
-    if (!g_input_enabled || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D"))
+    if (g_input_enabled == 0 || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D"))
         return openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     return timed_general_gemm(handle, 0, 2.0 * m * n * k, [&](bool *native) -> cublasStatus_t {
         const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");

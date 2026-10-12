@@ -1051,16 +1051,26 @@ host_fallback:
    --------------------------------------------------------------------- */
 static SOG_DeviceTables SOG_dev = {0};
 
-/* OPENMX_ORBS_EVAL_PRECISION: "df" (double-float, the default) or "fp64"
-   for the on-the-fly tiles; the tables are always built in FP64 */
+/* OPENMX_ORBS_EVAL_PRECISION: "df" or "fp64" for the on-the-fly
+   tiles.  Native FP64 avoids the error-free FP32 transformations on A100
+   and other devices with a fast FP64 pipeline.  Match the grid-integral
+   policy: use DF only when FP64 throughput is at least eight times lower.
+   An explicit setting always wins; failed probes conservatively use FP64. */
 static int SOG_eval_double_float(void)
 {
   const char *value = getenv("OPENMX_ORBS_EVAL_PRECISION");
 
-  if (value == NULL || value[0] == '\0') return 1;
-  if (strcmp(value, "fp64") == 0 || strcmp(value, "FP64") == 0 || strcmp(value, "64") == 0 ||
-      strcmp(value, "double") == 0) return 0;
-  return 1;
+  if (value != NULL && value[0] != '\0') {
+    if (strcmp(value, "fp64") == 0 || strcmp(value, "FP64") == 0 || strcmp(value, "64") == 0 ||
+        strcmp(value, "double") == 0) return 0;
+    return 1;
+  }
+  {
+    int device = 0, perf_ratio = 0;
+    return cudaGetDevice(&device) == cudaSuccess &&
+           cudaDeviceGetAttribute(&perf_ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio, device) == cudaSuccess &&
+           perf_ratio >= 8;
+  }
 }
 
 void SOG_Device_Release(void)
@@ -1125,54 +1135,58 @@ int SOG_Device_Prepare(void)
     atv_flat[3 * r + 1] = atv[r][2];
     atv_flat[3 * r + 2] = atv[r][3];
   }
-  /* the double-float tables: every radial value as (hi, lo), and per
-     mesh point rv, h2 and the spline weights dum1..dum4 of SOG_point_eval
-     as (hi, lo); the ends m = 1 and m = mesh - 1 (unreachable while the
-     atom's cutoff lies inside the mesh) take the host's corrected h1 / h3 */
-  rwd_h = (float*)malloc(sizeof(float) * 2 * (rwf_cnt == 0 ? 1 : rwf_cnt));
-  mcd_h = (float*)malloc(sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
-  spl_h = (float*)malloc(sizeof(float) * 2 * (size_t)SpeciesNum);
-  if (!rwd_h || !mcd_h || !spl_h) goto host_fallback;
-  for (r = 0; r < rwf_cnt; r++) {
-    const float hi = (float)pao_rwf[r];
-    rwd_h[2 * r] = hi;
-    rwd_h[2 * r + 1] = (float)(pao_rwf[r] - (double)hi);
-  }
-  for (w = 0; w < SpeciesNum; w++) {
-    const int mesh = Spe_Num_Mesh_PAO[w];
-    const double *rvw = pao_rv + rv_off_h[w];
-    float *mc = mcd_h + SOG_MCD_STRIDE * rv_off_h[w];
-    int m;
+  /* Native FP64 never reads the DF mesh/spline representation.  Avoid
+     constructing, transferring and retaining that duplicate on A100. */
+  if (SOG_dev.eval_df) {
+    /* the double-float tables: every radial value as (hi, lo), and per
+       mesh point rv, h2 and the spline weights dum1..dum4 of SOG_point_eval
+       as (hi, lo); the ends m = 1 and m = mesh - 1 (unreachable while the
+       atom's cutoff lies inside the mesh) take the host's corrected h1 / h3 */
+    rwd_h = (float*)malloc(sizeof(float) * 2 * (rwf_cnt == 0 ? 1 : rwf_cnt));
+    mcd_h = (float*)malloc(sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
+    spl_h = (float*)malloc(sizeof(float) * 2 * (size_t)SpeciesNum);
+    if (!rwd_h || !mcd_h || !spl_h) goto host_fallback;
+    for (r = 0; r < rwf_cnt; r++) {
+      const float hi = (float)pao_rwf[r];
+      rwd_h[2 * r] = hi;
+      rwd_h[2 * r + 1] = (float)(pao_rwf[r] - (double)hi);
+    }
+    for (w = 0; w < SpeciesNum; w++) {
+      const int mesh = Spe_Num_Mesh_PAO[w];
+      const double *rvw = pao_rv + rv_off_h[w];
+      float *mc = mcd_h + SOG_MCD_STRIDE * rv_off_h[w];
+      int m;
 
-    spl_h[2 * w] = (float)log(rvw[0]);
-    spl_h[2 * w + 1] = (float)((log(rvw[mesh - 1]) - log(rvw[0])) / (double)(mesh - 1));
-    for (m = 0; m < mesh; m++, mc += SOG_MCD_STRIDE) {
-      double v[6], h1, h2, h3, dum;
-      int q;
+      spl_h[2 * w] = (float)log(rvw[0]);
+      spl_h[2 * w + 1] = (float)((log(rvw[mesh - 1]) - log(rvw[0])) / (double)(mesh - 1));
+      for (m = 0; m < mesh; m++, mc += SOG_MCD_STRIDE) {
+        double v[6], h1, h2, h3, dum;
+        int q;
 
-      for (q = 0; q < SOG_MCD_STRIDE; q++) mc[q] = 0.0f;
-      v[0] = rvw[m];
-      if (m < 1) {
-        mc[0] = (float)v[0];
-        mc[1] = (float)(v[0] - (double)mc[0]);
-        continue;
-      }
-      h2 = rvw[m] - rvw[m - 1];
-      h1 = (2 <= m) ? rvw[m - 1] - rvw[m - 2] : 0.0;
-      h3 = (m <= mesh - 2) ? rvw[m + 1] - rvw[m] : 0.0;
-      if (m == 1) h1 = -(h2 + h3);
-      if (m == mesh - 1) h3 = -(h1 + h2);
-      v[1] = h2;
-      dum = h1 + h2;
-      v[2] = h1 / h2 / dum;
-      v[3] = h2 / h1 / dum;
-      dum = h2 + h3;
-      v[4] = h2 / h3 / dum;
-      v[5] = h3 / h2 / dum;
-      for (q = 0; q < 6; q++) {
-        const float hi = (float)v[q];
-        mc[2 * q] = hi;
-        mc[2 * q + 1] = (float)(v[q] - (double)hi);
+        for (q = 0; q < SOG_MCD_STRIDE; q++) mc[q] = 0.0f;
+        v[0] = rvw[m];
+        if (m < 1) {
+          mc[0] = (float)v[0];
+          mc[1] = (float)(v[0] - (double)mc[0]);
+          continue;
+        }
+        h2 = rvw[m] - rvw[m - 1];
+        h1 = (2 <= m) ? rvw[m - 1] - rvw[m - 2] : 0.0;
+        h3 = (m <= mesh - 2) ? rvw[m + 1] - rvw[m] : 0.0;
+        if (m == 1) h1 = -(h2 + h3);
+        if (m == mesh - 1) h3 = -(h1 + h2);
+        v[1] = h2;
+        dum = h1 + h2;
+        v[2] = h1 / h2 / dum;
+        v[3] = h2 / h1 / dum;
+        dum = h2 + h3;
+        v[4] = h2 / h3 / dum;
+        v[5] = h3 / h2 / dum;
+        for (q = 0; q < 6; q++) {
+          const float hi = (float)v[q];
+          mc[2 * q] = hi;
+          mc[2 * q + 1] = (float)(v[q] - (double)hi);
+        }
       }
     }
   }
@@ -1184,9 +1198,12 @@ int SOG_Device_Prepare(void)
   o_spx = SOG_arena_off(&pos, sizeof(int) * (size_t)SpeciesNum);
   o_spb = SOG_arena_off(&pos, sizeof(int) * (size_t)SpeciesNum * (SOG_L0MAX + 1));
   o_atv = SOG_arena_off(&pos, sizeof(double) * atv_rows * 3);
-  o_rwd = SOG_arena_off(&pos, sizeof(float) * 2 * (rwf_cnt == 0 ? 1 : rwf_cnt));
-  o_mcd = SOG_arena_off(&pos, sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
-  o_spl = SOG_arena_off(&pos, sizeof(float) * 2 * (size_t)SpeciesNum);
+  o_rwd = o_mcd = o_spl = 0;
+  if (SOG_dev.eval_df) {
+    o_rwd = SOG_arena_off(&pos, sizeof(float) * 2 * (rwf_cnt == 0 ? 1 : rwf_cnt));
+    o_mcd = SOG_arena_off(&pos, sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
+    o_spl = SOG_arena_off(&pos, sizeof(float) * 2 * (size_t)SpeciesNum);
+  }
   arena = (unsigned char*)SOG_arena_try(pos);
   if (arena == NULL) goto host_fallback;
   acc_memcpy_to_device(arena + o_rv, pao_rv, sizeof(double) * (rv_cnt == 0 ? 1 : rv_cnt));
@@ -1197,9 +1214,11 @@ int SOG_Device_Prepare(void)
   acc_memcpy_to_device(arena + o_spx, sp_maxl_h, sizeof(int) * (size_t)SpeciesNum);
   acc_memcpy_to_device(arena + o_spb, sp_nb_h, sizeof(int) * (size_t)SpeciesNum * (SOG_L0MAX + 1));
   acc_memcpy_to_device(arena + o_atv, atv_flat, sizeof(double) * atv_rows * 3);
-  acc_memcpy_to_device(arena + o_rwd, rwd_h, sizeof(float) * 2 * (rwf_cnt == 0 ? 1 : rwf_cnt));
-  acc_memcpy_to_device(arena + o_mcd, mcd_h, sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
-  acc_memcpy_to_device(arena + o_spl, spl_h, sizeof(float) * 2 * (size_t)SpeciesNum);
+  if (SOG_dev.eval_df) {
+    acc_memcpy_to_device(arena + o_rwd, rwd_h, sizeof(float) * 2 * (rwf_cnt == 0 ? 1 : rwf_cnt));
+    acc_memcpy_to_device(arena + o_mcd, mcd_h, sizeof(float) * SOG_MCD_STRIDE * (rv_cnt == 0 ? 1 : rv_cnt));
+    acc_memcpy_to_device(arena + o_spl, spl_h, sizeof(float) * 2 * (size_t)SpeciesNum);
+  }
   SOG_dev.arena = arena;
   SOG_dev.bytes = pos;
   SOG_dev.rv = (const double*)(const void*)(arena + o_rv);
@@ -1210,9 +1229,9 @@ int SOG_Device_Prepare(void)
   SOG_dev.spx = (const int*)(const void*)(arena + o_spx);
   SOG_dev.spb = (const int*)(const void*)(arena + o_spb);
   SOG_dev.atv = (const double*)(const void*)(arena + o_atv);
-  SOG_dev.rwd = (const float*)(const void*)(arena + o_rwd);
-  SOG_dev.mcd = (const float*)(const void*)(arena + o_mcd);
-  SOG_dev.spl = (const float*)(const void*)(arena + o_spl);
+  SOG_dev.rwd = SOG_dev.eval_df ? (const float*)(const void*)(arena + o_rwd) : NULL;
+  SOG_dev.mcd = SOG_dev.eval_df ? (const float*)(const void*)(arena + o_mcd) : NULL;
+  SOG_dev.spl = SOG_dev.eval_df ? (const float*)(const void*)(arena + o_spl) : NULL;
   SOG_dev.ng23 = Ngrid2 * Ngrid3;
   SOG_dev.ng3 = Ngrid3;
   for (i = 0; i < 3; i++) {

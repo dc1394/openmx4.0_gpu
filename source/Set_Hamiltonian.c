@@ -84,6 +84,13 @@ int Set_Hamiltonian_Cuda_Density(int pair_count, int spin_count, int max_no, int
                                  const size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf,
                                  const float *orbs1buf, const float *dmf, const float *dml, double *tmpden,
                                  size_t output_count, int compact_orbs0);
+int Set_Hamiltonian_Cuda_Density_FP64(int pair_count, int spin_count, int max_no, int max_nolg,
+                                      const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+                                      const size_t *pair_h_offset, const size_t *pair_nolg_offset,
+                                      const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
+                                      const size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf,
+                                      const float *orbs1buf, const double *dm, double *tmpden,
+                                      size_t output_count, int compact_orbs0);
 int Set_Hamiltonian_Cuda_MatrixElements(int pair_count, int spin_count, size_t vpot_len,
                                         double grid_vol, int max_no, int max_output_count,
                                         const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
@@ -3911,12 +3918,17 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
         (max_nolg > 0 ? 1 + (max_nolg - 1) / points_per_gang : 0) : pair_count;
     int gang;
 
-    if (mode == 2) {
-        /* the CUDA kernel (shared-memory density matrix, register-resident
-           orbital rows); 1 = not taken, so the OpenACC kernel below runs */
-        const int status = Set_Hamiltonian_Cuda_Density(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
-                                                        d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc,
-                                                        d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden, output_count, compact_orbs0);
+    if (mode == 0 || mode == 2) {
+        /* CUDA quadrature uses a shared density matrix and register-resident
+           orbitals in native FP64 as well as DF.  A return of 1 leaves the
+           output untouched and selects the OpenACC fallback below. */
+        const int status = mode == 0 ?
+            Set_Hamiltonian_Cuda_Density_FP64(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
+                d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc,
+                d_orbs0, d_orbs1, d_dm, d_tmpden, output_count, compact_orbs0) :
+            Set_Hamiltonian_Cuda_Density(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
+                d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc,
+                d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden, output_count, compact_orbs0);
         if (status == 0) return;
         if (status < 0) {
             int myid = 0;

@@ -810,11 +810,14 @@ void Input_std(char *file)
 
   /* GEMMul8 on/off for the GPU dense-GEMM bridge, so its contribution can
      be isolated: off routes every openmx_gemmul8{D,Z}gemm call to plain
-     cuBLAS FP64 GEMM.  Absent keyword = on (the production default). */
+     cuBLAS FP64 GEMM.  Absent keyword selects the device default: native
+     FP64 for general A100 GEMMs, with a separate large-forward policy;
+     GEMMul8 on GPUs with weak FP64 hardware.
+     An explicit on keeps GEMMul8 enabled on either device class. */
   {
     int gemmul8_enable;
 
-    input_logical("scf.gemmul8.enable", &gemmul8_enable, 1);
+    input_logical("scf.gemmul8.enable", &gemmul8_enable, -1);
     openmx_gemmul8SetEnabled(gemmul8_enable);
     if (gemmul8_enable==0 && myid==Host_ID && 2<=level_stdout){
       printf("<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain cuBLAS instead of GEMMul8.\n");

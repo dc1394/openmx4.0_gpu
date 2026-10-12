@@ -127,9 +127,8 @@ int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
         int device = 0, perf_ratio = 0;
 
         if (cudaGetDevice(&device) == cudaSuccess &&
-            cudaDeviceGetAttribute(&perf_ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio, device) == cudaSuccess &&
-            8 <= perf_ratio) {
-            if (cplx ? openmx_gemmul8ZgemmEnabled() : openmx_gemmul8DgemmEnabled()) {
+            cudaDeviceGetAttribute(&perf_ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio, device) == cudaSuccess) {
+            if (8 <= perf_ratio && (cplx ? openmx_gemmul8ZgemmEnabled() : openmx_gemmul8DgemmEnabled())) {
                 iterations = 2;
                 *ratio = perf_ratio;
                 if (verbose) {
@@ -138,9 +137,14 @@ int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
                     fflush(stdout);
                 }
             }
-            else if (verbose) {
+            else if (8 <= perf_ratio && verbose) {
                 printf("<eigen_refine_gpu> the refined FP32 eigensolver is not used: the %s GEMMul8 products are off "
                        "(FP32:FP64 throughput ratio %d)\n", cplx ? "complex" : "real", perf_ratio);
+                fflush(stdout);
+            }
+            else if (0 < perf_ratio && verbose) {
+                printf("<eigen_refine_gpu> native FP64 eigensolver on by default "
+                       "(FP32:FP64 throughput ratio %d); OPENMX_EIGEN_REFINE overrides this choice\n", perf_ratio);
                 fflush(stdout);
             }
         }

@@ -4212,12 +4212,15 @@ cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle, cublasOperation_t tran
 size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k);
 size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k);
 void openmx_gemmul8ReleaseWorkspaces(void);
-/* scf.gemmul8.enable: 0 sends every openmx_gemmul8{D,Z}gemm call straight to
-   plain cuBLAS FP64 GEMM (workspace queries then report 0).  Default on;
-   set from Input_std.c on every rank. */
+/* scf.gemmul8.enable: -1 (absent) selects the device default, 0 forces
+   native cuBLAS FP64 (workspace queries then report 0), 1 enables GEMMul8
+   subject to the environment overrides. General auto GEMMs prefer native
+   FP64 for a positive FP32:FP64 throughput ratio below 8 (e.g. A100).
+   Large real A100 Fixed transforms have a separate size/memory policy.
+   Set from Input_std.c on every rank. */
 void openmx_gemmul8SetEnabled(int enabled);
-/* 1 when openmx_gemmul8Zgemm takes the GEMMul8 path at all (scf.gemmul8.enable
-   on, complex products not disabled from the environment). */
+/* General-GEMM policy only, like the workspace queries above. A large
+   A100 Fixed transform may select GEMMul8 even when these return 0. */
 int openmx_gemmul8ZgemmEnabled(void);
 int openmx_gemmul8DgemmEnabled(void);
 /* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
@@ -4233,7 +4236,7 @@ cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cublasOperati
                                             int m, int n, int k, const double *alpha, const double *A, int lda,
                                             const double *B, int ldb, const double *beta, double *C, int ldc);
 /* Forward transform of the dense eigensolver, B = H X and C = X^+ B, with
-   its own precision stage (mode 0: as the calls above, 1: cuBLAS FP64,
+   its own precision stage (mode 0: automatic/default, 1: cuBLAS FP64,
    2: GEMMul8 with the given moduli count and scaling mode) and optional
    reuse of the prepared X.  C = op_x(X) V when x_is_left, else C = V op_x(X);
    x_id names the X (one per k-point/spin block) and x_version must change

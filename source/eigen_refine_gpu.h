@@ -81,7 +81,8 @@ typedef struct {
 } EigenRefineReport;
 
 /* K of OPENMX_EIGEN_REFINE, or the device default (2 on GPUs whose FP32:FP64
-   throughput ratio is at least 8 when the complex GEMMul8 products are on);
+   throughput ratio is at least 8 when the corresponding GEMMul8 products
+   are on; 0 on A100/H100, which have fast native FP64);
    *ratio receives the ratio when the default applied, else 0; reports the
    decision on stdout when verbose.  Called on the root rank only. */
 int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio);

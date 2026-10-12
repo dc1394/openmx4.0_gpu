@@ -28,8 +28,9 @@ static int MPI_Comm_rank(int comm,int *rank) { (void)comm; *rank=0; return 0; }
 static void Set_Hamiltonian_abort(const char *a,const char *b,int rank) {
   (void)rank; fprintf(stderr,"%s: %s\n",a,b); exit(1);
 }
-/* Force the production double-float OpenACC fallback. */
+/* Force the production native-FP64 and double-float OpenACC fallbacks. */
 #define Set_Hamiltonian_Cuda_Density(...) 1
+#define Set_Hamiltonian_Cuda_Density_FP64(...) 1
 static void check(int ok,const char *s) { if(!ok) { fprintf(stderr,"FAIL: %s\n",s); exit(1); } }
 '''
 main = r'''

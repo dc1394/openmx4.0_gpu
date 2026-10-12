@@ -1,0 +1,573 @@
+OpenMX 4.0 GPU: A100 policy and validation
+2026-10-12
+
+Scope
+-----
+The GPU paths now select arithmetic from the actual device's FP32:FP64
+throughput ratio rather than assuming that every NVIDIA GPU resembles a
+GeForce. A100 reports 2. A known positive ratio below 8 selects native FP64
+for general GEMMul8 bridge calls and, on newer toolkits, cuSOLVER math. GeForce retains
+GEMMul8 and its existing compensated double-float/refinement fast paths.
+
+Large real square fixed-forward transforms have a separately measured A100
+exception: full sm_80 devices with at least 100 SMs may use unblocked GEMMul8
+at n >=6144. Smaller transforms use native FP64. This does not apply to
+complex or general products, H100, GeForce, A30 or smaller MIG partitions.
+Automatic full-workspace allocation obeys free-memory/reserve checks; an
+explicit workspace-fraction limit also applies. Allocation/query/budget
+failure returns directly to native FP64, never to capped GEMMul8. The
+general default's 30%-divided-by-local-ranks cap is not imposed on this
+forward stage: collinear cluster diagonalization has one owner per spin,
+while the other MPI ranks participate in grid work. This follows the
+existing forward scratch lifetime and avoids counting all grid ranks as
+simultaneous dense solvers. Explicit GeForce/forward selections are unchanged.
+
+Native FP64 GEMM lets cuBLAS use A100 FP64 Tensor Cores without integer
+decomposition or the GEMMul8 workspace. The new CUDA FP64 density kernel
+tiles overlap points, stages each pair's density matrix in shared memory,
+and preserves original grid indices when compact orbital tiles are used.
+Unsupported dimensions/resources return to the existing OpenACC kernel.
+Both paths retain FP64 accumulation. Orbital tile storage is unchanged.
+
+On-the-fly orbital evaluation now follows the existing grid precision
+device boundary: FP64 on A100, double-float on GeForce. Lossy FP32 grid
+arithmetic remains an explicit experiment, disabled by default. FP32
+eigensolver refinement already stayed disabled by default on A100; the
+selection is now reported when verbose output is enabled.
+
+On cuSOLVER versions with FP64 emulation, native A100 handles also avoid
+the n-by-n backup and extra workspace queries used to recover from an
+emulated solve's nonconvergence. This specific optimization cannot be
+timed with the installed CUDA 12.5/cuSOLVER 11.6.3: those versions do not
+provide the emulation API and were already using native solver math.
+
+Controls
+--------
+scf.gemmul8.enable absent: automatic device selection.
+scf.gemmul8.enable off: force native cuBLAS, including forward products.
+scf.gemmul8.enable on: permit GEMMul8 on A100 as well as GeForce; environment
+  disables still apply. This reproduces the earlier GEMMul8-on selection.
+
+GEMMul8 disable controls have the following precedence, highest first:
+  input-file off (absolute)
+  OPENMX_GEMMUL8_DISABLE_D or OPENMX_GEMMUL8_DISABLE_Z
+  GEMMUL8_DISABLE_D or GEMMUL8_DISABLE_Z
+  OPENMX_GEMMUL8_DISABLE
+  GEMMUL8_DISABLE
+  explicit input-file on, then automatic device policy
+For these environment variables, 1 disables and an explicit 0 enables
+GEMMul8. Empty values do not override the next setting. Device detection
+failure keeps the previous GEMMul8 default. Explicit forward experiments
+(OPENMX_GEMMUL8_FORWARD=fp64|gemmul8 and its existing precision/reuse knobs)
+keep their separate selection; an input-file off remains absolute.
+
+OPENMX_ORBS_EVAL_PRECISION=fp64|df selects orbital evaluation arithmetic.
+OPENMX_GEMMUL8_A100_FORWARD_MIN_N sets the automatic real square forward
+  crossover (default 6144); 0 disables the exception. Explicit input on/off,
+  D/global disable-environment choices, and forward-stage choices win.
+  OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0 also disables this automatic exception
+  when reuse is off. Existing FORWARD_REUSE=1 implies unblocked execution
+  and takes precedence over FORWARD_UNBLOCKED=0.
+OPENMX_GRID_PRECISION=fp64|df selects grid quadrature arithmetic.
+OPENMX_SETDEN_FP64_CUDA=0 selects native-density OpenACC for comparison;
+  unset or 1 permits the new CUDA kernel, with resource-based fallback.
+OPENMX_SETDEN_FP64_SPLIT_SPIN=0|1 overrides native CUDA density scheduling.
+  Automatic scheduling splits spins when max_no > 32 and spin_count > 1,
+  reducing shared-memory pressure. Smaller orbital tiers remain unsplit.
+OPENMX_GRID_FP32 is still off by default.
+OPENMX_EIGEN_REFINE=0 disables refinement; a positive integer explicitly
+  requests that many refinement iterations, including on A100.
+OPENMX_CUSOLVER_EMULATION=0|1 explicitly selects native/emulated solver
+  math where supported. Unknown-device probing preserves the previous
+  emulation default. CUDA 12.5 has no such emulation mode.
+OPENMX_CUSOLVER_ALGORITHM retains its existing behavior: on CUDA 13.4
+  Update 1/cuSOLVER 12.3.4+, auto delegates full spectra to the library's
+  architecture/size/math-mode selector and preserves subset SYEVDX.
+  Older toolkits retain their compatible SYEVD/SYEVDX implementation.
+OPENMX_CUSOLVER_CACHE_MB still defaults to 64 MiB per rank. No unmeasured
+  increase was made to memory retained by many ranks sharing an A100.
+
+Hardware and toolchain
+----------------------
+Validation GPU: NVIDIA A100-SXM4-40GB, sm_80, driver 560.35.03.
+Node: Kugui acc008, AMD EPYC 7763, GPU selected by PBS CUDA_VISIBLE_DEVICES.
+SDK: /home/app/hpc_sdk/Linux_x86_64/24.7
+CUDA: /home/app/hpc_sdk/Linux_x86_64/24.7/cuda/12.5
+Math: /home/app/hpc_sdk/Linux_x86_64/24.7/math_libs/12.5
+MPI: /home/app/openmpi/4.1.6_24.7_cuda11.8
+C++20 host compiler: /opt/gcc/12.2.0/bin/g++
+C++ runtime: /opt/gcc/12.2.0/snos/lib64
+Python: python3.9 (site default python3 is 3.6.8; CMake wheel needs >=3.7)
+
+Build from source/, using the local CMake version tested in this session:
+
+  # First build only; already installed in this workspace:
+  python3.9 -m pip install --target build/cmake-python 'cmake==3.31.10'
+  make -f Makefile.kugui -j3 GPUSOLVER2_JOBS=3 \
+    GPUSOLVER2_CMAKE="$PWD/build/cmake-python/cmake/data/bin/cmake"
+
+The system CMake is 3.20.2, while the COSMA build requires >=3.24.
+third_party/build_gpusolver2_stack.sh checks GPUSOLVER2_CMAKE first, then
+the system cmake, then an existing local bootstrap; if none is usable it
+builds the bundled CMake source. The explicit override above avoids that
+extra bootstrap and reproduces the tested CMake 3.31.10 executable:
+  /home/k0424/k042409/openmx4.0_gpu/source/build/cmake-python/cmake/data/bin/cmake
+The pip setup installs only under source/build/cmake-python. It requires
+package-index access on the initial installation; an existing CMake >=3.24
+can instead be supplied through GPUSOLVER2_CMAKE.
+
+The site makefile selects cc80 for CUDA and OpenACC even on the GPU-less
+login node. On another site, set its toolchain/MPI paths and pass
+GEMMUL8_GPU_ARCH=80 to the normal Makefile. Build once at a time: login
+process/thread quotas make unconstrained parallel compilation unsuitable
+here. -j8 hit the environment's 500-thread quota during this session;
+-j3 and GPUSOLVER2_JOBS=3 conservatively bound both OpenMX and bundled
+library compilation. Large builds can run in an allocated batch job.
+
+GEMMul8's OpenMX instantiation already contains compatibility declarations
+for newer cuBLASLt attributes mentioned by upstream headers. Its instantiated
+cublasHandle_t entry points do not execute that newer Lt setup; CUDA 12.5
+is supported. This does not claim that every upstream GEMMul8 Lt backend
+can be used with CUDA 12.5.
+
+CPU regression commands (repository root)
+----------------------------------------
+  export CC=/opt/gcc/12.2.0/bin/gcc CXX=/opt/gcc/12.2.0/bin/g++
+  python3.9 tests/run_cusolver_policy_cpu.py
+  python3.9 tests/run_eigen_refine_faults.py --sanitize
+  python3.9 tests/run_gemmul8_policy_cpu.py
+  python3.9 tests/run_orbs_precision_policy_cpu.py
+  python3.9 tests/run_setham_density_fallback_cpu.py
+  python3.9 tests/run_orbs_grid_boundaries.py
+
+Confirmed solver results: 99 policy checks across old/new cuSOLVER API
+guards, plus 65 retry/error checks and 16 refinement/fallback-preservation
+checks under ASan/UBSan. The device-policy test includes A100/GeForce,
+thresholds, current-device changes, explicit overrides and failed queries.
+Other component test results are recorded with their GPU validation below.
+
+Native solver GPU regression reproduction
+----------------------------------------
+The two test executables may be built on a login node. From repository root:
+
+  site_sdk=/home/app/hpc_sdk/Linux_x86_64/24.7
+  site_cuda=$site_sdk/cuda/12.5
+  site_math=$site_sdk/math_libs/12.5
+  site_mpi=/home/app/openmpi/4.1.6_24.7_cuda11.8
+  site_bin=source/build/a100-solver-tests
+  mkdir -p "$site_bin"
+  /opt/gcc/12.2.0/bin/gcc -O2 -std=c11 -Isource \
+    -I"$site_math/include" -I"$site_cuda/include" \
+    tests/cusolver_smoke.c source/openmx_cusolver_compat.c \
+    -L"$site_math/lib64" -L"$site_cuda/lib64" \
+    -Wl,--disable-new-dtags,-rpath,"$site_math/lib64",-rpath,"$site_cuda/lib64" \
+    -Wl,--no-as-needed -lnvJitLink -Wl,--as-needed -lcusolver -lcudart -lm \
+    -o "$site_bin/cusolver_smoke"
+  NVHPC_CUDA_HOME="$site_cuda" NVCOMPILER_MATH_LIBS_HOME="$site_math" \
+    "$site_sdk/compilers/bin/nvc" -O2 -std=c11 -acc -gpu=cc80 -mp -Isource \
+    -I"$site_math/include" -I"$site_cuda/include" -I"$site_mpi/include" \
+    tests/gpusolver_wrapper_smoke.c source/gpusolver_Syevdx.c \
+    source/openmx_cusolver_compat.c -L"$site_math/lib64" -L"$site_cuda/lib64" \
+    -Wl,--disable-new-dtags,-rpath,"$site_math/lib64",-rpath,"$site_cuda/lib64" \
+    -Wl,--no-as-needed -lnvJitLink -Wl,--as-needed -lcusolver -lcudart -lm \
+    -o "$site_bin/gpusolver_wrapper_smoke"
+
+Explicitly linking libnvJitLink is necessary here: an initial test launch
+failed on the SDK's indirect library lookup despite the executable's RPATH.
+After relinking, ldd had no unresolved libraries and the GPU tests passed.
+
+In an allocated GPU job, from repository root:
+
+  unset LD_LIBRARY_PATH
+  export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+  export OPENMX_CUSOLVER_EMULATION=0 OPENMX_CUSOLVER_VERBOSE=1
+  source/build/a100-solver-tests/cusolver_smoke 257
+  source/build/a100-solver-tests/cusolver_smoke 2048
+  source/build/a100-solver-tests/gpusolver_wrapper_smoke
+
+PBS allocation used for the completed run:
+  #PBS -q i1accs
+  #PBS -l select=1:ncpus=16:mpiprocs=1:ompthreads=1:ngpus=1
+  #PBS -l walltime=00:05:00
+
+Completed job 935886.kugui-pbs on 2026-10-12:
+  work/codex_a100_20261012/solver-smoke.pbs
+  work/codex_a100_20261012/solver-smoke.log
+Real and complex, full and leading-16 spectra, n=257 and n=2048 passed.
+The normalized residual check examines up to 16 eigenvectors per solve:
+  maximum normalized residual: 7.333e-16
+  maximum orthogonality error: 4.330e-15
+Host/OpenACC cached wrappers, partial outputs, cache release and two-thread
+host solves all passed; maximum analytic eigenvalue error was 1.332e-15.
+The residual and orthogonality tolerance is 1e-11.
+
+For context only, the n=2048 second-solve event times were:
+  real full 42.239 ms; real leading-16 40.311 ms
+  complex full 74.100 ms; complex leading-16 69.172 ms
+These are native solver timings, not a before/after speedup measurement.
+
+GEMM and grid reproduction
+-------------------------
+Set these site overrides before running the standalone scripts:
+
+  export NVHPC_ROOT=/home/app/hpc_sdk/Linux_x86_64/24.7
+  export CUDA_HOME=$NVHPC_ROOT/cuda/12.5
+  export CUDA_MATH_ROOT=$NVHPC_ROOT/math_libs/12.5
+  export NVCC_HOST=/opt/gcc/12.2.0/bin/g++
+  export HOST_LIBDIR=/opt/gcc/12.2.0/snos/lib64
+  export GPU_ARCH=80
+
+Build the synthetic GEMM comparison (no GPU required for --build-only):
+
+  tests/run_gemmul8_a100_bench.sh \
+    work/codex_a100_20261012/gemm --build-only
+
+Inside a GPU allocation, build/run with controlled defaults:
+
+  tests/run_gemmul8_a100_bench.sh work/codex_a100_20261012/gemm \
+    --iterations 10 --sizes 1024x1024x1024,2048x2048x2048,4096x512x4096
+  tests/run_gemmul8_a100_bench.sh work/codex_a100_20261012/gemm \
+    --iterations 10 --sizes 3072x3072x3072,4096x4096x4096,6144x6144x6144
+
+The harness reports requested and effective backends, event timings,
+differences against native FP64 and sampled long-double references. It
+compares explicit native, automatic and explicit GEMMul8 dispatch. Reuse
+an existing matching template object via GEMMUL8_TEST_OBJECT to avoid
+recompiling the large template translation unit.
+For fixed/unblocked microbenchmarks, the harness sets
+OPENMX_GEMMUL8_MIN_FREE_AFTER_MB=0 to isolate full-workspace arithmetic.
+Production retains its 1536 MiB reserve. The measured single-process A100
+shapes had ample free memory; these timings do not validate admission under
+concurrent memory pressure. Mocked policy tests cover reserve/query/allocation
+failures and the native fallback.
+
+Grid numerical regression, inside a GPU allocation:
+
+  tests/run_setham_point_chunks_gpu.sh
+  SETPOINT_SANITIZE=1 tests/run_setham_point_chunks_gpu.sh
+  SETPOINT_BENCHMARK=10 tests/run_setham_point_chunks_gpu.sh
+
+This exercises FP64 and double-float density/matrix quadrature against an
+independent long-double reference, orbital-count boundaries, spins 1/2/4,
+nonmonotonic/repeated indices, padding, full/compact tiles, heterogeneous
+pairs and empty overlaps. SETPOINT_BENCHMARK times the resident CUDA
+FP64 and CUDA double-float implementations separately from those checks.
+
+Measured GEMM and density results
+--------------------------------
+work/codex_a100_20261012/gemm-bench.log records the first A100 run below.
+Times are milliseconds per call after warmup, 10 repetitions, one process.
+The ratio is GEMMul8 time divided by explicit native FP64 time.
+
+  type  m x n x k          native FP64   GEMMul8      ratio
+  D     1024x1024x1024      0.129638     0.303206     2.34
+  D     2048x2048x2048      1.224909     1.623654     1.33
+  D     4096x512x4096       1.234227     2.079027     1.68
+  Z     1024x1024x1024      0.483942     0.762675     1.58
+  Z     2048x2048x2048      4.617523     4.503654     0.975
+  Z     4096x512x4096       4.601549     5.143347     1.12
+
+Additional larger cases in gemm-large-bench.log, with the same controls:
+
+  type  m x n x k          native FP64   GEMMul8      ratio
+  D     3072x3072x3072      3.153920     5.139251     1.63
+  D     4096x4096x4096      9.190707    11.156685     1.21
+  D     6144x6144x6144     26.448795    37.994289     1.44
+  Z     3072x3072x3072     12.392038    15.425535     1.24
+  Z     4096x4096x4096     29.265614    31.815475     1.09
+  Z     6144x6144x6144     99.322884   103.940292     1.05
+
+All cases passed the 1e-11 numerical checks. The largest scaled difference
+from native FP64 was 1.439e-13; the largest sampled long-double-reference
+error was 5.420e-14. Automatic A100 selection used native FP64 and produced
+the same output as explicit native in these runs.
+
+Native FP64 was faster in eleven shapes, but Z 2048 was about 2.5% slower
+than GEMMul8. Automatic Z 1024 took 0.620339 ms versus explicit native's
+0.483942 ms despite identical arithmetic/dispatch, showing timing noise.
+The larger run also has native/auto variation, for example D 4096 at
+9.190707/7.297127 ms. No fastest-trial selection was used for the tables.
+These results support a default that avoids integer conversion/workspace;
+they do not establish a universal fastest backend for every shape. Explicit
+GEMMul8 remains available for workload-specific measurements.
+
+Full-workspace forward transforms require a different comparison from the
+capped general GEMMs above. The fixed benchmark times both H X and X^T(H X),
+including the production stream synchronization and scratch trim after each
+pair. It reports CPU wall time as well as CUDA event time. At the following
+sizes, the final automatic policy selected unblocked GEMMul8:
+
+  real n    native FP64 ms   automatic ms   explicit GEMMul8 ms
+   7168        83.260208       72.593918         72.619110
+   7332        89.528526       79.179268         79.046555
+   8000       114.882553      102.406250        102.663063
+  13000       501.493561      393.919281        393.575928
+
+Automatic results matched explicitly enabled GEMMul8. All numerical checks
+passed 1e-11 (including independently accumulated long-double samples).
+The original comparison at n=4000 favored native FP64, 14.220799 versus
+15.708672 ms, so retaining Ozaki for every A100 forward shape is also
+suboptimal. Workspace lifetimes and shape matter: the forward full-workspace
+result must not be inferred from the general 256 MiB capped benchmark.
+
+The final crossover was refined to 6144 after three 20-iteration repeats:
+
+  n=6144 repeat   faster native sample ms   GEMMul8 ms   time reduction
+       1                50.830284           47.230976       7.08%
+       2                50.780312           47.277775       6.90%
+       3                50.826855           47.303066       6.93%
+
+Each repeat included two native measurements (explicit native and the
+then-native automatic mode), and Ozaki beat both. This avoided basing the
+threshold on the first colder native trial. The maximum fixed-benchmark
+scaled difference from native was 1.039e-12 and the maximum sampled
+long-double difference 3.425e-13, both below 1e-11. Smaller sizes remain
+native; the threshold is an adjustable measured default, not a claim of
+the best backend at every dimension/toolkit/concurrency setting.
+Repeat log: gemm-fixed-crossover-repeat.log.
+
+Reproduction, using the same site overrides and compiled benchmark:
+
+  tests/run_gemmul8_a100_bench.sh work/a100_fixed --path fixed --types D \
+    --iterations 10 --sizes 4000x4000x4000,6144x6144x6144,8000x8000x8000,13000x13000x13000
+
+--path unblocked times one full-workspace product; --retain-workspace skips
+the fixed-pair trim for an explicitly different allocation policy. The
+fixed complex comparison is available with --types Z, but production's
+collinear cluster fixed-forward path is real; this change does not add a
+complex automatic exception. Logs: gemm-fixed-bench.log,
+gemm-fixed-complex-bench.log and gemm-fixed-auto-final.log.
+
+work/codex_a100_20261012/grid-gpu.log records 78 passing independent-oracle
+correctness cases, with maximum scaled error 6.343e-14. The resident CUDA
+density benchmark used 16 pairs, 8192 points per pair, orbital counts
+13/26/48, spins 1/2/4 and 10 repetitions. Native CUDA FP64 was 1.61-2.46
+times faster than CUDA double-float across those nine configurations.
+It includes production API synchronization and excludes host packing,
+transfers and orbital evaluation. This compares two CUDA arithmetic modes;
+it does NOT measure the improvement over the old native FP64 OpenACC path,
+which was already selected for A100 grid quadrature.
+The same 78 cases also passed compute-sanitizer memcheck with 0 errors;
+see work/codex_a100_20261012/grid-memcheck.log.
+
+Full OpenMX build and SCF comparison
+-----------------------------------
+Both the original source at 4b9e48cdeca1fbada72c717fd65c099512c4b457 and
+the modified source built successfully, including the bundled ELPA/COSMA
+stack. Original executable: work/codex_a100_20261012/baseline/source/openmx.
+Installed modified executable: source/openmx, copied to work/openmx.
+
+Job 935900.kugui-pbs ran both builds on the same A100 with eight MPI ranks,
+one OpenMP thread per rank, core binding and an isolated MPS daemon.
+All fourteen S-suite cases and all three selected L-suite cases passed
+energy and individual force-component comparisons at 1e-8 tolerances.
+S-suite maximum differences: 4.3e-11 Ha and 8e-12 Ha/bohr.
+
+  L case         original s  modified s  SCF steps   abs dE Ha  max abs dF
+  GGFF              290.02      289.60     101/101    0          1.0e-12
+  Pt63               42.85       41.17      67/64     3.47e-10   2.6e-11
+  Mn12_148_F         69.40       69.67      61/61      0          0
+
+These are single paired runs, not a statistically established total speedup.
+Pt63 took three fewer SCF iterations, so its 4% shorter run cannot be
+attributed to faster kernels alone. GGFF and Mn12 totals were effectively
+unchanged. Their matrices are relatively small; mixing, communication,
+grid work and solver orchestration limit gains from GEMM dispatch alone.
+For example, the profiled forward transform per solve improved about 5.1x
+for Pt63 and 5.7x for Mn12_148_F, but it represented less than 1% of their
+original total run times.
+The normal resident-grid runs do not isolate the new on-the-fly density
+kernel. Its separate fixed-step comparison follows below.
+
+SCF-run executable SHA256 (copies retained in before_*/after_* directories):
+  original 030b21836432a569f12ff77d9fac4dffd26cfe1ba49136e6a016719956932b32
+  modified de1936f0d0671ef17d6b71bb43307292a0d66b43e1057ec3bc0f64009f9eed28
+Logs and comparisons: work/codex_a100_20261012/scf-validation.log,
+compare_S.txt, compare_L.txt and phases_L.txt.
+
+The final source, including the measured 6144 crossover and automatic
+large-orbital spin scheduling, was rebuilt in job 935933.kugui-pbs.
+Both source/openmx and work/openmx have SHA256:
+  dbbf28ce793716eb9a51e692991caf7a4d0c0eb6ab20b7d411fa4e1e51c47930
+All fourteen S cases again passed the original-binary energy/force
+comparison at 1e-8. A freshly linked fixed-forward benchmark selected
+GEMMul8 automatically at 6144 and 7168: 47.000267 and 72.579277 ms versus
+native 51.129242 and 83.841331 ms, respectively, with numerical checks
+passing. Logs: release-build.log, release-validation.log,
+compare_release_S.txt, release-binary.sha256 and gemm-fixed-release.log.
+
+No end-to-end acceleration factor is claimed from the solver smoke tests.
+
+Example full-suite comparison once both executables have been built, with
+the same allocation, MPI ranks, binding, MPS state and input data:
+
+  python3.9 tools/run_gpu_suites.py \
+    --binary work/codex_a100_20261012/baseline/source/openmx \
+    --suite S --ranks 8 --together \
+    --mpirun /home/app/openmpi/4.1.6_24.7_cuda11.8/bin/mpirun \
+    --output work/codex_a100_20261012/baseline_S
+  python3.9 tools/run_gpu_suites.py --binary source/openmx --suite S --ranks 8 --together \
+    --mpirun /home/app/openmpi/4.1.6_24.7_cuda11.8/bin/mpirun \
+    --output work/codex_a100_20261012/optimized_S
+  python3.9 tools/compare_gpu_suites.py \
+    work/codex_a100_20261012/baseline_S work/codex_a100_20261012/optimized_S
+  python3.9 tools/compare_gpu_suites.py \
+    work/codex_a100_20261012/optimized_S --reference
+
+Use representative larger dense inputs for performance claims; the tiny
+S suite mostly validates execution paths and numerical output. The runner
+records hashes, environment and timing. The comparator checks individual
+force components in addition to energies.
+
+Large physical input: final-release forward dispatch
+---------------------------------------------------
+Job 935952.kugui-pbs compared the original and final release on the bundled
+L3 C1000 input: 1000 carbon atoms, 13000 basis functions, three SCF steps,
+eight MPI ranks, one thread per rank and isolated MPS. This job requested
+180 GiB host memory and received three A100-SXM4-40GB GPUs under the site's
+allocation rules. Both binaries used that same allocation; this is separate
+from the single-GPU measurements above. The dense solve ran on rank 0.
+
+Both completed. Final energy differed by 9.09e-13 Ha and the largest force
+component by 1e-12 Ha/bohr, passing the paired 1e-8 tolerances. The final
+release recorded six full-workspace forward calls, no capacity fallbacks,
+and three native-cuBLAS general/back products. The original recorded the
+same six forward calls but used GEMMul8 for the three back products. This
+confirms the automatic large-forward exception in the actual SCF, using
+the production reserve and default scratch lifetime.
+
+  cumulative phase, three solves     original s    final release s
+  forward                              1.326757       1.176982
+  eigensolver                         11.227928      11.119400
+  back                                 0.609736       0.358089
+  eigenvector download                 0.966834       1.054110
+  native OpenMX elapsed              219.24         214.06
+  launcher wall                      228.48         220.32
+
+This single paired run is not a statistically established total speedup.
+It is a fixed-three-step integration check, not a converged C1000 result.
+Both binaries differ from the bundled reference forces by approximately
+1.22e-7 Ha/bohr; the paired difference is 1e-12. Thus this does not claim
+1e-8 agreement with that reference. Aggregate process RSS peaked at 177.02
+and 177.50 GiB. Earlier baseline-only attempts hit the job's memory limit:
+Pt500 at 60/120 GiB and C1000 at 120 GiB, before the dense-solver comparison.
+Those runs do not diagnose a regression in the modified binary. Pt500's
+large-input validation remains incomplete; C1000 supplies the completed
+large-forward integration check.
+
+Logs: large-forward-c1000-180g.log, compare_release_L3_C1000_180g.txt and
+before_L3_C1000_180g/ plus release_L3_C1000_180g/ under the validation
+directory. Exact PBS recipe: large-forward-c1000-180g.pbs. Binary hashes,
+modified production-source hashes and build toolchain are also recorded
+in work/codex_a100_20261012/release-manifest.json.
+
+On-the-fly density: actual OpenMX A/B comparison
+----------------------------------------------
+Job 935918.kugui-pbs used eight MPI ranks, MPS and the same A100. Each input
+was copied with scf.maxIter=8 and stdout=2. These are fixed eight-step runs,
+not claims of converged observables. Resident Hamiltonian storage was off,
+on-the-fly/local density was on, and grid quadrature was explicitly FP64.
+Three variants isolated the old and new implementations:
+  baseline_auto: original binary, original default DF orbital evaluation.
+  openacc: modified binary, explicit FP64 orbitals, previous OpenACC density.
+  cuda: modified binary, automatic A100 FP64 orbitals, new CUDA density.
+The split-spin override was zero for this comparison; these three inputs
+have max_no <=32, so this also matches the final automatic scheduling.
+
+  case         Set_Density_Grid MPI Max_Time (s)   old/new device profile (s)
+                 baseline   openacc    cuda          openacc    cuda
+  Pt63             1.156      1.115    0.920           0.250     0.026
+  Mn12_148_F       1.224      1.207    1.074           0.210     0.035
+  GGFF             1.803      1.798    1.373           0.677     0.103
+
+The new CUDA path shortened the full density phase by 11-24% versus the
+previous FP64 OpenACC implementation in these fixed-step runs. The device
+profile includes quadrature, output copying, synchronization and arena
+release. Its values sum per-call maxima over MPI ranks (rounded to ms),
+not pure kernel times or application wall time. Remaining orbital
+evaluation, packing and MPI work limit the density phase's total gain.
+All six paired comparisons passed 1e-8 energy/force tolerances. Maximum
+original-versus-CUDA differences were 1.182e-11 Ha and 1.3e-11 Ha/bohr.
+The explicit FP64 OpenACC/CUDA pair differed by at most 9.095e-13 Ha and
+1e-12 Ha/bohr. Every rank recorded the expected FP64 density mode and
+matching call counts. Density-only orbital evaluation has no precision
+announcement; its absence is recorded rather than inferred as a log check.
+
+Reproduce inside an allocated GPU job with an existing isolated MPS daemon:
+
+  python3.9 tools/run_density_otf_ab.py --binary source/openmx \
+    --baseline work/codex_a100_20261012/baseline/source/openmx \
+    --ranks 8 --output work/density_otf_ab \
+    --mpirun /home/app/openmpi/4.1.6_24.7_cuda11.8/bin/mpirun
+
+The runner preserves existing output, copies binaries and inputs, records
+hashes and per-variant environments, and checks every force component.
+The runner's CPU orchestration/output-preservation test is
+tests/run_density_otf_runner_cpu.py. Actual logs, metadata, timing CSV and
+comparison: work/codex_a100_20261012/otf/runs/.
+
+Large-orbital density scheduling
+-------------------------------
+The matched 50-repeat resident benchmark compared the same native FP64
+kernel with all spins in one block versus one block per spin. At 48
+orbitals, two spins improved from 0.556235 to 0.473932 ms, and four spins
+from 1.598186 to 0.914475 ms. Four-spin shared storage falls from 72 to
+18 KiB, allowing more active blocks. Both modes passed all 78 numerical
+cases; split mode also passed compute-sanitizer with zero errors.
+At 26 orbitals/two spins it was slightly slower (0.128197 to 0.133893 ms),
+so the smaller tiers retain their original scheduling. These are resident
+kernel/API measurements, not full SCF speedups. Logs: grid-split-0.log,
+grid-split-1.log and grid-split-memcheck.log in the validation directory.
+tests/run_setden_fp64_policy_cpu.py checks 23 boundary/override cases.
+
+Preserved consumer-GPU algorithms
+--------------------------------
+On the A100, explicitly enabled GEMMul8 passed 39 real/complex GEMM cases
+(N/T/C, padded strides, blocked K, fast/accurate scaling; maximum relative
+error 3.550e-13) and 217 fixed-forward/prepared-X checks. The production
+OpenACC refinement validity reductions passed 365 GPU checks. The original
+DF density/matrix path also remains included in the 78-case grid test.
+These validate the retained algorithms on A100; physical GeForce hardware
+and CUDA 13.x/cuSOLVER emulation were not available for runtime retesting.
+Logs: gemmul8-preserved-smoke.log and refine-guards-gpu.log.
+
+MPI scheduling and persistent band buffers
+-----------------------------------------
+Job 935926 compared eight fixed-step runs (eight MPI ranks sharing one
+A100 under MPS), using B2C62_Band, ZrB2_2x2 and GGFF. Input copies fixed
+geometry and eight SCF steps; this is not a convergence test. Existing
+serial=1/persistent=0 defaults were compared with serial=0 and, for the
+collinear cases, persistent=1. All five comparisons passed: maximum
+eight-step electronic-energy difference 3.013e-12 Ha, final total-energy
+difference 1.137e-12 Ha and force-component difference 1e-12 Ha/bohr.
+
+ZrB2_2x2 exercised these controls with five dense owners among eight MPI
+ranks. Turning serialization off increased its diagonalization phase from
+3.376 to 3.543 s. Keeping serialized turns and setting
+OPENMX_BAND_GPU_PERSISTENT=1 shortened diagonalization to 2.836 s, while
+total wall time changed from 38.162 to 37.528 s (about 1.7%). Persistence
+reduced context/cache transfer and release work, as confirmed by BANDPROF.
+
+B2C62_Band and GGFF took the multiple-k-points-per-owner branch, which
+already groups work and bypasses those controls; their nearly unchanged
+timings do not support a scheduling-policy conclusion. The defaults are
+therefore retained. Persistent buffers remain an opt-in for similar A100
+workloads with sufficient memory; their current per-rank free-memory test
+does not reserve aggregate standing storage for future dense owners.
+Enabling persistence for every A100 job from this small-footprint example
+would be unjustified. Logs, per-step energy checks and profile CSV:
+work/codex_a100_20261012/band_policy/runs/.
+
+Historical measurements
+-----------------------
+README's existing RTX/H100/A100 suite tables and its A100 unblocked-versus-
+capped GEMMul8 transform timings were collected with earlier GEMMul8-on
+defaults. They are preserved as historical measurements, not reinterpreted
+as evidence for the new A100 native default. Selecting GEMMul8 explicitly
+reproduces that backend choice, but does not by itself reproduce all code,
+driver, toolkit, input and MPI conditions of an older benchmark.
+
+NVIDIA reference: A100 FP64 and FP64 Tensor Core capabilities
+https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet.pdf
+NVIDIA reference: CUDA 12.5 cuSOLVER release/version coverage
+https://docs.nvidia.com/cuda/archive/12.5.0/cuda-toolkit-release-notes/index.html

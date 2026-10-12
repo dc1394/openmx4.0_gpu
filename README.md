@@ -52,18 +52,61 @@ replaces the cluster diagonalization (collinear and non-collinear) with [ELPA](h
 - The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically by the first `make` — no network access is needed (autoconf, automake, libtool, m4 and python3 must be installed). The conventional "elpa1"/"elpa2" paths keep using the ELPA 2018.05 embedded in the OpenMX source; only "gpusolver2" links the bundled ELPA 2026.02.
 
 ## GEMMul8: FP64 matrix multiplication on integer tensor cores
-The large dense matrix multiplications of the GPU eigensolver path are executed through [GEMMul8](https://github.com/RIKEN-RCCS/GEMMul8), which emulates FP64 GEMM on the INT8 tensor cores using the Ozaki scheme II. This is enabled by default and is particularly effective on consumer GPUs (GeForce), whose native FP64 throughput is limited, while the total energy stays at the ~1e-10 Hartree agreement level in our tests. To compare with plain cuBLAS FP64 GEMM, it can be switched off (keyword added in v2.0):
+The large dense matrix multiplications of the GPU eigensolver path use a device-aware bridge to [GEMMul8](https://github.com/RIKEN-RCCS/GEMMul8) or native cuBLAS FP64. GEMMul8 emulates FP64 GEMM on INT8 tensor cores using the Ozaki scheme II and remains the default on consumer GPUs (GeForce) with limited native FP64 throughput. General GEMMs on A100 and H100 instead default to native FP64, including the FP64 Tensor Core kernels selected by cuBLAS, avoiding integer decomposition and its workspace. The choice uses the device's FP32:FP64 throughput ratio: a known positive ratio below 8 selects native FP64. A100 has a separate size-dependent exception for the collinear cluster forward transform, described below. The historical GEMMul8 accuracy measurements below are unchanged.
+
+Omitting `scf.gemmul8.enable` selects this device default. Explicit settings override it:
 
 ```ini
-scf.gemmul8.enable         off           # default=on
+scf.gemmul8.enable         off           # force native cuBLAS FP64
+# scf.gemmul8.enable       on            # enable GEMMul8, including on A100
 ```
+
+`OPENMX_GEMMUL8_DISABLE=1` disables GEMMul8, while an explicit `=0` enables
+it under the automatic input setting. The `_D` and `_Z` variants select real
+and complex products separately. An input-file `off` always takes precedence;
+an input-file `on` still honors environment disables.
+
+### A100 execution policy
+
+On A100, on-the-fly orbital evaluation and grid quadrature use native FP64
+arithmetic by default. GeForce retains the compensated double-float paths.
+Native density quadrature now also uses a CUDA kernel that tiles overlap
+points and stages the density matrix in shared memory. Its OpenACC fallback
+remains available for unsupported sizes and resource limits. Orbital tile
+storage retains its existing format; changing the arithmetic does not change
+that storage contract.
+
+On full A100-class `sm_80` devices (at least 100 SMs), real square cluster
+forward products at dimension 6144 or above automatically use full-workspace
+GEMMul8 when memory permits. Direct measurements found it faster than native
+FP64 for large transforms. Smaller transforms keep native FP64; a full
+workspace that cannot fit also selects native FP64. Explicit input, environment
+and forward-stage selections take precedence. This exception is controlled by
+`OPENMX_GEMMUL8_A100_FORWARD_MIN_N` (`0` disables it) and does not change
+GeForce's existing selection.
+
+`OPENMX_ORBS_EVAL_PRECISION=fp64|df` and `OPENMX_GRID_PRECISION=fp64|df`
+select orbital and grid arithmetic explicitly. `OPENMX_SETDEN_FP64_CUDA=0`
+selects the existing OpenACC implementation for native density quadrature.
+Native CUDA density splits work by spin for orbital counts above 32 and more
+than one spin; `OPENMX_SETDEN_FP64_SPLIT_SPIN=0|1` overrides that scheduling.
+The lossy `OPENMX_GRID_FP32` experiment stays off unless requested.
+FP32 eigenvector refinement already selects native FP64 on A100;
+`OPENMX_EIGEN_REFINE` still provides an explicit override. On toolkits that
+support cuSOLVER FP64 emulation, the default now follows the same hardware
+boundary, avoiding emulation's full-matrix retry backup on A100.
+
+Build instructions, control precedence, regression commands and the new
+validation record are in [the A100 optimization report](doc/a100_optimization.txt).
+The older benchmark tables below used GEMMul8 on all GPU models and are
+historical results, not measurements of these new A100 defaults.
 
 ### Forward transform of the collinear cluster solver
 The two products of the orthogonalization transform, `B = H X` and `X^T B`, have entry points of their own (`openmx_gemmul8DgemmFixed`), because `X` stays fixed during the SCF.
 
-- **Workspace.** These two products take the full GEMMul8 workspace whenever the device has room for it; every other GEMM keeps the capped, blocked workspace (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`, 256 MiB). Under the cap each block of a blocked product rescales its operands, which about doubled the time of the transform: on an A100 it now takes 76 ms instead of 145 ms per SCF step at 7332 basis functions, and 421 ms instead of 810 ms at 13000. The workspace is returned right after the transform, so the eigensolver finds the memory it found before, and a workspace that does not fit falls back to the capped path at the same precision. `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0` restores the capped path. Below the cap the results are bit-identical to the previous ones.
+- **Workspace.** When these products select GEMMul8, they take its full workspace whenever the device has room; every other GEMMul8 GEMM keeps the capped, blocked workspace (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`, 256 MiB). Under the cap each block rescales its operands, which about doubled the time of the transform in the earlier GEMMul8-on measurements: on an A100, unblocked versus capped took 76 versus 145 ms per SCF step at 7332 basis functions, and 421 versus 810 ms at 13000. These are historical comparisons within GEMMul8, not timings of the new A100 selection policy. The workspace is returned right after the transform, so the eigensolver finds the memory it found before. For an explicit GEMMul8 selection or the GeForce default, a workspace that does not fit falls back to the capped path at the same precision, and `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0` restores that capped path. Under the A100 automatic policy, both conditions select native FP64 instead. As before, `OPENMX_GEMMUL8_FORWARD_REUSE=1` implies unblocked execution and takes precedence over `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0`. Below the cap the retained GEMMul8 results are bit-identical to the previous ones.
 - **Precision stage**, for measurements: `OPENMX_GEMMUL8_FORWARD=fp64|gemmul8` selects plain cuBLAS FP64 or GEMMul8 with `OPENMX_GEMMUL8_FORWARD_NUM_MOD` moduli and `OPENMX_GEMMUL8_FORWARD_FASTMODE`; `OPENMX_GEMMUL8_FORWARD_REUSE=1` retains the prepared `X` across SCF steps (exact with fast scaling only); `OPENMX_GEMMUL8_FORWARD_TIMING=1` reports calls, preparations, reuses and wall time, and `OPENMX_CLUSTER_PROFILE=1` the phases of each dense solve.
-- **Tools.** `tools/measure_gemm_probe.sh` (matrix-level times, phases and errors against a double-double reference), `tools/run_forward_variants.sh` (the same input under several settings, with a comparison table), and the checks `tests/run_gemmul8_forward_smoke.sh`. `OPENMX_GEMMUL8_TIMING=1` counts and times every GEMM routed through the GEMMul8 bridge, in any solver, and reports the totals per rank at the end of each SCF.
+- **Tools.** `tools/measure_gemm_probe.sh` (matrix-level times, phases and errors against a double-double reference), `tools/run_forward_variants.sh` (the same input under several settings, with a comparison table), and the checks `tests/run_gemmul8_forward_smoke.sh`. `OPENMX_GEMMUL8_TIMING=1` counts and times products through the general GEMM entry points and reports the totals per rank at the end of each SCF. Successful full-workspace fixed transforms, including large automatic A100 transforms, use the separate `OPENMX_GEMMUL8_FORWARD_TIMING=1` counters.
 
 ## Multi-GPU parallelization
 How many GPUs a run can actually use is bounded by the number of k-points requested with "scf.Kgrid". The MPI ranks are divided into one group per k-point, and the dense eigenvalue problem of each group is solved on a single GPU, so the eigenvalue solver keeps at most as many GPUs busy as there are k-points; any GPU beyond that number stays idle in this part of the calculation. (The Hamiltonian matrix elements and the grid work are distributed over all MPI ranks, and therefore over all GPUs.)
@@ -134,18 +177,36 @@ active;
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems, and ready-made site makefiles are included for the Pegasus supercomputer at the University of Tsukuba (`Makefile.pegasus`) and for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to them. Since v2.0 the first `make` also builds the bundled ELPA/COSMA stack for "gpusolver2" automatically, which adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
 
+For the Kugui A100 environment used for the current validation:
+
+```sh
+cd source
+# First build only: the site's CMake 3.20.2 is below COSMA's 3.24 minimum.
+python3.9 -m pip install --target build/cmake-python 'cmake==3.31.10'
+make -f Makefile.kugui -j3 GPUSOLVER2_JOBS=3 \
+  GPUSOLVER2_CMAKE="$PWD/build/cmake-python/cmake/data/bin/cmake"
+```
+
+This selects NVHPC 24.7, CUDA 12.5, the site MPI and `sm_80`; the login node
+does not need a visible GPU. The local CMake 3.31.10 path reproduces the
+tested build; without a suitable override or system CMake, the stack builder
+bootstraps its bundled CMake instead. Use one build at a time: `-j8` hit the
+login environment's 500-thread quota during this validation. On another installation, select its SDK/MPI paths and
+pass `GEMMUL8_GPU_ARCH=80` to the normal Makefile. GPU tests run in an
+allocated GPU job.
+
 ### HPC SDK 26.9 / CUDA 13.4 update
 
 The default `source/Makefile` now uses HPC SDK 26.9 and CUDA 13.4. The
 SDK's bundled toolkit and the separately installed toolkit can differ: on
-this machine SDK 26.9 bundles CUDA 13.3, while CUDA 13.4.2 is installed at
+the reference workstation SDK 26.9 bundles CUDA 13.3, while CUDA 13.4.2 is installed at
 `/usr/local/cuda-13.4`. The build selects one consistent set of CUDA headers,
 runtime and math libraries, and obtains the MPI library path from the SDK's
 MPI wrapper. Compiler/toolkit changes invalidate cached build products.
 
 ```sh
 cd source
-make -j18 GEMMUL8_GPU_ARCH=120             # RTX 5080; use 90 for H100
+make -j18 GEMMUL8_GPU_ARCH=120             # RTX 5080; 80 for A100, 90 for H100
 # An older installation remains selectable:
 make -j18 NVHPC_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/26.5 \
   NVHPC_CUDA_VERSION=13.2 \
@@ -161,8 +222,10 @@ modular-reduction implementation. The adapter also enables memory-saving
 blocking with a 256 MiB default target (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`),
 and divides the available-memory budget between ranks sharing each GPU.
 
-cuSOLVER handles enable FP64 fixed-point emulation with the performant
-strategy and dynamic mantissa selection. With CUDA 13.4 Update 1 or later
+On GPUs with weak native FP64, cuSOLVER handles enable FP64 fixed-point
+emulation with the performant strategy and dynamic mantissa selection when
+the toolkit supports it. A100-class devices default to native FP64;
+`OPENMX_CUSOLVER_EMULATION=0|1` overrides the hardware choice. With CUDA 13.4 Update 1 or later
 (cuSOLVER 12.3.4+), complete-spectrum real and complex dense solves use
 `CUSOLVER_ALG_0`: cuSOLVER automatically chooses the one-stage or two-stage
 reduction from the matrix dimension, GPU architecture and math mode. No
@@ -175,9 +238,13 @@ See [NVIDIA's cuSOLVER documentation](https://docs.nvidia.com/cuda/cusolver/)
 and [CUDA release notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/).
 Older cuSOLVER headers/libraries retain the existing SYEVD/SYEVDX path, and unsupported
 algorithm selection or emulation modes fall back to the compatible implementation.
-The cuSOLVER layer compiles against CUDA 12.3 as well; the complete bundled
-GEMMul8 build requires newer cuBLASLt APIs, as the previous bundled version
-already did. CUDA 13.2 and 13.4 GEMMul8 builds are verified.
+The cuSOLVER layer also compiles against CUDA 12.3. The bundled GEMMul8
+translation unit supplies compatibility declarations for newer cuBLASLt
+attributes referenced by upstream headers; OpenMX's instantiated
+`cublasHandle_t` path does not execute that newer Lt setup. CUDA 12.5 is
+supported by `Makefile.kugui`; CUDA 13.2 and 13.4 builds were verified earlier.
+CUDA 12.5 uses cuSOLVER 11.6.3 and does not expose the newer FP64-emulation
+or two-stage-selection APIs.
 
 For controlled comparisons:
 
@@ -195,7 +262,8 @@ spectra use SYEVDX. Explicit `auto` takes precedence over this manual minimum.
 The automatic crossover belongs to cuSOLVER and can change with its version
 and the GPU. `OPENMX_CUSOLVER_CACHE_MB` caps retained generic-solver
 scratch per rank (default 64 MiB; 0 releases scratch after every solve).
-`OPENMX_CUSOLVER_EMULATION=0` disables cuSOLVER emulation;
+`OPENMX_CUSOLVER_EMULATION=0` disables cuSOLVER emulation and `=1` requests it
+where supported;
 `scf.gemmul8.enable` independently controls OpenMX's GEMMul8 products.
 
 The AMD version's run-boundary cache cleanup has been ported to the CUDA
@@ -367,6 +435,10 @@ python3 tests/run_force4b_case1_turns_cpu.py
 python3 tests/run_dclno_residue_pool_smoke.py --sanitize
 python3 tests/run_dclno_solver_retry.py --sanitize
 python3 tests/run_band_noncol_k_order_cpu.py
+# Architecture selection and explicit override regression checks:
+python3 tests/run_cusolver_policy_cpu.py
+python3 tests/run_gemmul8_policy_cpu.py
+python3 tests/run_orbs_precision_policy_cpu.py
 ```
 
 These check arithmetic against independent CPU contractions, buffer boundaries,
@@ -425,17 +497,17 @@ https://journals.jps.jp/doi/10.7566/JPSJ.94.124003
 
 However, the current version offers improved performance compared to the version described in this paper.
 
-### Built-in test suites (-runtest / -runtestL)
+### Historical built-in test suites (-runtest / -runtestL)
 The two standard OpenMX test suites were run on three machines with flat MPI (the PC and Pegasus with the NVIDIA HPC SDK 26.5 / CUDA 13.2, Kugui with NVHPC 24.7 / CUDA 12.5 through `Makefile.kugui`):
 
 - **PC** — Core i9-10980XE (18 cores) + GeForce RTX 5080 (16 GB), 18 ranks sharing the single GPU;
 - **Pegasus (CCS, Univ. of Tsukuba) node** — Xeon Platinum 8468 (48 cores) + H100 PCIe (80 GB), 48 ranks sharing the single GPU;
 - **Kugui (ISSP, Univ. of Tokyo) node** — AMD EPYC 7763 (64 cores) + A100-SXM4 (40 GB), one of the node's four GPUs; 64 ranks share it in the CPU and no-MPS columns, and because MPS serves at most 48 clients per GPU, the MPS column uses 48 ranks and is paired with a 48-rank CPU column.
 
-On each machine the same binary was used for all of its columns, and the GPU suites were run twice — without CUDA MPS (time-sliced contexts) and with it (see above). `OPENMX_GPU=0` demotes the whole run to the CPU (ELPA2) paths (the Pegasus CPU jobs additionally had no GPU allocated at all), and the GPU runs use the input-file defaults (`scf.eigen.lib gpusolver`, GEMMul8 on):
+On each machine the same binary was used for all of its columns, and the GPU suites were run twice — without CUDA MPS (time-sliced contexts) and with it (see above). `OPENMX_GPU=0` demotes the whole run to the CPU (ELPA2) paths (the Pegasus CPU jobs additionally had no GPU allocated at all), and these GPU runs used the then-current defaults (`scf.eigen.lib gpusolver`, GEMMul8 on). Reproducing their GEMMul8 selection with the current version requires `scf.gemmul8.enable on` on A100/H100:
 
 ```sh
-# GPU (defaults; GEMMul8 enabled); N = 18 on the PC, 48 on the Pegasus node, 64 or 48 on the Kugui node.
+# Historical GPU configuration (GEMMul8 enabled); N = 18 on the PC, 48 on Pegasus, 64 or 48 on Kugui.
 # On all three machines the GPU suites were run twice: with the MPS daemon up
 # ("MPS" columns) and without it ("no MPS" columns).
 mpirun -np N ./openmx -runtest  -nt 1
