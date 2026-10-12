@@ -14,9 +14,7 @@ non-collinear cluster solvers).  The first solve
 of a run carries one-time costs (the preparation of X, the first use of a
 library routine), so the phase times are means over the later solves; the
 forward transform also gets the median of the later solves, which an
-occasional slow solve does not move.  Runs
-of the precision controller (scf.gemmul8.adaptive) also list the accepted
-SCF steps per stage and the rejected trials.  With OPENMX_GEMMUL8_TIMING=1
+occasional slow solve does not move.  With OPENMX_GEMMUL8_TIMING=1
 the runs report every GEMM routed through the GEMMul8 bridge (count, time and
 operations per rank, GEMMul8 and plain cuBLAS apart), listed in a further
 table.
@@ -145,21 +143,6 @@ def read_run(folder):
                 'max': [1e3 * max(t[i] for t in later) for i in range(7)] if later else None,
                 'sum_median': 1e3 * median([sum(t) for t in later]) if later else None,
             }
-    # scf.gemmul8.adaptive: one line per trial, "... stage 1 (moduli=12 fast reuse), eta=..., rejected"
-    run['stages'] = None
-    if stds:
-        stages, rejected, eta = {}, 0, {}
-        for m in re.finditer(r'forward GEMMs: stage \d+ \(([^)]*)\)(?:, eta=\s*(\S+?))?(, rejected)?\s*$',
-                             stds[0].read_text(errors='replace'), re.M):
-            name = re.sub(r'moduli=(\d+) (\w)\w*.*', r'L\1\2', m[1])
-            if m[3]:
-                rejected += 1
-            else:
-                stages[name] = stages.get(name, 0) + 1
-            if m[2]:
-                eta[name] = max(eta.get(name, 0.0), float(m[2]))
-        if stages or rejected:
-            run['stages'] = {'steps': stages, 'rejected': rejected, 'eta': eta}
     block = re.search(r'<coordinates.forces\s*\n\s*(\d+)\s*\n', text)
     if block:
         forces = []
@@ -216,17 +199,6 @@ def summarize(case, ref_label):
                 print(f"| {r['label']} | {g['setting']} | {g['real']} | {g['complex']} | {g['ranks']} | {g['gflop']:.1f} | "
                       f"{g['seconds']:.3f} | {g['cublas_seconds']:.3f} | {g['busiest']:.3f} | {share} | "
                       f"{1e3 * g['busiest'] / max(1, r['scf']):.2f} |")
-        print()
-    if any(r['stages'] for r in runs):
-        print('Precision controller: accepted SCF steps per stage of the forward transform (L<moduli><a|f>: accurate or '
-              'fast scaling), rejected trials, and the largest error indicator seen in each stage:\n')
-        print('| run | steps per stage | rejected trials | largest indicator |')
-        print('|---|---|---:|---|')
-        for r in runs:
-            if r['stages']:
-                t = r['stages']
-                print(f"| {r['label']} | " + ', '.join(f'{k}: {v}' for k, v in t['steps'].items()) + f" | {t['rejected']} | "
-                      + (', '.join(f'{k}: {v:.1e}' for k, v in t['eta'].items()) or '-') + ' |')
         print()
     if any(r['phases'] for r in runs):
         print('Phases of the dense solve (OPENMX_CLUSTER_PROFILE=1), ms per solve: the forward transform of the first solve, '

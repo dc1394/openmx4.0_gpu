@@ -2133,7 +2133,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tbody>
 <tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>gpusolver</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>, and is the default, so the GPU paths run unless one of the CPU eigensolvers is requested explicitly. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present. <b><code>gpusolver2</code></b> additionally distributes the mainline collinear/non-collinear <i>cluster</i> diagonalization over all ranks and their GPUs with ELPA 2026.02 (NVIDIA GPU kernels) and COSMA (pdgemm) — the multi-node option for Pegasus-class machines; any non-cluster calculation stops with an input error, and everything outside the cluster diagonalization behaves exactly like <code>gpusolver</code></td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper bound on GPUs used per node, applied to every rank→GPU assignment (central GPUSOLVER initialization, the local-rank device helpers of the Band/Cluster solver paths, and the DC-LNO proxy). <code>scf.Gpu.Num 1</code> confines the run to one GPU however many the node carries — a debugging aid; 30 effectively means "use every GPU found". Values ≤0 or ≥ the detected count are ignored</td></tr>
-<tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX's amount of standard output (−1 to 3), extended to the GPU diagnostics (§10.3): 1 prints only errors, a GPU that cannot be used and a GPU eigensolver given up; 2 adds the device plans and banners, the stage switches of the adaptive precision and the fallbacks and retries of single stages and solves; 3 adds the per-step, per-k-point and per-rank details</td></tr>
+<tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX's amount of standard output (−1 to 3), extended to the GPU diagnostics (§10.3): 1 prints only errors, a GPU that cannot be used and a GPU eigensolver given up; 2 adds the device plans and banners, the final FP64 re-solves and the fallbacks and retries of single stages and solves; 3 adds the per-step, per-k-point and per-rank details</td></tr>
 </tbody>
 </table>
 
@@ -2257,13 +2257,13 @@ included; the <code>OPENMX_*_PROFILE</code> and <code>*_VERBOSE</code> variables
 that cannot be used (<code>GPUSOLVER requested, but GPU initialization failed on … MPI ranks; using ELPA2.</code>), and a
 GPU eigensolver given up for lack of device memory or after a failure (<code>Falling back to the ELPA/ScaLAPACK
 diagonalization…</code>, a DC or DC-LNO rank that falls back to the CPU solver)</td></tr>
-<tr><td>2</td><td>Also the device plans, cache admissions and banners, the stage switches of the adaptive precision
-(forward GEMM stages, the FP64 re-solve of the step that ends the SCF), and the fallbacks and retries of single stages
+<tr><td>2</td><td>Also the device plans, cache admissions and banners, the FP64 re-solve of the step
+that ends the SCF, and the fallbacks and retries of single stages
 and solves, one line per node (Force4B, Force_HNL, Set_ProExpn_VNA, Set_Density_Grid, Mixing_H, GEMMul8's workspace
 fallback, the cuSOLVER emulation and FP32 retries)</td></tr>
 <tr><td>3</td><td>Also the per-step, per-k-point and per-rank details: the refinement residuals and warm starts of the
 refined FP32 eigensolver (about 38,000 of the 85,600 lines of an 18-rank <code>-runtestL</code> before this gating),
-the forward GEMM stage of every step with its indicator, every rank's own figures in the Force4B, Force_HNL and HVNA
+every rank's own figures in the Force4B, Force_HNL and HVNA
 fallback notices and in the on-the-fly density workspace notices of Set_Density_Grid, and the on-the-fly banner at
 every change of the workspace</td></tr>
 </tbody>

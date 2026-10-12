@@ -42,13 +42,6 @@ typedef struct {
     /* serial number of the current d_S: the forward GEMMs may reuse the
        prepared form of X only while this number stands */
     unsigned long long transformed_s_version;
-    /* error indicator of the forward transform: Omega, Z = X Omega, H Z,
-       V = X^T (H Z) and C Omega, each probe_n x probe_b */
-    double *           d_probe;
-    int                probe_n;
-    int                probe_b;
-    unsigned long long probe_version;
-    double             probe_omega_norm;
     size_t             d_work_bytes;
     size_t             h_work_bytes;
     cudaStream_t       stream;
@@ -386,7 +379,6 @@ static void ClusterCol_GpuSolver_Destroy(void)
     if (ctx->d_H != NULL)        wait_cudafunc(cudaFree(ctx->d_H));
     if (ctx->d_tmp != NULL)      wait_cudafunc(cudaFree(ctx->d_tmp));
     if (ctx->d_W != NULL)        wait_cudafunc(cudaFree(ctx->d_W));
-    if (ctx->d_probe != NULL)    wait_cudafunc(cudaFree(ctx->d_probe));
     if (ctx->d_info != NULL)     wait_cudafunc(cudaFree(ctx->d_info));
     if (ctx->d_work != NULL)     wait_cudafunc(cudaFree(ctx->d_work));
     if (ctx->h_work != NULL)     free(ctx->h_work);
@@ -674,7 +666,7 @@ static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOpera
 
 /* OPENMX_CLUSTER_PROFILE=1: cumulative wall time of the phases of the dense
    solve (forward transform, eigensolver, back transform, eigenvector
-   download, error indicator), one CLUSTERPROF line per solve.  The stream is synchronized
+   download), one CLUSTERPROF line per solve.  The stream is synchronized
    around each phase, so the times are not those of an unprofiled run. */
 static int ClusterCol_ProfileEnabled(void)
 {
@@ -698,74 +690,6 @@ static double ClusterCol_ProfileLap(double *t0)
         *t0 = now;
         return lap;
     }
-}
-
-/* Error indicator of the forward transform (scf.gemmul8.adaptive).  With a
-   random Omega (n x b) and Z = X Omega, both kept as long as X stands,
-   V = X^T (H Z) is formed in FP64 before the transform overwrites H and is
-   compared afterwards with C Omega for the computed C = X^T H X:
-     eta = |C Omega - V|_F / max(|V|_F, floor |Omega|_F).
-   C is taken as computed, not as the symmetric matrix the eigensolver builds
-   from its lower triangle: H itself is symmetric only to about 1e-10, which
-   would hide every smaller error of the products. */
-static void ClusterCol_ProbeReference(int n, int b)
-{
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
-    const size_t thin = ClusterCol_CheckedMulCount((size_t)n,(size_t)b,"error indicator");
-    const double one = 1.0, zero = 0.0;
-    double *omega, *z, *hz, *v;
-
-    if (ctx->d_probe==NULL || ctx->probe_n!=n || ctx->probe_b!=b){
-        if (ctx->d_probe!=NULL) wait_cudafunc(cudaFree(ctx->d_probe));
-        ctx->d_probe = NULL;
-        wait_cudafunc(cudaMalloc((void**)&ctx->d_probe,5*thin*sizeof(double)));
-        ctx->probe_n = n;
-        ctx->probe_b = b;
-        ctx->probe_version = 0;
-    }
-    omega = ctx->d_probe;
-    z = omega + thin;
-    hz = z + thin;
-    v = hz + thin;
-
-    if (ctx->probe_version!=ctx->transformed_s_version){
-        /* new directions for every X, reproducible from its serial number */
-        double *h_omega = (double*)ClusterCol_MallocArray(thin,sizeof(double),"error indicator directions");
-        uint64_t state = 0x9E3779B97F4A7C15ULL ^ (ctx->transformed_s_version*0xD1B54A32D192ED03ULL);
-
-        for (size_t i=0; i<thin; i++){
-            state ^= state >> 12;
-            state ^= state << 25;
-            state ^= state >> 27;
-            h_omega[i] = 2.0*((double)((state*0x2545F4914F6CDD1DULL) >> 11)/9007199254740992.0) - 1.0;
-        }
-        wait_cudafunc(cudaMemcpyAsync(omega,h_omega,thin*sizeof(double),cudaMemcpyHostToDevice,ctx->stream));
-        wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_N,CUBLAS_OP_N,n,b,n,&one,ctx->d_S,n,omega,n,&zero,z,n));
-        wait_cudafunc(cublasDnrm2(ctx->cublas,(int)thin,omega,1,&ctx->probe_omega_norm));
-        free(h_omega);
-        ctx->probe_version = ctx->transformed_s_version;
-    }
-
-    wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_N,CUBLAS_OP_N,n,b,n,&one,ctx->d_H,n,z,n,&zero,hz,n));
-    wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_T,CUBLAS_OP_N,n,b,n,&one,ctx->d_S,n,hz,n,&zero,v,n));
-}
-
-/* after the forward transform: d_H holds C */
-static double ClusterCol_ProbeEta(int n, int b)
-{
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
-    const size_t thin = (size_t)n*(size_t)b;
-    const double one = 1.0, zero = 0.0, minus_one = -1.0;
-    const double floor_norm = openmx_gemmul8AdaptiveProbeFloor()*ctx->probe_omega_norm;
-    double *omega = ctx->d_probe, *v = omega + 3*thin, *u = omega + 4*thin;
-    double difference = 0.0, reference = 0.0;
-
-    wait_cudafunc(cublasDgemm(ctx->cublas,CUBLAS_OP_N,CUBLAS_OP_N,n,b,n,&one,ctx->d_H,n,omega,n,&zero,u,n));
-    wait_cudafunc(cublasDaxpy(ctx->cublas,(int)thin,&minus_one,v,1,u,1));
-    wait_cudafunc(cublasDnrm2(ctx->cublas,(int)thin,u,1,&difference));
-    wait_cudafunc(cublasDnrm2(ctx->cublas,(int)thin,v,1,&reference));
-
-    return difference/((reference<floor_norm) ? floor_norm : reference);
 }
 
 static int ClusterCol_GemmWorkspaceTurnRelease(void);
@@ -905,11 +829,10 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
 
 static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C, int spin)
 {
-    static double prof[5] = {0.0,0.0,0.0,0.0,0.0};
+    static double prof[4] = {0.0,0.0,0.0,0.0};
     static long prof_solves = 0;
     const int profile = ClusterCol_ProfileEnabled();
     const int trim_scratch = ClusterCol_GemmWorkspaceTurnRelease();
-    const int probe_b = openmx_gemmul8AdaptiveProbeColumns();
     double t0 = 0.0;
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
     size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"eigenvectors");
@@ -920,9 +843,6 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
     }
 
     if (profile) (void)ClusterCol_ProfileLap(&t0);
-
-    if (0<probe_b) ClusterCol_ProbeReference(n,probe_b);
-    if (profile) prof[4] += ClusterCol_ProfileLap(&t0);
 
     /* forward transform X^T (H X): X = d_S stays fixed during the SCF.  The
        two products take a full GEMMul8 workspace when the device has room,
@@ -944,20 +864,10 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
     }
     if (profile) prof[0] += ClusterCol_ProfileLap(&t0);
 
-    if (0<probe_b) openmx_gemmul8AdaptiveReport(ClusterCol_ProbeEta(n,probe_b),0);
-    if (profile) prof[4] += ClusterCol_ProfileLap(&t0);
-
     if (!(0 <= spin && ClusterCol_refine.last_refined && ClusterCol_RefinedEigenDevice(spin,n,maxn,ko_spin))){
         ClusterCol_GpuSolver_EigenDevice(ctx->d_H,n,maxn,ko_spin+1);
     }
     if (profile) prof[1] += ClusterCol_ProfileLap(&t0);
-
-    for (int l=1; l<=maxn; l++){
-        if (!isfinite(ko_spin[l])){
-            openmx_gemmul8AdaptiveReport(-1.0,1);
-            break;
-        }
-    }
 
     ClusterCol_GEMMul8Dgemm_Device(CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
                                    ctx->d_H,n,ctx->d_S,n,ctx->d_tmp,maxn);
@@ -972,8 +882,8 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
         prof_solves++;
         MPI_Comm_rank(mpi_comm_level1,&rank);
         printf("CLUSTERPROF rank=%d solves=%ld n=%d forward=%.6f eigen=%.6f back=%.6f evec_d2h=%.6f "
-               "indicator=%.6f (s, cumulative)\n",
-               rank,prof_solves,n,prof[0],prof[1],prof[2],prof[3],prof[4]);
+               "(s, cumulative)\n",
+               rank,prof_solves,n,prof[0],prof[1],prof[2],prof[3]);
         fflush(stdout);
     }
 }

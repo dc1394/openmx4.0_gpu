@@ -2009,7 +2009,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tbody>
 <tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>gpusolver</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加し、これが既定値。したがって CPU 側の固有値ソルバを明示指定しない限り GPU 経路が走る。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格。<b><code>gpusolver2</code></b> はさらに、コリニア/ノンコリニアの<b>クラスター計算本流の対角化</b>を ELPA 2026.02(NVIDIA GPU カーネル)+ COSMA(pdgemm)で全ランク・全 GPU に分散する(Pegasus 級マルチノード向け)。クラスター以外の計算では入力エラーで停止し、クラスター対角化以外の動作は <code>gpusolver</code> と完全に同一</td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>ノード内で使用する GPU 台数の上限。すべての rank→GPU 割り当て(GPUSOLVER 中核初期化、Band/Cluster ソルバ経路の local-rank デバイスヘルパー、DC-LNO プロキシ)に適用。<code>scf.Gpu.Num 1</code> でノードの GPU 搭載数によらず 1 台のみ使用(デバッグ用途。既定 30 は実質「検出された全 GPU を使う」)。0 以下や検出数以上の値は無視</td></tr>
-<tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX 本来の標準出力量(−1〜3)を GPU 診断行にも適用する(§10.3)。1 はエラー、GPU が使えないこと、GPU 固有値ソルバを断念したことだけを出力し、2 でデバイス計画とバナー、適応精度の段の切り替え、個々のステージ・求解のフォールバックと再試行を加え、3 でさらに SCF ステップごと・k 点ごと・ランクごとの詳細を加える</td></tr>
+<tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX 本来の標準出力量(−1〜3)を GPU 診断行にも適用する(§10.3)。1 はエラー、GPU が使えないこと、GPU 固有値ソルバを断念したことだけを出力し、2 でデバイス計画とバナー、最終ステップの FP64 再求解、個々のステージ・求解のフォールバックと再試行を加え、3 でさらに SCF ステップごと・k 点ごと・ランクごとの詳細を加える</td></tr>
 </tbody>
 </table>
 
@@ -2132,11 +2132,10 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 (<code>GPUSOLVER requested, but GPU initialization failed on … MPI ranks; using ELPA2.</code>)、デバイスメモリ不足や失敗で
 GPU 固有値ソルバを断念したこと(<code>Falling back to the ELPA/ScaLAPACK diagonalization…</code>、DC・DC-LNO のランクが
 CPU ソルバへ切り替えたこと)</td></tr>
-<tr><td>2</td><td>さらにデバイス計画・キャッシュ採用・バナー、適応精度の段の切り替え(順変換 GEMM の段、SCF を終えるステップの
-FP64 再求解)、個々のステージ・求解のフォールバックと再試行(ノードごとに 1 行。Force4B、Force_HNL、Set_ProExpn_VNA、
+<tr><td>2</td><td>さらにデバイス計画・キャッシュ採用・バナー、SCF を終えるステップの FP64 再求解、個々のステージ・求解のフォールバックと再試行(ノードごとに 1 行。Force4B、Force_HNL、Set_ProExpn_VNA、
 Set_Density_Grid、Mixing_H、GEMMul8 の workspace fallback、cuSOLVER のエミュレーション再試行と FP32 再試行)</td></tr>
 <tr><td>3</td><td>さらに SCF ステップごと・k 点ごと・ランクごとの詳細: 精錬 FP32 固有値ソルバの精錬残差とウォームスタート
-(このゲート導入前の 18 ランク <code>-runtestL</code> では 85,600 行中約 38,000 行)、各ステップの順変換 GEMM の段と指標、
+(このゲート導入前の 18 ランク <code>-runtestL</code> では 85,600 行中約 38,000 行)、
 Force4B・Force_HNL・HVNA のフォールバック通知と Set_Density_Grid のその場計算作業領域の通知での各ランク自身の数値、
 作業領域が変わるたびのその場計算バナー</td></tr>
 </tbody>
