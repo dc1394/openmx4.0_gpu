@@ -1842,7 +1842,8 @@ static void ClusterNonCol_BuildDenseIndexFromGathered(const int *order_GA, int *
         int Anum = MP[GA_AN];
 
         for (int i = 0; i < tnoA; i++) {
-            int col = Anum + i - 1;
+            /* Match the host assembler: atom A supplies the row in column-major storage. */
+            int row = Anum + i - 1;
 
             for (int LB_AN = 0; LB_AN <= FNAN[GA_AN]; LB_AN++) {
                 int GB_AN = natn[GA_AN][LB_AN];
@@ -1851,7 +1852,7 @@ static void ClusterNonCol_BuildDenseIndexFromGathered(const int *order_GA, int *
                 int Bnum = MP[GB_AN];
 
                 for (int j = 0; j < tnoB; j++) {
-                    int row = Bnum + j - 1;
+                    int col = Bnum + j - 1;
 
                     if (row < 0 || n <= row || col < 0 || n <= col) {
                         ClusterNonCol_AbortWithMessage("Dense matrix index is out of range in Cluster_DFT_NonCol.c.");
