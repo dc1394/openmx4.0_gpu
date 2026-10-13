@@ -66,6 +66,23 @@ it under the automatic input setting. The `_D` and `_Z` variants select real
 and complex products separately. An input-file `off` always takes precedence;
 an input-file `on` still honors environment disables.
 
+The input keyword `scf.fp32.enable` defaults to `on`, preserving the existing
+precision policies. To force FP64 arithmetic while retaining GEMMul8:
+
+```text
+scf.fp32.enable     off
+scf.gemmul8.enable  on
+```
+
+`off` disables FP32 eigenvector refinement, FP32 and double-float grid
+integrals, and double-float orbital evaluation. It also promotes the
+legacy float products in VNA matrix, force and stress contractions to FP64.
+It overrides `OPENMX_EIGEN_REFINE`, `OPENMX_GRID_FP32`,
+`OPENMX_GRID_PRECISION` and `OPENMX_ORBS_EVAL_PRECISION` requests for FP32/DF.
+GEMMul8 and cuSOLVER's FP64 fixed-point emulation remain governed by their
+own settings. The existing float storage of orbital and VNA projector
+tables is unchanged; this keyword controls arithmetic precision.
+
 ### A100 execution policy
 
 On A100, on-the-fly orbital evaluation and grid quadrature use native FP64

@@ -80,7 +80,8 @@ typedef struct {
     int    fp32_solved;    /* an FP32 solve ran (not a warm start) */
 } EigenRefineReport;
 
-/* K of OPENMX_EIGEN_REFINE, or the device default (2 on GPUs whose FP32:FP64
+/* Returns 0 when scf.fp32.enable is off, even with an environment override.
+   Otherwise K of OPENMX_EIGEN_REFINE, or the device default (2 on GPUs whose FP32:FP64
    throughput ratio is at least 8 when the corresponding GEMMul8 products
    are on; 0 on A100/H100, which have fast native FP64);
    *ratio receives the ratio when the default applied, else 0; reports the
@@ -109,7 +110,8 @@ int    openmx_eigen_refine_warm_band_step(int scf_iter);
    as the basis.
    e0 (n doubles, host) receives the estimates, from which the caller
    computes occupations.  Returns 1 on success, 0 on failure with
-   report->persistent set, -1 when a warm start found the old vectors too
+   report->persistent set (or 0 when scf.fp32.enable disables refinement),
+   -1 when a warm start found the old vectors too
    far from a (nothing changed: the caller calls again without warm). */
 int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, const EigenRefineProblem *pb,
                                 double *e0, EigenRefineReport *report);

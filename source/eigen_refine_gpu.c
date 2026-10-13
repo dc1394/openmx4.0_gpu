@@ -45,6 +45,7 @@
    bias of 2e-10 Ha across warm starts; OPENMX_EIGEN_REFINE_COMPLEMENT).
 */
 #include "eigen_refine_gpu.h"
+#include "openmx_precision.h"
 #include "openmx_stdout_level.h"
 
 #include <mpi.h>
@@ -114,6 +115,7 @@ int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
     int iterations = 0;
 
     *ratio = 0;
+    if (!openmx_fp32_enabled()) return 0;
     if (value != NULL && value[0] != '\0') {
         iterations = (0 < atoi(value)) ? atoi(value) : 0;
         if (verbose) {
@@ -522,9 +524,14 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
     double *a = (double *)pb->a;
     double *x = (double *)pb->x;
     float *af = (float *)pb->fp32;
-    float *wf = af + (cplx ? 2 * nn : nn);
+    float *wf;
 
     memset(report, 0, sizeof(*report));
+    if (!openmx_fp32_enabled()) {
+        st->basis_valid = 0;
+        return 0;
+    }
+    wf = af + (cplx ? 2 * nn : nn);
     st->cplx = cplx;
 
     /* the caller's products that built a may still run on its streams

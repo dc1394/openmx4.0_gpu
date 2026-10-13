@@ -61,6 +61,7 @@ STUBS = r'''
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
+#include "openmx_precision.h"
 
 typedef float Type_DS_VNA;
 typedef int MPI_Comm;
@@ -257,6 +258,8 @@ static void free_fixture(void)
 
 int main(void)
 {
+    const char *precision = getenv("TEST_FP32_ENABLE");
+    openmx_set_fp32_enabled(precision == NULL || atoi(precision));
     int mc, direction, k, i, j, l, spin, solver, seed, checks = 0;
     const int solvers[] = {3, 5, 8, 11};
     double max_error = 0.0;
@@ -385,15 +388,19 @@ def main() -> int:
             binary = Path(directory) / "force4b_stream_cpu"
             source.write_text(harness)
             subprocess.run(
-                [*compiler, *flags, "-std=c11", "-Wno-unknown-pragmas", str(source), "-lm", "-o", str(binary)],
+                [*compiler, *flags, "-std=c11", "-Wno-unknown-pragmas",
+                 "-I", str(ROOT / "source"), str(source),
+                 str(ROOT / "source/openmx_precision.c"), "-lm", "-o", str(binary)],
                 check=True,
             )
-            result = subprocess.run([str(binary)], text=True, capture_output=True)
-            if result.returncode:
-                sys.stderr.write(result.stderr)
-                sys.stdout.write(result.stdout)
-                return 1
-            sys.stdout.write(result.stdout)
+            for enabled in ("1", "0"):
+                env = dict(os.environ, TEST_FP32_ENABLE=enabled)
+                result = subprocess.run([str(binary)], text=True, capture_output=True, env=env)
+                if result.returncode:
+                    sys.stderr.write(result.stderr)
+                    sys.stdout.write(result.stdout)
+                    return 1
+                sys.stdout.write(f"scf.fp32.enable={enabled}: {result.stdout}")
         return 0
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Force4B CPU test failed: {error}", file=sys.stderr)

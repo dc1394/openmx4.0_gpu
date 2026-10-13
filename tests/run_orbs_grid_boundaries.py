@@ -22,6 +22,7 @@ code = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "orbs_grid_gpu.h"
+#include "openmx_precision.h"
 #define SOG_L0MAX 3
 static int fail_at, allocation, live, fail_device;
 static void *checked_malloc(size_t n) {
@@ -30,6 +31,10 @@ static void *checked_malloc(size_t n) {
 }
 static void checked_free(void *p) { if (p) { --live; free(p); } }
 static SOG_DeviceTables SOG_dev;
+static int SOG_dev_fp32_enabled = -1;
+void SOG_Device_Release(void) {
+  free(SOG_dev.arena); memset(&SOG_dev,0,sizeof(SOG_dev)); SOG_dev_fp32_enabled=-1;
+}
 static int SpeciesNum = 1, TCpyCell = 0, Ngrid2 = 3, Ngrid3 = 3;
 static int Spe_Num_Mesh_PAO[] = {6}, Spe_MaxL_Basis[] = {0};
 static int nb[] = {1}, *Spe_Num_Basis[] = {nb};
@@ -40,7 +45,7 @@ static double *mul[] = {rw}, **angular[] = {mul}, ***Spe_PAO_RWF[] = {angular};
 static double atv[1][4], gtv[4][4], Grid_Origin[4];
 static int SOG_gpu_eligible(int kind) { return 1; }
 static int eval_df = 1;
-static int SOG_eval_double_float(void) { return eval_df; }
+static int SOG_eval_double_float(void) { return eval_df && openmx_fp32_enabled(); }
 static size_t SOG_arena_off(size_t *pos, size_t bytes) {
   size_t off = *pos; *pos = (off + bytes + 511U) & ~(size_t)511U; return off;
 }
@@ -99,7 +104,18 @@ int main(void) {
   assert(SOG_dev.bytes < df_bytes);
   assert(!SOG_dev.rwd && !SOG_dev.mcd && !SOG_dev.spl);
   assert(SOG_dev.rv && SOG_dev.rwf && !SOG_dev.eval_df);
-  free(SOG_dev.arena);
+  SOG_Device_Release();
+  eval_df = 1;
+  for (int enabled = 0; enabled < 3; ++enabled) {
+    openmx_set_fp32_enabled(enabled % 2); allocation = 0;
+    assert(SOG_Device_Prepare()); assert(live == 0);
+    assert(allocation == (enabled % 2 ? 11 : 8));
+    assert(SOG_dev.eval_df == enabled % 2);
+    assert((SOG_dev.rwd != NULL) == enabled % 2);
+    assert((SOG_dev.mcd != NULL) == enabled % 2);
+    assert((SOG_dev.spl != NULL) == enabled % 2);
+  }
+  SOG_Device_Release();
   puts("PASS: orbital end intervals, DF/FP64 allocation failures, device OOM, retry, FP64 table savings");
 }
 '''
@@ -110,5 +126,5 @@ with tempfile.TemporaryDirectory(prefix='openmx-orbs-test-') as tmp:
     subprocess.run([os.environ.get('CC', 'cc'), '-std=c11', '-O1', '-g',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                     '-fno-pie', '-no-pie', '-I' + str(root / 'source'),
-                    str(test), '-lm', '-o', str(exe)], check=True)
+                    str(test), str(root / 'source/openmx_precision.c'), '-lm', '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

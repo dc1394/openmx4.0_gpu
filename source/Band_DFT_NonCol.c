@@ -13,6 +13,7 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "eigen_refine_gpu.h"
+#include "openmx_precision.h"
 #include "lapack_prototypes.h"
 #include "tran_variables.h"
 #include "set_cuda_default_device_from_local_rank.h"
@@ -197,6 +198,8 @@ static void BandNonCol_RefineConfigure(void)
     BandNonColRefineState *st = &BandNonCol_refine;
     int myid, config[2] = {0, 0};
 
+    /* Input files in -runtest share a process; do not cache an input veto. */
+    if (!openmx_fp32_enabled()) return;
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(1, 2 <= level_stdout, &config[1]);
@@ -208,7 +211,7 @@ static void BandNonCol_RefineConfigure(void)
 
 static int BandNonCol_RefineIterations(void)
 {
-    return (0 < BandNonCol_refine.iterations) ? BandNonCol_refine.iterations : 0;
+    return (openmx_fp32_enabled() && 0 < BandNonCol_refine.iterations) ? BandNonCol_refine.iterations : 0;
 }
 
 /* what the refined solve adds to a k-point owner's device memory: the basis */

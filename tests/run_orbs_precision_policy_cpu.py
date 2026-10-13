@@ -15,6 +15,7 @@ code = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "openmx_precision.h"
 static int ratio, get_error, attr_error, queries;
 enum { cudaSuccess = 0, cudaDevAttrSingleToDoublePrecisionPerfRatio = 1 };
 static int cudaGetDevice(int *device) { ++queries; *device=0; return get_error; }
@@ -42,12 +43,31 @@ int main(void) {
   setenv("OPENMX_ORBS_EVAL_PRECISION","DF",1); assert(SOG_eval_double_float());
   assert(queries==0); /* Explicit overrides do not probe a device. */
   setenv("OPENMX_ORBS_EVAL_PRECISION","",1); assert(!SOG_eval_double_float());
-  puts("PASS: orbital precision defaults, CUDA probe failures and explicit overrides");
+
+  /* The input switch overrides both device defaults and an explicit DF
+     environment setting, and permits the default again in the next input. */
+  ratio=64;
+  const char *override[]={"", "df", "DF", "fp64"};
+  for (int i=0;i<4;i++) {
+    setenv("OPENMX_ORBS_EVAL_PRECISION",override[i],1);
+    for (int cycle=0;cycle<2;cycle++) {
+      openmx_set_fp32_enabled(0); queries=0;
+      assert(!SOG_eval_double_float());
+      assert(queries==0);
+      openmx_set_fp32_enabled(1);
+      assert(SOG_eval_double_float()==(i!=3));
+    }
+  }
+  openmx_set_fp32_enabled(0);
+  setenv("OPENMX_ORBS_EVAL_PRECISION","df",1);
+  assert(!SOG_eval_double_float());
+  puts("PASS: orbital precision defaults, CUDA probe failures, environment and input overrides");
 }
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-orbs-precision-") as tmp:
     cfile, binary = Path(tmp)/"check.c", Path(tmp)/"check"
     cfile.write_text(code)
     subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-O2", "-Wall", "-Wextra",
-                    "-Werror", str(cfile), "-o", str(binary)], check=True)
+                    "-Werror", "-I" + str(root / "source"), str(cfile),
+                    str(root / "source/openmx_precision.c"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

@@ -33,6 +33,7 @@ PREFIX = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "openmx_precision.h"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); exit(2); } } while (0)
 typedef int cudaError_t;
 typedef int cusolverStatus_t;
@@ -169,26 +170,37 @@ REFINE_PREFIX = PREFIX + r'''
 typedef struct {
     double *b1,*b2,*b3,*lam,*occ; void *own; int products_ready,basis_valid,basis_n;
     double delta_cold;
+    int cplx,capacity;
 } EigenRefineState;
-typedef struct { int unused; void *(*host_malloc)(size_t,size_t,const char *); } EigenRefineDevice;
+typedef struct {
+    int unused; void *(*host_malloc)(size_t,size_t,const char *);
+    int (*try_malloc)(void **,size_t);
+} EigenRefineDevice;
 typedef struct {
     int cplx,n,maxn,iterations,transient,warm,defaulted;
     void *a,*x,*fp32; double *w; size_t region;
     double (*occupation)(double,int,void *); void *occupation_ctx;
 } EigenRefineProblem;
-typedef struct { int persistent,columns,rr_clusters,rr_largest; double max_r,max_s,delta,chain; } EigenRefineReport;
+typedef struct {
+    int persistent,columns,rr_clusters,rr_largest; double max_r,max_s,delta,chain;
+    int fp32_solved;
+} EigenRefineReport;
 enum { CUBLAS_OP_N,CUBLAS_OP_C };
 static double refine_anorm=4.0;
-static int gemm_calls, fault_call, fault_component, rr_fault, checks;
+static int gemm_calls, fault_call, fault_component, rr_fault, checks, synchronize_calls;
 static double fault_value;
 static int env_flag(const char *s,int def) { return def; }
 static void refine_check(int s,const char *what) { CHECK(!s); }
 static void refine_check_blas(int s,const char *what) { CHECK(!s); }
 static int cudaFree(void *p) { free(p); return 0; }
 static int cudaMemcpy(void *d,const void *s,size_t n,int k) { memcpy(d,s,n); return 0; }
-static int cudaDeviceSynchronize(void) { return 0; }
+static int cudaDeviceSynchronize(void) { synchronize_calls++; return 0; }
 static long long openmx_gemmul8NativeCalls(int c) { return 0; }
 static int refine_blocks_ensure(EigenRefineState *s,EigenRefineDevice *d,const EigenRefineProblem *p,EigenRefineReport *r) {
+    CHECK(0); return 0;
+}
+static void openmx_eigen_refine_state_release(EigenRefineState *s) { CHECK(0); }
+static int refine_fp32_solve(EigenRefineDevice *d,int c,int n,double *a,float *af,float *wf) {
     CHECK(0); return 0;
 }
 static void *hmalloc(size_t n,size_t w,const char *label) { void *p=malloc(n*w); CHECK(p); return p; }
@@ -222,11 +234,32 @@ static double occupation(double e,int i,void *ctx) { return i==1?1.0:0.0; }
 '''
 
 REFINE_HARNESS = r'''
+static void prepare_disabled(int cplx,int warm) {
+    double a[32],saved[32],x[32],e0[4];
+    EigenRefineState st={0}; EigenRefineDevice dev={0};
+    EigenRefineReport rep,zero;
+    EigenRefineProblem pb={0};
+    for(int i=0;i<32;i++) a[i]=saved[i]=i+0.25,x[i]=-888;
+    for(int i=0;i<4;i++) e0[i]=-999;
+    memset(&rep,1,sizeof(rep)); memset(&zero,0,sizeof(zero)); st.basis_valid=1;
+    /* The caller need not allocate any FP32 workspace when FP32 is off. */
+    pb.cplx=cplx; pb.n=4; pb.maxn=4; pb.a=a; pb.x=x; pb.fp32=NULL; pb.warm=warm;
+    gemm_calls=synchronize_calls=0;
+    openmx_set_fp32_enabled(0);
+    CHECK(openmx_eigen_refine_prepare(&st,&dev,&pb,e0,&rep)==0);
+    CHECK(!st.basis_valid && !memcmp(&rep,&zero,sizeof(rep)));
+    CHECK(!memcmp(a,saved,sizeof(a)) && !gemm_calls && !synchronize_calls);
+    for(int i=0;i<32;i++) CHECK(x[i]==-888);
+    for(int i=0;i<4;i++) CHECK(e0[i]==-999);
+    openmx_set_fp32_enabled(1);
+    checks++;
+}
+
 static void one(int cplx,int fault) {
     int n=4,width=cplx?2:1;
     double a[32]={0},saved[32],x[32]={0},lam[4]={1,2,3,4},occ[4],f[4]={1,0,0,0},out[4];
     EigenRefineState st={0}; EigenRefineReport rep={0};
-    EigenRefineDevice dev={0,hmalloc};
+    EigenRefineDevice dev={0,hmalloc,NULL};
     EigenRefineProblem pb={cplx,n,n,2,0,0,0,a,x,NULL,out,0,occupation,NULL};
     gemm_calls=0; fault_call=0; rr_fault=0; fault_component=0; fault_value=NAN;
     for(int i=0;i<n;i++) { a[width*(i+i*n)]=lam[i]; x[width*(i+i*n)]=1; out[i]=-999; }
@@ -254,6 +287,7 @@ static void one(int cplx,int fault) {
     checks++;
 }
 int main(void) {
+    for(int c=0;c<=1;c++) for(int w=0;w<=1;w++) prepare_disabled(c,w);
     for(int c=0;c<=1;c++) for(int f=0;f<=7;f++) one(c,f);
     printf("PASS refinement: %d real/complex success and fallback-preservation checks\n",checks);
     return 0;
@@ -273,7 +307,7 @@ def main():
              ("openmx_solver_emulated", "openmx_solver_retry", "openmx_solver_both_modes")) + RETRY_HARNESS,
         "refine": REFINE_PREFIX + "\n".join(function(refine, name) for name in
              ("refine_blocks_release", "refine_maxima", "refine_nonfinite", "refine_result_finite",
-              "openmx_eigen_refine_finish")) + REFINE_HARNESS,
+              "openmx_eigen_refine_prepare", "openmx_eigen_refine_finish")) + REFINE_HARNESS,
     }
     cc = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))
@@ -285,7 +319,8 @@ def main():
             exe = Path(tmp) / name
             source.write_text(body)
             subprocess.run(cc + flags + ["-std=c11", "-Wall", "-Wextra", "-Wno-unused-parameter",
-                "-Wno-unknown-pragmas", str(source), "-lm", "-o", str(exe)], check=True)
+                "-Wno-unknown-pragmas", "-I" + str(root / "source"), str(source),
+                str(root / "source/openmx_precision.c"), "-lm", "-o", str(exe)], check=True)
             subprocess.run([str(exe)], check=True)
 
 

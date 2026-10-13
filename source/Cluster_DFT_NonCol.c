@@ -17,6 +17,7 @@
 #include "set_openacc_device_from_local_rank.h"
 #include "elpa_cosma_bridge.h"
 #include "eigen_refine_gpu.h"
+#include "openmx_precision.h"
 #include <limits.h>
 #include <math.h>
 #include <omp.h>
@@ -1168,6 +1169,8 @@ static void ClusterNonCol_RefineConfigure(void)
     ClusterNonColRefineState *st = &ClusterNonCol_refine;
     int myid, config[2] = {0, 0};   /* iterations, FP32:FP64 ratio when defaulted on */
 
+    /* Input files in -runtest share a process; do not cache an input veto. */
+    if (!openmx_fp32_enabled()) return;
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(1, 2 <= level_stdout, &config[1]);
@@ -1180,7 +1183,7 @@ static void ClusterNonCol_RefineConfigure(void)
 /* the steps of the refinement, 0 when it is off or not configured yet */
 static int ClusterNonCol_RefineIterations(void)
 {
-    return (0 < ClusterNonCol_refine.iterations) ? ClusterNonCol_refine.iterations : 0;
+    return (openmx_fp32_enabled() && 0 < ClusterNonCol_refine.iterations) ? ClusterNonCol_refine.iterations : 0;
 }
 
 static void ClusterNonCol_RefineRelease(void)

@@ -5,6 +5,7 @@
 #include <strings.h>
 #include <ctype.h>
 #include "openmx_common.h"
+#include "openmx_precision.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include <omp.h>
@@ -807,6 +808,18 @@ void Input_std(char *file)
 
   /* use GPU? (added by H.Kawai, February 2024) */
   input_int("scf.Gpu.Num", &SCF_Gpu_Num, 30);
+
+  /* Input-level arithmetic policy, reset for every input in -runtest too.
+     GEMMul8 has its own independent setting below. */
+  {
+    int fp32_enable;
+
+    input_logical("scf.fp32.enable", &fp32_enable, 1);
+    openmx_set_fp32_enabled(fp32_enable);
+    if (!fp32_enable && myid==Host_ID && 2<=level_stdout){
+      printf("<Input_std> scf.fp32.enable=off: FP64 arithmetic replaces FP32 and double-float paths; GEMMul8 follows its own setting.\n");
+    }
+  }
 
   /* GEMMul8 on/off for the GPU dense-GEMM bridge, so its contribution can
      be isolated: off routes every openmx_gemmul8{D,Z}gemm call to plain

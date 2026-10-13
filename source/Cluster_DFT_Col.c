@@ -16,6 +16,7 @@
 #include "set_openacc_device_from_local_rank.h"
 #include "elpa_cosma_bridge.h"
 #include "eigen_refine_gpu.h"
+#include "openmx_precision.h"
 #include <fftw3.h>
 #include <math.h>
 #include <omp.h>
@@ -120,6 +121,8 @@ static void ClusterCol_RefineConfigure(void)
     ClusterColRefineState *st = &ClusterCol_refine;
     int myid, config[2] = {0, 0};
 
+    /* Input files in -runtest share a process; do not cache an input veto. */
+    if (!openmx_fp32_enabled()) return;
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(0, 2 <= level_stdout, &config[1]);
@@ -131,7 +134,7 @@ static void ClusterCol_RefineConfigure(void)
 
 static int ClusterCol_RefineIterations(void)
 {
-    return (0 < ClusterCol_refine.iterations) ? ClusterCol_refine.iterations : 0;
+    return (openmx_fp32_enabled() && 0 < ClusterCol_refine.iterations) ? ClusterCol_refine.iterations : 0;
 }
 
 /* what the refined solve adds to the dense owner's device memory: the basis */

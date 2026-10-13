@@ -76,6 +76,8 @@ static void check_declined(int full_batch, int stream_mode, int mode)
 
 int main(void)
 {
+    const char *precision = getenv("TEST_FP32_ENABLE");
+    openmx_set_fp32_enabled(precision == NULL || atoi(precision));
     int fallback, spin, seed, mc, q, source, direction, atom, k, i, l, checks = 0;
     const size_t GiB = (size_t)1024 * 1024 * 1024;
     const size_t MiB = (size_t)1024 * 1024;
@@ -234,15 +236,19 @@ def main() -> int:
             binary = Path(directory) / "turns"
             source.write_text(harness)
             subprocess.run(
-                [*compiler, *flags, "-std=c11", "-Wno-unknown-pragmas", str(source), "-lm", "-o", str(binary)],
+                [*compiler, *flags, "-std=c11", "-Wno-unknown-pragmas",
+                 "-I", str(common.ROOT / "source"), str(source),
+                 str(common.ROOT / "source/openmx_precision.c"), "-lm", "-o", str(binary)],
                 check=True,
             )
-            result = subprocess.run([str(binary)], text=True, capture_output=True)
-            if result.returncode:
-                sys.stderr.write(result.stderr)
-                sys.stdout.write(result.stdout)
-                return 1
-            sys.stdout.write(result.stdout)
+            for enabled in ("1", "0"):
+                env = dict(os.environ, TEST_FP32_ENABLE=enabled)
+                result = subprocess.run([str(binary)], text=True, capture_output=True, env=env)
+                if result.returncode:
+                    sys.stderr.write(result.stderr)
+                    sys.stdout.write(result.stdout)
+                    return 1
+                sys.stdout.write(f"scf.fp32.enable={enabled}: {result.stdout}")
         return 0
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Force4B case-1 rank-turn CPU test failed: {error}", file=sys.stderr)

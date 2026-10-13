@@ -29,12 +29,22 @@ HARNESS = r"""
 #include <math.h>
 #include <stdlib.h>
 #include "grid_precision.h"
+#include "openmx_precision.h"
 
 int main(int argc, char **argv)
 {
     int active, kernel, reset;
     assert(argc == 4);
     active = atoi(argv[1]); kernel = atoi(argv[2]); reset = atoi(argv[3]);
+    /* The input switch wins even before lazy environment/device discovery. */
+    assert(openmx_fp32_enabled());
+    openmx_set_fp32_enabled(0);
+    assert(Grid_Precision_Kernel() == 0);
+    Grid_Precision_BeginStep(1, 4, 1.0, 0, 0);
+    assert(!Grid_Precision_Fp32());
+    assert(Grid_Precision_StopCheck(1, 0, 0) == 1);
+    assert(!Grid_Precision_TakeHistoryReset());
+    openmx_set_fp32_enabled(1);
     assert(Grid_Precision_Kernel() == kernel);
     assert(Grid_Precision_StopCheck(1, 0, 0) == 1);
     Grid_Precision_BeginStep(1, 4, 1.0, 0, 0);
@@ -78,6 +88,32 @@ int main(int argc, char **argv)
     }
     Grid_Precision_EndCycle();
     assert(Grid_Precision_Kernel() == kernel);
+
+    /* Changing inputs must suppress an active FP32 step and any pending
+       history reset, whichever public operation observes the change first.
+       Re-enabling recovers the cached environment policy. */
+    for (int entry = 0; entry < 5; ++entry) {
+        Grid_Precision_BeginStep(1, 5, 1.0, 0, 0);
+        assert(Grid_Precision_Fp32() == active);
+        assert(Grid_Precision_StopCheck(1, 0, 0) == !active);
+        openmx_set_fp32_enabled(0);
+        switch (entry) {
+        case 0: assert(!Grid_Precision_Fp32()); break;
+        case 1: assert(Grid_Precision_Kernel() == 0); break;
+        case 2: Grid_Precision_BeginStep(2, 5, 1.0, 0, 0); break;
+        case 3: assert(Grid_Precision_StopCheck(1, 0, 0) == 1); break;
+        case 4: assert(!Grid_Precision_TakeHistoryReset()); break;
+        }
+        openmx_set_fp32_enabled(1);
+        assert(!Grid_Precision_Fp32());
+        assert(!Grid_Precision_TakeHistoryReset());
+        Grid_Precision_BeginStep(2, 5, 1.0, 0, 0);
+        assert(Grid_Precision_Fp32() == active);
+        assert(Grid_Precision_Kernel() == (active ? 1 : kernel));
+    }
+    openmx_set_fp32_enabled(0);
+    assert(Grid_Precision_Kernel() == 0);
+    assert(!Grid_Precision_TakeHistoryReset());
     return 0;
 }
 """
@@ -94,6 +130,7 @@ def main():
         ({"OPENMX_GRID_FP32": "1", "OPENMX_GRID_FP32_RESTART": "0"}, 1, 2, 0),
         ({"OPENMX_GRID_FP32": "1", "OPENMX_GRID_FP32_UNTIL": "nan"}, 1, 2, 1),
         ({"OPENMX_GRID_FP32": "1", "OPENMX_GRID_FP32_UNTIL": "inf"}, 1, 2, 1),
+        ({"OPENMX_GRID_FP32": "1", "OPENMX_GRID_PRECISION": "df"}, 1, 2, 1),
     ]
     env = {k: v for k, v in os.environ.items() if not k.startswith("OPENMX_GRID_")}
     env.pop("TEST_GPU_RATIO", None)
@@ -105,7 +142,8 @@ def main():
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
                        ["-std=c99", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-I" + tmp, "-I" + str(ROOT / "source"),
-                        str(ROOT / "source/grid_precision.c"), str(temp / "main.c"),
+                        str(ROOT / "source/grid_precision.c"),
+                        str(ROOT / "source/openmx_precision.c"), str(temp / "main.c"),
                         "-lm", "-o", str(binary)], check=True)
         for extra, active, kernel, reset in cases:
             subprocess.run([str(binary), str(active), str(kernel), str(reset)],

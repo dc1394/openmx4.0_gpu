@@ -21,6 +21,7 @@
 #include <openacc.h>
 #include "set_cuda_default_device_from_local_rank.h"
 #include "orbs_grid_gpu.h"
+#include "openmx_precision.h"
 
 /***********************************************************************
    GPU evaluation of the primitive (Cnt_kind==0) basis orbitals.
@@ -1050,16 +1051,20 @@ host_fallback:
    atom pairs from them instead of holding the multi-GiB tables.
    --------------------------------------------------------------------- */
 static SOG_DeviceTables SOG_dev = {0};
+static int SOG_dev_fp32_enabled = -1;
 
 /* OPENMX_ORBS_EVAL_PRECISION: "df" or "fp64" for the on-the-fly
    tiles.  Native FP64 avoids the error-free FP32 transformations on A100
    and other devices with a fast FP64 pipeline.  Match the grid-integral
    policy: use DF only when FP64 throughput is at least eight times lower.
-   An explicit setting always wins; failed probes conservatively use FP64. */
+   scf.fp32.enable off overrides this policy.  Otherwise an explicit
+   environment setting wins; failed probes conservatively use FP64. */
 static int SOG_eval_double_float(void)
 {
-  const char *value = getenv("OPENMX_ORBS_EVAL_PRECISION");
+  const char *value;
 
+  if (!openmx_fp32_enabled()) return 0;
+  value = getenv("OPENMX_ORBS_EVAL_PRECISION");
   if (value != NULL && value[0] != '\0') {
     if (strcmp(value, "fp64") == 0 || strcmp(value, "FP64") == 0 || strcmp(value, "64") == 0 ||
         strcmp(value, "double") == 0) return 0;
@@ -1080,6 +1085,7 @@ void SOG_Device_Release(void)
     if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
   }
   memset(&SOG_dev, 0, sizeof(SOG_dev));
+  SOG_dev_fp32_enabled = -1;
 }
 
 int SOG_Device_Prepare(void)
@@ -1093,7 +1099,10 @@ int SOG_Device_Prepare(void)
   size_t o_rv, o_rwf, o_rvo, o_rwb, o_spm, o_spx, o_spb, o_atv, o_rwd, o_mcd, o_spl;
   unsigned char *arena;
 
-  if (SOG_dev.ready) return 1;
+  if (SOG_dev.ready) {
+    if (SOG_dev_fp32_enabled == openmx_fp32_enabled()) return 1;
+    SOG_Device_Release();
+  }
   if (SOG_dev.unavailable) return 0;
   if (!SOG_gpu_eligible(0)) { SOG_dev.unavailable = 1; return 0; }
   SOG_dev.eval_df = SOG_eval_double_float();
@@ -1240,6 +1249,7 @@ int SOG_Device_Prepare(void)
     SOG_dev.g[i][2] = gtv[i + 1][3];
     SOG_dev.org[i] = Grid_Origin[i + 1];
   }
+  SOG_dev_fp32_enabled = openmx_fp32_enabled();
   SOG_dev.ready = 1;
   free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
   free(pao_rv); free(pao_rwf); free(atv_flat); free(rwd_h); free(mcd_h); free(spl_h);
@@ -1253,7 +1263,7 @@ host_fallback:
 
 const char *SOG_Device_EvalPrecisionName(void)
 {
-  return SOG_dev.eval_df ? "double-float" : "FP64";
+  return SOG_dev.eval_df && openmx_fp32_enabled() ? "double-float" : "FP64";
 }
 
 const SOG_DeviceTables *SOG_Device_Tables(void)
@@ -1287,7 +1297,7 @@ void SOG_Device_EvalPairTiles(int pair_count, const SOG_GpuPair *pairs, const in
   int p;
 
   if (!t->ready || pair_count <= 0) return;
-  if (t->eval_df) {
+  if (t->eval_df && openmx_fp32_enabled()) {
     const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
 #pragma acc parallel loop gang \
   deviceptr(pairs, pair_NOLG, nolg_off, out_off, gla_off, nolg_Nc, gla, cla, out, \
@@ -1347,7 +1357,7 @@ void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair, int npts, const int *gla, 
   int ip;
 
   if (!t->ready || npts <= 0) return;
-  if (t->eval_df) {
+  if (t->eval_df && openmx_fp32_enabled()) {
     const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
 #pragma acc parallel loop gang vector vector_length(128) \
   deviceptr(gla, cla, out, atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
@@ -1389,7 +1399,7 @@ void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair, int npts, const int *nolg
   int ip;
 
   if (!t->ready || npts <= 0) return;
-  if (t->eval_df) {
+  if (t->eval_df && openmx_fp32_enabled()) {
     const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
 #pragma acc parallel loop gang vector vector_length(128) \
   deviceptr(nolg_Nc, gla, cla, out, atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)

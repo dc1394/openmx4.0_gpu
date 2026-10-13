@@ -7,6 +7,7 @@
 #include <math.h>
 #include <cuda_runtime.h>
 #include "grid_precision.h"
+#include "openmx_precision.h"
 
 static int    configured = 0;
 static int    enabled = 0;        /* FP32 stages at all */
@@ -17,6 +18,18 @@ static int    fp32_now = 0;       /* this step */
 static int    switched = 0;       /* the cycle went to FP64 for good */
 static int    pending_reset = 0;
 static int    announced = 0;
+
+/* The input switch overrides cached environment settings.  Disabling FP32
+   must also discard an unfinished lossy step's SCF convergence/history
+   state, so a subsequent input can re-enable the usual policy safely. */
+static int fp32_allowed(void)
+{
+    if (openmx_fp32_enabled()) return 1;
+    fp32_now = 0;
+    switched = 0;
+    pending_reset = 0;
+    return 0;
+}
 
 static void configure(void)
 {
@@ -51,11 +64,13 @@ static void configure(void)
 
 int Grid_Precision_Fp32(void)
 {
+    if (!fp32_allowed()) return 0;
     return fp32_now;
 }
 
 int Grid_Precision_Kernel(void)
 {
+    if (!fp32_allowed()) return 0;
     configure();
     if (fp32_now) return 1;
     return df_mode ? 2 : 0;
@@ -65,6 +80,7 @@ void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int
 {
     int next;
 
+    if (!fp32_allowed()) return;
     configure();
     if (SCF_iter == 1) {
         static int df_announced = 0;
@@ -102,6 +118,7 @@ void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int
 
 int Grid_Precision_StopCheck(int po, int myid, int verbose)
 {
+    if (!fp32_allowed()) return po;
     if (!po || !fp32_now) return po;
     switched = 1;
     pending_reset = restart;
@@ -114,8 +131,10 @@ int Grid_Precision_StopCheck(int po, int myid, int verbose)
 
 int Grid_Precision_TakeHistoryReset(void)
 {
-    int value = pending_reset;
+    int value;
 
+    if (!fp32_allowed()) return 0;
+    value = pending_reset;
     pending_reset = 0;
     return value;
 }

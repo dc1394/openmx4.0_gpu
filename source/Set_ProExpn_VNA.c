@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "openmx_common.h"
+#include "openmx_precision.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "mpi.h"
 #include <omp.h>
@@ -89,10 +90,11 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
    HVNA[Mc][j][m][n] = dmp * sum_k sum_L ene_L
                            * sum_l DS_VNA[0][Mc][k][m][l]*DS_VNA[0][Mj][kl][n][l]
 
-   is the same energy-weighted float dot-product contraction as the
+   is the same energy-weighted projector contraction as the
    Force4B/Force_HNL first-case traces.  The kernel keeps the exact CPU
    accumulation order (k outermost, then the radial groups, then the
-   2*L+1 members with the float product cast to double), so only the
+   2*L+1 members; products retain legacy FP32 rounding when enabled and
+   promote their float operands to double when scf.fp32.enable is off), so the
    final float rounding of DS_VNA itself limits the agreement.  The MPI
    pipeline is untouched: received halo blocks are archived and one
    batched kernel runs after the loops.                                */
@@ -522,6 +524,7 @@ static void SetPro_HVNA_GpuArchiveHalo(Type_DS_VNA *****DS_VNA, int Original_Mc_
 /* the unified batch over every (local atom, neighbour) pair */
 static void SetPro_HVNA_GpuRun(double ****HVNA)
 {
+  const int fp32 = openmx_fp32_enabled();
   SetProGpuContext *g = &SetPro_gpu;
   const int num_proj = g->num_proj;
   const int num_rvna = g->num_rvna;
@@ -647,7 +650,7 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
                  copyout(out[0:out_c])
     {
 #pragma acc parallel loop gang vector_length(128) \
-    deviceptr(flat, halo) \
+    firstprivate(fp32) deviceptr(flat, halo) \
     present(item_koff[0:nitems_c], item_kn[0:nitems_c], \
             item_tnoC[0:nitems_c], item_tnoH[0:nitems_c], item_out[0:nitems_c], \
             krowA[0:kslots_c], krowB[0:kslots_c], krow_halo[0:kslots_c], \
@@ -681,7 +684,7 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
               double tmp0 = 0.0;
 
               for (int l3=0; l3<g1; l3++){
-                tmp0 += (double)(a[L]*b[L]);
+                tmp0 += fp32 ? (double)(a[L]*b[L]) : (double)a[L]*(double)b[L];
                 L++;
               }
               sum += el[L1]*tmp0;
@@ -2440,6 +2443,7 @@ static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
 
 double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
 {
+  const int fp32 = openmx_fp32_enabled();
   /****************************************************
    evaluate matrix elements of neutral atom potential
    in the KB or Blochl separable form in momentum space.
@@ -3519,7 +3523,8 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
 
 			for (L3=0; L3<=L2; L3++){
 
-			  tmp0 += DS_VNA[0][Mc_AN][k][m][L]*DS_VNA[0][Matomnum+1][kl][n][L];
+			  tmp0 += fp32 ? (double)(DS_VNA[0][Mc_AN][k][m][L] * DS_VNA[0][Matomnum+1][kl][n][L])
+			                   : (double)DS_VNA[0][Mc_AN][k][m][L] * (double)DS_VNA[0][Matomnum+1][kl][n][L];
 
 			  L++;
 			}
@@ -3687,7 +3692,8 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
 		    tmp0 = 0.0;
 
 		    for (L3=0; L3<=L2; L3++){
-		      tmp0 += DS_VNA[0][Mc_AN][k][m][L]*DS_VNA[0][Mj_AN][kl][n][L]; 
+		      tmp0 += fp32 ? (double)(DS_VNA[0][Mc_AN][k][m][L] * DS_VNA[0][Mj_AN][kl][n][L])
+		                       : (double)DS_VNA[0][Mc_AN][k][m][L] * (double)DS_VNA[0][Mj_AN][kl][n][L];
 		      L++;
 		    }
 

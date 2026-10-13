@@ -17,6 +17,7 @@
 #include "set_openacc_device_from_local_rank.h"
 #include "tran_variables.h"
 #include "eigen_refine_gpu.h"
+#include "openmx_precision.h"
 #include <accel.h>
 #include <limits.h>
 #include <math.h>
@@ -231,6 +232,8 @@ static void BandCol_RefineConfigure(void)
     BandColRefineState *st = &BandCol_refine;
     int myid, config[2] = {0, 0};
 
+    /* Input files in -runtest share a process; do not cache an input veto. */
+    if (!openmx_fp32_enabled()) return;
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (myid == Host_ID) config[0] = openmx_eigen_refine_configure(1, 2 <= level_stdout, &config[1]);
@@ -242,7 +245,7 @@ static void BandCol_RefineConfigure(void)
 
 static int BandCol_RefineIterations(void)
 {
-    return (0 < BandCol_refine.iterations) ? BandCol_refine.iterations : 0;
+    return (openmx_fp32_enabled() && 0 < BandCol_refine.iterations) ? BandCol_refine.iterations : 0;
 }
 
 /* what the refined solve adds to a dense owner's device memory: the basis */

@@ -8,6 +8,9 @@
   On a GeForce the FP64 kernels run at 1/64 of the FP32 rate, so the
   early steps gain a lot; the final steps keep the FP64 result.
 
+  scf.fp32.enable off forces native FP64, including when an environment
+  setting requests the FP32 stage or double-float arithmetic.
+
   OPENMX_GRID_FP32          1 on, 0 off (default); experimental lossy stage
   OPENMX_GRID_FP32_UNTIL    FP32 while the previous step's printed NormRD
                             is above this (default 1e-5)
