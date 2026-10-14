@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include "openmx_common.h"
 #include "openmx_precision.h"
+#include "openmx_mgpu_runtime.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include <omp.h>
@@ -808,6 +809,22 @@ void Input_std(char *file)
 
   /* use GPU? (added by H.Kawai, February 2024) */
   input_int("scf.Gpu.Num", &SCF_Gpu_Num, 30);
+
+  /* Single-node dense cooperation is scoped to the two mainline cluster
+     solvers. Determine topology here, where every rank parses the input;
+     a dense owner's library call must never introduce an MPI collective. */
+  {
+    int mgpu_enabled, world_size, node_size;
+    MPI_Comm node_comm;
+    input_logical("scf.mgpu.enable", &mgpu_enabled, -1);
+    MPI_Comm_size(mpi_comm_level1, &world_size);
+    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0,
+                        MPI_INFO_NULL, &node_comm);
+    MPI_Comm_size(node_comm, &node_size);
+    MPI_Comm_free(&node_comm);
+    openmx_mgpu_configure(gpusolver2_flag ? 0 : mgpu_enabled,
+                         SCF_Gpu_Num, node_size == world_size);
+  }
 
   /* Input-level arithmetic policy, reset for every input in -runtest too.
      GEMMul8 has its own independent setting below. */

@@ -12,6 +12,15 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 headers = {
+    "cuda_runtime_api.h": '#include "cuda_runtime.h"\n',
+    "cusolverDn.h": r'''
+#pragma once
+using cusolverDnHandle_t = void *;
+using cusolverStatus_t = int;
+using cusolverEigMode_t = int;
+using cudaDataType = int;
+using cublasFillMode_t = int;
+''',
     "cuda_runtime.h": r'''
 #pragma once
 #include <cstdlib>

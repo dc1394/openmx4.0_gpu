@@ -43,6 +43,8 @@ NVCC_HOST           ?= $(KUGUI_GCC_ROOT)/bin/g++
 GPUSOLVER2_HOST_CC  ?= $(KUGUI_GCC_ROOT)/bin/gcc
 GPUSOLVER2_HOST_CXX ?= $(KUGUI_GCC_ROOT)/bin/g++
 export GPUSOLVER2_HOST_LIBDIR ?= $(KUGUI_GCC_LIBDIR)
+MAGMA_HOST_LIBDIR ?= $(KUGUI_GCC_LIBDIR)
+MAGMA_CMAKE ?= $(if $(wildcard $(CURDIR)/build/cmake-python/cmake/data/bin/cmake),$(CURDIR)/build/cmake-python/cmake/data/bin/cmake,cmake)
 
 # The stock default is nproc, which follows OMP_NUM_THREADS (1 in the
 # login environment).

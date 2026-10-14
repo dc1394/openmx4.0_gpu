@@ -162,7 +162,7 @@ SDK_RPATH_TAGS     ?= -Wl,--disable-new-dtags
 MPI_FORTRAN_LIBS   ?= -L$(NVHPC_MPI_LIBDIR) $(SDK_RPATH_TAGS) -Wl,-rpath,$(NVHPC_MPI_LIBDIR) -lmpi_usempif08 -lmpi_usempi_ignore_tkr -lmpi_mpifh -lmpi
 CUDA_LIBS          ?= $(SDK_RPATH_TAGS) -L$(NVHPC_CUDA_TARGET)/lib -Wl,-rpath,$(NVHPC_CUDA_TARGET)/lib -L$(NVHPC_MATH_DIR)/lib -Wl,-rpath,$(NVHPC_MATH_DIR)/lib -L$(NVHPC_CUDA_TARGET)/lib/stubs -Wl,--no-as-needed -lnvJitLink -Wl,--as-needed -lcudart -lcusolver -lcublas -cuda
 
-LIB= $(FFTW3_LIBS) $(GPUSOLVER2_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm -ldl $(CUDA_LIBS)
+LIB= $(FFTW3_LIBS) $(GPUSOLVER2_LIBS) $(MAGMA_LIBS) $(NVPL_LIBS) $(MPI_FORTRAN_LIBS) -pgf90libs -mp -lpthread -lm -ldl $(CUDA_LIBS)
 
 GEMMUL8_REPO_URL ?= https://github.com/RIKEN-RCCS/GEMMul8.git
 GEMMUL8_REPO_DIR ?= third_party/GEMMul8
@@ -185,6 +185,26 @@ NVCC ?= $(GEMMUL8_CUDA_PATH)/bin/nvcc
 NVCC_HOST ?= $(NVHPC_COMPILER_BIN)/nvc++
 NVCC_GEMMUL8_ENV = PATH="$(PATH)" CUDA_HOME="$(NVHPC_CUDA_HOME)" CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= NVCC_PREPEND_FLAGS= NVCC_APPEND_FLAGS=
 NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(GEMMUL8_BUILD_GPU_ARCH) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
+
+# Single-node cluster solvers. Paper and GEMM implementations are built in;
+# MAGMA is optional (auto uses an existing install, 1 builds it, 0 disables it).
+WITH_MAGMA ?= auto
+MAGMA_PREFIX ?= $(CURDIR)/third_party/magma-install
+MAGMA_BUILD ?= $(CURDIR)/build/magma
+MAGMA_ARCHIVE ?=
+MAGMA_LIBRARY = $(MAGMA_PREFIX)/lib/libmagma.so
+MAGMA_ENABLED = $(if $(filter 1,$(WITH_MAGMA)),1,$(if $(filter auto,$(WITH_MAGMA)),$(if $(filter magma-stack,$(MAKECMDGOALS))$(wildcard $(MAGMA_LIBRARY)),1,0),0))
+MAGMA_CMAKE ?= cmake
+MAGMA_JOBS ?= 3
+MAGMA_HOST_CC ?= $(GPUSOLVER2_HOST_CC)
+MAGMA_HOST_CXX ?= $(NVCC_HOST)
+MAGMA_HOST_LIBDIR ?=
+MAGMA_LAPACK_LIBRARIES ?= $(NVHPC_COMPILER_LIB)/liblapack_lp64.so;$(NVHPC_COMPILER_LIB)/libblas_lp64.so
+ifeq ($(MAGMA_ENABLED),1)
+MAGMA_CPPFLAGS = -DOPENMX_HAVE_MAGMA -I$(MAGMA_PREFIX)/include
+MAGMA_LIBS = -L$(MAGMA_PREFIX)/lib $(SDK_RPATH_TAGS) -Wl,-rpath,$(MAGMA_PREFIX)/lib -lmagma
+MAGMA_DEPENDENCY = $(MAGMA_LIBRARY)
+endif
 # -lcusparse is not called directly but is a private dependency of
 # libcusolver; naming it here (shielded from --as-needed) makes it a
 # direct dependency of openmx, so the RPATH of the binary resolves it
@@ -306,6 +326,8 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           Cluster_DFT_Col_DMmu.o Cluster_DFT_NonCol_DMmu.o Band_DFT_Col_DMmu.o Band_DFT_NonCol_DMmu.o \
           Electric_Polarization_BandCol.o Electric_Polarization_BandNonCol.o
 
+OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o openmx_paper_mgpu.o
+
 # PROG    = openmx.exe
 # PROG    = openmx
 
@@ -395,7 +417,7 @@ OPENMX_BUILD_CONFIG := $(CURDIR)/build/openmx-toolchain.conf
 $(OPENMX_BUILD_CONFIG): openmx-toolchain-force
 	@test -n "$(GEMMUL8_BUILD_GPU_ARCH)" || { echo "GPU architecture unavailable; set GEMMUL8_GPU_ARCH (e.g. 120 for RTX 5080, 90 for H100)."; exit 1; }
 	@mkdir -p "$(dir $(OPENMX_BUILD_CONFIG))"
-	@printf '%s\n' '$(NVHPC_ROOT)' '$(NVHPC_CUDA_HOME)' '$(NVHPC_MATH_DIR)' '$(NVHPC_MPI_BIN)' '$(NVHPC_MPI_LIBDIR)' '$(GEMMUL8_BUILD_GPU_ARCH)' '$(GEMMUL8_COMMIT)' '$(CC)' '$(FC)' '$(NVCC)' '$(NVCC_HOST)' '$(CC2)' '$(CC3)' '$(LIB)' '$(GPUSOLVER2_PREFIX)' '$(GPUSOLVER2_COMPILER_BIN)' '$(GPUSOLVER2_SCALAPACK_SO)' '$(GPUSOLVER2_ELPA_VER)' > "$@.tmp"
+	@printf '%s\n' '$(NVHPC_ROOT)' '$(NVHPC_CUDA_HOME)' '$(NVHPC_MATH_DIR)' '$(NVHPC_MPI_BIN)' '$(NVHPC_MPI_LIBDIR)' '$(GEMMUL8_BUILD_GPU_ARCH)' '$(GEMMUL8_COMMIT)' '$(CC)' '$(FC)' '$(NVCC)' '$(NVCC_HOST)' '$(CC2)' '$(CC3)' '$(subst $(MAGMA_LIBS),,$(LIB))' '$(GPUSOLVER2_PREFIX)' '$(GPUSOLVER2_COMPILER_BIN)' '$(GPUSOLVER2_SCALAPACK_SO)' '$(GPUSOLVER2_ELPA_VER)' > "$@.tmp"
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
 
 $(OBJS) $(GEMMUL8_OPENMX_OBJ) $(FFTW3_BUILD_DIR)/config.status: $(OPENMX_BUILD_CONFIG)
@@ -765,7 +787,7 @@ QuickSort.o: QuickSort.c openmx_common.h
 	$(CC) -c QuickSort.c
 Eigen_lapack.o: Eigen_lapack.c openmx_common.h lapack_prototypes.h
 	$(CC) -c Eigen_lapack.c
-openmx_cusolver_compat.o: openmx_cusolver_compat.c openmx_cusolver_compat.h openmx_stdout_level.h
+openmx_cusolver_compat.o: openmx_cusolver_compat.c openmx_cusolver_compat.h openmx_stdout_level.h openmx_mgpu_runtime.h
 	$(CC) -c openmx_cusolver_compat.c
 
 $(OBJS): openmx_cusolver_compat.h
@@ -861,8 +883,46 @@ grid_precision.o: grid_precision.c grid_precision.h openmx_precision.h
 openmx_precision.o: openmx_precision.c openmx_precision.h
 	$(CC) -c openmx_precision.c
 
-gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h openmx_stdout_level.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
+gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h openmx_stdout_level.h openmx_mgpu_runtime.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
+
+Input_std.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_mgpu_runtime.h
+openmx_mgpu_runtime.o: openmx_mgpu_runtime.cu openmx_mgpu_runtime.h openmx_mgpu_gemm.h openmx_magma_mgpu.h openmx_paper_mgpu.h openmx_stdout_level.h
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
+openmx_mgpu_gemm.o: openmx_mgpu_gemm.cu openmx_mgpu_gemm.h
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
+openmx_paper_mgpu.o: openmx_paper_mgpu.cu openmx_paper_mgpu.h openmx_paper_mgpu_impl.cuh
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
+
+# Unlike the global toolchain signature this also records a switch from
+# stub to installed MAGMA when WITH_MAGMA=auto first discovers the library.
+MAGMA_ADAPTER_CONFIG := $(CURDIR)/build/magma-adapter.conf
+$(MAGMA_ADAPTER_CONFIG): openmx-toolchain-force
+	@mkdir -p "$(dir $@)"
+	@printf '%s\n' '$(MAGMA_ENABLED)' '$(MAGMA_PREFIX)' '$(MAGMA_CPPFLAGS)' > "$@.tmp"
+	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
+openmx_magma_mgpu.o: openmx_magma_mgpu.cpp openmx_magma_mgpu.h $(MAGMA_ADAPTER_CONFIG) $(MAGMA_DEPENDENCY)
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) $(MAGMA_CPPFLAGS) -Xcompiler -pthread -c $< -o $@
+.PHONY: magma-stack
+magma-stack: $(MAGMA_LIBRARY)
+# Auto only consumes an installed library (which may be read-only). Building
+# or replacing it requires WITH_MAGMA=1 or the explicit magma-stack target.
+ifneq ($(strip $(filter 1,$(WITH_MAGMA)) $(filter magma-stack,$(MAKECMDGOALS))),)
+MAGMA_BUILD_CONFIG := $(MAGMA_BUILD)/make-toolchain.conf
+$(MAGMA_BUILD_CONFIG): openmx-toolchain-force
+	@mkdir -p "$(dir $@)"
+	@printf '%s\n' '$(NVHPC_CUDA_HOME)' '$(NVHPC_MATH_DIR)' '$(GEMMUL8_BUILD_GPU_ARCH)' '$(MAGMA_HOST_CC)' '$(MAGMA_HOST_CXX)' '$(MAGMA_HOST_LIBDIR)' '$(MAGMA_PREFIX)' '$(MAGMA_LAPACK_LIBRARIES)' > "$@.tmp"
+	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
+$(MAGMA_LIBRARY): third_party/build_magma.sh $(MAGMA_BUILD_CONFIG)
+	MAGMA_BUILD="$(MAGMA_BUILD)" MAGMA_PREFIX="$(MAGMA_PREFIX)" \
+	MAGMA_ARCHIVE="$(MAGMA_ARCHIVE)" \
+	MAGMA_CUDA_HOME="$(NVHPC_CUDA_HOME)" MAGMA_MATH_DIR="$(NVHPC_MATH_DIR)" \
+	MAGMA_GPU_ARCH="$(GEMMUL8_BUILD_GPU_ARCH)" MAGMA_CC="$(MAGMA_HOST_CC)" MAGMA_CXX="$(MAGMA_HOST_CXX)" \
+	MAGMA_HOST_LIBDIR="$(MAGMA_HOST_LIBDIR)" \
+	MAGMA_CMAKE="$(MAGMA_CMAKE)" MAGMA_JOBS="$(MAGMA_JOBS)" \
+	MAGMA_LAPACK_LIBRARIES="$(MAGMA_LAPACK_LIBRARIES)" MAGMA_RUNTIME_DIRS="$(NVHPC_COMPILER_LIB)" \
+	sh third_party/build_magma.sh
+endif
 
 .PHONY: gpusolver2-stack gpusolver2-clean
 gpusolver2-stack: $(GPUSOLVER2_STAMP)

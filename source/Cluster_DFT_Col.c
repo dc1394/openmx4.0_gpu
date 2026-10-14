@@ -11,6 +11,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_mgpu_runtime.h"
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
@@ -2299,6 +2300,9 @@ double Cluster_DFT_Col(
                    double **EVec1,
                    double *Work1)
 {
+  int mgpu_scope_previous = openmx_mgpu_scope_enter(
+      scf_eigen_lib_flag == GPUSOLVER && !gpusolver2_flag);
+
   static int firsttime=1;
   int i,j,l,n,n2,n1,i1,i1s,j1,k1,l1;
   int wan,HOMO0,HOMO1;
@@ -3743,6 +3747,7 @@ double Cluster_DFT_Col(
   MPI_Barrier(mpi_comm_level1);
   dtime(&TEtime);
   time0 = TEtime - TStime;
+  openmx_mgpu_scope_leave(mgpu_scope_previous);
   return time0;
 }
 

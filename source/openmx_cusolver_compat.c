@@ -15,6 +15,7 @@
 #define OPENMX_CUSOLVER_IMPLEMENTATION
 #include "openmx_cusolver_compat.h"
 #include "openmx_stdout_level.h"
+#include "openmx_mgpu_runtime.h"
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <math.h>
@@ -471,6 +472,9 @@ cusolverStatus_t openmx_cusolverDnXsyevd(
     openmx_syevd_ctx c = {handle, params, jobz, uplo, n, type, A, lda, wtype, W, compute,
                           NULL, NULL, dwork, dbytes, hwork, hbytes, info};
     if (st != CUSOLVER_STATUS_SUCCESS) return st;
+    if (openmx_mgpu_solve_device_try && wtype == CUDA_R_64F && compute == type &&
+        openmx_mgpu_solve_device_try(handle, jobz, uplo, n, type, A, lda, n,
+            (double *)W, NULL, info, openmx_syevd_once, &c, &st)) return st;
     return openmx_solver_retry(handle, type, A, lda, n, info, openmx_syevd_once, &c);
 }
 
@@ -582,5 +586,11 @@ cusolverStatus_t openmx_cusolverDnXsyevdx(
     openmx_syevdx_ctx c = {handle, params, jobz, range, uplo, n, type, A, lda, vl, vu, il, iu, meig,
                            wtype, W, compute, NULL, NULL, dwork, dbytes, hwork, hbytes, info};
     if (st != CUSOLVER_STATUS_SUCCESS) return st;
+    if (openmx_mgpu_solve_device_try && meig && wtype == CUDA_R_64F && compute == type &&
+        (range == CUSOLVER_EIG_RANGE_ALL ||
+         (range == CUSOLVER_EIG_RANGE_I && il == 1 && iu >= 1 && iu <= n)) &&
+        openmx_mgpu_solve_device_try(handle, jobz, uplo, n, type, A, lda,
+            range == CUSOLVER_EIG_RANGE_ALL ? n : iu, (double *)W, meig, info,
+            openmx_syevdx_once, &c, &st)) return st;
     return openmx_solver_retry(handle, type, A, lda, n, info, openmx_syevdx_once, &c);
 }

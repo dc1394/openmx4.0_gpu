@@ -1,0 +1,153 @@
+Single-node multi-GPU cluster calculations
+=========================================
+
+Scope
+-----
+The new paths apply only to Cluster_DFT_Col and Cluster_DFT_NonCol using
+scf.eigen.lib=gpusolver. They cover real symmetric and complex Hermitian
+eigensolves and the dense forward/back matrix products. Band, DC, LNO and
+scf.eigen.lib=gpusolver2 (the distributed ELPA/COSMA path) retain their
+existing implementations. Existing single-GPU and GeForce choices remain
+available.
+
+Use
+---
+Example input:
+
+  scf.EigenvalueSolver  cluster
+  scf.eigen.lib        gpusolver
+  scf.Gpu.Num          2
+  scf.mgpu.enable      on
+
+Run within a single allocated node. Every participating MPI rank must see
+the same allocated GPUs through CUDA_VISIBLE_DEVICES. The GPU count is
+bounded by CUDA visibility, scf.Gpu.Num, OPENMX_MGPU_NUM_GPUS, and 8.
+An MPI rank owning a dense solve can use the whole selected GPU group;
+this does not require one MPI rank per GPU. Existing OpenMX device/rank
+placement still selects the owner GPU.
+When several ranks share a GPU, the CUDA execution mode must allow those
+contexts (for example, a site-managed MPS server on exclusive-process GPUs).
+
+Omitting scf.mgpu.enable selects automatic eligibility on fast native-FP64
+devices with at least two visible GPUs. On GeForce, explicit enablement is
+required, so existing consumer-GPU tuning remains the default. Setting the
+input to off is an unconditional veto. OPENMX_MGPU=0 disables cooperation;
+OPENMX_MGPU=1 permits it on other architectures when the input has not
+disabled it. More than one MPI node always disables these local paths.
+
+Eigensolver selection
+--------------------
+OPENMX_MGPU_SOLVER=auto is the default. At and above
+OPENMX_MGPU_SOLVER_MIN_N (default 4096), each new matrix shape compares:
+
+  single : existing cuSOLVER algorithm, arithmetic policy and workspace
+  magma  : MAGMA 2.10.0 one-stage dsyevdx_m / zheevdx_m
+  paper  : independent implementation of arXiv:2511.16174v1's pipelined
+           dense-to-band / band-to-tridiagonal / reordered-backtransform
+           method, extended to complex Hermitian matrices
+
+The cache key contains order, requested eigenvector count, real/complex
+type, GPU count and owner device. It is reset for each OpenMX input.
+Default tuning executes two successful trials per candidate and uses the
+minimum; OPENMX_MGPU_TUNE_TRIALS=1 skips the warm second trial (range 1..3).
+The first solve therefore costs substantially more than a normal solve.
+Host preparation, transfers, validation and publication are included in
+the multi-GPU score. The normal cuSOLVER callback is measured as it runs
+without multi-GPU staging. A single-GPU winner keeps the existing path on
+later calls. A failed candidate is excluded.
+
+OPENMX_MGPU_SOLVER=magma or paper requests that implementation even below
+the automatic size threshold; unavailable or unsuccessful backends fall
+back to the existing solver. OPENMX_MGPU_SOLVER=single disables multi-GPU
+eigensolves while leaving independently configured matrix products usable.
+Both multi-GPU solvers support full spectra and leading-index subsets.
+Other cuSOLVER modes continue through the existing implementation.
+
+No published paper speedup is assumed. In initial A100 measurements the
+MAGMA implementation was faster than the paper implementation at order
+4096, but the existing cuSOLVER implementation was faster than both. Auto
+correctly selected cuSOLVER. See paper_mgpu.txt for the exact implemented
+stages, complex extension, tuning omissions and measured limitations.
+
+Matrix products
+---------------
+The independent algorithm partitions output tiles among GPUs, retains the
+entire inner dimension per tile, overlaps transfers and local products,
+and commits the assembled result only after all workers succeed. It
+supports native peer transfers and bounded pinned-host staging. Existing
+GEMMul8 arithmetic settings govern worker products. Explicit forward-stage
+precision/reuse overrides retain their existing dedicated path.
+
+OPENMX_MGPU_GEMM=1 forces eligible products through the multi-GPU attempt;
+OPENMX_MGPU_GEMM=0 disables it. Automatic routing requires a sufficiently
+large shape and positively identified direct NVLink connectivity. Unknown
+or slower connections use the existing product; explicit forcing permits
+measurement on those systems. See mgpu_gemm.txt for workspace limits,
+shape thresholds, algorithm details and measured crossovers.
+
+Correctness and resources
+-------------------------
+Node-local GPU UUID locks serialize cooperating dense owners without MPI
+collectives inside owner-only library calls. Multi-GPU attempts preserve
+inputs for recoverable fallback. Successful eigenvectors are checked for
+finite values, ordered eigenvalues, sampled residuals and orthogonality.
+Standalone tests additionally verify independent full residuals and
+boundary cases. A GPU allocation/transfer error is never hidden by
+publishing a partially assembled matrix.
+
+The OpenMX owner still holds its existing dense matrices and queried
+cuSOLVER workspace. This first integration does not eliminate the owner
+GPU's storage requirement. Multi-GPU backends also need host and worker
+scratch. In particular, this is not an out-of-core eigensolver.
+
+MAGMA initialization is reused after the first successful call; failed
+initialization is balanced and may be retried. One host-workspace slot is
+retained per process, capped in total by OPENMX_MAGMA_HOST_CACHE_MB (default
+64 MiB; 0 disables retention). Real and complex caches do not accumulate.
+Larger solves use transient host storage, and no MAGMA device workspace is
+cached by this adapter. The host cache is released at each input boundary.
+This follows the AMD adapter's reuse approach with a bounded retention
+policy for MPI jobs. OPENMX_MAGMA_VALIDATE_FULL=1 checks all rows of four
+sampled vectors; the default checks 32 rows plus full finite-output scans.
+The active input triangle is checked for nonfinite values before solving.
+
+Build
+-----
+Paper and custom GEMM sources build with the existing CUDA toolchain.
+WITH_MAGMA=auto (default) links an already installed MAGMA;
+WITH_MAGMA=0 builds a stub; WITH_MAGMA=1 builds/links the dependency.
+MAGMA_PREFIX defaults to source/third_party/magma-install.
+
+  cd source
+  make -f Makefile.kugui -j2 openmx WITH_MAGMA=1
+
+For a new MAGMA install, select MAGMA_CMAKE (CMake with CUDA support),
+MAGMA_HOST_CC/MAGMA_HOST_CXX and MAGMA_LAPACK_LIBRARIES as needed.
+third_party/build_magma.sh pins the official 2.10.0 archive by SHA256 and
+builds only libmagma. Its generated source/build/install files stay local.
+It accepts MAGMA_ARCHIVE for an offline archive. The AMD sibling project
+also uses MAGMA 2.10.0; its Ozaki-II patch targets single-GPU HIP wrapper
+paths and is not a prerequisite for the CUDA multi-GPU _m routines.
+
+Diagnostics and tests
+---------------------
+OPENMX_MGPU_VERBOSE=1 or level.of.stdout >= 2 reports candidate timings,
+selected eigensolvers and participating GPU counts for handled GEMMs.
+GPU tests must run inside an allocation. Build-only runners accept CUDA
+and split NVHPC math-library paths; see their comments:
+
+  tests/run_magma_mgpu_cpu.py
+  tests/run_mgpu_runtime_cpu.py
+  tests/run_mgpu_gemm_cpu.py
+  tests/run_magma_mgpu_smoke.sh
+  tests/run_paper_mgpu_smoke.sh
+  tests/run_mgpu_gemm_smoke.sh
+  tests/run_mgpu_solver_smoke.sh
+  tests/run_mgpu_cluster_regression.py
+
+Initial validation used A100-SXM4-40GB, CUDA 12.5 and NVHPC 24.7.
+Real/complex solver and GEMM tests passed on two and three GPUs. Compute
+Sanitizer reported zero errors for the two-GPU GEMM and both eigensolver
+paths. Full OpenMX energy/force comparisons passed for collinear off/on
+and noncollinear SOC. See cluster_mgpu_validation.txt for measured results,
+binary provenance, reproducible commands and remaining coverage limits.

@@ -1,0 +1,156 @@
+Single-node cluster multi-GPU validation (2026-10-14)
+===================================================
+
+Environment and baseline
+------------------------
+A100-SXM4-40GB, direct NVLink, CUDA 12.5, NVHPC 24.7, GCC 12.2 and
+Open MPI 4.1.6 on ISSP Kugui. MAGMA 2.10.0 uses LP64 BLAS/LAPACK and
+one-stage dsyevdx_m / zheevdx_m. CPU libraries use one thread in the
+numerical comparisons. Local GPU allocations and MPS are required by the
+site; allocation and MPS setup are outside the portable test runners.
+
+The pre-change baseline was rebuilt from a clean archive of commit
+475566134142d6b5653efe769f360dd0152c9618 with Makefile.kugui. This includes
+the current numerical-correctness fixes and A100/GeForce policies.
+Baseline SHA256:
+  57fc427e63b96ab806f7f40f04d2107d8ab0b89c9323b60f8cb5e704bd9f7b5c
+Candidate binaries are snapshots of the multi-GPU working tree, not a new
+commit. Each application run records its binary and input hashes.
+
+The final WITH_MAGMA=1 dependency/application build passed (PBS 937334).
+Actual WITH_MAGMA=0 and auto builds also passed: each changed only the
+adapter object and relinked, respectively removing/restoring libmagma in
+DT_NEEDED. Auto consumes installed MAGMA without rebuilding it. Six
+dry-run combinations verified fresh/existing installs and explicit targets.
+After validation the tested snapshot was installed atomically as both
+source/openmx and work/openmx, with SHA256:
+  c96b5db83f4a4d115da45c6e6b6a10b866c36ebd8b85759f9356737edd88033e
+
+OpenMX energy and forces
+------------------------
+The fixture starts from work/large_example/Pt63.dat, with private output
+directories and absolute DFT_DATA19 path. It executes exactly three SCF
+iterations with FP64 eigenvectors. Collinear spin-off, collinear spin-on,
+and noncollinear spin with SOC are covered. The magnetic inputs start
+with populations 8.5/7.5; noncollinear directions are 45/15 degrees.
+This checks equivalent SCF iterations, not convergence of the physical
+ground state. All 189 force components and finite energy components are
+checked. Thresholds are 1e-7 Ha in total energy and 1e-7 Ha/bohr in force.
+
+2 MPI ranks / 2 physical GPUs, PBS job 937327:
+  15 OpenMX runs, 12 baseline comparisons: all passed.
+  Modes: off, forced MAGMA, forced paper, automatic selection.
+  Maximum total-energy difference: 1.8189894035458565e-12 Ha.
+  Maximum force-component difference: 1.0000004296850662e-12 Ha/bohr.
+  Disabled mode: identical printed energies and forces for all three cases.
+  Enabled runs require actual two-GPU GEMM success in the log; forced
+  eigensolvers must log the requested backend. Silent fallback cannot pass.
+  Candidate SHA256:
+    f46c60a822681d10b208850c18cb7434a306fd21c84e30f8b90664a4cba88431
+  Evidence: work/mgpu_20261014/cluster2/{command,results,comparisons,summary}.json
+
+4 MPI ranks / 2 physical GPUs, PBS job 937336, final build:
+  8 OpenMX runs, 6 baseline comparisons: all passed.
+  Cases: magnetic collinear and noncollinear SOC, MAGMA/paper/auto.
+  Maximum total-energy difference: 9.094947017729282e-13 Ha.
+  Maximum force-component difference: 9.999999960041972e-13 Ha/bohr.
+  This exercises more MPI ranks than physical GPUs with shared MPS contexts.
+  Evidence: work/mgpu_20261014/final2/{command,results,comparisons,summary}.json
+
+Together these are 23 completed OpenMX runs and 18 passing comparisons.
+
+Reproduce with two binary snapshots inside a GPU allocation:
+  python3 tests/run_mgpu_cluster_regression.py \
+    --baseline /path/to/baseline/openmx --binary /path/to/new/openmx \
+    --output /new/result/directory --ranks 2 --gpus 2
+Use --prepare-only to inspect generated inputs before launching MPI.
+The runner forces GPU thresholds because this fixture validates dispatch
+and numerical behavior; these small shapes are not speed benchmarks.
+
+Numerical kernels and failure handling
+-------------------------------------
+Actual CUDA tests cover real symmetric and complex Hermitian full and
+leading-subset eigenvectors, upper/lower input, nonzero owner devices,
+nondefault streams and repeated dispatch. Independent analytic spectra
+and full residual/orthogonality oracles validate results. Two and three
+physical GPUs were tested, including order 4096. MAGMA host-API tests also
+cover interior subsets and eigenvalues-only modes. The paper fixtures
+include clustered/geometric spectra and slab boundaries at 31/32/33 and
+63/64/65. Its optional BC batch mode passed numerical and injected-failure
+checks but regressed at order 1024; it remains disabled by default.
+
+Custom GEMM passed all 64 numerical/transport cases on two and three
+physical GPUs, maximum error 1.435e-14 against long-double reference sums.
+Cases include real/complex N/T/C, alpha/beta, device scalars, padding,
+rectangular outputs, nondefault streams, full-K tiling, peer/host transport
+and rollback after a later worker failure. CPU arithmetic and failure
+fixtures additionally cover four simulated devices.
+
+Dependency-free CPU ownership/error tests passed 909,257 assertions for
+the MAGMA adapter and 4,459 for runtime scope, topology, tuning cache,
+cross-process admission, rollback and publication. These use UBSan and
+fake CUDA/MAGMA interfaces; the physical-device results above separately
+validate transport and arithmetic. The unavailable-MAGMA stub also passed.
+
+Compute Sanitizer memcheck reported zero errors for two-GPU GEMM,
+MAGMA and paper real/complex solves. Paper failure injection checks thread
+startup, SBR, BC, backtransform and final GEMM; errors preserve caller
+outputs and the following valid solve succeeds. The complex failure suite
+also passed memcheck. Input-off, out-of-cluster and multi-node dispatch
+gates have CPU and standalone hook coverage. The multi-node gate test
+simulates the configuration; this is not a distributed ELPA/COSMA run.
+The final build additionally passed actual NVLink automatic admission,
+cluster-scope exit, one-GPU fallback, disabled/out-of-cluster/multi-node
+gates and repeated complex n4096/2048 automatic solves. Complex n257/73
+automatic selection, including all three trials and cached reuse, passed
+memcheck with zero errors. Sanitizer timings are excluded from performance
+claims because instrumentation changes the backend comparison.
+
+Representative performance
+--------------------------
+Transfers, allocations and final publication are included. Forward GEMM
+times include both products and use the retained actual GEMMul8 bridge
+as the single-GPU baseline, including A100's accurate Ozaki policy.
+
+Operation                 Single GPU       Two GPUs       Speedup
+Real forward, n=8192       107.908 ms        91.614 ms      1.18x
+Real forward, n=12288      331.253 ms       259.857 ms      1.27x
+Complex forward, n=8192    472.908 ms       286.935 ms      1.65x
+
+See mgpu_gemm.txt for rectangular and three-GPU measurements, resource
+limits and conservative automatic thresholds. Adding a third GPU did not
+improve the real square products versus these separate two-GPU runs.
+
+Real full eigensolve n=4096: MAGMA's warmed trial was 1.835 s and paper's
+4.041 s. Existing cuSOLVER was faster, so automatic selection keeps it.
+The three-GPU complex n=4096, nev=2048 calibration measured 0.395 s for
+cuSOLVER, 2.687 s for MAGMA and 5.016 s for paper. These are solver-call
+measurements, not whole-SCF speedups. Auto times and caches each new shape;
+its first-call calibration overhead is intentionally included in neither
+steady-state claim nor a promise of faster overall SCF.
+The final two-GPU complex n4096/2048 calibration measured 0.387 s for
+cuSOLVER, 2.586 s for MAGMA and 4.707 s for paper. All validated; cuSOLVER
+was selected. The full first call took 15.19 s with calibration, followed
+by a cached call of 0.401 s.
+
+Coverage limits
+---------------
+Physical GeForce, four-GPU, PCIe-only and multi-node application runs have
+not been measured in this change. Existing GeForce defaults remain gated
+away from automatic multi-GPU routing. The new paths retain the owner's
+dense GPU storage and are not out-of-core. The paper implementation uses
+its pipelined reduction/backtransform structure and adds complex support,
+but does not reproduce all published low-level tuning or claim its reported
+speedups. See paper_mgpu.txt for algorithm and tuning details.
+
+Raw evidence (local, ignored build/test artifacts)
+------------------------------------------------
+work/mgpu_20261014/{check2,complex2,check3,solver2}.log
+work/mgpu_20261014/cluster2-live.log
+work/mgpu_20261014/cluster2/
+work/mgpu_20261014/{magma-cpu-review,runtime-cpu-review,gemm-cpu-final}.log
+work/mgpu_20261014/final2-live.log
+work/mgpu_20261014/final2/
+work/mgpu_20261014/{final-build-live,make-magma-stub,make-magma-restore-auto}.log
+work/mgpu_20261014/magma-toggle-build.json
+work/mgpu_20261014/validated-source-sha256.json

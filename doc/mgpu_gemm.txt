@@ -1,0 +1,205 @@
+Single-node cooperative dense GEMM
+=================================
+
+Implementation: source/openmx_mgpu_gemm.cu and openmx_mgpu_gemm.h.
+The application runtime admits operations only from the main collinear and
+noncollinear cluster solvers. Node topology, input enablement, GPU selection,
+size thresholds and interprocess locking belong to openmx_mgpu_runtime.cu.
+The numerical core has no MPI calls and accepts an explicit list of CUDA-visible
+device ordinals. Devices with the same PCI bus ID are rejected: two MIG instances
+on the same physical GPU do not count as two cooperating GPUs.
+
+Algorithm and numerical behavior
+-------------------------------
+
+Partition the output into row/column tiles and assign one tile to each GPU in a
+wave. Every tile retains the complete K dimension. There is no split-K reduction
+and no new reduced-precision arithmetic. Copy raw operand submatrices with their
+storage orientation intact; the local GEMM applies N, T or C. This supports real
+and complex GEMM, rectangular back transforms, padded leading dimensions, host or
+device alpha/beta, and the two products H X followed by X^T H X or X^H H X.
+The two forward products are separate calls; their intermediate matrix returns
+to the source GPU. A worker caches its current operand tiles within one call.
+
+Each worker owns a nondefault stream and cuBLAS handle. Peer copies and GEMMs are
+queued on these streams; all workers queue their GEMMs before a host-staged gather
+waits. Input readiness comes from an event on the caller's stream. Where peer
+access is unavailable or cannot be enabled, bounded portable pinned buffers
+stage transfers through host memory. OPENMX_MGPU_GEMM_FORCE_HOST=1 exercises this
+route even on NVLink systems. Peer enablement is cached per directed device pair.
+
+When linked into OpenMX, workers call the existing real/complex GEMMul8 bridge.
+Its input/environment arithmetic choices therefore remain effective: GeForce
+workers can retain accurate Ozaki, and strong-FP64 devices use their general-GEMM
+policy. OPENMX_MGPU_GEMM_BACKEND=native explicitly chooses local cuBLAS instead.
+Standalone builds without the weak bridge symbols also use native cuBLAS.
+The in-worker guard prevents recursive multi-GPU dispatch. Explicit special
+forward precision/reuse stages remain the responsibility of the caller's bridge.
+
+Success waits for all results and restores the caller's current CUDA device.
+It does not modify the caller's handle, stream, pointer mode, math mode or atomics
+mode. This first implementation offers concurrency among worker GPUs but is
+synchronous at the public API boundary.
+
+Memory and fallback contract
+----------------------------
+
+All results first land in a contiguous transaction buffer on the source GPU.
+Only after every worker and gather succeeds is the result copied into user C,
+preserving its leading-dimension padding. A recoverable allocation, transport or
+worker failure before this commit returns 0 with C unchanged, so the caller can
+execute the original single-GPU GEMM, including nonzero beta. A commit or CUDA
+synchronization failure is returned as handled with an error status; callers
+must not retry that operation blindly. Unsupported graph capture, invalid device
+lists and insufficient full-K budgets also decline before committing C.
+
+Environment variable                         Default  Meaning
+OPENMX_MGPU_GEMM_WORKSPACE_MB                 1024     A+B+C tile buffers per GPU
+OPENMX_MGPU_GEMM_RESULT_MB                    2048     Full source-GPU result cap
+OPENMX_MGPU_GEMM_HOST_MB                       256     Pinned staging per worker
+OPENMX_MGPU_GEMM_RESERVE_MB                    512     Free device-memory reserve
+OPENMX_MGPU_GEMM_FORCE_HOST                     0     Force host-staged transport
+OPENMX_MGPU_GEMM_BACKEND                   bridge     bridge or native arithmetic
+
+Byte caps use MiB (1024^2 bytes). Zero workspace/result/host budgets disable the
+corresponding allocation; zero reserve removes that reserve. The backend checks
+OpenMX's physical free-memory helper when linked, otherwise cudaMemGetInfo.
+The source GPU can hold both its worker buffers and the transaction buffer.
+CUDA contexts, cuBLAS internals and the existing bridge's own bounded workspace
+are additional allocations. All operand/result/pinned scratch is freed before
+return. Handles and streams are cached per host thread, with explicit cleanup
+through openmx_mgpuGemmRelease().
+
+Core API and diagnostics
+-----------------------
+
+openmx_mgpuDgemmTry / openmx_mgpuZgemmTry take the ordinary cuBLAS GEMM arguments
+plus ngpu, a device-ordinal array and an output status pointer. A return of 0
+means decline and untouched C. A return of 1 means handled; inspect the status.
+They can be called directly while the application already owns its operation
+lock. openmx_mgpuGemmInWorker() identifies recursive bridge calls.
+
+openmx_mgpuGemmLastReport() copies a host-thread-local report with requested and
+active GPU counts, output tiles, bridge calls, peer/host transfer counts,
+transaction bytes, per-worker bytes, total wall time and a static reason string.
+The active count records GPUs that actually enqueued a product, not merely
+devices that were discovered. The transfer counts refer to remote transfers;
+copies local to the source GPU are excluded.
+
+Tests and benchmarks
+--------------------
+
+CPU arithmetic/indexing and failure tests:
+  python3 tests/run_mgpu_gemm_cpu.py
+This compiles the production core against fake CUDA devices and runs the same
+numerical fixture for 2 and 4 devices. GPU stream/transport validation is separate.
+
+Build on a GPU-less login node (site CUDA/toolchain example):
+  CUDA_HOME=/home/app/hpc_sdk/Linux_x86_64/24.7/cuda/12.5 \
+  CUDA_MATH_ROOT=/home/app/hpc_sdk/Linux_x86_64/24.7/math_libs/12.5 \
+  NVCC_HOST=/opt/gcc/12.2.0/bin/g++ \
+  HOST_LIBDIR=/opt/gcc/12.2.0/snos/lib64 GPU_ARCH=80 \
+  sh tests/run_mgpu_gemm_smoke.sh source/build/mgpu-tests --build-only
+
+Run inside an allocated node with at least two physical GPUs:
+  source/build/mgpu-tests/mgpu_gemm_smoke --ngpu 2
+  compute-sanitizer --tool memcheck --error-exitcode 99 \
+    source/build/mgpu-tests/mgpu_gemm_smoke --ngpu 2
+Use --ngpu 4 for four GPUs. The 64-case fixture covers real/complex N/T/C,
+alpha/beta, device scalars, NaN C with beta zero, padding, nondefault streams,
+long K, bounded tiling, both forward pairs, rectangular back shapes, peer/host
+paths, a nonzero source device, and transactional rollback after a later worker
+rejects its tile. Numerical references use independent long-double sums.
+The default smoke uses a lightweight bridge wrapper to test recursion; it is
+not a numerical test of the external GEMMul8 kernels.
+
+Native one-GPU versus cooperative GEMM, with all transfers/allocations included:
+  source/build/mgpu-tests/mgpu_gemm_bench --ngpu 2 \
+    --m 8192 --n 8192 --k 8192 --iterations 10 --forward
+Add --complex for Z. Omit --forward for a single N/N product and use independent
+--m/--n/--k dimensions. Repeat --ngpu 4 on a four-GPU allocation. CSV output
+reports wall time, relative error against the single-GPU output, active GPUs,
+transport counts and scratch bytes. A decline or wrong active count fails the
+benchmark instead of silently timing a single-GPU fallback.
+
+For the retained production single-GPU arithmetic policy, build the same source
+with the actual bridge and an existing GEMMul8 template object:
+  GEMMUL8_TEST_OBJECT=/absolute/path/to/gemmul8_openmx.o \
+    sh tests/build_mgpu_gemm_bridge_bench.sh source/build/mgpu-tests
+Use the same CUDA/toolchain variables as above. The resulting executable is
+mgpu_gemm_bench_bridge, with the same options. Its forward baseline invokes
+actual Fixed GEMMs and trims scratch after each pair, including A100's accurate
+Ozaki policy for sufficiently large real square matrices. Its workers also use
+the actual bridge. This comparison is necessary before changing automatic
+thresholds: a speedup over native cuBLAS alone need not beat retained Ozaki.
+
+Application regression (run in a single-node GPU allocation with MPI/MPS set up
+by the caller):
+  python3 tests/run_mgpu_cluster_regression.py \
+    --baseline /absolute/path/to/pre-mgpu/openmx --binary source/openmx \
+    --output /new/private/result/directory --ranks 2 --gpus 2
+Use --ranks 4 --gpus 4 on a four-GPU node. --prepare-only writes the inputs and
+binary snapshots without launching MPI. The output directory must not exist.
+Defaults run Pt63 collinear off, collinear on and noncollinear SOC for exactly
+three SCF steps each, against disabled, forced MAGMA, forced paper and automatic
+solver modes. Both spin-polarized variants start with populations 8.5/7.5 per Pt;
+the noncollinear rows add 45 15 45 15 1. The template and existing outputs are
+untouched. Absolute DATA.PATH and private binary hashes are recorded.
+
+The runner forces both Cluster GPU thresholds and multi-GPU GEMM eligibility so
+these relatively small matrices test the implementation rather than the speed
+threshold. It checks finite energy components and all 189 force components,
+with default total-energy/maximum-force tolerances of 1e-7 Ha and 1e-7 Ha/bohr.
+Successful enabled cases must log GEMM with the expected real/complex type and
+the requested active GPU count. Forced eigensolver cases must also record that
+backend, so a silent fallback cannot pass. Automatic solver selection may choose
+single-GPU. Every planned run, output, backend record and numerical difference
+is preserved in command.json, results.json, comparisons.json and summary.json.
+
+Measured A100 behavior and automatic admission
+---------------------------------------------
+
+2026-10-14, A100-SXM4-40GB with NVLink, CUDA 12.5. The 2-GPU square forward
+measurements use ten timed repetitions after warmup; 3-GPU square forward
+and rectangular measurements use five. Wall times include allocation,
+transfers, arithmetic and final commit.
+Forward rows time both products; the real single-GPU baseline uses the retained
+accurate Ozaki forward path. General rows time one N/N product. These are
+per-operation measurements, not whole-SCF speedups or guarantees for other
+topologies/toolkits. The 2- and 3-GPU runs were separate allocations.
+
+Type  M=N=K  GPUs  Forward single-bridge ms  Multi-GPU ms
+D      6144    2          49.437                 47.759
+D      8192    2         107.908                 91.614
+D     12288    2         331.253                259.857
+Z      8192    2         472.908                286.935
+D      8192    3         108.586                105.316
+D     12288    3         330.406                271.990
+Z      8192    3         471.933                277.586
+
+Type  M=K   N     GPUs  General single-bridge ms  Multi-GPU ms
+D     8192  4096    2           36.703                 30.907
+D     8192  2048    2           18.243                 20.194
+D     8192   512    2            4.619                 11.520
+Z     8192  4096    2          116.578                 81.350
+Z     8192  2048    2           62.864                 52.479
+Z     8192   512    2           18.372                 24.607
+
+The application automatic policy requires max(M,N)>=8192, min(M,N)>=4096 and
+K>=8192, and direct bidirectional NVLink/P2P among the participating GPUs.
+OPENMX_MGPU_GEMM_MIN_N adjusts the large-dimension/K floor and sets the smaller
+output-dimension floor to its rounded-up half; explicit
+OPENMX_MGPU_GEMM=1 bypasses size/topology admission. Narrow 2048/512 outputs
+remain outside automatic admission because real GEMM regresses there. The
+6144 real square gain is too small to justify lowering the automatic floor.
+Three GPUs did not improve real forward time over the separate two-GPU runs;
+GPU count is a user limit, not a claim that every extra GPU improves speed.
+
+Numerical/transport validation: all 64 smoke cases passed on both two and three
+physical A100 GPUs, maximum error 1.435e-14 versus independent long-double sums.
+Two-GPU compute-sanitizer memcheck reported zero errors after caching directed
+peer enablement. Integrated forward comparisons above had maximum relative
+difference 1.115e-13 from retained single-GPU arithmetic. Forced accurate Ozaki
+workers also passed real/complex n=1024 checks, although small forced operations
+were slower. Physical GeForce and four-GPU runs have not yet been measured.
+Raw logs: work/mgpu_20261014/check2.log, complex2.log and check3.log.

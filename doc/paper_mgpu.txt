@@ -1,0 +1,224 @@
+Paper-based single-node GPU eigensolver
+======================================
+
+Reference
+---------
+H. Wang et al., "Pipelined Dense Symmetric Eigenvalue Decomposition on
+Multi-GPU Architectures", arXiv:2511.16174v1, 2025-11-20.
+https://arxiv.org/abs/2511.16174
+
+The related band-reduction/bulge-chasing paper is H. Wang et al.,
+"Improving Tridiagonalization Performance on GPU Architectures",
+PPoPP 2025, DOI 10.1145/3710848.3710894.
+https://doi.org/10.1145/3710848.3710894
+
+This is an independent implementation of the first paper's column-block
+pipeline and reordered backtransforms. It does not embed a MAGMA/cuSOLVER
+whole eigensolve and call that the paper method. cuSOLVER supplies panel QR,
+cuBLAS supplies matrix products, and host LAPACK supplies tridiagonal DSTEDC.
+No code from the authors' research repository is copied into this backend.
+The implementation differences below matter substantially to performance.
+
+Scope and interfaces
+--------------------
+The implementation is in source/openmx_paper_mgpu.cu and the shared real/
+complex implementation source/openmx_paper_mgpu_impl.cuh. Public declarations
+are in source/openmx_paper_mgpu.h:
+
+  openmx_paper_mgpu_dsyevdx_host(ngpu, n, nev, A, lda, W)
+  openmx_paper_mgpu_zheevdx_host(ngpu, n, nev, A, lda, W)
+
+A is host column-major storage. Only its lower triangle is read. The complex
+interface uses interleaved real/imaginary doubles and ignores imaginary
+parts of diagonal entries. On success, exactly nev ascending eigenvalues
+are written to W, and the first nev columns of A contain the eigenvectors.
+Padding and the remaining columns are preserved. On any nonzero return,
+A and W are unchanged; openmx_paper_mgpu_last_error() gives the reason.
+The calling thread's CUDA device is restored. The caller provides exclusive
+node-wide admission; the solver itself does not call MPI or initialize MPI.
+
+The executor uses visible CUDA devices starting at zero. Band slabs end on
+32-column boundaries; nonfinal slabs contain at least 64 columns. Therefore
+small problems use fewer devices than requested:
+
+  used = min(ngpu, max(1, ceil(n/32)/2)).
+
+Full FP64 is used throughout. Even when nev<n, the tridiagonal eigensystem
+and both identity backtransforms are constructed in full; only final GEMM
+and output are restricted to nev. This is a consequence of the reordered
+algorithm, not an efficient arbitrary-index subset solver.
+
+Algorithm
+---------
+For real matrices, H below means transpose; for complex matrices it means
+conjugate transpose. The bandwidth is b=32.
+
+1. Distribute full rectangular column slabs of the symmetric/Hermitian A.
+   Both triangles are represented in the active trailing matrix. This lets
+   a GPU calculate its rows of A*W from its own slab without fetching remote
+   bulk matrix rows. Matrices W, Y and Z are staged through host memory.
+
+2. Factor each b-column panel with GPU GEQRF. Build the forward compact-WY
+   triangular factor on the GPU and form W=Y*T, so Qpanel=I-W*Y^H. Update
+   the trailing matrix with the paper's ZY equations:
+
+     Z = A*W - (1/2)*Y*(W^H*A*W)
+     A = A - Y*Z^H - Z*Y^H.
+
+   General slabs use GEMM. The last GPU uses SYR2K/HER2K for its diagonal
+   square plus GEMM for any rectangular upper part. A panel's final band
+   entries and Householder data are published as soon as it is complete.
+
+3. Start GPU band-to-tridiagonal bulge chasing on a slab when that GPU
+   finishes its dense-to-band slab. Later GPUs continue dense-to-band work.
+   The lower band is stored with leading dimension 2b. A warp generates one
+   Householder reflector and updates its left, diagonal and lower tiles.
+   Sweep dependencies prevent overlapping updates. A boundary task obtains
+   the next slab's halo and returns the modified halo before that neighbor
+   proceeds. The transferred halo is at most 2b columns of the compact band;
+   no dense trailing matrix is transferred between GPUs.
+
+4. Each released GPU also starts its columns of Qs^H from identity. It
+   applies available SBR WY blocks in forward order, waiting only for later
+   blocks to be published. After the BC reflectors are available, a custom
+   BLAS2 kernel applies them in dependency order, yielding (Qs*Qb)^H.
+   Groups of reflectors are shared by several warps; no BC LARFT stage is
+   performed. This preserves the paper's reordered backtransform, rather
+   than applying BC-back and SBR-back to D&C eigenvectors.
+
+5. As soon as BC yields the tridiagonal D/E arrays, a separate CPU thread
+   runs LAPACK DSTEDC. It runs concurrently with the GPU backtransforms.
+   The backend respects the threading policy of the linked BLAS/LAPACK;
+   it does not change process-global BLAS thread counts.
+
+6. Finally, each GPU multiplies its resident transposed Qsb row slab by
+   tiles of host Qd and returns its output rows. The GPUs execute these
+   GEMMs concurrently. The mathematical result is Q=(Qs*Qb)*Qd.
+
+Hermitian extension
+-------------------
+The paper evaluates real symmetric FP64 matrices. The complex interface is
+an extension implemented here, not a published complex performance claim.
+Panel QR uses complex tau and conjugate WY/ZY products. During BC, each
+reflector H=I-tau*v*v^H is Hermitian, with real tau and complex v; the reduced
+tridiagonal therefore has complex off-diagonal phases. Let t_i be its lower
+off-diagonal entry. Set p_0=1 and
+
+  p_(i+1) = p_i*t_i/abs(t_i)   (use 1 when t_i=0).
+
+Normalizing each p to unit magnitude avoids cumulative magnitude drift.
+P^H*T*P is real tridiagonal with off-diagonal abs(t_i). DSTEDC solves that
+real problem. The backtransform uses (Qs*Qb*P)^H, and the final complex GEMM
+returns Q=(Qs*Qb*P)*Qd. There is no doubling of matrix order or realification.
+
+Differences from the tuned research implementation
+-------------------------------------------------
+- A single-node thread/stream executor replaces one MPI rank per GPU and
+  device-side NVSHMEM communication.
+- Current SBR uses b=32 blocked QR/WY, not the recursive double-block SBR
+  optimization of the related PPoPP paper.
+- The BC dependency scheduler dispatches GPU batches from the host and
+  synchronizes adjacent halos. It is not the authors' persistent NVSHMEM
+  GPU scheduler. Launch and synchronization latency is significant.
+- BC-back shares groups of reflectors but does not implement the paper's
+  full register tiling, bank-conflict layout, or performance-tuned wavefront.
+- Identity backtransform slabs are equal, without the paper's dynamic
+  within-5-percent load redistribution.
+- Allocation, context cold-start and CPU D&C costs are included in end-to-end
+  timings. There is currently no retained device workspace between solves.
+
+These differences mean that this implementation must not be advertised as
+reproducing the paper's reported 5.74x/6.59x speedups. Native cuSOLVER or
+MAGMA can be substantially faster, especially for smaller matrices. The
+application's automatic backend selection should use measured times rather
+than assume that the paper backend wins.
+
+Validation and reproduction
+---------------------------
+Build standalone tests using tests/run_paper_mgpu_smoke.sh. CUDA_HOME selects
+the toolkit; CUDA_MATH_ROOT may point to a separate HPC SDK math_libs tree.
+NVCC_HOST, HOST_LIBDIR, GPU_ARCH and LAPACK_LINK_FLAGS are configurable.
+For example on the validation system:
+
+  CUDA_HOME=/home/app/hpc_sdk/Linux_x86_64/24.7/cuda/12.5 \
+  CUDA_MATH_ROOT=/home/app/hpc_sdk/Linux_x86_64/24.7/math_libs/12.5 \
+  NVCC_HOST=/opt/gcc/12.2.0/bin/g++ \
+  HOST_LIBDIR=/opt/gcc/12.2.0/snos/lib64 \
+  LAPACK_LINK_FLAGS='-Xlinker /lib64/libopenblas.so.0' \
+    sh tests/run_paper_mgpu_smoke.sh source/build/paper-tests --build-only
+
+Inside an allocated GPU job (two visible devices):
+
+  source/build/paper-tests/test_paper_mgpu 2
+  source/build/paper-tests/test_paper_mgpu_complex 2
+  source/build/paper-tests/test_paper_mgpu 2 1024 1024 normal
+  source/build/paper-tests/test_paper_mgpu_complex 2 1024 128 normal
+  source/build/paper-tests/test_paper_mgpu 2 --failures
+  source/build/paper-tests/test_paper_mgpu_complex 2 --failures
+
+Tests compare eigenvalues to independent LAPACK DSYEV/ZHEEV and calculate
+full residuals and orthogonality with long-double host accumulation. They
+cover n=1,2,17,31,32,33,63,64,65,97,128,257; leading subsets; padded lda;
+uninitialized upper triangles; clustered, geometric and arithmetic spectra
+with condition number 1e8; and transactional invalid-argument failure.
+Test builds also inject failures after a worker starts and during SBR, BC,
+backtransform and final GEMM. Scoped stream drains keep host staging arrays
+alive during unwinding; every worker is joined before context cleanup. The
+failure tests check unchanged A/W and a successful subsequent solve. Failure
+injection is compiled only with OPENMX_PAPER_TESTING, not into application
+builds. Complex layout size and alignment match cuDoubleComplex statically.
+The normalized measures are ||A*Q-Q*Lambda||F/(n*||A||F) and
+||Q^H*Q-I||F/n. These are not bytewise-eigenvector comparisons, which would
+be invalid for degenerate eigenvalues and arbitrary eigenvector phases.
+
+Validation on 2026-10-14, 2x A100, CUDA12.5:
+- Real and complex edge/spectrum suites passed.
+- Real n1024/full: normalized residual 4.48e-18, orthogonality 1.27e-16.
+- Complex n1024/128: normalized residual 1.42e-18, orthogonality 2.66e-17.
+- CUDA compute-sanitizer reported zero errors for real and complex
+  n257/73, including the application's real solver bridge.
+- In an initial n4096 real full-spectrum application-bridge benchmark,
+  warm paper time was about 4.04 s, MAGMA 1.83 s, native cuSOLVER 0.23 s.
+  The automatic selector chose native. This is a measured performance gap,
+  not evidence of the published solver's claimed performance.
+
+Set OPENMX_PAPER_MGPU_PROFILE=1 to print stage timestamps in milliseconds.
+PAPER_MGPU_GPU early_bc=1 means that GPU's first BC batch completed before
+all SBR finished. It is based on completion timestamps, not device count.
+For example, n1024 GPU0's first BC batch completed at 592.54 ms while global
+SBR ended at 606.46 ms; CPU D&C started at 870.70 ms while GPU backtransforms
+continued until about 883.35 ms. These show the pipeline dependencies and
+stage overlap. They are host-observed stage times, not a GPU profiler trace.
+
+Optional BC batch experiment
+----------------------------
+OPENMX_PAPER_MGPU_BC_BATCH=1 lets a warp execute several consecutive local
+bulge steps whose dependencies and source-band data are already ready.
+The batch stops at the same slab/halo and predecessor-sweep limits as the
+single-step scheduler. Simultaneous tasks retain disjoint write footprints.
+This is a bounded local batch, not a persistent cross-GPU NVSHMEM scheduler.
+The default remains zero: the first GPU measurements found regressions on
+the larger case despite fewer launches. PAPER_MGPU_BC reports scheduler
+rounds, kernel launches and reflectors for controlled comparisons.
+
+On 2x A100, batch=0/1 passed 68 real/complex numerical cases, including both
+n1024 runs and the edge/spectrum suites, plus four checks of double-aligned
+complex host input.
+The five injected failure stages passed for each scalar type, followed by
+successful recovery solves. The complex failure suite also passed CUDA
+compute-sanitizer with zero errors.
+
+The initial batch comparison (milliseconds, single samples) was:
+
+  matrix             batch=0 total   batch=1 total   BC launches 0 -> 1
+  real n257/full          74.57           56.62            1108 -> 483
+  complex n257/full       90.11           72.57            1108 -> 483
+  real n1024/full        742.23          871.58            5314 -> 2024
+  complex n1024/128      844.98         1133.05            5318 -> 2023
+
+The n1024 measurements include a fresh process/context. Their first-BC to
+BC-complete intervals also regressed: real 274.45 -> 407.31 ms and complex
+352.69 -> 625.18 ms. Fewer launches therefore did not imply a faster solve;
+longer per-warp dependency chains can reduce available concurrency. This
+experiment is not used by the default backend or the automatic selector
+unless explicitly enabled with OPENMX_PAPER_MGPU_BC_BATCH=1.

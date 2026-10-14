@@ -25,6 +25,7 @@ static inline cudaError_t device_mem_get_info(size_t *free_bytes, size_t *total_
 
 #include "gemmul8.hpp"
 #include "openmx_stdout_level.h"
+#include "openmx_mgpu_runtime.h"
 
 namespace {
 
@@ -546,6 +547,10 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
     if (m <= 0 || n <= 0 || k <= 0) {
         return CUBLAS_STATUS_SUCCESS;
     }
+    cublasStatus_t mgpu_status;
+    if (openmx_mgpu_dispatch_dgemm && openmx_mgpu_dispatch_dgemm(handle,
+            transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, &mgpu_status))
+        return mgpu_status;
     return timed_general_gemm(handle, 0, 2.0 * m * n * k, [&](bool *native) {
         return general_dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, native);
     });
@@ -714,6 +719,10 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
     if (m <= 0 || n <= 0 || k <= 0) {
         return CUBLAS_STATUS_SUCCESS;
     }
+    cublasStatus_t mgpu_status;
+    if (openmx_mgpu_dispatch_zgemm && openmx_mgpu_dispatch_zgemm(handle,
+            transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, &mgpu_status))
+        return mgpu_status;
     return timed_general_gemm(handle, 1, 8.0 * m * n * k, [&](bool *native) {
         return general_zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, native);
     });
@@ -955,6 +964,19 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
     /* the default stage follows the settings of openmx_gemmul8{D,Z}gemm */
     const bool default_stage = stage.mode == kForwardDefault;
     const bool reuse_stage   = !default_stage && stage.reuse;
+    /* Worker products use the general precision settings. Explicit forward
+       precision/reuse stages retain their existing implementation. */
+    if (default_stage) {
+        if constexpr (is_complex) {
+            if (openmx_mgpu_dispatch_zgemm && openmx_mgpu_dispatch_zgemm(handle,
+                    transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc, &status))
+                return status;
+        } else {
+            if (openmx_mgpu_dispatch_dgemm && openmx_mgpu_dispatch_dgemm(handle,
+                    transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc, &status))
+                return status;
+        }
+    }
     unsigned   num_moduli    = stage.num_moduli;
     bool       fastmode      = stage.fastmode;
     bool       native        = stage.mode == kForwardFp64 || g_input_enabled == 0;
@@ -1112,6 +1134,10 @@ extern "C" cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cu
                                                        cuDoubleComplex *C, int ldc)
 {
     if (m <= 0 || n <= 0 || k <= 0) return CUBLAS_STATUS_SUCCESS;
+    cublasStatus_t mgpu_status;
+    if (openmx_mgpu_dispatch_zgemm && openmx_mgpu_dispatch_zgemm(handle,
+            transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, &mgpu_status))
+        return mgpu_status;
     if (g_input_enabled == 0 || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z"))
         return openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     return timed_general_gemm(handle, 1, 8.0 * m * n * k, [&](bool *native) -> cublasStatus_t {
@@ -1142,6 +1168,10 @@ extern "C" cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cu
                                                        int ldb, const double *beta, double *C, int ldc)
 {
     if (m <= 0 || n <= 0 || k <= 0) return CUBLAS_STATUS_SUCCESS;
+    cublasStatus_t mgpu_status;
+    if (openmx_mgpu_dispatch_dgemm && openmx_mgpu_dispatch_dgemm(handle,
+            transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, &mgpu_status))
+        return mgpu_status;
     if (g_input_enabled == 0 || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D"))
         return openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     return timed_general_gemm(handle, 0, 2.0 * m * n * k, [&](bool *native) -> cublasStatus_t {
