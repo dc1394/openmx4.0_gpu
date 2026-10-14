@@ -1134,8 +1134,13 @@ eight at a time" (commit <code>7c414f91</code>). The report line carries the mod
 decide feasibility by <b>real reservation rather than estimation</b>: the owner rank actually cudaMallocs
 the matrix buffers and the syevdx workspace (using the <b>real <code>_bufferSize</code> figure</b>) with
 8-attempt bounded retries, and additionally requires <code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code>
-(default 1024 MiB) to remain free (<code>ClusterCol_OwnerReserveProbe</code>). The switch to real
-reservations was motivated by measurement: the workspace estimate of 2n² doubles versus about 4n² doubles
+(default 1024 MiB) to remain free (<code>ClusterCol_OwnerReserveProbe</code>). The probe counts the n²
+basis of the refined FP32 eigensolver (<code>OPENMX_EIGEN_REFINE</code>, §10.2) as well; when the dense buffers and the reserve fit but the basis
+does not, the GPU path is kept and the cycle is solved by the FP64 eigensolver instead of falling back to
+ELPA (one line <code>… holds its GPU diagonalization buffers but not the … basis of the refined
+eigensolver …: FP64 eigensolver for this SCF cycle</code>; C1000 at 18 ranks on the 16 GB RTX 5080 is such
+a case: 1257 MiB free after the reservation against the 1024 MiB reserve plus the 1289 MiB basis). The
+switch to real reservations was motivated by measurement: the workspace estimate of 2n² doubles versus about 4n² doubles
 in reality (commit <code>cff323e6</code>). The noncollinear path reserves the whole diagonalization cycle
 as a <b>single cudaMalloc arena</b> mapped into OpenACC with <code>acc_map_data</code>, making the verdict
 immune to other phases filling the device mid-cycle
@@ -1432,7 +1437,11 @@ NonCol: +2,424).</p>
   <li><b>GPU accumulation of DM/EDM (commit <code>75fc30d3</code>):</b>
   <code>ClusterCol_AccumulateDM_OpenACC</code> accumulates DM1/EDM1 (and PDM1 for partial charges) in
   OpenACC gang loops over 131,072-entry chunks, with the per-state summation order identical to the CPU
-  loop (<code>loop seq</code>). <code>OPENMX_CLUSTER_GPU_DM=0</code> selects the CPU loop. The
+  loop (<code>loop seq</code>). <code>OPENMX_CLUSTER_GPU_DM=0</code> selects the CPU loop. Since 2026-10-13 every rank
+  accumulates its slice of states on the device, not only the rank that owns the dense solve: the others stage
+  their host panel through a halving retry and fall back to the CPU loop (now threaded over the atoms) when even the
+  smallest block does not fit; <code>OPENMX_CLUSTER_GPU_DM_ALL=0</code> restores the owner-only accumulation
+  (C1000 at 6 ranks: the diagonalization phase 113 → 78 s, the density matrix 37 → 6 s of host time). The
   sparse→dense index is cached under a geometry fingerprint (FNV-1a), removing the per-spin,
   per-iteration rebuild and re-upload.</li>
   <li><b>Device-resident eigenvectors (commit <code>527ed524</code>):</b> right after each spin's solve,
@@ -1793,7 +1802,7 @@ guarantees that shared-device memory races can never abort the run. The parent g
 <tbody>
 <tr><td>#1 (overlap correction)</td><td>host only</td><td>—</td></tr>
 <tr><td>#2 (kinetic)</td><td>pack + GPU reduction (<code>Force2_Kinetic_OpenACC</code>)</td><td>when no SO/LDA+U/constraints/Zeeman; on allocation failure computes on the host</td></tr>
-<tr><td>#3 (dn/dx·Vpot grid trace)</td><td>chunked batch <code>Force3_GpuTrace</code>: one pair = one gang, vector reduction over overlap points. <b>dOrbitals recomputed on device</b> (explicit real spherical harmonics for L0≤3 + radial splines; eliminates ~4.5 GB/rank of PCIe traffic)</td><td>budget test (residency + 192 MiB within (free−256 MiB)/node ranks). If only the dOrbitals recomputation is infeasible, falls back to transferring host-computed dchi (<code>OPENMX_FORCE3_GPU_DORB</code>)</td></tr>
+<tr><td>#3 (dn/dx·Vpot grid trace)</td><td>chunked batch <code>Force3_GpuTrace</code>: one pair = one gang, vector reduction over overlap points. <b>dOrbitals recomputed on device</b> (explicit real spherical harmonics for L0≤3 + radial splines; eliminates ~4.5 GB/rank of PCIe traffic)</td><td>budget test (residency + 192 MiB within (free − reserve)/node ranks; the reserve, 256 MiB plus 16 MiB per node rank, is the one of every force-phase budget). If only the dOrbitals recomputation is infeasible, falls back to transferring host-computed dchi (<code>OPENMX_FORCE3_GPU_DORB</code>)</td></tr>
 <tr><td>#4 (ProExpn_VNA==0)</td><td>GPU reduction of the dVNA grid term (<code>Force4_OpenACC</code>)</td><td>host on allocation failure</td></tr>
 <tr><td>#4B (projected VNA)</td><td><b>GPU dot-product batch</b> (commit <code>7d38382d</code>): the four DS_VNA directions device-resident in float (direction-major); halo/case-2 blocks archived from the MPI pipeline; fused case-1/case-2 traces each in one kernel, reproducing the CPU down to the float-multiply→double-add cast. Damping tails on the host</td><td><code>OPENMX_FORCE4B_GPU</code> (default 1) + memory test. If not: the <b>fused CPU trace</b> (<code>OPENMX_FORCE4B_FUSED</code>, commit <code>fe68cca6</code>); if that too is off, the original dHVNA path. Special pairs (q_AN==0 etc.) always on the host</td></tr>
 <tr><td>#5 (overlap × EDM)</td><td>GPU reduction (<code>Force5_OpenACC</code>)</td><td>host on allocation failure</td></tr>
@@ -2149,6 +2158,7 @@ reserves, or to force.</p>
 <thead><tr><th style="width:36%;">Environment variable</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Device-memory accounting (set_cuda_default_device_from_local_rank.c)</b></td></tr>
+<tr><td><code>OPENMX_GPU_STACK_BYTES</code></td><td>the largest stack frame of OpenMX's own kernels (cuobjdump on the linked binary at link time; 1000 bytes in the current build)</td><td>Per-thread kernel stack limit set at device initialization (<code>cudaLimitStackSize</code>, <code>OpenMX_GpuPresizeKernelStack</code>) when it exceeds the driver's default 1 KiB, so the driver sizes the context's local-memory pool while the device is empty instead of at the first launch of a kernel with a large frame. That launch-time growth (about 26 MiB per context for a 1224-byte frame on an RTX 5080: (frame − 1024) × every resident thread of the device) raced with the force-phase arenas, which fill the device down to their reserve, and lost at 18 ranks on 16 GB (<code>cuLaunchKernel</code>: out of memory in <code>Force3_GpuTrace</code>, C1000, whose dOrbitals kernel had that frame; its spherical-harmonic tables are now flat, 936 bytes, so the step is idle at present). The Makefile reads the figure from the linked binary (the kernels of the objects; the linked libraries' kernels, such as ELPA's 1328-byte one, are not counted) and relinks once with it. 0 disables the step; a raised limit costs (limit − 1024) × resident threads of device memory per rank.</td></tr>
 <tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>Every device-memory budget of the GPU paths starts from <code>OpenMX_GpuMemGetInfo()</code>: <code>cudaMemGetInfo()</code> with the free figure capped at the memory that is physically free according to NVML. On WDDM platforms (WSL2) the CUDA runtime reports a per-process view in which the other ranks' contexts and arrays are invisible, and an allocation past the physical memory is paged through system memory at a fraction of the speed instead of failing: 12 ranks on a 12 GB RTX 4070 Ti each saw 10.8 GiB "free", took 836 MiB each for the DS_VNA batch and stalled Set_ProExpn_VNA for minutes (0.6 GiB was left after the contexts). On Linux the two figures agree. A one-time stdout notice (level.of.stdout 2 and above) reports both figures when they differ by more than 256 MiB. 0 = plain <code>cudaMemGetInfo()</code></td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8 (gemmul8_bridge.cu)</b></td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>Disable GEMMul8, pin to cuBLAS FP64 (all / real only / complex only)</td></tr>
@@ -2169,7 +2179,7 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS</code></td><td>1</td><td>GPU-turn serialization of the all_knum==1 path (0 = concurrent submission)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_PERSISTENT</code> / <code>_MIN_FREE_MB</code></td><td>0 / 2048</td><td>Device-buffer persistence across SCF iterations (not recommended on shared GPUs)</td></tr>
 <tr><td><code>OPENMX_BAND_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>Per-turn GEMMul8 workspace release (0 keeps them)</td></tr>
-<tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>Performance counters; also gates the per-rank stage lines SETHPROF (Set_Hamiltonian), SETHOTFPROF / SETHOTFDENPROF (the on-the-fly batches: pack, evaluation, kernel), SETVPOTPROF (Set_Vpot: xc, the Vxc D-to-B copy, VNA, assembly, mixing FFT, the B-to-C redistribution) and SETDENPROF (Set_Density_Grid: decision, quadrature, A-to-B, superposition, B-to-D)</td></tr>
+<tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>Performance counters; also gates the per-rank stage lines SETHPROF (Set_Hamiltonian), SETHOTFPROF / SETHOTFDENPROF (the on-the-fly batches: pack, evaluation, kernel), SETNLPROF (Set_Nonlocal: DS_NL, the received-atom products, the local products), CLUSTERDMPROF (the density-matrix accumulation of the cluster solver), CLUSTERDISTPROF (the eigenvector distribution; on the ranks that do not own the dense solve it includes the wait for it), FORCEHNL2PROF (the second-case Force_HNL batch: build, device, post-processing), the section timers of truncation and Total_Energy, SETVPOTPROF (Set_Vpot: xc, the Vxc D-to-B copy, VNA, assembly, mixing FFT, the B-to-C redistribution) and SETDENPROF (Set_Density_Grid: decision, quadrature, A-to-B, superposition, B-to-D)</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Cluster calculations (Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)</b></td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG</code></td><td>auto</td><td><b>1</b> = force the GPU even if the reservation fails (then aborts with a diagnostic); <b>0</b> = always ELPA (§5.6)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code></td><td>400</td><td>GPU/CPU crossover dimension of the collinear cluster dense path (the GPU won at every measured size down to n=240)</td></tr>
@@ -2177,6 +2187,7 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code></td><td>1024</td><td>Free VRAM required to remain after the reservation probe</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_SERIAL</code></td><td>1</td><td>Serialized mode when both spin owners cannot fit (0 = disable, 2 = force serial)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>GPU accumulation of DM/EDM (0 = CPU loop)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_DM_ALL</code></td><td>1</td><td>Device accumulation of the cluster density matrix on every rank (its slice of states, staged with a halving retry); 0 = only the rank that owns the dense solve, the others on the CPU loop (threaded over the atoms)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>Per-solve GEMMul8 workspace release (inherits the BAND setting when unset)</td></tr>
 <tr><td><code>OPENMX_EIGEN_REFINE</code></td><td>2 on GPUs whose FP32:FP64 throughput ratio is at least 8 (GeForce, RTX PRO 6000 Blackwell, ...) when the GEMMul8 products of the solver's kind (real for collinear, complex for noncollinear) are on; else 0</td><td>Cluster dense paths (collinear, per spin; noncollinear) and the band solvers (one k-point per rank: the estimates of all k-points are gathered before the refinement; several k-points per rank: the first pass refines with the previous step's chemical potential and keeps the basis on the host, bounded by <code>OPENMX_BAND_REFINE_BASIS_MB</code> per rank (default 1024), and the second pass refines from it with the step's chemical potential): K &gt; 0 solves all n (2n) pairs in FP32 and refines the MaxN wanted ones by K Ogita&ndash;Aishima steps (products through GEMMul8, module <code>eigen_refine_gpu.c</code>) plus a Rayleigh&ndash;Ritz step in partially occupied clusters; from the second SCF step on the refinement starts from the previous step's vectors when they are within 2e-5 of the new Hamiltonian (<code>OPENMX_EIGEN_REFINE_WARM</code>). The step that ends the SCF is solved once more in FP64, the last step <code>scf.maxIter</code> allows is FP64. With spin polarization the two spin worlds' owners exchange their eigenvalue estimates for the chemical potential (the band solvers gather the estimates of all k-points before the refinement); a single rank solving both spins, the serialized spin mode, XANES and emptied orbitals or states keep FP64. <b>0</b> = off. On an RTX 5080 (18 ranks) noncollinear sidia333 (2n = 5616) takes 197.9 s instead of 261.3 s with the same SCF steps The band solvers refine the maxn wanted columns and rotate the other n &minus; maxn columns against them every step (<code>OPENMX_EIGEN_REFINE_COMPLEMENT</code>, default 1): left alone, their FP32-level components along the occupied subspace tilt the refined columns' fixed point out of it by about 1e-8, which cost 2 to 5 extra SCF steps and biased warm starts. When the k-owners do not fit in one GPU turn group, the one-k-point-per-rank solves are staged like the multi-k-point ones (pass 1 with the previous step's chemical potential and the basis on the host, pass 2 from it), so a 16 GB card refines them too. Diagnostics: <code>OPENMX_EIGEN_REFINE_CHECK=1</code> prints the residuals and orthogonality of the refined columns by occupation class with plain FP64 products, <code>OPENMX_EIGEN_REFINE_ALL=1</code> refines every column</td></tr>
 <tr><td><code>OPENMX_EIGEN_REFINE_UNTIL</code></td><td>0 (off)</td><td>Printed NormRD below which the refined eigensolver hands the rest of the SCF cycle to the FP64 eigensolver. Off by default: an SCF that ends on a refined step has that step's Hamiltonian solved once more in FP64 (one eigensolve, no density matrix) for the vectors the post-SCF energy density matrix and the forces are built from Invalid (NaN/Inf) refinement products, eigenvalues or final vectors now reject the refinement before it overwrites the preserved FP64 matrix. This safety check does not change the successful arithmetic or tolerances. </td></tr>
@@ -2257,9 +2268,13 @@ included; the <code>OPENMX_*_PROFILE</code> and <code>*_VERBOSE</code> variables
 <tr><td>1 (default)</td><td>The "(GPU-accelerated)" and "(GPU reduction)" marks on OpenMX's own stage lines, errors, a GPU
 that cannot be used (<code>GPUSOLVER requested, but GPU initialization failed on … MPI ranks; using ELPA2.</code>), and a
 GPU eigensolver given up for lack of device memory or after a failure (<code>Falling back to the ELPA/ScaLAPACK
-diagonalization…</code>, a DC or DC-LNO rank that falls back to the CPU solver)</td></tr>
-<tr><td>2</td><td>Also the device plans, cache admissions and banners, the FP64 re-solve of the step
-that ends the SCF, and the fallbacks and retries of single stages
+diagonalization…</code>, a DC or DC-LNO rank that falls back to the CPU solver), and a cluster dense
+diagonalization kept on the GPU without the basis of the refined eigensolver (<code>… holds its GPU
+diagonalization buffers but not the … basis of the refined eigensolver …: FP64 eigensolver for this SCF
+cycle</code>)</td></tr>
+<tr><td>2</td><td>Also the device plans, cache admissions and banners, the kernel stack limit raised at device
+initialization (<code>&lt;GPU&gt; kernel stack limit raised from … to … bytes per thread</code>), the FP64 re-solve of
+the step that ends the SCF, and the fallbacks and retries of single stages
 and solves, one line per node (Force4B, Force_HNL, Set_ProExpn_VNA, Set_Density_Grid, Mixing_H, GEMMul8's workspace
 fallback, the cuSOLVER emulation and FP32 retries)</td></tr>
 <tr><td>3</td><td>Also the per-step, per-k-point and per-rank details: the refinement residuals and warm starts of the
@@ -2384,9 +2399,16 @@ The primary target is a Pegasus-class layout (one H100 per node, many nodes). MP
   version changes.</li>
   <li>GEMMul8 requires INT8 Tensor Cores and is a single-architecture build — rebuild for a different GPU
   generation.</li>
-  <li>GPU runs are expected to use MPI only (one OpenMP thread). The Set_OLP_Kin GPU path explicitly
-  requires <code>Nthrds==1</code>; some mixing fast paths (batched Gram) match the legacy summation order
-  only with one thread.</li>
+  <li>Flat MPI is the first choice while every core can hold a rank. When the device memory bounds the
+  number of ranks below the core count, OpenMP threads (<code>-nt</code>, one rank bound to several cores:
+  <code>mpirun --map-by ppr:6:node:PE=3 --bind-to core -np 6 ./openmx in.dat -nt 3</code>) now pay on
+  the host-side phases (§10.4): the Bessel cache of Set_OLP_Kin is per thread, the cluster density matrix
+  and the received-atom products of Set_Nonlocal are threaded over atoms, and the vanilla OpenMP regions
+  (truncation, Set_ProExpn_VNA, Set_Orbitals_Grid, Force, Total_Energy) run as they do on the CPU. The
+  device phases do not change with the thread count, and with threads the summation order of the vanilla
+  OpenMP reductions makes runs non-deterministic at the 1e-11 level; some mixing fast paths (batched
+  Gram) match the legacy summation order only with one thread. The opt-in OpenACC radial integration of
+  Set_OLP_Kin (<code>OPENMX_OLPKIN_RADIAL_GPU=1</code>) still requires one thread.</li>
 </ul>
 
 <h2>11.2 Memory-Planning Rules of Thumb</h2>

@@ -133,11 +133,16 @@ In particular, a cluster calculation — `scf.EigenvalueSolver cluster`, i.e. `s
 Multiple GPUs therefore pay off for band calculations with a k-mesh; for a cluster calculation, either give the job one GPU and more CPU cores / MPI ranks, or — since v2.0 — select `scf.eigen.lib gpusolver2` (see above), which distributes the cluster diagonalization itself over all ranks and all GPUs.
 
 ## MPI vs. hybrid (MPI/OpenMP) parallelization
-Use flat MPI. In OpenMX 4.0 GPU, hybrid MPI/OpenMP parallelization is not effective: OpenMP threads can still be requested as usual with the `-nt` option and such runs complete correctly, but they bring no speedup — only MPI parallelization is effective. Assign all the cores you want to use to MPI ranks instead, with one OpenMP thread per rank:
+Use flat MPI while every core you want to use can hold an MPI rank: the device phases (the eigensolvers, the grid integrals, the force batches) are shared by all the ranks of a node and gain nothing from threads. When the device memory bounds the number of ranks below the core count — on a 16 GB card a 1000-atom cluster (C1000) runs with 6 ranks on this 18-core PC but not with 18 — give each rank several cores and as many OpenMP threads (`-nt`). Since 2026-10-13 the host-side phases of the GPU build run threaded: the Bessel-table cache of Set_OLP_Kin is kept per thread, the received-atom products of Set_Nonlocal and the CPU fallback of the cluster density matrix are threaded over the atoms, and the OpenMP regions of the original code (truncation, Set_ProExpn_VNA, Set_Orbitals_Grid, Force, Total_Energy, the CPU fallbacks) work as they do in the CPU build. Two changes of the same date pay at any thread count: every rank of the collinear cluster solver now accumulates its slice of the density matrix on the device (before, only the rank that owns the dense solve did, and the others spent longer on one core than the owner spent in the solve), and the final density of an MD step takes the GPU tables instead of the one-rank service.
 
 ```sh
-mpirun -np 16 ./openmx input.dat -nt 1
+# 6 ranks x 3 threads on an 18-core node: every rank bound to 3 cores, its threads inside them
+mpirun --map-by ppr:6:node:PE=3 --bind-to core -np 6 \
+       -x OMP_NUM_THREADS=3 -x OMP_PROC_BIND=close -x OMP_PLACES=cores \
+       ./openmx input.dat -nt 3
 ```
+
+Measured on the RTX 5080 PC (i9-10980XE, 18 cores, MPS), 3 SCF steps of C1000 (cluster, 1000 carbon atoms, 13,000 orbitals): 6 ranks x 1 thread 245 s before these changes, 200 s after them, and 162 s with 3 threads per rank — truncation 24 → 17 s, Set_OLP_Kin 11 → 5 s, Set_Nonlocal 39 → 18 s with the threads; the diagonalization phase 113 → 78 s (the density matrix on every rank's device: 37 → 6 s of host work) and the final density 15.7 → 5.4 s at either thread count. Where the device phases dominate there is nothing to gain: sidia333 (216 Si atoms, collinear band or noncollinear cluster, 6 SCF steps) takes 70–76 s at 18x1, 6x1, 6x3 and 9x2 alike, and a 512-atom band run with 6 ranks (sidia444, `scf.Kgrid 2 2 2`, 6 steps: 857 s with 1 thread, 844 s with 3) spends 766 s in the diagonalization, because every rank then owns k-points and the dense solves of all of them are serialized on the one GPU. The `-runtest` suite (14 small inputs) runs in 83 s at 18x1 and 71 s at 9x2. Runs with threads are not bitwise reproducible from one run to the next (the OpenMP reductions of the original code change their summation order); the differences stay at the 1e-11 Ha level of the test suites. `OPENMX_BAND_PROFILE=1` prints, per rank, the section times of Set_Nonlocal (`SETNLPROF`), the cluster density matrix (`CLUSTERDMPROF`), truncation and Total_Energy beside the existing lines.
 
 ## NVIDIA MPS: recommended whenever several ranks share a GPU
 With flat MPI, all the MPI ranks of a node normally share one GPU — so run the
@@ -190,6 +195,28 @@ the CUDA figure; on native Linux the two agree. A one-time line
 free (NVML)` on stdout (`level.of.stdout 2` and above) says that the cap is
 active;
 `OPENMX_GPU_MEMINFO_NVML=0` restores the plain CUDA figure.
+
+A kernel whose stack frame exceeds the driver's default limit of 1 KiB
+per thread makes its first launch grow the context's local-memory pool,
+sized for every thread the device can hold (about 26 MiB per rank on an
+RTX 5080 for a 1224-byte frame), at launch time. The Force3 trace kernel
+had such a frame, and since the force batches size their device arenas to
+fill the card down to a node-wide reserve, with 18 ranks on 16 GB its late
+launches raced the other ranks' arenas for the last MiB and sometimes lost
+(`cuLaunchKernel` out of memory in `Force3_GpuTrace`, C1000). Its private
+spherical-harmonic tables are now stored flat, which brings the frame to
+936 bytes, so no launch grows the pool any more; as a guard for future
+kernels, the device initialization raises the stack limit to the largest
+frame of OpenMX's own kernels, which the Makefile reads from the linked
+binary with `cuobjdump` and relinks once with (idle at present, every
+frame being below 1 KiB; `OPENMX_GPU_STACK_BYTES` overrides the value, 0
+disables the step). The node-wide reserve of the force-phase budgets also
+grows by 16 MiB per rank sharing the device. In the same situation the cluster
+dense diagonalization used to fall back to ELPA because its reservation
+probe demanded room for the basis of the refined FP32 eigensolver (n²
+doubles, 1289 MiB at n=13000) next to the 1024 MiB reserve; when the dense
+buffers and the reserve fit but the basis does not, the GPU path is now
+kept with the FP64 eigensolver for that SCF cycle.
 
 ## Build and install
 Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems, and ready-made site makefiles are included for the Pegasus supercomputer at the University of Tsukuba (`Makefile.pegasus`) and for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to them. Since v2.0 the first `make` also builds the bundled ELPA/COSMA stack for "gpusolver2" automatically, which adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
@@ -358,7 +385,8 @@ For case 1, `OPENMX_FORCE4B_CASE1_TURNS=auto` (the unset default) can
 retain received projector rows in host memory and run bounded groups of ranks
 on each physical GPU when concurrent full archives do not fit. Group size
 uses the free memory measured after earlier buffers are released, the largest
-rank arena, a 256 MiB reserve and 64 MiB allowance per active rank.
+rank arena, a reserve of 256 MiB plus 16 MiB per node rank and a 64 MiB
+allowance per active rank.
 `OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS=1` restores one rank at a time for comparisons.
 Each rank
 uploads its local rows and halo once, using the existing kernel. The added

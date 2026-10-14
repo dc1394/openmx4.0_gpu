@@ -1245,6 +1245,12 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
 {
   SDGLocalContext *c = &SDG_local;
   int spin_count = SpinP_switch + 1;
+  /* Without orbital optimization the contracted orbitals are the primitive
+     ones (CNO == NO), so the final density of an MD step (Cnt_kind 1, for
+     the forces) reads the kind-0 tables and tiles of Set_Hamiltonian too;
+     it used to leave the quadrature to the one-rank service, 11.6 s per
+     step on rank 0 for C1000 (RTX 5080, 6 ranks). */
+  const int table_kind = (Cnt_switch == 0) ? 0 : Cnt_kind;
   int enabled, mode = 1;
   size_t reserve_bytes, need;
   size_t free_bytes = 0, total_bytes = 0;
@@ -1284,18 +1290,18 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
     int my_ready, my_otf = 0;
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    my_ready = Set_Hamiltonian_MatrixElementsTables_Ready(Cnt_kind);
+    my_ready = Set_Hamiltonian_MatrixElementsTables_Ready(table_kind);
     if (my_ready) {
       SetHamiltonianMETables probe;
-      if (!Set_Hamiltonian_GetMatrixElementsTables(Cnt_kind, &probe) ||
+      if (!Set_Hamiltonian_GetMatrixElementsTables(table_kind, &probe) ||
           !(probe.orbs0_resident && probe.orbs1_resident && probe.nolg_resident && probe.meta_resident))
         my_ready = 0;
     }
-    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(Cnt_kind, myid);
+    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(table_kind, myid);
     if (!(my_ready || my_otf)) return 0;
     if (my_otf) {
       if (c->ready && !c->otf) SDG_local_free();
-      if (!c->otf || c->spin_count != spin_count || c->cnt_kind != Cnt_kind) {
+      if (!c->otf || c->spin_count != spin_count || c->cnt_kind != table_kind) {
         int Mc_AN;
         size_t base = 0;
         SDG_local_free();
@@ -1312,9 +1318,9 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
         }
         c->otf_out_base[Matomnum + 1] = (uint32_t)base;
         c->otf_output_count = base;
-        c->otf_dm_count = Set_Hamiltonian_MatrixElements_TotalH(Cnt_kind, myid);
+        c->otf_dm_count = Set_Hamiltonian_MatrixElements_TotalH(table_kind, myid);
         c->spin_count = spin_count;
-        c->cnt_kind = Cnt_kind;
+        c->cnt_kind = table_kind;
         c->otf = 1;
       }
       return c->otf_output_count != 0;
@@ -1325,16 +1331,16 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
   if (c->otf) SDG_local_free(); /* switching auto OTF to forced CSR */
   if (c->unavailable) return 0;
 
-  if (c->ready && (c->spin_count != spin_count || c->cnt_kind != Cnt_kind)) {
+  if (c->ready && (c->spin_count != spin_count || c->cnt_kind != table_kind)) {
     SDG_local_free();
   }
   if (!c->ready) {
-    if (!SDG_local_build(Cnt_kind, spin_count)) return 0;
+    if (!SDG_local_build(table_kind, spin_count)) return 0;
   }
 
   /* refresh the shared-table view: the pointers and the residency flags may
      have changed since the epoch was built */
-  if (!Set_Hamiltonian_GetMatrixElementsTables(Cnt_kind, &c->t) ||
+  if (!Set_Hamiltonian_GetMatrixElementsTables(table_kind, &c->t) ||
       c->t.total_nolg != c->term_count || c->t.total_h != c->dm_count) {
     SDG_local_free();
     SDG_local.unavailable = 1;
@@ -1478,10 +1484,9 @@ int Set_Density_Grid_GPU_Local_KeepDistributed(void)
    service integrated the density.  path 0 or 2: the distributed quadrature
    ran (2: without using the service, so every declined rank took the CPU loop),
    and failed is the number of ranks with atoms whose quadrature failed on
-   the device and took the CPU loop (summed by Set_Density_Grid).  The
-   designed routes stay silent: ranks without a device path for the call
-   (the final call of an MD step, Cnt_kind 1, has neither resident tables
-   nor on-the-fly tiles) take the service or the CPU loop as ever.  No
+   the device and took the CPU loop (summed by Set_Density_Grid).  Ranks
+   without a device path for a call (orbital optimization, an unsupported
+   solver) take the service or the CPU loop silently, as designed.  No
    collectives; every rank keeps the same state. */
 void Set_Density_Grid_GPU_Local_Report(int path, int failed)
 {

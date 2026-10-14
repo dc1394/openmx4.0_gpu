@@ -246,6 +246,20 @@ static void SetNonlocal_ValidateGlobalState(void)
   }
 }
 
+/* OPENMX_BAND_PROFILE=1: one SETNLPROF line per rank and call on stderr
+   (dsnl = the DS_NL integrals, halo = the received-atom products with their
+   communication, mult = the local products) */
+static int SetNonlocal_ProfileEnabled(void)
+{
+  static int cached = -1;
+
+  if (cached < 0){
+    const char *value = getenv("OPENMX_BAND_PROFILE");
+    cached = (value != NULL && atoi(value) != 0);
+  }
+  return cached;
+}
+
 static int SetNonlocalUseOpenACC(void)
 {
   /* opt out with OPENMX_SETNL_OPENACC=0 (falls back to the OpenMP CPU path) */
@@ -1398,6 +1412,8 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   int Mj_AN,num,size1,size2;
   int DSNL_on_device;
   int *Snd_DS_NL_Size,*Rcv_DS_NL_Size;
+  int t,nthreads_halo;
+  dcomplex ****NLH_halo;
   int Original_Mc_AN,po;
   double rcutA,rcutB,rcut,dmp;
   double grid_h;
@@ -1548,7 +1564,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   ****************************************************/
 
   MPI_Barrier(mpi_comm_level1);
-  if (measure_time) dtime(&stime);
+  if (measure_time || SetNonlocal_ProfileEnabled()) dtime(&stime);
 
   DSNL_on_device = 0;
   if (SetNonlocalUseOpenACC()){
@@ -2254,7 +2270,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
     } /* #pragma omp parallel */
   }
 
-  if (measure_time){
+  if (measure_time || SetNonlocal_ProfileEnabled()){
     dtime(&etime);
     time1 = etime - stime;
   }
@@ -2269,7 +2285,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   *******************************************************/
 
   MPI_Barrier(mpi_comm_level1);
-  if (measure_time) dtime(&stime);
+  if (measure_time || SetNonlocal_ProfileEnabled()) dtime(&stime);
 
   /* allocation of arrays */
 
@@ -2278,6 +2294,20 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
     NLH[k] = (dcomplex**)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex*),"NLH[k]");
     for (i=0; i<List_YOUSO[7]; i++){
       NLH[k][i] = (dcomplex*)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex),"NLH[k][i]");
+    }
+  }
+
+  /* the products of the received blocks are threaded over the local atoms:
+     one NLH per thread */
+  nthreads_halo = omp_get_max_threads();
+  NLH_halo = (dcomplex****)SetNonlocal_MallocArray((size_t)nthreads_halo,sizeof(dcomplex***),"NLH_halo");
+  for (t=0; t<nthreads_halo; t++){
+    NLH_halo[t] = (dcomplex***)SetNonlocal_MallocArray(3u,sizeof(dcomplex**),"NLH_halo[t]");
+    for (k=0; k<3; k++){
+      NLH_halo[t][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex*),"NLH_halo[t][k]");
+      for (i=0; i<List_YOUSO[7]; i++){
+        NLH_halo[t][k][i] = (dcomplex*)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex),"NLH_halo[t][k][i]");
+      }
     }
   }
 
@@ -2448,7 +2478,13 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
                            multiplying overlap integrals
 	*****************************************************************/
 
+        n = F_Rcv_Num_WK[IDR];
+        jg = Rcv_GAN[IDR][n];
+
+#pragma omp parallel for schedule(dynamic,4) private(Mc_AN,Gc_AN,Cwan,fan,rcutA,rcutB,rcut,j0,jg0,Mj_AN0,po,j,Hwan,m,n,k,kg,wakg,kl,dmp,p,i1,j1,Stime_atom,Etime_atom)
         for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+
+          dcomplex ***NLHt = NLH_halo[omp_get_thread_num()];
 
 	  dtime(&Stime_atom);
 
@@ -2456,9 +2492,6 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
           Cwan = WhatSpecies[Gc_AN];
           fan = FNAN[Gc_AN];
           rcutA = Spe_Atom_Cut1[Cwan];
-
-          n = F_Rcv_Num_WK[IDR];
-          jg = Rcv_GAN[IDR][n];
 
           for (j0=0; j0<=fan; j0++){
 
@@ -2479,12 +2512,12 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 
 	      for (m=0; m<Spe_Total_NO[Cwan]; m++){
 		for (n=0; n<Spe_Total_NO[Hwan]; n++){
-		  NLH[0][m][n].r = 0.0;     /* <up|VNL|up> */
-		  NLH[1][m][n].r = 0.0;     /* <dn|VNL|dn> */
-		  NLH[2][m][n].r = 0.0;     /* <up|VNL|dn> */
-		  NLH[0][m][n].i = 0.0;
-		  NLH[1][m][n].i = 0.0;
-		  NLH[2][m][n].i = 0.0;
+		  NLHt[0][m][n].r = 0.0;     /* <up|VNL|up> */
+		  NLHt[1][m][n].r = 0.0;     /* <dn|VNL|dn> */
+		  NLHt[2][m][n].r = 0.0;     /* <up|VNL|dn> */
+		  NLHt[0][m][n].i = 0.0;
+		  NLHt[1][m][n].i = 0.0;
+		  NLHt[2][m][n].i = 0.0;
 		}
 	      }
 
@@ -2496,7 +2529,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 
                 if (0<=kl){
 
-                  Multiply_DS_NL(Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLH);
+                  Multiply_DS_NL(Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLHt);
 
 		} /* if (0<=kl) */
 
@@ -2516,11 +2549,11 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 		for (i1=0; i1<Spe_Total_NO[Cwan]; i1++){
 		  for (j1=0; j1<Spe_Total_NO[Hwan]; j1++){
 
-		    HNL[p][Mc_AN][j][i1][j1] = dmp*NLH[p][i1][j1].r*F_NL_flag;
+		    HNL[p][Mc_AN][j][i1][j1] = dmp*NLHt[p][i1][j1].r*F_NL_flag;
 
 		    if (SO_switch==1){
-		      iHNL[ p][Mc_AN][j][i1][j1] = dmp*NLH[p][i1][j1].i*F_NL_flag;
-		      iHNL0[p][Mc_AN][j][i1][j1] = dmp*NLH[p][i1][j1].i*F_NL_flag;
+		      iHNL[ p][Mc_AN][j][i1][j1] = dmp*NLHt[p][i1][j1].i*F_NL_flag;
+		      iHNL0[p][Mc_AN][j][i1][j1] = dmp*NLHt[p][i1][j1].i*F_NL_flag;
 		    }
 		  }
 		}
@@ -2585,7 +2618,16 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   }
   free(NLH);
 
-  if (measure_time){
+  for (t=0; t<nthreads_halo; t++){
+    for (k=0; k<3; k++){
+      for (i=0; i<List_YOUSO[7]; i++) free(NLH_halo[t][k][i]);
+      free(NLH_halo[t][k]);
+    }
+    free(NLH_halo[t]);
+  }
+  free(NLH_halo);
+
+  if (measure_time || SetNonlocal_ProfileEnabled()){
     dtime(&etime);
     time2 = etime - stime;
   }
@@ -2597,7 +2639,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   *******************************************************/
 
   MPI_Barrier(mpi_comm_level1);
-  if (measure_time) dtime(&stime);
+  if (measure_time || SetNonlocal_ProfileEnabled()) dtime(&stime);
 
   /* allocation of arrays */
 
@@ -2741,7 +2783,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   free(OneD2h_AN);
   free(Normk_grid);
 
-  if (measure_time){
+  if (measure_time || SetNonlocal_ProfileEnabled()){
     dtime(&etime);
     time3 = etime - stime;
   }
@@ -2749,6 +2791,10 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   if (measure_time){
     printf("Set_Nonlocal: myid=%2d time1=%10.5f time2=%10.5f time3=%10.5f\n",
            myid,time1,time2,time3);
+  }
+  if (SetNonlocal_ProfileEnabled()){
+    fprintf(stderr, "SETNLPROF id=%d dsnl=%.3f halo=%.3f mult=%.3f\n", myid, time1, time2, time3);
+    fflush(stderr);
   }
 
   /****************************************************

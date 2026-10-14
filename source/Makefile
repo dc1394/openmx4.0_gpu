@@ -419,8 +419,27 @@ $(GPUSOLVER2_STAMP): $(GPUSOLVER2_BUILD_CONFIG)
 
 .DEFAULT_GOAL := openmx
 
+# The device initialization raises the kernel stack limit to the largest
+# frame of OpenMX's own kernels (cuobjdump -res-usage, STACK), which only
+# the linked binary knows: scan it after the link for the kernels of the
+# objects (not those of the linked libraries, ELPA's among them, whose
+# launches happen where the device has room) and, when the figure changed,
+# rebuild set_cuda_default_device_from_local_rank.o with it and link again
+# (the second link does not change the kernels).  All of OpenMX's kernels
+# fit the driver's default 1 KiB frame at present, so the step is idle.
+CUOBJDUMP ?= $(NVHPC_CUDA_HOME)/bin/cuobjdump
+
 openmx:	$(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS) force_rpath
 	$(CC) $(OBJS) $(STACK) $(GEMMUL8_LIB) $(LIB) -lm -o openmx
+	@for o in $(OBJS); do $(CUOBJDUMP) -res-usage $$o 2>/dev/null; done | sed -n 's/^ *Function \(.*\):$$/\1/p' | sort -u > gpu_kernel_names.tmp; \
+	max=$$($(CUOBJDUMP) -res-usage openmx 2>/dev/null | awk 'NR==FNR {want[$$0]=1; next} /^ *Function / {f=$$2; sub(/:$$/,"",f); keep=(f in want); next} keep {for (i=1;i<=NF;i++) if ($$i ~ /^STACK:/) {split($$i,s,":"); if (s[2]+0>m) m=s[2]+0}} END {print m+0}' gpu_kernel_names.tmp -); \
+	rm -f gpu_kernel_names.tmp; max=$${max:-0}; \
+	if [ "$$max" != "$$(cat gpu_kernel_stack.max 2>/dev/null)" ]; then \
+	  echo "GPU kernel stack frames: up to $$max bytes per thread; relinking with that limit in the device initialization"; \
+	  echo "$$max" > gpu_kernel_stack.max; \
+	  $(CC) -DOPENMX_GPU_KERNEL_STACK_BYTES=$$max -c set_cuda_default_device_from_local_rank.c && \
+	  $(CC) $(OBJS) $(STACK) $(GEMMUL8_LIB) $(LIB) -lm -o openmx; \
+	fi
 	./force_rpath openmx
 
 # The nvc link driver forces --enable-new-dtags, so the recorded
@@ -741,7 +760,7 @@ gpusolver_Syevd.o: gpusolver_Syevd.c openmx_common.h
 gpusolver_Syevdx.o: gpusolver_Syevdx.c openmx_common.h
 	$(CC) -c gpusolver_Syevdx.c
 set_cuda_default_device_from_local_rank.o: set_cuda_default_device_from_local_rank.c set_cuda_default_device_from_local_rank.h openmx_common.h
-	$(CC) -c set_cuda_default_device_from_local_rank.c
+	$(CC) -DOPENMX_GPU_KERNEL_STACK_BYTES=$$(cat gpu_kernel_stack.max 2>/dev/null || echo 0) -c set_cuda_default_device_from_local_rank.c
 set_openacc_device_from_local_rank.o: set_openacc_device_from_local_rank.c openmx_common.h
 	$(CC) -c set_openacc_device_from_local_rank.c
 Eigen_lapack2.o: Eigen_lapack2.c openmx_common.h lapack_prototypes.h
@@ -1020,7 +1039,7 @@ install: $(PROG)
 #
 
 clean: fftw3-clean gemmul8-clean
-	rm -f $(PROG) $(OBJS) $(OBJS_jx) $(UTIL) force_rpath *.o *.mod *.dbg
+	rm -f $(PROG) $(OBJS) $(OBJS_jx) $(UTIL) force_rpath *.o *.mod *.dbg gpu_kernel_stack.max
 
 #
 #

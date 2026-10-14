@@ -95,9 +95,10 @@ typedef struct
     int     peer;          /* the other spin's owner in mpi_comm_level1 (spin_mode 1) */
     int     solved[2];     /* this step's solves: refined (1) or not (0), per spin */
     int     persistent;    /* the strongest persistent failure of this step */
+    int     basis_blocked; /* the reservation probe left no room for the basis: FP64 eigensolver this cycle */
 } ClusterColRefineState;
 
-static ClusterColRefineState ClusterCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0};
+static ClusterColRefineState ClusterCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
 static EigenRefineState      ClusterCol_refine_state[2] = {{0}, {0}};
 static EigenRefineDevice     ClusterCol_refine_dev = {0};
 static double               *ClusterCol_refine_x[2] = {NULL, NULL};   /* the bases, n x n each */
@@ -329,6 +330,15 @@ static cudaError_t ClusterCol_TryDeviceMalloc(void **ptr, size_t bytes)
 
     *ptr = NULL;
     return err;
+}
+
+/* 512-byte aligned sub-allocation of a device arena */
+static size_t ClusterCol_ArenaOffset(size_t *pos, size_t bytes)
+{
+    size_t off = *pos;
+
+    *pos = (off + bytes + 511U) & ~(size_t)511U;
+    return off;
 }
 
 static void ClusterCol_DeviceOutOfMemoryAbort(const char *what, size_t bytes)
@@ -671,6 +681,19 @@ static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOpera
    solve (forward transform, eigensolver, back transform, eigenvector
    download), one CLUSTERPROF line per solve.  The stream is synchronized
    around each phase, so the times are not those of an unprofiled run. */
+/* OPENMX_BAND_PROFILE=1: one CLUSTERDMPROF line per rank and call with the
+   time of the density-matrix accumulation (device, or the host threads) */
+static int ClusterCol_DMProfileEnabled(void)
+{
+    static int cached = -1;
+
+    if (cached<0){
+        const char *value = getenv("OPENMX_BAND_PROFILE");
+        cached = (value!=NULL && atoi(value)!=0);
+    }
+    return cached;
+}
+
 static int ClusterCol_ProfileEnabled(void)
 {
     static int cached = -1;
@@ -724,14 +747,21 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
         }
         ClusterCol_refine_x_n = n;
     }
+    /* the reservation probe may have found the device too full for the
+       basis next to the dense buffers: then it is not even attempted (it
+       would take the margin the other ranks' transients rely on) and the
+       cycle is condemned to FP64 at once, first step or not */
     if (ClusterCol_refine_x[spin] == NULL &&
-        ClusterCol_TryDeviceMalloc((void **)&ClusterCol_refine_x[spin], nn * sizeof(double)) != cudaSuccess) {
+        (st->basis_blocked ||
+         ClusterCol_TryDeviceMalloc((void **)&ClusterCol_refine_x[spin], nn * sizeof(double)) != cudaSuccess)) {
+        const int condemn = (st->basis_blocked || !st->transient);
+
         if (2 <= level_stdout) {
             printf("<Cluster_DFT_Col> no room for the %.1f MiB basis of the refined eigensolver; FP64 eigensolver%s\n",
-                   (double)(nn * sizeof(double)) / (1024.0 * 1024.0), st->transient ? "" : " for the rest of the SCF cycle");
+                   (double)(nn * sizeof(double)) / (1024.0 * 1024.0), condemn ? " for the rest of the SCF cycle" : "");
             fflush(stdout);
         }
-        if (!st->transient && st->persistent < 1) st->persistent = 1;
+        if (condemn && st->persistent < 1) st->persistent = 1;
         rc = 0;
     }
     else {
@@ -1085,13 +1115,23 @@ static int ClusterCol_UseGpuAccel(int n)
 static int ClusterCol_UseGpuDM(int n)
 {
     /* OpenACC accumulation of the cluster density matrix; opt out with
-       OPENMX_CLUSTER_GPU_DM=0 (falls back to the original CPU loop). */
+       OPENMX_CLUSTER_GPU_DM=0 (falls back to the original CPU loop).
+       The rank that owns the dense solve reads the eigenvector panel still
+       on the device; every other rank stages its own slice of states (a
+       bounded-retry allocation that halves the block, the CPU loop when
+       even the smallest block does not fit), so the accumulation no longer
+       leaves those ranks on one core each: C1000 at 6 ranks spent 37 s of
+       3 SCF steps there on one thread (RTX 5080).  OPENMX_CLUSTER_GPU_DM_ALL=0
+       keeps the device accumulation to the owner rank. */
     const char *value = getenv("OPENMX_CLUSTER_GPU_DM");
+    const char *all = getenv("OPENMX_CLUSTER_GPU_DM_ALL");
 
     if (value!=NULL && atoi(value)==0){
         return 0;
     }
-    return ClusterCol_UseGpuAccel(n);
+    if (ClusterCol_UseGpuAccel(n)) return 1;
+    if (all!=NULL && atoi(all)==0) return 0;
+    return (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_Col_GpuSwitchNum()<=n && gpu_rank_device_usable());
 }
 
 static unsigned long long ClusterCol_LayoutFingerprint(const int *order_GA, int *MP, int n)
@@ -1272,9 +1312,41 @@ static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
     double *d_stage = NULL;
     double *pack = NULL;
     int KB = nk;
+    /* one device arena for the small operands of the chunk loop: the
+       occupations and eigenvalues of the slice, one chunk of the entry
+       index pairs and one of the DM/EDM(/PDM) entries */
+    const size_t chunk_max = (size_t)((entry_count<dm_chunk_size) ? (entry_count<1 ? 1 : entry_count) : dm_chunk_size);
+    unsigned char *arena = NULL;
+    size_t arena_bytes = 0, o_occ, o_eig, o_docc, o_b0, o_b1, o_dm, o_edm, o_pdm;
 
     if (entry_count!=size_H1){
         ClusterCol_AbortWithMessage("DM entry cache size mismatch in Cluster_DFT_Col.c.");
+    }
+
+    o_occ  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(size_t)nk);
+    o_eig  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(size_t)nk);
+    o_docc = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(size_t)(with_pdm ? nk : 1));
+    o_b0   = ClusterCol_ArenaOffset(&arena_bytes, sizeof(int)*chunk_max);
+    o_b1   = ClusterCol_ArenaOffset(&arena_bytes, sizeof(int)*chunk_max);
+    o_dm   = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*chunk_max);
+    o_edm  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*chunk_max);
+    o_pdm  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(with_pdm ? chunk_max : 1));
+
+    /* The data regions that used to stage these operands allocated them
+       piecemeal and aborted the run when the device had no room left (18
+       ranks on 16 GB with the dense owner's 9 GiB reservation alive and
+       every other rank staging its slice at once: 3 MB free at the first
+       chunk).  A rank whose arena does not fit runs the CPU loop. */
+    if (ClusterCol_TryDeviceMalloc((void**)&arena,arena_bytes)!=cudaSuccess){
+        static int arena_reports = 0;
+        if (arena_reports<3 && 2<=level_stdout){
+            arena_reports++;
+            fprintf(stderr,"<Cluster_DFT_Col> a rank could not stage its DM chunk buffers"
+                    " (%.1f MiB) on the device; using the CPU loop for this step.\n",
+                    (double)arena_bytes/(1024.0*1024.0));
+            fflush(stderr);
+        }
+        return 0;
     }
 
     if (evec_dev==NULL){
@@ -1298,6 +1370,7 @@ static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
                             " (%d states) on the device; using the CPU loop for this step.\n",KB);
                     fflush(stderr);
                 }
+                wait_cudafunc(cudaFree(arena));
                 return 0;
             }
             KB = (KB+1)/2;
@@ -1309,11 +1382,23 @@ static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
         }
     }
 
-#pragma acc data copyin(occ[0:nk], eig[0:nk])
+    /* the operands of the whole slice go up once; the chunk buffers are
+       filled per chunk.  The OpenACC copies keep the order with the
+       kernels below, which read the arena through same-name shadow
+       pointers so their bodies are the former ones. */
+    acc_memcpy_to_device(arena+o_occ,(void*)occ,sizeof(double)*(size_t)nk);
+    acc_memcpy_to_device(arena+o_eig,(void*)eig,sizeof(double)*(size_t)nk);
+    if (with_pdm) acc_memcpy_to_device(arena+o_docc,(void*)docc,sizeof(double)*(size_t)nk);
+
     {
-        if (with_pdm){
-#pragma acc enter data copyin(docc[0:nk])
-        }
+        const double *d_occ = (const double*)(const void*)(arena+o_occ);
+        const double *d_eig = (const double*)(const void*)(arena+o_eig);
+        const double *d_docc = (const double*)(const void*)(arena+o_docc);
+        int *d_b0 = (int*)(void*)(arena+o_b0);
+        int *d_b1 = (int*)(void*)(arena+o_b1);
+        double *d_dm = (double*)(void*)(arena+o_dm);
+        double *d_edm = (double*)(void*)(arena+o_edm);
+        double *d_pdm = (double*)(void*)(arena+o_pdm);
 
         for (int k0=0; k0<nk; k0+=KB){
             const int kb = (nk-k0<KB) ? (nk-k0) : KB;
@@ -1349,16 +1434,26 @@ static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
 
             for (int offset=0; offset<entry_count; offset+=dm_chunk_size){
                 const int chunk_count = (entry_count-offset<dm_chunk_size) ? (entry_count-offset) : dm_chunk_size;
-                const int *basis0_chunk = basis0 + offset;
-                const int *basis1_chunk = basis1 + offset;
-                double *DM1_chunk = DM1 + offset;
-                double *EDM1_chunk = EDM1 + offset;
-                double *PDM1_chunk = with_pdm ? (PDM1 + offset) : NULL;
+                const size_t ib_bytes = sizeof(int)*(size_t)chunk_count;
+                const size_t db_bytes = sizeof(double)*(size_t)chunk_count;
 
-#pragma acc data copyin(basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count]) \
-                 copy(DM1_chunk[0:chunk_count], EDM1_chunk[0:chunk_count])
+                acc_memcpy_to_device(d_b0,(void*)(basis0+offset),ib_bytes);
+                acc_memcpy_to_device(d_b1,(void*)(basis1+offset),ib_bytes);
+                acc_memcpy_to_device(d_dm,DM1+offset,db_bytes);
+                acc_memcpy_to_device(d_edm,EDM1+offset,db_bytes);
+                if (with_pdm) acc_memcpy_to_device(d_pdm,PDM1+offset,db_bytes);
+
                 {
-#pragma acc parallel loop gang deviceptr(eblk) present(occ[0:nk], eig[0:nk])
+                    const double *occ = d_occ;
+                    const double *eig = d_eig;
+                    const double *docc = d_docc;
+                    const int *basis0_chunk = d_b0;
+                    const int *basis1_chunk = d_b1;
+                    double *DM1_chunk = d_dm;
+                    double *EDM1_chunk = d_edm;
+                    double *PDM1_chunk = d_pdm;
+
+#pragma acc parallel loop gang deviceptr(eblk, occ, eig, basis0_chunk, basis1_chunk, DM1_chunk, EDM1_chunk)
                     for (int p=0; p<chunk_count; p++){
                         const int ia = basis0_chunk[p];
                         const int ib = basis1_chunk[p];
@@ -1378,37 +1473,34 @@ static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
                     }
 
                     if (with_pdm){
-#pragma acc data copy(PDM1_chunk[0:chunk_count])
-                        {
-#pragma acc parallel loop gang deviceptr(eblk) present(docc[0:nk], \
-                                       basis0_chunk[0:chunk_count], basis1_chunk[0:chunk_count])
-                            for (int p=0; p<chunk_count; p++){
-                                const int ia = basis0_chunk[p];
-                                const int ib = basis1_chunk[p];
-                                double sum1 = 0.0;
+#pragma acc parallel loop gang deviceptr(eblk, docc, basis0_chunk, basis1_chunk, PDM1_chunk)
+                        for (int p=0; p<chunk_count; p++){
+                            const int ia = basis0_chunk[p];
+                            const int ib = basis1_chunk[p];
+                            double sum1 = 0.0;
 
 #pragma acc loop seq
-                                for (int kk=0; kk<kb; kk++){
-                                    sum1 += docc[k0+kk]*eblk[(size_t)ia*ld+(size_t)kk]
-                                                       *eblk[(size_t)ib*ld+(size_t)kk];
-                                }
-
-                                PDM1_chunk[p] += sum1;
+                            for (int kk=0; kk<kb; kk++){
+                                sum1 += docc[k0+kk]*eblk[(size_t)ia*ld+(size_t)kk]
+                                                   *eblk[(size_t)ib*ld+(size_t)kk];
                             }
+
+                            PDM1_chunk[p] += sum1;
                         }
                     }
                 }
-            }
-        }
 
-        if (with_pdm){
-#pragma acc exit data delete(docc[0:nk])
+                acc_memcpy_from_device(DM1+offset,d_dm,db_bytes);
+                acc_memcpy_from_device(EDM1+offset,d_edm,db_bytes);
+                if (with_pdm) acc_memcpy_from_device(PDM1+offset,d_pdm,db_bytes);
+            }
         }
     }
 #pragma acc wait
 
     free(pack);
     if (d_stage!=NULL) wait_cudafunc(cudaFree(d_stage));
+    wait_cudafunc(cudaFree(arena));
 
     return 1;
 }
@@ -1476,7 +1568,31 @@ static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
             my_fit = 0;
         }
         else{
-            my_fit = (ClusterCol_GpuDiagReserveBytes()+ClusterCol_RefineBasisBytes(n)<=free_bytes);
+            const size_t reserve = ClusterCol_GpuDiagReserveBytes();
+            const size_t basis = ClusterCol_RefineBasisBytes(n);
+
+            if (reserve+basis<=free_bytes){
+                ClusterCol_refine.basis_blocked = 0;
+            }
+            else if (reserve<=free_bytes){
+                /* The dense solve fits, the basis of the refined eigensolver
+                   on top of it does not (many ranks sharing a small device):
+                   keep the GPU path and solve in FP64 for this cycle rather
+                   than fall back to ELPA.  Allocating the basis anyway would
+                   eat the margin the other ranks' transients rely on. */
+                ClusterCol_refine.basis_blocked = 1;
+                printf("<Cluster_DFT_Col> The dense owner of spin world %d holds its GPU diagonalization"
+                       " buffers%s but not the %.1f MiB basis of the refined eigensolver"
+                       " (%.1f MiB of %.1f MiB free): FP64 eigensolver for this SCF cycle.\n",
+                       myworld1, when,
+                       (double)basis/(1024.0*1024.0),
+                       (double)free_bytes/(1024.0*1024.0),
+                       (double)total_bytes/(1024.0*1024.0));
+                fflush(stdout);
+            }
+            else{
+                my_fit = 0;
+            }
         }
     }
 
@@ -1905,9 +2021,22 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                 ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C,spin);
                 ClusterCol_StashDeviceEvec(spin,n,MaxN);
             }
-            ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
-                                           MPI_CommWD1[myworld1],
-                                           owns_dense ? C : NULL,EVec1[spin]);
+            {
+                /* OPENMX_BAND_PROFILE=1: the time of the eigenvector distribution */
+                double dist_t0 = 0.0, dist_t1 = 0.0;
+                const int dist_prof = ClusterCol_DMProfileEnabled();
+
+                if (dist_prof) dtime(&dist_t0);
+                ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+                                               MPI_CommWD1[myworld1],
+                                               owns_dense ? C : NULL,EVec1[spin]);
+                if (dist_prof){
+                    dtime(&dist_t1);
+                    fprintf(stderr, "CLUSTERDISTPROF id=%d spin=%d owner=%d dist=%.3f\n", myid1, spin, owns_dense,
+                            dist_t1-dist_t0);
+                    fflush(stderr);
+                }
+            }
         }
     }
     else{
@@ -3650,7 +3779,7 @@ double Calc_DM_Cluster_collinear(
   double max_x=60.0,dum;
   double FermiF,FermiF2,x,x2,diffF,sum1,sum2;
   double FermiEps = 1.0e-13;
-  double stime,etime,time,lumos;
+  double stime,etime,time,lumos,dm_compute_end;
   MPI_Status stat;
   MPI_Request request;
   double *FF,*dFF;
@@ -3767,75 +3896,105 @@ double Calc_DM_Cluster_collinear(
 
   if (!gpu_dm_done){
 
-  p = 0;
-  for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
+  /* The CPU accumulation over the rank's slice of states, threaded over the
+     atoms.  Every thread writes the packed blocks of its own atoms (their
+     offsets are counted beforehand) with the same summation order over the
+     states as the serial loop, so the result does not depend on the thread
+     count.  A rank that does not own the dense solve spends its share of
+     the diagonalization phase here, on one core per rank before this. */
+  {
+    const int nk = kmax - kmin + 1;
+    size_t *atom_p = (size_t*)malloc(sizeof(size_t)*(size_t)(atomnum+2));
+    size_t pcount = 0;
 
-    wanA = WhatSpecies[GA_AN];
-    tnoA = Spe_Total_CNO[wanA];
-    Anum = MP[GA_AN];
-
-    /* store EVec1 to a temporal array */
-
-    for (i=0; i<tnoA; i++){
-      i0 = (Anum + i - 1)*(ie2[myid1]-is2[myid1]+1) - is2[myid1];
-      for (k=kmin; k<=kmax; k++){
-        TmpEVec0[i][k-kmin] = EVec1[spin][i0+k];
+    for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
+      atom_p[GA_AN] = pcount;
+      tnoA = Spe_Total_CNO[WhatSpecies[GA_AN]];
+      for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+        GB_AN = natn[GA_AN][LB_AN];
+        pcount += (size_t)tnoA*(size_t)Spe_Total_CNO[WhatSpecies[GB_AN]];
       }
     }
+    atom_p[atomnum+1] = pcount;
 
-    /* loop for LB_AN */
+#pragma omp parallel private(GA_AN,wanA,tnoA,Anum,i,i0,k,LB_AN,GB_AN,wanB,tnoB,Bnum,j,j0,sum1,sum2,dum)
+    {
+      /* the eigenvector rows of the atom and of its neighbour, per thread */
+      double *ev0 = (double*)malloc(sizeof(double)*(size_t)List_YOUSO[7]*(size_t)nk);
+      double *ev1 = (double*)malloc(sizeof(double)*(size_t)List_YOUSO[7]*(size_t)nk);
 
-    for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+#pragma omp for schedule(dynamic,8)
+      for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
+        size_t q = atom_p[GA_AN];
 
-      GB_AN = natn[GA_AN][LB_AN];
-      wanB = WhatSpecies[GB_AN];
-      tnoB = Spe_Total_CNO[wanB];
-      Bnum = MP[GB_AN];
+        wanA = WhatSpecies[GA_AN];
+        tnoA = Spe_Total_CNO[wanA];
+        Anum = MP[GA_AN];
 
-      /* store EVec1 to a temporal array */
+        for (i=0; i<tnoA; i++){
+          i0 = (Anum + i - 1)*nk - kmin;
+          for (k=kmin; k<=kmax; k++){
+            ev0[(size_t)i*(size_t)nk + (size_t)(k-kmin)] = EVec1[spin][i0+k];
+          }
+        }
 
-      for (j=0; j<tnoB; j++){
-        j0 = (Bnum + j - 1)*(ie2[myid1]-is2[myid1]+1) - is2[myid1];
-	for (k=kmin; k<=kmax; k++){
-	  TmpEVec1[j][k-kmin] = EVec1[spin][j0+k];
-	}
-      }
+        for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 
-      /* loops for i and j */
+          GB_AN = natn[GA_AN][LB_AN];
+          wanB = WhatSpecies[GB_AN];
+          tnoB = Spe_Total_CNO[wanB];
+          Bnum = MP[GB_AN];
 
-      for (i=0; i<tnoA; i++){
-	for (j=0; j<tnoB; j++){
+          for (j=0; j<tnoB; j++){
+            j0 = (Bnum + j - 1)*nk - kmin;
+            for (k=kmin; k<=kmax; k++){
+              ev1[(size_t)j*(size_t)nk + (size_t)(k-kmin)] = EVec1[spin][j0+k];
+            }
+          }
 
-          sum1 = 0.0;
-          sum2 = 0.0;
+          for (i=0; i<tnoA; i++){
+            const double *e0 = ev0 + (size_t)i*(size_t)nk;
 
-	  for (k=kmin; k<=kmax; k++){
-	    dum = FF[k]*TmpEVec0[i][k-kmin]*TmpEVec1[j][k-kmin];
-	    sum1 += dum;
-	    sum2 += dum*ko[spin][k];
-	  }
+            for (j=0; j<tnoB; j++){
+              const double *e1 = ev1 + (size_t)j*(size_t)nk;
 
-	  DM1[p]  = sum1;
-	  EDM1[p] = sum2;
+              sum1 = 0.0;
+              sum2 = 0.0;
 
-	  if (cal_partial_charge){
+              for (k=kmin; k<=kmax; k++){
+                dum = FF[k]*e0[k-kmin]*e1[k-kmin];
+                sum1 += dum;
+                sum2 += dum*ko[spin][k];
+              }
 
-            sum1 = 0.0;
-	    for (k=kmin; k<=kmax; k++){
-	      sum1 += dFF[k]*TmpEVec0[i][k-kmin]*TmpEVec1[j][k-kmin];
-	    }
-            PDM1[p] = sum1;
-	  }
+              DM1[q]  = sum1;
+              EDM1[q] = sum2;
 
-	  /* increment of p */
-	  p++;
+              if (cal_partial_charge){
 
-	}
-      }
+                sum1 = 0.0;
+                for (k=kmin; k<=kmax; k++){
+                  sum1 += dFF[k]*e0[k-kmin]*e1[k-kmin];
+                }
+                PDM1[q] = sum1;
+              }
+
+              q++;
+            }
+          }
+        }
+      } /* GA_AN */
+
+      free(ev1);
+      free(ev0);
     }
-  } /* GA_AN */
+
+    free(atom_p);
+  }
 
   } /* CPU fallback */
+
+  dtime(&dm_compute_end);
 
   /* MPI_Allreduce */
 
@@ -4030,6 +4189,11 @@ double Calc_DM_Cluster_collinear(
   free(TmpEVec1);
 
   dtime(&etime);
+  if (ClusterCol_DMProfileEnabled()){
+    fprintf(stderr, "CLUSTERDMPROF id=%d compute=%.3f total=%.3f gpu=%d threads=%d\n", myid0,
+            dm_compute_end-stime, etime-stime, gpu_dm_done, omp_get_max_threads());
+    fflush(stderr);
+  }
   return (etime-stime);
 
 }

@@ -54,4 +54,11 @@ int gpu_rank_device_usable(void);
    restores the plain cudaMemGetInfo(). */
 cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes);
 
+/* Raises the per-thread kernel stack limit of this rank's context to the
+   largest frame of the binary's kernels (measured at link time), so the
+   driver sizes the local-memory pool at initialization and no later
+   launch has to take device memory for it.  OPENMX_GPU_STACK_BYTES
+   overrides the value, 0 disables the step. */
+void OpenMX_GpuPresizeKernelStack(void);
+
 #endif // _SET_CUDA_DEFAULT_DEVICE_FROM_LOCAL_RANK_H_

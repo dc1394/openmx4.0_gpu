@@ -139,6 +139,10 @@ static void DFT_GPU_DeviceInit(int basis_count)
             }
             else {
                 acc_set_device_num(cuda_device, acc_device_nvidia);
+                /* the local-memory pool of the context is sized now, while
+                   the device is empty, not at the first launch of a kernel
+                   with a large stack frame in the crowded force phase */
+                OpenMX_GpuPresizeKernelStack();
                 cuda_ok = 1;
             }
         }
@@ -2560,6 +2564,12 @@ double DFT(int MD_iter, int Cnt_Now)
 
   if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(1);
   if (Solver!=12) time11 += Set_Density_Grid(1, 0, DM[0], Density_Grid_B);
+
+  /* the final density may have rebuilt the on-the-fly tables and the
+     density-grid device buffers that the end of the SCF cycle released;
+     return them before the force batches size their workspaces */
+  Set_Hamiltonian_OnTheFly_EndCycle();
+  Set_Density_Grid_GPU_EndCycle();
 
   if (Solver==4) {
     TRAN_Add_Density_Lead(mpi_comm_level1,

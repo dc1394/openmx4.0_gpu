@@ -231,6 +231,65 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
     return cudaSuccess;
 }
 
+/* Kernels whose stack frame exceeds the driver's default limit (1 KiB per
+   thread) make their first launch grow the context's local-memory pool,
+   sized for every thread the device can hold: on an RTX 5080 a 1224-byte
+   frame costs ~26 MiB per context, taken at launch time.  The force
+   batches size their device arenas to fill the device down to a node-wide
+   reserve, so with many ranks sharing one card the late launches of the
+   Force3 dOrbitals kernel, which had such a frame, raced for the last MiB
+   and lost (cuLaunchKernel: out of memory in Force3_GpuTrace, C1000 at 18
+   ranks on 16 GB).  That kernel's frame is below the default now (its
+   spherical-harmonic tables are flat, 936 bytes), and this step guards
+   against the next kernel of that kind: raising the limit once at device
+   initialization makes the driver take the memory while the device is
+   still empty, and no later launch needs more.  The value is the largest
+   frame of OpenMX's own kernels in this binary, read by cuobjdump at link
+   time (OPENMX_GPU_KERNEL_STACK_BYTES from the Makefile; 0 when the scan
+   is unavailable); nothing happens while it stays within the default.
+   OPENMX_GPU_STACK_BYTES overrides it, 0 disables the step. */
+#ifndef OPENMX_GPU_KERNEL_STACK_BYTES
+#define OPENMX_GPU_KERNEL_STACK_BYTES 0
+#endif
+
+void OpenMX_GpuPresizeKernelStack(void)
+{
+    static int announced = 0;
+    const char *env = getenv("OPENMX_GPU_STACK_BYTES");
+    long wanted = OPENMX_GPU_KERNEL_STACK_BYTES;
+    size_t current = 0, free_before = 0, free_after = 0, total = 0;
+    int initialized = 0, myid = 0;
+
+    if (env != NULL && env[0] != '\0') wanted = atol(env);
+    if (wanted <= 0) return;
+    if (cudaDeviceGetLimit(&current, cudaLimitStackSize) != cudaSuccess) {
+        (void)cudaGetLastError();
+        return;
+    }
+    if ((size_t)wanted <= current) return;
+    (void)OpenMX_GpuMemGetInfo(&free_before, &total);
+    if (cudaDeviceSetLimit(cudaLimitStackSize, (size_t)wanted) != cudaSuccess) {
+        (void)cudaGetLastError();
+        fprintf(stderr,
+                "<GPU> could not raise the kernel stack limit to %ld bytes per thread;"
+                " the first launch of a kernel with a larger frame takes the memory instead.\n",
+                wanted);
+        fflush(stderr);
+        return;
+    }
+    (void)OpenMX_GpuMemGetInfo(&free_after, &total);
+    MPI_Initialized(&initialized);
+    if (initialized) MPI_Comm_rank(mpi_comm_level1, &myid);
+    if (!announced && myid == 0 && 2 <= level_stdout) {
+        announced = 1;
+        printf("<GPU> kernel stack limit raised from %zu to %ld bytes per thread"
+               " (%.1f MiB of device memory per rank, taken now rather than at the first launch).\n",
+               current, wanted,
+               (double)(free_before > free_after ? free_before - free_after : 0) / (1024.0 * 1024.0));
+        fflush(stdout);
+    }
+}
+
 /* Many ranks sharing one device can exhaust it with their CUDA contexts
    alone (~200-300 MiB each); past that point the OpenACC entry points do
    not fail, they abort ("Could not find symbol ... Rebuild this file

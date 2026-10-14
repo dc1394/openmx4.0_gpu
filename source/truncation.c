@@ -22,7 +22,19 @@
 #include "set_cuda_default_device_from_local_rank.h"
 #include "tran_prototypes.h"
 
-#define  measure_time   0
+/* the section timers print when OPENMX_BAND_PROFILE=1 (formerly a
+   compile-time switch) */
+static int Trunc_ProfileEnabled(void)
+{
+  static int cached = -1;
+
+  if (cached < 0){
+    const char *value = getenv("OPENMX_BAND_PROFILE");
+    cached = (value != NULL && atoi(value) != 0);
+  }
+  return cached;
+}
+#define measure_time (Trunc_ProfileEnabled())
 
 
 static void Fixed_FNAN_SNAN();

@@ -1087,7 +1087,11 @@ DM 蓄積の所要量はソルブ段よりはるかに小さいため、たと�
 <b>「見積り」ではなく「実予約」</b>で発動可否を決める。オーナーランクが行列バッファと
 syevdx ワークスペース(<code>_bufferSize</code> の実報告値)を <b>8 回上限のリトライ付き cudaMalloc で実際に確保</b>し、
 さらに <code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code>(既定 1024 MiB)が空きに残ることを要求する
-(<code>ClusterCol_OwnerReserveProbe</code>)。実予約方式に変えた背景には、
+(<code>ClusterCol_OwnerReserveProbe</code>)。プローブは精錬 FP32 固有値ソルバ(<code>OPENMX_EIGEN_REFINE</code>、§10.2)の
+n² の基底も数える。密行列バッファと予約分は収まるが基底は収まらないときは、ELPA へ落ちる代わりに GPU 経路を保ち、
+そのサイクルを FP64 固有値ソルバで解く(1 行 <code>… holds its GPU diagonalization buffers but not the … basis of the
+refined eigensolver …: FP64 eigensolver for this SCF cycle</code> が出る。16 GB の RTX 5080 で 18 ランクの C1000 が
+この場合に当たる: 予約後の空き 1257 MiB に対し、予約分 1024 MiB+基底 1289 MiB)。実予約方式に変えた背景には、
 「syevdx ワークスペースの見積り 2n² doubles に対し実際は約 4n² doubles だった」という実測がある(コミット <code>cff323e6</code>)。
 非コリニアは対角化サイクル全体を<b>単一 cudaMalloc のアリーナ</b>として予約し、<code>acc_map_data</code> で
 OpenACC に見せるため、予約成立後は他フェーズの動きに影響されない(<code>ClusterNonCol_DenseArena_TryEnsure</code>)。</p>
@@ -1357,6 +1361,10 @@ Makefile は<b>ファイル単位で <code>-acc</code> を外す</b>ことで回
   <li><b>DM/EDM の GPU 蓄積(コミット <code>75fc30d3</code>):</b> <code>ClusterCol_AccumulateDM_OpenACC</code> が
   131,072 エントリ単位の OpenACC gang ループで DM1/EDM1(partial charge 時は PDM1 も)を蓄積する。
   状態内の総和順序は CPU ループと同一(<code>loop seq</code>)。<code>OPENMX_CLUSTER_GPU_DM=0</code> で CPU ループへ。
+  2026-10-13 からは密な求解を持つランクだけでなく全ランクが自分の状態スライスをデバイスで蓄積する(他ランクはホストの
+  パネルを半減リトライでステージし、最小ブロックも入らなければ原子でスレッド分割した CPU ループへ)。
+  <code>OPENMX_CLUSTER_GPU_DM_ALL=0</code> でオーナーだけの蓄積に戻る(C1000・6 ランク: 対角化段階 113 → 78 s、
+  密度行列のホスト時間 37 → 6 s)。
   疎→密 index は幾何指紋(FNV-1a)付きでキャッシュされ、スピン×反復ごとの再構築・再アップロードを排除。</li>
   <li><b>固有ベクトルのデバイス常駐(コミット <code>527ed524</code>):</b> ソルブ直後の固有ベクトルパネルを
   スピン別に D2D コピーで stash し(<code>ClusterCol_StashDeviceEvec</code>)、DM 蓄積カーネルが
@@ -1682,7 +1690,7 @@ GPUSOLVER かつ <code>Cnt_switch==0</code>(<code>OPENMX_DENSITY_GRID_GPU=0</cod
 <tbody>
 <tr><td>#1(重なり補正)</td><td>ホストのみ</td><td>—</td></tr>
 <tr><td>#2(運動エネルギー)</td><td>パック+GPU リダクション(<code>Force2_Kinetic_OpenACC</code>)</td><td>SO/LDA+U/拘束/Zeeman なしのとき。確保失敗時はその場でホスト計算</td></tr>
-<tr><td>#3(dn/dx·Vpot 格子トレース)</td><td>チャンクバッチ <code>Force3_GpuTrace</code>: 1 ペア = 1 gang、重なり点で vector 縮約。<b>dOrbitals はデバイスで再計算</b>(実球面調和 L0≤3 の明示式+動径スプライン。約 4.5 GB/rank の PCIe 転送を排除)</td><td>予算判定(常駐分+192 MiB が(空き−256 MiB)/ノード内ランク数に収まる)。dOrbitals 再計算のみの不成立はホスト計算 dchi の転送に縮退(<code>OPENMX_FORCE3_GPU_DORB</code>)</td></tr>
+<tr><td>#3(dn/dx·Vpot 格子トレース)</td><td>チャンクバッチ <code>Force3_GpuTrace</code>: 1 ペア = 1 gang、重なり点で vector 縮約。<b>dOrbitals はデバイスで再計算</b>(実球面調和 L0≤3 の明示式+動径スプライン。約 4.5 GB/rank の PCIe 転送を排除)</td><td>予算判定(常駐分+192 MiB が(空き−予備)/ノード内ランク数に収まる。予備は 256 MiB+ノード内ランクあたり 16 MiB で、Force 段階の他の予算も同じ)。dOrbitals 再計算のみの不成立はホスト計算 dchi の転送に縮退(<code>OPENMX_FORCE3_GPU_DORB</code>)</td></tr>
 <tr><td>#4(ProExpn_VNA==0)</td><td>dVNA 格子項の GPU リダクション(<code>Force4_OpenACC</code>)</td><td>確保失敗時はホスト計算</td></tr>
 <tr><td>#4B(射影 VNA)</td><td><b>GPU 内積バッチ</b>(コミット <code>7d38382d</code>): DS_VNA の 4 方向を float でデバイス常駐(direction-major)、MPI パイプラインで受けた halo/case-2 ブロックをアーカイブし、case-1/case-2 の融合トレースを各 1 カーネルで実行。float 積 → double 加算のキャスト位置まで CPU を再現。ダンピング尾部はホスト</td><td><code>OPENMX_FORCE4B_GPU</code>(既定 1)+メモリ判定。不成立時は<b>融合 CPU トレース</b>(<code>OPENMX_FORCE4B_FUSED</code>、コミット <code>fe68cca6</code>)、それも無効なら従来 dHVNA 経路。特殊対(q_AN==0 等)は常にホスト</td></tr>
 <tr><td>#5(重なり×EDM)</td><td>GPU リダクション(<code>Force5_OpenACC</code>)</td><td>確保失敗時はホスト計算</td></tr>
@@ -2024,6 +2032,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <thead><tr><th style="width:36%;">環境変数</th><th style="width:12%;">既定値</th><th>意味</th></tr></thead>
 <tbody>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>デバイスメモリの計上(set_cuda_default_device_from_local_rank.c)</b></td></tr>
+<tr><td><code>OPENMX_GPU_STACK_BYTES</code></td><td>OpenMX 自身のカーネルの最大スタックフレーム(リンク時にリンク済みバイナリを cuobjdump で測る。現在のビルドでは 1000 バイト)</td><td>デバイス初期化時に設定するスレッドあたりのカーネルスタック上限(<code>cudaLimitStackSize</code>、<code>OpenMX_GpuPresizeKernelStack</code>)。ドライバ既定の 1 KiB を超えるときだけ設定し、ドライバはその時点、つまりデバイスが空のうちにコンテキストのローカルメモリプールを確保するので、フレームの大きいカーネルの初回起動時に確保が走らなくなる。その起動時の増分(RTX 5080 で 1224 バイトのフレームにつきコンテキストあたり約 26 MiB。(フレーム − 1024)×デバイスの全常駐スレッド数)は、デバイスを予備領域まで埋める Force 段階のアリーナと競合し、16 GB で 18 ランクのとき負けていた(<code>Force3_GpuTrace</code> の <code>cuLaunchKernel</code> が out of memory、C1000。この dOrbitals カーネルがそのフレームを持っていた。球面調和関数の表を平坦化して 936 バイトにしたので、現在この処理は何もしない)。Makefile はリンク後のバイナリからこの値を読み(オブジェクトのカーネルのみ。ELPA の 1328 バイトのものなど、リンクしたライブラリのカーネルは数えない)、一度だけ再リンクする。0 で無効。上限を上げた場合のコストはランクあたり(上限 − 1024)×常駐スレッド数のデバイスメモリ。</td></tr>
 <tr><td><code>OPENMX_GPU_MEMINFO_NVML</code></td><td>1</td><td>GPU 経路のデバイスメモリ予算はすべて <code>OpenMX_GpuMemGetInfo()</code> から始まる。これは <code>cudaMemGetInfo()</code> の空き容量を、NVML が報告する物理的な空き容量で頭打ちにしたもの。WDDM 系プラットフォーム(WSL2)では CUDA ランタイムがプロセスごとの見え方を返し、他ランクのコンテキストや配列が空き容量に反映されず、物理メモリを超える確保も失敗せずにシステムメモリへ退避して数十分の一の速度になる: 12 GB の RTX 4070 Ti で 12 ランクが各自「空き 10.8 GiB」(実際はコンテキストの後に 0.6 GiB)と見て DS_VNA バッチに 836 MiB ずつ確保し、Set_ProExpn_VNA が数分間止まった。Linux では両者は一致する。両者が 256 MiB 以上違うとき標準出力に 1 回だけ通知する(level.of.stdout 2 以上)。0 で素の <code>cudaMemGetInfo()</code></td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>GEMMul8(gemmul8_bridge.cu)</b></td></tr>
 <tr><td><code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code></td><td>off</td><td>GEMMul8 を無効化し cuBLAS FP64 に固定(全体 / 実数のみ / 複素のみ)</td></tr>
@@ -2044,7 +2053,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS</code></td><td>1</td><td>all_knum==1 経路の GPU ターン直列化(0 で並行投入)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_PERSISTENT</code> / <code>_MIN_FREE_MB</code></td><td>0 / 2048</td><td>SCF 反復間のデバイスバッファ常駐(共有 GPU では非推奨)</td></tr>
 <tr><td><code>OPENMX_BAND_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>ターン毎の GEMMul8 ワークスペース解放(0 で保持)</td></tr>
-<tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>性能計測カウンタの表示。ランクごとの段階行 SETHPROF(Set_Hamiltonian)、SETHOTFPROF / SETHOTFDENPROF(その場計算のバッチ: 詰め替え・評価・カーネル)、SETVPOTPROF(Set_Vpot: xc、Vxc の D→B コピー、VNA、組み立て、混合 FFT、B→C 再分配)、SETDENPROF(Set_Density_Grid: 判定・求積・A→B・重ね合わせ・B→D)も共用</td></tr>
+<tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>性能計測カウンタの表示。ランクごとの段階行 SETHPROF(Set_Hamiltonian)、SETHOTFPROF / SETHOTFDENPROF(その場計算のバッチ: 詰め替え・評価・カーネル)、SETNLPROF(Set_Nonlocal: DS_NL・受信原子の積・局所の積)、CLUSTERDMPROF(クラスターソルバの密度行列の集計)、CLUSTERDISTPROF(固有ベクトルの配布。密な求解を持たないランクでは求解待ちを含む)、FORCEHNL2PROF(Force_HNL 第 2 ケースのバッチ: 構築・デバイス・後処理)、truncation と Total_Energy の区間タイマー、SETVPOTPROF(Set_Vpot: xc、Vxc の D→B コピー、VNA、組み立て、混合 FFT、B→C 再分配)、SETDENPROF(Set_Density_Grid: 判定・求積・A→B・重ね合わせ・B→D)も共用</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>クラスタ計算(Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)</b></td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG</code></td><td>自動</td><td><b>1</b>=実予約失敗でも GPU 強制(失敗時は診断つき abort)、<b>0</b>=常に ELPA(§5.6)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code></td><td>400</td><td>コリニアクラスタ密行列経路の GPU/CPU 切替次元(実測では n=240 まで全サイズで GPU が勝利)</td></tr>
@@ -2052,6 +2061,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code></td><td>1024</td><td>予約プローブ後に残すべき空き VRAM</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_SERIAL</code></td><td>1</td><td>2 スピンが同居できないときの直列化モード(0=無効、2=直列強制)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>DM/EDM の GPU 蓄積(0 で CPU ループ)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_DM_ALL</code></td><td>1</td><td>クラスターの密度行列を全ランクがデバイスで蓄積する(自分の状態スライスを半減リトライでステージ)。0 で密な求解を持つランクだけ、他は CPU ループ(原子でスレッド分割)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>ソルブ毎の GEMMul8 ワークスペース解放(未設定時は BAND 設定を継承)</td></tr>
 <tr><td><code>OPENMX_EIGEN_REFINE</code></td><td>FP32:FP64 の性能比が 8 以上の GPU(GeForce、RTX PRO 6000 Blackwell など)で、そのソルバーの種類の GEMMul8(共線は実数、非共線は複素)が有効なら 2、それ以外は 0</td><td>クラスタの密な固有値計算(共線はスピンごと、非共線)とバンド法(1 ランク 1 k 点: 全 k 点の推定値を集めてから補正。1 ランクに複数 k 点: 1 回目のパスは前ステップの化学ポテンシャルで補正して基底をホストに保持(ランクあたり <code>OPENMX_BAND_REFINE_BASIS_MB</code> MB、既定 1024)、2 回目のパスはその基底からこのステップの化学ポテンシャルで補正): K &gt; 0 で n 個(非共線は 2n 個)の固有対を FP32 で解き、必要な MaxN 個を荻田・相島法で K 回補正(積は GEMMul8、モジュール <code>eigen_refine_gpu.c</code>)、部分占有のクラスタはレイリー・リッツで回転。SCF の 2 ステップ目以降は、前のステップの固有ベクトルが新しいハミルトニアンに対して残差 2e-5 以内ならそこから補正を始める(<code>OPENMX_EIGEN_REFINE_WARM</code>)。SCF を終えるステップは FP64 でもう一度解き、<code>scf.maxIter</code> の最後のステップは FP64。スピン分極では 2 つのスピンワールドのオーナーが固有値の推定値を交換して化学ポテンシャルを求める(バンド法では全 k 点の推定値を集めてから補正する)(1 ランクで両スピンを解く場合、直列スピンモード、XANES、空軌道・空状態の指定時は FP64 のまま)。<b>0</b> でオフ。RTX 5080(18 ランク)の非共線 sidia333(2n = 5616)で SCF ステップ数は同じまま 261.3 秒が 197.9 秒。バンド法は必要な maxn 列を補正し、残りの n &minus; maxn 列を毎ステップ補正済みの列に対して回転させる(<code>OPENMX_EIGEN_REFINE_COMPLEMENT</code>、既定 1): 放置すると、その列が持つ FP32 程度の占有部分空間成分のせいで補正列の不動点が占有部分空間から 1e-8 ほどずれ、SCF 反復が 2〜5 回増え、ウォームスタートに偏りが出ていた。k 点オーナーが GPU の 1 ターン群に入りきらないときは、1 ランク 1 k 点の解も複数 k 点経路と同じ 2 パス(前ステップの化学ポテンシャルで補正して基底をホストへ、そこから 2 パス目)に分けるので、16 GB のカードでも補正される。診断: <code>OPENMX_EIGEN_REFINE_CHECK=1</code> で補正列の残差と直交性を占有クラスごとに FP64 の積で表示、<code>OPENMX_EIGEN_REFINE_ALL=1</code> で全列を補正</td></tr>
 <tr><td><code>OPENMX_EIGEN_REFINE_UNTIL</code></td><td>0(オフ)</td><td>この値を表示上の NormRD が下回ると、その SCF サイクルの残りを FP64 の固有値計算に戻す。既定ではオフで、補正ステップで SCF が終わった場合はそのステップのハミルトニアンを FP64 でもう一度解き(固有値計算 1 回、密度行列なし)、SCF 後のエネルギー密度行列と力はその固有ベクトルから作る 反復補正の積・固有値・最終固有ベクトルが NaN/Inf の場合、保存した FP64 行列を上書きする前に補正を棄却し、FP64 経路へ復帰する。正常時の演算と精度基準は変更しない。</td></tr>
@@ -2132,8 +2142,10 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td>1(既定)</td><td>OpenMX 本来のステージ行に付く "(GPU-accelerated)"・"(GPU reduction)" の表記、エラー、GPU が使えないこと
 (<code>GPUSOLVER requested, but GPU initialization failed on … MPI ranks; using ELPA2.</code>)、デバイスメモリ不足や失敗で
 GPU 固有値ソルバを断念したこと(<code>Falling back to the ELPA/ScaLAPACK diagonalization…</code>、DC・DC-LNO のランクが
-CPU ソルバへ切り替えたこと)</td></tr>
-<tr><td>2</td><td>さらにデバイス計画・キャッシュ採用・バナー、SCF を終えるステップの FP64 再求解、個々のステージ・求解のフォールバックと再試行(ノードごとに 1 行。Force4B、Force_HNL、Set_ProExpn_VNA、
+CPU ソルバへ切り替えたこと)、精錬固有値ソルバの基底なしで GPU の密対角化を続けること(<code>… holds its GPU
+diagonalization buffers but not the … basis of the refined eigensolver …: FP64 eigensolver for this SCF cycle</code>)</td></tr>
+<tr><td>2</td><td>さらにデバイス計画・キャッシュ採用・バナー、デバイス初期化時のカーネルスタック上限の引き上げ
+(<code>&lt;GPU&gt; kernel stack limit raised from … to … bytes per thread</code>)、SCF を終えるステップの FP64 再求解、個々のステージ・求解のフォールバックと再試行(ノードごとに 1 行。Force4B、Force_HNL、Set_ProExpn_VNA、
 Set_Density_Grid、Mixing_H、GEMMul8 の workspace fallback、cuSOLVER のエミュレーション再試行と FP32 再試行)</td></tr>
 <tr><td>3</td><td>さらに SCF ステップごと・k 点ごと・ランクごとの詳細: 精錬 FP32 固有値ソルバの精錬残差とウォームスタート
 (このゲート導入前の 18 ランク <code>-runtestL</code> では 85,600 行中約 38,000 行)、
@@ -2249,9 +2261,15 @@ NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
   オリジナルまたは <code>makefile.cpu_intel.bak</code> を使う。</li>
   <li>NVHPC 26.3 + CUDA 13.1 が既定。バージョン変更時は §6.5 のミスコンパイル回避一覧を再検証すること。</li>
   <li>GEMMul8 は INT8 Tensor Core 必須・単一アーキビルド。GPU 世代を変えたら再ビルド。</li>
-  <li>GPU 実行時は MPI のみ(OpenMP スレッド 1)の運用が想定されている。<code>Set_OLP_Kin</code> の GPU 経路は
-  <code>Nthrds==1</code> を明示的に要求する。混合の高速パスの一部(バッチ Gram)は 1 スレッドのとき
-  レガシーと加算順序が一致する。</li>
+  <li>全コアにランクを置けるあいだはフラット MPI が第一選択。デバイスメモリの都合でランク数がコア数を下回るときは、
+  OpenMP スレッド(<code>-nt</code>。1 ランクを複数コアに束ねる:
+  <code>mpirun --map-by ppr:6:node:PE=3 --bind-to core -np 6 ./openmx in.dat -nt 3</code>)がホスト側の段階で効く(§10.4):
+  Set_OLP_Kin の Bessel キャッシュはスレッドごとになり、クラスターの密度行列と Set_Nonlocal の受信原子の積は原子で
+  スレッド分割され、vanilla の OpenMP 領域(truncation、Set_ProExpn_VNA、Set_Orbitals_Grid、Force、Total_Energy)は
+  CPU 版と同じく動く。デバイス側の段階はスレッド数で変わらず、スレッドありでは vanilla の OpenMP リダクションの
+  加算順序により実行ごとに 1e-11 程度の非決定性が出る。混合の高速パスの一部(バッチ Gram)は 1 スレッドのとき
+  レガシーと加算順序が一致する。Set_OLP_Kin のオプトインの OpenACC 動径積分(<code>OPENMX_OLPKIN_RADIAL_GPU=1</code>)は
+  引き続き 1 スレッドを要求する。</li>
 </ul>
 
 <h2>11.2 メモリ設計の目安</h2>

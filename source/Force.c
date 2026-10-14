@@ -203,6 +203,17 @@ static size_t Force_gpu_arena_off(size_t* pos, size_t bytes)
     return off;
 }
 
+/* The node-wide device reserve of the force-phase budgets.  The ranks that
+   share the device size their arenas to fill it down to this figure, so it
+   has to cover what no budget accounts for: the small per-rank transients
+   of the runtime (pool blocks, the first launch of a kernel whose stack
+   frame exceeds the pre-sized limit), which add up with the rank count. */
+static size_t Force_gpu_node_reserve(int node_ranks)
+{
+    if (node_ranks < 1) node_ranks = 1;
+    return (size_t)256 * 1024 * 1024 + (size_t)node_ranks * (size_t)16 * 1024 * 1024;
+}
+
 /* one shot; the caller has a host fallback */
 static void* Force_gpu_arena_try(size_t bytes)
 {
@@ -869,7 +880,7 @@ static size_t Force3_GpuChunkBudget(void)
        large cap multiplies host memory by the rank count; keep it small */
     const size_t budget_cap = (size_t)384 * 1024 * 1024;
     const size_t budget_floor = (size_t)192 * 1024 * 1024;
-    const size_t reserve = (size_t)256 * 1024 * 1024;
+    size_t reserve;
     MPI_Comm node_comm = MPI_COMM_NULL;
 
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
@@ -879,6 +890,7 @@ static size_t Force3_GpuChunkBudget(void)
     MPI_Comm_size(node_comm, &node_ranks);
     MPI_Comm_free(&node_comm);
     if (node_ranks < 1) node_ranks = 1;
+    reserve = Force_gpu_node_reserve(node_ranks);
 
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
@@ -1435,9 +1447,18 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                                     const double* rv = rv_p + rvo_p[wan];
                                     double RF[F3_DORB_L0MAX + 1][F3_DORB_MULMAX];
                                     double dRF[F3_DORB_L0MAX + 1][F3_DORB_MULMAX];
-                                    double AF[F3_DORB_L0MAX + 1][2 * F3_DORB_L0MAX + 1];
-                                    double dAFQ[F3_DORB_L0MAX + 1][2 * F3_DORB_L0MAX + 1];
-                                    double dAFP[F3_DORB_L0MAX + 1][2 * F3_DORB_L0MAX + 1];
+                                    /* the angular tables are flat, entry L0*L0 + M0
+                                       (2L0+1 entries per L0): with the former
+                                       [L0][2*L0MAX+1] layout the thread's stack
+                                       frame was 1224 bytes, above the driver's
+                                       1 KiB default, and the first launch grew the
+                                       context's local-memory pool by ~26 MiB on a
+                                       device the force arenas had already filled
+                                       (18 ranks on 16 GB: cuLaunchKernel out of
+                                       memory); the frame is 936 bytes now */
+                                    double AF[(F3_DORB_L0MAX + 1) * (F3_DORB_L0MAX + 1)];
+                                    double dAFQ[(F3_DORB_L0MAX + 1) * (F3_DORB_L0MAX + 1)];
+                                    double dAFP[(F3_DORB_L0MAX + 1) * (F3_DORB_L0MAX + 1)];
                                     double xx = x, yy = y, zz = z;
                                     double R, Q, P;
                                     int po = 0;
@@ -1629,67 +1650,67 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
 
                                             for (L0 = 0; L0 <= maxl; L0++) {
                                                 if (L0 == 0) {
-                                                    AF[0][0] = 0.282094791773878;
-                                                    dAFQ[0][0] = 0.0;
-                                                    dAFP[0][0] = 0.0;
+                                                    AF[0] = 0.282094791773878;
+                                                    dAFQ[0] = 0.0;
+                                                    dAFP[0] = 0.0;
                                                 } else if (L0 == 1) {
                                                     dum = 0.48860251190292 * siQ;
 
-                                                    AF[1][0] = dum * coP;
-                                                    AF[1][1] = dum * siP;
-                                                    AF[1][2] = 0.48860251190292 * coQ;
+                                                    AF[1] = dum * coP;
+                                                    AF[2] = dum * siP;
+                                                    AF[3] = 0.48860251190292 * coQ;
 
-                                                    dAFQ[1][0] = 0.48860251190292 * coQ * coP;
-                                                    dAFQ[1][1] = 0.48860251190292 * coQ * siP;
-                                                    dAFQ[1][2] = -0.48860251190292 * siQ;
+                                                    dAFQ[1] = 0.48860251190292 * coQ * coP;
+                                                    dAFQ[2] = 0.48860251190292 * coQ * siP;
+                                                    dAFQ[3] = -0.48860251190292 * siQ;
 
-                                                    dAFP[1][0] = -0.48860251190292 * siP;
-                                                    dAFP[1][1] = 0.48860251190292 * coP;
-                                                    dAFP[1][2] = 0.0;
+                                                    dAFP[1] = -0.48860251190292 * siP;
+                                                    dAFP[2] = 0.48860251190292 * coP;
+                                                    dAFP[3] = 0.0;
                                                 } else if (L0 == 2) {
                                                     dum1 = siQ * siQ;
                                                     dum2 = 1.09254843059208 * siQ * coQ;
-                                                    AF[2][0] = 0.94617469575756 * coQ * coQ - 0.31539156525252;
-                                                    AF[2][1] = 0.54627421529604 * dum1 * (1.0 - 2.0 * siP * siP);
-                                                    AF[2][2] = 1.09254843059208 * dum1 * siP * coP;
-                                                    AF[2][3] = dum2 * coP;
-                                                    AF[2][4] = dum2 * siP;
+                                                    AF[4] = 0.94617469575756 * coQ * coQ - 0.31539156525252;
+                                                    AF[5] = 0.54627421529604 * dum1 * (1.0 - 2.0 * siP * siP);
+                                                    AF[6] = 1.09254843059208 * dum1 * siP * coP;
+                                                    AF[7] = dum2 * coP;
+                                                    AF[8] = dum2 * siP;
 
-                                                    dAFQ[2][0] = -1.89234939151512 * siQ * coQ;
-                                                    dAFQ[2][1] = 1.09254843059208 * siQ * coQ * (1.0 - 2.0 * siP * siP);
-                                                    dAFQ[2][2] = 2.18509686118416 * siQ * coQ * siP * coP;
-                                                    dAFQ[2][3] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * coP;
-                                                    dAFQ[2][4] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * siP;
+                                                    dAFQ[4] = -1.89234939151512 * siQ * coQ;
+                                                    dAFQ[5] = 1.09254843059208 * siQ * coQ * (1.0 - 2.0 * siP * siP);
+                                                    dAFQ[6] = 2.18509686118416 * siQ * coQ * siP * coP;
+                                                    dAFQ[7] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * coP;
+                                                    dAFQ[8] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * siP;
 
-                                                    dAFP[2][0] = 0.0;
-                                                    dAFP[2][1] = -2.18509686118416 * siQ * siP * coP;
-                                                    dAFP[2][2] = 1.09254843059208 * siQ * (1.0 - 2.0 * siP * siP);
-                                                    dAFP[2][3] = -1.09254843059208 * coQ * siP;
-                                                    dAFP[2][4] = 1.09254843059208 * coQ * coP;
+                                                    dAFP[4] = 0.0;
+                                                    dAFP[5] = -2.18509686118416 * siQ * siP * coP;
+                                                    dAFP[6] = 1.09254843059208 * siQ * (1.0 - 2.0 * siP * siP);
+                                                    dAFP[7] = -1.09254843059208 * coQ * siP;
+                                                    dAFP[8] = 1.09254843059208 * coQ * coP;
                                                 } else {
-                                                    AF[3][0] = 0.373176332590116 * (5.0 * coQ * coQ * coQ - 3.0 * coQ);
-                                                    AF[3][1] = 0.457045799464466 * coP * siQ * (5.0 * coQ * coQ - 1.0);
-                                                    AF[3][2] = 0.457045799464466 * siP * siQ * (5.0 * coQ * coQ - 1.0);
-                                                    AF[3][3] = 1.44530572132028 * siQ * siQ * coQ * (coP * coP - siP * siP);
-                                                    AF[3][4] = 2.89061144264055 * siQ * siQ * coQ * siP * coP;
-                                                    AF[3][5] = 0.590043589926644 * siQ * siQ * siQ * (4.0 * coP * coP * coP - 3.0 * coP);
-                                                    AF[3][6] = 0.590043589926644 * siQ * siQ * siQ * (3.0 * siP - 4.0 * siP * siP * siP);
+                                                    AF[9] = 0.373176332590116 * (5.0 * coQ * coQ * coQ - 3.0 * coQ);
+                                                    AF[10] = 0.457045799464466 * coP * siQ * (5.0 * coQ * coQ - 1.0);
+                                                    AF[11] = 0.457045799464466 * siP * siQ * (5.0 * coQ * coQ - 1.0);
+                                                    AF[12] = 1.44530572132028 * siQ * siQ * coQ * (coP * coP - siP * siP);
+                                                    AF[13] = 2.89061144264055 * siQ * siQ * coQ * siP * coP;
+                                                    AF[14] = 0.590043589926644 * siQ * siQ * siQ * (4.0 * coP * coP * coP - 3.0 * coP);
+                                                    AF[15] = 0.590043589926644 * siQ * siQ * siQ * (3.0 * siP - 4.0 * siP * siP * siP);
 
-                                                    dAFQ[3][0] = 0.373176332590116 * siQ * (-15.0 * coQ * coQ + 3.0);
-                                                    dAFQ[3][1] = 0.457045799464466 * coP * coQ * (15.0 * coQ * coQ - 11.0);
-                                                    dAFQ[3][2] = 0.457045799464466 * siP * coQ * (15.0 * coQ * coQ - 11.0);
-                                                    dAFQ[3][3] = 1.44530572132028 * (coP * coP - siP * siP) * siQ * (2.0 * coQ * coQ - siQ * siQ);
-                                                    dAFQ[3][4] = 2.89061144264055 * coP * siP * siQ * (2.0 * coQ * coQ - siQ * siQ);
-                                                    dAFQ[3][5] = 1.770130769779932 * coP * coQ * siQ * siQ * (-3.0 + 4.0 * coP * coP);
-                                                    dAFQ[3][6] = 1.770130769779932 * coQ * siP * siQ * siQ * (3.0 - 4.0 * siP * siP);
+                                                    dAFQ[9] = 0.373176332590116 * siQ * (-15.0 * coQ * coQ + 3.0);
+                                                    dAFQ[10] = 0.457045799464466 * coP * coQ * (15.0 * coQ * coQ - 11.0);
+                                                    dAFQ[11] = 0.457045799464466 * siP * coQ * (15.0 * coQ * coQ - 11.0);
+                                                    dAFQ[12] = 1.44530572132028 * (coP * coP - siP * siP) * siQ * (2.0 * coQ * coQ - siQ * siQ);
+                                                    dAFQ[13] = 2.89061144264055 * coP * siP * siQ * (2.0 * coQ * coQ - siQ * siQ);
+                                                    dAFQ[14] = 1.770130769779932 * coP * coQ * siQ * siQ * (-3.0 + 4.0 * coP * coP);
+                                                    dAFQ[15] = 1.770130769779932 * coQ * siP * siQ * siQ * (3.0 - 4.0 * siP * siP);
 
-                                                    dAFP[3][0] = 0.0;
-                                                    dAFP[3][1] = 0.457045799464466 * siP * (-5.0 * coQ * coQ + 1.0);
-                                                    dAFP[3][2] = 0.457045799464466 * coP * (5.0 * coQ * coQ - 1.0);
-                                                    dAFP[3][3] = -5.781222885281120 * coP * coQ * siP * siQ;
-                                                    dAFP[3][4] = 2.89061144264055 * coQ * siQ * (coP * coP - siP * siP);
-                                                    dAFP[3][5] = 1.770130769779932 * siP * siQ * siQ * (1.0 - 4.0 * coP * coP);
-                                                    dAFP[3][6] = 1.770130769779932 * coP * siQ * siQ * (1.0 - 4.0 * siP * siP);
+                                                    dAFP[9] = 0.0;
+                                                    dAFP[10] = 0.457045799464466 * siP * (-5.0 * coQ * coQ + 1.0);
+                                                    dAFP[11] = 0.457045799464466 * coP * (5.0 * coQ * coQ - 1.0);
+                                                    dAFP[12] = -5.781222885281120 * coP * coQ * siP * siQ;
+                                                    dAFP[13] = 2.89061144264055 * coQ * siQ * (coP * coP - siP * siP);
+                                                    dAFP[14] = 1.770130769779932 * siP * siQ * siQ * (1.0 - 4.0 * coP * coP);
+                                                    dAFP[15] = 1.770130769779932 * coP * siQ * siQ * (1.0 - 4.0 * siP * siP);
                                                 }
                                             }
                                         }
@@ -1704,9 +1725,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
 
                                                     i1++;
                                                     if (po == 0) {
-                                                        dChiR = dRF[L0][Mul0] * AF[L0][M0];
-                                                        dChiQ = RF[L0][Mul0] * dAFQ[L0][M0];
-                                                        dChiP = RF[L0][Mul0] * dAFP[L0][M0];
+                                                        dChiR = dRF[L0][Mul0] * AF[L0 * L0 + M0];
+                                                        dChiQ = RF[L0][Mul0] * dAFQ[L0 * L0 + M0];
+                                                        dChiP = RF[L0][Mul0] * dAFP[L0 * L0 + M0];
 
                                                         dchi[(size_t)i1 * 3 + 0] = -dRx * dChiR - dQx * dChiQ - dPx * dChiP;
                                                         dchi[(size_t)i1 * 3 + 1] = -dRy * dChiR - dQy * dChiQ - dPy * dChiP;
@@ -2146,6 +2167,18 @@ static void Force_HNL_GpuEnd(void);
 static void Force_HNL_GpuArchiveHalo(double****** DS_NL, int Original_Mc_AN, int Gc_AN);
 static void Force_HNL_GpuArchiveCase2(double****** DS_NL, int Mc_AN, int Gc_AN);
 static void Force_HNL_GpuCase1Run(double***** CDM0);
+/* OPENMX_BAND_PROFILE=1: per-rank section lines of the force batches on
+   stderr (no collective, unlike Force_profile_report) */
+static int Force_PhaseProfileEnabled(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char* value = getenv("OPENMX_BAND_PROFILE");
+        cached = (value != NULL && atoi(value) != 0);
+    }
+    return cached;
+}
 static void Force_HNL_GpuCase2Run(double***** CDM0);
 static void Force_CoreHole(double***** CDM0, double***** iDM0);
 
@@ -7398,10 +7431,10 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
 
     if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
     {
-        const size_t reserve = (size_t)256 * 1024 * 1024;
+        const size_t reserve = Force_gpu_node_reserve(node_ranks);
         /* WorkspaceSizes counts both complete aligned device workspaces.
-           Keep a 64 MiB minimum for small batches and the separate 256 MiB
-           node reserve; the former 192 MiB floor rejected fitting ranks. */
+           Keep a 64 MiB minimum for small batches and the separate node
+           reserve; the former 192 MiB floor rejected fitting ranks. */
         const size_t transients = (size_t)64 * 1024 * 1024;
         size_t work1, work2, case1_bytes, case2_bytes, need;
 
@@ -7925,7 +7958,7 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
     int node_rank, node_ranks, rank, mc, q, source, p = 0;
     int enabled = 0, enabled_ranks, wanted = 0, wanted_ranks;
     int sources = 0;
-    const size_t reserve = (size_t)256 * 1024 * 1024;
+    size_t reserve = 0;
     size_t count = 0, max_source = 0, max_single = 0, capacity = 0;
     size_t free_bytes = 0, total_bytes = 0;
     unsigned long long cap_mb = 1024, reported, max_reported;
@@ -7948,6 +7981,7 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_rank(node_comm, &node_rank);
     MPI_Comm_size(node_comm, &node_ranks);
+    reserve = Force_gpu_node_reserve(node_ranks);
     Force_gpu_pool_flush();
     MPI_Barrier(node_comm);
 
@@ -8373,7 +8407,7 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
     size_t free_bytes = 0, total_bytes = 0;
     unsigned long long available, min_available, host_need, host_max, host_sum = 0;
     unsigned long long device_free, min_device_free = 0, device_need, max_device_need = 0;
-    const size_t reserve = (size_t)256 * 1024 * 1024;
+    size_t reserve = 0;
 
     Force4B_GpuCase1TurnsEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
@@ -8410,6 +8444,7 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
     if (g->device_comm != MPI_COMM_NULL) {
         MPI_Comm_rank(g->device_comm, &g->device_rank);
         MPI_Comm_size(g->device_comm, &g->device_ranks);
+        reserve = Force_gpu_node_reserve(g->device_ranks);
         if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) free_bytes = 0;
         device_free = (unsigned long long)free_bytes;
         MPI_Allreduce(&device_free, &min_device_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, g->device_comm);
@@ -8545,7 +8580,7 @@ static void Force4B_GpuCase1TurnsAccumulate(double***** CDM0, Type_DS_VNA***** D
 static int Force4B_GpuCase1TurnsConcurrency(size_t free_bytes, size_t max_arena,
     int ranks, int requested)
 {
-    const size_t reserve = (size_t)256 * 1024 * 1024;
+    const size_t reserve = Force_gpu_node_reserve(ranks);
     const size_t overhead = (size_t)64 * 1024 * 1024;
     size_t fit;
     if (ranks < 1 || max_arena == 0 || max_arena > SIZE_MAX - overhead
@@ -8918,7 +8953,7 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
     int wanted = 0, wanted_ranks;
     size_t free_bytes = 0, total_bytes = 0, need = 0;
     unsigned long long reported, max_reported;
-    const size_t reserve = (size_t)256 * 1024 * 1024;
+    size_t reserve = 0;
 
     Force4B_GpuCase2StreamEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
@@ -8928,6 +8963,7 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_rank(node_comm, &node_rank);
     MPI_Comm_size(node_comm, &node_ranks);
+    reserve = Force_gpu_node_reserve(node_ranks);
     Force_gpu_pool_flush();
     MPI_Barrier(node_comm);
 
@@ -9409,7 +9445,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 
     /* feasibility: everything is resident at once (tens of MB) */
     {
-        const size_t reserve = (size_t)256 * 1024 * 1024;
+        const size_t reserve = Force_gpu_node_reserve(node_ranks);
         const size_t transients = (size_t)128 * 1024 * 1024;
         size_t need = (4U * g->flat_stride + g->halo_count + 4U * g->c2_stride) * sizeof(double)
             + transients;
@@ -9872,6 +9908,10 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
     int p;
     size_t cpos = 0;
 
+    double hnl_t0 = 0.0, hnl_t1 = 0.0, hnl_t2 = 0.0, hnl_t3 = 0.0;
+    const int hnl_prof = Force_PhaseProfileEnabled();
+
+    if (hnl_prof) dtime(&hnl_t0);
     /* count */
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
@@ -9975,6 +10015,7 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
         Force4B_gpu_abort("Force_HNL GPU: inconsistent second-case batch.");
     }
 
+    if (hnl_prof) dtime(&hnl_t1);
     {
         const double* flat = g->flat_dev;
         size_t c2_len = (g->c2_stride == 0 ? 4 : 4U * g->c2_stride);
@@ -10090,6 +10131,7 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
         }
 
         acc_memcpy_from_device(item_f, arena + o_itemf, sizeof(double) * 3U * (size_t)nitems_c);
+        if (hnl_prof) dtime(&hnl_t2);
         acc_free(arena);
         Force_gpu_pool_flush();
     }
@@ -10186,6 +10228,15 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
     free(item_qn);
     free(item_h);
     free(item_atom);
+    if (hnl_prof) {
+        int myid_p = 0;
+
+        dtime(&hnl_t3);
+        MPI_Comm_rank(mpi_comm_level1, &myid_p);
+        fprintf(stderr, "FORCEHNL2PROF id=%d items=%d build=%.3f device=%.3f post=%.3f\n", myid_p, nitems,
+            hnl_t1 - hnl_t0, hnl_t2 - hnl_t1, hnl_t3 - hnl_t2);
+        fflush(stderr);
+    }
     free(items);
 }
 

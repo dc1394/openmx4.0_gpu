@@ -61,8 +61,12 @@ static int SetOLPKinRadialGpuEnabled(void)
 /* Spherical-Bessel table cache keyed on the exact pair distance r. In
    crystalline systems many pairs share the same r bit pattern, and the
    tables depend only on (r, Lmax, k-grid), so a hit reproduces the computed
-   values exactly. Misses just compute as before. Used only when OpenMP runs
-   single-threaded (plain static storage).
+   values exactly. Misses just compute as before. Every OpenMP thread
+   keeps a cache of its own (no sharing, no locks): the pairs of a thread
+   are a contiguous block of the one-dimensionalized loop, so each thread
+   meets the frequent shells by itself (RTX 5080, sidia333, 6 ranks x 3
+   threads: without the cache the Bessel tables took 8.6 s per rank
+   against 0.2 s with it).
 
    The cache lives for one Set_OLP_Kin call and is freed at its end: all
    real hits come from pairs of the same geometry, while keeping it across
@@ -73,7 +77,8 @@ static int SetOLPKinRadialGpuEnabled(void)
    The entry limit bounds the transient footprint; the high-frequency
    distances of a crystal (the near shells) are also the first ones seen,
    so a modest limit keeps the hits that matter. Override with
-   OPENMX_OLPKIN_BESSEL_CACHE_MAX (0 disables the cache). */
+   OPENMX_OLPKIN_BESSEL_CACHE_MAX (entries per thread; 0 disables the
+   cache). */
 #define OLPKIN_BESSEL_CACHE_DEFAULT 128
 
 static int OLPKin_Bessel_CacheMax(void)
@@ -89,79 +94,83 @@ static int OLPKin_Bessel_CacheMax(void)
   return cached;
 }
 
-static double *OLPKin_bessel_keys = NULL;
-static int *OLPKin_bessel_key_lmax = NULL;
-static double *OLPKin_bessel_tab = NULL;
-static int OLPKin_bessel_count = 0;
-static int OLPKin_bessel_cap = 0;
-static int OLPKin_bessel_lmax = -1;
-static int OLPKin_bessel_gdim = 0;
+typedef struct {
+  double *keys;
+  int *key_lmax;
+  double *tab;
+  int count;
+  int cap;
+  int lmax;       /* the table layout: 2 * (lmax + 1) rows of gdim */
+  int gdim;
+  long hits;
+  long misses;
+} OLPKinBesselCache;
+
+/* the hit and miss counts of all threads of the last call (profile line) */
 static long OLPKin_bessel_hits = 0;
 static long OLPKin_bessel_misses = 0;
 
-static size_t OLPKin_Bessel_Stride(void)
+static size_t OLPKin_Bessel_Stride(const OLPKinBesselCache *c)
 {
-  return 2u * (size_t)(OLPKin_bessel_lmax + 1) * (size_t)OLPKin_bessel_gdim;
+  return 2u * (size_t)(c->lmax + 1) * (size_t)c->gdim;
 }
 
-static const double *OLPKin_Bessel_Lookup(double r, int lmax)
+static const double *OLPKin_Bessel_Lookup(OLPKinBesselCache *c, double r, int lmax)
 {
   int i;
 
-  for (i = 0; i < OLPKin_bessel_count; i++) {
-    if (OLPKin_bessel_keys[i] == r && OLPKin_bessel_key_lmax[i] == lmax) {
-      OLPKin_bessel_hits++;
-      return OLPKin_bessel_tab + (size_t)i * OLPKin_Bessel_Stride();
+  for (i = 0; i < c->count; i++) {
+    if (c->keys[i] == r && c->key_lmax[i] == lmax) {
+      c->hits++;
+      return c->tab + (size_t)i * OLPKin_Bessel_Stride(c);
     }
   }
-  OLPKin_bessel_misses++;
+  c->misses++;
   return NULL;
 }
 
-static void OLPKin_Bessel_Reset(void)
+static void OLPKin_Bessel_Free(OLPKinBesselCache *c)
 {
-  free(OLPKin_bessel_keys);
-  free(OLPKin_bessel_key_lmax);
-  free(OLPKin_bessel_tab);
-  OLPKin_bessel_keys = NULL;
-  OLPKin_bessel_key_lmax = NULL;
-  OLPKin_bessel_tab = NULL;
-  OLPKin_bessel_count = 0;
-  OLPKin_bessel_cap = 0;
-  OLPKin_bessel_lmax = -1;
-  OLPKin_bessel_gdim = 0;
+  free(c->keys);
+  free(c->key_lmax);
+  free(c->tab);
+  c->keys = NULL;
+  c->key_lmax = NULL;
+  c->tab = NULL;
+  c->count = 0;
+  c->cap = 0;
 }
 
-static double *OLPKin_Bessel_Insert(double r, int lmax)
+static double *OLPKin_Bessel_Insert(OLPKinBesselCache *c, double r, int lmax)
 {
   const int cache_max = OLPKin_Bessel_CacheMax();
 
-  if (OLPKin_bessel_count >= cache_max) {
+  if (c->count >= cache_max) {
     return NULL;
   }
 
-  if (OLPKin_bessel_count >= OLPKin_bessel_cap) {
-    int new_cap = (OLPKin_bessel_cap == 0) ? 64 : 2 * OLPKin_bessel_cap;
+  if (c->count >= c->cap) {
+    int new_cap = (c->cap == 0) ? 64 : 2 * c->cap;
     double *new_keys;
     int *new_lmax;
     double *new_tab;
 
     if (new_cap > cache_max) new_cap = cache_max;
-    new_keys = (double*)realloc(OLPKin_bessel_keys, sizeof(double) * (size_t)new_cap);
-    new_lmax = (int*)realloc(OLPKin_bessel_key_lmax, sizeof(int) * (size_t)new_cap);
-    new_tab = (double*)realloc(OLPKin_bessel_tab, sizeof(double) * (size_t)new_cap * OLPKin_Bessel_Stride());
-    if (new_keys != NULL) OLPKin_bessel_keys = new_keys;
-    if (new_lmax != NULL) OLPKin_bessel_key_lmax = new_lmax;
-    if (new_tab != NULL) OLPKin_bessel_tab = new_tab;
+    new_keys = (double*)realloc(c->keys, sizeof(double) * (size_t)new_cap);
+    new_lmax = (int*)realloc(c->key_lmax, sizeof(int) * (size_t)new_cap);
+    new_tab = (double*)realloc(c->tab, sizeof(double) * (size_t)new_cap * OLPKin_Bessel_Stride(c));
+    if (new_keys != NULL) c->keys = new_keys;
+    if (new_lmax != NULL) c->key_lmax = new_lmax;
+    if (new_tab != NULL) c->tab = new_tab;
     if (new_keys == NULL || new_lmax == NULL || new_tab == NULL) {
       return NULL;
     }
-    OLPKin_bessel_cap = new_cap;
+    c->cap = new_cap;
   }
 
-  OLPKin_bessel_keys[OLPKin_bessel_count] = r;
-  OLPKin_bessel_key_lmax[OLPKin_bessel_count] = lmax;
-  return OLPKin_bessel_tab + (size_t)(OLPKin_bessel_count++) * OLPKin_Bessel_Stride();
+  c->keys[c->count] = r;
+  c->key_lmax[c->count] = lmax;
+  return c->tab + (size_t)(c->count++) * OLPKin_Bessel_Stride(c);
 }
 
 /* Runtime phase profiling gated by OPENMX_BAND_PROFILE=1 (one OLPKPROF line
@@ -278,6 +287,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    int grid_dim,max_Lmax_Four_Int;
 	    int use_openacc_radial;
 	    int use_bessel_cache;
+	    OLPKinBesselCache bessel_cache = {0};
 	    int cached_Cwan,cached_Hwan;
 	    int combo_cached_Cwan,combo_cached_Hwan;
 	    int max_combo_count,combo_count,combo,grid_last;
@@ -397,16 +407,9 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    Nthrds = omp_get_num_threads();
 	    Nprocs = omp_get_num_procs();
 	    use_openacc_radial = (SetOLPKinRadialGpuEnabled() && SetOLPKinUseOpenACC() && Nthrds==1);
-	    use_bessel_cache = (Nthrds==1);
-	    if (use_bessel_cache) {
-	      if (OLPKin_bessel_lmax < 0) {
-	        OLPKin_bessel_lmax = max_Lmax_Four_Int;
-	        OLPKin_bessel_gdim = grid_dim;
-	      }
-	      if (OLPKin_bessel_lmax != max_Lmax_Four_Int || OLPKin_bessel_gdim != grid_dim) {
-	        use_bessel_cache = 0;
-	      }
-	    }
+	    use_bessel_cache = (0 < OLPKin_Bessel_CacheMax());
+	    bessel_cache.lmax = max_Lmax_Four_Int;
+	    bessel_cache.gdim = grid_dim;
 
     /* one-dimensionalized loop */
 
@@ -519,15 +522,15 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
       h = (kmax - kmin)/(double)OneD_Grid;
 
 	      if (use_bessel_cache) {
-	        const double *hit = OLPKin_Bessel_Lookup(r, Lmax_Four_Int);
+	        const double *hit = OLPKin_Bessel_Lookup(&bessel_cache, r, Lmax_Four_Int);
 
 	        if (hit != NULL) {
 	          for (l=0; l<=Lmax_Four_Int; l++){
 	            memcpy(SphB[l],  hit + (size_t)l*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
-	            memcpy(SphBp[l], hit + (size_t)(OLPKin_bessel_lmax+1+l)*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
+	            memcpy(SphBp[l], hit + (size_t)(bessel_cache.lmax+1+l)*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
 	          }
 	        } else {
-	          double *slot = OLPKin_Bessel_Insert(r, Lmax_Four_Int);
+	          double *slot = OLPKin_Bessel_Insert(&bessel_cache, r, Lmax_Four_Int);
 
 	          for (i=0; i<grid_dim; i++){
 	            Spherical_Bessel(Normk_grid[i]*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
@@ -538,7 +541,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	            if (slot != NULL) {
 	              for(l=0; l<=Lmax_Four_Int; l++){
 	                slot[(size_t)l*(size_t)grid_dim + (size_t)i] = tmp_SphB[l];
-	                slot[(size_t)(OLPKin_bessel_lmax+1+l)*(size_t)grid_dim + (size_t)i] = tmp_SphBp[l];
+	                slot[(size_t)(bessel_cache.lmax+1+l)*(size_t)grid_dim + (size_t)i] = tmp_SphBp[l];
 	              }
 	            }
 	          }
@@ -1188,6 +1191,14 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    Free2D_dcomplex(CmatKt);
 	    Free2D_dcomplex(CmatKp);
 
+	    if (prof_enabled) {
+#pragma omp atomic
+	      OLPKin_bessel_hits += bessel_cache.hits;
+#pragma omp atomic
+	      OLPKin_bessel_misses += bessel_cache.misses;
+	    }
+	    OLPKin_Bessel_Free(&bessel_cache);
+
 	    free(Normk_grid);
 	    free(RF_BesselCache0);
 	    free(RF_BesselCache1);
@@ -1217,7 +1228,8 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
   /* the exact-r keys cannot match once the geometry moves, so the table's
      useful life ends with this call; give the memory back */
-  OLPKin_Bessel_Reset();
+  OLPKin_bessel_hits = 0;
+  OLPKin_bessel_misses = 0;
 
   free(OneD2h_AN);
   free(OneD2Mc_AN);
