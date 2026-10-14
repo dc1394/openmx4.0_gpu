@@ -245,8 +245,8 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
    initialization makes the driver take the memory while the device is
    still empty, and no later launch needs more.  The value is the largest
    frame of OpenMX's own kernels in this binary, read by cuobjdump at link
-   time (OPENMX_GPU_KERNEL_STACK_BYTES from the Makefile; 0 when the scan
-   is unavailable); nothing happens while it stays within the default.
+   time (OPENMX_GPU_KERNEL_STACK_BYTES from the Makefile; 0 when built
+   without that scan); nothing happens while it stays within the default.
    OPENMX_GPU_STACK_BYTES overrides it, 0 disables the step. */
 #ifndef OPENMX_GPU_KERNEL_STACK_BYTES
 #define OPENMX_GPU_KERNEL_STACK_BYTES 0

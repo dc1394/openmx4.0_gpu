@@ -91,6 +91,8 @@ def main():
     parser.add_argument('--suite', choices=('S', 'L', 'L2', 'L3'), default='L3',
                         help='built-in suite (S means -runtest; default: L3)')
     parser.add_argument('--ranks', type=int, default=8)
+    parser.add_argument('--threads', type=int, default=1,
+                        help='OpenMP threads per MPI rank (also passed as -nt)')
     parser.add_argument('--mpirun', default='mpirun', help='MPI launcher matching the binary')
     parser.add_argument('--map-by', help='optional Open MPI mapping policy')
     parser.add_argument('--cases', nargs='+')
@@ -101,8 +103,8 @@ def main():
                         help='seconds per input; --together resets the timer after each result')
     parser.add_argument('--env', action='append', default=[], metavar='NAME=VALUE')
     args = parser.parse_args()
-    if args.ranks < 1 or args.timeout <= 0 or args.min_available_gib < 0:
-        parser.error('ranks and timeout must be positive; memory reserve must be nonnegative')
+    if args.ranks < 1 or args.threads < 1 or args.timeout <= 0 or args.min_available_gib < 0:
+        parser.error('ranks, threads and timeout must be positive; memory reserve must be nonnegative')
     repo = Path(__file__).resolve().parents[1]
     input_directory = {'S': 'input_example', 'L': 'large_example',
                        'L2': 'large2_example', 'L3': 'large3_example'}[args.suite]
@@ -133,7 +135,7 @@ def main():
     shutil.copy2(binary, output / 'openmx')
     binary = output / 'openmx'
     env = os.environ.copy()
-    env.update(OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
+    env.update(OMP_NUM_THREADS=str(args.threads), OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
     for item in args.env:
         if '=' not in item or not item.split('=', 1)[0]:
             parser.error('--env requires NAME=VALUE')
@@ -143,7 +145,7 @@ def main():
     command = [args.mpirun, '-np', str(args.ranks), '--bind-to', 'core']
     if args.map_by:
         command += ['--map-by', args.map_by]
-    command += [str(binary), test_option, '-nt', '1']
+    command += [str(binary), test_option, '-nt', str(args.threads)]
     gpu = subprocess.run(['nvidia-smi', '--query-gpu=name,compute_cap,memory.total,driver_version',
                           '--format=csv'], capture_output=True, text=True, check=False) if shutil.which('nvidia-smi') else None
     (output / 'command.json').write_text(json.dumps(dict(

@@ -9,7 +9,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / "source/set_cuda_default_device_from_local_rank.c").read_text()
 start = source.index("cudaError_t OpenMX_GpuMemGetInfo(")
-end = source.index("\n/* Many ranks", start)
+end = source.index("\n/* Kernels whose stack frame", start)
 prefix = r'''
 #include <stdio.h>
 #include <stdlib.h>

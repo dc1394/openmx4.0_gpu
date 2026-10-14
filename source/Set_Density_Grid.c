@@ -374,11 +374,9 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   }  
   /* ai_MaxNc is maximum of GridN_Atom[] */
 
-  int gNthrds;
-#pragma omp parallel
-  {
-    gNthrds = omp_get_num_threads();
-  }
+  /* A separate probe team can be smaller than the actual team below when
+     OpenMP adjusts the team size dynamically.  Reserve the upper bound. */
+  const int gNthrds = omp_get_max_threads();
 
   double*** ai_tmpDG_all = (double***)malloc(sizeof(double**)*gNthrds);
 	
@@ -634,8 +632,11 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 	}
       }
 
-      dtime(&Etime_atom);
-      time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
+      /* All threads cooperate on this atom; record its wall time once. */
+      if (OMPID==0){
+        dtime(&Etime_atom);
+        time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
+      }
 
     } /* Mc_AN */
 

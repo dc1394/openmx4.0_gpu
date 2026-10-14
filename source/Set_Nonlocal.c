@@ -1261,6 +1261,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
       }
 
       dtime(&Etime_atom);
+#pragma omp atomic
       time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
     }
 
@@ -1419,7 +1420,6 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   double grid_h;
   double time1,time2,time3;
   double stime,etime;
-  dcomplex ***NLH;
   double *Normk_grid;
   double *tmp_array;
   double *tmp_array2;
@@ -2289,14 +2289,6 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 
   /* allocation of arrays */
 
-  NLH = (dcomplex***)SetNonlocal_MallocArray(3u,sizeof(dcomplex**),"NLH");
-  for (k=0; k<3; k++){
-    NLH[k] = (dcomplex**)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex*),"NLH[k]");
-    for (i=0; i<List_YOUSO[7]; i++){
-      NLH[k][i] = (dcomplex*)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex),"NLH[k][i]");
-    }
-  }
-
   /* the products of the received blocks are threaded over the local atoms:
      one NLH per thread */
   nthreads_halo = omp_get_max_threads();
@@ -2609,14 +2601,6 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 
   free(Rcv_DS_NL_Size);
   free(Snd_DS_NL_Size);
-
-  for (k=0; k<3; k++){
-    for (i=0; i<List_YOUSO[7]; i++){
-      free(NLH[k][i]);
-    }
-    free(NLH[k]);
-  }
-  free(NLH);
 
   for (t=0; t<nthreads_halo; t++){
     for (k=0; k<3; k++){

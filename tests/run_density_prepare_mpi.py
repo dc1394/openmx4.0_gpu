@@ -60,6 +60,7 @@ static int rank_id, resident=1, fail_alloc, density_ranks;
 static int budget_grow, grow_ok=1, otf_available=1;
 static int Host_ID=0, level_stdout=2;
 static size_t registered_need;
+static int Grid_Precision_Kernel(void) { return 2; }
 static int split_calls, reduce_calls;
 static int test_split_type(MPI_Comm comm,int split,int key,MPI_Info info,MPI_Comm *out) {
   split_calls++;
@@ -75,9 +76,9 @@ static int acc_get_device_num(int x) { (void)x; return 0; }
 static int gpu_rank_device_usable(void) { return 1; }
 static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { *f=*t=(size_t)16*1024*1024*1024; return 0; }
 static void OpenMX_GpuPhaseNeed_Register(const char *n,size_t b) { (void)n; registered_need=b; }
-static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { (void)k; return resident; }
+static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { return k==0 && resident; }
 static int Set_Hamiltonian_OnTheFly_DensityPossible(int k,int r) { (void)r; return k==0 && otf_available && !resident; }
-static size_t Set_Hamiltonian_MatrixElements_TotalH(int k,int r) { (void)k; (void)r; return 1; }
+static size_t Set_Hamiltonian_MatrixElements_TotalH(int k,int r) { (void)r; return k==0 ? 1:0; }
 static void Set_Hamiltonian_OnTheFly_SetDensityRanks(int r) { density_ranks=r; }
 static size_t Set_Hamiltonian_OnTheFly_DensityBudget(int s,size_t dm,size_t out,int ranks,
                                                     int *grow,size_t *need,size_t *avail,int id) {
@@ -101,7 +102,7 @@ static int Set_Hamiltonian_GetMatrixElementsTables(int k,SetHamiltonianMETables 
   static int one[1]={1}, two[1]={2}, nc[2]={0,1};
   static size_t zero[1]={0};
   static float orbs[2]={1,2};
-  (void)k;
+  check(k==0,"final density requested different orbital tables");
   memset(t,0,sizeof(*t));
   t->pair_count=1; t->total_h=1; t->total_nolg=2; t->total_orbs0=t->total_orbs1=2;
   t->pair_Mc_AN=t->pair_NO0=t->pair_NO1=one; t->pair_NOLG=two; t->nolg_Nc=nc;
@@ -113,7 +114,7 @@ static int Set_Hamiltonian_GetMatrixElementsTables(int k,SetHamiltonianMETables 
 static void *test_malloc(size_t n) { return fail_alloc ? NULL : malloc(n); }
 '''
 names = ["SDG_env_bool", "SDG_env_mib", "SDG_add_bytes", "SDG_malloc", "SDG_solver_supported",
-         "SDG_local_free", "SDG_local_build", "SDG_local_call_bytes", "SDG_local_prepare",
+         "SDG_local_free", "SDG_local_build", "SDG_local_workspace_bytes", "SDG_local_call_bytes", "SDG_local_prepare",
          "Set_Density_Grid_GPU_Local_Prepare", "Set_Density_Grid_GPU_Local_KeepDistributed",
          "Set_Density_Grid_GPU_Local_Report"]
 census = re.search(r"static struct \{[^}]*\} SDG_census = \{0\};", source).group(0)
@@ -131,9 +132,9 @@ int main(int argc,char **argv) {
   MPI_Init(&argc,&argv); mpi_comm_level1=MPI_COMM_WORLD;
   MPI_Comm_rank(mpi_comm_level1,&rank_id); MPI_Comm_size(mpi_comm_level1,&n);
   check(n==4 || n==18,"run with 4 or 18 ranks");
-  for(int step=0;step<16;step++) {
+  for(int step=0;step<21;step++) {
     if(n==18 && step<7) continue;
-    scf_eigen_lib_flag=GPUSOLVER;
+    scf_eigen_lib_flag=GPUSOLVER; Cnt_switch=0;
     setenv("OPENMX_DENSITY_GRID_GPU_LOCAL","1",1);
     Matomnum=rank_id==2 ? 0:1;
     resident=rank_id!=1; fail_alloc=0;
@@ -158,7 +159,7 @@ int main(int argc,char **argv) {
       expected_keep=step!=6;
     }
     else {
-      SDG_local_free();
+      if(step!=20) SDG_local_free();
       GridN_Atom[1]=GridN_Atom[2]=GridN_Atom[3]=2;
       Matomnum=1; resident=0;
       switch(step) {
@@ -173,8 +174,8 @@ int main(int argc,char **argv) {
         case 10: /* explicit local-mode disable keeps the service policy */
           setenv("OPENMX_DENSITY_GRID_GPU_LOCAL","0",1);
           expected_ok=expected_all=expected_keep=0; break;
-        case 11: /* no OTF implementation for the final Cnt_kind=1 call */
-          cnt_kind=1; expected_ok=expected_all=expected_keep=0; break;
+        case 11: /* final density reuses primitive on-the-fly tables */
+          cnt_kind=1; break;
         case 12: /* successful growth stays entirely distributed */
           budget_grow=1; break;
         case 13: /* a disabled peer must not veto another rank's GPU work */
@@ -185,6 +186,17 @@ int main(int argc,char **argv) {
           expected_ok=rank_id!=0; expected_all=expected_keep=0; break;
         case 15: /* all CPU run clears the previous distributed census */
           scf_eigen_lib_flag=0; expected_ok=expected_all=expected_keep=0; break;
+        case 16: /* final density builds CSR from primitive tables too */
+          cnt_kind=1; resident=1; break;
+        case 17: /* optimized orbitals must not use primitive tables */
+          cnt_kind=1; Cnt_switch=1;
+          expected_ok=expected_all=expected_keep=0; break;
+        case 18: /* unsupported kinds still decline the local path */
+          cnt_kind=2; expected_ok=expected_all=expected_keep=0; break;
+        case 19: /* ordinary density, ready for the final call */
+          resident=1; break;
+        case 20: /* final call must retain the already-built CSR */
+          cnt_kind=1; resident=1; fail_alloc=1; break;
       }
     }
     const int splits_before=split_calls, reductions_before=reduce_calls;
@@ -202,9 +214,13 @@ int main(int argc,char **argv) {
     MPI_Allreduce(&ok,&all_ok,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     check(all_ok==expected_all,"wrong collective eligibility");
     check(ok==expected_ok, "unexpected local preparation");
+    if(ok && Matomnum>0) check(SDG_local.cnt_kind==0,"wrong cached orbital kind");
+    if(step==11) check(SDG_local.otf && SDG_local.otf_dm_count==1,"final OTF density missing");
+    if(step==16 || step==20) check(SDG_local.ready && !SDG_local.otf,"final CSR density missing");
     if(step==0 || step==1) {
       check(density_ranks==1,"wrong OTF rank count");
-      check(registered_need>0,"CSR phase need missing");
+      check(registered_need==2*(7*sizeof(uint32_t)+3*sizeof(double)+2*sizeof(float)),
+            "CSR phase hint omitted transient double-float image");
       if(rank_id==0 || rank_id==3) {
         check(SDG_local.ready && SDG_local.output_count==2,"CSR not ready");
         check(SDG_local.out_ptr[0]==0 && SDG_local.out_ptr[1]==1 && SDG_local.out_ptr[2]==2,"CSR offsets");
@@ -216,7 +232,7 @@ int main(int argc,char **argv) {
     rounds++;
   }
   SDG_local_free();
-  if(rank_id==0) printf("PASS: %d real-MPI rounds on %d ranks, mixed CSR/OTF, empty/cached ranks, allocation failure, mode switch, offset overflow, crowded workspace fallback and CPU collective bypass\n",rounds,n);
+  if(rank_id==0) printf("PASS: %d real-MPI rounds on %d ranks, mixed CSR/OTF, empty/cached ranks, allocation failure, mode switch, offset overflow, crowded workspace fallback, final density table reuse and CPU collective bypass\n",rounds,n);
   MPI_Finalize(); return 0;
 }
 ''')

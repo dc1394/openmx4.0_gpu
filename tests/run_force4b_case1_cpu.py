@@ -328,7 +328,7 @@ int main(void)
 def make_harness(source: str) -> str:
     parts = [common.STUBS, GLOBALS, common.extract_struct(source, "Force4BGpuItem")]
     for name in (
-        "Force_gpu_arena_off", "Force4B_case1_trace_fused_rows", "Force4B_case1_trace_fused", "Force4B_GpuCase1Kernel",
+        "Force_gpu_node_reserve", "Force_gpu_arena_off", "Force4B_case1_trace_fused_rows", "Force4B_case1_trace_fused", "Force4B_GpuCase1Kernel",
         "Force4B_GpuCase1Accumulate",
     ):
         parts.append(common.extract_function(source, name))

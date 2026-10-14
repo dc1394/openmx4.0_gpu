@@ -419,26 +419,41 @@ $(GPUSOLVER2_STAMP): $(GPUSOLVER2_BUILD_CONFIG)
 
 .DEFAULT_GOAL := openmx
 
+# A failed post-link scan or relink must not leave an apparently current binary.
+.DELETE_ON_ERROR:
+
 # The device initialization raises the kernel stack limit to the largest
 # frame of OpenMX's own kernels (cuobjdump -res-usage, STACK), which only
 # the linked binary knows: scan it after the link for the kernels of the
 # objects (not those of the linked libraries, ELPA's among them, whose
 # launches happen where the device has room) and, when the figure changed,
 # rebuild set_cuda_default_device_from_local_rank.o with it and link again
-# (the second link does not change the kernels).  All of OpenMX's kernels
-# fit the driver's default 1 KiB frame at present, so the step is idle.
+# (the second link does not change the kernels).  Commit the stack stamp
+# only after that relink succeeds, so failed builds can be retried safely.
+# All of OpenMX's kernels fit the driver's default 1 KiB frame at present,
+# so the step is idle.
 CUOBJDUMP ?= $(NVHPC_CUDA_HOME)/bin/cuobjdump
 
 openmx:	$(FFTW3_LIB) $(GEMMUL8_LIB) $(OBJS) force_rpath
 	$(CC) $(OBJS) $(STACK) $(GEMMUL8_LIB) $(LIB) -lm -o openmx
-	@for o in $(OBJS); do $(CUOBJDUMP) -res-usage $$o 2>/dev/null; done | sed -n 's/^ *Function \(.*\):$$/\1/p' | sort -u > gpu_kernel_names.tmp; \
-	max=$$($(CUOBJDUMP) -res-usage openmx 2>/dev/null | awk 'NR==FNR {want[$$0]=1; next} /^ *Function / {f=$$2; sub(/:$$/,"",f); keep=(f in want); next} keep {for (i=1;i<=NF;i++) if ($$i ~ /^STACK:/) {split($$i,s,":"); if (s[2]+0>m) m=s[2]+0}} END {print m+0}' gpu_kernel_names.tmp -); \
-	rm -f gpu_kernel_names.tmp; max=$${max:-0}; \
+	@set -e; \
+	trap 'rm -f gpu_kernel_names.tmp gpu_kernel_res.tmp gpu_kernel_err.tmp gpu_kernel_stack.max.tmp' EXIT HUP INT TERM; \
+	: > gpu_kernel_names.tmp; \
+	for o in $(OBJS); do \
+	  if $(CUOBJDUMP) -res-usage $$o > gpu_kernel_res.tmp 2> gpu_kernel_err.tmp; then \
+	    sed -n 's/^[[:space:]]*Function \(.*\):$$/\1/p' gpu_kernel_res.tmp >> gpu_kernel_names.tmp; \
+	  elif ! grep -q 'does not contain device code' gpu_kernel_err.tmp; then \
+	    cat gpu_kernel_err.tmp >&2; exit 1; \
+	  fi; \
+	done; \
+	$(CUOBJDUMP) -res-usage openmx > gpu_kernel_res.tmp; \
+	max=$$(awk 'FILENAME==ARGV[1] {want[$$0]=1; next} /^[[:space:]]*Function / {f=$$2; sub(/:$$/,"",f); keep=(f in want); next} keep {for (i=1;i<=NF;i++) if ($$i ~ /^STACK:/) {split($$i,s,":"); if (s[2]+0>m) m=s[2]+0}} END {print m+0}' gpu_kernel_names.tmp gpu_kernel_res.tmp); \
 	if [ "$$max" != "$$(cat gpu_kernel_stack.max 2>/dev/null)" ]; then \
 	  echo "GPU kernel stack frames: up to $$max bytes per thread; relinking with that limit in the device initialization"; \
-	  echo "$$max" > gpu_kernel_stack.max; \
-	  $(CC) -DOPENMX_GPU_KERNEL_STACK_BYTES=$$max -c set_cuda_default_device_from_local_rank.c && \
+	  $(CC) -DOPENMX_GPU_KERNEL_STACK_BYTES=$$max -c set_cuda_default_device_from_local_rank.c; \
 	  $(CC) $(OBJS) $(STACK) $(GEMMUL8_LIB) $(LIB) -lm -o openmx; \
+	  printf '%s\n' "$$max" > gpu_kernel_stack.max.tmp; \
+	  mv gpu_kernel_stack.max.tmp gpu_kernel_stack.max; \
 	fi
 	./force_rpath openmx
 

@@ -83,15 +83,10 @@ static int SetOLPKinRadialGpuEnabled(void)
 
 static int OLPKin_Bessel_CacheMax(void)
 {
-  static int cached = -1;
+  const char *value = getenv("OPENMX_OLPKIN_BESSEL_CACHE_MAX");
+  int limit = (value != NULL && value[0] != '\0') ? atoi(value) : OLPKIN_BESSEL_CACHE_DEFAULT;
 
-  if (cached < 0) {
-    const char *value = getenv("OPENMX_OLPKIN_BESSEL_CACHE_MAX");
-
-    cached = (value != NULL && value[0] != '\0') ? atoi(value) : OLPKIN_BESSEL_CACHE_DEFAULT;
-    if (cached < 0) cached = 0;
-  }
-  return cached;
+  return (limit < 0) ? 0 : limit;
 }
 
 typedef struct {
@@ -141,10 +136,8 @@ static void OLPKin_Bessel_Free(OLPKinBesselCache *c)
   c->cap = 0;
 }
 
-static double *OLPKin_Bessel_Insert(OLPKinBesselCache *c, double r, int lmax)
+static double *OLPKin_Bessel_Insert(OLPKinBesselCache *c, double r, int lmax, int cache_max)
 {
-  const int cache_max = OLPKin_Bessel_CacheMax();
-
   if (c->count >= cache_max) {
     return NULL;
   }
@@ -187,13 +180,9 @@ static SetOLPKinProfileCounters SetOLP_prof = {0};
 
 static int SetOLP_ProfileEnabled(void)
 {
-  static int enabled = -1;
+  const char *value = getenv("OPENMX_BAND_PROFILE");
 
-  if (enabled < 0) {
-    const char *value = getenv("OPENMX_BAND_PROFILE");
-    enabled = (value != NULL && atoi(value) != 0);
-  }
-  return enabled;
+  return (value != NULL && atoi(value) != 0);
 }
 
 
@@ -211,6 +200,10 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
   int Mc_AN,Gc_AN,h_AN;
   int OneD_Nloop;
   int *OneD2Mc_AN,*OneD2h_AN;
+  /* Resolve runtime options before entering OpenMP.  A lazy shared static
+     initialization from the worker threads races on the first call. */
+  const int bessel_cache_max = OLPKin_Bessel_CacheMax();
+  const int prof_enabled = SetOLP_ProfileEnabled();
 
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -341,7 +334,6 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    size_t rf_cache_elems,sum_cache_elems;
 	    double prof_t0_local = 0.0, prof_t1_local = 0.0;
 	    double prof_bessel = 0.0, prof_radial = 0.0, prof_gaunt = 0.0, prof_c2r = 0.0;
-	    const int prof_enabled = SetOLP_ProfileEnabled();
 
     /****************************************************************
                           allocation of arrays:
@@ -406,8 +398,8 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    OMPID = omp_get_thread_num();
 	    Nthrds = omp_get_num_threads();
 	    Nprocs = omp_get_num_procs();
-	    use_openacc_radial = (SetOLPKinRadialGpuEnabled() && SetOLPKinUseOpenACC() && Nthrds==1);
-	    use_bessel_cache = (0 < OLPKin_Bessel_CacheMax());
+	    use_openacc_radial = (Nthrds==1 && SetOLPKinRadialGpuEnabled() && SetOLPKinUseOpenACC());
+	    use_bessel_cache = (0 < bessel_cache_max);
 	    bessel_cache.lmax = max_Lmax_Four_Int;
 	    bessel_cache.gdim = grid_dim;
 
@@ -530,7 +522,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	            memcpy(SphBp[l], hit + (size_t)(bessel_cache.lmax+1+l)*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
 	          }
 	        } else {
-	          double *slot = OLPKin_Bessel_Insert(&bessel_cache, r, Lmax_Four_Int);
+	          double *slot = OLPKin_Bessel_Insert(&bessel_cache, r, Lmax_Four_Int, bessel_cache_max);
 
 	          for (i=0; i<grid_dim; i++){
 	            Spherical_Bessel(Normk_grid[i]*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
@@ -1152,6 +1144,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
       }
 
       dtime(&Etime_atom);
+#pragma omp atomic
       time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
     } /* end of loop for Nloop */
 
@@ -1219,7 +1212,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                    freeing of arrays:
   ****************************************************/
 
-  if (SetOLP_ProfileEnabled()) {
+  if (prof_enabled) {
     fprintf(stderr, "OLPKPROF id=%d pairs=%d bessel=%.3f radial=%.3f gaunt=%.3f c2r=%.3f bhit=%ld bmiss=%ld\n", myid,
             OneD_Nloop, SetOLP_prof.bessel, SetOLP_prof.radial, SetOLP_prof.gaunt, SetOLP_prof.c2r,
             OLPKin_bessel_hits, OLPKin_bessel_misses);

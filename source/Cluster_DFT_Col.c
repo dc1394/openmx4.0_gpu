@@ -3750,6 +3750,72 @@ double Cluster_DFT_Col(
 
 
 
+/* The local eigenvector panel already stores each basis row contiguously.
+   Read it directly instead of duplicating both atoms' rows in every OpenMP
+   thread.  size_t row offsets also cover panels larger than INT_MAX entries. */
+static void ClusterCol_AccumulateDM_CPU(int size_H1, int nk, int *MP,
+                                        const double *occ, const double *eig, const double *docc,
+                                        const double *evec, double *DM1, double *EDM1, double *PDM1)
+{
+    size_t *atom_p;
+    size_t pcount = 0;
+    const int with_pdm = (docc!=NULL && PDM1!=NULL);
+
+    /* Empty state partitions contribute only the caller's zeroed arrays. */
+    if (nk<=0) return;
+
+    atom_p = (size_t*)ClusterCol_MallocArray((size_t)atomnum+1,sizeof(size_t),"CPU DM atom offsets");
+    for (int GA_AN=1; GA_AN<=atomnum; GA_AN++){
+        const int tnoA = Spe_Total_CNO[WhatSpecies[GA_AN]];
+        atom_p[GA_AN] = pcount;
+        for (int LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+            const int GB_AN = natn[GA_AN][LB_AN];
+            pcount += (size_t)tnoA*(size_t)Spe_Total_CNO[WhatSpecies[GB_AN]];
+        }
+    }
+    if (pcount!=(size_t)size_H1){
+        free(atom_p);
+        ClusterCol_AbortWithMessage("CPU DM entry count mismatch in Cluster_DFT_Col.c.");
+    }
+
+    /* One atom per task also uses several threads for small heavy-atom systems. */
+#pragma omp parallel for schedule(dynamic,1)
+    for (int GA_AN=1; GA_AN<=atomnum; GA_AN++){
+        const int tnoA = Spe_Total_CNO[WhatSpecies[GA_AN]];
+        const size_t arow = (size_t)(MP[GA_AN]-1);
+        size_t p = atom_p[GA_AN];
+
+        for (int LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
+            const int GB_AN = natn[GA_AN][LB_AN];
+            const int tnoB = Spe_Total_CNO[WhatSpecies[GB_AN]];
+            const size_t brow = (size_t)(MP[GB_AN]-1);
+
+            for (int i=0; i<tnoA; i++){
+                const double *e0 = evec+(arow+(size_t)i)*(size_t)nk;
+                for (int j=0; j<tnoB; j++){
+                    const double *e1 = evec+(brow+(size_t)j)*(size_t)nk;
+                    double sum1 = 0.0, sum2 = 0.0;
+
+                    for (int k=0; k<nk; k++){
+                        const double dum = occ[k]*e0[k]*e1[k];
+                        sum1 += dum;
+                        sum2 += dum*eig[k];
+                    }
+                    DM1[p] = sum1;
+                    EDM1[p] = sum2;
+                    if (with_pdm){
+                        sum1 = 0.0;
+                        for (int k=0; k<nk; k++) sum1 += docc[k]*e0[k]*e1[k];
+                        PDM1[p] = sum1;
+                    }
+                    p++;
+                }
+            }
+        }
+    }
+    free(atom_p);
+}
+
 double Calc_DM_Cluster_collinear(
     int myid0,
     int numprocs0,
@@ -3783,7 +3849,6 @@ double Calc_DM_Cluster_collinear(
   MPI_Status stat;
   MPI_Request request;
   double *FF,*dFF;
-  double **TmpEVec0,**TmpEVec1;
 
   dtime(&stime);
 
@@ -3794,16 +3859,6 @@ double Calc_DM_Cluster_collinear(
 
   FF = (double*)malloc(sizeof(double)*(n+1));
   dFF = (double*)malloc(sizeof(double)*(n+1));
-
-  TmpEVec0 = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-  for (i=0; i<List_YOUSO[7]; i++){
-    TmpEVec0[i] = (double*)malloc(sizeof(double)*(kmax-kmin+1));
-  }
-
-  TmpEVec1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-  for (i=0; i<List_YOUSO[7]; i++){
-    TmpEVec1[i] = (double*)malloc(sizeof(double)*(kmax-kmin+1));
-  }
 
   /* spin=myworld1 */
 
@@ -3894,105 +3949,11 @@ double Calc_DM_Cluster_collinear(
     free(occ);
   }
 
-  if (!gpu_dm_done){
-
-  /* The CPU accumulation over the rank's slice of states, threaded over the
-     atoms.  Every thread writes the packed blocks of its own atoms (their
-     offsets are counted beforehand) with the same summation order over the
-     states as the serial loop, so the result does not depend on the thread
-     count.  A rank that does not own the dense solve spends its share of
-     the diagonalization phase here, on one core per rank before this. */
-  {
-    const int nk = kmax - kmin + 1;
-    size_t *atom_p = (size_t*)malloc(sizeof(size_t)*(size_t)(atomnum+2));
-    size_t pcount = 0;
-
-    for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
-      atom_p[GA_AN] = pcount;
-      tnoA = Spe_Total_CNO[WhatSpecies[GA_AN]];
-      for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
-        GB_AN = natn[GA_AN][LB_AN];
-        pcount += (size_t)tnoA*(size_t)Spe_Total_CNO[WhatSpecies[GB_AN]];
-      }
-    }
-    atom_p[atomnum+1] = pcount;
-
-#pragma omp parallel private(GA_AN,wanA,tnoA,Anum,i,i0,k,LB_AN,GB_AN,wanB,tnoB,Bnum,j,j0,sum1,sum2,dum)
-    {
-      /* the eigenvector rows of the atom and of its neighbour, per thread */
-      double *ev0 = (double*)malloc(sizeof(double)*(size_t)List_YOUSO[7]*(size_t)nk);
-      double *ev1 = (double*)malloc(sizeof(double)*(size_t)List_YOUSO[7]*(size_t)nk);
-
-#pragma omp for schedule(dynamic,8)
-      for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
-        size_t q = atom_p[GA_AN];
-
-        wanA = WhatSpecies[GA_AN];
-        tnoA = Spe_Total_CNO[wanA];
-        Anum = MP[GA_AN];
-
-        for (i=0; i<tnoA; i++){
-          i0 = (Anum + i - 1)*nk - kmin;
-          for (k=kmin; k<=kmax; k++){
-            ev0[(size_t)i*(size_t)nk + (size_t)(k-kmin)] = EVec1[spin][i0+k];
-          }
-        }
-
-        for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
-
-          GB_AN = natn[GA_AN][LB_AN];
-          wanB = WhatSpecies[GB_AN];
-          tnoB = Spe_Total_CNO[wanB];
-          Bnum = MP[GB_AN];
-
-          for (j=0; j<tnoB; j++){
-            j0 = (Bnum + j - 1)*nk - kmin;
-            for (k=kmin; k<=kmax; k++){
-              ev1[(size_t)j*(size_t)nk + (size_t)(k-kmin)] = EVec1[spin][j0+k];
-            }
-          }
-
-          for (i=0; i<tnoA; i++){
-            const double *e0 = ev0 + (size_t)i*(size_t)nk;
-
-            for (j=0; j<tnoB; j++){
-              const double *e1 = ev1 + (size_t)j*(size_t)nk;
-
-              sum1 = 0.0;
-              sum2 = 0.0;
-
-              for (k=kmin; k<=kmax; k++){
-                dum = FF[k]*e0[k-kmin]*e1[k-kmin];
-                sum1 += dum;
-                sum2 += dum*ko[spin][k];
-              }
-
-              DM1[q]  = sum1;
-              EDM1[q] = sum2;
-
-              if (cal_partial_charge){
-
-                sum1 = 0.0;
-                for (k=kmin; k<=kmax; k++){
-                  sum1 += dFF[k]*e0[k-kmin]*e1[k-kmin];
-                }
-                PDM1[q] = sum1;
-              }
-
-              q++;
-            }
-          }
-        }
-      } /* GA_AN */
-
-      free(ev1);
-      free(ev0);
-    }
-
-    free(atom_p);
+  if (!gpu_dm_done && kmin<=kmax){
+    ClusterCol_AccumulateDM_CPU(size_H1,kmax-kmin+1,MP,FF+kmin,ko[spin]+kmin,
+                               cal_partial_charge ? dFF+kmin : NULL,EVec1[spin],
+                               DM1,EDM1,cal_partial_charge ? PDM1 : NULL);
   }
-
-  } /* CPU fallback */
 
   dtime(&dm_compute_end);
 
@@ -4177,16 +4138,6 @@ double Calc_DM_Cluster_collinear(
 
   free(dFF);
   free(FF);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(TmpEVec0[i]);
-  }
-  free(TmpEVec0);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(TmpEVec1[i]);
-  }
-  free(TmpEVec1);
 
   dtime(&etime);
   if (ClusterCol_DMProfileEnabled()){

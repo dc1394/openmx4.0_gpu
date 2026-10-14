@@ -190,9 +190,9 @@ static void SOG_point_eval(int wan, int no, double gx, double gy, double gz,
         m = 4;
         rm = rv[m];
 
-        h1 = rv[m - 1] - rv[m - 2];
+        h1 = (m == 1) ? rv[m - 1] - rv[m + 1] : rv[m - 1] - rv[m - 2];
         h2 = rv[m] - rv[m - 1];
-        h3 = rv[m + 1] - rv[m];
+        h3 = (m == mesh - 1) ? rv[m - 2] - rv[m] : rv[m + 1] - rv[m];
 
         x1 = rm - rv[m - 1];
         x2 = rm - rv[m];
@@ -209,9 +209,9 @@ static void SOG_point_eval(int wan, int no, double gx, double gy, double gz,
         while (1 < m && R <= rv[m - 1]) m--;
         while (m < mesh - 1 && rv[m] < R) m++;
 
-        h1 = rv[m - 1] - rv[m - 2];
+        h1 = (m == 1) ? rv[m - 1] - rv[m + 1] : rv[m - 1] - rv[m - 2];
         h2 = rv[m] - rv[m - 1];
-        h3 = rv[m + 1] - rv[m];
+        h3 = (m == mesh - 1) ? rv[m - 2] - rv[m] : rv[m + 1] - rv[m];
 
         x1 = R - rv[m - 1];
         x2 = R - rv[m];
@@ -235,22 +235,13 @@ static void SOG_point_eval(int wan, int no, double gx, double gy, double gz,
         for (Mul0 = 0; Mul0 < nb; Mul0++) {
 
           const double *rw = rwf_all + rrow;
-          double f1 = rw[m - 2];
+          double f1 = rw[m == 1 ? m + 1 : m - 2];
           double f2 = rw[m - 1];
           double f3 = rw[m];
-          double f4 = rw[m + 1];
+          double f4 = rw[m == mesh - 1 ? m - 2 : m + 1];
           double g1, g2, f;
 
           rrow += (size_t)mesh;
-
-          if (m == 1) {
-            h1 = -(h2 + h3);
-            f1 = f4;
-          }
-          else if (m == (mesh - 1)) {
-            h3 = -(h1 + h2);
-            f4 = f1;
-          }
 
           dum = f3 - f2;
           g1 = dum * dum1 + (f2 - f1) * dum2;
@@ -1602,9 +1593,12 @@ double Set_Orbitals_Grid(int Cnt_kind)
 	    m = 4;
 	    rm = Spe_PAO_RV[wan][m];
 
-	    h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+	    /* Use reflected endpoint samples before forming the spline weights. */
+	    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+	      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
 	    h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-	    h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+	    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+	      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
 	    x1 = rm - Spe_PAO_RV[wan][m-1];
 	    x2 = rm - Spe_PAO_RV[wan][m];
@@ -1623,19 +1617,10 @@ double Set_Orbitals_Grid(int Cnt_kind)
 	    for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
 	      for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 
-		f1 = Spe_PAO_RWF[wan][L0][Mul0][m-2];
+		f1 = Spe_PAO_RWF[wan][L0][Mul0][(m==1) ? m+1 : m-2];
 		f2 = Spe_PAO_RWF[wan][L0][Mul0][m-1];
 		f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-		f4 = Spe_PAO_RWF[wan][L0][Mul0][m+1];
-
-		if (m==1){
-		  h1 = -(h2+h3);
-		  f1 = f4;
-		}
-		else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-		  h3 = -(h1+h2);
-		  f4 = f1;
-		}
+		f4 = Spe_PAO_RWF[wan][L0][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
 		dum = f3 - f2;
 		g1 = dum*dum1 + (f2-f1)*dum2;
@@ -1689,9 +1674,11 @@ double Set_Orbitals_Grid(int Cnt_kind)
 	    while((mp_max-mp_min)!=1);
 	    m = mp_max;
 
-	    h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+	    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+	      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
 	    h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-	    h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+	    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+	      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
 	    x1 = R - Spe_PAO_RV[wan][m-1];
 	    x2 = R - Spe_PAO_RV[wan][m];
@@ -1710,19 +1697,10 @@ double Set_Orbitals_Grid(int Cnt_kind)
 	    for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
 	      for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 
-		f1 = Spe_PAO_RWF[wan][L0][Mul0][m-2];
+		f1 = Spe_PAO_RWF[wan][L0][Mul0][(m==1) ? m+1 : m-2];
 		f2 = Spe_PAO_RWF[wan][L0][Mul0][m-1];
 		f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-		f4 = Spe_PAO_RWF[wan][L0][Mul0][m+1];
-
-		if (m==1){
-		  h1 = -(h2+h3);
-		  f1 = f4;
-		}
-		else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-		  h3 = -(h1+h2);
-		  f4 = f1;
-		}
+		f4 = Spe_PAO_RWF[wan][L0][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
 		dum = f3 - f2;
 		g1 = dum*dum1 + (f2-f1)*dum2;
@@ -1806,7 +1784,7 @@ double Set_Orbitals_Grid(int Cnt_kind)
 	    for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 	      for (M0=0; M0<=2*L0; M0++){
 		i1++;
-		Chi0[i1] = RF[L0][Mul0]*AF[L0][M0];
+		Chi0[i1] = (po==0) ? RF[L0][Mul0]*AF[L0][M0] : 0.0;
 	      }
 	    }
 	  }
@@ -1997,9 +1975,11 @@ double Set_Orbitals_Grid(int Cnt_kind)
 		m = 4;
 		rm = Spe_PAO_RV[wan][m];
 
-		h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+		h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+		  : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
 		h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-		h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+		h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+		  : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
 		x1 = rm - Spe_PAO_RV[wan][m-1];
 		x2 = rm - Spe_PAO_RV[wan][m];
@@ -2018,19 +1998,10 @@ double Set_Orbitals_Grid(int Cnt_kind)
 		for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
 		  for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 
-		    f1 = Spe_PAO_RWF[wan][L0][Mul0][m-2];
+		    f1 = Spe_PAO_RWF[wan][L0][Mul0][(m==1) ? m+1 : m-2];
 		    f2 = Spe_PAO_RWF[wan][L0][Mul0][m-1];
 		    f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-		    f4 = Spe_PAO_RWF[wan][L0][Mul0][m+1];
-
-		    if (m==1){
-		      h1 = -(h2+h3);
-		      f1 = f4;
-		    }
-		    else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-		      h3 = -(h1+h2);
-		      f4 = f1;
-		    }
+		    f4 = Spe_PAO_RWF[wan][L0][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
 		    dum = f3 - f2;
 		    g1 = dum*dum1 + (f2-f1)*dum2;
@@ -2084,9 +2055,11 @@ double Set_Orbitals_Grid(int Cnt_kind)
 		while((mp_max-mp_min)!=1);
 		m = mp_max;
 
-		h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+		h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+		  : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
 		h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-		h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+		h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+		  : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
 		x1 = R - Spe_PAO_RV[wan][m-1];
 		x2 = R - Spe_PAO_RV[wan][m];
@@ -2105,19 +2078,10 @@ double Set_Orbitals_Grid(int Cnt_kind)
 		for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
 		  for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 
-		    f1 = Spe_PAO_RWF[wan][L0][Mul0][m-2];
+		    f1 = Spe_PAO_RWF[wan][L0][Mul0][(m==1) ? m+1 : m-2];
 		    f2 = Spe_PAO_RWF[wan][L0][Mul0][m-1];
 		    f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-		    f4 = Spe_PAO_RWF[wan][L0][Mul0][m+1];
-
-		    if (m==1){
-		      h1 = -(h2+h3);
-		      f1 = f4;
-		    }
-		    else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-		      h3 = -(h1+h2);
-		      f4 = f1;
-		    }
+		    f4 = Spe_PAO_RWF[wan][L0][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
 		    dum = f3 - f2;
 		    g1 = dum*dum1 + (f2-f1)*dum2;
@@ -2201,7 +2165,7 @@ double Set_Orbitals_Grid(int Cnt_kind)
 		for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 		  for (M0=0; M0<=2*L0; M0++){
 		    i1++;
-		    Chi0[i1] = RF[L0][Mul0]*AF[L0][M0];
+		    Chi0[i1] = (po==0) ? RF[L0][Mul0]*AF[L0][M0] : 0.0;
 		  }
 		}
 	      }

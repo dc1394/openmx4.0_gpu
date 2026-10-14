@@ -363,7 +363,7 @@ int main(void)
 
 def make_harness(source: str) -> str:
     parts = [STUBS, extract_struct(source, "Force4BGpuItem")]
-    for name in ("Force_gpu_arena_off", "Force4B_case2_trace_fused", "Force4B_GpuCase2Kernel"):
+    for name in ("Force_gpu_node_reserve", "Force_gpu_arena_off", "Force4B_case2_trace_fused", "Force4B_GpuCase2Kernel"):
         parts.append(extract_function(source, name))
     parts.extend(extract_struct(source, name) for name in ("Force4BCase2Plan", "Force4BCase2Stream"))
     parts.append("static Force4BCase2Stream F4B_stream = { 0 };\n")

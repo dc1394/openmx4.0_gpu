@@ -15,6 +15,8 @@ libtool
 /source/openmx
 /work/openmx
 /source/force_rpath
+/source/gpu_kernel_stack.max
+/source/gpu_kernel_*.tmp
 /source/*.mod
 /source/third_party/fftw3-install/
 

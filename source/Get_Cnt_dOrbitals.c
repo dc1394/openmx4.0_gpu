@@ -73,7 +73,8 @@ void Get_Cnt_dOrbitals(int Mc_AN, double x, double y, double z, double **dChi)
 
   /* start calc. */
 
-  Gc_AN = M2G[Mc_AN];
+  /* Grid halo callers also pass extended local indices. */
+  Gc_AN = F_M2G[Mc_AN];
   Rmin = 10e-12;
   wan = WhatSpecies[Gc_AN];
   xyz2spherical(x,y,z,0.0,0.0,0.0,S_coordinate);
@@ -122,9 +123,12 @@ void Get_Cnt_dOrbitals(int Mc_AN, double x, double y, double z, double **dChi)
     while((mp_max-mp_min)!=1);
     m = mp_max;
 
-    h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+    /* Use reflected endpoint samples before forming the spline weights. */
+    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
     h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-    h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
     x1 = R - Spe_PAO_RV[wan][m-1];
     x2 = R - Spe_PAO_RV[wan][m];
@@ -143,19 +147,10 @@ void Get_Cnt_dOrbitals(int Mc_AN, double x, double y, double z, double **dChi)
     for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
       for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 
-        f1 = Spe_PAO_RWF[wan][L0][Mul0][m-2];
+        f1 = Spe_PAO_RWF[wan][L0][Mul0][(m==1) ? m+1 : m-2];
         f2 = Spe_PAO_RWF[wan][L0][Mul0][m-1];
         f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-        f4 = Spe_PAO_RWF[wan][L0][Mul0][m+1];
-
-        if (m==1){
-          h1 = -(h2+h3);
-          f1 = f4;
-        }
-        else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-          h3 = -(h1+h2);
-          f4 = f1;
-        }
+        f4 = Spe_PAO_RWF[wan][L0][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
         dum = f3 - f2;
         g1 = dum*dum1 + (f2-f1)*dum2;
@@ -338,6 +333,11 @@ void Get_Cnt_dOrbitals(int Mc_AN, double x, double y, double z, double **dChi)
     for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
       for (M0=0; M0<=2*L0; M0++){
         al++;
+        if (po!=0){
+          dChi[0][al] = dChi[1][al] = 0.0;
+          dChi[2][al] = dChi[3][al] = 0.0;
+          continue;
+        }
 
         tmp0 = 0.0;
         tmp1 = 0.0;
@@ -454,7 +454,7 @@ void Get_Cnt_dOrbitals2(int Mc_AN, double x, double y, double z, double **dChi)
 
   /* start calc. */
 
-  Gc_AN = M2G[Mc_AN];
+  Gc_AN = F_M2G[Mc_AN];
   Rmin = 10e-12;
   wan = WhatSpecies[Gc_AN];
   xyz2spherical(x,y,z,0.0,0.0,0.0,S_coordinate);
@@ -503,9 +503,11 @@ void Get_Cnt_dOrbitals2(int Mc_AN, double x, double y, double z, double **dChi)
     while((mp_max-mp_min)!=1);
     m = mp_max;
 
-    h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
     h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-    h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
     x1 = R - Spe_PAO_RV[wan][m-1];
     x2 = R - Spe_PAO_RV[wan][m];
@@ -524,19 +526,10 @@ void Get_Cnt_dOrbitals2(int Mc_AN, double x, double y, double z, double **dChi)
     for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
       for (Mul0=0; Mul0<Spe_Num_Basis[wan][L0]; Mul0++){
 
-        f1 = Spe_PAO_RWF[wan][L0][Mul0][m-2];
+        f1 = Spe_PAO_RWF[wan][L0][Mul0][(m==1) ? m+1 : m-2];
         f2 = Spe_PAO_RWF[wan][L0][Mul0][m-1];
         f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-        f4 = Spe_PAO_RWF[wan][L0][Mul0][m+1];
-
-        if (m==1){
-          h1 = -(h2+h3);
-          f1 = f4;
-        }
-        else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-          h3 = -(h1+h2);
-          f4 = f1;
-        }
+        f4 = Spe_PAO_RWF[wan][L0][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
         dum = f3 - f2;
         g1 = dum*dum1 + (f2-f1)*dum2;
@@ -719,6 +712,11 @@ void Get_Cnt_dOrbitals2(int Mc_AN, double x, double y, double z, double **dChi)
     for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
       for (M0=0; M0<=2*L0; M0++){
         al++;
+        if (po!=0){
+          dChi[0][al] = dChi[1][al] = 0.0;
+          dChi[2][al] = dChi[3][al] = 0.0;
+          continue;
+        }
 
         tmp0 = 0.0;
         tmp1 = 0.0;

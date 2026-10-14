@@ -720,9 +720,11 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
     m = 4;
     rm = Spe_PAO_RV[wan][m];
 
-    h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
     h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-    h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
     x1 = rm - Spe_PAO_RV[wan][m-1];
     x2 = rm - Spe_PAO_RV[wan][m];
@@ -749,19 +751,10 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
           printf("Fatal error in calculating Voronoi orbital moments\n");
         }
  
-        f1 = Spe_PAO_RWF[wan][L][Mul0][m-2];
+        f1 = Spe_PAO_RWF[wan][L][Mul0][(m==1) ? m+1 : m-2];
         f2 = Spe_PAO_RWF[wan][L][Mul0][m-1];
         f3 = Spe_PAO_RWF[wan][L][Mul0][m];
-        f4 = Spe_PAO_RWF[wan][L][Mul0][m+1];
-
-        if (m==1){
-          h1 = -(h2+h3);
-          f1 = f4;
-        }
-        else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-          h3 = -(h1+h2);
-          f4 = f1;
-        }
+        f4 = Spe_PAO_RWF[wan][L][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
         dum = f3 - f2;
         g1 = dum*dum1 + (f2-f1)*dum2;
@@ -815,9 +808,11 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
     while((mp_max-mp_min)!=1);
     m = mp_max;
 
-    h1 = Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
+    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
+      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
     h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-    h3 = Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
+      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
 
     x1 = R - Spe_PAO_RV[wan][m-1];
     x2 = R - Spe_PAO_RV[wan][m];
@@ -840,19 +835,10 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
 
       for (Mul0=0; Mul0<Nmul; Mul0++){
 
-        f1 = Spe_PAO_RWF[wan][L][Mul0][m-2];
+        f1 = Spe_PAO_RWF[wan][L][Mul0][(m==1) ? m+1 : m-2];
         f2 = Spe_PAO_RWF[wan][L][Mul0][m-1];
         f3 = Spe_PAO_RWF[wan][L][Mul0][m];
-        f4 = Spe_PAO_RWF[wan][L][Mul0][m+1];
-
-        if (m==1){
-          h1 = -(h2+h3);
-          f1 = f4;
-        }
-        else if (m==(Spe_Num_Mesh_PAO[wan]-1)){
-          h3 = -(h1+h2);
-          f4 = f1;
-        }
+        f4 = Spe_PAO_RWF[wan][L][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
 
         dum = f3 - f2;
         g1 = dum*dum1 + (f2-f1)*dum2;
@@ -913,7 +899,7 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
   for (L0=0; L0<=Lmax; L0++){
     for (M0=0; M0<=2*L0; M0++){
       for (Mul0=0; Mul0<Nmul; Mul0++){
-        Chi[L0][M0][Mul0] = RF[L0][Mul0]*AF[L0][M0];
+        Chi[L0][M0][Mul0] = (po==0) ? RF[L0][Mul0]*AF[L0][M0] : 0.0;
       }
     }
   }

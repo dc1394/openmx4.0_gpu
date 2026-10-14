@@ -1219,17 +1219,33 @@ static int SDG_local_build(int Cnt_kind, int spin_count)
   return 1;
 }
 
+/* Peak storage owned by local density, excluding shared orbital tables. */
+static size_t SDG_local_workspace_bytes(const SDGLocalContext *c)
+{
+  size_t bytes = c->extra_bytes;
+  const int mode = Grid_Precision_Kernel();
+
+  /* The FP32/DF contraction stages an additional density-matrix image
+     even when all CSR buffers are resident.  Include it in the rank's
+     admission check and in the workspace budget shared with OTF ranks. */
+  if ((mode == 1 || mode == 2) &&
+      !SDG_add_bytes(&bytes, c->dm_count, (mode == 2 ? 2 : 1) * sizeof(float))) return SIZE_MAX;
+  return bytes;
+}
+
 /* Device bytes this call would stage on top of what is already resident. */
 static size_t SDG_local_call_bytes(const SDGLocalContext *c)
 {
-  size_t bytes = c->device_resident ? 0 : c->extra_bytes;
+  size_t bytes = SDG_local_workspace_bytes(c);
 
-  if (!c->t.orbs0_resident) (void)SDG_add_bytes(&bytes, c->t.total_orbs0, sizeof(Type_Orbs_Grid));
-  if (!c->t.orbs1_resident) (void)SDG_add_bytes(&bytes, c->t.total_orbs1, sizeof(Type_Orbs_Grid));
-  if (!c->t.nolg_resident) (void)SDG_add_bytes(&bytes, c->t.total_nolg, sizeof(int));
+  if (bytes == SIZE_MAX) return SIZE_MAX;
+  if (c->device_resident) bytes -= c->extra_bytes;
+  if (!c->t.orbs0_resident && !SDG_add_bytes(&bytes, c->t.total_orbs0, sizeof(Type_Orbs_Grid))) return SIZE_MAX;
+  if (!c->t.orbs1_resident && !SDG_add_bytes(&bytes, c->t.total_orbs1, sizeof(Type_Orbs_Grid))) return SIZE_MAX;
+  if (!c->t.nolg_resident && !SDG_add_bytes(&bytes, c->t.total_nolg, sizeof(int))) return SIZE_MAX;
   if (!c->t.meta_resident) {
-    (void)SDG_add_bytes(&bytes, (size_t)c->t.pair_count * 2, sizeof(int));
-    (void)SDG_add_bytes(&bytes, (size_t)c->t.pair_count * 4, sizeof(size_t));
+    if (!SDG_add_bytes(&bytes, (size_t)c->t.pair_count, 2 * sizeof(int)) ||
+        !SDG_add_bytes(&bytes, (size_t)c->t.pair_count, 4 * sizeof(size_t))) return SIZE_MAX;
   }
   return bytes;
 }
@@ -1444,7 +1460,10 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
 
   /* Publish CSR needs on the same communicator as the original policy;
      ranks without CSR buffers contribute zero.  The census rides along. */
-  counts[0] = SDG_local.ready && !SDG_local.otf ? (unsigned long long)SDG_local.extra_bytes : 0ULL;
+  /* Include the transient precision image in the next-phase hint too, so
+     Set_Hamiltonian can release enough resident storage before density. */
+  counts[0] = SDG_local.ready && !SDG_local.otf ?
+      (unsigned long long)SDG_local_workspace_bytes(&SDG_local) : 0ULL;
   counts[1] = Matomnum > 0 ? 1ULL : 0ULL;
   counts[2] = (Matomnum > 0 && !ok) ? 1ULL : 0ULL;
   counts[3] = (unsigned long long)ws_declined;
