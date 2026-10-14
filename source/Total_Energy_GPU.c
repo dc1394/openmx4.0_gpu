@@ -11,24 +11,33 @@
 #include "openmx_common.h"
 
 
-void TotalEnergy_EXC_EH1_Grid_OpenACC(int spinmax, double *My_Ena, double *My_Eef,
+#include <string.h>
+#include "openmx_gpu_workers.h"
+#include "set_cuda_default_device_from_local_rank.h"
+
+static void TotalEnergy_EXC_EH1_Grid_OpenACC_Range(int first, int grid_count, int use_gpu, int spinmax, double *My_Ena, double *My_Eef,
                                       double *My_EH1, double My_EXC[2])
 {
-  int BN,grid_count,vna_grid_count,vef_grid_count;
+  double *local_ADensity_Grid_B=ADensity_Grid_B?ADensity_Grid_B+first:NULL;
+  double *local_dVHart_Grid_B=dVHart_Grid_B?dVHart_Grid_B+first:NULL;
+  double *local_RefVxc_Grid_B=RefVxc_Grid_B?RefVxc_Grid_B+first:NULL;
+  double *local_VNA_Grid_B=VNA_Grid_B?VNA_Grid_B+first:NULL;
+  double *local_VEF_Grid_B=VEF_Grid_B?VEF_Grid_B+first:NULL;
+
+  int BN,vna_grid_count,vef_grid_count;
   double local_Ena,local_Eef,local_EH1,local_EXC0,local_EXC1;
   double *Density_Grid_B0,*Density_Grid_B1;
   double *PCCDensity_Grid_B0,*PCCDensity_Grid_B1;
   double *Vxc_Grid_B0,*Vxc_Grid_B1;
 
-  grid_count = My_NumGridB_AB;
   vna_grid_count = (ProExpn_VNA==0) ? grid_count : 0;
   vef_grid_count = (E_Field_switch==1) ? grid_count : 0;
-  Density_Grid_B0 = Density_Grid_B[0];
-  Density_Grid_B1 = Density_Grid_B[1];
-  PCCDensity_Grid_B0 = PCCDensity_Grid_B[0];
-  PCCDensity_Grid_B1 = PCCDensity_Grid_B[1];
-  Vxc_Grid_B0 = Vxc_Grid_B[0];
-  Vxc_Grid_B1 = Vxc_Grid_B[1];
+  Density_Grid_B0 = Density_Grid_B[0] + first;
+  Density_Grid_B1 = Density_Grid_B[1] + first;
+  PCCDensity_Grid_B0 = PCCDensity_Grid_B[0] + first;
+  PCCDensity_Grid_B1 = PCCDensity_Grid_B[1] + first;
+  Vxc_Grid_B0 = Vxc_Grid_B[0] + first;
+  Vxc_Grid_B1 = Vxc_Grid_B[1] + first;
 
   local_Ena = *My_Ena;
   local_Eef = *My_Eef;
@@ -37,28 +46,28 @@ void TotalEnergy_EXC_EH1_Grid_OpenACC(int spinmax, double *My_Ena, double *My_Ee
   local_EXC1 = My_EXC[1];
 
 #pragma acc data copyin(Density_Grid_B0[0:grid_count], Density_Grid_B1[0:grid_count], \
-                        ADensity_Grid_B[0:grid_count], PCCDensity_Grid_B0[0:grid_count], \
-                        PCCDensity_Grid_B1[0:grid_count], dVHart_Grid_B[0:grid_count], \
+                        local_ADensity_Grid_B[0:grid_count], PCCDensity_Grid_B0[0:grid_count], \
+                        PCCDensity_Grid_B1[0:grid_count], local_dVHart_Grid_B[0:grid_count], \
                         Vxc_Grid_B0[0:grid_count], Vxc_Grid_B1[0:grid_count], \
-                        RefVxc_Grid_B[0:grid_count], VNA_Grid_B[0:vna_grid_count], \
-                        VEF_Grid_B[0:vef_grid_count])
+                        local_RefVxc_Grid_B[0:grid_count], local_VNA_Grid_B[0:vna_grid_count], \
+                        local_VEF_Grid_B[0:vef_grid_count]) if(use_gpu)
   {
-#pragma acc parallel loop reduction(+:local_Ena,local_Eef,local_EH1,local_EXC0,local_EXC1)
+#pragma acc parallel loop reduction(+:local_Ena,local_Eef,local_EH1,local_EXC0,local_EXC1) if(use_gpu)
     for (BN=0; BN<grid_count; BN++){
       double sden0,sden1,tden,aden,pden0,pden1,refvxc;
 
       sden0 = Density_Grid_B0[BN];
       sden1 = Density_Grid_B1[BN];
       tden = sden0 + sden1;
-      aden = ADensity_Grid_B[BN];
+      aden = local_ADensity_Grid_B[BN];
       pden0 = PCCDensity_Grid_B0[BN];
       pden1 = PCCDensity_Grid_B1[BN];
-      refvxc = RefVxc_Grid_B[BN];
+      refvxc = local_RefVxc_Grid_B[BN];
 
-      if (ProExpn_VNA==0) local_Ena += tden*VNA_Grid_B[BN];
-      if (E_Field_switch==1) local_Eef += tden*VEF_Grid_B[BN];
+      if (ProExpn_VNA==0) local_Ena += tden*local_VNA_Grid_B[BN];
+      if (E_Field_switch==1) local_Eef += tden*local_VEF_Grid_B[BN];
 
-      local_EH1 += (tden - 2.0*aden)*dVHart_Grid_B[BN];
+      local_EH1 += (tden - 2.0*aden)*local_dVHart_Grid_B[BN];
 
       if (Exc0_correction_flag==1){
         local_EXC0 += (sden0+pden0)*Vxc_Grid_B0[BN] - (aden+pden0)*refvxc;
@@ -79,20 +88,19 @@ void TotalEnergy_EXC_EH1_Grid_OpenACC(int spinmax, double *My_Ena, double *My_Ee
 }
 
 
-void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy,
+static void TotalEnergy_Dipole_Grid_OpenACC_Range(int first, int grid_count, int use_gpu, int GNs, double *My_E_dpx, double *My_E_dpy,
                                      double *My_E_dpz, double *My_E_dpx_BG,
                                      double *My_E_dpy_BG, double *My_E_dpz_BG)
 {
-  int BN,grid_count;
+  int BN;
   double local_E_dpx,local_E_dpy,local_E_dpz;
   double local_E_dpx_BG,local_E_dpy_BG,local_E_dpz_BG;
   double gtv11,gtv12,gtv13,gtv21,gtv22,gtv23,gtv31,gtv32,gtv33;
   double grid_origin1,grid_origin2,grid_origin3;
   double *Density_Grid_B0,*Density_Grid_B1;
 
-  grid_count = My_NumGridB_AB;
-  Density_Grid_B0 = Density_Grid_B[0];
-  Density_Grid_B1 = Density_Grid_B[1];
+  Density_Grid_B0 = Density_Grid_B[0] + first;
+  Density_Grid_B1 = Density_Grid_B[1] + first;
   gtv11 = gtv[1][1];
   gtv12 = gtv[1][2];
   gtv13 = gtv[1][3];
@@ -113,14 +121,14 @@ void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy
   local_E_dpy_BG = *My_E_dpy_BG;
   local_E_dpz_BG = *My_E_dpz_BG;
 
-#pragma acc data copyin(Density_Grid_B0[0:grid_count], Density_Grid_B1[0:grid_count])
+#pragma acc data copyin(Density_Grid_B0[0:grid_count], Density_Grid_B1[0:grid_count]) if(use_gpu)
   {
-#pragma acc parallel loop reduction(+:local_E_dpx,local_E_dpy,local_E_dpz,local_E_dpx_BG,local_E_dpy_BG,local_E_dpz_BG)
+#pragma acc parallel loop reduction(+:local_E_dpx,local_E_dpy,local_E_dpz,local_E_dpx_BG,local_E_dpy_BG,local_E_dpz_BG) if(use_gpu)
     for (BN=0; BN<grid_count; BN++){
       int GN,n1,n2,n3;
       double x,y,z,den;
 
-      GN = BN + GNs;
+      GN = BN + GNs + first;
       n1 = GN/(Ngrid2*Ngrid3);
       n2 = (GN - n1*Ngrid2*Ngrid3)/Ngrid3;
       n3 = GN - n1*Ngrid2*Ngrid3 - n2*Ngrid3;
@@ -148,18 +156,20 @@ void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy
 }
 
 
-void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_dcEXC[2])
+static void TotalEnergy_CWF_Dc_Grid_OpenACC_Range(int first, int grid_count, int use_gpu, int spinmax, double My_dcEH1[2], double My_dcEXC[2])
 {
-  int BN,grid_count;
+  double *local_ADensity_Grid_B=ADensity_Grid_B?ADensity_Grid_B+first:NULL;
+  double *local_dVHart_Grid_B=dVHart_Grid_B?dVHart_Grid_B+first:NULL;
+
+  int BN;
   double local_dcEH10,local_dcEH11,local_dcEXC0,local_dcEXC1;
   double *Density_Grid_B0,*Density_Grid_B1;
   double *Vxc_Grid_B0,*Vxc_Grid_B1;
 
-  grid_count = My_NumGridB_AB;
-  Density_Grid_B0 = Density_Grid_B[0];
-  Density_Grid_B1 = Density_Grid_B[1];
-  Vxc_Grid_B0 = Vxc_Grid_B[0];
-  Vxc_Grid_B1 = Vxc_Grid_B[1];
+  Density_Grid_B0 = Density_Grid_B[0] + first;
+  Density_Grid_B1 = Density_Grid_B[1] + first;
+  Vxc_Grid_B0 = Vxc_Grid_B[0] + first;
+  Vxc_Grid_B1 = Vxc_Grid_B[1] + first;
 
   local_dcEH10 = My_dcEH1[0];
   local_dcEH11 = My_dcEH1[1];
@@ -167,17 +177,17 @@ void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_
   local_dcEXC1 = My_dcEXC[1];
 
 #pragma acc data copyin(Density_Grid_B0[0:grid_count], Density_Grid_B1[0:grid_count], \
-                        ADensity_Grid_B[0:grid_count], dVHart_Grid_B[0:grid_count], \
-                        Vxc_Grid_B0[0:grid_count], Vxc_Grid_B1[0:grid_count])
+                        local_ADensity_Grid_B[0:grid_count], local_dVHart_Grid_B[0:grid_count], \
+                        Vxc_Grid_B0[0:grid_count], Vxc_Grid_B1[0:grid_count]) if(use_gpu)
   {
-#pragma acc parallel loop reduction(+:local_dcEH10,local_dcEH11,local_dcEXC0,local_dcEXC1)
+#pragma acc parallel loop reduction(+:local_dcEH10,local_dcEH11,local_dcEXC0,local_dcEXC1) if(use_gpu)
     for (BN=0; BN<grid_count; BN++){
       double sden0,sden1,aden,dvhart;
 
       sden0 = Density_Grid_B0[BN];
       sden1 = Density_Grid_B1[BN];
-      aden = ADensity_Grid_B[BN];
-      dvhart = dVHart_Grid_B[BN];
+      aden = local_ADensity_Grid_B[BN];
+      dvhart = local_dVHart_Grid_B[BN];
 
       local_dcEH10 += (sden0 + aden)*dvhart;
       local_dcEXC0 += sden0*Vxc_Grid_B0[BN];
@@ -195,6 +205,77 @@ void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_
   My_dcEXC[1] = local_dcEXC1;
 }
 
+typedef struct {
+  OpenMXGpuWorkers workers;
+  int kind, spinmax, GNs;
+  double sums[OPENMX_GPU_WORKERS_MAX][6];
+} TotalEnergyGridWork;
+
+static int TotalEnergy_Grid_Worker(void *opaque, int worker, int phase)
+{
+  TotalEnergyGridWork *work=(TotalEnergyGridWork*)opaque;
+  const int first=(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+  const int last=(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+  double *sum=work->sums[worker];
+  if (phase!=OPENMX_GPU_WORKER_EXECUTE) return 1;
+  if (work->kind==0)
+    TotalEnergy_EXC_EH1_Grid_OpenACC_Range(first,last-first,1,work->spinmax,sum,sum+1,sum+2,sum+3);
+  else if (work->kind==1)
+    TotalEnergy_Dipole_Grid_OpenACC_Range(first,last-first,1,work->GNs,sum,sum+1,sum+2,sum+3,sum+4,sum+5);
+  else
+    TotalEnergy_CWF_Dc_Grid_OpenACC_Range(first,last-first,1,work->spinmax,sum,sum+2);
+  return 1;
+}
+
+static int TotalEnergy_Grid_Distribute(TotalEnergyGridWork *work, int kind, int spinmax, int GNs)
+{
+  memset(work,0,sizeof(*work));
+  work->kind=kind;work->spinmax=spinmax;work->GNs=GNs;
+  openmx_gpu_workers_local(&work->workers,(size_t)My_NumGridB_AB);
+  return work->workers.count>1 &&
+    openmx_gpu_workers_run(&work->workers,TotalEnergy_Grid_Worker,work,
+      kind==0?"energy-XC-Hartree":kind==1?"dipole":"CWF-double-counting");
+}
+
+void TotalEnergy_EXC_EH1_Grid_OpenACC(int spinmax,double *My_Ena,double *My_Eef,double *My_EH1,double My_EXC[2])
+{
+  TotalEnergyGridWork work;
+  if (!TotalEnergy_Grid_Distribute(&work,0,spinmax,0)) {
+    TotalEnergy_EXC_EH1_Grid_OpenACC_Range(0,My_NumGridB_AB,work.workers.count<=1,spinmax,My_Ena,My_Eef,My_EH1,My_EXC);
+    return;
+  }
+  for (int i=0;i<work.workers.count;i++) {
+    *My_Ena+=work.sums[i][0];*My_Eef+=work.sums[i][1];*My_EH1+=work.sums[i][2];
+    My_EXC[0]+=work.sums[i][3];My_EXC[1]+=work.sums[i][4];
+  }
+}
+
+void TotalEnergy_Dipole_Grid_OpenACC(int GNs,double *My_E_dpx,double *My_E_dpy,double *My_E_dpz,
+    double *My_E_dpx_BG,double *My_E_dpy_BG,double *My_E_dpz_BG)
+{
+  TotalEnergyGridWork work;
+  if (!TotalEnergy_Grid_Distribute(&work,1,0,GNs)) {
+    TotalEnergy_Dipole_Grid_OpenACC_Range(0,My_NumGridB_AB,work.workers.count<=1,GNs,
+        My_E_dpx,My_E_dpy,My_E_dpz,My_E_dpx_BG,My_E_dpy_BG,My_E_dpz_BG);
+    return;
+  }
+  for (int i=0;i<work.workers.count;i++) {
+    *My_E_dpx+=work.sums[i][0];*My_E_dpy+=work.sums[i][1];*My_E_dpz+=work.sums[i][2];
+    *My_E_dpx_BG+=work.sums[i][3];*My_E_dpy_BG+=work.sums[i][4];*My_E_dpz_BG+=work.sums[i][5];
+  }
+}
+
+void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax,double My_dcEH1[2],double My_dcEXC[2])
+{
+  TotalEnergyGridWork work;
+  if (!TotalEnergy_Grid_Distribute(&work,2,spinmax,0)) {
+    TotalEnergy_CWF_Dc_Grid_OpenACC_Range(0,My_NumGridB_AB,work.workers.count<=1,spinmax,My_dcEH1,My_dcEXC);
+    return;
+  }
+  for (int i=0;i<work.workers.count;i++) for (int spin=0;spin<2;spin++) {
+    My_dcEH1[spin]+=work.sums[i][spin];My_dcEXC[spin]+=work.sums[i][2+spin];
+  }
+}
 
 #pragma acc routine seq
 static double TotalEnergy_EH0_VH_AtomF_flat(int spe, int N, double x, double r,
@@ -348,7 +429,7 @@ static double TotalEnergy_EH0_Dr_VH_AtomF_flat(int spe, int N, double x, double 
 }
 
 
-void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int *pair_wan2,
+static void TotalEnergy_EH0_TwoCenter_Batch_OpenACC_Part(int use_gpu, int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3)
@@ -436,9 +517,9 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int 
                         gridx_flat[0:grid_count], gridy_flat[0:grid_count], \
                         gridz_flat[0:grid_count], arho_flat[0:grid_count], wt_flat[0:grid_count], \
                         vps_xv_flat[0:vps_count], vps_rv_flat[0:vps_count], vh_atom_flat[0:vh_count]) \
-                 copyout(out0[0:pair_count], out1[0:pair_count], out2[0:pair_count], out3[0:pair_count])
+                 copyout(out0[0:pair_count], out1[0:pair_count], out2[0:pair_count], out3[0:pair_count]) if(use_gpu)
   {
-#pragma acc parallel loop gang
+#pragma acc parallel loop gang if(use_gpu)
     for (pair=0; pair<pair_count; pair++){
       int n1,ban,wan2,tgn,has_deriv;
       double dis,dirx,diry,dirz,dv,sum,sumr;
@@ -514,6 +595,51 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int 
   free(vps_xv_flat);
   free(vps_rv_flat);
   free(vh_atom_flat);
+}
+
+typedef struct {
+  OpenMXGpuWorkers workers;
+  int *ban,*wan,*deriv;
+  double *dis,*dx,*dy,*dz,*out[4],*scratch[OPENMX_GPU_WORKERS_MAX];
+} EH0GpuWork;
+
+static int EH0_GpuWorker(void *opaque,int worker,int phase)
+{
+  EH0GpuWork *w=(EH0GpuWork*)opaque;
+  size_t first=openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+  size_t last=openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count),n=last-first;
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    size_t available=0,total=0;
+    size_t bytes=(size_t)SpeciesNum*(2*sizeof(int)+2*sizeof(double)+
+      (size_t)Max_TGN_EH0*5*sizeof(double)+(size_t)List_YOUSO[22]*3*sizeof(double)+2*sizeof(double))+
+      n*(3*sizeof(int)+8*sizeof(double));
+    if (OpenMX_GpuMemGetInfo(&available,&total)!=cudaSuccess ||
+        available<(size_t)256*1024*1024 || bytes>available-(size_t)256*1024*1024) return 0;
+    w->scratch[worker]=(double*)malloc(4*n*sizeof(double));
+    return w->scratch[worker]!=NULL;
+  }
+  if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+    double *s=w->scratch[worker];
+    TotalEnergy_EH0_TwoCenter_Batch_OpenACC_Part(1,(int)n,w->ban+first,w->wan+first,
+      w->deriv+first,w->dis+first,w->dx+first,w->dy+first,w->dz+first,s,s+n,s+2*n,s+3*n);
+  } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+    for (int axis=0;axis<4;axis++) memcpy(w->out[axis]+first,w->scratch[worker]+axis*n,n*sizeof(double));
+  } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+    free(w->scratch[worker]);w->scratch[worker]=NULL;
+  }
+  return 1;
+}
+
+void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int n,int *ban,int *wan,int *deriv,
+    double *dis,double *dx,double *dy,double *dz,double *o0,double *o1,double *o2,double *o3)
+{
+  if (n<=0) return;
+  EH0GpuWork w={0};
+  w.ban=ban;w.wan=wan;w.deriv=deriv;w.dis=dis;w.dx=dx;w.dy=dy;w.dz=dz;
+  w.out[0]=o0;w.out[1]=o1;w.out[2]=o2;w.out[3]=o3;
+  openmx_gpu_workers_local(&w.workers,(size_t)n);
+  if (w.workers.count>1 && openmx_gpu_workers_run(&w.workers,EH0_GpuWorker,&w,"energy-EH0-pairs")) return;
+  TotalEnergy_EH0_TwoCenter_Batch_OpenACC_Part(w.workers.count<=1,n,ban,wan,deriv,dis,dx,dy,dz,o0,o1,o2,o3);
 }
 
 
@@ -711,7 +837,7 @@ static double TotalEnergy_Exc0_Dr_KumoF_flat(int N, double x, double r,
 }
 
 
-void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double *sum_out)
+static void TotalEnergy_Exc0_Batch_OpenACC_Part(int use_gpu,int Matomnum,const int *local_to_global,double *force_pairs,int Num_Leb, double **Leb_Grid_XYZW, double *sum_out)
 {
   /* fine-mesh Exc^0 correction of Calc_EXC_EH1: for every local atom,
      integrate den0*exc(den) over the atom-centred Gauss-Legendre x
@@ -763,7 +889,7 @@ void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double 
 
   nb_total = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    nb_total += FNAN[M2G[Mc_AN]] + 1;
+    nb_total += FNAN[local_to_global[Mc_AN]] + 1;
   }
 
   nb_wan = (int*)malloc(sizeof(int)*nb_total);
@@ -805,7 +931,7 @@ void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
     int Cwan;
 
-    Gc_AN = M2G[Mc_AN];
+    Gc_AN = local_to_global[Mc_AN];
     Cwan = WhatSpecies[Gc_AN];
 
     at_fnan[Mc_AN] = FNAN[Gc_AN];
@@ -849,12 +975,12 @@ void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double 
                         nb_z[0:nb_total], nb_rcut2[0:nb_total], \
                         leb_x[0:na], leb_y[0:na], leb_z[0:na], leb_w[0:na], \
                         CoarseGL_Abscissae[0:nr], CoarseGL_Weight[0:nr]) \
-                 create(pref[0:npt_total])
+                 create(pref[0:npt_total]) if(use_gpu)
   {
 
     /* pass 1: energy and per-point force prefactors */
 
-#pragma acc parallel loop gang vector vector_length(128) reduction(+:energy_sum)
+#pragma acc parallel loop gang vector vector_length(128) reduction(+:energy_sum) if(use_gpu)
     for (size_t pt=0; pt<npt_total; pt++){
       int mc,ir,ia,rem,k,koff,fnan;
       double r,x0,y0,z0,den,den0,exc0,dexc0,wpt,dr_atom;
@@ -939,7 +1065,7 @@ void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double 
 
 #pragma acc data copyin(item_mc[0:(nitems==0 ? 1 : nitems)], item_k[0:(nitems==0 ? 1 : nitems)]) \
                  copyout(item_fx[0:(nitems==0 ? 1 : nitems)], item_fy[0:(nitems==0 ? 1 : nitems)], \
-                         item_fz[0:(nitems==0 ? 1 : nitems)])
+                         item_fz[0:(nitems==0 ? 1 : nitems)]) if(use_gpu)
       {
 #pragma acc parallel loop gang vector_length(128) \
     present(pao_n_flat[0:SpeciesNum], \
@@ -953,7 +1079,7 @@ void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double 
             nb_z[0:nb_total], nb_rcut2[0:nb_total], \
             leb_x[0:na], leb_y[0:na], leb_z[0:na], leb_w[0:na], \
             CoarseGL_Abscissae[0:nr], CoarseGL_Weight[0:nr], \
-            pref[0:npt_total])
+            pref[0:npt_total]) if(use_gpu)
         for (int pp=0; pp<nitems; pp++){
           const int mc = item_mc[pp];
           const int k = item_k[pp];
@@ -1012,23 +1138,11 @@ void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double 
         }
       }
 
-      /* host accumulation into the temporary force slots */
-
-      p = 0;
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-        Gc_AN = M2G[Mc_AN];
-        for (h_AN=1; h_AN<=at_fnan[Mc_AN]; h_AN++){
-          int Gh_AN = natn[Gc_AN][h_AN];
-
-          Gxyz[Gh_AN][41] += item_fx[p];
-          Gxyz[Gh_AN][42] += item_fy[p];
-          Gxyz[Gh_AN][43] += item_fz[p];
-
-          Gxyz[Gc_AN][41] -= item_fx[p];
-          Gxyz[Gc_AN][42] -= item_fy[p];
-          Gxyz[Gc_AN][43] -= item_fz[p];
-          p++;
-        }
+      /* Pair results are private until every GPU has completed both passes. */
+      for (p=0;p<nitems;p++) {
+        force_pairs[3*p]=item_fx[p];
+        force_pairs[3*p+1]=item_fy[p];
+        force_pairs[3*p+2]=item_fz[p];
       }
 
       free(item_mc);
@@ -1061,4 +1175,63 @@ void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double 
   free(leb_z);
   free(leb_w);
   free(pref);
+}
+
+typedef struct {
+  OpenMXGpuWorkers workers;
+  int na;
+  double **leb,*pairs,*sum;
+  size_t *offset;
+  double energy[OPENMX_GPU_WORKERS_MAX];
+} Exc0GpuWork;
+
+static int Exc0_GpuWorker(void *opaque,int worker,int phase)
+{
+  Exc0GpuWork *w=(Exc0GpuWork*)opaque;
+  int first=(int)openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+  int last=(int)openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count);
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    size_t free_bytes=0,total=0;
+    size_t atoms=(size_t)(last-first),nb=w->offset[last]-w->offset[first]+atoms;
+    size_t need=atoms*(size_t)CoarseGL_Mesh*w->na*sizeof(double)+
+      (atoms+1)*(2*sizeof(int)+4*sizeof(double))+nb*(3*sizeof(int)+7*sizeof(double))+
+      (size_t)SpeciesNum*(sizeof(int)+(3*(size_t)List_YOUSO[21]+2)*sizeof(double))+
+      ((size_t)w->na*4+(size_t)CoarseGL_Mesh*2)*sizeof(double);
+    return OpenMX_GpuMemGetInfo(&free_bytes,&total)==cudaSuccess &&
+      free_bytes>(size_t)256*1024*1024 && need<free_bytes-(size_t)256*1024*1024;
+  }
+  if (phase==OPENMX_GPU_WORKER_EXECUTE)
+    TotalEnergy_Exc0_Batch_OpenACC_Part(1,last-first,M2G+first,w->pairs+3*w->offset[first],
+      w->na,w->leb,w->energy+worker);
+  return 1;
+}
+
+void TotalEnergy_Exc0_Batch_OpenACC(int na,double **leb,double *sum)
+{
+  *sum=0.0;
+  if (Matomnum<1) return;
+  Exc0GpuWork w={0};w.na=na;w.leb=leb;w.sum=sum;
+  w.offset=(size_t*)calloc((size_t)Matomnum+1,sizeof(size_t));
+  if (!w.offset) { fprintf(stderr,"Exc0: cannot allocate pair offsets\n");exit(EXIT_FAILURE); }
+  for (int mc=1;mc<=Matomnum;mc++) w.offset[mc]=w.offset[mc-1]+(size_t)FNAN[M2G[mc]];
+  w.pairs=(double*)malloc(3*(w.offset[Matomnum]?w.offset[Matomnum]:1)*sizeof(double));
+  if (!w.pairs) { free(w.offset);fprintf(stderr,"Exc0: cannot allocate pair forces\n");exit(EXIT_FAILURE); }
+  openmx_gpu_workers_local(&w.workers,(size_t)Matomnum);
+  if (w.workers.count>1 && openmx_gpu_workers_run(&w.workers,Exc0_GpuWorker,&w,"energy-Exc0-two-pass")) {
+    for (int worker=0;worker<w.workers.count;worker++) *sum+=w.energy[worker];
+  } else {
+    TotalEnergy_Exc0_Batch_OpenACC_Part(w.workers.count<=1,Matomnum,M2G,w.pairs,na,leb,sum);
+  }
+  size_t p=0;
+  for (int mc=1;mc<=Matomnum;mc++) {
+    int gc=M2G[mc];
+    for (int h=1;h<=FNAN[gc];h++,p++) {
+      int gh=natn[gc][h];
+      for (int axis=0;axis<3;axis++) {
+        Gxyz[gh][41+axis]+=w.pairs[3*p+axis];
+        Gxyz[gc][41+axis]-=w.pairs[3*p+axis];
+      }
+    }
+  }
+  free(w.pairs);free(w.offset);
 }

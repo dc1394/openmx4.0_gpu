@@ -1,4 +1,6 @@
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
+#include <omp.h>
 #include "set_cuda_default_device_from_local_rank.h"
 #include <cuda_runtime.h>
 #include <nvml.h>
@@ -175,7 +177,7 @@ static int gpu_meminfo_nvml_device(int dev, nvmlDevice_t *handle)
     return 1;
 }
 
-cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
+static cudaError_t gpu_meminfo_locked(size_t *free_bytes, size_t *total_bytes)
 {
     static int announced = 0;
     const size_t gap_min = (size_t)256 * 1024 * 1024;
@@ -197,7 +199,7 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
     if (gpu_meminfo_nvmlDeviceGetMemoryInfo(handle, &memory) != NVML_SUCCESS) return cudaSuccess;
     if ((size_t)memory.free < cuda_free) {
         size_t capped_free = (size_t)memory.free;
-        if (!announced && gap_min < cuda_free - (size_t)memory.free) {
+        if (!announced && openmx_gpu_worker_device()<0 && !omp_in_parallel() && gap_min < cuda_free - (size_t)memory.free) {
             /* On Linux the two figures agree, but a peer's allocation that
                lands between the two queries shows as a gap too; a second
                CUDA query after the NVML one tells the two apart (it already
@@ -231,6 +233,14 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
     return cudaSuccess;
 }
 
+cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
+{
+    cudaError_t status;
+#pragma omp critical(openmx_gpu_meminfo)
+    { status=gpu_meminfo_locked(free_bytes,total_bytes); }
+    return status;
+}
+
 /* Kernels whose stack frame exceeds the driver's default limit (1 KiB per
    thread) make their first launch grow the context's local-memory pool,
    sized for every thread the device can hold: on an RTX 5080 a 1224-byte
@@ -254,7 +264,7 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
 
 void OpenMX_GpuPresizeKernelStack(void)
 {
-    static int announced = 0;
+    static _Thread_local int announced = 0;
     const char *env = getenv("OPENMX_GPU_STACK_BYTES");
     long wanted = OPENMX_GPU_KERNEL_STACK_BYTES;
     size_t current = 0, free_before = 0, free_after = 0, total = 0;
@@ -278,8 +288,10 @@ void OpenMX_GpuPresizeKernelStack(void)
         return;
     }
     (void)OpenMX_GpuMemGetInfo(&free_after, &total);
-    MPI_Initialized(&initialized);
-    if (initialized) MPI_Comm_rank(mpi_comm_level1, &myid);
+    if (openmx_gpu_worker_device()<0 && !omp_in_parallel()) {
+        MPI_Initialized(&initialized);
+        if (initialized) MPI_Comm_rank(mpi_comm_level1, &myid);
+    } else myid=-1;
     if (!announced && myid == 0 && 2 <= level_stdout) {
         announced = 1;
         printf("<GPU> kernel stack limit raised from %zu to %ld bytes per thread"
@@ -301,6 +313,7 @@ void OpenMX_GpuPresizeKernelStack(void)
    module loads.  OPENMX_GPU=0 disables the GPU for the whole run. */
 int gpu_rank_device_usable(void)
 {
+    if (openmx_gpu_worker_device()>=0) return 1;
     static int checked = 0, usable = 0;
     int cuda_devices = 0, acc_devices = 0, device_count, dev;
     int lock_fd = -1, devices_seen = 0;
@@ -426,6 +439,8 @@ int set_cuda_default_device_from_local_rank()
 
 int set_cuda_default_device_from_local_rank_noncollective(void)
 {
+    const int worker=openmx_gpu_worker_device();
+    if (worker>=0) { wait_cudafunc(cudaSetDevice(worker)); return worker; }
     int deviceCount;
     int local_rank;
     int dev = -1;

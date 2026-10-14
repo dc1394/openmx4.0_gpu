@@ -12,6 +12,8 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
+#include "openmx_gpu_views.h"
 #include "openmx_precision.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <math.h>
@@ -47,7 +49,9 @@ static void* Force_checked_malloc(size_t size, const char* file, int line)
     fprintf(stderr, "Force.c: failed to allocate %zu bytes at %s:%d\n", size, file, line);
     fflush(stderr);
 
+    if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
     if (MPI_Initialized(&mpi_initialized) == MPI_SUCCESS && mpi_initialized) {
+        if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
@@ -151,6 +155,7 @@ static size_t Force_checked_mul_count(size_t a, size_t b, const char* label)
     if (a != 0 && b > SIZE_MAX / a) {
         fprintf(stderr, "Force.c: size overflow for %s\n", label);
         fflush(stderr);
+        if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
@@ -162,6 +167,7 @@ static size_t Force_checked_add_count(size_t a, size_t b, const char* label)
     if (a > SIZE_MAX - b) {
         fprintf(stderr, "Force.c: size overflow for %s\n", label);
         fflush(stderr);
+        if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
@@ -232,7 +238,7 @@ static void* Force_gpu_arena_try(size_t bytes)
    device stays full for minutes */
 static void* Force_gpu_arena_wait(size_t bytes, const char* what)
 {
-    const int max_wait_ms = 180000;
+    const int max_wait_ms = openmx_gpu_worker_device()>=0 ? 0 : 180000;
     int waited_ms = 0, warned = 0;
 
     for (;;) {
@@ -258,6 +264,7 @@ static void* Force_gpu_arena_wait(size_t bytes, const char* what)
                 what, (double)bytes / (1024.0 * 1024.0), max_wait_ms / 1000,
                 (double)free_b / (1024.0 * 1024.0));
             fflush(stderr);
+            if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
             MPI_Abort(mpi_comm_level1, 1);
         }
         {
@@ -271,7 +278,7 @@ static void* Force_gpu_arena_wait(size_t bytes, const char* what)
 
 static void Force_gpu_reduce_fallback_notice(size_t bytes)
 {
-    static int printed = 0;
+    static _Thread_local int printed = 0;
     size_t free_b = 0, total_b = 0;
 
     if (printed || level_stdout < 2) return;
@@ -283,7 +290,7 @@ static void Force_gpu_reduce_fallback_notice(size_t bytes)
     fflush(stderr);
 }
 
-static void Force_openacc_reduce_xyz(int num_atoms,
+static void Force_openacc_reduce_xyz_Part(int num_atoms,
     const size_t* atom_offsets,
     size_t total_terms,
     const double* weights,
@@ -394,6 +401,67 @@ static void Force_openacc_reduce_xyz(int num_atoms,
         }
     }
 }
+typedef struct {
+    OpenMXGpuWorkers workers;
+    const size_t *offsets;
+    const double *weights, *vx, *vy, *vz;
+    double *Fx, *Fy, *Fz;
+    size_t *local_offsets[OPENMX_GPU_WORKERS_MAX];
+    double *local_forces[OPENMX_GPU_WORKERS_MAX];
+} ForceReductionWork;
+
+static int Force_Reduction_Worker(void *opaque,int worker,int phase)
+{
+    ForceReductionWork *work=(ForceReductionWork*)opaque;
+    const int first=(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+    const int last=(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+    const size_t nvec=(size_t)(last-first)+1, base=work->offsets[first];
+    const size_t terms=work->offsets[last]-base;
+    if (phase==OPENMX_GPU_WORKER_PREPARE) {
+        work->local_offsets[worker]=(size_t*)malloc(nvec*sizeof(size_t));
+        work->local_forces[worker]=(double*)malloc(3*nvec*sizeof(double));
+        if (!work->local_offsets[worker] || !work->local_forces[worker]) return 0;
+        for (size_t i=0;i<nvec;i++) work->local_offsets[worker][i]=work->offsets[first+i]-base;
+    } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+        double *f=work->local_forces[worker];
+        Force_openacc_reduce_xyz_Part(last-first,work->local_offsets[worker],terms,
+            work->weights?work->weights+base:NULL,work->vx?work->vx+base:NULL,
+            work->vy?work->vy+base:NULL,work->vz?work->vz+base:NULL,f,f+nvec,f+2*nvec);
+    } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+        double *f=work->local_forces[worker];
+        memcpy(work->Fx+first+1,f+1,(nvec-1)*sizeof(double));
+        memcpy(work->Fy+first+1,f+nvec+1,(nvec-1)*sizeof(double));
+        memcpy(work->Fz+first+1,f+2*nvec+1,(nvec-1)*sizeof(double));
+        if (worker==0) work->Fx[0]=work->Fy[0]=work->Fz[0]=0.0;
+    } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+        free(work->local_forces[worker]);free(work->local_offsets[worker]);
+    }
+    return 1;
+}
+
+static void Force_openacc_reduce_xyz(int num_atoms,
+    const size_t* atom_offsets,
+    size_t total_terms,
+    const double* weights,
+    const double* vx,
+    const double* vy,
+    const double* vz,
+    double* Fx,
+    double* Fy,
+    double* Fz)
+{
+    ForceReductionWork work={0};
+    openmx_gpu_workers_local(&work.workers,(size_t)num_atoms);
+    if (work.workers.count<=1 || !total_terms) {
+        Force_openacc_reduce_xyz_Part(num_atoms,atom_offsets,total_terms,weights,vx,vy,vz,Fx,Fy,Fz);
+        return;
+    }
+    work.offsets=atom_offsets;work.weights=weights;work.vx=vx;work.vy=vy;work.vz=vz;
+    work.Fx=Fx;work.Fy=Fy;work.Fz=Fz;
+    if (!openmx_gpu_workers_run(&work.workers,Force_Reduction_Worker,&work,"force-atom-reduction"))
+        Force_openacc_reduce_xyz_Part(num_atoms,atom_offsets,total_terms,weights,vx,vy,vz,Fx,Fy,Fz);
+}
+
 
 static size_t Force2_Kinetic_OpenACC(double***** H0_src,
     double***** CDM0,
@@ -707,7 +775,7 @@ static size_t Force4_OpenACC(double* Fx,
     return total_terms;
 }
 
-static void Force_openacc_reduce_terms(size_t total_terms,
+static void Force_openacc_reduce_terms_Part(size_t total_terms,
     const double* weights,
     const double* vx,
     const double* vy,
@@ -789,6 +857,46 @@ static void Force_openacc_reduce_terms(size_t total_terms,
         *sumz = sz;
     }
 }
+typedef struct {
+    OpenMXGpuWorkers workers;
+    const double *w,*x,*y,*z;
+    double sums[OPENMX_GPU_WORKERS_MAX][3];
+} ForceTermWork;
+
+static int Force_Term_Worker(void *opaque,int worker,int phase)
+{
+    ForceTermWork *work=(ForceTermWork*)opaque;
+    if (phase!=OPENMX_GPU_WORKER_EXECUTE) return 1;
+    const size_t first=openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+    const size_t last=openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+    double *s=work->sums[worker];
+    Force_openacc_reduce_terms_Part(last-first,work->w+first,work->x+first,work->y+first,work->z+first,s,s+1,s+2);
+    return 1;
+}
+
+static void Force_openacc_reduce_terms(size_t total_terms,
+    const double* weights,
+    const double* vx,
+    const double* vy,
+    const double* vz,
+    double* sumx,
+    double* sumy,
+    double* sumz)
+{
+    ForceTermWork work={0};
+    openmx_gpu_workers_local(&work.workers,total_terms);
+    if (work.workers.count<=1) {
+        Force_openacc_reduce_terms_Part(total_terms,weights,vx,vy,vz,sumx,sumy,sumz);return;
+    }
+    work.w=weights;work.x=vx;work.y=vy;work.z=vz;
+    if (!openmx_gpu_workers_run(&work.workers,Force_Term_Worker,&work,"force-term-reduction")) {
+        Force_openacc_reduce_terms_Part(total_terms,weights,vx,vy,vz,sumx,sumy,sumz);return;
+    }
+    double sums[3]={0,0,0};
+    for (int i=0;i<work.workers.count;i++) for (int d=0;d<3;d++) sums[d]+=work.sums[i][d];
+    if (sumx) *sumx=sums[0];if (sumy) *sumy=sums[1];if (sumz) *sumz=sums[2];
+}
+
 
 static size_t Force4B_pack_trace_terms(double***** CDM0,
     int Mh_AN,
@@ -841,6 +949,7 @@ static void Force3_gpu_abort(const char* message)
 {
     fprintf(stderr, "%s\n", message);
     fflush(stderr);
+    if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
     MPI_Abort(mpi_comm_level1, 1);
 }
 
@@ -939,12 +1048,12 @@ static int Force3_GpuDorbMode(void)
     return 1;
 }
 
-static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
+static void Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const SetHamiltonianMETables *shared_tables,const float *shared_orbs1,const double* dchi_all, const size_t* dchi_off,
     double* vpot_dev_full, const size_t* vpot_off,
     double* xyz_dev_full, const size_t* xyz_off, int dorb_mode,
     size_t chunk_budget)
 {
-    int Mc_AN, h_AN, myid;
+    int Mc_AN, h_AN;
     size_t orbs_local_count = 0;
     size_t* orb_off;
     float* orbs_dev;
@@ -962,7 +1071,6 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
     int* sp_nb = NULL;
     size_t pao_rv_count = 0, pao_rwf_count = 0;
 
-    MPI_Comm_rank(mpi_comm_level1, &myid);
 
     /* ---- flatten the local orbital table (float) into a device-resident
             buffer, one atom block at a time through a staging buffer ---- */
@@ -999,7 +1107,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         size_t cnt = orb_off[Mc_AN + 1] - orb_off[Mc_AN];
         int Nc;
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
         for (Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
             const Type_Orbs_Grid* src = Orbs_Grid[Mc_AN][Nc];
             float* dst = orb_stage + (size_t)Nc * (size_t)NO0;
@@ -1102,11 +1210,8 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         int f3_use_seth_orbs1 = 0;
         int* seth_pair_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 2), __FILE__, __LINE__);
         {
-            const int f3_cnt_kind = (Cnt_switch == 1) ? 1 : 0;
-
-            if (Set_Hamiltonian_MatrixElementsTables_Ready(f3_cnt_kind) &&
-                Set_Hamiltonian_GetMatrixElementsTables(f3_cnt_kind, &f3_seth) &&
-                f3_seth.orbs1_resident) {
+            if (shared_tables && shared_orbs1) {
+                f3_seth=*shared_tables;
                 int base = 0;
                 int mc0;
 
@@ -1130,9 +1235,9 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
         size_t max_dchi = 0, max_npts = 0;
         size_t max_atoms = 0;
 
-        chunk_bound[0] = 1;
-        chunk_lo = 1;
-        while (chunk_lo <= Matomnum) {
+        chunk_bound[0] = first;
+        chunk_lo = first;
+        while (chunk_lo < last) {
 
             /* ---- grow a chunk of consecutive atoms under the budget ---- */
 
@@ -1140,7 +1245,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
             int npairs = 0;
             size_t gl_count = 0, fn_count = 0, dm_count = 0;
 
-            while (chunk_hi <= Matomnum) {
+            while (chunk_hi < last) {
                 int Gc_AN = M2G[chunk_hi];
                 int NO0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
                 size_t a_gl = 0, a_fn = 0, a_dm = 0;
@@ -1327,7 +1432,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                     Force3_gpu_abort("Force3 GPU trace: inconsistent chunk assembly.");
                 }
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
                 for (p = 0; p < npairs; p++) {
                     const int mc2 = pm[p].atom;
                     const int h2 = pm_h[p];
@@ -1763,7 +1868,7 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                            read from the resident orbs1buf device copy; the
                            pair orb1_base offsets were rewritten accordingly */
                         const float* fn_buf = f3_use_seth_orbs1
-                            ? (const float*)acc_deviceptr((void*)f3_seth.orbs1buf)
+                            ? shared_orbs1
                             : (const float*)(const void*)(chunk_arena + o_fn);
                         const double* dm_buf = (const double*)(const void*)(chunk_arena + o_dm);
                         double* pair_f = (double*)(void*)(chunk_arena + o_pf);
@@ -1843,9 +1948,15 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
                                 q++;
                             }
 
+                            if (forces) {
+                                forces[3*(size_t)Gc_AN]+=ax*GridVol;
+                                forces[3*(size_t)Gc_AN+1]+=ay*GridVol;
+                                forces[3*(size_t)Gc_AN+2]+=az*GridVol;
+                            } else {
                             Gxyz[Gc_AN][17] += ax * GridVol;
                             Gxyz[Gc_AN][18] += ay * GridVol;
                             Gxyz[Gc_AN][19] += az * GridVol;
+                            }
 
                             if (2 <= level_stdout) {
                                 printf("<Force>  force(3) myid=%2d  Mc_AN=%2d Gc_AN=%2d  %15.12f %15.12f %15.12f\n",
@@ -1901,6 +2012,67 @@ static void Force3_GpuTrace(const double* dchi_all, const size_t* dchi_off,
     if (cudaDeviceSynchronize() == cudaSuccess) {
         acc_clear_freelists();
     }
+}
+
+
+typedef struct {
+    OpenMXGpuWorkers workers;
+    const double *dchi;
+    const size_t *dchi_off,*vpot_off,*xyz_off;
+    double *potential,*xyz;
+    const float *orbs1;
+    SetHamiltonianMETables tables;
+    int have_tables,dorb,myid;
+    size_t budget;
+    OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][3];
+    double *forces[OPENMX_GPU_WORKERS_MAX];
+} F3Work;
+
+static int Force3_worker(void *opaque,int worker,int phase)
+{
+    F3Work *w=(F3Work*)opaque;
+    int first=1+(int)openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+    int last=1+(int)openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count);
+    if (phase==OPENMX_GPU_WORKER_PREPARE) {
+        if (!openmx_gpu_read_view(&w->input[worker][0],w->potential,w->vpot_off[Matomnum+1]*sizeof(double)) ||
+            !openmx_gpu_read_view(&w->input[worker][1],w->xyz,w->xyz?w->xyz_off[Matomnum+1]*sizeof(double):0) ||
+            !openmx_gpu_read_view(&w->input[worker][2],w->orbs1,w->have_tables?w->tables.total_orbs1*sizeof(float):0)) return 0;
+        w->forces[worker]=(double*)calloc(3*((size_t)atomnum+1),sizeof(double));
+        if (!w->forces[worker]) return 0;
+        for (int mc=first;mc<last;mc++) for (int axis=0;axis<3;axis++)
+            w->forces[worker][3*(size_t)M2G[mc]+axis]=Gxyz[M2G[mc]][17+axis];
+    } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+        Force3_GpuTrace_Part(first,last,w->myid,w->forces[worker],w->have_tables?&w->tables:NULL,
+            (const float*)w->input[worker][2].pointer,w->dchi,w->dchi_off,
+            (double*)w->input[worker][0].pointer,w->vpot_off,(double*)w->input[worker][1].pointer,
+            w->xyz_off,w->dorb,w->budget);
+    } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+        for (int mc=first;mc<last;mc++) for (int axis=0;axis<3;axis++)
+            Gxyz[M2G[mc]][17+axis]=w->forces[worker][3*(size_t)M2G[mc]+axis];
+    } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+        for (int i=0;i<3;i++) openmx_gpu_read_view_release(&w->input[worker][i]);
+        free(w->forces[worker]);
+    }
+    return 1;
+}
+
+static void Force3_GpuTrace(const double *dchi,const size_t *dchi_off,
+    double *potential,const size_t *vpot_off,double *xyz,const size_t *xyz_off,int dorb,size_t budget)
+{
+    F3Work w={0};w.dchi=dchi;w.dchi_off=dchi_off;w.potential=potential;w.vpot_off=vpot_off;
+    w.xyz=xyz;w.xyz_off=xyz_off;w.dorb=dorb;w.budget=budget;
+    MPI_Comm_rank(mpi_comm_level1,&w.myid);
+    const int kind=(Cnt_switch==1)?1:0;
+    w.have_tables=Set_Hamiltonian_MatrixElementsTables_Ready(kind) &&
+        Set_Hamiltonian_GetMatrixElementsTables(kind,&w.tables) && w.tables.orbs1_resident;
+    if (w.have_tables) {
+        w.orbs1=(const float*)acc_deviceptr((void*)w.tables.orbs1buf);
+        if (!w.orbs1) w.have_tables=0;
+    }
+    openmx_gpu_workers_local(&w.workers,(size_t)Matomnum);
+    if (w.workers.count>1 && openmx_gpu_workers_run(&w.workers,Force3_worker,&w,"force-orbital-derivatives-and-traces")) return;
+    Force3_GpuTrace_Part(1,Matomnum+1,w.myid,NULL,w.have_tables?&w.tables:NULL,w.orbs1,
+        dchi,dchi_off,potential,vpot_off,xyz,xyz_off,dorb,budget);
 }
 
 /* Keep the established float tables.  The precision switch controls whether
@@ -7285,6 +7457,7 @@ static void Force4B_gpu_abort(const char* message)
 {
     fprintf(stderr, "%s\n", message);
     fflush(stderr);
+    if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
     MPI_Abort(mpi_comm_level1, 1);
 }
 
@@ -7678,7 +7851,7 @@ static void Force4B_GpuArchiveCase2(Type_DS_VNA***** DS_VNA, int Mc_AN, int Gc_A
 }
 
 /* Shared by the resident and bounded case-1 batches. */
-static void Force4B_GpuCase1Kernel(int num_proj, float* flat, float* halo,
+static void Force4B_GpuCase1Kernel_Single(int num_proj, float* flat, float* halo,
     size_t flat_stride, int nitems_c, const Force4BGpuItem* items,
     const size_t* krowA, const size_t* krowB, const int* krow_halo,
     const double* cdm_pref, double* item_f)
@@ -7732,6 +7905,116 @@ static void Force4B_GpuCase1Kernel(int num_proj, float* flat, float* halo,
         item_f[3 * (size_t)pp + 2] = fz;
     }
 }
+
+
+static void Force4B_GpuCase2Kernel_Single(int num_proj, float* c2,
+    size_t flat_stride, int nitems_c, const Force4BGpuItem* items,
+    const size_t* pair_h_off, const size_t* pair_q_off,
+    const double* cdm_scale, double* item_f);
+
+typedef struct {
+    OpenMXGpuWorkers workers;
+    int kind,num_proj;
+    size_t stride;
+    const void *source[7];
+    size_t bytes[7];
+    double *output;
+    OpenMXGpuReadView views[OPENMX_GPU_WORKERS_MAX][7];
+    double *private_output[OPENMX_GPU_WORKERS_MAX];
+} Force4B_PairWork;
+
+static int Force4B_PairWorker(void *opaque,int worker,int phase)
+{
+    Force4B_PairWork *work=(Force4B_PairWork*)opaque;
+    const int first=(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+    const int last=(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+    OpenMXGpuReadView *v=work->views[worker];
+    if (phase==OPENMX_GPU_WORKER_PREPARE) {
+        for (int i=0;i<7;i++) if (!openmx_gpu_read_view(v+i,work->source[i],work->bytes[i])) return 0;
+        if (cudaMalloc((void**)&work->private_output[worker],3*(size_t)(last-first)*sizeof(double))!=cudaSuccess) {
+            (void)cudaGetLastError();return 0;
+        }
+    } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+        if (work->kind==1)
+            Force4B_GpuCase1Kernel_Single(work->num_proj,(float*)v[0].pointer,(float*)v[1].pointer,
+                work->stride,last-first,(const Force4BGpuItem*)v[2].pointer+first,
+                (const size_t*)v[3].pointer,(const size_t*)v[4].pointer,(const int*)v[5].pointer,
+                (const double*)v[6].pointer,work->private_output[worker]);
+        else
+            Force4B_GpuCase2Kernel_Single(work->num_proj,(float*)v[0].pointer,work->stride,last-first,
+                (const Force4BGpuItem*)v[2].pointer+first,(const size_t*)v[3].pointer+first,
+                (const size_t*)v[4].pointer+first,(const double*)v[6].pointer,work->private_output[worker]);
+    } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+        return openmx_gpu_copy_device(work->output+3*(size_t)first,work->private_output[worker],
+                                      3*(size_t)(last-first)*sizeof(double));
+    } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+        if (work->private_output[worker]) (void)cudaFree(work->private_output[worker]);
+        for (int i=0;i<7;i++) openmx_gpu_read_view_release(v+i);
+    }
+    return 1;
+}
+
+/* The same splitter covers resident, streamed and rank-turn batches. All
+   inputs are read-only peer views or device copies; each worker contracts
+   disjoint items into private outputs. Existing host accumulation keeps its
+   original order after every worker completes, including atom collisions. */
+static int Force4B_PairDistribute(int kind,int num_proj,float *flat,float *halo,size_t stride,
+    int nitems,const Force4BGpuItem *items,const size_t *a,const size_t *b,const int *is_halo,
+    const double *cdm,double *output)
+{
+    Force4B_PairWork work={0};
+    openmx_gpu_workers_local(&work.workers,(size_t)nitems);
+    if (work.workers.count<2) return 0;
+    Force4BGpuItem *host=(Force4BGpuItem*)malloc((size_t)nitems*sizeof(*host));
+    size_t *row_b=NULL,rows=kind==2?(size_t)nitems:0,cdm_count=0,halo_count=0;
+    int *row_halo=NULL,ok=0;
+    if (!host || cudaDeviceSynchronize()!=cudaSuccess ||
+        cudaMemcpy(host,items,(size_t)nitems*sizeof(*host),cudaMemcpyDeviceToHost)!=cudaSuccess) goto cleanup;
+    for (int i=0;i<nitems;i++) {
+        const size_t end=host[i].cdm_off+(size_t)host[i].ian*(size_t)host[i].jan;
+        if (end>cdm_count) cdm_count=end;
+        if (kind==1) {
+            const size_t r=(size_t)host[i].k_off+(size_t)host[i].k_n;
+            if (r>rows) rows=r;
+        }
+    }
+    if (kind==1 && rows) {
+        row_b=(size_t*)malloc(rows*sizeof(size_t));row_halo=(int*)malloc(rows*sizeof(int));
+        if (!row_b || !row_halo || cudaMemcpy(row_b,b,rows*sizeof(size_t),cudaMemcpyDeviceToHost)!=cudaSuccess ||
+            cudaMemcpy(row_halo,is_halo,rows*sizeof(int),cudaMemcpyDeviceToHost)!=cudaSuccess) goto cleanup;
+        for (int i=0;i<nitems;i++) for (int k=0;k<host[i].k_n;k++) {
+            const int r=host[i].k_off+k;
+            if (row_halo[r]) {
+                const size_t end=row_b[r]+(size_t)host[i].jan*(size_t)num_proj;
+                if (end>halo_count) halo_count=end;
+            }
+        }
+    }
+    work.kind=kind;work.num_proj=num_proj;work.stride=stride;work.output=output;
+    work.source[0]=flat;work.bytes[0]=4*stride*sizeof(float);
+    work.source[1]=halo;work.bytes[1]=halo_count*sizeof(float);
+    work.source[2]=items;work.bytes[2]=(size_t)nitems*sizeof(*items);
+    work.source[3]=a;work.bytes[3]=rows*sizeof(size_t);
+    work.source[4]=b;work.bytes[4]=rows*sizeof(size_t);
+    work.source[5]=is_halo;work.bytes[5]=kind==1?rows*sizeof(int):0;
+    work.source[6]=cdm;work.bytes[6]=cdm_count*sizeof(double);
+    ok=openmx_gpu_workers_run(&work.workers,Force4B_PairWorker,&work,
+                              kind==1?"force-VNA-pairs-1":"force-VNA-pairs-2");
+cleanup:
+    free(host);free(row_b);free(row_halo);
+    return ok;
+}
+
+static void Force4B_GpuCase1Kernel(int num_proj, float* flat, float* halo,
+    size_t flat_stride, int nitems_c, const Force4BGpuItem* items,
+    const size_t* krowA, const size_t* krowB, const int* krow_halo,
+    const double* cdm_pref, double* item_f)
+{
+    if (!Force4B_PairDistribute(1,num_proj,flat,halo,flat_stride,nitems_c,items,krowA,krowB,krow_halo,cdm_pref,item_f))
+        Force4B_GpuCase1Kernel_Single(num_proj,flat,halo,flat_stride,nitems_c,items,krowA,krowB,krow_halo,cdm_pref,item_f);
+}
+
+
 
 /* Apply each completed item in the same mc/q order for either GPU path. */
 static void Force4B_GpuCase1Accumulate(double***** CDM0, int mc, int q_AN,
@@ -8797,7 +9080,7 @@ static void Force4B_GpuCase1Run(double***** CDM0)
 }
 
 /* Both full and one-centre batches use this identical contraction. */
-static void Force4B_GpuCase2Kernel(int num_proj, float* c2,
+static void Force4B_GpuCase2Kernel_Single(int num_proj, float* c2,
     size_t flat_stride, int nitems_c, const Force4BGpuItem* items,
     const size_t* pair_h_off, const size_t* pair_q_off,
     const double* cdm_scale, double* item_f)
@@ -8845,6 +9128,17 @@ static void Force4B_GpuCase2Kernel(int num_proj, float* c2,
         item_f[3 * (size_t)pp + 2] = fz;
     }
 }
+
+static void Force4B_GpuCase2Kernel(int num_proj, float* c2,
+    size_t flat_stride, int nitems_c, const Force4BGpuItem* items,
+    const size_t* pair_h_off, const size_t* pair_q_off,
+    const double* cdm_scale, double* item_f)
+{
+    if (!Force4B_PairDistribute(2,num_proj,c2,NULL,flat_stride,nitems_c,items,pair_h_off,pair_q_off,NULL,cdm_scale,item_f))
+        Force4B_GpuCase2Kernel_Single(num_proj,c2,flat_stride,nitems_c,items,pair_h_off,pair_q_off,cdm_scale,item_f);
+}
+
+
 
 typedef struct {
     size_t stride, bytes, cdm_count;
@@ -9591,9 +9885,8 @@ static void Force_HNL_GpuArchiveCase2(double****** DS_NL, int Mc_AN, int Gc_AN)
 
 /* the unified first-case batch: every (local atom, q_AN != 0) pair;
    local q reads the flat table, halo q reads the halo archive */
-static void Force_HNL_GpuCase1Run(double***** CDM0)
+static void Force_HNL_GpuCase1Run_Part(int first,int last,ForceHNLGpuContext *g,double *forces,int myid_p,double***** CDM0)
 {
-    ForceHNLGpuContext* g = &FHNL_gpu;
     int Mc_AN, q_AN, k;
     int nitems = 0, kslots = 0;
     size_t cdm_count = 0;
@@ -9612,7 +9905,7 @@ static void Force_HNL_GpuCase1Run(double***** CDM0)
     int kpos = 0;
 
     /* count */
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+    for (Mc_AN = first; Mc_AN < last; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
         int ian = Spe_Total_CNO[WhatSpecies[Gc_AN]];
 
@@ -9641,7 +9934,7 @@ static void Force_HNL_GpuCase1Run(double***** CDM0)
 
     /* build */
     p = 0;
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+    for (Mc_AN = first; Mc_AN < last; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
         int ian = Spe_Total_CNO[WhatSpecies[Gc_AN]];
 
@@ -9852,9 +10145,13 @@ static void Force_HNL_GpuCase1Run(double***** CDM0)
             fz += trace * dzv;
         }
 
+        if (forces) {
+            forces[3*(size_t)Gc_AN]+=fx;forces[3*(size_t)Gc_AN+1]+=fy;forces[3*(size_t)Gc_AN+2]+=fz;
+        } else {
         Gxyz[Gc_AN][41] += fx;
         Gxyz[Gc_AN][42] += fy;
         Gxyz[Gc_AN][43] += fz;
+        }
     }
 
     free(item_f);
@@ -9872,9 +10169,8 @@ static void Force_HNL_GpuCase1Run(double***** CDM0)
 /* the second-case batch: all (h,q) pairs of every centre, reading the
    archived 4-direction stagings (the centre's own k=0 row serves as the
    value side of the h_AN==0 pairs) */
-static void Force_HNL_GpuCase2Run(double***** CDM0)
+static void Force_HNL_GpuCase2Run_Part(int first,int last,ForceHNLGpuContext *g,double *forces,int myid_p,double***** CDM0)
 {
-    ForceHNLGpuContext* g = &FHNL_gpu;
     const int solver_flat = (Solver == 5 || Solver == 8 || Solver == 11);
     int Mc_AN, h_AN, q_AN;
     int nitems = 0;
@@ -9898,7 +10194,7 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
 
     if (hnl_prof) dtime(&hnl_t0);
     /* count */
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+    for (Mc_AN = first; Mc_AN < last; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
 
         for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
@@ -9930,7 +10226,7 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
 
     /* build */
     p = 0;
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+    for (Mc_AN = first; Mc_AN < last; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
         int Cwan = WhatSpecies[Gc_AN];
 
@@ -10198,9 +10494,13 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
             }
         }
 
+        if (forces) {
+            forces[3*(size_t)Gc_AN]+=fx;forces[3*(size_t)Gc_AN+1]+=fy;forces[3*(size_t)Gc_AN+2]+=fz;
+        } else {
         Gxyz[Gc_AN][41] += fx;
         Gxyz[Gc_AN][42] += fy;
         Gxyz[Gc_AN][43] += fz;
+        }
     }
 
     free(item_f);
@@ -10214,16 +10514,63 @@ static void Force_HNL_GpuCase2Run(double***** CDM0)
     free(item_h);
     free(item_atom);
     if (hnl_prof) {
-        int myid_p = 0;
 
         dtime(&hnl_t3);
-        MPI_Comm_rank(mpi_comm_level1, &myid_p);
         fprintf(stderr, "FORCEHNL2PROF id=%d items=%d build=%.3f device=%.3f post=%.3f\n", myid_p, nitems,
             hnl_t1 - hnl_t0, hnl_t2 - hnl_t1, hnl_t3 - hnl_t2);
         fflush(stderr);
     }
     free(items);
 }
+
+typedef struct {
+    OpenMXGpuWorkers workers;
+    int kind,myid;
+    double *****cdm;
+    ForceHNLGpuContext context[OPENMX_GPU_WORKERS_MAX];
+    OpenMXGpuReadView flat[OPENMX_GPU_WORKERS_MAX];
+    double *forces[OPENMX_GPU_WORKERS_MAX];
+} FHNLWork;
+
+static int FHNL_worker(void *opaque,int worker,int phase)
+{
+    FHNLWork *w=(FHNLWork*)opaque;
+    int first=1+(int)openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+    int last=1+(int)openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count);
+    if (phase==OPENMX_GPU_WORKER_PREPARE) {
+        w->context[worker]=FHNL_gpu;
+        if (!openmx_gpu_read_view(w->flat+worker,FHNL_gpu.flat_dev,4*FHNL_gpu.flat_stride*sizeof(double))) return 0;
+        w->context[worker].flat_dev=(double*)w->flat[worker].pointer;
+        w->forces[worker]=(double*)calloc(3*((size_t)atomnum+1),sizeof(double));
+        if (!w->forces[worker]) return 0;
+        for (int mc=first;mc<last;mc++) for (int axis=0;axis<3;axis++)
+            w->forces[worker][3*(size_t)M2G[mc]+axis]=Gxyz[M2G[mc]][41+axis];
+    } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+        if (w->kind==1) Force_HNL_GpuCase1Run_Part(first,last,w->context+worker,w->forces[worker],w->myid,w->cdm);
+        else Force_HNL_GpuCase2Run_Part(first,last,w->context+worker,w->forces[worker],w->myid,w->cdm);
+    } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+        for (int mc=first;mc<last;mc++) for (int axis=0;axis<3;axis++)
+            Gxyz[M2G[mc]][41+axis]=w->forces[worker][3*(size_t)M2G[mc]+axis];
+    } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+        openmx_gpu_read_view_release(w->flat+worker);free(w->forces[worker]);
+    }
+    return 1;
+}
+
+static void FHNL_distribute(int kind,double *****CDM0)
+{
+    FHNLWork w={0};w.kind=kind;w.cdm=CDM0;
+    (void)Force_PhaseProfileEnabled();
+    MPI_Comm_rank(mpi_comm_level1,&w.myid);
+    openmx_gpu_workers_local(&w.workers,(size_t)Matomnum);
+    if (w.workers.count>1 && openmx_gpu_workers_run(&w.workers,FHNL_worker,&w,
+        kind==1?"force-nonlocal-case1":"force-nonlocal-case2")) return;
+    if (kind==1) Force_HNL_GpuCase1Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,w.myid,CDM0);
+    else Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,w.myid,CDM0);
+}
+
+static void Force_HNL_GpuCase1Run(double *****CDM0) { FHNL_distribute(1,CDM0); }
+static void Force_HNL_GpuCase2Run(double *****CDM0) { FHNL_distribute(2,CDM0); }
 
 void Force4B(double***** CDM0)
 {

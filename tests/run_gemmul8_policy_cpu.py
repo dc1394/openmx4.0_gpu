@@ -103,6 +103,21 @@ template<class T,Backend B,class... Args> std::vector<double> gemm(Args...) {++m
 main = r'''
 #include "gemmul8_bridge.cu"
 extern "C" {int level_stdout=0;}
+static bool cooperative_enabled=false,cooperative_worker=false;
+extern "C" int openmx_mgpu_dispatch_dgemm(cublasHandle_t h,cublasOperation_t ta,cublasOperation_t tb,
+    int m,int n,int k,const double *alpha,const double *a,int lda,const double *b,int ldb,const double *beta,double *c,int ldc,cublasStatus_t *status) {
+    if(!cooperative_enabled || cooperative_worker)return 0;
+    const int owner=mock_device;cooperative_worker=true;*status=CUBLAS_STATUS_SUCCESS;
+    for(int i=0;i<4;i++){mock_device=i;*status=openmx_gemmul8Dgemm(h,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);if(*status)break;}
+    mock_device=owner;cooperative_worker=false;return 1;
+}
+extern "C" int openmx_mgpu_dispatch_zgemm(cublasHandle_t h,cublasOperation_t ta,cublasOperation_t tb,
+    int m,int n,int k,const cuDoubleComplex *alpha,const cuDoubleComplex *a,int lda,const cuDoubleComplex *b,int ldb,const cuDoubleComplex *beta,cuDoubleComplex *c,int ldc,cublasStatus_t *status) {
+    if(!cooperative_enabled || cooperative_worker)return 0;
+    const int owner=mock_device;cooperative_worker=true;*status=CUBLAS_STATUS_SUCCESS;
+    for(int i=0;i<4;i++){mock_device=i;*status=openmx_gemmul8Zgemm(h,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);if(*status)break;}
+    mock_device=owner;cooperative_worker=false;return 1;
+}
 static void require(bool ok,const char *message) {
     if(!ok) {std::fprintf(stderr,"FAIL: %s\n",message);std::exit(1);}
 }
@@ -212,6 +227,20 @@ static void owner_budget() {
 }
 int main(int argc,char **argv) {
     if(argc>1) {
+        if(std::strcmp(argv[1],"cooperative-forward")==0) {
+            double a[64]={},b[64]={},c[64]={};cuDoubleComplex za[64]={},zb[64]={},zc[64]={};
+            clear_env();cooperative_enabled=true;openmx_gemmul8SetEnabled(-1);
+            for(int mode:{1,2})for(int reuse:{0,1})for(int left:{0,1})for(int blocked:{0,1}) {
+                openmx_gemmul8SetForwardStage(mode,15,0,reuse,!blocked);
+                int old_native=mock_blas[0]+mock_blas[1],old_ozaki=mock_ozaki;
+                require(openmx_gemmul8DgemmFixed(nullptr,left,CUBLAS_OP_T,4,4,4,a,4,b,4,c,4,0,1)==0,"cooperative real forward");
+                require(openmx_gemmul8ZgemmFixed(nullptr,left,CUBLAS_OP_C,4,4,4,za,4,zb,4,zc,4,0,1)==0,"cooperative complex forward");
+                require(mock_blas[0]+mock_blas[1]-old_native==(mode==1?8:0) && mock_ozaki-old_ozaki==(mode==2?8:0),"explicit forward precision reaches all workers");
+                require(!forward_worker_stage && !inside_forward_tile,"forward context restored");
+            }
+            openmx_gemmul8ReleaseWorkspaces();openmx_gemmul8ReleasePrepared();
+            std::puts("PASS: explicit forward precision on four mixed-device workers");return 0;
+        }
         if(std::strcmp(argv[1],"owner-budget")==0) {owner_budget();return 0;}
         // Fresh processes exercise the environment stage before any setter caches it.
         openmx_gemmul8SetEnabled(-1);
@@ -290,5 +319,5 @@ with tempfile.TemporaryDirectory(prefix="openmx-gemmul8-policy-") as tmp:
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith(("OPENMX_", "GEMMUL8_"))}
     subprocess.run([str(binary)], env=environment, check=True)
-    for case in ("owner-budget", "forward-fp64", "forward-gemmul8", "forward-blocked"):
+    for case in ("owner-budget", "forward-fp64", "forward-gemmul8", "forward-blocked", "cooperative-forward"):
         subprocess.run([str(binary), case], env=environment, check=True)

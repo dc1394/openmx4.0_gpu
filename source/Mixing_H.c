@@ -5,6 +5,8 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
+#include <limits.h>
 #include "set_cuda_default_device_from_local_rank.h"
 #include "lapack_prototypes.h"
 
@@ -1795,6 +1797,19 @@ static MixH_GpuState MixH_gpu = {
   NULL, 0U, 0U, 0U, 0U, 0U, NULL, NULL, NULL, NULL
 };
 
+
+/* The sparse residual dimension is partitioned, including its persistent
+   circular history, weights and optimum residual. Only the small Gram
+   triangle is summed on the host before the existing MPI reduction. */
+typedef struct {
+  unsigned char *base;
+  size_t first,L,o_ring,o_w,o_r,o_pair,bytes;
+  size_t available,total;
+} MixH_GpuShard;
+static MixH_GpuShard MixH_shard[OPENMX_GPU_WORKERS_MAX];
+static OpenMXGpuWorkers MixH_workers;
+static void MixH_Distributed_Free(void);
+
 static void MixH_AbortWithMessage(const char *message)
 {
   fprintf(stderr, "%s\n", message);
@@ -1840,6 +1855,7 @@ static void MixH_IncBuild(int nslot);
 void Mixing_H_Release_GPU(void)
 {
   MixH_IncFree();
+  MixH_Distributed_Free();
   if (MixH_gpu.base != NULL) cudaFree(MixH_gpu.base);
   free(MixH_gpu.perm);
   free(MixH_gpu.atom_off);
@@ -2200,6 +2216,186 @@ static void MixH_SaveHistory0(void)
 /* Collective preflight: rebuild the layout and the device arena when the
    fingerprint changed, account for every rank sharing this device, and
    agree on one verdict over mpi_comm_level1. */
+/* weighted Gram triangle of the logical residual slots 0..dim-1 */
+static void MixH_GramPart(MixH_GpuShard *shard,int dim, int npair, const int *pm, const int *pn,
+                            const int *pslot, double *tri_out)
+{
+  double *ring = (double*)(shard->base + shard->o_ring);
+  double *w    = (double*)(shard->base + shard->o_w);
+  double *ap   = (double*)(shard->base + shard->o_pair);
+  const long Lk = (long)shard->L;
+  const size_t Ls = shard->L;
+  int p;
+
+  if (0 < Lk){
+#pragma acc parallel loop gang deviceptr(ring,w,ap) copyin(pm[0:npair],pn[0:npair],pslot[0:dim])
+    for (p=0; p<npair; p++){
+      const double *Rm = ring + (size_t)pslot[pm[p]]*Ls;
+      const double *Rn = ring + (size_t)pslot[pn[p]]*Ls;
+      double s = 0.0;
+      long k;
+#pragma acc loop vector reduction(+:s)
+      for (k=0; k<Lk; k++) s += w[k]*Rm[k]*Rn[k];
+      ap[p] = s;
+    }
+    acc_memcpy_from_device(tri_out, ap, sizeof(double)*(size_t)npair);
+  }
+  else{
+    for (p=0; p<npair; p++) tri_out[p] = 0.0;
+  }
+}
+
+/* optimum residual r = sum_m coes[m+1]*R[m] on the device */
+static void MixH_OptResidualPart(MixH_GpuShard *shard,int dim, const int *pslot, const double *cshift)
+{
+  double *ring = (double*)(shard->base + shard->o_ring);
+  double *r    = (double*)(shard->base + shard->o_r);
+  const long Lk = (long)shard->L;
+  const size_t Ls = shard->L;
+  long k;
+
+  if (Lk <= 0) return;
+
+#pragma acc parallel loop gang vector deviceptr(ring,r) copyin(pslot[0:dim],cshift[0:dim])
+  for (k=0; k<Lk; k++){
+    double s = 0.0;
+    int m;
+    for (m=0; m<dim; m++) s += cshift[m]*ring[(size_t)pslot[m]*Ls + (size_t)k];
+    r[k] = s;
+  }
+  acc_memcpy_from_device(MixH_gpu.h_r+shard->first, r, sizeof(double)*(size_t)Lk);
+}
+
+
+enum { MIXH_PROBE,MIXH_ALLOCATE,MIXH_FREE,MIXH_UPLOAD,MIXH_GRAM,MIXH_RESIDUAL };
+typedef struct {
+  int mode,slot,dim,npair;
+  const int *pm,*pn,*pslot;
+  const double *coeff;
+  double *tri;
+} MixH_Work;
+
+static int MixH_Worker(void *opaque,int worker,int phase)
+{
+  MixH_Work *w=(MixH_Work*)opaque;
+  MixH_GpuShard *s=MixH_shard+worker;
+  if (w->mode==MIXH_ALLOCATE && phase==OPENMX_GPU_WORKER_PREPARE) {
+    if (cudaMalloc((void**)&s->base,s->bytes)!=cudaSuccess) {
+      (void)cudaGetLastError();s->base=NULL;return 0;
+    }
+  }
+  if (phase!=OPENMX_GPU_WORKER_EXECUTE) return 1;
+  if (w->mode==MIXH_PROBE) return OpenMX_GpuMemGetInfo(&s->available,&s->total)==cudaSuccess;
+  if (w->mode==MIXH_FREE) {
+    int ok=!s->base || cudaFree(s->base)==cudaSuccess;s->base=NULL;return ok;
+  }
+  if (w->mode==MIXH_UPLOAD && s->L) {
+    size_t offset=w->slot<0?s->o_w:s->o_ring+(size_t)w->slot*s->L*sizeof(double);
+    return cudaMemcpy(s->base+offset,MixH_gpu.h_flat+s->first,s->L*sizeof(double),cudaMemcpyHostToDevice)==cudaSuccess;
+  }
+  if (w->mode==MIXH_GRAM) MixH_GramPart(s,w->dim,w->npair,w->pm,w->pn,w->pslot,w->tri+(size_t)worker*w->npair);
+  if (w->mode==MIXH_RESIDUAL) MixH_OptResidualPart(s,w->dim,w->pslot,w->coeff);
+  return 1;
+}
+
+static void MixH_Distributed_Free(void)
+{
+  int have_arena=0;
+  for (int worker=0;worker<MixH_workers.count;worker++) if (MixH_shard[worker].base) have_arena=1;
+  if (have_arena) {
+    MixH_Work work={0};work.mode=MIXH_FREE;
+    if (!openmx_gpu_workers_run(&MixH_workers,MixH_Worker,&work,"mixing-release"))
+      MixH_AbortWithMessage("Mixing_H: failed to release distributed residual history.");
+  }
+  memset(MixH_shard,0,sizeof(MixH_shard));memset(&MixH_workers,0,sizeof(MixH_workers));
+}
+
+static int MixH_Distributed_Allocate(int forced_on,int myid)
+{
+  openmx_gpu_workers_local(&MixH_workers,MixH_gpu.L?MixH_gpu.L:1);
+  for (int worker=0;worker<MixH_workers.count;worker++) {
+    MixH_GpuShard *s=MixH_shard+worker;
+    s->first=openmx_gpu_worker_cut(MixH_gpu.L,worker,MixH_workers.count);
+    s->L=openmx_gpu_worker_cut(MixH_gpu.L,worker+1,MixH_workers.count)-s->first;
+    const size_t Lb=s->L*sizeof(double),npair=(size_t)MixH_gpu.nslot*(MixH_gpu.nslot+1)/2;
+    s->o_ring=0;s->o_w=MixH_Align512((size_t)MixH_gpu.nslot*Lb);
+    s->o_r=MixH_Align512(s->o_w+Lb);s->o_pair=MixH_Align512(s->o_r+Lb);
+    s->bytes=MixH_Align512(s->o_pair+npair*sizeof(double));
+    if (!s->bytes) s->bytes=512;
+  }
+  MixH_Work work={0};work.mode=MIXH_PROBE;
+  int local_ok=MixH_workers.count>0 && openmx_gpu_workers_run(&MixH_workers,MixH_Worker,&work,"mixing-capacity");
+  unsigned long long need[OPENMX_GPU_WORKERS_MAX]={0},free_bytes[OPENMX_GPU_WORKERS_MAX];
+  unsigned long long total_need[OPENMX_GPU_WORKERS_MAX],least_free[OPENMX_GPU_WORKERS_MAX];
+  for (int device=0;device<OPENMX_GPU_WORKERS_MAX;device++) free_bytes[device]=ULLONG_MAX;
+  for (int worker=0;worker<MixH_workers.count;worker++) {
+    int device=MixH_workers.devices[worker];
+    if (device<0 || device>=OPENMX_GPU_WORKERS_MAX) {local_ok=0;continue;}
+    need[device]=(unsigned long long)MixH_shard[worker].bytes;
+    free_bytes[device]=(unsigned long long)MixH_shard[worker].available;
+  }
+  MPI_Comm node=MPI_COMM_NULL;
+  MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node);
+  MPI_Allreduce(need,total_need,OPENMX_GPU_WORKERS_MAX,MPI_UNSIGNED_LONG_LONG,MPI_SUM,node);
+  MPI_Allreduce(free_bytes,least_free,OPENMX_GPU_WORKERS_MAX,MPI_UNSIGNED_LONG_LONG,MPI_MIN,node);
+  MPI_Comm_free(&node);
+  unsigned long long max_need=0,min_free=ULLONG_MAX;
+  const char *reserve_env=getenv("OPENMX_MIXH_GPU_RESERVE_MB");
+  for (int worker=0;worker<MixH_workers.count;worker++) {
+    int device=MixH_workers.devices[worker];
+    if (device<0 || device>=OPENMX_GPU_WORKERS_MAX) continue;
+    unsigned long long reserve=MixH_shard[worker].total/10;
+    if (reserve<1536ULL*1024*1024) reserve=1536ULL*1024*1024;
+    if (reserve_env && atoi(reserve_env)>0) reserve=(unsigned long long)atoi(reserve_env)*1024*1024;
+    if (!forced_on && (least_free[device]<reserve || total_need[device]>least_free[device]-reserve)) local_ok=0;
+    if (total_need[device]>max_need) max_need=total_need[device];
+    if (least_free[device]<min_free) min_free=least_free[device];
+  }
+  int fit=0;
+  MPI_Allreduce(&local_ok,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  if (fit) {
+    work.mode=MIXH_ALLOCATE;
+    local_ok=openmx_gpu_workers_run(&MixH_workers,MixH_Worker,&work,"mixing-history-allocation");
+    MPI_Allreduce(&local_ok,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  }
+  if (!fit) {
+    MixH_Distributed_Free();
+    if (forced_on) MixH_AbortWithMessage("Mixing_H: forced GPU residual history does not fit within the allowed GPU pool.");
+    if (myid==Host_ID && level_stdout>=2)
+      fprintf(stderr,"<Mixing_H> Distributed residual history does not fit; using incremental CPU mixing (local device need %.1f MiB, free %.1f MiB).\n",
+        (double)max_need/1048576.0,min_free==ULLONG_MAX?0.0:(double)min_free/1048576.0);
+  }
+  return fit;
+}
+
+static void MixH_Upload(int slot)
+{
+  MixH_Work work={0};work.mode=MIXH_UPLOAD;work.slot=slot;
+  if (!openmx_gpu_workers_run(&MixH_workers,MixH_Worker,&work,"mixing-upload"))
+    MixH_AbortWithMessage("Mixing_H: failed to update a distributed residual-history shard.");
+}
+
+static void MixH_GramDevice(int dim,int npair,const int *pm,const int *pn,const int *pslot,double *tri_out)
+{
+  MixH_Work w={0};w.mode=MIXH_GRAM;w.dim=dim;w.npair=npair;w.pm=pm;w.pn=pn;w.pslot=pslot;
+  w.tri=(double*)calloc((size_t)(npair?npair:1)*(size_t)MixH_workers.count,sizeof(double));
+  if (!w.tri) MixH_AbortWithMessage("Mixing_H: cannot allocate partial Gram matrices.");
+  if (!openmx_gpu_workers_run(&MixH_workers,MixH_Worker,&w,"mixing-Gram"))
+    MixH_AbortWithMessage("Mixing_H: a distributed Gram kernel failed.");
+  for (int p=0;p<npair;p++) {
+    tri_out[p]=0.0;
+    for (int worker=0;worker<MixH_workers.count;worker++) tri_out[p]+=w.tri[(size_t)worker*npair+p];
+  }
+  free(w.tri);
+}
+
+static void MixH_OptResidualDevice(int dim,const int *pslot,const double *cshift)
+{
+  MixH_Work w={0};w.mode=MIXH_RESIDUAL;w.dim=dim;w.pslot=pslot;w.coeff=cshift;
+  if (!openmx_gpu_workers_run(&MixH_workers,MixH_Worker,&w,"mixing-optimum-residual"))
+    MixH_AbortWithMessage("Mixing_H: a distributed optimum-residual kernel failed.");
+}
+
 static int MixH_GpuPreflight(int MD_iter, int myid)
 {
   const char *force_env = getenv("OPENMX_MIXH_GPU");
@@ -2263,75 +2459,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
   MPI_Barrier(mpi_comm_level1);
   OpenMX_GpuMemGetInfo(&free_b, &total_b);
 
-  {
-    MPI_Comm node_comm = MPI_COMM_NULL, device_comm = MPI_COMM_NULL;
-    int cuda_device = -1;
-    unsigned long long my_bytes = (unsigned long long)MixH_gpu.total_bytes;
-    unsigned long long group_bytes = my_bytes;
-    unsigned long long my_free = (unsigned long long)free_b;
-    unsigned long long group_free = my_free;
-    unsigned long long reserve;
-
-    {
-      const char *rsv = getenv("OPENMX_MIXH_GPU_RESERVE_MB");
-      if (rsv != NULL && 0 < atoi(rsv)) {
-        reserve = (unsigned long long)atoi(rsv)*1024ULL*1024ULL;
-      }
-      else {
-        reserve = (unsigned long long)(total_b/10U);
-        if (reserve < 1536ULL*1024ULL*1024ULL) reserve = 1536ULL*1024ULL*1024ULL;
-      }
-    }
-
-    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0,
-                        MPI_INFO_NULL, &node_comm);
-    if (cudaGetDevice(&cuda_device) != cudaSuccess) cuda_device = -1;
-    MPI_Comm_split(node_comm, cuda_device, 0, &device_comm);
-    MPI_Comm_free(&node_comm);
-    if (device_comm != MPI_COMM_NULL){
-      MPI_Allreduce(&my_bytes, &group_bytes, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, device_comm);
-      MPI_Allreduce(&my_free, &group_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, device_comm);
-      MPI_Comm_free(&device_comm);
-    }
-
-    my_fit = (cuda_device >= 0 &&
-              group_bytes + reserve <= group_free);
-    if (forced_on) my_fit = (cuda_device >= 0);
-
-    MPI_Allreduce(&my_fit, &fit, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
-
-    if (fit){
-      int ok_local, ok;
-      cudaError_t err = MixH_TryDeviceMalloc((void**)&MixH_gpu.base, MixH_gpu.total_bytes);
-      ok_local = (err == cudaSuccess);
-      MPI_Allreduce(&ok_local, &ok, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
-      if (!ok){
-        if (forced_on){
-          char msg[512];
-          snprintf(msg, sizeof(msg),
-                   "Mixing_H.c: OPENMX_MIXH_GPU=1 was set but the %.1f MiB mixing-history arena could not be allocated on the GPU.",
-                   (double)MixH_gpu.total_bytes/(1024.0*1024.0));
-          MixH_AbortWithMessage(msg);
-        }
-        if (MixH_gpu.base != NULL) cudaFree(MixH_gpu.base);
-        MixH_gpu.base = NULL;
-        fit = 0;
-      }
-    }
-
-    if (!fit && !MixH_gpu.announced){
-      unsigned long long diag_bytes = group_bytes, diag_free = group_free;
-      MPI_Allreduce(&group_bytes, &diag_bytes, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, mpi_comm_level1);
-      MPI_Allreduce(&group_free, &diag_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, mpi_comm_level1);
-      if (myid == Host_ID && 2 <= level_stdout){
-        printf("<Mixing_H> The RMM-DIISH residual history (%.1f MiB per device) does not fit on the GPU (%.1f MiB free); using the incremental CPU Pulay mixing instead. OPENMX_MIXH_GPU=0 restores the legacy CPU mixing, OPENMX_MIXH_GPU=1 forces the GPU path.\n",
-               (double)diag_bytes/(1024.0*1024.0),
-               (double)diag_free/(1024.0*1024.0));
-        fflush(stdout);
-      }
-      MixH_gpu.announced = 1;
-    }
-  }
+  fit=MixH_Distributed_Allocate(forced_on,myid);
 
   if (fit){
     MixH_gpu.perm = (int*)malloc(sizeof(int)*(size_t)nslot);
@@ -2352,56 +2480,6 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
   MixH_IncBuild(nslot);
   MixH_gpu.verdict = 2;
   return 2;
-}
-
-/* weighted Gram triangle of the logical residual slots 0..dim-1 */
-static void MixH_GramDevice(int dim, int npair, const int *pm, const int *pn,
-                            const int *pslot, double *tri_out)
-{
-  double *ring = (double*)(MixH_gpu.base + MixH_gpu.o_ring);
-  double *w    = (double*)(MixH_gpu.base + MixH_gpu.o_w);
-  double *ap   = (double*)(MixH_gpu.base + MixH_gpu.o_pair);
-  const long Lk = (long)MixH_gpu.L;
-  const size_t Ls = MixH_gpu.L;
-  int p;
-
-  if (0 < Lk){
-#pragma acc parallel loop gang deviceptr(ring,w,ap) copyin(pm[0:npair],pn[0:npair],pslot[0:dim])
-    for (p=0; p<npair; p++){
-      const double *Rm = ring + (size_t)pslot[pm[p]]*Ls;
-      const double *Rn = ring + (size_t)pslot[pn[p]]*Ls;
-      double s = 0.0;
-      long k;
-#pragma acc loop vector reduction(+:s)
-      for (k=0; k<Lk; k++) s += w[k]*Rm[k]*Rn[k];
-      ap[p] = s;
-    }
-    acc_memcpy_from_device(tri_out, ap, sizeof(double)*(size_t)npair);
-  }
-  else{
-    for (p=0; p<npair; p++) tri_out[p] = 0.0;
-  }
-}
-
-/* optimum residual r = sum_m coes[m+1]*R[m] on the device */
-static void MixH_OptResidualDevice(int dim, const int *pslot, const double *cshift)
-{
-  double *ring = (double*)(MixH_gpu.base + MixH_gpu.o_ring);
-  double *r    = (double*)(MixH_gpu.base + MixH_gpu.o_r);
-  const long Lk = (long)MixH_gpu.L;
-  const size_t Ls = MixH_gpu.L;
-  long k;
-
-  if (Lk <= 0) return;
-
-#pragma acc parallel loop gang vector deviceptr(ring,r) copyin(pslot[0:dim],cshift[0:dim])
-  for (k=0; k<Lk; k++){
-    double s = 0.0;
-    int m;
-    for (m=0; m<dim; m++) s += cshift[m]*ring[(size_t)pslot[m]*Ls + (size_t)k];
-    r[k] = s;
-  }
-  acc_memcpy_from_device(MixH_gpu.h_r, r, sizeof(double)*(size_t)Lk);
 }
 
 /*******************************************************************************
@@ -2909,13 +2987,10 @@ static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim
   if (seed){
     for (m=0; m<MixH_gpu.nslot; m++) MixH_gpu.perm[m] = m;
     if (0U < MixH_gpu.L){
-      acc_memcpy_to_device(MixH_gpu.base + MixH_gpu.o_ring,
-                           MixH_gpu.h_flat, MixH_gpu.L*sizeof(double));
+      MixH_Upload(0);
       for (m=1; m<dim; m++){
         MixH_PackResidualSlot(m, MixH_gpu.h_flat);
-        acc_memcpy_to_device(MixH_gpu.base + MixH_gpu.o_ring
-                             + (size_t)m*MixH_gpu.L*sizeof(double),
-                             MixH_gpu.h_flat, MixH_gpu.L*sizeof(double));
+        MixH_Upload(m);
       }
     }
     MixH_gpu.valid = 1;
@@ -2925,9 +3000,7 @@ static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim
     for (m=MixH_gpu.nslot-1; 0<m; m--) MixH_gpu.perm[m] = MixH_gpu.perm[m-1];
     MixH_gpu.perm[0] = last;
     if (0U < MixH_gpu.L){
-      acc_memcpy_to_device(MixH_gpu.base + MixH_gpu.o_ring
-                           + (size_t)MixH_gpu.perm[0]*MixH_gpu.L*sizeof(double),
-                           MixH_gpu.h_flat, MixH_gpu.L*sizeof(double));
+      MixH_Upload(MixH_gpu.perm[0]);
     }
   }
   MixH_gpu.last_scf_iter = SCF_iter;
@@ -2936,8 +3009,7 @@ static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim
 
   if (0U < MixH_gpu.L){
     MixH_PackMetricW(metric, MixH_gpu.h_flat);
-    acc_memcpy_to_device(MixH_gpu.base + MixH_gpu.o_w,
-                         MixH_gpu.h_flat, MixH_gpu.L*sizeof(double));
+    MixH_Upload(-1);
   }
 
   /* residual Gram matrix: one device kernel + one Allreduce */

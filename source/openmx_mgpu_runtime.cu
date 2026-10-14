@@ -1,4 +1,4 @@
-/* Single-node multi-GPU admission and measured dispatch for cluster solves.
+/* Single-node multi-GPU admission and measured dispatch for cluster/Band.
    Worker backends contain no MPI. All cross-rank admission uses GPU UUID
    locks, avoiding MPI collectives inside dense-owner-only call sites. */
 #include "openmx_mgpu_runtime.h"
@@ -33,18 +33,18 @@
 #endif
 #endif
 
-extern "C" int openmx_paper_mgpu_available(void) __attribute__((weak));
-extern "C" int openmx_paper_mgpu_dsyevdx_host(int,int,int,double*,int,double*) __attribute__((weak));
-extern "C" int openmx_paper_mgpu_zheevdx_host(int,int,int,void*,int,double*) __attribute__((weak));
-extern "C" const char *openmx_paper_mgpu_last_error(void) __attribute__((weak));
+extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *, size_t *);
 
 namespace {
 using Clock = std::chrono::steady_clock;
-enum Backend { Native = 0, Magma = 1, Paper = 2 };
+enum Backend { Native = 0, Magma = 1 };
 int input_enabled = -1, input_gpu_limit = 0, topology_single_node = 0;
+int input_force_magma = 0;
+thread_local char host_error[512] = "";
 thread_local int cluster_scope = 0;
+thread_local int band_kpoints = 0, band_kpoint = -1;
 std::mutex operation_mutex;
-using SolveKey = std::tuple<int,int,int,int,int>;
+using SolveKey = std::tuple<int,int,int,int,int,std::array<int,8>>;
 std::map<SolveKey, Backend> solver_choices;
 std::mutex topology_mutex;
 std::map<std::vector<int>,bool> nvlink_choices;
@@ -66,31 +66,76 @@ bool verbose()
 
 const char *backend_name(Backend backend)
 {
-    return backend == Magma ? "magma" : backend == Paper ? "paper" : "single";
+    return backend == Magma ? "magma" : "single";
 }
 
 /* No ordinal beyond CUDA_VISIBLE_DEVICES or scf.Gpu.Num is ever used.
    Automatic activation preserves the established consumer-GPU paths;
    explicit scf.mgpu.enable=on or OPENMX_MGPU=1 permits other devices too. */
-int devices_for_operation(int *devices)
+int configured_gpu_count()
 {
-    if (!cluster_scope || !topology_single_node || input_enabled == 0) return 0;
+    if (!topology_single_node || input_enabled == 0) return 0;
     const char *v = std::getenv("OPENMX_MGPU");
     if (v && *v && std::strcmp(v,"0") == 0) return 0;
     int count = 0;
     if (cudaGetDeviceCount(&count) != cudaSuccess) return 0;
     if (input_gpu_limit > 0) count = std::min(count, input_gpu_limit);
     count = std::min(count, positive_env("OPENMX_MGPU_NUM_GPUS", count));
-    count = std::min(count, 8);
-    if (count < 2) return 0;
+    return count;
+}
+
+bool allowed_gpu_range(int first,int count)
+{
+    const char *v=std::getenv("OPENMX_MGPU");
     const bool forced = input_enabled > 0 || (v && std::strcmp(v,"1") == 0);
-    for (int i = 0; i < count; ++i) {
+    for (int i = first; i < first+count; ++i) {
         int ratio = 0;
         if (!forced && (cudaDeviceGetAttribute(&ratio,
-            cudaDevAttrSingleToDoublePrecisionPerfRatio,i) != cudaSuccess || ratio <= 0 || ratio >= 8)) return 0;
-        devices[i] = i;
+            cudaDevAttrSingleToDoublePrecisionPerfRatio,i) != cudaSuccess || ratio <= 0 || ratio >= 8)) return false;
     }
+    return true;
+}
+
+int band_group(int total,int index,int *devices,int capacity,int *total_gpus=nullptr)
+{
+    const int g=configured_gpu_count();
+    if (total_gpus) *total_gpus=g;
+    if (total<1 || index<0 || index>=total) return 0;
+    const int q=g/total;
+    if (q<2 || q>8 || (devices && capacity<q)) return 0;
+    if (devices) for (int j=0;j<q;++j) devices[j]=index*q+j;
+    return q;
+}
+
+int devices_for_operation(int *devices)
+{
+    if (!cluster_scope) return 0;
+    if (band_kpoints) {
+        int count=band_group(band_kpoints,band_kpoint,devices,8);
+        return count && allowed_gpu_range(devices[0],count) ? count : 0;
+    }
+    const int count=std::min(configured_gpu_count(),8);
+    if (count<2 || !allowed_gpu_range(0,count)) return 0;
+    for (int i=0;i<count;++i) devices[i]=i;
     return count;
+}
+
+/* Keep diagnostics local to the calling host thread. Device ordinals are
+   relative to the CUDA-visible allocation, as are the Band worker lists. */
+const char *operation_context(const int *devices,int count)
+{
+    static thread_local char text[384];
+    char list[128] = "";
+    size_t used=0;
+    for (int i=0;i<count && used<sizeof(list);++i)
+        used+=size_t(std::snprintf(list+used,sizeof(list)-used,"%s%d",i?",":"",devices[i]));
+    int owner=-1;
+    (void)cudaGetDevice(&owner);
+    std::snprintf(text,sizeof(text),
+        "scope=%s kpoint=%d kpoints=%d group_gpus=%d used_gpus=%d devices=%s owner=%d",
+        band_kpoints?"band":"cluster",band_kpoint,band_kpoints,count,
+        band_kpoints?count*band_kpoints:count,count?list:"none",owner);
+    return text;
 }
 
 /* The automatic GEMM crossover was measured with direct A100 NVLink paths.
@@ -151,7 +196,9 @@ bool direct_nvlink_query(const std::vector<int> &devices)
 bool fast_gemm_topology(const int *devices,int count)
 {
     const char *mode=std::getenv("OPENMX_MGPU_GEMM");
-    if (mode && (std::strcmp(mode,"1")==0 || std::strcmp(mode,"on")==0)) return true;
+    /* Only the explicitly requested legacy auto policy limits cooperation
+       to NVLink. PCIe workers retain the bounded host staging path. */
+    if (!mode || std::strcmp(mode,"auto")!=0) return true;
     int owner=-1;
     if (cudaGetDevice(&owner)!=cudaSuccess) return false;
     std::vector<int> key(devices,devices+count);
@@ -180,7 +227,7 @@ public:
         int owner=-1;
         if (cudaGetDevice(&owner)!=cudaSuccess) return;
         /* Native calibration and output transfers also touch the caller's
-           device, which an explicit worker-count limit may have excluded. */
+           device, which may be outside the selected k-point worker group. */
         for (int i = 0; i <= count; ++i) {
             cudaDeviceProp prop;
             if (cudaGetDeviceProperties(&prop,i==count?owner:devices[i]) != cudaSuccess) return;
@@ -326,16 +373,6 @@ template<> void canonicalize(std::vector<cuDoubleComplex> &a,int n,cublasFillMod
     }
 }
 
-template<class T> int paper_solve(int,int,int,std::vector<T>&,std::vector<double>&) { return 1; }
-template<> int paper_solve(int ngpu,int n,int nev,std::vector<double> &a,std::vector<double> &w)
-{
-    return openmx_paper_mgpu_dsyevdx_host ? openmx_paper_mgpu_dsyevdx_host(ngpu,n,nev,a.data(),n,w.data()) : 1;
-}
-template<> int paper_solve(int ngpu,int n,int nev,std::vector<cuDoubleComplex> &a,std::vector<double> &w)
-{
-    return openmx_paper_mgpu_zheevdx_host ? openmx_paper_mgpu_zheevdx_host(ngpu,n,nev,a.data(),n,w.data()) : 1;
-}
-
 template<class T>
 int solve_typed(cusolverDnHandle_t handle,cublasFillMode_t uplo,int n,void *A,int lda,
                 int nev,double *W,int64_t *meig,int *info,int ngpu,const int *devices,
@@ -343,19 +380,16 @@ int solve_typed(cusolverDnHandle_t handle,cublasFillMode_t uplo,int n,void *A,in
                 cusolverStatus_t *status)
 {
     const char *choice=std::getenv("OPENMX_MGPU_SOLVER");
-    if (!choice || !*choice) choice="auto";
+    if (!choice || !*choice) choice="single";
     const bool automatic=std::strcmp(choice,"auto")==0;
     const bool force_magma=std::strcmp(choice,"magma")==0;
-    const bool force_paper=std::strcmp(choice,"paper")==0;
-    if (!automatic && !force_magma && !force_paper) return 0;
-    bool available_magma=openmx_magma_mgpu_available()!=0;
-    bool available_paper=openmx_paper_mgpu_available && openmx_paper_mgpu_available()!=0 &&
-        (complex ? openmx_paper_mgpu_zheevdx_host!=nullptr : openmx_paper_mgpu_dsyevdx_host!=nullptr);
-    if ((!available_magma && !available_paper) || (force_magma && !available_magma) ||
-        (force_paper && !available_paper)) return 0;
+    if (!automatic && !force_magma) return 0;
+    if (!openmx_magma_mgpu_available_devices(ngpu,devices)) return 0;
     int device=-1;
     if (cudaGetDevice(&device)!=cudaSuccess) return 0;
-    const SolveKey key(n,nev,complex?1:0,ngpu,device);
+    std::array<int,8> group; group.fill(-1);
+    std::copy_n(devices,ngpu,group.begin());
+    const SolveKey key(n,nev,complex?1:0,ngpu,device,group);
     if (automatic) {
         /* A native winner needs no cooperative resources. Avoid taking
            every GPU's OS lock on later SCF steps, which would serialize
@@ -373,7 +407,7 @@ int solve_typed(cusolverDnHandle_t handle,cublasFillMode_t uplo,int n,void *A,in
     auto cached=solver_choices.find(key);
     const bool calibrate=automatic && cached==solver_choices.end();
     const int trials=calibrate ? std::max(1,std::min(3,positive_env("OPENMX_MGPU_TUNE_TRIALS",2))) : 1;
-    Backend selected=force_paper?Paper:Magma;
+    Backend selected=Magma;
     if (automatic && !calibrate) selected=cached->second;
     if (automatic && !calibrate && selected==Native) return 0;
 
@@ -448,24 +482,22 @@ int solve_typed(cusolverDnHandle_t handle,cublasFillMode_t uplo,int n,void *A,in
                 std::copy(trial_w.begin(),trial_w.end(),best_w.begin());
                 best_seconds=elapsed; winner=Native; has_result=true;
             }
-            if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver trial n=%d nev=%d type=%c gpus=%d backend=single seconds=%.6f valid=%d repetition=%d\n",
-                n,nev,complex?'Z':'D',ngpu,elapsed,int(valid),repetition+1);
+            if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver trial n=%d nev=%d type=%c gpus=%d backend=single seconds=%.6f valid=%d repetition=%d %s\n",
+                n,nev,complex?'Z':'D',ngpu,elapsed,int(valid),repetition+1,operation_context(devices,ngpu));
             if (!valid) break;
         }
     }
 
-    for (Backend candidate : {Magma,Paper}) {
-        if ((!calibrate && selected!=candidate) || (candidate==Magma && !available_magma) ||
-            (candidate==Paper && !available_paper)) continue;
+    for (Backend candidate : {Magma}) {
+        if (!calibrate && selected!=candidate) continue;
         for (int repetition=0;repetition<trials;++repetition) {
         auto start=Clock::now();
         std::copy(original.begin(),original.end(),trial.begin());
         canonicalize(trial,n,uplo);
         int rc=OPENMX_MAGMA_RESOURCES;
         try {
-            rc=candidate==Magma ? openmx_magma_mgpu_solve_host(ngpu,complex?1:0,1,1,n,1,nev,
-                                                              trial.data(),n,trial_w.data())
-                                : paper_solve(ngpu,n,nev,trial,trial_w);
+            rc=openmx_magma_mgpu_solve_host_devices(ngpu,devices,complex?1:0,1,1,n,1,nev,
+                                                   trial.data(),n,trial_w.data());
         } catch (...) {
             /* A private host trial cannot damage the device input. */
         }
@@ -478,15 +510,15 @@ int solve_typed(cusolverDnHandle_t handle,cublasFillMode_t uplo,int n,void *A,in
             }
         }
         const double elapsed=preparation_seconds+seconds_since(start);
-        if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver trial n=%d nev=%d type=%c gpus=%d backend=%s seconds=%.6f valid=%d code=%d repetition=%d\n",
-            n,nev,complex?'Z':'D',ngpu,backend_name(candidate),elapsed,int(valid),rc,repetition+1);
+        if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver trial n=%d nev=%d type=%c gpus=%d backend=%s seconds=%.6f valid=%d code=%d repetition=%d %s\n",
+            n,nev,complex?'Z':'D',ngpu,backend_name(candidate),elapsed,int(valid),rc,repetition+1,operation_context(devices,ngpu));
         if (valid && !calibrate) {
             /* The successful trial is already committed. Re-uploading it
                through a best-result buffer doubles the steady-state output
                traffic and would not be reflected in the calibration. */
             if (meig) *meig=nev;
-            if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver selected n=%d nev=%d type=%c gpus=%d backend=%s seconds=%.6f calibration=0\n",
-                n,nev,complex?'Z':'D',ngpu,backend_name(candidate),elapsed);
+            if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver selected n=%d nev=%d type=%c gpus=%d backend=%s seconds=%.6f calibration=0 %s\n",
+                n,nev,complex?'Z':'D',ngpu,backend_name(candidate),elapsed,operation_context(devices,ngpu));
             *status=CUSOLVER_STATUS_SUCCESS;
             return 1;
         }
@@ -515,8 +547,8 @@ int solve_typed(cusolverDnHandle_t handle,cublasFillMode_t uplo,int n,void *A,in
            eigenvectors already computed and published successfully. */
         try { solver_choices[key]=winner; } catch (const std::bad_alloc &) {}
     }
-    if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver selected n=%d nev=%d type=%c gpus=%d backend=%s seconds=%.6f calibration=%d\n",
-        n,nev,complex?'Z':'D',ngpu,backend_name(winner),best_seconds,int(calibrate));
+    if (verbose()) std::fprintf(stderr,"<OpenMX_MGPU> solver selected n=%d nev=%d type=%c gpus=%d backend=%s seconds=%.6f calibration=%d %s\n",
+        n,nev,complex?'Z':'D',ngpu,backend_name(winner),best_seconds,int(calibrate),operation_context(devices,ngpu));
     *status=CUSOLVER_STATUS_SUCCESS;
     return 1;
 }
@@ -527,18 +559,19 @@ bool gemm_eligible(int m,int n,int k)
     const char *mode=std::getenv("OPENMX_MGPU_GEMM");
     if (mode && (std::strcmp(mode,"0")==0 || std::strcmp(mode,"off")==0)) return false;
     if (mode && (std::strcmp(mode,"1")==0 || std::strcmp(mode,"on")==0)) return true;
-    const int min_n=positive_env("OPENMX_MGPU_GEMM_MIN_N",8192);
+    const int min_n=positive_env("OPENMX_MGPU_GEMM_MIN_N",
+        mode && std::strcmp(mode,"auto")==0 ? 8192 : 1);
     const int min_output=min_n/2+min_n%2;
     return std::max(m,n)>=min_n && std::min(m,n)>=min_output && k>=min_n;
 }
 
-void report_gemm(int m,int n,int k,char type)
+void report_gemm(int m,int n,int k,char type,const int *devices,int count)
 {
     if (!verbose()) return;
     openmx_mgpu_gemm_report r{};
     openmx_mgpuGemmLastReport(&r);
-    std::fprintf(stderr,"<OpenMX_MGPU> gemm type=%c m=%d n=%d k=%d gpus=%d tiles=%d seconds=%.6f reason=%s\n",
-        type,m,n,k,r.active_gpus,r.tiles,r.seconds,r.reason?r.reason:"");
+    std::fprintf(stderr,"<OpenMX_MGPU> gemm type=%c m=%d n=%d k=%d gpus=%d tiles=%d seconds=%.6f reason=%s %s\n",
+        type,m,n,k,r.active_gpus,r.tiles,r.seconds,r.reason?r.reason:"",operation_context(devices,count));
 }
 
 } // namespace
@@ -560,6 +593,65 @@ extern "C" int openmx_mgpu_scope_enter(int allowed)
 }
 extern "C" void openmx_mgpu_scope_leave(int previous_scope) { cluster_scope=previous_scope; }
 extern "C" int openmx_mgpu_scope_active(void) { return cluster_scope!=0; }
+extern "C" int openmx_mgpu_pool_devices(int *devices,int capacity)
+{
+    const int count=configured_gpu_count();
+    if (count<1 || !devices || capacity<count) return 0;
+    for (int i=0;i<count;++i) devices[i]=i;
+    return count;
+}
+extern "C" int openmx_mgpu_scope_devices(int *devices,int capacity)
+{
+    if (!cluster_scope) return 0;
+    if (band_kpoints) return band_group(band_kpoints,band_kpoint,devices,capacity);
+    return openmx_mgpu_pool_devices(devices,capacity);
+}
+extern "C" void *openmx_mgpu_admit_devices(const int *devices,int count)
+{
+    if (!devices || count<1 || count>64) return nullptr;
+    int permitted=configured_gpu_count();
+    if (count==1 && permitted==0) {
+        /* Single-device callbacks also serve the original GPU paths when
+           cooperation is disabled. They may only use the current device. */
+        int owner=-1;
+        if (cudaGetDevice(&owner)!=cudaSuccess || devices[0]!=owner ||
+            cudaGetDeviceCount(&permitted)!=cudaSuccess) return nullptr;
+        if (input_gpu_limit>0) permitted=std::min(permitted,input_gpu_limit);
+    }
+    for (int i=0;i<count;++i)
+        if (devices[i]<0 || devices[i]>=permitted) return nullptr;
+    try {
+        Admission *admission=new Admission(devices,count);
+        if (admission->ok) return admission;
+        delete admission;
+    } catch (const std::bad_alloc &) {}
+    return nullptr;
+}
+extern "C" void openmx_mgpu_release_devices(void *admission)
+{ delete static_cast<Admission*>(admission); }
+extern "C" int openmx_mgpu_band_group(int total,int index,int *devices,int capacity)
+{ return band_group(total,index,devices,capacity); }
+extern "C" int openmx_mgpu_band_used_gpus(int total)
+{ const int q=band_group(total,0,nullptr,0); return q?total*q:0; }
+extern "C" openmx_mgpu_scope_state openmx_mgpu_band_scope_enter(int allowed,int total,int index)
+{
+    const openmx_mgpu_scope_state previous{cluster_scope,band_kpoints,band_kpoint};
+    cluster_scope=allowed && total>0 && index>=0 && index<total ? 1 : 0;
+    band_kpoints=total>0?total:-1; band_kpoint=index;
+    if (verbose()) {
+        int devices[8],g=0;
+        const int q=band_group(total,index,devices,8,&g);
+        const char *reason=!cluster_scope?"scope-disabled":q?"eligible":
+            total>0 && g/total<2?"insufficient":total>0 && g/total>8?"backend-limit":"policy";
+        std::fprintf(stderr,"<OpenMX_MGPU> band-group total_gpus=%d %s reason=%s\n",
+            g,operation_context(devices,cluster_scope?q:0),reason);
+    }
+    return previous;
+}
+extern "C" void openmx_mgpu_band_scope_leave(openmx_mgpu_scope_state previous)
+{
+    cluster_scope=previous.active; band_kpoints=previous.band_kpoints; band_kpoint=previous.band_kpoint;
+}
 
 extern "C" int openmx_mgpu_solve_device_try(cusolverDnHandle_t handle,
     cusolverEigMode_t jobz,cublasFillMode_t uplo,int64_t n,cudaDataType type,
@@ -572,7 +664,7 @@ extern "C" int openmx_mgpu_solve_device_try(cusolverDnHandle_t handle,
         (type!=CUDA_R_64F && type!=CUDA_C_64F)) return 0;
     const char *mode=std::getenv("OPENMX_MGPU_SOLVER");
     if (mode && (std::strcmp(mode,"off")==0 || std::strcmp(mode,"single")==0)) return 0;
-    const bool forced=mode && (std::strcmp(mode,"magma")==0 || std::strcmp(mode,"paper")==0);
+    const bool forced=mode && std::strcmp(mode,"magma")==0;
     if (!forced && n<positive_env("OPENMX_MGPU_SOLVER_MIN_N",4096)) return 0;
     int devices[8];
     const int count=devices_for_operation(devices);
@@ -593,14 +685,14 @@ extern "C" int openmx_mgpu_dispatch_dgemm(cublasHandle_t handle,
     cublasStatus_t *status)
 {
     if (!gemm_eligible(m,n,k)) return 0;
-    int devices[8]; const int count=devices_for_operation(devices);
+    int devices[64]; const int count=openmx_mgpu_scope_devices(devices,64);
     if (count<2) return 0;
     try {
         if (!fast_gemm_topology(devices,count)) return 0;
         Admission admission(devices,count);
         if (!admission.ok) return 0;
         const int handled=openmx_mgpuDgemmTry(handle,count,devices,ta,tb,m,n,k,alpha,A,lda,B,ldb,beta,C,ldc,status);
-        report_gemm(m,n,k,'D');
+        report_gemm(m,n,k,'D',devices,count);
         return handled;
     } catch (const std::bad_alloc &) { return 0; }
 }
@@ -611,14 +703,140 @@ extern "C" int openmx_mgpu_dispatch_zgemm(cublasHandle_t handle,
     const cuDoubleComplex *beta,cuDoubleComplex *C,int ldc,cublasStatus_t *status)
 {
     if (!gemm_eligible(m,n,k)) return 0;
-    int devices[8]; const int count=devices_for_operation(devices);
+    int devices[64]; const int count=openmx_mgpu_scope_devices(devices,64);
     if (count<2) return 0;
     try {
         if (!fast_gemm_topology(devices,count)) return 0;
         Admission admission(devices,count);
         if (!admission.ok) return 0;
         const int handled=openmx_mgpuZgemmTry(handle,count,devices,ta,tb,m,n,k,alpha,A,lda,B,ldb,beta,C,ldc,status);
-        report_gemm(m,n,k,'Z');
+        report_gemm(m,n,k,'Z',devices,count);
         return handled;
     } catch (const std::bad_alloc &) { return 0; }
+}
+
+extern "C" void openmx_mgpu_force_magma(int force) { input_force_magma=force!=0; }
+extern "C" int openmx_mgpu_host_required(void)
+{
+    const char *mode=std::getenv("OPENMX_MGPU_MEMORY");
+    return input_force_magma || (mode && std::strcmp(mode,"host")==0);
+}
+extern "C" const char *openmx_mgpu_host_error(void) { return host_error; }
+
+extern "C" int openmx_mgpu_host_plan(int total_kpoints,int n,int complex_matrix)
+{
+    host_error[0]='\0';
+    const int pool=configured_gpu_count();
+    const int count=total_kpoints>0 ? pool/total_kpoints : std::min(pool,8);
+    if (count<2 || count>8) {
+        std::snprintf(host_error,sizeof(host_error),
+            "MAGMA needs 2..8 GPUs per matrix: available pool=%d, scf.gpu.num limit=%d, kpoints=%d; GPU limit will not be exceeded",
+            pool,input_gpu_limit,total_kpoints);
+        return 0;
+    }
+    /* Capacity recovery also applies to GeForce. The performance-oriented
+       allowed_gpu_range filter must not forbid an otherwise feasible solve. */
+    int owner=-1;
+    if (cudaGetDevice(&owner)!=cudaSuccess) return 0;
+    struct Restore { int dev; ~Restore() { (void)cudaSetDevice(dev); } } restore{owner};
+    const size_t required=openmx_magma_mgpu_device_bytes(count,n,complex_matrix);
+    if (required==SIZE_MAX) {
+        std::snprintf(host_error,sizeof(host_error),"unsupported MAGMA order/group: n=%d, gpus=%d (LP64 order limit 32766)",n,count);
+        return 0;
+    }
+    for (int group=0;group<std::max(1,total_kpoints);++group) {
+        int devices[8];
+        for (int j=0;j<count;++j) devices[j]=group*count+j;
+        if (!openmx_magma_mgpu_available_devices(count,devices)) {
+            std::snprintf(host_error,sizeof(host_error),"MAGMA multi-GPU support is unavailable for the selected devices (build WITH_MAGMA=1)");
+            return 0;
+        }
+        for (int j=0;j<count;++j) {
+            size_t free_bytes=0,total=0;
+            if (cudaSetDevice(devices[j])!=cudaSuccess || (OpenMX_GpuMemGetInfo ? OpenMX_GpuMemGetInfo(&free_bytes,&total) : cudaMemGetInfo(&free_bytes,&total))!=cudaSuccess) {
+                std::snprintf(host_error,sizeof(host_error),"cannot query memory on GPU %d",devices[j]);
+                return 0;
+            }
+            if (free_bytes<required) {
+                std::snprintf(host_error,sizeof(host_error),
+                    "MAGMA n=%d type=%c cannot fit: GPU %d free=%.3f GiB required=%.3f GiB, group=%d GPUs, scf.gpu.num limit=%d; GPU limit will not be exceeded",
+                    n,complex_matrix?'Z':'D',devices[j],double(free_bytes)/(1ull<<30),double(required)/(1ull<<30),count,input_gpu_limit);
+                return 0;
+            }
+        }
+    }
+    return count;
+}
+
+/* Host operations honor the same exact groups, but capacity recovery is
+   independent of the automatic performance filter for consumer devices. */
+static int host_devices(int *devices)
+{
+    if (!cluster_scope) return 0;
+    const int pool=configured_gpu_count();
+    const int count=band_kpoints>0 ? pool/band_kpoints : std::min(pool,8);
+    if (count<2 || count>8 || band_kpoints<0) return 0;
+    for (int j=0;j<count;++j) devices[j]=(band_kpoints>0 ? band_kpoint*count:0)+j;
+    return count;
+}
+
+extern "C" int openmx_mgpu_host_solve(int n,int nev,int complex_matrix,void *a,int lda,double *w)
+{
+    int devices[8], count=host_devices(devices);
+    std::snprintf(host_error,sizeof(host_error),"no eligible MAGMA device group");
+    if (count<2) return 0;
+    try {
+        Admission admission(devices,count);
+        if (!admission.ok) return 0;
+        const auto start=Clock::now();
+        const int rc=openmx_magma_mgpu_solve_host_devices(count,devices,complex_matrix,1,1,n,1,nev,a,lda,w);
+        std::snprintf(host_error,sizeof(host_error),"MAGMA status=%d: %s",rc,openmx_magma_mgpu_last_error());
+        if (verbose() || rc) std::fprintf(stderr,
+            "<OpenMX_MGPU> solver selected n=%d nev=%d type=%c gpus=%d backend=magma storage=host seconds=%.6f valid=%d %s%s%s\n",
+            n,nev,complex_matrix?'Z':'D',count,seconds_since(start),rc==0,operation_context(devices,count),rc?" error=":"",rc?host_error:"");
+        return rc==0;
+    } catch (const std::bad_alloc &) {
+        std::snprintf(host_error,sizeof(host_error),"host memory allocation failed in MAGMA"); return 0;
+    }
+}
+
+extern "C" int openmx_mgpu_host_dgemm(cublasOperation_t ta,cublasOperation_t tb,
+    int m,int n,int k,const double *a,int lda,const double *b,int ldb,double *c,int ldc)
+{
+    int devices[8], count=host_devices(devices);
+    const double alpha=1.0,beta=0.0;
+    cublasStatus_t status=CUBLAS_STATUS_ALLOC_FAILED;
+    try {
+        if (count>=2) {
+            Admission admission(devices,count);
+            if (admission.ok && openmx_mgpuDgemmHostTry(count,devices,ta,tb,m,n,k,&alpha,a,lda,b,ldb,&beta,c,ldc,&status) && status==CUBLAS_STATUS_SUCCESS) {
+                report_gemm(m,n,k,'D',devices,count); return 1;
+            }
+        }
+    } catch (const std::bad_alloc &) {}
+    openmx_mgpu_gemm_report report{}; openmx_mgpuGemmLastReport(&report);
+    std::snprintf(host_error,sizeof(host_error),"host-backed multi-GPU DGEMM failed: %s (status=%d, group=%d, scf.gpu.num limit=%d); no single-GPU fallback",
+        count<2?"no eligible group":report.reason?report.reason:"resource or execution error",int(status),count,input_gpu_limit);
+    return 0;
+}
+extern "C" int openmx_mgpu_host_zgemm(cublasOperation_t ta,cublasOperation_t tb,
+    int m,int n,int k,const void *a,int lda,const void *b,int ldb,void *c,int ldc)
+{
+    int devices[8], count=host_devices(devices);
+    const cuDoubleComplex alpha={1.0,0.0},beta={0.0,0.0};
+    cublasStatus_t status=CUBLAS_STATUS_ALLOC_FAILED;
+    try {
+        if (count>=2) {
+            Admission admission(devices,count);
+            if (admission.ok && openmx_mgpuZgemmHostTry(count,devices,ta,tb,m,n,k,&alpha,
+                static_cast<const cuDoubleComplex*>(a),lda,static_cast<const cuDoubleComplex*>(b),ldb,&beta,
+                static_cast<cuDoubleComplex*>(c),ldc,&status) && status==CUBLAS_STATUS_SUCCESS) {
+                report_gemm(m,n,k,'Z',devices,count); return 1;
+            }
+        }
+    } catch (const std::bad_alloc &) {}
+    openmx_mgpu_gemm_report report{}; openmx_mgpuGemmLastReport(&report);
+    std::snprintf(host_error,sizeof(host_error),"host-backed multi-GPU ZGEMM failed: %s (status=%d, group=%d, scf.gpu.num limit=%d); no single-GPU fallback",
+        count<2?"no eligible group":report.reason?report.reason:"resource or execution error",int(status),count,input_gpu_limit);
+    return 0;
 }

@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+extern "C" void openmx_gpu_test_use_visible_pool(void);
+extern "C" void openmx_gpu_test_worker_failures(void);
 
 extern "C" int Set_Hamiltonian_Cuda_Density(
     int, int, int, int, const int *, const int *, const int *,
@@ -19,6 +21,16 @@ extern "C" int Set_Hamiltonian_Cuda_Density_FP64(
     const std::size_t *, const std::size_t *, const std::size_t *, const std::size_t *,
     const std::size_t *, const int *, const float *, const float *,
     const double *, double *, std::size_t, int);
+extern "C" int Set_Hamiltonian_Cuda_Density_Range(
+    int, int, int, int, const int *, const int *, const int *,
+    const std::size_t *, const std::size_t *, const std::size_t *, const std::size_t *,
+    const std::size_t *, const int *, const float *, const float *,
+    const float *, const float *, double *, std::size_t, int, std::size_t, std::size_t);
+extern "C" int Set_Hamiltonian_Cuda_Density_FP64_Range(
+    int, int, int, int, const int *, const int *, const int *,
+    const std::size_t *, const std::size_t *, const std::size_t *, const std::size_t *,
+    const std::size_t *, const int *, const float *, const float *,
+    const double *, double *, std::size_t, int, std::size_t, std::size_t);
 extern "C" void *Set_Hamiltonian_Cuda_StreamCreate(std::size_t, std::size_t, const double *);
 extern "C" void Set_Hamiltonian_Cuda_StreamDestroy(void *);
 extern "C" int Set_Hamiltonian_Cuda_StreamRun(
@@ -236,7 +248,39 @@ static double exercise_multi(int spins, bool compact)
     check(cudaMemcpy(density.data(), d_den64.p, density.size() * sizeof(double), cudaMemcpyDeviceToHost));
     const double error64 = compare("multipair FP64 density", density, expected);
     check(cudaMemcpy(density.data(), d_dendf.p, density.size() * sizeof(double), cudaMemcpyDeviceToHost));
-    return std::max(error64, compare("multipair DF density", density, expected));
+    double worst = std::max(error64, compare("multipair DF density", density, expected));
+    /* A worker stores only its owned output interval, with a local spin
+       stride. Include intervals containing no contributing points, cuts
+       through repeated indices, one-element tails and allocation guards. */
+    const std::size_t cuts[] = {0, 1, 11, 12, 127, 256, 512, output_count-1, output_count};
+    for (int mode : {0, 2}) {
+        for (std::size_t part = 0; part + 1 < sizeof(cuts)/sizeof(*cuts); ++part) {
+            const std::size_t first = cuts[part], last = cuts[part+1], count = last-first;
+            constexpr std::size_t guard = 13;
+            std::vector<double> local(2*guard + spins*count, 987.125);
+            std::fill(local.begin()+guard, local.end()-guard, 0.17);
+            std::vector<long double> reference(local.begin(), local.end());
+            for (int s = 0; s < spins; ++s)
+                for (std::size_t i = 0; i < count; ++i)
+                    reference[guard+s*count+i] += 2*(expected[s*output_count+first+i]-0.17L);
+            Device<double> out(local);
+            auto launch = [&](std::size_t start, std::size_t end) {
+                return mode == 0 ? Set_Hamiltonian_Cuda_Density_FP64_Range(pairs, spins, 48, 273,
+                    d_no0.p, d_no1.p, d_nolg.p, d_hoff.p, d_noff.p, d_aoff.p, d_boff.p, d_outbase.p,
+                    d_nc.p, d_a.p, d_b.p, d_dm.p, out.p+guard, output_count, compact, start, end) :
+                    Set_Hamiltonian_Cuda_Density_Range(pairs, spins, 48, 273,
+                    d_no0.p, d_no1.p, d_nolg.p, d_hoff.p, d_noff.p, d_aoff.p, d_boff.p, d_outbase.p,
+                    d_nc.p, d_a.p, d_b.p, d_hi.p, d_lo.p, out.p+guard, output_count, compact, start, end);
+            };
+            if (launch(last, first) != 1 || launch(0, output_count+1) != 1 ||
+                launch(first, first) != 0 || launch(first, last) || launch(first, last)) {
+                std::fprintf(stderr, "output-range launch/validation failed\n"); std::exit(2);
+            }
+            check(cudaMemcpy(local.data(), out.p, local.size()*sizeof(double), cudaMemcpyDeviceToHost));
+            worst = std::max(worst, compare(mode == 0 ? "range FP64" : "range DF", local, reference));
+        }
+    }
+    return worst;
 }
 
 /* Optional resident-input microbenchmark, separate from the long-double
@@ -298,6 +342,8 @@ static void benchmark_density(int no, int spins, int repeats)
 int main()
 {
     check(cudaSetDevice(0));
+    openmx_gpu_test_use_visible_pool();
+    openmx_gpu_test_worker_failures();
     std::printf("OPENMX_SETDEN_FP64_SPLIT_SPIN=%s\n", std::getenv("OPENMX_SETDEN_FP64_SPLIT_SPIN") ?
                 std::getenv("OPENMX_SETDEN_FP64_SPLIT_SPIN") : "auto (max_no > 32 and spins > 1)");
     double worst = 0;
@@ -316,7 +362,7 @@ int main()
     check(cudaDeviceSynchronize());
     std::printf("PASS: %d full/chunk FP64/DF density and matrix cases; spins 1/2/4, "
                 "orbitals 1/16/17/32/41/48, repeated original indices, padding, accumulated chunks, "
-                "heterogeneous pairs and empty overlaps; "
+                "heterogeneous pairs, empty overlaps and 96 guarded output-range checks; "
                 "max scaled error %.3e\n", cases, worst);
     const char *benchmark = std::getenv("SETPOINT_BENCHMARK");
     if (benchmark != nullptr && std::atoi(benchmark) > 0) {

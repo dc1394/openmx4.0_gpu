@@ -23,7 +23,7 @@ from compare_gpu_suites import read_output
 from run_gpu_suites import stop_job
 
 CASES = ('col_off', 'col_on', 'noncol_soc')
-BACKENDS = ('off', 'magma', 'paper', 'auto')
+BACKENDS = ('off', 'magma', 'auto')
 
 
 def digest(path):
@@ -49,7 +49,7 @@ def make_input(template, case, backend, datapath, gpus):
         'System.CurrrentDirectory': './',
         'System.Name': 'mgpu_' + case, 'level.of.stdout': 2,
         'level.of.fileout': 1, 'scf.EigenvalueSolver': 'cluster',
-        'scf.eigen.lib': 'gpusolver', 'scf.Gpu.Num': gpus,
+        'scf.eigen.lib': 'gpusolver3' if backend == 'magma' else 'gpusolver', 'scf.Gpu.Num': gpus,
         'scf.fp32.enable': 'off', 'scf.maxIter': 3,
         'scf.criterion': '1e-20', 'scf.restart': 'off',
         'MD.Type': 'nomd', 'MD.maxIter': 1,
@@ -137,7 +137,7 @@ def inspect_run(folder, case, backend, gpus):
         raise ValueError('Disabled run unexpectedly recorded a multi-GPU operation')
     if backend != 'off' and not gemms:
         raise ValueError(f'No successful {expected_type} GEMM using at least {gpus} GPUs')
-    if backend in ('magma', 'paper') and not any(row.get('backend') == backend for row in selected):
+    if backend == 'magma' and not any(row.get('backend') == backend for row in selected):
         raise ValueError(f'No selected {backend} {expected_type} eigensolver using {gpus} GPUs')
     if backend == 'auto' and not selected:
         raise ValueError('Auto solver did not record its selected backend')

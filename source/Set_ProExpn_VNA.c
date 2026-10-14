@@ -24,6 +24,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
+#include "openmx_gpu_views.h"
 #include "openmx_precision.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "mpi.h"
@@ -131,11 +133,13 @@ typedef struct {
 } SetProGpuContext;
 
 static SetProGpuContext SetPro_gpu = { 0 };
+static int SetPro_worker_rank = 0;
 
 static void SetPro_gpu_abort(const char *message)
 {
   fprintf(stderr,"%s\n",message);
   fflush(stderr);
+  if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
   MPI_Abort(mpi_comm_level1,1);
 }
 
@@ -203,7 +207,8 @@ static void SetPro_note(const char *stage, const char *fmt, ...)
   va_start(ap,fmt);
   vsnprintf(detail,sizeof(detail),fmt,ap);
   va_end(ap);
-  MPI_Comm_rank(mpi_comm_level1,&myid);
+  if (openmx_gpu_worker_device()>=0) myid=SetPro_worker_rank;
+  else MPI_Comm_rank(mpi_comm_level1,&myid);
   {
     const double mib = SetPro_free_mib();
 
@@ -522,10 +527,9 @@ static void SetPro_HVNA_GpuArchiveHalo(Type_DS_VNA *****DS_VNA, int Original_Mc_
 }
 
 /* the unified batch over every (local atom, neighbour) pair */
-static void SetPro_HVNA_GpuRun(double ****HVNA)
+static void SetPro_HVNA_GpuRun_Part(int first,int last,SetProGpuContext *g,double ****HVNA)
 {
   const int fp32 = openmx_fp32_enabled();
-  SetProGpuContext *g = &SetPro_gpu;
   const int num_proj = g->num_proj;
   const int num_rvna = g->num_rvna;
   int Mc_AN,j,k;
@@ -541,7 +545,7 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
   int kpos = 0;
 
   /* count */
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+  for (Mc_AN=first; Mc_AN<last; Mc_AN++){
     int Gc_AN = M2G[Mc_AN];
     int tnoC = Spe_Total_NO[WhatSpecies[Gc_AN]];
 
@@ -578,7 +582,7 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
 
   /* build */
   p = 0;
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+  for (Mc_AN=first; Mc_AN<last; Mc_AN++){
     int Gc_AN = M2G[Mc_AN];
     int tnoC = Spe_Total_NO[WhatSpecies[Gc_AN]];
 
@@ -743,6 +747,51 @@ static void SetPro_HVNA_GpuRun(double ****HVNA)
     dtime(&t1);
     SetPro_note("HVNA GPU batch end","%.2f s",t1-hvna_t0);
   }
+}
+
+typedef struct {
+  OpenMXGpuWorkers workers;
+  double ****hvna;
+  SetProGpuContext context[OPENMX_GPU_WORKERS_MAX];
+  OpenMXGpuReadView flat[OPENMX_GPU_WORKERS_MAX],halo[OPENMX_GPU_WORKERS_MAX];
+} SetProHVNAWork;
+
+static int SetPro_HVNA_worker(void *opaque,int worker,int phase)
+{
+  SetProHVNAWork *w=(SetProHVNAWork*)opaque;
+  SetProGpuContext *g=w->context+worker;
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    *g=SetPro_gpu;
+    const size_t sizes[2]={g->flat_count*sizeof(float),(g->halo_count?g->halo_count:1)*sizeof(float)};
+    OpenMXGpuReadView *views[2]={w->flat+worker,w->halo+worker};
+    const float *host[2]={g->flat_host,g->halo_host};
+    const float *device[2]={g->flat_dev,g->halo_dev};
+    for (int i=0;i<2;i++) {
+      if (g->host_archive) {
+        if (cudaMalloc(&views[i]->pointer,sizes[i])!=cudaSuccess) return 0;
+        views[i]->allocated=1;
+        if (cudaMemcpy(views[i]->pointer,host[i],sizes[i],cudaMemcpyHostToDevice)!=cudaSuccess) return 0;
+      } else if (!openmx_gpu_read_view(views[i],device[i],sizes[i])) return 0;
+    }
+    g->flat_dev=(float*)w->flat[worker].pointer;
+    g->halo_dev=(float*)w->halo[worker].pointer;
+    g->host_archive=0;
+  } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+    int first=1+(int)openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+    int last=1+(int)openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count);
+    SetPro_HVNA_GpuRun_Part(first,last,g,w->hvna);
+  } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+    openmx_gpu_read_view_release(w->flat+worker);openmx_gpu_read_view_release(w->halo+worker);
+  }
+  return 1;
+}
+
+static void SetPro_HVNA_GpuRun(double ****HVNA)
+{
+  SetProHVNAWork work={0};work.hvna=HVNA;
+  openmx_gpu_workers_local(&work.workers,(size_t)Matomnum);
+  if (work.workers.count>1 && openmx_gpu_workers_run(&work.workers,SetPro_HVNA_worker,&work,"VNA-projector-contraction")) return;
+  SetPro_HVNA_GpuRun_Part(1,Matomnum+1,&SetPro_gpu,HVNA);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1182,10 +1231,8 @@ static void SetPro_DSVNA_GpuEnd(void)
 }
 
 /* run the whole (Mc_AN,h_AN) list in chunks and store into DS_VNA */
-static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
-                                int *OneD2Mc_AN, int *OneD2h_AN)
+static void SetPro_DSVNA_GpuRun_Part(Type_DS_VNA *****DS_VNA, int OneD_Nloop, int *OneD2Mc_AN, int *OneD2h_AN, SetProGpu2Context *g)
 {
-  SetProGpu2Context *g = &SetPro_gpu2;
   const int num_proj = g->num_proj;
   const int num_rvna = g->num_rvna;
   const int lfi_max = g->lfi_max;
@@ -1282,7 +1329,7 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
 
       /* host: pair geometry and the spherical harmonics of every pair */
 
-#pragma omp parallel for schedule(dynamic) private(LLh,mh)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic) private(LLh,mh)
       for (pp=0; pp<np; pp++){
         int Mc_AN = OneD2Mc_AN[chunk_start+pp];
         int h_AN = OneD2h_AN[chunk_start+pp];
@@ -1604,7 +1651,7 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
 
       /* host: scatter the chunk results into DS_VNA */
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
       for (pp=0; pp<np; pp++){
         int Mc_AN = OneD2Mc_AN[chunk_start+pp];
         int h_AN = OneD2h_AN[chunk_start+pp];
@@ -1647,6 +1694,48 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
   free(pr_siT);
   free(pr_r);
 }
+typedef struct {
+  OpenMXGpuWorkers workers;
+  Type_DS_VNA *****matrix;
+  int mirror, *mc, *h;
+  SetProGpu2Context local[OPENMX_GPU_WORKERS_MAX];
+} SetPro_DSVNAGpuWork;
+
+static int SetPro_DSVNA_Worker(void *opaque, int worker, int phase)
+{
+  SetPro_DSVNAGpuWork *work=(SetPro_DSVNAGpuWork*)opaque;
+  const int first=(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+  const int last=(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+  SetProGpu2Context *g=work->local+worker;
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    size_t free_bytes=0,total_bytes=0;
+    *g=SetPro_gpu2;
+    if (g->chunk>last-first) g->chunk=last-first;
+    if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
+    const size_t reserve=(size_t)256*1024*1024;
+    while (g->chunk>1 && (free_bytes<=reserve || SetPro_DSVNA_DeviceBytes(g)>free_bytes-reserve))
+      g->chunk=(g->chunk+1)/2;
+    return free_bytes>reserve && SetPro_DSVNA_DeviceBytes(g)<=free_bytes-reserve;
+  }
+  if (phase==OPENMX_GPU_WORKER_EXECUTE)
+    SetPro_DSVNA_GpuRun_Part(work->matrix,last-first,work->mc+first,work->h+first,g);
+  return 1;
+}
+
+static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****DS_VNA, int OneD_Nloop,
+                                int *OneD2Mc_AN, int *OneD2h_AN)
+{
+  SetPro_DSVNAGpuWork work={0};
+  openmx_gpu_workers_local(&work.workers,(size_t)OneD_Nloop);
+  if (work.workers.count<=1) { SetPro_DSVNA_GpuRun_Part(DS_VNA,OneD_Nloop,OneD2Mc_AN,OneD2h_AN,&SetPro_gpu2);return; }
+  MPI_Comm_rank(mpi_comm_level1,&SetPro_worker_rank);
+  (void)SetPro_verbose();
+  work.matrix=DS_VNA;work.mirror=0;
+  work.mc=OneD2Mc_AN;work.h=OneD2h_AN;
+  if (!openmx_gpu_workers_run(&work.workers,SetPro_DSVNA_Worker,&work,"SetPro_DSVNA"))
+    SetPro_DSVNA_GpuRun_Part(DS_VNA,OneD_Nloop,OneD2Mc_AN,OneD2h_AN,&SetPro_gpu2);
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Batched device construction of HVNA2 / HVNA3 (the one-centre PAO
@@ -1958,10 +2047,8 @@ static void SetPro_VNA23_GpuEnd(void)
 }
 
 /* run VNA2 (mirror==0) or VNA3 (mirror==1) in pair chunks */
-static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
-                                int *OneD2Mc_AN, int *OneD2h_AN)
+static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nloop, int *OneD2Mc_AN, int *OneD2h_AN, SetProGpu3Context *g)
 {
-  SetProGpu3Context *g = &SetPro_gpu3;
   const int l0max = g->l0max;
   const int lfi_max = g->lfi_max;
   const int cmb_max = g->cmb_max;
@@ -2041,7 +2128,7 @@ static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
       const int np = ((OneD_Nloop-chunk_start)<CHUNK) ? (OneD_Nloop-chunk_start) : CHUNK;
       int pp,LLh,mh;
 
-#pragma omp parallel for schedule(dynamic) private(LLh,mh)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic) private(LLh,mh)
       for (pp=0; pp<np; pp++){
         int Mc_AN = OneD2Mc_AN[chunk_start+pp];
         int h_AN = OneD2h_AN[chunk_start+pp];
@@ -2397,7 +2484,7 @@ static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
 
       /* host: scatter into HVNA2 or HVNA3 */
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
       for (pp=0; pp<np; pp++){
         int Mc_AN = OneD2Mc_AN[chunk_start+pp];
         int h_AN = OneD2h_AN[chunk_start+pp];
@@ -2440,6 +2527,48 @@ static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
   free(pr_siT);
   free(pr_r);
 }
+typedef struct {
+  OpenMXGpuWorkers workers;
+  double *****matrix;
+  int mirror, *mc, *h;
+  SetProGpu3Context local[OPENMX_GPU_WORKERS_MAX];
+} SetPro_VNA23GpuWork;
+
+static int SetPro_VNA23_Worker(void *opaque, int worker, int phase)
+{
+  SetPro_VNA23GpuWork *work=(SetPro_VNA23GpuWork*)opaque;
+  const int first=(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+  const int last=(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+  SetProGpu3Context *g=work->local+worker;
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    size_t free_bytes=0,total_bytes=0;
+    *g=SetPro_gpu3;
+    if (g->chunk>last-first) g->chunk=last-first;
+    if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) return 0;
+    const size_t reserve=(size_t)256*1024*1024;
+    while (g->chunk>1 && (free_bytes<=reserve || SetPro_VNA23_DeviceBytes(g)>free_bytes-reserve))
+      g->chunk=(g->chunk+1)/2;
+    return free_bytes>reserve && SetPro_VNA23_DeviceBytes(g)<=free_bytes-reserve;
+  }
+  if (phase==OPENMX_GPU_WORKER_EXECUTE)
+    SetPro_VNA23_GpuRun_Part(work->matrix,work->mirror,last-first,work->mc+first,work->h+first,g);
+  return 1;
+}
+
+static void SetPro_VNA23_GpuRun(double *****HVNA23, int mirror, int OneD_Nloop,
+                                int *OneD2Mc_AN, int *OneD2h_AN)
+{
+  SetPro_VNA23GpuWork work={0};
+  openmx_gpu_workers_local(&work.workers,(size_t)OneD_Nloop);
+  if (work.workers.count<=1) { SetPro_VNA23_GpuRun_Part(HVNA23,mirror,OneD_Nloop,OneD2Mc_AN,OneD2h_AN,&SetPro_gpu3);return; }
+  MPI_Comm_rank(mpi_comm_level1,&SetPro_worker_rank);
+  (void)SetPro_verbose();
+  work.matrix=HVNA23;work.mirror=mirror;
+  work.mc=OneD2Mc_AN;work.h=OneD2h_AN;
+  if (!openmx_gpu_workers_run(&work.workers,SetPro_VNA23_Worker,&work,"SetPro_VNA23"))
+    SetPro_VNA23_GpuRun_Part(HVNA23,mirror,OneD_Nloop,OneD2Mc_AN,OneD2h_AN,&SetPro_gpu3);
+}
+
 
 double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
 {

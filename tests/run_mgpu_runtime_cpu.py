@@ -17,7 +17,7 @@ cuda = r'''
 #include <cstddef>
 #include <cstring>
 #include <unistd.h>
-using cudaStream_t=void*;
+using cudaStream_t=void*;using cudaError_t=int;
 using cudaDataType=int;
 constexpr int CUDA_R_64F=0,CUDA_C_64F=1,cudaSuccess=0;
 constexpr int cudaMemcpyDeviceToHost=0,cudaMemcpyHostToDevice=1;
@@ -27,6 +27,10 @@ struct cudaDeviceProp {cudaUUID_t uuid;int pciDomainID,pciBusID,pciDeviceID;};
 inline int device=1,visible=2,ratio=2,queries=0,duplicate_uuid=0,property_queries=0,property_fail=0;
 inline int uuid_namespace=int(getpid());
 inline int peer_support=1;
+inline size_t memory_free=size_t(1)<<40;
+inline int largest_memory_device=-1;
+inline int cudaMemGetInfo(size_t *f,size_t *t) {*f=memory_free;*t=size_t(1)<<40;if(largest_memory_device<device)largest_memory_device=device;return 0;}
+
 inline int copy2d_h2d=0,copy_h2d=0,fail_h2d=0,sync_error=0;
 inline int cudaGetDevice(int *p) {*p=device;return 0;}
 inline int cudaSetDevice(int d) {device=d;return 0;}
@@ -63,7 +67,7 @@ cublas = r'''
 #pragma once
 #include "cuComplex.h"
 using cublasHandle_t=void*;using cublasStatus_t=int;using cublasOperation_t=int;using cublasFillMode_t=int;
-constexpr int CUBLAS_FILL_MODE_LOWER=0,CUBLAS_FILL_MODE_UPPER=1,CUBLAS_STATUS_SUCCESS=0;
+constexpr int CUBLAS_FILL_MODE_LOWER=0,CUBLAS_FILL_MODE_UPPER=1,CUBLAS_STATUS_SUCCESS=0,CUBLAS_STATUS_ALLOC_FAILED=3;
 '''
 cusolver = r'''
 #pragma once
@@ -111,9 +115,10 @@ main = r'''
 #include <sys/wait.h>
 #include <thread>
 extern "C" {int level_stdout=0;}
-static int checks=0,native_calls=0,magma_calls=0,paper_calls=0,gemm_calls=0;
-static int native_delay=0,magma_delay=0,paper_delay=0,native_fail=0,backend_fail=0,corrupt=0;
-static int magma_available=1,paper_available=0,worker=0;
+static int checks=0,native_calls=0,magma_calls=0,gemm_calls=0;
+static int native_delay=0,magma_delay=0,native_fail=0,backend_fail=0,corrupt=0;
+static int magma_available=1,worker=0;
+static std::vector<int> last_devices;
 #define CHECK(x) do {++checks;if(!(x)){std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 static void delay(int ms) {if(ms) usleep(ms*1000);}
 static void result(void *a,int lda,int n,int nev,double *w,bool z) {
@@ -126,28 +131,35 @@ static void result(void *a,int lda,int n,int nev,double *w,bool z) {
  }
 }
 extern "C" int openmx_magma_mgpu_available() {return magma_available;}
+extern "C" int openmx_magma_mgpu_available_devices(int,const int*) {return magma_available;}
 extern "C" void openmx_magma_mgpu_release_cache() {}
+extern "C" size_t openmx_magma_mgpu_device_bytes(int count,int n,int) {return n>32766?SIZE_MAX:(size_t(16)<<30)/count;}
+
 extern "C" const char *openmx_magma_mgpu_last_error() {return "mock failure";}
 extern "C" int openmx_magma_mgpu_solve_host(int ngpu,int z,int vec,int lower,int n,int first,int last,void *a,int lda,double *w) {
  ++magma_calls;CHECK(ngpu>=2 && vec && lower && first==1);delay(magma_delay);
  result(a,lda,n,last,w,z);if(corrupt) ((double*)a)[0]=99;
  device=0;return backend_fail;
 }
-extern "C" int openmx_paper_mgpu_available() {return paper_available;}
-extern "C" const char *openmx_paper_mgpu_last_error() {return "mock failure";}
-extern "C" int openmx_paper_mgpu_dsyevdx_host(int,int n,int nev,double *a,int lda,double *w) {
- ++paper_calls;delay(paper_delay);result(a,lda,n,nev,w,false);return backend_fail;
-}
-extern "C" int openmx_paper_mgpu_zheevdx_host(int,int n,int nev,void *a,int lda,double *w) {
- ++paper_calls;delay(paper_delay);result(a,lda,n,nev,w,true);return backend_fail;
+extern "C" int openmx_magma_mgpu_solve_host_devices(int ngpu,const int *devices,int z,int vec,int lower,int n,int first,int last,void *a,int lda,double *w) {
+ last_devices.assign(devices,devices+ngpu);
+ return openmx_magma_mgpu_solve_host(ngpu,z,vec,lower,n,first,last,a,lda,w);
 }
 extern "C" int openmx_mgpuGemmInWorker() {return worker;}
 extern "C" void openmx_mgpuGemmLastReport(openmx_mgpu_gemm_report *r) {*r={};}
-extern "C" int openmx_mgpuDgemmTry(cublasHandle_t,int,const int*,cublasOperation_t,cublasOperation_t,int,int,int,const double*,const double*,int,const double*,int,const double*,double*,int,cublasStatus_t *s) {
- ++gemm_calls;*s=0;return 1;
+extern "C" int openmx_mgpuDgemmTry(cublasHandle_t,int ngpu,const int *devices,cublasOperation_t,cublasOperation_t,int,int,int,const double*,const double*,int,const double*,int,const double*,double*,int,cublasStatus_t *s) {
+ last_devices.assign(devices,devices+ngpu);++gemm_calls;*s=0;return 1;
 }
-extern "C" int openmx_mgpuZgemmTry(cublasHandle_t,int,const int*,cublasOperation_t,cublasOperation_t,int,int,int,const cuDoubleComplex*,const cuDoubleComplex*,int,const cuDoubleComplex*,int,const cuDoubleComplex*,cuDoubleComplex*,int,cublasStatus_t *s) {
- ++gemm_calls;*s=0;return 1;
+extern "C" int openmx_mgpuZgemmTry(cublasHandle_t,int ngpu,const int *devices,cublasOperation_t,cublasOperation_t,int,int,int,const cuDoubleComplex*,const cuDoubleComplex*,int,const cuDoubleComplex*,int,const cuDoubleComplex*,cuDoubleComplex*,int,cublasStatus_t *s) {
+ last_devices.assign(devices,devices+ngpu);++gemm_calls;*s=0;return 1;
+}
+extern "C" int openmx_mgpuDgemmHostTry(int ngpu,const int *devices,cublasOperation_t ta,cublasOperation_t tb,int m,int n,int k,
+ const double *alpha,const double *a,int lda,const double *b,int ldb,const double *beta,double *c,int ldc,cublasStatus_t *status) {
+ return openmx_mgpuDgemmTry(nullptr,ngpu,devices,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,status);
+}
+extern "C" int openmx_mgpuZgemmHostTry(int ngpu,const int *devices,cublasOperation_t ta,cublasOperation_t tb,int m,int n,int k,
+ const cuDoubleComplex *alpha,const cuDoubleComplex *a,int lda,const cuDoubleComplex *b,int ldb,const cuDoubleComplex *beta,cuDoubleComplex *c,int ldc,cublasStatus_t *status) {
+ return openmx_mgpuZgemmTry(nullptr,ngpu,devices,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,status);
 }
 struct Context {void *a;double *w;int *info;int64_t *meig;int n,lda,nev;bool z;};
 static int native(void *p) {
@@ -195,13 +207,49 @@ static void reset() {
  unsetenv("OPENMX_MGPU_TUNE_TRIALS");
  unsetenv("OPENMX_MGPU_GEMM_MIN_N");setenv("OPENMX_TEST_NVLINK_MODE","0",1);peer_support=1;
  setenv("OPENMX_MGPU_SOLVER_MIN_N","0",1);setenv("OPENMX_MGPU_SOLVER","magma",1);
- native_calls=magma_calls=paper_calls=gemm_calls=copy2d_h2d=copy_h2d=0;
- native_delay=magma_delay=paper_delay=native_fail=backend_fail=corrupt=0;
+ native_calls=magma_calls=gemm_calls=copy2d_h2d=copy_h2d=0;
+ native_delay=magma_delay=native_fail=backend_fail=corrupt=0;
  device=1;visible=2;ratio=2;queries=property_queries=property_fail=0;duplicate_uuid=fail_h2d=sync_error=worker=0;
- magma_available=1;paper_available=0;
- openmx_mgpu_configure(-1,2,1);cluster_scope=0;
+ magma_available=1;memory_free=size_t(1)<<40;largest_memory_device=-1;openmx_mgpu_force_magma(0);unsetenv("OPENMX_MGPU_MEMORY");
+ openmx_mgpu_configure(-1,2,1);cluster_scope=0;band_kpoints=0;band_kpoint=-1;last_devices.clear();
 }
 int main() {
+ // Auxiliary work shares visibility/input caps, but is not filtered by an
+ // eigensolver performance heuristic. Scoped Band lists remain exact.
+ reset();visible=8;ratio=64;openmx_mgpu_configure(-1,6,1);
+ int auxiliary[64];std::fill_n(auxiliary,64,-17);
+ CHECK(openmx_mgpu_pool_devices(auxiliary,5)==0);
+ CHECK(openmx_mgpu_pool_devices(auxiliary,64)==6);
+ for(int i=0;i<6;i++)CHECK(auxiliary[i]==i);
+ CHECK(openmx_mgpu_scope_devices(auxiliary,64)==0);
+ auto auxiliary_scope=openmx_mgpu_band_scope_enter(1,3,2);
+ CHECK(openmx_mgpu_scope_devices(auxiliary,64)==2 && auxiliary[0]==4 && auxiliary[1]==5);
+ void *admission_token=openmx_mgpu_admit_devices(auxiliary,2);CHECK(admission_token!=nullptr);openmx_mgpu_release_devices(admission_token);
+ auxiliary[0]=6;CHECK(openmx_mgpu_admit_devices(auxiliary,1)==nullptr);
+ openmx_mgpu_band_scope_leave(auxiliary_scope);
+ setenv("OPENMX_MGPU_NUM_GPUS","4",1);
+ CHECK(openmx_mgpu_pool_devices(auxiliary,64)==4);
+ auxiliary_scope=openmx_mgpu_band_scope_enter(1,3,0);
+ CHECK(openmx_mgpu_scope_devices(auxiliary,64)==0);openmx_mgpu_band_scope_leave(auxiliary_scope);
+ openmx_mgpu_configure(0,4,1);auxiliary[0]=device;
+ admission_token=openmx_mgpu_admit_devices(auxiliary,1);CHECK(admission_token!=nullptr);openmx_mgpu_release_devices(admission_token);
+ auxiliary[0]=(device+1)%4;CHECK(openmx_mgpu_admit_devices(auxiliary,1)==nullptr);
+ unsetenv("OPENMX_MGPU_NUM_GPUS");
+ // Capacity planning never visits a GPU beyond either configured limit.
+ reset();visible=8;openmx_mgpu_configure(-1,6,1);
+ CHECK(openmx_mgpu_host_plan(3,26000,1)==2 && largest_memory_device==5 && device==1);
+ openmx_mgpu_configure(-1,4,1);largest_memory_device=-1;
+ CHECK(openmx_mgpu_host_plan(3,26000,1)==0 && largest_memory_device==-1);
+ openmx_mgpu_configure(-1,1,1);
+ CHECK(openmx_mgpu_host_plan(0,26000,1)==0 && std::strstr(openmx_mgpu_host_error(),"limit=1"));
+ openmx_mgpu_configure(-1,2,1);memory_free=1;
+ CHECK(openmx_mgpu_host_plan(0,26000,1)==0 && std::strstr(openmx_mgpu_host_error(),"cannot fit") && device==1);
+ memory_free=size_t(1)<<40;magma_available=0;CHECK(openmx_mgpu_host_plan(0,26000,1)==0);
+ magma_available=1;CHECK(openmx_mgpu_host_plan(0,32767,1)==0);
+ reset();unsetenv("OPENMX_MGPU_SOLVER");openmx_mgpu_scope_enter(1);
+ {Matrix m;CHECK(m.attempt()==0 && m.unchanged() && native_calls==0 && magma_calls==0);}
+ CHECK(!openmx_mgpu_host_required());openmx_mgpu_force_magma(1);CHECK(openmx_mgpu_host_required());
+ openmx_mgpu_force_magma(0);setenv("OPENMX_MGPU_MEMORY","host",1);CHECK(openmx_mgpu_host_required());
  reset();{Matrix m;CHECK(m.attempt()==0 && m.unchanged() && queries==0);}
  int previous=openmx_mgpu_scope_enter(1);CHECK(previous==0 && openmx_mgpu_scope_active());
  int nested=openmx_mgpu_scope_enter(0);CHECK(!openmx_mgpu_scope_active());
@@ -251,25 +299,96 @@ int main() {
  // including unused NaN triangle bytes, for the ordinary solver fallback.
  reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_MGPU_SOLVER","auto",1);native_fail=backend_fail=1;
  {Matrix m(false,1);CHECK(m.attempt()==0 && m.unchanged() && device==1);}
- // Both paper entry points receive the appropriate scalar type.
- reset();openmx_mgpu_scope_enter(1);paper_available=1;setenv("OPENMX_MGPU_SOLVER","paper",1);
- {Matrix m;CHECK(m.attempt()==1 && paper_calls==1);m.check_result();}
- {Matrix m(true);CHECK(m.attempt()==1 && paper_calls==2);m.check_result();}
+ // Removed or unknown solver names cannot invoke a cooperative solve.
+ for(const char *mode:{"paper","unknown"}) {
+  reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_MGPU_SOLVER",mode,1);
+  Matrix m;CHECK(m.attempt()==0 && m.unchanged() && magma_calls==0 && native_calls==0);
+ }
  reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_MGPU_GEMM","1",1);
  double alpha=1,beta=0,a=2,b=3,c=0;int status=-1;
  CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&a,1,&b,1,&beta,&c,1,&status)==1 && gemm_calls==1);
  worker=1;CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&a,1,&b,1,&beta,&c,1,&status)==0 && gemm_calls==1);
- // Automatic GEMM requires a verified direct link in both directions,
- // CUDA peer access, and the size floor. Explicit on remains portable.
+ // Default cooperation is portable to PCIe and skinny matrices. The
+ // optional legacy auto policy retains its NVLink and size filters.
+ for(int topology=0;topology<=5;++topology) {
+  reset();openmx_mgpu_scope_enter(1);
+  setenv("OPENMX_TEST_NVLINK_MODE",std::to_string(topology).c_str(),1);
+  peer_support=0;ratio=64;
+  CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,17,7,9,&alpha,&a,17,&b,9,&beta,&c,17,&status)==1 && gemm_calls==1);
+ }
  for(int topology=0;topology<=5;++topology) {
   reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_MGPU_GEMM_MIN_N","1",1);
+  setenv("OPENMX_MGPU_GEMM","auto",1);
   const std::string mode=std::to_string(topology==5?1:topology);
   setenv("OPENMX_TEST_NVLINK_MODE",mode.c_str(),1);if(topology==5) peer_support=0;
   const int accepted=openmx_mgpu_dispatch_dgemm((void*)1,0,0,8192,4096,8192,&alpha,&a,8192,&b,8192,&beta,&c,8192,&status);
   CHECK(accepted==(topology==1) && gemm_calls==(topology==1));
  }
  reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_TEST_NVLINK_MODE","1",1);
+ setenv("OPENMX_MGPU_GEMM","auto",1);
  CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,8192,512,8192,&alpha,&a,8192,&b,8192,&beta,&c,8192,&status)==0);
+ // Planning is independent of scope. Divide the full pool before imposing
+ // the per-backend limit; G=16,K=3 has three valid five-GPU groups.
+ for(int g=1;g<=24;++g) for(int total=1;total<=16;++total) {
+  reset();visible=g;openmx_mgpu_configure(1,g,1);
+  const int q=g/total;const bool eligible=q>=2 && q<=8;
+  CHECK(openmx_mgpu_band_used_gpus(total)==(eligible?q*total:0));
+  CHECK(!openmx_mgpu_scope_active() && device==1);
+  for(int kp=0;kp<total;++kp) {
+   int ids[8];std::fill_n(ids,8,-17);
+   CHECK(openmx_mgpu_band_group(total,kp,ids,8)==(eligible?q:0));
+   for(int j=0;j<8;++j) CHECK(ids[j]==(eligible && j<q?kp*q+j:-17));
+  }
+ }
+ reset();visible=8;openmx_mgpu_configure(1,8,1);
+ int ids[8];std::fill_n(ids,8,-17);
+ CHECK(openmx_mgpu_band_group(3,1,ids,1)==0 && ids[0]==-17);
+ CHECK(openmx_mgpu_band_group(3,1,nullptr,0)==2);
+ CHECK(openmx_mgpu_band_used_gpus(0)==0 && openmx_mgpu_band_used_gpus(-1)==0);
+ CHECK(openmx_mgpu_band_group(3,-1,ids,8)==0 && openmx_mgpu_band_group(3,3,ids,8)==0);
+ setenv("OPENMX_MGPU_NUM_GPUS","4",1);CHECK(openmx_mgpu_band_used_gpus(3)==0);
+ unsetenv("OPENMX_MGPU_NUM_GPUS");setenv("OPENMX_MGPU","0",1);CHECK(openmx_mgpu_band_used_gpus(3)==0);
+ unsetenv("OPENMX_MGPU");openmx_mgpu_configure(-1,8,1);ratio=32;CHECK(openmx_mgpu_band_used_gpus(3)==6);
+ setenv("OPENMX_MGPU","1",1);CHECK(openmx_mgpu_band_used_gpus(3)==6);
+ openmx_mgpu_configure(0,8,1);CHECK(openmx_mgpu_band_used_gpus(3)==0);
+ openmx_mgpu_configure(1,8,0);CHECK(openmx_mgpu_band_used_gpus(3)==0);
+ // Nesting and temporary worker suppression restore the complete group.
+ reset();visible=8;openmx_mgpu_configure(1,8,1);openmx_mgpu_scope_enter(1);
+ auto outer=openmx_mgpu_band_scope_enter(1,3,1);
+ CHECK(devices_for_operation(ids)==2 && ids[0]==2 && ids[1]==3);
+ auto inner=openmx_mgpu_band_scope_enter(1,3,2);
+ CHECK(devices_for_operation(ids)==2 && ids[0]==4 && ids[1]==5);
+ int suppressed=openmx_mgpu_scope_enter(0);CHECK(devices_for_operation(ids)==0);
+ openmx_mgpu_scope_leave(suppressed);openmx_mgpu_band_scope_leave(inner);
+ CHECK(devices_for_operation(ids)==2 && ids[0]==2 && ids[1]==3);
+ openmx_mgpu_band_scope_leave(outer);CHECK(devices_for_operation(ids)==8 && ids[0]==0 && ids[7]==7);
+ // Every host backend and both GEMM types receive the exact non-prefix list,
+ // even when the immutable data owner belongs to another worker group.
+ for(bool z:{false,true}) {
+  reset();visible=8;openmx_mgpu_configure(1,8,1);
+  auto state=openmx_mgpu_band_scope_enter(1,3,1);setenv("OPENMX_MGPU_SOLVER","magma",1);
+  Matrix m(z);CHECK(m.attempt()==1);m.check_result();CHECK(last_devices==std::vector<int>({2,3}));
+  setenv("OPENMX_MGPU_GEMM","1",1);
+  CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&a,1,&b,1,&beta,&c,1,&status)==1);
+  CHECK(last_devices==std::vector<int>({2,3}) && device==1);
+  cuDoubleComplex za{1,0},zb{0,0};
+  CHECK(openmx_mgpu_dispatch_zgemm((void*)1,0,0,1,1,1,&za,&za,1,&za,1,&zb,&za,1,&status)==1);
+  CHECK(last_devices==std::vector<int>({2,3}) && device==1);openmx_mgpu_band_scope_leave(state);
+ }
+ // Force-on cannot turn an undersized Band allocation into a cluster group.
+ reset();visible=4;openmx_mgpu_configure(1,4,1);openmx_mgpu_band_scope_enter(1,3,0);
+ setenv("OPENMX_MGPU_GEMM","1",1);
+ {Matrix m;CHECK(m.attempt()==0 && m.unchanged() && magma_calls==0);}
+ CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&a,1,&b,1,&beta,&c,1,&status)==0);
+ // Equal-size groups sharing the same origin require separate calibration.
+ reset();visible=4;openmx_mgpu_configure(1,4,1);setenv("OPENMX_MGPU_SOLVER","auto",1);native_delay=30;
+ auto s0=openmx_mgpu_band_scope_enter(1,2,0);
+ {Matrix m;CHECK(m.attempt()==1);m.check_result();}
+ openmx_mgpu_band_scope_leave(s0);auto s1=openmx_mgpu_band_scope_enter(1,2,1);
+ {Matrix m;CHECK(m.attempt()==1);m.check_result();}
+ CHECK(native_calls==4 && magma_calls==4 && last_devices==std::vector<int>({2,3}));
+ {Matrix m;CHECK(m.attempt()==1);m.check_result();}
+ CHECK(native_calls==4 && magma_calls==5);openmx_mgpu_band_scope_leave(s1);
  // Distinct owner processes serialize overlapping device subsets. Fork
  // before the mutex is locked, and preserve the mocked physical UUIDs.
  reset();int ready[2],go[2];CHECK(pipe(ready)==0 && pipe(go)==0);
@@ -291,7 +410,7 @@ int main() {
  std::printf("PASS: multi-GPU runtime scope/topology/cache/rollback/publication (%d assertions)\n",checks);
  // Tests create PID-specific UUID lock files; remove only after all users
  // have exited their admission scope. Production intentionally never unlinks.
- for(int d=0;d<2;++d) {cudaDeviceProp p;cudaGetDeviceProperties(&p,d);char name[128];int used=std::snprintf(name,sizeof(name),"/tmp/.openmx-mgpu-%lu-",(unsigned long)getuid());for(unsigned char b:p.uuid.bytes)used+=std::snprintf(name+used,sizeof(name)-used,"%02x",unsigned(b));unlink(name);}
+ for(int d=0;d<8;++d) {cudaDeviceProp p;cudaGetDeviceProperties(&p,d);char name[128];int used=std::snprintf(name,sizeof(name),"/tmp/.openmx-mgpu-%lu-",(unsigned long)getuid());for(unsigned char b:p.uuid.bytes)used+=std::snprintf(name+used,sizeof(name)-used,"%02x",unsigned(b));unlink(name);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-mgpu-runtime-") as folder:

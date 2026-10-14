@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-# Build the production compatibility layer, runtime and both solver backends.
+# Build the production compatibility layer, runtime and the MAGMA backend.
 # Build on the login node with --build-only; run on allocated GPUs afterward.
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 out=${1:?provide output directory};shift
@@ -22,10 +22,11 @@ if [ -f "$magma_prefix/lib/libmagma.so" ]; then
     magma_link="-L$magma_prefix/lib -Xlinker -rpath -Xlinker $magma_prefix/lib -lmagma"
 fi
 "$nvcc" -std=c++17 -O2 -arch="sm_${GPU_ARCH:-80}" -ccbin "$host_cxx" -Xcompiler -pthread \
+    -DOPENMX_TEST_WRAP_MGPU -Xlinker --wrap=openmx_mgpu_solve_device_try \
     -I"$root/source" -I"$math_root/include" $magma_compile \
     "$root/tests/mgpu_solver_smoke.cpp" "$root/source/openmx_mgpu_runtime.cu" \
     "$root/source/openmx_mgpu_gemm.cu" "$root/source/openmx_magma_mgpu.cpp" \
-    "$root/source/openmx_paper_mgpu.cu" "$out/compat.o" \
+    "$out/compat.o" \
     $magma_link -L"$math_root/lib64" -L"$cuda_root/lib64" -lcusolver -lcublas -lnvJitLink -ldl \
     -Xlinker -rpath -Xlinker "$math_root/lib64" -Xlinker -rpath -Xlinker "$cuda_root/lib64" \
     ${HOST_LIBDIR:+-L"$HOST_LIBDIR"} ${HOST_LIBDIR:+-Xlinker -rpath -Xlinker "$HOST_LIBDIR"} \

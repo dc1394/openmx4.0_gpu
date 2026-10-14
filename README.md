@@ -38,7 +38,7 @@ A run that finds no usable GPU demotes itself to ELPA2 automatically, so the def
 The GPU paths follow OpenMX's `level.of.stdout` keyword. At the default (1) they print only errors, a GPU that cannot be used, and a GPU eigensolver given up for lack of device memory; `level.of.stdout 2` adds the device plans, the precision switches and the CPU fallbacks of single stages, and 3 adds the per-step, per-k-point and per-rank details of the refined FP32 eigensolver. Note that OpenMX itself prints per-atom debugging output from level 2 on.
 
 ## New in v2.0: distributed multi-GPU cluster diagonalization (ELPA GPU + COSMA)
-A cluster calculation has only one k-point, so with the default "gpusolver" its dense eigenvalue problem is solved on a single GPU and, on a multi-GPU machine or a multi-node GPU cluster, the other GPUs idle during the diagonalization (see "Multi-GPU parallelization" below). Since v2.0, selecting
+The distributed ELPA/COSMA backend supports cluster diagonalization across MPI ranks and nodes. For single-node memory recovery and forced MAGMA, see the following section. Selecting
 
 ```ini
 scf.EigenvalueSolver       cluster
@@ -47,9 +47,54 @@ scf.eigen.lib              gpusolver2    # ELPA (GPU kernels) + COSMA
 
 replaces the cluster diagonalization (collinear and non-collinear) with [ELPA](https://elpa.mpcdf.mpg.de/) 2026.02 (NVIDIA GPU kernels) and [COSMA](https://github.com/eth-cscs/COSMA) (communication-optimal distributed matrix multiplication, GPU backend), engaging every MPI rank and every GPU. This is the option for machines where the diagonalization must not be confined to one GPU, e.g. one GPU per node × many nodes. Notes:
 
-- "gpusolver2" supports only `scf.EigenvalueSolver cluster`; any other solver stops with an input error. Everything outside the cluster diagonalization behaves exactly like "gpusolver", and a machine without a usable GPU demotes itself to ELPA2 as usual.
+- "gpusolver2" supports only `scf.EigenvalueSolver cluster`; any other solver stops with an input error. It retains the existing per-rank GPU paths outside cluster diagonalization, and a machine without a usable GPU demotes itself to ELPA2 as usual.
 - When the GPU memory cannot hold a solve, that solve automatically falls back to the ELPA CPU kernels / ScaLAPACK instead of aborting the run.
 - The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically by the first `make` — no network access is needed (autoconf, automake, libtool, m4 and python3 must be installed). The conventional "elpa1"/"elpa2" paths keep using the ELPA 2018.05 embedded in the OpenMX source; only "gpusolver2" links the bundled ELPA 2026.02.
+
+## Single-node multi-GPU Cluster and Band
+
+The default `scf.eigen.lib gpusolver` uses cuSOLVER while the dense GPU
+buffers fit. If they do not fit, it automatically uses multi-GPU MAGMA
+for ordinary collinear and noncollinear Cluster and Band on one node.
+`gpusolver3` forces that MAGMA path from the beginning; `gpusolver2`
+remains the distributed ELPA/COSMA solver.
+
+```ini
+scf.eigen.lib              gpusolver
+scf.Gpu.Num                4
+```
+
+`scf.Gpu.Num` is a strict upper bound. CUDA visibility and
+`OPENMX_MGPU_NUM_GPUS` can reduce it further. If the permitted GPU group
+cannot hold MAGMA's per-device scratch, or MAGMA/cooperation is unavailable,
+the memory fallback reports an error and stops. It never enlarges the GPU
+pool or silently switches to a CPU eigensolver. `scf.mgpu.enable off`
+and `OPENMX_MGPU=0` explicitly disable cooperation.
+
+The MAGMA capacity path keeps dense matrices on the host, distributes the
+eigensolve across the group, and streams bounded tiles for matrix products.
+It allocates neither the full cuSOLVER workspace nor a full dense matrix
+on the owner GPU. Sufficient host RAM is still required. It uses FP64;
+the ordinary single-GPU GeForce arithmetic policies remain available.
+
+For Band, each of the **K actually computed k-points** receives
+`floor(G/K)` GPUs from the permitted pool G. At least two GPUs per k-point
+are required. Three k-points with four GPUs cannot cooperate; with eight
+GPUs they use six, in groups `[0,1]`, `[2,3]`, `[4,5]`.
+
+Existing GPU work outside diagonalization is also distributed: orbital and
+grid kernels, Hamiltonian construction, density matrices and density grids,
+XC, GPU force/energy terms, RMM-DIISH history, and dense transforms/products.
+Local work follows MPI ownership; k-dependent dense work follows its exact
+GPU group. All use the same GPU cap. See [GPU worker ownership and controls](doc/gpu_workers.txt).
+Numerical checks and measured costs are recorded in
+[GPU worker validation](doc/gpu_workers_validation.txt).
+
+Build MAGMA with `make -f Makefile.kugui openmx WITH_MAGMA=1` in `source/`.
+The experimental paper implementation has been removed. See
+[Cluster details](doc/cluster_mgpu.txt), [Band details](doc/band_mgpu.txt),
+[matrix products](doc/mgpu_gemm.txt), and
+[capacity-path validation](doc/mgpu_capacity_validation.txt).
 
 ## GEMMul8: FP64 matrix multiplication on integer tensor cores
 The large dense matrix multiplications of the GPU eigensolver path use a device-aware bridge to [GEMMul8](https://github.com/RIKEN-RCCS/GEMMul8) or native cuBLAS FP64. GEMMul8 emulates FP64 GEMM on INT8 tensor cores using the Ozaki scheme II and remains the default on consumer GPUs (GeForce) with limited native FP64 throughput. General GEMMs on A100 and H100 instead default to native FP64, including the FP64 Tensor Core kernels selected by cuBLAS, avoiding integer decomposition and its workspace. The choice uses the device's FP32:FP64 throughput ratio: a known positive ratio below 8 selects native FP64. A100 has a separate size-dependent exception for the collinear cluster forward transform, described below. The historical GEMMul8 accuracy measurements below are unchanged.
@@ -126,11 +171,12 @@ The two products of the orthogonalization transform, `B = H X` and `X^T B`, have
 - **Tools.** `tools/measure_gemm_probe.sh` (matrix-level times, phases and errors against a double-double reference), `tools/run_forward_variants.sh` (the same input under several settings, with a comparison table), and the checks `tests/run_gemmul8_forward_smoke.sh`. `OPENMX_GEMMUL8_TIMING=1` counts and times products through the general GEMM entry points and reports the totals per rank at the end of each SCF. Successful full-workspace fixed transforms, including large automatic A100 transforms, use the separate `OPENMX_GEMMUL8_FORWARD_TIMING=1` counters.
 
 ## Multi-GPU parallelization
-How many GPUs a run can actually use is bounded by the number of k-points requested with "scf.Kgrid". The MPI ranks are divided into one group per k-point, and the dense eigenvalue problem of each group is solved on a single GPU, so the eigenvalue solver keeps at most as many GPUs busy as there are k-points; any GPU beyond that number stays idle in this part of the calculation. (The Hamiltonian matrix elements and the grid work are distributed over all MPI ranks, and therefore over all GPUs.)
-
-In particular, a cluster calculation — `scf.EigenvalueSolver cluster`, i.e. `scf.Kgrid 1 1 1` — has only one k-point, so with the default "gpusolver" **only one GPU is used for the diagonalization however many GPUs the node has**. Adding GPUs, or raising the upper bound `scf.Gpu.Num` (default 30, which effectively means "use every GPU found"), does not make such a run faster. (A collinear spin-polarized calculation solves the two spins in separate MPI worlds, so it can occupy two GPUs at most.)
-
-Multiple GPUs therefore pay off for band calculations with a k-mesh; for a cluster calculation, either give the job one GPU and more CPU cores / MPI ranks, or — since v2.0 — select `scf.eigen.lib gpusolver2` (see above), which distributes the cluster diagonalization itself over all ranks and all GPUs.
+With the default `gpusolver`, each dense eigenproblem normally uses one
+GPU. If its buffers cannot fit, single-node Cluster and ordinary Band can
+automatically use MAGMA on the permitted GPU group described above.
+`gpusolver3` forces MAGMA; `gpusolver2` selects distributed ELPA/COSMA.
+More GPUs do not guarantee a speedup when the problem already fits on one
+GPU: MAGMA's transfers and CPU work can outweigh the parallel GPU work.
 
 ## MPI vs. hybrid (MPI/OpenMP) parallelization
 Use flat MPI while every core you want to use can hold an MPI rank: the device phases (the eigensolvers, the grid integrals, the force batches) are shared by all the ranks of a node and gain nothing from threads. When the device memory bounds the number of ranks below the core count — on a 16 GB card a 1000-atom cluster (C1000) runs with 6 ranks on this 18-core PC but not with 18 — give each rank several cores and as many OpenMP threads (`-nt`). Since 2026-10-13 the host-side phases of the GPU build run threaded: the Bessel-table cache of Set_OLP_Kin is kept per thread, the received-atom products of Set_Nonlocal and the CPU fallback of the cluster density matrix are threaded over the atoms, and the OpenMP regions of the original code (truncation, Set_ProExpn_VNA, Set_Orbitals_Grid, Force, Total_Energy, the CPU fallbacks) work as they do in the CPU build. Two changes of the same date pay at any thread count: every rank of the collinear cluster solver now accumulates its slice of the density matrix on the device (before, only the rank that owns the dense solve did, and the others spent longer on one core than the owner spent in the solve), and the final density of an MD step takes the GPU tables instead of the one-rank service.

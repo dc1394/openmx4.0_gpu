@@ -14,8 +14,13 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "source/Set_Hamiltonian.c").read_text()
-start = source.index("static void Set_Hamiltonian_OTF_DensityKernel(")
-end = source.index("\n/* The density of the rank", start)
+start = source.index("static void Set_Hamiltonian_OTF_DensityPart(")
+depth = 0
+for end in range(source.index('{', start), len(source)):
+    depth += (source[end] == '{') - (source[end] == '}')
+    if depth == 0:
+        end += 1
+        break
 kernel = source[start:end]
 prefix = r'''
 #include <math.h>
@@ -23,14 +28,12 @@ prefix = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-static int mpi_comm_level1;
-static int MPI_Comm_rank(int comm,int *rank) { (void)comm; *rank=0; return 0; }
 static void Set_Hamiltonian_abort(const char *a,const char *b,int rank) {
   (void)rank; fprintf(stderr,"%s: %s\n",a,b); exit(1);
 }
 /* Force the production native-FP64 and double-float OpenACC fallbacks. */
-#define Set_Hamiltonian_Cuda_Density(...) 1
-#define Set_Hamiltonian_Cuda_Density_FP64(...) 1
+#define Set_Hamiltonian_Cuda_Density_Range(...) 1
+#define Set_Hamiltonian_Cuda_Density_FP64_Range(...) 1
 static void check(int ok,const char *s) { if(!ok) { fprintf(stderr,"FAIL: %s\n",s); exit(1); } }
 '''
 main = r'''
@@ -76,8 +79,8 @@ int main(void) {
       }
       expect[(size_t)sp*OUT+outbase[p]+row]+=val;
     }
-    Set_Hamiltonian_OTF_DensityKernel(2,spins,5,nolg[0]>nolg[1]?nolg[0]:nolg[1],
-      no0,no1,nolg,hoff,noff,o0,o1,outbase,nc,phi0,phi1,dm,dmh,dml,full+GUARD,OUT,mode,0);
+    Set_Hamiltonian_OTF_DensityPart(2,spins,5,nolg[0]>nolg[1]?nolg[0]:nolg[1],
+      no0,no1,nolg,hoff,noff,o0,o1,outbase,nc,phi0,phi1,dm,dmh,dml,full+GUARD,OUT,mode,0,0,OUT,0);
     for(int p=0;p<2;p++) {
       /* The 513-point chunks cross multiple 256-point gang boundaries. */
       for(int first=0;first<nolg[p] || (first==0 && nolg[p]==0);first+=513) {
@@ -85,9 +88,9 @@ int main(void) {
         size_t zero=0;
         for(int k=0;k<count;k++) for(int i=0;i<no0[p];i++)
           compact[(size_t)k*no0[p]+i]=phi0[o0[p]+(size_t)nc[noff[p]+first+k]*no0[p]+i];
-        Set_Hamiltonian_OTF_DensityKernel(1,spins,5,count,no0+p,no1+p,&count,hoff+p,&zero,
+        Set_Hamiltonian_OTF_DensityPart(1,spins,5,count,no0+p,no1+p,&count,hoff+p,&zero,
           &zero,&zero,outbase+p,nc+noff[p]+first,compact,phi1+o1[p]+(size_t)first*no1[p],
-          dm,dmh,dml,chunks+GUARD,OUT,mode,1);
+          dm,dmh,dml,chunks+GUARD,OUT,mode,1,0,OUT,0);
         if(!count) break;
       }
     }
@@ -100,9 +103,21 @@ int main(void) {
       check(full[GUARD+k]==chunks[GUARD+k],"full and point-group results agree exactly");
       check(fabsl((long double)chunks[GUARD+k]-expect[k])<tol,"independent quadrature");
     }
+    const size_t cuts[]={0,1,31,257,OUT-1,OUT};
+    for(size_t part=0;part+1<sizeof(cuts)/sizeof(*cuts);part++) {
+      const size_t first=cuts[part],last=cuts[part+1],count=last-first;
+      double local[4*OUT+2*GUARD];
+      for(int i=0;i<4*OUT+2*GUARD;i++) local[i]=0.03125;
+      Set_Hamiltonian_OTF_DensityPart(2,spins,5,nolg[0]>nolg[1]?nolg[0]:nolg[1],
+        no0,no1,nolg,hoff,noff,o0,o1,outbase,nc,phi0,phi1,dm,dmh,dml,local+GUARD,OUT,mode,0,first,last,0);
+      for(int i=0;i<GUARD;i++) check(local[i]==0.03125,"owned leading guard");
+      for(size_t i=GUARD+spins*count;i<4*OUT+2*GUARD;i++) check(local[i]==0.03125,"owned trailing guard");
+      for(int sp=0;sp<spins;sp++) for(size_t i=0;i<count;i++)
+        check(local[GUARD+sp*count+i]==full[GUARD+sp*OUT+first+i],"exclusive output interval and local spin stride");
+    }
     cases++;
   }
-  printf("PASS: %d production density fallback cases, FP64/FP32/DF, 1/2/4 spins, point-group boundaries and output guards\n",cases);
+  printf("PASS: %d production density fallback cases, FP64/FP32/DF, 1/2/4 spins, point-group boundaries, exclusive output ranges and guards\n",cases);
   return 0;
 }
 '''

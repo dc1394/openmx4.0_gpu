@@ -16,6 +16,8 @@
 #include <math.h>
 #include <string.h>
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
+#include "openmx_gpu_views.h"
 #include "mpi.h"
 #include <omp.h>
 #include <openacc.h>
@@ -68,6 +70,7 @@ static int SOG_gpu_eligible(int Cnt_kind)
     if (Spe_Num_Mesh_PAO[w] < 6) return 0;
   }
 
+  if (openmx_gpu_worker_device()>=0) return 1;
   if (!device_checked) {
     device_checked = 1;
     /* the probe, not a bare device count: a rank whose context or module
@@ -702,10 +705,9 @@ static void SOG_gpu_eval(int npts, int identity_idx, int single_pair,
   }
 }
 /* returns 1 when the whole update ran on the device; 0 keeps the host path */
-static int Set_Orbitals_Grid_GPU(void)
+static int Set_Orbitals_Grid_GPU_Part(int first, int last, int myid)
 {
-  static int fail_notice_done = 0, active_notice_done = 0;
-  int myid;
+  static _Thread_local int fail_notice_done = 0, active_notice_done = 0;
   int Mc_AN, Gc_AN, Cwan, h_AN, Gh_AN, Hwan, Rnh, NO0, NO1;
   int w, L0, Mul0, i, npair_cap;
   size_t max_pts = 0, max_chi = 0, max_fpts = 0, max_fchi = 0;
@@ -729,12 +731,11 @@ static int Set_Orbitals_Grid_GPU(void)
   const double g31 = gtv[3][1], g32 = gtv[3][2], g33 = gtv[3][3];
   const double org1 = Grid_Origin[1], org2 = Grid_Origin[2], org3 = Grid_Origin[3];
 
-  MPI_Comm_rank(mpi_comm_level1, &myid);
 
   /* ---- per-atom staging maxima ---- */
 
   npair_cap = 0;
-  for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+  for (Mc_AN = first; Mc_AN < last; Mc_AN++) {
     size_t fpts = 0, fchi = 0;
     int npair = 0;
 
@@ -878,7 +879,7 @@ static int Set_Orbitals_Grid_GPU(void)
     const int *d_spb = (const int*)(const void*)(arena + o_spb);
     float *d_chi = (float*)(void*)(arena + o_chi);
 
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+    for (Mc_AN = first; Mc_AN < last; Mc_AN++) {
 
       int npts, npair;
       size_t fpts, fchi;
@@ -919,7 +920,7 @@ static int Set_Orbitals_Grid_GPU(void)
 
         acc_memcpy_from_device(chi_host, d_chi, sizeof(float) * (size_t)npts * (size_t)NO0);
 
-#pragma omp parallel for private(i)
+#pragma omp parallel for if(!omp_in_parallel()) private(i)
         for (Nc = 0; Nc < npts; Nc++) {
           const float *src = chi_host + (size_t)Nc * (size_t)NO0;
           Type_Orbs_Grid *dst = Orbs_Grid[Mc_AN][Nc];
@@ -992,7 +993,7 @@ static int Set_Orbitals_Grid_GPU(void)
 
           NO1 = pair_host[p].no;
 
-#pragma omp parallel for private(j)
+#pragma omp parallel for if(!omp_in_parallel()) private(j)
           for (Nog = 0; Nog < nolg; Nog++) {
             const float *src = base + (size_t)Nog * (size_t)NO1;
             Type_Orbs_Grid *dst = dst_rows[Nog];
@@ -1035,14 +1036,51 @@ host_fallback:
 
 
 
+typedef struct {
+  OpenMXGpuWorkers workers;
+  int myid;
+} SOG_TableWork;
+
+static int SOG_table_worker(void *opaque, int worker, int phase)
+{
+  SOG_TableWork *work=(SOG_TableWork*)opaque;
+  if (phase!=OPENMX_GPU_WORKER_EXECUTE) return 1;
+  const int first=1+(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+  const int last=1+(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+  /* Disjoint atoms, with overwrite semantics. A failed staging claim
+     leaves the original whole-table CPU overwrite as a valid fallback. */
+  return Set_Orbitals_Grid_GPU_Part(first,last,work->myid);
+}
+
+static int Set_Orbitals_Grid_GPU(void)
+{
+  SOG_TableWork work;
+  MPI_Comm_rank(mpi_comm_level1,&work.myid);
+  openmx_gpu_workers_local(&work.workers,(size_t)Matomnum);
+  if (work.workers.count<=1) return Set_Orbitals_Grid_GPU_Part(1,Matomnum+1,work.myid);
+  return openmx_gpu_workers_run(&work.workers,SOG_table_worker,&work,"orbital-tables");
+}
+
 /* ---------------------------------------------------------------------
    On-the-fly orbital tiles for the grid integrals (orbs_grid_gpu.h): the
    species' PAO tables, the cell translations and the grid frame stay on
    the device; Set_Hamiltonian evaluates the orbitals of each batch of
    atom pairs from them instead of holding the multi-GiB tables.
    --------------------------------------------------------------------- */
-static SOG_DeviceTables SOG_dev = {0};
-static int SOG_dev_fp32_enabled = -1;
+static SOG_DeviceTables SOG_devices[OPENMX_GPU_WORKERS_MAX];
+static int SOG_fp32_modes[OPENMX_GPU_WORKERS_MAX];
+static int SOG_cache_device(void)
+{
+  int device=-1;
+  if (cudaGetDevice(&device)!=cudaSuccess || device<0 || device>=OPENMX_GPU_WORKERS_MAX) {
+    fprintf(stderr,"SOG: invalid CUDA device for orbital-table cache.\n");
+    exit(EXIT_FAILURE);
+  }
+  return device;
+}
+#define SOG_dev SOG_devices[SOG_cache_device()]
+#define SOG_dev_fp32_enabled SOG_fp32_modes[SOG_cache_device()]
+
 
 /* OPENMX_ORBS_EVAL_PRECISION: "df" or "fp64" for the on-the-fly
    tiles.  Native FP64 avoids the error-free FP32 transformations on A100
@@ -1077,6 +1115,35 @@ void SOG_Device_Release(void)
   }
   memset(&SOG_dev, 0, sizeof(SOG_dev));
   SOG_dev_fp32_enabled = -1;
+}
+
+/* Release every cache without initializing a GPU on a CPU-only run. */
+void SOG_Device_ReleaseAll(void)
+{
+  int saved_cuda=-1,saved_acc=-1,have_saved=0;
+  acc_device_t saved_type=acc_device_none;
+  for (int device=0;device<OPENMX_GPU_WORKERS_MAX;device++) {
+    if (SOG_devices[device].arena!=NULL) {
+      if (!have_saved) {
+        (void)cudaGetDevice(&saved_cuda);
+        saved_type=acc_get_device_type();saved_acc=acc_get_device_num(saved_type);
+        have_saved=1;
+      }
+      if (cudaSetDevice(device)!=cudaSuccess) {
+        fprintf(stderr,"SOG: cannot bind device %d to release its orbital cache.\n",device);
+        exit(EXIT_FAILURE);
+      }
+      acc_set_device_num(device,acc_device_nvidia);
+      SOG_Device_Release();
+    } else {
+      memset(SOG_devices+device,0,sizeof(SOG_devices[device]));
+      SOG_fp32_modes[device]=-1;
+    }
+  }
+  if (have_saved) {
+    acc_set_device_num(saved_acc,saved_type);
+    if (saved_cuda>=0) (void)cudaSetDevice(saved_cuda);
+  }
 }
 
 int SOG_Device_Prepare(void)
@@ -1272,11 +1339,10 @@ size_t SOG_Device_Bytes(void)
    nolg_Nc[nolg_off[p] + k] (its global grid index and cell in gla / cla at
    gla_off[p] + that index), and writes no[p] values per point from
    out[out_off[p] + k * no[p]]. */
-void SOG_Device_EvalPairTiles(int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
+static void SOG_Device_EvalPairTiles_Part(const SOG_DeviceTables *t,int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
                               const size_t *nolg_off, const size_t *out_off, const size_t *gla_off,
                               const int *nolg_Nc, const int *gla, const int *cla, float *out)
 {
-  const SOG_DeviceTables *t = &SOG_dev;
   const double *atvf = t->atv, *rv_all = t->rv, *rwf_all = t->rwf;
   const size_t *rv_off = t->rvo, *rwf_base = t->rwb;
   const int *sp_mesh = t->spm, *sp_maxl = t->spx, *sp_nb = t->spb;
@@ -1333,9 +1399,8 @@ void SOG_Device_EvalPairTiles(int pair_count, const SOG_GpuPair *pairs, const in
 /* The orbitals of one atom (pair: its species, orbital count and position,
    no shift) at all npts points of its sphere (gla / cla), no values per
    point from out */
-void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair, int npts, const int *gla, const int *cla, float *out)
+static void SOG_Device_EvalAtomTile_Part(const SOG_DeviceTables *t,const SOG_GpuPair *pair, int npts, const int *gla, const int *cla, float *out)
 {
-  const SOG_DeviceTables *t = &SOG_dev;
   const double *atvf = t->atv, *rv_all = t->rv, *rwf_all = t->rwf;
   const size_t *rv_off = t->rvo, *rwf_base = t->rwb;
   const int *sp_mesh = t->spm, *sp_maxl = t->spx, *sp_nb = t->spb;
@@ -1374,10 +1439,9 @@ void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair, int npts, const int *gla, 
    The descriptor is on the host, all arrays on the device; nolg_Nc maps
    chunk rows back to the central atom's sphere.  PairTiles assigns a gang
    per pair and would leave nearly the whole GPU idle for a single chunk. */
-void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair, int npts, const int *nolg_Nc,
+static void SOG_Device_EvalPairChunk_Part(const SOG_DeviceTables *t,const SOG_GpuPair *pair, int npts, const int *nolg_Nc,
                               const int *gla, const int *cla, float *out)
 {
-  const SOG_DeviceTables *t = &SOG_dev;
   const double *atvf = t->atv, *rv_all = t->rv, *rwf_all = t->rwf;
   const size_t *rv_off = t->rvo, *rwf_base = t->rwb;
   const int *sp_mesh = t->spm, *sp_maxl = t->spx, *sp_nb = t->spb;
@@ -1412,9 +1476,185 @@ void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair, int npts, const int *nolg
   }
 }
 
+typedef struct {
+  OpenMXGpuWorkers workers;
+  SOG_DeviceTables table;
+  int kind,n;
+  const SOG_GpuPair *pairs;
+  SOG_GpuPair pair,*host_pairs;
+  const int *count,*nc,*gla,*cla;
+  const size_t *noff,*ooff,*goff;
+  int *host_count,*host_nc;
+  size_t *host_noff,*host_ooff,*host_goff,nc_extent;
+  float *out;
+  struct {
+    OpenMXGpuReadView view[10];
+    SOG_DeviceTables table;
+    size_t first,last,gfirst,glast,obase,oend;
+    size_t *ooff,*goff;
+    float *out;
+  } device[OPENMX_GPU_WORKERS_MAX];
+} SOG_TileWork;
+
+static int SOG_tile_worker(void *opaque,int worker,int phase)
+{
+  SOG_TileWork *w=(SOG_TileWork*)opaque;
+  const size_t first=openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+  const size_t last=openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count),n=last-first;
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    w->device[worker].first=first;w->device[worker].last=last;
+    if (!openmx_gpu_read_view(&w->device[worker].view[0],w->table.arena,w->table.bytes)) return 0;
+    SOG_DeviceTables *t=&w->device[worker].table;
+    *t=w->table;t->arena=(unsigned char*)w->device[worker].view[0].pointer;
+#define SOG_TILE_FIELD(field,type) t->field=w->table.field?(const type*)(t->arena+((const unsigned char*)w->table.field-w->table.arena)):NULL
+    SOG_TILE_FIELD(rv,double);SOG_TILE_FIELD(rwf,double);SOG_TILE_FIELD(atv,double);
+    SOG_TILE_FIELD(rvo,size_t);SOG_TILE_FIELD(rwb,size_t);
+    SOG_TILE_FIELD(spm,int);SOG_TILE_FIELD(spx,int);SOG_TILE_FIELD(spb,int);
+    SOG_TILE_FIELD(rwd,float);SOG_TILE_FIELD(mcd,float);SOG_TILE_FIELD(spl,float);
+#undef SOG_TILE_FIELD
+    size_t gfirst=0,glast=0,obase=0,oend=0;
+    if (w->kind==0) {
+      gfirst=(size_t)-1;obase=(size_t)-1;
+      size_t *offsets=(size_t*)malloc(2*n*sizeof(size_t));
+      if (!offsets) return 0;
+      for (size_t p=first;p<last;p++) {
+        if (w->host_goff[p]<gfirst) gfirst=w->host_goff[p];
+        if (w->host_ooff[p]<obase) obase=w->host_ooff[p];
+        size_t end=w->host_ooff[p]+(size_t)w->host_count[p]*w->host_pairs[p].no;
+        if (end>oend) oend=end;
+        for (int q=0;q<w->host_count[p];q++) {
+          size_t gend=w->host_goff[p]+(size_t)w->host_nc[w->host_noff[p]+q]+1;
+          if (gend>glast) glast=gend;
+        }
+      }
+      if (glast<gfirst) glast=gfirst;
+      for (size_t p=first;p<last;p++) {
+        offsets[p-first]=w->host_ooff[p]-obase;
+        offsets[n+p-first]=w->host_goff[p]-gfirst;
+      }
+      int ok=cudaMalloc((void**)&w->device[worker].ooff,2*n*sizeof(size_t))==cudaSuccess;
+      if (ok) {
+        w->device[worker].goff=w->device[worker].ooff+n;
+        ok=cudaMemcpy(w->device[worker].ooff,offsets,2*n*sizeof(size_t),cudaMemcpyHostToDevice)==cudaSuccess;
+      }
+      free(offsets);
+      if (!ok ||
+          !openmx_gpu_read_view(&w->device[worker].view[1],w->pairs+first,n*sizeof(SOG_GpuPair)) ||
+          !openmx_gpu_read_view(&w->device[worker].view[2],w->count+first,n*sizeof(int)) ||
+          !openmx_gpu_read_view(&w->device[worker].view[3],w->noff+first,n*sizeof(size_t)) ||
+          !openmx_gpu_read_view(&w->device[worker].view[4],w->nc,w->nc_extent*sizeof(int))) return 0;
+    } else {
+      obase=first*(size_t)w->pair.no;oend=last*(size_t)w->pair.no;
+      if (w->kind==1) {gfirst=first;glast=last;}
+      else {
+        for (size_t p=first;p<last;p++) if ((size_t)w->host_nc[p]+1>glast) glast=(size_t)w->host_nc[p]+1;
+        if (!openmx_gpu_read_view(&w->device[worker].view[4],w->nc+first,n*sizeof(int))) return 0;
+      }
+    }
+    w->device[worker].obase=obase;w->device[worker].oend=oend;
+    w->device[worker].gfirst=gfirst;w->device[worker].glast=glast;
+    if (!openmx_gpu_read_view(&w->device[worker].view[5],w->gla+gfirst,(glast-gfirst)*sizeof(int)) ||
+        !openmx_gpu_read_view(&w->device[worker].view[6],w->cla+gfirst,(glast-gfirst)*sizeof(int))) return 0;
+    return cudaMalloc((void**)&w->device[worker].out,((oend>obase)?oend-obase:1)*sizeof(float))==cudaSuccess;
+  }
+  if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+    const SOG_DeviceTables *t=&w->device[worker].table;
+    OpenMXGpuReadView *v=w->device[worker].view;
+    if (w->kind==0) SOG_Device_EvalPairTiles_Part(t,(int)n,
+      (const SOG_GpuPair*)v[1].pointer,(const int*)v[2].pointer,(const size_t*)v[3].pointer,
+      w->device[worker].ooff,w->device[worker].goff,(const int*)v[4].pointer,
+      (const int*)v[5].pointer,(const int*)v[6].pointer,w->device[worker].out);
+    else if (w->kind==1) SOG_Device_EvalAtomTile_Part(t,&w->pair,(int)n,
+      (const int*)v[5].pointer,(const int*)v[6].pointer,w->device[worker].out);
+    else SOG_Device_EvalPairChunk_Part(t,&w->pair,(int)n,(const int*)v[4].pointer,
+      (const int*)v[5].pointer,(const int*)v[6].pointer,w->device[worker].out);
+  } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+    if (w->kind==0) {
+      for (size_t p=first;p<last;p++)
+        if (!openmx_gpu_copy_device(w->out+w->host_ooff[p],
+            w->device[worker].out+(w->host_ooff[p]-w->device[worker].obase),
+            (size_t)w->host_count[p]*w->host_pairs[p].no*sizeof(float))) return 0;
+    } else return openmx_gpu_copy_device(w->out+w->device[worker].obase,w->device[worker].out,
+      (w->device[worker].oend-w->device[worker].obase)*sizeof(float));
+  } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+    for (int i=0;i<10;i++) openmx_gpu_read_view_release(&w->device[worker].view[i]);
+    if (w->device[worker].out) (void)cudaFree(w->device[worker].out);
+    if (w->device[worker].ooff) (void)cudaFree(w->device[worker].ooff);
+  }
+  return 1;
+}
+
+static int SOG_tiles_distribute(SOG_TileWork *w)
+{
+  if (w->n<=0 || !SOG_dev.ready) return 0;
+  openmx_gpu_workers_local(&w->workers,(size_t)w->n);
+  if (w->workers.count<=1) return 0;
+  w->table=SOG_dev;
+  int ok=cudaDeviceSynchronize()==cudaSuccess;
+  if (w->kind==0 && ok) {
+    size_t n=(size_t)w->n;
+    w->host_pairs=(SOG_GpuPair*)malloc(n*sizeof(SOG_GpuPair));
+    w->host_count=(int*)malloc(n*sizeof(int));
+    w->host_noff=(size_t*)malloc(3*n*sizeof(size_t));
+    ok=w->host_pairs && w->host_count && w->host_noff;
+    if (ok) {
+      w->host_ooff=w->host_noff+n;w->host_goff=w->host_noff+2*n;
+      ok=cudaMemcpy(w->host_pairs,w->pairs,n*sizeof(SOG_GpuPair),cudaMemcpyDeviceToHost)==cudaSuccess &&
+         cudaMemcpy(w->host_count,w->count,n*sizeof(int),cudaMemcpyDeviceToHost)==cudaSuccess &&
+         cudaMemcpy(w->host_noff,w->noff,n*sizeof(size_t),cudaMemcpyDeviceToHost)==cudaSuccess &&
+         cudaMemcpy(w->host_ooff,w->ooff,n*sizeof(size_t),cudaMemcpyDeviceToHost)==cudaSuccess &&
+         cudaMemcpy(w->host_goff,w->goff,n*sizeof(size_t),cudaMemcpyDeviceToHost)==cudaSuccess;
+      for (size_t p=0;ok && p<n;p++) {
+        if (w->host_count[p]<0 || w->host_pairs[p].no<0) {ok=0;break;}
+        size_t end=w->host_noff[p]+(size_t)w->host_count[p];
+        if (end>w->nc_extent) w->nc_extent=end;
+      }
+    }
+  } else if (w->kind==2) w->nc_extent=(size_t)w->n;
+  if (ok && w->nc_extent) {
+    w->host_nc=(int*)malloc(w->nc_extent*sizeof(int));
+    ok=w->host_nc && cudaMemcpy(w->host_nc,w->nc,w->nc_extent*sizeof(int),cudaMemcpyDeviceToHost)==cudaSuccess;
+    /* Compact pair layouts may leave padding between valid Nc slices.
+       Inspect only entries referenced by a pair, never unused padding. */
+    if (w->kind==0) {
+      for (int p=0;ok && p<w->n;p++)
+        for (int k=0;k<w->host_count[p];k++)
+          if (w->host_nc[w->host_noff[p]+(size_t)k]<0) {ok=0;break;}
+    } else {
+      for (size_t p=0;ok && p<w->nc_extent;p++) if (w->host_nc[p]<0) ok=0;
+    }
+  }
+  if (ok) ok=openmx_gpu_workers_run(&w->workers,SOG_tile_worker,w,
+    w->kind==0?"orbital-pair-tiles":w->kind==1?"orbital-atom-tile":"orbital-pair-chunk");
+  free(w->host_nc);free(w->host_noff);free(w->host_count);free(w->host_pairs);
+  return ok;
+}
+
+void SOG_Device_EvalPairTiles(int n,const SOG_GpuPair *pairs,const int *count,
+    const size_t *noff,const size_t *ooff,const size_t *goff,const int *nc,
+    const int *gla,const int *cla,float *out)
+{
+  SOG_TileWork w={0};w.n=n;w.pairs=pairs;w.count=count;w.noff=noff;w.ooff=ooff;w.goff=goff;
+  w.nc=nc;w.gla=gla;w.cla=cla;w.out=out;
+  if (!SOG_tiles_distribute(&w)) SOG_Device_EvalPairTiles_Part(&SOG_dev,n,pairs,count,noff,ooff,goff,nc,gla,cla,out);
+}
+
+void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair,int n,const int *gla,const int *cla,float *out)
+{
+  SOG_TileWork w={0};w.kind=1;w.n=n;w.pair=*pair;w.gla=gla;w.cla=cla;w.out=out;
+  if (!SOG_tiles_distribute(&w)) SOG_Device_EvalAtomTile_Part(&SOG_dev,pair,n,gla,cla,out);
+}
+
+void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair,int n,const int *nc,
+    const int *gla,const int *cla,float *out)
+{
+  SOG_TileWork w={0};w.kind=2;w.n=n;w.pair=*pair;w.nc=nc;w.gla=gla;w.cla=cla;w.out=out;
+  if (!SOG_tiles_distribute(&w)) SOG_Device_EvalPairChunk_Part(&SOG_dev,pair,n,nc,gla,cla,out);
+}
+
 double Set_Orbitals_Grid(int Cnt_kind)
 {
-  SOG_Device_Release();   /* the grid frame may have changed */
+  SOG_Device_ReleaseAll();   /* the grid frame may have changed */
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
   long int k,Nc;

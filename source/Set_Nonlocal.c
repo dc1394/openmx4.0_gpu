@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <openacc.h>
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
 #include "mpi.h"
 #include <omp.h>
 #include "set_cuda_default_device_from_local_rank.h"
@@ -49,6 +50,7 @@ static void SetNonlocal_AbortWithMessage(const char *message)
 {
   fprintf(stderr,"%s\n",message);
   fflush(stderr);
+  if (openmx_gpu_worker_device()>=0) exit(EXIT_FAILURE);
   MPI_Abort(mpi_comm_level1,1);
 }
 
@@ -291,7 +293,7 @@ static int SetNonlocalUseOpenACC(void)
    returns 0 and the caller runs the original host path instead.
    Returns 1 when DS_NL was evaluated here.
 */
-static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
+static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
                                          double *Normk_grid,
                                          int basis_l_dim,
                                          int basis_m_dim,
@@ -304,7 +306,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
                                          int *OneD2Mc_AN,
                                          int *OneD2h_AN,
                                          int OneD_Nloop,
-                                         double grid_h)
+                                         double grid_h, int profile_rank)
 {
   const int nsp = SpeciesNum;
   int w,cw,hw,p;
@@ -327,7 +329,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
   size_t o_normk,o_rf,o_nlrf,o_row_pair,o_row_sph,o_row_rfb,o_row_nlb;
   size_t o_pair_diag,o_pair_r,o_pair_nLL,o_sums0,o_sums1,o_sphb,o_sphbp;
   int device_ok;
-  static int fail_notice_done = 0;
+  static _Thread_local int fail_notice_done = 0;
   int maxL0,maxL1;
   size_t gaunt_d1,gaunt_d2,gaunt_d3,gaunt_d4,gaunt_elems;
   double *gaunt_tab;
@@ -368,7 +370,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
     nlrf_base_sp[nsp+w] = SetNonlocal_SizeTToInt(((size_t)nsp+w)*nlrf_sp_stride,"OpenACC nlrf base");
   }
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
   for (w=0; w<nsp; w++){
     int L0,Mul0,so,L,i;
 
@@ -555,7 +557,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
                   gaunt_d4,"OpenACC Gaunt table");
   gaunt_tab = (double*)SetNonlocal_MallocArray(gaunt_elems,sizeof(double),"OpenACC gaunt_tab");
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
   for (w=0; w<=maxL0; w++){
     int L0 = w;
     int M0,L1,M1,LL;
@@ -588,7 +590,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
   row_rf_base = (int*)SetNonlocal_MallocArray((size_t)total_rows,sizeof(int),"OpenACC row_rf_base");
   row_nlrf_base = (int*)SetNonlocal_MallocArray((size_t)total_rows,sizeof(int),"OpenACC row_nlrf_base");
 
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for if(!omp_in_parallel()) schedule(static)
   for (p=0; p<OneD_Nloop; p++){
     size_t spair = (size_t)pair_spair[p];
     int socnt = VPS_j_dependency[pair_Hwan[p]] + 1;
@@ -888,7 +890,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
      the CPU path, reading the batched radial integrals)
   **********************************************************************/
 
-#pragma omp parallel
+#pragma omp parallel if(!omp_in_parallel())
   {
     int OMPID,Nthrds,Nloop;
     int i,j,k,l,m;
@@ -1347,7 +1349,7 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
 
     dtime(&t_mark1);
     t_ang = t_mark1 - t_mark0;
-    MPI_Comm_rank(mpi_comm_level1,&prof_myid);
+    prof_myid=profile_rank;
     printf("CalcDSNL: myid=%2d setup=%8.4f sphb=%8.4f acc=%8.4f ang=%8.4f\n",
            prof_myid,t_setup,t_sphb,t_acc,t_ang);
     fflush(stdout);
@@ -1381,6 +1383,69 @@ static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
   return device_ok;
 }
 
+
+typedef struct {
+  OpenMXGpuWorkers workers;
+  double ******dsnl, *normk, grid_h;
+  int *mc, *h, profile_rank;
+  int basis_l_dim;
+  int basis_m_dim;
+  int rvps_dim;
+  int rvps_sum_dim;
+  int proj_m_dim;
+  int grid_dim;
+  int max_Lmax_Four_Int;
+  int max_sph_rows;
+} SetNonlocalGpuWork;
+
+static int SetNonlocal_Worker(void *opaque, int worker, int phase)
+{
+  SetNonlocalGpuWork *work=(SetNonlocalGpuWork*)opaque;
+  if (phase!=OPENMX_GPU_WORKER_EXECUTE) return 1;
+  const int first=(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
+  const int last=(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
+  /* Every entry overwrites one distinct DS_NL pair. If a worker cannot
+     allocate its bounded scratch, the caller rewrites all pairs on the CPU;
+     no additive matrix or force contribution has been published here. */
+  return SetNonlocal_CalcDSNL_Part(work->dsnl,work->normk,
+work->basis_l_dim,work->basis_m_dim,work->rvps_dim,work->rvps_sum_dim,work->proj_m_dim,work->grid_dim,work->max_Lmax_Four_Int,work->max_sph_rows,
+      work->mc+first,work->h+first,last-first,work->grid_h,work->profile_rank);
+}
+
+static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
+                                         double *Normk_grid,
+                                         int basis_l_dim,
+                                         int basis_m_dim,
+                                         int rvps_dim,
+                                         int rvps_sum_dim,
+                                         int proj_m_dim,
+                                         int grid_dim,
+                                         int max_Lmax_Four_Int,
+                                         int max_sph_rows,
+                                         int *OneD2Mc_AN,
+                                         int *OneD2h_AN,
+                                         int OneD_Nloop,
+                                         double grid_h)
+{
+  SetNonlocalGpuWork work={0};
+  MPI_Comm_rank(mpi_comm_level1,&work.profile_rank);
+  openmx_gpu_workers_local(&work.workers,(size_t)OneD_Nloop);
+  if (work.workers.count<=1)
+    return SetNonlocal_CalcDSNL_Part(DS_NL,Normk_grid,
+basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim,grid_dim,max_Lmax_Four_Int,max_sph_rows,OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h,work.profile_rank);
+  work.dsnl=DS_NL;work.normk=Normk_grid;work.grid_h=grid_h;
+  work.mc=OneD2Mc_AN;work.h=OneD2h_AN;
+  work.basis_l_dim=basis_l_dim;
+  work.basis_m_dim=basis_m_dim;
+  work.rvps_dim=rvps_dim;
+  work.rvps_sum_dim=rvps_sum_dim;
+  work.proj_m_dim=proj_m_dim;
+  work.grid_dim=grid_dim;
+  work.max_Lmax_Four_Int=max_Lmax_Four_Int;
+  work.max_sph_rows=max_sph_rows;
+
+  return openmx_gpu_workers_run(&work.workers,SetNonlocal_Worker,&work,"nonlocal-radial");
+}
 
 double Set_Nonlocal(double *****HNL, double ******DS_NL)
 {

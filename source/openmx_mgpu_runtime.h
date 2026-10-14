@@ -10,14 +10,54 @@
 extern "C" {
 #endif
 
-/* The only production scopes are Cluster_DFT_Col and Cluster_DFT_NonCol.
-   Band, DC, LNO and the distributed ELPA/COSMA solver remain unaffected.
+/* Production scopes cover cluster and ordinary collinear/noncollinear Band.
+   DC, LNO and the distributed ELPA/COSMA solver remain unaffected.
    Configure collectively obtained topology once per input; this function
    itself never calls MPI and never creates a CUDA context. */
 void openmx_mgpu_configure(int enabled, int gpu_limit, int single_node);
+void openmx_mgpu_force_magma(int force);
+int openmx_mgpu_host_required(void);
 int openmx_mgpu_scope_enter(int allowed);
 void openmx_mgpu_scope_leave(int previous_scope);
 int openmx_mgpu_scope_active(void);
+
+/* Noncollective support for non-diagonalization GPU workers. The pool is
+   bounded by the same input and visibility limits. A scoped list uses the
+   exact current Band group. Admission includes the caller's device and
+   shares the UUID locks used by dense solvers and matrix products. */
+int openmx_mgpu_pool_devices(int *devices, int capacity);
+int openmx_mgpu_scope_devices(int *devices, int capacity);
+void *openmx_mgpu_admit_devices(const int *devices, int count);
+void openmx_mgpu_release_devices(void *admission);
+
+/* Band groups use the actual computed k-point count, not the unreduced grid.
+   G is the configured visible GPU pool, q=floor(G/K). Groups are contiguous
+   [k*q,(k+1)*q), and only q*K GPUs are used. q<2 or q>8 declines. Planning
+   does not require an active scope, create handles, or change devices.
+   group() returns q (0 means unavailable); a null list queries only the size.
+   used_gpus() lets input setup trim the pool before rank device binding. */
+int openmx_mgpu_band_group(int total_kpoints, int kpoint_index,
+    int *devices, int capacity);
+int openmx_mgpu_band_used_gpus(int total_kpoints);
+typedef struct {
+    int active, band_kpoints, band_kpoint;
+} openmx_mgpu_scope_state;
+openmx_mgpu_scope_state openmx_mgpu_band_scope_enter(int allowed,
+    int total_kpoints, int kpoint_index);
+void openmx_mgpu_band_scope_leave(openmx_mgpu_scope_state previous);
+
+/* Host-backed capacity path. Planning is allowed outside an operation
+ * scope; total_kpoints=0 means Cluster. Every selected group must admit
+ * the MAGMA scratch estimate. Input/visibility limits are never expanded.
+ * A nonzero return from a host operation means success, otherwise callers
+ * must stop (there is no implicit CPU or oversized single-GPU fallback). */
+int openmx_mgpu_host_plan(int total_kpoints, int n, int complex_matrix);
+const char *openmx_mgpu_host_error(void);
+int openmx_mgpu_host_solve(int n, int nev, int complex_matrix, void *a, int lda, double *w);
+int openmx_mgpu_host_dgemm(cublasOperation_t ta, cublasOperation_t tb,
+    int m, int n, int k, const double *a, int lda, const double *b, int ldb, double *c, int ldc);
+int openmx_mgpu_host_zgemm(cublasOperation_t ta, cublasOperation_t tb,
+    int m, int n, int k, const void *a, int lda, const void *b, int ldb, void *c, int ldc);
 
 /* Optional hooks keep standalone tests of the existing bridges linkable
    without the new runtime. The complete application links it explicitly. */

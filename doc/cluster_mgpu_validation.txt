@@ -1,6 +1,11 @@
 Single-node cluster multi-GPU validation (2026-10-14)
 ===================================================
 
+Historical record: these results predate removal of the experimental
+paper backend and introduction of scf.eigen.lib=gpusolver3. Binary hashes
+and measurements below retain their original meaning. Current runners use
+gpusolver3 for cooperation and no longer include the paper implementation.
+
 Environment and baseline
 ------------------------
 A100-SXM4-40GB, direct NVLink, CUDA 12.5, NVHPC 24.7, GCC 12.2 and
@@ -141,7 +146,8 @@ away from automatic multi-GPU routing. The new paths retain the owner's
 dense GPU storage and are not out-of-core. The paper implementation uses
 its pipelined reduction/backtransform structure and adds complex support,
 but does not reproduce all published low-level tuning or claim its reported
-speedups. See paper_mgpu.txt for algorithm and tuning details.
+speedups. The experimental backend and its algorithm document were later
+removed; this paragraph records measurements of that historical version.
 
 Raw evidence (local, ignored build/test artifacts)
 ------------------------------------------------

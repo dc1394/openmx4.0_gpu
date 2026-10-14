@@ -1,5 +1,6 @@
 #ifndef OPENMX_MAGMA_MGPU_H
 #define OPENMX_MAGMA_MGPU_H
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,6 +18,12 @@ enum {
 
 /* Compile-time availability; this does not create any CUDA contexts. */
 int openmx_magma_mgpu_available(void);
+/* Non-prefix groups require the versioned device-map extension in the pinned
+   private dependency. Unpatched external MAGMA still supports prefix groups. */
+int openmx_magma_mgpu_available_devices(int ngpu, const int *devices);
+/* Conservative per-device live scratch bound, including the reserve.
+   SIZE_MAX denotes an unsupported order/group or arithmetic overflow. */
+size_t openmx_magma_mgpu_device_bytes(int ngpu, int n, int is_complex);
 const char *openmx_magma_mgpu_last_error(void);
 /* Release retained host scratch at an input boundary. No CUDA allocations
    are retained; successful MAGMA initialization remains until process exit. */
@@ -46,6 +53,14 @@ void openmx_magma_mgpu_release_cache(void);
    Build without OPENMX_HAVE_MAGMA for a dependency-free unavailable stub. */
 int openmx_magma_mgpu_solve_host(int ngpu, int is_complex, int want_vectors,
     int lower, int n, int first, int last, void *A, int lda, double *W);
+
+/* Same transaction contract, using distinct visible CUDA device ordinals in
+   the supplied order. Does not modify CUDA_VISIBLE_DEVICES or rank binding.
+   Its process-wide MAGMA logical-device map is scoped under the adapter's
+   mutex and removed before restoring the caller's physical CUDA device. */
+int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices,
+    int is_complex, int want_vectors, int lower, int n, int first, int last,
+    void *A, int lda, double *W);
 
 /* Leading eigenpairs, vectors requested, lower triangle supplied. */
 int openmx_magma_mgpu_dsyevdx_host(int ngpu, int n, int maxn,

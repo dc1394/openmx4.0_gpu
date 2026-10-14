@@ -31,6 +31,19 @@ int openmx_mgpuZgemmTry(cublasHandle_t handle, int ngpu, const int *devices,
                        const cuDoubleComplex *a, int lda, const cuDoubleComplex *b, int ldb,
                        const cuDoubleComplex *beta, cuDoubleComplex *c, int ldc, cublasStatus_t *status);
 
+/* Capacity path: A/B/C and alpha/beta are host pointers. Only bounded
+ * operand/output tiles reside on each worker GPU; the transaction is in
+ * host memory. The same untouched-C/handled-error contract applies. */
+int openmx_mgpuDgemmHostTry(int ngpu, const int *devices,
+    cublasOperation_t ta, cublasOperation_t tb, int m, int n, int k,
+    const double *alpha, const double *a, int lda, const double *b, int ldb,
+    const double *beta, double *c, int ldc, cublasStatus_t *status);
+int openmx_mgpuZgemmHostTry(int ngpu, const int *devices,
+    cublasOperation_t ta, cublasOperation_t tb, int m, int n, int k,
+    const cuDoubleComplex *alpha, const cuDoubleComplex *a, int lda,
+    const cuDoubleComplex *b, int ldb, const cuDoubleComplex *beta,
+    cuDoubleComplex *c, int ldc, cublasStatus_t *status);
+
 /* Existing bridge entry points must skip multi-GPU dispatch while this is
  * true. Workers may call that bridge to preserve GEMMul8 precision controls.
  * Weak bridge symbols permit native-cuBLAS-only standalone linking too. */

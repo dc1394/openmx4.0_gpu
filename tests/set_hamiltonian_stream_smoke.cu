@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+extern "C" void openmx_gpu_test_use_visible_pool(void);
 
 extern "C" void *Set_Hamiltonian_Cuda_StreamCreate(std::size_t, std::size_t, const double *);
 extern "C" void Set_Hamiltonian_Cuda_StreamDestroy(void *);
@@ -193,6 +194,7 @@ void reject_without_output(void *workspace, Batch &batch)
 int main()
 {
     check(cudaSetDevice(0));
+    openmx_gpu_test_use_visible_pool();
     int runtime_version = 0;
     check(cudaRuntimeGetVersion(&runtime_version));
     std::printf("CUDA runtime %d\n", runtime_version);

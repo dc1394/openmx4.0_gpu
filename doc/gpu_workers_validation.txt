@@ -1,0 +1,198 @@
+GPU work outside diagonalization: validation (2026-10-14)
+=======================================================
+
+Scope: ordinary collinear/noncollinear Cluster and Band, including the
+existing GPU grid, integral, density, force, energy, mixing and dense-matrix
+paths. CPU-only operations are not included in the GPU coverage claim.
+See gpu_workers.txt for ownership, memory lifetime and runtime controls.
+
+Build: Makefile.kugui, WITH_MAGMA=1, CUDA 12.5, GPU_ARCH=80.
+Device validation: one node of four A100-SXM4-40GB GPUs with NVLink;
+private CUDA MPS. No GeForce hardware measurements were made in this phase.
+The existing GeForce precision choices remain available and their policy
+dispatch is covered by host/device arithmetic tests.
+
+Selected worker build (build9):
+  b4132ca982af1638b252824a1e8913395234ce85869006e2884cc02f76419768
+Frozen pre-worker capacity baseline:
+  2e46b10173e6f7215331c248d6789a9b98b80f45f77e903d5df78ff2a65604ae
+Evidence root: work/mgpu_nondense_20261014/.
+Exact source hashes are in build9-sources.json. Each SCF run retains its
+binary/input hashes, controls, output energies, energy components, every
+force component and actual GPU worker lists.
+The exact selected binary used in the full Si1000 measurements is installed
+at source/openmx and work/openmx. release.json records both installed hashes,
+the successful final source rebuild and the source-manifest verification.
+
+Numerical oracles
+-----------------
+All following checks passed. These test production worker kernels against
+independent host arithmetic or retained single-device operations.
+
+- Dense transforms, real/complex sparse assembly and DM/EDM extraction:
+  4074 comparisons, maximum absolute error 1.776e-15. Includes 2/4 GPUs,
+  nonprefix group [2,3], an owner outside the group, forced copies, aliasing,
+  padded layouts and output guards. Host oracle also ran with ASan/UBSan.
+- Transactional GEMM: 106 actual-GPU cases, maximum oracle metric 2.397e-14;
+  real/complex N/T/C, nontrivial alpha/beta, device scalars, padding, streams,
+  full-K tiling, host inputs/results, peer/copy transfers and late failure.
+  Host emulation independently passed 106 cases on both 2 and 4 workers.
+- Forward-transform precision: 985 checks, including 384 cooperative
+  products with explicit native-FP64 and GEMMul8/Ozaki choices.
+- Matrix quadrature: 86 FP64/DF cases, maximum scaled error 2.124e-13.
+- Density/quadrature chunks: 78 FP64/DF cases plus 96 guarded output-range
+  checks, maximum scaled error 6.343e-14; both FP64 spin-splitting settings.
+- Actual CUDA/OpenACC worker rollback, publication barriers and dynamic
+  OpenMP teams passed prepare/execute failure injection on all four GPUs.
+- Separate XC and Force4B device probes passed 288 and 32 cases, respectively.
+
+Relevant logs: dense-worker-oracle.log, gemm-worker-oracle-retry.log,
+forward-worker-oracle.log, matrix-stream-current.log,
+density-ranges-split0.log, density-ranges-split1.log, xc-gpu-probe.log,
+force-pair-probe.log. The first GEMM invocation used an incorrect command
+line and exited with usage status 2 before executing; its corrected retry
+passed. The original log is retained.
+
+Host-only checks additionally cover GPU caps, k-point groups, admission
+locks, worker ownership, overflow, empty work, phase rollback, device-binding
+restoration, memory queries without worker MPI, precision dispatch, orbital
+chunks, density ownership, projector/force arithmetic and retained CPU
+fallbacks. See workers-final-cpu.log, runtime-worker-admission.log (35774
+assertions), meminfo-integration.log, gemm-host-result.log,
+dense-index-cpu.log and the run_*_cpu.py.log files.
+
+Four-mode SCF and force comparison
+---------------------------------
+Si64, Si7.0-s2p2d1 / Si_PBE19, GGA-PBE, 200 Ry, two SCF steps, FP64 grid
+arithmetic. Collinear uses spin off; noncollinear uses SOC. Band has two
+actual k-points. Four GPUs, four OpenMP threads/rank; one and two MPI ranks.
+Both binaries use native cuSOLVER for these small matrices, so differences
+test GPU work outside diagonalization. Cooperative GEMM is enabled.
+
+All four cases passed in both MPI layouts. Maximum |delta E| is
+1.024e-12 Ha and maximum force-component difference is 2.001e-12 Ha/bohr.
+The verifier also compares all reported energy components and rejects
+CPU eigensolver fallback, incomplete SCF steps, invalid GPU ownership,
+failed worker phases and missing cooperative execution.
+Completed SCF logs currently cover 35 named distributed operations.
+worker-coverage.json records their individual cases and observed groups,
+including [0,1,2,3], MPI-local [0,2]/[1,3], and Band [0,1]/[2,3].
+
+An initial collinear Band integration exposed a missing device-residency
+flag after successful cooperative sparse assembly. The caller then copied
+stale host matrices over the constructed device matrices. Build8 sets the
+flag before returning. Focused one/two-MPI reruns passed. Other three modes
+passed build7; the source manifests verify that build8 differs only in this
+Band_DFT_Col.c correction. Original failed logs remain in integration4 and
+integration-mpi2; successful replacements are integration-bandcol-fixed
+and integration-bandcol-fixed-mpi2. validation-summary.json records both
+the original failures and their resolved comparisons.
+
+Additional configurations and full Si1000 measurements
+-----------------------------------------------------
+Completed additional configurations (build8):
+- Si64, all four modes, FP32 enabled with OPENMX_GRID_PRECISION=df:
+  max |delta E| 1.024e-12 Ha, max |delta F| 1.001e-12 Ha/bohr.
+- Magnetic collinear Cluster/Band, initial up-minus-down population 0.4:
+  max |delta E| 1.990e-12 Ha, max |delta F| 2.001e-12 Ha/bohr.
+- Magnetic NC Band with OPENMX_GRID_FP32=1: max |delta E| 1.024e-12 Ha;
+  reported force components agree exactly. The log confirms FP32 grid use.
+- scf.Gpu.Num=2 (Cluster collinear/Band NC), and =1 (Cluster NC), pass;
+  the verifier rejects worker ordinals beyond the requested cap.
+- Si8, 10 SCF steps, history 3/Pulay start 3, rmm-diish, one CPU thread,
+  four GPUs, GPU overlap/kinetic radial integrals: Cluster collinear/NC
+  pass with identical reported energies and max |delta F| 3.001e-12 Ha/bohr.
+  The run crosses the history ring boundary and records distributed Gram,
+  optimum residual, history upload/release and radial work. This is a
+  focused correctness test, not the requested large-system benchmark.
+
+Build8's optional Hamiltonian base/OpenACC runs exposed a compiler offload
+failure: NVHPC 24.7 rejected the ternary expressions in nested vector-loop
+bounds (ACCPLOOP) and left device-pointer accesses on the host. Build9
+materializes both bounds before each loop; its compiler diagnostics confirm
+GPU code for both workers. It also corrects core-hole input indexing: input
+views are full arrays even though output arrays start at a worker's cut.
+Original failures remain in integration-otf and integration-openacc.
+The new independent base/quadrature fixture passes 432 comparisons under
+CPU emulation with ASan/UBSan (max absolute error 8.882e-16), including
+all spin counts and combinations of VNA, Hubbard and core-hole terms;
+see base-cpu-oracle.log. The actual A100 run also passes all 432 comparisons
+with the same maximum error (base-worker-oracle.log, PBS 938214).
+Focused build9 SCF reruns also pass:
+- integration-otf-fixed: magnetic NC, 32 MiB on-the-fly budget,
+  GPU Hamiltonian base, orbital pair tiles and density output ownership.
+- integration-openacc-fixed: collinear with CUDA quadrature disabled.
+- integration-openacc-nc: magnetic NC with CUDA quadrature disabled.
+The latter two require actual distributed Hamiltonian-base and
+Hamiltonian-fallback records. Maximum |delta E| is 1.024e-12 Ha and
+maximum |delta F| is 2.001e-12 Ha/bohr. validation-summary.json resolves
+the original failures only through these successful replacement runs.
+All other production source hashes match build8.
+
+All four full Si1000 cases passed (Cluster: PBS 938214; Band: PBS 938248).
+Band finished with PBS exit status 0. validation-summary.json reports
+passed=true, no pending cases and no failed checks. Each reported GPU
+operation is checked for success, its full device list and the GPU cap;
+Band solver/GEMM operations use [0,1] and [2,3], while atom/grid work
+uses [0,1,2,3]. All four measurements use the selected build9 binary.
+
+Application wall times, one SCF step (seconds; one measurement per case):
+  Case               Prior capacity build  Distributed GPU work  Increase
+  Cluster collinear               231.985               327.221   +41.05%
+  Cluster noncollinear            926.522              1020.293   +10.12%
+  Band collinear                  263.543               373.032   +41.55%
+  Band noncollinear              1107.745              1206.107    +8.88%
+
+The collinear reference uses single-GPU cuSOLVER with single-device GPU
+kernels/products. NC references already use host-backed MAGMA (four GPUs
+for Cluster, two GPUs per Band k-point) and cooperative GEMM, with the
+older single-device auxiliary GPU kernels. A single A100 40GB cannot run
+the NC cuSOLVER path at order 26000, so there is no single-GPU NC timing.
+
+Across all four cases, maximum |delta total energy| is 9.095e-12 Ha and
+maximum |delta force component| is 1.001e-12 Ha/bohr. Maximum difference
+among all reported energy components is 2.311e-10 Ha. All comparisons
+pass the 1e-7 Ha and 1e-7 Ha/bohr limits. Host process-tree peak RSS is
+69.523/130.155 GiB for collinear/NC Cluster and 70.478/130.868 GiB for
+collinear/NC Band. The largest sampled GPU usage is 19.034 GiB; each
+secondary GPU reaches at most 6.696 GiB in these runs.
+
+This implements the requested distribution but does not improve whole-run
+performance on these inputs. For NC Cluster, Hamiltonian time increases
+from 26.843 to 62.189 s and density-grid time from 32.285 to 97.419 s.
+NC Band shows the same pattern: 27.024 -> 63.250 s and 33.267 -> 99.201 s.
+The runs invoke thousands of distributed orbital/quadrature tiles. These
+timings include transfer, allocation and launch overhead; individual costs
+were not separately profiled. The CPU-only NC nonlocal force also remains
+a major cost (the total force stage is about 501 s). Per-stage times,
+energies, forces, input/binary hashes and sampled GPU memory are retained
+in clusters1000/, bands1000/ and validation-summary.json.
+
+An additional local-input-copy experiment (build10, SHA256
+b630e557ec0e429817389d8d640124df12595e463c2234b79047467eaf4f03b7)
+passed the host/device oracles and four-mode two-MPI SCF checks, but was
+rejected on measured performance. Its full NC Si1000 run (PBS 938233)
+finished in 1062.975 s versus 1020.293 s for build9. Hamiltonian time rose
+from 62.189 to 75.562 s, and density-grid time from 97.419 to 118.474 s.
+The total-energy difference between these two builds was 7.276e-12 Ha;
+maximum force-component difference was 1.001e-12 Ha/bohr.
+The subsequent experimental collinear run was canceled after this result;
+its incomplete output is excluded. local-copy-evaluation.json records the
+decision, timings and numerical comparison. Its source/patch, binary and
+all logs remain under the evidence root. The optional local-copy API and
+control are not part of the selected implementation.
+
+Every production source hash was restored to build9. The final source
+rebuild succeeds (build-final.log), and the restored dense oracle passes
+4074 comparisons with ASan/UBSan (dense-final-cpu.log).
+Queued or interrupted jobs are excluded from numerical and performance results.
+The large-system measurements keep 1000 atoms, Si7.0-s2p2d1,
+200 Ry and one SCF step; collinear order 13000 and NC order 26000. Band
+uses two actual k-points to exercise two GPUs per point on four GPUs.
+One MPI rank processes the k-points sequentially; these are whole-program
+comparisons, not simultaneous k-point throughput or converged SCF rates.
+The previous-capacity-build timings are retained in
+mgpu_capacity_validation.txt. Those used a 12 GiB private GEMM result cap;
+the new runs use the production 2 GiB cap with host staging for larger
+results. Timings therefore compare complete configurations, not solely
+the change in auxiliary kernel parallelism.

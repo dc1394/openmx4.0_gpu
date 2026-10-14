@@ -27,9 +27,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def extract_function(source: str, name: str) -> str:
     """Extract a static definition, ignoring braces in comments and literals."""
-    match = re.search(r"^static [^\n]*\b" + re.escape(name) + r"\(", source, re.M)
-    if match is None:
+    # Arithmetic/planner fixtures exercise the unchanged per-worker kernel.
+    # Real CUDA worker admission and transport have separate device tests.
+    original_name = name
+    if name in ("Force4B_GpuCase1Kernel", "Force4B_GpuCase2Kernel"):
+        name += "_Single"
+    matches = list(re.finditer(r"^static [^\n]*\b" + re.escape(name) + r"\(", source, re.M))
+    if not matches:
         raise ValueError(f"missing production function: {name}")
+    match = next((m for m in matches if ";" not in source[m.end():source.index("{", m.end())]), None)
+    if match is None:
+        raise ValueError(f"expected definition, found declaration: {name}")
     start = match.start()
     opening = source.index("{", match.end())
     # This scanner also fails explicitly if a declaration replaces a definition.
@@ -43,7 +51,7 @@ def extract_function(source: str, name: str) -> str:
         elif item.group() == "}":
             depth -= 1
             if depth == 0:
-                return source[start:item.end()] + "\n"
+                return source[start:item.end()].replace(name + "(", original_name + "(", 1) + "\n"
     raise ValueError(f"unterminated production function: {name}")
 
 

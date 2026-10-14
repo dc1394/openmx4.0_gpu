@@ -13,6 +13,10 @@
 #include "mpi.h"
 #include "lapack_prototypes.h"
 #include "openmx_common.h"
+#include "openmx_mgpu_runtime.h"
+#include "openmx_gpu_transform.h"
+#include "openmx_gpu_dm.h"
+#include "openmx_gpu_workers.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
 #include "tran_variables.h"
@@ -26,6 +30,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "openmx_mgpu_band_plan.h"
+static int BandCol_mgpu_host_dense = 0;
+static int BandCol_host_n = 0;
+static dcomplex *BandCol_host_s=NULL, *BandCol_host_h=NULL, *BandCol_host_tmp=NULL;
+static void BandCol_GpuSolver_Destroy(void);
+static void BandCol_HostEnsure(int n);
 
 #define measure_time 0
 
@@ -260,6 +271,7 @@ static size_t BandCol_RefineBasisBytes(int n)
    the host between the passes), possible_kdense the k-dense path */
 static void BandCol_RefineBeginStep(int SCF_iter, int possible, int possible_kdense, int possible_staged)
 {
+    if (BandCol_mgpu_host_dense) possible=possible_kdense=possible_staged=0;
     BandColRefineState *st = &BandCol_refine;
 
     BandCol_RefineConfigure();
@@ -478,8 +490,13 @@ static int BandCol_KOverlapRestore(int point, double k1, double k2, double k3,
     if (entry->matrix == NULL || entry->k1 != k1 || entry->k2 != k2 || entry->k3 != k3) return 0;
     matrix_bytes = (size_t)BandCol_k_overlap_n * (size_t)BandCol_k_overlap_n * sizeof(dcomplex);
     eigen_bytes = (size_t)BandCol_k_overlap_n * sizeof(double);
-    BandCol_GpuSolver_EnsureMatrixCapacity(BandCol_k_overlap_n);
-    wait_cudafunc(cudaMemcpy(ctx->d_S, entry->matrix, matrix_bytes, cudaMemcpyHostToDevice));
+    if (BandCol_mgpu_host_dense) {
+        BandCol_HostEnsure(BandCol_k_overlap_n);
+        memcpy(BandCol_host_s,entry->matrix,matrix_bytes);
+    } else {
+        BandCol_GpuSolver_EnsureMatrixCapacity(BandCol_k_overlap_n);
+        wait_cudafunc(cudaMemcpy(ctx->d_S, entry->matrix, matrix_bytes, cudaMemcpyHostToDevice));
+    }
     memcpy(ko + 1, (char*)entry->matrix + matrix_bytes, eigen_bytes);
     memcpy(koS + 1, (char*)entry->matrix + matrix_bytes, eigen_bytes);
     ctx->transformed_s_valid = 1;
@@ -501,7 +518,8 @@ static void BandCol_KOverlapSave(int point, double k1, double k2, double k3, con
         BandCol_k_overlap_used += BandCol_k_overlap_bytes;
     }
     matrix_bytes = (size_t)BandCol_k_overlap_n * (size_t)BandCol_k_overlap_n * sizeof(dcomplex);
-    wait_cudafunc(cudaMemcpy(entry->matrix, BandCol_gpusolver_ctx.d_S,
+    if (BandCol_mgpu_host_dense) memcpy(entry->matrix,BandCol_host_s,matrix_bytes);
+    else wait_cudafunc(cudaMemcpy(entry->matrix, BandCol_gpusolver_ctx.d_S,
                             matrix_bytes, cudaMemcpyDeviceToHost));
     memcpy((char*)entry->matrix + matrix_bytes, koS + 1,
            (size_t)BandCol_k_overlap_n * sizeof(double));
@@ -626,6 +644,7 @@ static int BandCol_GpuPersistentEnabled(void)
 
 static int BandCol_GpuPersistentDecide(void)
 {
+    if (BandCol_mgpu_host_dense) return 0;
     /* Sticky per-rank decision taken right after the first full device
        allocation: persistence stays off when the shared device is too full
        (threshold via OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB, default 2048). */
@@ -952,12 +971,13 @@ int Band_DFT_Col_GpuSwitchNum(void)
    k-owner rank; when a single rank's requirement (the dense matrices plus the
    cusolver workspace at the size cusolverDnXsyevdx_bufferSize reports, the
    GEMMul8 workspace and the staging transients) does not fit, committing to
-   the GPU path would abort or spin inside a full device, so the whole band
-   phase falls back to the ScaLAPACK/ELPA branch instead.  The verdict is
+   the GPU path would exhaust device memory. Ordinary gpusolver instead
+   selects host-backed MAGMA within the configured pool, or exits. The verdict is
    collective over mpi_comm_level1 (the branch controls barrier and
    communicator structure) and sticky until the next SCF restart or a change
    of the matrix size.
-   OPENMX_BAND_GPU_DIAG=1 forces the GPU path, =0 forces the fallback. */
+   OPENMX_BAND_GPU_DIAG=0 explicitly selects the legacy CPU branch;
+   neither =1 nor forced MAGMA bypasses memory admission. */
 static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int myid0)
 {
     static int verdict = -1;
@@ -968,18 +988,11 @@ static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int 
     int my_fit = 1;
     int fit = 0;
 
-    if (force != NULL) {
-        static int force_announced = 0;
-        int forced = (atoi(force) != 0);
-
-        if (!forced && !force_announced && myid0 == Host_ID && 2 <= level_stdout) {
-            printf("<Band_DFT_Col> GPU dense diagonalization disabled by OPENMX_BAND_GPU_DIAG=0.\n");
-            fflush(stdout);
-        }
-        force_announced = 1;
-        BandCol_gpu_dense_verdict = forced;
-        return forced;
+    if (force && atoi(force)==0 && !openmx_mgpu_host_required()) {
+        BandCol_gpu_dense_verdict=0; return 0;
     }
+    if (SCF_iter==1 || verdict_n!=n) BandCol_mgpu_host_dense=0;
+    if (openmx_mgpu_host_required()) goto host_capacity;
 
     if (verdict != -1 && verdict_n == n && 1 < SCF_iter) {
         BandCol_gpu_dense_verdict = verdict;
@@ -1028,15 +1041,26 @@ static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int 
     MPI_Allreduce(&my_required, &req_max, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, mpi_comm_level1);
     MPI_Allreduce(&my_free, &free_min, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, mpi_comm_level1);
 
-    if (fit == 0 && myid0 == Host_ID) {
-        printf("<Band_DFT_Col> A k-owner rank cannot fit even one k-point's dense GPU"
-               " diagonalization (%.1f MiB needed per rank, %.1f MiB free);"
-               " falling back to the ScaLAPACK/ELPA diagonalization."
-               " Force the GPU path with OPENMX_BAND_GPU_DIAG=1 or lower"
-               " OPENMX_BAND_GPU_RESERVE_MB.\n",
-               (double)req_max / (1024.0 * 1024.0),
-               (free_min == ULLONG_MAX) ? 0.0 : (double)free_min / (1024.0 * 1024.0));
-        fflush(stdout);
+    if (!fit && gpusolver2_flag) {
+        if (myid0==Host_ID) printf("<BandCol> GPU dense memory admission declined; falling back to ELPA/ScaLAPACK.\n");
+        verdict=0; verdict_n=n; BandCol_gpu_dense_verdict=0;
+        return 0;
+    }
+    if (!fit) {
+host_capacity:
+        BandCol_GpuSolver_Destroy();
+        openmx_gemmul8ReleaseWorkspaces();
+        acc_wait_all(); acc_clear_freelists();
+        MPI_Barrier(mpi_comm_level1);
+        if (myid0==Host_ID) {
+            int total=openmx_mgpu_band_kpoint_count(SpinP_switch,way_of_kpoint,
+                Kspace_grid1,Kspace_grid2,Kspace_grid3,num_non_eq_kpt);
+            if (!openmx_mgpu_host_plan(total,n,1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
+            printf("<OpenMX_MGPU> Band collinear n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
+                   n,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
+            fflush(stdout);
+        }
+        BandCol_mgpu_host_dense=1; fit=1;
     }
 
     verdict = fit;
@@ -1049,6 +1073,7 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
                                     int size_H1, int owns_dense_rank, int myid0,
                                     int total_turns)
 {
+    if (BandCol_mgpu_host_dense) return 1;
     BandColGpuUuidRecord local_uuid;
     BandColGpuUuidRecord *node_uuids = NULL;
     MPI_Comm node_comm = MPI_COMM_NULL;
@@ -1825,7 +1850,7 @@ static void BandCol_AccumulateDenseTransposedDM(int n, int nk, int max_tno, int 
     }
 }
 
-static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n, int nk, int spin, int kloop, double k1, double k2,
+static void BandCol_AccumulateDenseTransposedDM_Device(int n, int nk, int spin, int kloop, double k1, double k2,
                                                         double k3, const dcomplex *evec_device, int evec_stride, int *MP,
                                                         int *order_GA, double ***EIGEN, const double *occ_weight,
                                                         double *CDM1, double *EDM1, int size_H1, int state_first)
@@ -1860,6 +1885,10 @@ static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n, int nk, int spin,
     eigen       = &EIGEN[spin][kloop][state_first];
     entry_count = cache->entry_count;
     pair_count  = cache->pair_count;
+
+    double *dm_outputs[10]={CDM1,EDM1};
+    if (openmx_gpu_dm_entries(OPENMX_GPU_DM_COL,n,nk,evec_stride,entry_count,evec_ptr,0,
+            basis0,basis1,phase_index,pair_count,phase_r,phase_i,occ_weight,eigen,NULL,dm_outputs,1)) return;
 
 #pragma acc data deviceptr(evec_ptr)                                                                                       \
     copyin(basis0[0 : entry_count], basis1[0 : entry_count], phase_index[0 : entry_count], phase_r[0 : pair_count],        \
@@ -1898,6 +1927,30 @@ static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n, int nk, int spin,
     }
 }
 
+/* Stream state panels to the DM kernel as well: a capacity fallback must
+   never recreate the complete owner GPU eigenvector matrix. */
+static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n,int nk,int spin,int kloop,double k1,double k2,
+    double k3,const dcomplex *evec,int stride,int *MP,int *order_GA,double ***EIGEN,const double *weight,
+    double *CDM1,double *EDM1,int size_H1,int state_first)
+{
+    if (!BandCol_mgpu_host_dense) {
+        BandCol_AccumulateDenseTransposedDM_Device(n,nk,spin,kloop,k1,k2,k3,evec,stride,MP,order_GA,
+            EIGEN,weight,CDM1,EDM1,size_H1,state_first);
+        return;
+    }
+    const int tile=nk<256?nk:256;
+    dcomplex *device=NULL;
+    wait_cudafunc(cudaMalloc((void **)&device,(size_t)n*tile*sizeof(dcomplex)));
+    for (int off=0;off<nk;off+=tile) {
+        const int count=(nk-off<tile)?nk-off:tile;
+        wait_cudafunc(cudaMemcpy2D(device,(size_t)count*sizeof(dcomplex),evec+off,(size_t)stride*sizeof(dcomplex),
+            (size_t)count*sizeof(dcomplex),n,cudaMemcpyHostToDevice));
+        BandCol_AccumulateDenseTransposedDM_Device(n,count,spin,kloop,k1,k2,k3,device,count,MP,order_GA,
+            EIGEN,weight+off,CDM1,EDM1,size_H1,state_first+off);
+    }
+    wait_cudafunc(cudaFree(device));
+}
+
 /* GPU DM accumulation inside the ScaLAPACK/ELPA fallback of the collinear
    band path.  The preflight refuses the full dense solve when its three
    n x n matrices plus the cusolver workspace do not fit, but the DM step
@@ -1911,7 +1964,7 @@ static int BandCol_UseGpuFallbackDM(int n)
     const char *value = getenv("OPENMX_BAND_GPU_DM");
 
     if (value != NULL && atoi(value) == 0) return 0;
-    return (scf_eigen_lib_flag == GPUSOLVER && Band_DFT_Col_GpuSwitchNum() <= n);
+    return (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));
 }
 
 /* Uploads the host eigenvector panel of one fallback k point; returns NULL
@@ -2040,6 +2093,10 @@ static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(dcomplex *evec_device,
         ctx->h_evec_cols = maxn;
     }
 
+    if (BandCol_mgpu_host_dense) {
+        for (int j=0;j<n;++j) memcpy(ctx->h_evec+(size_t)j*maxn,evec_device+(size_t)j*n,(size_t)maxn*sizeof(dcomplex));
+        return ctx->h_evec;
+    }
     wait_cudafunc(cudaMemcpy2D(ctx->h_evec, sizeof(dcomplex) * (size_t)maxn,
                                evec_device, sizeof(dcomplex) * (size_t)n,
                                sizeof(dcomplex) * (size_t)maxn, (size_t)n,
@@ -2056,6 +2113,7 @@ static dcomplex *BandCol_GpuSolver_HostEigenvectors(void)
    stride maxn, not n. */
 static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n, int maxn)
 {
+    if (BandCol_mgpu_host_dense) return BandCol_gpusolver_ctx.h_evec;
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
     size_t              panel_count;
 
@@ -2083,6 +2141,7 @@ static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n, int maxn)
 
 static int BandCol_GpuSolver_HasHostTransformedS(int n)
 {
+    if (BandCol_mgpu_host_dense) return BandCol_host_n==n;
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
 
     return (ctx->h_transformed_s != NULL && ctx->h_transformed_s_dim == n);
@@ -2097,6 +2156,7 @@ static int BandCol_GpuSolver_HasDeviceTransformedS(int n)
 
 static void BandCol_GpuSolver_SaveTransformedS(int n)
 {
+    if (BandCol_mgpu_host_dense) return;
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
     size_t              matrix_count;
 
@@ -2116,6 +2176,7 @@ static void BandCol_GpuSolver_SaveTransformedS(int n)
 
 static void BandCol_GpuSolver_LoadTransformedS(int n)
 {
+    if (BandCol_mgpu_host_dense) { if (BandCol_host_n!=n) BandCol_AbortWithMessage("Missing MAGMA overlap cache"); return; }
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
     size_t              matrix_count;
     double              prof_t0 = 0.0;
@@ -2294,9 +2355,40 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
     }
 }
 
+static void BandCol_HostEnsure(int n)
+{
+    if (BandCol_host_n==n) return;
+    free(BandCol_host_s); free(BandCol_host_h); free(BandCol_host_tmp);
+    BandCol_host_s=malloc((size_t)n*n*sizeof(dcomplex));
+    BandCol_host_h=malloc((size_t)n*n*sizeof(dcomplex));
+    BandCol_host_tmp=malloc((size_t)n*n*sizeof(dcomplex));
+    if (!BandCol_host_s || !BandCol_host_h || !BandCol_host_tmp)
+        BandCol_AbortWithMessage("Cannot allocate MAGMA host dense workspace");
+    BandCol_host_n=n;
+}
+
 static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n, dcomplex * Ss, double * ko,
                                                  double * koS)
 {
+    if (BandCol_mgpu_host_dense) {
+        BandCol_HostEnsure(n);
+        if (build_from_overlap) {
+            /* Construct_Band_CsHs populated the private full matrix. Ss
+               may be only a local ScaLAPACK block on this MPI rank. */
+            if (!openmx_mgpu_host_solve(n,n,1,BandCol_host_s,n,ko+1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
+#pragma omp parallel for
+            for (int j=0;j<n;++j) {
+                if (ko[j+1]<0.0) ko[j+1]=1.0e-10;
+                koS[j+1]=ko[j+1];
+                const double scale=1.0/sqrt(ko[j+1]);
+                for (int i=0;i<n;++i) {
+                    BandCol_host_s[(size_t)j*n+i].r*=scale;
+                    BandCol_host_s[(size_t)j*n+i].i*=scale;
+                }
+            }
+        }
+        return;
+    }
     BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
     size_t               matrix_bytes;
     int                  l;
@@ -2335,6 +2427,7 @@ static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n,
 
         wait_cudafunc(cudaMemcpy(ctx->d_scale, ctx->h_scale, sizeof(dcomplex) * (size_t)n, cudaMemcpyHostToDevice));
 
+        if (!openmx_gpu_transform(OPENMX_GPU_SCALE_COLUMNS,1,n,n,ctx->d_S,n,ctx->d_scale,0,ctx->d_tmp,n,1,0.0))
         wait_cudafunc(cublasZdgmm(ctx->cublas, CUBLAS_SIDE_RIGHT, n, n, (cuDoubleComplex *)ctx->d_S, n,
                                   (cuDoubleComplex *)ctx->d_scale, 1, (cuDoubleComplex *)ctx->d_tmp, n));
 
@@ -2888,6 +2981,18 @@ static dcomplex *BandCol_RefinedSecondHalf(int n, int maxn, double *ko, double m
 static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const dcomplex *H_in, double *ko, dcomplex *C_out,
                                                        int build_eigenvectors)
 {
+    if (BandCol_mgpu_host_dense) {
+        BandCol_HostEnsure(n);
+        if (!openmx_mgpu_host_zgemm(CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,BandCol_host_h,n,BandCol_host_s,n,BandCol_host_tmp,n) ||
+            !openmx_mgpu_host_zgemm(CUBLAS_OP_C,CUBLAS_OP_N,n,n,n,BandCol_host_s,n,BandCol_host_tmp,n,BandCol_host_h,n) ||
+            !openmx_mgpu_host_solve(n,maxn,1,BandCol_host_h,n,ko+1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
+        if (!build_eigenvectors) return NULL;
+        memset(BandCol_host_tmp,0,(size_t)n*n*sizeof(dcomplex));
+        if (!openmx_mgpu_host_zgemm(CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,BandCol_host_h,n,BandCol_host_s,n,BandCol_host_tmp,n))
+            BandCol_AbortWithMessage(openmx_mgpu_host_error());
+        if (C_out) memcpy(C_out,BandCol_host_tmp,(size_t)n*n*sizeof(dcomplex));
+        return BandCol_host_tmp;
+    }
     BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
     size_t               matrix_bytes;
     cuDoubleComplex      alpha = make_cuDoubleComplex(1.0, 0.0);
@@ -3002,6 +3107,28 @@ static void BandCol_ConstructDenseCsHs_OpenACC(int need_s, int n, double k1, dou
                      k3 * (double)cache->dense_phase_l3[p];
         phase_i[p] = sin(2.0 * PI * kRn);
         phase_r[p] = cos(2.0 * PI * kRn);
+    }
+
+    OpenMXGpuWorkers construct_workers;
+    openmx_gpu_workers_scope(&construct_workers,(size_t)n);
+    if (construct_workers.count>1) {
+        int done=0;
+#pragma acc data copyin(phase_r[0:phase_count],phase_i[0:phase_count],H1[0:h_count])
+        {
+            done=openmx_gpu_scatter(n,count,7,(const int*)entries,h_count,
+                acc_deviceptr((void*)H1),phase_count,acc_deviceptr(phase_r),acc_deviceptr(phase_i),0,d_H);
+            if (need_s) {
+#pragma acc data copyin(S1[0:h_count])
+                {
+                    done &= openmx_gpu_scatter(n,count,7,(const int*)entries,h_count,
+                        acc_deviceptr((void*)S1),phase_count,acc_deviceptr(phase_r),acc_deviceptr(phase_i),0,d_S);
+                }
+            }
+        }
+        if (done) {
+            BandCol_last_construct_on_device = 1;
+            return;
+        }
     }
 
     if (need_s) {
@@ -3273,7 +3400,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         if (max_tno < tnoA)
             max_tno = tnoA;
     }
-    use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && Band_DFT_Col_GpuSwitchNum() <= n);
+    use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));
 
     /* the refined eigensolver: its switch (collective, once), and no
        refined solve until this call's first halves say so */
@@ -4074,6 +4201,9 @@ diagonalize1:
                     continue;
                 }
 
+                openmx_mgpu_scope_state mgpu_scope =
+                    openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, kloop);
+
                 k1 = T_KGrids1[kloop];
                 k2 = T_KGrids2[kloop];
                 k3 = T_KGrids3[kloop];
@@ -4131,7 +4261,9 @@ diagonalize1:
                         n, MaxN, construct_on_device ? NULL : Hs, ko, NULL, 1);
                     /* Device eigenvectors are basis-major with stride n;
                        keep only the MaxN states consumed by the DM pass. */
-                    wait_cudafunc(cudaMemcpy2D(host_panel, sizeof(dcomplex) * (size_t)MaxN,
+                    if (BandCol_mgpu_host_dense) {
+                        for (int j=0;j<n;++j) memcpy(host_panel+(size_t)j*MaxN,evec_device+(size_t)j*n,(size_t)MaxN*sizeof(dcomplex));
+                    } else wait_cudafunc(cudaMemcpy2D(host_panel, sizeof(dcomplex) * (size_t)MaxN,
                                               evec_device, sizeof(dcomplex) * (size_t)n,
                                               sizeof(dcomplex) * (size_t)MaxN, (size_t)n,
                                               cudaMemcpyDeviceToHost));
@@ -4173,6 +4305,7 @@ diagonalize1:
                     dtime(&Etime);
                     time5 += Etime - Stime;
                 }
+                openmx_mgpu_band_scope_leave(mgpu_scope);
             } /* gpu_turn */
 
             /* The auto turn limit already budgets each concurrent rank for its
@@ -4216,6 +4349,8 @@ diagonalize1:
 	                    }
 
 	                    if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
+	                        openmx_mgpu_scope_state mgpu_scope =
+	                            openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, kloop);
 	                        dcomplex *evec_device;
 	                        const int build_s = (SCF_iter == 1) || !BandCol_GpuSolver_HasHostTransformedS(n);
                         const int construct_scf_iter = build_s ? 1 : SCF_iter;
@@ -4316,6 +4451,7 @@ diagonalize1:
                             dtime(&endtime);
                             partmul = endtime - starttime;
                         }
+                        openmx_mgpu_band_scope_leave(mgpu_scope);
                     }
                 }
 	                if (!serialize_gpu_turns) {
@@ -4686,6 +4822,8 @@ diagonalize1:
                 MPI_Barrier(mpi_comm_level1);
             }
             if (owns_global_dense_rank && myworld1 * T_knum + S_knum == gpu_turn) {
+                openmx_mgpu_scope_state mgpu_scope =
+                    openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, S_knum);
                 dcomplex *evec_device;
                 int       construct_on_device;
 
@@ -4715,6 +4853,7 @@ diagonalize1:
                 for (l = 1; l <= MaxN; l++) {
                     EIGEN[spin][kloop][l] = ko[l];
                 }
+                openmx_mgpu_band_scope_leave(mgpu_scope);
             }
         }
         BandCol_RefineEndStep();
@@ -4734,6 +4873,8 @@ diagonalize1:
         }
         mu = BandCol_RefineChemP(EIGEN, T_knum, MaxN, SpinP_switch, T_k_op, sum_weights, TZ);
         if (owns_global_dense_rank && BandCol_refine.pending) {
+            openmx_mgpu_scope_state mgpu_scope =
+                openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, S_knum);
             dcomplex *evec_device;
 
             spin = myworld1;
@@ -4743,6 +4884,7 @@ diagonalize1:
             for (l = 1; l <= MaxN; l++) {
                 EIGEN[spin][kloop][l] = ko[l];
             }
+            openmx_mgpu_band_scope_leave(mgpu_scope);
         }
         BandCol_RefineEndStep();
     }
@@ -5103,6 +5245,8 @@ diagonalize1:
 	                    }
 
 	                    if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
+	                        openmx_mgpu_scope_state mgpu_scope =
+	                            openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, kloop);
 	                        dcomplex *evec_device;
 	                        int       evec_stride;
 
@@ -5132,6 +5276,7 @@ diagonalize1:
                             BandCol_GpuSolver_ReleaseDeviceMemory();
                             BANDCOL_PROF_ADD(release2, prof_t0);
                         }
+	                        openmx_mgpu_band_scope_leave(mgpu_scope);
 	                    }
 	                }
 	                if (!serialize_gpu_turns) {
@@ -5208,9 +5353,12 @@ diagonalize1:
                         unit_occ[k] = 1.0;
 
                     BANDCOL_PROF_T0(dm_prof_t0);
+                    const openmx_mgpu_scope_state dm_scope =
+                        openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
                     BandCol_AccumulateDenseTransposedDM_OpenACC(n, nk, spin, kloop, k1, k2, k3,
                                                                 evec_dev + (kmin - is2[myid2]), stride, MP, order_GA,
                                                                 EIGEN, unit_occ, CDM1, EDM1, size_H1, kmin);
+                    openmx_mgpu_band_scope_leave(dm_scope);
                     BANDCOL_PROF_ADD(dm_kernel, dm_prof_t0);
                     if (cudaFree(evec_dev) != cudaSuccess)
                         (void)cudaGetLastError();
@@ -5609,6 +5757,9 @@ diagonalize1:
                         continue;
                     }
 
+                    openmx_mgpu_scope_state mgpu_scope =
+                        openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, kloop);
+
                     k1 = T_KGrids1[kloop];
                     k2 = T_KGrids2[kloop];
                     k3 = T_KGrids3[kloop];
@@ -5617,10 +5768,15 @@ diagonalize1:
                     if (k_evec_cache != NULL && k_evec_cache[cache_slot] != NULL) {
                         /* Reuse the existing dense scratch allocation, so
                            cache hits do not increase the device budget. */
-                        BandCol_GpuSolver_EnsureMatrixCapacity(n);
-                        evec_device = BandCol_gpusolver_ctx.d_tmp;
-                        wait_cudafunc(cudaMemcpy(evec_device, k_evec_cache[cache_slot],
-                                                k_cache_bytes, cudaMemcpyHostToDevice));
+                        if (BandCol_mgpu_host_dense) {
+                            BandCol_HostEnsure(n);
+                            evec_device=BandCol_host_tmp;
+                            memcpy(evec_device,k_evec_cache[cache_slot],k_cache_bytes);
+                        } else {
+                            BandCol_GpuSolver_EnsureMatrixCapacity(n);
+                            evec_device = BandCol_gpusolver_ctx.d_tmp;
+                            wait_cudafunc(cudaMemcpy(evec_device,k_evec_cache[cache_slot],k_cache_bytes,cudaMemcpyHostToDevice));
+                        }
                         free(k_evec_cache[cache_slot]);
                         k_evec_cache[cache_slot] = NULL;
                         evec_stride = MaxN;
@@ -5760,6 +5916,7 @@ diagonalize1:
                         time11 += Etime - Stime;
                     }
 
+                    openmx_mgpu_band_scope_leave(mgpu_scope);
                 } /* gpu_turn */
 
                 /* Release once per concurrency group (see the first
@@ -5995,9 +6152,12 @@ diagonalize1:
                             double dm_prof_t0 = 0.0;
 
                             BANDCOL_PROF_T0(dm_prof_t0);
+                            const openmx_mgpu_scope_state dm_scope =
+                                openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
                             BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_dev,
                                                                         na_rows, MP, order_GA, EIGEN, occ_weight,
                                                                         CDM1, EDM1, size_H1, 1);
+                            openmx_mgpu_band_scope_leave(dm_scope);
                             BANDCOL_PROF_ADD(dm_kernel, dm_prof_t0);
                             if (cudaFree(evec_dev) != cudaSuccess)
                                 (void)cudaGetLastError();
@@ -6473,7 +6633,7 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
 {
     const int need_s = (SCF_iter == 1 || all_knum != 1);
     const int use_gpusolver_dense =
-        (scf_eigen_lib_flag == GPUSOLVER && Band_DFT_Col_GpuSwitchNum() <= n && BandCol_gpu_dense_verdict);
+        (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n) && BandCol_gpu_dense_verdict);
     const int dense_gpusolver_owner =
         (use_gpusolver_dense &&
          ((all_knum == 1 && owns_global_dense_rank) ||
@@ -6486,11 +6646,46 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
         return;
     }
 
+    if (dense_gpusolver_owner && BandCol_mgpu_host_dense) {
+        /* The cooperative owner needs the complete matrix even when its
+           ScaLAPACK descriptor describes only a local MPI block. H1 and S1
+           are already globally packed in AN/LB_AN/i/j order. */
+        size_t h_index = 0;
+        BandCol_HostEnsure(n);
+        Cs=BandCol_host_s;
+        Hs=BandCol_host_h;
+        BandCol_ZeroComplex(Hs, (size_t)n * n);
+        if (need_s) BandCol_ZeroComplex(Cs, (size_t)n * n);
+        for (int AN = 1; AN <= atomnum; ++AN) {
+            const int GA = order_GA[AN];
+            const int tnoA = Spe_Total_CNO[WhatSpecies[GA]];
+            for (int LB = 0; LB <= FNAN[GA]; ++LB) {
+                const int GB = natn[GA][LB], Rn = ncn[GA][LB];
+                const int tnoB = Spe_Total_CNO[WhatSpecies[GB]];
+                const double phase = 2.0 * PI * (k1 * atv_ijk[Rn][1] +
+                    k2 * atv_ijk[Rn][2] + k3 * atv_ijk[Rn][3]);
+                const double co = cos(phase), si = sin(phase);
+                for (int i = 0; i < tnoA; ++i) {
+                    for (int j = 0; j < tnoB; ++j, ++h_index) {
+                        const size_t index = (size_t)(MP[GB] + j - 1) * n + MP[GA] + i - 1;
+                        Hs[index].r += H1[h_index] * co;
+                        Hs[index].i += H1[h_index] * si;
+                        if (need_s) {
+                            Cs[index].r += S1[h_index] * co;
+                            Cs[index].i += S1[h_index] * si;
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
+
     BANDCOL_PROF_T0(prof_t0);
-    BandCol_ConstructCache_Ensure(order_GA, MP, n, dense_gpusolver_owner);
+    BandCol_ConstructCache_Ensure(order_GA, MP, n, dense_gpusolver_owner && !BandCol_mgpu_host_dense);
     BANDCOL_PROF_ADD(construct_cache, prof_t0);
 
-    if (dense_gpusolver_owner) {
+    if (dense_gpusolver_owner && !BandCol_mgpu_host_dense) {
         BANDCOL_PROF_T0(prof_t0);
         BandCol_ConstructDenseCsHs_OpenACC(need_s, n, k1, k2, k3, S1, H1);
         BANDCOL_PROF_ADD(construct_gpu, prof_t0);
@@ -6544,6 +6739,9 @@ static double get_max_value(double local_value)
    Called on every rank before Free_Arrays(0) frees the current system. */
 void Band_DFT_Col_Release_GPU_Caches(void)
 {
+    free(BandCol_host_s); free(BandCol_host_h); free(BandCol_host_tmp);
+    BandCol_host_s=BandCol_host_h=BandCol_host_tmp=NULL; BandCol_host_n=0;
+    BandCol_mgpu_host_dense=0;
     BandCol_KOverlapReset();
     BandCol_ConstructCache_Reset();
     BandCol_DMWorkspace_Reset();

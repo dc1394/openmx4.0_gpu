@@ -47,6 +47,30 @@ printf '%s  %s\n' "$digest" "$archive" | sha256sum -c -
 if [ ! -d "$build_root/magma-$version" ]; then
     tar -xzf "$archive" -C "$build_root"
 fi
+# The one-stage drivers use logical IDs 0..ngpu-1. This exact private patch
+# maps those IDs to the selected Band group without changing CUDA visibility.
+# Forward/reverse dry-runs reject an unexpected source tree and make repeat
+# builds idempotent. Only the CUDA interface translation unit is changed.
+map_patch="$script_dir/magma-device-map.patch"
+map_header="$script_dir/magma_device_map.h"
+map_interface="$build_root/magma-$version/interface_cuda/interface.cpp"
+map_original=4c52ae562ea1feafe9cbf1e93670d336215f74871369fb05072f457a6c1e4f09
+map_patched=b5d14eaeaef28e4d1ffcfb530e7b9dab50fb5df3f018f765eb3191e9ff3d3a80
+if ! printf '%s  %s\n' "$map_original" "$map_interface" | sha256sum -c - >/dev/null 2>&1 &&
+   ! printf '%s  %s\n' "$map_patched" "$map_interface" | sha256sum -c - >/dev/null 2>&1; then
+    echo 'Unexpected MAGMA CUDA interface hash; refusing to patch' >&2
+    exit 2
+fi
+if patch --batch --fuzz=0 --forward --dry-run -d "$build_root/magma-$version" -p1 < "$map_patch" >/dev/null 2>&1; then
+    patch --batch --fuzz=0 --forward -d "$build_root/magma-$version" -p1 < "$map_patch"
+elif ! patch --batch --fuzz=0 --reverse --dry-run -d "$build_root/magma-$version" -p1 < "$map_patch" >/dev/null 2>&1; then
+    echo 'MAGMA source does not match the pinned device-map patch' >&2
+    exit 2
+fi
+printf '%s  %s\n' "$map_patched" "$map_interface" | sha256sum -c -
+if ! cmp -s "$map_header" "$build_root/magma-$version/interface_cuda/magma_device_map.h"; then
+    cp "$map_header" "$build_root/magma-$version/interface_cuda/magma_device_map.h"
+fi
 runtime_dirs="$math_dir/lib64;$math_dir/lib;$MAGMA_CUDA_HOME/lib64;${MAGMA_RUNTIME_DIRS:-}"
 if [ -n "${MAGMA_HOST_LIBDIR:-}" ]; then runtime_dirs="$runtime_dirs;$MAGMA_HOST_LIBDIR"; fi
 # CMake's CUDA discovery needs explicit math-library paths for split NVHPC.
@@ -78,4 +102,5 @@ if [ -d "$build_root/build/include" ]; then cp "$build_root/build/include/"*.h "
 cp "$build_root/magma-$version/COPYRIGHT" "$prefix/share/magma/COPYRIGHT"
 printf 'MAGMA %s\narchive_sha256=%s\nCUDA=%s\nGPU_ARCH=%s\n' \
     "$version" "$digest" "$MAGMA_CUDA_HOME" "$MAGMA_GPU_ARCH" > "$prefix/share/magma/build.txt"
+sha256sum "$map_patch" "$map_header" >> "$prefix/share/magma/build.txt"
 printf 'MAGMA installed in %s\n' "$prefix"

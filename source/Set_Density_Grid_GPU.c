@@ -9,6 +9,8 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
+#include "openmx_gpu_views.h"
 #include "grid_precision.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <accel.h>
@@ -728,7 +730,7 @@ static int SDG_upload_device(SetDensityGpuCache *cache)
   return 1;
 }
 
-static void SDG_run_kernel(SetDensityGpuCache *cache)
+static void SDG_run_kernel_single(SetDensityGpuCache *cache)
 {
   Type_Orbs_Grid *orbs = cache->orbs;
   uint32_t *atom_out_offset = cache->atom_out_offset;
@@ -832,6 +834,188 @@ static void SDG_run_kernel(SetDensityGpuCache *cache)
       rho[3U * grid_count + gn] = -g3;
     }
   }
+}
+
+static void SDG_run_kernel_part(SetDensityGpuCache *cache,size_t first,size_t last)
+{
+  Type_Orbs_Grid *orbs = cache->orbs;
+  uint32_t *atom_out_offset = cache->atom_out_offset;
+  uint32_t *atom_orb_offset = cache->atom_orb_offset;
+  uint32_t *atom_pair_offset = cache->atom_pair_offset;
+  int *atom_no = cache->atom_no;
+  int *pair_neighbor = cache->pair_neighbor;
+  uint32_t *pair_cdm_offset = cache->pair_cdm_offset;
+  uint16_t *out_atom = cache->out_atom;
+  uint32_t *out_ptr = cache->out_ptr;
+  uint32_t *terms = cache->terms;
+  uint32_t *grid_ptr = cache->grid_ptr;
+  uint32_t *grid_out = cache->grid_out;
+  double *cdm = cache->cdm;
+  double *rho = cache->rho;
+  size_t atom_count = cache->atom_count;
+  size_t orbital_count = cache->orbital_count;
+  size_t output_count = cache->output_count;
+  size_t pair_count = cache->pair_count;
+  size_t term_count = cache->term_count;
+  size_t cdm_count = cache->cdm_count;
+  size_t grid_count = cache->global_grid_count;
+  int spin_count = cache->spin_count;
+  int nh_bits = cache->nh_bits;
+  uint32_t nh_mask = cache->nh_mask;
+
+#pragma acc parallel loop gang vector_length(128) deviceptr(orbs,atom_out_offset,atom_orb_offset,atom_pair_offset,atom_no,pair_neighbor,pair_cdm_offset,out_atom,out_ptr,terms,grid_ptr,grid_out,cdm,rho)
+  for (size_t gn = first; gn < last; gn++) {
+    double g0 = 0.0, g1 = 0.0, g2 = 0.0, g3 = 0.0;
+
+#pragma acc loop seq
+    for (uint32_t q = grid_ptr[gn]; q < grid_ptr[gn + 1]; q++) {
+      uint32_t out = grid_out[q];
+      int a = (int)out_atom[out];
+      uint32_t Nc0 = out - atom_out_offset[a];
+      int NO0 = atom_no[a];
+      size_t orb0 = (size_t)atom_orb_offset[a] + (size_t)Nc0 * (size_t)NO0;
+      double a0 = 0.0, a1 = 0.0, a2 = 0.0, a3 = 0.0;
+
+#pragma acc loop seq
+      for (uint32_t t = out_ptr[out]; t < out_ptr[out + 1]; t++) {
+        uint32_t code = terms[t];
+        uint32_t Nh = code & nh_mask;
+        uint32_t h = code >> nh_bits;
+        uint32_t pair = atom_pair_offset[a] + h;
+        int b = pair_neighbor[pair];
+        int NO1 = atom_no[b];
+        size_t orb1 = (size_t)atom_orb_offset[b] + (size_t)Nh * (size_t)NO1;
+        size_t mat = (size_t)NO0 * (size_t)NO1;
+        size_t base = (size_t)pair_cdm_offset[pair];
+        double e0 = 0.0, e1 = 0.0, e2 = 0.0, e3 = 0.0;
+
+#pragma acc loop seq
+        for (int ii = 0; ii < NO0; ii++) {
+          double t0 = 0.0, t1 = 0.0, t2 = 0.0, t3 = 0.0;
+#pragma acc loop seq
+          for (int jj = 0; jj < NO1; jj++) {
+            double phi1 = (double)orbs[orb1 + (size_t)jj];
+            size_t ij = (size_t)ii * (size_t)NO1 + (size_t)jj;
+            t0 += phi1 * cdm[base + ij];
+            if (spin_count >= 2) t1 += phi1 * cdm[base + mat + ij];
+            if (spin_count == 4) {
+              t2 += phi1 * cdm[base + 2U * mat + ij];
+              t3 += phi1 * cdm[base + 3U * mat + ij];
+            }
+          }
+          {
+            double phi0 = (double)orbs[orb0 + (size_t)ii];
+            e0 += phi0 * t0;
+            if (spin_count >= 2) e1 += phi0 * t1;
+            if (spin_count == 4) {
+              e2 += phi0 * t2;
+              e3 += phi0 * t3;
+            }
+          }
+        }
+        a0 += e0;
+        if (spin_count >= 2) a1 += e1;
+        if (spin_count == 4) {
+          a2 += e2;
+          a3 += e3;
+        }
+      }
+      g0 += a0;
+      if (spin_count >= 2) g1 += a1;
+      if (spin_count == 4) {
+        g2 += a2;
+        g3 += a3;
+      }
+    }
+
+    rho[gn-first] = g0;
+    if (spin_count >= 2) rho[(last-first) + gn-first] = g1;
+    if (spin_count == 4) {
+      rho[2U * (last-first) + gn-first] = g2;
+      rho[3U * (last-first) + gn-first] = -g3;
+    }
+  }
+}
+
+
+typedef struct {
+  OpenMXGpuWorkers workers;
+  SetDensityGpuCache *source,device[OPENMX_GPU_WORKERS_MAX];
+  OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][13];
+  const void *source_device[13];
+  double *target;
+} SDGServiceWork;
+
+static int SDG_service_worker(void *opaque,int worker,int phase)
+{
+  SDGServiceWork *w=(SDGServiceWork*)opaque;
+  SetDensityGpuCache *c=w->source,*d=w->device+worker;
+  size_t first=openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+  size_t last=openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count);
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    *d=*c;d->rho=NULL;
+    if (!openmx_gpu_read_view(&w->input[worker][0],w->source_device[0],(c->orbital_count)*sizeof(Type_Orbs_Grid))) return 0;
+    d->orbs=(Type_Orbs_Grid*)w->input[worker][0].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][1],w->source_device[1],(c->atom_count+1)*sizeof(uint32_t))) return 0;
+    d->atom_out_offset=(uint32_t*)w->input[worker][1].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][2],w->source_device[2],(c->atom_count+1)*sizeof(uint32_t))) return 0;
+    d->atom_orb_offset=(uint32_t*)w->input[worker][2].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][3],w->source_device[3],(c->atom_count+1)*sizeof(uint32_t))) return 0;
+    d->atom_pair_offset=(uint32_t*)w->input[worker][3].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][4],w->source_device[4],(c->atom_count)*sizeof(int))) return 0;
+    d->atom_no=(int*)w->input[worker][4].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][5],w->source_device[5],(c->pair_count)*sizeof(int))) return 0;
+    d->pair_neighbor=(int*)w->input[worker][5].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][6],w->source_device[6],(c->pair_count)*sizeof(uint32_t))) return 0;
+    d->pair_cdm_offset=(uint32_t*)w->input[worker][6].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][7],w->source_device[7],(c->output_count)*sizeof(uint16_t))) return 0;
+    d->out_atom=(uint16_t*)w->input[worker][7].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][8],w->source_device[8],(c->output_count+1)*sizeof(uint32_t))) return 0;
+    d->out_ptr=(uint32_t*)w->input[worker][8].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][9],w->source_device[9],(c->term_count)*sizeof(uint32_t))) return 0;
+    d->terms=(uint32_t*)w->input[worker][9].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][10],w->source_device[10],(c->global_grid_count+1)*sizeof(uint32_t))) return 0;
+    d->grid_ptr=(uint32_t*)w->input[worker][10].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][11],w->source_device[11],(c->output_count)*sizeof(uint32_t))) return 0;
+    d->grid_out=(uint32_t*)w->input[worker][11].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][12],w->source_device[12],(c->cdm_count)*sizeof(double))) return 0;
+    d->cdm=(double*)w->input[worker][12].pointer;
+    return cudaMalloc((void**)&d->rho,(last-first)*(size_t)c->spin_count*sizeof(double))==cudaSuccess;
+  }
+  if (phase==OPENMX_GPU_WORKER_EXECUTE) SDG_run_kernel_part(d,first,last);
+  else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+    for (int spin=0;spin<c->spin_count;spin++)
+      if (!openmx_gpu_copy_device(w->target+(size_t)spin*c->global_grid_count+first,
+          d->rho+(size_t)spin*(last-first),(last-first)*sizeof(double))) return 0;
+  } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+    if (d->rho) cudaFree(d->rho);
+    for (int i=0;i<13;i++) openmx_gpu_read_view_release(&w->input[worker][i]);
+  }
+  return 1;
+}
+
+static void SDG_run_kernel(SetDensityGpuCache *cache)
+{
+  SDGServiceWork w={0};w.source=cache;
+  openmx_gpu_workers_owner(&w.workers,cache->global_grid_count);
+  if (w.workers.count>1) {
+    w.source_device[0]=acc_deviceptr(cache->orbs);
+    w.source_device[1]=acc_deviceptr(cache->atom_out_offset);
+    w.source_device[2]=acc_deviceptr(cache->atom_orb_offset);
+    w.source_device[3]=acc_deviceptr(cache->atom_pair_offset);
+    w.source_device[4]=acc_deviceptr(cache->atom_no);
+    w.source_device[5]=acc_deviceptr(cache->pair_neighbor);
+    w.source_device[6]=acc_deviceptr(cache->pair_cdm_offset);
+    w.source_device[7]=acc_deviceptr(cache->out_atom);
+    w.source_device[8]=acc_deviceptr(cache->out_ptr);
+    w.source_device[9]=acc_deviceptr(cache->terms);
+    w.source_device[10]=acc_deviceptr(cache->grid_ptr);
+    w.source_device[11]=acc_deviceptr(cache->grid_out);
+    w.source_device[12]=acc_deviceptr(cache->cdm);
+    w.target=(double*)acc_deviceptr(cache->rho);
+    if (w.target && openmx_gpu_workers_run(&w.workers,SDG_service_worker,&w,"density-owner-grid")) return;
+  }
+  SDG_run_kernel_single(cache);
 }
 
 /* Eigensolvers whose density matrix the device paths integrate.  Every
@@ -1556,6 +1740,317 @@ void Set_Density_Grid_GPU_Local_Report(int path, int failed)
   fflush(stdout);
 }
 
+
+typedef struct {
+  int mode,spin_count,pair_count;
+  size_t output_count,term_count,dm_count,dm_total,total_nolg,total_orbs0,total_orbs1;
+  int *pair_NO0;
+  int *pair_NO1;
+  size_t *pair_h_offset;
+  size_t *pair_nolg_offset;
+  size_t *pair_orbs0_offset;
+  size_t *pair_orbs1_offset;
+  int *nolg_Nc;
+  Type_Orbs_Grid *orbs0buf;
+  Type_Orbs_Grid *orbs1buf;
+  uint32_t *out_ptr;
+  uint32_t *term_pt;
+  uint32_t *pt_pair;
+  double *dm;
+  float *dmf;
+  double *tmpden;
+} SDGKernelInput;
+
+static void SDG_local_range(SDGKernelInput *w,size_t first,size_t last)
+{
+  const int mode=w->mode,fp32=(mode==1),spin_count=w->spin_count;
+  const size_t dm_count=w->dm_count;
+  int *pair_NO0=w->pair_NO0;
+  int *pair_NO1=w->pair_NO1;
+  size_t *pair_h_offset=w->pair_h_offset;
+  size_t *pair_nolg_offset=w->pair_nolg_offset;
+  size_t *pair_orbs0_offset=w->pair_orbs0_offset;
+  size_t *pair_orbs1_offset=w->pair_orbs1_offset;
+  int *nolg_Nc=w->nolg_Nc;
+  Type_Orbs_Grid *orbs0buf=w->orbs0buf;
+  Type_Orbs_Grid *orbs1buf=w->orbs1buf;
+  uint32_t *out_ptr=w->out_ptr;
+  uint32_t *term_pt=w->term_pt;
+  uint32_t *pt_pair=w->pt_pair;
+  double *dm=w->dm;
+  float *dmf=w->dmf;
+  double *tmpden=w->tmpden;
+    if (mode == 2) {
+      /* double-float: the density matrix as hi + lo floats (dmf, dmf + dm_count),
+         every product exact through an FMA, the sum over j compensated, the
+         sums over i and over the pairs in FP64 */
+      {
+#pragma acc parallel loop gang vector_length(128) deviceptr(pair_NO0,pair_NO1,pair_h_offset,pair_nolg_offset,pair_orbs0_offset,pair_orbs1_offset,nolg_Nc,orbs0buf,orbs1buf,out_ptr,term_pt,pt_pair,dm,dmf,tmpden)
+    for (size_t out = first; out < last; out++) {
+      double g0 = 0.0, g1 = 0.0, g2 = 0.0, g3 = 0.0;
+
+#pragma acc loop seq
+      for (uint32_t q = out_ptr[out]; q < out_ptr[out + 1]; q++) {
+        uint32_t pt = term_pt[q];
+        uint32_t pair = pt_pair[pt];
+        int NO0 = pair_NO0[pair];
+        int NO1 = pair_NO1[pair];
+        size_t mat = (size_t)NO0 * (size_t)NO1;
+        size_t base = pair_h_offset[pair];
+        size_t o0 = pair_orbs0_offset[pair] + (size_t)nolg_Nc[pt] * (size_t)NO0;
+        size_t o1 = pair_orbs1_offset[pair] + ((size_t)pt - pair_nolg_offset[pair]) * (size_t)NO1;
+        double e0 = 0.0, e1 = 0.0, e2 = 0.0, e3 = 0.0;
+
+#pragma acc loop seq
+        for (int ii = 0; ii < NO0; ii++) {
+          const double f0 = (double)orbs0buf[o0 + (size_t)ii];
+          int sp;
+#pragma acc loop seq
+          for (sp = 0; sp < spin_count; sp++) {
+            const size_t row = base + (size_t)sp * mat + (size_t)ii * (size_t)NO1;
+            float ts = 0.0f, tc = 0.0f;
+            double t;
+#pragma acc loop seq
+            for (int jj = 0; jj < NO1; jj++) {
+              const float f = orbs1buf[o1 + (size_t)jj];
+              const float hi = dmf[row + (size_t)jj];
+              const float lo = dmf[dm_count + row + (size_t)jj];
+              const float pr = f * hi;
+              const float er = fmaf(f, hi, -pr);
+              const float qq = fmaf(f, lo, er);
+              float u = ts + pr;
+              if (fabsf(ts) >= fabsf(pr)) tc += (ts - u) + pr; else tc += (pr - u) + ts;
+              ts = u;
+              u = ts + qq;
+              if (fabsf(ts) >= fabsf(qq)) tc += (ts - u) + qq; else tc += (qq - u) + ts;
+              ts = u;
+            }
+            t = (double)ts + (double)tc;
+            if (sp == 0) e0 += f0 * t;
+            else if (sp == 1) e1 += f0 * t;
+            else if (sp == 2) e2 += f0 * t;
+            else e3 += f0 * t;
+          }
+        }
+        g0 += e0;
+        if (spin_count >= 2) g1 += e1;
+        if (spin_count == 4) {
+          g2 += e2;
+          g3 += e3;
+        }
+      }
+
+      tmpden[out-first] = g0;
+      if (spin_count >= 2) tmpden[(last-first) + out-first] = g1;
+      if (spin_count == 4) {
+        tmpden[2U * (last-first) + out-first] = g2;
+        tmpden[3U * (last-first) + out-first] = g3;
+      }
+    }
+      }
+    }
+    else if (fp32) {
+      {
+#pragma acc parallel loop gang vector_length(128) deviceptr(pair_NO0,pair_NO1,pair_h_offset,pair_nolg_offset,pair_orbs0_offset,pair_orbs1_offset,nolg_Nc,orbs0buf,orbs1buf,out_ptr,term_pt,pt_pair,dm,dmf,tmpden)
+    for (size_t out = first; out < last; out++) {
+      double g0 = 0.0, g1 = 0.0, g2 = 0.0, g3 = 0.0;
+
+#pragma acc loop seq
+      for (uint32_t q = out_ptr[out]; q < out_ptr[out + 1]; q++) {
+        uint32_t pt = term_pt[q];
+        uint32_t pair = pt_pair[pt];
+        int NO0 = pair_NO0[pair];
+        int NO1 = pair_NO1[pair];
+        size_t mat = (size_t)NO0 * (size_t)NO1;
+        size_t base = pair_h_offset[pair];
+        size_t o0 = pair_orbs0_offset[pair] + (size_t)nolg_Nc[pt] * (size_t)NO0;
+        size_t o1 = pair_orbs1_offset[pair] + ((size_t)pt - pair_nolg_offset[pair]) * (size_t)NO1;
+        float e0 = 0.0f, e1 = 0.0f, e2 = 0.0f, e3 = 0.0f;
+
+#pragma acc loop seq
+        for (int ii = 0; ii < NO0; ii++) {
+          float t0 = 0.0f, t1 = 0.0f, t2 = 0.0f, t3 = 0.0f;
+#pragma acc loop seq
+          for (int jj = 0; jj < NO1; jj++) {
+            float phi1 = orbs1buf[o1 + (size_t)jj];
+            size_t ij = (size_t)ii * (size_t)NO1 + (size_t)jj;
+            t0 += phi1 * dmf[base + ij];
+            if (spin_count >= 2) t1 += phi1 * dmf[base + mat + ij];
+            if (spin_count == 4) {
+              t2 += phi1 * dmf[base + 2U * mat + ij];
+              t3 += phi1 * dmf[base + 3U * mat + ij];
+            }
+          }
+          {
+            float phi0 = orbs0buf[o0 + (size_t)ii];
+            e0 += phi0 * t0;
+            if (spin_count >= 2) e1 += phi0 * t1;
+            if (spin_count == 4) {
+              e2 += phi0 * t2;
+              e3 += phi0 * t3;
+            }
+          }
+        }
+        g0 += (double)e0;
+        if (spin_count >= 2) g1 += (double)e1;
+        if (spin_count == 4) {
+          g2 += (double)e2;
+          g3 += (double)e3;
+        }
+      }
+
+      tmpden[out-first] = g0;
+      if (spin_count >= 2) tmpden[(last-first) + out-first] = g1;
+      if (spin_count == 4) {
+        tmpden[2U * (last-first) + out-first] = g2;
+        tmpden[3U * (last-first) + out-first] = g3;
+      }
+    }
+      }
+    }
+    else {
+#pragma acc parallel loop gang vector_length(128) deviceptr(pair_NO0,pair_NO1,pair_h_offset,pair_nolg_offset,pair_orbs0_offset,pair_orbs1_offset,nolg_Nc,orbs0buf,orbs1buf,out_ptr,term_pt,pt_pair,dm,dmf,tmpden)
+    for (size_t out = first; out < last; out++) {
+      double g0 = 0.0, g1 = 0.0, g2 = 0.0, g3 = 0.0;
+
+#pragma acc loop seq
+      for (uint32_t q = out_ptr[out]; q < out_ptr[out + 1]; q++) {
+        uint32_t pt = term_pt[q];
+        uint32_t pair = pt_pair[pt];
+        int NO0 = pair_NO0[pair];
+        int NO1 = pair_NO1[pair];
+        size_t mat = (size_t)NO0 * (size_t)NO1;
+        size_t base = pair_h_offset[pair];
+        size_t o0 = pair_orbs0_offset[pair] + (size_t)nolg_Nc[pt] * (size_t)NO0;
+        size_t o1 = pair_orbs1_offset[pair] + ((size_t)pt - pair_nolg_offset[pair]) * (size_t)NO1;
+        double e0 = 0.0, e1 = 0.0, e2 = 0.0, e3 = 0.0;
+
+#pragma acc loop seq
+        for (int ii = 0; ii < NO0; ii++) {
+          double t0 = 0.0, t1 = 0.0, t2 = 0.0, t3 = 0.0;
+#pragma acc loop seq
+          for (int jj = 0; jj < NO1; jj++) {
+            double phi1 = (double)orbs1buf[o1 + (size_t)jj];
+            size_t ij = (size_t)ii * (size_t)NO1 + (size_t)jj;
+            t0 += phi1 * dm[base + ij];
+            if (spin_count >= 2) t1 += phi1 * dm[base + mat + ij];
+            if (spin_count == 4) {
+              t2 += phi1 * dm[base + 2U * mat + ij];
+              t3 += phi1 * dm[base + 3U * mat + ij];
+            }
+          }
+          {
+            double phi0 = (double)orbs0buf[o0 + (size_t)ii];
+            e0 += phi0 * t0;
+            if (spin_count >= 2) e1 += phi0 * t1;
+            if (spin_count == 4) {
+              e2 += phi0 * t2;
+              e3 += phi0 * t3;
+            }
+          }
+        }
+        g0 += e0;
+        if (spin_count >= 2) g1 += e1;
+        if (spin_count == 4) {
+          g2 += e2;
+          g3 += e3;
+        }
+      }
+
+      tmpden[out-first] = g0;
+      if (spin_count >= 2) tmpden[(last-first) + out-first] = g1;
+      if (spin_count == 4) {
+        tmpden[2U * (last-first) + out-first] = g2;
+        tmpden[3U * (last-first) + out-first] = g3;
+      }
+    }
+    }
+
+}
+
+typedef struct {
+  OpenMXGpuWorkers workers;
+  SDGKernelInput source,device[OPENMX_GPU_WORKERS_MAX];
+  OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][14];
+} SDGLocalWork;
+
+static int SDG_local_worker(void *opaque,int worker,int phase)
+{
+  SDGLocalWork *w=(SDGLocalWork*)opaque;
+  SDGKernelInput *s=&w->source,*d=w->device+worker;
+  size_t first=openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+  size_t last=openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count);
+  if (phase==OPENMX_GPU_WORKER_PREPARE) {
+    *d=*s;d->tmpden=NULL;
+    if (!openmx_gpu_read_view(&w->input[worker][0],s->pair_NO0,(s->pair_count)*sizeof(int))) return 0;
+    d->pair_NO0=(int*)w->input[worker][0].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][1],s->pair_NO1,(s->pair_count)*sizeof(int))) return 0;
+    d->pair_NO1=(int*)w->input[worker][1].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][2],s->pair_h_offset,(s->pair_count)*sizeof(size_t))) return 0;
+    d->pair_h_offset=(size_t*)w->input[worker][2].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][3],s->pair_nolg_offset,(s->pair_count)*sizeof(size_t))) return 0;
+    d->pair_nolg_offset=(size_t*)w->input[worker][3].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][4],s->pair_orbs0_offset,(s->pair_count)*sizeof(size_t))) return 0;
+    d->pair_orbs0_offset=(size_t*)w->input[worker][4].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][5],s->pair_orbs1_offset,(s->pair_count)*sizeof(size_t))) return 0;
+    d->pair_orbs1_offset=(size_t*)w->input[worker][5].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][6],s->nolg_Nc,(s->total_nolg)*sizeof(int))) return 0;
+    d->nolg_Nc=(int*)w->input[worker][6].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][7],s->orbs0buf,(s->total_orbs0)*sizeof(Type_Orbs_Grid))) return 0;
+    d->orbs0buf=(Type_Orbs_Grid*)w->input[worker][7].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][8],s->orbs1buf,(s->total_orbs1)*sizeof(Type_Orbs_Grid))) return 0;
+    d->orbs1buf=(Type_Orbs_Grid*)w->input[worker][8].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][9],s->out_ptr,(s->output_count+1)*sizeof(uint32_t))) return 0;
+    d->out_ptr=(uint32_t*)w->input[worker][9].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][10],s->term_pt,(s->term_count)*sizeof(uint32_t))) return 0;
+    d->term_pt=(uint32_t*)w->input[worker][10].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][11],s->pt_pair,(s->term_count)*sizeof(uint32_t))) return 0;
+    d->pt_pair=(uint32_t*)w->input[worker][11].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][12],s->dm,(s->dm_count)*sizeof(double))) return 0;
+    d->dm=(double*)w->input[worker][12].pointer;
+    if (!openmx_gpu_read_view(&w->input[worker][13],s->dmf,(s->dm_total)*sizeof(float))) return 0;
+    d->dmf=(float*)w->input[worker][13].pointer;
+    return cudaMalloc((void**)&d->tmpden,(last-first)*(size_t)s->spin_count*sizeof(double))==cudaSuccess;
+  }
+  if (phase==OPENMX_GPU_WORKER_EXECUTE) SDG_local_range(d,first,last);
+  else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+    for (int spin=0;spin<s->spin_count;spin++)
+      if (!openmx_gpu_copy_device(s->tmpden+(size_t)spin*s->output_count+first,
+          d->tmpden+(size_t)spin*(last-first),(last-first)*sizeof(double))) return 0;
+  } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+    if (d->tmpden) cudaFree(d->tmpden);
+    for (int i=0;i<14;i++) openmx_gpu_read_view_release(&w->input[worker][i]);
+  }
+  return 1;
+}
+
+static int SDG_local_distribute(SDGKernelInput *input)
+{
+  SDGLocalWork w={0};w.source=*input;
+  openmx_gpu_workers_local(&w.workers,input->output_count);
+  if (w.workers.count<=1) return 0;
+  w.source.pair_NO0=(int*)acc_deviceptr((void*)input->pair_NO0);
+  w.source.pair_NO1=(int*)acc_deviceptr((void*)input->pair_NO1);
+  w.source.pair_h_offset=(size_t*)acc_deviceptr((void*)input->pair_h_offset);
+  w.source.pair_nolg_offset=(size_t*)acc_deviceptr((void*)input->pair_nolg_offset);
+  w.source.pair_orbs0_offset=(size_t*)acc_deviceptr((void*)input->pair_orbs0_offset);
+  w.source.pair_orbs1_offset=(size_t*)acc_deviceptr((void*)input->pair_orbs1_offset);
+  w.source.nolg_Nc=(int*)acc_deviceptr((void*)input->nolg_Nc);
+  w.source.orbs0buf=(Type_Orbs_Grid*)acc_deviceptr((void*)input->orbs0buf);
+  w.source.orbs1buf=(Type_Orbs_Grid*)acc_deviceptr((void*)input->orbs1buf);
+  w.source.out_ptr=(uint32_t*)acc_deviceptr((void*)input->out_ptr);
+  w.source.term_pt=(uint32_t*)acc_deviceptr((void*)input->term_pt);
+  w.source.pt_pair=(uint32_t*)acc_deviceptr((void*)input->pt_pair);
+  w.source.dm=(double*)acc_deviceptr((void*)input->dm);
+  w.source.tmpden=(double*)acc_deviceptr(input->tmpden);
+  /* dmf belongs only to this call and has no enclosing present mapping. */
+  if (input->dm_total && !acc_copyin(input->dmf,input->dm_total*sizeof(float))) return 0;
+  w.source.dmf=input->dm_total?(float*)acc_deviceptr(input->dmf):NULL;
+  int ok=openmx_gpu_workers_run(&w.workers,SDG_local_worker,&w,"density-local-CSR");
+  if (input->dm_total) acc_delete(input->dmf,input->dm_total*sizeof(float));
+  return ok;
+}
+
 int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
 {
   SDGLocalContext *c = &SDG_local;
@@ -1685,6 +2180,32 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
                         dm[0:dm_count])                                                            \
                  copyout(tmpden[0:(size_t)spin_count*output_count])
   {
+    SDGKernelInput distributed={0};
+    distributed.mode=mode;
+    distributed.spin_count=spin_count;
+    distributed.pair_count=pair_count;
+    distributed.output_count=output_count;
+    distributed.term_count=term_count;
+    distributed.total_nolg=total_nolg;
+    distributed.total_orbs0=total_orbs0;
+    distributed.total_orbs1=total_orbs1;
+    distributed.tmpden=tmpden;
+    distributed.pair_NO0=(void*)pair_NO0;
+    distributed.pair_NO1=(void*)pair_NO1;
+    distributed.pair_h_offset=(void*)pair_h_offset;
+    distributed.pair_nolg_offset=(void*)pair_nolg_offset;
+    distributed.pair_orbs0_offset=(void*)pair_orbs0_offset;
+    distributed.pair_orbs1_offset=(void*)pair_orbs1_offset;
+    distributed.nolg_Nc=(void*)nolg_Nc;
+    distributed.orbs0buf=(void*)orbs0buf;
+    distributed.orbs1buf=(void*)orbs1buf;
+    distributed.out_ptr=(void*)out_ptr;
+    distributed.term_pt=(void*)term_pt;
+    distributed.pt_pair=(void*)pt_pair;
+    distributed.dm=(void*)dm;
+    distributed.dmf=(void*)dmf;
+    distributed.dm_count=dm_count;distributed.dm_total=dmf?dm_total:0;
+    if (!SDG_local_distribute(&distributed)) {
     if (mode == 2) {
       /* double-float: the density matrix as hi + lo floats (dmf, dmf + dm_count),
          every product exact through an FMA, the sum over j compensated, the
@@ -1885,6 +2406,7 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
         tmpden[2U * output_count + out] = g2;
         tmpden[3U * output_count + out] = g3;
       }
+    }
     }
     }
     /* copyout on an already-present mapping does not transfer its contents. */

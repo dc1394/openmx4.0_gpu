@@ -41,6 +41,7 @@ typedef struct {
 
 int SOG_Device_Prepare(void);
 void SOG_Device_Release(void);
+void SOG_Device_ReleaseAll(void);
 const SOG_DeviceTables *SOG_Device_Tables(void);
 size_t SOG_Device_Bytes(void);
 const char *SOG_Device_EvalPrecisionName(void);

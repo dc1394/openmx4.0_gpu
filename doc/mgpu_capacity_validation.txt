@@ -1,0 +1,255 @@
+MAGMA capacity-path validation (2026-10-14)
+===========================================
+
+Policy: ordinary gpusolver selects cuSOLVER when its dense buffers fit,
+and host-backed multi-GPU MAGMA when they do not. gpusolver3 forces the
+host-backed path. scf.Gpu.Num is an upper bound; insufficient permitted
+GPU resources cause a nonzero exit. gpusolver2 is unchanged.
+
+Build: Makefile.kugui, WITH_MAGMA=1, CUDA 12.5, GPU_ARCH=80.
+Hardware: NVIDIA A100-SXM4-40GB, single PBS node, private CUDA MPS.
+
+CPU checks: runtime admission/publication 35752 assertions; MAGMA adapter
+1994950/1994983 assertions (unpatched/patched interface); GEMM independent
+long-double oracle 87 cases each with 2 and 4 mock workers.
+Actual GPU GEMM: 87 cases including nonprefix devices [2,3], real/complex
+N/T/C, host inputs, padded strides, beta=0 NaNs and late-failure rollback.
+Maximum relative/absolute oracle metric 2.397e-14.
+
+Si64 numerical regression (2 SCF steps; original Si basis and 200 Ry)
+-----------------------------------------------------------------
+All comparisons are against native cuSOLVER in the same build. The auto
+variant uses OPENMX_MGPU_MEMORY=host to exercise capacity storage on a
+small problem. Forced variants select gpusolver3. FP32 refinement is off.
+One MPI rank, 8 OpenMP threads, 8 BLAS threads. Cases: collinear spin off
+and noncollinear with SOC. Band has 2 actual k-points and 2 GPUs per point.
+
+host-cluster2: 6 runs, 4 comparisons passed.
+  Binary SHA256: a0b70d75d31fbb03daf721041c13459121c24239eefe0b1df749495005586a71
+  Max |delta E|: 1.02318e-12 Ha
+  Max |delta force component|: 1e-12 Ha/bohr
+  Evidence: work/mgpu_sidia_20261014/host-cluster2/summary.json, comparisons.json,
+            results.json and per-run logs/inputs/memory.jsonl.
+
+host-band4: 6 runs, 4 comparisons passed.
+  Binary SHA256: 3d8b4b24cc83f8ef4974a79292157e26f3065d1afcc7de5acd47fcc441879d2b
+  Max |delta E|: 1.02318e-12 Ha
+  Max |delta force component|: 3.2e-11 Ha/bohr
+  Evidence: work/mgpu_sidia_20261014/host-band4/summary.json, comparisons.json,
+            results.json and per-run logs/inputs/memory.jsonl.
+
+
+Automatic memory admission and strict GPU caps
+----------------------------------------------
+PBS 937719: tests/run_mgpu_capacity_regression.py passed 16 executions
+and 8 energy/force comparisons. A 65536 MiB native admission reserve
+causes real capacity rejection without allocating that reserve.
+Both Cluster and Band, collinear and noncollinear, were exercised.
+Automatic cases omit scf.mgpu.enable. Forced cases set gpusolver3 with
+OPENMX_MGPU_SOLVER=single and OPENMX_MGPU_GEMM=0: the forced path wins.
+The Cluster limit is 2 GPUs for successful recovery, 1 for the expected
+error. Band uses 4 (2 per k-point), and exits for a limit of 3.
+OPENMX_MGPU_NUM_GPUS=4 never overrides the smaller input GPU limit.
+  Binary SHA256: a383d2f6e66f4a37fcd0fb9c9d041f747c75bfc9a187868a9fa0562be4f316c5
+  Max |delta E|: 0 Ha
+  Max |delta force component|: 3.5e-11 Ha/bohr
+Evidence: work/mgpu_sidia_20261014/capacity-checks4/.
+
+PBS 937905 repeated all 16 executions and 8 comparisons on the final
+eigenpair-sorting build: all passed. The test includes default gpusolver
+with scf.mgpu.enable omitted, forced gpusolver3, and nonzero exits when
+the input GPU cap prevents memory recovery.
+  Binary SHA256: 2e46b10173e6f7215331c248d6789a9b98b80f45f77e903d5df78ff2a65604ae
+  Max |delta E|: 1.00187e-12 Ha
+  Max |delta force component|: 3.4e-11 Ha/bohr
+Evidence: work/mgpu_sidia_20261014/capacity-sorted-checks4/summary.json,
+          comparisons.json and per-case input/log/result files.
+
+MPI Band (4 ranks, 2 threads/rank, 2 k-points, 4 GPUs): magnetic collinear
+and noncollinear SOC calculations completed. The original verifier did not
+recognize the new capacity diagnostic; revalidated.json records successful
+reanalysis with every numerical, SCF-count and group-membership check enabled.
+Evidence: work/mgpu_sidia_20261014/host-band-mpi4/revalidated.json.
+
+PBS 937781 repeated magnetic collinear Band and added nonmagnetic Band
+with two MPI ranks per k-point. Both passed three SCF steps against the
+pre-capacity cuSOLVER binary. The latter exercises partial ScaLAPACK
+buffers: host MAGMA uses its own full matrix storage rather than assuming
+the local distributed buffer is full-sized.
+  Binary SHA256: 1bd5449af9c3e8dda3f2cc085561247b3c60caacaa67bd84d422b868447aef1d
+  Max |delta E|: 1.009e-12 Ha
+  Max |delta force component|: 9.60001e-11 Ha/bohr
+Evidence: work/mgpu_sidia_20261014/host-band-mpi4-final/summary.json.
+
+PBS 937817: magnetic collinear and noncollinear SOC Pt63 Cluster also
+passed three SCF steps with four MPI ranks, two threads/rank and four
+GPUs. This includes the host-vector multi-GPU force EDM after SCF.
+  Binary SHA256: 07b72017b5fb675b0d49534e92a5412a4ab80437f288daa89f163c538c5c8310
+  Max |delta E|: 7.276e-12 Ha
+  Max |delta force component|: 1.00001e-12 Ha/bohr
+Evidence: work/mgpu_sidia_20261014/host-cluster-mpi4/summary.json.
+
+Native cuSOLVER capacity at n=26000 complex FP64
+----------------------------------------------
+Actual cusolverDnXsyevdx_bufferSize query (CUDA 12.5, A100 40GB):
+  Matrix:            10816000000 bytes (10.0732 GiB)
+  Device workspace:  32501929104 bytes (30.2698 GiB)
+  Device total:      42409000960 bytes (39.4965 GiB)
+The matrix plus workspace alone exceed physical capacity, for both the
+4800- and 6500-eigenpair subsets and the full spectrum. A one-GPU timing at this
+dimension is infeasible on this hardware and is not a valid speed baseline.
+Evidence: work/mgpu_sidia_20261014/memory-probe.log and memory-probe-4800.log.
+
+An initial Si1000 Cluster run successfully selected MAGMA automatically,
+solved n=26000 on four GPUs in 62.405012 s with validation, and completed
+backtransform and density GEMMs. It was interrupted in the subsequent
+serial CPU force-EDM stage, so it is NOT a complete OpenMX benchmark.
+That capacity-path EDM has since been connected to the multi-GPU product.
+Evidence: work/mgpu_sidia_20261014/host-cluster1000/interrupted.json.
+
+Large periodic overlap matrices exposed a MAGMA result-ordering issue:
+the n=13000 real solve returned adjacent values 0.59793007123800646 and
+0.59793007123800623. The adapter's exact ascending-order check correctly
+rejected this 2.220446e-16 inversion. The adapter now sorts each returned
+value together with its corresponding vector before applying the same
+finite, residual and orthogonality checks; no tolerances were relaxed.
+An in-place permutation uses one extra host column and O(n) indices. Real/complex,
+upper/lower, vectors/values-only and cyclic/reversed return-order tests
+pass against the independent diagonal-spectrum oracle. Nonfinite and
+corrupt results still fail without publishing to the caller.
+Evidence: work/mgpu_sidia_20261014/host-cluster1000-final/cluster_nc/hybrid/1/openmx.log
+          work/mgpu_sidia_20261014/magma-host13.log.
+
+Full-size benchmark protocol
+----------------------------
+tests/run_mgpu_sidia_benchmark.py generates all 1000 coordinates of the
+supplied 5x5x5 diamond supercell (5.431 Ang lattice), retaining
+Si7.0-s2p2d1 / Si_PBE19, GGA-PBE, 200 Ry and one SCF step. The collinear
+matrix order is 13000, the noncollinear spinor order is 26000. Noncollinear
+inputs enable SOC. Cluster retains the supplied unit cell and uses the
+Cluster solver at Gamma; this is not a vacuum-isolated Si nanocluster.
+Band uses a periodic 2x1x1 GCenter mesh (two actual k-points), so four allocated GPUs form two
+groups of two. This differs from the supplied 2x2x2 mesh specifically to
+exercise cooperation within a k-point on the available four-GPU node.
+
+Runs use one MPI rank, 32 OpenMP threads and 32 BLAS threads, with FP32
+refinement disabled. The cuSOLVER baseline disables cooperation while
+keeping the same allocation; forced MAGMA uses gpusolver3. Automatic
+noncollinear runs use gpusolver with native workspace admission enabled;
+they do not set OPENMX_MGPU_MEMORY=host or inflate the native reserve.
+With one MPI rank the two Band k-points execute sequentially, each on its
+own two-GPU group. These timings measure within-matrix cooperation; they
+do not measure simultaneous k-point execution by two MPI owner ranks.
+
+Report application total and external elapsed time separately. One-SCF
+measurements include initialization and force evaluation and are not
+steady-state SCF scaling measurements. Results retain the binary and
+input hashes, all runtime controls, energy components, every force
+component, process-tree RSS samples and actual worker lists. The host
+guard is 210 GiB within the 240 GB PBS allocation. GPU samples are taken
+every five seconds and therefore give sampled, not instantaneous, peaks.
+
+Reproduction within a four-GPU allocation (run the large cases sequentially):
+  python3.9 tests/run_mgpu_sidia_benchmark.py --binary source/openmx \
+    --output /new/col-cluster --cases cluster_col --modes single magma \
+    --gpus 4 --threads 32 --blas-threads 32 --timeout 650
+  python3.9 tests/run_mgpu_sidia_benchmark.py --binary source/openmx \
+    --output /new/col-band --cases band_col --modes single magma \
+    --gpus 4 --threads 32 --blas-threads 32 --timeout 650
+  python3.9 tests/run_mgpu_sidia_benchmark.py --binary source/openmx \
+    --output /new/nc-cluster --cases cluster_nc --modes hybrid \
+    --gpus 4 --threads 32 --blas-threads 32 --timeout 1600
+  python3.9 tests/run_mgpu_sidia_benchmark.py --binary source/openmx \
+    --output /new/nc-band --cases band_nc --modes hybrid \
+    --gpus 4 --threads 32 --blas-threads 32 --timeout 1600
+
+"hybrid" names the benchmark's gpusolver mode: it prefers cuSOLVER, enables
+cooperative products, and automatically admits host MAGMA if memory is
+insufficient. "magma" selects gpusolver3; "single" disables cooperation.
+No OPENMX_MGPU_MEMORY override is used by these commands.
+
+Completed Si1000 measurements
+----------------------------
+Frozen binary SHA256:
+  2e46b10173e6f7215331c248d6789a9b98b80f45f77e903d5df78ff2a65604ae
+Application time excludes launcher/teardown overhead; external time includes it.
+Every row below completed all force and total-energy calculations normally.
+
+Case             Backend / GPU group       App seconds  External seconds  Host RSS GiB
+Band collinear   cuSOLVER / 1 GPU              263.543       276.948          70.832
+Band collinear   MAGMA / 2 GPUs x 2 k-points    329.830       346.616          78.850
+Cluster collinear cuSOLVER / 1 GPU             231.985       243.349          70.135
+Cluster collinear MAGMA / 4 GPUs               256.091       262.469          69.257
+Cluster NC/SOC   automatic MAGMA / 4 GPUs      926.522       942.451         130.285
+Band NC/SOC      automatic MAGMA / 2 GPUs/k   1107.745      1126.315         130.848
+
+Band collinear: PBS 937905, acc001, 2 actual k-points, order 13000.
+MAGMA took 1.252 times the application time of cuSOLVER in this one-SCF
+measurement. Four validated MAGMA calls (two overlap and two Hamiltonian
+solves) took 68.513445 s in total; cooperative products took 28.500534 s.
+The successful groups were [0,1] and [2,3]. Maximum |delta E| was
+3.91083e-11 Ha and maximum force-component difference was 3.2e-11 Ha/bohr.
+The sampled peak device memory was 17.423 GiB for cuSOLVER; for MAGMA,
+19.019 GiB on the primary device and 1.827 GiB on each other device.
+These peaks span the whole application, including the force workspaces.
+Evidence: work/mgpu_sidia_20261014/host-colband1000/{results,comparisons,summary}.json
+          work/mgpu_sidia_20261014/host-col-final4-gpu.csv.
+
+Cluster collinear: PBS 937905, acc001, order 13000. MAGMA took 1.104 times
+the application time of cuSOLVER. The overlap and Hamiltonian solves
+both validated on [0,1,2,3], taking 18.315014 s in total; cooperative
+products took 12.172603 s. The energy difference was 4.54747e-12 Ha and
+the maximum force-component difference was 1.00001e-12 Ha/bohr.
+The sampled peak device memory was 19.015 GiB for cuSOLVER; for MAGMA,
+17.019 GiB on the primary device and 1.188 GiB on each other device.
+Evidence: work/mgpu_sidia_20261014/host-col1000/{results,comparisons,summary}.json
+          work/mgpu_sidia_20261014/host-col-final4-gpu.csv.
+
+The full-size noncollinear Cluster CPU ELPA2 reference also completed
+(PBS 938005, 16 MPI ranks x 8 threads). It is an independent numerical
+reference, not a substitute for the infeasible one-GPU timing.
+Evidence: work/mgpu_sidia_20261014/cpu-cluster-nc1000-long/cluster_nc/result.json.
+
+Noncollinear Cluster: PBS 938077, acc001, full order 26000, automatic
+gpusolver capacity recovery on four A100-SXM4-40GB devices. The real
+overlap solve took 10.618680 s and the full complex Hamiltonian solve
+took 61.030212 s; both validated. Cooperative matrix products, including
+post-SCF force EDM, took 88.713565 s in total. All force and energy stages
+finished normally. The sampled device peaks were 19.024 GiB on the
+primary GPU and 3.247 GiB on each other GPU (whole application).
+Compared with the independent full-size CPU ELPA2 reference, |delta E|
+was 1.40972e-10 Ha and the maximum force difference was 3.2e-11 Ha/bohr.
+All energy components passed the 1e-7 Ha tolerance; the largest component
+difference was 3.55704e-9 Ha in Uele. There is no one-GPU speed ratio for
+this case because the corresponding native cuSOLVER buffers exceed the
+physical memory of one 40 GB A100.
+Evidence: work/mgpu_sidia_20261014/host-cluster-nc1000-sorted/results.json
+          work/mgpu_sidia_20261014/cpu-magma-nc1000-comparisons.json
+          work/mgpu_sidia_20261014/host-cluster-long4-gpu.csv.
+
+The independent noncollinear Band CPU ELPA2 reference completed on two
+CPU nodes (PBS 938101, 16 MPI ranks x 16 threads, eight ranks per node).
+It retained all 1000 atoms, the same two k-points, basis, cutoff and SCF
+step. Each node had a 210 GiB RSS guard; the measured peaks were 133.054
+and 144.370 GiB. This reference is used only for numerical comparison.
+The benchmark driver's process-tree RSS sees the launch node only in a
+multi-node run; node-memory-summary.json contains the separate node peaks.
+Evidence: work/mgpu_sidia_20261014/cpu-band-nc1000-nodes2/band_nc/result.json
+          work/mgpu_sidia_20261014/cpu-band-nc1000-nodes2/band_nc/node-memory-summary.json.
+
+Noncollinear Band: PBS 938111, acc008, full order 26000, two k-points,
+automatic gpusolver capacity recovery. Groups [0,1] and [2,3] each solved
+the overlap and Hamiltonian successfully; the four validated solves took
+180.902045 s altogether. The 4800-eigenpair Hamiltonian solves took
+72.401083 and 73.213873 s. Cooperative products took 134.119167 s.
+All force and energy stages finished normally. The sampled device peaks
+were 19.024 GiB on the primary GPU and 5.778 GiB on each other GPU.
+Against the independent CPU ELPA2 reference, |delta E| was 1.18234e-10 Ha
+and the maximum force-component difference was 2.3e-11 Ha/bohr.
+Every energy component passed 1e-7 Ha; the largest difference was
+1.94289e-8 Ha in Uele. The actual 4800-eigenpair cuSOLVER query confirms
+the same 30.270 GiB workspace, so a native one-GPU timing is infeasible.
+Evidence: work/mgpu_sidia_20261014/host-band-nc1000-retry/results.json
+          work/mgpu_sidia_20261014/cpu-magma-nc1000-comparisons.json
+          work/mgpu_sidia_20261014/host-band-retry4-gpu.csv
+          work/mgpu_sidia_20261014/final-benchmark-summary.json.

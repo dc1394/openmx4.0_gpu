@@ -17,8 +17,8 @@ point = source[source.index("#pragma acc routine seq\nstatic void SOG_point_eval
                source.index("/* One launch evaluates every grid point of one atom")]
 prepare = source[source.index("int SOG_Device_Prepare(void)"):
                  source.index("\nconst char *SOG_Device_EvalPrecisionName")]
-chunk = source[source.index("void SOG_Device_EvalPairChunk("):
-               source.index("\ndouble Set_Orbitals_Grid(int Cnt_kind)")]
+chunk_start = source.index("static void SOG_Device_EvalPairChunk_Part(")
+chunk = source[chunk_start:source.index("\n}\n", chunk_start)+3]
 code = r'''
 #include <assert.h>
 #include <math.h>
@@ -95,7 +95,7 @@ int main(void)
         const int row=nc[NPREFIX+k];
         oracle(&pair,gla[GPREFIX+row],cla[GPREFIX+row],expected+GUARD+k*NO);
       }
-      SOG_Device_EvalPairChunk(&pair,length,nc+NPREFIX,gla+GPREFIX,cla+GPREFIX,actual+GUARD);
+      SOG_Device_EvalPairChunk_Part(&SOG_dev,&pair,length,nc+NPREFIX,gla+GPREFIX,cla+GPREFIX,actual+GUARD);
       for(size_t i=0;i<sizeof(actual)/sizeof(actual[0]);i++) {
         assert(isfinite(actual[i]));
         assert(memcmp(actual+i,expected+i,sizeof(float))==0);
@@ -105,7 +105,7 @@ int main(void)
       for(size_t i=0;i<sizeof(actual)/sizeof(actual[0]);i++) actual[i]=111.25f;
       for(int first=0;first<length;first+=37) {
         const int count=length-first<37?length-first:37;
-        SOG_Device_EvalPairChunk(&pair,count,nc+NPREFIX+first,gla+GPREFIX,cla+GPREFIX,actual+GUARD+first*NO);
+        SOG_Device_EvalPairChunk_Part(&SOG_dev,&pair,count,nc+NPREFIX+first,gla+GPREFIX,cla+GPREFIX,actual+GUARD+first*NO);
       }
       assert(memcmp(actual,expected,sizeof(actual))==0);
       cases++;
@@ -132,7 +132,7 @@ int main(void)
   SOG_dev.ready=0;
   {
     SOG_GpuPair pair={0}; pair.no=NO; float guard=913.5f;
-    SOG_Device_EvalPairChunk(&pair,POINTS,nc+NPREFIX,gla+GPREFIX,cla+GPREFIX,&guard);
+    SOG_Device_EvalPairChunk_Part(&SOG_dev,&pair,POINTS,nc+NPREFIX,gla+GPREFIX,cla+GPREFIX,&guard);
     assert(guard==913.5f);
   }
   SOG_Device_Release();

@@ -4,18 +4,22 @@ Single-node multi-GPU cluster calculations
 Scope
 -----
 The new paths apply only to Cluster_DFT_Col and Cluster_DFT_NonCol using
-scf.eigen.lib=gpusolver. They cover real symmetric and complex Hermitian
-eigensolves and the dense forward/back matrix products. Band, DC, LNO and
+scf.eigen.lib=gpusolver or gpusolver3. They cover real symmetric and complex Hermitian
+eigensolves and the dense forward/back matrix products. Ordinary collinear
+and noncollinear Band now use equal GPU groups per computed k-point; see
+band_mgpu.txt. DC, LNO, generalized-Bloch NonCol Band and
 scf.eigen.lib=gpusolver2 (the distributed ELPA/COSMA path) retain their
 existing implementations. Existing single-GPU and GeForce choices remain
 available.
+The forced noncollinear Cluster path currently excludes MO, XANES, DOS
+and partial-charge output; gpusolver3 rejects these options explicitly.
 
 Use
 ---
 Example input:
 
   scf.EigenvalueSolver  cluster
-  scf.eigen.lib        gpusolver
+  scf.eigen.lib        gpusolver3
   scf.Gpu.Num          2
   scf.mgpu.enable      on
 
@@ -28,46 +32,69 @@ placement still selects the owner GPU.
 When several ranks share a GPU, the CUDA execution mode must allow those
 contexts (for example, a site-managed MPS server on exclusive-process GPUs).
 
-Omitting scf.mgpu.enable selects automatic eligibility on fast native-FP64
-devices with at least two visible GPUs. On GeForce, explicit enablement is
-required, so existing consumer-GPU tuning remains the default. Setting the
-input to off is an unconditional veto. OPENMX_MGPU=0 disables cooperation;
-OPENMX_MGPU=1 permits it on other architectures when the input has not
-disabled it. More than one MPI node always disables these local paths.
+The default gpusolver uses the existing cuSOLVER path when its buffers fit.
+Insufficient memory activates the host-backed MAGMA path, subject to the
+GPU pool limits above. gpusolver3 forces this path regardless of size and
+ignores OPENMX_MGPU_SOLVER=single/auto. Its eigensolver never falls back to
+cuSOLVER. gpusolver2 remains reserved for distributed ELPA/COSMA.
 
-Eigensolver selection
---------------------
-OPENMX_MGPU_SOLVER=auto is the default. At and above
-OPENMX_MGPU_SOLVER_MIN_N (default 4096), each new matrix shape compares:
+The capacity path works on both A100 and GeForce. Native performance
+selection remains architecture-dependent within each GEMM worker. Device-resident
+GEMM cooperation now defaults to all eligible sizes and permitted devices;
+OPENMX_MGPU_GEMM=auto restores the earlier size/NVLink performance heuristic.
+Input off or OPENMX_MGPU=0 vetoes cooperation. Multiple MPI nodes disable
+these local paths. A required capacity fallback then reports an error.
 
-  single : existing cuSOLVER algorithm, arithmetic policy and workspace
-  magma  : MAGMA 2.10.0 one-stage dsyevdx_m / zheevdx_m
-  paper  : independent implementation of arXiv:2511.16174v1's pipelined
-           dense-to-band / band-to-tridiagonal / reordered-backtransform
-           method, extended to complex Hermitian matrices
+Eigensolver selection and memory
+-------------------------------
+MAGMA uses dsyevdx_m / zheevdx_m in native FP64, including leading subsets.
+The capacity path first releases the native dense GPU arena and eigensolver
+workspace. Overlap and Hamiltonian matrices, transforms and vectors live
+on the host. MAGMA partitions its GPU scratch across the selected group;
+forward/back products and noncollinear density products stream bounded
+full-K tiles. No full cuSOLVER workspace or owner GPU matrix is retained.
+The host must have room for the dense matrices and MAGMA host workspace.
+The LP64 MAGMA interface currently supports matrix orders through 32766.
 
-The cache key contains order, requested eigenvector count, real/complex
-type, GPU count and owner device. It is reset for each OpenMX input.
-Default tuning executes two successful trials per candidate and uses the
-minimum; OPENMX_MGPU_TUNE_TRIALS=1 skips the warm second trial (range 1..3).
-The first solve therefore costs substantially more than a normal solve.
-Host preparation, transfers, validation and publication are included in
-the multi-GPU score. The normal cuSOLVER callback is measured as it runs
-without multi-GPU staging. A single-GPU winner keeps the existing path on
-later calls. A failed candidate is excluded.
+Before solving, every selected GPU must pass the conservative MAGMA memory
+admission check. All available GPUs up to the configured limit are used
+(up to the backend's eight-GPU limit). If this group is insufficient, if
+MAGMA was not built, or if fewer than two permitted GPUs exist, OpenMX
+prints the cause and exits with an error. scf.Gpu.Num is never exceeded,
+and there is no implicit CPU eigensolver fallback after memory exhaustion.
+Allocation or execution failures after admission also terminate the solve.
 
-OPENMX_MGPU_SOLVER=magma or paper requests that implementation even below
-the automatic size threshold; unavailable or unsuccessful backends fall
-back to the existing solver. OPENMX_MGPU_SOLVER=single disables multi-GPU
-eigensolves while leaving independently configured matrix products usable.
-Both multi-GPU solvers support full spectra and leading-index subsets.
-Other cuSOLVER modes continue through the existing implementation.
+OPENMX_MGPU_MEMORY=host exercises the same capacity path with gpusolver
+for regression tests on small matrices. gpusolver3 is the input keyword
+for production forced MAGMA. Capacity solves use FP64 and bypass the
+single-GPU FP32 refinement workspace.
 
-No published paper speedup is assumed. In initial A100 measurements the
-MAGMA implementation was faster than the paper implementation at order
-4096, but the existing cuSOLVER implementation was faster than both. Auto
-correctly selected cuSOLVER. See paper_mgpu.txt for the exact implemented
-stages, complex extension, tuning omissions and measured limitations.
+tests/run_mgpu_capacity_regression.py exercises all four Cluster/Band and
+collinear/noncollinear paths within a four-GPU allocation. It compares native
+cuSOLVER, automatic recovery after a deliberately oversized admission reserve,
+and forced MAGMA, then checks a nonzero exit with too small an input GPU limit.
+It leaves scf.mgpu.enable unspecified to verify the default policy.
+
+The existing device-resident performance experiment remains opt-in:
+OPENMX_MGPU_SOLVER=auto compares cuSOLVER and MAGMA for a matrix shape;
+OPENMX_MGPU_SOLVER=magma tries MAGMA while retaining native owner storage.
+These environment controls do not override gpusolver3 or the capacity
+fallback. With no override, gpusolver uses cuSOLVER when it fits.
+The experimental paper backend has been removed.
+
+Nearly degenerate MAGMA eigenpairs are sorted together before validation;
+the library can return eigenvalues a few ulps out of order. Permutation
+cycles need one temporary host column and O(n) indices. No eigenvalue or vector is
+rounded, and residual/orthogonality tolerances are unchanged.
+MAGMA failures report whether eigenvalue ordering, sampled residuals or
+orthogonality failed, including the measured error. Validation tolerances
+remain 1e-10. For diagnosis, OPENMX_MAGMA_FAILURE_DUMP=/absolute/file saves
+the input triangle and rejected eigenpairs before the error exit. Its
+binary header contains six native uint64 fields: magic 0x4f4d584d41474d41,
+scalar width, matrix order, eigenpair count, lower-triangle flag and
+eigenvector flag. Contiguous column-major input, returned vectors (when
+requested) and FP64 eigenvalues follow. The file may occupy several GiB;
+normal runs do not create it. Rejected results are never published.
 
 Matrix products
 ---------------
@@ -76,13 +103,14 @@ entire inner dimension per tile, overlaps transfers and local products,
 and commits the assembled result only after all workers succeed. It
 supports native peer transfers and bounded pinned-host staging. Existing
 GEMMul8 arithmetic settings govern worker products. Explicit forward-stage
-precision/reuse overrides retain their existing dedicated path.
+precision settings also apply on each worker. Prepared-X reuse is retained
+for the original single-device path; cooperative tiles rebuild their own X
+representation after an upload, because a tile buffer changes contents.
 
 OPENMX_MGPU_GEMM=1 forces eligible products through the multi-GPU attempt;
-OPENMX_MGPU_GEMM=0 disables it. Automatic routing requires a sufficiently
-large shape and positively identified direct NVLink connectivity. Unknown
-or slower connections use the existing product; explicit forcing permits
-measurement on those systems. See mgpu_gemm.txt for workspace limits,
+OPENMX_MGPU_GEMM=0 disables it. Default routing distributes all eligible
+nonempty shapes in the current GPU group. OPENMX_MGPU_GEMM=auto requests
+the former large-shape/direct-NVLink heuristic. See mgpu_gemm.txt for workspace limits,
 shape thresholds, algorithm details and measured crossovers.
 
 Correctness and resources
@@ -95,10 +123,6 @@ Standalone tests additionally verify independent full residuals and
 boundary cases. A GPU allocation/transfer error is never hidden by
 publishing a partially assembled matrix.
 
-The OpenMX owner still holds its existing dense matrices and queried
-cuSOLVER workspace. This first integration does not eliminate the owner
-GPU's storage requirement. Multi-GPU backends also need host and worker
-scratch. In particular, this is not an out-of-core eigensolver.
 
 MAGMA initialization is reused after the first successful call; failed
 initialization is balanced and may be retried. One host-workspace slot is
@@ -113,7 +137,7 @@ The active input triangle is checked for nonfinite values before solving.
 
 Build
 -----
-Paper and custom GEMM sources build with the existing CUDA toolchain.
+The runtime and custom GEMM build with the existing CUDA toolchain.
 WITH_MAGMA=auto (default) links an already installed MAGMA;
 WITH_MAGMA=0 builds a stub; WITH_MAGMA=1 builds/links the dependency.
 MAGMA_PREFIX defaults to source/third_party/magma-install.
@@ -140,12 +164,12 @@ and split NVHPC math-library paths; see their comments:
   tests/run_mgpu_runtime_cpu.py
   tests/run_mgpu_gemm_cpu.py
   tests/run_magma_mgpu_smoke.sh
-  tests/run_paper_mgpu_smoke.sh
   tests/run_mgpu_gemm_smoke.sh
   tests/run_mgpu_solver_smoke.sh
   tests/run_mgpu_cluster_regression.py
 
-Initial validation used A100-SXM4-40GB, CUDA 12.5 and NVHPC 24.7.
+Historical validation before the paper removal and gpusolver3 keyword
+used A100-SXM4-40GB, CUDA 12.5 and NVHPC 24.7.
 Real/complex solver and GEMM tests passed on two and three GPUs. Compute
 Sanitizer reported zero errors for the two-GPU GEMM and both eigensolver
 paths. Full OpenMX energy/force comparisons passed for collinear off/on

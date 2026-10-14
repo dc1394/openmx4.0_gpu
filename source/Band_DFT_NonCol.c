@@ -14,6 +14,13 @@
 #include "openmx_common.h"
 #include "eigen_refine_gpu.h"
 #include "openmx_precision.h"
+#include "openmx_mgpu_runtime.h"
+#include "openmx_gpu_transform.h"
+#include "openmx_gpu_dm.h"
+#include "openmx_gpu_workers.h"
+#include "openmx_mgpu_density.h"
+
+static int BandNonCol_mgpu_host_dense = 0;
 #include "lapack_prototypes.h"
 #include "tran_variables.h"
 #include "set_cuda_default_device_from_local_rank.h"
@@ -226,6 +233,7 @@ static void BandNonCol_RefineBeginStep(int SCF_iter, int possible, int possible_
 {
     BandNonColRefineState *st = &BandNonCol_refine;
 
+    if (BandNonCol_mgpu_host_dense) possible=possible_kdense=possible_staged=0;
     BandNonCol_RefineConfigure();
     if (SCF_iter == 1) {
         st->final_stage = 0;
@@ -878,19 +886,25 @@ static void BandNonCol_DenseTripleTransform_OpenACC(int n, dcomplex *A, dcomplex
 
 #pragma acc data copy(A[0 : nn]) copyin(S[0 : nn]) create(Work[0 : nn])
     {
+if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n,n,NULL,0,NULL,0,acc_deviceptr((void*)(Work)),n,0,0.0)) {
 #pragma acc parallel loop
         for (size_t idx = 0; idx < nn; idx++) {
             Work[idx].r = 0.0;
             Work[idx].i = 0.0;
         }
+}
+
 
         BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, A, S, Work);
 
+if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n,n,NULL,0,NULL,0,acc_deviceptr((void*)(A)),n,0,0.0)) {
 #pragma acc parallel loop
         for (size_t idx = 0; idx < nn; idx++) {
             A[idx].r = 0.0;
             A[idx].i = 0.0;
         }
+}
+
 
         BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, S, Work, A);
     }
@@ -901,19 +915,25 @@ static void BandNonCol_DenseTripleTransform_PresentOpenACC(int n, dcomplex *A, d
 {
     int nn = n*n;
 
+if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n,n,NULL,0,NULL,0,acc_deviceptr((void*)(Work)),n,0,0.0)) {
 #pragma acc parallel loop present(Work[0 : nn])
     for (int idx=0; idx<nn; idx++){
         Work[idx].r = 0.0;
         Work[idx].i = 0.0;
     }
+}
+
 
     BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,A,S,Work);
 
+if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n,n,NULL,0,NULL,0,acc_deviceptr((void*)(A)),n,0,0.0)) {
 #pragma acc parallel loop present(A[0 : nn])
     for (int idx=0; idx<nn; idx++){
         A[idx].r = 0.0;
         A[idx].i = 0.0;
     }
+}
+
 
     BandNonCol_GEMMul8Zgemm_OpenACC(CUBLAS_OP_C,CUBLAS_OP_N,n,n,n,S,Work,A);
 
@@ -940,6 +960,8 @@ static void BandNonCol_SymmetrizeDenseHermitian(int n, dcomplex *A)
 static void BandNonCol_SymmetrizeDenseHermitian_OpenACC(int n, dcomplex *A)
 {
     int nn = n*n;
+
+    if (openmx_gpu_transform(OPENMX_GPU_HERMITIAN,1,n,n,acc_deviceptr((void*)(A)),n,NULL,0,acc_deviceptr((void*)(A)),n,0,0.0)) return;
 
 #pragma acc parallel loop present(A[0 : nn])
     for (int i=0; i<n; i++){
@@ -987,6 +1009,7 @@ static void BandNonCol_DenseWavefunctions_PresentOpenACC(int n, int n2, int MaxN
     }
 
     if (MaxN<n2){
+if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n2-MaxN,n2,NULL,0,NULL,0,(dcomplex*)acc_deviceptr((void*)(Hs2))+MaxN,n2,0,0.0)) {
 #pragma acc parallel loop collapse(2) present(Hs2[0 : n2n2])
         for (int col=0; col<n2; col++){
             for (int row=MaxN; row<n2; row++){
@@ -994,6 +1017,8 @@ static void BandNonCol_DenseWavefunctions_PresentOpenACC(int n, int n2, int MaxN
                 Hs2[(size_t)row + (size_t)col*(size_t)n2].i = 0.0;
             }
         }
+}
+
     }
 
     BandNonCol_DMGpu_Init();
@@ -1035,6 +1060,8 @@ static void BandNonCol_DenseWavefunctions_OpenACC(int n, int n2, int MaxN, dcomp
 static void BandNonCol_AddDense_OpenACC(int n, dcomplex *dst, const dcomplex *src)
 {
     int nn = n*n;
+
+    if (openmx_gpu_transform(OPENMX_GPU_ADD,1,n,n,acc_deviceptr((void*)(dst)),n,acc_deviceptr((void*)(src)),n,acc_deviceptr((void*)(dst)),n,0,0.0)) return;
 
 #pragma acc parallel loop present(dst[0 : nn], src[0 : nn])
     for (int idx=0; idx<nn; idx++){
@@ -1394,13 +1421,14 @@ static int BandNonCol_GpuTurnMemoryFits(size_t free_bytes, size_t total_bytes,
    k-owner rank; when a single rank's requirement (the n2 dense matrices plus
    the cusolver workspace at the size cusolverDnXsyevdx_bufferSize reports,
    the GEMMul8 workspace and the staging transients) does not fit, committing
-   to the GPU path would abort or spin inside a full device, so the whole band
-   phase falls back to the ScaLAPACK/ELPA branch instead.  The verdict is
+   to the GPU path would exhaust device memory. Ordinary gpusolver instead
+   selects host-backed MAGMA within the configured pool, or exits. The verdict is
    collective over mpi_comm_level1 (the branch controls barrier and
    communicator structure) and sticky until the next SCF restart or a change
    of the matrix size.
-   OPENMX_BAND_GPU_DIAG=1 forces the GPU path, =0 forces the fallback. */
-static int BandNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int MaxN, int size_H1, int myid0)
+   OPENMX_BAND_GPU_DIAG=0 explicitly selects the legacy CPU branch;
+   neither =1 nor forced MAGMA bypasses memory admission. */
+static int BandNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int MaxN, int size_H1, int myid0, int total_kpoints)
 {
     static int verdict = -1;
     static int verdict_n2 = 0;
@@ -1410,18 +1438,11 @@ static int BandNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int MaxN, int siz
     int my_fit = 1;
     int fit = 0;
 
-    if (force!=NULL){
-        static int force_announced = 0;
-        int forced = (atoi(force)!=0);
-
-        if (!forced && !force_announced && myid0==Host_ID && 2<=level_stdout){
-            printf("<Band_DFT_NonCol> GPU dense diagonalization disabled by OPENMX_BAND_GPU_DIAG=0.\n");
-            fflush(stdout);
-        }
-        force_announced = 1;
-        BandNonCol_gpu_dense_verdict = forced;
-        return forced;
+    if (force && atoi(force)==0 && !openmx_mgpu_host_required()) {
+        BandNonCol_gpu_dense_verdict=0; return 0;
     }
+    if (SCF_iter==1 || verdict_n2!=n2) BandNonCol_mgpu_host_dense=0;
+    if (openmx_mgpu_host_required()) goto host_capacity;
 
     if (verdict!=-1 && verdict_n2==n2 && 1<SCF_iter){
         BandNonCol_gpu_dense_verdict = verdict;
@@ -1472,15 +1493,26 @@ static int BandNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int MaxN, int siz
     MPI_Allreduce(&my_required,&req_max,1,MPI_UNSIGNED_LONG_LONG,MPI_MAX,mpi_comm_level1);
     MPI_Allreduce(&my_free,&free_min,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,mpi_comm_level1);
 
-    if (fit==0 && myid0==Host_ID){
-        printf("<Band_DFT_NonCol> A k-owner rank cannot fit even one k-point's dense GPU"
-               " diagonalization (%.1f MiB needed per rank, %.1f MiB free);"
-               " falling back to the ScaLAPACK/ELPA diagonalization."
-               " Force the GPU path with OPENMX_BAND_GPU_DIAG=1 or lower"
-               " OPENMX_BAND_GPU_RESERVE_MB.\n",
-               (double)req_max/(1024.0*1024.0),
-               (free_min==ULLONG_MAX) ? 0.0 : (double)free_min/(1024.0*1024.0));
-        fflush(stdout);
+    if (!fit && gpusolver2_flag) {
+        if (myid0==Host_ID) printf("<BandNonCol> GPU dense memory admission declined; falling back to ELPA/ScaLAPACK.\n");
+        verdict=0; verdict_n2=n2; BandNonCol_gpu_dense_verdict=0;
+        return 0;
+    }
+    if (!fit) {
+host_capacity:
+        BandNonCol_GpuSolver_Destroy();
+        openmx_gemmul8ReleaseWorkspaces();
+        acc_wait_all();
+        acc_clear_freelists();
+        MPI_Barrier(mpi_comm_level1);
+        if (myid0==Host_ID) {
+            if (!openmx_mgpu_host_plan(total_kpoints,n2,1)) BandNonCol_AbortWithMessage(openmx_mgpu_host_error());
+            printf("<OpenMX_MGPU> Band NC n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
+                   n2,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
+            fflush(stdout);
+        }
+        BandNonCol_mgpu_host_dense=1;
+        fit=1;
     }
 
     verdict = fit;
@@ -1493,6 +1525,7 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
                                        int turn_mode, int owns_dense_rank, int myid0,
                                        int total_turns)
 {
+    if (BandNonCol_mgpu_host_dense) return 1;
     MPI_Comm node_comm;
     MPI_Comm device_comm = MPI_COMM_NULL;
     int local_limit = requested;
@@ -1985,11 +2018,15 @@ static void BandNonCol_ConstructDenseMs_OpenACC(int cpx_flag, int n, double k1, 
 
 #pragma acc data copyin(M2[0 : h_count]) present(Ms[0 : matrix_count], entries[0 : dense_count], phase_r[0 : phase_count], phase_i[0 : phase_count])
     {
+        if (!openmx_gpu_scatter(n,dense_count,3,acc_deviceptr((void*)(entries)),h_count,acc_deviceptr((void*)(M2)),phase_count,acc_deviceptr((void*)(phase_r)),acc_deviceptr((void*)(phase_i)),cpx_flag,acc_deviceptr((void*)(Ms)))) {
+if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n,n,NULL,0,NULL,0,acc_deviceptr((void*)(Ms)),n,0,0.0)) {
 #pragma acc parallel loop
         for (int idx=0; idx<matrix_count; idx++){
             Ms[idx].r = 0.0;
             Ms[idx].i = 0.0;
         }
+}
+
 
 #pragma acc parallel loop
         for (int idx=0; idx<dense_count; idx++){
@@ -2014,6 +2051,7 @@ static void BandNonCol_ConstructDenseMs_OpenACC(int cpx_flag, int n, double k1, 
             Ms[dense_index].r += val_r;
 #pragma acc atomic update
             Ms[dense_index].i += val_i;
+        }
         }
     }
 
@@ -2261,6 +2299,13 @@ static void BandNonCol_AccumulateDMKPoint_OpenACC(int myid2, int *is2, int *ie2,
     pair_count = cache->pair_count;
     evec_count = (size_t)n2*(size_t)basis_stride;
 
+    double *dm_outputs[10]={rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,rEDM11,rEDM22};
+    const void *dm_vectors=acc_deviceptr((void*)evec_ptr);
+    const int host_vectors=dm_vectors==NULL;
+    if (host_vectors) dm_vectors=evec_ptr;
+    if (openmx_gpu_dm_entries(OPENMX_GPU_DM_NC,n,nk,basis_stride,entry_count,dm_vectors,host_vectors,
+            basis0,basis1,phase_index,pair_count,phase_r,phase_i,occ,eig_occ,NULL,dm_outputs,1)) return;
+
 #pragma acc data copyin(evec_ptr[0:evec_count], phase_r[0:pair_count], phase_i[0:pair_count], occ[0:nk], eig_occ[0:nk])
     {
         const int dm_chunk_size = 131072;
@@ -2412,6 +2457,38 @@ static void BandNonCol_AccumulateDMRootDense_OpenACC(int *MP, int n, int n2, int
     entry_count = cache->entry_count;
     pair_count = cache->pair_count;
     evec_count = (size_t)n2*(size_t)n2;
+
+    if (BandNonCol_mgpu_host_dense) {
+        dcomplex *pm=malloc(evec_count*sizeof(dcomplex));
+        if (!pm) BandNonCol_AbortWithMessage("Cannot allocate host density matrix");
+        for (int pass=0;pass<2;++pass) {
+            if (!OpenMX_MgpuDensityHost(n2,nk,pass?eig_occ:occ,dense_evec,pm))
+                BandNonCol_AbortWithMessage(openmx_mgpu_host_error());
+#pragma omp parallel for
+            for (int p=0;p<entry_count;++p) {
+                size_t ia=basis0[p],ib=basis1[p];
+                const int ph=phase_index[p];
+                const double co=phase_r[ph],si=phase_i[ph];
+                dcomplex p11=pm[ia+ib*n2],p22=pm[ia+n+(ib+n)*n2],p12=pm[ia+(ib+n)*n2];
+                if (!pass) {
+                    rDM11[p]+=co*p11.r-si*p11.i; iDM11[p]+=co*p11.i+si*p11.r;
+                    rDM22[p]+=co*p22.r-si*p22.i; iDM22[p]+=co*p22.i+si*p22.r;
+                    rDM12[p]+=co*p12.r-si*p12.i; iDM12[p]+=co*p12.i+si*p12.r;
+                } else {
+                    rEDM11[p]+=co*p11.r-si*p11.i; rEDM22[p]+=co*p22.r-si*p22.i;
+                }
+            }
+        }
+        free(pm);
+        return;
+    }
+
+    double *dm_outputs[10]={rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,rEDM11,rEDM22};
+    const void *dm_vectors=acc_deviceptr((void*)dense_evec);
+    const int host_vectors=dm_vectors==NULL;
+    if (host_vectors) dm_vectors=dense_evec;
+    if (openmx_gpu_dm_entries(OPENMX_GPU_DM_NC,n,nk,n2,entry_count,dm_vectors,host_vectors,
+            basis0,basis1,phase_index,pair_count,phase_r,phase_i,occ,eig_occ,NULL,dm_outputs,1)) return;
 
 #pragma acc data copyin(dense_evec[0:evec_count], phase_r[0:pair_count], phase_i[0:pair_count], occ[0:nk], eig_occ[0:nk])
     {
@@ -2696,6 +2773,11 @@ static void BandNonCol_KCacheSave(dcomplex *panel, BandNonColRootDenseWorkspace 
     const size_t pitch = sizeof(dcomplex)*(size_t)ws->n2;
     const size_t width = sizeof(dcomplex)*(size_t)ws->maxn;
 
+    if (!ws->cs2_on_device) {
+        for (int j=0;j<ws->n2;++j) memcpy(panel+(size_t)j*ws->maxn,ws->cs2+(size_t)j*ws->n2,width);
+        return;
+    }
+
 #pragma acc wait
     wait_cudafunc(cudaMemcpy2D(panel,width,acc_deviceptr(ws->cs2),pitch,
                                width,(size_t)ws->n2,cudaMemcpyDeviceToHost));
@@ -2711,6 +2793,12 @@ static void BandNonCol_KCacheRestore(const dcomplex *panel, BandNonColRootDenseW
     const size_t pitch = sizeof(dcomplex)*(size_t)ws->n2;
     const size_t width = sizeof(dcomplex)*(size_t)ws->maxn;
 
+    if (BandNonCol_mgpu_host_dense) {
+        memset(cs2,0,n2n2*sizeof(dcomplex));
+        for (int j=0;j<ws->n2;++j) memcpy(cs2+(size_t)j*ws->n2,panel+(size_t)j*ws->maxn,width);
+        ws->cs2_on_device=0;
+        return;
+    }
     BandNonCol_RootDenseEigenvectorsRelease(ws);
 #pragma acc enter data create(cs2[0 : n2n2])
     ws->cs2_on_device = 1;
@@ -2987,6 +3075,70 @@ static void BandNonCol_KRefSlotFree(BandNonColKRefineSlot *slot, int n2)
     slot->valid = 0;
 }
 
+static void BandNonCol_HostHermitian(int n,dcomplex *a)
+{
+#pragma omp parallel for
+    for (int j=0;j<n;++j) {
+        a[(size_t)j*n+j].i=0.0;
+        for (int i=j+1;i<n;++i) {
+            size_t x=(size_t)j*n+i,y=(size_t)i*n+j;
+            dcomplex v={0.5*(a[x].r+a[y].r),0.5*(a[x].i-a[y].i)};
+            a[x]=v; a[y]=(dcomplex){v.r,-v.i};
+        }
+    }
+}
+static int BandNonCol_RootDenseSolveOneK_Host(int rebuild_overlap,
+    int n,int n2,int MaxN,int kloop,double k1,double k2,double k3,
+    const double *m_olp,const double *m_h11,const double *m_h22,
+    const double *m_h12,const double *m_h12i,const double *m_i11,
+    const double *m_i22,const double *m_i12,int *packed_order_GA,int *MP,
+    double *ko,double ***EIGEN,int need_evec,BandNonColRootDenseWorkspace *rdw)
+{
+    const size_t nn=(size_t)n*n,n2n2=(size_t)n2*n2;
+    dcomplex *s=rdw->s_all,*work=rdw->work,*q=rdw->hs2;
+    dcomplex *h[3]={rdw->h11,rdw->h22,rdw->h12};
+    const double *real[3]={m_h11,m_h22,m_h12};
+    const double *imag[3]={m_i11,m_i22,m_h12i};
+    if (rebuild_overlap) {
+        memset(s,0,nn*sizeof(dcomplex));
+        BandNonCol_ConstructDenseMsFromPacked(0,m_olp,s,packed_order_GA,MP,k1,k2,k3,n,1);
+        BandNonCol_HostHermitian(n,s);
+        if (!openmx_mgpu_host_solve(n,n,1,s,n,ko+1)) BandNonCol_AbortWithMessage(openmx_mgpu_host_error());
+#pragma omp parallel for
+        for (int j=0;j<n;++j) {
+            double scale=1.0/sqrt(fmax(ko[j+1],1.0e-10));
+            for (int i=0;i<n;++i) { s[(size_t)j*n+i].r*=scale; s[(size_t)j*n+i].i*=scale; }
+        }
+    }
+    for (int b=0;b<3;++b) {
+        memset(h[b],0,nn*sizeof(dcomplex));
+        BandNonCol_ConstructDenseMsFromPacked(0,real[b],h[b],packed_order_GA,MP,k1,k2,k3,n,1);
+        BandNonCol_ConstructDenseMsFromPacked(1,imag[b],h[b],packed_order_GA,MP,k1,k2,k3,n,1);
+        if (b==2) BandNonCol_ConstructDenseMsFromPacked(1,m_i12,h[b],packed_order_GA,MP,k1,k2,k3,n,1);
+        if (!openmx_mgpu_host_zgemm(CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,h[b],n,s,n,work,n) ||
+            !openmx_mgpu_host_zgemm(CUBLAS_OP_C,CUBLAS_OP_N,n,n,n,s,n,work,n,h[b],n))
+            BandNonCol_AbortWithMessage(openmx_mgpu_host_error());
+    }
+#pragma omp parallel for collapse(2)
+    for (int j=0;j<n;++j) for (int i=0;i<n;++i) {
+        size_t ij=(size_t)j*n+i, full=(size_t)j*n2+i;
+        q[full]=h[0][ij]; q[full+(size_t)n*n2]=h[2][ij];
+        q[(size_t)i*n2+j+n]=(dcomplex){h[2][ij].r,-h[2][ij].i};
+        q[full+(size_t)n*n2+n]=h[1][ij];
+    }
+    BandNonCol_HostHermitian(n2,q);
+    if (!openmx_mgpu_host_solve(n2,MaxN,1,q,n2,ko+1)) BandNonCol_AbortWithMessage(openmx_mgpu_host_error());
+    for (int l=1;l<=MaxN;++l) EIGEN[0][kloop][l]=ko[l];
+    if (need_evec) {
+        memset(rdw->cs2,0,n2n2*sizeof(dcomplex));
+        for (int half=0;half<2;++half)
+            if (!openmx_mgpu_host_zgemm(CUBLAS_OP_T,CUBLAS_OP_T,MaxN,n,n,q+(size_t)half*n,n2,
+                    s,n,rdw->cs2+(size_t)half*n*n2,n2)) BandNonCol_AbortWithMessage(openmx_mgpu_host_error());
+    }
+    rdw->cs2_on_device=0;
+    return 0;
+}
+
 static int BandNonCol_RootDenseSolveOneK_FirstHalf(int rebuild_overlap,
                                                    int n, int n2, int MaxN, int kloop,
                                                    double k1, double k2, double k3,
@@ -3075,6 +3227,9 @@ static int BandNonCol_RootDenseSolveOneK_FirstHalf(int rebuild_overlap,
                                                    BandNonColRootDenseWorkspace *rdw,
                                                    int refine)
 {
+    if (BandNonCol_mgpu_host_dense)
+        return BandNonCol_RootDenseSolveOneK_Host(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+            m_olp,m_h11,m_h22,m_h12,m_h12i,m_i11,m_i22,m_i12,packed_order_GA,MP,ko,EIGEN,need_evec,rdw);
     int nn = n*n;
     int n2n2 = n2*n2;
     int i,j,l;
@@ -3093,12 +3248,16 @@ static int BandNonCol_RootDenseSolveOneK_FirstHalf(int rebuild_overlap,
         BandNonCol_GpuSolver_DenseZheevx_Device(active_S,ko,n,n,
                                                "Band_DFT_NonCol root dense overlap",1);
 
+if (!openmx_gpu_transform(OPENMX_GPU_INVSQRT,0,1,n,(double*)acc_deviceptr((void*)(ko))+1,1,NULL,0,(double*)acc_deviceptr((void*)(ko))+1,1,0,1.0e-10)) {
 #pragma acc parallel loop present(ko[0 : n + 1])
         for (l=1; l<=n; l++){
             if (ko[l]<1.0e-10) ko[l] = 1.0e-10;
             ko[l] = 1.0/sqrt(ko[l]);
         }
+}
 
+
+if (!openmx_gpu_transform(OPENMX_GPU_SCALE_COLUMNS,1,n,n,acc_deviceptr((void*)(active_S)),n,(double*)acc_deviceptr((void*)(ko))+1,0,acc_deviceptr((void*)(active_S)),n,0,0.0)) {
 #pragma acc parallel loop collapse(2) present(active_S[0 : nn], ko[0 : n + 1])
         for (i=0; i<n; i++){
             for (j=0; j<n; j++){
@@ -3106,6 +3265,8 @@ static int BandNonCol_RootDenseSolveOneK_FirstHalf(int rebuild_overlap,
                 active_S[(size_t)j*(size_t)n + (size_t)i].i *= ko[j+1];
             }
         }
+}
+
 
 #pragma acc update self(active_S[0 : nn])
     }
@@ -3283,6 +3444,7 @@ static void BandNonCol_DistributeDenseEvecGlobal(int active_world2, int n2, int 
                 const int stride_c = stride;
                 dcomplex *panel = panel_dev;
 
+if (!openmx_gpu_transform(OPENMX_GPU_COPY,1,stride_c,n2,(dcomplex*)acc_deviceptr((void*)(dense_evec))+is_c-1,n2,NULL,0,panel,stride_c,0,0.0)) {
 #pragma acc parallel loop gang vector_length(128) present(dense_evec[0 : n2n2]) deviceptr(panel)
                 for (int basis=0; basis<n2; basis++){
 #pragma acc loop vector
@@ -3291,6 +3453,8 @@ static void BandNonCol_DistributeDenseEvecGlobal(int active_world2, int n2, int 
                             dense_evec[(size_t)basis*(size_t)n2 + (size_t)(is_c-1) + (size_t)s];
                     }
                 }
+}
+
                 acc_memcpy_from_device(dst,panel_dev,sizeof(dcomplex)*(size_t)count);
             }
             else {
@@ -3389,6 +3553,7 @@ static void BandNonCol_BuildDenseHs2_OpenACC(int n, int n2, const dcomplex *H11,
 #pragma acc enter data create(H2[0 : n2n2])
     }
 
+if (!openmx_gpu_spinor(n,0,acc_deviceptr((void*)(H11)),acc_deviceptr((void*)(H22)),acc_deviceptr((void*)(H12)),NULL,NULL,NULL,acc_deviceptr((void*)(H2)))) {
 #pragma acc parallel loop collapse(2) present(H11[0 : nn], H22[0 : nn], H12[0 : nn], H2[0 : n2n2])
     for (int j=0; j<n2; j++){
         for (int i=0; i<n2; i++){
@@ -3417,6 +3582,8 @@ static void BandNonCol_BuildDenseHs2_OpenACC(int n, int n2, const dcomplex *H11,
             }
         }
     }
+}
+
 }
 
 double **ReEVec_i1,**ImEVec_i1,**ReEVec_i2,**ImEVec_i2;
@@ -4061,18 +4228,18 @@ double Band_DFT_NonCol(
 	  BandNonCol_RefineConfigure();
 	  BandNonCol_refine.last_refined = 0;
 
-	  if (scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=n2){
-	    (void)BandNonCol_GpuDiagFits(SCF_iter,n,n2,MaxN,size_H1,myid0);
+	  if (scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2)){
+	    (void)BandNonCol_GpuDiagFits(SCF_iter,n,n2,MaxN,size_H1,myid0,T_knum);
 	  }
 	  else {
 	    /* not a GPU-dense run; keep the shared verdict neutral so the helper
 	       branches follow their other conditions unchanged */
 	    BandNonCol_gpu_dense_verdict = 1;
 	  }
-	  use_root_dense_gpusolver = (scf_eigen_lib_flag==GPUSOLVER && all_knum==1 && Band_DFT_NonCol_GpuSwitchNum()<=n2 &&
+	  use_root_dense_gpusolver = (scf_eigen_lib_flag==GPUSOLVER && all_knum==1 && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2) &&
 	                              BandNonCol_gpu_dense_verdict);
 	  use_k_dense_gpusolver = (scf_eigen_lib_flag==GPUSOLVER && all_knum!=1 &&
-	                          Band_DFT_NonCol_GpuSwitchNum()<=n2 && strcasecmp(mode,"scf")==0 &&
+	                          (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2) && strcasecmp(mode,"scf")==0 &&
 	                          BandNonCol_gpu_dense_verdict);
 	  if (use_k_dense_gpusolver){
 	    /* the refined eigensolver on the k-dense path (every rank) */
@@ -4409,6 +4576,8 @@ double Band_DFT_NonCol(
         k2 = T_KGrids2[kloop];
         k3 = T_KGrids3[kloop];
 
+        openmx_mgpu_scope_state mgpu_scope =
+          openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
         rdw = BandNonCol_RootDenseWorkspace_Ensure(1,n,n2,MaxN,1,SCF_iter);
         if (k_evec_cache != NULL && !BandNonCol_refine.kdense){
           size_t limit = BandNonCol_KCacheLimit();
@@ -4443,6 +4612,7 @@ double Band_DFT_NonCol(
           }
           }
         }
+        openmx_mgpu_band_scope_leave(mgpu_scope);
       }
 
       if (owns_dense_k_group){
@@ -4642,22 +4812,27 @@ double Band_DFT_NonCol(
           k2 = T_KGrids2[kloop];
           k3 = T_KGrids3[kloop];
 
-          if (owns_root_dense && BandNonCol_refine.staged){
-            /* pass 1: the refinement gated with the previous step's
-               chemical potential, the basis to the host slot; pass 2: from
-               that basis with this step's, the wavefunctions into cs2 */
-            BandNonCol_KDenseRefinedSolveOneK(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
-                                              m_olp,m_h11,m_h22,m_h12,m_h12i,m_i11,m_i22,m_i12,
-                                              packed_order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],
-                                              root_dense_pass, root_dense_pass ? root_dense_mu : ChemP);
-            rdw->s_valid = 1;
-          }
-          else if (owns_root_dense){
-            (void)BandNonCol_RootDenseSolveOneK_FirstHalf(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
-                                                          m_olp,m_h11,m_h22,m_h12,m_h12i,
-                                                          m_i11,m_i22,m_i12,
-                                                          packed_order_GA,MP,ko,EIGEN,1,rdw,
-                                                          BandNonCol_refine.last_refined);
+          if (owns_root_dense){
+            openmx_mgpu_scope_state mgpu_scope =
+              openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
+            if (BandNonCol_refine.staged){
+              /* pass 1: the refinement gated with the previous step's
+                 chemical potential, the basis to the host slot; pass 2: from
+                 that basis with this step's, the wavefunctions into cs2 */
+              BandNonCol_KDenseRefinedSolveOneK(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+                                                m_olp,m_h11,m_h22,m_h12,m_h12i,m_i11,m_i22,m_i12,
+                                                packed_order_GA,MP,ko,EIGEN,rdw,&BandNonCol_kref[kloop],
+                                                root_dense_pass, root_dense_pass ? root_dense_mu : ChemP);
+              rdw->s_valid = 1;
+            }
+            else {
+              (void)BandNonCol_RootDenseSolveOneK_FirstHalf(rebuild_overlap,n,n2,MaxN,kloop,k1,k2,k3,
+                                                            m_olp,m_h11,m_h22,m_h12,m_h12i,
+                                                            m_i11,m_i22,m_i12,
+                                                            packed_order_GA,MP,ko,EIGEN,1,rdw,
+                                                            BandNonCol_refine.last_refined);
+            }
+            openmx_mgpu_band_scope_leave(mgpu_scope);
           }
         }
       }
@@ -4671,10 +4846,13 @@ double Band_DFT_NonCol(
         mu = BandNonCol_RefineChemP(EIGEN,T_knum,MaxN,T_k_op,sum_weights,TZ);
         if (owns_root_dense_rank && BandNonCol_refine.pending){
           kloop = myworld2;
+          openmx_mgpu_scope_state mgpu_scope =
+            openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
           BandNonCol_RootDenseSolveOneK_SecondHalf(n,n2,MaxN,kloop,ko,EIGEN,mu,&BandNonCol_root_dense_workspace,1);
           /* the basis (n2^2 complex numbers) stays only for a warm start of
              the next step (OPENMX_EIGEN_REFINE_WARM_BAND) */
           if (!openmx_eigen_refine_warm_band_enabled()) BandNonCol_RefineDropBasis();
+          openmx_mgpu_band_scope_leave(mgpu_scope);
         }
         BandNonCol_RefineEndStep();
       }
@@ -4771,7 +4949,7 @@ double Band_DFT_NonCol(
 	mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
 	mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-	if (scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows==n && na_cols==n &&
+	if (scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2) && na_rows==n && na_cols==n &&
 	    BandNonCol_gpu_dense_verdict){
 	  BandNonCol_GpuSolver_DenseZheevx(Cs,Ss,ko,n,n,"Band_DFT_NonCol overlap");
 	}
@@ -4965,7 +5143,7 @@ double Band_DFT_NonCol(
       mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
       mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-        if (scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows2==n2 && na_cols2==n2 &&
+        if (scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2) && na_rows2==n2 && na_cols2==n2 &&
             BandNonCol_gpu_dense_verdict){
           BandNonCol_GpuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol Hamiltonian");
         }
@@ -5432,10 +5610,13 @@ double Band_DFT_NonCol(
               k2 = T_KGrids2[kloop];
               k3 = T_KGrids3[kloop];
 
+              openmx_mgpu_scope_state mgpu_scope =
+                openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
               BandNonCol_AccumulateDMRootDenseK_OpenACC(size_H1,MP,n,n2,MaxN,k1,k2,k3,
                                                         EIGEN[0][kloop],rdw->cs2,
                                                         rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
                                                         rEDM11,rEDM22);
+              openmx_mgpu_band_scope_leave(mgpu_scope);
             }
           }
 
@@ -5460,13 +5641,16 @@ double Band_DFT_NonCol(
 				    rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
 				    rEDM11,rEDM22 );
       }
-      else if (scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=n2){
+      else if (scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2)){
+        const openmx_mgpu_scope_state dm_scope =
+            openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
         BandNonCol_CalcDMAllK1_OpenACC( myid0,myid2,size_H1,
 					is2,ie2,MP,n,n2,k1,k2,k3,
 					CDM,iDM[0],EDM,EIGEN[0][kloop],
 					EVec1[0],
 					rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
 					rEDM11,rEDM22 );
+        openmx_mgpu_band_scope_leave(dm_scope);
       }
       else {
         Calc_DM_Band_non_collinear( 1,1,
@@ -5642,6 +5826,8 @@ double Band_DFT_NonCol(
           k2 = T_KGrids2[kloop];
           k3 = T_KGrids3[kloop];
 
+          openmx_mgpu_scope_state mgpu_scope =
+            openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
           rdw = BandNonCol_RootDenseWorkspace_Ensure(1,n,n2,MaxN,1,SCF_iter);
           if (k_evec_cache != NULL && k_evec_cache[kloop] != NULL){
             BandNonCol_KCacheRestore(k_evec_cache[kloop],rdw);
@@ -5671,6 +5857,7 @@ double Band_DFT_NonCol(
                                                     rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
                                                       rEDM11,rEDM22);
           BandNonCol_RootDenseEigenvectorsRelease(rdw);
+          openmx_mgpu_band_scope_leave(mgpu_scope);
         }
 
         if (owns_dense_k_group){
@@ -5749,7 +5936,7 @@ double Band_DFT_NonCol(
 	mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
 	mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-        if (scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows==n && na_cols==n &&
+        if (scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2) && na_rows==n && na_cols==n &&
             BandNonCol_gpu_dense_verdict){
           BandNonCol_GpuSolver_DenseZheevx(Cs,Ss,ko,n,n,"Band_DFT_NonCol overlap");
         }
@@ -5928,7 +6115,7 @@ double Band_DFT_NonCol(
 	mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
 	mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
   
-        if (scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows2==n2 && na_cols2==n2 &&
+        if (scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2) && na_rows2==n2 && na_cols2==n2 &&
             BandNonCol_gpu_dense_verdict){
           BandNonCol_GpuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Band_DFT_NonCol Hamiltonian");
         }
@@ -6045,10 +6232,13 @@ double Band_DFT_NonCol(
             BandNonCol_UseGpuFallbackDM(n2,(size_t)n2*(size_t)(ie2[myid2]-is2[myid2]+1)*sizeof(dcomplex))){
           /* accumulates this k on the GPU; EVec1 stays unscaled because the
              kernel applies the Fermi weights itself */
+          const openmx_mgpu_scope_state dm_scope =
+              openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
           BandNonCol_AccumulateDMKPoint_OpenACC(myid2,is2,ie2,MP,n,n2,size_H1,k1,k2,k3,
                                                 EIGEN[0][kloop],EVec1[0],
                                                 rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
                                                 rEDM11,rEDM22);
+          openmx_mgpu_band_scope_leave(dm_scope);
         }
         else{
 	Calc_DM_Band_non_collinear( (kloop0<num_kloop0),0,
@@ -6519,7 +6709,7 @@ static void BandNonCol_ConstructDenseMsFromPacked( int cpx_flag, const double *M
     return;
   }
 
-  if (scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=2*n){
+  if (!BandNonCol_mgpu_host_dense && scf_eigen_lib_flag==GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum()<=2*n){
     BandNonCol_ConstructCache_Ensure(order_GA,MP,n);
     BandNonCol_ConstructDenseMs_OpenACC(cpx_flag,n,k1,k2,k3,M1,Ms);
     return;
@@ -7594,6 +7784,7 @@ double Calc_ParDM_Band_non_collinear(
    Called on every rank before Free_Arrays(0) frees the current system. */
 void Band_DFT_NonCol_Release_GPU_Caches(void)
 {
+    BandNonCol_mgpu_host_dense=0;
     BandNonCol_KOverlapReset();
     BandNonCol_ConstructCache_Reset();
     BandNonCol_DMEntryCache_Reset();

@@ -186,7 +186,7 @@ NVCC_HOST ?= $(NVHPC_COMPILER_BIN)/nvc++
 NVCC_GEMMUL8_ENV = PATH="$(PATH)" CUDA_HOME="$(NVHPC_CUDA_HOME)" CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= NVCC_PREPEND_FLAGS= NVCC_APPEND_FLAGS=
 NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(GEMMUL8_BUILD_GPU_ARCH) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
 
-# Single-node cluster solvers. Paper and GEMM implementations are built in;
+# Single-node cluster solvers. The custom GEMM implementation is built in;
 # MAGMA is optional (auto uses an existing install, 1 builds it, 0 disables it).
 WITH_MAGMA ?= auto
 MAGMA_PREFIX ?= $(CURDIR)/third_party/magma-install
@@ -326,7 +326,10 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           Cluster_DFT_Col_DMmu.o Cluster_DFT_NonCol_DMmu.o Band_DFT_Col_DMmu.o Band_DFT_NonCol_DMmu.o \
           Electric_Polarization_BandCol.o Electric_Polarization_BandNonCol.o
 
-OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o openmx_paper_mgpu.o
+OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
+OBJS += openmx_gpu_workers.o openmx_gpu_views.o
+OBJS += openmx_gpu_transform.o
+OBJS += openmx_gpu_dm.o
 
 # PROG    = openmx.exe
 # PROG    = openmx
@@ -886,12 +889,26 @@ openmx_precision.o: openmx_precision.c openmx_precision.h
 gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h openmx_stdout_level.h openmx_mgpu_runtime.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
 
-Input_std.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_mgpu_runtime.h
-openmx_mgpu_runtime.o: openmx_mgpu_runtime.cu openmx_mgpu_runtime.h openmx_mgpu_gemm.h openmx_magma_mgpu.h openmx_paper_mgpu.h openmx_stdout_level.h
+Input_std.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_mgpu_runtime.h
+Input_std.o set_cuda_default_device_from_local_rank.o set_openacc_device_from_local_rank.o \
+Set_XC_Grid.o Total_Energy_GPU.o Set_Orbitals_Grid.o Set_Nonlocal.o Set_ProExpn_VNA.o \
+Force.o truncation.o Set_OLP_Kin.o Mixing_H.o Set_Density_Grid_GPU.o Set_Hamiltonian.o \
+set_hamiltonian_gpu.o: openmx_gpu_workers.h openmx_gpu_views.h
+openmx_gpu_workers.o: openmx_gpu_workers.c openmx_gpu_workers.h openmx_mgpu_runtime.h set_cuda_default_device_from_local_rank.h
+	$(CC) -c $< -o $@
+openmx_gpu_views.o: openmx_gpu_views.c openmx_gpu_views.h
+	$(CC) -c $< -o $@
+Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_transform.h
+Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_dm.h
+openmx_gpu_transform.o: openmx_gpu_transform.cu openmx_gpu_transform.h openmx_gpu_workers.h openmx_gpu_views.h
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
+openmx_gpu_dm.o: openmx_gpu_dm.cu openmx_gpu_dm.h openmx_gpu_workers.h openmx_gpu_views.h
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
+Input_std.o Band_DFT_Col.o: openmx_mgpu_band_plan.h
+Cluster_DFT_NonCol.o Band_DFT_NonCol.o: openmx_mgpu_density.h
+openmx_mgpu_runtime.o: openmx_mgpu_runtime.cu openmx_mgpu_runtime.h openmx_mgpu_gemm.h openmx_magma_mgpu.h openmx_stdout_level.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
 openmx_mgpu_gemm.o: openmx_mgpu_gemm.cu openmx_mgpu_gemm.h
-	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
-openmx_paper_mgpu.o: openmx_paper_mgpu.cu openmx_paper_mgpu.h openmx_paper_mgpu_impl.cuh
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
 
 # Unlike the global toolchain signature this also records a switch from
@@ -901,7 +918,7 @@ $(MAGMA_ADAPTER_CONFIG): openmx-toolchain-force
 	@mkdir -p "$(dir $@)"
 	@printf '%s\n' '$(MAGMA_ENABLED)' '$(MAGMA_PREFIX)' '$(MAGMA_CPPFLAGS)' > "$@.tmp"
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
-openmx_magma_mgpu.o: openmx_magma_mgpu.cpp openmx_magma_mgpu.h $(MAGMA_ADAPTER_CONFIG) $(MAGMA_DEPENDENCY)
+openmx_magma_mgpu.o: openmx_magma_mgpu.cpp openmx_magma_mgpu.h third_party/magma_device_map.h $(MAGMA_ADAPTER_CONFIG) $(MAGMA_DEPENDENCY)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) $(MAGMA_CPPFLAGS) -Xcompiler -pthread -c $< -o $@
 .PHONY: magma-stack
 magma-stack: $(MAGMA_LIBRARY)
@@ -913,7 +930,7 @@ $(MAGMA_BUILD_CONFIG): openmx-toolchain-force
 	@mkdir -p "$(dir $@)"
 	@printf '%s\n' '$(NVHPC_CUDA_HOME)' '$(NVHPC_MATH_DIR)' '$(GEMMUL8_BUILD_GPU_ARCH)' '$(MAGMA_HOST_CC)' '$(MAGMA_HOST_CXX)' '$(MAGMA_HOST_LIBDIR)' '$(MAGMA_PREFIX)' '$(MAGMA_LAPACK_LIBRARIES)' > "$@.tmp"
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
-$(MAGMA_LIBRARY): third_party/build_magma.sh $(MAGMA_BUILD_CONFIG)
+$(MAGMA_LIBRARY): third_party/build_magma.sh third_party/magma-device-map.patch third_party/magma_device_map.h $(MAGMA_BUILD_CONFIG)
 	MAGMA_BUILD="$(MAGMA_BUILD)" MAGMA_PREFIX="$(MAGMA_PREFIX)" \
 	MAGMA_ARCHIVE="$(MAGMA_ARCHIVE)" \
 	MAGMA_CUDA_HOME="$(NVHPC_CUDA_HOME)" MAGMA_MATH_DIR="$(NVHPC_MATH_DIR)" \

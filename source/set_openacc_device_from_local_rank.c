@@ -1,4 +1,5 @@
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
 #include "set_openacc_device_from_local_rank.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <stdlib.h>
@@ -45,6 +46,8 @@ int set_openacc_nvidia_device_from_local_rank(void)
 
 int set_openacc_device_from_local_rank_noncollective(acc_device_t devtype)
 {
+    const int worker=openmx_gpu_worker_device();
+    if (worker>=0) { acc_set_device_num(worker,devtype); return worker; }
     int ndev = acc_get_num_devices(devtype);
     int dev  = -1;
 

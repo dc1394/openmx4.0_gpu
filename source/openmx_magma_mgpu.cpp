@@ -4,6 +4,17 @@
 #include "openmx_magma_mgpu.h"
 #include <cstdio>
 #include <cstring>
+#include <cstdint>
+
+extern "C" size_t openmx_magma_mgpu_device_bytes(int ngpu, int n, int is_complex)
+{
+    if (ngpu < 2 || ngpu > 8 || n < 1 || n > 32766) return SIZE_MAX;
+    const size_t rows = size_t(n), columns = (rows + ngpu - 1)/ngpu;
+    const size_t elements = 2*rows*columns + 8192*rows;
+    const size_t width = is_complex ? 16 : 8, reserve = size_t(256)<<20;
+    if (elements > (SIZE_MAX-reserve)/width) return SIZE_MAX;
+    return width*elements + reserve;
+}
 
 static thread_local char magma_error[256] = "";
 
@@ -18,6 +29,7 @@ extern "C" const char *openmx_magma_mgpu_last_error(void) { return magma_error; 
 #ifdef OPENMX_HAVE_MAGMA
 #include <magma_v2.h>
 #include <cuda_runtime_api.h>
+extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *, size_t *);
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -28,6 +40,10 @@ extern "C" const char *openmx_magma_mgpu_last_error(void) { return magma_error; 
 #include <mutex>
 #include <new>
 #include <vector>
+
+/* A private, versioned extension of the pinned dependency. Weak binding
+   preserves prefix-only use of ordinary external MAGMA installations. */
+extern "C" int openmx_magma_device_map_v1(int,const int*) __attribute__((weak));
 
 namespace {
 std::mutex magma_mutex;
@@ -117,34 +133,92 @@ template<class T> void resize_exact(std::vector<T> &v,size_t count)
 /* Every solve still restores the caller's device, including all failures. */
 struct Session {
     int previous = -1;
+    bool mapped = false;
     ~Session() {
+        if (mapped) (void)openmx_magma_device_map_v1(0,nullptr);
         if (previous >= 0) (void)cudaSetDevice(previous);
     }
 };
 
-int device_preflight(int ngpu, int n, size_t width, Session &session)
+int device_preflight(int ngpu, const int *devices, int n, size_t width, Session &session)
 {
     int count = 0;
     if (cudaGetDevice(&session.previous) != cudaSuccess || cudaGetDeviceCount(&count) != cudaSuccess)
         return fail(OPENMX_MAGMA_CUDA_ERROR, "CUDA device query failed");
     if (count < ngpu) return fail(OPENMX_MAGMA_UNAVAILABLE, "fewer visible GPUs than requested");
+    bool prefix=true;
+    for (int j=0;j<ngpu;++j) {
+        if (devices[j]<0 || devices[j]>=count)
+            return fail(OPENMX_MAGMA_INVALID,"MAGMA device ordinal is not visible");
+        for (int i=0;i<j;++i) if (devices[i]==devices[j])
+            return fail(OPENMX_MAGMA_INVALID,"MAGMA device ordinals must be distinct");
+        prefix=prefix && devices[j]==j;
+    }
+    if (!prefix && !openmx_magma_device_map_v1)
+        return fail(OPENMX_MAGMA_UNAVAILABLE,"MAGMA dependency lacks selected-device support");
     /* Conservative bounds for the one-stage reduction, divide-and-conquer
        and backtransform scratch, including block-cyclic padding. They are
        not all live at once. Use the largest bound, plus a context reserve.
        Parent node-wide admission prevents competing dense owners racing
        these checks; unrelated external processes can still consume memory. */
-    const size_t rows = size_t(n);
-    const size_t columns = (rows + ngpu - 1)/ngpu;
-    const size_t required = width*(2*rows*columns + 8192*rows) + (size_t(256)<<20);
+    const size_t required = openmx_magma_mgpu_device_bytes(ngpu,n,width==16);
     for (int dev = 0; dev < ngpu; ++dev) {
         size_t free_bytes = 0, total = 0;
-        if (cudaSetDevice(dev) != cudaSuccess || cudaMemGetInfo(&free_bytes, &total) != cudaSuccess)
+        if (cudaSetDevice(devices[dev]) != cudaSuccess || (OpenMX_GpuMemGetInfo ? OpenMX_GpuMemGetInfo(&free_bytes,&total) : cudaMemGetInfo(&free_bytes,&total)) != cudaSuccess)
             return fail(OPENMX_MAGMA_CUDA_ERROR, "CUDA memory preflight failed");
         if (free_bytes < required) return fail(OPENMX_MAGMA_RESOURCES, "insufficient per-GPU MAGMA scratch/reserve");
     }
-    if (cudaSetDevice(session.previous) != cudaSuccess)
-        return fail(OPENMX_MAGMA_CUDA_ERROR, "cannot restore caller CUDA device");
-    return magma_library.ensure();
+    const int status=magma_library.ensure();
+    if (status) return status;
+    if (!prefix) {
+        /* Main-thread MAGMA save/restore operations must begin inside the
+           group. OpenMP workers observe the same immutable map. */
+        if (cudaSetDevice(devices[0])!=cudaSuccess)
+            return fail(OPENMX_MAGMA_CUDA_ERROR,"cannot select MAGMA group owner");
+        if (openmx_magma_device_map_v1(ngpu,devices))
+            return fail(OPENMX_MAGMA_LIBRARY_ERROR,"MAGMA device map setup failed");
+        session.mapped=true;
+    } else if (cudaSetDevice(session.previous)!=cudaSuccess)
+        return fail(OPENMX_MAGMA_CUDA_ERROR,"cannot restore caller CUDA device");
+    return OPENMX_MAGMA_SUCCESS;
+}
+
+template<class T>
+void order_eigenpairs(int n,int count,bool vectors,std::vector<T> &a,std::vector<double> &w)
+{
+    bool ordered=true;
+    for (int j=0;j<count;++j) {
+        /* Leave nonfinite results for validation; NaNs cannot participate
+           in a strict weak ordering. */
+        if (!std::isfinite(w[j])) return;
+        if (j && w[j]<w[j-1]) ordered=false;
+    }
+    if (ordered) return;
+    /* MAGMA's divide-and-conquer merge can return nearly degenerate values
+       a few ulps out of order. Preserve each value/vector pair, then apply
+       exactly the same residual and orthogonality validation as before.
+       Permutation cycles require only one temporary column, not n*n. */
+    if (vectors) {
+        std::vector<int> order(count);
+        for (int j=0;j<count;++j) order[j]=j;
+        std::stable_sort(order.begin(),order.end(),[&](int i,int j) { return w[i]<w[j]; });
+        std::vector<T> column(n);
+        for (int first=0;first<count;++first) {
+            if (order[first]==first) continue;
+            std::copy_n(a.data()+size_t(first)*n,n,column.data());
+            int to=first;
+            while (order[to]!=first) {
+                const int from=order[to];
+                std::copy_n(a.data()+size_t(from)*n,n,a.data()+size_t(to)*n);
+                order[to]=to;
+                to=from;
+            }
+            std::copy_n(column.data(),n,a.data()+size_t(to)*n);
+            order[to]=to;
+        }
+    }
+    std::sort(w.begin(),w.begin()+count);
+    std::fprintf(stderr,"<OpenMX_MAGMA> sorted returned eigenpairs n=%d count=%d before validation\n",n,count);
 }
 
 template<class T>
@@ -153,10 +227,18 @@ bool validate(const void *original, int lda, bool lower, int n, int count,
               double norm)
 {
     for (int j = 0; j < count; ++j) {
-        if (!std::isfinite(w[j]) || (j && w[j] < w[j-1])) return false;
+        if (!std::isfinite(w[j]) || (j && w[j] < w[j-1])) {
+            std::snprintf(magma_error,sizeof(magma_error),
+                "MAGMA eigenvalue validation failed: index=%d value=%.17g previous=%.17g",
+                j,w[j],j?w[j-1]:w[j]);
+            return false;
+        }
     }
     if (!vectors) return true;
-    for (size_t i = 0; i < size_t(n)*count; ++i) if (!finite(a[i])) return false;
+    for (size_t i = 0; i < size_t(n)*count; ++i) if (!finite(a[i])) {
+        std::snprintf(magma_error,sizeof(magma_error),"MAGMA nonfinite eigenvector entry: offset=%zu",i);
+        return false;
+    }
 
     /* Four evenly spaced eigenvectors and 32 spread rows, independent of
        MAGMA's reduction. Check mutual orthogonality over every vector row.
@@ -192,22 +274,32 @@ bool validate(const void *original, int lda, bool lower, int n, int count,
         rnorm *= std::sqrt(double(n)/rows);
         const double denominator = (norm + std::abs(w[column[s]]))*vnorm;
         if (!std::isfinite(rnorm) || !std::isfinite(vnorm) || vnorm < 0.5 ||
-            rnorm > 1e-10*std::max(denominator, std::numeric_limits<double>::min())) return false;
+            rnorm > 1e-10*std::max(denominator, std::numeric_limits<double>::min())) {
+            std::snprintf(magma_error,sizeof(magma_error),
+                "MAGMA residual validation failed: column=%d residual=%.17g scale=%.17g vector_norm=%.17g tolerance=1e-10",
+                column[s],rnorm,denominator,vnorm);
+            return false;
+        }
         for (int t = 0; t <= s; ++t) {
             T dot = T(0);
             for (int i = 0; i < n; ++i)
                 dot += conjugate(a[size_t(column[t])*n+i])*a[size_t(column[s])*n+i];
-            if (std::abs(dot-T(s==t ? 1 : 0)) > 1e-10) return false;
+            if (std::abs(dot-T(s==t ? 1 : 0)) > 1e-10) {
+                std::snprintf(magma_error,sizeof(magma_error),
+                    "MAGMA orthogonality validation failed: columns=%d,%d error=%.17g tolerance=1e-10",
+                    column[t],column[s],std::abs(dot-T(s==t ? 1 : 0)));
+                return false;
+            }
         }
     }
     return true;
 }
 
 template<class T>
-int solve(int ngpu, int vectors, int lower, int n, int first, int last, void *A, int lda, double *W)
+int solve(int ngpu, const int *devices, int vectors, int lower, int n, int first, int last, void *A, int lda, double *W)
 {
     Session session;
-    int status = device_preflight(ngpu, n, sizeof(T), session);
+    int status = device_preflight(ngpu, devices, n, sizeof(T), session);
     if (status) return status;
     const int count = last-first+1;
     const magma_vec_t jobz = vectors ? MagmaVec : MagmaNoVec;
@@ -289,7 +381,7 @@ int solve(int ngpu, int vectors, int lower, int n, int first, int last, void *A,
        accepted. Check every participating device, not whichever one MAGMA
        happened to leave selected after an early return. */
     for (int dev = 0; dev < ngpu; ++dev) {
-        if (cudaSetDevice(dev) != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess)
+        if (cudaSetDevice(devices[dev]) != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess)
             return fail(OPENMX_MAGMA_CUDA_ERROR, "MAGMA device execution failed");
     }
     if (result || info || found != count) {
@@ -297,8 +389,32 @@ int solve(int ngpu, int vectors, int lower, int n, int first, int last, void *A,
                       result, int(info), int(found), count);
         return OPENMX_MAGMA_LIBRARY_ERROR;
     }
-    if (!validate<T>(A, lda, lower != 0, n, count, copy, eigenvalues, vectors != 0, norm))
-        return fail(OPENMX_MAGMA_VALIDATION_ERROR, "MAGMA eigenpair validation failed");
+    order_eigenpairs(n,count,vectors!=0,copy,eigenvalues);
+    if (!validate<T>(A, lda, lower != 0, n, count, copy, eigenvalues, vectors != 0, norm)) {
+        /* Optional failure evidence: six uint64 fields (magic, scalar bytes,
+           n, eigenpair count, lower, vectors), then contiguous column-major
+           input, returned vectors and eigenvalues. The failed solve never
+           publishes either vectors or eigenvalues to its caller. */
+        const char *dump=std::getenv("OPENMX_MAGMA_FAILURE_DUMP");
+        if (dump && *dump) {
+            FILE *fp=std::fopen(dump,"wb");
+            bool ok=fp!=nullptr;
+            const uint64_t header[]={0x4f4d584d41474d41ULL,sizeof(T),uint64_t(n),uint64_t(count),uint64_t(lower),uint64_t(vectors)};
+            if (ok) ok=std::fwrite(header,sizeof(header),1,fp)==1;
+            for (int j=0;j<n && ok;++j)
+                ok=std::fwrite(static_cast<const unsigned char *>(A)+size_t(j)*lda*sizeof(T),sizeof(T),n,fp)==size_t(n);
+            if (ok && vectors) ok=std::fwrite(copy.data(),sizeof(T),size_t(n)*count,fp)==size_t(n)*count;
+            if (ok) ok=std::fwrite(eigenvalues.data(),sizeof(double),count,fp)==size_t(count);
+            if (fp && std::fclose(fp)!=0) ok=false;
+            std::fprintf(stderr,"<OpenMX_MAGMA> failure dump %s: %s\n",ok?"saved":"failed",dump);
+        }
+        return OPENMX_MAGMA_VALIDATION_ERROR;
+    }
+    if (session.mapped) {
+        if (openmx_magma_device_map_v1(0,nullptr))
+            return fail(OPENMX_MAGMA_LIBRARY_ERROR,"MAGMA device map cleanup failed");
+        session.mapped=false;
+    }
     if (cudaSetDevice(session.previous) != cudaSuccess)
         return fail(OPENMX_MAGMA_CUDA_ERROR, "cannot restore caller CUDA device after MAGMA");
     /* No fallible operations after publication. */
@@ -311,27 +427,33 @@ int solve(int ngpu, int vectors, int lower, int n, int first, int last, void *A,
 } // namespace
 
 extern "C" int openmx_magma_mgpu_available(void) { return 1; }
+extern "C" int openmx_magma_mgpu_available_devices(int ngpu,const int *devices)
+{
+    if (!devices || ngpu<2 || ngpu>MagmaMaxGPUs) return 0;
+    for (int i=0;i<ngpu;++i) if (devices[i]!=i) return openmx_magma_device_map_v1!=nullptr;
+    return 1;
+}
 extern "C" void openmx_magma_mgpu_release_cache(void)
 {
     std::lock_guard<std::mutex> lock(magma_mutex);
     real_workspace.clear(); complex_workspace.clear();
 }
-extern "C" int openmx_magma_mgpu_solve_host(int ngpu, int is_complex, int want_vectors,
+extern "C" int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices, int is_complex, int want_vectors,
     int lower, int n, int first, int last, void *A, int lda, double *W)
 {
     magma_error[0] = '\0';
     if (n == 0 && first == 1 && last == 0) return OPENMX_MAGMA_SUCCESS;
     /* Both real/complex drivers form 2*n*n+6*n+1 in LP64 arithmetic. */
     if (ngpu < 2 || ngpu > MagmaMaxGPUs || n < 1 || lda < n || first < 1 || last < first || last > n ||
-        !A || !W || (is_complex != 0 && is_complex != 1) ||
+        !A || !W || !devices || (is_complex != 0 && is_complex != 1) ||
         (want_vectors != 0 && want_vectors != 1) || (lower != 0 && lower != 1))
         return fail(OPENMX_MAGMA_INVALID, "invalid MAGMA host solve arguments");
     if (n > 32766)
         return fail(OPENMX_MAGMA_RESOURCES, "matrix exceeds MAGMA LP64 workspace range");
     try {
         std::lock_guard<std::mutex> lock(magma_mutex);
-        return is_complex ? solve<Complex>(ngpu,want_vectors,lower,n,first,last,A,lda,W)
-                          : solve<double>(ngpu,want_vectors,lower,n,first,last,A,lda,W);
+        return is_complex ? solve<Complex>(ngpu,devices,want_vectors,lower,n,first,last,A,lda,W)
+                          : solve<double>(ngpu,devices,want_vectors,lower,n,first,last,A,lda,W);
     } catch (const std::bad_alloc &) {
         return fail(OPENMX_MAGMA_RESOURCES, "MAGMA host workspace allocation failed");
     } catch (...) {
@@ -340,8 +462,9 @@ extern "C" int openmx_magma_mgpu_solve_host(int ngpu, int is_complex, int want_v
 }
 #else
 extern "C" int openmx_magma_mgpu_available(void) { return 0; }
+extern "C" int openmx_magma_mgpu_available_devices(int,const int*) { return 0; }
 extern "C" void openmx_magma_mgpu_release_cache(void) {}
-extern "C" int openmx_magma_mgpu_solve_host(int, int, int, int, int n, int first, int last,
+extern "C" int openmx_magma_mgpu_solve_host_devices(int, const int*, int, int, int, int n, int first, int last,
     void *, int, double *)
 {
     magma_error[0] = '\0';
@@ -349,6 +472,14 @@ extern "C" int openmx_magma_mgpu_solve_host(int, int, int, int, int n, int first
     return fail(OPENMX_MAGMA_UNAVAILABLE, "OpenMX was built without MAGMA support");
 }
 #endif
+
+extern "C" int openmx_magma_mgpu_solve_host(int ngpu,int is_complex,int want_vectors,
+    int lower,int n,int first,int last,void *A,int lda,double *W)
+{
+    int devices[8];
+    for (int i=0;i<8;++i) devices[i]=i;
+    return openmx_magma_mgpu_solve_host_devices(ngpu,devices,is_complex,want_vectors,lower,n,first,last,A,lda,W);
+}
 
 extern "C" int openmx_magma_mgpu_dsyevdx_host(int ngpu,int n,int maxn,double *A,int lda,double *W)
 { return openmx_magma_mgpu_solve_host(ngpu,0,1,1,n,1,maxn,A,lda,W); }

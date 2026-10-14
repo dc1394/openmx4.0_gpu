@@ -90,6 +90,7 @@ struct Worker {
 };
 struct Operation {
     int origin=-1;
+    bool host_matrices=false,host_result=false;
     cudaStream_t copy_stream=nullptr;
     cudaEvent_t ready=nullptr;
     void *result=nullptr;
@@ -116,7 +117,11 @@ struct Operation {
         }
         if(cudaSetDevice(origin)!=cudaSuccess) clean=false;
         if(ready) { if(cudaEventDestroy(ready)!=cudaSuccess) clean=false;ready=nullptr; }
-        if(result) { if(cudaFree(result)!=cudaSuccess) clean=false;result=nullptr; }
+        if(result) {
+            if(host_result) std::free(result);
+            else if(cudaFree(result)!=cudaSuccess) clean=false;
+            result=nullptr;
+        }
     }
 };
 
@@ -138,6 +143,12 @@ bool input_copy(Operation &op,Worker &w,void *dst,const void *src,size_t spitch,
                 size_t width,size_t height,void *host)
 {
     if(cudaSetDevice(w.ctx->device)!=cudaSuccess) return false;
+    if(op.host_matrices) {
+        for(size_t j=0;j<height;++j)
+            std::memcpy(static_cast<char *>(host)+j*width,static_cast<const char *>(src)+j*spitch,width);
+        if(cudaMemcpyAsync(dst,host,width*height,cudaMemcpyHostToDevice,w.ctx->stream)!=cudaSuccess) return false;
+        ++report.host_transfers;return true;
+    }
     if(w.peer) {
         const cudaError_t err=peer_copy(dst,w.ctx->device,width,src,op.origin,spitch,width,height,w.ctx->stream);
         if(err==cudaSuccess) {if(w.ctx->device!=op.origin) ++report.peer_transfers;return true;}
@@ -155,6 +166,13 @@ bool output_copy(Operation &op,Worker &w,void *dst,size_t dpitch,const void *src
                  size_t width,size_t height,void *host)
 {
     if(cudaSetDevice(w.ctx->device)!=cudaSuccess) return false;
+    if(op.host_result) {
+        if(cudaMemcpyAsync(host,src,width*height,cudaMemcpyDeviceToHost,w.ctx->stream)!=cudaSuccess ||
+           cudaStreamSynchronize(w.ctx->stream)!=cudaSuccess) return false;
+        for(size_t j=0;j<height;++j)
+            std::memcpy(static_cast<char *>(dst)+j*dpitch,static_cast<const char *>(host)+j*width,width);
+        ++report.host_transfers;return true;
+    }
     if(w.peer) {
         const cudaError_t err=peer_copy(dst,op.origin,dpitch,src,w.ctx->device,width,width,height,w.ctx->stream);
         if(err==cudaSuccess) {if(w.ctx->device!=op.origin) ++report.peer_transfers;return true;}
@@ -224,7 +242,7 @@ bool enable_peer_pair(int first,int second)
 
 template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cublasOperation_t ta,
     cublasOperation_t tb,int m,int n,int k,const T *alpha,const T *a,int lda,const T *b,int ldb,
-    const T *beta,T *c,int ldc,cublasStatus_t *status)
+    const T *beta,T *c,int ldc,cublasStatus_t *status,bool host_matrices=false)
 {
     const auto start=std::chrono::steady_clock::now();
     if(in_worker) {if(status) *status=CUBLAS_STATUS_SUCCESS;return 0;}
@@ -237,6 +255,7 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
         *status=CUBLAS_STATUS_INVALID_VALUE;report.reason="invalid GEMM arguments";return 1;
     }
     Operation op;
+    op.host_matrices=host_matrices;
     if(cudaGetDevice(&op.origin)!=cudaSuccess) {report.reason="current device unavailable";return 0;}
     auto finish=[&](int handled,const char *reason) {
         op.cleanup();
@@ -246,16 +265,16 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
         if(!handled) (void)cudaGetLastError();
         op.origin=-1;return handled;
     };
-    if(!owned_pointer(a,op.origin) || !owned_pointer(b,op.origin) || !owned_pointer(c,op.origin))
+    if(!host_matrices && (!owned_pointer(a,op.origin) || !owned_pointer(b,op.origin) || !owned_pointer(c,op.origin)))
         return finish(0,"operands are not on the current device");
     cudaStream_t original=nullptr;
-    cublasPointerMode_t pointer_mode;
-    cublasMath_t math_mode;
-    cublasAtomicsMode_t atomics_mode;
-    if(cublasGetStream(handle,&original)!=CUBLAS_STATUS_SUCCESS ||
+    cublasPointerMode_t pointer_mode=CUBLAS_POINTER_MODE_HOST;
+    cublasMath_t math_mode=CUBLAS_DEFAULT_MATH;
+    cublasAtomicsMode_t atomics_mode=CUBLAS_ATOMICS_NOT_ALLOWED;
+    if(!host_matrices && (cublasGetStream(handle,&original)!=CUBLAS_STATUS_SUCCESS ||
        cublasGetPointerMode(handle,&pointer_mode)!=CUBLAS_STATUS_SUCCESS ||
        cublasGetMathMode(handle,&math_mode)!=CUBLAS_STATUS_SUCCESS ||
-       cublasGetAtomicsMode(handle,&atomics_mode)!=CUBLAS_STATUS_SUCCESS) return finish(0,"handle query failed");
+       cublasGetAtomicsMode(handle,&atomics_mode)!=CUBLAS_STATUS_SUCCESS)) return finish(0,"handle query failed");
     cudaStreamCaptureStatus capture;
     if(cudaStreamIsCapturing(original,&capture)!=cudaSuccess || capture!=cudaStreamCaptureStatusNone)
         return finish(0,"CUDA graph capture is unsupported");
@@ -267,12 +286,34 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
     } else {host_alpha=*alpha;host_beta=*beta;}
     if(zero(host_alpha)) return finish(0,"zero alpha uses the original backend");
     size_t elements=0,result_bytes=0;
-    if(!product(size_t(m),size_t(n),&elements) || !product(elements,sizeof(T),&result_bytes) ||
-       result_bytes>budget("OPENMX_MGPU_GEMM_RESULT_MB",2048)) return finish(0,"transaction budget exceeded");
+    if(!product(size_t(m),size_t(n),&elements) || !product(elements,sizeof(T),&result_bytes))
+        return finish(0,"transaction size overflow");
     const size_t reserve=budget("OPENMX_MGPU_GEMM_RESERVE_MB",512);
     size_t tile_budget=budget("OPENMX_MGPU_GEMM_WORKSPACE_MB",1024);
     const size_t host_budget=budget("OPENMX_MGPU_GEMM_HOST_MB",256);
     if(!tile_budget) return finish(0,"worker budget is zero");
+    /* A full private result must not require a second full matrix on the
+       owner GPU. Keep the transaction in host memory when that would
+       exceed the device budget, reserving room for the owner's tile. */
+    op.host_result=host_matrices || option("OPENMX_MGPU_GEMM_RESULT_HOST") ||
+        result_bytes>budget("OPENMX_MGPU_GEMM_RESULT_MB",2048) ||
+        result_bytes>std::numeric_limits<size_t>::max()-tile_budget ||
+        !available(result_bytes+tile_budget,reserve);
+    if(op.host_result) {
+        if(result_bytes>budget("OPENMX_MGPU_GEMM_HOST_RESULT_MB",65536))
+            return finish(0,"host transaction budget exceeded");
+        op.result=std::malloc(result_bytes);
+        tile_budget=std::min(tile_budget,host_budget);
+        if(!op.result) return finish(0,"host transaction allocation failed");
+    } else if(cudaMalloc(&op.result,result_bytes)!=cudaSuccess) {
+        (void)cudaGetLastError();
+        op.host_result=true;
+        if(result_bytes>budget("OPENMX_MGPU_GEMM_HOST_RESULT_MB",65536))
+            return finish(0,"host transaction budget exceeded");
+        op.result=std::malloc(result_bytes);
+        tile_budget=std::min(tile_budget,host_budget);
+        if(!op.result) return finish(0,"host transaction allocation failed");
+    }
     int count=0;if(cudaGetDeviceCount(&count)!=cudaSuccess) return finish(0,"device count unavailable");
     std::vector<std::string> buses;
     for(int i=0;i<ngpu;++i) {
@@ -283,10 +324,10 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
         buses.emplace_back(bus);
         Worker w;w.ctx=context(devices[i]);if(!w.ctx) return finish(0,"worker context unavailable");
         int can=devices[i]==op.origin,reverse=can;
-        if(!can && (cudaDeviceCanAccessPeer(&can,devices[i],op.origin)!=cudaSuccess ||
+        if(!host_matrices && !can && (cudaDeviceCanAccessPeer(&can,devices[i],op.origin)!=cudaSuccess ||
                     cudaDeviceCanAccessPeer(&reverse,op.origin,devices[i])!=cudaSuccess)) return finish(0,"peer query failed");
-        w.peer=devices[i]==op.origin || (can && reverse && !option("OPENMX_MGPU_GEMM_FORCE_HOST") &&
-                                       enable_peer_pair(devices[i],op.origin));
+        w.peer=!host_matrices && (devices[i]==op.origin || (can && reverse && !option("OPENMX_MGPU_GEMM_FORCE_HOST") &&
+                                       enable_peer_pair(devices[i],op.origin)));
         if(!w.peer) tile_budget=std::min(tile_budget,host_budget);
         op.workers.push_back(w);
     }
@@ -313,8 +354,7 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
     const size_t tile_rows=(size_t(m)+tile_m-1)/tile_m,tile_cols=(size_t(n)+tile_n-1)/tile_n;
     if(tile_rows*tile_cols<size_t(ngpu)) return finish(0,"too few output tiles");
     report.transaction_bytes=result_bytes;report.worker_bytes=worker_bytes;
-    if(cudaSetDevice(op.origin)!=cudaSuccess || !available(result_bytes,reserve) ||
-       cudaMalloc(&op.result,result_bytes)!=cudaSuccess) return finish(0,"transaction allocation failed");
+    if(cudaSetDevice(op.origin)!=cudaSuccess) return finish(0,"origin device selection failed");
     if(cudaStreamCreateWithFlags(&op.copy_stream,cudaStreamNonBlocking)!=cudaSuccess ||
        cudaEventCreateWithFlags(&op.ready,cudaEventDisableTiming)!=cudaSuccess ||
        cudaEventRecord(op.ready,original)!=cudaSuccess ||
@@ -323,7 +363,7 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
         if(cudaSetDevice(w.ctx->device)!=cudaSuccess || !available(worker_bytes,reserve) ||
            cudaMalloc(&w.buffer,worker_bytes)!=cudaSuccess) return finish(0,"worker allocation failed");
         w.bytes=worker_bytes;
-        if(!w.peer && cudaHostAlloc(&w.host,worker_bytes,cudaHostAllocPortable)!=cudaSuccess)
+        if((!w.peer || op.host_result) && cudaHostAlloc(&w.host,worker_bytes,cudaHostAllocPortable)!=cudaSuccess)
             return finish(0,"pinned staging allocation failed");
         if(cudaStreamWaitEvent(w.ctx->stream,op.ready,0)!=cudaSuccess ||
            cublasSetPointerMode(w.ctx->blas,CUBLAS_POINTER_MODE_HOST)!=CUBLAS_STATUS_SUCCESS ||
@@ -382,8 +422,11 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
         return finish(0,"gather synchronization failed before commit");
     // The only write to caller C. Preserve all padding and make beta retries
     // unambiguous by treating every commit error as handled, never declined.
-    if(cudaMemcpy2DAsync(c,size_t(ldc)*sizeof(T),op.result,size_t(m)*sizeof(T),size_t(m)*sizeof(T),n,
-                         cudaMemcpyDeviceToDevice,original)!=cudaSuccess || cudaStreamSynchronize(original)!=cudaSuccess) {
+    if(host_matrices) {
+        for(int j=0;j<n;++j)
+            std::memcpy(c+size_t(j)*ldc,static_cast<T *>(op.result)+size_t(j)*m,size_t(m)*sizeof(T));
+    } else if(cudaMemcpy2DAsync(c,size_t(ldc)*sizeof(T),op.result,size_t(m)*sizeof(T),size_t(m)*sizeof(T),n,
+                         op.host_result?cudaMemcpyHostToDevice:cudaMemcpyDeviceToDevice,original)!=cudaSuccess || cudaStreamSynchronize(original)!=cudaSuccess) {
         *status=CUBLAS_STATUS_EXECUTION_FAILED;return finish(1,"output commit failed");
     }
     return finish(1,"success");
@@ -393,6 +436,20 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
 extern "C" int openmx_mgpuGemmInWorker(void) { return in_worker?1:0; }
 extern "C" void openmx_mgpuGemmLastReport(openmx_mgpu_gemm_report *out) { if(out) *out=report; }
 extern "C" void openmx_mgpuGemmRelease(void) { if(!in_worker) contexts.clear(); }
+extern "C" int openmx_mgpuDgemmHostTry(int ngpu,const int *devices,cublasOperation_t ta,
+    cublasOperation_t tb,int m,int n,int k,const double *alpha,const double *a,int lda,const double *b,int ldb,
+    const double *beta,double *c,int ldc,cublasStatus_t *status)
+{
+    try {return gemm(nullptr,ngpu,devices,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,status,true);}
+    catch(const std::bad_alloc &) {report.reason="host allocation failed";if(status)*status=CUBLAS_STATUS_ALLOC_FAILED;return 0;}
+}
+extern "C" int openmx_mgpuZgemmHostTry(int ngpu,const int *devices,cublasOperation_t ta,
+    cublasOperation_t tb,int m,int n,int k,const cuDoubleComplex *alpha,const cuDoubleComplex *a,int lda,
+    const cuDoubleComplex *b,int ldb,const cuDoubleComplex *beta,cuDoubleComplex *c,int ldc,cublasStatus_t *status)
+{
+    try {return gemm(nullptr,ngpu,devices,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,status,true);}
+    catch(const std::bad_alloc &) {report.reason="host allocation failed";if(status)*status=CUBLAS_STATUS_ALLOC_FAILED;return 0;}
+}
 extern "C" int openmx_mgpuDgemmTry(cublasHandle_t h,int ngpu,const int *devices,cublasOperation_t ta,
     cublasOperation_t tb,int m,int n,int k,const double *alpha,const double *a,int lda,const double *b,int ldb,
     const double *beta,double *c,int ldc,cublasStatus_t *status)

@@ -15,6 +15,8 @@
 #include "grid_precision.h"
 #include "orbs_grid_gpu.h"
 #include "openmx_common.h"
+#include "openmx_gpu_workers.h"
+#include "openmx_gpu_views.h"
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <accel.h>
@@ -91,6 +93,20 @@ int Set_Hamiltonian_Cuda_Density_FP64(int pair_count, int spin_count, int max_no
                                       const size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf,
                                       const float *orbs1buf, const double *dm, double *tmpden,
                                       size_t output_count, int compact_orbs0);
+int Set_Hamiltonian_Cuda_Density_Range(int pair_count, int spin_count, int max_no, int max_nolg,
+                                 const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+                                 const size_t *pair_h_offset, const size_t *pair_nolg_offset,
+                                 const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
+                                 const size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf,
+                                 const float *orbs1buf, const float *dmf, const float *dml, double *tmpden,
+                                 size_t output_count, int compact_orbs0, size_t output_first, size_t output_last);
+int Set_Hamiltonian_Cuda_Density_FP64_Range(int pair_count, int spin_count, int max_no, int max_nolg,
+                                      const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+                                      const size_t *pair_h_offset, const size_t *pair_nolg_offset,
+                                      const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset,
+                                      const size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf,
+                                      const float *orbs1buf, const double *dm, double *tmpden,
+                                      size_t output_count, int compact_orbs0, size_t output_first, size_t output_last);
 int Set_Hamiltonian_Cuda_MatrixElements(int pair_count, int spin_count, size_t vpot_len,
                                         double grid_vol, int max_no, int max_output_count,
                                         const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
@@ -232,6 +248,7 @@ static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixEl
 
 static void Set_Hamiltonian_abort(const char *where, const char *message, int myid)
 {
+    if (openmx_gpu_worker_device()>=0) { fprintf(stderr,"GPU Hamiltonian worker failed.\n"); exit(EXIT_FAILURE); }
     if (myid == Host_ID) {
         fprintf(stderr, "Set_Hamiltonian: %s: %s\n", where, message);
         fflush(stderr);
@@ -2154,6 +2171,160 @@ static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, i
     return bytes;
 }
 
+
+typedef struct {
+    OpenMXGpuWorkers workers;
+    int pair_count;
+    int spin_count;
+    int add_hub;
+    int add_hch;
+    int use_vna;
+    size_t total_h;
+    size_t total_mat;
+    double f_kin;
+    double f_nl;
+    double f_vna;
+    int spin_switch;
+    const int *pair_NO0;
+    const int *pair_NO1;
+    const size_t *pair_mat_offset;
+    const size_t *pair_h_offset;
+    const double *h0buf;
+    const double *hnlbuf;
+    const double *hvnabuf;
+    const double *hhubbuf;
+    const double *hchbuf;
+    double *target,*output[OPENMX_GPU_WORKERS_MAX];
+    OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][9];
+} SetH_BaseWork;
+
+static int SetH_Base_worker(void *opaque,int worker,int phase)
+{
+    SetH_BaseWork *w=(SetH_BaseWork*)opaque;
+    size_t first=openmx_gpu_worker_cut(w->total_h,worker,w->workers.count);
+    size_t last=openmx_gpu_worker_cut(w->total_h,worker+1,w->workers.count);
+    if (phase==OPENMX_GPU_WORKER_PREPARE) {
+        if (!openmx_gpu_read_view(&w->input[worker][0],w->pair_NO0,(w->pair_count)*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][1],w->pair_NO1,(w->pair_count)*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][2],w->pair_mat_offset,(w->pair_count)*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][3],w->pair_h_offset,(w->pair_count)*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][4],w->h0buf,(w->total_mat)*sizeof(double))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][5],w->hnlbuf,(w->total_h)*sizeof(double))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][6],w->hvnabuf,(w->use_vna ? w->total_mat : 1)*sizeof(double))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][7],w->hhubbuf,(w->add_hub ? w->total_h : 1)*sizeof(double))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][8],w->hchbuf,(w->add_hch ? w->total_h : 1)*sizeof(double))) return 0;
+        if (cudaMalloc((void**)&w->output[worker],(last-first)*sizeof(double))!=cudaSuccess) return 0;
+    } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+    const int pair_count=w->pair_count;
+    const int spin_count=w->spin_count;
+    const int add_hub=w->add_hub;
+    const int add_hch=w->add_hch;
+    const int use_vna=w->use_vna;
+    const size_t total_h=w->total_h;
+    const size_t total_mat=w->total_mat;
+    const double f_kin=w->f_kin;
+    const double f_nl=w->f_nl;
+    const double f_vna=w->f_vna;
+    const int spin_switch=w->spin_switch;
+    const int *pair_NO0=(const int*)w->input[worker][0].pointer;
+    const int *pair_NO1=(const int*)w->input[worker][1].pointer;
+    const size_t *pair_mat_offset=(const size_t*)w->input[worker][2].pointer;
+    const size_t *pair_h_offset=(const size_t*)w->input[worker][3].pointer;
+    const double *h0buf=(const double*)w->input[worker][4].pointer;
+    const double *hnlbuf=(const double*)w->input[worker][5].pointer;
+    const double *hvnabuf=(const double*)w->input[worker][6].pointer;
+    const double *hhubbuf=(const double*)w->input[worker][7].pointer;
+    const double *hchbuf=(const double*)w->input[worker][8].pointer;
+    double *hbuf=w->output[worker];
+#pragma acc parallel loop gang deviceptr(pair_NO0,pair_NO1,pair_mat_offset,pair_h_offset,h0buf,hnlbuf,hvnabuf,hhubbuf,hchbuf,hbuf)
+        for (int pair = 0; pair < pair_count; pair++) {
+            int NO1 = pair_NO1[pair];
+            size_t mat_size = (size_t)pair_NO0[pair] * (size_t)NO1;
+            size_t mat_off = pair_mat_offset[pair];
+            size_t h_off = pair_h_offset[pair];
+            size_t e;
+
+            if (h_off >= last || h_off+(size_t)spin_count*mat_size <= first) continue;
+            /* Materialize the bounds: NVHPC 24.7 otherwise declines the
+               nested accelerator loop and dereferences device data on CPU. */
+            const size_t begin = first > h_off ? first - h_off : 0;
+            const size_t end = last - h_off < (size_t)spin_count * mat_size ?
+                               last - h_off : (size_t)spin_count * mat_size;
+#pragma acc loop vector
+            for (e = begin; e < end; e++) {
+                int spin = (int)(e / mat_size);
+                size_t ij = e - (size_t)spin * mat_size;
+                size_t idx = h_off + e;
+                double v;
+
+                if (spin_switch == 3) {
+                    if (spin == 0 || spin == 1) {
+                        v = f_kin * h0buf[mat_off + ij] + (use_vna ? f_vna * hvnabuf[mat_off + ij] : 0.0) +
+                            f_nl * hnlbuf[idx];
+                    } else if (spin == 2) {
+                        v = f_nl * hnlbuf[idx];
+                    } else {
+                        v = 0.0;
+                    }
+
+                    if (spin < 3 && add_hub) {
+                        v += hhubbuf[idx];
+                    }
+                    if (spin < 3 && add_hch) {
+                        v += hchbuf[idx];
+                    }
+                } else {
+                    v = f_kin * h0buf[mat_off + ij] + (use_vna ? f_vna * hvnabuf[mat_off + ij] : 0.0) +
+                        f_nl * hnlbuf[idx];
+                    if (add_hub) {
+                        v += hhubbuf[idx];
+                    }
+                    if (add_hch) {
+                        v += hchbuf[idx];
+                    }
+                }
+
+                hbuf[idx-first] = v;
+            }
+        }
+    } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+        return openmx_gpu_copy_device(w->target+first,w->output[worker],(last-first)*sizeof(double));
+    } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+        if (w->output[worker]) cudaFree(w->output[worker]);
+        for (int i=0;i<9;i++) openmx_gpu_read_view_release(&w->input[worker][i]);
+    }
+    return 1;
+}
+
+static int SetH_Base_Distributed(int pair_count, int spin_count, int add_hub, int add_hch, int use_vna, size_t total_h, size_t total_mat, double f_kin, double f_nl, double f_vna, const int *pair_NO0, const int *pair_NO1, const size_t *pair_mat_offset, const size_t *pair_h_offset, const double *h0buf, const double *hnlbuf, const double *hvnabuf, const double *hhubbuf, const double *hchbuf, double *hbuf)
+{
+    SetH_BaseWork w={0};
+    openmx_gpu_workers_local(&w.workers,total_h);
+    if (w.workers.count<2) return 0;
+    w.pair_count=pair_count;
+    w.spin_count=spin_count;
+    w.add_hub=add_hub;
+    w.add_hch=add_hch;
+    w.use_vna=use_vna;
+    w.total_h=total_h;
+    w.total_mat=total_mat;
+    w.f_kin=f_kin;
+    w.f_nl=f_nl;
+    w.f_vna=f_vna;
+    w.spin_switch=SpinP_switch;
+    w.pair_NO0=(const int*)acc_deviceptr((void*)pair_NO0);
+    w.pair_NO1=(const int*)acc_deviceptr((void*)pair_NO1);
+    w.pair_mat_offset=(const size_t*)acc_deviceptr((void*)pair_mat_offset);
+    w.pair_h_offset=(const size_t*)acc_deviceptr((void*)pair_h_offset);
+    w.h0buf=(const double*)acc_deviceptr((void*)h0buf);
+    w.hnlbuf=(const double*)acc_deviceptr((void*)hnlbuf);
+    w.hvnabuf=(const double*)acc_deviceptr((void*)hvnabuf);
+    w.hhubbuf=(const double*)acc_deviceptr((void*)hhubbuf);
+    w.hchbuf=(const double*)acc_deviceptr((void*)hchbuf);
+    w.target=(double*)acc_deviceptr(hbuf);
+    return openmx_gpu_workers_run(&w.workers,SetH_Base_worker,&w,"Hamiltonian-base");
+}
+
 static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double *****HNL, double *****H)
 {
     int Mc_AN, h_AN, Gc_AN, Gh_AN, Cwan, Hwan;
@@ -2269,6 +2440,7 @@ static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double **
            h0buf[0:total_mat], hnlbuf[0:total_h], hvnabuf[0:use_vna ? total_mat : 1], hhubbuf[0:add_hub ? total_h : 1],      \
            hchbuf[0:add_hch ? total_h : 1])
     {
+        if (!SetH_Base_Distributed(pair_count, spin_count, add_hub, add_hch, use_vna, total_h, total_mat, f_kin, f_nl, f_vna, pair_NO0, pair_NO1, pair_mat_offset, pair_h_offset, h0buf, hnlbuf, hvnabuf, hhubbuf, hchbuf, hbuf)) {
 #pragma acc parallel loop gang present(hbuf[0:total_h], pair_NO0[0:pair_count], pair_NO1[0:pair_count],                     \
                                            pair_mat_offset[0:pair_count], pair_h_offset[0:pair_count], h0buf[0:total_mat],   \
                                            hnlbuf[0:total_h], hvnabuf[0:use_vna ? total_mat : 1],                            \
@@ -2317,6 +2489,7 @@ static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double **
                 hbuf[idx] = v;
             }
         }
+            }
     }
 
     for (pair = 0; pair < pair_count; pair++) {
@@ -2664,6 +2837,153 @@ static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixE
     }
 }
 
+
+typedef struct {
+    OpenMXGpuWorkers workers;
+    int pair_count;
+    int spin_count;
+    size_t total_h;
+    size_t total_nolg;
+    size_t total_orbs0;
+    size_t total_orbs1;
+    size_t vpot_len;
+    size_t vpot_count;
+    double grid_vol;
+    int spin_switch;
+    const int *pair_NO0;
+    const int *pair_NO1;
+    const int *pair_NOLG;
+    const int *nolg_MN;
+    const int *nolg_Nc;
+    const size_t *pair_h_offset;
+    const size_t *pair_nolg_offset;
+    const size_t *pair_orbs0_offset;
+    const size_t *pair_orbs1_offset;
+    const Type_Orbs_Grid *orbs0buf;
+    const Type_Orbs_Grid *orbs1buf;
+    const double *vpotgrid;
+    double *target,*output[OPENMX_GPU_WORKERS_MAX];
+    OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][12];
+} SetH_FallbackWork;
+
+static int SetH_Fallback_worker(void *opaque,int worker,int phase)
+{
+    SetH_FallbackWork *w=(SetH_FallbackWork*)opaque;
+    size_t first=openmx_gpu_worker_cut(w->total_h,worker,w->workers.count);
+    size_t last=openmx_gpu_worker_cut(w->total_h,worker+1,w->workers.count);
+    if (phase==OPENMX_GPU_WORKER_PREPARE) {
+        if (!openmx_gpu_read_view(&w->input[worker][0],w->pair_NO0,(w->pair_count)*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][1],w->pair_NO1,(w->pair_count)*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][2],w->pair_NOLG,(w->pair_count)*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][3],w->nolg_MN,(w->total_nolg)*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][4],w->nolg_Nc,(w->total_nolg)*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][5],w->pair_h_offset,(w->pair_count)*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][6],w->pair_nolg_offset,(w->pair_count)*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][7],w->pair_orbs0_offset,(w->pair_count)*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][8],w->pair_orbs1_offset,(w->pair_count)*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][9],w->orbs0buf,(w->total_orbs0)*sizeof(Type_Orbs_Grid))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][10],w->orbs1buf,(w->total_orbs1)*sizeof(Type_Orbs_Grid))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][11],w->vpotgrid,(w->vpot_count)*sizeof(double))) return 0;
+        if (cudaMalloc((void**)&w->output[worker],(last-first)*sizeof(double))!=cudaSuccess) return 0;
+        return openmx_gpu_copy_device(w->output[worker],w->target+first,(last-first)*sizeof(double));
+    } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+    const int pair_count=w->pair_count;
+    const int spin_count=w->spin_count;
+    const size_t total_h=w->total_h;
+    const size_t total_nolg=w->total_nolg;
+    const size_t total_orbs0=w->total_orbs0;
+    const size_t total_orbs1=w->total_orbs1;
+    const size_t vpot_len=w->vpot_len;
+    const size_t vpot_count=w->vpot_count;
+    const double grid_vol=w->grid_vol;
+    const int spin_switch=w->spin_switch;
+    const int *pair_NO0=(const int*)w->input[worker][0].pointer;
+    const int *pair_NO1=(const int*)w->input[worker][1].pointer;
+    const int *pair_NOLG=(const int*)w->input[worker][2].pointer;
+    const int *nolg_MN=(const int*)w->input[worker][3].pointer;
+    const int *nolg_Nc=(const int*)w->input[worker][4].pointer;
+    const size_t *pair_h_offset=(const size_t*)w->input[worker][5].pointer;
+    const size_t *pair_nolg_offset=(const size_t*)w->input[worker][6].pointer;
+    const size_t *pair_orbs0_offset=(const size_t*)w->input[worker][7].pointer;
+    const size_t *pair_orbs1_offset=(const size_t*)w->input[worker][8].pointer;
+    const Type_Orbs_Grid *orbs0buf=(const Type_Orbs_Grid*)w->input[worker][9].pointer;
+    const Type_Orbs_Grid *orbs1buf=(const Type_Orbs_Grid*)w->input[worker][10].pointer;
+    const double *vpotgrid=(const double*)w->input[worker][11].pointer;
+    double *hbuf=w->output[worker];
+#pragma acc parallel loop gang deviceptr(pair_NO0,pair_NO1,pair_NOLG,nolg_MN,nolg_Nc,pair_h_offset,pair_nolg_offset,pair_orbs0_offset,pair_orbs1_offset,orbs0buf,orbs1buf,vpotgrid,hbuf)
+            for (int pair = 0; pair < pair_count; pair++) {
+                int NO0 = pair_NO0[pair];
+                int NO1 = pair_NO1[pair];
+                int NOLG = pair_NOLG[pair];
+                size_t mat_size = (size_t)NO0 * (size_t)NO1;
+                size_t h_off = pair_h_offset[pair];
+                size_t nolg_off = pair_nolg_offset[pair];
+                size_t orbs0_off = pair_orbs0_offset[pair];
+                size_t orbs1_off = pair_orbs1_offset[pair];
+
+                if (h_off >= last || h_off+(size_t)spin_count*mat_size <= first) continue;
+                const size_t begin = first > h_off ? first - h_off : 0;
+                const size_t end = last - h_off < (size_t)spin_count * mat_size ?
+                                   last - h_off : (size_t)spin_count * mat_size;
+#pragma acc loop vector
+                for (size_t e = begin; e < end; e++) {
+                    int spin = (int)(e / mat_size);
+                    size_t ij = e - (size_t)spin * mat_size;
+                    int i = (int)(ij / (size_t)NO1);
+                    int j = (int)(ij - (size_t)i * (size_t)NO1);
+                    size_t hidx = h_off + e;
+                    double sum = hbuf[hidx-first];
+
+#pragma acc loop seq
+                    for (int Nog = 0; Nog < NOLG; Nog++) {
+                        sum += (grid_vol * vpotgrid[(size_t)spin * vpot_len +
+                                                    (size_t)nolg_MN[nolg_off + (size_t)Nog]]) *
+                               orbs0buf[orbs0_off + (size_t)nolg_Nc[nolg_off + (size_t)Nog] * (size_t)NO0 + (size_t)i] *
+                               orbs1buf[orbs1_off + (size_t)Nog * (size_t)NO1 + (size_t)j];
+                    }
+                    hbuf[hidx-first] = sum;
+                }
+            }
+    } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+        return openmx_gpu_copy_device(w->target+first,w->output[worker],(last-first)*sizeof(double));
+    } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+        if (w->output[worker]) cudaFree(w->output[worker]);
+        for (int i=0;i<12;i++) openmx_gpu_read_view_release(&w->input[worker][i]);
+    }
+    return 1;
+}
+
+static int SetH_Fallback_Distributed(int pair_count, int spin_count, size_t total_h, size_t total_nolg, size_t total_orbs0, size_t total_orbs1, size_t vpot_len, size_t vpot_count, double grid_vol, const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG, const int *nolg_MN, const int *nolg_Nc, const size_t *pair_h_offset, const size_t *pair_nolg_offset, const size_t *pair_orbs0_offset, const size_t *pair_orbs1_offset, const Type_Orbs_Grid *orbs0buf, const Type_Orbs_Grid *orbs1buf, const double *vpotgrid, double *hbuf)
+{
+    SetH_FallbackWork w={0};
+    openmx_gpu_workers_local(&w.workers,total_h);
+    if (w.workers.count<2) return 0;
+    w.pair_count=pair_count;
+    w.spin_count=spin_count;
+    w.total_h=total_h;
+    w.total_nolg=total_nolg;
+    w.total_orbs0=total_orbs0;
+    w.total_orbs1=total_orbs1;
+    w.vpot_len=vpot_len;
+    w.vpot_count=vpot_count;
+    w.grid_vol=grid_vol;
+    w.spin_switch=SpinP_switch;
+    w.pair_NO0=(const int*)acc_deviceptr((void*)pair_NO0);
+    w.pair_NO1=(const int*)acc_deviceptr((void*)pair_NO1);
+    w.pair_NOLG=(const int*)acc_deviceptr((void*)pair_NOLG);
+    w.nolg_MN=(const int*)acc_deviceptr((void*)nolg_MN);
+    w.nolg_Nc=(const int*)acc_deviceptr((void*)nolg_Nc);
+    w.pair_h_offset=(const size_t*)acc_deviceptr((void*)pair_h_offset);
+    w.pair_nolg_offset=(const size_t*)acc_deviceptr((void*)pair_nolg_offset);
+    w.pair_orbs0_offset=(const size_t*)acc_deviceptr((void*)pair_orbs0_offset);
+    w.pair_orbs1_offset=(const size_t*)acc_deviceptr((void*)pair_orbs1_offset);
+    w.orbs0buf=(const Type_Orbs_Grid*)acc_deviceptr((void*)orbs0buf);
+    w.orbs1buf=(const Type_Orbs_Grid*)acc_deviceptr((void*)orbs1buf);
+    w.vpotgrid=(const double*)acc_deviceptr((void*)vpotgrid);
+    w.target=(double*)acc_deviceptr(hbuf);
+    return openmx_gpu_workers_run(&w.workers,SetH_Fallback_worker,&w,"Hamiltonian-fallback");
+}
+
 static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work)
 {
     SetHamiltonianMatrixElementsCache *cache = work->cache;
@@ -2737,6 +3057,7 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
         }
 
         if (cuda_status != 0) {
+            if (!SetH_Fallback_Distributed(pair_count, spin_count, total_h, total_nolg, total_orbs0, total_orbs1, vpot_len, vpot_count, grid_vol, pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf)) {
 #pragma acc parallel loop gang present(hbuf[0:total_h], pair_NO0[0:pair_count], pair_NO1[0:pair_count],                    \
                                            nolg_MN[0:total_nolg], nolg_Nc[0:total_nolg],                                   \
                                            pair_NOLG[0:pair_count], pair_h_offset[0:pair_count],                            \
@@ -2771,6 +3092,7 @@ static void Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixEleme
                     }
                     hbuf[hidx] = sum;
                 }
+            }
             }
         }
     }
@@ -3703,7 +4025,7 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
 void Set_Hamiltonian_OnTheFly_EndCycle(void)
 {
     Set_Hamiltonian_OTF_Release();
-    SOG_Device_Release();
+    SOG_Device_ReleaseAll();
 }
 
 /* ---- the density on the grid from the same on-the-fly tiles ---------- */
@@ -3902,13 +4224,13 @@ int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, si
 /* rho(r) += sum_ij DM_ij phi_i(r) phi_j(r) over the pairs of a batch, into
    tmpden[spin * output_count + out_base + Nc] (atomic: the pairs of one
    atom share its points) */
-static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, int max_no, int max_nolg, const int *d_NO0, const int *d_NO1,
+static void Set_Hamiltonian_OTF_DensityPart(int pair_count, int spin_count, int max_no, int max_nolg, const int *d_NO0, const int *d_NO1,
                                               const int *d_NOLG, const size_t *d_h_off, const size_t *d_nolg_off,
                                               const size_t *d_orbs0_off, const size_t *d_orbs1_off,
                                               const size_t *d_out_base, const int *d_Nc, const float *d_orbs0,
                                               const float *d_orbs1, const double *d_dm, const float *d_dmf,
                                               const float *d_dml, double *d_tmpden, size_t output_count, int mode,
-                                              int compact_orbs0)
+                                              int compact_orbs0, size_t output_first, size_t output_last, int myid)
 {
     /* A compact batch has one pair but may contain millions of points.
        Distribute those points across gangs instead of serializing every
@@ -3923,16 +4245,14 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
            orbitals in native FP64 as well as DF.  A return of 1 leaves the
            output untouched and selects the OpenACC fallback below. */
         const int status = mode == 0 ?
-            Set_Hamiltonian_Cuda_Density_FP64(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
+            Set_Hamiltonian_Cuda_Density_FP64_Range(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
                 d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc,
-                d_orbs0, d_orbs1, d_dm, d_tmpden, output_count, compact_orbs0) :
-            Set_Hamiltonian_Cuda_Density(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
+                d_orbs0, d_orbs1, d_dm, d_tmpden, output_count, compact_orbs0, output_first, output_last) :
+            Set_Hamiltonian_Cuda_Density_Range(pair_count, spin_count, max_no, max_nolg, d_NO0, d_NO1, d_NOLG,
                 d_h_off, d_nolg_off, d_orbs0_off, d_orbs1_off, d_out_base, d_Nc,
-                d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden, output_count, compact_orbs0);
+                d_orbs0, d_orbs1, d_dmf, d_dml, d_tmpden, output_count, compact_orbs0, output_first, output_last);
         if (status == 0) return;
         if (status < 0) {
-            int myid = 0;
-            MPI_Comm_rank(mpi_comm_level1, &myid);
             Set_Hamiltonian_abort("on-the-fly density", "unrecoverable CUDA failure in the density kernel", myid);
         }
     }
@@ -3960,6 +4280,8 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
 #pragma acc loop vector
             for (k = first_k; k < last_k; k++) {
                 const int Nc = d_Nc[noff + (size_t)k];
+                const size_t output = obase + (size_t)Nc;
+                if (output < output_first || output >= output_last) continue;
                 const float *phi1 = d_orbs1 + o1 + (size_t)k * (size_t)NO1;
                 const float *phi0 = d_orbs0 + o0 + (size_t)(compact_orbs0 ? k : Nc) * (size_t)NO0;
                 float e0h = 0.0f, e0l = 0.0f, e1h = 0.0f, e1l = 0.0f, e2h = 0.0f, e2l = 0.0f, e3h = 0.0f, e3l = 0.0f;
@@ -4001,16 +4323,16 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
                     }
                 }
 #pragma acc atomic update
-                d_tmpden[obase + (size_t)Nc] += (double)e0h + (double)e0l;
+                d_tmpden[output-output_first] += (double)e0h + (double)e0l;
                 if (spin_count >= 2) {
 #pragma acc atomic update
-                    d_tmpden[output_count + obase + (size_t)Nc] += (double)e1h + (double)e1l;
+                    d_tmpden[(output_last-output_first) + output-output_first] += (double)e1h + (double)e1l;
                 }
                 if (spin_count == 4) {
 #pragma acc atomic update
-                    d_tmpden[2 * output_count + obase + (size_t)Nc] += (double)e2h + (double)e2l;
+                    d_tmpden[2 * (output_last-output_first) + output-output_first] += (double)e2h + (double)e2l;
 #pragma acc atomic update
-                    d_tmpden[3 * output_count + obase + (size_t)Nc] += (double)e3h + (double)e3l;
+                    d_tmpden[3 * (output_last-output_first) + output-output_first] += (double)e3h + (double)e3l;
                 }
             }
         }
@@ -4031,6 +4353,8 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
 #pragma acc loop vector
             for (k = first_k; k < last_k; k++) {
                 const int Nc = d_Nc[noff + (size_t)k];
+                const size_t output = obase + (size_t)Nc;
+                if (output < output_first || output >= output_last) continue;
                 const float *phi1 = d_orbs1 + o1 + (size_t)k * (size_t)NO1;
                 const float *phi0 = d_orbs0 + o0 + (size_t)(compact_orbs0 ? k : Nc) * (size_t)NO0;
                 float e0 = 0.0f, e1 = 0.0f, e2 = 0.0f, e3 = 0.0f;
@@ -4057,16 +4381,16 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
                     }
                 }
 #pragma acc atomic update
-                d_tmpden[obase + (size_t)Nc] += (double)e0;
+                d_tmpden[output-output_first] += (double)e0;
                 if (spin_count >= 2) {
 #pragma acc atomic update
-                    d_tmpden[output_count + obase + (size_t)Nc] += (double)e1;
+                    d_tmpden[(output_last-output_first) + output-output_first] += (double)e1;
                 }
                 if (spin_count == 4) {
 #pragma acc atomic update
-                    d_tmpden[2 * output_count + obase + (size_t)Nc] += (double)e2;
+                    d_tmpden[2 * (output_last-output_first) + output-output_first] += (double)e2;
 #pragma acc atomic update
-                    d_tmpden[3 * output_count + obase + (size_t)Nc] += (double)e3;
+                    d_tmpden[3 * (output_last-output_first) + output-output_first] += (double)e3;
                 }
             }
         }
@@ -4087,6 +4411,8 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
 #pragma acc loop vector
             for (k = first_k; k < last_k; k++) {
                 const int Nc = d_Nc[noff + (size_t)k];
+                const size_t output = obase + (size_t)Nc;
+                if (output < output_first || output >= output_last) continue;
                 const float *phi1 = d_orbs1 + o1 + (size_t)k * (size_t)NO1;
                 const float *phi0 = d_orbs0 + o0 + (size_t)(compact_orbs0 ? k : Nc) * (size_t)NO0;
                 double e0 = 0.0, e1 = 0.0, e2 = 0.0, e3 = 0.0;
@@ -4113,20 +4439,176 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
                     }
                 }
 #pragma acc atomic update
-                d_tmpden[obase + (size_t)Nc] += e0;
+                d_tmpden[output-output_first] += e0;
                 if (spin_count >= 2) {
 #pragma acc atomic update
-                    d_tmpden[output_count + obase + (size_t)Nc] += e1;
+                    d_tmpden[(output_last-output_first) + output-output_first] += e1;
                 }
                 if (spin_count == 4) {
 #pragma acc atomic update
-                    d_tmpden[2 * output_count + obase + (size_t)Nc] += e2;
+                    d_tmpden[2 * (output_last-output_first) + output-output_first] += e2;
 #pragma acc atomic update
-                    d_tmpden[3 * output_count + obase + (size_t)Nc] += e3;
+                    d_tmpden[3 * (output_last-output_first) + output-output_first] += e3;
                 }
             }
         }
     }
+}
+
+
+typedef struct {
+    OpenMXGpuWorkers workers;
+    int pair_count,spin_count,max_no,max_nolg,mode,compact_orbs0,myid;
+    size_t output_count,first,last,nc_count,orb0_count,orb1_count,dm_count,float_dm_count,low_dm_count;
+    const int *NO0;
+    const int *NO1;
+    const int *NOLG;
+    const size_t *h_off;
+    const size_t *nolg_off;
+    const size_t *orbs0_off;
+    const size_t *orbs1_off;
+    const size_t *out_base;
+    const int *Nc;
+    const float *orbs0;
+    const float *orbs1;
+    const double *dm;
+    const float *dmf;
+    const float *dml;
+    double *tmpden;
+    double *output[OPENMX_GPU_WORKERS_MAX];
+    OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][14];
+} SetHDensityWork;
+
+static int SetH_density_worker(void *opaque,int worker,int phase)
+{
+    SetHDensityWork *w=(SetHDensityWork*)opaque;
+    size_t first=w->first+openmx_gpu_worker_cut(w->workers.items,worker,w->workers.count);
+    size_t last=w->first+openmx_gpu_worker_cut(w->workers.items,worker+1,w->workers.count);
+    if (phase==OPENMX_GPU_WORKER_PREPARE) {
+        if (!openmx_gpu_read_view(&w->input[worker][0],w->NO0,w->pair_count*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][1],w->NO1,w->pair_count*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][2],w->NOLG,w->pair_count*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][3],w->h_off,w->pair_count*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][4],w->nolg_off,w->pair_count*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][5],w->orbs0_off,w->pair_count*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][6],w->orbs1_off,w->pair_count*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][7],w->out_base,w->pair_count*sizeof(size_t))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][8],w->Nc,w->nc_count*sizeof(int))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][9],w->orbs0,w->orb0_count*sizeof(float))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][10],w->orbs1,w->orb1_count*sizeof(float))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][11],w->dm,w->dm_count*sizeof(double))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][12],w->dmf,w->float_dm_count*sizeof(float))) return 0;
+        if (!openmx_gpu_read_view(&w->input[worker][13],w->dml,w->low_dm_count*sizeof(float))) return 0;
+        if (cudaMalloc((void**)&w->output[worker],(last-first)*(size_t)w->spin_count*sizeof(double))!=cudaSuccess) return 0;
+        for (int spin=0;spin<w->spin_count;spin++)
+            if (!openmx_gpu_copy_device(w->output[worker]+(size_t)spin*(last-first),
+                w->tmpden+(size_t)spin*w->output_count+first,(last-first)*sizeof(double))) return 0;
+    } else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
+        Set_Hamiltonian_OTF_DensityPart(w->pair_count,w->spin_count,w->max_no,w->max_nolg,
+            (const int*)w->input[worker][0].pointer,
+            (const int*)w->input[worker][1].pointer,
+            (const int*)w->input[worker][2].pointer,
+            (const size_t*)w->input[worker][3].pointer,
+            (const size_t*)w->input[worker][4].pointer,
+            (const size_t*)w->input[worker][5].pointer,
+            (const size_t*)w->input[worker][6].pointer,
+            (const size_t*)w->input[worker][7].pointer,
+            (const int*)w->input[worker][8].pointer,
+            (const float*)w->input[worker][9].pointer,
+            (const float*)w->input[worker][10].pointer,
+            (const double*)w->input[worker][11].pointer,
+            (const float*)w->input[worker][12].pointer,
+            (const float*)w->input[worker][13].pointer,
+            w->output[worker],w->output_count,w->mode,w->compact_orbs0,first,last,w->myid);
+    } else if (phase==OPENMX_GPU_WORKER_COMMIT) {
+        for (int spin=0;spin<w->spin_count;spin++)
+            if (!openmx_gpu_copy_device(w->tmpden+(size_t)spin*w->output_count+first,
+                w->output[worker]+(size_t)spin*(last-first),(last-first)*sizeof(double))) return 0;
+    } else if (phase==OPENMX_GPU_WORKER_RELEASE) {
+        if (w->output[worker]) cudaFree(w->output[worker]);
+        for (int i=0;i<14;i++) openmx_gpu_read_view_release(&w->input[worker][i]);
+    }
+    return 1;
+}
+
+static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, int max_no, int max_nolg, const int *d_NO0, const int *d_NO1,
+                                              const int *d_NOLG, const size_t *d_h_off, const size_t *d_nolg_off,
+                                              const size_t *d_orbs0_off, const size_t *d_orbs1_off,
+                                              const size_t *d_out_base, const int *d_Nc, const float *d_orbs0,
+                                              const float *d_orbs1, const double *d_dm, const float *d_dmf,
+                                              const float *d_dml, double *d_tmpden, size_t output_count, int mode,
+                                              int compact_orbs0)
+{
+    SetHDensityWork w={0};
+    int *metadata=NULL,*nc=NULL,used=0,myid=0;
+    size_t *offsets=NULL;
+    MPI_Comm_rank(mpi_comm_level1,&myid);
+    w.pair_count=pair_count;w.spin_count=spin_count;w.max_no=max_no;w.max_nolg=max_nolg;
+    w.mode=mode;w.compact_orbs0=compact_orbs0;w.myid=myid;w.output_count=output_count;w.tmpden=d_tmpden;
+    w.NO0=d_NO0;
+    w.NO1=d_NO1;
+    w.NOLG=d_NOLG;
+    w.h_off=d_h_off;
+    w.nolg_off=d_nolg_off;
+    w.orbs0_off=d_orbs0_off;
+    w.orbs1_off=d_orbs1_off;
+    w.out_base=d_out_base;
+    w.Nc=d_Nc;
+    w.orbs0=d_orbs0;
+    w.orbs1=d_orbs1;
+    w.dm=d_dm;
+    w.dmf=d_dmf;
+    w.dml=d_dml;
+    openmx_gpu_workers_local(&w.workers,output_count);
+    if (pair_count>0 && w.workers.count>1) {
+        /* Find the touched point span, so compact batches keep bounded output
+           buffers. Ownership is by output point, including duplicate Nc values. */
+        metadata=(int*)malloc((size_t)3*pair_count*sizeof(int));
+        offsets=(size_t*)malloc((size_t)5*pair_count*sizeof(size_t));
+        if (!metadata || !offsets) goto done;
+        if (cudaDeviceSynchronize()!=cudaSuccess) goto done;
+        if (cudaMemcpy(metadata+0*pair_count,d_NO0,(size_t)pair_count*sizeof(int),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        if (cudaMemcpy(metadata+1*pair_count,d_NO1,(size_t)pair_count*sizeof(int),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        if (cudaMemcpy(metadata+2*pair_count,d_NOLG,(size_t)pair_count*sizeof(int),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        if (cudaMemcpy(offsets+0*pair_count,d_h_off,(size_t)pair_count*sizeof(size_t),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        if (cudaMemcpy(offsets+1*pair_count,d_nolg_off,(size_t)pair_count*sizeof(size_t),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        if (cudaMemcpy(offsets+2*pair_count,d_orbs0_off,(size_t)pair_count*sizeof(size_t),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        if (cudaMemcpy(offsets+3*pair_count,d_orbs1_off,(size_t)pair_count*sizeof(size_t),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        if (cudaMemcpy(offsets+4*pair_count,d_out_base,(size_t)pair_count*sizeof(size_t),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        w.first=output_count;
+        for (int p=0;p<pair_count;p++) {
+            size_t end=offsets[pair_count+p]+(size_t)metadata[2*pair_count+p];
+            if (end>w.nc_count) w.nc_count=end;
+            end=offsets[p]+(size_t)spin_count*metadata[p]*metadata[pair_count+p];
+            if (end>w.dm_count) w.dm_count=end;
+            end=offsets[3*pair_count+p]+(size_t)metadata[2*pair_count+p]*metadata[pair_count+p];
+            if (end>w.orb1_count) w.orb1_count=end;
+        }
+        nc=(int*)malloc((w.nc_count?w.nc_count:1)*sizeof(int));
+        if (!nc || cudaMemcpy(nc,d_Nc,w.nc_count*sizeof(int),cudaMemcpyDeviceToHost)!=cudaSuccess) goto done;
+        for (int p=0;p<pair_count;p++) for (int k=0;k<metadata[2*pair_count+p];k++) {
+            int point=nc[offsets[pair_count+p]+(size_t)k];
+            if (point<0) goto done;
+            size_t output=offsets[4*pair_count+p]+(size_t)point;
+            if (output>=output_count) goto done;
+            if (output<w.first) w.first=output;
+            if (output>=w.last) w.last=output+1;
+            size_t end=offsets[2*pair_count+p]+((size_t)(compact_orbs0?k:point)+1)*metadata[p];
+            if (end>w.orb0_count) w.orb0_count=end;
+        }
+        if (mode) w.float_dm_count=w.dm_count;
+        if (mode==2) w.low_dm_count=w.dm_count;
+        if (mode) w.dm_count=0;
+        if (w.last>w.first) {
+            openmx_gpu_workers_local(&w.workers,w.last-w.first);
+            used=openmx_gpu_workers_run(&w.workers,SetH_density_worker,&w,"density-OTF-points");
+        } else used=1;
+    }
+ done:
+    free(metadata);free(offsets);free(nc);
+    if (!used) Set_Hamiltonian_OTF_DensityPart(pair_count,spin_count,max_no,max_nolg,
+        d_NO0,d_NO1,d_NOLG,d_h_off,d_nolg_off,d_orbs0_off,d_orbs1_off,d_out_base,d_Nc,
+        d_orbs0,d_orbs1,d_dm,d_dmf,d_dml,d_tmpden,output_count,mode,compact_orbs0,0,output_count,myid);
 }
 
 /* The density of the rank's atoms from the on-the-fly tiles: dm is the

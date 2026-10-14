@@ -13,7 +13,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / "source/Set_XC_Grid.c").read_text()
 start = source.index("  /* Match the host rotation's store order:")
-end = source.index("  if (dDen_Grid != NULL)", start)
+end = source.index("  if (work->dden != NULL)", start)
 code = r'''
 #include <assert.h>
 #include <stdio.h>
@@ -21,13 +21,15 @@ code = r'''
 static void acc_memcpy_from_device(void *out,const void *in,size_t bytes) {
   assert(out && in); memcpy(out,in,bytes);
 }
-static void download(int rotate,double *Vxc0,double *Vxc1,double *Vxc2,double *Vxc3,
+static void download_at(size_t base,size_t begin,int rotate,double *Vxc0,double *Vxc1,double *Vxc2,double *Vxc3,
                      const double *d_vxc0,const double *d_vxc1,const double *d_vxc2,const double *d_vxc3) {
   const size_t nb=3*sizeof(double);
+  struct {double *vxc[4];} storage={{Vxc0,Vxc1,Vxc2,Vxc3}},*work=&storage;
 '''
 code += source[start:end]
 code += r'''
 }
+#define download(...) download_at(0,0,__VA_ARGS__)
 int main(void) {
   const double up[3]={-0.5,-0.25,-0.75},down[3]={-0.3,-0.15,-0.65};
   const double re[3]={0.01,0.02,0.03},im[3]={0.04,0.05,0.06},zero[3]={0,0,0};
@@ -46,7 +48,14 @@ int main(void) {
   /* Collinear/energy-density paths never access the optional outputs. */
   download(0,a,b,NULL,NULL,up,down,NULL,NULL);
   assert(!memcmp(a,up,sizeof(a)) && !memcmp(b,down,sizeof(b)));
-  puts("PASS: XC distinct outputs, scalar alias, pair aliases, optional outputs");
+  {
+    double target[8]={9,9,9,9,9,9,9,9};
+    const double slab[5]={77,-0.5,-0.25,-0.75,77},offdiag[5]={77,0,0,0,77};
+    download_at(2,1,1,target,target,target,target,slab,slab,offdiag,offdiag);
+    assert(!memcmp(target+3,up,sizeof(up)));
+    for(int i=0;i<8;i++) if(i<3 || i>=6) assert(target[i]==9);
+  }
+  puts("PASS: XC distinct outputs, scalar/pair aliases, optional outputs, slab offsets and guards");
   return 0;
 }
 '''

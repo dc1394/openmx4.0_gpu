@@ -7,6 +7,9 @@
 #include "openmx_common.h"
 #include "openmx_precision.h"
 #include "openmx_mgpu_runtime.h"
+#include "openmx_mgpu_band_plan.h"
+#include "openmx_gpu_workers.h"
+#include "set_cuda_default_device_from_local_rank.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include <omp.h>
@@ -65,6 +68,7 @@ void Input_std(char *file)
   int numprocs,myid,myid_original;
   int output_hks,ret;
   int numprocs1;
+  int mgpu_enabled = -1, mgpu_single_node = 0;
 
   /* added by S.Ryee */
   int a,b,c,d; 
@@ -787,7 +791,9 @@ void Input_std(char *file)
   i_vec[0]=GPUSOLVER;   i_vec[1]=0;        i_vec[2]=ELPA1;   i_vec[3]=ELPA2;   i_vec[4]=-GPUSOLVER;
   s_vec[5]="gpusolver2";
   i_vec[5]=GPUSOLVER2;
-  input_string2int("scf.eigen.lib", &scf_eigen_lib_flag, 6, s_vec,i_vec);
+  s_vec[6]="gpusolver3";
+  i_vec[6]=GPUSOLVER3;
+  input_string2int("scf.eigen.lib", &scf_eigen_lib_flag, 7, s_vec,i_vec);
   if (scf_eigen_lib_flag==-GPUSOLVER){
     if (myid==Host_ID){
       printf("Warning: scf.eigen.lib=cusolver is deprecated; use scf.eigen.lib=gpusolver instead.\n");
@@ -800,21 +806,35 @@ void Input_std(char *file)
      everything must behave exactly like gpusolver, so the flag is folded to
      GPUSOLVER here and the request is remembered in gpusolver2_flag. */
   gpusolver2_flag = 0;
+  gpusolver3_flag = 0;
   if (scf_eigen_lib_flag==GPUSOLVER2){
     gpusolver2_flag = 1;
     scf_eigen_lib_flag = GPUSOLVER;
+  }
+
+  if (scf_eigen_lib_flag==GPUSOLVER3){
+    gpusolver3_flag = 1;
+    scf_eigen_lib_flag = GPUSOLVER;
+    if (myid==Host_ID && 0<level_stdout)
+      printf("<OpenMX_MGPU> scf.eigen.lib=gpusolver3: forced single-node MAGMA and cooperative matrix products.\n");
   }
 
   scf_eigen_lib_flag_input = scf_eigen_lib_flag;
 
   /* use GPU? (added by H.Kawai, February 2024) */
   input_int("scf.Gpu.Num", &SCF_Gpu_Num, 30);
+  if (scf_eigen_lib_flag == GPUSOLVER && !gpusolver2_flag && SCF_Gpu_Num < 1) {
+    if (myid == Host_ID)
+      fprintf(stderr,"scf.Gpu.Num must be a positive GPU upper bound for gpusolver/gpusolver3.\n");
+    MPI_Finalize();
+    exit(1);
+  }
 
-  /* Single-node dense cooperation is scoped to the two mainline cluster
+  /* Single-node dense cooperation is scoped to mainline cluster and Band
      solvers. Determine topology here, where every rank parses the input;
      a dense owner's library call must never introduce an MPI collective. */
   {
-    int mgpu_enabled, world_size, node_size;
+    int world_size, node_size;
     MPI_Comm node_comm;
     input_logical("scf.mgpu.enable", &mgpu_enabled, -1);
     MPI_Comm_size(mpi_comm_level1, &world_size);
@@ -822,8 +842,10 @@ void Input_std(char *file)
                         MPI_INFO_NULL, &node_comm);
     MPI_Comm_size(node_comm, &node_size);
     MPI_Comm_free(&node_comm);
-    openmx_mgpu_configure(gpusolver2_flag ? 0 : mgpu_enabled,
-                         SCF_Gpu_Num, node_size == world_size);
+    mgpu_single_node = node_size == world_size;
+    openmx_mgpu_force_magma(gpusolver3_flag);
+    openmx_mgpu_configure(scf_eigen_lib_flag == GPUSOLVER && !gpusolver2_flag ? mgpu_enabled : 0,
+                         SCF_Gpu_Num, mgpu_single_node);
   }
 
   /* Input-level arithmetic policy, reset for every input in -runtest too.
@@ -5076,6 +5098,59 @@ void Input_std(char *file)
   }
 
 #endif
+
+  /* Trim the rank-visible pool before truncation/DFT creates CUDA/OpenACC
+     caches. Rebinding a rank later would invalidate its resident tables.
+     The Band loops use their actual T_knum for each operation's group. */
+  if (gpusolver3_flag && ((Solver != 2 && Solver != 3) ||
+      (SpinP_switch == 3 && GB_switch != 0))) {
+    if (myid == Host_ID)
+      printf("scf.eigen.lib=gpusolver3 supports only ordinary collinear/noncollinear Cluster and Band.\n");
+    MPI_Finalize();
+    exit(1);
+  }
+  if (gpusolver3_flag && Solver == 2 && SpinP_switch == 3 &&
+      (MO_fileout || xanes_calc || xanes_gs_fileout || cal_partial_charge ||
+       Dos_fileout || DosGauss_fileout)) {
+    if (myid == Host_ID)
+      fprintf(stderr,"gpusolver3: noncollinear Cluster MO, XANES, partial-charge and DOS output paths do not yet support forced MAGMA. Disable these outputs or select another eigensolver.\n");
+    MPI_Finalize();
+    exit(1);
+  }
+
+  if (Solver == 3 && scf_eigen_lib_flag == GPUSOLVER && !gpusolver2_flag &&
+      (SpinP_switch <= 1 || (SpinP_switch == 3 && GB_switch == 0))) {
+    int band_kpoints = openmx_mgpu_band_kpoint_count(SpinP_switch, way_of_kpoint,
+        Kspace_grid1, Kspace_grid2, Kspace_grid3, num_non_eq_kpt);
+    int local_used = openmx_mgpu_band_used_gpus(band_kpoints);
+    int used_gpus = 0;
+    MPI_Allreduce(&local_used, &used_gpus, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+    if (used_gpus > 0) {
+      int requested = SCF_Gpu_Num;
+      SCF_Gpu_Num = used_gpus;
+      openmx_mgpu_configure(mgpu_enabled, SCF_Gpu_Num, mgpu_single_node);
+      if (myid == Host_ID && 0 < level_stdout) {
+        printf("<OpenMX_MGPU> Band GPU pool: kpoints=%d group_gpus=%d used_gpus=%d input_limit=%d\n",
+               band_kpoints, used_gpus / band_kpoints, used_gpus, requested);
+      }
+    } else {
+      /* All ranks must agree on whether a cooperative pool exists. */
+      openmx_mgpu_configure(0, SCF_Gpu_Num, mgpu_single_node);
+    }
+  }
+
+  /* Record the established rank map before any device cache is created.
+     Worker callbacks never use MPI to discover their rank or device. */
+  {
+    int visible=0;
+    if (scf_eigen_lib_flag==GPUSOLVER && cudaGetDeviceCount(&visible)!=cudaSuccess) {
+      (void)cudaGetLastError();
+      visible=0;
+    }
+    if (SCF_Gpu_Num>0 && visible>SCF_Gpu_Num) visible=SCF_Gpu_Num;
+    openmx_gpu_workers_configure(openmx_gpu_local_rank_noncollective(),
+        openmx_gpu_local_size_noncollective(),visible);
+  }
 
   /****************************************************
                    print out to std

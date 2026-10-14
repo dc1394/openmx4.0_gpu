@@ -11,6 +11,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+from run_force4b_stream_cpu import extract_function
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,10 +31,10 @@ force = (ROOT / "source/Force.c").read_text()
 vna = (ROOT / "source/Set_ProExpn_VNA.c").read_text()
 item = re.search(r"typedef struct \{[^{}]+\} Force4BGpuItem;", force).group()
 functions = "\n".join(
-    block(force, force.index("static void " + name + "("))
+    extract_function(force, name)
     for name in ("Force4B_GpuCase1Kernel", "Force4B_GpuCase2Kernel")
 )
-start = vna.index("static void SetPro_HVNA_GpuRun(")
+start = vna.index("static void SetPro_HVNA_GpuRun_Part(")
 start = vna.index("for (int pp=0; pp<nitems_c; pp++)", start)
 functions += r"""
 static void vna_kernel(int nitems_c, int num_proj, int num_rvna,

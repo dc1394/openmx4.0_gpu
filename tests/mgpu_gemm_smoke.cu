@@ -14,6 +14,7 @@
 
 static int bridge_entries=0;
 static int fail_bridge_at=0;
+static bool host_operands=false;
 static void require(bool ok,const char *why) {if(!ok){std::fprintf(stderr,"FAIL: %s\n",why);std::exit(3);}}
 static void check(cudaError_t e) {if(e!=cudaSuccess){std::fprintf(stderr,"CUDA %s\n",cudaGetErrorString(e));std::exit(2);}}
 static void check(cublasStatus_t e) {if(e!=CUBLAS_STATUS_SUCCESS){std::fprintf(stderr,"cuBLAS %d\n",int(e));std::exit(2);}}
@@ -46,6 +47,10 @@ template<class T> std::complex<long double> wide(T x) {
 }
 template<class T> int call(cublasHandle_t h,const std::vector<int> &devices,cublasOperation_t ta,cublasOperation_t tb,
     int m,int n,int k,const T *alpha,const T *a,int lda,const T *b,int ldb,const T *beta,T *c,int ldc,cublasStatus_t *s) {
+    if (host_operands) {
+        if constexpr(std::is_same_v<T,double>) return openmx_mgpuDgemmHostTry(int(devices.size()),devices.data(),ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,s);
+        else return openmx_mgpuZgemmHostTry(int(devices.size()),devices.data(),ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,s);
+    }
     if constexpr(std::is_same_v<T,double>) return openmx_mgpuDgemmTry(h,int(devices.size()),devices.data(),ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,s);
     else return openmx_mgpuZgemmTry(h,int(devices.size()),devices.data(),ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,s);
 }
@@ -83,7 +88,9 @@ template<class T> void run(cublasHandle_t h,const std::vector<int> &devices,cubl
         check(cublasSetPointerMode(h,CUBLAS_POINTER_MODE_DEVICE));
     }
     cublasStatus_t status=CUBLAS_STATUS_INTERNAL_ERROR;
-    const int handled=call(h,devices,ta,tb,m,n,k,ap,da,lda,db,ldb,bp,dc,ldc,&status);
+    out=c;
+    const int handled=host_operands ? call(h,devices,ta,tb,m,n,k,&alpha,a.data(),lda,b.data(),ldb,&beta,out.data(),ldc,&status)
+        : call(h,devices,ta,tb,m,n,k,ap,da,lda,db,ldb,bp,dc,ldc,&status);
     openmx_mgpu_gemm_report rep;openmx_mgpuGemmLastReport(&rep);
     if(handled!=!expect_decline) {std::fprintf(stderr,"dispatch %dx%dx%d reason: %s\n",m,n,k,rep.reason);require(false,"expected handled/declined result");}
     if(handled) check(status);
@@ -94,7 +101,7 @@ template<class T> void run(cublasHandle_t h,const std::vector<int> &devices,cubl
     require(pm==(device_scalars?CUBLAS_POINTER_MODE_DEVICE:CUBLAS_POINTER_MODE_HOST),"caller pointer mode unchanged");
     cublasMath_t after_math;check(cublasGetMathMode(h,&after_math));require(after_math==original_math,"caller math mode unchanged");
     cublasAtomicsMode_t after_atomics;check(cublasGetAtomicsMode(h,&after_atomics));require(after_atomics==original_atomics,"caller atomics mode unchanged");
-    check(cudaStreamSynchronize(stream));check(cudaMemcpy(out.data(),dc,out.size()*sizeof(T),cudaMemcpyDeviceToHost));
+    check(cudaStreamSynchronize(stream));if(!host_operands)check(cudaMemcpy(out.data(),dc,out.size()*sizeof(T),cudaMemcpyDeviceToHost));
     if(expect_decline) require(std::memcmp(out.data(),c.data(),c.size()*sizeof(T))==0,"declined call leaves C byte-identical");
     else {
         require(rep.active_gpus==int(devices.size()),"all requested GPUs performed products");
@@ -167,8 +174,20 @@ int main(int argc,char **argv) {
     }
     unsetenv("OPENMX_MGPU_GEMM_FORCE_HOST");
     setenv("OPENMX_MGPU_GEMM_RESULT_MB","0",1);
+    // A device transaction exceeding its budget now uses host scratch.
+    for(auto ta:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) for(auto tb:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) {
+        run<double>(h,devices,ta,tb,65,47,71);
+        run<cuDoubleComplex>(h,devices,ta,tb,65,47,71,true,true);
+    }
+#ifdef OPENMX_MGPU_TEST_BRIDGE
+    fail_bridge_at=bridge_entries+ngpu+1;
+    run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311,false,false,true);
+    fail_bridge_at=0;
+#endif
+    setenv("OPENMX_MGPU_GEMM_HOST_RESULT_MB","0",1);
     run<double>(h,devices,CUBLAS_OP_N,CUBLAS_OP_N,65,47,71,false,false,true);
     run<cuDoubleComplex>(h,devices,CUBLAS_OP_C,CUBLAS_OP_T,65,47,71,false,false,true);
+    unsetenv("OPENMX_MGPU_GEMM_HOST_RESULT_MB");
     unsetenv("OPENMX_MGPU_GEMM_RESULT_MB");setenv("OPENMX_MGPU_GEMM_WORKSPACE_MB","0",1);
     run<double>(h,devices,CUBLAS_OP_N,CUBLAS_OP_N,65,47,71,false,false,true);
     setenv("OPENMX_MGPU_GEMM_WORKSPACE_MB","1",1);
@@ -187,6 +206,26 @@ int main(int argc,char **argv) {
         fail_bridge_at=0;
     }
 #endif
+    host_operands=true;
+    for(auto ta:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) for(auto tb:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) {
+        run<double>(h,devices,ta,tb,65,47,71);
+        run<cuDoubleComplex>(h,devices,ta,tb,65,47,71,false,true);
+    }
+    run<cuDoubleComplex>(h,devices,CUBLAS_OP_T,CUBLAS_OP_T,3,5,17001);
+    if(count>=4) {
+        std::vector<int> nonprefix={2,3};
+        run<double>(h,nonprefix,CUBLAS_OP_N,CUBLAS_OP_T,65,47,71);
+        run<cuDoubleComplex>(h,nonprefix,CUBLAS_OP_C,CUBLAS_OP_N,65,47,71);
+    }
+    setenv("OPENMX_MGPU_GEMM_HOST_RESULT_MB","0",1);
+    run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311,false,false,true);
+    unsetenv("OPENMX_MGPU_GEMM_HOST_RESULT_MB");
+#ifdef OPENMX_MGPU_TEST_BRIDGE
+    fail_bridge_at=bridge_entries+ngpu+1;
+    run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311,false,false,true);
+    fail_bridge_at=0;
+#endif
+    host_operands=false;
     // Source GPU need not be device zero; repeat after restoring a different handle/stream.
     check(cublasDestroy(h));check(cudaStreamDestroy(stream));check(cudaSetDevice(1));
     check(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));check(cublasCreate(&h));check(cublasSetStream(h,stream));

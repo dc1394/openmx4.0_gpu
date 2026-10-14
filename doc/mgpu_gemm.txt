@@ -2,8 +2,11 @@ Single-node cooperative dense GEMM
 =================================
 
 Implementation: source/openmx_mgpu_gemm.cu and openmx_mgpu_gemm.h.
-The application runtime admits operations only from the main collinear and
-noncollinear cluster solvers. Node topology, input enablement, GPU selection,
+The application runtime admits operations from the main collinear and
+noncollinear cluster solvers and ordinary Band solvers selected with
+scf.eigen.lib=gpusolver or gpusolver3. Band operations
+select one equal GPU group per computed k-point (see band_mgpu.txt).
+Node topology, input enablement, GPU selection,
 size thresholds and interprocess locking belong to openmx_mgpu_runtime.cu.
 The numerical core has no MPI calls and accepts an explicit list of CUDA-visible
 device ordinals. Devices with the same PCI bus ID are rejected: two MIG instances
@@ -33,8 +36,10 @@ Its input/environment arithmetic choices therefore remain effective: GeForce
 workers can retain accurate Ozaki, and strong-FP64 devices use their general-GEMM
 policy. OPENMX_MGPU_GEMM_BACKEND=native explicitly chooses local cuBLAS instead.
 Standalone builds without the weak bridge symbols also use native cuBLAS.
-The in-worker guard prevents recursive multi-GPU dispatch. Explicit special
-forward precision/reuse stages remain the responsibility of the caller's bridge.
+The in-worker guard prevents recursive multi-GPU dispatch. Explicit forward
+precision stages are propagated to worker tiles. Their prepared-X cache is
+not reused after a tile upload; original single-device prepared-X reuse is
+unchanged. Full-K tiles keep the requested precision and scaling policy.
 
 Success waits for all results and restores the caller's current CUDA device.
 It does not modify the caller's handle, stream, pointer mode, math mode or atomics
@@ -44,7 +49,12 @@ synchronous at the public API boundary.
 Memory and fallback contract
 ----------------------------
 
-All results first land in a contiguous transaction buffer on the source GPU.
+All results first land in a contiguous private transaction buffer. It resides
+on the source GPU when the configured device budget and free memory allow both
+the result and a worker tile. Otherwise it resides in host memory, with bounded
+pinned staging for completed tiles. No extra full matrix on the owner GPU is
+required merely to enable cooperation. OPENMX_MGPU_GEMM_RESULT_HOST=1 forces
+the host transaction for validation.
 Only after every worker and gather succeeds is the result copied into user C,
 preserving its leading-dimension padding. A recoverable allocation, transport or
 worker failure before this commit returns 0 with C unchanged, so the caller can
@@ -56,13 +66,17 @@ lists and insufficient full-K budgets also decline before committing C.
 Environment variable                         Default  Meaning
 OPENMX_MGPU_GEMM_WORKSPACE_MB                 1024     A+B+C tile buffers per GPU
 OPENMX_MGPU_GEMM_RESULT_MB                    2048     Full source-GPU result cap
+OPENMX_MGPU_GEMM_HOST_RESULT_MB              65536     Host result cap
+OPENMX_MGPU_GEMM_RESULT_HOST                    0     Force a host result buffer
 OPENMX_MGPU_GEMM_HOST_MB                       256     Pinned staging per worker
 OPENMX_MGPU_GEMM_RESERVE_MB                    512     Free device-memory reserve
 OPENMX_MGPU_GEMM_FORCE_HOST                     0     Force host-staged transport
 OPENMX_MGPU_GEMM_BACKEND                   bridge     bridge or native arithmetic
 
-Byte caps use MiB (1024^2 bytes). Zero workspace/result/host budgets disable the
-corresponding allocation; zero reserve removes that reserve. The backend checks
+Byte caps use MiB (1024^2 bytes). Zero workspace/host budgets disable the
+corresponding allocation. A zero device-result budget selects host results;
+setting both result budgets to zero declines the operation. Zero reserve removes
+that reserve. The backend checks
 OpenMX's physical free-memory helper when linked, otherwise cudaMemGetInfo.
 The source GPU can hold both its worker buffers and the transaction buffer.
 CUDA contexts, cuBLAS internals and the existing bridge's own bounded workspace
@@ -141,7 +155,7 @@ by the caller):
 Use --ranks 4 --gpus 4 on a four-GPU node. --prepare-only writes the inputs and
 binary snapshots without launching MPI. The output directory must not exist.
 Defaults run Pt63 collinear off, collinear on and noncollinear SOC for exactly
-three SCF steps each, against disabled, forced MAGMA, forced paper and automatic
+three SCF steps each, against disabled, forced MAGMA and automatic
 solver modes. Both spin-polarized variants start with populations 8.5/7.5 per Pt;
 the noncollinear rows add 45 15 45 15 1. The template and existing outputs are
 untouched. Absolute DATA.PATH and private binary hashes are recorded.
@@ -185,13 +199,15 @@ Z     8192  4096    2          116.578                 81.350
 Z     8192  2048    2           62.864                 52.479
 Z     8192   512    2           18.372                 24.607
 
-The application automatic policy requires max(M,N)>=8192, min(M,N)>=4096 and
-K>=8192, and direct bidirectional NVLink/P2P among the participating GPUs.
-OPENMX_MGPU_GEMM_MIN_N adjusts the large-dimension/K floor and sets the smaller
-output-dimension floor to its rounded-up half; explicit
-OPENMX_MGPU_GEMM=1 bypasses size/topology admission. Narrow 2048/512 outputs
-remain outside automatic admission because real GEMM regresses there. The
-6144 real square gain is too small to justify lowering the automatic floor.
+The current default distributes all eligible nonempty GEMMs in the permitted
+solver group, including skinny outputs and PCIe-only GPUs. Explicit
+OPENMX_MGPU_GEMM=0 disables device-operand cooperation. The optional legacy
+OPENMX_MGPU_GEMM=auto policy requires max(M,N)>=8192, min(M,N)>=4096,
+K>=8192 and direct bidirectional NVLink/P2P. OPENMX_MGPU_GEMM_MIN_N overrides
+the size floor (default 1, or 8192 in legacy auto mode); the smaller output
+floor is its rounded-up half. OPENMX_MGPU_GEMM=1 bypasses these optional gates.
+The earlier measurements above explain why legacy auto can be faster for
+small or narrow matrices: distributing a kernel does not guarantee speedup.
 Three GPUs did not improve real forward time over the separate two-GPU runs;
 GPU count is a user limit, not a claim that every extra GPU improves speed.
 
@@ -203,3 +219,16 @@ difference 1.115e-13 from retained single-GPU arithmetic. Forced accurate Ozaki
 workers also passed real/complex n=1024 checks, although small forced operations
 were slower. Physical GeForce and four-GPU runs have not yet been measured.
 Raw logs: work/mgpu_20261014/check2.log, complex2.log and check3.log.
+
+Host-backed capacity products
+-----------------------------
+openmx_mgpuDgemmHostTry / ZgemmHostTry use the same full-K tile algorithm
+with host operands and a host transaction buffer. A and B tiles are packed
+into bounded pinned buffers and uploaded to the assigned worker. Completed
+C tiles return to the host transaction; the caller's C is committed only
+after every tile succeeds. No full owner GPU result allocation is made.
+The independent host result cap is OPENMX_MGPU_GEMM_HOST_RESULT_MB (65536
+MiB); the existing worker and pinned budgets still bound GPU/tile storage.
+These calls serve forced MAGMA and automatic memory recovery regardless of
+the optional performance GEMM toggle. Failure is fatal to the capacity
+caller instead of retrying an oversized native product.

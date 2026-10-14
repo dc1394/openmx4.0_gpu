@@ -37,6 +37,7 @@ static int DFT_GPU_DenseSwitchNum(void);
 static int DFT_SetOLPKinUseGPU(void);
 static int DFT_SetProExpnVNAUseGPU(void);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1);
+int Cluster_DFT_NonCol_MgpuCachedEDM(int n, int size_H1, int *MP, double *ko, double *****EDM, double *elapsed);
 int Band_DFT_Col_GpuSwitchNum(void);
 int Band_DFT_NonCol_GpuSwitchNum(void);
 int Cluster_DFT_Col_GpuSwitchNum(void);
@@ -157,6 +158,11 @@ static void DFT_GPU_DeviceInit(int basis_count)
     MPI_Comm_free(&node_comm);
     if (device_comm != MPI_COMM_NULL) MPI_Comm_free(&device_comm);
 
+    if (!cuda_ok_all && gpusolver3_flag) {
+        if (myid0==Host_ID) fprintf(stderr,"gpusolver3 requires usable GPUs and MAGMA; GPU initialization failed.\n");
+        MPI_Abort(mpi_comm_level1,1);
+        exit(1);
+    }
     if (!cuda_ok_all) {
         int numprocs, my_fail, nfail, worst_err, inbuf[2], outbuf[2];
 
@@ -164,6 +170,7 @@ static void DFT_GPU_DeviceInit(int basis_count)
         /* without GPUs the gpusolver2 (ELPA-GPU/COSMA) cluster path is
            demoted to the ELPA2 path as well */
         gpusolver2_flag = 0;
+        gpusolver3_flag = 0;
 
         MPI_Comm_size(mpi_comm_level1,&numprocs);
         my_fail = (cuda_ok) ? 0 : 1;
@@ -1942,10 +1949,14 @@ double DFT(int MD_iter, int Cnt_Now)
 
   if (Solver==2 && SpinP_switch==3){
 
+    double mgpu_edm_time=0.0;
+    int mgpu_edm=Cluster_DFT_NonCol_MgpuCachedEDM(n,size_H1,MP,ko_noncol,EDM,&mgpu_edm_time);
+    time5 += mgpu_edm_time;
     time5 += Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(n*2,is2,ie2,EVec1_NonCol);
 
     /* EDM */
 
+    if (!mgpu_edm) {
     time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 7, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 						      DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol);
   
@@ -1957,6 +1968,7 @@ double DFT(int MD_iter, int Cnt_Now)
 
     time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 10, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 						      DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol);
+    }
 
     /* Partial_DM */
 

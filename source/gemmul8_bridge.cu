@@ -29,6 +29,15 @@ static inline cudaError_t device_mem_get_info(size_t *free_bytes, size_t *total_
 
 namespace {
 
+/* Cooperative GEMM queues its worker products on the calling host thread.
+   Carry an explicit forward precision stage into those products without
+   changing global precision controls or another thread's operations. */
+thread_local bool forward_worker_stage=false;
+thread_local bool forward_worker_x_left=false;
+thread_local bool inside_forward_tile=false;
+template<class T> cublasStatus_t forward_tile(cublasHandle_t,cublasOperation_t,cublasOperation_t,
+    int,int,int,const T*,int,const T*,int,T*,int);
+
 constexpr unsigned kDefaultNumModuli = 15u;
 constexpr unsigned kMaxNumModuli     = 20u;
 constexpr unsigned kDefaultMinFreeAfterMiB = 1536u;
@@ -547,6 +556,8 @@ extern "C" cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle,
     if (m <= 0 || n <= 0 || k <= 0) {
         return CUBLAS_STATUS_SUCCESS;
     }
+    if (forward_worker_stage && !inside_forward_tile)
+        return forward_tile(handle,transa,transb,m,n,k,A,lda,B,ldb,C,ldc);
     cublasStatus_t mgpu_status;
     if (openmx_mgpu_dispatch_dgemm && openmx_mgpu_dispatch_dgemm(handle,
             transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, &mgpu_status))
@@ -719,6 +730,8 @@ extern "C" cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle,
     if (m <= 0 || n <= 0 || k <= 0) {
         return CUBLAS_STATUS_SUCCESS;
     }
+    if (forward_worker_stage && !inside_forward_tile)
+        return forward_tile(handle,transa,transb,m,n,k,A,lda,B,ldb,C,ldc);
     cublasStatus_t mgpu_status;
     if (openmx_mgpu_dispatch_zgemm && openmx_mgpu_dispatch_zgemm(handle,
             transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, &mgpu_status))
@@ -950,7 +963,11 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
     const T *const          A = x_is_left ? X : V;
     const T *const          B = x_is_left ? V : X;
     const int               lda = x_is_left ? ldx : ldv, ldb = x_is_left ? ldv : ldx;
-    const ForwardStage      stage = forward_stage();
+    ForwardStage            stage = forward_stage();
+    /* Tile buffers are reused for different slices. Their pointer and the
+       parent's X version do not identify their contents; never retain a
+       prepared X across tile uploads. Single-device reuse is unchanged. */
+    if (inside_forward_tile) stage.reuse=false;
 
     if (m <= 0 || n <= 0 || k <= 0) return CUBLAS_STATUS_SUCCESS;
 
@@ -964,9 +981,14 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
     /* the default stage follows the settings of openmx_gemmul8{D,Z}gemm */
     const bool default_stage = stage.mode == kForwardDefault;
     const bool reuse_stage   = !default_stage && stage.reuse;
-    /* Worker products use the general precision settings. Explicit forward
-       precision/reuse stages retain their existing implementation. */
-    if (default_stage) {
+    if (!inside_forward_tile) {
+        struct ForwardWorkerStage {
+            bool active,left;
+            ForwardWorkerStage(bool use,bool xleft):active(forward_worker_stage),left(forward_worker_x_left) {
+                forward_worker_stage=use;forward_worker_x_left=xleft;
+            }
+            ~ForwardWorkerStage(){forward_worker_stage=active;forward_worker_x_left=left;}
+        } worker_stage(!default_stage,x_is_left);
         if constexpr (is_complex) {
             if (openmx_mgpu_dispatch_zgemm && openmx_mgpu_dispatch_zgemm(handle,
                     transa, transb, m, n, k, &one, A, lda, B, ldb, &zero, C, ldc, &status))
@@ -1098,6 +1120,19 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
         g_forward_counters.seconds[x_is_left ? 1 : 0] +=
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     return CUBLAS_STATUS_SUCCESS;
+}
+
+template<class T> cublasStatus_t forward_tile(cublasHandle_t handle,cublasOperation_t ta,cublasOperation_t tb,
+    int m,int n,int k,const T *a,int lda,const T *b,int ldb,T *c,int ldc)
+{
+    struct TileGuard {
+        bool previous;
+        TileGuard():previous(inside_forward_tile){inside_forward_tile=true;}
+        ~TileGuard(){inside_forward_tile=previous;}
+    } guard;
+    const bool left=forward_worker_x_left;
+    return forward_gemm(handle,left,left?ta:tb,m,n,k,left?a:b,left?lda:ldb,
+                        left?b:a,left?ldb:lda,c,ldc,0,0);
 }
 
 } // namespace

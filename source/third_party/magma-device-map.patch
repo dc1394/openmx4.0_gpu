@@ -1,0 +1,36 @@
+--- a/interface_cuda/interface.cpp
++++ b/interface_cuda/interface.cpp
+@@ -35,6 +35,7 @@
+ 
+ #include "magma_internal.h"
+ #include "error.h"
++#include "magma_device_map.h"
+ 
+ #define MAX_BATCHCOUNT    (65534)
+ 
+@@ -569,6 +570,7 @@
+     check_error( err );
+     MAGMA_UNUSED( err );
+ 
++    if (openmx_magma_map_count) cnt = openmx_magma_map_count;
+     cnt = min( cnt, int(size) );
+     for( int i = 0; i < cnt; ++i ) {
+         devices[i] = i;
+@@ -592,7 +594,7 @@
+     int dev;
+     cudaError_t err;
+     err = cudaGetDevice( &dev );
+-    *device = dev;
++    *device = openmx_magma_map_to_logical(dev);
+     check_error( err );
+     MAGMA_UNUSED( err );
+ }
+@@ -611,7 +613,7 @@
+ magma_setdevice( magma_device_t device )
+ {
+     cudaError_t err;
+-    err = cudaSetDevice( int(device) );
++    err = cudaSetDevice( openmx_magma_map_to_physical(int(device)) );
+     check_error( err );
+     MAGMA_UNUSED( err );
+ }

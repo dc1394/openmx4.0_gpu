@@ -5,6 +5,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <algorithm>
+#include <vector>
+#include <new>
+#include "openmx_gpu_workers.h"
+#include "openmx_gpu_views.h"
 
 #include "openmx_stdout_level.h"
 
@@ -379,7 +384,7 @@ __global__ void density_kernel(
     const float *__restrict__ dml,
     double *__restrict__ tmpden,
     std::size_t output_count,
-    int compact_orbs0)
+    int compact_orbs0, std::size_t output_first, std::size_t output_last)
 {
     const int pair = static_cast<int>(blockIdx.x);
     const int NO0 = pair_NO0[pair];
@@ -399,6 +404,8 @@ __global__ void density_kernel(
     if (k >= NOLG) return;
 
     const int Nc = nolg_Nc[pair_nolg_offset[pair] + static_cast<std::size_t>(k)];
+    const std::size_t out = pair_out_base[pair] + static_cast<std::size_t>(Nc);
+    if (out < output_first || out >= output_last) return;
     const float *phi1 = orbs1buf + pair_orbs1_offset[pair] + static_cast<std::size_t>(k) * NO1;
     /* Point chunks evaluate only their overlap rows.  Nc remains the atom's
        original sphere index for the output, including repeated grid points. */
@@ -409,7 +416,6 @@ __global__ void density_kernel(
     for (int j = 0; j < NMAX; j++) f1[j] = (j < NO1) ? phi1[j] : 0.0f;
 #pragma unroll
     for (int i = 0; i < NMAX; i++) f0[i] = (i < NO0) ? phi0[i] : 0.0f;
-    const std::size_t out = pair_out_base[pair] + static_cast<std::size_t>(Nc);
 
     for (int s = 0; s < spin_count; s++) {
         const float2 *dms = dm_s + static_cast<std::size_t>(s) * mat;
@@ -438,7 +444,7 @@ __global__ void density_kernel(
                 eh = su;
             }
         }
-        atomicAdd(tmpden + static_cast<std::size_t>(s) * output_count + out,
+        atomicAdd(tmpden + static_cast<std::size_t>(s) * (output_last-output_first) + out-output_first,
                   static_cast<double>(eh) + static_cast<double>(el));
     }
 }
@@ -449,24 +455,22 @@ static int density_launch(int pair_count, int spin_count, int max_nolg, std::siz
     const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
     const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
     const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
-    const float *dmf, const float *dml, double *tmpden, std::size_t output_count, int compact_orbs0)
+    const float *dmf, const float *dml, double *tmpden, std::size_t output_count, int compact_orbs0, std::size_t output_first, std::size_t output_last)
 {
     constexpr int kDensityThreads = 128;
-    static std::size_t attribute_bytes = 0;
-    if (shared_bytes > 48 * 1024 && shared_bytes > attribute_bytes) {
+    if (shared_bytes > 48 * 1024) {
         if (cudaFuncSetAttribute(density_kernel<NMAX>, cudaFuncAttributeMaxDynamicSharedMemorySize,
                                  static_cast<int>(shared_bytes)) != cudaSuccess) {
             (void)cudaGetLastError();
             return 1;
         }
-        attribute_bytes = shared_bytes;
     }
     const dim3 block(kDensityThreads, 1u, 1u);
     const dim3 grid(static_cast<unsigned>(pair_count),
                     static_cast<unsigned>((max_nolg + kDensityThreads - 1) / kDensityThreads), 1u);
     density_kernel<NMAX><<<grid, block, shared_bytes>>>(spin_count, pair_NO0, pair_NO1, pair_NOLG,
         pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-        orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0);
+        orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0, output_first, output_last);
     {
         const cudaError_t launch = cudaGetLastError();
         if (launch != cudaSuccess) return 1;   /* nothing ran: the caller takes the OpenACC kernel */
@@ -492,7 +496,7 @@ __global__ void density_fp64_kernel(
     const int *__restrict__ nolg_Nc,
     const float *__restrict__ orbs0buf, const float *__restrict__ orbs1buf,
     const double *__restrict__ dm, double *__restrict__ tmpden,
-    std::size_t output_count, int compact_orbs0)
+    std::size_t output_count, int compact_orbs0, std::size_t output_first, std::size_t output_last)
 {
     const int pair = static_cast<int>(blockIdx.x);
     const int NO0 = pair_NO0[pair], NO1 = pair_NO1[pair];
@@ -511,13 +515,14 @@ __global__ void density_fp64_kernel(
     if (k >= NOLG) return;
 
     const int Nc = nolg_Nc[pair_nolg_offset[pair] + static_cast<std::size_t>(k)];
+    const std::size_t out = pair_out_base[pair] + static_cast<std::size_t>(Nc);
+    if (out < output_first || out >= output_last) return;
     const std::size_t left_row = static_cast<std::size_t>(compact_orbs0 ? k : Nc);
     const float *phi0 = orbs0buf + pair_orbs0_offset[pair] + left_row * NO0;
     const float *phi1 = orbs1buf + pair_orbs1_offset[pair] + static_cast<std::size_t>(k) * NO1;
     float f1[NMAX];
 #pragma unroll
     for (int j = 0; j < NMAX; ++j) f1[j] = j < NO1 ? phi1[j] : 0.0f;
-    const std::size_t out = pair_out_base[pair] + static_cast<std::size_t>(Nc);
 
     for (int s = first_spin; s < last_spin; ++s) {
         double rho = 0.0;
@@ -532,7 +537,7 @@ __global__ void density_fp64_kernel(
             }
             rho = __fma_rn(static_cast<double>(phi0[i]), row_sum, rho);
         }
-        atomicAdd(tmpden + static_cast<std::size_t>(s) * output_count + out, rho);
+        atomicAdd(tmpden + static_cast<std::size_t>(s) * (output_last-output_first) + out-output_first, rho);
     }
 }
 
@@ -542,7 +547,7 @@ static int density_fp64_launch(int pair_count, int spin_count, int max_nolg, std
     const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
     const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
     const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
-    const double *dm, double *tmpden, std::size_t output_count, int compact_orbs0, bool split_spin)
+    const double *dm, double *tmpden, std::size_t output_count, int compact_orbs0, bool split_spin, std::size_t output_first, std::size_t output_last)
 {
     constexpr int threads = 128;
     if (shared_bytes > 48 * 1024 &&
@@ -557,11 +562,11 @@ static int density_fp64_launch(int pair_count, int spin_count, int max_nolg, std
     if (split_spin)
         density_fp64_kernel<NMAX, true><<<grid, threads, shared_bytes>>>(spin_count, pair_NO0, pair_NO1, pair_NOLG,
             pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0);
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, output_first, output_last);
     else
         density_fp64_kernel<NMAX, false><<<grid, threads, shared_bytes>>>(spin_count, pair_NO0, pair_NO1, pair_NOLG,
             pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0);
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, output_first, output_last);
     if (cudaGetLastError() != cudaSuccess) return 1;
     return cudaDeviceSynchronize() == cudaSuccess ? 0 : -1;
 }
@@ -570,15 +575,16 @@ static int density_fp64_launch(int pair_count, int spin_count, int max_nolg, std
 
 /* 0 = done, 1 = not taken (nothing was written; use the OpenACC kernel),
    -1 = the kernel failed after running (the density is suspect) */
-extern "C" int Set_Hamiltonian_Cuda_Density(
+extern "C" int Set_Hamiltonian_Cuda_Density_Range(
     int pair_count, int spin_count, int max_no, int max_nolg,
     const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
     const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
     const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
     const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
-    const float *dmf, const float *dml, double *tmpden, std::size_t output_count, int compact_orbs0)
+    const float *dmf, const float *dml, double *tmpden, std::size_t output_count, int compact_orbs0, std::size_t output_first, std::size_t output_last)
 {
-    if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0) return 0;
+    if (output_first > output_last || output_last > output_count) return 1;
+    if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0 || output_first == output_last) return 0;
     if (max_no > 48) return 1;
     (void)cudaGetLastError();
     const std::size_t shared_bytes = static_cast<std::size_t>(spin_count) * static_cast<std::size_t>(max_no) *
@@ -590,27 +596,28 @@ extern "C" int Set_Hamiltonian_Cuda_Density(
     if (max_no <= 16)
         return density_launch<16>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
             pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-            orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0);
+            orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0, output_first, output_last);
     if (max_no <= 32)
         return density_launch<32>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
             pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-            orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0);
+            orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0, output_first, output_last);
     return density_launch<48>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
         pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-        orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0);
+        orbs0buf, orbs1buf, dmf, dml, tmpden, output_count, compact_orbs0, output_first, output_last);
 }
 
 /* Same fallback contract as the DF entry point; separate symbols preserve
    callers that explicitly request the double-float arithmetic. */
-extern "C" int Set_Hamiltonian_Cuda_Density_FP64(
+extern "C" int Set_Hamiltonian_Cuda_Density_FP64_Range(
     int pair_count, int spin_count, int max_no, int max_nolg,
     const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
     const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
     const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
     const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
-    const double *dm, double *tmpden, std::size_t output_count, int compact_orbs0)
+    const double *dm, double *tmpden, std::size_t output_count, int compact_orbs0, std::size_t output_first, std::size_t output_last)
 {
-    if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0) return 0;
+    if (output_first > output_last || output_last > output_count) return 1;
+    if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0 || output_first == output_last) return 0;
     const char *enabled = std::getenv("OPENMX_SETDEN_FP64_CUDA");
     if (enabled != nullptr && enabled[0] != '\0' && std::atoi(enabled) == 0) return 1;
     if (max_no > 48 || spin_count > 4) return 1;
@@ -635,17 +642,43 @@ extern "C" int Set_Hamiltonian_Cuda_Density_FP64(
     if (max_no <= 16)
         return density_fp64_launch<16>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
             pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin);
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin, output_first, output_last);
     if (max_no <= 32)
         return density_fp64_launch<32>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
             pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin);
+            orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin, output_first, output_last);
     return density_fp64_launch<48>(pair_count, spin_count, max_nolg, shared_bytes, pair_NO0, pair_NO1, pair_NOLG,
         pair_h_offset, pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, pair_out_base, nolg_Nc,
-        orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin);
+        orbs0buf, orbs1buf, dm, tmpden, output_count, compact_orbs0, split_spin, output_first, output_last);
 }
 
-extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
+
+extern "C" int Set_Hamiltonian_Cuda_Density(
+    int pair_count, int spin_count, int max_no, int max_nolg,
+    const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+    const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
+    const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
+    const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
+    const float *dmf, const float *dml, double *tmpden, std::size_t output_count, int compact_orbs0)
+{
+    return Set_Hamiltonian_Cuda_Density_Range(pair_count,spin_count,max_no,max_nolg,pair_NO0,pair_NO1,pair_NOLG,
+        pair_h_offset,pair_nolg_offset,pair_orbs0_offset,pair_orbs1_offset,pair_out_base,nolg_Nc,
+        orbs0buf,orbs1buf,dmf, dml,tmpden,output_count,compact_orbs0,0,output_count);
+}
+
+extern "C" int Set_Hamiltonian_Cuda_Density_FP64(
+    int pair_count, int spin_count, int max_no, int max_nolg,
+    const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
+    const std::size_t *pair_h_offset, const std::size_t *pair_nolg_offset,
+    const std::size_t *pair_orbs0_offset, const std::size_t *pair_orbs1_offset,
+    const std::size_t *pair_out_base, const int *nolg_Nc, const float *orbs0buf, const float *orbs1buf,
+    const double *dm, double *tmpden, std::size_t output_count, int compact_orbs0)
+{
+    return Set_Hamiltonian_Cuda_Density_FP64_Range(pair_count,spin_count,max_no,max_nolg,pair_NO0,pair_NO1,pair_NOLG,
+        pair_h_offset,pair_nolg_offset,pair_orbs0_offset,pair_orbs1_offset,pair_out_base,nolg_Nc,
+        orbs0buf,orbs1buf,dm,tmpden,output_count,compact_orbs0,0,output_count);
+}
+static int Set_Hamiltonian_Cuda_MatrixElements_Single(
     int pair_count,
     int spin_count,
     std::size_t vpot_len,
@@ -681,7 +714,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     {
         cudaError_t stale = cudaGetLastError();
         if (stale != cudaSuccess) {
-            static int stale_reports = 0;
+            static thread_local int stale_reports = 0;
             if (stale_reports < 3 && OPENMX_STDOUT_LEVEL(2)) {
                 stale_reports++;
                 fprintf(stderr,
@@ -717,7 +750,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
         const int half = (max_no + 1) / 2;
         const int max_tiles = spin_count * half * half;
         /* OPENMX_SETHAM_MATEL_SPLIT (default 4): blocks per pair along the grid points */
-        static int split = 0;
+        static thread_local int split = 0;
         if (split == 0) {
             const char *v = getenv("OPENMX_SETHAM_MATEL_SPLIT");
             split = (v != NULL && v[0] != '\0' && atoi(v) > 0) ? atoi(v) : 4;
@@ -746,7 +779,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
        OpenACC kernel) from a sticky, context-poisoning one. */
     (void)cudaGetLastError();
     if (cudaDeviceSynchronize() == cudaSuccess) {
-        static int recover_reports = 0;
+        static thread_local int recover_reports = 0;
         if (recover_reports < 3 && OPENMX_STDOUT_LEVEL(2)) {
             recover_reports++;
             fprintf(stderr,
@@ -758,6 +791,163 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
     }
     (void)cudaGetLastError();
     return -static_cast<int>(status);
+}
+
+namespace {
+struct MatrixGpuDevice {
+    OpenMXGpuReadView inputs[5]{};
+    int *integer=nullptr;
+    std::size_t *offset=nullptr;
+    double *output=nullptr;
+    std::size_t first=0,last=0,hfirst=0,hlast=0;
+    std::vector<int> integers;
+    std::vector<std::size_t> offsets;
+    std::vector<double> result;
+    int status=0;
+};
+struct MatrixGpuWork {
+    OpenMXGpuWorkers workers{};
+    int pairs,spins,max_no,max_output,mode;
+    bool split_points=false;
+    std::size_t vpot_len;
+    double volume;
+    const int *MN,*Nc;
+    const float *orb0,*orb1;
+    const double *potential;
+    double *H;
+    std::vector<int> no0,no1,nolg,nc;
+    std::vector<std::size_t> ho,no,oo0,oo1;
+    MatrixGpuDevice device[OPENMX_GPU_WORKERS_MAX];
+};
+
+template<class T> bool matrix_upload(T **device,const std::vector<T>& data) {
+    if(cudaMalloc(reinterpret_cast<void**>(device),data.size()*sizeof(T))!=cudaSuccess)return false;
+    return cudaMemcpy(*device,data.data(),data.size()*sizeof(T),cudaMemcpyHostToDevice)==cudaSuccess;
+}
+template<class T> bool matrix_download(std::vector<T>& host,const T *device,std::size_t n) {
+    host.resize(n);
+    return !n || cudaMemcpy(host.data(),device,n*sizeof(T),cudaMemcpyDeviceToHost)==cudaSuccess;
+}
+
+int matrix_worker(void *opaque,int worker,int phase) {
+    try {
+    auto &w=*static_cast<MatrixGpuWork*>(opaque);
+    auto &d=w.device[worker];
+    if(phase==OPENMX_GPU_WORKER_PREPARE) {
+        d.first=w.split_points?0:openmx_gpu_worker_cut(w.pairs,worker,w.workers.count);
+        d.last=w.split_points?w.pairs:openmx_gpu_worker_cut(w.pairs,worker+1,w.workers.count);
+        const std::size_t n=d.last-d.first;
+        d.integers.resize(3*n);d.offsets.resize(4*n);
+        std::size_t nfirst=SIZE_MAX,nlast=0,o0first=SIZE_MAX,o0last=0,o1first=SIZE_MAX,o1last=0;
+        d.hfirst=SIZE_MAX;d.hlast=0;
+        for(std::size_t p=d.first;p<d.last;p++) {
+            const std::size_t q=p-d.first;
+            const std::size_t begin=w.split_points?openmx_gpu_worker_cut(w.nolg[p],worker,w.workers.count):0;
+            const std::size_t end=w.split_points?openmx_gpu_worker_cut(w.nolg[p],worker+1,w.workers.count):w.nolg[p];
+            d.integers[q]=w.no0[p];d.integers[n+q]=w.no1[p];d.integers[2*n+q]=static_cast<int>(end-begin);
+            d.offsets[q]=w.ho[p];d.offsets[n+q]=w.no[p]+begin;
+            d.offsets[2*n+q]=w.oo0[p];d.offsets[3*n+q]=w.oo1[p]+begin*w.no1[p];
+            nfirst=std::min(nfirst,w.no[p]+begin);nlast=std::max(nlast,w.no[p]+end);
+            o0first=std::min(o0first,w.oo0[p]);
+            o1first=std::min(o1first,w.oo1[p]+begin*w.no1[p]);o1last=std::max(o1last,w.oo1[p]+end*w.no1[p]);
+            for(std::size_t k=begin;k<end;k++)
+                o0last=std::max(o0last,w.oo0[p]+(static_cast<std::size_t>(w.nc[w.no[p]+k])+1)*w.no0[p]);
+            d.hfirst=std::min(d.hfirst,w.ho[p]);
+            d.hlast=std::max(d.hlast,w.ho[p]+static_cast<std::size_t>(w.spins)*w.no0[p]*w.no1[p]);
+        }
+        o0last=std::max(o0last,o0first);o1last=std::max(o1last,o1first);nlast=std::max(nlast,nfirst);
+        for(std::size_t q=0;q<n;q++) {
+            d.offsets[q]-=d.hfirst;d.offsets[n+q]-=nfirst;
+            d.offsets[2*n+q]-=o0first;d.offsets[3*n+q]-=o1first;
+        }
+        if(!matrix_upload(&d.integer,d.integers) || !matrix_upload(&d.offset,d.offsets) ||
+           !openmx_gpu_read_view(&d.inputs[0],w.MN+nfirst,(nlast-nfirst)*sizeof(int)) ||
+           !openmx_gpu_read_view(&d.inputs[1],w.Nc+nfirst,(nlast-nfirst)*sizeof(int)) ||
+           !openmx_gpu_read_view(&d.inputs[2],w.orb0+o0first,(o0last-o0first)*sizeof(float)) ||
+           !openmx_gpu_read_view(&d.inputs[3],w.orb1+o1first,(o1last-o1first)*sizeof(float)) ||
+           !openmx_gpu_read_view(&d.inputs[4],w.potential,static_cast<std::size_t>(w.spins)*w.vpot_len*sizeof(double)))return 0;
+        const std::size_t bytes=(d.hlast-d.hfirst)*sizeof(double);
+        if(cudaMalloc(reinterpret_cast<void**>(&d.output),bytes?bytes:sizeof(double))!=cudaSuccess)return 0;
+        if(w.split_points) {
+            d.result.resize(d.hlast-d.hfirst);
+            return cudaMemset(d.output,0,bytes)==cudaSuccess;
+        }
+        return openmx_gpu_copy_device(d.output,w.H+d.hfirst,bytes);
+    }
+    if(phase==OPENMX_GPU_WORKER_EXECUTE) {
+        const std::size_t n=d.last-d.first;
+        d.status=Set_Hamiltonian_Cuda_MatrixElements_Single(static_cast<int>(n),w.spins,w.vpot_len,
+            w.volume,w.max_no,w.max_output,d.integer,d.integer+n,d.integer+2*n,
+            static_cast<const int*>(d.inputs[0].pointer),static_cast<const int*>(d.inputs[1].pointer),
+            d.offset,d.offset+n,d.offset+2*n,d.offset+3*n,
+            static_cast<const float*>(d.inputs[2].pointer),static_cast<const float*>(d.inputs[3].pointer),
+            static_cast<const double*>(d.inputs[4].pointer),d.output,w.mode);
+        if(d.status)return 0;
+        return !w.split_points || cudaMemcpy(d.result.data(),d.output,d.result.size()*sizeof(double),cudaMemcpyDeviceToHost)==cudaSuccess;
+    }
+    if(phase==OPENMX_GPU_WORKER_COMMIT && !w.split_points) {
+        /* Pair output blocks are disjoint. Preserve any padding between them. */
+        for(std::size_t p=d.first;p<d.last;p++)
+            if(!openmx_gpu_copy_device(w.H+w.ho[p],d.output+(w.ho[p]-d.hfirst),
+                static_cast<std::size_t>(w.spins)*w.no0[p]*w.no1[p]*sizeof(double)))return 0;
+    }
+    if(phase==OPENMX_GPU_WORKER_RELEASE) {
+        for(auto &input:d.inputs)openmx_gpu_read_view_release(&input);
+        if(d.integer)cudaFree(d.integer);
+        if(d.offset)cudaFree(d.offset);
+        if(d.output)cudaFree(d.output);
+    }
+    return 1;
+    } catch(const std::bad_alloc&) {return 0;}
+}
+} // namespace
+
+extern "C" int Set_Hamiltonian_Cuda_MatrixElements(int pair_count,int spin_count,std::size_t vpot_len,
+    double grid_vol,int max_no,int max_output_count,const int *pair_NO0,const int *pair_NO1,
+    const int *pair_NOLG,const int *nolg_MN,const int *nolg_Nc,const std::size_t *pair_h_offset,
+    const std::size_t *pair_nolg_offset,const std::size_t *pair_orbs0_offset,const std::size_t *pair_orbs1_offset,
+    const float *orbs0buf,const float *orbs1buf,const double *vpotgrid,double *hbuf,int mode)
+{
+    if(pair_count<=0 || spin_count<=0 || max_no<=0 || max_output_count<=0)return 0;
+    if(openmx_gpu_worker_device()<0) {
+        try {
+            MatrixGpuWork w{};
+            w.pairs=pair_count;w.spins=spin_count;w.vpot_len=vpot_len;w.volume=grid_vol;
+            w.max_no=max_no;w.max_output=max_output_count;w.mode=mode;
+            w.MN=nolg_MN;w.Nc=nolg_Nc;w.orb0=orbs0buf;w.orb1=orbs1buf;w.potential=vpotgrid;w.H=hbuf;
+            if(cudaDeviceSynchronize()!=cudaSuccess)return -1;
+            if(!matrix_download(w.nolg,pair_NOLG,pair_count))return 1;
+            int max_nolg=*std::max_element(w.nolg.begin(),w.nolg.end());
+            openmx_gpu_workers_local(&w.workers,static_cast<std::size_t>(std::max(pair_count,max_nolg)));
+            if(w.workers.count>1) {
+                w.split_points=pair_count<w.workers.count;
+                if(!matrix_download(w.no0,pair_NO0,pair_count) || !matrix_download(w.no1,pair_NO1,pair_count) ||
+                   !matrix_download(w.ho,pair_h_offset,pair_count) || !matrix_download(w.no,pair_nolg_offset,pair_count) ||
+                   !matrix_download(w.oo0,pair_orbs0_offset,pair_count) || !matrix_download(w.oo1,pair_orbs1_offset,pair_count))return 1;
+                std::size_t nc_count=0;
+                for(int p=0;p<pair_count;p++)nc_count=std::max(nc_count,w.no[p]+w.nolg[p]);
+                if(!matrix_download(w.nc,nolg_Nc,nc_count))return 1;
+                if(!openmx_gpu_workers_run(&w.workers,matrix_worker,&w,"Hamiltonian-matrix-elements")) {
+                    for(int worker=0;worker<w.workers.count;worker++)if(w.device[worker].status<0)return w.device[worker].status;
+                    return 1; // Private results were never published.
+                }
+                if(w.split_points) {
+                    // Only fewer than G pairs use this bounded host reduction;
+                    // ordinary batches publish disjoint pair blocks directly.
+                    std::vector<double> result;
+                    const auto &first=w.device[0];
+                    if(!matrix_download(result,hbuf+first.hfirst,first.hlast-first.hfirst))return -1;
+                    for(int worker=0;worker<w.workers.count;worker++)
+                        for(std::size_t j=0;j<result.size();j++)result[j]+=w.device[worker].result[j];
+                    if(cudaMemcpy(hbuf+first.hfirst,result.data(),result.size()*sizeof(double),cudaMemcpyHostToDevice)!=cudaSuccess)return -1;
+                }
+                return 0;
+            }
+        } catch(const std::bad_alloc&) {return 1;}
+    }
+    return Set_Hamiltonian_Cuda_MatrixElements_Single(pair_count,spin_count,vpot_len,grid_vol,max_no,max_output_count,
+        pair_NO0,pair_NO1,pair_NOLG,nolg_MN,nolg_Nc,pair_h_offset,pair_nolg_offset,pair_orbs0_offset,pair_orbs1_offset,
+        orbs0buf,orbs1buf,vpotgrid,hbuf,mode);
 }
 
 namespace {
