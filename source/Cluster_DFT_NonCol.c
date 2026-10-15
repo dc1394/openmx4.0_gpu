@@ -21,6 +21,7 @@
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
 #include "elpa_cosma_bridge.h"
+#include "openmx_cluster_capacity.h"
 #include "eigen_refine_gpu.h"
 #include "openmx_precision.h"
 #include <limits.h>
@@ -126,6 +127,25 @@ typedef struct
 
 static ClusterNonColDenseArena ClusterNonCol_dense_arena = {0};
 static int ClusterNonCol_mgpu_host_dense = 0;
+/* spinor order for which the automatic capacity fallback of gpusolver
+   chose the distributed gpusolver2 path (0: none); see
+   openmx_cluster_capacity.h */
+static int ClusterNonCol_gs2_fallback_n2 = 0;
+
+/* the distributed ELPA/COSMA path: requested by the input, or the capacity
+   fallback of gpusolver for this spinor order */
+static int ClusterNonCol_UseGs2(int n2)
+{
+    return gpusolver2_flag || (0 < n2 && ClusterNonCol_gs2_fallback_n2 == n2);
+}
+
+static void ClusterNonCol_RootHostBuffers_Release(void);
+
+static void ClusterNonCol_ResetGs2Fallback(void)
+{
+    if (ClusterNonCol_gs2_fallback_n2 != 0) openmx_gs2_set_fallback_report(0);
+    ClusterNonCol_gs2_fallback_n2 = 0;
+}
 
 static size_t ClusterNonCol_ArenaOff(size_t *pos, size_t bytes)
 {
@@ -2340,8 +2360,11 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
     int my_fit = 1;
     int fit = 0;
 
+    if (SCF_iter==1 || verdict_n2!=n2) {
+        ClusterNonCol_mgpu_host_dense=0;
+        ClusterNonCol_ResetGs2Fallback();
+    }
     if (force && atoi(force)==0 && !openmx_mgpu_host_required()) return 0;
-    if (SCF_iter==1 || verdict_n2!=n2) ClusterNonCol_mgpu_host_dense=0;
     if (openmx_mgpu_host_required()) goto host_capacity;
 
     if (verdict != -1 && verdict_n2 == n2 && 1 < SCF_iter) return verdict;
@@ -2402,16 +2425,36 @@ host_capacity:
         openmx_gemmul8ReleaseWorkspaces();
         acc_wait_all();
         acc_clear_freelists();
+        /* the automatic decision (once per cycle) starts from the baseline
+           its host estimate was calibrated on: the root host matrices of an
+           earlier step go now (MAGMA re-creates them; the distributed path
+           does not need them).  Forced MAGMA comes here every step and keeps
+           them. */
+        if (!openmx_mgpu_host_required()) ClusterNonCol_RootHostBuffers_Release();
         MPI_Barrier(mpi_comm_level1);
-        if (myid==Host_ID) {
-            if (!openmx_mgpu_host_plan(0,n2,1))
-                ClusterNonCol_AbortWithMessage(openmx_mgpu_host_error());
-            printf("<OpenMX_MGPU> Cluster NC n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
-                   n2,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
-            fflush(stdout);
+        /* Host_ID plans node-local MAGMA and, in a multi-node run, falls
+           back to the distributed gpusolver2 path; the choice is broadcast
+           before any rank commits to a path */
+        if (openmx_cluster_capacity_select(mpi_comm_level1,n2,1,"Cluster NC")
+            ==OPENMX_CLUSTER_CAPACITY_GS2) {
+            /* verdict 0 takes every rank to the distributed family, whose
+               gpusolver2 branches then run (ClusterNonCol_UseGs2).  The
+               decision is made at SCF_iter 1 only (cached below), where that
+               family also diagonalizes the overlap. */
+            openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1_2,n2,nblk2,1,"Cluster NC");
+            ClusterNonCol_gs2_fallback_n2 = n2;
+            ClusterNonCol_mgpu_host_dense=0;
+            fit=0;
         }
-        ClusterNonCol_mgpu_host_dense=1;
-        fit=1;
+        else {
+            if (myid==Host_ID) {
+                printf("<OpenMX_MGPU> Cluster NC n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
+                       n2,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
+                fflush(stdout);
+            }
+            ClusterNonCol_mgpu_host_dense=1;
+            fit=1;
+        }
     }
 
     verdict = fit;
@@ -2438,6 +2481,25 @@ typedef struct
 } ClusterNonColRootSolveWorkspace;
 
 static ClusterNonColRootSolveWorkspace ClusterNonCol_root_solve_workspace = {0};
+
+/* the persistent host matrices of the root dense paths (native and MAGMA)
+   on Host_ID: the dense overlap cache and the root solve workspace */
+static void ClusterNonCol_RootHostBuffers_Release(void)
+{
+    ClusterNonColRootSolveWorkspace *ws = &ClusterNonCol_root_solve_workspace;
+
+    free(ClusterNonCol_dense_scache.S);
+    memset(&ClusterNonCol_dense_scache, 0, sizeof(ClusterNonCol_dense_scache));
+    free(ws->Cs);
+    free(ws->rHs11);
+    free(ws->rHs12);
+    free(ws->rHs22);
+    free(ws->iHs11);
+    free(ws->iHs12);
+    free(ws->iHs22);
+    free(ws->Hs2);
+    memset(ws, 0, sizeof(*ws));
+}
 
 static void ClusterNonCol_RootSolveWorkspace_Ensure(int n, int n2)
 {
@@ -3327,7 +3389,7 @@ double Cluster_DFT_NonCol(
 
     /* diagonalize Cs */
 
-    if (gpusolver2_flag){
+    if (ClusterNonCol_UseGs2(n2)){
 
       /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels) */
       int gs2_info = openmx_gs2_eigen_real(n, n, Cs, descC, &ko[1], Ss, descS);
@@ -3437,7 +3499,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&Re_alpha,rHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
@@ -3445,7 +3507,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) rHs11[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs11,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs11,&ONE,&ONE,descH);
@@ -3455,7 +3517,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&Re_alpha,rHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
@@ -3463,7 +3525,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) rHs12[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs12,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs12,&ONE,&ONE,descH);
@@ -3473,7 +3535,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&Re_alpha,rHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,rHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
@@ -3481,7 +3543,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) rHs22[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs22,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,rHs22,&ONE,&ONE,descH);
@@ -3491,7 +3553,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&Re_alpha,iHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs11,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
@@ -3499,7 +3561,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) iHs11[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs11,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs11,&ONE,&ONE,descH);
@@ -3509,7 +3571,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&Re_alpha,iHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs12,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
@@ -3517,7 +3579,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) iHs12[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs12,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs12,&ONE,&ONE,descH);
@@ -3527,7 +3589,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) Cs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&Re_alpha,iHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&Re_alpha,iHs22,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&Re_beta,Cs,&ONE,&ONE,descC);
@@ -3535,7 +3597,7 @@ double Cluster_DFT_NonCol(
   for (i=0; i<na_rows*na_cols; i++) iHs22[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"C");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs22,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&Re_alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&Re_beta,iHs22,&ONE,&ONE,descH);
@@ -3562,7 +3624,7 @@ double Cluster_DFT_NonCol(
   mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
   mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-  if (gpusolver2_flag){
+  if (ClusterNonCol_UseGs2(n2)){
 
     /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels); all n2
        eigenvalues are returned but only the lowest MaxN eigenvectors */
@@ -3620,7 +3682,7 @@ double Cluster_DFT_NonCol(
   }
 
   Cblacs_barrier(ictxt1_2,"A");
-  if (gpusolver2_flag)
+  if (ClusterNonCol_UseGs2(n2))
     openmx_gs2_pzgemm_("T","T", &n2,&n2,&n2,(const double*)&alpha,(const double*)Cs2,&ONE,&ONE,
                            descC2,(const double*)Ss2,&ONE,&ONE,descS2,(const double*)&beta,
                            (double*)Hs2,&ONE,&ONE,descH2);
@@ -6130,25 +6192,14 @@ dcomplex Lapack_LU_Zinverse(int n, dcomplex *A)
    Called on every rank before Free_Arrays(0) frees the current system. */
 void Cluster_DFT_NonCol_Release_GPU_Caches(void)
 {
-    ClusterNonColRootSolveWorkspace *ws = &ClusterNonCol_root_solve_workspace;
-
     ClusterNonCol_mgpu_host_dense=0;
+    ClusterNonCol_ResetGs2Fallback();
     ClusterNonCol_DMEntryCache_Reset();
     ClusterNonCol_RootDMWorkspace_Reset();
     /* Discard the completed input's vectors before returning its arena. */
     ClusterNonCol_ReleaseGpuSolverCachedEVec(Host_ID);
     Cluster_DFT_NonCol_Release_GPU_Solver();
-    free(ClusterNonCol_dense_scache.S);
-    memset(&ClusterNonCol_dense_scache, 0, sizeof(ClusterNonCol_dense_scache));
     free(ClusterNonCol_dense_index_cache.dense_index);
     memset(&ClusterNonCol_dense_index_cache, 0, sizeof(ClusterNonCol_dense_index_cache));
-    free(ws->Cs);
-    free(ws->rHs11);
-    free(ws->rHs12);
-    free(ws->rHs22);
-    free(ws->iHs11);
-    free(ws->iHs12);
-    free(ws->iHs22);
-    free(ws->Hs2);
-    memset(ws, 0, sizeof(*ws));
+    ClusterNonCol_RootHostBuffers_Release();
 }

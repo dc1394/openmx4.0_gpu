@@ -30,6 +30,7 @@ int acc_get_device_type(void);int acc_get_device_num(int);void acc_set_device_nu
 void *acc_malloc(size_t);void acc_free(void*);void acc_wait_all(void);
 ''')
     test=r'''
+#define _POSIX_C_SOURCE 200809L
 #include "openmx_gpu_workers.h"
 #include <assert.h>
 #include <omp.h>
@@ -89,6 +90,18 @@ static int callback(void *opaque,int worker,int phase){
  return 1;
 }
 int main(void){
+ /* The distribution is experimental and off by default: every pool is the
+    rank's own GPU unless OPENMX_GPU_WORKERS is 1 or on. */
+ for(int setting=0;setting<4;setting++){
+  const char *value[4]={NULL,"0","off","2"};
+  if(value[setting]) setenv("OPENMX_GPU_WORKERS",value[setting],1); else unsetenv("OPENMX_GPU_WORKERS");
+  permitted=4;device=acc_device=1;openmx_gpu_workers_configure(0,1,4);
+  OpenMXGpuWorkers p;openmx_gpu_workers_local(&p,173);CHECK(p.count==1 && p.devices[0]==1);
+  openmx_gpu_workers_owner(&p,173);CHECK(p.count==1 && p.devices[0]==1);
+ }
+ setenv("OPENMX_GPU_WORKERS","ON",1);
+ {OpenMXGpuWorkers p;openmx_gpu_workers_owner(&p,173);CHECK(p.count==4);}
+ setenv("OPENMX_GPU_WORKERS","1",1);
  /* Every mapped owner is retained and every otherwise idle permitted GPU
     has exactly one extra owner, even when the old block map has holes. */
  for(int visible=1;visible<=16;visible++)for(int ranks=1;ranks<=32;ranks++)for(int cap=1;cap<=visible;cap++){

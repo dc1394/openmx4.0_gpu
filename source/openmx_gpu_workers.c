@@ -23,6 +23,17 @@ void openmx_gpu_workers_configure(int local_rank, int local_size, int mapped_dev
     mapped_count=mapped_devices;
 }
 
+/* Spreading the GPU work outside the generalized eigenproblem over several
+   GPUs is experimental and off by default (on the measured Si1000 runs it
+   made the whole run slower): OPENMX_GPU_WORKERS=1 or on enables it, and
+   otherwise every rank keeps its work on its own GPU. */
+static int workers_enabled(void)
+{
+    const char *control=getenv("OPENMX_GPU_WORKERS");
+    return control && (strcmp(control,"1")==0 || strcmp(control,"on")==0 ||
+                       strcmp(control,"ON")==0);
+}
+
 static void worker_pool(OpenMXGpuWorkers *pool, size_t items, int kind)
 {
     int owner=-1, permitted[OPENMX_GPU_WORKERS_MAX], count=0;
@@ -31,8 +42,7 @@ static void worker_pool(OpenMXGpuWorkers *pool, size_t items, int kind)
     if (!items) return;
     if (cudaGetDevice(&owner)!=cudaSuccess || owner<0) return;
     if (worker_device>=0) { pool->devices[0]=owner; pool->count=1; return; }
-    const char *control=getenv("OPENMX_GPU_WORKERS");
-    if (!control || strcmp(control,"0"))
+    if (workers_enabled())
         count=kind==2 ? openmx_mgpu_scope_devices(permitted, OPENMX_GPU_WORKERS_MAX) :
                        openmx_mgpu_pool_devices(permitted, OPENMX_GPU_WORKERS_MAX);
     if (count<2) { pool->devices[0]=owner; pool->count=1; return; }

@@ -1079,6 +1079,21 @@ void Set_Hamiltonian_Release_OpenACC_DeviceCache(void)
     Set_Hamiltonian_ME_ReleaseDeviceCache(0);
 }
 
+/* A GPU phase that cannot start beside the resident tables (the capacity
+   fallback of the cluster solvers admitting its distributed solve) takes
+   their memory back, as the release_resident path does for a registered
+   phase: release them and stay transient for the rest of this MD step.
+   Local to this rank; returns 1 when tables were resident. */
+int Set_Hamiltonian_Yield_Resident_DeviceCache(void)
+{
+    SetHamiltonianMatrixElementsCache *cache = &Set_Hamiltonian_ME_Cache;
+    const int resident = (cache->resident_mask != 0);
+
+    if (resident) Set_Hamiltonian_ME_ReleaseDeviceCache(1);
+    cache->resident_blocked = 1;
+    return resident;
+}
+
 /* Non-building probe: report whether the shared matrix-elements tables for
    this Cnt_kind already exist.  Set_Hamiltonian_GetMatrixElementsTables
    builds the multi-GiB host tables on first use, which consumers that only

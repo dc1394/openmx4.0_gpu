@@ -23,8 +23,11 @@ Example input:
   scf.Gpu.Num          2
   scf.mgpu.enable      on
 
-Run within a single allocated node. Every participating MPI rank must see
-the same allocated GPUs through CUDA_VISIBLE_DEVICES. The GPU count is
+The cooperative paths run within one node. In a multi-node run only the
+capacity path below is available, on the GPUs of rank 0's node, followed
+by the distributed fallback (see "Multi-node capacity fallback"). Every
+participating MPI rank must see the same allocated GPUs through
+CUDA_VISIBLE_DEVICES. The GPU count is
 bounded by CUDA visibility, scf.Gpu.Num, OPENMX_MGPU_NUM_GPUS, and 8.
 An MPI rank owning a dense solve can use the whole selected GPU group;
 this does not require one MPI rank per GPU. Existing OpenMX device/rank
@@ -39,11 +42,96 @@ ignores OPENMX_MGPU_SOLVER=single/auto. Its eigensolver never falls back to
 cuSOLVER. gpusolver2 remains reserved for distributed ELPA/COSMA.
 
 The capacity path works on both A100 and GeForce. Native performance
-selection remains architecture-dependent within each GEMM worker. Device-resident
-GEMM cooperation now defaults to all eligible sizes and permitted devices;
-OPENMX_MGPU_GEMM=auto restores the earlier size/NVLink performance heuristic.
-Input off or OPENMX_MGPU=0 vetoes cooperation. Multiple MPI nodes disable
-these local paths. A required capacity fallback then reports an error.
+selection remains architecture-dependent within each GEMM worker.
+Matrix products follow the eigensolver. A device-resident product always
+fits its owner's GPU (its operands are there already) and stays on it.
+Several GPUs are used only on the capacity rungs: the host-backed MAGMA
+products on the GPUs of the owner's node, and in a multi-node run the
+distributed gpusolver2 transforms over every node. When the GPUs of the
+last rung cannot hold the problem, the run stops (the host-memory guard of
+the distributed transforms below can still move one transform to
+ScaLAPACK). Spreading a device-resident product over the
+permitted GPUs for speed is experimental and off by default:
+OPENMX_MGPU_GEMM=on cooperates for every size, auto with the older
+size/NVLink heuristic. Input off or OPENMX_MGPU=0 vetoes cooperation. In a
+multi-node run the device-resident cooperative eigensolves are off; the
+capacity path and its fallback are described in the next section. The
+work outside the generalized eigenproblem uses one GPU per rank unless the
+experimental GPU workers are enabled (OPENMX_GPU_WORKERS=1,
+doc/gpu_workers.txt), which then use every permitted GPU of each node.
+
+Multi-node capacity fallback
+----------------------------
+When the cluster solvers' collective admission finds that the dense solve
+does not fit on one GPU, every rank releases the native buffers and rank 0
+chooses the next step, which is broadcast before any rank commits
+(source/openmx_cluster_capacity.c):
+
+  1. Host-backed MAGMA on the GPUs of rank 0's node. This needs two or more
+     permitted GPUs on that node, an order within the LP64 limit (32766),
+     MAGMA's per-GPU scratch on every GPU of the group and, in a multi-node
+     run, the estimated host memory on rank 0's node (80 n^2 bytes for a
+     real order n, 128 n^2 for the complex spinor order, plus 8 GiB). The
+     GPU count and the order are tested first (they need no GPU, and when
+     they rule MAGMA out, the banner names them), then the host memory,
+     then the per-GPU scratch, which opens contexts on the node's GPUs.
+     Host memory is MemAvailable bounded by the room under the cgroup
+     limits of rank 0, where the inactive file cache counts as free
+     (OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB overrides the measurement).
+  2. Otherwise, in a run that spans several nodes, the distributed
+     gpusolver2 path (ELPA GPU kernels + COSMA) on a BLACS grid over every
+     rank of the run. Noncollinear and non-polarized collinear runs use
+     their existing grids, which span all ranks; a spin-polarized collinear
+     run, whose spin worlds are contiguous halves of the ranks (one node
+     each), solves both spins in turn on an extra grid over all ranks and
+     sends each spin's eigenvectors to its world. ELPA and COSMA use the GPU
+     each rank is bound to, so with at least one rank per GPU a two-node
+     job follows the requested ladder: one GPU per node gives two GPUs; with
+     two GPUs per node MAGMA on rank 0's two GPUs comes first and the
+     distributed solve then uses four GPUs. Permitted GPUs without a rank
+     stay idle, and the banner warns about them. Before committing, all
+     ranks agree that ELPA's GPU kernels fit (the bridge's per-solve
+     estimate plus COSMA's tile buffers on every GPU, counting what the
+     bridge already holds as available). If they do not, Set_Hamiltonian's
+     resident GPU tables (kept when all ranks of a GPU build in one wave)
+     are released and stay transient for the MD step, and the admission is
+     repeated; if it still fails, the run stops with the numbers.
+  3. Otherwise the run stops with the reason.
+
+The decision is made with the native admission (at SCF iteration 1, after
+a size change, or after a scratch trim) and holds for the cycle, including
+the post-SCF calls; the noncollinear distributed family diagonalizes the
+overlap at SCF iteration 1, where the decision is made. Forced MAGMA
+(gpusolver3, OPENMX_MGPU_MEMORY=host) never takes step 2, and a single-node
+run keeps stopping when MAGMA cannot take the solve.
+OPENMX_CLUSTER_GS2_FALLBACK (read on rank 0): auto (default) as above,
+off never takes step 2, on also allows step 2 on one node, force skips
+step 1 (tests). The banner at level.of.stdout 1 names the reason MAGMA was
+not used and the placement, e.g.
+  <OpenMX_MGPU> Cluster NC n=37440: cuSOLVER memory limit -> unsupported
+  MAGMA order/group ... -> distributed gpusolver2 (ELPA GPU kernels + COSMA)
+  on 2 node(s), 4 GPU(s), 16 rank(s).
+A distributed solve that later finds too little GPU memory runs on ELPA's
+CPU kernels for that solve and says so at level.of.stdout 1.
+The transforms of the distributed path (p?gemm) run on COSMA when the GPU
+holds its tiles and the host holds its buffers, and on ScaLAPACK otherwise.
+COSMA keeps its memory pool and COSTA's send/receive buffers on the host
+for the rest of the run: about 10 GB per rank for the complex order 26000
+on 16 ranks (7.4 GB of it pool, see tests/run_cosma_host_memory_cpu.py),
+several times the distributed matrices. The bridge estimates this from
+COSMA's own strategy (with COSMA_CPU_MAX_MEMORY and the adaptation to the
+block-cyclic grid) and takes COSMA only when what a transform adds for
+every rank of a node leaves a reserve free on every node of the grid: a
+quarter of the node's memory, at least 4 GiB (OPENMX_GS2_HOST_RESERVE_MB).
+The reserve is for the later phases; e.g. the force calculation of Si1000
+took another ~4.6 GB per rank. A transform sent to ScaLAPACK this way is
+reported at level.of.stdout 1 with the numbers. This applies to
+scf.eigen.lib=gpusolver2 as well; before, a large solve on few nodes could
+be killed by the out-of-memory handler inside COSMA. The automatic
+decision of the noncollinear solver first frees the root solve's host
+matrices of earlier steps, so its host estimate starts from the same
+baseline each time. A job with more than two nodes uses all of them; the
+grids are not restricted to two nodes.
 
 Eigensolver selection and memory
 -------------------------------
@@ -59,8 +147,9 @@ The LP64 MAGMA interface currently supports matrix orders through 32766.
 Before solving, every selected GPU must pass the conservative MAGMA memory
 admission check. All available GPUs up to the configured limit are used
 (up to the backend's eight-GPU limit). If this group is insufficient, if
-MAGMA was not built, or if fewer than two permitted GPUs exist, OpenMX
-prints the cause and exits with an error. scf.Gpu.Num is never exceeded,
+MAGMA was not built, or if fewer than two permitted GPUs exist, a
+single-node run prints the cause and exits with an error; a multi-node run
+continues with the distributed fallback above. scf.Gpu.Num is never exceeded,
 and there is no implicit CPU eigensolver fallback after memory exhaustion.
 Allocation or execution failures after admission also terminate the solve.
 

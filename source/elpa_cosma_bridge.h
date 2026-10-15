@@ -47,8 +47,18 @@ int openmx_gs2_eigen_complex(int n, int nev, void *a, int *desca, double *w, voi
                              int *descz);
 
 /* Release the cached ELPA handles bound to a BLACS context; call right
-   before Cblacs_gridexit. */
+   before Cblacs_gridexit (a no-op for a context that has none). */
 void openmx_gs2_grid_free(int ictxt);
+
+/* Automatic capacity fallback of scf.eigen.lib=gpusolver (cluster solvers):
+   collective admission of a distributed solve of order n on the grid of
+   ictxt (1 = fits on the GPU kernels, 0 = does not, -1 = the kernel side is
+   fixed by OPENMX_GS2_ELPA_GPU), and the switch that reports solves and
+   transforms the GPU cannot hold at level.of.stdout 1. */
+int openmx_gs2_gpu_fits(int ictxt, int n, int nblk, int is_complex,
+                        unsigned long long *need_mb, unsigned long long *free_mb,
+                        int *ranks);
+void openmx_gs2_set_fallback_report(int on);
 
 /* Shut the ELPA library down (idempotent; called once at program end). */
 void openmx_gs2_finalize(void);

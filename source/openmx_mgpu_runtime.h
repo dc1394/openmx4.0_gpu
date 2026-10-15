@@ -15,16 +15,22 @@ extern "C" {
    Configure collectively obtained topology once per input; this function
    itself never calls MPI and never creates a CUDA context. */
 void openmx_mgpu_configure(int enabled, int gpu_limit, int single_node);
+/* 1 when the configured run spans several nodes (single_node was 0). */
+int openmx_mgpu_multi_node(void);
+/* scf.Gpu.Num as configured (a per-process device cap; 0 or less: none). */
+int openmx_mgpu_gpu_limit(void);
 void openmx_mgpu_force_magma(int force);
 int openmx_mgpu_host_required(void);
 int openmx_mgpu_scope_enter(int allowed);
 void openmx_mgpu_scope_leave(int previous_scope);
 int openmx_mgpu_scope_active(void);
 
-/* Noncollective support for non-diagonalization GPU workers. The pool is
-   bounded by the same input and visibility limits. A scoped list uses the
-   exact current Band group. Admission includes the caller's device and
-   shares the UUID locks used by dense solvers and matrix products. */
+/* Noncollective support for non-diagonalization GPU workers and the
+   cooperative products of a cluster owner. The pool is bounded by the same
+   input and visibility limits and is the GPU set of the caller's node, in a
+   multi-node run too. A scoped list uses the exact current Band group
+   (single-node only). Admission includes the caller's device and shares the
+   UUID locks used by dense solvers and matrix products. */
 int openmx_mgpu_pool_devices(int *devices, int capacity);
 int openmx_mgpu_scope_devices(int *devices, int capacity);
 void *openmx_mgpu_admit_devices(const int *devices, int count);
@@ -49,9 +55,15 @@ void openmx_mgpu_band_scope_leave(openmx_mgpu_scope_state previous);
 /* Host-backed capacity path. Planning is allowed outside an operation
  * scope; total_kpoints=0 means Cluster. Every selected group must admit
  * the MAGMA scratch estimate. Input/visibility limits are never expanded.
+ * A Cluster plan uses the GPUs of the planning rank's node also in a
+ * multi-node run (Band groups remain single-node).
  * A nonzero return from a host operation means success, otherwise callers
  * must stop (there is no implicit CPU or oversized single-GPU fallback). */
 int openmx_mgpu_host_plan(int total_kpoints, int n, int complex_matrix);
+/* The checks of openmx_mgpu_host_plan that need no GPU (group size within
+ * the pool, LP64 order): the group size, or 0 with openmx_mgpu_host_error()
+ * set.  Opens no CUDA context. */
+int openmx_mgpu_host_precheck(int total_kpoints, int n, int complex_matrix);
 const char *openmx_mgpu_host_error(void);
 int openmx_mgpu_host_solve(int n, int nev, int complex_matrix, void *a, int lda, double *w);
 int openmx_mgpu_host_dgemm(cublasOperation_t ta, cublasOperation_t tb,

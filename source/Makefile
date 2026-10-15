@@ -330,6 +330,7 @@ OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
 OBJS += openmx_gpu_workers.o openmx_gpu_views.o
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o
+OBJS += openmx_cluster_capacity.o openmx_host_memory.o elpa_cosma_memory.o
 
 # PROG    = openmx.exe
 # PROG    = openmx
@@ -961,8 +962,17 @@ $(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
 gpusolver2-clean:
 	rm -rf "$(GPUSOLVER2_BUILD)" "$(GPUSOLVER2_PREFIX)"
 
-elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h openmx_stdout_level.h $(GPUSOLVER2_STAMP)
+elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h $(GPUSOLVER2_STAMP)
 	$(CC_NOACC_O3) -I$(GPUSOLVER2_ELPA_INCLUDE) -c elpa_cosma_bridge.c
+# COSMA's strategy (host memory of its transforms) with the C++ compiler
+# of the COSMA build; mpi.h only
+elpa_cosma_memory.o: elpa_cosma_memory.cpp $(GPUSOLVER2_STAMP)
+	$(GPUSOLVER2_HOST_CXX) -std=c++17 -O2 -g -I$(GPUSOLVER2_PREFIX)/include -I$(GPUSOLVER2_MPI_BIN)/../include -c elpa_cosma_memory.cpp -o elpa_cosma_memory.o
+openmx_host_memory.o: openmx_host_memory.c openmx_host_memory.h
+	$(CC_NOACC_O3) -c openmx_host_memory.c
+openmx_cluster_capacity.o: openmx_cluster_capacity.c openmx_cluster_capacity.h openmx_mgpu_runtime.h elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h
+	$(CC_NOACC_O3) -c openmx_cluster_capacity.c
+Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_cluster_capacity.h elpa_cosma_bridge.h
 $(GEMMUL8_DIR)/Makefile:
 	mkdir -p $(GEMMUL8_REPO_DIR)
 	cd $(GEMMUL8_REPO_DIR) && \

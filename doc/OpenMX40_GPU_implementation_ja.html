@@ -2128,6 +2128,8 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_MIXH_GPU_RESERVE_MB</code> / <code>_VERBOSE</code></td><td>max(総/10,1536) / 0</td><td>GPU 層の予約量 / 選択結果の表示</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>gpusolver2(ELPA-GPU / COSMA)</b></td></tr>
 <tr><td><code>OPENMX_GS2_ELPA_SOLVER</code></td><td>2</td><td>gpusolver2 の ELPA ソルバ選択。1 で 1stage、それ以外は 2stage(既定)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GS2_FALLBACK</code></td><td>auto</td><td>クラスター法の <code>gpusolver</code> で密な固有値計算が GPU 1 枚に入らないときの代替: まず rank 0 のノードの GPU で MAGMA、それが使えなければ(マルチノード実行で)ジョブの全ランクによる分散 gpusolver2(ELPA GPU カーネル + COSMA。各ランクの GPU を使う。スピン分極の共線は全ランクのグリッドで両スピンを順に解く)に集団的な GPU メモリ判定のうえで切り替える。<code>off</code> = 分散段に進まない、<code>on</code> = 単一ノードでも進む、<code>force</code> = MAGMA を飛ばす。強制 MAGMA(gpusolver3、<code>OPENMX_MGPU_MEMORY=host</code>)は分散段に進まない。<code>OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB</code> で MAGMA のホストメモリ判定の値を上書きできる</td></tr>
+<tr><td><code>OPENMX_GS2_HOST_RESERVE_MB</code></td><td>ノードメモリの 1/4(最小 4096)</td><td>gpusolver2 ブリッジ(明示指定時と容量フォールバック時): COSMA が実行終了まで保持するホストバッファ(メモリプールと COSTA の送受信バッファ。COSMA 自身の分割戦略から見積もる)を確保した後も各ノードに残すべき空きメモリ。足りなければその変換は ScaLAPACK で行う</td></tr>
 </tbody>
 </table>
 <figcaption style="font-size:8.2pt;color:#5c6675;">表 10-1: GPU 関連環境変数の一覧(サブシステム別)</figcaption>
