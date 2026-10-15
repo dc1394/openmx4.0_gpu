@@ -4652,7 +4652,7 @@ void Allocate_Free_Cluster_Col(int todo_flag)
 
     /* setting for BLACS */
 
-    if (gpusolver2_flag) openmx_gs2_grid_free(ictxt1);
+    openmx_gs2_grid_free(ictxt1);
     Cfree_blacs_system_handle(bhandle1);
     Cblacs_gridexit(ictxt1);
 
@@ -4906,7 +4906,7 @@ void Allocate_Free_Cluster_NonCol(int todo_flag)
     free(iHs22_Re);
     free(Cs_Re);
 
-    if (gpusolver2_flag) openmx_gs2_grid_free(ictxt1);
+    openmx_gs2_grid_free(ictxt1);
     Cfree_blacs_system_handle(bhandle1);
     Cblacs_gridexit(ictxt1);
 
@@ -4918,7 +4918,7 @@ void Allocate_Free_Cluster_NonCol(int todo_flag)
     free(Ss2_Cx);
     free(Cs2_Cx);
 
-    if (gpusolver2_flag) openmx_gs2_grid_free(ictxt1_2);
+    openmx_gs2_grid_free(ictxt1_2);
     if (bhandle1 != bhandle1_2) Cfree_blacs_system_handle(bhandle1_2);
     Cblacs_gridexit(ictxt1_2);
   }

@@ -2254,6 +2254,8 @@ reserves, or to force.</p>
 <tr><td><code>OPENMX_MIXH_GPU_RESERVE_MB</code> / <code>_VERBOSE</code></td><td>max(total/10,1536) / 0</td><td>GPU-tier reserve / print the tier decision</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>gpusolver2 (ELPA-GPU / COSMA)</b></td></tr>
 <tr><td><code>OPENMX_GS2_ELPA_SOLVER</code></td><td>2</td><td>ELPA solver used by gpusolver2: 1 = 1stage, anything else = 2stage (default)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GS2_FALLBACK</code></td><td>auto</td><td>Capacity fallback of <code>gpusolver</code> in the cluster solvers when the dense solve does not fit on one GPU: MAGMA on the GPUs of rank 0's node first, then (multi-node runs) the distributed gpusolver2 path on every rank of the run (a spin-polarized collinear run solves its spins in turn on a grid over all ranks; ELPA/COSMA use the GPU of each rank), with a collective GPU admission. <code>OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB</code> overrides the host memory of the MAGMA test. <code>off</code> = never the distributed step, <code>on</code> = also on one node, <code>force</code> = skip MAGMA. Forced MAGMA (gpusolver3, <code>OPENMX_MGPU_MEMORY=host</code>) never takes the distributed step</td></tr>
+<tr><td><code>OPENMX_GS2_HOST_RESERVE_MB</code></td><td>a quarter of the node memory (at least 4096)</td><td>gpusolver2 bridge (explicit or as the capacity fallback): host memory that must stay free on every node after COSMA allocates the buffers it keeps for the rest of the run (memory pool and COSTA send/receive buffers, estimated from COSMA's own strategy); otherwise the transform runs on ScaLAPACK</td></tr>
 </tbody>
 </table>
 <figcaption style="font-size:8.2pt;color:#5c6675;">Table 10-1: GPU-related environment variables by subsystem</figcaption>

@@ -246,6 +246,46 @@ int main() {
  CHECK(openmx_mgpu_host_plan(0,26000,1)==0 && std::strstr(openmx_mgpu_host_error(),"cannot fit") && device==1);
  memory_free=size_t(1)<<40;magma_available=0;CHECK(openmx_mgpu_host_plan(0,26000,1)==0);
  magma_available=1;CHECK(openmx_mgpu_host_plan(0,32767,1)==0);
+ // The GPU-free limits of a plan (pool, LP64 order) query no GPU and give
+ // the same reasons, so the capacity decision can test them first.
+ largest_memory_device=-1;openmx_mgpu_configure(-1,1,1);
+ CHECK(openmx_mgpu_host_precheck(0,26000,1)==0 && std::strstr(openmx_mgpu_host_error(),"limit=1"));
+ openmx_mgpu_configure(-1,2,1);
+ CHECK(openmx_mgpu_host_precheck(0,32767,1)==0 && std::strstr(openmx_mgpu_host_error(),"LP64"));
+ memory_free=1;CHECK(openmx_mgpu_host_precheck(0,26000,1)==2 && openmx_mgpu_host_error()[0]=='\0');
+ CHECK(largest_memory_device==-1 && device==1);memory_free=size_t(1)<<40;
+ // A multi-node run plans and runs the Cluster capacity path on the
+ // planning rank's node; Band groups and device-resident cooperation stay
+ // single-node, and the input/visibility limits still apply.
+ reset();visible=2;openmx_mgpu_configure(-1,2,0);
+ CHECK(openmx_mgpu_multi_node()==1 && openmx_mgpu_gpu_limit()==2);
+ CHECK(openmx_mgpu_host_plan(0,26000,1)==2);
+ CHECK(openmx_mgpu_host_plan(2,26000,1)==0 && openmx_mgpu_band_used_gpus(2)==0);
+ // The GPU workers keep the node's whole pool in a multi-node run, and so
+ // does a cluster owner's cooperative product; a Band group scope stays
+ // single-node (band_used_gpus above).
+ {int pool[8];CHECK(openmx_mgpu_pool_devices(pool,8)==2 && pool[0]==0 && pool[1]==1);}
+ {int pool[8];int d[2]={0,1};openmx_mgpu_scope_enter(1);
+  CHECK(openmx_mgpu_scope_devices(pool,8)==2);
+  void *a=openmx_mgpu_admit_devices(d,2);CHECK(a!=nullptr);openmx_mgpu_release_devices(a);
+  setenv("OPENMX_MGPU_GEMM","1",1);gemm_calls=0;
+  double alpha=1,beta=0,ga=2,gb=3,gc=0;int gstatus=-1;
+  CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&ga,1,&gb,1,&beta,&gc,1,&gstatus)==1 && gemm_calls==1);
+  unsetenv("OPENMX_MGPU_GEMM");openmx_mgpu_scope_leave(0);}
+ {int pool[8];visible=4;openmx_mgpu_configure(-1,4,0);setenv("OPENMX_MGPU_NUM_GPUS","3",1);
+  CHECK(openmx_mgpu_pool_devices(pool,8)==3);unsetenv("OPENMX_MGPU_NUM_GPUS");
+  openmx_mgpu_configure(0,4,0);CHECK(openmx_mgpu_pool_devices(pool,8)==0);
+  visible=2;openmx_mgpu_configure(-1,2,0);}
+ openmx_mgpu_scope_enter(1);
+ {std::vector<double> a(16,0.0),w(4,0.0);
+  for(int i=0;i<4;i++) a[size_t(i)*5]=double(i+1);
+  CHECK(openmx_mgpu_host_solve(4,4,0,a.data(),4,w.data())==1 && magma_calls==1 && last_devices.size()==2);}
+ {Matrix m;CHECK(m.attempt()==0 && m.unchanged());} // device-resident MAGMA stays single-node
+ visible=1;CHECK(openmx_mgpu_host_plan(0,26000,1)==0 && std::strstr(openmx_mgpu_host_error(),"pool=1"));
+ visible=2;openmx_mgpu_configure(0,2,0);CHECK(openmx_mgpu_host_plan(0,26000,1)==0);
+ visible=4;openmx_mgpu_configure(-1,2,0);setenv("OPENMX_MGPU_NUM_GPUS","3",1);
+ CHECK(openmx_mgpu_host_plan(0,26000,1)==2);unsetenv("OPENMX_MGPU_NUM_GPUS");
+ reset();CHECK(openmx_mgpu_multi_node()==0);
  reset();unsetenv("OPENMX_MGPU_SOLVER");openmx_mgpu_scope_enter(1);
  {Matrix m;CHECK(m.attempt()==0 && m.unchanged() && native_calls==0 && magma_calls==0);}
  CHECK(!openmx_mgpu_host_required());openmx_mgpu_force_magma(1);CHECK(openmx_mgpu_host_required());
@@ -308,10 +348,17 @@ int main() {
  double alpha=1,beta=0,a=2,b=3,c=0;int status=-1;
  CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&a,1,&b,1,&beta,&c,1,&status)==1 && gemm_calls==1);
  worker=1;CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&a,1,&b,1,&beta,&c,1,&status)==0 && gemm_calls==1);
- // Default cooperation is portable to PCIe and skinny matrices. The
+ // A device-resident product stays on its owner's GPU by default, like the
+ // eigensolver; cooperation is opt-in. Unknown values keep it off.
+ for(const char *mode:{(const char*)nullptr,"0","off","yes"}) {
+  reset();openmx_mgpu_scope_enter(1);
+  if(mode) setenv("OPENMX_MGPU_GEMM",mode,1);
+  CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,8192,8192,8192,&alpha,&a,8192,&b,8192,&beta,&c,8192,&status)==0 && gemm_calls==0);
+ }
+ // Opted-in cooperation (on) is portable to PCIe and skinny matrices. The
  // optional legacy auto policy retains its NVLink and size filters.
  for(int topology=0;topology<=5;++topology) {
-  reset();openmx_mgpu_scope_enter(1);
+  reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_MGPU_GEMM","on",1);
   setenv("OPENMX_TEST_NVLINK_MODE",std::to_string(topology).c_str(),1);
   peer_support=0;ratio=64;
   CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,17,7,9,&alpha,&a,17,&b,9,&beta,&c,17,&status)==1 && gemm_calls==1);

@@ -253,3 +253,52 @@ Evidence: work/mgpu_sidia_20261014/host-band-nc1000-retry/results.json
           work/mgpu_sidia_20261014/cpu-magma-nc1000-comparisons.json
           work/mgpu_sidia_20261014/host-band-retry4-gpu.csv
           work/mgpu_sidia_20261014/final-benchmark-summary.json.
+
+Multi-node capacity ladder (2026-10-15)
+---------------------------------------
+Binary built from this change (work/bench_multinode/bin/openmx_mn4, sha256
+e291aa00d323df60...; later edits touched only comments, documentation and
+tests). Kugui F2acc, two nodes (acc002 and acc003), each with four
+A100-SXM4-40GB GPUs. Every run had 8 MPI ranks x 8 OpenMP threads per
+node and one MPS daemon per node. A per-rank wrapper exposed 1 or 2 GPUs
+per node. Inputs are Si1000 sidia555 (order 13000; noncollinear 26000)
+and Si1440 sidia665 (order 18720; noncollinear 37440), with 2 SCF steps
+(1 for sidia665 noncollinear). PBS 938652 ran 12 cases, 938847 timed
+the transforms, and 938494 holds the unmodified main.
+
+- One GPU per node, sidia555_nc: MAGMA declines (pool=1), so the run
+  takes distributed gpusolver2 on 2 nodes, 2 GPUs and 16 ranks. It
+  matches explicit gpusolver2 to 8.7e-11 Ha. The unmodified main stops
+  with "MAGMA needs 2..8 GPUs per matrix: available pool=0".
+- Native admission forced to fail (OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB):
+  - sidia555 spin-polarized solves on the all-rank grid across the two
+    nodes. It is 1.2e-11 Ha from native cuSOLVER and 2.2e-11 Ha from
+    explicit gpusolver2.
+  - sidia665 takes gs2 and is 2.4e-10 Ha from native.
+- Two GPUs per node:
+  - sidia555_nc solves with host-backed MAGMA on rank 0's GPUs 0,1. The
+    run takes 406 s, against 732 s on gs2 with one GPU per node.
+  - sidia665_nc: MAGMA is "unsupported MAGMA order/group: n=37440 (LP64
+    order limit 32766)", so the run takes gs2 on 2 nodes, 4 GPUs and 16
+    ranks. It agrees with gs2 on 2 GPUs to 1.5e-11 Ha.
+- OPENMX_CLUSTER_GS2_FALLBACK=off stops with the reason.
+- All paths agree to within 3.2e-10 Ha (at most 8e-14 relative). Two
+  identical gs2 runs in separate jobs differed by 3.7e-10 Ha, which is
+  the run-to-run spread.
+- Noncollinear gs2 transforms: the host-memory verdict sent the complex
+  back-transform to ScaLAPACK (COSMA would keep ~9.9 GB per rank). With
+  OPENMX_GS2_HOST_RESERVE_MB=16384, COSMA was used instead. The
+  sidia555_nc run then went from 733 s to 622 s, and the smallest
+  MemAvailable per node fell from 97 GiB to 30 GiB.
+- A one-node run with 16 ranks was killed inside cosma::pxgemm before
+  this verdict (PBS 938657). After the verdict (PBS 938729), the same
+  layout reached the force calculation and ran out of memory there. That
+  layout holds twice the ranks per node of the two-node runs.
+
+These runs had the GPU workers and the device-resident GEMM cooperation on
+by default; both are opt-in since (OPENMX_GPU_WORKERS=1, OPENMX_MGPU_GEMM).
+With 8 ranks per node every GPU carried ranks of its own, and the MAGMA
+and gpusolver2 rungs have their own multi-GPU products.
+Evidence: work/bench_multinode/results_two_node_20261015.md and the
+directories it names (mn2n_20261015_161040, mnwk_20261015_173946,
+mncosma_20261015_180010).

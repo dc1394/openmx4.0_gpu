@@ -1,16 +1,28 @@
-Single-node GPU work outside diagonalization
-===========================================
+GPU work outside the generalized eigenproblem (experimental)
+===========================================================
 
-The main collinear/noncollinear Cluster and Band paths distribute their
-existing GPU kernels across the permitted devices. The default gpusolver
-still uses cuSOLVER when its matrices/workspaces fit and recovers through
-host-backed MAGMA on memory shortage. gpusolver3 always selects MAGMA.
-gpusolver2 retains the separate ELPA/COSMA implementation.
+The main collinear/noncollinear Cluster and Band paths can distribute their
+existing GPU kernels outside the solution of the generalized eigenproblem
+across the permitted devices. This distribution is experimental and off
+by default: on the measured Si1000 runs it made the whole run slower (see
+gpu_workers_validation.txt). OPENMX_GPU_WORKERS=1 (or on) enables it;
+without it every rank keeps this work on its own GPU. The eigensolver and
+its matrix products follow their own capacity rungs (cluster_mgpu.txt):
+the default gpusolver uses cuSOLVER when its matrices/workspaces fit and
+recovers through host-backed MAGMA on memory shortage. gpusolver3 always
+selects MAGMA. gpusolver2 retains the separate ELPA/COSMA implementation.
 
 Ownership
 ---------
 scf.Gpu.Num, CUDA_VISIBLE_DEVICES, scf.mgpu.enable and OPENMX_MGPU_NUM_GPUS
-bound the pool. Band dense work uses exactly the current k-point group:
+bound the pool. The pool is the permitted GPU set of the rank's own node,
+also when the run spans several nodes: every rule below then holds per
+node, with the ranks of that node (workers never call MPI and only take
+node-local ordinals and locks). In a two-node job with one GPU per node,
+the ranks of each node work on that node's GPU, so both GPUs are busy; with
+more GPUs than ranks on a node, the free GPUs of the node become workers of
+that node's ranks. Band k-point groups remain single-node; the cluster
+capacity path is described in cluster_mgpu.txt. Band dense work uses exactly the current k-point group:
 floor(G/K) devices per computed k-point, only when that quotient is at least
 two. Thus K=3/G=4 does not cooperate and K=3/G=8 uses six devices.
 
@@ -65,12 +77,15 @@ must succeed within the allowed GPU pool or terminate with an error.
 
 Controls and validation
 -----------------------
-OPENMX_GPU_WORKERS=0 restores the original single-device auxiliary kernels
-for comparisons. This is independent of OPENMX_MGPU_GEMM and the solver
-selector. OPENMX_GPU_WORKER_COPY=1 exercises copies without peer views.
+The distribution is off unless OPENMX_GPU_WORKERS=1 (or on); unset, 0 or
+any other value keeps the original single-device auxiliary kernels. This
+is independent of OPENMX_MGPU_GEMM and the solver selector.
+OPENMX_GPU_WORKER_COPY=1 exercises copies without peer views.
 OPENMX_MGPU_VERBOSE=1 reports operation names, nonempty item counts and
-actual worker device lists. GEMM defaults to cooperation for all sizes;
-OPENMX_MGPU_GEMM=auto selects the older size/NVLink performance heuristic.
+actual worker device lists. A device-resident matrix product stays on its
+owner's GPU by default, like the eigensolver; OPENMX_MGPU_GEMM=on spreads
+it over the permitted GPUs for every size and auto with the older
+size/NVLink heuristic (both experimental).
 
 Host-only ownership/rollback checks:
   python3 tests/run_gpu_workers_cpu.py

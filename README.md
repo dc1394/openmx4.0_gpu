@@ -67,9 +67,25 @@ scf.Gpu.Num                4
 `scf.Gpu.Num` is a strict upper bound. CUDA visibility and
 `OPENMX_MGPU_NUM_GPUS` can reduce it further. If the permitted GPU group
 cannot hold MAGMA's per-device scratch, or MAGMA/cooperation is unavailable,
-the memory fallback reports an error and stops. It never enlarges the GPU
-pool or silently switches to a CPU eigensolver. `scf.mgpu.enable off`
-and `OPENMX_MGPU=0` explicitly disable cooperation.
+the memory fallback of a single-node run reports an error and stops. It
+never enlarges the GPU pool or silently switches to a CPU eigensolver.
+`scf.mgpu.enable off` and `OPENMX_MGPU=0` explicitly disable cooperation.
+
+In a **multi-node** Cluster run (collinear or noncollinear) the default
+`gpusolver` continues the same ladder across nodes. When the dense solve does
+not fit on one GPU, it first tries MAGMA on the GPUs of rank 0's node (two or
+more GPUs, order up to 32766, enough host memory there). If that is not
+possible, it switches to the distributed gpusolver2 path (ELPA GPU kernels +
+COSMA) on all ranks of the run; a spin-polarized run solves its two spins in
+turn there. ELPA and COSMA use the GPU of each rank, so run at least one rank
+per GPU. In a two-node job with one GPU per node the solve then moves to two
+GPUs. With two GPUs per node, MAGMA on two GPUs comes first, then four GPUs.
+If even the distributed GPU solve does not fit, the run stops with the
+numbers. Its transforms use COSMA only while the host memory COSMA keeps
+leaves a quarter of each node free (`OPENMX_GS2_HOST_RESERVE_MB`), and
+ScaLAPACK otherwise. `OPENMX_CLUSTER_GS2_FALLBACK=off|on|force`
+disables this step, allows it on one node, or skips MAGMA. Details:
+[Cluster details](doc/cluster_mgpu.txt), "Multi-node capacity fallback".
 
 The MAGMA capacity path keeps dense matrices on the host, distributes the
 eigensolve across the group, and streams bounded tiles for matrix products.
@@ -82,11 +98,23 @@ For Band, each of the **K actually computed k-points** receives
 are required. Three k-points with four GPUs cannot cooperate; with eight
 GPUs they use six, in groups `[0,1]`, `[2,3]`, `[4,5]`.
 
-Existing GPU work outside diagonalization is also distributed: orbital and
-grid kernels, Hamiltonian construction, density matrices and density grids,
-XC, GPU force/energy terms, RMM-DIISH history, and dense transforms/products.
-Local work follows MPI ownership; k-dependent dense work follows its exact
-GPU group. All use the same GPU cap. See [GPU worker ownership and controls](doc/gpu_workers.txt).
+Matrix products follow the eigensolver: a product whose operands are on a
+GPU stays on that GPU, and several GPUs are used only on the capacity rungs
+(the host-backed MAGMA products on the owner's node, then the distributed
+gpusolver2 transforms over all nodes). Spreading such a product over the
+GPUs for speed is experimental: `OPENMX_MGPU_GEMM=on` (or `auto`).
+
+Spreading the GPU work outside the generalized eigenproblem over several
+GPUs is experimental and off by default, because it made the measured
+Si1000 runs slower: orbital and grid kernels, Hamiltonian construction,
+density matrices and density grids, XC, GPU force/energy terms, RMM-DIISH
+history, and dense assembly/extraction. `OPENMX_GPU_WORKERS=1` enables it.
+Local work then follows MPI ownership; k-dependent dense work follows its
+exact GPU group. All use the same GPU cap. In a multi-node run every node
+does this with its own permitted GPUs, so with fewer ranks than GPUs on a
+node the free GPUs of that node take work (the Band k-point groups stay
+single-node). Without it, every MPI rank keeps this work on its own GPU.
+See [GPU worker ownership and controls](doc/gpu_workers.txt).
 Numerical checks and measured costs are recorded in
 [GPU worker validation](doc/gpu_workers_validation.txt).
 
@@ -173,7 +201,9 @@ The two products of the orthogonalization transform, `B = H X` and `X^T B`, have
 ## Multi-GPU parallelization
 With the default `gpusolver`, each dense eigenproblem normally uses one
 GPU. If its buffers cannot fit, single-node Cluster and ordinary Band can
-automatically use MAGMA on the permitted GPU group described above.
+automatically use MAGMA on the permitted GPU group described above; a
+multi-node Cluster run then tries MAGMA on rank 0's node and otherwise the
+distributed gpusolver2 path on every node.
 `gpusolver3` forces MAGMA; `gpusolver2` selects distributed ELPA/COSMA.
 More GPUs do not guarantee a speedup when the problem already fits on one
 GPU: MAGMA's transfers and CPU work can outweigh the parallel GPU work.

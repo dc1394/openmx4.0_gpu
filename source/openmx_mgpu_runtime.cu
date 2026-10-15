@@ -71,10 +71,19 @@ const char *backend_name(Backend backend)
 
 /* No ordinal beyond CUDA_VISIBLE_DEVICES or scf.Gpu.Num is ever used.
    Automatic activation preserves the established consumer-GPU paths;
-   explicit scf.mgpu.enable=on or OPENMX_MGPU=1 permits other devices too. */
-int configured_gpu_count()
+   explicit scf.mgpu.enable=on or OPENMX_MGPU=1 permits other devices too.
+   A node-local pool (node_local=true) is the GPU set of the calling rank's
+   own node also in a multi-node run: the host-backed capacity path (MAGMA
+   solves and products as owner-only calls while the other ranks wait in
+   MPI) and the work outside the eigensolver (the GPU workers of atom/grid
+   local work, rank-owned services and the dense transforms of a cluster
+   owner, and the cluster owner's cooperative matrix products), which never
+   call MPI and only take node-local ordinals and locks.  The
+   device-resident cooperative eigensolves and the Band k-point groups
+   stay single-node. */
+int pool_gpu_count(bool node_local)
 {
-    if (!topology_single_node || input_enabled == 0) return 0;
+    if ((!topology_single_node && !node_local) || input_enabled == 0) return 0;
     const char *v = std::getenv("OPENMX_MGPU");
     if (v && *v && std::strcmp(v,"0") == 0) return 0;
     int count = 0;
@@ -83,6 +92,8 @@ int configured_gpu_count()
     count = std::min(count, positive_env("OPENMX_MGPU_NUM_GPUS", count));
     return count;
 }
+
+int configured_gpu_count() { return pool_gpu_count(false); }
 
 bool allowed_gpu_range(int first,int count)
 {
@@ -553,14 +564,22 @@ int solve_typed(cusolverDnHandle_t handle,cublasFillMode_t uplo,int n,void *A,in
     return 1;
 }
 
+/* A device-resident product always fits its owner's GPU (the operands are
+   already there), so, like the eigensolver, it stays on that GPU.  Products
+   use several GPUs only on the capacity rungs of the eigensolver: the
+   host-backed MAGMA products on the GPUs of the owner's node, then the
+   distributed gpusolver2 transforms over the GPUs of every node.
+   Spreading a device-resident product over the permitted GPUs for speed is
+   experimental and off by default: OPENMX_MGPU_GEMM=on (every size) or
+   auto (the size/NVLink heuristic). */
 bool gemm_eligible(int m,int n,int k)
 {
     if (openmx_mgpuGemmInWorker() || m<=0 || n<=0 || k<=0) return false;
     const char *mode=std::getenv("OPENMX_MGPU_GEMM");
-    if (mode && (std::strcmp(mode,"0")==0 || std::strcmp(mode,"off")==0)) return false;
-    if (mode && (std::strcmp(mode,"1")==0 || std::strcmp(mode,"on")==0)) return true;
-    const int min_n=positive_env("OPENMX_MGPU_GEMM_MIN_N",
-        mode && std::strcmp(mode,"auto")==0 ? 8192 : 1);
+    if (!mode) return false;
+    if (std::strcmp(mode,"1")==0 || std::strcmp(mode,"on")==0) return true;
+    if (std::strcmp(mode,"auto")!=0) return false;
+    const int min_n=positive_env("OPENMX_MGPU_GEMM_MIN_N",8192);
     const int min_output=min_n/2+min_n%2;
     return std::max(m,n)>=min_n && std::min(m,n)>=min_output && k>=min_n;
 }
@@ -593,9 +612,11 @@ extern "C" int openmx_mgpu_scope_enter(int allowed)
 }
 extern "C" void openmx_mgpu_scope_leave(int previous_scope) { cluster_scope=previous_scope; }
 extern "C" int openmx_mgpu_scope_active(void) { return cluster_scope!=0; }
+/* The GPU workers' pool: every permitted GPU of this rank's node, also in
+   a multi-node run (see pool_gpu_count). */
 extern "C" int openmx_mgpu_pool_devices(int *devices,int capacity)
 {
-    const int count=configured_gpu_count();
+    const int count=pool_gpu_count(true);
     if (count<1 || !devices || capacity<count) return 0;
     for (int i=0;i<count;++i) devices[i]=i;
     return count;
@@ -609,7 +630,7 @@ extern "C" int openmx_mgpu_scope_devices(int *devices,int capacity)
 extern "C" void *openmx_mgpu_admit_devices(const int *devices,int count)
 {
     if (!devices || count<1 || count>64) return nullptr;
-    int permitted=configured_gpu_count();
+    int permitted=pool_gpu_count(true);
     if (count==1 && permitted==0) {
         /* Single-device callbacks also serve the original GPU paths when
            cooperation is disabled. They may only use the current device. */
@@ -723,10 +744,16 @@ extern "C" int openmx_mgpu_host_required(void)
 }
 extern "C" const char *openmx_mgpu_host_error(void) { return host_error; }
 
-extern "C" int openmx_mgpu_host_plan(int total_kpoints,int n,int complex_matrix)
+extern "C" int openmx_mgpu_multi_node(void) { return !topology_single_node; }
+extern "C" int openmx_mgpu_gpu_limit(void) { return input_gpu_limit; }
+
+/* The limits of a host plan that need no GPU: the group size the pool
+   allows and MAGMA's LP64 order.  Opens no CUDA context, so a caller can
+   rule MAGMA out (with this reason) before any other test. */
+extern "C" int openmx_mgpu_host_precheck(int total_kpoints,int n,int complex_matrix)
 {
     host_error[0]='\0';
-    const int pool=configured_gpu_count();
+    const int pool=pool_gpu_count(total_kpoints==0);
     const int count=total_kpoints>0 ? pool/total_kpoints : std::min(pool,8);
     if (count<2 || count>8) {
         std::snprintf(host_error,sizeof(host_error),
@@ -734,16 +761,23 @@ extern "C" int openmx_mgpu_host_plan(int total_kpoints,int n,int complex_matrix)
             pool,input_gpu_limit,total_kpoints);
         return 0;
     }
+    if (openmx_magma_mgpu_device_bytes(count,n,complex_matrix)==SIZE_MAX) {
+        std::snprintf(host_error,sizeof(host_error),"unsupported MAGMA order/group: n=%d, gpus=%d (LP64 order limit 32766)",n,count);
+        return 0;
+    }
+    return count;
+}
+
+extern "C" int openmx_mgpu_host_plan(int total_kpoints,int n,int complex_matrix)
+{
+    const int count=openmx_mgpu_host_precheck(total_kpoints,n,complex_matrix);
+    if (count==0) return 0;
     /* Capacity recovery also applies to GeForce. The performance-oriented
        allowed_gpu_range filter must not forbid an otherwise feasible solve. */
     int owner=-1;
     if (cudaGetDevice(&owner)!=cudaSuccess) return 0;
     struct Restore { int dev; ~Restore() { (void)cudaSetDevice(dev); } } restore{owner};
     const size_t required=openmx_magma_mgpu_device_bytes(count,n,complex_matrix);
-    if (required==SIZE_MAX) {
-        std::snprintf(host_error,sizeof(host_error),"unsupported MAGMA order/group: n=%d, gpus=%d (LP64 order limit 32766)",n,count);
-        return 0;
-    }
     for (int group=0;group<std::max(1,total_kpoints);++group) {
         int devices[8];
         for (int j=0;j<count;++j) devices[j]=group*count+j;
@@ -773,7 +807,7 @@ extern "C" int openmx_mgpu_host_plan(int total_kpoints,int n,int complex_matrix)
 static int host_devices(int *devices)
 {
     if (!cluster_scope) return 0;
-    const int pool=configured_gpu_count();
+    const int pool=pool_gpu_count(band_kpoints==0);
     const int count=band_kpoints>0 ? pool/band_kpoints : std::min(pool,8);
     if (count<2 || count>8 || band_kpoints<0) return 0;
     for (int j=0;j<count;++j) devices[j]=(band_kpoints>0 ? band_kpoint*count:0)+j;

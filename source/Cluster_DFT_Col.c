@@ -21,6 +21,7 @@ static int ClusterCol_mgpu_host_dense = 0;
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
 #include "elpa_cosma_bridge.h"
+#include "openmx_cluster_capacity.h"
 #include "eigen_refine_gpu.h"
 #include "openmx_precision.h"
 #include <fftw3.h>
@@ -30,8 +31,142 @@ static int ClusterCol_mgpu_host_dense = 0;
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <limits.h>
 #include <string.h>
 #include <time.h>
+
+/* matrix order for which the automatic capacity fallback of gpusolver
+   chose the distributed gpusolver2 path (0: none); see
+   openmx_cluster_capacity.h */
+static int ClusterCol_gs2_fallback_n = 0;
+
+/* the distributed ELPA/COSMA path: requested by the input, or the capacity
+   fallback of gpusolver for this order */
+static int ClusterCol_UseGs2(int n)
+{
+    return gpusolver2_flag || (0 < n && ClusterCol_gs2_fallback_n == n);
+}
+
+static void ClusterCol_ResetGs2Fallback(void)
+{
+    if (ClusterCol_gs2_fallback_n != 0) openmx_gs2_set_fallback_report(0);
+    ClusterCol_gs2_fallback_n = 0;
+}
+
+/* Grid over every rank of mpi_comm_level1 for the capacity fallback of a
+   spin-polarized run.  The spin worlds are contiguous halves of the ranks,
+   i.e. one node each under the usual block placement, so solving each spin
+   on its own world's grid would never spread one solve over the GPUs of both
+   nodes.  In the fallback both spins are solved in turn on this grid, and
+   each spin's eigenvectors go to its own world in the layout of the
+   ScaLAPACK path (EVec1[spin], states is2..ie2 of the world's ranks). */
+typedef struct {
+    int n;                       /* order the grid was built for (0: none) */
+    int bhandle, ictxt;
+    int np_rows, np_cols, my_prow, my_pcol, nblk;
+    int na_rows, na_cols, na_rows_max, na_cols_max;
+    int desc[9];
+    double *Ss, *Hs, *Cs;
+    int overlap_n;               /* order whose X = U lambda^-1/2 is in Ss */
+} ClusterColUnionGrid;
+static ClusterColUnionGrid ClusterCol_ugrid;
+
+/* collective over mpi_comm_level1 */
+static void ClusterCol_UnionGrid_Free(void)
+{
+    ClusterColUnionGrid *g = &ClusterCol_ugrid;
+
+    if (g->n == 0) return;
+    openmx_gs2_grid_free(g->ictxt);
+    Cfree_blacs_system_handle(g->bhandle);
+    Cblacs_gridexit(g->ictxt);
+    free(g->Ss);
+    free(g->Hs);
+    free(g->Cs);
+    memset(g, 0, sizeof(*g));
+}
+
+/* collective over mpi_comm_level1: the grid of order n, built like the
+   cluster grids of DFT.c ("Row" order, np_cols the largest divisor of the
+   rank count not above its square root, nblk from 128 down) */
+static void ClusterCol_UnionGrid_Ensure(int n)
+{
+    ClusterColUnionGrid *g = &ClusterCol_ugrid;
+    int numprocs0, myid0, nblk_m, info, ZERO = 0;
+
+    if (g->n == n) return;
+    ClusterCol_UnionGrid_Free();
+
+    MPI_Comm_size(mpi_comm_level1, &numprocs0);
+    MPI_Comm_rank(mpi_comm_level1, &myid0);
+
+    g->np_cols = (int)(sqrt((float)numprocs0));
+    do {
+        if ((numprocs0 % g->np_cols) == 0) break;
+        g->np_cols--;
+    } while (g->np_cols >= 2);
+    if (g->np_cols < 1) g->np_cols = 1;
+    g->np_rows = numprocs0 / g->np_cols;
+
+    nblk_m = NBLK;
+    while ((nblk_m * g->np_rows > n || nblk_m * g->np_cols > n) && (nblk_m > 1)) nblk_m /= 2;
+    if (nblk_m < 1) nblk_m = 1;
+    MPI_Allreduce(&nblk_m, &g->nblk, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+
+    g->my_prow = myid0 / g->np_cols;
+    g->my_pcol = myid0 % g->np_cols;
+    g->na_rows = numroc_(&n, &g->nblk, &g->my_prow, &ZERO, &g->np_rows);
+    g->na_cols = numroc_(&n, &g->nblk, &g->my_pcol, &ZERO, &g->np_cols);
+
+    g->bhandle = Csys2blacs_handle(mpi_comm_level1);
+    g->ictxt = g->bhandle;
+    Cblacs_gridinit(&g->ictxt, "Row", g->np_rows, g->np_cols);
+
+    MPI_Allreduce(&g->na_rows, &g->na_rows_max, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
+    MPI_Allreduce(&g->na_cols, &g->na_cols_max, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
+
+    g->Ss = (double *)malloc(sizeof(double) * (size_t)g->na_rows * (size_t)g->na_cols + sizeof(double));
+    g->Hs = (double *)malloc(sizeof(double) * (size_t)g->na_rows * (size_t)g->na_cols + sizeof(double));
+    g->Cs = (double *)malloc(sizeof(double) * (size_t)g->na_rows_max * (size_t)g->na_cols_max + sizeof(double));
+    if (g->Ss == NULL || g->Hs == NULL || g->Cs == NULL) {
+        fprintf(stderr, "Cluster_DFT_Col: out of host memory for the %d x %d grid of the"
+                        " distributed capacity fallback (n=%d)\n", g->np_rows, g->np_cols, n);
+        fflush(stderr);
+        MPI_Abort(mpi_comm_level1, 1);
+    }
+
+    descinit_(g->desc, &n, &n, &g->nblk, &g->nblk, &ZERO, &ZERO, &g->ictxt, &g->na_rows, &info);
+    g->n = n;
+    g->overlap_n = 0;
+}
+
+/* Overlap_Cluster_Ss and Hamiltonian_Cluster_Hs fill the local block of
+   the grid described by these globals; point them at the union grid for
+   the duration of a fill */
+typedef struct {
+    int np_rows, np_cols, my_prow, my_pcol, nblk, na_rows, na_cols;
+} ClusterColGridGlobals;
+
+static ClusterColGridGlobals ClusterCol_EnterUnionGridGlobals(void)
+{
+    const ClusterColUnionGrid *g = &ClusterCol_ugrid;
+    ClusterColGridGlobals saved;
+
+    saved.np_rows = np_rows; saved.np_cols = np_cols;
+    saved.my_prow = my_prow; saved.my_pcol = my_pcol;
+    saved.nblk = nblk; saved.na_rows = na_rows; saved.na_cols = na_cols;
+    np_rows = g->np_rows; np_cols = g->np_cols;
+    my_prow = g->my_prow; my_pcol = g->my_pcol;
+    nblk = g->nblk; na_rows = g->na_rows; na_cols = g->na_cols;
+    return saved;
+}
+
+static void ClusterCol_LeaveUnionGridGlobals(ClusterColGridGlobals saved)
+{
+    np_rows = saved.np_rows; np_cols = saved.np_cols;
+    my_prow = saved.my_prow; my_pcol = saved.my_pcol;
+    nblk = saved.nblk; na_rows = saved.na_rows; na_cols = saved.na_cols;
+}
 
 #define  measure_time   0
 
@@ -1644,8 +1779,11 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
     /* the reservation probe counts the refined eigensolver's basis */
     ClusterCol_RefineConfigure();
 
+    if (SCF_iter==1 || verdict_n!=n){
+      ClusterCol_mgpu_host_dense=0;
+      ClusterCol_ResetGs2Fallback();
+    }
     if (force && atoi(force)==0 && !openmx_mgpu_host_required()) return 0;
-    if (SCF_iter==1 || verdict_n!=n) ClusterCol_mgpu_host_dense=0;
     if (openmx_mgpu_host_required()) goto host_capacity;
 
     if (verdict!=-1 && verdict_n==n && 1<SCF_iter){
@@ -1720,14 +1858,41 @@ host_capacity:
         openmx_gemmul8ReleaseWorkspaces();
         acc_wait_all(); acc_clear_freelists();
         MPI_Barrier(mpi_comm_level1);
-        if (announce) {
-            if (!openmx_mgpu_host_plan(0,n,0)) ClusterCol_AbortWithMessage(openmx_mgpu_host_error());
-            printf("<OpenMX_MGPU> Cluster collinear n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
-                   n,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
-            fflush(stdout);
+        /* rank 0 (the announce rank) plans node-local MAGMA and, in a
+           multi-node run, falls back to the distributed gpusolver2 path;
+           the choice is broadcast before any rank commits to a path */
+        if (openmx_cluster_capacity_select(mpi_comm_level1,n,0,"Cluster collinear")
+            ==OPENMX_CLUSTER_CAPACITY_GS2){
+            /* verdict 0 sends all ranks into the ScaLAPACK layout below,
+               whose gpusolver2 branches then run (ClusterCol_UseGs2).  A
+               spin-polarized run solves both spins in turn on a grid over
+               all ranks instead of each spin on its own world's grid (the
+               worlds are contiguous halves of the ranks, one node each). */
+            if (SpinP_switch==1 && numprocs0>1){
+                ClusterCol_UnionGrid_Ensure(n);
+                ClusterCol_ugrid.overlap_n = 0;
+                openmx_cluster_gs2_admit(mpi_comm_level1,ClusterCol_ugrid.ictxt,n,ClusterCol_ugrid.nblk,0,
+                                         "Cluster collinear");
+            }
+            else{
+                openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
+            }
+            ClusterCol_gs2_fallback_n = n;
+            ClusterCol_mgpu_host_dense=0; verdict=0;
         }
-        ClusterCol_mgpu_host_dense=1; verdict=1;
+        else{
+            if (announce) {
+                printf("<OpenMX_MGPU> Cluster collinear n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
+                       n,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
+                fflush(stdout);
+            }
+            ClusterCol_mgpu_host_dense=1; verdict=1;
+        }
     }
+
+    /* the union grid lives only while the fallback of a spin-polarized run
+       needs it (every rank reaches this point with the same verdict) */
+    if (!(verdict==0 && ClusterCol_gs2_fallback_n==n)) ClusterCol_UnionGrid_Free();
 
     verdict_n = n;
     return verdict;
@@ -1775,6 +1940,219 @@ static void ClusterCol_SetMaxNAndPartitions(int SCF_iter, const char *mode, doub
             is2[ID] = 1;
             ie2[ID] = 0;
         }
+    }
+}
+
+/* the state partition of a world of nw ranks (as in
+   ClusterCol_SetMaxNAndPartitions) */
+static void ClusterCol_PartitionStates(int MaxN, int nw, int *is2, int *ie2)
+{
+    int ID;
+
+    if (nw<=MaxN){
+        const double av_num = (double)MaxN/(double)nw;
+        for (ID=0; ID<nw; ID++){
+            is2[ID] = (int)(av_num*(double)ID) + 1;
+            ie2[ID] = (int)(av_num*(double)(ID+1));
+        }
+        is2[0] = 1;
+        ie2[nw-1] = MaxN;
+    }
+    else{
+        for (ID=0; ID<MaxN; ID++){ is2[ID] = ID + 1; ie2[ID] = ID + 1; }
+        for (ID=MaxN; ID<nw; ID++){ is2[ID] = 1; ie2[ID] = 0; }
+    }
+}
+
+/* Collective over mpi_comm_level1: the rows 1..MaxN (states) of the
+   back-transformed matrix g->Hs = (X C)^T on the union grid go to the ranks
+   of world `spin`, each receiving its states is2..ie2 for all basis
+   functions in the layout of the ScaLAPACK path. */
+static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, int myid1,
+                                     int *is2, int *ie2, int *NPROCS_WD1,
+                                     int *Comm_World_StartID1, double **EVec1)
+{
+    const ClusterColUnionGrid *g = &ClusterCol_ugrid;
+    const int nw = NPROCS_WD1[spin];
+    const int start = Comm_World_StartID1[spin];
+    int numprocs0, ID, i, j, k;
+    int *is2s, *ie2s, *owner, *scnt, *sdsp, *rcnt, *rdsp, *iscnt, *isdsp, *ircnt, *irdsp;
+    int *idx_snd, *idx_rcv;
+    double *val_snd, *val_rcv;
+    long long nsnd = 0, nrcv = 0;
+
+    MPI_Comm_size(mpi_comm_level1, &numprocs0);
+
+    is2s = (int *)malloc(sizeof(int) * (size_t)nw);
+    ie2s = (int *)malloc(sizeof(int) * (size_t)nw);
+    owner = (int *)malloc(sizeof(int) * (size_t)(MaxN + 1));
+    scnt = (int *)calloc((size_t)numprocs0, sizeof(int));
+    sdsp = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+    rcnt = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+    rdsp = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+    iscnt = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+    isdsp = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+    ircnt = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+    irdsp = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+    if (!is2s || !ie2s || !owner || !scnt || !sdsp || !rcnt || !rdsp || !iscnt || !isdsp || !ircnt || !irdsp){
+        fprintf(stderr, "Cluster_DFT_Col: out of host memory in the eigenvector distribution\n");
+        MPI_Abort(mpi_comm_level1, 1);
+    }
+
+    ClusterCol_PartitionStates(MaxN, nw, is2s, ie2s);
+    for (ID=0; ID<nw; ID++){
+        for (k=is2s[ID]; k<=ie2s[ID]; k++) owner[k] = start + ID;
+    }
+
+    /* counts per destination */
+    for (i=0; i<g->na_rows; i++){
+        const int ig = g->np_rows*g->nblk*(i/g->nblk) + i%g->nblk
+                     + ((g->np_rows+g->my_prow)%g->np_rows)*g->nblk + 1;
+        if (ig<=MaxN) scnt[owner[ig]] += g->na_cols;
+    }
+    MPI_Alltoall(scnt, 1, MPI_INT, rcnt, 1, MPI_INT, mpi_comm_level1);
+    for (ID=0; ID<numprocs0; ID++){
+        sdsp[ID] = (int)nsnd;
+        rdsp[ID] = (int)nrcv;
+        nsnd += scnt[ID];
+        nrcv += rcnt[ID];
+        if (2LL*nsnd > INT_MAX || 2LL*nrcv > INT_MAX){
+            fprintf(stderr, "Cluster_DFT_Col: the eigenvector distribution of the distributed capacity"
+                            " fallback exceeds the MPI count limit (n=%d, MaxN=%d); use more MPI ranks\n",
+                    n, MaxN);
+            MPI_Abort(mpi_comm_level1, 1);
+        }
+        iscnt[ID] = 2*scnt[ID]; isdsp[ID] = 2*sdsp[ID];
+        ircnt[ID] = 2*rcnt[ID]; irdsp[ID] = 2*rdsp[ID];
+    }
+
+    idx_snd = (int *)malloc(sizeof(int) * (size_t)(2*nsnd + 1));
+    val_snd = (double *)malloc(sizeof(double) * (size_t)(nsnd + 1));
+    idx_rcv = (int *)malloc(sizeof(int) * (size_t)(2*nrcv + 1));
+    val_rcv = (double *)malloc(sizeof(double) * (size_t)(nrcv + 1));
+    if (!idx_snd || !val_snd || !idx_rcv || !val_rcv){
+        fprintf(stderr, "Cluster_DFT_Col: out of host memory in the eigenvector distribution\n");
+        MPI_Abort(mpi_comm_level1, 1);
+    }
+
+    /* pack in destination order: rows are visited per destination */
+    {
+        int *pos = (int *)malloc(sizeof(int) * (size_t)numprocs0);
+        if (pos == NULL){
+            fprintf(stderr, "Cluster_DFT_Col: out of host memory in the eigenvector distribution\n");
+            MPI_Abort(mpi_comm_level1, 1);
+        }
+        for (ID=0; ID<numprocs0; ID++) pos[ID] = sdsp[ID];
+        for (i=0; i<g->na_rows; i++){
+            const int ig = g->np_rows*g->nblk*(i/g->nblk) + i%g->nblk
+                         + ((g->np_rows+g->my_prow)%g->np_rows)*g->nblk + 1;
+            if (ig>MaxN) continue;
+            for (j=0; j<g->na_cols; j++){
+                const int jg = g->np_cols*g->nblk*(j/g->nblk) + j%g->nblk
+                             + ((g->np_cols+g->my_pcol)%g->np_cols)*g->nblk + 1;
+                const int q = pos[owner[ig]]++;
+                idx_snd[2*q] = ig;
+                idx_snd[2*q+1] = jg;
+                val_snd[q] = g->Hs[(size_t)j*(size_t)g->na_rows + (size_t)i];
+            }
+        }
+        free(pos);
+    }
+
+    MPI_Alltoallv(idx_snd, iscnt, isdsp, MPI_INT, idx_rcv, ircnt, irdsp, MPI_INT, mpi_comm_level1);
+    MPI_Alltoallv(val_snd, scnt, sdsp, MPI_DOUBLE, val_rcv, rcnt, rdsp, MPI_DOUBLE, mpi_comm_level1);
+
+    if (myworld1==spin){
+        const int states = ie2[myid1] - is2[myid1] + 1;
+        for (k=0; k<(int)nrcv; k++){
+            const int ig = idx_rcv[2*k];
+            const int jg = idx_rcv[2*k+1];
+            EVec1[spin][(size_t)(jg-1)*(size_t)states + (size_t)(ig-is2[myid1])] = val_rcv[k];
+        }
+    }
+
+    free(idx_snd); free(val_snd); free(idx_rcv); free(val_rcv);
+    free(is2s); free(ie2s); free(owner);
+    free(scnt); free(sdsp); free(rcnt); free(rdsp);
+    free(iscnt); free(isdsp); free(ircnt); free(irdsp);
+}
+
+/* The distributed capacity fallback of a spin-polarized run: the overlap
+   transform once per cycle and both spins in turn on the union grid (ELPA
+   GPU kernels + COSMA through the gpusolver2 bridge, i.e. every rank and
+   GPU of the run), with the same transforms as the ScaLAPACK path.  Every
+   rank ends with ko[0] and ko[1]; the ranks of world s with EVec1[s]. */
+static void ClusterCol_UnionGs2Path(int n, int MaxN, double **ko, double *****nh, double ****CntOLP,
+                                    int *MP, int myworld1, int myid1, int *is2, int *ie2,
+                                    int *NPROCS_WD1, int *Comm_World_StartID1, double **EVec1)
+{
+    ClusterColUnionGrid *g = &ClusterCol_ugrid;
+    ClusterColGridGlobals saved;
+    double alpha = 1.0, beta = 0.0;
+    int ONE = 1, spin, i, j, l, info;
+
+    if (g->overlap_n != n){
+        double *w = (double *)malloc(sizeof(double) * (size_t)(n + 1));
+
+        if (w == NULL){
+            fprintf(stderr, "Cluster_DFT_Col: out of host memory (overlap eigenvalues)\n");
+            MPI_Abort(mpi_comm_level1, 1);
+        }
+        saved = ClusterCol_EnterUnionGridGlobals();
+        Overlap_Cluster_Ss(CntOLP, g->Cs, MP, myworld1);
+        ClusterCol_LeaveUnionGridGlobals(saved);
+
+        info = openmx_gs2_eigen_real(n, n, g->Cs, g->desc, &w[1], g->Ss, g->desc);
+        if (info!=0){
+            printf("Cluster_DFT_Col: the gpusolver2 overlap eigensolver failed (info=%d)\n", info);
+            MPI_Abort(mpi_comm_level1, 1);
+        }
+        for (l=1; l<=n; l++){
+            if (w[l]<0.0) w[l] = 1.0e-10;
+            w[l] = 1.0/sqrt(w[l]);
+        }
+        for (i=0; i<g->na_rows; i++){
+            for (j=0; j<g->na_cols; j++){
+                const int jg = g->np_cols*g->nblk*(j/g->nblk) + j%g->nblk
+                             + ((g->np_cols+g->my_pcol)%g->np_cols)*g->nblk + 1;
+                g->Ss[(size_t)j*(size_t)g->na_rows + (size_t)i] *= w[jg];
+            }
+        }
+        free(w);
+        g->overlap_n = n;
+    }
+
+    for (spin=0; spin<=1; spin++){
+
+        saved = ClusterCol_EnterUnionGridGlobals();
+        Hamiltonian_Cluster_Hs(nh[spin], g->Hs, MP, spin, spin);
+        ClusterCol_LeaveUnionGridGlobals(saved);
+
+        /* H X, then X^T (H X) */
+        for (i=0; i<g->na_rows_max*g->na_cols_max; i++) g->Cs[i] = 0.0;
+        Cblacs_barrier(g->ictxt, "A");
+        openmx_gs2_pdgemm_("N","N",&n,&n,&n,&alpha,g->Hs,&ONE,&ONE,g->desc,g->Ss,&ONE,&ONE,g->desc,
+                           &beta,g->Cs,&ONE,&ONE,g->desc);
+        for (i=0; i<g->na_rows*g->na_cols; i++) g->Hs[i] = 0.0;
+        Cblacs_barrier(g->ictxt, "C");
+        openmx_gs2_pdgemm_("T","N",&n,&n,&n,&alpha,g->Ss,&ONE,&ONE,g->desc,g->Cs,&ONE,&ONE,g->desc,
+                           &beta,g->Hs,&ONE,&ONE,g->desc);
+
+        for (i=0; i<=n; i++) ko[spin][i] = 10000.0;
+        info = openmx_gs2_eigen_real(n, MaxN, g->Hs, g->desc, &ko[spin][1], g->Cs, g->desc);
+        if (info!=0){
+            printf("Cluster_DFT_Col: the gpusolver2 Hamiltonian eigensolver failed (info=%d)\n", info);
+            MPI_Abort(mpi_comm_level1, 1);
+        }
+
+        /* (X C)^T: one state per row */
+        for (i=0; i<g->na_rows*g->na_cols; i++) g->Hs[i] = 0.0;
+        Cblacs_barrier(g->ictxt, "A");
+        openmx_gs2_pdgemm_("T","T",&n,&n,&n,&alpha,g->Cs,&ONE,&ONE,g->desc,g->Ss,&ONE,&ONE,g->desc,
+                           &beta,g->Hs,&ONE,&ONE,g->desc);
+
+        ClusterCol_UnionSendEvec(spin, n, MaxN, myworld1, myid1, is2, ie2, NPROCS_WD1,
+                                 Comm_World_StartID1, EVec1);
     }
 }
 
@@ -2543,6 +2921,16 @@ double Cluster_DFT_Col(
                                        MP,is2,ie2,n,MaxN,EVec1);
       goto diagonalize_finished;
     }
+    /* the distributed capacity fallback of a spin-polarized run: both spins
+       on the grid over all ranks (see ClusterCol_UnionGrid_Ensure) */
+    if (!gpusolver2_flag && SpinP_switch==1 && numprocs0>1 &&
+        ClusterCol_gs2_fallback_n==n && ClusterCol_ugrid.n==n){
+      ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
+      firsttime = 0;
+      ClusterCol_UnionGs2Path(n,MaxN,ko,nh,CntOLP,MP,myworld1,myid1,is2,ie2,
+                              NPROCS_WD1,Comm_World_StartID1,EVec1);
+      goto diagonalize_finished;
+    }
   }
 
   /****************************************************
@@ -2575,7 +2963,7 @@ double Cluster_DFT_Col(
     mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
     mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-    if (gpusolver2_flag){
+    if (ClusterCol_UseGs2(n)){
 
       /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels) */
       int gs2_info = openmx_gs2_eigen_real(n, n, Cs, descC, &ko[0][1], Ss, descS);
@@ -2789,7 +3177,7 @@ double Cluster_DFT_Col(
   }
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterCol_UseGs2(n))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&alpha,Hs,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&alpha,Hs,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&beta,Cs,&ONE,&ONE,descC);
@@ -2801,7 +3189,7 @@ double Cluster_DFT_Col(
   }
 
   Cblacs_barrier(ictxt1,"C");
-  if (gpusolver2_flag)
+  if (ClusterCol_UseGs2(n))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&beta,Hs,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&beta,Hs,&ONE,&ONE,descH);
@@ -2824,7 +3212,7 @@ double Cluster_DFT_Col(
   mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
   mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-  if (gpusolver2_flag){
+  if (ClusterCol_UseGs2(n)){
 
     /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels); all n
        eigenvalues are returned but only the lowest MaxN eigenvectors */
@@ -2869,7 +3257,7 @@ double Cluster_DFT_Col(
   for (i=0; i<na_rows*na_cols; i++) Hs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (gpusolver2_flag)
+  if (ClusterCol_UseGs2(n))
     openmx_gs2_pdgemm_("T","T",&n,&n,&n,&alpha,Cs,&ONE,&ONE,descC,Ss,&ONE,&ONE,descS,&beta,Hs,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","T",&n,&n,&n,&alpha,Cs,&ONE,&ONE,descC,Ss,&ONE,&ONE,descS,&beta,Hs,&ONE,&ONE,descH);
@@ -7108,6 +7496,8 @@ static void Patch2Host_Cluster_Owner(double ****RH, int *MP, int owns_dense, int
 void Cluster_DFT_Col_Release_GPU_Caches(void)
 {
     ClusterCol_mgpu_host_dense=0;
+    ClusterCol_ResetGs2Fallback();
+    ClusterCol_UnionGrid_Free();
     ClusterCol_cpu_overlap_n = 0;
     free(ClusterCol_dm_entry_cache.basis0);
     free(ClusterCol_dm_entry_cache.basis1);

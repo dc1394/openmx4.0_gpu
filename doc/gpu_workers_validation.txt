@@ -1,6 +1,11 @@
 GPU work outside diagonalization: validation (2026-10-14)
 =======================================================
 
+Since 2026-10-15 this distribution is experimental and off by default
+(OPENMX_GPU_WORKERS=1 enables it), and device-resident GEMM cooperation is
+opt-in (OPENMX_MGPU_GEMM=on/auto). The runs below were made when both
+were on by default.
+
 Scope: ordinary collinear/noncollinear Cluster and Band, including the
 existing GPU grid, integral, density, force, energy, mixing and dense-matrix
 paths. CPU-only operations are not included in the GPU coverage claim.
@@ -196,3 +201,23 @@ mgpu_capacity_validation.txt. Those used a 12 GiB private GEMM result cap;
 the new runs use the production 2 GiB cap with host staging for larger
 results. Timings therefore compare complete configurations, not solely
 the change in auxiliary kernel parallelism.
+
+Multi-node runs (2026-10-15)
+----------------------------
+In a multi-node run the workers' pool is the permitted GPU set of each
+node. Kugui F2acc, PBS 938767: two nodes, 1 MPI rank x 64 threads and 2
+A100s per node, Si1000 sidia555 as a spin-polarized Cluster run, 2 SCF
+steps.
+- Placement: the worker reports show devices 0,1 on both nodes for the
+  orbital tiles, Hamiltonian matrix elements, density points, XC grid,
+  VNA/nonlocal integrals, dense transforms and DM entries.
+- Energy: workers on and OPENMX_GPU_WORKERS=0 give the same total energy
+  to the last digit.
+- Time: as on one node, the second GPU makes this run slower, 243 s
+  against 164 s. Set_Hamiltonian goes from 19 to 37 s and
+  Set_Density_Grid from 16 to 48 s, over thousands of small tiles.
+- The noncollinear run in the same layout combined MAGMA on rank 0's
+  GPUs with workers on both GPUs of both nodes.
+With 8 ranks per node, every GPU of each node already carries ranks of
+its own, so the workers add nothing there. See
+work/bench_multinode/results_two_node_20261015.md.
