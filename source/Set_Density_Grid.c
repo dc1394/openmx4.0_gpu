@@ -21,6 +21,7 @@
 
 #define  measure_time   0
 
+int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
 
 
 double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0)
@@ -358,6 +359,13 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(CDM,Tmp_Den_Grid)){
     use_local_gpu = 0;
     local_failed = 1;
+  }
+
+  /* All ranks enter the recovery phase. Completed ranks can lend their
+     node's permitted GPUs; declined ranks publish only a complete shard. */
+  if (Set_Density_Grid_GPU_Capacity(Cnt_kind,use_local_gpu,CDM,Tmp_Den_Grid)) {
+    use_local_gpu=1;
+    local_failed=0;
   }
 
   if (!use_local_gpu){

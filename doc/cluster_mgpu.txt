@@ -48,17 +48,17 @@ fits its owner's GPU (its operands are there already) and stays on it.
 Several GPUs are used only on the capacity rungs: the host-backed MAGMA
 products on the GPUs of the owner's node, and in a multi-node run the
 distributed gpusolver2 transforms over every node. When the GPUs of the
-last rung cannot hold the problem, the run stops (the host-memory guard of
-the distributed transforms below can still move one transform to
-ScaLAPACK). Spreading a device-resident product over the
+last rung cannot hold the problem, the eigensolver and transforms use the
+CPU, subject to host-memory admission. Distributed transforms can also
+select ScaLAPACK individually. Spreading a device-resident product over the
 permitted GPUs for speed is experimental and off by default:
 OPENMX_MGPU_GEMM=on cooperates for every size, auto with the older
 size/NVLink heuristic. Input off or OPENMX_MGPU=0 vetoes cooperation. In a
 multi-node run the device-resident cooperative eigensolves are off; the
 capacity path and its fallback are described in the next section. The
-work outside the generalized eigenproblem uses one GPU per rank unless the
-experimental GPU workers are enabled (OPENMX_GPU_WORKERS=1,
-doc/gpu_workers.txt), which then use every permitted GPU of each node.
+work outside the generalized eigenproblem follows the same capacity order:
+owner GPU, local GPUs, other nodes, CPU. See gpu_workers.txt.
+OPENMX_GPU_WORKERS=1 additionally requests distribution for performance.
 
 Multi-node capacity fallback
 ----------------------------
@@ -69,8 +69,8 @@ chooses the next step, which is broadcast before any rank commits
 
   1. Host-backed MAGMA on the GPUs of rank 0's node. This needs two or more
      permitted GPUs on that node, an order within the LP64 limit (32766),
-     MAGMA's per-GPU scratch on every GPU of the group and, in a multi-node
-     run, the estimated host memory on rank 0's node (80 n^2 bytes for a
+     MAGMA's per-GPU scratch on every GPU of the group and the estimated
+     host memory on rank 0's node (80 n^2 bytes for a
      real order n, 128 n^2 for the complex spinor order, plus 8 GiB). The
      GPU count and the order are tested first (they need no GPU, and when
      they rule MAGMA out, the banner names them), then the host memory,
@@ -95,15 +95,17 @@ chooses the next step, which is broadcast before any rank commits
      bridge already holds as available). If they do not, Set_Hamiltonian's
      resident GPU tables (kept when all ranks of a GPU build in one wave)
      are released and stay transient for the MD step, and the admission is
-     repeated; if it still fails, the run stops with the numbers.
-  3. Otherwise the run stops with the reason.
+     repeated; if it still fails, the CPU solve is selected.
+  3. Otherwise use the CPU eigensolver and CPU matrix products. The reason
+     and the preserved GPU limit are printed. Host-memory exhaustion remains
+     an error; an unavailable GPU pool does not become an oversized GPU request.
 
 The decision is made with the native admission (at SCF iteration 1, after
 a size change, or after a scratch trim) and holds for the cycle, including
 the post-SCF calls; the noncollinear distributed family diagonalizes the
 overlap at SCF iteration 1, where the decision is made. Forced MAGMA
 (gpusolver3, OPENMX_MGPU_MEMORY=host) never takes step 2, and a single-node
-run keeps stopping when MAGMA cannot take the solve.
+run uses CPU when MAGMA cannot take the solve.
 OPENMX_CLUSTER_GS2_FALLBACK (read on rank 0): auto (default) as above,
 off never takes step 2, on also allows step 2 on one node, force skips
 step 1 (tests). The banner at level.of.stdout 1 names the reason MAGMA was
@@ -148,10 +150,14 @@ Before solving, every selected GPU must pass the conservative MAGMA memory
 admission check. All available GPUs up to the configured limit are used
 (up to the backend's eight-GPU limit). If this group is insufficient, if
 MAGMA was not built, or if fewer than two permitted GPUs exist, a
-single-node run prints the cause and exits with an error; a multi-node run
-continues with the distributed fallback above. scf.Gpu.Num is never exceeded,
-and there is no implicit CPU eigensolver fallback after memory exhaustion.
-Allocation or execution failures after admission also terminate the solve.
+single-node run prints the cause and uses CPU; an automatic multi-node run
+tries the distributed fallback above first. scf.Gpu.Num is never exceeded.
+Late MAGMA allocation/resource failure also permits a CPU solve; numerical
+solver failures remain errors. The CPU DSYEVR/ZHEEVR path computes only the
+requested leading states, uses linear solver scratch, and validates the
+result before publishing. Host-backed GEMM uses BLAS if the GPU attempt
+cannot allocate its private tiles. gpusolver3 still prefers MAGMA and does
+not switch back to cuSOLVER; GPU memory exhaustion now permits CPU recovery.
 
 OPENMX_MGPU_MEMORY=host exercises the same capacity path with gpusolver
 for regression tests on small matrices. gpusolver3 is the input keyword
@@ -161,7 +167,8 @@ single-GPU FP32 refinement workspace.
 tests/run_mgpu_capacity_regression.py exercises all four Cluster/Band and
 collinear/noncollinear paths within a four-GPU allocation. It compares native
 cuSOLVER, automatic recovery after a deliberately oversized admission reserve,
-and forced MAGMA, then checks a nonzero exit with too small an input GPU limit.
+and forced MAGMA, then checks successful CPU recovery with a restrictive input
+GPU limit. Energies, energy components and forces must agree in every mode.
 It leaves scf.mgpu.enable unspecified to verify the default policy.
 
 The existing device-resident performance experiment remains opt-in:
@@ -197,8 +204,9 @@ for the original single-device path; cooperative tiles rebuild their own X
 representation after an upload, because a tile buffer changes contents.
 
 OPENMX_MGPU_GEMM=1 forces eligible products through the multi-GPU attempt;
-OPENMX_MGPU_GEMM=0 disables it. Default routing distributes all eligible
-nonempty shapes in the current GPU group. OPENMX_MGPU_GEMM=auto requests
+OPENMX_MGPU_GEMM=0 disables it. By default device-resident products stay
+on their owner GPU; host-backed capacity products use their MAGMA group.
+OPENMX_MGPU_GEMM=auto requests
 the former large-shape/direct-NVLink heuristic. See mgpu_gemm.txt for workspace limits,
 shape thresholds, algorithm details and measured crossovers.
 

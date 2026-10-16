@@ -31,6 +31,7 @@ int openmx_mgpu_scope_active(void);
    multi-node run too. A scoped list uses the exact current Band group
    (single-node only). Admission includes the caller's device and shares the
    UUID locks used by dense solvers and matrix products. */
+void openmx_mgpu_configure_auxiliary(int enabled);
 int openmx_mgpu_pool_devices(int *devices, int capacity);
 int openmx_mgpu_scope_devices(int *devices, int capacity);
 void *openmx_mgpu_admit_devices(const int *devices, int count);

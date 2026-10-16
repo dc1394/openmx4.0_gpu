@@ -30,6 +30,7 @@
 #include <openacc.h>
 #include "openmx_common.h"
 #include "openmx_gpu_workers.h"
+#include "openmx_gpu_task.h"
 #include "mpi.h"
 #include <omp.h>
 #include "set_cuda_default_device_from_local_rank.h"
@@ -268,7 +269,106 @@ static int SetNonlocalUseOpenACC(void)
   const char *value = getenv("OPENMX_SETNL_OPENACC");
 
   if (value != NULL && atoi(value) == 0) return 0;
-  return (scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable());
+  return scf_eigen_lib_flag == GPUSOLVER;
+}
+
+#pragma acc routine seq
+static void SetNL_capacity_bessel(double x,int lmax,double *sbv,double *dsbv)
+{
+    double tsb[SETNL_SB_ARR];int n,m,nmax;
+    double invx,vsb0,vsb1,vsb2,vsbi=0,j0,j1,sf,tmp,si,co,ix;
+              nmax = lmax + (int)(1.5*x) + 10;
+              if (nmax<30) nmax = 30;
+
+              if (0.0 < x){
+
+                invx = 1.0/x;
+                vsb0 = 0.0;
+                vsb1 = 1.0e-14;
+
+                for ( n=nmax-1; (lmax+2)<n; n-- ){
+                  vsb2 = (2.0*(double)n + 1.0)*invx*vsb1 - vsb0;
+                  if (0.0<(vsb2-1.0e+250)){
+                    tmp = 1.0/vsb2;
+                    vsb1 *= tmp;
+                    vsb2 = 1.0;
+                  }
+                  vsbi = vsb0;
+                  vsb0 = vsb1;
+                  vsb1 = vsb2;
+                }
+
+                n = lmax + 3;
+                tsb[n-1] = vsb1;
+                tsb[n  ] = vsb0;
+                tsb[n+1] = vsbi;
+
+                tmp = tsb[n-1];
+                tsb[n-1] /= tmp;
+                tsb[n  ] /= tmp;
+
+                for ( n=lmax+2; 0<n; n-- ){
+                  tsb[n-1] = (2.0*(double)n + 1.0)*invx*tsb[n] - tsb[n+1];
+                  if (1.0e+250<tsb[n-1]){
+                    tmp = tsb[n-1];
+                    for (m=n-1; m<=lmax+1; m++){
+                      tsb[m] /= tmp;
+                    }
+                  }
+                }
+
+                si = sin(x);
+                co = cos(x);
+                ix = 1.0/x;
+                j0 = si*ix;
+                j1 = si*ix*ix - co*ix;
+
+                if (fabs(tsb[1])<fabs(tsb[0])) sf = j0/tsb[0];
+                else                           sf = j1/tsb[1];
+
+                for ( n=0; n<=lmax+1; n++ ){
+                  sbv[n] = tsb[n]*sf;
+                }
+
+                dsbv[0] = co*ix - si*ix*ix;
+                for ( n=1; n<=lmax; n++ ){
+                  dsbv[n] = ( (double)n*sbv[n-1] - ((double)n+1.0)*sbv[n+1] )/(2.0*(double)n + 1.0);
+                }
+              }
+
+              else{
+                for ( n=0; n<=lmax+1; n++ ){
+                  sbv[n] = 0.0;
+                }
+                sbv[0] = 1.0;
+
+                dsbv[0] = 0.0;
+                for ( n=1; n<=lmax; n++ ){
+                  dsbv[n] = ( (double)n*sbv[n-1] - ((double)n+1.0)*sbv[n+1] )/(2.0*(double)n + 1.0);
+                }
+              }
+
+}
+typedef struct {int lmax,l,diag,rf,nlrf;double radius;} SetNLCapacityRow;
+typedef struct {int grid;double step;} SetNLCapacityParameters;
+static void SetNL_capacity_kernel(size_t first,size_t rows,const void *parameters,void *const v[],int gpu)
+{
+    (void)first;const SetNLCapacityParameters p=*(const SetNLCapacityParameters*)parameters;
+    const int grid=p.grid;const double step=p.step;
+    const SetNLCapacityRow *row=v[0];const double *norm=v[1],*rf=v[2],*nlrf=v[3];double *out=v[4],*deriv=v[5];
+#pragma acc parallel loop gang deviceptr(row,norm,rf,nlrf,out,deriv) if(gpu)
+    for(size_t r=0;r<rows;r++) {
+        const SetNLCapacityRow q=row[r];double sum=0,gradient=0;
+#pragma acc loop vector reduction(+:sum,gradient)
+        for(int i=0;i<grid;i++) {
+            double sb[SETNL_SB_ARR],dsb[SETNL_SB_ARR];
+            SetNL_capacity_bessel(norm[i]*q.radius,q.lmax,sb,dsb);
+            double factor=(i==0 || i==grid-1?.5:1)*step*norm[i]*norm[i]*rf[q.rf+i];
+            sum+=(factor*sb[q.l])*nlrf[q.nlrf+i];
+            gradient+=(factor*norm[i]*dsb[q.l])*nlrf[q.nlrf+i];
+        }
+        out[r]=sum;deriv[r]=q.diag?0:gradient;
+    }
 }
 
 /*
@@ -335,7 +435,6 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
   double *gaunt_tab;
   double t_mark0,t_mark1,t_setup,t_sphb,t_acc,t_ang;
 
-  if (OneD_Nloop <= 0) return 1;
 
   t_setup = t_sphb = t_acc = t_ang = 0.0;
   if (measure_time) dtime(&t_mark0);
@@ -629,7 +728,7 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
   arena_bytes = 0;
   chunk_pairs = 1;
 
-  if (0 < total_rows){
+  if (0 < total_rows && !openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable()){
 
     size_t budget_pairs = ((size_t)96*1024*1024)/(sph_stride*sizeof(double));
 
@@ -670,14 +769,14 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
     if (arena == NULL && !fail_notice_done && 2<=level_stdout){
       fail_notice_done = 1;
       fprintf(stderr,
-              "Set_Nonlocal: %.1f MiB of device staging unavailable; using the host path.\n",
+              "Set_Nonlocal: %.1f MiB of device staging unavailable; trying distributed capacity recovery.\n",
               (double)arena_bytes/(1024.0*1024.0));
       fflush(stderr);
     }
   }
   else{
-    /* no radial integrals to batch; the assembly below just clears DS_NL */
-    device_ok = 1;
+    /* Empty ranks still enter the collective recovery phase below. */
+    device_ok = total_rows==0;
   }
 
   if (measure_time){
@@ -882,7 +981,26 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
 
   if (measure_time) dtime(&t_mark0);
 
-  /* nothing staged: leave DS_NL to the caller's host path */
+  /* Retry only failed owner staging. A row contains its own geometry and
+     Fourier-table offsets; remote helpers never access another rank's maps. */
+  SetNLCapacityRow *recovery_rows=NULL;int recovery_ready=1;
+  if (!device_ok && total_rows) {
+    recovery_rows=malloc((size_t)total_rows*sizeof(*recovery_rows));recovery_ready=recovery_rows!=NULL;
+    for(int row=0;recovery_ready && row<total_rows;row++) {
+      int pair=row_pair[row];
+      recovery_rows[row]=(SetNLCapacityRow){pair_nLL[pair]-1,row_sph_off[row]/grid_dim,pair_diag[pair],row_rf_base[row],row_nlrf_base[row],pair_r[pair]};
+    }
+  }
+  SetNLCapacityParameters parameters={grid_dim,grid_h};OpenMXGpuTask task={0};
+  task.count=device_ok || !recovery_ready?0:(size_t)total_rows;task.inputs=4;task.outputs=2;
+  task.kernel=SetNL_capacity_kernel;task.parameters=&parameters;task.parameter_bytes=sizeof(parameters);
+  task.view[0]=(OpenMXGpuTaskView){recovery_rows,0,sizeof(*recovery_rows)};
+  task.view[1]=(OpenMXGpuTaskView){Normk_grid,(size_t)grid_dim*sizeof(double),0};
+  task.view[2]=(OpenMXGpuTaskView){RF_all,rf_all_elems*sizeof(double),0};
+  task.view[3]=(OpenMXGpuTaskView){NLRF_all,nlrf_all_elems*sizeof(double),0};
+  task.view[4]=(OpenMXGpuTaskView){sums0_all,0,sizeof(double)};task.view[5]=(OpenMXGpuTaskView){sums1_all,0,sizeof(double)};
+  openmx_gpu_task_execute(mpi_comm_level1,&task,1,"nonlocal-radial-capacity");
+  free(recovery_rows);device_ok=device_ok || recovery_ready;
   if (!device_ok) goto cleanup;
 
   /**********************************************************************
@@ -1384,69 +1502,6 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
 }
 
 
-typedef struct {
-  OpenMXGpuWorkers workers;
-  double ******dsnl, *normk, grid_h;
-  int *mc, *h, profile_rank;
-  int basis_l_dim;
-  int basis_m_dim;
-  int rvps_dim;
-  int rvps_sum_dim;
-  int proj_m_dim;
-  int grid_dim;
-  int max_Lmax_Four_Int;
-  int max_sph_rows;
-} SetNonlocalGpuWork;
-
-static int SetNonlocal_Worker(void *opaque, int worker, int phase)
-{
-  SetNonlocalGpuWork *work=(SetNonlocalGpuWork*)opaque;
-  if (phase!=OPENMX_GPU_WORKER_EXECUTE) return 1;
-  const int first=(int)openmx_gpu_worker_cut(work->workers.items,worker,work->workers.count);
-  const int last=(int)openmx_gpu_worker_cut(work->workers.items,worker+1,work->workers.count);
-  /* Every entry overwrites one distinct DS_NL pair. If a worker cannot
-     allocate its bounded scratch, the caller rewrites all pairs on the CPU;
-     no additive matrix or force contribution has been published here. */
-  return SetNonlocal_CalcDSNL_Part(work->dsnl,work->normk,
-work->basis_l_dim,work->basis_m_dim,work->rvps_dim,work->rvps_sum_dim,work->proj_m_dim,work->grid_dim,work->max_Lmax_Four_Int,work->max_sph_rows,
-      work->mc+first,work->h+first,last-first,work->grid_h,work->profile_rank);
-}
-
-static int SetNonlocal_CalcDSNL_OpenACC(double ******DS_NL,
-                                         double *Normk_grid,
-                                         int basis_l_dim,
-                                         int basis_m_dim,
-                                         int rvps_dim,
-                                         int rvps_sum_dim,
-                                         int proj_m_dim,
-                                         int grid_dim,
-                                         int max_Lmax_Four_Int,
-                                         int max_sph_rows,
-                                         int *OneD2Mc_AN,
-                                         int *OneD2h_AN,
-                                         int OneD_Nloop,
-                                         double grid_h)
-{
-  SetNonlocalGpuWork work={0};
-  MPI_Comm_rank(mpi_comm_level1,&work.profile_rank);
-  openmx_gpu_workers_local(&work.workers,(size_t)OneD_Nloop);
-  if (work.workers.count<=1)
-    return SetNonlocal_CalcDSNL_Part(DS_NL,Normk_grid,
-basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim,grid_dim,max_Lmax_Four_Int,max_sph_rows,OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h,work.profile_rank);
-  work.dsnl=DS_NL;work.normk=Normk_grid;work.grid_h=grid_h;
-  work.mc=OneD2Mc_AN;work.h=OneD2h_AN;
-  work.basis_l_dim=basis_l_dim;
-  work.basis_m_dim=basis_m_dim;
-  work.rvps_dim=rvps_dim;
-  work.rvps_sum_dim=rvps_sum_dim;
-  work.proj_m_dim=proj_m_dim;
-  work.grid_dim=grid_dim;
-  work.max_Lmax_Four_Int=max_Lmax_Four_Int;
-  work.max_sph_rows=max_sph_rows;
-
-  return openmx_gpu_workers_run(&work.workers,SetNonlocal_Worker,&work,"nonlocal-radial");
-}
-
 double Set_Nonlocal(double *****HNL, double ******DS_NL)
 {
   double TStime,TEtime;
@@ -1632,12 +1687,13 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   if (measure_time || SetNonlocal_ProfileEnabled()) dtime(&stime);
 
   DSNL_on_device = 0;
-  if (SetNonlocalUseOpenACC()){
-    /* 0 means the device could not stage the batch; recompute on the host */
-    DSNL_on_device = SetNonlocal_CalcDSNL_OpenACC(DS_NL,Normk_grid,
+  int radial_requested=SetNonlocalUseOpenACC();
+  MPI_Allreduce(MPI_IN_PLACE,&radial_requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  if (radial_requested){
+    DSNL_on_device = SetNonlocal_CalcDSNL_Part(DS_NL,Normk_grid,
                                  basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim,
                                  grid_dim,max_Lmax_Four_Int,max_sph_rows,
-                                 OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h);
+                                 OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h,myid);
   }
 
   if (!DSNL_on_device){

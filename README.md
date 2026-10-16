@@ -67,8 +67,8 @@ scf.Gpu.Num                4
 `scf.Gpu.Num` is a strict upper bound. CUDA visibility and
 `OPENMX_MGPU_NUM_GPUS` can reduce it further. If the permitted GPU group
 cannot hold MAGMA's per-device scratch, or MAGMA/cooperation is unavailable,
-the memory fallback of a single-node run reports an error and stops. It
-never enlarges the GPU pool or silently switches to a CPU eigensolver.
+the memory fallback of a single-node run reports the reason and uses CPU
+eigensolvers and matrix products. It never enlarges the GPU pool.
 `scf.mgpu.enable off` and `OPENMX_MGPU=0` explicitly disable cooperation.
 
 In a **multi-node** Cluster run (collinear or noncollinear) the default
@@ -80,8 +80,8 @@ COSMA) on all ranks of the run; a spin-polarized run solves its two spins in
 turn there. ELPA and COSMA use the GPU of each rank, so run at least one rank
 per GPU. In a two-node job with one GPU per node the solve then moves to two
 GPUs. With two GPUs per node, MAGMA on two GPUs comes first, then four GPUs.
-If even the distributed GPU solve does not fit, the run stops with the
-numbers. Its transforms use COSMA only while the host memory COSMA keeps
+If even the distributed GPU solve does not fit, it uses CPU kernels.
+Its transforms use COSMA only while the host memory COSMA keeps
 leaves a quarter of each node free (`OPENMX_GS2_HOST_RESERVE_MB`), and
 ScaLAPACK otherwise. `OPENMX_CLUSTER_GS2_FALLBACK=off|on|force`
 disables this step, allows it on one node, or skips MAGMA. Details:
@@ -104,18 +104,20 @@ GPU stays on that GPU, and several GPUs are used only on the capacity rungs
 gpusolver2 transforms over all nodes). Spreading such a product over the
 GPUs for speed is experimental: `OPENMX_MGPU_GEMM=on` (or `auto`).
 
-Spreading the GPU work outside the generalized eigenproblem over several
-GPUs is experimental and off by default, because it made the measured
-Si1000 runs slower: orbital and grid kernels, Hamiltonian construction,
-density matrices and density grids, XC, GPU force/energy terms, RMM-DIISH
-history, and dense assembly/extraction. `OPENMX_GPU_WORKERS=1` enables it.
-Local work then follows MPI ownership; k-dependent dense work follows its
-exact GPU group. All use the same GPU cap. In a multi-node run every node
-does this with its own permitted GPUs, so with fewer ranks than GPUs on a
-node the free GPUs of that node take work (the Band k-point groups stay
-single-node). Without it, every MPI rank keeps this work on its own GPU.
+GPU work outside the generalized eigenproblem now uses capacity recovery
+by default: the rank's GPU, permitted GPUs on its node, GPUs on other nodes,
+then CPU. This covers orbital/grid kernels, Hamiltonian construction,
+density matrices and density grids, XC, GPU force/energy terms and RMM-DIISH
+history. Every tier respects the configured GPU cap; k-dependent dense work
+also respects its exact GPU group. Allocation failures release private
+buffers before retrying, so a failed attempt cannot partially add results.
+`OPENMX_GPU_WORKERS=1` optionally distributes work for speed even when one
+GPU fits; `0` disables borrowing and retains CPU recovery. Host memory is
+still required for CPU work and communication buffers.
 See [GPU worker ownership and controls](doc/gpu_workers.txt).
-Numerical checks and measured costs are recorded in
+The new policy's numerical and allocation-failure checks are recorded in
+[capacity recovery validation](doc/gpu_capacity_validation.txt).
+Earlier performance-splitting measurements remain in
 [GPU worker validation](doc/gpu_workers_validation.txt).
 
 Build MAGMA with `make -f Makefile.kugui openmx WITH_MAGMA=1` in `source/`.

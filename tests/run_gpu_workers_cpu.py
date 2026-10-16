@@ -19,6 +19,7 @@ int openmx_mgpu_pool_devices(int*,int);int openmx_mgpu_scope_devices(int*,int);
 void *openmx_mgpu_admit_devices(const int*,int);void openmx_mgpu_release_devices(void*);
 ''')
     (tmp/'set_cuda_default_device_from_local_rank.h').write_text('''
+int gpu_rank_device_usable(void);
 int openmx_gpu_map_rank_to_device(int,int,int);
 int OpenMX_GpuMemGetInfo(size_t*,size_t*);void OpenMX_GpuPresizeKernelStack(void);
 ''')
@@ -41,6 +42,7 @@ void *acc_malloc(size_t);void acc_free(void*);void acc_wait_all(void);
 #include <string.h>
 static _Thread_local int device=0,acc_device=0,acc_type=5,scope=0;
 static int permitted=4,group_first=0,group_count=0,held=0;
+static size_t memory[64]; static int queried[64];
 static pthread_mutex_t admission=PTHREAD_MUTEX_INITIALIZER;
 static long checks=0;
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"check failed line %d: %s\n",__LINE__,#x);exit(1);}checks++; }while(0)
@@ -48,6 +50,7 @@ int cudaGetDevice(int *p){*p=device;return 0;}
 int cudaSetDevice(int v){device=v;return 0;}
 int cudaFree(void *p){assert(!p);return 0;}
 int cudaGetLastError(void){return 0;}
+int gpu_rank_device_usable(void){return 1;}
 int cudaDeviceSynchronize(void){return 0;}
 int acc_get_device_type(void){return acc_type;}
 int acc_get_device_num(int type){(void)type;return acc_device;}
@@ -56,7 +59,7 @@ void *acc_malloc(size_t n){return malloc(n);}
 void acc_free(void *p){free(p);}
 void acc_wait_all(void){}
 void acc_clear_freelists(void){}
-int OpenMX_GpuMemGetInfo(size_t *f,size_t *t){*f=*t=(size_t)4<<30;return 0;}
+int OpenMX_GpuMemGetInfo(size_t *f,size_t *t){queried[device]++;*t=(size_t)4<<30;*f=memory[device]?memory[device]:*t;return 0;}
 void OpenMX_GpuPresizeKernelStack(void){}
 int openmx_mgpu_scope_enter(int v){int old=scope;scope=v?old+1:0;return old;}
 void openmx_mgpu_scope_leave(int v){scope=v;}
@@ -89,7 +92,44 @@ static int callback(void *opaque,int worker,int phase){
  if(phase==OPENMX_GPU_WORKER_RELEASE){free(j->staging[worker]);j->staging[worker]=NULL;j->released[worker]++;}
  return 1;
 }
+static size_t cost(void *opaque,int worker,int count){
+ (void)worker;size_t n=*(size_t*)opaque;return n/(size_t)count+(n%(size_t)count!=0);
+}
+static size_t uneven_cost(void *context,int worker,int count){
+ (void)context;return (size_t)(count==1?5:worker?3:2)<<30;
+}
 int main(void){
+ /* Auto leaves other CUDA devices untouched while the owner fits; when
+    it does not, it uses the smallest admitted group, then reports CPU. */
+ {OpenMXGpuWorkers p;size_t need=(size_t)1<<30;
+  unsetenv("OPENMX_GPU_WORKERS");device=acc_device=0;permitted=4;
+  CHECK(openmx_gpu_workers_capacity(&p,173,0,cost,&need) && p.count==1 && p.devices[0]==0);
+  CHECK(queried[0]==1 && queried[1]==0 && queried[2]==0 && queried[3]==0);
+  OpenMXGpuWorkerRetry retry={cost,&need,{0}};
+  for(int count=1;count<=4;count++){
+   CHECK(openmx_gpu_workers_capacity(&p,173,0,openmx_gpu_worker_retry_cost,&retry) && p.count==count);
+   retry.rejected[count]=1;
+  }
+  CHECK(!openmx_gpu_workers_capacity(&p,173,0,openmx_gpu_worker_retry_cost,&retry));
+  need=(size_t)7<<30;
+  CHECK(openmx_gpu_workers_capacity(&p,173,0,cost,&need) && p.count==2);
+  CHECK(device==0 && acc_device==0);
+  need=(size_t)12<<30;
+  CHECK(openmx_gpu_workers_capacity(&p,173,0,cost,&need) && p.count==4);
+  permitted=3;
+  CHECK(!openmx_gpu_workers_capacity(&p,173,0,cost,&need) && p.count==0);
+  permitted=4;setenv("OPENMX_GPU_WORKERS","off",1);
+  CHECK(!openmx_gpu_workers_capacity(&p,173,0,cost,&need) && p.count==0);
+  unsetenv("OPENMX_GPU_WORKERS");group_first=2;group_count=2;need=(size_t)7<<30;
+  CHECK(openmx_gpu_workers_capacity(&p,173,2,cost,&need) && p.count==2 && p.devices[0]==2 && p.devices[1]==3);
+  group_count=0;
+  memory[0]=1;need=(size_t)1<<30;
+  CHECK(openmx_gpu_workers_capacity(&p,1,0,cost,&need) && p.count==1 && p.devices[0]!=0);
+  permitted=3;memory[1]=((size_t)2<<30)+((size_t)300<<20);memory[2]=((size_t)3<<30)+((size_t)300<<20);
+  CHECK(openmx_gpu_workers_capacity(&p,173,0,uneven_cost,NULL) && p.count==2 && p.devices[0]==1 && p.devices[1]==2);
+  memset(memory,0,sizeof(memory));permitted=4;need=SIZE_MAX;
+  CHECK(!openmx_gpu_workers_capacity(&p,173,0,cost,&need));
+ }
  /* The distribution is experimental and off by default: every pool is the
     rank's own GPU unless OPENMX_GPU_WORKERS is 1 or on. */
  for(int setting=0;setting<4;setting++){

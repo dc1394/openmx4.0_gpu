@@ -2,6 +2,7 @@
 #define OPENMX_GPU_WORKERS_H
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,6 +33,40 @@ void openmx_gpu_workers_configure(int local_rank, int local_size, int mapped_dev
 void openmx_gpu_workers_local(OpenMXGpuWorkers *workers, size_t items);
 void openmx_gpu_workers_owner(OpenMXGpuWorkers *workers, size_t items);
 void openmx_gpu_workers_scope(OpenMXGpuWorkers *workers, size_t items);
+
+/* Capacity planning: 0=rank-local, 1=owner service, 2=exact dense scope.
+   cost gives the complete additional bytes of worker i in a count-way cut.
+   Auto tries the owner alone, then increasing node-local groups. count==0
+   means no admitted GPU layout; the caller must try its collective tier or
+   CPU path. Unlike the optional performance splitter, capacity recovery may
+   borrow GPUs assigned to other local ranks under the UUID admission lock.
+   OPENMX_GPU_WORKERS=0 disables borrowing; =1 prefers the largest group. */
+typedef size_t (*OpenMXGpuWorkerCost)(void *context, int worker, int count);
+/* Capacity can change after planning (or module initialization). A caller
+   with private results may reject a failed layout and try the remaining
+   node-local group sizes before asking other nodes for help. */
+typedef struct {
+    OpenMXGpuWorkerCost cost;
+    void *context;
+    unsigned char rejected[OPENMX_GPU_WORKERS_MAX+1];
+} OpenMXGpuWorkerRetry;
+static inline size_t openmx_gpu_worker_retry_cost(void *opaque,int worker,int count)
+{
+    OpenMXGpuWorkerRetry *retry=(OpenMXGpuWorkerRetry*)opaque;
+    if (count<1 || count>OPENMX_GPU_WORKERS_MAX || retry->rejected[count]) return (size_t)-1;
+    return retry->cost(retry->context,worker,count);
+}
+int openmx_gpu_workers_capacity(OpenMXGpuWorkers *workers, size_t items, int kind,
+    OpenMXGpuWorkerCost cost, void *context);
+int openmx_gpu_workers_capacity_enabled(void);
+
+/* Fault injection for regression tests: skip only the legacy resident fast
+   paths, then exercise the ordinary capacity planner with real GPU memory. */
+static inline int openmx_gpu_capacity_test_recovery(void)
+{
+    const char *value = getenv("OPENMX_GPU_CAPACITY_TEST_RECOVERY");
+    return value && value[0]=='1' && value[1]=='\0';
+}
 
 /* Balanced integer cuts without overflowing items * index. */
 static inline size_t openmx_gpu_worker_cut(size_t items, int index, int count)

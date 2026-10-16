@@ -15,6 +15,11 @@
   bridge estimates the per-rank device demand and falls back to the CPU
   side (ELPA CPU kernels / ScaLAPACK p?gemm — same distributed
   algorithms on host BLAS) when the GPU cannot hold it.
+  Sharing is counted by physical GPU UUID within each node and bounded
+  below by the common rank map with scf.Gpu.Num applied, including ranks
+  of concurrently running spin worlds. A failed census uses a conservative
+  node-rank bound. Forced kernel modes must agree across the grid; mixed
+  settings terminate collectively instead of entering mismatched calls.
   Environment knobs:
     OPENMX_GS2_ELPA_GPU        eigensolver: 1 = always GPU (skip the
                                preflight), 0 = always CPU; unset =

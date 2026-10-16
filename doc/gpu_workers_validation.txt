@@ -1,10 +1,11 @@
 GPU work outside diagonalization: validation (2026-10-14)
 =======================================================
 
-Since 2026-10-15 this distribution is experimental and off by default
+Historical performance policy (2026-10-15): this distribution was experimental and off by default
 (OPENMX_GPU_WORKERS=1 enables it), and device-resident GEMM cooperation is
 opt-in (OPENMX_MGPU_GEMM=on/auto). The runs below were made when both
-were on by default.
+were on by default. The current capacity policy is documented in
+gpu_workers.txt; these timings concern forced performance distribution.
 
 Scope: ordinary collinear/noncollinear Cluster and Band, including the
 existing GPU grid, integral, density, force, energy, mixing and dense-matrix

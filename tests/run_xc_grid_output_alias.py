@@ -24,6 +24,7 @@ static void acc_memcpy_from_device(void *out,const void *in,size_t bytes) {
 static void download_at(size_t base,size_t begin,int rotate,double *Vxc0,double *Vxc1,double *Vxc2,double *Vxc3,
                      const double *d_vxc0,const double *d_vxc1,const double *d_vxc2,const double *d_vxc3) {
   const size_t nb=3*sizeof(double);
+  const size_t output=base+begin;
   struct {double *vxc[4];} storage={{Vxc0,Vxc1,Vxc2,Vxc3}},*work=&storage;
 '''
 code += source[start:end]

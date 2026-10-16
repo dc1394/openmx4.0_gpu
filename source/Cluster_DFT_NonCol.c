@@ -14,7 +14,7 @@
 #include "openmx_common.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
-#include "openmx_gpu_dm.h"
+#include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_mgpu_density.h"
 #include "lapack_prototypes.h"
@@ -131,6 +131,8 @@ static int ClusterNonCol_mgpu_host_dense = 0;
    chose the distributed gpusolver2 path (0: none); see
    openmx_cluster_capacity.h */
 static int ClusterNonCol_gs2_fallback_n2 = 0;
+static int ClusterNonCol_cpu_fallback_n2 = 0;
+static int ClusterNonCol_cpu_overlap_n2 = 0;
 
 /* the distributed ELPA/COSMA path: requested by the input, or the capacity
    fallback of gpusolver for this spinor order */
@@ -145,6 +147,7 @@ static void ClusterNonCol_ResetGs2Fallback(void)
 {
     if (ClusterNonCol_gs2_fallback_n2 != 0) openmx_gs2_set_fallback_report(0);
     ClusterNonCol_gs2_fallback_n2 = 0;
+    ClusterNonCol_cpu_fallback_n2 = 0;
 }
 
 static size_t ClusterNonCol_ArenaOff(size_t *pos, size_t bytes)
@@ -460,7 +463,7 @@ static double ClusterNonCol_CalcDMRootDense_OpenACC(int myid, int size_H1, int *
     const int dm_chunk_size = 131072;
     size_t dm_elems = (size_t)size_H1 * (size_t)dm_components;
     size_t evec_count = (size_t)n2 * (size_t)n2;
-    int nk_occ = 0;
+    int nk_occ = 0,recover=0;
     double stime, etime;
 
     if ((size_t)INT_MAX < dm_elems) {
@@ -517,11 +520,11 @@ static double ClusterNonCol_CalcDMRootDense_OpenACC(int myid, int size_H1, int *
            the refined eigensolver for its warm start) */
         void *pm_buffer = NULL;
         int const by_gemm =
-            (0 < nk_occ && ClusterNonCol_DmByGemm() && ClusterNonCol_dense_arena.valid &&
+            (0 < nk_occ && !openmx_gpu_capacity_test_recovery() && ClusterNonCol_DmByGemm() && ClusterNonCol_dense_arena.valid &&
              (size_t)nk_occ * (size_t)n2 * sizeof(dcomplex) <= 7 * (size_t)n * (size_t)n * sizeof(double) &&
              ClusterNonCol_TryDeviceMalloc(&pm_buffer, evec_count * sizeof(dcomplex)) == cudaSuccess);
 
-        if (ClusterNonCol_mgpu_host_dense && 0<nk_occ) {
+        if (ClusterNonCol_mgpu_host_dense && 0<nk_occ && !openmx_gpu_capacity_test_recovery()) {
             dcomplex *pm=ClusterNonCol_MallocArray(evec_count,sizeof(dcomplex),"host density matrix");
             for (int pass=0;pass<(calc_edm?2:1);++pass) {
                 if (!OpenMX_MgpuDensityHost(n2,nk_occ,pass?occ_e:occ,dense_evec,pm))
@@ -648,139 +651,18 @@ if (!openmx_gpu_transform(OPENMX_GPU_SCALE_ROWS,1,nk_occ,n2,ev,n2,wt,0,w,nk_occ,
             }
             wait_cudafunc(cudaFree(pm_buffer));
         }
-        else if (0 < nk_occ && !openmx_gpu_dm_entries(OPENMX_GPU_DM_NC,n,nk_occ,n2,
-            cache->entry_count,acc_deviceptr((void*)dense_evec),0,cache->basis0,cache->basis1,
-            NULL,0,NULL,NULL,occ,calc_edm?occ_e:NULL,NULL,dm_outputs,0)) {
-#pragma acc data present(dense_evec[0 : evec_count]) copyin(occ[0 : nk_occ])
-            {
-                if (calc_edm) {
-#pragma acc data copyin(occ_e[0 : nk_occ])
-                    {
-                        for (int offset = 0; offset < cache->entry_count; offset += dm_chunk_size) {
-                            const int chunk_count =
-                                (cache->entry_count - offset < dm_chunk_size) ? (cache->entry_count - offset) : dm_chunk_size;
-                            const int *basis0_chunk = cache->basis0 + offset;
-                            const int *basis1_chunk = cache->basis1 + offset;
-                            double *rDM11_chunk = rDM11 + offset;
-                            double *rDM22_chunk = rDM22 + offset;
-                            double *rDM12_chunk = rDM12 + offset;
-                            double *iDM12_chunk = iDM12 + offset;
-                            double *iDM11_chunk = iDM11 + offset;
-                            double *iDM22_chunk = iDM22 + offset;
-                            double *rEDM11_chunk = rEDM11 + offset;
-                            double *rEDM22_chunk = rEDM22 + offset;
-                            double *rEDM12_chunk = rEDM12 + offset;
-                            double *iEDM12_chunk = iEDM12 + offset;
+        else if (0 < nk_occ) recover=1;
 
-#pragma acc data copyin(basis0_chunk[0 : chunk_count], basis1_chunk[0 : chunk_count]) \
-    copyout(rDM11_chunk[0 : chunk_count], rDM22_chunk[0 : chunk_count], rDM12_chunk[0 : chunk_count], \
-            iDM12_chunk[0 : chunk_count], iDM11_chunk[0 : chunk_count], iDM22_chunk[0 : chunk_count], \
-            rEDM11_chunk[0 : chunk_count], rEDM22_chunk[0 : chunk_count], rEDM12_chunk[0 : chunk_count], \
-            iEDM12_chunk[0 : chunk_count])
-                            {
-#pragma acc parallel loop gang present(dense_evec[0 : evec_count], occ[0 : nk_occ], occ_e[0 : nk_occ])
-                                for (int p = 0; p < chunk_count; p++) {
-                                    const int ia = basis0_chunk[p];
-                                    const int ib = basis1_chunk[p];
-                                    double dm11_r = 0.0, dm22_r = 0.0, dm12_r = 0.0, dm12_i = 0.0;
-                                    double dm11_i = 0.0, dm22_i = 0.0;
-                                    double edm11_r = 0.0, edm22_r = 0.0, edm12_r = 0.0, edm12_i = 0.0;
-
-#pragma acc loop seq
-                                    for (int k = 0; k < nk_occ; k++) {
-                                        const double w  = occ[k];
-                                        const double ew = occ_e[k];
-                                        const dcomplex va_up = dense_evec[(size_t)ia * (size_t)n2 + (size_t)k];
-                                        const dcomplex vb_up = dense_evec[(size_t)ib * (size_t)n2 + (size_t)k];
-                                        const dcomplex va_dn = dense_evec[(size_t)(ia + n) * (size_t)n2 + (size_t)k];
-                                        const dcomplex vb_dn = dense_evec[(size_t)(ib + n) * (size_t)n2 + (size_t)k];
-                                        const double re11 = va_up.r * vb_up.r + va_up.i * vb_up.i;
-                                        const double im11 = va_up.r * vb_up.i - va_up.i * vb_up.r;
-                                        const double re22 = va_dn.r * vb_dn.r + va_dn.i * vb_dn.i;
-                                        const double im22 = va_dn.r * vb_dn.i - va_dn.i * vb_dn.r;
-                                        const double re12 = va_up.r * vb_dn.r + va_up.i * vb_dn.i;
-                                        const double im12 = va_up.r * vb_dn.i - va_up.i * vb_dn.r;
-
-                                        dm11_r  += w  * re11;
-                                        dm22_r  += w  * re22;
-                                        dm12_r  += w  * re12;
-                                        dm12_i  += w  * im12;
-                                        dm11_i  += w  * im11;
-                                        dm22_i  += w  * im22;
-                                        edm11_r += ew * re11;
-                                        edm22_r += ew * re22;
-                                        edm12_r += ew * re12;
-                                        edm12_i += ew * im12;
-                                    }
-
-                                    rDM11_chunk[p]  = dm11_r;
-                                    rDM22_chunk[p]  = dm22_r;
-                                    rDM12_chunk[p]  = dm12_r;
-                                    iDM12_chunk[p]  = dm12_i;
-                                    iDM11_chunk[p]  = dm11_i;
-                                    iDM22_chunk[p]  = dm22_i;
-                                    rEDM11_chunk[p] = edm11_r;
-                                    rEDM22_chunk[p] = edm22_r;
-                                    rEDM12_chunk[p] = edm12_r;
-                                    iEDM12_chunk[p] = edm12_i;
-                                }
-                            }
-                        }
-                    }
-                }
-                else {
-                    for (int offset = 0; offset < cache->entry_count; offset += dm_chunk_size) {
-                        const int chunk_count =
-                            (cache->entry_count - offset < dm_chunk_size) ? (cache->entry_count - offset) : dm_chunk_size;
-                        const int *basis0_chunk = cache->basis0 + offset;
-                        const int *basis1_chunk = cache->basis1 + offset;
-                        double *rDM11_chunk = rDM11 + offset;
-                        double *rDM22_chunk = rDM22 + offset;
-                        double *rDM12_chunk = rDM12 + offset;
-                        double *iDM12_chunk = iDM12 + offset;
-                        double *iDM11_chunk = iDM11 + offset;
-                        double *iDM22_chunk = iDM22 + offset;
-
-#pragma acc data copyin(basis0_chunk[0 : chunk_count], basis1_chunk[0 : chunk_count]) \
-    copyout(rDM11_chunk[0 : chunk_count], rDM22_chunk[0 : chunk_count], rDM12_chunk[0 : chunk_count], \
-            iDM12_chunk[0 : chunk_count], iDM11_chunk[0 : chunk_count], iDM22_chunk[0 : chunk_count])
-                        {
-#pragma acc parallel loop gang present(dense_evec[0 : evec_count], occ[0 : nk_occ])
-                            for (int p = 0; p < chunk_count; p++) {
-                                const int ia = basis0_chunk[p];
-                                const int ib = basis1_chunk[p];
-                                double dm11_r = 0.0, dm22_r = 0.0, dm12_r = 0.0, dm12_i = 0.0;
-                                double dm11_i = 0.0, dm22_i = 0.0;
-
-#pragma acc loop seq
-                                for (int k = 0; k < nk_occ; k++) {
-                                    const double w = occ[k];
-                                    const dcomplex va_up = dense_evec[(size_t)ia * (size_t)n2 + (size_t)k];
-                                    const dcomplex vb_up = dense_evec[(size_t)ib * (size_t)n2 + (size_t)k];
-                                    const dcomplex va_dn = dense_evec[(size_t)(ia + n) * (size_t)n2 + (size_t)k];
-                                    const dcomplex vb_dn = dense_evec[(size_t)(ib + n) * (size_t)n2 + (size_t)k];
-
-                                    dm11_r += w * (va_up.r * vb_up.r + va_up.i * vb_up.i);
-                                    dm22_r += w * (va_dn.r * vb_dn.r + va_dn.i * vb_dn.i);
-                                    dm12_r += w * (va_up.r * vb_dn.r + va_up.i * vb_dn.i);
-                                    dm12_i += w * (va_up.r * vb_dn.i - va_up.i * vb_dn.r);
-                                    dm11_i += w * (va_up.r * vb_up.i - va_up.i * vb_up.r);
-                                    dm22_i += w * (va_dn.r * vb_dn.i - va_dn.i * vb_dn.r);
-                                }
-
-                                rDM11_chunk[p] = dm11_r;
-                                rDM22_chunk[p] = dm22_r;
-                                rDM12_chunk[p] = dm12_r;
-                                iDM12_chunk[p] = dm12_i;
-                                iDM11_chunk[p] = dm11_i;
-                                iDM22_chunk[p] = dm22_i;
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
+
+    ClusterNonColDMEntryCache *cache=&ClusterNonCol_dm_entry_cache;
+    double *outputs[10]={0};
+    for(int c=0;c<dm_components;c++)outputs[c]=ws->dm_buffer+(size_t)c*size_H1;
+    const void *vectors=NULL;int host=0;
+    if(recover){vectors=acc_deviceptr((void*)dense_evec);host=vectors==NULL;if(host)vectors=dense_evec;}
+    openmx_gpu_dm_collective(mpi_comm_level1,OPENMX_GPU_DM_NC,n,recover?nk_occ:0,n2,
+        recover?cache->entry_count:0,vectors,host,cache->basis0,cache->basis1,NULL,0,NULL,NULL,
+        ws->occ,calc_edm?ws->occ_e:NULL,NULL,outputs,0);
 
     /* only the root wrote entries: the sum over the ranks is its buffer */
     MPI_Bcast(ws->dm_buffer, (int)dm_elems, MPI_DOUBLE, Host_ID, mpi_comm_level1);
@@ -2364,7 +2246,10 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
         ClusterNonCol_mgpu_host_dense=0;
         ClusterNonCol_ResetGs2Fallback();
     }
-    if (force && atoi(force)==0 && !openmx_mgpu_host_required()) return 0;
+    if (force && atoi(force)==0 && !openmx_mgpu_host_required()) {
+        ClusterNonCol_cpu_fallback_n2=n2;
+        return 0;
+    }
     if (openmx_mgpu_host_required()) goto host_capacity;
 
     if (verdict != -1 && verdict_n2 == n2 && 1 < SCF_iter) return verdict;
@@ -2435,18 +2320,19 @@ host_capacity:
         /* Host_ID plans node-local MAGMA and, in a multi-node run, falls
            back to the distributed gpusolver2 path; the choice is broadcast
            before any rank commits to a path */
-        if (openmx_cluster_capacity_select(mpi_comm_level1,n2,1,"Cluster NC")
-            ==OPENMX_CLUSTER_CAPACITY_GS2) {
+        const int capacity = openmx_cluster_capacity_select(mpi_comm_level1,n2,1,"Cluster NC");
+        ClusterNonCol_gs2_fallback_n2=0;
+        ClusterNonCol_mgpu_host_dense=0;
+        fit=0;
+        if (capacity==OPENMX_CLUSTER_CAPACITY_GS2) {
             /* verdict 0 takes every rank to the distributed family, whose
                gpusolver2 branches then run (ClusterNonCol_UseGs2).  The
                decision is made at SCF_iter 1 only (cached below), where that
                family also diagonalizes the overlap. */
-            openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1_2,n2,nblk2,1,"Cluster NC");
-            ClusterNonCol_gs2_fallback_n2 = n2;
-            ClusterNonCol_mgpu_host_dense=0;
-            fit=0;
+            if (openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1_2,n2,nblk2,1,"Cluster NC"))
+                ClusterNonCol_gs2_fallback_n2 = n2;
         }
-        else {
+        else if (capacity==OPENMX_CLUSTER_CAPACITY_MAGMA) {
             if (myid==Host_ID) {
                 printf("<OpenMX_MGPU> Cluster NC n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
                        n2,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
@@ -2459,6 +2345,7 @@ host_capacity:
 
     verdict = fit;
     verdict_n2 = n2;
+    ClusterNonCol_cpu_fallback_n2 = !fit && !ClusterNonCol_UseGs2(n2) ? n2 : 0;
     return verdict;
 }
 
@@ -3186,6 +3073,8 @@ double Cluster_DFT_NonCol(
   }
   n2 = 2*n;
 
+  if (SCF_iter==1) ClusterNonCol_cpu_overlap_n2=0;
+
   /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
     if (scf_eigen_lib_flag == GPUSOLVER && n2 >= Cluster_DFT_NonCol_GpuSwitchNum() &&
         Set_Hamiltonian_OpenACC_Rank_Is_Selected()) {
@@ -3375,7 +3264,7 @@ double Cluster_DFT_NonCol(
             diagonalize the overlap matrix
   *************************************************** */
 
-  if (SCF_iter==1){
+  if (ClusterNonCol_cpu_overlap_n2!=n2){
 
     if (measure_time) dtime(&stime);
 
@@ -3402,7 +3291,8 @@ double Cluster_DFT_NonCol(
       F77_NAME(solve_evp_real,SOLVE_EVP_REAL)( &n, &n, Cs, &na_rows, &ko[1], Ss, &na_rows, &nblk,
                                                &mpi_comm_rows_int, &mpi_comm_cols_int );
     }
-    else if (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows==n && na_cols==n){
+    else if (scf_eigen_lib_flag==GPUSOLVER && ClusterNonCol_cpu_fallback_n2!=n2 &&
+             Cluster_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows==n && na_cols==n){
       ClusterNonCol_GpuSolver_DenseDsyevx(Cs,Ss,ko,n,n,"Cluster_DFT_NonCol overlap");
     }
     else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -3448,6 +3338,7 @@ double Cluster_DFT_NonCol(
     /* make Ss2 */
 
     Overlap_Cluster_NC_Ss2( Ss, Ss2 );
+    ClusterNonCol_cpu_overlap_n2=n2;
 
     if (measure_time){
       dtime(&etime);
@@ -3638,7 +3529,8 @@ double Cluster_DFT_NonCol(
     F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)( &n2, &MaxN, Hs2, &na_rows2, &ko[1], Cs2, &na_rows2,
                                                    &nblk2, &mpi_comm_rows_int, &mpi_comm_cols_int );
   }
-  else if (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows2==n2 && na_cols2==n2){
+  else if (scf_eigen_lib_flag==GPUSOLVER && ClusterNonCol_cpu_fallback_n2!=n2 &&
+           Cluster_DFT_NonCol_GpuSwitchNum()<=n2 && na_rows2==n2 && na_cols2==n2){
     ClusterNonCol_GpuSolver_DenseZheevx(Hs2,Cs2,ko,n2,MaxN,"Cluster_DFT_NonCol Hamiltonian");
   }
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -6193,6 +6085,7 @@ dcomplex Lapack_LU_Zinverse(int n, dcomplex *A)
 void Cluster_DFT_NonCol_Release_GPU_Caches(void)
 {
     ClusterNonCol_mgpu_host_dense=0;
+    ClusterNonCol_cpu_overlap_n2=0;
     ClusterNonCol_ResetGs2Fallback();
     ClusterNonCol_DMEntryCache_Reset();
     ClusterNonCol_RootDMWorkspace_Reset();

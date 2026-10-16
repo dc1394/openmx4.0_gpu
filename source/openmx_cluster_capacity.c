@@ -89,10 +89,10 @@ int openmx_cluster_capacity_select(MPI_Comm comm, int n, int complex_matrix,
                 snprintf(capacity_reason, sizeof(capacity_reason), "%s",
                          openmx_mgpu_host_error());
             }
-            if (ok && gs2) {
-                /* only when there is somewhere else to go (a single-node run
-                   keeps its MAGMA path as before), and before the device plan,
-                   which opens contexts on the node's other GPUs */
+            if (ok) {
+                /* CPU distribution is also available on a single node.
+                   Never try a root-only MAGMA allocation that exceeds the
+                   host's remaining memory just because there is no GPU tier. */
                 const unsigned long long need = magma_host_bytes(n, complex_matrix);
                 const unsigned long long avail = magma_host_available();
 
@@ -125,15 +125,11 @@ int openmx_cluster_capacity_select(MPI_Comm comm, int n, int complex_matrix,
             decision = OPENMX_CLUSTER_CAPACITY_GS2;
         }
         else {
-            fprintf(stderr, "%s\n", capacity_reason);
-            fprintf(stderr, "%s n=%d: the dense solve does not fit on one GPU and cannot use"
-                            " MAGMA%s.\n", label, n,
-                    forced ? " (forced MAGMA has no other fallback)" :
-                    mode == FALLBACK_OFF ? "; OPENMX_CLUSTER_GS2_FALLBACK=off" :
-                    "; the distributed gpusolver2 fallback is used in multi-node runs"
-                    " (OPENMX_CLUSTER_GS2_FALLBACK=on also allows it on one node)");
+            decision = OPENMX_CLUSTER_CAPACITY_CPU;
+            fprintf(stderr, "<OpenMX_MGPU> %s n=%d: %s; using the CPU eigensolver and"
+                            " matrix products within the existing MPI layout.\n",
+                    label, n, capacity_reason);
             fflush(stderr);
-            MPI_Abort(comm, 1);
         }
     }
 
@@ -227,7 +223,7 @@ static void count_placement(MPI_Comm comm, int *nodes, int *gpus, int *idle)
     free(all);
 }
 
-void openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
+int openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
                               int complex_matrix, const char *label)
 {
     unsigned long long need_mb = 0, free_mb = 0, worst[2], least_free;
@@ -303,13 +299,11 @@ void openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
             fprintf(stderr, "%s n=%d: the dense solve fits neither one GPU, MAGMA nor the distributed"
                             " gpusolver2 solve on the %d rank-bound GPU(s) of %d node(s) of this run:"
                             " ELPA/COSMA need ~%llu MB per rank x %llu ranks per GPU + reserve, %llu MB"
-                            " free (%s).\n",
+                            " free (%s); using the CPU eigensolver and matrix products.\n",
                     label, n, gpus, nodes, worst[0], worst[1], least_free, hint);
             fflush(stderr);
-            MPI_Abort(comm, 1);
         }
     }
-    if (!all_admitted) MPI_Barrier(comm); /* rank 0 aborts the run */
-
-    openmx_gs2_set_fallback_report(1);
+    openmx_gs2_set_fallback_report(all_admitted);
+    return all_admitted;
 }

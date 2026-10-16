@@ -13,6 +13,7 @@
 #include "openmx_gpu_views.h"
 #include "grid_precision.h"
 #include "set_cuda_default_device_from_local_rank.h"
+#include "openmx_gpu_bilinear.h"
 #include <accel.h>
 #include <limits.h>
 #include <openacc.h>
@@ -78,6 +79,107 @@ typedef struct {
 
 static SetDensityGpuCache SDG_cache = {0};
 
+typedef struct {int mc,h,point;} SDGRecoveryTerm;
+typedef struct {
+  int cnt_kind,rank,spins;
+  size_t rows,*atom_offset,*ptr;
+  SDGRecoveryTerm *terms;
+  double *****dm,***density;
+} SDGRecovery;
+
+static int SDG_recovery_visit(void *context,size_t row,OpenMXBilinearEmit emit,void *target)
+{
+  SDGRecovery *c=context;
+  for (size_t k=c->ptr[row];k<c->ptr[row+1];k++) {
+    SDGRecoveryTerm t=c->terms[k];
+    int gc=M2G[t.mc],gh=natn[gc][t.h],mh=F_G2M[gh];
+    int nc=GListTAtoms1[t.mc][t.h][t.point],nh=GListTAtoms2[t.mc][t.h][t.point];
+    int no0=Spe_Total_CNO[WhatSpecies[gc]],no1=Spe_Total_CNO[WhatSpecies[gh]];
+    OpenMXBilinearTerm term={0};
+    term.left=(OpenMXBilinearSpan){NULL,NULL,0,1,no0,sizeof(Type_Orbs_Grid)};
+    term.right=(OpenMXBilinearSpan){NULL,NULL,0,1,no1,sizeof(Type_Orbs_Grid)};
+    if (c->cnt_kind==0 && Cnt_switch==1) {
+      term.left.rows=COrbs_Grid[t.mc];term.left.offset=nc;
+      term.right.rows=COrbs_Grid[mh];term.right.offset=nh;
+    } else {
+      term.left.data=Orbs_Grid[t.mc][nc];
+      term.right.data=G2ID[gh]==c->rank?Orbs_Grid[mh][nh]:Orbs_Grid_FNAN[t.mc][t.h][t.point];
+    }
+    for (int spin=0;spin<c->spins;spin++) term.matrix_rows[spin]=c->dm[spin][t.mc][t.h];
+    if (!emit(target,&term)) return 0;
+  }
+  return 1;
+}
+
+static void SDG_recovery_commit(void *context,size_t first,size_t last,const double *result)
+{
+  SDGRecovery *c=context;
+  for (int mc=1;mc<=Matomnum;mc++) {
+    size_t lo=c->atom_offset[mc-1],hi=c->atom_offset[mc];
+    if (lo<first) lo=first;
+    if (hi>last) hi=last;
+    for (size_t row=lo;row<hi;row++) for (int spin=0;spin<c->spins;spin++)
+      c->density[spin][mc][row-c->atom_offset[mc-1]]=result[(row-first)*(size_t)c->spins+spin];
+  }
+}
+
+/* Recovery uses the host orbital tables already required by the CPU path.
+   Only CSR indices are added. Packing deduplicates the orbital vectors and
+   DM blocks needed by a shard, so no GPU holds the complete rank's tables. */
+int Set_Density_Grid_GPU_Capacity(int cnt_kind,int local_done,double *****dm,double ***density)
+{
+  SDGRecovery c={0};c.cnt_kind=cnt_kind;c.spins=SpinP_switch+1;c.dm=dm;c.density=density;
+  MPI_Comm_rank(mpi_comm_level1,&c.rank);
+  const char *control=getenv("OPENMX_DENSITY_GRID_GPU");
+  if (!control) control=getenv("OPENMX_SETDENSITY_GPU");
+  int enabled=scf_eigen_lib_flag==GPUSOLVER && (!control || !*control || atoi(control)!=0);
+  int pending=enabled && !local_done,any=0;
+  MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+  if (!any) return local_done;
+  int ready=1;
+  if (pending) {
+    c.atom_offset=calloc((size_t)Matomnum+1,sizeof(size_t));
+    ready=c.atom_offset!=NULL;
+    for (int mc=1;ready && mc<=Matomnum;mc++) {
+      size_t n=(size_t)GridN_Atom[M2G[mc]];
+      if (c.atom_offset[mc-1]>SIZE_MAX-n) ready=0;
+      else c.atom_offset[mc]=c.atom_offset[mc-1]+n;
+    }
+    if (ready) {
+      c.rows=c.atom_offset[Matomnum];
+      if (c.rows>SIZE_MAX/sizeof(size_t)-1) ready=0;
+      else {c.ptr=calloc(c.rows+1,sizeof(size_t));ready=c.ptr!=NULL;}
+    }
+    size_t terms=0;
+    for (int mc=1;ready && mc<=Matomnum;mc++) for (int h=0;ready && h<=FNAN[M2G[mc]];h++) {
+      size_t n=(size_t)NumOLG[mc][h];
+      if (terms>SIZE_MAX/sizeof(SDGRecoveryTerm)-n) {ready=0;break;}
+      terms+=n;
+      for (int point=0;point<NumOLG[mc][h];point++) {
+        size_t row=c.atom_offset[mc-1]+(size_t)GListTAtoms1[mc][h][point];
+        if (row>=c.atom_offset[mc]) {ready=0;break;}
+        c.ptr[row+1]++;
+      }
+    }
+    if (ready) {c.terms=malloc((terms?terms:1)*sizeof(SDGRecoveryTerm));ready=c.terms!=NULL;}
+    if (ready) {
+      for (size_t row=1;row<=c.rows;row++) c.ptr[row]+=c.ptr[row-1];
+      for (int mc=1;mc<=Matomnum;mc++) for (int h=0;h<=FNAN[M2G[mc]];h++)
+        for (int point=0;point<NumOLG[mc][h];point++) {
+          size_t row=c.atom_offset[mc-1]+(size_t)GListTAtoms1[mc][h][point];
+          c.terms[c.ptr[row]++]=(SDGRecoveryTerm){mc,h,point};
+        }
+      for (size_t row=c.rows;row>0;row--) c.ptr[row]=c.ptr[row-1];
+      c.ptr[0]=0;
+    }
+  }
+  OpenMXBilinearSource source={ready?c.rows:0,c.spins,0,&c,SDG_recovery_visit,SDG_recovery_commit};
+  int done=openmx_gpu_bilinear_execute(mpi_comm_level1,&source,
+      local_done?1:!enabled || !ready?-1:0,enabled,"density-capacity");
+  free(c.atom_offset);free(c.ptr);free(c.terms);
+  return local_done || (pending && ready && done);
+}
+
 static int SDG_env_bool(const char *name, int fallback)
 {
   const char *value = getenv(name);
@@ -126,18 +228,44 @@ static void *SDG_malloc(size_t count, size_t element_size)
   return malloc(bytes == 0 ? 1 : bytes);
 }
 
+/* Recoverable allocations for both retained CSR data and transient tables.
+   The OpenACC present table borrows CUDA storage; no implicit allocator is
+   allowed to abort a capacity retry. */
 static void SDG_acc_delete_if_present(void *host_ptr, size_t bytes)
 {
-  if (host_ptr != NULL && bytes != 0 && acc_is_present(host_ptr, bytes)) {
-    acc_delete(host_ptr, bytes);
+  void *device = host_ptr && bytes ? acc_deviceptr(host_ptr) : NULL;
+  if (device) {
+    acc_unmap_data(host_ptr);
+    if (cudaFree(device) != cudaSuccess) {
+      fprintf(stderr,"density-grid CUDA buffer release failed.\n");
+      MPI_Abort(mpi_comm_level1,1);
+      abort();
+    }
   }
 }
+
+static void *SDG_map(void *host, size_t bytes, int copy)
+{
+  void *device;
+  if (!bytes) return host ? host : (void *)1;
+  if (!host) return NULL;
+  device=acc_deviceptr(host);
+  if (device) return device;
+  if (cudaMalloc(&device,bytes)!=cudaSuccess) {cudaGetLastError();return NULL;}
+  if (copy && cudaMemcpy(device,host,bytes,cudaMemcpyHostToDevice)!=cudaSuccess) {
+    cudaFree(device);cudaGetLastError();return NULL;
+  }
+  acc_map_data(host,device,bytes);
+  return device;
+}
+static void *SDG_copyin(void *host,size_t bytes) {return SDG_map(host,bytes,1);}
+static void *SDG_create(void *host,size_t bytes) {return SDG_map(host,bytes,0);}
 
 static void SDG_delete_device(SetDensityGpuCache *cache)
 {
   if (!cache->device_resident) return;
 
-  /* acc_copyin can fail after only a prefix of these mappings was created.
+  /* Upload can fail after only a prefix of these mappings was created.
      Query the present table so the same cleanup handles full and partial
      uploads without attempting to delete an absent mapping. */
   SDG_acc_delete_if_present(cache->orbs, cache->orbital_count * sizeof(Type_Orbs_Grid));
@@ -710,20 +838,20 @@ static int SDG_upload_device(SetDensityGpuCache *cache)
   /* Mark the upload as resident before the first allocation so a partial
      failure is rolled back by SDG_delete_device(). */
   cache->device_resident = 1;
-  if (acc_copyin(cache->orbs, cache->orbital_count * sizeof(Type_Orbs_Grid)) == NULL ||
-      acc_copyin(cache->atom_out_offset, (cache->atom_count + 1) * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->atom_orb_offset, (cache->atom_count + 1) * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->atom_pair_offset, (cache->atom_count + 1) * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->atom_no, cache->atom_count * sizeof(int)) == NULL ||
-      acc_copyin(cache->pair_neighbor, cache->pair_count * sizeof(int)) == NULL ||
-      acc_copyin(cache->pair_cdm_offset, cache->pair_count * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->out_atom, cache->output_count * sizeof(uint16_t)) == NULL ||
-      acc_copyin(cache->out_ptr, (cache->output_count + 1) * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->terms, cache->term_count * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->grid_ptr, (cache->global_grid_count + 1) * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->grid_out, cache->output_count * sizeof(uint32_t)) == NULL ||
-      acc_copyin(cache->cdm, cache->cdm_count * sizeof(double)) == NULL ||
-      acc_create(cache->rho, cache->global_grid_count * (size_t)cache->spin_count * sizeof(double)) == NULL) {
+  if (SDG_copyin(cache->orbs, cache->orbital_count * sizeof(Type_Orbs_Grid)) == NULL ||
+      SDG_copyin(cache->atom_out_offset, (cache->atom_count + 1) * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->atom_orb_offset, (cache->atom_count + 1) * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->atom_pair_offset, (cache->atom_count + 1) * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->atom_no, cache->atom_count * sizeof(int)) == NULL ||
+      SDG_copyin(cache->pair_neighbor, cache->pair_count * sizeof(int)) == NULL ||
+      SDG_copyin(cache->pair_cdm_offset, cache->pair_count * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->out_atom, cache->output_count * sizeof(uint16_t)) == NULL ||
+      SDG_copyin(cache->out_ptr, (cache->output_count + 1) * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->terms, cache->term_count * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->grid_ptr, (cache->global_grid_count + 1) * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->grid_out, cache->output_count * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(cache->cdm, cache->cdm_count * sizeof(double)) == NULL ||
+      SDG_create(cache->rho, cache->global_grid_count * (size_t)cache->spin_count * sizeof(double)) == NULL) {
     SDG_delete_device(cache);
     return 0;
   }
@@ -1248,11 +1376,11 @@ static int SDG_local_upload(SDGLocalContext *c)
   if (c->device_resident) return 1;
   c->device_id = acc_get_device_num(acc_device_nvidia);
   c->device_resident = 1; /* include partially uploaded tables in cleanup */
-  if (acc_copyin(c->out_ptr, (c->output_count + 1) * sizeof(uint32_t)) == NULL ||
-      acc_copyin(c->term_pt, c->term_count * sizeof(uint32_t)) == NULL ||
-      acc_copyin(c->pt_pair, c->term_count * sizeof(uint32_t)) == NULL ||
-      acc_create(c->dm, c->dm_count * sizeof(double)) == NULL ||
-      acc_create(c->tmpden, (size_t)c->spin_count * c->output_count * sizeof(double)) == NULL) {
+  if (SDG_copyin(c->out_ptr, (c->output_count + 1) * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(c->term_pt, c->term_count * sizeof(uint32_t)) == NULL ||
+      SDG_copyin(c->pt_pair, c->term_count * sizeof(uint32_t)) == NULL ||
+      SDG_create(c->dm, c->dm_count * sizeof(double)) == NULL ||
+      SDG_create(c->tmpden, (size_t)c->spin_count * c->output_count * sizeof(double)) == NULL) {
     SDG_local_delete_device(c);
     return 0;
   }
@@ -2043,11 +2171,9 @@ static int SDG_local_distribute(SDGKernelInput *input)
   w.source.pt_pair=(uint32_t*)acc_deviceptr((void*)input->pt_pair);
   w.source.dm=(double*)acc_deviceptr((void*)input->dm);
   w.source.tmpden=(double*)acc_deviceptr(input->tmpden);
-  /* dmf belongs only to this call and has no enclosing present mapping. */
-  if (input->dm_total && !acc_copyin(input->dmf,input->dm_total*sizeof(float))) return 0;
+  /* The caller owns the transient float mapping for this attempt. */
   w.source.dmf=input->dm_total?(float*)acc_deviceptr(input->dmf):NULL;
   int ok=openmx_gpu_workers_run(&w.workers,SDG_local_worker,&w,"density-local-CSR");
-  if (input->dm_total) acc_delete(input->dmf,input->dm_total*sizeof(float));
   return ok;
 }
 
@@ -2171,6 +2297,21 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
     }
   }
   dm_total = dm_count * (mode == 2 ? 2 : 1);
+
+  void *map_host[15]={(void*)pair_NO0,(void*)pair_NO1,(void*)pair_h_offset,
+    (void*)pair_nolg_offset,(void*)pair_orbs0_offset,(void*)pair_orbs1_offset,
+    (void*)nolg_Nc,(void*)orbs0buf,(void*)orbs1buf,out_ptr,term_pt,pt_pair,dm,dmf,tmpden};
+  size_t map_bytes[15]={pair_count*sizeof(int),pair_count*sizeof(int),pair_count*sizeof(size_t),
+    pair_count*sizeof(size_t),pair_count*sizeof(size_t),pair_count*sizeof(size_t),
+    total_nolg*sizeof(int),total_orbs0*sizeof(Type_Orbs_Grid),total_orbs1*sizeof(Type_Orbs_Grid),
+    (output_count+1)*sizeof(uint32_t),term_count*sizeof(uint32_t),term_count*sizeof(uint32_t),
+    dm_count*sizeof(double),dmf?dm_total*sizeof(float):0,(size_t)spin_count*output_count*sizeof(double)};
+  int created[15]={0};
+  for (int i=0;i<15;i++) {
+    if (!map_bytes[i] || acc_deviceptr(map_host[i])) continue;
+    if (!SDG_map(map_host[i],map_bytes[i],i!=14)) goto sdg_map_failure;
+    created[i]=1;
+  }
 
 #pragma acc data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count],                            \
                         pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],               \
@@ -2410,9 +2551,9 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
     }
     }
     /* copyout on an already-present mapping does not transfer its contents. */
-    if (c->device_resident)
-      acc_update_self(tmpden, (size_t)spin_count * output_count * sizeof(double));
+    acc_update_self(tmpden, (size_t)spin_count * output_count * sizeof(double));
   }
+  for (int i=0;i<15;i++) if (created[i]) SDG_acc_delete_if_present(map_host[i],map_bytes[i]);
   free(dmf);
 
   for (spin = 0; spin < spin_count; spin++) {
@@ -2425,4 +2566,9 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
     }
   }
   return 1;
+
+sdg_map_failure:
+  for (int i=0;i<15;i++) if (created[i]) SDG_acc_delete_if_present(map_host[i],map_bytes[i]);
+  free(dmf);
+  return 0;
 }

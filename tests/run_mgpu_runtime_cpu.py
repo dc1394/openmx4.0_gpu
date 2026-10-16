@@ -67,6 +67,7 @@ cublas = r'''
 #pragma once
 #include "cuComplex.h"
 using cublasHandle_t=void*;using cublasStatus_t=int;using cublasOperation_t=int;using cublasFillMode_t=int;
+constexpr int CUBLAS_OP_N=0,CUBLAS_OP_T=1,CUBLAS_OP_C=2;
 constexpr int CUBLAS_FILL_MODE_LOWER=0,CUBLAS_FILL_MODE_UPPER=1,CUBLAS_STATUS_SUCCESS=0,CUBLAS_STATUS_ALLOC_FAILED=3;
 '''
 cusolver = r'''
@@ -118,6 +119,7 @@ extern "C" {int level_stdout=0;}
 static int checks=0,native_calls=0,magma_calls=0,gemm_calls=0;
 static int native_delay=0,magma_delay=0,native_fail=0,backend_fail=0,corrupt=0;
 static int magma_available=1,worker=0;
+static int cpu_eigen_calls=0,cpu_gemm_calls=0,host_gemm_failure=0;
 static std::vector<int> last_devices;
 #define CHECK(x) do {++checks;if(!(x)){std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 static void delay(int ms) {if(ms) usleep(ms*1000);}
@@ -129,6 +131,12 @@ static void result(void *a,int lda,int n,int nev,double *w,bool z) {
    else ((double*)a)[size_t(j)*lda+i]=double(i==j);
   }
  }
+}
+extern "C" int openmx_dense_cpu_eigen(int n,int nev,int z,void *a,int lda,double *w) {
+ ++cpu_eigen_calls; result(a,lda,n,nev,w,z); return 1;
+}
+extern "C" int openmx_dense_cpu_gemm(char,char,int,int,int,int,const void*,int,const void*,int,void*,int) {
+ ++cpu_gemm_calls; return 1;
 }
 extern "C" int openmx_magma_mgpu_available() {return magma_available;}
 extern "C" int openmx_magma_mgpu_available_devices(int,const int*) {return magma_available;}
@@ -155,10 +163,12 @@ extern "C" int openmx_mgpuZgemmTry(cublasHandle_t,int ngpu,const int *devices,cu
 }
 extern "C" int openmx_mgpuDgemmHostTry(int ngpu,const int *devices,cublasOperation_t ta,cublasOperation_t tb,int m,int n,int k,
  const double *alpha,const double *a,int lda,const double *b,int ldb,const double *beta,double *c,int ldc,cublasStatus_t *status) {
+ if(host_gemm_failure) {*status=CUBLAS_STATUS_ALLOC_FAILED;return host_gemm_failure==2;}
  return openmx_mgpuDgemmTry(nullptr,ngpu,devices,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,status);
 }
 extern "C" int openmx_mgpuZgemmHostTry(int ngpu,const int *devices,cublasOperation_t ta,cublasOperation_t tb,int m,int n,int k,
  const cuDoubleComplex *alpha,const cuDoubleComplex *a,int lda,const cuDoubleComplex *b,int ldb,const cuDoubleComplex *beta,cuDoubleComplex *c,int ldc,cublasStatus_t *status) {
+ if(host_gemm_failure) {*status=CUBLAS_STATUS_ALLOC_FAILED;return host_gemm_failure==2;}
  return openmx_mgpuZgemmTry(nullptr,ngpu,devices,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,status);
 }
 struct Context {void *a;double *w;int *info;int64_t *meig;int n,lda,nev;bool z;};
@@ -235,6 +245,17 @@ int main() {
  admission_token=openmx_mgpu_admit_devices(auxiliary,1);CHECK(admission_token!=nullptr);openmx_mgpu_release_devices(admission_token);
  auxiliary[0]=(device+1)%4;CHECK(openmx_mgpu_admit_devices(auxiliary,1)==nullptr);
  unsetenv("OPENMX_MGPU_NUM_GPUS");
+ // ELPA/COSMA and a failed Band group retain a separate auxiliary pool.
+ openmx_mgpu_configure(0,3,0);openmx_mgpu_configure_auxiliary(-1);
+ CHECK(openmx_mgpu_pool_devices(auxiliary,64)==3);
+ int aux_dense_scope=openmx_mgpu_scope_enter(1);
+ CHECK(openmx_mgpu_scope_devices(auxiliary,64)==0);
+ CHECK(openmx_mgpu_host_plan(3,26000,1)==0);
+ admission_token=openmx_mgpu_admit_devices(auxiliary,3);CHECK(admission_token!=nullptr);openmx_mgpu_release_devices(admission_token);
+ auxiliary[0]=3;CHECK(openmx_mgpu_admit_devices(auxiliary,1)==nullptr);
+ openmx_mgpu_scope_leave(aux_dense_scope);
+ setenv("OPENMX_GPU","0",1);CHECK(openmx_mgpu_pool_devices(auxiliary,64)==0);unsetenv("OPENMX_GPU");
+ openmx_mgpu_configure_auxiliary(0);CHECK(openmx_mgpu_pool_devices(auxiliary,64)==0);
  // Capacity planning never visits a GPU beyond either configured limit.
  reset();visible=8;openmx_mgpu_configure(-1,6,1);
  CHECK(openmx_mgpu_host_plan(3,26000,1)==2 && largest_memory_device==5 && device==1);
@@ -280,6 +301,26 @@ int main() {
  {std::vector<double> a(16,0.0),w(4,0.0);
   for(int i=0;i<4;i++) a[size_t(i)*5]=double(i+1);
   CHECK(openmx_mgpu_host_solve(4,4,0,a.data(),4,w.data())==1 && magma_calls==1 && last_devices.size()==2);}
+ // Late resource failures use CPU, but a numerical failure or a failed
+ // output publication must never be reported as a capacity recovery.
+ {std::vector<double> a(32,0.0),w(4,0.0);
+  for (int z=0;z<2;z++) {
+   int before=cpu_eigen_calls;
+   backend_fail=OPENMX_MAGMA_RESOURCES;
+   CHECK(openmx_mgpu_host_solve(4,4,z,a.data(),4,w.data())==1 && cpu_eigen_calls==before+1);
+   backend_fail=OPENMX_MAGMA_VALIDATION_ERROR;
+   CHECK(openmx_mgpu_host_solve(4,4,z,a.data(),4,w.data())==0 && cpu_eigen_calls==before+1);
+  }
+  backend_fail=0;
+  host_gemm_failure=1;int before=cpu_gemm_calls;
+  CHECK(openmx_mgpu_host_dgemm(CUBLAS_OP_N,CUBLAS_OP_N,2,2,2,a.data(),2,a.data(),2,a.data()+8,2)==1);
+  CHECK(openmx_mgpu_host_zgemm(CUBLAS_OP_N,CUBLAS_OP_N,2,2,2,a.data(),2,a.data(),2,a.data()+16,2)==1);
+  CHECK(cpu_gemm_calls==before+2);
+  host_gemm_failure=2;
+  CHECK(openmx_mgpu_host_dgemm(CUBLAS_OP_N,CUBLAS_OP_N,2,2,2,a.data(),2,a.data(),2,a.data()+8,2)==0);
+  CHECK(cpu_gemm_calls==before+2);
+  host_gemm_failure=0;
+ }
  {Matrix m;CHECK(m.attempt()==0 && m.unchanged());} // device-resident MAGMA stays single-node
  visible=1;CHECK(openmx_mgpu_host_plan(0,26000,1)==0 && std::strstr(openmx_mgpu_host_error(),"pool=1"));
  visible=2;openmx_mgpu_configure(0,2,0);CHECK(openmx_mgpu_host_plan(0,26000,1)==0);

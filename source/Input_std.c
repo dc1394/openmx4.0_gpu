@@ -5139,6 +5139,10 @@ void Input_std(char *file)
     }
   }
 
+  /* A dense solver/k-point restriction must not disable node-local grid
+     recovery, especially with ELPA/COSMA on multiple nodes. */
+  openmx_mgpu_configure_auxiliary(mgpu_enabled);
+
   /* Record the established rank map before any device cache is created.
      Worker callbacks never use MPI to discover their rank or device. */
   {

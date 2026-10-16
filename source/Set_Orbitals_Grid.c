@@ -18,6 +18,9 @@
 #include "openmx_common.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
+#include "openmx_gpu_task.h"
+#include "openmx_host_memory.h"
+#include <stdint.h>
 #include "mpi.h"
 #include <omp.h>
 #include <openacc.h>
@@ -51,9 +54,8 @@ static int SOG_env_flag(const char *name, int default_value)
   return atoi(value) != 0;
 }
 
-static int SOG_gpu_eligible(int Cnt_kind)
+static int SOG_gpu_requested(int Cnt_kind)
 {
-  static int device_checked = 0, device_ok = 0;
   int w, L0;
 
   if (Cnt_kind != 0) return 0;
@@ -70,14 +72,12 @@ static int SOG_gpu_eligible(int Cnt_kind)
     if (Spe_Num_Mesh_PAO[w] < 6) return 0;
   }
 
-  if (openmx_gpu_worker_device()>=0) return 1;
-  if (!device_checked) {
-    device_checked = 1;
-    /* the probe, not a bare device count: a rank whose context or module
-       load cannot complete would abort inside acc_malloc otherwise */
-    device_ok = gpu_rank_device_usable();
-  }
-  return device_ok;
+  return 1;
+}
+
+static int SOG_gpu_eligible(int Cnt_kind)
+{
+  return SOG_gpu_requested(Cnt_kind) && (openmx_gpu_worker_device()>=0 || gpu_rank_device_usable());
 }
 
 static size_t SOG_arena_off(size_t *pos, size_t bytes)
@@ -847,7 +847,7 @@ static int Set_Orbitals_Grid_GPU_Part(int first, int last, int myid)
     if (!fail_notice_done && 2 <= level_stdout) {
       fail_notice_done = 1;
       fprintf(stderr,
-              "Set_Orbitals_Grid: %.1f MiB of device staging unavailable; using the host path.\n",
+              "Set_Orbitals_Grid: %.1f MiB of device staging unavailable; trying distributed capacity recovery.\n",
               (double)arena_bytes / (1024.0 * 1024.0));
       fflush(stderr);
     }
@@ -1052,13 +1052,126 @@ static int SOG_table_worker(void *opaque, int worker, int phase)
   return Set_Orbitals_Grid_GPU_Part(first,last,work->myid);
 }
 
+typedef struct {int wan,no,grid,cell;double xyz[3],shift[3];} SOG_CapacityPoint;
+typedef struct {int ng23,ng3,max_no;double frame[9],origin[3];} SOG_CapacityParameters;
+static void SOG_capacity_kernel(size_t first,size_t n,const void *parameters,void *const v[],int gpu)
+{
+  (void)first;const SOG_CapacityParameters *p=parameters;
+  const int ng23=p->ng23,ng3=p->ng3,max_no=p->max_no;
+  const double g11=p->frame[0],g12=p->frame[1],g13=p->frame[2];
+  const double g21=p->frame[3],g22=p->frame[4],g23=p->frame[5];
+  const double g31=p->frame[6],g32=p->frame[7],g33=p->frame[8];
+  const double org1=p->origin[0],org2=p->origin[1],org3=p->origin[2];
+  const SOG_CapacityPoint *points=v[0];
+  const double *rv=v[1],*rwf=v[2],*translations=v[3];
+  const size_t *rvo=v[4],*rwbo=v[5];const int *mesh=v[6],*maxl=v[7],*nb=v[8];
+  float *out=v[9];
+#pragma acc parallel loop gang vector vector_length(128) deviceptr(points,rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,out) if(gpu)
+  for (size_t i=0;i<n;i++) {
+    SOG_CapacityPoint q=points[i];
+    for (int j=q.no;j<max_no;j++) out[i*max_no+j]=0;
+    SOG_point_eval(q.wan,q.no,q.xyz[0],q.xyz[1],q.xyz[2],q.shift[0],q.shift[1],q.shift[2],q.grid,q.cell,
+      translations,rv,rwf,rvo,rwbo,mesh,maxl,nb,ng23,ng3,
+      g11,g12,g13,g21,g22,g23,g31,g32,g33,org1,org2,org3,out+i*max_no);
+  }
+}
+
+/* Failed owner staging is retried as independent point tiles. The radial
+   tables are small, immutable lookups; no complete rank orbital table is
+   replicated on a helper GPU or sent to another node. */
+static int SOG_capacity_recover(int done,int rank)
+{
+  int pending=!done,any=0;MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+  if (!any) return done;
+  SOG_CapacityParameters p={0};p.ng23=Ngrid2*Ngrid3;p.ng3=Ngrid3;
+  for (int i=0;i<3;i++) {p.origin[i]=Grid_Origin[i+1];for(int j=0;j<3;j++)p.frame[3*i+j]=gtv[i+1][j+1];}
+  size_t rows=0,rvn=0,rwfn=0,tile=262144;
+  int ready=1;
+  for (int w=0;w<SpeciesNum;w++) if (p.max_no<Spe_Total_NO[w]) p.max_no=Spe_Total_NO[w];
+  size_t *rvo=NULL,*rwbo=NULL;int *mesh=NULL,*maxl=NULL,*nb=NULL;
+  double *rv=NULL,*rwf=NULL,*translations=NULL;
+  SOG_CapacityPoint *points=NULL;Type_Orbs_Grid **destination=NULL;float *out=NULL;
+  if (pending) {
+    rvo=malloc((size_t)SpeciesNum*sizeof(size_t));rwbo=malloc((size_t)SpeciesNum*sizeof(size_t));
+    mesh=malloc((size_t)SpeciesNum*sizeof(int));maxl=malloc((size_t)SpeciesNum*sizeof(int));
+    nb=calloc((size_t)SpeciesNum*(SOG_L0MAX+1),sizeof(int));
+    ready=rvo && rwbo && mesh && maxl && nb;
+    for (int w=0;ready && w<SpeciesNum;w++) {
+      rvo[w]=rvn;rwbo[w]=rwfn;mesh[w]=Spe_Num_Mesh_PAO[w];maxl[w]=Spe_MaxL_Basis[w];rvn+=mesh[w];
+      for(int l=0;l<=maxl[w];l++){nb[w*(SOG_L0MAX+1)+l]=Spe_Num_Basis[w][l];rwfn+=(size_t)mesh[w]*Spe_Num_Basis[w][l];}
+    }
+    if (ready) {
+      rv=malloc(rvn*sizeof(double));rwf=malloc(rwfn*sizeof(double));
+      translations=malloc(((size_t)TCpyCell+1)*3*sizeof(double));ready=rv && rwf && translations;
+    }
+    for(int w=0;ready && w<SpeciesNum;w++) {
+      memcpy(rv+rvo[w],Spe_PAO_RV[w],(size_t)mesh[w]*sizeof(double));size_t at=rwbo[w];
+      for(int l=0;l<=maxl[w];l++)for(int m=0;m<Spe_Num_Basis[w][l];m++) {
+        memcpy(rwf+at,Spe_PAO_RWF[w][l][m],(size_t)mesh[w]*sizeof(double));at+=mesh[w];
+      }
+    }
+    if(ready)for(int r=0;r<=TCpyCell;r++)for(int i=0;i<3;i++)translations[3*(size_t)r+i]=atv[r][i+1];
+    for(int mc=1;ready && mc<=Matomnum;mc++) {
+      int gc=M2G[mc];rows+=(size_t)GridN_Atom[gc];
+      for(int h=0;h<=FNAN[gc];h++)if(G2ID[natn[gc][h]]!=rank)rows+=(size_t)NumOLG[mc][h];
+    }
+    if (tile>rows) tile=rows;
+    size_t per=sizeof(*points)+sizeof(*destination)+(size_t)p.max_no*sizeof(float);
+    unsigned long long room=openmx_host_mem_available();int sharing=openmx_gpu_local_size_noncollective();if(sharing<1)sharing=1;
+    if(room && tile>room/(4ULL*sharing)/per)tile=(size_t)(room/(4ULL*sharing)/per);
+    if(rows && !tile)ready=0;
+    if(ready && tile){points=malloc(tile*sizeof(*points));destination=malloc(tile*sizeof(*destination));out=malloc(tile*(size_t)p.max_no*sizeof(float));ready=points && destination && out;}
+  }
+  if(!ready)rows=0;
+  uint64_t steps=tile?(rows/tile+(rows%tile!=0)):0,max_steps=0;
+  MPI_Allreduce(&steps,&max_steps,1,MPI_UINT64_T,MPI_MAX,mpi_comm_level1);
+  for(uint64_t step=0;step<max_steps;step++) {
+    size_t begin=step<steps?(size_t)step*tile:rows,end=begin;
+    if(step<steps){end=rows-begin<tile?rows:begin+tile;}
+    size_t cursor=0;
+    for(int mc=1;begin<end && mc<=Matomnum;mc++) {
+      int gc=M2G[mc];
+      for(int h=-1;h<=FNAN[gc];h++) {
+        int gh=h<0?gc:natn[gc][h];if(h>=0 && G2ID[gh]==rank)continue;
+        size_t length=h<0?(size_t)GridN_Atom[gc]:(size_t)NumOLG[mc][h],lo=cursor,hi=cursor+length;
+        cursor=hi;if(lo<begin)lo=begin;if(hi>end)hi=end;
+        for(size_t row=lo;row<hi;row++) {
+          size_t k=row-(cursor-length),i=row-begin;int nc=h<0?(int)k:GListTAtoms1[mc][h][k];
+          SOG_CapacityPoint *q=points+i;q->wan=WhatSpecies[gh];q->no=Spe_Total_NO[q->wan];
+          q->grid=GridListAtom[mc][nc];q->cell=CellListAtom[mc][nc];
+          for(int d=0;d<3;d++){q->xyz[d]=Gxyz[gh][d+1];q->shift[d]=h<0?0:atv[ncn[gc][h]][d+1];}
+          destination[i]=h<0?Orbs_Grid[mc][k]:Orbs_Grid_FNAN[mc][h][k];
+        }
+      }
+    }
+    OpenMXGpuTask t={0};t.count=end-begin;t.inputs=9;t.outputs=1;t.parameters=&p;t.parameter_bytes=sizeof(p);t.kernel=SOG_capacity_kernel;
+    t.view[0]=(OpenMXGpuTaskView){points,0,sizeof(*points)};
+    t.view[1]=(OpenMXGpuTaskView){rv,rvn*sizeof(double),0};t.view[2]=(OpenMXGpuTaskView){rwf,rwfn*sizeof(double),0};
+    t.view[3]=(OpenMXGpuTaskView){translations,translations?((size_t)TCpyCell+1)*3*sizeof(double):0,0};
+    t.view[4]=(OpenMXGpuTaskView){rvo,rvo?(size_t)SpeciesNum*sizeof(size_t):0,0};
+    t.view[5]=(OpenMXGpuTaskView){rwbo,rwbo?(size_t)SpeciesNum*sizeof(size_t):0,0};
+    t.view[6]=(OpenMXGpuTaskView){mesh,mesh?(size_t)SpeciesNum*sizeof(int):0,0};
+    t.view[7]=(OpenMXGpuTaskView){maxl,maxl?(size_t)SpeciesNum*sizeof(int):0,0};
+    t.view[8]=(OpenMXGpuTaskView){nb,nb?(size_t)SpeciesNum*(SOG_L0MAX+1)*sizeof(int):0,0};
+    t.view[9]=(OpenMXGpuTaskView){out,0,(size_t)p.max_no*sizeof(float)};
+    openmx_gpu_task_execute(mpi_comm_level1,&t,1,"orbital-capacity");
+    for(size_t i=0;i<t.count;i++)for(int j=0;j<points[i].no;j++)destination[i][j]=out[i*(size_t)p.max_no+j];
+  }
+  free(rvo);free(rwbo);free(mesh);free(maxl);free(nb);free(rv);free(rwf);free(translations);free(points);free(destination);free(out);
+  return done || ready;
+}
+
 static int Set_Orbitals_Grid_GPU(void)
 {
   SOG_TableWork work;
   MPI_Comm_rank(mpi_comm_level1,&work.myid);
   openmx_gpu_workers_local(&work.workers,(size_t)Matomnum);
-  if (work.workers.count<=1) return Set_Orbitals_Grid_GPU_Part(1,Matomnum+1,work.myid);
-  return openmx_gpu_workers_run(&work.workers,SOG_table_worker,&work,"orbital-tables");
+  int done=0;
+  if (!openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable()) {
+    if (work.workers.count<=1) done=Set_Orbitals_Grid_GPU_Part(1,Matomnum+1,work.myid);
+    else done=openmx_gpu_workers_run(&work.workers,SOG_table_worker,&work,"orbital-tables");
+  }
+  return SOG_capacity_recover(done,work.myid);
 }
 
 /* ---------------------------------------------------------------------
@@ -1684,7 +1797,9 @@ double Set_Orbitals_Grid(int Cnt_kind)
 
   /* device fast path; on any ineligibility or allocation failure the
      untouched host loops below produce the same values */
-  if (SOG_gpu_eligible(Cnt_kind) && Set_Orbitals_Grid_GPU()) {
+  int gpu_requested=SOG_gpu_requested(Cnt_kind);
+  MPI_Allreduce(MPI_IN_PLACE,&gpu_requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  if (gpu_requested && Set_Orbitals_Grid_GPU()) {
     dtime(&TEtime);
     return TEtime - TStime;
   }

@@ -4,6 +4,10 @@
 #include <time.h>
 #include "openmx_common.h"
 #include "openmx_gpu_workers.h"
+#include "openmx_gpu_collective.h"
+#include <stdint.h>
+#include <limits.h>
+#include <string.h>
 #include "mpi.h"
 #include "lapack_prototypes.h"
 #include <omp.h>
@@ -253,14 +257,8 @@ static void SXG_XC_PBE(double *dens, double GDENS[3][2], double *Exc, double *DE
 
 static int SXG_gpu_enabled(void)
 {
-  static int state = -1;
-
-  if (state < 0) {
-    const char *value = getenv("OPENMX_XC_GRID_GPU");
-    if (value != NULL && value[0] != '\0' && atoi(value) == 0) state = 0;
-    else state = gpu_rank_device_usable() ? 1 : 0;
-  }
-  return state;
+  const char *env=getenv("OPENMX_XC_GRID_GPU");
+  return !env || !*env || atoi(env)!=0;
 }
 
 static size_t SXG_arena_off(size_t *pos, size_t bytes)
@@ -293,6 +291,7 @@ typedef struct {
 
 typedef struct {
   int XC_P_switch, pcc, rotate;
+  int Ng1,Ng2,Ng3,first,last,input_base,output_base;
   double *den[4], *vxc[4], *pcc_den[2];
   double ***dden, ***dexc;
   const double *inv;
@@ -343,10 +342,11 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
   o_vxc2 = rotate ? SXG_arena_off(&pos, nb) : 0;
   o_vxc3 = rotate ? SXG_arena_off(&pos, nb) : 0;
   o_inv = SXG_arena_off(&pos, sizeof(double) * 27 * 27);
-  arena = (unsigned char*)acc_malloc(pos);
+  arena = NULL;
+  if (cudaMalloc((void**)&arena,pos)!=cudaSuccess) (void)cudaGetLastError();
   if (arena == NULL) {
     if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
-    arena = (unsigned char*)acc_malloc(pos);
+    if (cudaMalloc((void**)&arena,pos)!=cudaSuccess) { arena=NULL; (void)cudaGetLastError(); }
   }
   if (arena == NULL) return 0;
   d_den0 = (double*)(void*)(arena + o_den0);
@@ -362,15 +362,15 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
   d_vxc2 = rotate ? (double*)(void*)(arena + o_vxc2) : NULL;
   d_vxc3 = rotate ? (double*)(void*)(arena + o_vxc3) : NULL;
   d_inv = (double*)(void*)(arena + o_inv);
-  acc_memcpy_to_device(d_den0, work->den[0] + base, nb);
-  acc_memcpy_to_device(d_den1, work->den[1] + base, nb);
+  acc_memcpy_to_device(d_den0, work->den[0] + base-work->input_base, nb);
+  acc_memcpy_to_device(d_den1, work->den[1] + base-work->input_base, nb);
   if (rotate) {
-    acc_memcpy_to_device(d_den2, work->den[2] + base, nb);
-    acc_memcpy_to_device(d_den3, work->den[3] + base, nb);
+    acc_memcpy_to_device(d_den2, work->den[2] + base-work->input_base, nb);
+    acc_memcpy_to_device(d_den3, work->den[3] + base-work->input_base, nb);
   }
   if (pcc) {
-    acc_memcpy_to_device(d_pcc0, work->pcc_den[0] + base, nb);
-    acc_memcpy_to_device(d_pcc1, work->pcc_den[1] + base, nb);
+    acc_memcpy_to_device(d_pcc0, work->pcc_den[0] + base-work->input_base, nb);
+    acc_memcpy_to_device(d_pcc1, work->pcc_den[1] + base-work->input_base, nb);
   }
   acc_memcpy_to_device(d_inv, (void*)work->inv, sizeof(double) * 27 * 27);
 
@@ -559,32 +559,150 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
   }
   if (phase == OPENMX_GPU_WORKER_COMMIT) {
   const size_t nb=sizeof(double)*(size_t)(end-begin);
+  const int output=base+begin-work->output_base;
   /* Match the host rotation's store order: callers may alias the output
      arrays, and in that case the diagonal Vxc0 must be written last. */
   if (rotate) {
-    acc_memcpy_from_device(work->vxc[3] + base + begin, d_vxc3 + begin, nb);
-    acc_memcpy_from_device(work->vxc[2] + base + begin, d_vxc2 + begin, nb);
-    acc_memcpy_from_device(work->vxc[1] + base + begin, d_vxc1 + begin, nb);
-    acc_memcpy_from_device(work->vxc[0] + base + begin, d_vxc0 + begin, nb);
+    acc_memcpy_from_device(work->vxc[3] + output, d_vxc3 + begin, nb);
+    acc_memcpy_from_device(work->vxc[2] + output, d_vxc2 + begin, nb);
+    acc_memcpy_from_device(work->vxc[1] + output, d_vxc1 + begin, nb);
+    acc_memcpy_from_device(work->vxc[0] + output, d_vxc0 + begin, nb);
   }
   else {
-    acc_memcpy_from_device(work->vxc[0] + base + begin, d_vxc0 + begin, nb);
-    acc_memcpy_from_device(work->vxc[1] + base + begin, d_vxc1 + begin, nb);
+    acc_memcpy_from_device(work->vxc[0] + output, d_vxc0 + begin, nb);
+    acc_memcpy_from_device(work->vxc[1] + output, d_vxc1 + begin, nb);
   }
   if (work->dden != NULL) {
-    for (i = 0; i < 6; i++) acc_memcpy_from_device(work->dden[i / 3][i % 3] + base + begin, d_dden + (size_t)i * n + begin, nb);
+    for (i = 0; i < 6; i++) acc_memcpy_from_device(work->dden[i / 3][i % 3] + output, d_dden + (size_t)i * n + begin, nb);
   }
   if (work->dexc != NULL && XC_P_switch != 0) {
-    for (i = 0; i < 6; i++) acc_memcpy_from_device(work->dexc[i / 3][i % 3] + base + begin, d_dexc + (size_t)i * n + begin, nb);
+    for (i = 0; i < 6; i++) acc_memcpy_from_device(work->dexc[i / 3][i % 3] + output, d_dexc + (size_t)i * n + begin, nb);
   }
   return 1;
   }
   if (phase == OPENMX_GPU_WORKER_RELEASE && slab->arena != NULL) {
-    acc_free(slab->arena);
+    if (cudaFree(slab->arena)!=cudaSuccess) return 0;
     slab->arena = NULL;
     if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
   }
   return 1;
+}
+
+static void SXG_layout(const SXG_Work *w,int worker,int count,SXG_Slab *slab)
+{
+  const size_t items=(size_t)(w->last-w->first);
+  const int first=w->first+(int)openmx_gpu_worker_cut(items,worker,count);
+  const int last=w->first+(int)openmx_gpu_worker_cut(items,worker+1,count);
+  const int lo=first<2?0:first-2,hi=last+2<w->Ng1?last+2:w->Ng1;
+  const int elo=first<1?0:first-1,ehi=last+1<w->Ng1?last+1:w->Ng1;
+  const int plane=w->Ng2*w->Ng3;
+  memset(slab,0,sizeof(*slab));
+  slab->Ng1=w->Ng1; slab->Ng2=w->Ng2; slab->Ng3=w->Ng3;
+  slab->base=lo*plane; slab->n=(hi-lo)*plane;
+  slab->begin=(first-lo)*plane; slab->end=(last-lo)*plane;
+  slab->eval_begin=(elo-lo)*plane; slab->eval_end=(ehi-lo)*plane;
+}
+
+static size_t SXG_cost(void *opaque,int worker,int count)
+{
+  SXG_Work *w=opaque; SXG_Slab slab;
+  SXG_layout(w,worker,count,&slab);
+  /* At most 13 independently aligned arena segments plus interpolation. */
+  return (size_t)slab.n*(size_t)(16+4*w->rotate+2*w->pcc)*sizeof(double)+
+         13*512+27*27*sizeof(double);
+}
+
+static int SXG_execute(SXG_Work *work)
+{
+  OpenMXGpuWorkers workers;
+  SXG_Slab slabs[OPENMX_GPU_WORKERS_MAX]={{0}};
+  OpenMXGpuWorkerRetry retry={SXG_cost,work,{0}};
+  work->slabs=slabs;
+  while (openmx_gpu_workers_capacity(&workers,(size_t)(work->last-work->first),1,openmx_gpu_worker_retry_cost,&retry)) {
+    for (int i=0;i<workers.count;i++) SXG_layout(work,i,workers.count,slabs+i);
+    if (openmx_gpu_workers_run(&workers,SXG_slab_worker,work,"XC-grid")) return 1;
+    retry.rejected[workers.count]=1;
+  }
+  return 0;
+}
+
+/* MPI packets contain just this slab's two-plane input halo and immutable
+   scalar geometry. No global rank-local grid pointers cross a process. */
+typedef struct {
+  int mode,pcc,rotate,dden,dexc,Ng1,Ng2,Ng3,first,last;
+  double inv[27*27];
+} SXG_Packet;
+
+static int SXG_pack(void *opaque,size_t first,size_t last,void **packet,size_t *bytes)
+{
+  SXG_Work *w=opaque;
+  const size_t lo=first<2?0:first-2,hi=last+2<(size_t)w->Ng1?last+2:(size_t)w->Ng1;
+  const size_t plane=(size_t)w->Ng2*w->Ng3,n=(hi-lo)*plane;
+  const int fields=(w->rotate?4:2)+2*w->pcc;
+  if (n>(SIZE_MAX-sizeof(SXG_Packet))/sizeof(double)/(size_t)fields) return 0;
+  *bytes=sizeof(SXG_Packet)+n*(size_t)fields*sizeof(double);
+  SXG_Packet *p=malloc(*bytes);
+  if (!p) return 0;
+  *packet=p;
+  p->mode=w->XC_P_switch;p->pcc=w->pcc;p->rotate=w->rotate;
+  p->dden=w->dden!=NULL;p->dexc=w->dexc!=NULL && w->XC_P_switch!=0;
+  p->Ng1=w->Ng1;p->Ng2=w->Ng2;p->Ng3=w->Ng3;p->first=(int)first;p->last=(int)last;
+  memcpy(p->inv,w->inv,sizeof(p->inv));
+  double *data=(double*)(p+1);
+  for (int i=0;i<(w->rotate?4:2);i++,data+=n) memcpy(data,w->den[i]+lo*plane,n*sizeof(double));
+  if (w->pcc) for (int i=0;i<2;i++,data+=n) memcpy(data,w->pcc_den[i]+lo*plane,n*sizeof(double));
+  return 1;
+}
+
+static int SXG_remote(void *context,const void *packet,size_t bytes,void **result,size_t *result_bytes)
+{
+    (void)context;
+  if (bytes<sizeof(SXG_Packet)) return 0;
+  const SXG_Packet *p=packet;
+  if (p->Ng1<=0 || p->Ng2<=0 || p->Ng3<=0 || p->first<0 || p->last<=p->first || p->last>p->Ng1 ||
+      (size_t)p->Ng1*p->Ng2>INT_MAX/(size_t)p->Ng3) return 0;
+  const int lo=p->first<2?0:p->first-2,hi=p->last+2<p->Ng1?p->last+2:p->Ng1;
+  const size_t plane=(size_t)p->Ng2*p->Ng3,n=(size_t)(hi-lo)*plane,owned=(p->last-p->first)*plane;
+  const int inputs=(p->rotate?4:2)+2*p->pcc,outputs=(p->rotate?4:2)+6*p->dden+6*p->dexc;
+  if (bytes!=sizeof(*p)+n*(size_t)inputs*sizeof(double)) return 0;
+  *result_bytes=owned*(size_t)outputs*sizeof(double);
+  double *out=malloc(*result_bytes);
+  if (!out) return 0;
+  *result=out;
+  SXG_Work w={0};
+  w.XC_P_switch=p->mode;w.pcc=p->pcc;w.rotate=p->rotate;w.inv=p->inv;
+  w.Ng1=p->Ng1;w.Ng2=p->Ng2;w.Ng3=p->Ng3;w.first=p->first;w.last=p->last;
+  w.input_base=lo*(int)plane;w.output_base=p->first*(int)plane;
+  const double *in=(const double*)(p+1);
+  for (int i=0;i<(p->rotate?4:2);i++,in+=n) w.den[i]=(double*)in;
+  if (p->pcc) for (int i=0;i<2;i++,in+=n) w.pcc_den[i]=(double*)in;
+  for (int i=0;i<(p->rotate?4:2);i++,out+=owned) w.vxc[i]=out;
+  double *dd[6],*dx[6],**ddp[2]={dd,dd+3},**dxp[2]={dx,dx+3};
+  if (p->dden) {
+    for (int i=0;i<6;i++,out+=owned) dd[i]=out;
+    w.dden=ddp;
+  }
+  if (p->dexc) {
+    for (int i=0;i<6;i++,out+=owned) dx[i]=out;
+    w.dexc=dxp;
+  }
+  return SXG_execute(&w);
+}
+
+static void SXG_commit(void *opaque,size_t first,size_t last,const void *result,size_t bytes)
+{
+  SXG_Work *w=opaque;
+  const size_t plane=(size_t)w->Ng2*w->Ng3,base=first*plane,n=(last-first)*plane;
+  const int nv=w->rotate?4:2;
+  const double *r=result;
+  (void)bytes;
+  /* Match the device/host store order when Vxc outputs alias. */
+  if (w->rotate) for (int i=3;i>=0;i--) memcpy(w->vxc[i]+base,r+(size_t)i*n,n*sizeof(double));
+  else for (int i=0;i<2;i++) memcpy(w->vxc[i]+base,r+(size_t)i*n,n*sizeof(double));
+  r+=(size_t)nv*n;
+  if (w->dden) for (int i=0;i<6;i++,r+=n) memcpy(w->dden[i/3][i%3]+base,r,n*sizeof(double));
+  if (w->dexc && w->XC_P_switch!=0)
+    for (int i=0;i<6;i++,r+=n) memcpy(w->dexc[i/3][i%3]+base,r,n*sizeof(double));
 }
 
 static int Set_XC_Grid_GPU(int XC_P_switch,
@@ -600,19 +718,13 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
   const int rotate = (SpinP_switch == 3 && (XC_P_switch == 1 || XC_P_switch == 2));
   double mat_storage[30][30], inv_storage[30][30];
   double *Mat[30], *InvMat[30], inv[27 * 27];
-  OpenMXGpuWorkers workers;
-  SXG_Slab slabs[OPENMX_GPU_WORKERS_MAX] = {{0}};
-  SXG_Work work;
+  SXG_Work work={0};
   int i, i1, j1, k1, i2, j2, k2, p, q;
   double x, y, z, x1, y1, z1;
 
   if (!(XC_P_switch == 0 || XC_P_switch == 1 || XC_P_switch == 2)) return 0;
   if (dc_Type == 3 || dc_Type == 4) return 0;
-  if (!SXG_gpu_enabled()) return 0;
-  if (n <= 0) return 1;
-
-  openmx_gpu_workers_local(&workers, (size_t)Ng1);
-  if (workers.count < 1) return 0;
+  const int enabled=SXG_gpu_enabled();
   /* the 27-point interpolation matrix of the host path */
   /* Fixed-size host scratch avoids 62 unchecked allocations per call. */
   for (i = 0; i < 30; i++) {
@@ -650,24 +762,15 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
   work.den[0]=Den0; work.den[1]=Den1; work.den[2]=Den2; work.den[3]=Den3;
   work.vxc[0]=Vxc0; work.vxc[1]=Vxc1; work.vxc[2]=Vxc2; work.vxc[3]=Vxc3;
   work.pcc_den[0]=PCCDensity_Grid_D[0]; work.pcc_den[1]=PCCDensity_Grid_D[1];
-  work.dden=dDen_Grid; work.dexc=dEXC_dGD; work.inv=inv; work.slabs=slabs;
-  for (i=0; i<workers.count; ++i) {
-    const int first=(int)openmx_gpu_worker_cut((size_t)Ng1, i, workers.count);
-    const int last=(int)openmx_gpu_worker_cut((size_t)Ng1, i+1, workers.count);
-    const int upload_first=first<2 ? 0 : first-2;
-    const int upload_last=last+2<Ng1 ? last+2 : Ng1;
-    const int eval_first=first<1 ? 0 : first-1;
-    const int eval_last=last+1<Ng1 ? last+1 : Ng1;
-    SXG_Slab *slab=slabs+i;
-    slab->Ng1=Ng1; slab->Ng2=Ng2; slab->Ng3=Ng3;
-    slab->base=upload_first*Ng2*Ng3;
-    slab->n=(upload_last-upload_first)*Ng2*Ng3;
-    slab->begin=(first-upload_first)*Ng2*Ng3;
-    slab->end=(last-upload_first)*Ng2*Ng3;
-    slab->eval_begin=(eval_first-upload_first)*Ng2*Ng3;
-    slab->eval_end=(eval_last-upload_first)*Ng2*Ng3;
-  }
-  return openmx_gpu_workers_run(&workers, SXG_slab_worker, &work, "XC-grid");
+  work.dden=dDen_Grid; work.dexc=dEXC_dGD; work.inv=inv;
+  work.Ng1=Ng1;work.Ng2=Ng2;work.Ng3=Ng3;work.first=0;work.last=Ng1;
+  const int borrow=enabled && openmx_gpu_workers_capacity_enabled();
+  const int usable=enabled && (gpu_rank_device_usable() || borrow);
+  int done=n<=0 ? 1 : usable && SXG_execute(&work);
+  static const OpenMXGpuCollectiveOps ops={SXG_pack,SXG_remote,SXG_commit};
+  /* Every rank participates, including disabled/empty/completed ranks. */
+  return openmx_gpu_collective_retry(mpi_comm_level1,&ops,&work,n>0?(size_t)Ng1:0,
+                                    done?1:borrow?0:-1,borrow && usable,"XC-grid");
 }
 
 

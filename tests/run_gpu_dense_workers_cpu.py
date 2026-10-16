@@ -21,6 +21,7 @@ constants={node.targets[0].id:ast.literal_eval(node.value) for node in tree.body
            if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name)
            and node.targets[0].id in ('cuda','complex_header')}
 extra=r'''
+#define __host__
 #define __device__
 #define __global__
 struct MockDim {unsigned x;};
@@ -48,6 +49,9 @@ void openmx_gpu_workers_configure(int,int,int){}
 void openmx_gpu_workers_scope(OpenMXGpuWorkers *p,size_t n){
     p->items=n;p->count=int(std::min(n,size_t(probe_count)));
     for(int i=0;i<p->count;i++)p->devices[i]=probe_first+i;
+}
+int openmx_gpu_workers_capacity(OpenMXGpuWorkers *p,size_t n,int kind,OpenMXGpuWorkerCost cost,void *ctx){
+    openmx_gpu_workers_scope(p,n);for(int i=0;i<p->count;i++)if(cost(ctx,i,p->count)==SIZE_MAX)return 0;return 1;
 }
 int openmx_gpu_workers_run(const OpenMXGpuWorkers *p,int (*callback)(void*,int,int),void *data,const char*){
     const int saved=mock_device,saved_acc=mock_acc_device;int success=1,started[64]={};

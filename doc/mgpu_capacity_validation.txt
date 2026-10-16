@@ -295,8 +295,10 @@ the transforms, and 938494 holds the unmodified main.
   layout reached the force calculation and ran out of memory there. That
   layout holds twice the ranks per node of the two-node runs.
 
-These runs had the GPU workers and the device-resident GEMM cooperation on
-by default; both are opt-in since (OPENMX_GPU_WORKERS=1, OPENMX_MGPU_GEMM).
+These historical runs had the GPU workers and device-resident GEMM
+cooperation on by default. Performance distribution is now opt-in
+(OPENMX_GPU_WORKERS=1, OPENMX_MGPU_GEMM); the later capacity policy in
+gpu_workers.txt automatically borrows GPUs when the owner's memory is short.
 With 8 ranks per node every GPU carried ranks of its own, and the MAGMA
 and gpusolver2 rungs have their own multi-GPU products.
 Evidence: work/bench_multinode/results_two_node_20261015.md and the

@@ -14,13 +14,17 @@
 #include "openmx_stdout_level.h"
 #include "openmx_host_memory.h"
 #include <mpi.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern void Cblacs_gridinfo(int ictxt, int *nprow, int *npcol, int *myrow, int *mycol);
 extern void Cblacs_get(int ictxt, int what, int *val);
 extern MPI_Comm Cblacs2sys_handle(int ictxt);
 extern int numroc_(int *n, int *nb, int *iproc, int *isrcproc, int *nprocs);
+extern int SCF_Gpu_Num;
 
 static int gs2_elpa_inited = 0;
 
@@ -30,10 +34,10 @@ static int gs2_elpa_inited = 0;
    level.of.stdout 1 instead of 2 */
 static int gs2_fallback_report = 0;
 
-/* one cached, fully set-up ELPA handle per (BLACS context, n, nev, type) */
+/* one cached, fully set-up ELPA handle per (BLACS context, n, nev, type, nblk) */
 #define GS2_MAX_HANDLES 16
 typedef struct {
-    int used, ictxt, n, nev, is_complex;
+    int used, ictxt, n, nev, is_complex, nblk;
     int gpu;          /* 1 = NVIDIA GPU kernels, 0 = CPU kernels */
     int ranks_on_dev; /* ranks of comm that share this rank's device */
     size_t need;      /* estimated per-rank device bytes of one solve */
@@ -85,6 +89,52 @@ static int gs2_forced_mode(const char *envname)
     return (atoi(env) != 0);
 }
 
+/* A local override must not let one rank skip the admission collectives
+   while its peers enter them, or select different ELPA/COSMA kernels. */
+static int gs2_forced_mode_collective(const char *envname, MPI_Comm comm)
+{
+    const int mode = gs2_forced_mode(envname);
+    int bounds[2] = {mode, -mode};
+
+    MPI_Allreduce(MPI_IN_PLACE, bounds, 2, MPI_INT, MPI_MIN, comm);
+    if (bounds[0] != -bounds[1]) {
+        int rank;
+        MPI_Comm_rank(comm, &rank);
+        if (rank == 0) {
+            fprintf(stderr, "openmx gpusolver2: inconsistent %s across ranks of the grid;"
+                            " set the same kernel mode on every rank.\n", envname);
+            fflush(stderr);
+        }
+        MPI_Abort(comm, 1);
+    }
+    return mode;
+}
+
+/* Local handle allocation/parameter errors must reach every peer before
+   anybody enters ELPA's collective setup or eigenvector routines. Preserve
+   the first failing rank's error code, including negative ELPA codes. */
+static int gs2_collective_error(int error, MPI_Comm comm)
+{
+    int rank, first;
+    MPI_Comm_rank(comm, &rank);
+    first = error == ELPA_OK ? INT_MAX : rank;
+    MPI_Allreduce(MPI_IN_PLACE, &first, 1, MPI_INT, MPI_MIN, comm);
+    if (first == INT_MAX) return ELPA_OK;
+    MPI_Bcast(&error, 1, MPI_INT, first, comm);
+    return error;
+}
+
+/* Saturation makes an unrepresentable memory demand fail admission. */
+static size_t gs2_bytes_add(size_t a, size_t b)
+{
+    return b > SIZE_MAX - a ? SIZE_MAX : a + b;
+}
+
+static size_t gs2_bytes_mul(size_t a, size_t b)
+{
+    return b && a > SIZE_MAX / b ? SIZE_MAX : a * b;
+}
+
 static void gs2_det_set_forced(gs2_mem_details *det)
 {
     det->need_mb = det->free_mb = det->reserve_mb = 0;
@@ -103,10 +153,10 @@ static void gs2_det_set_forced(gs2_mem_details *det)
 static size_t gs2_need_bytes(int na_rows, int na_cols, int is_complex)
 {
     size_t elem   = is_complex ? 16 : 8;
-    size_t local  = (size_t)na_rows * (size_t)na_cols * elem;
+    size_t local  = gs2_bytes_mul(gs2_bytes_mul((size_t)na_rows, (size_t)na_cols), elem);
     size_t factor = (size_t)gs2_env_long("OPENMX_GS2_GPU_FACTOR", 3);
-    size_t fixed  = (size_t)gs2_env_long("OPENMX_GS2_GPU_FIXED_MB", 128) << 20;
-    return factor * local + fixed;
+    size_t fixed  = gs2_bytes_mul((size_t)gs2_env_long("OPENMX_GS2_GPU_FIXED_MB", 128), 1048576);
+    return gs2_bytes_add(gs2_bytes_mul(factor, local), fixed);
 }
 
 /* how many ranks end up on this rank's CUDA device (they all run the
@@ -119,19 +169,30 @@ static int gs2_ranks_on_device(MPI_Comm comm)
 
     if (cudaGetDevice(&mydev) != cudaSuccess) mydev = -1;
 
-    /* exact count within comm: ranks on my node that picked my device */
+    /* CUDA ordinals are process-local; use the physical UUID even when
+       ranks see the allocated GPUs in different orders. */
     if (MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shm)
         == MPI_SUCCESS) {
-        int *devs;
+        struct cudaDeviceProp prop;
+        unsigned char uuid[16], *devices;
+        int census_ok;
         MPI_Comm_size(shm, &nl);
-        devs = (int *)malloc((size_t)nl * sizeof(int));
-        if (devs != NULL) {
-            MPI_Allgather(&mydev, 1, MPI_INT, devs, 1, MPI_INT, shm);
+        devices = (unsigned char *)malloc((size_t)nl * sizeof(uuid));
+        census_ok = devices != NULL && mydev >= 0 &&
+                    cudaGetDeviceProperties(&prop, mydev) == cudaSuccess;
+        if (census_ok) memcpy(uuid, prop.uuid.bytes, sizeof(uuid));
+        else (void)cudaGetLastError();
+        /* All peers must either gather or use the conservative bound. A
+           malloc/query failure on just one rank must not strand the rest. */
+        MPI_Allreduce(MPI_IN_PLACE, &census_ok, 1, MPI_INT, MPI_MIN, shm);
+        cnt = nl;
+        if (census_ok) {
+            MPI_Allgather(uuid, sizeof(uuid), MPI_BYTE, devices, sizeof(uuid), MPI_BYTE, shm);
             for (cnt = 0, i = 0; i < nl; i++) {
-                if (devs[i] == mydev) cnt++;
+                if (memcmp(devices + (size_t)i * sizeof(uuid), uuid, sizeof(uuid)) == 0) cnt++;
             }
-            free(devs);
         }
+        free(devices);
         MPI_Comm_free(&shm);
     }
 
@@ -139,13 +200,17 @@ static int gs2_ranks_on_device(MPI_Comm comm)
        collinear cluster solver run concurrently), so also estimate from
        the launcher's node-local size and keep the larger count */
     {
-        const char *env = getenv("OMPI_COMM_WORLD_LOCAL_SIZE");
-        if (env != NULL && mydev >= 0 &&
+        const int ls = openmx_gpu_local_size_noncollective();
+        if (mydev >= 0 &&
             cudaGetDeviceCount(&ndev) == cudaSuccess && ndev > 0) {
-            int ls = atoi(env);
+            if (SCF_Gpu_Num > 0 && SCF_Gpu_Num < ndev) ndev = SCF_Gpu_Num;
             for (est = 0, i = 0; i < ls; i++) {
-                if (i % ndev == mydev) est++;
+                if (openmx_gpu_map_rank_to_device(i, ls, ndev) == mydev) est++;
             }
+        }
+        else {
+            (void)cudaGetLastError();
+            est = ls;
         }
     }
 
@@ -172,11 +237,11 @@ static int gs2_gpu_verdict(size_t need, int ranks_on_dev, MPI_Comm comm,
     det->forced     = 0;
     det->host_limited = 0;
 
-    reserve = (size_t)gs2_env_long("OPENMX_GS2_GPU_RESERVE_MB", 512) << 20;
+    reserve = gs2_bytes_mul((size_t)gs2_env_long("OPENMX_GS2_GPU_RESERVE_MB", 512), 1048576);
     det->reserve_mb = (unsigned long long)(reserve >> 20);
 
-    want_free = need * (size_t)ranks_on_dev + reserve;
-    if (current_mode == 0) want_free += want_free / 4;
+    want_free = gs2_bytes_add(gs2_bytes_mul(need, (size_t)ranks_on_dev), reserve);
+    if (current_mode == 0) want_free = gs2_bytes_add(want_free, want_free / 4);
 
     if (OpenMX_GpuMemGetInfo(&free_b, &total_b) != cudaSuccess) {
         free_b = 0;
@@ -185,8 +250,9 @@ static int gs2_gpu_verdict(size_t need, int ranks_on_dev, MPI_Comm comm,
     else {
         /* memory a live GPU handle keeps between solves is reused by the
            next solve, so count it as available rather than as consumed */
-        free_b += retained;
-        ok = (want_free <= free_b);
+        free_b = gs2_bytes_add(free_b, retained);
+        if (free_b > total_b) free_b = total_b;
+        ok = (want_free != SIZE_MAX && want_free <= free_b);
     }
 
     buf[0] = (unsigned long long)ok;
@@ -250,18 +316,35 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     int nprow, npcol, myrow, mycol, ZERO = 0;
     int na_rows, na_cols, sysctxt;
     int want_gpu = 1, have_verdict = 0, ranks_on_dev = 1;
-    int forced = gs2_forced_mode("OPENMX_GS2_ELPA_GPU");
+    int forced;
     size_t need = 0;
     gs2_mem_details det;
     MPI_Comm comm;
     elpa_t h;
 
     *perr = 0;
+    Cblacs_get(ictxt, 10, &sysctxt);
+    comm = Cblacs2sys_handle(sysctxt);
+    forced = gs2_forced_mode_collective("OPENMX_GS2_ELPA_GPU", comm);
 
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
         if (gs2_slots[i].used && gs2_slots[i].ictxt == ictxt && gs2_slots[i].n == n &&
-            gs2_slots[i].nev == nev && gs2_slots[i].is_complex == is_complex) {
-
+            gs2_slots[i].nev == nev && gs2_slots[i].is_complex == is_complex &&
+            gs2_slots[i].nblk == nblk) {
+            break;
+        }
+    }
+    {
+        int cached = i < GS2_MAX_HANDLES;
+        if (cached) {
+            int relation = MPI_UNEQUAL;
+            MPI_Comm_compare(gs2_slots[i].comm, comm, &relation);
+            cached = relation == MPI_IDENT || relation == MPI_CONGRUENT;
+        }
+        /* Intervening subgroup solves may evict only some ranks' handles.
+           Either every rank reuses its handle or every rank rebuilds it. */
+        MPI_Allreduce(MPI_IN_PLACE, &cached, 1, MPI_INT, MPI_MIN, comm);
+        if (cached) {
             /* the memory situation changes while a handle is cached (the
                resident caches of other GPU stages keep growing), so
                re-evaluate the GPU/CPU verdict before every solve and
@@ -272,14 +355,15 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
             }
             else {
                 want_gpu = gs2_gpu_verdict(gs2_slots[i].need, gs2_slots[i].ranks_on_dev,
-                                           gs2_slots[i].comm, gs2_slots[i].gpu,
+                                           comm, gs2_slots[i].gpu,
                                            gs2_slots[i].retained, &det);
             }
-            if (want_gpu == gs2_slots[i].gpu) return &gs2_slots[i];
+            int reuse = want_gpu == gs2_slots[i].gpu;
+            MPI_Allreduce(MPI_IN_PLACE, &reuse, 1, MPI_INT, MPI_MIN, comm);
+            if (reuse) return &gs2_slots[i];
 
-            gs2_report_mode(gs2_slots[i].comm, n, nev, want_gpu, &det, "switching to");
+            gs2_report_mode(comm, n, nev, want_gpu, &det, "switching to");
             have_verdict = 1;
-            break;
         }
     }
 
@@ -295,7 +379,8 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
         }
     }
 
-    if (gs2_elpa_init_once() != 0) { *perr = -1; return NULL; }
+    err = gs2_collective_error(gs2_elpa_init_once(), comm);
+    if (err != ELPA_OK) { *perr = err; return NULL; }
 
     Cblacs_gridinfo(ictxt, &nprow, &npcol, &myrow, &mycol);
     Cblacs_get(ictxt, 10, &sysctxt); /* SGET_BLACSCONTXT: system context */
@@ -320,7 +405,13 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     }
 
     h = elpa_allocate(&err);
-    if (err != ELPA_OK) { *perr = err; return NULL; }
+    if (err == ELPA_OK && h == NULL) err = -1;
+    err = gs2_collective_error(err, comm);
+    if (err != ELPA_OK) {
+        *perr = err;
+        if (h != NULL) { int derr; elpa_deallocate(h, &derr); }
+        return NULL;
+    }
 
     elpa_set_integer(h, "na", n, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "nev", nev, &err);
@@ -330,31 +421,31 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     if (err == ELPA_OK) elpa_set_integer(h, "mpi_comm_parent", (int)MPI_Comm_c2f(comm), &err);
     if (err == ELPA_OK) elpa_set_integer(h, "process_row", myrow, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "process_col", mycol, &err);
-    if (err != ELPA_OK) { *perr = err; return NULL; }
-
     /* GPU selection: must be requested before elpa_setup so that the setup
        binds the device.  The device itself was assigned rank-wise by the
-       central GPUSOLVER initialization (local_rank % ndev, scf.Gpu.Num).
+       central GPUSOLVER initialization (shared rank map, scf.Gpu.Num).
        When the preflight above found too little free device memory, run
        this configuration on ELPA's CPU kernels instead. */
-    elpa_set_integer(h, "nvidia-gpu", want_gpu ? 1 : 0, &err);
-    if (err != ELPA_OK) { *perr = err; return NULL; }
-    if (want_gpu) {
+    if (err == ELPA_OK) elpa_set_integer(h, "nvidia-gpu", want_gpu ? 1 : 0, &err);
+    if (err == ELPA_OK && want_gpu) {
         int dev = 0, seterr = ELPA_OK;
         if (cudaGetDevice(&dev) == cudaSuccess) {
             elpa_set_integer(h, "use_gpu_id", dev, &seterr); /* optional */
         }
     }
+    err = gs2_collective_error(err, comm);
+    if (err != ELPA_OK) goto setup_failed;
 
-    err = elpa_setup(h);
-    if (err != ELPA_OK) { *perr = err; return NULL; }
+    err = gs2_collective_error(elpa_setup(h), comm);
+    if (err != ELPA_OK) goto setup_failed;
 
     {
         int solver = ELPA_SOLVER_2STAGE;
         const char *env = getenv("OPENMX_GS2_ELPA_SOLVER");
         if (env != NULL && atoi(env) == 1) solver = ELPA_SOLVER_1STAGE;
         elpa_set_integer(h, "solver", solver, &err);
-        if (err != ELPA_OK) { *perr = err; return NULL; }
+        err = gs2_collective_error(err, comm);
+        if (err != ELPA_OK) goto setup_failed;
     }
 
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
@@ -370,6 +461,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     gs2_slots[i].n = n;
     gs2_slots[i].nev = nev;
     gs2_slots[i].is_complex = is_complex;
+    gs2_slots[i].nblk = nblk;
     gs2_slots[i].gpu = want_gpu;
     gs2_slots[i].ranks_on_dev = ranks_on_dev;
     gs2_slots[i].need = need;
@@ -378,6 +470,11 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     gs2_slots[i].h = h;
 
     return &gs2_slots[i];
+
+setup_failed:
+    *perr = err;
+    { int derr; elpa_deallocate(h, &derr); }
+    return NULL;
 }
 
 /* update the slot's estimate of how much device memory its handle kept
@@ -478,6 +575,7 @@ extern double openmx_gs2_cosma_host_bytes(char transa, char transb, int m, int n
 static long gs2_tile_cap = 5000;    /* effective COSMA max tile dimension */
 static long gs2_gemm_streams = 2;   /* effective COSMA GPU stream count */
 static int gs2_gemm_ranks = 0;      /* ranks sharing this rank's device */
+static int gs2_gemm_ictxt = -1;     /* grid whose sharing count is cached */
 static size_t gs2_gemm_retained[2]; /* persistent Tiled-MM bytes: [real, cplx] */
 static int gs2_gemm_mode[2] = {-1, -1};
 
@@ -517,7 +615,9 @@ static size_t gs2_gemm_bound(int m, int n, int k, int is_complex)
     size_t tm = (m < gs2_tile_cap) ? (size_t)m : (size_t)gs2_tile_cap;
     size_t tn = (n < gs2_tile_cap) ? (size_t)n : (size_t)gs2_tile_cap;
     size_t tk = (k < gs2_tile_cap) ? (size_t)k : (size_t)gs2_tile_cap;
-    return (size_t)gs2_gemm_streams * elem * (tm * tk + tk * tn + tm * tn);
+    size_t tiles = gs2_bytes_add(gs2_bytes_add(gs2_bytes_mul(tm, tk), gs2_bytes_mul(tk, tn)),
+                                gs2_bytes_mul(tm, tn));
+    return gs2_bytes_mul(gs2_bytes_mul((size_t)gs2_gemm_streams, elem), tiles);
 }
 
 static MPI_Comm gs2_ictxt_comm(int ictxt)
@@ -658,13 +758,20 @@ static int gs2_gemm_use_gpu(const char *transa, const char *transb, int m, int n
     gs2_gemm_init_once();
     comm = gs2_ictxt_comm(desca[1]);
 
-    forced = gs2_forced_mode("OPENMX_GS2_GEMM_GPU");
+    forced = gs2_forced_mode_collective("OPENMX_GS2_GEMM_GPU", comm);
     if (forced >= 0) {
         want = forced;
         gs2_det_set_forced(&det);
     }
     else {
-        if (gs2_gemm_ranks <= 0) gs2_gemm_ranks = gs2_ranks_on_device(comm);
+        int refresh = gs2_gemm_ranks <= 0 || gs2_gemm_ictxt != desca[1];
+        /* A subgroup may have used a different grid since the last call;
+           every member of this grid must join a refreshed census. */
+        MPI_Allreduce(MPI_IN_PLACE, &refresh, 1, MPI_INT, MPI_MAX, comm);
+        if (refresh) {
+            gs2_gemm_ranks = gs2_ranks_on_device(comm);
+            gs2_gemm_ictxt = desca[1];
+        }
         want = gs2_gpu_verdict(gs2_gemm_bound(m, n, k, is_complex), gs2_gemm_ranks,
                                comm, gs2_gemm_mode[t], gs2_gemm_retained[t], &det);
         if (want) {
@@ -748,8 +855,7 @@ int openmx_gs2_gpu_fits(int ictxt, int n, int nblk, int is_complex,
     Cblacs_gridinfo(ictxt, &nprow, &npcol, &myrow, &mycol);
     comm = gs2_ictxt_comm(ictxt);
 
-    forced_any = (gs2_forced_mode("OPENMX_GS2_ELPA_GPU") >= 0);
-    MPI_Allreduce(MPI_IN_PLACE, &forced_any, 1, MPI_INT, MPI_MAX, comm);
+    forced_any = (gs2_forced_mode_collective("OPENMX_GS2_ELPA_GPU", comm) >= 0);
     if (forced_any) return -1;
 
     na_rows = numroc_(&n, &nblk, &myrow, &ZERO, &nprow);
@@ -761,14 +867,14 @@ int openmx_gs2_gpu_fits(int ictxt, int n, int nblk, int is_complex,
     /* COSMA's Tiled-MM buffers exist only when the transforms may run on
        COSMA (OPENMX_GS2_GEMM_GPU=0 keeps them on ScaLAPACK) */
     if (gs2_forced_mode("OPENMX_GS2_GEMM_GPU") != 0)
-        need += gs2_gemm_bound(n, n, n, is_complex);
+        need = gs2_bytes_add(need, gs2_gemm_bound(n, n, n, is_complex));
     /* on a re-admission (next MD step, orbital-optimization restart, post
        call) the device memory this bridge already holds is reused: COSMA's
        persistent buffers of this scalar type and any live ELPA handle, as
        in the per-call verdicts of gs2_gemm_use_gpu and gs2_get_handle */
     retained = gs2_gemm_retained[is_complex ? 1 : 0];
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
-        if (gs2_slots[i].used) retained += gs2_slots[i].retained;
+        if (gs2_slots[i].used) retained = gs2_bytes_add(retained, gs2_slots[i].retained);
     }
     ok = gs2_gpu_verdict(need, ranks_on_dev, comm, -1, retained, &det);
 
@@ -786,6 +892,11 @@ void openmx_gs2_set_fallback_report(int on)
 void openmx_gs2_grid_free(int ictxt)
 {
     int i, err;
+
+    if (gs2_gemm_ictxt == ictxt) {
+        gs2_gemm_ranks = 0;
+        gs2_gemm_ictxt = -1;
+    }
 
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
         if (gs2_slots[i].used && gs2_slots[i].ictxt == ictxt) {

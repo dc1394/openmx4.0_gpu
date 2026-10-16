@@ -1,129 +1,136 @@
-GPU work outside the generalized eigenproblem (experimental)
-===========================================================
+GPU capacity recovery outside the generalized eigenproblem
+==========================================================
 
-The main collinear/noncollinear Cluster and Band paths can distribute their
-existing GPU kernels outside the solution of the generalized eigenproblem
-across the permitted devices. This distribution is experimental and off
-by default: on the measured Si1000 runs it made the whole run slower (see
-gpu_workers_validation.txt). OPENMX_GPU_WORKERS=1 (or on) enables it;
-without it every rank keeps this work on its own GPU. The eigensolver and
-its matrix products follow their own capacity rungs (cluster_mgpu.txt):
-the default gpusolver uses cuSOLVER when its matrices/workspaces fit and
-recovers through host-backed MAGMA on memory shortage. gpusolver3 always
-selects MAGMA. gpusolver2 retains the separate ELPA/COSMA implementation.
+The default policy is capacity based. An existing GPU operation first uses
+its rank's GPU. If that operation's buffers do not fit, it tries the allowed
+GPUs on the same node. If the local node still cannot hold the work, ranks
+at the same calculation phase cooperate across nodes. If no GPU layout is
+admitted, the operation completes on the CPU. CUDA allocation failures before
+publication follow the same recovery path. GPU memory exhaustion alone is
+not a reason to terminate a calculation.
+If an allocation fails after a successful capacity query, private buffers
+are released and other local group sizes are tried before remote recovery.
 
-Ownership
----------
-scf.Gpu.Num, CUDA_VISIBLE_DEVICES, scf.mgpu.enable and OPENMX_MGPU_NUM_GPUS
-bound the pool. The pool is the permitted GPU set of the rank's own node,
-also when the run spans several nodes: every rule below then holds per
-node, with the ranks of that node (workers never call MPI and only take
-node-local ordinals and locks). In a two-node job with one GPU per node,
-the ranks of each node work on that node's GPU, so both GPUs are busy; with
-more GPUs than ranks on a node, the free GPUs of the node become workers of
-that node's ranks. Band k-point groups remain single-node; the cluster
-capacity path is described in cluster_mgpu.txt. Band dense work uses exactly the current k-point group:
-floor(G/K) devices per computed k-point, only when that quotient is at least
-two. Thus K=3/G=4 does not cooperate and K=3/G=8 uses six devices.
+This policy also applies with one GPU per node. With several GPUs per node,
+local cooperation precedes communication with other nodes. CPU-only physics
+branches remain on the CPU. Dense transforms whose operands and result are
+already resident need no additional full matrix and retain their owner GPU.
+The dense eigensolver/GEMM ladder is described in cluster_mgpu.txt.
 
-Atom-local/grid-local work keeps every MPI rank's established GPU. Devices
-not occupied by another local rank are assigned cyclically to local ranks.
-This preserves MPI domain decomposition and avoids duplicate accumulation.
-A rank-owned global service may use the entire permitted pool. If all GPUs
-already have ranks, the ranks continue to perform their local work on their
-own GPUs. No worker invokes MPI. UUID-ordered interprocess admission uses
-the same locks as cooperative diagonalization and GEMM.
-
-Distributed operations
-----------------------
-- Orbital tables and on-the-fly atom/pair/chunk orbital evaluation.
-- Atom/grid overlap lists, nonlocal radial integrals, VNA integrals and
-  projector contractions; the opt-in overlap/kinetic radial GPU kernel.
-- Hamiltonian base terms and local-potential matrix elements, including
-  resident, streaming and on-the-fly CUDA/OpenACC paths.
-- Density grid construction, with exclusive output-grid ownership for
-  local CSR, rank-owned global CSR and on-the-fly contractions.
-- XC grid evaluation, including gradient/divergence halos and NC rotation.
-- Existing GPU total-energy terms, dipoles, force contractions and reductions.
-- GPU RMM-DIISH residual history, Gram matrices and optimum residuals.
-- Dense sparse-to-full assembly, spinor assembly, scaling, transposition,
-  Hermitian symmetrization, eigenvector packing, sparse DM/EDM extraction
-  and real/complex matrix products.
-
-Each element or atom has one owner, or contributes to a private partial
-reduction combined in a fixed order. State summations and GEMM's complete
-K dimension remain on one worker. Existing GeForce precision choices and
-A100 native FP64 choices are preserved. Operations that were CPU-only are
-unchanged. A task with fewer independent items than devices uses only the
-number of devices on which it can place nonempty work.
-
-Memory and lifetime
+Limits and controls
 -------------------
-Worker inputs use read-only peer access when available. Otherwise bounded
-copies or private input views are used. Accumulating outputs remain private
-until all workers finish. Disjoint overwrite-only tables can be filled
-directly; a failed attempt rebuilds the complete table through its original
-fallback. CUDA/OpenACC device bindings and the caller's dense scope
-are restored. Orbital caches are released on every device when their grid
-frame expires. Residual history is sharded across workers rather than
-replicated. Cooperative GEMM can stage its private full result on the host
-when the owner GPU lacks room for an additional full matrix.
+CUDA_VISIBLE_DEVICES, scf.Gpu.Num and OPENMX_MGPU_NUM_GPUS bound each node's
+pool. GPU ordinals are local to the node; the MPI protocol transfers values,
+never another process's pointers or CUDA ordinals. scf.mgpu.enable=off or
+OPENMX_MGPU=0 disables borrowing. No recovery path expands the configured
+GPU limit. Auxiliary work keeps its node pool when ELPA/COSMA is selected
+or no cooperative k-point group exists. Scheduler-provided visibility must
+be preserved.
 
-Recoverable preflight/allocation failure leaves accumulating results
-unchanged for the existing fallback. Publication/synchronization failures
-are errors, because retrying an already partly committed sum is unsafe.
-Automatic eigensolver memory recovery retains its stricter contract: it
-must succeed within the allowed GPU pool or terminate with an error.
+OPENMX_GPU_WORKERS:
+  unset or auto : use additional GPUs only for capacity recovery (default)
+  1 or on       : prefer a larger local group even when one GPU fits
+  0 or off      : retain the owner GPU, then use CPU recovery
+The forced performance splitter remains optional. It can be slower for small
+operations; the historical measurements in gpu_workers_validation.txt are
+not measurements of the new default capacity policy.
 
-Controls and validation
------------------------
-The distribution is off unless OPENMX_GPU_WORKERS=1 (or on); unset, 0 or
-any other value keeps the original single-device auxiliary kernels. This
-is independent of OPENMX_MGPU_GEMM and the solver selector.
-OPENMX_GPU_WORKER_COPY=1 exercises copies without peer views.
-OPENMX_MGPU_VERBOSE=1 reports operation names, nonempty item counts and
-actual worker device lists. A device-resident matrix product stays on its
-owner's GPU by default, like the eigensolver; OPENMX_MGPU_GEMM=on spreads
-it over the permitted GPUs for every size and auto with the older
-size/NVLink heuristic (both experimental).
+Band density work observes the active k-point group. Cooperative dense work
+uses floor(G/K) GPUs per computed k-point only when that quotient is at least
+two: K=3/G=4 has no cooperative group and K=3/G=8 uses six GPUs. Auxiliary
+atom/grid work uses the node pool within the same input limit.
+On multiple nodes, density recovery uses each helper's allowed node pool;
+Cluster spin worlds and uneven Band k-point turns synchronize their recovery
+phases over the calculation communicator so an idle group can help another.
 
-Host-only ownership/rollback checks:
+Existing per-operation controls still decide whether to use a GPU kernel at
+all. In particular, OPENMX_OLPKIN_RADIAL_GPU=1 retains its opt-in meaning;
+that kernel's MPI capacity phases run with one OpenMP thread per rank.
+OPENMX_GPU_WORKER_COPY=1 disables peer views for transfer testing.
+OPENMX_MGPU_VERBOSE=1 reports admitted device lists; remote recovery also
+reports the number of participating nodes and completion status.
+OPENMX_GPU_CAPACITY_TEST_RECOVERY=1 is a regression-test control: bypass
+legacy resident fast paths and enter the ordinary recovery planner. It does
+not enlarge the GPU pool or change numerical precision.
+
+Operations and data placement
+-----------------------------
+Recovery phases cover orbital grid tables, overlap grid lists, nonlocal/VNA
+radial integrals and projector contractions, Hamiltonian base/quadrature,
+density and XC grids, supported GPU energy/dipole terms, force contractions
+and reductions, residual-history mixing, and sparse DM/EDM extraction.
+The existing scalar-relativistic force kernels keep their physics eligibility
+checks; spin-orbit branches that were CPU-only are not converted to GPU.
+
+Point/pair/atom work is packed into bounded ranges. Ragged lists carry their
+own offsets, so helpers do not require local copies of the originating
+rank's neighbor tables. Projector and eigenvector recovery stages only the
+rows required by each range. Density-grid contractions deduplicate orbital
+and density-matrix blocks within each packet. XC ranges include the required
+halos. Mixing history can remain on the host while Gram products and linear
+combinations use GPU ranges. Original GeForce and A100 precision choices
+are retained.
+
+All ranks enter a recovery phase, including ranks with empty work and ranks
+whose own operation has finished. A private MPI communicator isolates the
+messages; only the MPI calling thread communicates. One helper rank per
+node can use that node's allowed GPU pool. Failed helpers are removed and
+work is repartitioned before falling back to the originating rank's CPU.
+
+Allocation, publication and lifetime
+-----------------------------------
+The planner includes operands, outputs and scratch, keeps device headroom,
+and admits heterogeneous free-memory layouts. UUID-ordered interprocess
+locks serialize overlapping GPU groups without changing MPI rank binding.
+Inputs and outputs for a GPU attempt are private until every piece succeeds.
+Remote transfers acknowledge host allocation before sending large packets.
+A failed attempt therefore cannot double-add forces, densities or energies.
+CPU range scratch is bounded too; a host-memory shortage is reported rather
+than silently exceeding host limits. Corrupt metadata, numerical solver
+failure, and device errors during publication remain errors.
+
+CUDA/OpenACC device binding and dense scope are restored after every worker.
+The capacity implementation does not require MPI_THREAD_MULTIPLE, CUDA-aware
+MPI, or peer access between nodes. Single-node peer access remains useful;
+ordinary copies are used when it is unavailable.
+
+Validation
+----------
+Host arithmetic/rollback and packet tests (ASan/UBSan where applicable):
   python3 tests/run_gpu_workers_cpu.py
-  python3 tests/run_gpu_meminfo_cpu.py
-  python3 tests/run_mgpu_runtime_cpu.py
-  python3 tests/run_mgpu_gemm_cpu.py
+  python3 tests/run_gpu_collective_mpi.py
+  python3 tests/run_gpu_task_cpu.py
+  python3 tests/run_gpu_vector_cpu.py
+  python3 tests/run_gpu_bilinear_cpu.py
+  python3 tests/run_dm_capacity_cpu.py
   python3 tests/run_gpu_dense_workers_cpu.py
-  python3 tests/run_setham_density_fallback_cpu.py
+  python3 tests/run_grid_recovery_cpu.py
+  python3 tests/run_projector_recovery_cpu.py
+  python3 tests/run_density_capacity_cpu.py
+  python3 tests/run_hamiltonian_capacity_cpu.py
+  python3 tests/run_hamiltonian_mapping_cpu.py
+  python3 tests/run_density_mapping_cpu.py
+  python3 tests/run_setpro_capacity_cpu.py
+  python3 tests/run_xc_capacity_cpu.py
+  python3 tests/run_energy_capacity_cpu.py
 
-Four-GPU transform/DM numerical oracle (NVHPC OpenACC and CUDA required):
-  bash tests/run_gpu_dense_workers_smoke.sh
-Set CUDA_HOME, CUDA_MATH_ROOT, NVHPC_CC, NVHPC_CXX, CUDAHOSTCXX and MPI_INCLUDE
-when these are outside PATH. OPENMX_GPU_TEST_COMPILE_ONLY=1 builds without
-starting a CUDA context; OPENMX_GPU_TEST_BUILD selects the output directory.
-
-CUDA/OpenACC quadrature and output-ownership oracles:
-  bash tests/run_setham_point_chunks_gpu.sh
-  bash tests/run_set_hamiltonian_stream_smoke.sh
-  bash tests/run_gpu_setham_workers_smoke.sh
-These use the same toolchain variables as the dense oracle. The first checks
-FP64/DF compact tiles, 96 guarded output ranges and actual CUDA/OpenACC
-prepare/execute failure rollback with fixed/dynamic CPU teams. SETPOINT_SANITIZE=1
-or SETHAMILTONIAN_SANITIZE=1 additionally enables CUDA memory checking.
-The last oracle compiles the actual OpenACC base/quadrature workers and
-compares them to host arithmetic, including spin components, core-hole and
-Hubbard terms, split pair boundaries, output guards and peer/copy transfers.
-
-Four-mode SCF/force regression, with a retained baseline executable:
+Four-mode SCF/force comparison on allocated GPUs:
   python3 tests/run_gpu_workers_regression.py --baseline /path/to/baseline \
-    --binary /path/to/candidate --output /new/output/path --gpus 4
-The harness records exact binaries, inputs, controls, energies, energy
-components, forces and worker ownership. Use --ranks/--threads for MPI
-layouts, --fp32/--env for precision and resident/streaming variants, and
---mixing rmm-diish --scf-iterations 7 --env OPENMX_MIXH_GPU=1 for history
-rotation. A completed test must show actual cooperative work, not only a
-successful executable exit.
+    --binary /path/to/candidate --output /new/output/path --gpus 4 \
+    --workers-mode auto
+Use --candidate-env OPENMX_GPU_CAPACITY_TEST_RECOVERY=1 to exercise recovery
+adapters against a baseline that keeps its ordinary execution paths,
+and --workers-mode 1 with --require-work NAME to check a specific distributed
+phase. The tests record binary/input hashes, energies, components, forces
+and device ownership. tests/gpu_task_mpi_check.c checks the actual CUDA/MPI
+ladder, including occupied owners and GPU caps. Its --logical-nodes mode
+uses disjoint GPU pairs on one physical node to test the wire protocol;
+it is not a substitute for a physical multi-node run.
+Link this check with -Wl,--wrap=cudaMalloc to enable the late-allocation test.
+Its --local mode needs one MPI rank and two GPUs and checks the local/CPU
+tiers, including a late allocation failure after successful admission.
+--logical-single uses two ranks and disjoint single GPUs to test recovery
+when each node is permitted only one GPU.
 
-The implementation does not imply that every small kernel is faster with
-more GPUs. Transfer, launch and reduction costs must be included when
-comparing timings. Completed measurements are recorded separately from
-implementation descriptions.
+The 2026-10-16 build, numerical comparisons, fault-injection checks and
+physical multi-node validation limits are recorded in gpu_capacity_validation.txt.

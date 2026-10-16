@@ -51,12 +51,13 @@ exhaustion automatically selects the host-backed multi-GPU MAGMA path.
 gpusolver3 forces MAGMA even when one GPU would have enough memory.
 Both honor the exact q*K allocation and scf.Gpu.Num upper bound. If q<2,
 MAGMA is unavailable or the selected GPUs cannot hold the required scratch,
-a forced / capacity solve reports an error and stops. gpusolver2 remains
+a forced / capacity solve reports the reason and uses the CPU. gpusolver2 remains
 distributed ELPA/COSMA. Input off disables cooperation.
 
-Device-resident GEMM and other dense kernels use the same k-point group.
-GEMM defaults to all sizes; OPENMX_MGPU_GEMM=auto restores the legacy
-shape/NVLink policy. Other GPU phases follow local MPI/atom ownership
+Device-resident GEMM stays on its owner by default. Optional cooperative
+GEMM and k-dependent dense kernels use the same k-point group;
+OPENMX_MGPU_GEMM=on enables all sizes and auto uses the shape/NVLink policy.
+Other GPU phases recover capacity locally, across nodes, then on the CPU,
 as described in gpu_workers.txt.
 The optional OPENMX_MGPU_SOLVER=auto timing experiment applies only to
 ordinary device-resident gpusolver solves. It is not the default and never
@@ -100,8 +101,9 @@ is exact and idempotent.
 
 Rebuild with WITH_MAGMA=1 to update an existing local install. WITH_MAGMA=auto
 only links an existing install. An unpatched external MAGMA can still serve
-prefix groups [0,1,...]; nonprefix groups report unavailable; forced or capacity solves then stop
-with an error. WITH_MAGMA=0 retains native cuSOLVER and custom GEMM.
+prefix groups [0,1,...]; nonprefix groups report unavailable and forced or
+capacity solves then use CPU recovery. WITH_MAGMA=0 retains native cuSOLVER
+and custom GEMM, with CPU recovery when the dense GPU work cannot fit.
 The experimental paper backend has been removed. The gpusolver keyword includes automatic memory recovery through MAGMA;
 gpusolver3 forces it and gpusolver2 remains the distributed ELPA/COSMA selector.
 

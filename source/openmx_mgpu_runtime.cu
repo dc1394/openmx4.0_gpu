@@ -4,6 +4,7 @@
 #include "openmx_mgpu_runtime.h"
 #include "openmx_magma_mgpu.h"
 #include "openmx_mgpu_gemm.h"
+#include "openmx_dense_cpu.h"
 #include "openmx_stdout_level.h"
 
 #include <algorithm>
@@ -38,7 +39,7 @@ extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *, size
 namespace {
 using Clock = std::chrono::steady_clock;
 enum Backend { Native = 0, Magma = 1 };
-int input_enabled = -1, input_gpu_limit = 0, topology_single_node = 0;
+int input_enabled = -1, input_aux_enabled = -1, input_gpu_limit = 0, topology_single_node = 0;
 int input_force_magma = 0;
 thread_local char host_error[512] = "";
 thread_local int cluster_scope = 0;
@@ -81,9 +82,12 @@ const char *backend_name(Backend backend)
    call MPI and only take node-local ordinals and locks.  The
    device-resident cooperative eigensolves and the Band k-point groups
    stay single-node. */
-int pool_gpu_count(bool node_local)
+int pool_gpu_count(bool node_local, bool auxiliary = false)
 {
-    if ((!topology_single_node && !node_local) || input_enabled == 0) return 0;
+    if ((!topology_single_node && !node_local) ||
+        (auxiliary ? input_aux_enabled : input_enabled) == 0) return 0;
+    const char *gpu = std::getenv("OPENMX_GPU");
+    if (auxiliary && gpu && *gpu && std::atoi(gpu) == 0) return 0;
     const char *v = std::getenv("OPENMX_MGPU");
     if (v && *v && std::strcmp(v,"0") == 0) return 0;
     int count = 0;
@@ -598,11 +602,17 @@ void report_gemm(int m,int n,int k,char type,const int *devices,int count)
 extern "C" void openmx_mgpu_configure(int enabled,int gpu_limit,int single_node)
 {
     std::lock_guard<std::mutex> guard(operation_mutex);
-    input_enabled=enabled; input_gpu_limit=gpu_limit; topology_single_node=single_node;
+    input_enabled=enabled; input_aux_enabled=enabled; input_gpu_limit=gpu_limit; topology_single_node=single_node;
     solver_choices.clear();
     openmx_magma_mgpu_release_cache();
     std::lock_guard<std::mutex> topology_guard(topology_mutex);
     nvlink_choices.clear();
+}
+/* Auxiliary work has no k-point partition and remains available when the
+   dense solver is ELPA/COSMA or the local k-point group has only one GPU. */
+extern "C" void openmx_mgpu_configure_auxiliary(int enabled)
+{
+    input_aux_enabled=enabled;
 }
 extern "C" int openmx_mgpu_scope_enter(int allowed)
 {
@@ -616,7 +626,7 @@ extern "C" int openmx_mgpu_scope_active(void) { return cluster_scope!=0; }
    a multi-node run (see pool_gpu_count). */
 extern "C" int openmx_mgpu_pool_devices(int *devices,int capacity)
 {
-    const int count=pool_gpu_count(true);
+    const int count=pool_gpu_count(true,true);
     if (count<1 || !devices || capacity<count) return 0;
     for (int i=0;i<count;++i) devices[i]=i;
     return count;
@@ -625,12 +635,15 @@ extern "C" int openmx_mgpu_scope_devices(int *devices,int capacity)
 {
     if (!cluster_scope) return 0;
     if (band_kpoints) return band_group(band_kpoints,band_kpoint,devices,capacity);
-    return openmx_mgpu_pool_devices(devices,capacity);
+    const int count=pool_gpu_count(true);
+    if (count<1 || !devices || capacity<count) return 0;
+    for (int i=0;i<count;++i) devices[i]=i;
+    return count;
 }
 extern "C" void *openmx_mgpu_admit_devices(const int *devices,int count)
 {
     if (!devices || count<1 || count>64) return nullptr;
-    int permitted=pool_gpu_count(true);
+    int permitted=pool_gpu_count(true,true);
     if (count==1 && permitted==0) {
         /* Single-device callbacks also serve the original GPU paths when
            cooperation is disabled. They may only use the current device. */
@@ -818,20 +831,36 @@ extern "C" int openmx_mgpu_host_solve(int n,int nev,int complex_matrix,void *a,i
 {
     int devices[8], count=host_devices(devices);
     std::snprintf(host_error,sizeof(host_error),"no eligible MAGMA device group");
-    if (count<2) return 0;
+    int rc=OPENMX_MAGMA_RESOURCES;
     try {
-        Admission admission(devices,count);
-        if (!admission.ok) return 0;
-        const auto start=Clock::now();
-        const int rc=openmx_magma_mgpu_solve_host_devices(count,devices,complex_matrix,1,1,n,1,nev,a,lda,w);
-        std::snprintf(host_error,sizeof(host_error),"MAGMA status=%d: %s",rc,openmx_magma_mgpu_last_error());
-        if (verbose() || rc) std::fprintf(stderr,
-            "<OpenMX_MGPU> solver selected n=%d nev=%d type=%c gpus=%d backend=magma storage=host seconds=%.6f valid=%d %s%s%s\n",
-            n,nev,complex_matrix?'Z':'D',count,seconds_since(start),rc==0,operation_context(devices,count),rc?" error=":"",rc?host_error:"");
-        return rc==0;
+        if (count>=2) {
+            Admission admission(devices,count);
+            if (admission.ok) {
+                const auto start=Clock::now();
+                rc=openmx_magma_mgpu_solve_host_devices(count,devices,complex_matrix,1,1,n,1,nev,a,lda,w);
+                std::snprintf(host_error,sizeof(host_error),"MAGMA status=%d: %s",rc,openmx_magma_mgpu_last_error());
+                if (verbose() || rc) std::fprintf(stderr,
+                    "<OpenMX_MGPU> solver selected n=%d nev=%d type=%c gpus=%d backend=magma storage=host seconds=%.6f valid=%d %s%s%s\n",
+                    n,nev,complex_matrix?'Z':'D',count,seconds_since(start),rc==0,operation_context(devices,count),rc?" error=":"",rc?host_error:"");
+            }
+        }
     } catch (const std::bad_alloc &) {
-        std::snprintf(host_error,sizeof(host_error),"host memory allocation failed in MAGMA"); return 0;
+        std::snprintf(host_error,sizeof(host_error),"host memory allocation failed in MAGMA");
+        rc=OPENMX_MAGMA_RESOURCES;
     }
+    if (rc==OPENMX_MAGMA_SUCCESS) return 1;
+    /* The adapter leaves A/W untouched on failure. Do not hide numerical
+       validation failures or CUDA execution faults behind a CPU retry. */
+    if (rc!=OPENMX_MAGMA_RESOURCES && rc!=OPENMX_MAGMA_UNAVAILABLE) return 0;
+    std::fprintf(stderr,"<OpenMX_MGPU> n=%d: %s; using CPU LAPACK.\n",n,host_error);
+    if (openmx_dense_cpu_eigen(n,nev,complex_matrix,a,lda,w)) return 1;
+    std::snprintf(host_error,sizeof(host_error),"CPU eigensolver failed after GPU capacity fallback (n=%d, nev=%d)",n,nev);
+    return 0;
+}
+
+static char cpu_transpose(cublasOperation_t op)
+{
+    return op==CUBLAS_OP_N?'N':op==CUBLAS_OP_T?'T':op==CUBLAS_OP_C?'C':'?';
 }
 
 extern "C" int openmx_mgpu_host_dgemm(cublasOperation_t ta,cublasOperation_t tb,
@@ -840,18 +869,22 @@ extern "C" int openmx_mgpu_host_dgemm(cublasOperation_t ta,cublasOperation_t tb,
     int devices[8], count=host_devices(devices);
     const double alpha=1.0,beta=0.0;
     cublasStatus_t status=CUBLAS_STATUS_ALLOC_FAILED;
+    int handled=0;
     try {
         if (count>=2) {
             Admission admission(devices,count);
-            if (admission.ok && openmx_mgpuDgemmHostTry(count,devices,ta,tb,m,n,k,&alpha,a,lda,b,ldb,&beta,c,ldc,&status) && status==CUBLAS_STATUS_SUCCESS) {
+            if (admission.ok) handled=openmx_mgpuDgemmHostTry(count,devices,ta,tb,m,n,k,&alpha,a,lda,b,ldb,&beta,c,ldc,&status);
+            if (handled && status==CUBLAS_STATUS_SUCCESS) {
                 report_gemm(m,n,k,'D',devices,count); return 1;
             }
         }
     } catch (const std::bad_alloc &) {}
     openmx_mgpu_gemm_report report{}; openmx_mgpuGemmLastReport(&report);
-    std::snprintf(host_error,sizeof(host_error),"host-backed multi-GPU DGEMM failed: %s (status=%d, group=%d, scf.gpu.num limit=%d); no single-GPU fallback",
+    std::snprintf(host_error,sizeof(host_error),"host-backed multi-GPU DGEMM failed: %s (status=%d, group=%d, scf.gpu.num limit=%d)",
         count<2?"no eligible group":report.reason?report.reason:"resource or execution error",int(status),count,input_gpu_limit);
-    return 0;
+    if (handled) return 0; /* Failed publication is not a capacity decline. */
+    std::fprintf(stderr,"<OpenMX_MGPU> %s; using CPU BLAS.\n",host_error);
+    return openmx_dense_cpu_gemm(cpu_transpose(ta),cpu_transpose(tb),0,m,n,k,a,lda,b,ldb,c,ldc);
 }
 extern "C" int openmx_mgpu_host_zgemm(cublasOperation_t ta,cublasOperation_t tb,
     int m,int n,int k,const void *a,int lda,const void *b,int ldb,void *c,int ldc)
@@ -859,18 +892,22 @@ extern "C" int openmx_mgpu_host_zgemm(cublasOperation_t ta,cublasOperation_t tb,
     int devices[8], count=host_devices(devices);
     const cuDoubleComplex alpha={1.0,0.0},beta={0.0,0.0};
     cublasStatus_t status=CUBLAS_STATUS_ALLOC_FAILED;
+    int handled=0;
     try {
         if (count>=2) {
             Admission admission(devices,count);
-            if (admission.ok && openmx_mgpuZgemmHostTry(count,devices,ta,tb,m,n,k,&alpha,
+            if (admission.ok) handled=openmx_mgpuZgemmHostTry(count,devices,ta,tb,m,n,k,&alpha,
                 static_cast<const cuDoubleComplex*>(a),lda,static_cast<const cuDoubleComplex*>(b),ldb,&beta,
-                static_cast<cuDoubleComplex*>(c),ldc,&status) && status==CUBLAS_STATUS_SUCCESS) {
+                static_cast<cuDoubleComplex*>(c),ldc,&status);
+            if (handled && status==CUBLAS_STATUS_SUCCESS) {
                 report_gemm(m,n,k,'Z',devices,count); return 1;
             }
         }
     } catch (const std::bad_alloc &) {}
     openmx_mgpu_gemm_report report{}; openmx_mgpuGemmLastReport(&report);
-    std::snprintf(host_error,sizeof(host_error),"host-backed multi-GPU ZGEMM failed: %s (status=%d, group=%d, scf.gpu.num limit=%d); no single-GPU fallback",
+    std::snprintf(host_error,sizeof(host_error),"host-backed multi-GPU ZGEMM failed: %s (status=%d, group=%d, scf.gpu.num limit=%d)",
         count<2?"no eligible group":report.reason?report.reason:"resource or execution error",int(status),count,input_gpu_limit);
-    return 0;
+    if (handled) return 0;
+    std::fprintf(stderr,"<OpenMX_MGPU> %s; using CPU BLAS.\n",host_error);
+    return openmx_dense_cpu_gemm(cpu_transpose(ta),cpu_transpose(tb),1,m,n,k,a,lda,b,ldb,c,ldc);
 }

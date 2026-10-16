@@ -5,6 +5,7 @@
 #include <openacc.h>
 #include <omp.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,15 +24,94 @@ void openmx_gpu_workers_configure(int local_rank, int local_size, int mapped_dev
     mapped_count=mapped_devices;
 }
 
-/* Spreading the GPU work outside the generalized eigenproblem over several
-   GPUs is experimental and off by default (on the measured Si1000 runs it
-   made the whole run slower): OPENMX_GPU_WORKERS=1 or on enables it, and
-   otherwise every rank keeps its work on its own GPU. */
+/* =1 requests performance distribution even when one GPU has enough room.
+   Capacity callers use openmx_gpu_workers_capacity with auto as default. */
 static int workers_enabled(void)
 {
     const char *control=getenv("OPENMX_GPU_WORKERS");
     return control && (strcmp(control,"1")==0 || strcmp(control,"on")==0 ||
                        strcmp(control,"ON")==0);
+}
+
+int openmx_gpu_workers_capacity_enabled(void)
+{
+    const char *gpu=getenv("OPENMX_GPU");
+    if(gpu && *gpu && atoi(gpu)==0)return 0;
+    const char *v=getenv("OPENMX_GPU_WORKERS");
+    if(v && (strcmp(v,"0")==0 || strcmp(v,"off")==0 || strcmp(v,"OFF")==0))return 0;
+    int devices[OPENMX_GPU_WORKERS_MAX];
+    return openmx_mgpu_pool_devices(devices,OPENMX_GPU_WORKERS_MAX)>0;
+}
+
+int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
+    OpenMXGpuWorkerCost cost,void *context)
+{
+    int owner=-1,ids[OPENMX_GPU_WORKERS_MAX],available[OPENMX_GPU_WORKERS_MAX]={0};
+    size_t room[OPENMX_GPU_WORKERS_MAX]={0};
+    const size_t reserve=(size_t)256*1024*1024;
+    memset(pool,0,sizeof(*pool)); pool->items=items;
+    if (!items) return 1;
+    if (!cost || cudaGetDevice(&owner)!=cudaSuccess || owner<0) return 0;
+    /* No other device is even queried when the ordinary owner fits. */
+    size_t free_bytes=0,total=0;
+    int owner_fits=OpenMX_GpuMemGetInfo(&free_bytes,&total)==cudaSuccess &&
+        free_bytes>reserve && cost(context,0,1)<=free_bytes-reserve;
+    if (owner_fits && (!workers_enabled() || worker_device>=0)) {
+        pool->devices[0]=owner; pool->count=1; return 1;
+    }
+    if (worker_device<0 && openmx_gpu_workers_capacity_enabled()) {
+        int count=kind==2 ? openmx_mgpu_scope_devices(ids,OPENMX_GPU_WORKERS_MAX) :
+                           openmx_mgpu_pool_devices(ids,OPENMX_GPU_WORKERS_MAX);
+        if (count>OPENMX_GPU_WORKERS_MAX) count=OPENMX_GPU_WORKERS_MAX;
+        for (int i=0;i<count;i++) {
+            if (cudaSetDevice(ids[i])==cudaSuccess &&
+                OpenMX_GpuMemGetInfo(&free_bytes,&total)==cudaSuccess && free_bytes>reserve) {
+                room[i]=free_bytes-reserve; available[i]=1;
+            }
+        }
+        /* Exact scopes retain their device order. Other pools put the owner
+           first; no GPU outside the permitted list is appended. */
+        if (kind!=2) for (int i=0;i<count;i++) if (ids[i]==owner) {
+            int d=ids[0],a=available[0]; size_t r=room[0];
+            ids[0]=ids[i]; available[0]=available[i]; room[0]=room[i];
+            ids[i]=d; available[i]=a; room[i]=r;
+        }
+        const int limit=items<(size_t)count?(int)items:count;
+        const int forced=workers_enabled();
+        for (int n=forced?limit:1;n>=1 && n<=limit;n+=forced?-1:1) {
+            int fits=1,chosen[OPENMX_GPU_WORKERS_MAX],used[OPENMX_GPU_WORKERS_MAX]={0};
+            int assigned[OPENMX_GPU_WORKERS_MAX]={0};
+            size_t need[OPENMX_GPU_WORKERS_MAX];
+            for (int i=0;i<n;i++) need[i]=cost(context,i,n);
+            /* Place the largest shard first. Exact dense scopes retain
+               their order; other callers can skip a full local device. */
+            for (int step=0;step<n;step++) {
+                int slot=-1,device=-1;
+                if (kind==2) slot=step;
+                else for (int i=0;i<n;i++) if (!assigned[i] && (slot<0 || need[i]>need[slot])) slot=i;
+                assigned[slot]=1;
+                if (kind==2) {
+                    if (available[slot] && need[slot]!=SIZE_MAX && need[slot]<=room[slot]) device=slot;
+                } else {
+                    for (int i=0;i<count;i++) if (!used[i] && available[i] &&
+                        need[slot]!=SIZE_MAX && need[slot]<=room[i]) {
+                        if (device<0 || ids[i]==owner || (ids[device]!=owner && room[i]<room[device])) device=i;
+                    }
+                }
+                if (device<0) {fits=0;break;}
+                used[device]=1;chosen[slot]=ids[device];
+            }
+            if (fits) {
+                pool->count=n;
+                memcpy(pool->devices,chosen,(size_t)n*sizeof(int));
+                break;
+            }
+        }
+    }
+    if (cudaSetDevice(owner)!=cudaSuccess) { pool->count=0; return 0; }
+    if (!pool->count && owner_fits) { pool->devices[0]=owner; pool->count=1; }
+    (void)cudaGetLastError();
+    return pool->count>0;
 }
 
 static void worker_pool(OpenMXGpuWorkers *pool, size_t items, int kind)
@@ -144,7 +224,8 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
     if (!pool->count) return pool->items==0;
     /* Nested worker launch would deadlock the shared admission mutex. */
     if (worker_device>=0) return 0;
-    if (cudaDeviceSynchronize()!=cudaSuccess) return 0;
+    if (gpu_rank_device_usable() && cudaDeviceSynchronize()!=cudaSuccess) return 0;
+    (void)cudaGetLastError();
     void *admission=openmx_mgpu_admit_devices(pool->devices,pool->count);
     if (!admission) return 0;
     for (int i=0;i<pool->count;i++)
@@ -173,7 +254,7 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
     }
     openmx_mgpu_release_devices(admission);
     const char *verbose=getenv("OPENMX_MGPU_VERBOSE");
-    if (verbose && atoi(verbose) && pool->count>1) {
+    if (verbose && atoi(verbose) && (pool->count>1 || openmx_gpu_capacity_test_recovery())) {
         fprintf(stderr,"<OpenMX_MGPU> work name=%s workers=%d items=%zu completed=%d devices=",
             label?label:"unnamed",pool->count,pool->items,ok);
         for (int i=0;i<pool->count;i++) fprintf(stderr,"%s%d",i?",":"",pool->devices[i]);

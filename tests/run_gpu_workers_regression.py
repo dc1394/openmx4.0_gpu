@@ -39,10 +39,10 @@ def run(args, case, candidate):
         'OMP_NUM_THREADS':str(args.threads),'OPENBLAS_NUM_THREADS':str(args.threads),
         'MAGMA_NUM_THREADS':str(args.threads),'OPENMX_EIGEN_REFINE':'0',
         'OPENMX_MGPU_SOLVER':'single','OPENMX_MGPU_GEMM':'0','OPENMX_MGPU_VERBOSE':'1',
-        'OPENMX_GPU_WORKERS':'1' if candidate else '0',
+        'OPENMX_GPU_WORKERS':args.workers_mode if candidate else '0',
         'OPENMX_CLUSTER_GPU_SWITCH_NUM':'1','OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM':'1',
         'OPENMX_BAND_GPU_SWITCH_NUM':'1','OPENMX_BAND_NONCOL_GPU_SWITCH_NUM':'1'}
-    for item in args.env:
+    for item in args.env+(args.candidate_env if candidate else []):
         key,sep,value=item.partition('=')
         if not sep: raise ValueError('--env needs NAME=value')
         controls[key]=value
@@ -74,16 +74,19 @@ def run(args, case, candidate):
         if not all(math.isfinite(x) for x in [energy]+list(forces)+list(components.values())): raise ValueError('Nonfinite output')
         work=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in log.splitlines() if '<OpenMX_MGPU> work name=' in line]
         for row in work:
+            if row.get('tier')=='remote':
+                if int(row.get('nodes','0'))<1: raise ValueError(f'Invalid remote placement: {row}')
+                continue
             devices=list(map(int,row['devices'].split(',')))
             if len(set(devices))!=int(row['workers']) or any(d<0 or d>=args.gpus for d in devices):
                 raise ValueError(f'Worker GPU limit/ownership violation: {row}')
-            if row['completed']!='1': raise ValueError(f'GPU worker declined/failed: {row}')
+            if row['completed'] not in ('0','1'): raise ValueError(f'Invalid worker completion: {row}')
         eligible=args.gpus>=2 and (not case.startswith('band_') or args.gpus//2>=2)
-        if candidate and eligible and args.ranks<args.gpus and not any(int(r['workers'])>1 and r['completed']=='1' for r in work):
+        if candidate and args.workers_mode=='1' and eligible and args.ranks<args.gpus and not any(int(r.get('workers','1'))>1 and r['completed']=='1' for r in work):
             raise ValueError('No successful multi-GPU non-diagonalization work')
         if not candidate and work: raise ValueError('Worker-disabled baseline unexpectedly distributed work')
-        if candidate and eligible and args.ranks<args.gpus:
-            names={r['name'] for r in work}
+        if candidate:
+            names={r['name'] for r in work if r['completed']=='1'}
             missing=set(args.require_work)-names
             if missing: raise ValueError(f'Required GPU operations not exercised: {sorted(missing)}')
         result.update(energy_hartree=energy,energy_components=components,atoms=coordinates,
@@ -103,8 +106,10 @@ def main():
     p.add_argument('--gpus',type=int,default=4);p.add_argument('--ranks',type=int,default=1);p.add_argument('--threads',type=int,default=4)
     p.add_argument('--scf-iterations',type=int,default=2);p.add_argument('--fp32',choices=('on','off'),default='off')
     p.add_argument('--mixing',default='rmm-diisk');p.add_argument('--env',action='append',default=[])
+    p.add_argument('--candidate-env',action='append',default=[],help='Candidate-only capacity/fault controls')
     p.add_argument('--spin-imbalance',type=float,default=0,help='Initial Si up-minus-down population; use with spin on/NC')
     p.add_argument('--input',action='append',default=[],help='Override an input keyword for both binaries')
+    p.add_argument('--workers-mode',choices=('1','auto','off'),default='1',help='Candidate auxiliary GPU capacity/performance policy')
     p.add_argument('--require-work',action='append',default=[],help='Require a successful named distributed phase')
     p.add_argument('--mpirun',default='mpirun');p.add_argument('--timeout',type=float,default=300)
     p.add_argument('--energy-tolerance',type=float,default=1e-7);p.add_argument('--force-tolerance',type=float,default=1e-7)

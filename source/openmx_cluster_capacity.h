@@ -15,14 +15,14 @@
        in turn on such a grid), i.e. both nodes of a two-node job.  ELPA
        and COSMA use the GPU each rank is bound to, so with at least one
        rank per GPU: 1 GPU per node gives 2 GPUs, 2 GPUs per node 4 GPUs;
-    3. otherwise the run stops with the reason.
+    3. otherwise the distributed CPU eigensolver and matrix products.
 
   The host-memory test uses MemAvailable bounded by the cgroup limits of
   rank 0; OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB overrides it.
 
   OPENMX_CLUSTER_GS2_FALLBACK (read on rank 0 only):
     unset/auto  as above (step 2 only in multi-node runs)
-    0/off       never step 2 (the run stops when MAGMA cannot take it)
+    0/off       never step 2 (use the CPU when MAGMA cannot take it)
     1/on        step 2 also in a single-node run
     force       skip step 1 and go straight to step 2 (tests on inputs
                 that MAGMA could take)
@@ -34,12 +34,13 @@
 
 #include <mpi.h>
 
+#define OPENMX_CLUSTER_CAPACITY_CPU   0
 #define OPENMX_CLUSTER_CAPACITY_MAGMA 1
 #define OPENMX_CLUSTER_CAPACITY_GS2   2
 
 /* Collective over comm, called by every rank after the native buffers were
-   released: rank 0 decides and broadcasts.  Returns MAGMA or GS2 on every
-   rank, or stops the run with the reason.  n is the order of the dense
+   released: rank 0 decides and broadcasts. Returns CPU, MAGMA or GS2 on
+   every rank. n is the order of the dense
    problem (2n, the spinor order, for the noncollinear solver). */
 int openmx_cluster_capacity_select(MPI_Comm comm, int n, int complex_matrix,
                                    const char *label);
@@ -48,9 +49,9 @@ int openmx_cluster_capacity_select(MPI_Comm comm, int n, int complex_matrix,
    of order n on this rank's BLACS grid (ictxt, nblk; each collinear spin
    world passes its own grid), reports the placement (nodes, GPUs, ranks)
    at level.of.stdout 1 and turns on the bridge's fallback reporting.
-   Stops the run when the GPUs of the grids cannot hold the solve, unless
-   OPENMX_GS2_ELPA_GPU fixes the kernel side. */
-void openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
+   Returns 1 on admission and 0 on every rank when the caller must use its
+   CPU path. OPENMX_GS2_ELPA_GPU explicitly fixes the bridge's kernel side. */
+int openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
                               int complex_matrix, const char *label);
 
 #endif /* OPENMX_CLUSTER_CAPACITY_H */

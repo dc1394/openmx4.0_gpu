@@ -387,7 +387,9 @@ int solve(int ngpu, const int *devices, int vectors, int lower, int n, int first
     if (result || info || found != count) {
         std::snprintf(magma_error, sizeof(magma_error), "MAGMA solve failed: status=%d info=%d eigenpairs=%d expected=%d",
                       result, int(info), int(found), count);
-        return OPENMX_MAGMA_LIBRARY_ERROR;
+        return result==MAGMA_ERR_DEVICE_ALLOC || result==MAGMA_ERR_HOST_ALLOC ||
+               info==MAGMA_ERR_DEVICE_ALLOC || info==MAGMA_ERR_HOST_ALLOC ?
+               OPENMX_MAGMA_RESOURCES : OPENMX_MAGMA_LIBRARY_ERROR;
     }
     order_eigenpairs(n,count,vectors!=0,copy,eigenvalues);
     if (!validate<T>(A, lda, lower != 0, n, count, copy, eigenvalues, vectors != 0, norm)) {

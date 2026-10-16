@@ -1,0 +1,179 @@
+GPU capacity recovery validation, 2026-10-16
+==========================================
+
+Change under test
+-----------------
+Ordinary auxiliary GPU work now tries the owner's GPU, other permitted GPUs
+on the same node, participating nodes, and finally CPU execution. The
+performance splitter is optional; OPENMX_GPU_WORKERS need not be enabled
+for capacity recovery. GPU exhaustion in the dense eigensolver/GEMM ladder
+also permits CPU execution. GPU limits and exact Band k-point groups are
+preserved. CPU-only physics branches keep their existing implementations.
+
+Allocation attempts stage private results and publish only after success.
+Late allocation failure retries other local group sizes before requesting
+remote helpers. Checked CUDA/OpenACC mappings replace allocation directives
+that could terminate Hamiltonian/density construction before recovery.
+Empty ranks participate in recovery collectives, including separate spin
+worlds and unequal k-point loop counts.
+
+Build and artifacts
+-------------------
+Built source/openmx with:
+  make -C source -f Makefile.kugui -j4 openmx WITH_MAGMA=1 \
+    MAGMA_JOBS=2 GPUSOLVER2_JOBS=2
+
+NVHPC 24.7, CUDA 12.5, Open MPI 4.1.6, MAGMA and ELPA/COSMA enabled.
+The installed work/openmx was not replaced. Private run artifacts, frozen
+binaries, inputs, complete logs and JSON comparisons are under:
+  work/codex_review_20261016/
+
+Frozen baseline SHA256:
+  b4132ca982af1638b252824a1e8913395234ce85869006e2884cc02f76419768
+Final source/openmx and openmx-capacity-verified SHA256:
+  dd9a1411c0b095545f9bf167fb58caafc900cc7beab15ee392930e4434f766e0
+
+Tests were run incrementally as affected paths changed. Each result.json
+contains the exact binary/input hashes and execution controls for that run.
+The final build is recorded in build-gs2-lifecycle-final.log. No production
+source change followed that build; its hash matches the tested snapshot.
+
+A100 SCF/force comparisons
+-------------------------
+Hardware: A100-SXM4-40GB, allocated pools of two or four GPUs, private MPS.
+Inputs: silicon diamond supercells, Si7.0-s2p2d1 / Si_PBE19, 200 Ry,
+two SCF iterations, fixed geometry, FP64. All comparisons require normal
+completion, all requested SCF steps, identical atoms/grids, finite total
+energy, energy components and every Cartesian force. Tolerances are 1e-7
+Hartree and 1e-7 Hartree/bohr. These short runs test correctness and recovery;
+they are not convergence or large-system performance benchmarks.
+
+Dataset                     Cases                         Runs  Result
+pressure-stage4             all four Cluster/Band types      8  PASS
+auto-stage4                 all four Cluster/Band types      8  PASS
+dense-stage4                all four types, four modes      16  PASS
+gs2-aux-final               collinear/NC Cluster             4  PASS
+auto-final                  all four Cluster/Band types      8  PASS
+density-transient-final     NC Cluster/Band                  4  PASS
+spin-on-final               spin-polarized Cluster/Band      4  PASS
+uneven-k-final              collinear Band, three k-points   2  PASS
+spin-world-final            spin-polarized Band              2  PASS
+gs2-lifecycle-gpu           collinear/NC Cluster, ELPA GPU   4  PASS
+gs2-lifecycle-cpu           collinear/NC Cluster, ELPA CPU   4  PASS
+
+There are 64 completed runs and 36 numerical comparisons in this table.
+The largest total-energy difference is 2.800e-11 Hartree; the largest force
+component difference is 5.200e-11 Hartree/bohr. Energy-component comparisons
+also pass. Per-case numbers are in each dataset's comparisons.json.
+
+pressure-stage4 uses 8 atoms, four ranks, four GPUs and one thread/rank.
+The recovery control bypasses resident fast paths; oversized Hamiltonian
+and density reserves exercise their recovery adapters. Both NC cases start
+with a 0.2-electron spin imbalance. All four outputs match the baseline.
+
+auto-stage4 and auto-final use 64 atoms, two ranks, two threads/rank and the
+default capacity policy, with four and two visible GPUs respectively.
+auto-final exercises local density caches. density-transient-final repeats
+the NC cases with the density cache disabled to check transient mappings.
+
+dense-stage4 uses 8 atoms and one rank in a four-GPU allocation. It compares
+native cuSOLVER, forced admission failure followed by automatic MAGMA,
+gpusolver3, and forced admission failure with a restrictive scf.Gpu.Num.
+The last case must finish through CPU recovery and match native output.
+The run logs verify the chosen backend and configured GPU upper bound.
+
+gs2-aux-final confirms that auxiliary recovery remains enabled for both
+Cluster spin types with scf.eigen.lib=gpusolver2. spin-on-final uses two
+ranks/two GPUs and checks density recovery across spin worlds.
+spin-world-final uses four ranks/two GPUs and two computed k-points.
+uneven-k-final uses two ranks and three computed k-points; the candidate's
+dense GPU admission is forced to fail, while the baseline remains native.
+All of these tests complete two SCF steps and the force calculation.
+
+gs2-lifecycle-gpu and gs2-lifecycle-cpu rerun both Cluster spin types after
+the final ELPA lifecycle fix (PBS 939442, exit status 0). The latter applies
+OPENMX_GS2_GPU_RESERVE_MB=65536 only to the candidate. Logs explicitly show
+ELPA CPU kernels and real/complex ScaLAPACK products replacing the GPU
+implementations. GPU comparisons match exactly; CPU recovery differs by
+at most 1.001e-12 in an energy component or force component.
+
+An additional gs2-dm-final check finished normally with zero differences
+in energy components and forces, but its required density-matrix-capacity
+GPU-phase assertion failed. That assertion is inapplicable: noncollinear
+gpusolver2 builds its density matrix through the existing CPU ScaLAPACK
+branch. Its original failed result is preserved; physics-comparison.json
+records only the separate numerical check. It is excluded from the table.
+An earlier gs2-aux-stage4 trial used unsupported Band+gpusolver2 inputs and
+was rejected at input parsing; the valid Cluster tests above replaced it.
+
+CUDA/MPI capacity and failure checks
+-----------------------------------
+tests/gpu_task_mpi_check.c exercises the real CUDA allocations, OpenACC
+kernels, device restoration and MPI packet transport. It was linked with
+-Wl,--wrap=cudaMalloc for deterministic late allocation failures.
+
+  Four GPUs, two logical nodes with disjoint pairs: owner, local, remote,
+  CPU, occupied owner, GPU cap and failed owner initialization all pass.
+  Artifacts: aux-stage4-live.log, PBS 939415.
+
+  Two GPUs, one local rank: owner, local, CPU, cap, failed owner
+  initialization and late cudaMalloc failure after successful admission
+  all pass. The late failure recovers on the two local GPUs.
+  Artifacts: capacity-final-live.log, PBS 939424.
+
+  Two GPUs, two logical nodes with one disjoint GPU each: owner, remote,
+  CPU, occupied owner and one-GPU-per-node limits all pass.
+  Artifacts: capacity-single-live.log, PBS 939425.
+
+Logical nodes here use real MPI messages and separate GPU allocations on
+one physical host. A physical two-node allocation was requested but was
+unavailable during validation; the queued job was canceled. Physical
+multi-node GPU execution, network behavior and scaling remain unverified.
+The code does not require CUDA-aware MPI or peer access between nodes.
+
+Host and numerical regression coverage
+-------------------------------------
+The following scripts pass using GCC 12.2, real BLAS/LAPACK and real MPI
+where applicable; mock CUDA memory/allocations make failure cases repeatable.
+The tests cover arithmetic, layout, rollback and control flow, not GPU speed.
+
+  run_gpu_workers_cpu.py          GPU limits, ownership, retry, binding,
+                                  synchronization and dynamic OpenMP teams
+  run_mgpu_runtime_cpu.py         35,818 runtime assertions
+  run_cluster_capacity_cpu.py     23 dense-ladder decisions
+  run_gs2_memory_mpi.py           17 distributed admission/lifecycle cases
+  run_host_memory_cpu.py          27 cgroup v1/v2 and memory-counter cases
+  run_dense_cpu.py                32 real/complex LAPACK/BLAS cases
+  run_gpu_collective_mpi.py       12 cases, six real MPI ranks
+  run_gpu_dense_workers_cpu.py    4,074 transform/DM comparisons
+  run_gpu_task_cpu.py             96 task comparisons plus late failure
+  run_gpu_vector_cpu.py           96 history/contraction comparisons
+  run_gpu_bilinear_cpu.py         192 sparse contractions, FP32 and FP64
+  run_dm_capacity_cpu.py          1,281 sparse DM cases and scope checks
+  run_density_capacity_cpu.py     192 orbital/density adapter cases
+  run_hamiltonian_capacity_cpu.py 336 Hamiltonian cases
+  run_energy_capacity_cpu.py      336 energy/dipole cases
+  run_xc_capacity_cpu.py          144 XC slab cases plus rollback
+  run_projector_recovery_cpu.py   96 HNL/VNA force cases
+  run_grid_recovery_cpu.py        144 grid/radial cases
+  run_setpro_capacity_cpu.py      32 VNA cases against original kernels
+  run_hamiltonian_mapping_cpu.py  169 allocation/copy failure cases
+  run_density_mapping_cpu.py      450 allocation/copy failure cases
+
+Grid/radial/VNA kernels were also compiled with NVHPC and compared on A100
+against their original-kernel/analytic references (grid-kernel-gpu-live.log,
+PBS 939414). This caught and fixed an inner-loop vectorization dependency
+in the VNA recovery kernel. The radial Bessel x=0 case now initializes the
+additional value used by its derivative recurrence.
+
+The ELPA lifecycle checks inject initialization, allocation and parameter
+errors on only one rank and put an MPI barrier in the mock setup routine.
+All ranks must receive the same error before collective setup/solve.
+Cache eviction on a subset of ranks, communicator changes and unequal
+cached CPU/GPU modes force a collective rebuild, avoiding mismatched MPI
+calls. These cases pass in gs2-lifecycle-final.log.
+
+Host memory must still suffice for CPU matrices, communication packets and
+bounded range scratch. Numerical eigensolver failures, invalid metadata and
+errors after result publication remain errors; they are not classified as
+recoverable GPU capacity failures.

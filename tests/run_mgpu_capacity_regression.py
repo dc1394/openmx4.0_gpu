@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check native, automatic-capacity, forced-MAGMA and GPU-limit exits.
+"""Check native, automatic-capacity, forced-MAGMA and GPU-limit CPU fallback.
 
 Run inside a four-GPU single-node allocation. A large *reserve*, not an
 allocation, exercises genuine cuSOLVER admission failure on eight Si atoms.
@@ -58,12 +58,12 @@ def run_case(args, case, mode):
     ops = records(log)
     result['operations'] = ops
     if mode == 'limit':
-        if process.returncode == 0 or 'GPU limit will not be exceeded' not in log:
-            raise ValueError(f'{case}: expected a nonzero GPU-limit exit')
+        if process.returncode != 0 or 'GPU limit will not be exceeded' not in log:
+            raise ValueError(f'{case}: expected successful GPU-limit CPU fallback')
         if any(op['kind'] in ('solver', 'gemm') for op in ops):
-            raise ValueError(f'{case}: insufficient pool must fail before dense work')
-        if re.search(r'falling back to.*(?:ScaLAPACK|ELPA)|normally finished', log):
-            raise ValueError(f'{case}: GPU-limit failure silently fell back')
+            raise ValueError(f'{case}: insufficient pool must use CPU dense work')
+        if 'using the CPU eigensolver and matrix products' not in log or 'normally finished' not in log:
+            raise ValueError(f'{case}: missing successful CPU routing diagnostic')
     else:
         if process.returncode != 0 or 'normally finished' not in log:
             raise ValueError(f'{case}/{mode}: OpenMX failed')
@@ -85,17 +85,17 @@ def run_case(args, case, mode):
                     raise ValueError(f'{case}/{mode}: GPU limit/group violated: {devices}')
             if band and {op.get('devices') for op in solvers} != {'0,1', '2,3'}:
                 raise ValueError(f'{case}/{mode}: incomplete k-point GPU groups')
-        energy, coordinates, forces, grids = read_output(folder / 'sidia.out')
-        if len(coordinates) != atoms or len(forces) != 3 * atoms:
-            raise ValueError(f'{case}/{mode}: incomplete atoms/forces')
-        components = {key: float(value.replace('D', 'E').replace('d', 'e'))
-                      for key, value in re.findall(r'^\s*((?:U\w+|Enpy))\.\s+(\S+)',
-                      (folder / 'sidia.out').read_text(), re.M)}
-        if not components or not all(math.isfinite(v) for v in
-                [energy] + list(forces) + list(components.values())):
-            raise ValueError(f'{case}/{mode}: missing or nonfinite result')
-        result.update(energy_hartree=energy, atoms=coordinates,
-                      forces_hartree_per_bohr=forces, grids=grids, energy_components=components)
+    energy, coordinates, forces, grids = read_output(folder / 'sidia.out')
+    if len(coordinates) != atoms or len(forces) != 3 * atoms:
+        raise ValueError(f'{case}/{mode}: incomplete atoms/forces')
+    components = {key: float(value.replace('D', 'E').replace('d', 'e'))
+                  for key, value in re.findall(r'^\s*((?:U\w+|Enpy))\.\s+(\S+)',
+                  (folder / 'sidia.out').read_text(), re.M)}
+    if not components or not all(math.isfinite(v) for v in
+            [energy] + list(forces) + list(components.values())):
+        raise ValueError(f'{case}/{mode}: missing or nonfinite result')
+    result.update(energy_hartree=energy, atoms=coordinates,
+                  forces_hartree_per_bohr=forces, grids=grids, energy_components=components)
     save(folder / 'result.json', result)
     return result
 
@@ -120,7 +120,7 @@ def main():
             results.append(result)
             if mode == 'native':
                 baseline = result
-            elif mode != 'limit':
+            else:
                 comparison = compare(baseline, result, args)
                 comparisons.append(dict(case=case, mode=mode, **comparison))
                 if not comparison['passed']:

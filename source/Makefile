@@ -329,8 +329,13 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
 OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
 OBJS += openmx_gpu_workers.o openmx_gpu_views.o
 OBJS += openmx_gpu_transform.o
-OBJS += openmx_gpu_dm.o
+OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
 OBJS += openmx_cluster_capacity.o openmx_host_memory.o elpa_cosma_memory.o
+OBJS += openmx_dense_cpu.o
+OBJS += openmx_gpu_collective.o
+OBJS += openmx_gpu_vector.o
+OBJS += openmx_gpu_task.o
+OBJS += openmx_gpu_bilinear.o openmx_gpu_bilinear_pack.o
 
 # PROG    = openmx.exe
 # PROG    = openmx
@@ -844,7 +849,7 @@ lapack_dsteqr1.o: lapack_dsteqr1.c openmx_common.h lapack_prototypes.h
 	$(CC) -c lapack_dsteqr1.c
 Nonlocal_Basis.o: Nonlocal_Basis.c openmx_common.h
 	$(CC) -c Nonlocal_Basis.c
-Set_OLP_Kin.o: Set_OLP_Kin.c openmx_common.h 
+Set_OLP_Kin.o: Set_OLP_Kin.c openmx_common.h openmx_gpu_task.h
 	$(CC) -c Set_OLP_Kin.c
 Set_Nonlocal.o: Set_Nonlocal.c openmx_common.h
 	$(CC) -c Set_Nonlocal.c
@@ -903,7 +908,7 @@ Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_dm.h
 openmx_gpu_transform.o: openmx_gpu_transform.cu openmx_gpu_transform.h openmx_gpu_workers.h openmx_gpu_views.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
-openmx_gpu_dm.o: openmx_gpu_dm.cu openmx_gpu_dm.h openmx_gpu_workers.h openmx_gpu_views.h
+openmx_gpu_dm.o: openmx_gpu_dm.cu openmx_gpu_dm_entry.h openmx_gpu_dm.h openmx_gpu_workers.h openmx_gpu_views.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
 Input_std.o Band_DFT_Col.o: openmx_mgpu_band_plan.h
 Cluster_DFT_NonCol.o Band_DFT_NonCol.o: openmx_mgpu_density.h
@@ -972,6 +977,20 @@ openmx_host_memory.o: openmx_host_memory.c openmx_host_memory.h
 	$(CC_NOACC_O3) -c openmx_host_memory.c
 openmx_cluster_capacity.o: openmx_cluster_capacity.c openmx_cluster_capacity.h openmx_mgpu_runtime.h elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h
 	$(CC_NOACC_O3) -c openmx_cluster_capacity.c
+openmx_dense_cpu.o: openmx_dense_cpu.c openmx_dense_cpu.h
+	$(CC_NOACC_O3) -c openmx_dense_cpu.c
+openmx_gpu_collective.o: openmx_gpu_collective.c openmx_gpu_collective.h openmx_gpu_workers.h openmx_stdout_level.h
+	$(CC_NOACC_O3) -c openmx_gpu_collective.c
+openmx_gpu_vector.o: openmx_gpu_vector.c openmx_gpu_vector.h openmx_gpu_collective.h openmx_gpu_workers.h
+	$(CC) -c openmx_gpu_vector.c
+
+openmx_gpu_task.o: openmx_gpu_task.c openmx_gpu_task.h openmx_gpu_collective.h openmx_gpu_workers.h
+	$(CC) -c openmx_gpu_task.c
+openmx_gpu_bilinear.o: openmx_gpu_bilinear.c openmx_gpu_bilinear.h openmx_gpu_collective.h openmx_gpu_workers.h
+	$(CC) -c openmx_gpu_bilinear.c
+openmx_gpu_bilinear_pack.o: openmx_gpu_bilinear_pack.cpp openmx_gpu_bilinear.h
+	$(GPUSOLVER2_HOST_CXX) -std=c++17 -O2 -I$(GPUSOLVER2_MPI_BIN)/../include -c openmx_gpu_bilinear_pack.cpp -o openmx_gpu_bilinear_pack.o
+openmx_mgpu_runtime.o: openmx_dense_cpu.h
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_cluster_capacity.h elpa_cosma_bridge.h
 $(GEMMUL8_DIR)/Makefile:
 	mkdir -p $(GEMMUL8_REPO_DIR)
@@ -1635,3 +1654,17 @@ MO.o: MulPOnly.c Tools_BandCalc.h Inputtools.h read_scfout.h EigenValue_Problem.
 
 SigmaEK.o: SigmaEK.c
 	$(CC) -c $< -o $@
+
+# Host-backed capacity adapters share the task descriptor ABI.
+Total_Energy_GPU.o Force.o Set_Orbitals_Grid.o Set_Hamiltonian.o Set_Nonlocal.o Set_ProExpn_VNA.o: openmx_gpu_task.h
+Set_Density_Grid_GPU.o: openmx_gpu_bilinear.h
+Mixing_H.o: openmx_gpu_vector.h openmx_host_memory.h
+Set_XC_Grid.o: openmx_gpu_collective.h
+openmx_gpu_bilinear_pack.o: openmx_host_memory.h
+
+truncation.o: openmx_gpu_task.h openmx_host_memory.h
+
+openmx_gpu_dm_collective.o: openmx_gpu_dm_collective.c openmx_gpu_dm_collective.h openmx_gpu_dm_entry.h openmx_gpu_task.h openmx_gpu_workers.h openmx_mgpu_runtime.h
+	$(CC) -c openmx_gpu_dm_collective.c
+
+Band_DFT_Col.o Band_DFT_NonCol.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_gpu_dm_collective.h openmx_gpu_workers.h

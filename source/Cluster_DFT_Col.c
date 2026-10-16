@@ -13,7 +13,7 @@
 #include "openmx_common.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
-#include "openmx_gpu_dm.h"
+#include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
 
 static int ClusterCol_mgpu_host_dense = 0;
@@ -1274,7 +1274,7 @@ static int ClusterCol_UseGpuDM(int n)
     }
     if (ClusterCol_UseGpuAccel(n)) return 1;
     if (all!=NULL && atoi(all)==0) return 0;
-    return (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_Col_GpuSwitchNum()<=n && gpu_rank_device_usable());
+    return (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_Col_GpuSwitchNum()<=n);
 }
 
 static unsigned long long ClusterCol_LayoutFingerprint(const int *order_GA, int *MP, int n)
@@ -1435,223 +1435,7 @@ static void ClusterCol_DMEntryCache_Ensure(int *MP, int n)
     cache->entry_count = entry_count;
 }
 
-/* Returns 1 when the accumulation ran on the device, 0 when the eigenvector
-   slice could not be staged there (the caller then runs the CPU loop).  When
-   the whole slice fits the summation order is identical to the previous
-   one-shot upload; under memory pressure the state range is processed in
-   blocks whose partial sums accumulate into the caller-zeroed DM arrays. */
-static int ClusterCol_AccumulateDM_OpenACC(int n, int size_H1, int nk,
-                                           const double *occ, const double *eig, const double *docc,
-                                           const double *evec, const double *evec_dev, int evec_lds,
-                                           double *DM1, double *EDM1, double *PDM1)
-{
-    ClusterColDMEntryCache *cache = &ClusterCol_dm_entry_cache;
-    const int *basis0 = cache->basis0;
-    const int *basis1 = cache->basis1;
-    const int entry_count = cache->entry_count;
-    const int dm_chunk_size = 131072;
-    const int with_pdm = (docc!=NULL && PDM1!=NULL);
-    const int stage_kb_min = 128;
-    double *d_stage = NULL;
-    double *pack = NULL;
-    int KB = nk;
-    /* one device arena for the small operands of the chunk loop: the
-       occupations and eigenvalues of the slice, one chunk of the entry
-       index pairs and one of the DM/EDM(/PDM) entries */
-    const size_t chunk_max = (size_t)((entry_count<dm_chunk_size) ? (entry_count<1 ? 1 : entry_count) : dm_chunk_size);
-    unsigned char *arena = NULL;
-    size_t arena_bytes = 0, o_occ, o_eig, o_docc, o_b0, o_b1, o_dm, o_edm, o_pdm;
 
-    if (entry_count!=size_H1){
-        ClusterCol_AbortWithMessage("DM entry cache size mismatch in Cluster_DFT_Col.c.");
-    }
-
-    double *dm_outputs[10]={DM1,EDM1,with_pdm?PDM1:NULL};
-    if (openmx_gpu_dm_entries(OPENMX_GPU_DM_REAL,n,nk,evec_dev?evec_lds:nk,entry_count,
-            evec_dev?(const void*)evec_dev:(const void*)evec,evec_dev==NULL,basis0,basis1,
-            NULL,0,NULL,NULL,occ,eig,with_pdm?docc:NULL,dm_outputs,1)) return 1;
-
-    o_occ  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(size_t)nk);
-    o_eig  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(size_t)nk);
-    o_docc = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(size_t)(with_pdm ? nk : 1));
-    o_b0   = ClusterCol_ArenaOffset(&arena_bytes, sizeof(int)*chunk_max);
-    o_b1   = ClusterCol_ArenaOffset(&arena_bytes, sizeof(int)*chunk_max);
-    o_dm   = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*chunk_max);
-    o_edm  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*chunk_max);
-    o_pdm  = ClusterCol_ArenaOffset(&arena_bytes, sizeof(double)*(with_pdm ? chunk_max : 1));
-
-    /* The data regions that used to stage these operands allocated them
-       piecemeal and aborted the run when the device had no room left (18
-       ranks on 16 GB with the dense owner's 9 GiB reservation alive and
-       every other rank staging its slice at once: 3 MB free at the first
-       chunk).  A rank whose arena does not fit runs the CPU loop. */
-    if (ClusterCol_TryDeviceMalloc((void**)&arena,arena_bytes)!=cudaSuccess){
-        static int arena_reports = 0;
-        if (arena_reports<3 && 2<=level_stdout){
-            arena_reports++;
-            fprintf(stderr,"<Cluster_DFT_Col> a rank could not stage its DM chunk buffers"
-                    " (%.1f MiB) on the device; using the CPU loop for this step.\n",
-                    (double)arena_bytes/(1024.0*1024.0));
-            fflush(stderr);
-        }
-        return 0;
-    }
-
-    if (evec_dev==NULL){
-        /* Stage the eigenvector slice through a bounded-retry device
-           allocation instead of an enter-data copyin: the copyin is fatal
-           on OOM, and on a crowded device (e.g. while the serialized
-           two-spin dense solve keeps one large reservation alive) every
-           rank uploads its slice at the same time.  Halve the staged
-           state block until it fits; the caller falls back to the CPU
-           loop when even the smallest block cannot be staged. */
-        for (;;){
-            size_t stage_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)KB,"DM eigenvector stage");
-            size_t stage_bytes = ClusterCol_CheckedMulCount(stage_count,sizeof(double),"DM eigenvector stage bytes");
-
-            if (ClusterCol_TryDeviceMalloc((void**)&d_stage,stage_bytes)==cudaSuccess) break;
-            if (KB<=stage_kb_min){
-                static int stage_reports = 0;
-                if (stage_reports<3 && 2<=level_stdout){
-                    stage_reports++;
-                    fprintf(stderr,"<Cluster_DFT_Col> a rank could not stage its DM eigenvector block"
-                            " (%d states) on the device; using the CPU loop for this step.\n",KB);
-                    fflush(stderr);
-                }
-                wait_cudafunc(cudaFree(arena));
-                return 0;
-            }
-            KB = (KB+1)/2;
-        }
-        if (KB<nk){
-            pack = (double*)ClusterCol_MallocArray(ClusterCol_CheckedMulCount((size_t)n,(size_t)KB,
-                                                   "DM eigenvector pack"),sizeof(double),
-                                                   "DM eigenvector pack");
-        }
-    }
-
-    /* the operands of the whole slice go up once; the chunk buffers are
-       filled per chunk.  The OpenACC copies keep the order with the
-       kernels below, which read the arena through same-name shadow
-       pointers so their bodies are the former ones. */
-    acc_memcpy_to_device(arena+o_occ,(void*)occ,sizeof(double)*(size_t)nk);
-    acc_memcpy_to_device(arena+o_eig,(void*)eig,sizeof(double)*(size_t)nk);
-    if (with_pdm) acc_memcpy_to_device(arena+o_docc,(void*)docc,sizeof(double)*(size_t)nk);
-
-    {
-        const double *d_occ = (const double*)(const void*)(arena+o_occ);
-        const double *d_eig = (const double*)(const void*)(arena+o_eig);
-        const double *d_docc = (const double*)(const void*)(arena+o_docc);
-        int *d_b0 = (int*)(void*)(arena+o_b0);
-        int *d_b1 = (int*)(void*)(arena+o_b1);
-        double *d_dm = (double*)(void*)(arena+o_dm);
-        double *d_edm = (double*)(void*)(arena+o_edm);
-        double *d_pdm = (double*)(void*)(arena+o_pdm);
-
-        for (int k0=0; k0<nk; k0+=KB){
-            const int kb = (nk-k0<KB) ? (nk-k0) : KB;
-            const double *eblk;
-            size_t ld;
-
-            if (evec_dev!=NULL){
-                /* device-resident stash: single round (KB==nk) */
-                eblk = evec_dev + k0;
-                ld = (size_t)evec_lds;
-            }
-            else{
-                const double *src;
-
-                if (kb==nk){
-                    src = evec;   /* the whole slice is contiguous */
-                }
-                else{
-                    for (int basis=0; basis<n; basis++){
-                        memcpy(pack+(size_t)basis*(size_t)kb,
-                               evec+(size_t)basis*(size_t)nk+(size_t)k0,
-                               sizeof(double)*(size_t)kb);
-                    }
-                    src = pack;
-                }
-                if (cudaMemcpy(d_stage,src,sizeof(double)*(size_t)n*(size_t)kb,
-                               cudaMemcpyHostToDevice)!=cudaSuccess){
-                    ClusterCol_AbortWithMessage("DM eigenvector stage upload failed in Cluster_DFT_Col.c.");
-                }
-                eblk = d_stage;
-                ld = (size_t)kb;
-            }
-
-            for (int offset=0; offset<entry_count; offset+=dm_chunk_size){
-                const int chunk_count = (entry_count-offset<dm_chunk_size) ? (entry_count-offset) : dm_chunk_size;
-                const size_t ib_bytes = sizeof(int)*(size_t)chunk_count;
-                const size_t db_bytes = sizeof(double)*(size_t)chunk_count;
-
-                acc_memcpy_to_device(d_b0,(void*)(basis0+offset),ib_bytes);
-                acc_memcpy_to_device(d_b1,(void*)(basis1+offset),ib_bytes);
-                acc_memcpy_to_device(d_dm,DM1+offset,db_bytes);
-                acc_memcpy_to_device(d_edm,EDM1+offset,db_bytes);
-                if (with_pdm) acc_memcpy_to_device(d_pdm,PDM1+offset,db_bytes);
-
-                {
-                    const double *occ = d_occ;
-                    const double *eig = d_eig;
-                    const double *docc = d_docc;
-                    const int *basis0_chunk = d_b0;
-                    const int *basis1_chunk = d_b1;
-                    double *DM1_chunk = d_dm;
-                    double *EDM1_chunk = d_edm;
-                    double *PDM1_chunk = d_pdm;
-
-#pragma acc parallel loop gang deviceptr(eblk, occ, eig, basis0_chunk, basis1_chunk, DM1_chunk, EDM1_chunk)
-                    for (int p=0; p<chunk_count; p++){
-                        const int ia = basis0_chunk[p];
-                        const int ib = basis1_chunk[p];
-                        double sum1 = 0.0;
-                        double sum2 = 0.0;
-
-#pragma acc loop seq
-                        for (int kk=0; kk<kb; kk++){
-                            double dum = occ[k0+kk]*eblk[(size_t)ia*ld+(size_t)kk]
-                                                   *eblk[(size_t)ib*ld+(size_t)kk];
-                            sum1 += dum;
-                            sum2 += dum*eig[k0+kk];
-                        }
-
-                        DM1_chunk[p] += sum1;
-                        EDM1_chunk[p] += sum2;
-                    }
-
-                    if (with_pdm){
-#pragma acc parallel loop gang deviceptr(eblk, docc, basis0_chunk, basis1_chunk, PDM1_chunk)
-                        for (int p=0; p<chunk_count; p++){
-                            const int ia = basis0_chunk[p];
-                            const int ib = basis1_chunk[p];
-                            double sum1 = 0.0;
-
-#pragma acc loop seq
-                            for (int kk=0; kk<kb; kk++){
-                                sum1 += docc[k0+kk]*eblk[(size_t)ia*ld+(size_t)kk]
-                                                   *eblk[(size_t)ib*ld+(size_t)kk];
-                            }
-
-                            PDM1_chunk[p] += sum1;
-                        }
-                    }
-                }
-
-                acc_memcpy_from_device(DM1+offset,d_dm,db_bytes);
-                acc_memcpy_from_device(EDM1+offset,d_edm,db_bytes);
-                if (with_pdm) acc_memcpy_from_device(PDM1+offset,d_pdm,db_bytes);
-            }
-        }
-    }
-#pragma acc wait
-
-    free(pack);
-    if (d_stage!=NULL) wait_cudafunc(cudaFree(d_stage));
-    wait_cudafunc(cudaFree(arena));
-
-    return 1;
-}
 
 static void ClusterCol_GpuSolver_CheckInfo(const char *where, int info)
 {
@@ -1861,8 +1645,12 @@ host_capacity:
         /* rank 0 (the announce rank) plans node-local MAGMA and, in a
            multi-node run, falls back to the distributed gpusolver2 path;
            the choice is broadcast before any rank commits to a path */
-        if (openmx_cluster_capacity_select(mpi_comm_level1,n,0,"Cluster collinear")
-            ==OPENMX_CLUSTER_CAPACITY_GS2){
+        const int capacity = openmx_cluster_capacity_select(mpi_comm_level1,n,0,"Cluster collinear");
+        ClusterCol_mgpu_host_dense=0;
+        ClusterCol_gs2_fallback_n=0;
+        verdict=0;
+        if (capacity==OPENMX_CLUSTER_CAPACITY_GS2){
+            int admitted;
             /* verdict 0 sends all ranks into the ScaLAPACK layout below,
                whose gpusolver2 branches then run (ClusterCol_UseGs2).  A
                spin-polarized run solves both spins in turn on a grid over
@@ -1871,16 +1659,15 @@ host_capacity:
             if (SpinP_switch==1 && numprocs0>1){
                 ClusterCol_UnionGrid_Ensure(n);
                 ClusterCol_ugrid.overlap_n = 0;
-                openmx_cluster_gs2_admit(mpi_comm_level1,ClusterCol_ugrid.ictxt,n,ClusterCol_ugrid.nblk,0,
+                admitted = openmx_cluster_gs2_admit(mpi_comm_level1,ClusterCol_ugrid.ictxt,n,ClusterCol_ugrid.nblk,0,
                                          "Cluster collinear");
             }
             else{
-                openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
+                admitted = openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
             }
-            ClusterCol_gs2_fallback_n = n;
-            ClusterCol_mgpu_host_dense=0; verdict=0;
+            if (admitted) ClusterCol_gs2_fallback_n = n;
         }
-        else{
+        else if (capacity==OPENMX_CLUSTER_CAPACITY_MAGMA){
             if (announce) {
                 printf("<OpenMX_MGPU> Cluster collinear n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
                        n,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
@@ -4368,41 +4155,21 @@ double Calc_DM_Cluster_collinear(
 
   int gpu_dm_done = 0;
 
-  if (ClusterCol_UseGpuDM(n) && kmin<=kmax){
-
-    /* GPU accumulation over the packed sparse pattern; same summation order
-       over the local states as the CPU loop below. */
-
-    int nk = kmax - kmin + 1;
-    double *occ = (double*)ClusterCol_MallocArray((size_t)nk,sizeof(double),"DM occupations");
-    double *eig = (double*)ClusterCol_MallocArray((size_t)nk,sizeof(double),"DM eigenvalues");
-    double *docc = NULL;
-
-    for (k=kmin; k<=kmax; k++){
-      occ[k-kmin] = FF[k];
-      eig[k-kmin] = ko[spin][k];
-    }
-
-    if (cal_partial_charge){
-      docc = (double*)ClusterCol_MallocArray((size_t)nk,sizeof(double),"DM partial occupations");
-      for (k=kmin; k<=kmax; k++){
-        docc[k-kmin] = dFF[k];
-      }
-    }
-
-    /* the dense-owning rank consumes the eigenvector panel still resident on
-       the device from the solve of this SCF step (bitwise the same data that
-       DistributeDenseEvec placed into EVec1) */
-    int evec_lds = nk;
-    const double *evec_dev = ClusterCol_DeviceEvecStash(spin,n,kmin,kmax,&evec_lds);
-
-    ClusterCol_DMEntryCache_Ensure(MP,n);
-    gpu_dm_done = ClusterCol_AccumulateDM_OpenACC(n,size_H1,nk,occ,eig,docc,EVec1[spin],evec_dev,evec_lds,
-                                                  DM1,EDM1,cal_partial_charge ? PDM1 : NULL);
-
-    free(docc);
-    free(eig);
-    free(occ);
+  int dm_requested=ClusterCol_UseGpuDM(n),dm_collective=dm_requested;
+  /* Both spin worlds reach this phase together. A world confined to one
+     node must still be able to borrow capacity from the other nodes. */
+  MPI_Allreduce(MPI_IN_PLACE,&dm_collective,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+  if(dm_collective){
+    int nk=dm_requested && kmin<=kmax?kmax-kmin+1:0;
+    int stride=nk;const double *device=NULL;
+    if(nk){ClusterCol_DMEntryCache_Ensure(MP,n);device=ClusterCol_DeviceEvecStash(spin,n,kmin,kmax,&stride);}
+    ClusterColDMEntryCache *cache=&ClusterCol_dm_entry_cache;
+    double *outputs[10]={DM1,EDM1,cal_partial_charge?PDM1:NULL};
+    openmx_gpu_dm_collective(mpi_comm_level1,OPENMX_GPU_DM_REAL,n,nk,device?stride:nk,
+      nk?cache->entry_count:0,device?(const void*)device:(const void*)EVec1[spin],device==NULL,
+      cache->basis0,cache->basis1,NULL,0,NULL,NULL,nk?FF+kmin:NULL,nk?ko[spin]+kmin:NULL,
+      nk && cal_partial_charge?dFF+kmin:NULL,outputs,1);
+    gpu_dm_done=nk>0;
   }
 
   if (!gpu_dm_done && kmin<=kmax){

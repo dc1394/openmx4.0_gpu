@@ -118,37 +118,46 @@ static void cgroup_mem_limits(unsigned long long *limit_min, unsigned long long 
     }
 }
 
-/* a "Name: N kB" line of /proc/meminfo in bytes, 0 when unknown */
-static unsigned long long meminfo_bytes(const char *name)
+/* Distinguish an unreadable counter from a known zero: the latter must
+   reject allocations, not disable admission as an unknown measurement. */
+static int meminfo_bytes(const char *name, unsigned long long *bytes)
 {
     FILE *fp = fopen("/proc/meminfo", "r");
     char line[256], format[64];
     unsigned long long kb = 0;
+    int found = 0;
 
     if (fp == NULL) return 0;
     snprintf(format, sizeof(format), "%s: %%llu kB", name);
     while (fgets(line, sizeof(line), fp) != NULL) {
-        if (sscanf(line, format, &kb) == 1) break;
-        kb = 0;
+        if (sscanf(line, format, &kb) == 1) { found = 1; break; }
     }
     fclose(fp);
-    return kb * 1024ULL;
+    if (found) *bytes = kb > ULLONG_MAX / 1024ULL ? ULLONG_MAX : kb * 1024ULL;
+    return found;
 }
 
 unsigned long long openmx_host_mem_available(void)
 {
-    unsigned long long bytes = meminfo_bytes("MemAvailable"), limit, room;
+    unsigned long long bytes = 0, limit, room;
+    int known = meminfo_bytes("MemAvailable", &bytes);
 
-    if (bytes == 0) return 0;
     cgroup_mem_limits(&limit, &room);
-    if (room < bytes) bytes = room;
+    /* Even if usage is unreadable, the available bytes cannot exceed the
+       job's total limit. Conversely a cgroup can provide a useful bound
+       when /proc/meminfo has no MemAvailable counter. */
+    if (limit < room) room = limit;
+    if (room != ULLONG_MAX && (!known || room < bytes)) { bytes = room; known = 1; }
+    if (!known) return 0;
     return (bytes > 0) ? bytes : 1;  /* known, but nothing left */
 }
 
 unsigned long long openmx_host_mem_total(void)
 {
-    unsigned long long bytes = meminfo_bytes("MemTotal"), limit, room;
+    unsigned long long bytes = ULLONG_MAX, limit, room;
 
+    (void)meminfo_bytes("MemTotal", &bytes);
     cgroup_mem_limits(&limit, &room);
-    return (limit < bytes) ? limit : bytes;
+    if (limit < bytes) bytes = limit;
+    return bytes == ULLONG_MAX ? 0 : bytes;
 }

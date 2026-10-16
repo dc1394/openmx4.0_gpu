@@ -12,8 +12,15 @@ enum { OPENMX_GPU_DM_REAL, OPENMX_GPU_DM_COL, OPENMX_GPU_DM_NC,
    real: DM,EDM,optional PDM; collinear: DM,EDM;
    NC: r11,r22,r12,i12,i11,i22,rE11,rE22,rE12,iE12;
    EDM gather: rE11,rE22,rE12,iE12. Only nonnull outputs are published.
-   Returns 0 without changing outputs when cooperation cannot run. */
+   The noncollective entry point recovers through a bounded CPU row path.
+   Returns 0 without changing outputs for invalid input or host staging failure. */
 int openmx_gpu_dm_entries(int kind,int n,int states,int stride,int entries,
+    const void *vectors,int host_vectors,const int *basis0,const int *basis1,
+    const int *phase_index,int phase_count,const double *phase_r,const double *phase_i,
+    const double *occupation,const double *energy_weight,const double *partial_weight,
+    double *const outputs[10],int accumulate);
+/* GPU-only attempt for a collective recovery phase; failure never publishes. */
+int openmx_gpu_dm_try_entries(int kind,int n,int states,int stride,int entries,
     const void *vectors,int host_vectors,const int *basis0,const int *basis1,
     const int *phase_index,int phase_count,const double *phase_r,const double *phase_i,
     const double *occupation,const double *energy_weight,const double *partial_weight,

@@ -11,8 +11,7 @@ OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB, read by the production
 openmx_host_memory.c), the admission of the distributed solve with its retry
 after Set_Hamiltonian's resident tables step aside, and its placement report
 (nodes, rank-bound GPUs, idle permitted GPUs).
-Every rank must return the same decision; the exits are checked for the
-aborting cases.
+Every rank must return the same decision, including the final CPU fallback.
 
   python3 tests/run_cluster_capacity_cpu.py   (needs mpicc and mpirun in PATH)
 """
@@ -120,10 +119,11 @@ int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);
     decision = openmx_cluster_capacity_select(MPI_COMM_WORLD, env("T_N"), env("T_COMPLEX"), "Cluster test");
+    if (decision == OPENMX_CLUSTER_CAPACITY_GS2)
+        if (!openmx_cluster_gs2_admit(MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test"))
+            decision = OPENMX_CLUSTER_CAPACITY_CPU;
     MPI_Allreduce(&decision, &all_min, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(&decision, &all_max, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-    if (decision == OPENMX_CLUSTER_CAPACITY_GS2)
-        openmx_cluster_gs2_admit(MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test");
     if (myid == 0)
         printf("RESULT decision=%d agree=%d plan_calls=%d report=%d precheck_calls=%d yields=%d\n",
                decision, all_min == all_max, plan_calls, report_on, precheck_calls, yield_calls);
@@ -137,7 +137,7 @@ int main(int argc, char **argv) {
 # unless a case sets it), so no case depends on the test machine.
 cases = [
     ("single-auto-magma",  dict(T_MULTI=0, T_PLAN=1), 1, "", 1),
-    ("single-auto-abort",  dict(T_MULTI=0, T_PLAN=0), None, "GPU limit will not be exceeded", 1),
+    ("single-auto-cpu",    dict(T_MULTI=0, T_PLAN=0), 0, "GPU limit will not be exceeded", 1),
     ("multi-auto-magma",   dict(T_MULTI=1, T_PLAN=1, T_N=13000), 1, "", 1),
     ("multi-auto-gs2",     dict(T_MULTI=1, T_PLAN=0, T_FITS=1), 2,
      "distributed gpusolver2 (ELPA GPU kernels + COSMA) on 1 node(s), 2 GPU(s), 3 rank(s).", 1),
@@ -149,17 +149,19 @@ cases = [
      "Warning: 2 permitted GPU(s) have no MPI rank", 1),
     ("multi-idle-limit",   dict(T_MULTI=1, T_PLAN=0, T_FITS=1, T_VISIBLE=4, T_LIMIT=2), 2,
      "on 1 node(s), 2 GPU(s), 3 rank(s).", 1),
-    ("multi-idle-abort",   dict(T_MULTI=1, T_PLAN=0, T_FITS=0, T_VISIBLE=4), None,
+    ("multi-idle-cpu",     dict(T_MULTI=1, T_PLAN=0, T_FITS=0, T_VISIBLE=4), 0,
      "2 permitted GPU(s) have no MPI rank: run at least one rank per GPU", 1),
-    ("multi-forced-abort", dict(T_MULTI=1, T_PLAN=0, T_FORCED=1), None, "forced MAGMA has no other fallback", 1),
+    ("multi-forced-cpu",   dict(T_MULTI=1, T_PLAN=0, T_FORCED=1), 0, "using the CPU eigensolver", 1),
     ("multi-forced-magma", dict(T_MULTI=1, T_PLAN=1, T_FORCED=1, OPENMX_CLUSTER_GS2_FALLBACK="force"), 1, "", 1),
-    ("multi-off-abort",    dict(T_MULTI=1, T_PLAN=0, OPENMX_CLUSTER_GS2_FALLBACK="off"), None, "OPENMX_CLUSTER_GS2_FALLBACK=off", 1),
+    ("multi-off-cpu",      dict(T_MULTI=1, T_PLAN=0, OPENMX_CLUSTER_GS2_FALLBACK="off"), 0, "using the CPU eigensolver", 1),
     ("single-on-gs2",      dict(T_MULTI=0, T_PLAN=0, T_FITS=1, OPENMX_CLUSTER_GS2_FALLBACK="on"), 2, "pool=1", 1),
     ("single-force-gs2",   dict(T_MULTI=0, T_PLAN=1, T_FITS=1, OPENMX_CLUSTER_GS2_FALLBACK="force"), 2, "MAGMA skipped", 0),
-    ("multi-gs2-nofit",    dict(T_MULTI=1, T_PLAN=0, T_FITS=0), None, "fits neither one GPU, MAGMA nor the distributed", 1),
+    ("multi-gs2-nofit",    dict(T_MULTI=1, T_PLAN=0, T_FITS=0), 0, "fits neither one GPU, MAGMA nor the distributed", 1),
     ("multi-gs2-forcedkernels", dict(T_MULTI=1, T_PLAN=0, T_FITS=2), 2, "kernels set by OPENMX_GS2_ELPA_GPU", 1),
-    ("single-hostmem-magma", dict(T_MULTI=0, T_PLAN=1, T_N=26000, T_COMPLEX=1,
-                                  OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB=1000), 1, "", 1),
+    ("single-hostmem-cpu", dict(T_MULTI=0, T_PLAN=1, T_N=26000, T_COMPLEX=1,
+                                OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB=1000), 0, "of host memory on rank 0's node", 0),
+    ("forced-hostmem-cpu", dict(T_MULTI=1, T_PLAN=1, T_FORCED=1, T_N=26000, T_COMPLEX=1,
+                                OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB=1000), 0, "using the CPU eigensolver", 0),
     # the GPU-free limits come before the host-memory test: their reason wins
     ("multi-precheck-pool", dict(T_MULTI=1, T_PRE=0, T_PLAN=1, T_FITS=1, T_N=26000, T_COMPLEX=1,
                                  OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB=60000), 2,
@@ -167,7 +169,7 @@ cases = [
     ("multi-precheck-order", dict(T_MULTI=1, T_PRE=2, T_PLAN=1, T_FITS=1, T_N=37440, T_COMPLEX=1,
                                   OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB=60000), 2,
      "unsupported MAGMA order/group: n=37440", 0, "of host memory"),
-    ("single-precheck-abort", dict(T_MULTI=0, T_PRE=0, T_PLAN=1), None, "pool=1", 0),
+    ("single-precheck-cpu", dict(T_MULTI=0, T_PRE=0, T_PLAN=1), 0, "pool=1", 0),
     # the distributed solve is admitted again once the resident tables yield
     ("multi-gs2-yield",     dict(T_MULTI=1, T_PLAN=0, T_FITS=0, T_RESIDENT=1), 2,
      "distributed gpusolver2 (ELPA GPU kernels + COSMA) on 1 node(s), 2 GPU(s), 3 rank(s).", 1, "fits neither"),

@@ -15,7 +15,7 @@
 #include "openmx_common.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
-#include "openmx_gpu_dm.h"
+#include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
@@ -1055,12 +1055,15 @@ host_capacity:
         if (myid0==Host_ID) {
             int total=openmx_mgpu_band_kpoint_count(SpinP_switch,way_of_kpoint,
                 Kspace_grid1,Kspace_grid2,Kspace_grid3,num_non_eq_kpt);
-            if (!openmx_mgpu_host_plan(total,n,1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
-            printf("<OpenMX_MGPU> Band collinear n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
-                   n,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
+            fit = openmx_mgpu_host_plan(total,n,1)!=0;
+            if (fit) printf("<OpenMX_MGPU> Band collinear n=%d: %s MAGMA, host-backed dense matrices; scf.gpu.num upper bound respected.\n",
+                            n,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
+            else printf("<OpenMX_MGPU> Band collinear n=%d: %s; using the CPU eigensolver and matrix products.\n",
+                        n,openmx_mgpu_host_error());
             fflush(stdout);
         }
-        BandCol_mgpu_host_dense=1; fit=1;
+        MPI_Bcast(&fit,1,MPI_INT,Host_ID,mpi_comm_level1);
+        BandCol_mgpu_host_dense=fit;
     }
 
     verdict = fit;
@@ -1850,105 +1853,21 @@ static void BandCol_AccumulateDenseTransposedDM(int n, int nk, int max_tno, int 
     }
 }
 
-static void BandCol_AccumulateDenseTransposedDM_Device(int n, int nk, int spin, int kloop, double k1, double k2,
-                                                        double k3, const dcomplex *evec_device, int evec_stride, int *MP,
-                                                        int *order_GA, double ***EIGEN, const double *occ_weight,
-                                                        double *CDM1, double *EDM1, int size_H1, int state_first)
-{
-    BandColDMEntryCache *cache;
-    const int *          basis0;
-    const int *          basis1;
-    const int *          phase_index;
-    const double *       phase_r;
-    const double *       phase_i;
-    const double *       eigen;
-    int                  entry_count;
-    int                  pair_count;
-    dcomplex *           evec_ptr = (dcomplex *)evec_device;
-
-    (void)MP;
-
-    BandCol_DMEntryCache_Ensure(order_GA, MP, n);
-    BandCol_UpdateDMEntryPhases(k1, k2, k3);
-
-    cache = &BandCol_dm_entry_cache;
-
-    if (cache->entry_count != size_H1) {
-        BandCol_AbortWithMessage("DM entry cache size mismatch in Band_DFT_Col.c.");
-    }
-
-    basis0      = cache->basis0;
-    basis1      = cache->basis1;
-    phase_index = cache->phase_index;
-    phase_r     = cache->phase_r;
-    phase_i     = cache->phase_i;
-    eigen       = &EIGEN[spin][kloop][state_first];
-    entry_count = cache->entry_count;
-    pair_count  = cache->pair_count;
-
-    double *dm_outputs[10]={CDM1,EDM1};
-    if (openmx_gpu_dm_entries(OPENMX_GPU_DM_COL,n,nk,evec_stride,entry_count,evec_ptr,0,
-            basis0,basis1,phase_index,pair_count,phase_r,phase_i,occ_weight,eigen,NULL,dm_outputs,1)) return;
-
-#pragma acc data deviceptr(evec_ptr)                                                                                       \
-    copyin(basis0[0 : entry_count], basis1[0 : entry_count], phase_index[0 : entry_count], phase_r[0 : pair_count],        \
-           phase_i[0 : pair_count], eigen[0 : nk], occ_weight[0 : nk]) copy(CDM1[0 : entry_count], EDM1[0 : entry_count])
-    {
-#pragma acc parallel loop gang
-        for (int p = 0; p < entry_count; p++) {
-            const int ia = basis0[p];
-            const int ib = basis1[p];
-            const int ph = phase_index[p];
-            const double co = phase_r[ph];
-            const double si = phase_i[ph];
-            double d1 = 0.0, d2 = 0.0, d3 = 0.0, d4 = 0.0;
-
-#pragma acc loop seq
-            for (int k = 0; k < nk; k++) {
-                const double w = occ_weight[k];
-                const dcomplex va = evec_ptr[(size_t)ia * (size_t)evec_stride + (size_t)k];
-                const dcomplex vb = evec_ptr[(size_t)ib * (size_t)evec_stride + (size_t)k];
-                const double r0 = va.r * w;
-                const double im0 = va.i * w;
-                const double r1 = vb.r * w;
-                const double im1 = vb.i * w;
-                const double reA = r0 * r1 + im0 * im1;
-                const double imA = r0 * im1 - im0 * r1;
-
-                d1 += reA;
-                d2 += imA;
-                d3 += reA * eigen[k];
-                d4 += imA * eigen[k];
-            }
-
-            CDM1[p] += co * d1 - si * d2;
-            EDM1[p] += co * d3 - si * d4;
-        }
-    }
-}
-
 /* Stream state panels to the DM kernel as well: a capacity fallback must
    never recreate the complete owner GPU eigenvector matrix. */
 static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n,int nk,int spin,int kloop,double k1,double k2,
     double k3,const dcomplex *evec,int stride,int *MP,int *order_GA,double ***EIGEN,const double *weight,
-    double *CDM1,double *EDM1,int size_H1,int state_first)
+    double *CDM1,double *EDM1,int size_H1,int state_first,MPI_Comm dm_comm,int host_vectors)
 {
-    if (!BandCol_mgpu_host_dense) {
-        BandCol_AccumulateDenseTransposedDM_Device(n,nk,spin,kloop,k1,k2,k3,evec,stride,MP,order_GA,
-            EIGEN,weight,CDM1,EDM1,size_H1,state_first);
-        return;
-    }
-    const int tile=nk<256?nk:256;
-    dcomplex *device=NULL;
-    wait_cudafunc(cudaMalloc((void **)&device,(size_t)n*tile*sizeof(dcomplex)));
-    for (int off=0;off<nk;off+=tile) {
-        const int count=(nk-off<tile)?nk-off:tile;
-        wait_cudafunc(cudaMemcpy2D(device,(size_t)count*sizeof(dcomplex),evec+off,(size_t)stride*sizeof(dcomplex),
-            (size_t)count*sizeof(dcomplex),n,cudaMemcpyHostToDevice));
-        BandCol_AccumulateDenseTransposedDM_Device(n,count,spin,kloop,k1,k2,k3,device,count,MP,order_GA,
-            EIGEN,weight+off,CDM1,EDM1,size_H1,state_first+off);
-    }
-    wait_cudafunc(cudaFree(device));
+    int active=nk>0 && evec!=NULL;
+    if(active){BandCol_DMEntryCache_Ensure(order_GA,MP,n);BandCol_UpdateDMEntryPhases(k1,k2,k3);}
+    BandColDMEntryCache *cache=&BandCol_dm_entry_cache;
+    if(active && cache->entry_count!=size_H1)BandCol_AbortWithMessage("DM entry count mismatch");
+    double *outputs[10]={CDM1,EDM1};
+    openmx_gpu_dm_collective(dm_comm,OPENMX_GPU_DM_COL,n,active?nk:0,stride,active?cache->entry_count:0,
+        evec,host_vectors,cache->basis0,cache->basis1,active?cache->phase_index:NULL,
+        cache->pair_count,cache->phase_r,cache->phase_i,weight,active?EIGEN[spin][kloop]+state_first:NULL,
+        NULL,outputs,1);
 }
 
 /* GPU DM accumulation inside the ScaLAPACK/ELPA fallback of the collinear
@@ -1965,35 +1884,6 @@ static int BandCol_UseGpuFallbackDM(int n)
 
     if (value != NULL && atoi(value) == 0) return 0;
     return (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));
-}
-
-/* Uploads the host eigenvector panel of one fallback k point; returns NULL
-   (leaving no latched CUDA error behind) when the device cannot take it, so
-   the caller falls back to the CPU loop. */
-static dcomplex *BandCol_FallbackDMUpload(const dcomplex *host, size_t count)
-{
-    size_t bytes = count * sizeof(dcomplex);
-    size_t free_bytes = 0, total_bytes = 0;
-    void  *device = NULL;
-
-    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
-        (void)cudaGetLastError();
-        return NULL;
-    }
-    /* keep headroom for the entry-cache copyins and the other users of the
-       shared device */
-    if (free_bytes < bytes + 256ULL * 1024ULL * 1024ULL) return NULL;
-    if (cudaMalloc(&device, bytes) != cudaSuccess) {
-        (void)cudaGetLastError();
-        return NULL;
-    }
-    if (cudaMemcpy(device, host, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
-        (void)cudaGetLastError();
-        if (cudaFree(device) != cudaSuccess)
-            (void)cudaGetLastError();
-        return NULL;
-    }
-    return (dcomplex *)device;
 }
 
 static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
@@ -2111,9 +2001,10 @@ static dcomplex *BandCol_GpuSolver_HostEigenvectors(void)
 
 /* Re-uploads the n x maxn panel saved above; the consumer must index it with
    stride maxn, not n. */
-static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n, int maxn)
+static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n, int maxn,int *host)
 {
-    if (BandCol_mgpu_host_dense) return BandCol_gpusolver_ctx.h_evec;
+    *host=BandCol_mgpu_host_dense;
+    if (*host) return BandCol_gpusolver_ctx.h_evec;
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
     size_t              panel_count;
 
@@ -2130,7 +2021,10 @@ static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n, int maxn)
         if (ctx->d_evec != NULL) {
             wait_cudafunc(cudaFree(ctx->d_evec));
         }
-        wait_cudafunc(cudaMalloc((void **)&ctx->d_evec, sizeof(dcomplex) * panel_count));
+        ctx->d_evec=NULL;ctx->d_evec_dim=ctx->d_evec_cols=0;
+        if(cudaMalloc((void**)&ctx->d_evec,sizeof(dcomplex)*panel_count)!=cudaSuccess){
+            (void)cudaGetLastError();*host=1;return ctx->h_evec;
+        }
         ctx->d_evec_dim  = n;
         ctx->d_evec_cols = maxn;
     }
@@ -5244,11 +5138,13 @@ diagonalize1:
 	                        MPI_Barrier(mpi_comm_level1);
 	                    }
 
-	                    if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
+	                    {
+                        const int dm_owner=owns_global_dense_rank && my_gpu_turn==gpu_turn;
 	                        openmx_mgpu_scope_state mgpu_scope =
 	                            openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, kloop);
-	                        dcomplex *evec_device;
-	                        int       evec_stride;
+	                        dcomplex *evec_device=NULL;
+	                        int       evec_stride=n,dm_host=BandCol_mgpu_host_dense;
+                        if(dm_owner){
 
                         if (BandCol_GpuPersistentDecide()) {
                             /* d_tmp keeps the full basis-major matrix, stride n */
@@ -5258,19 +5154,20 @@ diagonalize1:
                             /* the round-tripped panel holds only the maxn
                                consumed states, stride MaxN */
                             BANDCOL_PROF_T0(prof_t0);
-                            evec_device = BandCol_GpuSolver_UploadHostEigenvectors(n, MaxN);
+                            evec_device = BandCol_GpuSolver_UploadHostEigenvectors(n, MaxN,&dm_host);
                             evec_stride = MaxN;
                             BANDCOL_PROF_ADD(evec_h2d, prof_t0);
                         }
 
+                        }
                         BANDCOL_PROF_T0(prof_t0);
-                        BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device,
+                        BandCol_AccumulateDenseTransposedDM_OpenACC(n, dm_owner?MaxN:0, spin, kloop, k1, k2, k3, evec_device,
                                                                     evec_stride,
                                                                     MP, use_setham_packed_cache ? setham_order_GA : order_GA, EIGEN,
                                                                     BandCol_dm_workspace.OccWeight, CDM1, EDM1,
-                                                                    size_H1, 1);
+                                                                    size_H1, 1,mpi_comm_level1,dm_host);
                         BANDCOL_PROF_ADD(dm_kernel, prof_t0);
-                        if (!BandCol_GpuPersistentDecide()) {
+                        if (dm_owner && !BandCol_GpuPersistentDecide()) {
                             BANDCOL_PROF_T0(prof_t0);
                             BandCol_GpuSolver_ClearHostEigenvectors();
                             BandCol_GpuSolver_ReleaseDeviceMemory();
@@ -5336,34 +5233,15 @@ diagonalize1:
 
             int gpu_dm_done = 0;
 
-            if (kmin <= kmax && BandCol_UseGpuFallbackDM(n)) {
-                /* EVec1 already carries sqrt(kw*FermiF) from the loop above,
-                   so the kernel runs with unit occupation weights */
-                const int nk     = kmax - kmin + 1;
-                const int stride = ie2[myid2] - is2[myid2] + 1;
-                dcomplex *evec_dev = BandCol_FallbackDMUpload(EVec1[spin], (size_t)n * (size_t)stride);
-
-                if (evec_dev != NULL) {
-                    double  dm_prof_t0 = 0.0;
-                    double *unit_occ;
-
-                    BandCol_DMWorkspace_Ensure(max_tno, nk);
-                    unit_occ = BandCol_dm_workspace.OccWeight;
-                    for (int k = 0; k < nk; k++)
-                        unit_occ[k] = 1.0;
-
-                    BANDCOL_PROF_T0(dm_prof_t0);
-                    const openmx_mgpu_scope_state dm_scope =
-                        openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
-                    BandCol_AccumulateDenseTransposedDM_OpenACC(n, nk, spin, kloop, k1, k2, k3,
-                                                                evec_dev + (kmin - is2[myid2]), stride, MP, order_GA,
-                                                                EIGEN, unit_occ, CDM1, EDM1, size_H1, kmin);
-                    openmx_mgpu_band_scope_leave(dm_scope);
-                    BANDCOL_PROF_ADD(dm_kernel, dm_prof_t0);
-                    if (cudaFree(evec_dev) != cudaSuccess)
-                        (void)cudaGetLastError();
-                    gpu_dm_done = 1;
-                }
+            if(BandCol_UseGpuFallbackDM(n)){
+                int nk=kmin<=kmax?kmax-kmin+1:0;
+                int stride=ie2[myid2]-is2[myid2]+1;
+                if(nk){BandCol_DMWorkspace_Ensure(max_tno,nk);for(int j=0;j<nk;j++)BandCol_dm_workspace.OccWeight[j]=1;}
+                openmx_mgpu_scope_state dm_scope=openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
+                BandCol_AccumulateDenseTransposedDM_OpenACC(n,nk,spin,kloop,k1,k2,k3,
+                    nk?EVec1[spin]+kmin-is2[myid2]:NULL,stride,MP,order_GA,EIGEN,
+                    BandCol_dm_workspace.OccWeight,CDM1,EDM1,size_H1,kmin,mpi_comm_level1,1);
+                openmx_mgpu_band_scope_leave(dm_scope);gpu_dm_done=nk>0;
             }
 
             if (!gpu_dm_done && kmin <= kmax) {
@@ -5742,20 +5620,15 @@ diagonalize1:
                 for (int gpu_turn = group_first; gpu_turn < group_last; gpu_turn++) {
                     int kloop;
                     int       construct_on_device;
-                    dcomplex *evec_device;
+                    dcomplex *evec_device=NULL;
                     int evec_stride = n;
                     double k1;
                     double k2;
                     double k3;
 
-                    if (!owns_dense_k_rank || gpu_turn / T_knum != spin) {
-                        continue;
-                    }
-
-                    kloop = gpu_turn % T_knum;
-                    if (kloop < S_knum || S_knum + num_kloop0 <= kloop) {
-                        continue;
-                    }
+                    kloop=gpu_turn%T_knum;
+                    const int dm_owner=owns_dense_k_rank && gpu_turn/T_knum==spin &&
+                        S_knum<=kloop && kloop<S_knum+num_kloop0;
 
                     openmx_mgpu_scope_state mgpu_scope =
                         openmx_mgpu_band_scope_enter(!gpusolver2_flag, T_knum, kloop);
@@ -5764,6 +5637,7 @@ diagonalize1:
                     k2 = T_KGrids2[kloop];
                     k3 = T_KGrids3[kloop];
 
+                    if(dm_owner){
                     size_t cache_slot = (size_t)spin * T_knum + kloop;
                     if (k_evec_cache != NULL && k_evec_cache[cache_slot] != NULL) {
                         /* Reuse the existing dense scratch allocation, so
@@ -5903,10 +5777,11 @@ diagonalize1:
                         dtime(&Stime1);
                     }
 
-                    BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_device, evec_stride,
+                    }
+                    BandCol_AccumulateDenseTransposedDM_OpenACC(n, dm_owner?MaxN:0, spin, kloop, k1, k2, k3, evec_device, evec_stride,
                                                                 MP, use_setham_packed_cache ? setham_order_GA : order_GA,
-                                                                EIGEN, occ_weight, CDM1, EDM1, size_H1, 1);
-                    group_ran_gpu_turn = 1;
+                                                                EIGEN, BandCol_dm_workspace.OccWeight, CDM1, EDM1, size_H1, 1,mpi_comm_level1,BandCol_mgpu_host_dense);
+                    if(dm_owner)group_ran_gpu_turn = 1;
 
                     if (measure_time) {
                         dtime(&Etime1);
@@ -5933,7 +5808,18 @@ diagonalize1:
             if (BandCol_refine.kdense) BandCol_RefineEndStep();
 
         } else {
-            for (kloop0 = 0; kloop0 < num_kloop0; kloop0++) {
+            const int collective_dm=BandCol_UseGpuFallbackDM(n);
+            int dm_kloops=num_kloop0;
+            if(collective_dm)MPI_Allreduce(MPI_IN_PLACE,&dm_kloops,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+            for (kloop0 = 0; kloop0 < dm_kloops; kloop0++) {
+
+                /* K-point groups can own unequal numbers of points. Empty
+                   turns still serve other nodes' density-matrix recovery. */
+                if(kloop0>=num_kloop0){
+                    BandCol_AccumulateDenseTransposedDM_OpenACC(n,0,spin,0,0,0,0,NULL,0,
+                        MP,order_GA,EIGEN,NULL,CDM1,EDM1,size_H1,1,mpi_comm_level1,1);
+                    continue;
+                }
 
                 kloop = kloop0 + S_knum;
 
@@ -6145,24 +6031,11 @@ diagonalize1:
                 {
                     int gpu_dm_done = 0;
 
-                    if (BandCol_UseGpuFallbackDM(n)) {
-                        dcomplex *evec_dev = BandCol_FallbackDMUpload(Hs, (size_t)n * (size_t)na_rows);
-
-                        if (evec_dev != NULL) {
-                            double dm_prof_t0 = 0.0;
-
-                            BANDCOL_PROF_T0(dm_prof_t0);
-                            const openmx_mgpu_scope_state dm_scope =
-                                openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
-                            BandCol_AccumulateDenseTransposedDM_OpenACC(n, MaxN, spin, kloop, k1, k2, k3, evec_dev,
-                                                                        na_rows, MP, order_GA, EIGEN, occ_weight,
-                                                                        CDM1, EDM1, size_H1, 1);
-                            openmx_mgpu_band_scope_leave(dm_scope);
-                            BANDCOL_PROF_ADD(dm_kernel, dm_prof_t0);
-                            if (cudaFree(evec_dev) != cudaSuccess)
-                                (void)cudaGetLastError();
-                            gpu_dm_done = 1;
-                        }
+                    if(collective_dm){
+                        openmx_mgpu_scope_state dm_scope=openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
+                        BandCol_AccumulateDenseTransposedDM_OpenACC(n,MaxN,spin,kloop,k1,k2,k3,Hs,na_rows,
+                            MP,order_GA,EIGEN,occ_weight,CDM1,EDM1,size_H1,1,mpi_comm_level1,1);
+                        openmx_mgpu_band_scope_leave(dm_scope);gpu_dm_done=1;
                     }
                     if (!gpu_dm_done) {
                         BandCol_AccumulateDenseTransposedDM(n, MaxN, max_tno, spin, kloop, k1, k2, k3, Hs, na_rows,
