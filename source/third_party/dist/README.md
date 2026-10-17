@@ -1,7 +1,9 @@
 # third_party/dist — bundled release archives for the gpusolver2 stack
 
-`scf.eigen.lib gpusolver2` (distributed multi-GPU cluster diagonalization)
-links ELPA (NVIDIA GPU kernels) and COSMA; this directory carries the official
+`scf.eigen.lib elpa1` / `elpa2` use the CPU kernels of the same ELPA library
+as `gpusolver2` (distributed multi-GPU cluster diagonalization). The latter
+also links COSMA, with NVIDIA or AMD kernels selected by the build backend.
+This directory carries the official
 release archives of everything the stack needs so that the build works without
 any network access.  `source/third_party/build_gpusolver2_stack.sh` (driven by
 `make gpusolver2-stack`, or implicitly by `make openmx`) unpacks and builds
@@ -9,7 +11,7 @@ them into `source/third_party/gpusolver2-install/`.
 
 | archive | project | license | role |
 |---|---|---|---|
-| elpa-new_release_2026_02_002.zip | ELPA 2026.02.002 | LGPL-3 | distributed GPU eigensolver (modern C API; the elpa1/elpa2 keywords keep using the ELPA 2018.05 embedded in the source tree) |
+| elpa-new_release_2026_02_002.zip | ELPA 2026.02.002 | LGPL-3 | shared CPU/GPU eigensolver; modern C API for the elpa1/elpa2 CPU keywords and distributed GPU solves |
 | cosma-v2.8.4.zip | COSMA | BSD-3 | communication-optimal distributed GEMM (GPU backend) |
 | COSTA-2484769….zip / Tiled-MM-0eb7517….zip | COSTA / Tiled-MM | BSD-3 | COSMA's grid transforms / GPU GEMM backend, pinned at the commits COSMA v2.8.4 references |
 | cmake-3.31.12.tar.gz | CMake | BSD-3 | bootstrapped only when the system cmake is older than 3.24 (needed by COSMA) |

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Build the scf.eigen.lib=gpusolver2 dependency stack from the release
-# archives bundled in third_party/dist:
+# Build the shared CPU/GPU ELPA and gpusolver2 dependency stack from the
+# release archives bundled in third_party/dist:
 #
-#   * ELPA (with NVIDIA GPU kernels)  — distributed eigensolver
+#   * ELPA (CPU and NVIDIA GPU kernels) — distributed eigensolver
 #   * COSMA (+ COSTA, Tiled-MM)       — distributed pdgemm/pzgemm on the GPU
 #
 # Everything is driven by the OpenMX Makefile ("make gpusolver2-stack"); the
@@ -150,6 +150,9 @@ step_elpa() {
   mkdir -p "$BLD/elpa" && cd "$BLD/elpa"
   # ELPA's nvcc rule does not see CPPFLAGS; the cuBLAS headers of an SDK
   # layout with separate math_libs have to reach it through NVCCFLAGS.
+  # Generic real/complex CPU kernels support both elpa1 and elpa2.
+  # NVHPC does not support all x86 intrinsic templates; keep its SIMD
+  # kernels disabled while retaining the portable CPU implementation.
   "$SRC/elpa/configure" --prefix="$P" \
     FC="$GPUSOLVER2_MPI_BIN/mpif90" CC="$GPUSOLVER2_MPI_BIN/mpicc" CXX="$GPUSOLVER2_MPI_BIN/mpicxx" \
     FCFLAGS="-O2" CFLAGS="-O2" CXXFLAGS="-O2" \
@@ -159,23 +162,11 @@ step_elpa() {
     LIBS="-lscalapack_lp64 -llapack_lp64 -lblas_lp64 -lstdc++" \
     --enable-nvidia-gpu-kernels --with-NVIDIA-GPU-compute-capability=sm_$GPUSOLVER2_GPU_ARCH $SM80 \
     --with-cuda-path="$GPUSOLVER2_CUDA_HOME" --disable-shared --enable-static \
-    --disable-sse-assembly --disable-sse --disable-avx --disable-avx2 --disable-avx512 \
+    --enable-generic-kernels \
+    --disable-sse-assembly-kernels --disable-sse-kernels --disable-avx-kernels --disable-avx2-kernels --disable-avx512-kernels \
     --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
   make -j "$J"
   make install
-
-  # The OpenMX source tree embeds ELPA 2018.05 for the elpa1/elpa2 keywords,
-  # and its Fortran module symbols (elpa_utilities_*, elpa2_workload_*,
-  # aligned_mem_) collide with libelpa.a.  Fuse the new library into one
-  # relocatable object and localize everything except the C API used by
-  # elpa_cosma_bridge.c (the mpi_fortran_* commons must stay global so that
-  # they keep merging with the MPI Fortran runtime).
-  cd "$P/lib"
-  ld -r -o elpa_whole.o --whole-archive libelpa.a --no-whole-archive
-  nm -g --defined-only elpa_whole.o | awk '{print $3}' | grep '^mpi_fortran_' | sort -u > elpa_keep.txt
-  printf 'elpa_init\nelpa_uninit\nelpa_allocate\nelpa_deallocate\nelpa_setup\nelpa_set_integer\nelpa_set_double\nelpa_eigenvectors_double\nelpa_eigenvectors_double_complex\nelpa_strerr\n' >> elpa_keep.txt
-  objcopy --keep-global-symbols=elpa_keep.txt elpa_whole.o elpa_isolated.o
-  rm -f elpa_whole.o
 }
 run_step 01_elpa step_elpa
 

@@ -2053,11 +2053,11 @@ tree</b>, via four fixes:</p>
   missing from the order-only dependency list (<code>| $(FFTW3_LIB)</code>), so -j builds compiled it before
   FFTW was installed, failing the first one or two makes. Now:
   <code>FFTW3_USERS = Poisson.o Stress.o Poisson_ESM.o TRAN_Poisson.o TRAN_CDen_Main.o TRAN_Set_Electrode_Grid.o Cluster_DFT_Col.o</code>.</li>
-  <li><b>Fortran-module dependency edges for the bundled ELPA:</b> added the edges that cover every
-  <code>use</code> statement reachable through the template includes
-  (<code>elpa1_compute_real/complex.o → mod_precision.o</code>; <code>elpa2_compute_complex.o →
-  elpa1_compute_real.o</code> and four more; the <code>mod_compute_hh_trafo_*</code> kernel-module edges),
-  closing the race where compiles started before the <code>.mod</code> files existed.</li>
+  <li><b>Historical Fortran-module dependency fix:</b> commit <code>9fe8ce13</code> added the missing
+  <code>use</code> dependencies for the then-embedded ELPA, closing the race where compiles started
+  before the <code>.mod</code> files existed. That embedded version has since been removed (§9.4).
+  The current <code>openmx_elpa_cpu.o</code> adapter and GPU bridge both depend on the modern ELPA
+  installation stamp; its own build system handles its Fortran-module dependencies.</li>
   <li><b>An order-only rule for gemmul8.hpp:</b> an empty-recipe rule prevents "No rule to make target" on
   a fresh clone without the GEMMul8 checkout.</li>
 </ol>
@@ -2079,17 +2079,23 @@ completes in 177 s on the RTX 5080 box; a second make is a no-op; compile flags 
 binary is unchanged. <code>clean</code> includes <code>fftw3-clean</code> and <code>gemmul8-clean</code>, so
 third_party must rebuild after <code>make clean</code>.</p>
 
-<h2>9.4 ELPA (elpa-2018.05.001)</h2>
-<p>The sources under <code>elpa-2018.05.001/</code> are <b>identical to the original</b> (the §9.3
-dependency edges live in the Makefile). The kernels remain generic CPU ones (<b>ELPA's GPU kernels are not
-used</b>); the only difference is the Fortran compiler (mpiifx → nvfortran). ELPA remains in active use for
-n &lt; 1000, for paths that fail the GPU conditions, and — more than ever — as the <b>runtime fallback
-target when VRAM runs out (§5.6)</b>.</p>
+<h2>9.4 Shared ELPA 2026.02.002</h2>
+<p>The old <code>elpa-2018.05.001/</code> source directory and the legacy
+<code>elpa1.f90</code>/<code>solve_evp_real.f90</code>/<code>solve_evp_complex.f90</code> implementations
+have been removed. CPU and GPU paths now link the <b>same bundled ELPA 2026.02.002 library</b>,
+<code>$(GPUSOLVER2_PREFIX)/lib/libelpa.a</code>, built from the release archive under
+<code>third_party/dist/</code>. The former symbol-isolation object is no longer generated or linked.</p>
+<p><code>openmx_elpa_cpu.c</code> preserves the existing Fortran-callable entry points and invokes the
+modern C API: <code>scf.eigen.lib elpa1</code> selects the one-stage CPU solver, and
+<code>elpa2</code> selects the two-stage CPU solver with generic real/complex kernels. The adapter
+explicitly disables ELPA's GPU options. <code>gpusolver2</code> uses the same library through
+<code>elpa_cosma_bridge.c</code>, enabling the CUDA or HIP GPU backend selected at build time. CPU
+ELPA remains the <b>runtime fallback when GPU memory is insufficient (§5.6)</b>.</p>
 
 <h2>9.5 Derived Makefiles</h2>
 <ul>
-  <li><b><code>makefile.cpu_intel.bak</code></b> — byte-identical copy of the original makefile (the
-  CPU/Intel configuration preserved).</li>
+  <li><b><code>makefile.cpu_intel.bak</code></b> — originally a byte-identical copy of the original
+  CPU/Intel makefile. Its ELPA section now uses the shared modern library and CPU adapter (§9.4).</li>
   <li><b><code>Makefile.bunshiken</code></b> — a variant for a shared machine (modules:
   <code>nvhpc/25.9-nompi</code> + <code>openmpi/5.0.8</code> + <code>gcc-toolset/15</code>). NVHPC 25.9 with
   external OpenMPI, CUDA 13.0, g++ as the nvcc host compiler, an unpinned old GEMMul8 layout, and object
@@ -2359,9 +2365,10 @@ The primary target is a Pegasus-class layout (one H100 per node, many nodes). MP
   untouched. The bridge lives in the new <code>elpa_cosma_bridge.c</code> (an ELPA-handle cache keyed by
   (BLACS ctx, n, nev, type), <code>nvidia-gpu=1</code>/<code>use_gpu_id</code>, 2stage solver by
   default).</li>
-  <li><b>Relation to the embedded old ELPA</b> — the conventional <code>elpa1</code>/<code>elpa2</code>
-  paths keep using the ELPA 2018.05 embedded in the source tree, completely unchanged; only gpusolver2
-  uses the bundled ELPA 2026.02 library through the new API.</li>
+  <li><b>Shared CPU/GPU ELPA</b> — <code>elpa1</code>, <code>elpa2</code>, and
+  <code>gpusolver2</code> all use the bundled ELPA 2026.02.002 library through its modern C API.
+  <code>openmx_elpa_cpu.c</code> selects CPU solvers; <code>elpa_cosma_bridge.c</code> selects the
+  GPU backend. The former embedded ELPA 2018.05 has been removed (§9.4).</li>
   <li><b>Scope and the error stop</b> — mainline cluster (Col/NonCol) only; any other
   <code>scf.EigenvalueSolver</code> stops with an input error (Band with <code>scf.Kgrid 1 1 1</code>,
   which auto-converts to Cluster, is allowed). Everything outside the cluster diagonalization
@@ -2545,8 +2552,9 @@ offloading, <b>OMP</b> = OpenMP fix, <b>FIX</b> = bug fix / hardening, <b>OPT</b
 </tbody>
 </table>
 <p class="small">Notes: the deleted sources are <code>my_cublasDgemm.c</code> / <code>my_cublasZgemm.c</code>
-(dormant wrappers). The sources under <code>elpa-2018.05.001/</code> are identical (only Makefile
-dependency edges were added). <code>Set_ProExpn_VNA.c</code> — "no diff against the original" in the 2nd
+(dormant wrappers) in the historical comparison above. The old <code>elpa-2018.05.001/</code> tree
+and legacy solver wrappers have since been removed in favor of the shared ELPA 2026.02.002 library
+and <code>openmx_elpa_cpu.c</code> (§9.4). <code>Set_ProExpn_VNA.c</code> — "no diff against the original" in the 2nd
 edition — plus the six mixing files and the density grid were newly modified by the 40 commits leading to
 this edition.</p>
 </section>
@@ -2713,7 +2721,7 @@ this edition.</p>
   <li>ELPA (Eigenvalue soLvers for Petaflop Applications): <code>https://elpa.mpcdf.mpg.de/</code></li>
   <li>FFTW: <code>https://www.fftw.org/</code></li>
 </ol>
-<div class="note" style="margin-top:16px;"><b>About this document:</b> this 3rd edition is based on the source tree as of 2026-07-23 (commit <code>9fe8ce13</code>), a full-file diff against the original OpenMX 4.0, and a survey of all 91 commits of the development repository. Line numbers and defaults refer to that revision; if you find discrepancies, treat the source code as the primary reference.</div>
+<div class="note" style="margin-top:16px;"><b>About this document:</b> this 3rd edition is based on the source tree as of 2026-07-23 (commit <code>9fe8ce13</code>), a full-file diff against the original OpenMX 4.0, and a survey of all 91 commits of the development repository. The ELPA sections have been updated to describe the shared ELPA 2026.02.002 implementation (§9.4); historical diff counts and commit descriptions are retained. Other line numbers and defaults refer to the original revision; if you find discrepancies, treat the source code as the primary reference.</div>
 </section>
 
 </body>

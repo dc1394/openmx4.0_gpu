@@ -83,12 +83,17 @@ class UnifiedBuildTest(unittest.TestCase):
             if Path(name).suffix in COMPILE_SUFFIXES:
                 with self.subTest(shared=name):
                     self.assertEqual(digest(hip / name), self.manifest["import_sha256"][name])
-        amd_sources = set(self.manifest["shared"]) | set(self.manifest["overrides"])
+        amd_sources = (set(self.manifest["shared"]) | set(self.manifest["overrides"]) |
+                       set(self.manifest.get("integrated_shared", [])))
         for source in (ROOT / "source").iterdir():
             if source.is_file() and source.suffix in COMPILE_SUFFIXES and source.name not in amd_sources:
                 self.assertFalse((hip / source.name).exists(), f"CUDA-only source leaked into HIP: {source.name}")
         self.assertEqual((cuda / "Makefile").resolve(), ROOT / "source" / "Makefile")
         self.assertEqual((hip / "Makefile").resolve(), HIP / "Makefile")
+        for stage in (cuda, hip):
+            self.assertFalse((stage / "elpa-2018.05.001").exists())
+            self.assertFalse((stage / "elpa1.f90").exists())
+            self.assertTrue((stage / "openmx_elpa_cpu.c").is_file())
 
     def test_hip_compatibility_headers_do_not_shadow_cuda(self):
         headers = [name for name, source in self.manifest["overrides"].items()

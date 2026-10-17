@@ -1,8 +1,8 @@
 #!/bin/sh
-# Build the scf.eigen.lib=gpusolver2 dependency stack from the release
-# archives bundled in third_party/dist:
+# Build the shared CPU/GPU ELPA and gpusolver2 dependency stack from the
+# release archives bundled in third_party/dist:
 #
-#   * ELPA (with AMD GPU kernels)     — distributed eigensolver
+#   * ELPA (CPU and AMD GPU kernels)    — distributed eigensolver
 #   * COSMA (+ COSTA, Tiled-MM)       — distributed pdgemm/pzgemm on the GPU
 #
 # Everything is driven by the OpenMX Makefile ("make gpusolver2-stack"); the
@@ -203,7 +203,7 @@ OPENMX_ELPA_CPTR_PATCH
     LDFLAGS="-L$GPUSOLVER2_MPI_LIBDIR -L$GPUSOLVER2_AOCL_LIB -L$GPUSOLVER2_AOCC_LIB -L$GPUSOLVER2_ROCM/lib" \
     LIBS="-lscalapack -lflame -lblis -lrocblas -lamdhip64 -lstdc++" \
     --enable-amd-gpu-kernels --disable-shared --enable-static \
-    --disable-avx512 \
+    --enable-generic-kernels --disable-avx512-kernels \
     --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
   # amdflang's -O2 middle end blows up (tens of GiB of RSS) on the
   # generated elpa2_compute.F90 once the SIMD kernel templates are enabled;
@@ -223,22 +223,6 @@ OPENMX_ELPA_CPTR_PATCH
     noinst_LTLIBRARIES="libelpa_public.la libelpa_private.la"
   make install bin_PROGRAMS= noinst_PROGRAMS= \
     noinst_LTLIBRARIES="libelpa_public.la libelpa_private.la"
-
-  # The OpenMX source tree embeds ELPA 2018.05 for the elpa1/elpa2 keywords,
-  # and its Fortran module symbols (elpa_utilities_*, elpa2_workload_*,
-  # aligned_mem_) collide with libelpa.a.  Fuse the new library into one
-  # relocatable object and localize everything except the C API used by
-  # elpa_cosma_bridge.c (the mpi_fortran_* commons must stay global so that
-  # they keep merging with the MPI Fortran runtime).
-  cd "$P/lib"
-  # --force-group-allocation resolves the COMDAT groups of the compiler's
-  # string-literal constants at -r time; otherwise the final link discards
-  # duplicate groups whose (localized) symbols our relocations still name.
-  ld -r --force-group-allocation -o elpa_whole.o --whole-archive libelpa.a --no-whole-archive
-  nm -g --defined-only elpa_whole.o | awk '{print $3}' | grep '^mpi_fortran_' | sort -u > elpa_keep.txt
-  printf 'elpa_init\nelpa_uninit\nelpa_allocate\nelpa_deallocate\nelpa_setup\nelpa_set_integer\nelpa_set_double\nelpa_eigenvectors_double\nelpa_eigenvectors_double_complex\nelpa_strerr\n' >> elpa_keep.txt
-  objcopy --keep-global-symbols=elpa_keep.txt elpa_whole.o elpa_isolated.o
-  rm -f elpa_whole.o
 }
 run_step 01_elpa step_elpa
 

@@ -68,7 +68,7 @@ replaces the cluster diagonalization (collinear and non-collinear) with [ELPA](h
 
 - "gpusolver2" supports only `scf.EigenvalueSolver cluster`; any other solver stops with an input error. It retains the existing per-rank GPU paths outside cluster diagonalization, and a machine without a usable GPU demotes itself to ELPA2 as usual.
 - When the GPU memory cannot hold a solve, that solve automatically falls back to the ELPA CPU kernels / ScaLAPACK instead of aborting the run.
-- The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically by the first `make` — no network access is needed (autoconf, automake, libtool, m4 and python3 must be installed). The conventional "elpa1"/"elpa2" paths keep using the ELPA 2018.05 embedded in the OpenMX source; only "gpusolver2" links the bundled ELPA 2026.02.
+- The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically by the first `make` — no network access is needed (autoconf, automake, libtool, m4 and python3 must be installed). The CPU "elpa1"/"elpa2" paths and "gpusolver2" share the same ELPA 2026.02.002 library. The CPU keywords select its one-stage and two-stage solvers with GPU execution disabled; the old embedded ELPA has been removed.
 
 ## Single-node multi-GPU Cluster and Band
 
@@ -829,9 +829,8 @@ archive carries its original license file:
 
 - **ELPA** 2026.02 — <https://elpa.mpcdf.mpg.de/> — Copyright (c) the ELPA
   consortium — **GNU Lesser General Public License v3.0 (`LGPL-3.0`)**
-  (`COPYING/` inside the archive). The conventional "elpa1"/"elpa2" CPU paths
-  use the ELPA 2018.05 source embedded in upstream OpenMX under the same
-  license.
+  (`COPYING/` inside the archive). The "elpa1"/"elpa2" CPU paths and the
+  distributed GPU path share this single version.
 - **COSMA** 2.8.4 — <https://github.com/eth-cscs/COSMA> — Copyright (c) ETH
   Zürich (parts: Advanced Micro Devices, Inc.) — **BSD 3-Clause License
   (`BSD-3-Clause`)**

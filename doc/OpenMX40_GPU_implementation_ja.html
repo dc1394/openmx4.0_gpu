@@ -1933,10 +1933,10 @@ set_cuda_default_device_from_local_rank.o set_openacc_device_from_local_rank.o</
   order-only 依存(<code>| $(FFTW3_LIB)</code>)のリストに入っておらず、-j ビルドで FFTW の install 前に
   コンパイルが走って最初の 1〜2 回の make が失敗していた。現在は
   <code>FFTW3_USERS = Poisson.o Stress.o Poisson_ESM.o TRAN_Poisson.o TRAN_CDen_Main.o TRAN_Set_Electrode_Grid.o Cluster_DFT_Col.o</code>。</li>
-  <li><b>バンドル ELPA の Fortran モジュール依存エッジ:</b> <code>.mod</code> ファイル生成前にコンパイルが始まる
-  レースを塞ぐため、テンプレート include 経由で到達可能な全 use 文をカバーする依存
-  (<code>elpa1_compute_real/complex.o → mod_precision.o</code>、<code>elpa2_compute_complex.o →
-  elpa1_compute_real.o ほか 4 件</code>、<code>mod_compute_hh_trafo_* → 相互のカーネルモジュール</code>)を追加。</li>
+  <li><b>当時の Fortran モジュール依存の修正:</b> コミット <code>9fe8ce13</code> で、当時の埋め込み ELPA に
+  不足していた <code>use</code> 依存を追加し、<code>.mod</code> ファイル生成前にコンパイルが始まるレースを解消した。
+  この埋め込み版は現在は削除済み(§9.4)。現在の <code>openmx_elpa_cpu.o</code> と GPU ブリッジはともに
+  新 ELPA のインストール完了スタンプに依存し、ELPA 内部の Fortran モジュール依存はそのビルドシステムが管理する。</li>
   <li><b>gemmul8.hpp の order-only ルール:</b> GEMMul8 チェックアウトが無い新規クローンで
   「No rule to make target」で死ぬのを防ぐ空レシピルールを追加。</li>
 </ol>
@@ -1958,16 +1958,23 @@ $(GEMMUL8_LIB): $(GEMMUL8_OPENMX_OBJ)
 <code>clean</code> は <code>fftw3-clean</code> と <code>gemmul8-clean</code> を含むため、<code>make clean</code> 後は
 third_party の再ビルドが必要になる。</p>
 
-<h2>9.4 ELPA(elpa-2018.05.001)</h2>
-<p><code>elpa-2018.05.001/</code> ディレクトリのソースは<b>オリジナルと完全同一</b>
-(9.3 の依存エッジ追加は Makefile 側の変更)。カーネルは generic CPU 版のまま
-(<b>ELPA の GPU カーネルは使っていない</b>)。違いは Fortran コンパイラが mpiifx → nvfortran になった点のみ。
-GPU 版でも n &lt; 1000 の系・GPU 条件を満たさない経路・<b>VRAM 不足時の実行時フォールバック先(§5.6)</b>として
-ELPA は現役で使われるため、この維持は以前にも増して重要である。</p>
+<h2>9.4 ELPA 2026.02.002 の共通利用</h2>
+<p>旧 <code>elpa-2018.05.001/</code> ディレクトリと、旧実装
+<code>elpa1.f90</code>/<code>solve_evp_real.f90</code>/<code>solve_evp_complex.f90</code> は削除した。
+CPU 経路と GPU 経路は、<code>third_party/dist/</code> のリリースアーカイブからビルドした
+<b>同一の ELPA 2026.02.002 ライブラリ</b>、<code>$(GPUSOLVER2_PREFIX)/lib/libelpa.a</code> をリンクする。
+従来のシンボル隔離用オブジェクトの生成・リンクも廃止した。</p>
+<p><code>openmx_elpa_cpu.c</code> は既存の Fortran 呼び出しインターフェースを維持し、新しい C API を使う。
+<code>scf.eigen.lib elpa1</code> は 1stage CPU ソルバ、<code>elpa2</code> は generic の実・複素カーネルを
+使う 2stage CPU ソルバを選び、ELPA の GPU オプションは明示的に無効化する。
+<code>gpusolver2</code> は <code>elpa_cosma_bridge.c</code> から同じライブラリを使い、ビルド時に選んだ
+CUDA または HIP の GPU バックエンドを有効にする。CPU ELPA は引き続き
+<b>GPU メモリ不足時の実行時フォールバック先(§5.6)</b>になる。</p>
 
 <h2>9.5 派生 Makefile</h2>
 <ul>
-  <li><b><code>makefile.cpu_intel.bak</code></b> — オリジナル makefile のバイト同一コピー(CPU/Intel 構成の保存)。</li>
+  <li><b><code>makefile.cpu_intel.bak</code></b> — 元はオリジナルの CPU/Intel makefile のバイト同一コピー。
+  現在の ELPA 部分は共通の新ライブラリと CPU アダプターを使う構成に更新済み(§9.4)。</li>
   <li><b><code>Makefile.bunshiken</code></b> — 共用計算機(モジュール環境: <code>nvhpc/25.9-nompi</code> +
   <code>openmpi/5.0.8</code> + <code>gcc-toolset/15</code>)向けの変種。NVHPC 25.9 + 外部 OpenMPI、CUDA 13.0、
   nvcc ホストコンパイラが g++、GEMMul8 が旧レイアウト(コミット固定なし)、オブジェクト名が gpusolver リネーム前の
@@ -2225,9 +2232,9 @@ NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
   逆変換 <code>cosma_pzgemm_</code>。S 小固有値のクランプなど OpenMX 独自の数値処理は不変。
   ブリッジは新設の <code>elpa_cosma_bridge.c</code> に集約(ELPA ハンドルの (BLACS ctx, n, nev, 型) 別キャッシュ、
   <code>nvidia-gpu=1</code>/<code>use_gpu_id</code> 設定、2stage ソルバ既定)。</li>
-  <li><b>埋め込み旧 ELPA との関係</b> — 従来の <code>elpa1</code>/<code>elpa2</code> 経路はソースツリー埋め込みの
-  ELPA 2018.05 をこれまで通り使う(完全不変)。gpusolver2 だけが同梱アーカイブからビルドした ELPA 2026.02 の
-  ライブラリを新 API で使う。</li>
+  <li><b>CPU/GPU 共通の ELPA</b> — <code>elpa1</code>、<code>elpa2</code>、<code>gpusolver2</code> はすべて
+  同梱の ELPA 2026.02.002 ライブラリを新しい C API から使う。<code>openmx_elpa_cpu.c</code> が CPU ソルバ、
+  <code>elpa_cosma_bridge.c</code> が GPU バックエンドを選ぶ。旧 ELPA 2018.05 の埋め込み実装は削除済み(§9.4)。</li>
   <li><b>適用範囲とエラー停止</b> — 対象はクラスター本流(Col/NonCol)のみ。<code>scf.EigenvalueSolver</code> が
   cluster 以外だと入力段階でエラー停止する(Band + <code>scf.Kgrid 1 1 1</code> の自動クラスター化は通る)。
   クラスター対角化以外(SetH/密度/力/混合などの GPU 経路、CWF 等の付加処理)は gpusolver と完全同一
@@ -2398,8 +2405,10 @@ raw 行数が実質変更より大きく見える点に注意。
 <tr><td><code>makefile</code> → <code>Makefile</code></td><td>全面改修</td><td>BLD</td><td>Intel oneAPI+MKL 構成から NVHPC+CUDA+自前 FFTW+GEMMul8 構成へ(第 9 章)。クリーンツリーから make 一発で完走</td></tr>
 </tbody>
 </table>
-<p class="small">補足: 削除されたソースは <code>my_cublasDgemm.c</code> / <code>my_cublasZgemm.c</code>(休眠ラッパ)の 2 件。
-<code>elpa-2018.05.001/</code> 以下のソースは完全同一(Makefile 側の依存エッジのみ追加)。
+<p class="small">補足: 上表の当時の比較で削除されたソースは
+<code>my_cublasDgemm.c</code> / <code>my_cublasZgemm.c</code>(休眠ラッパ)の 2 件。
+その後、旧 <code>elpa-2018.05.001/</code> と旧ソルバラッパーも削除し、共通の ELPA 2026.02.002 ライブラリと
+<code>openmx_elpa_cpu.c</code> に置き換えた(§9.4)。
 第 2 版で「オリジナルと差分なし」だった <code>Set_ProExpn_VNA.c</code> と、混合 6 ファイル・密度グリッドは
 本版までの 40 コミットで新たに変更された。</p>
 </section>
@@ -2567,7 +2576,8 @@ raw 行数が実質変更より大きく見える点に注意。
 </ol>
 <div class="note" style="margin-top:16px;"><b>本書について:</b> 本書は 2026-07-23 時点のソースツリー(コミット <code>9fe8ce13</code>)と、
 オリジナル OpenMX 4.0 との全ファイル diff、および開発リポジトリの全 91 コミットの調査に基づいて作成された(第 3 版)。
-記載の行番号・既定値は当該時点のものである。誤りを見つけた場合はソースコードを一次情報として優先されたい。</div>
+ELPA 関連の記述は ELPA 2026.02.002 の共通利用(§9.4)に合わせて更新し、過去の差分行数・コミット説明は保存した。
+その他の行番号・既定値は元の調査時点のものである。誤りを見つけた場合はソースコードを一次情報として優先されたい。</div>
 </section>
 
 </body>

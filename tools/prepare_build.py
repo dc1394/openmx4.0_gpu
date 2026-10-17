@@ -79,9 +79,9 @@ def prepare(source_root, build_root, backend):
     hip = source / 'backends' / 'hip'
     if backend == 'HIP':
         manifest = json.loads((hip / 'sources.json').read_text())
-        # Only sources present in the AMD import belong in its flat source
-        # directory. The identical embedded ELPA directory is linked below.
-        selected = {name: source / name for name in manifest['shared']
+        # Imported shared sources and subsequent common integration code use
+        # the same implementation in both GPU backends.
+        selected = {name: source / name for name in manifest['shared'] + manifest.get('integrated_shared', [])
                     if len(Path(name).parts) == 1}
         for name, relative in manifest['overrides'].items():
             selected[name] = hip / relative
@@ -99,7 +99,11 @@ def prepare(source_root, build_root, backend):
                     destination.unlink()
     for name, path in selected.items():
         link_file(path, stage / name)
-    link_file(source / 'elpa-2018.05.001', stage / 'elpa-2018.05.001')
+    # Older projections linked the embedded ELPA tree independently of the
+    # source manifest. Remove that managed link when updating an existing build.
+    legacy_elpa = stage / 'elpa-2018.05.001'
+    if legacy_elpa.is_symlink():
+        legacy_elpa.unlink()
     link_file(source_root / 'DFT_DATA19', native / 'DFT_DATA19')
 
     third_party = source / 'third_party'

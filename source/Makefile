@@ -243,7 +243,7 @@ GPUSOLVER2_ELPA_VER  ?= 2026.02.002
 GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa-$(GPUSOLVER2_ELPA_VER)
 GPUSOLVER2_STAMP     = $(GPUSOLVER2_BUILD)/stamp/02_cosma.done
 
-GPUSOLVER2_LIBS = $(GPUSOLVER2_PREFIX)/lib/elpa_isolated.o \
+GPUSOLVER2_LIBS = $(GPUSOLVER2_PREFIX)/lib/libelpa.a \
  -Wl,--start-group \
  $(GPUSOLVER2_PREFIX)/lib/libcosma_prefixed_pxgemm.a \
  $(GPUSOLVER2_PREFIX)/lib/libcosma.a \
@@ -318,7 +318,7 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           TRAN_Calc_OneTransmission.o TRAN_Main_Analysis.o TRAN_Main_Analysis_NC.o \
           MTRAN_EigenChannel.o TRAN_Channel_Functions.o TRAN_Channel_Output.o \
           TRAN_Calc_CurrentDensity.o TRAN_CDen_Main.o \
-          elpa1.o solve_evp_real.o solve_evp_complex.o \
+          openmx_elpa_cpu.o \
           NBO_Cluster.o NBO_Krylov.o Population_Analysis_Wannier.o Population_Analysis_Wannier2.o \
           NabraMatrixElements.o Set_dOrbitals_Grid.o Calc_optical.o \
           Band_DFT_NonCol_Optical.o Cluster_DFT_Optical.o leakdetect.o \
@@ -342,23 +342,7 @@ OBJS += openmx_gpu_bilinear.o openmx_gpu_bilinear_pack.o
 # PROG    = openmx.exe
 # PROG    = openmx
 
-#-----------------------------------------------------------------------
-# LIBELPA
-#-----------------------------------------------------------------------
-LIBELPADIR = ./elpa-2018.05.001
-
-OBJS    += mod_precision.o elpa_utilities.o\
-	elpa1_compute_real.o elpa1_compute_complex.o\
-	aligned_mem.o elpa2_determine_workload.o\
-	mod_redist_band_real.o mod_redist_band_complex.o\
-	mod_pack_unpack_cpu_real.o mod_pack_unpack_cpu_complex.o\
-	real.o complex.o\
-	mod_single_hh_trafo_real.o mod_compute_hh_trafo_real.o mod_compute_hh_trafo_complex.o\
-	elpa2_compute_real.o elpa2_compute_complex.o \
-	elpa_solve_evp_real_2stage_double_impl.o elpa_solve_evp_complex_2stage_double_impl.o\
-
-CC      += -I$(LIBELPADIR)
-FC      += -I$(LIBELPADIR)
+# CPU elpa1/elpa2 and GPU gpusolver2 share the bundled modern ELPA library.
 
 #
 # set program name
@@ -969,6 +953,9 @@ $(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
 gpusolver2-clean:
 	rm -rf "$(GPUSOLVER2_BUILD)" "$(GPUSOLVER2_PREFIX)"
 
+openmx_elpa_cpu.o: openmx_elpa_cpu.c openmx_elpa_cpu.h openmx_common.h $(GPUSOLVER2_STAMP)
+	$(CC_NOACC_O3) -I$(GPUSOLVER2_ELPA_INCLUDE) -c openmx_elpa_cpu.c
+
 elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h $(GPUSOLVER2_STAMP)
 	$(CC_NOACC_O3) -I$(GPUSOLVER2_ELPA_INCLUDE) -c elpa_cosma_bridge.c
 # COSMA's strategy (host memory of its transforms) with the C++ compiler
@@ -1468,53 +1455,6 @@ TRAN_Calc_CurrentDensity.o: TRAN_Calc_CurrentDensity.c tran_prototypes.h lapack_
 TRAN_CDen_Main.o: TRAN_CDen_Main.c openmx_common.h lapack_prototypes.h tran_prototypes.h tran_variables.h
 	$(CC) -c TRAN_CDen_Main.c
 # E MitsuakiKAWAMURA                       
-
-elpa1.o: elpa1.f90
-	$(FC) -c elpa1.f90
-solve_evp_real.o: solve_evp_real.f90 elpa1.o
-	$(FC) -c solve_evp_real.f90
-solve_evp_complex.o: solve_evp_complex.f90 elpa1.o
-	$(FC) -c solve_evp_complex.f90
-
-mod_precision.o: $(LIBELPADIR)/mod_precision.F90
-	$(FC) -c $(LIBELPADIR)/mod_precision.F90
-elpa_utilities.o: $(LIBELPADIR)/elpa_utilities.F90
-	$(FC) -c $(LIBELPADIR)/elpa_utilities.F90
-elpa1_compute_real.o: $(LIBELPADIR)/elpa1_compute_real.F90 elpa_utilities.o mod_precision.o
-	$(FC) -c $(LIBELPADIR)/elpa1_compute_real.F90
-elpa1_compute_complex.o: $(LIBELPADIR)/elpa1_compute_complex.F90 elpa_utilities.o mod_precision.o
-	$(FC) -c $(LIBELPADIR)/elpa1_compute_complex.F90
-aligned_mem.o: $(LIBELPADIR)/aligned_mem.F90
-	$(FC) -c $(LIBELPADIR)/aligned_mem.F90
-mod_pack_unpack_cpu_real.o: $(LIBELPADIR)/mod_pack_unpack_cpu_real.F90 mod_precision.o
-	$(FC) -c $(LIBELPADIR)/mod_pack_unpack_cpu_real.F90
-mod_pack_unpack_cpu_complex.o: $(LIBELPADIR)/mod_pack_unpack_cpu_complex.F90 mod_precision.o
-	$(FC) -c $(LIBELPADIR)/mod_pack_unpack_cpu_complex.F90
-mod_redist_band_real.o: $(LIBELPADIR)/mod_redist_band_real.F90 elpa2_determine_workload.o mod_precision.o elpa_utilities.o
-	$(FC) -c $(LIBELPADIR)/mod_redist_band_real.F90
-mod_redist_band_complex.o: $(LIBELPADIR)/mod_redist_band_complex.F90 elpa2_determine_workload.o mod_precision.o elpa_utilities.o
-	$(FC) -c $(LIBELPADIR)/mod_redist_band_complex.F90
-elpa2_determine_workload.o: $(LIBELPADIR)/elpa2_determine_workload.F90 mod_precision.o
-	$(FC) -c $(LIBELPADIR)/elpa2_determine_workload.F90
-real.o: $(LIBELPADIR)/real.F90 mod_precision.o
-	$(FC) -c $(LIBELPADIR)/real.F90
-complex.o: $(LIBELPADIR)/complex.F90 mod_precision.o
-	$(FC) -c $(LIBELPADIR)/complex.F90
-mod_single_hh_trafo_real.o: $(LIBELPADIR)/mod_single_hh_trafo_real.F90 mod_precision.o
-	$(FC) -c $(LIBELPADIR)/mod_single_hh_trafo_real.F90
-mod_compute_hh_trafo_real.o: $(LIBELPADIR)/mod_compute_hh_trafo_real.F90 mod_precision.o mod_single_hh_trafo_real.o real.o complex.o
-	$(FC) -c $(LIBELPADIR)/mod_compute_hh_trafo_real.F90
-mod_compute_hh_trafo_complex.o: $(LIBELPADIR)/mod_compute_hh_trafo_complex.F90 mod_precision.o complex.o real.o mod_single_hh_trafo_real.o
-	$(FC) -c $(LIBELPADIR)/mod_compute_hh_trafo_complex.F90
-elpa2_compute_real.o: $(LIBELPADIR)/elpa2_compute_real.F90 elpa_utilities.o elpa1_compute_real.o mod_precision.o aligned_mem.o elpa2_determine_workload.o mod_redist_band_real.o mod_pack_unpack_cpu_real.o mod_compute_hh_trafo_real.o
-	$(FC) -c $(LIBELPADIR)/elpa2_compute_real.F90
-elpa2_compute_complex.o: $(LIBELPADIR)/elpa2_compute_complex.F90 elpa_utilities.o elpa1_compute_complex.o elpa1_compute_real.o mod_precision.o aligned_mem.o elpa2_determine_workload.o mod_redist_band_complex.o mod_redist_band_real.o mod_pack_unpack_cpu_complex.o mod_pack_unpack_cpu_real.o mod_compute_hh_trafo_complex.o mod_compute_hh_trafo_real.o
-	$(FC) -c $(LIBELPADIR)/elpa2_compute_complex.F90
-elpa_solve_evp_real_2stage_double_impl.o: $(LIBELPADIR)/elpa_solve_evp_real_2stage_double_impl.F90 elpa2_compute_real.o elpa1_compute_real.o mod_precision.o
-	$(FC) -c $(LIBELPADIR)/elpa_solve_evp_real_2stage_double_impl.F90
-elpa_solve_evp_complex_2stage_double_impl.o: $(LIBELPADIR)/elpa_solve_evp_complex_2stage_double_impl.F90 elpa2_compute_complex.o elpa1_compute_complex.o elpa1_compute_real.o elpa_utilities.o mod_precision.o
-	$(FC) -c $(LIBELPADIR)/elpa_solve_evp_complex_2stage_double_impl.F90
-
 
 #
 #

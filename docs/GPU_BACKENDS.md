@@ -29,6 +29,11 @@ git submodule update --init --recursive
 MI300A と Radeon の判定、固有のメモリ管理、ネイティブ FP64 / GEMMul8 の選択は
 取り込んだ AMD 実装で処理します。
 
+CPU と GPU の固有値計算は、同じ ELPA 2026.02.002 ライブラリを使用します。
+`scf.eigen.lib elpa1` は一段階法、`elpa2` は二段階法を CPU 上で実行します。
+`OPENMX_GPU=0` で GPU を無効にした場合も新しい ELPA の CPU 経路に切り替わります。
+OpenMX が以前内蔵していた古い ELPA のソースとビルドルールは除去しました。
+
 CMake は既存の Makefile にあるファイル別の最適化・オフロード設定を使います。
 `build/<backend>/native/source/` に選択したソースをリンクし、GEMMul8、FFTW、MAGMA、
 ELPA/COSMA などの変更される依存ソース・生成物をビルドごとに分離します。
@@ -206,3 +211,28 @@ ctest --test-dir build/hip --output-on-failure
 HIP の CTest はさらに MI300A/Radeon の演算方針、非共線バンドの復旧処理、
 MPI ランク起動処理をホスト上で検証します。AMD GPU を使用する実機試験とは別です。
 AMD 版から取り込んだ追加テストは `build/hip/native/tests/` から実行できます。
+
+CPU の ELPA 接続部は、実際の MPI と LAPACK を使って検証できます。
+次の試験は実数・複素数、一段階法・二段階法、部分固有ベクトル、長方形のプロセス
+グリッド、MPI 部分コミュニケータ、空のローカル行・列を確認します。
+HIP ビルドでは `--native-source build/hip/native/source` を指定します。
+
+```sh
+python3 tests/run_elpa_cpu_mpi.py --native-source build/cuda/native/source
+```
+
+標準の CPU 回帰試験は、既存の入力と参照値を読み取り、別のディレクトリに結果を
+保存して実行します。各出力先には未使用のディレクトリを指定してください。
+`--reference` は全エネルギーに加え、各原子の力の全成分を参照値と比較します。
+
+```sh
+python3 tools/run_gpu_suites.py --binary build/cuda/openmx \
+  --output build/cpu-elpa-runtest --suite S --ranks 18 --threads 1 \
+  --env OPENMX_GPU=0 --together
+python3 tools/compare_gpu_suites.py --reference build/cpu-elpa-runtest
+
+python3 tools/run_gpu_suites.py --binary build/cuda/openmx \
+  --output build/cpu-elpa-runtestL --suite L --ranks 18 --threads 1 \
+  --env OPENMX_GPU=0 --together
+python3 tools/compare_gpu_suites.py --reference build/cpu-elpa-runtestL
+```
