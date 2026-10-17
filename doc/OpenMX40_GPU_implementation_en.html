@@ -89,20 +89,21 @@ svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
     <div style="font-size:11pt; color:var(--accent-dark); letter-spacing:.08em; margin-bottom:14px;">Technical Reference</div>
     <div style="font-size:25pt; font-weight:bold; color:#16233a; line-height:1.35;">OpenMX 4.0 GPU Version<br>Implementation Guide</div>
     <div style="font-size:12pt; color:#3a4557; margin-top:16px; line-height:1.6;">
-      A complete picture of the NVIDIA GPU offloading implementation<br>and all changes from the original OpenMX 4.0<br>
-      <span style="font-size:10.5pt;">— How cuBLAS, GEMMul8, and cuSOLVER are used, and their caveats —</span>
+      CUDA implementation details and AMD HIP integration<br>with a shared CPU/GPU ELPA library<br>
+      <span style="font-size:10.5pt;">— GPU libraries, CMake builds, runtime controls, and validation —</span>
     </div>
   </div>
   <div style="margin-top:34px; font-size:9.5pt; color:#3a4557; line-height:1.9;">
-    <b>Target revision:</b> OpenMX 4.0 GPU version (as of 2026-07-23, commit <code>9fe8ce13</code>)<br>
-    <b>Baseline for comparison:</b> the original OpenMX 4.0 source distribution<br>
-    <b>Verified environment:</b> NVHPC SDK 26.3 / CUDA 13.1 / compute capability 12.0 (Blackwell-generation GeForce)<br>
-    <b>Published:</b> July 23, 2026 (3rd edition)
+    <b>Integration revision:</b> October 17, 2026, commit <code>c0689442</code><br>
+    <b>Original CUDA survey:</b> July 23, 2026, commit <code>9fe8ce13</code><br>
+    <b>Backends:</b> NVIDIA CUDA / AMD HIP; ELPA 2026.02.002<br>
+    <b>Revised:</b> October 17, 2026 (4th edition)
   </div>
   <div class="note" style="margin-top:30px;">
     <b>Note:</b> This document describes an <b>unofficial</b> port of the first-principles code <a href="http://www.openmx-square.org/">OpenMX</a> (GPL v3)
-    to NVIDIA GPUs; it is not an official document of the OpenMX development team.
-    File names and line numbers refer to the revision above and may change as development proceeds.
+    to NVIDIA and AMD GPUs; it is not an official document of the OpenMX development team.
+    Detailed CUDA listings and historical change counts retain the original survey baseline.
+    Current integration, build, and validation information is in §§9.4, 9.7–9.8 and 11.5.
   </div>
 </div>
 
@@ -126,13 +127,13 @@ svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
   <li><a href="#ch8">8. Changes Unrelated to GPU Offloading</a>
     <ol><li>OpenMP bug fixes / More robust memory management / Other fixes</li></ol></li>
   <li><a href="#ch9">9. Build System</a>
-    <ol><li>Toolchain / Flags / Link configuration / Automatic third_party builds / ELPA / Derived Makefiles / Procedure</li></ol></li>
+    <ol><li>CUDA toolchain / Link configuration / Shared ELPA / Native Makefiles / CUDA and HIP with CMake / Regression checks</li></ol></li>
   <li><a href="#ch10">10. Runtime Control Reference</a>
     <ol><li>Input keywords / Environment variable list / GPU diagnostics on stdout / Tuning guidelines</li></ol></li>
   <li><a href="#ch11">11. Summary of Constraints and Caveats</a></li>
-  <li><a href="#appA">Appendix A. Changed Files (47 files)</a></li>
-  <li><a href="#appB">Appendix B. Newly Added Files</a></li>
-  <li><a href="#appC">Appendix C. Development History (all 91 commits)</a></li>
+  <li><a href="#appA">Appendix A. Changed Files (July 2026; 47 files)</a></li>
+  <li><a href="#appB">Appendix B. Newly Added Files (July 2026)</a></li>
+  <li><a href="#appC">Appendix C. Development History (July 2026; 91 commits)</a></li>
   <li><a href="#refs">References</a></li>
 </ol>
 </nav>
@@ -142,14 +143,14 @@ svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
 
 <h2>1.1 Purpose and Audience</h2>
 <p>This document describes the "OpenMX 4.0 GPU version", a port of the density-functional-theory (DFT)
-first-principles code <b>OpenMX 4.0</b> to NVIDIA GPUs. Based on primary sources (the source code and diffs),
-it covers (1) the overall picture of the current implementation, (2) <b>all changes</b> from the original
-OpenMX 4.0, and (3) how the three core GPU libraries — <b>cuBLAS</b>, <b>GEMMul8</b>, and <b>cuSOLVER</b> —
-are used, together with their caveats. Intended readers:</p>
+first-principles code <b>OpenMX 4.0</b> to NVIDIA CUDA and AMD HIP. Based on the repository sources,
+it describes the CUDA implementation in detail, the integrated HIP backend, the shared CPU/GPU ELPA
+library, and the build and runtime interfaces. Chapters 3–7 retain the CUDA-specific API discussion;
+§11.5 explains the HIP implementation and its differences. Intended readers:</p>
 <ul>
   <li>Users who want to run OpenMX fast on GPUs (mainly Chapters 2, 10, and 11)</li>
   <li>Developers who want to understand or modify this implementation (Chapters 3–9)</li>
-  <li>Developers considering ports to other vendors such as AMD GPUs (the gpusolver layer in Chapter 5, and Chapter 11)</li>
+  <li>Developers maintaining the CUDA and HIP backends (§§9.7 and 11.5)</li>
 </ul>
 <p>Basic knowledge of DFT and the LCAO method, C, MPI, and CUDA programming is assumed.</p>
 
@@ -158,7 +159,7 @@ are used, together with their caveats. Intended readers:</p>
 orbitals (LCAO) and norm-conserving pseudopotentials. Besides cluster and band calculations it offers
 O(N) methods such as the divide-and-conquer (DC) method, DC-LNO, and the Krylov subspace method, and
 non-equilibrium Green's function (NEGF) transport. It is licensed under GPL v3.</p>
-<p>This GPU version starts from the official OpenMX 4.0 sources and adds GPU offloading incrementally over
+<p>This GPU version starts from the official OpenMX 4.0 sources. The original July 2026 survey covered
 <b>91 commits</b>. The early development (up to the 51 commits covered by the 2nd edition) offloaded the
 dense-matrix eigenvalue problems and matrix products (GEMM) that dominate SCF; the following 40 commits
 broadened the scope substantially. Today, matrix-element construction (the Set_Hamiltonian grid integrals,
@@ -168,6 +169,8 @@ plus fast paths for every other scheme) all run on the GPU or on equivalent fast
 handling, communication, and I/O keep the original structure.</p>
 
 <h2>1.3 Scale of the Changes</h2>
+<p>The following counts and Appendices A–C describe the July 23 CUDA survey, not the current tree.
+The subsequent integration adds the HIP backend, isolated CMake builds, and shared modern ELPA.</p>
 <table>
 <thead><tr><th>Item</th><th>Value</th><th>Notes</th></tr></thead>
 <tbody>
@@ -181,10 +184,10 @@ handling, communication, and I/O keep the original structure.</p>
 
 <h2>1.4 Target Environment</h2>
 <ul>
-  <li><b>Compilers:</b> NVIDIA HPC SDK (NVHPC) 26.3 — <code>mpicc</code> (nvc) with OpenACC, <code>mpif90</code> (nvfortran), nvcc (CUDA 13.1)</li>
-  <li><b>GPU:</b> any CUDA-capable NVIDIA GPU. GEMMul8 uses INT8 Tensor Cores. Development and verification were done on compute capability 12.0 (a Blackwell-generation GeForce)</li>
+  <li><b>CUDA:</b> NVIDIA HPC SDK (nvc/OpenACC, nvfortran, nvcc). The current main Makefile defaults to NVHPC 26.9 and CUDA 13.4; paths can be overridden. The original survey used NVHPC 26.3 / CUDA 13.1.</li>
+  <li><b>HIP:</b> ROCm clang/clang++, hipcc, flang, OpenMP target offload, compatible MPI, and AOCL. MI300A and Radeon have device-specific policies (§11.5).</li>
   <li><b>Parallel model:</b> MPI process parallelism. GPUs are assigned round-robin by intra-node local rank, and the design explicitly assumes <b>several ranks sharing one GPU</b>. Sharing is detected per physical GPU via its UUID, and concurrency is tuned automatically from VRAM estimates and real reservations (§2.5, §5.5)</li>
-  <li><b>OpenMP:</b> the build uses <code>-fopenmp</code>, but some GPU paths (the radial-integral offload in <code>Set_OLP_Kin</code>) require single-threaded execution. GPU runs are expected to use MPI only (one thread per rank)</li>
+  <li><b>OpenMP:</b> MPI/OpenMP hybrid runs are supported. Bind each rank to the cores needed by <code>-nt</code>. Some CUDA paths, including optional radial-integral offload in <code>Set_OLP_Kin</code>, require one thread (§11.1).</li>
 </ul>
 
 <h2>1.5 Notation</h2>
@@ -226,18 +229,19 @@ fallback on all solver paths (§5.5–5.6), and the inter-phase GPU memory coord
   detected via the physical GPU UUID</b>, and the code layers adaptive concurrency control based on VRAM
   estimates/real reservations, runtime ELPA fallback, allocation retries, and a registry through which GPU
   phases publish their memory needs (§2.5).</li>
-  <li><b>GEMMul8 first for GEMM, with automatic cuBLAS FP64 fallback</b> — large GEMMs run as FP64 emulation
-  on INT8 Tensor Cores (Ozaki Scheme II); native cuBLAS is used only when the workspace cannot be
-  allocated (Chapter 4).</li>
+  <li><b>Device-aware GEMM selection</b> — GeForce defaults to GEMMul8 FP64 emulation on INT8 Tensor Cores
+  (Ozaki Scheme II); A100/H100 generally select native cuBLAS FP64, with a size-dependent A100 cluster
+  forward-transform exception. Explicit settings override the device policy, and unavailable workspace
+  can trigger native FP64 fallback. HIP has its own MI300A/Radeon policy (§11.5).</li>
   <li><b>Diagonalization via cuSOLVER's 64-bit generic API</b> — mainly <code>cusolverDnXsyevdx</code>
   (partial eigenvalues). The generalized problem <i>Hc = εSc</i> is handled by Löwdin (symmetric)
   orthogonalization via the eigendecomposition of S, implemented on the GPU (Chapter 5). Where only
   eigenvalues are needed, the solver runs with <code>jobz=NOVECTOR</code>.</li>
-  <li><b>Vendor-neutral naming (gpusolver)</b> — with a future AMD port in mind, the wrapper-layer
-  identifiers and the input keyword were renamed from <code>cusolver</code> to <code>gpusolver</code>
-  (commits <code>2302f965</code>, <code>d8219384</code>). The cuSOLVER API calls themselves remain as an
-  implementation detail of the NVIDIA build. MAGMA, evaluated early on, has been removed completely
-  (zero references in the current sources).</li>
+  <li><b>Vendor-neutral naming (gpusolver)</b> — the wrapper-layer identifiers and input keyword use
+  <code>gpusolver</code> in both builds. CMake selects CUDA or HIP sources at build time (§9.7).
+  cuSOLVER remains a CUDA implementation detail; HIP uses hipSOLVER and the compatibility helpers (§11.5).
+  MAGMA is now used for multi-GPU capacity recovery and forced <code>gpusolver3</code> execution;
+  it is optional in the CUDA build and built as a dependency of the HIP backend.</li>
   <li><b>Care for numerical reproducibility</b> — the GPU paths are written to preserve the CPU loop's
   summation order wherever it matters: density-matrix and grid-trace reductions use
   <code>#pragma acc loop seq</code> or element-wise sequential accumulation; the force batches reproduce the
@@ -963,11 +967,11 @@ organized in three tiers:</p>
   <code>DCGpuSolverCtx</code>, <code>DCLNO_GpuSolverZCtx</code>, the Krylov per-thread workspace pool, etc.,
   caching handles and device buffers and calling the cuSOLVER API directly.</li>
 </ol>
-<p><b>Naming intent:</b> the vendor neutralization is an abstraction by naming convention — there is no
-macro or function-pointer switch yet. Function names, struct members, and the input keyword are unified
-under gpusolver (e.g. <code>cusolverDnHandle_t gpusolver;</code>), while the cuSOLVER type and API names
-remain as NVIDIA-build implementation details. An AMD (hipSOLVER/rocSOLVER) port would follow the same
-naming rules. The old input keyword <code>cusolver</code> survives as a deprecated alias.</p>
+<p><b>Backend selection:</b> function names and the input keyword use gpusolver in both backends.
+CMake selects the source set before compilation; each executable uses one backend (§9.7).
+The cuSOLVER types and APIs described below belong to the CUDA build. The HIP backend uses hipSOLVER
+with typed-API compatibility wrappers (§11.5). The old input keyword <code>cusolver</code> survives
+as a deprecated alias.</p>
 
 <table>
 <thead><tr><th style="width:34%;">Function (gpusolver_Syevd(x).c)</th><th style="width:22%;">cuSOLVER API</th><th style="width:14%;">Data location</th><th>Current callers</th></tr></thead>
@@ -1984,11 +1988,13 @@ OpenMP-threaded run (≥2 threads) independent of GPUs — the fixes are worth a
 <!-- ==================== Chapter 9 ==================== -->
 <section id="ch9">
 <h1>9. Build System</h1>
+<p>Sections 9.1–9.3 and 9.5–9.6 retain the native CUDA build discussion and historical examples.
+For current builds of either backend, start with §9.7; both use the shared ELPA described in §9.4.</p>
 
 <h2>9.1 Complete Toolchain Replacement</h2>
 <p>The original <code>makefile</code> (Intel oneAPI + MKL) was rewritten as <code>Makefile</code>
-(NVHPC + CUDA + in-tree FFTW + GEMMul8); the original is preserved byte-identically as
-<code>makefile.cpu_intel.bak</code>.</p>
+(NVHPC + CUDA + in-tree FFTW + GEMMul8). <code>makefile.cpu_intel.bak</code> was originally a
+byte-identical backup; its ELPA section has since been updated (§9.4).</p>
 <table>
 <thead><tr><th style="width:22%;">Item</th><th style="width:36%;">Original (makefile)</th><th>GPU version (Makefile)</th></tr></thead>
 <tbody>
@@ -1999,7 +2005,7 @@ OpenMP-threaded run (≥2 threads) independent of GPUs — the fixes are worth a
 <tr><td>FFT</td><td>MKL FFTW wrappers</td><td>static FFTW 3.3.11 built in-tree (third_party)</td></tr>
 <tr><td>GPU libraries</td><td>—</td><td><code>-lcudart -lcusolver -lcublas -lcublasLt -lcuda -lnvidia-ml -lnvJitLink -cuda</code> + <code>libgemmul8.a</code></td></tr>
 <tr><td>CUDA C++</td><td>—</td><td>nvcc compiles <code>gemmul8_openmx.cu</code> / <code>set_hamiltonian_gpu.cu</code> (host compiler nvc++)</td></tr>
-<tr><td>SDK assumption</td><td>Intel oneAPI</td><td><code>NVHPC_ROOT ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.3</code>, <code>NVHPC_CUDA_VERSION ?= 13.1</code> (overridable variables)</td></tr>
+<tr><td>Current SDK defaults</td><td>Intel oneAPI</td><td><code>NVHPC_ROOT ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.9</code>, <code>NVHPC_CUDA_VERSION ?= 13.4</code> (overridable variables)</td></tr>
 </tbody>
 </table>
 <p><b>Build-environment isolation:</b> the Makefile pins <code>PATH</code> to NVHPC only and
@@ -2114,10 +2120,99 @@ ELPA remains the <b>runtime fallback when GPU memory is insufficient (§5.6)</b>
 </ol>
 <div class="warn"><b>Build notes:</b>
 (1) Changing the NVHPC version requires re-verifying the miscompilation workarounds of §6.5.
-(2) The HPC-X path hard-codes a version string (hpcx-2.25.1); adjust on SDK updates.
+(2) Check the selected MPI paths after SDK updates; override <code>NVHPC_MPI_BIN</code> and <code>NVHPC_MPI_LIBDIR</code> as needed.
 (3) The GEMMul8 architecture can be overridden as <code>make GEMMUL8_GPU_ARCH=90</code> (default:
 nvidia-smi autodetection).
 (4) The original's auxiliary targets (libopenmx_api, elpa_col, …) were removed.</div>
+
+<h2>9.7 Unified CUDA / HIP Builds with CMake</h2>
+<p>The integrated repository contains both backends. CMake 3.20+, Python 3.8+, and GNU make select
+and prepare an isolated native build; the existing Makefiles retain their per-file compiler and
+offload rules. <code>tools/prepare_build.py</code> links the selected sources into
+<code>build/&lt;backend&gt;/native/source/</code>. Common sources come from <code>source/</code>;
+HIP replacements and compatibility headers come from <code>source/backends/hip/</code>, according to
+<code>sources.json</code>. Mutable dependency sources, objects, and installations belong to each build.
+The original <code>openmx4.0_amdgpu</code> checkout is no longer required.</p>
+<table>
+<thead><tr><th>Setting</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>OPENMX_GPU_BACKEND</code></td><td><code>CUDA</code> (default) or <code>HIP</code>; use separate build directories.</td></tr>
+<tr><td><code>OPENMX_GPU_ARCH</code></td><td>CUDA: e.g. <code>120</code> (RTX 5080), <code>80</code> (A100), <code>90</code> (H100). HIP: e.g. <code>gfx942</code> (MI300A), <code>gfx1200</code> (RX 9060 XT).</td></tr>
+<tr><td><code>OPENMX_BUILD_JOBS</code></td><td>Native make parallelism; default <code>4</code>. The outer <code>cmake --build -j</code> does not set this.</td></tr>
+<tr><td><code>OPENMX_MAKE_OPTIONS</code></td><td>Quoted, semicolon-separated <code>NAME=value</code> assignments for the native Makefile.</td></tr>
+</tbody>
+</table>
+<p class="src">CUDA example — run at the repository root</p>
+<pre><code>git submodule update --init --recursive
+cmake -S . -B build/cuda \
+  -DOPENMX_GPU_BACKEND=CUDA -DOPENMX_GPU_ARCH=120 \
+  -DOPENMX_BUILD_JOBS=4
+cmake --build build/cuda</code></pre>
+<p>Override <code>NVHPC_ROOT</code>, <code>NVHPC_CUDA_VERSION</code>, <code>NVHPC_CUDA_HOME</code>,
+<code>NVHPC_MATH_DIR</code>, and the MPI paths as needed through <code>OPENMX_MAKE_OPTIONS</code>.
+Add <code>WITH_MAGMA=1</code> for CUDA MAGMA support. The existing
+<code>make -C source -j4 openmx</code> workflow also remains available.</p>
+<p class="src">HIP example — replace the site-specific library and MPI paths</p>
+<pre><code>git submodule update --init --recursive source/third_party/GEMMul8
+cmake -S . -B build/hip \
+  -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
+  -DOPENMX_BUILD_JOBS=4 \
+  '-DOPENMX_MAKE_OPTIONS=ROCM=/opt/rocm-7.2.0;MPI_HOME=/path/to/openmpi-rocmflang;AOCL_HOME=/path/to/aocl/aocc;AOCC_LIB=/path/to/aocc/lib'
+cmake --build build/hip</code></pre>
+<p>HIP requires ROCm clang/clang++, hipcc, flang, OpenMP offload, and AOCL BLIS/libFLAME,
+ScaLAPACK, FFTW3, and Utilities. MPI's Fortran module must match ROCm flang; a gfortran
+<code>mpi.mod</code> is incompatible. <code>AOCC_LIB</code> supplies AOCL's Fortran runtime dependencies.
+The Makefile puts <code>ROCM_LLVM_LIB</code> first in <code>LIBRARY_PATH</code> so the selected ROCm
+OpenMP runtime takes precedence over unrelated Intel/AOCC runtimes.</p>
+<p>The first build prepares GEMMul8, patched MAGMA (HIP), and ELPA/COSMA. ELPA stack construction also
+needs autoconf, automake, libtoolize, m4, and unzip. For ROCm flang, the HIP stack script patches ELPA's
+host/device allocation wrappers to pass allocation outputs through <code>integer(c_intptr_t)</code>,
+avoiding incorrect <code>type(c_ptr)</code> interoperation. The bundled archive stays unchanged; the
+patch is applied to the build-local source. An existing CMake 3.24+ can be supplied to the dependency
+builder with <code>GPUSOLVER2_CMAKE=/absolute/path/to/cmake</code>.</p>
+<p>The executables are <code>build/cuda/openmx</code> and <code>build/hip/openmx</code>.
+<code>selected-sources.json</code> records the source selection in each build directory.
+<code>cmake --install build/hip --prefix /path/to/install</code> installs only <code>bin/openmx</code>;
+keep its runtime libraries available and provide DFT data separately. Input <code>DATA.PATH</code> is
+relative to the working directory: run existing inputs from <code>work/</code>, or use an absolute path
+to <code>DFT_DATA19</code>. Full configuration details are in <code>docs/GPU_BACKENDS.md</code>.</p>
+
+<h2>9.8 Regression Checks and Recorded Validation</h2>
+<p><code>scf.eigen.lib elpa1</code> / <code>elpa2</code> select CPU execution in either build;
+<code>OPENMX_GPU=0</code> forces the default GPU selection to ELPA2. These are CPU execution paths
+inside a CUDA or HIP executable, so the build's runtime libraries are still required.</p>
+<pre><code>ctest --test-dir build/cuda --output-on-failure
+ctest --test-dir build/hip --output-on-failure
+python3 tests/run_elpa_cpu_mpi.py \
+  --native-source build/cuda/native/source</code></pre>
+<p>The adapter check compares real/complex, one-stage/two-stage solves with LAPACK, including partial
+eigenvectors, rectangular process grids, subcommunicators, and empty local rows/columns.
+Use <code>build/hip/native/source</code> for the HIP build. For the standard CPU suites, use a fresh
+output directory for each run:</p>
+<pre><code>python3 tools/run_gpu_suites.py --binary build/cuda/openmx \
+  --output build/cpu-elpa-S --suite S --ranks 18 --threads 1 \
+  --env OPENMX_GPU=0 --together
+python3 tools/compare_gpu_suites.py --reference build/cpu-elpa-S
+
+python3 tools/run_gpu_suites.py --binary build/cuda/openmx \
+  --output build/cpu-elpa-L --suite L --ranks 18 --threads 1 \
+  --env OPENMX_GPU=0 --together
+python3 tools/compare_gpu_suites.py --reference build/cpu-elpa-L</code></pre>
+<p>S corresponds to <code>-runtest</code>, L to <code>-runtestL</code>. The reference comparison checks
+total energies and every recorded atomic force component. Substitute the HIP executable to check
+that backend. The commands are reproducible procedures, not new benchmark results.</p>
+<table>
+<thead><tr><th>Recorded change</th><th>Correctness checks</th></tr></thead>
+<tbody>
+<tr><td><code>bdcba87d</code>: shared ELPA</td><td>CPU S: 14/14; L: 16/16; explicit ELPA1: 4/4. MPI adapter: 20 cases per rank on six ranks.</td></tr>
+<tr><td><code>57a3a3fc</code>: HIP cleanup without visible GPUs</td><td>16 MPI ranks × 1 thread: S 14/14 and L 16/16; energies and forces within 1e-7 of references. HIP CTest: 9/9.</td></tr>
+</tbody>
+</table>
+<p>These results are the recorded validations of the cited commits. The AMD GPU validation described
+in <code>docs/GPU_BACKENDS.md</code> used one Radeon RX 9060 XT with ROCm 7.2.0, OpenMPI 5.0.9, and
+AOCL 5.2.0. It covered CPU/GPU comparisons, the full S suite, selected L3 cases, forced GPU solves,
+ELPA/COSMA, and selected capacity recovery paths. It did not validate MI300A hardware, physical
+multi-GPU or multi-node execution, or all L/L2/L3 GPU cases.</p>
 </section>
 <!-- ==================== Chapter 10 ==================== -->
 <section id="ch10">
@@ -2146,7 +2241,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <table>
 <thead><tr><th style="width:22%;">Keyword</th><th style="width:10%;">Type</th><th style="width:12%;">Default</th><th>Meaning</th></tr></thead>
 <tbody>
-<tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>gpusolver</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>, and is the default, so the GPU paths run unless one of the CPU eigensolvers is requested explicitly. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present. <b><code>gpusolver2</code></b> additionally distributes the mainline collinear/non-collinear <i>cluster</i> diagonalization over all ranks and their GPUs with ELPA 2026.02 (NVIDIA GPU kernels) and COSMA (pdgemm) — the multi-node option for Pegasus-class machines; any non-cluster calculation stops with an input error, and everything outside the cluster diagonalization behaves exactly like <code>gpusolver</code></td></tr>
+<tr><td><code>scf.eigen.lib</code></td><td>string choice</td><td><code>gpusolver</code></td><td>Adds <b><code>gpusolver</code></b> (enables the whole GPU stack) to the conventional <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code>, and is the default, so the GPU paths run unless one of the CPU eigensolvers is requested explicitly. <code>cusolver</code> is a deprecated alias with a warning. Demotes automatically to ELPA2 when no GPU is present. <b><code>gpusolver2</code></b> additionally distributes the mainline collinear/non-collinear <i>cluster</i> diagonalization over all ranks and their GPUs with ELPA 2026.02.002 (CUDA or HIP GPU kernels) and COSMA (pdgemm) — the multi-node option for Pegasus-class machines; any non-cluster calculation stops with an input error, and everything outside the cluster diagonalization behaves exactly like <code>gpusolver</code></td></tr>
 <tr><td><code>scf.fp32.enable</code></td><td>logical</td><td><code>on</code></td><td><code>off</code> forces FP64 arithmetic: disables FP32 eigenvector refinement, FP32/double-float grid quadrature and double-float orbital evaluation, and promotes legacy float products in VNA matrix, force and stress contractions to FP64. Overrides FP32/DF environment requests. GEMMul8 remains controlled independently by <code>scf.gemmul8.enable</code> and its environment settings; cuSOLVER FP64 fixed-point emulation is also independent. Existing float table storage is unchanged. The default <code>on</code> permits the existing precision policies.</td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>Upper bound on GPUs used per node, applied to every rank→GPU assignment (central GPUSOLVER initialization, the local-rank device helpers of the Band/Cluster solver paths, and the DC-LNO proxy). <code>scf.Gpu.Num 1</code> confines the run to one GPU however many the node carries — a debugging aid; 30 effectively means "use every GPU found". Values ≤0 or ≥ the detected count are ignored</td></tr>
 <tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX's amount of standard output (−1 to 3), extended to the GPU diagnostics (§10.3): 1 prints only errors, a GPU that cannot be used and a GPU eigensolver given up; 2 adds the device plans and banners, the final FP64 re-solves and the fallbacks and retries of single stages and solves; 3 adds the per-step, per-k-point and per-rank details</td></tr>
@@ -2347,13 +2442,13 @@ means ranks integrated the density on the CPU (§7.9).</div>
 </ol>
 
 <h2>10.5 scf.eigen.lib=gpusolver2 — Distributed Multi-Node Cluster Diagonalization</h2>
-<p>For collinear/non-collinear <b>cluster</b> calculations (a single k point), the gpusolver path
-concentrates the diagonalization on one GPU (rank 0 or the spin owner), so extra GPUs idle during it.
-<code>scf.eigen.lib&nbsp;gpusolver2</code> replaces that cluster diagonalization with
-<b>ELPA 2026.02 (NVIDIA GPU kernels, the modern object-based C API)</b> and
+<p>For collinear/non-collinear <b>cluster</b> calculations (a single k point), the default gpusolver path
+starts with one GPU and can recover from capacity limits using MAGMA and distributed solvers.
+<code>scf.eigen.lib&nbsp;gpusolver2</code> explicitly selects distributed cluster diagonalization with
+<b>ELPA 2026.02.002 (CUDA or HIP GPU kernels, the modern object-based C API)</b> and
 <b>COSMA (communication-optimal distributed GEMM, GPU backend)</b>, engaging every rank and every GPU.
-The primary target is a Pegasus-class layout (one H100 per node, many nodes). MPI stays the HPC-X
-(Open MPI 4.1) bundled with the NVIDIA HPC SDK.</p>
+The original CUDA target is a Pegasus-class layout (one H100 per node, many nodes). CUDA uses the
+selected NVHPC/MPI toolchain; HIP needs MPI compatible with ROCm flang (§9.7).</p>
 <ul>
   <li><b>Design</b> — the existing ELPA-path skeleton (2-D block-cyclic distribution, the
   <code>myworld1</code> two-spin split, eigenvector redistribution, DM construction) is reused verbatim;
@@ -2363,7 +2458,7 @@ The primary target is a Pegasus-class layout (one H100 per node, many nodes). MP
   GEMMs + the complex 2n×2n <code>openmx_gs2_eigen_complex(n2,MaxN,…)</code> + back-transform
   <code>cosma_pzgemm_</code>. OpenMX's own numerics (small-eigenvalue clamping of S, etc.) are
   untouched. The bridge lives in the new <code>elpa_cosma_bridge.c</code> (an ELPA-handle cache keyed by
-  (BLACS ctx, n, nev, type), <code>nvidia-gpu=1</code>/<code>use_gpu_id</code>, 2stage solver by
+  (BLACS ctx, n, nev, type), <code>nvidia-gpu=1</code> or <code>amd-gpu=1</code>, <code>use_gpu_id</code>, 2stage solver by
   default).</li>
   <li><b>Shared CPU/GPU ELPA</b> — <code>elpa1</code>, <code>elpa2</code>, and
   <code>gpusolver2</code> all use the bundled ELPA 2026.02.002 library through its modern C API.
@@ -2402,12 +2497,13 @@ The primary target is a Pegasus-class layout (one H100 per node, many nodes). MP
 
 <h2>11.1 Build and Runtime Environment Assumptions</h2>
 <ul>
-  <li><b>This tree cannot be built CPU-only</b> (CUDA headers included unconditionally). For a CPU build use
-  the original sources or <code>makefile.cpu_intel.bak</code>.</li>
-  <li>NVHPC 26.3 + CUDA 13.1 are the defaults. Re-verify the miscompilation workarounds of §6.5 whenever the
-  version changes.</li>
-  <li>GEMMul8 requires INT8 Tensor Cores and is a single-architecture build — rebuild for a different GPU
-  generation.</li>
+  <li>The CMake interface selects <code>CUDA</code> or <code>HIP</code>; it has no CPU-only backend.
+  Both executables support CPU execution with <code>OPENMX_GPU=0</code> or <code>elpa1</code>/<code>elpa2</code>,
+  using the shared modern ELPA (§§9.4, 9.8).</li>
+  <li>CUDA defaults to NVHPC 26.9 + CUDA 13.4. HIP requires ROCm, compatible MPI, and AOCL (§9.7).
+  Re-verify the CUDA miscompilation workarounds of §6.5 when changing NVHPC.</li>
+  <li>GEMMul8's CUDA/HIP build and the native FP64 selection follow the target device.
+  Rebuild the GPU libraries for a different architecture; CUDA-specific controls do not automatically apply to HIP.</li>
   <li>Flat MPI is the first choice while every core can hold a rank. When the device memory bounds the
   number of ranks below the core count, OpenMP threads (<code>-nt</code>, one rank bound to several cores:
   <code>mpirun --map-by ppr:6:node:PE=3 --bind-to core -np 6 ./openmx in.dat -nt 3</code>) now pay on
@@ -2465,18 +2561,36 @@ The primary target is a Pegasus-class layout (one H100 per node, many nodes). MP
   follow the pop-before-launch etiquette when adding kernel checks (§3.6, §7.7).</li>
 </ul>
 
-<h2>11.5 Porting to AMD and Other Vendors</h2>
-<ul>
-  <li>The gpusolver naming is ready, but there is no mechanized switch. The cuSOLVER dependencies are
-  concentrated in <code>gpusolver_Syevd(x).c</code> and the per-solver resident contexts (direct Xsyevdx
-  calls).</li>
-  <li>The cuBLAS dependencies are Ddgmm/Zdgmm, Dgeam/Zgeam, and the GEMMul8 bridge (internal INT8 GEMMs and
-  the fallback GEMM). GEMMul8 upstream has a HIP/ROCm backend, but this integration instantiates the CUDA
-  path only.</li>
-  <li>OpenACC is NVHPC-specific (an AMD port would move to OpenMP target offload or similar). Also check:
-  the OpenACC pool control via <code>acc_clear_freelists()</code> (§6.3), sharing detection via GPU UUIDs,
-  and <code>wait_cudafunc</code>'s "return value 0 = success" assumption.</li>
-</ul>
+<h2>11.5 Integrated AMD HIP Backend</h2>
+<p>The AMD implementation is part of this repository. The source manifest and CMake build select its
+files without placing HIP compatibility headers on the CUDA include path. CUDA and HIP are separate
+executables; there is no runtime switch between vendors.</p>
+<table>
+<thead><tr><th>Layer</th><th>CUDA</th><th>HIP</th></tr></thead>
+<tbody>
+<tr><td>Runtime and kernels</td><td>CUDA, NVHPC OpenACC</td><td>HIP, ROCm OpenMP target offload</td></tr>
+<tr><td>Dense libraries</td><td>cuBLAS / cuSOLVER</td><td>hipBLAS / hipSOLVER and compatibility wrappers</td></tr>
+<tr><td>GEMMul8</td><td>CUDA instantiation</td><td>HIP instantiation; MI300A/Radeon arithmetic policies</td></tr>
+<tr><td>Distributed solve</td><td>ELPA NVIDIA kernels / COSMA CUDA</td><td>ELPA AMD kernels / COSMA ROCm</td></tr>
+<tr><td>CPU eigensolvers</td><td colspan="2">Shared ELPA 2026.02.002, with GPU options disabled</td></tr>
+</tbody>
+</table>
+<p><code>hip_runtime_compat.h</code>, <code>hipblas_compat.h</code>, and
+<code>hipsolver_compat.h</code> expose the required interfaces to C sources; C++ translation units
+include ROCm's headers. The hipSOLVER wrappers translate generic calls to typed FP32/FP64 real/complex
+entry points. CUDA-named shim headers remain for bundled libraries that include those names.
+GEMMul8 and native FP64 are selected by the AMD device policy; the NVIDIA-only details of Chapters
+3–6, including OpenACC pool handling and cuSOLVER emulation, must be read in that scope.</p>
+<p><b>CPU execution without a visible GPU:</b> the non-collinear dense-workspace cleanup now skips HIP
+synchronization and device restoration when it owns no GPU resources. Live or partially allocated
+workspaces still release their resources, and host state is always reset. This fixes CPU-only runs of
+the HIP executable with hidden devices (<code>57a3a3fc</code>; validation in §9.8).</p>
+<p><b>MI300A:</b> set <code>HSA_XNACK=1</code> for GPU execution. The launcher
+<code>source/backends/hip/tools/mi300a_rank_launcher.py</code> fixes CPU placement before ROCm
+initialization, using OpenMPI rank information and <code>OPENMX_AFFINITY_DIR</code>, and checks the
+allocated CPU count against <code>-nt</code>. The full launch recipe is in
+<code>docs/GPU_BACKENDS.md</code>. NVIDIA MPS is specific to CUDA; it is not the HIP launch mechanism.
+The recorded Radeon tests do not establish MI300A or multi-node hardware validation (§9.8).</p>
 
 <h2>11.6 Non-GPU Behavioral Differences from the Original</h2>
 <ul>
@@ -2503,7 +2617,7 @@ The primary target is a Pegasus-class layout (one H100 per node, many nodes). MP
 </section>
 <!-- ==================== Appendix A ==================== -->
 <section id="appA">
-<h1>Appendix A. Changed Files (47 files)</h1>
+<h1>Appendix A. Changed Files (July 2026; 47 files)</h1>
 <p>+n/−m are raw diff line counts against the original OpenMX 4.0 sources (as of 2026-07-23). Wholly
 re-indented files show raw counts larger than their substantive change. Categories: <b>GPU</b> = GPU
 offloading, <b>OMP</b> = OpenMP fix, <b>FIX</b> = bug fix / hardening, <b>OPT</b> = CPU optimization,
@@ -2561,7 +2675,7 @@ this edition.</p>
 
 <!-- ==================== Appendix B ==================== -->
 <section id="appB">
-<h1>Appendix B. Newly Added Files</h1>
+<h1>Appendix B. Newly Added Files (July 2026)</h1>
 <h2>B.1 New Sources (14 files, about 4,000 lines)</h2>
 <table>
 <thead><tr><th style="width:34%;">File</th><th style="width:8%;">Lines</th><th>Role</th></tr></thead>
@@ -2596,7 +2710,7 @@ this edition.</p>
 </section>
 <!-- ==================== Appendix C ==================== -->
 <section id="appC">
-<h1>Appendix C. Development History (all 91 commits)</h1>
+<h1>Appendix C. Development History (July 2026; 91 commits)</h1>
 <table>
 <thead><tr><th style="width:6%;">#</th><th style="width:13%;">Hash</th><th>Title (verbatim)</th></tr></thead>
 <tbody>
@@ -2721,7 +2835,7 @@ this edition.</p>
   <li>ELPA (Eigenvalue soLvers for Petaflop Applications): <code>https://elpa.mpcdf.mpg.de/</code></li>
   <li>FFTW: <code>https://www.fftw.org/</code></li>
 </ol>
-<div class="note" style="margin-top:16px;"><b>About this document:</b> this 3rd edition is based on the source tree as of 2026-07-23 (commit <code>9fe8ce13</code>), a full-file diff against the original OpenMX 4.0, and a survey of all 91 commits of the development repository. The ELPA sections have been updated to describe the shared ELPA 2026.02.002 implementation (§9.4); historical diff counts and commit descriptions are retained. Other line numbers and defaults refer to the original revision; if you find discrepancies, treat the source code as the primary reference.</div>
+<div class="note" style="margin-top:16px;"><b>About this document:</b> the 4th edition updates CUDA/HIP integration, CMake builds, shared ELPA, and the HIP CPU-cleanup fix against commit <code>c0689442</code> (2026-10-17). Its sources include <code>CMakeLists.txt</code>, <code>tools/prepare_build.py</code>, <code>docs/GPU_BACKENDS.md</code>, <code>source/backends/hip/</code>, and the validation records of <code>bdcba87d</code> and <code>57a3a3fc</code>. Detailed CUDA listings, source line numbers, and Appendices A–C retain the July 23 survey baseline (<code>9fe8ce13</code>, 91 commits); historical measurements are not current performance results. Treat the source code as the primary reference.</div>
 </section>
 
 </body>

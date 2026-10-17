@@ -89,20 +89,21 @@ svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
     <div style="font-size:11pt; color:var(--accent-dark); letter-spacing:.08em; margin-bottom:14px;">技術解説書</div>
     <div style="font-size:25pt; font-weight:bold; color:#16233a; line-height:1.35;">OpenMX 4.0 GPU 版<br>実装解説書</div>
     <div style="font-size:12pt; color:#3a4557; margin-top:16px; line-height:1.6;">
-      NVIDIA GPU オフロード実装の全体像と<br>オリジナル OpenMX 4.0 からの全変更点<br>
-      <span style="font-size:10.5pt;">— cuBLAS・GEMMul8・cuSOLVER の使い方と注意点 —</span>
+      CUDA 実装の詳細と AMD HIP バックエンドの統合<br>CPU／GPU 共通の ELPA ライブラリ<br>
+      <span style="font-size:10.5pt;">— GPU ライブラリ・CMake ビルド・実行時制御・検証 —</span>
     </div>
   </div>
   <div style="margin-top:34px; font-size:9.5pt; color:#3a4557; line-height:1.9;">
-    <b>対象リビジョン:</b> OpenMX 4.0 GPU 版(2026-07-23 時点、コミット <code>9fe8ce13</code>)<br>
-    <b>比較基準:</b> オリジナル OpenMX 4.0 ソース一式<br>
-    <b>検証環境:</b> NVHPC SDK 26.3 / CUDA 13.1 / compute capability 12.0(Blackwell 世代 GeForce)<br>
-    <b>発行日:</b> 2026 年 7 月 23 日(第 3 版)
+    <b>統合版の参照リビジョン:</b> 2026-10-17、コミット <code>c0689442</code><br>
+    <b>元の CUDA 調査:</b> 2026-07-23、コミット <code>9fe8ce13</code><br>
+    <b>バックエンド:</b> NVIDIA CUDA / AMD HIP、ELPA 2026.02.002<br>
+    <b>改訂日:</b> 2026 年 10 月 17 日(第 4 版)
   </div>
   <div class="note" style="margin-top:30px;">
     <b>注記:</b> 本書は第一原理計算コード <a href="http://www.openmx-square.org/">OpenMX</a>(GPL v3)を
-    NVIDIA GPU 向けに移植した<b>非公式版</b>の技術解説書であり、OpenMX 開発チームによる公式文書ではありません。
-    記載のファイル名・行番号は上記リビジョン時点のものであり、開発の進行に伴って変わる可能性があります。
+    NVIDIA・AMD GPU 向けに移植した<b>非公式版</b>の技術解説書であり、OpenMX 開発チームによる公式文書ではありません。
+    CUDA の詳細コード例と過去の変更件数は元の調査時点を基準とします。
+    現行の統合・ビルド・検証情報は §9.4・§9.7〜9.8・§11.5 を参照してください。
   </div>
 </div>
 
@@ -126,13 +127,13 @@ svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
   <li><a href="#ch8">8. GPU 化以外の変更点</a>
     <ol><li>OpenMP バグ修正 / メモリ管理の堅牢化 / その他の修正</li></ol></li>
   <li><a href="#ch9">9. ビルドシステム</a>
-    <ol><li>ツールチェーン / フラグ / リンク構成 / third_party 自動ビルド / ELPA / 派生 Makefile / 手順</li></ol></li>
+    <ol><li>CUDA ツールチェーン / リンク構成 / 共通 ELPA / Makefile / CMake による CUDA・HIP ビルド / 回帰試験</li></ol></li>
   <li><a href="#ch10">10. 実行時制御リファレンス</a>
     <ol><li>入力キーワード / 環境変数一覧 / 標準出力の GPU 診断行 / チューニング指針</li></ol></li>
   <li><a href="#ch11">11. 制約・注意点の総まとめ</a></li>
-  <li><a href="#appA">付録 A. 変更ファイル一覧(47 ファイル)</a></li>
-  <li><a href="#appB">付録 B. 新規追加ファイル一覧</a></li>
-  <li><a href="#appC">付録 C. 開発履歴(全 91 コミット)</a></li>
+  <li><a href="#appA">付録 A. 変更ファイル一覧(2026 年 7 月、47 ファイル)</a></li>
+  <li><a href="#appB">付録 B. 新規追加ファイル一覧(2026 年 7 月)</a></li>
+  <li><a href="#appC">付録 C. 開発履歴(2026 年 7 月、91 コミット)</a></li>
   <li><a href="#refs">参考文献</a></li>
 </ol>
 </nav>
@@ -141,14 +142,14 @@ svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
 <h1>1. はじめに</h1>
 
 <h2>1.1 本書の目的と対象読者</h2>
-<p>本書は、密度汎関数理論(DFT)に基づく第一原理計算コード <b>OpenMX 4.0</b> を NVIDIA GPU 向けに移植した
-「OpenMX 4.0 GPU 版」について、(1) 現在の実装の全体像、(2) オリジナル OpenMX 4.0 からの<b>すべての変更点</b>、
-(3) 中核となる 3 つの GPU ライブラリ — <b>cuBLAS</b>・<b>GEMMul8</b>・<b>cuSOLVER</b> — の使い方と注意点、
-を一次情報(ソースコードと diff)に基づいて解説する公開ドキュメントです。想定読者は次のとおりです。</p>
+<p>本書は、密度汎関数理論(DFT)に基づく第一原理計算コード <b>OpenMX 4.0</b> を NVIDIA CUDA・AMD HIP 向けに
+移植した「OpenMX 4.0 GPU 版」の解説書です。リポジトリのソースに基づき、CUDA 実装の詳細、統合された HIP
+バックエンド、CPU／GPU 共通の ELPA、ビルドと実行時の設定を説明します。第 3〜7 章は CUDA 固有 API の詳細を扱い、
+HIP の実装と相違点は §11.5 にまとめます。想定読者は次のとおりです。</p>
 <ul>
   <li>OpenMX を GPU で高速に実行したいユーザー(第 2・10・11 章が中心)</li>
   <li>本実装を理解・改修したい開発者(第 3〜9 章)</li>
-  <li>AMD GPU など他ベンダーへの移植を検討する開発者(第 5 章の gpusolver 層、第 11 章)</li>
+  <li>CUDA と HIP の両バックエンドを保守する開発者(§9.7・§11.5)</li>
 </ul>
 <p>前提知識として、DFT・LCAO 法の初歩、C 言語、MPI、CUDA プログラミングの基礎を仮定します。</p>
 
@@ -156,7 +157,7 @@ svg{max-width:100%; height:auto; font-family:"Noto Sans CJK JP",sans-serif;}
 <p>OpenMX(Open source package for Material eXplorer)は、局在擬原子軌道(LCAO)基底とノルム保存擬ポテンシャルを用いた
 DFT コードで、クラスタ計算・バンド計算に加え、発散重畳(DC)法・DC-LNO 法・Krylov 部分空間法などの O(N) 法、
 非平衡グリーン関数(NEGF)輸送計算などを備えます。ライセンスは GPL v3 です。</p>
-<p>本 GPU 版は OpenMX 4.0 の公式ソースを出発点とし、<b>91 コミット</b>の開発で GPU オフロードを段階的に追加したものです。
+<p>本 GPU 版は OpenMX 4.0 の公式ソースを出発点とします。2026 年 7 月の元の調査は <b>91 コミット</b>を対象としました。
 初期の開発(〜第 2 版の対象であった 51 コミット)では SCF 計算で支配的な「密行列の固有値問題」と「行列積(GEMM)」を
 GPU 化し、その後の 40 コミットで対象が大きく広がりました。現在は、行列要素構築(Set_Hamiltonian の格子積分・
 Set_Nonlocal・Set_ProExpn_VNA)、密度グリッド構築(Set_Density_Grid)、力の主要トレース(#2/#3/#4/#4B/#5/HNL)、
@@ -164,6 +165,8 @@ Set_Nonlocal・Set_ProExpn_VNA)、密度グリッド構築(Set_Density_Grid)、�
 またはそれに準ずる高速経路で実行されます。疎行列処理、通信、入出力などはオリジナルの構造を保っています。</p>
 
 <h2>1.3 変更規模の概要</h2>
+<p>以下の件数と付録 A〜C は 7 月 23 日時点の CUDA 調査結果です。その後の HIP バックエンド統合、
+CMake によるビルド分離、ELPA 共通化を含む現在のツリー全体の件数ではありません。</p>
 <table>
 <thead><tr><th>項目</th><th>値</th><th>備考</th></tr></thead>
 <tbody>
@@ -177,11 +180,11 @@ Set_Nonlocal・Set_ProExpn_VNA)、密度グリッド構築(Set_Density_Grid)、�
 
 <h2>1.4 対象環境</h2>
 <ul>
-  <li><b>コンパイラ:</b> NVIDIA HPC SDK(NVHPC)26.3 — <code>mpicc</code>(nvc)+ OpenACC、<code>mpif90</code>(nvfortran)、nvcc(CUDA 13.1)</li>
-  <li><b>GPU:</b> CUDA 対応 NVIDIA GPU。GEMMul8 は INT8 Tensor Core を使用。開発・検証は compute capability 12.0(Blackwell 世代 GeForce)で実施</li>
+  <li><b>CUDA:</b> NVIDIA HPC SDK(nvc/OpenACC、nvfortran、nvcc)。現在の主 Makefile は NVHPC 26.9 / CUDA 13.4 が既定で、パスを上書きできる。元の調査環境は NVHPC 26.3 / CUDA 13.1。</li>
+  <li><b>HIP:</b> ROCm clang/clang++、hipcc、flang、OpenMP target offload、互換 MPI、AOCL。MI300A と Radeon はデバイス別の実行方針を持つ(§11.5)。</li>
   <li><b>並列モデル:</b> MPI プロセス並列。ノード内 local rank によるラウンドロビンで GPU を割当て、<b>複数ランクが 1 GPU を共有する</b>ことを前提に設計。
   共有状況は物理 GPU の UUID 単位で検出され、必要 VRAM の見積り・実予約に基づいて並列度が自動調整される(§2.5、§5.5)</li>
-  <li><b>OpenMP:</b> ビルドは <code>-fopenmp</code> 付きだが、GPU 経路の一部(<code>Set_OLP_Kin</code> の動径積分オフロード)は 1 スレッド実行を要求する。GPU 利用時は MPI のみ(スレッド数 1)の運用が想定されている</li>
+  <li><b>OpenMP:</b> MPI/OpenMP 混合実行に対応。<code>-nt</code> に合わせて各ランクのコアを確保する。CUDA の一部経路(<code>Set_OLP_Kin</code> の任意の動径積分オフロードなど)は 1 スレッドを要求する(§11.1)。</li>
 </ul>
 
 <h2>1.5 表記法</h2>
@@ -218,15 +221,17 @@ GPU フェーズ間のメモリ協調機構(§2.5)です。</div>
   <li><b>MPI ランク単位の GPU 利用と「共有」前提の設計</b> — ノード内 local rank % GPU 数のラウンドロビン割当。1 GPU を複数ランクが共有する状況を正面から想定し、
   物理 GPU の <b>UUID 単位でデバイス共有ランク群を検出</b>したうえで、VRAM 見積り/実予約に基づく適応並列度制御・
   実行時 ELPA フォールバック・失敗時リトライ・GPU フェーズ間のメモリ協調(需要公開レジストリ)という多層の制御を持つ(§2.5)。</li>
-  <li><b>GEMM は GEMMul8 を第一選択、cuBLAS FP64 へ自動フォールバック</b> — 大規模 GEMM は INT8 Tensor Core による FP64 エミュレーション(Ozaki Scheme II)で実行し、
-  ワークスペースが確保できない場合のみ native cuBLAS に切り替える(第 4 章)。</li>
+  <li><b>デバイスに応じた GEMM 選択</b> — GeForce は INT8 Tensor Core による GEMMul8 FP64 エミュレーション
+  (Ozaki Scheme II)が既定。A100/H100 は基本的に native cuBLAS FP64 を選び、A100 のクラスター前方変換には
+  サイズに応じた例外がある。明示設定で上書きでき、ワークスペース不足時も native FP64 に復旧する。
+  HIP は MI300A/Radeon 別の方針を持つ(§11.5)。</li>
   <li><b>対角化は cuSOLVER の 64-bit generic API</b> — <code>cusolverDnXsyevdx</code>(部分固有値)を中心に使い、
   一般化固有値問題 <i>Hc = εSc</i> は S の固有分解によるレイディン(対称)直交化を GPU 上で自前実装する(第 5 章)。
   固有値のみ必要な場面では <code>jobz=NOVECTOR</code> で解く。</li>
-  <li><b>ベンダー中立の命名(gpusolver)</b> — 将来の AMD GPU 対応を見据え、ラッパ層の識別子・入力キーワードを
-  <code>cusolver</code> から <code>gpusolver</code> へ一括改名済み(コミット <code>2302f965</code>, <code>d8219384</code>)。
-  cuSOLVER API の呼び出し自体は NVIDIA ビルドの実装詳細として残る。なお開発初期に MAGMA も評価されたが、
-  現在はソースツリーから完全に削除されている(現行ソースに MAGMA への参照は 0 件)。</li>
+  <li><b>ベンダー中立の命名(gpusolver)</b> — 両ビルドでラッパ層の識別子と入力キーワードに <code>gpusolver</code> を使う。
+  CMake がビルド時に CUDA または HIP のソースを選ぶ(§9.7)。cuSOLVER は CUDA 固有の実装詳細であり、
+  HIP は hipSOLVER と互換ヘルパを使う(§11.5)。現在の MAGMA は複数 GPU による容量復旧と
+  <code>gpusolver3</code> の強制実行に使い、CUDA では任意、HIP では依存物としてビルドする。</li>
   <li><b>数値再現性への配慮</b> — GPU 経路は原則として「CPU ループと同一の加算順序」を保つように書かれている:
   密度行列構築や格子トレースの縮約は <code>#pragma acc loop seq</code> または要素単位の逐次累積、
   力の GPU バッチは float 積 → double 加算のキャストの位置まで CPU を再現、混合の高速パスはポインタ回転で
@@ -930,10 +935,10 @@ wait_cudafunc(openmx_gemmul8Zgemm(ctx-&gt;cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n
   <code>DCGpuSolverCtx</code>、<code>DCLNO_GpuSolverZCtx</code>、Krylov のスレッド別ワークスペースプールなど。
   ハンドル・デバイスバッファをキャッシュし、cuSOLVER API を直接呼ぶ(第 3 章と共通の構造)。</li>
 </ol>
-<p><b>命名の意図:</b> ベンダー中立化は「命名規約による抽象化」であり、マクロや関数ポインタによる切替機構はまだ存在しない。
-関数名・構造体メンバ名・入力キーワードを gpusolver に統一し(例: <code>cusolverDnHandle_t gpusolver;</code>)、
-cuSOLVER の型名・API 名は NVIDIA ビルドの実装詳細としてそのまま残す。AMD(hipSOLVER/rocSOLVER)対応は
-同一の命名規則の下で別途実装する想定である。入力キーワードの旧名 <code>cusolver</code> は警告付きの非推奨エイリアスとして残る。</p>
+<p><b>バックエンドの選択:</b> 関数名と入力キーワードは両バックエンドで gpusolver を使う。
+CMake がコンパイル前にソース集合を選び、実行ファイルごとにバックエンドを固定する(§9.7)。
+以下の cuSOLVER の型と API は CUDA ビルドの説明であり、HIP では hipSOLVER と型別 API への互換ラッパを使う(§11.5)。
+入力キーワードの旧名 <code>cusolver</code> は警告付きの非推奨エイリアスとして残る。</p>
 
 <table>
 <thead><tr><th style="width:34%;">関数(gpusolver_Syevd(x).c)</th><th style="width:22%;">cuSOLVER API</th><th style="width:14%;">データ所在</th><th>現在の呼び出し元</th></tr></thead>
@@ -1866,10 +1871,13 @@ OpenMP スレッド並列(スレッド数 ≥ 2)で発症し得る。CPU 版 Ope
 <!-- ==================== 第 9 章 ==================== -->
 <section id="ch9">
 <h1>9. ビルドシステム</h1>
+<p>§9.1〜9.3・§9.5〜9.6 はネイティブ CUDA ビルドの説明と過去の例を残す。
+現行の CUDA／HIP ビルドは §9.7 を起点とし、どちらも §9.4 の共通 ELPA を使用する。</p>
 
 <h2>9.1 ツールチェーンの全面刷新</h2>
 <p>オリジナルの <code>makefile</code>(Intel oneAPI + MKL)は <code>Makefile</code>(NVHPC + CUDA + 自前 FFTW + GEMMul8)に
-全面書き換えされた。原本は <code>makefile.cpu_intel.bak</code> としてバイト単位で同一保存されている。</p>
+全面書き換えされた。<code>makefile.cpu_intel.bak</code> は当初は原本の同一コピーだったが、
+現在は ELPA 部分を更新している(§9.4)。</p>
 <table>
 <thead><tr><th style="width:22%;">項目</th><th style="width:36%;">オリジナル(makefile)</th><th>GPU 版(Makefile)</th></tr></thead>
 <tbody>
@@ -1880,7 +1888,7 @@ OpenMP スレッド並列(スレッド数 ≥ 2)で発症し得る。CPU 版 Ope
 <tr><td>FFT</td><td>MKL FFTW ラッパ</td><td>自前ビルドの静的 FFTW 3.3.11(third_party)</td></tr>
 <tr><td>GPU ライブラリ</td><td>—</td><td><code>-lcudart -lcusolver -lcublas -lcublasLt -lcuda -lnvidia-ml -lnvJitLink -cuda</code> + <code>libgemmul8.a</code></td></tr>
 <tr><td>CUDA C++</td><td>—</td><td>nvcc で <code>gemmul8_openmx.cu</code> / <code>set_hamiltonian_gpu.cu</code> をコンパイル(ホストコンパイラ nvc++)</td></tr>
-<tr><td>SDK 前提</td><td>Intel oneAPI</td><td><code>NVHPC_ROOT ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.3</code>、<code>NVHPC_CUDA_VERSION ?= 13.1</code>(変数で上書き可)</td></tr>
+<tr><td>現在の SDK 既定値</td><td>Intel oneAPI</td><td><code>NVHPC_ROOT ?= /opt/nvidia/hpc_sdk/Linux_x86_64/26.9</code>、<code>NVHPC_CUDA_VERSION ?= 13.4</code>(変数で上書き可)</td></tr>
 </tbody>
 </table>
 <p><b>ビルド環境の隔離:</b> <code>Makefile</code> 冒頭で <code>PATH</code> を NVHPC のみに固定し、
@@ -1992,9 +2000,93 @@ CUDA または HIP の GPU バックエンドを有効にする。CPU ELPA は�
 </ol>
 <div class="warn"><b>ビルド時の注意:</b>
 (1) NVHPC のバージョンを変えると §6.5 のミスコンパイル回避策の再検証が必要。
-(2) HPC-X のパスにはバージョン文字列(hpcx-2.25.1)がハードコードされており、SDK 更新時は修正が要る。
+(2) SDK 更新時は MPI の選択を確認し、必要に応じて <code>NVHPC_MPI_BIN</code> と <code>NVHPC_MPI_LIBDIR</code> を上書きする。
 (3) GEMMul8 のアーキは <code>make GEMMUL8_GPU_ARCH=90</code> のように上書き可能(既定は nvidia-smi 自動検出)。
 (4) オリジナルにあった API ライブラリ(libopenmx_api)・elpa_col などの補助ターゲットは削除されている。</div>
+
+<h2>9.7 CMake による CUDA / HIP 統合ビルド</h2>
+<p>統合リポジトリは両バックエンドを含む。CMake 3.20 以上・Python 3.8 以上・GNU make が分離した
+ビルドを準備し、既存 Makefile のファイル別コンパイラ・オフロード設定を利用する。
+<code>tools/prepare_build.py</code> が選択したソースを <code>build/&lt;backend&gt;/native/source/</code> にリンクする。
+共通ソースは <code>source/</code>、HIP の置換ソースと互換ヘッダは <code>source/backends/hip/</code> にあり、
+<code>sources.json</code> が選択を記録する。変更される依存ソース・オブジェクト・インストール先はビルドごとに
+分離される。元の <code>openmx4.0_amdgpu</code> チェックアウトは不要。</p>
+<table>
+<thead><tr><th>設定</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td><code>OPENMX_GPU_BACKEND</code></td><td><code>CUDA</code>(既定)または <code>HIP</code>。別々のビルドディレクトリを使う。</td></tr>
+<tr><td><code>OPENMX_GPU_ARCH</code></td><td>CUDA: <code>120</code>(RTX 5080)、<code>80</code>(A100)、<code>90</code>(H100)など。HIP: <code>gfx942</code>(MI300A)、<code>gfx1200</code>(RX 9060 XT)など。</td></tr>
+<tr><td><code>OPENMX_BUILD_JOBS</code></td><td>内部 make の並列数。既定は <code>4</code>。外側の <code>cmake --build -j</code> では変わらない。</td></tr>
+<tr><td><code>OPENMX_MAKE_OPTIONS</code></td><td>Makefile へ渡す <code>NAME=value</code> をセミコロンで区切り、シェルで引用符を付ける。</td></tr>
+</tbody>
+</table>
+<p class="src">CUDA の例 — リポジトリのルートで実行</p>
+<pre><code>git submodule update --init --recursive
+cmake -S . -B build/cuda \
+  -DOPENMX_GPU_BACKEND=CUDA -DOPENMX_GPU_ARCH=120 \
+  -DOPENMX_BUILD_JOBS=4
+cmake --build build/cuda</code></pre>
+<p>環境に合わせて <code>NVHPC_ROOT</code>、<code>NVHPC_CUDA_VERSION</code>、<code>NVHPC_CUDA_HOME</code>、
+<code>NVHPC_MATH_DIR</code>、MPI のパスを <code>OPENMX_MAKE_OPTIONS</code> で上書きする。
+CUDA の MAGMA を有効にする場合は <code>WITH_MAGMA=1</code> を追加する。
+従来の <code>make -C source -j4 openmx</code> も利用できる。</p>
+<p class="src">HIP の例 — MPI とライブラリのパスは実際の環境に置き換える</p>
+<pre><code>git submodule update --init --recursive source/third_party/GEMMul8
+cmake -S . -B build/hip \
+  -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
+  -DOPENMX_BUILD_JOBS=4 \
+  '-DOPENMX_MAKE_OPTIONS=ROCM=/opt/rocm-7.2.0;MPI_HOME=/path/to/openmpi-rocmflang;AOCL_HOME=/path/to/aocl/aocc;AOCC_LIB=/path/to/aocc/lib'
+cmake --build build/hip</code></pre>
+<p>HIP は ROCm clang/clang++、hipcc、flang、OpenMP オフロードと、AOCL の BLIS/libFLAME、
+ScaLAPACK、FFTW3、Utilities を使う。MPI の Fortran モジュールは ROCm flang と互換である必要があり、
+gfortran 用の <code>mpi.mod</code> は使用できない。<code>AOCC_LIB</code> は AOCL が依存する Fortran ランタイムを指す。
+Makefile は <code>LIBRARY_PATH</code> の先頭に <code>ROCM_LLVM_LIB</code> を置き、Intel/AOCC などの
+別の OpenMP ランタイムより、選択した ROCm のランタイムを優先する。</p>
+<p>初回は GEMMul8、パッチ適用済み MAGMA(HIP)、ELPA/COSMA も構築する。ELPA スタックには
+autoconf、automake、libtoolize、m4、unzip も必要。HIP の構築スクリプトは ROCm flang の
+<code>type(c_ptr)</code> 相互運用問題を避けるため、ELPA のホスト／デバイス割当ラッパの出力先を
+<code>integer(c_intptr_t)</code> 経由に修正する。元の同梱アーカイブは変えず、ビルド内のソースに適用する。
+依存物の構築に既存の CMake 3.24 以上を使う場合は <code>GPUSOLVER2_CMAKE=/absolute/path/to/cmake</code> を指定できる。</p>
+<p>実行ファイルは <code>build/cuda/openmx</code> と <code>build/hip/openmx</code>。
+各ビルドの <code>selected-sources.json</code> でソース選択を確認できる。
+<code>cmake --install build/hip --prefix /path/to/install</code> は <code>bin/openmx</code> のみをインストールする。
+実行時ライブラリの配置を維持し、DFT データを別途用意すること。入力の <code>DATA.PATH</code> は作業ディレクトリ
+基準なので、既存入力は <code>work/</code> から実行するか <code>DFT_DATA19</code> の絶対パスを指定する。
+設定の詳細は <code>docs/GPU_BACKENDS.md</code> を参照。</p>
+
+<h2>9.8 回帰試験と記録済みの検証結果</h2>
+<p><code>scf.eigen.lib elpa1</code> / <code>elpa2</code> は両ビルドで CPU 実行を選ぶ。
+<code>OPENMX_GPU=0</code> は既定の GPU 選択を ELPA2 に切り替える。CUDA または HIP 実行ファイルの中で
+CPU 経路を使うため、そのビルドの実行時ライブラリは引き続き必要。</p>
+<pre><code>ctest --test-dir build/cuda --output-on-failure
+ctest --test-dir build/hip --output-on-failure
+python3 tests/run_elpa_cpu_mpi.py \
+  --native-source build/cuda/native/source</code></pre>
+<p>アダプター試験は LAPACK を参照し、実数／複素数、一段階／二段階法、部分固有ベクトル、長方形のプロセス
+グリッド、MPI 部分コミュニケータ、空のローカル行・列を確認する。HIP では
+<code>build/hip/native/source</code> を指定する。標準 CPU 試験では毎回未使用の出力ディレクトリを使う。</p>
+<pre><code>python3 tools/run_gpu_suites.py --binary build/cuda/openmx \
+  --output build/cpu-elpa-S --suite S --ranks 18 --threads 1 \
+  --env OPENMX_GPU=0 --together
+python3 tools/compare_gpu_suites.py --reference build/cpu-elpa-S
+
+python3 tools/run_gpu_suites.py --binary build/cuda/openmx \
+  --output build/cpu-elpa-L --suite L --ranks 18 --threads 1 \
+  --env OPENMX_GPU=0 --together
+python3 tools/compare_gpu_suites.py --reference build/cpu-elpa-L</code></pre>
+<p>S は <code>-runtest</code>、L は <code>-runtestL</code> に対応する。参照比較は全エネルギーと記録された全原子の
+力の全成分を確認する。HIP を調べる場合は実行ファイルを置き換える。上記は再現手順であり、新しいベンチマーク結果ではない。</p>
+<table>
+<thead><tr><th>記録された変更</th><th>正当性の確認</th></tr></thead>
+<tbody>
+<tr><td><code>bdcba87d</code>: ELPA 共通化</td><td>CPU S: 14/14、L: 16/16、ELPA1 明示: 4/4。MPI アダプター: 6 ランクで各ランク 20 ケース。</td></tr>
+<tr><td><code>57a3a3fc</code>: GPU 非表示時の HIP 後処理</td><td>16 MPI × 1 スレッドで S 14/14、L 16/16。エネルギー・力は参照値と 1e-7 以内で一致。HIP CTest: 9/9。</td></tr>
+</tbody>
+</table>
+<p>これらは記載したコミットの検証記録である。<code>docs/GPU_BACKENDS.md</code> の AMD GPU 検証は
+Radeon RX 9060 XT 1 台、ROCm 7.2.0、OpenMPI 5.0.9、AOCL 5.2.0 で実施した。
+CPU/GPU 比較、S 全例、L3 代表例、強制 GPU 対角化、ELPA/COSMA、一部の容量復旧経路を含む。
+MI300A 実機、物理マルチ GPU、複数ノード、GPU での L/L2/L3 全例の実行はこの検証に含まれない。</p>
 </section>
 <!-- ==================== 第 10 章 ==================== -->
 <section id="ch10">
@@ -2022,7 +2114,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <table>
 <thead><tr><th style="width:22%;">キーワード</th><th style="width:10%;">型</th><th style="width:12%;">既定値</th><th>意味</th></tr></thead>
 <tbody>
-<tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>gpusolver</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加し、これが既定値。したがって CPU 側の固有値ソルバを明示指定しない限り GPU 経路が走る。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格。<b><code>gpusolver2</code></b> はさらに、コリニア/ノンコリニアの<b>クラスター計算本流の対角化</b>を ELPA 2026.02(NVIDIA GPU カーネル)+ COSMA(pdgemm)で全ランク・全 GPU に分散する(Pegasus 級マルチノード向け)。クラスター以外の計算では入力エラーで停止し、クラスター対角化以外の動作は <code>gpusolver</code> と完全に同一</td></tr>
+<tr><td><code>scf.eigen.lib</code></td><td>文字列選択</td><td><code>gpusolver</code></td><td>従来の <code>elpa2</code>/<code>lapack</code>/<code>elpa1</code> に <b><code>gpusolver</code></b>(GPU 経路一式の有効化)を追加し、これが既定値。したがって CPU 側の固有値ソルバを明示指定しない限り GPU 経路が走る。<code>cusolver</code> は警告付きの非推奨エイリアス。GPU 不在時は自動的に ELPA2 に降格。<b><code>gpusolver2</code></b> はさらに、コリニア/ノンコリニアの<b>クラスター計算本流の対角化</b>を ELPA 2026.02.002(CUDA または HIP の GPU カーネル)+ COSMA(pdgemm)で全ランク・全 GPU に分散する(Pegasus 級マルチノード向け)。クラスター以外の計算では入力エラーで停止し、クラスター対角化以外の動作は <code>gpusolver</code> と完全に同一</td></tr>
 <tr><td><code>scf.fp32.enable</code></td><td>論理値</td><td><code>on</code></td><td><code>off</code> で FP64 演算を強制する。FP32 固有ベクトル精緻化、FP32・二重単精度のグリッド積分、二重単精度の軌道評価を無効化し、VNA 行列・力・応力の縮約にある従来の float 積も FP64 に昇格する。FP32/DF を要求する環境変数より優先。GEMMul8 は <code>scf.gemmul8.enable</code> と専用環境変数で独立に制御し、cuSOLVER の FP64 固定小数点エミュレーションも独立。既存の float テーブル保存形式は変更しない。既定の <code>on</code> は従来の精度選択を許可する。</td></tr>
 <tr><td><code>scf.Gpu.Num</code></td><td>int</td><td>30</td><td>ノード内で使用する GPU 台数の上限。すべての rank→GPU 割り当て(GPUSOLVER 中核初期化、Band/Cluster ソルバ経路の local-rank デバイスヘルパー、DC-LNO プロキシ)に適用。<code>scf.Gpu.Num 1</code> でノードの GPU 搭載数によらず 1 台のみ使用(デバッグ用途。既定 30 は実質「検出された全 GPU を使う」)。0 以下や検出数以上の値は無視</td></tr>
 <tr><td><code>level.of.stdout</code></td><td>int</td><td>1</td><td>OpenMX 本来の標準出力量(−1〜3)を GPU 診断行にも適用する(§10.3)。1 はエラー、GPU が使えないこと、GPU 固有値ソルバを断念したことだけを出力し、2 でデバイス計画とバナー、最終ステップの FP64 再求解、個々のステージ・求解のフォールバックと再試行を加え、3 でさらに SCF ステップごと・k 点ごと・ランクごとの詳細を加える</td></tr>
@@ -2217,12 +2309,12 @@ Force4B・Force_HNL・HVNA のフォールバック通知と Set_Density_Grid �
 
 <h2>10.5 scf.eigen.lib=gpusolver2 — マルチノード分散クラスター対角化</h2>
 <p>単一 k 点しか必要としないコリニア/ノンコリニアの<b>クラスター計算</b>では、従来の gpusolver 経路は
-対角化を 1 台の GPU(rank 0 ないしスピンオーナー)へ集約するため、GPU が何台あっても対角化では 1 台しか働かない。
-<code>scf.eigen.lib&nbsp;gpusolver2</code> はこのクラスター対角化を
-<b>ELPA 2026.02(NVIDIA GPU カーネル、新しいオブジェクト型 C API)</b>と
+対角化を 1 台の GPU で開始し、容量不足時には MAGMA や分散ソルバへ切り替えられる。
+<code>scf.eigen.lib&nbsp;gpusolver2</code> は分散クラスター対角化を明示選択し、
+<b>ELPA 2026.02.002(CUDA または HIP の GPU カーネル、新しいオブジェクト型 C API)</b>と
 <b>COSMA(通信最適分散 GEMM、GPU バックエンド)</b>へ差し替え、全ランク・全 GPU で解く。
-筑波大 CCS の Pegasus(1 ノード = H100 × 1、多ノード)のような構成が主対象である。MPI は従来どおり
-NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
+元の CUDA 版の対象は筑波大 CCS の Pegasus(1 ノード = H100 × 1、多ノード)のような構成。
+CUDA は選択した NVHPC/MPI、HIP は ROCm flang と互換の MPI を使う(§9.7)。</p>
 <ul>
   <li><b>設計</b> — 既存 ELPA 経路の骨格(2 次元ブロックサイクリック分散、<code>myworld1</code> による 2 スピン並行、
   固有ベクトル再分配、DM 構築)をそのまま流用し、差し替えは呼び出し点のみ。
@@ -2231,7 +2323,7 @@ NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
   NonCol: 実 S 対角化 + 実 GEMM ×12 + 複素 2n×2n の <code>openmx_gs2_eigen_complex(n2,MaxN,…)</code> +
   逆変換 <code>cosma_pzgemm_</code>。S 小固有値のクランプなど OpenMX 独自の数値処理は不変。
   ブリッジは新設の <code>elpa_cosma_bridge.c</code> に集約(ELPA ハンドルの (BLACS ctx, n, nev, 型) 別キャッシュ、
-  <code>nvidia-gpu=1</code>/<code>use_gpu_id</code> 設定、2stage ソルバ既定)。</li>
+  <code>nvidia-gpu=1</code> または <code>amd-gpu=1</code>、<code>use_gpu_id</code> 設定、2stage ソルバ既定)。</li>
   <li><b>CPU/GPU 共通の ELPA</b> — <code>elpa1</code>、<code>elpa2</code>、<code>gpusolver2</code> はすべて
   同梱の ELPA 2026.02.002 ライブラリを新しい C API から使う。<code>openmx_elpa_cpu.c</code> が CPU ソルバ、
   <code>elpa_cosma_bridge.c</code> が GPU バックエンドを選ぶ。旧 ELPA 2018.05 の埋め込み実装は削除済み(§9.4)。</li>
@@ -2266,10 +2358,13 @@ NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
 
 <h2>11.1 ビルド・実行環境の前提</h2>
 <ul>
-  <li><b>このツリーは CPU 専用にビルドできない</b>(CUDA ヘッダを無条件 include)。CPU 版が必要なら
-  オリジナルまたは <code>makefile.cpu_intel.bak</code> を使う。</li>
-  <li>NVHPC 26.3 + CUDA 13.1 が既定。バージョン変更時は §6.5 のミスコンパイル回避一覧を再検証すること。</li>
-  <li>GEMMul8 は INT8 Tensor Core 必須・単一アーキビルド。GPU 世代を変えたら再ビルド。</li>
+  <li>CMake は <code>CUDA</code> または <code>HIP</code> を選び、CPU 専用バックエンドは持たない。
+  両実行ファイルとも <code>OPENMX_GPU=0</code> または <code>elpa1</code>/<code>elpa2</code> で
+  共通の新 ELPA を使う CPU 実行ができる(§9.4・§9.8)。</li>
+  <li>CUDA は NVHPC 26.9 + CUDA 13.4 が既定。HIP は ROCm・互換 MPI・AOCL を使う(§9.7)。
+  NVHPC 変更時は §6.5 の CUDA 側ミスコンパイル回避一覧を再検証すること。</li>
+  <li>GEMMul8 の CUDA/HIP ビルドと native FP64 の選択は対象デバイスに従う。
+  アーキテクチャ変更時は GPU ライブラリを再ビルドする。CUDA 固有の制御がそのまま HIP に適用されるわけではない。</li>
   <li>全コアにランクを置けるあいだはフラット MPI が第一選択。デバイスメモリの都合でランク数がコア数を下回るときは、
   OpenMP スレッド(<code>-nt</code>。1 ランクを複数コアに束ねる:
   <code>mpirun --map-by ppr:6:node:PE=3 --bind-to core -np 6 ./openmx in.dat -nt 3</code>)がホスト側の段階で効く(§10.4):
@@ -2322,16 +2417,35 @@ NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
   自前のカーネル検査を追加する場合は起動前に pop する作法を守ること(§3.6、§7.7)。</li>
 </ul>
 
-<h2>11.5 AMD GPU など他ベンダーへの移植観点</h2>
-<ul>
-  <li>gpusolver 命名は準備済みだが、切替はマクロ等で機構化されていない。cuSOLVER 依存点は
-  <code>gpusolver_Syevd(x).c</code> と各ソルバの常駐コンテキスト(Xsyevdx 直接呼び出し)に集約されている。</li>
-  <li>cuBLAS 依存点は Ddgmm/Zdgmm・Dgeam/Zgeam と GEMMul8 ブリッジ(内部 INT8 GEMM とフォールバック GEMM)。
-  GEMMul8 は上流に HIP/ROCm バックエンドがあるが、本統合(単一 TU 実体化)は CUDA 経路のみを実体化している。</li>
-  <li>OpenACC は NVHPC 依存(AMD なら OpenMP target offload などへの書き換えが必要)。
-  <code>acc_clear_freelists()</code> による OpenACC プール制御(§6.3)、GPU UUID による共有検出、
-  <code>wait_cudafunc</code> の「戻り値 0 = 成功」前提も移植時の確認点。</li>
-</ul>
+<h2>11.5 統合された AMD HIP バックエンド</h2>
+<p>AMD 実装はリポジトリに取り込み済み。ソースマニフェストと CMake が対象ファイルを選び、
+HIP 互換ヘッダが CUDA の include パスへ混入することを防ぐ。CUDA と HIP は別実行ファイルであり、
+実行時にベンダーを切り替える方式ではない。</p>
+<table>
+<thead><tr><th>層</th><th>CUDA</th><th>HIP</th></tr></thead>
+<tbody>
+<tr><td>ランタイムとカーネル</td><td>CUDA、NVHPC OpenACC</td><td>HIP、ROCm OpenMP target offload</td></tr>
+<tr><td>密行列ライブラリ</td><td>cuBLAS / cuSOLVER</td><td>hipBLAS / hipSOLVER と互換ラッパ</td></tr>
+<tr><td>GEMMul8</td><td>CUDA 実体化</td><td>HIP 実体化、MI300A/Radeon 別の演算方針</td></tr>
+<tr><td>分散ソルバ</td><td>ELPA NVIDIA カーネル / COSMA CUDA</td><td>ELPA AMD カーネル / COSMA ROCm</td></tr>
+<tr><td>CPU 固有値ソルバ</td><td colspan="2">共通の ELPA 2026.02.002。GPU オプションは無効。</td></tr>
+</tbody>
+</table>
+<p><code>hip_runtime_compat.h</code>、<code>hipblas_compat.h</code>、<code>hipsolver_compat.h</code> が
+C ソースへ必要なインターフェースを公開し、C++ 翻訳単位は ROCm のヘッダを使う。hipSOLVER ラッパは
+generic 呼び出しを FP32/FP64・実数/複素数の型別 API に変換する。CUDA 名のヘッダを include する
+同梱ライブラリ向けには shim ヘッダも残す。GEMMul8 と native FP64 は AMD のデバイス方針で選ぶ。
+第 3〜6 章の OpenACC プール管理や cuSOLVER エミュレーションなどは NVIDIA 固有の説明として読むこと。</p>
+<p><b>GPU が見えない環境での CPU 実行:</b> 非共線密行列ワークスペースの後処理は、GPU リソースを持たない場合に
+HIP 同期とデバイス復元を呼ばない。使用中または部分確保されたリソースは引き続き解放し、ホスト状態は常に
+初期化する。これにより、GPU を非表示にした HIP 実行ファイルの CPU 経路を修正した
+(<code>57a3a3fc</code>、検証は §9.8)。</p>
+<p><b>MI300A:</b> GPU 実行時は <code>HSA_XNACK=1</code> を設定する。
+<code>source/backends/hip/tools/mi300a_rank_launcher.py</code> は OpenMPI のランク情報と
+<code>OPENMX_AFFINITY_DIR</code> を使って ROCm 初期化前に CPU 配置を固定し、割当 CPU 数と
+<code>-nt</code> の一致を確認する。起動例は <code>docs/GPU_BACKENDS.md</code> を参照。
+NVIDIA MPS は CUDA 固有で、HIP の起動機構ではない。記録された Radeon 試験は MI300A や
+複数ノードの実機検証を意味しない(§9.8)。</p>
 
 <h2>11.6 オリジナルから挙動が変わる非 GPU 項目</h2>
 <ul>
@@ -2358,7 +2472,7 @@ NVIDIA HPC SDK 同梱の HPC-X(Open MPI 4.1)のままでよい。</p>
 </section>
 <!-- ==================== 付録 A ==================== -->
 <section id="appA">
-<h1>付録 A. 変更ファイル一覧(47 ファイル)</h1>
+<h1>付録 A. 変更ファイル一覧(2026 年 7 月、47 ファイル)</h1>
 <p>+n/−m はオリジナル OpenMX 4.0 ソースとの生の diff 行数(2026-07-23 時点)。全面再整形されたファイルは
 raw 行数が実質変更より大きく見える点に注意。
 分類: <b>GPU</b>=GPU 化、<b>OMP</b>=OpenMP 修正、<b>FIX</b>=バグ修正・堅牢化、<b>OPT</b>=CPU 最適化、<b>BLD</b>=ビルド、<b>MISC</b>=その他。</p>
@@ -2415,7 +2529,7 @@ raw 行数が実質変更より大きく見える点に注意。
 
 <!-- ==================== 付録 B ==================== -->
 <section id="appB">
-<h1>付録 B. 新規追加ファイル一覧</h1>
+<h1>付録 B. 新規追加ファイル一覧(2026 年 7 月)</h1>
 <h2>B.1 新規ソース(14 ファイル、計約 4,000 行)</h2>
 <table>
 <thead><tr><th style="width:34%;">ファイル</th><th style="width:8%;">行数</th><th>役割</th></tr></thead>
@@ -2449,7 +2563,7 @@ raw 行数が実質変更より大きく見える点に注意。
 </section>
 <!-- ==================== 付録 C ==================== -->
 <section id="appC">
-<h1>付録 C. 開発履歴(全 91 コミット)</h1>
+<h1>付録 C. 開発履歴(2026 年 7 月、91 コミット)</h1>
 <table>
 <thead><tr><th style="width:6%;">#</th><th style="width:13%;">ハッシュ</th><th>題名(原文)</th></tr></thead>
 <tbody>
@@ -2574,10 +2688,12 @@ raw 行数が実質変更より大きく見える点に注意。
   <li>ELPA(Eigenvalue soLvers for Petaflop Applications): <code>https://elpa.mpcdf.mpg.de/</code></li>
   <li>FFTW: <code>https://www.fftw.org/</code></li>
 </ol>
-<div class="note" style="margin-top:16px;"><b>本書について:</b> 本書は 2026-07-23 時点のソースツリー(コミット <code>9fe8ce13</code>)と、
-オリジナル OpenMX 4.0 との全ファイル diff、および開発リポジトリの全 91 コミットの調査に基づいて作成された(第 3 版)。
-ELPA 関連の記述は ELPA 2026.02.002 の共通利用(§9.4)に合わせて更新し、過去の差分行数・コミット説明は保存した。
-その他の行番号・既定値は元の調査時点のものである。誤りを見つけた場合はソースコードを一次情報として優先されたい。</div>
+<div class="note" style="margin-top:16px;"><b>本書について:</b> 第 4 版は <code>c0689442</code>(2026-10-17)を基準に
+CUDA/HIP 統合、CMake ビルド、ELPA 共通化、HIP の CPU 後処理修正を反映した。
+参照資料は <code>CMakeLists.txt</code>、<code>tools/prepare_build.py</code>、<code>docs/GPU_BACKENDS.md</code>、
+<code>source/backends/hip/</code> と、<code>bdcba87d</code>・<code>57a3a3fc</code> の検証記録である。
+CUDA の詳細コード例、ソース行番号、付録 A〜C は 7 月 23 日の調査(<code>9fe8ce13</code>、91 コミット)を基準とする。
+過去の測定値は現在の性能結果ではない。ソースコードを一次情報として優先されたい。</div>
 </section>
 
 </body>
