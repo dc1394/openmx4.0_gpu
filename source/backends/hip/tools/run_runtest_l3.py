@@ -17,6 +17,24 @@ import subprocess
 import time
 
 
+def repository_root(script):
+    """Find inputs in the checkout, including tools staged outside that checkout."""
+    for parent in Path(script).resolve().parents:
+        marker = parent / '.openmx-backend.json'
+        if marker.is_file():
+            try:
+                candidate = Path(json.loads(marker.read_text())['source_root']).resolve()
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise ValueError(f'Invalid OpenMX build marker {marker}: {error}') from error
+        else:
+            candidate = parent
+        if all((candidate / name).is_dir() for name in ('source', 'work', 'DFT_DATA19')):
+            return candidate
+        if marker.is_file():
+            raise ValueError(f'OpenMX source tree in {marker} lacks source/, work/, or DFT_DATA19/')
+    raise ValueError('Cannot locate the OpenMX checkout containing work/ and DFT_DATA19/')
+
+
 def available_bytes():
     for line in Path('/proc/meminfo').read_text().splitlines():
         if line.startswith('MemAvailable:'):
@@ -82,12 +100,17 @@ def main():
     args = parser.parse_args()
     if args.ranks < 1 or args.threads < 1 or args.timeout <= 0 or args.min_available_gib < 0:
         parser.error('ranks, threads and timeout must be positive; memory reserve must be nonnegative')
-    repo = Path(__file__).resolve().parents[1]
+    try:
+        repo = repository_root(__file__)
+    except ValueError as error:
+        parser.error(str(error))
     input_directory = {'S': 'input_example', 'L': 'large_example',
                        'L2': 'large2_example', 'L3': 'large3_example'}[args.suite]
     test_option = '-runtest' + ('' if args.suite == 'S' else args.suite)
     inputs = repo / 'work' / input_directory
     cases = sorted(inputs.glob('*.dat'))
+    if not cases:
+        parser.error(f'No test inputs found for suite {args.suite}: {inputs}')
     if args.cases:
         by_name = {p.stem: p for p in cases}
         if set(args.cases) - by_name.keys():

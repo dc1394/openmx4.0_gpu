@@ -9,11 +9,20 @@ CUDA と HIP には別々のビルドディレクトリを使用してくださ�
 
 CMake 3.20 以上、Python 3.8 以上、GNU make に加え、選択したバックエンドの
 コンパイラ、MPI、数値計算ライブラリが必要です。最初にリポジトリのルートで
-サブモジュールを初期化します。
+使用するバックエンドのサブモジュールを初期化します。HIP は GEMMul8 のみを使い、
+FFTW3 には AOCL のライブラリを使用します。
 
 ```sh
+# AMD / HIP
+git submodule update --init --recursive source/third_party/GEMMul8
+
+# NVIDIA / CUDA（FFTW3 のソースも初期化）
 git submodule update --init --recursive
 ```
+
+ソースアーカイブから依存物を展開済みの場合、そのディレクトリに Git メタデータが
+なくてもビルドできます。特に HIP の構築で、使用しない FFTW3 の展開済み
+ディレクトリをサブモジュールに変換する必要はありません。
 
 共通ソースは `source/`、AMD 固有の実装と設定は `source/backends/hip/` にあります。
 `source/backends/hip/sources.json` が HIP ビルドで置き換えるソースを記録します。
@@ -70,6 +79,11 @@ ELPA の Fortran `mpi` モジュールを読むため、MPI は使用する ROCm
 ROCm flang 用として使用できません。AOCL が依存する AOCC の Fortran ランタイムも
 `AOCC_LIB` に指定します。
 
+HIP Makefile は、選択した `ROCM_LLVM_LIB` を `LIBRARY_PATH` の先頭に置きます。
+ROCm clang は環境変数のライブラリ検索先を明示した `-L` より先に使うため、
+この設定で Intel oneAPI や AOCC の別の OpenMP ランタイムが選ばれることを防ぎます。
+追加の検索先は維持します。
+
 AMD Makefile の既定値には特定の計算機向けの `/system/apps/...` パスが含まれます。
 下記の `ROCM`、`MPI_HOME`、`AOCL_HOME`、`AOCC_LIB` を実際の環境に合わせて指定します。
 `gfx942` は MI300A の例です。Radeon には対象 GPU のアーキテクチャを指定してください。
@@ -87,6 +101,27 @@ cmake --build build/hip
 `CLANG`、`CPPLANG`、`HIPCC`、`FLANG` も上書きできます。
 初回には GEMMul8、パッチ適用済み MAGMA、ELPA/COSMA もビルドします。
 ELPA/COSMA の構築には autoconf、automake、libtoolize、m4、unzip も必要です。
+
+バンドルした ELPA 2026.02.002 には、ROCm flang で `type(c_ptr)` の
+割当出力先が誤って渡される場合があるため、構築スクリプトがホスト／デバイスの
+割当ラッパーを `integer(c_intptr_t)` 経由に修正します。元アーカイブは変更せず、
+ビルド内の ELPA ソースへ再適用可能な形で反映します。対応しないソースでは
+構築を停止し、意図しない書き換えを防ぎます。
+
+`cmake` が `PATH` にない場合、以前の依存スタック構築で生成した
+`cmake-bootstrap/bin/cmake` など、既存の CMake を絶対パスで利用できます。
+次の `CMAKE_BIN` を実際の実行ファイルに置き換え、上記の構成・ビルドコマンドの
+`cmake` を `"$CMAKE_BIN"` として実行してください。
+
+```sh
+CMAKE_BIN=/absolute/path/to/cmake-bootstrap/bin/cmake
+"$CMAKE_BIN" --version
+```
+
+ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3.24 以上を
+再利用するには `OPENMX_MAKE_OPTIONS` に `GPUSOLVER2_CMAKE=/absolute/path/to/cmake-bootstrap/bin/cmake`
+も追加します。これは CMake の再構築を省略するための指定で、依存ライブラリの
+生成物は引き続きこの HIP ビルド内に作られます。
 
 ## CMake の設定と生成物
 
@@ -145,8 +180,19 @@ mpirun -np 8 --map-by ppr:8:node:PE=3 --bind-to core \
   "$PWD/build/hip/openmx" /absolute/path/to/input.dat -nt 3
 ```
 
-この統合時の検証環境には ROCm/HIP がないため、HIP 版の実ビルドと AMD GPU 上の
-数値・性能検証は実施していません。
+2026-10-17 に Radeon RX 9060 XT（gfx1200、1 GPU）、ROCm 7.2.0、
+ROCm clang 版 OpenMPI 5.0.9、AOCL 5.2.0 で HIP 版を依存ライブラリから構築し、
+4 MPI × 4 スレッド／8 MPI × 2 スレッド（最大 16 CPU コア）で検証しました。
+CPU/GPU の数値比較、S 全例、L3 代表例、Cr2 強制 GPU 対角化、ELPA/COSMA、
+容量復旧経路の強制試験、同一 MPI プロセス内での S 全例を合わせて 88 計算、CTest 8 件、
+追加ホストテスト 19 件が合格しました。小規模 S 例では既定の閾値による CPU 密対角化を
+許容し、強制 GPU 例では GPU 固有値分解の実行証跡を別途確認しています。
+容量試験は `OPENMX_SETHAM_GPU=0` でエネルギー・双極子の復旧経路に限定しました。
+32Si の全段復旧を強制した予備試験は Hamiltonian 積分が遅く、300 秒で終了しました。
+その診断ログは試験記録内の `archives/capacity-allpaths-timeout/` に保存し、合格数には含めません。
+最終結果は `work/codex_hip_integration_20261017/final/validation-report.txt` と
+`final-audit.json` に保存しています。MI300A、物理マルチ GPU、複数ノードでの実行と、
+L/L2/L3 全例の実行・性能評価はこの検証に含みません。
 
 ## 検証
 

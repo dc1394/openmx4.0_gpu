@@ -132,6 +132,49 @@ class UnifiedBuildTest(unittest.TestCase):
         hip_gemm = self.stages["HIP"] / "third_party" / "GEMMul8"
         self.assertNotEqual(cuda_gemm.resolve(), hip_gemm.resolve())
 
+    def test_hip_regression_runners_find_default_input_templates(self):
+        native = self.builds["HIP"] / "native"
+        work = native / "work"
+        self.assertTrue(work.is_dir(), "HIP regression runners need native/work inputs")
+        self.assertFalse(work.is_symlink(), "regression outputs must remain build-private")
+        for directory in ("input_example", "large_example", "large2_example", "large3_example"):
+            with self.subTest(suite=directory):
+                self.assertTrue((work / directory).is_symlink())
+                self.assertEqual((work / directory).resolve(), ROOT / "work" / directory)
+        # These are the default templates used by the copied band-spin,
+        # multi-GPU Cluster and multi-GPU Band regression runners.
+        templates = ("input_example/Crys-MnO.dat", "large_example/Pt63.dat",
+                     "large_example/B2C62_Band.dat")
+        original = {}
+        for name in templates:
+            with self.subTest(template=name):
+                template = work / name
+                self.assertTrue(template.is_file(), f"missing default regression template: {name}")
+                self.assertEqual(template.resolve(), ROOT / "work" / name)
+                original[name] = digest(template)
+        # Exercise the real parsers and input preparation without MPI or GPUs.
+        # Python is only copied as an executable placeholder, never launched.
+        for runner in ("run_mgpu_cluster_regression.py", "run_mgpu_band_regression.py"):
+            with self.subTest(runner=runner):
+                output = self.workspace / Path(runner).stem
+                completed = subprocess.run(
+                    [sys.executable, str(native / "tests" / runner),
+                     "--baseline", sys.executable, "--binary", sys.executable,
+                     "--output", str(output), "--prepare-only",
+                     "--cases", "col_off", "--backends", "off"],
+                    capture_output=True, text=True, check=False,
+                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                manifest = json.loads((output / "command.json").read_text())
+                self.assertTrue(manifest["prepared_only"])
+                self.assertEqual(len(manifest["plans"]), 2)
+                for plan in manifest["plans"]:
+                    directory = Path(plan["directory"])
+                    self.assertIn(output, directory.parents)
+                    self.assertTrue((directory / "input.dat").is_file())
+        for name, expected in original.items():
+            self.assertEqual(digest(work / name), expected, f"modified shared input: {name}")
+
     def test_preparation_is_incremental_and_rejects_backend_switch(self):
         for backend, stage in self.stages.items():
             with self.subTest(backend=backend):

@@ -137,6 +137,52 @@ step_elpa() {
     ( cd "$SRC/elpa" && sh autogen.sh )
     printf '%s\n' "$GPUSOLVER2_ELPA_VER" > "$SRC/elpa/.openmx-source-version"
   fi
+  # ROCm Flang passes a type(c_ptr) output argument to these duplicate
+  # bind(C) interfaces as its value instead of its address. An initially
+  # null C pointer then reaches hipMalloc/hipHostMalloc as a null output
+  # slot. Use the working intptr interface and transfer the returned bits.
+  # Apply on every ELPA build, including sources retained after a stamp
+  # invalidation; reject unexpected upstream changes instead of mispatching.
+  python3 - "$SRC/elpa/src/GPU/ROCm/hip_template.F90" <<'OPENMX_ELPA_CPTR_PATCH'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+patched = source
+for host in ("", "host_"):
+    original = f"""    function hip_malloc_{host}cptr(a, width_height) result(success)
+      use, intrinsic :: iso_c_binding
+      implicit none
+      type(c_ptr)                               :: a
+      integer(kind=c_intptr_t), intent(in)      :: width_height
+      logical                                   :: success
+#ifdef WITH_AMD_GPU_VERSION
+      success = hip_malloc_{host}cptr_c(a, width_height) /= 0
+#else
+      success = .true.
+#endif
+    end function"""
+    replacement = original.replace(
+        f"      success = hip_malloc_{host}cptr_c(a, width_height) /= 0",
+        "      integer(kind=c_intptr_t) :: address\n"
+        "      ! Keep pointer output storage intact across the Flang C binding.\n"
+        "      address = 0_c_intptr_t\n"
+        f"      success = hip_malloc_{host}intptr_c(address, width_height) /= 0\n"
+        "      if (success) a = transfer(address, a)",
+    )
+    old_count = patched.count(original)
+    new_count = patched.count(replacement)
+    if old_count == 1 and new_count == 0:
+        patched = patched.replace(original, replacement, 1)
+    elif old_count != 0 or new_count != 1:
+        raise SystemExit(
+            f"ERROR: unsupported ELPA hip_malloc_{host}cptr source in {path} "
+            f"(original={old_count}, patched={new_count})"
+        )
+if patched != source:
+    path.write_text(patched)
+OPENMX_ELPA_CPTR_PATCH
   mkdir -p "$BLD/elpa" && cd "$BLD/elpa"
   # -I.../include/rocsolver: ROCm >= 6 nests rocsolver.h in its own
   # subdirectory but ELPA's ROCm sources include plain <rocsolver.h>.

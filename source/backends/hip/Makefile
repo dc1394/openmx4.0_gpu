@@ -70,6 +70,10 @@ ROCM_LLVM ?= $(ROCM)/llvm
 ROCM_LIB  ?= $(ROCM)/lib
 ROCM_LLVM_LIB ?= $(ROCM_LLVM)/lib
 
+# ROCm clang searches LIBRARY_PATH before explicit -L arguments. Keep its
+# OpenMP runtimes ahead of ambient Intel/AOCC runtimes with a different ABI.
+export LIBRARY_PATH := $(ROCM_LLVM_LIB)$(if $(LIBRARY_PATH),:$(LIBRARY_PATH))
+
 # offload-arch/rocminfo only answer on a node that owns a GPU, so keep a
 # fallback for builds driven from a GPU-less login node.  Both tools may append
 # target features (e.g. gfx942:sramecc+:xnack-); MAGMA's GPU_TARGET rejects
