@@ -191,6 +191,18 @@ typedef struct
 static BandNonColDenseGpuWorkspace BandNonCol_dense_gpu_workspace = {0};
 static int BandNonCol_dense_gpu_atexit_registered = 0;
 
+/* Run-boundary cleanup also visits ranks that never used a GPU.  Inspect
+   owned resources rather than probing HIP or relying on initialized, since
+   an allocation failure can leave a partially created workspace. */
+static int BandNonCol_DenseGpu_HasDeviceResources(void)
+{
+    const BandNonColDenseGpuWorkspace *w = &BandNonCol_dense_gpu_workspace;
+
+    return w->d_S != NULL || w->d_H11 != NULL || w->d_H22 != NULL ||
+           w->d_H12 != NULL || w->d_tmp != NULL || w->d_H2 != NULL ||
+           w->d_C2 != NULL || w->d_scale != NULL || w->hipblas != NULL;
+}
+
 static void BandNonCol_DenseGpu_EnsureHipblas(void)
 {
     BandNonColDenseGpuWorkspace *w = &BandNonCol_dense_gpu_workspace;
@@ -262,8 +274,10 @@ static void BandNonCol_DenseGpu_ProcessCleanup(void)
 
     /* atexit handlers run after OpenMX has finalized MPI.  Do not use
        wait_hipfunc here, since its retry/error path calls MPI routines. */
-    if (w->device_id>=0) (void)hipSetDevice(w->device_id);
-    (void)hipDeviceSynchronize();
+    if (BandNonCol_DenseGpu_HasDeviceResources()) {
+        if (w->device_id>=0) (void)hipSetDevice(w->device_id);
+        (void)hipDeviceSynchronize();
+    }
     if (w->d_S     != NULL) (void)hipFree(w->d_S);
     if (w->d_H11   != NULL) (void)hipFree(w->d_H11);
     if (w->d_H22   != NULL) (void)hipFree(w->d_H22);
@@ -367,7 +381,8 @@ static void BandNonCol_DenseGpu_ReleaseOverlapMagmaScratch(void)
 {
     BandNonColDenseGpuWorkspace *w = &BandNonCol_dense_gpu_workspace;
 
-    wait_hipfunc(hipDeviceSynchronize());
+    if (BandNonCol_DenseGpu_HasDeviceResources())
+        wait_hipfunc(hipDeviceSynchronize());
     BandNonCol_DenseGpu_ReleaseWaveBuffers();
 
     if (w->d_H11 != NULL){
@@ -444,7 +459,8 @@ static void BandNonCol_DenseGpu_ReleasePreMagmaBuffers(int release_s)
 {
     BandNonColDenseGpuWorkspace *w = &BandNonCol_dense_gpu_workspace;
 
-    wait_hipfunc(hipDeviceSynchronize());
+    if (BandNonCol_DenseGpu_HasDeviceResources())
+        wait_hipfunc(hipDeviceSynchronize());
     BandNonCol_DenseGpu_ReleaseWaveBuffers();
 
     if (w->d_H11 != NULL){
