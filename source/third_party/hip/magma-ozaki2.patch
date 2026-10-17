@@ -1,0 +1,4674 @@
+--- a/Makefile.gen.hip	2026-02-20 04:21:51.000000000 +0900
++++ b/Makefile.gen.hip	2026-09-22 13:23:41.473619969 +0900
+@@ -8543,3 +8543,30 @@
+ 
+ cleangen: header_cleangen
+ 
++
++# =============================================================================
++# Ozaki Scheme II (GEMMul8) integration — appended by OpenMX (agent B1).
++# ozaki2.cpp is the only TU that includes gemmul8.hpp; it needs C++20 and
++# the PUBLIC GEMMul8 include dir (never -I../GEMMul8/src).
++libmagma_all += interface_hip/ozaki2.cpp
++interface_hip/ozaki2.o: CXXFLAGS += -std=c++20 -I../GEMMul8/include
++
++# =============================================================================
++# Ozaki Scheme II eigensolver drivers + testers — appended by OpenMX (agent B2).
++# The s/d/c siblings are pre-generated from the canonical z templates with
++# tools/codegen.py (kept outside the tree); deliberately NO codegen rules here.
++libmagma_all += \
++	src/zheevdx_ozaki2.cpp \
++	src/cheevdx_ozaki2.cpp \
++	src/dsyevdx_ozaki2.cpp \
++	src/ssyevdx_ozaki2.cpp \
++	src/zheevdx_ozaki2_gpu.cpp \
++	src/cheevdx_ozaki2_gpu.cpp \
++	src/dsyevdx_ozaki2_gpu.cpp \
++	src/ssyevdx_ozaki2_gpu.cpp
++
++testing_all += \
++	testing/testing_zheevdx_ozaki2.cpp \
++	testing/testing_cheevdx_ozaki2.cpp \
++	testing/testing_dsyevdx_ozaki2.cpp \
++	testing/testing_ssyevdx_ozaki2.cpp
+--- a/include/magma_ozaki2.h	1970-01-01 09:00:00.000000000 +0900
++++ b/include/magma_ozaki2.h	2026-09-22 13:23:41.474619939 +0900
+@@ -0,0 +1,320 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       Ozaki Scheme II (GEMMul8) routing layer for the hipBLAS-backed
++       level-3 BLAS wrappers in interface_hip/blas_{d,z}_v2.cpp.
++
++       EXPERIMENTAL, AMD/HIP-first (OpenMX integration).
++       Implementation: interface_hip/ozaki2.cpp.
++*/
++
++#ifndef MAGMA_OZAKI2_H
++#define MAGMA_OZAKI2_H
++
++#include <stddef.h>
++
++#include "magma_types.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* =============================================================================
++   Options snapshot (informational; the adapter parses the environment once,
++   see interface_hip/ozaki2.cpp for the authoritative implementation).
++   Size-gate defaults were tuned 2026-07-02 on gfx1200 (RX 9060 XT, 16 GiB);
++   re-tune on hardware with stronger fp64.
++
++     MAGMA_OZAKI2                (0/1, default 0: enable routing globally,
++                                  i.e. even outside an _ozaki2 driver scope)
++     MAGMA_OZAKI2_ALGO           (auto|1stage|2stage, default auto; algorithm
++                                  choice of the _ozaki2 eigensolver drivers,
++                                  see the driver prototypes below)
++     MAGMA_OZAKI2_NUM_MODULI     (default 15, clamped to 2..20; below 15 the
++                                  routed eigensolvers lose eigenvalue accuracy)
++     MAGMA_OZAKI2_FASTMODE       (0/1, default 0)
++     MAGMA_OZAKI2_MIN_DIM        (min(m,n,keff) routing gate on the gemm-
++                                  equivalent dims; real default 128.  Setting
++                                  the base var applies to BOTH dtypes unless
++                                  the _CPLX var is also set)
++     MAGMA_OZAKI2_MIN_DIM_CPLX   (complex min_dim, default 64)
++     MAGMA_OZAKI2_MIN_K          (keff = gemm-equivalent inner-dimension gate;
++                                  real default 256)
++     MAGMA_OZAKI2_MIN_K_CPLX     (complex min_k, default 128)
++     MAGMA_OZAKI2_MIN_MNK        (m*n*keff product gate; real default 2^28 =
++                                  268435456)
++     MAGMA_OZAKI2_MIN_MNK_CPLX   (complex min_mnk, default 2^27 = 134217728)
++     MAGMA_OZAKI2_TRMM_MNK_MULT  (min_mnk multiplier for trmm, default 4:
++                                  its Ozaki path pays an extra out-of-place
++                                  temp + copy-back)
++     MAGMA_OZAKI2_MAX_WS_MB      (workspace cap in MiB, absolute per process)
++     MAGMA_OZAKI2_MAX_WS_PERCENT (workspace cap as percent of device VRAM,
++                                  divided by the local rank count below;
++                                  default 30 when MAX_WS_MB is unset; if both
++                                  are set the smaller cap wins)
++     MAGMA_OZAKI2_MIN_FREE_MB    (default 2048: refuse to grow the workspace
++                                  unless at least this much VRAM stays free
++                                  afterwards — headroom for MAGMA's own
++                                  device allocations, which fail hard while
++                                  our denial is a graceful native fallback)
++     MAGMA_OZAKI2_LOCAL_RANKS    (processes sharing this GPU; divides the
++                                  percent-based workspace cap.  Default:
++                                  OMPI_COMM_WORLD_LOCAL_SIZE, then
++                                  SLURM_NTASKS_PER_NODE, then 1)
++     MAGMA_OZAKI2_OPS            (csv subset of gemm,symm,hemm,syr2k,her2k,trmm;
++                                  default all)
++     MAGMA_OZAKI2_VERBOSE        (0/1/2, default 0; 1 = config + atexit stats,
++                                  2 = additionally per-call lines on stderr)
++
++   Related knob outside the adapter (src/dlaex3.cpp):
++     MAGMA_DLAED3_K              (default 512, clamped to 16 or more; minimum
++                                  deflated size rk for which the dlaex3
++                                  eigenvector-update GEMMs run on the GPU —
++                                  raising it above the legacy 512 keeps small
++                                  divide-and-conquer GEMMs off the GPU)
++*/
++typedef struct magma_ozaki2_opts_t
++{
++    magma_int_t num_moduli;    /* Ozaki-II moduli count (2..20)             */
++    magma_int_t fastmode;      /* GEMMul8 fast mode (0/1)                   */
++    magma_int_t min_dim;       /* per-dimension routing gate                */
++    magma_int_t verbose;       /* 0/1/2                                     */
++    size_t      min_mnk;       /* m*n*k routing gate (gemm-equivalent dims) */
++    size_t      max_ws_bytes;  /* resolved workspace cap for current device */
++} magma_ozaki2_opts_t;
++
++/* Fill *opts with the effective configuration (parses env on first use). */
++void magma_ozaki2_opts_init( magma_ozaki2_opts_t *opts );
++
++/* =============================================================================
++   Routing scope.
++   Process-wide depth counter (NOT thread-local: 2-stage drivers spawn
++   pthreads).  Routing is active while an _ozaki2 driver scope is open or
++   when MAGMA_OZAKI2=1 is set in the environment.
++*/
++void magma_ozaki2_scope_begin( void );
++void magma_ozaki2_scope_end( void );
++
++/* Returns nonzero when routing is currently enabled. */
++magma_int_t magma_ozaki2_active( void );
++
++/* =============================================================================
++   Try-hooks.
++   Signatures mirror the corresponding magma_X wrappers (interface_hip/
++   blas_{d,z}_v2.cpp).  Return 1 when the call was handled by the Ozaki-II
++   path; return 0 when the caller must run the native hipBLAS path.
++*/
++magma_int_t magma_ozaki2_try_dgemm(
++    magma_trans_t transA, magma_trans_t transB,
++    magma_int_t m, magma_int_t n, magma_int_t k,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    const double *dB, magma_int_t lddb,
++    double beta,
++    double       *dC, magma_int_t lddc,
++    magma_queue_t queue );
++
++magma_int_t magma_ozaki2_try_zgemm(
++    magma_trans_t transA, magma_trans_t transB,
++    magma_int_t m, magma_int_t n, magma_int_t k,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    const magmaDoubleComplex *dB, magma_int_t lddb,
++    magmaDoubleComplex beta,
++    magmaDoubleComplex       *dC, magma_int_t lddc,
++    magma_queue_t queue );
++
++magma_int_t magma_ozaki2_try_dsymm(
++    magma_side_t side, magma_uplo_t uplo,
++    magma_int_t m, magma_int_t n,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    const double *dB, magma_int_t lddb,
++    double beta,
++    double       *dC, magma_int_t lddc,
++    magma_queue_t queue );
++
++magma_int_t magma_ozaki2_try_zhemm(
++    magma_side_t side, magma_uplo_t uplo,
++    magma_int_t m, magma_int_t n,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    const magmaDoubleComplex *dB, magma_int_t lddb,
++    magmaDoubleComplex beta,
++    magmaDoubleComplex       *dC, magma_int_t lddc,
++    magma_queue_t queue );
++
++magma_int_t magma_ozaki2_try_dsyr2k(
++    magma_uplo_t uplo, magma_trans_t trans,
++    magma_int_t n, magma_int_t k,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    const double *dB, magma_int_t lddb,
++    double beta,
++    double       *dC, magma_int_t lddc,
++    magma_queue_t queue );
++
++magma_int_t magma_ozaki2_try_zher2k(
++    magma_uplo_t uplo, magma_trans_t trans,
++    magma_int_t n, magma_int_t k,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    const magmaDoubleComplex *dB, magma_int_t lddb,
++    double beta,
++    magmaDoubleComplex       *dC, magma_int_t lddc,
++    magma_queue_t queue );
++
++magma_int_t magma_ozaki2_try_dtrmm(
++    magma_side_t side, magma_uplo_t uplo, magma_trans_t trans, magma_diag_t diag,
++    magma_int_t m, magma_int_t n,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    double       *dB, magma_int_t lddb,
++    magma_queue_t queue );
++
++magma_int_t magma_ozaki2_try_ztrmm(
++    magma_side_t side, magma_uplo_t uplo, magma_trans_t trans, magma_diag_t diag,
++    magma_int_t m, magma_int_t n,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    magmaDoubleComplex       *dB, magma_int_t lddb,
++    magma_queue_t queue );
++
++/* =============================================================================
++   Housekeeping.
++*/
++
++/* Destroy all cached per-(device,stream) hipBLAS handles and workspaces. */
++void magma_ozaki2_release_workspaces( void );
++
++/* Print routed/fallback counters per operation to stderr. */
++void magma_ozaki2_print_stats( void );
++
++/* =============================================================================
++   driver prototypes appended by B2
++   (magma_{z,c}heevdx_ozaki2[_gpu], magma_{d,s}syevdx_ozaki2[_gpu] are
++   declared here by agent B2 — do not add anything below this section
++   other than those prototypes.)
++============================================================================= */
++
++/* EXPERIMENTAL symmetric/Hermitian eigensolver drivers that enable Ozaki-II
++   routing around the underlying MAGMA solver while it runs (see
++   src/zheevdx_ozaki2.cpp / src/zheevdx_ozaki2_gpu.cpp).  Signatures mirror
++   magma_{z,c}heevdx[_gpu] / magma_{d,s}syevdx[_gpu]; the real precisions
++   have no (rwork, lrwork) pair.  The algorithm (1-stage vs 2-stage) is
++   selected deterministically from env MAGMA_OZAKI2_ALGO in
++   {auto (default), 1stage, 2stage}; auto: with nev = (iu - il + 1) for
++   range == MagmaRangeI, else nev = n, choose 2-stage iff
++   (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072));
++   2-stage is never used for upper (also when forced via "2stage").
++   Workspace query and solve use the same choice.
++   NOTE: the auto rule assumes an otherwise idle machine; when many busy CPU
++   ranks share the node (e.g. OpenMX with per-rank busy-polling MPI), the
++   2-stage CPU phases starve — OpenMX therefore defaults to
++   MAGMA_OZAKI2_ALGO=1stage (see source/magma_openmx.cu). */
++
++magma_int_t
++magma_zheevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaDoubleComplex *A, magma_int_t lda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, double *w,
++    magmaDoubleComplex *work, magma_int_t lwork,
++    double *rwork, magma_int_t lrwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++magma_int_t
++magma_cheevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaFloatComplex *A, magma_int_t lda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, float *w,
++    magmaFloatComplex *work, magma_int_t lwork,
++    float *rwork, magma_int_t lrwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++magma_int_t
++magma_dsyevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    double *A, magma_int_t lda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, double *w,
++    double *work, magma_int_t lwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++magma_int_t
++magma_ssyevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    float *A, magma_int_t lda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, float *w,
++    float *work, magma_int_t lwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++magma_int_t
++magma_zheevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaDoubleComplex_ptr dA, magma_int_t ldda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, double *w,
++    magmaDoubleComplex *wA, magma_int_t ldwa,
++    magmaDoubleComplex *work, magma_int_t lwork,
++    double *rwork, magma_int_t lrwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++magma_int_t
++magma_cheevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaFloatComplex_ptr dA, magma_int_t ldda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, float *w,
++    magmaFloatComplex *wA, magma_int_t ldwa,
++    magmaFloatComplex *work, magma_int_t lwork,
++    float *rwork, magma_int_t lrwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++magma_int_t
++magma_dsyevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaDouble_ptr dA, magma_int_t ldda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, double *w,
++    double *wA, magma_int_t ldwa,
++    double *work, magma_int_t lwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++magma_int_t
++magma_ssyevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaFloat_ptr dA, magma_int_t ldda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, float *w,
++    float *wA, magma_int_t ldwa,
++    float *work, magma_int_t lwork,
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info );
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* MAGMA_OZAKI2_H */
+--- a/include/magma_v2.h	2026-02-20 04:21:18.000000000 +0900
++++ b/include/magma_v2.h	2026-09-22 13:23:41.474619939 +0900
+@@ -35,6 +35,7 @@
+ #include "magma_zc.h"
+ #include "magma_ds.h"
+ #include "magma_auxiliary.h"
++#include "magma_ozaki2.h"
+ #include "magma_htc.h"
+ 
+ #endif // MAGMA_V2_H
+--- a/interface_hip/blas_d_v2.cpp	2026-02-20 04:22:34.000000000 +0900
++++ b/interface_hip/blas_d_v2.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -10,6 +10,7 @@
+ */
+ #include "magma_internal.h"
+ #include "error.h"
++#include "magma_ozaki2.h"
+ 
+ #define REAL
+ 
+@@ -1314,6 +1315,7 @@
+     magmaDouble_ptr       dC, magma_int_t lddc,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_dgemm( transA, transB, m, n, k, alpha, dA, ldda, dB, lddb, beta, dC, lddc, queue )) return;
+     hipblasDgemm(
+         queue->hipblas_handle(),
+         hipblas_trans_const( transA ),
+@@ -1609,6 +1611,7 @@
+     magmaDouble_ptr       dC, magma_int_t lddc,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_dsymm( side, uplo, m, n, alpha, dA, ldda, dB, lddb, beta, dC, lddc, queue )) return;
+     hipblasDsymm(
+         queue->hipblas_handle(),
+         hipblas_side_const( side ),
+@@ -1751,6 +1754,7 @@
+     magmaDouble_ptr       dC, magma_int_t lddc,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_dsyr2k( uplo, trans, n, k, alpha, dA, ldda, dB, lddb, beta, dC, lddc, queue )) return;
+     hipblasDsyr2k(
+         queue->hipblas_handle(),
+         hipblas_uplo_const( uplo ),
+@@ -1819,6 +1823,7 @@
+     magmaDouble_ptr       dB, magma_int_t lddb,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_dtrmm( side, uplo, trans, diag, m, n, alpha, dA, ldda, dB, lddb, queue )) return;
+     #ifdef MAGMA_HAVE_HIP
+         // TODO: remove fallback when hipblas provides this routine
+         hipblasDtrmm(
+--- a/interface_hip/blas_z_v2.cpp	2026-02-20 04:21:44.000000000 +0900
++++ b/interface_hip/blas_z_v2.cpp	2026-09-22 13:23:41.474619939 +0900
+@@ -10,6 +10,7 @@
+ */
+ #include "magma_internal.h"
+ #include "error.h"
++#include "magma_ozaki2.h"
+ 
+ #define COMPLEX
+ 
+@@ -1314,6 +1315,7 @@
+     magmaDoubleComplex_ptr       dC, magma_int_t lddc,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_zgemm( transA, transB, m, n, k, alpha, dA, ldda, dB, lddb, beta, dC, lddc, queue )) return;
+     hipblasZgemm(
+         queue->hipblas_handle(),
+         hipblas_trans_const( transA ),
+@@ -1388,6 +1390,7 @@
+     magmaDoubleComplex_ptr       dC, magma_int_t lddc,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_zhemm( side, uplo, m, n, alpha, dA, ldda, dB, lddb, beta, dC, lddc, queue )) return;
+     hipblasZhemm(
+         queue->hipblas_handle(),
+         hipblas_side_const( side ),
+@@ -1534,6 +1537,7 @@
+     magmaDoubleComplex_ptr       dC, magma_int_t lddc,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_zher2k( uplo, trans, n, k, alpha, dA, ldda, dB, lddb, beta, dC, lddc, queue )) return;
+     hipblasZher2k(
+         queue->hipblas_handle(),
+         hipblas_uplo_const( uplo ),
+@@ -1819,6 +1823,7 @@
+     magmaDoubleComplex_ptr       dB, magma_int_t lddb,
+     magma_queue_t queue )
+ {
++    if (magma_ozaki2_try_ztrmm( side, uplo, trans, diag, m, n, alpha, dA, ldda, dB, lddb, queue )) return;
+     #ifdef MAGMA_HAVE_HIP
+         // TODO: remove fallback when hipblas provides this routine
+         hipblasZtrmm(
+--- a/interface_hip/ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/interface_hip/ozaki2.cpp	2026-09-22 14:14:53.379462776 +0900
+@@ -0,0 +1,1003 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       Ozaki Scheme II (GEMMul8) adapter for the hipBLAS-backed level-3
++       BLAS wrappers (interface_hip/blas_{d,z}_v2.cpp).
++
++       EXPERIMENTAL, AMD/HIP-first (OpenMX integration).
++
++       This is the ONLY translation unit that includes gemmul8.hpp; it is
++       compiled with a per-file CXXFLAGS override (-std=c++20
++       -I../GEMMul8/include, see Makefile.gen.hip).  Only the PUBLIC
++       GEMMul8 headers may be included here: the src/ implementation
++       headers contain device kernels that would miscompile without
++       --offload-arch.  The template instantiations live in
++       ../GEMMul8/lib/libgemmul8.a.
++*/
++
++#include <hip/hip_runtime.h>
++#include <hipblas/hipblas.h>
++
++#include "magma_v2.h"
++
++#include "gemmul8.hpp"
++
++#include <atomic>
++#include <cctype>
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <map>
++#include <mutex>
++#include <string>
++#include <type_traits>
++#include <utility>
++#include <vector>
++
++// =============================================================================
++// Operation ids / stats
++// =============================================================================
++
++namespace {
++
++enum OzOp {
++    OZ_GEMM = 0,
++    OZ_SYMM,
++    OZ_HEMM,
++    OZ_SYR2K,
++    OZ_HER2K,
++    OZ_TRMM,
++    OZ_NUM_OPS
++};
++
++const char* const oz_op_names[OZ_NUM_OPS] =
++    { "gemm", "symm", "hemm", "syr2k", "her2k", "trmm" };
++
++struct OzStats {
++    std::atomic<unsigned long long> routed        {0};
++    std::atomic<unsigned long long> fallback_ws   {0};
++    std::atomic<unsigned long long> fallback_gate {0};
++};
++
++OzStats g_stats[OZ_NUM_OPS];
++
++// =============================================================================
++// Configuration (parsed once from the environment)
++// =============================================================================
++
++// -----------------------------------------------------------------------------
++// Size-gate defaults retuned 2026-07-02 from a gfx1200 (RX 9060 XT, 16 GiB)
++// microbenchmark: MAGMA-native hipBLAS/rocBLAS vs GEMMul8 INT8 (num_moduli
++// 15), 48 shapes across gemm/symm/hemm/syr2k/her2k/trmm in double and
++// double-complex.  Findings: Ozaki-II wins iff the gemm-equivalent inner
++// dimension keff is large (squares 3.8x-18.4x, dlaex3 shapes 3.8x-11x,
++// symm/hemm 2.3x-3.6x); REAL always loses for keff <= 128 regardless of
++// m*n*k (worst 2.85x, and even m*n*k = 4.0e9 at keff=128 loses 1.15x);
++// COMPLEX loses for keff <= 64, and for keff = 128 when m*n*keff < ~1e8.
++// Routing rule (per dtype, on the gemm-equivalent dims m, n, keff):
++//     route iff min(m, n, keff) >= min_dim
++//           AND keff >= min_k
++//           AND m*n*keff >= min_mnk  (x trmm_mnk_mult for trmm, whose
++//                                     Ozaki path pays an extra out-of-place
++//                                     temp + copy-back)
++// with real defaults (128, 256, 2^28) and complex defaults (64, 128, 2^27).
++// Against the 48 measured shapes this routes 30 calls (all wins, worst
++// routed ratio 0.85 ozaki/native) and routes ZERO losses.  Thresholds are
++// specific to fp64-weak GPUs (gfx1200 native dgemm ~0.32 TFLOP/s); re-tune
++// on hardware with stronger fp64.
++//
++// Env overrides (all optional; a base var applies to BOTH dtypes unless the
++// corresponding _CPLX var is also set):
++//     MAGMA_OZAKI2_MIN_DIM        min(m,n,keff) gate; real default 128
++//     MAGMA_OZAKI2_MIN_DIM_CPLX   complex min_dim (default 64)
++//     MAGMA_OZAKI2_MIN_K          keff gate; real default 256
++//     MAGMA_OZAKI2_MIN_K_CPLX     complex min_k (default 128)
++//     MAGMA_OZAKI2_MIN_MNK        m*n*keff gate; real default 268435456
++//     MAGMA_OZAKI2_MIN_MNK_CPLX   complex min_mnk (default 134217728)
++//     MAGMA_OZAKI2_TRMM_MNK_MULT  min_mnk multiplier for trmm (default 4)
++//     MAGMA_OZAKI2_MIN_FREE_MB    VRAM headroom (MiB) a workspace grow must
++//                                 leave free (default 2048)
++//     MAGMA_OZAKI2_LOCAL_RANKS    processes sharing this GPU; divides the
++//                                 percent-based workspace cap (default:
++//                                 OMPI_COMM_WORLD_LOCAL_SIZE, then
++//                                 SLURM_NTASKS_PER_NODE, then 1)
++// -----------------------------------------------------------------------------
++
++struct OzConfig {
++    bool               global_on      = false;         // MAGMA_OZAKI2
++    int                num_moduli     = 15;            // MAGMA_OZAKI2_NUM_MODULI
++    bool               fastmode       = false;         // MAGMA_OZAKI2_FASTMODE
++    long long          min_dim        = 128;           // MAGMA_OZAKI2_MIN_DIM (real)
++    long long          min_dim_cplx   = 64;            // MAGMA_OZAKI2_MIN_DIM_CPLX
++    long long          min_k          = 256;           // MAGMA_OZAKI2_MIN_K (real)
++    long long          min_k_cplx     = 128;           // MAGMA_OZAKI2_MIN_K_CPLX
++    unsigned long long min_mnk        = 1ULL << 28;    // MAGMA_OZAKI2_MIN_MNK (real)
++    unsigned long long min_mnk_cplx   = 1ULL << 27;    // MAGMA_OZAKI2_MIN_MNK_CPLX
++    unsigned long long trmm_mnk_mult  = 4;             // MAGMA_OZAKI2_TRMM_MNK_MULT
++    size_t             max_ws_mb      = 0;             // MAGMA_OZAKI2_MAX_WS_MB (0 = unset)
++    int                max_ws_percent = -1;            // MAGMA_OZAKI2_MAX_WS_PERCENT (-1 = unset)
++    long long          min_free_mb    = 2048;          // MAGMA_OZAKI2_MIN_FREE_MB
++    int                local_ranks    = 1;             // MAGMA_OZAKI2_LOCAL_RANKS (else OMPI/Slurm)
++    unsigned           ops_mask       = (1u << OZ_NUM_OPS) - 1;  // MAGMA_OZAKI2_OPS
++    int                verbose        = 0;             // MAGMA_OZAKI2_VERBOSE
++};
++
++OzConfig       g_cfg;
++std::once_flag g_cfg_once;
++
++// process-wide routing scope depth (NOT thread_local: the 2-stage
++// eigensolvers spawn pthreads that issue magma_* BLAS calls)
++std::atomic<int> g_depth{0};
++
++long long oz_env_ll( const char* name, long long dflt )
++{
++    const char* s = getenv( name );
++    if (s == NULL || *s == '\0')
++        return dflt;
++    char* end = NULL;
++    long long v = strtoll( s, &end, 10 );
++    if (end == s)
++        return dflt;
++    return v;
++}
++
++bool oz_env_set( const char* name )
++{
++    const char* s = getenv( name );
++    return (s != NULL && *s != '\0');
++}
++
++void oz_stats_atexit()
++{
++    magma_ozaki2_print_stats();
++}
++
++void oz_parse_ops_csv( const char* s, unsigned* mask )
++{
++    unsigned m = 0;
++    std::string buf( s );
++    size_t pos = 0;
++    while (pos <= buf.size()) {
++        size_t comma = buf.find( ',', pos );
++        if (comma == std::string::npos)
++            comma = buf.size();
++        std::string tok = buf.substr( pos, comma - pos );
++        // trim blanks
++        while (! tok.empty() && (tok.front() == ' ' || tok.front() == '\t'))
++            tok.erase( tok.begin() );
++        while (! tok.empty() && (tok.back() == ' ' || tok.back() == '\t'))
++            tok.pop_back();
++        for (char& c : tok)
++            c = (char) tolower( (unsigned char) c );
++        if (! tok.empty()) {
++            bool found = false;
++            for (int op = 0; op < OZ_NUM_OPS; ++op) {
++                if (tok == oz_op_names[op]) {
++                    m |= (1u << op);
++                    found = true;
++                    break;
++                }
++            }
++            if (! found) {
++                fprintf( stderr, "MAGMA ozaki2: warning: unknown op '%s' in "
++                         "MAGMA_OZAKI2_OPS (valid: gemm,symm,hemm,syr2k,her2k,trmm)\n",
++                         tok.c_str() );
++            }
++        }
++        pos = comma + 1;
++    }
++    *mask = m;
++}
++
++void oz_init_config()
++{
++    g_cfg.global_on = (oz_env_ll( "MAGMA_OZAKI2", 0 ) != 0);
++
++    long long nm = oz_env_ll( "MAGMA_OZAKI2_NUM_MODULI", 15 );
++    if (nm < 2)  nm = 2;
++    if (nm > 20) nm = 20;
++    g_cfg.num_moduli = (int) nm;
++
++    g_cfg.fastmode = (oz_env_ll( "MAGMA_OZAKI2_FASTMODE", 0 ) != 0);
++
++    // size gates: defaults from the 2026-07-02 gfx1200 microbenchmark (see
++    // the comment above OzConfig); the base var overrides both dtypes, the
++    // _CPLX var overrides the complex gate only
++    long long md = oz_env_ll( "MAGMA_OZAKI2_MIN_DIM", 128 );
++    if (md < 1) md = 1;
++    g_cfg.min_dim = md;
++
++    long long mdc = oz_env_ll( "MAGMA_OZAKI2_MIN_DIM_CPLX",
++                               oz_env_set( "MAGMA_OZAKI2_MIN_DIM" ) ? md : 64 );
++    if (mdc < 1) mdc = 1;
++    g_cfg.min_dim_cplx = mdc;
++
++    long long mk = oz_env_ll( "MAGMA_OZAKI2_MIN_K", 256 );
++    if (mk < 1) mk = 1;
++    g_cfg.min_k = mk;
++
++    long long mkc = oz_env_ll( "MAGMA_OZAKI2_MIN_K_CPLX",
++                               oz_env_set( "MAGMA_OZAKI2_MIN_K" ) ? mk : 128 );
++    if (mkc < 1) mkc = 1;
++    g_cfg.min_k_cplx = mkc;
++
++    long long mnk = oz_env_ll( "MAGMA_OZAKI2_MIN_MNK", (long long)(1LL << 28) );
++    if (mnk < 0) mnk = 0;
++    g_cfg.min_mnk = (unsigned long long) mnk;
++
++    long long mnkc = oz_env_ll( "MAGMA_OZAKI2_MIN_MNK_CPLX",
++                                oz_env_set( "MAGMA_OZAKI2_MIN_MNK" )
++                                    ? mnk : (long long)(1LL << 27) );
++    if (mnkc < 0) mnkc = 0;
++    g_cfg.min_mnk_cplx = (unsigned long long) mnkc;
++
++    long long tmm = oz_env_ll( "MAGMA_OZAKI2_TRMM_MNK_MULT", 4 );
++    if (tmm < 1) tmm = 1;
++    g_cfg.trmm_mnk_mult = (unsigned long long) tmm;
++
++    long long mb = oz_env_ll( "MAGMA_OZAKI2_MAX_WS_MB", 0 );
++    if (mb < 0) mb = 0;
++    g_cfg.max_ws_mb = (size_t) mb;
++
++    long long pct = oz_env_ll( "MAGMA_OZAKI2_MAX_WS_PERCENT", -1 );
++    if (pct > 100) pct = 100;
++    g_cfg.max_ws_percent = (int) pct;   // -1 = unset
++
++    // refuse to grow the workspace unless at least this much VRAM stays
++    // free afterwards (headroom for MAGMA's own device allocations, whose
++    // failure is a hard driver error rather than a graceful fallback)
++    long long mfree = oz_env_ll( "MAGMA_OZAKI2_MIN_FREE_MB", 2048 );
++    if (mfree < 0) mfree = 0;
++    g_cfg.min_free_mb = mfree;
++
++    // processes sharing this GPU: the percent-based workspace cap is divided
++    // between them (mirrors OpenMX's gemmul8_bridge policy).  Explicit
++    // MAGMA_OZAKI2_LOCAL_RANKS wins; else OpenMPI / Slurm per-node counts.
++    long long lr = oz_env_ll( "MAGMA_OZAKI2_LOCAL_RANKS", 0 );
++    if (lr <= 0) lr = oz_env_ll( "OMPI_COMM_WORLD_LOCAL_SIZE", 0 );
++    if (lr <= 0) lr = oz_env_ll( "SLURM_NTASKS_PER_NODE", 0 );
++    if (lr <= 0) lr = 1;
++    g_cfg.local_ranks = (int) lr;
++
++    const char* ops = getenv( "MAGMA_OZAKI2_OPS" );
++    if (ops != NULL && *ops != '\0')
++        oz_parse_ops_csv( ops, &g_cfg.ops_mask );
++
++    long long vb = oz_env_ll( "MAGMA_OZAKI2_VERBOSE", 0 );
++    if (vb < 0) vb = 0;
++    g_cfg.verbose = (int) vb;
++
++    if (g_cfg.verbose >= 1) {
++        fprintf( stderr, "MAGMA ozaki2: config global=%d num_moduli=%d fastmode=%d "
++                 "min_dim=%lld/%lld min_k=%lld/%lld min_mnk=%llu/%llu "
++                 "(real/cplx) trmm_mnk_mult=%llu max_ws_mb=%zu max_ws_percent=%d "
++                 "min_free_mb=%lld local_ranks=%d ops_mask=0x%x verbose=%d\n",
++                 (int) g_cfg.global_on, g_cfg.num_moduli, (int) g_cfg.fastmode,
++                 g_cfg.min_dim, g_cfg.min_dim_cplx,
++                 g_cfg.min_k, g_cfg.min_k_cplx,
++                 g_cfg.min_mnk, g_cfg.min_mnk_cplx,
++                 g_cfg.trmm_mnk_mult, g_cfg.max_ws_mb,
++                 g_cfg.max_ws_percent, g_cfg.min_free_mb, g_cfg.local_ranks,
++                 g_cfg.ops_mask, g_cfg.verbose );
++        std::atexit( oz_stats_atexit );
++    }
++}
++
++const OzConfig& oz_config()
++{
++    std::call_once( g_cfg_once, oz_init_config );
++    return g_cfg;
++}
++
++// =============================================================================
++// Per-(device, stream) hipBLAS handle + grow-only workspace cache.
++// NEVER use the magma queue's own hipblas handle: GEMMul8 installs a
++// workspace on the handle it is given (hipblasSetWorkspace), which must
++// not leak into MAGMA's queue-owned handle.
++// =============================================================================
++
++struct OzEntry {
++    int             device   = -1;
++    hipStream_t     stream   = NULL;
++    hipblasHandle_t handle   = NULL;
++    void*           ws       = NULL;
++    size_t          ws_bytes = 0;
++    size_t          cap      = 0;    // max allowed workspace bytes
++};
++
++// held across each routed call: protects the cache AND serializes use of a
++// (device,stream) workspace against concurrent growth/free
++std::mutex g_mutex;
++std::map< std::pair<int, hipStream_t>, OzEntry > g_entries;
++
++size_t oz_compute_cap( int device )
++{
++    const OzConfig& c = oz_config();
++
++    size_t cap_mb  = 0;
++    size_t cap_pct = 0;
++    bool   have_mb  = (c.max_ws_mb > 0);
++    bool   have_pct = false;
++
++    if (have_mb)
++        cap_mb = c.max_ws_mb << 20;
++
++    // percent cap applies when explicitly set, or as the default (30 %)
++    // when no MB cap is given; it is divided between the processes sharing
++    // this GPU (local_ranks).  The MB cap is absolute per process.
++    int pct = c.max_ws_percent;
++    if (pct < 0 && ! have_mb)
++        pct = 30;
++    if (pct >= 0) {
++        size_t total = 0;
++        if (hipDeviceTotalMem( &total, device ) == hipSuccess && total > 0) {
++            cap_pct  = total / 100 * (size_t) pct / (size_t) c.local_ranks;
++            have_pct = true;
++        }
++    }
++
++    if (have_mb && have_pct)
++        return (cap_mb < cap_pct) ? cap_mb : cap_pct;
++    if (have_mb)
++        return cap_mb;
++    if (have_pct)
++        return cap_pct;
++    // VRAM query failed and no MB cap given: conservative 2 GiB, rank-divided
++    return ((size_t) 2 << 30) / (size_t) c.local_ranks;
++}
++
++// requires g_mutex held
++OzEntry* oz_get_entry( magma_queue_t queue )
++{
++    int         device = (int) magma_queue_get_device( queue );
++    hipStream_t stream = magma_queue_get_hip_stream( queue );
++
++    auto key = std::make_pair( device, stream );
++    auto it  = g_entries.find( key );
++    if (it != g_entries.end())
++        return &it->second;
++
++    OzEntry e;
++    e.device = device;
++    e.stream = stream;
++    if (hipblasCreate( &e.handle ) != HIPBLAS_STATUS_SUCCESS)
++        return NULL;
++    if (hipblasSetStream( e.handle, stream ) != HIPBLAS_STATUS_SUCCESS) {
++        hipblasDestroy( e.handle );
++        return NULL;
++    }
++    e.cap = oz_compute_cap( device );
++    // GEMMul8 v3.4.x memory-saving mode: a GEMM whose full workspace
++    // exceeds the cap is executed in blocks that fit it, instead of this
++    // adapter refusing the call.  Handle-local, so MAGMA's own handle is
++    // unaffected; ops without a blocked path simply see workspaces that
++    // already fit (their calls still ensure the full size below).
++    gemmul8::set_memory_saving( e.handle, true );
++    gemmul8::set_max_worksize( e.handle, e.cap );
++
++    auto res = g_entries.emplace( key, e );
++    return &res.first->second;
++}
++
++// requires g_mutex held; grow-only workspace
++bool oz_ensure_ws( OzEntry* e, size_t bytes )
++{
++    if (bytes <= e->ws_bytes)
++        return true;
++    if (bytes > e->cap)
++        return false;
++    if (e->ws != NULL) {
++        // hipFree synchronizes the device, so in-flight users are safe
++        (void) hipFree( e->ws );
++        e->ws       = NULL;
++        e->ws_bytes = 0;
++    }
++    // leave headroom: MAGMA's own device allocations fail hard (info=-113)
++    // while our denial is a graceful native fallback
++    {
++        size_t free_b = 0, total_b = 0;
++        size_t reserve = (size_t) oz_config().min_free_mb << 20;
++        if (hipMemGetInfo( &free_b, &total_b ) == hipSuccess) {
++            if (free_b < bytes || free_b - bytes < reserve)
++                return false;
++        }
++    }
++    void* p = NULL;
++    if (hipMalloc( &p, bytes ) != hipSuccess || p == NULL)
++        return false;
++    e->ws       = p;
++    e->ws_bytes = bytes;
++    return true;
++}
++
++// =============================================================================
++// Gates, enum mapping, stats helpers
++// =============================================================================
++
++// map magma_trans_t -> hipblasOperation_t; for real ops ConjTrans -> OP_T
++bool oz_map_trans( magma_trans_t t, bool is_real, hipblasOperation_t* out )
++{
++    switch (t) {
++        case MagmaNoTrans:   *out = HIPBLAS_OP_N; return true;
++        case MagmaTrans:     *out = HIPBLAS_OP_T; return true;
++        case MagmaConjTrans: *out = is_real ? HIPBLAS_OP_T : HIPBLAS_OP_C; return true;
++        default:             return false;
++    }
++}
++
++// GEMMul8 never accepts FILL_MODE_FULL
++bool oz_map_uplo( magma_uplo_t u, hipblasFillMode_t* out )
++{
++    switch (u) {
++        case MagmaUpper: *out = HIPBLAS_FILL_MODE_UPPER; return true;
++        case MagmaLower: *out = HIPBLAS_FILL_MODE_LOWER; return true;
++        default:         return false;
++    }
++}
++
++bool oz_map_side( magma_side_t s, hipblasSideMode_t* out )
++{
++    switch (s) {
++        case MagmaLeft:  *out = HIPBLAS_SIDE_LEFT;  return true;
++        case MagmaRight: *out = HIPBLAS_SIDE_RIGHT; return true;
++        default:         return false;
++    }
++}
++
++bool oz_map_diag( magma_diag_t d, hipblasDiagType_t* out )
++{
++    switch (d) {
++        case MagmaNonUnit: *out = HIPBLAS_DIAG_NON_UNIT; return true;
++        case MagmaUnit:    *out = HIPBLAS_DIAG_UNIT;     return true;
++        default:           return false;
++    }
++}
++
++// size gates on the gemm-equivalent dimension triple (m, n, keff), split by
++// dtype (real vs complex) with an extra keff (inner-dimension) threshold —
++// see the retuning comment above OzConfig: on gfx1200 the inner dimension,
++// not m*n*k, decides real-precision profitability.
++// NDEBUG is set in MAGMA builds, so GEMMul8's own asserts vanish —
++// these gates (plus the enum mapping above) are the only protection.
++bool oz_size_gate_ok( magma_int_t m, magma_int_t n, magma_int_t keff,
++                      bool is_cplx, OzOp op )
++{
++    const OzConfig& c = oz_config();
++    if (m <= 0 || n <= 0 || keff <= 0)
++        return false;
++    long long         min_dim = is_cplx ? c.min_dim_cplx : c.min_dim;
++    long long         min_k   = is_cplx ? c.min_k_cplx   : c.min_k;
++    unsigned __int128 min_mnk = is_cplx ? c.min_mnk_cplx : c.min_mnk;
++    if (op == OZ_TRMM) {
++        // trmm's Ozaki path pays an extra out-of-place temp + copy-back
++        min_mnk *= (unsigned __int128) c.trmm_mnk_mult;
++    }
++    if ((long long) m < min_dim || (long long) n < min_dim ||
++        (long long) keff < min_dim)
++        return false;
++    if ((long long) keff < min_k)
++        return false;
++    unsigned __int128 mnk = (unsigned __int128)(unsigned long long) m
++                          * (unsigned long long) n
++                          * (unsigned long long) keff;
++    if (mnk < min_mnk)
++        return false;
++    return true;
++}
++
++bool oz_op_enabled( OzOp op )
++{
++    return (oz_config().ops_mask & (1u << op)) != 0;
++}
++
++magma_int_t oz_reject_gate( OzOp op, const char* why,
++                            long long m, long long n, long long k )
++{
++    g_stats[op].fallback_gate.fetch_add( 1, std::memory_order_relaxed );
++    if (oz_config().verbose >= 2) {
++        fprintf( stderr, "MAGMA ozaki2: %-5s fallback (%s) m=%lld n=%lld k=%lld\n",
++                 oz_op_names[op], why, m, n, k );
++    }
++    return 0;
++}
++
++magma_int_t oz_reject_ws( OzOp op, const char* why, size_t bytes )
++{
++    g_stats[op].fallback_ws.fetch_add( 1, std::memory_order_relaxed );
++    if (oz_config().verbose >= 2) {
++        fprintf( stderr, "MAGMA ozaki2: %-5s fallback (%s) bytes=%zu\n",
++                 oz_op_names[op], why, bytes );
++    }
++    return 0;
++}
++
++void oz_routed( OzOp op, long long m, long long n, long long k )
++{
++    g_stats[op].routed.fetch_add( 1, std::memory_order_relaxed );
++    if (oz_config().verbose >= 2) {
++        fprintf( stderr, "MAGMA ozaki2: %-5s routed   m=%lld n=%lld k=%lld\n",
++                 oz_op_names[op], m, n, k );
++    }
++}
++
++constexpr size_t OZ_ALIGN = 256;
++
++inline size_t oz_round_up( size_t bytes )
++{
++    return (bytes + (OZ_ALIGN - 1)) & ~(OZ_ALIGN - 1);
++}
++
++} // anonymous namespace
++
++// =============================================================================
++// Public scope / options / housekeeping API
++// =============================================================================
++
++extern "C" void
++magma_ozaki2_opts_init( magma_ozaki2_opts_t* opts )
++{
++    if (opts == NULL)
++        return;
++    const OzConfig& c = oz_config();
++    opts->num_moduli = (magma_int_t) c.num_moduli;
++    opts->fastmode   = (magma_int_t)(c.fastmode ? 1 : 0);
++    opts->min_dim    = (magma_int_t) c.min_dim;
++    opts->verbose    = (magma_int_t) c.verbose;
++    opts->min_mnk    = (size_t) c.min_mnk;
++    int dev = 0;
++    if (hipGetDevice( &dev ) == hipSuccess)
++        opts->max_ws_bytes = oz_compute_cap( dev );
++    else
++        opts->max_ws_bytes = c.max_ws_mb << 20;
++}
++
++extern "C" void
++magma_ozaki2_scope_begin( void )
++{
++    g_depth.fetch_add( 1, std::memory_order_relaxed );
++}
++
++extern "C" void
++magma_ozaki2_scope_end( void )
++{
++    int prev = g_depth.fetch_sub( 1, std::memory_order_relaxed );
++    if (prev <= 0) {
++        // unbalanced scope_end; clamp back
++        g_depth.fetch_add( 1, std::memory_order_relaxed );
++    }
++}
++
++extern "C" magma_int_t
++magma_ozaki2_active( void )
++{
++    const OzConfig& c = oz_config();
++    if (c.global_on)
++        return 1;
++    return (g_depth.load( std::memory_order_relaxed ) > 0) ? 1 : 0;
++}
++
++extern "C" void
++magma_ozaki2_release_workspaces( void )
++{
++    std::lock_guard<std::mutex> lock( g_mutex );
++    int  cur      = 0;
++    bool have_cur = (hipGetDevice( &cur ) == hipSuccess);
++    for (auto& kv : g_entries) {
++        OzEntry& e = kv.second;
++        (void) hipSetDevice( e.device );
++        if (e.ws != NULL)
++            (void) hipFree( e.ws );
++        if (e.handle != NULL)
++            (void) hipblasDestroy( e.handle );
++    }
++    g_entries.clear();
++    if (have_cur)
++        (void) hipSetDevice( cur );
++}
++
++extern "C" void
++magma_ozaki2_print_stats( void )
++{
++    fprintf( stderr, "MAGMA ozaki2: stats (routed / fallback_ws / fallback_gate)\n" );
++    for (int op = 0; op < OZ_NUM_OPS; ++op) {
++        fprintf( stderr, "MAGMA ozaki2:   %-5s %llu / %llu / %llu\n",
++                 oz_op_names[op],
++                 g_stats[op].routed.load(),
++                 g_stats[op].fallback_ws.load(),
++                 g_stats[op].fallback_gate.load() );
++    }
++}
++
++// =============================================================================
++// Try-hooks
++// =============================================================================
++
++extern "C" magma_int_t
++magma_ozaki2_try_dgemm(
++    magma_trans_t transA, magma_trans_t transB,
++    magma_int_t m, magma_int_t n, magma_int_t k,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    const double *dB, magma_int_t lddb,
++    double beta,
++    double       *dC, magma_int_t lddc,
++    magma_queue_t queue )
++{
++    if (! magma_ozaki2_active())
++        return 0;
++    const OzConfig& c = oz_config();
++    if (! oz_op_enabled( OZ_GEMM ))
++        return oz_reject_gate( OZ_GEMM, "op disabled", m, n, k );
++    hipblasOperation_t opA, opB;
++    if (! oz_map_trans( transA, true, &opA ) || ! oz_map_trans( transB, true, &opB ))
++        return oz_reject_gate( OZ_GEMM, "bad trans", m, n, k );
++    if (! oz_size_gate_ok( m, n, k, false, OZ_GEMM ))
++        return oz_reject_gate( OZ_GEMM, "size gate", m, n, k );
++
++    std::lock_guard<std::mutex> lock( g_mutex );
++    OzEntry* e = oz_get_entry( queue );
++    if (e == NULL)
++        return oz_reject_ws( OZ_GEMM, "handle", 0 );
++    size_t wsz = gemmul8::workSize<false, gemmul8::Backend::INT8, gemmul8::Func::gemm>(
++        (size_t) m, (size_t) n, (size_t) k, c.num_moduli );
++    if (wsz > e->cap)
++        wsz = e->cap;   // memory-saving mode blocks the GEMM to fit the cap
++    if (! oz_ensure_ws( e, wsz ))
++        return oz_reject_ws( OZ_GEMM, "workspace", wsz );
++
++    double h_alpha = alpha;  // host-side scalars (GEMMul8 requires both on
++    double h_beta  = beta;   // the same side; MAGMA passes them by value)
++    (void) gemmul8::gemm<double, gemmul8::Backend::INT8>(
++        e->handle, opA, opB,
++        (size_t) m, (size_t) n, (size_t) k,
++        &h_alpha, dA, (size_t) ldda,
++                  dB, (size_t) lddb,
++        &h_beta,  dC, (size_t) lddc,
++        c.num_moduli, c.fastmode, e->ws );
++    oz_routed( OZ_GEMM, m, n, k );
++    return 1;
++}
++
++extern "C" magma_int_t
++magma_ozaki2_try_zgemm(
++    magma_trans_t transA, magma_trans_t transB,
++    magma_int_t m, magma_int_t n, magma_int_t k,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    const magmaDoubleComplex *dB, magma_int_t lddb,
++    magmaDoubleComplex beta,
++    magmaDoubleComplex       *dC, magma_int_t lddc,
++    magma_queue_t queue )
++{
++    if (! magma_ozaki2_active())
++        return 0;
++    const OzConfig& c = oz_config();
++    if (! oz_op_enabled( OZ_GEMM ))
++        return oz_reject_gate( OZ_GEMM, "op disabled", m, n, k );
++    hipblasOperation_t opA, opB;
++    if (! oz_map_trans( transA, false, &opA ) || ! oz_map_trans( transB, false, &opB ))
++        return oz_reject_gate( OZ_GEMM, "bad trans", m, n, k );
++    if (! oz_size_gate_ok( m, n, k, true, OZ_GEMM ))
++        return oz_reject_gate( OZ_GEMM, "size gate", m, n, k );
++
++    std::lock_guard<std::mutex> lock( g_mutex );
++    OzEntry* e = oz_get_entry( queue );
++    if (e == NULL)
++        return oz_reject_ws( OZ_GEMM, "handle", 0 );
++    size_t wsz = gemmul8::workSize<true, gemmul8::Backend::INT8, gemmul8::Func::gemm>(
++        (size_t) m, (size_t) n, (size_t) k, c.num_moduli );
++    if (wsz > e->cap)
++        wsz = e->cap;   // memory-saving mode blocks the GEMM to fit the cap
++    if (! oz_ensure_ws( e, wsz ))
++        return oz_reject_ws( OZ_GEMM, "workspace", wsz );
++
++    hipDoubleComplex h_alpha = *reinterpret_cast<const hipDoubleComplex*>( &alpha );
++    hipDoubleComplex h_beta  = *reinterpret_cast<const hipDoubleComplex*>( &beta );
++    (void) gemmul8::gemm<hipDoubleComplex, gemmul8::Backend::INT8>(
++        e->handle, opA, opB,
++        (size_t) m, (size_t) n, (size_t) k,
++        &h_alpha, reinterpret_cast<const hipDoubleComplex*>( dA ), (size_t) ldda,
++                  reinterpret_cast<const hipDoubleComplex*>( dB ), (size_t) lddb,
++        &h_beta,  reinterpret_cast<hipDoubleComplex*>( dC ),       (size_t) lddc,
++        c.num_moduli, c.fastmode, e->ws );
++    oz_routed( OZ_GEMM, m, n, k );
++    return 1;
++}
++
++extern "C" magma_int_t
++magma_ozaki2_try_dsymm(
++    magma_side_t side, magma_uplo_t uplo,
++    magma_int_t m, magma_int_t n,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    const double *dB, magma_int_t lddb,
++    double beta,
++    double       *dC, magma_int_t lddc,
++    magma_queue_t queue )
++{
++    if (! magma_ozaki2_active())
++        return 0;
++    const OzConfig& c = oz_config();
++    magma_int_t keff = (side == MagmaLeft) ? m : n;
++    if (! oz_op_enabled( OZ_SYMM ))
++        return oz_reject_gate( OZ_SYMM, "op disabled", m, n, keff );
++    hipblasSideMode_t hside;
++    hipblasFillMode_t huplo;
++    if (! oz_map_side( side, &hside ) || ! oz_map_uplo( uplo, &huplo ))
++        return oz_reject_gate( OZ_SYMM, "bad side/uplo", m, n, keff );
++    if (! oz_size_gate_ok( m, n, keff, false, OZ_SYMM ))
++        return oz_reject_gate( OZ_SYMM, "size gate", m, n, keff );
++
++    std::lock_guard<std::mutex> lock( g_mutex );
++    OzEntry* e = oz_get_entry( queue );
++    if (e == NULL)
++        return oz_reject_ws( OZ_SYMM, "handle", 0 );
++    size_t wsz = gemmul8::workSize<false, gemmul8::Backend::INT8, gemmul8::Func::symm>(
++        (size_t) m, (size_t) n, (size_t) keff, c.num_moduli );
++    if (! oz_ensure_ws( e, wsz ))
++        return oz_reject_ws( OZ_SYMM, "workspace", wsz );
++
++    double h_alpha = alpha;
++    double h_beta  = beta;
++    (void) gemmul8::symm<double, gemmul8::Backend::INT8>(
++        e->handle, hside, huplo,
++        (size_t) m, (size_t) n,
++        &h_alpha, dA, (size_t) ldda,
++                  dB, (size_t) lddb,
++        &h_beta,  dC, (size_t) lddc,
++        c.num_moduli, c.fastmode, e->ws );
++    oz_routed( OZ_SYMM, m, n, keff );
++    return 1;
++}
++
++extern "C" magma_int_t
++magma_ozaki2_try_zhemm(
++    magma_side_t side, magma_uplo_t uplo,
++    magma_int_t m, magma_int_t n,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    const magmaDoubleComplex *dB, magma_int_t lddb,
++    magmaDoubleComplex beta,
++    magmaDoubleComplex       *dC, magma_int_t lddc,
++    magma_queue_t queue )
++{
++    if (! magma_ozaki2_active())
++        return 0;
++    const OzConfig& c = oz_config();
++    magma_int_t keff = (side == MagmaLeft) ? m : n;
++    if (! oz_op_enabled( OZ_HEMM ))
++        return oz_reject_gate( OZ_HEMM, "op disabled", m, n, keff );
++    hipblasSideMode_t hside;
++    hipblasFillMode_t huplo;
++    if (! oz_map_side( side, &hside ) || ! oz_map_uplo( uplo, &huplo ))
++        return oz_reject_gate( OZ_HEMM, "bad side/uplo", m, n, keff );
++    if (! oz_size_gate_ok( m, n, keff, true, OZ_HEMM ))
++        return oz_reject_gate( OZ_HEMM, "size gate", m, n, keff );
++
++    std::lock_guard<std::mutex> lock( g_mutex );
++    OzEntry* e = oz_get_entry( queue );
++    if (e == NULL)
++        return oz_reject_ws( OZ_HEMM, "handle", 0 );
++    size_t wsz = gemmul8::workSize<true, gemmul8::Backend::INT8, gemmul8::Func::hemm>(
++        (size_t) m, (size_t) n, (size_t) keff, c.num_moduli );
++    if (! oz_ensure_ws( e, wsz ))
++        return oz_reject_ws( OZ_HEMM, "workspace", wsz );
++
++    hipDoubleComplex h_alpha = *reinterpret_cast<const hipDoubleComplex*>( &alpha );
++    hipDoubleComplex h_beta  = *reinterpret_cast<const hipDoubleComplex*>( &beta );
++    (void) gemmul8::hemm<hipDoubleComplex, gemmul8::Backend::INT8>(
++        e->handle, hside, huplo,
++        (size_t) m, (size_t) n,
++        &h_alpha, reinterpret_cast<const hipDoubleComplex*>( dA ), (size_t) ldda,
++                  reinterpret_cast<const hipDoubleComplex*>( dB ), (size_t) lddb,
++        &h_beta,  reinterpret_cast<hipDoubleComplex*>( dC ),       (size_t) lddc,
++        c.num_moduli, c.fastmode, e->ws );
++    oz_routed( OZ_HEMM, m, n, keff );
++    return 1;
++}
++
++extern "C" magma_int_t
++magma_ozaki2_try_dsyr2k(
++    magma_uplo_t uplo, magma_trans_t trans,
++    magma_int_t n, magma_int_t k,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    const double *dB, magma_int_t lddb,
++    double beta,
++    double       *dC, magma_int_t lddc,
++    magma_queue_t queue )
++{
++    if (! magma_ozaki2_active())
++        return 0;
++    const OzConfig& c = oz_config();
++    if (! oz_op_enabled( OZ_SYR2K ))
++        return oz_reject_gate( OZ_SYR2K, "op disabled", n, n, k );
++    hipblasFillMode_t  huplo;
++    hipblasOperation_t htrans;
++    // real: MagmaConjTrans -> OP_T (GEMMul8 syr2k rejects OP_C)
++    if (! oz_map_uplo( uplo, &huplo ) || ! oz_map_trans( trans, true, &htrans ))
++        return oz_reject_gate( OZ_SYR2K, "bad uplo/trans", n, n, k );
++    if (! oz_size_gate_ok( n, n, k, false, OZ_SYR2K ))
++        return oz_reject_gate( OZ_SYR2K, "size gate", n, n, k );
++
++    std::lock_guard<std::mutex> lock( g_mutex );
++    OzEntry* e = oz_get_entry( queue );
++    if (e == NULL)
++        return oz_reject_ws( OZ_SYR2K, "handle", 0 );
++    size_t wsz = gemmul8::workSize<false, gemmul8::Backend::INT8, gemmul8::Func::syr2k>(
++        (size_t) n, (size_t) n, (size_t) k, c.num_moduli );
++    if (! oz_ensure_ws( e, wsz ))
++        return oz_reject_ws( OZ_SYR2K, "workspace", wsz );
++
++    double h_alpha = alpha;
++    double h_beta  = beta;
++    (void) gemmul8::syr2k<double, gemmul8::Backend::INT8>(
++        e->handle, huplo, htrans,
++        (size_t) n, (size_t) k,
++        &h_alpha, dA, (size_t) ldda,
++                  dB, (size_t) lddb,
++        &h_beta,  dC, (size_t) lddc,
++        c.num_moduli, c.fastmode, e->ws );
++    oz_routed( OZ_SYR2K, n, n, k );
++    return 1;
++}
++
++extern "C" magma_int_t
++magma_ozaki2_try_zher2k(
++    magma_uplo_t uplo, magma_trans_t trans,
++    magma_int_t n, magma_int_t k,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    const magmaDoubleComplex *dB, magma_int_t lddb,
++    double beta,
++    magmaDoubleComplex       *dC, magma_int_t lddc,
++    magma_queue_t queue )
++{
++    if (! magma_ozaki2_active())
++        return 0;
++    const OzConfig& c = oz_config();
++    if (! oz_op_enabled( OZ_HER2K ))
++        return oz_reject_gate( OZ_HER2K, "op disabled", n, n, k );
++    hipblasFillMode_t huplo;
++    if (! oz_map_uplo( uplo, &huplo ))
++        return oz_reject_gate( OZ_HER2K, "bad uplo", n, n, k );
++    // GEMMul8 her2k only supports OP_N / OP_C (never OP_T)
++    hipblasOperation_t htrans;
++    if (trans == MagmaNoTrans)
++        htrans = HIPBLAS_OP_N;
++    else if (trans == MagmaConjTrans)
++        htrans = HIPBLAS_OP_C;
++    else
++        return oz_reject_gate( OZ_HER2K, "bad trans", n, n, k );
++    if (! oz_size_gate_ok( n, n, k, true, OZ_HER2K ))
++        return oz_reject_gate( OZ_HER2K, "size gate", n, n, k );
++
++    std::lock_guard<std::mutex> lock( g_mutex );
++    OzEntry* e = oz_get_entry( queue );
++    if (e == NULL)
++        return oz_reject_ws( OZ_HER2K, "handle", 0 );
++    size_t wsz = gemmul8::workSize<true, gemmul8::Backend::INT8, gemmul8::Func::her2k>(
++        (size_t) n, (size_t) n, (size_t) k, c.num_moduli );
++    if (! oz_ensure_ws( e, wsz ))
++        return oz_reject_ws( OZ_HER2K, "workspace", wsz );
++
++    hipDoubleComplex h_alpha = *reinterpret_cast<const hipDoubleComplex*>( &alpha );
++    double           h_beta  = beta;   // her2k beta is REAL (const double*)
++    (void) gemmul8::her2k<hipDoubleComplex, gemmul8::Backend::INT8>(
++        e->handle, huplo, htrans,
++        (size_t) n, (size_t) k,
++        &h_alpha, reinterpret_cast<const hipDoubleComplex*>( dA ), (size_t) ldda,
++                  reinterpret_cast<const hipDoubleComplex*>( dB ), (size_t) lddb,
++        &h_beta,  reinterpret_cast<hipDoubleComplex*>( dC ),       (size_t) lddc,
++        c.num_moduli, c.fastmode, e->ws );
++    oz_routed( OZ_HER2K, n, n, k );
++    return 1;
++}
++
++// -----------------------------------------------------------------------------
++// trmm: MAGMA semantics are IN-PLACE (dB := alpha*op(A)*dB), but GEMMul8's
++// trmm is OUT-OF-PLACE with separate input B / output C and no beta.
++// Route via a temporary C at the end of our workspace, then copy back into
++// dB with hipMemcpy2DAsync on the queue's stream (stream-ordered, no sync).
++// -----------------------------------------------------------------------------
++
++namespace {
++
++template <typename T>
++magma_int_t oz_try_trmm_impl(
++    magma_side_t side, magma_uplo_t uplo, magma_trans_t trans, magma_diag_t diag,
++    magma_int_t m, magma_int_t n,
++    T alpha,
++    const T *dA, magma_int_t ldda,
++    T       *dB, magma_int_t lddb,
++    magma_queue_t queue )
++{
++    constexpr bool is_cplx = ! std::is_same_v<T, double>;
++
++    if (! magma_ozaki2_active())
++        return 0;
++    const OzConfig& c = oz_config();
++    magma_int_t keff = (side == MagmaLeft) ? m : n;
++    if (! oz_op_enabled( OZ_TRMM ))
++        return oz_reject_gate( OZ_TRMM, "op disabled", m, n, keff );
++    hipblasSideMode_t  hside;
++    hipblasFillMode_t  huplo;
++    hipblasOperation_t htrans;
++    hipblasDiagType_t  hdiag;
++    if (! oz_map_side( side, &hside ) || ! oz_map_uplo( uplo, &huplo ) ||
++        ! oz_map_trans( trans, ! is_cplx, &htrans ) || ! oz_map_diag( diag, &hdiag ))
++        return oz_reject_gate( OZ_TRMM, "bad enums", m, n, keff );
++    if (! oz_size_gate_ok( m, n, keff, is_cplx, OZ_TRMM ))
++        return oz_reject_gate( OZ_TRMM, "size gate", m, n, keff );
++
++    std::lock_guard<std::mutex> lock( g_mutex );
++    OzEntry* e = oz_get_entry( queue );
++    if (e == NULL)
++        return oz_reject_ws( OZ_TRMM, "handle", 0 );
++    size_t wsz = gemmul8::workSize<is_cplx, gemmul8::Backend::INT8, gemmul8::Func::trmm>(
++        (size_t) m, (size_t) n, (size_t) keff, c.num_moduli );
++    size_t wsz_al  = oz_round_up( wsz );
++    size_t c_bytes = (size_t) m * (size_t) n * sizeof(T);
++    if (! oz_ensure_ws( e, wsz_al + c_bytes ))
++        return oz_reject_ws( OZ_TRMM, "workspace", wsz_al + c_bytes );
++
++    T* Ctmp = reinterpret_cast<T*>( (char*) e->ws + wsz_al );
++    T  h_alpha = alpha;
++    (void) gemmul8::trmm<T, gemmul8::Backend::INT8>(
++        e->handle, hside, huplo, htrans, hdiag,
++        (size_t) m, (size_t) n,
++        &h_alpha, dA, (size_t) ldda,
++                  dB, (size_t) lddb,   // input B (not modified by GEMMul8)
++        Ctmp, (size_t) m,              // out-of-place C
++        c.num_moduli, c.fastmode, e->ws );
++
++    hipStream_t stream = magma_queue_get_hip_stream( queue );
++    hipError_t  err = hipMemcpy2DAsync(
++        dB,   (size_t) lddb * sizeof(T),
++        Ctmp, (size_t) m    * sizeof(T),
++        (size_t) m * sizeof(T), (size_t) n,
++        hipMemcpyDeviceToDevice, stream );
++    if (err != hipSuccess) {
++        // dB is still the untouched input: let the native path redo the op
++        return oz_reject_ws( OZ_TRMM, "copy-back", c_bytes );
++    }
++    oz_routed( OZ_TRMM, m, n, keff );
++    return 1;
++}
++
++} // anonymous namespace
++
++extern "C" magma_int_t
++magma_ozaki2_try_dtrmm(
++    magma_side_t side, magma_uplo_t uplo, magma_trans_t trans, magma_diag_t diag,
++    magma_int_t m, magma_int_t n,
++    double alpha,
++    const double *dA, magma_int_t ldda,
++    double       *dB, magma_int_t lddb,
++    magma_queue_t queue )
++{
++    return oz_try_trmm_impl<double>( side, uplo, trans, diag, m, n,
++                                     alpha, dA, ldda, dB, lddb, queue );
++}
++
++extern "C" magma_int_t
++magma_ozaki2_try_ztrmm(
++    magma_side_t side, magma_uplo_t uplo, magma_trans_t trans, magma_diag_t diag,
++    magma_int_t m, magma_int_t n,
++    magmaDoubleComplex alpha,
++    const magmaDoubleComplex *dA, magma_int_t ldda,
++    magmaDoubleComplex       *dB, magma_int_t lddb,
++    magma_queue_t queue )
++{
++    return oz_try_trmm_impl<hipDoubleComplex>(
++        side, uplo, trans, diag, m, n,
++        *reinterpret_cast<const hipDoubleComplex*>( &alpha ),
++        reinterpret_cast<const hipDoubleComplex*>( dA ), ldda,
++        reinterpret_cast<hipDoubleComplex*>( dB ),       lddb,
++        queue );
++}
+--- a/src/Makefile.src	2026-02-20 04:21:17.000000000 +0900
++++ b/src/Makefile.src	2026-09-22 13:23:41.475619911 +0900
+@@ -223,6 +223,8 @@
+ 	$(cdir)/zunmqr_2stage_gpu.cpp	\
+ 	$(cdir)/zhegvdx_2stage.cpp	\
+ 	$(cdir)/zheevdx_2stage.cpp	\
++	$(cdir)/zheevdx_ozaki2.cpp	\
++	$(cdir)/zheevdx_ozaki2_gpu.cpp	\
+ 	\
+ 	$(cdir)/zbulge_back_m.cpp	\
+ 	$(cdir)/zbulge_applyQ_v2_m.cpp	\
+--- a/src/cheevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/cheevdx_ozaki2.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,159 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from src/zheevdx_ozaki2.cpp, normal z -> c, Thu Jul  2 18:09:24 2026
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define COMPLEX
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_chetrd_he2hb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_cheevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    CHEEVDX_OZAKI2 computes selected eigenvalues and, optionally,
++    eigenvectors of a complex Hermitian matrix A, exactly like
++    magma_cheevdx (1-stage) or magma_cheevdx_2stage (2-stage), but enables
++    Ozaki Scheme II (GEMMul8, INT8) routing of the level-3 BLAS calls
++    issued by the solver while it runs.  On non-HIP builds, or when the
++    routing gates reject a call, this is a plain delegation with native
++    accuracy and performance.
++
++    The algorithm (1-stage vs 2-stage) is selected deterministically from
++    the environment variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage},
++    default auto:  with nev = (iu - il + 1) for range == MagmaRangeI, else
++    nev = n (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper.  The
++    workspace query (lwork = -1, ...) and the solve use the SAME choice
++    (nev is known at query time from the same arguments), so query this
++    routine with the same environment and range arguments that will be
++    used for the solve.
++
++    Arguments
++    ---------
++    Identical to magma_cheevdx / magma_cheevdx_2stage (jobz, range, uplo,
++    n, A, lda, vl, vu, il, iu, m, w, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see those routines for the full documentation.  Note
++    that the workspace requirements of the two algorithms differ.
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_cheevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaFloatComplex *A, magma_int_t lda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, float *w,
++    magmaFloatComplex *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    float *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    magma_int_t use_2stage =
++        magma_cheevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    /* Argument validation is left to the delegate (same signature, same
++       error codes); nothing is dereferenced before delegation. */
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_begin();
++    }
++    #endif
++
++    if ( use_2stage ) {
++        magma_cheevdx_2stage( jobz, range, uplo, n, A, lda,
++                              vl, vu, il, iu, m, w,
++                              work, lwork,
++                              #ifdef COMPLEX
++                              rwork, lrwork,
++                              #endif
++                              iwork, liwork, info );
++    }
++    else {
++        magma_cheevdx( jobz, range, uplo, n, A, lda,
++                       vl, vu, il, iu, m, w,
++                       work, lwork,
++                       #ifdef COMPLEX
++                       rwork, lrwork,
++                       #endif
++                       iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_end();
++    }
++    #endif
++
++    return *info;
++} /* magma_cheevdx_ozaki2 */
+--- a/src/cheevdx_ozaki2_gpu.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/cheevdx_ozaki2_gpu.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,245 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from src/zheevdx_ozaki2_gpu.cpp, normal z -> c, Thu Jul  2 18:09:24 2026
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define COMPLEX
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_chetrd_he2hb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_cheevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    CHEEVDX_OZAKI2_GPU computes selected eigenvalues and, optionally,
++    eigenvectors of a complex Hermitian matrix dA (GPU interface, same
++    signature as magma_cheevdx_gpu), and enables Ozaki Scheme II (GEMMul8,
++    INT8) routing of the level-3 BLAS calls issued by the solver while it
++    runs.  On non-HIP builds, or when the routing gates reject a call, the
++    underlying solvers behave natively.
++
++    The algorithm is selected deterministically from the environment
++    variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage}, default auto:
++    with nev = (iu - il + 1) for range == MagmaRangeI, else nev = n
++    (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper, and
++    n <= 128 always takes the plain 1-stage passthrough.  The workspace
++    query (lwork = -1, ...) and the solve use the SAME choice (nev is
++    known at query time from the same arguments), so query this routine
++    with the same environment and range arguments that will be used for
++    the solve.
++
++      - 1-stage: passthrough to magma_cheevdx_gpu.
++      - 2-stage: there is no 2-stage _gpu interface, so dA is staged on
++        the host in the wA workspace (magma_cgetmatrix), solved with
++        magma_cheevdx_2stage using the caller's work arrays, and, if
++        jobz == MagmaVec, the first mout eigenvector columns are copied
++        back to dA (magma_csetmatrix).
++
++    Arguments
++    ---------
++    Identical to magma_cheevdx_gpu (jobz, range, uplo, n, dA, ldda, vl,
++    vu, il, iu, mout, w, wA, ldwa, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see that routine for the full documentation.  Note
++    that in the 2-stage case the work arrays must satisfy the
++    magma_cheevdx_2stage requirements (as returned by the workspace query
++    of this routine).
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_cheevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaFloatComplex_ptr dA, magma_int_t ldda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, float *w,
++    magmaFloatComplex *wA,  magma_int_t ldwa,
++    magmaFloatComplex *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    float *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t wantz  = (jobz  == MagmaVec);
++    magma_int_t alleig = (range == MagmaRangeAll);
++    magma_int_t valeig = (range == MagmaRangeV);
++    magma_int_t indeig = (range == MagmaRangeI);
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    /* Very small matrices always take the plain 1-stage passthrough. */
++    magma_int_t use_2stage = (n > 128)
++        && magma_cheevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    if ( ! use_2stage ) {
++        /* 1-stage: scoped passthrough (delegate validates everything). */
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_begin();
++        }
++        #endif
++
++        magma_cheevdx_gpu( jobz, range, uplo, n, dA, ldda,
++                           vl, vu, il, iu, mout, w, wA, ldwa,
++                           work, lwork,
++                           #ifdef COMPLEX
++                           rwork, lrwork,
++                           #endif
++                           iwork, liwork, info );
++
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_end();
++        }
++        #endif
++
++        return *info;
++    }
++
++    /* ---------------------------------------------------------------------
++       2-stage path.  Validate the arguments we use for the host staging
++       before touching any memory; the delegate revalidates everything
++       (including the workspace sizes, against the 2-stage requirements).
++       Error codes follow magma_cheevdx_gpu.
++       --------------------------------------------------------------------- */
++    *info = 0;
++    if (! (wantz || (jobz == MagmaNoVec))) {
++        *info = -1;
++    } else if (! (alleig || valeig || indeig)) {
++        *info = -2;
++    } else if (! (uplo == MagmaLower || uplo == MagmaUpper)) {
++        *info = -3;
++    } else if (n < 0) {
++        *info = -4;
++    } else if (ldda < max(1,n)) {
++        *info = -6;
++    } else if (ldwa < max(1,n)) {
++        *info = -14;
++    } else {
++        if (valeig) {
++            if (n > 0 && vu <= vl) {
++                *info = -8;
++            }
++        } else if (indeig) {
++            if (il < 1 || il > max(1,n)) {
++                *info = -9;
++            } else if (iu < min(n,il) || iu > n) {
++                *info = -10;
++            }
++        }
++    }
++    if (*info != 0) {
++        magma_xerbla( __func__, -(*info) );
++        return *info;
++    }
++
++    if ( lquery ) {
++        /* workspace query: return the 2-stage requirements
++           (A is not referenced by the delegate in a query) */
++        return magma_cheevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                                     vl, vu, il, iu, mout, w,
++                                     work, lwork,
++                                     #ifdef COMPLEX
++                                     rwork, lrwork,
++                                     #endif
++                                     iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_begin();
++    #endif
++
++    magma_queue_t queue;
++    magma_device_t cdev;
++    magma_getdevice( &cdev );
++    magma_queue_create( cdev, &queue );
++
++    /* stage dA on the host in the wA workspace */
++    magma_cgetmatrix( n, n, dA, ldda, wA, ldwa, queue );
++
++    magma_cheevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                          vl, vu, il, iu, mout, w,
++                          work, lwork,
++                          #ifdef COMPLEX
++                          rwork, lrwork,
++                          #endif
++                          iwork, liwork, info );
++
++    /* copy the computed eigenvectors back to the GPU */
++    if ( *info == 0 && wantz && *mout > 0 ) {
++        magma_csetmatrix( n, *mout, wA, ldwa, dA, ldda, queue );
++    }
++
++    magma_queue_destroy( queue );
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_end();
++    #endif
++
++    return *info;
++} /* magma_cheevdx_ozaki2_gpu */
+--- a/src/dlaex3.cpp	2026-02-20 04:21:16.000000000 +0900
++++ b/src/dlaex3.cpp	2026-09-22 13:23:41.475619911 +0900
+@@ -21,7 +21,29 @@
+ extern "C" {
+ #endif
+ 
+-magma_int_t magma_get_dlaed3_k() { return 512; }
++// Minimum deflated size rk for which the eigenvector-update GEMMs run on
++// the GPU (magma_dgemm) instead of CPU BLAS.  Overridable via the
++// environment variable MAGMA_DLAED3_K (parsed once, clamped to >= 16;
++// default 512).
++magma_int_t magma_get_dlaed3_k()
++{
++    static magma_int_t cached_k = -1;
++    if (cached_k < 0) {
++        magma_int_t k = 512;
++        const char* env = getenv("MAGMA_DLAED3_K");
++        if (env != NULL && *env != '\0') {
++            long v = strtol(env, NULL, 10);
++            if (v > 0) {
++                k = (magma_int_t) v;
++            }
++        }
++        if (k < 16) {
++            k = 16;
++        }
++        cached_k = k;
++    }
++    return cached_k;
++}
+ 
+ void magma_dvrange(
+     magma_int_t k, double *d, magma_int_t *il, magma_int_t *iu, double vl, double vu)
+--- a/src/dsyevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/dsyevdx_ozaki2.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,159 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from src/zheevdx_ozaki2.cpp, normal z -> d, Thu Jul  2 18:09:24 2026
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define REAL
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_dsytrd_sy2sb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_dsyevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    DSYEVDX_OZAKI2 computes selected eigenvalues and, optionally,
++    eigenvectors of a real symmetric matrix A, exactly like
++    magma_dsyevdx (1-stage) or magma_dsyevdx_2stage (2-stage), but enables
++    Ozaki Scheme II (GEMMul8, INT8) routing of the level-3 BLAS calls
++    issued by the solver while it runs.  On non-HIP builds, or when the
++    routing gates reject a call, this is a plain delegation with native
++    accuracy and performance.
++
++    The algorithm (1-stage vs 2-stage) is selected deterministically from
++    the environment variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage},
++    default auto:  with nev = (iu - il + 1) for range == MagmaRangeI, else
++    nev = n (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper.  The
++    workspace query (lwork = -1, ...) and the solve use the SAME choice
++    (nev is known at query time from the same arguments), so query this
++    routine with the same environment and range arguments that will be
++    used for the solve.
++
++    Arguments
++    ---------
++    Identical to magma_dsyevdx / magma_dsyevdx_2stage (jobz, range, uplo,
++    n, A, lda, vl, vu, il, iu, m, w, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see those routines for the full documentation.  Note
++    that the workspace requirements of the two algorithms differ.
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_dsyevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    double *A, magma_int_t lda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, double *w,
++    double *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    double *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    magma_int_t use_2stage =
++        magma_dsyevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    /* Argument validation is left to the delegate (same signature, same
++       error codes); nothing is dereferenced before delegation. */
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_begin();
++    }
++    #endif
++
++    if ( use_2stage ) {
++        magma_dsyevdx_2stage( jobz, range, uplo, n, A, lda,
++                              vl, vu, il, iu, m, w,
++                              work, lwork,
++                              #ifdef COMPLEX
++                              rwork, lrwork,
++                              #endif
++                              iwork, liwork, info );
++    }
++    else {
++        magma_dsyevdx( jobz, range, uplo, n, A, lda,
++                       vl, vu, il, iu, m, w,
++                       work, lwork,
++                       #ifdef COMPLEX
++                       rwork, lrwork,
++                       #endif
++                       iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_end();
++    }
++    #endif
++
++    return *info;
++} /* magma_dsyevdx_ozaki2 */
+--- a/src/dsyevdx_ozaki2_gpu.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/dsyevdx_ozaki2_gpu.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,245 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from src/zheevdx_ozaki2_gpu.cpp, normal z -> d, Thu Jul  2 18:09:24 2026
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define REAL
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_dsytrd_sy2sb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_dsyevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    DSYEVDX_OZAKI2_GPU computes selected eigenvalues and, optionally,
++    eigenvectors of a real symmetric matrix dA (GPU interface, same
++    signature as magma_dsyevdx_gpu), and enables Ozaki Scheme II (GEMMul8,
++    INT8) routing of the level-3 BLAS calls issued by the solver while it
++    runs.  On non-HIP builds, or when the routing gates reject a call, the
++    underlying solvers behave natively.
++
++    The algorithm is selected deterministically from the environment
++    variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage}, default auto:
++    with nev = (iu - il + 1) for range == MagmaRangeI, else nev = n
++    (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper, and
++    n <= 128 always takes the plain 1-stage passthrough.  The workspace
++    query (lwork = -1, ...) and the solve use the SAME choice (nev is
++    known at query time from the same arguments), so query this routine
++    with the same environment and range arguments that will be used for
++    the solve.
++
++      - 1-stage: passthrough to magma_dsyevdx_gpu.
++      - 2-stage: there is no 2-stage _gpu interface, so dA is staged on
++        the host in the wA workspace (magma_dgetmatrix), solved with
++        magma_dsyevdx_2stage using the caller's work arrays, and, if
++        jobz == MagmaVec, the first mout eigenvector columns are copied
++        back to dA (magma_dsetmatrix).
++
++    Arguments
++    ---------
++    Identical to magma_dsyevdx_gpu (jobz, range, uplo, n, dA, ldda, vl,
++    vu, il, iu, mout, w, wA, ldwa, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see that routine for the full documentation.  Note
++    that in the 2-stage case the work arrays must satisfy the
++    magma_dsyevdx_2stage requirements (as returned by the workspace query
++    of this routine).
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_dsyevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaDouble_ptr dA, magma_int_t ldda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, double *w,
++    double *wA,  magma_int_t ldwa,
++    double *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    double *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t wantz  = (jobz  == MagmaVec);
++    magma_int_t alleig = (range == MagmaRangeAll);
++    magma_int_t valeig = (range == MagmaRangeV);
++    magma_int_t indeig = (range == MagmaRangeI);
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    /* Very small matrices always take the plain 1-stage passthrough. */
++    magma_int_t use_2stage = (n > 128)
++        && magma_dsyevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    if ( ! use_2stage ) {
++        /* 1-stage: scoped passthrough (delegate validates everything). */
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_begin();
++        }
++        #endif
++
++        magma_dsyevdx_gpu( jobz, range, uplo, n, dA, ldda,
++                           vl, vu, il, iu, mout, w, wA, ldwa,
++                           work, lwork,
++                           #ifdef COMPLEX
++                           rwork, lrwork,
++                           #endif
++                           iwork, liwork, info );
++
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_end();
++        }
++        #endif
++
++        return *info;
++    }
++
++    /* ---------------------------------------------------------------------
++       2-stage path.  Validate the arguments we use for the host staging
++       before touching any memory; the delegate revalidates everything
++       (including the workspace sizes, against the 2-stage requirements).
++       Error codes follow magma_dsyevdx_gpu.
++       --------------------------------------------------------------------- */
++    *info = 0;
++    if (! (wantz || (jobz == MagmaNoVec))) {
++        *info = -1;
++    } else if (! (alleig || valeig || indeig)) {
++        *info = -2;
++    } else if (! (uplo == MagmaLower || uplo == MagmaUpper)) {
++        *info = -3;
++    } else if (n < 0) {
++        *info = -4;
++    } else if (ldda < max(1,n)) {
++        *info = -6;
++    } else if (ldwa < max(1,n)) {
++        *info = -14;
++    } else {
++        if (valeig) {
++            if (n > 0 && vu <= vl) {
++                *info = -8;
++            }
++        } else if (indeig) {
++            if (il < 1 || il > max(1,n)) {
++                *info = -9;
++            } else if (iu < min(n,il) || iu > n) {
++                *info = -10;
++            }
++        }
++    }
++    if (*info != 0) {
++        magma_xerbla( __func__, -(*info) );
++        return *info;
++    }
++
++    if ( lquery ) {
++        /* workspace query: return the 2-stage requirements
++           (A is not referenced by the delegate in a query) */
++        return magma_dsyevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                                     vl, vu, il, iu, mout, w,
++                                     work, lwork,
++                                     #ifdef COMPLEX
++                                     rwork, lrwork,
++                                     #endif
++                                     iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_begin();
++    #endif
++
++    magma_queue_t queue;
++    magma_device_t cdev;
++    magma_getdevice( &cdev );
++    magma_queue_create( cdev, &queue );
++
++    /* stage dA on the host in the wA workspace */
++    magma_dgetmatrix( n, n, dA, ldda, wA, ldwa, queue );
++
++    magma_dsyevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                          vl, vu, il, iu, mout, w,
++                          work, lwork,
++                          #ifdef COMPLEX
++                          rwork, lrwork,
++                          #endif
++                          iwork, liwork, info );
++
++    /* copy the computed eigenvectors back to the GPU */
++    if ( *info == 0 && wantz && *mout > 0 ) {
++        magma_dsetmatrix( n, *mout, wA, ldwa, dA, ldda, queue );
++    }
++
++    magma_queue_destroy( queue );
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_end();
++    #endif
++
++    return *info;
++} /* magma_dsyevdx_ozaki2_gpu */
+--- a/src/ssyevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/ssyevdx_ozaki2.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,159 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from src/zheevdx_ozaki2.cpp, normal z -> s, Thu Jul  2 18:09:24 2026
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define REAL
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_ssytrd_sy2sb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_ssyevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    SSYEVDX_OZAKI2 computes selected eigenvalues and, optionally,
++    eigenvectors of a real symmetric matrix A, exactly like
++    magma_ssyevdx (1-stage) or magma_ssyevdx_2stage (2-stage), but enables
++    Ozaki Scheme II (GEMMul8, INT8) routing of the level-3 BLAS calls
++    issued by the solver while it runs.  On non-HIP builds, or when the
++    routing gates reject a call, this is a plain delegation with native
++    accuracy and performance.
++
++    The algorithm (1-stage vs 2-stage) is selected deterministically from
++    the environment variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage},
++    default auto:  with nev = (iu - il + 1) for range == MagmaRangeI, else
++    nev = n (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper.  The
++    workspace query (lwork = -1, ...) and the solve use the SAME choice
++    (nev is known at query time from the same arguments), so query this
++    routine with the same environment and range arguments that will be
++    used for the solve.
++
++    Arguments
++    ---------
++    Identical to magma_ssyevdx / magma_ssyevdx_2stage (jobz, range, uplo,
++    n, A, lda, vl, vu, il, iu, m, w, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see those routines for the full documentation.  Note
++    that the workspace requirements of the two algorithms differ.
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_ssyevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    float *A, magma_int_t lda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, float *w,
++    float *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    float *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    magma_int_t use_2stage =
++        magma_ssyevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    /* Argument validation is left to the delegate (same signature, same
++       error codes); nothing is dereferenced before delegation. */
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_begin();
++    }
++    #endif
++
++    if ( use_2stage ) {
++        magma_ssyevdx_2stage( jobz, range, uplo, n, A, lda,
++                              vl, vu, il, iu, m, w,
++                              work, lwork,
++                              #ifdef COMPLEX
++                              rwork, lrwork,
++                              #endif
++                              iwork, liwork, info );
++    }
++    else {
++        magma_ssyevdx( jobz, range, uplo, n, A, lda,
++                       vl, vu, il, iu, m, w,
++                       work, lwork,
++                       #ifdef COMPLEX
++                       rwork, lrwork,
++                       #endif
++                       iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_end();
++    }
++    #endif
++
++    return *info;
++} /* magma_ssyevdx_ozaki2 */
+--- a/src/ssyevdx_ozaki2_gpu.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/ssyevdx_ozaki2_gpu.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,245 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from src/zheevdx_ozaki2_gpu.cpp, normal z -> s, Thu Jul  2 18:09:24 2026
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define REAL
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_ssytrd_sy2sb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_ssyevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    SSYEVDX_OZAKI2_GPU computes selected eigenvalues and, optionally,
++    eigenvectors of a real symmetric matrix dA (GPU interface, same
++    signature as magma_ssyevdx_gpu), and enables Ozaki Scheme II (GEMMul8,
++    INT8) routing of the level-3 BLAS calls issued by the solver while it
++    runs.  On non-HIP builds, or when the routing gates reject a call, the
++    underlying solvers behave natively.
++
++    The algorithm is selected deterministically from the environment
++    variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage}, default auto:
++    with nev = (iu - il + 1) for range == MagmaRangeI, else nev = n
++    (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper, and
++    n <= 128 always takes the plain 1-stage passthrough.  The workspace
++    query (lwork = -1, ...) and the solve use the SAME choice (nev is
++    known at query time from the same arguments), so query this routine
++    with the same environment and range arguments that will be used for
++    the solve.
++
++      - 1-stage: passthrough to magma_ssyevdx_gpu.
++      - 2-stage: there is no 2-stage _gpu interface, so dA is staged on
++        the host in the wA workspace (magma_sgetmatrix), solved with
++        magma_ssyevdx_2stage using the caller's work arrays, and, if
++        jobz == MagmaVec, the first mout eigenvector columns are copied
++        back to dA (magma_ssetmatrix).
++
++    Arguments
++    ---------
++    Identical to magma_ssyevdx_gpu (jobz, range, uplo, n, dA, ldda, vl,
++    vu, il, iu, mout, w, wA, ldwa, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see that routine for the full documentation.  Note
++    that in the 2-stage case the work arrays must satisfy the
++    magma_ssyevdx_2stage requirements (as returned by the workspace query
++    of this routine).
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_ssyevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaFloat_ptr dA, magma_int_t ldda,
++    float vl, float vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, float *w,
++    float *wA,  magma_int_t ldwa,
++    float *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    float *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t wantz  = (jobz  == MagmaVec);
++    magma_int_t alleig = (range == MagmaRangeAll);
++    magma_int_t valeig = (range == MagmaRangeV);
++    magma_int_t indeig = (range == MagmaRangeI);
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    /* Very small matrices always take the plain 1-stage passthrough. */
++    magma_int_t use_2stage = (n > 128)
++        && magma_ssyevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    if ( ! use_2stage ) {
++        /* 1-stage: scoped passthrough (delegate validates everything). */
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_begin();
++        }
++        #endif
++
++        magma_ssyevdx_gpu( jobz, range, uplo, n, dA, ldda,
++                           vl, vu, il, iu, mout, w, wA, ldwa,
++                           work, lwork,
++                           #ifdef COMPLEX
++                           rwork, lrwork,
++                           #endif
++                           iwork, liwork, info );
++
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_end();
++        }
++        #endif
++
++        return *info;
++    }
++
++    /* ---------------------------------------------------------------------
++       2-stage path.  Validate the arguments we use for the host staging
++       before touching any memory; the delegate revalidates everything
++       (including the workspace sizes, against the 2-stage requirements).
++       Error codes follow magma_ssyevdx_gpu.
++       --------------------------------------------------------------------- */
++    *info = 0;
++    if (! (wantz || (jobz == MagmaNoVec))) {
++        *info = -1;
++    } else if (! (alleig || valeig || indeig)) {
++        *info = -2;
++    } else if (! (uplo == MagmaLower || uplo == MagmaUpper)) {
++        *info = -3;
++    } else if (n < 0) {
++        *info = -4;
++    } else if (ldda < max(1,n)) {
++        *info = -6;
++    } else if (ldwa < max(1,n)) {
++        *info = -14;
++    } else {
++        if (valeig) {
++            if (n > 0 && vu <= vl) {
++                *info = -8;
++            }
++        } else if (indeig) {
++            if (il < 1 || il > max(1,n)) {
++                *info = -9;
++            } else if (iu < min(n,il) || iu > n) {
++                *info = -10;
++            }
++        }
++    }
++    if (*info != 0) {
++        magma_xerbla( __func__, -(*info) );
++        return *info;
++    }
++
++    if ( lquery ) {
++        /* workspace query: return the 2-stage requirements
++           (A is not referenced by the delegate in a query) */
++        return magma_ssyevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                                     vl, vu, il, iu, mout, w,
++                                     work, lwork,
++                                     #ifdef COMPLEX
++                                     rwork, lrwork,
++                                     #endif
++                                     iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_begin();
++    #endif
++
++    magma_queue_t queue;
++    magma_device_t cdev;
++    magma_getdevice( &cdev );
++    magma_queue_create( cdev, &queue );
++
++    /* stage dA on the host in the wA workspace */
++    magma_sgetmatrix( n, n, dA, ldda, wA, ldwa, queue );
++
++    magma_ssyevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                          vl, vu, il, iu, mout, w,
++                          work, lwork,
++                          #ifdef COMPLEX
++                          rwork, lrwork,
++                          #endif
++                          iwork, liwork, info );
++
++    /* copy the computed eigenvectors back to the GPU */
++    if ( *info == 0 && wantz && *mout > 0 ) {
++        magma_ssetmatrix( n, *mout, wA, ldwa, dA, ldda, queue );
++    }
++
++    magma_queue_destroy( queue );
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_end();
++    #endif
++
++    return *info;
++} /* magma_ssyevdx_ozaki2_gpu */
+--- a/src/zheevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/zheevdx_ozaki2.cpp	2026-09-22 13:23:41.475619911 +0900
+@@ -0,0 +1,159 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @precisions normal z -> s d c
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define COMPLEX
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_zhetrd_he2hb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_zheevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    ZHEEVDX_OZAKI2 computes selected eigenvalues and, optionally,
++    eigenvectors of a complex Hermitian matrix A, exactly like
++    magma_zheevdx (1-stage) or magma_zheevdx_2stage (2-stage), but enables
++    Ozaki Scheme II (GEMMul8, INT8) routing of the level-3 BLAS calls
++    issued by the solver while it runs.  On non-HIP builds, or when the
++    routing gates reject a call, this is a plain delegation with native
++    accuracy and performance.
++
++    The algorithm (1-stage vs 2-stage) is selected deterministically from
++    the environment variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage},
++    default auto:  with nev = (iu - il + 1) for range == MagmaRangeI, else
++    nev = n (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper.  The
++    workspace query (lwork = -1, ...) and the solve use the SAME choice
++    (nev is known at query time from the same arguments), so query this
++    routine with the same environment and range arguments that will be
++    used for the solve.
++
++    Arguments
++    ---------
++    Identical to magma_zheevdx / magma_zheevdx_2stage (jobz, range, uplo,
++    n, A, lda, vl, vu, il, iu, m, w, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see those routines for the full documentation.  Note
++    that the workspace requirements of the two algorithms differ.
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_zheevdx_ozaki2(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaDoubleComplex *A, magma_int_t lda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *m, double *w,
++    magmaDoubleComplex *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    double *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    magma_int_t use_2stage =
++        magma_zheevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    /* Argument validation is left to the delegate (same signature, same
++       error codes); nothing is dereferenced before delegation. */
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_begin();
++    }
++    #endif
++
++    if ( use_2stage ) {
++        magma_zheevdx_2stage( jobz, range, uplo, n, A, lda,
++                              vl, vu, il, iu, m, w,
++                              work, lwork,
++                              #ifdef COMPLEX
++                              rwork, lrwork,
++                              #endif
++                              iwork, liwork, info );
++    }
++    else {
++        magma_zheevdx( jobz, range, uplo, n, A, lda,
++                       vl, vu, il, iu, m, w,
++                       work, lwork,
++                       #ifdef COMPLEX
++                       rwork, lrwork,
++                       #endif
++                       iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    if ( ! lquery ) {
++        magma_ozaki2_scope_end();
++    }
++    #endif
++
++    return *info;
++} /* magma_zheevdx_ozaki2 */
+--- a/src/zheevdx_ozaki2_gpu.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/src/zheevdx_ozaki2_gpu.cpp	2026-09-22 13:23:41.475619911 +0900
+@@ -0,0 +1,245 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @precisions normal z -> s d c
++
++*/
++#include <stdlib.h>
++#include <string.h>
++
++#include "magma_internal.h"
++#include "magma_ozaki2.h"
++
++#define COMPLEX
++
++/***************************************************************************//**
++    Deterministic algorithm choice, shared by the workspace query and the
++    solve.  Controlled by the environment variable MAGMA_OZAKI2_ALGO:
++      - "auto" (or unset): with nev = (iu - il + 1) for range == MagmaRangeI,
++        else nev = n (MagmaRangeAll and MagmaRangeV are treated as full
++        since the eigenvalue count of a value range is data-dependent):
++        2-stage iff (uplo == MagmaLower && n >= 2048 &&
++                     (2*nev <= n || n <= 3072)),
++        else 1-stage.  [Measured on gfx1200: 2-stage wins for selected
++        ranges (nev at most n/2) and for moderate full problems (n <= 3072);
++        the 2-stage back-transformation makes 1-stage faster for large
++        full-spectrum problems.]
++      - "2stage" (or "2"): force 2-stage, silently demoted to 1-stage for
++        uplo == MagmaUpper (the 2-stage reduction magma_zhetrd_he2hb is
++        implemented for lower storage only).
++      - "1stage" (or "1"), or any other value: 1-stage.
++    All inputs are available identically at workspace-query time, so the
++    query and the solve always agree.
++*******************************************************************************/
++static magma_int_t
++magma_zheevdx_ozaki2_choose_2stage(
++    magma_range_t range, magma_uplo_t uplo, magma_int_t n,
++    magma_int_t il, magma_int_t iu )
++{
++    const char* algo = getenv( "MAGMA_OZAKI2_ALGO" );
++    magma_int_t two_stage;
++    if ( algo == NULL || algo[0] == '\0' || strcmp( algo, "auto" ) == 0 ) {
++        magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : n;
++        two_stage = (n >= 2048) && (2*nev <= n || n <= 3072);
++    }
++    else if ( strcmp( algo, "2stage" ) == 0 || strcmp( algo, "2" ) == 0 ) {
++        two_stage = 1;
++    }
++    else {
++        /* "1stage", "1", or unrecognized value */
++        two_stage = 0;
++    }
++    /* the 2-stage reduction supports lower storage only; NEVER pick it
++       for upper */
++    if ( uplo != MagmaLower ) {
++        two_stage = 0;
++    }
++    return two_stage;
++}
++
++/***************************************************************************//**
++    Purpose
++    -------
++    EXPERIMENTAL (AMD/HIP-first; part of the OpenMX Ozaki Scheme II
++    integration).
++
++    ZHEEVDX_OZAKI2_GPU computes selected eigenvalues and, optionally,
++    eigenvectors of a complex Hermitian matrix dA (GPU interface, same
++    signature as magma_zheevdx_gpu), and enables Ozaki Scheme II (GEMMul8,
++    INT8) routing of the level-3 BLAS calls issued by the solver while it
++    runs.  On non-HIP builds, or when the routing gates reject a call, the
++    underlying solvers behave natively.
++
++    The algorithm is selected deterministically from the environment
++    variable MAGMA_OZAKI2_ALGO in {auto, 1stage, 2stage}, default auto:
++    with nev = (iu - il + 1) for range == MagmaRangeI, else nev = n
++    (MagmaRangeAll and MagmaRangeV are treated as full),
++    2-stage iff (uplo == MagmaLower && n >= 2048 && (2*nev <= n || n <= 3072)).
++    The 2-stage algorithm is never used for uplo == MagmaUpper, and
++    n <= 128 always takes the plain 1-stage passthrough.  The workspace
++    query (lwork = -1, ...) and the solve use the SAME choice (nev is
++    known at query time from the same arguments), so query this routine
++    with the same environment and range arguments that will be used for
++    the solve.
++
++      - 1-stage: passthrough to magma_zheevdx_gpu.
++      - 2-stage: there is no 2-stage _gpu interface, so dA is staged on
++        the host in the wA workspace (magma_zgetmatrix), solved with
++        magma_zheevdx_2stage using the caller's work arrays, and, if
++        jobz == MagmaVec, the first mout eigenvector columns are copied
++        back to dA (magma_zsetmatrix).
++
++    Arguments
++    ---------
++    Identical to magma_zheevdx_gpu (jobz, range, uplo, n, dA, ldda, vl,
++    vu, il, iu, mout, w, wA, ldwa, work, lwork, rwork, lrwork, iwork,
++    liwork, info); see that routine for the full documentation.  Note
++    that in the 2-stage case the work arrays must satisfy the
++    magma_zheevdx_2stage requirements (as returned by the workspace query
++    of this routine).
++
++    @ingroup magma_heevdx
++*******************************************************************************/
++extern "C" magma_int_t
++magma_zheevdx_ozaki2_gpu(
++    magma_vec_t jobz, magma_range_t range, magma_uplo_t uplo,
++    magma_int_t n,
++    magmaDoubleComplex_ptr dA, magma_int_t ldda,
++    double vl, double vu, magma_int_t il, magma_int_t iu,
++    magma_int_t *mout, double *w,
++    magmaDoubleComplex *wA,  magma_int_t ldwa,
++    magmaDoubleComplex *work, magma_int_t lwork,
++    #ifdef COMPLEX
++    double *rwork, magma_int_t lrwork,
++    #endif
++    magma_int_t *iwork, magma_int_t liwork,
++    magma_int_t *info)
++{
++    magma_int_t wantz  = (jobz  == MagmaVec);
++    magma_int_t alleig = (range == MagmaRangeAll);
++    magma_int_t valeig = (range == MagmaRangeV);
++    magma_int_t indeig = (range == MagmaRangeI);
++    magma_int_t lquery;
++    #ifdef COMPLEX
++    lquery = (lwork == -1 || lrwork == -1 || liwork == -1);
++    #else
++    lquery = (lwork == -1 || liwork == -1);
++    #endif
++
++    /* Very small matrices always take the plain 1-stage passthrough. */
++    magma_int_t use_2stage = (n > 128)
++        && magma_zheevdx_ozaki2_choose_2stage( range, uplo, n, il, iu );
++
++    if ( ! use_2stage ) {
++        /* 1-stage: scoped passthrough (delegate validates everything). */
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_begin();
++        }
++        #endif
++
++        magma_zheevdx_gpu( jobz, range, uplo, n, dA, ldda,
++                           vl, vu, il, iu, mout, w, wA, ldwa,
++                           work, lwork,
++                           #ifdef COMPLEX
++                           rwork, lrwork,
++                           #endif
++                           iwork, liwork, info );
++
++        #ifdef MAGMA_HAVE_HIP
++        if ( ! lquery ) {
++            magma_ozaki2_scope_end();
++        }
++        #endif
++
++        return *info;
++    }
++
++    /* ---------------------------------------------------------------------
++       2-stage path.  Validate the arguments we use for the host staging
++       before touching any memory; the delegate revalidates everything
++       (including the workspace sizes, against the 2-stage requirements).
++       Error codes follow magma_zheevdx_gpu.
++       --------------------------------------------------------------------- */
++    *info = 0;
++    if (! (wantz || (jobz == MagmaNoVec))) {
++        *info = -1;
++    } else if (! (alleig || valeig || indeig)) {
++        *info = -2;
++    } else if (! (uplo == MagmaLower || uplo == MagmaUpper)) {
++        *info = -3;
++    } else if (n < 0) {
++        *info = -4;
++    } else if (ldda < max(1,n)) {
++        *info = -6;
++    } else if (ldwa < max(1,n)) {
++        *info = -14;
++    } else {
++        if (valeig) {
++            if (n > 0 && vu <= vl) {
++                *info = -8;
++            }
++        } else if (indeig) {
++            if (il < 1 || il > max(1,n)) {
++                *info = -9;
++            } else if (iu < min(n,il) || iu > n) {
++                *info = -10;
++            }
++        }
++    }
++    if (*info != 0) {
++        magma_xerbla( __func__, -(*info) );
++        return *info;
++    }
++
++    if ( lquery ) {
++        /* workspace query: return the 2-stage requirements
++           (A is not referenced by the delegate in a query) */
++        return magma_zheevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                                     vl, vu, il, iu, mout, w,
++                                     work, lwork,
++                                     #ifdef COMPLEX
++                                     rwork, lrwork,
++                                     #endif
++                                     iwork, liwork, info );
++    }
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_begin();
++    #endif
++
++    magma_queue_t queue;
++    magma_device_t cdev;
++    magma_getdevice( &cdev );
++    magma_queue_create( cdev, &queue );
++
++    /* stage dA on the host in the wA workspace */
++    magma_zgetmatrix( n, n, dA, ldda, wA, ldwa, queue );
++
++    magma_zheevdx_2stage( jobz, range, uplo, n, wA, ldwa,
++                          vl, vu, il, iu, mout, w,
++                          work, lwork,
++                          #ifdef COMPLEX
++                          rwork, lrwork,
++                          #endif
++                          iwork, liwork, info );
++
++    /* copy the computed eigenvectors back to the GPU */
++    if ( *info == 0 && wantz && *mout > 0 ) {
++        magma_zsetmatrix( n, *mout, wA, ldwa, dA, ldda, queue );
++    }
++
++    magma_queue_destroy( queue );
++
++    #ifdef MAGMA_HAVE_HIP
++    magma_ozaki2_scope_end();
++    #endif
++
++    return *info;
++} /* magma_zheevdx_ozaki2_gpu */
+--- a/testing/Makefile.src	2026-02-20 04:21:24.000000000 +0900
++++ b/testing/Makefile.src	2026-09-22 13:23:41.475619911 +0900
+@@ -162,6 +162,7 @@
+ 	$(cdir)/testing_zheevd.cpp	\
+ 	$(cdir)/testing_zhetrd.cpp	\
+ 	$(cdir)/testing_zheevdx_2stage.cpp	\
++	$(cdir)/testing_zheevdx_ozaki2.cpp	\
+ 
+ # generalized symmetric eigenvalues
+ testing_src += \
+--- a/testing/testing_cheevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/testing/testing_cheevdx_ozaki2.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,378 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from testing/testing_zheevdx_ozaki2.cpp, normal z -> c, Thu Jul  2 18:09:24 2026
++
++*/
++
++// Tester for the EXPERIMENTAL Ozaki Scheme II eigensolver driver
++// magma_cheevdx_ozaki2 (modeled on testing_cheevdx_2stage.cpp).
++// Each iteration runs the _ozaki2 driver AND the matching native driver
++// (magma_cheevdx_2stage when the 2-stage algorithm is selected, else
++// magma_cheevdx) on fresh copies of the same matrix, and prints both
++// times plus the speedup.
++//
++// --version 1 -> MAGMA_OZAKI2_ALGO=1stage, 2 -> 2stage, else auto
++// (exported before any solve).
++//
++// With --check: LAPACK chet21/chet22 residual + orthogonality on the
++// ozaki2 result, plus the max relative eigenvalue difference vs the
++// native driver (failed if > 1000*eps).
++
++// includes, system
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <math.h>
++
++// includes, project
++#include "magma_v2.h"
++#include "magma_lapack.h"
++#include "testings.h"
++
++#include "../control/magma_threadsetting.h"  // internal header
++
++#define COMPLEX
++
++static magma_int_t check_eigenvalues(magma_int_t Nfound, float *E_ref, float *E, float eps, float *maxrel);
++
++/* ////////////////////////////////////////////////////////////////////////////
++   -- Testing cheevdx_ozaki2
++*/
++int main( int argc, char** argv)
++{
++    TESTING_CHECK( magma_init() );
++    magma_print_environment();
++
++    real_Double_t oz_time, ref_time;
++
++    magmaFloatComplex *h_A, *h_R, *h_Rref, *h_work, unused[1];
++
++    #ifdef COMPLEX
++    float *rwork;
++    magma_int_t lrwork;
++    #endif
++
++    float *w1, *w2, result[4]={0, 0, 0, 0}, runused[1];
++    magma_int_t *iwork;
++    magma_int_t N, Nfound, Nfound_ref, n2, info, info_ref, lda, lwork, liwork;
++    magma_int_t info_eigval    = 0;
++    magma_int_t info_ortho     = 0;
++    magma_int_t info_reduction = 0;
++    magma_int_t ione = 1;
++    magma_int_t izero = 0;
++    int status = 0;
++
++    magma_opts opts;
++    opts.parse_opts( argc, argv );
++
++    float tol = opts.tolerance * lapackf77_slamch("E");
++    float eps = lapackf77_slamch("E");
++
++    /* --version 1 -> 1stage, 2 -> 2stage, anything else -> auto.
++       Exported BEFORE any solve so the driver's deterministic algorithm
++       choice (workspace query and solve) matches what is tested here. */
++    const char* algo_env = "auto";
++    if ( opts.version == 1 ) {
++        algo_env = "1stage";
++    }
++    else if ( opts.version == 2 ) {
++        algo_env = "2stage";
++    }
++    setenv( "MAGMA_OZAKI2_ALGO", algo_env, 1 );
++
++    const char* oz_global = getenv( "MAGMA_OZAKI2" );
++
++    printf("%% jobz = %s, uplo = %s, MAGMA_OZAKI2_ALGO = %s, MAGMA_OZAKI2 (global) = %s\n",
++           lapack_vec_const(opts.jobz), lapack_uplo_const(opts.uplo),
++           algo_env, (oz_global != NULL && oz_global[0] != '\0' ? oz_global : "unset"));
++    printf("%% Ozaki-II GEMM routing is enabled only while the _ozaki2 driver runs\n"
++           "%% (HIP builds with GEMMul8); the native reference runs unrouted.  Set\n"
++           "%% MAGMA_OZAKI2_VERBOSE=1 to see per-op routed/fallback statistics at exit.\n");
++    printf("%%   N     M   algo    ozaki2 (s)  native (s)  speedup   ||I-Q^H Q||/N   ||A-QDQ^H||/(||A||N)   |D_oz-D_nat|/|D_nat|\n");
++    printf("%%====================================================================================================================\n");
++    magma_int_t threads = magma_get_parallel_numthreads();
++    for( int itest = 0; itest < opts.ntest; ++itest ) {
++        for( int iter = 0; iter < opts.niter; ++iter ) {
++            N = opts.nsize[itest];
++            lda = N;
++            n2  = lda*N;
++
++            magma_range_t range;
++            magma_int_t il, iu;
++            float vl, vu;
++            opts.get_range( N, &range, &vl, &vu, &il, &iu );
++            /* fraction_lo=0 maps to il=0 via get_range, but LAPACK/MAGMA use a
++               1-based index range (1 <= il <= iu <= n); clamp il>=1 so the
++               bottom-fraction case (e.g. --fraction 0,0.2) is a valid range. */
++            if (range == MagmaRangeI && il < 1) il = 1;
++
++            /* replicate the driver's deterministic algorithm choice, to run
++               the matching native reference (2-stage is lower-only).
++               auto: nev = iu-il+1 for RangeI, else N (RangeAll/RangeV full);
++               2-stage iff N >= 2048 && (2*nev <= N || N <= 3072). */
++            magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : N;
++            magma_int_t use_2stage = (opts.uplo == MagmaLower)
++                && ( opts.version == 2
++                     || (opts.version != 1
++                         && N >= 2048 && (2*nev <= N || N <= 3072)) );
++
++            /* Workspace: max of the 1-stage and 2-stage requirements, so the
++               same arrays fit both the ozaki2 run and the native reference. */
++            magma_int_t lwork1, liwork1, lwork2, liwork2;
++            #ifdef COMPLEX
++            magma_int_t lrwork1, lrwork2;
++            #endif
++
++            // 2-stage requirements
++            magma_cheevdx_getworksize(N, threads, (opts.jobz == MagmaVec),
++                                     &lwork2,
++                                     #ifdef COMPLEX
++                                     &lrwork2,
++                                     #endif
++                                     &liwork2);
++
++            // 1-stage requirements (formulas from magma_cheevdx)
++            magma_int_t nb = magma_get_chetrd_nb( N );
++            #ifdef COMPLEX
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( N + N*nb, 2*N + N*N );
++                lrwork1 = 1 + 5*N + 2*N*N;
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = N + N*nb;
++                lrwork1 = N;
++                liwork1 = 1;
++            }
++            #else
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( 2*N + N*nb, 1 + 6*N + 2*N*N );
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = 2*N + N*nb;
++                liwork1 = 1;
++            }
++            #endif
++
++            lwork  = max( lwork1,  lwork2 );
++            liwork = max( liwork1, liwork2 );
++            liwork = max( liwork, 5*N );        // small-N LAPACK fallbacks
++            #ifdef COMPLEX
++            lrwork = max( lrwork1, lrwork2 );
++            lrwork = max( lrwork, 7*N );        // small-N LAPACK fallbacks
++            #endif
++
++            /* Allocate host memory for the matrix */
++            TESTING_CHECK( magma_cmalloc_cpu( &h_A,   n2 ));
++            TESTING_CHECK( magma_smalloc_cpu( &w1,    N ));
++            TESTING_CHECK( magma_smalloc_cpu( &w2,    N ));
++            TESTING_CHECK( magma_imalloc_cpu( &iwork, liwork ));
++
++            TESTING_CHECK( magma_cmalloc_pinned( &h_R,    n2    ));
++            TESTING_CHECK( magma_cmalloc_pinned( &h_Rref, n2    ));
++            TESTING_CHECK( magma_cmalloc_pinned( &h_work, lwork ));
++            #ifdef COMPLEX
++            TESTING_CHECK( magma_smalloc_pinned( &rwork, lrwork ));
++            #endif
++
++            /* Initialize the matrix */
++            magma_generate_matrix( opts, N, N, h_A, lda );
++
++            if (opts.warmup) {
++                // ==================================================================
++                // Warmup using MAGMA
++                // ==================================================================
++                lapackf77_clacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++                magma_cheevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                      h_R, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound, w1,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info );
++            }
++
++            // ===================================================================
++            // Performs operation using MAGMA (Ozaki-II driver)
++            // ===================================================================
++            lapackf77_clacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++            oz_time = magma_wtime();
++            magma_cheevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                  h_R, lda,
++                                  vl, vu, il, iu,
++                                  &Nfound, w1,
++                                  h_work, lwork,
++                                  #ifdef COMPLEX
++                                  rwork, lrwork,
++                                  #endif
++                                  iwork, liwork,
++                                  &info );
++            oz_time = magma_wtime() - oz_time;
++            if (info != 0) {
++                printf("magma_cheevdx_ozaki2 returned error %lld: %s.\n",
++                       (long long) info, magma_strerror( info ));
++            }
++
++            // ===================================================================
++            // Native reference (same algorithm, fresh copy, no ozaki2 scope)
++            // ===================================================================
++            lapackf77_clacpy( MagmaFullStr, &N, &N, h_A, &lda, h_Rref, &lda );
++            ref_time = magma_wtime();
++            if ( use_2stage ) {
++                magma_cheevdx_2stage( opts.jobz, range, opts.uplo, N,
++                                      h_Rref, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound_ref, w2,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info_ref );
++            }
++            else {
++                magma_cheevdx( opts.jobz, range, opts.uplo, N,
++                               h_Rref, lda,
++                               vl, vu, il, iu,
++                               &Nfound_ref, w2,
++                               h_work, lwork,
++                               #ifdef COMPLEX
++                               rwork, lrwork,
++                               #endif
++                               iwork, liwork,
++                               &info_ref );
++            }
++            ref_time = magma_wtime() - ref_time;
++            if (info_ref != 0) {
++                printf("native reference returned error %lld: %s.\n",
++                       (long long) info_ref, magma_strerror( info_ref ));
++            }
++
++            printf("%5lld %5lld  %-6s  %9.2f   %9.2f   %7.2f  ",
++                   (long long) N, (long long) Nfound,
++                   (use_2stage ? "2stage" : "1stage"),
++                   oz_time, ref_time, ref_time / oz_time );
++
++            if ( opts.check ) {
++                info_eigval    = 0;
++                info_ortho     = 0;
++                info_reduction = 0;
++
++                /* Check the orthogonality and reduction of the OZAKI2 result */
++                if (opts.jobz == MagmaVec) {
++                    /* =====================================================================
++                       Following the LAPACK's [zcds]drvst routine.
++                       A is factored as A = U S U^H and the following 2 tests computed:
++                       (1)    | A - U S U^H | / ( |A| N ) if all eigenvectors were computed
++                              | U^H A U - S | / ( |A| Nfound ) otherwise
++                       (2)    | I - U^H U   | / ( N )
++                       =================================================================== */
++                    magmaFloatComplex* work;
++                    TESTING_CHECK( magma_cmalloc_cpu( &work, 2*N*N ));
++
++                    // e is unused since kband=0; tau is unused since itype=1
++                    if( Nfound == N ) {
++                        lapackf77_chet21( &ione, lapack_uplo_const(opts.uplo), &N, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    } else {
++                        lapackf77_chet22( &ione, lapack_uplo_const(opts.uplo), &N, &Nfound, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    }
++                    result[0] *= eps;
++                    result[1] *= eps;
++                    info_reduction = ! (result[0] < tol);
++                    info_ortho     = ! (result[1] < tol);
++                    printf("     %8.2e         %8.2e       ", result[1], result[0] );
++                    magma_free_cpu( work );  work=NULL;
++                } else {
++                    printf("        ---              ---        ");
++                }
++
++                /* Max relative eigenvalue difference vs the native driver */
++                float maxrel = 0;
++                if ( Nfound != Nfound_ref ) {
++                    printf("     Nfound mismatch (native %lld)", (long long) Nfound_ref );
++                    info_eigval = 1;
++                } else {
++                    info_eigval = check_eigenvalues( Nfound, w2, w1, eps, &maxrel );
++                    printf("        %8.2e", maxrel );
++                }
++
++                bool okay = (info == 0) && (info_ref == 0)
++                         && (info_eigval == 0) && (info_ortho == 0) && (info_reduction == 0);
++                status += ! okay;
++                printf("   %s", (okay ? "ok" : "failed"));
++            }
++            printf("\n");
++
++            magma_free_cpu( h_A   );
++            magma_free_cpu( w1    );
++            magma_free_cpu( w2    );
++            magma_free_cpu( iwork );
++
++            magma_free_pinned( h_R    );
++            magma_free_pinned( h_Rref );
++            magma_free_pinned( h_work );
++            #ifdef COMPLEX
++            magma_free_pinned( rwork  );
++            #endif
++            fflush( stdout );
++        }
++        if ( opts.niter > 1 ) {
++            printf( "\n" );
++        }
++    }
++
++    opts.cleanup();
++    TESTING_CHECK( magma_finalize() );
++    return status;
++}
++
++
++/*------------------------------------------------------------
++ *  Check the eigenvalues (ozaki2 vs native driver):
++ *  maxrel = max_i |E[i] - E_ref[i]| / max(unfl, max_i |E_ref[i]|).
++ *  Failed when maxrel > 1000*eps (Ozaki-II with the default 15 moduli
++ *  should be far below), or NaN/Inf.
++ */
++static magma_int_t check_eigenvalues(magma_int_t Nfound, float *E_ref, float *E, float eps, float *maxrel)
++{
++    float unfl   = lapackf77_slamch("Safe minimum");
++    float maxdif = 0;
++    float maxeig = 0;
++    for (magma_int_t i = 0; i < Nfound; i++) {
++        maxdif = max( maxdif, fabs( E[i] - E_ref[i] ) );
++        maxeig = max( maxeig, fabs( E_ref[i] ) );
++    }
++    *maxrel = maxdif / max( unfl, maxeig );
++
++    if (std::isnan(*maxrel) || std::isinf(*maxrel) || (*maxrel > 1000*eps)) {
++        return 1;
++    }
++    return 0;
++}
+--- a/testing/testing_dsyevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/testing/testing_dsyevdx_ozaki2.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,378 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from testing/testing_zheevdx_ozaki2.cpp, normal z -> d, Thu Jul  2 18:09:24 2026
++
++*/
++
++// Tester for the EXPERIMENTAL Ozaki Scheme II eigensolver driver
++// magma_dsyevdx_ozaki2 (modeled on testing_dsyevdx_2stage.cpp).
++// Each iteration runs the _ozaki2 driver AND the matching native driver
++// (magma_dsyevdx_2stage when the 2-stage algorithm is selected, else
++// magma_dsyevdx) on fresh copies of the same matrix, and prints both
++// times plus the speedup.
++//
++// --version 1 -> MAGMA_OZAKI2_ALGO=1stage, 2 -> 2stage, else auto
++// (exported before any solve).
++//
++// With --check: LAPACK dsyt21/dsyt22 residual + orthogonality on the
++// ozaki2 result, plus the max relative eigenvalue difference vs the
++// native driver (failed if > 1000*eps).
++
++// includes, system
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <math.h>
++
++// includes, project
++#include "magma_v2.h"
++#include "magma_lapack.h"
++#include "testings.h"
++
++#include "../control/magma_threadsetting.h"  // internal header
++
++#define REAL
++
++static magma_int_t check_eigenvalues(magma_int_t Nfound, double *E_ref, double *E, double eps, double *maxrel);
++
++/* ////////////////////////////////////////////////////////////////////////////
++   -- Testing dsyevdx_ozaki2
++*/
++int main( int argc, char** argv)
++{
++    TESTING_CHECK( magma_init() );
++    magma_print_environment();
++
++    real_Double_t oz_time, ref_time;
++
++    double *h_A, *h_R, *h_Rref, *h_work, unused[1];
++
++    #ifdef COMPLEX
++    double *rwork;
++    magma_int_t lrwork;
++    #endif
++
++    double *w1, *w2, result[4]={0, 0, 0, 0}, runused[1];
++    magma_int_t *iwork;
++    magma_int_t N, Nfound, Nfound_ref, n2, info, info_ref, lda, lwork, liwork;
++    magma_int_t info_eigval    = 0;
++    magma_int_t info_ortho     = 0;
++    magma_int_t info_reduction = 0;
++    magma_int_t ione = 1;
++    magma_int_t izero = 0;
++    int status = 0;
++
++    magma_opts opts;
++    opts.parse_opts( argc, argv );
++
++    double tol = opts.tolerance * lapackf77_dlamch("E");
++    double eps = lapackf77_dlamch("E");
++
++    /* --version 1 -> 1stage, 2 -> 2stage, anything else -> auto.
++       Exported BEFORE any solve so the driver's deterministic algorithm
++       choice (workspace query and solve) matches what is tested here. */
++    const char* algo_env = "auto";
++    if ( opts.version == 1 ) {
++        algo_env = "1stage";
++    }
++    else if ( opts.version == 2 ) {
++        algo_env = "2stage";
++    }
++    setenv( "MAGMA_OZAKI2_ALGO", algo_env, 1 );
++
++    const char* oz_global = getenv( "MAGMA_OZAKI2" );
++
++    printf("%% jobz = %s, uplo = %s, MAGMA_OZAKI2_ALGO = %s, MAGMA_OZAKI2 (global) = %s\n",
++           lapack_vec_const(opts.jobz), lapack_uplo_const(opts.uplo),
++           algo_env, (oz_global != NULL && oz_global[0] != '\0' ? oz_global : "unset"));
++    printf("%% Ozaki-II GEMM routing is enabled only while the _ozaki2 driver runs\n"
++           "%% (HIP builds with GEMMul8); the native reference runs unrouted.  Set\n"
++           "%% MAGMA_OZAKI2_VERBOSE=1 to see per-op routed/fallback statistics at exit.\n");
++    printf("%%   N     M   algo    ozaki2 (s)  native (s)  speedup   ||I-Q^H Q||/N   ||A-QDQ^H||/(||A||N)   |D_oz-D_nat|/|D_nat|\n");
++    printf("%%====================================================================================================================\n");
++    magma_int_t threads = magma_get_parallel_numthreads();
++    for( int itest = 0; itest < opts.ntest; ++itest ) {
++        for( int iter = 0; iter < opts.niter; ++iter ) {
++            N = opts.nsize[itest];
++            lda = N;
++            n2  = lda*N;
++
++            magma_range_t range;
++            magma_int_t il, iu;
++            double vl, vu;
++            opts.get_range( N, &range, &vl, &vu, &il, &iu );
++            /* fraction_lo=0 maps to il=0 via get_range, but LAPACK/MAGMA use a
++               1-based index range (1 <= il <= iu <= n); clamp il>=1 so the
++               bottom-fraction case (e.g. --fraction 0,0.2) is a valid range. */
++            if (range == MagmaRangeI && il < 1) il = 1;
++
++            /* replicate the driver's deterministic algorithm choice, to run
++               the matching native reference (2-stage is lower-only).
++               auto: nev = iu-il+1 for RangeI, else N (RangeAll/RangeV full);
++               2-stage iff N >= 2048 && (2*nev <= N || N <= 3072). */
++            magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : N;
++            magma_int_t use_2stage = (opts.uplo == MagmaLower)
++                && ( opts.version == 2
++                     || (opts.version != 1
++                         && N >= 2048 && (2*nev <= N || N <= 3072)) );
++
++            /* Workspace: max of the 1-stage and 2-stage requirements, so the
++               same arrays fit both the ozaki2 run and the native reference. */
++            magma_int_t lwork1, liwork1, lwork2, liwork2;
++            #ifdef COMPLEX
++            magma_int_t lrwork1, lrwork2;
++            #endif
++
++            // 2-stage requirements
++            magma_dsyevdx_getworksize(N, threads, (opts.jobz == MagmaVec),
++                                     &lwork2,
++                                     #ifdef COMPLEX
++                                     &lrwork2,
++                                     #endif
++                                     &liwork2);
++
++            // 1-stage requirements (formulas from magma_dsyevdx)
++            magma_int_t nb = magma_get_dsytrd_nb( N );
++            #ifdef COMPLEX
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( N + N*nb, 2*N + N*N );
++                lrwork1 = 1 + 5*N + 2*N*N;
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = N + N*nb;
++                lrwork1 = N;
++                liwork1 = 1;
++            }
++            #else
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( 2*N + N*nb, 1 + 6*N + 2*N*N );
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = 2*N + N*nb;
++                liwork1 = 1;
++            }
++            #endif
++
++            lwork  = max( lwork1,  lwork2 );
++            liwork = max( liwork1, liwork2 );
++            liwork = max( liwork, 5*N );        // small-N LAPACK fallbacks
++            #ifdef COMPLEX
++            lrwork = max( lrwork1, lrwork2 );
++            lrwork = max( lrwork, 7*N );        // small-N LAPACK fallbacks
++            #endif
++
++            /* Allocate host memory for the matrix */
++            TESTING_CHECK( magma_dmalloc_cpu( &h_A,   n2 ));
++            TESTING_CHECK( magma_dmalloc_cpu( &w1,    N ));
++            TESTING_CHECK( magma_dmalloc_cpu( &w2,    N ));
++            TESTING_CHECK( magma_imalloc_cpu( &iwork, liwork ));
++
++            TESTING_CHECK( magma_dmalloc_pinned( &h_R,    n2    ));
++            TESTING_CHECK( magma_dmalloc_pinned( &h_Rref, n2    ));
++            TESTING_CHECK( magma_dmalloc_pinned( &h_work, lwork ));
++            #ifdef COMPLEX
++            TESTING_CHECK( magma_dmalloc_pinned( &rwork, lrwork ));
++            #endif
++
++            /* Initialize the matrix */
++            magma_generate_matrix( opts, N, N, h_A, lda );
++
++            if (opts.warmup) {
++                // ==================================================================
++                // Warmup using MAGMA
++                // ==================================================================
++                lapackf77_dlacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++                magma_dsyevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                      h_R, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound, w1,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info );
++            }
++
++            // ===================================================================
++            // Performs operation using MAGMA (Ozaki-II driver)
++            // ===================================================================
++            lapackf77_dlacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++            oz_time = magma_wtime();
++            magma_dsyevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                  h_R, lda,
++                                  vl, vu, il, iu,
++                                  &Nfound, w1,
++                                  h_work, lwork,
++                                  #ifdef COMPLEX
++                                  rwork, lrwork,
++                                  #endif
++                                  iwork, liwork,
++                                  &info );
++            oz_time = magma_wtime() - oz_time;
++            if (info != 0) {
++                printf("magma_dsyevdx_ozaki2 returned error %lld: %s.\n",
++                       (long long) info, magma_strerror( info ));
++            }
++
++            // ===================================================================
++            // Native reference (same algorithm, fresh copy, no ozaki2 scope)
++            // ===================================================================
++            lapackf77_dlacpy( MagmaFullStr, &N, &N, h_A, &lda, h_Rref, &lda );
++            ref_time = magma_wtime();
++            if ( use_2stage ) {
++                magma_dsyevdx_2stage( opts.jobz, range, opts.uplo, N,
++                                      h_Rref, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound_ref, w2,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info_ref );
++            }
++            else {
++                magma_dsyevdx( opts.jobz, range, opts.uplo, N,
++                               h_Rref, lda,
++                               vl, vu, il, iu,
++                               &Nfound_ref, w2,
++                               h_work, lwork,
++                               #ifdef COMPLEX
++                               rwork, lrwork,
++                               #endif
++                               iwork, liwork,
++                               &info_ref );
++            }
++            ref_time = magma_wtime() - ref_time;
++            if (info_ref != 0) {
++                printf("native reference returned error %lld: %s.\n",
++                       (long long) info_ref, magma_strerror( info_ref ));
++            }
++
++            printf("%5lld %5lld  %-6s  %9.2f   %9.2f   %7.2f  ",
++                   (long long) N, (long long) Nfound,
++                   (use_2stage ? "2stage" : "1stage"),
++                   oz_time, ref_time, ref_time / oz_time );
++
++            if ( opts.check ) {
++                info_eigval    = 0;
++                info_ortho     = 0;
++                info_reduction = 0;
++
++                /* Check the orthogonality and reduction of the OZAKI2 result */
++                if (opts.jobz == MagmaVec) {
++                    /* =====================================================================
++                       Following the LAPACK's [zcds]drvst routine.
++                       A is factored as A = U S U^H and the following 2 tests computed:
++                       (1)    | A - U S U^H | / ( |A| N ) if all eigenvectors were computed
++                              | U^H A U - S | / ( |A| Nfound ) otherwise
++                       (2)    | I - U^H U   | / ( N )
++                       =================================================================== */
++                    double* work;
++                    TESTING_CHECK( magma_dmalloc_cpu( &work, 2*N*N ));
++
++                    // e is unused since kband=0; tau is unused since itype=1
++                    if( Nfound == N ) {
++                        lapackf77_dsyt21( &ione, lapack_uplo_const(opts.uplo), &N, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    } else {
++                        lapackf77_dsyt22( &ione, lapack_uplo_const(opts.uplo), &N, &Nfound, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    }
++                    result[0] *= eps;
++                    result[1] *= eps;
++                    info_reduction = ! (result[0] < tol);
++                    info_ortho     = ! (result[1] < tol);
++                    printf("     %8.2e         %8.2e       ", result[1], result[0] );
++                    magma_free_cpu( work );  work=NULL;
++                } else {
++                    printf("        ---              ---        ");
++                }
++
++                /* Max relative eigenvalue difference vs the native driver */
++                double maxrel = 0;
++                if ( Nfound != Nfound_ref ) {
++                    printf("     Nfound mismatch (native %lld)", (long long) Nfound_ref );
++                    info_eigval = 1;
++                } else {
++                    info_eigval = check_eigenvalues( Nfound, w2, w1, eps, &maxrel );
++                    printf("        %8.2e", maxrel );
++                }
++
++                bool okay = (info == 0) && (info_ref == 0)
++                         && (info_eigval == 0) && (info_ortho == 0) && (info_reduction == 0);
++                status += ! okay;
++                printf("   %s", (okay ? "ok" : "failed"));
++            }
++            printf("\n");
++
++            magma_free_cpu( h_A   );
++            magma_free_cpu( w1    );
++            magma_free_cpu( w2    );
++            magma_free_cpu( iwork );
++
++            magma_free_pinned( h_R    );
++            magma_free_pinned( h_Rref );
++            magma_free_pinned( h_work );
++            #ifdef COMPLEX
++            magma_free_pinned( rwork  );
++            #endif
++            fflush( stdout );
++        }
++        if ( opts.niter > 1 ) {
++            printf( "\n" );
++        }
++    }
++
++    opts.cleanup();
++    TESTING_CHECK( magma_finalize() );
++    return status;
++}
++
++
++/*------------------------------------------------------------
++ *  Check the eigenvalues (ozaki2 vs native driver):
++ *  maxrel = max_i |E[i] - E_ref[i]| / max(unfl, max_i |E_ref[i]|).
++ *  Failed when maxrel > 1000*eps (Ozaki-II with the default 15 moduli
++ *  should be far below), or NaN/Inf.
++ */
++static magma_int_t check_eigenvalues(magma_int_t Nfound, double *E_ref, double *E, double eps, double *maxrel)
++{
++    double unfl   = lapackf77_dlamch("Safe minimum");
++    double maxdif = 0;
++    double maxeig = 0;
++    for (magma_int_t i = 0; i < Nfound; i++) {
++        maxdif = max( maxdif, fabs( E[i] - E_ref[i] ) );
++        maxeig = max( maxeig, fabs( E_ref[i] ) );
++    }
++    *maxrel = maxdif / max( unfl, maxeig );
++
++    if (std::isnan(*maxrel) || std::isinf(*maxrel) || (*maxrel > 1000*eps)) {
++        return 1;
++    }
++    return 0;
++}
+--- a/testing/testing_ssyevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/testing/testing_ssyevdx_ozaki2.cpp	2026-09-22 13:23:42.480590879 +0900
+@@ -0,0 +1,378 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @generated from testing/testing_zheevdx_ozaki2.cpp, normal z -> s, Thu Jul  2 18:09:24 2026
++
++*/
++
++// Tester for the EXPERIMENTAL Ozaki Scheme II eigensolver driver
++// magma_ssyevdx_ozaki2 (modeled on testing_ssyevdx_2stage.cpp).
++// Each iteration runs the _ozaki2 driver AND the matching native driver
++// (magma_ssyevdx_2stage when the 2-stage algorithm is selected, else
++// magma_ssyevdx) on fresh copies of the same matrix, and prints both
++// times plus the speedup.
++//
++// --version 1 -> MAGMA_OZAKI2_ALGO=1stage, 2 -> 2stage, else auto
++// (exported before any solve).
++//
++// With --check: LAPACK ssyt21/ssyt22 residual + orthogonality on the
++// ozaki2 result, plus the max relative eigenvalue difference vs the
++// native driver (failed if > 1000*eps).
++
++// includes, system
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <math.h>
++
++// includes, project
++#include "magma_v2.h"
++#include "magma_lapack.h"
++#include "testings.h"
++
++#include "../control/magma_threadsetting.h"  // internal header
++
++#define REAL
++
++static magma_int_t check_eigenvalues(magma_int_t Nfound, float *E_ref, float *E, float eps, float *maxrel);
++
++/* ////////////////////////////////////////////////////////////////////////////
++   -- Testing ssyevdx_ozaki2
++*/
++int main( int argc, char** argv)
++{
++    TESTING_CHECK( magma_init() );
++    magma_print_environment();
++
++    real_Double_t oz_time, ref_time;
++
++    float *h_A, *h_R, *h_Rref, *h_work, unused[1];
++
++    #ifdef COMPLEX
++    float *rwork;
++    magma_int_t lrwork;
++    #endif
++
++    float *w1, *w2, result[4]={0, 0, 0, 0}, runused[1];
++    magma_int_t *iwork;
++    magma_int_t N, Nfound, Nfound_ref, n2, info, info_ref, lda, lwork, liwork;
++    magma_int_t info_eigval    = 0;
++    magma_int_t info_ortho     = 0;
++    magma_int_t info_reduction = 0;
++    magma_int_t ione = 1;
++    magma_int_t izero = 0;
++    int status = 0;
++
++    magma_opts opts;
++    opts.parse_opts( argc, argv );
++
++    float tol = opts.tolerance * lapackf77_slamch("E");
++    float eps = lapackf77_slamch("E");
++
++    /* --version 1 -> 1stage, 2 -> 2stage, anything else -> auto.
++       Exported BEFORE any solve so the driver's deterministic algorithm
++       choice (workspace query and solve) matches what is tested here. */
++    const char* algo_env = "auto";
++    if ( opts.version == 1 ) {
++        algo_env = "1stage";
++    }
++    else if ( opts.version == 2 ) {
++        algo_env = "2stage";
++    }
++    setenv( "MAGMA_OZAKI2_ALGO", algo_env, 1 );
++
++    const char* oz_global = getenv( "MAGMA_OZAKI2" );
++
++    printf("%% jobz = %s, uplo = %s, MAGMA_OZAKI2_ALGO = %s, MAGMA_OZAKI2 (global) = %s\n",
++           lapack_vec_const(opts.jobz), lapack_uplo_const(opts.uplo),
++           algo_env, (oz_global != NULL && oz_global[0] != '\0' ? oz_global : "unset"));
++    printf("%% Ozaki-II GEMM routing is enabled only while the _ozaki2 driver runs\n"
++           "%% (HIP builds with GEMMul8); the native reference runs unrouted.  Set\n"
++           "%% MAGMA_OZAKI2_VERBOSE=1 to see per-op routed/fallback statistics at exit.\n");
++    printf("%%   N     M   algo    ozaki2 (s)  native (s)  speedup   ||I-Q^H Q||/N   ||A-QDQ^H||/(||A||N)   |D_oz-D_nat|/|D_nat|\n");
++    printf("%%====================================================================================================================\n");
++    magma_int_t threads = magma_get_parallel_numthreads();
++    for( int itest = 0; itest < opts.ntest; ++itest ) {
++        for( int iter = 0; iter < opts.niter; ++iter ) {
++            N = opts.nsize[itest];
++            lda = N;
++            n2  = lda*N;
++
++            magma_range_t range;
++            magma_int_t il, iu;
++            float vl, vu;
++            opts.get_range( N, &range, &vl, &vu, &il, &iu );
++            /* fraction_lo=0 maps to il=0 via get_range, but LAPACK/MAGMA use a
++               1-based index range (1 <= il <= iu <= n); clamp il>=1 so the
++               bottom-fraction case (e.g. --fraction 0,0.2) is a valid range. */
++            if (range == MagmaRangeI && il < 1) il = 1;
++
++            /* replicate the driver's deterministic algorithm choice, to run
++               the matching native reference (2-stage is lower-only).
++               auto: nev = iu-il+1 for RangeI, else N (RangeAll/RangeV full);
++               2-stage iff N >= 2048 && (2*nev <= N || N <= 3072). */
++            magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : N;
++            magma_int_t use_2stage = (opts.uplo == MagmaLower)
++                && ( opts.version == 2
++                     || (opts.version != 1
++                         && N >= 2048 && (2*nev <= N || N <= 3072)) );
++
++            /* Workspace: max of the 1-stage and 2-stage requirements, so the
++               same arrays fit both the ozaki2 run and the native reference. */
++            magma_int_t lwork1, liwork1, lwork2, liwork2;
++            #ifdef COMPLEX
++            magma_int_t lrwork1, lrwork2;
++            #endif
++
++            // 2-stage requirements
++            magma_ssyevdx_getworksize(N, threads, (opts.jobz == MagmaVec),
++                                     &lwork2,
++                                     #ifdef COMPLEX
++                                     &lrwork2,
++                                     #endif
++                                     &liwork2);
++
++            // 1-stage requirements (formulas from magma_ssyevdx)
++            magma_int_t nb = magma_get_ssytrd_nb( N );
++            #ifdef COMPLEX
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( N + N*nb, 2*N + N*N );
++                lrwork1 = 1 + 5*N + 2*N*N;
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = N + N*nb;
++                lrwork1 = N;
++                liwork1 = 1;
++            }
++            #else
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( 2*N + N*nb, 1 + 6*N + 2*N*N );
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = 2*N + N*nb;
++                liwork1 = 1;
++            }
++            #endif
++
++            lwork  = max( lwork1,  lwork2 );
++            liwork = max( liwork1, liwork2 );
++            liwork = max( liwork, 5*N );        // small-N LAPACK fallbacks
++            #ifdef COMPLEX
++            lrwork = max( lrwork1, lrwork2 );
++            lrwork = max( lrwork, 7*N );        // small-N LAPACK fallbacks
++            #endif
++
++            /* Allocate host memory for the matrix */
++            TESTING_CHECK( magma_smalloc_cpu( &h_A,   n2 ));
++            TESTING_CHECK( magma_smalloc_cpu( &w1,    N ));
++            TESTING_CHECK( magma_smalloc_cpu( &w2,    N ));
++            TESTING_CHECK( magma_imalloc_cpu( &iwork, liwork ));
++
++            TESTING_CHECK( magma_smalloc_pinned( &h_R,    n2    ));
++            TESTING_CHECK( magma_smalloc_pinned( &h_Rref, n2    ));
++            TESTING_CHECK( magma_smalloc_pinned( &h_work, lwork ));
++            #ifdef COMPLEX
++            TESTING_CHECK( magma_smalloc_pinned( &rwork, lrwork ));
++            #endif
++
++            /* Initialize the matrix */
++            magma_generate_matrix( opts, N, N, h_A, lda );
++
++            if (opts.warmup) {
++                // ==================================================================
++                // Warmup using MAGMA
++                // ==================================================================
++                lapackf77_slacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++                magma_ssyevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                      h_R, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound, w1,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info );
++            }
++
++            // ===================================================================
++            // Performs operation using MAGMA (Ozaki-II driver)
++            // ===================================================================
++            lapackf77_slacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++            oz_time = magma_wtime();
++            magma_ssyevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                  h_R, lda,
++                                  vl, vu, il, iu,
++                                  &Nfound, w1,
++                                  h_work, lwork,
++                                  #ifdef COMPLEX
++                                  rwork, lrwork,
++                                  #endif
++                                  iwork, liwork,
++                                  &info );
++            oz_time = magma_wtime() - oz_time;
++            if (info != 0) {
++                printf("magma_ssyevdx_ozaki2 returned error %lld: %s.\n",
++                       (long long) info, magma_strerror( info ));
++            }
++
++            // ===================================================================
++            // Native reference (same algorithm, fresh copy, no ozaki2 scope)
++            // ===================================================================
++            lapackf77_slacpy( MagmaFullStr, &N, &N, h_A, &lda, h_Rref, &lda );
++            ref_time = magma_wtime();
++            if ( use_2stage ) {
++                magma_ssyevdx_2stage( opts.jobz, range, opts.uplo, N,
++                                      h_Rref, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound_ref, w2,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info_ref );
++            }
++            else {
++                magma_ssyevdx( opts.jobz, range, opts.uplo, N,
++                               h_Rref, lda,
++                               vl, vu, il, iu,
++                               &Nfound_ref, w2,
++                               h_work, lwork,
++                               #ifdef COMPLEX
++                               rwork, lrwork,
++                               #endif
++                               iwork, liwork,
++                               &info_ref );
++            }
++            ref_time = magma_wtime() - ref_time;
++            if (info_ref != 0) {
++                printf("native reference returned error %lld: %s.\n",
++                       (long long) info_ref, magma_strerror( info_ref ));
++            }
++
++            printf("%5lld %5lld  %-6s  %9.2f   %9.2f   %7.2f  ",
++                   (long long) N, (long long) Nfound,
++                   (use_2stage ? "2stage" : "1stage"),
++                   oz_time, ref_time, ref_time / oz_time );
++
++            if ( opts.check ) {
++                info_eigval    = 0;
++                info_ortho     = 0;
++                info_reduction = 0;
++
++                /* Check the orthogonality and reduction of the OZAKI2 result */
++                if (opts.jobz == MagmaVec) {
++                    /* =====================================================================
++                       Following the LAPACK's [zcds]drvst routine.
++                       A is factored as A = U S U^H and the following 2 tests computed:
++                       (1)    | A - U S U^H | / ( |A| N ) if all eigenvectors were computed
++                              | U^H A U - S | / ( |A| Nfound ) otherwise
++                       (2)    | I - U^H U   | / ( N )
++                       =================================================================== */
++                    float* work;
++                    TESTING_CHECK( magma_smalloc_cpu( &work, 2*N*N ));
++
++                    // e is unused since kband=0; tau is unused since itype=1
++                    if( Nfound == N ) {
++                        lapackf77_ssyt21( &ione, lapack_uplo_const(opts.uplo), &N, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    } else {
++                        lapackf77_ssyt22( &ione, lapack_uplo_const(opts.uplo), &N, &Nfound, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    }
++                    result[0] *= eps;
++                    result[1] *= eps;
++                    info_reduction = ! (result[0] < tol);
++                    info_ortho     = ! (result[1] < tol);
++                    printf("     %8.2e         %8.2e       ", result[1], result[0] );
++                    magma_free_cpu( work );  work=NULL;
++                } else {
++                    printf("        ---              ---        ");
++                }
++
++                /* Max relative eigenvalue difference vs the native driver */
++                float maxrel = 0;
++                if ( Nfound != Nfound_ref ) {
++                    printf("     Nfound mismatch (native %lld)", (long long) Nfound_ref );
++                    info_eigval = 1;
++                } else {
++                    info_eigval = check_eigenvalues( Nfound, w2, w1, eps, &maxrel );
++                    printf("        %8.2e", maxrel );
++                }
++
++                bool okay = (info == 0) && (info_ref == 0)
++                         && (info_eigval == 0) && (info_ortho == 0) && (info_reduction == 0);
++                status += ! okay;
++                printf("   %s", (okay ? "ok" : "failed"));
++            }
++            printf("\n");
++
++            magma_free_cpu( h_A   );
++            magma_free_cpu( w1    );
++            magma_free_cpu( w2    );
++            magma_free_cpu( iwork );
++
++            magma_free_pinned( h_R    );
++            magma_free_pinned( h_Rref );
++            magma_free_pinned( h_work );
++            #ifdef COMPLEX
++            magma_free_pinned( rwork  );
++            #endif
++            fflush( stdout );
++        }
++        if ( opts.niter > 1 ) {
++            printf( "\n" );
++        }
++    }
++
++    opts.cleanup();
++    TESTING_CHECK( magma_finalize() );
++    return status;
++}
++
++
++/*------------------------------------------------------------
++ *  Check the eigenvalues (ozaki2 vs native driver):
++ *  maxrel = max_i |E[i] - E_ref[i]| / max(unfl, max_i |E_ref[i]|).
++ *  Failed when maxrel > 1000*eps (Ozaki-II with the default 15 moduli
++ *  should be far below), or NaN/Inf.
++ */
++static magma_int_t check_eigenvalues(magma_int_t Nfound, float *E_ref, float *E, float eps, float *maxrel)
++{
++    float unfl   = lapackf77_slamch("Safe minimum");
++    float maxdif = 0;
++    float maxeig = 0;
++    for (magma_int_t i = 0; i < Nfound; i++) {
++        maxdif = max( maxdif, fabs( E[i] - E_ref[i] ) );
++        maxeig = max( maxeig, fabs( E_ref[i] ) );
++    }
++    *maxrel = maxdif / max( unfl, maxeig );
++
++    if (std::isnan(*maxrel) || std::isinf(*maxrel) || (*maxrel > 1000*eps)) {
++        return 1;
++    }
++    return 0;
++}
+--- a/testing/testing_zheevdx_ozaki2.cpp	1970-01-01 09:00:00.000000000 +0900
++++ b/testing/testing_zheevdx_ozaki2.cpp	2026-09-22 13:23:41.476619882 +0900
+@@ -0,0 +1,378 @@
++/*
++    -- MAGMA (version 2.10.0) --
++       Univ. of Tennessee, Knoxville
++       Univ. of California, Berkeley
++       Univ. of Colorado, Denver
++       @date February 2026
++
++       @author OpenMX Ozaki Scheme II integration
++
++       @precisions normal z -> s d c
++
++*/
++
++// Tester for the EXPERIMENTAL Ozaki Scheme II eigensolver driver
++// magma_zheevdx_ozaki2 (modeled on testing_zheevdx_2stage.cpp).
++// Each iteration runs the _ozaki2 driver AND the matching native driver
++// (magma_zheevdx_2stage when the 2-stage algorithm is selected, else
++// magma_zheevdx) on fresh copies of the same matrix, and prints both
++// times plus the speedup.
++//
++// --version 1 -> MAGMA_OZAKI2_ALGO=1stage, 2 -> 2stage, else auto
++// (exported before any solve).
++//
++// With --check: LAPACK zhet21/zhet22 residual + orthogonality on the
++// ozaki2 result, plus the max relative eigenvalue difference vs the
++// native driver (failed if > 1000*eps).
++
++// includes, system
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <math.h>
++
++// includes, project
++#include "magma_v2.h"
++#include "magma_lapack.h"
++#include "testings.h"
++
++#include "../control/magma_threadsetting.h"  // internal header
++
++#define COMPLEX
++
++static magma_int_t check_eigenvalues(magma_int_t Nfound, double *E_ref, double *E, double eps, double *maxrel);
++
++/* ////////////////////////////////////////////////////////////////////////////
++   -- Testing zheevdx_ozaki2
++*/
++int main( int argc, char** argv)
++{
++    TESTING_CHECK( magma_init() );
++    magma_print_environment();
++
++    real_Double_t oz_time, ref_time;
++
++    magmaDoubleComplex *h_A, *h_R, *h_Rref, *h_work, unused[1];
++
++    #ifdef COMPLEX
++    double *rwork;
++    magma_int_t lrwork;
++    #endif
++
++    double *w1, *w2, result[4]={0, 0, 0, 0}, runused[1];
++    magma_int_t *iwork;
++    magma_int_t N, Nfound, Nfound_ref, n2, info, info_ref, lda, lwork, liwork;
++    magma_int_t info_eigval    = 0;
++    magma_int_t info_ortho     = 0;
++    magma_int_t info_reduction = 0;
++    magma_int_t ione = 1;
++    magma_int_t izero = 0;
++    int status = 0;
++
++    magma_opts opts;
++    opts.parse_opts( argc, argv );
++
++    double tol = opts.tolerance * lapackf77_dlamch("E");
++    double eps = lapackf77_dlamch("E");
++
++    /* --version 1 -> 1stage, 2 -> 2stage, anything else -> auto.
++       Exported BEFORE any solve so the driver's deterministic algorithm
++       choice (workspace query and solve) matches what is tested here. */
++    const char* algo_env = "auto";
++    if ( opts.version == 1 ) {
++        algo_env = "1stage";
++    }
++    else if ( opts.version == 2 ) {
++        algo_env = "2stage";
++    }
++    setenv( "MAGMA_OZAKI2_ALGO", algo_env, 1 );
++
++    const char* oz_global = getenv( "MAGMA_OZAKI2" );
++
++    printf("%% jobz = %s, uplo = %s, MAGMA_OZAKI2_ALGO = %s, MAGMA_OZAKI2 (global) = %s\n",
++           lapack_vec_const(opts.jobz), lapack_uplo_const(opts.uplo),
++           algo_env, (oz_global != NULL && oz_global[0] != '\0' ? oz_global : "unset"));
++    printf("%% Ozaki-II GEMM routing is enabled only while the _ozaki2 driver runs\n"
++           "%% (HIP builds with GEMMul8); the native reference runs unrouted.  Set\n"
++           "%% MAGMA_OZAKI2_VERBOSE=1 to see per-op routed/fallback statistics at exit.\n");
++    printf("%%   N     M   algo    ozaki2 (s)  native (s)  speedup   ||I-Q^H Q||/N   ||A-QDQ^H||/(||A||N)   |D_oz-D_nat|/|D_nat|\n");
++    printf("%%====================================================================================================================\n");
++    magma_int_t threads = magma_get_parallel_numthreads();
++    for( int itest = 0; itest < opts.ntest; ++itest ) {
++        for( int iter = 0; iter < opts.niter; ++iter ) {
++            N = opts.nsize[itest];
++            lda = N;
++            n2  = lda*N;
++
++            magma_range_t range;
++            magma_int_t il, iu;
++            double vl, vu;
++            opts.get_range( N, &range, &vl, &vu, &il, &iu );
++            /* fraction_lo=0 maps to il=0 via get_range, but LAPACK/MAGMA use a
++               1-based index range (1 <= il <= iu <= n); clamp il>=1 so the
++               bottom-fraction case (e.g. --fraction 0,0.2) is a valid range. */
++            if (range == MagmaRangeI && il < 1) il = 1;
++
++            /* replicate the driver's deterministic algorithm choice, to run
++               the matching native reference (2-stage is lower-only).
++               auto: nev = iu-il+1 for RangeI, else N (RangeAll/RangeV full);
++               2-stage iff N >= 2048 && (2*nev <= N || N <= 3072). */
++            magma_int_t nev = (range == MagmaRangeI) ? (iu - il + 1) : N;
++            magma_int_t use_2stage = (opts.uplo == MagmaLower)
++                && ( opts.version == 2
++                     || (opts.version != 1
++                         && N >= 2048 && (2*nev <= N || N <= 3072)) );
++
++            /* Workspace: max of the 1-stage and 2-stage requirements, so the
++               same arrays fit both the ozaki2 run and the native reference. */
++            magma_int_t lwork1, liwork1, lwork2, liwork2;
++            #ifdef COMPLEX
++            magma_int_t lrwork1, lrwork2;
++            #endif
++
++            // 2-stage requirements
++            magma_zheevdx_getworksize(N, threads, (opts.jobz == MagmaVec),
++                                     &lwork2,
++                                     #ifdef COMPLEX
++                                     &lrwork2,
++                                     #endif
++                                     &liwork2);
++
++            // 1-stage requirements (formulas from magma_zheevdx)
++            magma_int_t nb = magma_get_zhetrd_nb( N );
++            #ifdef COMPLEX
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( N + N*nb, 2*N + N*N );
++                lrwork1 = 1 + 5*N + 2*N*N;
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = N + N*nb;
++                lrwork1 = N;
++                liwork1 = 1;
++            }
++            #else
++            if ( opts.jobz == MagmaVec ) {
++                lwork1  = max( 2*N + N*nb, 1 + 6*N + 2*N*N );
++                liwork1 = 3 + 5*N;
++            } else {
++                lwork1  = 2*N + N*nb;
++                liwork1 = 1;
++            }
++            #endif
++
++            lwork  = max( lwork1,  lwork2 );
++            liwork = max( liwork1, liwork2 );
++            liwork = max( liwork, 5*N );        // small-N LAPACK fallbacks
++            #ifdef COMPLEX
++            lrwork = max( lrwork1, lrwork2 );
++            lrwork = max( lrwork, 7*N );        // small-N LAPACK fallbacks
++            #endif
++
++            /* Allocate host memory for the matrix */
++            TESTING_CHECK( magma_zmalloc_cpu( &h_A,   n2 ));
++            TESTING_CHECK( magma_dmalloc_cpu( &w1,    N ));
++            TESTING_CHECK( magma_dmalloc_cpu( &w2,    N ));
++            TESTING_CHECK( magma_imalloc_cpu( &iwork, liwork ));
++
++            TESTING_CHECK( magma_zmalloc_pinned( &h_R,    n2    ));
++            TESTING_CHECK( magma_zmalloc_pinned( &h_Rref, n2    ));
++            TESTING_CHECK( magma_zmalloc_pinned( &h_work, lwork ));
++            #ifdef COMPLEX
++            TESTING_CHECK( magma_dmalloc_pinned( &rwork, lrwork ));
++            #endif
++
++            /* Initialize the matrix */
++            magma_generate_matrix( opts, N, N, h_A, lda );
++
++            if (opts.warmup) {
++                // ==================================================================
++                // Warmup using MAGMA
++                // ==================================================================
++                lapackf77_zlacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++                magma_zheevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                      h_R, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound, w1,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info );
++            }
++
++            // ===================================================================
++            // Performs operation using MAGMA (Ozaki-II driver)
++            // ===================================================================
++            lapackf77_zlacpy( MagmaFullStr, &N, &N, h_A, &lda, h_R, &lda );
++            oz_time = magma_wtime();
++            magma_zheevdx_ozaki2( opts.jobz, range, opts.uplo, N,
++                                  h_R, lda,
++                                  vl, vu, il, iu,
++                                  &Nfound, w1,
++                                  h_work, lwork,
++                                  #ifdef COMPLEX
++                                  rwork, lrwork,
++                                  #endif
++                                  iwork, liwork,
++                                  &info );
++            oz_time = magma_wtime() - oz_time;
++            if (info != 0) {
++                printf("magma_zheevdx_ozaki2 returned error %lld: %s.\n",
++                       (long long) info, magma_strerror( info ));
++            }
++
++            // ===================================================================
++            // Native reference (same algorithm, fresh copy, no ozaki2 scope)
++            // ===================================================================
++            lapackf77_zlacpy( MagmaFullStr, &N, &N, h_A, &lda, h_Rref, &lda );
++            ref_time = magma_wtime();
++            if ( use_2stage ) {
++                magma_zheevdx_2stage( opts.jobz, range, opts.uplo, N,
++                                      h_Rref, lda,
++                                      vl, vu, il, iu,
++                                      &Nfound_ref, w2,
++                                      h_work, lwork,
++                                      #ifdef COMPLEX
++                                      rwork, lrwork,
++                                      #endif
++                                      iwork, liwork,
++                                      &info_ref );
++            }
++            else {
++                magma_zheevdx( opts.jobz, range, opts.uplo, N,
++                               h_Rref, lda,
++                               vl, vu, il, iu,
++                               &Nfound_ref, w2,
++                               h_work, lwork,
++                               #ifdef COMPLEX
++                               rwork, lrwork,
++                               #endif
++                               iwork, liwork,
++                               &info_ref );
++            }
++            ref_time = magma_wtime() - ref_time;
++            if (info_ref != 0) {
++                printf("native reference returned error %lld: %s.\n",
++                       (long long) info_ref, magma_strerror( info_ref ));
++            }
++
++            printf("%5lld %5lld  %-6s  %9.2f   %9.2f   %7.2f  ",
++                   (long long) N, (long long) Nfound,
++                   (use_2stage ? "2stage" : "1stage"),
++                   oz_time, ref_time, ref_time / oz_time );
++
++            if ( opts.check ) {
++                info_eigval    = 0;
++                info_ortho     = 0;
++                info_reduction = 0;
++
++                /* Check the orthogonality and reduction of the OZAKI2 result */
++                if (opts.jobz == MagmaVec) {
++                    /* =====================================================================
++                       Following the LAPACK's [zcds]drvst routine.
++                       A is factored as A = U S U^H and the following 2 tests computed:
++                       (1)    | A - U S U^H | / ( |A| N ) if all eigenvectors were computed
++                              | U^H A U - S | / ( |A| Nfound ) otherwise
++                       (2)    | I - U^H U   | / ( N )
++                       =================================================================== */
++                    magmaDoubleComplex* work;
++                    TESTING_CHECK( magma_zmalloc_cpu( &work, 2*N*N ));
++
++                    // e is unused since kband=0; tau is unused since itype=1
++                    if( Nfound == N ) {
++                        lapackf77_zhet21( &ione, lapack_uplo_const(opts.uplo), &N, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    } else {
++                        lapackf77_zhet22( &ione, lapack_uplo_const(opts.uplo), &N, &Nfound, &izero,
++                                          h_A, &lda,
++                                          w1, runused,
++                                          h_R, &lda,
++                                          h_R, &lda,
++                                          unused, work,
++                                          #ifdef COMPLEX
++                                          rwork,
++                                          #endif
++                                          &result[0] );
++                    }
++                    result[0] *= eps;
++                    result[1] *= eps;
++                    info_reduction = ! (result[0] < tol);
++                    info_ortho     = ! (result[1] < tol);
++                    printf("     %8.2e         %8.2e       ", result[1], result[0] );
++                    magma_free_cpu( work );  work=NULL;
++                } else {
++                    printf("        ---              ---        ");
++                }
++
++                /* Max relative eigenvalue difference vs the native driver */
++                double maxrel = 0;
++                if ( Nfound != Nfound_ref ) {
++                    printf("     Nfound mismatch (native %lld)", (long long) Nfound_ref );
++                    info_eigval = 1;
++                } else {
++                    info_eigval = check_eigenvalues( Nfound, w2, w1, eps, &maxrel );
++                    printf("        %8.2e", maxrel );
++                }
++
++                bool okay = (info == 0) && (info_ref == 0)
++                         && (info_eigval == 0) && (info_ortho == 0) && (info_reduction == 0);
++                status += ! okay;
++                printf("   %s", (okay ? "ok" : "failed"));
++            }
++            printf("\n");
++
++            magma_free_cpu( h_A   );
++            magma_free_cpu( w1    );
++            magma_free_cpu( w2    );
++            magma_free_cpu( iwork );
++
++            magma_free_pinned( h_R    );
++            magma_free_pinned( h_Rref );
++            magma_free_pinned( h_work );
++            #ifdef COMPLEX
++            magma_free_pinned( rwork  );
++            #endif
++            fflush( stdout );
++        }
++        if ( opts.niter > 1 ) {
++            printf( "\n" );
++        }
++    }
++
++    opts.cleanup();
++    TESTING_CHECK( magma_finalize() );
++    return status;
++}
++
++
++/*------------------------------------------------------------
++ *  Check the eigenvalues (ozaki2 vs native driver):
++ *  maxrel = max_i |E[i] - E_ref[i]| / max(unfl, max_i |E_ref[i]|).
++ *  Failed when maxrel > 1000*eps (Ozaki-II with the default 15 moduli
++ *  should be far below), or NaN/Inf.
++ */
++static magma_int_t check_eigenvalues(magma_int_t Nfound, double *E_ref, double *E, double eps, double *maxrel)
++{
++    double unfl   = lapackf77_dlamch("Safe minimum");
++    double maxdif = 0;
++    double maxeig = 0;
++    for (magma_int_t i = 0; i < Nfound; i++) {
++        maxdif = max( maxdif, fabs( E[i] - E_ref[i] ) );
++        maxeig = max( maxeig, fabs( E_ref[i] ) );
++    }
++    *maxrel = maxdif / max( unfl, maxeig );
++
++    if (std::isnan(*maxrel) || std::isinf(*maxrel) || (*maxrel > 1000*eps)) {
++        return 1;
++    }
++    return 0;
++}

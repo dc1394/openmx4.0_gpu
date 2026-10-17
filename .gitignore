@@ -85,3 +85,10 @@ _runtest*/
 
 # Python regression tools
 __pycache__/
+
+# Isolated CUDA/HIP CMake builds
+/build/
+
+# Documentation shipped with the integrated AMD backend
+!/docs/GPU_BACKENDS.md
+!/source/third_party/hip/*.md

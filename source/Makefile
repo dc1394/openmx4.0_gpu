@@ -230,6 +230,8 @@ GPUSOLVER2_NVCC      ?= $(NVHPC_CUDA_HOME)/bin/nvcc
 GPUSOLVER2_GPU_ARCH  ?= $(GEMMUL8_BUILD_GPU_ARCH)
 GPUSOLVER2_MPI_BIN   ?= $(NVHPC_MPI_BIN)
 GPUSOLVER2_MPI_LIBDIR ?= $(NVHPC_MPI_LIBDIR)
+# HPC SDK's mpi/bin is a selector; ../include is not its active MPI tree.
+GPUSOLVER2_MPI_INCLUDES ?= $(addprefix -I,$(shell $(GPUSOLVER2_MPI_BIN)/mpicc --showme:incdirs 2>/dev/null))
 GPUSOLVER2_CUDA_HOME ?= $(NVHPC_CUDA_HOME)
 GPUSOLVER2_MATH_DIR  ?= $(NVHPC_MATH_DIR)
 GPUSOLVER2_COMPILER_LIB ?= $(NVHPC_COMPILER_LIB)
@@ -972,7 +974,7 @@ elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h openmx_stdout_level
 # COSMA's strategy (host memory of its transforms) with the C++ compiler
 # of the COSMA build; mpi.h only
 elpa_cosma_memory.o: elpa_cosma_memory.cpp $(GPUSOLVER2_STAMP)
-	$(GPUSOLVER2_HOST_CXX) -std=c++17 -O2 -g -I$(GPUSOLVER2_PREFIX)/include -I$(GPUSOLVER2_MPI_BIN)/../include -c elpa_cosma_memory.cpp -o elpa_cosma_memory.o
+	$(GPUSOLVER2_HOST_CXX) -std=c++17 -O2 -g -I$(GPUSOLVER2_PREFIX)/include $(GPUSOLVER2_MPI_INCLUDES) -c elpa_cosma_memory.cpp -o elpa_cosma_memory.o
 openmx_host_memory.o: openmx_host_memory.c openmx_host_memory.h
 	$(CC_NOACC_O3) -c openmx_host_memory.c
 openmx_cluster_capacity.o: openmx_cluster_capacity.c openmx_cluster_capacity.h openmx_mgpu_runtime.h elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h
@@ -989,7 +991,7 @@ openmx_gpu_task.o: openmx_gpu_task.c openmx_gpu_task.h openmx_gpu_collective.h o
 openmx_gpu_bilinear.o: openmx_gpu_bilinear.c openmx_gpu_bilinear.h openmx_gpu_collective.h openmx_gpu_workers.h
 	$(CC) -c openmx_gpu_bilinear.c
 openmx_gpu_bilinear_pack.o: openmx_gpu_bilinear_pack.cpp openmx_gpu_bilinear.h
-	$(GPUSOLVER2_HOST_CXX) -std=c++17 -O2 -I$(GPUSOLVER2_MPI_BIN)/../include -c openmx_gpu_bilinear_pack.cpp -o openmx_gpu_bilinear_pack.o
+	$(GPUSOLVER2_HOST_CXX) -std=c++17 -O2 $(GPUSOLVER2_MPI_INCLUDES) -c openmx_gpu_bilinear_pack.cpp -o openmx_gpu_bilinear_pack.o
 openmx_mgpu_runtime.o: openmx_dense_cpu.h
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_cluster_capacity.h elpa_cosma_bridge.h
 $(GEMMUL8_DIR)/Makefile:

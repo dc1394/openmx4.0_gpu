@@ -1,4 +1,23 @@
 # openmx4.0_gpu
+
+This repository includes both the NVIDIA CUDA and AMD HIP backends. Select one
+per build with CMake; the existing NVIDIA `make -C source` workflow also works.
+
+```sh
+cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA
+cmake --build build/cuda
+
+# On a ROCm machine; set the site-specific MPI/AOCL paths as described below.
+cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
+  -DOPENMX_MAKE_OPTIONS="ROCM=/opt/rocm;MPI_HOME=/path/to/mpi;AOCL_HOME=/path/to/aocl;AOCC_LIB=/path/to/aocc/lib"
+cmake --build build/hip
+```
+
+The executables are `build/cuda/openmx` and `build/hip/openmx`. Objects and
+dependency builds are isolated in each build directory. See
+[GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
+configuration, AMD runtime settings and validation limits.
+
 ## What does this code do?
 This is a GPU-accelerated version of [OpenMX](https://www.openmx-square.org/), a first-principles calculation code based on numerical atomic orbitals (NAO). The dense eigensolvers of the band calculations (collinear and non-collinear) and of the cluster calculations (collinear and non-collinear), the O(N)-type solvers (DC, DC-LNO, Krylov), and the heavy matrix-construction stages around them (Hamiltonian/overlap assembly, charge-density and orbital grids, forces, charge mixing) are GPU-accelerated. Since v2.0, the cluster diagonalization can also be distributed over multiple GPUs and multiple nodes with ELPA (GPU kernels) + COSMA; see below.
 
@@ -33,7 +52,7 @@ To run the conventional CPU paths instead, specify "elpa2" or "elpa1":
 scf.eigen.lib             elpa2         # CPU (ELPA2) paths
 ```
 
-A run that finds no usable GPU demotes itself to ELPA2 automatically, so the default is also safe on machines without an NVIDIA GPU. The environment variable `OPENMX_GPU=0` forces the same demotion on a machine with a GPU, which is convenient for CPU-vs-GPU comparisons with unmodified input files.
+A run that finds no usable GPU demotes itself to ELPA2 automatically, so the default is also safe on machines without a GPU supported by the selected backend. The environment variable `OPENMX_GPU=0` forces the same demotion on a machine with a GPU, which is convenient for CPU-vs-GPU comparisons with unmodified input files.
 
 The GPU paths follow OpenMX's `level.of.stdout` keyword. At the default (1) they print only errors, a GPU that cannot be used, and a GPU eigensolver given up for lack of device memory; `level.of.stdout 2` adds the device plans, the precision switches and the CPU fallbacks of single stages, and 3 adds the per-step, per-k-point and per-rank details of the refined FP32 eigensolver. Note that OpenMX itself prints per-atom debugging output from level 2 on.
 

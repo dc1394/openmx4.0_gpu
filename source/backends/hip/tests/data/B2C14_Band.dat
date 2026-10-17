@@ -1,0 +1,84 @@
+# Periodic 1 x 1 x 2 diamond cell: B2C14.
+# Derived from atoms 1..16 of work/large_example/B2C62_Band.dat;
+# basis, pseudopotentials, occupations and SCF settings are retained.
+#
+#      File Name
+#
+
+System.CurrrentDirectory         ./    # default=./
+System.Name                     B2C14_Band
+level.of.stdout                   1    # default=1 (1-3)
+level.of.fileout                  0    # default=1 (1-3)
+
+#
+# Definition of Atomic Species
+#
+
+Species.Number       2
+<Definition.of.Atomic.Species
+ C   C5.0-s2p2d1  C_PBE19
+ B   B7.0-s2p2d1  B_PBE19
+Definition.of.Atomic.Species>
+
+#
+# Atoms
+#
+
+Atoms.Number         16
+Atoms.SpeciesAndCoordinates.Unit   Ang # Ang|AU
+<Atoms.SpeciesAndCoordinates           # Unit=Ang.
+   1  B   0.000000000000  0.000000000000  0.000000000000  1.5 1.5
+   2  C   0.000000000000  1.783500000000  1.783500000000  2.0 2.0
+   3  C   1.783500000000  0.000000000000  1.783500000000  2.0 2.0
+   4  C   1.783500000000  1.783500000000  0.000000000000  2.0 2.0
+   5  B   0.891750000000  0.891750000000  0.891750000000  1.5 1.5
+   6  C   0.891750000000  2.675250000000  2.675250000000  2.0 2.0
+   7  C   2.675250000000  0.891750000000  2.675250000000  2.0 2.0
+   8  C   2.675250000000  2.675250000000  0.891750000000  2.0 2.0
+   9  C   0.000000000000  0.000000000000  3.567000000000  2.0 2.0
+  10  C   0.000000000000  1.783500000000  5.350500000000  2.0 2.0
+  11  C   1.783500000000  0.000000000000  5.350500000000  2.0 2.0
+  12  C   1.783500000000  1.783500000000  3.567000000000  2.0 2.0
+  13  C   0.891750000000  0.891750000000  4.458750000000  2.0 2.0
+  14  C   0.891750000000  2.675250000000  6.242250000000  2.0 2.0
+  15  C   2.675250000000  0.891750000000  6.242250000000  2.0 2.0
+  16  C   2.675250000000  2.675250000000  4.458750000000  2.0 2.0
+Atoms.SpeciesAndCoordinates>
+Atoms.UnitVectors.Unit             Ang #  Ang|AU
+<Atoms.UnitVectors                     # unit=Ang.
+ 3.567000000000  0.000000000000  0.000000000000
+ 0.000000000000  3.567000000000  0.000000000000
+ 0.000000000000  0.000000000000  7.134000000000
+Atoms.UnitVectors>
+
+#
+# SCF or Electronic System
+#
+
+scf.XcType                GGA-PBE      # LDA|LSDA-CA|LSDA-PW
+scf.SpinPolarization        off        # On|Off
+scf.ElectronicTemperature  300.0       # default=300 (K)
+scf.energycutoff           180.0       # default=150 (Ry)
+scf.maxIter                100         # default=40
+scf.EigenvalueSolver       band        # Recursion|Cluster|Band
+scf.Kgrid                  3 3 3       # mesh before symmetry reduction
+scf.Mixing.Type           rmm-diisk    # Simple|Rmm-Diis|Gr-Pulay
+scf.Init.Mixing.Weight     0.02        # default=0.30
+scf.Min.Mixing.Weight      0.001       # default=0.001
+scf.Max.Mixing.Weight      0.200       # default=0.40
+scf.Mixing.History          30         # default=5
+scf.Mixing.StartPulay       7          # default=6
+scf.criterion             1.0e-10      # default=1.0e-6 (Hartree)
+scf.eigen.lib             gpusolver
+
+#
+# MD or Geometry Optimization
+#
+
+MD.Type                      EF        # Nomd|Opt|DIIS|NVE|NVT_VS|NVT_NH
+MD.Opt.DIIS.History          3         # default=4
+MD.Opt.StartDIIS             6         # default=5
+MD.Opt.EveryDIIS           10000       # default=10
+MD.maxIter                 100         # default=1
+MD.TimeStep                1.0         # default=0.5 (fs)
+MD.Opt.criterion          1.0e-4       # default=1.0e-4 (Hartree/bohr)
