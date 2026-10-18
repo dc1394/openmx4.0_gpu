@@ -6,6 +6,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
+from mock_hip_sources import stage
 
 root=Path(__file__).resolve().parents[1]
 # Use the same HIP worker simulator as the contraction test. Its MPI
@@ -13,7 +14,7 @@ root=Path(__file__).resolve().parents[1]
 tree=ast.parse((root/"tests/run_gpu_vector_cpu.py").read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body
             if isinstance(n,ast.Assign) and any(getattr(t,"id","")=="prefix" for t in n.targets))
-body=(root/"source/openmx_gpu_task.c").read_text().replace('#include "hip_runtime_compat.h"', '').replace('#include "set_hip_default_device_from_local_rank.h"','')
+body=(root/"source/openmx_gpu_task.c").read_text().replace('#include "openmx_gpu_device.h"', '').replace('#include "hip_runtime_compat.h"', '').replace('#include "set_hip_default_device_from_local_rank.h"','')
 force=(root/"source/Force.c").read_text()
 force=force[force.index("static void Force_Reduction_Kernel("):force.index("static size_t Force2_Kinetic_OpenACC(")]
 body += "\nstatic MPI_Comm mpi_comm_level1=0;\n"+force
@@ -89,6 +90,8 @@ int main(void){
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-task-") as folder:
     p=Path(folder);(p/"mpi.h").write_text("typedef int MPI_Comm;\n#define MPI_COMM_NULL (-1)\n")
+    stage(root, p)
+    (p / "hip_runtime_compat.h").write_text("/* Runtime calls are defined by the fixture prefix. */\n")
     (p/"check.c").write_text(prefix+body+main)
     subprocess.run(shlex.split(os.environ.get("CC","cc"))+[
         "-std=c11","-O1","-g","-Wall","-Wextra","-Wno-unknown-pragmas",

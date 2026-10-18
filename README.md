@@ -18,6 +18,12 @@ dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
 
+Both backends use the same GPU worker, memory-view, density-matrix, dense
+transform, multi-GPU GEMM and MAGMA transaction code in `source/`. The
+`openmx_gpu_*.h` interfaces select native CUDA or HIP APIs at compile time.
+Backend-specific solver policies and OpenACC/OpenMP target kernels retain
+their respective implementations; see [shared code](docs/GPU_BACKENDS.md#共通コードとバックエンド境界).
+
 The NVIDIA build adds MAGMA, which the multi-GPU Cluster and Band solvers
 need, when `nvidia-smi` on the build node lists two or more GPUs. To build
 it on a single-GPU node or on a login node without GPUs for multi-GPU

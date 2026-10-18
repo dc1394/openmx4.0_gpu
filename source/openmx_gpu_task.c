@@ -1,8 +1,11 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
 #include "openmx_gpu_task.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_collective.h"
-#include "set_cuda_default_device_from_local_rank.h"
-#include <cuda_runtime.h>
+
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -69,7 +72,7 @@ static int task_worker(void *opaque,int worker,int phase)
         size_t bytes=task_bytes(t,lo,hi,0,views),results=task_bytes(t,lo,hi,t->inputs,outputs);
         if (bytes==SIZE_MAX || results==SIZE_MAX) return 0;
         w->result[worker]=malloc(results?results:1);
-        if (!w->result[worker] || cudaMalloc((void**)&w->device[worker],bytes?bytes:1)!=cudaSuccess) return 0;
+        if (!w->result[worker] || OpenMXGpuMalloc((void**)&w->device[worker],bytes?bytes:1)!=OPENMX_GPU_SUCCESS) return 0;
         size_t offset=0;
         for (int i=0;i<t->inputs;i++) {
             size_t nb=task_view_bytes(t->view+i,lo,hi);
@@ -78,13 +81,13 @@ static int task_worker(void *opaque,int worker,int phase)
                 size_t nindex=(n+1)*sizeof(size_t),base=v->offsets[lo];
                 size_t *index=malloc(nindex);if (!index) return 0;
                 for (size_t k=0;k<=n;k++) index[k]=v->offsets[lo+k]-base;
-                int ok=cudaMemcpy(w->device[worker]+offset,index,nindex,cudaMemcpyHostToDevice)==cudaSuccess;
+                int ok=OpenMXGpuMemcpy(w->device[worker]+offset,index,nindex,OPENMX_GPU_COPY_HOST_TO_DEVICE)==OPENMX_GPU_SUCCESS;
                 free(index);if (!ok) return 0;
                 size_t data_bytes=(v->offsets[hi]-base)*v->element_bytes;
-                if (data_bytes && cudaMemcpy(w->device[worker]+offset+task_add(0,nindex),
-                    (const unsigned char*)v->data+base*v->element_bytes,data_bytes,cudaMemcpyHostToDevice)!=cudaSuccess) return 0;
-            } else if (nb && cudaMemcpy(w->device[worker]+offset,
-                (const unsigned char*)v->data+lo*v->item_bytes,nb,cudaMemcpyHostToDevice)!=cudaSuccess) return 0;
+                if (data_bytes && OpenMXGpuMemcpy(w->device[worker]+offset+task_add(0,nindex),
+                    (const unsigned char*)v->data+base*v->element_bytes,data_bytes,OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS) return 0;
+            } else if (nb && OpenMXGpuMemcpy(w->device[worker]+offset,
+                (const unsigned char*)v->data+lo*v->item_bytes,nb,OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS) return 0;
             offset=task_add(offset,nb);
         }
     }
@@ -95,10 +98,10 @@ static int task_worker(void *opaque,int worker,int phase)
     }
     else if (phase==OPENMX_GPU_WORKER_COMMIT) {
         size_t input_bytes=task_bytes(t,lo,hi,0,t->inputs),nb=task_bytes(t,lo,hi,t->inputs,outputs);
-        return !nb || cudaMemcpy(w->result[worker],w->device[worker]+input_bytes,nb,cudaMemcpyDeviceToHost)==cudaSuccess;
+        return !nb || OpenMXGpuMemcpy(w->result[worker],w->device[worker]+input_bytes,nb,OPENMX_GPU_COPY_DEVICE_TO_HOST)==OPENMX_GPU_SUCCESS;
     }
     else if (phase==OPENMX_GPU_WORKER_RELEASE) {
-        if (w->device[worker] && cudaFree(w->device[worker])!=cudaSuccess) return 0;
+        if (w->device[worker] && OpenMXGpuFree(w->device[worker])!=OPENMX_GPU_SUCCESS) return 0;
     }
     return 1;
 }

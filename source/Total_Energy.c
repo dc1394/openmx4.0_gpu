@@ -1,3 +1,5 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
 /**********************************************************************
   Total_Energy.c:
 
@@ -18,7 +20,6 @@
 #include "openmx_common.h"
 #include "mpi.h"
 #include <omp.h>
-#include "set_cuda_default_device_from_local_rank.h"
 
 /* the section timers print when OPENMX_BAND_PROFILE=1 (formerly a
    compile-time switch) */
@@ -59,15 +60,30 @@ static void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4]);
 static void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4]);
 static void Energy_Decomposition(double ECE[]);
 static void Energy_Decomposition_CWF(double ECE[]);
+#if OPENMX_GPU_HIP
+static int TotalEnergyUseOpenMP(void);
+void TotalEnergy_EXC_EH1_Grid_OpenMP(int spinmax, double *My_Ena, double *My_Eef,
+#else
 static int TotalEnergyUseOpenACC(void);
 void TotalEnergy_EXC_EH1_Grid_OpenACC(int spinmax, double *My_Ena, double *My_Eef,
+#endif
                                       double *My_EH1, double My_EXC[2]);
+#if OPENMX_GPU_HIP
+void TotalEnergy_Dipole_Grid_OpenMP(int GNs, double *My_E_dpx, double *My_E_dpy,
+#else
 void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy,
+#endif
                                      double *My_E_dpz, double *My_E_dpx_BG,
                                      double *My_E_dpy_BG, double *My_E_dpz_BG);
+#if OPENMX_GPU_HIP
+void TotalEnergy_CWF_Dc_Grid_OpenMP(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
+void TotalEnergy_Exc0_Batch_OpenMP(int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
+void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(int pair_count, int *pair_ban, int *pair_wan2,
+#else
 void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
 void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
 void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int *pair_wan2,
+#endif
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3);
@@ -76,7 +92,11 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int 
 int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
 
 
+#if OPENMX_GPU_HIP
+static int TotalEnergyUseOpenMP(void)
+#else
 static int TotalEnergyUseOpenACC(void)
+#endif
 {
   /* The batched EH0 integrals are spin-independent and the grid
      reductions use the same spinmax<=1 expressions as the host loops
@@ -1038,7 +1058,11 @@ double Calc_Ecore()
 
   if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
     printf("  Force calculation #6%s\n",
+#if OPENMX_GPU_HIP
+           TotalEnergyUseOpenMP() ? " (GPU-accelerated)" : "");fflush(stdout);
+#else
            TotalEnergyUseOpenACC() ? " (GPU-accelerated)" : "");fflush(stdout);
+#endif
   }
 
   /* get Nthrds0 */  
@@ -1382,7 +1406,11 @@ double Calc_EH0(int MD_iter)
     if (pair_ban==NULL || pair_wan2==NULL || pair_has_deriv==NULL ||
         pair_dis==NULL || pair_dirx==NULL || pair_diry==NULL || pair_dirz==NULL ||
         out0==NULL || out1==NULL || out2==NULL || out3==NULL){
+#if OPENMX_GPU_HIP
+      printf("Calc_EH0: malloc failed for OpenMP EH0 pair batch.\n");
+#else
       printf("Calc_EH0: malloc failed for OpenACC EH0 pair batch.\n");
+#endif
       fflush(stdout);
       exit(1);
     }
@@ -1456,7 +1484,11 @@ double Calc_EH0(int MD_iter)
     }
 
     dtime(&Stime_atom);
+#if OPENMX_GPU_HIP
+    TotalEnergy_EH0_TwoCenter_Batch_OpenMP(pair_count, pair_ban, pair_wan2,
+#else
     TotalEnergy_EH0_TwoCenter_Batch_OpenACC(pair_count, pair_ban, pair_wan2,
+#endif
                                             pair_has_deriv, pair_dis,
                                             pair_dirx, pair_diry, pair_dirz,
                                             out0, out1, out2, out3);
@@ -1613,7 +1645,11 @@ double Calc_EH0(int MD_iter)
 
   if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
     printf("  Force calculation #7%s\n",
+#if OPENMX_GPU_HIP
+           TotalEnergyUseOpenMP() ? " (GPU-accelerated)" : "");fflush(stdout);
+#else
            TotalEnergyUseOpenACC() ? " (GPU-accelerated)" : "");fflush(stdout);
+#endif
   }
 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -1943,7 +1979,11 @@ void Calc_EXC_EH1(double ECE[])
 
   dtime(&time0);
   if (scf_eigen_lib_flag == GPUSOLVER){
+#if OPENMX_GPU_HIP
+    TotalEnergy_EXC_EH1_Grid_OpenMP(spinmax, &My_Ena, &My_Eef, &My_EH1, My_EXC);
+#else
     TotalEnergy_EXC_EH1_Grid_OpenACC(spinmax, &My_Ena, &My_Eef, &My_EH1, My_EXC);
+#endif
   }
   else{
     for (BN=0; BN<My_NumGridB_AB; BN++){
@@ -2079,7 +2119,11 @@ void Calc_EXC_EH1(double ECE[])
     sum = 0.0;
 
     if (scf_eigen_lib_flag == GPUSOLVER){
+#if OPENMX_GPU_HIP
+      TotalEnergy_Exc0_Batch_OpenMP(Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+#else
       TotalEnergy_Exc0_Batch_OpenACC(Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+#endif
     }
     else{
 
@@ -2412,7 +2456,11 @@ void Calc_EXC_EH1(double ECE[])
     My_E_dpz_BG = 0.0; 
 
     if (scf_eigen_lib_flag == GPUSOLVER){
+#if OPENMX_GPU_HIP
+      TotalEnergy_Dipole_Grid_OpenMP(GNs, &My_E_dpx, &My_E_dpy, &My_E_dpz,
+#else
       TotalEnergy_Dipole_Grid_OpenACC(GNs, &My_E_dpx, &My_E_dpy, &My_E_dpz,
+#endif
                                       &My_E_dpx_BG, &My_E_dpy_BG, &My_E_dpz_BG);
     }
     else{
@@ -4427,7 +4475,11 @@ void Energy_Decomposition_CWF(double ECE[])
   My_dcEXC[1] = 0.0;
 
   if (scf_eigen_lib_flag == GPUSOLVER){
+#if OPENMX_GPU_HIP
+    TotalEnergy_CWF_Dc_Grid_OpenMP(spinmax, My_dcEH1, My_dcEXC);
+#else
     TotalEnergy_CWF_Dc_Grid_OpenACC(spinmax, My_dcEH1, My_dcEXC);
+#endif
   }
   else{
     for (BN=0; BN<My_NumGridB_AB; BN++){

@@ -1,3 +1,9 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_blas.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
+#include "openmx_gpu_solver.h"
+#include "openmx_gpu_error.h"
 /**********************************************************************************
   Cluster_DFT_Col_LNO.c:
 
@@ -20,18 +26,22 @@
 #include "openmx_common.h"
 #include "openmx_gpusolver_dense_utils.h"
 #include "lapack_prototypes.h"
-#include "set_cuda_default_device_from_local_rank.h"
-#include "set_openacc_device_from_local_rank.h"
+
+
 #include <omp.h>
+#if OPENMX_GPU_HIP
+#include <omp.h>
+#else
 #include <openacc.h>
+#endif
 
 #define  measure_time   0
 
 /* GPU GpuSolver context for Cluster_DFT_Col_LNO (added by H.Kawai, Phase D) */
 typedef struct {
     int                device_id;
-    cublasHandle_t     cublas;
-    cusolverDnHandle_t gpusolver;
+    OpenMXBlasHandle     blas;
+    OpenMXSolverHandle gpusolver;
 } ClusterColLNOGpuSolverCtx;
 
 static ClusterColLNOGpuSolverCtx ClusterColLNO_gpusolver_ctx = {0};
@@ -39,8 +49,8 @@ static ClusterColLNOGpuSolverCtx ClusterColLNO_gpusolver_ctx = {0};
 static void ClusterColLNO_GpuSolver_Destroy(void)
 {
     ClusterColLNOGpuSolverCtx *ctx = &ClusterColLNO_gpusolver_ctx;
-    if (ctx->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
-    if (ctx->cublas != NULL)   wait_cudafunc(cublasDestroy(ctx->cublas));
+    if (ctx->gpusolver != NULL) OpenMXGpuWait(OpenMXSolverDestroy(ctx->gpusolver));
+    if (ctx->blas != NULL)   OpenMXGpuWait(OpenMXBlasDestroy(ctx->blas));
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
 }
@@ -49,24 +59,30 @@ static void ClusterColLNO_GpuSolver_Init(void)
 {
     ClusterColLNOGpuSolverCtx *ctx = &ClusterColLNO_gpusolver_ctx;
     int current_device;
-    wait_cudafunc(cudaGetDevice(&current_device));
-    if (ctx->device_id == current_device && ctx->cublas != NULL) return;
-    if (ctx->cublas != NULL) ClusterColLNO_GpuSolver_Destroy();
+    OpenMXGpuWait(OpenMXGpuGetDevice(&current_device));
+    if (ctx->device_id == current_device && ctx->blas != NULL) return;
+    if (ctx->blas != NULL) ClusterColLNO_GpuSolver_Destroy();
     ctx->device_id = current_device;
-    wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
+    OpenMXGpuWait(OpenMXBlasCreate(&ctx->blas));
+    OpenMXGpuWait(OpenMXSolverCreate(&ctx->gpusolver));
 }
 
-static void ClusterColLNO_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+#if OPENMX_GPU_HIP
+static void ClusterColLNO_GEMMul8Dgemm_OpenMP(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k,
+#else
+static void ClusterColLNO_GEMMul8Dgemm_OpenACC(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k,
+#endif
                                                double const * A, double const * B, double * C)
 {
     ClusterColLNO_GpuSolver_Init();
+#if !OPENMX_GPU_HIP
 #pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
+#endif
     {
         double const alpha = 1.0;
         double const beta  = 0.0;
-        wait_cudafunc(openmx_gemmul8Dgemm(ClusterColLNO_gpusolver_ctx.cublas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
+        OpenMXGpuWait(openmx_gemmul8Dgemm(ClusterColLNO_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
     }
 }
 
@@ -193,8 +209,8 @@ double Cluster_DFT_Col_LNO(
 
   /* GPU dispatch (added by H.Kawai): assign CUDA/OpenACC device when GPUSOLVER is requested */
   if (scf_eigen_lib_flag == GPUSOLVER && n >= GPU_CPU_SWITCH_NUM) {
-      set_cuda_default_device_from_local_rank();
-      set_openacc_nvidia_device_from_local_rank();
+      OpenMXGpuBindRank();
+      OpenMXOffloadBindRank();
   }
 
   /* for time */
@@ -321,7 +337,11 @@ double Cluster_DFT_Col_LNO(
 
     else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=TNum_LNOs && na_rows==TNum_LNOs && na_cols==TNum_LNOs){
       OpenMX_GpuSolver_DenseDsyevx_1based(Cs,Ss_LNO[spin],ko[0],TNum_LNOs,TNum_LNOs,
+#if OPENMX_GPU_HIP
+                                         "Cluster_DFT_Col_LNO overlap GPU solver");
+#else
                                          "Cluster_DFT_Col_LNO overlap GPUSOLVER");
+#endif
     }
 
     else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -567,7 +587,11 @@ double Cluster_DFT_Col_LNO(
   }
   else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=TNum_LNOs && na_rows==TNum_LNOs && na_cols==TNum_LNOs){
     OpenMX_GpuSolver_DenseDsyevx_1based(Hs,Cs,ko[spin],TNum_LNOs,MaxN,
+#if OPENMX_GPU_HIP
+                                       "Cluster_DFT_Col_LNO Hamiltonian GPU solver");
+#else
                                        "Cluster_DFT_Col_LNO Hamiltonian GPUSOLVER");
+#endif
   }
 
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){

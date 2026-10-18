@@ -1,7 +1,10 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
 /**********************************************************************
   elpa_cosma_bridge.c
 
-  Implementation of the OpenMX <-> ELPA (2026.02, NVIDIA GPU kernels)
+  Implementation of the OpenMX <-> ELPA (2026.02, native GPU kernels)
   bridge used by scf.eigen.lib=gpusolver2.  See elpa_cosma_bridge.h.
 ***********************************************************************/
 
@@ -9,10 +12,12 @@
 
 #include <elpa/elpa.h>
 
-#include <cuda_runtime.h>
-#include "set_cuda_default_device_from_local_rank.h"
+
 #include "openmx_stdout_level.h"
 #include "openmx_host_memory.h"
+#if OPENMX_GPU_HIP
+#include "openmx_mgpu_runtime.h"
+#endif
 #include <mpi.h>
 #include <limits.h>
 #include <stdint.h>
@@ -167,21 +172,28 @@ static int gs2_ranks_on_device(MPI_Comm comm)
     int mydev = -1, ndev = 0, cnt = 1, est = 1, i, nl = 1;
     MPI_Comm shm;
 
-    if (cudaGetDevice(&mydev) != cudaSuccess) mydev = -1;
+    if (OpenMXGpuGetDevice(&mydev) != OPENMX_GPU_SUCCESS) mydev = -1;
 
     /* CUDA ordinals are process-local; use the physical UUID even when
        ranks see the allocated GPUs in different orders. */
     if (MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shm)
         == MPI_SUCCESS) {
+#if !OPENMX_GPU_HIP
         struct cudaDeviceProp prop;
+#endif
         unsigned char uuid[16], *devices;
         int census_ok;
         MPI_Comm_size(shm, &nl);
         devices = (unsigned char *)malloc((size_t)nl * sizeof(uuid));
         census_ok = devices != NULL && mydev >= 0 &&
-                    cudaGetDeviceProperties(&prop, mydev) == cudaSuccess;
+#if OPENMX_GPU_HIP
+                    openmx_gpu_physical_uuid(mydev, uuid);
+        if (!census_ok) (void)OpenMXGpuGetLastError();
+#else
+                    cudaGetDeviceProperties(&prop, mydev) == OPENMX_GPU_SUCCESS;
         if (census_ok) memcpy(uuid, prop.uuid.bytes, sizeof(uuid));
-        else (void)cudaGetLastError();
+        else (void)OpenMXGpuGetLastError();
+#endif
         /* All peers must either gather or use the conservative bound. A
            malloc/query failure on just one rank must not strand the rest. */
         MPI_Allreduce(MPI_IN_PLACE, &census_ok, 1, MPI_INT, MPI_MIN, shm);
@@ -202,14 +214,14 @@ static int gs2_ranks_on_device(MPI_Comm comm)
     {
         const int ls = openmx_gpu_local_size_noncollective();
         if (mydev >= 0 &&
-            cudaGetDeviceCount(&ndev) == cudaSuccess && ndev > 0) {
+            OpenMXGpuGetDeviceCount(&ndev) == OPENMX_GPU_SUCCESS && ndev > 0) {
             if (SCF_Gpu_Num > 0 && SCF_Gpu_Num < ndev) ndev = SCF_Gpu_Num;
             for (est = 0, i = 0; i < ls; i++) {
                 if (openmx_gpu_map_rank_to_device(i, ls, ndev) == mydev) est++;
             }
         }
         else {
-            (void)cudaGetLastError();
+            (void)OpenMXGpuGetLastError();
             est = ls;
         }
     }
@@ -243,7 +255,11 @@ static int gs2_gpu_verdict(size_t need, int ranks_on_dev, MPI_Comm comm,
     want_free = gs2_bytes_add(gs2_bytes_mul(need, (size_t)ranks_on_dev), reserve);
     if (current_mode == 0) want_free = gs2_bytes_add(want_free, want_free / 4);
 
-    if (OpenMX_GpuMemGetInfo(&free_b, &total_b) != cudaSuccess) {
+#if OPENMX_GPU_HIP
+    if (OpenMXGpuMemGetInfo(&free_b, &total_b) != OPENMX_GPU_SUCCESS) {
+#else
+    if (OpenMX_GpuMemGetInfo(&free_b, &total_b) != OPENMX_GPU_SUCCESS) {
+#endif
         free_b = 0;
         ok = 0;
     }
@@ -275,6 +291,12 @@ static void gs2_report_mode(MPI_Comm comm, int n, int nev, int gpu,
         printf("<DFT> gpusolver2: ELPA n=%d nev=%d %s %s kernels (OPENMX_GS2_ELPA_GPU)\n",
                n, nev, how, gpu ? "GPU" : "CPU");
     }
+#if OPENMX_GPU_HIP
+    else if (n < 256 && !gpu) {
+        printf("<DFT> gpusolver2: ELPA n=%d nev=%d %s CPU kernels (small matrix, n < 256)\n",
+               n, nev, how);
+    }
+#endif
     else {
         printf("<DFT> %sgpusolver2: ELPA n=%d nev=%d %s %s kernels "
                "(GPU memory: need ~%llu MB/rank x %d ranks/GPU + reserve %llu MB %s free %llu MB)\n",
@@ -300,7 +322,11 @@ static int gs2_elpa_init_once(void)
         int myid = 0;
         MPI_Comm_rank(MPI_COMM_WORLD, &myid);
         if (myid == 0 && OPENMX_STDOUT_LEVEL(2)) {
+#if OPENMX_GPU_HIP
+            printf("<DFT> gpusolver2: ELPA (API %d) with AMD GPU kernels + COSMA initialized\n",
+#else
             printf("<DFT> gpusolver2: ELPA (API %d) with NVIDIA GPU kernels + COSMA initialized\n",
+#endif
                    ELPA_API_VERSION);
             fflush(stdout);
         }
@@ -318,7 +344,11 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     int want_gpu = 1, have_verdict = 0, ranks_on_dev = 1;
     int forced;
     size_t need = 0;
+#if OPENMX_GPU_HIP
+    gs2_mem_details det = {0};
+#else
     gs2_mem_details det;
+#endif
     MPI_Comm comm;
     elpa_t h;
 
@@ -352,6 +382,12 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
             if (forced >= 0) {
                 want_gpu = forced;
                 gs2_det_set_forced(&det);
+#if OPENMX_GPU_HIP
+            }
+            else if (n < 256) {
+                /* same small-solve floor as the first verdict below */
+                want_gpu = 0;
+#endif
             }
             else {
                 want_gpu = gs2_gpu_verdict(gs2_slots[i].need, gs2_slots[i].ranks_on_dev,
@@ -396,6 +432,15 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
             want_gpu = forced;
             gs2_det_set_forced(&det);
         }
+#if OPENMX_GPU_HIP
+        else if (n < 256) {
+            /* tiny solves stay on the CPU kernels: the GPU 2-stage solver
+               cannot win at this size, and ELPA's ROCm layer pins zero-length
+               buffers for them, which hipHostMalloc rejects (CUDA tolerates
+               the same call).  n is global, so every rank agrees. */
+            want_gpu = 0;
+        }
+#endif
         else {
             want_gpu = gs2_gpu_verdict(need, ranks_on_dev, comm, -1, 0, &det);
         }
@@ -426,10 +471,10 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
        central GPUSOLVER initialization (shared rank map, scf.Gpu.Num).
        When the preflight above found too little free device memory, run
        this configuration on ELPA's CPU kernels instead. */
-    if (err == ELPA_OK) elpa_set_integer(h, "nvidia-gpu", want_gpu ? 1 : 0, &err);
+    if (err == ELPA_OK) elpa_set_integer(h, OPENMX_ELPA_GPU_OPTION, want_gpu ? 1 : 0, &err);
     if (err == ELPA_OK && want_gpu) {
         int dev = 0, seterr = ELPA_OK;
-        if (cudaGetDevice(&dev) == cudaSuccess) {
+        if (OpenMXGpuGetDevice(&dev) == OPENMX_GPU_SUCCESS) {
             elpa_set_integer(h, "use_gpu_id", dev, &seterr); /* optional */
         }
     }
@@ -484,7 +529,11 @@ setup_failed:
 static size_t gs2_free_now(void)
 {
     size_t free_b = 0, total_b = 0;
-    if (OpenMX_GpuMemGetInfo(&free_b, &total_b) != cudaSuccess) return 0;
+#if OPENMX_GPU_HIP
+    if (OpenMXGpuMemGetInfo(&free_b, &total_b) != OPENMX_GPU_SUCCESS) return 0;
+#else
+    if (OpenMX_GpuMemGetInfo(&free_b, &total_b) != OPENMX_GPU_SUCCESS) return 0;
+#endif
     return free_b;
 }
 

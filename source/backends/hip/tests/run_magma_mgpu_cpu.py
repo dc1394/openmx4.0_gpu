@@ -10,6 +10,7 @@ import os
 import shlex
 import subprocess
 import tempfile
+from mock_hip_sources import stage
 
 root = Path(__file__).resolve().parents[1]
 hip = r'''
@@ -229,6 +230,7 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-magma-policy-") as folder:
     tmp = Path(folder)
+    stage(root, tmp)
     (tmp / "hip_runtime_api.h").write_text(hip)
     (tmp / "hip_runtime_compat.h").write_text('#include "hip_runtime_api.h"\n')
     (tmp / "openmx_magma_mgpu.cpp").write_text((root / "source/openmx_magma_mgpu.cpp").read_text())

@@ -1,0 +1,123 @@
+#ifndef OPENMX_GPU_RUNTIME_H
+#define OPENMX_GPU_RUNTIME_H
+
+#include "openmx_gpu_backend.h"
+
+/* Compile-time aliases preserve the native ABI, status codes and ownership.
+   Backend policies (memory accounting, solver retries and offload) stay
+   in their implementations. No device is initialized by this header. */
+#if OPENMX_GPU_HIP
+#include "hip_runtime_compat.h"
+#define OpenMXGpuError hipError_t
+#define OpenMXGpuStream hipStream_t
+#define OPENMX_GPU_SUCCESS hipSuccess
+#define OPENMX_GPU_COPY_HOST_TO_DEVICE hipMemcpyHostToDevice
+#define OPENMX_GPU_COPY_DEVICE_TO_HOST hipMemcpyDeviceToHost
+#define OPENMX_GPU_COPY_DEVICE_TO_DEVICE hipMemcpyDeviceToDevice
+#define OPENMX_GPU_DEVICE_MEMORY hipMemoryTypeDevice
+#define OPENMX_GPU_PEER_ALREADY_ENABLED hipErrorPeerAccessAlreadyEnabled
+#define OpenMXGpuDeviceCanAccessPeer hipDeviceCanAccessPeer
+#define OpenMXGpuDeviceEnablePeerAccess hipDeviceEnablePeerAccess
+#define OpenMXGpuDeviceReset hipDeviceReset
+#define OpenMXGpuDeviceSynchronize hipDeviceSynchronize
+#define OpenMXGpuFree hipFree
+#define OpenMXGpuGetDevice hipGetDevice
+#define OpenMXGpuGetDeviceCount hipGetDeviceCount
+#define OpenMXGpuGetErrorString hipGetErrorString
+#define OpenMXGpuGetLastError hipGetLastError
+#define OpenMXGpuMalloc hipMalloc
+#define OpenMXGpuMemGetInfo hipMemGetInfo
+#define OpenMXGpuMemcpy hipMemcpy
+#define OpenMXGpuMemcpyPeer hipMemcpyPeer
+#define OpenMXGpuMemset hipMemset
+#define OpenMXGpuPointerGetAttributes hipPointerGetAttributes
+#define OpenMXGpuSetDevice hipSetDevice
+#define OpenMXGpuDeviceGetPCIBusId hipDeviceGetPCIBusId
+#define OpenMXGpuEventCreateWithFlags hipEventCreateWithFlags
+#define OpenMXGpuEventDestroy hipEventDestroy
+#define OpenMXGpuEventRecord hipEventRecord
+#define OpenMXGpuFreeHost hipFreeHost
+#define OpenMXGpuGetDeviceProperties hipGetDeviceProperties
+#define OpenMXGpuHostAlloc hipHostAlloc
+#define OpenMXGpuMemcpy2D hipMemcpy2D
+#define OpenMXGpuMemcpy2DAsync hipMemcpy2DAsync
+#define OpenMXGpuMemcpy3DPeerAsync hipMemcpy3DPeerAsync
+#define OpenMXGpuMemcpyAsync hipMemcpyAsync
+#define OpenMXGpuStreamCreateWithFlags hipStreamCreateWithFlags
+#define OpenMXGpuStreamDestroy hipStreamDestroy
+#define OpenMXGpuStreamIsCapturing hipStreamIsCapturing
+#define OpenMXGpuStreamSynchronize hipStreamSynchronize
+#define OpenMXGpuStreamWaitEvent hipStreamWaitEvent
+#define OpenMXGpuDataType hipDataType
+#define OpenMXGpuEvent hipEvent_t
+#define OpenMXGpuPeerCopy3D hipMemcpy3DPeerParms
+#define OpenMXGpuCaptureStatus hipStreamCaptureStatus
+#define OPENMX_GPU_EVENT_DISABLE_TIMING hipEventDisableTiming
+#define OPENMX_GPU_HOST_ALLOC_PORTABLE hipHostAllocPortable
+#define OPENMX_GPU_CAPTURE_NONE hipStreamCaptureStatusNone
+#define OPENMX_GPU_STREAM_NONBLOCKING hipStreamNonBlocking
+#define OPENMX_GPU_REAL64 HIP_R_64F
+#define OPENMX_GPU_COMPLEX64 HIP_C_64F
+#define OpenMXGpuMakePitchedPtr make_hipPitchedPtr
+#define OpenMXGpuMakeExtent make_hipExtent
+#define OpenMXGpuPointerAttributes hipPointerAttribute_t
+#define OPENMX_GPU_OUT_OF_MEMORY ((hipError_t)2)
+#else
+#include <cuda_runtime.h>
+#define OpenMXGpuError cudaError_t
+#define OpenMXGpuStream cudaStream_t
+#define OPENMX_GPU_SUCCESS cudaSuccess
+#define OPENMX_GPU_COPY_HOST_TO_DEVICE cudaMemcpyHostToDevice
+#define OPENMX_GPU_COPY_DEVICE_TO_HOST cudaMemcpyDeviceToHost
+#define OPENMX_GPU_COPY_DEVICE_TO_DEVICE cudaMemcpyDeviceToDevice
+#define OPENMX_GPU_DEVICE_MEMORY cudaMemoryTypeDevice
+#define OPENMX_GPU_PEER_ALREADY_ENABLED cudaErrorPeerAccessAlreadyEnabled
+#define OpenMXGpuDeviceCanAccessPeer cudaDeviceCanAccessPeer
+#define OpenMXGpuDeviceEnablePeerAccess cudaDeviceEnablePeerAccess
+#define OpenMXGpuDeviceReset cudaDeviceReset
+#define OpenMXGpuDeviceSynchronize cudaDeviceSynchronize
+#define OpenMXGpuFree cudaFree
+#define OpenMXGpuGetDevice cudaGetDevice
+#define OpenMXGpuGetDeviceCount cudaGetDeviceCount
+#define OpenMXGpuGetErrorString cudaGetErrorString
+#define OpenMXGpuGetLastError cudaGetLastError
+#define OpenMXGpuMalloc cudaMalloc
+#define OpenMXGpuMemGetInfo cudaMemGetInfo
+#define OpenMXGpuMemcpy cudaMemcpy
+#define OpenMXGpuMemcpyPeer cudaMemcpyPeer
+#define OpenMXGpuMemset cudaMemset
+#define OpenMXGpuPointerGetAttributes cudaPointerGetAttributes
+#define OpenMXGpuSetDevice cudaSetDevice
+#define OpenMXGpuDeviceGetPCIBusId cudaDeviceGetPCIBusId
+#define OpenMXGpuEventCreateWithFlags cudaEventCreateWithFlags
+#define OpenMXGpuEventDestroy cudaEventDestroy
+#define OpenMXGpuEventRecord cudaEventRecord
+#define OpenMXGpuFreeHost cudaFreeHost
+#define OpenMXGpuGetDeviceProperties cudaGetDeviceProperties
+#define OpenMXGpuHostAlloc cudaHostAlloc
+#define OpenMXGpuMemcpy2D cudaMemcpy2D
+#define OpenMXGpuMemcpy2DAsync cudaMemcpy2DAsync
+#define OpenMXGpuMemcpy3DPeerAsync cudaMemcpy3DPeerAsync
+#define OpenMXGpuMemcpyAsync cudaMemcpyAsync
+#define OpenMXGpuStreamCreateWithFlags cudaStreamCreateWithFlags
+#define OpenMXGpuStreamDestroy cudaStreamDestroy
+#define OpenMXGpuStreamIsCapturing cudaStreamIsCapturing
+#define OpenMXGpuStreamSynchronize cudaStreamSynchronize
+#define OpenMXGpuStreamWaitEvent cudaStreamWaitEvent
+#define OpenMXGpuDataType cudaDataType
+#define OpenMXGpuEvent cudaEvent_t
+#define OpenMXGpuPeerCopy3D cudaMemcpy3DPeerParms
+#define OpenMXGpuCaptureStatus cudaStreamCaptureStatus
+#define OPENMX_GPU_EVENT_DISABLE_TIMING cudaEventDisableTiming
+#define OPENMX_GPU_HOST_ALLOC_PORTABLE cudaHostAllocPortable
+#define OPENMX_GPU_CAPTURE_NONE cudaStreamCaptureStatusNone
+#define OPENMX_GPU_STREAM_NONBLOCKING cudaStreamNonBlocking
+#define OPENMX_GPU_REAL64 CUDA_R_64F
+#define OPENMX_GPU_COMPLEX64 CUDA_C_64F
+#define OpenMXGpuMakePitchedPtr make_cudaPitchedPtr
+#define OpenMXGpuMakeExtent make_cudaExtent
+#define OpenMXGpuPointerAttributes struct cudaPointerAttributes
+#define OPENMX_GPU_OUT_OF_MEMORY cudaErrorMemoryAllocation
+#endif
+
+#endif /* OPENMX_GPU_RUNTIME_H */

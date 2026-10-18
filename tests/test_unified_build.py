@@ -83,6 +83,19 @@ class UnifiedBuildTest(unittest.TestCase):
             if Path(name).suffix in COMPILE_SUFFIXES:
                 with self.subTest(shared=name):
                     self.assertEqual(digest(hip / name), self.manifest["import_sha256"][name])
+        # Refactored implementations have one canonical copy, selected by both
+        # backends; they are no longer immutable AMD import snapshots.
+        integrated = self.manifest.get("integrated_shared", [])
+        self.assertEqual(len(integrated), len(set(integrated)))
+        self.assertFalse(set(integrated).intersection(self.manifest["shared"]))
+        self.assertFalse(set(integrated).intersection(self.manifest["overrides"]))
+        for name in integrated:
+            with self.subTest(integrated=name):
+                canonical = ROOT / "source" / name
+                self.assertEqual((cuda / name).resolve(), canonical)
+                self.assertEqual((hip / name).resolve(), canonical)
+                self.assertFalse((HIP / "src" / name).exists())
+                self.assertFalse((HIP / "include" / name).exists())
         amd_sources = (set(self.manifest["shared"]) | set(self.manifest["overrides"]) |
                        set(self.manifest.get("integrated_shared", [])))
         for source in (ROOT / "source").iterdir():
@@ -210,6 +223,26 @@ class UnifiedBuildTest(unittest.TestCase):
                     self.assertIn(ROOT, (ROOT / relative).resolve().parents)
                     self.assertTrue((ROOT / relative).is_file())
             self.assertNotIn("openmx4.0_amdgpu", (build / "selected-sources.json").read_text())
+
+    def test_preparation_migrates_removed_hip_overrides(self):
+        build = self.workspace / "hip-migration"
+        self.assertEqual(self.prepare(build, "HIP").returncode, 0)
+        stage = build / "native" / "source"
+        name = "openmx_gpu_task.c"
+        old = "source/backends/hip/src/" + name
+        self.assertFalse((ROOT / old).exists())
+        (stage / name).unlink()
+        (stage / name).symlink_to(ROOT / old)
+        record = build / "selected-sources.json"
+        previous = json.loads(record.read_text())
+        previous["sources"][name] = old
+        record.write_text(json.dumps(previous))
+        artifact = stage / "keep-existing.o"
+        artifact.write_bytes(b"native build output")
+        completed = self.prepare(build, "HIP")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual((stage / name).resolve(), ROOT / "source" / name)
+        self.assertEqual(artifact.read_bytes(), b"native build output")
 
     @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
     def test_native_object_recipes_preserve_each_backend_toolchain(self):

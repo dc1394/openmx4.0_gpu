@@ -1,8 +1,11 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
 #include "openmx_gpu_bilinear.h"
 #include "openmx_gpu_collective.h"
 #include "openmx_gpu_workers.h"
-#include "set_cuda_default_device_from_local_rank.h"
-#include <cuda_runtime.h>
+
+
 #include <stdlib.h>
 
 typedef struct {
@@ -47,26 +50,40 @@ static void bilinear_kernel(const PackedSource *host,const void *device,double *
     const uint64_t *ptr=(const uint64_t*)(base+sizeof(OpenMXBilinearHeader));
     const OpenMXBilinearIndex *terms=(const OpenMXBilinearIndex*)(ptr+n+1);
     const double *orb=(const double*)(terms+nt),*dm=orb+host->h.orbitals;
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for thread_limit(128) is_device_ptr(ptr,terms,orb,dm,output)
+#else
 #pragma acc parallel loop gang vector_length(128) deviceptr(ptr,terms,orb,dm,output)
+#endif
     for (size_t row=0;row<n;row++) {
         double sums[4]={0,0,0,0};
+#if !OPENMX_GPU_HIP
 #pragma acc loop seq
+#endif
         for (uint64_t k=ptr[row];k<ptr[row+1];k++) {
             OpenMXBilinearIndex t=terms[k];
+#if !OPENMX_GPU_HIP
 #pragma acc loop seq
+#endif
             for (int spin=0;spin<spins;spin++) {
                 double value=0;
+#if !OPENMX_GPU_HIP
 #pragma acc loop seq
+#endif
                 for (int i=0;i<t.n0;i++) {
                     double inner=0;
+#if !OPENMX_GPU_HIP
 #pragma acc loop seq
+#endif
                     for (int j=0;j<t.n1;j++) inner+=orb[t.right+j]*dm[t.matrix+((size_t)spin*t.n0+i)*t.n1+j];
                     value+=orb[t.left+i]*inner;
                 }
                 sums[spin]+=value*t.scale[spin];
             }
         }
+#if !OPENMX_GPU_HIP
 #pragma acc loop seq
+#endif
         for (int spin=0;spin<spins;spin++) output[row*(size_t)spins+spin]=(negative && spin==3)?-sums[spin]:sums[spin];
     }
 }
@@ -101,15 +118,15 @@ static int bilinear_worker(void *context,int worker,int phase)
     const size_t outputs=(size_t)p.h.rows*p.h.spins*sizeof(double);
     if (phase==OPENMX_GPU_WORKER_PREPARE) {
         w->result[worker]=malloc(outputs?outputs:1);
-        if (!w->result[worker] || cudaMalloc(&w->device[worker],bytes+outputs)!=cudaSuccess) return 0;
-        return cudaMemcpy(w->device[worker],w->packet[worker],bytes,cudaMemcpyHostToDevice)==cudaSuccess;
+        if (!w->result[worker] || OpenMXGpuMalloc(&w->device[worker],bytes+outputs)!=OPENMX_GPU_SUCCESS) return 0;
+        return OpenMXGpuMemcpy(w->device[worker],w->packet[worker],bytes,OPENMX_GPU_COPY_HOST_TO_DEVICE)==OPENMX_GPU_SUCCESS;
     }
     if (phase==OPENMX_GPU_WORKER_EXECUTE)
         bilinear_kernel(&p,w->device[worker],(double*)((unsigned char*)w->device[worker]+bytes));
     else if (phase==OPENMX_GPU_WORKER_COMMIT)
-        return cudaMemcpy(w->result[worker],(unsigned char*)w->device[worker]+bytes,outputs,cudaMemcpyDeviceToHost)==cudaSuccess;
+        return OpenMXGpuMemcpy(w->result[worker],(unsigned char*)w->device[worker]+bytes,outputs,OPENMX_GPU_COPY_DEVICE_TO_HOST)==OPENMX_GPU_SUCCESS;
     else if (phase==OPENMX_GPU_WORKER_RELEASE) {
-        if (w->device[worker] && cudaFree(w->device[worker])!=cudaSuccess) return 0;
+        if (w->device[worker] && OpenMXGpuFree(w->device[worker])!=OPENMX_GPU_SUCCESS) return 0;
     }
     return 1;
 }

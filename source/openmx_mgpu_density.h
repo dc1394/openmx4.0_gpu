@@ -1,5 +1,8 @@
 #ifndef OPENMX_MGPU_DENSITY_H
 #define OPENMX_MGPU_DENSITY_H
+
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_blas.h"
 /* Included after openmx_common.h. Eigenvectors are state-major within each
    basis column (ldv=n). The host result is P=V^H diag(weight) V. The streamed
    GEMM keeps both the vector panel and the dense DM off the owner GPU. */
@@ -20,7 +23,7 @@ static int OpenMX_MgpuDensityHost(int n,int occupied,const double *weight,
         dcomplex x=v[(size_t)j*n+k];
         weighted[(size_t)j*occupied+k]=(dcomplex){weight[k]*x.r,weight[k]*x.i};
     }
-    int ok=openmx_mgpu_host_zgemm(CUBLAS_OP_C,CUBLAS_OP_N,n,n,occupied,
+    int ok=openmx_mgpu_host_zgemm(OPENMX_BLAS_OP_C,OPENMX_BLAS_OP_N,n,n,occupied,
                                  weighted,occupied,v,n,p,n);
     free(weighted);
     return ok;

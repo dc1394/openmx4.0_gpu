@@ -2,6 +2,7 @@
 """Sparse real/complex DM recovery packets, phases, padding, and CPU fallback."""
 import ast,os,shlex,subprocess,tempfile
 from pathlib import Path
+from mock_hip_sources import stage
 root=Path(__file__).resolve().parents[1]
 tree=ast.parse((root/'tests/run_gpu_vector_cpu.py').read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(getattr(t,'id','')=='prefix' for t in n.targets))
@@ -88,6 +89,9 @@ typedef int MPI_Comm;
 static int MPI_Allreduce(void *s,void *r,int n,int type,int op,MPI_Comm comm){return 0;}
 static int MPI_Abort(MPI_Comm c,int err){abort();}
 ''')
+ stage(root, p)
+ (p/"hip_runtime_compat.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
+ (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
  (p/'check.c').write_text(prefix+stub+body+main)
  subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),'-lm','-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True,timeout=60)

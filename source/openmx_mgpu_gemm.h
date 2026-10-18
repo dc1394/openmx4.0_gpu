@@ -1,8 +1,9 @@
 #ifndef OPENMX_MGPU_GEMM_H
 #define OPENMX_MGPU_GEMM_H
 
-#include <cublas_v2.h>
-#include <cuComplex.h>
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_blas.h"
+#include "openmx_gpu_complex.h"
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -20,29 +21,29 @@ extern "C" {
  * All op(A)/op(B) N/T/C combinations and padded column-major strides work.
  * Output tiles retain the complete K dimension; there is no split-K sum.
  */
-int openmx_mgpuDgemmTry(cublasHandle_t handle, int ngpu, const int *devices,
-                       cublasOperation_t transa, cublasOperation_t transb,
+int openmx_mgpuDgemmTry(OpenMXBlasHandle handle, int ngpu, const int *devices,
+                       OpenMXBlasOperation transa, OpenMXBlasOperation transb,
                        int m, int n, int k, const double *alpha,
                        const double *a, int lda, const double *b, int ldb,
-                       const double *beta, double *c, int ldc, cublasStatus_t *status);
-int openmx_mgpuZgemmTry(cublasHandle_t handle, int ngpu, const int *devices,
-                       cublasOperation_t transa, cublasOperation_t transb,
-                       int m, int n, int k, const cuDoubleComplex *alpha,
-                       const cuDoubleComplex *a, int lda, const cuDoubleComplex *b, int ldb,
-                       const cuDoubleComplex *beta, cuDoubleComplex *c, int ldc, cublasStatus_t *status);
+                       const double *beta, double *c, int ldc, OpenMXBlasStatus *status);
+int openmx_mgpuZgemmTry(OpenMXBlasHandle handle, int ngpu, const int *devices,
+                       OpenMXBlasOperation transa, OpenMXBlasOperation transb,
+                       int m, int n, int k, const OpenMXGpuComplex *alpha,
+                       const OpenMXGpuComplex *a, int lda, const OpenMXGpuComplex *b, int ldb,
+                       const OpenMXGpuComplex *beta, OpenMXGpuComplex *c, int ldc, OpenMXBlasStatus *status);
 
 /* Capacity path: A/B/C and alpha/beta are host pointers. Only bounded
  * operand/output tiles reside on each worker GPU; the transaction is in
  * host memory. The same untouched-C/handled-error contract applies. */
 int openmx_mgpuDgemmHostTry(int ngpu, const int *devices,
-    cublasOperation_t ta, cublasOperation_t tb, int m, int n, int k,
+    OpenMXBlasOperation ta, OpenMXBlasOperation tb, int m, int n, int k,
     const double *alpha, const double *a, int lda, const double *b, int ldb,
-    const double *beta, double *c, int ldc, cublasStatus_t *status);
+    const double *beta, double *c, int ldc, OpenMXBlasStatus *status);
 int openmx_mgpuZgemmHostTry(int ngpu, const int *devices,
-    cublasOperation_t ta, cublasOperation_t tb, int m, int n, int k,
-    const cuDoubleComplex *alpha, const cuDoubleComplex *a, int lda,
-    const cuDoubleComplex *b, int ldb, const cuDoubleComplex *beta,
-    cuDoubleComplex *c, int ldc, cublasStatus_t *status);
+    OpenMXBlasOperation ta, OpenMXBlasOperation tb, int m, int n, int k,
+    const OpenMXGpuComplex *alpha, const OpenMXGpuComplex *a, int lda,
+    const OpenMXGpuComplex *b, int ldb, const OpenMXGpuComplex *beta,
+    OpenMXGpuComplex *c, int ldc, OpenMXBlasStatus *status);
 
 /* Existing bridge entry points must skip multi-GPU dispatch while this is
  * true. Workers may call that bridge to preserve GEMMul8 precision controls.
@@ -65,6 +66,7 @@ void openmx_mgpuGemmRelease(void);
 /* Optional per-thread, nestable host-GEMM sequence. Reuse pinned staging
  * within the existing workspace/host budgets until the outer End. Call only
  * between synchronous Try operations. End also applies on failed sequences. */
+#if !OPENMX_GPU_HIP
 void openmx_mgpuGemmStagingBegin(void);
 void openmx_mgpuGemmStagingEnd(void);
 
@@ -83,6 +85,7 @@ int openmx_mgpuRefineProject(void *workspace,const void *a,const void *x,
 int openmx_mgpuRefineUpdate(void *workspace,const void *e,void *x);
 int openmx_mgpuRefineRelease(void *workspace);
 
+#endif
 #ifdef __cplusplus
 }
 #endif

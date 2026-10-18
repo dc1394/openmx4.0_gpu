@@ -1,3 +1,4 @@
+#include "openmx_gpu_backend.h"
 /**********************************************************************
     Eigen_lapack.c:
 
@@ -27,7 +28,11 @@ static void Eigen_lapack_r(double **a, double *ko, int n, int EVmax);
 static void Eigen_HHQR(double **ac, double *ko, int n, int EVmax);
 static void Eigen_HH(double **ac, double *ko, int n, int EVmax);
 static void Eigen_gpusolver_x(double ** a, double * ko, int n, int EVmax);
+#if OPENMX_GPU_HIP
+static void Eigen_gpusolver_x_openmp(double ** a, double * ko, int n, int EVmax);
+#else
 static void Eigen_gpusolver_x_openacc(double ** a, double * ko, int n, int EVmax);
+#endif
 
 void Eigen_lapack(double **a, double *ko, int n, int EVmax)
 {
@@ -1575,9 +1580,16 @@ static void Eigen_gpusolver_x(double ** a, double * ko, int n0, int EVmax)
 
     int const info = gpusolver_Syevdx(A, ko, n, EVmax);
 
+    /* a positive info (no convergence) or a non-finite result is as fatal
+       as an error; nothing has been stored yet */
     if (info != 0) {
         free(A);
+#if OPENMX_GPU_HIP
+        fprintf(stderr, "Eigen_gpusolver_x: GPU eigensolver failed, info=%d\n", info);
+        fflush(stderr);
+#else
         fprintf(stderr, "Real GPU eigensolver failed, info=%d\n", info);
+#endif
         MPI_Abort(mpi_comm_level1, 1);
         return;
     }
@@ -1597,44 +1609,78 @@ static void Eigen_gpusolver_x(double ** a, double * ko, int n0, int EVmax)
     free(A);
 }
 
+#if OPENMX_GPU_HIP
+void Eigen_gpusolver_x_openmp(double ** a, double * ko, int n0, int EVmax)
+#else
 void Eigen_gpusolver_x_openacc(double ** a, double * ko, int n0, int EVmax)
+#endif
 {
     int       info;
     int const n = n0;
 
     double * A = (double *)malloc(sizeof(double) * n * n);
 
+#if !OPENMX_GPU_HIP
 #pragma acc data present(a[0 : n][0 : n], ko[0 : n])
 #pragma acc data create(A[0 : n * n])
+#endif
     {
+#if OPENMX_GPU_HIP
+#pragma omp parallel for collapse(2)
+#else
 #pragma acc kernels
 #pragma acc loop independent
+#endif
         for (int i = 0; i < n; i++) {
+#if !OPENMX_GPU_HIP
 #pragma acc loop independent
+#endif
             for (int j = 0; j < n; j++) {
                 A[i * n + j] = a[i + 1][j + 1];
             }
         }
 
+#if OPENMX_GPU_HIP
+        info = gpusolver_Syevdx_openmp(A, ko, n, EVmax);
+#else
         info = gpusolver_Syevdx_openacc(A, ko, n, EVmax);
+#endif
 
         if (info != 0) {
+#if OPENMX_GPU_HIP
+            free(A);
+            fprintf(stderr, "Eigen_gpusolver_x_openmp: GPU eigensolver failed, info=%d\n", info);
+            fflush(stderr);
+#else
             fprintf(stderr, "Real OpenACC eigensolver failed, info=%d\n", info);
+#endif
             MPI_Abort(mpi_comm_level1, 1);
+#if OPENMX_GPU_HIP
+            return;
+#else
             exit(10);
+#endif
         }
 
+#if OPENMX_GPU_HIP
+#pragma omp parallel for collapse(2)
+#else
 #pragma acc kernels
 #pragma acc loop independent
+#endif
         for (int i = 0; i < EVmax; i++) {
+#if !OPENMX_GPU_HIP
 #pragma acc loop independent
+#endif
             for (int j = 0; j < n; j++) {
                 a[j + 1][i + 1] = A[i * n + j];
             }
         }
 
+#if !OPENMX_GPU_HIP
 #pragma acc kernels
 #pragma acc loop seq
+#endif
         for (int i = EVmax; i >= 1; i--) {
             ko[i] = ko[i - 1];
         }
@@ -1643,20 +1689,37 @@ void Eigen_gpusolver_x_openacc(double ** a, double * ko, int n0, int EVmax)
     free(A);
 }
 
+#if OPENMX_GPU_HIP
+void Eigen_gpusolver_x_openmp2(double * a, double * ko, int n0, int EVmax)
+#else
 void Eigen_gpusolver_x_openacc2(double * a, double * ko, int n0, int EVmax)
+#endif
 {
+#if OPENMX_GPU_HIP
+    int const info = gpusolver_Syevdx_openmp(a, ko, n0, EVmax);
+#else
     int info = gpusolver_Syevdx_openacc(a, ko, n0, EVmax);
+#endif
 
     if (info != 0) {
+#if OPENMX_GPU_HIP
+        fprintf(stderr, "Eigen_gpusolver_x_openmp2: GPU eigensolver failed, info=%d\n", info);
+        fflush(stderr);
+#else
         fprintf(stderr, "Eigen_gpusolver_x_openacc2: eigensolver failed, info=%d\n", info);
+#endif
         MPI_Abort(mpi_comm_level1, 1);
         return;
     }
 
+#if !OPENMX_GPU_HIP
 #pragma acc data present(ko[0 : n0 + 1])
+#endif
     {
+#if !OPENMX_GPU_HIP
 #pragma acc kernels
 #pragma acc loop seq
+#endif
         for (int i = n0; i >= 1; i--) {
             ko[i] = ko[i - 1];
         }
@@ -1677,7 +1740,12 @@ void Eigen_gpusolver_d(double ** a, double * ko, int n, int EVmax)
 
     if (info != 0) {
         free(A);
+#if OPENMX_GPU_HIP
+        fprintf(stderr, "Eigen_gpusolver_d: GPU eigensolver failed, info=%d\n", info);
+        fflush(stderr);
+#else
         fprintf(stderr, "Real GPU eigensolver failed, info=%d\n", info);
+#endif
         MPI_Abort(mpi_comm_level1, 1);
         return;
     }

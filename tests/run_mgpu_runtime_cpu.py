@@ -510,6 +510,7 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-mgpu-runtime-") as folder:
     tmp = Path(folder)
+    (tmp / "cuda_runtime.h").write_text('#include "cuda_runtime_api.h"\n')
     for name, text in (("cuda_runtime_api.h", cuda), ("cuComplex.h", complex_header),
                        ("cublas_v2.h", cublas), ("cusolverDn.h", cusolver), ("nvml.h", nvml),
                        ("nvml.cpp", nvml_library), ("test.cpp", main)):

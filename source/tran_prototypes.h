@@ -1,3 +1,5 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_runtime.h"
 #include "f77func.h"
 #ifdef blaswrap
 #define zgemm_ f2c_zgemm
@@ -38,14 +40,25 @@ typedef float Type_Orbs_Grid; /* type of Orbs_Grid */
 #endif
 
 // CUDA API error checking (added by H.Kawai, February 2024)
+#if OPENMX_GPU_HIP
+#define HIP_CHECK(err)                                                            \
+    do {                                                                           \
+        OpenMXGpuError err_ = (err);                                                  \
+        if (err_ != OPENMX_GPU_SUCCESS) {                                                 \
+            fprintf(stderr, "HIP error %d at %s:%d\n", err_, __FILE__, __LINE__); \
+            exit(1);                                                               \
+        }                                                                          \
+    } while (0)
+#else
 #define CUDA_CHECK(err)                                                            \
     do {                                                                           \
-        cudaError_t err_ = (err);                                                  \
-        if (err_ != cudaSuccess) {                                                 \
+        OpenMXGpuError err_ = (err);                                                  \
+        if (err_ != OPENMX_GPU_SUCCESS) {                                                 \
             fprintf(stderr, "CUDA error %d at %s:%d\n", err_, __FILE__, __LINE__); \
             exit(1);                                                               \
         }                                                                          \
     } while (0)
+#endif
 
 int Lapack_LU_Zinverse(int , dcomplex *);
 

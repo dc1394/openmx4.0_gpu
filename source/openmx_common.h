@@ -1,10 +1,19 @@
 #ifndef _OPENMX_COMMON_H_
 #define _OPENMX_COMMON_H_
 
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_blas.h"
+#include "openmx_gpu_complex.h"
+#include "openmx_gpu_runtime.h"
+#include "openmx_gpu_solver.h"
+
 /* CUDA / cuBLAS / cuSOLVER for GPU acceleration (added by H.Kawai) */
-#include <cublas_v2.h>
-#include <cuda_runtime.h>
-#include <cusolverDn.h>
+#if OPENMX_GPU_HIP
+#include <stdio.h>
+#endif
+
+
+
 #include <stdbool.h>
 
 static char Version_OpenMX[30] = "4.0 GPU"; /* version of OpenMX */
@@ -3085,9 +3094,11 @@ double Set_dOrbitals_Grid_xyz(int Cnt_kind,int xyz);
 double Set_Orbitals_Grid(int Cnt_kind);
 double Set_Aden_Grid();
 double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0);
+#if !OPENMX_GPU_HIP
 int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed);
 void Set_Density_Grid_GPU_Invalidate(void);
+#endif
 void diagonalize_nc_density(double **Density_Grid_B0);
 void Data_Grid_Copy_B2C_1(double *data_B, double *data_C); 
 void Data_Grid_Copy_B2C_2(double **data_B, double **data_C); 
@@ -3350,12 +3361,39 @@ double Set_Hamiltonian(char *mode,
                        double *****HNL,
                        double *****CDM,
 		       double *****H);
+#if OPENMX_GPU_HIP
+void Set_Hamiltonian_Set_OpenMP_Rank_Selected(int selected);
+int Set_Hamiltonian_OpenMP_Rank_Is_Selected(void);
+void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
+void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_static);
+void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
+void Mixing_H_Release_GPU(void);
+void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
+size_t OpenMX_GpuPhaseNeed_Max(void);
+size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
+void Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache(void);
+void Set_Density_Grid_GPU_Invalidate(void);
+/* the end of the SCF cycle (DFT.c): the on-the-fly state of the grid
+   integrals and the density's local-mode device buffers go before the
+   forces; Set_Hamiltonian_OTF_Release also at the run boundary */
+void Set_Hamiltonian_OTF_Release(void);
+void Set_Orbitals_Grid_OTF_Release(void);
+void Set_Hamiltonian_OnTheFly_EndCycle(void);
+void Set_Density_Grid_GPU_EndCycle(void);
+int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON,
+                                 double *****CDM, double **Density_Grid_B0,
+                                 double *elapsed);
+void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
+void Cluster_DFT_Col_Release_GPU_Solver(void);
+void Cluster_DFT_NonCol_Release_GPU_Solver(void);
+#else
 void Set_Hamiltonian_Set_OpenACC_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenACC_Rank_Is_Selected(void);
 void Set_Hamiltonian_Set_OpenACC_Work_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenACC_Work_Rank_Is_Selected(void);
 void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(void);
 void Set_Hamiltonian_Release_OpenACC_DeviceCache(void);
+#endif
 void Divide_Conquer_Release_GPU_SCache(void);
 void Krylov_Release_GPU_KUCache(void);
 /* Release geometry-dependent GPU caches between inputs in a test suite. */
@@ -3366,9 +3404,11 @@ void Cluster_DFT_NonCol_Release_GPU_Caches(void);
 void Divide_Conquer_Release_GPU_Caches(void);
 void Divide_Conquer_LNO_Release_GPU_Caches(void);
 void Krylov_Release_GPU_Caches(void);
+#if !OPENMX_GPU_HIP
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
 size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
+#endif
 
 /* Read-only view of Set_Hamiltonian's matrix-elements tables (the central
    full-sphere orbitals, the FNAN-layout neighbour orbitals and the overlap
@@ -3400,6 +3440,7 @@ typedef struct {
 
 int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables);
 int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind);
+#if !OPENMX_GPU_HIP
 int Set_Hamiltonian_OnTheFly_DensityPossible(int Cnt_kind, int myid);
 void Set_Hamiltonian_OnTheFly_EndCycle(void);
 void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks);
@@ -3421,6 +3462,7 @@ void Set_Density_Grid_GPU_Local_Report(int path, int failed);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
 void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
+#endif
 int Set_Hamiltonian_GpuSolver_Packed_CacheReady(void);
 int Set_Hamiltonian_GpuSolver_Packed_OwnsCache(void);
 int Set_Hamiltonian_GpuSolver_Packed_OrderMode(void);
@@ -3638,6 +3680,7 @@ double Cluster_DFT_NonCol(
 		   int size_H1, 
                    dcomplex *EVec1,
                    double *Work1);
+#if !OPENMX_GPU_HIP
 
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
 int Cluster_DFT_NonCol_RefineLastRefined(void);
@@ -3658,6 +3701,7 @@ double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
                    int *is2,
                    int *ie2,
                    dcomplex *EVec1);
+#endif
 
 
 
@@ -4165,39 +4209,110 @@ void Eigen_lapack(double **a, double *ko, int n, int EVmax);
 void Eigen_lapack2(double *a, int csize, double *ko, int n, int EVmax);
 void Eigen_lapack3(double *a, double *ko, int n, int EVmax);
 void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag);
+#if OPENMX_GPU_HIP
+void EigenBand_lapack_openmp(dcomplex *A, double *W, int N0, int MaxN);
+#endif
 
 /* GPU eigensolver prototypes (added by H.Kawai, February 2024) */
 void Eigen_gpusolver_d(double ** a, double * ko, int n, int EVmax);
+#if OPENMX_GPU_HIP
+void Eigen_gpusolver_x_openmp2(double * a, double * ko, int n0, int EVmax);
+void Eigen_gpusolver_x_complex_openmp(dcomplex ** a, double * ko, int n0, int EVmax);
+#else
 void Eigen_gpusolver_x_openacc2(double * a, double * ko, int n0, int EVmax);
 void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax);
+#endif
 int  gpusolver_Syevd(double * A, double * W, int m);
 int  gpusolver_Syevdx(double * A, double * W, int m, int MaxN);
+#if OPENMX_GPU_HIP
+int  gpusolver_Syevdx_openmp(double * A, double * W, int m, int MaxN);
+#else
 int  gpusolver_Syevdx_openacc(double * A, double * W, int m, int MaxN);
+#endif
 int  gpusolver_Syevdx_Complex(dcomplex * A, double * W, int m, int MaxN);
+#if OPENMX_GPU_HIP
+int  gpusolver_Syevdx_Complex_openmp(dcomplex * A, double * W, int m, int MaxN);
+#else
 int  gpusolver_Syevdx_Complex_openacc(dcomplex * A, double * W, int m, int MaxN);
 int  gpusolver_Syevdx_Complex_openacc_cached(dcomplex * A, double * W, int m, int MaxN);
+#endif
 
 #define GPU_CPU_SWITCH_NUM 1000
 #define WAITTIME           (10.0 * 1.0E-6)
 
-#define cudacall(call)                                                                                                 \
+#if OPENMX_GPU_HIP
+#define hipcall(call)                                                                                                 \
     {                                                                                                                  \
-        cudaError_t err = (call);                                                                                      \
-        if (cudaSuccess != err) {                                                                                      \
+        OpenMXGpuError err = (call);                                                                                      \
+        if (OPENMX_GPU_SUCCESS != err) {                                                                                      \
             fprintf(stderr, "CUDA Error:\nFile = %s\nLine = %d\nReason = %d\n", __FILE__, __LINE__, err);              \
-            cudaDeviceReset();                                                                                         \
+            OpenMXGpuDeviceReset();                                                                                         \
             exit(EXIT_FAILURE);                                                                                        \
         }                                                                                                              \
     }
+#else
+#define cudacall(call)                                                                                                 \
+    {                                                                                                                  \
+        OpenMXGpuError err = (call);                                                                                      \
+        if (OPENMX_GPU_SUCCESS != err) {                                                                                      \
+            fprintf(stderr, "CUDA Error:\nFile = %s\nLine = %d\nReason = %d\n", __FILE__, __LINE__, err);              \
+            OpenMXGpuDeviceReset();                                                                                         \
+            exit(EXIT_FAILURE);                                                                                        \
+        }                                                                                                              \
+    }
+#endif
 
+#if OPENMX_GPU_HIP
+#define wait_hipfunc(call)                                                                                            \
+    do {                                                                                                               \
+        int wait_hipfunc_status;                                                                                      \
+        int wait_hipfunc_retry = 0;                                                                                   \
+        while (true) {                                                                                                 \
+            wait_hipfunc_status = (int)(call);                                                                        \
+            if ((int)OPENMX_GPU_SUCCESS == wait_hipfunc_status) {                                                            \
+                break;                                                                                                 \
+            }                                                                                                          \
+            if (1000 <= wait_hipfunc_retry++) {                                                                       \
+                int wait_hipfunc_mpi_initialized = 0;                                                                 \
+                fprintf(stderr,                                                                                        \
+                        "CUDA/HIP call failed after retries:\nFile = %s\nLine = %d\nCall = %s\nStatus = %d\n",        \
+                        __FILE__, __LINE__, #call, wait_hipfunc_status);                                             \
+                fflush(stderr);                                                                                        \
+                MPI_Initialized(&wait_hipfunc_mpi_initialized);                                                       \
+                if (wait_hipfunc_mpi_initialized) {                                                                   \
+                    MPI_Abort(MPI_COMM_WORLD, 1);                                                                      \
+                }                                                                                                      \
+                exit(1);                                                                                               \
+            }                                                                                                          \
+            double wait_time    = drand48() * WAITTIME;                                                                \
+            double start_time   = MPI_Wtime();                                                                         \
+            double current_time = start_time;                                                                          \
+            while ((current_time - start_time) < wait_time) {                                                          \
+                current_time = MPI_Wtime();                                                                            \
+            }                                                                                                          \
+        }                                                                                                              \
+    } while (0)
+
+void my_hipblasDgemm(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k, double const * A,
+                    double const * B, double * C);
+
+void my_hipblasDgemm_openmp(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k, double const * A,
+                           double const * B, double * C);
+
+void my_hipblasZgemm(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k, dcomplex const * A,
+                    dcomplex const * B, dcomplex * C);
+
+void my_hipblasZgemm_openmp(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k, dcomplex const * A,
+                           dcomplex const * B, dcomplex * C);
+#else
 #define wait_cudafunc(call)                                                                                            \
     while (true) {                                                                                                     \
-        if (cudaSuccess == call) {                                                                                     \
+        if (OPENMX_GPU_SUCCESS == call) {                                                                                     \
             break;                                                                                                     \
         }                                                                                                              \
         /* pop the CUDA error latched by the failed attempt so it cannot be                                            \
            misattributed by the next cudaGetLastError() caller once a retry succeeds */                                \
-        (void)cudaGetLastError();                                                                                      \
+        (void)OpenMXGpuGetLastError();                                                                                      \
         double wait_time    = drand48() * WAITTIME;                                                                    \
         double start_time   = MPI_Wtime();                                                                             \
         double current_time = start_time;                                                                              \
@@ -4205,17 +4320,32 @@ int  gpusolver_Syevdx_Complex_openacc_cached(dcomplex * A, double * W, int m, in
             current_time = MPI_Wtime();                                                                                \
         }                                                                                                              \
     }
+#endif
 
-cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+OpenMXBlasStatus openmx_gemmul8Dgemm(OpenMXBlasHandle handle, OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m,
                                    int n, int k, const double *alpha, const double *A, int lda, const double *B,
                                    int ldb, const double *beta, double *C, int ldc);
-cublasStatus_t openmx_gemmul8Zgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
-                                   int n, int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A, int lda,
-                                   const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta, cuDoubleComplex *C,
+OpenMXBlasStatus openmx_gemmul8Zgemm(OpenMXBlasHandle handle, OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m,
+                                   int n, int k, const OpenMXGpuComplex *alpha, const OpenMXGpuComplex *A, int lda,
+                                   const OpenMXGpuComplex *B, int ldb, const OpenMXGpuComplex *beta, OpenMXGpuComplex *C,
                                    int ldc);
+#if !OPENMX_GPU_HIP
 size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k);
 size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k);
+#endif
 void openmx_gemmul8ReleaseWorkspaces(void);
+#if OPENMX_GPU_HIP
+/* OPENMX_GEMMUL8_TIMING=1: prints (one line per rank that made calls) and
+   resets the totals of the bridge's general GEMMs; otherwise nothing */
+void openmx_gemmul8ReportTiming(void);
+/* bytes of the GEMMul8 workspaces this process holds */
+size_t openmx_gemmul8WorkspaceBytes(void);
+/* the dense eigensolver caches: the real MAGMA solver's host work arrays,
+   the FP32 solver workspaces, the calling thread's gpusolver context */
+int openmx_magma_release_d_workspace(void);
+void openmx_magma_release_fp32_workspace(void);
+void openmx_gpusolver_cache_release(void);
+#endif
 /* scf.gemmul8.enable: -1 (absent) selects the device default, 0 forces
    native cuBLAS FP64 (workspace queries then report 0), 1 enables GEMMul8
    subject to the environment overrides. General auto GEMMs prefer native
@@ -4225,18 +4355,24 @@ void openmx_gemmul8ReleaseWorkspaces(void);
 void openmx_gemmul8SetEnabled(int enabled);
 /* General-GEMM policy only, like the workspace queries above. A large
    A100 Fixed transform may select GEMMul8 even when these return 0. */
+#if !OPENMX_GPU_HIP
 int openmx_gemmul8ZgemmEnabled(void);
 int openmx_gemmul8DgemmEnabled(void);
 /* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1) so
    far that ran in plain cuBLAS FP64 (switched off or a workspace fallback). */
+#endif
 long long openmx_gemmul8NativeCalls(int is_complex);
+#if OPENMX_GPU_HIP
+size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k);
+size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k);
+#else
 /* openmx_gemmul8Zgemm with the full GEMMul8 workspace when the device has room
    for it (no blocking), else the same as openmx_gemmul8Zgemm. */
-cublasStatus_t openmx_gemmul8ZgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-                                            int m, int n, int k, const cuDoubleComplex *alpha, const cuDoubleComplex *A,
-                                            int lda, const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta,
-                                            cuDoubleComplex *C, int ldc);
-cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+OpenMXBlasStatus openmx_gemmul8ZgemmUnblocked(OpenMXBlasHandle handle, OpenMXBlasOperation transa, OpenMXBlasOperation transb,
+                                            int m, int n, int k, const OpenMXGpuComplex *alpha, const OpenMXGpuComplex *A,
+                                            int lda, const OpenMXGpuComplex *B, int ldb, const OpenMXGpuComplex *beta,
+                                            OpenMXGpuComplex *C, int ldc);
+OpenMXBlasStatus openmx_gemmul8DgemmUnblocked(OpenMXBlasHandle handle, OpenMXBlasOperation transa, OpenMXBlasOperation transb,
                                             int m, int n, int k, const double *alpha, const double *A, int lda,
                                             const double *B, int ldb, const double *beta, double *C, int ldc);
 /* Forward transform of the dense eigensolver, B = H X and C = X^+ B, with
@@ -4246,18 +4382,19 @@ cublasStatus_t openmx_gemmul8DgemmUnblocked(cublasHandle_t handle, cublasOperati
    x_id names the X (one per k-point/spin block) and x_version must change
    whenever its contents do.  See gemmul8_bridge.cu for the environment
    variables that set the stage until openmx_gemmul8SetForwardStage is called. */
-cublasStatus_t openmx_gemmul8DgemmFixed(cublasHandle_t handle, int x_is_left, cublasOperation_t op_x, int m, int n,
+OpenMXBlasStatus openmx_gemmul8DgemmFixed(OpenMXBlasHandle handle, int x_is_left, OpenMXBlasOperation op_x, int m, int n,
                                         int k, const double *X, int ldx, const double *V, int ldv, double *C,
                                         int ldc, int x_id, unsigned long long x_version);
-cublasStatus_t openmx_gemmul8ZgemmFixed(cublasHandle_t handle, int x_is_left, cublasOperation_t op_x, int m, int n,
-                                        int k, const cuDoubleComplex *X, int ldx, const cuDoubleComplex *V, int ldv,
-                                        cuDoubleComplex *C, int ldc, int x_id, unsigned long long x_version);
+OpenMXBlasStatus openmx_gemmul8ZgemmFixed(OpenMXBlasHandle handle, int x_is_left, OpenMXBlasOperation op_x, int m, int n,
+                                        int k, const OpenMXGpuComplex *X, int ldx, const OpenMXGpuComplex *V, int ldv,
+                                        OpenMXGpuComplex *C, int ldc, int x_id, unsigned long long x_version);
 void openmx_gemmul8SetForwardStage(int mode, int num_moduli, int fastmode, int reuse, int unblocked);
 size_t openmx_gemmul8ForwardCounters(long long counters[5], double seconds[2]);
 void openmx_gemmul8ReleasePrepared(void);
 /* frees the workspaces above the cap of the blocked path, i.e. the scratch
    of unblocked forward products */
 void openmx_gemmul8TrimWorkspaces(void);
+#endif
 
 int getDeviceCount();
 void Eigen_PReHH(MPI_Comm MPI_Current_Comm_WD, 
@@ -5330,6 +5467,8 @@ double Cluster_DFT_Optical_ScaLAPACK(
 
 /* YTL-end */
 
+#if !OPENMX_GPU_HIP
 #include "openmx_cusolver_compat.h"
 
+#endif
 #endif /* _OPENMX_COMMON_H_ */

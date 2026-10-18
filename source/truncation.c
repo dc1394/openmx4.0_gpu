@@ -1,3 +1,9 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
+#if OPENMX_GPU_HIP
+#include "openmx_target.h"
+#endif
 /**********************************************************************
   truncation.c:
 
@@ -21,8 +27,10 @@
 #include "openmx_host_memory.h"
 #include "mpi.h"
 #include "omp.h"
+#if !OPENMX_GPU_HIP
 #include <openacc.h>
-#include "set_cuda_default_device_from_local_rank.h"
+#endif
+
 #include "tran_prototypes.h"
 
 /* the section timers print when OPENMX_BAND_PROFILE=1 (formerly a
@@ -125,13 +133,20 @@ double truncation(int MD_iter,int UCell_flag)
      FNAN and SNAN at the previous MD step
   ****************************************************/
 
+#if OPENMX_GPU_HIP
+  Set_Density_Grid_GPU_Invalidate();
+  Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
+
+#endif
   if (measure_time) dtime(&stime);
+#if !OPENMX_GPU_HIP
 
   /* The following free invalidates every pointer used by the density GPU
      service.  Release its host/device cache while the old topology is still
      well defined. */
   Set_Density_Grid_GPU_Invalidate();
   Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
+#endif
 
   if (MD_iter==1){
     for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++) time_per_atom[Gc_AN] = 1.0;
@@ -4300,32 +4315,77 @@ static size_t OLG_arena_off(size_t *pos, size_t bytes)
 
 static void *OLG_arena_try(size_t bytes)
 {
+#if OPENMX_GPU_HIP
+  void *ptr = NULL;
+
+  (void)OpenMXGpuMalloc(&ptr, bytes);
+#else
   void *ptr = acc_malloc(bytes);
+#endif
   if (ptr == NULL) {
-    if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
+#if OPENMX_GPU_HIP
+    /* Let outstanding work release its transient allocations before the
+       one retry.  Unlike OpenACC openmx_target_free, hipFree has no process-local
+       freelist that needs an explicit purge. */
+    if (OpenMXGpuDeviceSynchronize() == OPENMX_GPU_SUCCESS) (void)0;
+    (void)OpenMXGpuMalloc(&ptr, bytes);
+#else
+    if (OpenMXGpuDeviceSynchronize() == OPENMX_GPU_SUCCESS) acc_clear_freelists();
     ptr = acc_malloc(bytes);
+#endif
   }
   return ptr;
 }
 
 static void OLG_gpu_eval(int npair, const OLG_GpuPair *prs, const int *gl, const int *cl,
                          const int *atvf, const int *ratvf, size_t mc_off, int mc_cnt,
+#if OPENMX_GPU_HIP
+                         int mc_first, int cpy, size_t work_count, int *out)
+#else
                          int mc_first, int cpy, int *out)
+#endif
 {
+#if OPENMX_GPU_HIP
+  size_t q;
+#else
   int p;
+#endif
 
+#if !OPENMX_GPU_HIP
 #pragma acc parallel vector_length(128) deviceptr(prs, gl, cl, atvf, ratvf, out)
   {
 #pragma acc loop gang
     for (p = 0; p < npair; p++) {
       const OLG_GpuPair pr = prs[p];
       int Nh;
+#endif
 
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for thread_limit(128) \
+        is_device_ptr(prs, gl, cl, atvf, ratvf, out)
+  for (q = 0; q < work_count; q++) {
+      int lo_pair = 0, hi_pair = npair;
+      int Nh, found = -1;
+
+      /* out_off is a sorted prefix sum; choose the last pair whose first
+         output slot does not exceed q. */
+      while (lo_pair + 1 < hi_pair) {
+        int mid = (lo_pair + hi_pair) >> 1;
+        if (prs[mid].out_off <= q) lo_pair = mid;
+        else                       hi_pair = mid;
+      }
+
+      const OLG_GpuPair pr = prs[lo_pair];
+      Nh = (int)(q - pr.out_off);
+#else
 #pragma acc loop vector
       for (Nh = 0; Nh < pr.nh; Nh++) {
+#endif
         const int GNh = gl[pr.mh_off + (size_t)Nh];
         const int GRh = cl[pr.mh_off + (size_t)Nh];
+#if !OPENMX_GPU_HIP
         int found = -1;
+#endif
 
         if (mc_first <= GNh) {
           const int lll1 = pr.l1 + atvf[3*GRh + 0];
@@ -4354,9 +4414,13 @@ static void OLG_gpu_eval(int npair, const OLG_GpuPair *prs, const int *gl, const
             }
           }
         }
+#if OPENMX_GPU_HIP
+      out[q] = found;
+#else
         out[pr.out_off + (size_t)Nh] = found;
       }
     }
+#endif
   }
 }
 
@@ -4461,14 +4525,29 @@ static int UCellBox_OLG_GPU_Part(int first,int last,int myid,int estimate_switch
   for (m = 1; m <= mc_total; m++) {
     Gc_AN = (m <= Matomnum) ? M2G[m] : F_M2G[m];
     if (0 < GridN_Atom[Gc_AN]) {
+#if OPENMX_GPU_HIP
+      (void)OpenMXGpuMemcpy(d_gl + mh_base[m], Tmp_GridListAtom[m],
+                      sizeof(int)*(size_t)GridN_Atom[Gc_AN], OPENMX_GPU_COPY_HOST_TO_DEVICE);
+      (void)OpenMXGpuMemcpy(d_cl + mh_base[m], Tmp_CellListAtom[m],
+                      sizeof(int)*(size_t)GridN_Atom[Gc_AN], OPENMX_GPU_COPY_HOST_TO_DEVICE);
+#else
       acc_memcpy_to_device(d_gl + mh_base[m], Tmp_GridListAtom[m],
                            sizeof(int)*(size_t)GridN_Atom[Gc_AN]);
       acc_memcpy_to_device(d_cl + mh_base[m], Tmp_CellListAtom[m],
                            sizeof(int)*(size_t)GridN_Atom[Gc_AN]);
+#endif
     }
   }
+#if OPENMX_GPU_HIP
+  (void)OpenMXGpuMemcpy(d_atv, atv_flat, sizeof(int)*3*(size_t)(TCpyCell+1),
+                  OPENMX_GPU_COPY_HOST_TO_DEVICE);
+  (void)OpenMXGpuMemcpy(d_ratv, ratv_flat,
+                  sizeof(int)*(size_t)rdim*(size_t)rdim*(size_t)rdim,
+                  OPENMX_GPU_COPY_HOST_TO_DEVICE);
+#else
   acc_memcpy_to_device(d_atv, atv_flat, sizeof(int)*3*(size_t)(TCpyCell+1));
   acc_memcpy_to_device(d_ratv, ratv_flat, sizeof(int)*(size_t)rdim*(size_t)rdim*(size_t)rdim);
+#endif
 
   if (OLG_env_flag("OPENMX_UCELL_OLG_GPU_VERBOSE", 0)) {
     static _Thread_local int active_done = 0;
@@ -4501,12 +4580,25 @@ static int UCellBox_OLG_GPU_Part(int first,int last,int myid,int estimate_switch
       run += (size_t)GridN_Atom[Gh_AN];
     }
 
+#if OPENMX_GPU_HIP
+    (void)OpenMXGpuMemcpy(d_prs, pair_host, sizeof(OLG_GpuPair)*(size_t)npair,
+                    OPENMX_GPU_COPY_HOST_TO_DEVICE);
+#else
     acc_memcpy_to_device(d_prs, pair_host, sizeof(OLG_GpuPair)*(size_t)npair);
+#endif
 
     OLG_gpu_eval(npair, d_prs, d_gl, d_cl, d_atv, d_ratv, mh_base[Mc_AN],
+#if OPENMX_GPU_HIP
+                 GridN_Atom[Gc_AN], GridN_Atom[Gc_AN]?Tmp_GridListAtom[Mc_AN][0]:0, CpyCell, run, d_out);
+#else
                  GridN_Atom[Gc_AN], GridN_Atom[Gc_AN]?Tmp_GridListAtom[Mc_AN][0]:0, CpyCell, d_out);
+#endif
 
+#if OPENMX_GPU_HIP
+    (void)OpenMXGpuMemcpy(out_host, d_out, sizeof(int)*run, OPENMX_GPU_COPY_DEVICE_TO_HOST);
+#else
     acc_memcpy_from_device(out_host, d_out, sizeof(int)*run);
+#endif
 
     if (estimate_switch == 0) {
       GListTAtoms1[Mc_AN] = (int**)malloc(sizeof(int*)*(size_t)npair);
@@ -4562,10 +4654,17 @@ static int UCellBox_OLG_GPU_Part(int first,int last,int myid,int estimate_switch
     time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
   }
 
+#if !OPENMX_GPU_HIP
   acc_free(arena);
+#endif
   /* return the arena to CUDA instead of the process-local freelist, so
      the other ranks sharing this device can actually use the memory */
-  if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
+#if OPENMX_GPU_HIP
+  (void)OpenMXGpuDeviceSynchronize();
+  (void)OpenMXGpuFree(arena);
+#else
+  if (OpenMXGpuDeviceSynchronize() == OPENMX_GPU_SUCCESS) acc_clear_freelists();
+#endif
   free(pair_host); free(out_host); free(ratv_flat); free(atv_flat); free(mh_base);
 
   return 1;
@@ -4578,7 +4677,11 @@ static void OLG_capacity_kernel(size_t first,size_t count,const void *parameters
   const OLGCapacityParameters *p=parameters;const int nc=p->nc,cpy=p->cpy,rdim=2*cpy+1;
   const int *grid=v[0],*cell=v[1],*atv=v[2],*ratv=v[3];
   const OLGCapacityQuery *queries=v[4];int *out=v[5];(void)first;
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for is_device_ptr(grid,cell,atv,ratv,queries,out) if(gpu)
+#else
 #pragma acc parallel loop deviceptr(grid,cell,atv,ratv,queries,out) if(gpu)
+#endif
   for(size_t i=0;i<count;i++){
     OLGCapacityQuery q=queries[i];int found=-1;
     const int l1=q.l1+atv[3*q.cell],l2=q.l2+atv[3*q.cell+1],l3=q.l3+atv[3*q.cell+2];
@@ -8299,6 +8402,8 @@ void free_arrays_truncation0()
 	Gc_AN = M2G[Mc_AN];
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
+	  /* each (Mc_AN,h_AN) block is owned by its row 0
+	     (see the allocation above) */
 	  free(Orbs_Grid_FNAN[Mc_AN][h_AN][0]);
 	  free(Orbs_Grid_FNAN[Mc_AN][h_AN]);
 	} /* h_AN */

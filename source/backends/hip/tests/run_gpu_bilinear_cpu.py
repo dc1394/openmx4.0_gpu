@@ -6,12 +6,13 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
+from mock_hip_sources import stage
 
 root=Path(__file__).resolve().parents[1]
 tree=ast.parse((root/"tests/run_gpu_vector_cpu.py").read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body
             if isinstance(n,ast.Assign) and any(getattr(t,"id","")=="prefix" for t in n.targets))
-body=(root/"source/openmx_gpu_bilinear.c").read_text()
+body=(root/"source/openmx_gpu_bilinear.c").read_text().replace('#include "openmx_gpu_device.h"', '')
 body=body.replace('#include "hip_runtime_compat.h"','').replace('#include "set_hip_default_device_from_local_rank.h"','')
 main=r'''
 unsigned long long openmx_host_mem_available(void){return 1ULL<<36;}
@@ -89,6 +90,8 @@ int main(void){
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-bilinear-") as folder:
     p=Path(folder);(p/"mpi.h").write_text("typedef int MPI_Comm;\n")
+    stage(root, p)
+    (p / "hip_runtime_compat.h").write_text("/* Runtime calls are defined by the fixture prefix. */\n")
     (p/"check.c").write_text(prefix+body+main)
     cc=shlex.split(os.environ.get("CC","cc"));cxx=shlex.split(os.environ.get("CXX","c++"))
     flags=["-O1","-g","-fsanitize=address,undefined","-fno-sanitize-recover=all","-I"+str(p),"-I"+str(root/"source")]

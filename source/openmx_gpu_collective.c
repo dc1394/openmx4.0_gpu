@@ -1,3 +1,4 @@
+#include "openmx_gpu_backend.h"
 #include "openmx_gpu_collective.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_stdout_level.h"

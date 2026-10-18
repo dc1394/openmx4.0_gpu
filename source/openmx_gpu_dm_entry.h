@@ -1,12 +1,22 @@
 #ifndef OPENMX_GPU_DM_ENTRY_H
 #define OPENMX_GPU_DM_ENTRY_H
+
+#include "openmx_gpu_backend.h"
 #include <stddef.h>
 #include "openmx_gpu_dm.h"
 typedef struct {double x,y;} OpenMXDMComplex;
+#if OPENMX_GPU_HIP
+#if defined(__HIPCC__)
+__host__ __device__
+#elif defined(_OPENMP)
+#pragma omp declare target
+#endif
+#else
 #if defined(__CUDACC__)
 __host__ __device__
 #elif defined(_OPENACC)
 #pragma acc routine seq
+#endif
 #endif
 static inline void openmx_gpu_dm_entry(int kind,int n,int states,int stride,int entries,
     const void *vectors,const int *indices,const double *weights,const double *phases,
@@ -63,4 +73,9 @@ static inline void openmx_gpu_dm_entry(int kind,int n,int states,int stride,int 
         }
         for(int c=0;c<10;c++)output[(size_t)(c)*entries+p]+=r[c];
 }
+#if OPENMX_GPU_HIP
+#if defined(_OPENMP) && !defined(__HIPCC__)
+#pragma omp end declare target
+#endif
+#endif
 #endif

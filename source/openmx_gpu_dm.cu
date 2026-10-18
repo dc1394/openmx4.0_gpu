@@ -1,8 +1,11 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_complex.h"
+#include "openmx_gpu_runtime.h"
 #include "openmx_gpu_dm_entry.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
-#include <cuda_runtime.h>
-#include <cuComplex.h>
+
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -11,7 +14,7 @@
 #include <limits>
 #include <cstdint>
 namespace {
-using Z=cuDoubleComplex;
+using Z=OpenMXGpuComplex;
 struct Work {
     OpenMXGpuWorkers workers{};
     int kind,n,states,stride,entries,phases,host,accumulate,origin;
@@ -72,12 +75,12 @@ int worker(void *opaque,int worker,int phase)
             d.basis=basis_rows(w,first,last);d.n=int(d.basis.size());d.stride=w.states;
             const size_t width=w.kind==OPENMX_GPU_DM_REAL?sizeof(double):sizeof(Z);
             size_t bytes=d.basis.size()*(w.kind==OPENMX_GPU_DM_NC?2:1)*size_t(w.states)*width;
-            if(cudaMalloc(&d.owned_vectors,bytes)!=cudaSuccess)return 0;
+            if(OpenMXGpuMalloc(&d.owned_vectors,bytes)!=OPENMX_GPU_SUCCESS)return 0;
             d.vectors.pointer=d.owned_vectors;
             for(int spin=0;spin<(w.kind==OPENMX_GPU_DM_NC?2:1);spin++)for(size_t i=0;i<d.basis.size();i++){
                 void *dst=static_cast<char*>(d.owned_vectors)+(i+spin*d.basis.size())*w.states*width;
                 const void *src=static_cast<const char*>(w.vectors)+(size_t(d.basis[i]+spin*w.n)*w.stride)*width;
-                if(w.host){if(cudaMemcpy(dst,src,size_t(w.states)*width,cudaMemcpyHostToDevice)!=cudaSuccess)return 0;}
+                if(w.host){if(OpenMXGpuMemcpy(dst,src,size_t(w.states)*width,OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;}
                 else if(!openmx_gpu_copy_device(dst,src,size_t(w.states)*width))return 0;
             }
             for(size_t i=first;i<last;i++){
@@ -88,19 +91,19 @@ int worker(void *opaque,int worker,int phase)
             if(!openmx_gpu_read_view(&d.vectors,w.vectors,w.vector_bytes))return 0;
             std::copy(w.basis0+first,w.basis0+last,indices.begin());std::copy(w.basis1+first,w.basis1+last,indices.begin()+count);
         }
-        if(cudaMalloc(reinterpret_cast<void**>(&d.indices),2*count*sizeof(int))!=cudaSuccess ||
-           cudaMalloc(reinterpret_cast<void**>(&d.output),10*count*sizeof(double))!=cudaSuccess)return 0;
-        if(cudaMemcpy(d.indices,indices.data(),2*count*sizeof(int),cudaMemcpyHostToDevice)!=cudaSuccess)return 0;
+        if(OpenMXGpuMalloc(reinterpret_cast<void**>(&d.indices),2*count*sizeof(int))!=OPENMX_GPU_SUCCESS ||
+           OpenMXGpuMalloc(reinterpret_cast<void**>(&d.output),10*count*sizeof(double))!=OPENMX_GPU_SUCCESS)return 0;
+        if(OpenMXGpuMemcpy(d.indices,indices.data(),2*count*sizeof(int),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         d.result.resize(10*count);
         for(int c=0;c<10;c++)if(w.accumulate && w.target[c])std::copy(w.target[c]+first,w.target[c]+last,d.result.begin()+c*count);
-        if(cudaMemcpy(d.output,d.result.data(),10*count*sizeof(double),cudaMemcpyHostToDevice)!=cudaSuccess)return 0;
+        if(OpenMXGpuMemcpy(d.output,d.result.data(),10*count*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         if(w.kind<=OPENMX_GPU_DM_NC) {
             std::vector<double> weights(3*size_t(w.states),0);
             std::copy(w.occ,w.occ+w.states,weights.begin());
             if(w.energy)std::copy(w.energy,w.energy+w.states,weights.begin()+w.states);
             if(w.partial)std::copy(w.partial,w.partial+w.states,weights.begin()+2*w.states);
-            if(cudaMalloc(reinterpret_cast<void**>(&d.weights),weights.size()*sizeof(double))!=cudaSuccess ||
-               cudaMemcpy(d.weights,weights.data(),weights.size()*sizeof(double),cudaMemcpyHostToDevice)!=cudaSuccess)return 0;
+            if(OpenMXGpuMalloc(reinterpret_cast<void**>(&d.weights),weights.size()*sizeof(double))!=OPENMX_GPU_SUCCESS ||
+               OpenMXGpuMemcpy(d.weights,weights.data(),weights.size()*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         }
         if(w.phase) {
             std::vector<double> phases(2*count);
@@ -108,18 +111,18 @@ int worker(void *opaque,int worker,int phase)
                 const int p=w.phase[i];if(p<0 || p>=w.phases)return 0;
                 phases[i-first]=w.real[p];phases[count+i-first]=w.imag[p];
             }
-            if(cudaMalloc(reinterpret_cast<void**>(&d.phase),phases.size()*sizeof(double))!=cudaSuccess ||
-               cudaMemcpy(d.phase,phases.data(),phases.size()*sizeof(double),cudaMemcpyHostToDevice)!=cudaSuccess)return 0;
+            if(OpenMXGpuMalloc(reinterpret_cast<void**>(&d.phase),phases.size()*sizeof(double))!=OPENMX_GPU_SUCCESS ||
+               OpenMXGpuMemcpy(d.phase,phases.data(),phases.size()*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         }
     } else if(phase==OPENMX_GPU_WORKER_EXECUTE) {
         kernel<<<unsigned(std::min(size_t(65535),(count+127)/128)),128>>>(w.kind,d.n,w.states,d.stride,int(count),d.vectors.pointer,d.indices,
             d.weights,d.phase,d.output,w.phase!=nullptr,w.energy!=nullptr,w.partial!=nullptr);
-        if(cudaGetLastError()!=cudaSuccess || cudaMemcpy(d.result.data(),d.output,10*count*sizeof(double),cudaMemcpyDeviceToHost)!=cudaSuccess)return 0;
+        if(OpenMXGpuGetLastError()!=OPENMX_GPU_SUCCESS || OpenMXGpuMemcpy(d.result.data(),d.output,10*count*sizeof(double),OPENMX_GPU_COPY_DEVICE_TO_HOST)!=OPENMX_GPU_SUCCESS)return 0;
     } else if(phase==OPENMX_GPU_WORKER_COMMIT) {
         for(int c=0;c<10;c++)if(w.target[c])std::copy(d.result.begin()+c*count,d.result.begin()+(c+1)*count,w.target[c]+first);
     } else if(phase==OPENMX_GPU_WORKER_RELEASE) {
-        if(d.owned_vectors)cudaFree(d.owned_vectors);else openmx_gpu_read_view_release(&d.vectors);
-        if(d.indices)cudaFree(d.indices);if(d.weights)cudaFree(d.weights);if(d.phase)cudaFree(d.phase);if(d.output)cudaFree(d.output);
+        if(d.owned_vectors)OpenMXGpuFree(d.owned_vectors);else openmx_gpu_read_view_release(&d.vectors);
+        if(d.indices)OpenMXGpuFree(d.indices);if(d.weights)OpenMXGpuFree(d.weights);if(d.phase)OpenMXGpuFree(d.phase);if(d.output)OpenMXGpuFree(d.output);
     }
     return 1;
 }
@@ -138,7 +141,7 @@ int cpu_rows(Work &w)
             void *dst=reinterpret_cast<char*>(storage.data())+target*width;
             const void *src=static_cast<const char*>(w.vectors)+source*width;
             if(w.host){std::memcpy(dst,src,bytes);return true;}
-            return cudaMemcpy(dst,src,bytes,cudaMemcpyDeviceToHost)==cudaSuccess;
+            return OpenMXGpuMemcpy(dst,src,bytes,OPENMX_GPU_COPY_DEVICE_TO_HOST)==OPENMX_GPU_SUCCESS;
         };
         if(w.kind>=OPENMX_GPU_DM_GATHER){
             if(!copy(4,size_t(w.basis0[p])+size_t(w.basis1[p])*2*w.n,sizeof(Z)) ||
@@ -176,11 +179,11 @@ static int dm_entries(int kind,int n,int states,int stride,int entries,const voi
     for(int i=0;i<10;i++)w.target[i]=outputs[i];
     w.vector_bytes=kind>=OPENMX_GPU_DM_GATHER?size_t(2*n)*size_t(2*n)*sizeof(Z):
         ((size_t(n)*(kind==OPENMX_GPU_DM_NC?2:1)-1)*stride+states)* (kind==OPENMX_GPU_DM_REAL?sizeof(double):sizeof(Z));
-    if(cudaGetDevice(&w.origin)!=cudaSuccess)w.origin=0;
+    if(OpenMXGpuGetDevice(&w.origin)!=OPENMX_GPU_SUCCESS)w.origin=0;
     int ok=openmx_gpu_workers_capacity(&w.workers,entries,2,capacity_cost,&w);
     if(ok)ok=openmx_gpu_workers_run(&w.workers,safe_worker,&w,"density-matrix-entries");
     if(ok)return 1;
-    (void)cudaGetLastError();
+    (void)OpenMXGpuGetLastError();
     if(!cpu)return 0;
     try{return cpu_rows(w);}catch(const std::bad_alloc&){return 0;}
 }

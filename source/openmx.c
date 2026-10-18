@@ -1,3 +1,4 @@
+#include "openmx_gpu_backend.h"
 /*****************************************************************************
 
   Ver. 4.0 (26/April/2026)
@@ -54,6 +55,12 @@
 
 ***********************************************************************/
 
+#if OPENMX_GPU_HIP
+/* readlink, setenv and unsetenv of the GPU heap re-exec under -std=c11 */
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -64,6 +71,9 @@
 #include <sys/stat.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#if OPENMX_GPU_HIP
+#include <sys/auxv.h>
+#endif
 /*  end stat section */
 #include "openmx_common.h"
 #include "mpi.h"
@@ -96,6 +106,35 @@ int main(int argc, char *argv[])
   MPI_Comm mpi_comm_parent;
 
   /* MPI initialize */
+#if OPENMX_GPU_HIP
+  if (getenv("LIBOMPTARGET_HEAP_SIZE") == NULL) {
+    const char *reexec = getenv("OPENMX_GPU_HEAP_REEXEC");
+
+    /* Not when the dynamic loader was started directly (ld.so ./openmx
+       ...): /proc/self/exe is then the loader, and AT_BASE is 0 exactly
+       then (also for a static build, which only keeps the default heap).
+       The binary is executed by its own path, which keeps the process
+       name that pgrep, top and amd-smi show (/proc/self/exe would make it
+       "exe"); the stack limit is raised in the new image, as before. */
+    if ((reexec == NULL || reexec[0] == '\0' || atoi(reexec) != 0) && getauxval(AT_BASE) != 0) {
+      char self[4096];
+      const char *path = "/proc/self/exe";
+      ssize_t len = readlink("/proc/self/exe", self, sizeof(self) - 1);
+
+      if (0 < len && (size_t)len < sizeof(self) - 1) {
+        self[len] = '\0';
+        if (strstr(self, " (deleted)") == NULL && access(self, X_OK) == 0) path = self;
+      }
+      if (setenv("LIBOMPTARGET_HEAP_SIZE", "67108864", 1) == 0) {
+        execv(path, argv);
+        /* not re-executed: run with the default heap */
+        unsetenv("LIBOMPTARGET_HEAP_SIZE");
+      }
+    }
+  }
+
+  /* MPI initialize */
+#endif
 
   Raise_Stack_Limit();
 
@@ -108,6 +147,16 @@ int main(int argc, char *argv[])
   NUMPROCS_MPI_COMM_WORLD = numprocs;
   MYID_MPI_COMM_WORLD = myid;
   Num_Procs = numprocs;
+#if OPENMX_GPU_HIP
+
+  {
+    extern void openmx_gpu_zheevd_selftest(const char *label);
+    const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+    if (selftest_env != NULL && atoi(selftest_env) != 0 && myid == 0) {
+      openmx_gpu_zheevd_selftest("startup");
+    }
+  }
+#endif
 
   /* initialize for detecting memory leak */
 #ifdef LEAK_DETECT
@@ -712,6 +761,16 @@ int main(int argc, char *argv[])
 
     if (Solver!=4 || TRAN_SCF_skip==0){
 
+#if OPENMX_GPU_HIP
+      {
+        extern void openmx_gpu_zheevd_selftest(const char *label);
+        const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+        if (selftest_env != NULL && atoi(selftest_env) != 0 && myid == 0 && MD_iter == 1) {
+          openmx_gpu_zheevd_selftest("pre_DFT");
+        }
+      }
+
+#endif
       CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
       iterout(MD_iter+MD_Current_Iter,MD_TimeStep*(MD_iter+MD_Current_Iter-1),filepath,filename);
 

@@ -1,14 +1,20 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_complex.h"
+#include "openmx_gpu_runtime.h"
+#if OPENMX_GPU_HIP
+#define OPENMX_GPU_TRANSFORM_IMPLEMENTATION
+#endif
 #include "openmx_gpu_transform.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
-#include <cuda_runtime.h>
-#include <cuComplex.h>
+
+
 #include <cmath>
 #include <cstring>
 #include <limits>
 
 namespace {
-using Z=cuDoubleComplex;
+using Z=OpenMXGpuComplex;
 struct Transform {
     OpenMXGpuWorkers workers{};
     int op=0,complex=0,rows=0,cols=0,lda=0,ldb=0,ldout=0,complex_weights=0;
@@ -20,16 +26,16 @@ struct Transform {
     OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][6]{};
 };
 __device__ double product(double a,double b) {return a*b;}
-__device__ Z product(Z a,Z b) {return make_cuDoubleComplex(a.x*b.x-a.y*b.y,a.x*b.y+a.y*b.x);}
-__device__ Z product(Z a,double b) {return make_cuDoubleComplex(a.x*b,a.y*b);}
+__device__ Z product(Z a,Z b) {return OpenMXGpuMakeComplex(a.x*b.x-a.y*b.y,a.x*b.y+a.y*b.x);}
+__device__ Z product(Z a,double b) {return OpenMXGpuMakeComplex(a.x*b,a.y*b);}
 __device__ double sum(double a,double b) {return a+b;}
-__device__ Z sum(Z a,Z b) {return make_cuDoubleComplex(a.x+b.x,a.y+b.y);}
+__device__ Z sum(Z a,Z b) {return OpenMXGpuMakeComplex(a.x+b.x,a.y+b.y);}
 __device__ double zero(double) {return 0;}
-__device__ Z zero(Z) {return make_cuDoubleComplex(0,0);}
+__device__ Z zero(Z) {return OpenMXGpuMakeComplex(0,0);}
 __device__ double hermitian(double a,double b,int diagonal) {return diagonal?a:0.5*(a+b);}
-__device__ Z hermitian(Z a,Z b,int diagonal) {return make_cuDoubleComplex(diagonal?a.x:0.5*(a.x+b.x),diagonal?0:0.5*(a.y-b.y));}
+__device__ Z hermitian(Z a,Z b,int diagonal) {return OpenMXGpuMakeComplex(diagonal?a.x:0.5*(a.x+b.x),diagonal?0:0.5*(a.y-b.y));}
 __device__ double invsqrt(double a,double floor) {return 1.0/sqrt(a<floor?floor:a);}
-__device__ Z invsqrt(Z a,double floor) {return make_cuDoubleComplex(invsqrt(a.x,floor),0);}
+__device__ Z invsqrt(Z a,double floor) {return OpenMXGpuMakeComplex(invsqrt(a.x,floor),0);}
 
 template<class T> __global__ void transform_kernel(int op,int rows,int cols,int lda,int ldb,int first,int last,
     const T *a,const void *b,T *out,int complex_weights,double floor)
@@ -63,7 +69,7 @@ __global__ void spinor_kernel(int n,int first,int last,int real_parts,
         size_t j=lower?size_t(c)+size_t(r)*n:size_t(r)+size_t(c)*n;
         const void *real=(row<n && col<n)?r11:(row>=n && col>=n)?r22:r12;
         const double *imag=(row<n && col<n)?i11:(row>=n && col>=n)?i22:i12;
-        Z value=real_parts?make_cuDoubleComplex(static_cast<const double*>(real)[j],imag[j]):static_cast<const Z*>(real)[j];
+        Z value=real_parts?OpenMXGpuMakeComplex(static_cast<const double*>(real)[j],imag[j]):static_cast<const Z*>(real)[j];
         if(lower)value.y=-value.y;
         out[index]=value;
     }
@@ -104,12 +110,12 @@ int worker(void *opaque,int device,int phase)
     const size_t width=w.complex?sizeof(Z):sizeof(double),count=size_t(w.rows)*size_t(last-first);
     if(phase==OPENMX_GPU_WORKER_PREPARE) {
         for(int i=0;i<6;i++)if(!openmx_gpu_read_view(&w.input[device][i],w.source[i],w.bytes[i]))return 0;
-        if(cudaMalloc(&w.output[device],count*width)!=cudaSuccess)return 0;
+        if(OpenMXGpuMalloc(&w.output[device],count*width)!=OPENMX_GPU_SUCCESS)return 0;
     } else if(phase==OPENMX_GPU_WORKER_EXECUTE) {
         const auto *v=w.input[device];
         const unsigned blocks=unsigned(count/256+1>65535?65535:count/256+1);
         if(w.scatter) {
-            if(cudaMemset(w.output[device],0,count*width)!=cudaSuccess)return 0;
+            if(OpenMXGpuMemset(w.output[device],0,count*width)!=OPENMX_GPU_SUCCESS)return 0;
             scatter_kernel<<<blocks,256>>>(w.entries,w.format,w.imaginary,size_t(first)*w.rows,size_t(last)*w.rows,
                 static_cast<const int*>(v[0].pointer),static_cast<const double*>(v[1].pointer),
                 static_cast<const double*>(v[2].pointer),static_cast<const double*>(v[3].pointer),w.output[device]);
@@ -124,14 +130,14 @@ int worker(void *opaque,int device,int phase)
             transform_kernel<<<blocks,256>>>(w.op,w.rows,w.cols,w.lda,w.ldb,first,last,
                 static_cast<const double*>(v[0].pointer),v[1].pointer,static_cast<double*>(w.output[device]),w.complex_weights,w.floor);
         }
-        return cudaGetLastError()==cudaSuccess;
+        return OpenMXGpuGetLastError()==OPENMX_GPU_SUCCESS;
     } else if(phase==OPENMX_GPU_WORKER_COMMIT) {
         if(w.ldout==w.rows) return openmx_gpu_copy_device(static_cast<char*>(w.target)+size_t(first)*w.ldout*width,w.output[device],count*width);
         for(int col=first;col<last;col++)
             if(!openmx_gpu_copy_device(static_cast<char*>(w.target)+size_t(col)*w.ldout*width,
                 static_cast<const char*>(w.output[device])+size_t(col-first)*w.rows*width,size_t(w.rows)*width))return 0;
     } else if(phase==OPENMX_GPU_WORKER_RELEASE) {
-        if(w.output[device])cudaFree(w.output[device]);
+        if(w.output[device])OpenMXGpuFree(w.output[device]);
         for(auto &v:w.input[device])openmx_gpu_read_view_release(&v);
     }
     return 1;

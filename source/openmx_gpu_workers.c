@@ -1,15 +1,25 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
 /* Noncollective, bounded per-device workers for existing GPU operations. */
 #include "openmx_gpu_workers.h"
 #include "openmx_mgpu_runtime.h"
-#include "set_cuda_default_device_from_local_rank.h"
+
+#if !OPENMX_GPU_HIP
 #include <openacc.h>
+#endif
 #include <omp.h>
+#if OPENMX_GPU_HIP
+#include "openmx_target.h"
+#endif
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#if !OPENMX_GPU_HIP
 
 extern void acc_clear_freelists(void);
+#endif
 
 static int worker_rank=0, worker_ranks=1, mapped_count=0;
 static int device_ready[OPENMX_GPU_WORKERS_MAX];
@@ -51,10 +61,10 @@ int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
     const size_t reserve=(size_t)256*1024*1024;
     memset(pool,0,sizeof(*pool)); pool->items=items;
     if (!items) return 1;
-    if (!cost || cudaGetDevice(&owner)!=cudaSuccess || owner<0) return 0;
+    if (!cost || OpenMXGpuGetDevice(&owner)!=OPENMX_GPU_SUCCESS || owner<0) return 0;
     /* No other device is even queried when the ordinary owner fits. */
     size_t free_bytes=0,total=0;
-    int owner_fits=OpenMX_GpuMemGetInfo(&free_bytes,&total)==cudaSuccess &&
+    int owner_fits=OpenMX_GpuMemGetInfo(&free_bytes,&total)==OPENMX_GPU_SUCCESS &&
         free_bytes>reserve && cost(context,0,1)<=free_bytes-reserve;
     if (owner_fits && (!workers_enabled() || worker_device>=0)) {
         pool->devices[0]=owner; pool->count=1; return 1;
@@ -64,8 +74,8 @@ int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
                            openmx_mgpu_pool_devices(ids,OPENMX_GPU_WORKERS_MAX);
         if (count>OPENMX_GPU_WORKERS_MAX) count=OPENMX_GPU_WORKERS_MAX;
         for (int i=0;i<count;i++) {
-            if (cudaSetDevice(ids[i])==cudaSuccess &&
-                OpenMX_GpuMemGetInfo(&free_bytes,&total)==cudaSuccess && free_bytes>reserve) {
+            if (OpenMXGpuSetDevice(ids[i])==OPENMX_GPU_SUCCESS &&
+                OpenMX_GpuMemGetInfo(&free_bytes,&total)==OPENMX_GPU_SUCCESS && free_bytes>reserve) {
                 room[i]=free_bytes-reserve; available[i]=1;
             }
         }
@@ -108,9 +118,9 @@ int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
             }
         }
     }
-    if (cudaSetDevice(owner)!=cudaSuccess) { pool->count=0; return 0; }
+    if (OpenMXGpuSetDevice(owner)!=OPENMX_GPU_SUCCESS) { pool->count=0; return 0; }
     if (!pool->count && owner_fits) { pool->devices[0]=owner; pool->count=1; }
-    (void)cudaGetLastError();
+    (void)OpenMXGpuGetLastError();
     return pool->count>0;
 }
 
@@ -120,7 +130,7 @@ static void worker_pool(OpenMXGpuWorkers *pool, size_t items, int kind)
     memset(pool, 0, sizeof(*pool));
     pool->items=items;
     if (!items) return;
-    if (cudaGetDevice(&owner)!=cudaSuccess || owner<0) return;
+    if (OpenMXGpuGetDevice(&owner)!=OPENMX_GPU_SUCCESS || owner<0) return;
     if (worker_device>=0) { pool->devices[0]=owner; pool->count=1; return; }
     if (workers_enabled())
         count=kind==2 ? openmx_mgpu_scope_devices(permitted, OPENMX_GPU_WORKERS_MAX) :
@@ -152,28 +162,47 @@ void openmx_gpu_workers_owner(OpenMXGpuWorkers *p,size_t n) { worker_pool(p,n,1)
 void openmx_gpu_workers_scope(OpenMXGpuWorkers *p,size_t n) { worker_pool(p,n,2); }
 
 typedef struct {
+#if OPENMX_GPU_HIP
+    int hip_device, omp_device, override, scope;
+#else
     int cuda_device, acc_device, override, scope;
     acc_device_t acc_type;
+#endif
 } WorkerBinding;
 
 static int bind_worker(int device,WorkerBinding *saved)
 {
+#if OPENMX_GPU_HIP
+    saved->hip_device=-1;
+    (void)OpenMXGpuGetDevice(&saved->hip_device);
+    saved->omp_device=omp_get_default_device();
+#else
     saved->cuda_device=-1;
-    (void)cudaGetDevice(&saved->cuda_device);
+    (void)OpenMXGpuGetDevice(&saved->cuda_device);
     saved->acc_type=acc_get_device_type();
     saved->acc_device=acc_get_device_num(saved->acc_type);
+#endif
     saved->override=worker_device;
     saved->scope=openmx_mgpu_scope_enter(0);
     worker_device=device;
-    if (cudaSetDevice(device)!=cudaSuccess) return 0;
+    if (OpenMXGpuSetDevice(device)!=OPENMX_GPU_SUCCESS) return 0;
+#if OPENMX_GPU_HIP
+    omp_set_default_device(device);
+#else
     acc_set_device_num(device,acc_device_nvidia);
+#endif
     return 1;
 }
 
 static void restore_worker(const WorkerBinding *saved)
 {
+#if OPENMX_GPU_HIP
+    omp_set_default_device(saved->omp_device);
+    if (saved->hip_device>=0) (void)OpenMXGpuSetDevice(saved->hip_device);
+#else
     if (saved->acc_device>=0) acc_set_device_num(saved->acc_device,saved->acc_type);
-    if (saved->cuda_device>=0) (void)cudaSetDevice(saved->cuda_device);
+    if (saved->cuda_device>=0) (void)OpenMXGpuSetDevice(saved->cuda_device);
+#endif
     worker_device=saved->override;
     openmx_mgpu_scope_leave(saved->scope);
 }
@@ -190,27 +219,35 @@ static int prepare_device(int device)
        situation before the callback has a chance to decline. */
     int original=-1;
     size_t available=0,capacity=0;
-    if (cudaGetDevice(&original)!=cudaSuccess) return 0;
-    int enough=cudaSetDevice(device)==cudaSuccess && cudaFree(0)==cudaSuccess &&
-        OpenMX_GpuMemGetInfo(&available,&capacity)==cudaSuccess &&
+    if (OpenMXGpuGetDevice(&original)!=OPENMX_GPU_SUCCESS) return 0;
+    int enough=OpenMXGpuSetDevice(device)==OPENMX_GPU_SUCCESS && OpenMXGpuFree(0)==OPENMX_GPU_SUCCESS &&
+        OpenMX_GpuMemGetInfo(&available,&capacity)==OPENMX_GPU_SUCCESS &&
         available>=(size_t)256*1024*1024;
-    if (cudaSetDevice(original)!=cudaSuccess) return 0;
-    if (!enough) { (void)cudaGetLastError();return 0; }
+    if (OpenMXGpuSetDevice(original)!=OPENMX_GPU_SUCCESS) return 0;
+    if (!enough) { (void)OpenMXGpuGetLastError();return 0; }
     WorkerBinding saved;
     int ok=bind_worker(device,&saved);
     if (ok) {
         size_t free_bytes=0,total_bytes=0;
-        ok=cudaFree(0)==cudaSuccess &&
-           OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)==cudaSuccess &&
+        ok=OpenMXGpuFree(0)==OPENMX_GPU_SUCCESS &&
+           OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)==OPENMX_GPU_SUCCESS &&
            free_bytes>=(size_t)256*1024*1024;
         if (ok) {
+#if OPENMX_GPU_HIP
+            void *touch=openmx_target_alloc((size_t)1024*1024);
+#else
             void *touch=acc_malloc((size_t)1024*1024);
+#endif
             ok=touch!=NULL;
+#if OPENMX_GPU_HIP
+            if (touch) openmx_target_free(touch);
+#else
             if (touch) acc_free(touch);
             if (ok) OpenMX_GpuPresizeKernelStack();
+#endif
         }
     }
-    if (!ok) (void)cudaGetLastError();
+    if (!ok) (void)OpenMXGpuGetLastError();
     restore_worker(&saved);
     if (ok) device_ready[device]=1;
     return ok;
@@ -224,8 +261,8 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
     if (!pool->count) return pool->items==0;
     /* Nested worker launch would deadlock the shared admission mutex. */
     if (worker_device>=0) return 0;
-    if (gpu_rank_device_usable() && cudaDeviceSynchronize()!=cudaSuccess) return 0;
-    (void)cudaGetLastError();
+    if (gpu_rank_device_usable() && OpenMXGpuDeviceSynchronize()!=OPENMX_GPU_SUCCESS) return 0;
+    (void)OpenMXGpuGetLastError();
     void *admission=openmx_mgpu_admit_devices(pool->devices,pool->count);
     if (!admission) return 0;
     for (int i=0;i<pool->count;i++)
@@ -240,8 +277,12 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
             if (bind_worker(pool->devices[i],&saved)) {
                 if (phase==OPENMX_GPU_WORKER_PREPARE) started[i]=1;
                 if (!callback(context,i,phase)) success=0;
+#if OPENMX_GPU_HIP
+                openmx_target_wait();
+#else
                 acc_wait_all();
-                if (cudaDeviceSynchronize()!=cudaSuccess) success=0;
+#endif
+                if (OpenMXGpuDeviceSynchronize()!=OPENMX_GPU_SUCCESS) success=0;
             } else success=0;
             restore_worker(&saved);
         }

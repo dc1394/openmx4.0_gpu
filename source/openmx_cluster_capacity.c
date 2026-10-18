@@ -1,3 +1,5 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_runtime.h"
 /**********************************************************************
   openmx_cluster_capacity.c
 
@@ -15,7 +17,6 @@
 #include "openmx_stdout_level.h"
 #include "openmx_host_memory.h"
 
-#include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -143,7 +144,11 @@ int openmx_cluster_capacity_select(MPI_Comm comm, int n, int complex_matrix,
 /* Set_Hamiltonian.c: release the resident matrix-elements tables of this
    rank and keep them transient for the rest of the MD step (1: there were
    some) */
+#if OPENMX_GPU_HIP
+extern size_t Set_Hamiltonian_DemoteResidency(void);
+#else
 extern int Set_Hamiltonian_Yield_Resident_DeviceCache(void);
+#endif
 
 #define PLACEMENT_INTS 6
 static void count_placement(MPI_Comm comm, int *nodes, int *gpus, int *idle)
@@ -164,19 +169,28 @@ static void count_placement(MPI_Comm comm, int *nodes, int *gpus, int *idle)
     mine[0] = node_key;
     {
         int dev = -1, count = 0;
+#if OPENMX_GPU_HIP
+        unsigned char uuid[16];
+#else
         struct cudaDeviceProp prop;
+#endif
         const int limit = openmx_mgpu_gpu_limit();
 
-        if (cudaGetDevice(&dev) == cudaSuccess &&
-            cudaGetDeviceProperties(&prop, dev) == cudaSuccess) {
+        if (OpenMXGpuGetDevice(&dev) == OPENMX_GPU_SUCCESS &&
+#if OPENMX_GPU_HIP
+            openmx_gpu_physical_uuid(dev, uuid)) {
+            memcpy(&mine[1], uuid, 16);
+#else
+            cudaGetDeviceProperties(&prop, dev) == OPENMX_GPU_SUCCESS) {
             memcpy(&mine[1], prop.uuid.bytes, 16);
+#endif
         }
         else {
-            (void)cudaGetLastError();
+            (void)OpenMXGpuGetLastError();
             mine[1] = -1 - node_key; /* one anonymous device per node */
         }
-        if (cudaGetDeviceCount(&count) != cudaSuccess) {
-            (void)cudaGetLastError();
+        if (OpenMXGpuGetDeviceCount(&count) != OPENMX_GPU_SUCCESS) {
+            (void)OpenMXGpuGetLastError();
             count = 1;
         }
         if (0 < limit && limit < count) count = limit;
@@ -246,7 +260,11 @@ int openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
            builds in one wave, up to ~20 GiB per GPU) are the tenant that
            can step aside: every rank releases its own, and the solve is
            admitted again on the memory they leave */
+#if OPENMX_GPU_HIP
+        int resident = (Set_Hamiltonian_DemoteResidency()!=0), any_resident = 0;
+#else
         int resident = Set_Hamiltonian_Yield_Resident_DeviceCache(), any_resident = 0;
+#endif
         MPI_Allreduce(&resident, &any_resident, 1, MPI_INT, MPI_MAX, comm);
         if (any_resident) {
             if (myid == 0 && OPENMX_STDOUT_LEVEL(2)) {
@@ -272,7 +290,8 @@ int openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
     if (myid == 0) {
         if (all_admitted) {
             if (OPENMX_STDOUT_LEVEL(1)) {
-                printf("<OpenMX_MGPU> %s n=%d: cuSOLVER memory limit -> %s -> distributed gpusolver2"
+                printf("<OpenMX_MGPU> %s n=%d: " OPENMX_GPU_SOLVER_NAME
+                       " memory limit -> %s -> distributed gpusolver2"
                        " (ELPA %s + COSMA) on %d node(s), %d GPU(s), %d rank(s).\n",
                        label, n, capacity_reason,
                        any_forced ? "kernels set by OPENMX_GS2_ELPA_GPU" : "GPU kernels",

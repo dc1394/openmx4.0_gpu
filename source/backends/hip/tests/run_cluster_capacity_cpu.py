@@ -40,9 +40,11 @@ hipError_t hipGetLastError(void);
 "hip_runtime_api.h": '#pragma once\n#include "hip_runtime_compat.h"\n',
 "hipblas_compat.h": r'''
 #pragma once
+#include "hip_complex_compat.h"
 typedef void *hipblasHandle_t; typedef int hipblasOperation_t; typedef int hipblasStatus_t;
-typedef int hipblasFillMode_t; typedef struct { double x, y; } hipDoubleComplex;
+typedef int hipblasFillMode_t;
 ''',
+"hip_complex_compat.h": '#pragma once\ntypedef struct { double x, y; } hipDoubleComplex;\n',
 "hipsolver_compat.h": r'''
 #pragma once
 #include <stdint.h>

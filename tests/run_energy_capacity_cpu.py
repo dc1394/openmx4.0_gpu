@@ -97,6 +97,8 @@ int main(void){
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-energy-capacity-") as folder:
     p=Path(folder);(p/"mpi.h").write_text("typedef int MPI_Comm;\n#define MPI_COMM_NULL (-1)\n")
+    (p/"cuda_runtime.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
+    (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
     (p/"check.c").write_text(prefix+globals_+body("openmx_gpu_task.c")+body("Total_Energy_GPU.c")+reference+main)
     subprocess.run(shlex.split(os.environ.get("CC","cc"))+[
         "-std=c11","-O1","-g","-Wno-unknown-pragmas","-fsanitize=address,undefined",

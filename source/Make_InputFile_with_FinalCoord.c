@@ -1,3 +1,4 @@
+#include "openmx_gpu_backend.h"
 /**********************************************************************
   Make_InputFile_with_FinalCoord.c:
 
@@ -16,6 +17,9 @@
 #include <time.h>
 #include <ctype.h>
 #include <string.h>
+#if OPENMX_GPU_HIP
+#include <errno.h>
+#endif
 
 /*  stat section */
 #include <sys/types.h>
@@ -29,6 +33,58 @@
 
 void Make_InputFile_with_FinalCoord_Normal(char *file, int MD_iter);
 void Make_InputFile_with_FinalCoord_NEGF(char *file, int MD_iter);
+#if OPENMX_GPU_HIP
+
+static int Open_FinalCoord_Files(const char *file, char *output_path,
+                                 size_t output_path_size,
+                                 FILE **output_file, FILE **input_file)
+{
+  const char *base;
+  const char *slash;
+  int length;
+
+  *output_file = NULL;
+  *input_file = NULL;
+
+  if (file==NULL || file[0]=='\0'){
+    fprintf(stderr,"Make_InputFile_with_FinalCoord: the input filename is empty; "
+                   "the final-coordinate input file was not written.\n");
+    return 0;
+  }
+
+  /* fname_input may be absolute or contain directories.  Final-coordinate
+     files belong in System.CurrentDirectory, so append only the basename. */
+  slash = strrchr(file,'/');
+  base = (slash!=NULL && slash[1]!='\0') ? slash + 1 : file;
+
+  length = snprintf(output_path,output_path_size,"%s%s#",filepath,base);
+  if (length<0 || output_path_size<=(size_t)length){
+    fprintf(stderr,"Make_InputFile_with_FinalCoord: output path is too long; "
+                   "the final-coordinate input file was not written.\n");
+    return 0;
+  }
+
+  *input_file = fopen(file,"r");
+  if (*input_file==NULL){
+    fprintf(stderr,"Make_InputFile_with_FinalCoord: cannot open input file '%s': %s\n",
+            file,strerror(errno));
+    return 0;
+  }
+
+  *output_file = fopen(output_path,"w");
+  if (*output_file==NULL){
+    int saved_errno = errno;
+    fclose(*input_file);
+    *input_file = NULL;
+    fprintf(stderr,"Make_InputFile_with_FinalCoord: cannot create '%s': %s; "
+                   "the final-coordinate input file was not written.\n",
+            output_path,strerror(saved_errno));
+    return 0;
+  }
+
+  return 1;
+}
+#endif
 
 
 
@@ -113,6 +169,9 @@ void Make_InputFile_with_FinalCoord_Normal(char *file, int MD_iter)
  
     /* the new input file */    
 
+#if OPENMX_GPU_HIP
+    if (!Open_FinalCoord_Files(file,fname1,sizeof(fname1),&fp1,&fp2)) return;
+#else
     sprintf(fname1,"%s%s#",filepath,file);
     fp1 = fopen(fname1,"w");
     fseek(fp1,0,SEEK_END);
@@ -120,6 +179,7 @@ void Make_InputFile_with_FinalCoord_Normal(char *file, int MD_iter)
     /* the original input file */    
 
     fp2 = fopen(file,"r");
+#endif
 
     if (fp2!=NULL){
 
@@ -642,6 +702,9 @@ void Make_InputFile_with_FinalCoord_NEGF(char *file, int MD_iter)
 
     /* the new input file */    
 
+#if OPENMX_GPU_HIP
+    if (!Open_FinalCoord_Files(file,fname1,sizeof(fname1),&fp1,&fp2)) return;
+#else
     sprintf(fname1,"%s%s#",filepath,file);
     fp1 = fopen(fname1,"w");
     fseek(fp1,0,SEEK_END);
@@ -649,6 +712,7 @@ void Make_InputFile_with_FinalCoord_NEGF(char *file, int MD_iter)
     /* the original input file */    
 
     fp2 = fopen(file,"r");
+#endif
 
     if (fp2!=NULL){
 

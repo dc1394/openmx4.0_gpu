@@ -39,9 +39,11 @@ cudaError_t cudaGetLastError(void);
 "cuda_runtime_api.h": '#pragma once\n#include "cuda_runtime.h"\n',
 "cublas_v2.h": r'''
 #pragma once
+#include "cuComplex.h"
 typedef void *cublasHandle_t; typedef int cublasOperation_t; typedef int cublasStatus_t;
-typedef int cublasFillMode_t; typedef struct { double x, y; } cuDoubleComplex;
+typedef int cublasFillMode_t;
 ''',
+"cuComplex.h": '#pragma once\ntypedef struct { double x, y; } cuDoubleComplex;\n',
 "cusolverDn.h": r'''
 #pragma once
 #include <stdint.h>

@@ -1,3 +1,5 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
 /**********************************************************************
   Set_OLP_Kin.c:
 
@@ -20,9 +22,6 @@
 #include "openmx_gpu_task.h"
 #include "mpi.h"
 #include <omp.h>
-#include "set_cuda_default_device_from_local_rank.h"
-
-
 
 typedef struct {
   int grid_dim,grid_last,combo_count,h_AN,Lmax_Four_Int;
@@ -39,7 +38,11 @@ static void OLPKin_Radial_Kernel(size_t first,size_t count,const void *parameter
   double h=p->h,*Normk_grid=v[0],*RF_BesselCache0=v[1],*RF_BesselCache1=v[2];
   double *SphB_flat=v[3],*SphBp_flat=v[4];int *combo_rf0_offset=v[5],*combo_rf1_offset=v[6];
   double *sumS0_flat=v[7],*sumK0_flat=v[8],*sumSr0_flat=v[9],*sumKr0_flat=v[10];
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for if(use_gpu) is_device_ptr(Normk_grid,RF_BesselCache0,RF_BesselCache1,SphB_flat,SphBp_flat,combo_rf0_offset,combo_rf1_offset,sumS0_flat,sumK0_flat,sumSr0_flat,sumKr0_flat)
+#else
 #pragma acc parallel loop if(use_gpu) deviceptr(Normk_grid,RF_BesselCache0,RF_BesselCache1,SphB_flat,SphBp_flat,combo_rf0_offset,combo_rf1_offset,sumS0_flat,sumK0_flat,sumSr0_flat,sumKr0_flat)
+#endif
                   for (size_t ix=0;ix<count;ix++) {
                     int l=(int)((first+ix)/(size_t)combo_count);
                     int combo=(int)((first+ix)%(size_t)combo_count);
@@ -53,7 +56,9 @@ static void OLPKin_Radial_Kernel(size_t first,size_t count,const void *parameter
 	              local_sumSr0 = 0.0;
 	              local_sumKr0 = 0.0;
 
+#if !OPENMX_GPU_HIP
 #pragma acc loop vector reduction(+:local_sumS0,local_sumK0,local_sumSr0,local_sumKr0)
+#endif
 	              for (int i=0; i<grid_dim; i++){
 	                double acc_coe0,acc_Normk,acc_Normk2;
 	                double acc_sj,acc_sjp,acc_tmp0,acc_tmp1,acc_tmp2,acc_tmp3,acc_tmp4;
@@ -103,7 +108,11 @@ static void OLPKin_Radial_Distribute(OLPKinRadialWork *w)
   openmx_gpu_task_execute(mpi_comm_level1,&t,1,"overlap-kinetic-radial");
 }
 
+#if OPENMX_GPU_HIP
+static int SetOLPKinUseOpenMP(void);
+#else
 static int SetOLPKinUseOpenACC(void);
+#endif
 
 #ifdef kcomp
 dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3,
@@ -124,7 +133,11 @@ void Free2D_dcomplex(dcomplex** buffer);
 #endif
 
 
+#if OPENMX_GPU_HIP
+static int SetOLPKinUseOpenMP(void)
+#else
 static int SetOLPKinUseOpenACC(void)
+#endif
 {
   return (scf_eigen_lib_flag == GPUSOLVER);
 }
@@ -347,7 +360,11 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
   /* The optional radial offload is called only by the MPI main thread.
      Empty ranks enter the same number of recovery phases as busy ranks. */
+#if OPENMX_GPU_HIP
+  int radial_capacity=omp_get_max_threads()==1 && SetOLPKinRadialGpuEnabled() && SetOLPKinUseOpenMP();
+#else
   int radial_capacity=omp_get_max_threads()==1 && SetOLPKinRadialGpuEnabled() && SetOLPKinUseOpenACC();
+#endif
   MPI_Allreduce(MPI_IN_PLACE,&radial_capacity,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   int radial_rounds=OneD_Nloop;
   if(radial_capacity)MPI_Allreduce(MPI_IN_PLACE,&radial_rounds,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -366,7 +383,11 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    int i,j,k,l,m,p;
 	    int num0,num1;
 	    int grid_dim,max_Lmax_Four_Int;
+#if OPENMX_GPU_HIP
+	    int use_openmp_radial;
+#else
 	    int use_openacc_radial;
+#endif
 	    int use_bessel_cache;
 	    OLPKinBesselCache bessel_cache = {0};
 	    int cached_Cwan,cached_Hwan;
@@ -486,7 +507,11 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    OMPID = omp_get_thread_num();
 	    Nthrds = omp_get_num_threads();
 	    Nprocs = omp_get_num_procs();
+#if OPENMX_GPU_HIP
+	    use_openmp_radial = radial_capacity;
+#else
 	    use_openacc_radial = radial_capacity;
+#endif
 	    use_bessel_cache = (0 < bessel_cache_max);
 	    bessel_cache.lmax = max_Lmax_Four_Int;
 	    bessel_cache.gdim = grid_dim;
@@ -696,7 +721,11 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 		combo_cached_Hwan = Hwan;
 	      }
 
+#if OPENMX_GPU_HIP
+	      if (use_openmp_radial){
+#else
 	      if (use_openacc_radial){
+#endif
 	        size_t sph_valid_elems,sum_valid_elems;
 
 	        sph_valid_elems = (size_t)(Lmax_Four_Int+1)*(size_t)grid_dim;

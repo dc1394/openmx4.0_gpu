@@ -1,11 +1,12 @@
 #ifndef OPENMX_MGPU_RUNTIME_H
 #define OPENMX_MGPU_RUNTIME_H
 
-#include <stdint.h>
-#include <cuda_runtime_api.h>
-#include <cublas_v2.h>
-#include <cusolverDn.h>
+#include "openmx_gpu_backend.h"
 
+#include <stdint.h>
+#include "openmx_gpu_runtime.h"
+#include "openmx_gpu_blas.h"
+#include "openmx_gpu_solver.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -15,6 +16,10 @@ extern "C" {
    Configure collectively obtained topology once per input; this function
    itself never calls MPI and never creates a CUDA context. */
 void openmx_mgpu_configure(int enabled, int gpu_limit, int single_node);
+#if OPENMX_GPU_HIP
+/* C-safe physical identity: no dependency on HIP's C++ device-property ABI. */
+int openmx_gpu_physical_uuid(int device, unsigned char uuid[16]);
+#endif
 /* 1 when the configured run spans several nodes (single_node was 0). */
 int openmx_mgpu_multi_node(void);
 /* scf.Gpu.Num as configured (a per-process device cap; 0 or less: none). */
@@ -67,9 +72,9 @@ int openmx_mgpu_host_plan(int total_kpoints, int n, int complex_matrix);
 int openmx_mgpu_host_precheck(int total_kpoints, int n, int complex_matrix);
 const char *openmx_mgpu_host_error(void);
 int openmx_mgpu_host_solve(int n, int nev, int complex_matrix, void *a, int lda, double *w);
-int openmx_mgpu_host_dgemm(cublasOperation_t ta, cublasOperation_t tb,
+int openmx_mgpu_host_dgemm(OpenMXBlasOperation ta, OpenMXBlasOperation tb,
     int m, int n, int k, const double *a, int lda, const double *b, int ldb, double *c, int ldc);
-int openmx_mgpu_host_zgemm(cublasOperation_t ta, cublasOperation_t tb,
+int openmx_mgpu_host_zgemm(OpenMXBlasOperation ta, OpenMXBlasOperation tb,
     int m, int n, int k, const void *a, int lda, const void *b, int ldb, void *c, int ldc);
 
 /* Optional hooks keep standalone tests of the existing bridges linkable
@@ -80,8 +85,15 @@ int openmx_mgpu_host_zgemm(cublasOperation_t ta, cublasOperation_t tb,
 #define OPENMX_MGPU_OPTIONAL
 #endif
 
-typedef cusolverStatus_t (*openmx_mgpu_native_solve)(void *context);
+typedef OpenMXSolverStatus (*openmx_mgpu_native_solve)(void *context);
 
+#if OPENMX_GPU_HIP
+int openmx_mgpu_solve_host_result_try(int complex_matrix,int n,int nev,void *a,
+    double *w,int *mout,int (*native_solve)(void *,double *),void *native_context,int *result)
+    OPENMX_MGPU_OPTIONAL;
+
+
+#endif
 /* 0 declines, preserving A for the original solve; 1 has produced status.
    Native calibration uses the caller's existing solver/workspace callback,
    so timings include exactly the same single-GPU implementation as fallback.
@@ -89,21 +101,21 @@ typedef cusolverStatus_t (*openmx_mgpu_native_solve)(void *context);
    repeated SCF work; OPENMX_MGPU_TUNE_TRIALS=1 uses one (maximum accepted 3).
    MGPU scores include host preparation, transfers and result validation.
    Supports FP64 vectors, full spectra and leading-index subsets. */
-int openmx_mgpu_solve_device_try(cusolverDnHandle_t handle,
-    cusolverEigMode_t jobz, cublasFillMode_t uplo, int64_t n,
-    cudaDataType type, void *A, int64_t lda, int64_t nev, double *W,
+int openmx_mgpu_solve_device_try(OpenMXSolverHandle handle,
+    OpenMXSolverEigMode jobz, OpenMXBlasFillMode uplo, int64_t n,
+    OpenMXGpuDataType type, void *A, int64_t lda, int64_t nev, double *W,
     int64_t *meig, int *info, openmx_mgpu_native_solve native_solve,
-    void *native_context, cusolverStatus_t *status) OPENMX_MGPU_OPTIONAL;
+    void *native_context, OpenMXSolverStatus *status) OPENMX_MGPU_OPTIONAL;
 
-int openmx_mgpu_dispatch_dgemm(cublasHandle_t handle,
-    cublasOperation_t ta, cublasOperation_t tb, int m, int n, int k,
+int openmx_mgpu_dispatch_dgemm(OpenMXBlasHandle handle,
+    OpenMXBlasOperation ta, OpenMXBlasOperation tb, int m, int n, int k,
     const double *alpha, const double *A, int lda, const double *B, int ldb,
-    const double *beta, double *C, int ldc, cublasStatus_t *status) OPENMX_MGPU_OPTIONAL;
-int openmx_mgpu_dispatch_zgemm(cublasHandle_t handle,
-    cublasOperation_t ta, cublasOperation_t tb, int m, int n, int k,
-    const cuDoubleComplex *alpha, const cuDoubleComplex *A, int lda,
-    const cuDoubleComplex *B, int ldb, const cuDoubleComplex *beta,
-    cuDoubleComplex *C, int ldc, cublasStatus_t *status) OPENMX_MGPU_OPTIONAL;
+    const double *beta, double *C, int ldc, OpenMXBlasStatus *status) OPENMX_MGPU_OPTIONAL;
+int openmx_mgpu_dispatch_zgemm(OpenMXBlasHandle handle,
+    OpenMXBlasOperation ta, OpenMXBlasOperation tb, int m, int n, int k,
+    const OpenMXGpuComplex *alpha, const OpenMXGpuComplex *A, int lda,
+    const OpenMXGpuComplex *B, int ldb, const OpenMXGpuComplex *beta,
+    OpenMXGpuComplex *C, int ldc, OpenMXBlasStatus *status) OPENMX_MGPU_OPTIONAL;
 
 #undef OPENMX_MGPU_OPTIONAL
 #ifdef __cplusplus

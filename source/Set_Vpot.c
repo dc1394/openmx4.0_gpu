@@ -1,3 +1,7 @@
+#include "openmx_gpu_backend.h"
+#if OPENMX_GPU_HIP
+#include "openmx_gpu_device.h"
+#endif
 /**********************************************************************
   Set_Vpot.c:
 
@@ -18,8 +22,16 @@
 #include "mpi.h"
 #include <omp.h>
 
-
+#if OPENMX_GPU_HIP
 static void Make_VNA_Grid();
+#endif
+
+#if OPENMX_GPU_HIP
+/* set_hamiltonian_hip.cu: the precision of the grid integrals' kernels */
+void openmx_grid_precision_announce(void);
+#else
+static void Make_VNA_Grid();
+#endif
 
 
 void Set_Vpot(int MD_iter,
@@ -61,7 +73,23 @@ void Set_Vpot(int MD_iter,
   double vp_t0, vp_t1, vp_xc = 0.0, vp_d2b = 0.0, vp_vna = 0.0, vp_asm = 0.0, vp_mix = 0.0, vp_b2c = 0.0;
   static int vp_prof = -1;
   if (vp_prof < 0) { const char *e = getenv("OPENMX_BAND_PROFILE"); vp_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
+#if OPENMX_GPU_HIP
+
+  /* The precision of the grid integrals that follow (the matrix elements
+     of Set_Hamiltonian, the density), announced once on the host rank as
+     the NVIDIA version's Grid_Precision_BeginStep does at the first SCF
+     step; only where the eigensolver, and with it the grid kernels, runs
+     on the GPU. */
+  if (myid==Host_ID && 0<level_stdout && scf_eigen_lib_flag==GPUSOLVER){
+    static int announced = 0;
+    if (!announced){
+      announced = 1;
+      if (gpu_rank_device_usable()) openmx_grid_precision_announce();
+    }
+  }
+#endif
   dtime(&vp_t0);
+
   /****************************************************
                        Vxc on grid
   ****************************************************/
@@ -72,8 +100,13 @@ void Set_Vpot(int MD_iter,
 	      Vxc_Grid_D[0], Vxc_Grid_D[1],
 	      Vxc_Grid_D[2], Vxc_Grid_D[3],
 	      NULL,NULL);
-
+#if OPENMX_GPU_HIP
   dtime(&vp_t1); vp_xc = vp_t1 - vp_t0; vp_t0 = vp_t1;
+#endif
+
+#if !OPENMX_GPU_HIP
+  dtime(&vp_t1); vp_xc = vp_t1 - vp_t0; vp_t0 = vp_t1;
+#endif
   /* copy Vxc_Grid_D to Vxc_Grid_B */
 
   Ng1 = Max_Grid_Index_D[1] - Min_Grid_Index_D[1] + 1;

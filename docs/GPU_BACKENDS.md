@@ -41,6 +41,38 @@ ELPA/COSMA などの変更される依存ソース・生成物をビルドごと
 `source/third_party/hip/` に保存しています。
 選択結果は各ビルドディレクトリの `selected-sources.json` で確認できます。
 
+## 共通コードとバックエンド境界
+
+CUDA/HIP で重複していた 56 ファイルを `source/` の単一ソースへ統合しました。
+HIP の置換リストは 105 件から 49 件になり、共通化した元ファイルは
+`source/backends/hip/src/` と `include/` から削除しています。
+
+| 共通部分 | 主なソース |
+| --- | --- |
+| GPU API とデバイス割り当ての呼び出し | `openmx_gpu_backend.h`、`openmx_gpu_runtime.h`、`openmx_gpu_blas.h`、`openmx_gpu_solver.h`、`openmx_gpu_complex.h`、`openmx_gpu_device.h` |
+| メモリ容量判定・作業分割・失敗時の復旧 | `openmx_gpu_workers.c`、`openmx_gpu_views.c`、`openmx_gpu_task.c`、`openmx_gpu_vector.c`、`openmx_gpu_bilinear.c`、collective 系 |
+| 密度行列・密行列変換の GPU カーネル | `openmx_gpu_dm.cu`、`openmx_gpu_transform.cu` |
+| 複数 GPU の実行制御・行列積・MAGMA 接続 | `openmx_mgpu_runtime.cu`、`openmx_mgpu_gemm.cu`、`openmx_magma_mgpu.cpp` |
+| 数値計算・入力と後処理 | CWF/DMmu 派生ソルバー、ELPA/COSMA 接続、分極、混合、重なり積分、全エネルギーの呼び出し部分、`truncation.c`、`openmx_common.c/h`、`Input_std.c`、`Free_Arrays.c` など |
+
+共通 API はネイティブの関数・型・定数へのコンパイル時の別名です。
+実行時の切り替えや追加のデータ転送は行いません。HIP Makefile が定義する
+`__HIP_PLATFORM_AMD__` から `OPENMX_GPU_HIP` を決定します。GPU を使わない
+判定コードからも参照できるよう、`openmx_gpu_backend.h` は SDK に依存しません。
+
+OpenACC と OpenMP target の指示、物理メモリ・UUID・GPU 間接続の取得、
+ELPA の GPU オプションと HIP 小行列対策はバックエンドごとの分岐に保持しています。
+CUDA の弱 FP64 GPU 向け MAGMA FP32 補正と共有 Band グループ、HIP の MAGMA 共通ロック、
+入力切り替え時のキャッシュ破棄、GPU 不在時の後処理も元の方針を維持します。
+主要 SCF ソルバー、Hamiltonian・密度・軌道・力などの専用実装と、
+ツールチェーン・依存ライブラリの構築は引き続きバックエンド別です。
+
+`sources.json` の `shared` と `import_sha256` は変更していない取り込み元を記録し、
+今回の共通実装は `integrated_shared` に登録します。共通コードを修正すると
+両ビルドへ反映されます。既存の HIP ビルドを再開したときも、準備処理が
+削除済みの置換ソースへのリンクを共通ソースへ張り替えます。
+両 Makefile は共通 GPU インターフェースヘッダーの変更を再コンパイルへ反映します。
+
 ## NVIDIA / CUDA
 
 既定の Makefile は NVIDIA HPC SDK 26.9 と CUDA 13.4 を使用します。
@@ -214,9 +246,38 @@ ctest --test-dir build/hip --output-on-failure
 
 共通テストはソースの選択、取り込み時のチェックサム、CUDA ヘッダーと HIP 互換
 ヘッダーの分離、依存物の独立性、両 Makefile のコンパイル指示を検証します。
+共通化後は、両バックエンドが同じ実体を参照すること、置換元の重複が残らないこと、
+既存ビルドのリンク更新も検証します。
 HIP の CTest はさらに MI300A/Radeon の演算方針、非共線バンドの復旧処理、
 MPI ランク起動処理をホスト上で検証します。AMD GPU を使用する実機試験とは別です。
 AMD 版から取り込んだ追加テストは `build/hip/native/tests/` から実行できます。
+
+共通 GPU 処理のホスト試験は、GPU API を模擬して数値結果、メモリ境界、
+割り当て失敗時の巻き戻し、デバイスとスコープの復元を検証します。
+CUDA には `tests/`、HIP には準備済みの `build/hip/native/tests/` を指定します。
+実機のストリーム、P2P 転送、GPU コンパイラによるオフロードの検証は別途必要です。
+
+```sh
+# ASan を使う試験ではスタックサイズを unlimited にしないでください。
+ulimit -s 8192
+for backend_tests in tests build/hip/native/tests; do
+  for test in gpu_vector gpu_task gpu_bilinear gpu_workers gpu_dense_workers \
+              mgpu_gemm mgpu_runtime mgpu_band_plan mgpu_band_group magma_mgpu \
+              dm_capacity grid_recovery energy_capacity hamiltonian_capacity \
+              projector_recovery setpro_capacity density_capacity; do
+    python3 "$backend_tests/run_${test}_cpu.py" || exit 1
+  done
+done
+```
+
+2026-10-18 の共通化では、RTX 5080 環境で CUDA 本体をビルドし、4 MPI × 1 スレッドの
+CPU／CUDA `-runtest` 全 14 件を、変更前の実行ファイルと付属参照値の両方に対して
+検証しました。変更前との差は CPU 経路で出力精度内のゼロ、CUDA 経路で最大
+`7e-12 Ha`（エネルギー）、`2e-12 Ha/bohr`（力）です。
+両バックエンドの上記ホスト試験、メモリ・容量判定・ELPA/COSMA の MPI 試験、
+CPU ELPA 接続試験も合格しています。HIP 向け共通 C ソース 38 件は OpenMP を有効にした
+ホスト構文検査を行いました。この環境には ROCm と AMD GPU がないため、今回の変更の
+HIP デバイスコンパイルと AMD 実機検証は未実施です。
 
 CPU の ELPA 接続部は、実際の MPI と LAPACK を使って検証できます。
 次の試験は実数・複素数、一段階法・二段階法、部分固有ベクトル、長方形のプロセス

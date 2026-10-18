@@ -8,7 +8,13 @@ import tempfile
 HERE=Path(__file__).resolve().parents[1]/"source"
 with tempfile.TemporaryDirectory(prefix='openmx-aux-workers-') as directory:
     tmp=Path(directory)
+    for name in ('backend', 'runtime', 'device'):
+        header = 'openmx_gpu_' + name + '.h'
+        (tmp/header).write_bytes((HERE/header).read_bytes())
+    (tmp/'cuda_runtime.h').write_text('#include "openmx_mgpu_runtime.h"\n')
+    (tmp/'set_openacc_device_from_local_rank.h').write_text('/* No rank rebinding in worker fixture. */\n')
     (tmp/'openmx_mgpu_runtime.h').write_text('''
+#pragma once
 #include <stddef.h>
 typedef int cudaError_t;
 #define cudaSuccess 0
@@ -19,6 +25,7 @@ int openmx_mgpu_pool_devices(int*,int);int openmx_mgpu_scope_devices(int*,int);
 void *openmx_mgpu_admit_devices(const int*,int);void openmx_mgpu_release_devices(void*);
 ''')
     (tmp/'set_cuda_default_device_from_local_rank.h').write_text('''
+#include <stddef.h>
 int gpu_rank_device_usable(void);
 int openmx_gpu_map_rank_to_device(int,int,int);
 int OpenMX_GpuMemGetInfo(size_t*,size_t*);void OpenMX_GpuPresizeKernelStack(void);

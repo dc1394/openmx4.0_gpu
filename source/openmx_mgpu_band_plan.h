@@ -1,6 +1,8 @@
 #ifndef OPENMX_MGPU_BAND_PLAN_H
 #define OPENMX_MGPU_BAND_PLAN_H
 
+#include "openmx_gpu_backend.h"
+
 #include <limits.h>
 #include <stdint.h>
 

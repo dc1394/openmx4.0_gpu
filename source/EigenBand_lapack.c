@@ -1,3 +1,4 @@
+#include "openmx_gpu_backend.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -10,7 +11,11 @@ static void Eigen_zheev(dcomplex **A, double *W, int N0);
 static int Eigen_zheevx(dcomplex **A, double *W, int N0, int MaxN, int ev_flag);
 static void Eigen_HH(dcomplex **ac, double *ko, int n, int EVmax, int ev_flag);
 static int gpusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag);
+#if OPENMX_GPU_HIP
+static int gpusolver_zheevx_openmp(dcomplex* A, double* W, int N0, int MaxN);
+#else
 static int gpusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN);
+#endif
 
 
 void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
@@ -648,56 +653,106 @@ int Eigen_zheevx(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
   return INFO;
 }
 
+#if OPENMX_GPU_HIP
+void EigenBand_lapack_openmp(dcomplex* A, double* W, int N0, int MaxN)
+#else
 void EigenBand_lapack_openacc(dcomplex* A, double* W, int N0, int MaxN)
+#endif
 {
     int info;
+#if OPENMX_GPU_HIP
+    info = gpusolver_zheevx_openmp(A, W, N0, MaxN);
+#else
     info = gpusolver_zheevx_openacc(A, W, N0, MaxN);
+#endif
     if (info != 0) {
+#if OPENMX_GPU_HIP
+        fprintf(stderr, "EigenBand_lapack_openmp: GPU eigensolver failed, info=%d\n", info);
+        fflush(stderr);
+#else
         fprintf(stderr, "EigenBand_lapack_openacc: eigensolver failed, info=%d\n", info);
+#endif
         MPI_Abort(mpi_comm_level1, 1);
     }
 }
 
+#if OPENMX_GPU_HIP
+void Eigen_gpusolver_x_complex_openmp(dcomplex ** a, double * ko, int n0, int EVmax)
+#else
 void Eigen_gpusolver_x_complex_openacc(dcomplex ** a, double * ko, int n0, int EVmax)
+#endif
 {
     int       info;
     int const n = n0;
 
     dcomplex* A = (dcomplex*)malloc(sizeof(dcomplex) * n * n);
 
+#if !OPENMX_GPU_HIP
 #pragma acc data present(a[0 : n][0 : n], ko[0 : n])
 #pragma acc data create(A[0 : n * n])
+#endif
     {
+#if OPENMX_GPU_HIP
+#pragma omp parallel for collapse(2)
+#else
 #pragma acc kernels
 #pragma acc loop independent
+#endif
         for (int i = 0; i < n; i++) {
+#if !OPENMX_GPU_HIP
 #pragma acc loop independent
+#endif
             for (int j = 0; j < n; j++) {
                 A[i * n + j].r = a[i + 1][j + 1].r;
                 A[i * n + j].i = a[i + 1][j + 1].i;
             }
         }
 
+#if OPENMX_GPU_HIP
+        /* the wrapper stages the host arrays through device memory (a dGPU
+           cannot read malloc'd memory) and checks the eigenpairs for
+           non-finite values, the defect of rocSOLVER's complex D&C */
+        info = gpusolver_Syevdx_Complex_openmp(A, ko, n, EVmax);
+#else
         info = gpusolver_Syevdx_Complex_openacc(A, ko, n, EVmax);
+#endif
 
         if (info != 0) {
+#if OPENMX_GPU_HIP
+            free(A);
+            fprintf(stderr, "Eigen_gpusolver_x_complex_openmp: GPU eigensolver failed, info=%d\n", info);
+            fflush(stderr);
+#else
             fprintf(stderr, "Complex OpenACC eigensolver failed, info=%d\n", info);
+#endif
             MPI_Abort(mpi_comm_level1, 1);
+#if OPENMX_GPU_HIP
+            return;
+#else
             exit(10);
+#endif
         }
 
+#if OPENMX_GPU_HIP
+#pragma omp parallel for collapse(2)
+#else
 #pragma acc kernels
 #pragma acc loop independent
+#endif
         for (int i = 0; i < EVmax; i++) {
+#if !OPENMX_GPU_HIP
 #pragma acc loop independent
+#endif
             for (int j = 0; j < n; j++) {
                 a[j + 1][i + 1].r = A[i * n + j].r;
                 a[j + 1][i + 1].i = A[i * n + j].i;
             }
         }
 
+#if !OPENMX_GPU_HIP
 #pragma acc kernels
 #pragma acc loop seq
+#endif
         for (int i = EVmax; i >= 1; i--) {
             ko[i] = ko[i - 1];
         }
@@ -719,6 +774,9 @@ int gpusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag)
     }
 
     int info = gpusolver_Syevdx_Complex(A0, W, N, MaxN);
+
+    /* on any failure (a non-finite result included) EigenBand_lapack solves
+       again with Eigen_HH, which needs the original A and W untouched */
     if (info != 0) {
         free(A0);
         return info; /* EigenBand_lapack retries on the original host matrix. */
@@ -743,17 +801,29 @@ int gpusolver_zheevx(dcomplex** A, double* W, int N0, int MaxN, int ev_flag)
     return info;
 }
 
+#if OPENMX_GPU_HIP
+int gpusolver_zheevx_openmp(dcomplex* A, double* W, int N0, int MaxN)
+#else
 int gpusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN)
+#endif
 {
     int info;
 
+#if OPENMX_GPU_HIP
+    info = gpusolver_Syevdx_Complex_openmp(A, W, N0, MaxN);
+#else
     info = gpusolver_Syevdx_Complex_openacc(A, W, N0, MaxN);
+#endif
     if (info != 0) return info;
 
+#if !OPENMX_GPU_HIP
 #pragma acc data present(W[0: N0 + 1])
+#endif
     {
+#if !OPENMX_GPU_HIP
 #pragma acc kernels
 #pragma acc loop seq
+#endif
         for (int i = N0; i >= 1; i--) {
             W[i] = W[i - 1];
         }

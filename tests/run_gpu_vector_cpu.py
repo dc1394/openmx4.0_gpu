@@ -103,9 +103,10 @@ int main(void){
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-vector-") as folder:
     p = Path(folder)
+    (p / "cuda_runtime.h").write_text("/* Runtime calls are defined by the fixture prefix. */\n")
     (p / "mpi.h").write_text("typedef int MPI_Comm;\n")
     body = "\n".join(line for line in code.splitlines()
-                     if line not in ('#include <cuda_runtime.h>', '#include <openacc.h>', '#include "set_cuda_default_device_from_local_rank.h"'))
+                     if line not in ('#include "openmx_gpu_device.h"', '#include <cuda_runtime.h>', '#include <openacc.h>', '#include "set_cuda_default_device_from_local_rank.h"'))
     (p / "check.c").write_text(prefix + body + main)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
         "-std=c11", "-O1", "-g", "-Wall", "-Wextra", "-Wno-unknown-pragmas",

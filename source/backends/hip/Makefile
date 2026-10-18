@@ -396,6 +396,12 @@ MGPU_HIP_OBJECTS = openmx_gpu_dm.o openmx_gpu_transform.o \
  openmx_mgpu_gemm.o openmx_mgpu_runtime.o
 OBJS += $(MGPU_C_OBJECTS) $(MGPU_HIP_OBJECTS) openmx_gpu_views.o \
  openmx_gpu_bilinear_pack.o openmx_magma_mgpu.o elpa_cosma_memory.o
+# These interfaces also reach legacy objects through openmx_common.h.
+# Rebuild consumers when a native API mapping or backend selection changes.
+OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
+ openmx_gpu_blas.h openmx_gpu_solver.h openmx_gpu_complex.h \
+ openmx_gpu_device.h openmx_gpu_error.h
+$(OBJS): $(OPENMX_GPU_INTERFACE_HEADERS)
 MGPU_HEADERS = $(wildcard openmx_gpu_*.h openmx_mgpu_*.h) \
  openmx_magma_mgpu.h openmx_magma_lock.h openmx_target.h openmx_host_memory.h \
  openmx_cluster_capacity.h openmx_dense_cpu.h

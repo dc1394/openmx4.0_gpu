@@ -2,6 +2,7 @@
 """Capacity kernels: grid-list search, VNA contraction and radial integrals."""
 import ast,os,shlex,subprocess,tempfile
 from pathlib import Path
+from mock_hip_sources import stage
 root=Path(__file__).resolve().parents[1]
 tree=ast.parse((root/'tests/run_gpu_vector_cpu.py').read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(getattr(t,'id','')=='prefix' for t in n.targets))
@@ -102,6 +103,9 @@ int main(void){
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-grid-recovery-') as folder:
  p=Path(folder);(p/'mpi.h').write_text('typedef int MPI_Comm;\n#define MPI_COMM_NULL (-1)\n')
+ stage(root, p)
+ (p/"hip_runtime_compat.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
+ (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
  (p/'check.c').write_text(prefix+body+functions+main)
  flags=['-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all']
  subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g']+flags+['-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),'-lm','-o',str(p/'check')],check=True)

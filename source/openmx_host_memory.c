@@ -5,6 +5,9 @@
   openmx_host_memory.h.
 ***********************************************************************/
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include "openmx_host_memory.h"
 
 #include <stdio.h>
@@ -69,12 +72,15 @@ static void cgroup_mem_limits(unsigned long long *limit_min, unsigned long long 
             snprintf(path, sizeof(path), "%s", b + 1);          /* v2: "0::/path" */
         }
         else {
-            char *tok, *save = NULL;
-            for (tok = strtok_r(a + 1, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
-                if (strcmp(tok, "memory") == 0) {                 /* v1: "N:memory:/path" */
-                    snprintf(path, sizeof(path), "%s", b + 1);
-                    v1 = 1;
+            for (const char *tok=a+1; *tok;) {
+                const char *end=strchr(tok,',');
+                size_t len=end?(size_t)(end-tok):strlen(tok);
+                if (len==6 && memcmp(tok,"memory",6)==0) {
+                    snprintf(path,sizeof(path),"%s",b+1);
+                    v1=1;
                 }
+                if (!end) break;
+                tok=end+1;
             }
         }
     }

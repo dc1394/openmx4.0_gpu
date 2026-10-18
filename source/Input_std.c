@@ -1,15 +1,20 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !OPENMX_GPU_HIP
 #include <strings.h>
+#endif
 #include <ctype.h>
 #include "openmx_common.h"
 #include "openmx_precision.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_mgpu_band_plan.h"
 #include "openmx_gpu_workers.h"
-#include "set_cuda_default_device_from_local_rank.h"
+
 #include "Inputtools.h"
 #include "mpi.h"
 #include <omp.h>
@@ -872,7 +877,11 @@ void Input_std(char *file)
     input_logical("scf.gemmul8.enable", &gemmul8_enable, -1);
     openmx_gemmul8SetEnabled(gemmul8_enable);
     if (gemmul8_enable==0 && myid==Host_ID && 2<=level_stdout){
+#if OPENMX_GPU_HIP
+      printf("<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain hipBLAS instead of GEMMul8.\n");
+#else
       printf("<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain cuBLAS instead of GEMMul8.\n");
+#endif
     }
   }
 
@@ -5131,7 +5140,11 @@ void Input_std(char *file)
       openmx_mgpu_configure(mgpu_enabled, SCF_Gpu_Num, mgpu_single_node);
       if (myid == Host_ID && 0 < level_stdout) {
         printf("<OpenMX_MGPU> Band GPU pool: kpoints=%d group_gpus=%d used_gpus=%d input_limit=%d\n",
+#if OPENMX_GPU_HIP
+               band_kpoints, used_gpus / band_kpoints, used_gpus, requested);
+#else
                band_kpoints, openmx_mgpu_band_group(band_kpoints,0,NULL,0), used_gpus, requested);
+#endif
       }
     } else {
       /* All ranks must agree on whether a cooperative pool exists. */
@@ -5141,14 +5154,25 @@ void Input_std(char *file)
 
   /* A dense solver/k-point restriction must not disable node-local grid
      recovery, especially with ELPA/COSMA on multiple nodes. */
+#if OPENMX_GPU_HIP
+  openmx_mgpu_configure_auxiliary(scf_eigen_lib_flag==GPUSOLVER ? mgpu_enabled : 0);
+#else
   openmx_mgpu_configure_auxiliary(mgpu_enabled);
+#endif
 
   /* Record the established rank map before any device cache is created.
      Worker callbacks never use MPI to discover their rank or device. */
   {
     int visible=0;
-    if (scf_eigen_lib_flag==GPUSOLVER && cudaGetDeviceCount(&visible)!=cudaSuccess) {
-      (void)cudaGetLastError();
+#if OPENMX_GPU_HIP
+    const char *gpu_control=getenv("OPENMX_GPU");
+    if (scf_eigen_lib_flag==GPUSOLVER &&
+        !(gpu_control && *gpu_control && atoi(gpu_control)==0) &&
+        OpenMXGpuGetDeviceCount(&visible)!=OPENMX_GPU_SUCCESS) {
+#else
+    if (scf_eigen_lib_flag==GPUSOLVER && OpenMXGpuGetDeviceCount(&visible)!=OPENMX_GPU_SUCCESS) {
+#endif
+      (void)OpenMXGpuGetLastError();
       visible=0;
     }
     if (SCF_Gpu_Num>0 && visible>SCF_Gpu_Num) visible=SCF_Gpu_Num;

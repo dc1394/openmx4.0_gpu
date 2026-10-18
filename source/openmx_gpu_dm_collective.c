@@ -1,9 +1,11 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_runtime.h"
 #include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_dm_entry.h"
 #include "openmx_gpu_task.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_mgpu_runtime.h"
-#include <cuda_runtime.h>
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +19,11 @@ static void dm_kernel(size_t first,size_t count,const void *parameters,void *con
     size_t row_bytes=p->row_bytes;
     unsigned char *vectors=v[0];double *phase=v[1],*weights=v[2],*out=v[3];
     (void)first;
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for if(gpu) is_device_ptr(vectors,phase,weights,out)
+#else
 #pragma acc parallel loop if(gpu) deviceptr(vectors,phase,weights,out)
+#endif
     for(size_t i=0;i<count;i++){
         int indices[2]={0,1};double result[10]={0};
         openmx_gpu_dm_entry(kind,2,states,states,1,vectors+i*row_bytes,indices,weights,
@@ -34,7 +40,7 @@ static void dm_abort(MPI_Comm comm,const char *message)
 static void dm_copy(MPI_Comm comm,void *dst,const void *src,size_t bytes,int host)
 {
     if(host)memcpy(dst,src,bytes);
-    else if(cudaMemcpy(dst,src,bytes,cudaMemcpyDeviceToHost)!=cudaSuccess)
+    else if(OpenMXGpuMemcpy(dst,src,bytes,OPENMX_GPU_COPY_DEVICE_TO_HOST)!=OPENMX_GPU_SUCCESS)
         dm_abort(comm,"cannot read resident eigenvector rows");
 }
 void openmx_gpu_dm_collective(MPI_Comm comm,int kind,int n,int states,int stride,int entries,

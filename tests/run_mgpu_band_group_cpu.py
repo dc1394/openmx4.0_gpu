@@ -167,6 +167,7 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-band-group-') as folder:
     tmp = Path(folder)
+    (tmp / 'cuda_runtime.h').write_text('#include "cuda_runtime_api.h"\n')
     for name, key in [('cuda_runtime_api.h', 'cuda'), ('cuComplex.h', 'complex_header'),
                       ('cublas_v2.h', 'cublas'), ('cusolverDn.h', 'cusolver'), ('nvml.h', 'nvml')]:
         (tmp / name).write_text(headers[key])

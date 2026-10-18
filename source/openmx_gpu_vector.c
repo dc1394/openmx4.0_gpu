@@ -1,9 +1,16 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
 #include "openmx_gpu_vector.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_collective.h"
-#include "set_cuda_default_device_from_local_rank.h"
-#include <cuda_runtime.h>
+
+
+#if OPENMX_GPU_HIP
+#include <omp.h>
+#else
 #include <openacc.h>
+#endif
 #include <stdint.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -38,47 +45,59 @@ static int vector_worker(void *opaque,int worker,int phase)
     int *left=w->indices[worker],*right=left?left+j->pairs:NULL;
     if (phase==OPENMX_GPU_WORKER_PREPARE) {
         w->partial[worker]=malloc((out_count?out_count:1)*sizeof(double));
-        if (!w->partial[worker] || cudaMalloc((void**)&w->arena[worker],vector_cost((void*)j,worker,w->workers.count))!=cudaSuccess) return 0;
+        if (!w->partial[worker] || OpenMXGpuMalloc((void**)&w->arena[worker],vector_cost((void*)j,worker,w->workers.count))!=OPENMX_GPU_SUCCESS) return 0;
         data=w->arena[worker];weights=data+(size_t)j->columns*n;
         for (int col=0;col<j->columns;col++)
-            if (cudaMemcpy(data+(size_t)col*n,j->data+(size_t)col*j->ld+first,n*sizeof(double),cudaMemcpyHostToDevice)!=cudaSuccess) return 0;
-        if (cudaMemcpy(weights,j->mode?j->coeff:j->weight+first,
-                       (j->mode?(size_t)j->columns:n)*sizeof(double),cudaMemcpyHostToDevice)!=cudaSuccess) return 0;
+            if (OpenMXGpuMemcpy(data+(size_t)col*n,j->data+(size_t)col*j->ld+first,n*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS) return 0;
+        if (OpenMXGpuMemcpy(weights,j->mode?j->coeff:j->weight+first,
+                       (j->mode?(size_t)j->columns:n)*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS) return 0;
         if (!j->mode) {
             /* The indices share the arena; vector_cost includes their bytes. */
             w->indices[worker]=(int*)(weights+n+j->pairs);
-            if (cudaMemcpy(w->indices[worker],j->left,(size_t)j->pairs*sizeof(int),cudaMemcpyHostToDevice)!=cudaSuccess ||
-                cudaMemcpy(w->indices[worker]+j->pairs,j->right,(size_t)j->pairs*sizeof(int),cudaMemcpyHostToDevice)!=cudaSuccess) return 0;
+            if (OpenMXGpuMemcpy(w->indices[worker],j->left,(size_t)j->pairs*sizeof(int),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS ||
+                OpenMXGpuMemcpy(w->indices[worker]+j->pairs,j->right,(size_t)j->pairs*sizeof(int),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS) return 0;
         }
     }
     else if (phase==OPENMX_GPU_WORKER_EXECUTE) {
         if (j->mode) {
             const int columns=j->columns;
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for is_device_ptr(data,weights,out)
+#else
 #pragma acc parallel loop deviceptr(data,weights,out)
+#endif
             for (size_t i=0;i<n;i++) {
                 double sum=0;
+#if !OPENMX_GPU_HIP
 #pragma acc loop seq
+#endif
                 for (int col=0;col<columns;col++) sum+=weights[col]*data[(size_t)col*n+i];
                 out[i]=sum;
             }
         }
         else {
             const int pairs=j->pairs;
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for is_device_ptr(data,weights,out,left,right)
+#else
 #pragma acc parallel loop gang deviceptr(data,weights,out,left,right)
+#endif
             for (int p=0;p<pairs;p++) {
                 double sum=0;
                 const size_t a=(size_t)left[p]*n,b=(size_t)right[p]*n;
+#if !OPENMX_GPU_HIP
 #pragma acc loop vector reduction(+:sum)
+#endif
                 for (size_t i=0;i<n;i++) sum+=weights[i]*data[a+i]*data[b+i];
                 out[p]=sum;
             }
         }
     }
     else if (phase==OPENMX_GPU_WORKER_COMMIT) {
-        return cudaMemcpy(w->partial[worker],out,out_count*sizeof(double),cudaMemcpyDeviceToHost)==cudaSuccess;
+        return OpenMXGpuMemcpy(w->partial[worker],out,out_count*sizeof(double),OPENMX_GPU_COPY_DEVICE_TO_HOST)==OPENMX_GPU_SUCCESS;
     }
     else if (phase==OPENMX_GPU_WORKER_RELEASE) {
-        if (w->arena[worker] && cudaFree(w->arena[worker])!=cudaSuccess) return 0;
+        if (w->arena[worker] && OpenMXGpuFree(w->arena[worker])!=OPENMX_GPU_SUCCESS) return 0;
     }
     return 1;
 }

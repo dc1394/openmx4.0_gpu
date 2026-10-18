@@ -745,7 +745,7 @@ Calc_PFs:
 
   else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
     OpenMX_GpuSolver_DenseDsyevx_0based(DMs[spin],VDMs,ko,n,n,
-                                       "Electric_Polarization_BandCol DM GPUSOLVER");
+                                       "Electric_Polarization_BandCol DM GPU solver");
   }
 
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -987,7 +987,7 @@ Calc_PFs:
 	}
 	else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
 	  OpenMX_GpuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,
-					     "Electric_Polarization_BandCol overlap GPUSOLVER");
+					     "Electric_Polarization_BandCol overlap GPU solver");
 	}
 	else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
@@ -1091,7 +1091,7 @@ Calc_PFs:
       }
       else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
 	OpenMX_GpuSolver_DenseZheevx_1based(Hs,Cs,ko,n,MaxN,
-					   "Electric_Polarization_BandCol Hamiltonian GPUSOLVER");
+					   "Electric_Polarization_BandCol Hamiltonian GPU solver");
       }
       else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
@@ -1359,7 +1359,7 @@ Calc_PFs:
       }
       else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
         OpenMX_GpuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,
-                                           "Electric_Polarization_BandCol ABC overlap GPUSOLVER");
+                                           "Electric_Polarization_BandCol ABC overlap GPU solver");
       }
       else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 
@@ -1453,7 +1453,7 @@ Calc_PFs:
       }
       else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n && na_rows==n && na_cols==n){
         OpenMX_GpuSolver_DenseZheevx_1based(Hs,Cs,ko,n,MaxN,
-                                           "Electric_Polarization_BandCol ABC Hamiltonian GPUSOLVER");
+                                           "Electric_Polarization_BandCol ABC Hamiltonian GPU solver");
       }
       else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
 

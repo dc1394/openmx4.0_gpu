@@ -287,6 +287,7 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-magma-policy-") as folder:
     tmp = Path(folder)
+    (tmp / "cuda_runtime.h").write_text('#include "cuda_runtime_api.h"\n')
     (tmp / "cuda_runtime_api.h").write_text(cuda)
     (tmp / "magma_v2.h").write_text(magma)
     (tmp / "cuComplex.h").write_text('#pragma once\nstruct cuDoubleComplex {double x,y;};\n')

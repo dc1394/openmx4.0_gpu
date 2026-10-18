@@ -99,6 +99,8 @@ int main(void){
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-density-') as folder:
  p=Path(folder);(p/'mpi.h').write_text('typedef int MPI_Comm;\n')
+ (p/"cuda_runtime.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
+ (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
  (p/'check.c').write_text(prefix+body+fixture+sdg+main)
  cc=shlex.split(os.environ.get('CC','cc'));cxx=shlex.split(os.environ.get('CXX','c++'))
  flags=['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(p),'-I'+str(root/'source')]

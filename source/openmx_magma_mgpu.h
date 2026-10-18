@@ -1,5 +1,7 @@
 #ifndef OPENMX_MAGMA_MGPU_H
 #define OPENMX_MAGMA_MGPU_H
+
+#include "openmx_gpu_backend.h"
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -13,10 +15,13 @@ enum {
     OPENMX_MAGMA_RESOURCES = 3,
     OPENMX_MAGMA_LIBRARY_ERROR = 4,
     OPENMX_MAGMA_VALIDATION_ERROR = 5,
-    OPENMX_MAGMA_CUDA_ERROR = 6
+    OPENMX_MAGMA_GPU_ERROR = 6
 };
+/* Preserve the public status names used by existing backend callers. */
+#define OPENMX_MAGMA_CUDA_ERROR OPENMX_MAGMA_GPU_ERROR
+#define OPENMX_MAGMA_HIP_ERROR OPENMX_MAGMA_GPU_ERROR
 
-/* Compile-time availability; this does not create any CUDA contexts. */
+/* Compile-time availability; this does not create any GPU contexts. */
 int openmx_magma_mgpu_available(void);
 /* Non-prefix groups require the versioned device-map extension in the pinned
    private dependency. Unpatched external MAGMA still supports prefix groups. */
@@ -34,7 +39,7 @@ void openmx_magma_mgpu_release_cache(void);
    layer serializes threads in this process only. 2 <= ngpu <= 8. The calling
    thread's current CUDA device is restored before returning.
 
-   Optional OPENMX_MAGMA_FP32 refinement is admitted only when every
+   On CUDA, optional OPENMX_MAGMA_FP32 refinement is admitted only when every
    CUDA-visible GPU reports a known FP32:FP64 throughput ratio >= 8.
    Strong/unknown FP64 capability anywhere in the visible allocation
    retains the native FP64 driver, including outside a selected group.
@@ -62,8 +67,8 @@ void openmx_magma_mgpu_release_cache(void);
 int openmx_magma_mgpu_solve_host(int ngpu, int is_complex, int want_vectors,
     int lower, int n, int first, int last, void *A, int lda, double *W);
 
-/* Same transaction contract, using distinct visible CUDA device ordinals in
-   the supplied order. Does not modify CUDA_VISIBLE_DEVICES or rank binding.
+/* Same transaction contract, using distinct visible GPU device ordinals in
+   the supplied order. Does not modify device visibility or rank binding.
    Its process-wide MAGMA logical-device map is scoped under the adapter's
    mutex and removed before restoring the caller's physical CUDA device. */
 int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices,

@@ -1,3 +1,9 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
+#if OPENMX_GPU_HIP
+#include "openmx_target.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -9,7 +15,7 @@
 #include "openmx_gpu_vector.h"
 #include "openmx_host_memory.h"
 #include <limits.h>
-#include "set_cuda_default_device_from_local_rank.h"
+
 #include "lapack_prototypes.h"
 
 
@@ -1769,7 +1775,9 @@ void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_ite
   (default max(total/10, 1536 MiB)), OPENMX_MIXH_GPU_VERBOSE.
 *******************************************************************************/
 
+#if !OPENMX_GPU_HIP
 #include <openacc.h>
+#endif
 #include <stdint.h>
 
 typedef struct {
@@ -1827,14 +1835,14 @@ static void MixH_AbortWithMessage(const char *message)
 /* Bounded device allocation (same policy as the cluster/band GPU paths):
    absorb short allocation races with a few retries, report persistent
    failure to the caller instead of retrying forever. */
-static cudaError_t MixH_TryDeviceMalloc(void **ptr, size_t bytes)
+static OpenMXGpuError MixH_TryDeviceMalloc(void **ptr, size_t bytes)
 {
-  cudaError_t err = cudaErrorMemoryAllocation;
+  OpenMXGpuError err = OPENMX_GPU_OUT_OF_MEMORY;
 
   for (int attempt = 0; attempt < 8; attempt++) {
-    err = cudaMalloc(ptr, bytes);
-    if (err == cudaSuccess) return cudaSuccess;
-    (void)cudaGetLastError();
+    err = OpenMXGpuMalloc(ptr, bytes);
+    if (err == OPENMX_GPU_SUCCESS) return OPENMX_GPU_SUCCESS;
+    (void)OpenMXGpuGetLastError();
 
     double wait_time = drand48() * WAITTIME;
     double start_time = MPI_Wtime();
@@ -1863,7 +1871,7 @@ void Mixing_H_Release_GPU(void)
 {
   MixH_IncFree();
   MixH_Distributed_Free();
-  if (MixH_gpu.base != NULL) cudaFree(MixH_gpu.base);
+  if (MixH_gpu.base != NULL) OpenMXGpuFree(MixH_gpu.base);
   free(MixH_gpu.perm);
   free(MixH_gpu.atom_off);
   free(MixH_gpu.h_flat);
@@ -2238,17 +2246,27 @@ static void MixH_GramPart(MixH_GpuShard *shard,int dim, int npair, const int *pm
   int p;
 
   if (0 < Lk){
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for is_device_ptr(ring,w,ap) map(to:pm[0:npair],pn[0:npair],pslot[0:dim])
+#else
 #pragma acc parallel loop gang deviceptr(ring,w,ap) copyin(pm[0:npair],pn[0:npair],pslot[0:dim])
+#endif
     for (p=0; p<npair; p++){
       const double *Rm = ring + (size_t)pslot[pm[p]]*Ls;
       const double *Rn = ring + (size_t)pslot[pn[p]]*Ls;
       double s = 0.0;
       long k;
+#if !OPENMX_GPU_HIP
 #pragma acc loop vector reduction(+:s)
+#endif
       for (k=0; k<Lk; k++) s += w[k]*Rm[k]*Rn[k];
       ap[p] = s;
     }
+#if OPENMX_GPU_HIP
+    openmx_target_download(tri_out, ap, sizeof(double)*(size_t)npair);
+#else
     acc_memcpy_from_device(tri_out, ap, sizeof(double)*(size_t)npair);
+#endif
   }
   else{
     for (p=0; p<npair; p++) tri_out[p] = 0.0;
@@ -2266,14 +2284,22 @@ static void MixH_OptResidualPart(MixH_GpuShard *shard,int dim, const int *pslot,
 
   if (Lk <= 0) return;
 
+#if OPENMX_GPU_HIP
+#pragma omp target teams distribute parallel for is_device_ptr(ring,r) map(to:pslot[0:dim],cshift[0:dim])
+#else
 #pragma acc parallel loop gang vector deviceptr(ring,r) copyin(pslot[0:dim],cshift[0:dim])
+#endif
   for (k=0; k<Lk; k++){
     double s = 0.0;
     int m;
     for (m=0; m<dim; m++) s += cshift[m]*ring[(size_t)pslot[m]*Ls + (size_t)k];
     r[k] = s;
   }
+#if OPENMX_GPU_HIP
+  openmx_target_download(MixH_gpu.h_r+shard->first, r, sizeof(double)*(size_t)Lk);
+#else
   acc_memcpy_from_device(MixH_gpu.h_r+shard->first, r, sizeof(double)*(size_t)Lk);
+#endif
 }
 
 
@@ -2290,18 +2316,18 @@ static int MixH_Worker(void *opaque,int worker,int phase)
   MixH_Work *w=(MixH_Work*)opaque;
   MixH_GpuShard *s=MixH_shard+worker;
   if (w->mode==MIXH_ALLOCATE && phase==OPENMX_GPU_WORKER_PREPARE) {
-    if (cudaMalloc((void**)&s->base,s->bytes)!=cudaSuccess) {
-      (void)cudaGetLastError();s->base=NULL;return 0;
+    if (OpenMXGpuMalloc((void**)&s->base,s->bytes)!=OPENMX_GPU_SUCCESS) {
+      (void)OpenMXGpuGetLastError();s->base=NULL;return 0;
     }
   }
   if (phase!=OPENMX_GPU_WORKER_EXECUTE) return 1;
-  if (w->mode==MIXH_PROBE) return OpenMX_GpuMemGetInfo(&s->available,&s->total)==cudaSuccess;
+  if (w->mode==MIXH_PROBE) return OpenMX_GpuMemGetInfo(&s->available,&s->total)==OPENMX_GPU_SUCCESS;
   if (w->mode==MIXH_FREE) {
-    int ok=!s->base || cudaFree(s->base)==cudaSuccess;s->base=NULL;return ok;
+    int ok=!s->base || OpenMXGpuFree(s->base)==OPENMX_GPU_SUCCESS;s->base=NULL;return ok;
   }
   if (w->mode==MIXH_UPLOAD && s->L) {
     size_t offset=w->slot<0?s->o_w:s->o_ring+(size_t)w->slot*s->L*sizeof(double);
-    return cudaMemcpy(s->base+offset,MixH_gpu.h_flat+s->first,s->L*sizeof(double),cudaMemcpyHostToDevice)==cudaSuccess;
+    return OpenMXGpuMemcpy(s->base+offset,MixH_gpu.h_flat+s->first,s->L*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)==OPENMX_GPU_SUCCESS;
   }
   if (w->mode==MIXH_GRAM) MixH_GramPart(s,w->dim,w->npair,w->pm,w->pn,w->pslot,w->tri+(size_t)worker*w->npair);
   if (w->mode==MIXH_RESIDUAL) MixH_OptResidualPart(s,w->dim,w->pslot,w->coeff);
@@ -2504,8 +2530,12 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
      allocation dynamics of the other resident GPU modules on a nearly full
      device.  Pool blocks therefore show up as "used", which only makes the
      estimate conservative. */
+#if OPENMX_GPU_HIP
+  OpenMXGpuDeviceSynchronize();
+#else
   acc_wait_all();
-  cudaDeviceSynchronize();
+#endif
+  OpenMXGpuDeviceSynchronize();
   MPI_Barrier(mpi_comm_level1);
   OpenMX_GpuMemGetInfo(&free_b, &total_b);
   size_t reserve=total_b/10;

@@ -1,5 +1,7 @@
 #ifndef OPENMX_GPU_VIEWS_H
 #define OPENMX_GPU_VIEWS_H
+
+#include "openmx_gpu_backend.h"
 #include <stddef.h>
 #ifdef __cplusplus
 extern "C" {

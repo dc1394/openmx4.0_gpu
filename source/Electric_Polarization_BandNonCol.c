@@ -568,7 +568,7 @@ double Electric_Polarization_BandNonCol(
 
   else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
     OpenMX_GpuSolver_DenseZheevx_1based(Hs2,VDMs_ABC,ko,n2,MaxN,
-                                       "Electric_Polarization_BandNonCol DM Hamiltonian GPUSOLVER");
+                                       "Electric_Polarization_BandNonCol DM Hamiltonian GPU solver");
   }
 
   else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -661,7 +661,7 @@ double Electric_Polarization_BandNonCol(
 
 	  else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
 	    OpenMX_GpuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,
-					       "Electric_Polarization_BandNonCol overlap GPUSOLVER");
+					       "Electric_Polarization_BandNonCol overlap GPU solver");
 	  }
 
 	  else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -843,7 +843,7 @@ double Electric_Polarization_BandNonCol(
 
 	else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
 	  OpenMX_GpuSolver_DenseZheevx_1based(Hs2,Cs2,ko,n2,MaxN,
-					     "Electric_Polarization_BandNonCol Hamiltonian GPUSOLVER");
+					     "Electric_Polarization_BandNonCol Hamiltonian GPU solver");
 	}
 
 	else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -1004,7 +1004,7 @@ double Electric_Polarization_BandNonCol(
 
         else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows==n && na_cols==n){
           OpenMX_GpuSolver_DenseZheevx_1based(Cs,Ss,ko,n,n,
-                                             "Electric_Polarization_BandNonCol ABC overlap GPUSOLVER");
+                                             "Electric_Polarization_BandNonCol ABC overlap GPU solver");
         }
 
         else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){
@@ -1173,7 +1173,7 @@ double Electric_Polarization_BandNonCol(
 
         else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=n2 && na_rows2==n2 && na_cols2==n2){
           OpenMX_GpuSolver_DenseZheevx_1based(Hs2,Cs2,ko,n2,MaxN,
-                                             "Electric_Polarization_BandNonCol ABC Hamiltonian GPUSOLVER");
+                                             "Electric_Polarization_BandNonCol ABC Hamiltonian GPU solver");
         }
 
         else if (scf_eigen_lib_flag==2 || scf_eigen_lib_flag==GPUSOLVER){

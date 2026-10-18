@@ -1,3 +1,4 @@
+#include "openmx_gpu_backend.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,21 @@ void Free_Arrays(int wherefrom)
   if (wherefrom==0) {
     /* A suite executes multiple systems in one process; discard all
        geometry-derived caches before their host arrays can be reused. */
+#if OPENMX_GPU_HIP
+    /* Free_Arrays(0) also marks the boundary between two inputs of the
+       -runtest/-runtestL suites, which free and reallocate every host array
+       of the previous system in this same process.  A device-resident cache
+       whose validity test involves a host address or a system size can then
+       accept stale data as soon as malloc reuses an address (observed on
+       MI300A at 24 ranks: MCCN diverged and Mn12 NaN'd inside -runtestL
+       while both pass standalone), so every GPU-side cache is dropped here
+       unconditionally.  Each call is idempotent and a no-op when the
+       corresponding path never ran. */
+
+    extern int openmx_magma_release_z_workspace(void);
+    extern int openmx_hipsolver_release_workspace(void);
+
+#endif
     Band_DFT_Col_Release_GPU_Caches();
     Band_DFT_NonCol_Release_GPU_Caches();
     Cluster_DFT_Col_Release_GPU_Caches();
@@ -28,11 +44,28 @@ void Free_Arrays(int wherefrom)
     Divide_Conquer_Release_GPU_Caches();
     Divide_Conquer_LNO_Release_GPU_Caches();
     Krylov_Release_GPU_Caches();
+#if !OPENMX_GPU_HIP
     openmx_gpusolver_cache_release();
+#endif
     Mixing_H_Release_GPU();
     Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache();
+#if OPENMX_GPU_HIP
+    (void)openmx_magma_release_z_workspace();
+    (void)openmx_hipsolver_release_workspace();
+    (void)openmx_magma_release_d_workspace();
+    openmx_magma_release_fp32_workspace();
+    openmx_gpusolver_cache_release();
+#endif
     Set_Density_Grid_GPU_Invalidate();
+#if OPENMX_GPU_HIP
+    Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
+    /* the on-the-fly state and its batch plans (keyed by the atom count,
+       not by the geometry) must not reach the next input */
+    Set_Hamiltonian_OTF_Release();
+    Set_Orbitals_Grid_OTF_Release();
+#else
     Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
+#endif
   }
 
   if      (wherefrom==0) array0();
@@ -40,7 +73,11 @@ void Free_Arrays(int wherefrom)
 
   if (wherefrom==0){
     openmx_gemmul8ReleaseWorkspaces();
+#if OPENMX_GPU_HIP
+    openmx_gemmul8ReportTiming();
+#else
     openmx_gemmul8ReleasePrepared();
+#endif
   }
 
 }

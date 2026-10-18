@@ -337,7 +337,7 @@ char *Delete_path_extension(char *s0, char *r0)
   /* char s[YOUSO10]; */
 
   /* find '/' */
-  c=rindex(s0,'/');
+  c=strrchr(s0,'/');
   if (c)  {
     strcpy(r0,c+1);
   }
@@ -348,7 +348,7 @@ char *Delete_path_extension(char *s0, char *r0)
 
   if (strlen(r0)==0 ) { return  NULL; }
   
-  c =index(r0,'.');
+  c =strchr(r0,'.');
   if (c) {
     *c='\0';
   }

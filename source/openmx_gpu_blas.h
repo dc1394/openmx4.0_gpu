@@ -1,0 +1,84 @@
+#ifndef OPENMX_GPU_BLAS_H
+#define OPENMX_GPU_BLAS_H
+
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_complex.h"
+
+/* Compile-time aliases preserve the native ABI, status codes and ownership.
+   Backend policies (memory accounting, solver retries and offload) stay
+   in their implementations. No device is initialized by this header. */
+#if OPENMX_GPU_HIP
+#include "hipblas_compat.h"
+#define OpenMXBlasHandle hipblasHandle_t
+#define OpenMXBlasOperation hipblasOperation_t
+#define OpenMXBlasStatus hipblasStatus_t
+#define OPENMX_BLAS_OP_N HIPBLAS_OP_N
+#define OPENMX_BLAS_OP_T HIPBLAS_OP_T
+#define OPENMX_BLAS_OP_C HIPBLAS_OP_C
+#define OPENMX_BLAS_SUCCESS HIPBLAS_STATUS_SUCCESS
+#define OpenMXBlasCreate hipblasCreate
+#define OpenMXBlasDestroy hipblasDestroy
+#define OpenMXBlasZgetrfBatched hipblasZgetrfBatched
+#define OpenMXBlasZgetriBatched hipblasZgetriBatched
+#define OpenMXBlasAtomicsMode hipblasAtomicsMode_t
+#define OpenMXBlasFillMode hipblasFillMode_t
+#define OpenMXBlasMathMode hipblasMath_t
+#define OpenMXBlasPointerMode hipblasPointerMode_t
+#define OpenMXBlasDgemm hipblasDgemm
+#define OpenMXBlasZgemm hipblasZgemm
+#define OpenMXBlasGetAtomicsMode hipblasGetAtomicsMode
+#define OpenMXBlasGetMathMode hipblasGetMathMode
+#define OpenMXBlasGetPointerMode hipblasGetPointerMode
+#define OpenMXBlasGetStream hipblasGetStream
+#define OpenMXBlasSetAtomicsMode hipblasSetAtomicsMode
+#define OpenMXBlasSetMathMode hipblasSetMathMode
+#define OpenMXBlasSetPointerMode hipblasSetPointerMode
+#define OpenMXBlasSetStream hipblasSetStream
+#define OPENMX_BLAS_ATOMICS_NOT_ALLOWED HIPBLAS_ATOMICS_NOT_ALLOWED
+#define OPENMX_BLAS_DEFAULT_MATH HIPBLAS_DEFAULT_MATH
+#define OPENMX_BLAS_FILL_LOWER HIPBLAS_FILL_MODE_LOWER
+#define OPENMX_BLAS_FILL_UPPER HIPBLAS_FILL_MODE_UPPER
+#define OPENMX_BLAS_POINTER_DEVICE HIPBLAS_POINTER_MODE_DEVICE
+#define OPENMX_BLAS_POINTER_HOST HIPBLAS_POINTER_MODE_HOST
+#define OPENMX_BLAS_ALLOC_FAILED HIPBLAS_STATUS_ALLOC_FAILED
+#define OPENMX_BLAS_EXECUTION_FAILED HIPBLAS_STATUS_EXECUTION_FAILED
+#define OPENMX_BLAS_INVALID_VALUE HIPBLAS_STATUS_INVALID_VALUE
+#else
+#include <cublas_v2.h>
+#define OpenMXBlasHandle cublasHandle_t
+#define OpenMXBlasOperation cublasOperation_t
+#define OpenMXBlasStatus cublasStatus_t
+#define OPENMX_BLAS_OP_N CUBLAS_OP_N
+#define OPENMX_BLAS_OP_T CUBLAS_OP_T
+#define OPENMX_BLAS_OP_C CUBLAS_OP_C
+#define OPENMX_BLAS_SUCCESS CUBLAS_STATUS_SUCCESS
+#define OpenMXBlasCreate cublasCreate
+#define OpenMXBlasDestroy cublasDestroy
+#define OpenMXBlasZgetrfBatched cublasZgetrfBatched
+#define OpenMXBlasZgetriBatched cublasZgetriBatched
+#define OpenMXBlasAtomicsMode cublasAtomicsMode_t
+#define OpenMXBlasFillMode cublasFillMode_t
+#define OpenMXBlasMathMode cublasMath_t
+#define OpenMXBlasPointerMode cublasPointerMode_t
+#define OpenMXBlasDgemm cublasDgemm
+#define OpenMXBlasZgemm cublasZgemm
+#define OpenMXBlasGetAtomicsMode cublasGetAtomicsMode
+#define OpenMXBlasGetMathMode cublasGetMathMode
+#define OpenMXBlasGetPointerMode cublasGetPointerMode
+#define OpenMXBlasGetStream cublasGetStream
+#define OpenMXBlasSetAtomicsMode cublasSetAtomicsMode
+#define OpenMXBlasSetMathMode cublasSetMathMode
+#define OpenMXBlasSetPointerMode cublasSetPointerMode
+#define OpenMXBlasSetStream cublasSetStream
+#define OPENMX_BLAS_ATOMICS_NOT_ALLOWED CUBLAS_ATOMICS_NOT_ALLOWED
+#define OPENMX_BLAS_DEFAULT_MATH CUBLAS_DEFAULT_MATH
+#define OPENMX_BLAS_FILL_LOWER CUBLAS_FILL_MODE_LOWER
+#define OPENMX_BLAS_FILL_UPPER CUBLAS_FILL_MODE_UPPER
+#define OPENMX_BLAS_POINTER_DEVICE CUBLAS_POINTER_MODE_DEVICE
+#define OPENMX_BLAS_POINTER_HOST CUBLAS_POINTER_MODE_HOST
+#define OPENMX_BLAS_ALLOC_FAILED CUBLAS_STATUS_ALLOC_FAILED
+#define OPENMX_BLAS_EXECUTION_FAILED CUBLAS_STATUS_EXECUTION_FAILED
+#define OPENMX_BLAS_INVALID_VALUE CUBLAS_STATUS_INVALID_VALUE
+#endif
+
+#endif /* OPENMX_GPU_BLAS_H */

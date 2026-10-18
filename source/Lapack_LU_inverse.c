@@ -1,3 +1,8 @@
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_blas.h"
+#include "openmx_gpu_complex.h"
+#include "openmx_gpu_runtime.h"
+#include "openmx_gpu_solver.h"
 #include <math.h>
 #include <mpi.h>
 #include <stdio.h>
@@ -8,33 +13,64 @@
 #include "tran_prototypes.h"
 
 #include "openmx_common.h"
-#include <cublas_v2.h>
-#include <cuda_runtime.h>
-#include <cusolverDn.h>
-#include <openacc.h>
 
-#ifndef cudacall
-#define cudacall(call)                                                                                                        \
+
+
+#if OPENMX_GPU_HIP
+#include <omp.h>
+#else
+#include <openacc.h>
+#endif
+
+#if OPENMX_GPU_HIP
+#ifndef hipcall
+#define hipcall(call)                                                                                                        \
     do {                                                                                                                      \
-        cudaError_t err = (call);                                                                                             \
-        if (cudaSuccess != err) {                                                                                             \
-            fprintf(stderr, "CUDA Error:\nFile = %s\nLine = %d\nReason = %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
-            cudaDeviceReset();                                                                                                \
+        OpenMXGpuError err = (call);                                                                                             \
+        if (OPENMX_GPU_SUCCESS != err) {                                                                                             \
+            fprintf(stderr, "HIP Error:\nFile = %s\nLine = %d\nReason = %s\n", __FILE__, __LINE__, OpenMXGpuGetErrorString(err)); \
+            OpenMXGpuDeviceReset();                                                                                                \
             exit(EXIT_FAILURE);                                                                                               \
         }                                                                                                                     \
     } while (0)
 #endif
+#else
+#ifndef cudacall
+#define cudacall(call)                                                                                                        \
+    do {                                                                                                                      \
+        OpenMXGpuError err = (call);                                                                                             \
+        if (OPENMX_GPU_SUCCESS != err) {                                                                                             \
+            fprintf(stderr, "CUDA Error:\nFile = %s\nLine = %d\nReason = %s\n", __FILE__, __LINE__, OpenMXGpuGetErrorString(err)); \
+            OpenMXGpuDeviceReset();                                                                                                \
+            exit(EXIT_FAILURE);                                                                                               \
+        }                                                                                                                     \
+    } while (0)
+#endif
+#endif
 
-#define cublascall(call)                                                                                     \
+#if OPENMX_GPU_HIP
+#define hipblascall(call)                                                                                     \
     do {                                                                                                     \
-        cublasStatus_t status = (call);                                                                      \
-        if (CUBLAS_STATUS_SUCCESS != status) {                                                               \
-            fprintf(stderr, "CUBLAS Error:\nFile = %s\nLine = %d\nCode = %d\n", __FILE__, __LINE__, status); \
-            cudaDeviceReset();                                                                               \
+        OpenMXBlasStatus status = (call);                                                                      \
+        if (OPENMX_BLAS_SUCCESS != status) {                                                               \
+            fprintf(stderr, "hipBLAS Error:\nFile = %s\nLine = %d\nCode = %d\n", __FILE__, __LINE__, status); \
+            OpenMXGpuDeviceReset();                                                                               \
             exit(EXIT_FAILURE);                                                                              \
         }                                                                                                    \
                                                                                                              \
     } while (0)
+#else
+#define cublascall(call)                                                                                     \
+    do {                                                                                                     \
+        OpenMXBlasStatus status = (call);                                                                      \
+        if (OPENMX_BLAS_SUCCESS != status) {                                                               \
+            fprintf(stderr, "CUBLAS Error:\nFile = %s\nLine = %d\nCode = %d\n", __FILE__, __LINE__, status); \
+            OpenMXGpuDeviceReset();                                                                               \
+            exit(EXIT_FAILURE);                                                                              \
+        }                                                                                                    \
+                                                                                                             \
+    } while (0)
+#endif
 
 /* typedef struct { double r,i; } dcomplex; */
 
@@ -47,7 +83,7 @@
 
 int LU_Zinverse_Kino(int n, dcomplex *A);
 int LU_Zinverse_Ozaki(int n, dcomplex *A);
-int LU_Zinverse_GPU(int n, dcomplex* A, cublasHandle_t handle);
+int LU_Zinverse_GPU(int n, dcomplex* A, OpenMXBlasHandle handle);
 static dcomplex MyComplex(double re, double im);
 static dcomplex MyCadd(dcomplex a, dcomplex b);
 static dcomplex MyCmul(dcomplex a, dcomplex b);
@@ -344,7 +380,7 @@ int LU_Zinverse_Ozaki(int n, dcomplex *A)
   return 0;
 }
 
-int LU_Zinverse_GPU(int n, dcomplex* A, cublasHandle_t handle)
+int LU_Zinverse_GPU(int n, dcomplex* A, OpenMXBlasHandle handle)
 #define C_ref(i, j) C[n * (j) + i]
 {
     static char* thisprogram = "Lapack_LU_inverse";
@@ -371,45 +407,71 @@ int LU_Zinverse_GPU(int n, dcomplex* A, cublasHandle_t handle)
 
     int lda = n;
 
+#if !OPENMX_GPU_HIP
 #pragma acc data deviceptr(A)
 #pragma acc data create(P[0 : n], INFO[0 : 1])
 #pragma acc data copyout(Ainv[0 : n * n])
 #pragma acc host_data use_device(Ainv, P, INFO)
+#endif
     {
         dcomplex* A_[] = { A };
 
+#if !OPENMX_GPU_HIP
 #pragma acc data copyin(A_[0 : 1])
 #pragma acc host_data use_device(A_)
+#endif
         {
-            cublascall(cublasZgetrfBatched(handle, n, (cuDoubleComplex* const*)A_, lda, P, INFO, 1));
+#if OPENMX_GPU_HIP
+            hipblascall(OpenMXBlasZgetrfBatched(handle, n, (OpenMXGpuComplex* const*)A_, lda, P, INFO, 1));
+#else
+            cublascall(OpenMXBlasZgetrfBatched(handle, n, (OpenMXGpuComplex* const*)A_, lda, P, INFO, 1));
+#endif
 
             int INFOh = 0;
-            cudacall(cudaMemcpy(&INFOh, INFO, sizeof(int), cudaMemcpyDeviceToHost));
+#if OPENMX_GPU_HIP
+            hipcall(OpenMXGpuMemcpy(&INFOh, INFO, sizeof(int), OPENMX_GPU_COPY_DEVICE_TO_HOST));
+#else
+            cudacall(OpenMXGpuMemcpy(&INFOh, INFO, sizeof(int), OPENMX_GPU_COPY_DEVICE_TO_HOST));
+#endif
 
             if (INFOh == n) {
                 printf("Factorization Failed: Matrix is singular\n");
-                cudaDeviceReset();
+                OpenMXGpuDeviceReset();
                 exit(EXIT_FAILURE);
             }
 
             dcomplex* C_[] = { Ainv };
 
+#if !OPENMX_GPU_HIP
 #pragma acc data copyin(C_[0 : 1])
 #pragma acc host_data use_device(C_)
+#endif
             {
-                cublascall(cublasZgetriBatched(handle, n, (cuDoubleComplex* const*)A_, lda, P, (cuDoubleComplex* const*)C_, lda, INFO, 1));
+#if OPENMX_GPU_HIP
+                hipblascall(OpenMXBlasZgetriBatched(handle, n, (OpenMXGpuComplex* const*)A_, lda, P, (OpenMXGpuComplex* const*)C_, lda, INFO, 1));
+#else
+                cublascall(OpenMXBlasZgetriBatched(handle, n, (OpenMXGpuComplex* const*)A_, lda, P, (OpenMXGpuComplex* const*)C_, lda, INFO, 1));
+#endif
             }
 
-            cudacall(cudaMemcpy(&INFOh, INFO, sizeof(int), cudaMemcpyDeviceToHost));
+#if OPENMX_GPU_HIP
+            hipcall(OpenMXGpuMemcpy(&INFOh, INFO, sizeof(int), OPENMX_GPU_COPY_DEVICE_TO_HOST));
+#else
+            cudacall(OpenMXGpuMemcpy(&INFOh, INFO, sizeof(int), OPENMX_GPU_COPY_DEVICE_TO_HOST));
+#endif
 
             if (INFOh != 0) {
                 printf("Inversion Failed: Matrix is singular\n");
-                cudaDeviceReset();
+                OpenMXGpuDeviceReset();
                 exit(EXIT_FAILURE);
             }
         }
 
+#if OPENMX_GPU_HIP
+#pragma omp parallel for
+#else
 #pragma acc kernels
+#endif
         for (int i = 0; i < n * n; i++) {
             A[i] = Ainv[i];
         }

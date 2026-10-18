@@ -1,7 +1,11 @@
+#include "openmx_gpu_backend.h"
 /* Optional MAGMA multi-GPU host adapter. MAGMA 2.10.0 is BSD licensed;
    see third_party/build_magma.sh for the pinned upstream dependency.
    No MAGMA implementation is copied into this file. */
 #include "openmx_magma_mgpu.h"
+#if OPENMX_GPU_HIP
+#include "openmx_magma_lock.h"
+#endif
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -28,7 +32,8 @@ extern "C" const char *openmx_magma_mgpu_last_error(void) { return magma_error; 
 
 #ifdef OPENMX_HAVE_MAGMA
 #include <magma_v2.h>
-#include <cuda_runtime_api.h>
+#include "openmx_gpu_runtime.h"
+#if !OPENMX_GPU_HIP
 #include "openmx_mgpu_gemm.h"
 #include "openmx_precision.h"
 #pragma weak openmx_mgpuDgemmHostTry
@@ -42,7 +47,8 @@ extern "C" const char *openmx_magma_mgpu_last_error(void) { return magma_error; 
 #pragma weak openmx_fp32_enabled
 #include <chrono>
 #include <climits>
-extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *, size_t *);
+#endif
+extern "C" __attribute__((weak)) OpenMXGpuError OpenMX_GpuMemGetInfo(size_t *, size_t *);
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -59,7 +65,11 @@ extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *, size
 extern "C" int openmx_magma_device_map_v1(int,const int*) __attribute__((weak));
 
 namespace {
+#if OPENMX_GPU_HIP
+std::mutex &magma_mutex = openmx_magma_runtime_mutex();
+#else
 std::mutex magma_mutex;
+#endif
 using Complex = std::complex<double>;
 static_assert(sizeof(magma_int_t) == sizeof(int), "MAGMA must use LP64 integer indices");
 static_assert(sizeof(Complex) == sizeof(magmaDoubleComplex), "complex storage mismatch");
@@ -149,10 +159,11 @@ struct Session {
     bool mapped = false;
     ~Session() {
         if (mapped) (void)openmx_magma_device_map_v1(0,nullptr);
-        if (previous >= 0) (void)cudaSetDevice(previous);
+        if (previous >= 0) (void)OpenMXGpuSetDevice(previous);
     }
 };
 
+#if !OPENMX_GPU_HIP
 /* A heterogeneous node must keep the established FP64 solver even when
    the particular Band group contains only consumer GPUs. Inspect the
    entire CUDA-visible allocation, before MAGMA installs a logical map;
@@ -166,25 +177,26 @@ bool fp32_visible_pool(int &blocking_device, int &ratio)
     blocking_device=-1;
     ratio=0;
     int count=0;
-    if (cudaGetDeviceCount(&count)!=cudaSuccess || count<2) return false;
+    if (OpenMXGpuGetDeviceCount(&count)!=OPENMX_GPU_SUCCESS || count<2) return false;
     for (int dev=0;dev<count;++dev) {
         int value=0;
-        const cudaError_t status=cudaDeviceGetAttribute(
+        const OpenMXGpuError status=cudaDeviceGetAttribute(
             &value,cudaDevAttrSingleToDoublePrecisionPerfRatio,dev);
-        if (status!=cudaSuccess || value<8) {
+        if (status!=OPENMX_GPU_SUCCESS || value<8) {
             blocking_device=dev;
-            ratio=status==cudaSuccess?value:0;
+            ratio=status==OPENMX_GPU_SUCCESS?value:0;
             return false;
         }
     }
     return true;
 }
 
+#endif
 int device_preflight(int ngpu, const int *devices, int n, size_t width, Session &session)
 {
     int count = 0;
-    if (cudaGetDevice(&session.previous) != cudaSuccess || cudaGetDeviceCount(&count) != cudaSuccess)
-        return fail(OPENMX_MAGMA_CUDA_ERROR, "CUDA device query failed");
+    if (OpenMXGpuGetDevice(&session.previous) != OPENMX_GPU_SUCCESS || OpenMXGpuGetDeviceCount(&count) != OPENMX_GPU_SUCCESS)
+        return fail(OPENMX_MAGMA_GPU_ERROR, OPENMX_GPU_RUNTIME_NAME " device query failed");
     if (count < ngpu) return fail(OPENMX_MAGMA_UNAVAILABLE, "fewer visible GPUs than requested");
     bool prefix=true;
     for (int j=0;j<ngpu;++j) {
@@ -204,8 +216,8 @@ int device_preflight(int ngpu, const int *devices, int n, size_t width, Session 
     const size_t required = openmx_magma_mgpu_device_bytes(ngpu,n,width==16);
     for (int dev = 0; dev < ngpu; ++dev) {
         size_t free_bytes = 0, total = 0;
-        if (cudaSetDevice(devices[dev]) != cudaSuccess || (OpenMX_GpuMemGetInfo ? OpenMX_GpuMemGetInfo(&free_bytes,&total) : cudaMemGetInfo(&free_bytes,&total)) != cudaSuccess)
-            return fail(OPENMX_MAGMA_CUDA_ERROR, "CUDA memory preflight failed");
+        if (OpenMXGpuSetDevice(devices[dev]) != OPENMX_GPU_SUCCESS || (OpenMX_GpuMemGetInfo ? OpenMX_GpuMemGetInfo(&free_bytes,&total) : OpenMXGpuMemGetInfo(&free_bytes,&total)) != OPENMX_GPU_SUCCESS)
+            return fail(OPENMX_MAGMA_GPU_ERROR, OPENMX_GPU_RUNTIME_NAME " memory preflight failed");
         if (free_bytes < required) return fail(OPENMX_MAGMA_RESOURCES, "insufficient per-GPU MAGMA scratch/reserve");
     }
     const int status=magma_library.ensure();
@@ -213,13 +225,13 @@ int device_preflight(int ngpu, const int *devices, int n, size_t width, Session 
     if (!prefix) {
         /* Main-thread MAGMA save/restore operations must begin inside the
            group. OpenMP workers observe the same immutable map. */
-        if (cudaSetDevice(devices[0])!=cudaSuccess)
-            return fail(OPENMX_MAGMA_CUDA_ERROR,"cannot select MAGMA group owner");
+        if (OpenMXGpuSetDevice(devices[0])!=OPENMX_GPU_SUCCESS)
+            return fail(OPENMX_MAGMA_GPU_ERROR,"cannot select MAGMA group owner");
         if (openmx_magma_device_map_v1(ngpu,devices))
             return fail(OPENMX_MAGMA_LIBRARY_ERROR,"MAGMA device map setup failed");
         session.mapped=true;
-    } else if (cudaSetDevice(session.previous)!=cudaSuccess)
-        return fail(OPENMX_MAGMA_CUDA_ERROR,"cannot restore caller CUDA device");
+    } else if (OpenMXGpuSetDevice(session.previous)!=OPENMX_GPU_SUCCESS)
+        return fail(OPENMX_MAGMA_GPU_ERROR,"cannot restore caller " OPENMX_GPU_RUNTIME_NAME " device");
     return OPENMX_MAGMA_SUCCESS;
 }
 
@@ -334,8 +346,10 @@ bool validate(const void *original, int lda, bool lower, int n, int count,
     }
     return true;
 }
+#if !OPENMX_GPU_HIP
 
 #include "openmx_magma_refine.h"
+#endif
 
 template<class T>
 int solve(int ngpu, const int *devices, int vectors, int lower, int n, int first, int last, void *A, int lda, double *W)
@@ -423,8 +437,8 @@ int solve(int ngpu, const int *devices, int vectors, int lower, int n, int first
        accepted. Check every participating device, not whichever one MAGMA
        happened to leave selected after an early return. */
     for (int dev = 0; dev < ngpu; ++dev) {
-        if (cudaSetDevice(devices[dev]) != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess)
-            return fail(OPENMX_MAGMA_CUDA_ERROR, "MAGMA device execution failed");
+        if (OpenMXGpuSetDevice(devices[dev]) != OPENMX_GPU_SUCCESS || OpenMXGpuDeviceSynchronize() != OPENMX_GPU_SUCCESS)
+            return fail(OPENMX_MAGMA_GPU_ERROR, "MAGMA device execution failed");
     }
     if (result || info || found != count) {
         std::snprintf(magma_error, sizeof(magma_error), "MAGMA solve failed: status=%d info=%d eigenpairs=%d expected=%d",
@@ -459,8 +473,8 @@ int solve(int ngpu, const int *devices, int vectors, int lower, int n, int first
             return fail(OPENMX_MAGMA_LIBRARY_ERROR,"MAGMA device map cleanup failed");
         session.mapped=false;
     }
-    if (cudaSetDevice(session.previous) != cudaSuccess)
-        return fail(OPENMX_MAGMA_CUDA_ERROR, "cannot restore caller CUDA device after MAGMA");
+    if (OpenMXGpuSetDevice(session.previous) != OPENMX_GPU_SUCCESS)
+        return fail(OPENMX_MAGMA_GPU_ERROR, "cannot restore caller " OPENMX_GPU_RUNTIME_NAME " device after MAGMA");
     /* No fallible operations after publication. */
     if (vectors) for (int j = 0; j < count; ++j)
         std::memcpy(static_cast<unsigned char *>(A)+size_t(j)*lda*sizeof(T),
@@ -496,6 +510,7 @@ extern "C" int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices
         return fail(OPENMX_MAGMA_RESOURCES, "matrix exceeds MAGMA LP64 workspace range");
     try {
         std::lock_guard<std::mutex> lock(magma_mutex);
+#if !OPENMX_GPU_HIP
         const char *fp32=std::getenv("OPENMX_MAGMA_FP32");
         const char *complex_limit=std::getenv("OPENMX_MAGMA_FP32_COMPLEX_MAX_N");
         const int max_complex=complex_limit?std::max(0,std::atoi(complex_limit)):0;
@@ -518,10 +533,11 @@ extern "C" int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices
             } catch (const std::bad_alloc &) {
                 rc=fail(OPENMX_MAGMA_RESOURCES,"FP32 refinement host allocation failed");
             }
-            if (rc==OPENMX_MAGMA_SUCCESS || rc==OPENMX_MAGMA_CUDA_ERROR || rc==OPENMX_MAGMA_INVALID) return rc;
+            if (rc==OPENMX_MAGMA_SUCCESS || rc==OPENMX_MAGMA_GPU_ERROR || rc==OPENMX_MAGMA_INVALID) return rc;
             std::fprintf(stderr,"<OpenMX_MAGMA> FP32 refinement declined n=%d: %s; retrying MAGMA FP64\n",n,magma_error);
             magma_error[0]='\0';
         }
+#endif
         return is_complex ? solve<Complex>(ngpu,devices,want_vectors,lower,n,first,last,A,lda,W)
                           : solve<double>(ngpu,devices,want_vectors,lower,n,first,last,A,lda,W);
     } catch (const std::bad_alloc &) {
