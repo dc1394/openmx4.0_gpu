@@ -21,26 +21,11 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "mpi.h"
-#include "openmx_gpu_device.h"
+#include "openmx_core_radial.h"
 
 
 
-/* The legacy boundary supplies orbital data explicitly to the C++ module.
-   Sampling and committing run on the host; all temporary ownership and
-   numerical execution belong to the module. */
-static double pao_sample(void *user, int angular, int multiplicity, double radius)
-{
-  const int species = *(const int*)user;
-  return RadialF(species,angular,multiplicity,radius);
-}
-
-static void pao_store(void *user, int angular, int multiplicity, int k, double value)
-{
-  const int species = *(const int*)user;
-  Spe_RF_Bessel[species][angular][multiplicity][k] = value;
-}
-
-void FT_PAO(OpenMXCoreContext *core)
+void FT_PAO(OpenMXCoreContext *core, int device)
 {
   int numprocs,myid,ID,NumSpe;
   int i,num_k,Lspe,spe,GL,Mul;
@@ -125,14 +110,11 @@ void FT_PAO(OpenMXCoreContext *core)
       h = (rmax - rmin)/(double)OneD_Grid;
 
       {
-        int device = -1;
         char error[256];
-        if (core && openmx_core_has_accelerator() &&
-            scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable())
-          device = OpenMXGpuBindRankLocal();
-        if (!openmx_core_pao_transform(core,device,Spe_MaxL_Basis[spe],
-              Spe_Num_Basis[spe],OneD_Grid,num_k,rmin,h,dk,&spe,
-              pao_sample,pao_store,error,sizeof(error))) {
+        const OpenMXPaoTable table = {Spe_MaxL_Basis[spe],Spe_Num_Basis[spe],
+          Spe_Num_Mesh_PAO[spe],Spe_PAO_RV[spe],Spe_PAO_RWF[spe],Spe_RF_Bessel[spe]};
+        const OpenMXUniformRadialGrid grid = {OneD_Grid,num_k,rmin,h,dk};
+        if (!openmx_core_transform_pao(core,device,&table,&grid,error,sizeof(error))) {
           fprintf(stderr,"FT_PAO: %s\n",error);
           MPI_Abort(mpi_comm_level1,1);
           return;

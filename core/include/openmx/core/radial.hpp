@@ -23,11 +23,26 @@ struct Orbital {
   int multiplicity;
 };
 
+// Trapezoidal integration in a parameter t: radii=r(t), measures=r^2 dr/dt.
+// Keeping the measure separate preserves the original order of multiplication
+// and endpoint weighting for both uniform-r and uniform-sqrt(r) meshes.
+struct RadialQuadrature {
+  int lmax;
+  std::vector<double> radii;
+  std::vector<double> measures;
+  std::vector<double> wavevectors;
+  double step;
+};
+
 struct RadialSamples {
-  RadialGrid grid;
+  RadialQuadrature grid;
   std::vector<Orbital> orbitals;
   Tensor<double, 2> values; // [orbital, radial point]
 };
+
+RadialQuadrature uniform_quadrature(RadialGrid grid);
+RadialQuadrature squared_radius_quadrature(int intervals, double rmin, double rmax,
+    double kmin, double kmax, std::span<const double> gauss_nodes);
 
 using Sampler = std::function<double(int angular, int multiplicity, double radius)>;
 RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities,

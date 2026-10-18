@@ -20,16 +20,18 @@ configuration, AMD runtime settings and validation limits.
 
 The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
 application to C++, explicit ownership and Kokkos. The new `core/` library
-contains the PAO radial transform, spherical Bessel functions and FFT-grid
-validation; periodic-cell inverse indexing no longer uses a global array.
+contains radial interpolation and Fourier transforms for PAOs, nonlocal
+projectors and neutral-atom potentials, spherical Bessel functions and FFT-grid
+validation. Radial tables and temporary arrays have explicit C++ ownership;
+periodic-cell inverse indexing no longer uses a global array.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is the
-first migration stage; most application globals and legacy GPU kernels remain.
+an ongoing migration; most application globals and legacy GPU kernels remain.
 See the [C++ core migration guide](docs/CPP_CORE_MIGRATION.md) for ownership,
 CUDA/HIP configuration, tests and the remaining work.
 
 The core defaults to the Serial backend independently of the legacy GPU
-backend. Set `OPENMX_CORE_BACKEND=CUDA` or `HIP` to run its PAO transform
+backend. Set `OPENMX_CORE_BACKEND=CUDA` or `HIP` to run these radial transforms
 on the selected accelerator. Its unit tests can also run without MPI or a GPU:
 
 ```sh

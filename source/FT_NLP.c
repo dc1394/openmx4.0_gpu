@@ -21,30 +21,19 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "mpi.h"
-#include <omp.h>
+#include "openmx_core_radial.h"
 
 
 
-void FT_NLP()
+void FT_NLP(OpenMXCoreContext *core, int device)
 {
-  int numprocs,myid,ID,tag=999;
-  int count,NumSpe;
-  int i,kj,num_k,so;
-  int Lspe,spe,L,GL,MaxGL;
+  int numprocs,myid,ID,NumSpe;
+  int i,num_k,so,Lspe,spe,L;
   int RestartRead_Succeed;
-  double dk,norm_k;
-  double rmin,rmax,r,r2,h,sum[2];
-  double **SphB,***TmpNRF;
-  double *tmp_SphB,*tmp_SphBp;
-  double TStime, TEtime;
-  /* for MPI */
-  MPI_Status stat;
-  MPI_Request request;
-  /* for OpenMP */
-  int OMPID,Nthrds,Nprocs;
+  double dk,rmin,rmax,h;
+  double TStime,TEtime;
 
   char fileFT[YOUSO10];
-  char operate[300];
   FILE *fp;
   size_t size; 
 
@@ -118,124 +107,25 @@ void FT_NLP()
       rmax = Spe_Atom_Cut1[spe] + 0.5;
       h = (rmax - rmin)/(double)OneD_Grid;
 
-      /* calculation of Nonlocal_RadialF */
-
-      TmpNRF = (double***)malloc(sizeof(double**)*2);
-      for (so=0; so<2; so++){
-        TmpNRF[so] = (double**)malloc(sizeof(double*)*(Spe_Num_RVPS[spe]+1));
-        for (L=0; L<(Spe_Num_RVPS[spe]+1); L++){
-          TmpNRF[so][L] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-	}
-      }
-
-      for (so=0; so<=VPS_j_dependency[spe]; so++){
-        for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-          for (i=0; i<=OneD_Grid; i++){
-            r = rmin + (double)i*h;
-            TmpNRF[so][L][i] = Nonlocal_RadialF(spe,L-1,so,r); 
-	  }
+      {
+        char error[256];
+        OpenMXProjectorTable table = {0};
+        const OpenMXUniformRadialGrid grid = {OneD_Grid,num_k,rmin,h,dk};
+        table.projector_count = Spe_Num_RVPS[spe];
+        table.angular = Spe_VPS_List[spe]+1;
+        table.spin_count = VPS_j_dependency[spe]+1;
+        table.mesh_count = Spe_Num_Mesh_VPS[spe];
+        table.radii = Spe_VPS_RV[spe];
+        for (so=0; so<table.spin_count && so<2; so++) {
+          table.values[so] = Spe_VNL[so][spe];
+          table.output[so] = Spe_NLRF_Bessel[so][spe]+1;
+        }
+        if (!openmx_core_transform_projectors(core,device,&table,&grid,error,sizeof(error))) {
+          fprintf(stderr,"FT_NLP: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
         }
       }
-
-      /* kj loop */
-
-#pragma omp parallel shared(Spe_VPS_List,spe,Spe_Num_RVPS,num_k,dk,OneD_Grid,rmin,h,VPS_j_dependency,Spe_NLRF_Bessel,TmpNRF)  private(MaxGL,L,GL,SphB,tmp_SphB,tmp_SphBp,OMPID,Nthrds,Nprocs,norm_k,i,r,r2,sum,so,kj)
-      {
-
-	/* allocate SphB */
-
-	MaxGL = -1;
-	for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-	  GL = Spe_VPS_List[spe][L];
-	  if (MaxGL<GL) MaxGL = GL;
-	}      
-
-	SphB = (double**)malloc(sizeof(double*)*(MaxGL+3));
-	for(GL=0; GL<(MaxGL+3); GL++){ 
-	  SphB[GL] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-	}
-
-	tmp_SphB  = (double*)malloc(sizeof(double)*(MaxGL+3));
-	tmp_SphBp = (double*)malloc(sizeof(double)*(MaxGL+3));
-
-	/* get info. on OpenMP */ 
-
-	OMPID = omp_get_thread_num();
-	Nthrds = omp_get_num_threads();
-	Nprocs = omp_get_num_procs();
-
-	for ( kj=OMPID; kj<num_k; kj+=Nthrds ){
-
-	  norm_k = (double)kj*dk;
-
-	  /* calculate SphB */
-
-	  for (i=0; i<=OneD_Grid; i++){
-
-	    r = rmin + (double)i*h;
-
-	    Spherical_Bessel(norm_k*r,MaxGL,tmp_SphB,tmp_SphBp);
-
-	    r2 = r*r;
-	    for(GL=0; GL<=MaxGL; GL++){ 
-	      SphB[GL][i] = tmp_SphB[GL]*r2; 
-	    }
-	  }
-
-	  for(GL=0; GL<=MaxGL; GL++){ 
-	    SphB[GL][0] *= 0.5;
-	    SphB[GL][OneD_Grid] *= 0.5;
-	  }
-
-	  /* loof for L */
-
-	  for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-
-	    GL = Spe_VPS_List[spe][L];
-
-	    /****************************************************
-                      \int jL(k*r)*RL*r^2 dr 
-	    ****************************************************/
-
-	    sum[0] = 0.0;
-	    sum[1] = 0.0;
-
-            for (so=0; so<=VPS_j_dependency[spe]; so++){
-	      for (i=0; i<=OneD_Grid; i++){
-		sum[so] += TmpNRF[so][L][i]*SphB[GL][i];
-	      }
-	    }
-
-	    for (so=0; so<=VPS_j_dependency[spe]; so++){
-	      Spe_NLRF_Bessel[so][spe][L][kj] = sum[so]*h;
-	    }
-
-	  } /* L */
-	} /* kj */
-
-	/* free arrays */
-
-	for(GL=0; GL<(MaxGL+3); GL++){ 
-	  free(SphB[GL]);
-	}
-	free(SphB);
-
-	free(tmp_SphB);
-	free(tmp_SphBp);
-
-#pragma omp flush(Spe_NLRF_Bessel)
-
-      } /* #pragma omp parallel */
-
-      /* freeing TmpNRF */
-
-      for (so=0; so<2; so++){
-        for (L=0; L<(Spe_Num_RVPS[spe]+1); L++){
-          free(TmpNRF[so][L]);
-	}
-        free(TmpNRF[so]);
-      }
-      free(TmpNRF);
 
     } /* Lspe */
 

@@ -3305,10 +3305,10 @@ void xyz2spherical(double x, double y, double z,
                    double xo, double yo, double zo,
                    double S_coordinate[3]);
 int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double *****CntH, double *etime);
-void FT_PAO(OpenMXCoreContext *core);
-void FT_NLP();
+void FT_PAO(OpenMXCoreContext *core, int device);
+void FT_NLP(OpenMXCoreContext *core, int device);
 void FT_ProExpn_VNA();
-void FT_VNA();
+void FT_VNA(OpenMXCoreContext *core, int device);
 void FT_ProductPAO();
 
 void Calc_OLPmo( double *****OLPmo );

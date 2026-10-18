@@ -189,18 +189,18 @@ RadialSamples samples(int k_count = 67, int intervals = 31) {
   return sample_radial({3,intervals,k_count,0.0,0.1,0.15},counts,radial_value);
 }
 void compare_reference(const RadialSamples& input, const Tensor<double,2>& output) {
-  const auto grid = input.grid;
+  const auto& grid = input.grid;
   for (std::size_t orbital = 0; orbital < input.orbitals.size(); ++orbital)
-    for (int k = 0; k < grid.k_count; ++k) {
+    for (int k = 0; k < static_cast<int>(grid.wavevectors.size()); ++k) {
       double reference = 0;
       const auto info = input.orbitals[orbital];
-      for (int i = 0; i <= grid.intervals; ++i) {
-        const double r = grid.rmin+i*grid.radial_step;
-        const double weighted = reference_bessel(info.angular, k*grid.k_step*r)*r*r;
+      for (int i = 0; i < static_cast<int>(grid.radii.size()); ++i) {
+        const double r = grid.radii[i];
+        const double weighted = reference_bessel(info.angular, grid.wavevectors[k]*r)*r*r;
         reference += radial_value(info.angular,info.multiplicity,r)*weighted*
-                     (i == 0 || i == grid.intervals ? 0.5 : 1.0);
+                     (i == 0 || i+1 == static_cast<int>(grid.radii.size()) ? 0.5 : 1.0);
       }
-      near(element(output.view(),orbital,k),reference*grid.radial_step,5e-11);
+      near(element(output.view(),orbital,k),reference*grid.step,5e-11);
     }
 }
 void radial_host_test() {

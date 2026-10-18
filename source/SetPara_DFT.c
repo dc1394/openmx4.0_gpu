@@ -18,6 +18,7 @@
 #include "openmx_common.h"
 #include "Inputtools.h"
 #include "mpi.h"
+#include "openmx_gpu_device.h"
 
 
 static void Set_Atom_Weight();
@@ -55,6 +56,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
 {
   int i,j,k,l,wanA,spe;    
   int nf,fg;
+  int core_device = -1;
   int numprocs,myid;
   double MaxCutoffR;
 
@@ -149,12 +151,15 @@ void SetPara_DFT(OpenMXCoreContext *core)
     printf("*******************************************************\n\n"); fflush(stdout); 
   }
 
-  FT_PAO(core);
-  FT_NLP();
+  if (core && MSpeciesNum>0 && openmx_core_has_accelerator() &&
+      scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable())
+    core_device = OpenMXGpuBindRankLocal();
+  FT_PAO(core,core_device);
+  FT_NLP(core,core_device);
 
   if (ProExpn_VNA==1){
     FT_ProExpn_VNA();
-    FT_VNA();
+    FT_VNA(core,core_device);
     FT_ProductPAO();
   }
 

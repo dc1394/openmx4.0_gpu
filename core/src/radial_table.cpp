@@ -1,0 +1,133 @@
+#include <openmx/core/radial_table.hpp>
+
+#include <algorithm>
+#include <climits>
+#include <cmath>
+#include <stdexcept>
+
+namespace openmx::core {
+namespace {
+
+struct Interpolated { double value, derivative; };
+
+Interpolated interpolate(std::span<const double> radii, const double* values,
+                         std::size_t m, double radius, bool derivative = false)
+{
+  const double h2 = radii[m]-radii[m-1];
+  const double f2 = values[m-1], f3 = values[m];
+  double h1, h3, f1, f4;
+  // Select the edge stencil before reading its entries. The original VNAF
+  // read past the upper grid before replacing that value with the ghost point.
+  if (m == 1) {
+    h3 = radii[m+1]-radii[m]; f4 = values[m+1];
+    h1 = -(h2+h3); f1 = f4;
+  } else if (m == radii.size()-1) {
+    h1 = radii[m-1]-radii[m-2]; f1 = values[m-2];
+    h3 = -(h1+h2); f4 = f1;
+  } else {
+    h1 = radii[m-1]-radii[m-2]; h3 = radii[m+1]-radii[m];
+    f1 = values[m-2]; f4 = values[m+1];
+  }
+  const double g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
+  const double g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
+  const double y1 = (radius-radii[m-1])/h2;
+  const double y2 = (radius-radii[m])/h2;
+  const double y12 = y1*y1, y22 = y2*y2;
+  const double value = y22*(3.0*f2+h2*g1+(2.0*f2+h2*g1)*y2)
+                     + y12*(3.0*f3-h2*g2-(2.0*f3-h2*g2)*y1);
+  double slope = 0;
+  if (derivative)
+    slope = 2.0*y2/h2*(3.0*f2+h2*g1+(2.0*f2+h2*g1)*y2)
+          + y22*(2.0*f2+h2*g1)/h2
+          + 2.0*y1/h2*(3.0*f3-h2*g2-(2.0*f3-h2*g2)*y1)
+          - y12*(2.0*f3-h2*g2)/h2;
+  return {value,slope};
+}
+
+} // namespace
+
+RadialTable::RadialTable(RadialKind kind, std::span<const double> radii,
+    std::span<const RadialChannel> channels, double cutoff)
+  : kind_(kind), cutoff_(cutoff), radii_(radii.begin(),radii.end()),
+    values_({channels.size(),radii.size()})
+{
+  if (kind != RadialKind::pao && kind != RadialKind::projector &&
+      kind != RadialKind::neutral_potential)
+    throw std::invalid_argument("unknown radial table kind");
+  if (radii.size() < (kind == RadialKind::neutral_potential ? 6u : 3u) ||
+      radii.size() > INT_MAX || channels.size() > INT_MAX)
+    throw std::invalid_argument("invalid radial table dimensions");
+  for (std::size_t i = 0; i < radii.size(); ++i)
+    if (!std::isfinite(radii[i]) || radii[i] < 0 || (i && radii[i] <= radii[i-1]))
+      throw std::invalid_argument("radial table grid must be finite and strictly increasing");
+  if (kind == RadialKind::neutral_potential &&
+      (channels.size() != 1 || !std::isfinite(cutoff) || cutoff < 0 || cutoff > radii.back()))
+    throw std::invalid_argument("invalid neutral-potential cutoff or channel count");
+  angular_.reserve(channels.size());
+  auto data = values_.view();
+  for (std::size_t row = 0; row < channels.size(); ++row) {
+    const auto& channel = channels[row];
+    if (channel.angular < 0 || channel.angular > 29 || channel.values.size() != radii.size() ||
+        (kind == RadialKind::neutral_potential && channel.angular != 0))
+      throw std::invalid_argument("invalid radial table channel");
+    angular_.push_back(channel.angular);
+    for (std::size_t i = 0; i < radii.size(); ++i) {
+      if (!std::isfinite(channel.values[i])) throw std::invalid_argument("non-finite radial table value");
+      element(data,row,i) = channel.values[i];
+    }
+  }
+}
+
+double RadialTable::sample(std::size_t channel, double radius) const
+{
+  const int l = angular_.at(channel);
+  return sample_radial_row(kind_,l,radii_,
+      {values_.data()+channel*radii_.size(),radii_.size()},cutoff_,radius);
+}
+
+double sample_radial_row(RadialKind kind, int l, std::span<const double> radii,
+    std::span<const double> row, double cutoff, double radius)
+{
+  if ((kind != RadialKind::pao && kind != RadialKind::projector && kind != RadialKind::neutral_potential) ||
+      radii.size() < (kind == RadialKind::neutral_potential ? 6u : 3u) ||
+      row.size() != radii.size() || l < 0 || l > 29 ||
+      (kind == RadialKind::neutral_potential &&
+       (l != 0 || !std::isfinite(cutoff) || cutoff < 0 || cutoff > radii.back())))
+    throw std::invalid_argument("invalid radial interpolation row");
+  if (!std::isfinite(radius) || radius < 0)
+    throw std::invalid_argument("invalid radial sampling coordinate");
+  const double* values = row.data();
+  if (kind == RadialKind::neutral_potential && radius > cutoff) return 0;
+  if (radius > radii.back()) return 0;
+  if (radius < radii.front()) {
+    if (kind == RadialKind::pao) return l == 0 ? values[0] : 0;
+    if (kind == RadialKind::projector)
+      return l == 0 ? interpolate(radii,values,1,radius).value : 0;
+    const double rm = radii[4];
+    const auto at_rm = interpolate(radii,values,4,rm,true);
+    const double a = 0.5*at_rm.derivative/rm;
+    const double b = at_rm.value-a*rm*rm;
+    return a*radius*radius+b;
+  }
+  // lower_bound, rather than upper_bound, retains the original stencil at
+  // an exactly tabulated point, including the first and last grid points.
+  std::size_t m = std::lower_bound(radii.begin()+1,radii.end(),radius)-radii.begin();
+  if (kind != RadialKind::projector && m < 2) m = 2;
+  return interpolate(radii,values,m,radius).value;
+}
+
+RadialSamples sample_table(const RadialTable& table, RadialQuadrature grid)
+{
+  std::vector<Orbital> orbitals;
+  orbitals.reserve(table.channel_count());
+  Tensor<double,2> values({table.channel_count(),grid.radii.size()});
+  auto data = values.view();
+  for (std::size_t channel = 0; channel < table.channel_count(); ++channel) {
+    orbitals.push_back({table.angular(channel),static_cast<int>(channel)});
+    for (std::size_t i = 0; i < grid.radii.size(); ++i)
+      element(data,channel,i) = table.sample(channel,grid.radii[i]);
+  }
+  return {std::move(grid),std::move(orbitals),std::move(values)};
+}
+
+} // namespace openmx::core
