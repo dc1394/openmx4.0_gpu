@@ -251,6 +251,25 @@ class UnifiedBuildTest(unittest.TestCase):
         self.assertEqual(artifact.read_bytes(), b"native build output")
 
     @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
+    def test_kugui_core_selects_site_gcc_and_honors_override(self):
+        environment = dict(os.environ)
+        for name in ("OPENMX_CORE_CXX", "OPENMX_CORE_LIBRARY", "OPENMX_CORE_BACKEND"):
+            environment.pop(name, None)
+        for override in (False, True):
+            with self.subTest(override=override):
+                compiler = "/other/gcc/bin/g++" if override else "/site/gcc/12.2.0/bin/g++"
+                command = ["make", "--no-print-directory", "-n", "-C", str(self.stages["CUDA"]),
+                           "-f", str(ROOT / "source/Makefile.kugui"),
+                           "KUGUI_GCC_ROOT=/site/gcc/12.2.0", "openmx-core"]
+                if override:
+                    command.append("OPENMX_CORE_CXX=" + compiler)
+                completed = subprocess.run(command, capture_output=True, text=True,
+                                           check=False, env=environment)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertIn('-DCMAKE_CXX_COMPILER="' + compiler + '"', completed.stdout)
+                self.assertIn("-DOPENMX_CORE_BACKEND=SERIAL", completed.stdout)
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
     def test_native_core_uses_callers_cmake_and_honors_override(self):
         # CUDA replaces PATH for its compiler recipes. A CMake selected from
         # the caller's PATH must still configure/build the core afterward.

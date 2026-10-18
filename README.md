@@ -445,8 +445,12 @@ pass `GEMMUL8_GPU_ARCH=80` to the normal Makefile. GPU tests run in an
 allocated GPU job.
 
 The site validation above predates this C++ migration. The core additionally
-needs a C++20 compiler (`OPENMX_CORE_CXX=/path/to/g++` for direct make);
-the updated branch has not yet been revalidated on Kugui.
+needs a C++20 compiler. `Makefile.kugui` selects the site's GCC 12.2 for the
+core as well as the CUDA adapters; override it with `OPENMX_CORE_CXX` if needed.
+The updated branch has not yet been revalidated on Kugui. Older NVHPC versions
+can be combined with a separate modern GCC, but there is no C++17 fallback;
+the CUDA core also requires nvcc 12.2 or later. See the
+[compiler compatibility notes](docs/CPP_CORE_MIGRATION.md#古い-nvidia-コンパイラとの組み合わせ).
 
 ### HPC SDK 26.9 / CUDA 13.4 update
 

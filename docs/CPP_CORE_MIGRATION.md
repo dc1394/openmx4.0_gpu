@@ -162,6 +162,47 @@ d6557aaef39302282a15f9c770433d1fcdf4e961dfd6d9ed726b9d0d0f546b9f
 `-DFETCHCONTENT_SOURCE_DIR_KOKKOS=/absolute/path/to/kokkos-5.2.2` で指定します。
 この上書き時には FetchContent のアーカイブ検証を通らないため、指定先の版を管理してください。
 
+### 古い NVIDIA コンパイラとの組み合わせ
+
+OpenMX 本体の C / Fortran と C++ コアは別々のコンパイラで構築し、C ABI で接続します。
+本体の `nvc` / `nvfortran` が古い場合でも、`SERIAL` / `OPENMP` コアには別途用意した
+GCC / Clang と対応する標準ライブラリを使えます。CMake では
+`CMAKE_CXX_COMPILER`、直接 make では `OPENMX_CORE_CXX` を指定します。
+コアを `SERIAL` にしても、本体の既存 CUDA ソルバーは引き続き利用できます。
+
+ただし、C++20 未対応のコンパイラだけでこのブランチをビルドする経路はありません。
+`std::span` と Kokkos 5.2.2 が C++20 を必要とし、C++17 への自動切り替えは行いません。
+`std::mdspan` がない場合の Kokkos/mdspan への切り替えも、C++20 を最低条件とします。
+固定した Kokkos 5.2.2 の構成チェックでは GCC 10.4 以上、CUDA コアには nvcc 12.2 以上が必要です。
+[Kokkos の公式要件](https://kokkos.org/kokkos-core-wiki/get-started/requirements.html) と
+各 CUDA Toolkit が対応するホストコンパイラの範囲も確認してください。
+
+既存 CUDA アダプター用の `NVCC_HOST` と、コア用の `OPENMX_CORE_CXX` は別設定です。
+`Makefile.kugui` は両方にサイトの GCC 12.2 を指定し、COSMA 用の C / C++ コンパイラと
+GCC ランタイムのリンク・実行時パスも揃えます。通常の Makefile で同様に指定する場合は、例えば次を使います。
+
+```sh
+make -C source -j4 openmx OPENMX_CORE_BACKEND=SERIAL \
+  OPENMX_CORE_CXX=/path/to/gcc/bin/g++ NVCC_HOST=/path/to/gcc/bin/g++ \
+  GPUSOLVER2_HOST_CC=/path/to/gcc/bin/gcc GPUSOLVER2_HOST_CXX=/path/to/gcc/bin/g++
+```
+
+非標準の GCC 配置では、`Makefile.kugui` のように対応する `libstdc++` の検索パスも設定します。
+CUDA コアを有効にする場合は、さらに `CMAKE_CUDA_COMPILER` と
+`CMAKE_CUDA_HOST_COMPILER` で対応する nvcc / ホスト C++ コンパイラを指定します。
+`CMAKE_CUDA_HOST_COMPILER` はネイティブ Makefile の `NVCC_HOST` を変更しません。
+CUDA 11 系など古い Toolkit 全体への後方互換は保証しません。既存 CUDA アダプターにも
+`-std=c++20` を使う箇所があるため、コアをホストにするだけで全体の要件が下がるわけではありません。
+
+2026-10-19 に CMake 4.4.4 / GCC 12.4 でホストコアの全 33 テスト、
+NVHPC 24.1 に同梱された nvcc 12.3.103 と同じ GCC で CUDA コアの全 33 テストが合格しました。
+CUDA は `sm_80` / PTX を指定してビルドし、実行機は RTX 5080 です。
+NVHPC 23.3 の C11 コードから GCC 12 の共有コアを呼ぶ試験では、
+VNA 射影子の Fourier 変換を解析値と照合し、コンテキストの生成・解放も確認しました。
+GCC 9 / nvcc 12.0 は Kokkos の最低版検査で構成時に拒否されることを確認しています。
+ログと C ABI の試験コードは `build/compiler-compatibility/`（Git 管理外）にあります。
+これはコアと C ABI の検証であり、古い SDK を使った OpenMX 全体や Kugui 実機での再検証は含みません。
+
 ### CPU だけでコアを開発する
 
 ```sh
