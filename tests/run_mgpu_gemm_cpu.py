@@ -32,6 +32,8 @@ struct MockEvent {int device;};using cudaEvent_t=MockEvent *;
 inline int mock_device=0;
 struct Allocation {size_t bytes;int device;};
 inline std::unordered_map<void *,Allocation> allocations;
+inline std::unordered_map<void *,size_t> host_allocations;
+inline int host_allocation_calls=0;
 struct cudaPointerAttributes {cudaMemoryType type;int device;};
 struct cudaPitchedPtr {void *ptr;size_t pitch,xsize,ysize;};
 struct cudaExtent {size_t width,height,depth;};
@@ -49,8 +51,8 @@ inline const char *cudaGetErrorString(int){return "mock CUDA error";}
 inline int cudaMemGetInfo(size_t *f,size_t *t){*f=*t=size_t(16)<<30;return 0;}
 template<class T> inline int cudaMalloc(T **p,size_t n){*p=static_cast<T *>(std::malloc(n));if(!*p)return 1;allocations[*p]={n,mock_device};return 0;}
 inline int cudaFree(void *p){if(!p)return 0;auto it=allocations.find(p);if(it==allocations.end()||it->second.device!=mock_device)return 1;allocations.erase(it);std::free(p);return 0;}
-inline int cudaHostAlloc(void **p,size_t n,int){*p=std::malloc(n);return *p?0:1;}
-inline int cudaFreeHost(void *p){std::free(p);return 0;}
+inline int cudaHostAlloc(void **p,size_t n,int){*p=std::malloc(n);if(*p){host_allocations[*p]=n;++host_allocation_calls;}return *p?0:1;}
+inline int cudaFreeHost(void *p){if(!host_allocations.erase(p))return 1;std::free(p);return 0;}
 inline int cudaPointerGetAttributes(cudaPointerAttributes *a,const void *p){
     for(auto &x:allocations){const auto base=reinterpret_cast<uintptr_t>(x.first),q=reinterpret_cast<uintptr_t>(p);
         if(q>=base&&q-base<x.second.bytes){a->type=cudaMemoryTypeDevice;a->device=x.second.device;return 0;}}
@@ -119,10 +121,30 @@ inline cublasStatus_t cublasDgemm(cublasHandle_t h,cublasOperation_t ta,cublasOp
 const double *al,const double *a,int lda,const double *b,int ldb,const double *be,double *c,int ldc){return fakegemm(h,ta,tb,m,n,k,al,a,lda,b,ldb,be,c,ldc);}
 inline cublasStatus_t cublasZgemm(cublasHandle_t h,cublasOperation_t ta,cublasOperation_t tb,int m,int n,int k,
 const cuDoubleComplex *al,const cuDoubleComplex *a,int lda,const cuDoubleComplex *b,int ldb,const cuDoubleComplex *be,cuDoubleComplex *c,int ldc){return fakegemm(h,ta,tb,m,n,k,al,a,lda,b,ldb,be,c,ldc);}
+inline cublasStatus_t cublasDaxpy(cublasHandle_t h,int n,const double *a,const double *x,int ix,double *y,int iy){
+    if(h->device!=mock_device)return CUBLAS_STATUS_INVALID_VALUE;
+    for(int i=0;i<n;++i)y[i*iy]+=*a*x[i*ix];return CUBLAS_STATUS_SUCCESS;
+}
+inline cublasStatus_t cublasZaxpy(cublasHandle_t h,int n,const cuDoubleComplex *a,const cuDoubleComplex *x,int ix,cuDoubleComplex *y,int iy){
+    if(h->device!=mock_device)return CUBLAS_STATUS_INVALID_VALUE;
+    for(int i=0;i<n;++i){auto v=number(y[i*iy])+number(*a)*number(x[i*ix]);y[i*iy]={v.real(),v.imag()};}
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 '''
 fixture = (root / "tests/mgpu_gemm_smoke.cu").read_text()
 fixture = re.sub(r"__global__ void delay_input\([^)]*\) \{.*?\n\}", "", fixture, flags=re.S)
 fixture = re.sub(r"^\s*delay_input<<<.*?;\n", "\n", fixture, flags=re.M)
+fixture = fixture.replace('    openmx_mgpuGemmStagingEnd();\n    setenv("OPENMX_MGPU_GEMM_PAGEABLE","1",1);',
+    '''    require(!host_allocations.empty(),"outer scope retains staging");
+    const int registered=host_allocation_calls;
+    run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311);
+    // run() itself allocates one test input, but workers reuse their buffers.
+    require(host_allocation_calls==registered+1,"worker registrations reused");
+    for(auto &entry:host_allocations) require(entry.second<=1048576,"cached host budget");
+    openmx_mgpuGemmStagingEnd();
+    require(host_allocations.empty(),"outer scope releases all staging");
+    setenv("OPENMX_MGPU_GEMM_PAGEABLE","1",1);''')
 with tempfile.TemporaryDirectory(prefix="openmx-mgpu-cpu-") as tmp:
     directory = Path(tmp)
     for name, contents in {"cuda_runtime.h": cuda, "cuComplex.h": complex_header, "cublas_v2.h": blas}.items():

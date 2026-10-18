@@ -16,8 +16,13 @@ cuda = r'''
 #pragma once
 #include <cstddef>
 using cudaError_t=int;
-constexpr int cudaSuccess=0;
+constexpr int cudaSuccess=0,cudaDevAttrSingleToDoublePrecisionPerfRatio=1;
 inline int device=3, visible=4, sync_fail=0, query_fail=0;
+inline int ratios[8]={64,64,64,64,64,64,64,64},attribute_failure=-1;
+inline int cudaDeviceGetAttribute(int *p,int attr,int d) {
+ if(attr!=cudaDevAttrSingleToDoublePrecisionPerfRatio || d<0 || d>=visible || d==attribute_failure) return 1;
+ *p=ratios[d];return 0;
+}
 inline size_t free_bytes=size_t(40)<<30;
 inline int cudaGetDevice(int *p) {*p=device;return query_fail;}
 inline int cudaGetDeviceCount(int *p) {*p=visible;return query_fail;}
@@ -35,10 +40,22 @@ static int openmx_magma_map_to_physical(int);
 #endif
 using magma_int_t=int;
 using magmaDoubleComplex=std::complex<double>;
+using magmaFloatComplex=std::complex<float>;
 using magma_vec_t=int;
 using magma_range_t=int;
 constexpr int MagmaMaxGPUs=8,MagmaVec=1,MagmaNoVec=0,MagmaLower=0,MagmaRangeAll=0,MagmaRangeI=1,MAGMA_SUCCESS=0;
+constexpr int MAGMA_ERR_DEVICE_ALLOC=-113,MAGMA_ERR_HOST_ALLOC=-112;
 #define MAGMA_Z_REAL(x) (x).real()
+#define MAGMA_C_REAL(x) (x).real()
+// Refined FP32 arithmetic is covered by the analytic real-GPU fixture.
+// Count entry to FP32, then deliberately refuse workspace. The production
+// adapter must fall back transactionally. A blocked device policy must
+// never reach even this query; actual FP32 arithmetic has a GPU oracle.
+inline int fp32_queries=0;
+inline int magma_ssyevdx_m(...) {++fp32_queries;return MAGMA_ERR_HOST_ALLOC;}
+inline int magma_cheevdx_m(...) {++fp32_queries;return MAGMA_ERR_HOST_ALLOC;}
+inline int magma_dsygvd_m(...) {std::abort();}
+inline int magma_zhegvd_m(...) {std::abort();}
 inline int init_count=0,init_calls=0,init_fail=0,solve_fail=0,corrupt=0,query_bad=0,calls=0,last_ngpu=0,last_first=0;
 inline int permutation=0,nonfinite_value=0;
 inline int last_devices[8]={};
@@ -99,6 +116,16 @@ __attribute__((noinline)) void operator delete(void *p,std::size_t) noexcept {st
 static int checks=0;
 #define CHECK(x) do {++checks;if(!(x)){std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 #ifdef OPENMX_HAVE_MAGMA
+static int input_fp32=1;
+extern "C" int openmx_fp32_enabled() {return input_fp32;}
+extern "C" int openmx_mgpuDgemmHostTry(int,const int*,cublasOperation_t,cublasOperation_t,int,int,int,
+ const double*,const double*,int,const double*,int,const double*,double*,int,cublasStatus_t*) {std::abort();}
+extern "C" int openmx_mgpuZgemmHostTry(int,const int*,cublasOperation_t,cublasOperation_t,int,int,int,
+ const cuDoubleComplex*,const cuDoubleComplex*,int,const cuDoubleComplex*,int,const cuDoubleComplex*,cuDoubleComplex*,int,cublasStatus_t*) {std::abort();}
+extern "C" void dsygv_(const int*,const char*,const char*,const int*,double*,const int*,double*,const int*,double*,double*,const int*,int*) {std::abort();}
+extern "C" void zhegv_(const int*,const char*,const char*,const int*,void*,const int*,void*,const int*,double*,void*,const int*,double*,int*) {std::abort();}
+extern "C" void dgemm_(const char*,const char*,const int*,const int*,const int*,const double*,const double*,const int*,const double*,const int*,const double*,double*,const int*) {std::abort();}
+extern "C" void zgemm_(const char*,const char*,const int*,const int*,const int*,const void*,const void*,const int*,const void*,const int*,const void*,void*,const int*) {std::abort();}
 template<class T> void success(int lower,int vectors,int n=257) {
  const int lda=n+7;std::vector<T>a(size_t(lda)*n,T(-777)),waste;
  std::vector<double>w(8,-55);
@@ -120,6 +147,32 @@ int main() {
   success<double>(lower,vectors);success<std::complex<double>>(lower,vectors);
  }
  CHECK(init_calls==1); // one process-wide initialization across D/Z solves
+ // All visible GPUs must have weak FP64, even outside the selected group
+ // or an explicit GPU-count cap. Exercise real/complex production dispatch,
+ // input veto, both mixed-device orders and unknown capabilities.
+ setenv("OPENMX_MAGMA_FP32","1",1);
+ setenv("OPENMX_MAGMA_FP32_COMPLEX_MAX_N","0",1);
+ setenv("OPENMX_MGPU_NUM_GPUS","2",1);
+ auto precision_case=[&](bool allow) {
+  const int q=fp32_queries, c=calls, original=device;
+  success<double>(1,1,8);success<std::complex<double>>(0,1,8);
+  CHECK(fp32_queries-q==(allow?2:0));
+  CHECK(calls-c==2 && device==original);
+ };
+ precision_case(true); // four GeForce-like devices
+ for(int strong=0;strong<visible;++strong) {
+  ratios[strong]=2;precision_case(false);ratios[strong]=64;
+ }
+ for(int i=0;i<visible;++i) ratios[i]=2;
+ precision_case(false); // homogeneous H100-like pool
+ for(int i=0;i<visible;++i) ratios[i]=64;
+ for(int unknown: {-1,0,7}) {ratios[3]=unknown;precision_case(false);}
+ ratios[3]=8;precision_case(true); // common weak-FP64 boundary
+ ratios[3]=64;attribute_failure=3;precision_case(false);attribute_failure=-1;
+ input_fp32=0;precision_case(false);input_fp32=1;
+ setenv("OPENMX_MAGMA_FP32","0",1);precision_case(false);
+ unsetenv("OPENMX_MAGMA_FP32");unsetenv("OPENMX_MAGMA_FP32_COMPLEX_MAX_N");
+ unsetenv("OPENMX_MGPU_NUM_GPUS");
  // A successful library result may return eigenpairs in another order.
  // Reverse and cyclic permutations must preserve the independent diagonal
  // residual, ascending values, vector columns, padding and caller device.
@@ -174,6 +227,9 @@ int main() {
 #ifdef OPENMX_TEST_DEVICE_MAP
  CHECK(openmx_magma_mgpu_available_devices(2,selected)==1);
  const int groups[][2]={{2,3},{3,2},{1,3}};
+ setenv("OPENMX_MAGMA_FP32","1",1);
+ ratios[0]=2; // strong GPU outside each weak-FP64 group below
+ const int q_before_groups=fp32_queries;
  for(const auto &group:groups) for(int z=0;z<2;++z) {
   std::vector<double> matrix(size_t(n)*n*(z?2:1));std::vector<double> values(4,-55);
   for(int i=0;i<n;++i) matrix[(size_t(i)*n+i)*(z?2:1)]=i;
@@ -181,6 +237,8 @@ int main() {
   CHECK(last_devices[0]==group[0] && last_devices[1]==group[1]);
   CHECK(device==3 && openmx_magma_map_count==0 && values[0]==0 && values[3]==3);
  }
+ CHECK(fp32_queries==q_before_groups);
+ ratios[0]=64;unsetenv("OPENMX_MAGMA_FP32");
  for(int failure=0;failure<4;++failure) {
   a=before;w.assign(4,-55);
   if(failure==0) solve_fail=7;
@@ -231,6 +289,12 @@ with tempfile.TemporaryDirectory(prefix="openmx-magma-policy-") as folder:
     tmp = Path(folder)
     (tmp / "cuda_runtime_api.h").write_text(cuda)
     (tmp / "magma_v2.h").write_text(magma)
+    (tmp / "cuComplex.h").write_text('#pragma once\nstruct cuDoubleComplex {double x,y;};\n')
+    (tmp / "cublas_v2.h").write_text('''#pragma once
+#include "cuComplex.h"
+using cublasHandle_t=void*; using cublasStatus_t=int; using cublasOperation_t=int;
+constexpr int CUBLAS_STATUS_SUCCESS=0,CUBLAS_OP_N=0,CUBLAS_OP_C=2;
+''')
     (tmp / "test.cpp").write_text(main)
     for mode in ("stub", "enabled", "mapped"):
         command = shlex.split(os.environ.get("CXX", "c++")) + ["-std=c++17", "-O1", "-Wall", "-Wextra",

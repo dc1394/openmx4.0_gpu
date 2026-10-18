@@ -147,6 +147,63 @@ template<class T> void forward(cublasHandle_t h,const std::vector<int> &devices)
     const double relative=double(error/std::max(1.L,scale));require(relative<1e-11,"full X^T/H H X forward pair");worst=std::max(worst,relative);
     check(cudaFree(da));check(cudaFree(dx));check(cudaFree(tmp));++cases;
 }
+
+template<class T> void resident_refine(const std::vector<int> &devices) {
+    const int n=37;
+    std::vector<T> a(n*n),x(n*n),e(n*n),h(n*n),g(n*n);
+    for(int j=0;j<n;++j) for(int i=0;i<n;++i) {
+        a[j*n+i]=scalar<T>(i==j?2.:std::cos(i+j)*.02,std::sin(i-j)*.03);
+        x[j*n+i]=scalar<T>(std::cos(i+2*j)*.1,std::sin(2*i-j)*.1);
+        e[j*n+i]=scalar<T>(std::sin(3*i+j)*.001,std::cos(i+3*j)*.001);
+    }
+    int original=-1;check(cudaGetDevice(&original));
+    setenv("OPENMX_MAGMA_REFINE_RESIDENT_MB","0",1);
+    require(!openmx_mgpuRefineCreate(int(devices.size()),devices.data(),n,sizeof(T)!=8),"resident budget decline");
+    setenv("OPENMX_MAGMA_REFINE_RESIDENT_MB","1",1);
+    auto duplicate=devices;duplicate[1]=duplicate[0];
+    require(!openmx_mgpuRefineCreate(int(devices.size()),duplicate.data(),n,sizeof(T)!=8),"resident duplicate devices decline");
+    void *p=openmx_mgpuRefineCreate(int(devices.size()),devices.data(),n,sizeof(T)!=8);
+    require(p,"resident workspace creation");
+    require(openmx_mgpuRefineUpdate(p,e.data(),x.data())!=0,"resident update requires full projection");
+    auto verify=[&](int end) {
+        std::vector<std::complex<long double>> y(n*end);
+        for(int j=0;j<end;++j) for(int i=0;i<n;++i)
+            for(int k=0;k<n;++k) y[j*n+i]+=wide(a[k*n+i])*wide(x[j*n+k]);
+        require(openmx_mgpuRefineProject(p,a.data(),x.data(),end,h.data(),g.data())==0,"resident projection");
+        long double err=0,scale=1;
+        for(int j=0;j<end;++j) for(int i=0;i<end;++i) {
+            std::complex<long double> hv=0,gv=0;
+            for(int k=0;k<n;++k) {
+                hv+=std::conj(wide(x[i*n+k]))*y[j*n+k];
+                gv+=std::conj(wide(x[i*n+k]))*wide(x[j*n+k]);
+            }
+            err=std::max({err,std::abs(hv-wide(h[j*end+i])),std::abs(gv-wide(g[j*end+i]))});
+            scale=std::max({scale,std::abs(hv),std::abs(gv)});
+        }
+        require(err/scale<1e-11,"independent resident H/Gram oracle");
+    };
+    verify(n);
+    std::vector<std::complex<long double>> expected(n*n);
+    for(int j=0;j<n;++j) for(int i=0;i<n;++i) {
+        expected[j*n+i]=wide(x[j*n+i]);
+        for(int k=0;k<n;++k) expected[j*n+i]+=wide(x[k*n+i])*wide(e[j*n+k]);
+    }
+    require(openmx_mgpuRefineUpdate(p,e.data(),x.data())==0,"resident basis update");
+    for(int i=0;i<n*n;++i) require(std::abs(expected[i]-wide(x[i]))<1e-11,"independent resident update oracle");
+    verify(n-3);
+    require(openmx_mgpuRefineUpdate(p,e.data(),x.data())!=0,"prefix projection cannot update full basis");
+#ifdef OPENMX_MGPU_TEST_BRIDGE
+    fail_bridge_at=bridge_entries+2;
+    require(openmx_mgpuRefineProject(p,a.data(),x.data(),n,h.data(),g.data())!=0,"resident propagates bridge failure");
+    fail_bridge_at=bridge_entries+2*int(devices.size())+1;
+    require(openmx_mgpuRefineProject(p,a.data(),x.data(),n,h.data(),g.data())!=0,"resident propagates failure during Gram stage");
+    fail_bridge_at=0;
+#endif
+    require(openmx_mgpuRefineRelease(p)==0,"resident workspace release");
+    int restored=-1;check(cudaGetDevice(&restored));require(restored==original,"resident calls restore device");
+    unsetenv("OPENMX_MAGMA_REFINE_RESIDENT_MB");++cases;
+}
+
 int main(int argc,char **argv) {
     int ngpu=2;for(int i=1;i<argc;++i) {
         if(std::strcmp(argv[i],"--ngpu")==0 && i+1<argc) ngpu=std::atoi(argv[++i]);else {std::fprintf(stderr,"usage: %s [--ngpu N]\n",argv[0]);return 2;}
@@ -207,6 +264,7 @@ int main(int argc,char **argv) {
     }
 #endif
     host_operands=true;
+    openmx_mgpuGemmStagingBegin();
     for(auto ta:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) for(auto tb:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) {
         run<double>(h,devices,ta,tb,65,47,71);
         run<cuDoubleComplex>(h,devices,ta,tb,65,47,71,false,true);
@@ -225,12 +283,31 @@ int main(int argc,char **argv) {
     run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311,false,false,true);
     fail_bridge_at=0;
 #endif
+    // Repeated host products and a failed transaction must keep working with
+    // reused registrations. Nested scopes must not release the outer cache.
+    openmx_mgpuGemmStagingBegin();
+    run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311);
+    openmx_mgpuGemmStagingEnd();
+    run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311);
+    openmx_mgpuGemmStagingEnd();
+    setenv("OPENMX_MGPU_GEMM_PAGEABLE","1",1);
+    for(auto ta:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) for(auto tb:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) {
+        run<double>(h,devices,ta,tb,65,47,71);
+        run<cuDoubleComplex>(h,devices,ta,tb,65,47,71,false,true);
+    }
+#ifdef OPENMX_MGPU_TEST_BRIDGE
+    fail_bridge_at=bridge_entries+ngpu+1;
+    run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311,false,false,true);
+    fail_bridge_at=0;
+#endif
+    unsetenv("OPENMX_MGPU_GEMM_PAGEABLE");
     host_operands=false;
     // Source GPU need not be device zero; repeat after restoring a different handle/stream.
     check(cublasDestroy(h));check(cudaStreamDestroy(stream));check(cudaSetDevice(1));
     check(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));check(cublasCreate(&h));check(cublasSetStream(h,stream));
     run<double>(h,devices,CUBLAS_OP_N,CUBLAS_OP_C,65,47,71);
     run<cuDoubleComplex>(h,devices,CUBLAS_OP_C,CUBLAS_OP_N,65,47,71);
+    resident_refine<double>(devices);resident_refine<cuDoubleComplex>(devices);
     check(cublasDestroy(h));check(cudaStreamDestroy(stream));openmx_mgpuGemmRelease();
     int restored=-1;check(cudaGetDevice(&restored));require(restored==1,"release restores current device");
     std::printf("PASS: %d cases on %d GPUs; N/T/C, real/complex, alpha/beta, device scalars, padding, streams, full K tiles, forward/back, peer/host, transactional decline; max error %.3e; bridge calls %d\n",cases,ngpu,worst,bridge_entries);

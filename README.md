@@ -109,13 +109,31 @@ disables this step, allows it on one node, or skips MAGMA. Details:
 The MAGMA capacity path keeps dense matrices on the host, distributes the
 eigensolve across the group, and streams bounded tiles for matrix products.
 It allocates neither the full cuSOLVER workspace nor a full dense matrix
-on the owner GPU. Sufficient host RAM is still required. It uses FP64;
-the ordinary single-GPU GeForce arithmetic policies remain available.
+on the owner GPU. Sufficient host RAM is still required. Native FP64 is
+the default. `OPENMX_MAGMA_FP32=1` with `scf.fp32.enable on` enables a
+MAGMA FP32 basis followed by FP64 eigenvector correction and residual
+checks for all four Cluster/Band spin paths. The correction products use
+GEMMul8 when enabled. FP32 requires every CUDA-visible GPU to have a known
+FP32:FP64 throughput ratio of at least 8. Mixed H100/GeForce allocations
+retain native FP64, including when H100 is outside the current Band group;
+the FP32 request cannot override this guard.
+See [two RTX 5090 GPUs](doc/rtx5090_magma_fp32.txt)
+for the controls, memory requirements and reproducible tests.
+
+DC, DC-LNO and Krylov use `gpusolver` to solve local atomic clusters on the
+GPU assigned to each MPI rank.
+Their collinear FP32/double-float grid kernels and GEMMul8 can run on both GPUs,
+while their local cuSOLVER eigensolves remain FP64. See
+[O(N) two-GPU validation](doc/rtx5090_ordern.txt) for the Si555/Si666 runner
+and the distinction from the MAGMA FP32 path.
 
 For Band, each of the **K actually computed k-points** receives
 `floor(G/K)` GPUs from the permitted pool G. At least two GPUs per k-point
 are required. Three k-points with four GPUs cannot cooperate; with eight
 GPUs they use six, in groups `[0,1]`, `[2,3]`, `[4,5]`.
+`OPENMX_MGPU_BAND_SHARED=1` instead assigns k-points cyclically to groups
+of at least two GPUs and serializes access to each group. This allows a
+Regular 2x2x2 mesh to use MAGMA with two GPUs, retaining every k-point.
 
 Matrix products follow the eigensolver: a product whose operands are on a
 GPU stays on that GPU, and several GPUs are used only on the capacity rungs

@@ -29,6 +29,19 @@ extern "C" const char *openmx_magma_mgpu_last_error(void) { return magma_error; 
 #ifdef OPENMX_HAVE_MAGMA
 #include <magma_v2.h>
 #include <cuda_runtime_api.h>
+#include "openmx_mgpu_gemm.h"
+#include "openmx_precision.h"
+#pragma weak openmx_mgpuDgemmHostTry
+#pragma weak openmx_mgpuZgemmHostTry
+#pragma weak openmx_mgpuGemmStagingBegin
+#pragma weak openmx_mgpuGemmStagingEnd
+#pragma weak openmx_mgpuRefineCreate
+#pragma weak openmx_mgpuRefineProject
+#pragma weak openmx_mgpuRefineUpdate
+#pragma weak openmx_mgpuRefineRelease
+#pragma weak openmx_fp32_enabled
+#include <chrono>
+#include <climits>
 extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *, size_t *);
 #include <algorithm>
 #include <cmath>
@@ -139,6 +152,33 @@ struct Session {
         if (previous >= 0) (void)cudaSetDevice(previous);
     }
 };
+
+/* A heterogeneous node must keep the established FP64 solver even when
+   the particular Band group contains only consumer GPUs. Inspect the
+   entire CUDA-visible allocation, before MAGMA installs a logical map;
+   input GPU caps and an explicit FP32 request cannot hide a strong-FP64
+   device. Hidden/unallocated GPUs are never accessed. The throughput
+   boundary matches grid_precision and the GEMMul8 device policy. Unknown
+   capabilities conservatively retain FP64. Attribute queries do not
+   change the caller's current device. */
+bool fp32_visible_pool(int &blocking_device, int &ratio)
+{
+    blocking_device=-1;
+    ratio=0;
+    int count=0;
+    if (cudaGetDeviceCount(&count)!=cudaSuccess || count<2) return false;
+    for (int dev=0;dev<count;++dev) {
+        int value=0;
+        const cudaError_t status=cudaDeviceGetAttribute(
+            &value,cudaDevAttrSingleToDoublePrecisionPerfRatio,dev);
+        if (status!=cudaSuccess || value<8) {
+            blocking_device=dev;
+            ratio=status==cudaSuccess?value:0;
+            return false;
+        }
+    }
+    return true;
+}
 
 int device_preflight(int ngpu, const int *devices, int n, size_t width, Session &session)
 {
@@ -294,6 +334,8 @@ bool validate(const void *original, int lda, bool lower, int n, int count,
     }
     return true;
 }
+
+#include "openmx_magma_refine.h"
 
 template<class T>
 int solve(int ngpu, const int *devices, int vectors, int lower, int n, int first, int last, void *A, int lda, double *W)
@@ -454,6 +496,32 @@ extern "C" int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices
         return fail(OPENMX_MAGMA_RESOURCES, "matrix exceeds MAGMA LP64 workspace range");
     try {
         std::lock_guard<std::mutex> lock(magma_mutex);
+        const char *fp32=std::getenv("OPENMX_MAGMA_FP32");
+        const char *complex_limit=std::getenv("OPENMX_MAGMA_FP32_COMPLEX_MAX_N");
+        const int max_complex=complex_limit?std::max(0,std::atoi(complex_limit)):0;
+        const bool fp32_requested=want_vectors && fp32 && std::strcmp(fp32,"1")==0 &&
+            (!openmx_fp32_enabled || openmx_fp32_enabled()) &&
+            openmx_mgpuDgemmHostTry && openmx_mgpuZgemmHostTry;
+        int blocking_device=-1,ratio=0;
+        const bool fp32_allowed=fp32_requested && fp32_visible_pool(blocking_device,ratio);
+        if (fp32_requested && !fp32_allowed)
+            std::fprintf(stderr,"<OpenMX_MAGMA> precision policy n=%d type=%c mode=FP64 reason=visible_gpu_pool device=%d fp32_fp64_ratio=%d (all visible GPUs must have a known ratio >= 8)\n",
+                         n,is_complex?'Z':'D',blocking_device,ratio);
+        const bool native_complex=fp32_allowed && is_complex && max_complex>0 && n>max_complex;
+        if(native_complex)
+            std::fprintf(stderr,"<OpenMX_MAGMA> precision policy n=%d type=Z mode=FP64 complex_max_n=%d\n",n,max_complex);
+        if (fp32_allowed && !native_complex) {
+            int rc;
+            try {
+                rc=is_complex ? refined_solve<Complex>(ngpu,devices,lower,n,first,last,A,lda,W)
+                              : refined_solve<double>(ngpu,devices,lower,n,first,last,A,lda,W);
+            } catch (const std::bad_alloc &) {
+                rc=fail(OPENMX_MAGMA_RESOURCES,"FP32 refinement host allocation failed");
+            }
+            if (rc==OPENMX_MAGMA_SUCCESS || rc==OPENMX_MAGMA_CUDA_ERROR || rc==OPENMX_MAGMA_INVALID) return rc;
+            std::fprintf(stderr,"<OpenMX_MAGMA> FP32 refinement declined n=%d: %s; retrying MAGMA FP64\n",n,magma_error);
+            magma_error[0]='\0';
+        }
         return is_complex ? solve<Complex>(ngpu,devices,want_vectors,lower,n,first,last,A,lda,W)
                           : solve<double>(ngpu,devices,want_vectors,lower,n,first,last,A,lda,W);
     } catch (const std::bad_alloc &) {

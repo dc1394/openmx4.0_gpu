@@ -1,0 +1,177 @@
+Two RTX 5090 GPUs: corrected FP32 MAGMA
+======================================
+
+The CUDA backend has an opt-in FP32 MAGMA path shared by ordinary
+collinear/noncollinear Cluster and Band. Input:
+
+  scf.eigen.lib       gpusolver3
+  scf.Gpu.Num         2
+  scf.mgpu.enable     on
+  scf.gemmul8.enable  on
+  scf.fp32.enable     on
+
+Environment:
+  export OPENMX_MAGMA_FP32=1
+  export OPENMX_MAGMA_FP32_COMPLEX_MAX_N=16384
+  export OPENMX_MGPU_BAND_SHARED=1
+  export OPENMX_MGPU_GEMM_WORKSPACE_MB=24576
+  export OPENMX_MGPU_GEMM_HOST_MB=24576
+  export OPENMX_GEMMUL8_MAX_WORKSPACE_MB=2048
+  export OPENMX_GEMMUL8_TIMING=0
+  export OPENMX_MGPU_GEMM_PAGEABLE=1
+  export OPENMX_MAGMA_REFINE_RESIDENT_MB=28672
+  export OPENMX_MAGMA_REFINE_RESERVE_MB=2048
+  export OPENMX_MAGMA_REFINE_STEPS=3
+  export OPENMX_BAND_COL_KCACHE_MB=4096
+  export OPENMX_BAND_NONCOL_KCACHE_MB=24576
+
+FP32 admission requires every GPU in the process's CUDA-visible allocation
+to report an FP32:FP64 throughput ratio of at least 8. A strong-FP64 GPU
+(for example H100 or A100), an unknown ratio, or a failed capability query
+selects the original FP64 MAGMA driver before any FP32 work. Thus H100 plus
+GeForce uses FP64 regardless of device order, scf.Gpu.Num, the selected
+Band group, or OPENMX_MAGMA_FP32=1. CUDA_VISIBLE_DEVICES defines the
+allocation boundary: hidden GPUs are not queried. The decision is logged
+with reason=visible_gpu_pool. This restriction applies to the new MAGMA
+FP32 eigensolver; existing application arithmetic and GEMMul8 retain their
+separate controls. No environment override bypasses the hardware guard.
+The queried attribute is cudaDevAttrSingleToDoublePrecisionPerfRatio (87):
+https://docs.nvidia.com/cuda/archive/13.1.0/cuda-runtime-api/group__CUDART__TYPES.html
+NVIDIA's H100 specifications list FP32 throughput about twice native FP64,
+consistent with retaining FP64 under this policy:
+https://www.nvidia.com/en-us/data-center/h100/
+
+The full ssyevdx_m/cheevdx_m basis receives Ogita-Aishima corrections
+in FP64 through bounded multi-GPU GEMMs. GeForce workers use GEMMul8
+under the input setting above. FP64 generalized Rayleigh-Ritz solves
+resolve near-degenerate eigenvectors, including subset boundaries.
+The complete basis participates, including unoccupied states.
+The RTX 5090 preset uses native FP64 MAGMA above complex dimension 16384:
+forming and correcting a complete FP32 spinor basis can cost more than
+the requested FP64 solve, especially for an eigenvalue subset. Thus the
+Si555 NC Hamiltonians use FP64, while their overlap solves and application
+arithmetic use FP32 and their transformations use GEMMul8. This is an
+explicit precision policy, logged before the solve, rather than a failed
+refinement. OPENMX_MAGMA_FP32_COMPLEX_MAX_N=0 removes the size limit;
+the library itself defaults to no limit when this variable is absent.
+The first projected residual also identifies near-degenerate pairs whose
+proposed rotation exceeds 0.05. Their gaps enlarge the fixed cluster
+threshold before correction; connected groups retain their membership
+through all corrections and Rayleigh-Ritz resolves those subspaces.
+The correction rejection threshold and final accuracy checks are unchanged.
+
+The input remains untouched until the existing independent 1e-10
+residual/orthogonality checks accept the result. A refinement failure
+retries native FP64 MAGMA; execution faults propagate. The benchmark
+rejects fallback as a mixed precision timing. scf.fp32.enable=off
+overrides OPENMX_MAGMA_FP32. The default remains native FP64 MAGMA.
+The refined path checks every returned vector's full residual and every
+entry of its Gram matrix using bounded FP64 GPU products. Both maximum
+scaled residual and maximum Gram error must be at most 1e-10.
+It also retains the native adapter's independent CPU checks: all returned
+entries for finiteness, and four eigenvectors with 32 spread residual rows
+and full-column orthogonality. OPENMX_MAGMA_VALIDATE_FULL=1 checks every
+residual row of those four vectors. The analytic regression checks every
+returned eigenvector independently.
+OPENMX_MAGMA_REFINE_STEPS selects 2..5 corrections (library default 2,
+RTX 5090 launcher/benchmark default 3).
+Rayleigh-Ritz clusters of at least 1024 states use MAGMA's FP64
+generalized solver on the admitted GPU group; smaller clusters use
+CPU LAPACK. OPENMX_MAGMA_RR_GPU_MIN overrides that crossover.
+MAGMA's conservative FP64 device-memory admission is retained.
+
+Full input and correction matrices have a host copy. The optional resident
+workspace retains two full matrices and one output column panel per worker,
+so two GPUs each need 2.5*n*n*sizeof(element) bytes. Its budget defaults to
+zero (off); the preset enables up to 28 GiB per GPU, checks actual free
+memory, and reserves 2 GiB. H=X^H A X and G=X^H X share the resident basis;
+A X never returns to the CPU. The update X+=X E also stays on each worker.
+All storage is released before the cluster Rayleigh-Ritz stage. If the
+resident budget is insufficient, the bounded host-tiled method is used.
+Additional host RAM is required. Every method restores the calling GPU.
+
+The host-tiled GEMM has separate per-worker and host transaction budgets.
+PAGEABLE=1 uses driver-managed transfers and avoids repeated large pinned
+registrations. The pinned path remains available and reuses staging inside
+an explicit scope. GEMMul8's workspace is a separate budget: the launcher
+uses 6 GiB for collinear and 2 GiB for noncollinear. No setting bypasses
+physical free-memory admission. One MPI rank with 32 OpenMP threads avoids
+retaining duplicate GPU caches across Band k-point owners; both GPUs work
+on every dense solve. OPENMX_RUN_RANKS/OPENMX_RUN_THREADS override this.
+Keep OPENMX_GEMMUL8_TIMING off for performance runs: its per-call stream
+synchronization serializes GPU workers. The MAGMA and whole-run timers
+do not insert those per-product synchronizations.
+GEMMul8 emulates FP64 multiplication. FP32 is used for the initial
+eigensolve and established FP32/DF application arithmetic.
+
+Band sharing
+------------
+OPENMX_MGPU_BAND_SHARED=1 shares min(K,floor(G/2)) GPU groups among K
+k-points, each with floor(G/groups) GPUs. Point i uses group i modulo
+groups. Existing physical-GPU UUID locks serialize overlapping owners.
+CUDA visibility and configured GPU caps remain hard limits; rank-local
+CUDA/OpenACC bindings are unchanged. No k-points are removed.
+Without this setting the original disjoint-group policy remains.
+Regular 2x2x2 Si555 has four computed collinear points (time-reversal
+pairing) or eight noncollinear points, all sharing ordinals 0,1.
+OPENMX_BAND_GPU_MAX_CONCURRENT_K=1 bounds simultaneous dense storage.
+The preset also raises the existing host eigenvector-cache caps to 4 GiB
+for collinear and 24 GiB for noncollinear Band. The one-step Si555 benchmark
+needs about 2.17 GiB (four 13000 x 2800 panels) and 14.88 GiB
+(eight 26000 x 4800 panels), respectively, to retain the backtransformed states.
+The default 1 GiB cap otherwise repeats diagonalization in the density
+pass after the chemical potential is determined. Available-RAM and local
+rank-count caps remain active, so a smaller host may retain fewer panels.
+The benchmark applies these same cache settings to native and mixed modes;
+OPENMX_BAND_CACHE_TRACE / OPENMX_BAND_NONCOL_CACHE_TRACE report the hits.
+
+Reproduction in this checkout
+----------------------------
+  source build/env.sh
+  bash build/rebuild.sh
+  bash tests/run_magma_refine_smoke.sh
+  python3 tests/run_mgpu_band_group_cpu.py
+  python3 tests/run_magma_mgpu_cpu.py
+  python3 tests/run_mgpu_runtime_cpu.py
+  python3 tests/run_rtx5090_sidia.py --output build/rtx5090/check-small --cells 2 --ranks 1 --threads 8
+  python3 tests/run_rtx5090_sidia.py --output build/rtx5090/benchmark --ranks 1 --threads 32 --scf-only
+  tools/run_rtx5090.sh /absolute/path/to/input.dat
+
+The generator reproduces the user's diamond coordinates in x/y/z cell
+order, a=5.431 Ang, Si7.0-s2p2d1/Si_PBE19, PBE, 200 Ry, 300 K.
+Cluster_col uses Si666 (1728 atoms); the others use Si555 (1000 atoms).
+Noncollinear rows retain populations 2/2, add angles 45/15 degrees and
+enable SOC. Band retains Regular 2x2x2. Cluster retains the periodic
+cell and uses Gamma. DATA.PATH becomes absolute; grid output is off.
+
+Matched large-cell timings use one SCF step and --scf-only, which sets
+orbitalOpt.Force.Skip=on. This skips force and total-energy evaluation:
+the comparison quantity is the SCF band energy Uele, not total energy.
+The small 64-atom suite evaluates total energies and every force component.
+Omit --scf-only to include forces and total energy in large-cell runs. For the supplied 25-step collinear
+Cluster input add --cases cluster_col --modes mixed --steps 25 and a
+new output directory. The 1e-13 criterion may stop it earlier.
+Si555 one-step energies are not converged SCF results.
+
+Each run retains inputs, command/environment, executable SHA256,
+stdout, energies, forces, process RSS and GPU utilization/memory.
+Successful runs remove their own sidia_rst directory to bound disk use;
+--keep-restart preserves it when a restart is needed.
+All expected k-points must use two-GPU MAGMA. Mixed solves within the
+requested precision policy must report accepted FP32 refinement; larger
+complex solves must report the planned FP64 selection. Unexpected
+refinement failure is rejected. In --scf-only mode, forces are not
+reported and Uele is compared. Comparison limits are
+1e-8 Ha/atom and 1e-7 Ha/bohr, in addition to solver checks.
+The analytic GPU fixture checks every returned eigenpair residual for
+real/complex, full/subset, upper/lower and clustered spectra, with
+permuted GPU ordinals and an independent original CUDA device.
+It also rejects the FP32 policy when disabled and verifies FP64 retry
+after a deliberately refused bounded-product allocation.
+The CPU adapter fixture checks actual real/complex dispatch for homogeneous
+weak/strong-FP64 pools, mixed devices in every ordinal, unknown/failed
+attribute queries, and a strong GPU outside the selected group/count cap.
+
+Implementation: source/openmx_magma_refine.h, openmx_magma_mgpu.cpp,
+openmx_mgpu_runtime.cu. Reference: Ogita & Aishima, JJIAM 36 (2019),
+435-459, https://doi.org/10.1007/s13160-019-00348-4 .

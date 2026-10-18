@@ -207,12 +207,35 @@ static void Krylov_GPU_InitOnce(void)
 
 static Krylov_GPU_Workspace *Krylov_gpu_ws_pool = NULL;
 static int Krylov_gpu_ws_pool_size = 0;
+static int Krylov_gpu_device = -1;
+
+static void Krylov_GPU_BindDevice(int device)
+{
+  cudaError_t status = cudaSetDevice(device);
+  if (status != cudaSuccess){
+    fprintf(stderr,"Krylov: cannot bind CUDA device %d: %s\n",
+            device,cudaGetErrorString(status));
+    abort();
+  }
+}
 
 static void Krylov_GPU_PreparePool(int nthrds)
 {
   int i;
 
   if (!Krylov_GPU_Enabled() || nthrds <= Krylov_gpu_ws_pool_size) return;
+
+  /* Called on the MPI/main thread, before the KU cache is allocated.
+     CUDA's current device is thread-local: OpenMP workers otherwise start
+     on device 0 even when this rank and its shared KU arena use device 1. */
+  if (Krylov_gpu_ws_pool_size == 0){
+    cudaError_t status = cudaGetDevice(&Krylov_gpu_device);
+    if (status != cudaSuccess){
+      fprintf(stderr,"Krylov: cannot query the rank's CUDA device: %s\n",
+              cudaGetErrorString(status));
+      abort();
+    }
+  }
 
   Krylov_GPU_Workspace *new_pool =
     (Krylov_GPU_Workspace*)realloc(Krylov_gpu_ws_pool, sizeof(Krylov_GPU_Workspace)*(size_t)nthrds);
@@ -235,6 +258,9 @@ static Krylov_GPU_Workspace *Krylov_GPU_GetWorkspace(int thread_id)
   if (!Krylov_GPU_Enabled() ||
       thread_id < 0 || Krylov_gpu_ws_pool_size <= thread_id) return NULL;
 
+  /* Rebind on every parallel-region entry, including reused workspaces.
+     No MPI calls are made from the worker threads. */
+  Krylov_GPU_BindDevice(Krylov_gpu_device);
   ws = &Krylov_gpu_ws_pool[thread_id];
   if (!ws->active && ws->stream == NULL){
     Krylov_GPU_Workspace_Init(ws);
@@ -11480,6 +11506,11 @@ int Eigen_lapack_r(double **a, double *ko, int n0, int EVmax)
    Called on every rank before Free_Arrays(0) frees the current system. */
 void Krylov_Release_GPU_Caches(void)
 {
+    int saved_device = -1;
+    if (Krylov_gpu_device >= 0){
+        if (cudaGetDevice(&saved_device) != cudaSuccess) saved_device = -1;
+        Krylov_GPU_BindDevice(Krylov_gpu_device);
+    }
     for (int i = 0; i < Krylov_gpu_ws_pool_size; ++i)
         Krylov_GPU_Workspace_Free(&Krylov_gpu_ws_pool[i]);
     free(Krylov_gpu_ws_pool);
@@ -11488,4 +11519,7 @@ void Krylov_Release_GPU_Caches(void)
     Krylov_Release_GPU_KUCache();
     /* A memory admission failure in one input must not disable later ones. */
     memset(&Krylov_kucache, 0, sizeof(Krylov_kucache));
+    if (saved_device >= 0 && saved_device != Krylov_gpu_device)
+        Krylov_GPU_BindDevice(saved_device);
+    Krylov_gpu_device = -1;
 }

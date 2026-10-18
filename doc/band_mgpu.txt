@@ -3,6 +3,13 @@ Single-node multi-GPU Band calculations
 
 GPU allocation
 --------------
+OPENMX_MGPU_BAND_SHARED=1 optionally shares locked GPU groups across
+k-points, allowing the full 2x2x2 mesh with two GPUs. Corrected FP32 MAGMA
+is also available when every CUDA-visible GPU has weak FP64 hardware.
+A strong-FP64 device anywhere in that allocation (for example H100 plus
+GeForce), or unknown capabilities, retains FP64 for every Band group.
+See rtx5090_magma_fp32.txt. The disjoint default follows.
+
 Ordinary collinear and noncollinear Band use the same cooperative GEMM,
 MAGMA eigensolver implementation as Cluster under gpusolver and gpusolver3.
 Let K be the number
@@ -139,7 +146,8 @@ test, not a whole-SCF performance measurement.
 
 To exercise existing FP32 refinement across the native scopes, add
 --backends off auto --scf-iterations 5 --fp32 on --refine 2 --warm 1
---require-refinement. The forced MAGMA capacity path always uses FP64.
+--require-refinement. The forced MAGMA capacity path defaults to FP64;
+OPENMX_MAGMA_FP32 enables the separately tested, hardware-gated path above.
 The smaller --template tests/data/B2C14_Band.dat fixture retains the same
 basis and potentials in a 16-atom periodic diamond cell; its Col/NonCol
 matrices have dimensions 208/416, keeping force evaluation inexpensive.

@@ -10,7 +10,8 @@ mkdir -p "$out"
 "$host_cxx" -std=c++14 -O2 -Wall -Wextra -DOPENMX_HAVE_MAGMA \
     -I"$root/source" -I"$prefix/include" -I"$cuda_root/include" -I"$math_root/include" \
     "$root/tests/magma_mgpu_smoke.cpp" "$root/source/openmx_magma_mgpu.cpp" \
-    -L"$prefix/lib" -L"$cuda_root/lib64" -L"$math_root/lib64" -lmagma -lcudart -lpthread \
+    -L"$prefix/lib" -L"$cuda_root/lib64" -L"$math_root/lib64" ${HOST_LIBDIR:+-L"$HOST_LIBDIR"} \
+    -lmagma -lcudart -llapack -lblas -lpthread \
     -Wl,--disable-new-dtags,-rpath,"$prefix/lib",-rpath,"$cuda_root/lib64",-rpath,"$math_root/lib64" \
     ${HOST_LIBDIR:+-Wl,-rpath,"$HOST_LIBDIR"} -o "$out/magma_mgpu_smoke"
 if [ "${1:-}" = --build-only ]; then exit 0; fi

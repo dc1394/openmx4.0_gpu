@@ -1454,7 +1454,7 @@ static int ClusterNonCol_SampleHamiltonian(int SCF_iter, dcomplex *Hs2, int n2, 
     }
     if (!wanted) return 0;
 
-#pragma acc update self(Hs2[0 : count])
+#pragma acc update self(Hs2[0 : count]) if_present
     snprintf(path, sizeof(path), "%s/Hs2_scf%03d.bin", dir, SCF_iter);
     fp = fopen(path, "wb");
     if (fp == NULL || fwrite(Hs2, sizeof(dcomplex), count, fp) != count || fclose(fp) != 0) {
@@ -2491,6 +2491,8 @@ static void ClusterNonCol_MagmaRootDensePath(int SCF_iter, double *ko, double **
             q[full+(size_t)n*n2+n]=(dcomplex){blocks[2][ij],blocks[5][ij]};
         }
         if (profile) ClusterNonCol_ProfileLap(NCPROF_FORWARD,&t0);
+        if (ClusterNonCol_SampleHamiltonian(SCF_iter,q,n2,MaxN) && profile)
+            ClusterNonCol_ProfileLap(-1,&t0);
         if (!openmx_mgpu_host_solve(n2,MaxN,1,q,n2,ko+1))
             ClusterNonCol_AbortWithMessage(openmx_mgpu_host_error());
         if (profile) ClusterNonCol_ProfileLap(NCPROF_EIGEN,&t0);

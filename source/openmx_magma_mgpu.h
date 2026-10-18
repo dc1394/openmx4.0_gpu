@@ -34,6 +34,11 @@ void openmx_magma_mgpu_release_cache(void);
    layer serializes threads in this process only. 2 <= ngpu <= 8. The calling
    thread's current CUDA device is restored before returning.
 
+   Optional OPENMX_MAGMA_FP32 refinement is admitted only when every
+   CUDA-visible GPU reports a known FP32:FP64 throughput ratio >= 8.
+   Strong/unknown FP64 capability anywhere in the visible allocation
+   retains the native FP64 driver, including outside a selected group.
+
    first/last are inclusive, 1-based eigenvalue indices; 1,n requests all.
    is_complex selects interleaved {real,imag} doubles. lower selects the input
    triangle. The other triangle need not be initialized. W has last-first+1
@@ -43,8 +48,11 @@ void openmx_magma_mgpu_release_cache(void);
    unchanged, allowing the caller's ordinary solver fallback. Inputs/outputs
    must not overlap. n==0 accepts first=1,last=0 and is a no-op.
 
-   Uses native FP64 MAGMA one-stage divide-and-conquer, privately owned host
-   workspaces, finite/sorted eigenvalue checks and sampled independent CPU
+   Uses native FP64 MAGMA one-stage divide-and-conquer by default. Optional
+   OPENMX_MAGMA_FP32=1 uses a complete FP32 basis with FP64 correction when
+   vector output and the application FP32 policy are enabled; an unsuccessful
+   correction retries native FP64 with the original input. Both paths use
+   privately owned host workspaces, finite/sorted eigenvalue checks and sampled independent CPU
    residual/orthogonality checks (32 spread rows and four vectors by default;
    OPENMX_MAGMA_VALIDATE_FULL=1 checks all rows of those vectors). Every
    output entry is checked for finiteness. One host workspace is retained up

@@ -141,6 +141,9 @@ extern "C" int openmx_dense_cpu_gemm(char,char,int,int,int,int,const void*,int,c
 extern "C" int openmx_magma_mgpu_available() {return magma_available;}
 extern "C" int openmx_magma_mgpu_available_devices(int,const int*) {return magma_available;}
 extern "C" void openmx_magma_mgpu_release_cache() {}
+static int staging_scopes=0;
+extern "C" void openmx_mgpuGemmStagingBegin() {++staging_scopes;}
+extern "C" void openmx_mgpuGemmStagingEnd() {CHECK(staging_scopes>0);--staging_scopes;}
 extern "C" size_t openmx_magma_mgpu_device_bytes(int count,int n,int) {return n>32766?SIZE_MAX:(size_t(16)<<30)/count;}
 
 extern "C" const char *openmx_magma_mgpu_last_error() {return "mock failure";}
@@ -213,6 +216,7 @@ struct Matrix {
  }
 };
 static void reset() {
+ staging_scopes=0;
  unsetenv("OPENMX_MGPU");unsetenv("OPENMX_MGPU_NUM_GPUS");unsetenv("OPENMX_MGPU_GEMM");
  unsetenv("OPENMX_MGPU_TUNE_TRIALS");
  unsetenv("OPENMX_MGPU_GEMM_MIN_N");setenv("OPENMX_TEST_NVLINK_MODE","0",1);peer_support=1;
@@ -333,8 +337,11 @@ int main() {
  openmx_mgpu_force_magma(0);setenv("OPENMX_MGPU_MEMORY","host",1);CHECK(openmx_mgpu_host_required());
  reset();{Matrix m;CHECK(m.attempt()==0 && m.unchanged() && queries==0);}
  int previous=openmx_mgpu_scope_enter(1);CHECK(previous==0 && openmx_mgpu_scope_active());
+ CHECK(staging_scopes==1);
  int nested=openmx_mgpu_scope_enter(0);CHECK(!openmx_mgpu_scope_active());
+ CHECK(staging_scopes==1);
  openmx_mgpu_scope_leave(nested);CHECK(openmx_mgpu_scope_active());openmx_mgpu_scope_leave(previous);
+ CHECK(staging_scopes==0);
  for(int setting=0;setting<6;++setting) {
   reset();openmx_mgpu_scope_enter(1);
   if(setting==0) openmx_mgpu_configure(-1,2,0);

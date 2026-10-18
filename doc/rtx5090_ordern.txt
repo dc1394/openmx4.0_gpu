@@ -1,0 +1,171 @@
+Two RTX 5090 GPUs: DC, DC-LNO and Krylov validation
+=================================================
+
+These O(N) paths use scf.eigen.lib=gpusolver. Each MPI rank solves its
+local atomic clusters on its assigned GPU. Use two ranks for two GPUs.
+gpusolver3/MAGMA currently accepts only ordinary Band and Cluster; its
+corrected multi-GPU FP32 eigensolver is not called by DC/DC-LNO/Krylov.
+
+Krylov's OpenMP workers now bind to the device selected on their MPI/main
+thread before creating or reusing a workspace. The shared KU cache and
+all local solver streams consequently belong to the same GPU. Previously,
+workers of rank 1 could create CUDA resources on device 0 and stall on
+the cache allocated on device 1. Cache cleanup also selects its owner
+device and restores the caller's device. Device selection is per host
+thread, as specified by the CUDA runtime:
+  https://docs.nvidia.com/cuda/archive/13.1.0/cuda-runtime-api/group__CUDART__DEVICE.html
+
+In the mixed configuration, scf.fp32.enable=on selects compensated
+double-float orbital/grid arithmetic on RTX 5090 (FP32 high/low operations,
+with FP64 output/accumulation where required). scf.gemmul8.enable=on
+enables GEMMul8's FP64 emulation for dense products. The local cuSOLVER
+eigensolves continue to use FP64. Thus these tests distinguish multi-GPU
+application execution with FP32 arithmetic from an FP32 eigensolve of a
+single matrix distributed across GPUs.
+
+The input FP32 switch also enables existing FP32 VNA projector products.
+Those products are not double-float operations; the mixed configuration
+therefore needs numerical comparison even when its grid kernels use
+compensated arithmetic. The GEMMul8-only mode keeps this switch off.
+
+The all-visible-GPUs weak-FP64 admission guard described in
+rtx5090_magma_fp32.txt applies to the MAGMA FP32 eigensolver. Existing
+per-rank application arithmetic and GEMMul8 have separate controls. These
+tests use two RTX 5090 GPUs; they do not validate heterogeneous hardware.
+
+Reproduce from the checkout root:
+
+  source build/env.sh
+  c++ -std=c++17 -O2 -fPIC -shared \
+    -I"$CUDA_HOME/include" -I"$CUDA_MATH_ROOT/include" \
+    tests/ordern_solver_trace.cpp -ldl \
+    -o build/rtx5090/ordern-observer.so
+
+  python3 tests/run_rtx5090_ordern.py \
+    --output build/rtx5090/ordern-new-small --cells 2 --gemm-timing
+
+  python3 tests/run_rtx5090_ordern.py \
+    --output build/rtx5090/ordern-new-large --scf-only --gemm-timing
+
+Each command needs a new output directory. Default cases are dc_col,
+dclno_col and krylov_col. --cases also accepts dc_nc and dclno_nc for
+supplementary small-cell checks. Krylov does not support NC. DC NC's own
+OpenACC contraction loops do not call GEMMul8, so its GEMMul8 flag alone
+does not establish GEMMul8 execution. NC DC/DC-LNO retain large per-state
+residue arrays: the DC NC Si555 array alone is about 1.6 TB with these
+basis/cutoff settings, exceeding this node's 483.7 GiB memory limit.
+Default modes are native (FP32 off, GEMMul8 off) and mixed (both on).
+--modes native gemmul8 mixed additionally isolates GEMMul8's contribution.
+
+The test-only LD_PRELOAD observer forwards cuSOLVER calls unchanged and
+counts their actual precision, rank, PID and CUDA device. It adds no GPU
+synchronization. nvidia-smi samples corroborate the process/device mapping.
+The benchmark also requires actual density-kernel profile records from
+both MPI ranks: mode=0 for native, mode=2 for double-float. With
+--gemm-timing it verifies GEMMul8/cuBLAS execution counts on both ranks.
+GEMM timing introduces synchronization; treat reported wall times as
+instrumented comparisons, not a tuning study. Neither GPU utilization
+samples nor an enabled input flag alone is accepted as path evidence.
+
+Inputs retain the supplied diamond coordinates, periodic cells,
+Si7.0-s2p2d1 / Si_PBE19 basis, 200 Ry grid and 300 K temperature. DC and
+Krylov use sidia666 (1728 atoms); DC-LNO uses sidia555 (1000 atoms).
+--cells overrides this size, including --cells 2 for 64 atoms. Optional NC
+inputs enable SOC and use the initial spin directions of the Band/Cluster
+tests. The solver changes replace the k-point eigenproblem with local
+cluster approximations. DC and Krylov use a 7.0 Angstrom hopping range;
+DC-LNO uses 8.0 Angstrom and four LNOs per Si. Krylov uses H order 400.
+These approximation parameters have not been converged against Band.
+
+Default: two MPI ranks, 16 OpenMP threads each, one SCF iteration.
+--steps changes the iteration count. Small tests include total energy
+and forces; --scf-only omits those and compares the SCF band energy Uele.
+One SCF iteration validates execution and arithmetic, not SCF convergence
+at the supplied 1e-13 Ha criterion. Numerical comparison uses 1e-8 Ha/atom
+and, for full calculations, 1e-7 Ha/bohr. A failed numerical comparison
+is retained separately from successful execution-path checks and causes
+a nonzero final exit status. Raw inputs, hashes, logs and samples remain.
+
+Measured results, 2026-10-18
+----------------------------
+NVHPC 26.9, CUDA 13.1, driver 590.48.01, two RTX 5090 GPUs. The CUDA
+runtime reports FP32:FP64 throughput ratio 64 for each visible device.
+Two MPI ranks, 16 OpenMP threads each; one SCF step, force/total-energy
+calculation skipped, GEMM timing enabled. All six runs finished normally.
+
+Method    atoms   native(s)  mixed(s)  native/mixed  |delta Uele|/atom(Ha)
+DC         1728     635.11    646.72       0.982          4.2790e-9
+DC-LNO     1000     294.53    283.14       1.040          4.6767e-10
+Krylov     1728     454.74    435.05       1.045          2.4890e-9
+
+Both ranks executed density mode=2 in each mixed run. GEMMul8 calls per
+rank were 2592 (DC), 1500 (DC-LNO), and 2592 (Krylov), with no native
+cuBLAS bridge calls in those mixed runs. The observer counted respectively
+1728, 1000, and 864 FP64 local eigensolves per rank on the correct GPU,
+and zero FP32 eigensolves. DC-LNO reported 1000 GPU tasks and zero CPU
+tasks. No accelerated-path failure or CPU eigensolver fallback occurred.
+
+These are single instrumented observations. DC did not improve in whole
+run time, despite faster sections: its density timer decreased from
+52.33 to 32.12 seconds; rank 0's GEMM time decreased from 4.99 to 1.17
+seconds. Density orbital evaluation was about four times faster on each
+GPU in all three methods. Whole-run times include initialization, host
+work, FP64 local eigensolves, communication and cleanup.
+
+Peak summed process RSS in the mixed runs was 362.0 GiB (DC), 134.3 GiB
+(DC-LNO) and 178.4 GiB (Krylov). The container memory limit is 483.7 GiB.
+The measured binary and input hashes, per-rank call counts and physical
+GPU/PID samples are retained under build/rtx5090/ordern-large. The final
+audit is build/rtx5090/ordern-validation-summary.json; hardware details
+are in build/rtx5090/ordern-hardware.json.
+
+Small-cell precision and workspace reuse
+---------------------------------------
+Full energy/force checks use 64 atoms, the same basis and cutoff, and one
+SCF step. Successful execution does not imply passing the precision check.
+
+Method   arithmetic         |delta Utot|/atom(Ha) max |delta force|(Ha/bohr)
+DC       GEMMul8 only            1.60e-14                 1.00e-12
+DC       FP32 + GEMMul8          1.10175e-8               1.00e-11
+DC-LNO   FP32 + GEMMul8          1.57705e-9               6.00e-12
+Krylov   GEMMul8 only            1.56e-13                 1.70e-11
+Krylov   FP32 + GEMMul8          4.80797e-8               9.34e-10
+
+All force checks pass. The mixed DC and Krylov total energies exceed the
+1e-8 Ha/atom threshold and remain failed comparisons. Their GEMMul8-only
+checks pass, isolating the larger differences to arithmetic enabled by
+scf.fp32.enable. This switch includes the existing plain-FP32 projector
+products noted above; the experiment does not isolate each FP32 kernel's
+contribution. Do not infer full-energy accuracy from the large Uele checks.
+For the tested small cells, scf.fp32.enable=off with GEMMul8 on passes the
+stricter full-energy comparison for DC and Krylov.
+
+DC and Krylov were checked with the current rebuilt binary. The DC-LNO
+small-cell result predates the Krylov-only fix and retains its original
+binary hash; the large DC-LNO tests use the current binary. Raw records
+are under build/rtx5090/ordern-small-final and ordern-small-rest.
+
+An additional 64-atom Krylov mixed run completed two SCF steps in 27.23 s.
+Each rank executed 64 FP64 local eigensolves and 192 GEMMul8 calls on its
+assigned GPU, with zero observed API errors and double-float density
+kernels throughout. This exercises reuse of the OpenMP workspaces and
+shared KU cache. Records: build/rtx5090/ordern-krylov-reuse.
+
+Reproduce these targeted checks with new output directories:
+
+  python3 tests/run_rtx5090_ordern.py \
+    --output build/rtx5090/ordern-new-factors --cases dc_col krylov_col \
+    --cells 2 --modes native gemmul8 mixed --gemm-timing
+
+  python3 tests/run_rtx5090_ordern.py \
+    --output build/rtx5090/ordern-new-reuse --cases krylov_col \
+    --cells 2 --modes mixed --steps 2 --gemm-timing
+
+The factor check returns a nonzero final status for the precision failures
+above after retaining all comparisons. The reuse check validates execution
+and device ownership; it has no native-reference accuracy comparison.
+
+Method references:
+  https://www.openmx-square.org/openmx_man4.0/s27_1_dc.html
+  https://openmx-square.org/openmx_man4.0/s27_2_dc-lno.html
+  https://openmx-square.org/openmx_man4.0/s27_3_krylov.html

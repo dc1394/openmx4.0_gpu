@@ -35,6 +35,8 @@
 #endif
 
 extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *, size_t *);
+#pragma weak openmx_mgpuGemmStagingBegin
+#pragma weak openmx_mgpuGemmStagingEnd
 
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -99,6 +101,16 @@ int pool_gpu_count(bool node_local, bool auxiliary = false)
 
 int configured_gpu_count() { return pool_gpu_count(false); }
 
+/* Optional time sharing retains the input k mesh on small GPU pools. Each
+   operation holds the existing UUID locks, so overlapping owners serialize
+   without changing rank-local CUDA/OpenACC device assignments. */
+int band_groups(int total,int pool)
+{
+    if (total<1) return 0;
+    return positive_env("OPENMX_MGPU_BAND_SHARED",0) ?
+        std::min(total,std::max(1,pool/2)) : total;
+}
+
 bool allowed_gpu_range(int first,int count)
 {
     const char *v=std::getenv("OPENMX_MGPU");
@@ -116,9 +128,9 @@ int band_group(int total,int index,int *devices,int capacity,int *total_gpus=nul
     const int g=configured_gpu_count();
     if (total_gpus) *total_gpus=g;
     if (total<1 || index<0 || index>=total) return 0;
-    const int q=g/total;
+    const int groups=band_groups(total,g), q=g/groups;
     if (q<2 || q>8 || (devices && capacity<q)) return 0;
-    if (devices) for (int j=0;j<q;++j) devices[j]=index*q+j;
+    if (devices) for (int j=0;j<q;++j) devices[j]=(index%groups)*q+j;
     return q;
 }
 
@@ -149,7 +161,7 @@ const char *operation_context(const int *devices,int count)
     std::snprintf(text,sizeof(text),
         "scope=%s kpoint=%d kpoints=%d group_gpus=%d used_gpus=%d devices=%s owner=%d",
         band_kpoints?"band":"cluster",band_kpoint,band_kpoints,count,
-        band_kpoints?count*band_kpoints:count,count?list:"none",owner);
+        band_kpoints?count*band_groups(band_kpoints,configured_gpu_count()):count,count?list:"none",owner);
     return text;
 }
 
@@ -618,9 +630,15 @@ extern "C" int openmx_mgpu_scope_enter(int allowed)
 {
     const int previous=cluster_scope;
     cluster_scope=allowed?previous+1:0;
+    if(cluster_scope && openmx_mgpuGemmStagingBegin && openmx_mgpuGemmStagingEnd)
+        openmx_mgpuGemmStagingBegin();
     return previous;
 }
-extern "C" void openmx_mgpu_scope_leave(int previous_scope) { cluster_scope=previous_scope; }
+extern "C" void openmx_mgpu_scope_leave(int previous_scope) {
+    if(cluster_scope && openmx_mgpuGemmStagingBegin && openmx_mgpuGemmStagingEnd)
+        openmx_mgpuGemmStagingEnd();
+    cluster_scope=previous_scope;
+}
 extern "C" int openmx_mgpu_scope_active(void) { return cluster_scope!=0; }
 /* The GPU workers' pool: every permitted GPU of this rank's node, also in
    a multi-node run (see pool_gpu_count). */
@@ -666,11 +684,13 @@ extern "C" void openmx_mgpu_release_devices(void *admission)
 extern "C" int openmx_mgpu_band_group(int total,int index,int *devices,int capacity)
 { return band_group(total,index,devices,capacity); }
 extern "C" int openmx_mgpu_band_used_gpus(int total)
-{ const int q=band_group(total,0,nullptr,0); return q?total*q:0; }
+{ const int q=band_group(total,0,nullptr,0); return q?band_groups(total,configured_gpu_count())*q:0; }
 extern "C" openmx_mgpu_scope_state openmx_mgpu_band_scope_enter(int allowed,int total,int index)
 {
     const openmx_mgpu_scope_state previous{cluster_scope,band_kpoints,band_kpoint};
     cluster_scope=allowed && total>0 && index>=0 && index<total ? 1 : 0;
+    if(cluster_scope && openmx_mgpuGemmStagingBegin && openmx_mgpuGemmStagingEnd)
+        openmx_mgpuGemmStagingBegin();
     band_kpoints=total>0?total:-1; band_kpoint=index;
     if (verbose()) {
         int devices[8],g=0;
@@ -684,6 +704,8 @@ extern "C" openmx_mgpu_scope_state openmx_mgpu_band_scope_enter(int allowed,int 
 }
 extern "C" void openmx_mgpu_band_scope_leave(openmx_mgpu_scope_state previous)
 {
+    if(cluster_scope && openmx_mgpuGemmStagingBegin && openmx_mgpuGemmStagingEnd)
+        openmx_mgpuGemmStagingEnd();
     cluster_scope=previous.active; band_kpoints=previous.band_kpoints; band_kpoint=previous.band_kpoint;
 }
 
@@ -767,7 +789,7 @@ extern "C" int openmx_mgpu_host_precheck(int total_kpoints,int n,int complex_mat
 {
     host_error[0]='\0';
     const int pool=pool_gpu_count(total_kpoints==0);
-    const int count=total_kpoints>0 ? pool/total_kpoints : std::min(pool,8);
+    const int count=total_kpoints>0 ? pool/band_groups(total_kpoints,pool) : std::min(pool,8);
     if (count<2 || count>8) {
         std::snprintf(host_error,sizeof(host_error),
             "MAGMA needs 2..8 GPUs per matrix: available pool=%d, scf.gpu.num limit=%d, kpoints=%d; GPU limit will not be exceeded",
@@ -791,7 +813,8 @@ extern "C" int openmx_mgpu_host_plan(int total_kpoints,int n,int complex_matrix)
     if (cudaGetDevice(&owner)!=cudaSuccess) return 0;
     struct Restore { int dev; ~Restore() { (void)cudaSetDevice(dev); } } restore{owner};
     const size_t required=openmx_magma_mgpu_device_bytes(count,n,complex_matrix);
-    for (int group=0;group<std::max(1,total_kpoints);++group) {
+    const int groups=total_kpoints>0 ? band_groups(total_kpoints,pool_gpu_count(false)) : 1;
+    for (int group=0;group<groups;++group) {
         int devices[8];
         for (int j=0;j<count;++j) devices[j]=group*count+j;
         if (!openmx_magma_mgpu_available_devices(count,devices)) {
@@ -820,6 +843,7 @@ extern "C" int openmx_mgpu_host_plan(int total_kpoints,int n,int complex_matrix)
 static int host_devices(int *devices)
 {
     if (!cluster_scope) return 0;
+    if (band_kpoints>0) return band_group(band_kpoints,band_kpoint,devices,8);
     const int pool=pool_gpu_count(band_kpoints==0);
     const int count=band_kpoints>0 ? pool/band_kpoints : std::min(pool,8);
     if (count<2 || count>8 || band_kpoints<0) return 0;

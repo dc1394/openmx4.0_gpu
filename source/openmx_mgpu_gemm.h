@@ -60,8 +60,28 @@ typedef struct {
 /* Per host thread; copied out so the caller can profile without parsing logs. */
 void openmx_mgpuGemmLastReport(openmx_mgpu_gemm_report *report);
 /* Release this host thread's cached streams/handles, outside an operation.
- * Operand/output scratch is always freed before Try returns. */
+ * Device operand/output scratch is always freed before Try returns. */
 void openmx_mgpuGemmRelease(void);
+/* Optional per-thread, nestable host-GEMM sequence. Reuse pinned staging
+ * within the existing workspace/host budgets until the outer End. Call only
+ * between synchronous Try operations. End also applies on failed sequences. */
+void openmx_mgpuGemmStagingBegin(void);
+void openmx_mgpuGemmStagingEnd(void);
+
+/* Private eigensolver workspace. Packed host matrices belong to the caller's
+ * unpublished refinement transaction. Each worker retains two n*n matrices
+ * and one column panel, bounded by OPENMX_MAGMA_REFINE_RESIDENT_MB (default 0).
+ * Project forms H=X^H A X and G=X^H X for the first end columns; Update applies
+ * X += X E using the basis retained by a full Project. Methods synchronize
+ * and restore the calling device. A nonzero method result invalidates the
+ * private host outputs; release and discard the refinement transaction.
+ * Create returns NULL before any host output change when capacity is absent.
+ * Release returns nonzero on CUDA cleanup failure. Admission is caller-owned. */
+void *openmx_mgpuRefineCreate(int ngpu,const int *devices,int n,int is_complex);
+int openmx_mgpuRefineProject(void *workspace,const void *a,const void *x,
+                            int end,void *h,void *g);
+int openmx_mgpuRefineUpdate(void *workspace,const void *e,void *x);
+int openmx_mgpuRefineRelease(void *workspace);
 
 #ifdef __cplusplus
 }

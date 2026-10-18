@@ -901,7 +901,7 @@ Cluster_DFT_NonCol.o Band_DFT_NonCol.o: openmx_mgpu_density.h
 openmx_mgpu_runtime.o: openmx_mgpu_runtime.cu openmx_mgpu_runtime.h openmx_mgpu_gemm.h openmx_magma_mgpu.h openmx_stdout_level.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
 openmx_mgpu_gemm.o: openmx_mgpu_gemm.cu openmx_mgpu_gemm.h
-	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread -c $< -o $@
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread,-fopenmp -c $< -o $@
 
 # Unlike the global toolchain signature this also records a switch from
 # stub to installed MAGMA when WITH_MAGMA=auto first discovers the library.
@@ -910,8 +910,8 @@ $(MAGMA_ADAPTER_CONFIG): openmx-toolchain-force
 	@mkdir -p "$(dir $@)"
 	@printf '%s\n' '$(MAGMA_ENABLED)' '$(MAGMA_PREFIX)' '$(MAGMA_CPPFLAGS)' > "$@.tmp"
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
-openmx_magma_mgpu.o: openmx_magma_mgpu.cpp openmx_magma_mgpu.h third_party/magma_device_map.h $(MAGMA_ADAPTER_CONFIG) $(MAGMA_DEPENDENCY)
-	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) $(MAGMA_CPPFLAGS) -Xcompiler -pthread -c $< -o $@
+openmx_magma_mgpu.o: openmx_magma_mgpu.cpp openmx_magma_mgpu.h openmx_magma_refine.h openmx_mgpu_gemm.h third_party/magma_device_map.h $(MAGMA_ADAPTER_CONFIG) $(MAGMA_DEPENDENCY)
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) $(MAGMA_CPPFLAGS) -Xcompiler -pthread,-fopenmp -c $< -o $@
 .PHONY: magma-stack
 magma-stack: $(MAGMA_LIBRARY)
 # Auto only consumes an installed library (which may be read-only). Building

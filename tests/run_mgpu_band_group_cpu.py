@@ -26,6 +26,8 @@ test = r'''
 extern "C" {int level_stdout=0;}
 static int checks=0,products=0;
 static std::vector<int> actual;
+extern "C" int openmx_dense_cpu_eigen(int,int,int,void*,int,double*) {std::abort();}
+extern "C" int openmx_dense_cpu_gemm(char,char,int,int,int,int,const void*,int,const void*,int,void*,int) {std::abort();}
 #define CHECK(x) do {++checks;if(!(x)){std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 extern "C" int openmx_magma_mgpu_available() {return 0;}
 extern "C" int openmx_magma_mgpu_available_devices(int,const int*) {return 0;}
@@ -138,7 +140,29 @@ int main() {
    for(unsigned char byte:prop.uuid.bytes)n+=std::snprintf(path+n,sizeof(path)-n,"%02x",unsigned(byte));
    unlink(path);
  }
- std::printf("PASS: %d independent Band group/dispatch checks; 3k/4GPU disabled, 3k/8GPU uses exactly 0..5; spin, nesting, origin restoration\n",checks);
+ // A full 2x2x2 noncollinear mesh can share two GPUs. Check the actual
+ // dispatch list, cap, scopes, and unchanged current device for all points.
+ setenv("OPENMX_MGPU_BAND_SHARED","1",1);
+ configure(2);
+ CHECK(openmx_mgpu_band_used_gpus(8)==2);
+ for(int point=0;point<8;++point) {
+   auto old=openmx_mgpu_band_scope_enter(1,8,point);
+   CHECK(dispatch()==1 && dispatch(true)==1);
+   CHECK(actual==std::vector<int>({0,1}) && device==0);
+   openmx_mgpu_band_scope_leave(old);
+ }
+ configure(4);
+ CHECK(openmx_mgpu_band_used_gpus(8)==4);
+ for(int point=0;point<8;++point) {
+   auto old=openmx_mgpu_band_scope_enter(1,8,point);
+   CHECK(dispatch()==1);
+   CHECK(actual==std::vector<int>({(point%2)*2,(point%2)*2+1}));
+   openmx_mgpu_band_scope_leave(old);
+ }
+ configure(2,1);
+ CHECK(openmx_mgpu_band_used_gpus(8)==0);
+ unsetenv("OPENMX_MGPU_BAND_SHARED");
+ std::printf("PASS: %d independent Band group/dispatch checks, including shared 8k/2GPU and 8k/4GPU groups\n",checks);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-band-group-') as folder:

@@ -26,6 +26,7 @@ extern "C" __attribute__((weak)) cublasStatus_t openmx_gemmul8Zgemm(
 namespace {
 constexpr size_t MiB = size_t(1024)*1024;
 thread_local bool in_worker = false;
+thread_local unsigned staging_depth = 0;
 thread_local openmx_mgpu_gemm_report report = {};
 
 size_t budget(const char *name, size_t fallback_mib)
@@ -54,16 +55,19 @@ bool available(size_t bytes,size_t reserve)
     return meminfo(&free_bytes,&total)==cudaSuccess && bytes<=free_bytes && reserve<=free_bytes-bytes;
 }
 
-/* Handles and streams survive calls; large operand buffers do not. Stable
+/* Handles and streams survive calls; device operand buffers do not. Stable
  * stream identities also bound the existing bridge's workspace cache. */
 struct Context {
     int device;
     cudaStream_t stream=nullptr;
     cublasHandle_t blas=nullptr;
+    void *staging=nullptr;
+    size_t staging_bytes=0;
     explicit Context(int id):device(id) {}
     ~Context() {
         int saved=-1;cudaGetDevice(&saved);cudaSetDevice(device);
         if(stream) cudaStreamSynchronize(stream);
+        if(staging) cudaFreeHost(staging);
         if(blas) cublasDestroy(blas);
         if(stream) cudaStreamDestroy(stream);
         if(saved>=0) cudaSetDevice(saved);
@@ -84,13 +88,13 @@ struct Worker {
     Context *ctx=nullptr;
     void *buffer=nullptr,*host=nullptr;
     size_t bytes=0;
-    bool peer=false,used=false;
+    bool peer=false,used=false,cached_host=false;
     int cached_row=-1,cached_m=-1,cached_col=-1,cached_n=-1;
     int row=0,col=0,m=0,n=0;
 };
 struct Operation {
     int origin=-1;
-    bool host_matrices=false,host_result=false;
+    bool host_matrices=false,host_result=false,pageable=false;
     cudaStream_t copy_stream=nullptr;
     cudaEvent_t ready=nullptr;
     void *result=nullptr;
@@ -112,7 +116,7 @@ struct Operation {
         }
         for(auto &w:workers) {
             if(w.buffer && (cudaSetDevice(w.ctx->device)!=cudaSuccess || cudaFree(w.buffer)!=cudaSuccess)) clean=false;
-            if(w.host && cudaFreeHost(w.host)!=cudaSuccess) clean=false;
+            if(w.host && !w.cached_host && cudaFreeHost(w.host)!=cudaSuccess) clean=false;
             w.buffer=w.host=nullptr;
         }
         if(cudaSetDevice(origin)!=cudaSuccess) clean=false;
@@ -144,6 +148,12 @@ bool input_copy(Operation &op,Worker &w,void *dst,const void *src,size_t spitch,
 {
     if(cudaSetDevice(w.ctx->device)!=cudaSuccess) return false;
     if(op.host_matrices) {
+        if(op.pageable) {
+            if(cudaMemcpy2DAsync(dst,width,src,spitch,width,height,cudaMemcpyHostToDevice,w.ctx->stream)!=cudaSuccess)
+                return false;
+            ++report.host_transfers;return true;
+        }
+        #pragma omp parallel for schedule(static) if(width*height>16*MiB)
         for(size_t j=0;j<height;++j)
             std::memcpy(static_cast<char *>(host)+j*width,static_cast<const char *>(src)+j*spitch,width);
         if(cudaMemcpyAsync(dst,host,width*height,cudaMemcpyHostToDevice,w.ctx->stream)!=cudaSuccess) return false;
@@ -167,8 +177,14 @@ bool output_copy(Operation &op,Worker &w,void *dst,size_t dpitch,const void *src
 {
     if(cudaSetDevice(w.ctx->device)!=cudaSuccess) return false;
     if(op.host_result) {
+        if(op.pageable) {
+            if(cudaMemcpy2DAsync(dst,dpitch,src,width,width,height,cudaMemcpyDeviceToHost,w.ctx->stream)!=cudaSuccess)
+                return false;
+            ++report.host_transfers;return true;
+        }
         if(cudaMemcpyAsync(host,src,width*height,cudaMemcpyDeviceToHost,w.ctx->stream)!=cudaSuccess ||
            cudaStreamSynchronize(w.ctx->stream)!=cudaSuccess) return false;
+        #pragma omp parallel for schedule(static) if(width*height>16*MiB)
         for(size_t j=0;j<height;++j)
             std::memcpy(static_cast<char *>(dst)+j*dpitch,static_cast<const char *>(host)+j*width,width);
         ++report.host_transfers;return true;
@@ -256,6 +272,7 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
     }
     Operation op;
     op.host_matrices=host_matrices;
+    op.pageable=host_matrices && option("OPENMX_MGPU_GEMM_PAGEABLE");
     if(cudaGetDevice(&op.origin)!=cudaSuccess) {report.reason="current device unavailable";return 0;}
     auto finish=[&](int handled,const char *reason) {
         op.cleanup();
@@ -363,8 +380,26 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
         if(cudaSetDevice(w.ctx->device)!=cudaSuccess || !available(worker_bytes,reserve) ||
            cudaMalloc(&w.buffer,worker_bytes)!=cudaSuccess) return finish(0,"worker allocation failed");
         w.bytes=worker_bytes;
-        if((!w.peer || op.host_result) && cudaHostAlloc(&w.host,worker_bytes,cudaHostAllocPortable)!=cudaSuccess)
-            return finish(0,"pinned staging allocation failed");
+        if((!w.peer || op.host_result) && !op.pageable) {
+            if(staging_depth && host_matrices) {
+                /* Reuse registration only inside an explicitly bounded host
+                   GEMM sequence. Device scratch still returns to MAGMA after
+                   every product. Never retain more than the current budget. */
+                auto &ctx=*w.ctx;
+                if(ctx.staging_bytes<worker_bytes || ctx.staging_bytes>tile_budget) {
+                    if(ctx.staging && cudaFreeHost(ctx.staging)!=cudaSuccess)
+                        return finish(0,"cached staging release failed");
+                    ctx.staging=nullptr;ctx.staging_bytes=0;
+                }
+                if(!ctx.staging) {
+                    if(cudaHostAlloc(&ctx.staging,worker_bytes,cudaHostAllocPortable)!=cudaSuccess)
+                        return finish(0,"pinned staging allocation failed");
+                    ctx.staging_bytes=worker_bytes;
+                }
+                w.host=ctx.staging;w.cached_host=true;
+            } else if(cudaHostAlloc(&w.host,worker_bytes,cudaHostAllocPortable)!=cudaSuccess)
+                return finish(0,"pinned staging allocation failed");
+        }
         if(cudaStreamWaitEvent(w.ctx->stream,op.ready,0)!=cudaSuccess ||
            cublasSetPointerMode(w.ctx->blas,CUBLAS_POINTER_MODE_HOST)!=CUBLAS_STATUS_SUCCESS ||
            cublasSetMathMode(w.ctx->blas,math_mode)!=CUBLAS_STATUS_SUCCESS ||
@@ -423,6 +458,7 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
     // The only write to caller C. Preserve all padding and make beta retries
     // unambiguous by treating every commit error as handled, never declined.
     if(host_matrices) {
+        #pragma omp parallel for schedule(static) if(result_bytes>16*MiB)
         for(int j=0;j<n;++j)
             std::memcpy(c+size_t(j)*ldc,static_cast<T *>(op.result)+size_t(j)*m,size_t(m)*sizeof(T));
     } else if(cudaMemcpy2DAsync(c,size_t(ldc)*sizeof(T),op.result,size_t(m)*sizeof(T),size_t(m)*sizeof(T),n,
@@ -436,6 +472,16 @@ template<class T> int gemm(cublasHandle_t handle,int ngpu,const int *devices,cub
 extern "C" int openmx_mgpuGemmInWorker(void) { return in_worker?1:0; }
 extern "C" void openmx_mgpuGemmLastReport(openmx_mgpu_gemm_report *out) { if(out) *out=report; }
 extern "C" void openmx_mgpuGemmRelease(void) { if(!in_worker) contexts.clear(); }
+extern "C" void openmx_mgpuGemmStagingBegin(void) { ++staging_depth; }
+extern "C" void openmx_mgpuGemmStagingEnd(void) {
+    if(!staging_depth || --staging_depth) return;
+    for(auto &ctx:contexts) if(ctx->staging) {
+        /* Try has synchronized every worker before returning. */
+        if(cudaFreeHost(ctx->staging)==cudaSuccess) {
+            ctx->staging=nullptr;ctx->staging_bytes=0;
+        }
+    }
+}
 extern "C" int openmx_mgpuDgemmHostTry(int ngpu,const int *devices,cublasOperation_t ta,
     cublasOperation_t tb,int m,int n,int k,const double *alpha,const double *a,int lda,const double *b,int ldb,
     const double *beta,double *c,int ldc,cublasStatus_t *status)
@@ -463,4 +509,180 @@ extern "C" int openmx_mgpuZgemmTry(cublasHandle_t h,int ngpu,const int *devices,
 {
     try {return gemm(h,ngpu,devices,ta,tb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc,status);}
     catch(const std::bad_alloc &) {report.reason="host metadata allocation failed";if(status)*status=CUBLAS_STATUS_SUCCESS;return 0;}
+}
+
+namespace {
+struct RefineWorkspace {
+    int n,origin=-1;
+    bool full_project=false;
+    std::vector<Worker> workers;
+    explicit RefineWorkspace(int size):n(size) {}
+    virtual ~RefineWorkspace() { release(); }
+    int release() {
+        int saved=-1,error=0;
+        if(cudaGetDevice(&saved)!=cudaSuccess) error=1;
+        for(auto &w:workers) if(w.buffer) {
+            if(cudaSetDevice(w.ctx->device)!=cudaSuccess ||
+               cudaStreamSynchronize(w.ctx->stream)!=cudaSuccess || cudaFree(w.buffer)!=cudaSuccess) error=1;
+            else w.buffer=nullptr;
+        }
+        if(saved>=0 && cudaSetDevice(saved)!=cudaSuccess) error=1;
+        return error;
+    }
+    int synchronize() {
+        int error=0;
+        for(auto &w:workers)
+            if(cudaSetDevice(w.ctx->device)!=cudaSuccess || cudaStreamSynchronize(w.ctx->stream)!=cudaSuccess) error=1;
+        return error;
+    }
+    virtual int project(const void*,const void*,int,void*,void*)=0;
+    virtual int update(const void*,void*)=0;
+};
+template<class T> struct ResidentRefine:RefineWorkspace {
+    explicit ResidentRefine(int size):RefineWorkspace(size) {}
+    bool allocate(int ngpu,const int *devices) {
+        const size_t nn=size_t(n)*n,columns=(size_t(n)+ngpu-1)/ngpu;
+        size_t bytes;
+        if(columns*size_t(n)>INT_MAX || nn>SIZE_MAX/3 ||
+           !product(2*nn+columns*n,sizeof(T),&bytes) ||
+           bytes>budget("OPENMX_MAGMA_REFINE_RESIDENT_MB",0)) return false;
+        std::vector<std::string> buses;
+        for(int j=0;j<ngpu;++j) {
+            char bus[64];
+            if(cudaSetDevice(devices[j])!=cudaSuccess ||
+               cudaDeviceGetPCIBusId(bus,sizeof(bus),devices[j])!=cudaSuccess ||
+               std::find(buses.begin(),buses.end(),bus)!=buses.end() ||
+               !available(bytes,budget("OPENMX_MAGMA_REFINE_RESERVE_MB",4096))) return false;
+            buses.emplace_back(bus);
+            Worker w;w.ctx=context(devices[j]);
+            if(!w.ctx) return false;
+            workers.push_back(w);
+            if(cudaMalloc(&workers.back().buffer,bytes)!=cudaSuccess) return false;
+            workers.back().bytes=bytes;
+        }
+        return true;
+    }
+    static T one() { if constexpr(std::is_same_v<T,double>) return 1;else return {1,0}; }
+    static T zero_value() { if constexpr(std::is_same_v<T,double>) return 0;else return {0,0}; }
+    int project(const void *ha,const void *hx,int end,void *hh,void *hg) override {
+        full_project=false;
+        if(!ha || !hx || !hh || !hg || end<1 || end>n) return 1;
+        const size_t nn=size_t(n)*n;
+        const T alpha=one(),beta=zero_value();
+        /* All workers retain X. Their Y panels never leave device memory;
+           A's storage is recycled for the projected H after A X completes. */
+        for(size_t j=0;j<workers.size();++j) {
+            auto &w=workers[j];
+            w.col=int(size_t(end)*j/workers.size());
+            w.n=int(size_t(end)*(j+1)/workers.size())-w.col;
+            if(!w.n) continue;
+            T *da=static_cast<T*>(w.buffer),*dx=da+nn,*dy=dx+nn;
+            if(cudaSetDevice(w.ctx->device)!=cudaSuccess ||
+               cublasSetPointerMode(w.ctx->blas,CUBLAS_POINTER_MODE_HOST)!=CUBLAS_STATUS_SUCCESS ||
+               cudaMemcpyAsync(da,ha,nn*sizeof(T),cudaMemcpyHostToDevice,w.ctx->stream)!=cudaSuccess ||
+               cudaMemcpyAsync(dx,hx,nn*sizeof(T),cudaMemcpyHostToDevice,w.ctx->stream)!=cudaSuccess ||
+               local_gemm(w.ctx->blas,CUBLAS_OP_N,CUBLAS_OP_N,n,w.n,n,&alpha,da,n,
+                          dx+size_t(w.col)*n,n,&beta,dy,n)!=CUBLAS_STATUS_SUCCESS ||
+               local_gemm(w.ctx->blas,CUBLAS_OP_C,CUBLAS_OP_N,end,w.n,n,&alpha,dx,n,dy,n,
+                          &beta,da,end)!=CUBLAS_STATUS_SUCCESS) return 1;
+        }
+        for(auto &w:workers) {
+            if(!w.n) continue;
+            T *da=static_cast<T*>(w.buffer),*dx=da+nn,*dy=dx+nn;
+            if(cudaSetDevice(w.ctx->device)!=cudaSuccess ||
+               cudaMemcpyAsync(static_cast<T*>(hh)+size_t(w.col)*end,da,size_t(end)*w.n*sizeof(T),
+                               cudaMemcpyDeviceToHost,w.ctx->stream)!=cudaSuccess ||
+               local_gemm(w.ctx->blas,CUBLAS_OP_C,CUBLAS_OP_N,end,w.n,n,&alpha,dx,n,
+                          dx+size_t(w.col)*n,n,&beta,dy,end)!=CUBLAS_STATUS_SUCCESS) return 1;
+        }
+        for(auto &w:workers) {
+            if(!w.n) continue;
+            T *dy=static_cast<T*>(w.buffer)+2*nn;
+            if(cudaSetDevice(w.ctx->device)!=cudaSuccess ||
+               cudaMemcpyAsync(static_cast<T*>(hg)+size_t(w.col)*end,dy,size_t(end)*w.n*sizeof(T),
+                               cudaMemcpyDeviceToHost,w.ctx->stream)!=cudaSuccess) return 1;
+        }
+        const int error=synchronize();
+        full_project=!error && end==n;
+        return error;
+    }
+    int update(const void *he,void *hx) override {
+        if(!full_project || !he || !hx) return 1;
+        full_project=false;
+        const size_t nn=size_t(n)*n;
+        const T alpha=one(),beta=zero_value();
+        for(auto &w:workers) {
+            if(!w.n) continue;
+            T *da=static_cast<T*>(w.buffer),*dx=da+nn,*de=dx+nn;
+            const size_t count=size_t(n)*w.n,offset=size_t(n)*w.col;
+            if(cudaSetDevice(w.ctx->device)!=cudaSuccess ||
+               cudaMemcpyAsync(de,static_cast<const T*>(he)+offset,count*sizeof(T),cudaMemcpyHostToDevice,w.ctx->stream)!=cudaSuccess ||
+               local_gemm(w.ctx->blas,CUBLAS_OP_N,CUBLAS_OP_N,n,w.n,n,&alpha,dx,n,de,n,
+                          &beta,da,n)!=CUBLAS_STATUS_SUCCESS) return 1;
+            cublasStatus_t status;
+            if constexpr(std::is_same_v<T,double>)
+                status=cublasDaxpy(w.ctx->blas,int(count),&alpha,da,1,dx+offset,1);
+            else status=cublasZaxpy(w.ctx->blas,int(count),&alpha,da,1,dx+offset,1);
+            if(status!=CUBLAS_STATUS_SUCCESS) return 1;
+        }
+        for(auto &w:workers) {
+            if(!w.n) continue;
+            T *dx=static_cast<T*>(w.buffer)+nn;
+            const size_t count=size_t(n)*w.n,offset=size_t(n)*w.col;
+            if(cudaSetDevice(w.ctx->device)!=cudaSuccess ||
+               cudaMemcpyAsync(static_cast<T*>(hx)+offset,dx+offset,count*sizeof(T),cudaMemcpyDeviceToHost,w.ctx->stream)!=cudaSuccess) return 1;
+        }
+        return synchronize();
+    }
+};
+struct RestoreDevice {
+    int previous=-1;
+    RestoreDevice() { cudaGetDevice(&previous); }
+    ~RestoreDevice() { if(previous>=0) cudaSetDevice(previous); }
+};
+}
+extern "C" void *openmx_mgpuRefineCreate(int ngpu,const int *devices,int n,int is_complex) {
+    RestoreDevice restore;
+    if(restore.previous<0 || ngpu<2 || ngpu>64 || !devices || n<ngpu) return nullptr;
+    try {
+        if(is_complex) {
+            auto p=std::make_unique<ResidentRefine<cuDoubleComplex>>(n);
+            if(!p->allocate(ngpu,devices)) return nullptr;
+            return p.release();
+        }
+        auto p=std::make_unique<ResidentRefine<double>>(n);
+        if(!p->allocate(ngpu,devices)) return nullptr;
+        return p.release();
+    } catch(const std::bad_alloc&) {return nullptr;}
+}
+extern "C" int openmx_mgpuRefineProject(void *p,const void *a,const void *x,int end,void *h,void *g) {
+    RestoreDevice restore;
+    if(!p || restore.previous<0) return 1;
+    auto *workspace=static_cast<RefineWorkspace*>(p);
+    int error=1;
+    try { error=workspace->project(a,x,end,h,g); } catch(...) {}
+    /* On failure, transfers may still refer to the private host vectors.
+       Complete them before the adapter can destroy those vectors. */
+    if(workspace->synchronize()) error=1;
+    if(error) workspace->full_project=false;
+    if(cudaSetDevice(restore.previous)!=cudaSuccess) error=1;
+    return error;
+}
+extern "C" int openmx_mgpuRefineUpdate(void *p,const void *e,void *x) {
+    RestoreDevice restore;
+    if(!p || restore.previous<0) return 1;
+    auto *workspace=static_cast<RefineWorkspace*>(p);
+    int error=1;
+    try { error=workspace->update(e,x); } catch(...) {}
+    if(workspace->synchronize()) error=1;
+    if(error) workspace->full_project=false;
+    if(cudaSetDevice(restore.previous)!=cudaSuccess) error=1;
+    return error;
+}
+extern "C" int openmx_mgpuRefineRelease(void *p) {
+    if(!p) return 0;
+    auto *workspace=static_cast<RefineWorkspace*>(p);
+    const int error=workspace->release();
+    delete workspace;
+    return error;
 }

@@ -5131,7 +5131,7 @@ void Input_std(char *file)
       openmx_mgpu_configure(mgpu_enabled, SCF_Gpu_Num, mgpu_single_node);
       if (myid == Host_ID && 0 < level_stdout) {
         printf("<OpenMX_MGPU> Band GPU pool: kpoints=%d group_gpus=%d used_gpus=%d input_limit=%d\n",
-               band_kpoints, used_gpus / band_kpoints, used_gpus, requested);
+               band_kpoints, openmx_mgpu_band_group(band_kpoints,0,NULL,0), used_gpus, requested);
       }
     } else {
       /* All ranks must agree on whether a cooperative pool exists. */

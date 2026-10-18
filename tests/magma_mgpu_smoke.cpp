@@ -14,6 +14,9 @@
 #include <string>
 #include <vector>
 
+extern "C" int openmx_fp32_enabled(void)
+{ return std::getenv("OPENMX_TEST_FP32_DISABLED")==nullptr; }
+
 template<class T> T phase(int) { return T(1); }
 template<> std::complex<double> phase(int i) { return std::polar(1.0,0.37*i); }
 template<class T> T conjugate(T x) { return x; }
@@ -24,9 +27,12 @@ template<class T> int run(int ngpu,const int *devices,int n,int first,int last,i
     const int lda=n+11,count=last-first+1;
     std::vector<double> diagonal(n);
     std::vector<T> phases(n);
+    const char *cluster_env=std::getenv("OPENMX_TEST_CLUSTER_SIZE");
+    const int cluster_size=cluster_env?std::max(2,std::atoi(cluster_env)):4;
     double sum_diagonal=0;
     for(int i=0;i<n;++i) {
-        diagonal[i]=1+2.0*i/(n-1);
+        diagonal[i]=std::getenv("OPENMX_TEST_CLUSTERED") ?
+            1+2.0*(i/cluster_size)*cluster_size/(n-1)+(i%cluster_size)*1e-10 : 1+2.0*i/(n-1);
         sum_diagonal+=diagonal[i];
         phases[i]=phase<T>(i);
     }

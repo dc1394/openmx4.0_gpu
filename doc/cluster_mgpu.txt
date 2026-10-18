@@ -137,7 +137,11 @@ grids are not restricted to two nodes.
 
 Eigensolver selection and memory
 -------------------------------
-MAGMA uses dsyevdx_m / zheevdx_m in native FP64, including leading subsets.
+MAGMA defaults to dsyevdx_m / zheevdx_m in native FP64, including leading subsets.
+OPENMX_MAGMA_FP32=1 optionally uses corrected FP32 through GEMMul8;
+scf.fp32.enable=off vetoes it. All CUDA-visible GPUs must have a known
+FP32:FP64 ratio >= 8; mixed H100/GeForce pools retain native FP64 even
+with this option enabled. See rtx5090_magma_fp32.txt for details.
 The capacity path first releases the native dense GPU arena and eigensolver
 workspace. Overlap and Hamiltonian matrices, transforms and vectors live
 on the host. MAGMA partitions its GPU scratch across the selected group;
@@ -161,7 +165,7 @@ not switch back to cuSOLVER; GPU memory exhaustion now permits CPU recovery.
 
 OPENMX_MGPU_MEMORY=host exercises the same capacity path with gpusolver
 for regression tests on small matrices. gpusolver3 is the input keyword
-for production forced MAGMA. Capacity solves use FP64 and bypass the
+for production forced MAGMA. Capacity solves use FP64 by default and bypass the
 single-GPU FP32 refinement workspace.
 
 tests/run_mgpu_capacity_regression.py exercises all four Cluster/Band and
