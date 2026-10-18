@@ -176,11 +176,7 @@ void Input_std(char *file)
 
       printf("scf.Ngrid must be divisible by \n");
 
-      printf("    ");
-      for (i=0; i<NfundamentalNum; i++){
-        printf("%3d ",fundamentalNum[i]);
-      } 
-      printf("\n");
+      printf("      2   3   5   7 \n");
 
       MPI_Finalize(); 
       exit(0);
@@ -6545,32 +6541,7 @@ void Set_Cluster_UnitCell(double tv[4][4], int unitflag)
 
 int divisible_cheker(int N)
 {
-  /************************
-   return 0; non-divisible 
-   return 1; divisible 
-  ************************/
-
-  int i,po;
-
-  if (N!=1){
-    po = 1; 
-    for (i=0; i<NfundamentalNum; i++){
-      if ( N!=1 && (N % fundamentalNum[i])==0 ){
-	po = 0;
-	N = N/fundamentalNum[i];
-      }
-    }
-  }
-  else{
-    po = 0;
-  }
-
-  if (po==0 && N!=1){
-    divisible_cheker(N);
-  }
-
-  if (po==0) return 1;
-  else       return 0;
+  return openmx_core_fft_grid_supported(N);
 }
 
 

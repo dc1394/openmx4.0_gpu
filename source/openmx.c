@@ -97,11 +97,18 @@ static void Raise_Stack_Limit(void)
 #endif
 }
 
-int main(int argc, char *argv[]) 
+static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core);
+
+int main(int argc, char *argv[])
+{
+  return openmx_core_run(argc,argv,run_openmx);
+}
+
+static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 { 
-  static int numprocs,myid;
-  static int MD_iter,i,j,po,ip;
-  static char fileMemory[YOUSO10]; 
+  int numprocs=0,myid=0;
+  int MD_iter=0,i=0,j=0,po=0,ip=0;
+  char fileMemory[YOUSO10];
   double TStime,TEtime;
   MPI_Comm mpi_comm_parent;
 
@@ -172,8 +179,9 @@ int main(int argc, char *argv[])
   if (argc==1){
 
     if (myid==Host_ID) printf("\nCould not find an input file.\n\n");
+    openmx_core_finish(core);
     MPI_Finalize(); 
-    exit(0);
+    return 0;
   } 
 
   /* initialize Runtest_flag */
@@ -206,8 +214,9 @@ int main(int argc, char *argv[])
     if (myid==Host_ID){
       printf("cannot find the number of threads\n");
     }
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0);
+    return 0;
   }
 
   if ( po==1 ){
@@ -217,8 +226,9 @@ int main(int argc, char *argv[])
       if (myid==Host_ID){
         printf("check the number of threads\n");
       }
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return 0;
     }
   }
 
@@ -237,7 +247,7 @@ int main(int argc, char *argv[])
 
   if (strcmp(argv[1],"-show")==0){
     Show_DFT_DATA(argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -249,7 +259,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketest")==0){
     Maketest("S",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -266,11 +276,13 @@ int main(int argc, char *argv[])
       if (myid==Host_ID){
         printf("The number of MPI processes for runtest is limited to upto 64.\n");  
       }
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return 0;
     }
     
-    Runtest("S",argc,argv);
+    Runtest("S",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -283,7 +295,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestL")==0){
     Maketest("L",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -296,7 +308,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestL2")==0){
     Maketest("L2",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -309,7 +321,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestL3")==0){
     Maketest("L3",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -321,7 +333,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestL")==0){
-    Runtest("L",argc,argv);
+    Runtest("L",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -333,7 +346,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestL2")==0){
-    Runtest("L2",argc,argv);
+    Runtest("L2",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -345,7 +359,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestL3")==0){
-    Runtest("L3",argc,argv);
+    Runtest("L3",argc,argv,core);
+    return 0;
   }
 
   /*******************************************************
@@ -354,7 +369,7 @@ int main(int argc, char *argv[])
 
   if ( (argc==2 || argc==3) && strcmp(argv[1],"-mltest")==0){
     Memory_Leak_test(argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -367,7 +382,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestG")==0){
     Maketest("G",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -380,7 +395,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestC")==0){
     Maketest("C",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -392,7 +407,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestG")==0){
-    Runtest("G",argc,argv);
+    Runtest("G",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -405,7 +421,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestC")==0){
-    Runtest("C",argc,argv);
+    Runtest("C",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -418,7 +435,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestCWF")==0){
     Maketest("CWF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -431,7 +448,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestCWF")==0){
-    Runtest("CWF",argc,argv);
+    Runtest("CWF",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -444,7 +462,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestWF")==0){
     Maketest("WF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -456,7 +474,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestWF")==0){
-    Runtest("WF",argc,argv);
+    Runtest("WF",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -469,7 +488,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestNEGF")==0){
     Maketest("NEGF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -480,9 +499,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestNEGF")==0){
-    Runtest("NEGF",argc,argv);
-    MPI_Finalize();
-    exit(0);
+    Runtest("NEGF",argc,argv,core);
+    return 0;
   }
 
   /********************************************************************
@@ -494,7 +512,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestCDDF")==0){
     Maketest("CDDF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -505,9 +523,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestCDDF")==0){
-    Runtest("CDDF",argc,argv);
-    MPI_Finalize();
-    exit(0);
+    Runtest("CDDF",argc,argv,core);
+    return 0;
   }
 
   /********************************************************************
@@ -520,7 +537,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestDCLNO")==0){
     Maketest("DCLNO",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -531,9 +548,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestDCLNO")==0){
-    Runtest("DCLNO",argc,argv);
-    MPI_Finalize();
-    exit(0);
+    Runtest("DCLNO",argc,argv,core);
+    return 0;
   }
 
   /*******************************************************
@@ -553,11 +569,11 @@ int main(int argc, char *argv[])
     else if (strcmp(argv[2],"8")==0) force_flag = 8;
     else {
       printf("unsupported flag for -forcetest\n");
-      exit(0);
+      return 0;
     }
 
     Force_test(argc,argv);
-    exit(0);
+    return 0;
   }
 
   /*********************************************************
@@ -577,12 +593,13 @@ int main(int argc, char *argv[])
     else if (strcmp(argv[2],"8")==0) stress_flag = 8;
     else {
       printf("unsupported flag for -stresstest\n");
-      exit(0);
+      return 0;
     }
 
     Stress_test(argc,argv);
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0);
+    return 0;
   }
 
   /*******************************************************
@@ -590,7 +607,7 @@ int main(int argc, char *argv[])
     the NEB calculation.
   *******************************************************/
 
-  if (neb_check(argv)) neb(argc,argv);
+  if (neb_check(argv)) { neb(argc,argv,core); return 0; }
 
   /*******************************************************
    allocation of CompTime and show the greeting message 
@@ -605,7 +622,7 @@ int main(int argc, char *argv[])
   if (myid==Host_ID){  
     printf("\n*******************************************************\n"); 
     printf("*******************************************************\n"); 
-    printf(" Welcome to OpenMX   Ver. %s                           \n",Version_OpenMX); 
+    printf(" Welcome to OpenMX   Ver. %s                           \n",openmx_core_version());
     printf(" Copyright (C), 2002-2026, T. Ozaki                    \n"); 
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n"); 
     printf(" This is free software, and you are welcome to         \n"); 
@@ -624,7 +641,7 @@ int main(int argc, char *argv[])
 
   init_alloc_first();
 
-  CompTime[myid][1] = readfile(argv);
+  CompTime[myid][1] = readfile_with_context(argv,core);
   MPI_Barrier(MPI_COMM_WORLD1);
 
   /* initialize PrintMemory routine */
@@ -686,8 +703,8 @@ int main(int argc, char *argv[])
     CompTime[myid][20] = OutData(argv[1]);
     Merge_LogFile(argv[1]);
     Free_Arrays(0);
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0); 
     return 0;
   }
 
@@ -724,8 +741,8 @@ int main(int argc, char *argv[])
     CompTime[myid][20] = OutData(argv[1]);
     Merge_LogFile(argv[1]);
     Free_Arrays(0);
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0); 
     return 0;
   }
 
@@ -918,8 +935,8 @@ int main(int argc, char *argv[])
   /* shut down the ELPA library of gpusolver2 (no-op otherwise) */
   openmx_gs2_finalize();
 
-  MPI_Finalize();
-  exit(0);
+  openmx_core_finish(core);
 
+  MPI_Finalize();
   return 0;
 }

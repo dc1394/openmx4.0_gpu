@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Stress production integral caches and per-atom timing updates with pthreads.
 
-No MPI, CUDA or PAO data is required. The actual cache helpers and accumulation
+No MPI, CUDA or PAO data is required. Build the C++ core first and set
+OPENMX_CORE_LIBRARY to its libopenmx_core.so when using a nondefault build. The actual cache helpers and accumulation
 statements are extracted from Set_OLP_Kin and Set_Nonlocal. All workers update
 one atom to expose lost timing updates at pair-partition boundaries, while
 private Bessel tables must reproduce uncached values for different cutoffs.
@@ -16,6 +17,9 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+CORE_LIBRARY = Path(os.environ.get("OPENMX_CORE_LIBRARY", ROOT / "build/core-serial/libopenmx_core.so")).resolve()
+if not CORE_LIBRARY.is_file():
+    raise SystemExit("Build the C++ core and set OPENMX_CORE_LIBRARY to libopenmx_core.so")
 
 
 def function(source, declaration):
@@ -122,13 +126,14 @@ with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
     src.write_text("#define _POSIX_C_SOURCE 200809L\n"
                    "#include <assert.h>\n#include <math.h>\n#include <pthread.h>\n"
                    "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n"
-                   "#define xmin 0.0\n#define asize_lmax 30\n"
+                   '#include "openmx_core.h"\n'
                    "static double time_per_atom[1];\n"
                    + cache + profile + bessel + "\n".join(updates) + HARNESS)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2 -g"))
     subprocess.run(compiler + flags + ["-std=c11", "-fopenmp", "-pthread",
-                   str(src), "-lm", "-o", str(exe)], check=True)
+                   "-I" + str(ROOT / "source"), str(src), str(CORE_LIBRARY),
+                   "-Wl,-rpath," + str(CORE_LIBRARY.parent), "-lm", "-o", str(exe)], check=True)
     runner = (["valgrind", "--tool=helgrind", "--error-exitcode=99", "--quiet"]
               if "--helgrind" in sys.argv[1:] else [])
     subprocess.run(runner + [str(exe)], check=True)

@@ -1,0 +1,7199 @@
+{
+  "scope": "file-scope objects declared in source/openmx_common.h",
+  "count": 1197,
+  "pointer_depth_counts": {
+    "0": 723,
+    "1": 221,
+    "2": 122,
+    "3": 52,
+    "4": 25,
+    "5": 41,
+    "6": 11,
+    "7": 2
+  },
+  "objects": [
+    {
+      "name": "AC_flag_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ACnt_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ADensity_Grid_B",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "AMF_Array",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "Angle0_Orbital",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Angle0_Spin",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Angle1_Orbital",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Angle1_Spin",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Arho_EH0",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Arho_EH0_Orb",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Arti_Force",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Arti_Grad",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "AtomGr",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Atom_Symbol",
+      "type": "char[104][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Atom_Weight",
+      "type": "double[104]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Av_num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "BCR",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "B_cut",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "B_l",
+      "type": "int[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "B_mul",
+      "type": "int[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "B_spe",
+      "type": "int[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Band_N_perpath",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Band_Nkpath",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Band_UnitCell",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Band_disp_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Band_kPathUnit",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Band_kname",
+      "type": "char ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Band_kpath",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Bessel_h_Array0",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Bessel_j_Array0",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "BestNormRD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Beta",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "BufferL_ProVNA",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Bulk_HOMO",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Bulk_Num_HOMOs",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Bulk_Num_LUMOs",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "C6_dftD",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "C6ab_dftD",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "C6ij_dftD",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_AddMaxE",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_FWHM",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_Kspace_grid1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_Kspace_grid2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_Kspace_grid3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_Shift_ChemP",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_analysis",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_analysis_cutoff",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_analysis_energy",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_approach",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_freq_grid_number",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_max_eV",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_max_unoccupied_state",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_min_eV",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_on",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CDDF_printk",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CN_Error",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "COHP_AtomA",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "COHP_AtomB",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "COHP_CellB1",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "COHP_CellB2",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "COHP_CellB3",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "COHP_calc_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "COHP_num_pairs",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "COrbs_Grid",
+      "type": "Type_Orbs_Grid ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Calc",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Charge",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Coef",
+      "type": "double *******",
+      "pointer_depth": 7,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Dis_vs_H",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Energy",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Energy_Decomposition",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Grouped_Atoms",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Grouped_Atoms",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Grouped_Atoms_EachNum",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Grouped_Atoms_EachNum",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Guiding_AO",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Guiding_MOs",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Guiding_Orbital",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Kgrid1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Kgrid2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Kgrid3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Num_predefined",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_Plot_SuperCells",
+      "type": "int[3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_WindowF_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_Erange",
+      "type": "double[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_Erange_Bottom",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_Erange_Top",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_smearing_bound",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_smearing_bound",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_smearing_kBT0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_smearing_kBT0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_smearing_kBT1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_disentangling_smearing_kBT1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_file_Atoms",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_file_MOs",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_fileout_Num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CWF_fileout_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Calc_ABC_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Calc_Total_Charge",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CellListAtom",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "CellNN_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Cell_Fixed_XYZ",
+      "type": "int[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Cell_Gxyz",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Cell_Volume",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ChemP",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ChemP_XANES",
+      "type": "double[2]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Cluster_HOMO",
+      "type": "int[2]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CntCoes",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "CntCoes_Species",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "CntDS_NL",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "CntDS_VNA",
+      "type": "Type_DS_VNA *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "CntH",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "CntH0",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "CntHVNA2",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "CntHVNA3",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "CntOLP",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "CntOrb_Atoms",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "CntOrb_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Cnt_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CoarseGL_Abscissae",
+      "type": "double[152]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CoarseGL_Weight",
+      "type": "double[152]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Comm_World1_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Comm_World2_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Comm_World_StartID1_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Comm_World_StartID2_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Comp2Real",
+      "type": "dcomplex[15][31][31]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "CompTime",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Constraint_NCS_V",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Constraint_NCS_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Constraint_OrbitalAngle",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Constraint_SpinAngle",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Core_Hole_Atom",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Core_Hole_J",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Core_Hole_Orbital",
+      "type": "char[40]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Correct_Position_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Coulomb_Array",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "CpyCell",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Criterion_MP_Special_Kpt",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DFTD3_damp_dftD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DFTD_IntDir1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DFTD_IntDir2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DFTD_IntDir3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DFTSCF_loop",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DFT_DATA_PATH",
+      "type": "char[500]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DIIS_History_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DM",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "DM0",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "DM_Snd_EGAC",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "DM_onsite",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "DS_NL",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "DS_VNA",
+      "type": "Type_DS_VNA *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "DecEcon",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "DecEkin",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "DecEscc",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "DecEv",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "DecEvdw",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Density_Grid",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Density_Grid_B",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Density_Grid_D",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Density_Periodic_Grid_B",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Dis",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "DosGauss_Num_Mesh",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DosGauss_Width",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "DosGauss_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Dos_Erange",
+      "type": "double[2]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Dos_Kgrid",
+      "type": "int[3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Dos_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EC_Sub_Dim",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EC_matrix",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "EDM",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_End",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Npoles",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Npoles_CF",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Npoles_f",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Npoles_near",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Npoles_new",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Rp",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Rp_f",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_Top",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_method",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_method_f",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_zp",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EGAC_zp_f",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EH0_scaling",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "EKC_Exact_invS_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EKC_core_size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EKC_core_size_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EKC_core_size_max",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EKC_expand_core_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EKC_invS_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ESM_buffer_range",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ESM_direction",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ESM_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ESM_wall_height",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ESM_wall_position",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ESM_wall_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "EV_S",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "E_Field",
+      "type": "double[3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "E_Field_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "E_Temp",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Energy_Decomposition_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ep",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "EveryPulay_SCF",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Exc0_correction_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Extrapolated_Charge_History",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "FCR",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "FNAN",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "FNAN2_Grid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "FNAN_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "FT_files_read",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "FT_files_save",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_CH_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_G2M",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_G2M_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_Kin_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_M2G",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_M2G_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_NL_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_Rcv_Num",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_Rcv_Num_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_Rcv_Num_WK",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_Snd_Num",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_Snd_Num_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_Snd_Num_WK",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_TopMAN",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_TopMAN_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "F_U_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_VEF_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_VNA_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_Vxc_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_dVHart_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "F_dftD_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "FineGL_Abscissae",
+      "type": "double[1502]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "FineGL_Weight",
+      "type": "double[1502]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Finite_Elements_Ecut",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "First_Moment_EC",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "ForceConsistency_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "FricFac",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "G2ID",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "G2M_DM_Snd_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "G2M_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GA_EGAC",
+      "type": "dcomplex ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "GB_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GD_EGAC",
+      "type": "dcomplex ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "GL_Abscissae",
+      "type": "double[302]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GL_NormK",
+      "type": "double[302]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GL_Weight",
+      "type": "double[302]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GListTAtoms1",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "GListTAtoms2",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "GP",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B2C_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B2C_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B2D_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B2D_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B_AB2CA_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B_AB2CA_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B_CA2CB_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GP_B_CA2CB_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GT",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Gdiis_Mixing",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GeoOpt_RestartFromFile",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GivenTemp",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Given_Total_Charge",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Global_Cnt_kind",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GridListAtom",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "GridN_Atom",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "GridVol",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "GridX_EH0",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "GridY_EH0",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "GridZ_EH0",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Grid_Ecut",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Grid_Origin",
+      "type": "double[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Gxyz",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "GxyzHistoryIn",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "GxyzHistoryR",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "H",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "H0",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "HCH",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "HNL",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "HOMO_XANES",
+      "type": "int[2]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "HOMOs_Coef",
+      "type": "dcomplex *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "HS_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "HVNA",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "HVNA2",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "HVNA3",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "H_EGAC",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "H_Hub",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "H_XMCD",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "H_Zeeman_NCO",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "H_all",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "Hessian",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "HisH1",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "HisH2",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "His_Gxyz",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "History_Uele",
+      "type": "double[5]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Hub_Type",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Hub_U_Basis",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Hub_U_Enhance_OrbPol",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Hub_U_occupation",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Hub_U_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Hund_J_Basis",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B2C_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B2C_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B2D_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B2D_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B_AB2CA_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B_AB2CA_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B_CA2CB_R",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ID_NN_B_CA2CB_S",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "IEV_S",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "IS_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ImVKSk",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Rcv_Grid_A2B",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Rcv_Grid_B2C",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Rcv_Grid_B2D",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Rcv_Grid_B_AB2C",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Rcv_Grid_B_AB2CA",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Rcv_Grid_B_CA2CB",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Snd_Grid_A2B",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Snd_Grid_B2C",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Snd_Grid_B2D",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Snd_Grid_B_AB2C",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Snd_Grid_B_AB2CA",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Index_Snd_Grid_B_CA2CB",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Indx_Rcv_DM_EGAC",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Indx_Rcv_GA_EGAC",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Indx_Rcv_HS_EGAC",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Indx_Snd_DM_EGAC",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Indx_Snd_GA_EGAC",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Indx_Snd_HS_EGAC",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "InitAngle0_Orbital",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "InitAngle0_Spin",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "InitAngle1_Orbital",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "InitAngle1_Spin",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "InitMagneticMoment",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "InitN_DSpin",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "InitN_USpin",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Initial_Hessian_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "IntScale",
+      "type": "int[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "InvHessian",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "J",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Kerker_factor",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "KrylovH_order",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "KrylovS_order",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Krylov_U",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Kspace_grid1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Kspace_grid2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Kspace_grid3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "L2L_ONAN",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "LNAO1_pops",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNAO_Atoms",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "LNAO_H",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNAO_calc_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LNAO_coes",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNAO_num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LNAO_pops",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNBO_Atoms",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "LNBO_H",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNBO_calc_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LNBO_coes",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNBO_num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LNBO_pops",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNO_Num",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "LNO_Occ_Cutoff",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LNO_coes",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNO_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LNO_pops",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "LNOs_Num_predefined",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "LNOs_Num_predefined_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LUMOs_Coef",
+      "type": "dcomplex *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "LastBoxCenterX",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LastBoxCenterY",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LastBoxCenterZ",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Last_TNumGrid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "LatticeRestriction",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Left_tv",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "List_YOUSO",
+      "type": "int[60]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "M2G",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "M2G_DM_Snd_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "M2G_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "M2G_JOB_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "MD_Current_Iter",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_EvsLattice_Step",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_EvsLattice_flag",
+      "type": "int[3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_Init_Velocity",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_IterNumber",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_Opt_OK",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_Opt_criterion",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_OutABC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_TimeStep",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_applied_pressure",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_applied_pressure_flag",
+      "type": "int[3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_cellopt_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MD_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MGridListAtom",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "ML_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MME_allorb",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "MO_Nkpoint",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MO_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MO_kpoint",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "MPI_COMM_WORLD1",
+      "type": "MPI_Comm",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MPI_CommWD1_DCLNO",
+      "type": "MPI_Comm *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "MPI_CommWD2_DCLNO",
+      "type": "MPI_Comm *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "MPI_spawn_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MPI_spawn_stream",
+      "type": "FILE *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "MPI_tunedgrid_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MSpeciesNum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MYID_MPI_COMM_WORLD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "M_GDIIS_HISTORY",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Mag_Field_Orbital",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Mag_Field_Spin",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Matomnum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MatomnumF",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MatomnumF_NAO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MatomnumS",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "MatomnumS_NAO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Matomnum_DM_Snd_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Matomnum_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_FNAN",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_FSNAN",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Force",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_GridN_Atom",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Grid_Index",
+      "type": "int[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Grid_Index_D",
+      "type": "int[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Matomnum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Mixing_weight",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Mixing_weight2",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Nd",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_NumOLG",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Rcv_FNAN2_Grid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Rcv_Grid_B2C",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Rcv_Grid_B2D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Rcv_Grid_B_AB2C",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Rcv_Grid_B_AB2CA",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Rcv_Grid_B_CA2CB",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Snd_FNAN2_Grid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Snd_Grid_B2C",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Snd_Grid_B2D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Snd_Grid_B_AB2C",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Snd_Grid_B_AB2CA",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Num_Snd_Grid_B_CA2CB",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_ONAN",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_OneD_Grids",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Rcv_GA_EGAC_Size",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Rcv_OLP_EGAC_Size",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Snd_GA_EGAC_Size",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_Snd_OLP_EGAC_Size",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_TGN_EH0",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_dim_GA_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Max_dim_GD_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Min_Grid_Index",
+      "type": "int[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Min_Grid_Index_D",
+      "type": "int[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Min_Mixing_weight",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Mixing_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Mixing_weight",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_Max_NumGridB",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NGrid1_Poisson",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NGrid2_Poisson",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NumGrid1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NumGridB_AB",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NumGridB_CA",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NumGridB_CB",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NumGridC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "My_NumGridD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_Nkpoint",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_Occ_or_Ryd",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_coefficient",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_ene_level",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_kpoint",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_only",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_partial_pop",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "NAO_vec_tmp",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "NBLK",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "static"
+    },
+    {
+      "name": "NBO_CDMn_tmp",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "NBO_FCenter",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NBO_Fock_tmp",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "NBO_OLPn_tmp",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "NBO_SmallCellFrac",
+      "type": "double[4][3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NBO_SmallCell_Switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NBO_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NBO_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NBOs_Coef_a",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "NBOs_Coef_b",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "NC_OcpN",
+      "type": "dcomplex ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "NC_v_eff",
+      "type": "dcomplex *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "NEB_Num_Images",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NEB_Spring_Const",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NE_KGrids1",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NE_KGrids2",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NE_KGrids3",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NE_T_k_op",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NHO_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NHOs_Coef",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "NH_Ham",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NH_R",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NH_czeta",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NH_nzeta",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_A2B_R",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_A2B_S",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B2C_R",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B2C_S",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B2D_R",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B2D_S",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B_AB2CA_R",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B_AB2CA_S",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B_CA2CB_R",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NN_B_CA2CB_S",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NOHS_C",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NOHS_L",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NPROCS_ID1_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NPROCS_ID2_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NPROCS_WD1_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NPROCS_WD2_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NPT_WV_F0",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NUMPROCS_MPI_COMM_WORLD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NfundamentalNum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "static"
+    },
+    {
+      "name": "Ng1_Rec_Coulomb",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid1_FE",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid2_FE",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid3_FE",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid_NormK",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ngrid_fixed_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Nmul",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Nonzero_UJ",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "NormK",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "NormRD",
+      "type": "double[5]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Nrank_Rec_Coulomb",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "NumOLG",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "NumScale",
+      "type": "int[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_CWF_Grouped_Atoms",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_CWF_MOs_Group",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Cells0",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_CntOrb_Atoms",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Comm_World1_DCLNO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Comm_World2_DCLNO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_GA_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_KS_states_CWF",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Leb_Grid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Mixing_pDM",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_NBO_FCenter",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_NHOs",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Procs",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Procs2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_DM_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_GA_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_Grid_A2B",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_Grid_B2C",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_Grid_B2D",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_Grid_B_AB2C",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_Grid_B_AB2CA",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_Grid_B_CA2CB",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Rcv_HS_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_DM_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_GA_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_Grid_A2B",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_Grid_B2C",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_Grid_B2D",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_Grid_B_AB2C",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_Grid_B_AB2CA",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_Grid_B_CA2CB",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Snd_HS_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Num_Wannier_Template_Projectors",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Number_of_Electrons_Species",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Number_of_Electrons_Species_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "OLP",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "OLP_CH",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "OLP_EGAC",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "OLP_L",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "OLP_all",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "OLP_p",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "OLPpox",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "OLPpox_all",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "OLPpoy",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "OLPpoy_all",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "OLPpoz",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "OLPpoz_all",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_Npoles",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_Npoles_f",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_Rp",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_Rp_f",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_method",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_method_f",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_zp",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ON2_zp_f",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ONAN",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "OneD_Grid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Oopt_NormD",
+      "type": "double[10]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "OptEveryDIIS",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "OptStartDIIS",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "OrbOpt_OptMethod",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "OrbPol_flag",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "OrbitalMoment",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Orbital_Moment_XYZ",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Orbs_Grid",
+      "type": "Type_Orbs_Grid ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Orbs_Grid_FNAN",
+      "type": "Type_Orbs_Grid ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Original_E_Temp",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "OutData_bin_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "PAO_Nkmax",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "PCCDensity_Grid_B",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "PCCDensity_Grid_D",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "PCC_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "PDM",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "POLES",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ParDM",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "Partial_DM",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "Past_Norm",
+      "type": "double[10]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Past_Utot",
+      "type": "double[10]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "PeriodicGamma_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Pin",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Polarization_ABC_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "PreNum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "PrePara",
+      "type": "double[30][3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "PresW",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ProExpn_VNA",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Pro_Snd_GAtom",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Pro_Snd_LAtom",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Pro_Snd_LAtom2",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Pro_Snd_MAtom",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Projector_VNA",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Ptot",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Pulay_SCF",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Pulay_SCF_original",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "QAO2_coes",
+      "type": "dcomplex **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "QAO_coes",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "RCnt_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "RMI1",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "RMI1_EGAC",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "RMI2",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "RMI2_EGAC",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "RNUM",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "RNUM2",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "RandomF",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "RatScale",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_DM_EGAC_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_DS_NL_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_GAN",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_GAN_NAO",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_GA_EGAC_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_HFS_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_HFS_Size_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Rcv_OLP_EGAC_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ReVKSk",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "RefVxc_Grid",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "RefVxc_Grid_B",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ResidualDM",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "ResidualH1",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "ResidualH2",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "Residual_ImVKSk",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Residual_ReVKSk",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Restart_Spin_Angle_Phi",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Restart_Spin_Angle_Theta",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Right_tv",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Rp",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Rsum_dftD",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Runtest_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "RvdW_dftD",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "S12",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "SCF_Control_Temp",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SCF_Criterion",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SCF_Gpu_Num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SCF_RENZOKU",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SCnt_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SD_scaling",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SD_scaling_user",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SICnt_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SNAN",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "SNAN_DCLNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "SO_factor",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "SO_factor_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SO_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SP_PEV",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SVals_Coulomb",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "SVecs_U_Coulomb",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "SVecs_V_Coulomb",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_G2M",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_G2M_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_M2G",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_M2G_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_Rcv_Num",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_Rcv_Num_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_Snd_Num",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_Snd_Num_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_TopMAN",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "S_TopMAN_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "ScaleSize",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Scf_RestartFromFile",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Scf_RestartToFile",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Second_Moment_EC",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Shortest_CellVec",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Sigma_EGAC",
+      "type": "dcomplex ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Simple_InitCnt",
+      "type": "int[10]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Size_Total_Matrix",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Slater_F0",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Slater_F2",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Slater_F4",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Slater_F6",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_DM_EGAC_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_DS_NL_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_GAN",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_GAN_NAO",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_GA_EGAC_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_HFS_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_HFS_Size_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_MAN",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_MAN_NAO",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Snd_OLP_EGAC_Size",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Solver",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SpeBasis",
+      "type": "char **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "SpeBasisName",
+      "type": "char **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "SpeName",
+      "type": "char **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "SpeVPS",
+      "type": "char **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Atom_Cut1",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_AtomicMass",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Atomic_Den",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Atomic_Den2",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Atomic_PCC",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Core_Charge",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_CrudeVNA_Bessel",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_MaxL_Basis",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_NLRF_Bessel",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Num_Basis",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Num_CBasis",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Num_Mesh_PAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Num_Mesh_VPS",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Num_RVPS",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_OpenCore_flag",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_PAO_LMAX",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_PAO_Mul",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_PAO_RV",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_PAO_RWF",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_PAO_XV",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_ProductRF_Bessel",
+      "type": "double *******",
+      "pointer_depth": 7,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_RF_Bessel",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Spe2Ban",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Specified_Num",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Total_CNO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Total_NO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Total_VPS_Pro",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Trans_Orbital",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_VH_Atom",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_VNA_Bessel",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_VNL",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_VNLE",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_VPS_List",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_VPS_RV",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_VPS_XV",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_Vna",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Spe_WhatAtom",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "SpeciesNum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Species_End",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Species_Top",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "SpinP_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "SpinP_switch_RestartFiles",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "StressConsistency_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Stress_Tensor",
+      "type": "double[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "T",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TCpyCell",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TGN_EH0",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "TNumGrid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TNum_CWFs",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TNum_PAOs",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TNum_PAOs2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TRAN_DecMulP",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "T_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Temp",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TempNum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TempPara",
+      "type": "double[30][3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TempQ",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TempScale",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "TempTol",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Temp_AtGr",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Top_Index_GA_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Top_Index_HS_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Total_Num_Electrons",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_Num_NBO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_Num_NHO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_OrbitalMoment",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_OrbitalMomentAngle0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_OrbitalMomentAngle1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_OrbitalMomentx",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_OrbitalMomenty",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_OrbitalMomentz",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_SpinAngle0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_SpinAngle1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_SpinS",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_SpinSx",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_SpinSy",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Total_SpinSz",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "U",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UH0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UH1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UH2",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UH_dc",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uatom",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ucc",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uch",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ucoh",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ucore",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ucs",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Udc",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uef",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uele",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uele0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uele1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uele_IS0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uele_IS1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uele_OS0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uele_OS1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uhub",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ukc",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Ukin",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Una",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UnfoldBand_N_perpath",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "UnfoldBand_Nkpath",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UnfoldBand_kname",
+      "type": "char ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "UnfoldBand_kpath",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "UnfoldBand_path_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Unl",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UpV",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Use_of_Collinear_Restart",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Utot",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "UvdW",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uvdw",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uxc",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uxc0",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uxc0_dc",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uxc1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uxc1_dc",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uzo",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Uzs",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "VEF_Grid",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "VEF_Grid_B",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "VNA_Grid",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "VNA_Grid_B",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "VNA_proj_ene",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "VNA_reduce_ratio",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "VPS_j_dependency",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "V_ESM",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Version_OpenMX",
+      "type": "char[30]",
+      "pointer_depth": 0,
+      "storage": "static"
+    },
+    {
+      "name": "Vol",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Vol1",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Vol2",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Vol3",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Voronoi_Charge_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Voronoi_OrbM_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Vpot_Grid",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Vpot_Grid_B",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Vxc_Grid",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Vxc_Grid_B",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Vxc_Grid_D",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "W",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "W_OrthoNorm",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier90_CWF_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier90_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "WannierPro2SpeciesNum",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Dis_Conv_Criterion",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Dis_Mixing_Para",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Dis_SCF_Max_Steps",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Draw_Int_Bands",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Draw_MLWF",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Euler_Rotation_Angle",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Func_Calc",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Func_Num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Guide",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Initial_Guess",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Inner_Window_Bottom",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Inner_Window_Top",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_MaxShells",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Min_Conv_Criterion",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Min_Scheme",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Min_Secant_StepLength",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Min_Secant_Steps",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Min_StepLength",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Minimizing_Max_Steps",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_NumL_Pro",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Num_Kinds_Projectors",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Num_Pro",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Outer_Window_Bottom",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Outer_Window_Top",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Output_Overlap_Matrix",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Output_Projection_Matrix",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Output_kmesh",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Plot_SuperCells",
+      "type": "int[3]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Pos",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_ProName",
+      "type": "char **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_ProName2Num",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_ProSpeName",
+      "type": "char **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Projector_Hybridize_Matrix",
+      "type": "double ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Readin_Overlap_Matrix",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Readin_Projection_Matrix",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_RotMat_for_Real_Func",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Select_Matrix",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_X_Direction",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_Z_Direction",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_grid1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_grid2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_grid3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Wannier_unit",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Weight",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "WhatSpecies",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "Wt_EH0",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "XC_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "X_Center_Coordinate",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Y_Center_Coordinate",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Yukawa_on",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Z_Center_Coordinate",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Zeeman_NCO_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "Zeeman_NCS_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "a1_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "a2_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "alloc_first",
+      "type": "int[50]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "alp6_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "alp8_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "atnum_AtGr",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "atom_Fixed_XYZ",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "atomnum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "atv",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "atv_ijk",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "base_core_hole_penalty_value",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "beta_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle1_2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle1_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle1_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle1_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle1_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle1_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle2_2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle2_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle2_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle2_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle2_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bhandle2_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "bias_weight",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "cal_partial_charge",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "cellopt_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "cncut_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "command",
+      "type": "char[500]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "coordinates_unit",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "core_hole_state_ev",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "core_hole_state_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "cwf2w90_output_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "dVHart_Grid",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "dVHart_Grid_B",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "dVHart_Periodic_Grid_B",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "dc_Type",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "descC",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "descC2",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "descH",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "descH2",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "descS",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "descS2",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "desc_CWF1",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "desc_CWF2",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "desc_CWF3",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "desc_CWF4",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "desc_CWF5",
+      "type": "int[9]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "dftD_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "dim_GD_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "dim_IA_EGAC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "dipole_moment",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "dste_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "dv_EH0",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "empty_occupation_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "empty_occupation_num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "empty_occupation_orbital",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "empty_occupation_spin",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "empty_states_atom",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "empty_states_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "empty_states_orbitals_num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "empty_states_orbitals_sidx",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ene_win_partial_charge",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "fGD_EGAC",
+      "type": "dcomplex **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "fermisurfer_output",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "filename",
+      "type": "char[500]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "filepath",
+      "type": "char[500]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "flag_unfold_origin",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "force_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "fundamentalNum",
+      "type": "int[4]",
+      "pointer_depth": 0,
+      "storage": "static"
+    },
+    {
+      "name": "global_T_knum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "gpusolver2_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "gpusolver3_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "gtv",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "gtv_FE",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "iCntHNL",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "iDM",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "iESM",
+      "type": "int[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "iHCH",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "iHNL",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "iHNL0",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "iH_all",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "iParDM",
+      "type": "double *****",
+      "pointer_depth": 5,
+      "storage": "external"
+    },
+    {
+      "name": "iResidualDM",
+      "type": "double ******",
+      "pointer_depth": 6,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt1_2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt1_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt1_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt1_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt1_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt1_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt2_2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt2_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt2_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt2_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt2_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ictxt2_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "init_tv",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "k1_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "k2_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "k3_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "lambda",
+      "type": "double[30]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "length_gtv",
+      "type": "double[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "level_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "level_stdout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "maxcn_dftD",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "maxn_dftD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "memoryusage_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "monitoring_memory_usage",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "mpi_comm_level1",
+      "type": "MPI_Comm",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_pcol",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_pcol2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_pcol_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_pcol_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_pcol_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_pcol_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_pcol_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_prow",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_prow2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_prow_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_prow_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_prow_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_prow_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "my_prow_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "myworld1_DCLNO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "myworld2_DCLNO",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "n1_CN_DFT_D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "n1_DFT_D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "n2_CN_DFT_D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "n2_DFT_D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "n3_CN_DFT_D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "n3_DFT_D",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_max",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_max2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_max_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_max_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_max_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_max_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_cols_max_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_max",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_max2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_max_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_max_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_max_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_max_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "na_rows_max_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "natn",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "natn_onan",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "nblk",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "nblk2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "nblk_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "nblk_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "nblk_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "nblk_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "nblk_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ncn",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "ncn_onan1",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "ncn_onan2",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "ncn_onan3",
+      "type": "int **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "neb_type_switch",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_cols",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_cols2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_cols_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_cols_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_cols_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_cols_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_cols_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_rows",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_rows2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_rows_CWF1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_rows_CWF2",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_rows_CWF3",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_rows_CWF4",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "np_rows_CWF5",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "num_AtGr",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "num_HOMOs",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "num_LUMOs",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "num_non_eq_kpt",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "openmp_threads_eq_procs",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "openmp_threads_num",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_Force_Skip",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_History",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_MD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_SCF",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_SD_step",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_StartPulay",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_criterion",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orbitalOpt_per_MDIter",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orderN_FNAN",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "orderN_FNAN_SNAN_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orderN_Kgrid",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orderN_LNO_Buffer",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "orderN_SNAN",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "pop_anal_aow_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "pre_spin_moment",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "q1_GB",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "q2_GB",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "q3_GB",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "qgrid_Rec_Coulomb",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "r0ab_dftD",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "r2r4_dftD",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "r2r4ab_dftD",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "ratv",
+      "type": "int ***",
+      "pointer_depth": 3,
+      "storage": "external"
+    },
+    {
+      "name": "rcov_dftD",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "rcovab_dftD",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "rcut_FEB",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rcut_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "real_SpeciesNum",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "recalc_EM",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rediagonalize_flag_overlap_matrix",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rediagonalize_flag_overlap_matrix_ELPA1",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "ref_diff_charge_filename",
+      "type": "char[500]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "remake_headfile",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "restart_filename",
+      "type": "char[500]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rgtv",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rgtv_FE",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rlmax",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rlmax_EC",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "rlmax_EC2",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "rlmax_EC2_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "rlmax_EC_NAO",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "rlmax_IS",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "rtv",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "s6_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "s8_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scal6_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scale_rc_EKC",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "scf_GF_EGAC",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_convergence_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_coulomb_cutoff",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_coulomb_cutoff_CoreHole",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_dclno_threading",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_eigen_lib_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_eigen_lib_flag_input",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_fixed_origin",
+      "type": "double[4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "scf_stress_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "slater_ratio",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "specified_system",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "sr6_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "sr8_dftD",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "stress_flag",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "system_charge",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "time_per_atom",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "tv",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "tv_velocity",
+      "type": "double[4][4]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_Nkpoint",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_abc",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_electronic_band",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_kpoint",
+      "type": "double **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_kpoint_name",
+      "type": "char **",
+      "pointer_depth": 2,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_lbound",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_mapN2n",
+      "type": "int *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_nkpts",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_origin",
+      "type": "double *",
+      "pointer_depth": 1,
+      "storage": "external"
+    },
+    {
+      "name": "unfold_ubound",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "unit_dftD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "unitvector_unit",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "v_eff",
+      "type": "double ****",
+      "pointer_depth": 4,
+      "storage": "external"
+    },
+    {
+      "name": "version_dftD",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "way_of_kpoint",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "xanes_calc",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "xanes_energy_range",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "xanes_gs_file",
+      "type": "char[500]",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "xanes_gs_fileout",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "xmax_Rec_Coulomb",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "xmcd_calc",
+      "type": "int",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "xmin_Rec_Coulomb",
+      "type": "double",
+      "pointer_depth": 0,
+      "storage": "external"
+    },
+    {
+      "name": "zp",
+      "type": "dcomplex *",
+      "pointer_depth": 1,
+      "storage": "external"
+    }
+  ],
+  "revision": "4d8c7e0f"
+}

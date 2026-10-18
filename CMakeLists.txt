@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25.2)
 # The production makefiles contain deliberate per-translation-unit compiler
 # choices, OpenACC/OpenMP target flags and dependency patches. Keep those rules
 # as the build engine, with CMake providing selection, isolation and installation.
@@ -6,6 +6,15 @@ project(OpenMXGPU VERSION 4.0 LANGUAGES NONE)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(FATAL_ERROR "Use an out-of-source build: cmake -S . -B build/cuda")
+endif()
+
+include(CTest)
+option(OPENMX_BUILD_APPLICATION "Build the legacy application and its dependencies" ON)
+# The core can be developed and tested on a plain C++ host without the native
+# application's MPI, ELPA, CUDA or ROCm stack.
+add_subdirectory(core)
+if(NOT OPENMX_BUILD_APPLICATION)
+  return()
 endif()
 
 set(OPENMX_GPU_BACKEND "CUDA" CACHE STRING "GPU backend: CUDA (NVIDIA) or HIP (AMD)")
@@ -19,6 +28,10 @@ endif()
 if(NOT _backend MATCHES "^(CUDA|HIP)$")
   message(FATAL_ERROR "OPENMX_GPU_BACKEND must be CUDA or HIP")
 endif()
+string(TOUPPER "${OPENMX_CORE_BACKEND}" _core_backend)
+if(_core_backend MATCHES "^(CUDA|HIP)$" AND NOT _core_backend STREQUAL _backend)
+  message(FATAL_ERROR "The Kokkos accelerator must match OPENMX_GPU_BACKEND")
+endif()
 
 find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
 find_program(OPENMX_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
@@ -27,6 +40,7 @@ set(OPENMX_GPU_ARCH "" CACHE STRING "GPU architecture (CUDA: 120, 90; HIP: gfx94
 set(OPENMX_MAKE_OPTIONS "" CACHE STRING "Native make variable assignments separated by semicolons")
 
 set(_native_options "GPUSOLVER2_JOBS=${OPENMX_BUILD_JOBS}" ${OPENMX_MAKE_OPTIONS})
+list(APPEND _native_options "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>")
 if(_backend STREQUAL "HIP")
   list(APPEND _native_options "OPENMX_SOURCE_ROOT=${CMAKE_SOURCE_DIR}/source")
 endif()
@@ -63,13 +77,14 @@ add_custom_target(openmx ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_native}/openmx" "${CMAKE_BINARY_DIR}/openmx"
     BYPRODUCTS "${CMAKE_BINARY_DIR}/openmx"
     USES_TERMINAL VERBATIM)
+add_dependencies(openmx openmx_core)
 add_custom_target(native-clean
     COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" ${_native_options} clean
     COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_BINARY_DIR}/openmx"
     USES_TERMINAL VERBATIM)
 install(PROGRAMS "${CMAKE_BINARY_DIR}/openmx" DESTINATION bin)
+install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
-include(CTest)
 if(BUILD_TESTING)
   add_test(NAME build-backend-isolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_unified_build.py")

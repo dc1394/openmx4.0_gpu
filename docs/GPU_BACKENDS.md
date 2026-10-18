@@ -7,7 +7,7 @@ CUDA と HIP には別々のビルドディレクトリを使用してくださ�
 
 ## 必要なツールと構成
 
-CMake 3.20 以上、Python 3.8 以上、GNU make に加え、選択したバックエンドの
+CMake 3.25.2 以上、C++20 対応コンパイラ・標準ライブラリ、Python 3.8 以上、GNU make に加え、選択したバックエンドの
 コンパイラ、MPI、数値計算ライブラリが必要です。最初にリポジトリのルートで
 使用するバックエンドのサブモジュールを初期化します。HIP は GEMMul8 のみを使い、
 FFTW3 には AOCL のライブラリを使用します。
@@ -40,6 +40,14 @@ ELPA/COSMA などの変更される依存ソース・生成物をビルドごと
 共通アーカイブは `source/third_party/dist/`、AMD 用 MAGMA パッチなどは
 `source/third_party/hip/` に保存しています。
 選択結果は各ビルドディレクトリの `selected-sources.json` で確認できます。
+
+`core/` の新しい C++ モジュールは CMake が構築し、両本体へ共有ライブラリとして
+リンクします。直接 make を使う場合も、この部分には CMake が必要です。
+初回の構成時に Kokkos 5.2.2 を取得して SHA-256 を検証します。オフラインでは
+`FETCHCONTENT_SOURCE_DIR_KOKKOS` で展開済みソースを指定できます。
+コアの既定値は `OPENMX_CORE_BACKEND=SERIAL` です。PAO 動径変換も GPU で実行する場合は
+`CUDA` / `HIP` と、対応するコンパイラ・Kokkos アーキテクチャを指定します。
+詳細は [C++ / Kokkos 移行手順](CPP_CORE_MIGRATION.md) を参照してください。
 
 ## 共通コードとバックエンド境界
 
@@ -171,6 +179,8 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 | 変数 | 内容 |
 | --- | --- |
 | `OPENMX_GPU_BACKEND` | `CUDA`（既定）または `HIP`。別バックエンドには別ディレクトリを使用。 |
+| `OPENMX_CORE_BACKEND` | 新しい C++ コアの実行空間。`SERIAL`（既定）、`OPENMP`、`CUDA`、`HIP`。GPU は本体と同じバックエンドを選択。 |
+| `OPENMX_BUILD_APPLICATION` | `OFF` なら MPI や GPU SDK を必要としないコア単独ビルド。既定は `ON`。 |
 | `OPENMX_GPU_ARCH` | CUDA は `80` / `90` / `120` など、HIP は `gfx942` / `gfx1200` など。未指定時はネイティブ Makefile の検出・既定値を使用。 |
 | `OPENMX_BUILD_JOBS` | ネイティブ make の並列数。既定は `4`。 |
 | `OPENMX_MAKE_OPTIONS` | `NAME=value;NAME=value` 形式のネイティブ make 変数。シェルで引用符を付ける。 |
@@ -188,8 +198,9 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 cmake --install build/hip --prefix /path/to/install
 ```
 
-インストール対象は `bin/openmx` のみです。DFT データ、入力ファイル、起動スクリプト、
-依存ライブラリはコピーしません。実行時に参照するビルド内の依存ライブラリと、
+OpenMX のインストール対象は `bin/openmx` と `lib/libopenmx_core.so` です。
+Kokkos のインストール規則も実行されます。DFT データ、入力ファイル、起動スクリプト、
+既存の数値計算ライブラリはコピーしません。実行時に参照するビルド内の依存ライブラリと、
 ROCm / CUDA / MPI / AOCL のライブラリ配置を維持してください。
 
 ## 実行時の入力パスと MI300A
@@ -223,6 +234,8 @@ mpirun -np 8 --map-by ppr:8:node:PE=3 --bind-to core \
   "$PWD/build/hip/openmx" /absolute/path/to/input.dat -nt 3
 ```
 
+次は C++ コア導入前の AMD 検証記録です。新コアの HIP デバイス実行はまだ検証していません。
+
 2026-10-17 に Radeon RX 9060 XT（gfx1200、1 GPU）、ROCm 7.2.0、
 ROCm clang 版 OpenMPI 5.0.9、AOCL 5.2.0 で HIP 版を依存ライブラリから構築し、
 4 MPI × 4 スレッド／8 MPI × 2 スレッド（最大 16 CPU コア）で検証しました。
@@ -238,6 +251,9 @@ CPU/GPU の数値比較、S 全例、L3 代表例、Cr2 強制 GPU 対角化、E
 L/L2/L3 全例の実行・性能評価はこの検証に含みません。
 
 ## 検証
+
+新コアの単体テストは [移行手順](CPP_CORE_MIGRATION.md#テスト) を参照してください。
+以下の CTest は、コアを含むビルドの完了後に実行します。コアの GPU テストは実機を使います。
 
 ```sh
 ctest --test-dir build/cuda --output-on-failure

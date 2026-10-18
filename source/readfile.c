@@ -18,7 +18,15 @@
 #include "tran_prototypes.h"
 
 
+/* Compatibility entry point for external library callers. The CPU numerical
+   module needs no process-wide runtime; application drivers pass their owned
+   context through readfile_with_context instead. */
 double readfile(char *argv[])
+{
+  return readfile_with_context(argv,NULL);
+}
+
+double readfile_with_context(char *argv[], OpenMXCoreContext *core)
 { 
   double time0;
   double TStime,TEtime;
@@ -49,7 +57,7 @@ double readfile(char *argv[])
 
   Allocate_Arrays(2);
   Set_Allocate_Atom2CPU(0,1,0); /* for species */
-  SetPara_DFT();
+  SetPara_DFT(core);
 
   if ( TRAN_Check_Region_Lead(atomnum, WhatSpecies, Spe_Atom_Cut1, Gxyz, tv)==0 ) {
     printf("\n\nERROR: PAOs of lead atoms can overlap only to the next nearest region.\n\n");

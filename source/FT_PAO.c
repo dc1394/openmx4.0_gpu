@@ -21,29 +21,32 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "mpi.h"
-#include <omp.h>
+#include "openmx_gpu_device.h"
 
 
 
-void FT_PAO()
+/* The legacy boundary supplies orbital data explicitly to the C++ module.
+   Sampling and committing run on the host; all temporary ownership and
+   numerical execution belong to the module. */
+static double pao_sample(void *user, int angular, int multiplicity, double radius)
 {
-  int numprocs,myid,ID,tag=999;
-  int count,NumSpe;
-  int i,j,kj,num_k;
-  int Lspe,spe,GL,Mul,LB;
+  const int species = *(const int*)user;
+  return RadialF(species,angular,multiplicity,radius);
+}
+
+static void pao_store(void *user, int angular, int multiplicity, int k, double value)
+{
+  const int species = *(const int*)user;
+  Spe_RF_Bessel[species][angular][multiplicity][k] = value;
+}
+
+void FT_PAO(OpenMXCoreContext *core)
+{
+  int numprocs,myid,ID,NumSpe;
+  int i,num_k,Lspe,spe,GL,Mul;
   int RestartRead_Succeed;
-  double dk,norm_k,h;
-  double rmin,rmax,r,r2,r3,sum;
-  double sy,sjp,syp;
-  double Sr,Dr,dum0;
-  double **SphB,***TmpRF;
-  double *tmp_SphB,*tmp_SphBp;
+  double dk,h,rmin,rmax;
   double TStime, TEtime;
-  /* for MPI */
-  MPI_Status stat;
-  MPI_Request request;
-  /* for OpenMP */
-  int OMPID,Nthrds,Nprocs;
 
   char fileFT[YOUSO10];
   char operate[300];
@@ -121,110 +124,20 @@ void FT_PAO()
       rmax = Spe_Atom_Cut1[spe] + 0.5;
       h = (rmax - rmin)/(double)OneD_Grid;
 
-      /* calculation of RadialF */
-
-      TmpRF = (double***)malloc(sizeof(double**)*(Spe_MaxL_Basis[spe]+1));
-      for (GL=0; GL<(Spe_MaxL_Basis[spe]+1); GL++){
-	TmpRF[GL] = (double**)malloc(sizeof(double*)*Spe_Num_Basis[spe][GL]);
-	for (Mul=0; Mul<Spe_Num_Basis[spe][GL]; Mul++){
-	  TmpRF[GL][Mul] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-	}  
-      }
-
-      for (GL=0; GL<=Spe_MaxL_Basis[spe]; GL++){
-	for (Mul=0; Mul<Spe_Num_Basis[spe][GL]; Mul++){
-	  for (i=0; i<=OneD_Grid; i++){
-     	    r = rmin + (double)i*h;
-	    TmpRF[GL][Mul][i] = RadialF(spe,GL,Mul,r);
-	  } 
-	}
-      }
-
-      /* kj loop */
-
-#pragma omp parallel shared(List_YOUSO,num_k,dk,spe,rmin,rmax,h,Spe_PAO_RV,Spe_Atom_Cut1,OneD_Grid,Spe_MaxL_Basis,Spe_Num_Basis,Spe_RF_Bessel,TmpRF)  private(OMPID,Nthrds,Nprocs,kj,norm_k,i,r,r2,tmp_SphB,tmp_SphBp,GL,SphB,Mul,sum,LB)
       {
-
-	/* allocation of arrays */
-
-	SphB = (double**)malloc(sizeof(double*)*(Spe_MaxL_Basis[spe]+3));
-	for(GL=0; GL<(Spe_MaxL_Basis[spe]+3); GL++){ 
-	  SphB[GL] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-	}
-
-	tmp_SphB  = (double*)malloc(sizeof(double)*(List_YOUSO[25]*2+3));
-	tmp_SphBp = (double*)malloc(sizeof(double)*(List_YOUSO[25]*2+3));
-
-	/* get info. on OpenMP */ 
-
-	OMPID = omp_get_thread_num();
-	Nthrds = omp_get_num_threads();
-	Nprocs = omp_get_num_procs();
-
-	for ( kj=OMPID; kj<num_k; kj+=Nthrds ){
-
-	  norm_k = (double)kj*dk;
-
-	  /* calculate SphB */
-
-	  for (i=0; i<=OneD_Grid; i++){
-
-	    r = rmin + (double)i*h;
-	    Spherical_Bessel(norm_k*r,Spe_MaxL_Basis[spe],tmp_SphB,tmp_SphBp);
-
-	    r2 = r*r;
-	    for(GL=0; GL<=Spe_MaxL_Basis[spe]; GL++){ 
-	      SphB[GL][i] = tmp_SphB[GL]*r2; 
-	    }
-	  }
-
-	  for(GL=0; GL<=Spe_MaxL_Basis[spe]; GL++){ 
-	    SphB[GL][0] *= 0.5;
-	    SphB[GL][OneD_Grid] *= 0.5;
-	  }
-
-	  /* loof for GL and Mul */
-
-	  for (GL=0; GL<=Spe_MaxL_Basis[spe]; GL++){
-	    for (Mul=0; Mul<Spe_Num_Basis[spe][GL]; Mul++){
-	      /****************************************************
-                        \int jL(k*r)RL r^2 dr 
-	      ****************************************************/
-
-	      /* trapezoidal rule */
-
-	      sum = 0.0;
-	      for (i=0; i<=OneD_Grid; i++){
-	        sum += TmpRF[GL][Mul][i]*SphB[GL][i];
-	      } 
-	      Spe_RF_Bessel[spe][GL][Mul][kj] = sum*h;
-
-	    } /* Mul */
-	  } /* GL */
-
-	} /* kj */
-
-	/* free SphB */
-
-	for(GL=0; GL<(Spe_MaxL_Basis[spe]+3); GL++){ 
-	  free(SphB[GL]);
-	}
-	free(SphB);
-
-	free(tmp_SphB);
-	free(tmp_SphBp);
-
-      } /* #pragma omp parallel */
-
-      /* free TmpRF */
-
-      for (GL=0; GL<(Spe_MaxL_Basis[spe]+1); GL++){
-	for (Mul=0; Mul<Spe_Num_Basis[spe][GL]; Mul++){
-	  free(TmpRF[GL][Mul]);
-	}  
-        free(TmpRF[GL]);
+        int device = -1;
+        char error[256];
+        if (core && openmx_core_has_accelerator() &&
+            scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable())
+          device = OpenMXGpuBindRankLocal();
+        if (!openmx_core_pao_transform(core,device,Spe_MaxL_Basis[spe],
+              Spe_Num_Basis[spe],OneD_Grid,num_k,rmin,h,dk,&spe,
+              pao_sample,pao_store,error,sizeof(error))) {
+          fprintf(stderr,"FT_PAO: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
       }
-      free(TmpRF);
 
     } /* Lspe */
 

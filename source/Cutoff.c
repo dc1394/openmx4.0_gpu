@@ -5,7 +5,6 @@
 #include "mpi.h"
 
 
-static int factorize(int num0, int N, int *fund, int *pow, int must );
 
 void Determine_Cell_from_ECutoff(double tv[4][4], double ECut)
 {
@@ -16,7 +15,6 @@ void Determine_Cell_from_ECutoff(double tv[4][4], double ECut)
   *********************************************************/
    
   double a,len;
-  int pow[4],must[4];
   int i,j,k,Scale[4];
 
   int myid,numprocs;
@@ -40,9 +38,6 @@ void Determine_Cell_from_ECutoff(double tv[4][4], double ECut)
  
   a=PI/sqrt(ECut);
 
-  must[1]=1;
-  must[2]=1;
-  must[3]=1;
 
   for (i=1; i<=3; i++) {
      /* printf("axis=%d\n",i); */
@@ -52,7 +47,7 @@ void Determine_Cell_from_ECutoff(double tv[4][4], double ECut)
      /* factorize */     
      for (j=Scale[i]; ; j++) {
         /* printf("try %d\n",j); */
-        if ( factorize(j, NfundamentalNum,fundamentalNum,pow,must[i])
+        if ( openmx_core_fft_grid_supported(j)
              && ( (double)(a*j) >=len) ) {
 
            break; 
@@ -87,64 +82,6 @@ void Determine_Cell_from_ECutoff(double tv[4][4], double ECut)
   }
 
 }
-
-
-int factorize(int num0, int N, int *fund, int *pow, int must )
-{
-  int i;
-  int a,b;
-  int num;
-  int ret;
-
-  /* must exclude  division 0 */
-  if (must==0)  return 0;
-
-  if (must==1) {
-
-    for (i=0;i<N;i++) {
-      pow[i] = 0;
-    }
-
-  }
-  else {
-    num=num0%must;
-    if ( num==0 ) {
-      ret=factorize(  must, N, fund, pow, 1);
-      if (ret==0) {
-	return ret;
-      }
-    }
-    else {
-      return 0;
-    }
-  }
-
-  num=num0/must ;
-  for (i=0; i<N; i++) {
-    while (1) {
-      b = num%fund[i];
-
-      if (b==0) {
-	num /= fund[i];
-	pow[i]++;
-      }
-      else {
-	break;
-      }
-    }
-
-  }
-
-  if (num==1) {
-    return num0;
-  }
-  else {
-    return 0;
-  }
-
-}
- 
-
 
 
 #if 0

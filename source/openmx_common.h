@@ -2,6 +2,8 @@
 #define _OPENMX_COMMON_H_
 
 #include "openmx_gpu_backend.h"
+#include "openmx_core.h"
+#include "openmx_periodic.h"
 #include "openmx_gpu_blas.h"
 #include "openmx_gpu_complex.h"
 #include "openmx_gpu_runtime.h"
@@ -16,7 +18,6 @@
 
 #include <stdbool.h>
 
-static char Version_OpenMX[30] = "4.0 GPU"; /* version of OpenMX */
 #ifdef LEAK_DETECT
 #include "leakdetect.h"
 #endif
@@ -101,9 +102,6 @@ typedef struct { double r,i; } dcomplex;
 #define ___dcomplex_definition___ 
 #endif
 
-/* FFT radix */
-static int NfundamentalNum=4;
-static int fundamentalNum[4]={2,3,5,7};
 
 #ifndef __sqr_definition___
 #define sqr(x)   ( (x)*(x) )
@@ -796,15 +794,6 @@ double **Wt_EH0;
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
 double **atv;
-
-/*******************************************************
- int **ratv;
-  queue number of periodically copied cells
-  size: ratv[TCpyCell*2+4][TCpyCell*2+4][TCpyCell*2+4];
-  allocation: in Set_Periodic() of truncation.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-int ***ratv;
 
 /*******************************************************
  int **atv_ijk;
@@ -3042,7 +3031,7 @@ double *SVals_Coulomb,*SVecs_U_Coulomb,*SVecs_V_Coulomb,*qgrid_Rec_Coulomb;
 
 void Show_DFT_DATA(char *argv[]);
 void Maketest(char *mode, int argc, char *argv[]);
-void Runtest(char *mode, int argc, char *argv[]);
+void Runtest(char *mode, int argc, char *argv[], OpenMXCoreContext *core);
 void Memory_Leak_test(int argc, char *argv[]);
 void Get_VSZ(int MD_iter);
 void Get_VSZ2(int MD_iter);
@@ -3316,7 +3305,7 @@ void xyz2spherical(double x, double y, double z,
                    double xo, double yo, double zo,
                    double S_coordinate[3]);
 int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double *****CntH, double *etime);
-void FT_PAO();
+void FT_PAO(OpenMXCoreContext *core);
 void FT_NLP();
 void FT_ProExpn_VNA();
 void FT_VNA();
@@ -3517,8 +3506,8 @@ void Voronoi_Orbital_Moment();
 
 double Fuzzy_Weight(int ct_AN, int Mc_AN, int Rn, double x, double y, double z);
 
-void neb(int argc, char *argv[]);
-void neb_run(char *argv[], MPI_Comm mpi_commWD, int index_images, double ***neb_atom_coordinates,
+void neb(int argc, char *argv[], OpenMXCoreContext *core);
+void neb_run(OpenMXCoreContext *core, char *argv[], MPI_Comm mpi_commWD, int index_images, double ***neb_atom_coordinates,
              int *WhatSpecies_NEB, int *Spe_WhatAtom_NEB, char **SpeName_NEB);
 int neb_check(char *argv[]); 
 
@@ -3580,6 +3569,7 @@ void Calc_NAO_Krylov(double *****Hks, double ****OLP0, double *****CDM);
 /*-----------------------------------------------------------------------*/
 
 double readfile(char *argv[]);
+double readfile_with_context(char *argv[], OpenMXCoreContext *core);
 void Input_std(char *filename);
 
 double truncation(int MD_iter, int UCell_flag);
@@ -4199,7 +4189,7 @@ void Find_CGrids(int Real_Position, int n1, int n2, int n3,
 void Diamond_structure(double aa);
 void HCP_structure(double aa, double coa);
 void FCC_structure(double aa);
-void SetPara_DFT();
+void SetPara_DFT(OpenMXCoreContext *core);
 void Output_CompTime();
 void Output_Energy_Decomposition();
 void Make_FracCoord(char *file);

@@ -187,7 +187,13 @@ void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, doubl
     n = 2*CpyCell + 4;
     for (i=0; i<n; i++){
       for (j=0; j<n; j++){
-        fwrite(ratv[i][j],sizeof(int),n,fp);
+        /* Preserve the legacy file dimensions. Padding had no defined
+           value in the old allocation; write an explicit invalid index. */
+        int k;
+        for (k=0; k<n; ++k) {
+          int cell = openmx_periodic_index(CpyCell,i-CpyCell,j-CpyCell,k-CpyCell);
+          fwrite(&cell,sizeof(cell),1,fp);
+        }
       }
     }
 

@@ -25,7 +25,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   int numprocs,myid;
   char *argv[2];
   double TStime,TEtime;
-  static char fileMemory[YOUSO10]; 
+  char fileMemory[YOUSO10];
   char input_file_buf[YOUSO10];
 
   /* MPI set-up */
@@ -59,7 +59,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
     the NEB calculation.
   *******************************************************/
 
-  if (neb_check(argv)) neb(argc,argv);
+  if (neb_check(argv)) { neb(argc,argv,NULL); return 0; }
 
   /*******************************************************
    allocation of CompTime and show the greeting message 
@@ -74,7 +74,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   if (myid==Host_ID){  
     printf("\n*******************************************************\n"); 
     printf("*******************************************************\n"); 
-    printf(" Welcome to OpenMX   Ver. %s                           \n",Version_OpenMX); 
+    printf(" Welcome to OpenMX   Ver. %s                           \n",openmx_core_version());
     printf(" Copyright (C), 2002-2026, T. Ozaki                    \n"); 
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n"); 
     printf(" This is free software, and you are welcome to         \n"); 

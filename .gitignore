@@ -91,4 +91,5 @@ __pycache__/
 
 # Documentation shipped with the integrated AMD backend
 !/docs/GPU_BACKENDS.md
+!/docs/CPP_CORE_MIGRATION.md
 !/source/third_party/hip/*.md

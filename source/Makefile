@@ -370,6 +370,8 @@ OBJS += openmx_gpu_vector.o
 OBJS += openmx_gpu_task.o
 OBJS += openmx_gpu_bilinear.o openmx_gpu_bilinear_pack.o
 
+include openmx_core.mk
+
 # These interfaces also reach legacy objects through openmx_common.h.
 # Rebuild consumers when a native API mapping or backend selection changes.
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \

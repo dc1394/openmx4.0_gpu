@@ -78,7 +78,7 @@ int PN;
 
 
 
-void neb(int argc, char *argv[])
+void neb(int argc, char *argv[], OpenMXCoreContext *core)
 { 
   int iter,index_images;
   int po,i,j,k,p,h;
@@ -123,8 +123,9 @@ void neb(int argc, char *argv[])
 
   if (argc==1){
     printf("\nCould not find an input file.\n\n");
+    openmx_core_finish(core);
     MPI_Finalize(); 
-    exit(0);
+    return;
   } 
 
   /****************************************************
@@ -277,7 +278,7 @@ void neb(int argc, char *argv[])
 	  sprintf(fname1,"%s_%i",fname_original,index_images);
 	  argv[1] = fname1;
 	
-	  neb_run( argv,MPI_CommWD2[myworld2],index_images,neb_atom_coordinates,
+	  neb_run( core,argv,MPI_CommWD2[myworld2],index_images,neb_atom_coordinates,
 		   WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	
 	  /* find a representative ID in the top world for ID=0 in the world2 */
@@ -321,14 +322,14 @@ void neb(int argc, char *argv[])
 	  index_images = 0;
 	  sprintf(fname1,"%s_%i",fname_original,index_images);
 	  argv[1] = fname1;
-	  neb_run( argv,MPI_COMM_WORLD1,index_images,neb_atom_coordinates,
+	  neb_run( core,argv,MPI_COMM_WORLD1,index_images,neb_atom_coordinates,
 		   WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 
 	  /* SCF calculation of a terminal with the index of (NEB_Num_Images + 1) */
 	  index_images = NEB_Num_Images + 1;
 	  sprintf(fname1,"%s_%i",fname_original,index_images);
 	  argv[1] = fname1;
-	  neb_run( argv,MPI_COMM_WORLD1,index_images,neb_atom_coordinates,
+	  neb_run( core,argv,MPI_COMM_WORLD1,index_images,neb_atom_coordinates,
 		   WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	}
 
@@ -379,7 +380,7 @@ void neb(int argc, char *argv[])
 	  sprintf(fname1,"%s_%i",fname_original,myworld1+1);
 	  argv[1] = fname1;
 	  dtime(&flatstime);
-	  neb_run( argv,MPI_CommWD1[myworld1],myworld1+1,neb_atom_coordinates,
+	  neb_run( core,argv,MPI_CommWD1[myworld1],myworld1+1,neb_atom_coordinates,
 		   WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	  dtime(&flatetime);
 	  sumtime += (flatetime-flatstime);	
@@ -440,7 +441,7 @@ void neb(int argc, char *argv[])
 	    
 	    sprintf(fname1,"%s_%i",fname_original,p);
 	    argv[1] = fname1;
-	    neb_run( argv,MPI_COMM_WORLD1,p,neb_atom_coordinates, 
+	    neb_run( core,argv,MPI_COMM_WORLD1,p,neb_atom_coordinates,
 		     WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	    
 	    /* store Grid_Origin */
@@ -525,8 +526,10 @@ void neb(int argc, char *argv[])
      leak_detect_check();
 #endif
 
+      openmx_core_finish(core);
+
       MPI_Finalize();
-      exit(0);
+      return;
 
     } /* if ( NEB_Num_Images<=numprocs || numprocs==1 ) */
 
@@ -630,7 +633,7 @@ void neb(int argc, char *argv[])
 	  sprintf(fname1,"%s_%i",fname_original,index_images);
 	  argv[1] = fname1;
       
-	  neb_run( argv,MPI_CommWD2[myworld2],index_images,neb_atom_coordinates,
+	  neb_run( core,argv,MPI_CommWD2[myworld2],index_images,neb_atom_coordinates,
 		   WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 
 	  /* find a representative ID in the top world for ID=0 in the world2 */
@@ -735,7 +738,7 @@ void neb(int argc, char *argv[])
 	  }
 	  argv[1] = fname1;
 	  if((h==g) && (g==syou+1)){
-	    neb_run( argv,MPI_CommWD3[myworld3],myworld3+1+(h-1)*numprocs,neb_atom_coordinates,
+	    neb_run( core,argv,MPI_CommWD3[myworld3],myworld3+1+(h-1)*numprocs,neb_atom_coordinates,
 		     WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	    
 	    if (myid3==Host_ID){
@@ -745,7 +748,7 @@ void neb(int argc, char *argv[])
 	    }
 	  }
 	  else{
-	    neb_run( argv,MPI_CommWD1[myworld1],myworld1+1+(h-1)*numprocs,neb_atom_coordinates,
+	    neb_run( core,argv,MPI_CommWD1[myworld1],myworld1+1+(h-1)*numprocs,neb_atom_coordinates,
 		     WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	    
 	    if(h==1){
@@ -899,8 +902,10 @@ void neb(int argc, char *argv[])
      leak_detect_check();
 #endif
 
+      openmx_core_finish(core);
+
       MPI_Finalize();
-      exit(0); 
+      return;
     } 
 
   } /* if (PN==0) */
@@ -927,8 +932,10 @@ void neb(int argc, char *argv[])
 
       if (myid==Host_ID) printf("PN is larger than the number of MPI processes.\n");
 
+      openmx_core_finish(core);
+
       MPI_Finalize();
-      exit(0);
+      return;
     }
     
     parallel1_flag = 1; 
@@ -1015,7 +1022,7 @@ void neb(int argc, char *argv[])
 	  sprintf(fname1,"%s_%i",fname_original,index_images);
 	  argv[1] = fname1;
 
-          neb_run( argv,MPI_COMM_WORLD1,index_images,neb_atom_coordinates,
+          neb_run( core,argv,MPI_COMM_WORLD1,index_images,neb_atom_coordinates,
     	           WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	}
       }
@@ -1034,7 +1041,7 @@ void neb(int argc, char *argv[])
 	sprintf(fname1,"%s_%i",fname_original,index_images);
 	argv[1] = fname1;
       
-	neb_run( argv,MPI_CommWD2[myworld2],index_images,neb_atom_coordinates,
+	neb_run( core,argv,MPI_CommWD2[myworld2],index_images,neb_atom_coordinates,
 		 WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 
 	/* find a representative ID in the top world for ID=0 in the world2 */
@@ -1146,7 +1153,7 @@ void neb(int argc, char *argv[])
 
 	if ( h==g && g==(syou+1) ){
 
-	  neb_run( argv,MPI_CommWD3[myworld3],myworld3+1+(h-1)*PN,neb_atom_coordinates,
+	  neb_run( core,argv,MPI_CommWD3[myworld3],myworld3+1+(h-1)*PN,neb_atom_coordinates,
 		   WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 	  
 	  if (myid3==Host_ID){
@@ -1158,7 +1165,7 @@ void neb(int argc, char *argv[])
 
 	else{
 
-	  neb_run( argv,MPI_CommWD1[myworld1],myworld1+1+(h-1)*PN,neb_atom_coordinates,
+	  neb_run( core,argv,MPI_CommWD1[myworld1],myworld1+1+(h-1)*PN,neb_atom_coordinates,
 		   WhatSpecies_NEB,Spe_WhatAtom_NEB,SpeName_NEB );
 
 	  if(h==1){
@@ -1311,8 +1318,10 @@ void neb(int argc, char *argv[])
      leak_detect_check();
 #endif
 
+    openmx_core_finish(core);
+
     MPI_Finalize();
-    exit(0); 
+    return;
   }
 }
 

@@ -18,6 +18,26 @@ dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
 
+The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
+application to C++, explicit ownership and Kokkos. The new `core/` library
+contains the PAO radial transform, spherical Bessel functions and FFT-grid
+validation; periodic-cell inverse indexing no longer uses a global array.
+Host tensors own contiguous storage and expose Kokkos/mdspan views, or
+`std::mdspan` when the compiler and standard library support it. This is the
+first migration stage; most application globals and legacy GPU kernels remain.
+See the [C++ core migration guide](docs/CPP_CORE_MIGRATION.md) for ownership,
+CUDA/HIP configuration, tests and the remaining work.
+
+The core defaults to the Serial backend independently of the legacy GPU
+backend. Set `OPENMX_CORE_BACKEND=CUDA` or `HIP` to run its PAO transform
+on the selected accelerator. Its unit tests can also run without MPI or a GPU:
+
+```sh
+cmake -S . -B build/core-host -DOPENMX_BUILD_APPLICATION=OFF
+cmake --build build/core-host --parallel 4
+ctest --test-dir build/core-host --output-on-failure
+```
+
 Both backends use the same GPU worker, memory-view, density-matrix, dense
 transform, multi-GPU GEMM and MAGMA transaction code in `source/`. The
 `openmx_gpu_*.h` interfaces select native CUDA or HIP APIs at compile time.
@@ -348,12 +368,13 @@ Installed on the build machine:
 
 - **NVIDIA build**: the NVIDIA HPC SDK (nvc, nvc++ and nvfortran, its Open MPI, and its LP64 ScaLAPACK, LAPACK and BLAS) with a CUDA toolkit. The default is HPC SDK 26.9 with CUDA 13.4; CUDA 12.3 or later is supported.
 - **AMD build**: ROCm (clang, hipcc, flang and OpenMP offload), AOCL (BLIS, libFLAME, ScaLAPACK, FFTW3 and AOCL Utilities) and an MPI built with ROCm's flang. See [GPU backend build instructions](docs/GPU_BACKENDS.md).
-- **Both**: GNU make, gcc/g++, Python 3.8 or later, and CMake 3.20 or later for the CMake workflow. The bundled ELPA needs autoconf 2.71 or later, automake, libtool, m4, python3 and unzip. MAGMA's build needs `patch`, and in the NVIDIA build also CMake 3.18 or later with CUDA support. The NVIDIA build of FFTW3 needs `rsync`.
+- **Both**: GNU make, a C++20 compiler and standard library for the new core, Python 3.8 or later, and CMake 3.25.2 or later (also used by direct make to build the core). The bundled ELPA needs autoconf 2.71 or later, automake, libtool, m4, python3 and unzip. MAGMA's build needs `patch`, and in the NVIDIA build also CMake with CUDA support. The NVIDIA build of FFTW3 needs `rsync`.
 
-Built by the first `make`:
+Built during configuration or the first build:
 
 | Library | Version | Used for | Backend | Location |
 |---|---|---|---|---|
+| Kokkos / bundled mdspan | 5.2.2 | C++ core execution and multidimensional views | Serial, OpenMP, CUDA or HIP | CMake FetchContent; pinned release and SHA-256 in `core/CMakeLists.txt` |
 | ELPA | 2026.02.002 | CPU eigensolvers ("elpa1", "elpa2") and "gpusolver2" | both | `source/third_party/dist/` |
 | COSMA, COSTA, Tiled-MM | 2.8.4 and the commits it pins | distributed matrix products of "gpusolver2" | both | `source/third_party/dist/` |
 | GEMMul8 | v3.5.2 | FP64 matrix products emulated on integer tensor cores | both | Git submodule `source/third_party/GEMMul8` |
@@ -362,8 +383,11 @@ Built by the first `make`:
 | CMake | 3.31.12 | building COSMA when the system CMake is older than 3.24 | both | `source/third_party/dist/` |
 
 Initialize the submodules with `git submodule update --init --recursive`;
-the AMD build needs only GEMMul8. After that the stock Makefile and the
-CMake workflow need no network access. FFTW3's Git sources lack its
+the AMD build needs only GEMMul8. The first core configuration downloads
+Kokkos. For an offline build, provide the extracted pinned release using
+`-DFETCHCONTENT_SOURCE_DIR_KOKKOS=/absolute/path/to/kokkos-5.2.2`
+(direct make: pass it in `OPENMX_CORE_CMAKE_OPTIONS`). After that the stock
+Makefile and the CMake workflow need no network access. FFTW3's Git sources lack its
 generated codelets and `configure`, so the build adds them from the bundled
 3.3.11 release tarball after checking its SHA-256. It downloads the tarball
 from fftw.org only when that file is missing. `Makefile.kugui` also builds
@@ -390,9 +414,10 @@ For the Kugui A100 environment used for the current validation:
 
 ```sh
 cd source
-# First build only: the site's CMake 3.20.2 is below COSMA's 3.24 minimum.
+# First build only: the site's CMake 3.20.2 is below the core's 3.25.2 minimum.
 python3.9 -m pip install --target build/cmake-python 'cmake==3.31.10'
 make -f Makefile.kugui -j3 GPUSOLVER2_JOBS=3 \
+  OPENMX_CORE_CMAKE="$PWD/build/cmake-python/cmake/data/bin/cmake" \
   GPUSOLVER2_CMAKE="$PWD/build/cmake-python/cmake/data/bin/cmake"
 ```
 
@@ -405,6 +430,10 @@ bootstraps its bundled CMake instead. Use one build at a time: `-j8` hit the
 login environment's 500-thread quota during this validation. On another installation, select its SDK/MPI paths and
 pass `GEMMUL8_GPU_ARCH=80` to the normal Makefile. GPU tests run in an
 allocated GPU job.
+
+The site validation above predates this C++ migration. The core additionally
+needs a C++20 compiler (`OPENMX_CORE_CXX=/path/to/g++` for direct make);
+the updated branch has not yet been revalidated on Kugui.
 
 ### HPC SDK 26.9 / CUDA 13.4 update
 
@@ -789,6 +818,14 @@ extracted sources: `source/third_party/magma-device-map.patch` (NVIDIA:
 maps MAGMA's logical GPU numbers to the selected Band GPU group) and
 `source/third_party/hip/magma-ozaki2.patch` (AMD: routes the matrix
 products of the eigensolvers through GEMMul8's Ozaki-II emulation).
+
+#### Kokkos and bundled mdspan
+
+The C++ core uses [Kokkos 5.2.2](https://github.com/kokkos/kokkos/releases/tag/5.2.2)
+and its bundled mdspan headers. Both carry `Apache-2.0 WITH LLVM-exception`
+notices. The release's `LICENSE` is retained in the fetched source and installed
+as `share/licenses/openmx_core/Kokkos-LICENSE`. The source URL and SHA-256 are
+pinned in `core/CMakeLists.txt`.
 
 #### CMake (build tool)
 

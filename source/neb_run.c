@@ -24,13 +24,13 @@
 
 
 
-void neb_run(char *argv[], MPI_Comm mpi_commWD, int index_images, double ***neb_atom_coordinates,
+void neb_run(OpenMXCoreContext *core, char *argv[], MPI_Comm mpi_commWD, int index_images, double ***neb_atom_coordinates,
              int *WhatSpecies_NEB, int *Spe_WhatAtom_NEB, char **SpeName_NEB) 
 {
   int i,j,k,MD_iter; 
   int numprocs,myid;
   double TStime,TEtime;
-  static char fileMemory[YOUSO10]; 
+  char fileMemory[YOUSO10];
 
   mpi_comm_level1 = mpi_commWD;
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -64,7 +64,7 @@ void neb_run(char *argv[], MPI_Comm mpi_commWD, int index_images, double ***neb_
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
   init_alloc_first();
-  CompTime[myid][1] = readfile(argv);
+  CompTime[myid][1] = readfile_with_context(argv,core);
 
   /*
   if (index_images==8){

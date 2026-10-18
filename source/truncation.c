@@ -205,7 +205,7 @@ double truncation(int MD_iter,int UCell_flag)
 
        In Set_Periodic(CpyCell,0)
          allocation of arrays:
-            ratv           (global)
+            periodic cell indices (computed)
             atv            (global
             atv_ijk        (global)
             and
@@ -219,7 +219,7 @@ double truncation(int MD_iter,int UCell_flag)
 
        In Free_truncation(CpyCell,TCpyCell,0)
          freeing of arrays:
-            ratv           (global)
+            periodic cell indices (computed)
             atv            (global)
             atv_ijk        (global)
 
@@ -4064,7 +4064,7 @@ void Set_RMI()
                   setting of RMI matrix
   ****************************************************/
 
-#pragma omp parallel shared(time_per_atom,RMI2,RMI1,ratv,CpyCell,atv_ijk,ncn,natn,WhatSpecies,SNAN,FNAN,M2G) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,fan,san,can,wan,i,ig,Rni,j,jg,Rnj,l1,l2,l3,m1,m2,m3,Rn,i_rlt,k,po,Etime_atom)
+#pragma omp parallel shared(time_per_atom,RMI2,RMI1,CpyCell,atv_ijk,ncn,natn,WhatSpecies,SNAN,FNAN,M2G) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,fan,san,can,wan,i,ig,Rni,j,jg,Rnj,l1,l2,l3,m1,m2,m3,Rn,i_rlt,k,po,Etime_atom)
   {
 
     /* get info. on OpenMP */ 
@@ -4101,7 +4101,7 @@ void Set_RMI()
 
 	  if (m1<=CpyCell && m2<=CpyCell && m3<=CpyCell){
 
-	    Rn = ratv[l1+CpyCell][l2+CpyCell][l3+CpyCell];
+	    Rn = openmx_periodic_index(CpyCell,l1,l2,l3);
 
 	    /* FNAN */
 
@@ -4488,7 +4488,7 @@ static int UCellBox_OLG_GPU_Part(int first,int last,int myid,int estimate_switch
     for (k = 0; k < rdim; k++) {
       int l;
       for (l = 0; l < rdim; l++) {
-        ratv_flat[((size_t)m*rdim + (size_t)k)*rdim + (size_t)l] = ratv[m][k][l];
+        ratv_flat[((size_t)m*rdim + (size_t)k)*rdim + (size_t)l] = openmx_periodic_index(CpyCell,m-CpyCell,k-CpyCell,l-CpyCell);
       }
     }
   }
@@ -4719,7 +4719,7 @@ static int UCellBox_OLG_GPU(int estimate_switch,int CpyCell,int **grid,int **cel
     return 0;
   }
   for(int i=0;i<=TCpyCell;i++)for(int a=0;a<3;a++)atvf[3*i+a]=atv_ijk[i][a+1];
-  for(int a=0;a<rdim;a++)for(int b=0;b<rdim;b++)for(int c=0;c<rdim;c++)ratvf[((size_t)a*rdim+b)*rdim+c]=ratv[a][b][c];
+  for(int a=0;a<rdim;a++)for(int b=0;b<rdim;b++)for(int c=0;c<rdim;c++)ratvf[((size_t)a*rdim+b)*rdim+c]=openmx_periodic_index(CpyCell,a-CpyCell,b-CpyCell,c-CpyCell);
   for(;;){
     int pending=mc<=Matomnum,any;
     MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);if(!any)break;
@@ -6058,11 +6058,16 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
 int Set_Periodic(int CpyN, int Allocate_switch)
 {
-  static int firsttime=1;
-  int i,j,n,n2,TN;
+  int i,TN;
   long n3;
 
-  TN = (2*CpyN+1)*(2*CpyN+1)*(2*CpyN+1) - 1;
+  TN = openmx_periodic_count(CpyN);
+  if (TN < 0) {
+    fprintf(stderr,"Invalid periodic-cell radius: %d\n",CpyN);
+    MPI_Abort(mpi_comm_level1,1);
+    return -1;
+  }
+  --TN;
 
   if (Allocate_switch==0){
 
@@ -6075,26 +6080,12 @@ int Set_Periodic(int CpyN, int Allocate_switch)
       atv[i] = (double*)malloc(sizeof(double)*4);
     }
 
-    n = 2*CpyN + 4;
-    ratv = (int***)malloc(sizeof(int**)*n);
-    for (i=0; i<n; i++){
-      ratv[i] = (int**)malloc(sizeof(int*)*n);
-      for (j=0; j<n; j++){
-	ratv[i][j] = (int*)malloc(sizeof(int)*n);
-      }
-    }
-    if (firsttime) 
-    PrintMemory("Set_Periodic: ratv",sizeof(int)*n*n*n,NULL);
-
     atv_ijk = (int**)malloc(sizeof(int*)*(TN+1));
     for (i=0; i<(TN+1); i++){
       atv_ijk[i] = (int*)malloc(sizeof(int)*4);
     }
 
     alloc_first[7] = 0;
-
-    /* for PrintMemory */
-    firsttime=0;
 
     /****************************************************
            setting of parameters of periodic cells
@@ -6130,16 +6121,6 @@ void Free_truncation(int CpyN, int TN, int Free_switch)
         free(atv[i]);
       }
       free(atv);
-
-      n = 2*CpyN + 4;
-
-      for (i=0; i<n; i++){
-        for (j=0; j<n; j++){
-	  free(ratv[i][j]);
-        }
-        free(ratv[i]);
-      }
-      free(ratv);
 
       for (i=0; i<(TN+1); i++){
         free(atv_ijk[i]);
@@ -8468,7 +8449,6 @@ void free_arrays_truncation0()
   /****************************************************
     freeing of arrays:
 
-      ratv
       atv
       atv_ijk
   ****************************************************/
@@ -8479,14 +8459,6 @@ void free_arrays_truncation0()
       free(atv[i]);
     }
     free(atv);
-
-    for (i=0; i<(2*CpyCell+4); i++){
-      for (j=0; j<(2*CpyCell+4); j++){
-	free(ratv[i][j]);
-      }
-      free(ratv[i]);
-    }
-    free(ratv);
 
     for (i=0; i<(TCpyCell+1); i++){
       free(atv_ijk[i]);
@@ -11548,7 +11520,7 @@ void Construct_ONAN()
 
         if (m1<=CpyCell && m2<=CpyCell && m3<=CpyCell){
 
-          Rn = ratv[l1+CpyCell][l2+CpyCell][l3+CpyCell];
+          Rn = openmx_periodic_index(CpyCell,l1,l2,l3);
 
           /* RMI1_EGAC */
 

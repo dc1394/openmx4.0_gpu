@@ -1,0 +1,13 @@
+add_executable(openmx_core_tests test_core.cpp)
+target_link_libraries(openmx_core_tests PRIVATE OpenMX::core)
+if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
+  set_source_files_properties(test_core.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+endif()
+foreach(_case tensor periodic fft-grid bessel radial-host cpu-request radial-execution c-api lifecycle borrowed-runtime)
+  add_test(NAME "core-${_case}" COMMAND openmx_core_tests "${_case}")
+  set_tests_properties("core-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
+endforeach()
+if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
+  set_tests_properties(core-radial-execution core-c-api core-lifecycle core-borrowed-runtime
+    PROPERTIES LABELS "unit;core;gpu" RESOURCE_LOCK openmx_core_gpu)
+endif()

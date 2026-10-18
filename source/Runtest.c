@@ -30,6 +30,8 @@
 
 
 int run_main(int argc, char *argv[], int numprocs0, int myid0);
+static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid0,
+                                 OpenMXCoreContext *core);
 int stringcomp( const void *a, const void *b);
 
 static int has_dat_suffix(const char *name)
@@ -45,7 +47,7 @@ typedef struct {
 
  
 
-void Runtest(char *mode, int argc, char *argv[]) 
+void Runtest(char *mode, int argc, char *argv[], OpenMXCoreContext *core)
 { 
   FILE *fp,*fp0,*fp1,*fp2,*fp3;
   int Num_DatFiles,i,j,k,fp_OK;
@@ -152,7 +154,7 @@ void Runtest(char *mode, int argc, char *argv[])
 
     printf("\n*******************************************************\n");  fflush(stdout);
     printf("*******************************************************\n");    fflush(stdout);
-    printf(" Welcome to OpenMX   Ver. %s                           \n",Version_OpenMX); fflush(stdout);
+    printf(" Welcome to OpenMX   Ver. %s                           \n",openmx_core_version()); fflush(stdout);
     printf(" Copyright (C), 2002-2026, T. Ozaki                    \n");    fflush(stdout);
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n");    fflush(stdout);
     printf(" This is free software, and you are welcome to         \n");    fflush(stdout);
@@ -173,8 +175,9 @@ void Runtest(char *mode, int argc, char *argv[])
 
     if(( dp = opendir(dir) ) == NULL ){
       printf("could not find the directory '%s'\n",input_dir);
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return;
     }
 
     Num_DatFiles = 0;
@@ -193,8 +196,9 @@ void Runtest(char *mode, int argc, char *argv[])
 
     if(( dp = opendir(dir) ) == NULL ){
       printf("could not find the directory '%s'\n",input_dir);
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return;
     }
 
     Num_DatFiles = 0;
@@ -263,7 +267,7 @@ void Runtest(char *mode, int argc, char *argv[])
       /* run openmx */
 
       argv[1] = fname_dat;
-      run_main(argc, argv, numprocs, myid); 
+      run_main_with_context(argc, argv, numprocs, myid, core);
 
       /***********************************************************
           comparison between two files and save the result               
@@ -450,7 +454,7 @@ void Runtest(char *mode, int argc, char *argv[])
       /* run openmx */
 
       argv[1] = fname_dat;
-      run_main(argc, argv, numprocs, myid); 
+      run_main_with_context(argc, argv, numprocs, myid, core);
 
       /***********************************************************
           comparison between two files and save the result               
@@ -600,8 +604,9 @@ void Runtest(char *mode, int argc, char *argv[])
 #endif
 
   MPI_Barrier(mpi_comm_level1);
+  openmx_core_finish(core);
   MPI_Finalize();
-  exit(0);
+  return;
 }
 
 
@@ -613,7 +618,13 @@ int stringcomp( const void *a, const void *b)
 
 
 
-int run_main(int argc, char *argv[], int numprocs0, int myid0) 
+int run_main(int argc, char *argv[], int numprocs0, int myid0)
+{
+  return run_main_with_context(argc,argv,numprocs0,myid0,NULL);
+}
+
+static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid0,
+                                 OpenMXCoreContext *core)
 {
   int MD_iter,i,j,po,ip;
   char fileE[YOUSO10] = ".ene"; 
@@ -647,7 +658,7 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
   if (myid0==Host_ID){  
     printf("\n*******************************************************\n"); 
     printf("*******************************************************\n"); 
-    printf(" Welcome to OpenMX   Ver. %s                           \n",Version_OpenMX); 
+    printf(" Welcome to OpenMX   Ver. %s                           \n",openmx_core_version());
     printf(" Copyright (C), 2002-2026, T.Ozaki                     \n"); 
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n"); 
     printf(" This is free software, and you are welcome to         \n"); 
@@ -665,7 +676,7 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
   ****************************************************/
 
   init_alloc_first();
-  CompTime[myid0][1] = readfile(argv);
+  CompTime[myid0][1] = readfile_with_context(argv,core);
   MPI_Barrier(mpi_comm_level1);
 
   /* initialize PrintMemory routine */

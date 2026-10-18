@@ -51,7 +51,7 @@ static void output_structures();
 double complex ******CWF_Coef_NC;
 
 
-void SetPara_DFT()
+void SetPara_DFT(OpenMXCoreContext *core)
 {
   int i,j,k,l,wanA,spe;    
   int nf,fg;
@@ -149,7 +149,7 @@ void SetPara_DFT()
     printf("*******************************************************\n\n"); fflush(stdout); 
   }
 
-  FT_PAO();
+  FT_PAO(core);
   FT_NLP();
 
   if (ProExpn_VNA==1){

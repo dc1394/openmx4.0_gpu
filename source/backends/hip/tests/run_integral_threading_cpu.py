@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Stress production integral caches and per-atom timing updates with pthreads.
 
-No MPI, CUDA or PAO data is required. The actual cache helpers and accumulation
+No MPI, CUDA or PAO data is required. Build the C++ core first and set
+OPENMX_CORE_LIBRARY to its libopenmx_core.so when using a nondefault build. The actual cache helpers and accumulation
 statements are extracted from Set_OLP_Kin and Set_Nonlocal. All workers update
 one atom to expose lost timing updates at pair-partition boundaries, while
 private Bessel tables must reproduce uncached values for different cutoffs.
@@ -18,6 +19,9 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+CORE_LIBRARY = Path(os.environ.get("OPENMX_CORE_LIBRARY", ROOT / "build/core-serial/libopenmx_core.so")).resolve()
+if not CORE_LIBRARY.is_file():
+    raise SystemExit("Build the C++ core and set OPENMX_CORE_LIBRARY to libopenmx_core.so")
 
 
 def function(source, declaration):
@@ -38,7 +42,8 @@ cache = olp[olp.index("#define OLPKIN_BESSEL_CACHE_DEFAULT"):
             olp.index("/* Runtime phase profiling")]
 profile = function(olp, "static int SetOLP_ProfileEnabled(void)")
 bessel = function(spherical, "void Spherical_Bessel(")
-radial = function(olp, "#pragma omp parallel for collapse(2)")
+radial_parameters = re.search(r"typedef struct \{[^\n]+\} OLPKinRadialParameters;", olp).group(0)
+radial = radial_parameters + "\n" + function(olp, "static void OLPKin_Radial_Kernel(")
 
 # Extract the actual update, including its synchronization, in each pair loop.
 updates = []
@@ -81,7 +86,10 @@ static void radial_check(void)
         /* The surrounding pair loop has an i of its own. Worker grid
            indices must not share or overwrite that variable. */
         int i = -12345;
-        /* PRODUCTION_RADIAL */
+        OLPKinRadialParameters parameters = {grid_dim,grid_last,combo_count,h_AN,h};
+        void *views[] = {Normk_grid,RF_BesselCache0,RF_BesselCache1,SphB_flat,SphBp_flat,
+                        combo_rf0_offset,combo_rf1_offset,sumS0_flat,sumK0_flat,sumSr0_flat,sumKr0_flat};
+        OLPKin_Radial_Kernel(0,(LM+1)*NC,&parameters,views,0);
         assert(i == -12345);
         for (int a = 0; a <= LM; a++) for (int c = 0; c < NC; c++) {
             long double expected[4] = {0};
@@ -106,7 +114,7 @@ static void radial_check(void)
         }
     }
 }
-'''.replace("        /* PRODUCTION_RADIAL */", radial)
+'''
 
 HARNESS = r'''
 #define THREADS 8
@@ -186,16 +194,17 @@ int main(void)
 
 with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
     src, exe = Path(tmp) / "check.c", Path(tmp) / "check"
-    src.write_text("#define _POSIX_C_SOURCE 200809L\n"
+    src.write_text("#define _POSIX_C_SOURCE 200809L\n#define OPENMX_GPU_HIP 1\n"
                    "#include <assert.h>\n#include <math.h>\n#include <pthread.h>\n"
                    "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <omp.h>\n"
-                   "#define xmin 0.0\n#define asize_lmax 30\n"
+                   '#include "openmx_core.h"\n'
                    "static double time_per_atom[1];\n"
-                   + cache + profile + bessel + "\n".join(updates) + RADIAL_HARNESS + HARNESS)
+                   + cache + profile + bessel + radial + "\n".join(updates) + RADIAL_HARNESS + HARNESS)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2 -g"))
     subprocess.run(compiler + flags + ["-std=c11", "-fopenmp", "-pthread",
-                   str(src), "-lm", "-o", str(exe)], check=True)
+                   "-I" + str(ROOT / "source"), str(src), str(CORE_LIBRARY),
+                   "-Wl,-rpath," + str(CORE_LIBRARY.parent), "-lm", "-o", str(exe)], check=True)
     runner = (["valgrind", "--tool=helgrind", "--error-exitcode=99", "--quiet"]
               if "--helgrind" in sys.argv[1:] else [])
     subprocess.run(runner + [str(exe)], check=True)

@@ -1,0 +1,37 @@
+name: C++ core
+on:
+  push:
+  pull_request:
+
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - backend: SERIAL
+            standard: 20
+            sanitize: "OFF"
+          - backend: OPENMP
+            standard: 20
+            sanitize: "OFF"
+          - backend: SERIAL
+            standard: 23
+            sanitize: "ON"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure the independently buildable core
+        run: >-
+          cmake -S . -B build/core -DOPENMX_BUILD_APPLICATION=OFF
+          -DOPENMX_CORE_BACKEND=${{ matrix.backend }}
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -DOPENMX_CORE_SANITIZERS=${{ matrix.sanitize }}
+          -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build/core --parallel 2
+      - name: Unit tests
+        env:
+          OMP_NUM_THREADS: 2
+          OMP_PROC_BIND: "false"
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/core --output-on-failure

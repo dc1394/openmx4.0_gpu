@@ -3293,15 +3293,6 @@ void array0()
 
   /* Set_Periodic() in truncation.c */
 
-  n = 2*CpyCell + 4;
-  for (i=0; i<n; i++){
-    for (j=0; j<n; j++){
-      free(ratv[i][j]);
-    }
-    free(ratv[i]);
-  }
-  free(ratv);
-
   for (i=0; i<(TCpyCell+1); i++){
     free(atv[i]);
   }
