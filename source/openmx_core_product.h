@@ -1,7 +1,7 @@
 #ifndef OPENMX_CORE_PRODUCT_H
 #define OPENMX_CORE_PRODUCT_H
 
-#include "openmx_core.h"
+#include "openmx_core_radial.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,12 +32,6 @@ typedef struct {
   double ***values;                /* [angular][multiplicity][mesh_count] */
   double ******output;             /* [l1][m1][l2][m2][l][k_count], l1<=l2 */
 } OpenMXProductTable;
-
-typedef struct {
-  int radial_count, k_count;
-  double rmin, rmax, kmin, kmax;
-  const double *radial_nodes, *radial_weights, *wavevector_nodes;
-} OpenMXGaussRadialGrid;
 
 /* Borrows and validates inputs; no pointers retained after return. Each active
    output row needs k_count doubles. Commit occurs only after complete success. */

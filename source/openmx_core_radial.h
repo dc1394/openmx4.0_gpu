@@ -10,7 +10,9 @@ extern "C" {
 enum OpenMXRadialKind {
   OPENMX_RADIAL_PAO,
   OPENMX_RADIAL_PROJECTOR,
-  OPENMX_RADIAL_NEUTRAL_POTENTIAL
+  OPENMX_RADIAL_NEUTRAL_POTENTIAL,
+  /* PhiF policy: quadratic continuation below the first point, no cutoff. */
+  OPENMX_RADIAL_NEUTRAL_PROJECTOR
 };
 
 enum OpenMXReciprocalKind { OPENMX_RECIPROCAL_PAO, OPENMX_RECIPROCAL_PROJECTOR };
@@ -72,6 +74,12 @@ typedef struct {
   double rmin, rmax, kmin, kmax;
   const double *gauss_nodes;
 } OpenMXSquaredRadialGrid;
+
+typedef struct {
+  int radial_count, k_count;
+  double rmin, rmax, kmin, kmax;
+  const double *radial_nodes, *radial_weights, *wavevector_nodes;
+} OpenMXGaussRadialGrid;
 
 int openmx_core_transform_pao(OpenMXCoreContext *context, int device,
     const OpenMXPaoTable *table, const OpenMXUniformRadialGrid *grid,

@@ -4,7 +4,7 @@
 
 namespace openmx::core {
 
-enum class RadialKind { pao, projector, neutral_potential };
+enum class RadialKind { pao, projector, neutral_potential, neutral_projector };
 enum class ReciprocalKind { pao, projector };
 
 // Uniform grid k[i]=i*step, computed without a global coordinate array.

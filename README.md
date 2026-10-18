@@ -27,6 +27,9 @@ optional VNA expansion tables and their Fourier tables now have
 calculation-scoped C++ ownership, with borrowed views for legacy consumers.
 Ragged PAO-product tables use offsets into one contiguous allocation and
 mdspan block views; their Gauss quadrature uses the common Kokkos kernels.
+VNA separable-projector construction and orthogonalization use an independent
+C++ module with RAII workspaces; their Fourier transforms also use the common
+Kokkos kernels. The legacy PhiF interpolation shares the checked radial code.
 Radial transforms borrow validated input views without copying the input tables;
 their sampled data and workspaces use RAII. Periodic-cell inverse indexing and
 the uniform reciprocal grid no longer use global arrays; PAO/projector

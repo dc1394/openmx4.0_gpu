@@ -19,6 +19,7 @@
 #include "Inputtools.h"
 #include "mpi.h"
 #include "openmx_gpu_device.h"
+#include "openmx_core_neutral.h"
 
 
 static void Set_Atom_Weight();
@@ -30,8 +31,6 @@ static void Set_BasisPara();
 static void Set_Comp2Real();
 static void Check_InitDensity();
 static double V_Hart_atom(int Gensi, double R);
-static double Int_phi0_phi1( double *phi0, double *phi1,
-                             double *MXV, double *MRV, int Grid_Num );
 static void Inverse(int n, double **a, double **ia);
 static void output_structures();
 
@@ -158,7 +157,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
   FT_NLP(core,core_device);
 
   if (ProExpn_VNA==1){
-    FT_ProExpn_VNA();
+    FT_ProExpn_VNA(core,core_device);
     FT_VNA(core,core_device);
     FT_ProductPAO(core,core_device);
   }
@@ -854,7 +853,6 @@ void Read_VPS(int spe, char *file)
   double te,ve,VPS_Rcut,dum,dum0,dum1,r,dumping;
   double VNA_width,rmin,rmax,Sr,Dr,sum,sum0,dx,dif;
   double *Vcore,**TmpVNL,**TmpMat;
-  double **phi,*phi2,*pe;
   double charge_factor;
   int numprocs,myid;
   int i_vec[20];
@@ -1412,175 +1410,19 @@ void Read_VPS(int spe, char *file)
   ****************************************************/
 
   if (remake_headfile==0 && ProExpn_VNA==1){
-
-    /* allocaltion of arrays */
-    phi = (double**)malloc(sizeof(double*)*List_YOUSO[34]);
-    for (k=0; k<List_YOUSO[34]; k++){
-      phi[k] = (double*)malloc(sizeof(double)*Spe_Num_Mesh_VPS[spe]);
+    const OpenMXNeutralExpansion input = {List_YOUSO[35],List_YOUSO[34],
+      Spe_Num_Mesh_VPS[spe],Spe_VPS_RV[spe],Spe_Vna[spe],
+      Spe_PAO_LMAX[spe],Spe_PAO_Mul[spe],Spe_Num_Mesh_PAO[spe],
+      Spe_PAO_RV[spe],Spe_PAO_RWF[spe],Spe_WhatAtom[spe]==0,
+      Projector_VNA[spe],VNA_proj_ene[spe]};
+    char error[256];
+    if (!openmx_core_expand_neutral_projectors(&input,GL_Mesh,GL_Abscissae,GL_Weight,
+                                              error,sizeof(error))) {
+      fprintf(stderr,"Read_VPS neutral projectors, species %d: %s\n",spe,error);
+      MPI_Abort(mpi_comm_level1,1);
+      return;
     }
-
-    phi2 = (double*)malloc(sizeof(double)*Spe_Num_Mesh_VPS[spe]);
-
-    pe = (double*)malloc(sizeof(double)*List_YOUSO[34]);
-
-    for (L=0; L<=List_YOUSO[35]; L++){ 
-
-      /* set initial wave functions */
-      for (m=0; m<List_YOUSO[34]; m++){
-
-        if (L<=Spe_PAO_LMAX[spe] && m<Spe_PAO_Mul[spe]){
-          for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-            r = Spe_VPS_RV[spe][i];
-            phi[m][i] = RadialF(spe,L,m,r);
-	  }
-	}
-
-        else if (L<=Spe_PAO_LMAX[spe]){
-          for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-            r = Spe_VPS_RV[spe][i];
-  	    phi[m][i] = pow((0.1*Spe_Vna[spe][i]+1.0e-13),(double)m)*phi[0][i];
-	  }
-        }
-
-        else if (m<Spe_PAO_Mul[spe]){
-          for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-            r = Spe_VPS_RV[spe][i];
-  	    phi[m][i] = RadialF(spe,Spe_PAO_LMAX[spe],m,r)
-                        *pow(r,(double)(L-Spe_PAO_LMAX[spe]));
-	  }
-        }
-
-        else{
-          for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-            r = Spe_VPS_RV[spe][i];
-  	    phi[m][i] = RadialF(spe,Spe_PAO_LMAX[spe],Spe_PAO_Mul[spe]-1,r)*
-                        pow((0.1*Spe_Vna[spe][i]+1.0e-13),(double)(m-Spe_PAO_Mul[spe]+1));
-	  }
-        }
-
-      }
-
-      /* Normalization */
-      for (m=0; m<List_YOUSO[34]; m++){
-        dum0 = Int_phi0_phi1(phi[m], phi[m], Spe_VPS_XV[spe],
-                             Spe_VPS_RV[spe], Spe_Num_Mesh_VPS[spe]);
-
-        if (1.0e-17<dum0)  dum0 = 1.0/sqrt(dum0);
-        else               dum0 = 0.0;  
-
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-          phi[m][i] = dum0*phi[m][i];
-        }
-      }
-
-      /* Gramm-Schmidt orthogonalization with a norm defined by <f|v|g> */
-      for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-        Projector_VNA[spe][L][0][i] = phi[0][i];
-        r = Spe_VPS_RV[spe][i];
-        phi2[i] = phi[0][i]*Spe_Vna[spe][i];
-      }
-
-      dum0 = Int_phi0_phi1(Projector_VNA[spe][L][0], phi2, Spe_VPS_XV[spe], 
-                                  Spe_VPS_RV[spe], Spe_Num_Mesh_VPS[spe]); 
-
-      /* empty atom */ 
-      if (Spe_WhatAtom[spe]==0){
-        pe[0] = 0.0;
-      }
-
-      else if (fabs(dum0)<1.0e-15){
-        pe[0] = 0.0;
-      }
-
-      /* normal atom */ 
-      else{   
-        pe[0] = 1.0/dum0;
-      }
-
-      for (m=1; m<List_YOUSO[34]; m++){
- 
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++) Projector_VNA[spe][L][m][i] = 0.0;
-
-        for (n=0; n<m; n++){
-
-          for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++) phi2[i] = phi[m][i]*Spe_Vna[spe][i];
-
-	  dum0 = Int_phi0_phi1(Projector_VNA[spe][L][n], phi2, Spe_VPS_XV[spe], 
-                               Spe_VPS_RV[spe], Spe_Num_Mesh_VPS[spe]);
-    
-  	  for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-	    Projector_VNA[spe][L][m][i] += Projector_VNA[spe][L][n][i]*pe[n]*dum0;
-	  }
-        }
-
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-	  Projector_VNA[spe][L][m][i] = phi[m][i] - Projector_VNA[spe][L][m][i];
-        }
-      
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++) phi2[i] = Projector_VNA[spe][L][m][i]*Spe_Vna[spe][i];
-
-        dum0 = Int_phi0_phi1(Projector_VNA[spe][L][m], phi2, Spe_VPS_XV[spe], 
-                                  Spe_VPS_RV[spe], Spe_Num_Mesh_VPS[spe]);
-
-        /* empty atom */ 
-        if (Spe_WhatAtom[spe]==0){
-          pe[m] = 0.0;
-        }
-
-        else if (fabs(dum0)<1.0e-15){
-          pe[m] = 0.0;
-        }
-
-        /* normal atom */ 
-        else{
-          pe[m] = 1.0/dum0;
-	}
-      }
-
-      /* Renormalization */
-        
-      for (m=0; m<List_YOUSO[34]; m++){
-
-        dum0 = Int_phi0_phi1(Projector_VNA[spe][L][m], Projector_VNA[spe][L][m],
-                           Spe_VPS_XV[spe], Spe_VPS_RV[spe], Spe_Num_Mesh_VPS[spe]);
-
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-	  Projector_VNA[spe][L][m][i] = dum0*Projector_VNA[spe][L][m][i];
-        }
-
-        if (Spe_WhatAtom[spe]==0){
-          VNA_proj_ene[spe][L][m] = 0.0;
-        }
-        else if (fabs(dum0)<1.0e-15) {
-          VNA_proj_ene[spe][L][m] = 0.0;
-        }
-        else{
-          VNA_proj_ene[spe][L][m] = pe[m]/(dum0*dum0);
-        }
-
-	/*
-        printf("spe=%2d L=%2d m=%2d VNA_proj_ene=%15.12f\n",spe,L,m,VNA_proj_ene[spe][L][m]);
-	*/
-      }
-
-      /* Calc v*VNL_W2 */
-
-      for (m=0; m<List_YOUSO[34]; m++){
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-          Projector_VNA[spe][L][m][i] = Spe_Vna[spe][i]*Projector_VNA[spe][L][m][i];
-        }
-      }
-    } /* for (L=0;...) */
-
-    /* freeing of arrays */
-    for (k=0; k<List_YOUSO[34]; k++){
-      free(phi[k]);
-    }  
-    free(phi);
-
-    free(phi2);
-    free(pe);
-  }  
+  }
 
   /****************************************************
   freeing of arrays:
@@ -1605,52 +1447,6 @@ void Read_VPS(int spe, char *file)
   }
 
 }
-
-
-
-double Int_phi0_phi1( double *phi0, double *phi1, double *MXV, double *MRV, int Grid_Num )
-{
-
-  /*
-  int i;
-  double x,dx,xmin,xmax,sum,rp;
-
-  xmin = MXV[0];
-  xmax = MXV[Grid_Num-1];
-  dx = (xmax - xmin)/(double)OneD_Grid;
-
-  sum = 0.0;
-  for (i=0; i<=OneD_Grid; i++){
-    x = xmin + (double)i*dx;
-    rp = exp(x);
-    if (i==0 || i==OneD_Grid)
-      sum += 0.5*rp*rp*rp*PhiF(rp,phi0,MRV,Grid_Num)*PhiF(rp,phi1,MRV,Grid_Num);
-    else
-      sum += rp*rp*rp*PhiF(rp,phi0,MRV,Grid_Num)*PhiF(rp,phi1,MRV,Grid_Num);
-  }
-  sum = sum*dx;
-  */
-
-
-  int i;
-  double rmin,rmax,Sr,Dr,r,sum;
-
-  rmin = MRV[0];
-  rmax = MRV[Grid_Num-1];
-  Sr = rmax + rmin;
-  Dr = rmax - rmin;
-  sum = 0.0;
-  for (i=0; i<GL_Mesh; i++){
-    r = 0.50*(Dr*GL_Abscissae[i] + Sr);
-    sum += r*r*GL_Weight[i]*PhiF(r,phi0,MRV,Grid_Num)*PhiF(r,phi1,MRV,Grid_Num);
-  }
-  sum = 0.50*Dr*sum; 
-
-
-  return sum;
-}
-
-
 
 
 

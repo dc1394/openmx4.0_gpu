@@ -19,7 +19,7 @@ Interpolated interpolate(const Grid& radii, const double* values,
   const double f2 = values[m-1], f3 = values[m];
   double h1, h3, f1, f4;
   // Select the edge stencil before reading its entries. The original VNAF
-  // read past the upper grid before replacing that value with the ghost point.
+  // and PhiF read past the upper grid before substituting the ghost point.
   if (m == 1) {
     h3 = radii[m+1]-radii[m]; f4 = values[m+1];
     h1 = -(h2+h3); f1 = f4;
@@ -93,9 +93,9 @@ RadialTableView::RadialTableView(RadialKind kind, std::span<const double> radii,
   : kind_(kind), cutoff_(cutoff), radii_(radii), channels_(channels)
 {
   if (kind != RadialKind::pao && kind != RadialKind::projector &&
-      kind != RadialKind::neutral_potential)
+      kind != RadialKind::neutral_potential && kind != RadialKind::neutral_projector)
     throw std::invalid_argument("unknown radial table kind");
-  if (radii.size() < (kind == RadialKind::neutral_potential ? 6u : 3u) ||
+  if (radii.size() < ((kind == RadialKind::neutral_potential || kind == RadialKind::neutral_projector) ? 6u : 3u) ||
       radii.size() > INT_MAX || channels.size() > INT_MAX)
     throw std::invalid_argument("invalid radial table dimensions");
   for (std::size_t i = 0; i < radii.size(); ++i)
@@ -156,8 +156,9 @@ double RadialTable::sample(std::size_t channel, double radius) const
 double sample_radial_row(RadialKind kind, int l, std::span<const double> radii,
     std::span<const double> row, double cutoff, double radius)
 {
-  if ((kind != RadialKind::pao && kind != RadialKind::projector && kind != RadialKind::neutral_potential) ||
-      radii.size() < (kind == RadialKind::neutral_potential ? 6u : 3u) ||
+  if ((kind != RadialKind::pao && kind != RadialKind::projector &&
+       kind != RadialKind::neutral_potential && kind != RadialKind::neutral_projector) ||
+      radii.size() < ((kind == RadialKind::neutral_potential || kind == RadialKind::neutral_projector) ? 6u : 3u) ||
       row.size() != radii.size() || l < 0 || l > 29 ||
       (kind == RadialKind::neutral_potential &&
        (l != 0 || !std::isfinite(cutoff) || cutoff < 0 || cutoff > radii.back())))

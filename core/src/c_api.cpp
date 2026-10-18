@@ -1,10 +1,12 @@
 #include "openmx_core.h"
 #include "openmx_core_radial.h"
+#include "openmx_core_neutral.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
 #include <openmx/core/radial.hpp>
 #include <openmx/core/radial_table.hpp>
+#include <openmx/core/neutral_projectors.hpp>
 #include <openmx/core/bessel.hpp>
 #include <openmx/core/fft_grid.hpp>
 #include <climits>
@@ -54,6 +56,23 @@ openmx::core::RadialQuadrature uniform_grid(int lmax, const OpenMXUniformRadialG
   if (!grid) throw std::invalid_argument("missing uniform radial grid");
   return openmx::core::uniform_quadrature({lmax,grid->intervals,grid->k_count,
       grid->rmin,grid->radial_step,grid->k_step});
+}
+
+openmx::core::RadialQuadrature gauss_grid(int lmax, const OpenMXGaussRadialGrid* grid)
+{
+  if (!grid || grid->radial_count < 1 || grid->k_count < 0 ||
+      !grid->radial_nodes || !grid->radial_weights || (grid->k_count && !grid->wavevector_nodes))
+    throw std::invalid_argument("invalid Gauss radial grid");
+  return openmx::core::gauss_quadrature(lmax,grid->rmin,grid->rmax,grid->kmin,grid->kmax,
+      {grid->radial_nodes,static_cast<std::size_t>(grid->radial_count)},
+      {grid->radial_weights,static_cast<std::size_t>(grid->radial_count)},
+      {grid->wavevector_nodes,static_cast<std::size_t>(grid->k_count)});
+}
+
+void rectangular_basis(int lmax, int multiplicity)
+{
+  if (lmax < 0 || lmax > 29 || multiplicity <= 0 || multiplicity > INT_MAX/(lmax+1))
+    throw std::invalid_argument("invalid rectangular radial basis");
 }
 
 void transform_samples(OpenMXCoreContext* context, int device,
@@ -171,16 +190,11 @@ extern "C" int openmx_core_transform_products(OpenMXCoreContext* context, int de
     const OpenMXProductTable* input, const OpenMXGaussRadialGrid* grid, char* error, std::size_t capacity)
 {
   return checked_call(error,capacity,[&] {
-    if (!input || !grid || input->lmax < 0 || input->lmax > 14 || !input->multiplicities ||
-        grid->radial_count < 1 || grid->k_count < 0 || !grid->radial_nodes || !grid->radial_weights ||
-        (grid->k_count && !grid->wavevector_nodes))
-      throw std::invalid_argument("invalid orbital-product table or grid");
+    if (!input || input->lmax < 0 || input->lmax > 14 || !input->multiplicities)
+      throw std::invalid_argument("invalid orbital-product table");
     const openmx::core::ProductLayout layout({input->multiplicities,static_cast<std::size_t>(input->lmax+1)});
     const auto radii = mesh(input->radii,input->mesh_count);
-    auto quadrature = openmx::core::gauss_quadrature(2*input->lmax,grid->rmin,grid->rmax,
-      grid->kmin,grid->kmax,{grid->radial_nodes,static_cast<std::size_t>(grid->radial_count)},
-      {grid->radial_weights,static_cast<std::size_t>(grid->radial_count)},
-      {grid->wavevector_nodes,static_cast<std::size_t>(grid->k_count)});
+    auto quadrature = gauss_grid(2*input->lmax,grid);
     std::vector<openmx::core::RadialChannel> channels;
     std::vector<double*> outputs;
     for (int l1 = 0; l1 <= input->lmax; ++l1) {
@@ -237,6 +251,7 @@ extern "C" int openmx_core_radial_sample(OpenMXRadialKind kind, int angular,
       case OPENMX_RADIAL_PAO: policy = openmx::core::RadialKind::pao; break;
       case OPENMX_RADIAL_PROJECTOR: policy = openmx::core::RadialKind::projector; break;
       case OPENMX_RADIAL_NEUTRAL_POTENTIAL: policy = openmx::core::RadialKind::neutral_potential; break;
+      case OPENMX_RADIAL_NEUTRAL_PROJECTOR: policy = openmx::core::RadialKind::neutral_projector; break;
       default: throw std::invalid_argument("unknown radial interpolation kind");
     }
     const auto coordinates = mesh(radii,count);
@@ -317,6 +332,73 @@ extern "C" int openmx_core_transform_neutral_potential(OpenMXCoreContext* contex
         grid->rmin,grid->rmax,grid->kmin,grid->kmax,
         {grid->gauss_nodes,static_cast<std::size_t>(grid->k_count)});
     transform_table(context,device,table,std::move(quadrature),{&input->output,1});
+  });
+}
+
+extern "C" int openmx_core_expand_neutral_projectors(const OpenMXNeutralExpansion* input,
+    int node_count, const double* nodes, const double* weights, char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!input || node_count <= 0 || !nodes || !weights ||
+        (input->empty_atom != 0 && input->empty_atom != 1))
+      throw std::invalid_argument("invalid neutral-projector expansion description");
+    rectangular_basis(input->lmax,input->multiplicity);
+    rectangular_basis(input->pao_lmax,input->pao_multiplicity);
+    const auto radii = mesh(input->radii,input->mesh_count);
+    const auto potential = channel(0,input->potential,input->mesh_count);
+    const auto pao_radii = mesh(input->pao_radii,input->pao_mesh_count);
+    std::vector<openmx::core::RadialChannel> channels;
+    if (!input->pao_values || !input->projectors || !input->energies)
+      throw std::invalid_argument("missing neutral-projector expansion tables");
+    for (int l = 0; l <= input->pao_lmax; ++l) {
+      if (!input->pao_values[l]) throw std::invalid_argument("missing expansion PAO angular block");
+      for (int m = 0; m < input->pao_multiplicity; ++m)
+        channels.push_back(channel(l,input->pao_values[l][m],input->pao_mesh_count));
+    }
+    for (int l = 0; l <= input->lmax; ++l) {
+      if (!input->projectors[l] || !input->energies[l])
+        throw std::invalid_argument("missing expansion output angular block");
+      for (int m = 0; m < input->multiplicity; ++m)
+        if (!input->projectors[l][m]) throw std::invalid_argument("missing expansion output row");
+    }
+    const openmx::core::RadialTableView pao(openmx::core::RadialKind::pao,pao_radii,channels);
+    const auto result = openmx::core::expand_neutral_projectors(pao,radii,potential.values,
+        {input->lmax,input->multiplicity,input->pao_lmax,input->pao_multiplicity,input->empty_atom != 0},
+        {nodes,static_cast<std::size_t>(node_count)},{weights,static_cast<std::size_t>(node_count)});
+    const auto values = result.values.view();
+    const auto energies = result.energies.view();
+    // All allocations, validation and computation completed. Inputs may alias
+    // output storage; no input will be read after this point.
+    for (int l = 0; l <= input->lmax; ++l)
+      for (int m = 0; m < input->multiplicity; ++m) {
+        std::copy_n(&openmx::core::element(values,l,m,0),radii.size(),input->projectors[l][m]);
+        input->energies[l][m] = openmx::core::element(energies,l,m);
+      }
+  });
+}
+
+extern "C" int openmx_core_transform_neutral_projectors(OpenMXCoreContext* context, int device,
+    const OpenMXNeutralProjectorTable* input, const OpenMXGaussRadialGrid* grid,
+    char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!input) throw std::invalid_argument("missing neutral-projector table");
+    rectangular_basis(input->lmax,input->multiplicity);
+    const auto radii = mesh(input->radii,input->mesh_count);
+    auto quadrature = gauss_grid(input->lmax,grid);
+    std::vector<openmx::core::RadialChannel> channels;
+    std::vector<double*> outputs;
+    if (!input->values || !input->output) throw std::invalid_argument("missing neutral-projector tables");
+    for (int l = 0; l <= input->lmax; ++l) {
+      if (!input->values[l] || !input->output[l])
+        throw std::invalid_argument("missing neutral-projector angular block");
+      for (int m = 0; m < input->multiplicity; ++m) {
+        channels.push_back(channel(l,input->values[l][m],input->mesh_count));
+        outputs.push_back(input->output[l][m]);
+      }
+    }
+    const openmx::core::RadialTableView table(openmx::core::RadialKind::neutral_projector,radii,channels);
+    transform_table(context,device,table,std::move(quadrature),outputs);
   });
 }
 

@@ -3300,7 +3300,7 @@ void xyz2spherical(double x, double y, double z,
 int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double *****CntH, double *etime);
 void FT_PAO(OpenMXCoreContext *core, int device);
 void FT_NLP(OpenMXCoreContext *core, int device);
-void FT_ProExpn_VNA();
+void FT_ProExpn_VNA(OpenMXCoreContext *core, int device);
 void FT_VNA(OpenMXCoreContext *core, int device);
 void FT_ProductPAO(OpenMXCoreContext *core, int device);
 
