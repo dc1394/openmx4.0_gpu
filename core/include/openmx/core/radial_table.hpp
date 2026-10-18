@@ -5,6 +5,13 @@
 namespace openmx::core {
 
 enum class RadialKind { pao, projector, neutral_potential };
+enum class ReciprocalKind { pao, projector };
+
+// Uniform grid k[i]=i*step, computed without a global coordinate array.
+// Borrowed finite values; no allocations. Preserves the legacy first-cell
+// extrapolation and the projector's small-spacing linear fallback.
+double sample_reciprocal_row(ReciprocalKind kind, std::span<const double> values,
+    double step, double wavevector);
 
 // A borrowed input row, copied by RadialTable before numerical work begins.
 struct RadialChannel {

@@ -75,8 +75,9 @@ CUDA の弱 FP64 GPU 向け MAGMA FP32 補正と共有 Band グループ、HIP �
 主要 SCF ソルバー、Hamiltonian・密度・軌道・力などの専用実装と、
 ツールチェーン・依存ライブラリの構築は引き続きバックエンド別です。
 
-`sources.json` の `shared` と `import_sha256` は変更していない取り込み元を記録し、
-今回の共通実装は `integrated_shared` に登録します。共通コードを修正すると
+`sources.json` の `shared`、`overrides` と `import_sha256` は変更していない取り込み元を記録し、
+共通実装は `integrated_shared` に登録します。取り込み後に改修したバックエンド固有の
+実装は `integrated_overrides` に登録し、移植元の不変ファイルと区別します。共通コードを修正すると
 両ビルドへ反映されます。既存の HIP ビルドを再開したときも、準備処理が
 削除済みの置換ソースへのリンクを共通ソースへ張り替えます。
 両 Makefile は共通 GPU インターフェースヘッダーの変更を再コンパイルへ反映します。

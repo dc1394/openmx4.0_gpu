@@ -702,7 +702,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
     Check_Force(argv);
     CompTime[myid][20] = OutData(argv[1]);
     Merge_LogFile(argv[1]);
-    Free_Arrays(0);
+    Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
     MPI_Finalize();
     return 0;
@@ -740,7 +740,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
     Check_Stress(argv);
     CompTime[myid][20] = OutData(argv[1]);
     Merge_LogFile(argv[1]);
-    Free_Arrays(0);
+    Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
     MPI_Finalize();
     return 0;
@@ -914,7 +914,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   /* free arrays */
 
-  Free_Arrays(0);
+  Free_Arrays_with_context(0,core);
 
   /* detect memory leak */
 

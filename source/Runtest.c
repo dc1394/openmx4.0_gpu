@@ -811,7 +811,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
 
   /* free arrays */
 
-  Free_Arrays(0);
+  Free_Arrays_with_context(0,core);
 
   /* print memory */
 

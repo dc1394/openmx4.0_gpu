@@ -98,6 +98,59 @@ void interpolation_test() {
           "null scalar grid accepted");
 }
 
+void reciprocal_test() {
+  std::array<double,8> values{.7,1.4,-.2,.9,-.4,.3,.1,0};
+  const double step = 2.4/8;
+  const std::array<double,11> points{-.1,0,.05,.15,.3,.45,.6,1,1.9,2.1,2.11};
+  // Frozen RF_BesselF/NLRF_BesselF values at 6c681182. In particular, the
+  // first cell deliberately uses stencil 2, including k=0 (value -4.3).
+  const std::array<double,11> expected{-.044444444444445286,-4.3000000000000016,
+    -2.2064814814814828,.39999999999999902,1.3999999999999995,.5749999999999994,
+    -.20000000000000009,.57037037037036997,.055555555555555525,0,0};
+  for (auto kind : {ReciprocalKind::pao,ReciprocalKind::projector}) {
+    for (std::size_t i = 0; i < points.size(); ++i) {
+      near(sample_reciprocal_row(kind,values,step,points[i]),expected[i]);
+      double scalar = -99;
+      require(openmx_core_reciprocal_sample(kind == ReciprocalKind::pao ? OPENMX_RECIPROCAL_PAO
+          : OPENMX_RECIPROCAL_PROJECTOR,8,step,values.data(),points[i],&scalar),"reciprocal C call failed");
+      near(scalar,expected[i]);
+    }
+    near(sample_reciprocal_row(kind,values,step,std::nextafter(7*step,3.)),0);
+    const std::array<double,1> single{3};
+    near(sample_reciprocal_row(kind,single,step,-1),3);
+    near(sample_reciprocal_row(kind,single,step,0),3);
+    near(sample_reciprocal_row(kind,single,step,.01),0);
+    const std::array<double,2> pair{2,4};
+    near(sample_reciprocal_row(kind,pair,step,-1),2);
+    near(sample_reciprocal_row(kind,pair,step,step/2),3);
+    near(sample_reciprocal_row(kind,pair,step,step),4);
+    near(sample_reciprocal_row(kind,pair,step,2*step),0);
+    const std::array<double,3> constant{2,2,2};
+    for (double k : {-.1,0.,.1,.3,.6}) near(sample_reciprocal_row(kind,constant,step,k),2);
+    rejects([&] { (void)sample_reciprocal_row(kind,{},step,0); });
+    rejects([&] { (void)sample_reciprocal_row(kind,values,0,0); });
+    rejects([&] { (void)sample_reciprocal_row(kind,values,-step,0); });
+    rejects([&] { (void)sample_reciprocal_row(kind,values,step,std::numeric_limits<double>::quiet_NaN()); });
+    rejects([&] { (void)sample_reciprocal_row(kind,values,std::numeric_limits<double>::max(),0); });
+  }
+  near(sample_reciprocal_row(ReciprocalKind::projector,values,1e-16,.5e-16),values[1]);
+  near(sample_reciprocal_row(ReciprocalKind::pao,values,1e-16,.5e-16),.4);
+  // An independent quadratic oracle for interior and first-cell slopes.
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    const double k = i*step;
+    values[i] = 2+3*k+4*k*k;
+  }
+  for (double k : {0.,.01,.15,.45,.8,1.1,1.65})
+    near(sample_reciprocal_row(ReciprocalKind::pao,values,step,k),2+3*k+4*k*k);
+  double untouched = 123;
+  require(!openmx_core_reciprocal_sample(OPENMX_RECIPROCAL_PAO,0,step,values.data(),0,&untouched),"empty row accepted");
+  require(!openmx_core_reciprocal_sample(OPENMX_RECIPROCAL_PAO,8,step,nullptr,0,&untouched),"null row accepted");
+  require(!openmx_core_reciprocal_sample(OPENMX_RECIPROCAL_PAO,8,step,values.data(),0,nullptr),"null output accepted");
+  values[2] = std::numeric_limits<double>::infinity();
+  require(!openmx_core_reciprocal_sample(OPENMX_RECIPROCAL_PAO,8,step,values.data(),.7,&untouched),"non-finite result accepted");
+  require(untouched == 123,"failed reciprocal call overwrote output");
+}
+
 double constant_integral(int l, double k, double radius) {
   if (k == 0) return l == 0 ? radius*radius*radius/3 : 0;
   const double x = k*radius;
@@ -227,6 +280,7 @@ int main(int argc, char** argv) {
     if (argc != 2) throw std::invalid_argument("specify a radial table test");
     const std::string name = argv[1];
     if (name == "interpolation") interpolation_test();
+    else if (name == "reciprocal") reciprocal_test();
     else if (name == "host") transform_test(false);
     else if (name == "execution") transform_test(true);
     else if (name == "c-api") require(openmx_core_run(argc,argv,c_entry) == 0,"C table transform failed");

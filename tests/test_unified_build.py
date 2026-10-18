@@ -72,7 +72,12 @@ class UnifiedBuildTest(unittest.TestCase):
 
     def test_backend_selects_production_sources(self):
         cuda, hip = self.stages["CUDA"], self.stages["HIP"]
-        for name, imported in self.manifest["overrides"].items():
+        integrated_overrides = self.manifest.get("integrated_overrides", {})
+        self.assertFalse(set(integrated_overrides).intersection(self.manifest["overrides"]))
+        self.assertFalse(set(integrated_overrides).intersection(self.manifest["shared"]))
+        self.assertFalse(set(integrated_overrides).intersection(self.manifest["import_sha256"]))
+        overrides = {**self.manifest["overrides"], **integrated_overrides}
+        for name, imported in overrides.items():
             with self.subTest(override=name):
                 self.assertEqual((hip / name).resolve(), (HIP / imported).resolve())
                 if (ROOT / "source" / name).is_file() and Path(name).suffix in COMPILE_SUFFIXES:
@@ -88,7 +93,7 @@ class UnifiedBuildTest(unittest.TestCase):
         integrated = self.manifest.get("integrated_shared", [])
         self.assertEqual(len(integrated), len(set(integrated)))
         self.assertFalse(set(integrated).intersection(self.manifest["shared"]))
-        self.assertFalse(set(integrated).intersection(self.manifest["overrides"]))
+        self.assertFalse(set(integrated).intersection(overrides))
         for name in integrated:
             with self.subTest(integrated=name):
                 canonical = ROOT / "source" / name
@@ -96,7 +101,7 @@ class UnifiedBuildTest(unittest.TestCase):
                 self.assertEqual((hip / name).resolve(), canonical)
                 self.assertFalse((HIP / "src" / name).exists())
                 self.assertFalse((HIP / "include" / name).exists())
-        amd_sources = (set(self.manifest["shared"]) | set(self.manifest["overrides"]) |
+        amd_sources = (set(self.manifest["shared"]) | set(overrides) |
                        set(self.manifest.get("integrated_shared", [])))
         for source in (ROOT / "source").iterdir():
             if source.is_file() and source.suffix in COMPILE_SUFFIXES and source.name not in amd_sources:

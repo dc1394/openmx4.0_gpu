@@ -63,7 +63,7 @@ FetchContent_MakeAvailable(kokkos)
 option(OPENMX_CORE_SANITIZERS "Enable address/undefined sanitizers in host core code" OFF)
 option(OPENMX_CORE_FORCE_KOKKOS_MDSPAN "Use Kokkos/mdspan even if std::mdspan is available" OFF)
 
-add_library(openmx_core SHARED src/radial.cpp src/radial_table.cpp src/c_api.cpp)
+add_library(openmx_core SHARED src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/c_api.cpp)
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/../source")
@@ -74,7 +74,7 @@ if(OPENMX_CORE_FORCE_KOKKOS_MDSPAN)
   target_compile_definitions(openmx_core PUBLIC OPENMX_CORE_FORCE_KOKKOS_MDSPAN=1)
 endif()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
-  set_source_files_properties(src/radial.cpp src/radial_table.cpp src/c_api.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+  set_source_files_properties(src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/c_api.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
 # Retain the original quadrature's summation order and avoid contraction when
 # comparing a refactor against the old C implementation.

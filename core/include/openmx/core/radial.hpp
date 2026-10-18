@@ -58,6 +58,7 @@ class Context {
   // device < 0 selects a host path that also works without a GPU driver.
   Tensor<double, 2> transform(const RadialSamples& samples, int device = -1);
   void finish() noexcept { runtime_.reset(); finished_ = true; }
+  bool finished() const noexcept { return finished_; }
 
  private:
   bool start(int device);

@@ -529,15 +529,6 @@ int *WhatSpecies;
 int *GridN_Atom;
 
 /*******************************************************
- double *NormK; 
- radial grid values in the reciprocal space
-  size: NormK[Ngrid_NormK+1]
-  allocation: call as Allocate_Arrays(2) in readfile.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double *NormK;
-
-/*******************************************************
  double *Spe_Atom_Cut1; 
  cutoff radius of atomic orbitals for each species
   size: Spe_Atom_Cut1[SpeciesNum]
@@ -4426,7 +4417,9 @@ void fnjoint2(char name1[YOUSO10], char name2[YOUSO10],
 void chcp(char name1[YOUSO10],char name2[YOUSO10]);
 void Init_List_YOUSO();
 void Allocate_Arrays(int wherefrom);
+void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
 void Free_Arrays(int dokokara);
+void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
 double OutData(char *inputfile);
 void init_alloc_first();
 int File_CntCoes(char *mode);

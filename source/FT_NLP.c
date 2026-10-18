@@ -28,7 +28,7 @@
 void FT_NLP(OpenMXCoreContext *core, int device)
 {
   int numprocs,myid,ID,NumSpe;
-  int i,num_k,so,Lspe,spe,L;
+  int num_k,so,Lspe,spe,L;
   int RestartRead_Succeed;
   double dk,rmin,rmax,h;
   double TStime,TEtime;
@@ -54,15 +54,6 @@ void FT_NLP(OpenMXCoreContext *core, int device)
   ***********************************************************/
 
   if (Scf_RestartFromFile==1){
-
-    /****************************************************
-          generate radial grids in the k-space
-    ****************************************************/
-
-    dk = PAO_Nkmax/(double)Ngrid_NormK;
-    for (i=0; i<Ngrid_NormK; i++){
-      NormK[i] = (double)i*dk;
-    }
 
     /***********************************************************
                       read Spe_NLRF_Bessel
@@ -128,16 +119,6 @@ void FT_NLP(OpenMXCoreContext *core, int device)
       }
 
     } /* Lspe */
-
-    /****************************************************
-     Remedy for MSpeciesNum==0
-     generate radial grids in the k-space
-    ****************************************************/
-
-    dk = PAO_Nkmax/(double)Ngrid_NormK;
-    for (i=0; i<Ngrid_NormK; i++){
-      NormK[i] = (double)i*dk;
-    }
 
     /***********************************************************
         sending and receiving of Spe_RF_Bessel by MPI

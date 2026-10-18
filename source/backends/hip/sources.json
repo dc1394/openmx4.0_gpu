@@ -9,7 +9,6 @@
     "1d_periodic_well.c",
     "ADIIS_Mixing_DM.c",
     "ADenBand.c",
-    "Allocate_Arrays.c",
     "Allocate_DM_for_LPQ.c",
     "AngularF.c",
     "BandDispersion.c",
@@ -149,7 +148,6 @@
     "PrintMemory.c",
     "PrintMemory_Fix.c",
     "QuickSort.c",
-    "RF_BesselF.c",
     "ReLU_inverse.c",
     "RestartFileDFT.c",
     "SCF2File.c",
@@ -416,7 +414,6 @@
     "Set_Density_Grid.c": "src/Set_Density_Grid.c",
     "Set_Density_Grid_GPU.c": "src/Set_Density_Grid_GPU.c",
     "Set_Hamiltonian.c": "src/Set_Hamiltonian.c",
-    "Set_Nonlocal.c": "src/Set_Nonlocal.c",
     "Set_Orbitals_Grid.c": "src/Set_Orbitals_Grid.c",
     "Set_ProExpn_VNA.c": "src/Set_ProExpn_VNA.c",
     "Set_XC_Grid.c": "src/Set_XC_Grid.c",
@@ -590,7 +587,6 @@
     "1d_periodic_well.c": "b246144a05633c448d2252d540b4d604f05176f9db7f82c735369fc72ed36ace",
     "ADIIS_Mixing_DM.c": "0c53ca067b81dc1d850f0b9bc38b95aed9cce9a2c243b9913bac09eda8fcb90b",
     "ADenBand.c": "5d8478b1a09c91031493660bbea54266c7e0abe30eb0852689f8594e629ceb6d",
-    "Allocate_Arrays.c": "2ab1c5e843550f56f8f79d1142548b450b378575da9044f8029c5e1c91ef3e81",
     "Allocate_DM_for_LPQ.c": "377e9150c1e4e71dea42f637c9ec0e60005ac32a35eac71b9048a2983d095a2d",
     "AngularF.c": "10f347858fe85081d6d4c33c3cf0b61c31d20755fc45716a4ef9b9188a67717e",
     "BandDispersion.c": "4db15e9fd2851dbfca2c14bbcd4015a1f91da3b7721ba83d94e662236d9a0d8f",
@@ -741,7 +737,6 @@
     "PrintMemory.c": "463a4be8f2d718db4b78df2c0b61e5fbcd4563f794f5faf14f3cda3b06d74ea9",
     "PrintMemory_Fix.c": "5fcec0c4b69637efe4ef2f79576da0b6085b0d0fefc0176f393a2ac26e77abde",
     "QuickSort.c": "6862ac989cc93b887061730a1671c07609c4306adcc278cc25be0c47c31db5ee",
-    "RF_BesselF.c": "71675079a7b15c13b478a9f7d2d82b75aba375360f2379d4fff648130479a10c",
     "ReLU_inverse.c": "e4a6f66f447db365d534e80e253a73c6bb31280de757cfdd04e68a847eecf56f",
     "RestartFileDFT.c": "f02431a92fcffc289334307e4e7fcc8267149b8daf4ce6641156787d182f98b6",
     "SCF2File.c": "8119a04106836708c14728b5ac3773c20fc3647ec76fcff5cc83c9f0742f3670",
@@ -753,7 +748,6 @@
     "Set_Density_Grid_GPU.c": "de9fff98f5b9168e69f2e1223ef8f9e889392b7938e315bdd8c57c90cc6e655f",
     "Set_Hamiltonian.c": "927e097c324ce69fb18a8b190381eef77da4bd44c3b42441b711ea25aeee60a8",
     "Set_Initial_DM.c": "2fc4a13f23955b681e2ce4ce83b7bcd88a921105cbc5282ac1d326c297aeb1b9",
-    "Set_Nonlocal.c": "22c4acd345bf9d9b3ce9a67da56df513380661a136fe333ab6c459d948cfbb6d",
     "Set_OLP_p.c": "b835f1042b56c73dc7475c3e0721055879a4eafaacf0d9e06e5424d88550889a",
     "Set_Orbitals_Grid.c": "5e1109ef5c0fe8a21ca65e6c65620a66e90075ef082bc3cba2d29ba25baed525",
     "Set_ProExpn_VNA.c": "46b8bdb1ad7b30d01788eac1058c8bfcea40c3063c176d92dd6f1dd4eba5ffee",
@@ -1032,6 +1026,7 @@
     "zero_fermi.c": "7fd63b6fda92a69414cdf38a34d006c0f32cc74d5a765ddfe601d6aba5872d7a"
   },
   "integrated_shared": [
+    "Allocate_Arrays.c",
     "Band_DFT_Col_CWF.c",
     "Band_DFT_Col_DMmu.c",
     "Band_DFT_NonCol_CWF.c",
@@ -1060,6 +1055,7 @@
     "Merge_LogFile.c",
     "Mixing_H.c",
     "Nonlocal_RadialF.c",
+    "RF_BesselF.c",
     "RadialF.c",
     "Runtest.c",
     "SetPara_DFT.c",
@@ -1082,6 +1078,7 @@
     "openmx_common.h",
     "openmx_core.h",
     "openmx_core.mk",
+    "openmx_core_pao.h",
     "openmx_core_radial.h",
     "openmx_elpa_cpu.c",
     "openmx_elpa_cpu.h",
@@ -1119,5 +1116,8 @@
     "readfile.c",
     "tran_prototypes.h",
     "truncation.c"
-  ]
+  ],
+  "integrated_overrides": {
+    "Set_Nonlocal.c": "src/Set_Nonlocal.c"
+  }
 }

@@ -13,7 +13,8 @@ extern "C" {
 typedef struct OpenMXCoreContext OpenMXCoreContext;
 typedef int (*OpenMXCoreEntry)(int argc, char **argv, OpenMXCoreContext *context);
 int openmx_core_run(int argc, char **argv, OpenMXCoreEntry entry);
-/* Release the owned Kokkos runtime before MPI_Finalize. Idempotent. */
+/* Release calculation storage and the owned Kokkos runtime before
+   MPI_Finalize. Invalidates all borrowed views. Idempotent. */
 void openmx_core_finish(OpenMXCoreContext *context);
 int openmx_core_has_accelerator(void);
 const char *openmx_core_version(void);

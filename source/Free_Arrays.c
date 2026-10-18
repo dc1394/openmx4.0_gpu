@@ -4,19 +4,25 @@
 #include <stdlib.h>
 #include <complex.h>
 #include "openmx_common.h"
+#include "openmx_core_pao.h"
 #include "mpi.h"
 
 double complex ******CWF_Coef_NC;
 double complex ***CWF_Guiding_MOs_NC;
 
 
-void array0();
+static void array0(OpenMXCoreContext *core);
 void array1();
 void array2();
 void array3();
 
 
 void Free_Arrays(int wherefrom)
+{
+  Free_Arrays_with_context(wherefrom,NULL);
+}
+
+void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 {
 
   if (wherefrom==0) {
@@ -68,7 +74,7 @@ void Free_Arrays(int wherefrom)
 #endif
   }
 
-  if      (wherefrom==0) array0();
+  if      (wherefrom==0) array0(core);
   else if (wherefrom==1) array1();
 
   if (wherefrom==0){
@@ -82,7 +88,7 @@ void Free_Arrays(int wherefrom)
 
 }
 
-void array0()
+static void array0(OpenMXCoreContext *core)
 {
   int i,j,k,ii,l,L,n,ct_AN,h_AN,wan,al,tno,Cwan,Nc;
   int tno0,tno1,tno2,Mc_AN,Gc_AN,Gh_AN,Hwan,m,so,s1,s2;
@@ -3305,47 +3311,54 @@ void array0()
 
   /* Allocate_Arrays(6) in SetPara_DFT.c */
 
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_PAO_XV[i]);
+  if (core) {
+    openmx_core_pao_release(core);
   }
-  free(Spe_PAO_XV);
-  
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_PAO_RV[i]);
-  }
-  free(Spe_PAO_RV);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_Atomic_Den[i]);
-  }
-  free(Spe_Atomic_Den);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_Atomic_Den2[i]);
-  }
-  free(Spe_Atomic_Den2);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    for (j=0; j<=List_YOUSO[25]; j++){
-      for (k=0; k<List_YOUSO[24]; k++){
-        free(Spe_PAO_RWF[i][j][k]);
-      }
-      free(Spe_PAO_RWF[i][j]);
+  else {
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_PAO_XV[i]);
     }
-    free(Spe_PAO_RWF[i]);
-  }
-  free(Spe_PAO_RWF);
+    free(Spe_PAO_XV);
 
-  for (i=0; i<List_YOUSO[18]; i++){
-    for (j=0; j<=List_YOUSO[25]; j++){
-      for (k=0; k<List_YOUSO[24]; k++){
-        free(Spe_RF_Bessel[i][j][k]);
-      }
-      free(Spe_RF_Bessel[i][j]);
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_PAO_RV[i]);
     }
-    free(Spe_RF_Bessel[i]);
+    free(Spe_PAO_RV);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_Atomic_Den[i]);
+    }
+    free(Spe_Atomic_Den);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_Atomic_Den2[i]);
+    }
+    free(Spe_Atomic_Den2);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      for (j=0; j<=List_YOUSO[25]; j++){
+        for (k=0; k<List_YOUSO[24]; k++){
+          free(Spe_PAO_RWF[i][j][k]);
+        }
+        free(Spe_PAO_RWF[i][j]);
+      }
+      free(Spe_PAO_RWF[i]);
+    }
+    free(Spe_PAO_RWF);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      for (j=0; j<=List_YOUSO[25]; j++){
+        for (k=0; k<List_YOUSO[24]; k++){
+          free(Spe_RF_Bessel[i][j][k]);
+        }
+        free(Spe_RF_Bessel[i][j]);
+      }
+      free(Spe_RF_Bessel[i]);
+    }
+    free(Spe_RF_Bessel);
   }
-  free(Spe_RF_Bessel);
+  Spe_PAO_XV = Spe_PAO_RV = Spe_Atomic_Den = Spe_Atomic_Den2 = NULL;
+  Spe_PAO_RWF = Spe_RF_Bessel = NULL;
 
   /* Allocate_Arrays(7) in SetPara_DFT.c */
 
@@ -3688,7 +3701,6 @@ void array0()
 
    /* Allocation_Arrays(2) */
 
-  free(NormK);
   free(Spe_Atom_Cut1);
   free(Spe_Core_Charge);
   free(TGN_EH0);

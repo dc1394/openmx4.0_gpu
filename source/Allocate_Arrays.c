@@ -1,9 +1,16 @@
 #include <math.h>
+#include <limits.h>
+#include "openmx_core_pao.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_common.h"
 
 void Allocate_Arrays(int wherefrom)
+{
+  Allocate_Arrays_with_context(wherefrom,NULL);
+}
+
+void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 {
   int i,j,k,ii,L,ct_AN,wan,p,l,al,so,spin;
   int Lmax,num,m,n,spe,Ndim;
@@ -347,7 +354,6 @@ void Allocate_Arrays(int wherefrom)
     case 2:
       /* call from readfile.c */
 
-      NormK = (double*)malloc(sizeof(double)*(Ngrid_NormK+1));
       Spe_Atom_Cut1 = (double*)malloc(sizeof(double)*SpeciesNum);
       Spe_Core_Charge = (double*)malloc(sizeof(double)*SpeciesNum);
       TGN_EH0 = (int*)malloc(sizeof(int)*SpeciesNum);
@@ -582,6 +588,32 @@ void Allocate_Arrays(int wherefrom)
     case 6:
 
       /* call from SetPara_DFT.c */
+
+      if (core) {
+        char error[256];
+        OpenMXPaoViews views;
+        OpenMXPaoShape shape;
+        if (List_YOUSO[25] < 0 || List_YOUSO[25] == INT_MAX) {
+          fprintf(stderr,"Invalid PAO angular capacity\n");
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        shape = (OpenMXPaoShape){List_YOUSO[18],List_YOUSO[25]+1,List_YOUSO[24],
+                                List_YOUSO[21],List_YOUSO[15]};
+        if (!openmx_core_pao_allocate(core,&shape,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays(PAO): %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        Spe_PAO_XV = views.log_radii;
+        Spe_PAO_RV = views.radii;
+        Spe_Atomic_Den = views.density;
+        Spe_Atomic_Den2 = views.density_backup;
+        Spe_PAO_RWF = views.orbitals;
+        Spe_RF_Bessel = views.transforms;
+        break;
+      }
+      /* Compatibility path for the public, null-context C library API. */
 
       Spe_PAO_XV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
       for (i=0; i<List_YOUSO[18]; i++){

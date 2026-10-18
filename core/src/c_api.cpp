@@ -1,5 +1,6 @@
 #include "openmx_core.h"
 #include "openmx_core_radial.h"
+#include "pao_compat.hpp"
 #include <openmx/core/radial.hpp>
 #include <openmx/core/radial_table.hpp>
 #include <openmx/core/bessel.hpp>
@@ -12,6 +13,7 @@
 
 struct OpenMXCoreContext {
   openmx::core::Context implementation;
+  std::unique_ptr<openmx::core::compat::PaoOwner> pao;
 };
 
 namespace {
@@ -26,7 +28,7 @@ int checked_call(char* error, std::size_t capacity, Function&& function) noexcep
   } catch (const std::exception& exception) {
     if (error && capacity) std::snprintf(error,capacity,"%s",exception.what());
   } catch (...) {
-    if (error && capacity) std::snprintf(error,capacity,"unexpected radial transform exception");
+    if (error && capacity) std::snprintf(error,capacity,"unexpected OpenMX core exception");
   }
   return 0;
 }
@@ -70,6 +72,47 @@ void transform_table(OpenMXCoreContext* context, int device,
 }
 
 } // namespace
+
+extern "C" int openmx_core_pao_allocate(OpenMXCoreContext* context, const OpenMXPaoShape* shape,
+    OpenMXPaoViews* views, char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!context || !shape || !views || context->pao || context->implementation.finished())
+      throw std::invalid_argument("PAO allocation requires an empty context, shape and output views");
+    if (shape->species <= 0 || shape->angular_channels <= 0 || shape->multiplicity <= 0 ||
+        shape->radial_points <= 0 || shape->reciprocal_points <= 0)
+      throw std::invalid_argument("PAO storage dimensions must be positive");
+    auto owner = std::make_unique<openmx::core::compat::PaoOwner>(openmx::core::PaoShape{
+        static_cast<std::size_t>(shape->species),static_cast<std::size_t>(shape->angular_channels),
+        static_cast<std::size_t>(shape->multiplicity),static_cast<std::size_t>(shape->radial_points),
+        static_cast<std::size_t>(shape->reciprocal_points)});
+    // Both numeric allocations and compatibility pointer tables must succeed
+    // before publishing any address. Nothing below this line can throw.
+    *views = owner->views();
+    context->pao = std::move(owner);
+  });
+}
+
+extern "C" void openmx_core_pao_release(OpenMXCoreContext* context)
+{
+  if (context) context->pao.reset();
+}
+
+extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,
+    double step, const double* values, double wavevector, double* result)
+{
+  return checked_call(nullptr,0,[&] {
+    if (!result || !values || count <= 0 ||
+        (kind != OPENMX_RECIPROCAL_PAO && kind != OPENMX_RECIPROCAL_PROJECTOR))
+      throw std::invalid_argument("invalid reciprocal interpolation arguments");
+    const double value = openmx::core::sample_reciprocal_row(
+        kind == OPENMX_RECIPROCAL_PAO ? openmx::core::ReciprocalKind::pao
+                                     : openmx::core::ReciprocalKind::projector,
+        {values,static_cast<std::size_t>(count)},step,wavevector);
+    if (!std::isfinite(value)) throw std::invalid_argument("non-finite reciprocal interpolation result");
+    *result = value;
+  });
+}
 
 extern "C" int openmx_core_radial_sample(OpenMXRadialKind kind, int angular,
     int count, const double* radii, const double* values,
@@ -187,7 +230,10 @@ extern "C" int openmx_core_run(int argc, char** argv, OpenMXCoreEntry entry)
 
 extern "C" void openmx_core_finish(OpenMXCoreContext* context)
 {
-  if (context) context->implementation.finish();
+  if (context) {
+    context->pao.reset();
+    context->implementation.finish();
+  }
 }
 
 extern "C" int openmx_core_has_accelerator(void)

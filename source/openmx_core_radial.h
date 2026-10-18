@@ -13,6 +13,13 @@ enum OpenMXRadialKind {
   OPENMX_RADIAL_NEUTRAL_POTENTIAL
 };
 
+enum OpenMXReciprocalKind { OPENMX_RECIPROCAL_PAO, OPENMX_RECIPROCAL_PROJECTOR };
+
+/* Uniform reciprocal grid k[i]=i*step. Borrows count finite values, retains
+   no pointers and allocates no memory. Failure leaves result unchanged. */
+int openmx_core_reciprocal_sample(enum OpenMXReciprocalKind kind, int count,
+    double step, const double *values, double wavevector, double *result);
+
 /* Scalar interpolation for unmigrated C consumers. The grid must already be
    finite and strictly increasing, with finite values. Does not copy/retain
    the row. Returns 0 on invalid shape or coordinate, leaving result unchanged. */

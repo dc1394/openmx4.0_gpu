@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <openacc.h>
 #include "openmx_common.h"
+#include "openmx_core_radial.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
 #include "mpi.h"
@@ -157,8 +158,9 @@ static void SetNonlocal_ValidateGlobalState(void)
     SetNonlocal_AbortWithMessage("Ngrid_NormK must be positive in Set_Nonlocal.c.");
   }
 
-  if (NormK == NULL){
-    SetNonlocal_AbortWithMessage("NormK is NULL in Set_Nonlocal.c.");
+  if (!isfinite(PAO_Nkmax) || PAO_Nkmax <= 0.0 ||
+      PAO_Nkmax/(double)Ngrid_NormK == 0.0){
+    SetNonlocal_AbortWithMessage("Invalid reciprocal grid spacing in Set_Nonlocal.c.");
   }
 
   if (Spe_NLRF_Bessel == NULL){
@@ -167,12 +169,6 @@ static void SetNonlocal_ValidateGlobalState(void)
 
   if (List_YOUSO[19] <= 0 || List_YOUSO[24] <= 0 || List_YOUSO[25] < 0 || List_YOUSO[30] < 0){
     SetNonlocal_AbortWithMessage("Invalid List_YOUSO dimensions in Set_Nonlocal.c.");
-  }
-
-  for (L=1; L<Ngrid_NormK; L++){
-    if (!(NormK[L] > NormK[L-1])){
-      SetNonlocal_AbortWithMessage("NormK must be strictly increasing in Set_Nonlocal.c.");
-    }
   }
 
   for (spe=0; spe<SpeciesNum; spe++){
@@ -1697,7 +1693,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   }
 
   if (!DSNL_on_device){
-#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,Spe_Num_RVPS,Spe_VPS_List,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,VPS_j_dependency,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,NormK,Spe_NLRF_Bessel)
+#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,Spe_Num_RVPS,Spe_VPS_List,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,VPS_j_dependency,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,Spe_NLRF_Bessel)
     {
 
       int OMPID,Nthrds,Nprocs,Nloop;
@@ -3288,139 +3284,11 @@ void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
 
 double NLRF_BesselF(int Gensi, int L, int so, double R)
 {
-  int mp_min,mp_max,m,po;
-  double h1,h2,h3,f1,f2,f3,f4;
-  double g1,g2,x1,x2,y1,y2,f;
   double result;
-  const double *bessel_values;
-  const double eps = 1.0e-14;
-
-  if (Ngrid_NormK <= 0){
-    SetNonlocal_AbortWithMessage("Ngrid_NormK must be positive in NLRF_BesselF.");
+  if (!openmx_core_reciprocal_sample(OPENMX_RECIPROCAL_PROJECTOR,Ngrid_NormK,
+        PAO_Nkmax/(double)Ngrid_NormK,Spe_NLRF_Bessel[so][Gensi][L],R,&result)) {
+    SetNonlocal_AbortWithMessage("Invalid reciprocal interpolation input in NLRF_BesselF.");
+    return 0.0;
   }
-
-  bessel_values = Spe_NLRF_Bessel[so][Gensi][L];
-
-  if (Ngrid_NormK == 1){
-    if (R <= NormK[0]) result = bessel_values[0];
-    else               result = 0.0;
-    return result;
-  }
-
-  if (Ngrid_NormK == 2){
-    double x_low,x_high,y_low,y_high;
-
-    x_low = NormK[0];
-    x_high = NormK[1];
-    y_low = bessel_values[0];
-    y_high = bessel_values[1];
-
-    if (R <= x_low) return y_low;
-    if (x_high < R) return 0.0;
-    if (fabs(x_high - x_low) <= eps) return y_low;
-
-    result = y_low + (y_high - y_low)*(R - x_low)/(x_high - x_low);
-    return result;
-  }
-
-  mp_min = 0;
-  mp_max = Ngrid_NormK - 1;
-  po = 0;
-
-  if (R<NormK[0]){
-    m = 1;
-  }
-  else if (NormK[mp_max]<R){
-    result = 0.0;
-    po = 1;
-  }
-  else{
-    do{
-      m = (mp_min + mp_max)/2;
-      if (NormK[m]<R)
-        mp_min = m;
-      else
-        mp_max = m;
-    }
-    while((mp_max-mp_min)!=1);
-    m = mp_max;
-
-    if (m<2)
-      m = 2;
-    else if (Ngrid_NormK<=m)
-      m = Ngrid_NormK - 2;
-  }
-
-  /****************************************************
-                 Spline like interpolation
-  ****************************************************/
-
-  if (po==0){
-
-    if (m==1){
-      h2 = NormK[m]   - NormK[m-1];
-      h3 = NormK[m+1] - NormK[m];
-
-      f2 = bessel_values[m-1];
-      f3 = bessel_values[m];
-      f4 = bessel_values[m+1];
-
-      h1 = -(h2+h3);
-      f1 = f4;
-    }
-    else if (m==(Ngrid_NormK-1)){
-      h1 = NormK[m-1] - NormK[m-2];
-      h2 = NormK[m]   - NormK[m-1];
-
-      f1 = bessel_values[m-2];
-      f2 = bessel_values[m-1];
-      f3 = bessel_values[m];
-
-      h3 = -(h1+h2);
-      f4 = f1;
-    }
-    else{
-      h1 = NormK[m-1] - NormK[m-2];
-      h2 = NormK[m]   - NormK[m-1];
-      h3 = NormK[m+1] - NormK[m];
-
-      f1 = bessel_values[m-2];
-      f2 = bessel_values[m-1];
-      f3 = bessel_values[m];
-      f4 = bessel_values[m+1];
-    }
-
-    if (fabs(h1)<=eps || fabs(h2)<=eps || fabs(h3)<=eps ||
-        fabs(h1+h2)<=eps || fabs(h2+h3)<=eps){
-      x1 = NormK[m-1];
-      x2 = NormK[m];
-
-      if (fabs(x2-x1)<=eps){
-        result = f2;
-      }
-      else{
-        result = f2 + (f3-f2)*(R - x1)/(x2 - x1);
-      }
-      return result;
-    }
-
-    /****************************************************
-                Calculate the value at R
-    ****************************************************/
-
-    g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
-    g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
-
-    x1 = R - NormK[m-1];
-    x2 = R - NormK[m];
-    y1 = x1/h2;
-    y2 = x2/h2;
-
-    f =  y2*y2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-       + y1*y1*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
-
-    result = f;
-  }
-
   return result;
 }

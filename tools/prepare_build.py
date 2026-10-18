@@ -83,7 +83,8 @@ def prepare(source_root, build_root, backend):
         # the same implementation in both GPU backends.
         selected = {name: source / name for name in manifest['shared'] + manifest.get('integrated_shared', [])
                     if len(Path(name).parts) == 1}
-        for name, relative in manifest['overrides'].items():
+        overrides = {**manifest['overrides'], **manifest.get('integrated_overrides', {})}
+        for name, relative in overrides.items():
             selected[name] = hip / relative
         selected['Makefile'] = hip / 'Makefile'
         selected['makefile'] = hip / 'Makefile'

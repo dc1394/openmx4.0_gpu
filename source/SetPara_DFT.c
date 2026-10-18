@@ -25,7 +25,7 @@ static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
 static void Read_PAO(int spe, char *file);
 static void Read_VPS(int spe, char *file);
-static void ReadPara_DFT();
+static void ReadPara_DFT(OpenMXCoreContext *core);
 static void Set_BasisPara();
 static void Set_Comp2Real();
 static void Check_InitDensity();
@@ -96,7 +96,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
            Read parameters for DFT calculations
   ****************************************************/
 
-  ReadPara_DFT();
+  ReadPara_DFT(core);
   Check_InitDensity();
 
   Set_Atom_Weight();
@@ -480,7 +480,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
 
 
 
-void ReadPara_DFT()
+static void ReadPara_DFT(OpenMXCoreContext *core)
 {
 
   FILE *fp;
@@ -541,7 +541,7 @@ void ReadPara_DFT()
 
   remake_headfile = 0;
 
-  Allocate_Arrays(6);
+  Allocate_Arrays_with_context(6,core);
 
   /*************************
             read

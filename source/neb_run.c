@@ -207,5 +207,5 @@ void neb_run(OpenMXCoreContext *core, char *argv[], MPI_Comm mpi_commWD, int ind
 
   /* free arrays */
 
-  Free_Arrays(0);
+  Free_Arrays_with_context(0,core);
 }

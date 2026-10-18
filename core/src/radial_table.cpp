@@ -10,8 +10,10 @@ namespace {
 
 struct Interpolated { double value, derivative; };
 
-Interpolated interpolate(std::span<const double> radii, const double* values,
-                         std::size_t m, double radius, bool derivative = false)
+template<class Grid>
+Interpolated interpolate(const Grid& radii, const double* values,
+                         std::size_t m, double radius, bool derivative = false,
+                         double minimum_spacing = -1)
 {
   const double h2 = radii[m]-radii[m-1];
   const double f2 = values[m-1], f3 = values[m];
@@ -27,6 +29,13 @@ Interpolated interpolate(std::span<const double> radii, const double* values,
   } else {
     h1 = radii[m-1]-radii[m-2]; h3 = radii[m+1]-radii[m];
     f1 = values[m-2]; f4 = values[m+1];
+  }
+  if (minimum_spacing >= 0 &&
+      (std::abs(h1) <= minimum_spacing || std::abs(h2) <= minimum_spacing ||
+       std::abs(h3) <= minimum_spacing || std::abs(h1+h2) <= minimum_spacing ||
+       std::abs(h2+h3) <= minimum_spacing)) {
+    if (std::abs(h2) <= minimum_spacing) return {f2,0};
+    return {f2+(f3-f2)*(radius-radii[m-1])/h2,(f3-f2)/h2};
   }
   const double g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
   const double g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
@@ -45,6 +54,39 @@ Interpolated interpolate(std::span<const double> radii, const double* values,
 }
 
 } // namespace
+
+double sample_reciprocal_row(ReciprocalKind kind, std::span<const double> values,
+    double step, double wavevector)
+{
+  if ((kind != ReciprocalKind::pao && kind != ReciprocalKind::projector) ||
+      values.empty() || values.size() > INT_MAX || !std::isfinite(step) || step <= 0 ||
+      !std::isfinite((values.size()-1)*step) || !std::isfinite(wavevector))
+    throw std::invalid_argument("invalid reciprocal interpolation row or coordinate");
+  struct UniformGrid {
+    std::size_t count;
+    double step;
+    double operator[](std::size_t i) const { return static_cast<double>(i)*step; }
+    std::size_t size() const { return count; }
+  } grid{values.size(),step};
+  if (wavevector > grid[grid.size()-1]) return 0;
+  if (values.size() == 1) return values[0];
+  if (values.size() == 2) {
+    if (wavevector <= 0 || step <= 1e-14) return values[0];
+    return values[0]+(values[1]-values[0])*wavevector/step;
+  }
+  std::size_t m = 1;
+  if (wavevector >= 0) {
+    std::size_t low = 0, high = grid.size()-1;
+    while (high-low > 1) {
+      const auto middle = (low+high)/2;
+      if (grid[middle] < wavevector) low = middle;
+      else high = middle;
+    }
+    m = std::max(std::size_t{2},high);
+  }
+  return interpolate(grid,values.data(),m,wavevector,false,
+      kind == ReciprocalKind::projector ? 1e-14 : -1).value;
+}
 
 RadialTable::RadialTable(RadialKind kind, std::span<const double> radii,
     std::span<const RadialChannel> channels, double cutoff)
