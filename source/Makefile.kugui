@@ -22,6 +22,10 @@
 #               library, and nvcc 12.5 ignores -std=c++20 with nvc++
 #   autotools   the bundled ELPA needs autoconf >= 2.71 (RHEL 8 has 2.69),
 #               so a private copy is built once into build/host-tools
+#   MAGMA       a GPU node has four A100s, but the login node that builds
+#               sees no GPU, where WITH_MAGMA=auto would leave MAGMA out,
+#               so it is built unconditionally (like GEMMUL8_GPU_ARCH,
+#               the setting cannot be detected there)
 #
 # Build from source/ with:  make -f Makefile.kugui -j16 all
 # (plain "make -f Makefile.kugui" builds only openmx; run one build at a
@@ -43,6 +47,7 @@ NVCC_HOST           ?= $(KUGUI_GCC_ROOT)/bin/g++
 GPUSOLVER2_HOST_CC  ?= $(KUGUI_GCC_ROOT)/bin/gcc
 GPUSOLVER2_HOST_CXX ?= $(KUGUI_GCC_ROOT)/bin/g++
 export GPUSOLVER2_HOST_LIBDIR ?= $(KUGUI_GCC_LIBDIR)
+WITH_MAGMA ?= 1
 MAGMA_HOST_LIBDIR ?= $(KUGUI_GCC_LIBDIR)
 MAGMA_CMAKE ?= $(if $(wildcard $(CURDIR)/build/cmake-python/cmake/data/bin/cmake),$(CURDIR)/build/cmake-python/cmake/data/bin/cmake,cmake)
 

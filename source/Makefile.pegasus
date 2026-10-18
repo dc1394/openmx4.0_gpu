@@ -137,6 +137,9 @@ FFTW3_TAG      ?= fftw-3.3.11
 FFTW3_VERSION  := $(patsubst fftw-%,%,$(FFTW3_TAG))
 FFTW3_RELEASE_URL ?= https://fftw.org/fftw-$(FFTW3_VERSION).tar.gz
 FFTW3_RELEASE_TARBALL ?= $(CURDIR)/third_party/fftw-$(FFTW3_VERSION).tar.gz
+# SHA-256 of the bundled fftw-3.3.11.tar.gz (its MD5 matches the one fftw.org
+# publishes); empty skips the check, as for another FFTW3_TAG.
+FFTW3_RELEASE_SHA256 ?= $(if $(filter 3.3.11,$(FFTW3_VERSION)),5630c24cdeb33b131612f7eb4b1a9934234754f9f388ff8617458d0be6f239a1)
 FFTW3_SRC_DIR  ?= third_party/fftw3
 FFTW3_BUILD_DIR ?= build/fftw3
 FFTW3_PREFIX   ?= $(CURDIR)/third_party/fftw3-install
@@ -144,7 +147,10 @@ FFTW3_CC       ?= $(NVHPC_COMPILER_BIN)/nvc
 FFTW3_CXX      ?= $(NVHPC_COMPILER_BIN)/nvc++
 FFTW3_FC       ?= $(NVHPC_COMPILER_BIN)/nvfortran
 FFTW3_F77      ?= $(FFTW3_FC)
-FFTW3_CONFIGURE_OPTIONS ?= --enable-static --disable-shared
+# OpenMX links only libfftw3.a.  --disable-doc also spares the build makeinfo:
+# the overlay below keeps the release dates of the tarball's files, so the
+# info manual would look older than the checked-out .texi sources.
+FFTW3_CONFIGURE_OPTIONS ?= --enable-static --disable-shared --disable-doc
 FFTW3_CONFIGURE_TRIPLET ?= x86_64-pc-linux-gnu
 FFTW3_BUILD_ENV = PATH="$(PATH)" CONFIG_SITE= build_alias= host_alias= BUILD= HOST= CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= CFLAGS= CXXFLAGS= CPPFLAGS= FCFLAGS= FFLAGS= LDFLAGS= LIBS= CPP="$(FFTW3_CC) -E" AR=/usr/bin/ar AS=/usr/bin/as RANLIB=/usr/bin/ranlib NM=/usr/bin/nm LD=/usr/bin/ld OBJDUMP=/usr/bin/objdump STRIP=/usr/bin/strip READELF=/usr/bin/readelf ADDR2LINE=/usr/bin/addr2line DLLTOOL=
 FFTW3_SRC_ABS  := $(abspath $(FFTW3_SRC_DIR))
@@ -348,14 +354,30 @@ $(FFTW3_SRC_ABS):
 	@echo "FFTW3 source directory was not found; cloning $(FFTW3_REPO_URL) at $(FFTW3_TAG)."
 	git clone --branch $(FFTW3_TAG) --depth 1 $(FFTW3_REPO_URL) "$(FFTW3_SRC_ABS)"
 
+# The FFTW3 Git sources lack the generated codelets (and configure), which
+# come from the release tarball bundled in third_party/.  It is downloaded
+# only when it is missing, into a temporary file that takes the tarball's
+# name only after its SHA-256 has been verified; the bundled file is verified
+# as well before it is used.
 $(FFTW3_CODELET_SENTINEL): | $(FFTW3_SRC_ABS)
-	@echo "FFTW3 git source lacks generated codelets; overlaying $(FFTW3_RELEASE_URL)."
-	mkdir -p "$(dir $(FFTW3_RELEASE_TARBALL))"
-	curl -L --fail "$(FFTW3_RELEASE_URL)" -o "$(FFTW3_RELEASE_TARBALL)"
-	tmpdir=$$(mktemp -d); \
-	  tar -xzf "$(FFTW3_RELEASE_TARBALL)" -C "$$tmpdir"; \
-	  rsync -a --ignore-existing "$$tmpdir/fftw-$(FFTW3_VERSION)/" "$(FFTW3_SRC_ABS)/"; \
-	  rm -rf "$$tmpdir"
+	@echo "FFTW3 git source lacks generated codelets; overlaying the $(FFTW3_VERSION) release tarball."
+	@if [ ! -f "$(FFTW3_RELEASE_TARBALL)" ]; then \
+	  echo "$(FFTW3_RELEASE_TARBALL) was not found; downloading $(FFTW3_RELEASE_URL)."; \
+	  mkdir -p "$(dir $(FFTW3_RELEASE_TARBALL))" && \
+	  curl -L --fail "$(FFTW3_RELEASE_URL)" -o "$(FFTW3_RELEASE_TARBALL).tmp" && \
+	  { [ -z "$(FFTW3_RELEASE_SHA256)" ] || \
+	    printf '%s  %s\n' "$(FFTW3_RELEASE_SHA256)" "$(FFTW3_RELEASE_TARBALL).tmp" | sha256sum -c --quiet -; } && \
+	  mv -f "$(FFTW3_RELEASE_TARBALL).tmp" "$(FFTW3_RELEASE_TARBALL)" || \
+	  { rm -f "$(FFTW3_RELEASE_TARBALL).tmp"; echo "Could not obtain a verified $(FFTW3_RELEASE_TARBALL)."; exit 1; }; \
+	fi
+	@if [ -n "$(FFTW3_RELEASE_SHA256)" ]; then \
+	  printf '%s  %s\n' "$(FFTW3_RELEASE_SHA256)" "$(FFTW3_RELEASE_TARBALL)" | sha256sum -c --quiet - || \
+	  { echo "SHA-256 mismatch of $(FFTW3_RELEASE_TARBALL); expected $(FFTW3_RELEASE_SHA256)."; exit 1; }; \
+	fi
+	tmpdir=$$(mktemp -d) && \
+	  { tar -xzf "$(FFTW3_RELEASE_TARBALL)" -C "$$tmpdir" && \
+	    rsync -a --ignore-existing "$$tmpdir/fftw-$(FFTW3_VERSION)/" "$(FFTW3_SRC_ABS)/"; \
+	    status=$$?; rm -rf "$$tmpdir"; exit $$status; }
 
 $(FFTW3_BUILD_DIR)/config.status: $(FFTW3_CODELET_SENTINEL) | $(FFTW3_SRC_ABS)
 	@if [ -f "$(FFTW3_BUILD_ABS)/Makefile" ]; then $(FFTW3_BUILD_ENV) $(MAKE) -C "$(FFTW3_BUILD_ABS)" clean; fi

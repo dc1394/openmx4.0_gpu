@@ -125,6 +125,9 @@ FFTW3_TAG      ?= fftw-3.3.11
 FFTW3_VERSION  := $(patsubst fftw-%,%,$(FFTW3_TAG))
 FFTW3_RELEASE_URL ?= https://fftw.org/fftw-$(FFTW3_VERSION).tar.gz
 FFTW3_RELEASE_TARBALL ?= $(CURDIR)/third_party/fftw-$(FFTW3_VERSION).tar.gz
+# SHA-256 of the bundled fftw-3.3.11.tar.gz (its MD5 matches the one fftw.org
+# publishes); empty skips the check, as for another FFTW3_TAG.
+FFTW3_RELEASE_SHA256 ?= $(if $(filter 3.3.11,$(FFTW3_VERSION)),5630c24cdeb33b131612f7eb4b1a9934234754f9f388ff8617458d0be6f239a1)
 FFTW3_SRC_DIR  ?= third_party/fftw3
 FFTW3_BUILD_DIR ?= build/fftw3
 FFTW3_PREFIX   ?= $(CURDIR)/third_party/fftw3-install
@@ -132,7 +135,10 @@ FFTW3_CC       ?= $(NVHPC_COMPILER_BIN)/nvc
 FFTW3_CXX      ?= $(NVHPC_COMPILER_BIN)/nvc++
 FFTW3_FC       ?= $(NVHPC_COMPILER_BIN)/nvfortran
 FFTW3_F77      ?= $(FFTW3_FC)
-FFTW3_CONFIGURE_OPTIONS ?= --enable-static --disable-shared
+# OpenMX links only libfftw3.a.  --disable-doc also spares the build makeinfo:
+# the overlay below keeps the release dates of the tarball's files, so the
+# info manual would look older than the checked-out .texi sources.
+FFTW3_CONFIGURE_OPTIONS ?= --enable-static --disable-shared --disable-doc
 FFTW3_CONFIGURE_TRIPLET ?= x86_64-pc-linux-gnu
 FFTW3_BUILD_ENV = PATH="$(PATH)" CONFIG_SITE= build_alias= host_alias= BUILD= HOST= CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= CFLAGS= CXXFLAGS= CPPFLAGS= FCFLAGS= FFLAGS= LDFLAGS= LIBS= CPP="$(FFTW3_CC) -E" AR=/usr/bin/ar AS=/usr/bin/as RANLIB=/usr/bin/ranlib NM=/usr/bin/nm LD=/usr/bin/ld OBJDUMP=/usr/bin/objdump STRIP=/usr/bin/strip READELF=/usr/bin/readelf ADDR2LINE=/usr/bin/addr2line DLLTOOL=
 FFTW3_SRC_ABS  := $(abspath $(FFTW3_SRC_DIR))
@@ -186,14 +192,39 @@ NVCC_HOST ?= $(NVHPC_COMPILER_BIN)/nvc++
 NVCC_GEMMUL8_ENV = PATH="$(PATH)" CUDA_HOME="$(NVHPC_CUDA_HOME)" CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= NVCC_PREPEND_FLAGS= NVCC_APPEND_FLAGS=
 NVCC_GEMMUL8_FLAGS = -ccbin $(NVCC_HOST) -std=c++20 -O3 -diag-suppress 177 -DGPU_ARCH=$(GEMMUL8_BUILD_GPU_ARCH) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(GEMMUL8_CUDA_PATH)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_MATH_DIR)/include -gencode arch=compute_$(GEMMUL8_BUILD_GPU_ARCH),code=sm_$(GEMMUL8_BUILD_GPU_ARCH)
 
-# Single-node cluster solvers. The custom GEMM implementation is built in;
-# MAGMA is optional (auto uses an existing install, 1 builds it, 0 disables it).
+# MAGMA: the multi-GPU dense eigensolver of the single-node Cluster and Band
+# solvers (the memory fallback of gpusolver when one GPU cannot hold a dense
+# solve, and scf.eigen.lib gpusolver3).  It needs two or more GPUs, so
+#   WITH_MAGMA=auto (default)  links it when nvidia-smi shows two or more
+#                              GPUs on the build node, building it first
+#                              when MAGMA_PREFIX has none; with fewer GPUs
+#                              it links only an existing installation
+#   WITH_MAGMA=1               builds and links it on any node (e.g. on a
+#                              login node without GPUs, for multi-GPU
+#                              compute nodes), and rebuilds it when its
+#                              toolchain, build script or patch changes
+#   WITH_MAGMA=0               builds without it
+# Without MAGMA, a dense solve that does not fit on one GPU is recovered on
+# the CPU.  The custom multi-GPU GEMM implementation is always built in.
 WITH_MAGMA ?= auto
+ifeq ($(filter auto 0 1,$(WITH_MAGMA)),)
+$(error WITH_MAGMA must be auto, 1 or 0 (got "$(WITH_MAGMA)"))
+endif
+# GPUs on the build node (a command-line MAGMA_NODE_GPUS=N overrides it)
+ifeq ($(WITH_MAGMA)$(origin MAGMA_NODE_GPUS),autoundefined)
+MAGMA_NODE_GPUS := $(shell nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | grep -c '^[0-9]')
+endif
+MAGMA_AUTO_BUILD := $(if $(filter auto,$(WITH_MAGMA)),$(if $(filter-out 0 1,$(MAGMA_NODE_GPUS)),1))
 MAGMA_PREFIX ?= $(CURDIR)/third_party/magma-install
 MAGMA_BUILD ?= $(CURDIR)/build/magma
-MAGMA_ARCHIVE ?=
+# The pinned MAGMA 2.10.0 archive (build_magma.sh verifies its SHA-256) is
+# bundled for the HIP backend; using it keeps the build off the network.
+# It is found through the real location of this Makefile, because CMake
+# builds read it through a link in the build tree.  When it is absent
+# (MAGMA_ARCHIVE empty), build_magma.sh downloads the same archive.
+MAGMA_ARCHIVE ?= $(wildcard $(dir $(realpath $(firstword $(MAKEFILE_LIST))))third_party/hip/magma/magma-2.10.0.tar.gz)
 MAGMA_LIBRARY = $(MAGMA_PREFIX)/lib/libmagma.so
-MAGMA_ENABLED = $(if $(filter 1,$(WITH_MAGMA)),1,$(if $(filter auto,$(WITH_MAGMA)),$(if $(filter magma-stack,$(MAKECMDGOALS))$(wildcard $(MAGMA_LIBRARY)),1,0),0))
+MAGMA_ENABLED = $(if $(filter 1,$(WITH_MAGMA)),1,$(if $(filter auto,$(WITH_MAGMA)),$(if $(MAGMA_AUTO_BUILD)$(filter magma-stack,$(MAKECMDGOALS))$(wildcard $(MAGMA_LIBRARY)),1,0),0))
 MAGMA_CMAKE ?= cmake
 MAGMA_JOBS ?= 3
 MAGMA_HOST_CC ?= $(GPUSOLVER2_HOST_CC)
@@ -365,14 +396,30 @@ $(FFTW3_SRC_ABS):
 	@echo "FFTW3 source directory was not found; cloning $(FFTW3_REPO_URL) at $(FFTW3_TAG)."
 	git clone --branch $(FFTW3_TAG) --depth 1 $(FFTW3_REPO_URL) "$(FFTW3_SRC_ABS)"
 
+# The FFTW3 Git sources lack the generated codelets (and configure), which
+# come from the release tarball bundled in third_party/.  It is downloaded
+# only when it is missing, into a temporary file that takes the tarball's
+# name only after its SHA-256 has been verified; the bundled file is verified
+# as well before it is used.
 $(FFTW3_CODELET_SENTINEL): | $(FFTW3_SRC_ABS)
-	@echo "FFTW3 git source lacks generated codelets; overlaying $(FFTW3_RELEASE_URL)."
-	mkdir -p "$(dir $(FFTW3_RELEASE_TARBALL))"
-	curl -L --fail "$(FFTW3_RELEASE_URL)" -o "$(FFTW3_RELEASE_TARBALL)"
-	tmpdir=$$(mktemp -d); \
-	  tar -xzf "$(FFTW3_RELEASE_TARBALL)" -C "$$tmpdir"; \
-	  rsync -a --ignore-existing "$$tmpdir/fftw-$(FFTW3_VERSION)/" "$(FFTW3_SRC_ABS)/"; \
-	  rm -rf "$$tmpdir"
+	@echo "FFTW3 git source lacks generated codelets; overlaying the $(FFTW3_VERSION) release tarball."
+	@if [ ! -f "$(FFTW3_RELEASE_TARBALL)" ]; then \
+	  echo "$(FFTW3_RELEASE_TARBALL) was not found; downloading $(FFTW3_RELEASE_URL)."; \
+	  mkdir -p "$(dir $(FFTW3_RELEASE_TARBALL))" && \
+	  curl -L --fail "$(FFTW3_RELEASE_URL)" -o "$(FFTW3_RELEASE_TARBALL).tmp" && \
+	  { [ -z "$(FFTW3_RELEASE_SHA256)" ] || \
+	    printf '%s  %s\n' "$(FFTW3_RELEASE_SHA256)" "$(FFTW3_RELEASE_TARBALL).tmp" | sha256sum -c --quiet -; } && \
+	  mv -f "$(FFTW3_RELEASE_TARBALL).tmp" "$(FFTW3_RELEASE_TARBALL)" || \
+	  { rm -f "$(FFTW3_RELEASE_TARBALL).tmp"; echo "Could not obtain a verified $(FFTW3_RELEASE_TARBALL)."; exit 1; }; \
+	fi
+	@if [ -n "$(FFTW3_RELEASE_SHA256)" ]; then \
+	  printf '%s  %s\n' "$(FFTW3_RELEASE_SHA256)" "$(FFTW3_RELEASE_TARBALL)" | sha256sum -c --quiet - || \
+	  { echo "SHA-256 mismatch of $(FFTW3_RELEASE_TARBALL); expected $(FFTW3_RELEASE_SHA256)."; exit 1; }; \
+	fi
+	tmpdir=$$(mktemp -d) && \
+	  { tar -xzf "$(FFTW3_RELEASE_TARBALL)" -C "$$tmpdir" && \
+	    rsync -a --ignore-existing "$$tmpdir/fftw-$(FFTW3_VERSION)/" "$(FFTW3_SRC_ABS)/"; \
+	    status=$$?; rm -rf "$$tmpdir"; exit $$status; }
 
 $(FFTW3_BUILD_DIR)/config.status: $(FFTW3_CODELET_SENTINEL) | $(FFTW3_SRC_ABS)
 	@if [ -f "$(FFTW3_BUILD_ABS)/Makefile" ]; then $(FFTW3_BUILD_ENV) $(MAKE) -C "$(FFTW3_BUILD_ABS)" clean; fi
@@ -903,26 +950,34 @@ openmx_mgpu_runtime.o: openmx_mgpu_runtime.cu openmx_mgpu_runtime.h openmx_mgpu_
 openmx_mgpu_gemm.o: openmx_mgpu_gemm.cu openmx_mgpu_gemm.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -Xcompiler -pthread,-fopenmp -c $< -o $@
 
-# Unlike the global toolchain signature this also records a switch from
-# stub to installed MAGMA when WITH_MAGMA=auto first discovers the library.
+# Unlike the global toolchain signature this also records a switch between
+# the stub and MAGMA (WITH_MAGMA=auto decides per build node), and reports
+# the decision whenever it changes.
 MAGMA_ADAPTER_CONFIG := $(CURDIR)/build/magma-adapter.conf
+MAGMA_DECISION = $(if $(filter 1,$(MAGMA_ENABLED)),MAGMA: linking $(MAGMA_LIBRARY)$(if $(filter auto,$(WITH_MAGMA)), ($(if $(MAGMA_AUTO_BUILD),$(MAGMA_NODE_GPUS) GPUs on this node,installed by an earlier build))),MAGMA: not linked ($(if $(filter auto,$(WITH_MAGMA)),$(MAGMA_NODE_GPUS) GPU(s) on this node; WITH_MAGMA=1 builds it for multi-GPU nodes,WITH_MAGMA=0)); dense solves that do not fit on one GPU recover on the CPU)
 $(MAGMA_ADAPTER_CONFIG): openmx-toolchain-force
 	@mkdir -p "$(dir $@)"
 	@printf '%s\n' '$(MAGMA_ENABLED)' '$(MAGMA_PREFIX)' '$(MAGMA_CPPFLAGS)' > "$@.tmp"
-	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
+	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || { mv "$@.tmp" "$@"; echo "$(MAGMA_DECISION)"; }
 openmx_magma_mgpu.o: openmx_magma_mgpu.cpp openmx_magma_mgpu.h openmx_magma_refine.h openmx_mgpu_gemm.h third_party/magma_device_map.h $(MAGMA_ADAPTER_CONFIG) $(MAGMA_DEPENDENCY)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) $(MAGMA_CPPFLAGS) -Xcompiler -pthread,-fopenmp -c $< -o $@
 .PHONY: magma-stack
 magma-stack: $(MAGMA_LIBRARY)
-# Auto only consumes an installed library (which may be read-only). Building
-# or replacing it requires WITH_MAGMA=1 or the explicit magma-stack target.
+# WITH_MAGMA=1 and the explicit magma-stack target build MAGMA and rebuild
+# it when its toolchain, build script or patch changes.  WITH_MAGMA=auto on
+# a build node with two or more GPUs builds it only when it is missing: an
+# existing installation (which may be external and read-only) is used as
+# it is.  Otherwise auto only consumes an installed library.
 ifneq ($(strip $(filter 1,$(WITH_MAGMA)) $(filter magma-stack,$(MAKECMDGOALS))),)
 MAGMA_BUILD_CONFIG := $(MAGMA_BUILD)/make-toolchain.conf
 $(MAGMA_BUILD_CONFIG): openmx-toolchain-force
 	@mkdir -p "$(dir $@)"
 	@printf '%s\n' '$(NVHPC_CUDA_HOME)' '$(NVHPC_MATH_DIR)' '$(GEMMUL8_BUILD_GPU_ARCH)' '$(MAGMA_HOST_CC)' '$(MAGMA_HOST_CXX)' '$(MAGMA_HOST_LIBDIR)' '$(MAGMA_PREFIX)' '$(MAGMA_LAPACK_LIBRARIES)' > "$@.tmp"
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
-$(MAGMA_LIBRARY): third_party/build_magma.sh third_party/magma-device-map.patch third_party/magma_device_map.h $(MAGMA_BUILD_CONFIG)
+MAGMA_LIBRARY_PREREQS = third_party/build_magma.sh third_party/magma-device-map.patch third_party/magma_device_map.h $(MAGMA_BUILD_CONFIG)
+endif
+ifneq ($(strip $(filter 1,$(WITH_MAGMA)) $(MAGMA_AUTO_BUILD) $(filter magma-stack,$(MAKECMDGOALS))),)
+$(MAGMA_LIBRARY): $(MAGMA_LIBRARY_PREREQS)
 	MAGMA_BUILD="$(MAGMA_BUILD)" MAGMA_PREFIX="$(MAGMA_PREFIX)" \
 	MAGMA_ARCHIVE="$(MAGMA_ARCHIVE)" \
 	MAGMA_CUDA_HOME="$(NVHPC_CUDA_HOME)" MAGMA_MATH_DIR="$(NVHPC_MATH_DIR)" \

@@ -104,11 +104,14 @@ remapped. Archive and interface hashes are verified, and patch application
 is exact and idempotent.
 
   cd source
-  make -f Makefile.kugui -j2 openmx WITH_MAGMA=1
+  make -f Makefile.kugui -j2 openmx
 
-Rebuild with WITH_MAGMA=1 to update an existing local install. WITH_MAGMA=auto
-only links an existing install. An unpatched external MAGMA can still serve
-prefix groups [0,1,...]; nonprefix groups report unavailable and forced or
+Makefile.kugui sets WITH_MAGMA=1, which builds the patched library or
+updates an existing local install. With the stock Makefile, WITH_MAGMA=auto
+builds it only when it is missing and nvidia-smi shows two or more GPUs on
+the build node; otherwise it links an existing install as it is. An
+unpatched external MAGMA can still serve prefix groups [0,1,...];
+nonprefix groups report unavailable and forced or
 capacity solves then use CPU recovery. WITH_MAGMA=0 retains native cuSOLVER
 and custom GEMM, with CPU recovery when the dense GPU work cannot fit.
 The experimental paper backend has been removed. The gpusolver keyword includes automatic memory recovery through MAGMA;

@@ -239,18 +239,26 @@ The active input triangle is checked for nonfinite values before solving.
 Build
 -----
 The runtime and custom GEMM build with the existing CUDA toolchain.
-WITH_MAGMA=auto (default) links an already installed MAGMA;
-WITH_MAGMA=0 builds a stub; WITH_MAGMA=1 builds/links the dependency.
-MAGMA_PREFIX defaults to source/third_party/magma-install.
+MAGMA is required for the multi-GPU solves. WITH_MAGMA=auto (default)
+links it when nvidia-smi shows two or more GPUs on the build node,
+building it first when MAGMA_PREFIX has none (an existing installation is
+used as it is), and otherwise links only an existing installation;
+WITH_MAGMA=1 builds and links it on any node and rebuilds it when its
+toolchain, build script or patch changes (a login node without GPUs
+building for multi-GPU compute nodes; Makefile.kugui sets it);
+WITH_MAGMA=0 builds a stub. The build prints its decision ("MAGMA: ...")
+when it changes. MAGMA_PREFIX defaults to source/third_party/magma-install.
 
   cd source
-  make -f Makefile.kugui -j2 openmx WITH_MAGMA=1
+  make -f Makefile.kugui -j2 openmx
 
-For a new MAGMA install, select MAGMA_CMAKE (CMake with CUDA support),
-MAGMA_HOST_CC/MAGMA_HOST_CXX and MAGMA_LAPACK_LIBRARIES as needed.
+For a new MAGMA install, select MAGMA_CMAKE (CMake >= 3.18 with CUDA
+support), MAGMA_HOST_CC/MAGMA_HOST_CXX and MAGMA_LAPACK_LIBRARIES as needed.
 third_party/build_magma.sh pins the official 2.10.0 archive by SHA256 and
 builds only libmagma. Its generated source/build/install files stay local.
-It accepts MAGMA_ARCHIVE for an offline archive. The AMD sibling project
+MAGMA_ARCHIVE defaults to the identical archive bundled for the HIP backend
+(third_party/hip/magma/magma-2.10.0.tar.gz), so the build needs no network;
+an empty MAGMA_ARCHIVE makes the script download it. The AMD sibling project
 also uses MAGMA 2.10.0; its Ozaki-II patch targets single-GPU HIP wrapper
 paths and is not a prerequisite for the CUDA multi-GPU _m routines.
 

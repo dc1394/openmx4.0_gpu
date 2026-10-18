@@ -68,7 +68,13 @@ cmake --build build/cuda
 
 分離された CUDA 数学ライブラリには `NVHPC_MATH_DIR`、別の MPI には
 `NVHPC_MPI_BIN` と `NVHPC_MPI_LIBDIR` も指定できます。
-CUDA の MAGMA は従来どおり任意です。必要なら `WITH_MAGMA=1` を追加します。
+CUDA 版の MAGMA は、複数 GPU を使う Cluster／Band の密行列固有値計算に必要です。
+ビルドするノードで `nvidia-smi` が GPU を 2 枚以上表示した場合は自動でリンクし、未導入なら先にビルドします
+（`WITH_MAGMA=auto`、既定。導入済みのものはそのまま使います）。GPU のないログインノードで複数 GPU ノード向けに
+ビルドする場合や、ツールチェーンの変更後に作り直す場合は `WITH_MAGMA=1`、MAGMA なしでビルドする場合は
+`WITH_MAGMA=0` を `OPENMX_MAKE_OPTIONS` に追加します。
+MAGMA 2.10.0 は HIP 用に同梱したアーカイブ（SHA-256 を検証）から作るので、ネットワーク接続は不要です。
+その構築には CUDA 対応の CMake 3.18 以上が必要です。
 従来の NVIDIA ビルドも使用できます。
 
 ```sh
@@ -139,7 +145,7 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 
 `cmake --build ... -jN` の外側の並列数では、内部の make の並列数は変更されません。
 `OPENMX_BUILD_JOBS` で指定してください。依存スタックの独立した並列数は
-`GPUSOLVER2_JOBS`、CUDA の任意 MAGMA は `MAGMA_JOBS` で指定します。
+`GPUSOLVER2_JOBS`、CUDA の MAGMA は `MAGMA_JOBS`（既定 3）で指定します。
 `GPUSOLVER2_JOBS` を指定しない場合は `OPENMX_BUILD_JOBS` の値を使います。
 
 実行ファイルは `build/cuda/openmx` または `build/hip/openmx` に生成されます。

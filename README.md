@@ -18,6 +18,13 @@ dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
 
+The NVIDIA build adds MAGMA, which the multi-GPU Cluster and Band solvers
+need, when `nvidia-smi` on the build node lists two or more GPUs. To build
+it on a single-GPU node or on a login node without GPUs for multi-GPU
+compute nodes, add `WITH_MAGMA=1` (with CMake,
+`-DOPENMX_MAKE_OPTIONS=WITH_MAGMA=1`). The HIP build always includes MAGMA.
+See [Dependencies](#dependencies).
+
 ## What does this code do?
 This is a GPU-accelerated version of [OpenMX](https://www.openmx-square.org/), a first-principles calculation code based on numerical atomic orbitals (NAO). The dense eigensolvers of the band calculations (collinear and non-collinear) and of the cluster calculations (collinear and non-collinear), the O(N)-type solvers (DC, DC-LNO, Krylov), and the heavy matrix-construction stages around them (Hamiltonian/overlap assembly, charge-density and orbital grids, forces, charge mixing) are GPU-accelerated. Since v2.0, the cluster diagonalization can also be distributed over multiple GPUs and multiple nodes with ELPA (GPU kernels) + COSMA; see below.
 
@@ -64,11 +71,11 @@ scf.EigenvalueSolver       cluster
 scf.eigen.lib              gpusolver2    # ELPA (GPU kernels) + COSMA
 ```
 
-replaces the cluster diagonalization (collinear and non-collinear) with [ELPA](https://elpa.mpcdf.mpg.de/) 2026.02 (NVIDIA GPU kernels) and [COSMA](https://github.com/eth-cscs/COSMA) (communication-optimal distributed matrix multiplication, GPU backend), engaging every MPI rank and every GPU. This is the option for machines where the diagonalization must not be confined to one GPU, e.g. one GPU per node × many nodes. Notes:
+replaces the cluster diagonalization (collinear and non-collinear) with [ELPA](https://elpa.mpcdf.mpg.de/) 2026.02 (NVIDIA or AMD GPU kernels, following the build's backend) and [COSMA](https://github.com/eth-cscs/COSMA) (communication-optimal distributed matrix multiplication, GPU backend), engaging every MPI rank and every GPU. This is the option for machines where the diagonalization must not be confined to one GPU, e.g. one GPU per node × many nodes. Notes:
 
 - "gpusolver2" supports only `scf.EigenvalueSolver cluster`; any other solver stops with an input error. It retains the existing per-rank GPU paths outside cluster diagonalization, and a machine without a usable GPU demotes itself to ELPA2 as usual.
 - When the GPU memory cannot hold a solve, that solve automatically falls back to the ELPA CPU kernels / ScaLAPACK instead of aborting the run.
-- The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically by the first `make` — no network access is needed (autoconf, automake, libtool, m4 and python3 must be installed). The CPU "elpa1"/"elpa2" paths and "gpusolver2" share the same ELPA 2026.02.002 library. The CPU keywords select its one-stage and two-stage solvers with GPU execution disabled; the old embedded ELPA has been removed.
+- The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically from those archives by the first `make` (the build tools, and the one download that `Makefile.kugui` adds, are listed under [Dependencies](#dependencies)). The CPU "elpa1"/"elpa2" paths and "gpusolver2" share the same ELPA 2026.02.002 library. The CPU keywords select its one-stage and two-stage solvers with GPU execution disabled; the old embedded ELPA has been removed.
 
 ## Single-node multi-GPU Cluster and Band
 
@@ -76,7 +83,8 @@ The default `scf.eigen.lib gpusolver` uses cuSOLVER while the dense GPU
 buffers fit. If they do not fit, it automatically uses multi-GPU MAGMA
 for ordinary collinear and noncollinear Cluster and Band on one node.
 `gpusolver3` forces that MAGMA path from the beginning; `gpusolver2`
-remains the distributed ELPA/COSMA solver.
+remains the distributed ELPA/COSMA solver. These MAGMA paths need a build
+that includes MAGMA; see [Dependencies](#dependencies).
 
 ```ini
 scf.eigen.lib              gpusolver
@@ -157,7 +165,10 @@ The new policy's numerical and allocation-failure checks are recorded in
 Earlier performance-splitting measurements remain in
 [GPU worker validation](doc/gpu_workers_validation.txt).
 
-Build MAGMA with `make -f Makefile.kugui openmx WITH_MAGMA=1` in `source/`.
+A binary built without MAGMA cannot take these paths. Where a solve would
+need MAGMA it reports `MAGMA multi-GPU support is unavailable for the
+selected devices` and continues with the remaining fallbacks above.
+[Dependencies](#dependencies) describes when the build includes MAGMA.
 The experimental paper implementation has been removed. See
 [Cluster details](doc/cluster_mgpu.txt), [Band details](doc/band_mgpu.txt),
 [matrix products](doc/mgpu_gemm.txt), and
@@ -237,7 +248,8 @@ The two products of the orthogonalization transform, `B = H X` and `X^T B`, have
 ## Multi-GPU parallelization
 With the default `gpusolver`, each dense eigenproblem normally uses one
 GPU. If its buffers cannot fit, single-node Cluster and ordinary Band can
-automatically use MAGMA on the permitted GPU group described above; a
+automatically use MAGMA (in a build that includes it) on the permitted GPU
+group described above; a
 multi-node Cluster run then tries MAGMA on rank 0's node and otherwise the
 distributed gpusolver2 path on every node.
 `gpusolver3` forces MAGMA; `gpusolver2` selects distributed ELPA/COSMA.
@@ -322,7 +334,51 @@ buffers and the reserve fit but the basis does not, the GPU path is now
 kept with the FP64 eigensolver for that SCF cycle.
 
 ## Build and install
-Building and installing is more difficult than with standard OpenMX. The build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) and OpenMPI. The Makefile contains build examples for several supercomputer systems, and ready-made site makefiles are included for the Pegasus supercomputer at the University of Tsukuba (`Makefile.pegasus`) and for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to them. Since v2.0 the first `make` also builds the bundled ELPA/COSMA stack for "gpusolver2" automatically, which adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
+Building and installing is more difficult than with standard OpenMX. The NVIDIA build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) with its Open MPI, and the AMD build requires ROCm and AOCL; [Dependencies](#dependencies) below lists the requirements. The Makefile contains build examples for several supercomputer systems, and a ready-made site makefile is included for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which includes the stock Makefile and builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to it. `Makefile.pegasus` (the Pegasus supercomputer at the University of Tsukuba) and `Makefile.bunshiken` are older standalone copies that do not list the sources added since early October 2026. The first `make` also builds the bundled ELPA/COSMA stack, used by the CPU eigensolvers and "gpusolver2", and MAGMA when it is selected; this adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
+
+### Dependencies
+
+Installed on the build machine:
+
+- **NVIDIA build**: the NVIDIA HPC SDK (nvc, nvc++ and nvfortran, its Open MPI, and its LP64 ScaLAPACK, LAPACK and BLAS) with a CUDA toolkit. The default is HPC SDK 26.9 with CUDA 13.4; CUDA 12.3 or later is supported.
+- **AMD build**: ROCm (clang, hipcc, flang and OpenMP offload), AOCL (BLIS, libFLAME, ScaLAPACK, FFTW3 and AOCL Utilities) and an MPI built with ROCm's flang. See [GPU backend build instructions](docs/GPU_BACKENDS.md).
+- **Both**: GNU make, gcc/g++, Python 3.8 or later, and CMake 3.20 or later for the CMake workflow. The bundled ELPA needs autoconf 2.71 or later, automake, libtool, m4, python3 and unzip. MAGMA's build needs `patch`, and in the NVIDIA build also CMake 3.18 or later with CUDA support. The NVIDIA build of FFTW3 needs `rsync`.
+
+Built by the first `make`:
+
+| Library | Version | Used for | Backend | Location |
+|---|---|---|---|---|
+| ELPA | 2026.02.002 | CPU eigensolvers ("elpa1", "elpa2") and "gpusolver2" | both | `source/third_party/dist/` |
+| COSMA, COSTA, Tiled-MM | 2.8.4 and the commits it pins | distributed matrix products of "gpusolver2" | both | `source/third_party/dist/` |
+| GEMMul8 | v3.5.2 | FP64 matrix products emulated on integer tensor cores | both | Git submodule `source/third_party/GEMMul8` |
+| FFTW3 | 3.3.11 | FFTs | NVIDIA (AMD uses AOCL's FFTW3) | Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz` |
+| MAGMA | 2.10.0 | multi-GPU Cluster and Band eigensolver | NVIDIA when selected (below); AMD always | `source/third_party/hip/magma/` |
+| CMake | 3.31.12 | building COSMA when the system CMake is older than 3.24 | both | `source/third_party/dist/` |
+
+Initialize the submodules with `git submodule update --init --recursive`;
+the AMD build needs only GEMMul8. After that the stock Makefile and the
+CMake workflow need no network access. FFTW3's Git sources lack its
+generated codelets and `configure`, so the build adds them from the bundled
+3.3.11 release tarball after checking its SHA-256. It downloads the tarball
+from fftw.org only when that file is missing. `Makefile.kugui` also builds
+autoconf 2.72, automake 1.16.5 and libtool 2.4.7 on its first build and
+downloads them from ftp.gnu.org, unless their release tarballs are already
+in `source/build/host-tools/src`.
+
+In the NVIDIA build, MAGMA follows the `make` variable `WITH_MAGMA` (with
+CMake, add it to `OPENMX_MAKE_OPTIONS`):
+
+- `auto` (default): when `nvidia-smi` on the build node lists two or more GPUs, MAGMA is linked, and built first if `MAGMA_PREFIX` has none. An existing installation is used as it is. With fewer GPUs, only an existing installation is linked.
+- `1`: MAGMA is built and linked on any node, and rebuilt when its toolchain, build script or patch changes. Use it on a single-GPU node, or on a login node without GPUs that builds for multi-GPU compute nodes. `Makefile.kugui` sets it.
+- `0`: the build omits MAGMA.
+
+The build prints its decision (`MAGMA: ...`) whenever it changes. MAGMA is
+built from the bundled archive after its SHA-256 is verified; an empty
+`MAGMA_ARCHIVE` downloads the same archive instead. OpenMX's device-map
+patch is applied, and the library is installed in
+`source/third_party/magma-install`, or inside the build directory with
+CMake. `MAGMA_JOBS` (default 3) and `MAGMA_CMAKE` select its parallelism
+and CMake. The AMD build always builds MAGMA, with OpenMX's Ozaki-II patch.
 
 For the Kugui A100 environment used for the current validation:
 
@@ -335,7 +391,9 @@ make -f Makefile.kugui -j3 GPUSOLVER2_JOBS=3 \
 ```
 
 This selects NVHPC 24.7, CUDA 12.5, the site MPI and `sm_80`; the login node
-does not need a visible GPU. The local CMake 3.31.10 path reproduces the
+does not need a visible GPU. It also sets `WITH_MAGMA=1`, because a GPU node
+has four A100s while the login node shows none, so the first build also
+builds MAGMA, with the pip-installed CMake above when present. The local CMake 3.31.10 path reproduces the
 tested build; without a suitable override or system CMake, the stack builder
 bootstraps its bundled CMake instead. Use one build at a time: `-j8` hit the
 login environment's 500-thread quota during this validation. On another installation, select its SDK/MPI paths and
@@ -662,26 +720,28 @@ NVIDIA CUDA and AMD HIP backends) are also licensed under GPL-3.0-or-later.
 ### Third-Party Components
 
 This project incorporates source code from the following third-party projects.
-Each component retains its original license; their original license files are
-preserved under `third_party/<component>/`.
+Each component retains its original license; its original license file is
+in its Git submodule or source archive under `source/third_party/`.
 
 #### FFTW3
 
 - **Source**: <https://www.fftw.org/>
+- **Version**: 3.3.11 (Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz`), used by the NVIDIA build; the AMD build uses the FFTW3 of AOCL
 - **Copyright**:
   - Copyright (c) 2003, 2007-14 Matteo Frigo
   - Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
 - **License**: GNU General Public License v2.0 or later (`GPL-2.0-or-later`)
 - **Used here under**: GPL v3 (selected via the "or any later version" clause)
-- **Original license file**: [`third_party/fftw3/COPYING`](third_party/fftw3/COPYING)
+- **Original license file**: `COPYING` in the submodule (`source/third_party/fftw3/COPYING`)
 
 #### GEMMul8
 
 - **Source**: <https://github.com/RIKEN-RCCS/GEMMul8>
+- **Version**: v3.5.2 (Git submodule `source/third_party/GEMMul8`)
 - **Copyright**: Copyright (c) 2025- RIKEN R-CCS
 - **Responsible developer**: Yuki Uchino (RIKEN Center for Computational Science)
 - **License**: MIT License (`MIT`)
-- **Original license file**: [`third_party/gemmul8/LICENSE`](third_party/gemmul8/LICENSE)
+- **Original license file**: `LICENSE` in the submodule (`source/third_party/GEMMul8/LICENSE`)
 
 GEMMul8 (GEMMulate) is a library for emulating high-precision matrix
 multiplication (SGEMM, DGEMM, CGEMM, ZGEMM) using INT8/FP8 matrix engines
@@ -690,24 +750,49 @@ based on the Ozaki Scheme II.
 If you use this project in academic work, please also cite the GEMMul8
 upstream references (see the GEMMul8 repository).
 
-#### ELPA / COSMA (the "gpusolver2" stack, since v2.0)
+#### ELPA, COSMA, COSTA and Tiled-MM
 
-The distributed multi-GPU cluster diagonalization (`scf.eigen.lib gpusolver2`)
-links four additional libraries, bundled as source archives under
-`source/third_party/dist/` and built automatically by the first `make`; each
-archive carries its original license file:
+ELPA serves the CPU eigensolvers (`scf.eigen.lib elpa1` and `elpa2`) and,
+with COSMA, the distributed multi-GPU cluster diagonalization
+(`scf.eigen.lib gpusolver2`). The four libraries are bundled as source
+archives under `source/third_party/dist/` and built automatically by the
+first `make`; each archive carries its original license file:
 
-- **ELPA** 2026.02 — <https://elpa.mpcdf.mpg.de/> — Copyright (c) the ELPA
+- **ELPA** 2026.02.002 — <https://elpa.mpcdf.mpg.de/> — Copyright (c) the ELPA
   consortium — **GNU Lesser General Public License v3.0 (`LGPL-3.0`)**
-  (`COPYING/` inside the archive). The "elpa1"/"elpa2" CPU paths and the
-  distributed GPU path share this single version.
+  (`COPYING/` inside the archive)
 - **COSMA** 2.8.4 — <https://github.com/eth-cscs/COSMA> — Copyright (c) ETH
   Zürich (parts: Advanced Micro Devices, Inc.) — **BSD 3-Clause License
   (`BSD-3-Clause`)**
-- **COSTA** and **Tiled-MM** (COSMA dependencies) —
-  <https://github.com/eth-cscs/COSTA>,
+- **COSTA** and **Tiled-MM** (COSMA dependencies, at the commits COSMA 2.8.4
+  pins) — <https://github.com/eth-cscs/COSTA>,
   <https://github.com/eth-cscs/Tiled-MM> — Copyright (c) ETH Zürich —
   **BSD 3-Clause License (`BSD-3-Clause`)**
+
+#### MAGMA
+
+- **Source**: <https://icl.utk.edu/magma/>
+- **Version**: 2.10.0 (`source/third_party/hip/magma/magma-2.10.0.tar.gz`, used by both backends)
+- **Copyright**: Copyright (c) 2009-2023, The University of Tennessee
+- **License**: BSD 3-Clause License (`BSD-3-Clause`); `COPYRIGHT` inside the archive
+
+MAGMA is the multi-GPU dense eigensolver of the Cluster and Band solvers.
+The AMD build always links it; the NVIDIA build links it as described under
+[Dependencies](#dependencies). The build applies OpenMX's patches to the
+extracted sources: `source/third_party/magma-device-map.patch` (NVIDIA:
+maps MAGMA's logical GPU numbers to the selected Band GPU group) and
+`source/third_party/hip/magma-ozaki2.patch` (AMD: routes the matrix
+products of the eigensolvers through GEMMul8's Ozaki-II emulation).
+
+#### CMake (build tool)
+
+- **Source**: <https://cmake.org/>
+- **Version**: 3.31.12 (`source/third_party/dist/cmake-3.31.12.tar.gz`)
+- **Copyright**: Copyright 2000-2024 Kitware, Inc. and Contributors
+- **License**: BSD 3-Clause License (`BSD-3-Clause`); `Copyright.txt` inside the archive
+
+It is built only when the system CMake is older than the 3.24 that COSMA
+needs, and it is not part of the OpenMX executable.
 
 ### License Compatibility Summary
 
@@ -717,7 +802,9 @@ archive carries its original license file:
 | GPU modifications (this project) | GPL-3.0-or-later | — (same license) |
 | FFTW3 | GPL-2.0-or-later | Yes (via "or later" clause) |
 | GEMMul8 | MIT | Yes (permissive → strong copyleft) |
-| ELPA (2018.05 embedded; 2026.02 for "gpusolver2") | LGPL-3.0 | Yes (LGPL v3 code may be conveyed under GPL v3) |
+| ELPA 2026.02.002 | LGPL-3.0 | Yes (LGPL v3 code may be conveyed under GPL v3) |
 | COSMA (with COSTA, Tiled-MM) | BSD-3-Clause | Yes (permissive → strong copyleft) |
+| MAGMA 2.10.0 | BSD-3-Clause | Yes (permissive → strong copyleft) |
+| CMake (build tool only) | BSD-3-Clause | Yes (permissive → strong copyleft) |
 
 The combined work is distributed under the terms of GPL v3 or later.
