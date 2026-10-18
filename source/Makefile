@@ -80,6 +80,9 @@ export NVCOMPILER_MATH_LIBS_HOME := $(NVHPC_MATH_DIR)
 
 GPUSOLVER2_PREFIX ?= $(CURDIR)/third_party/gpusolver2-install
 
+# Keep the caller's CMake selection when the compiler environment below
+# replaces PATH. /usr/local/bin may contain an older CMake than the caller's.
+OPENMX_CALLER_CMAKE := $(shell command -v cmake 2>/dev/null)
 export PATH := $(NVHPC_COMPILER_BIN):$(NVHPC_MPI_BIN):$(NVHPC_CUDA_HOME)/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 unexport CPATH
@@ -225,7 +228,7 @@ MAGMA_BUILD ?= $(CURDIR)/build/magma
 MAGMA_ARCHIVE ?= $(wildcard $(dir $(realpath $(firstword $(MAKEFILE_LIST))))third_party/hip/magma/magma-2.10.0.tar.gz)
 MAGMA_LIBRARY = $(MAGMA_PREFIX)/lib/libmagma.so
 MAGMA_ENABLED = $(if $(filter 1,$(WITH_MAGMA)),1,$(if $(filter auto,$(WITH_MAGMA)),$(if $(MAGMA_AUTO_BUILD)$(filter magma-stack,$(MAKECMDGOALS))$(wildcard $(MAGMA_LIBRARY)),1,0),0))
-MAGMA_CMAKE ?= cmake
+MAGMA_CMAKE ?= $(or $(OPENMX_CALLER_CMAKE),cmake)
 MAGMA_JOBS ?= 3
 MAGMA_HOST_CC ?= $(GPUSOLVER2_HOST_CC)
 MAGMA_HOST_CXX ?= $(NVCC_HOST)

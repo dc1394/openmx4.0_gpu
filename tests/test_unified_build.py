@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -248,6 +249,37 @@ class UnifiedBuildTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual((stage / name).resolve(), ROOT / "source" / name)
         self.assertEqual(artifact.read_bytes(), b"native build output")
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
+    def test_native_core_uses_callers_cmake_and_honors_override(self):
+        # CUDA replaces PATH for its compiler recipes. A CMake selected from
+        # the caller's PATH must still configure/build the core afterward.
+        # Execute the real rule with stand-ins; no compiler or download needed.
+        tools = self.workspace / "cmake tools"
+        tools.mkdir()
+        log = tools / "calls.log"
+        for name in ("cmake", "explicit-cmake"):
+            executable = tools / name
+            executable.write_text("#!/bin/sh\nprintf '%s\\n' \"$0\" \"$1\" >> " +
+                                  shlex.quote(str(log)) + "\n")
+            executable.chmod(0o755)
+        environment = {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"]}
+        for name in ("OPENMX_CORE_CMAKE", "OPENMX_CORE_LIBRARY", "MAGMA_CMAKE"):
+            environment.pop(name, None)
+        make = shutil.which("make")
+        for backend, stage in self.stages.items():
+            for override in (False, True):
+                with self.subTest(backend=backend, override=override):
+                    log.unlink(missing_ok=True)
+                    selected = tools / ("explicit-cmake" if override else "cmake")
+                    command = [make, "--no-print-directory", "-C", str(stage), "openmx-core"]
+                    if override:
+                        command.append("OPENMX_CORE_CMAKE=" + str(selected))
+                    completed = subprocess.run(command, capture_output=True, text=True,
+                                               check=False, env=environment)
+                    self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                    self.assertEqual(log.read_text().splitlines(),
+                                     [str(selected), "-S", str(selected), "--build"])
 
     @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
     def test_native_object_recipes_preserve_each_backend_toolchain(self):

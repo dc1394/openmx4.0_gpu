@@ -170,6 +170,18 @@ CMAKE_BIN=/absolute/path/to/cmake-bootstrap/bin/cmake
 "$CMAKE_BIN" --version
 ```
 
+CMake 4 系をインストール済みでも古いバージョンが表示される場合は、
+`type -a cmake` で実際の検索順を確認してください。例えば `~/bin/cmake` や
+`/usr/local/bin/cmake` が、更新した `/usr/bin/cmake` より先に選ばれることがあります。
+選んだ実行ファイルで `--version` を確認してから、構成とビルドの両方に同じパスを使います。
+シェル設定で古い版の `CMAKE_ROOT` を固定している場合も解除し、各 CMake に
+対応するモジュールを自動検出させてください。
+
+NVIDIA の直接 make は、コンパイラ用に `PATH` を変更する前に呼び出し元の CMake を
+絶対パスで記録し、C++ コアと MAGMA の構築に使います。個別に選ぶ場合は
+`OPENMX_CORE_CMAKE=/absolute/path/to/cmake` と `MAGMA_CMAKE=/absolute/path/to/cmake`
+を make に渡せます。
+
 ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3.24 以上を
 再利用するには `OPENMX_MAKE_OPTIONS` に `GPUSOLVER2_CMAKE=/absolute/path/to/cmake-bootstrap/bin/cmake`
 も追加します。これは CMake の再構築を省略するための指定で、依存ライブラリの
