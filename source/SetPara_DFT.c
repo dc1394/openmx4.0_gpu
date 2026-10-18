@@ -160,7 +160,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
   if (ProExpn_VNA==1){
     FT_ProExpn_VNA();
     FT_VNA(core,core_device);
-    FT_ProductPAO();
+    FT_ProductPAO(core,core_device);
   }
 
   /***************************************************

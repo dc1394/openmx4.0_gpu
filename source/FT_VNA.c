@@ -29,9 +29,8 @@
 void FT_VNA(OpenMXCoreContext *core, int device)
 {
   int numprocs,myid,ID,NumSpe;
-  int j,Lspe,spe;
+  int Lspe,spe;
   int RestartRead_Succeed;
-  double Sk,Dk,kmin,kmax,norm_k;
   double TStime,TEtime;
 
   char fileFT[YOUSO10];
@@ -55,20 +54,6 @@ void FT_VNA(OpenMXCoreContext *core, int device)
   ***********************************************************/
 
   if (Scf_RestartFromFile==1){
-
-    /****************************************************
-         regenerate radial grids in the k-space
-         for the MPI calculation
-    ****************************************************/
-
-    for (j=0; j<GL_Mesh; j++){
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-      norm_k = 0.50*(Dk*GL_Abscissae[j] + Sk);
-      GL_NormK[j] = norm_k;
-    }
 
     /***********************************************************
                         read Spe_VNA_Bessel
@@ -119,20 +104,6 @@ void FT_VNA(OpenMXCoreContext *core, int device)
       }
 
     } /* Lspe */
-
-    /****************************************************
-         regenerate radial grids in the k-space
-         for the MPI calculation
-    ****************************************************/
-
-    for (j=0; j<GL_Mesh; j++){
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-      norm_k = 0.50*(Dk*GL_Abscissae[j] + Sk);
-      GL_NormK[j] = norm_k;
-    }
 
     /***********************************************************
       sending and receiving of Spe_CrudeVNA_Bessel by MPI

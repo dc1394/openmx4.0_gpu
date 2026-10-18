@@ -71,20 +71,6 @@ void FT_ProExpn_VNA()
 
   if (Scf_RestartFromFile==1){
 
-    /****************************************************
-         regenerate radial grids in the k-space
-         for the MPI calculation
-    ****************************************************/
-
-    for (kj=0; kj<GL_Mesh; kj++){
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-      norm_k = 0.50*(Dk*GL_Abscissae[kj] + Sk);
-      GL_NormK[kj] = norm_k;
-    }
-
     /***********************************************************
                         read Spe_VNA_Bessel
     ***********************************************************/
@@ -244,20 +230,6 @@ void FT_ProExpn_VNA()
       free(TmpPhiF);
 
     } /* Lspe */
-
-    /****************************************************
-         regenerate radial grids in the k-space
-         for the MPI calculation
-    ****************************************************/
-
-    for (kj=0; kj<GL_Mesh; kj++){
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-      norm_k = 0.50*(Dk*GL_Abscissae[kj] + Sk);
-      GL_NormK[kj] = norm_k;
-    }
 
     /***********************************************************
         sending and receiving of Spe_VNA_Bessel by MPI

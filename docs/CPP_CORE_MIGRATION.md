@@ -16,15 +16,16 @@ C++20 の言語機能である named modules は使用していません。
 | 多次元ホスト配列 | `core/include/openmx/core/tensor.hpp` | `std::vector` の単一割り当てを所有し、`mdspan` で参照する。コピーは独立、ムーブは所有権を移す。 |
 | PAO の計算状態 | `core/src/pao_storage.cpp` | 格子・原子密度・波動関数・Fourier 表を計算ケースごとに所有。数値配列は連続配置し、数値モジュールには `mdspan` を渡す。 |
 | VPS/NLP/VNA の計算状態 | `core/src/vps_storage.cpp` | VPS 格子・ポテンシャル・projector と Fourier 表を所有。VNA 展開の有効時だけ追加の 4 配列を所有し、すべて `mdspan` で参照する。 |
+| 可変長の軌道積表 | `core/src/product_storage.cpp` | 化学種と軌道対のオフセットを持ち、全数値を 1 つの連続領域に所有。各軌道対は `[2*l2+1, 波数容量]` の `mdspan` で参照する。 |
 | 球 Bessel 関数 | `core/include/openmx/core/bessel.hpp` | 入出力と角運動量を引数で受ける純粋なカーネル。CPU/CUDA/HIP で同じ実装。 |
 | 動径表と補間 | `core/src/radial_table.cpp` | `RadialTableView` が格子と全入力値を検証して借用する。独立したコピーが必要な場合は `RadialTable` が所有。PAO、非局所 projector、中性原子ポテンシャルの境界条件を明示して補間する。 |
 | 波数空間の補間 | `core/src/radial_table.cpp` | 波数を `i*step` で求め、PAO/projector の共通補間へ渡す。格子配列を所有せず、`NormK` を必要としない。 |
-| PAO/NLP/VNA 動径 Fourier 変換 | `core/src/radial.cpp` | 半径、積分の測度、波数、チャネル、サンプルを明示的に受け取る。ホスト配列は `Tensor`、実行用配列は `Kokkos::View` が所有。 |
+| PAO/NLP/VNA・軌道積の Fourier 変換 | `core/src/radial.cpp` | 半径、積分の測度・方式、波数、チャネル、サンプルを明示的に受け取る。ホスト配列は `Tensor`、実行用配列は `Kokkos::View` が所有。 |
 | FFT グリッド検証 | `core/include/openmx/core/fft_grid.hpp` | 正の整数を 2、3、5、7 の積に分解できるか判定。大域の可変テーブルを持たない。 |
 | 周期セル逆引き | `source/openmx_periodic.h` | セルの半径と座標から添字を直接計算。逆引き用の所有配列を持たない。 |
-| 既存 C との境界 | `source/openmx_core*.h`、`core/src/c_api.cpp`、`core/src/{pao,vps}_compat.hpp` | 不透明なコンテキストと C ABI。入力表、出力先、実行デバイス、エラー出力先を引数で受け取る。C の互換ポインタ表は共通の `legacy_rows.hpp` で構築する。 |
+| 既存 C との境界 | `source/openmx_core*.h`、`core/src/c_api.cpp`、`core/src/{pao,vps,product}_compat.hpp` | 不透明なコンテキストと C ABI。入力表、出力先、実行デバイス、エラー出力先を引数で受け取る。固定寸法の互換ポインタ表は共通の `legacy_rows.hpp`、可変長の軌道積表は `product_compat.hpp` で構築する。 |
 
-`source/FT_PAO.c`、`FT_NLP.c`、`FT_VNA.c` は入出力・MPI 通信と新ライブラリの接続を担います。
+`source/FT_PAO.c`、`FT_NLP.c`、`FT_VNA.c`、`FT_ProductPAO.c` は入出力・MPI 通信と新ライブラリの接続を担います。
 従来の `double*** TmpRF` / `TmpNRF`、`double** SphB`、VNA の一時配列と
 その手動確保・解放を除去しました。変換中のサンプリングに大域配列を読むコールバックは使いません。
 `RadialF.c`、`Nonlocal_RadialF.c`、`VNAF.c` の他の利用箇所も共通 C++ 補間処理を呼びます。
@@ -52,14 +53,24 @@ PAO/NLP/VNA の変換 API は `RadialTableView` で所有領域を借用し、�
 必要があります。変換 API は呼び出し後に入力の参照を保持しません。
 すべてのサンプリングと計算が終わってから結果を書き込むため、入力と出力の重なりも扱えます。
 
-化学種メタデータと可変長の 7 重ポインタ `Spe_ProductRF_Bessel` はまだ C 側が所有します。
-PAO/VPS ファイルの解析、MPI 配布、restart の制御、`FT_ProExpn_VNA` / `FT_ProductPAO`
-の数値処理も C 側に残ります。多重ポインタは移行用の境界で受け渡し、数値モジュールには渡しません。
+`Spe_ProductRF_Bessel` の数値領域も `ProductStorage` へ移しました。
+`ProductLayout` は各化学種の基底数をコピーし、`l1 <= l2` の軌道対だけを保持します。
+restart と同じ `(l1,m1,l2,m2,l,k)` の順序で連続配置し、行末 2 点を含めてゼロ初期化します。
+空の角運動量グループと `l1 > l2` の未使用ブロックは確保せず、互換表では null にします。
+7 重ポインタの大域宣言は借用表として残りますが、行ごとの数値領域の確保・解放はしません。
+この表の寿命は PAO/VPS 所有ストレージと独立し、基底メタデータを C 側で解放しても破棄できます。
+
+化学種メタデータ、PAO/VPS ファイルの解析、MPI 配布、restart の制御、
+`FT_ProExpn_VNA` の数値処理は C 側に残ります。
+多重ポインタは移行用の境界で受け渡し、数値モジュールには渡しません。
 
 `RF_BesselF` と CUDA/HIP 両方の `NLRF_BesselF` は同じ C++ 補間を呼びます。
 最初の区間での外挿、上端の仮想点、projector の微小刻み幅での線形処理を維持します。
 1 点・2 点の表も明示的に処理し、元の PAO 実装の無限ループ・範囲外参照を避けます。
 `NormK` の宣言・確保・生成・解放をすべて除去し、restart 時も格子の再生成を必要としません。
+VNA 用の `GL_NormK` も大域宣言を除去しました。CUDA/HIP 両方の `Set_ProExpn_VNA`
+呼び出し内で波数を自動配列に生成し、CPU 処理と同期 GPU バッチへ引数で渡します。
+Fourier 変換や restart の読み込みが大域格子を初期化するという依存はなくなりました。
 
 Kokkos 経路は、独立した波数と軌道に対して並列化します。積分の加算は元と同じ
 動径グリッド順序を保ち、作業領域は波数 32 点ずつに制限します。
@@ -74,6 +85,12 @@ Gauss–Legendre の波数を使います。測度を事前計算し、Bessel �
 補間は旧実装の最初の区間・外側・原点付近の扱いを維持しています。
 VNA の上端では、従来の範囲外読み取りをせずに端点用の値を選びます。
 
+軌道積は半径と波数の双方に Gauss–Legendre の節点を使います。台形則の端点係数を
+適用せず、`r*r*weight`、Bessel 値、左軌道、右軌道の順に掛け、最後に区間幅の半分を掛けます。
+PAO のサンプルは各軌道 1 行だけを所有し、軌道対のチャネルは左右の行番号と角運動量を持ちます。
+積を先に別表へ展開せず、通常の動径変換と同じホスト処理・Kokkos カーネルを使います。
+旧 `FT_ProductPAO` のスレッドごとの `GL_PAO`、`SphB` と手動確保・解放は除去しました。
+
 ## 実行状態と RAII
 
 ```text
@@ -81,18 +98,18 @@ main
   └─ openmx_core_run: スタック上の Context を所有
        └─ 通常計算 / Runtest / NEB
             ├─ readfile_with_context → SetPara_DFT → ReadPara_DFT
-            │    └─ Allocate_Arrays_with_context → PAO / VPS / 任意の VNA 所有ストレージ → 読み込み
-            ├─ FT_PAO / FT_NLP / FT_VNA → C++ 動径変換 → 結果の格納
-            └─ Free_Arrays_with_context → GPU キャッシュ破棄 → PAO / VPS / VNA ストレージ解放
+            │    └─ Allocate_Arrays_with_context → PAO / VPS / 任意の VNA・軌道積ストレージ → 読み込み
+            ├─ FT_PAO / FT_NLP / FT_VNA / FT_ProductPAO → C++ 動径変換 → 結果の格納
+            └─ Free_Arrays_with_context → GPU キャッシュ破棄 → 計算ストレージ解放
        └─ openmx_core_finish → MPI_Finalize → Context の破棄
 ```
 
 コンテキストのプロセス大域ポインタやシングルトンは置きません。
 `-runtest` のケース間と NEB の画像間では同じコンテキストを渡し、Kokkos の
-初期化・終了を繰り返しません。PAO と VPS/VNA の所有ストレージは計算ケースごとに解放し、
+初期化・終了を繰り返しません。PAO、VPS/VNA、軌道積の所有ストレージは計算ケースごとに解放し、
 同じコンテキストで次の形状を確保できます。確保済みのビューを無効にする上書き確保は拒否します。
 確保途中の例外では完成した配列を自動解放し、C 側には部分的なビューを公開しません。
-PAO と VPS の解放は独立しており、片方の解放は他方のビューや Kokkos の寿命に影響しません。
+PAO、VPS、軌道積の解放は独立しており、1 つの解放は他のビューや Kokkos の寿命に影響しません。
 コンテキストの破棄と `openmx_core_finish` でも残った所有配列を解放します。
 変換用の一時配列は各変換のスコープで解放し、非同期処理は
 RAII の fence により解放前に完了させます。コピー途中の例外でも `Tensor` の形状と
@@ -104,7 +121,7 @@ GPU 対応の Kokkos は初期化時に GPU を使うため、GPU 無効時の�
 別の所有者が Kokkos を初期化している場合も、そのランタイムを終了せずホストで計算します。
 
 旧 `readfile` / `run_main` / `openmx_api` の呼び出しは、null コンテキストで
-ホスト実装を使えます。この互換経路の PAO/VPS/VNA 確保・解放は従来の C 実装を維持し、
+ホスト実装を使えます。この互換経路の PAO/VPS/VNA・軌道積の確保・解放は従来の C 実装を維持し、
 コンテキストを隠れた大域変数で補いません。コンテキスト付きの確保と解放は同じ所有者を
 渡す必要があります。新 C ABI から C++ 例外を外へ出さず、数値計算が成功するまで
 既存出力配列を更新しません。新しい表変換 API は出力行も先に検証し、成功後の反映には
@@ -155,7 +172,7 @@ OMP_NUM_THREADS=2 OMP_PROC_BIND=false ctest --test-dir build/core-openmp --outpu
 
 本体の `OPENMX_GPU_BACKEND` と新しいコアの `OPENMX_CORE_BACKEND` は別の設定です。
 コアの既定値は `SERIAL` で、既存 GPU ソルバーの選択には影響しません。
-PAO/NLP/VNA 変換も Kokkos/CUDA で動かすには、例えば RTX 5080 で次を指定します。
+PAO/NLP/VNA・軌道積の変換も Kokkos/CUDA で動かすには、例えば RTX 5080 で次を指定します。
 
 ```sh
 cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA \
@@ -217,13 +234,14 @@ make -C source -j4 openmx OPENMX_CORE_CMAKE=/absolute/path/to/cmake \
 
 | 対象 | 開始時 | この段階 |
 | --- | ---: | ---: |
-| 共通ヘッダーのオブジェクト | 1,197 | 1,192 |
+| 共通ヘッダーのオブジェクト | 1,197 | 1,191 |
 | そのうち多重ポインタ（深さ 2 以上） | 253 | 252 |
 
-削除したものは `ratv`、`NfundamentalNum`、`fundamentalNum`、`Version_OpenMX`、`NormK` です。
+削除したものは `ratv`、`NfundamentalNum`、`fundamentalNum`、`Version_OpenMX`、`NormK`、`GL_NormK` です。
 第2段階では 1,193 宣言を維持し、第3段階で `NormK` を除去しました。
 第4段階の VPS/NLP/VNA 所有権移行では宣言数は変わらず、新しい大域変数も追加していません。
-PAO の 6 配列と VPS/NLP/VNA の 13 配列の借用ポインタは残存宣言として数えており、
+第5段階で `GL_NormK` を除去しました。PAO の 6 配列、VPS/NLP/VNA の 13 配列、
+軌道積表の借用ポインタは残存宣言として数えており、
 所有権の移行だけで大域変数が消えたとは扱いません。
 `ratv` は格納先を移すのではなく配列そのものを除去し、元の番号順序を計算で再現します。
 LPQ 出力の配列寸法・番号順序は維持し、以前未初期化だった領域には `-1` を書きます。
@@ -244,7 +262,7 @@ HIP では対象ビルドの互換ヘッダー・定義も渡してください�
 
 ## テスト
 
-CTest に 23 件の独立テストを登録しています。所有権と例外時の整合性、周期セルの番号順序・
+CTest に 28 件の独立テストを登録しています。所有権と例外時の整合性、周期セルの番号順序・
 整数境界、FFT 格子、球 Bessel 関数の値・導関数、動径積分の独立参照との比較、
 32 点バッチ境界、異なる形状の連続実行、C ABI の失敗時の出力保護、
 Kokkos ランタイムの所有・借用・破棄、GPU 構成での CPU 指定を検証します。
@@ -256,6 +274,10 @@ VPS/VNA ストレージでは 1/2 スピン成分と VNA 展開の有効／無�
 追加配列の確保失敗時の巻き戻し、コンテキストの破棄時の解放、CPU/GPU 変換と未使用領域を
 検証します。借用ビューでは所有コピーとの同等性・寿命の違い、不正値の拒否、
 入力と出力を共有する C ABI 呼び出しも検証します。
+軌道積表は異なる化学種・基底数での連続配置と restart 行順、空のグループ、
+未使用の軌道対、寸法のオーバーフロー、独立した寿命と途中確保失敗を検証します。
+Gauss 積分は解析的な多項式積分と独立した Bessel 級数を参照にし、
+左右の軌道・角運動量の対応、32 点のバッチ境界、出力パディングと失敗時の出力保護を確認します。
 波数補間は旧実装の固定値、解析的な二次関数、1 点・2 点・3 点、微小刻み幅、
 不正入力時に C 出力を変更しないことを検証します。
 スカラー借用 API は形状と座標を定数時間で検証し、格子の単調性と入力値の有限性は呼び出し側の
@@ -475,12 +497,70 @@ AMD/ROCm のデバイスビルド・実行、L/L2/L3 全例、NEB、マルチ GP
 旧 `openmx_api` の全体回帰は今回の検証には含みません。restart と VNA 展開無効の
 追加計算は Methane のみです。ここに記録した値は正しさの検証で、性能ベンチマークではありません。
 
+### 第5段階の検証記録（2026-10-18、可変長の軌道積表と Gauss 積分）
+
+比較元は第4段階の `038b99c5` です。同じコンパイラ・実機で次を確認しました。
+
+| 構成・試験 | 結果 |
+| --- | --- |
+| C++20 / Serial、C++20 / OpenMP | コア各 28 件合格（OpenMP は 2 スレッド） |
+| C++23 / ASan+UBSan、Clang/libc++ 21 / `std::mdspan` | コア各 28 件合格。ASan のリーク検査も有効 |
+| CUDA | コア 28 件とバックエンド分離が合格。ホスト用 20 件は GPU 不可視でも合格 |
+| CUDA Compute Sanitizer | 軌道積の実行テストでエラー 0、リーク 0 |
+| HIP のホスト・分離試験 | 9 件合格（AMD デバイス実行を含まない） |
+| 既存の積分スレッド試験 | CUDA 用・HIP 用のホスト試験が合格 |
+| 大域宣言の監査 | 共通ヘッダー 1,191 個、移行開始点から 6 個削除、追加なし |
+| OpenMX CPU 経路 / CUDA 経路 | `-runtest` 各 14 件合格、4 MPI × 1 スレッド、同一ジョブ内で連続実行 |
+| 第4段階の restart の読み込み | Methane を CPU/CUDA で検証。エネルギーと全力成分が旧バイナリの restart 実行と出力精度で一致 |
+| VNA 展開を無効にした通常計算 | Methane を CPU/CUDA で検証し、旧バイナリとの比較が合格 |
+
+全 14 ケースで原子・座標・積分格子を照合し、最終エネルギーと全力成分を比較しました。
+許容値はそれぞれ `1e-7` です。
+
+| 比較 | 最大絶対エネルギー差 (Ha) | 最大絶対力成分差 (Ha/bohr) |
+| --- | ---: | ---: |
+| 第4段階 → 第5段階 CPU | 2.00e-12 | 1.00e-12 |
+| 第4段階 → 第5段階 CUDA | 4.00e-12 | 2.00e-12 |
+| 第5段階 CPU → CUDA | 4.91e-11 | 1.20e-11 |
+| 同梱参照値 → 第5段階 CPU | 2.70e-11 | 7.90e-11 |
+| 同梱参照値 → 第5段階 CUDA | 5.10e-11 | 7.80e-11 |
+
+保存された Fourier 表は各経路・各種類につき 14 ファイルを比較しました。
+今回移行した軌道積 185,700 値の最大絶対差は CPU/CUDA とも `3.06e-15` 未満で、
+ファイル長と行の並びも一致しています。PAO 70,200 値、NLP 241,200 値、VNA 7,800 値、
+VNA projector 展開 788,400 値は前段階と完全に一致しました。
+PAO/NLP の旧ファイルの未使用パディングは数値比較から除外し、新しい両表では
+行末 2 点がゼロであることを確認しました。
+
+Kokkos Tools は Bessel / 積分の CUDA イベントを各 2,028 回記録しました。
+前段階から増えた各 260 回は、26 化学種分の軌道積変換を波数 32 点ずつに分割したものです。
+波数用のデバイス割り当ては 900 点の PAO/NLP が計 52 回、300 点の VNA/軌道積が計 52 回で、
+新しい変換も共通の CUDA 実行経路に入っていることを確認しました。
+
+restart 検証では旧・新それぞれの本体と対応するコア共有ライブラリを明示しました。
+両経路で 5 種類の Fourier 表は再書き込みされず、動径変換カーネルも起動していません。
+VNA 展開無効の通常計算は、CPU で旧出力と一致し、CUDA の最大差はエネルギー
+`9.01e-12 Ha` 未満、力成分 `1.01e-12 Ha/bohr` 未満でした。
+
+ログと入力・出力は `build/core-product-migration/`（Git 管理外）にあります。
+`validation.json` にスイート・保存表・CUDA イベントの比較、
+`restart-{cpu,gpu}.json` と `vna-off-{cpu,gpu}.json` に追加計算の比較を保存しました。
+
+```text
+openmx:            552ada19dae0bd192c082a556444a4af371a3e25f5a2d0ef72840c92b9dd7abd
+libopenmx_core.so:  8423c2015c79599582bfd480ee0f330e7eef69876dd9e16fed342bd94c5a86ed
+```
+
+AMD/ROCm のデバイスビルド・実行、L/L2/L3 全例、NEB、マルチ GPU・マルチノード、
+旧 `openmx_api` の全体回帰は今回の検証には含みません。restart と VNA 展開無効の
+追加計算は Methane のみです。ここに記録した値は正しさの検証で、性能ベンチマークではありません。
+
 ## 次の移行単位と完了条件
 
-1. 化学種メタデータと可変長の `Spe_ProductRF_Bessel` を C++ の所有値にする。PAO/VPS/VNA の参照側に
+1. 化学種メタデータを C++ の所有値にする。PAO/VPS/VNA・軌道積表の参照側に
    明示的なビューを渡し、借用状態で残る `Spe_*` 大域ポインタと null コンテキストの
    手動確保経路を段階的に除去する。
-   `FT_ProExpn_VNA` / `FT_ProductPAO`、導関数、入力解析、MPI 配布、restart の制御も移す。
+   `FT_ProExpn_VNA`、導関数、入力解析、MPI 配布、restart の制御も移す。
 2. 周期セル、原子・近接リスト、MPI による原子分配を独立したオブジェクトにする。
    一時的に旧配列を参照する場合も寿命を明示し、隠れた既定コンテキストを置かない。
 3. 可変長の原子・軌道ブロックを「オフセット + 連続値」にし、ブロックごとに `mdspan` を渡す。

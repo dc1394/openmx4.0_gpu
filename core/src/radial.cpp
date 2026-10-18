@@ -26,7 +26,9 @@ void validate_grid(const RadialGrid& grid)
 
 void validate_quadrature(const RadialQuadrature& grid)
 {
-  if (grid.lmax < 0 || grid.lmax > 29 || grid.radii.size() < 2 ||
+  if ((grid.weighting != RadialWeighting::trapezoid && grid.weighting != RadialWeighting::gauss) ||
+      grid.lmax < 0 || grid.lmax > 29 ||
+      grid.radii.size() < (grid.weighting == RadialWeighting::gauss ? 1u : 2u) ||
       grid.radii.size() > INT_MAX || grid.wavevectors.size() > INT_MAX ||
       grid.measures.size() != grid.radii.size() ||
       !std::isfinite(grid.step) || grid.step <= 0)
@@ -57,6 +59,14 @@ void validate_samples(const RadialSamples& samples)
   for (const auto& orbital : samples.orbitals)
     if (orbital.angular < 0 || orbital.angular > samples.grid.lmax || orbital.multiplicity < 0)
       throw std::invalid_argument("invalid radial orbital");
+  if (samples.products.size() > INT_MAX)
+    throw std::invalid_argument("too many radial products");
+  for (const auto& product : samples.products)
+    if (product.left < 0 || product.right < 0 ||
+        static_cast<std::size_t>(product.left) >= samples.orbitals.size() ||
+        static_cast<std::size_t>(product.right) >= samples.orbitals.size() ||
+        product.angular < 0 || product.angular > samples.grid.lmax)
+      throw std::invalid_argument("invalid radial product indices");
   for (std::size_t i = 0; i < samples.values.size(); ++i)
     if (!std::isfinite(samples.values.data()[i]))
       throw std::invalid_argument("non-finite radial sample");
@@ -65,8 +75,9 @@ void validate_samples(const RadialSamples& samples)
 // Both execution paths use this weighting and integrate in ascending radial
 // order. Parallelism is over independent wavevectors/orbitals, not the sum.
 KOKKOS_INLINE_FUNCTION
-double radial_weight(double bessel, double measure, int point, int intervals)
+double radial_weight(double bessel, double measure, int point, int intervals, RadialWeighting weighting)
 {
+  if (weighting == RadialWeighting::gauss) return measure*bessel;
   double weighted = bessel*measure;
   if (point == 0 || point == intervals) weighted *= 0.5;
   return weighted;
@@ -88,17 +99,19 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
 {
   using Matrix = Kokkos::View<double**, Kokkos::LayoutRight, ExecutionSpace>;
   using Cube = Kokkos::View<double***, Kokkos::LayoutRight, ExecutionSpace>;
-  using Indices = Kokkos::View<int*, ExecutionSpace>;
+  using Indices = Kokkos::View<int**, Kokkos::LayoutRight, ExecutionSpace>;
   using Vector = Kokkos::View<double*, ExecutionSpace>;
   using Policy = Kokkos::RangePolicy<ExecutionSpace, Kokkos::IndexType<std::size_t>>;
   const auto& grid = samples.grid;
   const std::size_t orbital_count = samples.orbitals.size();
+  const std::size_t channel_count = samples.products.empty() ? orbital_count : samples.products.size();
   const int radial_count = static_cast<int>(grid.radii.size());
   const int k_count = static_cast<int>(grid.wavevectors.size());
   const int lmax = grid.lmax;
   const double step = grid.step;
-  Tensor<double, 2> result({orbital_count, static_cast<std::size_t>(k_count)});
-  if (orbital_count == 0 || k_count == 0) return result;
+  const auto weighting = grid.weighting;
+  Tensor<double, 2> result({channel_count, static_cast<std::size_t>(k_count)});
+  if (channel_count == 0 || k_count == 0) return result;
 
   const ExecutionSpace execution;
   Matrix radial("openmx.radial.samples", orbital_count, radial_count);
@@ -107,10 +120,16 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
   for (std::size_t orbital = 0; orbital < orbital_count; ++orbital)
     for (int i = 0; i < radial_count; ++i)
       host_radial(orbital, i) = element(input, orbital, i);
-  Indices angular("openmx.radial.angular", orbital_count);
-  auto host_angular = Kokkos::create_mirror_view(angular);
-  for (std::size_t orbital = 0; orbital < orbital_count; ++orbital)
-    host_angular(orbital) = samples.orbitals[orbital].angular;
+  Indices channels("openmx.radial.channels", channel_count, 3);
+  auto host_channels = Kokkos::create_mirror_view(channels);
+  for (std::size_t row = 0; row < channel_count; ++row) {
+    const auto product = samples.products.empty()
+      ? ProductChannel{static_cast<int>(row),-1,samples.orbitals[row].angular}
+      : samples.products[row];
+    host_channels(row,0) = product.angular;
+    host_channels(row,1) = product.left;
+    host_channels(row,2) = product.right;
+  }
   Vector radii("openmx.radial.radii", radial_count);
   Vector measures("openmx.radial.measures", radial_count);
   Vector wavevectors("openmx.radial.wavevectors", k_count);
@@ -125,13 +144,13 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
   // Bound scratch memory independently of the full reciprocal-space grid.
   const int batch_size = std::min(32, k_count);
   Cube bessel("openmx.radial.bessel", batch_size, lmax+1, radial_count);
-  Matrix output("openmx.radial.output", orbital_count, batch_size);
+  Matrix output("openmx.radial.output", channel_count, batch_size);
   auto host_output = Kokkos::create_mirror_view(output);
   // Declared after the Views: even exceptional exits complete outstanding
   // work before their storage is released.
   CompleteBeforeRelease<ExecutionSpace> completion(execution);
   Kokkos::deep_copy(execution, radial, host_radial);
-  Kokkos::deep_copy(execution, angular, host_angular);
+  Kokkos::deep_copy(execution, channels, host_channels);
   Kokkos::deep_copy(execution, radii, host_radii);
   Kokkos::deep_copy(execution, measures, host_measures);
   Kokkos::deep_copy(execution, wavevectors, host_wavevectors);
@@ -146,20 +165,23 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
         double sb[32];
         spherical_bessel(wavevectors(first+k)*radius, lmax, sb, nullptr);
         for (int l = 0; l <= lmax; ++l)
-          bessel(k,l,i) = radial_weight(sb[l], measures(i), i, radial_count-1);
+          bessel(k,l,i) = radial_weight(sb[l], measures(i), i, radial_count-1, weighting);
       });
-    Kokkos::parallel_for("openmx.radial.integrate", Policy(execution, 0, count*orbital_count),
+    Kokkos::parallel_for("openmx.radial.integrate", Policy(execution, 0, count*channel_count),
       KOKKOS_LAMBDA(std::size_t index) {
         const std::size_t orbital = index/count;
         const int k = static_cast<int>(index%count);
         double sum = 0.0;
-        for (int i = 0; i < radial_count; ++i)
-          sum += radial(orbital,i)*bessel(k,angular(orbital),i);
+        for (int i = 0; i < radial_count; ++i) {
+          double term = bessel(k,channels(orbital,0),i)*radial(channels(orbital,1),i);
+          if (channels(orbital,2) >= 0) term *= radial(channels(orbital,2),i);
+          sum += term;
+        }
         output(orbital,k) = sum*step;
       });
     Kokkos::deep_copy(execution, host_output, output);
     execution.fence("OpenMX radial transform before host commit");
-    for (std::size_t orbital = 0; orbital < orbital_count; ++orbital)
+    for (std::size_t orbital = 0; orbital < channel_count; ++orbital)
       for (int k = 0; k < count; ++k)
         element(destination, orbital, first+k) = host_output(orbital,k);
     first += count;
@@ -214,6 +236,35 @@ RadialQuadrature squared_radius_quadrature(int intervals, double rmin, double rm
   return result;
 }
 
+RadialQuadrature gauss_quadrature(int lmax, double rmin, double rmax,
+    double kmin, double kmax, std::span<const double> radial_nodes,
+    std::span<const double> radial_weights, std::span<const double> wavevector_nodes)
+{
+  if (lmax < 0 || lmax > 29 || radial_nodes.empty() || radial_nodes.size() > INT_MAX ||
+      radial_weights.size() != radial_nodes.size() || wavevector_nodes.size() > INT_MAX ||
+      !std::isfinite(rmin) || rmin < 0 || !std::isfinite(rmax) || rmax <= rmin ||
+      !std::isfinite(kmin) || kmin < 0 || !std::isfinite(kmax) || kmax < kmin)
+    throw std::invalid_argument("invalid Gauss radial quadrature");
+  const double dr = rmax-rmin, sr = rmax+rmin, dk = kmax-kmin, sk = kmax+kmin;
+  RadialQuadrature result{lmax,{},{},{},0.5*dr,RadialWeighting::gauss};
+  for (std::size_t i = 0; i < radial_nodes.size(); ++i) {
+    const double node = radial_nodes[i], weight = radial_weights[i];
+    if (!std::isfinite(node) || node < -1 || node > 1 ||
+        !std::isfinite(weight) || weight <= 0)
+      throw std::invalid_argument("invalid Gauss radial node or weight");
+    const double r = 0.5*(dr*node+sr);
+    result.radii.push_back(r);
+    result.measures.push_back(r*r*weight);
+  }
+  for (double node : wavevector_nodes) {
+    if (!std::isfinite(node) || node < -1 || node > 1)
+      throw std::invalid_argument("invalid Gauss wavevector node");
+    result.wavevectors.push_back(0.5*(dk*node+sk));
+  }
+  validate_quadrature(result);
+  return result;
+}
+
 RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities,
                            const Sampler& sample)
 {
@@ -235,7 +286,7 @@ RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities
       if (!std::isfinite(value)) throw std::invalid_argument("non-finite radial sample");
       element(view, orbital, i) = value;
     }
-  return {uniform_quadrature(grid), std::move(orbitals), std::move(values)};
+  return {uniform_quadrature(grid), std::move(orbitals), std::move(values), {}};
 }
 
 Tensor<double,2> transform_host(const RadialSamples& samples)
@@ -244,8 +295,9 @@ Tensor<double,2> transform_host(const RadialSamples& samples)
   const auto& grid = samples.grid;
   const int radial_count = static_cast<int>(grid.radii.size());
   const int k_count = static_cast<int>(grid.wavevectors.size());
-  Tensor<double,2> result({samples.orbitals.size(),static_cast<std::size_t>(k_count)});
-  if (samples.orbitals.empty() || k_count == 0) return result;
+  const auto channel_count = samples.products.empty() ? samples.orbitals.size() : samples.products.size();
+  Tensor<double,2> result({channel_count,static_cast<std::size_t>(k_count)});
+  if (channel_count == 0 || k_count == 0) return result;
   Tensor<double,2> bessel({static_cast<std::size_t>(grid.lmax+1),grid.radii.size()});
   auto work = bessel.view();
   const auto input = samples.values.view();
@@ -255,12 +307,18 @@ Tensor<double,2> transform_host(const RadialSamples& samples)
       double sb[32];
       spherical_bessel(grid.wavevectors[k]*grid.radii[i],grid.lmax,sb,nullptr);
       for (int l = 0; l <= grid.lmax; ++l)
-        element(work,l,i) = radial_weight(sb[l],grid.measures[i],i,radial_count-1);
+        element(work,l,i) = radial_weight(sb[l],grid.measures[i],i,radial_count-1,grid.weighting);
     }
-    for (std::size_t orbital = 0; orbital < samples.orbitals.size(); ++orbital) {
+    for (std::size_t orbital = 0; orbital < channel_count; ++orbital) {
+      const auto product = samples.products.empty()
+        ? ProductChannel{static_cast<int>(orbital),-1,samples.orbitals[orbital].angular}
+        : samples.products[orbital];
       double sum = 0.0;
-      for (int i = 0; i < radial_count; ++i)
-        sum += element(input,orbital,i)*element(work,samples.orbitals[orbital].angular,i);
+      for (int i = 0; i < radial_count; ++i) {
+        double term = element(work,product.angular,i)*element(input,product.left,i);
+        if (product.right >= 0) term *= element(input,product.right,i);
+        sum += term;
+      }
       element(output,orbital,k) = sum*grid.step;
     }
   }

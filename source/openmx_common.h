@@ -2380,8 +2380,11 @@ double **Spe_CrudeVNA_Bessel;
                             [Spe_Num_Basis[i][l]]
                             [Lmax+1]
                             [GL_Mesh+2]
-  allocation: call Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call Free_Arrays(0) in openmx.c
+  With a core context this is a borrowed view of ProductStorage: one numeric
+  allocation with offsets, active blocks j<=l only (others are null).
+  The null-context C compatibility path retains its legacy allocation.
+  allocation: Allocate_Arrays_with_context(7,core) in SetPara_DFT.c
+  free:       Free_Arrays_with_context(0,core) in openmx.c
 *******************************************************/
 double *******Spe_ProductRF_Bessel;
 
@@ -2694,7 +2697,6 @@ dcomplex *zp,*Ep,*Rp;
 double GL_Abscissae[GL_Mesh+2],GL_Weight[GL_Mesh+2];
 double FineGL_Abscissae[FineGL_Mesh+2],FineGL_Weight[FineGL_Mesh+2];
 double CoarseGL_Abscissae[CoarseGL_Mesh+2],CoarseGL_Weight[CoarseGL_Mesh+2];
-double GL_NormK[GL_Mesh+2];
 char Atom_Symbol[YOUSO14][4];
 double Atom_Weight[YOUSO14];
 double tv[4][4],rtv[4][4],tv_velocity[4][4];
@@ -3300,7 +3302,7 @@ void FT_PAO(OpenMXCoreContext *core, int device);
 void FT_NLP(OpenMXCoreContext *core, int device);
 void FT_ProExpn_VNA();
 void FT_VNA(OpenMXCoreContext *core, int device);
-void FT_ProductPAO();
+void FT_ProductPAO(OpenMXCoreContext *core, int device);
 
 void Calc_OLPmo( double *****OLPmo );
 void CWF2W90(int ***k_op, int *T_k_op, int **T_k_ID, 

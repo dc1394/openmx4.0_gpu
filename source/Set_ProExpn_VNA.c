@@ -34,9 +34,9 @@
 #include <omp.h>
 #include <openacc.h>
 
-static double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA);
-static double Set_VNA2(double ****HVNA, double *****HVNA2);
-static double Set_VNA3(double *****HVNA3);
+static double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK);
+static double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK);
+static double Set_VNA3(double *****HVNA3, double *GL_NormK);
 static int SetPro_VNA23_GpuBegin(void);
 static void SetPro_VNA23_GpuEnd(void);
 /* forward: SetPro_DSVNA_GpuBegin releases its tables through this when the
@@ -56,12 +56,16 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
 {
   double time1,time2,time3;
   int vna23_gpu;
+  /* Invocation-owned wavevectors, also borrowed by synchronous GPU batches. */
+  double GL_NormK[GL_Mesh];
+  const double dk = PAO_Nkmax-Radial_kmin, sk = PAO_Nkmax+Radial_kmin;
+  for (int i=0; i<GL_Mesh; ++i) GL_NormK[i] = 0.5*(dk*GL_Abscissae[i]+sk);
 
   SetPro_note("entry","");
 
   /* separable form */
 
-  time1 = Set_ProExpn(HVNA, DS_VNA);
+  time1 = Set_ProExpn(HVNA, DS_VNA, GL_NormK);
 
   /* batched device path for the one-centre pair integrals */
 
@@ -69,11 +73,11 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
 
   /* one-center (orbitals) but two-center integrals, <Phi_{LM,L'M'}|VNA> */
 
-  time2 = Set_VNA2(HVNA, HVNA2);
+  time2 = Set_VNA2(HVNA, HVNA2, GL_NormK);
 
   /* one-center (orbitals) but two-center integrals, <VNA|Phi_{LM,L'M'}> */
 
-  time3 = Set_VNA3(HVNA3);
+  time3 = Set_VNA3(HVNA3, GL_NormK);
 
   if (vna23_gpu) SetPro_VNA23_GpuEnd();
 
@@ -1520,7 +1524,7 @@ static void SetPro_DSVNA_capacity_kernel(size_t first,size_t count,const void *p
 
 }
 
-static void SetPro_DSVNA_GpuRun_Part(Type_DS_VNA *****DS_VNA, int OneD_Nloop, int *OneD2Mc_AN, int *OneD2h_AN, SetProGpu2Context *g)
+static void SetPro_DSVNA_GpuRun_Part(Type_DS_VNA *****DS_VNA, int OneD_Nloop, int *OneD2Mc_AN, int *OneD2h_AN, SetProGpu2Context *g, double *GL_NormK)
 {
   const int num_proj = g->num_proj;
   const int num_rvna = g->num_rvna;
@@ -1736,8 +1740,8 @@ static void SetPro_DSVNA_GpuRun_Part(Type_DS_VNA *****DS_VNA, int OneD_Nloop, in
   free(pr_siT);
   free(pr_r);
 }
-static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****matrix,int count,int *mc,int *h)
-{SetPro_DSVNA_GpuRun_Part(matrix,count,mc,h,&SetPro_gpu2);}
+static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****matrix,int count,int *mc,int *h,double *GL_NormK)
+{SetPro_DSVNA_GpuRun_Part(matrix,count,mc,h,&SetPro_gpu2,GL_NormK);}
 
 
 /* ------------------------------------------------------------------ */
@@ -2323,7 +2327,7 @@ static void SetPro_VNA23_capacity_kernel(size_t first,size_t count,const void *p
 
 }
 
-static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nloop, int *OneD2Mc_AN, int *OneD2h_AN, SetProGpu3Context *g)
+static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nloop, int *OneD2Mc_AN, int *OneD2h_AN, SetProGpu3Context *g, double *GL_NormK)
 {
   const int l0max = g->l0max;
   const int lfi_max = g->lfi_max;
@@ -2530,11 +2534,11 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
   free(pr_siT);
   free(pr_r);
 }
-static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,int *mc,int *h)
-{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,&SetPro_gpu3);}
+static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,int *mc,int *h,double *GL_NormK)
+{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,&SetPro_gpu3,GL_NormK);}
 
 
-double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
+double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
 {
   const int fp32 = openmx_fp32_enabled();
   /****************************************************
@@ -2728,7 +2732,7 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
   setpro_gpu2 = SetPro_DSVNA_GpuBegin(VNA_List, VNA_List2, Num_RVNA,
                                       Bessel_Pro00, Bessel_Pro01);
   if (setpro_gpu2){
-    SetPro_DSVNA_GpuRun(DS_VNA, OneD_Nloop, OneD2Mc_AN, OneD2h_AN);
+    SetPro_DSVNA_GpuRun(DS_VNA, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK);
     SetPro_DSVNA_GpuEnd();
   }
 
@@ -3899,7 +3903,7 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA)
 
 
 
-double Set_VNA2(double ****HVNA, double *****HVNA2)
+double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK)
 {
   /****************************************************
    Evaluate matrix elements of one-center (orbitals)
@@ -3967,7 +3971,7 @@ double Set_VNA2(double ****HVNA, double *****HVNA2)
   }
 
   if (SetPro_gpu3.enabled){
-    SetPro_VNA23_GpuRun(HVNA2, 0, OneD_Nloop, OneD2Mc_AN, OneD2h_AN);
+    SetPro_VNA23_GpuRun(HVNA2, 0, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK);
   }
 
   if (!SetPro_gpu3.enabled){
@@ -4626,7 +4630,7 @@ double Set_VNA2(double ****HVNA, double *****HVNA2)
 
 
 
-double Set_VNA3(double *****HVNA3)
+double Set_VNA3(double *****HVNA3, double *GL_NormK)
 {
   /****************************************************
    Evaluate matrix elements of one-center (orbitals)
@@ -4695,7 +4699,7 @@ double Set_VNA3(double *****HVNA3)
   }
 
   if (SetPro_gpu3.enabled){
-    SetPro_VNA23_GpuRun(HVNA3, 1, OneD_Nloop, OneD2Mc_AN, OneD2h_AN);
+    SetPro_VNA23_GpuRun(HVNA3, 1, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK);
   }
 
   if (!SetPro_gpu3.enabled){

@@ -68,8 +68,6 @@
     "Embedded_GFM.c",
     "EulerAngle_Spin.c",
     "Expand_ReCoulomb_Kernel.c",
-    "FT_ProExpn_VNA.c",
-    "FT_ProductPAO.c",
     "FermiLoop.c",
     "File_CntCoes.c",
     "Find_CGrids.c",
@@ -415,7 +413,6 @@
     "Set_Density_Grid_GPU.c": "src/Set_Density_Grid_GPU.c",
     "Set_Hamiltonian.c": "src/Set_Hamiltonian.c",
     "Set_Orbitals_Grid.c": "src/Set_Orbitals_Grid.c",
-    "Set_ProExpn_VNA.c": "src/Set_ProExpn_VNA.c",
     "Set_XC_Grid.c": "src/Set_XC_Grid.c",
     "Total_Energy_GPU.c": "src/Total_Energy_GPU.c",
     "cuComplex.h": "include/cuComplex.h",
@@ -655,8 +652,6 @@
     "Embedded_GFM.c": "b66eb55940381604556117ee495f15f113b8cc0d12a987bcee0316ec11f636c7",
     "EulerAngle_Spin.c": "7ce7af62de4e01d9dbd188e1bef2a757d81e75a36544d1d0b589de81427e8cad",
     "Expand_ReCoulomb_Kernel.c": "30a5983f09f9fa95ed6c5bd72e6aaebe35e2253a5363085933e70eddc44a8e20",
-    "FT_ProExpn_VNA.c": "69e879d51c0b204ddefb0343d5f46889cc69a1aec728839be2cde0c054640576",
-    "FT_ProductPAO.c": "4edb8b5782864f3fef0acd4b91b017071a57d2944fa3d32ffd1c268aacb5cb75",
     "FermiLoop.c": "c9eeaddb09487086c8f4dc2e65c7fdc26e60fe4a33e26a2d8f4330a11148cd09",
     "File_CntCoes.c": "38f1ff3dfde3de59a72b5f5f92a56e7fcfc488dc73b4fd819126373c28a9c26c",
     "Find_CGrids.c": "eea28555a6fd7d1f1d0731beb0f2443d8bf8f473baa714fe3e8a9a4e337a8ab4",
@@ -750,7 +745,6 @@
     "Set_Initial_DM.c": "2fc4a13f23955b681e2ce4ce83b7bcd88a921105cbc5282ac1d326c297aeb1b9",
     "Set_OLP_p.c": "b835f1042b56c73dc7475c3e0721055879a4eafaacf0d9e06e5424d88550889a",
     "Set_Orbitals_Grid.c": "5e1109ef5c0fe8a21ca65e6c65620a66e90075ef082bc3cba2d29ba25baed525",
-    "Set_ProExpn_VNA.c": "46b8bdb1ad7b30d01788eac1058c8bfcea40c3063c176d92dd6f1dd4eba5ffee",
     "Set_XC_Grid.c": "74395833a98c4106a0fced3ccdbe04a9a50ee5bda86f5e40459e4ccb4b58493e",
     "Set_XMCD_penalty.c": "784f602a4047083f2ce4c9746b1bf52f04851ffed49d2069637b3fa0987d8afe",
     "Set_dOrbitals_Grid.c": "6570c853042ecb67d381f29670227d0c99a13035837d3beafb24883ef0f49549",
@@ -1044,6 +1038,8 @@
     "Electric_Polarization_BandNonCol.c",
     "FT_NLP.c",
     "FT_PAO.c",
+    "FT_ProExpn_VNA.c",
+    "FT_ProductPAO.c",
     "FT_VNA.c",
     "Free_Arrays.c",
     "GR_Pulay_DM.c",
@@ -1079,6 +1075,7 @@
     "openmx_core.h",
     "openmx_core.mk",
     "openmx_core_pao.h",
+    "openmx_core_product.h",
     "openmx_core_radial.h",
     "openmx_core_vps.h",
     "openmx_elpa_cpu.c",
@@ -1119,6 +1116,7 @@
     "truncation.c"
   ],
   "integrated_overrides": {
-    "Set_Nonlocal.c": "src/Set_Nonlocal.c"
+    "Set_Nonlocal.c": "src/Set_Nonlocal.c",
+    "Set_ProExpn_VNA.c": "src/Set_ProExpn_VNA.c"
   }
 }

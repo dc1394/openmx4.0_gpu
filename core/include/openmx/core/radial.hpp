@@ -1,6 +1,7 @@
 #pragma once
 
 #include <openmx/core/tensor.hpp>
+#include <openmx/core/product_storage.hpp>
 #include <Kokkos_Core.hpp>
 #include <functional>
 #include <memory>
@@ -23,7 +24,10 @@ struct Orbital {
   int multiplicity;
 };
 
+enum class RadialWeighting { trapezoid, gauss };
+
 // Trapezoidal integration in a parameter t: radii=r(t), measures=r^2 dr/dt.
+// Gauss integration uses measures=r^2*w and does not halve the endpoint nodes.
 // Keeping the measure separate preserves the original order of multiplication
 // and endpoint weighting for both uniform-r and uniform-sqrt(r) meshes.
 struct RadialQuadrature {
@@ -32,17 +36,24 @@ struct RadialQuadrature {
   std::vector<double> measures;
   std::vector<double> wavevectors;
   double step;
+  RadialWeighting weighting = RadialWeighting::trapezoid;
 };
 
 struct RadialSamples {
   RadialQuadrature grid;
   std::vector<Orbital> orbitals;
   Tensor<double, 2> values; // [orbital, radial point]
+  // Empty for ordinary radial transforms; otherwise output rows are products
+  // of two sampled orbitals. Keep factors separate to preserve summation order.
+  std::vector<ProductChannel> products;
 };
 
 RadialQuadrature uniform_quadrature(RadialGrid grid);
 RadialQuadrature squared_radius_quadrature(int intervals, double rmin, double rmax,
     double kmin, double kmax, std::span<const double> gauss_nodes);
+RadialQuadrature gauss_quadrature(int lmax, double rmin, double rmax,
+    double kmin, double kmax, std::span<const double> radial_nodes,
+    std::span<const double> radial_weights, std::span<const double> wavevector_nodes);
 
 using Sampler = std::function<double(int angular, int multiplicity, double radius)>;
 RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities,

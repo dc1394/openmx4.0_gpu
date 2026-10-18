@@ -6,6 +6,7 @@
 #include "openmx_common.h"
 #include "openmx_core_pao.h"
 #include "openmx_core_vps.h"
+#include "openmx_core_product.h"
 #include "mpi.h"
 
 double complex ******CWF_Coef_NC;
@@ -2428,7 +2429,10 @@ static void array0(OpenMXCoreContext *core)
 
   /* Spe_ProductRF_Bessel by Allocate_Arrays(7) in SetPara_DFT.c */
 
-  if (ProExpn_VNA==1){
+  if (core) {
+    openmx_core_product_release(core);
+  }
+  else if (ProExpn_VNA==1){
 
     for (i=0; i<List_YOUSO[18]; i++){
       for (j=0; j<(Spe_MaxL_Basis[i]+1); j++){
@@ -2459,6 +2463,7 @@ static void array0(OpenMXCoreContext *core)
     free(Spe_ProductRF_Bessel);
 
   }
+  Spe_ProductRF_Bessel = NULL;
 
   if (alloc_first[23]==0){
     free(NE_T_k_op);

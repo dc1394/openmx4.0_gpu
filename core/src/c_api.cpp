@@ -2,6 +2,7 @@
 #include "openmx_core_radial.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
+#include "product_compat.hpp"
 #include <openmx/core/radial.hpp>
 #include <openmx/core/radial_table.hpp>
 #include <openmx/core/bessel.hpp>
@@ -16,6 +17,7 @@ struct OpenMXCoreContext {
   openmx::core::Context implementation;
   std::unique_ptr<openmx::core::compat::PaoOwner> pao;
   std::unique_ptr<openmx::core::compat::VpsOwner> vps;
+  std::unique_ptr<openmx::core::compat::ProductOwner> products;
 };
 
 namespace {
@@ -54,15 +56,15 @@ openmx::core::RadialQuadrature uniform_grid(int lmax, const OpenMXUniformRadialG
       grid->rmin,grid->radial_step,grid->k_step});
 }
 
-void transform_table(OpenMXCoreContext* context, int device,
-    const openmx::core::RadialTableView& table, openmx::core::RadialQuadrature grid,
+void transform_samples(OpenMXCoreContext* context, int device,
+    const openmx::core::RadialSamples& samples,
     std::span<double* const> outputs)
 {
-  if (outputs.size() != table.channel_count())
+  const auto channels = samples.products.empty() ? samples.orbitals.size() : samples.products.size();
+  if (outputs.size() != channels)
     throw std::invalid_argument("radial output channel count mismatch");
   for (double* row : outputs)
-    if (!row && !grid.wavevectors.empty()) throw std::invalid_argument("missing radial output row");
-  auto samples = openmx::core::sample_table(table,std::move(grid));
+    if (!row && !samples.grid.wavevectors.empty()) throw std::invalid_argument("missing radial output row");
   auto result = context ? context->implementation.transform(samples,device)
                         : openmx::core::transform_host(samples);
   const auto count = result.extent(1);
@@ -71,6 +73,13 @@ void transform_table(OpenMXCoreContext* context, int device,
   // partially updated species, and input/output aliasing is safe.
   for (std::size_t row = 0; row < outputs.size(); ++row)
     std::copy_n(result.data()+row*count,count,outputs[row]);
+}
+
+void transform_table(OpenMXCoreContext* context, int device,
+    const openmx::core::RadialTableView& table, openmx::core::RadialQuadrature grid,
+    std::span<double* const> outputs)
+{
+  transform_samples(context,device,openmx::core::sample_table(table,std::move(grid)),outputs);
 }
 
 } // namespace
@@ -131,6 +140,74 @@ extern "C" int openmx_core_vps_allocate(OpenMXCoreContext* context, const OpenMX
 extern "C" void openmx_core_vps_release(OpenMXCoreContext* context)
 {
   if (context) context->vps.reset();
+}
+
+extern "C" int openmx_core_product_allocate(OpenMXCoreContext* context, const OpenMXProductShape* shape,
+    OpenMXProductViews* views, char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!context || !shape || !views || context->products || context->implementation.finished())
+      throw std::invalid_argument("product allocation requires an unfinished context without product storage");
+    if (shape->species <= 0 || shape->wavevectors <= 0 || !shape->lmax || !shape->multiplicities)
+      throw std::invalid_argument("invalid product storage shape");
+    std::vector<openmx::core::ProductSpecies> species;
+    for (int s = 0; s < shape->species; ++s) {
+      if (shape->lmax[s] < 0 || shape->lmax[s] > 14 || !shape->multiplicities[s])
+        throw std::invalid_argument("invalid product species basis");
+      species.push_back({{shape->multiplicities[s],static_cast<std::size_t>(shape->lmax[s]+1)}});
+    }
+    auto owner = std::make_unique<openmx::core::compat::ProductOwner>(species,shape->wavevectors);
+    *views = owner->views();
+    context->products = std::move(owner);
+  });
+}
+
+extern "C" void openmx_core_product_release(OpenMXCoreContext* context)
+{
+  if (context) context->products.reset();
+}
+
+extern "C" int openmx_core_transform_products(OpenMXCoreContext* context, int device,
+    const OpenMXProductTable* input, const OpenMXGaussRadialGrid* grid, char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!input || !grid || input->lmax < 0 || input->lmax > 14 || !input->multiplicities ||
+        grid->radial_count < 1 || grid->k_count < 0 || !grid->radial_nodes || !grid->radial_weights ||
+        (grid->k_count && !grid->wavevector_nodes))
+      throw std::invalid_argument("invalid orbital-product table or grid");
+    const openmx::core::ProductLayout layout({input->multiplicities,static_cast<std::size_t>(input->lmax+1)});
+    const auto radii = mesh(input->radii,input->mesh_count);
+    auto quadrature = openmx::core::gauss_quadrature(2*input->lmax,grid->rmin,grid->rmax,
+      grid->kmin,grid->kmax,{grid->radial_nodes,static_cast<std::size_t>(grid->radial_count)},
+      {grid->radial_weights,static_cast<std::size_t>(grid->radial_count)},
+      {grid->wavevector_nodes,static_cast<std::size_t>(grid->k_count)});
+    std::vector<openmx::core::RadialChannel> channels;
+    std::vector<double*> outputs;
+    for (int l1 = 0; l1 <= input->lmax; ++l1) {
+      if (input->multiplicities[l1] && (!input->values || !input->values[l1] ||
+          !input->output || !input->output[l1]))
+        throw std::invalid_argument("missing product angular group");
+      for (int m1 = 0; m1 < input->multiplicities[l1]; ++m1) {
+        channels.push_back(channel(l1,input->values[l1][m1],input->mesh_count));
+        if (!input->output[l1][m1]) throw std::invalid_argument("missing product left orbital");
+        for (int l2 = l1; l2 <= input->lmax; ++l2) {
+          if (input->multiplicities[l2] && !input->output[l1][m1][l2])
+            throw std::invalid_argument("missing product right angular group");
+          for (int m2 = 0; m2 < input->multiplicities[l2]; ++m2) {
+            const auto block = input->output[l1][m1][l2][m2];
+            if (!block) throw std::invalid_argument("missing product block");
+            for (int l = 0; l <= 2*l2; ++l) {
+              if (!block[l] && grid->k_count) throw std::invalid_argument("missing product output row");
+              outputs.push_back(block[l]);
+            }
+          }
+        }
+      }
+    }
+    const openmx::core::RadialTableView table(openmx::core::RadialKind::pao,radii,channels);
+    auto samples = openmx::core::sample_product_table(table,layout,std::move(quadrature));
+    transform_samples(context,device,samples,outputs);
+  });
 }
 
 extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,
@@ -268,6 +345,7 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
   if (context) {
     context->pao.reset();
     context->vps.reset();
+    context->products.reset();
     context->implementation.finish();
   }
 }

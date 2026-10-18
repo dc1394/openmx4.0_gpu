@@ -2,6 +2,7 @@
 #include <limits.h>
 #include "openmx_core_pao.h"
 #include "openmx_core_vps.h"
+#include "openmx_core_product.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_common.h"
@@ -815,8 +816,19 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
         }
       }
 
-      /* Ragged orbital-product storage is still owned by the C path. */
-      if (ProExpn_VNA==1) {
+      if (ProExpn_VNA==1 && core) {
+        const OpenMXProductShape shape = {List_YOUSO[18],GL_Mesh,Spe_MaxL_Basis,Spe_Num_Basis};
+        OpenMXProductViews views;
+        char error[256];
+        if (!openmx_core_product_allocate(core,&shape,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays(products): %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        Spe_ProductRF_Bessel = views.rows;
+      }
+      else if (ProExpn_VNA==1) {
+        /* Compatibility path for null-context C library callers. */
         Spe_ProductRF_Bessel = (double*******)malloc(sizeof(double******)*List_YOUSO[18]);
         for (i=0; i<List_YOUSO[18]; i++){
           Spe_ProductRF_Bessel[i] = (double******)malloc(sizeof(double*****)*(Spe_MaxL_Basis[i]+1));

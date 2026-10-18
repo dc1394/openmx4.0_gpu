@@ -75,5 +75,7 @@ class RadialTable {
 
 RadialSamples sample_table(const RadialTable& table, RadialQuadrature grid);
 RadialSamples sample_table(const RadialTableView& table, RadialQuadrature grid);
+RadialSamples sample_product_table(const RadialTableView& table,
+    const ProductLayout& layout, RadialQuadrature grid);
 
 } // namespace openmx::core
