@@ -1,6 +1,7 @@
 #include "openmx_core.h"
 #include "openmx_core_radial.h"
 #include "pao_compat.hpp"
+#include "vps_compat.hpp"
 #include <openmx/core/radial.hpp>
 #include <openmx/core/radial_table.hpp>
 #include <openmx/core/bessel.hpp>
@@ -14,6 +15,7 @@
 struct OpenMXCoreContext {
   openmx::core::Context implementation;
   std::unique_ptr<openmx::core::compat::PaoOwner> pao;
+  std::unique_ptr<openmx::core::compat::VpsOwner> vps;
 };
 
 namespace {
@@ -53,7 +55,7 @@ openmx::core::RadialQuadrature uniform_grid(int lmax, const OpenMXUniformRadialG
 }
 
 void transform_table(OpenMXCoreContext* context, int device,
-    const openmx::core::RadialTable& table, openmx::core::RadialQuadrature grid,
+    const openmx::core::RadialTableView& table, openmx::core::RadialQuadrature grid,
     std::span<double* const> outputs)
 {
   if (outputs.size() != table.channel_count())
@@ -96,6 +98,39 @@ extern "C" int openmx_core_pao_allocate(OpenMXCoreContext* context, const OpenMX
 extern "C" void openmx_core_pao_release(OpenMXCoreContext* context)
 {
   if (context) context->pao.reset();
+}
+
+extern "C" int openmx_core_vps_allocate(OpenMXCoreContext* context, const OpenMXVpsShape* shape,
+    const OpenMXNeutralProjectorShape* neutral_shape, OpenMXVpsViews* views,
+    char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!context || !shape || !views || context->vps || context->implementation.finished())
+      throw std::invalid_argument("VPS allocation requires an unfinished context without VPS storage");
+    if (shape->species <= 0 || shape->spins < 1 || shape->spins > 2 || shape->projectors <= 0 ||
+        shape->radial_points <= 0 || shape->reciprocal_points <= 0)
+      throw std::invalid_argument("invalid VPS storage dimensions");
+    const openmx::core::VpsShape dimensions{static_cast<std::size_t>(shape->species),
+      static_cast<std::size_t>(shape->spins),static_cast<std::size_t>(shape->projectors),
+      static_cast<std::size_t>(shape->radial_points),static_cast<std::size_t>(shape->reciprocal_points)};
+    std::optional<openmx::core::NeutralProjectorShape> neutral;
+    if (neutral_shape) {
+      if (neutral_shape->angular_channels <= 0 || neutral_shape->multiplicity <= 0 || neutral_shape->wavevectors <= 0)
+        throw std::invalid_argument("invalid neutral-projector storage dimensions");
+      neutral = openmx::core::NeutralProjectorShape{dimensions.species,
+        static_cast<std::size_t>(neutral_shape->angular_channels),
+        static_cast<std::size_t>(neutral_shape->multiplicity),dimensions.radial_points,
+        static_cast<std::size_t>(neutral_shape->wavevectors)};
+    }
+    auto owner = std::make_unique<openmx::core::compat::VpsOwner>(dimensions,neutral);
+    *views = owner->views();
+    context->vps = std::move(owner);
+  });
+}
+
+extern "C" void openmx_core_vps_release(OpenMXCoreContext* context)
+{
+  if (context) context->vps.reset();
 }
 
 extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,
@@ -157,7 +192,7 @@ extern "C" int openmx_core_transform_pao(OpenMXCoreContext* context, int device,
         outputs.push_back(input->output[l][m]);
       }
     }
-    const openmx::core::RadialTable table(openmx::core::RadialKind::pao,radii,channels);
+    const openmx::core::RadialTableView table(openmx::core::RadialKind::pao,radii,channels);
     transform_table(context,device,table,std::move(quadrature),outputs);
   });
 }
@@ -185,7 +220,7 @@ extern "C" int openmx_core_transform_projectors(OpenMXCoreContext* context, int 
       }
     }
     auto quadrature = uniform_grid(lmax,grid);
-    const openmx::core::RadialTable table(openmx::core::RadialKind::projector,radii,channels);
+    const openmx::core::RadialTableView table(openmx::core::RadialKind::projector,radii,channels);
     transform_table(context,device,table,std::move(quadrature),outputs);
   });
 }
@@ -199,7 +234,7 @@ extern "C" int openmx_core_transform_neutral_potential(OpenMXCoreContext* contex
       throw std::invalid_argument("invalid neutral-potential table description");
     const auto radii = mesh(input->radii,input->mesh_count);
     const auto row = channel(0,input->values,input->mesh_count);
-    const openmx::core::RadialTable table(openmx::core::RadialKind::neutral_potential,
+    const openmx::core::RadialTableView table(openmx::core::RadialKind::neutral_potential,
                                          radii,{&row,1},input->cutoff);
     auto quadrature = openmx::core::squared_radius_quadrature(grid->intervals,
         grid->rmin,grid->rmax,grid->kmin,grid->kmax,
@@ -232,6 +267,7 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
 {
   if (context) {
     context->pao.reset();
+    context->vps.reset();
     context->implementation.finish();
   }
 }

@@ -1080,6 +1080,7 @@
     "openmx_core.mk",
     "openmx_core_pao.h",
     "openmx_core_radial.h",
+    "openmx_core_vps.h",
     "openmx_elpa_cpu.c",
     "openmx_elpa_cpu.h",
     "openmx_gpu_backend.h",

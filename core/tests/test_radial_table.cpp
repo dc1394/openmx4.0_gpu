@@ -98,6 +98,50 @@ void interpolation_test() {
           "null scalar grid accepted");
 }
 
+void view_test() {
+  const std::array<double,8> radii{0,.1,.3,.7,1.2,1.8,2.5,3.0};
+  std::array<double,8> values{.7,1.4,-.2,.9,-.4,.3,.1,0};
+  const RadialChannel channel{0,values};
+  const RadialTableView borrowed(RadialKind::pao,radii,{&channel,1});
+  const RadialTable owned(RadialKind::pao,radii,{&channel,1});
+  for (double r : {0.,.05,.1,.3,.6,1.,2.,3.,4.}) near(borrowed.sample(0,r),owned.sample(0,r));
+  auto samples = sample_table(borrowed,uniform_quadrature({0,10,3,0,.1,.2}));
+  auto original = sample_table(owned,uniform_quadrature({0,10,3,0,.1,.2}));
+  for (std::size_t i = 0; i < samples.values.size(); ++i) near(samples.values.data()[i],original.values.data()[i]);
+  // A finite edit between calls is visible through a borrowed view. Owned
+  // tables and already sampled values retain independent snapshots.
+  values[2] = 12;
+  near(borrowed.sample(0,.3),12);
+  near(owned.sample(0,.3),-.2);
+  for (std::size_t i = 0; i < samples.values.size(); ++i) near(samples.values.data()[i],original.values.data()[i]);
+  const auto copy = borrowed;
+  near(copy.sample(0,.3),12);
+  rejects([&] { (void)borrowed.sample(1,1); });
+  rejects([&] { (void)borrowed.angular(1); });
+  const RadialTableView empty(RadialKind::projector,radii,{});
+  require(sample_table(empty,uniform_quadrature({0,10,3,0,.1,.2})).values.size() == 0,"empty view rejected");
+  values.back() = std::numeric_limits<double>::quiet_NaN();
+  rejects([&] { RadialTableView invalid(RadialKind::pao,radii,{&channel,1}); });
+
+  // Input/output aliasing must remain safe after removing the input copy.
+  values.fill(2);
+  std::array<double,8> output{};
+  double* input_row = values.data();
+  double* output_row = output.data();
+  double** input_block = &input_row;
+  double** output_block = &output_row;
+  const int count = 1;
+  OpenMXPaoTable table{0,&count,8,radii.data(),&input_block,&output_block};
+  const OpenMXUniformRadialGrid grid{2048,4,0,1./2048,.1};
+  char error[256];
+  require(openmx_core_transform_pao(nullptr,-1,&table,&grid,error,sizeof(error)),error);
+  near(output[0],2./3,1e-7);
+  table.output = &input_block;
+  require(openmx_core_transform_pao(nullptr,-1,&table,&grid,error,sizeof(error)),error);
+  for (int k = 0; k < 4; ++k) near(values[k],output[k]);
+  for (int k = 4; k < 8; ++k) near(values[k],2);
+}
+
 void reciprocal_test() {
   std::array<double,8> values{.7,1.4,-.2,.9,-.4,.3,.1,0};
   const double step = 2.4/8;
@@ -281,6 +325,7 @@ int main(int argc, char** argv) {
     const std::string name = argv[1];
     if (name == "interpolation") interpolation_test();
     else if (name == "reciprocal") reciprocal_test();
+    else if (name == "view") view_test();
     else if (name == "host") transform_test(false);
     else if (name == "execution") transform_test(true);
     else if (name == "c-api") require(openmx_core_run(argc,argv,c_entry) == 0,"C table transform failed");

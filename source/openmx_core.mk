@@ -27,4 +27,4 @@ openmx: $(OPENMX_CORE_LIBRARY)
 $(OBJS): openmx_core.h openmx_periodic.h
 FT_PAO.o FT_NLP.o FT_VNA.o RadialF.o Nonlocal_RadialF.o VNAF.o RF_BesselF.o Set_Nonlocal.o: openmx_core_radial.h
 SetPara_DFT.o: openmx_gpu_device.h
-Allocate_Arrays.o Free_Arrays.o: openmx_core_pao.h
+Allocate_Arrays.o Free_Arrays.o: openmx_core_pao.h openmx_core_vps.h

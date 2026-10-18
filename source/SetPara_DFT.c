@@ -602,7 +602,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
   }
   remake_headfile = 0;
 
-  Allocate_Arrays(7);
+  Allocate_Arrays_with_context(7,core);
 
   /*************************
             read 

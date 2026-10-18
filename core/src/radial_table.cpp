@@ -88,10 +88,9 @@ double sample_reciprocal_row(ReciprocalKind kind, std::span<const double> values
       kind == ReciprocalKind::projector ? 1e-14 : -1).value;
 }
 
-RadialTable::RadialTable(RadialKind kind, std::span<const double> radii,
+RadialTableView::RadialTableView(RadialKind kind, std::span<const double> radii,
     std::span<const RadialChannel> channels, double cutoff)
-  : kind_(kind), cutoff_(cutoff), radii_(radii.begin(),radii.end()),
-    values_({channels.size(),radii.size()})
+  : kind_(kind), cutoff_(cutoff), radii_(radii), channels_(channels)
 {
   if (kind != RadialKind::pao && kind != RadialKind::projector &&
       kind != RadialKind::neutral_potential)
@@ -105,18 +104,45 @@ RadialTable::RadialTable(RadialKind kind, std::span<const double> radii,
   if (kind == RadialKind::neutral_potential &&
       (channels.size() != 1 || !std::isfinite(cutoff) || cutoff < 0 || cutoff > radii.back()))
     throw std::invalid_argument("invalid neutral-potential cutoff or channel count");
-  angular_.reserve(channels.size());
-  auto data = values_.view();
-  for (std::size_t row = 0; row < channels.size(); ++row) {
-    const auto& channel = channels[row];
+  for (const auto& channel : channels) {
     if (channel.angular < 0 || channel.angular > 29 || channel.values.size() != radii.size() ||
         (kind == RadialKind::neutral_potential && channel.angular != 0))
       throw std::invalid_argument("invalid radial table channel");
+    for (double value : channel.values)
+      if (!std::isfinite(value)) throw std::invalid_argument("non-finite radial table value");
+  }
+}
+
+const RadialChannel& RadialTableView::channel(std::size_t index) const
+{
+  if (index >= channels_.size()) throw std::out_of_range("radial channel index");
+  return channels_[index];
+}
+
+int RadialTableView::angular(std::size_t index) const { return channel(index).angular; }
+
+double RadialTableView::sample(std::size_t index, double radius) const
+{
+  const auto& row = channel(index);
+  return sample_radial_row(kind_,row.angular,radii_,row.values,cutoff_,radius);
+}
+
+RadialTable::RadialTable(RadialKind kind, std::span<const double> radii,
+    std::span<const RadialChannel> channels, double cutoff)
+  : RadialTable(RadialTableView(kind,radii,channels,cutoff)) {}
+
+RadialTable::RadialTable(const RadialTableView& validated)
+  : kind_(validated.kind_), cutoff_(validated.cutoff_),
+    radii_(validated.radii_.begin(),validated.radii_.end()),
+    values_({validated.channel_count(),validated.radii_.size()})
+{
+  angular_.reserve(validated.channel_count());
+  auto data = values_.view();
+  for (std::size_t row = 0; row < validated.channel_count(); ++row) {
+    const auto& channel = validated.channels_[row];
     angular_.push_back(channel.angular);
-    for (std::size_t i = 0; i < radii.size(); ++i) {
-      if (!std::isfinite(channel.values[i])) throw std::invalid_argument("non-finite radial table value");
+    for (std::size_t i = 0; i < radii_.size(); ++i)
       element(data,row,i) = channel.values[i];
-    }
   }
 }
 
@@ -158,7 +184,9 @@ double sample_radial_row(RadialKind kind, int l, std::span<const double> radii,
   return interpolate(radii,values,m,radius).value;
 }
 
-RadialSamples sample_table(const RadialTable& table, RadialQuadrature grid)
+namespace {
+template<class Table>
+RadialSamples sample_rows(const Table& table, RadialQuadrature grid)
 {
   std::vector<Orbital> orbitals;
   orbitals.reserve(table.channel_count());
@@ -170,6 +198,17 @@ RadialSamples sample_table(const RadialTable& table, RadialQuadrature grid)
       element(data,channel,i) = table.sample(channel,grid.radii[i]);
   }
   return {std::move(grid),std::move(orbitals),std::move(values)};
+}
+} // namespace
+
+RadialSamples sample_table(const RadialTable& table, RadialQuadrature grid)
+{
+  return sample_rows(table,std::move(grid));
+}
+
+RadialSamples sample_table(const RadialTableView& table, RadialQuadrature grid)
+{
+  return sample_rows(table,std::move(grid));
 }
 
 } // namespace openmx::core

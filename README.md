@@ -22,9 +22,11 @@ The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
 application to C++, explicit ownership and Kokkos. The new `core/` library
 contains radial interpolation and Fourier transforms for PAOs, nonlocal
 projectors and neutral-atom potentials, spherical Bessel functions and FFT-grid
-validation. PAO grids, atomic densities, orbitals and their Fourier tables now
-have calculation-scoped C++ ownership, with borrowed views for legacy consumers.
-Radial transform temporaries also use RAII. Periodic-cell inverse indexing and
+validation. PAO grids, atomic densities, orbitals, VPS/nonlocal-projector data,
+optional VNA expansion tables and their Fourier tables now have
+calculation-scoped C++ ownership, with borrowed views for legacy consumers.
+Radial transforms borrow validated input views without copying the input tables;
+their sampled data and workspaces use RAII. Periodic-cell inverse indexing and
 the uniform reciprocal grid no longer use global arrays; PAO/projector
 reciprocal interpolation shares the same C++ implementation across backends.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or

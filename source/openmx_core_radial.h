@@ -28,8 +28,10 @@ int openmx_core_radial_sample(enum OpenMXRadialKind kind, int angular,
     double cutoff, double radius, double *result);
 
 /* Transitional, borrowed views of one species in the C application's layout.
-   Inputs are never mutated or retained. The bridge copies them into an owned
-   contiguous RadialTable before sampling. Only this boundary knows the legacy
+   Inputs are borrowed and validated, not copied or retained after the call.
+   Keep the mesh and rows unchanged until the call returns; outputs may alias
+   inputs because sampling and execution finish before committing results.
+   Only this boundary knows the legacy
    pointer nesting; numerical code has no dependency on openmx_common.h.
    Each output row must have room for k_count doubles. Outputs are committed
    only after all validation, sampling and execution succeed. */

@@ -5,6 +5,7 @@
 #include <complex.h>
 #include "openmx_common.h"
 #include "openmx_core_pao.h"
+#include "openmx_core_vps.h"
 #include "mpi.h"
 
 double complex ******CWF_Coef_NC;
@@ -3362,103 +3363,113 @@ static void array0(OpenMXCoreContext *core)
 
   /* Allocate_Arrays(7) in SetPara_DFT.c */
 
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_VPS_XV[i]);
+  if (core) {
+    openmx_core_vps_release(core);
   }
-  free(Spe_VPS_XV);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_VPS_RV[i]);
-  }
-  free(Spe_VPS_RV);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_Vna[i]);
-  }
-  free(Spe_Vna);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_VH_Atom[i]);
-  }
-  free(Spe_VH_Atom);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_Atomic_PCC[i]);
-  }
-  free(Spe_Atomic_PCC);
-
-  for (so=0; so<(SO_switch+1); so++){
+  else {
     for (i=0; i<List_YOUSO[18]; i++){
-      for (j=0; j<List_YOUSO[19]; j++){
-        free(Spe_VNL[so][i][j]);
+      free(Spe_VPS_XV[i]);
+    }
+    free(Spe_VPS_XV);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_VPS_RV[i]);
+    }
+    free(Spe_VPS_RV);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_Vna[i]);
+    }
+    free(Spe_Vna);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_VH_Atom[i]);
+    }
+    free(Spe_VH_Atom);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_Atomic_PCC[i]);
+    }
+    free(Spe_Atomic_PCC);
+
+    for (so=0; so<(SO_switch+1); so++){
+      for (i=0; i<List_YOUSO[18]; i++){
+        for (j=0; j<List_YOUSO[19]; j++){
+          free(Spe_VNL[so][i][j]);
+        }
+        free(Spe_VNL[so][i]);
       }
-      free(Spe_VNL[so][i]);
+      free(Spe_VNL[so]);
     }
-    free(Spe_VNL[so]);
-  }
-  free(Spe_VNL);
+    free(Spe_VNL);
 
-  for (so=0; so<(SO_switch+1); so++){
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_VNLE[so][i]);
-    }
-    free(Spe_VNLE[so]);
-  }
-  free(Spe_VNLE);
-
-  for (i=0; i<List_YOUSO[18]; i++){
-    free(Spe_VPS_List[i]);
-  }
-  free(Spe_VPS_List);
-
-  for (so=0; so<(SO_switch+1); so++){
-    for (i=0; i<List_YOUSO[18]; i++){
-      for (j=0; j<(List_YOUSO[19]+2); j++){
-        free(Spe_NLRF_Bessel[so][i][j]);
+    for (so=0; so<(SO_switch+1); so++){
+      for (i=0; i<List_YOUSO[18]; i++){
+        free(Spe_VNLE[so][i]);
       }
-      free(Spe_NLRF_Bessel[so][i]);
+      free(Spe_VNLE[so]);
     }
-    free(Spe_NLRF_Bessel[so]);
+    free(Spe_VNLE);
+
+    for (i=0; i<List_YOUSO[18]; i++){
+      free(Spe_VPS_List[i]);
+    }
+    free(Spe_VPS_List);
+
+    for (so=0; so<(SO_switch+1); so++){
+      for (i=0; i<List_YOUSO[18]; i++){
+        for (j=0; j<(List_YOUSO[19]+2); j++){
+          free(Spe_NLRF_Bessel[so][i][j]);
+        }
+        free(Spe_NLRF_Bessel[so][i]);
+      }
+      free(Spe_NLRF_Bessel[so]);
+    }
+    free(Spe_NLRF_Bessel);
+
+    if (ProExpn_VNA==1){
+
+      for (i=0; i<List_YOUSO[18]; i++){
+        for (L=0; L<(List_YOUSO[35]+1); L++){
+          for (j=0; j<List_YOUSO[34]; j++){
+            free(Projector_VNA[i][L][j]);
+          }
+          free(Projector_VNA[i][L]);
+        }
+        free(Projector_VNA[i]);
+      }
+      free(Projector_VNA);
+
+      for (i=0; i<List_YOUSO[18]; i++){
+        for (L=0; L<(List_YOUSO[35]+1); L++){
+          free(VNA_proj_ene[i][L]);
+        }
+        free(VNA_proj_ene[i]);
+      }
+      free(VNA_proj_ene);
+
+      for (i=0; i<List_YOUSO[18]; i++){
+        for (L=0; L<(List_YOUSO[35]+1); L++){
+          for (j=0; j<List_YOUSO[34]; j++){
+            free(Spe_VNA_Bessel[i][L][j]);
+          }
+          free(Spe_VNA_Bessel[i][L]);
+        }
+        free(Spe_VNA_Bessel[i]);
+      }
+      free(Spe_VNA_Bessel);
+
+      for (i=0; i<List_YOUSO[18]; i++){
+        free(Spe_CrudeVNA_Bessel[i]);
+      }
+      free(Spe_CrudeVNA_Bessel);
+    }
   }
-  free(Spe_NLRF_Bessel);
-
-  if (ProExpn_VNA==1){
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      for (L=0; L<(List_YOUSO[35]+1); L++){
-	for (j=0; j<List_YOUSO[34]; j++){
-	  free(Projector_VNA[i][L][j]);
-	}
-        free(Projector_VNA[i][L]);
-      }
-      free(Projector_VNA[i]);
-    }
-    free(Projector_VNA);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      for (L=0; L<(List_YOUSO[35]+1); L++){
-	free(VNA_proj_ene[i][L]);
-      }
-      free(VNA_proj_ene[i]);
-    }
-    free(VNA_proj_ene);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      for (L=0; L<(List_YOUSO[35]+1); L++){
-	for (j=0; j<List_YOUSO[34]; j++){
-	  free(Spe_VNA_Bessel[i][L][j]);
-	}
-        free(Spe_VNA_Bessel[i][L]);
-      }
-      free(Spe_VNA_Bessel[i]);
-    }
-    free(Spe_VNA_Bessel);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_CrudeVNA_Bessel[i]);
-    }
-    free(Spe_CrudeVNA_Bessel);
-  }
+  Spe_VPS_XV = Spe_VPS_RV = Spe_Vna = Spe_VH_Atom = Spe_Atomic_PCC = NULL;
+  Spe_VNL = Spe_NLRF_Bessel = Projector_VNA = Spe_VNA_Bessel = NULL;
+  Spe_VNLE = VNA_proj_ene = NULL;
+  Spe_VPS_List = NULL;
+  Spe_CrudeVNA_Bessel = NULL;
 
   if ( (Solver==2 || Solver==3 || Solver==7) && MO_fileout==1 ){
 

@@ -1,6 +1,7 @@
 #include <math.h>
 #include <limits.h>
 #include "openmx_core_pao.h"
+#include "openmx_core_vps.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_common.h"
@@ -667,112 +668,155 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 
       /* call from SetPara_DFT.c */
 
-      Spe_VPS_XV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VPS_XV[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-        for (j=0; j<List_YOUSO[22]; j++) Spe_VPS_XV[i][j] = 0.0;
+      if (core) {
+        char error[256];
+        OpenMXVpsViews views;
+        OpenMXVpsShape shape;
+        OpenMXNeutralProjectorShape neutral_shape;
+        const OpenMXNeutralProjectorShape *neutral = NULL;
+        if (SO_switch < 0 || SO_switch > 1 ||
+            (ProExpn_VNA==1 && (List_YOUSO[35] < 0 || List_YOUSO[35] == INT_MAX))) {
+          fprintf(stderr,"Invalid VPS spin or VNA angular capacity\n");
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        shape = (OpenMXVpsShape){List_YOUSO[18],SO_switch+1,List_YOUSO[19],
+                                List_YOUSO[22],List_YOUSO[15]};
+        if (ProExpn_VNA==1) {
+          neutral_shape = (OpenMXNeutralProjectorShape){List_YOUSO[35]+1,List_YOUSO[34],GL_Mesh};
+          neutral = &neutral_shape;
+        }
+        if (!openmx_core_vps_allocate(core,&shape,neutral,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays(VPS): %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        Spe_VPS_XV = views.log_radii;
+        Spe_VPS_RV = views.radii;
+        Spe_Vna = views.neutral_potential;
+        Spe_VH_Atom = views.hartree_potential;
+        Spe_Atomic_PCC = views.partial_core_density;
+        Spe_VNL = views.projectors;
+        Spe_VNLE = views.energies;
+        Spe_VPS_List = views.angular;
+        Spe_NLRF_Bessel = views.transforms;
+        Projector_VNA = views.neutral_projectors;
+        VNA_proj_ene = views.neutral_energies;
+        Spe_VNA_Bessel = views.neutral_transforms;
+        Spe_CrudeVNA_Bessel = views.potential_transform;
       }
-
-      Spe_VPS_RV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VPS_RV[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-        for (j=0; j<List_YOUSO[22]; j++) Spe_VPS_RV[i][j] = 0.0;
-      }
-
-      Spe_Vna = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_Vna[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-        for (j=0; j<List_YOUSO[22]; j++) Spe_Vna[i][j] = 0.0;
-      }
-
-      Spe_VH_Atom = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VH_Atom[i] = (double*)malloc(sizeof(double)*(List_YOUSO[22]+2));
-        for (j=0; j<(List_YOUSO[22]+2); j++) Spe_VH_Atom[i][j] = 0.0;
-      }
-
-      Spe_Atomic_PCC = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_Atomic_PCC[i] = (double*)malloc(sizeof(double)*(List_YOUSO[22]+2));
-        for (j=0; j<(List_YOUSO[22]+2); j++) Spe_Atomic_PCC[i][j] = 0.0;
-      }
-
-      Spe_VNL = (double****)malloc(sizeof(double***)*(SO_switch+1));
-      for (so=0; so<(SO_switch+1); so++){
-        Spe_VNL[so] = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
+      else {
+        /* Compatibility path for null-context C library callers. */
+        Spe_VPS_XV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
         for (i=0; i<List_YOUSO[18]; i++){
-          Spe_VNL[so][i] = (double**)malloc(sizeof(double*)*List_YOUSO[19]);
-          for (j=0; j<List_YOUSO[19]; j++){
-            Spe_VNL[so][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-            for (k=0; k<List_YOUSO[22]; k++) Spe_VNL[so][i][j][k] = 0.0;
+          Spe_VPS_XV[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
+          for (j=0; j<List_YOUSO[22]; j++) Spe_VPS_XV[i][j] = 0.0;
+        }
+
+        Spe_VPS_RV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
+        for (i=0; i<List_YOUSO[18]; i++){
+          Spe_VPS_RV[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
+          for (j=0; j<List_YOUSO[22]; j++) Spe_VPS_RV[i][j] = 0.0;
+        }
+
+        Spe_Vna = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
+        for (i=0; i<List_YOUSO[18]; i++){
+          Spe_Vna[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
+          for (j=0; j<List_YOUSO[22]; j++) Spe_Vna[i][j] = 0.0;
+        }
+
+        Spe_VH_Atom = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
+        for (i=0; i<List_YOUSO[18]; i++){
+          Spe_VH_Atom[i] = (double*)malloc(sizeof(double)*(List_YOUSO[22]+2));
+          for (j=0; j<(List_YOUSO[22]+2); j++) Spe_VH_Atom[i][j] = 0.0;
+        }
+
+        Spe_Atomic_PCC = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
+        for (i=0; i<List_YOUSO[18]; i++){
+          Spe_Atomic_PCC[i] = (double*)malloc(sizeof(double)*(List_YOUSO[22]+2));
+          for (j=0; j<(List_YOUSO[22]+2); j++) Spe_Atomic_PCC[i][j] = 0.0;
+        }
+
+        Spe_VNL = (double****)malloc(sizeof(double***)*(SO_switch+1));
+        for (so=0; so<(SO_switch+1); so++){
+          Spe_VNL[so] = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
+          for (i=0; i<List_YOUSO[18]; i++){
+            Spe_VNL[so][i] = (double**)malloc(sizeof(double*)*List_YOUSO[19]);
+            for (j=0; j<List_YOUSO[19]; j++){
+              Spe_VNL[so][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
+              for (k=0; k<List_YOUSO[22]; k++) Spe_VNL[so][i][j][k] = 0.0;
+            }
+          }
+        }
+
+        Spe_VNLE = (double***)malloc(sizeof(double**)*(SO_switch+1));
+        for (so=0; so<(SO_switch+1); so++){
+          Spe_VNLE[so] = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
+          for (i=0; i<List_YOUSO[18]; i++){
+            Spe_VNLE[so][i] = (double*)malloc(sizeof(double)*List_YOUSO[19]);
+            for (j=0; j<List_YOUSO[19]; j++) Spe_VNLE[so][i][j] = 0.0;
+          }
+        }
+
+        Spe_VPS_List = (int**)malloc(sizeof(int*)*List_YOUSO[18]);
+        for (i=0; i<List_YOUSO[18]; i++){
+          Spe_VPS_List[i] = (int*)malloc(sizeof(int)*List_YOUSO[19]);
+          for (j=0; j<List_YOUSO[19]; j++) Spe_VPS_List[i][j] = 0;
+        }
+
+        Spe_NLRF_Bessel = (double****)malloc(sizeof(double***)*(SO_switch+1));
+        for (so=0; so<(SO_switch+1); so++){
+          Spe_NLRF_Bessel[so] = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
+          for (i=0; i<List_YOUSO[18]; i++){
+            Spe_NLRF_Bessel[so][i] = (double**)malloc(sizeof(double*)*(List_YOUSO[19]+2));
+            for (j=0; j<(List_YOUSO[19]+2); j++){
+              Spe_NLRF_Bessel[so][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[15]);
+            }
+          }
+        }
+
+        if (ProExpn_VNA==1){
+
+          Projector_VNA = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
+          for (i=0; i<List_YOUSO[18]; i++){
+            Projector_VNA[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[35]+1));
+            for (L=0; L<(List_YOUSO[35]+1); L++){
+              Projector_VNA[i][L] = (double**)malloc(sizeof(double*)*List_YOUSO[34]);
+              for (j=0; j<List_YOUSO[34]; j++){
+                Projector_VNA[i][L][j] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
+                for (k=0; k<List_YOUSO[22]; k++) Projector_VNA[i][L][j][k] = 0.0;
+              }
+            }
+          }
+
+          VNA_proj_ene = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
+          for (i=0; i<List_YOUSO[18]; i++){
+            VNA_proj_ene[i] = (double**)malloc(sizeof(double*)*(List_YOUSO[35]+1));
+            for (L=0; L<(List_YOUSO[35]+1); L++){
+              VNA_proj_ene[i][L] = (double*)malloc(sizeof(double)*List_YOUSO[34]);
+            }
+          }
+
+          Spe_VNA_Bessel = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
+          for (i=0; i<List_YOUSO[18]; i++){
+            Spe_VNA_Bessel[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[35]+1));
+            for (L=0; L<(List_YOUSO[35]+1); L++){
+              Spe_VNA_Bessel[i][L] = (double**)malloc(sizeof(double*)*List_YOUSO[34]);
+              for (j=0; j<List_YOUSO[34]; j++){
+                Spe_VNA_Bessel[i][L][j] = (double*)malloc(sizeof(double)*(GL_Mesh+2));
+              }
+            }
+          }
+
+          Spe_CrudeVNA_Bessel = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
+          for (i=0; i<List_YOUSO[18]; i++){
+            Spe_CrudeVNA_Bessel[i] = (double*)malloc(sizeof(double)*(GL_Mesh+2));
           }
         }
       }
 
-      Spe_VNLE = (double***)malloc(sizeof(double**)*(SO_switch+1));
-      for (so=0; so<(SO_switch+1); so++){
-	Spe_VNLE[so] = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-	for (i=0; i<List_YOUSO[18]; i++){
-	  Spe_VNLE[so][i] = (double*)malloc(sizeof(double)*List_YOUSO[19]);
-	  for (j=0; j<List_YOUSO[19]; j++) Spe_VNLE[so][i][j] = 0.0;
-	}
-      }
-
-      Spe_VPS_List = (int**)malloc(sizeof(int*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VPS_List[i] = (int*)malloc(sizeof(int)*List_YOUSO[19]);
-        for (j=0; j<List_YOUSO[19]; j++) Spe_VPS_List[i][j] = 0;
-      }
-
-      Spe_NLRF_Bessel = (double****)malloc(sizeof(double***)*(SO_switch+1));
-      for (so=0; so<(SO_switch+1); so++){
-        Spe_NLRF_Bessel[so] = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_NLRF_Bessel[so][i] = (double**)malloc(sizeof(double*)*(List_YOUSO[19]+2));
-          for (j=0; j<(List_YOUSO[19]+2); j++){
-            Spe_NLRF_Bessel[so][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[15]);
-	  }
-        }
-      }
-
-      if (ProExpn_VNA==1){
-
-	Projector_VNA = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
-	for (i=0; i<List_YOUSO[18]; i++){
-  	  Projector_VNA[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[35]+1));
-  	  for (L=0; L<(List_YOUSO[35]+1); L++){
-  	    Projector_VNA[i][L] = (double**)malloc(sizeof(double*)*List_YOUSO[34]);
-  	    for (j=0; j<List_YOUSO[34]; j++){
-	      Projector_VNA[i][L][j] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-	      for (k=0; k<List_YOUSO[22]; k++) Projector_VNA[i][L][j][k] = 0.0;
-	    }
-	  }
-	}
-
-	VNA_proj_ene = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
-	for (i=0; i<List_YOUSO[18]; i++){
-  	 VNA_proj_ene[i] = (double**)malloc(sizeof(double*)*(List_YOUSO[35]+1));
-  	  for (L=0; L<(List_YOUSO[35]+1); L++){
-    	    VNA_proj_ene[i][L] = (double*)malloc(sizeof(double)*List_YOUSO[34]);
-	  }
-	}
-
-        Spe_VNA_Bessel = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_VNA_Bessel[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[35]+1));
-          for (L=0; L<(List_YOUSO[35]+1); L++){
-            Spe_VNA_Bessel[i][L] = (double**)malloc(sizeof(double*)*List_YOUSO[34]);
-            for (j=0; j<List_YOUSO[34]; j++){
-              Spe_VNA_Bessel[i][L][j] = (double*)malloc(sizeof(double)*(GL_Mesh+2));
-            }
-	  }
-        }
-
-        Spe_CrudeVNA_Bessel = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_CrudeVNA_Bessel[i] = (double*)malloc(sizeof(double)*(GL_Mesh+2));
-	}
-
+      /* Ragged orbital-product storage is still owned by the C path. */
+      if (ProExpn_VNA==1) {
         Spe_ProductRF_Bessel = (double*******)malloc(sizeof(double******)*List_YOUSO[18]);
         for (i=0; i<List_YOUSO[18]; i++){
           Spe_ProductRF_Bessel[i] = (double******)malloc(sizeof(double*****)*(Spe_MaxL_Basis[i]+1));
