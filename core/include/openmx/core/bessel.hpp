@@ -59,4 +59,31 @@ void spherical_bessel(double x, int lmax, double* sb, double* derivative)
   }
 }
 
+/* Values-only: same input preconditions as above; sb needs lmax+1 entries.
+   Retain downward recurrence for small arguments and near the transition.
+   Well above the largest order, upward recurrence is stable and takes only
+   O(lmax) steps instead of O(x). The factor two is a conservative margin.
+   See DLMF 10.49 (j0,j1), 10.51.1 and 10.74(iv).
+   This does not replace the legacy values-and-derivatives kernel above. */
+KOKKOS_INLINE_FUNCTION
+void spherical_bessel_values(double x, int lmax, double* sb)
+{
+  if (lmax == 0) {
+    sb[0] = x == 0.0 ? 1.0 : Kokkos::sin(x)/x;
+  } else if (x > 2.0*(lmax+1)) {
+    const double invx = 1.0/x;
+    const double sine = Kokkos::sin(x), cosine = Kokkos::cos(x);
+    sb[0] = sine*invx;
+    sb[1] = sine*invx*invx - cosine*invx;
+    for (int l = 1; l < lmax; ++l)
+      sb[l+1] = (2.0*l+1.0)*invx*sb[l] - sb[l-1];
+  } else {
+    // The legacy recurrence also writes order lmax+1. Keep its scratch
+    // private so the values-only interface never writes past its contract.
+    double work[32];
+    spherical_bessel(x,lmax,work,nullptr);
+    for (int l = 0; l <= lmax; ++l) sb[l] = work[l];
+  }
+}
+
 } // namespace openmx::core

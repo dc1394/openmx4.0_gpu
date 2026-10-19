@@ -5,6 +5,7 @@
 #include <cmath>
 #include <climits>
 #include <stdexcept>
+#include <type_traits>
 
 namespace openmx::core {
 namespace {
@@ -97,8 +98,11 @@ class CompleteBeforeRelease {
 template<class ExecutionSpace>
 Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
 {
+  constexpr bool host_execution =
+    Kokkos::SpaceAccessibility<ExecutionSpace, Kokkos::HostSpace>::accessible;
   using Matrix = Kokkos::View<double**, Kokkos::LayoutRight, ExecutionSpace>;
-  using Cube = Kokkos::View<double***, Kokkos::LayoutRight, ExecutionSpace>;
+  using BesselLayout = std::conditional_t<host_execution, Kokkos::LayoutRight, Kokkos::LayoutLeft>;
+  using Cube = Kokkos::View<double***, BesselLayout, ExecutionSpace>;
   using Indices = Kokkos::View<int**, Kokkos::LayoutRight, ExecutionSpace>;
   using Vector = Kokkos::View<double*, ExecutionSpace>;
   using Policy = Kokkos::RangePolicy<ExecutionSpace, Kokkos::IndexType<std::size_t>>;
@@ -114,14 +118,14 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
   if (channel_count == 0 || k_count == 0) return result;
 
   const ExecutionSpace execution;
-  Matrix radial("openmx.radial.samples", orbital_count, radial_count);
-  auto host_radial = Kokkos::create_mirror_view(radial);
+  Matrix radial(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.samples"), orbital_count, radial_count);
+  auto host_radial = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, radial);
   const auto input = samples.values.view();
   for (std::size_t orbital = 0; orbital < orbital_count; ++orbital)
     for (int i = 0; i < radial_count; ++i)
       host_radial(orbital, i) = element(input, orbital, i);
-  Indices channels("openmx.radial.channels", channel_count, 3);
-  auto host_channels = Kokkos::create_mirror_view(channels);
+  Indices channels(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.channels"), channel_count, 3);
+  auto host_channels = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, channels);
   for (std::size_t row = 0; row < channel_count; ++row) {
     const auto product = samples.products.empty()
       ? ProductChannel{static_cast<int>(row),-1,samples.orbitals[row].angular}
@@ -130,22 +134,35 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
     host_channels(row,1) = product.left;
     host_channels(row,2) = product.right;
   }
-  Vector radii("openmx.radial.radii", radial_count);
-  Vector measures("openmx.radial.measures", radial_count);
-  Vector wavevectors("openmx.radial.wavevectors", k_count);
-  auto host_radii = Kokkos::create_mirror_view(radii);
-  auto host_measures = Kokkos::create_mirror_view(measures);
-  auto host_wavevectors = Kokkos::create_mirror_view(wavevectors);
+  Vector radii(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.radii"), radial_count);
+  Vector measures(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.measures"), radial_count);
+  Vector wavevectors(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.wavevectors"), k_count);
+  auto host_radii = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, radii);
+  auto host_measures = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, measures);
+  auto host_wavevectors = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, wavevectors);
   for (int i = 0; i < radial_count; ++i) {
     host_radii(i) = grid.radii[i];
     host_measures(i) = grid.measures[i];
   }
   for (int k = 0; k < k_count; ++k) host_wavevectors(k) = grid.wavevectors[k];
-  // Bound scratch memory independently of the full reciprocal-space grid.
-  const int batch_size = std::min(32, k_count);
-  Cube bessel("openmx.radial.bessel", batch_size, lmax+1, radial_count);
-  Matrix output("openmx.radial.output", channel_count, batch_size);
-  auto host_output = Kokkos::create_mirror_view(output);
+
+  // Amortize launches and host synchronization without making scratch grow
+  // with the full reciprocal grid. Even a single wavevector may exceed the
+  // budget for an unusually large input; it is still the minimum work unit.
+  constexpr std::size_t scratch_budget = 8u*1024u*1024u;
+  const std::size_t bytes_per_k = sizeof(double)*
+    (static_cast<std::size_t>(lmax+1)*radial_count + channel_count);
+  std::size_t capacity = host_execution ? 32 : std::max(std::size_t{1}, scratch_budget/bytes_per_k);
+  // Align device rows to 256 bytes when the memory budget permits it.
+  if (!host_execution && capacity >= 32) capacity -= capacity%32;
+  const int batch_size = static_cast<int>(std::min(static_cast<std::size_t>(k_count), capacity));
+  const int batch_capacity = host_execution ? batch_size : static_cast<int>(std::min(capacity,
+    ((static_cast<std::size_t>(batch_size)+31)/32)*32));
+  // Device lanes vary over k and read adjacent Bessel values. Host execution
+  // retains contiguous radial rows. Both preserve the ascending radial sum.
+  Cube bessel(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.bessel"), batch_capacity, lmax+1, radial_count);
+  Matrix output(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.output"), channel_count, batch_capacity);
+  auto host_output = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, output);
   // Declared after the Views: even exceptional exits complete outstanding
   // work before their storage is released.
   CompleteBeforeRelease<ExecutionSpace> completion(execution);
@@ -159,22 +176,24 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
     const int count = std::min(batch_size, k_count-first);
     Kokkos::parallel_for("openmx.radial.bessel", Policy(execution, 0, static_cast<std::size_t>(count)*radial_count),
       KOKKOS_LAMBDA(std::size_t index) {
-        const int k = static_cast<int>(index/radial_count);
-        const int i = static_cast<int>(index%radial_count);
-        const double radius = radii(i);
+        const int k = static_cast<int>(host_execution ? index/radial_count : index%count);
+        const int i = static_cast<int>(host_execution ? index%radial_count : index/count);
+        const double x = wavevectors(first+k)*radii(i);
         double sb[32];
-        spherical_bessel(wavevectors(first+k)*radius, lmax, sb, nullptr);
+        spherical_bessel_values(x, lmax, sb);
         for (int l = 0; l <= lmax; ++l)
           bessel(k,l,i) = radial_weight(sb[l], measures(i), i, radial_count-1, weighting);
       });
-    Kokkos::parallel_for("openmx.radial.integrate", Policy(execution, 0, count*channel_count),
+    Kokkos::parallel_for("openmx.radial.integrate", Policy(execution, 0, static_cast<std::size_t>(count)*channel_count),
       KOKKOS_LAMBDA(std::size_t index) {
         const std::size_t orbital = index/count;
         const int k = static_cast<int>(index%count);
+        const int angular = channels(orbital,0);
+        const int left = channels(orbital,1), right = channels(orbital,2);
         double sum = 0.0;
         for (int i = 0; i < radial_count; ++i) {
-          double term = bessel(k,channels(orbital,0),i)*radial(channels(orbital,1),i);
-          if (channels(orbital,2) >= 0) term *= radial(channels(orbital,2),i);
+          double term = bessel(k,angular,i)*radial(left,i);
+          if (right >= 0) term *= radial(right,i);
           sum += term;
         }
         output(orbital,k) = sum*step;

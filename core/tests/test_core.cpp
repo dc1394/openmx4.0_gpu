@@ -177,6 +177,25 @@ void bessel_test() {
   near(derivatives[1],1.0/3.0);
   require(!openmx_core_spherical_bessel(-1,0,values,derivatives), "negative Bessel argument accepted");
   require(!openmx_core_spherical_bessel(1,30,values,derivatives), "excess Bessel order accepted");
+  // Independent reference and the old downward kernel on both sides of
+  // every upward/downward boundary, near zeros and at large arguments.
+  for (int lmax = 0; lmax <= 29; ++lmax) {
+    const double boundary = 2.0*(lmax+1);
+    for (double x : {0.0,1e-12,0.1,3.141592653589793,
+         std::nextafter(boundary,0.0),boundary,
+         std::nextafter(boundary,std::numeric_limits<double>::infinity()),
+         boundary*1.01,100.0,1000.0}) {
+      std::array<double,32> fast, original;
+      fast.fill(91);
+      spherical_bessel_values(x,lmax,fast.data());
+      spherical_bessel(x,lmax,original.data(),nullptr);
+      for (int l = 0; l <= lmax; ++l) {
+        near(fast[l],reference_bessel(l,x),2e-10);
+        near(fast[l],original[l],3e-13);
+      }
+      near(fast[lmax+1],91,0);
+    }
+  }
   require(!openmx_core_spherical_bessel(std::numeric_limits<double>::infinity(),0,values,derivatives),
           "infinite Bessel argument accepted");
 }
@@ -241,6 +260,33 @@ void radial_execution_test() {
     const auto result = context.transform(input,device());
     for (std::size_t i = 0; i < result.size(); ++i) near(result.data()[i],expected.data()[i],2e-12);
   }
+  // Exercise multiple memory-bounded device tiles and a non-aligned final
+  // tile, including channels that multiply two distinct radial samples.
+  const std::array<int,4> counts{2,0,1,1};
+  auto tiled = sample_radial({3,257,1025,0.0,0.01,0.015},counts,radial_value);
+  compare_reference(tiled,context.transform(tiled,device()));
+  tiled.products = {{0,2,2},{3,1,3},{2,3,0}};
+  for (auto weighting : {RadialWeighting::trapezoid,RadialWeighting::gauss}) {
+    tiled.grid.weighting = weighting;
+    const auto expected = transform_host(tiled);
+    const auto result = context.transform(tiled,device());
+    for (std::size_t i = 0; i < result.size(); ++i) near(result.data()[i],expected.data()[i],2e-12);
+  }
+  // The analytic zero-order kernel must also cover the origin, small x,
+  // sign changes and padding after the final valid wavevector.
+  const std::array<int,1> zero_counts{2};
+  auto zero = sample_radial({0,7,5,0.0,0.2,0.1},zero_counts,radial_value);
+  zero.grid.wavevectors = {0.0,1e-12,0.2,15.707963267948966,100.0};
+  compare_reference(zero,context.transform(zero,device()));
+  std::array<int,30> high_counts;
+  high_counts.fill(1);
+  auto high = sample_radial({29,31,73,0.0,0.05,0.5},high_counts,
+    [](int, int, double radius) { return std::exp(-radius); });
+  high.grid.wavevectors.back() = 100;
+  const auto high_expected = transform_host(high);
+  const auto high_result = context.transform(high,device());
+  for (std::size_t i = 0; i < high_result.size(); ++i)
+    near(high_result.data()[i],high_expected.data()[i],2e-12);
   // Independent contexts must not finalize the runtime owned by the first.
   { Context second; compare_reference(samples(),second.transform(samples(),device())); }
   require(Kokkos::is_initialized(), "secondary context finalized borrowed runtime");
