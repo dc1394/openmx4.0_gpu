@@ -5,6 +5,7 @@
 #include "openmx_core_overlap.h"
 #include "openmx_core_nonlocal.h"
 #include "openmx_core_vna.h"
+#include "openmx_core_vna_preparation.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -17,6 +18,7 @@
 #include <openmx/core/overlap_workspace.hpp>
 #include <openmx/core/nonlocal_workspace.hpp>
 #include <openmx/core/vna_workspace.hpp>
+#include <openmx/core/vna_preparation.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -50,6 +52,12 @@ struct OpenMXNonlocalWorkspace {
 struct OpenMXVnaWorkspace {
   explicit OpenMXVnaWorkspace(openmx::core::VnaShape shape) : implementation(shape) {}
   openmx::core::VnaWorkspace implementation;
+};
+
+struct OpenMXVnaPreparation {
+  OpenMXVnaPreparation(openmx::core::VnaPreparationShape shape,
+      std::span<const openmx::core::SpeciesBasisView> species) : implementation(shape,species) {}
+  openmx::core::VnaPreparation implementation;
 };
 
 namespace {
@@ -454,6 +462,62 @@ extern "C" OpenMXVnaWorkspace* openmx_core_vna_create(const OpenMXVnaShape* shap
 extern "C" void openmx_core_vna_destroy(OpenMXVnaWorkspace* workspace)
 {
   delete workspace;
+}
+
+extern "C" OpenMXVnaPreparation* openmx_core_vna_preparation_create(const OpenMXVnaPreparationShape* shape,
+    OpenMXVnaPreparationBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXVnaPreparation* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!shape || !buffers || shape->species <= 0 || !shape->species_angular)
+      throw std::invalid_argument("missing VNA preparation shape or output");
+    if (shape->maximum_angular < 0 || shape->maximum_angular > 14 ||
+        shape->species > INT_MAX/(shape->maximum_angular+1))
+      throw std::invalid_argument("invalid VNA preparation basis capacities");
+    std::vector<openmx::core::SpeciesBasisView> species;
+    for (int s = 0; s < shape->species; ++s) {
+      const int l = shape->species_angular[s];
+      if (l < -1 || l > shape->maximum_angular ||
+          (l >= 0 && (!shape->basis_counts || !shape->basis_counts[s])))
+        throw std::invalid_argument("invalid VNA species basis input");
+      species.push_back({l,l >= 0 ? std::span<const int>(shape->basis_counts[s],l+1) : std::span<const int>{}});
+    }
+    auto owner = std::make_unique<OpenMXVnaPreparation>(openmx::core::VnaPreparationShape{
+        shape->maximum_angular,shape->multiplicity,shape->projector_angular,
+        shape->projector_multiplicity,shape->points},species);
+    auto& work = owner->implementation;
+    const auto& basis = work.basis();
+    OpenMXVnaPreparationBuffers views{};
+    views.species = shape->species;
+    views.angular_channels = shape->maximum_angular+1;
+    views.points = shape->points;
+    views.projectors = work.projector_count();
+    views.projector_components = work.projector_components();
+    views.basis_lmax = shape->maximum_angular;
+    views.basis_multiplicity = shape->multiplicity;
+    views.projector_lmax = shape->projector_angular;
+    views.projector_multiplicity = shape->projector_multiplicity;
+    views.maximum_angular = basis.maximum_angular().data();
+    views.basis_counts = basis.counts().data_handle();
+    views.orbitals = basis.orbitals().data();
+    views.radial_offsets = basis.offsets().data();
+    views.projector_angular = work.projectors().data_handle();
+    views.projector_radial = work.projectors().data_handle()+work.projectors().extent(1);
+    views.radial_count = basis.radial_count();
+    views.radial_elements = views.radial_count*views.points;
+    if (views.radial_elements) {
+      views.weighted[0] = work.weights().data_handle();
+      views.weighted[1] = work.weights().data_handle()+views.radial_elements;
+    }
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" void openmx_core_vna_preparation_destroy(OpenMXVnaPreparation* preparation)
+{
+  delete preparation;
 }
 
 extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,

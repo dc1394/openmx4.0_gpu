@@ -1,8 +1,36 @@
 #ifndef OPENMX_VNA_GPU_CONTEXT_H
 #define OPENMX_VNA_GPU_CONTEXT_H
 
-/* Invocation-owned VNA2/VNA3 batch state, borrowed until synchronous
+/* Invocation-owned VNA batch state, borrowed until synchronous
    completion. Native begin/end routines retain their backend memory policy. */
+typedef struct {
+  int enabled;
+  int chunk;           /* admitted pair batch, shared by sizing and execution */
+  int num_proj;
+  int num_rvna;
+  int lfi_max;          /* max Lmax_Four_Int over species             */
+  int l0max_all;        /* max Spe_MaxL_Basis                          */
+  int l1max;            /* List_YOUSO[35]                              */
+  int cmb_max;          /* max #(L0,Mul0) combos per species           */
+  int blk_max;          /* cmb_max*num_rvna                            */
+  int mn_max;           /* max tno*num_proj                            */
+
+  int *sp_lfi;          /* [spe] Lmax_Four_Int                         */
+  int *sp_ncmb;         /* [spe] #(L0,Mul0)                            */
+  int *cmb_L0;          /* [spe*cmb_max+c] L0                          */
+  int *cmb_num0;        /* [spe*cmb_max+c] row offset of the combo     */
+  int *vna_L1;          /* [L] VNA_List                                */
+  int *vna_num1;        /* [L] column offset                           */
+
+  double *pro00;        /* [spe][cmb][GL_Mesh]                         */
+  double *pro01;
+  double *vnab;         /* [spe][num_rvna][GL_Mesh]                    */
+  double *gnt;          /* Gaunt table                                 */
+  double *c2r;          /* Comp2Real, packed per L                     */
+  int *c2r_off;         /* [L] offset into c2r (complex index)         */
+} SetProGpu2Context;
+
+/* VNA2/VNA3 pair batches. */
 typedef struct {
   int enabled;
   int chunk;            /* admitted pair batch, shared by sizing and execution */

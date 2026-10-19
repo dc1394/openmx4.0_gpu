@@ -244,3 +244,36 @@ Radeon 向け半径積分と Force4B の最適化は変更していません。
 `build/vna-workspace-migration/after-{gpu,cpu}/result.json` に保存しています。
 保存した比較元は第9段階の測定に使ったバイナリ・コアとハッシュで一致しています。
 Intel 版との照合結果は同ディレクトリの `cpu-intel-comparison.json` にあります。
+
+## VNA 前処理と DS_VNA の状態を移行した後の確認
+
+第11段階の比較元は `59aa6b3c` です。同じ `sidia333_nc_cluster.dat`、
+216原子・140³格子・25 SCF、18 MPI × 1 OpenMPで単独実行しました。
+比較元と Intel 版の時間は保存済みの測定記録です。
+
+| 実行経路 | Total Computational Time (秒) | MPI 起動を含む経過時間 (秒) |
+| --- | ---: | ---: |
+| 第10段階 GPU＋MPS（`59aa6b3c`） | 103.802 | 107.517 |
+| VNA 前処理の移行後 GPU＋MPS | 103.891 | 107.616 |
+| 第10段階 CPU（`59aa6b3c`） | 755.005 | 757.912 |
+| VNA 前処理の移行後 CPU | 753.585 | 756.495 |
+| Intel コンパイラ版 CPU（保存済みの比較記録） | 800.460 | 803.226 |
+
+RTX 5080＋MPS は約105秒の目標を維持しました。前回との差はエネルギー
+`1.03e-12 Ha` 以下、全 Force 成分で `1.01e-12 Ha/bohr` 以下です。
+CPU のエネルギーと全 Force 成分は前回と出力桁で一致しました。
+Intel 版との差もエネルギー `7.30e-11 Ha` 以下、Force `1.23e-10 Ha/bohr` 以下で、
+Intel 版に比肩する性能を維持しています。いずれも単一回の確認であり、
+計算全体の速度向上の主張には使いません。
+
+最後の読取り専用引数の修飾を反映した再ビルドでは、ホストの全実行領域と CUDA の
+デバイスコードが測定版と一致しました。割り当てられる ELF セクションの差は
+コンパイラの一時オブジェクト名とモジュール識別子だけです。
+標準スイートは最終ビルドで実行し、インストール先と最終ビルドを SHA-256 で照合しました。
+この照合は `build/vna-preparation-migration/final-binary-equivalence.json` に記録しています。
+
+GPU メモリ予算・容量復旧、Radeon 向け半径積分・Force4B、GeForce と A100/H100 の
+演算方針は維持しています。Radeon、MI300、A100/H100 の実機を再測定した結果は含みません。
+入力・実行条件・ハッシュ・全物理量と処理別時間は
+`build/vna-preparation-migration/after-{gpu,cpu}/result.json`、
+Intel 版との照合は同ディレクトリの `cpu-intel-comparison.json` に保存しています。

@@ -31,6 +31,7 @@
 #include "openmx_host_memory.h"
 #include "openmx_precision.h"
 #include "openmx_vna_gpu_context.h"
+#include "openmx_vna_preparation.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "mpi.h"
 #include <omp.h>
@@ -43,7 +44,7 @@ static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g);
 static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g);
 /* forward: SetPro_DSVNA_GpuBegin releases its tables through this when the
    device-memory check sends the DS_VNA build down the CPU path */
-static void SetPro_DSVNA_GpuEnd(void);
+static void SetPro_DSVNA_GpuEnd(SetProGpu2Context *g);
 /* forward: the OPENMX_SETPRO_VERBOSE diagnostics (defined below the driver) */
 static void SetPro_note(const char *stage, const char *fmt, ...) __attribute__((noinline));
 
@@ -260,8 +261,8 @@ static size_t SetPro_GpuBatchBudget(int sharing)
   return available>reserve?(available-reserve)/(size_t)(sharing>0?sharing:1):0;
 }
 
-static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
-                                int *VNA_List2, int Num_RVNA)
+static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, const int *VNA_List,
+                                const int *VNA_List2, int Num_RVNA)
 {
   SetProGpuContext *g = &SetPro_gpu;
   int Mc_AN,k,spe,L1,node_ranks = 1,node_rank = 0;
@@ -1031,36 +1032,6 @@ static void SetPro_Spherical_Bessel2_dev(double x, int lmax, double *sb, double 
   }
 }
 
-/* per-species combo/block tables of the DS_VNA construction batch */
-typedef struct {
-  int enabled;
-  int chunk;           /* admitted pair batch, shared by sizing and execution */
-  int num_proj;
-  int num_rvna;
-  int lfi_max;          /* max Lmax_Four_Int over species             */
-  int l0max_all;        /* max Spe_MaxL_Basis                          */
-  int l1max;            /* List_YOUSO[35]                              */
-  int cmb_max;          /* max #(L0,Mul0) combos per species           */
-  int blk_max;          /* cmb_max*num_rvna                            */
-  int mn_max;           /* max tno*num_proj                            */
-
-  int *sp_lfi;          /* [spe] Lmax_Four_Int                         */
-  int *sp_ncmb;         /* [spe] #(L0,Mul0)                            */
-  int *cmb_L0;          /* [spe*cmb_max+c] L0                          */
-  int *cmb_num0;        /* [spe*cmb_max+c] row offset of the combo     */
-  int *vna_L1;          /* [L] VNA_List                                */
-  int *vna_num1;        /* [L] column offset                           */
-
-  double *pro00;        /* [spe][cmb][GL_Mesh]                         */
-  double *pro01;
-  double *vnab;         /* [spe][num_rvna][GL_Mesh]                    */
-  double *gnt;          /* Gaunt table                                 */
-  double *c2r;          /* Comp2Real, packed per L                     */
-  int *c2r_off;         /* [L] offset into c2r (complex index)         */
-} SetProGpu2Context;
-
-static SetProGpu2Context SetPro_gpu2 = { 0 };
-
 /* Pair-chunk length of the DS_VNA device pipeline.  Shared by the sizing
    estimate below and by SetPro_DSVNA_GpuRun so the two cannot drift apart --
    an estimate computed against a different CHUNK is worse than no estimate. */
@@ -1109,10 +1080,16 @@ static size_t SetPro_DSVNA_DeviceBytes(const SetProGpu2Context *g)
   return bytes;
 }
 
-static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
-                                 double ****Bessel_Pro00, double ****Bessel_Pro01)
+static int SetPro_DSVNA_GpuBegin(SetProGpu2Context *g,
+    const OpenMXVnaPreparationBuffers *preparation)
 {
-  SetProGpu2Context *g = &SetPro_gpu2;
+  const int *VNA_List = preparation->projector_angular;
+  const int *VNA_List2 = preparation->projector_radial;
+  const int Num_RVNA = preparation->projectors;
+  const int species = preparation->species, points = preparation->points;
+  const double *Bessel_Pro00 = preparation->weighted[0];
+  const double *Bessel_Pro01 = preparation->weighted[1];
+
   int spe,L0,Mul0,L,i,k,c;
   size_t free_bytes = 0,total_bytes = 0;
   int node_ranks = 1,node_rank = 0,device_ranks;
@@ -1132,51 +1109,51 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
   device_ranks=SetPro_GpuSharing(node_comm);
   MPI_Comm_free(&node_comm);
 
-  g->num_proj = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
+  g->num_proj = preparation->projector_components;
   g->num_rvna = Num_RVNA;
-  g->l1max = List_YOUSO[35];
+  g->l1max = preparation->projector_lmax;
 
-  g->sp_lfi = (int*)SetPro_checked_malloc(sizeof(int)*SpeciesNum);
-  g->sp_ncmb = (int*)SetPro_checked_malloc(sizeof(int)*SpeciesNum);
+  g->sp_lfi = (int*)SetPro_checked_malloc(sizeof(int)*species);
+  g->sp_ncmb = (int*)SetPro_checked_malloc(sizeof(int)*species);
 
   g->l0max_all = 0;
   g->cmb_max = 0;
-  for (spe=0; spe<SpeciesNum; spe++){
+  for (spe=0; spe<species; spe++){
     int Lmax = 0,ncmb = 0;
 
     for (L=0; L<Num_RVNA; L++){
       if (Lmax<VNA_List[L]) Lmax = VNA_List[L];
     }
-    if (Spe_MaxL_Basis[spe]<Lmax) g->sp_lfi[spe] = 2*Lmax;
-    else                          g->sp_lfi[spe] = 2*Spe_MaxL_Basis[spe];
+    if (preparation->maximum_angular[spe]<Lmax) g->sp_lfi[spe] = 2*Lmax;
+    else                          g->sp_lfi[spe] = 2*preparation->maximum_angular[spe];
     if (g->lfi_max<g->sp_lfi[spe]) g->lfi_max = g->sp_lfi[spe];
-    if (g->l0max_all<Spe_MaxL_Basis[spe]) g->l0max_all = Spe_MaxL_Basis[spe];
+    if (g->l0max_all<preparation->maximum_angular[spe]) g->l0max_all = preparation->maximum_angular[spe];
 
-    for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-      ncmb += Spe_Num_Basis[spe][L0];
+    for (L0=0; L0<=preparation->maximum_angular[spe]; L0++){
+      ncmb += preparation->basis_counts[(size_t)spe*preparation->angular_channels+L0];
     }
     g->sp_ncmb[spe] = ncmb;
     if (g->cmb_max<ncmb) g->cmb_max = ncmb;
   }
   g->blk_max = g->cmb_max*Num_RVNA;
 
-  g->cmb_L0 = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)SpeciesNum*g->cmb_max);
-  g->cmb_num0 = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)SpeciesNum*g->cmb_max);
+  g->cmb_L0 = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)species*g->cmb_max);
+  g->cmb_num0 = (int*)SetPro_checked_malloc(sizeof(int)*(size_t)species*g->cmb_max);
   g->vna_L1 = (int*)SetPro_checked_malloc(sizeof(int)*Num_RVNA);
   g->vna_num1 = (int*)SetPro_checked_malloc(sizeof(int)*Num_RVNA);
-  g->pro00 = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)SpeciesNum*g->cmb_max*GL_Mesh);
-  g->pro01 = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)SpeciesNum*g->cmb_max*GL_Mesh);
-  g->vnab = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)SpeciesNum*Num_RVNA*GL_Mesh);
+  g->pro00 = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)species*g->cmb_max*points);
+  g->pro01 = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)species*g->cmb_max*points);
+  g->vnab = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)species*Num_RVNA*points);
 
   {
     int mn_max = 0;
 
-    for (spe=0; spe<SpeciesNum; spe++){
+    for (spe=0; spe<species; spe++){
       int num0 = 0;
 
       c = 0;
-      for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-        for (Mul0=0; Mul0<Spe_Num_Basis[spe][L0]; Mul0++){
+      for (L0=0; L0<=preparation->maximum_angular[spe]; L0++){
+        for (Mul0=0; Mul0<preparation->basis_counts[(size_t)spe*preparation->angular_channels+L0]; Mul0++){
           g->cmb_L0[spe*g->cmb_max+c] = L0;
           g->cmb_num0[spe*g->cmb_max+c] = num0;
           num0 += 2*L0 + 1;
@@ -1202,20 +1179,21 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
     }
   }
 
-  for (spe=0; spe<SpeciesNum; spe++){
+  for (spe=0; spe<species; spe++){
     c = 0;
-    for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-      for (Mul0=0; Mul0<Spe_Num_Basis[spe][L0]; Mul0++){
-        for (i=0; i<GL_Mesh; i++){
-          g->pro00[((size_t)spe*g->cmb_max+c)*GL_Mesh+i] = Bessel_Pro00[spe][L0][Mul0][i];
-          g->pro01[((size_t)spe*g->cmb_max+c)*GL_Mesh+i] = Bessel_Pro01[spe][L0][Mul0][i];
+    for (L0=0; L0<=preparation->maximum_angular[spe]; L0++){
+      for (Mul0=0; Mul0<preparation->basis_counts[(size_t)spe*preparation->angular_channels+L0]; Mul0++){
+        const size_t offset = openmx_core_vna_radial_offset(preparation,spe,L0,Mul0);
+        for (i=0; i<points; i++){
+          g->pro00[((size_t)spe*g->cmb_max+c)*points+i] = Bessel_Pro00[offset+i];
+          g->pro01[((size_t)spe*g->cmb_max+c)*points+i] = Bessel_Pro01[offset+i];
         }
         c++;
       }
     }
     for (L=0; L<Num_RVNA; L++){
-      for (i=0; i<GL_Mesh; i++){
-        g->vnab[((size_t)spe*g->num_rvna+L)*GL_Mesh+i]
+      for (i=0; i<points; i++){
+        g->vnab[((size_t)spe*g->num_rvna+L)*points+i]
           = Spe_VNA_Bessel[spe][VNA_List[L]][VNA_List2[L]][i];
       }
     }
@@ -1292,10 +1270,8 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
   return 1;
 }
 
-static void SetPro_DSVNA_GpuEnd(void)
+static void SetPro_DSVNA_GpuEnd(SetProGpu2Context *g)
 {
-  SetProGpu2Context *g = &SetPro_gpu2;
-
   if (!g->enabled) return;
 
   free(g->c2r);
@@ -1820,8 +1796,8 @@ static void SetPro_DSVNA_GpuRun_Part(Type_DS_VNA *****DS_VNA, int OneD_Nloop, in
   free(pr_siT);
   free(pr_r);
 }
-static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****matrix,int count,int *mc,int *h,double *GL_NormK)
-{SetPro_DSVNA_GpuRun_Part(matrix,count,mc,h,&SetPro_gpu2,GL_NormK);}
+static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****matrix,int count,int *mc,int *h,double *GL_NormK,SetProGpu2Context *g)
+{SetPro_DSVNA_GpuRun_Part(matrix,count,mc,h,g,GL_NormK);}
 
 
 /* ------------------------------------------------------------------ */
@@ -2601,16 +2577,16 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   Type_DS_VNA *tmp_array;
   Type_DS_VNA *tmp_array2;
   double tmp0,tmp3,tmp4,tmp5,tmp10;
-  double ****Bessel_Pro00;
-  double ****Bessel_Pro01;
+  double *Bessel_Pro00;
+  double *Bessel_Pro01;
   double ene,sum,h,coe0,sj,sy,sjp,syp;
   double rcutA,rcutB,rcut;
   double TStime,TEtime;
   double stime,etime;
   double Stime_atom,Etime_atom;
   int numprocs,myid,tag=999,ID,IDS,IDR;
-  int *VNA_List;
-  int *VNA_List2;
+  const int *VNA_List;
+  const int *VNA_List2;
   int Num_RVNA;
   double **NLH;
   double time0,time1,time2,time3,time4,time5;
@@ -2622,6 +2598,7 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
   int setpro_gpu = 0;
   int setpro_gpu2 = 0;
+  SetProGpu2Context gpu2 = {0};
 
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -2633,35 +2610,25 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
                  allocation of arrays:
   ****************************************************/
 
-  Num_RVNA = List_YOUSO[34]*(List_YOUSO[35] + 1);
+  OpenMXVnaPreparationBuffers preparation;
+  const OpenMXVnaPreparationShape preparation_shape = {List_YOUSO[25],List_YOUSO[24],
+      List_YOUSO[35],List_YOUSO[34],GL_Mesh,SpeciesNum,Spe_MaxL_Basis,Spe_Num_Basis};
+  char preparation_error[256];
+  OpenMXVnaPreparation *preparation_owner = openmx_core_vna_preparation_create(
+      &preparation_shape,&preparation,preparation_error,sizeof(preparation_error));
+  if (preparation_owner == NULL) {
+    fprintf(stderr,"Set_ProExpn_VNA preparation: %s\n",preparation_error);
+    SetPro_gpu_abort("Cannot allocate VNA preparation tables.");
+    abort();
+  }
+  Num_RVNA = preparation.projectors;
+  VNA_List = preparation.projector_angular;
+  VNA_List2 = preparation.projector_radial;
+  Bessel_Pro00 = preparation.weighted[0];
+  Bessel_Pro01 = preparation.weighted[1];
 
   Snd_DS_VNA_Size = (int*)malloc(sizeof(int)*numprocs);
   Rcv_DS_VNA_Size = (int*)malloc(sizeof(int)*numprocs);
-
-  VNA_List  = (int*)malloc(sizeof(int)*(List_YOUSO[34]*(List_YOUSO[35] + 1)+2) ); 
-  VNA_List2 = (int*)malloc(sizeof(int)*(List_YOUSO[34]*(List_YOUSO[35] + 1)+2) ); 
-
-  Bessel_Pro00 = (double****)malloc(sizeof(double***)*SpeciesNum); 
-  for (spe=0; spe<SpeciesNum; spe++){
-    Bessel_Pro00[spe] = (double***)malloc(sizeof(double**)*(Spe_MaxL_Basis[spe]+1)); 
-    for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-      Bessel_Pro00[spe][L0] = (double**)malloc(sizeof(double*)*Spe_Num_Basis[spe][L0]); 
-      for (Mul0=0; Mul0<Spe_Num_Basis[spe][L0]; Mul0++){
-	Bessel_Pro00[spe][L0][Mul0] = (double*)malloc(sizeof(double)*GL_Mesh); 
-      }
-    }
-  }
-
-  Bessel_Pro01 = (double****)malloc(sizeof(double***)*SpeciesNum); 
-  for (spe=0; spe<SpeciesNum; spe++){
-    Bessel_Pro01[spe] = (double***)malloc(sizeof(double**)*(Spe_MaxL_Basis[spe]+1)); 
-    for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-      Bessel_Pro01[spe][L0] = (double**)malloc(sizeof(double*)*Spe_Num_Basis[spe][L0]); 
-      for (Mul0=0; Mul0<Spe_Num_Basis[spe][L0]; Mul0++){
-        Bessel_Pro01[spe][L0][Mul0] = (double*)malloc(sizeof(double)*GL_Mesh); 
-      }
-    }
-  }
 
   size_TmpNL = (List_YOUSO[25]+1)*List_YOUSO[24]*
                (2*(List_YOUSO[25]+1)+1)*Num_RVNA*(2*List_YOUSO[30]+1);
@@ -2693,15 +2660,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
    List_YOUSO[30]         ->  List_YOUSO[35]
   *************************************************************/
 
-  L = 0;
-  for (i=0; i<=List_YOUSO[35]; i++){    /* max L */
-    for (j=0; j<List_YOUSO[34]; j++){   /* # of radial projectors */
-      VNA_List[L]  = i;
-      VNA_List2[L] = j;
-      L++;
-    }
-  }
-
   /************************************************************
    pre-calculate the time consuming part in the 'time1' part
   *************************************************************/
@@ -2711,38 +2669,7 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   Sk = kmax + kmin;
   Dk = kmax - kmin;
 
-  for (spe=0; spe<SpeciesNum; spe++){
-
-    for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-      for (Mul0=0; Mul0<Spe_Num_Basis[spe][L0]; Mul0++){
-
-#pragma omp parallel shared(Mul0,L0,spe,Bessel_Pro01,Bessel_Pro00,GL_Weight,Dk,GL_NormK) private(i,Normk,tmp10)
-	{         
-
-	  int OMPID,Nthrds,Nprocs;
-
-	  /* get info. on OpenMP */ 
-
-	  OMPID = omp_get_thread_num();
-	  Nthrds = omp_get_num_threads();
-	  Nprocs = omp_get_num_procs();
-
-	  for (i=OMPID*GL_Mesh/Nthrds; i<(OMPID+1)*GL_Mesh/Nthrds; i++){
-
-	    Normk = GL_NormK[i];
-	    tmp10 = 0.50*Dk*GL_Weight[i]*Normk*Normk;
-
-	    Bessel_Pro00[spe][L0][Mul0][i] = RF_BesselF(spe,L0,Mul0,Normk)*tmp10;
-	    Bessel_Pro01[spe][L0][Mul0][i] = Bessel_Pro00[spe][L0][Mul0][i]*Normk;
-	  }
-
-#pragma omp flush(Bessel_Pro00,Bessel_Pro01)
-
-	} /* #pragma omp parallel */
-
-      }
-    }
-  }
+  SetPro_PrepareRadials(&preparation,GL_NormK,GL_Weight,Dk);
 
   /************************************************************
     start the main calculation
@@ -2773,11 +2700,10 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
 
   /* batched device construction of DS_VNA */
 
-  setpro_gpu2 = SetPro_DSVNA_GpuBegin(VNA_List, VNA_List2, Num_RVNA,
-                                      Bessel_Pro00, Bessel_Pro01);
+  setpro_gpu2 = SetPro_DSVNA_GpuBegin(&gpu2,&preparation);
   if (setpro_gpu2){
-    SetPro_DSVNA_GpuRun(DS_VNA, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK);
-    SetPro_DSVNA_GpuEnd();
+    SetPro_DSVNA_GpuRun(DS_VNA, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK, &gpu2);
+    SetPro_DSVNA_GpuEnd(&gpu2);
   }
 
   if (!setpro_gpu2){
@@ -3041,9 +2967,10 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
         for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
 	  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
 
+            const size_t radial_offset = openmx_core_vna_radial_offset(&preparation,Cwan,L0,Mul0);
             for (i=0; i<GL_Mesh; i++){
-              Bes00[i] = Bessel_Pro00[Cwan][L0][Mul0][i]*SphB[LL][i]; 
-              Bes01[i] = Bessel_Pro01[Cwan][L0][Mul0][i]*SphBp[LL][i]; 
+              Bes00[i] = Bessel_Pro00[radial_offset+i]*SphB[LL][i];
+              Bes01[i] = Bessel_Pro01[radial_offset+i]*SphBp[LL][i];
             }
 
             L = 0;
@@ -3909,30 +3836,7 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   free(Snd_DS_VNA_Size);
   free(Rcv_DS_VNA_Size);
 
-  free(VNA_List);
-  free(VNA_List2);
-
-  for (spe=0; spe<SpeciesNum; spe++){
-    for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-      for (Mul0=0; Mul0<Spe_Num_Basis[spe][L0]; Mul0++){
-        free(Bessel_Pro00[spe][L0][Mul0]);
-      }
-      free(Bessel_Pro00[spe][L0]);
-    }
-    free(Bessel_Pro00[spe]);
-  }
-  free(Bessel_Pro00);
-
-  for (spe=0; spe<SpeciesNum; spe++){
-    for (L0=0; L0<=Spe_MaxL_Basis[spe]; L0++){
-      for (Mul0=0; Mul0<Spe_Num_Basis[spe][L0]; Mul0++){
-        free(Bessel_Pro01[spe][L0][Mul0]);
-      }
-      free(Bessel_Pro01[spe][L0]);
-    }
-    free(Bessel_Pro01[spe]);
-  }
-  free(Bessel_Pro01);
+  openmx_core_vna_preparation_destroy(preparation_owner);
 
   free(OneD2Mc_AN);
   free(OneD2h_AN);

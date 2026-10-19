@@ -91,6 +91,9 @@ arrays, replacing the temporary five-level pointer tables.
 VNA2/VNA3 also share one CPU evaluator with per-thread RAII workspaces;
 packed orbital matrices and reusable Bessel tables replace six-level pointer
 tables and per-pair allocation. Their GPU batch state belongs to each call.
+VNA preparation owns a snapshot of species basis metadata, projector indices
+and contiguous weighted radial rows. Both backends share the CPU sampling
+loop, and DS_VNA GPU batches also receive their state explicitly per call.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.
