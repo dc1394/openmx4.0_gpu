@@ -296,7 +296,8 @@ mpirun -np 8 --map-by ppr:8:node:PE=3 --bind-to core \
   "$PWD/build/hip/openmx" /absolute/path/to/input.dat -nt 3
 ```
 
-次は C++ コア導入前の AMD 検証記録です。新コアの HIP デバイス実行はまだ検証していません。
+C++ コアの HIP 実機検証は [C++ / Kokkos 移行記録](CPP_CORE_MIGRATION.md) の
+「AMD 実機検証（2026-10-19）」を参照してください。以下はコア導入前の検証記録です。
 
 2026-10-17 に Radeon RX 9060 XT（gfx1200、1 GPU）、ROCm 7.2.0、
 ROCm clang 版 OpenMPI 5.0.9、AOCL 5.2.0 で HIP 版を依存ライブラリから構築し、

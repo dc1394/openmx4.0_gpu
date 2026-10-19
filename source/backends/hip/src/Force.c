@@ -14,6 +14,7 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "openmx_gpu_workers.h"
+#include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
 #include "openmx_gpu_bilinear.h"
@@ -7382,6 +7383,20 @@ static void Force4B_gpu_abort(const char* message)
     MPI_Abort(mpi_comm_level1, 1);
 }
 
+/* Use the same physical-device admission as the GPU workers. Long target
+   contractions on one shared GPU must finish before another rank enters.
+   Release the guard before the capacity path makes any MPI collective. */
+static void* Force4B_GpuKernelAdmit(void)
+{
+    int device = -1;
+    if (OpenMXGpuGetDevice(&device) != OPENMX_GPU_SUCCESS)
+        Force4B_gpu_abort("Force4B GPU: cannot query the contraction device.");
+    void* admission = openmx_mgpu_admit_devices(&device, 1);
+    if (!admission)
+        Force4B_gpu_abort("Force4B GPU: cannot acquire device admission.");
+    return admission;
+}
+
 /* per-item metadata of the batched case-1/case-2 kernels */
 typedef struct {
     size_t cdm_off;
@@ -7993,7 +8008,9 @@ static void Force4B_GpuCase1Kernel(int num_proj, float* flat, float* halo,
     const size_t* krowA, const size_t* krowB, const int* krow_halo,
     const double* cdm_pref, double* item_f)
 {
-        Force4B_GpuCase1Kernel_Single(num_proj,flat,halo,flat_stride,nitems_c,items,krowA,krowB,krow_halo,cdm_pref,item_f);
+    void* admission = Force4B_GpuKernelAdmit();
+    Force4B_GpuCase1Kernel_Single(num_proj,flat,halo,flat_stride,nitems_c,items,krowA,krowB,krow_halo,cdm_pref,item_f);
+    openmx_mgpu_release_devices(admission);
 }
 
 
@@ -9252,7 +9269,9 @@ static void Force4B_GpuCase2Kernel(int num_proj, float* c2,
     const size_t* pair_h_off, const size_t* pair_q_off,
     const double* cdm_scale, double* item_f)
 {
-        Force4B_GpuCase2Kernel_Single(num_proj,c2,flat_stride,nitems_c,items,pair_h_off,pair_q_off,cdm_scale,item_f);
+    void* admission = Force4B_GpuKernelAdmit();
+    Force4B_GpuCase2Kernel_Single(num_proj,c2,flat_stride,nitems_c,items,pair_h_off,pair_q_off,cdm_scale,item_f);
+    openmx_mgpu_release_devices(admission);
 }
 
 

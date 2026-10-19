@@ -65,6 +65,8 @@ set(Kokkos_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(kokkos
   URL https://github.com/kokkos/kokkos/releases/download/5.2.2/kokkos-5.2.2.tar.gz
   URL_HASH SHA256=d6557aaef39302282a15f9c770433d1fcdf4e961dfd6d9ed726b9d0d0f546b9f
+  PATCH_COMMAND "${CMAKE_COMMAND}" "-DKOKKOS_SOURCE_DIR=<SOURCE_DIR>"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXKokkosGfx1200.cmake"
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(kokkos)
 

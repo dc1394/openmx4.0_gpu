@@ -46,7 +46,8 @@ class RocmRuntimePaths(unittest.TestCase):
             # Import the actual production configuration, but build only the
             # host probe rather than any OpenMX or dependency target.
             linked = subprocess.run(
-                [MAKE, '--no-print-directory', '-C', str(directory), '-f', str(MAKEFILE),
+                [MAKE, '--no-print-directory', '-C', str(directory),
+                 '-I', str(MAKEFILE.parent), '-f', str(MAKEFILE),
                  '--eval', rule, 'runtime-path-probe', 'ARCH=gfx942',
                  f'ROCM={ROCM}', f'ROCM_LLVM={LLVM}', f'ROCM_LLVM_LIB={LLVM_LIB}',
                  f'CLANG={CLANG}', 'MPI_CFLAGS=', 'MPI_FCFLAGS='],

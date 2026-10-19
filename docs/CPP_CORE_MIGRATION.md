@@ -255,7 +255,7 @@ CUDA コンパイラで構築します。`OPENMX_GPU_ARCH` は本体と Kokkos �
 
 以下は MI300X (`gfx942`) 用の構成例です。ROCm / MPI / AOCL の設定は
 [既存のビルド手順](GPU_BACKENDS.md#amd--hip) と合わせて指定してください。
-このブランチの新コアは AMD 実機ではまだ検証していません。
+Radeon 実機での検証条件と結果は、後述の「AMD 実機検証（2026-10-19）」を参照してください。
 
 ```sh
 cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP \
@@ -272,6 +272,21 @@ HIP でも CMake の HIP 言語で同じカーネルを構築します。
 MI300A や Radeon では対象に合う CMake と Kokkos のアーキテクチャを指定します。
 Kokkos の [設定ガイド](https://kokkos.org/kokkos-core-wiki/get-started/configuration-guide.html) も参照してください。
 本体 CUDA とコア HIP、またはその逆の組み合わせは構成時に拒否します。
+
+Radeon RX 9060 XT (`gfx1200`) では、本体の `OPENMX_GPU_ARCH` と
+`CMAKE_HIP_ARCHITECTURES` を `gfx1200`、`Kokkos_ARCH_AMD_GFX1200=ON` にします。
+固定している Kokkos 5.2.2 はこのアーキテクチャの登録を欠くため、
+`cmake/OpenMXKokkosGfx1200.cmake` が FetchContent の展開先に登録と
+32-lane wave の特性を追加します。配布アーカイブのバージョンと SHA-256 は保持します。
+パッチは対象バージョン・置換箇所を全て確認してから書き込み、再適用では変更しません。
+
+`FETCHCONTENT_SOURCE_DIR_KOKKOS` で外部の展開済みソースを指定した場合は
+FetchContent のパッチ工程を通らないため、`gfx1200` を使う前にそのコピーへ適用します。
+
+```sh
+cmake -DKOKKOS_SOURCE_DIR=/path/to/kokkos-5.2.2 \
+  -P cmake/OpenMXKokkosGfx1200.cmake
+```
 
 ### 直接 make を使う場合
 
@@ -840,6 +855,82 @@ CPU–GPU 間はエネルギー `4.91e-11 Ha`・Force `1.3e-11 Ha/bohr` 以下�
 測定したビルドと SHA-256 が一致しています。実行条件とログは
 `build/overlap-workspace-migration/`、各比較・ハッシュ・検証範囲の集計は同ディレクトリの
 `validation.json` に保存しています。L/L2/L3、NEB、マルチノードは今回の確認に含みません。
+
+## AMD 実機検証（2026-10-19）
+
+`ff9fcafc` に以下の修正を加えた作業ツリーを、Radeon RX 9060 XT
+（`gfx1200`、1 GPU）、ROCm 7.2.0 / Clang 22、OpenMPI 5.0.9、AOCL 5.2.0、
+CMake 3.31.12 で構築しました。`OPENMX_CORE_BACKEND=HIP` を選び、
+`OPENMX_COPY_TO_WORK=OFF` で `build/hip/openmx` とコアを検証しています。
+
+- Kokkos 5.2.2 の `gfx1200` 登録不足を、上記のビルド時パッチで補いました。
+  未変更の配布アーカイブからの適用、自動認識、再適用時の全ファイルの
+  SHA-256 と更新時刻の不変を確認しています。
+- HIP の Force4B の 2 つの target contraction に、既存ワーカーと共通の
+  物理 GPU UUID による排他制御を適用しました。GPU を共有する MPI ランクの
+  長い contraction を同時実行せず、カーネルの完了後に解放します。
+  容量復旧経路の MPI 集団通信へロックを持ち越しません。
+- ROCm ランタイム探索のホスト試験で、一時ディレクトリから本番 Makefile を読む際も
+  `openmx_core.mk` を見つけられるよう、Makefile の親を make の include 探索先に加えました。
+
+CTest は 56/56 件（コア 42 件、うち GPU ラベル 9 件）を通過しました。
+別の Serial コアの Debug ビルドも AddressSanitizer / UndefinedBehaviorSanitizer 付きで
+42/42 件を通過しています。サニタイザー検査の対象はホスト C++ コアです。
+
+修正版では同梱参照に対し、次の通常設定の計算が通過しています。
+S は各 MPI ジョブで 14 例を連続実行し、L は `CG15c-DC-LNO`、`ZrB2_2x2`、
+`nsV4Bz5` を同じ MPI ジョブで連続実行しています。
+
+| 計算 | 合格数 |
+| --- | --- |
+| S 全14例・CPU、4 MPI × 4 OpenMP | 14 / 14 |
+| S 全14例・GPU、4 MPI × 4 OpenMP | 14 / 14 |
+| S 全14例・GPU、8 MPI × 2 OpenMP | 14 / 14 |
+| L 代表3例・GPU、4 MPI × 4 OpenMP | 3 / 3 |
+
+終了表示に加え、全エネルギー履歴、全原子の Force 成分、原子種・座標、FFT 格子を照合しました。
+エネルギー・Force の許容差は `1e-7`、座標は出力桁に合わせた `1e-5` です。
+全45計算での同梱参照との差は、エネルギー `1.2e-9 Ha`、Force `8.0e-10 Ha/bohr` 未満でした。
+小さな行列の密対角化には既定の CPU フォールバックを許容しています。
+
+計算時間も同じ 4 MPI × 4 OpenMP で記録しています。次は単発の観測値で、
+ジョブ全体の値は起動・終了を含みます。修正版 GPU S は Kokkos Tools の記録も含みます。
+CPU S と ZrB2 では時間の増加が見られました。
+
+| 対象 | 移行前（秒） | 修正版（秒） |
+| --- | ---: | ---: |
+| S全14例・CPU（ジョブ全体） | 86.76 | 108.33 |
+| S全14例・GPU（ジョブ全体） | 87.68 | 80.79 |
+| L代表3例・GPU（ジョブ全体） | 405.53 | 420.74 |
+| ZrB2（OpenMX内計測） | 162.86 | 178.87 |
+
+通常設定・4 MPI × 4 OpenMP の `ZrB2_2x2` 単独実行は 177.99 秒で正常終了し、
+移行前との差はエネルギー `9.1e-13 Ha`、全 Force 成分 `1.1e-12 Ha/bohr` 未満でした。
+デバッガ、診断用 preload、詳細な時間記録を使った試行は、通常実行の検証と区別しています。
+追加の検証も通過しました。
+
+| 計算 | 合格数 |
+| --- | --- |
+| 移行前の restart を読む通常計算（旧版・修正版） | 2 / 2 |
+| `scf.ProExpn.VNA off`（旧版・修正版） | 2 / 2 |
+| Serial コアに差し替えた legacy HIP の ZrB2 | 1 / 1 |
+| Cr2 の非共線 GPU 固有値分解強制（旧版・修正版） | 2 / 2 |
+
+Cr2 は `OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM=1` と
+`OPENMX_CLUSTER_GPU_DIAG=1` を指定しました。各実行で MAGMA の成功記録を 22 件確認し、
+`n=20` の実行と `n=40` の非共線実行で `info=0`、`mout=n` を確認しました。
+強制 GPU 同士のエネルギーは出力桁で一致し、Force の最大差は `1.0e-12 Ha/bohr` 未満です。
+
+Kokkos Tools では HIP の Bessel / 積分カーネルを各 2,288 回、HIP メモリ確保を
+910 回記録しました。4 ランク全てに両カーネルの実行記録があります。
+旧版の比較用計算を含む合計 84 計算が数値検証を通過しています。
+同梱参照との差はエネルギー `1.2e-9 Ha`、Force `8.0e-10 Ha/bohr` 未満、
+旧版や CPU/GPU・MPI 分割間の比較はエネルギー `1.7e-10 Ha`、Force `7.8e-11 Ha/bohr` 未満です。
+
+検証条件、ソース・入力・実行ファイルのハッシュ、数値比較とログは
+`work/codex_refactor_hip_20261019/summary.json` と同ディレクトリに保存しています。
+実機確認は単一ノード・RX 9060 XT 1 GPU、L は代表 3 例です。
+L2/L3、NEB、複数 GPU、MI300A 実機は今回の確認に含みません。
 
 ## 次の移行単位と完了条件
 
