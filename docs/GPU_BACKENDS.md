@@ -273,6 +273,30 @@ ctest --test-dir build/cuda --output-on-failure
 ctest --test-dir build/hip --output-on-failure
 ```
 
+CUDA の `vna-archive-recovery` は、VNA 行列の一括計算と容量不足時の復旧を
+ASan/UBSan で検証します。FP32/FP64、ハロー、空ランク、メモリ確保・転送の失敗、
+ロックと一時配列の解放、CPU 復旧後の数値結果を確認します。
+実際の GPU カーネルを使う同じ試験は次のように実行できます。
+
+```sh
+OPENMX_TEST_GPU=1 CC=nvc python3 tests/run_setpro_archived_cpu.py
+```
+
+多数の MPI ランクで大きなセルを計算すると、VNA の全ランク分の配列が GPU に
+同時には収まらないことがあります。CUDA 版はその場合、GPU の使用をランク間で
+調整し、各ランクの配列を一度だけ転送して一括計算します。単一ランク分も収まらない
+場合は、分割計算に進みます。`OPENMX_SETPRO_VERBOSE=1` を設定すると、
+`HVNA archived GPU batch` を含む各段階の進行状況を標準エラーへ出力します。
+
+2026-10-19 に RTX 5080、NVHPC 26.9 / CUDA 13.4 で、216 原子の Si
+（Si7.0-s2p2d1 / Si_PBE19、200 Ry、非共線 Cluster）を検証しました。
+18 MPI × 1 スレッド、MPS 有効の GPU 計算と `OPENMX_GPU=0` の CPU 計算は、
+いずれも入力の全 25 SCF 反復と力の計算を正常終了しました。CPU/GPU の差は
+全エネルギー `2.13e-10 Ha`、力の最大成分差 `1.28e-10 Ha/bohr` で、
+両者とも許容誤差 `1e-7` 内です。CTest 全 35 件と、上記の GPU カーネル試験も合格しました。
+入力、実行ログ、全エネルギー成分・648 成分の力の照合結果は
+`build/sidia333-freeze/validation.json` と同ディレクトリに保存しています。
+
 共通テストはソースの選択、取り込み時のチェックサム、CUDA ヘッダーと HIP 互換
 ヘッダーの分離、依存物の独立性、両 Makefile のコンパイル指示を検証します。
 共通化後は、両バックエンドが同じ実体を参照すること、置換元の重複が残らないこと、

@@ -88,6 +88,10 @@ install(TARGETS openmx_core LIBRARY DESTINATION lib)
 if(BUILD_TESTING)
   add_test(NAME build-backend-isolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_unified_build.py")
+  if(_backend STREQUAL "CUDA")
+    add_test(NAME vna-archive-recovery
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setpro_archived_cpu.py")
+  endif()
   if(_backend STREQUAL "HIP")
     foreach(_test IN ITEMS gemmul8_arch_policy nc_mi300a_policy_cpu band_noncol_refine_flow_cpu mi300a_rank_launcher runtest_paths_cpu rocm_runtime_paths_cpu elpa_cptr_interop_cpu deviceless_cleanup_cpu)
       add_test(NAME "hip-${_test}"

@@ -27,6 +27,7 @@
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
+#include "openmx_mgpu_runtime.h"
 #include "openmx_host_memory.h"
 #include "openmx_precision.h"
 #include "set_cuda_default_device_from_local_rank.h"
@@ -113,6 +114,7 @@ typedef struct {
   int turn, turns, host_archive;
   int num_proj;
   int num_rvna;
+  size_t device_bytes;    /* full archives, contraction workspace and margin */
 
   /* Local direction-0 DS_VNA rows. Keep them only on the device when all
      local ranks fit; otherwise archive on the host for capacity shards. */
@@ -297,6 +299,7 @@ static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
          + kslots*(2*sizeof(size_t) + 2*sizeof(int))
          + (size_t)SpeciesNum*Num_RVNA*sizeof(double) + (size_t)Num_RVNA*sizeof(int)
          + (size_t)64*1024*1024;
+    g->device_bytes = need;
     MPI_Allreduce(&need,&max_need,1,MPI_UNSIGNED_LONG_LONG,MPI_MAX,node_comm);
     MPI_Allreduce(&available,&min_available,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,node_comm);
     if (min_available>reserve){
@@ -771,10 +774,60 @@ static void SetPro_HVNA_archive_row(float *dest,const float *host,const float *d
     SetPro_gpu_abort("Set_ProExpn_VNA: cannot recover an existing projector archive.");
 }
 
+/* The node may not fit every rank's archives concurrently even though each
+   rank fits on its own. In that case, reuse the indexed contraction under
+   the device admission lock before trying row-wise capacity recovery.
+   Expanding every (m,n,k) product into separate input rows duplicates the
+   same projectors many times and can transfer terabytes for a modest cell.
+   No collective may run while this lock is held: other ranks may be waiting
+   for the same GPU. The caller joins the recovery collectives afterwards. */
+static int SetPro_HVNA_GpuRun_Archived(SetProGpuContext *g,double ****HVNA)
+{
+  int device,ok=0;
+  size_t free_bytes=0,total_bytes=0;
+  const size_t reserve=(size_t)256*1024*1024;
+  void *admission;
+  SetProGpuContext staged=*g;
+  staged.flat_dev=NULL;
+  staged.halo_dev=NULL;
+
+  if (!Matomnum) return 1;
+  if (!gpu_rank_device_usable() || openmx_gpu_capacity_test_recovery() ||
+      cudaGetDevice(&device)!=cudaSuccess) return 0;
+  admission=openmx_mgpu_admit_devices(&device,1);
+  if (!admission) return 0;
+
+  acc_wait_all();
+  if (cudaDeviceSynchronize()!=cudaSuccess) goto archived_cleanup;
+  acc_clear_freelists();
+  if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
+      free_bytes<=reserve || g->device_bytes>free_bytes-reserve)
+    goto archived_cleanup;
+
+  if (cudaMalloc((void**)&staged.flat_dev,g->flat_count*sizeof(float))!=cudaSuccess ||
+      cudaMalloc((void**)&staged.halo_dev,(g->halo_count ? g->halo_count : 1)*sizeof(float))!=cudaSuccess)
+    goto archived_cleanup;
+  if (cudaMemcpy(staged.flat_dev,g->flat_host,g->flat_count*sizeof(float),cudaMemcpyHostToDevice)!=cudaSuccess ||
+      (g->halo_count && cudaMemcpy(staged.halo_dev,g->halo_host,g->halo_count*sizeof(float),cudaMemcpyHostToDevice)!=cudaSuccess))
+    goto archived_cleanup;
+
+  SetPro_note("HVNA archived GPU batch","uploading each archive once (%.0f MiB)",
+              (double)(g->flat_count+g->halo_count)*sizeof(float)/1048576.0);
+  ok=SetPro_HVNA_GpuRun_Part(1,Matomnum+1,&staged,HVNA);
+
+archived_cleanup:
+  if (staged.halo_dev) cudaFree(staged.halo_dev);
+  if (staged.flat_dev) cudaFree(staged.flat_dev);
+  (void)cudaGetLastError();
+  openmx_mgpu_release_devices(admission);
+  return ok;
+}
+
 static void SetPro_HVNA_GpuRun(double ****HVNA)
 {
   SetProGpuContext *g=&SetPro_gpu;
-  int done=!g->host_archive && SetPro_HVNA_GpuRun_Part(1,Matomnum+1,g,HVNA);
+  int done=g->host_archive ? SetPro_HVNA_GpuRun_Archived(g,HVNA)
+                          : SetPro_HVNA_GpuRun_Part(1,Matomnum+1,g,HVNA);
   int mc=done?Matomnum+1:1,j=0;size_t row=0;
   SetProHVNACapacityParameters p={g->num_proj,g->num_rvna,openmx_fp32_enabled()};
   /* Only recovery duplicates projector rows, and at most one bounded tile.

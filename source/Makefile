@@ -900,6 +900,7 @@ Set_Nonlocal.o: Set_Nonlocal.c openmx_common.h
 	$(CC) -c Set_Nonlocal.c
 Set_ProExpn_VNA.o: Set_ProExpn_VNA.c openmx_common.h openmx_precision.h
 	$(CC) -c Set_ProExpn_VNA.c
+Set_ProExpn_VNA.o: openmx_mgpu_runtime.h
 Set_CoreHoleMatrix.o: Set_CoreHoleMatrix.c openmx_common.h
 	$(CC) -c Set_CoreHoleMatrix.c
 Set_OLP_p.o: Set_OLP_p.c openmx_common.h 
