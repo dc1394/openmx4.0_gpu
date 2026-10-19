@@ -21,6 +21,34 @@ dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
 
+To install after building, pass the same build directory used with `cmake -B`:
+
+```sh
+# Default: work/openmx and work/lib/libopenmx_core.so
+cmake --install build/cuda
+# For the HIP build: cmake --install build/hip
+
+# Optional prefix: $HOME/.local/bin/openmx and $HOME/.local/lib/libopenmx_core.so
+cmake --install build/cuda --prefix "$HOME/.local"
+```
+
+With no prefix selection, installation puts `openmx` directly in `work/`;
+`OPENMX_WORK_DIR` changes this local directory. A prefix set with
+`-DCMAKE_INSTALL_PREFIX=...` during configuration or with `--prefix` during
+installation uses the `bin/openmx` and `lib/libopenmx_core.so` layout.
+Here `build` is only the parent directory; `cmake --install build` is valid
+if the project was configured with `-B build`. Installation does not build
+the executable, so finish `cmake --build` first.
+
+To switch an existing build from a cached prefix (such as the previous
+`/usr/local` default) to the local default, reconfigure once before installing:
+
+```sh
+cmake -S . -B build/cuda -UCMAKE_INSTALL_PREFIX
+cmake --build build/cuda
+cmake --install build/cuda
+```
+
 An explicit `OPENMX_GPU_ARCH` accepts `80` or `sm_80` and also selects the
 Kokkos/CUDA target when `OPENMX_CORE_BACKEND=CUDA`. It needs no GPU on the build
 node. When `OPENMX_GPU_ARCH` is unset or `auto`, CMake queries `nvidia-smi`

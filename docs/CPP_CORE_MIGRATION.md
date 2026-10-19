@@ -284,8 +284,10 @@ make -C source -j4 openmx OPENMX_CORE_CMAKE=/absolute/path/to/cmake \
 `OPENMX_CORE_CMAKE_OPTIONS` で CMake オプションを追加できます。
 構成やコンパイラを変える場合は `OPENMX_CORE_BUILD_DIR` も分けてください。
 本体のリンクには `libopenmx_core.so` が必要です。CMake のインストールでは
-`bin/openmx` と `lib/libopenmx_core.so` を配置し、実行ファイルはビルド時の場所と
-`$ORIGIN/../lib` を探索します。従来の MPI・数値計算ライブラリへの依存も残ります。
+既定で `work/openmx` と `work/lib/libopenmx_core.so` を配置します。prefix を
+明示指定した場合は `<prefix>/bin/openmx` と `<prefix>/lib/libopenmx_core.so` です。
+実行ファイルはビルド時の場所、`$ORIGIN/lib`、`$ORIGIN/../lib` を探索します。
+従来の MPI・数値計算ライブラリへの依存も残ります。
 
 ## 大域変数の棚卸し
 

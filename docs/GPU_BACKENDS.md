@@ -210,6 +210,7 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 | `OPENMX_MAKE_OPTIONS` | `NAME=value;NAME=value` 形式のネイティブ make 変数。シェルで引用符を付ける。 |
 | `OPENMX_COPY_TO_WORK` | 成功した本体ビルドを作業ディレクトリへコピー。既定は `ON`。 |
 | `OPENMX_WORK_DIR` | コピー先。既定はリポジトリの `work`。実行ファイル名は `openmx`。 |
+| `CMAKE_INSTALL_PREFIX` | 未指定なら `OPENMX_WORK_DIR` にローカル配置し、実行ファイルは直下の `openmx`。明示指定時は `<prefix>/bin/openmx`。`cmake --install` の `--prefix` でも変更可能。 |
 
 `cmake --build ... -jN` の外側の並列数では、内部の make の並列数は変更されません。
 `OPENMX_BUILD_JOBS` で指定してください。依存スタックの独立した並列数は
@@ -226,10 +227,32 @@ CUDA/HIP の両方をビルドする場合、最後に成功した側が `work/o
 コンパイラや依存ライブラリの構成を変更する場合は、新しいビルドディレクトリの使用が確実です。
 
 ```sh
-cmake --install build/hip --prefix /path/to/install
+# 既定: work/openmx と work/lib/libopenmx_core.so
+cmake --install build/cuda
+# HIP 版: cmake --install build/hip
+
+# 別の prefix を指定する場合: <prefix>/bin/openmx と <prefix>/lib/libopenmx_core.so
+cmake --install build/cuda --prefix "$HOME/.local"
 ```
 
-OpenMX のインストール対象は `bin/openmx` と `lib/libopenmx_core.so` です。
+`--install` には `cmake -B` で構成したビルドディレクトリを指定します。
+上の例では `build` は親ディレクトリなので、`cmake --install build` は失敗します。
+`-B build` で構成した場合には `--install build` を使えます。
+インストールはビルドを実行しないため、先に `cmake --build` を完了してください。
+prefix を指定しない場合は `work/openmx` に配置します。ローカルの配置先は
+`OPENMX_WORK_DIR` で変更できます。構成時の `-DCMAKE_INSTALL_PREFIX=...` または
+インストール時の `--prefix` で明示指定した場合は、`<prefix>/bin/openmx` に配置します。
+
+既存のビルドに以前の `/usr/local` などの prefix がキャッシュされている場合は、
+次のように一度リセットしてからビルド・インストールしてください。
+
+```sh
+cmake -S . -B build/cuda -UCMAKE_INSTALL_PREFIX
+cmake --build build/cuda
+cmake --install build/cuda
+```
+
+OpenMX のインストール対象は実行ファイルと `lib/libopenmx_core.so` です。
 Kokkos のインストール規則も実行されます。DFT データ、入力ファイル、起動スクリプト、
 既存の数値計算ライブラリはコピーしません。実行時に参照するビルド内の依存ライブラリと、
 ROCm / CUDA / MPI / AOCL のライブラリ配置を維持してください。

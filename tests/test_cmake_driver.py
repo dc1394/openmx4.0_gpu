@@ -204,6 +204,134 @@ openmx_resolve_cuda_architecture()
         self.command(["cmake", "--build", str(self.build)])
         self.assertFalse(self.gpu_queries.exists())
 
+    def test_install_uses_the_configured_build_directory_and_prefix(self):
+        self.build = self.root / "build/cuda"
+        self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DOPENMX_COPY_TO_WORK=OFF")
+        prefix = self.root / "installed OpenMX"
+        install = ["cmake", "--install", str(self.build), "--prefix", str(prefix)]
+        # Installation does not build the application; the normal build must
+        # finish first. The parent directory is not a CMake build directory.
+        self.command(install, success=False)
+        self.build_application()
+        self.command(["cmake", "--install", str(self.build.parent), "--prefix", str(prefix)], success=False)
+        self.command(install)
+        executable = prefix / "bin/openmx"
+        self.assertEqual(executable.read_bytes(), self.payload.read_bytes())
+        self.assertTrue(os.access(executable, os.X_OK))
+        self.assertEqual((prefix / "lib/libopenmx_core.so").read_bytes(),
+                         (self.build / "core/libopenmx_core.so").read_bytes())
+        manifest = (self.build / "install_manifest.txt").read_text().splitlines()
+        self.assertIn(str(executable), manifest)
+        self.assertIn(str(prefix / "lib/libopenmx_core.so"), manifest)
+
+    def assert_install_layout(self, prefix, program):
+        self.assertEqual(program.read_bytes(), self.payload.read_bytes())
+        self.assertTrue(os.access(program, os.X_OK))
+        self.assertEqual((prefix / "lib/libopenmx_core.so").read_bytes(),
+                         (self.build / "core/libopenmx_core.so").read_bytes())
+        manifest = (self.build / "install_manifest.txt").read_text().splitlines()
+        self.assertIn(str(program), manifest)
+        self.assertIn(str(prefix / "lib/libopenmx_core.so"), manifest)
+
+    def test_default_install_places_the_binary_directly_in_work(self):
+        self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DOPENMX_COPY_TO_WORK=OFF")
+        self.build_application()
+        work = self.repo / "work"
+        self.assertFalse(work.exists(), "The build must not mask a missing install step")
+        self.command(["cmake", "--install", str(self.build)])
+        self.assert_install_layout(work, work / "openmx")
+        self.assertFalse((work / "bin/openmx").exists())
+
+    def test_configured_install_prefix_is_honored_and_can_be_reset(self):
+        prefix = self.root / "configured prefix"
+        self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DOPENMX_COPY_TO_WORK=OFF",
+                       "-DCMAKE_INSTALL_PREFIX=" + str(prefix))
+        self.build_application()
+        self.command(["cmake", "--install", str(self.build)])
+        self.assert_install_layout(prefix, prefix / "bin/openmx")
+        self.assertFalse((self.repo / "work").exists())
+        # Resetting a previous /usr/local or site-specific cache value must
+        # activate the new local default without writing to that old prefix.
+        self.configure("-UCMAKE_INSTALL_PREFIX")
+        self.build_application()
+        self.command(["cmake", "--install", str(self.build)])
+        work = self.repo / "work"
+        self.assert_install_layout(work, work / "openmx")
+
+    def test_default_install_tracks_the_selected_work_directory(self):
+        for directory in ("first work", "second work"):
+            with self.subTest(directory=directory):
+                work = self.root / directory
+                self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DOPENMX_COPY_TO_WORK=OFF",
+                               "-DOPENMX_WORK_DIR=" + str(work))
+                self.build_application()
+                self.assertFalse(work.exists())
+                self.command(["cmake", "--install", str(self.build)])
+                self.assert_install_layout(work, work / "openmx")
+
+    def test_default_install_honors_destdir_staging(self):
+        self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DOPENMX_COPY_TO_WORK=OFF")
+        self.build_application()
+        work = self.repo / "work"
+        staging = self.root / "packaging root"
+        self.command(["cmake", "--install", str(self.build)], env={**self.env, "DESTDIR": str(staging)})
+        installed = Path(str(staging) + str(work))
+        self.assertEqual((installed / "openmx").read_bytes(), self.payload.read_bytes())
+        self.assertEqual((installed / "lib/libopenmx_core.so").read_bytes(),
+                         (self.build / "core/libopenmx_core.so").read_bytes())
+        self.assertFalse(work.exists(), "Staging must not write outside DESTDIR")
+        self.assertIn(str(work / "openmx"), (self.build / "install_manifest.txt").read_text().splitlines())
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for the native link rule")
+    def test_installed_program_loads_the_core_from_both_layouts(self):
+        self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DOPENMX_COPY_TO_WORK=OFF")
+        self.build_application()
+        # The real native fragment passes its absolute library path to the
+        # linker. Give that build-only path no spaces, then remove it to make
+        # the loader rely on the installed relative paths in each layout.
+        with tempfile.TemporaryDirectory(prefix="openmx-install-link-") as temporary:
+            link = Path(temporary)
+            core = link / "libopenmx_core.so"
+            shutil.copy2(self.build / "core/libopenmx_core.so", core)
+            (link / "main.c").write_text("int fixture(void); int main(void) { return fixture(); }\n")
+            (link / "Makefile").write_text(
+                "OPENMX_CORE_LIBRARY := " + str(core) + "\n"
+                "OBJS := unused.o\n"
+                "include " + str(ROOT / "source/openmx_core.mk") + "\n"
+                "payload: main.c\n\t" + shutil.which("cc") + " -o $@ $< $(LIB)\n")
+            self.command([shutil.which("make"), "-C", str(link), "payload"])
+            self.payload.write_bytes((link / "payload").read_bytes())
+            self.build_application()
+            core.unlink()
+            for prefix in (None, self.root / "relocated prefix"):
+                with self.subTest(prefix=prefix):
+                    command = ["cmake", "--install", str(self.build)]
+                    if prefix is None:
+                        executable = self.repo / "work/openmx"
+                    else:
+                        command.extend(["--prefix", str(prefix)])
+                        executable = prefix / "bin/openmx"
+                    self.command(command)
+                    self.command([str(executable)])
+
+    @unittest.skipUnless(Path("/bin/sleep").is_file() and Path("/bin/true").is_file(), "POSIX executables are required")
+    def test_default_install_replaces_a_running_executable(self):
+        self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DOPENMX_COPY_TO_WORK=OFF")
+        self.payload.write_bytes(Path("/bin/true").read_bytes())
+        self.build_application()
+        destination = self.repo / "work/openmx"
+        destination.parent.mkdir()
+        shutil.copy2("/bin/sleep", destination)
+        process = subprocess.Popen([str(destination), "30"])
+        try:
+            self.command(["cmake", "--install", str(self.build)])
+            self.assertIsNone(process.poll())
+            self.assert_install_layout(destination.parent, destination)
+            self.command([str(destination)])
+        finally:
+            process.terminate()
+            process.wait(timeout=5)
+
     @unittest.skipUnless(Path("/bin/sleep").is_file() and Path("/bin/true").is_file(), "POSIX executables are required")
     def test_copy_replaces_a_running_executable_atomically(self):
         destination = self.root / "running openmx"

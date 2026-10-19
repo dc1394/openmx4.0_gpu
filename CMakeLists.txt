@@ -10,6 +10,22 @@ endif()
 
 include(CTest)
 option(OPENMX_BUILD_APPLICATION "Build the legacy application and its dependencies" ON)
+set(OPENMX_WORK_DIR "${CMAKE_SOURCE_DIR}/work" CACHE PATH "Directory receiving the built openmx executable")
+# A local application install puts openmx directly in work/. Explicit CMake
+# prefixes retain the standard bin/ and lib/ layout, including --prefix at
+# install time. Keep the managed default in step with OPENMX_WORK_DIR.
+set(_openmx_work_install_default OFF)
+if(OPENMX_BUILD_APPLICATION)
+  if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR
+     (DEFINED OPENMX_MANAGED_WORK_INSTALL_PREFIX AND
+      CMAKE_INSTALL_PREFIX STREQUAL OPENMX_MANAGED_WORK_INSTALL_PREFIX))
+    set(CMAKE_INSTALL_PREFIX "${OPENMX_WORK_DIR}" CACHE PATH "OpenMX installation prefix" FORCE)
+    set(OPENMX_MANAGED_WORK_INSTALL_PREFIX "${OPENMX_WORK_DIR}" CACHE INTERNAL "Local install prefix selected by OpenMX")
+    set(_openmx_work_install_default ON)
+  else()
+    unset(OPENMX_MANAGED_WORK_INSTALL_PREFIX CACHE)
+  endif()
+endif()
 set(OPENMX_GPU_BACKEND "CUDA" CACHE STRING "GPU backend: CUDA (NVIDIA) or HIP (AMD)")
 set_property(CACHE OPENMX_GPU_BACKEND PROPERTY STRINGS CUDA HIP)
 string(TOUPPER "${OPENMX_GPU_BACKEND}" _backend)
@@ -42,7 +58,6 @@ find_program(OPENMX_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 set(OPENMX_BUILD_JOBS "4" CACHE STRING "Parallel jobs in the native build")
 set(OPENMX_MAKE_OPTIONS "" CACHE STRING "Native make variable assignments separated by semicolons")
 option(OPENMX_COPY_TO_WORK "Copy the successful application build to OPENMX_WORK_DIR" ON)
-set(OPENMX_WORK_DIR "${CMAKE_SOURCE_DIR}/work" CACHE PATH "Directory receiving the built openmx executable")
 
 set(_native_options "GPUSOLVER2_JOBS=${OPENMX_BUILD_JOBS}" ${OPENMX_MAKE_OPTIONS})
 list(APPEND _native_options "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>")
@@ -91,7 +106,24 @@ add_custom_target(native-clean
     COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" ${_native_options} clean
     COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_BINARY_DIR}/openmx"
     USES_TERMINAL VERBATIM)
-install(PROGRAMS "${CMAKE_BINARY_DIR}/openmx" DESTINATION bin)
+set(_openmx_install_program [=[
+  set(_openmx_install_bindir "${CMAKE_INSTALL_PREFIX}/bin")
+  if(@_openmx_work_install_default@ AND CMAKE_INSTALL_PREFIX STREQUAL [==[@OPENMX_WORK_DIR@]==])
+    set(_openmx_install_bindir "${CMAKE_INSTALL_PREFIX}")
+  endif()
+  set(_openmx_installed_program "${_openmx_install_bindir}/openmx")
+  execute_process(COMMAND [==[@Python3_EXECUTABLE@]==]
+      [==[@CMAKE_SOURCE_DIR@/tools/copy_openmx.py]==]
+      [==[@CMAKE_BINARY_DIR@/openmx]==] "$ENV{DESTDIR}${_openmx_installed_program}"
+      RESULT_VARIABLE _openmx_copy_result ERROR_VARIABLE _openmx_copy_error)
+  if(NOT "${_openmx_copy_result}" STREQUAL "0")
+    message(FATAL_ERROR "Cannot install openmx: ${_openmx_copy_error}")
+  endif()
+  message(STATUS "Installing: $ENV{DESTDIR}${_openmx_installed_program}")
+  list(APPEND CMAKE_INSTALL_MANIFEST_FILES "${_openmx_installed_program}")
+]=])
+string(CONFIGURE "${_openmx_install_program}" _openmx_install_program @ONLY)
+install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)

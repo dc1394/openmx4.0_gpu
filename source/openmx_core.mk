@@ -22,7 +22,8 @@ openmx-core:
 	"$(OPENMX_CORE_CMAKE)" --build "$(OPENMX_CORE_BUILD_DIR)" --parallel $(GPUSOLVER2_JOBS)
 endif
 
-LIB += $(OPENMX_CORE_LIBRARY) -Wl,-rpath,$(dir $(OPENMX_CORE_LIBRARY)) -Wl,-rpath,'$$ORIGIN/../lib'
+# work/openmx uses work/lib; an explicit installation prefix uses bin/../lib.
+LIB += $(OPENMX_CORE_LIBRARY) -Wl,-rpath,$(dir $(OPENMX_CORE_LIBRARY)) -Wl,-rpath,'$$ORIGIN/lib' -Wl,-rpath,'$$ORIGIN/../lib'
 openmx: $(OPENMX_CORE_LIBRARY)
 $(OBJS): openmx_core.h openmx_periodic.h
 FT_PAO.o FT_NLP.o FT_VNA.o RadialF.o Nonlocal_RadialF.o VNAF.o PhiF.o RF_BesselF.o Set_Nonlocal.o: openmx_core_radial.h

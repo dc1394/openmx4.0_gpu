@@ -20,6 +20,14 @@ libtool
 /source/*.mod
 /source/third_party/fftw3-install/
 
+# Dependencies installed beside the default work/openmx executable.
+/work/bin/hpcbind
+/work/bin/kokkos_launch_compiler
+/work/bin/nvcc_wrapper
+/work/include/kokkos/
+/work/lib/cmake/Kokkos/
+/work/share/licenses/openmx_core/
+
 # === Editor / IDE ===
 .vscode/
 
