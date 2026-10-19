@@ -94,6 +94,11 @@ tables and per-pair allocation. Their GPU batch state belongs to each call.
 VNA preparation owns a snapshot of species basis metadata, projector indices
 and contiguous weighted radial rows. Both backends share the CPU sampling
 loop, and DS_VNA GPU batches also receive their state explicitly per call.
+DS_VNA CPU assembly now shares one evaluator across CUDA/HIP. Per-thread C++
+workspaces own packed angular matrices, radial sums and Bessel scratch;
+species-local offsets replace temporary five-level pointers and omit empty
+basis groups. The zero-wavevector Bessel derivative initializes the extra order
+it reads, and per-atom timing updates are safe across threads.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

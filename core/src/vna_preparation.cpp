@@ -51,7 +51,8 @@ int projection_components(VnaPreparationShape shape, const RadialBasisLayout& ba
 } // namespace
 
 RadialBasisLayout::RadialBasisLayout(int angular, int multiplicity, std::span<const SpeciesBasisView> species)
-  : counts_({validated_basis(angular,multiplicity,species),static_cast<std::size_t>(angular+1)})
+  : counts_({validated_basis(angular,multiplicity,species),static_cast<std::size_t>(angular+1)}),
+    orbital_offsets_({species.size(),static_cast<std::size_t>(angular+2)})
 {
   offsets_.push_back(0);
   for (std::size_t s = 0; s < species.size(); ++s) {
@@ -64,6 +65,7 @@ RadialBasisLayout::RadialBasisLayout(int angular, int multiplicity, std::span<co
         throw std::length_error("radial basis offsets overflow size_t");
       offsets_.push_back(offsets_.back()+count);
       orbitals += count*(2*l+1); // The complete sum was validated before allocating.
+      element(orbital_offsets_.view(),s,l+1) = orbitals;
     }
     orbitals_.push_back(orbitals);
   }

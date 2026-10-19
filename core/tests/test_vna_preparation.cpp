@@ -31,6 +31,9 @@ void layout_test()
   require(std::equal(offsets.begin(),offsets.end(),layout.offsets().begin()),"radial offsets changed species/group order");
   require(layout.radial_count() == 5 && layout.orbitals()[0] == 7 && layout.orbitals()[1] == 0 &&
           layout.orbitals()[2] == 6,"empty groups or magnetic counts are wrong");
+  const int orbital_offsets[]{0,2,2,7,0,0,0,0,0,0,6,6};
+  require(std::equal(std::begin(orbital_offsets),std::end(orbital_offsets),layout.orbital_offsets().data_handle()),
+          "species-local orbital offsets include empty groups or previous species");
   require(work.weights().extent(0) == 2 && work.weights().extent(1) == 5 &&
           work.weights().extent(2) == 7,"radial values have rectangular padding");
   require(work.projector_count() == 6 && work.projector_components() == 18,"projector count mismatch");

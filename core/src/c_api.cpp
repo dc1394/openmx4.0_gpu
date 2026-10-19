@@ -6,6 +6,7 @@
 #include "openmx_core_nonlocal.h"
 #include "openmx_core_vna.h"
 #include "openmx_core_vna_preparation.h"
+#include "openmx_core_dsvna.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -19,6 +20,7 @@
 #include <openmx/core/nonlocal_workspace.hpp>
 #include <openmx/core/vna_workspace.hpp>
 #include <openmx/core/vna_preparation.hpp>
+#include <openmx/core/dsvna_workspace.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -58,6 +60,11 @@ struct OpenMXVnaPreparation {
   OpenMXVnaPreparation(openmx::core::VnaPreparationShape shape,
       std::span<const openmx::core::SpeciesBasisView> species) : implementation(shape,species) {}
   openmx::core::VnaPreparation implementation;
+};
+
+struct OpenMXDsvnaWorkspace {
+  explicit OpenMXDsvnaWorkspace(const openmx::core::VnaPreparation& preparation) : implementation(preparation) {}
+  openmx::core::DsvnaWorkspace implementation;
 };
 
 namespace {
@@ -500,6 +507,7 @@ extern "C" OpenMXVnaPreparation* openmx_core_vna_preparation_create(const OpenMX
     views.maximum_angular = basis.maximum_angular().data();
     views.basis_counts = basis.counts().data_handle();
     views.orbitals = basis.orbitals().data();
+    views.orbital_offsets = basis.orbital_offsets().data_handle();
     views.radial_offsets = basis.offsets().data();
     views.projector_angular = work.projectors().data_handle();
     views.projector_radial = work.projectors().data_handle()+work.projectors().extent(1);
@@ -518,6 +526,47 @@ extern "C" OpenMXVnaPreparation* openmx_core_vna_preparation_create(const OpenMX
 extern "C" void openmx_core_vna_preparation_destroy(OpenMXVnaPreparation* preparation)
 {
   delete preparation;
+}
+
+extern "C" OpenMXDsvnaWorkspace* openmx_core_dsvna_create(const OpenMXVnaPreparation* preparation,
+    OpenMXDsvnaBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXDsvnaWorkspace* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!preparation || !buffers) throw std::invalid_argument("missing DS_VNA preparation or output");
+    auto owner = std::make_unique<OpenMXDsvnaWorkspace>(preparation->implementation);
+    auto& work = owner->implementation;
+    OpenMXDsvnaBuffers views{};
+    views.points = preparation->implementation.shape().points;
+    views.projectors = preparation->implementation.projector_count();
+    views.orbital_capacity = work.angular().extent(1);
+    views.projector_capacity = work.angular().extent(2);
+    views.radial_capacity = work.sums().extent(1);
+    views.conversion_rows = work.conversion().extent(1);
+    views.conversion_columns = work.conversion().extent(2);
+    views.bessel_orders = work.bessel().extent(1);
+    views.scratch_capacity = work.scratch().extent(1);
+    for (int channel = 0; channel < 4; ++channel) {
+      if (work.angular().size())
+        views.angular[channel] = work.angular().data_handle()+channel*views.orbital_capacity*views.projector_capacity;
+      views.conversion[channel] = work.conversion().data_handle()+channel*views.conversion_rows*views.conversion_columns;
+    }
+    for (int channel = 0; channel < 2; ++channel) {
+      if (work.sums().size())
+        views.sums[channel] = work.sums().data_handle()+channel*views.radial_capacity*views.projectors;
+      views.radial[channel] = work.radial().data_handle()+channel*views.points;
+      views.bessel[channel] = work.bessel().data_handle()+channel*views.bessel_orders*views.points;
+      views.scratch[channel] = work.scratch().data_handle()+channel*views.scratch_capacity;
+    }
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" void openmx_core_dsvna_destroy(OpenMXDsvnaWorkspace* workspace)
+{
+  delete workspace;
 }
 
 extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,

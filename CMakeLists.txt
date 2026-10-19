@@ -154,6 +154,9 @@ if(BUILD_TESTING)
   add_test(NAME vna-preparation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_vna_preparation_cpu.py")
   set_tests_properties(vna-preparation PROPERTIES
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;OPENMX_VNA_SOURCE=${_native}/Set_ProExpn_VNA.c" TIMEOUT 120)
+  add_test(NAME dsvna-workspace-integrals COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_dsvna_workspace_cpu.py")
+  set_tests_properties(dsvna-workspace-integrals PROPERTIES
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;OPENMX_VNA_SOURCE=${_native}/Set_ProExpn_VNA.c" TIMEOUT 120)
   if(_backend STREQUAL "CUDA")
     add_test(NAME force-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force4b_archived_cpu.py")

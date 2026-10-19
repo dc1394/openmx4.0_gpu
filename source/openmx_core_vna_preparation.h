@@ -18,11 +18,26 @@ typedef struct {
   int species, angular_channels, points, projectors, projector_components;
   int basis_lmax, basis_multiplicity, projector_lmax, projector_multiplicity;
   const int *maximum_angular, *basis_counts, *orbitals;
+  const int *orbital_offsets; /* [species, angular_channels+1], local to each species */
   const int *projector_angular, *projector_radial;
   const size_t *radial_offsets;
   size_t radial_count, radial_elements;
   double *weighted[2];
 } OpenMXVnaPreparationBuffers;
+
+/* Local radial/orbital indices omit empty groups and species padding. */
+static inline size_t openmx_core_vna_basis_radial(const OpenMXVnaPreparationBuffers *buffers,
+    int species, int angular, int radial)
+{
+  const size_t base = (size_t)species*buffers->angular_channels;
+  return buffers->radial_offsets[base+angular]-buffers->radial_offsets[base]+radial;
+}
+static inline size_t openmx_core_vna_basis_orbital(const OpenMXVnaPreparationBuffers *buffers,
+    int species, int angular, int radial, int magnetic)
+{
+  return buffers->orbital_offsets[(size_t)species*(buffers->angular_channels+1)+angular]
+       +(size_t)radial*(2*angular+1)+magnetic;
+}
 
 /* Unchecked active indices only; offset is measured in doubles. */
 static inline size_t openmx_core_vna_radial_offset(const OpenMXVnaPreparationBuffers *buffers,

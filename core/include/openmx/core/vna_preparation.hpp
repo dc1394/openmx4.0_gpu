@@ -17,12 +17,13 @@ class RadialBasisLayout {
   RadialBasisLayout(int maximum_angular, int multiplicity, std::span<const SpeciesBasisView> species);
   std::span<const int> maximum_angular() const noexcept { return maximum_angular_; }
   auto counts() const noexcept { return counts_.view(); }
+  auto orbital_offsets() const noexcept { return orbital_offsets_.view(); }
   std::span<const std::size_t> offsets() const noexcept { return offsets_; }
   std::span<const int> orbitals() const noexcept { return orbitals_; }
   std::size_t radial_count() const noexcept { return offsets_.back(); }
  private:
   std::vector<int> maximum_angular_, orbitals_;
-  Tensor<int,2> counts_;
+  Tensor<int,2> counts_, orbital_offsets_;
   std::vector<std::size_t> offsets_;
 };
 

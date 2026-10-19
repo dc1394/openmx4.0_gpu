@@ -75,7 +75,8 @@ option(OPENMX_CORE_FORCE_KOKKOS_MDSPAN "Use Kokkos/mdspan even if std::mdspan is
 
 set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vps_storage.cpp
   src/product_storage.cpp src/neutral_projectors.cpp src/pair_bessel.cpp
-  src/overlap_workspace.cpp src/nonlocal_workspace.cpp src/vna_workspace.cpp src/vna_preparation.cpp src/c_api.cpp)
+  src/overlap_workspace.cpp src/nonlocal_workspace.cpp src/vna_workspace.cpp src/vna_preparation.cpp
+  src/dsvna_workspace.cpp src/c_api.cpp)
 add_library(openmx_core SHARED ${_core_sources})
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC
