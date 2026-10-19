@@ -251,13 +251,8 @@ static void SetNonlocal_ValidateGlobalState(void)
    communication, mult = the local products) */
 static int SetNonlocal_ProfileEnabled(void)
 {
-  static int cached = -1;
-
-  if (cached < 0){
-    const char *value = getenv("OPENMX_BAND_PROFILE");
-    cached = (value != NULL && atoi(value) != 0);
-  }
-  return cached;
+  const char *value = getenv("OPENMX_BAND_PROFILE");
+  return value != NULL && atoi(value) != 0;
 }
 
 static int SetNonlocalUseOpenACC(void)
@@ -268,6 +263,8 @@ static int SetNonlocalUseOpenACC(void)
   if (value != NULL && atoi(value) == 0) return 0;
   return scf_eigen_lib_flag == GPUSOLVER;
 }
+
+#include "openmx_nonlocal_cpu.h"
 
 #pragma acc routine seq
 static void SetNL_capacity_bessel(double x,int lmax,double *sbv,double *dsbv)
@@ -1024,114 +1021,26 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
     dcomplex CsumNL0,CsumNLr,CsumNLt,CsumNLp;
     dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
     dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
-    dcomplex *****TmpNL;
-    dcomplex *****TmpNLr;
-    dcomplex *****TmpNLt;
-    dcomplex *****TmpNLp;
-    dcomplex **CmatNL0;
-    dcomplex **CmatNLr;
-    dcomplex **CmatNLt;
-    dcomplex **CmatNLp;
+    dcomplex *TmpNL;
+    dcomplex *TmpNLr;
+    dcomplex *TmpNLt;
+    dcomplex *TmpNLp;
+    dcomplex *CmatNL0;
+    dcomplex *CmatNLr;
+    dcomplex *CmatNLt;
+    dcomplex *CmatNLp;
 
-    TmpNL = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                   "OpenACC TmpNL");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNL[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                       "OpenACC TmpNL[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-        TmpNL[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-                                                           "OpenACC TmpNL[i][j]");
-        for (k=0; k<basis_m_dim; k++){
-          TmpNL[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-                                                               "OpenACC TmpNL[i][j][k]");
-          for (l=0; l<rvps_dim; l++){
-            TmpNL[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                                   "OpenACC TmpNL[i][j][k][l]");
-          }
-        }
-      }
-    }
-
-    TmpNLr = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                    "OpenACC TmpNLr");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNLr[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                        "OpenACC TmpNLr[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-        TmpNLr[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-                                                            "OpenACC TmpNLr[i][j]");
-        for (k=0; k<basis_m_dim; k++){
-          TmpNLr[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-                                                                "OpenACC TmpNLr[i][j][k]");
-          for (l=0; l<rvps_dim; l++){
-            TmpNLr[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                                    "OpenACC TmpNLr[i][j][k][l]");
-          }
-        }
-      }
-    }
-
-    TmpNLt = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                    "OpenACC TmpNLt");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNLt[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                        "OpenACC TmpNLt[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-        TmpNLt[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-                                                            "OpenACC TmpNLt[i][j]");
-        for (k=0; k<basis_m_dim; k++){
-          TmpNLt[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-                                                                "OpenACC TmpNLt[i][j][k]");
-          for (l=0; l<rvps_dim; l++){
-            TmpNLt[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                                    "OpenACC TmpNLt[i][j][k][l]");
-          }
-        }
-      }
-    }
-
-    TmpNLp = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                    "OpenACC TmpNLp");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNLp[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                        "OpenACC TmpNLp[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-        TmpNLp[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-                                                            "OpenACC TmpNLp[i][j]");
-        for (k=0; k<basis_m_dim; k++){
-          TmpNLp[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-                                                                "OpenACC TmpNLp[i][j][k]");
-          for (l=0; l<rvps_dim; l++){
-            TmpNLp[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                                    "OpenACC TmpNLp[i][j][k][l]");
-          }
-        }
-      }
-    }
-
-    CmatNL0 = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"OpenACC CmatNL0");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNL0[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "OpenACC CmatNL0[i]");
-    }
-
-    CmatNLr = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"OpenACC CmatNLr");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNLr[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "OpenACC CmatNLr[i]");
-    }
-
-    CmatNLt = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"OpenACC CmatNLt");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNLt[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "OpenACC CmatNLt[i]");
-    }
-
-    CmatNLp = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"OpenACC CmatNLp");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNLp[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "OpenACC CmatNLp[i]");
-    }
+    OpenMXNonlocalBuffers buffers;
+    OpenMXNonlocalWorkspace *workspace = SetNonlocal_Workspace(0,NULL,0,&buffers);
+    const size_t conversion_columns = buffers.conversion_columns;
+    TmpNL = buffers.angular[0];
+    TmpNLr = buffers.angular[1];
+    TmpNLt = buffers.angular[2];
+    TmpNLp = buffers.angular[3];
+    CmatNL0 = buffers.conversion[0];
+    CmatNLr = buffers.conversion[1];
+    CmatNLt = buffers.conversion[2];
+    CmatNLp = buffers.conversion[3];
 
     OMPID = omp_get_thread_num();
     Nthrds = omp_get_num_threads();
@@ -1149,6 +1058,9 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
       Gh_AN = natn[Gc_AN][h_AN];
       Rnh = ncn[Gc_AN][h_AN];
       Hwan = WhatSpecies[Gh_AN];
+      const size_t *projector_offsets = buffers.projector_offsets+buffers.species_offsets[Hwan];
+      const int *projector_angular = buffers.projector_angular+buffers.species_offsets[Hwan];
+      const int projector_count = buffers.projector_counts[Hwan];
 
       dx = Gxyz[Gh_AN][1] + atv[Rnh][1] - Gxyz[Gc_AN][1];
       dy = Gxyz[Gh_AN][2] + atv[Rnh][2] - Gxyz[Gc_AN][2];
@@ -1178,14 +1090,15 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
 
         for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
           for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-            for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-              L1 = Spe_VPS_List[Hwan][L];
+            for (L=1; L<=projector_count; L++){
+              L1 = projector_angular[L];
               for (M0=-L0; M0<=L0; M0++){
                 for (M1=-L1; M1<=L1; M1++){
-                  TmpNL[L0][Mul0][L0+M0][L][L1+M1]  = Complex(0.0,0.0);
-                  TmpNLr[L0][Mul0][L0+M0][L][L1+M1] = Complex(0.0,0.0);
-                  TmpNLt[L0][Mul0][L0+M0][L][L1+M1] = Complex(0.0,0.0);
-                  TmpNLp[L0][Mul0][L0+M0][L][L1+M1] = Complex(0.0,0.0);
+                  const size_t pair_index = openmx_core_nonlocal_pair(&buffers,projector_offsets,L0,Mul0,L0+M0,L,L1+M1);
+                  TmpNL[pair_index]  = Complex(0.0,0.0);
+                  TmpNLr[pair_index] = Complex(0.0,0.0);
+                  TmpNLt[pair_index] = Complex(0.0,0.0);
+                  TmpNLp[pair_index] = Complex(0.0,0.0);
                 }
               }
             }
@@ -1206,11 +1119,11 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
 
             for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
               for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-                for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
+                for (L=1; L<=projector_count; L++){
 
                   int Ls;
 
-                  L1 = Spe_VPS_List[Hwan][L];
+                  L1 = projector_angular[L];
                   Ls = -L0 + L1 + LL;
                   combo = lookup[(size_t)(L0*List_YOUSO[24] + Mul0)*rvps_sum_dim + L];
 
@@ -1230,6 +1143,7 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
                       M1 = M0 - m;
 
                       if (abs(M1)<=L1){
+                        const size_t pair_index = openmx_core_nonlocal_pair(&buffers,projector_offsets,L0,Mul0,L0+M0,L,L1+M1);
 
                         gant = gaunt_tab[((((size_t)L0*gaunt_d1 + (size_t)(L0+M0))*gaunt_d2
                                            + (size_t)L1)*gaunt_d3 + (size_t)(L1+M1))*gaunt_d4
@@ -1237,23 +1151,23 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
 
                         tmp0 = gant*sum0_so[(size_t)LL*ccount + combo];
                         Ctmp2 = CRmul(CY1,tmp0);
-                        TmpNL[L0][Mul0][L0+M0][L][L1+M1] =
-                          Cadd(TmpNL[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
+                        TmpNL[pair_index] =
+                          Cadd(TmpNL[pair_index],Ctmp2);
 
                         tmp0 = gant*sum1_so[(size_t)LL*ccount + combo];
                         Ctmp2 = CRmul(CY1,tmp0);
-                        TmpNLr[L0][Mul0][L0+M0][L][L1+M1] =
-                          Cadd(TmpNLr[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
+                        TmpNLr[pair_index] =
+                          Cadd(TmpNLr[pair_index],Ctmp2);
 
                         tmp0 = gant*sum0_so[(size_t)LL*ccount + combo];
                         Ctmp2 = CRmul(CYt1,tmp0);
-                        TmpNLt[L0][Mul0][L0+M0][L][L1+M1] =
-                          Cadd(TmpNLt[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
+                        TmpNLt[pair_index] =
+                          Cadd(TmpNLt[pair_index],Ctmp2);
 
                         tmp0 = gant*sum0_so[(size_t)LL*ccount + combo];
                         Ctmp2 = CRmul(CYp1,tmp0);
-                        TmpNLp[L0][Mul0][L0+M0][L][L1+M1] =
-                          Cadd(TmpNLp[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
+                        TmpNLp[pair_index] =
+                          Cadd(TmpNLp[pair_index],Ctmp2);
                       }
                     }
                   }
@@ -1268,8 +1182,8 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
           for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
 
             num1 = 0;
-            for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-              L1 = Spe_VPS_List[Hwan][L];
+            for (L=1; L<=projector_count; L++){
+              L1 = projector_angular[L];
 
               for (M0=-L0; M0<=L0; M0++){
                 for (M1=-L1; M1<=L1; M1++){
@@ -1280,30 +1194,31 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
                   CsumNLp = Complex(0.0,0.0);
 
                   for (k=-L0; k<=L0; k++){
+                    const size_t pair_index = openmx_core_nonlocal_pair(&buffers,projector_offsets,L0,Mul0,L0+k,L,L1+M1);
 
                     Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
 
-                    Ctmp0 = TmpNL[L0][Mul0][L0+k][L][L1+M1];
+                    Ctmp0 = TmpNL[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumNL0 = Cadd(CsumNL0,Ctmp2);
 
-                    Ctmp0 = TmpNLr[L0][Mul0][L0+k][L][L1+M1];
+                    Ctmp0 = TmpNLr[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumNLr = Cadd(CsumNLr,Ctmp2);
 
-                    Ctmp0 = TmpNLt[L0][Mul0][L0+k][L][L1+M1];
+                    Ctmp0 = TmpNLt[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumNLt = Cadd(CsumNLt,Ctmp2);
 
-                    Ctmp0 = TmpNLp[L0][Mul0][L0+k][L][L1+M1];
+                    Ctmp0 = TmpNLp[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumNLp = Cadd(CsumNLp,Ctmp2);
                   }
 
-                  CmatNL0[L0+M0][L1+M1] = CsumNL0;
-                  CmatNLr[L0+M0][L1+M1] = CsumNLr;
-                  CmatNLt[L0+M0][L1+M1] = CsumNLt;
-                  CmatNLp[L0+M0][L1+M1] = CsumNLp;
+                  CmatNL0[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNL0;
+                  CmatNLr[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLr;
+                  CmatNLt[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLt;
+                  CmatNLp[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLp;
                 }
               }
 
@@ -1317,16 +1232,16 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
 
                   for (k=-L1; k<=L1; k++){
 
-                    Ctmp1 = Cmul(CmatNL0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatNL0[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumNL0 = Cadd(CsumNL0,Ctmp1);
 
-                    Ctmp1 = Cmul(CmatNLr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatNLr[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumNLr = Cadd(CsumNLr,Ctmp1);
 
-                    Ctmp1 = Cmul(CmatNLt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatNLt[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumNLt = Cadd(CsumNLt,Ctmp1);
 
-                    Ctmp1 = Cmul(CmatNLp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatNLp[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumNLp = Cadd(CsumNLp,Ctmp1);
                   }
 
@@ -1382,81 +1297,7 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
       time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
     }
 
-    for (i=0; i<basis_m_dim; i++){
-      free(CmatNLp[i]);
-    }
-    free(CmatNLp);
-
-    for (i=0; i<basis_m_dim; i++){
-      free(CmatNLt[i]);
-    }
-    free(CmatNLt);
-
-    for (i=0; i<basis_m_dim; i++){
-      free(CmatNLr[i]);
-    }
-    free(CmatNLr);
-
-    for (i=0; i<basis_m_dim; i++){
-      free(CmatNL0[i]);
-    }
-    free(CmatNL0);
-
-    for (i=0; i<basis_l_dim; i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-        for (k=0; k<basis_m_dim; k++){
-          for (l=0; l<rvps_dim; l++){
-            free(TmpNLp[i][j][k][l]);
-          }
-          free(TmpNLp[i][j][k]);
-        }
-        free(TmpNLp[i][j]);
-      }
-      free(TmpNLp[i]);
-    }
-    free(TmpNLp);
-
-    for (i=0; i<basis_l_dim; i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-        for (k=0; k<basis_m_dim; k++){
-          for (l=0; l<rvps_dim; l++){
-            free(TmpNLt[i][j][k][l]);
-          }
-          free(TmpNLt[i][j][k]);
-        }
-        free(TmpNLt[i][j]);
-      }
-      free(TmpNLt[i]);
-    }
-    free(TmpNLt);
-
-    for (i=0; i<basis_l_dim; i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-        for (k=0; k<basis_m_dim; k++){
-          for (l=0; l<rvps_dim; l++){
-            free(TmpNLr[i][j][k][l]);
-          }
-          free(TmpNLr[i][j][k]);
-        }
-        free(TmpNLr[i][j]);
-      }
-      free(TmpNLr[i]);
-    }
-    free(TmpNLr);
-
-    for (i=0; i<basis_l_dim; i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-        for (k=0; k<basis_m_dim; k++){
-          for (l=0; l<rvps_dim; l++){
-            free(TmpNL[i][j][k][l]);
-          }
-          free(TmpNL[i][j][k]);
-        }
-        free(TmpNL[i][j]);
-      }
-      free(TmpNL[i]);
-    }
-    free(TmpNL);
+    openmx_core_nonlocal_destroy(workspace);
   } /* #pragma omp parallel */
 
   if (measure_time){
@@ -1597,21 +1438,20 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   */
 
   {
-    size_t size_SumNL0,size_TmpNL;
-
+    size_t size_SumNL0,size_TmpNL,projector_columns=1,projector_slots=1;
+    for (int species=0; species<SpeciesNum; ++species) {
+      if (projector_columns < (size_t)Spe_Total_VPS_Pro[species])
+        projector_columns = (size_t)Spe_Total_VPS_Pro[species];
+      if (projector_slots < (size_t)Spe_Num_RVPS[species]+1)
+        projector_slots = (size_t)Spe_Num_RVPS[species]+1;
+    }
     size_SumNL0 = SetNonlocal_CheckedMulCount((size_t)basis_l_dim,(size_t)List_YOUSO[24],
-                                              "SumNL0 elements");
-    size_SumNL0 = SetNonlocal_CheckedMulCount(size_SumNL0,(size_t)rvps_sum_dim,
-                                              "SumNL0 elements");
-
-    size_TmpNL = SetNonlocal_CheckedMulCount((size_t)basis_l_dim,(size_t)List_YOUSO[24],
-                                             "TmpNL elements");
-    size_TmpNL = SetNonlocal_CheckedMulCount(size_TmpNL,(size_t)basis_m_dim,
-                                             "TmpNL elements");
-    size_TmpNL = SetNonlocal_CheckedMulCount(size_TmpNL,(size_t)rvps_dim,
-                                             "TmpNL elements");
-    size_TmpNL = SetNonlocal_CheckedMulCount(size_TmpNL,(size_t)proj_m_dim,
-                                             "TmpNL elements");
+                                              "SumNL0 radial channels");
+    size_TmpNL = SetNonlocal_CheckedMulCount(size_SumNL0,(size_t)basis_l_dim,
+                                             "TmpNL packed orbitals");
+    size_TmpNL = SetNonlocal_CheckedMulCount(size_TmpNL,projector_columns,
+                                             "TmpNL packed projector components");
+    size_SumNL0 = SetNonlocal_CheckedMulCount(size_SumNL0,projector_slots,"SumNL0 elements");
 
     /* PrintMemory */
     if (firsttime) {
@@ -1695,699 +1535,9 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
                                  OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h,myid);
   }
 
-  if (!DSNL_on_device){
-#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,Spe_Num_RVPS,Spe_VPS_List,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,VPS_j_dependency,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,Spe_NLRF_Bessel)
-    {
-
-      int OMPID,Nthrds,Nprocs,Nloop;
-      int Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN;
-      int Rnh,Hwan,so,i,j,k,l,m;
-      int LL,L0,L1,L,Mul0,M0,M1,num0,num1;
-      int Lmax,Lmax_Four_Int,Ls;
-
-      double dx,dy,dz,r;
-      double S_coordinate[3];
-      double siT,coT,siP,coP;
-      double gant,theta,phi;
-      double SH[2],dSHt[2],dSHp[2];
-      double Stime_atom, Etime_atom;
-      double Normk,kmin,kmax;
-      double Bessel_Pro0,Bessel_Pro1;
-      double h,coe0,sj,sjp;
-      double tmp0,tmp1,tmp2,tmp3,tmp4;
-      const double *SphB,*SphBp;
-      OpenMXPairBesselWorkspace *bessel_workspace;
-      char bessel_error[256];
-      double *RF_BesselCache,*NLRF_BesselCache[2];
-      double ***SumNL0;
-      double ***SumNLr0;
-      size_t rf_cache_elems,nlrf_cache_elems;
-      int cached_Cwan,cached_Hwan[2];
-
-      dcomplex CsumNL0,CsumNLr,CsumNLt,CsumNLp;
-      dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
-      dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
-      dcomplex *****TmpNL;
-      dcomplex *****TmpNLr;
-      dcomplex *****TmpNLt;
-      dcomplex *****TmpNLp;
-      dcomplex **CmatNL0;
-      dcomplex **CmatNLr;
-      dcomplex **CmatNLt;
-      dcomplex **CmatNLp;
-
-    /* allocation of arrays */
-
-    TmpNL = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                   "TmpNL");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNL[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                       "TmpNL[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpNL[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-	                                                   "TmpNL[i][j]");
-	for (k=0; k<basis_m_dim; k++){
-	  TmpNL[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-	                                                       "TmpNL[i][j][k]");
-	  for (l=0; l<rvps_dim; l++){
-	    TmpNL[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-	                                                           "TmpNL[i][j][k][l]");
-	  }
-	}
-      }
-    }
-
-    TmpNLr = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                    "TmpNLr");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNLr[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                        "TmpNLr[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpNLr[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-	                                                    "TmpNLr[i][j]");
-	for (k=0; k<basis_m_dim; k++){
-	  TmpNLr[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-	                                                        "TmpNLr[i][j][k]");
-	  for (l=0; l<rvps_dim; l++){
-	    TmpNLr[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-	                                                            "TmpNLr[i][j][k][l]");
-	  }
-	}
-      }
-    }
-
-    TmpNLt = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                    "TmpNLt");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNLt[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                        "TmpNLt[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpNLt[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-	                                                    "TmpNLt[i][j]");
-	for (k=0; k<basis_m_dim; k++){
-	  TmpNLt[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-	                                                        "TmpNLt[i][j][k]");
-	  for (l=0; l<rvps_dim; l++){
-	    TmpNLt[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-	                                                            "TmpNLt[i][j][k][l]");
-	  }
-	}
-      }
-    }
-
-    TmpNLp = (dcomplex*****)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(dcomplex****),
-                                                    "TmpNLp");
-    for (i=0; i<basis_l_dim; i++){
-      TmpNLp[i] = (dcomplex****)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(dcomplex***),
-                                                        "TmpNLp[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpNLp[i][j] = (dcomplex***)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex**),
-	                                                    "TmpNLp[i][j]");
-	for (k=0; k<basis_m_dim; k++){
-	  TmpNLp[i][j][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)rvps_dim,sizeof(dcomplex*),
-	                                                        "TmpNLp[i][j][k]");
-	  for (l=0; l<rvps_dim; l++){
-	    TmpNLp[i][j][k][l] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-	                                                            "TmpNLp[i][j][k][l]");
-	  }
-	}
-      }
-    }
-
-    SumNL0 = (double***)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(double**),"SumNL0");
-    for (i=0; i<basis_l_dim; i++){
-      SumNL0[i] = (double**)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(double*),
-                                                    "SumNL0[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-	SumNL0[i][j] = (double*)SetNonlocal_MallocArray((size_t)rvps_sum_dim,sizeof(double),
-	                                                "SumNL0[i][j]");
-      }
-    }
-
-    SumNLr0 = (double***)SetNonlocal_MallocArray((size_t)basis_l_dim,sizeof(double**),"SumNLr0");
-    for (i=0; i<basis_l_dim; i++){
-      SumNLr0[i] = (double**)SetNonlocal_MallocArray((size_t)List_YOUSO[24],sizeof(double*),
-                                                     "SumNLr0[i]");
-      for (j=0; j<List_YOUSO[24]; j++){
-	SumNLr0[i][j] = (double*)SetNonlocal_MallocArray((size_t)rvps_sum_dim,sizeof(double),
-	                                                 "SumNLr0[i][j]");
-      }
-    }
-
-    CmatNL0 = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"CmatNL0");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNL0[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "CmatNL0[i]");
-    }
-
-    CmatNLr = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"CmatNLr");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNLr[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "CmatNLr[i]");
-    }
-
-    CmatNLt = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"CmatNLt");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNLt[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "CmatNLt[i]");
-    }
-
-    CmatNLp = (dcomplex**)SetNonlocal_MallocArray((size_t)basis_m_dim,sizeof(dcomplex*),"CmatNLp");
-    for (i=0; i<basis_m_dim; i++){
-      CmatNLp[i] = (dcomplex*)SetNonlocal_MallocArray((size_t)proj_m_dim,sizeof(dcomplex),
-                                                      "CmatNLp[i]");
-    }
-
-    rf_cache_elems = SetNonlocal_CheckedMulCount(
-                       SetNonlocal_CheckedMulCount((size_t)basis_l_dim,(size_t)List_YOUSO[24],
-                                                   "RF_BesselCache elements"),
-                       (size_t)grid_dim,"RF_BesselCache elements");
-    RF_BesselCache = (double*)SetNonlocal_MallocArray(rf_cache_elems,sizeof(double),
-                                                      "RF_BesselCache");
-
-    nlrf_cache_elems = SetNonlocal_CheckedMulCount((size_t)rvps_dim,(size_t)grid_dim,
-                                                   "NLRF_BesselCache elements");
-    NLRF_BesselCache[0] = (double*)SetNonlocal_MallocArray(nlrf_cache_elems,sizeof(double),
-                                                           "NLRF_BesselCache[0]");
-    NLRF_BesselCache[1] = (double*)SetNonlocal_MallocArray(nlrf_cache_elems,sizeof(double),
-                                                           "NLRF_BesselCache[1]");
-
-    bessel_workspace = openmx_core_pair_bessel_create(max_Lmax_Four_Int,grid_dim,
-        Normk_grid,bessel_cache_entries > 0 ? (size_t)bessel_cache_entries : 0,
-        bessel_error,sizeof(bessel_error));
-    if (bessel_workspace == NULL) {
-      fprintf(stderr,"Set_Nonlocal: %s\n",bessel_error);
-      abort();
-    }
-
-    cached_Cwan = -1;
-    cached_Hwan[0] = -1;
-    cached_Hwan[1] = -1;
-
-    /* get info. on OpenMP */
-
-    OMPID = omp_get_thread_num();
-    Nthrds = omp_get_num_threads();
-    Nprocs = omp_get_num_procs();
-
-    /* one-dimensionalized loop */
-
-    for (Nloop=OMPID*OneD_Nloop/Nthrds; Nloop<(OMPID+1)*OneD_Nloop/Nthrds; Nloop++){
-
-      dtime(&Stime_atom);
-
-      /* get Mc_AN and h_AN */
-
-      Mc_AN = OneD2Mc_AN[Nloop];
-      h_AN  = OneD2h_AN[Nloop];
-
-      /* set data on Mc_AN */
-
-      Gc_AN = M2G[Mc_AN];
-      Cwan = WhatSpecies[Gc_AN];
-
-      /* set data on h_AN */
-
-      Gh_AN = natn[Gc_AN][h_AN];
-      Rnh = ncn[Gc_AN][h_AN];
-      Hwan = WhatSpecies[Gh_AN];
-
-      dx = Gxyz[Gh_AN][1] + atv[Rnh][1] - Gxyz[Gc_AN][1];
-      dy = Gxyz[Gh_AN][2] + atv[Rnh][2] - Gxyz[Gc_AN][2];
-      dz = Gxyz[Gh_AN][3] + atv[Rnh][3] - Gxyz[Gc_AN][3];
-
-      xyz2spherical(dx,dy,dz,0.0,0.0,0.0,S_coordinate);
-      r     = S_coordinate[0];
-      theta = S_coordinate[1];
-      phi   = S_coordinate[2];
-
-      /* for empty atoms or finite elemens basis */
-
-      if (r<1.0e-10) r = 1.0e-10;
-
-      /* precalculation of sin and cos */
-
-      siT = sin(theta);
-      coT = cos(theta);
-      siP = sin(phi);
-      coP = cos(phi);
-
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      h = grid_h;
-
-      if (cached_Cwan != Cwan){
-        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-          for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-            int rf_offset;
-
-            rf_offset = (L0*List_YOUSO[24] + Mul0)*grid_dim;
-            for (i=0; i<grid_dim; i++){
-              RF_BesselCache[rf_offset + i] = RF_BesselF(Cwan,L0,Mul0,Normk_grid[i]);
-            }
-          }
-        }
-        cached_Cwan = Cwan;
-      }
-
-      Lmax = -10;
-      for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-        if (Lmax<Spe_VPS_List[Hwan][L]) Lmax = Spe_VPS_List[Hwan][L];
-      }
-      if (Spe_MaxL_Basis[Cwan]<Lmax)
-        Lmax_Four_Int = 2*Lmax;
-      else
-        Lmax_Four_Int = 2*Spe_MaxL_Basis[Cwan];
-
-      OpenMXPairBesselTable bessel_table;
-      if (!openmx_core_pair_bessel_sample(bessel_workspace,r,Lmax_Four_Int,
-          &bessel_table,bessel_error,sizeof(bessel_error))) {
-        fprintf(stderr,"Set_Nonlocal: %s\n",bessel_error);
-        abort();
-      }
-      SphB = bessel_table.values;
-      SphBp = bessel_table.derivatives;
-
-      for (so=0; so<=VPS_j_dependency[Hwan]; so++){
-
-	/****************************************************
-           Evaluate ovelap integrals <chi0|P> between PAOs
-           and progectors of nonlocal potentials.
-	****************************************************/
-	/****************************************************
-                \int RL(k)*RL'(k)*jl(k*R) k^2 dk^3
-	****************************************************/
-
-	for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-	    for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-	      L1 = Spe_VPS_List[Hwan][L];
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-		  TmpNL[L0][Mul0][L0+M0][L][L1+M1]  = Complex(0.0,0.0);
-		  TmpNLr[L0][Mul0][L0+M0][L][L1+M1] = Complex(0.0,0.0);
-		  TmpNLt[L0][Mul0][L0+M0][L][L1+M1] = Complex(0.0,0.0);
-		  TmpNLp[L0][Mul0][L0+M0][L][L1+M1] = Complex(0.0,0.0);
-		}
-	      }
-	    }
-	  }
-	}
-
-        if (cached_Hwan[so] != Hwan){
-          for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-            int nlrf_offset;
-
-            nlrf_offset = L*grid_dim;
-            for (i=0; i<grid_dim; i++){
-              NLRF_BesselCache[so][nlrf_offset + i] = NLRF_BesselF(Hwan,L,so,Normk_grid[i]);
-            }
-          }
-          cached_Hwan[so] = Hwan;
-        }
-
-	/* LL loop */
-
-	for(LL=0; LL<=Lmax_Four_Int; LL++){
-
-	  for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	    for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-	      for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-		SumNL0[L0][Mul0][L] = 0.0;
-		SumNLr0[L0][Mul0][L] = 0.0;
-	      }
-	    }
-	  }
-
-	  for (i=0; i<grid_dim; i++){
-
-	    if (i==0 || i==(grid_dim-1)) coe0 = 0.50;
-	    else                      coe0 = 1.00;
-
-	    Normk = Normk_grid[i];
-
-	    sj  =  SphB[LL*grid_dim + i];
-	    sjp = SphBp[LL*grid_dim + i];
-
-	    for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	      for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-
-		Bessel_Pro0 = RF_BesselCache[(L0*List_YOUSO[24] + Mul0)*grid_dim + i];
-		tmp0 = coe0*h*Normk*Normk*Bessel_Pro0;
-		tmp1 = tmp0*sj;
-		tmp2 = tmp0*Normk*sjp;
-
-		for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-
-		  Bessel_Pro1 = NLRF_BesselCache[so][L*grid_dim + i];
-
-		  tmp3 = tmp1*Bessel_Pro1;
-		  tmp4 = tmp2*Bessel_Pro1;
-		  SumNL0[L0][Mul0][L]  += tmp3;
-		  SumNLr0[L0][Mul0][L] += tmp4;
-		}
-	      }
-	    }
-	  }
-
-	  /* derivatives of "on site" */
-	  if (h_AN==0){
-	    for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	      for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-		for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-		  SumNLr0[L0][Mul0][L] = 0.0;
-		}
-	      }
-	    }
-	  }
-
-	  /****************************************************
-            For "overlap",
-            sum_m 8*(-i)^{-L0+L1+l}*
-                  C_{L0,-M0,L1,M1,l,m}*
-                  \int RL(k)*RL'(k)*jl(k*R) k^2 dk^3,
-	  ****************************************************/
-
-	  for(m=-LL; m<=LL; m++){
-
-	    ComplexSH(LL,m,theta,phi,SH,dSHt,dSHp);
-	    SH[1]   = -SH[1];
-	    dSHt[1] = -dSHt[1];
-	    dSHp[1] = -dSHp[1];
-
-	    CY  = Complex(SH[0],SH[1]);
-	    CYt = Complex(dSHt[0],dSHt[1]);
-	    CYp = Complex(dSHp[0],dSHp[1]);
-
-	    for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	      for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-		for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-
-		  L1 = Spe_VPS_List[Hwan][L];
-		  Ls = -L0 + L1 + LL;
-
-		  if (abs(L1-LL)<=L0 && L0<=(L1+LL) ){
-
-		    Cpow = Im_pow(-1,Ls);
-		    CY1  = Cmul(Cpow,CY);
-		    CYt1 = Cmul(Cpow,CYt);
-		    CYp1 = Cmul(Cpow,CYp);
-
-		    for (M0=-L0; M0<=L0; M0++){
-
-		      M1 = M0 - m;
-
-		      if (abs(M1)<=L1){
-
-			gant = Gaunt(L0,M0,L1,M1,LL,m);
-
-			/* S */
-
-			tmp0 = gant*SumNL0[L0][Mul0][L];
-			Ctmp2 = CRmul(CY1,tmp0);
-			TmpNL[L0][Mul0][L0+M0][L][L1+M1] =
-			  Cadd(TmpNL[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
-
-			/* dS/dr */
-
-			tmp0 = gant*SumNLr0[L0][Mul0][L];
-			Ctmp2 = CRmul(CY1,tmp0);
-			TmpNLr[L0][Mul0][L0+M0][L][L1+M1] =
-			  Cadd(TmpNLr[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
-
-			/* dS/dt */
-
-			tmp0 = gant*SumNL0[L0][Mul0][L];
-			Ctmp2 = CRmul(CYt1,tmp0);
-			TmpNLt[L0][Mul0][L0+M0][L][L1+M1] =
-			  Cadd(TmpNLt[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
-
-			/* dS/dp */
-
-			tmp0 = gant*SumNL0[L0][Mul0][L];
-			Ctmp2 = CRmul(CYp1,tmp0);
-			TmpNLp[L0][Mul0][L0+M0][L][L1+M1] =
-			  Cadd(TmpNLp[L0][Mul0][L0+M0][L][L1+M1],Ctmp2);
-
-		      }
-		    }
-		  }
-
-		}
-	      }
-	    }
-	  }
-	} /* LL */
-
-	/****************************************************
-                           complex to real
-	****************************************************/
-
-	num0 = 0;
-	for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-
-	    num1 = 0;
-	    for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-	      L1 = Spe_VPS_List[Hwan][L];
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumNL0 = Complex(0.0,0.0);
-		  CsumNLr = Complex(0.0,0.0);
-		  CsumNLt = Complex(0.0,0.0);
-		  CsumNLp = Complex(0.0,0.0);
-
-		  for (k=-L0; k<=L0; k++){
-
-		    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
-
-		    /* S */
-
-		    Ctmp0 = TmpNL[L0][Mul0][L0+k][L][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNL0 = Cadd(CsumNL0,Ctmp2);
-
-		    /* dS/dr */
-
-		    Ctmp0 = TmpNLr[L0][Mul0][L0+k][L][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNLr = Cadd(CsumNLr,Ctmp2);
-
-		    /* dS/dt */
-
-		    Ctmp0 = TmpNLt[L0][Mul0][L0+k][L][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNLt = Cadd(CsumNLt,Ctmp2);
-
-		    /* dS/dp */
-
-		    Ctmp0 = TmpNLp[L0][Mul0][L0+k][L][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNLp = Cadd(CsumNLp,Ctmp2);
-
-		  }
-
-		  CmatNL0[L0+M0][L1+M1] = CsumNL0;
-		  CmatNLr[L0+M0][L1+M1] = CsumNLr;
-		  CmatNLt[L0+M0][L1+M1] = CsumNLt;
-		  CmatNLp[L0+M0][L1+M1] = CsumNLp;
-		}
-	      }
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumNL0 = Complex(0.0,0.0);
-		  CsumNLr = Complex(0.0,0.0);
-		  CsumNLt = Complex(0.0,0.0);
-		  CsumNLp = Complex(0.0,0.0);
-
-		  for (k=-L1; k<=L1; k++){
-
-		    /* S */
-
-		    Ctmp1 = Cmul(CmatNL0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNL0 = Cadd(CsumNL0,Ctmp1);
-
-		    /* dS/dr */
-
-		    Ctmp1 = Cmul(CmatNLr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNLr = Cadd(CsumNLr,Ctmp1);
-
-		    /* dS/dt */
-
-		    Ctmp1 = Cmul(CmatNLt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNLt = Cadd(CsumNLt,Ctmp1);
-
-		    /* dS/dp */
-
-		    Ctmp1 = Cmul(CmatNLp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNLp = Cadd(CsumNLp,Ctmp1);
-
-		  }
-
-		  DS_NL[so][0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumNL0.r;
-
-		  if (h_AN!=0){
-
-		    if (fabs(siT)<10e-14){
-
-		      DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r);
-
-		      DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r);
-
-		      DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumNLr.r - siT/r*CsumNLt.r);
-
-		    }
-
-		    else{
-
-		      DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r
-			     - siP/siT/r*CsumNLp.r);
-
-		      DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r
-			     + coP/siT/r*CsumNLp.r);
-
-		      DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumNLr.r - siT/r*CsumNLt.r);
-
-		    }
-		  }
-
-		  else{
-		    DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		  }
-
-		}
-	      }
-
-	      num1 = num1 + 2*L1 + 1;
-	    }
-
-	    num0 = num0 + 2*L0 + 1;
-	  }
-	}
-      } /* so */
-
-
-      dtime(&Etime_atom);
-#pragma omp atomic
-      time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-
-    } /* Mc_AN */
-
-    /* freeing of arrays */
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatNLp[i]);
-    }
-    free(CmatNLp);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatNLt[i]);
-    }
-    free(CmatNLt);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatNLr[i]);
-    }
-    free(CmatNLr);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatNL0[i]);
-    }
-    free(CmatNL0);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	free(SumNLr0[i][j]);
-      }
-      free(SumNLr0[i]);
-    }
-    free(SumNLr0);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	free(SumNL0[i][j]);
-      }
-      free(SumNL0[i]);
-    }
-    free(SumNL0);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<List_YOUSO[19]; l++){
-	    free(TmpNLp[i][j][k][l]);
-	  }
-	  free(TmpNLp[i][j][k]);
-	}
-	free(TmpNLp[i][j]);
-      }
-      free(TmpNLp[i]);
-    }
-    free(TmpNLp);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<List_YOUSO[19]; l++){
-	    free(TmpNLt[i][j][k][l]);
-	  }
-	  free(TmpNLt[i][j][k]);
-	}
-	free(TmpNLt[i][j]);
-      }
-      free(TmpNLt[i]);
-    }
-    free(TmpNLt);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<List_YOUSO[19]; l++){
-	    free(TmpNLr[i][j][k][l]);
-	  }
-	  free(TmpNLr[i][j][k]);
-	}
-	free(TmpNLr[i][j]);
-      }
-      free(TmpNLr[i]);
-    }
-    free(TmpNLr);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<List_YOUSO[19]; l++){
-	    free(TmpNL[i][j][k][l]);
-	  }
-	  free(TmpNL[i][j][k]);
-	}
-	free(TmpNL[i][j]);
-      }
-      free(TmpNL[i]);
-    }
-    free(TmpNL);
-
-    openmx_core_pair_bessel_destroy(bessel_workspace);
-    free(NLRF_BesselCache[1]);
-    free(NLRF_BesselCache[0]);
-    free(RF_BesselCache);
-
-#pragma omp flush(DS_NL)
-
-    } /* #pragma omp parallel */
-  }
+  if (!DSNL_on_device)
+    SetNonlocal_CalcDSNL_CPU(DS_NL,Normk_grid,grid_dim,grid_h,
+        OneD2Mc_AN,OneD2h_AN,OneD_Nloop,bessel_cache_entries);
 
   if (measure_time || SetNonlocal_ProfileEnabled()){
     dtime(&etime);

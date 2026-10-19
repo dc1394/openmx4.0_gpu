@@ -3,6 +3,7 @@
 #include "openmx_core_neutral.h"
 #include "openmx_core_pair_bessel.h"
 #include "openmx_core_overlap.h"
+#include "openmx_core_nonlocal.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -13,6 +14,7 @@
 #include <openmx/core/fft_grid.hpp>
 #include <openmx/core/pair_bessel.hpp>
 #include <openmx/core/overlap_workspace.hpp>
+#include <openmx/core/nonlocal_workspace.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -33,6 +35,14 @@ struct OpenMXPairBesselWorkspace {
 struct OpenMXOverlapWorkspace {
   explicit OpenMXOverlapWorkspace(openmx::core::OverlapShape shape) : implementation(shape) {}
   openmx::core::OverlapWorkspace implementation;
+};
+
+struct OpenMXNonlocalWorkspace {
+  OpenMXNonlocalWorkspace(openmx::core::NonlocalShape shape,
+      std::span<const openmx::core::NonlocalSpecies> species,
+      std::span<const double> wavevectors, std::size_t limit)
+    : implementation(shape,species,wavevectors,limit) {}
+  openmx::core::NonlocalWorkspace implementation;
 };
 
 namespace {
@@ -330,6 +340,74 @@ extern "C" void openmx_core_overlap_statistics(const OpenMXOverlapWorkspace* wor
 }
 
 extern "C" void openmx_core_overlap_destroy(OpenMXOverlapWorkspace* workspace)
+{
+  delete workspace;
+}
+
+extern "C" OpenMXNonlocalWorkspace* openmx_core_nonlocal_create(const OpenMXNonlocalShape* shape,
+    OpenMXNonlocalBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXNonlocalWorkspace* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!shape || !buffers || shape->species <= 0 || !shape->projector_counts ||
+        shape->points < 0 || (shape->points && !shape->wavevectors))
+      throw std::invalid_argument("invalid nonlocal shape, views or radial grid");
+    std::vector<openmx::core::NonlocalSpecies> species;
+    for (int s = 0; s < shape->species; ++s) {
+      const int count = shape->projector_counts[s];
+      if (count < 0 || (count && (!shape->projector_angular || !shape->projector_angular[s])))
+        throw std::invalid_argument("invalid nonlocal projector input row");
+      species.push_back({count ? std::span<const int>(shape->projector_angular[s]+1,
+          static_cast<std::size_t>(count)) : std::span<const int>{}});
+    }
+    const auto grid = shape->points ? std::span<const double>(shape->wavevectors,
+        static_cast<std::size_t>(shape->points)) : std::span<const double>{};
+    auto owner = std::make_unique<OpenMXNonlocalWorkspace>(openmx::core::NonlocalShape{
+        shape->maximum_angular,shape->multiplicity,shape->projector_maximum_angular},
+        species,grid,shape->bessel_cache_limit);
+    auto& work = owner->implementation;
+    const auto& layout = work.projectors();
+    OpenMXNonlocalBuffers views{};
+    views.multiplicity = shape->multiplicity;
+    views.projector_slots = static_cast<int>(layout.slots());
+    views.orbital_capacity = work.angular().extent(1);
+    views.projector_capacity = work.angular().extent(2);
+    views.conversion_columns = work.conversion().extent(2);
+    views.projector_counts = layout.counts().data();
+    views.projector_angular = layout.angular().data();
+    views.species_offsets = layout.species_offsets().data();
+    views.projector_offsets = layout.offsets().data();
+    for (int channel = 0; channel < 4; ++channel) {
+      views.angular[channel] = work.angular().data_handle()+channel*views.orbital_capacity*views.projector_capacity;
+      views.conversion[channel] = work.conversion().data_handle()
+          +channel*work.conversion().extent(1)*views.conversion_columns;
+    }
+    if (shape->points) {
+      views.radial = work.radial().data_handle();
+      for (int channel = 0; channel < 2; ++channel) {
+        views.sums[channel] = work.sums().data_handle()+channel*work.sums().extent(1)*work.sums().extent(2);
+        views.nonlocal_radial[channel] = work.nonlocal_radial().data_handle()
+            +channel*work.nonlocal_radial().extent(1)*work.nonlocal_radial().extent(2);
+      }
+    }
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" int openmx_core_nonlocal_sample(OpenMXNonlocalWorkspace* workspace, double distance,
+    int angular, OpenMXPairBesselTable* table, char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!workspace || !table) throw std::invalid_argument("missing nonlocal Bessel workspace or output");
+    const auto values = workspace->implementation.sample(distance,angular).values;
+    *table = {values.data_handle(),&openmx::core::element(values,1,0,0),
+              values.extent(2),static_cast<std::size_t>(angular+1)};
+  });
+}
+
+extern "C" void openmx_core_nonlocal_destroy(OpenMXNonlocalWorkspace* workspace)
 {
   delete workspace;
 }

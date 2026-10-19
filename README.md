@@ -85,6 +85,9 @@ contiguous table through mdspan without copying it or allocating per pair.
 Overlap/kinetic integral scratch matrices also use a per-thread C++ owner;
 packed orbital indices replace their six-level pointer tables, and angular
 assembly reads the radial results directly without an intermediate copy.
+Nonlocal integrals use the same CPU evaluator in both backends. Their
+workspaces own projector metadata and pack magnetic components into contiguous
+arrays, replacing the temporary five-level pointer tables.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

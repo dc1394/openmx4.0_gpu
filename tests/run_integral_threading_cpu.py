@@ -40,11 +40,12 @@ spherical = (ROOT / "source/Spherical_Bessel.c").read_text()
 cache = olp[olp.index("#define OLPKIN_BESSEL_CACHE_DEFAULT"):
             olp.index("/* Runtime phase profiling")]
 profile = function(olp, "static int SetOLP_ProfileEnabled(void)")
+nonlocal_profile = function(nonlocal_source, "static int SetNonlocal_ProfileEnabled(void)")
 bessel = function(spherical, "void Spherical_Bessel(")
 
 # Extract the actual update, including its synchronization, in each pair loop.
 updates = []
-for name, source in (("olp", olp), ("nonlocal", nonlocal_source)):
+for name, source in (("olp", olp), ("nonlocal", (ROOT / "source/openmx_nonlocal_cpu.h").read_text())):
     update = re.search(
         r"dtime\(&Etime_atom\);\s*\n"
         r"(?P<update>(?:#pragma omp atomic[^\n]*\n)?"
@@ -80,6 +81,15 @@ static void *worker(void *argument)
         OpenMXOverlapBuffers buffers;
         OpenMXOverlapWorkspace *overlap = openmx_core_overlap_create(&shape,&buffers,error,sizeof(error));
         assert(overlap != NULL);
+        const int projector_counts[2] = {2,0};
+        int projector_row[3] = {0,0,2};
+        int *projector_rows[2] = {projector_row,NULL};
+        const OpenMXNonlocalShape nonlocal_shape = {2+call,2,2,2,projector_counts,
+            projector_rows,grid_points,wavevectors,(size_t)cache_max};
+        OpenMXNonlocalBuffers nonlocal_buffers;
+        OpenMXNonlocalWorkspace *nonlocal = openmx_core_nonlocal_create(
+            &nonlocal_shape,&nonlocal_buffers,error,sizeof(error));
+        assert(nonlocal != NULL);
         const size_t last = openmx_core_overlap_pair(&buffers,2+call,1,2*(2+call),2+call,1,2*(2+call));
         const double marker = 1.0+tid+call*THREADS;
         assert(buffers.angular[7][last].r == 0.0);
@@ -92,6 +102,8 @@ static void *worker(void *argument)
             OpenMXPairBesselTable overlap_table;
             assert(openmx_core_overlap_sample(overlap,r,lmax,&overlap_table,error,sizeof(error)));
             assert(buffers.angular[7][last].r == marker);
+            OpenMXPairBesselTable nonlocal_table;
+            assert(openmx_core_nonlocal_sample(nonlocal,r,lmax,&nonlocal_table,error,sizeof(error)));
             for (int i = 0; i < grid_points; ++i) {
                 double sb[40], dsb[40];
                 Spherical_Bessel((0.1 + i * 0.5) * r, lmax, sb, dsb);
@@ -101,6 +113,8 @@ static void *worker(void *argument)
                     const size_t offset = (size_t)l * grid_points + i;
                     assert(table.values[offset] == sb[l]);
                     assert(table.derivatives[offset] == dsb[l]);
+                    assert(nonlocal_table.values[offset] == sb[l]);
+                    assert(nonlocal_table.derivatives[offset] == dsb[l]);
                     assert(overlap_table.values[offset] == overlap_sb[l]);
                     assert(overlap_table.derivatives[offset] == overlap_dsb[l]);
                 }
@@ -113,6 +127,7 @@ static void *worker(void *argument)
         openmx_core_overlap_statistics(overlap,&hits,&misses);
         assert(hits == 90 && misses == 6);
         openmx_core_overlap_destroy(overlap);
+        openmx_core_nonlocal_destroy(nonlocal);
     }
     pthread_barrier_wait(&start_gate);
     for (int i = 0; i < UPDATES; ++i) {
@@ -126,6 +141,10 @@ int main(void)
 {
     pthread_t threads[THREADS];
     setenv("OPENMX_OLPKIN_BESSEL_CACHE_MAX", "8", 1);
+    setenv("OPENMX_BAND_PROFILE", "1", 1);
+    assert(SetNonlocal_ProfileEnabled() == 1);
+    setenv("OPENMX_BAND_PROFILE", "0", 1);
+    assert(SetNonlocal_ProfileEnabled() == 0);
     setenv("OPENMX_BAND_PROFILE", "1", 1);
     assert(pthread_barrier_init(&start_gate, NULL, THREADS) == 0);
     for (long t = 0; t < THREADS; ++t)
@@ -147,8 +166,9 @@ with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
                    '#include "openmx_core.h"\n'
                    '#include "openmx_core_pair_bessel.h"\n'
                    '#include "openmx_core_overlap.h"\n'
+                   '#include "openmx_core_nonlocal.h"\n'
                    "static double time_per_atom[1];\n"
-                   + cache + profile + bessel + "\n".join(updates) + HARNESS)
+                   + cache + profile + nonlocal_profile + bessel + "\n".join(updates) + HARNESS)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2 -g"))
     subprocess.run(compiler + flags + ["-std=c11", "-fopenmp", "-pthread",

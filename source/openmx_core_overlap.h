@@ -3,6 +3,7 @@
 
 #include "openmx_complex.h"
 #include "openmx_core_pair_bessel.h"
+#include "openmx_core_orbitals.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +36,7 @@ typedef struct {
 static inline size_t openmx_core_overlap_orbital(int multiplicity,
     int angular, int radial, int magnetic_index)
 {
-  return (size_t)multiplicity*angular*angular + (size_t)radial*(2*angular+1) + magnetic_index;
+  return openmx_core_orbital_index(multiplicity,angular,radial,magnetic_index);
 }
 static inline size_t openmx_core_overlap_pair(const OpenMXOverlapBuffers *buffers,
     int l0, int radial0, int magnetic0, int l1, int radial1, int magnetic1)
