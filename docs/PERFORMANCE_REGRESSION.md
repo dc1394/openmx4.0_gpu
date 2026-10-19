@@ -214,3 +214,33 @@ HIP の Force4B の共有 GPU 制御、GeForce と A100/H100 の既存方針は�
 入力・実行条件・バイナリとコアの SHA-256・全物理量・処理別時間は
 `build/nonlocal-workspace-migration/{before-gpu,after-gpu,after-cpu}/result.json` に保存しています。
 Intel 版との照合は同ディレクトリの `cpu-intel-comparison.json` にあります。
+
+## VNA2/VNA3 の作業領域とバッチ状態を移行した後の確認
+
+第10段階は `67ac8d9d` の実行ファイルとコアを保存して移行しました。
+同じ `sidia333_nc_cluster.dat`、216原子・140³格子・25 SCF、
+18 MPI × 1 OpenMP で、性能測定中はほかの計算を実行していません。
+比較元の時間は第9段階の保存済みの測定記録です。
+
+| 実行経路 | Total Computational Time (秒) | MPI 起動を含む経過時間 (秒) |
+| --- | ---: | ---: |
+| 第9段階 GPU＋MPS（`67ac8d9d`） | 104.011 | 107.720 |
+| VNA2/VNA3 作業領域の移行後 GPU＋MPS | 103.802 | 107.517 |
+| 第9段階 CPU（`67ac8d9d`） | 760.342 | 763.219 |
+| VNA2/VNA3 作業領域の移行後 CPU | 755.005 | 757.912 |
+| Intel コンパイラ版 CPU（保存済みの比較記録） | 800.460 | 803.226 |
+
+RTX 5080＋MPS で約105秒の実行時間を維持しました。移行前後のエネルギーは
+出力桁で一致し、全 Force 成分の最大差は `1.01e-12 Ha/bohr` 以下です。
+CPU も第9段階の結果とエネルギー・全 Force 成分が出力桁で一致し、
+Intel 版に比肩する性能を維持しました。Intel 版との最大差はエネルギー
+`7.30e-11 Ha` 以下、Force `1.23e-10 Ha/bohr` 以下です。
+GPU カーネルの式、GeForce のメモリ予算と容量復旧、A100/H100 の方針、
+Radeon 向け半径積分と Force4B の最適化は変更していません。
+この作業機で Radeon、MI300、A100/H100 の実機を再測定した結果は含みません。
+単一回の比較であり、全体の速度向上の主張には使いません。
+
+入力、実行条件、バイナリとコアのハッシュ、全物理量と処理別時間は
+`build/vna-workspace-migration/after-{gpu,cpu}/result.json` に保存しています。
+保存した比較元は第9段階の測定に使ったバイナリ・コアとハッシュで一致しています。
+Intel 版との照合結果は同ディレクトリの `cpu-intel-comparison.json` にあります。

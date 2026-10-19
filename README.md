@@ -88,6 +88,9 @@ assembly reads the radial results directly without an intermediate copy.
 Nonlocal integrals use the same CPU evaluator in both backends. Their
 workspaces own projector metadata and pack magnetic components into contiguous
 arrays, replacing the temporary five-level pointer tables.
+VNA2/VNA3 also share one CPU evaluator with per-thread RAII workspaces;
+packed orbital matrices and reusable Bessel tables replace six-level pointer
+tables and per-pair allocation. Their GPU batch state belongs to each call.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

@@ -137,6 +137,7 @@ if(BUILD_TESTING)
   set(_dense_kernel_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_dense_workers_cpu.py")
   set(_worker_admission_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_workers_cpu.py")
   set(_integral_thread_test "${CMAKE_SOURCE_DIR}/tests/run_integral_threading_cpu.py")
+  set(_vna_workspace_test "${CMAKE_SOURCE_DIR}/tests/run_vna_workspace_cpu.py")
   if(_backend STREQUAL "HIP")
     set(_dense_kernel_test "${CMAKE_BINARY_DIR}/native/tests/run_gpu_dense_workers_cpu.py")
     set(_worker_admission_test "${CMAKE_BINARY_DIR}/native/tests/run_gpu_workers_cpu.py")
@@ -147,6 +148,9 @@ if(BUILD_TESTING)
   add_test(NAME integral-threading COMMAND "${Python3_EXECUTABLE}" "${_integral_thread_test}")
   set_tests_properties(integral-threading PROPERTIES
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
+  add_test(NAME vna-workspace-integrals COMMAND "${Python3_EXECUTABLE}" "${_vna_workspace_test}")
+  set_tests_properties(vna-workspace-integrals PROPERTIES
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;OPENMX_VNA_SOURCE=${_native}/Set_ProExpn_VNA.c" TIMEOUT 120)
   if(_backend STREQUAL "CUDA")
     add_test(NAME force-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force4b_archived_cpu.py")

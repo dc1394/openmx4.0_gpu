@@ -4,6 +4,7 @@
 #include "openmx_core_pair_bessel.h"
 #include "openmx_core_overlap.h"
 #include "openmx_core_nonlocal.h"
+#include "openmx_core_vna.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -15,6 +16,7 @@
 #include <openmx/core/pair_bessel.hpp>
 #include <openmx/core/overlap_workspace.hpp>
 #include <openmx/core/nonlocal_workspace.hpp>
+#include <openmx/core/vna_workspace.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -43,6 +45,11 @@ struct OpenMXNonlocalWorkspace {
       std::span<const double> wavevectors, std::size_t limit)
     : implementation(shape,species,wavevectors,limit) {}
   openmx::core::NonlocalWorkspace implementation;
+};
+
+struct OpenMXVnaWorkspace {
+  explicit OpenMXVnaWorkspace(openmx::core::VnaShape shape) : implementation(shape) {}
+  openmx::core::VnaWorkspace implementation;
 };
 
 namespace {
@@ -408,6 +415,43 @@ extern "C" int openmx_core_nonlocal_sample(OpenMXNonlocalWorkspace* workspace, d
 }
 
 extern "C" void openmx_core_nonlocal_destroy(OpenMXNonlocalWorkspace* workspace)
+{
+  delete workspace;
+}
+
+extern "C" OpenMXVnaWorkspace* openmx_core_vna_create(const OpenMXVnaShape* shape,
+    OpenMXVnaBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXVnaWorkspace* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!shape || !buffers) throw std::invalid_argument("missing neutral-potential workspace shape or views");
+    auto owner = std::make_unique<OpenMXVnaWorkspace>(openmx::core::VnaShape{
+        shape->maximum_angular,shape->multiplicity,shape->points});
+    auto& work = owner->implementation;
+    OpenMXVnaBuffers views{};
+    views.multiplicity = shape->multiplicity;
+    views.points = shape->points;
+    views.orbital_capacity = work.angular().extent(1);
+    views.magnetic_capacity = work.conversion().extent(1);
+    views.bessel_orders = work.bessel().extent(1);
+    views.scratch_capacity = work.scratch().extent(1);
+    for (int channel = 0; channel < 4; ++channel) {
+      views.angular[channel] = work.angular().data_handle()
+          +channel*views.orbital_capacity*views.orbital_capacity;
+      views.conversion[channel] = work.conversion().data_handle()
+          +channel*views.magnetic_capacity*views.magnetic_capacity;
+    }
+    for (int channel = 0; channel < 2; ++channel) {
+      views.bessel[channel] = work.bessel().data_handle()+channel*views.bessel_orders*views.points;
+      views.scratch[channel] = work.scratch().data_handle()+channel*views.scratch_capacity;
+    }
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" void openmx_core_vna_destroy(OpenMXVnaWorkspace* workspace)
 {
   delete workspace;
 }

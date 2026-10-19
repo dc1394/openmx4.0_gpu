@@ -31,6 +31,7 @@
 #include "openmx_gpu_task.h"
 #include "openmx_host_memory.h"
 #include "openmx_precision.h"
+#include "openmx_vna_gpu_context.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include "mpi.h"
 #include <omp.h>
@@ -38,10 +39,10 @@
 extern int openmx_gpu_is_apu(void);
 
 static double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK);
-static double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK);
-static double Set_VNA3(double *****HVNA3, double *GL_NormK);
-static int SetPro_VNA23_GpuBegin(void);
-static void SetPro_VNA23_GpuEnd(void);
+static double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK, SetProGpu3Context *gpu);
+static double Set_VNA3(double *****HVNA3, double *GL_NormK, SetProGpu3Context *gpu);
+static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g);
+static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g);
 /* forward: SetPro_DSVNA_GpuBegin releases its tables through this when the
    device-memory check sends the DS_VNA build down the CPU path */
 static void SetPro_DSVNA_GpuEnd(void);
@@ -65,6 +66,7 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
 {
   double time1,time2,time3;
   int vna23_gpu;
+  SetProGpu3Context gpu3 = {0};
   /* Invocation-owned wavevectors, also borrowed by synchronous GPU batches. */
   double GL_NormK[GL_Mesh];
   const double dk = PAO_Nkmax-Radial_kmin, sk = PAO_Nkmax+Radial_kmin;
@@ -79,17 +81,17 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
 
   /* batched device path for the one-centre pair integrals */
 
-  vna23_gpu = SetPro_VNA23_GpuBegin();
+  vna23_gpu = SetPro_VNA23_GpuBegin(&gpu3);
 
   /* one-center (orbitals) but two-center integrals, <Phi_{LM,L'M'}|VNA> */
 
-  time2 = Set_VNA2(HVNA, HVNA2, GL_NormK);
+  time2 = Set_VNA2(HVNA, HVNA2, GL_NormK, &gpu3);
 
   /* one-center (orbitals) but two-center integrals, <VNA|Phi_{LM,L'M'}> */
 
-  time3 = Set_VNA3(HVNA3, GL_NormK);
+  time3 = Set_VNA3(HVNA3, GL_NormK, &gpu3);
 
-  if (vna23_gpu) SetPro_VNA23_GpuEnd();
+  if (vna23_gpu) SetPro_VNA23_GpuEnd(&gpu3);
 
   SetPro_note("exit","Set_ProExpn %.2f s, Set_VNA2 %.2f s, Set_VNA3 %.2f s",time1,time2,time3);
 
@@ -199,13 +201,9 @@ static int SetPro_gpu_stage_enabled(const char *stage_name)
    with the device memory free at that moment, on stderr.  Rank-local. */
 static int SetPro_verbose(void)
 {
-  static int verbose = -1;
+  const char *env = getenv("OPENMX_SETPRO_VERBOSE");
+  return env!=NULL && env[0]!='\0' && atoi(env)!=0;
 
-  if (verbose<0){
-    const char *env = getenv("OPENMX_SETPRO_VERBOSE");
-    verbose = (env!=NULL && env[0]!='\0' && atoi(env)!=0) ? 1 : 0;
-  }
-  return verbose;
 }
 
 static double SetPro_free_mib(void)
@@ -2547,29 +2545,7 @@ static void SetPro_DSVNA_GpuRun(Type_DS_VNA *****matrix,int count,int *mc,int *h
    keep the exact CPU loop order.                                      */
 /* ------------------------------------------------------------------ */
 
-typedef struct {
-  int enabled;
-  int chunk;            /* admitted pair batch, shared by sizing and execution */
-  int l0max;            /* max Spe_MaxL_Basis                          */
-  int lfi_max;          /* 2*l0max                                     */
-  int cmb_max;
-  int tno_max;
-  int mn_max;           /* tno_max^2                                   */
 
-  int *sp_lfi;          /* [spe] 2*Spe_MaxL_Basis                      */
-  int *sp_ncmb;
-  int *sp_tno;
-  int *cmb_L0;          /* [spe*cmb_max+c]                             */
-  int *cmb_num0;
-
-  double *crude;        /* [spe][GL_Mesh]                              */
-  double *prod;         /* [spe][c0][c1][LL][GL_Mesh] (c0<=c1 pairs)   */
-  double *gnt2;         /* (-1)^|m| Gaunt(L0,M0,L1,M1,LL,-m), m=M1-M0  */
-  double *c2r;
-  int *c2r_off;
-} SetProGpu3Context;
-
-static SetProGpu3Context SetPro_gpu3 = { 0 };
 
 /* full pair-chunk length of the HVNA2/HVNA3 device pipeline; the admitted
    length g->chunk (halved until the footprint fits the rank's budget) is
@@ -2611,9 +2587,8 @@ static size_t SetPro_VNA23_DeviceBytes(const SetProGpu3Context *g)
   return bytes;
 }
 
-static int SetPro_VNA23_GpuBegin(void)
+static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g)
 {
-  SetProGpu3Context *g = &SetPro_gpu3;
   int spe,L0,Mul0,L1,Mul1,LL,i,c0,c1,k;
   size_t free_bytes = 0,total_bytes = 0;
   int node_ranks = 1,node_rank = 0;
@@ -2779,9 +2754,8 @@ static int SetPro_VNA23_GpuBegin(void)
   return 1;
 }
 
-static void SetPro_VNA23_GpuEnd(void)
+static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g)
 {
-  SetProGpu3Context *g = &SetPro_gpu3;
 
   if (!g->enabled) return;
 
@@ -3323,8 +3297,8 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
   free(pr_siT);
   free(pr_r);
 }
-static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,int *mc,int *h, double *GL_NormK)
-{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,&SetPro_gpu3, GL_NormK);}
+static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,int *mc,int *h,double *GL_NormK,SetProGpu3Context *g)
+{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,g,GL_NormK);}
 
 
 double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
@@ -4688,7 +4662,9 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
 
 
 
-double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK)
+#include "openmx_vna_cpu.h"
+
+double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK, SetProGpu3Context *gpu)
 {
   /****************************************************
    Evaluate matrix elements of one-center (orbitals)
@@ -4697,685 +4673,45 @@ double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK)
 
    <Phi_{LM,L'M'}|VNA>
   ****************************************************/
-  static int firsttime=1;
-  int L2,L3,L,GL,i,j;
-  int k,kl,h_AN,Gh_AN,Rnh,Ls,n;
-  int tno0,tno1,tno2,i1,j1,p;
-  int Cwan,Hwan,fan,jg,kg,wakg,Lmax;
-  int size_TmpHNA;
-  int Mc_AN,Gc_AN,Mj_AN,num,size1,size2;
-  double time0;
-  double tmp2,tmp3,tmp4,tmp5;
-  double TStime,TEtime;
-  int Num_RVNA;
+  int Mc_AN,Gc_AN,Cwan,h_AN,i,j;
+  double time0,TStime,TEtime;
   /* for OpenMP */
   int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
 
   dtime(&TStime);
 
-  /****************************************************
-  allocation of arrays:
-  ****************************************************/
-
-  size_TmpHNA = (List_YOUSO[25]+1)*List_YOUSO[24]*
-                (2*(List_YOUSO[25]+1)+1)*
-                (List_YOUSO[25]+1)*List_YOUSO[24]*
-                (2*(List_YOUSO[25]+1)+1);
-
-  /* PrintMemory */
-  if (firsttime) {
-    PrintMemory("Set_ProExpn_VNA: TmpHNA",sizeof(double)*size_TmpHNA,NULL);
-    PrintMemory("Set_ProExpn_VNA: TmpHNAr",sizeof(double)*size_TmpHNA,NULL);
-    PrintMemory("Set_ProExpn_VNA: TmpHNAt",sizeof(double)*size_TmpHNA,NULL);
-    PrintMemory("Set_ProExpn_VNA: TmpHNAp",sizeof(double)*size_TmpHNA,NULL);
-
-    firsttime=0;
-  }
-
   /* one-dimensionalize the Mc_AN and h_AN loops */
 
   OneD_Nloop = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
+    Gc_AN = M2G[Mc_AN];
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
       OneD_Nloop++;
     }
-  }  
+  }
 
   OneD2Mc_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
   OneD2h_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
 
   OneD_Nloop = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
+    Gc_AN = M2G[Mc_AN];
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD2Mc_AN[OneD_Nloop] = Mc_AN; 
-      OneD2h_AN[OneD_Nloop] = h_AN; 
+      OneD2Mc_AN[OneD_Nloop] = Mc_AN;
+      OneD2h_AN[OneD_Nloop] = h_AN;
       OneD_Nloop++;
     }
   }
 
-  if (SetPro_gpu3.enabled){
-    SetPro_VNA23_GpuRun(HVNA2, 0, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK);
+  if (gpu->enabled){
+    SetPro_VNA23_GpuRun(HVNA2, 0, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK, gpu);
   }
 
-  if (!SetPro_gpu3.enabled){
+  if (!gpu->enabled){
 
-#pragma omp parallel shared(List_YOUSO,time_per_atom,HVNA2,Comp2Real,GL_Weight,Spe_ProductRF_Bessel,Spe_CrudeVNA_Bessel,GL_NormK,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) 
-  {         
-    int OMPID,Nthrds,Nprocs,Nloop;
-    int Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN;
-    int Rnh,Hwan,L0,Mul0,L1,Mul1,M0,M1,LL;
-    int Lmax_Four_Int,i,j,k,l,m,num0,num1;
-    double dx,dy,dz;
-    double siT,coT,siP,coP;
-    double Normk,kmin,kmax,Sk,Dk;
-    double gant,r,theta,phi;
-    double SH[2],dSHt[2],dSHp[2];
-    double S_coordinate[3];
-    double Stime_atom,Etime_atom;
-    double sum,sumr,sj,sjp,tmp0,tmp1,tmp10;
-    double **SphB,**SphBp;
-    double *tmp_SphB,*tmp_SphBp;
+    SetPro_VNA23_CPU(HVNA2,0,GL_NormK,OneD_Nloop,OneD2Mc_AN,OneD2h_AN);
 
-    dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
-    dcomplex Csum,Csumr,Csumt,Csump;
-    dcomplex CsumS0,CsumSr,CsumSt,CsumSp;
-    dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
-    dcomplex **CmatS0;
-    dcomplex **CmatSr;
-    dcomplex **CmatSt;
-    dcomplex **CmatSp;
-    dcomplex ******TmpHNA;
-    dcomplex ******TmpHNAr;
-    dcomplex ******TmpHNAt;
-    dcomplex ******TmpHNAp;
-
-    /* allocation of arrays */
-
-    TmpHNA = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNA[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNA[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNA[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNA[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNA[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    TmpHNAr = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNAr[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNAr[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNAr[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNAr[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNAr[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    TmpHNAt = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNAt[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNAt[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNAt[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNAt[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNAt[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    TmpHNAp = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNAp[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNAp[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNAp[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNAp[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNAp[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    CmatS0 = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatS0[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    CmatSr = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatSr[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    CmatSt = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatSt[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    CmatSp = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatSp[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    /* get info. on OpenMP */ 
-
-    OMPID = omp_get_thread_num();
-    Nthrds = omp_get_num_threads();
-    Nprocs = omp_get_num_procs();
-
-    /* one-dimensionalized loop */
-
-    for (Nloop=OMPID*OneD_Nloop/Nthrds; Nloop<(OMPID+1)*OneD_Nloop/Nthrds; Nloop++){
-
-      dtime(&Stime_atom);
-
-      /* get Mc_AN and h_AN */
-
-      Mc_AN = OneD2Mc_AN[Nloop];
-      h_AN  = OneD2h_AN[Nloop];
-
-      /* set data on Mc_AN */
-
-      Gc_AN = M2G[Mc_AN];
-      Cwan = WhatSpecies[Gc_AN];
-
-      /* set data on h_AN */
-
-      Gh_AN = natn[Gc_AN][h_AN];        
-      Rnh = ncn[Gc_AN][h_AN];
-      Hwan = WhatSpecies[Gh_AN];
-
-      dx = Gxyz[Gh_AN][1] + atv[Rnh][1] - Gxyz[Gc_AN][1]; 
-      dy = Gxyz[Gh_AN][2] + atv[Rnh][2] - Gxyz[Gc_AN][2]; 
-      dz = Gxyz[Gh_AN][3] + atv[Rnh][3] - Gxyz[Gc_AN][3];
-
-      xyz2spherical(dx,dy,dz,0.0,0.0,0.0,S_coordinate); 
-      r     = S_coordinate[0];
-      theta = S_coordinate[1];
-      phi   = S_coordinate[2];
-
-      /* for empty atoms or finite elemens basis */
-
-      if (r<1.0e-10) r = 1.0e-10;
-
-      /* precalculation of sin and cos */
-
-      siT = sin(theta);
-      coT = cos(theta);
-      siP = sin(phi);
-      coP = cos(phi);
-
-      /****************************************************
-         evaluate ovelap integrals <Phi_{LM,L'M'}|VNA>
-         between VNA and PAO.
-      ****************************************************/
-      /****************************************************
-       \int VNA(k)*Spe_ProductRF_Bessel(k)*jl(k*R) k^2 dk^3 
-      ****************************************************/
-
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-
-      for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[Cwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Cwan][L1]; Mul1++){
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-		  TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		  TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		  TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		  TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		}
-	      }
-	    }
-	  }
-	}
-      }
-
-      /* allocate SphB and SphBp */
-
-      Lmax_Four_Int = 2*Spe_MaxL_Basis[Cwan];
-
-      SphB = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	SphB[LL] = (double*)malloc(sizeof(double)*GL_Mesh);
-      }
-
-      SphBp = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	SphBp[LL] = (double*)malloc(sizeof(double)*GL_Mesh);
-      }
-
-      tmp_SphB  = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-      tmp_SphBp = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-
-      /* calculate SphB and SphBp */
-#ifdef kcomp
-#else 
-#pragma forceinline recursive
-#endif      
-      for (i=0; i<GL_Mesh; i++){
-	Normk = GL_NormK[i];
-	Spherical_Bessel2(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-	for(LL=0; LL<=Lmax_Four_Int; LL++){ 
-	  SphB[LL][i]  = tmp_SphB[LL]; 
-	  SphBp[LL][i] = tmp_SphBp[LL]; 
-	}
-      }
-
-      free(tmp_SphB);
-      free(tmp_SphBp);
-
-      /* loops for L0, Mul0, L1, and Mul1 */
-
-      for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[Cwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Cwan][L1]; Mul1++){
-
-	      if (L0<=L1){
-		Lmax_Four_Int = 2*L1;
-
-		/* sum over LL */
-
-		for(LL=0; LL<=Lmax_Four_Int; LL++){ 
-
-		  if (__builtin_abs(L1-LL)<=L0 && L0<=(L1+LL) ){
-
-		    sum  = 0.0;
-		    sumr = 0.0;
-
-		    /* Gauss-Legendre quadrature */
-
-		    for (i=0; i<GL_Mesh; i++){
-
-		      Normk = GL_NormK[i];
-
-		      sj  =  SphB[LL][i];
-		      sjp = SphBp[LL][i];
-
-		      tmp0 = Spe_CrudeVNA_Bessel[Hwan][i];
-		      tmp1 = Spe_ProductRF_Bessel[Cwan][L0][Mul0][L1][Mul1][LL][i]; 
-		      tmp10 = 0.50*Dk*tmp0*tmp1*GL_Weight[i]*Normk*Normk;
-
-		      sum  += tmp10*sj;
-		      sumr += tmp10*sjp*Normk;
-		    }
-
-		    /* sum over m */
-
-		    for (M0=-L0; M0<=L0; M0++){
-		      for (M1=-L1; M1<=L1; M1++){
-
-			Csum = Complex(0.0,0.0);
-			Csumr = Complex(0.0,0.0);
-			Csumt = Complex(0.0,0.0);
-			Csump = Complex(0.0,0.0);
-
-			for(m=-LL; m<=LL; m++){ 
-
-			  if ( (M1-m)==M0){
-
-			    ComplexSH(LL,m,theta,phi,SH,dSHt,dSHp);
-			    CY  = Complex(SH[0],SH[1]);
-			    CYt = Complex(dSHt[0],dSHt[1]);
-			    CYp = Complex(dSHp[0],dSHp[1]);
-
-			    gant = pow(-1.0,(double)__builtin_abs(m))*Gaunt(L0,M0,L1,M1,LL,-m);
- 
-			    /* S */
-
-			    Ctmp2 = CRmul(CY,gant);          
-			    Csum = Cadd(Csum,Ctmp2);             
-
-			    /* dS/dt */
-                      
-			    Ctmp2 = CRmul(CYt,gant);          
-			    Csumt = Cadd(Csumt,Ctmp2);             
-                      
-			    /* dS/dp */
-                      
-			    Ctmp2 = CRmul(CYp,gant);          
-			    Csump = Cadd(Csump,Ctmp2);             
-			  }
-
-			}
-
-			/* S */
-			Ctmp1 = CRmul(Csum,sum);
-			TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-
-			/* dS/dr */
-			Ctmp1 = CRmul(Csum,sumr);
-			TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-
-			/* dS/dt */
-			Ctmp1 = CRmul(Csumt,sum);
-			TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-
-			/* dS/dp */
-			Ctmp1 = CRmul(Csump,sum);
-			TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-		      }
-		    }
-		  }
-		} /* LL */
-	      } /* if (L0<=L1) */
-	    }
-	  }
-	}
-      }
-
-      /* free SphB and SphBp */
-      
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	free(SphB[LL]);
-      }
-      free(SphB);
-
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	free(SphBp[LL]);
-      }
-      free(SphBp);
-
-      /* copy the upper part to the lower part */
-
-      for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[Cwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Cwan][L1]; Mul1++){
-	      if (L0<=L1){
-		for (M0=-L0; M0<=L0; M0++){
-		  for (M1=-L1; M1<=L1; M1++){
-
-		    TmpHNA[L1][Mul1][L1+M1][L0][Mul0][L0+M0] 
-		      = Conjg(TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1]); 
-
-		    TmpHNAr[L1][Mul1][L1+M1][L0][Mul0][L0+M0]
-		      = Conjg(TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1]);
- 
-		    TmpHNAt[L1][Mul1][L1+M1][L0][Mul0][L0+M0]
-		      = Conjg(TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1]); 
-
-		    TmpHNAp[L1][Mul1][L1+M1][L0][Mul0][L0+M0]
-		      = Conjg(TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1]); 
-
-		  }
-		}
-	      }
-	    }
-	  }
-	}
-      }
-
-      /****************************************************
- 	                 Complex to Real
-      ****************************************************/
-
-      num0 = 0;
-      for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-       
-	  num1 = 0;
-	  for (L1=0; L1<=Spe_MaxL_Basis[Cwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Cwan][L1]; Mul1++){
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumS0 = Complex(0.0,0.0);
-		  CsumSr = Complex(0.0,0.0);
-		  CsumSt = Complex(0.0,0.0);
-		  CsumSp = Complex(0.0,0.0);
-
-		  for (k=-L0; k<=L0; k++){
-
-		    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
-
-		    /* S */
-
-		    Ctmp0 = TmpHNA[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumS0 = Cadd(CsumS0,Ctmp2);
-
-		    /* dS/dr */
-
-		    Ctmp0 = TmpHNAr[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSr = Cadd(CsumSr,Ctmp2);
-
-		    /* dS/dt */
-
-		    Ctmp0 = TmpHNAt[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSt = Cadd(CsumSt,Ctmp2);
-
-		    /* dS/dp */
-
-		    Ctmp0 = TmpHNAp[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSp = Cadd(CsumSp,Ctmp2);
-
-		  }
-
-		  CmatS0[L0+M0][L1+M1] = CsumS0;
-		  CmatSr[L0+M0][L1+M1] = CsumSr;
-		  CmatSt[L0+M0][L1+M1] = CsumSt;
-		  CmatSp[L0+M0][L1+M1] = CsumSp;
-
-		}
-	      }
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumS0 = Complex(0.0,0.0);
-		  CsumSr = Complex(0.0,0.0);
-		  CsumSt = Complex(0.0,0.0);
-		  CsumSp = Complex(0.0,0.0);
-
-		  for (k=-L1; k<=L1; k++){
-
-		    /* S */ 
-
-		    Ctmp1 = Cmul(CmatS0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumS0 = Cadd(CsumS0,Ctmp1);
-
-		    /* dS/dr */ 
-
-		    Ctmp1 = Cmul(CmatSr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumSr = Cadd(CsumSr,Ctmp1);
-
-		    /* dS/dt */ 
-
-		    Ctmp1 = Cmul(CmatSt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumSt = Cadd(CsumSt,Ctmp1);
-
-		    /* dS/dp */ 
-
-		    Ctmp1 = Cmul(CmatSp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumSp = Cadd(CsumSp,Ctmp1);
-
-		  }
-
-		  HVNA2[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS0.r;
-
-		  if (h_AN!=0){
-
-		    if (fabs(siT)<10e-14){
-
-		      HVNA2[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r);
-
-		      HVNA2[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r);
-
-		      HVNA2[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-		    }
-
-		    else{
-
-		      HVNA2[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r
-			     - siP/siT/r*CsumSp.r);
-
-		      HVNA2[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r
-			     + coP/siT/r*CsumSp.r);
-
-		      HVNA2[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-		    }
-		  }
-		  else{
-		    HVNA2[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    HVNA2[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    HVNA2[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		  }
-
-		}
-	      }
-
-	      num1 = num1 + 2*L1 + 1; 
-	    }
-	  }
-
-	  num0 = num0 + 2*L0 + 1; 
-	}
-      }
-
-      dtime(&Etime_atom);
-      time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-
-    } /* Mc_AN */
-
-    /* freeing of arrays */
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNA[i][j][k][l][m]);
-	    }
-	    free(TmpHNA[i][j][k][l]);
-	  }
-	  free(TmpHNA[i][j][k]);
-	}
-	free(TmpHNA[i][j]);
-      }
-      free(TmpHNA[i]);
-    }
-    free(TmpHNA);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNAr[i][j][k][l][m]);
-	    }
-	    free(TmpHNAr[i][j][k][l]);
-	  }
-	  free(TmpHNAr[i][j][k]);
-	}
-	free(TmpHNAr[i][j]);
-      }
-      free(TmpHNAr[i]);
-    }
-    free(TmpHNAr);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNAt[i][j][k][l][m]);
-	    }
-	    free(TmpHNAt[i][j][k][l]);
-	  }
-	  free(TmpHNAt[i][j][k]);
-	}
-	free(TmpHNAt[i][j]);
-      }
-      free(TmpHNAt[i]);
-    }
-    free(TmpHNAt);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNAp[i][j][k][l][m]);
-	    }
-	    free(TmpHNAp[i][j][k][l]);
-	  }
-	  free(TmpHNAp[i][j][k]);
-	}
-	free(TmpHNAp[i][j]);
-      }
-      free(TmpHNAp[i]);
-    }
-    free(TmpHNAp);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatS0[i]);
-    }
-    free(CmatS0);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatSr[i]);
-    }
-    free(CmatSr);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatSt[i]);
-    }
-    free(CmatSt);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatSp[i]);
-    }
-    free(CmatSp);
-
-#pragma omp flush(HVNA2)
-
-  } /* #pragma omp parallel */
-
-  } /* if (!SetPro_gpu3.enabled) */
+  } /* if (!gpu->enabled) */
 
   /****************************************************
     HVNA[Mc_AN][0] = sum_{h_AN} HVNA2
@@ -5398,7 +4734,7 @@ double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK)
 	}
       }
     }
-  } 
+  }
 
   /****************************************************
   freeing of arrays:
@@ -5411,11 +4747,11 @@ double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK)
   dtime(&TEtime);
   time0 = TEtime - TStime;
   return time0;
-} 
+}
 
 
 
-double Set_VNA3(double *****HVNA3, double *GL_NormK)
+double Set_VNA3(double *****HVNA3, double *GL_NormK, SetProGpu3Context *gpu)
 {
   /****************************************************
    Evaluate matrix elements of one-center (orbitals)
@@ -5424,688 +4760,45 @@ double Set_VNA3(double *****HVNA3, double *GL_NormK)
 
    <VNA|Phi_{LM,L'M'}>
   ****************************************************/
-  static int firsttime=0; /* due to the same as in Set_VNA2 */
-  int L2,L3,L,GL,i,j;
-  int k,kl,h_AN,Gh_AN,Rnh,Ls,n;
-  int tno0,tno1,tno2,i1,j1,p;
-  int Cwan,Hwan,fan,jg,kg,wakg,Lmax;
-  int size_TmpHNA;
-  int Mc_AN,Gc_AN,Mj_AN,num,size1,size2;
-  double time0;
-  double tmp2,tmp3,tmp4,tmp5;
-  double TStime,TEtime;
-  int Num_RVNA;
-
+  int Mc_AN,Gc_AN,h_AN;
+  double time0,TStime,TEtime;
   /* for OpenMP */
   int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
 
   dtime(&TStime);
 
-  /****************************************************
-  allocation of arrays:
-  ****************************************************/
-
-  size_TmpHNA = (List_YOUSO[25]+1)*List_YOUSO[24]*
-                (2*(List_YOUSO[25]+1)+1)*
-                (List_YOUSO[25]+1)*List_YOUSO[24]*
-                (2*(List_YOUSO[25]+1)+1);
-
-  /* PrintMemory */
-  if (firsttime) {
-    PrintMemory("Set_ProExpn_VNA: TmpHNA",sizeof(double)*size_TmpHNA,NULL);
-    PrintMemory("Set_ProExpn_VNA: TmpHNAr",sizeof(double)*size_TmpHNA,NULL);
-    PrintMemory("Set_ProExpn_VNA: TmpHNAt",sizeof(double)*size_TmpHNA,NULL);
-    PrintMemory("Set_ProExpn_VNA: TmpHNAp",sizeof(double)*size_TmpHNA,NULL);
-
-    firsttime=0;
-  }
-
   /* one-dimensionalize the Mc_AN and h_AN loops */
 
   OneD_Nloop = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
+    Gc_AN = M2G[Mc_AN];
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
       OneD_Nloop++;
     }
-  }  
+  }
 
   OneD2Mc_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
   OneD2h_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
 
   OneD_Nloop = 0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
+    Gc_AN = M2G[Mc_AN];
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD2Mc_AN[OneD_Nloop] = Mc_AN; 
-      OneD2h_AN[OneD_Nloop] = h_AN; 
+      OneD2Mc_AN[OneD_Nloop] = Mc_AN;
+      OneD2h_AN[OneD_Nloop] = h_AN;
       OneD_Nloop++;
     }
   }
 
-  if (SetPro_gpu3.enabled){
-    SetPro_VNA23_GpuRun(HVNA3, 1, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK);
+  if (gpu->enabled){
+    SetPro_VNA23_GpuRun(HVNA3, 1, OneD_Nloop, OneD2Mc_AN, OneD2h_AN, GL_NormK, gpu);
   }
 
-  if (!SetPro_gpu3.enabled){
+  if (!gpu->enabled){
 
-#pragma omp parallel shared(List_YOUSO,time_per_atom,HVNA3,Comp2Real,GL_Weight,Spe_ProductRF_Bessel,Spe_CrudeVNA_Bessel,GL_NormK,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) 
-  {         
-    int OMPID,Nthrds,Nprocs,Nloop;
-    int Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN;
-    int Rnh,Hwan,L0,Mul0,L1,Mul1,M0,M1,LL;
-    int Lmax_Four_Int,i,j,k,l,m,num0,num1;
-    double dx,dy,dz;
-    double siT,coT,siP,coP;
-    double Normk,kmin,kmax,Sk,Dk;
-    double gant,r,theta,phi;
-    double SH[2],dSHt[2],dSHp[2];
-    double S_coordinate[3];
-    double Stime_atom,Etime_atom;
-    double sum,sumr,sj,sjp,tmp0,tmp1,tmp10;
-    double **SphB,**SphBp;
-    double *tmp_SphB,*tmp_SphBp;
+    SetPro_VNA23_CPU(HVNA3,1,GL_NormK,OneD_Nloop,OneD2Mc_AN,OneD2h_AN);
 
-    dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
-    dcomplex Csum,Csumr,Csumt,Csump;
-    dcomplex CsumS0,CsumSr,CsumSt,CsumSp;
-    dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
-    dcomplex **CmatS0;
-    dcomplex **CmatSr;
-    dcomplex **CmatSt;
-    dcomplex **CmatSp;
-    dcomplex ******TmpHNA;
-    dcomplex ******TmpHNAr;
-    dcomplex ******TmpHNAt;
-    dcomplex ******TmpHNAp;
-
-    /* allocation of arrays */
-
-    TmpHNA = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNA[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNA[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNA[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNA[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNA[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    TmpHNAr = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNAr[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNAr[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNAr[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNAr[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNAr[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    TmpHNAt = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNAt[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNAt[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNAt[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNAt[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNAt[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    TmpHNAp = (dcomplex******)malloc(sizeof(dcomplex*****)*(List_YOUSO[25]+1));
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      TmpHNAp[i] = (dcomplex*****)malloc(sizeof(dcomplex****)*List_YOUSO[24]);
-      for (j=0; j<List_YOUSO[24]; j++){
-	TmpHNAp[i][j] = (dcomplex****)malloc(sizeof(dcomplex***)*(2*(List_YOUSO[25]+1)+1));
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  TmpHNAp[i][j][k] = (dcomplex***)malloc(sizeof(dcomplex**)*(List_YOUSO[25]+1));
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    TmpHNAp[i][j][k][l] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[24]);
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      TmpHNAp[i][j][k][l][m] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-	    }
-	  }
-	}
-      }
-    }
-
-    CmatS0 = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatS0[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    CmatSr = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatSr[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    CmatSt = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatSt[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    CmatSp = (dcomplex**)malloc(sizeof(dcomplex*)*(2*(List_YOUSO[25]+1)+1));
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      CmatSp[i] = (dcomplex*)malloc(sizeof(dcomplex)*(2*(List_YOUSO[25]+1)+1));
-    }
-
-    /* get info. on OpenMP */ 
-
-    OMPID = omp_get_thread_num();
-    Nthrds = omp_get_num_threads();
-    Nprocs = omp_get_num_procs();
-
-    /* one-dimensionalized loop */
-
-    for (Nloop=OMPID*OneD_Nloop/Nthrds; Nloop<(OMPID+1)*OneD_Nloop/Nthrds; Nloop++){
-
-      dtime(&Stime_atom);
-
-      /* get Mc_AN and h_AN */
-
-      Mc_AN = OneD2Mc_AN[Nloop];
-      h_AN  = OneD2h_AN[Nloop];
-
-      /* set data on Mc_AN */
-
-      Gc_AN = M2G[Mc_AN];
-      Cwan = WhatSpecies[Gc_AN];
-
-      /* set data on h_AN */
-
-      Gh_AN = natn[Gc_AN][h_AN];        
-      Rnh = ncn[Gc_AN][h_AN];
-      Hwan = WhatSpecies[Gh_AN];
-
-      dx = Gxyz[Gc_AN][1] - Gxyz[Gh_AN][1] - atv[Rnh][1];
-      dy = Gxyz[Gc_AN][2] - Gxyz[Gh_AN][2] - atv[Rnh][2];
-      dz = Gxyz[Gc_AN][3] - Gxyz[Gh_AN][3] - atv[Rnh][3];
-
-      xyz2spherical(dx,dy,dz,0.0,0.0,0.0,S_coordinate); 
-      r     = S_coordinate[0];
-      theta = S_coordinate[1];
-      phi   = S_coordinate[2];
-
-      /* for empty atoms or finite elemens basis */
-
-      if (r<1.0e-10) r = 1.0e-10;
-
-      /* precalculation of sin and cos */
-
-      siT = sin(theta);
-      coT = cos(theta);
-      siP = sin(phi);
-      coP = cos(phi);
-
-      /****************************************************
-         evaluate ovelap integrals <Phi_{LM,L'M'}|VNA>
-         between VNA and PAO.
-      ****************************************************/
-      /****************************************************
-       \int VNA(k)*Spe_ProductRF_Bessel(k)*jl(k*R) k^2 dk^3 
-      ****************************************************/
-
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-
-      for (L0=0; L0<=Spe_MaxL_Basis[Hwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Hwan][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-		  TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		  TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		  TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		  TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0); 
-		}
-	      }
-	    }
-	  }
-	}
-      }
-
-      /* allocate SphB and SphBp */
-
-      Lmax_Four_Int = 2*Spe_MaxL_Basis[Hwan];
-
-      SphB = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	SphB[LL] = (double*)malloc(sizeof(double)*GL_Mesh);
-      }
-
-      SphBp = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	SphBp[LL] = (double*)malloc(sizeof(double)*GL_Mesh);
-      }
-
-      tmp_SphB  = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-      tmp_SphBp = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-
-      /* calculate SphB and SphBp */
-#ifdef kcomp
-#else 
-#pragma forceinline recursive
-#endif      
-      for (i=0; i<GL_Mesh; i++){
-	Normk = GL_NormK[i];
-	Spherical_Bessel2(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-	for(LL=0; LL<=Lmax_Four_Int; LL++){ 
-	  SphB[LL][i]  = tmp_SphB[LL]; 
-	  SphBp[LL][i] = tmp_SphBp[LL]; 
-	}
-      }
-
-      free(tmp_SphB);
-      free(tmp_SphBp);
-
-      /* loops for L0, Mul0, L1, and Mul1 */
-
-      for (L0=0; L0<=Spe_MaxL_Basis[Hwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Hwan][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-
-	      if (L0<=L1){
-
-		Lmax_Four_Int = 2*L1;
-
-		/* sum over LL */
-
-		for(LL=0; LL<=Lmax_Four_Int; LL++){ 
-
-		  if (__builtin_abs(L1-LL)<=L0 && L0<=(L1+LL) ){
-
-		    sum  = 0.0;
-		    sumr = 0.0;
-
-		    /* Gauss-Legendre quadrature */
-
-		    for (i=0; i<GL_Mesh; i++){
-
-		      Normk = GL_NormK[i];
-
-		      sj  =  SphB[LL][i];
-		      sjp = SphBp[LL][i];
-
-		      tmp0 = Spe_CrudeVNA_Bessel[Cwan][i];
-		      tmp1 = Spe_ProductRF_Bessel[Hwan][L0][Mul0][L1][Mul1][LL][i]; 
-		      tmp10 = 0.50*Dk*tmp0*tmp1*GL_Weight[i]*Normk*Normk;
-
-		      sum  += tmp10*sj;
-		      sumr += tmp10*sjp*Normk;
-		    }
-
-		    /* sum over m */
-
-		    for (M0=-L0; M0<=L0; M0++){
-		      for (M1=-L1; M1<=L1; M1++){
-
-			Csum = Complex(0.0,0.0);
-			Csumr = Complex(0.0,0.0);
-			Csumt = Complex(0.0,0.0);
-			Csump = Complex(0.0,0.0);
-
-			for(m=-LL; m<=LL; m++){ 
-
-			  if ( (M1-m)==M0){
-
-			    ComplexSH(LL,m,theta,phi,SH,dSHt,dSHp);
-			    CY  = Complex(SH[0],SH[1]);
-			    CYt = Complex(dSHt[0],dSHt[1]);
-			    CYp = Complex(dSHp[0],dSHp[1]);
-
-			    gant = pow(-1.0,(double)__builtin_abs(m))*Gaunt(L0,M0,L1,M1,LL,-m);
-
-			    /* S */
-
-			    Ctmp2 = CRmul(CY,gant);          
-			    Csum = Cadd(Csum,Ctmp2);             
-
-			    /* dS/dt */
-                      
-			    Ctmp2 = CRmul(CYt,gant);          
-			    Csumt = Cadd(Csumt,Ctmp2);             
-                      
-			    /* dS/dp */
-                      
-			    Ctmp2 = CRmul(CYp,gant);          
-			    Csump = Cadd(Csump,Ctmp2);             
-			  }
-
-			}
-
-			/* S */
-			Ctmp1 = CRmul(Csum,sum);
-			TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-
-			/* dS/dr */
-			Ctmp1 = CRmul(Csum,sumr);
-			TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-
-			/* dS/dt */
-			Ctmp1 = CRmul(Csumt,sum);
-			TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-
-			/* dS/dp */
-			Ctmp1 = CRmul(Csump,sum);
-			TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] 
-			  = Cadd(TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp1);
-		      }
-		    }
-		  }
-		} /* LL */
-	      } /* if (L0<=L1) */
-	    }
-	  }
-	}
-      }
-
-      /* free SphB and SphBp */
-      
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	free(SphB[LL]);
-      }
-      free(SphB);
-
-      for(LL=0; LL<(Lmax_Four_Int+3); LL++){ 
-	free(SphBp[LL]);
-      }
-      free(SphBp);
-
-      /* copy the upper part to the lower part */
-
-      for (L0=0; L0<=Spe_MaxL_Basis[Hwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Hwan][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-	      if (L0<=L1){
-		for (M0=-L0; M0<=L0; M0++){
-		  for (M1=-L1; M1<=L1; M1++){
-
-		    TmpHNA[L1][Mul1][L1+M1][L0][Mul0][L0+M0] 
-		      = Conjg(TmpHNA[L0][Mul0][L0+M0][L1][Mul1][L1+M1]); 
-
-		    TmpHNAr[L1][Mul1][L1+M1][L0][Mul0][L0+M0]
-		      = Conjg(TmpHNAr[L0][Mul0][L0+M0][L1][Mul1][L1+M1]);
- 
-		    TmpHNAt[L1][Mul1][L1+M1][L0][Mul0][L0+M0]
-		      = Conjg(TmpHNAt[L0][Mul0][L0+M0][L1][Mul1][L1+M1]); 
-
-		    TmpHNAp[L1][Mul1][L1+M1][L0][Mul0][L0+M0]
-		      = Conjg(TmpHNAp[L0][Mul0][L0+M0][L1][Mul1][L1+M1]); 
-
-		  }
-		}
-	      }
-	    }
-	  }
-	}
-      }
-
-      /****************************************************
- 	                 Complex to Real
-      ****************************************************/
-
-      num0 = 0;
-      for (L0=0; L0<=Spe_MaxL_Basis[Hwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Hwan][L0]; Mul0++){
-       
-	  num1 = 0;
-	  for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumS0 = Complex(0.0,0.0);
-		  CsumSr = Complex(0.0,0.0);
-		  CsumSt = Complex(0.0,0.0);
-		  CsumSp = Complex(0.0,0.0);
-
-		  for (k=-L0; k<=L0; k++){
-
-		    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
-
-		    /* S */
-
-		    Ctmp0 = TmpHNA[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumS0 = Cadd(CsumS0,Ctmp2);
-
-		    /* dS/dr */
-
-		    Ctmp0 = TmpHNAr[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSr = Cadd(CsumSr,Ctmp2);
-
-		    /* dS/dt */
-
-		    Ctmp0 = TmpHNAt[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSt = Cadd(CsumSt,Ctmp2);
-
-		    /* dS/dp */
-
-		    Ctmp0 = TmpHNAp[L0][Mul0][L0+k][L1][Mul1][L1+M1];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSp = Cadd(CsumSp,Ctmp2);
-
-		  }
-
-		  CmatS0[L0+M0][L1+M1] = CsumS0;
-		  CmatSr[L0+M0][L1+M1] = CsumSr;
-		  CmatSt[L0+M0][L1+M1] = CsumSt;
-		  CmatSp[L0+M0][L1+M1] = CsumSp;
-
-		}
-	      }
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumS0 = Complex(0.0,0.0);
-		  CsumSr = Complex(0.0,0.0);
-		  CsumSt = Complex(0.0,0.0);
-		  CsumSp = Complex(0.0,0.0);
-
-		  for (k=-L1; k<=L1; k++){
-
-		    /* S */ 
-
-
-		    Ctmp1 = Cmul(CmatS0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumS0 = Cadd(CsumS0,Ctmp1);
-
-		    /* dS/dr */ 
-
-		    Ctmp1 = Cmul(CmatSr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumSr = Cadd(CsumSr,Ctmp1);
-
-		    /* dS/dt */ 
-
-		    Ctmp1 = Cmul(CmatSt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumSt = Cadd(CsumSt,Ctmp1);
-
-		    /* dS/dp */ 
-
-		    Ctmp1 = Cmul(CmatSp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumSp = Cadd(CsumSp,Ctmp1);
-
-		  }
-
-		  HVNA3[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS0.r;
-
-		  if (h_AN!=0){
-
-		    if (fabs(siT)<10e-14){
-
-		      HVNA3[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r);
-
-		      HVNA3[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r);
-
-		      HVNA3[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-		    }
-
-		    else{
-
-		      HVNA3[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r
-			     - siP/siT/r*CsumSp.r);
-
-		      HVNA3[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r
-			     + coP/siT/r*CsumSp.r);
-
-		      HVNA3[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-		    }
-		  }
-		  else{
-		    HVNA3[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    HVNA3[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    HVNA3[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		  }
-
-		}
-	      }
-
-	      num1 = num1 + 2*L1 + 1; 
-	    }
-	  }
-
-	  num0 = num0 + 2*L0 + 1; 
-	}
-      }
-
-      dtime(&Etime_atom);
-      time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-
-    } /* Mc_AN */
-
-    /* freeing of arrays */
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNA[i][j][k][l][m]);
-	    }
-	    free(TmpHNA[i][j][k][l]);
-	  }
-	  free(TmpHNA[i][j][k]);
-	}
-	free(TmpHNA[i][j]);
-      }
-      free(TmpHNA[i]);
-    }
-    free(TmpHNA);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNAr[i][j][k][l][m]);
-	    }
-	    free(TmpHNAr[i][j][k][l]);
-	  }
-	  free(TmpHNAr[i][j][k]);
-	}
-	free(TmpHNAr[i][j]);
-      }
-      free(TmpHNAr[i]);
-    }
-    free(TmpHNAr);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNAt[i][j][k][l][m]);
-	    }
-	    free(TmpHNAt[i][j][k][l]);
-	  }
-	  free(TmpHNAt[i][j][k]);
-	}
-	free(TmpHNAt[i][j]);
-      }
-      free(TmpHNAt[i]);
-    }
-    free(TmpHNAt);
-
-    for (i=0; i<(List_YOUSO[25]+1); i++){
-      for (j=0; j<List_YOUSO[24]; j++){
-	for (k=0; k<(2*(List_YOUSO[25]+1)+1); k++){
-	  for (l=0; l<(List_YOUSO[25]+1); l++){
-	    for (m=0; m<List_YOUSO[24]; m++){
-	      free(TmpHNAp[i][j][k][l][m]);
-	    }
-	    free(TmpHNAp[i][j][k][l]);
-	  }
-	  free(TmpHNAp[i][j][k]);
-	}
-	free(TmpHNAp[i][j]);
-      }
-      free(TmpHNAp[i]);
-    }
-    free(TmpHNAp);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatS0[i]);
-    }
-    free(CmatS0);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatSr[i]);
-    }
-    free(CmatSr);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatSt[i]);
-    }
-    free(CmatSt);
-
-    for (i=0; i<(2*(List_YOUSO[25]+1)+1); i++){
-      free(CmatSp[i]);
-    }
-    free(CmatSp);
-
-#pragma omp flush(HVNA3)
-
-  } /* #pragma omp parallel */
-
-  } /* if (!SetPro_gpu3.enabled) */
+  } /* if (!gpu->enabled) */
 
   /****************************************************
   freeing of arrays:
@@ -6118,7 +4811,7 @@ double Set_VNA3(double *****HVNA3, double *GL_NormK)
   dtime(&TEtime);
   time0 = TEtime - TStime;
   return time0;
-} 
+}
 
 
 #define xmin  0.0

@@ -898,7 +898,7 @@ Set_OLP_Kin.o: Set_OLP_Kin.c openmx_common.h openmx_gpu_task.h openmx_core_overl
 	$(CC) -c Set_OLP_Kin.c
 Set_Nonlocal.o: Set_Nonlocal.c openmx_common.h openmx_core_pair_bessel.h openmx_nonlocal_cpu.h openmx_core_nonlocal.h openmx_core_orbitals.h
 	$(CC) -c Set_Nonlocal.c
-Set_ProExpn_VNA.o: Set_ProExpn_VNA.c openmx_common.h openmx_precision.h
+Set_ProExpn_VNA.o: Set_ProExpn_VNA.c openmx_common.h openmx_precision.h openmx_core_vna.h openmx_core_orbitals.h openmx_vna_cpu.h openmx_vna_gpu_context.h openmx_complex.h
 	$(CC) -c Set_ProExpn_VNA.c
 Set_ProExpn_VNA.o: openmx_mgpu_runtime.h
 Force.o: openmx_mgpu_runtime.h
