@@ -70,12 +70,14 @@ int openmx_mgpu_scope_devices(int *p,int capacity){assert(group_count<=capacity)
 void *openmx_mgpu_admit_devices(const int *p,int n){for(int i=0;i<n;i++)assert(p[i]>=0 && p[i]<64);pthread_mutex_lock(&admission);assert(!held);held=1;return &held;}
 void openmx_mgpu_release_devices(void *p){assert(p==&held && held);held=0;pthread_mutex_unlock(&admission);}
 int openmx_gpu_map_rank_to_device(int rank,int size,int count){return count>0?rank/((size+count-1)/count):-1;}
-typedef struct { const OpenMXGpuWorkers *pool;int fail_worker,fail_phase;
+typedef struct { const OpenMXGpuWorkers *pool;int fail_worker,fail_phase,overlap;
  int prepared[64],executed[64],committed[64],released[64];size_t offset[65];int *staging[64];int output[173]; } Job;
 static int callback(void *opaque,int worker,int phase){
  Job *j=opaque;
  assert(device==j->pool->devices[worker] && omp_device==device);
  assert(openmx_gpu_worker_device()==device && scope==0);
+ assert(held==(phase==OPENMX_GPU_WORKER_PREPARE || !j->overlap ||
+               (j->fail_worker>=0 && j->fail_phase==OPENMX_GPU_WORKER_PREPARE)));
  if(phase==OPENMX_GPU_WORKER_PREPARE){
   j->staging[worker]=malloc(173*sizeof(int));assert(j->staging[worker]);j->prepared[worker]++;
  }
@@ -101,6 +103,10 @@ static size_t uneven_cost(void *context,int worker,int count){
  (void)context;return (size_t)(count==1?5:worker?3:2)<<30;
 }
 int main(void){
+ unsetenv("OPENMX_GPU_WORKER_OVERLAP");
+ CHECK(!openmx_gpu_device_weak_fp64(0) && !openmx_gpu_worker_can_overlap(0));
+ setenv("OPENMX_GPU_WORKER_OVERLAP","1",1);
+ CHECK(!openmx_gpu_device_weak_fp64(0) && openmx_gpu_worker_can_overlap(0));
  /* Auto leaves other HIP devices untouched while the owner fits; when
     it does not, it uses the smallest admitted group, then reports CPU. */
  {OpenMXGpuWorkers p;size_t need=(size_t)1<<30;
@@ -174,20 +180,25 @@ int main(void){
  }
  permitted=4;device=omp_device=3;scope=11;
  openmx_gpu_workers_configure(0,1,4);
+ for(int mode=0;mode<4;mode++)
  for(int dynamic=0;dynamic<2;dynamic++)for(int workers=1;workers<=4;workers*=2)
  for(int failure=-1;failure<workers;failure++)for(int phase=0;phase<2;phase++){
   omp_set_dynamic(dynamic);group_first=4-workers;group_count=workers;
   OpenMXGpuWorkers p;openmx_gpu_workers_scope(&p,173);CHECK(p.count==workers);
   for(int i=0;i<workers;i++)CHECK(p.devices[i]==group_first+i);
+  setenv("OPENMX_GPU_WORKER_OVERLAP",mode==3?"1":mode==2?"0":"auto",1);
   Job j={0};j.pool=&p;j.fail_worker=failure;j.fail_phase=phase;
+  j.overlap=mode==3;
   for(int i=0;i<173;i++)j.output[i]=999;
   for(int i=0;i<=workers;i++)j.offset[i]=openmx_gpu_worker_cut(173,i,workers);
-  CHECK(openmx_gpu_workers_run(&p,callback,&j,"test")== (failure<0));
+  int completed=mode==0?openmx_gpu_workers_run(&p,callback,&j,"test"):
+                       openmx_gpu_workers_run_prepared(&p,callback,&j,"prepared");
+  CHECK(completed==(failure<0) && !held);
   CHECK(device==3 && omp_device==3 && scope==11 && openmx_gpu_worker_device()==-1);
   for(int i=0;i<workers;i++)CHECK(j.released[i]==1 && j.staging[i]==NULL);
   for(int i=0;i<173;i++)CHECK(j.output[i]==(failure<0?i*7-4:999));
  }
- puts("PASS: GPU worker ownership, limits, cuts, phase barriers, failure rollback, binding restoration and dynamic OpenMP teams");
+ puts("PASS: HIP worker ownership, cuts, default serialization, opt-in prepared overlap, rollback and binding restoration");
  printf("checks=%ld\n",checks);return 0;
 }
 '''

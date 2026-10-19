@@ -20,6 +20,7 @@
 #include <time.h>
 #include "openmx_common.h"
 #include "openmx_gpu_task.h"
+#include "openmx_core_pair_bessel.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -27,7 +28,8 @@ typedef struct {
   int grid_dim,grid_last,combo_count,h_AN,Lmax_Four_Int;
   size_t rf_cache_elems,sph_valid_elems,sum_valid_elems;
   double h;
-  double *norm,*rf0,*rf1,*sph,*sphp,*out[4];
+  double *norm,*rf0,*rf1,*out[4];
+  const double *sph,*sphp;
   int *off0,*off1;
 } OLPKinRadialWork;
 typedef struct {int grid_dim,grid_last,combo_count,h_AN;double h;} OLPKinRadialParameters;
@@ -100,8 +102,8 @@ static void OLPKin_Radial_Distribute(OLPKinRadialWork *w)
   t.view[0]=(OpenMXGpuTaskView){w->norm,(size_t)w->grid_dim*sizeof(double),0};
   t.view[1]=(OpenMXGpuTaskView){w->rf0,w->rf_cache_elems*sizeof(double),0};
   t.view[2]=(OpenMXGpuTaskView){w->rf1,w->rf_cache_elems*sizeof(double),0};
-  t.view[3]=(OpenMXGpuTaskView){w->sph,w->sph_valid_elems*sizeof(double),0};
-  t.view[4]=(OpenMXGpuTaskView){w->sphp,w->sph_valid_elems*sizeof(double),0};
+  t.view[3]=(OpenMXGpuTaskView){(void*)w->sph,w->sph_valid_elems*sizeof(double),0};
+  t.view[4]=(OpenMXGpuTaskView){(void*)w->sphp,w->sph_valid_elems*sizeof(double),0};
   t.view[5]=(OpenMXGpuTaskView){w->off0,(size_t)w->combo_count*sizeof(int),0};
   t.view[6]=(OpenMXGpuTaskView){w->off1,(size_t)w->combo_count*sizeof(int),0};
   for(int c=0;c<4;c++)t.view[7+c]=(OpenMXGpuTaskView){w->out[c],0,sizeof(double)};
@@ -183,83 +185,6 @@ static int OLPKin_Bessel_CacheMax(void)
   return (limit < 0) ? 0 : limit;
 }
 
-typedef struct {
-  double *keys;
-  int *key_lmax;
-  double *tab;
-  int count;
-  int cap;
-  int lmax;       /* the table layout: 2 * (lmax + 1) rows of gdim */
-  int gdim;
-  long hits;
-  long misses;
-} OLPKinBesselCache;
-
-/* the hit and miss counts of all threads of the last call (profile line) */
-static long OLPKin_bessel_hits = 0;
-static long OLPKin_bessel_misses = 0;
-
-static size_t OLPKin_Bessel_Stride(const OLPKinBesselCache *c)
-{
-  return 2u * (size_t)(c->lmax + 1) * (size_t)c->gdim;
-}
-
-static const double *OLPKin_Bessel_Lookup(OLPKinBesselCache *c, double r, int lmax)
-{
-  int i;
-
-  for (i = 0; i < c->count; i++) {
-    if (c->keys[i] == r && c->key_lmax[i] == lmax) {
-      c->hits++;
-      return c->tab + (size_t)i * OLPKin_Bessel_Stride(c);
-    }
-  }
-  c->misses++;
-  return NULL;
-}
-
-static void OLPKin_Bessel_Free(OLPKinBesselCache *c)
-{
-  free(c->keys);
-  free(c->key_lmax);
-  free(c->tab);
-  c->keys = NULL;
-  c->key_lmax = NULL;
-  c->tab = NULL;
-  c->count = 0;
-  c->cap = 0;
-}
-
-static double *OLPKin_Bessel_Insert(OLPKinBesselCache *c, double r, int lmax, int cache_max)
-{
-  if (c->count >= cache_max) {
-    return NULL;
-  }
-
-  if (c->count >= c->cap) {
-    int new_cap = (c->cap == 0) ? 64 : 2 * c->cap;
-    double *new_keys;
-    int *new_lmax;
-    double *new_tab;
-
-    if (new_cap > cache_max) new_cap = cache_max;
-    new_keys = (double*)realloc(c->keys, sizeof(double) * (size_t)new_cap);
-    new_lmax = (int*)realloc(c->key_lmax, sizeof(int) * (size_t)new_cap);
-    new_tab = (double*)realloc(c->tab, sizeof(double) * (size_t)new_cap * OLPKin_Bessel_Stride(c));
-    if (new_keys != NULL) c->keys = new_keys;
-    if (new_lmax != NULL) c->key_lmax = new_lmax;
-    if (new_tab != NULL) c->tab = new_tab;
-    if (new_keys == NULL || new_lmax == NULL || new_tab == NULL) {
-      return NULL;
-    }
-    c->cap = new_cap;
-  }
-
-  c->keys[c->count] = r;
-  c->key_lmax[c->count] = lmax;
-  return c->tab + (size_t)(c->count++) * OLPKin_Bessel_Stride(c);
-}
-
 /* Runtime phase profiling gated by OPENMX_BAND_PROFILE=1 (one OLPKPROF line
    per rank on stderr; zero overhead when the variable is unset). */
 typedef struct
@@ -269,8 +194,6 @@ typedef struct
   double gaunt;
   double c2r;
 } SetOLPKinProfileCounters;
-
-static SetOLPKinProfileCounters SetOLP_prof = {0};
 
 static int SetOLP_ProfileEnabled(void)
 {
@@ -294,6 +217,8 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
   int Mc_AN,Gc_AN,h_AN;
   int OneD_Nloop;
   int *OneD2Mc_AN,*OneD2h_AN;
+  SetOLPKinProfileCounters profile = {0};
+  long bessel_hits = 0, bessel_misses = 0;
   /* Resolve runtime options before entering OpenMP.  A lazy shared static
      initialization from the worker threads races on the first call. */
   const int bessel_cache_max = OLPKin_Bessel_CacheMax();
@@ -388,8 +313,8 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 #else
 	    int use_openacc_radial;
 #endif
-	    int use_bessel_cache;
-	    OLPKinBesselCache bessel_cache = {0};
+	    OpenMXPairBesselWorkspace *bessel_workspace;
+	    char bessel_error[256];
 	    int cached_Cwan,cached_Hwan;
 	    int combo_cached_Cwan,combo_cached_Hwan;
 	    int max_combo_count,combo_count,combo,grid_last;
@@ -407,9 +332,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
     double sj,sjp,coe0,coe1;
     double Normk,Normk2;
 	    double gant,SH[2],dSHt[2],dSHp[2];
-	    double **SphB,**SphBp;
-	    double *SphB_flat,*SphBp_flat;
-	    double *tmp_SphB,*tmp_SphBp;
+	    const double *SphB_flat,*SphBp_flat;
 	    double *Normk_grid;
 	    double *RF_BesselCache0,*RF_BesselCache1;
 	    double *sumS0_flat,*sumK0_flat,*sumSr0_flat,*sumKr0_flat;
@@ -512,9 +435,12 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 #else
 	    use_openacc_radial = radial_capacity;
 #endif
-	    use_bessel_cache = (0 < bessel_cache_max);
-	    bessel_cache.lmax = max_Lmax_Four_Int;
-	    bessel_cache.gdim = grid_dim;
+	    bessel_workspace = openmx_core_pair_bessel_create(max_Lmax_Four_Int,
+	        grid_dim,Normk_grid,(size_t)bessel_cache_max,bessel_error,sizeof(bessel_error));
+	    if (bessel_workspace == NULL) {
+	      fprintf(stderr,"Set_OLP_Kin: %s\n",bessel_error);
+	      abort();
+	    }
 
     /* one-dimensionalized loop */
 
@@ -602,69 +528,18 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
       else
         Lmax_Four_Int = 2*Spe_MaxL_Basis[Cwan];
 
-	      /* allocate SphB and SphBp */
-
 	      if (prof_enabled) dtime(&prof_t0_local);
-
-	      SphB = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-	      SphB[0] = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3)*grid_dim);
-	      SphB_flat = SphB[0];
-	      for(l=1; l<(Lmax_Four_Int+3); l++){
-	        SphB[l] = SphB[0] + l*grid_dim;
-	      }
-
-	      SphBp = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-	      SphBp[0] = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3)*grid_dim);
-	      SphBp_flat = SphBp[0];
-	      for(l=1; l<(Lmax_Four_Int+3); l++){
-	        SphBp[l] = SphBp[0] + l*grid_dim;
-	      }
-
-      tmp_SphB  = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-      tmp_SphBp = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-
-      /* calculate SphB and SphBp */
 
       h = (kmax - kmin)/(double)OneD_Grid;
 
-	      if (use_bessel_cache) {
-	        const double *hit = OLPKin_Bessel_Lookup(&bessel_cache, r, Lmax_Four_Int);
-
-	        if (hit != NULL) {
-	          for (l=0; l<=Lmax_Four_Int; l++){
-	            memcpy(SphB[l],  hit + (size_t)l*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
-	            memcpy(SphBp[l], hit + (size_t)(bessel_cache.lmax+1+l)*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
-	          }
-	        } else {
-	          double *slot = OLPKin_Bessel_Insert(&bessel_cache, r, Lmax_Four_Int, bessel_cache_max);
-
-	          for (i=0; i<grid_dim; i++){
-	            Spherical_Bessel(Normk_grid[i]*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-	            for(l=0; l<=Lmax_Four_Int; l++){
-	              SphB[l][i]  = tmp_SphB[l];
-	              SphBp[l][i] = tmp_SphBp[l];
-	            }
-	            if (slot != NULL) {
-	              for(l=0; l<=Lmax_Four_Int; l++){
-	                slot[(size_t)l*(size_t)grid_dim + (size_t)i] = tmp_SphB[l];
-	                slot[(size_t)(bessel_cache.lmax+1+l)*(size_t)grid_dim + (size_t)i] = tmp_SphBp[l];
-	              }
-	            }
-	          }
-	        }
-	      } else {
-	        for (i=0; i<grid_dim; i++){
-	          Normk = Normk_grid[i];
-	          Spherical_Bessel(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-	          for(l=0; l<=Lmax_Four_Int; l++){
-	            SphB[l][i]  = tmp_SphB[l];
-	            SphBp[l][i] = tmp_SphBp[l];
-	          }
-	        }
-	      }
-
-	      free(tmp_SphB);
-	      free(tmp_SphBp);
+      OpenMXPairBesselTable bessel_table;
+      if (!openmx_core_pair_bessel_sample(bessel_workspace,r,Lmax_Four_Int,
+          &bessel_table,bessel_error,sizeof(bessel_error))) {
+        fprintf(stderr,"Set_OLP_Kin: %s\n",bessel_error);
+        abort();
+      }
+      SphB_flat = bessel_table.values;
+      SphBp_flat = bessel_table.derivatives;
 
 	      if (prof_enabled) {
 	        dtime(&prof_t1_local);
@@ -759,8 +634,8 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 		      Normk = Normk_grid[i];
 		      Normk2 = Normk*Normk;
-		      sj  = SphB[l][i];
-		      sjp = SphBp[l][i];
+		      sj  = SphB_flat[(size_t)l*grid_dim+i];
+		      sjp = SphBp_flat[(size_t)l*grid_dim+i];
 		      tmp0 = coe0*h*Normk2*RF_BesselCache0[rf0_offset + i];
 		      tmp1 = tmp0*sj;
 		      tmp2 = tmp0*Normk*sjp;
@@ -917,14 +792,6 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	  }
         }
       } /* l */
-
-      /* free SphB and SphBp */
-
-	      free(SphB[0]);
-	      free(SphB);
-
-	      free(SphBp[0]);
-	      free(SphBp);
 
       if (prof_enabled) {
         dtime(&prof_t1_local);
@@ -1221,13 +1088,13 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
     if (prof_enabled) {
 #pragma omp atomic
-      SetOLP_prof.bessel += prof_bessel;
+      profile.bessel += prof_bessel;
 #pragma omp atomic
-      SetOLP_prof.radial += prof_radial;
+      profile.radial += prof_radial;
 #pragma omp atomic
-      SetOLP_prof.gaunt += prof_gaunt;
+      profile.gaunt += prof_gaunt;
 #pragma omp atomic
-      SetOLP_prof.c2r += prof_c2r;
+      profile.c2r += prof_c2r;
     }
 
 
@@ -1256,12 +1123,14 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    Free2D_dcomplex(CmatKp);
 
 	    if (prof_enabled) {
+      long thread_hits, thread_misses;
+      openmx_core_pair_bessel_statistics(bessel_workspace,&thread_hits,&thread_misses);
 #pragma omp atomic
-	      OLPKin_bessel_hits += bessel_cache.hits;
+	      bessel_hits += thread_hits;
 #pragma omp atomic
-	      OLPKin_bessel_misses += bessel_cache.misses;
+	      bessel_misses += thread_misses;
 	    }
-	    OLPKin_Bessel_Free(&bessel_cache);
+	    openmx_core_pair_bessel_destroy(bessel_workspace);
 
 	    free(Normk_grid);
 	    free(RF_BesselCache0);
@@ -1285,15 +1154,9 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
   if (prof_enabled) {
     fprintf(stderr, "OLPKPROF id=%d pairs=%d bessel=%.3f radial=%.3f gaunt=%.3f c2r=%.3f bhit=%ld bmiss=%ld\n", myid,
-            OneD_Nloop, SetOLP_prof.bessel, SetOLP_prof.radial, SetOLP_prof.gaunt, SetOLP_prof.c2r,
-            OLPKin_bessel_hits, OLPKin_bessel_misses);
-    memset(&SetOLP_prof, 0, sizeof(SetOLP_prof));
+            OneD_Nloop, profile.bessel, profile.radial, profile.gaunt, profile.c2r,
+            bessel_hits, bessel_misses);
   }
-
-  /* the exact-r keys cannot match once the geometry moves, so the table's
-     useful life ends with this call; give the memory back */
-  OLPKin_bessel_hits = 0;
-  OLPKin_bessel_misses = 0;
 
   free(OneD2h_AN);
   free(OneD2Mc_AN);

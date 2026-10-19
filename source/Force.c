@@ -7422,6 +7422,17 @@ decline:
     return 0;
 }
 
+static int Force4B_ArchiveGpuPreferred(int resident)
+{
+    int device;
+    if(resident || openmx_gpu_capacity_test_recovery())return 1;
+    const char *control=getenv("OPENMX_FORCE4B_ARCHIVE_GPU");
+    if(control && *control && strcmp(control,"auto")!=0)return atoi(control)!=0;
+    if(!gpu_rank_device_usable())return 1;
+    if(cudaGetDevice(&device)!=cudaSuccess)return 1;
+    return !openmx_gpu_device_weak_fp64(device);
+}
+
 static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int stream_case2)
 {
     Force4BGpuContext* g = &F4B_gpu;
@@ -7508,6 +7519,13 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
         need = (!stream_case2 && case1_bytes < case2_bytes ? case2_bytes : case1_bytes);
 
         resident=resident && free_bytes>reserve && (free_bytes-reserve)/(size_t)node_ranks>need;
+        /* Large archives serialize uploads and displace useful cache data on
+           weak-FP64 GPUs. Keep the fused CPU trace when the complete shared
+           lifetime does not fit; native-FP64 A100/H100 retain GPU recovery.
+           Resolve this collectively before allocating or exchanging archives. */
+        int selected=Force4B_ArchiveGpuPreferred(resident),all_selected;
+        MPI_Allreduce(&selected,&all_selected,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+        if(!all_selected)return 0;
         size_t archive1=(4U*g->flat_stride+g->halo_count)*sizeof(float),archive2=4U*g->c2_stride*sizeof(float);
         unsigned long long room=openmx_host_mem_available();
         int fit=resident || !room || (archive1>archive2?archive1:archive2)<=room/(2ULL*node_ranks),all_fit;

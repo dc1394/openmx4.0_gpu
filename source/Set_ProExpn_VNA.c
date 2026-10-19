@@ -226,6 +226,42 @@ static void SetPro_note(const char *stage, const char *fmt, ...)
   fflush(stderr);
 }
 
+/* PCI identities remain comparable when each rank has a different visible
+   CUDA ordinal. No GPU admission lock is held across these collectives. */
+static int SetPro_GpuSharing(MPI_Comm node_comm)
+{
+  enum {identity_bytes=64};
+  int ranks=1,device,sharing=0;
+  char identity[identity_bytes]={0};
+  MPI_Comm_size(node_comm,&ranks);
+  if(ranks<1)return 1;
+  if(gpu_rank_device_usable()){
+    if(cudaGetDevice(&device)==cudaSuccess &&
+       cudaDeviceGetPCIBusId(identity,sizeof(identity),device)!=cudaSuccess)
+      identity[0]='\0';
+    (void)cudaGetLastError();
+  }
+  char *identities=SetPro_checked_malloc((size_t)ranks*identity_bytes);
+  MPI_Allgather(identity,identity_bytes,MPI_CHAR,identities,identity_bytes,MPI_CHAR,node_comm);
+  if(identity[0])for(int rank=0;rank<ranks;rank++)
+    sharing+=strcmp(identity,identities+(size_t)rank*identity_bytes)==0;
+  free(identities);
+  return sharing>0?sharing:ranks;
+}
+
+static size_t SetPro_GpuBatchBudget(int sharing)
+{
+  int device;
+  size_t available=0,total=0;
+  const size_t reserve=(size_t)256*1024*1024;
+  /* Keep native-FP64 A100/H100 batch sizes. On GeForce, fit simultaneous
+     MPS preparations instead of making large batches evict their peers. */
+  if(!gpu_rank_device_usable() || cudaGetDevice(&device)!=cudaSuccess ||
+     !openmx_gpu_device_weak_fp64(device) ||
+     OpenMX_GpuMemGetInfo(&available,&total)!=cudaSuccess)return SIZE_MAX;
+  return available>reserve?(available-reserve)/(size_t)(sharing>0?sharing:1):0;
+}
+
 static int SetPro_HVNA_GpuBegin(Type_DS_VNA *****DS_VNA, int *VNA_List,
                                 int *VNA_List2, int Num_RVNA)
 {
@@ -1081,7 +1117,7 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
   SetProGpu2Context *g = &SetPro_gpu2;
   int spe,L0,Mul0,L,i,k,c;
   size_t free_bytes = 0,total_bytes = 0;
-  int node_ranks = 1,node_rank = 0;
+  int node_ranks = 1,node_rank = 0,device_ranks;
   MPI_Comm node_comm = MPI_COMM_NULL;
 
   memset(g,0,sizeof(*g));
@@ -1095,6 +1131,7 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
   MPI_Comm_size(node_comm,&node_ranks);
   MPI_Comm_rank(node_comm,&node_rank);
   if (node_ranks<1) node_ranks = 1;
+  device_ranks=SetPro_GpuSharing(node_comm);
   MPI_Comm_free(&node_comm);
 
   g->num_proj = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
@@ -1248,6 +1285,11 @@ static int SetPro_DSVNA_GpuBegin(int *VNA_List, int *VNA_List2, int Num_RVNA,
   /* The common task allocator selects owner, local peers, remote nodes,
      then CPU from the exact batch footprint. Keep host lookup tables. */
   g->chunk = SETPRO_DSVNA_CHUNK;
+  const size_t batch_budget=SetPro_GpuBatchBudget(device_ranks);
+  while(g->chunk>1 && SetPro_DSVNA_DeviceBytes(g)>batch_budget)g->chunk/=2;
+  /* Every rank must make the same number of collective task calls, including
+     mixed devices, nodes with different memory, and ranks without a GPU. */
+  MPI_Allreduce(MPI_IN_PLACE,&g->chunk,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   g->enabled = 1;
   return 1;
 }
@@ -1289,35 +1331,22 @@ static void SetPro_DSVNA_capacity_kernel(size_t first,size_t count,const void *p
  const int mesh=p->mesh;
  const int nM0=2*l0max_all+1,nM1=2*l1max+1,nLL=lfi_max+1,nm=2*lfi_max+1,nsh=(lfi_max+1)*(lfi_max+1);
  const size_t elem_per_pair=(size_t)cmb_max*nM0*num_rvna*nM1;
- double *pro00=v[0];
- double *pro01=v[1];
- double *vnab=v[2];
- double *gnt=v[3];
- double *c2r=v[4];
- int *c2r_off=v[5];
- int *sp_lfi=v[6];
- int *sp_ncmb=v[7];
- int *cmb_L0=v[8];
- int *cmb_num0=v[9];
- int *vna_L1=v[10];
- int *vna_num1=v[11];
- double *GL_NormK=v[12];
- double *pr_r=v[13];
- double *pr_siT=v[14];
- double *pr_coT=v[15];
- double *pr_siP=v[16];
- double *pr_coP=v[17];
- int *pr_spe=v[18];
- int *pr_hwan=v[19];
- int *pr_h0=v[20];
- int *pr_tno=v[21];
- double *sh_tab=v[22];
- float *outbuf=v[23];
- double *sphb=v[24];
- double *sphbp=v[25];
- double *sum0=v[26];
- double *sumr0=v[27];
- double *tmpnl=v[28];
+ /* Task views occupy disjoint arena slices. Preserve that information at
+    the numerical boundary instead of losing it through the void* table. */
+ const double *restrict pro00=v[0],*restrict pro01=v[1],*restrict vnab=v[2];
+ const double *restrict gnt=v[3],*restrict c2r=v[4];
+ const int *restrict c2r_off=v[5],*restrict sp_lfi=v[6],*restrict sp_ncmb=v[7];
+ const int *restrict cmb_L0=v[8],*restrict cmb_num0=v[9];
+ const int *restrict vna_L1=v[10],*restrict vna_num1=v[11];
+ const double *restrict GL_NormK=v[12],*restrict pr_r=v[13];
+ const double *restrict pr_siT=v[14],*restrict pr_coT=v[15];
+ const double *restrict pr_siP=v[16],*restrict pr_coP=v[17];
+ const int *restrict pr_spe=v[18],*restrict pr_hwan=v[19];
+ const int *restrict pr_h0=v[20],*restrict pr_tno=v[21];
+ const double *restrict sh_tab=v[22];
+ float *restrict outbuf=v[23];
+ double *restrict sphb=v[24],*restrict sphbp=v[25];
+ double *restrict sum0=v[26],*restrict sumr0=v[27],*restrict tmpnl=v[28];
 
 #pragma acc parallel loop deviceptr(outbuf) if(gpu)
  for(size_t i=0;i<(size_t)np*4*mn_max;i++)outbuf[i]=0;
@@ -1874,7 +1903,7 @@ static int SetPro_VNA23_GpuBegin(void)
   SetProGpu3Context *g = &SetPro_gpu3;
   int spe,L0,Mul0,L1,Mul1,LL,i,c0,c1,k;
   size_t free_bytes = 0,total_bytes = 0;
-  int node_ranks = 1,node_rank = 0;
+  int node_ranks = 1,node_rank = 0,device_ranks;
   MPI_Comm node_comm = MPI_COMM_NULL;
 
   memset(g,0,sizeof(*g));
@@ -1889,6 +1918,7 @@ static int SetPro_VNA23_GpuBegin(void)
   MPI_Comm_size(node_comm,&node_ranks);
   MPI_Comm_rank(node_comm,&node_rank);
   if (node_ranks<1) node_ranks = 1;
+  device_ranks=SetPro_GpuSharing(node_comm);
   MPI_Comm_free(&node_comm);
 
   g->sp_lfi = (int*)SetPro_checked_malloc(sizeof(int)*SpeciesNum);
@@ -2033,6 +2063,9 @@ static int SetPro_VNA23_GpuBegin(void)
   /* The common task allocator selects owner, local peers, remote nodes,
      then CPU from the exact batch footprint. Keep host lookup tables. */
   g->chunk = SETPRO_VNA23_CHUNK;
+  const size_t batch_budget=SetPro_GpuBatchBudget(device_ranks);
+  while(g->chunk>1 && SetPro_VNA23_DeviceBytes(g)>batch_budget)g->chunk/=2;
+  MPI_Allreduce(MPI_IN_PLACE,&g->chunk,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   g->enabled = 1;
   return 1;
 }
@@ -2070,32 +2103,16 @@ static void SetPro_VNA23_capacity_kernel(size_t first,size_t count,const void *p
  const int nM=2*l0max+1,nLL=lfi_max+1,nsh=(lfi_max+1)*(lfi_max+1);
  const size_t elem_per_pair=(size_t)cmb_max*nM*cmb_max*nM;
  const double Dk=p->Dk;
- double *crude=v[0];
- double *prod=v[1];
- double *gnt2=v[2];
- double *c2r=v[3];
- int *c2r_off=v[4];
- int *sp_lfi=v[5];
- int *sp_ncmb=v[6];
- int *cmb_L0=v[7];
- int *cmb_num0=v[8];
- double *GL_NormK=v[9];
- double *GL_Weight=v[10];
- double *pr_r=v[11];
- double *pr_siT=v[12];
- double *pr_coT=v[13];
- double *pr_siP=v[14];
- double *pr_coP=v[15];
- int *pr_spe=v[16];
- int *pr_vspe=v[17];
- int *pr_h0=v[18];
- double *sh_tab=v[19];
- double *outbuf=v[20];
- double *sphb=v[21];
- double *sphbp=v[22];
- double *sum0=v[23];
- double *sumr0=v[24];
- double *tmpnl=v[25];
+ const double *restrict crude=v[0],*restrict prod=v[1],*restrict gnt2=v[2],*restrict c2r=v[3];
+ const int *restrict c2r_off=v[4],*restrict sp_lfi=v[5],*restrict sp_ncmb=v[6];
+ const int *restrict cmb_L0=v[7],*restrict cmb_num0=v[8];
+ const double *restrict GL_NormK=v[9],*restrict GL_Weight=v[10];
+ const double *restrict pr_r=v[11],*restrict pr_siT=v[12],*restrict pr_coT=v[13];
+ const double *restrict pr_siP=v[14],*restrict pr_coP=v[15];
+ const int *restrict pr_spe=v[16],*restrict pr_vspe=v[17],*restrict pr_h0=v[18];
+ const double *restrict sh_tab=v[19];
+ double *restrict outbuf=v[20],*restrict sphb=v[21],*restrict sphbp=v[22];
+ double *restrict sum0=v[23],*restrict sumr0=v[24],*restrict tmpnl=v[25];
 
 #pragma acc parallel loop deviceptr(outbuf) if(gpu)
  for(size_t i=0;i<(size_t)np*4*mn_max;i++)outbuf[i]=0;

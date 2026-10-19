@@ -20,12 +20,14 @@ prefix = r'''
 enum {cudaSuccess, cudaMemcpyHostToDevice};
 static int held,denied,inject,low_memory,allocation,copies,fail_allocation,fail_copy,live;
 static int MYID_MPI_COMM_WORLD;
+static int weak_fp64,device_query_failure,usable=1;
 static void *tracked[4];
-static int gpu_rank_device_usable(void){return 1;}
+static int gpu_rank_device_usable(void){return usable;}
 static int openmx_gpu_capacity_test_recovery(void){return inject;}
 static int openmx_gpu_local_size_noncollective(void){return 18;}
 static int Force_env_flag(const char *s,int d){(void)s;return d;}
-static int cudaGetDevice(int *d){*d=0;return 0;}
+static int cudaGetDevice(int *d){assert(usable);*d=0;return device_query_failure;}
+static int openmx_gpu_device_weak_fp64(int d){assert(d==0);return weak_fp64;}
 static int cudaGetLastError(void){return 0;}
 static int cudaDeviceSynchronize(void){assert(held);return 0;}
 static void acc_wait_all(void){assert(held);}
@@ -48,10 +50,22 @@ static int cudaMemcpy(void *d,const void *s,size_t n,int k){
 static void Force4B_GpuWorkspaceSizes(size_t *a,size_t *b){*a=4096;*b=8192;}
 '''
 body = extract_struct(source, "Force4BGpuContext") + extract_struct(source, "Force4BArchiveLease")
-for name in ("Force_gpu_node_reserve", "Force4B_ArchiveEnd", "Force4B_ArchiveBegin"):
+for name in ("Force_gpu_node_reserve", "Force4B_ArchiveEnd", "Force4B_ArchiveBegin", "Force4B_ArchiveGpuPreferred"):
     body += extract_function(source, name)
 main = r'''
 int main(void){
+ const char *controls[]={NULL,"auto","0","1"};
+ int policy_cases=0;
+ for(int setting=0;setting<4;setting++)for(int resident=0;resident<2;resident++)for(usable=0;usable<2;usable++)
+ for(weak_fp64=0;weak_fp64<2;weak_fp64++)for(inject=0;inject<2;inject++)
+ for(device_query_failure=0;device_query_failure<2;device_query_failure++){
+  if(controls[setting])setenv("OPENMX_FORCE4B_ARCHIVE_GPU",controls[setting],1);
+  else unsetenv("OPENMX_FORCE4B_ARCHIVE_GPU");
+  int expected=resident || inject || (setting==2?0:setting==3?1:!usable || device_query_failure || !weak_fp64);
+  assert(Force4B_ArchiveGpuPreferred(resident)==expected);
+  policy_cases++;
+ }
+ unsetenv("OPENMX_FORCE4B_ARCHIVE_GPU");device_query_failure=weak_fp64=inject=0;usable=1;
  float flat[4*37],halo[29],c2[4*43];
  for(int i=0;i<4*37;i++)flat[i]=i+.125f;
  for(int i=0;i<29;i++)halo[i]=i-.25f;
@@ -85,14 +99,14 @@ int main(void){
   else assert(!g.flat_dev && !g.halo_dev && !g.c2_dev);
   cases++;
  }
- printf("PASS: %d Force4B archive cases (both phases, capacity, allocation/copy failures, resident preservation)\n",cases);
+ printf("PASS: %d Force4B archive cases and %d hardware/override policy cases\n",cases,policy_cases);
 }
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-force-archive-") as directory:
     p = Path(directory)
     (p / "check.c").write_text(prefix + body + main)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
-        "-std=c11", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+        "-std=c11", "-D_POSIX_C_SOURCE=200809L", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
         str(p / "check.c"), "-o", str(p / "check")], check=True)
 
     def sanitizer_stack():

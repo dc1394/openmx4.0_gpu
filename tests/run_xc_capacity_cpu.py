@@ -54,6 +54,9 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *p,int (*f)(void*,int,int),voi
  }
  return ok;
 }
+int openmx_gpu_workers_run_prepared(const OpenMXGpuWorkers *pool,int (*callback)(void*,int,int),void *context,const char *label){
+ return openmx_gpu_workers_run(pool,callback,context,label);
+}
 '''
 main=r'''
 enum {N1=11,N2=5,N3=6,N=N1*N2*N3};

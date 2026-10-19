@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.25.2)
 project(OpenMXCore VERSION 0.1 LANGUAGES CXX)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXBuildType.cmake")
 
 include(CTest)
 include(FetchContent)
@@ -71,7 +72,7 @@ option(OPENMX_CORE_SANITIZERS "Enable address/undefined sanitizers in host core 
 option(OPENMX_CORE_FORCE_KOKKOS_MDSPAN "Use Kokkos/mdspan even if std::mdspan is available" OFF)
 
 set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vps_storage.cpp
-  src/product_storage.cpp src/neutral_projectors.cpp src/c_api.cpp)
+  src/product_storage.cpp src/neutral_projectors.cpp src/pair_bessel.cpp src/c_api.cpp)
 add_library(openmx_core SHARED ${_core_sources})
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC

@@ -30,6 +30,7 @@
 #include <omp.h>
 #include "openmx_common.h"
 #include "openmx_core_radial.h"
+#include "openmx_core_pair_bessel.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
 #include "mpi.h"
@@ -1572,6 +1573,8 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 
   /* for OpenMP */
   int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
+  const char *bessel_cache_option = getenv("OPENMX_SETNL_BESSEL_CACHE_MAX");
+  const int bessel_cache_entries = bessel_cache_option ? atoi(bessel_cache_option) : 128;
 
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -1736,12 +1739,13 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
       double Bessel_Pro0,Bessel_Pro1;
       double h,coe0,sj,sjp;
       double tmp0,tmp1,tmp2,tmp3,tmp4;
-      double *SphB,*SphBp;
-      double *tmp_SphB,*tmp_SphBp;
+      const double *SphB,*SphBp;
+      OpenMXPairBesselWorkspace *bessel_workspace;
+      char bessel_error[256];
       double *RF_BesselCache,*NLRF_BesselCache[2];
       double ***SumNL0;
       double ***SumNLr0;
-      size_t rf_cache_elems,nlrf_cache_elems,sph_cache_elems;
+      size_t rf_cache_elems,nlrf_cache_elems;
       int cached_Cwan,cached_Hwan[2];
 
       dcomplex CsumNL0,CsumNLr,CsumNLt,CsumNLp;
@@ -1892,12 +1896,13 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
     NLRF_BesselCache[1] = (double*)SetNonlocal_MallocArray(nlrf_cache_elems,sizeof(double),
                                                            "NLRF_BesselCache[1]");
 
-    sph_cache_elems = SetNonlocal_CheckedMulCount((size_t)max_sph_rows,(size_t)grid_dim,
-                                                  "SphB cache elements");
-    SphB = (double*)SetNonlocal_MallocArray(sph_cache_elems,sizeof(double),"SphB");
-    SphBp = (double*)SetNonlocal_MallocArray(sph_cache_elems,sizeof(double),"SphBp");
-    tmp_SphB = (double*)SetNonlocal_MallocArray((size_t)max_sph_rows,sizeof(double),"tmp_SphB");
-    tmp_SphBp = (double*)SetNonlocal_MallocArray((size_t)max_sph_rows,sizeof(double),"tmp_SphBp");
+    bessel_workspace = openmx_core_pair_bessel_create(max_Lmax_Four_Int,grid_dim,
+        Normk_grid,bessel_cache_entries > 0 ? (size_t)bessel_cache_entries : 0,
+        bessel_error,sizeof(bessel_error));
+    if (bessel_workspace == NULL) {
+      fprintf(stderr,"Set_Nonlocal: %s\n",bessel_error);
+      abort();
+    }
 
     cached_Cwan = -1;
     cached_Hwan[0] = -1;
@@ -1978,14 +1983,14 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
       else
         Lmax_Four_Int = 2*Spe_MaxL_Basis[Cwan];
 
-      for (i=0; i<grid_dim; i++){
-        Normk = Normk_grid[i];
-        Spherical_Bessel(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-        for(LL=0; LL<=Lmax_Four_Int; LL++){
-          SphB[LL*grid_dim + i]  = tmp_SphB[LL];
-          SphBp[LL*grid_dim + i] = tmp_SphBp[LL];
-        }
+      OpenMXPairBesselTable bessel_table;
+      if (!openmx_core_pair_bessel_sample(bessel_workspace,r,Lmax_Four_Int,
+          &bessel_table,bessel_error,sizeof(bessel_error))) {
+        fprintf(stderr,"Set_Nonlocal: %s\n",bessel_error);
+        abort();
       }
+      SphB = bessel_table.values;
+      SphBp = bessel_table.derivatives;
 
       for (so=0; so<=VPS_j_dependency[Hwan]; so++){
 
@@ -2398,10 +2403,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
     }
     free(TmpNL);
 
-    free(tmp_SphBp);
-    free(tmp_SphB);
-    free(SphBp);
-    free(SphB);
+    openmx_core_pair_bessel_destroy(bessel_workspace);
     free(NLRF_BesselCache[1]);
     free(NLRF_BesselCache[0]);
     free(RF_BesselCache);

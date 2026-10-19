@@ -253,8 +253,29 @@ static int prepare_device(int device)
     return ok;
 }
 
-int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
-    int (*callback)(void*,int,int),void *context,const char *label)
+int openmx_gpu_device_weak_fp64(int device)
+{
+#if OPENMX_GPU_HIP
+    (void)device;
+    return 0;
+#else
+    int ratio=0;
+    if(cudaDeviceGetAttribute(&ratio,cudaDevAttrSingleToDoublePrecisionPerfRatio,device)!=cudaSuccess){
+        (void)cudaGetLastError();return 0;
+    }
+    return ratio>=8;
+#endif
+}
+
+int openmx_gpu_worker_can_overlap(int device)
+{
+    const char *control=getenv("OPENMX_GPU_WORKER_OVERLAP");
+    if(control && *control && strcmp(control,"auto")!=0)return atoi(control)!=0;
+    return openmx_gpu_device_weak_fp64(device);
+}
+
+static int run_workers(const OpenMXGpuWorkers *pool,
+    int (*callback)(void*,int,int),void *context,const char *label,int prepared)
 {
     int ok=1, started[OPENMX_GPU_WORKERS_MAX]={0};
     if (!pool || !callback || pool->count<0 || pool->count>OPENMX_GPU_WORKERS_MAX) return 0;
@@ -267,6 +288,9 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
     if (!admission) return 0;
     for (int i=0;i<pool->count;i++)
         if (!prepare_device(pool->devices[i])) { ok=0; break; }
+    int overlap=prepared;
+    for(int worker=0;overlap && worker<pool->count;worker++)
+        overlap=openmx_gpu_worker_can_overlap(pool->devices[worker]);
     for (int phase=OPENMX_GPU_WORKER_PREPARE;phase<=OPENMX_GPU_WORKER_RELEASE;phase++) {
         if (!ok && phase!=OPENMX_GPU_WORKER_RELEASE) continue;
         int success=1;
@@ -288,12 +312,16 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
         }
         if (!success && ok && phase>=OPENMX_GPU_WORKER_COMMIT) {
             fprintf(stderr,"<OpenMX_MGPU> %s failed during result publication or cleanup; refusing an accumulating CPU retry.\n",label?label:"worker");
-            openmx_mgpu_release_devices(admission);
+            if(admission)openmx_mgpu_release_devices(admission);
             exit(EXIT_FAILURE);
         }
         ok &= success;
+        if(ok && overlap && phase==OPENMX_GPU_WORKER_PREPARE){
+            openmx_mgpu_release_devices(admission);
+            admission=NULL;
+        }
     }
-    openmx_mgpu_release_devices(admission);
+    if(admission)openmx_mgpu_release_devices(admission);
     const char *verbose=getenv("OPENMX_MGPU_VERBOSE");
     if (verbose && atoi(verbose) && (pool->count>1 || openmx_gpu_capacity_test_recovery())) {
         fprintf(stderr,"<OpenMX_MGPU> work name=%s workers=%d items=%zu completed=%d devices=",
@@ -302,4 +330,16 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
         fputc('\n',stderr);
     }
     return ok;
+}
+
+int openmx_gpu_workers_run(const OpenMXGpuWorkers *pool,
+    int (*callback)(void*,int,int),void *context,const char *label)
+{
+    return run_workers(pool,callback,context,label,0);
+}
+
+int openmx_gpu_workers_run_prepared(const OpenMXGpuWorkers *pool,
+    int (*callback)(void*,int,int),void *context,const char *label)
+{
+    return run_workers(pool,callback,context,label,1);
 }

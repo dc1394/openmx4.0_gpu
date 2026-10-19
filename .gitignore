@@ -35,6 +35,7 @@ libtool
 *.out
 *.ene
 *.md
+!docs/PERFORMANCE_REGRESSION.md
 *.md2
 *.xyz
 *.cif

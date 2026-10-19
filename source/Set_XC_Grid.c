@@ -620,7 +620,7 @@ static int SXG_execute(SXG_Work *work)
   work->slabs=slabs;
   while (openmx_gpu_workers_capacity(&workers,(size_t)(work->last-work->first),1,openmx_gpu_worker_retry_cost,&retry)) {
     for (int i=0;i<workers.count;i++) SXG_layout(work,i,workers.count,slabs+i);
-    if (openmx_gpu_workers_run(&workers,SXG_slab_worker,work,"XC-grid")) return 1;
+    if (openmx_gpu_workers_run_prepared(&workers,SXG_slab_worker,work,"XC-grid")) return 1;
     retry.rejected[workers.count]=1;
   }
   return 0;

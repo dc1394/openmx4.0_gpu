@@ -801,9 +801,9 @@ lapack_dsteqr1.o: lapack_dsteqr1.c openmx_common.h lapack_prototypes.h
 	$(CC) -c lapack_dsteqr1.c
 Nonlocal_Basis.o: Nonlocal_Basis.c openmx_common.h
 	$(CC) -c Nonlocal_Basis.c
-Set_OLP_Kin.o: Set_OLP_Kin.c openmx_common.h set_hip_default_device_from_local_rank.h
+Set_OLP_Kin.o: Set_OLP_Kin.c openmx_common.h set_hip_default_device_from_local_rank.h openmx_core_pair_bessel.h
 	$(CC) -c Set_OLP_Kin.c
-Set_Nonlocal.o: Set_Nonlocal.c openmx_common.h
+Set_Nonlocal.o: Set_Nonlocal.c openmx_common.h openmx_core_pair_bessel.h
 	$(CC) -c Set_Nonlocal.c
 Set_ProExpn_VNA.o: Set_ProExpn_VNA.c openmx_common.h openmx_precision.h
 	$(CC) -c Set_ProExpn_VNA.c

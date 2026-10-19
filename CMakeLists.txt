@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.25.2)
 # choices, OpenACC/OpenMP target flags and dependency patches. Keep those rules
 # as the build engine, with CMake providing selection, isolation and installation.
 project(OpenMXGPU VERSION 4.0 LANGUAGES NONE)
+include(cmake/OpenMXBuildType.cmake)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(FATAL_ERROR "Use an out-of-source build: cmake -S . -B build/cuda")
@@ -133,11 +134,26 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cmake_driver.py")
   add_test(NAME dftd3-interpolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_dftd3_interpolation_cpu.py")
+  set(_dense_kernel_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_dense_workers_cpu.py")
+  set(_worker_admission_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_workers_cpu.py")
+  set(_integral_thread_test "${CMAKE_SOURCE_DIR}/tests/run_integral_threading_cpu.py")
+  if(_backend STREQUAL "HIP")
+    set(_dense_kernel_test "${CMAKE_BINARY_DIR}/native/tests/run_gpu_dense_workers_cpu.py")
+    set(_worker_admission_test "${CMAKE_BINARY_DIR}/native/tests/run_gpu_workers_cpu.py")
+    set(_integral_thread_test "${CMAKE_BINARY_DIR}/native/tests/run_integral_threading_cpu.py")
+  endif()
+  add_test(NAME dense-kernel-indexing COMMAND "${Python3_EXECUTABLE}" "${_dense_kernel_test}")
+  add_test(NAME gpu-worker-admission COMMAND "${Python3_EXECUTABLE}" "${_worker_admission_test}")
+  add_test(NAME integral-threading COMMAND "${Python3_EXECUTABLE}" "${_integral_thread_test}")
+  set_tests_properties(integral-threading PROPERTIES
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
   if(_backend STREQUAL "CUDA")
     add_test(NAME force-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force4b_archived_cpu.py")
     add_test(NAME vna-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setpro_archived_cpu.py")
+    add_test(NAME vna-batch-budget
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setpro_batch_cpu.py")
   endif()
   if(_backend STREQUAL "HIP")
     foreach(_test IN ITEMS gemmul8_arch_policy nc_mi300a_policy_cpu band_noncol_refine_flow_cpu mi300a_rank_launcher runtest_paths_cpu rocm_runtime_paths_cpu elpa_cptr_interop_cpu deviceless_cleanup_cpu)

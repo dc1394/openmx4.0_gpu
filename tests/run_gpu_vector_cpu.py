@@ -42,6 +42,9 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *p,int(*f)(void*,int,int),void
  }
  return ok;
 }
+int openmx_gpu_workers_run_prepared(const OpenMXGpuWorkers *p,int(*f)(void*,int,int),void *ctx,const char *name){
+ return openmx_gpu_workers_run(p,f,ctx,name);
+}
 int openmx_gpu_collective_retry(MPI_Comm comm,const OpenMXGpuCollectiveOps *ops,void *ctx,size_t n,int done,int help,const char *label){
  (void)comm;(void)help;(void)label;
  if(done!=0)return done>0;

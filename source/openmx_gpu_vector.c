@@ -108,7 +108,7 @@ static int vector_local(OpenMXGpuVector *job)
     VectorWork w={0};w.job=*job;
     OpenMXGpuWorkerRetry retry={vector_cost,job,{0}};
     while (openmx_gpu_workers_capacity(&w.workers,job->n,1,openmx_gpu_worker_retry_cost,&retry)) {
-        int ok=openmx_gpu_workers_run(&w.workers,vector_worker,&w,"vector-contraction");
+        int ok=openmx_gpu_workers_run_prepared(&w.workers,vector_worker,&w,"vector-contraction");
         if (ok) {
             if (!job->mode) memset(job->output,0,(size_t)job->pairs*sizeof(double));
             for (int worker=0;worker<w.workers.count;worker++) {

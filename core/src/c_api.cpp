@@ -1,6 +1,7 @@
 #include "openmx_core.h"
 #include "openmx_core_radial.h"
 #include "openmx_core_neutral.h"
+#include "openmx_core_pair_bessel.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -9,6 +10,7 @@
 #include <openmx/core/neutral_projectors.hpp>
 #include <openmx/core/bessel.hpp>
 #include <openmx/core/fft_grid.hpp>
+#include <openmx/core/pair_bessel.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -20,6 +22,10 @@ struct OpenMXCoreContext {
   std::unique_ptr<openmx::core::compat::PaoOwner> pao;
   std::unique_ptr<openmx::core::compat::VpsOwner> vps;
   std::unique_ptr<openmx::core::compat::ProductOwner> products;
+};
+
+struct OpenMXPairBesselWorkspace {
+  openmx::core::PairBesselWorkspace implementation;
 };
 
 namespace {
@@ -222,6 +228,44 @@ extern "C" int openmx_core_transform_products(OpenMXCoreContext* context, int de
     auto samples = openmx::core::sample_product_table(table,layout,std::move(quadrature));
     transform_samples(context,device,samples,outputs);
   });
+}
+
+extern "C" OpenMXPairBesselWorkspace* openmx_core_pair_bessel_create(int maximum_angular,
+    int points, const double* wavevectors, std::size_t cache_limit, char* error, std::size_t capacity)
+{
+  OpenMXPairBesselWorkspace* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!wavevectors || points <= 0) throw std::invalid_argument("missing pair Bessel wavevectors");
+    result = new OpenMXPairBesselWorkspace{{maximum_angular,
+        {wavevectors,static_cast<std::size_t>(points)},cache_limit}};
+  });
+  return result;
+}
+
+extern "C" int openmx_core_pair_bessel_sample(OpenMXPairBesselWorkspace* workspace,
+    double distance, int angular, OpenMXPairBesselTable* table, char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!workspace || !table) throw std::invalid_argument("missing pair Bessel workspace or output");
+    const auto result = workspace->implementation.sample(distance,angular);
+    const auto points = result.values.extent(2);
+    *table = {result.values.data_handle(),
+              &openmx::core::element(result.values,1,0,0),points,
+              static_cast<std::size_t>(angular+1)};
+  });
+}
+
+extern "C" void openmx_core_pair_bessel_statistics(const OpenMXPairBesselWorkspace* workspace,
+    long* hits, long* misses)
+{
+  const auto statistics = workspace ? workspace->implementation.statistics() : openmx::core::PairBesselStatistics{};
+  if (hits) *hits = statistics.hits;
+  if (misses) *misses = statistics.misses;
+}
+
+extern "C" void openmx_core_pair_bessel_destroy(OpenMXPairBesselWorkspace* workspace)
+{
+  delete workspace;
 }
 
 extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,

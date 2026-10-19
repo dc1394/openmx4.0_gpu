@@ -35,6 +35,9 @@ CPU と GPU の固有値計算は、同じ ELPA 2026.02.002 ライブラリを�
 OpenMX が以前内蔵していた古い ELPA のソースとビルドルールは除去しました。
 
 CMake は既存の Makefile にあるファイル別の最適化・オフロード設定を使います。
+単一構成の CMake ビルドは、種別を省略すると C++ コアも含めて `Release` を使います。
+以前の空の `CMAKE_BUILD_TYPE` も再構成時に `Release` となり、最適化なしのコアが
+意図せず計算に使われることを防ぎます。明示した `Debug` などの指定は維持します。
 `build/<backend>/native/source/` に選択したソースをリンクし、GEMMul8、FFTW、MAGMA、
 ELPA/COSMA などの変更される依存ソース・生成物をビルドごとに分離します。
 共通アーカイブは `source/third_party/dist/`、AMD 用 MAGMA パッチなどは
@@ -81,6 +84,11 @@ CUDA の弱 FP64 GPU 向け MAGMA FP32 補正と共有 Band グループ、HIP �
 両ビルドへ反映されます。既存の HIP ビルドを再開したときも、準備処理が
 削除済みの置換ソースへのリンクを共通ソースへ張り替えます。
 両 Makefile は共通 GPU インターフェースヘッダーの変更を再コンパイルへ反映します。
+
+GeForce の MPS 実行では、入力・出力・作業領域をすべて確保した共通 GPU 処理が、
+計算開始前にメモリ確保の排他ロックを解放します。A100/H100 と HIP の既定は
+従来の実行方針を維持します。ハードウェアごとの方針、切り替え方法と計測条件は
+[性能回帰検証](PERFORMANCE_REGRESSION.md) に記載しています。
 
 ## NVIDIA / CUDA
 

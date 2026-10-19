@@ -2,7 +2,7 @@
 """Stress production integral caches and per-atom timing updates with pthreads.
 
 No MPI, CUDA or PAO data is required. Build the C++ core first and set
-OPENMX_CORE_LIBRARY to its libopenmx_core.so when using a nondefault build. The actual cache helpers and accumulation
+OPENMX_CORE_LIBRARY to its libopenmx_core.so when using a nondefault build. The production C ABI owns each cache; runtime-option helpers and accumulation
 statements are extracted from Set_OLP_Kin and Set_Nonlocal. All workers update
 one atom to expose lost timing updates at pair-partition boundaries, while
 private Bessel tables must reproduce uncached values for different cutoffs.
@@ -129,34 +129,32 @@ static void *worker(void *argument)
     assert(cache_max == 8);
     assert(SetOLP_ProfileEnabled() == 1);
     for (int call = 0; call < 3; ++call) {
-        OLPKinBesselCache c = {0};
-        c.lmax = 2 + call;
-        c.gdim = 5 + (int)tid;
+        const int grid_points = 5 + (int)tid;
+        double wavevectors[THREADS+5];
+        char error[128];
+        for (int i = 0; i < grid_points; ++i) wavevectors[i] = 0.1 + i * 0.5;
+        OpenMXPairBesselWorkspace *workspace = openmx_core_pair_bessel_create(
+            2 + call,grid_points,wavevectors,(size_t)cache_max,error,sizeof(error));
+        assert(workspace != NULL);
         for (int pair = 0; pair < 96; ++pair) {
             const double r = 0.5 + 0.25 * (pair % 3);
             const int lmax = 1 + pair % 2;
-            const double *hit = OLPKin_Bessel_Lookup(&c, r, lmax);
-            double *slot = hit ? NULL : OLPKin_Bessel_Insert(&c, r, lmax, cache_max);
-            for (int i = 0; i < c.gdim; ++i) {
+            OpenMXPairBesselTable table;
+            assert(openmx_core_pair_bessel_sample(workspace,r,lmax,&table,error,sizeof(error)));
+            for (int i = 0; i < grid_points; ++i) {
                 double sb[40], dsb[40];
                 Spherical_Bessel((0.1 + i * 0.5) * r, lmax, sb, dsb);
                 for (int l = 0; l <= lmax; ++l) {
-                    const size_t a = (size_t)l * c.gdim + i;
-                    const size_t b = (size_t)(c.lmax + 1 + l) * c.gdim + i;
-                    if (hit) {
-                        assert(hit[a] == sb[l]);
-                        assert(hit[b] == dsb[l]);
-                    } else if (slot) {
-                        slot[a] = sb[l];
-                        slot[b] = dsb[l];
-                    }
+                    const size_t offset = (size_t)l * grid_points + i;
+                    assert(table.values[offset] == sb[l]);
+                    assert(table.derivatives[offset] == dsb[l]);
                 }
             }
         }
-        assert(c.count == 6 && c.hits == 90 && c.misses == 6);
-        OLPKin_Bessel_Free(&c);
-        assert(c.keys == NULL && c.tab == NULL && c.count == 0);
-        assert(OLPKin_Bessel_Insert(&c, 1.0, 1, 0) == NULL);
+        long hits, misses;
+        openmx_core_pair_bessel_statistics(workspace,&hits,&misses);
+        assert(hits == 90 && misses == 6);
+        openmx_core_pair_bessel_destroy(workspace);
     }
     pthread_barrier_wait(&start_gate);
     for (int i = 0; i < UPDATES; ++i) {
@@ -198,6 +196,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
                    "#include <assert.h>\n#include <math.h>\n#include <pthread.h>\n"
                    "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <omp.h>\n"
                    '#include "openmx_core.h"\n'
+                   '#include "openmx_core_pair_bessel.h"\n'
                    "static double time_per_atom[1];\n"
                    + cache + profile + bessel + radial + "\n".join(updates) + RADIAL_HARNESS + HARNESS)
     compiler = shlex.split(os.environ.get("CC", "cc"))

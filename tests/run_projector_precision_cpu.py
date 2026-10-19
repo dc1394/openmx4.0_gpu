@@ -34,7 +34,7 @@ functions = "\n".join(
     extract_function(force, name)
     for name in ("Force4B_GpuCase1Kernel", "Force4B_GpuCase2Kernel")
 )
-start = vna.index("static void SetPro_HVNA_GpuRun_Part(")
+start = vna.index("static int SetPro_HVNA_GpuRun_Part(")
 start = vna.index("for (int pp=0; pp<nitems_c; pp++)", start)
 functions += r"""
 static void vna_kernel(int nitems_c, int num_proj, int num_rvna,

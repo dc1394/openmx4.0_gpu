@@ -102,6 +102,17 @@ int openmx_gpu_worker_device(void);
 int openmx_gpu_workers_run(const OpenMXGpuWorkers *workers,
     int (*callback)(void *context, int worker, int phase), void *context,
     const char *label);
+/* Opt-in for callbacks with no device allocation or input upload after
+   PREPARE: GeForce-class CUDA devices release admission before EXECUTE so
+   MPS may overlap private batches. Datacenter GPUs and HIP retain admission
+   by default. OPENMX_GPU_WORKER_OVERLAP=0/1 overrides the hardware policy.
+   Failed PREPARE retains admission through rollback in either mode. */
+int openmx_gpu_worker_can_overlap(int device);
+/* Hardware query only; environment overrides do not change this result. */
+int openmx_gpu_device_weak_fp64(int device);
+int openmx_gpu_workers_run_prepared(const OpenMXGpuWorkers *workers,
+    int (*callback)(void *context, int worker, int phase), void *context,
+    const char *label);
 
 #ifdef __cplusplus
 }

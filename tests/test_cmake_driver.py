@@ -22,7 +22,8 @@ class CMakeDriverTest(unittest.TestCase):
         self.build = self.root / "build"
         for name in ("cmake", "tools", "core", "source/third_party/dist", "DFT_DATA19"):
             (self.repo / name).mkdir(parents=True, exist_ok=True)
-        for name in ("CMakeLists.txt", "cmake/OpenMXGPUArchitecture.cmake", "tools/prepare_build.py", "tools/copy_openmx.py"):
+        for name in ("CMakeLists.txt", "cmake/OpenMXGPUArchitecture.cmake", "cmake/OpenMXBuildType.cmake",
+                     "tools/prepare_build.py", "tools/copy_openmx.py"):
             shutil.copy2(ROOT / name, self.repo / name)
         (self.repo / "core/core.c").write_text("int fixture(void) { return 0; }\n")
         (self.repo / "core/CMakeLists.txt").write_text(
@@ -73,6 +74,20 @@ class CMakeDriverTest(unittest.TestCase):
 
     def build_application(self, **kwargs):
         return self.command(["cmake", "--build", str(self.build), "--target", "openmx"], **kwargs)
+
+    def test_default_release_and_explicit_debug_configuration(self):
+        self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
+        cache = self.build / "CMakeCache.txt"
+        self.assertIn("CMAKE_BUILD_TYPE:STRING=Release", cache.read_text())
+        self.command(["cmake", "--build", str(self.build), "--target", "openmx_core"])
+        commands = self.build / "compile_commands.json"
+        self.assertIn("-O3", json.loads(commands.read_text())[0]["command"])
+        self.configure("-DCMAKE_BUILD_TYPE=Debug")
+        self.assertIn("CMAKE_BUILD_TYPE:STRING=Debug", cache.read_text())
+        self.command(["cmake", "--build", str(self.build), "--target", "openmx_core"])
+        self.assertNotIn("-O3", json.loads(commands.read_text())[0]["command"])
+        self.configure("-DCMAKE_BUILD_TYPE=")
+        self.assertIn("CMAKE_BUILD_TYPE:STRING=Release", cache.read_text())
 
     def test_success_copy_opt_out_custom_directory_and_failed_build(self):
         self.configure("-DOPENMX_GPU_ARCH=sm_80")

@@ -102,7 +102,7 @@ static void scatter(int format,bool imaginary){
     }else{Device<double> out(std::vector<double>(n*n,77));
         require(openmx_gpu_scatter(n,count,format,di.p,count,dv.p,0,nullptr,nullptr,0,out.p)==1,"scatter real handled");compare(out.read(),real,"scatter real");}
 }
-static void density(int kind,bool host,bool phased,bool accumulate,bool energy){
+static void density(int kind,bool host,bool phased,bool accumulate,bool energy,int output_mask=1023){
     const int n=7,states=17,stride=23,entries=39,phases=5;
     const bool gather=kind>=OPENMX_GPU_DM_GATHER,isreal=kind==OPENMX_GPU_DM_REAL;
     size_t count=gather?size_t(2*n)*2*n:(size_t(kind==OPENMX_GPU_DM_NC?2*n:n)-1)*stride+states;
@@ -111,7 +111,7 @@ static void density(int kind,bool host,bool phased,bool accumulate,bool energy){
     for(int k=0;k<states;k++){occ[k]=.4+.01*k;ew[k]=sample<double>(k+94);pw[k]=sample<double>(k+231);}
     for(int k=0;k<phases;k++){pr[k]=std::cos(.7*k);pi[k]=std::sin(.7*k);}
     std::vector<int> a(entries),b(entries),ph(entries);std::vector<double> expected[10],out[10];double *outputs[10];
-    for(int c=0;c<10;c++){out[c].assign(entries,7+c*.3);expected[c]=out[c];outputs[c]=out[c].data();}
+    for(int c=0;c<10;c++){out[c].assign(entries,7+c*.3);expected[c]=out[c];outputs[c]=(output_mask&(1<<c))?out[c].data():nullptr;}
     for(int p=0;p<entries;p++){
         a[p]=(p*3)%n;b[p]=(p*5+1)%n;ph[p]=p%phases;
         long double r[10]={0};L dm[3]{},edm[3]{};
@@ -134,7 +134,7 @@ static void density(int kind,bool host,bool phased,bool accumulate,bool energy){
             else {r[0]=dm[0].real();r[1]=dm[1].real();r[2]=dm[2].real();r[3]=dm[2].imag();r[4]=dm[0].imag();r[5]=dm[1].imag();
                 r[6]=edm[0].real();r[7]=edm[1].real();r[8]=edm[2].real();r[9]=edm[2].imag();}
         }
-        for(int c=0;c<10;c++)expected[c][p]=(accumulate?out[c][p]:0)+double(r[c]);
+        for(int c=0;c<10;c++)if(outputs[c])expected[c][p]=(accumulate?out[c][p]:0)+double(r[c]);
     }
     Device<Z> dv(v);Device<double> dr(rv);
     const void *vectors=isreal?(host?(void*)rv.data():(void*)dr.p):(host?(void*)v.data():(void*)dv.p);
@@ -166,6 +166,7 @@ int main(){
         for(int kind=0;kind<=OPENMX_GPU_EDM_GATHER;kind++)for(bool host:{false,true})for(bool acc:{false,true}){
             bool phase=kind==OPENMX_GPU_DM_COL || kind==OPENMX_GPU_DM_NC;
             density(kind,host,phase,acc,true);
+            for(int mask:{63,15,10,0})density(kind,host,phase,acc,true,mask);
             if(kind<=OPENMX_GPU_DM_NC)density(kind,host,false,acc,false);
         }
         int restored=-1;check(hipGetDevice(&restored));require(restored==origin,"HIP binding restored");

@@ -68,6 +68,9 @@ int openmx_gpu_workers_run(const OpenMXGpuWorkers *p,int (*callback)(void*,int,i
     }
     hipSetDevice(saved);mock_omp_device=saved_omp;return success;
 }
+int openmx_gpu_workers_run_prepared(const OpenMXGpuWorkers *pool,int (*callback)(void*,int,int),void *context,const char *label){
+    return openmx_gpu_workers_run(pool,callback,context,label);
+}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-dense-index-') as directory:

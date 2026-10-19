@@ -2,6 +2,10 @@
 
 This repository includes both the NVIDIA CUDA and AMD HIP backends. Select one
 per build with CMake; the existing NVIDIA `make -C source` workflow also works.
+Single-configuration CMake builds default to `Release`, including the C++ core.
+Use `-DCMAKE_BUILD_TYPE=Debug` explicitly for debugging; an existing empty build
+type becomes `Release` when reconfigured. For performance validation against the
+Intel CPU build and earlier GPU versions, see [the regression procedure](docs/PERFORMANCE_REGRESSION.md).
 
 ```sh
 # RTX 5080 example; use sm_80 for A100 or sm_90 for H100.
@@ -75,6 +79,9 @@ their sampled data and workspaces use RAII. Periodic-cell inverse indexing and
 the uniform reciprocal grid no longer use global arrays; PAO/projector
 reciprocal interpolation shares the same C++ implementation across backends.
 The VNA wavevector grid is local to each matrix-construction call.
+Pair Bessel tables for overlap/kinetic integrals and the CPU nonlocal path
+now use invocation-owned C++ workspaces. Cache hits borrow the existing
+contiguous table through mdspan without copying it or allocating per pair.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.
