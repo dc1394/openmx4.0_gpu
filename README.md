@@ -82,6 +82,9 @@ The VNA wavevector grid is local to each matrix-construction call.
 Pair Bessel tables for overlap/kinetic integrals and the CPU nonlocal path
 now use invocation-owned C++ workspaces. Cache hits borrow the existing
 contiguous table through mdspan without copying it or allocating per pair.
+Overlap/kinetic integral scratch matrices also use a per-thread C++ owner;
+packed orbital indices replace their six-level pointer tables, and angular
+assembly reads the radial results directly without an intermediate copy.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

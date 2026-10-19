@@ -97,10 +97,7 @@ typedef int INTEGER; /* for fortran integer */
 #define ___INTEGER_definition___ 
 #endif
 
-#ifndef ___dcomplex_definition___
-typedef struct { double r,i; } dcomplex;
-#define ___dcomplex_definition___ 
-#endif
+#include "openmx_complex.h"
 
 
 #ifndef __sqr_definition___

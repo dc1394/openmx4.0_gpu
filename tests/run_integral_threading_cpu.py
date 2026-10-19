@@ -75,18 +75,34 @@ static void *worker(void *argument)
         OpenMXPairBesselWorkspace *workspace = openmx_core_pair_bessel_create(
             2 + call,grid_points,wavevectors,(size_t)cache_max,error,sizeof(error));
         assert(workspace != NULL);
+        const OpenMXOverlapShape shape = {2+call,2,grid_points,0.1,
+            0.1+(grid_points-1)*0.5,(size_t)cache_max};
+        OpenMXOverlapBuffers buffers;
+        OpenMXOverlapWorkspace *overlap = openmx_core_overlap_create(&shape,&buffers,error,sizeof(error));
+        assert(overlap != NULL);
+        const size_t last = openmx_core_overlap_pair(&buffers,2+call,1,2*(2+call),2+call,1,2*(2+call));
+        const double marker = 1.0+tid+call*THREADS;
+        assert(buffers.angular[7][last].r == 0.0);
+        buffers.angular[7][last].r = marker;
         for (int pair = 0; pair < 96; ++pair) {
             const double r = 0.5 + 0.25 * (pair % 3);
             const int lmax = 1 + pair % 2;
             OpenMXPairBesselTable table;
             assert(openmx_core_pair_bessel_sample(workspace,r,lmax,&table,error,sizeof(error)));
+            OpenMXPairBesselTable overlap_table;
+            assert(openmx_core_overlap_sample(overlap,r,lmax,&overlap_table,error,sizeof(error)));
+            assert(buffers.angular[7][last].r == marker);
             for (int i = 0; i < grid_points; ++i) {
                 double sb[40], dsb[40];
                 Spherical_Bessel((0.1 + i * 0.5) * r, lmax, sb, dsb);
+                double overlap_sb[40], overlap_dsb[40];
+                Spherical_Bessel(buffers.wavevectors[i]*r,lmax,overlap_sb,overlap_dsb);
                 for (int l = 0; l <= lmax; ++l) {
                     const size_t offset = (size_t)l * grid_points + i;
                     assert(table.values[offset] == sb[l]);
                     assert(table.derivatives[offset] == dsb[l]);
+                    assert(overlap_table.values[offset] == overlap_sb[l]);
+                    assert(overlap_table.derivatives[offset] == overlap_dsb[l]);
                 }
             }
         }
@@ -94,6 +110,9 @@ static void *worker(void *argument)
         openmx_core_pair_bessel_statistics(workspace,&hits,&misses);
         assert(hits == 90 && misses == 6);
         openmx_core_pair_bessel_destroy(workspace);
+        openmx_core_overlap_statistics(overlap,&hits,&misses);
+        assert(hits == 90 && misses == 6);
+        openmx_core_overlap_destroy(overlap);
     }
     pthread_barrier_wait(&start_gate);
     for (int i = 0; i < UPDATES; ++i) {
@@ -127,6 +146,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
                    "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n"
                    '#include "openmx_core.h"\n'
                    '#include "openmx_core_pair_bessel.h"\n'
+                   '#include "openmx_core_overlap.h"\n'
                    "static double time_per_atom[1];\n"
                    + cache + profile + bessel + "\n".join(updates) + HARNESS)
     compiler = shlex.split(os.environ.get("CC", "cc"))

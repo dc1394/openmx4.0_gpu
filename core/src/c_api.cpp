@@ -2,6 +2,7 @@
 #include "openmx_core_radial.h"
 #include "openmx_core_neutral.h"
 #include "openmx_core_pair_bessel.h"
+#include "openmx_core_overlap.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -11,6 +12,7 @@
 #include <openmx/core/bessel.hpp>
 #include <openmx/core/fft_grid.hpp>
 #include <openmx/core/pair_bessel.hpp>
+#include <openmx/core/overlap_workspace.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -26,6 +28,11 @@ struct OpenMXCoreContext {
 
 struct OpenMXPairBesselWorkspace {
   openmx::core::PairBesselWorkspace implementation;
+};
+
+struct OpenMXOverlapWorkspace {
+  explicit OpenMXOverlapWorkspace(openmx::core::OverlapShape shape) : implementation(shape) {}
+  openmx::core::OverlapWorkspace implementation;
 };
 
 namespace {
@@ -264,6 +271,65 @@ extern "C" void openmx_core_pair_bessel_statistics(const OpenMXPairBesselWorkspa
 }
 
 extern "C" void openmx_core_pair_bessel_destroy(OpenMXPairBesselWorkspace* workspace)
+{
+  delete workspace;
+}
+
+extern "C" OpenMXOverlapWorkspace* openmx_core_overlap_create(const OpenMXOverlapShape* shape,
+    OpenMXOverlapBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXOverlapWorkspace* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!shape || !buffers) throw std::invalid_argument("missing overlap shape or output views");
+    auto owner = std::make_unique<OpenMXOverlapWorkspace>(openmx::core::OverlapShape{
+        shape->maximum_angular,shape->multiplicity,shape->points,shape->kmin,shape->kmax,
+        shape->bessel_cache_limit});
+    auto& work = owner->implementation;
+    OpenMXOverlapBuffers views{};
+    views.multiplicity = shape->multiplicity;
+    views.points = shape->points;
+    views.max_combinations = static_cast<int>(work.offsets().extent(1));
+    views.orbital_capacity = work.angular().extent(1);
+    views.magnetic_capacity = work.conversion().extent(1);
+    views.radial_elements = work.radial().extent(1)*work.radial().extent(2);
+    views.sum_elements = work.sums().extent(1)*work.sums().extent(2);
+    views.wavevectors = work.wavevectors().data();
+    for (int channel = 0; channel < 2; ++channel) {
+      views.radial[channel] = work.radial().data_handle()+channel*views.radial_elements;
+      views.offsets[channel] = work.offsets().data_handle()+channel*views.max_combinations;
+    }
+    for (int channel = 0; channel < 4; ++channel)
+      views.sums[channel] = work.sums().data_handle()+channel*views.sum_elements;
+    for (int channel = 0; channel < 8; ++channel) {
+      views.angular[channel] = work.angular().data_handle()+channel*views.orbital_capacity*views.orbital_capacity;
+      views.conversion[channel] = work.conversion().data_handle()+channel*views.magnetic_capacity*views.magnetic_capacity;
+    }
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" int openmx_core_overlap_sample(OpenMXOverlapWorkspace* workspace,
+    double distance, int angular, OpenMXPairBesselTable* table, char* error, std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!workspace || !table) throw std::invalid_argument("missing overlap workspace or Bessel output");
+    const auto result = workspace->implementation.sample(distance,angular);
+    *table = {result.values.data_handle(),&openmx::core::element(result.values,1,0,0),
+              result.values.extent(2),static_cast<std::size_t>(angular+1)};
+  });
+}
+
+extern "C" void openmx_core_overlap_statistics(const OpenMXOverlapWorkspace* workspace,
+    long* hits, long* misses)
+{
+  const auto statistics = workspace ? workspace->implementation.statistics() : openmx::core::PairBesselStatistics{};
+  if (hits) *hits = statistics.hits;
+  if (misses) *misses = statistics.misses;
+}
+
+extern "C" void openmx_core_overlap_destroy(OpenMXOverlapWorkspace* workspace)
 {
   delete workspace;
 }
