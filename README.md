@@ -4,7 +4,8 @@ This repository includes both the NVIDIA CUDA and AMD HIP backends. Select one
 per build with CMake; the existing NVIDIA `make -C source` workflow also works.
 
 ```sh
-cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA
+# RTX 5080 example; use sm_80 for A100 or sm_90 for H100.
+cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA -DOPENMX_GPU_ARCH=sm_120
 cmake --build build/cuda
 
 # On a ROCm machine; set the site-specific MPI/AOCL paths as described below.
@@ -13,10 +14,21 @@ cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
 cmake --build build/hip
 ```
 
-The executables are `build/cuda/openmx` and `build/hip/openmx`. Objects and
+The executables are `build/cuda/openmx` and `build/hip/openmx`. Each successful
+build also updates `work/openmx`; `OPENMX_WORK_DIR` changes this directory and
+`OPENMX_COPY_TO_WORK=OFF` disables the copy. Objects and
 dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
+
+An explicit `OPENMX_GPU_ARCH` accepts `80` or `sm_80` and also selects the
+Kokkos/CUDA target when `OPENMX_CORE_BACKEND=CUDA`. It needs no GPU on the build
+node. When `OPENMX_GPU_ARCH` is unset or `auto`, CMake queries `nvidia-smi`
+for the first GPU with a valid compute capability. Configuration fails if the
+command is missing, fails, or reports no usable compute capability; specify
+`-DOPENMX_GPU_ARCH=sm_80` (or the target GPU's architecture) on a login node.
+A cached `CMAKE_CUDA_ARCHITECTURES` value does not bypass this check. Host-only
+core builds do not query a GPU.
 
 The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
 application to C++, explicit ownership and Kokkos. The new `core/` library

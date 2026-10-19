@@ -184,8 +184,8 @@ GEMMUL8_LIB      ?= $(GEMMUL8_DIR)/lib/libgemmul8.a
 GEMMUL8_OPENMX_OBJ ?= $(GEMMUL8_DIR)/src/gemmul8_openmx.o
 GEMMUL8_CUDA_PATH ?= $(NVHPC_CUDA_HOME)
 GEMMUL8_GPU_ARCH ?= auto
-GEMMUL8_DETECTED_GPU_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | awk '/^[0-9]+[.][0-9]+$$/ {gsub(/[.]/, ""); print; exit}')
 ifeq ($(GEMMUL8_GPU_ARCH),auto)
+GEMMUL8_DETECTED_GPU_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | awk '/^[0-9]+[.][0-9]+$$/ {gsub(/[.]/, ""); print; exit}')
 GEMMUL8_BUILD_GPU_ARCH := $(GEMMUL8_DETECTED_GPU_ARCH)
 else
 GEMMUL8_BUILD_GPU_ARCH := $(GEMMUL8_GPU_ARCH)
@@ -901,6 +901,7 @@ Set_Nonlocal.o: Set_Nonlocal.c openmx_common.h
 Set_ProExpn_VNA.o: Set_ProExpn_VNA.c openmx_common.h openmx_precision.h
 	$(CC) -c Set_ProExpn_VNA.c
 Set_ProExpn_VNA.o: openmx_mgpu_runtime.h
+Force.o: openmx_mgpu_runtime.h
 Set_CoreHoleMatrix.o: Set_CoreHoleMatrix.c openmx_common.h
 	$(CC) -c Set_CoreHoleMatrix.c
 Set_OLP_p.o: Set_OLP_p.c openmx_common.h 

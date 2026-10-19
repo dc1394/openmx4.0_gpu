@@ -10,13 +10,6 @@ endif()
 
 include(CTest)
 option(OPENMX_BUILD_APPLICATION "Build the legacy application and its dependencies" ON)
-# The core can be developed and tested on a plain C++ host without the native
-# application's MPI, ELPA, CUDA or ROCm stack.
-add_subdirectory(core)
-if(NOT OPENMX_BUILD_APPLICATION)
-  return()
-endif()
-
 set(OPENMX_GPU_BACKEND "CUDA" CACHE STRING "GPU backend: CUDA (NVIDIA) or HIP (AMD)")
 set_property(CACHE OPENMX_GPU_BACKEND PROPERTY STRINGS CUDA HIP)
 string(TOUPPER "${OPENMX_GPU_BACKEND}" _backend)
@@ -28,6 +21,17 @@ endif()
 if(NOT _backend MATCHES "^(CUDA|HIP)$")
   message(FATAL_ERROR "OPENMX_GPU_BACKEND must be CUDA or HIP")
 endif()
+set(OPENMX_GPU_ARCH "" CACHE STRING "GPU architecture (CUDA: auto via nvidia-smi, sm_80, 90, sm_120; HIP: gfx942)")
+include(cmake/OpenMXGPUArchitecture.cmake)
+if(OPENMX_BUILD_APPLICATION AND _backend STREQUAL "CUDA")
+  openmx_resolve_cuda_architecture()
+endif()
+# Resolve the architecture before CUDA language / Kokkos configuration, so
+# cross-compilation on a login node never needs a device to infer its target.
+add_subdirectory(core)
+if(NOT OPENMX_BUILD_APPLICATION)
+  return()
+endif()
 string(TOUPPER "${OPENMX_CORE_BACKEND}" _core_backend)
 if(_core_backend MATCHES "^(CUDA|HIP)$" AND NOT _core_backend STREQUAL _backend)
   message(FATAL_ERROR "The Kokkos accelerator must match OPENMX_GPU_BACKEND")
@@ -36,20 +40,19 @@ endif()
 find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
 find_program(OPENMX_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 set(OPENMX_BUILD_JOBS "4" CACHE STRING "Parallel jobs in the native build")
-set(OPENMX_GPU_ARCH "" CACHE STRING "GPU architecture (CUDA: 120, 90; HIP: gfx942, gfx1201)")
 set(OPENMX_MAKE_OPTIONS "" CACHE STRING "Native make variable assignments separated by semicolons")
+option(OPENMX_COPY_TO_WORK "Copy the successful application build to OPENMX_WORK_DIR" ON)
+set(OPENMX_WORK_DIR "${CMAKE_SOURCE_DIR}/work" CACHE PATH "Directory receiving the built openmx executable")
 
 set(_native_options "GPUSOLVER2_JOBS=${OPENMX_BUILD_JOBS}" ${OPENMX_MAKE_OPTIONS})
 list(APPEND _native_options "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>")
 if(_backend STREQUAL "HIP")
   list(APPEND _native_options "OPENMX_SOURCE_ROOT=${CMAKE_SOURCE_DIR}/source")
 endif()
-if(OPENMX_GPU_ARCH)
-  if(_backend STREQUAL "CUDA")
-    list(APPEND _native_options "GEMMUL8_GPU_ARCH=${OPENMX_GPU_ARCH}")
-  else()
-    list(APPEND _native_options "ARCH=${OPENMX_GPU_ARCH}")
-  endif()
+if(_backend STREQUAL "CUDA" AND OPENMX_CUDA_ARCH)
+  list(APPEND _native_options "GEMMUL8_GPU_ARCH=${OPENMX_CUDA_ARCH}")
+elseif(_backend STREQUAL "HIP" AND OPENMX_GPU_ARCH)
+  list(APPEND _native_options "ARCH=${OPENMX_GPU_ARCH}")
 endif()
 foreach(_option IN LISTS _native_options)
   if(NOT _option MATCHES "^[A-Za-z_][A-Za-z_0-9]*=.*$")
@@ -70,11 +73,17 @@ if(NOT _result EQUAL 0)
   message(FATAL_ERROR "${_error}")
 endif()
 set(_native "${CMAKE_BINARY_DIR}/native/source")
+set(_copy_to_work)
+if(OPENMX_COPY_TO_WORK)
+  list(APPEND _copy_to_work COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/copy_openmx.py"
+       "${CMAKE_BINARY_DIR}/openmx" "${OPENMX_WORK_DIR}/openmx")
+endif()
 add_custom_target(openmx ALL
     COMMAND ${_prepare_command}
     COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" -j${OPENMX_BUILD_JOBS}
             ${_native_options} openmx
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_native}/openmx" "${CMAKE_BINARY_DIR}/openmx"
+    ${_copy_to_work}
     BYPRODUCTS "${CMAKE_BINARY_DIR}/openmx"
     USES_TERMINAL VERBATIM)
 add_dependencies(openmx openmx_core)
@@ -88,7 +97,13 @@ install(TARGETS openmx_core LIBRARY DESTINATION lib)
 if(BUILD_TESTING)
   add_test(NAME build-backend-isolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_unified_build.py")
+  add_test(NAME cmake-driver
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cmake_driver.py")
+  add_test(NAME dftd3-interpolation
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_dftd3_interpolation_cpu.py")
   if(_backend STREQUAL "CUDA")
+    add_test(NAME force-archive-recovery
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force4b_archived_cpu.py")
     add_test(NAME vna-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setpro_archived_cpu.py")
   endif()

@@ -15,6 +15,7 @@
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
+#include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_bilinear.h"
 #include "openmx_host_memory.h"
 #include "openmx_precision.h"
@@ -7357,6 +7358,70 @@ static void Force4B_GpuWorkspaceSizes(size_t* case1, size_t* case2)
     }
 }
 
+/* When all ranks' archives cannot coexist on the GPU, upload each rank's
+   indexed archive once under admission before expanding per-pair recovery
+   packets. Keep the host archive until successful result publication. */
+typedef struct {
+    void *admission;
+    float *first, *second;
+    int kind;
+} Force4BArchiveLease;
+
+static void Force4B_ArchiveEnd(Force4BGpuContext *g, Force4BArchiveLease *lease)
+{
+    if (!lease->admission) return;
+    if (lease->kind == 1) g->flat_dev = g->halo_dev = NULL;
+    if (lease->kind == 2) g->c2_dev = NULL;
+    if (lease->second) cudaFree(lease->second);
+    if (lease->first) cudaFree(lease->first);
+    (void)cudaGetLastError();
+    openmx_mgpu_release_devices(lease->admission);
+    memset(lease, 0, sizeof(*lease));
+}
+
+static int Force4B_ArchiveBegin(Force4BGpuContext *g, int kind, Force4BArchiveLease *lease)
+{
+    int device;
+    size_t free_bytes = 0, total_bytes = 0, workspace1, workspace2;
+    const float *first = kind == 1 ? g->flat_host : g->c2_host;
+    const float *second = kind == 1 ? g->halo_host : NULL;
+    size_t first_bytes = (kind == 1 ? (g->flat_stride ? 4*g->flat_stride : 4)
+                                                 : (g->c2_stride ? 4*g->c2_stride : 4))*sizeof(float);
+    size_t second_bytes = kind == 1 ? (g->halo_count ? g->halo_count : 1)*sizeof(float) : 0;
+
+    memset(lease, 0, sizeof(*lease));
+    if (!first || (kind == 1 && (!second || g->flat_dev || g->halo_dev)) ||
+        (kind == 2 && g->c2_dev) || !gpu_rank_device_usable() ||
+        openmx_gpu_capacity_test_recovery() || cudaGetDevice(&device) != cudaSuccess) return 0;
+    Force4B_GpuWorkspaceSizes(&workspace1, &workspace2);
+    size_t workspace = kind == 1 ? workspace1 : workspace2;
+    size_t reserve = Force_gpu_node_reserve(openmx_gpu_local_size_noncollective());
+    /* Include the complete metadata arena and a margin for runtime buffers. */
+    size_t need = first_bytes + second_bytes + workspace + (size_t)64*1024*1024;
+    lease->admission = openmx_mgpu_admit_devices(&device, 1);
+    if (!lease->admission) return 0;
+    acc_wait_all();
+    if (cudaDeviceSynchronize() != cudaSuccess) goto decline;
+    acc_clear_freelists();
+    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
+        free_bytes <= reserve || need > free_bytes-reserve) goto decline;
+    if (cudaMalloc((void**)&lease->first, first_bytes) != cudaSuccess ||
+        (second_bytes && cudaMalloc((void**)&lease->second, second_bytes) != cudaSuccess)) goto decline;
+    if (cudaMemcpy(lease->first, first, first_bytes, cudaMemcpyHostToDevice) != cudaSuccess ||
+        (second_bytes && cudaMemcpy(lease->second, second, second_bytes, cudaMemcpyHostToDevice) != cudaSuccess)) goto decline;
+    lease->kind = kind;
+    if (kind == 1) { g->flat_dev = lease->first; g->halo_dev = lease->second; }
+    else g->c2_dev = lease->first;
+    if (Force_env_flag("OPENMX_FORCE_PROFILE", 0)) {
+        fprintf(stderr, "<Force4B> rank %d case=%d archived GPU batch: %.1f MiB uploaded once\n",
+                MYID_MPI_COMM_WORLD, kind, (double)(first_bytes+second_bytes)/1048576.0);
+    }
+    return 1;
+decline:
+    Force4B_ArchiveEnd(g, lease);
+    return 0;
+}
+
 static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int stream_case2)
 {
     Force4BGpuContext* g = &F4B_gpu;
@@ -8910,6 +8975,8 @@ static void Force4B_GpuCase1Run(double***** CDM0)
         Force4B_gpu_abort("Force4B GPU: inconsistent case-1 batch.");
     }
 
+    Force4BArchiveLease archive = {0};
+    if (nitems) Force4B_ArchiveBegin(g, 1, &archive);
     if(nitems && g->flat_dev && g->halo_dev){
         float* flat = g->flat_dev;
         float* halo = g->halo_dev;
@@ -8954,6 +9021,8 @@ static void Force4B_GpuCase1Run(double***** CDM0)
     /* damping tail and accumulation (host, same math as the fused trace) */
 
 f4b_capacity:
+    /* Release admission before the recovery collectives, including on OOM. */
+    Force4B_ArchiveEnd(g, &archive);
     Force4B_capacity(1,g,nitems,items,krowA,krowB,krow_halo,cdm_pref,item_f,gpu_done);
 
     for (p = 0; p < nitems; p++) {
@@ -9398,6 +9467,8 @@ static void Force4B_GpuCase2Run(double***** CDM0)
         Force4B_gpu_abort("Force4B GPU: inconsistent case-2 batch.");
     }
 
+    Force4BArchiveLease archive = {0};
+    if (nitems) Force4B_ArchiveBegin(g, 2, &archive);
     if(nitems && g->c2_dev){
         float* c2 = g->c2_dev;
         size_t flat_stride = g->c2_stride;
@@ -9435,6 +9506,7 @@ static void Force4B_GpuCase2Run(double***** CDM0)
     }
 
 f4b_capacity:
+    Force4B_ArchiveEnd(g, &archive);
     Force4B_capacity(2,g,nitems,items,pair_h_off,pair_q_off,NULL,cdm_scale,item_f,gpu_done);
 
     for (p = 0; p < nitems; p++) {

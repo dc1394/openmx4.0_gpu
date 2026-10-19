@@ -234,16 +234,19 @@ PAO/NLP/VNA・軌道積の変換も Kokkos/CUDA で動かすには、例えば R
 
 ```sh
 cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA \
-  -DOPENMX_GPU_ARCH=120 -DOPENMX_BUILD_JOBS=4 \
+  -DOPENMX_GPU_ARCH=sm_120 -DOPENMX_BUILD_JOBS=4 \
   -DOPENMX_CORE_BACKEND=CUDA \
-  -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13.4/bin/nvcc \
-  -DCMAKE_CUDA_ARCHITECTURES=120 -DKokkos_ARCH_BLACKWELL120=ON
+  -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13.4/bin/nvcc
 cmake --build build/cuda --parallel 4
 ctest --test-dir build/cuda --output-on-failure
 ```
 
 GPU コアの既定規格は C++20 です。CMake の CUDA 言語を使い、同一の `.cpp` を
-CUDA コンパイラで構築します。実行時は既存の GPU 利用可否・ランク割り当てに従います。
+CUDA コンパイラで構築します。`OPENMX_GPU_ARCH` は本体と Kokkos の CUDA
+アーキテクチャを同時に設定するので、構成時に GPU がなくても指定できます。
+未指定または `auto` の場合は `nvidia-smi` による自動認識を行い、コマンドが
+存在しない場合や GPU の compute capability を取得できない場合は構成をエラー終了します。
+実行時は既存の GPU 利用可否・ランク割り当てに従います。
 `OPENMX_GPU=0` や `scf.eigen.lib elpa2` ではコアも CPU 経路を使います。
 
 ### OpenMX 本体と HIP

@@ -3877,6 +3877,20 @@ double Calc_EdftD3()
 	  dZj=0.0;
 	  dWi=0.0;
 	  dWj=0.0;
+	  /* [d3fix 2026-10-14] log-sum-exp: shift the Gaussian exponents by their maximum so that W never
+	     underflows (the original code set C6=0 when W<1e-12, which drops e.g. phosphate-P pairs whose CN
+	     lies far above all P reference CNs). Ratios Z/W and dC6/dCN are unchanged by the common shift. */
+	  double maxarg_d3fix = -1.0e300;
+	  for (i=0; i<maxcn_dftD[wanA]; i++){
+	    for (j=0; j<maxcn_dftD[wanB]; j++){
+	      if (C6ab_dftD[wanA][wanB][i][j][0]>1.0e-12){
+		dAi = CN[Gc_AN] - C6ab_dftD[wanA][wanB][i][j][1];
+		dBj = CN[Gc_BN] - C6ab_dftD[wanA][wanB][i][j][2];
+		exparg = -k3_dftD*( dAi*dAi + dBj*dBj );
+		if (exparg>maxarg_d3fix) maxarg_d3fix = exparg;
+	      }
+	    }
+	  }
 	  for (i=0; i<maxcn_dftD[wanA]; i++){
 	    for (j=0; j<maxcn_dftD[wanB]; j++){
 	      C6_ref=C6ab_dftD[wanA][wanB][i][j][0];
@@ -3884,7 +3898,7 @@ double Calc_EdftD3()
 		dAi = CN[Gc_AN] - C6ab_dftD[wanA][wanB][i][j][1];
 		dBj = CN[Gc_BN] - C6ab_dftD[wanA][wanB][i][j][2];
 		exparg = -k3_dftD*( dAi*dAi + dBj*dBj );
-		Lij=exp(exparg);
+		Lij=exp(exparg - maxarg_d3fix);
 		Z += C6_ref*Lij;
 		W += Lij;
 		dZi+=C6_ref*Lij*2.0*k3_dftD*dAi;

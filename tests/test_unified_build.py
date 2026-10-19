@@ -301,6 +301,24 @@ class UnifiedBuildTest(unittest.TestCase):
                                      [str(selected), "-S", str(selected), "--build"])
 
     @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
+    def test_explicit_cuda_architecture_does_not_query_a_gpu(self):
+        tools = self.workspace / "gpu-unavailable"
+        tools.mkdir(exist_ok=True)
+        marker = tools / "queried"
+        smi = tools / "nvidia-smi"
+        smi.write_text("#!/bin/sh\ntouch " + shlex.quote(str(marker)) + "\nexit 99\n")
+        smi.chmod(0o755)
+        command = ["make", "--no-print-directory", "-n", "-C", str(self.stages["CUDA"]),
+                   "GEMMUL8_GPU_ARCH=80", "WITH_MAGMA=0",
+                   "PATH=" + str(tools) + os.pathsep + os.environ["PATH"],
+                   "openmx.o", "openmx_gpu_dm.o"]
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertFalse(marker.exists(), "An explicit CUDA target must not query GPU hardware")
+        self.assertIn("-gpu=cc80", completed.stdout)
+        self.assertIn("compute_80,code=sm_80", completed.stdout)
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
     def test_native_object_recipes_preserve_each_backend_toolchain(self):
         for backend, stage in self.stages.items():
             with self.subTest(backend=backend):
