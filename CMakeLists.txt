@@ -50,7 +50,7 @@ if(NOT OPENMX_BUILD_APPLICATION)
   return()
 endif()
 string(TOUPPER "${OPENMX_CORE_BACKEND}" _core_backend)
-if(_core_backend MATCHES "^(CUDA|HIP)$" AND NOT _core_backend STREQUAL _backend)
+if(_core_backend MATCHES "^(CUDA|HIP|SYCL)$" AND NOT _core_backend STREQUAL _backend)
   message(FATAL_ERROR "The Kokkos accelerator must match OPENMX_GPU_BACKEND")
 endif()
 
@@ -132,6 +132,15 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_unified_build.py")
   add_test(NAME cmake-driver
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cmake_driver.py")
+  add_test(NAME gpu-error-boundary
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_error_cpu.py")
+  add_test(NAME force-recovery-failures
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_recovery_failures.py")
+  add_test(NAME mgpu-runtime
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_mgpu_runtime_cpu.py")
+  add_test(NAME mgpu-gemm
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_mgpu_gemm_cpu.py")
+  set_tests_properties(gpu-error-boundary mgpu-runtime mgpu-gemm PROPERTIES TIMEOUT 180)
   add_test(NAME atomic-hartree-interpolation COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_atomic_hartree_cpu.py")
   set_tests_properties(atomic-hartree-interpolation PROPERTIES TIMEOUT 120)

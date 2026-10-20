@@ -372,7 +372,7 @@ static void BandNonCol_DMGpu_Destroy(void)
     if (w->d_mat12    != NULL) wait_cudafunc(cudaFree(w->d_mat12));
     if (w->d_mat11e   != NULL) wait_cudafunc(cudaFree(w->d_mat11e));
     if (w->d_mat22e   != NULL) wait_cudafunc(cudaFree(w->d_mat22e));
-    if (w->cublas     != NULL) wait_cudafunc(cublasDestroy(w->cublas));
+    if (w->cublas     != NULL) OpenMXBlasWait(cublasDestroy(w->cublas));
     if (w->stream     != NULL) wait_cudafunc(cudaStreamDestroy(w->stream));
     memset(w, 0, sizeof(*w));
     w->device_id = -1;
@@ -387,7 +387,7 @@ static void BandNonCol_GpuSolver_Destroy(void)
     if (w->d_info   != NULL) wait_cudafunc(cudaFree(w->d_info));
     if (w->d_work   != NULL) wait_cudafunc(cudaFree(w->d_work));
     if (w->h_work   != NULL) free(w->h_work);
-    if (w->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(w->gpusolver));
+    if (w->gpusolver != NULL) OpenMXSolverWait(cusolverDnDestroy(w->gpusolver));
     if (w->stream   != NULL) wait_cudafunc(cudaStreamDestroy(w->stream));
 
     memset(w, 0, sizeof(*w));
@@ -402,8 +402,8 @@ static void BandNonCol_DMGpu_Init(void)
     if (w->initialized && w->device_id == current_device) return;
     if (w->initialized) BandNonCol_DMGpu_Destroy();
     wait_cudafunc(cudaStreamCreateWithFlags(&w->stream, cudaStreamNonBlocking));
-    wait_cudafunc(cublasCreate(&w->cublas));
-    wait_cudafunc(cublasSetStream(w->cublas, w->stream));
+    OpenMXBlasWait(cublasCreate(&w->cublas));
+    OpenMXBlasWait(cublasSetStream(w->cublas, w->stream));
     w->initialized = 1;
     w->device_id   = current_device;
 }
@@ -418,8 +418,8 @@ static void BandNonCol_GpuSolver_Init(void)
     if (w->initialized) BandNonCol_GpuSolver_Destroy();
 
     wait_cudafunc(cudaStreamCreateWithFlags(&w->stream, cudaStreamNonBlocking));
-    wait_cudafunc(cusolverDnCreate(&w->gpusolver));
-    wait_cudafunc(cusolverDnSetStream(w->gpusolver, w->stream));
+    OpenMXSolverWait(cusolverDnCreate(&w->gpusolver));
+    OpenMXSolverWait(cusolverDnSetStream(w->gpusolver, w->stream));
 
     w->initialized = 1;
     w->device_id   = current_device;
@@ -723,7 +723,7 @@ static void BandNonCol_GpuSolver_EnsureWorkspace(int n, int maxn)
     BandNonCol_GpuSolver_EnsureMatrixCapacity(n);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
+    OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
                                                CUDA_C_64F,(cuDoubleComplex*)w->d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                                CUDA_R_64F,w->d_W,CUDA_C_64F,&d_bytes,&h_bytes));
 
@@ -773,7 +773,7 @@ static void BandNonCol_GpuSolver_DenseZheevx_Device(dcomplex *A, double *ko, int
 #pragma acc data present(A[0 : nn], ko[0 : n + 1])
 #pragma acc host_data use_device(A, ko)
     {
-        wait_cudafunc(cusolverDnXsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
+        OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
                                                    CUDA_C_64F,(cuDoubleComplex*)A,n,&vl,&vu,1L,maxn,&h_meig,
                                                    CUDA_R_64F,ko+1,CUDA_C_64F,&d_bytes,&h_bytes));
 
@@ -796,7 +796,7 @@ static void BandNonCol_GpuSolver_DenseZheevx_Device(dcomplex *A, double *ko, int
             w->h_work_bytes = h_bytes;
         }
 
-        wait_cudafunc(cusolverDnXsyevdx(w->gpusolver,NULL,jobz,range,uplo,n,
+        OpenMXSolverWait(cusolverDnXsyevdx(w->gpusolver,NULL,jobz,range,uplo,n,
                                         CUDA_C_64F,(cuDoubleComplex*)A,n,&vl,&vu,1L,maxn,&h_meig,
                                         CUDA_R_64F,ko+1,CUDA_C_64F,
                                         w->d_work,w->d_work_bytes,w->h_work,w->h_work_bytes,w->d_info));
@@ -833,7 +833,7 @@ static void BandNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasOper
     {
         cuDoubleComplex const alpha = make_cuDoubleComplex(1.0, 0.0);
         cuDoubleComplex const beta  = make_cuDoubleComplex(0.0, 0.0);
-        wait_cudafunc(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.cublas, transa, transb, m, n, k, &alpha,
+        OpenMXBlasWait(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.cublas, transa, transb, m, n, k, &alpha,
                                           (cuDoubleComplex const *)A, lda,
                                           (cuDoubleComplex const *)B, ldb,
                                           &beta,
@@ -1032,7 +1032,7 @@ if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n2-MaxN,n2,NULL,0,NULL,0,(dcomplex*)
         for (int half=0; half<2; half++){
             size_t const off = (size_t)half*(size_t)n;
 
-            wait_cudafunc(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.cublas, CUBLAS_OP_T, CUBLAS_OP_T,
+            OpenMXBlasWait(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.cublas, CUBLAS_OP_T, CUBLAS_OP_T,
                                               MaxN, n, n, &alpha,
                                               (cuDoubleComplex const *)Cs2 + off, n2,
                                               (cuDoubleComplex const *)S, n,
@@ -1090,7 +1090,7 @@ static void BandNonCol_GpuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double *k
 
     wait_cudafunc(cudaMemcpyAsync(w->d_A,A,sizeof(dcomplex)*nn,cudaMemcpyHostToDevice,w->stream));
 
-    wait_cudafunc(cusolverDnXsyevdx(w->gpusolver,NULL,jobz,range,uplo,n,
+    OpenMXSolverWait(cusolverDnXsyevdx(w->gpusolver,NULL,jobz,range,uplo,n,
                                     CUDA_C_64F,(cuDoubleComplex*)w->d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                     CUDA_R_64F,w->d_W,CUDA_C_64F,
                                     w->d_work,w->d_work_bytes,w->h_work,w->h_work_bytes,w->d_info));

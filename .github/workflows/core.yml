@@ -5,19 +5,26 @@ on:
 
 jobs:
   host:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - backend: SERIAL
+          - os: ubuntu-24.04
+            backend: SERIAL
             standard: 20
             sanitize: "OFF"
-          - backend: OPENMP
+          - os: ubuntu-24.04
+            backend: OPENMP
             standard: 20
             sanitize: "OFF"
-          - backend: SERIAL
+          - os: ubuntu-24.04
+            backend: SERIAL
             standard: 23
             sanitize: "ON"
+          - os: macos-14
+            backend: SERIAL
+            standard: 20
+            sanitize: "OFF"
     steps:
       - uses: actions/checkout@v4
       - name: Configure the independently buildable core
@@ -35,3 +42,16 @@ jobs:
         run: |
           ulimit -s 8192
           ctest --test-dir build/core --output-on-failure
+
+  gpu-contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Error, admission, scope and memory planning tests
+        run: |
+          ulimit -s 8192
+          python3 tests/run_gpu_error_cpu.py
+          python3 tests/run_gpu_workers_cpu.py
+          python3 tests/run_mgpu_runtime_cpu.py
+          python3 tests/run_mgpu_gemm_cpu.py
+          python3 tests/run_gpu_dense_workers_cpu.py

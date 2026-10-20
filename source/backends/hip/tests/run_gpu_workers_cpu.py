@@ -17,8 +17,11 @@ with tempfile.TemporaryDirectory(prefix='openmx-aux-workers-') as directory:
 #include <stddef.h>
 typedef int hipError_t;
 #define hipSuccess 0
+#define hipErrorOutOfMemory 2
 int hipGetDevice(int*);int hipSetDevice(int);int hipFree(void*);
-int hipGetLastError(void);int hipDeviceSynchronize(void);
+int hipGetLastError(void);int hipPeekAtLastError(void);int hipDeviceSynchronize(void);
+typedef struct {int integrated;struct {unsigned hasDoubles:1;} arch;char gcnArchName[64];} hipDeviceProp_t;
+int hipGetDeviceProperties(hipDeviceProp_t*,int);
 int openmx_mgpu_scope_enter(int);void openmx_mgpu_scope_leave(int);
 int openmx_mgpu_pool_devices(int*,int);int openmx_mgpu_scope_devices(int*,int);
 void *openmx_mgpu_admit_devices(const int*,int);void openmx_mgpu_release_devices(void*);
@@ -43,6 +46,8 @@ void *openmx_target_alloc(size_t);void openmx_target_free(void*);void openmx_tar
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "openmx_mgpu_runtime.h"
+static const char *architecture="gfx942";
 static _Thread_local int device=0,omp_device=0,scope=0;
 static int permitted=4,group_first=0,group_count=0,held=0;
 static size_t memory[64]; static int queried[64];
@@ -53,6 +58,13 @@ int hipGetDevice(int *p){*p=device;return 0;}
 int hipSetDevice(int v){device=v;return 0;}
 int hipFree(void *p){assert(!p);return 0;}
 int hipGetLastError(void){return 0;}
+int hipPeekAtLastError(void){return 0;}
+int hipGetDeviceProperties(hipDeviceProp_t *p,int d){
+ (void)d;p->integrated=0;p->arch.hasDoubles=1;strcpy(p->gcnArchName,architecture);return 0;
+}
+_Noreturn void openmx_gpu_fatal(const char *message,const char *file,int line){
+ fprintf(stderr,"%s at %s:%d\n",message,file,line);exit(1);
+}
 int gpu_rank_device_usable(void){return 1;}
 int hipDeviceSynchronize(void){return 0;}
 int omp_get_default_device(void){return omp_device;}
@@ -105,6 +117,9 @@ static size_t uneven_cost(void *context,int worker,int count){
 int main(void){
  unsetenv("OPENMX_GPU_WORKER_OVERLAP");
  CHECK(!openmx_gpu_device_weak_fp64(0) && !openmx_gpu_worker_can_overlap(0));
+ architecture="gfx1200";
+ CHECK(openmx_gpu_device_weak_fp64(0) && !openmx_gpu_worker_can_overlap(0));
+ architecture="gfx942:sramecc+:xnack-";
  setenv("OPENMX_GPU_WORKER_OVERLAP","1",1);
  CHECK(!openmx_gpu_device_weak_fp64(0) && openmx_gpu_worker_can_overlap(0));
  /* Auto leaves other HIP devices untouched while the owner fits; when

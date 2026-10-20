@@ -408,7 +408,7 @@ static void ClusterNonCol_TransformRealDenseMatricesGPU(int n, const double *S, 
     if (d_C != NULL) wait_hipfunc(hipFree(d_C));
     if (d_A != NULL) wait_hipfunc(hipFree(d_A));
     if (d_S != NULL) wait_hipfunc(hipFree(d_S));
-    if (handle != shared) wait_hipfunc(hipblasDestroy(handle));
+    if (handle != shared) OpenMXBlasWait(hipblasDestroy(handle));
     return;
 
 setup_failed:

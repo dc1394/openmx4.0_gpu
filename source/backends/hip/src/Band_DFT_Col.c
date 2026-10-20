@@ -1385,9 +1385,9 @@ static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
     if (ctx->h_scale != NULL)
         free(ctx->h_scale);
     if (ctx->gpusolver != NULL)
-        wait_hipfunc(hipsolverDnDestroy(ctx->gpusolver));
+        OpenMXSolverWait(hipsolverDnDestroy(ctx->gpusolver));
     if (ctx->hipblas != NULL)
-        wait_hipfunc(hipblasDestroy(ctx->hipblas));
+        OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
 
     ctx->initialized         = 0;
     ctx->device_id           = -1;
@@ -1607,7 +1607,7 @@ static void BandCol_GpuSolver_Init(void)
         BandCol_GpuSolver_Destroy();
     }
 
-    wait_hipfunc(hipblasCreate(&ctx->hipblas));
+    OpenMXBlasWait(hipblasCreate(&ctx->hipblas));
     ctx->gpusolver = NULL;
 
     ctx->initialized = 1;
@@ -1764,7 +1764,7 @@ static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n,
 
         if (!openmx_gpu_transform ||
             !openmx_gpu_transform(OPENMX_GPU_SCALE_COLUMNS,1,n,n,ctx->d_S,n,ctx->d_scale,0,ctx->d_tmp,n,1,0.0))
-        wait_hipfunc(hipblasZdgmm(ctx->hipblas, HIPBLAS_SIDE_RIGHT, n, n, (hipDoubleComplex *)ctx->d_S, n,
+        OpenMXBlasWait(hipblasZdgmm(ctx->hipblas, HIPBLAS_SIDE_RIGHT, n, n, (hipDoubleComplex *)ctx->d_S, n,
                                   (hipDoubleComplex *)ctx->d_scale, 1, (hipDoubleComplex *)ctx->d_tmp, n));
 
         {
@@ -2358,13 +2358,13 @@ static void BandCol_GpuSolver_BackTransformGemm(int n, int maxn, dcomplex *evec_
     hipDoubleComplex     beta = make_hipDoubleComplex(0.0, 0.0);
 
     if (BandCol_GemmulBackTransformEnabled()) {
-        wait_hipfunc(openmx_gemmul8ZgemmSolve(ctx->hipblas, HIPBLAS_OP_T, HIPBLAS_OP_T, maxn, n, n, &alpha,
+        OpenMXBlasWait(openmx_gemmul8ZgemmSolve(ctx->hipblas, HIPBLAS_OP_T, HIPBLAS_OP_T, maxn, n, n, &alpha,
                                               (const hipDoubleComplex *)ctx->d_H, n,
                                               (const hipDoubleComplex *)ctx->d_S, n, &beta,
                                               (hipDoubleComplex *)evec_t, maxn));
     }
     else {
-        wait_hipfunc(hipblasZgemm(ctx->hipblas, HIPBLAS_OP_T, HIPBLAS_OP_T, maxn, n, n, &alpha,
+        OpenMXBlasWait(hipblasZgemm(ctx->hipblas, HIPBLAS_OP_T, HIPBLAS_OP_T, maxn, n, n, &alpha,
                                   (hipDoubleComplex *)ctx->d_H, n, (hipDoubleComplex *)ctx->d_S, n, &beta,
                                   (hipDoubleComplex *)evec_t, maxn));
     }
@@ -2943,7 +2943,8 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
                     int * Comm_World_StartID1, MPI_Comm * MPI_CommWD1, int myworld2, int * NPROCS_ID2, int * NPROCS_WD2,
                     int * Comm_World2, int * Comm_World_StartID2, MPI_Comm * MPI_CommWD2)
 {
-    openmx_mgpu_scope_state input_scope=openmx_mgpu_band_scope_enter(0,0,0);
+    openmx_mgpu_band_scope input_scope={0};
+    openmx_mgpu_band_scope_select(&input_scope,0,0,0);
     static int firsttime = 1;
     int        i, j, k, l, m, n, p, wan, MaxN, i0, ks;
     int        i1, i1s, j1, ia, jb, lmax, kmin, kmax, po, po1, spin, s1, e1;
@@ -3954,7 +3955,7 @@ diagonalize1:
                     continue;
                 }
 
-                (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+                openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
 
                 k1 = T_KGrids1[kloop];
                 k2 = T_KGrids2[kloop];
@@ -4063,7 +4064,7 @@ diagonalize1:
                 int my_gpu_turn;
                 kloop = S_knum + kloop0;
 
-                (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+                openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
 
                 k1 = T_KGrids1[kloop];
                 k2 = T_KGrids2[kloop];
@@ -4225,7 +4226,7 @@ diagonalize1:
 		            } else {
                 kloop = S_knum + kloop0;
 
-                (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+                openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
 
                 k1 = T_KGrids1[kloop];
                 k2 = T_KGrids2[kloop];
@@ -4596,7 +4597,7 @@ diagonalize1:
                     const int build_s = (!device_s_ready && !host_s_ready);
                     int       construct_on_device;
 
-                    (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,my_kloop);
+                    openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,my_kloop);
 
                     k1 = T_KGrids1[my_kloop];
                     k2 = T_KGrids2[my_kloop];
@@ -4927,7 +4928,7 @@ diagonalize1:
         spin  = myworld1;
         kloop = S_knum;
 
-        (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+        openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
 
         k1 = T_KGrids1[kloop];
         k2 = T_KGrids2[kloop];
@@ -4990,7 +4991,7 @@ diagonalize1:
                         MPI_Barrier(mpi_comm_level1);
                     }
 
-                    (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,gpu_turn%T_knum);
+                    openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,gpu_turn%T_knum);
                     if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
                         dcomplex *evec_device;
 
@@ -5472,7 +5473,7 @@ diagonalize1:
                     double k3;
 
                     kloop = gpu_k_order[gpu_turn] % T_knum;
-                    (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+                    openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
                     if (!owns_dense_k_rank || gpu_k_order[gpu_turn] / T_knum != spin ||
                         kloop < S_knum || S_knum + num_kloop0 <= kloop) {
                         BandCol_AccumulateDenseTransposedDM_Device(n,0,spin,0,0,0,0,NULL,0,MP,order_GA,EIGEN,NULL,
@@ -5480,7 +5481,7 @@ diagonalize1:
                         continue;
                     }
 
-                    (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+                    openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
 
                     k1 = T_KGrids1[kloop];
                     k2 = T_KGrids2[kloop];
@@ -5654,7 +5655,7 @@ diagonalize1:
                             CDM1,EDM1,size_H1,1,mpi_comm_level1,1); continue; }
                 kloop = kloop0 + S_knum;
 
-                (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+                openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
 
                 k1 = T_KGrids1[kloop];
                 k2 = T_KGrids2[kloop];
@@ -6123,7 +6124,7 @@ diagonalize1:
 
             for (kloop = 0; kloop < T_knum; kloop++) {
 
-                (void)openmx_mgpu_band_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
+                openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
 
                 k1 = T_KGrids1[kloop];
                 k2 = T_KGrids2[kloop];
@@ -6326,7 +6327,7 @@ diagonalize1:
     MPI_Barrier(mpi_comm_level1);
     dtime(&TEtime);
     time0 = TEtime - TStime;
-    openmx_mgpu_band_scope_leave(input_scope);
+    openmx_mgpu_band_scope_close(&input_scope);
     return time0;
 }
 

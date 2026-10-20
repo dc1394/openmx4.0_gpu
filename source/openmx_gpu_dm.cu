@@ -62,7 +62,7 @@ std::vector<int> basis_rows(const Work &w,size_t first,size_t last)
     rows.insert(rows.end(),w.basis0+first,w.basis0+last);rows.insert(rows.end(),w.basis1+first,w.basis1+last);
     std::sort(rows.begin(),rows.end());rows.erase(std::unique(rows.begin(),rows.end()),rows.end());return rows;
 }
-size_t capacity_cost(void *opaque,int worker,int count)
+size_t capacity_cost(void *opaque,int worker,int count,int device)
 {
     const auto &w=*static_cast<Work*>(opaque);
     size_t first=openmx_gpu_worker_cut(w.entries,worker,count),last=openmx_gpu_worker_cut(w.entries,worker+1,count);
@@ -75,6 +75,11 @@ size_t capacity_cost(void *opaque,int worker,int count)
             size_t size=rows.size()*(w.kind==OPENMX_GPU_DM_NC?2:1)*size_t(w.states);
             if(size>(SIZE_MAX-bytes)/width)return SIZE_MAX;bytes+=size*width;
         }catch(const std::bad_alloc&){return SIZE_MAX;}
+    } else if(device!=w.origin) {
+        /* read_view may need a full private copy when P2P is unavailable.
+           Reserve that worst case before admitting a remote single worker. */
+        if(w.vector_bytes>SIZE_MAX-bytes)return SIZE_MAX;
+        bytes+=w.vector_bytes;
     }
     return bytes;
 }
@@ -145,7 +150,7 @@ int worker(void *opaque,int worker,int phase)
         else
             kernel<<<blocks,128>>>(w.kind,d.n,w.states,d.stride,int(count),d.vectors.pointer,d.indices,
                 d.weights,d.phase,d.output,w.phase!=nullptr,w.energy!=nullptr,w.partial!=nullptr);
-        if(OpenMXGpuGetLastError()!=OPENMX_GPU_SUCCESS)return 0;
+        if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS)return 0;
         if(w.kind<OPENMX_GPU_DM_GATHER && OpenMXGpuMemcpy(d.result.get(),d.output,
             size_t(w.output_channels)*count*sizeof(double),OPENMX_GPU_COPY_DEVICE_TO_HOST)!=OPENMX_GPU_SUCCESS)return 0;
     } else if(phase==OPENMX_GPU_WORKER_COMMIT) {
@@ -220,13 +225,18 @@ static int dm_entries(int kind,int n,int states,int stride,int entries,const voi
         if(outputs[channel])w.output_channels=channel+1;
     }
     if(!w.output_channels)return 1;
+    /* A failed caller launch is not a capacity failure. Preserve it and do
+       not turn the operation into a successful CPU result. */
+    if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS)return 0;
     w.vector_bytes=kind>=OPENMX_GPU_DM_GATHER?size_t(2*n)*size_t(2*n)*sizeof(Z):
         ((size_t(n)*(kind==OPENMX_GPU_DM_NC?2:1)-1)*stride+states)* (kind==OPENMX_GPU_DM_REAL?sizeof(double):sizeof(Z));
-    if(OpenMXGpuGetDevice(&w.origin)!=OPENMX_GPU_SUCCESS)w.origin=0;
-    int ok=openmx_gpu_workers_capacity(&w.workers,entries,2,capacity_cost,&w);
+    if(OpenMXGpuGetDevice(&w.origin)!=OPENMX_GPU_SUCCESS)return 0;
+    int ok=openmx_gpu_workers_capacity_device(&w.workers,entries,2,capacity_cost,&w);
     if(ok)ok=openmx_gpu_workers_run_prepared(&w.workers,safe_worker,&w,"density-matrix-entries");
     if(ok)return 1;
-    (void)OpenMXGpuGetLastError();
+    const auto pending=OpenMXGpuPeekAtLastError();
+    if(pending==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
+    else if(pending!=OPENMX_GPU_SUCCESS) return 0;
     if(!cpu)return 0;
     try{return cpu_rows(w);}catch(const std::bad_alloc&){return 0;}
 }

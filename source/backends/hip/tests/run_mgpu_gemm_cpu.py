@@ -25,12 +25,15 @@ hip = r'''
 using hipError_t=int;
 constexpr int hipSuccess=0,hipStreamNonBlocking=1,hipEventDisableTiming=2,hipHostAllocPortable=4;
 constexpr int hipErrorPeerAccessAlreadyEnabled=5;
+constexpr int hipErrorOutOfMemory=2;
+constexpr int hipErrorInvalidValue=1,hipErrorPeerAccessUnsupported=217;
 enum hipMemoryType {hipMemoryTypeHost=1,hipMemoryTypeDevice=2};
 enum hipMemcpyKind {hipMemcpyHostToDevice,hipMemcpyDeviceToHost,hipMemcpyDeviceToDevice};
 enum hipStreamCaptureStatus {hipStreamCaptureStatusNone};
 struct MockStream {int device;};using hipStream_t=MockStream *;
 struct MockEvent {int device;};using hipEvent_t=MockEvent *;
 inline int mock_device=0;
+inline int mock_pending_error=0;
 struct Allocation {size_t bytes;int device;};
 inline std::unordered_map<void *,Allocation> allocations;
 struct hipPointerAttribute_t {hipMemoryType type;int device;};
@@ -45,7 +48,8 @@ inline int hipGetDeviceCount(int *v){*v=4;return 0;}
 inline int hipDeviceGetPCIBusId(char *s,int n,int d){std::snprintf(s,n,"0000:%02x:00.0",d);return 0;}
 inline int hipDeviceCanAccessPeer(int *can,int,int){*can=1;return 0;}
 inline int hipDeviceEnablePeerAccess(int,int){return 0;}
-inline int hipGetLastError(){return 0;}
+inline int hipGetLastError(){int old=mock_pending_error;mock_pending_error=0;return old;}
+inline int hipPeekAtLastError(){return mock_pending_error;}
 inline const char *hipGetErrorString(int){return "mock HIP error";}
 inline int hipMemGetInfo(size_t *f,size_t *t){*f=*t=size_t(16)<<30;return 0;}
 template<class T> inline int hipMalloc(T **p,size_t n){*p=static_cast<T *>(std::malloc(n));if(!*p)return 1;allocations[*p]={n,mock_device};return 0;}
@@ -122,6 +126,17 @@ inline hipblasStatus_t hipblasZgemm(hipblasHandle_t h,hipblasOperation_t ta,hipb
 const hipDoubleComplex *al,const hipDoubleComplex *a,int lda,const hipDoubleComplex *b,int ldb,const hipDoubleComplex *be,hipDoubleComplex *c,int ldc){return fakegemm(h,ta,tb,m,n,k,al,a,lda,b,ldb,be,c,ldc);}
 '''
 fixture = (root / "tests/mgpu_gemm_smoke.cu").read_text()
+fixture = fixture.replace('int main(int argc,char **argv) {', r'''
+int main(int argc,char **argv) {
+    mock_pending_error=700;
+    hipblasStatus_t pending_status=HIPBLAS_STATUS_SUCCESS;
+    const int handled=openmx_mgpuDgemmTry(nullptr,0,nullptr,HIPBLAS_OP_N,HIPBLAS_OP_N,
+        0,0,0,nullptr,nullptr,1,nullptr,1,nullptr,nullptr,1,&pending_status);
+    require(handled==1 && pending_status==HIPBLAS_STATUS_EXECUTION_FAILED,
+        "pending caller error must fail before dispatch");
+    require(mock_pending_error==700,"pending caller error must be preserved");
+    mock_pending_error=0;
+''')
 fixture = re.sub(r"__global__ void delay_input\([^)]*\) \{.*?\n\}", "", fixture, flags=re.S)
 fixture = re.sub(r"^\s*delay_input<<<.*?;\n", "\n", fixture, flags=re.M)
 with tempfile.TemporaryDirectory(prefix="openmx-mgpu-cpu-") as tmp:

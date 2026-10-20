@@ -26,6 +26,8 @@ endif
 LIB += $(OPENMX_CORE_LIBRARY) -Wl,-rpath,$(dir $(OPENMX_CORE_LIBRARY)) -Wl,-rpath,'$$ORIGIN/lib' -Wl,-rpath,'$$ORIGIN/../lib'
 openmx: $(OPENMX_CORE_LIBRARY)
 $(OBJS): openmx_core.h openmx_periodic.h openmx_complex.h
+# Track the canonical public headers behind source/ compatibility includes.
+$(OBJS) openmx_api.o: $(wildcard $(OPENMX_CORE_SOURCE_DIR)/include/*.h)
 FT_PAO.o FT_NLP.o FT_VNA.o RadialF.o Nonlocal_RadialF.o VNAF.o PhiF.o RF_BesselF.o Set_Nonlocal.o: openmx_core_radial.h
 SetPara_DFT.o: openmx_gpu_device.h
 SetPara_DFT.o FT_ProExpn_VNA.o: openmx_core_neutral.h openmx_core_radial.h

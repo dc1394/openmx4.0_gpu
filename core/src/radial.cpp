@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <climits>
+#include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 #include <type_traits>
 
@@ -324,7 +326,7 @@ Tensor<double,2> transform_host(const RadialSamples& samples)
   for (int k = 0; k < k_count; ++k) {
     for (int i = 0; i < radial_count; ++i) {
       double sb[32];
-      spherical_bessel(grid.wavevectors[k]*grid.radii[i],grid.lmax,sb,nullptr);
+      spherical_bessel_values(grid.wavevectors[k]*grid.radii[i],grid.lmax,sb);
       for (int l = 0; l <= grid.lmax; ++l)
         element(work,l,i) = radial_weight(sb[l],grid.measures[i],i,radial_count-1,grid.weighting);
     }
@@ -346,7 +348,7 @@ Tensor<double,2> transform_host(const RadialSamples& samples)
 
 bool has_accelerator() noexcept
 {
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL)
   return true;
 #else
   return false;
@@ -356,22 +358,50 @@ bool has_accelerator() noexcept
 bool Context::start(int device)
 {
   if (finished_) throw std::logic_error("OpenMX core context already finished");
-  if (runtime_) return device == device_;
+  if (runtime_) {
+    if (device != device_) { fallback(HostFallback::device_changed); return false; }
+    return true;
+  }
   // An externally owned runtime must outlive this context. Never finalize it.
-  if (Kokkos::is_initialized()) return false;
+  if (Kokkos::is_initialized()) { fallback(HostFallback::external_runtime); return false; }
   if (Kokkos::is_finalized())
     throw std::logic_error("Kokkos cannot be reinitialized; retain the application context");
   auto settings = Kokkos::InitializationSettings().set_disable_warnings(true);
   if (device >= 0) settings.set_device_id(device);
   runtime_ = std::make_unique<Kokkos::ScopeGuard>(settings);
   device_ = device;
+#if defined(KOKKOS_ENABLE_SYCL)
+  const auto selected = Kokkos::DefaultExecutionSpace().sycl_queue().get_device();
+  capabilities_ = {OPENMX_ACCELERATOR_SYCL,
+      selected.has(sycl::aspect::fp64) ? OPENMX_FP64_NATIVE : OPENMX_FP64_UNAVAILABLE,
+      selected.get_info<sycl::info::device::host_unified_memory>() ?
+          OPENMX_MEMORY_SHARED : OPENMX_MEMORY_DISCRETE, 0};
+#elif defined(KOKKOS_ENABLE_CUDA)
+  capabilities_ = {OPENMX_ACCELERATOR_CUDA, OPENMX_FP64_NATIVE, OPENMX_MEMORY_UNKNOWN, 0};
+#elif defined(KOKKOS_ENABLE_HIP)
+  capabilities_ = {OPENMX_ACCELERATOR_HIP, OPENMX_FP64_NATIVE, OPENMX_MEMORY_UNKNOWN, 0};
+#endif
   return true;
+}
+
+void Context::fallback(HostFallback reason)
+{
+  last_fallback_ = reason;
+  const unsigned bit = 1u << static_cast<unsigned>(reason);
+  const char* verbose = std::getenv("OPENMX_CORE_VERBOSE");
+  if ((reported_fallbacks_ & bit) || !verbose || std::atoi(verbose) == 0) return;
+  const char* message = reason == HostFallback::external_runtime ? "Kokkos runtime owned by caller" :
+      reason == HostFallback::device_changed ? "requested device differs from context device" :
+      "selected device does not support native FP64";
+  std::fprintf(stderr, "<OpenMX_Core> radial transform uses CPU: %s\n", message);
+  reported_fallbacks_ |= bit;
 }
 
 Tensor<double,2> Context::transform(const RadialSamples& samples, int device)
 {
   validate_samples(samples);
   if (finished_) throw std::logic_error("OpenMX core context already finished");
+  last_fallback_ = HostFallback::none;
   // GPU-enabled Kokkos initializes its GPU even for a Serial dispatch. A CPU
   // request must remain usable on machines without a visible accelerator.
   if (host_only_ || (has_accelerator() && device < 0)) return transform_host(samples);
@@ -379,6 +409,10 @@ Tensor<double,2> Context::transform(const RadialSamples& samples, int device)
   // A later input can change legacy rank/device mapping. Until execution-space
   // instances are migrated, keep that calculation on the host safely.
   if (!start(device)) return transform_host(samples);
+  if (!openmx_accelerator_can_run_fp64(capabilities_)) {
+    fallback(HostFallback::fp64_unavailable);
+    return transform_host(samples);
+  }
   return transform_kokkos<Kokkos::DefaultExecutionSpace>(samples);
 }
 

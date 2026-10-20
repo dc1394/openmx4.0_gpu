@@ -18,10 +18,11 @@ with tempfile.TemporaryDirectory(prefix='openmx-aux-workers-') as directory:
 #include <stddef.h>
 typedef int cudaError_t;
 #define cudaSuccess 0
+#define cudaErrorMemoryAllocation 2
 #define cudaDevAttrSingleToDoublePrecisionPerfRatio 1
 int cudaGetDevice(int*);int cudaSetDevice(int);int cudaFree(void*);
 int cudaDeviceGetAttribute(int*,int,int);
-int cudaGetLastError(void);int cudaDeviceSynchronize(void);
+int cudaGetLastError(void);int cudaPeekAtLastError(void);int cudaDeviceSynchronize(void);
 int openmx_mgpu_scope_enter(int);void openmx_mgpu_scope_leave(int);
 int openmx_mgpu_pool_devices(int*,int);int openmx_mgpu_scope_devices(int*,int);
 void *openmx_mgpu_admit_devices(const int*,int);void openmx_mgpu_release_devices(void*);
@@ -50,6 +51,7 @@ void *acc_malloc(size_t);void acc_free(void*);void acc_wait_all(void);
 #include <stdlib.h>
 #include <string.h>
 static _Thread_local int device=0,acc_device=0,acc_type=5,scope=0;
+static _Thread_local int pending_error=0;
 static int permitted=4,group_first=0,group_count=0,held=0;
 static int ratios[64],attribute_failure;
 static size_t memory[64]; static int queried[64];
@@ -59,7 +61,11 @@ static long checks=0;
 int cudaGetDevice(int *p){*p=device;return 0;}
 int cudaSetDevice(int v){device=v;return 0;}
 int cudaFree(void *p){assert(!p);return 0;}
-int cudaGetLastError(void){return 0;}
+int cudaGetLastError(void){int old=pending_error;pending_error=0;return old;}
+int cudaPeekAtLastError(void){return pending_error;}
+_Noreturn void openmx_gpu_fatal(const char *message,const char *file,int line){
+ fprintf(stderr,"%s at %s:%d\n",message,file,line);exit(1);
+}
 int cudaDeviceGetAttribute(int *p,int attribute,int d){assert(attribute==1);*p=ratios[d];return attribute_failure;}
 int gpu_rank_device_usable(void){return 1;}
 int cudaDeviceSynchronize(void){return 0;}
@@ -113,6 +119,11 @@ static size_t cost(void *opaque,int worker,int count){
 static size_t uneven_cost(void *context,int worker,int count){
  (void)context;return (size_t)(count==1?5:worker?3:2)<<30;
 }
+static size_t device_cost(void *context,int worker,int count,int target){
+ (void)context;(void)worker;(void)count;
+ /* A remote density worker must also stage the full input eigenvectors. */
+ return (size_t)(target==0?1:5)<<30;
+}
 int main(int argc,char **argv){
  for(int i=0;i<64;i++)ratios[i]=64;
  if(argc==3){
@@ -159,6 +170,15 @@ int main(int argc,char **argv){
   group_count=0;
   memory[0]=1;need=(size_t)1<<30;
   CHECK(openmx_gpu_workers_capacity(&p,1,0,cost,&need) && p.count==1 && p.devices[0]!=0);
+  CHECK(!openmx_gpu_workers_capacity_device(&p,1,0,device_cost,NULL));
+  memory[2]=(size_t)6<<30;
+  CHECK(openmx_gpu_workers_capacity_device(&p,1,0,device_cost,NULL) && p.count==1 && p.devices[0]==2);
+  memory[2]=0;
+  pending_error=77;
+  CHECK(!openmx_gpu_workers_capacity(&p,1,0,cost,&need) && pending_error==77);
+  p.count=1;p.devices[0]=0;
+  CHECK(!openmx_gpu_workers_run(&p,callback,NULL,"pending") && pending_error==77);
+  pending_error=0;
   permitted=3;memory[1]=((size_t)2<<30)+((size_t)300<<20);memory[2]=((size_t)3<<30)+((size_t)300<<20);
   CHECK(openmx_gpu_workers_capacity(&p,173,0,uneven_cost,NULL) && p.count==2 && p.devices[0]==1 && p.devices[1]==2);
   memset(memory,0,sizeof(memory));permitted=4;need=SIZE_MAX;

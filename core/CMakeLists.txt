@@ -4,10 +4,10 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXBuildType.cmake")
 
 include(CTest)
 include(FetchContent)
-set(OPENMX_CORE_BACKEND "SERIAL" CACHE STRING "Core execution backend: SERIAL, OPENMP, CUDA, HIP")
-set_property(CACHE OPENMX_CORE_BACKEND PROPERTY STRINGS SERIAL OPENMP CUDA HIP)
+set(OPENMX_CORE_BACKEND "SERIAL" CACHE STRING "Core execution backend: SERIAL, OPENMP, CUDA, HIP, SYCL")
+set_property(CACHE OPENMX_CORE_BACKEND PROPERTY STRINGS SERIAL OPENMP CUDA HIP SYCL)
 string(TOUPPER "${OPENMX_CORE_BACKEND}" OPENMX_CORE_BACKEND)
-if(NOT OPENMX_CORE_BACKEND MATCHES "^(SERIAL|OPENMP|CUDA|HIP)$")
+if(NOT OPENMX_CORE_BACKEND MATCHES "^(SERIAL|OPENMP|CUDA|HIP|SYCL)$")
   message(FATAL_ERROR "Invalid OPENMX_CORE_BACKEND=${OPENMX_CORE_BACKEND}")
 endif()
 if(OPENMX_CORE_BACKEND STREQUAL "CUDA")
@@ -46,7 +46,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "" FORCE)
-foreach(_device CUDA HIP OPENMP)
+foreach(_device CUDA HIP OPENMP SYCL)
   if(OPENMX_CORE_BACKEND STREQUAL _device)
     set(Kokkos_ENABLE_${_device} ON CACHE BOOL "" FORCE)
   else()
@@ -58,6 +58,15 @@ if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
   # Device kernels use Kokkos::View; std::mdspan is a host-only view.
   set(CMAKE_${OPENMX_CORE_BACKEND}_STANDARD ${CMAKE_CXX_STANDARD})
   enable_language(${OPENMX_CORE_BACKEND})
+else()
+  set(Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE OFF CACHE BOOL "" FORCE)
+endif()
+if(OPENMX_CORE_BACKEND STREQUAL "SYCL")
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-fsycl" OPENMX_CORE_COMPILER_HAS_SYCL)
+  if(NOT OPENMX_CORE_COMPILER_HAS_SYCL)
+    message(FATAL_ERROR "SYCL requires a SYCL compiler, e.g. -DCMAKE_CXX_COMPILER=icpx")
+  endif()
 endif()
 set(Kokkos_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(Kokkos_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -83,7 +92,7 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vp
 add_library(openmx_core SHARED ${_core_sources})
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/../source")
+  "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(openmx_core PUBLIC Kokkos::kokkos)
 install(FILES "${kokkos_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/openmx_core RENAME Kokkos-LICENSE)
 target_compile_features(openmx_core PUBLIC cxx_std_20)
@@ -96,7 +105,14 @@ endif()
 # Retain the original quadrature's summation order and avoid contraction when
 # comparing a refactor against the old C implementation.
 target_compile_options(openmx_core PRIVATE
-  "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-ffp-contract=off>"
+  "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang,IntelLLVM>:-Wall;-Wextra;-Wpedantic>"
+  "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wall,-Wextra,-Wpedantic>"
+  "$<$<COMPILE_LANGUAGE:HIP>:-Wall;-Wextra;-Wpedantic>")
+# Inline numerical kernels and their callers share this arithmetic contract.
+# In particular IntelLLVM otherwise reassociates even simple displacements.
+target_compile_options(openmx_core PUBLIC
+  "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-ffp-contract=off>"
+  "$<$<COMPILE_LANG_AND_ID:CXX,IntelLLVM>:-fp-model=precise;-ffp-contract=off>"
   "$<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>"
   "$<$<COMPILE_LANGUAGE:HIP>:-ffp-contract=off>")
 if(OPENMX_CORE_SANITIZERS)

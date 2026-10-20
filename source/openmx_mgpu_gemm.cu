@@ -182,7 +182,6 @@ bool input_copy(Operation &op,Worker &w,void *dst,const void *src,size_t spitch,
     if(w.peer) {
         const OpenMXGpuError err=peer_copy(dst,w.ctx->device,width,src,op.origin,spitch,width,height,w.ctx->stream);
         if(err==OPENMX_GPU_SUCCESS) {if(w.ctx->device!=op.origin) ++report.peer_transfers;return true;}
-        (void)OpenMXGpuGetLastError();
         return false; // no user output was touched: original backend may retry
     }
     if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS ||
@@ -216,7 +215,7 @@ bool output_copy(Operation &op,Worker &w,void *dst,size_t dpitch,const void *src
     if(w.peer) {
         const OpenMXGpuError err=peer_copy(dst,op.origin,dpitch,src,w.ctx->device,width,width,height,w.ctx->stream);
         if(err==OPENMX_GPU_SUCCESS) {if(w.ctx->device!=op.origin) ++report.peer_transfers;return true;}
-        (void)OpenMXGpuGetLastError();return false;
+        return false;
     }
     if(OpenMXGpuMemcpyAsync(host,src,width*height,OPENMX_GPU_COPY_DEVICE_TO_HOST,w.ctx->stream)!=OPENMX_GPU_SUCCESS ||
        OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS ||
@@ -250,7 +249,12 @@ template<class T> OpenMXBlasStatus local_gemm(OpenMXBlasHandle h,OpenMXBlasOpera
 bool owned_pointer(const void *p,int device)
 {
     OpenMXGpuPointerAttributes attr={};
-    if(OpenMXGpuPointerGetAttributes(&attr,p)!=OPENMX_GPU_SUCCESS) {(void)OpenMXGpuGetLastError();return false;}
+    const auto error=OpenMXGpuPointerGetAttributes(&attr,p);
+    if(error!=OPENMX_GPU_SUCCESS) {
+        if(error==OPENMX_GPU_INVALID_VALUE && OpenMXGpuPeekAtLastError()==error)
+            (void)OpenMXGpuGetLastError(); // our unsupported host-pointer query
+        return false;
+    }
     return attr.type==OPENMX_GPU_DEVICE_MEMORY && attr.device==device;
 }
 bool valid_op(OpenMXBlasOperation op) { return op==OPENMX_BLAS_OP_N || op==OPENMX_BLAS_OP_T || op==OPENMX_BLAS_OP_C; }
@@ -270,8 +274,13 @@ bool enable_peer_pair(int first,int second)
         if(OpenMXGpuSetDevice(from)!=OPENMX_GPU_SUCCESS) return false;
         const OpenMXGpuError e=OpenMXGpuDeviceEnablePeerAccess(to,0);
         if(e!=OPENMX_GPU_SUCCESS) {
-            (void)OpenMXGpuGetLastError();
-            if(e!=OPENMX_GPU_PEER_ALREADY_ENABLED) {enabled[key]=false;return false;}
+            if(e==OPENMX_GPU_PEER_ALREADY_ENABLED || e==OPENMX_GPU_PEER_UNSUPPORTED) {
+                if(OpenMXGpuPeekAtLastError()==e) (void)OpenMXGpuGetLastError();
+            }
+            if(e!=OPENMX_GPU_PEER_ALREADY_ENABLED) {
+                if(e==OPENMX_GPU_PEER_UNSUPPORTED) enabled[key]=false;
+                return false;
+            }
         }
         enabled[key]=true;
     }
@@ -289,6 +298,10 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     report={};report.requested_gpus=ngpu;report.reason="not eligible";
     if(!status) return 0;
     *status=OPENMX_BLAS_SUCCESS;
+    if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS) {
+        *status=OPENMX_BLAS_EXECUTION_FAILED;
+        report.reason="pending caller GPU error";return 1;
+    }
     if(ngpu<2 || ngpu>64 || !devices || m<=0 || n<=0 || k<=0) return 0;
     if(!valid_op(ta) || !valid_op(tb) || lda<(ta==OPENMX_BLAS_OP_N?m:k) || ldb<(tb==OPENMX_BLAS_OP_N?k:n) ||
        ldc<m || !alpha || !beta || !a || !b || !c) {
@@ -305,7 +318,14 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         if(!op.clean) {handled=1;*status=OPENMX_BLAS_EXECUTION_FAILED;reason=OPENMX_GPU_RUNTIME_NAME " cleanup/synchronization failure";}
         if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS) {handled=1;*status=OPENMX_BLAS_EXECUTION_FAILED;reason="restore device failure";}
         report.reason=reason;report.seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
-        if(!handled) (void)OpenMXGpuGetLastError();
+        if(!handled) {
+            const auto pending=OpenMXGpuPeekAtLastError();
+            if(pending==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
+            else if(pending!=OPENMX_GPU_SUCCESS) {
+                handled=1;*status=OPENMX_BLAS_EXECUTION_FAILED;
+                report.reason="GPU execution error during preparation";
+            }
+        }
         op.origin=-1;return handled;
     };
     if(!host_matrices && (!owned_pointer(a,op.origin) || !owned_pointer(b,op.origin) || !owned_pointer(c,op.origin)))
@@ -348,8 +368,12 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         op.result=std::malloc(result_bytes);
         tile_budget=std::min(tile_budget,host_budget);
         if(!op.result) return finish(0,"host transaction allocation failed");
-    } else if(OpenMXGpuMalloc(&op.result,result_bytes)!=OPENMX_GPU_SUCCESS) {
-        (void)OpenMXGpuGetLastError();
+    } else if(const auto error=OpenMXGpuMalloc(&op.result,result_bytes); error!=OPENMX_GPU_SUCCESS) {
+        if(error!=OPENMX_GPU_OUT_OF_MEMORY) {
+            *status=OPENMX_BLAS_EXECUTION_FAILED;
+            return finish(1,"device transaction allocation failed");
+        }
+        if(OpenMXGpuPeekAtLastError()==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
         op.host_result=true;
         if(result_bytes>budget("OPENMX_MGPU_GEMM_HOST_RESULT_MB",65536))
             return finish(0,"host transaction budget exceeded");
@@ -371,6 +395,8 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
                     OpenMXGpuDeviceCanAccessPeer(&reverse,op.origin,devices[i])!=OPENMX_GPU_SUCCESS)) return finish(0,"peer query failed");
         w.peer=!host_matrices && (devices[i]==op.origin || (can && reverse && !option("OPENMX_MGPU_GEMM_FORCE_HOST") &&
                                        enable_peer_pair(devices[i],op.origin)));
+        if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS)
+            return finish(0,"peer setup failed");
         if(!w.peer) tile_budget=std::min(tile_budget,host_budget);
         op.workers.push_back(w);
     }
@@ -464,7 +490,10 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
             if(OpenMXGpuSetDevice(w.ctx->device)!=OPENMX_GPU_SUCCESS) return finish(0,"worker device selection failed");
             const OpenMXBlasStatus local=local_gemm(w.ctx->blas,ta,tb,w.m,w.n,k,&host_alpha,wa,
                 ta==OPENMX_BLAS_OP_N?w.m:k,wb,tb==OPENMX_BLAS_OP_N?k:w.n,&host_beta,wc,w.m);
-            if(local!=OPENMX_BLAS_SUCCESS) return finish(0,"worker GEMM failed before commit");
+            if(local!=OPENMX_BLAS_SUCCESS) {
+                if(local==OPENMX_BLAS_ALLOC_FAILED) return finish(0,"worker GEMM allocation failed before commit");
+                *status=local;return finish(1,"worker GEMM failed before commit");
+            }
             if(!w.used) {w.used=true;++report.active_gpus;}
             ++report.tiles;
         }

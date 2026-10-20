@@ -51,6 +51,10 @@ ELPA/COSMA などの変更される依存ソース・生成物をビルドごと
 コアの既定値は `OPENMX_CORE_BACKEND=SERIAL` です。PAO 動径変換も GPU で実行する場合は
 `CUDA` / `HIP` と、対応するコンパイラ・Kokkos アーキテクチャを指定します。
 詳細は [C++ / Kokkos 移行手順](CPP_CORE_MIGRATION.md) を参照してください。
+コア単独では Intel の SYCL コンパイラによる `OPENMX_CORE_BACKEND=SYCL` も選択できます。
+選択したデバイスに FP64 がなければ動径変換を CPU で実行します。
+OpenMX 本体の Intel GPU・Metal バックエンドはまだありません。
+対応範囲と検証結果は [2026-10-20 レビュー対応](CODE_REVIEW_20261020.md) に記録しています。
 
 ## 共通コードとバックエンド境界
 
@@ -70,6 +74,10 @@ HIP の置換リストは 105 件から 49 件になり、共通化した元フ�
 実行時の切り替えや追加のデータ転送は行いません。HIP Makefile が定義する
 `__HIP_PLATFORM_AMD__` から `OPENMX_GPU_HIP` を決定します。GPU を使わない
 判定コードからも参照できるよう、`openmx_gpu_backend.h` は SDK に依存しません。
+明示的なバックエンド識別子も受け付け、未実装の SYCL・METAL・HOST を
+CUDA 専用アダプターへ渡すとコンパイルを停止します。
+コアの `openmx_accelerator.h` は SDK から独立して、バックエンド、FP64 能力、
+メモリモデルを記述します。実行方針は能力とバックエンド別の検証結果に基づきます。
 
 OpenACC と OpenMP target の指示、物理メモリ・UUID・GPU 間接続の取得、
 ELPA の GPU オプションと HIP 小行列対策はバックエンドごとの分岐に保持しています。
@@ -89,6 +97,15 @@ GeForce の MPS 実行では、入力・出力・作業領域をすべて確保�
 計算開始前にメモリ確保の排他ロックを解放します。A100/H100 と HIP の既定は
 従来の実行方針を維持します。ハードウェアごとの方針、切り替え方法と計測条件は
 [性能回帰検証](PERFORMANCE_REGRESSION.md) に記載しています。
+
+GPU 占有ロックには、プロセス内・プロセス間とも待機上限があります。
+`OPENMX_GPU_LOCK_TIMEOUT_MS` の既定は `300000`（5分）で、`0` は待機しません。
+`OPENMX_GPU_LOCK_DIR` にはロックファイルを置く既存の絶対パスを指定できます。
+既定は `/tmp` です。同じユーザーで GPU を共有する全ランク・ジョブから見える、
+同じノード内のディレクトリを指定してください。コンテナごとに異なる `/tmp` を
+使う構成では、共有したローカルディレクトリへ変更する必要があります。
+期限切れやロック取得失敗は診断を出して、その GPU 処理の開始を辞退します。
+呼び出し元は既存の容量回復・CPU 経路、または明示的な異常終了を選びます。
 
 ## NVIDIA / CUDA
 
@@ -211,7 +228,7 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 | 変数 | 内容 |
 | --- | --- |
 | `OPENMX_GPU_BACKEND` | `CUDA`（既定）または `HIP`。別バックエンドには別ディレクトリを使用。 |
-| `OPENMX_CORE_BACKEND` | 新しい C++ コアの実行空間。`SERIAL`（既定）、`OPENMP`、`CUDA`、`HIP`。GPU は本体と同じバックエンドを選択。 |
+| `OPENMX_CORE_BACKEND` | 新しい C++ コアの実行空間。`SERIAL`（既定）、`OPENMP`、`CUDA`、`HIP`、`SYCL`。GPU は本体と同じバックエンドを選択。`SYCL` はコア単独で使用。 |
 | `OPENMX_BUILD_APPLICATION` | `OFF` なら MPI や GPU SDK を必要としないコア単独ビルド。既定は `ON`。 |
 | `OPENMX_GPU_ARCH` | CUDA は `sm_80` / `sm_90` / `sm_120`（数値のみも可）、HIP は `gfx942` / `gfx1200` など。CUDA コアの Kokkos 設定にも反映。CUDA で未指定または `auto` の場合は `nvidia-smi` で自動認識し、検出に失敗したら構成をエラー終了。 |
 | `OPENMX_BUILD_JOBS` | ネイティブ make の並列数。既定は `4`。 |

@@ -36,6 +36,7 @@ libtool
 *.ene
 *.md
 !docs/PERFORMANCE_REGRESSION.md
+!docs/CODE_REVIEW_20261020.md
 *.md2
 *.xyz
 *.cif

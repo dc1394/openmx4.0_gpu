@@ -18,9 +18,9 @@
 # System C (Kugui) at ISSP, Univ. of Tokyo
 #
 # module purge && module load PrgEnv-intel/8.3.3 nvhpc-nompi/22.2_cuda11.2 openmpi_nvhpc/4.1.2
-# CC = mpicc -O3 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/home/app/hpc_sdk/Linux_x86_64/22.2/math_libs/11.2/targets/x86_64-linux/include/ -I/home/app/hpc_sdk/Linux_x86_64/22.2/cuda/11.2/include
-# CC2 = mpicc -O1 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/home/app/hpc_sdk/Linux_x86_64/22.2/math_libs/11.2/targets/x86_64-linux/include/ -I/home/app/hpc_sdk/Linux_x86_64/22.2/cuda/11.2/include
-# CC3 = mpicc -O2 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/home/app/hpc_sdk/Linux_x86_64/22.2/math_libs/11.2/targets/x86_64-linux/include/ -I/home/app/hpc_sdk/Linux_x86_64/22.2/cuda/11.2/include
+# CC = mpicc -O3 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/home/app/hpc_sdk/Linux_x86_64/22.2/math_libs/11.2/targets/x86_64-linux/include/ -I/home/app/hpc_sdk/Linux_x86_64/22.2/cuda/11.2/include
+# CC2 = mpicc -O1 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/home/app/hpc_sdk/Linux_x86_64/22.2/math_libs/11.2/targets/x86_64-linux/include/ -I/home/app/hpc_sdk/Linux_x86_64/22.2/cuda/11.2/include
+# CC3 = mpicc -O2 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/home/app/hpc_sdk/Linux_x86_64/22.2/math_libs/11.2/targets/x86_64-linux/include/ -I/home/app/hpc_sdk/Linux_x86_64/22.2/cuda/11.2/include
 # FC = mpif90 -O3 -mtune=native -march=native -fopenmp -I${MKLROOT}/include
 # LIB= -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_pgi_thread -lmkl_core -lmkl_blacs_openmpi_lp64 -pgf90libs -mp -lpthread -lmpi_mpifh -lmpi -lgfortran -lm -ldl -L/home/app/hpc_sdk/Linux_x86_64/22.2/cuda/11.2/lib64 -lcublas -lcudart -lcusolver -Mcuda
 
@@ -29,9 +29,9 @@
 #
 # module load cuda/11.8 nvidia/24.1 nvmpi/24.1
 # MKLROOT=/work/opt/local/x86_64/cores/intel/2023.1.0/mkl/latest
-# CC = mpicc -O3 -std=c11 -Minfo=accel -acc -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/cuda/11.7/include -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/math_libs/11.7/targets/x86_64-linux/include/
-# CC2 = mpicc -O1 -std=c11 -Minfo=accel -acc -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/cuda/11.7/include -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/math_libs/11.7/targets/x86_64-linux/include/
-# CC3 = mpicc -O2 -std=c11 -Minfo=accel -acc -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/cuda/11.7/include -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/math_libs/11.7/targets/x86_64-linux/include/
+# CC = mpicc -O3 -std=gnu11 -Minfo=accel -acc -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/cuda/11.7/include -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/math_libs/11.7/targets/x86_64-linux/include/
+# CC2 = mpicc -O1 -std=gnu11 -Minfo=accel -acc -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/cuda/11.7/include -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/math_libs/11.7/targets/x86_64-linux/include/
+# CC3 = mpicc -O2 -std=gnu11 -Minfo=accel -acc -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/cuda/11.7/include -I/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/math_libs/11.7/targets/x86_64-linux/include/
 # FC = mpif90 -O3 -Minfo=accel -acc -mtune=native -march=native -fopenmp -I${MKLROOT}/include
 # LIB= -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_pgi_thread -lmkl_core -lmkl_blacs_openmpi_lp64 -pgf90libs -mp -lpthread -lmpi_mpifh -lmpi -lgfortran -lm -ldl -L/work/opt/local/x86_64/cores/nvidia/22.7/Linux_x86_64/22.7/math_libs/11.7/targets/x86_64-linux/lib -lcudart -lcuda -lcusolver -lcublas -Mcuda 
 
@@ -40,9 +40,9 @@
 #
 # module load nvhpc-nompi/23.1 openmpi/4.1.6/nvhpc23.1-cuda12.0
 # MKLROOT = /system/apps/ubuntu/22.04-202404/oneapi/2023.0.0/mkl/2023.0.0
-# CC = mpicc -O3 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/math_libs/12.0/targets/x86_64-linux/include -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/cuda/12.0/include
-# CC2 = mpicc -O1 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/math_libs/12.0/targets/x86_64-linux/include -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/cuda/12.0/include  
-# CC3 = mpicc -O2 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/math_libs/12.0/targets/x86_64-linux/include -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/cuda/12.0/include
+# CC = mpicc -O3 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/math_libs/12.0/targets/x86_64-linux/include -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/cuda/12.0/include
+# CC2 = mpicc -O1 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/math_libs/12.0/targets/x86_64-linux/include -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/cuda/12.0/include
+# CC3 = mpicc -O2 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I${MKLROOT}/include -I${MKLROOT}/include/fftw -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/math_libs/12.0/targets/x86_64-linux/include -I/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/cuda/12.0/include
 # FC = mpif90 -O2 -mtune=native -march=native -fopenmp -I${MKLROOT}/include
 # LIB= -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_pgi_thread -lmkl_core -lmkl_blacs_openmpi_lp64 -pgf90libs -mp -lpthread -lmpi_mpifh -lmpi -lm -ldl -L/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/cuda/12.0/lib64 -L/system/apps/ubuntu/22.04-202404/nvhpc/23.1/Linux_x86_64/23.1/math_libs/12.0/targets/x86_64-linux/lib -lcudart -lcusolver -lcublas -cuda
 
@@ -50,9 +50,9 @@
 # Miyabi at Center for Computational Sciences, University of Tsukuba
 #
 # module purge && module load nvidia ompi-cuda/4.1.6-13.1 && module load fftw/3.3.10
-# CC = mpicc -O3 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I/work/opt/local/aarch64/apps/nvidia/24.9/fftw/3.3.10/include/fftw -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/include -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/include 
-# CC2 = mpicc -O1 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I/work/opt/local/aarch64/apps/nvidia/24.9/fftw/3.3.10/include/fftw -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/include -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/include 
-# CC3 = mpicc -O2 -Minfo=accel -acc -std=c11 -mtune=native -march=native -fopenmp -I/work/opt/local/aarch64/apps/nvidia/24.9/fftw/3.3.10/include/fftw -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/include -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/include
+# CC = mpicc -O3 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I/work/opt/local/aarch64/apps/nvidia/24.9/fftw/3.3.10/include/fftw -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/include -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/include
+# CC2 = mpicc -O1 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I/work/opt/local/aarch64/apps/nvidia/24.9/fftw/3.3.10/include/fftw -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/include -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/include
+# CC3 = mpicc -O2 -Minfo=accel -acc -std=gnu11 -mtune=native -march=native -fopenmp -I/work/opt/local/aarch64/apps/nvidia/24.9/fftw/3.3.10/include/fftw -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/include -I/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/include
 # FC = mpif90 -O2 -mtune=native -march=native -fopenmp -I${MKLROOT}/include
 # -L/home/x10402/nvpl-linux-sbsa-24.7/lib -lnvpl_scalapack_lp64 -lnvpl_blacs_lp64_openmpi4 -lnvpl_lapack_lp64_gomp -lnvpl_blas_lp64_gomp -pgf90libs -lmpi_mpifh -lfftw3 -lpthread -lgfortran -lm -ldl -L/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/cuda/13.1/lib64 -L/work/opt/local/aarch64/cores/nvidia/24.9/Linux_aarch64/24.9/math_libs/13.1/targets/sbsa-linux/lib -lcudart -lcusolver -lcublas -cuda
 
@@ -153,14 +153,14 @@ FFTW3_LIBS     ?= $(FFTW3_LIB)
 
 COMMON_INCLUDES = $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_CUDA_HOME)/include
 NVHPC_GPU_FLAGS ?= $(if $(GEMMUL8_BUILD_GPU_ARCH),-gpu=cc$(GEMMUL8_BUILD_GPU_ARCH))
-COMMON_CFLAGS   = -w -Minfo=accel -acc $(NVHPC_GPU_FLAGS) -std=c11 -mtune=native -march=native -fopenmp $(COMMON_INCLUDES)
+COMMON_CFLAGS   = --diag_error=implicit_func_decl -Minfo=accel -acc $(NVHPC_GPU_FLAGS) -std=gnu11 -mtune=native -march=native -fopenmp $(COMMON_INCLUDES)
 
 CC  = $(MPICC) $(COMMON_CFLAGS) -O3
 CC2 = $(MPICC) $(COMMON_CFLAGS) -O1
 CC3 = $(MPICC) $(COMMON_CFLAGS) -O2
 CC_NOACC = $(filter-out -Minfo=accel -acc,$(CC2))
 CC_NOACC_O3 = $(filter-out -Minfo=accel -acc,$(CC))
-CC_DFTD3 = $(MPICC) -w -O0 -std=c11 -fopenmp $(COMMON_INCLUDES)
+CC_DFTD3 = $(MPICC) -w -O0 -std=gnu11 -fopenmp $(COMMON_INCLUDES)
 FC = $(MPIF90) -O2 -mtune=native -march=native -fopenmp $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include
 
 NVPL_SCALAPACK_LIB ?= $(NVHPC_MPI_LIBDIR)/libscalapack_lp64.a
@@ -363,7 +363,7 @@ OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o 
           Electric_Polarization_BandCol.o Electric_Polarization_BandNonCol.o
 
 OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
-OBJS += openmx_gpu_workers.o openmx_gpu_views.o
+OBJS += openmx_gpu_workers.o openmx_gpu_error.o openmx_gpu_views.o openmx_globals.o
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
 OBJS += openmx_cluster_capacity.o openmx_host_memory.o elpa_cosma_memory.o
@@ -949,6 +949,9 @@ Force.o truncation.o Set_OLP_Kin.o Mixing_H.o Set_Density_Grid_GPU.o Set_Hamilto
 set_hamiltonian_gpu.o: openmx_gpu_workers.h openmx_gpu_views.h
 openmx_gpu_workers.o: openmx_gpu_workers.c openmx_gpu_workers.h openmx_mgpu_runtime.h set_cuda_default_device_from_local_rank.h
 	$(CC) -c $< -o $@
+
+openmx_globals.o: openmx_globals.c openmx_common.h
+	$(CC_NOACC) -c openmx_globals.c -o $@
 openmx_gpu_views.o: openmx_gpu_views.c openmx_gpu_views.h
 	$(CC) -c $< -o $@
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_transform.h

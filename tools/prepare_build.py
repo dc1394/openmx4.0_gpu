@@ -72,6 +72,9 @@ def prepare(source_root, build_root, backend):
     native = build_root / 'native'
     stage = native / 'source'
     stage.mkdir(parents=True, exist_ok=True)
+    # C ABI forwarding headers keep direct Makefile builds compatible while
+    # their definitions belong to the independently buildable numerical core.
+    link_file(source_root / 'core', native / 'core')
 
     selected = {p.name: p for p in source.iterdir()
                 if p.is_file() and p.suffix in SOURCE_SUFFIXES}

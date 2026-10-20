@@ -16,6 +16,8 @@
 #define OPENMX_GPU_COPY_DEVICE_TO_DEVICE hipMemcpyDeviceToDevice
 #define OPENMX_GPU_DEVICE_MEMORY hipMemoryTypeDevice
 #define OPENMX_GPU_PEER_ALREADY_ENABLED hipErrorPeerAccessAlreadyEnabled
+#define OPENMX_GPU_INVALID_VALUE hipErrorInvalidValue
+#define OPENMX_GPU_PEER_UNSUPPORTED hipErrorPeerAccessUnsupported
 #define OpenMXGpuDeviceCanAccessPeer hipDeviceCanAccessPeer
 #define OpenMXGpuDeviceEnablePeerAccess hipDeviceEnablePeerAccess
 #define OpenMXGpuDeviceReset hipDeviceReset
@@ -25,6 +27,7 @@
 #define OpenMXGpuGetDeviceCount hipGetDeviceCount
 #define OpenMXGpuGetErrorString hipGetErrorString
 #define OpenMXGpuGetLastError hipGetLastError
+#define OpenMXGpuPeekAtLastError hipPeekAtLastError
 #define OpenMXGpuMalloc hipMalloc
 #define OpenMXGpuMemGetInfo hipMemGetInfo
 #define OpenMXGpuMemcpy hipMemcpy
@@ -61,8 +64,8 @@
 #define OpenMXGpuMakePitchedPtr make_hipPitchedPtr
 #define OpenMXGpuMakeExtent make_hipExtent
 #define OpenMXGpuPointerAttributes hipPointerAttribute_t
-#define OPENMX_GPU_OUT_OF_MEMORY ((hipError_t)2)
-#else
+#define OPENMX_GPU_OUT_OF_MEMORY hipErrorOutOfMemory
+#elif OPENMX_GPU_CUDA
 #include <cuda_runtime.h>
 #define OpenMXGpuError cudaError_t
 #define OpenMXGpuStream cudaStream_t
@@ -72,6 +75,8 @@
 #define OPENMX_GPU_COPY_DEVICE_TO_DEVICE cudaMemcpyDeviceToDevice
 #define OPENMX_GPU_DEVICE_MEMORY cudaMemoryTypeDevice
 #define OPENMX_GPU_PEER_ALREADY_ENABLED cudaErrorPeerAccessAlreadyEnabled
+#define OPENMX_GPU_INVALID_VALUE cudaErrorInvalidValue
+#define OPENMX_GPU_PEER_UNSUPPORTED cudaErrorPeerAccessUnsupported
 #define OpenMXGpuDeviceCanAccessPeer cudaDeviceCanAccessPeer
 #define OpenMXGpuDeviceEnablePeerAccess cudaDeviceEnablePeerAccess
 #define OpenMXGpuDeviceReset cudaDeviceReset
@@ -81,6 +86,7 @@
 #define OpenMXGpuGetDeviceCount cudaGetDeviceCount
 #define OpenMXGpuGetErrorString cudaGetErrorString
 #define OpenMXGpuGetLastError cudaGetLastError
+#define OpenMXGpuPeekAtLastError cudaPeekAtLastError
 #define OpenMXGpuMalloc cudaMalloc
 #define OpenMXGpuMemGetInfo cudaMemGetInfo
 #define OpenMXGpuMemcpy cudaMemcpy
@@ -118,6 +124,8 @@
 #define OpenMXGpuMakeExtent make_cudaExtent
 #define OpenMXGpuPointerAttributes struct cudaPointerAttributes
 #define OPENMX_GPU_OUT_OF_MEMORY cudaErrorMemoryAllocation
+#else
+#error "This native adapter supports CUDA/HIP only; use the portable core for other backends"
 #endif
 
 #endif /* OPENMX_GPU_RUNTIME_H */

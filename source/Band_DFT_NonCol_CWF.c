@@ -54,8 +54,8 @@ static BandNonColCWFGpuSolverCtx BandNonColCWF_gpusolver_ctx = {0};
 static void BandNonColCWF_GpuSolver_Destroy(void)
 {
     BandNonColCWFGpuSolverCtx *ctx = &BandNonColCWF_gpusolver_ctx;
-    if (ctx->gpusolver != NULL) OpenMXGpuWait(OpenMXSolverDestroy(ctx->gpusolver));
-    if (ctx->blas != NULL)   OpenMXGpuWait(OpenMXBlasDestroy(ctx->blas));
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMXSolverDestroy(ctx->gpusolver));
+    if (ctx->blas != NULL)   OpenMXBlasWait(OpenMXBlasDestroy(ctx->blas));
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
 }
@@ -68,8 +68,8 @@ static void BandNonColCWF_GpuSolver_Init(void)
     if (ctx->device_id == current_device && ctx->blas != NULL) return;
     if (ctx->blas != NULL) BandNonColCWF_GpuSolver_Destroy();
     ctx->device_id = current_device;
-    OpenMXGpuWait(OpenMXBlasCreate(&ctx->blas));
-    OpenMXGpuWait(OpenMXSolverCreate(&ctx->gpusolver));
+    OpenMXBlasWait(OpenMXBlasCreate(&ctx->blas));
+    OpenMXSolverWait(OpenMXSolverCreate(&ctx->gpusolver));
 }
 
 #if OPENMX_GPU_HIP
@@ -87,7 +87,7 @@ static void BandNonColCWF_GEMMul8Zgemm_OpenACC(OpenMXBlasOperation transa, OpenM
     {
         OpenMXGpuComplex const alpha = OpenMXGpuMakeComplex(1.0, 0.0);
         OpenMXGpuComplex const beta  = OpenMXGpuMakeComplex(0.0, 0.0);
-        OpenMXGpuWait(openmx_gemmul8Zgemm(BandNonColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
+        OpenMXBlasWait(openmx_gemmul8Zgemm(BandNonColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
                                           (OpenMXGpuComplex const *)A, m, (OpenMXGpuComplex const *)B, k, &beta,
                                           (OpenMXGpuComplex *)C, m));
     }

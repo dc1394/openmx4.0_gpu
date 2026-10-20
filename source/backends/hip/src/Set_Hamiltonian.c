@@ -13,6 +13,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+extern int openmx_gpu_is_apu(void);
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_task.h"
 #include "openmx_gpu_workers.h"

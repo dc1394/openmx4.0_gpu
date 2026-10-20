@@ -76,6 +76,12 @@ static int Force_env_flag(const char* name, int default_value)
     return atoi(value) != 0;
 }
 
+/* Per-stage overrides inherit the umbrella, as on the HIP backend. */
+static int Force_gpu_stage_default(void)
+{
+    return Force_env_flag("OPENMX_FORCE_GPU", 1);
+}
+
 static int Force_collective_env_flag(const char* name, int default_value,
     MPI_Comm comm)
 {
@@ -597,18 +603,7 @@ static void Force_Term_Kernel(size_t first,size_t n,const void *parameters,void 
     {out[0]=sx;out[1]=sy;out[2]=sz;}
 }
 
-static void Force_openacc_reduce_terms(size_t n,const double *w,const double *x,
-    const double *y,const double *z,double *sx,double *sy,double *sz)
-{
-    double sums[3];const double *inputs[]={w,x,y,z};
-    OpenMXGpuTask t={0};t.count=n;t.inputs=4;t.outputs=1;t.kernel=Force_Term_Kernel;
-    for (int i=0;i<4;i++) t.view[i]=(OpenMXGpuTaskView){(void*)inputs[i],0,sizeof(double)};
-    t.view[4]=(OpenMXGpuTaskView){sums,sizeof(sums),0};
-    /* This is inside rank-specific pair loops; MPI is handled at their
-       enclosing phase, never from this leaf reduction. */
-    openmx_gpu_task_execute(MPI_COMM_NULL,&t,1,"force-term-reduction");
-    if (sx) *sx=sums[0];if (sy) *sy=sums[1];if (sz) *sz=sums[2];
-}
+
 
 
 static size_t Force4B_pack_trace_terms(double***** CDM0,
@@ -707,7 +702,7 @@ static size_t Force3_GpuChunkBudget(void)
 
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-    if (!requested || !Force_collective_env_flag("OPENMX_FORCE3_GPU", 1, mpi_comm_level1)) return 0;
+    if (!requested || !Force_collective_env_flag("OPENMX_FORCE3_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
 
     if (openmx_gpu_capacity_test_recovery()) return 0;
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
@@ -3580,7 +3575,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
     if (myid == Host_ID && 0 < level_stdout) {
         printf("  Force calculation #3%s\n",
-            (scf_eigen_lib_flag == GPUSOLVER && Force_env_flag("OPENMX_FORCE3_GPU", 1))
+            (scf_eigen_lib_flag == GPUSOLVER && Force_env_flag("OPENMX_FORCE3_GPU", Force_gpu_stage_default()))
                 ? " (GPU-accelerated)" : "");
         fflush(stdout);
     }
@@ -3629,7 +3624,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         printf("  Force calculation #4%s\n",
             (ProExpn_VNA == 0 && use_force4_openacc) ? " (GPU reduction)"
             : (ProExpn_VNA == 1 && F_VNA_flag == 1 && scf_eigen_lib_flag == GPUSOLVER &&
-               Force_env_flag("OPENMX_FORCE4B_GPU", 1)) ? " (GPU-accelerated)" : "");
+               Force_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default())) ? " (GPU-accelerated)" : "");
         fflush(stdout);
     }
 
@@ -4520,7 +4515,7 @@ void Force3(const OpenMXAtomicViews *atomic)
 
     int capacity_enabled=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&capacity_enabled,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-    capacity_enabled=capacity_enabled && Force_collective_env_flag("OPENMX_FORCE3_GPU",1,mpi_comm_level1);
+    capacity_enabled=capacity_enabled && Force_collective_env_flag("OPENMX_FORCE3_GPU",Force_gpu_stage_default(),mpi_comm_level1);
     int recover=capacity_enabled && !use_gpu_trace,steps=Matomnum,recovered=0;
     MPI_Allreduce(MPI_IN_PLACE,&recover,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(recover)MPI_Allreduce(MPI_IN_PLACE,&steps,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -7460,7 +7455,7 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if (!requested) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", 1, mpi_comm_level1)) return 0;
+    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
     if (stream_case1 && stream_case2) return 0;
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
@@ -8142,7 +8137,7 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
 
     Force4B_GpuCase1StreamEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", 1, mpi_comm_level1)) return 0;
+    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
     if (mode == 0) return 0;
 
     MPI_Comm_rank(mpi_comm_level1, &rank);
@@ -8588,7 +8583,7 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
 
     Force4B_GpuCase1TurnsEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", 1, mpi_comm_level1)) return 0;
+    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
     if (stream_mode == 1 || mode == 0) return 0;
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_rank(node_comm, &rank);
@@ -8886,6 +8881,8 @@ static void Force4B_capacity(int kind,Force4BGpuContext *g,int nitems,Force4BGpu
         }
         size_t *offset=malloc((n+1)*sizeof(size_t)),*coff=malloc((n+1)*sizeof(size_t));
         float *data=malloc((values?values:1)*sizeof(float));double *weights=malloc((cdms?cdms:1)*sizeof(double));
+        if (!offset || !coff || !data || !weights)
+            Force4B_gpu_abort("Force4B: cannot allocate a bounded host recovery packet.");
         size_t at=0,ct=0;offset[0]=coff[0]=0;
         for(size_t i=0;i<n;i++){
             size_t q=first+i;Force4BGpuItem it=items[q];size_t mn=(size_t)it.ian*it.jan;
@@ -9230,7 +9227,7 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
 
     Force4B_GpuCase2StreamEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", 1, mpi_comm_level1)) return 0;
+    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
     if (mode == 0) return 0;
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
@@ -9615,7 +9612,7 @@ static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_N
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if (!requested) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCEHNL_GPU", 1, mpi_comm_level1)) return 0;
+    if (!Force_collective_env_flag("OPENMX_FORCEHNL_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
     if (F_NL_flag != 1) return 0;
 
     /* only the real scalar-relativistic trace branches are batched */
@@ -9928,6 +9925,8 @@ static void Force_HNL_capacity(int kind,ForceHNLGpuContext *g,int nitems,const F
         ForceHNLCapacityItem *prs=malloc((n?n:1)*sizeof(*prs));
         size_t *offset=malloc((n+1)*sizeof(size_t)),*nlp_offset=malloc((n+1)*sizeof(size_t));
         double *data=malloc((values?values:1)*sizeof(double));int *length=malloc((nk?nk:1)*sizeof(int));
+        if (!prs || !offset || !nlp_offset || !data || !length)
+            Force4B_gpu_abort("Force_HNL: cannot allocate a bounded host recovery packet.");
         size_t at=0,ki=0;offset[0]=nlp_offset[0]=0;
         for(size_t i=0;i<n;i++){
             size_t p=first+i;const Force4BGpuItem *it=items+p;
@@ -10754,7 +10753,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
      * device memory.  Keep Force4B on the CPU trace path, which avoids those
      * device buffers and matches the original contraction.
      */
-    const int use_force4b_openacc = 0;
     const int use_force4b_fused = Force_collective_env_flag(
         "OPENMX_FORCE4B_FUSED", 1, mpi_comm_level1);
     int f4b_gpu = 0;
@@ -11053,112 +11051,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                        multiplying overlap integrals
                 *****************************************/
 
-                if (use_force4b_openacc) {
-                    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-                        size_t atom_terms = 0;
-                        size_t idx = 0;
-                        double* weights = NULL;
-                        double* hx = NULL;
-                        double* hy = NULL;
-                        double* hz = NULL;
-
-                        dtime(&Stime_atom);
-
-                        dEx = 0.0;
-                        dEy = 0.0;
-                        dEz = 0.0;
-
-                        Gc_AN = M2G[Mc_AN];
-                        Cwan = WhatSpecies[Gc_AN];
-                        fan = FNAN[Gc_AN];
-
-                        h_AN = 0;
-                        Gh_AN = natn[Gc_AN][h_AN];
-                        Mh_AN = F_G2M[Gh_AN];
-                        Hwan = WhatSpecies[Gh_AN];
-                        ian = Spe_Total_CNO[Hwan];
-
-                        n = receive_progress[IDR];
-                        jg = Rcv_GAN[IDR][n];
-
-                        for (j0 = 0; j0 <= fan; j0++) {
-                            jg0 = natn[Gc_AN][j0];
-                            Mj_AN0 = F_G2M[jg0];
-
-                            if (Original_Mc_AN != Mj_AN0) {
-                                continue;
-                            }
-
-                            q_AN = j0;
-                            Gq_AN = natn[Gc_AN][q_AN];
-                            Qwan = WhatSpecies[Gq_AN];
-                            jan = Spe_Total_CNO[Qwan];
-                            kl = RMI1[Mc_AN][h_AN][q_AN];
-
-                            if (0 <= kl) {
-                                atom_terms = Force_checked_add_count(atom_terms,
-                                    Force_checked_mul_count((size_t)ian, (size_t)jan, "Force4B comm atom block"),
-                                    "Force4B comm atom term count");
-                            }
-                        }
-
-                        if (atom_terms != 0) {
-                            weights = (double*)malloc(sizeof(double) * atom_terms);
-                            hx = (double*)malloc(sizeof(double) * atom_terms);
-                            hy = (double*)malloc(sizeof(double) * atom_terms);
-                            hz = (double*)malloc(sizeof(double) * atom_terms);
-
-                            HVNAx = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                            HVNAy = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                            HVNAz = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-
-                            for (j0 = 0; j0 <= fan; j0++) {
-                                jg0 = natn[Gc_AN][j0];
-                                Mj_AN0 = F_G2M[jg0];
-
-                                if (Original_Mc_AN != Mj_AN0) {
-                                    continue;
-                                }
-
-                                q_AN = j0;
-                                Gq_AN = natn[Gc_AN][q_AN];
-                                Qwan = WhatSpecies[Gq_AN];
-                                jan = Spe_Total_CNO[Qwan];
-                                kl = RMI1[Mc_AN][h_AN][q_AN];
-
-                                if (kl < 0) {
-                                    continue;
-                                }
-
-                                dHVNA(vna, 0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
-
-                                pref = (SpinP_switch == 0)
-                                    ? ((q_AN == h_AN) ? 2.0 : 4.0)
-                                    : ((q_AN == h_AN) ? 1.0 : 2.0);
-
-                                idx = Force4B_pack_trace_terms(CDM0, Mh_AN, kl, ian, jan, pref,
-                                    HVNAx, HVNAy, HVNAz, idx, weights, hx, hy, hz);
-                            }
-
-                            Force_openacc_reduce_terms(atom_terms, weights, hx, hy, hz, &dEx, &dEy, &dEz);
-
-                            Force_free_double_matrix(HVNAx);
-                            Force_free_double_matrix(HVNAy);
-                            Force_free_double_matrix(HVNAz);
-                            free(hz);
-                            free(hy);
-                            free(hx);
-                            free(weights);
-                        }
-
-                        Gxyz[Gc_AN][41] += dEx;
-                        Gxyz[Gc_AN][42] += dEy;
-                        Gxyz[Gc_AN][43] += dEz;
-
-                        dtime(&Etime_atom);
-                        time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-                    }
-                } else {
+                {
 #pragma omp parallel shared(use_force4b_fused, List_YOUSO, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, Original_Mc_AN, IDR, Rcv_GAN, receive_progress, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum, ActiveHVNA2, ActiveHVNA3) private(Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, Mc_AN, Cwan, fan, h_AN, Gh_AN, Mh_AN, Hwan, ian, n, jg, j0, jg0, Mj_AN0, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, HVNAx, HVNAy, HVNAz, i, j, pref)
                     {
 
@@ -11343,99 +11236,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             Force4B_GpuCase1StreamSource(source, CDM0, DS_VNA);
     }
 
-    if (use_force4b_openacc) {
-        for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-            size_t atom_terms = 0;
-            size_t idx = 0;
-            double* weights = NULL;
-            double* hx = NULL;
-            double* hy = NULL;
-            double* hz = NULL;
-
-            dtime(&Stime_atom);
-
-            dEx = 0.0;
-            dEy = 0.0;
-            dEz = 0.0;
-
-            Gc_AN = M2G[Mc_AN];
-            h_AN = 0;
-            Gh_AN = natn[Gc_AN][h_AN];
-            Mh_AN = F_G2M[Gh_AN];
-            Hwan = WhatSpecies[Gh_AN];
-            ian = Spe_Total_CNO[Hwan];
-
-            for (q_AN = h_AN; q_AN <= FNAN[Gc_AN]; q_AN++) {
-                Gq_AN = natn[Gc_AN][q_AN];
-                Mq_AN = F_G2M[Gq_AN];
-
-                if (Mq_AN <= Matomnum) {
-                    Qwan = WhatSpecies[Gq_AN];
-                    jan = Spe_Total_CNO[Qwan];
-                    kl = RMI1[Mc_AN][h_AN][q_AN];
-
-                    if (0 <= kl) {
-                        atom_terms = Force_checked_add_count(atom_terms,
-                            Force_checked_mul_count((size_t)ian, (size_t)jan, "Force4B local atom block"),
-                            "Force4B local atom term count");
-                    }
-                }
-            }
-
-            if (atom_terms != 0) {
-                weights = (double*)malloc(sizeof(double) * atom_terms);
-                hx = (double*)malloc(sizeof(double) * atom_terms);
-                hy = (double*)malloc(sizeof(double) * atom_terms);
-                hz = (double*)malloc(sizeof(double) * atom_terms);
-
-                HVNAx = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                HVNAy = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                HVNAz = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-
-                for (q_AN = h_AN; q_AN <= FNAN[Gc_AN]; q_AN++) {
-                    Gq_AN = natn[Gc_AN][q_AN];
-                    Mq_AN = F_G2M[Gq_AN];
-
-                    if (Mq_AN <= Matomnum) {
-                        Qwan = WhatSpecies[Gq_AN];
-                        jan = Spe_Total_CNO[Qwan];
-                        kl = RMI1[Mc_AN][h_AN][q_AN];
-
-                        if (kl < 0) {
-                            continue;
-                        }
-
-                        dHVNA(vna, 0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
-
-                        pref = (SpinP_switch == 0)
-                            ? ((q_AN == h_AN) ? 2.0 : 4.0)
-                            : ((q_AN == h_AN) ? 1.0 : 2.0);
-
-                        idx = Force4B_pack_trace_terms(CDM0, Mh_AN, kl, ian, jan, pref,
-                            HVNAx, HVNAy, HVNAz, idx, weights, hx, hy, hz);
-                    }
-                }
-
-                Force_openacc_reduce_terms(atom_terms, weights, hx, hy, hz, &dEx, &dEy, &dEz);
-
-                Force_free_double_matrix(HVNAx);
-                Force_free_double_matrix(HVNAy);
-                Force_free_double_matrix(HVNAz);
-                free(hz);
-                free(hy);
-                free(hx);
-                free(weights);
-            }
-
-            Gxyz[Gc_AN][41] += dEx;
-            Gxyz[Gc_AN][42] += dEy;
-            Gxyz[Gc_AN][43] += dEz;
-
-            dtime(&Etime_atom);
-            time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-
-        } /* Mc_AN */
-    } else {
+    {
 #pragma omp parallel shared(use_force4b_fused, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, FNAN, Spe_Total_CNO, WhatSpecies, F_G2M, natn, M2G, Matomnum, List_YOUSO, ActiveHVNA2, ActiveHVNA3) private(HVNAx, HVNAy, HVNAz, Mc_AN, Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, h_AN, Gh_AN, Mh_AN, Hwan, ian, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, i, j, pref)
         {
 
@@ -11849,79 +11650,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             dEy = 0.0;
             dEz = 0.0;
 
-            if (use_force4b_openacc) {
-                size_t atom_terms = 0;
-                size_t idx = 0;
-                double* weights = NULL;
-                double* hx = NULL;
-                double* hy = NULL;
-                double* hz = NULL;
-
-                for (Nloop = 0; Nloop < ODNloop; Nloop++) {
-                    h_AN = OneD2h_AN[Nloop];
-                    q_AN = OneD2q_AN[Nloop];
-                    Gh_AN = natn[Gc_AN][h_AN];
-                    Hwan = WhatSpecies[Gh_AN];
-                    ian = Spe_Total_CNO[Hwan];
-                    Gq_AN = natn[Gc_AN][q_AN];
-                    Qwan = WhatSpecies[Gq_AN];
-                    jan = Spe_Total_CNO[Qwan];
-                    kl = RMI1[Mc_AN][h_AN][q_AN];
-
-                    if (0 <= kl) {
-                        atom_terms = Force_checked_add_count(atom_terms,
-                            Force_checked_mul_count((size_t)ian, (size_t)jan, "Force4B ODN atom block"),
-                            "Force4B ODN atom term count");
-                    }
-                }
-
-                if (atom_terms != 0) {
-                    weights = (double*)malloc(sizeof(double) * atom_terms);
-                    hx = (double*)malloc(sizeof(double) * atom_terms);
-                    hy = (double*)malloc(sizeof(double) * atom_terms);
-                    hz = (double*)malloc(sizeof(double) * atom_terms);
-
-                    HVNAx = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                    HVNAy = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                    HVNAz = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-
-                    for (Nloop = 0; Nloop < ODNloop; Nloop++) {
-                        h_AN = OneD2h_AN[Nloop];
-                        q_AN = OneD2q_AN[Nloop];
-                        Gh_AN = natn[Gc_AN][h_AN];
-                        Mh_AN = F_G2M[Gh_AN];
-                        Hwan = WhatSpecies[Gh_AN];
-                        ian = Spe_Total_CNO[Hwan];
-                        Gq_AN = natn[Gc_AN][q_AN];
-                        Qwan = WhatSpecies[Gq_AN];
-                        jan = Spe_Total_CNO[Qwan];
-                        kl = RMI1[Mc_AN][h_AN][q_AN];
-
-                        if (kl < 0) {
-                            continue;
-                        }
-
-                        dHVNA(vna, 1, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
-
-                        pref = ((Solver == 5 || Solver == 8 || Solver == 11) || q_AN == h_AN)
-                            ? ((SpinP_switch == 0) ? 2.0 : 1.0)
-                            : ((SpinP_switch == 0) ? 4.0 : 2.0);
-
-                        idx = Force4B_pack_trace_terms(CDM0, Mh_AN, kl, ian, jan, pref,
-                            HVNAx, HVNAy, HVNAz, idx, weights, hx, hy, hz);
-                    }
-
-                    Force_openacc_reduce_terms(atom_terms, weights, hx, hy, hz, &dEx, &dEy, &dEz);
-
-                    Force_free_double_matrix(HVNAx);
-                    Force_free_double_matrix(HVNAy);
-                    Force_free_double_matrix(HVNAz);
-                    free(hz);
-                    free(hy);
-                    free(hx);
-                    free(weights);
-                }
-            } else {
+            {
 #if NVHPC_VERSION >= 250000
                 #pragma omp parallel shared(use_force4b_fused,ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,CDM0,SpinP_switch,DS_VNA,RMI1,Spe_Total_CNO,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,ActiveHVNA2,ActiveHVNA3) private(HVNAx,HVNAy,HVNAz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,Nloop,pref) reduction(+:dEx,dEy,dEz)
 #endif

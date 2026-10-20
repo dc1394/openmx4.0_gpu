@@ -2,6 +2,7 @@
 #define _OPENMX_COMMON_H_
 
 #include "openmx_gpu_backend.h"
+#include "openmx_gpu_error.h"
 #include "openmx_core.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_core_reciprocal.h"
@@ -12,6 +13,17 @@
 #include "openmx_gpu_complex.h"
 #include "openmx_gpu_runtime.h"
 #include "openmx_gpu_solver.h"
+
+#if OPENMX_GPU_CUDA
+/* NVHPC OpenACC extension, not declared by the standard openacc.h. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void acc_clear_freelists(void);
+#ifdef __cplusplus
+}
+#endif
+#endif
 
 /* CUDA / cuBLAS / cuSOLVER for GPU acceleration (added by H.Kawai) */
 #if OPENMX_GPU_HIP
@@ -129,8 +141,8 @@ typedef struct MPIRequest{int i;} MPI_Request;
 #include "mpi.h"
 #endif
 
-MPI_Comm  mpi_comm_level1;
-MPI_Comm  MPI_COMM_WORLD1;
+extern MPI_Comm  mpi_comm_level1;
+extern MPI_Comm  MPI_COMM_WORLD1;
 
 #include "f77func.h"
 
@@ -162,7 +174,7 @@ typedef short ftnint;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-char **SpeName;
+extern char **SpeName;
 
 /*******************************************************
  char **SpeBasis; 
@@ -171,7 +183,7 @@ char **SpeName;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-char **SpeBasis;
+extern char **SpeBasis;
 
 /*******************************************************
  char **SpeBasisName; 
@@ -180,7 +192,7 @@ char **SpeBasis;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-char **SpeBasisName;
+extern char **SpeBasisName;
 
 /*******************************************************
   char **SpeVPS; 
@@ -189,7 +201,7 @@ char **SpeBasisName;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-char **SpeVPS;
+extern char **SpeVPS;
 
 /*******************************************************
  double *Spe_AtomicMass; 
@@ -198,7 +210,7 @@ char **SpeVPS;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Spe_AtomicMass;
+extern double *Spe_AtomicMass;
 
 /*******************************************************
  int *Spe_MaxL_Basis; 
@@ -208,7 +220,7 @@ double *Spe_AtomicMass;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_MaxL_Basis;
+extern int *Spe_MaxL_Basis;
 
 /*******************************************************
  int **Spe_Num_Basis; 
@@ -218,7 +230,7 @@ int *Spe_MaxL_Basis;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Spe_Num_Basis;
+extern int **Spe_Num_Basis;
 
 /*******************************************************
  int **Spe_Num_CBasis; 
@@ -228,7 +240,7 @@ int **Spe_Num_Basis;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Spe_Num_CBasis;
+extern int **Spe_Num_CBasis;
 
 /*******************************************************
  double **EH0_scaling;
@@ -238,7 +250,7 @@ int **Spe_Num_CBasis;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **EH0_scaling;
+extern double **EH0_scaling;
 
 /*******************************************************
  double **SO_factor;
@@ -247,7 +259,7 @@ double **EH0_scaling;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **SO_factor;
+extern double **SO_factor;
 
 /*******************************************************
  double ***Hub_U_Basis          --- added by MJ
@@ -256,7 +268,7 @@ double **SO_factor;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***Hub_U_Basis ;      /* --- added by MJ  */
+extern double ***Hub_U_Basis ;      /* --- added by MJ  */
 
 /*******************************************************
  double ***Hund_J_Basis         --- by S.Ryee
@@ -266,7 +278,7 @@ double ***Hub_U_Basis ;      /* --- added by MJ  */
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***Hund_J_Basis;      /* by S.Ryee */
+extern double ***Hund_J_Basis;      /* by S.Ryee */
 
 /*******************************************************
  int ***Nonzero_UJ         --- by S.Ryee
@@ -276,7 +288,7 @@ double ***Hund_J_Basis;      /* by S.Ryee */
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int ***Nonzero_UJ;      /* by S.Ryee */
+extern int ***Nonzero_UJ;      /* by S.Ryee */
 
 /*******************************************************
  double *****Coulomb_Array        --- by S.Ryee
@@ -284,7 +296,7 @@ int ***Nonzero_UJ;      /* by S.Ryee */
  (when Hub_type=2 is used)
  free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****Coulomb_Array;      /* by S.Ryee */
+extern double *****Coulomb_Array;      /* by S.Ryee */
 
 /*******************************************************
  double *****AMF_Array        --- by S.Ryee
@@ -292,21 +304,21 @@ double *****Coulomb_Array;      /* by S.Ryee */
  (when Hub_type=2 && dc_Type=2 or 4 is used)
  free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****AMF_Array;      /* by S.Ryee */
+extern double *****AMF_Array;      /* by S.Ryee */
 
 /*******************************************************
  double **Bessel_j_Array0        --- by S.Ryee
  Bessel function array for calculating Slater integrals. 
  (when Hub_type=2 && Yukawa_on=1 is used)
 *******************************************************/
-double **Bessel_j_Array0;      /* by S.Ryee */
+extern double **Bessel_j_Array0;      /* by S.Ryee */
 
 /*******************************************************
  double **Bessel_h_Array0        --- by S.Ryee
  Hankel function array for calculating Slater integrals. 
  (when Hub_type=2 && Yukawa_on=1 is used)
 *******************************************************/
-double **Bessel_h_Array0;      /* by S.Ryee */
+extern double **Bessel_h_Array0;      /* by S.Ryee */
 
 /*******************************************************
  int *OrbPol_flag          --- added by MJ and TO
@@ -315,7 +327,7 @@ double **Bessel_h_Array0;      /* by S.Ryee */
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *OrbPol_flag ;          /* --- added by MJ and TO  */
+extern int *OrbPol_flag ;          /* --- added by MJ and TO  */
 
 /*******************************************************
  double **Gxyz; 
@@ -325,7 +337,7 @@ int *OrbPol_flag ;          /* --- added by MJ and TO  */
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Gxyz;
+extern double **Gxyz;
 
 /********************************************************
  double ***GxyzHistoryIn;
@@ -334,7 +346,7 @@ double **Gxyz;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***GxyzHistoryIn;
+extern double ***GxyzHistoryIn;
 
 /********************************************************
  double ***GxyzHistoryR;
@@ -343,7 +355,7 @@ double ***GxyzHistoryIn;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***GxyzHistoryR;
+extern double ***GxyzHistoryR;
 
 /********************************************************
  double **His_Gxyz;
@@ -352,7 +364,7 @@ double ***GxyzHistoryR;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **His_Gxyz;
+extern double **His_Gxyz;
 
 /*******************************************************
  int **atom_Fixed_XYZ;
@@ -361,7 +373,7 @@ double **His_Gxyz;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **atom_Fixed_XYZ;
+extern int **atom_Fixed_XYZ;
 
 /*******************************************************
  double **Cell_Gxyz; 
@@ -371,7 +383,7 @@ int **atom_Fixed_XYZ;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Cell_Gxyz;
+extern double **Cell_Gxyz;
 
 /*******************************************************
  double *InitN_USpin; 
@@ -380,7 +392,7 @@ double **Cell_Gxyz;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *InitN_USpin;
+extern double *InitN_USpin;
 
 /*******************************************************
  double *InitN_DSpin; 
@@ -389,7 +401,7 @@ double *InitN_USpin;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *InitN_DSpin;
+extern double *InitN_DSpin;
 
 /*******************************************************
  double *InitMagneticMoment; 
@@ -398,7 +410,7 @@ double *InitN_DSpin;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *InitMagneticMoment;
+extern double *InitMagneticMoment;
 
 /*******************************************************
  double *Angle0_Spin; 
@@ -407,7 +419,7 @@ double *InitMagneticMoment;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Angle0_Spin;
+extern double *Angle0_Spin;
 
 /*******************************************************
  double *Angle1_Spin; 
@@ -416,7 +428,7 @@ double *Angle0_Spin;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Angle1_Spin;
+extern double *Angle1_Spin;
 
 /*******************************************************
  double *InitAngle0_Spin; 
@@ -425,7 +437,7 @@ double *Angle1_Spin;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *InitAngle0_Spin;
+extern double *InitAngle0_Spin;
 
 /*******************************************************
  double *InitAngle1_Spin; 
@@ -434,7 +446,7 @@ double *InitAngle0_Spin;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *InitAngle1_Spin;
+extern double *InitAngle1_Spin;
 
 /*******************************************************
  double *Angle0_Orbital; 
@@ -443,7 +455,7 @@ double *InitAngle1_Spin;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Angle0_Orbital;
+extern double *Angle0_Orbital;
 
 /*******************************************************
  double *Angle1_Orbital; 
@@ -452,7 +464,7 @@ double *Angle0_Orbital;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Angle1_Orbital;
+extern double *Angle1_Orbital;
 
 /*******************************************************
  double *OrbitalMoment;
@@ -461,7 +473,7 @@ double *Angle1_Orbital;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *OrbitalMoment;
+extern double *OrbitalMoment;
 
 /*******************************************************
  int *Constraint_SpinAngle; 
@@ -470,7 +482,7 @@ double *OrbitalMoment;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Constraint_SpinAngle;
+extern int *Constraint_SpinAngle;
 
 /*******************************************************
  double *InitAngle0_Orbital; 
@@ -479,7 +491,7 @@ int *Constraint_SpinAngle;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *InitAngle0_Orbital;
+extern double *InitAngle0_Orbital;
 
 /*******************************************************
  double *InitAngle1_Orbital; 
@@ -488,7 +500,7 @@ double *InitAngle0_Orbital;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *InitAngle1_Orbital;
+extern double *InitAngle1_Orbital;
 
 /*******************************************************
  double **Orbital_Moment_XYZ;
@@ -498,7 +510,7 @@ double *InitAngle1_Orbital;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Orbital_Moment_XYZ;
+extern double **Orbital_Moment_XYZ;
 
 /*******************************************************
  int *Constraint_OrbitalAngle; 
@@ -508,7 +520,7 @@ double **Orbital_Moment_XYZ;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Constraint_OrbitalAngle;
+extern int *Constraint_OrbitalAngle;
 
 /*******************************************************
  int *WhatSpecies; 
@@ -517,7 +529,7 @@ int *Constraint_OrbitalAngle;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *WhatSpecies;
+extern int *WhatSpecies;
 
 /*******************************************************
  int *GridN_Atom; 
@@ -526,7 +538,7 @@ int *WhatSpecies;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *GridN_Atom;
+extern int *GridN_Atom;
 
 /*******************************************************
  double *Spe_Atom_Cut1; 
@@ -535,7 +547,7 @@ int *GridN_Atom;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Spe_Atom_Cut1;
+extern double *Spe_Atom_Cut1;
 
 /*******************************************************
  double *Spe_Core_Charge; 
@@ -544,7 +556,7 @@ double *Spe_Atom_Cut1;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Spe_Core_Charge;
+extern double *Spe_Core_Charge;
 
 /*******************************************************
  int *TGN_EH0; 
@@ -554,7 +566,7 @@ double *Spe_Core_Charge;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *TGN_EH0;
+extern int *TGN_EH0;
 
 /*******************************************************
  double *dv_EH0; 
@@ -564,7 +576,7 @@ int *TGN_EH0;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *dv_EH0;
+extern double *dv_EH0;
 
 /*******************************************************
  int *Spe_Num_Mesh_VPS; 
@@ -573,7 +585,7 @@ double *dv_EH0;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_Num_Mesh_VPS;
+extern int *Spe_Num_Mesh_VPS;
 
 /*******************************************************
  int *Spe_Num_Mesh_PAO; 
@@ -582,7 +594,7 @@ int *Spe_Num_Mesh_VPS;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_Num_Mesh_PAO;
+extern int *Spe_Num_Mesh_PAO;
 
 /*******************************************************
  int *Spe_Total_VPS_Pro; 
@@ -591,7 +603,7 @@ int *Spe_Num_Mesh_PAO;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_Total_VPS_Pro;
+extern int *Spe_Total_VPS_Pro;
 
 /*******************************************************
  int *Spe_Num_RVPS; 
@@ -600,7 +612,7 @@ int *Spe_Total_VPS_Pro;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_Num_RVPS;
+extern int *Spe_Num_RVPS;
 
 /*******************************************************
  int *Spe_PAO_LMAX; 
@@ -610,7 +622,7 @@ int *Spe_Num_RVPS;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_PAO_LMAX;
+extern int *Spe_PAO_LMAX;
 
 /*******************************************************
  int *Spe_PAO_Mul; 
@@ -621,7 +633,7 @@ int *Spe_PAO_LMAX;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_PAO_Mul;
+extern int *Spe_PAO_Mul;
 
 /*******************************************************
  int *Spe_WhatAtom; 
@@ -630,7 +642,7 @@ int *Spe_PAO_Mul;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_WhatAtom;
+extern int *Spe_WhatAtom;
 
 /*******************************************************
  int *Spe_Total_NO; 
@@ -639,7 +651,7 @@ int *Spe_WhatAtom;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_Total_NO;
+extern int *Spe_Total_NO;
 
 /*******************************************************
  int *Spe_Total_CNO; 
@@ -648,7 +660,7 @@ int *Spe_Total_NO;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_Total_CNO;
+extern int *Spe_Total_CNO;
 
 /*******************************************************
  int *FNAN_DCLNO,*SNAN_DCLNO; 
@@ -658,7 +670,7 @@ int *Spe_Total_CNO;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *FNAN_DCLNO,*SNAN_DCLNO;
+extern int *FNAN_DCLNO,*SNAN_DCLNO;
 
 /*******************************************************
  int *FNAN; 
@@ -667,7 +679,7 @@ int *FNAN_DCLNO,*SNAN_DCLNO;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *FNAN;
+extern int *FNAN;
 
 /*******************************************************
  int *SNAN; 
@@ -676,7 +688,7 @@ int *FNAN;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *SNAN;
+extern int *SNAN;
 
 /*******************************************************
  int *ONAN; 
@@ -685,7 +697,7 @@ int *SNAN;
   allocation: call as Allocate_Arrays(2) in readfile.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *ONAN;
+extern int *ONAN;
 
 /*******************************************************
  int **natn; 
@@ -694,7 +706,7 @@ int *ONAN;
   allocation: call as Allocate_Arrays(3) in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **natn;
+extern int **natn;
 
 /*******************************************************
  int **ncn; 
@@ -704,7 +716,7 @@ int **natn;
   allocation: call as Allocate_Arrays(3) in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **ncn;
+extern int **ncn;
 
 /*******************************************************
  int **natn_onan; 
@@ -713,7 +725,7 @@ int **ncn;
   allocation: truncation.c 
   free:       truncation.c and Free_Arrays(0) in openmx.c
 *******************************************************/
-int **natn_onan;
+extern int **natn_onan;
 
 /*******************************************************
  int **ncn_onan1,**ncn_onan2,**ncn_onan3; 
@@ -722,7 +734,7 @@ int **natn_onan;
   allocation: truncation.c 
   free:       truncation.c and Free_Arrays(0) in openmx.c
 *******************************************************/
-int **ncn_onan1,**ncn_onan2,**ncn_onan3; 
+extern int **ncn_onan1,**ncn_onan2,**ncn_onan3;
 
 /*******************************************************
  double **Dis; 
@@ -731,7 +743,7 @@ int **ncn_onan1,**ncn_onan2,**ncn_onan3;
   allocation: call as Allocate_Arrays(3) in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Dis;
+extern double **Dis;
 
 /*******************************************************
  double **GridX_EH0, **GridY_EH0, **GridZ_EH0 ;
@@ -742,7 +754,7 @@ double **Dis;
               in Correcion_Energy.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **GridX_EH0,**GridY_EH0,**GridZ_EH0;
+extern double **GridX_EH0,**GridY_EH0,**GridZ_EH0;
 
 /*******************************************************
  double **Arho_EH0;
@@ -753,7 +765,7 @@ double **GridX_EH0,**GridY_EH0,**GridZ_EH0;
               in Correcion_Energy.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Arho_EH0;
+extern double **Arho_EH0;
 
 /*******************************************************
  double ****Arho_EH0_Orb;
@@ -764,7 +776,7 @@ double **Arho_EH0;
               in Correcion_Energy.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ****Arho_EH0_Orb;
+extern double ****Arho_EH0_Orb;
 
 /*******************************************************
  double **Wt_EH0;
@@ -775,7 +787,7 @@ double ****Arho_EH0_Orb;
               in Correcion_Energy.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Wt_EH0;
+extern double **Wt_EH0;
 
 /*******************************************************
  double **atv;
@@ -784,7 +796,7 @@ double **Wt_EH0;
   allocation: in Set_Periodic() of truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **atv;
+extern double **atv;
 
 /*******************************************************
  int **atv_ijk;
@@ -793,7 +805,7 @@ double **atv;
   allocation: in Set_Periodic() of truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **atv_ijk;
+extern int **atv_ijk;
 
 /*******************************************************
  double **MO_kpoint;
@@ -802,7 +814,7 @@ int **atv_ijk;
   allocation: call as Allocate_Arrays(5) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **MO_kpoint;
+extern double **MO_kpoint;
 
 
 /*****************************************************************************
@@ -819,7 +831,7 @@ double **MO_kpoint;
   allocation: UCell_Box() of truncation.c
   free:       truncation.c and Free_Arrays(0) in openmx.c
 *******************************************************/
-int ***GListTAtoms1;
+extern int ***GListTAtoms1;
 
 /*******************************************************
  int ***GListTAtoms2;
@@ -831,7 +843,7 @@ int ***GListTAtoms1;
   allocation: UCell_Box() of truncation.c
   free:       truncation.c and Free_Arrays(0) in openmx.c
 *******************************************************/
-int ***GListTAtoms2;
+extern int ***GListTAtoms2;
 
 /*******************************************************
  int **GridListAtom; 
@@ -840,7 +852,7 @@ int ***GListTAtoms2;
   allocation: allocate in UCell_Box() of truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **GridListAtom;
+extern int **GridListAtom;
 
 /*******************************************************
  int **CellListAtom; 
@@ -849,7 +861,7 @@ int **GridListAtom;
   allocation: allocate in UCell_Box() of truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **CellListAtom;
+extern int **CellListAtom;
 
 /*******************************************************
  int **MGridListAtom; 
@@ -858,7 +870,7 @@ int **CellListAtom;
   allocation: allocate in UCell_Box() of truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **MGridListAtom;
+extern int **MGridListAtom;
 
 /*******************************************************
  double **Density_Grid; 
@@ -867,7 +879,7 @@ int **MGridListAtom;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Density_Grid;
+extern double **Density_Grid;
 
 /*******************************************************
  double **Density_Grid_B; 
@@ -876,7 +888,7 @@ double **Density_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Density_Grid_B;
+extern double **Density_Grid_B;
 
 /*******************************************************
  double **Density_Grid_D; 
@@ -885,7 +897,7 @@ double **Density_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Density_Grid_D;
+extern double **Density_Grid_D;
 
 /*******************************************************
  double *ADensity_Grid_B; 
@@ -894,7 +906,7 @@ double **Density_Grid_D;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *ADensity_Grid_B;
+extern double *ADensity_Grid_B;
 
 /*******************************************************
  double **PCCDensity_Grid_B; 
@@ -904,7 +916,7 @@ double *ADensity_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **PCCDensity_Grid_B;
+extern double **PCCDensity_Grid_B;
 
 /*******************************************************
  double **PCCDensity_Grid_D; 
@@ -914,7 +926,7 @@ double **PCCDensity_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **PCCDensity_Grid_D;
+extern double **PCCDensity_Grid_D;
 
 /*******************************************************
  double **Vxc_Grid; 
@@ -923,7 +935,7 @@ double **PCCDensity_Grid_D;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Vxc_Grid;
+extern double **Vxc_Grid;
 
 /*******************************************************
  double **Vxc_Grid_B; 
@@ -932,7 +944,7 @@ double **Vxc_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Vxc_Grid_B;
+extern double **Vxc_Grid_B;
 
 /*******************************************************
  double **Vxc_Grid_D; 
@@ -941,7 +953,7 @@ double **Vxc_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Vxc_Grid_D;
+extern double **Vxc_Grid_D;
 
 /*******************************************************
  double *RefVxc_Grid; 
@@ -951,7 +963,7 @@ double **Vxc_Grid_D;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *RefVxc_Grid;
+extern double *RefVxc_Grid;
 
 /*******************************************************
  double *RefVxc_Grid_B; 
@@ -961,7 +973,7 @@ double *RefVxc_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *RefVxc_Grid_B;
+extern double *RefVxc_Grid_B;
 
 /*******************************************************
  double *VNA_Grid; 
@@ -970,7 +982,7 @@ double *RefVxc_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *VNA_Grid;
+extern double *VNA_Grid;
 
 /*******************************************************
  double *VNA_Grid_B; 
@@ -979,7 +991,7 @@ double *VNA_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *VNA_Grid_B;
+extern double *VNA_Grid_B;
 
 /*******************************************************
  double *VEF_Grid; 
@@ -988,7 +1000,7 @@ double *VNA_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *VEF_Grid;
+extern double *VEF_Grid;
 
 /*******************************************************
  double *VEF_Grid_B; 
@@ -997,7 +1009,7 @@ double *VEF_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *VEF_Grid_B;
+extern double *VEF_Grid_B;
 
 /*******************************************************
  double *dVHart_Grid; 
@@ -1007,7 +1019,7 @@ double *VEF_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *dVHart_Grid;
+extern double *dVHart_Grid;
 
 /*******************************************************
  double *dVHart_Grid_B; 
@@ -1017,7 +1029,7 @@ double *dVHart_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *dVHart_Grid_B;
+extern double *dVHart_Grid_B;
 
 /*******************************************************
  double *dVHart_Periodic_Grid_B; 
@@ -1028,7 +1040,7 @@ double *dVHart_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *dVHart_Periodic_Grid_B;
+extern double *dVHart_Periodic_Grid_B;
 
 /*******************************************************
  double *Density_Periodic_Grid_B; 
@@ -1039,7 +1051,7 @@ double *dVHart_Periodic_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *Density_Periodic_Grid_B;
+extern double *Density_Periodic_Grid_B;
 
 /*******************************************************
  double **Vpot_Grid; 
@@ -1048,7 +1060,7 @@ double *Density_Periodic_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Vpot_Grid;
+extern double **Vpot_Grid;
 
 /*******************************************************
  double **Vpot_Grid_B; 
@@ -1057,7 +1069,7 @@ double **Vpot_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Vpot_Grid_B;
+extern double **Vpot_Grid_B;
 
 /*******************************************************
  double ***ReVKSk;
@@ -1069,7 +1081,7 @@ double **Vpot_Grid_B;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***ReVKSk;
+extern double ***ReVKSk;
 
 /*******************************************************
  double ***ImVKSk;
@@ -1081,7 +1093,7 @@ double ***ReVKSk;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***ImVKSk;
+extern double ***ImVKSk;
 
 /*******************************************************
  double **Residual_ReVKSk;
@@ -1092,7 +1104,7 @@ double ***ImVKSk;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Residual_ReVKSk;
+extern double **Residual_ReVKSk;
 
 /*******************************************************
  double **Residual_ImVKSk;
@@ -1103,7 +1115,7 @@ double **Residual_ReVKSk;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Residual_ImVKSk;
+extern double **Residual_ImVKSk;
 
 /*******************************************************
  Type_Orbs_Grid ***Orbs_Grid;
@@ -1114,7 +1126,7 @@ double **Residual_ImVKSk;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-Type_Orbs_Grid ***Orbs_Grid;
+extern Type_Orbs_Grid ***Orbs_Grid;
 
 /*******************************************************
  Type_Orbs_Grid ***COrbs_Grid;
@@ -1125,7 +1137,7 @@ Type_Orbs_Grid ***Orbs_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-Type_Orbs_Grid ***COrbs_Grid;
+extern Type_Orbs_Grid ***COrbs_Grid;
 
 /*******************************************************
  Type_Orbs_Grid ***Orbs_Grid_FNAN;
@@ -1138,7 +1150,7 @@ Type_Orbs_Grid ***COrbs_Grid;
   allocation: allocate in truncation.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-Type_Orbs_Grid ****Orbs_Grid_FNAN;
+extern Type_Orbs_Grid ****Orbs_Grid_FNAN;
 
 /*******************************************************
  double ***LNO_coes;
@@ -1150,7 +1162,7 @@ Type_Orbs_Grid ****Orbs_Grid_FNAN;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***LNO_coes;
+extern double ***LNO_coes;
 
 /*******************************************************
  int *LNOs_Num_predefined;
@@ -1159,7 +1171,7 @@ double ***LNO_coes;
   allocation: Allocate_Arrays.c
   free:       Free_Arrays.c
 *******************************************************/
-int *LNOs_Num_predefined;
+extern int *LNOs_Num_predefined;
 
 /*******************************************************
  double ***LNO_pops;
@@ -1171,7 +1183,7 @@ int *LNOs_Num_predefined;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***LNO_pops;
+extern double ***LNO_pops;
 
 /*******************************************************
  int *LNO_Num;
@@ -1180,7 +1192,7 @@ double ***LNO_pops;
   allocation: allocate in Allocation_Arrays.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int *LNO_Num;
+extern int *LNO_Num;
 
 /*******************************************************
  int ***CWF_Guiding_AO;
@@ -1189,7 +1201,7 @@ int *LNO_Num;
   allocation: allocate in Allocation_Arrays.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int ***CWF_Guiding_AO;
+extern int ***CWF_Guiding_AO;
 
 /*******************************************************
  int *CWF_Num_predefined;
@@ -1198,7 +1210,7 @@ int ***CWF_Guiding_AO;
   allocation: Allocate_Arrays.c
   free:       Free_Arrays.c
 *******************************************************/
-int *CWF_Num_predefined;
+extern int *CWF_Num_predefined;
 
 /*******************************************************
  int *CWF_file_Atoms;
@@ -1207,7 +1219,7 @@ int *CWF_Num_predefined;
   allocation: Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int *CWF_file_Atoms;
+extern int *CWF_file_Atoms;
 
 /*******************************************************
  int *CWF_file_MOs;
@@ -1216,7 +1228,7 @@ int *CWF_file_Atoms;
   allocation: Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int *CWF_file_MOs;
+extern int *CWF_file_MOs;
 
 /*******************************************************
  double *******CWF_Coef;
@@ -1231,7 +1243,7 @@ int *CWF_file_MOs;
   allocation: SetPara_DFT.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-double *******CWF_Coef;
+extern double *******CWF_Coef;
 
 /*******************************************************
  int **CWF_Grouped_Atoms;
@@ -1241,7 +1253,7 @@ double *******CWF_Coef;
   allocation: Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int **CWF_Grouped_Atoms;
+extern int **CWF_Grouped_Atoms;
 
 /*******************************************************
  int *CWF_Grouped_Atoms_EachNum;
@@ -1250,7 +1262,7 @@ int **CWF_Grouped_Atoms;
   allocation: Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int *CWF_Grouped_Atoms_EachNum;
+extern int *CWF_Grouped_Atoms_EachNum;
 
 /*******************************************************
  int *Num_CWF_MOs_Group;
@@ -1260,7 +1272,7 @@ int *CWF_Grouped_Atoms_EachNum;
   allocation: Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Num_CWF_MOs_Group;
+extern int *Num_CWF_MOs_Group;
 
 /*******************************************************
  double ***CWF_Guiding_MOs;
@@ -1271,7 +1283,7 @@ int *Num_CWF_MOs_Group;
   allocation: Cluster_DFT_Col_CWF.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***CWF_Guiding_MOs;
+extern double ***CWF_Guiding_MOs;
 
 /*******************************************************
  double **CWF_Charge;
@@ -1281,7 +1293,7 @@ double ***CWF_Guiding_MOs;
   allocation: Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-double **CWF_Charge;
+extern double **CWF_Charge;
 
 /*******************************************************
  double **CWF_Energy;
@@ -1292,7 +1304,7 @@ double **CWF_Charge;
   allocation: Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-double **CWF_Energy;
+extern double **CWF_Energy;
 
 /*******************************************************
  double *****H0;
@@ -1306,7 +1318,7 @@ double **CWF_Energy;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****H0;
+extern double *****H0;
 
 /*******************************************************
  double *****CntH0;
@@ -1320,7 +1332,7 @@ double *****H0;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****CntH0;
+extern double *****CntH0;
 
 /*******************************************************
  double *****HNL;
@@ -1334,7 +1346,7 @@ double *****CntH0;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****HNL;
+extern double *****HNL;
 
 /*******************************************************
  double *****iHNL;
@@ -1348,7 +1360,7 @@ double *****HNL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****iHNL;
+extern double *****iHNL;
 
 /*******************************************************
  double *****iCntHNL;
@@ -1363,7 +1375,7 @@ double *****iHNL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****iCntHNL;
+extern double *****iCntHNL;
 
 /*******************************************************
  double *****HCH;
@@ -1377,7 +1389,7 @@ double *****iCntHNL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****HCH;
+extern double *****HCH;
 
 /*******************************************************
  double *****iHCH;
@@ -1391,7 +1403,7 @@ double *****HCH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****iHCH;
+extern double *****iHCH;
 
 /*******************************************************
  double *****OLP_L;
@@ -1407,7 +1419,7 @@ double *****iHCH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****OLP_L;
+extern double *****OLP_L;
 
 /*******************************************************
  double *****OLP;
@@ -1421,7 +1433,7 @@ double *****OLP_L;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****OLP;
+extern double *****OLP;
 
 /*** added by Ohwaki ***/
 
@@ -1437,7 +1449,7 @@ double *****OLP;
    free:       in truncation.c
                and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****OLP_p;
+extern double *****OLP_p;
 
 /*** added by Ohwaki (end) ***/
 
@@ -1455,7 +1467,7 @@ double *****OLP_p;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****OLP_CH;
+extern double *****OLP_CH;
 
 /*******************************************************
  double *****CntOLP;
@@ -1469,7 +1481,7 @@ double *****OLP_CH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****CntOLP;
+extern double *****CntOLP;
 
 /*******************************************************
  double *****H;
@@ -1483,7 +1495,7 @@ double *****CntOLP;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****H;
+extern double *****H;
 
 /*******************************************************
  double *****CntH;
@@ -1497,7 +1509,7 @@ double *****H;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****CntH;
+extern double *****CntH;
 
 /*******************************************************
  double ******HisH1;
@@ -1513,7 +1525,7 @@ double *****CntH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******HisH1;
+extern double ******HisH1;
 
 /*******************************************************
  double ******HisH2;
@@ -1529,7 +1541,7 @@ double ******HisH1;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******HisH2;
+extern double ******HisH2;
 
 /*******************************************************
  double ******ResidualH1;
@@ -1545,7 +1557,7 @@ double ******HisH2;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******ResidualH1;
+extern double ******ResidualH1;
 
 /*******************************************************
  double ******ResidualH2;
@@ -1561,7 +1573,7 @@ double ******ResidualH1;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******ResidualH2;
+extern double ******ResidualH2;
 
 /*******************************************************
  double *****H_Hub;             --- added by MJ
@@ -1578,7 +1590,7 @@ double ******ResidualH2;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****H_Hub;           /* --- added by MJ  */
+extern double *****H_Hub;           /* --- added by MJ  */
 
 /*******************************************************
  double *****iHNL0;             --- added by TO
@@ -1592,7 +1604,7 @@ double *****H_Hub;           /* --- added by MJ  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****iHNL0;           /* --- added by TO  */
+extern double *****iHNL0;           /* --- added by TO  */
 
 /*******************************************************
  double ******DS_NL;
@@ -1608,7 +1620,7 @@ double *****iHNL0;           /* --- added by TO  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******DS_NL;
+extern double ******DS_NL;
 
 /*******************************************************
  double ******CntDS_NL;
@@ -1624,7 +1636,7 @@ double ******DS_NL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******CntDS_NL;
+extern double ******CntDS_NL;
 
 /*******************************************************
  double ***H_Zeeman_NCO;          
@@ -1638,7 +1650,7 @@ double ******CntDS_NL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***H_Zeeman_NCO;
+extern double ***H_Zeeman_NCO;
 
 /*******************************************************
  double ***TRAN_DecMulP;
@@ -1652,7 +1664,7 @@ double ***H_Zeeman_NCO;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***TRAN_DecMulP;
+extern double ***TRAN_DecMulP;
 
 /*******************************************************
  double ******DM;
@@ -1667,7 +1679,7 @@ double ***TRAN_DecMulP;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******DM;
+extern double ******DM;
 
 /*******************************************************
  double *****DM0;
@@ -1681,7 +1693,7 @@ double ******DM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****DM0;
+extern double *****DM0;
 
 /*******************************************************
  double *****ParDM;
@@ -1695,7 +1707,7 @@ double *****DM0;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****ParDM;
+extern double *****ParDM;
 
 /*******************************************************
  double *****iParDM;
@@ -1709,7 +1721,7 @@ double *****ParDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****iParDM;
+extern double *****iParDM;
 
 /*******************************************************
  double *****Partial_DM;
@@ -1727,7 +1739,7 @@ double *****iParDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****Partial_DM;
+extern double *****Partial_DM;
 
 /*******************************************************
  double ****DM_onsite;     --- added by MJ
@@ -1752,7 +1764,7 @@ double *****Partial_DM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****DM_onsite;     /* --- added by MJ  */
+extern double *****DM_onsite;     /* --- added by MJ  */
 
 /*******************************************************
  double ****v_eff;     --- added by MJ
@@ -1769,7 +1781,7 @@ double *****DM_onsite;     /* --- added by MJ  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ****v_eff;     /* --- added by MJ  */
+extern double ****v_eff;     /* --- added by MJ  */
 
 /*******************************************************
  dcomplex ******NC_OcpN;     
@@ -1788,7 +1800,7 @@ double ****v_eff;     /* --- added by MJ  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-dcomplex ******NC_OcpN;  
+extern dcomplex ******NC_OcpN;
 
 /*******************************************************
  dcomplex *****NC_v_eff;     
@@ -1806,7 +1818,7 @@ dcomplex ******NC_OcpN;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-dcomplex *****NC_v_eff;
+extern dcomplex *****NC_v_eff;
 
 /*******************************************************
  double ******ResidualDM;
@@ -1823,7 +1835,7 @@ dcomplex *****NC_v_eff;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******ResidualDM;
+extern double ******ResidualDM;
 
 /*******************************************************
  double ******iResidualDM;
@@ -1840,7 +1852,7 @@ double ******ResidualDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******iResidualDM;
+extern double ******iResidualDM;
 
 /*******************************************************
  double *****EDM;
@@ -1854,7 +1866,7 @@ double ******iResidualDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****EDM;
+extern double *****EDM;
 
 /*******************************************************
  double *****PDM;
@@ -1868,7 +1880,7 @@ double *****EDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *****PDM;
+extern double *****PDM;
 
 /*******************************************************
  double ******iDM;
@@ -1883,7 +1895,7 @@ double *****PDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ******iDM;
+extern double ******iDM;
 
 /*******************************************************
  double ***S12;
@@ -1894,7 +1906,7 @@ double ******iDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***S12;
+extern double ***S12;
 
 /*******************************************************
  int **NumOLG;
@@ -1906,7 +1918,7 @@ double ***S12;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **NumOLG;
+extern int **NumOLG;
 
 /*******************************************************
  int *RNUM;
@@ -1915,7 +1927,7 @@ int **NumOLG;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *RNUM;
+extern int *RNUM;
 
 /*******************************************************
  int *RNUM2;
@@ -1924,7 +1936,7 @@ int *RNUM;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *RNUM2;
+extern int *RNUM2;
 
 /*******************************************************
  int ***RMI1;
@@ -1937,7 +1949,7 @@ int *RNUM2;
   free:       truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int ***RMI1;
+extern int ***RMI1;
 
 /*******************************************************
  int ***RMI2;
@@ -1950,7 +1962,7 @@ int ***RMI1;
   free:       truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int ***RMI2;
+extern int ***RMI2;
 
 /*******************************************************
  double *NE_KGrids1, *NE_KGrids2, *NE_KGrids3;
@@ -1961,7 +1973,7 @@ int ***RMI2;
   allocation: in Generating_MP_Special_Kpt
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *NE_KGrids1,*NE_KGrids2,*NE_KGrids3;
+extern double *NE_KGrids1,*NE_KGrids2,*NE_KGrids3;
 
 /*******************************************************
  int *NE_T_k_op;
@@ -1970,7 +1982,7 @@ double *NE_KGrids1,*NE_KGrids2,*NE_KGrids3;
   allocation: in Generating_MP_Special_Kpt
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *NE_T_k_op;
+extern int *NE_T_k_op;
 
 /*******************************************************
  dcomplex *****HOMOs_Coef;
@@ -1983,7 +1995,7 @@ int *NE_T_k_op;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-dcomplex *****HOMOs_Coef;
+extern dcomplex *****HOMOs_Coef;
 
 /*******************************************************
  dcomplex *****LUMOs_Coef;
@@ -1996,7 +2008,7 @@ dcomplex *****HOMOs_Coef;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-dcomplex *****LUMOs_Coef;
+extern dcomplex *****LUMOs_Coef;
 
 /*******************************************************
  int **Spe_Specified_Num;
@@ -2007,7 +2019,7 @@ dcomplex *****LUMOs_Coef;
   allocation: in Set_BasisPara() of SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Spe_Specified_Num;
+extern int **Spe_Specified_Num;
 
 /*******************************************************
  int ***Spe_Trans_Orbital;
@@ -2019,7 +2031,7 @@ int **Spe_Specified_Num;
   allocation: in Set_BasisPara() of SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int ***Spe_Trans_Orbital;
+extern int ***Spe_Trans_Orbital;
 
 /*******************************************************
  int *Spe_OpenCore_flag;
@@ -2029,7 +2041,7 @@ int ***Spe_Trans_Orbital;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_OpenCore_flag;
+extern int *Spe_OpenCore_flag;
 
 /*******************************************************
  int *Spe_Spe2Ban;
@@ -2039,7 +2051,7 @@ int *Spe_OpenCore_flag;
               of SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Spe_Spe2Ban;
+extern int *Spe_Spe2Ban;
 
 /*******************************************************
  int *Bulk_Num_HOMOs;
@@ -2048,7 +2060,7 @@ int *Spe_Spe2Ban;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Bulk_Num_HOMOs;
+extern int *Bulk_Num_HOMOs;
 
 /*******************************************************
  int *Bulk_Num_LUMOs;
@@ -2057,7 +2069,7 @@ int *Bulk_Num_HOMOs;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Bulk_Num_LUMOs;
+extern int *Bulk_Num_LUMOs;
 
 /*******************************************************
  int **Bulk_HOMO;
@@ -2066,7 +2078,7 @@ int *Bulk_Num_LUMOs;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Bulk_HOMO;
+extern int **Bulk_HOMO;
 
 /*******************************************************
  double ***CntCoes;
@@ -2078,7 +2090,7 @@ int **Bulk_HOMO;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***CntCoes;
+extern double ***CntCoes;
 
 /*******************************************************
  double ***CntCoes_Species;
@@ -2091,7 +2103,7 @@ double ***CntCoes;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***CntCoes_Species;
+extern double ***CntCoes_Species;
 
 /*******************************************************
  int *CntOrb_Atoms;
@@ -2101,7 +2113,7 @@ double ***CntCoes_Species;
   allocation: in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *CntOrb_Atoms;
+extern int *CntOrb_Atoms;
 
 /*******************************************************
  double **S;
@@ -2110,7 +2122,7 @@ int *CntOrb_Atoms;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double **S;
+extern double **S;
 
 /*******************************************************
  double *EV_S;
@@ -2119,7 +2131,7 @@ double **S;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *EV_S;
+extern double *EV_S;
 
 /*******************************************************
  double *IEV_S;
@@ -2128,7 +2140,7 @@ double *EV_S;
   allocation: in SetPara_DFT.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *IEV_S;
+extern double *IEV_S;
 
 /*******************************************************
  int *M2G
@@ -2139,7 +2151,7 @@ double *IEV_S;
   free:       call as Free_Arrays(0) in openmx.c
               and in Set_Allocate_Atom2CPU.c
 *******************************************************/
-int *M2G;
+extern int *M2G;
 
 /*******************************************************
  int *F_M2G, *S_M2G; 
@@ -2153,7 +2165,7 @@ int *M2G;
   free:       call as Free_Arrays(0) in openmx.c
               and in truncation.c
 *******************************************************/
-int *F_M2G,*S_M2G;
+extern int *F_M2G,*S_M2G;
 
 /*******************************************************
  int *VPS_j_dependency;
@@ -2163,7 +2175,7 @@ int *F_M2G,*S_M2G;
   allocation: call as Allocate_Arrays(0) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *VPS_j_dependency;
+extern int *VPS_j_dependency;
 
 
 /* VNA output matrices are owned by OpenMXCoreContext and passed explicitly
@@ -2179,7 +2191,7 @@ int *VPS_j_dependency;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***Krylov_U;
+extern double ***Krylov_U;
 
 /*******************************************************
  double ***First_Moment_EC
@@ -2192,8 +2204,8 @@ double ***Krylov_U;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***First_Moment_EC;
-double ***Second_Moment_EC;
+extern double ***First_Moment_EC;
+extern double ***Second_Moment_EC;
 
 /*******************************************************
  double ****EC_matrix
@@ -2206,7 +2218,7 @@ double ***Second_Moment_EC;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ****EC_matrix;
+extern double ****EC_matrix;
 
 /*******************************************************
  int *rlmax_EC;
@@ -2217,7 +2229,7 @@ double ****EC_matrix;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *rlmax_EC;
+extern int *rlmax_EC;
 
 /*******************************************************
  int *rlmax_EC2;
@@ -2228,7 +2240,7 @@ int *rlmax_EC;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *rlmax_EC2;
+extern int *rlmax_EC2;
 
 /*******************************************************
  int *EKC_core_size;
@@ -2238,7 +2250,7 @@ int *rlmax_EC2;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *EKC_core_size;
+extern int *EKC_core_size;
 
 /*******************************************************
  double *scale_rc_EKC;
@@ -2248,7 +2260,7 @@ int *EKC_core_size;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *scale_rc_EKC;
+extern double *scale_rc_EKC;
 
 /*******************************************************
  double **InvHessian
@@ -2257,7 +2269,7 @@ double *scale_rc_EKC;
   allocation: allocate as Allocate_Arrays(1)
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-double **InvHessian;
+extern double **InvHessian;
 
 /*******************************************************
  double **Hessian
@@ -2266,7 +2278,7 @@ double **InvHessian;
   allocation: allocate as Allocate_Arrays(1)
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-double **Hessian;
+extern double **Hessian;
 
 /*******************************************************
  double ***DecEkin
@@ -2276,7 +2288,7 @@ double **Hessian;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***DecEkin;
+extern double ***DecEkin;
 
 /*******************************************************
  double ***DecEv
@@ -2286,7 +2298,7 @@ double ***DecEkin;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***DecEv;
+extern double ***DecEv;
 
 /*******************************************************
  double ***DecEcon
@@ -2296,7 +2308,7 @@ double ***DecEv;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***DecEcon;
+extern double ***DecEcon;
 
 /*******************************************************
  double ***DecEscc
@@ -2306,7 +2318,7 @@ double ***DecEcon;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***DecEscc;
+extern double ***DecEscc;
 
 /*******************************************************
  double ***DecEvdw
@@ -2316,7 +2328,7 @@ double ***DecEscc;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double ***DecEvdw;
+extern double ***DecEvdw;
 
 /*******************************************************
  int *empty_occupation_spin;
@@ -2325,7 +2337,7 @@ double ***DecEvdw;
   allocation: allocate in Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int *empty_occupation_spin;
+extern int *empty_occupation_spin;
 
 /*******************************************************
  int *empty_occupation_orbital;
@@ -2334,7 +2346,7 @@ int *empty_occupation_spin;
   allocation: allocate in Input_std.c
   free:       Free_Arrays(0) in openmx.c
 *******************************************************/
-int *empty_occupation_orbital;
+extern int *empty_occupation_orbital;
 
 /*******************************************************
  double ***QAO_coes;
@@ -2344,7 +2356,7 @@ int *empty_occupation_orbital;
   allocation: in Cluter_DFT_Col_CWF.c
   free:       in Cluter_DFT_Col_CWF.c
 *******************************************************/
-double ***QAO_coes;
+extern double ***QAO_coes;
 
 /*******************************************************
  double ***LNAO1_pops;
@@ -2357,7 +2369,7 @@ double ***QAO_coes;
   allocation: in Cluter_DFT_Col_CWF.c
   free:       in Cluter_DFT_Col_CWF.c
 *******************************************************/
-double ***LNAO1_pops;
+extern double ***LNAO1_pops;
 
 /*******************************************************
  double **QAO2_coes;
@@ -2367,112 +2379,112 @@ double ***LNAO1_pops;
   allocation: in Cluter_DFT_NonCol_CWF.c
   free:       in Cluter_DFT_NonCol_CWF.c
 *******************************************************/
-dcomplex **QAO2_coes;
+extern dcomplex **QAO2_coes;
 
-double *pre_spin_moment; // S. An 
-double *****H_XMCD;      // S. An 
-dcomplex *zp,*Ep,*Rp;
-double GL_Abscissae[GL_Mesh+2],GL_Weight[GL_Mesh+2];
-double FineGL_Abscissae[FineGL_Mesh+2],FineGL_Weight[FineGL_Mesh+2];
-double CoarseGL_Abscissae[CoarseGL_Mesh+2],CoarseGL_Weight[CoarseGL_Mesh+2];
-char Atom_Symbol[YOUSO14][4];
-double Atom_Weight[YOUSO14];
-double tv[4][4],rtv[4][4],tv_velocity[4][4];
-double init_tv[4][4];
-double Left_tv[4][4],Right_tv[4][4];
-double gtv[4][4],rgtv[4][4],length_gtv[4];
-double gtv_FE[4][4],rgtv_FE[4][4];
-double Stress_Tensor[9];
-double MD_applied_pressure,UpV;
-int MD_applied_pressure_flag[3];
-int Number_of_Electrons_Species_flag;
-double *Number_of_Electrons_Species;
+extern double *pre_spin_moment; // S. An
+extern double *****H_XMCD;      // S. An
+extern dcomplex *zp,*Ep,*Rp;
+extern double GL_Abscissae[GL_Mesh+2],GL_Weight[GL_Mesh+2];
+extern double FineGL_Abscissae[FineGL_Mesh+2],FineGL_Weight[FineGL_Mesh+2];
+extern double CoarseGL_Abscissae[CoarseGL_Mesh+2],CoarseGL_Weight[CoarseGL_Mesh+2];
+extern char Atom_Symbol[YOUSO14][4];
+extern double Atom_Weight[YOUSO14];
+extern double tv[4][4],rtv[4][4],tv_velocity[4][4];
+extern double init_tv[4][4];
+extern double Left_tv[4][4],Right_tv[4][4];
+extern double gtv[4][4],rgtv[4][4],length_gtv[4];
+extern double gtv_FE[4][4],rgtv_FE[4][4];
+extern double Stress_Tensor[9];
+extern double MD_applied_pressure,UpV;
+extern int MD_applied_pressure_flag[3];
+extern int Number_of_Electrons_Species_flag;
+extern double *Number_of_Electrons_Species;
 
-double Grid_Origin[4];
-double dipole_moment[4][4];
-double TempPara[30][3],PrePara[30][3];
-double MD_TimeStep,ChemP,Beta;
-double CN_Error,E_Temp,Original_E_Temp,FCR,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
-double GP,GT,T,Weight,Cell_Volume,Uele,Uele0,Uele1,Ukc,Uvdw,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
-double Uele_OS0,Uele_OS1,Uele_IS0,Uele_IS1,Uxc0,Uxc1;
-double UH0,UH1,UH2,Ucore,Uhub,Ucs,Uef,Ukin,Unl,Una,Uzs,Uzo,UvdW;
-double Ucc,Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge,Calc_Total_Charge;
-double Min_Mixing_weight,Max_Mixing_weight,Max_Mixing_weight2,Mixing_weight;
-double Kerker_factor,Criterion_MP_Special_Kpt;
-double Gdiis_Mixing,system_charge,VNA_reduce_ratio,Total_Num_Electrons;
-double Total_SpinS,Total_SpinSx,Total_SpinSy,Total_SpinSz;
-double Total_OrbitalMoment,Total_OrbitalMomentx;
-double Total_OrbitalMomenty,Total_OrbitalMomentz;
-double Total_SpinAngle0,Total_SpinAngle1;
-double Total_OrbitalMomentAngle0,Total_OrbitalMomentAngle1;
-double ScaleSize,Pin[4][4],Ptot[4][4];
-double LastBoxCenterX,LastBoxCenterY,LastBoxCenterZ;
-double Vol,Vol1,Vol2,Vol3,W;
-double SCF_Criterion,NormRD[5],BestNormRD,History_Uele[5];
-double PAO_Nkmax,Grid_Ecut,Finite_Elements_Ecut,rcut_FEB;
-double orbitalOpt_criterion,MD_Opt_criterion,orbitalOpt_SD_step;
-double MD_EvsLattice_Step;
-double Restart_Spin_Angle_Theta,Restart_Spin_Angle_Phi;
-int MD_EvsLattice_flag[3];
-int MD_OutABC;
-double X_Center_Coordinate,Y_Center_Coordinate,Z_Center_Coordinate;
-dcomplex Comp2Real[YOUSO36+1][2*(YOUSO36+1)+1][2*(YOUSO36+1)+1];
+extern double Grid_Origin[4];
+extern double dipole_moment[4][4];
+extern double TempPara[30][3],PrePara[30][3];
+extern double MD_TimeStep,ChemP,Beta;
+extern double CN_Error,E_Temp,Original_E_Temp,FCR,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
+extern double GP,GT,T,Weight,Cell_Volume,Uele,Uele0,Uele1,Ukc,Uvdw,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
+extern double Uele_OS0,Uele_OS1,Uele_IS0,Uele_IS1,Uxc0,Uxc1;
+extern double UH0,UH1,UH2,Ucore,Uhub,Ucs,Uef,Ukin,Unl,Una,Uzs,Uzo,UvdW;
+extern double Ucc,Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge,Calc_Total_Charge;
+extern double Min_Mixing_weight,Max_Mixing_weight,Max_Mixing_weight2,Mixing_weight;
+extern double Kerker_factor,Criterion_MP_Special_Kpt;
+extern double Gdiis_Mixing,system_charge,VNA_reduce_ratio,Total_Num_Electrons;
+extern double Total_SpinS,Total_SpinSx,Total_SpinSy,Total_SpinSz;
+extern double Total_OrbitalMoment,Total_OrbitalMomentx;
+extern double Total_OrbitalMomenty,Total_OrbitalMomentz;
+extern double Total_SpinAngle0,Total_SpinAngle1;
+extern double Total_OrbitalMomentAngle0,Total_OrbitalMomentAngle1;
+extern double ScaleSize,Pin[4][4],Ptot[4][4];
+extern double LastBoxCenterX,LastBoxCenterY,LastBoxCenterZ;
+extern double Vol,Vol1,Vol2,Vol3,W;
+extern double SCF_Criterion,NormRD[5],BestNormRD,History_Uele[5];
+extern double PAO_Nkmax,Grid_Ecut,Finite_Elements_Ecut,rcut_FEB;
+extern double orbitalOpt_criterion,MD_Opt_criterion,orbitalOpt_SD_step;
+extern double MD_EvsLattice_Step;
+extern double Restart_Spin_Angle_Theta,Restart_Spin_Angle_Phi;
+extern int MD_EvsLattice_flag[3];
+extern int MD_OutABC;
+extern double X_Center_Coordinate,Y_Center_Coordinate,Z_Center_Coordinate;
+extern dcomplex Comp2Real[YOUSO36+1][2*(YOUSO36+1)+1][2*(YOUSO36+1)+1];
 /* added by mari (May 2004) */
-double TempScale[30],RatScale[30],Temp; 
-int IntScale[30],NumScale[30];
+extern double TempScale[30],RatScale[30],Temp;
+extern int IntScale[30],NumScale[30];
 /* added by mari (May 2004) */
 /* for Nose-Hoover algorithm */
-double NH_R,NH_nzeta,NH_czeta,TempQ,GivenTemp,NH_Ham;
+extern double NH_R,NH_nzeta,NH_czeta,TempQ,GivenTemp,NH_Ham;
 /* added by MIZUHO for NPT-MD */
-double PresW;
-double TempTol;
-double NPT_WV_F0[4][4];
-int LatticeRestriction;
+extern double PresW;
+extern double TempTol;
+extern double NPT_WV_F0[4][4];
+extern int LatticeRestriction;
 
 /* for VS4 (added by T.Ohwaki) */
-int num_AtGr,*AtomGr,*atnum_AtGr;
-double *Temp_AtGr;
+extern int num_AtGr,*AtomGr,*atnum_AtGr;
+extern double *Temp_AtGr;
 
 /* for Langevin heat-bath (added by T.Ohwaki) */
-double FricFac,RandomF;
+extern double FricFac,RandomF;
 
 
 /* for generalized Bloch Theorem (added by T. B. Prayitno and supervised by Prof. F. Ishii) */
-int GB_switch;
-double q1_GB,q2_GB,q3_GB;
+extern int GB_switch;
+extern double q1_GB,q2_GB,q3_GB;
 
-int NUMPROCS_MPI_COMM_WORLD,MYID_MPI_COMM_WORLD;
-int alloc_first[50],Last_TNumGrid;
-int Scf_RestartToFile,Scf_RestartFromFile,Band_disp_switch,Use_of_Collinear_Restart;
-int GeoOpt_RestartFromFile,OutData_bin_flag;
-int LNO_flag,LNOs_Num_predefined_flag;
-int coordinates_unit,unitvector_unit;
-int Size_Total_Matrix,SP_PEV,EKC_core_size_max;
-int specified_system,MO_fileout,num_HOMOs,num_LUMOs;
-int Cluster_HOMO[2],MO_Nkpoint,ML_flag,ForceConsistency_flag,force_flag;
-int StressConsistency_flag,stress_flag,scf_stress_flag,MD_cellopt_flag,cellopt_switch;
-int rediagonalize_flag_overlap_matrix; 
-int rediagonalize_flag_overlap_matrix_ELPA1;
-int CntOrb_fileout,Num_CntOrb_Atoms;
-int num_non_eq_kpt,way_of_kpoint;
-int pop_anal_aow_flag,scf_dclno_threading;
-int remake_headfile,OneD_Grid,Ngrid1,Ngrid2,Ngrid3;
-int Ngrid1_FE,Ngrid2_FE,Ngrid3_FE;
-int TNumGrid,Kspace_grid1,Kspace_grid2,Kspace_grid3;
-int DFTSCF_loop,Ngrid_NormK,SCF_RENZOKU;
-int Mixing_switch,MD_IterNumber,MD_Current_Iter,Av_num,T_switch,IS_switch;
-int MD_Init_Velocity,Correct_Position_flag;
-int rlmax_IS,XC_switch,PCC_switch,SpinP_switch,SpinP_switch_RestartFiles,SpeciesNum,real_SpeciesNum;
-int Hub_U_switch,Hub_U_occupation,Hub_U_Enhance_OrbPol;  /* --- added by MJ */
-int SO_switch,MPI_tunedgrid_flag,Voronoi_Charge_flag,Voronoi_OrbM_flag;
-int Constraint_NCS_switch,openmp_threads_eq_procs,openmp_threads_num;
-int Zeeman_NCS_switch,Zeeman_NCO_switch,Polarization_ABC_flag,Calc_ABC_flag,global_T_knum;
-int atomnum;
+extern int NUMPROCS_MPI_COMM_WORLD,MYID_MPI_COMM_WORLD;
+extern int alloc_first[50],Last_TNumGrid;
+extern int Scf_RestartToFile,Scf_RestartFromFile,Band_disp_switch,Use_of_Collinear_Restart;
+extern int GeoOpt_RestartFromFile,OutData_bin_flag;
+extern int LNO_flag,LNOs_Num_predefined_flag;
+extern int coordinates_unit,unitvector_unit;
+extern int Size_Total_Matrix,SP_PEV,EKC_core_size_max;
+extern int specified_system,MO_fileout,num_HOMOs,num_LUMOs;
+extern int Cluster_HOMO[2],MO_Nkpoint,ML_flag,ForceConsistency_flag,force_flag;
+extern int StressConsistency_flag,stress_flag,scf_stress_flag,MD_cellopt_flag,cellopt_switch;
+extern int rediagonalize_flag_overlap_matrix;
+extern int rediagonalize_flag_overlap_matrix_ELPA1;
+extern int CntOrb_fileout,Num_CntOrb_Atoms;
+extern int num_non_eq_kpt,way_of_kpoint;
+extern int pop_anal_aow_flag,scf_dclno_threading;
+extern int remake_headfile,OneD_Grid,Ngrid1,Ngrid2,Ngrid3;
+extern int Ngrid1_FE,Ngrid2_FE,Ngrid3_FE;
+extern int TNumGrid,Kspace_grid1,Kspace_grid2,Kspace_grid3;
+extern int DFTSCF_loop,Ngrid_NormK,SCF_RENZOKU;
+extern int Mixing_switch,MD_IterNumber,MD_Current_Iter,Av_num,T_switch,IS_switch;
+extern int MD_Init_Velocity,Correct_Position_flag;
+extern int rlmax_IS,XC_switch,PCC_switch,SpinP_switch,SpinP_switch_RestartFiles,SpeciesNum,real_SpeciesNum;
+extern int Hub_U_switch,Hub_U_occupation,Hub_U_Enhance_OrbPol;  /* --- added by MJ */
+extern int SO_switch,MPI_tunedgrid_flag,Voronoi_Charge_flag,Voronoi_OrbM_flag;
+extern int Constraint_NCS_switch,openmp_threads_eq_procs,openmp_threads_num;
+extern int Zeeman_NCS_switch,Zeeman_NCO_switch,Polarization_ABC_flag,Calc_ABC_flag,global_T_knum;
+extern int atomnum;
 //int Catomnum,Latomnum,Ratomnum;
-int POLES,rlmax,Solver,dste_flag,Ngrid_fixed_flag,scf_eigen_lib_flag;
-int scf_eigen_lib_flag_input;
+extern int POLES,rlmax,Solver,dste_flag,Ngrid_fixed_flag,scf_eigen_lib_flag;
+extern int scf_eigen_lib_flag_input;
 /* GPU support (added by H.Kawai, February 2024) */
-int SCF_Gpu_Num;
+extern int SCF_Gpu_Num;
 typedef enum
 {
     ELPA1    = 1,
@@ -2486,216 +2498,216 @@ typedef enum
    (eigensolver) and COSMA (matrix products); everywhere else the run behaves exactly
    like gpusolver, so scf_eigen_lib_flag itself is kept at GPUSOLVER and this
    flag marks the gpusolver2 request (added July 2026) */
-int gpusolver2_flag;
+extern int gpusolver2_flag;
 /* gpusolver3 selects single-node MAGMA/custom-GEMM cooperation in mainline
    Cluster/Band. Other GPU kernels retain the GPUSOLVER arithmetic policy. */
-int gpusolver3_flag;
-int KrylovH_order,KrylovS_order,recalc_EM,EKC_invS_flag;
-int EC_Sub_Dim,Energy_Decomposition_flag;
-int EKC_Exact_invS_flag,EKC_expand_core_flag,orderN_FNAN_SNAN_flag;
-int MD_switch,PeriodicGamma_flag,Exc0_correction_flag;
-int Max_FNAN,Max_FSNAN,Max_GridN_Atom,Max_NumOLG,Max_OneD_Grids;
-int Max_Nd,Max_TGN_EH0,CellNN_flag;
-int NN_B_AB2CA_S,NN_B_AB2CA_R,NN_B_CA2CB_S,NN_B_CA2CB_R;
-int NN_A2B_S,NN_A2B_R,NN_B2C_S,NN_B2C_R,NN_B2D_S,NN_B2D_R; 
-int List_YOUSO[NYOUSO];
-int PreNum,TempNum,TCpyCell,CpyCell;
-int Runtest_flag;
-int Num_Mixing_pDM,level_stdout,level_fileout,HS_fileout;
-int memoryusage_fileout,monitoring_memory_usage;  
-int Pulay_SCF,Pulay_SCF_original,EveryPulay_SCF,SCF_Control_Temp;
-int Cnt_switch,RCnt_switch,SICnt_switch,ACnt_switch,SCnt_switch;
-int E_Field_switch,Simple_InitCnt[10];
-int MD_Opt_OK,orbitalOpt_SCF,orbitalOpt_MD,orbitalOpt_per_MDIter;
-int orbitalOpt_History,orbitalOpt_StartPulay,OrbOpt_OptMethod;
-int orbitalOpt_Force_Skip,Initial_Hessian_flag;
-int NOHS_L,NOHS_C,ProExpn_VNA,BufferL_ProVNA;
-int M_GDIIS_HISTORY,OptStartDIIS,OptEveryDIIS;
-int Extrapolated_Charge_History;
-int orderN_Kgrid,FT_files_save,FT_files_read;
-int NEB_Num_Images,neb_type_switch;
-double NEB_Spring_Const;
-int Min_Grid_Index[4],Max_Grid_Index[4];
-int Min_Grid_Index_D[4],Max_Grid_Index_D[4];
-int SO_factor_flag,Num_Leb_Grid;
-int Cell_Fixed_XYZ[4][4];
-int empty_occupation_flag,empty_occupation_num;
-int empty_states_flag,empty_states_atom;
-int empty_states_orbitals_sidx,empty_states_orbitals_num;
+extern int gpusolver3_flag;
+extern int KrylovH_order,KrylovS_order,recalc_EM,EKC_invS_flag;
+extern int EC_Sub_Dim,Energy_Decomposition_flag;
+extern int EKC_Exact_invS_flag,EKC_expand_core_flag,orderN_FNAN_SNAN_flag;
+extern int MD_switch,PeriodicGamma_flag,Exc0_correction_flag;
+extern int Max_FNAN,Max_FSNAN,Max_GridN_Atom,Max_NumOLG,Max_OneD_Grids;
+extern int Max_Nd,Max_TGN_EH0,CellNN_flag;
+extern int NN_B_AB2CA_S,NN_B_AB2CA_R,NN_B_CA2CB_S,NN_B_CA2CB_R;
+extern int NN_A2B_S,NN_A2B_R,NN_B2C_S,NN_B2C_R,NN_B2D_S,NN_B2D_R;
+extern int List_YOUSO[NYOUSO];
+extern int PreNum,TempNum,TCpyCell,CpyCell;
+extern int Runtest_flag;
+extern int Num_Mixing_pDM,level_stdout,level_fileout,HS_fileout;
+extern int memoryusage_fileout,monitoring_memory_usage;
+extern int Pulay_SCF,Pulay_SCF_original,EveryPulay_SCF,SCF_Control_Temp;
+extern int Cnt_switch,RCnt_switch,SICnt_switch,ACnt_switch,SCnt_switch;
+extern int E_Field_switch,Simple_InitCnt[10];
+extern int MD_Opt_OK,orbitalOpt_SCF,orbitalOpt_MD,orbitalOpt_per_MDIter;
+extern int orbitalOpt_History,orbitalOpt_StartPulay,OrbOpt_OptMethod;
+extern int orbitalOpt_Force_Skip,Initial_Hessian_flag;
+extern int NOHS_L,NOHS_C,ProExpn_VNA,BufferL_ProVNA;
+extern int M_GDIIS_HISTORY,OptStartDIIS,OptEveryDIIS;
+extern int Extrapolated_Charge_History;
+extern int orderN_Kgrid,FT_files_save,FT_files_read;
+extern int NEB_Num_Images,neb_type_switch;
+extern double NEB_Spring_Const;
+extern int Min_Grid_Index[4],Max_Grid_Index[4];
+extern int Min_Grid_Index_D[4],Max_Grid_Index_D[4];
+extern int SO_factor_flag,Num_Leb_Grid;
+extern int Cell_Fixed_XYZ[4][4];
+extern int empty_occupation_flag,empty_occupation_num;
+extern int empty_states_flag,empty_states_atom;
+extern int empty_states_orbitals_sidx,empty_states_orbitals_num;
 
-double **CompTime;
+extern double **CompTime;
 
-char filename[YOUSO10],filepath[YOUSO10],command[YOUSO10];
-char ref_diff_charge_filename[YOUSO10];
-char restart_filename[YOUSO10];
-char DFT_DATA_PATH[YOUSO10];
-double Oopt_NormD[10];
-double bias_weight,Past_Utot[10],Past_Norm[10];
-double Max_Force,GridVol,W_OrthoNorm;
-double SD_scaling,SD_scaling_user;
-double Constraint_NCS_V;
-double Mag_Field_Orbital,Mag_Field_Spin;
-double scf_fixed_origin[4];
-int F_dVHart_flag,F_Vxc_flag,F_VNA_flag;
-int F_VEF_flag,F_Kin_flag,F_NL_flag,F_CH_flag,F_U_flag;
-int F_dftD_flag; /* okuno */
+extern char filename[YOUSO10],filepath[YOUSO10],command[YOUSO10];
+extern char ref_diff_charge_filename[YOUSO10];
+extern char restart_filename[YOUSO10];
+extern char DFT_DATA_PATH[YOUSO10];
+extern double Oopt_NormD[10];
+extern double bias_weight,Past_Utot[10],Past_Norm[10];
+extern double Max_Force,GridVol,W_OrthoNorm;
+extern double SD_scaling,SD_scaling_user;
+extern double Constraint_NCS_V;
+extern double Mag_Field_Orbital,Mag_Field_Spin;
+extern double scf_fixed_origin[4];
+extern int F_dVHart_flag,F_Vxc_flag,F_VNA_flag;
+extern int F_VEF_flag,F_Kin_flag,F_NL_flag,F_CH_flag,F_U_flag;
+extern int F_dftD_flag; /* okuno */
 
 /* Closest Wannier Functions */
-int CWF_fileout_flag,CWF_fileout_Num,CWF_Dis_vs_H;
-int TNum_CWFs,CWF_Kgrid1,CWF_Kgrid2,CWF_Kgrid3,CWF_Plot_SuperCells[3];
-int Num_KS_states_CWF,TNum_PAOs,TNum_PAOs2;
-int CWF_Calc,Num_CWF_Grouped_Atoms,CWF_Guiding_Orbital;
-int CWF_Energy_Decomposition,CWF_WindowF_switch;
-int *CWF_Grouped_Atoms_EachNum,**CWF_Grouped_Atoms,cwf2w90_output_flag;
-double CWF_disentangling_smearing_kBT0,CWF_disentangling_smearing_kBT1;
-double CWF_disentangling_smearing_bound;
-double CWF_disentangling_Erange[4];
+extern int CWF_fileout_flag,CWF_fileout_Num,CWF_Dis_vs_H;
+extern int TNum_CWFs,CWF_Kgrid1,CWF_Kgrid2,CWF_Kgrid3,CWF_Plot_SuperCells[3];
+extern int Num_KS_states_CWF,TNum_PAOs,TNum_PAOs2;
+extern int CWF_Calc,Num_CWF_Grouped_Atoms,CWF_Guiding_Orbital;
+extern int CWF_Energy_Decomposition,CWF_WindowF_switch;
+extern int *CWF_Grouped_Atoms_EachNum,**CWF_Grouped_Atoms,cwf2w90_output_flag;
+extern double CWF_disentangling_smearing_kBT0,CWF_disentangling_smearing_kBT1;
+extern double CWF_disentangling_smearing_bound;
+extern double CWF_disentangling_Erange[4];
 
 /* COHP */
-int COHP_calc_flag,COHP_num_pairs;
-int *COHP_AtomA,*COHP_AtomB,*COHP_CellB1,*COHP_CellB2,*COHP_CellB3;
+extern int COHP_calc_flag,COHP_num_pairs;
+extern int *COHP_AtomA,*COHP_AtomB,*COHP_CellB1,*COHP_CellB2,*COHP_CellB3;
 
 /* LNAO and LNBO */
-int LNAO_calc_flag,LNAO_num,*LNAO_Atoms;
-double ***LNAO_coes,***LNAO_pops,***LNAO_H;
-int LNBO_calc_flag,LNBO_num,**LNBO_Atoms;
-double ***LNBO_coes,***LNBO_pops,***LNBO_H;
+extern int LNAO_calc_flag,LNAO_num,*LNAO_Atoms;
+extern double ***LNAO_coes,***LNAO_pops,***LNAO_H;
+extern int LNBO_calc_flag,LNBO_num,**LNBO_Atoms;
+extern double ***LNBO_coes,***LNBO_pops,***LNBO_H;
 
 /* calculation with a core hole state */
-int core_hole_state_flag,Core_Hole_Atom;
-int Core_Hole_J,scf_coulomb_cutoff,scf_coulomb_cutoff_CoreHole;
-char Core_Hole_Orbital[40];
-double base_core_hole_penalty_value,core_hole_state_ev,Shortest_CellVec;
+extern int core_hole_state_flag,Core_Hole_Atom;
+extern int Core_Hole_J,scf_coulomb_cutoff,scf_coulomb_cutoff_CoreHole;
+extern char Core_Hole_Orbital[40];
+extern double base_core_hole_penalty_value,core_hole_state_ev,Shortest_CellVec;
 
 /* XANES */
-char xanes_gs_file[YOUSO10];
-int xanes_gs_fileout;
-int xanes_calc;
-int HOMO_XANES[2];
-double ChemP_XANES[2];
-double xanes_energy_range;
-int xmcd_calc; // S. An 
+extern char xanes_gs_file[YOUSO10];
+extern int xanes_gs_fileout;
+extern int xanes_calc;
+extern int HOMO_XANES[2];
+extern double ChemP_XANES[2];
+extern double xanes_energy_range;
+extern int xmcd_calc; // S. An
 
 /* partial charge for STM simulation */
-int cal_partial_charge;
-double ene_win_partial_charge;
+extern int cal_partial_charge;
+extern double ene_win_partial_charge;
 
 /* band dispersion */
-int Band_Nkpath,Band_kPathUnit;
-double Band_UnitCell[4][4];
-int *Band_N_perpath;
-double ***Band_kpath;
-char ***Band_kname; 
+extern int Band_Nkpath,Band_kPathUnit;
+extern double Band_UnitCell[4][4];
+extern int *Band_N_perpath;
+extern double ***Band_kpath;
+extern char ***Band_kname;
 
 /*  DOS */
-int DosGauss_fileout;
-int Dos_fileout;
-int DosGauss_Num_Mesh;
-double DosGauss_Width;
-double Dos_Erange[2];
-int Dos_Kgrid[3];
-int fermisurfer_output;
+extern int DosGauss_fileout;
+extern int Dos_fileout;
+extern int DosGauss_Num_Mesh;
+extern double DosGauss_Width;
+extern double Dos_Erange[2];
+extern int Dos_Kgrid[3];
+extern int fermisurfer_output;
 
 /*  electric field */ 
-double E_Field[3];
+extern double E_Field[3];
 
 /* O(N^2) method */
-int ON2_Npoles,ON2_Npoles_f;
-dcomplex *ON2_zp,*ON2_Rp,*ON2_zp_f,*ON2_Rp_f;
-int *ON2_method,*ON2_method_f;
+extern int ON2_Npoles,ON2_Npoles_f;
+extern dcomplex *ON2_zp,*ON2_Rp,*ON2_zp_f,*ON2_Rp_f;
+extern int *ON2_method,*ON2_method_f;
 
 
 /* EGAC method */
 
-int Matomnum_EGAC;
-dcomplex *EGAC_zp,*EGAC_Rp,*EGAC_zp_f,*EGAC_Rp_f;
-int *EGAC_method,*EGAC_method_f;
-int EGAC_Num,EGAC_Npoles,EGAC_Npoles_f,EGAC_Npoles_CF;
-int EGAC_Npoles_new,EGAC_Npoles_near;
-int *EGAC_Top,*EGAC_End;
-int *Num_Rcv_HS_EGAC,*Num_Snd_HS_EGAC;
-int *Top_Index_HS_EGAC,*M2G_EGAC;
-int **Indx_Rcv_HS_EGAC,**Indx_Snd_HS_EGAC;
-int *Num_Rcv_GA_EGAC,*Num_Snd_GA_EGAC;
-int **Indx_Rcv_GA_EGAC,**Indx_Snd_GA_EGAC;
-int *Top_Index_GA_EGAC,*M2G_JOB_EGAC;
-int **L2L_ONAN,*G2M_EGAC,***RMI1_EGAC,***RMI2_EGAC;
-int *Snd_GA_EGAC_Size,*Rcv_GA_EGAC_Size;
-int *Snd_OLP_EGAC_Size,*Rcv_OLP_EGAC_Size;
-int **Indx_Rcv_DM_EGAC,**Indx_Snd_DM_EGAC;
-int *Num_Rcv_DM_EGAC,*Num_Snd_DM_EGAC;
-int *M2G_DM_Snd_EGAC,*G2M_DM_Snd_EGAC;
-int *Snd_DM_EGAC_Size,*Rcv_DM_EGAC_Size;
-int Matomnum_DM_Snd_EGAC,Num_GA_EGAC; 
-int Max_Snd_OLP_EGAC_Size,Max_Rcv_OLP_EGAC_Size;
-int Max_Snd_GA_EGAC_Size,Max_Rcv_GA_EGAC_Size;
-int *dim_GD_EGAC,*dim_IA_EGAC,Max_dim_GD_EGAC;
-int Max_dim_GA_EGAC,Max_ONAN;
-int DIIS_History_EGAC,AC_flag_EGAC,scf_GF_EGAC;
-double *****H_EGAC,****OLP_EGAC,*****DM_Snd_EGAC;
-dcomplex ****GD_EGAC,****GA_EGAC,***Sigma_EGAC;
-dcomplex **fGD_EGAC;
-int MPI_spawn_flag;
-FILE *MPI_spawn_stream;
+extern int Matomnum_EGAC;
+extern dcomplex *EGAC_zp,*EGAC_Rp,*EGAC_zp_f,*EGAC_Rp_f;
+extern int *EGAC_method,*EGAC_method_f;
+extern int EGAC_Num,EGAC_Npoles,EGAC_Npoles_f,EGAC_Npoles_CF;
+extern int EGAC_Npoles_new,EGAC_Npoles_near;
+extern int *EGAC_Top,*EGAC_End;
+extern int *Num_Rcv_HS_EGAC,*Num_Snd_HS_EGAC;
+extern int *Top_Index_HS_EGAC,*M2G_EGAC;
+extern int **Indx_Rcv_HS_EGAC,**Indx_Snd_HS_EGAC;
+extern int *Num_Rcv_GA_EGAC,*Num_Snd_GA_EGAC;
+extern int **Indx_Rcv_GA_EGAC,**Indx_Snd_GA_EGAC;
+extern int *Top_Index_GA_EGAC,*M2G_JOB_EGAC;
+extern int **L2L_ONAN,*G2M_EGAC,***RMI1_EGAC,***RMI2_EGAC;
+extern int *Snd_GA_EGAC_Size,*Rcv_GA_EGAC_Size;
+extern int *Snd_OLP_EGAC_Size,*Rcv_OLP_EGAC_Size;
+extern int **Indx_Rcv_DM_EGAC,**Indx_Snd_DM_EGAC;
+extern int *Num_Rcv_DM_EGAC,*Num_Snd_DM_EGAC;
+extern int *M2G_DM_Snd_EGAC,*G2M_DM_Snd_EGAC;
+extern int *Snd_DM_EGAC_Size,*Rcv_DM_EGAC_Size;
+extern int Matomnum_DM_Snd_EGAC,Num_GA_EGAC;
+extern int Max_Snd_OLP_EGAC_Size,Max_Rcv_OLP_EGAC_Size;
+extern int Max_Snd_GA_EGAC_Size,Max_Rcv_GA_EGAC_Size;
+extern int *dim_GD_EGAC,*dim_IA_EGAC,Max_dim_GD_EGAC;
+extern int Max_dim_GA_EGAC,Max_ONAN;
+extern int DIIS_History_EGAC,AC_flag_EGAC,scf_GF_EGAC;
+extern double *****H_EGAC,****OLP_EGAC,*****DM_Snd_EGAC;
+extern dcomplex ****GD_EGAC,****GA_EGAC,***Sigma_EGAC;
+extern dcomplex **fGD_EGAC;
+extern int MPI_spawn_flag;
+extern FILE *MPI_spawn_stream;
 
 /* Wannier funtions by hmweng */
 
-int Wannier_Func_Calc;
-int Wannier_Func_Num;
-double Wannier_Outer_Window_Bottom;
-double Wannier_Outer_Window_Top;
-double Wannier_Inner_Window_Bottom;
-double Wannier_Inner_Window_Top;
-int Wannier_Initial_Guess;
-int Wannier_unit;
-int Wannier_Num_Kinds_Projectors;
-int Num_Wannier_Template_Projectors;
-int Wannier_grid1,Wannier_grid2,Wannier_grid3;
-int Wannier_MaxShells;
-int Wannier_Minimizing_Max_Steps;
-char **Wannier_ProSpeName;
-char **Wannier_ProName;
-double **Wannier_Pos, **Wannier_Guide;
-double **Wannier_X_Direction;
-double **Wannier_Z_Direction;
-int *Wannier_Num_Pro, *Wannier_ProName2Num;
-int **Wannier_NumL_Pro;
-int *WannierPro2SpeciesNum;
-int Wannier_Draw_Int_Bands,Wannier_Draw_MLWF;
-int Wannier_Plot_SuperCells[3];
-double Wannier_Dis_Mixing_Para, Wannier_Dis_Conv_Criterion;
-int Wannier_Dis_SCF_Max_Steps;
-int Wannier_Min_Scheme, Wannier_Min_Secant_Steps;
-double Wannier_Min_StepLength, Wannier_Min_Secant_StepLength;
-double Wannier_Min_Conv_Criterion;
-int Wannier_Output_Overlap_Matrix, Wannier_Output_Projection_Matrix;
-int Wannier_Output_kmesh, Wannier_Readin_Overlap_Matrix,Wannier_Readin_Projection_Matrix;
+extern int Wannier_Func_Calc;
+extern int Wannier_Func_Num;
+extern double Wannier_Outer_Window_Bottom;
+extern double Wannier_Outer_Window_Top;
+extern double Wannier_Inner_Window_Bottom;
+extern double Wannier_Inner_Window_Top;
+extern int Wannier_Initial_Guess;
+extern int Wannier_unit;
+extern int Wannier_Num_Kinds_Projectors;
+extern int Num_Wannier_Template_Projectors;
+extern int Wannier_grid1,Wannier_grid2,Wannier_grid3;
+extern int Wannier_MaxShells;
+extern int Wannier_Minimizing_Max_Steps;
+extern char **Wannier_ProSpeName;
+extern char **Wannier_ProName;
+extern double **Wannier_Pos, **Wannier_Guide;
+extern double **Wannier_X_Direction;
+extern double **Wannier_Z_Direction;
+extern int *Wannier_Num_Pro, *Wannier_ProName2Num;
+extern int **Wannier_NumL_Pro;
+extern int *WannierPro2SpeciesNum;
+extern int Wannier_Draw_Int_Bands,Wannier_Draw_MLWF;
+extern int Wannier_Plot_SuperCells[3];
+extern double Wannier_Dis_Mixing_Para, Wannier_Dis_Conv_Criterion;
+extern int Wannier_Dis_SCF_Max_Steps;
+extern int Wannier_Min_Scheme, Wannier_Min_Secant_Steps;
+extern double Wannier_Min_StepLength, Wannier_Min_Secant_StepLength;
+extern double Wannier_Min_Conv_Criterion;
+extern int Wannier_Output_Overlap_Matrix, Wannier_Output_Projection_Matrix;
+extern int Wannier_Output_kmesh, Wannier_Readin_Overlap_Matrix,Wannier_Readin_Projection_Matrix;
 
-double **Wannier_Euler_Rotation_Angle; /* for each ProSpe */
-double ****Wannier_RotMat_for_Real_Func; /* Rotation Matrix of real Orbitals for each kind of projectors */
+extern double **Wannier_Euler_Rotation_Angle; /* for each ProSpe */
+extern double ****Wannier_RotMat_for_Real_Func; /* Rotation Matrix of real Orbitals for each kind of projectors */
 
-int **Wannier_Select_Matrix;
-double ***Wannier_Projector_Hybridize_Matrix;
+extern int **Wannier_Select_Matrix;
+extern double ***Wannier_Projector_Hybridize_Matrix;
 
 /* these will be deleted in future */
-double CWF_disentangling_Erange_Bottom;
-double CWF_disentangling_Erange_Top;
-double CWF_disentangling_smearing_kBT0;
-double CWF_disentangling_smearing_kBT1;
-double CWF_disentangling_smearing_bound;
+extern double CWF_disentangling_Erange_Bottom;
+extern double CWF_disentangling_Erange_Top;
+extern double CWF_disentangling_smearing_kBT0;
+extern double CWF_disentangling_smearing_kBT1;
+extern double CWF_disentangling_smearing_bound;
 /* these will be deleted in future */
 
 /* For interface with Wannier90 */
-int Wannier90_fileout;
-int Wannier90_CWF_fileout;
+extern int Wannier90_fileout;
+extern int Wannier90_CWF_fileout;
 
 /*-------------------------------------------------------------Wannier*/
 
 /* The efficient exchange operator method */
 
-int Nrank_Rec_Coulomb,Ng1_Rec_Coulomb; 
-double xmin_Rec_Coulomb,xmax_Rec_Coulomb;
-double *SVals_Coulomb,*SVecs_U_Coulomb,*SVecs_V_Coulomb,*qgrid_Rec_Coulomb;
+extern int Nrank_Rec_Coulomb,Ng1_Rec_Coulomb;
+extern double xmin_Rec_Coulomb,xmax_Rec_Coulomb;
+extern double *SVals_Coulomb,*SVecs_U_Coulomb,*SVecs_V_Coulomb,*qgrid_Rec_Coulomb;
 
 
 void Show_DFT_DATA(char *argv[]);
@@ -2775,12 +2787,12 @@ void Orbital_Moment(char *mode);
 
 /* added by S.Ryee */
 void Coulomb_Interaction(const OpenMXAtomicViews *atomic);
-double slater_ratio;
-int Hub_Type,Yukawa_on,dc_Type,Nmul;
+extern double slater_ratio;
+extern int Hub_Type,Yukawa_on,dc_Type,Nmul;
 /* array size of 30 is an arbitrarily large number */
-double U[30],J[30],Slater_F0[30],Slater_F2[30],Slater_F4[30],Slater_F6[30];
-int B_spe[30],B_l[30],B_mul[30];
-double B_cut[30],lambda[30];
+extern double U[30],J[30],Slater_F0[30],Slater_F2[30],Slater_F4[30],Slater_F6[30];
+extern int B_spe[30],B_l[30],B_mul[30];
+extern double B_cut[30],lambda[30];
 /*******************/
 
 double Mixing_DM(int MD_iter,
@@ -3176,46 +3188,46 @@ int neb_check(char *argv[]);
  
 /** DCLNO **/
 
-int *NPROCS_ID1_DCLNO;
-int *Comm_World1_DCLNO;
-int *NPROCS_WD1_DCLNO;
-int *Comm_World_StartID1_DCLNO;
-MPI_Comm *MPI_CommWD1_DCLNO;
-int myworld1_DCLNO,Num_Comm_World1_DCLNO;
+extern int *NPROCS_ID1_DCLNO;
+extern int *Comm_World1_DCLNO;
+extern int *NPROCS_WD1_DCLNO;
+extern int *Comm_World_StartID1_DCLNO;
+extern MPI_Comm *MPI_CommWD1_DCLNO;
+extern int myworld1_DCLNO,Num_Comm_World1_DCLNO;
 
-int *NPROCS_ID2_DCLNO;
-int *Comm_World2_DCLNO;
-int *NPROCS_WD2_DCLNO;
-int *Comm_World_StartID2_DCLNO;
-MPI_Comm *MPI_CommWD2_DCLNO;
-int myworld2_DCLNO,Num_Comm_World2_DCLNO;
+extern int *NPROCS_ID2_DCLNO;
+extern int *Comm_World2_DCLNO;
+extern int *NPROCS_WD2_DCLNO;
+extern int *Comm_World_StartID2_DCLNO;
+extern MPI_Comm *MPI_CommWD2_DCLNO;
+extern int myworld2_DCLNO,Num_Comm_World2_DCLNO;
 
 /** Natural Bond Orbital (NBO) Analysis (added by T.Ohwaki) **/
-int NBO_switch;
-int NAO_only;
-int Num_NBO_FCenter;
-int *NBO_FCenter;
-int *Num_NHOs;
-int Total_Num_NHO,Total_Num_NBO;
-int NHO_fileout,NBO_fileout;
-int NBO_SmallCell_Switch;
-double NAO_Occ_or_Ryd;
-double **NBO_CDMn_tmp, **NBO_OLPn_tmp, **NBO_Fock_tmp, ***NAO_vec_tmp;
-double **NAO_partial_pop, **NAO_ene_level, ***NAO_coefficient;
-double ****NHOs_Coef,****NBOs_Coef_b,****NBOs_Coef_a;
-double NBO_SmallCellFrac[4][3];
+extern int NBO_switch;
+extern int NAO_only;
+extern int Num_NBO_FCenter;
+extern int *NBO_FCenter;
+extern int *Num_NHOs;
+extern int Total_Num_NHO,Total_Num_NBO;
+extern int NHO_fileout,NBO_fileout;
+extern int NBO_SmallCell_Switch;
+extern double NAO_Occ_or_Ryd;
+extern double **NBO_CDMn_tmp, **NBO_OLPn_tmp, **NBO_Fock_tmp, ***NAO_vec_tmp;
+extern double **NAO_partial_pop, **NAO_ene_level, ***NAO_coefficient;
+extern double ****NHOs_Coef,****NBOs_Coef_b,****NBOs_Coef_a;
+extern double NBO_SmallCellFrac[4][3];
 
-int NAO_Nkpoint;
-double **NAO_kpoint;
+extern int NAO_Nkpoint;
+extern double **NAO_kpoint;
 
-int *rlmax_EC_NAO, *rlmax_EC2_NAO, *EKC_core_size_NAO;
-int *F_Snd_Num_NAO, *S_Snd_Num_NAO, *F_Rcv_Num_NAO, *S_Rcv_Num_NAO;
-int **Snd_MAN_NAO, **Snd_GAN_NAO, **Rcv_GAN_NAO;
-int *F_TopMAN_NAO, *S_TopMAN_NAO;
-int *F_G2M_NAO, *S_G2M_NAO;
-int *F_M2G_NAO, *S_M2G_NAO;
-int MatomnumF_NAO, MatomnumS_NAO;
-int *Snd_HFS_Size_NAO, *Rcv_HFS_Size_NAO;
+extern int *rlmax_EC_NAO, *rlmax_EC2_NAO, *EKC_core_size_NAO;
+extern int *F_Snd_Num_NAO, *S_Snd_Num_NAO, *F_Rcv_Num_NAO, *S_Rcv_Num_NAO;
+extern int **Snd_MAN_NAO, **Snd_GAN_NAO, **Rcv_GAN_NAO;
+extern int *F_TopMAN_NAO, *S_TopMAN_NAO;
+extern int *F_G2M_NAO, *S_G2M_NAO;
+extern int *F_M2G_NAO, *S_M2G_NAO;
+extern int MatomnumF_NAO, MatomnumS_NAO;
+extern int *Snd_HFS_Size_NAO, *Rcv_HFS_Size_NAO;
 
 void Calc_NAO_Cluster(double *****CDM);
 void Calc_NAO_Band(
@@ -3911,35 +3923,7 @@ int  gpusolver_Syevdx_Complex_openacc_cached(dcomplex * A, double * W, int m, in
 #endif
 
 #if OPENMX_GPU_HIP
-#define wait_hipfunc(call)                                                                                            \
-    do {                                                                                                               \
-        int wait_hipfunc_status;                                                                                      \
-        int wait_hipfunc_retry = 0;                                                                                   \
-        while (true) {                                                                                                 \
-            wait_hipfunc_status = (int)(call);                                                                        \
-            if ((int)OPENMX_GPU_SUCCESS == wait_hipfunc_status) {                                                            \
-                break;                                                                                                 \
-            }                                                                                                          \
-            if (1000 <= wait_hipfunc_retry++) {                                                                       \
-                int wait_hipfunc_mpi_initialized = 0;                                                                 \
-                fprintf(stderr,                                                                                        \
-                        "CUDA/HIP call failed after retries:\nFile = %s\nLine = %d\nCall = %s\nStatus = %d\n",        \
-                        __FILE__, __LINE__, #call, wait_hipfunc_status);                                             \
-                fflush(stderr);                                                                                        \
-                MPI_Initialized(&wait_hipfunc_mpi_initialized);                                                       \
-                if (wait_hipfunc_mpi_initialized) {                                                                   \
-                    MPI_Abort(MPI_COMM_WORLD, 1);                                                                      \
-                }                                                                                                      \
-                exit(1);                                                                                               \
-            }                                                                                                          \
-            double wait_time    = drand48() * WAITTIME;                                                                \
-            double start_time   = MPI_Wtime();                                                                         \
-            double current_time = start_time;                                                                          \
-            while ((current_time - start_time) < wait_time) {                                                          \
-                current_time = MPI_Wtime();                                                                            \
-            }                                                                                                          \
-        }                                                                                                              \
-    } while (0)
+#define wait_hipfunc(call) OpenMXGpuWait(call)
 
 void my_hipblasDgemm(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k, double const * A,
                     double const * B, double * C);
@@ -3953,21 +3937,8 @@ void my_hipblasZgemm(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int
 void my_hipblasZgemm_openmp(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k, dcomplex const * A,
                            dcomplex const * B, dcomplex * C);
 #else
-#define wait_cudafunc(call)                                                                                            \
-    while (true) {                                                                                                     \
-        if (OPENMX_GPU_SUCCESS == call) {                                                                                     \
-            break;                                                                                                     \
-        }                                                                                                              \
-        /* pop the CUDA error latched by the failed attempt so it cannot be                                            \
-           misattributed by the next cudaGetLastError() caller once a retry succeeds */                                \
-        (void)OpenMXGpuGetLastError();                                                                                      \
-        double wait_time    = drand48() * WAITTIME;                                                                    \
-        double start_time   = MPI_Wtime();                                                                             \
-        double current_time = start_time;                                                                              \
-        while ((current_time - start_time) < wait_time) {                                                              \
-            current_time = MPI_Wtime();                                                                                \
-        }                                                                                                              \
-    }
+#define wait_cudafunc(call) OpenMXGpuWait(call)
+
 #endif
 
 OpenMXBlasStatus openmx_gemmul8Dgemm(OpenMXBlasHandle handle, OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m,
@@ -4241,7 +4212,7 @@ void free_multidimarray(void **p,  int N, int *size);
   allocation: Allocation_Arrays(1) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *G2ID;
+extern int *G2ID;
 
 /*******************************************************
  int *Species_Top,*Species_End;
@@ -4252,7 +4223,7 @@ int *G2ID;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Species_Top,*Species_End;
+extern int *Species_Top,*Species_End;
 
 /*******************************************************
  int *F_Snd_Num;
@@ -4263,7 +4234,7 @@ int *Species_Top,*Species_End;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *F_Snd_Num;
+extern int *F_Snd_Num;
 
 
 /*******************************************************
@@ -4275,7 +4246,7 @@ int *F_Snd_Num;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *S_Snd_Num;
+extern int *S_Snd_Num;
 
 /*******************************************************
  int *F_Rcv_Num;
@@ -4286,7 +4257,7 @@ int *S_Snd_Num;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *F_Rcv_Num;
+extern int *F_Rcv_Num;
 
 
 /*******************************************************
@@ -4298,7 +4269,7 @@ int *F_Rcv_Num;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *S_Rcv_Num;
+extern int *S_Rcv_Num;
 
 
 /*******************************************************
@@ -4311,7 +4282,7 @@ int *S_Rcv_Num;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Snd_HFS_Size;
+extern int *Snd_HFS_Size;
 
 /*******************************************************
  int *Rcv_HFS_Size;
@@ -4322,7 +4293,7 @@ int *Snd_HFS_Size;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *Rcv_HFS_Size;
+extern int *Rcv_HFS_Size;
 
 /*******************************************************
  int *F_TopMAN,*S_TopMAN;
@@ -4335,7 +4306,7 @@ int *Rcv_HFS_Size;
   allocation: Allocation_Arrays(0) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *F_TopMAN,*S_TopMAN;
+extern int *F_TopMAN,*S_TopMAN;
 
 /*******************************************************
  int *F_G2M,*S_G2M;
@@ -4349,7 +4320,7 @@ int *F_TopMAN,*S_TopMAN;
   allocation: Allocation_Arrays(1) in Input_std()
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *F_G2M,*S_G2M;
+extern int *F_G2M,*S_G2M;
 
 /*******************************************************
  int **Snd_MAN;
@@ -4360,7 +4331,7 @@ int *F_G2M,*S_G2M;
   free:       Set_Inf_SndRcv() of truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Snd_MAN;
+extern int **Snd_MAN;
 
 /*******************************************************
  int **Snd_GAN;
@@ -4371,7 +4342,7 @@ int **Snd_MAN;
   free:       Set_Inf_SndRcv() of truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Snd_GAN;
+extern int **Snd_GAN;
 
 /*******************************************************
  int **Rcv_GAN;
@@ -4382,7 +4353,7 @@ int **Snd_GAN;
   free:       Set_Inf_SndRcv() of truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Rcv_GAN;
+extern int **Rcv_GAN;
 
 /*******************************************************
  int **Pro_Snd_GAtom;
@@ -4394,7 +4365,7 @@ int **Rcv_GAN;
   free:       Set_Inf_SndRcv() of truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Pro_Snd_GAtom;
+extern int **Pro_Snd_GAtom;
 
 /*******************************************************
  int **Pro_Snd_MAtom;
@@ -4406,7 +4377,7 @@ int **Pro_Snd_GAtom;
   free:       Set_Inf_SndRcv() of truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Pro_Snd_MAtom;
+extern int **Pro_Snd_MAtom;
 
 /*******************************************************
  int **Pro_Snd_LAtom;
@@ -4418,7 +4389,7 @@ int **Pro_Snd_MAtom;
   free:       Set_Inf_SndRcv() of truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Pro_Snd_LAtom;
+extern int **Pro_Snd_LAtom;
 
 /*******************************************************
  int **Pro_Snd_LAtom2;
@@ -4431,7 +4402,7 @@ int **Pro_Snd_LAtom;
   free:       Set_Inf_SndRcv() of truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Pro_Snd_LAtom2;
+extern int **Pro_Snd_LAtom2;
 
 /*******************************************************
  int *Num_Snd_Grid_A2B
@@ -4442,7 +4413,7 @@ int **Pro_Snd_LAtom2;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Snd_Grid_A2B;
+extern int *Num_Snd_Grid_A2B;
 
 /*******************************************************
  int *Num_Rcv_Grid_A2B
@@ -4453,7 +4424,7 @@ int *Num_Snd_Grid_A2B;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Rcv_Grid_A2B;
+extern int *Num_Rcv_Grid_A2B;
 
 /*******************************************************
  int **Index_Snd_Grid_A2B
@@ -4466,7 +4437,7 @@ int *Num_Rcv_Grid_A2B;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Snd_Grid_A2B;
+extern int **Index_Snd_Grid_A2B;
 
 /*******************************************************
  int **Index_Rcv_Grid_A2B
@@ -4479,7 +4450,7 @@ int **Index_Snd_Grid_A2B;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Rcv_Grid_A2B;
+extern int **Index_Rcv_Grid_A2B;
 
 /*******************************************************
  int *Num_Snd_Grid_B2C
@@ -4490,7 +4461,7 @@ int **Index_Rcv_Grid_A2B;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Snd_Grid_B2C;
+extern int *Num_Snd_Grid_B2C;
 
 /*******************************************************
  int *Num_Rcv_Grid_B2C
@@ -4501,7 +4472,7 @@ int *Num_Snd_Grid_B2C;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Rcv_Grid_B2C;
+extern int *Num_Rcv_Grid_B2C;
 
 /*******************************************************
  int **Index_Snd_Grid_B2C
@@ -4513,7 +4484,7 @@ int *Num_Rcv_Grid_B2C;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Snd_Grid_B2C;
+extern int **Index_Snd_Grid_B2C;
 
 /*******************************************************
  int *Index_Rcv_Grid_B2C
@@ -4525,7 +4496,7 @@ int **Index_Snd_Grid_B2C;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Rcv_Grid_B2C;
+extern int **Index_Rcv_Grid_B2C;
 
 /*******************************************************
  int *Num_Snd_Grid_B2D
@@ -4536,7 +4507,7 @@ int **Index_Rcv_Grid_B2C;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Snd_Grid_B2D;
+extern int *Num_Snd_Grid_B2D;
 
 /*******************************************************
  int *Num_Rcv_Grid_B2D
@@ -4547,7 +4518,7 @@ int *Num_Snd_Grid_B2D;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Rcv_Grid_B2D;
+extern int *Num_Rcv_Grid_B2D;
 
 /*******************************************************
  int **Index_Snd_Grid_B2D
@@ -4559,7 +4530,7 @@ int *Num_Rcv_Grid_B2D;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Snd_Grid_B2D;
+extern int **Index_Snd_Grid_B2D;
 
 /*******************************************************
  int *Index_Rcv_Grid_B2D
@@ -4571,7 +4542,7 @@ int **Index_Snd_Grid_B2D;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Rcv_Grid_B2D;
+extern int **Index_Rcv_Grid_B2D;
 
 /*******************************************************
  int *Num_Snd_Grid_B_AB2CA
@@ -4582,7 +4553,7 @@ int **Index_Rcv_Grid_B2D;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Snd_Grid_B_AB2CA;
+extern int *Num_Snd_Grid_B_AB2CA;
 
 /*******************************************************
  int *Num_Rcv_Grid_B_AB2CA
@@ -4594,9 +4565,9 @@ int *Num_Snd_Grid_B_AB2CA;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Rcv_Grid_B_AB2CA;
+extern int *Num_Rcv_Grid_B_AB2CA;
 /* added by mari 05.12.2014 */
-int *Num_Snd_Grid_B_AB2C;
+extern int *Num_Snd_Grid_B_AB2C;
 
 /*******************************************************
  int *Num_Snd_Grid_B_CA2CB
@@ -4607,9 +4578,9 @@ int *Num_Snd_Grid_B_AB2C;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Snd_Grid_B_CA2CB;
+extern int *Num_Snd_Grid_B_CA2CB;
 /* added by mari 05.12.2014 */
-int *Num_Rcv_Grid_B_AB2C;
+extern int *Num_Rcv_Grid_B_AB2C;
 
 /*******************************************************
  int *Num_Rcv_Grid_B_CA2CB
@@ -4621,7 +4592,7 @@ int *Num_Rcv_Grid_B_AB2C;
   allocation: call Allocate_Arrays() in Input_std.c
   free:       call Free_Arrays in openmx.c
 *******************************************************/
-int *Num_Rcv_Grid_B_CA2CB;
+extern int *Num_Rcv_Grid_B_CA2CB;
 
 /*******************************************************
  int **Index_Snd_Grid_B_AB2CA
@@ -4633,9 +4604,9 @@ int *Num_Rcv_Grid_B_CA2CB;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Snd_Grid_B_AB2CA;
+extern int **Index_Snd_Grid_B_AB2CA;
 /* added by mari 05.12.2014 */
-int **Index_Snd_Grid_B_AB2C;
+extern int **Index_Snd_Grid_B_AB2C;
 
 /*******************************************************
  int **Index_Rcv_Grid_B_AB2CA
@@ -4647,9 +4618,9 @@ int **Index_Snd_Grid_B_AB2C;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Rcv_Grid_B_AB2CA;
+extern int **Index_Rcv_Grid_B_AB2CA;
 /* added by mari 05.12.2014 */
-int **Index_Rcv_Grid_B_AB2C;
+extern int **Index_Rcv_Grid_B_AB2C;
 
 /*******************************************************
  int **Index_Snd_Grid_B_CA2CB
@@ -4661,7 +4632,7 @@ int **Index_Rcv_Grid_B_AB2C;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Snd_Grid_B_CA2CB;
+extern int **Index_Snd_Grid_B_CA2CB;
 
 /*******************************************************
  int **Index_Rcv_Grid_B_CA2CB
@@ -4673,7 +4644,7 @@ int **Index_Snd_Grid_B_CA2CB;
   free:       allocate_grids2atoms() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int **Index_Rcv_Grid_B_CA2CB;
+extern int **Index_Rcv_Grid_B_CA2CB;
 
 /*******************************************************
   int *ID_NN_B_AB2CA_S;
@@ -4686,8 +4657,8 @@ int **Index_Rcv_Grid_B_CA2CB;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *ID_NN_B_AB2CA_S;
-int *ID_NN_B_AB2CA_R;
+extern int *ID_NN_B_AB2CA_S;
+extern int *ID_NN_B_AB2CA_R;
 
 /*******************************************************
   int *GP_B_AB2CA_S;
@@ -4700,8 +4671,8 @@ int *ID_NN_B_AB2CA_R;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *GP_B_AB2CA_S;
-int *GP_B_AB2CA_R;
+extern int *GP_B_AB2CA_S;
+extern int *GP_B_AB2CA_R;
 
 /*******************************************************
   int *ID_NN_B_CA2CB_S;
@@ -4714,8 +4685,8 @@ int *GP_B_AB2CA_R;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *ID_NN_B_CA2CB_S;
-int *ID_NN_B_CA2CB_R;
+extern int *ID_NN_B_CA2CB_S;
+extern int *ID_NN_B_CA2CB_R;
 
 /*******************************************************
   int *GP_B_CA2CB_S;
@@ -4728,8 +4699,8 @@ int *ID_NN_B_CA2CB_R;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *GP_B_CA2CB_S;
-int *GP_B_CA2CB_R;
+extern int *GP_B_CA2CB_S;
+extern int *GP_B_CA2CB_R;
 
 /*******************************************************
   int *ID_NN_B2C_S;
@@ -4742,8 +4713,8 @@ int *GP_B_CA2CB_R;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *ID_NN_B2C_S;
-int *ID_NN_B2C_R;
+extern int *ID_NN_B2C_S;
+extern int *ID_NN_B2C_R;
 
 /*******************************************************
   int *GP_B2C_S;
@@ -4756,8 +4727,8 @@ int *ID_NN_B2C_R;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *GP_B2C_S;
-int *GP_B2C_R;
+extern int *GP_B2C_S;
+extern int *GP_B2C_R;
 
 /*******************************************************
   int *ID_NN_B2D_S;
@@ -4770,8 +4741,8 @@ int *GP_B2C_R;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *ID_NN_B2D_S;
-int *ID_NN_B2D_R;
+extern int *ID_NN_B2D_S;
+extern int *ID_NN_B2D_R;
 
 /*******************************************************
   int *GP_B2D_S;
@@ -4784,8 +4755,8 @@ int *ID_NN_B2D_R;
   free:       Construct_MPI_Data_Structure_Grid() and
               call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *GP_B2D_S;
-int *GP_B2D_R;
+extern int *GP_B2D_S;
+extern int *GP_B2D_R;
 
 /*******************************************************
  double *time_per_atom; 
@@ -4794,7 +4765,7 @@ int *GP_B2D_R;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-double *time_per_atom;
+extern double *time_per_atom;
 
 /*******************************************************
  int *orderN_FNAN,*orderN_SNAN;
@@ -4804,184 +4775,184 @@ double *time_per_atom;
   allocation: call as Allocate_Arrays(1) in Input_std.c
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
-int *orderN_FNAN,*orderN_SNAN;
+extern int *orderN_FNAN,*orderN_SNAN;
 
-int Matomnum,MatomnumF,MatomnumS,Max_Matomnum;
-int MSpeciesNum,Num_Procs,Num_Procs2;
-int Num_Cells0,My_NumGrid1,FNAN2_Grid;
-int Max_Num_Rcv_FNAN2_Grid;
-int Max_Num_Snd_FNAN2_Grid;
-int My_NGrid1_Poisson,My_NGrid2_Poisson;
-int My_NumGridB_AB,My_NumGridB_CB,My_NumGridB_CA;
-int My_Max_NumGridB,My_NumGridC,My_NumGridD;
-int Max_Num_Snd_Grid_B2C,Max_Num_Rcv_Grid_B2C;
-int Max_Num_Snd_Grid_B2D,Max_Num_Rcv_Grid_B2D;
-int Max_Num_Snd_Grid_B_AB2CA;
-int Max_Num_Rcv_Grid_B_AB2CA;
+extern int Matomnum,MatomnumF,MatomnumS,Max_Matomnum;
+extern int MSpeciesNum,Num_Procs,Num_Procs2;
+extern int Num_Cells0,My_NumGrid1,FNAN2_Grid;
+extern int Max_Num_Rcv_FNAN2_Grid;
+extern int Max_Num_Snd_FNAN2_Grid;
+extern int My_NGrid1_Poisson,My_NGrid2_Poisson;
+extern int My_NumGridB_AB,My_NumGridB_CB,My_NumGridB_CA;
+extern int My_Max_NumGridB,My_NumGridC,My_NumGridD;
+extern int Max_Num_Snd_Grid_B2C,Max_Num_Rcv_Grid_B2C;
+extern int Max_Num_Snd_Grid_B2D,Max_Num_Rcv_Grid_B2D;
+extern int Max_Num_Snd_Grid_B_AB2CA;
+extern int Max_Num_Rcv_Grid_B_AB2CA;
 /* added by mari 05.12.2014 */
-int Max_Num_Snd_Grid_B_AB2C;
-int Max_Num_Rcv_Grid_B_AB2C;
-int Max_Num_Snd_Grid_B_CA2CB;
-int Max_Num_Rcv_Grid_B_CA2CB;
+extern int Max_Num_Snd_Grid_B_AB2C;
+extern int Max_Num_Rcv_Grid_B_AB2C;
+extern int Max_Num_Snd_Grid_B_CA2CB;
+extern int Max_Num_Rcv_Grid_B_CA2CB;
 
 /** Effective Screening Medium (ESM) Method Calculation (added by T.Ohwaki) **/
 
-int ESM_switch,ESM_wall_switch;
-int ESM_direction; /* surface normal axis; 1:x,2:y,3:z (added by AdvanceSoft) */
-int iESM[4]; /* axis indices rearranged for ESM (added by AdvanceSoft) */
-double V_ESM;
-double ESM_wall_position,ESM_wall_height;
-double ESM_buffer_range;
+extern int ESM_switch,ESM_wall_switch;
+extern int ESM_direction; /* surface normal axis; 1:x,2:y,3:z (added by AdvanceSoft) */
+extern int iESM[4]; /* axis indices rearranged for ESM (added by AdvanceSoft) */
+extern double V_ESM;
+extern double ESM_wall_position,ESM_wall_height;
+extern double ESM_buffer_range;
 
  /**  ESM end  **/
 
 int Set_Allocate_Atom2CPU(int MD_iter, int isw, int weight_flag);
 
  /* added by T.Ohwaki */
-int Arti_Force;
-double Arti_Grad;
+extern int Arti_Force;
+extern double Arti_Grad;
  /* added by T.Ohwaki */
 
 /* vdW  DFT-D added by okuno*/
-int dftD_switch;     /* okuno */
-int unit_dftD;       /* unit Au or Ang */
-int maxn_dftD;       /* the maximum number of vectors dist2, disR */
-double rcut_dftD;    /* cut-off parameter for DFT-D */
-double beta_dftD;    /* damping factor for DFT-D */
-double scal6_dftD;   /* global scaling  factor  */
-double *C6_dftD;     /* for each species */
-double *RvdW_dftD;   /* for each species */
-double **C6ij_dftD;  /* C6 coefficient of each atom type pair */
-double **Rsum_dftD;  /* sum of VdW radii */
-int n1_DFT_D,n2_DFT_D,n3_DFT_D;
-int DFTD_IntDir1,DFTD_IntDir2,DFTD_IntDir3;
+extern int dftD_switch;     /* okuno */
+extern int unit_dftD;       /* unit Au or Ang */
+extern int maxn_dftD;       /* the maximum number of vectors dist2, disR */
+extern double rcut_dftD;    /* cut-off parameter for DFT-D */
+extern double beta_dftD;    /* damping factor for DFT-D */
+extern double scal6_dftD;   /* global scaling  factor  */
+extern double *C6_dftD;     /* for each species */
+extern double *RvdW_dftD;   /* for each species */
+extern double **C6ij_dftD;  /* C6 coefficient of each atom type pair */
+extern double **Rsum_dftD;  /* sum of VdW radii */
+extern int n1_DFT_D,n2_DFT_D,n3_DFT_D;
+extern int DFTD_IntDir1,DFTD_IntDir2,DFTD_IntDir3;
 
 /* vdW DFT-D3 added by Ellner*/
-int version_dftD;             /* 1-->DFT-D2 (Okuno), 2-->DFT-D3 with zero damping, 3--> DFT-D3 with BJ damping */
-int DFTD3_damp_dftD;       /* For DFTD3: 1 --> ZERO 2--> BJ */
-double k1_dftD, k2_dftD, k3_dftD;    /* used for calculating coordination number */
-double s6_dftD, s8_dftD;   /* global scaling factors (s6=1.0)*/ 
-double sr6_dftD, sr8_dftD;  /* parameters for zero damping function (sr8=1.0)*/
-double alp6_dftD, alp8_dftD; /* exponent in zero damping function (alp6=14)*/
-double **r0ab_dftD;        /* parameters used in calculating zero damping function*/
-double a1_dftD, a2_dftD;   /* parameters for BJ damping function */
-double *r2r4_dftD;         /* intermediate used in r2r4ab_dftd */
-double **r2r4ab_dftD;      /* used in calculating C8 */
-double cncut_dftD;         /* coordination number cut-off radius. Also needs global cut-off radius defined above (okuno) as rcut_dftD */
-int n1_CN_DFT_D,n2_CN_DFT_D,n3_CN_DFT_D; /* for cncut PBC */
-int *maxcn_dftD;           /* max number of C6 ref parameters per atom */
-double *****C6ab_dftD;     /* C6 info: m=1,2,3:parameter/CN_atomA/CN_atomB [atomA][atomB][CN_ref_atomA][CN_ref_atomB][m] */
-double *rcov_dftD;         /* intermediate used in rcovab_dftD */
-double **rcovab_dftD;      /* covalent radius used in calculating coordination number */
+extern int version_dftD;             /* 1-->DFT-D2 (Okuno), 2-->DFT-D3 with zero damping, 3--> DFT-D3 with BJ damping */
+extern int DFTD3_damp_dftD;       /* For DFTD3: 1 --> ZERO 2--> BJ */
+extern double k1_dftD, k2_dftD, k3_dftD;    /* used for calculating coordination number */
+extern double s6_dftD, s8_dftD;   /* global scaling factors (s6=1.0)*/
+extern double sr6_dftD, sr8_dftD;  /* parameters for zero damping function (sr8=1.0)*/
+extern double alp6_dftD, alp8_dftD; /* exponent in zero damping function (alp6=14)*/
+extern double **r0ab_dftD;        /* parameters used in calculating zero damping function*/
+extern double a1_dftD, a2_dftD;   /* parameters for BJ damping function */
+extern double *r2r4_dftD;         /* intermediate used in r2r4ab_dftd */
+extern double **r2r4ab_dftD;      /* used in calculating C8 */
+extern double cncut_dftD;         /* coordination number cut-off radius. Also needs global cut-off radius defined above (okuno) as rcut_dftD */
+extern int n1_CN_DFT_D,n2_CN_DFT_D,n3_CN_DFT_D; /* for cncut PBC */
+extern int *maxcn_dftD;           /* max number of C6 ref parameters per atom */
+extern double *****C6ab_dftD;     /* C6 info: m=1,2,3:parameter/CN_atomA/CN_atomB [atomA][atomB][CN_ref_atomA][CN_ref_atomB][m] */
+extern double *rcov_dftD;         /* intermediate used in rcovab_dftD */
+extern double **rcovab_dftD;      /* covalent radius used in calculating coordination number */
 
 /* unfolding added by Chi-Cheng Lee */
-double **unfold_abc;
-double *unfold_origin;
-int *unfold_mapN2n;
-double unfold_lbound,unfold_ubound;
-int unfold_electronic_band;
-int unfold_Nkpoint;
-int unfold_nkpts;
-double **unfold_kpoint;
-char **unfold_kpoint_name;
-int UnfoldBand_path_flag;/* added by Fukuda 20231230 */
-int UnfoldBand_Nkpath;/* added by Fukuda 20231230 */
-int *UnfoldBand_N_perpath;/* added by Fukuda 20231230 */
-double ***UnfoldBand_kpath;/* added by Fukuda 20231230 */
-char ***UnfoldBand_kname; /* added by Fukuda 20231230 */
-int flag_unfold_origin;
+extern double **unfold_abc;
+extern double *unfold_origin;
+extern int *unfold_mapN2n;
+extern double unfold_lbound,unfold_ubound;
+extern int unfold_electronic_band;
+extern int unfold_Nkpoint;
+extern int unfold_nkpts;
+extern double **unfold_kpoint;
+extern char **unfold_kpoint_name;
+extern int UnfoldBand_path_flag;/* added by Fukuda 20231230 */
+extern int UnfoldBand_Nkpath;/* added by Fukuda 20231230 */
+extern int *UnfoldBand_N_perpath;/* added by Fukuda 20231230 */
+extern double ***UnfoldBand_kpath;/* added by Fukuda 20231230 */
+extern char ***UnfoldBand_kname; /* added by Fukuda 20231230 */
+extern int flag_unfold_origin;
 /* end unfolding */
 
 /* scalapack */
 
 static int NBLK=128;
 /* for n */
-int nblk,np_rows,np_cols,na_rows,na_cols,na_rows_max,na_cols_max;
-int my_prow,my_pcol;
-int bhandle1,bhandle2,ictxt1,ictxt2;
-int descS[9],descH[9],descC[9];
+extern int nblk,np_rows,np_cols,na_rows,na_cols,na_rows_max,na_cols_max;
+extern int my_prow,my_pcol;
+extern int bhandle1,bhandle2,ictxt1,ictxt2;
+extern int descS[9],descH[9],descC[9];
 
 /* for 2*n */
-int nblk2,np_rows2,np_cols2,na_rows2,na_cols2,na_rows_max2,na_cols_max2;
-int my_prow2,my_pcol2;
-int bhandle1_2,bhandle2_2,ictxt1_2,ictxt2_2;
-int descS2[9],descH2[9],descC2[9];
+extern int nblk2,np_rows2,np_cols2,na_rows2,na_cols2,na_rows_max2,na_cols_max2;
+extern int my_prow2,my_pcol2;
+extern int bhandle1_2,bhandle2_2,ictxt1_2,ictxt2_2;
+extern int descS2[9],descH2[9],descC2[9];
 
 /* CWF1: TNum_CWFs x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-int nblk_CWF1,np_rows_CWF1,np_cols_CWF1,na_rows_CWF1,na_cols_CWF1,na_rows_max_CWF1,na_cols_max_CWF1;
-int my_prow_CWF1,my_pcol_CWF1;
-int bhandle1_CWF1,bhandle2_CWF1,ictxt1_CWF1,ictxt2_CWF1;
-int desc_CWF1[9];
+extern int nblk_CWF1,np_rows_CWF1,np_cols_CWF1,na_rows_CWF1,na_cols_CWF1,na_rows_max_CWF1,na_cols_max_CWF1;
+extern int my_prow_CWF1,my_pcol_CWF1;
+extern int bhandle1_CWF1,bhandle2_CWF1,ictxt1_CWF1,ictxt2_CWF1;
+extern int desc_CWF1[9];
 
 /* CWF2: n x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-int nblk_CWF2,np_rows_CWF2,np_cols_CWF2,na_rows_CWF2,na_cols_CWF2,na_rows_max_CWF2,na_cols_max_CWF2;
-int my_prow_CWF2,my_pcol_CWF2;
-int bhandle1_CWF2,bhandle2_CWF2,ictxt1_CWF2,ictxt2_CWF2;
-int desc_CWF2[9];
+extern int nblk_CWF2,np_rows_CWF2,np_cols_CWF2,na_rows_CWF2,na_cols_CWF2,na_rows_max_CWF2,na_cols_max_CWF2;
+extern int my_prow_CWF2,my_pcol_CWF2;
+extern int bhandle1_CWF2,bhandle2_CWF2,ictxt1_CWF2,ictxt2_CWF2;
+extern int desc_CWF2[9];
 
 /* CWF3: MaxN x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-int nblk_CWF3,np_rows_CWF3,np_cols_CWF3,na_rows_CWF3,na_cols_CWF3,na_rows_max_CWF3,na_cols_max_CWF3;
-int my_prow_CWF3,my_pcol_CWF3;
-int bhandle1_CWF3,bhandle2_CWF3,ictxt1_CWF3,ictxt2_CWF3;
-int desc_CWF3[9];
+extern int nblk_CWF3,np_rows_CWF3,np_cols_CWF3,na_rows_CWF3,na_cols_CWF3,na_rows_max_CWF3,na_cols_max_CWF3;
+extern int my_prow_CWF3,my_pcol_CWF3;
+extern int bhandle1_CWF3,bhandle2_CWF3,ictxt1_CWF3,ictxt2_CWF3;
+extern int desc_CWF3[9];
 
 /* CWF4: n x MaxN used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-int nblk_CWF4,np_rows_CWF4,np_cols_CWF4,na_rows_CWF4,na_cols_CWF4,na_rows_max_CWF4,na_cols_max_CWF4;
-int my_prow_CWF4,my_pcol_CWF4;
-int bhandle1_CWF4,bhandle2_CWF4,ictxt1_CWF4,ictxt2_CWF4;
-int desc_CWF4[9];
+extern int nblk_CWF4,np_rows_CWF4,np_cols_CWF4,na_rows_CWF4,na_cols_CWF4,na_rows_max_CWF4,na_cols_max_CWF4;
+extern int my_prow_CWF4,my_pcol_CWF4;
+extern int bhandle1_CWF4,bhandle2_CWF4,ictxt1_CWF4,ictxt2_CWF4;
+extern int desc_CWF4[9];
 
 /* CWF5: TNum_CWFs x TNum_CWFs used for the calculation of band dispersion in Band_DFT_Col_CWF.c */
-int nblk_CWF5,np_rows_CWF5,np_cols_CWF5,na_rows_CWF5,na_cols_CWF5,na_rows_max_CWF5,na_cols_max_CWF5;
-int my_prow_CWF5,my_pcol_CWF5;
-int bhandle1_CWF5,bhandle2_CWF5,ictxt1_CWF5,ictxt2_CWF5;
-int desc_CWF5[9];
+extern int nblk_CWF5,np_rows_CWF5,np_cols_CWF5,na_rows_CWF5,na_cols_CWF5,na_rows_max_CWF5,na_cols_max_CWF5;
+extern int my_prow_CWF5,my_pcol_CWF5;
+extern int bhandle1_CWF5,bhandle2_CWF5,ictxt1_CWF5,ictxt2_CWF5;
+extern int desc_CWF5[9];
 
 /* scf_convergence_flag */
-int scf_convergence_flag; /* S.Yanase */
+extern int scf_convergence_flag; /* S.Yanase */
 
 /* YTL-start */
 #define PIx2  6.2831853071795864769252
-int Global_Cnt_kind; /* for calculating matrix element of Nabra operator */
-int CDDF_on; /* turn on / off CDDF calculation */
-int CDDF_freq_grid_number; /* frequnecy grid number for each conductivity tensor and dielectric function */
-int CDDF_max_unoccupied_state; /* maximum unoccupied state for calculating conductivity and dielectric function */
+extern int Global_Cnt_kind; /* for calculating matrix element of Nabra operator */
+extern int CDDF_on; /* turn on / off CDDF calculation */
+extern int CDDF_freq_grid_number; /* frequnecy grid number for each conductivity tensor and dielectric function */
+extern int CDDF_max_unoccupied_state; /* maximum unoccupied state for calculating conductivity and dielectric function */
 /* YTL-New-start */
 //int CDDF_material_type; /* default = 0. 0 = insulator, 1 = metal */                                                                                     
 /* YTL-New-end */
-int CDDF_Kspace_grid1,CDDF_Kspace_grid2,CDDF_Kspace_grid3;
-double CDDF_FWHM; /* FWHM for calculating conductivity and dielectric function */
-double CDDF_AddMaxE; /* addition maximum energy for calculating conductivity and dielectric function */
-double CDDF_max_eV,CDDF_min_eV;
+extern int CDDF_Kspace_grid1,CDDF_Kspace_grid2,CDDF_Kspace_grid3;
+extern double CDDF_FWHM; /* FWHM for calculating conductivity and dielectric function */
+extern double CDDF_AddMaxE; /* addition maximum energy for calculating conductivity and dielectric function */
+extern double CDDF_max_eV,CDDF_min_eV;
 
 /* YTL-New-start */
-int CDDF_analysis;
-double CDDF_analysis_energy,CDDF_analysis_cutoff;
-double CDDF_Shift_ChemP; /* Shifted Chemical Potential */
-int CDDF_approach;
-int CDDF_printk; /* print k at n step in optical calculations */
+extern int CDDF_analysis;
+extern double CDDF_analysis_energy,CDDF_analysis_cutoff;
+extern double CDDF_Shift_ChemP; /* Shifted Chemical Potential */
+extern int CDDF_approach;
+extern int CDDF_printk; /* print k at n step in optical calculations */
 
 /* for calcuating matrix elements of position = <a|r|b> */
-double ****OLPpox;
-double ****OLPpoy;
-double ****OLPpoz;
+extern double ****OLPpox;
+extern double ****OLPpoy;
+extern double ****OLPpoz;
 void Calc_OLP_r(int option_OLPpo,int myid0);
 void Calc_OLPpo2();
 void free_OLP_r();
 
 /* broadcast H, S, and position matrix elements */
-double *****H_all,*****iH_all;
-double ****OLP_all;
-double ****OLPpox_all;
-double ****OLPpoy_all;
-double ****OLPpoz_all;
+extern double *****H_all,*****iH_all;
+extern double ****OLP_all;
+extern double ****OLPpox_all;
+extern double ****OLPpoy_all;
+extern double ****OLPpoz_all;
 void broadcast_H_matrix_elements_to_all_processes(int myid0); /* H matrix elements */
 void broadcast_Hnoncol_matrix_elements_to_all_processes(int myid0); /* H matrix elements */
 void broadcast_S_matrix_elements_to_all_processes(int myid0); /* S overlap matrix elements */
 void broadcast_Position_matrix_elements_to_all_processes(int myid0); /* position x/y/z matrix elements */
 /* YTL-New-end */
 
-double *****MME_allorb; /* < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
+extern double *****MME_allorb; /* < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
 
 void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic); /* < PAO(atom i, orbital alpha) | nabla | PAO(atom j, orbital beta) > */
 

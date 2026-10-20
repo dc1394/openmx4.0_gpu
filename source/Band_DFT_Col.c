@@ -1911,9 +1911,9 @@ static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
     if (ctx->h_scale != NULL)
         free(ctx->h_scale);
     if (ctx->gpusolver != NULL)
-        wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
+        OpenMXSolverWait(cusolverDnDestroy(ctx->gpusolver));
     if (ctx->cublas != NULL)
-        wait_cudafunc(cublasDestroy(ctx->cublas));
+        OpenMXBlasWait(cublasDestroy(ctx->cublas));
 
     ctx->initialized         = 0;
     ctx->device_id           = -1;
@@ -2115,8 +2115,8 @@ static void BandCol_GpuSolver_Init(void)
         BandCol_GpuSolver_Destroy();
     }
 
-    wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
+    OpenMXBlasWait(cublasCreate(&ctx->cublas));
+    OpenMXSolverWait(cusolverDnCreate(&ctx->gpusolver));
 
     ctx->initialized = 1;
     ctx->device_id   = current_device;
@@ -2186,7 +2186,7 @@ static void BandCol_GpuSolver_EnsureWorkspace(int m, int maxn, dcomplex * d_A, i
 
     range = CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F,
+    OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F,
                                                (cuDoubleComplex *)d_A, m, &vl, &vu, 1L, maxn, &h_meig, CUDA_R_64F,
                                                ctx->d_W, CUDA_C_64F, &d_bytes, &h_bytes));
 
@@ -2231,7 +2231,7 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
     BandCol_GpuSolver_EnsureWorkspace(m, maxn, d_A, want_vectors);
     range = CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F, (cuDoubleComplex *)d_A, m,
+    OpenMXSolverWait(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F, (cuDoubleComplex *)d_A, m,
                                     &vl, &vu, 1L, maxn, &h_meig, CUDA_R_64F, ctx->d_W, CUDA_C_64F, ctx->d_work,
                                     ctx->d_work_bytes, ctx->h_work, ctx->h_work_bytes, ctx->d_info));
 
@@ -2322,7 +2322,7 @@ static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n,
         wait_cudafunc(cudaMemcpy(ctx->d_scale, ctx->h_scale, sizeof(dcomplex) * (size_t)n, cudaMemcpyHostToDevice));
 
         if (!openmx_gpu_transform(OPENMX_GPU_SCALE_COLUMNS,1,n,n,ctx->d_S,n,ctx->d_scale,0,ctx->d_tmp,n,1,0.0))
-        wait_cudafunc(cublasZdgmm(ctx->cublas, CUBLAS_SIDE_RIGHT, n, n, (cuDoubleComplex *)ctx->d_S, n,
+        OpenMXBlasWait(cublasZdgmm(ctx->cublas, CUBLAS_SIDE_RIGHT, n, n, (cuDoubleComplex *)ctx->d_S, n,
                                   (cuDoubleComplex *)ctx->d_scale, 1, (cuDoubleComplex *)ctx->d_tmp, n));
 
         {
@@ -2355,7 +2355,7 @@ static void BandCol_GpuSolver_Zgemm_OpenACC(cublasOperation_t transa, cublasOper
 #pragma acc data present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
     {
-        wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, transa, transb, m, n, k, &alpha, (cuDoubleComplex const *)A, m,
+        OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, transa, transb, m, n, k, &alpha, (cuDoubleComplex const *)A, m,
                                              (cuDoubleComplex const *)B, k, &beta, (cuDoubleComplex *)C, m));
     }
 }
@@ -2409,7 +2409,7 @@ static void BandCol_GpuSolver_BackTransformDevice(int n)
     double               prof_t0 = 0.0;
 
     BANDCOL_PROF_T0(prof_t0);
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_T, CUBLAS_OP_T, n, n, n, &alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_T, CUBLAS_OP_T, n, n, n, &alpha,
                                          (cuDoubleComplex *)ctx->d_H, n, (cuDoubleComplex *)ctx->d_S, n, &beta,
                                          (cuDoubleComplex *)ctx->d_tmp, n));
     BANDCOL_PROF_ADD(gemm_back, prof_t0);
@@ -2471,10 +2471,10 @@ static void BandCol_GpuSolver_ForwardTransformDevice(int n, const dcomplex *H_in
     if (H_in != NULL) {
         wait_cudafunc(cudaMemcpy(ctx->d_H, H_in, sizeof(dcomplex) * (size_t)n * (size_t)n, cudaMemcpyHostToDevice));
     }
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
                                          (cuDoubleComplex *)ctx->d_H, n, (cuDoubleComplex *)ctx->d_S, n, &beta,
                                          (cuDoubleComplex *)ctx->d_tmp, n));
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &alpha,
                                          (cuDoubleComplex *)ctx->d_S, n, (cuDoubleComplex *)ctx->d_tmp, n, &beta,
                                          (cuDoubleComplex *)ctx->d_H, n));
     BANDCOL_PROF_ADD(gemm_fwd, prof_t0);
@@ -2744,10 +2744,10 @@ static dcomplex *BandCol_RefinedFirstHalf(int n, int maxn, const dcomplex *H_in,
     if (H_in != NULL) {
         wait_cudafunc(cudaMemcpy(ctx->d_H, H_in, sizeof(dcomplex) * nn, cudaMemcpyHostToDevice));
     }
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
                                          (cuDoubleComplex *)ctx->d_H, n, (cuDoubleComplex *)ctx->d_S, n, &beta,
                                          (cuDoubleComplex *)ctx->d_tmp, n));
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &alpha,
                                          (cuDoubleComplex *)ctx->d_S, n, (cuDoubleComplex *)ctx->d_tmp, n, &beta,
                                          (cuDoubleComplex *)ctx->d_H, n));
     BANDCOL_PROF_ADD(gemm_fwd, prof_t0);
@@ -2906,11 +2906,11 @@ static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const d
         wait_cudafunc(cudaMemcpy(ctx->d_H, H_in, matrix_bytes, cudaMemcpyHostToDevice));
     }
 
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
                                          (cuDoubleComplex *)ctx->d_H, n, (cuDoubleComplex *)ctx->d_S, n, &beta,
                                          (cuDoubleComplex *)ctx->d_tmp, n));
 
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, n, n, n, &alpha,
                                          (cuDoubleComplex *)ctx->d_S, n, (cuDoubleComplex *)ctx->d_tmp, n, &beta,
                                          (cuDoubleComplex *)ctx->d_H, n));
 

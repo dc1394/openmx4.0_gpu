@@ -577,7 +577,7 @@ if (!openmx_gpu_transform(OPENMX_GPU_SCALE_ROWS,1,nk_occ,n2,ev,n2,wt,0,w,nk_occ,
                 }
 }
 
-                wait_cudafunc(openmx_gemmul8Zgemm(handle, CUBLAS_OP_C, CUBLAS_OP_N, n2, n2, nk_occ, &one,
+                OpenMXBlasWait(openmx_gemmul8Zgemm(handle, CUBLAS_OP_C, CUBLAS_OP_N, n2, n2, nk_occ, &one,
                                                   (cuDoubleComplex const *)w, nk_occ,
                                                   (cuDoubleComplex const *)(pass == 0 ? w : ev), pass == 0 ? nk_occ : n2,
                                                   &zero, (cuDoubleComplex *)pm, n2));
@@ -935,10 +935,10 @@ static cublasHandle_t ClusterNonCol_CublasHandle(void)
         return handle;
     }
     if (handle != NULL) {
-        wait_cudafunc(cublasDestroy(handle));
+        OpenMXBlasWait(cublasDestroy(handle));
         handle = NULL;
     }
-    wait_cudafunc(cublasCreate(&handle));
+    OpenMXBlasWait(cublasCreate(&handle));
     handle_device = current_device;
     return handle;
 }
@@ -990,7 +990,7 @@ static void ClusterNonCol_GpuEigenCtx_Release(void)
     if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
     if (ctx->d_info != NULL) wait_cudafunc(cudaFree(ctx->d_info));
     free(ctx->h_work);
-    wait_cudafunc(cusolverDnDestroy(ctx->handle));
+    OpenMXSolverWait(cusolverDnDestroy(ctx->handle));
     wait_cudafunc(cudaStreamDestroy(ctx->stream));
     memset(ctx, 0, sizeof(*ctx));
 }
@@ -1017,9 +1017,9 @@ static ClusterNonColGpuEigenCtx *ClusterNonCol_GpuEigenCtx_Get(void)
         ClusterNonCol_GpuEigenCtx_Release();
     }
     if (!ctx->inited) {
-        wait_cudafunc(cusolverDnCreate(&ctx->handle));
+        OpenMXSolverWait(cusolverDnCreate(&ctx->handle));
         wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
-        wait_cudafunc(cusolverDnSetStream(ctx->handle, ctx->stream));
+        OpenMXSolverWait(cusolverDnSetStream(ctx->handle, ctx->stream));
         wait_cudafunc(cudaMalloc((void **)&ctx->d_info, sizeof(int32_t)));
         ctx->device = current_device;
         ctx->inited = 1;
@@ -1047,7 +1047,7 @@ static int ClusterNonCol_EigenWorkspace_TryEnsure(void *A_dev, double *W_dev, in
     if (need_bytes_out != NULL) *need_bytes_out = 0;
     if (ctx->last_n == n && ctx->last_maxn == maxn) return 1;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A_dev, n,
+    OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A_dev, n,
                                                &vl, &vu, 1L, (int64_t)maxn, &h_meig, CUDA_R_64F, W_dev,
                                                CUDA_C_64F, &d_bytes, &h_bytes));
 
@@ -1099,7 +1099,7 @@ static void ClusterNonCol_ZheevdxPresent(dcomplex *A, double *W, int n, int maxn
             ClusterNonCol_AbortWithMessage(msg);
         }
 
-        wait_cudafunc(cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A, n, &vl, &vu, 1L,
+        OpenMXSolverWait(cusolverDnXsyevdx(ctx->handle, NULL, jobz, range, uplo, n, CUDA_C_64F, A, n, &vl, &vu, 1L,
                                         (int64_t)maxn, &h_meig, CUDA_R_64F, W, CUDA_C_64F, ctx->d_work,
                                         ctx->d_work_bytes, ctx->h_work, ctx->h_work_bytes, ctx->d_info));
 
@@ -1356,7 +1356,7 @@ static void ClusterNonCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasO
         double const alpha = 1.0;
         double const beta  = 0.0;
 
-        wait_cudafunc(openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
+        OpenMXBlasWait(openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
     }
 }
 
@@ -1371,7 +1371,7 @@ static void ClusterNonCol_GEMMul8Zgemm_OpenACC(cublasOperation_t transa, cublasO
         cuDoubleComplex const alpha = make_cuDoubleComplex(1.0, 0.0);
         cuDoubleComplex const beta  = make_cuDoubleComplex(0.0, 0.0);
 
-        wait_cudafunc(openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &alpha, (cuDoubleComplex const *)A, m,
+        OpenMXBlasWait(openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &alpha, (cuDoubleComplex const *)A, m,
                                           (cuDoubleComplex const *)B, k, &beta, (cuDoubleComplex *)C, m));
     }
 }
@@ -1494,7 +1494,7 @@ static void ClusterNonCol_BackTransform(dcomplex *zv, dcomplex *vt, double const
     /* vt = zv(:, 0:MaxN)^T; the second operand (zv again, scaled by 0) only
        completes the call */
     if (!openmx_gpu_transform(OPENMX_GPU_TRANSPOSE,1,MaxN,n2,zv,n2,NULL,0,vt,MaxN,0,0.0))
-    wait_cudafunc(cublasZgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, MaxN, n2, &one, (cuDoubleComplex const *)zv, n2,
+    OpenMXBlasWait(cublasZgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, MaxN, n2, &one, (cuDoubleComplex const *)zv, n2,
                               &zero, (cuDoubleComplex const *)zv, n2, (cuDoubleComplex *)vt, MaxN));
 
     if (MaxN < n2) {
@@ -1515,7 +1515,7 @@ if (!openmx_gpu_transform(OPENMX_GPU_ZERO,1,n2-MaxN,n2,NULL,0,NULL,0,(dcomplex*)
     for (int half = 0; half < 2; half++) {
         size_t const col = (size_t)half * (size_t)n;
 
-        wait_cudafunc(openmx_gemmul8Dgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, 2 * MaxN, n, n, &alpha,
+        OpenMXBlasWait(openmx_gemmul8Dgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, 2 * MaxN, n, n, &alpha,
                                           (double const *)vt + 2 * (size_t)MaxN * col, 2 * MaxN, S, n, &beta,
                                           (double *)zv + 2 * (size_t)n2 * col, 2 * n2));
     }
@@ -2282,7 +2282,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
             size_t free_bytes = 0;
             size_t total_bytes = 0;
 
-            wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, CUSOLVER_EIG_RANGE_I, uplo, n,
+            OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ctx->handle, NULL, jobz, CUSOLVER_EIG_RANGE_I, uplo, n,
                                                        CUDA_R_64F, ClusterNonCol_ArenaPtr(arena->o_S), n,
                                                        &vl, &vu, 1L, (int64_t)n, &h_meig, CUDA_R_64F,
                                                        ClusterNonCol_ArenaPtr(arena->o_ko), CUDA_R_64F,

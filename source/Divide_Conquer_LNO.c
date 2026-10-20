@@ -458,8 +458,8 @@ static void DCLNO_GpuSolver_Destroy(void)
     if (ctx->d_info != NULL) wait_cudafunc(cudaFree(ctx->d_info));
     if (ctx->d_work != NULL) wait_cudafunc(cudaFree(ctx->d_work));
     if (ctx->h_work != NULL) free(ctx->h_work);
-    if (ctx->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
-    if (ctx->cublas   != NULL) wait_cudafunc(cublasDestroy(ctx->cublas));
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(cusolverDnDestroy(ctx->gpusolver));
+    if (ctx->cublas   != NULL) OpenMXBlasWait(cublasDestroy(ctx->cublas));
     if (ctx->stream   != NULL) wait_cudafunc(cudaStreamDestroy(ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
@@ -500,10 +500,10 @@ static void DCLNO_GpuSolver_Init(void)
     if (ctx->initialized) return;
 
     wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
-    wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
-    wait_cudafunc(cublasSetStream(ctx->cublas, ctx->stream));
-    wait_cudafunc(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
+    OpenMXBlasWait(cublasCreate(&ctx->cublas));
+    OpenMXSolverWait(cusolverDnCreate(&ctx->gpusolver));
+    OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
+    OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized = 1;
 }
@@ -699,13 +699,13 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
                                                           "GPUSOLVER host-to-device eigenvalue scale"),
                                   cudaMemcpyHostToDevice, ctx->stream));
 
-    wait_cudafunc(cublasDdgmm(ctx->cublas, CUBLAS_SIDE_RIGHT, NUM, NUM,
+    OpenMXBlasWait(cublasDdgmm(ctx->cublas, CUBLAS_SIDE_RIGHT, NUM, NUM,
                               ctx->d_S, NUM, ctx->d_W, 1, ctx->d_tmp, NUM));
 
-    wait_cudafunc(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_H, NUM,
+    OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_H, NUM,
                                      ctx->d_tmp, NUM, &beta, ctx->d_S, NUM));
 
-    wait_cudafunc(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_tmp, NUM,
+    OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_tmp, NUM,
                                      ctx->d_S, NUM, &beta, ctx->d_H, NUM));
 
     info = DCLNO_GpuSolver_Eigen(ctx->d_H, NUM, NUM2, ko + 1);
@@ -717,7 +717,7 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
         return info;
     }
 
-    wait_cudafunc(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM2, NUM, &alpha, ctx->d_tmp,
+    OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM2, NUM, &alpha, ctx->d_tmp,
                                      NUM, ctx->d_H, NUM, &beta, ctx->d_S, NUM));
 
     wait_cudafunc(cudaMemcpyAsync(Hmat, ctx->d_S, partial_bytes,
@@ -839,8 +839,8 @@ static void DCLNO_GpuSolverZ_Destroy(void)
     if (ctx->d_work != NULL)  wait_cudafunc(cudaFree(ctx->d_work));
     free(ctx->h_work);
     free(ctx->h_scale);
-    if (ctx->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
-    if (ctx->cublas != NULL)    wait_cudafunc(cublasDestroy(ctx->cublas));
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(cusolverDnDestroy(ctx->gpusolver));
+    if (ctx->cublas != NULL)    OpenMXBlasWait(cublasDestroy(ctx->cublas));
     if (ctx->stream != NULL)    wait_cudafunc(cudaStreamDestroy(ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
@@ -853,10 +853,10 @@ static void DCLNO_GpuSolverZ_Init(void)
     if (ctx->initialized) return;
 
     wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
-    wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
-    wait_cudafunc(cublasSetStream(ctx->cublas, ctx->stream));
-    wait_cudafunc(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
+    OpenMXBlasWait(cublasCreate(&ctx->cublas));
+    OpenMXSolverWait(cusolverDnCreate(&ctx->gpusolver));
+    OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
+    OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized = 1;
 }
@@ -919,7 +919,7 @@ static void DCLNO_GpuSolverZ_EnsureWorkspace(int m, int maxn)
 
     range = (m == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->gpusolver, NULL, jobz, range, uplo, m,
+    OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ctx->gpusolver, NULL, jobz, range, uplo, m,
                                                CUDA_C_64F, ctx->d_tmp, m, &vl, &vu, 1L, maxn, &h_meig,
                                                CUDA_R_64F, ctx->d_W, CUDA_C_64F, &d_bytes, &h_bytes));
 
@@ -958,7 +958,7 @@ static void DCLNO_GpuSolverZ_Eigen(dcomplex *d_A, int m, int maxn, double *W)
 
     range = (m == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F,
+    OpenMXSolverWait(cusolverDnXsyevdx(ctx->gpusolver, NULL, jobz, range, uplo, m, CUDA_C_64F,
                                     d_A, m, &vl, &vu, 1L, maxn, &h_meig, CUDA_R_64F, ctx->d_W,
                                     CUDA_C_64F, ctx->d_work, ctx->d_work_bytes,
                                     ctx->h_work, ctx->h_work_bytes, ctx->d_info));
@@ -1033,7 +1033,7 @@ static void DCLNO_Solve_NonCol_GpuSolver(int NUM, int NUMH, int NUM2, int rebuil
     wait_cudafunc(cudaMemsetAsync(ctx->d_S, 0, full_bytes, ctx->stream));
 
     /* top-left block: U * s^{-1/2}, written with leading dimension NUM */
-    wait_cudafunc(cublasZdgmm(ctx->cublas, CUBLAS_SIDE_RIGHT, NUMH, NUMH,
+    OpenMXBlasWait(cublasZdgmm(ctx->cublas, CUBLAS_SIDE_RIGHT, NUMH, NUMH,
                               (cuDoubleComplex*)ctx->d_tmp, NUMH,
                               (cuDoubleComplex*)ctx->d_scale, 1,
                               (cuDoubleComplex*)ctx->d_S, NUM));
@@ -1049,18 +1049,18 @@ static void DCLNO_Solve_NonCol_GpuSolver(int NUM, int NUMH, int NUM2, int rebuil
 
     /* H' = T^H * H * T */
 
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM, NUM, &zone,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_N, CUBLAS_OP_N, NUM, NUM, NUM, &zone,
                                       (cuDoubleComplex*)ctx->d_H, NUM,
                                       (cuDoubleComplex*)ctx->d_S, NUM, &zzero,
                                       (cuDoubleComplex*)ctx->d_tmp, NUM));
 
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &zone,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &zone,
                                       (cuDoubleComplex*)ctx->d_S, NUM,
                                       (cuDoubleComplex*)ctx->d_tmp, NUM, &zzero,
                                       (cuDoubleComplex*)ctx->d_H, NUM));
 
     /* d_tmp = (H')^T = conj(H'), matching the CPU packing into C */
-    wait_cudafunc(cublasZgeam(ctx->cublas, CUBLAS_OP_T, CUBLAS_OP_N, NUM, NUM,
+    OpenMXBlasWait(cublasZgeam(ctx->cublas, CUBLAS_OP_T, CUBLAS_OP_N, NUM, NUM,
                               &zone, (cuDoubleComplex*)ctx->d_H, NUM,
                               &zzero, (cuDoubleComplex*)ctx->d_H, NUM,
                               (cuDoubleComplex*)ctx->d_tmp, NUM));
@@ -1068,7 +1068,7 @@ static void DCLNO_Solve_NonCol_GpuSolver(int NUM, int NUMH, int NUM2, int rebuil
     DCLNO_GpuSolverZ_Eigen(ctx->d_tmp, NUM, NUM2, ko + 1);
 
     /* Hmat(state, basis) = (T * V)^T = V^T * T^T, stored with ld NUM */
-    wait_cudafunc(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_T, CUBLAS_OP_T, NUM2, NUM, NUM, &zone,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_T, CUBLAS_OP_T, NUM2, NUM, NUM, &zone,
                                       (cuDoubleComplex*)ctx->d_tmp, NUM,
                                       (cuDoubleComplex*)ctx->d_S, NUM, &zzero,
                                       (cuDoubleComplex*)ctx->d_H, NUM));

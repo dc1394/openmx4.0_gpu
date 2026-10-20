@@ -208,7 +208,7 @@ static void BandNonCol_DenseGpu_EnsureHipblas(void)
     BandNonColDenseGpuWorkspace *w = &BandNonCol_dense_gpu_workspace;
 
     if (w->hipblas==NULL){
-        wait_hipfunc(hipblasCreate(&w->hipblas));
+        OpenMXBlasWait(hipblasCreate(&w->hipblas));
     }
 }
 
@@ -218,7 +218,7 @@ static void BandNonCol_DenseGpu_ReleaseHipblas(void)
 
     if (w->hipblas!=NULL){
         wait_hipfunc(hipDeviceSynchronize());
-        wait_hipfunc(hipblasDestroy(w->hipblas));
+        OpenMXBlasWait(hipblasDestroy(w->hipblas));
         w->hipblas = NULL;
     }
 }
@@ -235,7 +235,7 @@ static void BandNonCol_DenseGpu_Destroy(void)
     if (w->d_H2    != NULL) wait_hipfunc(hipFree(w->d_H2));
     if (w->d_C2    != NULL) wait_hipfunc(hipFree(w->d_C2));
     if (w->d_scale != NULL) wait_hipfunc(hipFree(w->d_scale));
-    if (w->hipblas  != NULL) wait_hipfunc(hipblasDestroy(w->hipblas));
+    if (w->hipblas  != NULL) OpenMXBlasWait(hipblasDestroy(w->hipblas));
     free(w->h_scale);
 
     memset(w,0,sizeof(*w));
@@ -523,7 +523,7 @@ static void BandNonCol_DMGpu_Destroy(void)
     if (w->d_mat12    != NULL) wait_hipfunc(hipFree(w->d_mat12));
     if (w->d_mat11e   != NULL) wait_hipfunc(hipFree(w->d_mat11e));
     if (w->d_mat22e   != NULL) wait_hipfunc(hipFree(w->d_mat22e));
-    if (w->hipblas     != NULL) wait_hipfunc(hipblasDestroy(w->hipblas));
+    if (w->hipblas     != NULL) OpenMXBlasWait(hipblasDestroy(w->hipblas));
     if (w->stream     != NULL) wait_hipfunc(hipStreamDestroy(w->stream));
     memset(w, 0, sizeof(*w));
     w->device_id = -1;
@@ -538,7 +538,7 @@ static void BandNonCol_GpuSolver_Destroy(void)
     if (w->d_info   != NULL) wait_hipfunc(hipFree(w->d_info));
     if (w->d_work   != NULL) wait_hipfunc(hipFree(w->d_work));
     if (w->h_work   != NULL) free(w->h_work);
-    if (w->gpusolver != NULL) wait_hipfunc(hipsolverDnDestroy(w->gpusolver));
+    if (w->gpusolver != NULL) OpenMXSolverWait(hipsolverDnDestroy(w->gpusolver));
     if (w->stream   != NULL) wait_hipfunc(hipStreamDestroy(w->stream));
 
     memset(w, 0, sizeof(*w));
@@ -553,8 +553,8 @@ static void BandNonCol_DMGpu_Init(void)
     if (w->initialized && w->device_id == current_device) return;
     if (w->initialized) BandNonCol_DMGpu_Destroy();
     wait_hipfunc(hipStreamCreateWithFlags(&w->stream, hipStreamNonBlocking));
-    wait_hipfunc(hipblasCreate(&w->hipblas));
-    wait_hipfunc(hipblasSetStream(w->hipblas, w->stream));
+    OpenMXBlasWait(hipblasCreate(&w->hipblas));
+    OpenMXBlasWait(hipblasSetStream(w->hipblas, w->stream));
     w->initialized = 1;
     w->device_id   = current_device;
 }
@@ -569,8 +569,8 @@ static void BandNonCol_GpuSolver_Init(void)
     if (w->initialized) BandNonCol_GpuSolver_Destroy();
 
     wait_hipfunc(hipStreamCreateWithFlags(&w->stream, hipStreamNonBlocking));
-    wait_hipfunc(hipsolverDnCreate(&w->gpusolver));
-    wait_hipfunc(hipsolverDnSetStream(w->gpusolver, w->stream));
+    OpenMXSolverWait(hipsolverDnCreate(&w->gpusolver));
+    OpenMXSolverWait(hipsolverDnSetStream(w->gpusolver, w->stream));
 
     w->initialized = 1;
     w->device_id   = current_device;
@@ -813,7 +813,7 @@ static void BandNonCol_GpuSolver_EnsureWorkspace(int n, int maxn)
     BandNonCol_GpuSolver_EnsureMatrixCapacity(n);
     range = (n==maxn) ? HIPSOLVER_EIG_RANGE_ALL : HIPSOLVER_EIG_RANGE_I;
 
-    wait_hipfunc(hipsolverDnXsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
+    OpenMXSolverWait(hipsolverDnXsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
                                                HIP_C_64F,(hipDoubleComplex*)w->d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                                HIP_R_64F,w->d_W,HIP_C_64F,&d_bytes,&h_bytes));
 
@@ -983,17 +983,17 @@ static void BandNonCol_GEMMul8Zgemm_OpenMP(hipblasOperation_t transa, hipblasOpe
 {
     hipblasHandle_t handle;
 
-    wait_hipfunc(hipblasCreate(&handle));
+    OpenMXBlasWait(hipblasCreate(&handle));
 #pragma omp target data map(present, alloc: A[0 : m * k], B[0 : k * n], C[0 : m * n])
 #pragma omp target data use_device_ptr(A, B, C)
     {
         hipDoubleComplex const alpha = make_hipDoubleComplex(1.0, 0.0);
         hipDoubleComplex const beta  = make_hipDoubleComplex(0.0, 0.0);
-        wait_hipfunc(openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &alpha,
+        OpenMXBlasWait(openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, &alpha,
                                           (hipDoubleComplex const *)A, m, (hipDoubleComplex const *)B, k, &beta,
                                           (hipDoubleComplex *)C, m));
     }
-    wait_hipfunc(hipblasDestroy(handle));
+    OpenMXBlasWait(hipblasDestroy(handle));
 }
 
 static void BandNonCol_HipblasZgemm_OpenMP(hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k,
@@ -1011,7 +1011,7 @@ static void BandNonCol_HipblasZgemm_OpenMP(hipblasOperation_t transa, hipblasOpe
     {
         hipDoubleComplex const alpha = make_hipDoubleComplex(1.0, 0.0);
         hipDoubleComplex const beta  = make_hipDoubleComplex(0.0, 0.0);
-        wait_hipfunc(hipblasZgemm(BandNonCol_dm_gpu_workspace.hipblas, transa, transb, m, n, k, &alpha,
+        OpenMXBlasWait(hipblasZgemm(BandNonCol_dm_gpu_workspace.hipblas, transa, transb, m, n, k, &alpha,
                                   (hipDoubleComplex const *)A, lda,
                                   (hipDoubleComplex const *)B, ldb,
                                   &beta, (hipDoubleComplex *)C, m));
@@ -1195,7 +1195,7 @@ static void BandNonCol_DenseWavefunctions_PresentOpenMP(int n, int n2, int MaxN,
         for (int half=0; half<2; half++){
             size_t const off = (size_t)half*(size_t)n;
 
-            wait_hipfunc(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.hipblas, HIPBLAS_OP_T, HIPBLAS_OP_T,
+            OpenMXBlasWait(openmx_gemmul8Zgemm(BandNonCol_dm_gpu_workspace.hipblas, HIPBLAS_OP_T, HIPBLAS_OP_T,
                                               MaxN, n, n, &alpha,
                                               (hipDoubleComplex const *)(Cs2 + off), n2,
                                               (hipDoubleComplex const *)S, n, &beta,
@@ -2300,7 +2300,7 @@ static void BandNonCol_DenseGpuPrepareOverlap(int rebuild_overlap, int n, int n2
         }
         if (!openmx_gpu_transform ||
             !openmx_gpu_transform(OPENMX_GPU_SCALE_COLUMNS,1,n,n,w->d_S,n,w->d_scale,0,w->d_tmp,n,1,0.0))
-        wait_hipfunc(hipblasZdgmm(w->hipblas,HIPBLAS_SIDE_RIGHT,n,n,
+        OpenMXBlasWait(hipblasZdgmm(w->hipblas,HIPBLAS_SIDE_RIGHT,n,n,
                                   (const hipDoubleComplex*)w->d_S,n,
                                   (const hipDoubleComplex*)w->d_scale,1,
                                   (hipDoubleComplex*)w->d_tmp,n));
@@ -2319,11 +2319,11 @@ static void BandNonCol_DenseGpuTripleTransform(int n, dcomplex *d_A)
     const hipDoubleComplex beta  = make_hipDoubleComplex(0.0,0.0);
 
     BandNonCol_DenseGpu_EnsureHipblas();
-    wait_hipfunc(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,&alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,&alpha,
                                       (const hipDoubleComplex*)d_A,n,
                                       (const hipDoubleComplex*)w->d_S,n,&beta,
                                       (hipDoubleComplex*)w->d_tmp,n));
-    wait_hipfunc(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_C,HIPBLAS_OP_N,n,n,n,&alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_C,HIPBLAS_OP_N,n,n,n,&alpha,
                                       (const hipDoubleComplex*)w->d_S,n,
                                       (const hipDoubleComplex*)w->d_tmp,n,&beta,
                                       (hipDoubleComplex*)d_A,n));
@@ -3006,11 +3006,11 @@ static void BandNonCol_RootDenseBacktransform_HIP(int n, int n2, int MaxN,
        an optional host copy preserves the legacy padded layout consumed by
        the density-matrix and fallback distribution paths. */
     BandNonCol_DenseGpu_EnsureHipblas();
-    wait_hipfunc(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,MaxN,n,n,&alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,MaxN,n,n,&alpha,
                                       (const hipDoubleComplex*)w->d_H2,n2,
                                       (const hipDoubleComplex*)w->d_S,n,&beta,
                                       (hipDoubleComplex*)w->d_C2,MaxN));
-    wait_hipfunc(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,MaxN,n,n,&alpha,
+    OpenMXBlasWait(openmx_gemmul8Zgemm(w->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,MaxN,n,n,&alpha,
                                       (const hipDoubleComplex*)(w->d_H2 + n),n2,
                                       (const hipDoubleComplex*)w->d_S,n,&beta,
                                       (hipDoubleComplex*)(w->d_C2 + (size_t)n*(size_t)MaxN),MaxN));

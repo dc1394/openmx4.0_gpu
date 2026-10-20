@@ -24,12 +24,15 @@ cuda = r'''
 using cudaError_t=int;
 constexpr int cudaSuccess=0,cudaStreamNonBlocking=1,cudaEventDisableTiming=2,cudaHostAllocPortable=4;
 constexpr int cudaErrorPeerAccessAlreadyEnabled=5;
+constexpr int cudaErrorMemoryAllocation=2;
+constexpr int cudaErrorInvalidValue=1,cudaErrorPeerAccessUnsupported=217;
 enum cudaMemoryType {cudaMemoryTypeHost=1,cudaMemoryTypeDevice=2};
 enum cudaMemcpyKind {cudaMemcpyHostToDevice,cudaMemcpyDeviceToHost,cudaMemcpyDeviceToDevice};
 enum cudaStreamCaptureStatus {cudaStreamCaptureStatusNone};
 struct MockStream {int device;};using cudaStream_t=MockStream *;
 struct MockEvent {int device;};using cudaEvent_t=MockEvent *;
 inline int mock_device=0;
+inline int mock_pending_error=0;
 struct Allocation {size_t bytes;int device;};
 inline std::unordered_map<void *,Allocation> allocations;
 inline std::unordered_map<void *,size_t> host_allocations;
@@ -46,7 +49,8 @@ inline int cudaGetDeviceCount(int *v){*v=4;return 0;}
 inline int cudaDeviceGetPCIBusId(char *s,int n,int d){std::snprintf(s,n,"0000:%02x:00.0",d);return 0;}
 inline int cudaDeviceCanAccessPeer(int *can,int,int){*can=1;return 0;}
 inline int cudaDeviceEnablePeerAccess(int,int){return 0;}
-inline int cudaGetLastError(){return 0;}
+inline int cudaGetLastError(){int old=mock_pending_error;mock_pending_error=0;return old;}
+inline int cudaPeekAtLastError(){return mock_pending_error;}
 inline const char *cudaGetErrorString(int){return "mock CUDA error";}
 inline int cudaMemGetInfo(size_t *f,size_t *t){*f=*t=size_t(16)<<30;return 0;}
 template<class T> inline int cudaMalloc(T **p,size_t n){*p=static_cast<T *>(std::malloc(n));if(!*p)return 1;allocations[*p]={n,mock_device};return 0;}
@@ -133,6 +137,17 @@ inline cublasStatus_t cublasZaxpy(cublasHandle_t h,int n,const cuDoubleComplex *
 
 '''
 fixture = (root / "tests/mgpu_gemm_smoke.cu").read_text()
+fixture = fixture.replace('int main(int argc,char **argv) {', r'''
+int main(int argc,char **argv) {
+    mock_pending_error=700;
+    cublasStatus_t pending_status=CUBLAS_STATUS_SUCCESS;
+    const int handled=openmx_mgpuDgemmTry(nullptr,0,nullptr,CUBLAS_OP_N,CUBLAS_OP_N,
+        0,0,0,nullptr,nullptr,1,nullptr,1,nullptr,nullptr,1,&pending_status);
+    require(handled==1 && pending_status==CUBLAS_STATUS_EXECUTION_FAILED,
+        "pending caller error must fail before dispatch");
+    require(mock_pending_error==700,"pending caller error must be preserved");
+    mock_pending_error=0;
+''')
 fixture = re.sub(r"__global__ void delay_input\([^)]*\) \{.*?\n\}", "", fixture, flags=re.S)
 fixture = re.sub(r"^\s*delay_input<<<.*?;\n", "\n", fixture, flags=re.M)
 fixture = fixture.replace('    openmx_mgpuGemmStagingEnd();\n    setenv("OPENMX_MGPU_GEMM_PAGEABLE","1",1);',

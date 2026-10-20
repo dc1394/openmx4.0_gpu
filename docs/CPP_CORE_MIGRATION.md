@@ -5,6 +5,14 @@
 この文書は完了した移行単位と、残っている作業を記録します。
 OpenMX 本体全体の C++ 化、大域変数ゼロ、全カーネルの Kokkos 化はまだ完了していません。
 
+2026-10-20 のレビュー対応では、C ABI ヘッダーを `core/include/` へ移し、
+コアの `source/` 依存を除去しました。`source/` の同名ヘッダーは互換インクルードです。
+本体の共通ヘッダーにあった外部変数と `g_exx` の定義計1,155個は
+`source/openmx_globals.c` に一本化しました。大域状態の使用を減らす作業は継続します。
+また、SDK に依存しないデバイス能力記述とコア単独の SYCL ビルドを導入し、
+macOS 上の CPU 検査を CI に追加しました。修正項目・実行結果・未検証の範囲は
+[レビュー対応記録](CODE_REVIEW_20261020.md) を参照してください。
+
 ## 導入した構成
 
 `core/` は、MPI や OpenMX の大域変数ヘッダーを必要とせずにビルド・テストできる
@@ -29,8 +37,8 @@ C++20 の言語機能である named modules は使用していません。
 | 波数空間の補間 | `core/src/radial_table.cpp` | 波数を `i*step` で求め、PAO/projector の共通補間へ渡す。格子配列を所有せず、`NormK` を必要としない。 |
 | PAO/NLP/VNA・軌道積の Fourier 変換 | `core/src/radial.cpp` | 半径、積分の測度・方式、波数、チャネル、サンプルを明示的に受け取る。ホスト配列は `Tensor`、実行用配列は `Kokkos::View` が所有。 |
 | FFT グリッド検証 | `core/include/openmx/core/fft_grid.hpp` | 正の整数を 2、3、5、7 の積に分解できるか判定。大域の可変テーブルを持たない。 |
-| 周期セル逆引き | `source/openmx_periodic.h` | セルの半径と座標から添字を直接計算。逆引き用の所有配列を持たない。 |
-| 既存 C との境界 | `source/openmx_core*.h`、`core/src/c_api.cpp`、`core/src/{pao,vps,product}_compat.hpp` | 不透明なコンテキストと C ABI。入力表、出力先、実行デバイス、エラー出力先を引数で受け取る。固定寸法の互換ポインタ表は共通の `legacy_rows.hpp`、可変長の軌道積表は `product_compat.hpp` で構築する。 |
+| 周期セル逆引き | `core/include/openmx_periodic.h` | セルの半径と座標から添字を直接計算。逆引き用の所有配列を持たない。 |
+| 既存 C との境界 | `core/include/openmx_core*.h`、`core/src/c_api.cpp`、`core/src/{pao,vps,product}_compat.hpp` | 不透明なコンテキストと C ABI。入力表、出力先、実行デバイス、エラー出力先を引数で受け取る。固定寸法の互換ポインタ表は共通の `legacy_rows.hpp`、可変長の軌道積表は `product_compat.hpp` で構築する。 |
 
 `source/FT_PAO.c`、`FT_NLP.c`、`FT_VNA.c`、`FT_ProductPAO.c`、`FT_ProExpn_VNA.c` は入出力・MPI 通信と新ライブラリの接続を担います。
 従来の `double*** TmpRF` / `TmpNRF`、`double** SphB`、VNA の一時配列と
@@ -231,6 +239,24 @@ OMP_NUM_THREADS=2 OMP_PROC_BIND=false ctest --test-dir build/core-openmp --outpu
 `-DCMAKE_CXX_STANDARD=23` だけでは、標準ライブラリに存在しない `std::mdspan` は
 利用できません。`core-tensor` テストの出力で `mdspan=std` / `mdspan=Kokkos` を確認できます。
 `-DOPENMX_CORE_FORCE_KOKKOS_MDSPAN=ON` で後者を明示的に検証できます。
+
+### Intel / SYCL コア
+
+```sh
+cmake -S core -B build/core-sycl \
+  -DCMAKE_CXX_COMPILER=icpx -DOPENMX_CORE_BACKEND=SYCL \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build/core-sycl --parallel 4
+```
+
+コア単独の SYCL 実行空間を構築します。OpenMX 本体の Intel GPU 対応は未実装です。
+選択した SYCL デバイスの FP64 能力を確認し、FP64 が使えなければ動径変換を
+CPU で実行します。`Context::last_fallback()` で理由を取得でき、
+`OPENMX_CORE_VERBOSE=1` では理由を一度ずつ表示します。
+外部が所有する Kokkos ランタイムや、コンテキストと異なるデバイスを
+要求された場合の CPU 実行も区別できます。
+IntelLLVM には `-fp-model=precise -ffp-contract=off` を適用し、
+公開インライン関数を使う側にも同じ演算規則を伝えます。
 
 ### OpenMX 本体と CUDA
 

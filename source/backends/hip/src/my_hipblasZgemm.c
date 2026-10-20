@@ -220,7 +220,7 @@ void my_hipblasZgemm(hipblasOperation_t transa, hipblasOperation_t transb, int m
         wait_hipfunc(hipFree(d_B));
     if (d_C != NULL)
         wait_hipfunc(hipFree(d_C));
-    wait_hipfunc(hipblasDestroy(handle));
+    OpenMXBlasWait(hipblasDestroy(handle));
     return;
 
 cpu_fallback:

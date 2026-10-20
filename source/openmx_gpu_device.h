@@ -12,12 +12,14 @@
 #define OpenMXGpuBindRank set_hip_default_device_from_local_rank
 #define OpenMXGpuBindRankLocal set_hip_default_device_from_local_rank_noncollective
 #define OpenMXOffloadBindRank set_openmp_nvidia_device_from_local_rank
-#else
+#elif OPENMX_GPU_CUDA
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
 #define OpenMXGpuBindRank set_cuda_default_device_from_local_rank
 #define OpenMXGpuBindRankLocal set_cuda_default_device_from_local_rank_noncollective
 #define OpenMXOffloadBindRank set_openacc_nvidia_device_from_local_rank
+#else
+#error "This native adapter supports CUDA/HIP only; use the portable core for other backends"
 #endif
 
 #endif /* OPENMX_GPU_DEVICE_H */

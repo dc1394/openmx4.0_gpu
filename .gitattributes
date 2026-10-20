@@ -3,3 +3,4 @@ source/Free_Arrays.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at
 source/openmx_common.h whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 source/truncation.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 source/Generate_Wannier.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Cluster_DFT_NonCol_DMmu.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

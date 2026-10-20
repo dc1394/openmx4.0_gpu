@@ -3,6 +3,8 @@
 #include "openmx_gpu_runtime.h"
 /* Noncollective, bounded per-device workers for existing GPU operations. */
 #include "openmx_gpu_workers.h"
+#include "openmx_gpu_error.h"
+#include "openmx_gpu_architecture.h"
 #include "openmx_mgpu_runtime.h"
 
 #if !OPENMX_GPU_HIP
@@ -53,19 +55,26 @@ int openmx_gpu_workers_capacity_enabled(void)
     return openmx_mgpu_pool_devices(devices,OPENMX_GPU_WORKERS_MAX)>0;
 }
 
-int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
-    OpenMXGpuWorkerCost cost,void *context)
+static size_t worker_cost(OpenMXGpuWorkerCost cost,OpenMXGpuWorkerDeviceCost device_cost,
+    void *context,int worker,int count,int device)
+{
+    return device_cost ? device_cost(context,worker,count,device) : cost(context,worker,count);
+}
+
+static int workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
+    OpenMXGpuWorkerCost cost,OpenMXGpuWorkerDeviceCost device_cost,void *context)
 {
     int owner=-1,ids[OPENMX_GPU_WORKERS_MAX],available[OPENMX_GPU_WORKERS_MAX]={0};
     size_t room[OPENMX_GPU_WORKERS_MAX]={0};
     const size_t reserve=(size_t)256*1024*1024;
     memset(pool,0,sizeof(*pool)); pool->items=items;
     if (!items) return 1;
-    if (!cost || OpenMXGpuGetDevice(&owner)!=OPENMX_GPU_SUCCESS || owner<0) return 0;
+    if ((!cost && !device_cost) || OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS ||
+        OpenMXGpuGetDevice(&owner)!=OPENMX_GPU_SUCCESS || owner<0) return 0;
     /* No other device is even queried when the ordinary owner fits. */
     size_t free_bytes=0,total=0;
     int owner_fits=OpenMX_GpuMemGetInfo(&free_bytes,&total)==OPENMX_GPU_SUCCESS &&
-        free_bytes>reserve && cost(context,0,1)<=free_bytes-reserve;
+        free_bytes>reserve && worker_cost(cost,device_cost,context,0,1,owner)<=free_bytes-reserve;
     if (owner_fits && (!workers_enabled() || worker_device>=0)) {
         pool->devices[0]=owner; pool->count=1; return 1;
     }
@@ -92,7 +101,8 @@ int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
             int fits=1,chosen[OPENMX_GPU_WORKERS_MAX],used[OPENMX_GPU_WORKERS_MAX]={0};
             int assigned[OPENMX_GPU_WORKERS_MAX]={0};
             size_t need[OPENMX_GPU_WORKERS_MAX];
-            for (int i=0;i<n;i++) need[i]=cost(context,i,n);
+            for (int i=0;i<n;i++)
+                need[i]=worker_cost(cost,device_cost,context,i,n,kind==2?ids[i]:owner);
             /* Place the largest shard first. Exact dense scopes retain
                their order; other callers can skip a full local device. */
             for (int step=0;step<n;step++) {
@@ -103,9 +113,12 @@ int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
                 if (kind==2) {
                     if (available[slot] && need[slot]!=SIZE_MAX && need[slot]<=room[slot]) device=slot;
                 } else {
-                    for (int i=0;i<count;i++) if (!used[i] && available[i] &&
-                        need[slot]!=SIZE_MAX && need[slot]<=room[i]) {
-                        if (device<0 || ids[i]==owner || (ids[device]!=owner && room[i]<room[device])) device=i;
+                    for (int i=0;i<count;i++) if (!used[i] && available[i]) {
+                        const size_t required=device_cost ?
+                            device_cost(context,slot,n,ids[i]) : need[slot];
+                        if (required!=SIZE_MAX && required<=room[i] &&
+                            (device<0 || ids[i]==owner || (ids[device]!=owner && room[i]<room[device])))
+                            device=i;
                     }
                 }
                 if (device<0) {fits=0;break;}
@@ -120,8 +133,24 @@ int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
     }
     if (OpenMXGpuSetDevice(owner)!=OPENMX_GPU_SUCCESS) { pool->count=0; return 0; }
     if (!pool->count && owner_fits) { pool->devices[0]=owner; pool->count=1; }
-    (void)OpenMXGpuGetLastError();
+    const OpenMXGpuError pending=OpenMXGpuPeekAtLastError();
+    if (pending!=OPENMX_GPU_SUCCESS) {
+        if (pending==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
+        pool->count=0;
+    }
     return pool->count>0;
+}
+
+int openmx_gpu_workers_capacity(OpenMXGpuWorkers *pool,size_t items,int kind,
+    OpenMXGpuWorkerCost cost,void *context)
+{
+    return workers_capacity(pool,items,kind,cost,NULL,context);
+}
+
+int openmx_gpu_workers_capacity_device(OpenMXGpuWorkers *pool,size_t items,int kind,
+    OpenMXGpuWorkerDeviceCost cost,void *context)
+{
+    return workers_capacity(pool,items,kind,NULL,cost,context);
 }
 
 static void worker_pool(OpenMXGpuWorkers *pool, size_t items, int kind)
@@ -224,7 +253,10 @@ static int prepare_device(int device)
         OpenMX_GpuMemGetInfo(&available,&capacity)==OPENMX_GPU_SUCCESS &&
         available>=(size_t)256*1024*1024;
     if (OpenMXGpuSetDevice(original)!=OPENMX_GPU_SUCCESS) return 0;
-    if (!enough) { (void)OpenMXGpuGetLastError();return 0; }
+    if (!enough) {
+        if (OpenMXGpuPeekAtLastError()==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
+        return 0;
+    }
     WorkerBinding saved;
     int ok=bind_worker(device,&saved);
     if (ok) {
@@ -247,31 +279,53 @@ static int prepare_device(int device)
 #endif
         }
     }
-    if (!ok) (void)OpenMXGpuGetLastError();
+    if (!ok && OpenMXGpuPeekAtLastError()==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
     restore_worker(&saved);
     if (ok) device_ready[device]=1;
     return ok;
 }
 
-int openmx_gpu_device_weak_fp64(int device)
+int openmx_gpu_device_capabilities(int device, OpenMXAcceleratorCapabilities *caps)
 {
+    if (!caps) return 0;
+    *caps=(OpenMXAcceleratorCapabilities){
+        (OpenMXAcceleratorBackend)OPENMX_GPU_BACKEND,OPENMX_FP64_UNKNOWN,OPENMX_MEMORY_UNKNOWN,0};
+    if (OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS) return 0;
 #if OPENMX_GPU_HIP
-    (void)device;
-    return 0;
+    hipDeviceProp_t prop;
+    if (hipGetDeviceProperties(&prop,device)!=hipSuccess) return 0;
+    caps->memory=prop.integrated ? OPENMX_MEMORY_SHARED : OPENMX_MEMORY_DISCRETE;
+    caps->fp64=!prop.arch.hasDoubles ? OPENMX_FP64_UNAVAILABLE :
+        openmx_amd_high_throughput_fp64(prop.gcnArchName) ?
+            OPENMX_FP64_NATIVE_HIGH_THROUGHPUT : OPENMX_FP64_NATIVE;
 #else
     int ratio=0;
-    if(cudaDeviceGetAttribute(&ratio,cudaDevAttrSingleToDoublePrecisionPerfRatio,device)!=cudaSuccess){
-        (void)cudaGetLastError();return 0;
-    }
-    return ratio>=8;
+    if(cudaDeviceGetAttribute(&ratio,cudaDevAttrSingleToDoublePrecisionPerfRatio,device)!=cudaSuccess)
+        return 0;
+    caps->fp32_to_fp64_ratio=ratio;
+    caps->fp64=ratio>0 && ratio<8 ? OPENMX_FP64_NATIVE_HIGH_THROUGHPUT : OPENMX_FP64_NATIVE;
 #endif
+    return 1;
+}
+
+int openmx_gpu_device_weak_fp64(int device)
+{
+    OpenMXAcceleratorCapabilities caps;
+    return openmx_gpu_device_capabilities(device,&caps) &&
+        caps.fp64==OPENMX_FP64_NATIVE && (caps.backend==OPENMX_ACCELERATOR_HIP ||
+        caps.fp32_to_fp64_ratio>=8);
 }
 
 int openmx_gpu_worker_can_overlap(int device)
 {
     const char *control=getenv("OPENMX_GPU_WORKER_OVERLAP");
     if(control && *control && strcmp(control,"auto")!=0)return atoi(control)!=0;
-    return openmx_gpu_device_weak_fp64(device);
+    /* Only the CUDA implementation currently has a calibrated overlap
+       default. Avoid a device query on every HIP task just to return false. */
+    if(OPENMX_GPU_BACKEND!=OPENMX_BACKEND_CUDA)return 0;
+    OpenMXAcceleratorCapabilities caps;
+    return openmx_gpu_device_capabilities(device,&caps) &&
+        openmx_accelerator_default_worker_overlap(caps);
 }
 
 static int run_workers(const OpenMXGpuWorkers *pool,
@@ -282,8 +336,8 @@ static int run_workers(const OpenMXGpuWorkers *pool,
     if (!pool->count) return pool->items==0;
     /* Nested worker launch would deadlock the shared admission mutex. */
     if (worker_device>=0) return 0;
+    if (OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS) return 0;
     if (gpu_rank_device_usable() && OpenMXGpuDeviceSynchronize()!=OPENMX_GPU_SUCCESS) return 0;
-    (void)OpenMXGpuGetLastError();
     void *admission=openmx_mgpu_admit_devices(pool->devices,pool->count);
     if (!admission) return 0;
     for (int i=0;i<pool->count;i++)
@@ -313,7 +367,8 @@ static int run_workers(const OpenMXGpuWorkers *pool,
         if (!success && ok && phase>=OPENMX_GPU_WORKER_COMMIT) {
             fprintf(stderr,"<OpenMX_MGPU> %s failed during result publication or cleanup; refusing an accumulating CPU retry.\n",label?label:"worker");
             if(admission)openmx_mgpu_release_devices(admission);
-            exit(EXIT_FAILURE);
+            openmx_gpu_fatal("GPU worker failed during result publication or cleanup",
+                __FILE__, __LINE__);
         }
         ok &= success;
         if(ok && overlap && phase==OPENMX_GPU_WORKER_PREPARE){

@@ -43,7 +43,7 @@
 #define OPENMX_BLAS_ALLOC_FAILED HIPBLAS_STATUS_ALLOC_FAILED
 #define OPENMX_BLAS_EXECUTION_FAILED HIPBLAS_STATUS_EXECUTION_FAILED
 #define OPENMX_BLAS_INVALID_VALUE HIPBLAS_STATUS_INVALID_VALUE
-#else
+#elif OPENMX_GPU_CUDA
 #include <cublas_v2.h>
 #define OpenMXBlasHandle cublasHandle_t
 #define OpenMXBlasOperation cublasOperation_t
@@ -79,6 +79,8 @@
 #define OPENMX_BLAS_ALLOC_FAILED CUBLAS_STATUS_ALLOC_FAILED
 #define OPENMX_BLAS_EXECUTION_FAILED CUBLAS_STATUS_EXECUTION_FAILED
 #define OPENMX_BLAS_INVALID_VALUE CUBLAS_STATUS_INVALID_VALUE
+#else
+#error "This native adapter supports CUDA/HIP only; use the portable core for other backends"
 #endif
 
 #endif /* OPENMX_GPU_BLAS_H */

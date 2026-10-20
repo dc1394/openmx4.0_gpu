@@ -357,7 +357,7 @@ static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws)
   if (ws->d_B    != NULL) wait_hipfunc(hipFree(ws->d_B));
   if (ws->d_C    != NULL) wait_hipfunc(hipFree(ws->d_C));
   if (ws->h_A    != NULL) free(ws->h_A);
-  if (ws->hipblas   != NULL) wait_hipfunc(hipblasDestroy(ws->hipblas));
+  if (ws->hipblas   != NULL) OpenMXBlasWait(hipblasDestroy(ws->hipblas));
   if (ws->stream   != NULL) wait_hipfunc(hipStreamDestroy(ws->stream));
   memset(ws,0,sizeof(Krylov_GPU_Workspace));
 }
@@ -376,7 +376,7 @@ static int Krylov_GPU_EnsureHipblas(Krylov_GPU_Workspace *ws)
       Krylov_GPU_ReportAllocFailure("hipblasCreate", 0, "hipBLAS handle creation failed");
       return 0;
     }
-    wait_hipfunc(hipblasSetStream(handle, ws->stream));
+    OpenMXBlasWait(hipblasSetStream(handle, ws->stream));
     ws->hipblas = handle;
   }
   return 1;

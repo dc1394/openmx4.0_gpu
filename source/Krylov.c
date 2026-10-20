@@ -346,8 +346,8 @@ static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws)
   if (ws->d_work != NULL) wait_cudafunc(cudaFree(ws->d_work));
   if (ws->h_work != NULL) free(ws->h_work);
   if (ws->h_A    != NULL) free(ws->h_A);
-  if (ws->gpusolver != NULL) wait_cudafunc(cusolverDnDestroy(ws->gpusolver));
-  if (ws->cublas   != NULL) wait_cudafunc(cublasDestroy(ws->cublas));
+  if (ws->gpusolver != NULL) OpenMXSolverWait(cusolverDnDestroy(ws->gpusolver));
+  if (ws->cublas   != NULL) OpenMXBlasWait(cublasDestroy(ws->cublas));
   if (ws->stream   != NULL) wait_cudafunc(cudaStreamDestroy(ws->stream));
   memset(ws,0,sizeof(Krylov_GPU_Workspace));
 }
@@ -355,16 +355,16 @@ static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws)
 static void Krylov_GPU_EnsureCublas(Krylov_GPU_Workspace *ws)
 {
   if (ws->cublas == NULL){
-    wait_cudafunc(cublasCreate(&ws->cublas));
-    wait_cudafunc(cublasSetStream(ws->cublas, ws->stream));
+    OpenMXBlasWait(cublasCreate(&ws->cublas));
+    OpenMXBlasWait(cublasSetStream(ws->cublas, ws->stream));
   }
 }
 
 static void Krylov_GPU_EnsureGpusolver(Krylov_GPU_Workspace *ws)
 {
   if (ws->gpusolver == NULL){
-    wait_cudafunc(cusolverDnCreate(&ws->gpusolver));
-    wait_cudafunc(cusolverDnSetStream(ws->gpusolver, ws->stream));
+    OpenMXSolverWait(cusolverDnCreate(&ws->gpusolver));
+    OpenMXSolverWait(cusolverDnSetStream(ws->gpusolver, ws->stream));
   }
 }
 
@@ -403,7 +403,7 @@ static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
   wait_cudafunc(cudaMemcpyAsync(ws->d_B, B, sizeof(double)*count_B,
                                 cudaMemcpyHostToDevice, ws->stream));
 
-  wait_cudafunc(openmx_gemmul8Dgemm(ws->cublas, transa, transb, m, n, k,
+  OpenMXBlasWait(openmx_gemmul8Dgemm(ws->cublas, transa, transb, m, n, k,
                                     &alpha, ws->d_A, lda, ws->d_B, ldb, &beta, ws->d_C, ldc));
 
   wait_cudafunc(cudaMemcpyAsync(C, ws->d_C, sizeof(double)*count_C,
@@ -445,7 +445,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   size_t h_work_bytes = 0;
 
   if (n == EVmax){
-    wait_cudafunc(cusolverDnXsyevd_bufferSize(ws->gpusolver, NULL, jobz, uplo,
+    OpenMXSolverWait(cusolverDnXsyevd_bufferSize(ws->gpusolver, NULL, jobz, uplo,
                                               n, CUDA_R_64F, ws->d_A, n,
                                               CUDA_R_64F, ws->d_W, CUDA_R_64F,
                                               &d_work_bytes, &h_work_bytes));
@@ -454,7 +454,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   else{
     cusolverEigRange_t range = CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ws->gpusolver, NULL, jobz, range, uplo,
+    OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ws->gpusolver, NULL, jobz, range, uplo,
                                                n, CUDA_R_64F, ws->d_A, n,
                                                &vl, &vu, 1L, EVmax, &h_meig,
                                                CUDA_R_64F, ws->d_W, CUDA_R_64F,
@@ -465,7 +465,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   Krylov_GPU_EnsureHostWork(ws,h_work_bytes);
 
   if (n == EVmax){
-    wait_cudafunc(cusolverDnXsyevd(ws->gpusolver, NULL, jobz, uplo,
+    OpenMXSolverWait(cusolverDnXsyevd(ws->gpusolver, NULL, jobz, uplo,
                                    n, CUDA_R_64F, ws->d_A, n,
                                    CUDA_R_64F, ws->d_W, CUDA_R_64F,
                                    ws->d_work, d_work_bytes,
@@ -474,7 +474,7 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   else{
     cusolverEigRange_t range = CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx(ws->gpusolver, NULL, jobz, range, uplo,
+    OpenMXSolverWait(cusolverDnXsyevdx(ws->gpusolver, NULL, jobz, range, uplo,
                                     n, CUDA_R_64F, ws->d_A, n,
                                     &vl, &vu, 1L, EVmax, &h_meig,
                                     CUDA_R_64F, ws->d_W, CUDA_R_64F,
@@ -774,7 +774,7 @@ static int Krylov_Eigen2_Device(Krylov_GPU_Workspace *ws, double *a, int csize, 
   wait_cudafunc(cudaMemcpyAsync(ws->d_A, ws->h_A, sizeof(double)*(size_t)n*(size_t)n,
                                 cudaMemcpyHostToDevice, ws->stream));
 
-  wait_cudafunc(cusolverDnXsyevd_bufferSize(ws->gpusolver, NULL, jobz, uplo,
+  OpenMXSolverWait(cusolverDnXsyevd_bufferSize(ws->gpusolver, NULL, jobz, uplo,
                                             n, CUDA_R_64F, ws->d_A, n,
                                             CUDA_R_64F, ws->d_W, CUDA_R_64F,
                                             &d_work_bytes, &h_work_bytes));
@@ -782,7 +782,7 @@ static int Krylov_Eigen2_Device(Krylov_GPU_Workspace *ws, double *a, int csize, 
   Krylov_GPU_EnsureDeviceWork(ws,d_work_bytes);
   Krylov_GPU_EnsureHostWork(ws,h_work_bytes);
 
-  wait_cudafunc(cusolverDnXsyevd(ws->gpusolver, NULL, jobz, uplo,
+  OpenMXSolverWait(cusolverDnXsyevd(ws->gpusolver, NULL, jobz, uplo,
                                  n, CUDA_R_64F, ws->d_A, n,
                                  CUDA_R_64F, ws->d_W, CUDA_R_64F,
                                  ws->d_work, d_work_bytes,
@@ -867,13 +867,13 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws, int spin, int Mc_
   if (profile) dtime(&t2);
 
   /* C = H_DC * u1 */
-  wait_cudafunc(openmx_gemmul8Dgemm(ws->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m3, n,
+  OpenMXBlasWait(openmx_gemmul8Dgemm(ws->cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m3, n,
                                     &alpha, ws->d_A, n, d_KU, n, &beta, ws->d_C, n));
 
   if (profile) dtime(&t3);
 
   /* u1^+ * H_DC * u1 (the projected Hamiltonian replaces H_DC on the host) */
-  wait_cudafunc(openmx_gemmul8Dgemm(ws->cublas, CUBLAS_OP_T, CUBLAS_OP_N, m3, m3, n,
+  OpenMXBlasWait(openmx_gemmul8Dgemm(ws->cublas, CUBLAS_OP_T, CUBLAS_OP_N, m3, m3, n,
                                     &alpha, d_KU, n, ws->d_C, n, &beta, ws->d_A, m3));
 
   if (profile) dtime(&t4);
@@ -911,7 +911,7 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws, int spin, int Mc_
 
   /* back transformation of eigenvectors: c = u1 * b */
 
-  wait_cudafunc(openmx_gemmul8Dgemm(ws->cublas, CUBLAS_OP_T, CUBLAS_OP_T, m3, n, m3,
+  OpenMXBlasWait(openmx_gemmul8Dgemm(ws->cublas, CUBLAS_OP_T, CUBLAS_OP_T, m3, n, m3,
                                     &alpha, ws->d_A, m3, d_KU, n, &beta, ws->d_C, m3));
 
   wait_cudafunc(cudaMemcpyAsync(C, ws->d_C, sizeof(double)*(size_t)m3*(size_t)n,

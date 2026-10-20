@@ -31,6 +31,7 @@
 #include "omp.h"
 #if !OPENMX_GPU_HIP
 #include <openacc.h>
+extern void acc_clear_freelists(void);
 #endif
 
 #include "tran_prototypes.h"

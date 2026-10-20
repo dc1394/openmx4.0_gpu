@@ -3,8 +3,7 @@
 
 /*
  * hipSOLVER compatibility header for OpenMX's own sources.
- * C++ TUs use the real ROCm hipSOLVER header; plain C TUs get the small set of
- * hipSOLVER prototypes/enums OpenMX calls, plus the generic-API emulation
+ * C and C++ TUs use the real ROCm hipSOLVER header, plus generic-API emulation
  * wrappers (hipsolverDnXsyevd / hipsolverDnXsyevdx) built on the typed hipSOLVER
  * entry points.  See hip_runtime_compat.h for why the CUDA-named shim headers
  * are kept in the tree for the third-party libraries.
@@ -22,86 +21,7 @@
 #include "hip_runtime_compat.h"
 #include "hipblas_compat.h"
 
-#ifdef __cplusplus
 #include <hipsolver/hipsolver.h>
-#else
-typedef struct hipsolverDnContext *hipsolverDnHandle_t;
-typedef int hipsolverStatus_t;
-typedef enum {
-    HIPSOLVER_EIG_MODE_NOVECTOR = 201,
-    HIPSOLVER_EIG_MODE_VECTOR = 202
-} hipsolverEigMode_t;
-typedef enum {
-    HIPSOLVER_EIG_RANGE_ALL = 221,
-    HIPSOLVER_EIG_RANGE_V = 222,
-    HIPSOLVER_EIG_RANGE_I = 223
-} hipsolverEigRange_t;
-/* the values of ROCm 7.2's hipsolver/internal/hipsolver-types.h */
-enum {
-    HIPSOLVER_STATUS_SUCCESS = 0,
-    HIPSOLVER_STATUS_NOT_INITIALIZED = 1,
-    HIPSOLVER_STATUS_ALLOC_FAILED = 2,
-    HIPSOLVER_STATUS_INVALID_VALUE = 3,
-    HIPSOLVER_STATUS_MAPPING_ERROR = 4,
-    HIPSOLVER_STATUS_EXECUTION_FAILED = 5,
-    HIPSOLVER_STATUS_INTERNAL_ERROR = 6,
-    HIPSOLVER_STATUS_NOT_SUPPORTED = 7,
-    HIPSOLVER_STATUS_ARCH_MISMATCH = 8,
-    HIPSOLVER_STATUS_HANDLE_IS_NULLPTR = 9,
-    HIPSOLVER_STATUS_INVALID_ENUM = 10,
-    HIPSOLVER_STATUS_UNKNOWN = 11
-};
-hipsolverStatus_t hipsolverDnCreate(hipsolverDnHandle_t *handle);
-hipsolverStatus_t hipsolverDnDestroy(hipsolverDnHandle_t handle);
-hipsolverStatus_t hipsolverDnSetStream(hipsolverDnHandle_t handle, hipStream_t streamId);
-hipsolverStatus_t hipsolverDnGetStream(hipsolverDnHandle_t handle, hipStream_t *streamId);
-hipsolverStatus_t hipsolverDnSsyevd_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, const float *A, int lda, const float *W, int *lwork);
-hipsolverStatus_t hipsolverDnSsyevd(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, float *A, int lda, float *W, float *work, int lwork,
-    int *devInfo);
-hipsolverStatus_t hipsolverDnDsyevd_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, const double *A, int lda, const double *W, int *lwork);
-hipsolverStatus_t hipsolverDnDsyevd(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, double *A, int lda, double *W, double *work, int lwork,
-    int *devInfo);
-hipsolverStatus_t hipsolverDnCheevd_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, const hipFloatComplex *A, int lda, const float *W, int *lwork);
-hipsolverStatus_t hipsolverDnCheevd(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, hipFloatComplex *A, int lda, float *W, hipFloatComplex *work,
-    int lwork, int *devInfo);
-hipsolverStatus_t hipsolverDnZheevd_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, const hipDoubleComplex *A, int lda, const double *W, int *lwork);
-hipsolverStatus_t hipsolverDnZheevd(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipblasFillMode_t uplo, int n, hipDoubleComplex *A, int lda, double *W, hipDoubleComplex *work,
-    int lwork, int *devInfo);
-hipsolverStatus_t hipsolverDnSsyevdx_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, const float *A, int lda, float vl, float vu,
-    int il, int iu, int *nev, const float *W, int *lwork);
-hipsolverStatus_t hipsolverDnSsyevdx(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, float *A, int lda, float vl, float vu,
-    int il, int iu, int *nev, float *W, float *work, int lwork, int *devInfo);
-hipsolverStatus_t hipsolverDnDsyevdx_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, const double *A, int lda, double vl, double vu,
-    int il, int iu, int *nev, const double *W, int *lwork);
-hipsolverStatus_t hipsolverDnDsyevdx(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, double *A, int lda, double vl, double vu,
-    int il, int iu, int *nev, double *W, double *work, int lwork, int *devInfo);
-hipsolverStatus_t hipsolverDnCheevdx_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, const hipFloatComplex *A, int lda,
-    float vl, float vu, int il, int iu, int *nev, const float *W, int *lwork);
-hipsolverStatus_t hipsolverDnCheevdx(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, hipFloatComplex *A, int lda,
-    float vl, float vu, int il, int iu, int *nev, float *W, hipFloatComplex *work, int lwork,
-    int *devInfo);
-hipsolverStatus_t hipsolverDnZheevdx_bufferSize(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, const hipDoubleComplex *A, int lda,
-    double vl, double vu, int il, int iu, int *nev, const double *W, int *lwork);
-hipsolverStatus_t hipsolverDnZheevdx(hipsolverDnHandle_t handle, hipsolverEigMode_t jobz,
-    hipsolverEigRange_t range, hipblasFillMode_t uplo, int n, hipDoubleComplex *A, int lda,
-    double vl, double vu, int il, int iu, int *nev, double *W, hipDoubleComplex *work, int lwork,
-    int *devInfo);
-#endif
 
 /*
  * Generic-API emulation wrappers (equivalent to cusolverDnXsyevd/Xsyevdx on the

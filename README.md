@@ -149,6 +149,13 @@ an ongoing migration; most application globals and legacy GPU kernels remain.
 See the [C++ core migration guide](docs/CPP_CORE_MIGRATION.md) for ownership,
 CUDA/HIP configuration, tests and the remaining work.
 
+The standalone core also supports a Kokkos SYCL build with an Intel SYCL
+compiler. Device capabilities are described without vendor SDK types; a SYCL
+device lacking FP64 uses the CPU radial implementation. Intel GPU support in
+the full application and a Metal implementation remain future work.
+The [2026-10-20 review response](docs/CODE_REVIEW_20261020.md) records these
+boundaries, GPU error-handling fixes and validation.
+
 The core defaults to the Serial backend independently of the legacy GPU
 backend. Set `OPENMX_CORE_BACKEND=CUDA` or `HIP` to run these radial transforms
 on the selected accelerator. Its unit tests can also run without MPI or a GPU:
@@ -495,7 +502,7 @@ Built during configuration or the first build:
 
 | Library | Version | Used for | Backend | Location |
 |---|---|---|---|---|
-| Kokkos / bundled mdspan | 5.2.2 | C++ core execution and multidimensional views | Serial, OpenMP, CUDA or HIP | CMake FetchContent; pinned release and SHA-256 in `core/CMakeLists.txt` |
+| Kokkos / bundled mdspan | 5.2.2 | C++ core execution and multidimensional views | Serial, OpenMP, CUDA, HIP; SYCL in the standalone core | CMake FetchContent; pinned release and SHA-256 in `core/CMakeLists.txt` |
 | ELPA | 2026.02.002 | CPU eigensolvers ("elpa1", "elpa2") and "gpusolver2" | both | `source/third_party/dist/` |
 | COSMA, COSTA, Tiled-MM | 2.8.4 and the commits it pins | distributed matrix products of "gpusolver2" | both | `source/third_party/dist/` |
 | GEMMul8 | v3.5.2 | FP64 matrix products emulated on integer tensor cores | both | Git submodule `source/third_party/GEMMul8` |

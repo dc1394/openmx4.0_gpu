@@ -37,15 +37,6 @@ extern int openmx_hipsolver_zheevd_gpu(int n, int maxn, void *d_A, double *w, in
 extern int openmx_gpu_eigensolver_use_hipsolver(void);
 extern void openmx_magma_ozaki2_release(void);
 extern int openmx_hipsolver_release_workspace(void);
-/* geam is outside the C subset of hipblas_compat.h */
-hipblasStatus_t hipblasDgeam(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m,
-                             int n, const double *alpha, const double *A, int lda, const double *beta,
-                             const double *B, int ldb, double *C, int ldc);
-hipblasStatus_t hipblasZgeam(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m,
-                             int n, const hipDoubleComplex *alpha, const hipDoubleComplex *A, int lda,
-                             const hipDoubleComplex *beta, const hipDoubleComplex *B, int ldb, hipDoubleComplex *C,
-                             int ldc);
-
 /* MAGMA's allocation failures (magma_types.h) */
 #define DC_MAGMA_ERR_HOST_ALLOC   (-112)
 #define DC_MAGMA_ERR_DEVICE_ALLOC (-113)
@@ -904,7 +895,7 @@ static void DC_GpuSolver_Destroy(void)
     if (ctx->h_matrix != NULL)
         wait_hipfunc(hipHostFree(ctx->h_matrix));
     if (ctx->hipblas != NULL)
-        wait_hipfunc(hipblasDestroy(ctx->hipblas));
+        OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
     if (ctx->stream != NULL)
         wait_hipfunc(hipStreamDestroy(ctx->stream));
 
@@ -2745,30 +2736,8 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                 }
             }
 
-            int use_dc_openmp = 0;
 
-            if (use_dc_openmp) {
-                size_t free_memory, total_memory;
-                size_t needmemsize = 0;
-                needmemsize += sizeof(double) * (SpinP_switch + 1) * (NUM + 1) * (NUM + 1);
-                needmemsize += sizeof(double) * (NUM + 1) * (NUM + 1);
-                needmemsize += sizeof(double) * (NUM + 1);
-                needmemsize += sizeof(double) * (NUM + 1) * (NUM + 1);
 
-                while (true) {
-                    OpenMX_GpuMemGetInfo(&free_memory, &total_memory);
-                    if (free_memory > needmemsize) {
-                        break;
-                    }
-
-                    double wait_time    = (double)rand() / (double)RAND_MAX * WAITTIME;
-                    double start_time   = MPI_Wtime();
-                    double current_time = start_time;
-                    while ((current_time - start_time) < wait_time) {
-                        current_time = MPI_Wtime();
-                    }
-                }
-            }
 
             for (spin = 0; spin <= SpinP_switch; spin++) {
 
@@ -2786,189 +2755,6 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                         }
                         NUM1 = DCCol_CPU_SolveHamiltonian(NUM, P_min, S_DC, H_DC[spin], ko, C);
                     }
-
-                } else if (use_dc_openmp) {
-                    // OpenMP
-
-                    /* transpose S */
-#pragma omp parallel for
-                    for (i1 = 1; i1 <= NUM; i1++) {
-                        for (j1 = i1 + 1; j1 <= NUM; j1++) {
-                            tmp1         = S_DC[i1][j1];
-                            tmp2         = S_DC[j1][i1];
-                            S_DC[i1][j1] = tmp2;
-                            S_DC[j1][i1] = tmp1;
-                        }
-                    }
-
-                    /* H * U * M1 */
-
-                    /***********************************************
-                             find the size of matrix for the atom Mc_AN
-                                    and set the MP vector
-
-                            Note:
-                            MP indicates the starting position of
-                                    atom i in arraies H and S
-                            ***********************************************/
-
-#pragma omp parallel for collapse(2)
-                    for (j1 = 1; j1 <= NUM - 3; j1 = j1 + 4) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            double sum1 = 0.0;
-                            double sum2 = 0.0;
-                            double sum3 = 0.0;
-                            double sum4 = 0.0;
-                            for (l = 1; l <= NUM; l++) {
-                                sum1 += H_DC[spin][i1][l] * S_DC[j1][l];
-                                sum2 += H_DC[spin][i1][l] * S_DC[j1 + 1][l];
-                                sum3 += H_DC[spin][i1][l] * S_DC[j1 + 2][l];
-                                sum4 += H_DC[spin][i1][l] * S_DC[j1 + 3][l];
-                            }
-                            C[j1][i1]     = sum1;
-                            C[j1 + 1][i1] = sum2;
-                            C[j1 + 2][i1] = sum3;
-                            C[j1 + 3][i1] = sum4;
-                        }
-                    }
-
-                    j1s = NUM - NUM % 4 + 1;
-#pragma omp parallel for collapse(2)
-                    for (j1 = j1s; j1 <= NUM; j1++) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            sum = 0.0;
-                            for (l = 1; l <= NUM; l++) {
-                                sum += H_DC[spin][i1][l] * S_DC[j1][l];
-                            }
-                            C[j1][i1] = sum;
-                        }
-                    }
-
-                    /* M1 * U^+ H * U * M1 */
-
-#pragma omp parallel for collapse(2)
-                    for (j1 = 1; j1 <= NUM - 3; j1 = j1 + 4) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            double sum1 = 0.0;
-                            double sum2 = 0.0;
-                            double sum3 = 0.0;
-                            double sum4 = 0.0;
-                            for (l = 1; l <= NUM; l++) {
-                                sum1 += S_DC[i1][l] * C[j1][l];
-                                sum2 += S_DC[i1][l] * C[j1 + 1][l];
-                                sum3 += S_DC[i1][l] * C[j1 + 2][l];
-                                sum4 += S_DC[i1][l] * C[j1 + 3][l];
-                            }
-                            H_DC[spin][j1][i1]     = sum1;
-                            H_DC[spin][j1 + 1][i1] = sum2;
-                            H_DC[spin][j1 + 2][i1] = sum3;
-                            H_DC[spin][j1 + 3][i1] = sum4;
-                        }
-                    }
-
-                    j1s = NUM - NUM % 4 + 1;
-#pragma omp parallel for collapse(2)
-                    for (j1 = j1s; j1 <= NUM; j1++) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            sum1 = 0.0;
-                            for (l = 1; l <= NUM; l++) {
-                                sum1 += S_DC[i1][l] * C[j1][l];
-                            }
-                            H_DC[spin][j1][i1] = sum1;
-                        }
-                    }
-
-                    /* H_DC to C (transposition) */
-
-#pragma omp parallel for collapse(2)
-                    for (i1 = P_min; i1 <= NUM; i1++) {
-                        for (j1 = P_min; j1 <= NUM; j1++) {
-                            C[j1 - (P_min - 1)][i1 - (P_min - 1)] = H_DC[spin][i1][j1];
-                        }
-                    }
-
-                    /***********************************************
-                             diagonalize the trasformed Hamiltonian matrix
-                            ************************************************/
-
-                    NUM1 = NUM - (P_min - 1);
-
-                    Eigen_lapack_openmp(C, ko, NUM1, NUM1);
-
-                    /* C to H (transposition) */
-
-#pragma omp parallel for collapse(2)
-                    for (i1 = 1; i1 <= NUM; i1++) {
-                        for (j1 = 1; j1 <= NUM1; j1++) {
-                            H_DC[spin][j1][i1] = C[i1][j1];
-                        }
-                    }
-
-                    /***********************************************
-                             transformation to the original eigen vectors.
-                                            NOTE 244P
-                            ***********************************************/
-
-                    /* transpose */
-
-#pragma omp parallel for
-                    for (i1 = 1; i1 <= NUM; i1++) {
-                        for (j1 = i1 + 1; j1 <= NUM; j1++) {
-                            tmp1         = S_DC[i1][j1];
-                            tmp2         = S_DC[j1][i1];
-                            S_DC[i1][j1] = tmp2;
-                            S_DC[j1][i1] = tmp1;
-                        }
-                    }
-
-#pragma omp parallel for collapse(2)
-                    for (j1 = 1; j1 <= NUM1; j1++) {
-                        for (l = NUM; P_min <= l; l--) {
-                            H_DC[spin][j1][l] = H_DC[spin][j1][l - (P_min - 1)];
-                        }
-                    }
-
-#pragma omp parallel for collapse(2)
-                    for (j1 = 1; j1 <= NUM - 3; j1 = j1 + 4) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            double sum1 = 0.0;
-                            double sum2 = 0.0;
-                            double sum3 = 0.0;
-                            double sum4 = 0.0;
-                            for (l = P_min; l <= NUM; l++) {
-                                sum1 += S_DC[i1][l] * H_DC[spin][j1][l];
-                                sum2 += S_DC[i1][l] * H_DC[spin][j1 + 1][l];
-                                sum3 += S_DC[i1][l] * H_DC[spin][j1 + 2][l];
-                                sum4 += S_DC[i1][l] * H_DC[spin][j1 + 3][l];
-                            }
-                            C[i1][j1]     = sum1;
-                            C[i1][j1 + 1] = sum2;
-                            C[i1][j1 + 2] = sum3;
-                            C[i1][j1 + 3] = sum4;
-                        }
-                    }
-
-                    j1s = NUM - NUM % 4 + 1;
-#pragma omp parallel for collapse(2)
-                    for (j1 = j1s; j1 <= NUM; j1++) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            sum = 0.0;
-                            for (l = P_min; l <= NUM; l++) {
-                                sum += S_DC[i1][l] * H_DC[spin][j1][l];
-                            }
-                            C[i1][j1] = sum;
-                        }
-                    }
-
-                    // compiler's bug
-                    Anum = 1;
-                    for (i = 0; i <= (FNAN[Gc_AN] + SNAN[Gc_AN]); i++) {
-                        MP[i] = Anum;
-                        Gi    = natn[Gc_AN][i];
-                        wanA  = WhatSpecies[Gi];
-                        Anum += Spe_Total_CNO[wanA];
-                    }
-                    NUM = Anum - 1;
 
                 } else {
                     if (!s_dc_host_filled) {

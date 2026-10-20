@@ -336,9 +336,29 @@ void borrowed_runtime_test() {
   {
     Context context;
     compare_reference(samples(),context.transform(samples(),device()));
+    require(context.last_fallback()==HostFallback::external_runtime,
+        "external Kokkos ownership must be observable");
     context.finish();
   }
   require(Kokkos::is_initialized(), "external runtime was finalized");
+}
+
+void capabilities_test() {
+  for (int b=OPENMX_ACCELERATOR_HOST; b<=OPENMX_ACCELERATOR_METAL; ++b) {
+    OpenMXAcceleratorCapabilities caps{static_cast<OpenMXAcceleratorBackend>(b),
+        OPENMX_FP64_UNKNOWN,OPENMX_MEMORY_SHARED,64};
+    require(!openmx_accelerator_can_run_fp64(caps), "unknown FP64 must not authorize work");
+    caps.fp64=OPENMX_FP64_UNAVAILABLE;
+    require(!openmx_accelerator_can_run_fp64(caps), "shared memory does not imply FP64");
+    require(!openmx_accelerator_default_worker_overlap(caps), "unavailable FP64 cannot overlap");
+    caps.fp64=OPENMX_FP64_NATIVE;
+    require(openmx_accelerator_can_run_fp64(caps), "native FP64 was rejected");
+    require(openmx_accelerator_default_worker_overlap(caps)==(b==OPENMX_ACCELERATOR_CUDA),
+        "CUDA overlap policy leaked to another backend");
+    caps.fp32_to_fp64_ratio=2;
+    caps.fp64=OPENMX_FP64_NATIVE_HIGH_THROUGHPUT;
+    require(!openmx_accelerator_default_worker_overlap(caps), "datacenter CUDA policy changed");
+  }
 }
 } // namespace
 
@@ -356,6 +376,7 @@ int main(int argc, char** argv) {
     else if (name == "c-api") require(openmx_core_run(argc,argv,c_entry) == 0, "C context scope failed");
     else if (name == "lifecycle") lifecycle_test();
     else if (name == "borrowed-runtime") borrowed_runtime_test();
+    else if (name == "capabilities") capabilities_test();
     else throw std::invalid_argument("unknown unit test case");
     std::cout << name << ": passed\n";
     return 0;

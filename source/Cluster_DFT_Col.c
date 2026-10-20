@@ -537,8 +537,8 @@ static void ClusterCol_GpuSolver_Destroy(void)
     if (ctx->d_info != NULL)     wait_cudafunc(cudaFree(ctx->d_info));
     if (ctx->d_work != NULL)     wait_cudafunc(cudaFree(ctx->d_work));
     if (ctx->h_work != NULL)     free(ctx->h_work);
-    if (ctx->gpusolver != NULL)   wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
-    if (ctx->cublas != NULL)     wait_cudafunc(cublasDestroy(ctx->cublas));
+    if (ctx->gpusolver != NULL)   OpenMXSolverWait(cusolverDnDestroy(ctx->gpusolver));
+    if (ctx->cublas != NULL)     OpenMXBlasWait(cublasDestroy(ctx->cublas));
     if (ctx->stream != NULL)     wait_cudafunc(cudaStreamDestroy(ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
@@ -558,10 +558,10 @@ static void ClusterCol_GpuSolver_Init(void)
     if (ctx->initialized) ClusterCol_GpuSolver_Destroy();
 
     wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
-    wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
-    wait_cudafunc(cublasSetStream(ctx->cublas, ctx->stream));
-    wait_cudafunc(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
+    OpenMXBlasWait(cublasCreate(&ctx->cublas));
+    OpenMXSolverWait(cusolverDnCreate(&ctx->gpusolver));
+    OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
+    OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized = 1;
     ctx->device_id   = current_device;
@@ -669,7 +669,7 @@ static int ClusterCol_TryEnsureEigenWorkspace(int n)
     size_t d_bytes = 0;
     size_t h_bytes = 0;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->gpusolver,NULL,jobz,CUSOLVER_EIG_RANGE_ALL,uplo,n,
+    OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ctx->gpusolver,NULL,jobz,CUSOLVER_EIG_RANGE_ALL,uplo,n,
                                                CUDA_R_64F,ctx->d_H,n,&vl,&vu,1L,n,&h_meig,
                                                CUDA_R_64F,ctx->d_W,CUDA_R_64F,&d_bytes,&h_bytes));
 
@@ -704,7 +704,7 @@ static void ClusterCol_GpuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
     ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx_bufferSize(ctx->gpusolver,NULL,jobz,range,uplo,n,
+    OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ctx->gpusolver,NULL,jobz,range,uplo,n,
                                                CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                                CUDA_R_64F,ctx->d_W,CUDA_R_64F,&d_bytes,&h_bytes));
 
@@ -745,7 +745,7 @@ static void ClusterCol_GpuSolver_EigenDevice(double *d_A, int n, int maxn, doubl
     ClusterCol_GpuSolver_EnsureWorkspace(n,maxn,d_A);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
-    wait_cudafunc(cusolverDnXsyevdx(ctx->gpusolver,NULL,jobz,range,uplo,n,
+    OpenMXSolverWait(cusolverDnXsyevdx(ctx->gpusolver,NULL,jobz,range,uplo,n,
                                     CUDA_R_64F,d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                     CUDA_R_64F,ctx->d_W,CUDA_R_64F,
                                     ctx->d_work,ctx->d_work_bytes,
@@ -781,7 +781,7 @@ static void ClusterCol_GpuSolver_PrepareTransformedSDevice(int rebuild, int n, d
         old_s = ctx->d_S;
         new_s = ctx->d_tmp;
         if (!openmx_gpu_transform(OPENMX_GPU_SCALE_COLUMNS,0,n,n,old_s,n,ctx->d_W,0,new_s,n,0,0.0))
-        wait_cudafunc(cublasDdgmm(ctx->cublas,CUBLAS_SIDE_RIGHT,n,n,
+        OpenMXBlasWait(cublasDdgmm(ctx->cublas,CUBLAS_SIDE_RIGHT,n,n,
                                   old_s,n,ctx->d_W,1,new_s,n));
 
         ctx->d_S = new_s;
@@ -816,7 +816,7 @@ static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOpera
     double const beta  = 0.0;
 
     ClusterCol_GpuSolver_Init();
-    wait_cudafunc(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.cublas, transa, transb, m, n, k,
+    OpenMXBlasWait(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.cublas, transa, transb, m, n, k,
                                       &alpha, A, lda, B, ldb, &beta, C, ldc));
 }
 
@@ -1028,10 +1028,10 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
        kept across the SCF step (OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0) the
        eigensolver workspace is secured first instead. */
     if (!trim_scratch) ClusterCol_GpuSolver_EnsureWorkspace(n,maxn,ctx->d_H);
-    wait_cudafunc(openmx_gemmul8DgemmFixed(ctx->cublas,0,CUBLAS_OP_N,n,n,n,
+    OpenMXBlasWait(openmx_gemmul8DgemmFixed(ctx->cublas,0,CUBLAS_OP_N,n,n,n,
                                            ctx->d_S,n,ctx->d_H,n,ctx->d_tmp,n,
                                            0,ctx->transformed_s_version));
-    wait_cudafunc(openmx_gemmul8DgemmFixed(ctx->cublas,1,CUBLAS_OP_T,n,n,n,
+    OpenMXBlasWait(openmx_gemmul8DgemmFixed(ctx->cublas,1,CUBLAS_OP_T,n,n,n,
                                            ctx->d_S,n,ctx->d_tmp,n,ctx->d_H,n,
                                            0,ctx->transformed_s_version));
     if (trim_scratch){

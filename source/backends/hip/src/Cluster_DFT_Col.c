@@ -695,7 +695,7 @@ static void ClusterCol_GpuSolver_Destroy(void)
     if (ctx->d_H != NULL)        wait_hipfunc(hipFree(ctx->d_H));
     if (ctx->d_tmp != NULL)      wait_hipfunc(hipFree(ctx->d_tmp));
     if (ctx->d_W != NULL)        wait_hipfunc(hipFree(ctx->d_W));
-    if (ctx->hipblas != NULL)     wait_hipfunc(hipblasDestroy(ctx->hipblas));
+    if (ctx->hipblas != NULL)     OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
     if (ctx->stream != NULL)     wait_hipfunc(hipStreamDestroy(ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
@@ -986,8 +986,8 @@ static void ClusterCol_GpuSolver_Init(void)
     if (ctx->initialized) ClusterCol_GpuSolver_Destroy();
 
     wait_hipfunc(hipStreamCreateWithFlags(&ctx->stream, hipStreamNonBlocking));
-    wait_hipfunc(hipblasCreate(&ctx->hipblas));
-    wait_hipfunc(hipblasSetStream(ctx->hipblas, ctx->stream));
+    OpenMXBlasWait(hipblasCreate(&ctx->hipblas));
+    OpenMXBlasWait(hipblasSetStream(ctx->hipblas, ctx->stream));
 
     ctx->initialized = 1;
     ctx->device_id   = current_device;
@@ -1152,7 +1152,7 @@ static void ClusterCol_GpuSolver_PrepareTransformedSDevice(int rebuild, int n, d
         new_s = ctx->d_tmp;
         if (!openmx_gpu_transform ||
             !openmx_gpu_transform(OPENMX_GPU_SCALE_COLUMNS,0,n,n,old_s,n,ctx->d_W,0,new_s,n,0,0.0))
-        wait_hipfunc(hipblasDdgmm(ctx->hipblas,HIPBLAS_SIDE_RIGHT,n,n,
+        OpenMXBlasWait(hipblasDdgmm(ctx->hipblas,HIPBLAS_SIDE_RIGHT,n,n,
                                   old_s,n,ctx->d_W,1,new_s,n));
 
         ctx->d_S = new_s;
@@ -1761,24 +1761,24 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
     if (use_gemm) {
         wait_hipfunc(ClusterCol_SymmetrizeLower_HIP(n,ctx->d_H,ctx->stream));
         if (unblocked) {
-            wait_hipfunc(openmx_gemmul8DgemmUnblocked(ctx->hipblas,HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,
+            OpenMXBlasWait(openmx_gemmul8DgemmUnblocked(ctx->hipblas,HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,
                                                       &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,n));
-            wait_hipfunc(openmx_gemmul8DgemmUnblocked(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_N,n,n,n,
+            OpenMXBlasWait(openmx_gemmul8DgemmUnblocked(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_N,n,n,n,
                                                       &alpha,ctx->d_S,n,ctx->d_tmp,n,&beta,ctx->d_H,n));
             wait_hipfunc(hipStreamSynchronize(ctx->stream));
             openmx_gemmul8TrimWorkspaces();
         }
         else {
-            wait_hipfunc(openmx_gemmul8Dgemm(ctx->hipblas,HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,
+            OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->hipblas,HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,
                                              &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,n));
-            wait_hipfunc(openmx_gemmul8Dgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_N,n,n,n,
+            OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_N,n,n,n,
                                              &alpha,ctx->d_S,n,ctx->d_tmp,n,&beta,ctx->d_H,n));
         }
     }
     else {
-        wait_hipfunc(hipblasDsymm(ctx->hipblas,HIPBLAS_SIDE_LEFT,HIPBLAS_FILL_MODE_LOWER,n,n,
+        OpenMXBlasWait(hipblasDsymm(ctx->hipblas,HIPBLAS_SIDE_LEFT,HIPBLAS_FILL_MODE_LOWER,n,n,
                                   &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,n));
-        wait_hipfunc(hipblasDgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_N,n,n,n,
+        OpenMXBlasWait(hipblasDgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_N,n,n,n,
                                   &alpha,ctx->d_S,n,ctx->d_tmp,n,&beta,ctx->d_H,n));
     }
     if (ClusterCol_detail_timers.active) {
@@ -1806,11 +1806,11 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
 
     if (ClusterCol_detail_timers.active) dtime(&stime);
     if (use_gemm) {
-        wait_hipfunc(openmx_gemmul8Dgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,maxn,n,n,
+        OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,maxn,n,n,
                                       &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,maxn));
     }
     else {
-        wait_hipfunc(hipblasDgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,maxn,n,n,
+        OpenMXBlasWait(hipblasDgemm(ctx->hipblas,HIPBLAS_OP_T,HIPBLAS_OP_T,maxn,n,n,
                                   &alpha,ctx->d_H,n,ctx->d_S,n,&beta,ctx->d_tmp,maxn));
     }
     if (ClusterCol_detail_timers.active) {
@@ -1858,7 +1858,7 @@ static void ClusterCol_GEMMul8Dgemm_OpenMP(hipblasOperation_t transa, hipblasOpe
     {
         double const alpha = 1.0;
         double const beta  = 0.0;
-        wait_hipfunc(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.hipblas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
+        OpenMXBlasWait(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.hipblas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
     }
 }
 

@@ -585,7 +585,7 @@ static void DCLNO_GpuSolver_Destroy(void)
     if (ctx->d_H    != NULL) wait_hipfunc(hipFree(ctx->d_H));
     if (ctx->d_tmp  != NULL) wait_hipfunc(hipFree(ctx->d_tmp));
     if (ctx->d_W    != NULL) wait_hipfunc(hipFree(ctx->d_W));
-    if (ctx->hipblas   != NULL) wait_hipfunc(hipblasDestroy(ctx->hipblas));
+    if (ctx->hipblas   != NULL) OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
     if (ctx->stream   != NULL) wait_hipfunc(hipStreamDestroy(ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
@@ -635,8 +635,8 @@ static void DCLNO_GpuSolver_Init(void)
     if (ctx->initialized) return;
 
     wait_hipfunc(hipStreamCreateWithFlags(&ctx->stream, hipStreamNonBlocking));
-    wait_hipfunc(hipblasCreate(&ctx->hipblas));
-    wait_hipfunc(hipblasSetStream(ctx->hipblas, ctx->stream));
+    OpenMXBlasWait(hipblasCreate(&ctx->hipblas));
+    OpenMXBlasWait(hipblasSetStream(ctx->hipblas, ctx->stream));
 
     ctx->initialized = 1;
 }
@@ -801,13 +801,13 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
                                                           "GPU solver host-to-device eigenvalue scale"),
                                   hipMemcpyHostToDevice, ctx->stream));
 
-    wait_hipfunc(hipblasDdgmm(ctx->hipblas, HIPBLAS_SIDE_RIGHT, NUM, NUM,
+    OpenMXBlasWait(hipblasDdgmm(ctx->hipblas, HIPBLAS_SIDE_RIGHT, NUM, NUM,
                               ctx->d_S, NUM, ctx->d_W, 1, ctx->d_tmp, NUM));
 
-    wait_hipfunc(openmx_gemmul8Dgemm(ctx->hipblas, HIPBLAS_OP_N, HIPBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_H, NUM,
+    OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->hipblas, HIPBLAS_OP_N, HIPBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_H, NUM,
                                      ctx->d_tmp, NUM, &beta, ctx->d_S, NUM));
 
-    wait_hipfunc(openmx_gemmul8Dgemm(ctx->hipblas, HIPBLAS_OP_C, HIPBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_tmp, NUM,
+    OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->hipblas, HIPBLAS_OP_C, HIPBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_tmp, NUM,
                                      ctx->d_S, NUM, &beta, ctx->d_H, NUM));
 
     info = DCLNO_GpuSolver_Eigen(ctx->d_H, NUM, NUM2, ko + 1);
@@ -816,7 +816,7 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
         return info;
     }
 
-    wait_hipfunc(openmx_gemmul8Dgemm(ctx->hipblas, HIPBLAS_OP_N, HIPBLAS_OP_N, NUM, NUM2, NUM, &alpha, ctx->d_tmp,
+    OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->hipblas, HIPBLAS_OP_N, HIPBLAS_OP_N, NUM, NUM2, NUM, &alpha, ctx->d_tmp,
                                      NUM, ctx->d_H, NUM, &beta, ctx->d_S, NUM));
 
     wait_hipfunc(hipMemcpyAsync(Hmat, ctx->d_S, partial_bytes,
@@ -940,7 +940,7 @@ static void DCLNO_GpuSolverZ_Destroy(void)
     if (!ctx->initialized) return;
 
     DCLNO_GpuSolverZ_FreeBuffers(ctx);
-    if (ctx->hipblas != NULL)    wait_hipfunc(hipblasDestroy(ctx->hipblas));
+    if (ctx->hipblas != NULL)    OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
     if (ctx->stream != NULL)    wait_hipfunc(hipStreamDestroy(ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
@@ -962,7 +962,7 @@ static int DCLNO_GpuSolverZ_Init(void)
         ctx->stream = NULL;
         return 0;
     }
-    wait_hipfunc(hipblasSetStream(ctx->hipblas, ctx->stream));
+    OpenMXBlasWait(hipblasSetStream(ctx->hipblas, ctx->stream));
 
     ctx->initialized = 1;
     return 1;

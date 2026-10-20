@@ -49,8 +49,8 @@ static ClusterColLNOGpuSolverCtx ClusterColLNO_gpusolver_ctx = {0};
 static void ClusterColLNO_GpuSolver_Destroy(void)
 {
     ClusterColLNOGpuSolverCtx *ctx = &ClusterColLNO_gpusolver_ctx;
-    if (ctx->gpusolver != NULL) OpenMXGpuWait(OpenMXSolverDestroy(ctx->gpusolver));
-    if (ctx->blas != NULL)   OpenMXGpuWait(OpenMXBlasDestroy(ctx->blas));
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMXSolverDestroy(ctx->gpusolver));
+    if (ctx->blas != NULL)   OpenMXBlasWait(OpenMXBlasDestroy(ctx->blas));
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
 }
@@ -63,8 +63,8 @@ static void ClusterColLNO_GpuSolver_Init(void)
     if (ctx->device_id == current_device && ctx->blas != NULL) return;
     if (ctx->blas != NULL) ClusterColLNO_GpuSolver_Destroy();
     ctx->device_id = current_device;
-    OpenMXGpuWait(OpenMXBlasCreate(&ctx->blas));
-    OpenMXGpuWait(OpenMXSolverCreate(&ctx->gpusolver));
+    OpenMXBlasWait(OpenMXBlasCreate(&ctx->blas));
+    OpenMXSolverWait(OpenMXSolverCreate(&ctx->gpusolver));
 }
 
 #if OPENMX_GPU_HIP
@@ -82,7 +82,7 @@ static void ClusterColLNO_GEMMul8Dgemm_OpenACC(OpenMXBlasOperation transa, OpenM
     {
         double const alpha = 1.0;
         double const beta  = 0.0;
-        OpenMXGpuWait(openmx_gemmul8Dgemm(ClusterColLNO_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
+        OpenMXBlasWait(openmx_gemmul8Dgemm(ClusterColLNO_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha, A, m, B, k, &beta, C, m));
     }
 }
 

@@ -875,9 +875,9 @@ static void DC_GpuSolver_Destroy(void)
     if (ctx->h_matrix != NULL)
         wait_cudafunc(cudaFreeHost(ctx->h_matrix));
     if (ctx->gpusolver != NULL)
-        wait_cudafunc(cusolverDnDestroy(ctx->gpusolver));
+        OpenMXSolverWait(cusolverDnDestroy(ctx->gpusolver));
     if (ctx->cublas != NULL)
-        wait_cudafunc(cublasDestroy(ctx->cublas));
+        OpenMXBlasWait(cublasDestroy(ctx->cublas));
     if (ctx->stream != NULL)
         wait_cudafunc(cudaStreamDestroy(ctx->stream));
 
@@ -904,10 +904,10 @@ static void DC_GpuSolver_Init(void)
     }
 
     wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
-    wait_cudafunc(cublasCreate(&ctx->cublas));
-    wait_cudafunc(cusolverDnCreate(&ctx->gpusolver));
-    wait_cudafunc(cublasSetStream(ctx->cublas, ctx->stream));
-    wait_cudafunc(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
+    OpenMXBlasWait(cublasCreate(&ctx->cublas));
+    OpenMXSolverWait(cusolverDnCreate(&ctx->gpusolver));
+    OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
+    OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized  = 1;
     ctx->device_id    = current_device;
@@ -2358,33 +2358,9 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                 }
             }
 
-            int use_dc_openacc = 0;
 
-            if (use_dc_openacc) {
-                size_t free_memory, total_memory;
-                size_t needmemsize = 0;
-                needmemsize += sizeof(double) * (SpinP_switch + 1) * (NUM + 1) * (NUM + 1);
-                needmemsize += sizeof(double) * (NUM + 1) * (NUM + 1);
-                needmemsize += sizeof(double) * (NUM + 1);
-                needmemsize += sizeof(double) * (NUM + 1) * (NUM + 1);
 
-                while (true) {
-                    OpenMX_GpuMemGetInfo(&free_memory, &total_memory);
-                    if (free_memory > needmemsize) {
-                        break;
-                    }
 
-                    double wait_time    = (double)rand() / (double)RAND_MAX * WAITTIME;
-                    double start_time   = MPI_Wtime();
-                    double current_time = start_time;
-                    while ((current_time - start_time) < wait_time) {
-                        current_time = MPI_Wtime();
-                    }
-                }
-            }
-
-#pragma acc data if(use_dc_openacc) copyin(H_DC[0 : SpinP_switch + 1][0 : NUM + 1][0 : NUM + 1], S_DC[0 : NUM + 1][0 : NUM + 1])
-#pragma acc data if(use_dc_openacc) create(ko[0 : NUM + 1], C[0 : NUM + 1][0 : NUM + 1])
             for (spin = 0; spin <= SpinP_switch; spin++) {
 
                 if (measure_time)
@@ -2410,209 +2386,6 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                         NUM1       = DCCol_CPU_SolveHamiltonian(NUM, P_min, S_DC, H_DC[spin], ko, C);
                     }
 
-                } else if (use_dc_openacc) {
-                    // OpenACC
-
-                    /* transpose S */
-#pragma acc kernels
-#pragma acc loop independent
-                    for (i1 = 1; i1 <= NUM; i1++) {
-#pragma acc loop independent
-                        for (j1 = i1 + 1; j1 <= NUM; j1++) {
-                            tmp1         = S_DC[i1][j1];
-                            tmp2         = S_DC[j1][i1];
-                            S_DC[i1][j1] = tmp2;
-                            S_DC[j1][i1] = tmp1;
-                        }
-                    }
-
-                    /* H * U * M1 */
-
-                    /***********************************************
-                             find the size of matrix for the atom Mc_AN
-                                    and set the MP vector
-
-                            Note:
-                            MP indicates the starting position of
-                                    atom i in arraies H and S
-                            ***********************************************/
-
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (j1 = 1; j1 <= NUM - 3; j1 = j1 + 4) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            double sum1 = 0.0;
-                            double sum2 = 0.0;
-                            double sum3 = 0.0;
-                            double sum4 = 0.0;
-#pragma acc loop independent reduction(+ : sum1) reduction(+ : sum2) reduction(+ : sum3) reduction(+ : sum4)
-                            for (l = 1; l <= NUM; l++) {
-                                sum1 += H_DC[spin][i1][l] * S_DC[j1][l];
-                                sum2 += H_DC[spin][i1][l] * S_DC[j1 + 1][l];
-                                sum3 += H_DC[spin][i1][l] * S_DC[j1 + 2][l];
-                                sum4 += H_DC[spin][i1][l] * S_DC[j1 + 3][l];
-                            }
-                            C[j1][i1]     = sum1;
-                            C[j1 + 1][i1] = sum2;
-                            C[j1 + 2][i1] = sum3;
-                            C[j1 + 3][i1] = sum4;
-                        }
-                    }
-
-                    j1s = NUM - NUM % 4 + 1;
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (j1 = j1s; j1 <= NUM; j1++) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            sum = 0.0;
-#pragma acc loop independent reduction(+ : sum)
-                            for (l = 1; l <= NUM; l++) {
-                                sum += H_DC[spin][i1][l] * S_DC[j1][l];
-                            }
-                            C[j1][i1] = sum;
-                        }
-                    }
-
-                    /* M1 * U^+ H * U * M1 */
-
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (j1 = 1; j1 <= NUM - 3; j1 = j1 + 4) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            double sum1 = 0.0;
-                            double sum2 = 0.0;
-                            double sum3 = 0.0;
-                            double sum4 = 0.0;
-#pragma acc loop independent reduction(+ : sum1) reduction(+ : sum2) reduction(+ : sum3) reduction(+ : sum4)
-                            for (l = 1; l <= NUM; l++) {
-                                sum1 += S_DC[i1][l] * C[j1][l];
-                                sum2 += S_DC[i1][l] * C[j1 + 1][l];
-                                sum3 += S_DC[i1][l] * C[j1 + 2][l];
-                                sum4 += S_DC[i1][l] * C[j1 + 3][l];
-                            }
-                            H_DC[spin][j1][i1]     = sum1;
-                            H_DC[spin][j1 + 1][i1] = sum2;
-                            H_DC[spin][j1 + 2][i1] = sum3;
-                            H_DC[spin][j1 + 3][i1] = sum4;
-                        }
-                    }
-
-                    j1s = NUM - NUM % 4 + 1;
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (j1 = j1s; j1 <= NUM; j1++) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            sum1 = 0.0;
-#pragma acc loop independent reduction(+ : sum1)
-                            for (l = 1; l <= NUM; l++) {
-                                sum1 += S_DC[i1][l] * C[j1][l];
-                            }
-                            H_DC[spin][j1][i1] = sum1;
-                        }
-                    }
-
-                    /* H_DC to C (transposition) */
-
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (i1 = P_min; i1 <= NUM; i1++) {
-                        for (j1 = P_min; j1 <= NUM; j1++) {
-                            C[j1 - (P_min - 1)][i1 - (P_min - 1)] = H_DC[spin][i1][j1];
-                        }
-                    }
-
-                    /***********************************************
-                             diagonalize the trasformed Hamiltonian matrix
-                            ************************************************/
-
-                    NUM1 = NUM - (P_min - 1);
-
-                    Eigen_lapack_openacc(C, ko, NUM1, NUM1);
-
-                    /* C to H (transposition) */
-
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (i1 = 1; i1 <= NUM; i1++) {
-                        for (j1 = 1; j1 <= NUM1; j1++) {
-                            H_DC[spin][j1][i1] = C[i1][j1];
-                        }
-                    }
-
-                    /***********************************************
-                             transformation to the original eigen vectors.
-                                            NOTE 244P
-                            ***********************************************/
-
-                    /* transpose */
-
-#pragma acc kernels
-#pragma acc loop independent
-                    for (i1 = 1; i1 <= NUM; i1++) {
-#pragma acc loop independent
-                        for (j1 = i1 + 1; j1 <= NUM; j1++) {
-                            tmp1         = S_DC[i1][j1];
-                            tmp2         = S_DC[j1][i1];
-                            S_DC[i1][j1] = tmp2;
-                            S_DC[j1][i1] = tmp1;
-                        }
-                    }
-
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (j1 = 1; j1 <= NUM1; j1++) {
-                        for (l = NUM; P_min <= l; l--) {
-                            H_DC[spin][j1][l] = H_DC[spin][j1][l - (P_min - 1)];
-                        }
-                    }
-
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (j1 = 1; j1 <= NUM - 3; j1 = j1 + 4) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            double sum1 = 0.0;
-                            double sum2 = 0.0;
-                            double sum3 = 0.0;
-                            double sum4 = 0.0;
-#pragma acc loop independent reduction(+ : sum1) reduction(+ : sum2) reduction(+ : sum3) reduction(+ : sum4)
-                            for (l = P_min; l <= NUM; l++) {
-                                sum1 += S_DC[i1][l] * H_DC[spin][j1][l];
-                                sum2 += S_DC[i1][l] * H_DC[spin][j1 + 1][l];
-                                sum3 += S_DC[i1][l] * H_DC[spin][j1 + 2][l];
-                                sum4 += S_DC[i1][l] * H_DC[spin][j1 + 3][l];
-                            }
-                            C[i1][j1]     = sum1;
-                            C[i1][j1 + 1] = sum2;
-                            C[i1][j1 + 2] = sum3;
-                            C[i1][j1 + 3] = sum4;
-                        }
-                    }
-
-                    j1s = NUM - NUM % 4 + 1;
-#pragma acc kernels
-#pragma acc loop independent collapse(2)
-                    for (j1 = j1s; j1 <= NUM; j1++) {
-                        for (i1 = 1; i1 <= NUM; i1++) {
-                            sum = 0.0;
-#pragma acc loop independent reduction(+ : sum)
-                            for (l = P_min; l <= NUM; l++) {
-                                sum += S_DC[i1][l] * H_DC[spin][j1][l];
-                            }
-                            C[i1][j1] = sum;
-                        }
-                    }
-
-                    // compiler's bug
-                    Anum = 1;
-                    for (i = 0; i <= (FNAN[Gc_AN] + SNAN[Gc_AN]); i++) {
-                        MP[i] = Anum;
-                        Gi    = natn[Gc_AN][i];
-                        wanA  = WhatSpecies[Gi];
-                        Anum += Spe_Total_CNO[wanA];
-                    }
-                    NUM = Anum - 1;
-
-#pragma acc update self(ko[0 : NUM + 1], C[0 : NUM + 1][0 : NUM + 1])
                 } else {
                     if (!s_dc_host_filled) {
                         DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC);

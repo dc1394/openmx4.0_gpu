@@ -8,7 +8,7 @@
 #include "openmx_core_atomic.h"
 
 /* global object */
-EXX_t *g_exx;
+extern EXX_t *g_exx;
 
 
 /*

@@ -3,6 +3,7 @@
 #include <openmx/core/tensor.hpp>
 #include <openmx/core/product_storage.hpp>
 #include <Kokkos_Core.hpp>
+#include <openmx_accelerator.h>
 #include <functional>
 #include <memory>
 #include <span>
@@ -59,6 +60,8 @@ using Sampler = std::function<double(int angular, int multiplicity, double radiu
 RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities,
                            const Sampler& sample);
 
+enum class HostFallback { none, external_runtime, device_changed, fp64_unavailable };
+
 class Context {
  public:
   // Library calls may own calculation storage without owning a Kokkos
@@ -72,10 +75,17 @@ class Context {
   Tensor<double, 2> transform(const RadialSamples& samples, int device = -1);
   void finish() noexcept { runtime_.reset(); finished_ = true; }
   bool finished() const noexcept { return finished_; }
+  HostFallback last_fallback() const noexcept { return last_fallback_; }
+  OpenMXAcceleratorCapabilities capabilities() const noexcept { return capabilities_; }
 
  private:
   bool start(int device);
+  void fallback(HostFallback reason);
   std::unique_ptr<Kokkos::ScopeGuard> runtime_;
+  OpenMXAcceleratorCapabilities capabilities_{
+      OPENMX_ACCELERATOR_HOST, OPENMX_FP64_NATIVE_HIGH_THROUGHPUT, OPENMX_MEMORY_SHARED, 1};
+  HostFallback last_fallback_ = HostFallback::none;
+  unsigned reported_fallbacks_ = 0;
   int device_ = -1;
   bool finished_ = false;
   const bool host_only_;

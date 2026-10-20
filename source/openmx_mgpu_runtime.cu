@@ -1,4 +1,6 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_gpu_architecture.h"
+#define OPENMX_MGPU_RUNTIME_IMPLEMENTATION
 /* Single-node multi-GPU admission and measured dispatch for cluster/Band.
    Worker backends contain no MPI. All cross-rank admission uses GPU UUID
    locks, avoiding MPI collectives inside dense-owner-only call sites. */
@@ -26,6 +28,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <tuple>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 #if OPENMX_GPU_HIP
@@ -65,7 +68,7 @@ int input_force_magma = 0;
 thread_local char host_error[512] = "";
 thread_local int cluster_scope = 0;
 thread_local int band_kpoints = 0, band_kpoint = -1;
-std::mutex operation_mutex;
+std::timed_mutex operation_mutex;
 using SolveKey = std::tuple<int,int,int,int,int,std::array<int,8>>;
 std::map<SolveKey, Backend> solver_choices;
 std::mutex topology_mutex;
@@ -108,11 +111,7 @@ int pool_gpu_count(bool node_local, bool auxiliary = false)
     if ((!topology_single_node && !node_local) ||
         (auxiliary ? input_aux_enabled : input_enabled) == 0) return 0;
     const char *gpu = std::getenv("OPENMX_GPU");
-#if OPENMX_GPU_HIP
     if (gpu && *gpu && std::atoi(gpu) == 0) return 0;
-#else
-    if (auxiliary && gpu && *gpu && std::atoi(gpu) == 0) return 0;
-#endif
     const char *v = std::getenv("OPENMX_MGPU");
     if (v && *v && std::strcmp(v,"0") == 0) return 0;
     int count = 0;
@@ -150,15 +149,7 @@ bool allowed_gpu_range(int first,int count)
         }
         /* The CUDA throughput-ratio attribute has no equivalent on AMD.
            Match known Instinct architectures; consumer defaults stay local. */
-        const char *a = prop.gcnArchName;
-        bool native = false;
-        for (const char *arch : {"gfx906", "gfx908", "gfx90a", "gfx940",
-                                 "gfx941", "gfx942", "gfx950"}) {
-            const size_t length = std::strlen(arch);
-            if (std::strncmp(a, arch, length) == 0 &&
-                (a[length] == '\0' || a[length] == ':')) native = true;
-        }
-        if (!native) return false;
+        if (!openmx_amd_high_throughput_fp64(prop.gcnArchName)) return false;
 #else
         int ratio = 0;
         if (!forced && (cudaDeviceGetAttribute(&ratio,
@@ -316,12 +307,24 @@ bool fast_gemm_topology(const int *devices,int count)
    intersecting GPU subsets. Never unlink lock files while a waiter can
    hold the old inode. Process exit releases every OS lock automatically. */
 class Admission {
-    std::unique_lock<std::mutex> guard;
+    std::unique_lock<std::timed_mutex> guard;
     std::vector<int> fds;
 public:
     bool ok = false;
-    Admission(const int *devices, int count): guard(operation_mutex)
+    Admission(const int *devices, int count): guard(operation_mutex, std::defer_lock)
     {
+        const auto deadline = Clock::now() + std::chrono::milliseconds(
+            positive_env("OPENMX_GPU_LOCK_TIMEOUT_MS", 300000));
+        if (!guard.try_lock_until(deadline)) {
+            std::fprintf(stderr, "<OpenMX_MGPU> admission timed out waiting for the process lock.\n");
+            return;
+        }
+        const char *directory = std::getenv("OPENMX_GPU_LOCK_DIR");
+        if (!directory || !*directory) directory = "/tmp";
+        if (directory[0] != '/') {
+            std::fprintf(stderr, "<OpenMX_MGPU> OPENMX_GPU_LOCK_DIR must be an absolute shared node-local directory: %s\n", directory);
+            return;
+        }
         std::vector<std::string> names;
         int owner=-1;
         if (OpenMXGpuGetDevice(&owner)!=OPENMX_GPU_SUCCESS) return;
@@ -335,10 +338,10 @@ public:
 #endif
             if (OpenMXGpuGetDeviceProperties(&prop,i==count?owner:devices[i]) != OPENMX_GPU_SUCCESS) return;
             char name[128];
-            int used = std::snprintf(name,sizeof(name),"/tmp/.openmx-mgpu-%lu-",(unsigned long)getuid());
+            int used = std::snprintf(name,sizeof(name),".openmx-mgpu-%lu-",(unsigned long)getuid());
             for (unsigned char b : prop.uuid.bytes)
                 used += std::snprintf(name+used,sizeof(name)-size_t(used),"%02x",unsigned(b));
-            names.emplace_back(name);
+            names.emplace_back(std::string(directory) + "/" + name);
         }
         std::sort(names.begin(),names.end());
         /* Opening the same inode twice and flocking both descriptors can
@@ -349,13 +352,32 @@ public:
         fds.reserve(names.size());
         for (const auto &name : names) {
             int fd = open(name.c_str(), O_CREAT|O_RDWR|O_CLOEXEC|O_NOFOLLOW, 0600);
-            if (fd < 0) return;
+            if (fd < 0) {
+                std::fprintf(stderr, "<OpenMX_MGPU> cannot open admission lock %s: %s\n",
+                    name.c_str(), std::strerror(errno));
+                return;
+            }
             fds.push_back(fd);
             struct stat st;
-            if (fstat(fd,&st) || st.st_uid != getuid() || !S_ISREG(st.st_mode)) return;
-            int rc;
-            do { rc = flock(fd,LOCK_EX); } while (rc && errno == EINTR);
-            if (rc) return;
+            if (fstat(fd,&st) || st.st_uid != getuid() || !S_ISREG(st.st_mode)) {
+                std::fprintf(stderr, "<OpenMX_MGPU> invalid admission lock ownership/type: %s\n", name.c_str());
+                return;
+            }
+            while (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+                const int error = errno;
+                if (error != EINTR && error != EWOULDBLOCK && error != EAGAIN) {
+                    std::fprintf(stderr, "<OpenMX_MGPU> admission lock %s failed: %s\n",
+                        name.c_str(), std::strerror(error));
+                    return;
+                }
+                if (Clock::now() >= deadline) {
+                    std::fprintf(stderr, "<OpenMX_MGPU> admission timed out for %s; "
+                        "check OPENMX_GPU_LOCK_DIR and OPENMX_GPU_LOCK_TIMEOUT_MS.\n", name.c_str());
+                    return;
+                }
+                std::this_thread::sleep_until(std::min(deadline,
+                    Clock::now() + std::chrono::milliseconds(2)));
+            }
         }
         ok = true;
     }
@@ -498,7 +520,7 @@ int solve_typed(OpenMXSolverHandle handle,OpenMXBlasFillMode uplo,int n,void *A,
            every GPU's OS lock on later SCF steps, which would serialize
            otherwise independent single-GPU owners. A concurrent input
            reset can only make this a harmless native fallback. */
-        std::lock_guard<std::mutex> guard(operation_mutex);
+        std::lock_guard<std::timed_mutex> guard(operation_mutex);
         auto chosen=solver_choices.find(key);
         if (chosen!=solver_choices.end() && chosen->second==Native) return 0;
     }
@@ -689,7 +711,7 @@ void report_gemm(int m,int n,int k,char type,const int *devices,int count)
 
 extern "C" void openmx_mgpu_configure(int enabled,int gpu_limit,int single_node)
 {
-    std::lock_guard<std::mutex> guard(operation_mutex);
+    std::lock_guard<std::timed_mutex> guard(operation_mutex);
     input_enabled=enabled; input_aux_enabled=enabled; input_gpu_limit=gpu_limit; topology_single_node=single_node;
     solver_choices.clear();
     openmx_magma_mgpu_release_cache();
