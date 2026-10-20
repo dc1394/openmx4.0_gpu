@@ -2077,6 +2077,8 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 	    coQ = cos(Q);
 	    siP = sin(P);
 	    coP = cos(P);
+	    if (atomic->species.basis_lmax[wan] >= 4)
+	      openmx_orbital_polar(x, y, z, R, &siQ, &coQ, &siP, &coP, &P);
 
 	    for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
 
@@ -2113,7 +2115,7 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 
 		/* calculation of complex spherical harmonics functions */
 		for(m=-L0; m<=L0; m++){ 
-		  ComplexSH(L0,m,Q,P,SH[L0+m],dSHt[L0+m],dSHp[L0+m]);
+		  openmx_orbital_complex_sh(L0, m, siQ, coQ, P,SH[L0+m],dSHt[L0+m],dSHp[L0+m]);
 		}
 
 		/* transformation of complex to real */
@@ -2446,6 +2448,8 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 		coQ = cos(Q);
 		siP = sin(P);
 		coP = cos(P);
+		if (atomic->species.basis_lmax[wan] >= 4)
+		  openmx_orbital_polar(x, y, z, R, &siQ, &coQ, &siP, &coP, &P);
 
 		for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
 
@@ -2482,7 +2486,7 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 
 		    /* calculation of complex spherical harmonics functions */
 		    for(m=-L0; m<=L0; m++){ 
-		      ComplexSH(L0,m,Q,P,SH[L0+m],dSHt[L0+m],dSHp[L0+m]);
+		      openmx_orbital_complex_sh(L0, m, siQ, coQ, P,SH[L0+m],dSHt[L0+m],dSHp[L0+m]);
 		    }
 
 		    /* transformation of complex to real */

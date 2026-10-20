@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "mpi.h"
 #include "openmx_core_orbital_workspace.h"
+#include "openmx_orbital_harmonics.h"
 
 /* Internal C adapter; include after openmx_common.h and mpi.h. Dimensions
    are passed explicitly. The numerical owner has no process-global state. */

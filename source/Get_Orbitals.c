@@ -201,6 +201,8 @@ void Get_Orbitals(const OpenMXAtomicViews *atomic, int wan, double x, double y, 
     coQ = cos(Q);
     siP = sin(P);
     coP = cos(P);
+    if (atomic->species.basis_lmax[wan] >= 4)
+      openmx_orbital_polar(x, y, z, R, &siQ, &coQ, &siP, &coP, &P);
 
     for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
 
@@ -237,7 +239,7 @@ void Get_Orbitals(const OpenMXAtomicViews *atomic, int wan, double x, double y, 
 
         /* calculation of complex spherical harmonics functions */
         for(m=-L0; m<=L0; m++){ 
-          ComplexSH(L0,m,Q,P,SH[L0+m],dSHt[L0+m],dSHp[L0+m]);
+          openmx_orbital_complex_sh(L0, m, siQ, coQ, P,SH[L0+m],dSHt[L0+m],dSHp[L0+m]);
 	}
 
         /* transformation of complex to real */

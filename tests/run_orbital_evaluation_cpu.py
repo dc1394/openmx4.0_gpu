@@ -61,6 +61,30 @@ with tempfile.TemporaryDirectory(prefix='openmx-orbital-evaluation-') as directo
              (ROOT/'tests/fixtures/orbitals_before_flat_views.c').read_text()]
     for name in ('Get_Orbitals.c', 'Get_dOrbitals.c', 'Get_Cnt_Orbitals.c', 'Get_Cnt_dOrbitals.c'):
         parts.append((ROOT/'source'/name).read_text().replace('#include "openmx_common.h"', ''))
+    # Compile the actual host fallbacks from both backend source selections.
+    # They have their own inlined copies, so testing the scalar function alone
+    # cannot detect a missed correction in Force or orbital grid construction.
+    for backend, directory in [('cuda', ROOT/'source'), ('hip', ROOT/'source/backends/hip/src')]:
+        force = (directory/'Force.c').read_text()
+        begin = force.index('/* start: direct inlining of Get_dOrbitals_work */')
+        end = force.index('/* end: direct inlining of Get_dOrbitals_work */', begin)
+        parts.append(f'static void force_{backend}(const OpenMXAtomicViews *atomic, int Cwan, '
+                     'double dx, double dy, double dz, double **dorbs0, OpenMXOrbitalBuffers work_dObs) {\n{\n'
+                     + force[begin:end] + '\n}\n}\n')
+        grid = (directory/'Set_Orbitals_Grid.c').read_text()
+        end = grid.index('double Set_Orbitals_Grid(')
+        for index in range(2):
+            begin = grid.index('/* start of inlining of Get_Orbitals */', end)
+            end = grid.index('/* end of inlining of Get_Orbitals */', begin)
+            parts.append(f'static void grid_{backend}_{index}(const OpenMXAtomicViews *atomic, '
+                         'int species, double x, double y, double z, double *Chi0) {\n' + r'''
+    int Cwan=species,Hwan=species,wan,i,j,L0,Mul0,M0,i1,m,mp_min,mp_max,po;
+    double dum,dum1,dum2,dum3,dum4,a,b,c,d,siQ,coQ,siP,coP,Q,P,R;
+    double r,r1,Min_r,theta,phi,rm,df,sum0,sum1;
+    double h1,h2,h3,f1,f2,f3,f4,g1,g2,x1,x2,y1,y2,y12,y22,f;
+    double RF[15]={0},AF[55]={0},SH[9][2],dSHt[9][2],dSHp[9][2];
+    OpenMXOrbitalBuffers orbital_buffers={5,3,11,RF,NULL,AF,NULL,NULL};
+''' + grid[begin:end] + '\n}\n')
     parts.append((ROOT/'tests/orbital_evaluation_harness.c').read_text())
     source = folder/'check.c'
     source.write_text('\n'.join(parts))
