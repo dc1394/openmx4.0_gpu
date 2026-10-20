@@ -145,7 +145,15 @@ int main(void)
     /* Production assembly must use its owned metadata rather than these globals. */
     int saved[40];memcpy(saved,List_YOUSO,sizeof(saved));memset(List_YOUSO,0,sizeof(List_YOUSO));
     memset(Spe_Num_Basis,0,sizeof(Spe_Num_Basis));
-    SetPro_DSVNA_CPU(channels,owner,&view,wavevectors,NA*NH,mc,neighbor,timing,timing+1,timing+2);
+    OpenMXAtomPairBuffers pairs;OpenMXAtomPairPlan *plan=test_vna_pairs(&pairs);
+    double *projector_values[NS][3][2],**projector_angular[NS][3],***projector_species[NS];
+    for(int s=0;s<NS;++s){projector_species[s]=projector_angular[s];
+      for(int l=0;l<3;++l){projector_angular[s][l]=projector_values[s][l];
+        for(int r=0;r<2;++r)projector_values[s][l][r]=Spe_VNA_Bessel[s][l][r];}}
+    const SetProVnaTables tables={projector_species,NULL,NULL,&Comp2Real[0][0][0],5,
+        NULL,Radial_kmin,PAO_Nkmax,time_per_atom};
+    SetPro_DSVNA_CPU(channels,owner,&view,wavevectors,&pairs,&tables,timing,timing+1,timing+2);
+    openmx_core_atom_pairs_destroy(plan);
     memcpy(List_YOUSO,saved,sizeof(saved));memcpy(Spe_Num_Basis,basis_cases[basis],sizeof(Spe_Num_Basis));
     for(int a=1;a<=NA;a++)assert(time_per_atom[a]==NH);
     if(basis==0 && projector==0)for(int a=1;a<=NA;a++)for(int h=0;h<NH;h++)for(int radial=0;radial<Spe_Num_Basis[WhatSpecies[a]][0];radial++){
@@ -190,10 +198,10 @@ with tempfile.TemporaryDirectory(prefix="openmx-dsvna-workspace-") as folder:
     src.write_text('#include <assert.h>\n#include <math.h>\n#include <stdio.h>\n#include <stdlib.h>\n'
                    '#include <string.h>\n#include <omp.h>\n#include "openmx_core_dsvna.h"\n'
                    + HARNESS + bessel + '\n#include "openmx_dsvna_cpu.h"\n'
-                   + REFERENCE_HEAD + reference + '\n}\n' + MAIN)
+                   + REFERENCE_HEAD + reference + '\n}\n' + '\n#include \"vna_pair_fixture.h\"\n' + MAIN)
     for precision in ("float", "double"):
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +
                        ["-std=c11", "-fopenmp", "-DOPENMX_TEST_DS_TYPE=" + precision,
-                        "-I" + str(ROOT / "source"), str(src), str(CORE),
+                        "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), str(src), str(CORE),
                         "-Wl,-rpath," + str(CORE.parent), "-lm", "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)

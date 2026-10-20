@@ -34,6 +34,7 @@
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
 #include "mpi.h"
+#include "openmx_projector_exchange.h"
 #include <omp.h>
 #include "set_cuda_default_device_from_local_rank.h"
 
@@ -1396,6 +1397,10 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
+  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(double));
+  int *send_progress=projector_transfer.buffers.sent;
+  int *receive_progress=projector_transfer.buffers.received;
+
 
   SetNonlocal_ValidateGlobalState();
 
@@ -1572,12 +1577,12 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
     }
   }
 
-  Snd_DS_NL_Size = (int*)SetNonlocal_MallocArray((size_t)numprocs,sizeof(int),"Snd_DS_NL_Size");
-  Rcv_DS_NL_Size = (int*)SetNonlocal_MallocArray((size_t)numprocs,sizeof(int),"Rcv_DS_NL_Size");
+  Snd_DS_NL_Size = projector_transfer.buffers.send_sizes;
+  Rcv_DS_NL_Size = projector_transfer.buffers.receive_sizes;
 
   for (ID=0; ID<numprocs; ID++){
-    F_Snd_Num_WK[ID] = 0;
-    F_Rcv_Num_WK[ID] = 0;
+    send_progress[ID] = 0;
+    receive_progress[ID] = 0;
   }
 
   do {
@@ -1593,11 +1598,11 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 
       /* find the data size to send the block data */
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
         size_t send_count;
 
         send_count = 0;
-        n = F_Snd_Num_WK[IDS];
+        n = send_progress[IDS];
 
         Mc_AN = Snd_MAN[IDS][n];
         Gc_AN = Snd_GAN[IDS][n];
@@ -1628,7 +1633,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 
       /* receiving of the size of the data */
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
         MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
         if (size2 < 0){
           SetNonlocal_AbortWithMessage("Received a negative DS_NL block size in Set_Nonlocal.c.");
@@ -1639,7 +1644,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
         Rcv_DS_NL_Size[IDR] = 0;
       }
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) )  MPI_Wait(&request,&stat);
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) )  MPI_Wait(&request,&stat);
 
     } /* ID */
 
@@ -1656,18 +1661,18 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
          sending of the data
       ******************************/
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
 
 	size1 = Snd_DS_NL_Size[IDS];
 
 	/* allocation of the array */
 
-	tmp_array = (double*)SetNonlocal_MallocArray((size_t)size1,sizeof(double),"tmp_array");
+	tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
 	/* multidimentional array to the vector array */
 
 	num = 0;
-	n = F_Snd_Num_WK[IDS];
+	n = send_progress[IDS];
 
 	Mc_AN = Snd_MAN[IDS][n];
 	Gc_AN = Snd_GAN[IDS][n];
@@ -1699,16 +1704,16 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
         receiving of the block data
       ******************************/
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
 
 	size2 = Rcv_DS_NL_Size[IDR];
-	tmp_array2 = (double*)SetNonlocal_MallocArray((size_t)size2,sizeof(double),"tmp_array2");
+	tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
 	MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
 	/* store */
 
 	num = 0;
-	n = F_Rcv_Num_WK[IDR];
+	n = receive_progress[IDR];
 	Original_Mc_AN = F_TopMAN[IDR] + n;
 
 	Gc_AN = Rcv_GAN[IDR][n];
@@ -1733,13 +1738,13 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
           SetNonlocal_AbortWithMessage("Unpacked DS_NL block size mismatch in Set_Nonlocal.c.");
         }
 	/* free tmp_array2 */
-	free(tmp_array2);
+
 
 	/*****************************************************************
                            multiplying overlap integrals
 	*****************************************************************/
 
-        n = F_Rcv_Num_WK[IDR];
+        n = receive_progress[IDR];
         jg = Rcv_GAN[IDR][n];
 
 #pragma omp parallel for schedule(dynamic,4) private(Mc_AN,Gc_AN,Cwan,fan,rcutA,rcutB,rcut,j0,jg0,Mj_AN0,po,j,Hwan,m,n,k,kg,wakg,kl,dmp,p,i1,j1,Stime_atom,Etime_atom)
@@ -1829,23 +1834,23 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
 	} /* Mc_AN */
 
         /********************************************
-            increment of F_Rcv_Num_WK[IDR]
+            increment of receive_progress[IDR]
 	********************************************/
 
-        F_Rcv_Num_WK[IDR]++;
+        receive_progress[IDR]++;
 
       }
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) {
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) {
 
         MPI_Wait(&request,&stat);
-        free(tmp_array);  /* freeing of array */
+          /* freeing of array */
 
         /********************************************
-             increment of F_Snd_Num_WK[IDS]
+             increment of send_progress[IDS]
 	********************************************/
 
-        F_Snd_Num_WK[IDS]++;
+        send_progress[IDS]++;
       }
 
     } /* ID */
@@ -1860,16 +1865,16 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
       IDS = (myid + ID) % numprocs;
       IDR = (myid - ID + numprocs) % numprocs;
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) po += F_Snd_Num[IDS]-F_Snd_Num_WK[IDS];
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ) po += F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR];
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) po += F_Snd_Num[IDS]-send_progress[IDS];
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ) po += F_Rcv_Num[IDR]-receive_progress[IDR];
     }
 
   } while (po!=0);
 
   /* freeing of array */
 
-  free(Rcv_DS_NL_Size);
-  free(Snd_DS_NL_Size);
+
+
 
   for (t=0; t<nthreads_halo; t++){
     for (k=0; k<3; k++){
@@ -2055,6 +2060,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   ****************************************************/
 
   MPI_Barrier(mpi_comm_level1);
+  OpenMX_TransferEnd(&projector_transfer);
 }
 
 

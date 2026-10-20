@@ -4597,15 +4597,6 @@ int *Species_Top,*Species_End;
 *******************************************************/
 int *F_Snd_Num;
 
-/*******************************************************
- int *F_Snd_Num_WK;
-
-  F_Snd_Num_WK is a work array for F_Snd_Num.
-  size: F_Snd_Num_WK[numprocs]
-  allocation: Allocation_Arrays(0) in Input_std()
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-int *F_Snd_Num_WK;
 
 /*******************************************************
  int *S_Snd_Num;
@@ -4629,15 +4620,6 @@ int *S_Snd_Num;
 *******************************************************/
 int *F_Rcv_Num;
 
-/*******************************************************
- int *F_Rcv_Num_WK;
-
-  F_Rcv_Num_WK is a work array for F_Rcv_Num.
-  size: F_Rcv_Num_WK[numprocs]
-  allocation: Allocation_Arrays(0) in Input_std()
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-int *F_Rcv_Num_WK;
 
 /*******************************************************
  int *S_Rcv_Num;
@@ -4650,27 +4632,7 @@ int *F_Rcv_Num_WK;
 *******************************************************/
 int *S_Rcv_Num;
 
-/*******************************************************
- int *Snd_DS_NL_Size;
 
-  Snd_DS_NL_Size gives the size of data for DS_NL
-  which are transfered from myid to ID.
-  size: Snd_DS_NL_Size[numprocs]
-  allocation: Allocation_Arrays(0) in Input_std()
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-int *Snd_DS_NL_Size;
-
-/*******************************************************
- int *Rcv_DS_NL_Size;
-
-  Rcv_DS_NL_Size gives the size of data for DS_NL
-  which are received from ID.
-  size: Rcv_DS_NL_Size[numprocs]
-  allocation: Allocation_Arrays(0) in Input_std()
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-int *Rcv_DS_NL_Size;
 
 /*******************************************************
  int *Snd_HFS_Size;

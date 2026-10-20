@@ -1,15 +1,19 @@
 #ifndef OPENMX_DSVNA_CPU_H
 #define OPENMX_DSVNA_CPU_H
 #include "openmx_core_dsvna.h"
+#include "openmx_core_atom_pairs.h"
+#include "openmx_vna_tables.h"
 
 /* Shared CPU projector assembly. Preparation outlives all workers; only
-   geometry, projector Fourier values and output retain legacy views. */
+   Fourier values and output retain explicit borrowed views; geometry is owned. */
 static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation *owner,
     const OpenMXVnaPreparationBuffers *preparation, const double *GL_NormK,
-    int OneD_Nloop, const int *OneD2Mc_AN, const int *OneD2h_AN,
+    const OpenMXAtomPairBuffers *pairs,const SetProVnaTables *tables,
     double *time1, double *time2, double *time3)
 {
   const int points = preparation->points, Num_RVNA = preparation->projectors;
+  const int OneD_Nloop=pairs->count;
+  const int *OneD2Mc_AN=pairs->local,*OneD2h_AN=pairs->neighbor;
   const int *VNA_List = preparation->projector_angular;
   const double *Bessel_Pro00 = preparation->weighted[0], *Bessel_Pro01 = preparation->weighted[1];
 #pragma omp parallel
@@ -95,18 +99,11 @@ static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation
 
       /* set data on Mc_AN */
 
-      Gc_AN = M2G[Mc_AN];
-      Cwan = WhatSpecies[Gc_AN];
-
-      /* set data on h_AN */
-
-      Gh_AN = natn[Gc_AN][h_AN];
-      Rnh = ncn[Gc_AN][h_AN];
-      Hwan = WhatSpecies[Gh_AN];
-
-      dx = Gxyz[Gh_AN][1] + atv[Rnh][1] - Gxyz[Gc_AN][1];
-      dy = Gxyz[Gh_AN][2] + atv[Rnh][2] - Gxyz[Gc_AN][2];
-      dz = Gxyz[Gh_AN][3] + atv[Rnh][3] - Gxyz[Gc_AN][3];
+      Gc_AN=pairs->central_global[Nloop];
+      Cwan=pairs->central_species[Nloop];
+      Hwan=pairs->neighbor_species[Nloop];
+      const double *displacement=pairs->displacements+(size_t)Nloop*6;
+      dx=displacement[0];dy=displacement[1];dz=displacement[2];
 
       xyz2spherical(dx,dy,dz,0.0,0.0,0.0,S_coordinate);
       r     = S_coordinate[0];
@@ -207,8 +204,8 @@ static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation
                 tmp2 = 0.0;
 
                 for (i=0; i<points; i++){
-                  tmp1 += Bes00[i]*Spe_VNA_Bessel[Hwan][L1][Mul1][i];
-                  tmp2 += Bes01[i]*Spe_VNA_Bessel[Hwan][L1][Mul1][i];
+                  tmp1 += Bes00[i]*tables->projectors[Hwan][L1][Mul1][i];
+                  tmp2 += Bes01[i]*tables->projectors[Hwan][L1][Mul1][i];
 		}
 
 		SumNL0[openmx_core_dsvna_sum(&buffers,preparation,Cwan,L0,Mul0,L)]  = tmp1;
@@ -345,7 +342,7 @@ static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation
 		for (k=-L0; k<=L0; k++){
                   const size_t pair_index = openmx_core_dsvna_pair(&buffers,preparation,Cwan,L0,Mul0,L0+k,L,L1+M1);
 
-		  Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
+		  Ctmp1 = Conjg(SetPro_Conversion(tables,L0,L0+M0,L0+k));
 
 		  /* S */
 
@@ -393,35 +390,35 @@ static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation
 
 		  /* S */
 
-		  CsumNL0.r += (CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].r
-				- CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].i);
+		  CsumNL0.r += (CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).r
+				- CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).i);
 
-		  CsumNL0.i += (CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].i
-				+ CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].r);
+		  CsumNL0.i += (CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).i
+				+ CmatNL0[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).r);
 
 		  /* dS/dr */
 
-		  CsumNLr.r += (CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].r
-				- CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].i);
+		  CsumNLr.r += (CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).r
+				- CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).i);
 
-		  CsumNLr.i += (CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].i
-				+ CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].r);
+		  CsumNLr.i += (CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).i
+				+ CmatNLr[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).r);
 
 		  /* dS/dt */
 
-		  CsumNLt.r += (CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].r
-				- CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].i);
+		  CsumNLt.r += (CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).r
+				- CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).i);
 
-		  CsumNLt.i += (CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].i
-				+ CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].r);
+		  CsumNLt.i += (CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).i
+				+ CmatNLt[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).r);
 
 		  /* dS/dp */
 
-		  CsumNLp.r += (CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].r
-				- CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].i);
+		  CsumNLp.r += (CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).r
+				- CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).i);
 
-		  CsumNLp.i += (CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*Comp2Real[L1][L1+M1][L1+k].i
-				+ CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*Comp2Real[L1][L1+M1][L1+k].r);
+		  CsumNLp.i += (CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].r*SetPro_Conversion(tables,L1,L1+M1,L1+k).i
+				+ CmatNLp[(size_t)(L0+M0)*buffers.conversion_columns+(L1+k)].i*SetPro_Conversion(tables,L1,L1+M1,L1+k).r);
 
 		}
 
@@ -480,7 +477,7 @@ static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation
 
       dtime(&Etime_atom);
 #pragma omp atomic update
-      time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
+      tables->atom_seconds[Gc_AN] += Etime_atom - Stime_atom;
 
     } /* Mc_AN */
 

@@ -79,12 +79,8 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
       S_Snd_Num = (int*)malloc(sizeof(int)*Num_Procs);
       F_Rcv_Num = (int*)malloc(sizeof(int)*Num_Procs);
       S_Rcv_Num = (int*)malloc(sizeof(int)*Num_Procs);
-      F_Snd_Num_WK = (int*)malloc(sizeof(int)*Num_Procs);
-      F_Rcv_Num_WK = (int*)malloc(sizeof(int)*Num_Procs);
       F_TopMAN = (int*)malloc(sizeof(int)*Num_Procs);
       S_TopMAN = (int*)malloc(sizeof(int)*Num_Procs);
-      Snd_DS_NL_Size = (int*)malloc(sizeof(int)*Num_Procs);
-      Rcv_DS_NL_Size = (int*)malloc(sizeof(int)*Num_Procs);
       Snd_HFS_Size = (int*)malloc(sizeof(int)*Num_Procs);
       Rcv_HFS_Size = (int*)malloc(sizeof(int)*Num_Procs);
 

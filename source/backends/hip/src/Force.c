@@ -12,6 +12,7 @@
 ***********************************************************************/
 
 #include "mpi.h"
+#include "openmx_projector_exchange.h"
 #include "openmx_common.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_mgpu_runtime.h"
@@ -5900,6 +5901,10 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
     MPI_Comm_size(mpi_comm_level1, &numprocs);
     MPI_Comm_rank(mpi_comm_level1, &myid);
+  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(double));
+  int *send_progress=projector_transfer.buffers.sent;
+  int *receive_progress=projector_transfer.buffers.received;
+
 
     dtime(&stime);
 
@@ -5919,8 +5924,8 @@ void Force_HNL(double***** CDM0, double***** iDM0)
         R_array[ID] = (int*)malloc(sizeof(int) * 3);
     }
 
-    Snd_DS_NL_Size = (int*)malloc(sizeof(int) * numprocs);
-    Rcv_DS_NL_Size = (int*)malloc(sizeof(int) * numprocs);
+    Snd_DS_NL_Size = projector_transfer.buffers.send_sizes;
+    Rcv_DS_NL_Size = projector_transfer.buffers.receive_sizes;
 
     /* initialize the temporal array storing the force contribution */
 
@@ -6016,8 +6021,8 @@ void Force_HNL(double***** CDM0, double***** iDM0)
     }
 
     for (ID = 0; ID < numprocs; ID++) {
-        F_Snd_Num_WK[ID] = 0;
-        F_Rcv_Num_WK[ID] = 0;
+        send_progress[ID] = 0;
+        receive_progress[ID] = 0;
     }
 
     do {
@@ -6033,10 +6038,10 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
             /* find the data size to send the block data */
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 size1 = 0;
-                n = F_Snd_Num_WK[IDS];
+                n = send_progress[IDS];
 
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
@@ -6058,14 +6063,14 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
             /* receiving of the size of the data */
 
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR])) {
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
                 MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
                 Rcv_DS_NL_Size[IDR] = size2;
             } else {
                 Rcv_DS_NL_Size[IDR] = 0;
             }
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS]))
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS]))
                 MPI_Wait(&request, &stat);
 
         } /* ID */
@@ -6083,18 +6088,18 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                   sending of the data
             ******************************/
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 size1 = Snd_DS_NL_Size[IDS];
 
                 /* allocation of the array */
 
-                tmp_array = (double*)malloc(sizeof(double) * size1);
+                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
                 /* multidimentional array to the vector array */
 
                 num = 0;
-                n = F_Snd_Num_WK[IDS];
+                n = send_progress[IDS];
 
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
@@ -6123,16 +6128,16 @@ void Force_HNL(double***** CDM0, double***** iDM0)
               receiving of the block data
             ******************************/
 
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR])) {
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
 
                 size2 = Rcv_DS_NL_Size[IDR];
-                tmp_array2 = (double*)malloc(sizeof(double) * size2);
+                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
                 MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
                 /* store */
 
                 num = 0;
-                n = F_Rcv_Num_WK[IDR];
+                n = receive_progress[IDR];
                 Original_Mc_AN = F_TopMAN[IDR] + n;
 
                 Gc_AN = Rcv_GAN[IDR][n];
@@ -6154,7 +6159,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                 }
 
                 /* free tmp_array2 */
-                free(tmp_array2);
+
 
                 if (fhnl_gpu) {
                     Force_HNL_GpuArchiveHalo(DS_NL, Original_Mc_AN, Gc_AN);
@@ -6184,7 +6189,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                     Hwan = WhatSpecies[Gh_AN];
                     ian = Spe_Total_CNO[Hwan];
 
-                    n = F_Rcv_Num_WK[IDR];
+                    n = receive_progress[IDR];
                     jg = Rcv_GAN[IDR][n];
 
                     for (j0 = 0; j0 <= fan; j0++) {
@@ -6359,23 +6364,23 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                 } /* if (!fhnl_gpu) */
 
                 /********************************************
-                  increment of F_Rcv_Num_WK[IDR]
+                  increment of receive_progress[IDR]
                 ********************************************/
 
-                F_Rcv_Num_WK[IDR]++;
+                receive_progress[IDR]++;
 
-            } /* if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) */
+            } /* if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) */
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+                 /* freeing of array */
 
                 /********************************************
-                     increment of F_Snd_Num_WK[IDS]
+                     increment of send_progress[IDS]
                 ********************************************/
 
-                F_Snd_Num_WK[IDS]++;
+                send_progress[IDS]++;
             }
 
         } /* ID */
@@ -6390,10 +6395,10 @@ void Force_HNL(double***** CDM0, double***** iDM0)
             IDS = (myid + ID) % numprocs;
             IDR = (myid - ID + numprocs) % numprocs;
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS]))
-                po += F_Snd_Num[IDS] - F_Snd_Num_WK[IDS];
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR]))
-                po += F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR];
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS]))
+                po += F_Snd_Num[IDS] - send_progress[IDS];
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR]))
+                po += F_Rcv_Num[IDR] - receive_progress[IDR];
         }
 
     } while (po != 0);
@@ -6906,7 +6911,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
                 /* allocate tmp_array */
 
-                tmp_array = (double*)malloc(sizeof(double) * size1);
+                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
                 /* multidimentional array to vector array */
 
@@ -6963,7 +6968,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
             if (R_comm_flag == 1) {
 
                 size2 = R_array[IDR][2];
-                tmp_array2 = (double*)malloc(sizeof(double) * size2);
+                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
 
                 if (ID != 0) {
                     MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
@@ -7006,14 +7011,14 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                 }
 
                 /* free tmp_array2 */
-                free(tmp_array2);
+
 
             } /* if (R_comm_flag==1) */
 
             if (S_comm_flag == 1) {
                 if (ID != 0)
                     MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+                 /* freeing of array */
             }
 
         } /* ID */
@@ -7316,8 +7321,9 @@ void Force_HNL(double***** CDM0, double***** iDM0)
     }
     free(R_array);
 
-    free(Snd_DS_NL_Size);
-    free(Rcv_DS_NL_Size);
+
+
+  OpenMX_TransferEnd(&projector_transfer);
 }
 
 /* ------------------------------------------------------------------ */
@@ -10816,6 +10822,10 @@ void Force4B(double***** CDM0)
 
     MPI_Comm_size(mpi_comm_level1, &numprocs);
     MPI_Comm_rank(mpi_comm_level1, &myid);
+  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(Type_DS_VNA));
+  int *send_progress=projector_transfer.buffers.sent;
+  int *receive_progress=projector_transfer.buffers.received;
+
 
     dtime(&stime);
 
@@ -10828,8 +10838,8 @@ void Force4B(double***** CDM0)
     S_array = Force_alloc_int_matrix(numprocs, 3);
     R_array = Force_alloc_int_matrix(numprocs, 3);
 
-    Snd_DS_VNA_Size = (int*)malloc(sizeof(int) * numprocs);
-    Rcv_DS_VNA_Size = (int*)malloc(sizeof(int) * numprocs);
+    Snd_DS_VNA_Size = projector_transfer.buffers.send_sizes;
+    Rcv_DS_VNA_Size = projector_transfer.buffers.receive_sizes;
 
     VNA_List = (int*)malloc(sizeof(int) * (List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
     VNA_List2 = (int*)malloc(sizeof(int) * (List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
@@ -11064,8 +11074,8 @@ void Force4B(double***** CDM0)
     dtime(&stime);
 
     for (ID = 0; ID < numprocs; ID++) {
-        F_Snd_Num_WK[ID] = 0;
-        F_Rcv_Num_WK[ID] = 0;
+        send_progress[ID] = 0;
+        receive_progress[ID] = 0;
     }
 
     do {
@@ -11081,10 +11091,10 @@ void Force4B(double***** CDM0)
 
             /* find the data size to send the block data */
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 size1 = 0;
-                n = F_Snd_Num_WK[IDS];
+                n = send_progress[IDS];
 
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
@@ -11105,14 +11115,14 @@ void Force4B(double***** CDM0)
 
             /* receiving of the size of the data */
 
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR])) {
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
                 MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
                 Rcv_DS_VNA_Size[IDR] = size2;
             } else {
                 Rcv_DS_VNA_Size[IDR] = 0;
             }
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS]))
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS]))
                 MPI_Wait(&request, &stat);
 
         } /* ID */
@@ -11130,18 +11140,18 @@ void Force4B(double***** CDM0)
                    sending of the data
             ******************************/
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 size1 = Snd_DS_VNA_Size[IDS];
 
                 /* allocation of the array */
 
-                tmp_array = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA) * size1);
+                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
                 /* multidimentional array to the vector array */
 
                 num = 0;
-                n = F_Snd_Num_WK[IDS];
+                n = send_progress[IDS];
 
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
@@ -11167,16 +11177,16 @@ void Force4B(double***** CDM0)
                 receiving of the block data
             ******************************/
 
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR])) {
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
 
                 size2 = Rcv_DS_VNA_Size[IDR];
-                tmp_array2 = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA) * size2);
+                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
                 MPI_Recv(&tmp_array2[0], size2, MPI_Type_DS_VNA, IDR, tag, mpi_comm_level1, &stat);
 
                 /* store */
 
                 num = 0;
-                n = F_Rcv_Num_WK[IDR];
+                n = receive_progress[IDR];
                 Original_Mc_AN = F_TopMAN[IDR] + n;
                 Gc_AN = Rcv_GAN[IDR][n];
                 Cwan = WhatSpecies[Gc_AN];
@@ -11197,7 +11207,7 @@ void Force4B(double***** CDM0)
                 }
 
                 /* free tmp_array2 */
-                free(tmp_array2);
+
 
                 if (f4b_gpu_case1) {
                     Force4B_GpuArchiveHalo(DS_VNA, Original_Mc_AN, Gc_AN);
@@ -11236,7 +11246,7 @@ void Force4B(double***** CDM0)
                         Hwan = WhatSpecies[Gh_AN];
                         ian = Spe_Total_CNO[Hwan];
 
-                        n = F_Rcv_Num_WK[IDR];
+                        n = receive_progress[IDR];
                         jg = Rcv_GAN[IDR][n];
 
                         for (j0 = 0; j0 <= fan; j0++) {
@@ -11317,7 +11327,7 @@ void Force4B(double***** CDM0)
                         time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
                     }
                 } else {
-#pragma omp parallel shared(use_force4b_fused, List_YOUSO, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, Original_Mc_AN, IDR, Rcv_GAN, F_Rcv_Num_WK, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum, ActiveHVNA2, ActiveHVNA3) private(Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, Mc_AN, Cwan, fan, h_AN, Gh_AN, Mh_AN, Hwan, ian, n, jg, j0, jg0, Mj_AN0, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, HVNAx, HVNAy, HVNAz, i, j, pref)
+#pragma omp parallel shared(use_force4b_fused, List_YOUSO, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, Original_Mc_AN, IDR, Rcv_GAN, receive_progress, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum, ActiveHVNA2, ActiveHVNA3) private(Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, Mc_AN, Cwan, fan, h_AN, Gh_AN, Mh_AN, Hwan, ian, n, jg, j0, jg0, Mj_AN0, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, HVNAx, HVNAy, HVNAz, i, j, pref)
                     {
 
                         /* allocation of array */
@@ -11345,7 +11355,7 @@ void Force4B(double***** CDM0)
                             Hwan = WhatSpecies[Gh_AN];
                             ian = Spe_Total_CNO[Hwan];
 
-                            n = F_Rcv_Num_WK[IDR];
+                            n = receive_progress[IDR];
                             jg = Rcv_GAN[IDR][n];
 
                             for (j0 = 0; j0 <= fan; j0++) {
@@ -11438,23 +11448,23 @@ void Force4B(double***** CDM0)
                 }
 
                 /********************************************
-                  increment of F_Rcv_Num_WK[IDR]
+                  increment of receive_progress[IDR]
                 ********************************************/
 
-                F_Rcv_Num_WK[IDR]++;
+                receive_progress[IDR]++;
 
-            } /* if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) */
+            } /* if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) */
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+                 /* freeing of array */
 
                 /********************************************
-                     increment of F_Snd_Num_WK[IDS]
+                     increment of send_progress[IDS]
                 ********************************************/
 
-                F_Snd_Num_WK[IDS]++;
+                send_progress[IDS]++;
             }
 
         } /* ID */
@@ -11469,10 +11479,10 @@ void Force4B(double***** CDM0)
             IDS = (myid + ID) % numprocs;
             IDR = (myid - ID + numprocs) % numprocs;
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS]))
-                po += F_Snd_Num[IDS] - F_Snd_Num_WK[IDS];
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR]))
-                po += F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR];
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS]))
+                po += F_Snd_Num[IDS] - send_progress[IDS];
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR]))
+                po += F_Rcv_Num[IDR] - receive_progress[IDR];
         }
 
     } while (po != 0);
@@ -11870,7 +11880,7 @@ void Force4B(double***** CDM0)
 
                 /* allocate tmp_array */
 
-                tmp_array = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA) * size1);
+                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
                 /* multidimentional array to vector array */
 
@@ -11926,7 +11936,7 @@ void Force4B(double***** CDM0)
             if (R_comm_flag == 1) {
 
                 size2 = R_array[IDR][2];
-                tmp_array2 = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA) * size2);
+                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
 
                 if (ID != 0) {
                     MPI_Recv(&tmp_array2[0], size2, MPI_Type_DS_VNA, IDR, tag, mpi_comm_level1, &stat);
@@ -11965,14 +11975,14 @@ void Force4B(double***** CDM0)
                 }
 
                 /* free tmp_array2 */
-                free(tmp_array2);
+
 
             } /* if (R_comm_flag==1) */
 
             if (S_comm_flag == 1) {
                 if (ID != 0)
                     MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+                 /* freeing of array */
             }
 
         } /* ID */
@@ -12271,12 +12281,13 @@ void Force4B(double***** CDM0)
     Force_free_int_matrix(S_array);
     Force_free_int_matrix(R_array);
 
-    free(Snd_DS_VNA_Size);
-    free(Rcv_DS_VNA_Size);
+
+
 
     free(VNA_List);
     free(VNA_List2);
 
+  OpenMX_TransferEnd(&projector_transfer);
 }
 
 void dHNL(int where_flag,
@@ -17123,6 +17134,10 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
 
     MPI_Comm_size(mpi_comm_level1, &numprocs);
     MPI_Comm_rank(mpi_comm_level1, &myid);
+  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(double));
+  int *send_progress=projector_transfer.buffers.sent;
+  int *receive_progress=projector_transfer.buffers.received;
+
 
     dtime(&stime);
 
@@ -17142,8 +17157,8 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
         R_array[ID] = (int*)malloc(sizeof(int) * 3);
     }
 
-    Snd_OLP_Size = (int*)malloc(sizeof(int) * numprocs);
-    Rcv_OLP_Size = (int*)malloc(sizeof(int) * numprocs);
+    Snd_OLP_Size = projector_transfer.buffers.send_sizes;
+    Rcv_OLP_Size = projector_transfer.buffers.receive_sizes;
 
     /* initialize the temporal array storing the force contribution */
 
@@ -17221,8 +17236,8 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
     }
 
     for (ID = 0; ID < numprocs; ID++) {
-        F_Snd_Num_WK[ID] = 0;
-        F_Rcv_Num_WK[ID] = 0;
+        send_progress[ID] = 0;
+        receive_progress[ID] = 0;
     }
 
     do {
@@ -17238,10 +17253,10 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
 
             /* find the data size to send the block data */
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 size1 = 0;
-                n = F_Snd_Num_WK[IDS];
+                n = send_progress[IDS];
 
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
@@ -17263,14 +17278,14 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
 
             /* receiving of the size of the data */
 
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR])) {
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
                 MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
                 Rcv_OLP_Size[IDR] = size2;
             } else {
                 Rcv_OLP_Size[IDR] = 0;
             }
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS]))
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS]))
                 MPI_Wait(&request, &stat);
 
         } /* ID */
@@ -17288,18 +17303,18 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                   sending of the data
             ******************************/
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 size1 = Snd_OLP_Size[IDS];
 
                 /* allocation of the array */
 
-                tmp_array = (double*)malloc(sizeof(double) * size1);
+                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
                 /* multidimentional array to the vector array */
 
                 num = 0;
-                n = F_Snd_Num_WK[IDS];
+                n = send_progress[IDS];
 
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
@@ -17326,16 +17341,16 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
               receiving of the block data
             ******************************/
 
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR])) {
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
 
                 size2 = Rcv_OLP_Size[IDR];
-                tmp_array2 = (double*)malloc(sizeof(double) * size2);
+                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
                 MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
                 /* store */
 
                 num = 0;
-                n = F_Rcv_Num_WK[IDR];
+                n = receive_progress[IDR];
                 Original_Mc_AN = F_TopMAN[IDR] + n;
 
                 Gc_AN = Rcv_GAN[IDR][n];
@@ -17355,7 +17370,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                 }
 
                 /* free tmp_array2 */
-                free(tmp_array2);
+
 
                 /*****************************************************************
                                    multiplying overlap integrals
@@ -17379,7 +17394,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                     Hwan = WhatSpecies[Gh_AN];
                     ian = Spe_Total_CNO[Hwan];
 
-                    n = F_Rcv_Num_WK[IDR];
+                    n = receive_progress[IDR];
                     jg = Rcv_GAN[IDR][n];
 
                     for (j0 = 0; j0 <= fan; j0++) {
@@ -17553,23 +17568,23 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                 } /* Mc_AN */
 
                 /********************************************
-                  increment of F_Rcv_Num_WK[IDR]
+                  increment of receive_progress[IDR]
                 ********************************************/
 
-                F_Rcv_Num_WK[IDR]++;
+                receive_progress[IDR]++;
 
-            } /* if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) */
+            } /* if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) */
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS])) {
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
                 MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+                 /* freeing of array */
 
                 /********************************************
-                     increment of F_Snd_Num_WK[IDS]
+                     increment of send_progress[IDS]
                 ********************************************/
 
-                F_Snd_Num_WK[IDS]++;
+                send_progress[IDS]++;
             }
 
         } /* ID */
@@ -17584,10 +17599,10 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
             IDS = (myid + ID) % numprocs;
             IDR = (myid - ID + numprocs) % numprocs;
 
-            if (0 < (F_Snd_Num[IDS] - F_Snd_Num_WK[IDS]))
-                po += F_Snd_Num[IDS] - F_Snd_Num_WK[IDS];
-            if (0 < (F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR]))
-                po += F_Rcv_Num[IDR] - F_Rcv_Num_WK[IDR];
+            if (0 < (F_Snd_Num[IDS] - send_progress[IDS]))
+                po += F_Snd_Num[IDS] - send_progress[IDS];
+            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR]))
+                po += F_Rcv_Num[IDR] - receive_progress[IDR];
         }
 
     } while (po != 0);
@@ -18081,7 +18096,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
 
                 /* allocate tmp_array */
 
-                tmp_array = (double*)malloc(sizeof(double) * size1);
+                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
                 /* multidimentional array to vector array */
 
@@ -18136,7 +18151,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
             if (R_comm_flag == 1) {
 
                 size2 = R_array[IDR][2];
-                tmp_array2 = (double*)malloc(sizeof(double) * size2);
+                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
 
                 if (ID != 0) {
                     MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
@@ -18177,14 +18192,14 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                 }
 
                 /* free tmp_array2 */
-                free(tmp_array2);
+
 
             } /* if (R_comm_flag==1) */
 
             if (S_comm_flag == 1) {
                 if (ID != 0)
                     MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+                 /* freeing of array */
             }
 
         } /* ID */
@@ -18467,6 +18482,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
     }
     free(R_array);
 
-    free(Snd_OLP_Size);
-    free(Rcv_OLP_Size);
+
+
+  OpenMX_TransferEnd(&projector_transfer);
 }

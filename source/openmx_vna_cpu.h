@@ -1,13 +1,18 @@
 #ifndef OPENMX_VNA_CPU_H
 #define OPENMX_VNA_CPU_H
 #include "openmx_core_vna.h"
+#include "openmx_core_atom_pairs.h"
+#include "openmx_vna_tables.h"
 
 /* Internal host adapter shared by CUDA/HIP and both pair orientations.
-   Geometry, basis and output still borrow the legacy invocation's globals. */
+   Basis and geometry are owned snapshots; Fourier/output tables are explicit borrowed views. */
 static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_NormK,
-    int OneD_Nloop, const int *OneD2Mc_AN, const int *OneD2h_AN)
+    const OpenMXVnaPreparationBuffers *preparation,const OpenMXAtomPairBuffers *pairs,
+    const SetProVnaTables *tables)
 {
-#pragma omp parallel shared(List_YOUSO,time_per_atom,HVNA23,Comp2Real,GL_Weight,Spe_ProductRF_Bessel,Spe_CrudeVNA_Bessel,GL_NormK,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop)
+  const int OneD_Nloop=pairs->count,points=preparation->points;
+  const int *OneD2Mc_AN=pairs->local,*OneD2h_AN=pairs->neighbor;
+#pragma omp parallel
   {
     int OMPID,Nthrds,Nprocs,Nloop;
     int Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN;
@@ -38,7 +43,7 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
     dcomplex *TmpHNAp;
 
     OpenMXVnaBuffers buffers;
-    const OpenMXVnaShape shape = {List_YOUSO[25],List_YOUSO[24],GL_Mesh};
+    const OpenMXVnaShape shape = {preparation->basis_lmax,preparation->basis_multiplicity,preparation->points};
     char error[256];
     OpenMXVnaWorkspace *workspace = openmx_core_vna_create(&shape,&buffers,error,sizeof(error));
     if (workspace == NULL) {
@@ -86,26 +91,13 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
 
       /* set data on Mc_AN */
 
-      Gc_AN = M2G[Mc_AN];
-      Cwan = WhatSpecies[Gc_AN];
-
-      /* set data on h_AN */
-
-      Gh_AN = natn[Gc_AN][h_AN];
-      Rnh = ncn[Gc_AN][h_AN];
-      Hwan = WhatSpecies[Gh_AN];
-
-      const int product_species = mirror ? Hwan : Cwan;
-      const int potential_species = mirror ? Cwan : Hwan;
-      if (mirror) {
-        dx = Gxyz[Gc_AN][1] - Gxyz[Gh_AN][1] - atv[Rnh][1];
-        dy = Gxyz[Gc_AN][2] - Gxyz[Gh_AN][2] - atv[Rnh][2];
-        dz = Gxyz[Gc_AN][3] - Gxyz[Gh_AN][3] - atv[Rnh][3];
-      } else {
-        dx = Gxyz[Gh_AN][1] + atv[Rnh][1] - Gxyz[Gc_AN][1];
-        dy = Gxyz[Gh_AN][2] + atv[Rnh][2] - Gxyz[Gc_AN][2];
-        dz = Gxyz[Gh_AN][3] + atv[Rnh][3] - Gxyz[Gc_AN][3];
-      }
+      Gc_AN=pairs->central_global[Nloop];
+      Cwan=pairs->central_species[Nloop];
+      Hwan=pairs->neighbor_species[Nloop];
+      const int product_species=mirror?Hwan:Cwan;
+      const int potential_species=mirror?Cwan:Hwan;
+      const double *displacement=pairs->displacements+(size_t)Nloop*6+mirror*3;
+      dx=displacement[0];dy=displacement[1];dz=displacement[2];
 
       xyz2spherical(dx,dy,dz,0.0,0.0,0.0,S_coordinate);
       r     = S_coordinate[0];
@@ -131,15 +123,15 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
        \int VNA(k)*Spe_ProductRF_Bessel(k)*jl(k*R) k^2 dk^3
       ****************************************************/
 
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
+      kmin = tables->minimum_wavevector;
+      kmax = tables->maximum_wavevector;
       Sk = kmax + kmin;
       Dk = kmax - kmin;
 
-      for (L0=0; L0<=Spe_MaxL_Basis[product_species]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[product_species][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[product_species]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[product_species][L1]; Mul1++){
+      for (L0=0; L0<=preparation->maximum_angular[product_species]; L0++){
+	for (Mul0=0; Mul0<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L0)]; Mul0++){
+	  for (L1=0; L1<=preparation->maximum_angular[product_species]; L1++){
+	    for (Mul1=0; Mul1<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L1)]; Mul1++){
 	      for (M0=-L0; M0<=L0; M0++){
 		for (M1=-L1; M1<=L1; M1++){
 		  TmpHNA[openmx_core_vna_pair(&buffers,L0,Mul0,L0+M0,L1,Mul1,L1+M1)] = Complex(0.0,0.0);
@@ -154,22 +146,22 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
       }
 
       /* Reuse this worker's Bessel table; preserve the Gauss recurrence. */
-      Lmax_Four_Int = 2*Spe_MaxL_Basis[product_species];
-      for (i=0; i<GL_Mesh; i++){
+      Lmax_Four_Int = 2*preparation->maximum_angular[product_species];
+      for (i=0; i<points; i++){
         Normk = GL_NormK[i];
         Spherical_Bessel2(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
         for (LL=0; LL<=Lmax_Four_Int; LL++){
-          SphB[LL*GL_Mesh+i] = tmp_SphB[LL];
-          SphBp[LL*GL_Mesh+i] = tmp_SphBp[LL];
+          SphB[LL*points+i] = tmp_SphB[LL];
+          SphBp[LL*points+i] = tmp_SphBp[LL];
         }
       }
 
       /* loops for L0, Mul0, L1, and Mul1 */
 
-      for (L0=0; L0<=Spe_MaxL_Basis[product_species]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[product_species][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[product_species]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[product_species][L1]; Mul1++){
+      for (L0=0; L0<=preparation->maximum_angular[product_species]; L0++){
+	for (Mul0=0; Mul0<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L0)]; Mul0++){
+	  for (L1=0; L1<=preparation->maximum_angular[product_species]; L1++){
+	    for (Mul1=0; Mul1<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L1)]; Mul1++){
 
 	      if (L0<=L1){
 		Lmax_Four_Int = 2*L1;
@@ -185,16 +177,16 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
 
 		    /* Gauss-Legendre quadrature */
 
-		    for (i=0; i<GL_Mesh; i++){
+		    for (i=0; i<points; i++){
 
 		      Normk = GL_NormK[i];
 
-		      sj  =  SphB[LL*GL_Mesh+i];
-		      sjp = SphBp[LL*GL_Mesh+i];
+		      sj  =  SphB[LL*points+i];
+		      sjp = SphBp[LL*points+i];
 
-		      tmp0 = Spe_CrudeVNA_Bessel[potential_species][i];
-		      tmp1 = Spe_ProductRF_Bessel[product_species][L0][Mul0][L1][Mul1][LL][i];
-		      tmp10 = 0.50*Dk*tmp0*tmp1*GL_Weight[i]*Normk*Normk;
+		      tmp0 = tables->crude[potential_species][i];
+		      tmp1 = tables->products[product_species][L0][Mul0][L1][Mul1][LL][i];
+		      tmp10 = 0.50*Dk*tmp0*tmp1*tables->weights[i]*Normk*Normk;
 
 		      sum  += tmp10*sj;
 		      sumr += tmp10*sjp*Normk;
@@ -270,10 +262,10 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
 
       /* copy the upper part to the lower part */
 
-      for (L0=0; L0<=Spe_MaxL_Basis[product_species]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[product_species][L0]; Mul0++){
-	  for (L1=0; L1<=Spe_MaxL_Basis[product_species]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[product_species][L1]; Mul1++){
+      for (L0=0; L0<=preparation->maximum_angular[product_species]; L0++){
+	for (Mul0=0; Mul0<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L0)]; Mul0++){
+	  for (L1=0; L1<=preparation->maximum_angular[product_species]; L1++){
+	    for (Mul1=0; Mul1<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L1)]; Mul1++){
 	      if (L0<=L1){
 		for (M0=-L0; M0<=L0; M0++){
 		  for (M1=-L1; M1<=L1; M1++){
@@ -303,12 +295,12 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
       ****************************************************/
 
       num0 = 0;
-      for (L0=0; L0<=Spe_MaxL_Basis[product_species]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[product_species][L0]; Mul0++){
+      for (L0=0; L0<=preparation->maximum_angular[product_species]; L0++){
+	for (Mul0=0; Mul0<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L0)]; Mul0++){
 
 	  num1 = 0;
-	  for (L1=0; L1<=Spe_MaxL_Basis[product_species]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[product_species][L1]; Mul1++){
+	  for (L1=0; L1<=preparation->maximum_angular[product_species]; L1++){
+	    for (Mul1=0; Mul1<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L1)]; Mul1++){
 
 	      for (M0=-L0; M0<=L0; M0++){
 		for (M1=-L1; M1<=L1; M1++){
@@ -320,7 +312,7 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
 
 		  for (k=-L0; k<=L0; k++){
 
-		    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
+		    Ctmp1 = Conjg(SetPro_Conversion(tables,L0,L0+M0,L0+k));
 
 		    /* S */
 
@@ -368,22 +360,22 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
 
 		    /* S */
 
-		    Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
+		    Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
 		    CsumS0 = Cadd(CsumS0,Ctmp1);
 
 		    /* dS/dr */
 
-		    Ctmp1 = Cmul(CmatSr[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
+		    Ctmp1 = Cmul(CmatSr[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
 		    CsumSr = Cadd(CsumSr,Ctmp1);
 
 		    /* dS/dt */
 
-		    Ctmp1 = Cmul(CmatSt[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
+		    Ctmp1 = Cmul(CmatSt[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
 		    CsumSt = Cadd(CsumSt,Ctmp1);
 
 		    /* dS/dp */
 
-		    Ctmp1 = Cmul(CmatSp[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
+		    Ctmp1 = Cmul(CmatSp[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
 		    CsumSp = Cadd(CsumSp,Ctmp1);
 
 		  }
@@ -437,7 +429,7 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
 
       dtime(&Etime_atom);
 #pragma omp atomic update
-      time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
+      tables->atom_seconds[Gc_AN] += Etime_atom - Stime_atom;
 
     } /* Mc_AN */
 

@@ -9,8 +9,11 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-source = (ROOT / "source/backends/hip/src/Set_ProExpn_VNA.c").read_text()
-assert "SetPro_gpu_used" not in source
+source = (ROOT / "source/openmx_vna_assembly.h").read_text()
+CORE = Path(os.environ.get("OPENMX_CORE_LIBRARY", ROOT / "build/core-serial/libopenmx_core.so")).resolve()
+for backend in (ROOT / "source/Set_ProExpn_VNA.c", ROOT / "source/backends/hip/src/Set_ProExpn_VNA.c"):
+    assert '#include "openmx_vna_assembly.h"' in backend.read_text()
+    assert "SetPro_gpu_used" not in backend.read_text()
 
 def function(name):
     match = re.search(r"^double " + name + r"\([^;]*?\)\s*\{", source, re.M)
@@ -32,24 +35,35 @@ PREFIX = r'''
 typedef float Type_DS_VNA;
 #include "openmx_vna_gpu_context.h"
 #include "openmx_vna_status.h"
+#include "openmx_core_vna_invocation.h"
+#include "openmx_vna_tables.h"
 #define measure_time 0
 static const int GL_Mesh=4;
 static const double PAO_Nkmax=3,Radial_kmin=.1;
 static const double GL_Abscissae[]={-1,-1.0/3,1.0/3,1};
 static double *****HVNA3;
+static int List_YOUSO[40]={[24]=1},SpeciesNum=1,atomnum=0,Matomnum=0,TCpyCell=-1;
+static int angular[1]={0},count[1]={1},*Spe_Num_Basis[1]={count},*Spe_MaxL_Basis=angular;
+static int *M2G,*WhatSpecies,*FNAN,**natn,**ncn;
+static double **Gxyz,**atv,****Spe_VNA_Bessel,*******Spe_ProductRF_Bessel,**Spe_CrudeVNA_Bessel;
+static dcomplex Comp2Real[1][1][1];
+static double GL_Weight[4],*time_per_atom;
+static void SetPro_gpu_abort(const char *message){fprintf(stderr,"%s\n",message);abort();}
 static _Thread_local int mode,notes,ends;
 static void SetPro_note(const char *stage,const char *format,...){(void)stage;(void)format;notes++;}
-static double Set_ProExpn(double ****h,Type_DS_VNA *****d,double *k,int *status){
- (void)h;(void)d;assert(*status==0);assert(fabs(k[0]-.1)<1e-14 && fabs(k[3]-3)<1e-14);
+static double SetPro_Separable(double ****h,Type_DS_VNA *****d,
+    const OpenMXVnaInvocationBuffers *call,const SetProVnaTables *tables,int *status){
+ (void)h;(void)d;(void)tables;const double *k=call->wavevectors;
+ assert(*status==0);assert(fabs(k[0]-.1)<1e-14 && fabs(k[3]-3)<1e-14);
+ assert(call->pairs.count==0 && call->preparation.orbitals[0]==1);
  *status=!!(mode&1);return 1;
 }
 static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g){g->enabled=!(mode&8);return g->enabled;}
 static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g){assert(g->enabled);memset(g,0,sizeof(*g));ends++;}
-static double Set_VNA2(double ****h,double *****h2,double *k,SetProGpu3Context *g){
- (void)h;(void)h2;(void)k;if(g->enabled && (mode&2))g->used_gpu=1;return 2;
-}
-static double Set_VNA3(double *****h,double *k,SetProGpu3Context *g){
- (void)h;(void)k;if(g->enabled && (mode&4))g->used_gpu=1;return 3;
+static double SetPro_OneCenter(double ****h,double *****matrix,int mirror,
+    const OpenMXVnaInvocationBuffers *call,const SetProVnaTables *tables,SetProGpu3Context *g){
+ (void)h;(void)matrix;(void)call;(void)tables;
+ if(g->enabled && (mode & (mirror?4:2)))g->used_gpu=1;return mirror?3:2;
 }
 '''
 MAIN = r'''
@@ -84,7 +98,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-vna-status-") as directory:
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
         "-std=c11", "-O1", "-g", "-fopenmp", "-fsanitize=address,undefined",
         "-fno-sanitize-recover=all", "-I" + str(ROOT / "source"),
-        str(path), "-lm", "-o", str(executable)], check=True)
+        str(path), str(CORE), "-Wl,-rpath," + str(CORE.parent), "-lm", "-o", str(executable)], check=True)
     def sanitizer_stack():
         soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
         if soft == resource.RLIM_INFINITY:

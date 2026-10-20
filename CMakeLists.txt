@@ -158,10 +158,24 @@ if(BUILD_TESTING)
   set_tests_properties(dsvna-workspace-integrals PROPERTIES
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;OPENMX_VNA_SOURCE=${_native}/Set_ProExpn_VNA.c" TIMEOUT 120)
   add_test(NAME vna-stage-status COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_vna_status_cpu.py")
-  set_tests_properties(vna-stage-status PROPERTIES TIMEOUT 120)
+  set_tests_properties(vna-stage-status PROPERTIES
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
   add_test(NAME hvna-workspace-integrals COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_hvna_workspace_cpu.py")
   set_tests_properties(hvna-workspace-integrals PROPERTIES
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;OPENMX_VNA_SOURCE=${_native}/Set_ProExpn_VNA.c" TIMEOUT 180)
+  find_program(OPENMX_TEST_MPICC NAMES mpicc)
+  if(OPENMX_TEST_MPICC)
+    add_test(NAME projector-exchange-mpi COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/run_projector_exchange_mpi.py")
+    set_tests_properties(projector-exchange-mpi PROPERTIES
+      ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;MPICC=${OPENMX_TEST_MPICC}"
+      TIMEOUT 200 PROCESSORS 4)
+    add_test(NAME vna-exchange-mpi COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/run_vna_exchange_mpi.py")
+    set_tests_properties(vna-exchange-mpi PROPERTIES
+      ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;MPICC=${OPENMX_TEST_MPICC}"
+      TIMEOUT 380 PROCESSORS 4)
+  endif()
   if(_backend STREQUAL "CUDA")
     add_test(NAME force-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force4b_archived_cpu.py")

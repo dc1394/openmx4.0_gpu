@@ -1536,3 +1536,7 @@ SigmaEK.o: SigmaEK.c
 # The local instantiation TU includes upstream implementation headers.
 # Track them so a submodule update also rebuilds the embedded kernels.
 -include $(GEMMUL8_DEPFILES)
+
+# Invocation-owned projector communication and shared VNA orchestration.
+Force.o Stress.o Set_Nonlocal.o Set_CoreHoleMatrix.o Set_ProExpn_VNA.o: openmx_projector_exchange.h openmx_core_projector_exchange.h
+Set_ProExpn_VNA.o: openmx_vna_assembly.h openmx_core_vna_invocation.h openmx_core_atom_pairs.h openmx_vna_tables.h openmx_vna_status.h

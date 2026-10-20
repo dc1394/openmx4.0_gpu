@@ -2796,12 +2796,8 @@ static void array0(OpenMXCoreContext *core)
   free(S_Snd_Num);
   free(F_Rcv_Num);
   free(S_Rcv_Num);
-  free(F_Snd_Num_WK);
-  free(F_Rcv_Num_WK);
   free(F_TopMAN);
   free(S_TopMAN);
-  free(Snd_DS_NL_Size);
-  free(Rcv_DS_NL_Size);
   free(Snd_HFS_Size);
   free(Rcv_HFS_Size);
   free(VPS_j_dependency);

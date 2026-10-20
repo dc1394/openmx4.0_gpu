@@ -145,7 +145,20 @@ int main(void)
     }
     for(size_t i=0;i<sizeof(output)/sizeof(double);i++)((double*)output)[i]=-91;
     memset(time_per_atom,0,sizeof(time_per_atom));
-    SetPro_VNA23_CPU(channels,mirror,wavevectors,NA*NH,mc,neighbor);
+    int *counts[NS];for(int s=0;s<NS;++s)counts[s]=Spe_Num_Basis[s];
+    const OpenMXVnaPreparationShape shape={0,2,0,0,GL_Mesh,NS,Spe_MaxL_Basis,counts};
+    OpenMXVnaPreparationBuffers prepared_basis;char error[256];
+    OpenMXVnaPreparation *basis_owner=openmx_core_vna_preparation_create(&shape,&prepared_basis,error,sizeof(error));assert(basis_owner);
+    OpenMXAtomPairBuffers pairs;OpenMXAtomPairPlan *plan=test_vna_pairs(&pairs);
+    double *p6[NS][1][2][1][2][1],**p5[NS][1][2][1][2],***p4[NS][1][2][1];
+    double ****p3[NS][1][2],*****p2[NS][1],******p1[NS];
+    double *crude[NS];
+    for(int s=0;s<NS;++s){p1[s]=p2[s];p2[s][0]=p3[s][0];crude[s]=Spe_CrudeVNA_Bessel[s];
+      for(int i=0;i<2;++i){p3[s][0][i]=p4[s][0][i];p4[s][0][i][0]=p5[s][0][i][0];
+        for(int j=0;j<2;++j){p5[s][0][i][0][j]=p6[s][0][i][0][j];p6[s][0][i][0][j][0]=Spe_ProductRF_Bessel[s][0][i][0][j][0];}}}
+    const SetProVnaTables tables={NULL,p1,crude,&Comp2Real[0][0][0],1,GL_Weight,Radial_kmin,PAO_Nkmax,time_per_atom};
+    SetPro_VNA23_CPU(channels,mirror,wavevectors,&prepared_basis,&pairs,&tables);
+    openmx_core_atom_pairs_destroy(plan);openmx_core_vna_preparation_destroy(basis_owner);
     for(int a=1;a<=NA;a++){
       assert(time_per_atom[a]==NH);
       for(int h=0;h<NH;h++){
@@ -194,9 +207,9 @@ with tempfile.TemporaryDirectory(prefix="openmx-vna-workspace-") as folder:
                    '#include "openmx_core_vna.h"\n#include "openmx_vna_gpu_context.h"\n'
                    '#define xmin 0.0\n#define asize_lmax 30\n'
                    + HARNESS + bessel + '\n' + verbose + '\n' + end_context
-                   + '\n#include "openmx_vna_cpu.h"\n' + MAIN)
+                   + '\n#include "openmx_vna_cpu.h"\n#include "vna_pair_fixture.h"\n' + MAIN)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
                    shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +
-                   ["-std=c11", "-fopenmp", "-I" + str(ROOT / "source"), str(src), str(CORE),
+                   ["-std=c11", "-fopenmp", "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), str(src), str(CORE),
                     "-Wl,-rpath," + str(CORE.parent), "-lm", "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

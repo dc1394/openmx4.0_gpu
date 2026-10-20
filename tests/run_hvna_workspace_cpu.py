@@ -18,7 +18,9 @@ if not CORE.is_file():
     raise SystemExit("Build the C++ core and set OPENMX_CORE_LIBRARY")
 source = Path(os.environ.get("OPENMX_VNA_SOURCE", ROOT / "source/Set_ProExpn_VNA.c")).read_text()
 assert '#include "openmx_hvna_cpu.h"' in source
-assert "SetPro_HVNA_CPU_Halo(&hvna_geometry" in source and "SetPro_HVNA_CPU_Local(&hvna_geometry" in source
+assembly = (ROOT / "source/openmx_vna_assembly.h").read_text()
+assert '#include "openmx_vna_assembly.h"' in source
+assert "SetPro_HVNA_CPU_Halo(&hvna_geometry" in assembly and "SetPro_HVNA_CPU_Local(&hvna_geometry" in assembly
 REFERENCE = (ROOT / "tests/fixtures/hvna_cpu_before_raii.c").read_text()
 
 PREFIX = r'''

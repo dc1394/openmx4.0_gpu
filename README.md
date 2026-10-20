@@ -106,6 +106,12 @@ CPU HVNA contraction also shares one evaluator for local and received atoms.
 A C++ snapshot owns projector groups, energies and basis sizes; per-worker packed
 matrices replace two-level scratch pointers. Geometry is passed explicitly, and
 HIP returns its per-call stage diagnostic directly to the DFT caller.
+All three VNA stages now share one assembly pipeline and an invocation owner
+for basis metadata, ordered atom pairs, both geometric orientations and wavevectors.
+CPU integrals receive explicit geometry and Fourier-table views. Projector
+communication in VNA, nonlocal integrals, forces, stress and core-hole matrices
+uses per-call C++ owners for progress, message sizes and reusable send/receive
+buffers, replacing shared progress globals and repeated message allocation.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.
