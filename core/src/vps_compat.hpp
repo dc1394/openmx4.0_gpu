@@ -58,6 +58,10 @@ class VpsOwner {
     output.partial_core_density={c.data_handle(),{c.extent(0),c.extent(1)}};
     output.projectors={p.data_handle(),{p.extent(0),p.extent(1),p.extent(2),p.extent(3)}};
     output.projector_energies={e.data_handle(),{e.extent(0),e.extent(1),e.extent(2)}};
+    const auto l=storage_.angular();
+    output.projector_angular=l.data_handle();
+    output.projector_angular_species=l.extent(0);
+    output.projector_angular_stride=l.extent(1);
   }
   OpenMXVpsViews views() noexcept {
     OpenMXVpsViews output{log_radii_.data(),radii_.data(),neutral_potential_.data(),

@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "openmx_common.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
 #include <omp.h>
 #include "tran_prototypes.h"
@@ -102,6 +103,8 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
      its host radial mode never owns a Kokkos runtime. It survives matrix
      topology rebuilds and is destroyed after calculation array teardown. */
   CompTime[myid][1] = readfile(argv,core);
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   MPI_Barrier(MPI_COMM_WORLD1);
 
   /* initialize PrintMemory routine */
@@ -138,7 +141,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
     if (ML_flag==1 && myid==Host_ID) Get_VSZ(MD_iter);
 
     if (Solver==4) {
-      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, Spe_Atom_Cut1,
+      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, atomic->species.cutoff,
                            Ngrid1, Grid_Origin, Gxyz, tv, gtv, rgtv, Left_tv, Right_tv );
 
       /* output: TRAN_region[], TRAN_grid_bound */
@@ -176,7 +179,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
         calculate Voronoi orbital magnetic moment
   ****************************************************/
  
-  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment();
+  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment(atomic);
 
   /****************************************************
         output analysis of decomposed energies
@@ -221,15 +224,15 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   if (Solver==4 && TRAN_analysis==1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */ 
-    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(0); 
+    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(atomic, 0);
 
     if (SpinP_switch==3) {
-      TRAN_Main_Analysis_NC( mpi_comm_level1, argc, argv, Matomnum, M2G,  
+      TRAN_Main_Analysis_NC(atomic,  mpi_comm_level1, argc, argv, Matomnum, M2G,
                              GridN_Atom, GridListAtom, CellListAtom, 
                              Orbs_Grid, TNumGrid );
     }
     else {
-      TRAN_Main_Analysis( mpi_comm_level1, argc, argv, Matomnum, M2G,  
+      TRAN_Main_Analysis(atomic,  mpi_comm_level1, argc, argv, Matomnum, M2G,
                           GridN_Atom, GridListAtom, CellListAtom, 
                           Orbs_Grid, TNumGrid );
     }
@@ -239,14 +242,14 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
                   Making of output files
   ****************************************************/
 
-  CompTime[myid][20] = OutData(argv[1]);
+  CompTime[myid][20] = OutData(atomic, argv[1]);
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File("write",argv[1]);
+  if (HS_fileout==1) SCF2File(atomic, "write",argv[1]);
 
   /* elapsed time */
 

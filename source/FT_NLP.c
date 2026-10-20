@@ -91,7 +91,7 @@ void FT_NLP(OpenMXCoreContext *core, int device)
         OpenMXProjectorTable table = {0};
         const OpenMXUniformRadialGrid grid = {OneD_Grid,num_k,rmin,h,dk};
         table.projector_count = atomic->species.radial_projectors[spe];
-        table.angular = Spe_VPS_List[spe]+1;
+        table.angular = openmx_atomic_projector_angular(atomic,spe)+1;
         table.spin_count = atomic->species.relativistic[spe]+1;
         table.mesh_count = atomic->species.vps_mesh[spe];
         table.radii = openmx_radial_row2(&atomic->vps_radii,spe);

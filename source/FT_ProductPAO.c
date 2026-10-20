@@ -81,7 +81,7 @@ void FT_ProductPAO(OpenMXCoreContext *core, int device)
       spe = Species_Top[myid] + Lspe;
 
       const OpenMXProductTable table = {atomic->species.basis_lmax[spe],atomic->species.pao_mesh[spe],
-        Spe_Num_Basis[spe],openmx_radial_row2(&atomic->pao_radii,spe),reciprocal.pao.orbitals[spe],Spe_ProductRF_Bessel[spe]};
+        atomic->species.basis_rows[spe],openmx_radial_row2(&atomic->pao_radii,spe),reciprocal.pao.orbitals[spe],Spe_ProductRF_Bessel[spe]};
       const OpenMXGaussRadialGrid grid = {GL_Mesh,GL_Mesh,openmx_radial_row2(&atomic->vps_radii,spe)[0],
         atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae,GL_Weight,GL_Abscissae};
       char error[256];

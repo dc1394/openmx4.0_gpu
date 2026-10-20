@@ -43,6 +43,10 @@ static inline double *openmx_radial_row2(const OpenMXRadialView2 *v, size_t a)
 {
   return v->values+a*v->extent[1];
 }
+static inline double *openmx_radial_row3(const OpenMXRadialView3 *v, size_t a, size_t b)
+{
+  return v->values+(a*v->extent[1]+b)*v->extent[2];
+}
 static inline double *openmx_radial_row4(const OpenMXRadialView4 *v,
     size_t a, size_t b, size_t c)
 {

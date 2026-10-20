@@ -5,6 +5,7 @@
 #define EXX_INTERFACE_OPENMX_H_INCLUDED
 
 #include "exx.h"
+#include "openmx_core_atomic.h"
 
 /* global object */
 EXX_t *g_exx;
@@ -23,7 +24,7 @@ extern int g_exx_switch;
 extern int g_exx_switch_output_DM;
 extern int g_exx_switch_rhox;
 
-void EXX_on_OpenMX_Init(MPI_Comm comm);
+void EXX_on_OpenMX_Init(const OpenMXAtomicViews *atomic, MPI_Comm comm);
 void EXX_Time_Report(void);
 void EXX_on_OpenMX_Free(void);
 

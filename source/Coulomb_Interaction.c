@@ -28,12 +28,12 @@ static double Coulomb_Matrix(int num, double F0, double JH, int l, int a, int b,
 /* Yukawa potential */
 static double Bessel_j(int l2max, int k_in, double x);
 static double Bessel_h(int k_in, double x);
-static double Integrate_Bessel(int mode, int N, double start, double end, int isp, int l, int mul, int k, double Ndi, double lambda);
+static double Integrate_Bessel(const OpenMXAtomicViews *atomic, int mode, int N, double start, double end, int isp, int l, int mul, int k, double Ndi, double lambda);
 static double Integrate_Bessel0(int mode, int N, double start, double end, int isp, int l, int mul, int k, double Ndi);
 /********************/
 
 
-void Coulomb_Interaction(){
+void Coulomb_Interaction(const OpenMXAtomicViews *atomic){
 
   int Npoints,Nmesh,N_iter,i,j,l,mul,mm; 
   double Ndi,Nend,lambda_lower,lambda_upper,lambda_test; 
@@ -80,8 +80,8 @@ void Coulomb_Interaction(){
    
     dum_Nmul=1;
     for(i=0; i<SpeciesNum; i++){
-      for(dum_l=0; dum_l<=Spe_MaxL_Basis[i]; dum_l++){
-        for(dum_mul=0; dum_mul<Spe_Num_Basis[i][dum_l]; dum_mul++){
+      for(dum_l=0; dum_l<=atomic->species.basis_lmax[i]; dum_l++){
+        for(dum_mul=0; dum_mul<atomic->species.basis[(size_t)(i)*atomic->species.angular_channels+(dum_l)]; dum_mul++){
           Uval = Hub_U_Basis[i][dum_l][dum_mul];
           Jval = Hund_J_Basis[i][dum_l][dum_mul];
           if (Uval > 1.0e-5 || Jval > 1.0e-5){
@@ -89,7 +89,7 @@ void Coulomb_Interaction(){
             B_spe[dum_Nmul] = i;
             B_l[dum_Nmul] = dum_l;
             B_mul[dum_Nmul] = dum_mul;
-            B_cut[dum_Nmul] = Spe_Atom_Cut1[i];
+            B_cut[dum_Nmul] = atomic->species.cutoff[i];
             dum_Nmul++;
           }
         }
@@ -151,10 +151,10 @@ void Coulomb_Interaction(){
         lambda_test = 0.5*(lambda_lower+lambda_upper);
       
         for(mm=0; mm<Nmesh; mm++){
-          Bessel_j_Array0[i][mm] = Integrate_Bessel(0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],0,Ndi,lambda_test);
-          Bessel_h_Array0[i][mm] = Integrate_Bessel(1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],0,Ndi,lambda_test);
+          Bessel_j_Array0[i][mm] = Integrate_Bessel(atomic, 0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],0,Ndi,lambda_test);
+          Bessel_h_Array0[i][mm] = Integrate_Bessel(atomic, 1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],0,Ndi,lambda_test);
         }
-        Slater_F0[i] = Integrate_Bessel(2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],0,Ndi,lambda_test);
+        Slater_F0[i] = Integrate_Bessel(atomic, 2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],0,Ndi,lambda_test);
 
         if(Slater_F0[i] <= U[i]+delta_U && Slater_F0[i] >= U[i]-delta_U){
           lambda[i]=lambda_test;
@@ -177,23 +177,23 @@ void Coulomb_Interaction(){
       
       /* Calculating F2, F4, and F6 by using Yukawa potential */
       for(mm=0; mm<Nmesh; mm++){
-        Bessel_j_Array0[i][mm] = Integrate_Bessel(0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],2,Ndi,lambda[i]);
-        Bessel_h_Array0[i][mm] = Integrate_Bessel(1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],2,Ndi,lambda[i]);
+        Bessel_j_Array0[i][mm] = Integrate_Bessel(atomic, 0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],2,Ndi,lambda[i]);
+        Bessel_h_Array0[i][mm] = Integrate_Bessel(atomic, 1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],2,Ndi,lambda[i]);
       }
-      Slater_F2[i] = Integrate_Bessel(2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],2,Ndi,lambda[i]);
+      Slater_F2[i] = Integrate_Bessel(atomic, 2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],2,Ndi,lambda[i]);
 
       for(mm=0; mm<Nmesh; mm++){
-        Bessel_j_Array0[i][mm] = Integrate_Bessel(0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],4,Ndi,lambda[i]);
-        Bessel_h_Array0[i][mm] = Integrate_Bessel(1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],4,Ndi,lambda[i]);
+        Bessel_j_Array0[i][mm] = Integrate_Bessel(atomic, 0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],4,Ndi,lambda[i]);
+        Bessel_h_Array0[i][mm] = Integrate_Bessel(atomic, 1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],4,Ndi,lambda[i]);
       }
-      Slater_F4[i] = Integrate_Bessel(2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],4,Ndi,lambda[i]);
+      Slater_F4[i] = Integrate_Bessel(atomic, 2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],4,Ndi,lambda[i]);
 
       if(B_l[i]==3){
         for(mm=0; mm<Nmesh; mm++){
-          Bessel_j_Array0[i][mm] = Integrate_Bessel(0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],6,Ndi,lambda[i]);
-          Bessel_h_Array0[i][mm] = Integrate_Bessel(1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],6,Ndi,lambda[i]);
+          Bessel_j_Array0[i][mm] = Integrate_Bessel(atomic, 0,i,0.0,(double)(mm)*Ndi,B_spe[i],B_l[i],B_mul[i],6,Ndi,lambda[i]);
+          Bessel_h_Array0[i][mm] = Integrate_Bessel(atomic, 1,i,(double)(mm)*Ndi,Nend,B_spe[i],B_l[i],B_mul[i],6,Ndi,lambda[i]);
         }
-        Slater_F6[i] = Integrate_Bessel(2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],6,Ndi,lambda[i]);
+        Slater_F6[i] = Integrate_Bessel(atomic, 2,i,0.0,(Nend-1.0),B_spe[i],B_l[i],B_mul[i],6,Ndi,lambda[i]);
       }
 
       if(B_l[i]==1){
@@ -250,8 +250,8 @@ void Coulomb_Interaction(){
     /* Storing U,J values to the array */
     dum_Nmul=1;
     for(i=0; i<SpeciesNum; i++){
-      for(dum_l=0; dum_l<=Spe_MaxL_Basis[i]; dum_l++){
-        for(dum_mul=0; dum_mul<Spe_Num_Basis[i][dum_l]; dum_mul++){
+      for(dum_l=0; dum_l<=atomic->species.basis_lmax[i]; dum_l++){
+        for(dum_mul=0; dum_mul<atomic->species.basis[(size_t)(i)*atomic->species.angular_channels+(dum_l)]; dum_mul++){
           Uval = Hub_U_Basis[i][dum_l][dum_mul];
           Jval = Hund_J_Basis[i][dum_l][dum_mul];
           NZUJ = Nonzero_UJ[i][dum_l][dum_mul];
@@ -287,8 +287,8 @@ void Coulomb_Interaction(){
 
     /* initialize J values */ 
     for (i=0; i<SpeciesNum; i++){
-      for (l=0; l<=Spe_MaxL_Basis[i]; l++){
-        for (mul=0; mul<Spe_Num_Basis[i][l]; mul++){
+      for (l=0; l<=atomic->species.basis_lmax[i]; l++){
+        for (mul=0; mul<atomic->species.basis[(size_t)(i)*atomic->species.angular_channels+(l)]; mul++){
           Hund_J_Basis[i][l][mul]=0.0;
 	}
       }
@@ -297,8 +297,8 @@ void Coulomb_Interaction(){
     /* Storing U,J values to the array */
     dum_Nmul=1;
     for(i=0; i<SpeciesNum; i++){
-      for(dum_l=0; dum_l<=Spe_MaxL_Basis[i]; dum_l++){
-        for(dum_mul=0; dum_mul<Spe_Num_Basis[i][dum_l]; dum_mul++){
+      for(dum_l=0; dum_l<=atomic->species.basis_lmax[i]; dum_l++){
+        for(dum_mul=0; dum_mul<atomic->species.basis[(size_t)(i)*atomic->species.angular_channels+(dum_l)]; dum_mul++){
           Uval = Hub_U_Basis[i][dum_l][dum_mul];
           NZUJ = Nonzero_UJ[i][dum_l][dum_mul];
           if ((Uval > 1.0e-5) && (NZUJ>0)){
@@ -473,7 +473,7 @@ void Coulomb_Interaction(){
 
 
 
-static double Integrate_Bessel(int mode, int N, double start, double end, int isp, int l, int mul, int k, double Ndi, double lambda){
+static double Integrate_Bessel(const OpenMXAtomicViews *atomic, int mode, int N, double start, double end, int isp, int l, int mul, int k, double Ndi, double lambda){
 
   double i,di,f_i1,f_i2,f_i3,sum_f;
   int step;  
@@ -486,9 +486,9 @@ static double Integrate_Bessel(int mode, int N, double start, double end, int is
     if(end>start){
       for(i=start; i<=end; i+=2.0*di){  
         /* Integration using Simpson's rule */
-        f_i1 = i*i*RadialF(isp, l, mul, i)*RadialF(isp, l, mul, i) * Bessel_j(2*l,k,lambda*i);
-        f_i2 = (i+di)*(i+di)*RadialF(isp, l, mul, i+di)*RadialF(isp, l, mul, i+di) * Bessel_j(2*l,k,lambda*(i+di));
-        f_i3 = (i+2.0*di)*(i+2.0*di)*RadialF(isp, l, mul, i+2.0*di)*RadialF(isp, l, mul, i+2.0*di) * Bessel_j(2*l,k,lambda*(i+2.0*di));
+        f_i1 = i*i*RadialF(atomic, isp, l, mul, i)*RadialF(atomic, isp, l, mul, i) * Bessel_j(2*l,k,lambda*i);
+        f_i2 = (i+di)*(i+di)*RadialF(atomic, isp, l, mul, i+di)*RadialF(atomic, isp, l, mul, i+di) * Bessel_j(2*l,k,lambda*(i+di));
+        f_i3 = (i+2.0*di)*(i+2.0*di)*RadialF(atomic, isp, l, mul, i+2.0*di)*RadialF(atomic, isp, l, mul, i+2.0*di) * Bessel_j(2*l,k,lambda*(i+2.0*di));
         if (i > end-2.0*di) break;
 
         sum_f += (di/3.0)*(f_i1+4.0*f_i2+f_i3);
@@ -503,9 +503,9 @@ static double Integrate_Bessel(int mode, int N, double start, double end, int is
     if(end>start){
       for(i=start; i<=end; i+=2.0*di){  
         /* Integration using Simpson's rule */
-        f_i1 = i*i*RadialF(isp, l, mul, i)*RadialF(isp, l, mul, i) * Bessel_h(k,lambda*i);
-        f_i2 = (i+di)*(i+di)*RadialF(isp, l, mul, i+di)*RadialF(isp, l, mul, i+di) * Bessel_h(k,lambda*(i+di));
-        f_i3 = (i+2.0*di)*(i+2.0*di)*RadialF(isp, l, mul, i+2.0*di)*RadialF(isp, l, mul, i+2.0*di) * Bessel_h(k,lambda*(i+2.0*di));
+        f_i1 = i*i*RadialF(atomic, isp, l, mul, i)*RadialF(atomic, isp, l, mul, i) * Bessel_h(k,lambda*i);
+        f_i2 = (i+di)*(i+di)*RadialF(atomic, isp, l, mul, i+di)*RadialF(atomic, isp, l, mul, i+di) * Bessel_h(k,lambda*(i+di));
+        f_i3 = (i+2.0*di)*(i+2.0*di)*RadialF(atomic, isp, l, mul, i+2.0*di)*RadialF(atomic, isp, l, mul, i+2.0*di) * Bessel_h(k,lambda*(i+2.0*di));
         if (i > end-2.0*di) break;
 
         sum_f += (di/3.0)*(f_i1+4.0*f_i2+f_i3);
@@ -522,15 +522,15 @@ static double Integrate_Bessel(int mode, int N, double start, double end, int is
     for(i=start; i<=end; i+=2.0*Ndi){
       
       /* Integration using Simpson's rule */
-      f_i1 = i*i*RadialF(isp,l,mul,i)*RadialF(isp,l,mul,i)
+      f_i1 = i*i*RadialF(atomic, isp,l,mul,i)*RadialF(atomic, isp,l,mul,i)
             *(Bessel_j_Array0[N][step]*Bessel_h(k,lambda*i)
              +Bessel_h_Array0[N][step]*Bessel_j(2*l,k,lambda*i));
   
-      f_i2 = (i+Ndi)*(i+Ndi)*RadialF(isp,l,mul,i+Ndi)*RadialF(isp,l,mul,i+Ndi)
+      f_i2 = (i+Ndi)*(i+Ndi)*RadialF(atomic, isp,l,mul,i+Ndi)*RadialF(atomic, isp,l,mul,i+Ndi)
             *(Bessel_j_Array0[N][step+1]*Bessel_h(k,lambda*(i+Ndi))
              +Bessel_h_Array0[N][step+1]*Bessel_j(2*l,k,lambda*(i+Ndi)));
   
-      f_i3 = (i+2.0*Ndi)*(i+2.0*Ndi)*RadialF(isp,l,mul,i+2.0*Ndi)*RadialF(isp,l,mul,i+2.0*Ndi)
+      f_i3 = (i+2.0*Ndi)*(i+2.0*Ndi)*RadialF(atomic, isp,l,mul,i+2.0*Ndi)*RadialF(atomic, isp,l,mul,i+2.0*Ndi)
             *(Bessel_j_Array0[N][step+2]*Bessel_h(k,lambda*(i+2.0*Ndi))
              +Bessel_h_Array0[N][step+2]*Bessel_j(2*l,k,lambda*(i+2.0*Ndi)));
 

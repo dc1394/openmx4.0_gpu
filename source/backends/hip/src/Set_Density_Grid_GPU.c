@@ -1171,9 +1171,9 @@ extern int Set_Density_Grid_Hip_LocalDensity(size_t output_count, int spin_count
                                              const size_t *d_o1off, const int *d_nc, const float *d_o0,
                                              const float *d_o1, double *d_dm, double *d_den);
 /* Set_Hamiltonian.c: the on-the-fly density of a rank (rank-local) */
-extern int Set_Density_Grid_OTF_Possible(int Cnt_kind);
-extern int Set_Density_Grid_OTF_Prepare(int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
-extern int Set_Density_Grid_OTF_Run(int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid);
+extern int Set_Density_Grid_OTF_Possible(const OpenMXAtomicViews *atomic, int Cnt_kind);
+extern int Set_Density_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
+extern int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid);
 
 typedef struct {
   int ready;
@@ -1421,7 +1421,7 @@ static size_t SDG_local_call_bytes(const SDGLocalContext *c)
    atoms in the local mode (the CSR kernel, or the on-the-fly tiles:
    SDG_local.otf), 0 when it cannot.  node_ranks: the ranks sharing the
    device. */
-static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks)
+static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks)
 {
   SDGLocalContext *c = &SDG_local;
   int spin_count = SpinP_switch + 1;
@@ -1476,7 +1476,7 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
        keeps its gates (the matrix-elements GPU path, at most
        OPENMX_BAND_GPU_MAX_DEVICE_RANKS ranks per device,
        OPENMX_DENSITY_GRID_ONTHEFLY) */
-    if (mode != 1 || !Set_Density_Grid_OTF_Possible(table_kind)) return 0;
+    if (mode != 1 || !Set_Density_Grid_OTF_Possible(atomic, table_kind)) return 0;
     if (!c->otf) {
       SDG_local_free();
       c->otf = 1;
@@ -1543,7 +1543,7 @@ static struct {
   int atom_ranks, declined, workspace_declined;
 } SDG_census = {0};
 
-int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
+int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON)
 {
   unsigned long long counts[4], totals[4];
   size_t need = 0, available = 0;
@@ -1555,9 +1555,9 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
     return 0;
   }
 
-  ok = SDG_local_prepare(Cnt_kind, Calc_CntOrbital_ON, openmx_gpu_ranks_per_device_noncollective());
+  ok = SDG_local_prepare(atomic, Cnt_kind, Calc_CntOrbital_ON, openmx_gpu_ranks_per_device_noncollective());
   if (ok && Matomnum > 0 && SDG_local.otf) {
-    ok = Set_Density_Grid_OTF_Prepare(SDG_local.cnt_kind, &need, &available);
+    ok = Set_Density_Grid_OTF_Prepare(atomic, SDG_local.cnt_kind, &need, &available);
     workspace_declined = !ok && need > available;
     if (workspace_declined && 3 <= level_stdout) {
       int myid;
@@ -1625,7 +1625,7 @@ int Set_Density_Grid_GPU_Local_OnTheFly(void)
   return SDG_local.otf;
 }
 
-int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
+int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid)
 {
   SDGLocalContext *c = &SDG_local;
   const int spin_count = c->spin_count;
@@ -1655,7 +1655,7 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
   if (Matomnum == 0) return 1;
   /* the on-the-fly tiles fill Tmp_Den_Grid themselves (and leave it as
      they found it when they fail) */
-  if (c->otf) return Set_Density_Grid_OTF_Run(c->cnt_kind, CDM, Tmp_Den_Grid);
+  if (c->otf) return Set_Density_Grid_OTF_Run(atomic, c->cnt_kind, CDM, Tmp_Den_Grid);
 
   if (!c->ready || output_count == 0) return 0;
   if (!SDG_pack_local_cdm(CDM, dm, dm_count, spin_count)) return 0;

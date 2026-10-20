@@ -289,7 +289,7 @@ void TRAN_Set_Electrode_Grid(const OpenMXAtomicViews *atomic, MPI_Comm comm1,
                        ElectrodeDensity_Grid
                   ******************************/
 
-		  Get_Orbitals(wanA,dx1,dy1,dz1,Chi1);
+		  Get_Orbitals(atomic, wanA,dx1,dy1,dz1,Chi1);
 
 		  for (LB_AN_e=0; LB_AN_e<=FNAN_e[side][GA_AN_e]; LB_AN_e++){
 
@@ -325,7 +325,7 @@ void TRAN_Set_Electrode_Grid(const OpenMXAtomicViews *atomic, MPI_Comm comm1,
 
 		    if (r2<=rcutB){
 
-		      Get_Orbitals(wanB,dx2,dy2,dz2,Chi2);
+		      Get_Orbitals(atomic, wanB,dx2,dy2,dz2,Chi2);
 
 		      for (spin=0; spin<=SpinP_switch; spin++) {
 

@@ -75,7 +75,7 @@ static int SetH_ProfileEnabled(void)
         }                                                                                                              \
     } while (0)
 
-void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind);
+void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind);
 static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind);
 static void Set_Hamiltonian_Base_OpenACC(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H);
 static size_t Set_Hamiltonian_Base_OpenACC_DeviceBytes(int SCF_iter, int myid);
@@ -336,7 +336,7 @@ typedef struct {
 
 static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
                                                   int Cnt_kind, int myid);
-static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
+static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atomic, const SetHamiltonianGpuTurnPlan *plan,
                                                     int Cnt_kind, int myid);
 
 typedef struct {
@@ -1742,7 +1742,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
   *****************************************************/
 
     SETH_PROF_T0(prof_t0);
-    Calc_MatrixElements_dVH_Vxc_VNA(Cnt_kind);
+    Calc_MatrixElements_dVH_Vxc_VNA(atomic, Cnt_kind);
     SETH_PROF_ADD(matel, prof_t0);
 
     /* for time */
@@ -1877,7 +1877,7 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank)
     free(mc_table);free(h_table);return local_done || (pending && ready);
 }
 
-void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
+void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind)
 {
     int myid;
     int prefer_streaming = 0,local_done=0;
@@ -1972,7 +1972,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         /* Once the group chooses streaming, an allocation failure falls
            back to the CPU, never to a competing whole-rank GPU buffer.
            The on-the-fly tiles come first: no tables to stream at all. */
-        local_done=Set_Hamiltonian_OnTheFly_MatrixElements(&plan,Cnt_kind,myid) ||
+        local_done=Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan,Cnt_kind,myid) ||
             Set_Hamiltonian_Stream_MatrixElements(&plan,Cnt_kind,myid);
     }
     else if (plan.use_gpu && Set_Hamiltonian_GpuSerialWaves()) {
@@ -2011,7 +2011,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind)
         /* a rank without resident tables: the on-the-fly tiles on the
            device beside the resident ranks, before the CPU */
         if (plan.selected && plan.device_comm != MPI_COMM_NULL) {
-            streamed = Set_Hamiltonian_OnTheFly_MatrixElements(&plan, Cnt_kind, myid);
+            streamed = Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan, Cnt_kind, myid);
         }
         if (!streamed && plan.selected && plan.device_comm != MPI_COMM_NULL && plan.concurrent_ranks == 0) {
             streamed = Set_Hamiltonian_Stream_MatrixElements(&plan, Cnt_kind, myid);
@@ -3825,7 +3825,7 @@ static void Set_Hamiltonian_OTF_Release(void)
     memset(c, 0, sizeof(*c));
 }
 
-static int Set_Hamiltonian_OTF_Ensure(int Cnt_kind, int myid)
+static int Set_Hamiltonian_OTF_Ensure(const OpenMXAtomicViews *atomic, int Cnt_kind, int myid)
 {
     SetHamiltonianOnTheFlyCache *c = &Set_Hamiltonian_OTF;
     size_t count = 0, off = 0;
@@ -3833,7 +3833,7 @@ static int Set_Hamiltonian_OTF_Ensure(int Cnt_kind, int myid)
     if (c->ready && c->cnt_kind == Cnt_kind && c->matomnum == Matomnum && SOG_Device_Tables() != NULL) return 1;
     Set_Hamiltonian_OTF_Release();
     if (Cnt_kind != 0) return 0;
-    if (!SOG_Device_Prepare()) return 0;
+    if (!SOG_Device_Prepare(atomic)) return 0;
     for (int Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) count += (size_t)GridN_Atom[M2G[Mc_AN]];
     if (count == 0) return 0;
     c->atom_gla_off = (size_t *)Set_Hamiltonian_malloc(sizeof(size_t) * (size_t)(Matomnum + 1), "on-the-fly offsets", myid);
@@ -3876,7 +3876,7 @@ static void Set_Hamiltonian_OTF_GridIndices(int pair_count, const int *d_NOLG, c
     }
 }
 
-static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
+static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atomic, const SetHamiltonianGpuTurnPlan *plan,
                                                     int Cnt_kind, int myid)
 {
     const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
@@ -3937,7 +3937,7 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const SetHamiltonianGpuTurnPl
        must not manufacture memory when other GPU processes occupy it. */
     if (workspace_bytes <= alignment_slack) return 0;
     payload_bytes = workspace_bytes - alignment_slack;
-    if (!Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid)) return 0;
+    if (!Set_Hamiltonian_OTF_Ensure(atomic, Cnt_kind, myid)) return 0;
     Set_Hamiltonian_MatrixElements_CountTotals(Cnt_kind, myid, &pair_count, &unused_h, &unused_nolg,
                                                &unused_orbs0, &unused_orbs1);
     if (pair_count <= 0) return 0;
@@ -4152,12 +4152,12 @@ void Set_Hamiltonian_OnTheFly_EndCycle(void)
 
 /* ---- the density on the grid from the same on-the-fly tiles ---------- */
 
-int Set_Hamiltonian_OnTheFly_DensityPossible(int Cnt_kind, int myid)
+int Set_Hamiltonian_OnTheFly_DensityPossible(const OpenMXAtomicViews *atomic, int Cnt_kind, int myid)
 {
     const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
 
     if ((enabled && atoi(enabled) == 0) || Cnt_kind != 0 || Matomnum <= 0) return 0;
-    return Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid);
+    return Set_Hamiltonian_OTF_Ensure(atomic, Cnt_kind, myid);
 }
 
 size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid)
@@ -4737,7 +4737,7 @@ static void Set_Hamiltonian_OTF_DensityKernel(int pair_count, int spin_count, in
    packed density matrix of the rank's pairs (pair order, spin-major blocks
    of NO0 x NO1, as the H blocks), tmpden receives spin_count x output_count
    values (atom_out_base[Mc_AN] + Nc).  1 when done on the device. */
-int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
+int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid)
 {
@@ -4776,7 +4776,7 @@ int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double 
     planned = den_plan->valid && den_plan->matomnum == Matomnum && den_plan->spin_count == spin_count;
     den_plan->valid = 0;
     if (Cnt_kind != 0 || Matomnum <= 0 || output_count == 0) return 0;
-    if (!Set_Hamiltonian_OTF_Ensure(Cnt_kind, myid)) return 0;
+    if (!Set_Hamiltonian_OTF_Ensure(atomic, Cnt_kind, myid)) return 0;
     /* the ranks that take this path at the same time: every rank without
        resident tables (Set_Density_Grid_GPU_Local_Prepare counts them), not
        the last Set_Hamiltonian plan's non-resident count -- in the hybrid

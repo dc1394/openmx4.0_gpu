@@ -21,7 +21,7 @@
 #include "mpi.h"
 #include <omp.h>
 
-double Set_dOrbitals_Grid(int Cnt_kind)
+double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 {
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
@@ -56,8 +56,8 @@ double Set_dOrbitals_Grid(int Cnt_kind)
     Gc_AN = M2G[Mc_AN];    
     Cwan = WhatSpecies[Gc_AN];
 
-    if (Cnt_kind==0)  NO0 = Spe_Total_NO[Cwan];
-    else              NO0 = Spe_Total_CNO[Cwan]; 
+    if (Cnt_kind==0)  NO0 = atomic->species.orbitals[Cwan];
+    else              NO0 = atomic->species.contracted_orbitals[Cwan];
 
 #pragma omp parallel shared(List_YOUSO,Orbs_Grid,Cnt_kind,Gxyz,atv,CellListAtom,GridListAtom,GridN_Atom,Gc_AN,Cwan,Mc_AN,NO0) private(OMPID,Nthrds,Nprocs,Nc,GNc,GRc,Cxyz,x,y,z,i,j)
     {
@@ -89,10 +89,10 @@ double Set_dOrbitals_Grid(int Cnt_kind)
 	z = Cxyz[3] + atv[GRc][3] - Gxyz[Gc_AN][3];
 
 	if (Cnt_kind==0){
-          Get_dOrbitals2(Cwan,x,y,z,dChi);
+          Get_dOrbitals2(atomic, Cwan,x,y,z,dChi);
 	}
 	else{
-          Get_Cnt_dOrbitals2(Mc_AN,x,y,z,dChi);
+          Get_Cnt_dOrbitals2(atomic, Mc_AN,x,y,z,dChi);
 	}
 
 	for (i=0; i<NO0; i++){
@@ -135,8 +135,8 @@ double Set_dOrbitals_Grid(int Cnt_kind)
         Rnh = ncn[Gc_AN][h_AN];
         Hwan = WhatSpecies[Gh_AN];
 
-        if (Cnt_kind==0)  NO1 = Spe_Total_NO[Hwan];
-        else              NO1 = Spe_Total_CNO[Hwan];
+        if (Cnt_kind==0)  NO1 = atomic->species.orbitals[Hwan];
+        else              NO1 = atomic->species.contracted_orbitals[Hwan];
 
 #pragma omp parallel shared(List_YOUSO,Orbs_Grid_FNAN,NO1,Mh_AN,Hwan,Cnt_kind,Rnh,Gh_AN,Gxyz,atv,NumOLG,Mc_AN,h_AN,GListTAtoms1,GridListAtom,CellListAtom) private(OMPID,Nthrds,Nprocs,Nog,Nc,GNc,GRc,x,y,z,j)
         {
@@ -170,10 +170,10 @@ double Set_dOrbitals_Grid(int Cnt_kind)
 	    z = Cxyz0[3] + atv[GRc][3] - Gxyz[Gh_AN][3] - atv[Rnh][3];
 
 	    if (Cnt_kind==0){
-              Get_dOrbitals(Hwan,x,y,z,dChi);
+              Get_dOrbitals(atomic, Hwan,x,y,z,dChi);
 	    } 
 	    else{
-              Get_Cnt_dOrbitals(Mh_AN,x,y,z,dChi);
+              Get_Cnt_dOrbitals(atomic, Mh_AN,x,y,z,dChi);
 	    }
 
 	    for (j=0; j<NO1; j++){
@@ -203,7 +203,7 @@ double Set_dOrbitals_Grid(int Cnt_kind)
 }
 
 // added by YTLee
-double Set_dOrbitals_Grid_xyz(int Cnt_kind,int xyz) // type = 0,1=x,2=y,3=z
+double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz) // type = 0,1=x,2=y,3=z
 {
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
@@ -238,8 +238,8 @@ double Set_dOrbitals_Grid_xyz(int Cnt_kind,int xyz) // type = 0,1=x,2=y,3=z
     Gc_AN = M2G[Mc_AN];    
     Cwan = WhatSpecies[Gc_AN];
 
-    if (Cnt_kind==0)  NO0 = Spe_Total_NO[Cwan];
-    else              NO0 = Spe_Total_CNO[Cwan]; 
+    if (Cnt_kind==0)  NO0 = atomic->species.orbitals[Cwan];
+    else              NO0 = atomic->species.contracted_orbitals[Cwan];
 
 #pragma omp parallel shared(List_YOUSO,Orbs_Grid,Cnt_kind,Gxyz,atv,CellListAtom,GridListAtom,GridN_Atom,Gc_AN,Cwan,Mc_AN,NO0) private(OMPID,Nthrds,Nprocs,Nc,GNc,GRc,Cxyz,x,y,z,i,j)
     {
@@ -271,10 +271,10 @@ double Set_dOrbitals_Grid_xyz(int Cnt_kind,int xyz) // type = 0,1=x,2=y,3=z
   z = Cxyz[3] + atv[GRc][3] - Gxyz[Gc_AN][3];
 
   if (Cnt_kind==0){
-          Get_dOrbitals2(Cwan,x,y,z,dChi);
+          Get_dOrbitals2(atomic, Cwan,x,y,z,dChi);
   }
   else{
-          Get_Cnt_dOrbitals2(Mc_AN,x,y,z,dChi);
+          Get_Cnt_dOrbitals2(atomic, Mc_AN,x,y,z,dChi);
   }
 
   for (i=0; i<NO0; i++){

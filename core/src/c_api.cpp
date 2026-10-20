@@ -24,6 +24,7 @@
 #include <openmx/core/hvna_layout.hpp>
 #include <openmx/core/hvna_workspace.hpp>
 #include <climits>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <exception>
@@ -404,12 +405,17 @@ extern "C" OpenMXNonlocalWorkspace* openmx_core_nonlocal_create(const OpenMXNonl
     if (!shape || !buffers || shape->species <= 0 || !shape->projector_counts ||
         shape->points < 0 || (shape->points && !shape->wavevectors))
       throw std::invalid_argument("invalid nonlocal shape, views or radial grid");
+    if (shape->projector_angular_stride > static_cast<std::size_t>(PTRDIFF_MAX)/sizeof(int)/
+        static_cast<std::size_t>(shape->species))
+      throw std::length_error("nonlocal input row stride overflows address range");
     std::vector<openmx::core::NonlocalSpecies> species;
     for (int s = 0; s < shape->species; ++s) {
       const int count = shape->projector_counts[s];
-      if (count < 0 || (count && (!shape->projector_angular || !shape->projector_angular[s])))
+      if (count < 0 || (count && (!shape->projector_angular ||
+          static_cast<std::size_t>(count) >= shape->projector_angular_stride)))
         throw std::invalid_argument("invalid nonlocal projector input row");
-      species.push_back({count ? std::span<const int>(shape->projector_angular[s]+1,
+      species.push_back({count ? std::span<const int>(shape->projector_angular+
+          static_cast<std::size_t>(s)*shape->projector_angular_stride+1,
           static_cast<std::size_t>(count)) : std::span<const int>{}});
     }
     const auto grid = shape->points ? std::span<const double>(shape->wavevectors,

@@ -41,13 +41,13 @@
 
 #ifdef kcomp
 static double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
-static void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
-static void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
+static void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
+static void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
                            int Cwan, int Hwan, int wakg, dcomplex ***NLH);
 #else
 inline double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
-inline void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
-inline void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
+inline void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
+inline void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
                            int Cwan, int Hwan, int wakg, dcomplex ***NLH);
 #endif
 
@@ -145,7 +145,7 @@ static void *SetNonlocal_ArenaTry(size_t bytes)
   return arena;
 }
 
-static void SetNonlocal_ValidateGlobalState(const OpenMXReciprocalViews *reciprocal)
+static void SetNonlocal_ValidateGlobalState(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal)
 {
   int spe,L;
   size_t component_count,tmp_count;
@@ -177,22 +177,22 @@ static void SetNonlocal_ValidateGlobalState(const OpenMXReciprocalViews *recipro
 
   for (spe=0; spe<SpeciesNum; spe++){
 
-    if (Spe_MaxL_Basis[spe] < 0 || Spe_MaxL_Basis[spe] > List_YOUSO[25]){
+    if (atomic->species.basis_lmax[spe] < 0 || atomic->species.basis_lmax[spe] > List_YOUSO[25]){
       char msg[512];
       snprintf(msg,sizeof(msg),
                "Spe_MaxL_Basis exceeds List_YOUSO[25] in Set_Nonlocal.c for species %d.",spe);
       SetNonlocal_AbortWithMessage(msg);
     }
 
-    if (Spe_Total_NO[spe] < 0 || List_YOUSO[7] < Spe_Total_NO[spe]){
+    if (atomic->species.orbitals[spe] < 0 || List_YOUSO[7] < atomic->species.orbitals[spe]){
       char msg[512];
       snprintf(msg,sizeof(msg),
                "Spe_Total_NO exceeds List_YOUSO[7] in Set_Nonlocal.c for species %d.",spe);
       SetNonlocal_AbortWithMessage(msg);
     }
 
-    for (L=0; L<=Spe_MaxL_Basis[spe]; L++){
-      if (Spe_Num_Basis[spe][L] < 0 || List_YOUSO[24] < Spe_Num_Basis[spe][L]){
+    for (L=0; L<=atomic->species.basis_lmax[spe]; L++){
+      if (atomic->species.basis[(size_t)(spe)*atomic->species.angular_channels+(L)] < 0 || List_YOUSO[24] < atomic->species.basis[(size_t)(spe)*atomic->species.angular_channels+(L)]){
         char msg[512];
         snprintf(msg,sizeof(msg),
                  "Spe_Num_Basis exceeds List_YOUSO[24] in Set_Nonlocal.c for species %d, L=%d.",
@@ -201,14 +201,14 @@ static void SetNonlocal_ValidateGlobalState(const OpenMXReciprocalViews *recipro
       }
     }
 
-    if (VPS_j_dependency[spe] < 0 || 1 < VPS_j_dependency[spe]){
+    if (atomic->species.relativistic[spe] < 0 || 1 < atomic->species.relativistic[spe]){
       char msg[512];
       snprintf(msg,sizeof(msg),
                "Unsupported VPS_j_dependency in Set_Nonlocal.c for species %d.",spe);
       SetNonlocal_AbortWithMessage(msg);
     }
 
-    if (Spe_Num_RVPS[spe] < 0 || List_YOUSO[19] <= Spe_Num_RVPS[spe]){
+    if (atomic->species.radial_projectors[spe] < 0 || List_YOUSO[19] <= atomic->species.radial_projectors[spe]){
       char msg[512];
       snprintf(msg,sizeof(msg),
                "Spe_Num_RVPS exceeds buffer bounds in Set_Nonlocal.c for species %d.",spe);
@@ -216,8 +216,8 @@ static void SetNonlocal_ValidateGlobalState(const OpenMXReciprocalViews *recipro
     }
 
     component_count = 0;
-    for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-      if (Spe_VPS_List[spe][L] < 0 || List_YOUSO[30] < Spe_VPS_List[spe][L]){
+    for (L=1; L<=atomic->species.radial_projectors[spe]; L++){
+      if (openmx_atomic_projector_angular(atomic,spe)[L] < 0 || List_YOUSO[30] < openmx_atomic_projector_angular(atomic,spe)[L]){
         char msg[512];
         snprintf(msg,sizeof(msg),
                  "Spe_VPS_List exceeds List_YOUSO[30] in Set_Nonlocal.c for species %d, projector %d.",
@@ -225,7 +225,7 @@ static void SetNonlocal_ValidateGlobalState(const OpenMXReciprocalViews *recipro
         SetNonlocal_AbortWithMessage(msg);
       }
 
-      if (VPS_j_dependency[spe] == 1 && 3 < Spe_VPS_List[spe][L]){
+      if (atomic->species.relativistic[spe] == 1 && 3 < openmx_atomic_projector_angular(atomic,spe)[L]){
         char msg[512];
         snprintf(msg,sizeof(msg),
                  "j-dependent nonlocal projectors above f are unsupported in Set_Nonlocal.c for species %d.",
@@ -233,14 +233,14 @@ static void SetNonlocal_ValidateGlobalState(const OpenMXReciprocalViews *recipro
         SetNonlocal_AbortWithMessage(msg);
       }
 
-      tmp_count = SetNonlocal_CheckedMulCount(2u,(size_t)Spe_VPS_List[spe][L],
+      tmp_count = SetNonlocal_CheckedMulCount(2u,(size_t)openmx_atomic_projector_angular(atomic,spe)[L],
                                               "projector magnetic components");
       tmp_count = SetNonlocal_CheckedAddCount(tmp_count,1u,"projector magnetic components");
       component_count = SetNonlocal_CheckedAddCount(component_count,tmp_count,
                                                     "Spe_Total_VPS_Pro");
     }
 
-    if (component_count != (size_t)Spe_Total_VPS_Pro[spe]){
+    if (component_count != (size_t)atomic->species.projector_components[spe]){
       char msg[512];
       snprintf(msg,sizeof(msg),
                "Spe_Total_VPS_Pro mismatch in Set_Nonlocal.c for species %d.",spe);
@@ -398,7 +398,7 @@ static void SetNL_capacity_kernel(size_t first,size_t rows,const void *parameter
    function returns 0 and the caller runs the original host path instead.
    Returns 1 when DS_NL was evaluated here.
 */
-static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, double ******DS_NL,
+static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double ******DS_NL,
                                          double *Normk_grid,
                                          int basis_l_dim,
                                          int basis_m_dim,
@@ -478,8 +478,8 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
   for (w=0; w<nsp; w++){
     int L0,Mul0,so,L,i;
 
-    for (L0=0; L0<=Spe_MaxL_Basis[w]; L0++){
-      for (Mul0=0; Mul0<Spe_Num_Basis[w][L0]; Mul0++){
+    for (L0=0; L0<=atomic->species.basis_lmax[w]; L0++){
+      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(w)*atomic->species.angular_channels+(L0)]; Mul0++){
         size_t rf_offset = (size_t)w*rf_sp_stride + (size_t)(L0*List_YOUSO[24] + Mul0)*grid_dim;
 
         for (i=0; i<grid_dim; i++){
@@ -488,8 +488,8 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
       }
     }
 
-    for (so=0; so<=VPS_j_dependency[w]; so++){
-      for (L=1; L<=Spe_Num_RVPS[w]; L++){
+    for (so=0; so<=atomic->species.relativistic[w]; so++){
+      for (L=1; L<=atomic->species.radial_projectors[w]; L++){
         size_t nlrf_offset = ((size_t)so*nsp + w)*nlrf_sp_stride + (size_t)L*grid_dim;
 
         for (i=0; i<grid_dim; i++){
@@ -540,9 +540,9 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
         lookup[li] = -1;
       }
 
-      for (L0=0; L0<=Spe_MaxL_Basis[cw]; L0++){
-        for (Mul0=0; Mul0<Spe_Num_Basis[cw][L0]; Mul0++){
-          for (L=1; L<=Spe_Num_RVPS[hw]; L++){
+      for (L0=0; L0<=atomic->species.basis_lmax[cw]; L0++){
+        for (Mul0=0; Mul0<atomic->species.basis[(size_t)(cw)*atomic->species.angular_channels+(L0)]; Mul0++){
+          for (L=1; L<=atomic->species.radial_projectors[hw]; L++){
             lookup[(size_t)(L0*List_YOUSO[24] + Mul0)*rvps_sum_dim + L] = combo;
             rf_off[combo] = (L0*List_YOUSO[24] + Mul0)*grid_dim;
             nlrf_off[combo] = L*grid_dim;
@@ -553,13 +553,13 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
       combo_count_sp[spair] = combo;
 
       Lmax = -10;
-      for (L=1; L<=Spe_Num_RVPS[hw]; L++){
-        if (Lmax<Spe_VPS_List[hw][L]) Lmax = Spe_VPS_List[hw][L];
+      for (L=1; L<=atomic->species.radial_projectors[hw]; L++){
+        if (Lmax<openmx_atomic_projector_angular(atomic,hw)[L]) Lmax = openmx_atomic_projector_angular(atomic,hw)[L];
       }
-      if (Spe_MaxL_Basis[cw]<Lmax)
+      if (atomic->species.basis_lmax[cw]<Lmax)
         Lmax_Four_Int = 2*Lmax;
       else
-        Lmax_Four_Int = 2*Spe_MaxL_Basis[cw];
+        Lmax_Four_Int = 2*atomic->species.basis_lmax[cw];
 
       if (max_Lmax_Four_Int < Lmax_Four_Int){
         SetNonlocal_AbortWithMessage("Lmax_Four_Int exceeds its bound in Set_Nonlocal.c.");
@@ -593,7 +593,7 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
     int Rnh = ncn[Gc_AN][h_AN];
     int Hwan = WhatSpecies[Gh_AN];
     size_t spair = (size_t)Cwan*nsp + Hwan;
-    size_t socnt = (size_t)VPS_j_dependency[Hwan] + 1u;
+    size_t socnt = (size_t)atomic->species.relativistic[Hwan] + 1u;
     double dx,dy,dz,r;
     double S_coordinate[3];
 
@@ -642,9 +642,9 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
   for (w=0; w<nsp; w++){
     int L;
 
-    if (maxL0<Spe_MaxL_Basis[w]) maxL0 = Spe_MaxL_Basis[w];
-    for (L=1; L<=Spe_Num_RVPS[w]; L++){
-      if (maxL1<Spe_VPS_List[w][L]) maxL1 = Spe_VPS_List[w][L];
+    if (maxL0<atomic->species.basis_lmax[w]) maxL0 = atomic->species.basis_lmax[w];
+    for (L=1; L<=atomic->species.radial_projectors[w]; L++){
+      if (maxL1<openmx_atomic_projector_angular(atomic,w)[L]) maxL1 = openmx_atomic_projector_angular(atomic,w)[L];
     }
   }
 
@@ -697,7 +697,7 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
 #pragma omp parallel for if(!omp_in_parallel()) schedule(static)
   for (p=0; p<OneD_Nloop; p++){
     size_t spair = (size_t)pair_spair[p];
-    int socnt = VPS_j_dependency[pair_Hwan[p]] + 1;
+    int socnt = atomic->species.relativistic[pair_Hwan[p]] + 1;
     int nLL = nLL_sp[spair];
     int ccount = combo_count_sp[spair];
     const int *rf_off = combo_rf_off_sp + spair*max_combo;
@@ -1054,7 +1054,7 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
     dcomplex *CmatNLp;
 
     OpenMXNonlocalBuffers buffers;
-    OpenMXNonlocalWorkspace *workspace = SetNonlocal_Workspace(0,NULL,0,&buffers);
+    OpenMXNonlocalWorkspace *workspace = SetNonlocal_Workspace(atomic, 0,NULL,0,&buffers);
     const size_t conversion_columns = buffers.conversion_columns;
     TmpNL = buffers.angular[0];
     TmpNLr = buffers.angular[1];
@@ -1106,13 +1106,13 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
       ccount = combo_count_sp[spair];
       lookup = combo_lookup_sp + spair*lookup_stride;
 
-      for (so=0; so<=VPS_j_dependency[Hwan]; so++){
+      for (so=0; so<=atomic->species.relativistic[Hwan]; so++){
 
         const double *sum0_so = sums0_all + pair_row_base[Nloop] + (size_t)so*nLL_p*ccount;
         const double *sum1_so = sums1_all + pair_row_base[Nloop] + (size_t)so*nLL_p*ccount;
 
-        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-          for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+          for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
             for (L=1; L<=projector_count; L++){
               L1 = projector_angular[L];
               for (M0=-L0; M0<=L0; M0++){
@@ -1140,8 +1140,8 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
             CYt = Complex(dSHt[0],dSHt[1]);
             CYp = Complex(dSHp[0],dSHp[1]);
 
-            for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-              for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+            for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+              for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
                 for (L=1; L<=projector_count; L++){
 
                   int Ls;
@@ -1201,8 +1201,8 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
         }
 
         num0 = 0;
-        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-          for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+          for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 
             num1 = 0;
             for (L=1; L<=projector_count; L++){
@@ -1364,14 +1364,14 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, do
 }
 
 
-double Set_Nonlocal(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
+double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
 {
   double TStime,TEtime;
 
   dtime(&TStime);
   SetNonlocal_gpu_used = 0;
 
-  Nonlocal0(reciprocal, HNL, DS_NL);
+  Nonlocal0(atomic, reciprocal, HNL, DS_NL);
 
   /* for time */
   dtime(&TEtime);
@@ -1380,7 +1380,7 @@ double Set_Nonlocal(const OpenMXReciprocalViews *reciprocal, double *****HNL, do
 
 
 
-void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
+void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
 {
   /****************************************************
    Evaluate matrix elements of nonlocal potentials
@@ -1426,7 +1426,7 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
   int *receive_progress=projector_transfer.buffers.received;
 
 
-  SetNonlocal_ValidateGlobalState(reciprocal);
+  SetNonlocal_ValidateGlobalState(atomic, reciprocal);
 
   basis_l_dim = SetNonlocal_SizeTToInt(SetNonlocal_CheckedAddCount((size_t)List_YOUSO[25],1u,
                                                                    "basis_l_dim"),
@@ -1469,10 +1469,10 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
   {
     size_t size_SumNL0,size_TmpNL,projector_columns=1,projector_slots=1;
     for (int species=0; species<SpeciesNum; ++species) {
-      if (projector_columns < (size_t)Spe_Total_VPS_Pro[species])
-        projector_columns = (size_t)Spe_Total_VPS_Pro[species];
-      if (projector_slots < (size_t)Spe_Num_RVPS[species]+1)
-        projector_slots = (size_t)Spe_Num_RVPS[species]+1;
+      if (projector_columns < (size_t)atomic->species.projector_components[species])
+        projector_columns = (size_t)atomic->species.projector_components[species];
+      if (projector_slots < (size_t)atomic->species.radial_projectors[species]+1)
+        projector_slots = (size_t)atomic->species.radial_projectors[species]+1;
     }
     size_SumNL0 = SetNonlocal_CheckedMulCount((size_t)basis_l_dim,(size_t)List_YOUSO[24],
                                               "SumNL0 radial channels");
@@ -1558,14 +1558,14 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
   int radial_requested=SetNonlocalUseOpenMP();
   MPI_Allreduce(MPI_IN_PLACE,&radial_requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if (radial_requested){
-    DSNL_on_device = SetNonlocal_CalcDSNL_Part(reciprocal, DS_NL,Normk_grid,
+    DSNL_on_device = SetNonlocal_CalcDSNL_Part(atomic, reciprocal, DS_NL,Normk_grid,
                                  basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim,
                                  grid_dim,max_Lmax_Four_Int,max_sph_rows,
                                  OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h,myid);
   }
 
   if (!DSNL_on_device)
-    SetNonlocal_CalcDSNL_CPU(reciprocal, DS_NL,Normk_grid,grid_dim,grid_h,
+    SetNonlocal_CalcDSNL_CPU(atomic, reciprocal, DS_NL,Normk_grid,grid_dim,grid_h,
         OneD2Mc_AN,OneD2h_AN,OneD_Nloop,bessel_cache_entries);
 
   if (measure_time || SetNonlocal_ProfileEnabled()){
@@ -1631,17 +1631,17 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
         Mc_AN = Snd_MAN[IDS][n];
         Gc_AN = Snd_GAN[IDS][n];
         Cwan = WhatSpecies[Gc_AN];
-        tno1 = Spe_Total_NO[Cwan];
+        tno1 = atomic->species.orbitals[Cwan];
 
         for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
           Gh_AN = natn[Gc_AN][h_AN];
           Hwan = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_VPS_Pro[Hwan];
+	  tno2 = atomic->species.projector_components[Hwan];
           send_count =
             SetNonlocal_CheckedAddCount(
               send_count,
               SetNonlocal_CheckedMulCount(
-                SetNonlocal_CheckedMulCount((size_t)(VPS_j_dependency[Hwan]+1),(size_t)tno1,
+                SetNonlocal_CheckedMulCount((size_t)(atomic->species.relativistic[Hwan]+1),(size_t)tno1,
                                             "DS_NL send count"),
                 (size_t)tno2,"DS_NL send count"),
               "DS_NL send count");
@@ -1701,14 +1701,14 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
 	Mc_AN = Snd_MAN[IDS][n];
 	Gc_AN = Snd_GAN[IDS][n];
 	Cwan = WhatSpecies[Gc_AN];
-	tno1 = Spe_Total_NO[Cwan];
+	tno1 = atomic->species.orbitals[Cwan];
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_VPS_Pro[Hwan];
+	  tno2 = atomic->species.projector_components[Hwan];
 
-          for (so=0; so<=VPS_j_dependency[Hwan]; so++){
+          for (so=0; so<=atomic->species.relativistic[Hwan]; so++){
 	    for (i=0; i<tno1; i++){
 	      for (j=0; j<tno2; j++){
 	        tmp_array[num] = DS_NL[so][0][Mc_AN][h_AN][i][j];
@@ -1742,13 +1742,13 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
 
 	Gc_AN = Rcv_GAN[IDR][n];
 	Cwan = WhatSpecies[Gc_AN];
-	tno1 = Spe_Total_NO[Cwan];
+	tno1 = atomic->species.orbitals[Cwan];
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_VPS_Pro[Hwan];
+	  tno2 = atomic->species.projector_components[Hwan];
 
-          for (so=0; so<=VPS_j_dependency[Hwan]; so++){
+          for (so=0; so<=atomic->species.relativistic[Hwan]; so++){
 	    for (i=0; i<tno1; i++){
 	      for (j=0; j<tno2; j++){
 	        DS_NL[so][0][Matomnum+1][h_AN][i][j] = tmp_array2[num];
@@ -1781,7 +1781,7 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
           Gc_AN = M2G[Mc_AN];
           Cwan = WhatSpecies[Gc_AN];
           fan = FNAN[Gc_AN];
-          rcutA = Spe_Atom_Cut1[Cwan];
+          rcutA = atomic->species.cutoff[Cwan];
 
           for (j0=0; j0<=fan; j0++){
 
@@ -1797,11 +1797,11 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
             if (po==1){
 
 	      Hwan = WhatSpecies[jg];
-              rcutB = Spe_Atom_Cut1[Hwan];
+              rcutB = atomic->species.cutoff[Hwan];
               rcut = rcutA + rcutB;
 
-	      for (m=0; m<Spe_Total_NO[Cwan]; m++){
-		for (n=0; n<Spe_Total_NO[Hwan]; n++){
+	      for (m=0; m<atomic->species.orbitals[Cwan]; m++){
+		for (n=0; n<atomic->species.orbitals[Hwan]; n++){
 		  NLHt[0][m][n].r = 0.0;     /* <up|VNL|up> */
 		  NLHt[1][m][n].r = 0.0;     /* <dn|VNL|dn> */
 		  NLHt[2][m][n].r = 0.0;     /* <up|VNL|dn> */
@@ -1819,7 +1819,7 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
 
                 if (0<=kl){
 
-                  Multiply_DS_NL(Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLHt);
+                  Multiply_DS_NL(atomic, Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLHt);
 
 		} /* if (0<=kl) */
 
@@ -1836,8 +1836,8 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
               dmp = dampingF(rcut,Dis[Gc_AN][j]);
 
 	      for (p=0; p<List_YOUSO[5]; p++){
-		for (i1=0; i1<Spe_Total_NO[Cwan]; i1++){
-		  for (j1=0; j1<Spe_Total_NO[Hwan]; j1++){
+		for (i1=0; i1<atomic->species.orbitals[Cwan]; i1++){
+		  for (j1=0; j1<atomic->species.orbitals[Hwan]; j1++){
 
 		    HNL[p][Mc_AN][j][i1][j1] = dmp*NLHt[p][i1][j1].r*F_NL_flag;
 
@@ -1925,7 +1925,7 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
 
   /* allocation of arrays */
 
-#pragma omp parallel shared(Matomnum,time_per_atom,HNL,iHNL,iHNL0,F_NL_flag,List_YOUSO,Dis,SpinP_switch,Spe_Total_NO,DS_NL,Spe_VPS_List,Spe_VNLE,Spe_Num_RVPS,VPS_j_dependency,Spe_Total_VPS_Pro,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch)
+#pragma omp parallel shared(Matomnum,time_per_atom,HNL,iHNL,iHNL0,F_NL_flag,List_YOUSO,Dis,SpinP_switch,DS_NL,RMI1,F_G2M,natn,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch,atomic)
   {
     int OMPID,Nthrds,Nprocs,Nloop;
     int Mc_AN,j,Gc_AN,Cwan,fan,jg,i1,j1,i;
@@ -1973,7 +1973,7 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
       Gc_AN = M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
       fan = FNAN[Gc_AN];
-      rcutA = Spe_Atom_Cut1[Cwan];
+      rcutA = atomic->species.cutoff[Cwan];
 
       /* set data on j */
 
@@ -1983,11 +1983,11 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
       if (Mj_AN<=Matomnum){
 
 	Hwan = WhatSpecies[jg];
-	rcutB = Spe_Atom_Cut1[Hwan];
+	rcutB = atomic->species.cutoff[Hwan];
 	rcut = rcutA + rcutB;
 
-	for (m=0; m<Spe_Total_NO[Cwan]; m++){
-	  for (n=0; n<Spe_Total_NO[Hwan]; n++){
+	for (m=0; m<atomic->species.orbitals[Cwan]; m++){
+	  for (n=0; n<atomic->species.orbitals[Hwan]; n++){
 	    NLH[0][m][n].r = 0.0;     /* <up|VNL|up> */
 	    NLH[1][m][n].r = 0.0;     /* <dn|VNL|dn> */
 	    NLH[2][m][n].r = 0.0;     /* <up|VNL|dn> */
@@ -2005,7 +2005,7 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
 
 	  if (0<=kl){
 
-	    Multiply_DS_NL(Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH);
+	    Multiply_DS_NL(atomic, Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH);
 
 	  } /* if (0<=kl) */
 	} /* k */
@@ -2021,8 +2021,8 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
 	dmp = dampingF(rcut,Dis[Gc_AN][j]);
 
 	for (p=0; p<List_YOUSO[5]; p++){
-	  for (i1=0; i1<Spe_Total_NO[Cwan]; i1++){
-	    for (j1=0; j1<Spe_Total_NO[Hwan]; j1++){
+	  for (i1=0; i1<atomic->species.orbitals[Cwan]; i1++){
+	    for (j1=0; j1<atomic->species.orbitals[Hwan]; j1++){
 
 	      HNL[p][Mc_AN][j][i1][j1] = dmp*NLH[p][i1][j1].r*F_NL_flag;
 
@@ -2088,7 +2088,7 @@ void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double 
 }
 
 
-void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
+void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
                     int Cwan, int Hwan, int wakg, dcomplex ***NLH)
 {
   int m,n,L,L1,L2,L3,spin,target_spin;
@@ -2102,18 +2102,18 @@ void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
               l-dependent non-local part
   ****************************************************/
 
-  if (VPS_j_dependency[wakg]==0){
+  if (atomic->species.relativistic[wakg]==0){
 
-    for (m=0; m<Spe_Total_NO[Cwan]; m++){
-      for (n=0; n<Spe_Total_NO[Hwan]; n++){
+    for (m=0; m<atomic->species.orbitals[Cwan]; m++){
+      for (n=0; n<atomic->species.orbitals[Hwan]; n++){
 
 	sum = 0.0;
 	L = 0;
 
-	for (L1=1; L1<=Spe_Num_RVPS[wakg]; L1++){
+	for (L1=1; L1<=atomic->species.radial_projectors[wakg]; L1++){
 
-	  ene = Spe_VNLE[0][wakg][L1-1];
-	  L2 = 2*Spe_VPS_List[wakg][L1];
+	  ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[L1-1];
+	  L2 = 2*openmx_atomic_projector_angular(atomic,wakg)[L1];
 
 	  for (L3=0; L3<=L2; L3++){
 
@@ -2135,30 +2135,30 @@ void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
                j-dependent non-local part
   ****************************************************/
 
-  else if (VPS_j_dependency[wakg]==1){
+  else if (atomic->species.relativistic[wakg]==1){
 
-    for (m=0; m<Spe_Total_NO[Cwan]; m++){
-      for (n=0; n<Spe_Total_NO[Hwan]; n++){
+    for (m=0; m<atomic->species.orbitals[Cwan]; m++){
+      for (n=0; n<atomic->species.orbitals[Hwan]; n++){
 
 	sum0 = Complex(0.0,0.0);
 	sum1 = Complex(0.0,0.0);
 	sum2 = Complex(0.0,0.0);
 
 	L = 0;
-	for (L1=1; L1<=Spe_Num_RVPS[wakg]; L1++){
+	for (L1=1; L1<=atomic->species.radial_projectors[wakg]; L1++){
 
-	  ene_p = Spe_VNLE[0][wakg][L1-1];
-	  ene_m = Spe_VNLE[1][wakg][L1-1];
+	  ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[L1-1];
+	  ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[L1-1];
 
-	  if      (Spe_VPS_List[wakg][L1]==0) { L2=0; PFp=1.0;     PFm=0.0;     }
-	  else if (Spe_VPS_List[wakg][L1]==1) { L2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
-	  else if (Spe_VPS_List[wakg][L1]==2) { L2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
-	  else if (Spe_VPS_List[wakg][L1]==3) { L2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
+	  if      (openmx_atomic_projector_angular(atomic,wakg)[L1]==0) { L2=0; PFp=1.0;     PFm=0.0;     }
+	  else if (openmx_atomic_projector_angular(atomic,wakg)[L1]==1) { L2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
+	  else if (openmx_atomic_projector_angular(atomic,wakg)[L1]==2) { L2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
+	  else if (openmx_atomic_projector_angular(atomic,wakg)[L1]==3) { L2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
           else{
             char msg[512];
             snprintf(msg,sizeof(msg),
                      "Unsupported j-dependent projector angular momentum in Set_Nonlocal.c: species=%d L=%d.",
-                     wakg,Spe_VPS_List[wakg][L1]);
+                     wakg,openmx_atomic_projector_angular(atomic,wakg)[L1]);
             SetNonlocal_AbortWithMessage(msg);
           }
 

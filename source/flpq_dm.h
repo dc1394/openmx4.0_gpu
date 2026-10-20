@@ -17,7 +17,7 @@ double DM_tilde_Beta_upper, DM_tilde_Beta_lower;
 
 
 /*** subroutines ***/
-void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double *****iCDM);
+void out_openmx_lpq(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double *****iCDM);
 void Allocate_DM_for_LPQ();
 void Free_Arrays_DM_for_LPQ();
 
@@ -177,3 +177,4 @@ double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(
     double *DM1,
     double *Work1,
     dcomplex *EVec1 );
+#include "openmx_core_atomic.h"

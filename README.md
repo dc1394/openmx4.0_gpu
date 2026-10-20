@@ -136,6 +136,13 @@ and nonlocal projector rows are passed explicitly to input normalization,
 Fourier transforms, initial-density grids, energy, force and stress consumers;
 eight more global pointers are removed. The Hartree interpolator and its radial
 derivative take both their row and asymptotic charge from the caller.
+Orbital values, derivatives and their grids now receive explicit atomic views
+through CPU evaluation, native GPU table/tile packing, nonlocal assembly,
+optical/XANES calculations, transport analysis and orbital exports. The remaining
+PAO-coordinate/orbital and nonlocal angular/energy global pointers are removed.
+Evaluation scratch uses worker-local C++ owners with flat mdspan storage,
+transactional allocation and reusable derivative buffers. No owner lookup or
+allocation is added inside the reusable evaluator's grid-point loops.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

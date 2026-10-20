@@ -31,8 +31,15 @@ void layout_test() {
     require(openmx_radial_row4(&v.orbitals,s,l,m)+r==&f.pao.orbitals[s][l][m][r],"PAO orbital stride");
   for (int spin=0;spin<2;++spin) for (int s=0;s<3;++s) for (int p=0;p<4;++p) for (int r=0;r<5;++r)
     require(openmx_radial_row4(&v.projectors,spin,s,p)+r==&f.vps.projectors[spin][s][p][r],"spin projector stride");
+  require(v.projector_angular_species==3 && v.projector_angular_stride==4,"projector angular capacity");
+  for (int s=0;s<3;++s) for (int p=0;p<4;++p) {
+    auto *entry=openmx_atomic_projector_angular(&v,s)+p;
+    require(entry==&f.vps.angular[s][p] && *entry==0,"projector angular alias/initialization");
+    *entry=10*s+p;require(f.vps.angular[s][p]==10*s+p,"projector angular data copied");
+  }
   for (int spin=0;spin<2;++spin) for (int s=0;s<3;++s) for (int p=0;p<4;++p) {
     f.vps.energies[spin][s][p]=100*spin+10*s+p;
+    require(openmx_radial_row3(&v.projector_energies,spin,s)+p==&f.vps.energies[spin][s][p],"projector energy row alias");
     require(openmx_radial_value3(&v.projector_energies,spin,s,p)==100*spin+10*s+p,"projector energy stride");
   }
 }
@@ -51,7 +58,7 @@ void lifecycle_test() {
   openmx_core_pao_release(owner.get());
   require(!atomic(owner.get()).density.values && atomic(owner.get()).hartree_potential.values[0]==37,"PAO release destroyed VPS");
   openmx_core_vps_release(owner.get());
-  require(!atomic(owner.get()).vps_radii.values && !atomic(owner.get()).projectors.values,"VPS release retains data");
+  require(!atomic(owner.get()).vps_radii.values && !atomic(owner.get()).projectors.values && !atomic(owner.get()).projector_angular,"VPS release retains data");
   openmx_core_product_release(owner.get());
   f.allocate_all(owner.get());require(atomic(owner.get()).density.values[0]==0,"radial reallocation retains state");
   openmx_core_finish(owner.get());

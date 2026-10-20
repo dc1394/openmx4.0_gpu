@@ -52,7 +52,7 @@ static void out_Bulk_MO();
 static void out_LNAO();
 static void out_LNBO();
 static void out_Cluster_NBO(); /* added by T.Ohwaki */
-static void out_OrbOpt(char *inputfile);
+static void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile);
 static void out_Partial_Charge_Density();
 static void Set_Partial_Density_Grid(double *****CDM);
 static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2);
@@ -70,7 +70,7 @@ static void Print_VectorData_bin(FILE *fp, char fext[],
                                  double *data0, double *data1,
                                  double *data2, double *data3);
 
-double OutData(char *inputfile)
+double OutData(const OpenMXAtomicViews *atomic, char *inputfile)
 {
   char operate[YOUSO10];
   int i,c,fd;
@@ -154,7 +154,7 @@ double OutData(char *inputfile)
   }
 
   if (Cnt_switch==1){
-    out_OrbOpt(inputfile);    
+    out_OrbOpt(atomic, inputfile);
   } 
 
   /* NBO (addoed by T.Ohwaki) */
@@ -3489,7 +3489,7 @@ static void Print_VectorData_bin(FILE *fp, char fext[],
 
 
 
-void out_OrbOpt(char *inputfile)
+void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
 {
   int i,j,natom,po,al,p,wan,L0,Mul0,M0;
   int num,Mc_AN,Gc_AN,pmax,Mul1;
@@ -3556,8 +3556,8 @@ void out_OrbOpt(char *inputfile)
       wan = WhatSpecies[Gc_AN];
 
       al = -1;
-      for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+      for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	  for (M0=0; M0<=2*L0; M0++){
 	    al++;
 	    tmp_index2[L0][Mul0][M0] = al;
@@ -3565,16 +3565,16 @@ void out_OrbOpt(char *inputfile)
 	}
       }
        
-      for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
+      for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
 	for (M0=0; M0<=2*L0; M0++){
 
 	  /**********************************************
                      extended Gauss elimination
 	  ***********************************************/
 
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    al0 = tmp_index2[L0][Mul0][M0]; 
-	    for (Mul1=0; Mul1<Spe_Num_CBasis[wan][L0]; Mul1++){
+	    for (Mul1=0; Mul1<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul1++){
 	      al1 = tmp_index2[L0][Mul1][M0];
 
               if (Mul1!=Mul0){
@@ -3603,7 +3603,7 @@ void out_OrbOpt(char *inputfile)
              orthonormalization of optimized orbitals
 	  ***********************************************/
 
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    al0 = tmp_index2[L0][Mul0][M0]; 
 
 	    /* x - sum_i <x|e_i>e_i */
@@ -3684,8 +3684,8 @@ void out_OrbOpt(char *inputfile)
 
         al = -1;
         num = 0;
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
@@ -3728,8 +3728,8 @@ void out_OrbOpt(char *inputfile)
         al = -1;
         num = 0;
 
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-  	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+          for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 
@@ -3790,8 +3790,8 @@ void out_OrbOpt(char *inputfile)
 
         al = -1;
         num = 0;
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
@@ -3830,8 +3830,8 @@ void out_OrbOpt(char *inputfile)
         al = -1;
         num = 0;
 
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-          for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+          for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
             for (M0=0; M0<=2*L0; M0++){
               al++;
       
@@ -3840,7 +3840,7 @@ void out_OrbOpt(char *inputfile)
 	          tmp_coes[L0][Mul0][p] = Tmp_Vec[num];
                   num++; 
 	        }
-                for (p=Spe_Specified_Num[wan][al]; p<Spe_PAO_Mul[wan]; p++){
+                for (p=Spe_Specified_Num[wan][al]; p<atomic->species.pao_multiplicity[wan]; p++){
 	          tmp_coes[L0][Mul0][p] = 0.0;
 	        }
               }
@@ -3852,8 +3852,8 @@ void out_OrbOpt(char *inputfile)
 	    }
 	  }
 
-          for (Mul0=Spe_Num_CBasis[wan][L0]; Mul0<Spe_PAO_Mul[wan]; Mul0++){
-            for (p=0; p<Spe_PAO_Mul[wan]; p++) tmp_coes[L0][Mul0][p] = 0.0;
+          for (Mul0=atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0<atomic->species.pao_multiplicity[wan]; Mul0++){
+            for (p=0; p<atomic->species.pao_multiplicity[wan]; p++) tmp_coes[L0][Mul0][p] = 0.0;
             tmp_coes[L0][Mul0][Mul0] = 1.0;
 	  }
         }
@@ -3890,8 +3890,8 @@ void out_OrbOpt(char *inputfile)
 	  al = -1;
           num = 0;
 
-  	  for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	    for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+          for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	    for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	      for (M0=0; M0<=2*L0; M0++){
 
 	        al++;
@@ -3961,14 +3961,14 @@ void out_OrbOpt(char *inputfile)
                           contracted orbitals
           ****************************************************/
 
-          for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
+          for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
             fprintf(fp2,"<pseudo.atomic.orbitals.L=%d\n",L0);
-            for (i=0; i<Spe_Num_Mesh_PAO[wan]; i++){
-              fprintf(fp2,"%18.15f %18.15f ",Spe_PAO_XV[wan][i],Spe_PAO_RV[wan][i]); 
- 	      for (Mul0=0; Mul0<Spe_PAO_Mul[wan]; Mul0++){
+            for (i=0; i<atomic->species.pao_mesh[wan]; i++){
+              fprintf(fp2,"%18.15f %18.15f ",openmx_radial_row2(&atomic->pao_log_radii,wan)[i],openmx_radial_row2(&atomic->pao_radii,wan)[i]);
+              for (Mul0=0; Mul0<atomic->species.pao_multiplicity[wan]; Mul0++){
                 sum = 0.0;
-                for (p=0; p<Spe_PAO_Mul[wan]; p++){
-                  sum += tmp_coes[L0][Mul0][p]*Spe_PAO_RWF[wan][L0][p][i];
+                for (p=0; p<atomic->species.pao_multiplicity[wan]; p++){
+                  sum += tmp_coes[L0][Mul0][p]*openmx_radial_row4(&atomic->orbitals,wan,L0,p)[i];
 	        }
                 fprintf(fp2,"%18.15f ",sum);
               }
@@ -3977,12 +3977,12 @@ void out_OrbOpt(char *inputfile)
             fprintf(fp2,"pseudo.atomic.orbitals.L=%d>\n",L0);
 	  }
 
-          for (L0=(Spe_MaxL_Basis[wan]+1); L0<=Spe_PAO_LMAX[wan]; L0++){
+          for (L0=(atomic->species.basis_lmax[wan]+1); L0<=atomic->species.pao_lmax[wan]; L0++){
             fprintf(fp2,"<pseudo.atomic.orbitals.L=%d\n",L0);
-            for (i=0; i<Spe_Num_Mesh_PAO[wan]; i++){
-              fprintf(fp2,"%18.15f %18.15f ",Spe_PAO_XV[wan][i],Spe_PAO_RV[wan][i]); 
- 	      for (Mul0=0; Mul0<Spe_PAO_Mul[wan]; Mul0++){
-                fprintf(fp2,"%18.15f ",Spe_PAO_RWF[wan][L0][Mul0][i]);
+            for (i=0; i<atomic->species.pao_mesh[wan]; i++){
+              fprintf(fp2,"%18.15f %18.15f ",openmx_radial_row2(&atomic->pao_log_radii,wan)[i],openmx_radial_row2(&atomic->pao_radii,wan)[i]);
+              for (Mul0=0; Mul0<atomic->species.pao_multiplicity[wan]; Mul0++){
+                fprintf(fp2,"%18.15f ",openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[i]);
 	      }
               fprintf(fp2,"\n");
 	    }

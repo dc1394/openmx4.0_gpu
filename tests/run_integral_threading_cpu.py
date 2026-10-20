@@ -82,10 +82,9 @@ static void *worker(void *argument)
         OpenMXOverlapWorkspace *overlap = openmx_core_overlap_create(&shape,&buffers,error,sizeof(error));
         assert(overlap != NULL);
         const int projector_counts[2] = {2,0};
-        int projector_row[3] = {0,0,2};
-        int *projector_rows[2] = {projector_row,NULL};
+        int projector_rows[2][3] = {{0,0,2},{0,0,0}};
         const OpenMXNonlocalShape nonlocal_shape = {2+call,2,2,2,projector_counts,
-            projector_rows,grid_points,wavevectors,(size_t)cache_max};
+            &projector_rows[0][0],3,grid_points,wavevectors,(size_t)cache_max};
         OpenMXNonlocalBuffers nonlocal_buffers;
         OpenMXNonlocalWorkspace *nonlocal = openmx_core_nonlocal_create(
             &nonlocal_shape,&nonlocal_buffers,error,sizeof(error));

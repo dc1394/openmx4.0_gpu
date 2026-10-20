@@ -11,7 +11,8 @@ typedef struct OpenMXNonlocalWorkspace OpenMXNonlocalWorkspace;
 typedef struct {
   int maximum_angular, multiplicity, projector_maximum_angular, species;
   const int *projector_counts;
-  int *const *projector_angular; /* input rows use legacy indices 1..count */
+  const int *projector_angular; /* flat input, active indices 1..count */
+  size_t projector_angular_stride;
   int points;                   /* 0: angular assembly only, no radial buffers */
   const double *wavevectors;
   size_t bessel_cache_limit;

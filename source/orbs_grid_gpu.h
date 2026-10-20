@@ -13,6 +13,7 @@
 #define ORBS_GRID_GPU_H
 
 #include <stddef.h>
+#include "openmx_core_atomic.h"
 
 typedef struct {
   int wan;              /* species of the evaluated atom */
@@ -39,7 +40,7 @@ typedef struct {
   double org[3];
 } SOG_DeviceTables;
 
-int SOG_Device_Prepare(void);
+int SOG_Device_Prepare(const OpenMXAtomicViews *atomic);
 void SOG_Device_Release(void);
 void SOG_Device_ReleaseAll(void);
 const SOG_DeviceTables *SOG_Device_Tables(void);

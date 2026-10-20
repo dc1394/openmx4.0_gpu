@@ -28,7 +28,7 @@
 
 static void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo );
 static void Calc_OLPpo( double ******OLPpo );
-void Calc_OLPmo( double *****OLPmo );
+void Calc_OLPmo(const OpenMXAtomicViews *atomic,  double *****OLPmo );
 
 
 /* YTL-New-start */
@@ -43,7 +43,7 @@ static void free_Position_all_matrix_elements();
 int order_max=1;
 /* ***/
 
-void SCF2File(char *mode, char *inputfile)
+void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile)
 {
   int Mc_AN,Gc_AN,tno0,tno1;
   int Cwan,h_AN,Gh_AN,Hwan;
@@ -85,7 +85,7 @@ void SCF2File(char *mode, char *inputfile)
 	else{
 	  Gc_AN = M2G[Mc_AN];
 	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];
+	  tno0 = atomic->species.contracted_orbitals[Cwan];
 	}
 
 	OLPpo[direction][order][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
@@ -97,7 +97,7 @@ void SCF2File(char *mode, char *inputfile)
 	  else{
 	    Gh_AN = natn[Gc_AN][h_AN];
 	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
+	    tno1 = atomic->species.contracted_orbitals[Hwan];
 	  }
 
 	  OLPpo[direction][order][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0);
@@ -125,7 +125,7 @@ void SCF2File(char *mode, char *inputfile)
       else{
 	Gc_AN = M2G[Mc_AN];
 	Cwan = WhatSpecies[Gc_AN];
-	tno0 = Spe_Total_CNO[Cwan];
+	tno0 = atomic->species.contracted_orbitals[Cwan];
       }
 
       OLPmo[direction][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
@@ -137,7 +137,7 @@ void SCF2File(char *mode, char *inputfile)
 	else{
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno1 = Spe_Total_CNO[Hwan];
+	  tno1 = atomic->species.contracted_orbitals[Hwan];
 	}
 
 	OLPmo[direction][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0);
@@ -177,7 +177,7 @@ void SCF2File(char *mode, char *inputfile)
       Calc_OLPpo(OLPpo);
 
       /* matrix elements for momentum operator */
-      Calc_OLPmo(OLPmo);
+      Calc_OLPmo(atomic, OLPmo);
 
       Output( fp, inputfile, OLPpo, OLPmo );
 
@@ -201,7 +201,7 @@ void SCF2File(char *mode, char *inputfile)
 	else{
 	  Gc_AN = M2G[Mc_AN];
 	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];
+	  tno0 = atomic->species.contracted_orbitals[Cwan];
 	}
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -212,7 +212,7 @@ void SCF2File(char *mode, char *inputfile)
 	  else{
 	    Gh_AN = natn[Gc_AN][h_AN];
 	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
+	    tno1 = atomic->species.contracted_orbitals[Hwan];
 	  }
 
 	  for (i=0; i<tno0; i++){
@@ -243,7 +243,7 @@ void SCF2File(char *mode, char *inputfile)
       else{
 	Gc_AN = M2G[Mc_AN];
 	Cwan = WhatSpecies[Gc_AN];
-	tno0 = Spe_Total_CNO[Cwan];
+	tno0 = atomic->species.contracted_orbitals[Cwan];
       }
 
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -254,7 +254,7 @@ void SCF2File(char *mode, char *inputfile)
 	else{
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno1 = Spe_Total_CNO[Hwan];
+	  tno1 = atomic->species.contracted_orbitals[Hwan];
 	}
 
 	for (i=0; i<tno0; i++){
@@ -1111,7 +1111,7 @@ void Calc_OLPpo( double ******OLPpo )
 }
 
 
-void Calc_OLPmo( double *****OLPmo )
+void Calc_OLPmo(const OpenMXAtomicViews *atomic,  double *****OLPmo )
 {
   double time0;
   int Mc_AN,Gc_AN,Mh_AN,h_AN,Gh_AN;
@@ -1201,7 +1201,7 @@ void Calc_OLPmo( double *****OLPmo )
 
     Gc_AN = M2G[Mc_AN];    
     Cwan = WhatSpecies[Gc_AN];
-    NO0 = Spe_Total_CNO[Cwan];
+    NO0 = atomic->species.contracted_orbitals[Cwan];
     
     for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
 
@@ -1213,7 +1213,7 @@ void Calc_OLPmo( double *****OLPmo )
       y = Cxyz[2] + atv[GRc][2] - Gxyz[Gc_AN][2]; 
       z = Cxyz[3] + atv[GRc][3] - Gxyz[Gc_AN][3];
 
-      Get_dOrbitals(Cwan,x,y,z,dorbs); 
+      Get_dOrbitals(atomic, Cwan,x,y,z,dorbs);
         
       /****************************************************************
         The gradients is calculated w.r.t. atomic position.
@@ -1234,7 +1234,7 @@ void Calc_OLPmo( double *****OLPmo )
 
       Rnh = ncn[Gc_AN][h_AN];
       Hwan = WhatSpecies[Gh_AN];
-      NO1 = Spe_Total_CNO[Hwan];
+      NO1 = atomic->species.contracted_orbitals[Hwan];
 
       /* initialize */
 

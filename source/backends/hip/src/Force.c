@@ -14,6 +14,7 @@
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
 #include "openmx_common.h"
+#include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_mgpu_runtime.h"
@@ -805,7 +806,7 @@ static int Force3_GpuDorbMode(void)
     return 1;
 }
 
-static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const SetHamiltonianMETables *shared_tables,const float *shared_orbs1,const double* dchi_all, const size_t* dchi_off,
+static int Force3_GpuTrace_Part(const OpenMXAtomicViews *atomic, int first,int last,int myid,double *forces,const SetHamiltonianMETables *shared_tables,const float *shared_orbs1,const double* dchi_all, const size_t* dchi_off,
     double* vpot_dev_full, const size_t* vpot_off,
     double* xyz_dev_full, const size_t* xyz_off, int dorb_mode,
     size_t chunk_budget)
@@ -838,7 +839,7 @@ static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const
 
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
-        int NO0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+        int NO0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
 
         orb_off[Mc_AN] = orbs_local_count;
         orbs_local_count += (size_t)GridN_Atom[Gc_AN] * (size_t)NO0;
@@ -860,7 +861,7 @@ static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const
 
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
-        int NO0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+        int NO0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
         size_t cnt = orb_off[Mc_AN + 1] - orb_off[Mc_AN];
         int Nc;
 
@@ -896,16 +897,16 @@ static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const
 
             rv_off[w] = pao_rv_count;
             rwf_base[w] = pao_rwf_count;
-            sp_mesh[w] = Spe_Num_Mesh_PAO[w];
-            sp_maxl[w] = Spe_MaxL_Basis[w];
+            sp_mesh[w] = atomic->species.pao_mesh[w];
+            sp_maxl[w] = atomic->species.basis_lmax[w];
             for (L0 = 0; L0 <= F3_DORB_L0MAX; L0++) {
-                int nb = (L0 <= Spe_MaxL_Basis[w]) ? Spe_Num_Basis[w][L0] : 0;
+                int nb = (L0 <= atomic->species.basis_lmax[w]) ? atomic->species.basis[(size_t)(w)*atomic->species.angular_channels+(L0)] : 0;
 
                 sp_nb[w * (F3_DORB_L0MAX + 1) + L0] = nb;
                 nb_tot += nb;
             }
-            pao_rv_count += (size_t)Spe_Num_Mesh_PAO[w];
-            pao_rwf_count += (size_t)nb_tot * (size_t)Spe_Num_Mesh_PAO[w];
+            pao_rv_count += (size_t)atomic->species.pao_mesh[w];
+            pao_rwf_count += (size_t)nb_tot * (size_t)atomic->species.pao_mesh[w];
         }
         rv_off[SpeciesNum] = pao_rv_count;
         rwf_base[SpeciesNum] = pao_rwf_count;
@@ -918,13 +919,13 @@ static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const
         for (w = 0; w < SpeciesNum; w++) {
             size_t rpos = rwf_base[w];
 
-            for (i = 0; i < Spe_Num_Mesh_PAO[w]; i++) {
-                pao_rv[rv_off[w] + (size_t)i] = Spe_PAO_RV[w][i];
+            for (i = 0; i < atomic->species.pao_mesh[w]; i++) {
+                pao_rv[rv_off[w] + (size_t)i] = openmx_radial_row2(&atomic->pao_radii,w)[i];
             }
-            for (L0 = 0; L0 <= Spe_MaxL_Basis[w]; L0++) {
-                for (Mul0 = 0; Mul0 < Spe_Num_Basis[w][L0]; Mul0++) {
-                    for (i = 0; i < Spe_Num_Mesh_PAO[w]; i++) {
-                        pao_rwf[rpos++] = Spe_PAO_RWF[w][L0][Mul0][i];
+            for (L0 = 0; L0 <= atomic->species.basis_lmax[w]; L0++) {
+                for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(w)*atomic->species.angular_channels+(L0)]; Mul0++) {
+                    for (i = 0; i < atomic->species.pao_mesh[w]; i++) {
+                        pao_rwf[rpos++] = openmx_radial_row4(&atomic->orbitals,w,L0,Mul0)[i];
                     }
                 }
             }
@@ -1010,14 +1011,14 @@ static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const
 
             while (chunk_hi < last) {
                 int Gc_AN = M2G[chunk_hi];
-                int NO0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+                int NO0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
                 size_t a_gl = 0, a_fn = 0, a_dm = 0, a_maxolg = 0, cand_maxolg;
                 size_t chunk_bytes;
                 int a_pairs = 0;
 
                 for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                     int Gh_AN = natn[Gc_AN][h_AN];
-                    int NO1 = Spe_Total_CNO[WhatSpecies[Gh_AN]];
+                    int NO1 = atomic->species.contracted_orbitals[WhatSpecies[Gh_AN]];
                     size_t nolg = (size_t)NumOLG[chunk_hi][h_AN];
 
                     a_pairs++;
@@ -1156,12 +1157,12 @@ static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const
 
                 for (mc = chunk_lo; mc < chunk_hi; mc++) {
                     int Gc_AN = M2G[mc];
-                    int NO0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+                    int NO0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
 
                     for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                         int Gh_AN = natn[Gc_AN][h_AN];
                         int Mh_AN = F_G2M[Gh_AN];
-                        int NO1 = Spe_Total_CNO[WhatSpecies[Gh_AN]];
+                        int NO1 = atomic->species.contracted_orbitals[WhatSpecies[Gh_AN]];
                         int nolg = NumOLG[mc][h_AN];
                         int is_fnan = (G2ID[Gh_AN] != myid);
 
@@ -1276,7 +1277,7 @@ static int Force3_GpuTrace_Part(int first,int last,int myid,double *forces,const
                             size_t q;
 
                             a_wan[a] = WhatSpecies[Gc_AN];
-                            a_no0[a] = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+                            a_no0[a] = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
                             a_dchi[a] = dchi_off[mc3] - dchi_lo;
                             a_pt0[a] = p0;
                             for (q = p0; q < pe; q++) pt_aidx[q] = a;
@@ -1810,14 +1811,14 @@ f3_chunk_cleanup:
     return success;
 }
 
-static int Force3_GpuTrace(const double *dchi,const size_t *dchi_off,
+static int Force3_GpuTrace(const OpenMXAtomicViews *atomic, const double *dchi,const size_t *dchi_off,
     double *potential,const size_t *vpot_off,double *xyz,const size_t *xyz_off,int dorb,size_t budget)
 {
     SetHamiltonianMETables tables;const float *orbs1=NULL;int rank;
     MPI_Comm_rank(mpi_comm_level1,&rank);int kind=Cnt_switch==1;
     int have=Set_Hamiltonian_MatrixElementsTables_Ready(kind) && Set_Hamiltonian_GetMatrixElementsTables(kind,&tables) && tables.orbs1_resident;
     if(have){orbs1=openmx_target_deviceptr((void*)tables.orbs1buf);if(!orbs1)have=0;}
-    return Force3_GpuTrace_Part(1,Matomnum+1,rank,NULL,have?&tables:NULL,orbs1,dchi,dchi_off,potential,vpot_off,xyz,xyz_off,dorb,budget);
+    return Force3_GpuTrace_Part(atomic, 1,Matomnum+1,rank,NULL,have?&tables:NULL,orbs1,dchi,dchi_off,potential,vpot_off,xyz,xyz_off,dorb,budget);
 }
 
 typedef struct {
@@ -2146,7 +2147,7 @@ static void dH_U_NC_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP, dcomplex***** NC_v_eff,
     dcomplex**** Hx, dcomplex**** Hy, dcomplex**** Hz);
 
-static void dHNL(int where_flag,
+static void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double****** DS_NL1,
     dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz);
@@ -2201,13 +2202,13 @@ static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy
     double***** OLP1);
 
 static void MPI_OLP(double***** OLP1);
-static void Force3();
+static void Force3(const OpenMXAtomicViews *atomic);
 static void Force4(const OpenMXAtomicViews *atomic);
 static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx, double* Fy, double* Fz, size_t* atom_terms);
 static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0);
 
-static void Force_HNL(double***** CDM0, double***** iDM0);
-static int Force_HNL_GpuBegin(double****** DS_NL);
+static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0);
+static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL);
 static void Force_HNL_GpuEnd(void);
 static void Force_HNL_GpuArchiveHalo(double****** DS_NL, int Original_Mc_AN, int Gc_AN);
 static void Force_HNL_GpuArchiveCase2(double****** DS_NL, int Mc_AN, int Gc_AN);
@@ -3665,7 +3666,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         fflush(stdout);
     }
 
-    Force3();
+    Force3(atomic);
 
     dtime(&etime);
     if (force_profile) {
@@ -4310,7 +4311,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     ****************************************************/
 
     dtime(&stime);
-    Force_HNL(CDM0, iDM0);
+    Force_HNL(atomic, CDM0, iDM0);
     dtime(&etime);
     if (force_profile) {
         Force_profile_report("force-HNL", etime - stime,
@@ -4478,7 +4479,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 /* OMP by A. Ito */
 
 #ifndef f3omp
-void Force3()
+void Force3(const OpenMXAtomicViews *atomic)
 {
     /****************************************************
           #3 of Force
@@ -4566,7 +4567,7 @@ void Force3()
         xyz_off[0] = 0;
         for (mc = 1; mc <= Matomnum; mc++) {
             int ga = M2G[mc];
-            int no0 = Spe_Total_CNO[WhatSpecies[ga]];
+            int no0 = atomic->species.contracted_orbitals[WhatSpecies[ga]];
 
             dchi_off[mc] = dpos;
             vpot_off[mc] = vpos;
@@ -4620,8 +4621,9 @@ void Force3()
         }
         double* orbs1 = (double*)malloc(sizeof(double) * List_YOUSO[7]);
 
-        struct WORK_DORBITAL work_dObs;
-        Get_dOrbitals_init(&work_dObs);
+        OpenMXOrbitalBuffers work_dObs;
+        OpenMXOrbitalWorkspace *orbital_workspace=OpenMX_OrbitalWorkspace(
+            (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work_dObs);
 
 #if measure_time
         double time1 = 0.0;
@@ -4637,7 +4639,7 @@ void Force3()
 
             int Gc_AN = M2G[Mc_AN];
             int Cwan = WhatSpecies[Gc_AN];
-            int NO0 = Spe_Total_CNO[Cwan];
+            int NO0 = atomic->species.contracted_orbitals[Cwan];
 
             /* part-1 write targets: the flat per-atom slices on the GPU
                path, the shared per-atom buffers on the CPU path */
@@ -4709,11 +4711,11 @@ void Force3()
                     double dx, rm, tmp0, tmp1, id, d;
                     double drx, dry, drz, R, Q, P, Rmin;
                     double S_coordinate[3];
-                    double** RF = work_dObs.RF;
-                    double** dRF = work_dObs.dRF;
-                    double** AF = work_dObs.AF;
-                    double** dAFQ = work_dObs.dAFQ;
-                    double** dAFP = work_dObs.dAFP;
+                    double *RF = work_dObs.RF;
+                    double *dRF = work_dObs.dRF;
+                    double *AF = work_dObs.AF;
+                    double *dAFQ = work_dObs.dAFQ;
+                    double *dAFP = work_dObs.dAFP;
                     double h1, h2, h3, f1, f2, f3, f4, dfx, dfx2;
                     double g1, g2, x1, x2, y1, y2, y12, y22, f, df, df2;
                     double dRx, dRy, dRz, dQx, dQy, dQz, dPx, dPy, dPz;
@@ -4743,33 +4745,33 @@ void Force3()
 
                     po = 0;
                     mp_min = 0;
-                    mp_max = Spe_Num_Mesh_PAO[wan] - 1;
+                    mp_max = atomic->species.pao_mesh[wan] - 1;
 
-                    if (Spe_PAO_RV[wan][Spe_Num_Mesh_PAO[wan] - 1] < R) {
+                    if (openmx_radial_row2(&atomic->pao_radii,wan)[atomic->species.pao_mesh[wan] - 1] < R) {
 
-                        for (L0 = 0; L0 <= Spe_MaxL_Basis[wan]; L0++) {
-                            for (Mul0 = 0; Mul0 < Spe_Num_Basis[wan][L0]; Mul0++) {
-                                RF[L0][Mul0] = 0.0;
-                                dRF[L0][Mul0] = 0.0;
+                        for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
+                            for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++) {
+                                RF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] = 0.0;
+                                dRF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] = 0.0;
                             }
                         }
 
                         po = 1;
                     }
 
-                    else if (R < Spe_PAO_RV[wan][0]) {
+                    else if (R < openmx_radial_row2(&atomic->pao_radii,wan)[0]) {
 
                         m = 4;
-                        rm = Spe_PAO_RV[wan][m];
+                        rm = openmx_radial_row2(&atomic->pao_radii,wan)[m];
 
-                        h1 = (m == 1) ? Spe_PAO_RV[wan][m - 1] - Spe_PAO_RV[wan][m + 1]
-                            : Spe_PAO_RV[wan][m - 1] - Spe_PAO_RV[wan][m - 2];
-                        h2 = Spe_PAO_RV[wan][m] - Spe_PAO_RV[wan][m - 1];
-                        h3 = (m == Spe_Num_Mesh_PAO[wan] - 1) ? Spe_PAO_RV[wan][m - 2] - Spe_PAO_RV[wan][m]
-                            : Spe_PAO_RV[wan][m + 1] - Spe_PAO_RV[wan][m];
+                        h1 = (m == 1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m - 1] - openmx_radial_row2(&atomic->pao_radii,wan)[m + 1]
+                            : openmx_radial_row2(&atomic->pao_radii,wan)[m - 1] - openmx_radial_row2(&atomic->pao_radii,wan)[m - 2];
+                        h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m] - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
+                        h3 = (m == atomic->species.pao_mesh[wan] - 1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m - 2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
+                            : openmx_radial_row2(&atomic->pao_radii,wan)[m + 1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
 
-                        x1 = rm - Spe_PAO_RV[wan][m - 1];
-                        x2 = rm - Spe_PAO_RV[wan][m];
+                        x1 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
+                        x2 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m];
                         y1 = x1 / h2;
                         y2 = x2 / h2;
                         y12 = y1 * y1;
@@ -4782,13 +4784,13 @@ void Force3()
                         dum3 = h2 / h3 / dum;
                         dum4 = h3 / h2 / dum;
 
-                        for (L0 = 0; L0 <= Spe_MaxL_Basis[wan]; L0++) {
-                            for (Mul0 = 0; Mul0 < Spe_Num_Basis[wan][L0]; Mul0++) {
+                        for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
+                            for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++) {
 
-                                f1 = Spe_PAO_RWF[wan][L0][Mul0][m == 1 ? m + 1 : m - 2];
-                                f2 = Spe_PAO_RWF[wan][L0][Mul0][m - 1];
-                                f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-                                f4 = Spe_PAO_RWF[wan][L0][Mul0][m == Spe_Num_Mesh_PAO[wan] - 1 ? m - 2 : m + 1];
+                                f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m == 1 ? m + 1 : m - 2];
+                                f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m - 1];
+                                f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
+                                f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m == atomic->species.pao_mesh[wan] - 1 ? m - 2 : m + 1];
 
                                 dum = f3 - f2;
                                 g1 = dum * dum1 + (f2 - f1) * dum2;
@@ -4823,8 +4825,8 @@ void Force3()
                                     d = 0.0;
                                 }
 
-                                RF[L0][Mul0] = a * R * R * R + b * R * R + c * R + d;
-                                dRF[L0][Mul0] = 3.0 * a * R * R + 2.0 * b * R + c;
+                                RF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] = a * R * R * R + b * R * R + c * R + d;
+                                dRF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] = 3.0 * a * R * R + 2.0 * b * R + c;
                             }
                         }
 
@@ -4834,21 +4836,21 @@ void Force3()
 
                         do {
                             m = (mp_min + mp_max) / 2;
-                            if (Spe_PAO_RV[wan][m] < R)
+                            if (openmx_radial_row2(&atomic->pao_radii,wan)[m] < R)
                                 mp_min = m;
                             else
                                 mp_max = m;
                         } while ((mp_max - mp_min) != 1);
                         m = mp_max;
 
-                        h1 = (m == 1) ? Spe_PAO_RV[wan][m - 1] - Spe_PAO_RV[wan][m + 1]
-                            : Spe_PAO_RV[wan][m - 1] - Spe_PAO_RV[wan][m - 2];
-                        h2 = Spe_PAO_RV[wan][m] - Spe_PAO_RV[wan][m - 1];
-                        h3 = (m == Spe_Num_Mesh_PAO[wan] - 1) ? Spe_PAO_RV[wan][m - 2] - Spe_PAO_RV[wan][m]
-                            : Spe_PAO_RV[wan][m + 1] - Spe_PAO_RV[wan][m];
+                        h1 = (m == 1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m - 1] - openmx_radial_row2(&atomic->pao_radii,wan)[m + 1]
+                            : openmx_radial_row2(&atomic->pao_radii,wan)[m - 1] - openmx_radial_row2(&atomic->pao_radii,wan)[m - 2];
+                        h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m] - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
+                        h3 = (m == atomic->species.pao_mesh[wan] - 1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m - 2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
+                            : openmx_radial_row2(&atomic->pao_radii,wan)[m + 1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
 
-                        x1 = R - Spe_PAO_RV[wan][m - 1];
-                        x2 = R - Spe_PAO_RV[wan][m];
+                        x1 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
+                        x2 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m];
                         y1 = x1 / h2;
                         y2 = x2 / h2;
                         y12 = y1 * y1;
@@ -4861,13 +4863,13 @@ void Force3()
                         dum3 = h2 / h3 / dum;
                         dum4 = h3 / h2 / dum;
 
-                        for (L0 = 0; L0 <= Spe_MaxL_Basis[wan]; L0++) {
-                            for (Mul0 = 0; Mul0 < Spe_Num_Basis[wan][L0]; Mul0++) {
+                        for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
+                            for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++) {
 
-                                f1 = Spe_PAO_RWF[wan][L0][Mul0][m == 1 ? m + 1 : m - 2];
-                                f2 = Spe_PAO_RWF[wan][L0][Mul0][m - 1];
-                                f3 = Spe_PAO_RWF[wan][L0][Mul0][m];
-                                f4 = Spe_PAO_RWF[wan][L0][Mul0][m == Spe_Num_Mesh_PAO[wan] - 1 ? m - 2 : m + 1];
+                                f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m == 1 ? m + 1 : m - 2];
+                                f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m - 1];
+                                f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
+                                f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m == atomic->species.pao_mesh[wan] - 1 ? m - 2 : m + 1];
 
                                 dum = f3 - f2;
                                 g1 = dum * dum1 + (f2 - f1) * dum2;
@@ -4881,8 +4883,8 @@ void Force3()
                                     + 2.0 * y1 / h2 * (3.0 * f3 - h2 * g2 - (2.0 * f3 - h2 * g2) * y1)
                                     - y1 * y1 * (2.0 * f3 - h2 * g2) / h2;
 
-                                RF[L0][Mul0] = f;
-                                dRF[L0][Mul0] = df;
+                                RF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] = f;
+                                dRF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] = df;
                             }
                         }
                     }
@@ -4923,76 +4925,76 @@ void Force3()
                             dPz = 0.0;
                         }
 
-                        for (L0 = 0; L0 <= Spe_MaxL_Basis[wan]; L0++) {
+                        for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
                             if (L0 == 0) {
-                                AF[0][0] = 0.282094791773878;
-                                dAFQ[0][0] = 0.0;
-                                dAFP[0][0] = 0.0;
+                                AF[(size_t)(0)*work_dObs.magnetic_capacity+(0)] = 0.282094791773878;
+                                dAFQ[(size_t)(0)*work_dObs.magnetic_capacity+(0)] = 0.0;
+                                dAFP[(size_t)(0)*work_dObs.magnetic_capacity+(0)] = 0.0;
                             } else if (L0 == 1) {
                                 dum = 0.48860251190292 * siQ;
 
-                                AF[1][0] = dum * coP;
-                                AF[1][1] = dum * siP;
-                                AF[1][2] = 0.48860251190292 * coQ;
+                                AF[(size_t)(1)*work_dObs.magnetic_capacity+(0)] = dum * coP;
+                                AF[(size_t)(1)*work_dObs.magnetic_capacity+(1)] = dum * siP;
+                                AF[(size_t)(1)*work_dObs.magnetic_capacity+(2)] = 0.48860251190292 * coQ;
 
-                                dAFQ[1][0] = 0.48860251190292 * coQ * coP;
-                                dAFQ[1][1] = 0.48860251190292 * coQ * siP;
-                                dAFQ[1][2] = -0.48860251190292 * siQ;
+                                dAFQ[(size_t)(1)*work_dObs.magnetic_capacity+(0)] = 0.48860251190292 * coQ * coP;
+                                dAFQ[(size_t)(1)*work_dObs.magnetic_capacity+(1)] = 0.48860251190292 * coQ * siP;
+                                dAFQ[(size_t)(1)*work_dObs.magnetic_capacity+(2)] = -0.48860251190292 * siQ;
 
-                                dAFP[1][0] = -0.48860251190292 * siP;
-                                dAFP[1][1] = 0.48860251190292 * coP;
-                                dAFP[1][2] = 0.0;
+                                dAFP[(size_t)(1)*work_dObs.magnetic_capacity+(0)] = -0.48860251190292 * siP;
+                                dAFP[(size_t)(1)*work_dObs.magnetic_capacity+(1)] = 0.48860251190292 * coP;
+                                dAFP[(size_t)(1)*work_dObs.magnetic_capacity+(2)] = 0.0;
                             } else if (L0 == 2) {
 
                                 dum1 = siQ * siQ;
                                 dum2 = 1.09254843059208 * siQ * coQ;
-                                AF[2][0] = 0.94617469575756 * coQ * coQ - 0.31539156525252;
-                                AF[2][1] = 0.54627421529604 * dum1 * (1.0 - 2.0 * siP * siP);
-                                AF[2][2] = 1.09254843059208 * dum1 * siP * coP;
-                                AF[2][3] = dum2 * coP;
-                                AF[2][4] = dum2 * siP;
+                                AF[(size_t)(2)*work_dObs.magnetic_capacity+(0)] = 0.94617469575756 * coQ * coQ - 0.31539156525252;
+                                AF[(size_t)(2)*work_dObs.magnetic_capacity+(1)] = 0.54627421529604 * dum1 * (1.0 - 2.0 * siP * siP);
+                                AF[(size_t)(2)*work_dObs.magnetic_capacity+(2)] = 1.09254843059208 * dum1 * siP * coP;
+                                AF[(size_t)(2)*work_dObs.magnetic_capacity+(3)] = dum2 * coP;
+                                AF[(size_t)(2)*work_dObs.magnetic_capacity+(4)] = dum2 * siP;
 
-                                dAFQ[2][0] = -1.89234939151512 * siQ * coQ;
-                                dAFQ[2][1] = 1.09254843059208 * siQ * coQ * (1.0 - 2.0 * siP * siP);
-                                dAFQ[2][2] = 2.18509686118416 * siQ * coQ * siP * coP;
-                                dAFQ[2][3] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * coP;
-                                dAFQ[2][4] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * siP;
+                                dAFQ[(size_t)(2)*work_dObs.magnetic_capacity+(0)] = -1.89234939151512 * siQ * coQ;
+                                dAFQ[(size_t)(2)*work_dObs.magnetic_capacity+(1)] = 1.09254843059208 * siQ * coQ * (1.0 - 2.0 * siP * siP);
+                                dAFQ[(size_t)(2)*work_dObs.magnetic_capacity+(2)] = 2.18509686118416 * siQ * coQ * siP * coP;
+                                dAFQ[(size_t)(2)*work_dObs.magnetic_capacity+(3)] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * coP;
+                                dAFQ[(size_t)(2)*work_dObs.magnetic_capacity+(4)] = 1.09254843059208 * (1.0 - 2.0 * siQ * siQ) * siP;
 
                                 /* RICS note 72P */
 
-                                dAFP[2][0] = 0.0;
-                                dAFP[2][1] = -2.18509686118416 * siQ * siP * coP;
-                                dAFP[2][2] = 1.09254843059208 * siQ * (1.0 - 2.0 * siP * siP);
-                                dAFP[2][3] = -1.09254843059208 * coQ * siP;
-                                dAFP[2][4] = 1.09254843059208 * coQ * coP;
+                                dAFP[(size_t)(2)*work_dObs.magnetic_capacity+(0)] = 0.0;
+                                dAFP[(size_t)(2)*work_dObs.magnetic_capacity+(1)] = -2.18509686118416 * siQ * siP * coP;
+                                dAFP[(size_t)(2)*work_dObs.magnetic_capacity+(2)] = 1.09254843059208 * siQ * (1.0 - 2.0 * siP * siP);
+                                dAFP[(size_t)(2)*work_dObs.magnetic_capacity+(3)] = -1.09254843059208 * coQ * siP;
+                                dAFP[(size_t)(2)*work_dObs.magnetic_capacity+(4)] = 1.09254843059208 * coQ * coP;
                             }
 
                             else if (L0 == 3) {
-                                AF[3][0] = 0.373176332590116 * (5.0 * coQ * coQ * coQ - 3.0 * coQ);
-                                AF[3][1] = 0.457045799464466 * coP * siQ * (5.0 * coQ * coQ - 1.0);
-                                AF[3][2] = 0.457045799464466 * siP * siQ * (5.0 * coQ * coQ - 1.0);
-                                AF[3][3] = 1.44530572132028 * siQ * siQ * coQ * (coP * coP - siP * siP);
-                                AF[3][4] = 2.89061144264055 * siQ * siQ * coQ * siP * coP;
-                                AF[3][5] = 0.590043589926644 * siQ * siQ * siQ * (4.0 * coP * coP * coP - 3.0 * coP);
-                                AF[3][6] = 0.590043589926644 * siQ * siQ * siQ * (3.0 * siP - 4.0 * siP * siP * siP);
+                                AF[(size_t)(3)*work_dObs.magnetic_capacity+(0)] = 0.373176332590116 * (5.0 * coQ * coQ * coQ - 3.0 * coQ);
+                                AF[(size_t)(3)*work_dObs.magnetic_capacity+(1)] = 0.457045799464466 * coP * siQ * (5.0 * coQ * coQ - 1.0);
+                                AF[(size_t)(3)*work_dObs.magnetic_capacity+(2)] = 0.457045799464466 * siP * siQ * (5.0 * coQ * coQ - 1.0);
+                                AF[(size_t)(3)*work_dObs.magnetic_capacity+(3)] = 1.44530572132028 * siQ * siQ * coQ * (coP * coP - siP * siP);
+                                AF[(size_t)(3)*work_dObs.magnetic_capacity+(4)] = 2.89061144264055 * siQ * siQ * coQ * siP * coP;
+                                AF[(size_t)(3)*work_dObs.magnetic_capacity+(5)] = 0.590043589926644 * siQ * siQ * siQ * (4.0 * coP * coP * coP - 3.0 * coP);
+                                AF[(size_t)(3)*work_dObs.magnetic_capacity+(6)] = 0.590043589926644 * siQ * siQ * siQ * (3.0 * siP - 4.0 * siP * siP * siP);
 
-                                dAFQ[3][0] = 0.373176332590116 * siQ * (-15.0 * coQ * coQ + 3.0);
-                                dAFQ[3][1] = 0.457045799464466 * coP * coQ * (15.0 * coQ * coQ - 11.0);
-                                dAFQ[3][2] = 0.457045799464466 * siP * coQ * (15.0 * coQ * coQ - 11.0);
-                                dAFQ[3][3] = 1.44530572132028 * (coP * coP - siP * siP) * siQ * (2.0 * coQ * coQ - siQ * siQ);
-                                dAFQ[3][4] = 2.89061144264055 * coP * siP * siQ * (2.0 * coQ * coQ - siQ * siQ);
-                                dAFQ[3][5] = 1.770130769779932 * coP * coQ * siQ * siQ * (-3.0 + 4.0 * coP * coP);
-                                dAFQ[3][6] = 1.770130769779932 * coQ * siP * siQ * siQ * (3.0 - 4.0 * siP * siP);
+                                dAFQ[(size_t)(3)*work_dObs.magnetic_capacity+(0)] = 0.373176332590116 * siQ * (-15.0 * coQ * coQ + 3.0);
+                                dAFQ[(size_t)(3)*work_dObs.magnetic_capacity+(1)] = 0.457045799464466 * coP * coQ * (15.0 * coQ * coQ - 11.0);
+                                dAFQ[(size_t)(3)*work_dObs.magnetic_capacity+(2)] = 0.457045799464466 * siP * coQ * (15.0 * coQ * coQ - 11.0);
+                                dAFQ[(size_t)(3)*work_dObs.magnetic_capacity+(3)] = 1.44530572132028 * (coP * coP - siP * siP) * siQ * (2.0 * coQ * coQ - siQ * siQ);
+                                dAFQ[(size_t)(3)*work_dObs.magnetic_capacity+(4)] = 2.89061144264055 * coP * siP * siQ * (2.0 * coQ * coQ - siQ * siQ);
+                                dAFQ[(size_t)(3)*work_dObs.magnetic_capacity+(5)] = 1.770130769779932 * coP * coQ * siQ * siQ * (-3.0 + 4.0 * coP * coP);
+                                dAFQ[(size_t)(3)*work_dObs.magnetic_capacity+(6)] = 1.770130769779932 * coQ * siP * siQ * siQ * (3.0 - 4.0 * siP * siP);
 
                                 /* RICS note 72P */
 
-                                dAFP[3][0] = 0.0;
-                                dAFP[3][1] = 0.457045799464466 * siP * (-5.0 * coQ * coQ + 1.0);
-                                dAFP[3][2] = 0.457045799464466 * coP * (5.0 * coQ * coQ - 1.0);
-                                dAFP[3][3] = -5.781222885281120 * coP * coQ * siP * siQ;
-                                dAFP[3][4] = 2.89061144264055 * coQ * siQ * (coP * coP - siP * siP);
-                                dAFP[3][5] = 1.770130769779932 * siP * siQ * siQ * (1.0 - 4.0 * coP * coP);
-                                dAFP[3][6] = 1.770130769779932 * coP * siQ * siQ * (1.0 - 4.0 * siP * siP);
+                                dAFP[(size_t)(3)*work_dObs.magnetic_capacity+(0)] = 0.0;
+                                dAFP[(size_t)(3)*work_dObs.magnetic_capacity+(1)] = 0.457045799464466 * siP * (-5.0 * coQ * coQ + 1.0);
+                                dAFP[(size_t)(3)*work_dObs.magnetic_capacity+(2)] = 0.457045799464466 * coP * (5.0 * coQ * coQ - 1.0);
+                                dAFP[(size_t)(3)*work_dObs.magnetic_capacity+(3)] = -5.781222885281120 * coP * coQ * siP * siQ;
+                                dAFP[(size_t)(3)*work_dObs.magnetic_capacity+(4)] = 2.89061144264055 * coQ * siQ * (coP * coP - siP * siP);
+                                dAFP[(size_t)(3)*work_dObs.magnetic_capacity+(5)] = 1.770130769779932 * siP * siQ * siQ * (1.0 - 4.0 * coP * coP);
+                                dAFP[(size_t)(3)*work_dObs.magnetic_capacity+(6)] = 1.770130769779932 * coP * siQ * siQ * (1.0 - 4.0 * siP * siP);
                             }
 
                             else if (4 <= L0) {
@@ -5011,7 +5013,7 @@ void Force3()
                                         sum0 += Comp2Real[L0][i][j].r * SH[j][0] - Comp2Real[L0][i][j].i * SH[j][1];
                                         sum1 += Comp2Real[L0][i][j].r * SH[j][1] + Comp2Real[L0][i][j].i * SH[j][0];
                                     }
-                                    AF[L0][i] = sum0 + sum1;
+                                    AF[(size_t)(L0)*work_dObs.magnetic_capacity+(i)] = sum0 + sum1;
 
                                     sum0 = 0.0;
                                     sum1 = 0.0;
@@ -5019,7 +5021,7 @@ void Force3()
                                         sum0 += Comp2Real[L0][i][j].r * dSHt[j][0] - Comp2Real[L0][i][j].i * dSHt[j][1];
                                         sum1 += Comp2Real[L0][i][j].r * dSHt[j][1] + Comp2Real[L0][i][j].i * dSHt[j][0];
                                     }
-                                    dAFQ[L0][i] = sum0 + sum1;
+                                    dAFQ[(size_t)(L0)*work_dObs.magnetic_capacity+(i)] = sum0 + sum1;
 
                                     sum0 = 0.0;
                                     sum1 = 0.0;
@@ -5027,7 +5029,7 @@ void Force3()
                                         sum0 += Comp2Real[L0][i][j].r * dSHp[j][0] - Comp2Real[L0][i][j].i * dSHp[j][1];
                                         sum1 += Comp2Real[L0][i][j].r * dSHp[j][1] + Comp2Real[L0][i][j].i * dSHp[j][0];
                                     }
-                                    dAFP[L0][i] = sum0 + sum1;
+                                    dAFP[(size_t)(L0)*work_dObs.magnetic_capacity+(i)] = sum0 + sum1;
                                 }
                             }
                         }
@@ -5035,8 +5037,8 @@ void Force3()
 
                     /* Chi */
                     i1 = -1;
-                    for (L0 = 0; L0 <= Spe_MaxL_Basis[wan]; L0++) {
-                        for (Mul0 = 0; Mul0 < Spe_Num_Basis[wan][L0]; Mul0++) {
+                    for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
+                        for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++) {
                             for (M0 = 0; M0 <= 2 * L0; M0++) {
 
                                 i1++;
@@ -5045,9 +5047,9 @@ void Force3()
                                     continue;
                                 }
 
-                                dChiR = dRF[L0][Mul0] * AF[L0][M0];
-                                dChiQ = RF[L0][Mul0] * dAFQ[L0][M0];
-                                dChiP = RF[L0][Mul0] * dAFP[L0][M0];
+                                dChiR = dRF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] * AF[(size_t)(L0)*work_dObs.magnetic_capacity+(M0)];
+                                dChiQ = RF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] * dAFQ[(size_t)(L0)*work_dObs.magnetic_capacity+(M0)];
+                                dChiP = RF[(size_t)(L0)*work_dObs.multiplicity+(Mul0)] * dAFP[(size_t)(L0)*work_dObs.magnetic_capacity+(M0)];
 
                                 dorbs0[1][i1] = -dRx * dChiR - dQx * dChiQ - dPx * dChiP;
                                 dorbs0[2][i1] = -dRy * dChiR - dQy * dChiQ - dPy * dChiP;
@@ -5059,7 +5061,7 @@ void Force3()
                     /* end: direct inlining of Get_dOrbitals_work */
 
                 } else {
-                    Get_Cnt_dOrbitals(Mc_AN, dx, dy, dz, dorbs0);
+                    Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0);
                 }
 
                 int i;
@@ -5232,7 +5234,7 @@ void Force3()
 #pragma omp barrier
             }
             if(Mc_AN<=Matomnum){
-            int Gc_AN=M2G[Mc_AN],NO0=Spe_Total_CNO[WhatSpecies[Gc_AN]];
+            int Gc_AN=M2G[Mc_AN],NO0=atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
             if (!use_gpu_trace && !recovered) {
 
             int h_AN;
@@ -5242,7 +5244,7 @@ void Force3()
                 int Gh_AN = natn[Gc_AN][h_AN];
                 int Mh_AN = F_G2M[Gh_AN];
                 int Hwan = WhatSpecies[Gh_AN];
-                int NO1 = Spe_Total_CNO[Hwan];
+                int NO1 = atomic->species.contracted_orbitals[Hwan];
 
                 int Nog;
 
@@ -5350,31 +5352,33 @@ void Force3()
         }
         free(dorbs0);
 
-        Get_dOrbitals_free(work_dObs);
+        openmx_core_orbital_destroy(orbital_workspace);
 
     } /* #pragma omp parallel */
 
-    int late=use_gpu_trace && !Force3_GpuTrace(dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget);
+    int late=use_gpu_trace && !Force3_GpuTrace(atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget);
     int late_any=late;MPI_Allreduce(MPI_IN_PLACE,&late_any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(late_any){
         int max_atoms=Matomnum;MPI_Allreduce(MPI_IN_PLACE,&max_atoms,1,MPI_INT,MPI_MAX,mpi_comm_level1);
         for(int mc=1;mc<=max_atoms;mc++){
             if(late && mc<=Matomnum){
-                int gc=M2G[mc],no=Spe_Total_CNO[WhatSpecies[gc]],ng=GridN_Atom[gc];
+                int gc=M2G[mc],no=atomic->species.contracted_orbitals[WhatSpecies[gc]],ng=GridN_Atom[gc];
                 openmx_target_download(vpot_stage,vpot_dev_full+vpot_off[mc],(size_t)(SpinP_switch+1)*ng*sizeof(double));
                 for(int spin=0;spin<=SpinP_switch;spin++)memcpy(Vpot_grid[spin],vpot_stage+(size_t)spin*ng,(size_t)ng*sizeof(double));
                 if(f3_dorb){
                     openmx_target_download(xyz_stage,xyz_dev_full+xyz_off[mc],3*(size_t)ng*sizeof(double));
 #pragma omp parallel
                     {
-                        struct WORK_DORBITAL work;Get_dOrbitals_init(&work);
+                        OpenMXOrbitalBuffers work;
+        OpenMXOrbitalWorkspace *orbital_workspace=OpenMX_OrbitalWorkspace(
+            (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work);
                         double storage[4][List_YOUSO[7]],*dorbs[4]={storage[0],storage[1],storage[2],storage[3]};
 #pragma omp for
                         for(int nc=0;nc<ng;nc++){
-                            Get_dOrbitals_work(WhatSpecies[gc],xyz_stage[3*(size_t)nc],xyz_stage[3*(size_t)nc+1],xyz_stage[3*(size_t)nc+2],dorbs,work);
+                            Get_dOrbitals_work(atomic, WhatSpecies[gc],xyz_stage[3*(size_t)nc],xyz_stage[3*(size_t)nc+1],xyz_stage[3*(size_t)nc+2],dorbs,work);
                             for(int i=0;i<no;i++)for(int axis=0;axis<3;axis++)dChi0[nc][i][axis]=dorbs[axis+1][i];
                         }
-                        Get_dOrbitals_free(work);
+                        openmx_core_orbital_destroy(orbital_workspace);
                     }
                 }else for(int nc=0;nc<ng;nc++)for(int i=0;i<no;i++)memcpy(dChi0[nc][i],dchi_all+dchi_off[mc]+3*((size_t)nc*no+i),3*sizeof(double));
             }
@@ -5405,7 +5409,7 @@ void Force3()
 /* OMP by Ozaki */
 
 #else
-void Force3()
+void Force3(const OpenMXAtomicViews *atomic)
 {
     /****************************************************
                         #3 of Force
@@ -5437,7 +5441,7 @@ void Force3()
                 main loop for calculation of force #3
     **********************************************************/
 
-#pragma omp parallel shared(Orbs_Grid_FNAN, G2ID, myid, level_stdout, GridVol, F_VEF_flag, VEF_Grid, F_VNA_flag, VNA_Grid, F_Vxc_flag, Vxc_Grid, dVHart_Grid, F_dVHart_flag, ProExpn_VNA, E_Field_switch, DM, Orbs_Grid, GListTAtoms2, GListTAtoms1, NumOLG, ncn, F_G2M, natn, FNAN, Max_GridN_Atom, SpinP_switch, List_YOUSO, Cnt_switch, Gxyz, atv, MGridListAtom, CellListAtom, GridListAtom, GridN_Atom, Spe_Total_CNO, WhatSpecies, M2G, Matomnum) private(OMPID, Nthrds, Nprocs, Mc_AN, Gc_AN, Cwan, NO0, Nc, GNc, GRc, MNc, Cxyz, x, y, z, dx, dy, dz, dorbs0, orbs1, dDen_Grid, dChi0, i, k, h_AN, Gh_AN, Mh_AN, Rnh, Hwan, NO1, spin, Nog, Nh, j, sum, tmp0, sumx, sumy, sumz, Vpt, ReVpt11, ReVpt22, ReVpt21, ImVpt21)
+#pragma omp parallel shared(Orbs_Grid_FNAN,G2ID,myid,level_stdout,GridVol,F_VEF_flag,VEF_Grid,F_VNA_flag,VNA_Grid,F_Vxc_flag,Vxc_Grid,dVHart_Grid,F_dVHart_flag,ProExpn_VNA,E_Field_switch,DM,Orbs_Grid,GListTAtoms2,GListTAtoms1,NumOLG,ncn,F_G2M,natn,FNAN,Max_GridN_Atom,SpinP_switch,List_YOUSO,Cnt_switch,Gxyz,atv,MGridListAtom,CellListAtom,GridListAtom,GridN_Atom,WhatSpecies,M2G,Matomnum,atomic) private(OMPID, Nthrds, Nprocs, Mc_AN, Gc_AN, Cwan, NO0, Nc, GNc, GRc, MNc, Cxyz, x, y, z, dx, dy, dz, dorbs0, orbs1, dDen_Grid, dChi0, i, k, h_AN, Gh_AN, Mh_AN, Rnh, Hwan, NO1, spin, Nog, Nh, j, sum, tmp0, sumx, sumy, sumz, Vpt, ReVpt11, ReVpt22, ReVpt21, ImVpt21)
     {
 
         /* allocation of arrays */
@@ -5475,7 +5479,7 @@ void Force3()
 
             Gc_AN = M2G[Mc_AN];
             Cwan = WhatSpecies[Gc_AN];
-            NO0 = Spe_Total_CNO[Cwan];
+            NO0 = atomic->species.contracted_orbitals[Cwan];
 
             /***********************************
                      calc dOrb0
@@ -5496,9 +5500,9 @@ void Force3()
                 dz = z - Gxyz[Gc_AN][3];
 
                 if (Cnt_switch == 0)
-                    Get_dOrbitals(Cwan, dx, dy, dz, dorbs0);
+                    Get_dOrbitals(atomic, Cwan, dx, dy, dz, dorbs0);
                 else
-                    Get_Cnt_dOrbitals(Mc_AN, dx, dy, dz, dorbs0);
+                    Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0);
 
                 for (k = 0; k < 3; k++) {
                     for (i = 0; i < NO0; i++) {
@@ -5526,7 +5530,7 @@ void Force3()
                 Mh_AN = F_G2M[Gh_AN];
                 Rnh = ncn[Gc_AN][h_AN];
                 Hwan = WhatSpecies[Gh_AN];
-                NO1 = Spe_Total_CNO[Hwan];
+                NO1 = atomic->species.contracted_orbitals[Hwan];
 
                 for (spin = 0; spin <= SpinP_switch; spin++) {
                     for (Nog = 0; Nog < NumOLG[Mc_AN][h_AN]; Nog++) {
@@ -5856,7 +5860,7 @@ void Force4(const OpenMXAtomicViews *atomic)
     }
 }
 
-void Force_HNL(double***** CDM0, double***** iDM0)
+void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0)
 {
     /****************************************************
                     Force arising from HNL
@@ -5944,16 +5948,16 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
     if (Cnt_switch == 1) {
         for (so = 0; so < (SO_switch + 1); so++) {
-            Cont_Matrix1(DS_NL[so][0], CntDS_NL[so][0]);
-            Cont_Matrix1(DS_NL[so][1], CntDS_NL[so][1]);
-            Cont_Matrix1(DS_NL[so][2], CntDS_NL[so][2]);
-            Cont_Matrix1(DS_NL[so][3], CntDS_NL[so][3]);
+            Cont_Matrix1(atomic, DS_NL[so][0], CntDS_NL[so][0]);
+            Cont_Matrix1(atomic, DS_NL[so][1], CntDS_NL[so][1]);
+            Cont_Matrix1(atomic, DS_NL[so][2], CntDS_NL[so][2]);
+            Cont_Matrix1(atomic, DS_NL[so][3], CntDS_NL[so][3]);
         }
     }
 
     /* batched device path for the scalar-relativistic traces */
 
-    fhnl_gpu = Force_HNL_GpuBegin(DS_NL);
+    fhnl_gpu = Force_HNL_GpuBegin(atomic, DS_NL);
 
     /*****************************************}**********************
         THE FIRST CASE:
@@ -6047,13 +6051,13 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
                 Cwan = WhatSpecies[Gc_AN];
-                tno1 = Spe_Total_NO[Cwan];
+                tno1 = atomic->species.orbitals[Cwan];
 
                 for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                     Gh_AN = natn[Gc_AN][h_AN];
                     Hwan = WhatSpecies[Gh_AN];
-                    tno2 = Spe_Total_VPS_Pro[Hwan];
-                    size1 += (VPS_j_dependency[Hwan] + 1) * tno1 * tno2;
+                    tno2 = atomic->species.projector_components[Hwan];
+                    size1 += (atomic->species.relativistic[Hwan] + 1) * tno1 * tno2;
                 }
 
                 Snd_DS_NL_Size[IDS] = size1;
@@ -6105,14 +6109,14 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
                 Cwan = WhatSpecies[Gc_AN];
-                tno1 = Spe_Total_NO[Cwan];
+                tno1 = atomic->species.orbitals[Cwan];
 
                 for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                     Gh_AN = natn[Gc_AN][h_AN];
                     Hwan = WhatSpecies[Gh_AN];
-                    tno2 = Spe_Total_VPS_Pro[Hwan];
+                    tno2 = atomic->species.projector_components[Hwan];
 
-                    for (so = 0; so <= VPS_j_dependency[Hwan]; so++) {
+                    for (so = 0; so <= atomic->species.relativistic[Hwan]; so++) {
                         for (i = 0; i < tno1; i++) {
                             for (j = 0; j < tno2; j++) {
                                 tmp_array[num] = DS_NL[so][0][Mc_AN][h_AN][i][j];
@@ -6143,13 +6147,13 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
                 Gc_AN = Rcv_GAN[IDR][n];
                 Cwan = WhatSpecies[Gc_AN];
-                tno1 = Spe_Total_NO[Cwan];
+                tno1 = atomic->species.orbitals[Cwan];
                 for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                     Gh_AN = natn[Gc_AN][h_AN];
                     Hwan = WhatSpecies[Gh_AN];
-                    tno2 = Spe_Total_VPS_Pro[Hwan];
+                    tno2 = atomic->species.projector_components[Hwan];
 
-                    for (so = 0; so <= VPS_j_dependency[Hwan]; so++) {
+                    for (so = 0; so <= atomic->species.relativistic[Hwan]; so++) {
                         for (i = 0; i < tno1; i++) {
                             for (j = 0; j < tno2; j++) {
                                 DS_NL[so][0][Matomnum + 1][h_AN][i][j] = tmp_array2[num];
@@ -6188,7 +6192,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                     Gh_AN = natn[Gc_AN][h_AN];
                     Mh_AN = F_G2M[Gh_AN];
                     Hwan = WhatSpecies[Gh_AN];
-                    ian = Spe_Total_CNO[Hwan];
+                    ian = atomic->species.contracted_orbitals[Hwan];
 
                     n = receive_progress[IDR];
                     jg = Rcv_GAN[IDR][n];
@@ -6209,10 +6213,10 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                             Gq_AN = natn[Gc_AN][q_AN];
                             Mq_AN = F_G2M[Gq_AN];
                             Qwan = WhatSpecies[Gq_AN];
-                            jan = Spe_Total_CNO[Qwan];
+                            jan = atomic->species.contracted_orbitals[Qwan];
                             kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                            dHNL(0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0);
+                            dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0);
 
                             /* contribution of force = Trace(CDM0*dH) */
                             /* spin non-polarization */
@@ -6243,8 +6247,8 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                                 else
                                     pref = 2.0;
 
-                                for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                    for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
+                                for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
+                                    for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
 
                                         dEx += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r);
                                         dEy += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r);
@@ -6259,8 +6263,8 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
                                 if (q_AN == h_AN) {
 
-                                    for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                        for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
+                                    for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
+                                        for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
 
                                             dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
                                                 - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
@@ -6288,8 +6292,8 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
                                 else {
 
-                                    for (i = 0; i < Spe_Total_CNO[Hwan]; i++) { /* Hwan */
-                                        for (j = 0; j < Spe_Total_CNO[Qwan]; j++) { /* Qwan  */
+                                    for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) { /* Hwan */
+                                        for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) { /* Qwan  */
 
                                             dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
                                                 - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
@@ -6315,11 +6319,11 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                                         } /* j */
                                     } /* i */
 
-                                    dHNL(0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1);
+                                    dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1);
                                     kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
-                                    for (i = 0; i < Spe_Total_CNO[Qwan]; i++) { /* Qwan */
-                                        for (j = 0; j < Spe_Total_CNO[Hwan]; j++) { /* Hwan */
+                                    for (i = 0; i < atomic->species.contracted_orbitals[Qwan]; i++) { /* Qwan */
+                                        for (j = 0; j < atomic->species.contracted_orbitals[Hwan]; j++) { /* Hwan */
 
                                             dEx += CDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].r
                                                 - iDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].i
@@ -6480,7 +6484,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
     dtime(&stime);
 
-#pragma omp parallel shared(time_per_atom, Gxyz, CDM0, SpinP_switch, SO_switch, Hub_U_switch, F_U_flag, Constraint_NCS_switch, Zeeman_NCS_switch, Zeeman_NCO_switch, DS_NL, RMI1, FNAN, Spe_Total_CNO, WhatSpecies, F_G2M, natn, M2G, Matomnum, List_YOUSO, F_NL_flag) private(Hx0, Hy0, Hz0, Hx1, Hy1, Hz1, OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, h_AN, Gh_AN, Mh_AN, Hwan, ian, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, kl1, i, j, kk, pref)
+#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,atomic) private(Hx0, Hy0, Hz0, Hx1, Hy1, Hz1, OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, h_AN, Gh_AN, Mh_AN, Hwan, ian, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, kl1, i, j, kk, pref)
     {
 
         /* allocation of array */
@@ -6552,7 +6556,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
             Gh_AN = natn[Gc_AN][h_AN];
             Mh_AN = F_G2M[Gh_AN];
             Hwan = WhatSpecies[Gh_AN];
-            ian = Spe_Total_CNO[Hwan];
+            ian = atomic->species.contracted_orbitals[Hwan];
 
             for (q_AN = 0; q_AN <= FNAN[Gc_AN]; q_AN++) {
 
@@ -6565,10 +6569,10 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                 if (Mq_AN <= Matomnum) {
 
                     Qwan = WhatSpecies[Gq_AN];
-                    jan = Spe_Total_CNO[Qwan];
+                    jan = atomic->species.contracted_orbitals[Qwan];
                     kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                    dHNL(0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0);
+                    dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0);
 
                     if (SpinP_switch == 0) {
 
@@ -6612,8 +6616,8 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
                         if (q_AN == h_AN) {
 
-                            for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
+                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
+                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
 
                                     dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
                                         - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
@@ -6641,8 +6645,8 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
                         else {
 
-                            for (i = 0; i < Spe_Total_CNO[Hwan]; i++) { /* Hwan */
-                                for (j = 0; j < Spe_Total_CNO[Qwan]; j++) { /* Qwan  */
+                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) { /* Hwan */
+                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) { /* Qwan  */
 
                                     dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
                                         - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
@@ -6668,11 +6672,11 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                                 } /* j */
                             } /* i */
 
-                            dHNL(0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1);
+                            dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1);
 
                             kl1 = RMI1[Mc_AN][q_AN][h_AN];
-                            for (i = 0; i < Spe_Total_CNO[Qwan]; i++) { /* Qwan */
-                                for (j = 0; j < Spe_Total_CNO[Hwan]; j++) { /* Hwan */
+                            for (i = 0; i < atomic->species.contracted_orbitals[Qwan]; i++) { /* Qwan */
+                                for (j = 0; j < atomic->species.contracted_orbitals[Hwan]; j++) { /* Hwan */
 
                                     dEx += CDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].r
                                         - iDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].i
@@ -6856,13 +6860,13 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                     Sc_AN = Pro_Snd_MAtom[IDS][q];
                     GSc_AN = F_M2G[Sc_AN];
                     Sc_wan = WhatSpecies[GSc_AN];
-                    tno1 = Spe_Total_CNO[Sc_wan];
+                    tno1 = atomic->species.contracted_orbitals[Sc_wan];
 
                     Sh_AN = Pro_Snd_LAtom[IDS][q];
                     GSh_AN = natn[GSc_AN][Sh_AN];
                     Sh_wan = WhatSpecies[GSh_AN];
-                    tno2 = Spe_Total_VPS_Pro[Sh_wan];
-                    smul = (VPS_j_dependency[Sh_wan] + 1);
+                    tno2 = atomic->species.projector_components[Sh_wan];
+                    smul = (atomic->species.relativistic[Sh_wan] + 1);
 
                     size1 += smul * 4 * tno1 * tno2;
                     size1 += 3;
@@ -6923,12 +6927,12 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                     Sc_AN = Pro_Snd_MAtom[IDS][q];
                     GSc_AN = F_M2G[Sc_AN];
                     Sc_wan = WhatSpecies[GSc_AN];
-                    tno1 = Spe_Total_CNO[Sc_wan];
+                    tno1 = atomic->species.contracted_orbitals[Sc_wan];
 
                     Sh_AN = Pro_Snd_LAtom[IDS][q];
                     GSh_AN = natn[GSc_AN][Sh_AN];
                     Sh_wan = WhatSpecies[GSh_AN];
-                    tno2 = Spe_Total_VPS_Pro[Sh_wan];
+                    tno2 = atomic->species.projector_components[Sh_wan];
                     Sh_AN2 = Pro_Snd_LAtom2[IDS][q];
 
                     tmp_array[num] = (double)Sc_AN;
@@ -6938,7 +6942,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                     tmp_array[num] = (double)Sh_AN2;
                     num++;
 
-                    for (so = 0; so <= VPS_j_dependency[Sh_wan]; so++) {
+                    for (so = 0; so <= atomic->species.relativistic[Sh_wan]; so++) {
                         for (kk = 0; kk <= 3; kk++) {
                             for (i = 0; i < tno1; i++) {
                                 for (j = 0; j < tno2; j++) {
@@ -6993,13 +6997,13 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
                     GSc_AN = natn[Gc_AN][Sh_AN2];
                     Sc_wan = WhatSpecies[GSc_AN];
-                    tno1 = Spe_Total_CNO[Sc_wan];
+                    tno1 = atomic->species.contracted_orbitals[Sc_wan];
 
                     GSh_AN = natn[GSc_AN][Sh_AN];
                     Sh_wan = WhatSpecies[GSh_AN];
-                    tno2 = Spe_Total_VPS_Pro[Sh_wan];
+                    tno2 = atomic->species.projector_components[Sh_wan];
 
-                    for (so = 0; so <= VPS_j_dependency[Sh_wan]; so++) {
+                    for (so = 0; so <= atomic->species.relativistic[Sh_wan]; so++) {
                         for (kk = 0; kk <= 3; kk++) {
                             for (i = 0; i < tno1; i++) {
                                 for (j = 0; j < tno2; j++) {
@@ -7077,7 +7081,7 @@ void Force_HNL(double***** CDM0, double***** iDM0)
 
             // comment out April 28th, 2023 H. Kawai
 #if !defined(__NVCOMPILER) || NVHPC_VERSION >= 250000
-            #pragma omp parallel shared(ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,dEx_threads,dEy_threads,dEz_threads,CDM0,SpinP_switch,SO_switch,Hub_U_switch,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,Spe_Total_CNO,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,F_NL_flag,F_U_flag) private(OMPID,Nthrds,Nprocs,Hx,Hy,Hz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,km,Nloop,pref)
+            #pragma omp parallel shared(ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,dEx_threads,dEy_threads,dEz_threads,CDM0,SpinP_switch,SO_switch,Hub_U_switch,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,F_NL_flag,F_U_flag,atomic) private(OMPID,Nthrds,Nprocs,Hx,Hy,Hz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,km,Nloop,pref)
 #endif
             {
 
@@ -7125,20 +7129,20 @@ void Force_HNL(double***** CDM0, double***** iDM0)
                     Gh_AN = natn[Gc_AN][h_AN];
                     Mh_AN = F_G2M[Gh_AN];
                     Hwan = WhatSpecies[Gh_AN];
-                    ian = Spe_Total_CNO[Hwan];
+                    ian = atomic->species.contracted_orbitals[Hwan];
 
                     /* set informations on q_AN */
 
                     Gq_AN = natn[Gc_AN][q_AN];
                     Mq_AN = F_G2M[Gq_AN];
                     Qwan = WhatSpecies[Gq_AN];
-                    jan = Spe_Total_CNO[Qwan];
+                    jan = atomic->species.contracted_orbitals[Qwan];
                     kl = RMI1[Mc_AN][h_AN][q_AN];
                     km = RMI1[Mc_AN][q_AN][h_AN];
 
                     if (0 <= kl) {
 
-                        dHNL(1, Mc_AN, h_AN, q_AN, DS_NL, Hx, Hy, Hz);
+                        dHNL(atomic, 1, Mc_AN, h_AN, q_AN, DS_NL, Hx, Hy, Hz);
 
                         /* contribution of force = Trace(CDM0*dH) */
 
@@ -9751,7 +9755,7 @@ typedef struct {
 
 static ForceHNLGpuContext FHNL_gpu = { 0 };
 
-static int Force_HNL_GpuBegin(double****** DS_NL)
+static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL)
 {
     ForceHNLGpuContext* g = &FHNL_gpu;
     int Mc_AN, k, w, node_ranks = 1, node_rank = 0;
@@ -9774,7 +9778,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
         return 0;
     }
     for (w = 0; w < SpeciesNum; w++) {
-        if (VPS_j_dependency[w] != 0) return 0;
+        if (atomic->species.relativistic[w] != 0) return 0;
     }
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
@@ -9796,8 +9800,8 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
         int l1, nlp = 0;
 
         g->ene_off[w] = ene_pos;
-        for (l1 = 1; l1 <= Spe_Num_RVPS[w]; l1++) {
-            nlp += 2 * Spe_VPS_List[w][l1] + 1;
+        for (l1 = 1; l1 <= atomic->species.radial_projectors[w]; l1++) {
+            nlp += 2 * openmx_atomic_projector_angular(atomic,w)[l1] + 1;
         }
         g->sp_nlp[w] = nlp;
         ene_pos += (size_t)nlp;
@@ -9807,9 +9811,9 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
     for (w = 0; w < SpeciesNum; w++) {
         int l1, l3, l = 0;
 
-        for (l1 = 1; l1 <= Spe_Num_RVPS[w]; l1++) {
-            const double ene = Spe_VNLE[0][w][l1 - 1];
-            const int l2 = 2 * Spe_VPS_List[w][l1];
+        for (l1 = 1; l1 <= atomic->species.radial_projectors[w]; l1++) {
+            const double ene = openmx_radial_row3(&atomic->projector_energies,0,w)[l1 - 1];
+            const int l2 = 2 * openmx_atomic_projector_angular(atomic,w)[l1];
 
             for (l3 = 0; l3 <= l2; l3++) {
                 g->ene[g->ene_off[w] + (size_t)l] = ene;
@@ -9822,7 +9826,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
-        int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
 
         slots += (size_t)(FNAN[Gc_AN] + 1);
         for (k = 0; k <= FNAN[Gc_AN]; k++) {
@@ -9833,7 +9837,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 
     for (Mc_AN = Matomnum + 1; Mc_AN <= Matomnum + MatomnumF; Mc_AN++) {
         int Gc_AN = F_M2G[Mc_AN];
-        int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
 
         halo_slots += (size_t)(FNAN[Gc_AN] + 1);
         for (k = 0; k <= FNAN[Gc_AN]; k++) {
@@ -9854,12 +9858,12 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 
         for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
             int Gc_AN = M2G[Mc_AN];
-            int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+            int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
             int nlpc = g->sp_nlp[WhatSpecies[Gc_AN]];
 
             g->mck_base[Mc_AN] = (int)slots;
             for (k = 0; k <= FNAN[Gc_AN]; k++) {
-                int nok = Spe_Total_CNO[WhatSpecies[natn[Gc_AN][k]]];
+                int nok = atomic->species.contracted_orbitals[WhatSpecies[natn[Gc_AN][k]]];
 
                 g->mck_off[slots] = pos;
                 g->c2_off[slots] = c2pos;
@@ -9900,7 +9904,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
     pos = 0;
     for (Mc_AN = Matomnum + 1; Mc_AN <= Matomnum + MatomnumF; Mc_AN++) {
         int Gc_AN = F_M2G[Mc_AN];
-        int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
 
         g->halo_base[Mc_AN - Matomnum] = (int)halo_slots;
         for (k = 0; k <= FNAN[Gc_AN]; k++) {
@@ -9915,7 +9919,7 @@ static int Force_HNL_GpuBegin(double****** DS_NL)
 #pragma omp parallel for schedule(dynamic)
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         int Gc_AN = M2G[Mc_AN];
-        int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
         int kk, k2;
 
         for (kk = 0; kk <= 3; kk++) {
@@ -12297,7 +12301,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
   OpenMX_TransferEnd(&projector_transfer);
 }
 
-void dHNL(int where_flag,
+void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double****** DS_NL1,
     dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz)
@@ -12323,14 +12327,14 @@ void dHNL(int where_flag,
     ig = natn[Gc_AN][h_AN];
     Rni = ncn[Gc_AN][h_AN];
     Mi_AN = F_G2M[ig];
-    ian = Spe_Total_CNO[WhatSpecies[ig]];
-    rcuti = Spe_Atom_Cut1[WhatSpecies[ig]];
+    ian = atomic->species.contracted_orbitals[WhatSpecies[ig]];
+    rcuti = atomic->species.cutoff[WhatSpecies[ig]];
 
     jg = natn[Gc_AN][q_AN];
     Rnj = ncn[Gc_AN][q_AN];
     Mj_AN = F_G2M[jg];
-    jan = Spe_Total_CNO[WhatSpecies[jg]];
-    rcutj = Spe_Atom_Cut1[WhatSpecies[jg]];
+    jan = atomic->species.contracted_orbitals[WhatSpecies[jg]];
+    rcutj = atomic->species.cutoff[WhatSpecies[jg]];
 
     rcut = rcuti + rcutj;
     kl = RMI1[Mc_AN][h_AN][q_AN];
@@ -12359,14 +12363,14 @@ void dHNL(int where_flag,
 
             kg = natn[Gc_AN][k];
             wakg = WhatSpecies[kg];
-            kan = Spe_Total_VPS_Pro[wakg];
+            kan = atomic->species.projector_components[wakg];
             kl = RMI1[Mc_AN][q_AN][k];
 
             /****************************************************
                          l-dependent non-local part
             ****************************************************/
 
-            if (0 <= kl && VPS_j_dependency[wakg] == 0 && where_flag == 0) {
+            if (0 <= kl && atomic->species.relativistic[wakg] == 0 && where_flag == 0) {
 
                 for (m = 0; m < ian; m++) {
                     for (n = 0; n < jan; n++) {
@@ -12376,16 +12380,16 @@ void dHNL(int where_flag,
                         sumz = 0.0;
 
                         l = 0;
-                        for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                            ene = Spe_VNLE[0][wakg][l1 - 1];
-                            if (Spe_VPS_List[wakg][l1] == 0)
+                            ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
                                 l2 = 0;
-                            else if (Spe_VPS_List[wakg][l1] == 1)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
                                 l2 = 2;
-                            else if (Spe_VPS_List[wakg][l1] == 2)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
                                 l2 = 4;
-                            else if (Spe_VPS_List[wakg][l1] == 3)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
                                 l2 = 6;
 
                             if (Mj_AN <= Matomnum)
@@ -12418,7 +12422,7 @@ void dHNL(int where_flag,
                          j-dependent non-local part
             ****************************************************/
 
-            else if (0 <= kl && VPS_j_dependency[wakg] == 1 && where_flag == 0) {
+            else if (0 <= kl && atomic->species.relativistic[wakg] == 1 && where_flag == 0) {
 
                 for (m = 0; m < ian; m++) {
                     for (n = 0; n < jan; n++) {
@@ -12441,24 +12445,24 @@ void dHNL(int where_flag,
                             Mj_AN2 = Matomnum + 1;
 
                         l = 0;
-                        for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                            ene_p = Spe_VNLE[0][wakg][l1 - 1];
-                            ene_m = Spe_VNLE[1][wakg][l1 - 1];
+                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
 
-                            if (Spe_VPS_List[wakg][l1] == 0) {
+                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
                                 l2 = 0;
                                 PFp = 1.0;
                                 PFm = 0.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 1) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
                                 l2 = 2;
                                 PFp = 2.0 / 3.0;
                                 PFm = 1.0 / 3.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 2) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
                                 l2 = 4;
                                 PFp = 3.0 / 5.0;
                                 PFm = 2.0 / 5.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 3) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
                                 l2 = 6;
                                 PFp = 4.0 / 7.0;
                                 PFm = 3.0 / 7.0;
@@ -12482,24 +12486,24 @@ void dHNL(int where_flag,
                         if (q_AN == 0) {
 
                             l = 0;
-                            for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                            for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                                ene_p = Spe_VNLE[0][wakg][l1 - 1];
-                                ene_m = Spe_VNLE[1][wakg][l1 - 1];
+                                ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                                ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
 
-                                if (Spe_VPS_List[wakg][l1] == 0) {
+                                if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
                                     l2 = 0;
                                     PFp = 1.0;
                                     PFm = 0.0;
-                                } else if (Spe_VPS_List[wakg][l1] == 1) {
+                                } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
                                     l2 = 2;
                                     PFp = 2.0 / 3.0;
                                     PFm = 1.0 / 3.0;
-                                } else if (Spe_VPS_List[wakg][l1] == 2) {
+                                } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
                                     l2 = 4;
                                     PFp = 3.0 / 5.0;
                                     PFm = 2.0 / 5.0;
-                                } else if (Spe_VPS_List[wakg][l1] == 3) {
+                                } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
                                     l2 = 6;
                                     PFp = 4.0 / 7.0;
                                     PFm = 3.0 / 7.0;
@@ -12556,7 +12560,7 @@ void dHNL(int where_flag,
 
         /* h_AN==0 && q_AN==0 */
 
-        if (q_AN == 0 && VPS_j_dependency[wakg] == 0) {
+        if (q_AN == 0 && atomic->species.relativistic[wakg] == 0) {
 
             for (m = 0; m < ian; m++) {
                 for (n = m; n < jan; n++) {
@@ -12586,14 +12590,14 @@ void dHNL(int where_flag,
 
             kg = natn[Gc_AN][0];
             wakg = WhatSpecies[kg];
-            kan = Spe_Total_VPS_Pro[wakg];
+            kan = atomic->species.projector_components[wakg];
             kl = RMI1[Mc_AN][q_AN][0];
 
             /****************************************************
                          l-dependent non-local part
             ****************************************************/
 
-            if (VPS_j_dependency[wakg] == 0) {
+            if (atomic->species.relativistic[wakg] == 0) {
 
                 for (m = 0; m < ian; m++) {
                     for (n = 0; n < jan; n++) {
@@ -12611,16 +12615,16 @@ void dHNL(int where_flag,
                         }
 
                         l = 0;
-                        for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                            ene = Spe_VNLE[0][wakg][l1 - 1];
-                            if (Spe_VPS_List[wakg][l1] == 0)
+                            ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
                                 l2 = 0;
-                            else if (Spe_VPS_List[wakg][l1] == 1)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
                                 l2 = 2;
-                            else if (Spe_VPS_List[wakg][l1] == 2)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
                                 l2 = 4;
-                            else if (Spe_VPS_List[wakg][l1] == 3)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
                                 l2 = 6;
 
                             for (l3 = 0; l3 <= l2; l3++) {
@@ -12647,7 +12651,7 @@ void dHNL(int where_flag,
                          j-dependent non-local part
             ****************************************************/
 
-            else if (VPS_j_dependency[wakg] == 1) {
+            else if (atomic->species.relativistic[wakg] == 1) {
 
                 for (m = 0; m < ian; m++) {
                     for (n = 0; n < jan; n++) {
@@ -12673,24 +12677,24 @@ void dHNL(int where_flag,
                         }
 
                         l = 0;
-                        for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                            ene_p = Spe_VNLE[0][wakg][l1 - 1];
-                            ene_m = Spe_VNLE[1][wakg][l1 - 1];
+                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
 
-                            if (Spe_VPS_List[wakg][l1] == 0) {
+                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
                                 l2 = 0;
                                 PFp = 1.0;
                                 PFm = 0.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 1) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
                                 l2 = 2;
                                 PFp = 2.0 / 3.0;
                                 PFm = 1.0 / 3.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 2) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
                                 l2 = 4;
                                 PFp = 3.0 / 5.0;
                                 PFm = 2.0 / 5.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 3) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
                                 l2 = 6;
                                 PFp = 4.0 / 7.0;
                                 PFm = 3.0 / 7.0;
@@ -12765,7 +12769,7 @@ void dHNL(int where_flag,
 
             kg = natn[Gc_AN][k];
             wakg = WhatSpecies[kg];
-            kan = Spe_Total_VPS_Pro[wakg];
+            kan = atomic->species.projector_components[wakg];
             kl = RMI1[Mc_AN][h_AN][k];
 
             if (Mi_AN <= Matomnum)
@@ -12773,7 +12777,7 @@ void dHNL(int where_flag,
             else
                 Mi_AN2 = Matomnum + 1;
 
-            if (0 <= kl && VPS_j_dependency[wakg] == 1) {
+            if (0 <= kl && atomic->species.relativistic[wakg] == 1) {
 
                 for (m = 0; m < ian; m++) {
                     for (n = 0; n < jan; n++) {
@@ -12791,24 +12795,24 @@ void dHNL(int where_flag,
                         sumz2 = Complex(0.0, 0.0);
 
                         l = 0;
-                        for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                            ene_p = Spe_VNLE[0][wakg][l1 - 1];
-                            ene_m = Spe_VNLE[1][wakg][l1 - 1];
+                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
 
-                            if (Spe_VPS_List[wakg][l1] == 0) {
+                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
                                 l2 = 0;
                                 PFp = 1.0;
                                 PFm = 0.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 1) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
                                 l2 = 2;
                                 PFp = 2.0 / 3.0;
                                 PFm = 1.0 / 3.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 2) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
                                 l2 = 4;
                                 PFp = 3.0 / 5.0;
                                 PFm = 2.0 / 5.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 3) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
                                 l2 = 6;
                                 PFp = 4.0 / 7.0;
                                 PFm = 3.0 / 7.0;
@@ -12869,7 +12873,7 @@ void dHNL(int where_flag,
 
         kg = natn[Gc_AN][0];
         wakg = WhatSpecies[kg];
-        kan = Spe_Total_VPS_Pro[wakg];
+        kan = atomic->species.projector_components[wakg];
         kl1 = RMI1[Mc_AN][0][h_AN];
         kl2 = RMI1[Mc_AN][0][q_AN];
 
@@ -12877,7 +12881,7 @@ void dHNL(int where_flag,
                        l-dependent non-local part
         ****************************************************/
 
-        if (VPS_j_dependency[wakg] == 0) {
+        if (atomic->species.relativistic[wakg] == 0) {
 
             for (m = 0; m < ian; m++) {
                 for (n = 0; n < jan; n++) {
@@ -12887,16 +12891,16 @@ void dHNL(int where_flag,
                     sumz = 0.0;
 
                     l = 0;
-                    for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                    for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                        ene = Spe_VNLE[0][wakg][l1 - 1];
-                        if (Spe_VPS_List[wakg][l1] == 0)
+                        ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                        if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
                             l2 = 0;
-                        else if (Spe_VPS_List[wakg][l1] == 1)
+                        else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
                             l2 = 2;
-                        else if (Spe_VPS_List[wakg][l1] == 2)
+                        else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
                             l2 = 4;
-                        else if (Spe_VPS_List[wakg][l1] == 3)
+                        else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
                             l2 = 6;
 
                         for (l3 = 0; l3 <= l2; l3++) {
@@ -12938,7 +12942,7 @@ void dHNL(int where_flag,
                      j-dependent non-local part
         ****************************************************/
 
-        else if (VPS_j_dependency[wakg] == 1) {
+        else if (atomic->species.relativistic[wakg] == 1) {
 
             for (m = 0; m < ian; m++) {
                 for (n = 0; n < jan; n++) {
@@ -12956,24 +12960,24 @@ void dHNL(int where_flag,
                     sumz2 = Complex(0.0, 0.0);
 
                     l = 0;
-                    for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                    for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                        ene_p = Spe_VNLE[0][wakg][l1 - 1];
-                        ene_m = Spe_VNLE[1][wakg][l1 - 1];
+                        ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                        ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
 
-                        if (Spe_VPS_List[wakg][l1] == 0) {
+                        if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
                             l2 = 0;
                             PFp = 1.0;
                             PFm = 0.0;
-                        } else if (Spe_VPS_List[wakg][l1] == 1) {
+                        } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
                             l2 = 2;
                             PFp = 2.0 / 3.0;
                             PFm = 1.0 / 3.0;
-                        } else if (Spe_VPS_List[wakg][l1] == 2) {
+                        } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
                             l2 = 4;
                             PFp = 3.0 / 5.0;
                             PFm = 2.0 / 5.0;
-                        } else if (Spe_VPS_List[wakg][l1] == 3) {
+                        } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
                             l2 = 6;
                             PFp = 4.0 / 7.0;
                             PFm = 3.0 / 7.0;
@@ -13031,7 +13035,7 @@ void dHNL(int where_flag,
 
             kg = natn[Gc_AN][0];
             wakg = WhatSpecies[kg];
-            kan = Spe_Total_VPS_Pro[wakg];
+            kan = atomic->species.projector_components[wakg];
             kl1 = RMI1[Mc_AN][0][h_AN];
             kl2 = RMI1[Mc_AN][0][q_AN];
 
@@ -13039,7 +13043,7 @@ void dHNL(int where_flag,
                            l-dependent non-local part
             ****************************************************/
 
-            if (VPS_j_dependency[wakg] == 0) {
+            if (atomic->species.relativistic[wakg] == 0) {
 
                 for (m = 0; m < ian; m++) {
                     for (n = 0; n < jan; n++) {
@@ -13049,16 +13053,16 @@ void dHNL(int where_flag,
                         sumz = 0.0;
 
                         l = 0;
-                        for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                            ene = Spe_VNLE[0][wakg][l1 - 1];
-                            if (Spe_VPS_List[wakg][l1] == 0)
+                            ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
                                 l2 = 0;
-                            else if (Spe_VPS_List[wakg][l1] == 1)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
                                 l2 = 2;
-                            else if (Spe_VPS_List[wakg][l1] == 2)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
                                 l2 = 4;
-                            else if (Spe_VPS_List[wakg][l1] == 3)
+                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
                                 l2 = 6;
 
                             for (l3 = 0; l3 <= l2; l3++) {
@@ -13084,7 +13088,7 @@ void dHNL(int where_flag,
                           j-dependent non-local part
             ****************************************************/
 
-            else if (VPS_j_dependency[wakg] == 1) {
+            else if (atomic->species.relativistic[wakg] == 1) {
 
                 for (m = 0; m < ian; m++) {
                     for (n = 0; n < jan; n++) {
@@ -13102,24 +13106,24 @@ void dHNL(int where_flag,
                         sumz2 = Complex(0.0, 0.0);
 
                         l = 0;
-                        for (l1 = 1; l1 <= Spe_Num_RVPS[wakg]; l1++) {
+                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
 
-                            ene_p = Spe_VNLE[0][wakg][l1 - 1];
-                            ene_m = Spe_VNLE[1][wakg][l1 - 1];
+                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
+                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
 
-                            if (Spe_VPS_List[wakg][l1] == 0) {
+                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
                                 l2 = 0;
                                 PFp = 1.0;
                                 PFm = 0.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 1) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
                                 l2 = 2;
                                 PFp = 2.0 / 3.0;
                                 PFm = 1.0 / 3.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 2) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
                                 l2 = 4;
                                 PFp = 3.0 / 5.0;
                                 PFm = 2.0 / 5.0;
-                            } else if (Spe_VPS_List[wakg][l1] == 3) {
+                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
                                 l2 = 6;
                                 PFp = 4.0 / 7.0;
                                 PFm = 3.0 / 7.0;

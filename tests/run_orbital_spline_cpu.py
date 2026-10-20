@@ -47,15 +47,16 @@ for index in range(2):
     double dum,dum1,dum2,dum3,dum4,a,b,c,d,siQ,coQ,siP,coP,Q,P,R;
     double r,r1,Min_r,theta,phi,rm,df,sum0,sum1;
     double h1,h2,h3,f1,f2,f3,f4,g1,g2,x1,x2,y1,y2,y12,y22,f;
-    double RF[4][2],AF[4][7],SH[7][2],dSHt[7][2],dSHp[7][2];
-    for(i=0;i<4;i++) for(j=0;j<7;j++) AF[i][j]=NAN;
+    double RF[8],AF[28],SH[7][2],dSHt[7][2],dSHp[7][2];
+    OpenMXOrbitalBuffers orbital_buffers={4,2,7,RF,NULL,AF,NULL,NULL};
+    for(i=0;i<28;i++) AF[i]=NAN;
 ''' + inline + "\n}\n"
 
 force = (ROOT / "source/Force.c").read_text()
 force_start = force.index("/* start: direct inlining of Get_dOrbitals_work */")
 force_end = force.index("/* end: direct inlining of Get_dOrbitals_work */", force_start)
 functions += "\nstatic void inline_force(int Cwan, double dx, double dy, double dz, " \
-    "double **dorbs0, struct WORK_DORBITAL work_dObs) {\n{\n" \
+    "double **dorbs0, OpenMXOrbitalBuffers work_dObs) {\n{\n" \
     + force[force_start:force_end] + "\n}\n}\n"
 voronoi = (ROOT / "source/Voronoi_Orbital_Moment.c").read_text()
 functions += "\n" + function(voronoi[voronoi.index("void Voronoi_Orbital_Moment"):],
@@ -71,8 +72,12 @@ PRELUDE = r'''
 #define Supported_MaxL 3
 #define SOG_L0MAX 3
 #define SOG_MULMAX 8
-struct WORK_DORBITAL { double **RF, **dRF, **AF, **dAFQ, **dAFP; };
-typedef struct { double r,i; } dcomplex;
+#include "openmx_core_atomic.h"
+#include "openmx_complex.h"
+static int mpi_comm_level1;
+#include "openmx_orbitals.h"
+static OpenMXAtomicViews atomic_values, *atomic=&atomic_values;
+static double flat_wave[1][1][2][6];
 static dcomplex Comp2Real[4][7][7];
 static int List_YOUSO[64], M2G[2]={0,1}, F_M2G[4]={0,1,1,1}, WhatSpecies[2]={0,0};
 static int Spe_Num_Mesh_PAO[1]={6}, Spe_MaxL_Basis[1]={0};
@@ -137,8 +142,14 @@ static void check_derivative(double **d,double *v,double *g,int sign,int count)
 int main(void)
 {
     List_YOUSO[7]=2; List_YOUSO[24]=2; List_YOUSO[25]=0;
-    struct WORK_DORBITAL work;
-    Get_dOrbitals_init(&work);
+    atomic->pao_radii=(OpenMXRadialView2){radius+1,{1,6}};
+    atomic->orbitals=(OpenMXRadialView4){&flat_wave[0][0][0][0],{1,1,2,6}};
+    atomic->species.pao_mesh=Spe_Num_Mesh_PAO;atomic->species.basis_lmax=Spe_MaxL_Basis;
+    atomic->species.pao_lmax=Spe_PAO_LMAX;atomic->species.pao_multiplicity=Spe_PAO_Mul;
+    atomic->species.basis=nb;atomic->species.contracted_basis=cb;atomic->species.angular_channels=4;
+    for(int m=0;m<2;m++) for(int i=0;i<6;i++) flat_wave[0][0][m][i]=mul[m][i];
+    OpenMXOrbitalBuffers work;
+    OpenMXOrbitalWorkspace *owner=OpenMX_OrbitalWorkspace(0,2,1,&work);
     const double radii[]={0.1,0.11,0.15,0.2,0.3,0.4,0.6,0.8,1.2,1.6,2.0,3.1,3.2,3.3};
     double dmem[4][2],*d[4]={dmem[0],dmem[1],dmem[2],dmem[3]},v[2],g[2],chi[2];
     double packed[12],atvf[3]={0};
@@ -149,43 +160,46 @@ int main(void)
     for(int k=0;k<(int)(sizeof(radii)/sizeof(radii[0]));k++) {
         const double r=radii[k];
         for(int i=0;i<2;i++) radial_reference(r,i,&v[i],&g[i]);
-        Get_Orbitals(0,r,0,0,chi); for(int i=0;i<2;i++) equal(chi[i],v[i]);
+        Get_Orbitals(atomic,0,r,0,0,chi); for(int i=0;i<2;i++) equal(chi[i],v[i]);
         inline_0(r,0,0,chi); for(int i=0;i<2;i++) equal(chi[i],v[i]);
         inline_1(r,0,0,chi); for(int i=0;i<2;i++) equal(chi[i],v[i]);
-        Get_dOrbitals(0,r,0,0,d); check_derivative(d,v,g,-1,2);
-        Get_dOrbitals_work(0,r,0,0,d,work); check_derivative(d,v,g,-1,2);
-        if(r>radius[6]) work.AF[0][0]=work.dAFQ[0][0]=work.dAFP[0][0]=NAN;
+        Get_dOrbitals(atomic,0,r,0,0,d); check_derivative(d,v,g,-1,2);
+        Get_dOrbitals_work(atomic,0,r,0,0,d,work); check_derivative(d,v,g,-1,2);
+        if(r>radius[6]) work.AF[0]=work.dAFQ[0]=work.dAFP[0]=NAN;
         inline_force(0,r,0,0,d,work);
         for(int i=0;i<2;i++) {
             equal(d[1][i],-g[i]); equal(d[2][i],0.0); equal(d[3][i],0.0);
         }
-        Get_dOrbitals2(0,r,0,0,d); check_derivative(d,v,g,1,2);
+        Get_dOrbitals2(atomic,0,r,0,0,d); check_derivative(d,v,g,1,2);
         SOG_point_eval(0,2,0,0,0,0,0,0,0,0,atvf,radius+1,packed,offset,offset,
           Spe_Num_Mesh_PAO,Spe_MaxL_Basis,spnb,1,1,0,0,0,0,0,0,0,0,0,r,0,0,result);
         for(int i=0;i<2;i++) assert(isfinite(result[i]) && fabs(result[i]-v[i])<1e-7*(1+fabs(v[i])));
         vang[0]=NAN;
-        Orbitals_on_Grid(0,0,2,r,0,0,vc,vr,va);
+        Orbitals_on_Grid(atomic,0,0,2,r,0,0,vc,vr,va);
         for(int i=0;i<2;i++) equal(vchi[i],v[i]);
         const double cv=coeff[0]*v[0]+coeff[1]*v[1],cg=coeff[0]*g[0]+coeff[1]*g[1];
-        Get_Cnt_Orbitals(1,r,0,0,chi); equal(chi[0],cv);
+        Get_Cnt_Orbitals(atomic,1,r,0,0,chi); equal(chi[0],cv);
         v[0]=cv; g[0]=cg;
-        Get_Cnt_dOrbitals(1,r,0,0,d); check_derivative(d,v,g,-1,1);
-        Get_Cnt_dOrbitals2(1,r,0,0,d); check_derivative(d,v,g,1,1);
+        Get_Cnt_dOrbitals(atomic,1,r,0,0,d); check_derivative(d,v,g,-1,1);
+        Get_Cnt_dOrbitals2(atomic,1,r,0,0,d); check_derivative(d,v,g,1,1);
         /* Halo indices exceed the rank-local M2G array. */
-        Get_Cnt_Orbitals(3,r,0,0,chi); equal(chi[0],cv);
-        Get_Cnt_dOrbitals(3,r,0,0,d); check_derivative(d,v,g,-1,1);
-        Get_Cnt_dOrbitals2(3,r,0,0,d); check_derivative(d,v,g,1,1);
+        Get_Cnt_Orbitals(atomic,3,r,0,0,chi); equal(chi[0],cv);
+        Get_Cnt_dOrbitals(atomic,3,r,0,0,d); check_derivative(d,v,g,-1,1);
+        Get_Cnt_dOrbitals2(atomic,3,r,0,0,d); check_derivative(d,v,g,1,1);
     }
-    Get_dOrbitals_free(work);
+    openmx_core_orbital_destroy(owner);
     puts("PASS: 210 orbital spline cases, CPU/native FP64, Force3 inline, Voronoi, contracted halo values, gradients and out-of-mesh zeroes");
     return 0;
 }
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-orbital-spline-") as tmp:
     src, exe = Path(tmp)/"check.c", Path(tmp)/"check"
+    (Path(tmp)/"mpi.h").write_text('#pragma once\nstatic inline int MPI_Abort(int c,int e) {(void)c;(void)e;abort();}\n')
     src.write_text(PRELUDE+functions+HARNESS)
     cc = shlex.split(os.environ.get("CC","cc"))
     flags = shlex.split(os.environ.get("CFLAGS","-O2 -g"))
-    subprocess.run(cc+flags+["-std=c11",str(src),"-lm","-o",str(exe)],check=True)
+    library=Path(os.environ.get("OPENMX_CORE_LIBRARY",ROOT/"build/cuda/core/libopenmx_core.so")).resolve(strict=True)
+    subprocess.run(cc+flags+["-std=c11","-I"+str(Path(tmp)),"-I"+str(ROOT/"source"),str(src),str(library),
+                            "-Wl,-rpath,"+str(library.parent),"-lm","-o",str(exe)],check=True)
     runner = ["valgrind","--error-exitcode=99","--quiet","--leak-check=full"] if "--valgrind" in sys.argv[1:] else []
     subprocess.run(runner+[str(exe)],check=True)

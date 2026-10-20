@@ -5,11 +5,12 @@
    declarations precede this include; the numerical owner has no globals. */
 #include "openmx_core_nonlocal.h"
 
-static OpenMXNonlocalWorkspace *SetNonlocal_Workspace(int points, const double *wavevectors,
+static OpenMXNonlocalWorkspace *SetNonlocal_Workspace(const OpenMXAtomicViews *atomic, int points, const double *wavevectors,
     int cache_entries, OpenMXNonlocalBuffers *buffers)
 {
   const OpenMXNonlocalShape shape = {List_YOUSO[25],List_YOUSO[24],List_YOUSO[30],
-      SpeciesNum,Spe_Num_RVPS,Spe_VPS_List,points,wavevectors,
+      SpeciesNum,atomic->species.radial_projectors,atomic->projector_angular,
+      atomic->projector_angular_stride,points,wavevectors,
       cache_entries > 0 ? (size_t)cache_entries : 0};
   char error[256], message[512];
   OpenMXNonlocalWorkspace *owner = openmx_core_nonlocal_create(&shape,buffers,error,sizeof(error));
@@ -21,11 +22,11 @@ static OpenMXNonlocalWorkspace *SetNonlocal_Workspace(int points, const double *
   return owner;
 }
 
-static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, double ******DS_NL, const double *Normk_grid,
+static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double ******DS_NL, const double *Normk_grid,
     int grid_dim, double grid_h, const int *OneD2Mc_AN, const int *OneD2h_AN,
     int OneD_Nloop, int bessel_cache_entries)
 {
-#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,Spe_Num_RVPS,Spe_VPS_List,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,VPS_j_dependency,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,reciprocal)
+#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,PAO_Nkmax,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,reciprocal,atomic)
     {
 
       int OMPID,Nthrds,Nprocs,Nloop;
@@ -65,7 +66,7 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
       dcomplex *CmatNLt;
       dcomplex *CmatNLp;
 
-    workspace = SetNonlocal_Workspace(grid_dim,Normk_grid,bessel_cache_entries,&buffers);
+    workspace = SetNonlocal_Workspace(atomic, grid_dim,Normk_grid,bessel_cache_entries,&buffers);
     const size_t conversion_columns = buffers.conversion_columns;
     TmpNL = buffers.angular[0];
     TmpNLr = buffers.angular[1];
@@ -141,8 +142,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
       h = grid_h;
 
       if (cached_Cwan != Cwan){
-        for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-          for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+          for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
             int rf_offset;
 
             rf_offset = (L0*List_YOUSO[24] + Mul0)*grid_dim;
@@ -158,10 +159,10 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
       for (L=1; L<=projector_count; L++){
         if (Lmax<projector_angular[L]) Lmax = projector_angular[L];
       }
-      if (Spe_MaxL_Basis[Cwan]<Lmax)
+      if (atomic->species.basis_lmax[Cwan]<Lmax)
         Lmax_Four_Int = 2*Lmax;
       else
-        Lmax_Four_Int = 2*Spe_MaxL_Basis[Cwan];
+        Lmax_Four_Int = 2*atomic->species.basis_lmax[Cwan];
 
       OpenMXPairBesselTable bessel_table;
       if (!openmx_core_nonlocal_sample(workspace,r,Lmax_Four_Int,
@@ -172,7 +173,7 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
       SphB = bessel_table.values;
       SphBp = bessel_table.derivatives;
 
-      for (so=0; so<=VPS_j_dependency[Hwan]; so++){
+      for (so=0; so<=atomic->species.relativistic[Hwan]; so++){
 
 	/****************************************************
            Evaluate ovelap integrals <chi0|P> between PAOs
@@ -182,8 +183,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
                 \int RL(k)*RL'(k)*jl(k*R) k^2 dk^3
 	****************************************************/
 
-	for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (L=1; L<=projector_count; L++){
 	      L1 = projector_angular[L];
 	      for (M0=-L0; M0<=L0; M0++){
@@ -215,8 +216,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
 
 	for(LL=0; LL<=Lmax_Four_Int; LL++){
 
-	  for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	    for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	  for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	    for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	      for (L=1; L<=projector_count; L++){
 		SumNL0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)] = 0.0;
 		SumNLr0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)] = 0.0;
@@ -234,8 +235,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
 	    sj  =  SphB[LL*grid_dim + i];
 	    sjp = SphBp[LL*grid_dim + i];
 
-	    for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	      for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	    for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 
 		Bessel_Pro0 = RF_BesselCache[(L0*List_YOUSO[24] + Mul0)*grid_dim + i];
 		tmp0 = coe0*h*Normk*Normk*Bessel_Pro0;
@@ -257,8 +258,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
 
 	  /* derivatives of "on site" */
 	  if (h_AN==0){
-	    for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	      for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	    for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 		for (L=1; L<=projector_count; L++){
 		  SumNLr0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)] = 0.0;
 		}
@@ -284,8 +285,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
 	    CYt = Complex(dSHt[0],dSHt[1]);
 	    CYp = Complex(dSHp[0],dSHp[1]);
 
-	    for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	      for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	    for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 		for (L=1; L<=projector_count; L++){
 
 		  L1 = projector_angular[L];
@@ -350,8 +351,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, do
 	****************************************************/
 
 	num0 = 0;
-	for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
+	for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 
 	    num1 = 0;
 	    for (L=1; L<=projector_count; L++){

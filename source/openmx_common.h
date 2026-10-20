@@ -6,6 +6,7 @@
 #include "openmx_core_vna_matrix.h"
 #include "openmx_core_reciprocal.h"
 #include "openmx_core_atomic.h"
+#include "openmx_core_orbital_workspace.h"
 #include "openmx_periodic.h"
 #include "openmx_gpu_blas.h"
 #include "openmx_gpu_complex.h"
@@ -16,7 +17,6 @@
 #if OPENMX_GPU_HIP
 #include <stdio.h>
 #endif
-
 
 
 #include <stdbool.h>
@@ -803,70 +803,6 @@ int **atv_ijk;
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
 double **MO_kpoint;
-
-/*******************************************************
- double **Spe_PAO_XV;
-  radial mesh (x=log(r)) for PAO 
-  size: Spe_PAO_XV[List_YOUSO[18]]
-                  [List_YOUSO[21]]
-  allocation: call as Allocate_Arrays(6) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_PAO_XV;
-
-/*******************************************************
- double **Spe_PAO_RV;
-  logarithmic radial mesh (r=exp(r)) for PAO 
-  size: Spe_PAO_XV[List_YOUSO[18]]
-                  [List_YOUSO[21]]
-  allocation: call as Allocate_Arrays(6) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_PAO_RV;
-
-
-
-/*******************************************************
- double ****Spe_PAO_RWF;
-  radial parts of basis orbitals on radial mesh of PAO 
-  size: Spe_PAO_RWF[List_YOUSO[18]]
-                   [List_YOUSO[25]+1]
-                   [List_YOUSO[24]]
-                   [List_YOUSO[21]]
-  allocation: call as Allocate_Arrays(6) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double ****Spe_PAO_RWF;
-
-
-
-
-
-
-
-
-/*******************************************************
- double ***Spe_VNLE;
-  projection energies of projectors of non-local
-  potentials on radial mesh of VPS
-  size: Spe_VNLE[SO_switch+1]
-                [List_YOUSO[18]]
-                [List_YOUSO[19]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double ***Spe_VNLE;
-
-/*******************************************************
- int **Spe_VPS_List;
-  angular momentum numbers of projectors of non-local
-  potentials
-  size: Spe_VPS_List[List_YOUSO[18]]
-                    [List_YOUSO[19]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-int **Spe_VPS_List;
 
 
 /*****************************************************************************
@@ -2230,10 +2166,6 @@ int *F_M2G,*S_M2G;
 int *VPS_j_dependency;
 
 
-
-
-
-
 /* VNA output matrices are owned by OpenMXCoreContext and passed explicitly
    as OpenMXVnaMatrixViews. Legacy row tables are borrowed adapters only. */
 
@@ -2766,8 +2698,6 @@ double xmin_Rec_Coulomb,xmax_Rec_Coulomb;
 double *SVals_Coulomb,*SVecs_U_Coulomb,*SVecs_V_Coulomb,*qgrid_Rec_Coulomb;
 
 
-
-
 void Show_DFT_DATA(char *argv[]);
 void Maketest(char *mode, int argc, char *argv[]);
 void Runtest(char *mode, int argc, char *argv[], OpenMXCoreContext *core);
@@ -2785,8 +2715,8 @@ double Nonlocal_RadialF(const OpenMXAtomicViews *atomic, int Gensi, int l, int s
 double PhiF(double R, double *phi0, double *MRV, int Grid_Num);
 double AngularF(int l, int m, double Q, double P, int Use_switch,
                 double siQ, double coQ, double siP, double coP);
-double RadialF(int Gensi, int L, int Mul, double R);
-void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3]);
+double RadialF(const OpenMXAtomicViews *atomic, int Gensi, int L, int Mul, double R);
+void Dr_RadialF(const OpenMXAtomicViews *atomic, int Gensi, int L, int Mul, double R, double Deri_RF[3]);
 double Smoothing_Func(double rcut,double r1);
 double VNAF(const OpenMXAtomicViews *atomic, int Gensi, double R);
 double Dr_VNAF(const OpenMXAtomicViews *atomic, int Gensi, double R);
@@ -2799,29 +2729,22 @@ double AtomicCoreDenF(int Gensi, double R);
 double Nonlocal_Basis(const OpenMXAtomicViews *atomic, int wan, int Lnum_index, int Mnum, int so,
                       double r, double theta, double phi);
 
-void Get_Orbitals(int wan, double x, double y, double z, double *Chi);
-void Get_dOrbitals(int wan, double R, double Q, double P, double **dChi);
-/* AITUNE */
-struct WORK_DORBITAL {
-	double** RF; double** dRF; double** AF; double** dAFQ; double** dAFP;
-};
-void Get_dOrbitals_init(struct WORK_DORBITAL* buffer);
-void Get_dOrbitals_work(int wan, double R, double Q, double P, double **dChi, struct WORK_DORBITAL buffer);
-void Get_dOrbitals_free(struct WORK_DORBITAL buffer);
-/* end of AITUNE */
-void Get_Cnt_Orbitals(int Mc_AN, double x, double y, double z, double *Chi);
-void Get_Cnt_dOrbitals(int Mc_AN, double x, double y, double z, double **dChi);
+void Get_Orbitals(const OpenMXAtomicViews *atomic, int wan, double x, double y, double z, double *Chi);
+void Get_dOrbitals(const OpenMXAtomicViews *atomic, int wan, double R, double Q, double P, double **dChi);
+void Get_dOrbitals_work(const OpenMXAtomicViews *atomic, int wan, double R, double Q, double P, double **dChi, OpenMXOrbitalBuffers buffer);
+void Get_Cnt_Orbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double *Chi);
+void Get_Cnt_dOrbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi);
 
 /* Fukuda+YTL-start */
-void Get_dOrbitals2(int wan, double R, double Q, double P, double **dChi);
-void Get_Cnt_dOrbitals2(int Mc_AN, double x, double y, double z, double **dChi);
-double Set_dOrbitals_Grid(int Cnt_kind);
-double Set_dOrbitals_Grid_xyz(int Cnt_kind,int xyz);
+void Get_dOrbitals2(const OpenMXAtomicViews *atomic, int wan, double R, double Q, double P, double **dChi);
+void Get_Cnt_dOrbitals2(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi);
+double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind);
+double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz);
 /* Fukuda+YTL-end */
 
-double Set_Orbitals_Grid(int Cnt_kind);
+double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind);
 double Set_Aden_Grid(const OpenMXAtomicViews *atomic);
-double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0);
+double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0);
 #if !OPENMX_GPU_HIP
 int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed);
@@ -2851,7 +2774,7 @@ void EulerAngle_Spin( int quickcalc_flag,
 void Orbital_Moment(char *mode);
 
 /* added by S.Ryee */
-void Coulomb_Interaction();
+void Coulomb_Interaction(const OpenMXAtomicViews *atomic);
 double slater_ratio;
 int Hub_Type,Yukawa_on,dc_Type,Nmul;
 /* array size of 30 is an arbitrarily large number */
@@ -2972,7 +2895,7 @@ void Contract_Hamiltonian(double *****H,   double *****CntH,
                           double *****OLP, double *****CntOLP);
 void Contract_iHNL(double *****iHNL, double *****iCntHNL);
 void Cont_Matrix0(double ****Mat, double ****CMat);
-void Cont_Matrix1(double ****Mat, double ****CMat);
+void Cont_Matrix1(const OpenMXAtomicViews *atomic, double ****Mat, double ****CMat);
 void Cont_Matrix2(Type_DS_VNA ****Mat, Type_DS_VNA ****CMat);
 void Cont_Matrix3(double ****Mat, double ****CMat);
 void Cont_Matrix4(double ****Mat, double ****CMat);
@@ -3050,7 +2973,7 @@ void FT_ProExpn_VNA(OpenMXCoreContext *core, int device);
 void FT_VNA(OpenMXCoreContext *core, int device);
 void FT_ProductPAO(OpenMXCoreContext *core, int device);
 
-void Calc_OLPmo( double *****OLPmo );
+void Calc_OLPmo(const OpenMXAtomicViews *atomic, double *****OLPmo );
 void CWF2W90(int ***k_op, int *T_k_op, int **T_k_ID, 
              double *T_KGrids1, double *T_KGrids2, 
              double *T_KGrids3, int *MP, int *order_GA);
@@ -3169,7 +3092,7 @@ typedef struct {
 int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables);
 int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind);
 #if !OPENMX_GPU_HIP
-int Set_Hamiltonian_OnTheFly_DensityPossible(int Cnt_kind, int myid);
+int Set_Hamiltonian_OnTheFly_DensityPossible(const OpenMXAtomicViews *atomic, int Cnt_kind, int myid);
 void Set_Hamiltonian_OnTheFly_EndCycle(void);
 void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks);
 size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, size_t output_count, int otf_ranks,
@@ -3177,15 +3100,15 @@ size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, s
 int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, size_t *avail_bytes);
 void Set_Density_Grid_GPU_EndCycle(void);
 size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
-int Set_Hamiltonian_OnTheFly_Density(int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
+int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid);
 void Cluster_DFT_Col_Release_GPU_Solver(void);
 void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 void Mixing_H_Release_GPU(void);
-int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON);
+int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON);
 int Set_Density_Grid_GPU_Local_KeepDistributed(void);
-int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid);
+int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid);
 void Set_Density_Grid_GPU_Local_Report(int path, int failed);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
 void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted);
@@ -3213,7 +3136,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,c
 	      double *****CDM,
 	      double *****EDM);
 double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0);
-double Set_Nonlocal(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
+double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
 double Set_CoreHoleMatrix(double *****HCH);
 double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter);  // S. An 
 double Set_OLP_p(double *****OLP_p);
@@ -3241,7 +3164,7 @@ void XC_PBE(int SCF_iter, double dens[2], double GDENS[3][2], double Exc[2],
             double DEXDGD[3][2], double DECDGD[3][2]);
 void XC_EX(int NSP, double DS0, double DS[2], double EX[1], double VX[2]);
 void Voronoi_Charge();
-void Voronoi_Orbital_Moment();
+void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic);
 
 double Fuzzy_Weight(int ct_AN, int Mc_AN, int Rn, double x, double y, double z);
 
@@ -3314,8 +3237,7 @@ double truncation(int MD_iter, int UCell_flag, OpenMXCoreContext *core);
 double truncation_FEF(int MD_iter, int UCell_flag);
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core);
 
-double Cluster_DFT_Col(
-                   char *mode,
+double Cluster_DFT_Col(const OpenMXAtomicViews *atomic, char *mode,
                    int SCF_iter,
                    int SpinP_switch,
                    double **ko,
@@ -3379,7 +3301,7 @@ double Cluster_DFT_Col_LNO(
                    double *Work1);
 
 
-double Cluster_DFT_NonCol(
+double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -3430,7 +3352,6 @@ double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
                    int *ie2,
                    dcomplex *EVec1);
 #endif
-
 
 
 double Calc_DM_Cluster_non_collinear_ScaLAPACK(
@@ -3525,7 +3446,6 @@ double Band_DFT_Col(
 		    int *Comm_World2,
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2);
-
 
 
 double Band_DFT_NonCol(
@@ -4167,10 +4087,10 @@ void Allocate_Arrays(int wherefrom);
 void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
 void Free_Arrays(int dokokara);
 void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
-double OutData(char *inputfile);
+double OutData(const OpenMXAtomicViews *atomic, char *inputfile);
 void init_alloc_first();
 int File_CntCoes(char *mode);
-void SCF2File(char *mode, char *inputfile);
+void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile);
 void Determine_Cell_from_ECutoff(double tv[4][4], double ECut);
 
 /*
@@ -4379,7 +4299,6 @@ int *F_Rcv_Num;
   free:       call as Free_Arrays(0) in openmx.c
 *******************************************************/
 int *S_Rcv_Num;
-
 
 
 /*******************************************************
@@ -5064,7 +4983,7 @@ void broadcast_Position_matrix_elements_to_all_processes(int myid0); /* position
 
 double *****MME_allorb; /* < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
 
-void Calc_NabraMatrixElements(); /* < PAO(atom i, orbital alpha) | nabla | PAO(atom j, orbital beta) > */
+void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic); /* < PAO(atom i, orbital alpha) | nabla | PAO(atom j, orbital beta) > */
 
 void Set_MPIworld_for_optical(int myid,int numprocs);
 void Initialize_optical();
@@ -5076,8 +4995,7 @@ void Calc_optical_col_2(int n,double sum_weights);
 void Calc_optical_noncol_2(int n,double sum_weights); 
 
 
-double Band_DFT_Col_Optical_ScaLAPACK(
-				      int SCF_iter,
+double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, int SCF_iter,
 				      int knum_i, int knum_j, int knum_k,
 				      int SpinP_switch,
 				      double *****nh,
@@ -5096,7 +5014,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(
 				      double *EDM1,
 				      dcomplex **H);
 
-double Band_DFT_NonCol_Optical(int SCF_iter,
+double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
 			       double *koS,
 			       dcomplex **S,
 			       int knum_i, int knum_j, int knum_k,
@@ -5108,7 +5026,7 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
 			       double *****EDM,
 			       double Eele0[2], double Eele1[2]);
 
-double Cluster_DFT_Optical(char *mode,
+double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
 			   int SCF_iter,
 			   int SpinP_switch,
 			   double ***Cluster_ReCoes,
@@ -5123,8 +5041,7 @@ double Cluster_DFT_Optical(char *mode,
 			   double *Uexx,
 			   double Eele0[2], double Eele1[2]);
 
-double Cluster_DFT_Optical_ScaLAPACK(
-                   char *mode,
+double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, char *mode,
                    int SCF_iter,
                    int SpinP_switch,
                    double **Cluster_ko,
@@ -5154,7 +5071,6 @@ double Cluster_DFT_Optical_ScaLAPACK(
                    int *SP_Atoms, 
                    double **EVec1,
                    double *Work1);
-
 
 
 /* YTL-end */

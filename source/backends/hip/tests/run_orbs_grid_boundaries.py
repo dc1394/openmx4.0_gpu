@@ -918,6 +918,10 @@ C_PREFIX = r'''
 #include <string.h>
 
 #include "orbs_otf_hip.h"
+#include "openmx_core_atomic.h"
+
+enum { GPUSOLVER=1 };
+static int scf_eigen_lib_flag=GPUSOLVER;
 
 #define CHECK(condition) do { if (!(condition)) { \
     fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); exit(2); \
@@ -1050,6 +1054,29 @@ static void setup(void)
   }
 }
 
+/* Supply explicit flat views over the controlled test input. Numeric
+   copies are test setup only, outside the host/device fault injection. */
+static const OpenMXAtomicViews *test_atomic(void)
+{
+  static OpenMXAtomicViews atomic;
+  static double rv[2][8],rwf[2][4][9][8];
+  static int basis[2][4];
+  for(int w=0;w<SpeciesNum;w++) {
+    memcpy(rv[w],Spe_PAO_RV[w],(size_t)Spe_Num_Mesh_PAO[w]*sizeof(double));
+    for(int l=0;l<4;l++) {
+      basis[w][l]=Spe_Num_Basis[w][l];
+      for(int m=0;m<9;m++)
+        memcpy(rwf[w][l][m],Spe_PAO_RWF[w][l][m],(size_t)Spe_Num_Mesh_PAO[w]*sizeof(double));
+    }
+  }
+  atomic.pao_radii=(OpenMXRadialView2){&rv[0][0],{2,8}};
+  atomic.orbitals=(OpenMXRadialView4){&rwf[0][0][0][0],{2,4,9,8}};
+  atomic.species.pao_mesh=Spe_Num_Mesh_PAO;atomic.species.basis_lmax=Spe_MaxL_Basis;
+  atomic.species.basis=&basis[0][0];atomic.species.angular_channels=4;
+  atomic.species.orbitals=Spe_Total_NO;
+  return &atomic;
+}
+
 /* the uploaded tables are OpenMX's, flattened L0 -> Mul0 -> mesh point */
 static int tables_match(void)
 {
@@ -1085,11 +1112,11 @@ static int tables_match(void)
 /* Prepare fails now (0, nothing leaked) and, not latched, uploads at the next call */
 static void retried(int *checks)
 {
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 0);
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 0);
   CHECK(c_live == 0 && !OTF_Orbitals_Ready() && test_device_live() == 0 && test_device_error() == 0);
   c_fail_at = 0;
   test_device_fail(0, 0);
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && OTF_Orbitals_Ready() && c_live == 0);
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && OTF_Orbitals_Ready() && c_live == 0);
   Set_Orbitals_Grid_OTF_Release();
   CHECK(test_device_live() == 0);
   *checks += 2;
@@ -1100,12 +1127,12 @@ static void latched(int *checks, void (*undo)(void))
 {
   int calls;
 
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 0 && !OTF_Orbitals_Ready());
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 0 && !OTF_Orbitals_Ready());
   undo();
   calls = upload_calls;
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 0 && upload_calls == calls && !OTF_Orbitals_Ready());
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 0 && upload_calls == calls && !OTF_Orbitals_Ready());
   Set_Orbitals_Grid_OTF_Release();
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && OTF_Orbitals_Ready() && upload_calls == calls + 1);
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && OTF_Orbitals_Ready() && upload_calls == calls + 1);
   Set_Orbitals_Grid_OTF_Release();
   CHECK(c_live == 0 && test_device_live() == 0);
   *checks += 3;
@@ -1128,10 +1155,10 @@ int run_prepare_tests(int *checks)
 
   /* the tables, built from OpenMX's arrays */
   c_allocations = 0;
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1);
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1);
   CHECK(c_live == 0 && c_allocations == 8 && OTF_Orbitals_Ready() && OTF_Orbitals_DoubleFloat());
   CHECK(tables_match());
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && c_allocations == 8);
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && c_allocations == 8);
   Set_Orbitals_Grid_OTF_Release();
   CHECK(!OTF_Orbitals_Ready() && test_device_live() == 0);
   *checks += 4;
@@ -1164,27 +1191,27 @@ int run_prepare_tests(int *checks)
   /* the precision: the spellings of FP64, df, the FP32:FP64 default */
   for (k = 0; k < 4; k++) {
     setenv("OPENMX_ORBS_EVAL_PRECISION", fp64[k], 1);
-    CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && !OTF_Orbitals_DoubleFloat());
+    CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && !OTF_Orbitals_DoubleFloat());
     CHECK(tables_match());
     Set_Orbitals_Grid_OTF_Release();
   }
   setenv("OPENMX_ORBS_EVAL_PRECISION", "df", 1);
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && OTF_Orbitals_DoubleFloat());
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && OTF_Orbitals_DoubleFloat());
   Set_Orbitals_Grid_OTF_Release();
   unsetenv("OPENMX_ORBS_EVAL_PRECISION");
   fp_ratio = 2;
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && !OTF_Orbitals_DoubleFloat());
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && !OTF_Orbitals_DoubleFloat());
   Set_Orbitals_Grid_OTF_Release();
   fp_ratio = 16;
-  CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && OTF_Orbitals_DoubleFloat());
+  CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && OTF_Orbitals_DoubleFloat());
   Set_Orbitals_Grid_OTF_Release();
   setenv("OPENMX_ORBS_EVAL_PRECISION", "df", 1);
   for (k = 0; k < 4; k++) {
     int calls = upload_calls;
     openmx_set_fp32_enabled(k % 2);
-    CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1);
+    CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1);
     CHECK(OTF_Orbitals_DoubleFloat() == k % 2 && upload_calls == calls + 1);
-    CHECK(Set_Orbitals_Grid_OTF_Prepare() == 1 && upload_calls == calls + 1);
+    CHECK(Set_Orbitals_Grid_OTF_Prepare(test_atomic()) == 1 && upload_calls == calls + 1);
     CHECK(tables_match());
   }
   unsetenv("OPENMX_ORBS_EVAL_PRECISION");
@@ -1337,7 +1364,7 @@ int run_table_tests(int *checks)
   /* a rank without atoms touches nothing */
   Matomnum = 0;
   test_device_fail(0, 0);
-  CHECK(Set_Orbitals_Grid_GPU() == 1);
+  CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 1);
   test_device_counts(&mallocs, &memcpys);
   CHECK(mallocs == 0 && memcpys == 0 && !OTF_Orbitals_Ready());
   Matomnum = 2;
@@ -1346,11 +1373,11 @@ int run_table_tests(int *checks)
      are the FP64 tiles' */
   poison();
   test_device_fail(0, 0);
-  CHECK(Set_Orbitals_Grid_GPU() == 1 && table_matches());
+  CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 1 && table_matches());
   unharmed(1, checks);
   poison();
   test_device_fail(0, 0);
-  CHECK(Set_Orbitals_Grid_GPU() == 1 && table_matches());
+  CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 1 && table_matches());
   test_device_counts(&mallocs, &memcpys);
   copies = memcpys;
   CHECK(mallocs == 1 && copies == 11);   /* the staging; atom 1: 4 + 3 copies, atom 2: 4 */
@@ -1360,21 +1387,21 @@ int run_table_tests(int *checks)
      transfer, the launch) and each failed host allocation: 0 (the host
      loops rebuild everything), nothing leaked, the tables stay */
   test_device_fail_window(1, 2, 0);
-  CHECK(Set_Orbitals_Grid_GPU() == 0);
+  CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 0);
   unharmed(1, checks);
   for (k = 1; k <= copies; k++) {
     test_device_fail(0, k);
-    CHECK(Set_Orbitals_Grid_GPU() == 0);
+    CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 0);
     unharmed(1, checks);
   }
   test_device_fail_window(0, 0, 1);
-  CHECK(Set_Orbitals_Grid_GPU() == 0);
+  CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 0);
   test_device_fail_window(0, 0, 0);
   unharmed(1, checks);
   for (k = 1; k <= 4; k++) {
     c_allocations = 0;
     c_fail_at = k;
-    CHECK(Set_Orbitals_Grid_GPU() == 0);
+    CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 0);
     c_fail_at = 0;
     unharmed(1, checks);
   }
@@ -1382,11 +1409,11 @@ int run_table_tests(int *checks)
   /* the tables' upload fails: 0, and the next build uploads them */
   Set_Orbitals_Grid_OTF_Release();
   test_device_fail(1, 0);
-  CHECK(Set_Orbitals_Grid_GPU() == 0);
+  CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 0);
   unharmed(0, checks);
   test_device_fail(0, 0);
   poison();
-  CHECK(Set_Orbitals_Grid_GPU() == 1 && table_matches());
+  CHECK(Set_Orbitals_Grid_GPU(test_atomic()) == 1 && table_matches());
   Set_Orbitals_Grid_OTF_Release();
   CHECK(test_device_live() == 0 && c_live == 0);
   *checks += 4;
@@ -1399,8 +1426,9 @@ def c_harness(sog):
     parts = [C_PREFIX, '#include "openmx_precision.h"',
              line(sog, r"^#define\s+SOG_L0MAX\b.*$"),
              line(sog, r"^#define\s+SOG_MULMAX\b.*$"),
-             line(sog, r"^int Set_Orbitals_Grid_OTF_Prepare\(void\);$"),
+             line(sog, r"^int Set_Orbitals_Grid_OTF_Prepare\(const OpenMXAtomicViews \*atomic\);$"),
              function(sog, "SOG_env_flag"),
+             function(sog, "SOG_gpu_requested"),
              function(sog, "SOG_gpu_eligible"),
              function(sog, "SOG_arena_off"),
              function(sog, "SOG_arena_try"),

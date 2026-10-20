@@ -50,17 +50,16 @@ void layout_test()
 
 void ownership_test()
 {
-  int counts[]{3,0,1}, first[]{-99,0,2,1}, third[]{-99,3};
-  int* rows[]{first,nullptr,third};
+  int counts[]{3,0,1}, rows[][4]{{-99,0,2,1},{0,0,0,0},{-99,3,0,0}};
   std::array grid{0.,0.5,1.,2.};
-  const OpenMXNonlocalShape shape{3,2,3,3,counts,rows,4,grid.data(),1};
+  const OpenMXNonlocalShape shape{3,2,3,3,counts,&rows[0][0],4,4,grid.data(),1};
   OpenMXNonlocalBuffers views{}; char error[256];
   Owner work(openmx_core_nonlocal_create(&shape,&views,error,sizeof(error)),openmx_core_nonlocal_destroy);
   require(work!=nullptr,error);
   require(views.orbital_capacity==32 && views.projector_capacity==9 && views.projector_slots==4,
           "C capacities mismatch");
   require(views.conversion_columns==7,"projector conversion leading dimension mismatch");
-  first[1]=14; third[1]=0; counts[0]=0; grid[1]=100;
+  rows[0][1]=14; rows[2][1]=0; counts[0]=0; grid[1]=100;
   require(views.projector_counts[0]==3 && views.projector_angular[1]==0 &&
           views.projector_angular[views.species_offsets[2]+1]==3,"metadata is still borrowed from input");
   const auto* offsets=views.projector_offsets;
@@ -92,7 +91,7 @@ void ownership_test()
   require(openmx_core_nonlocal_sample(work.get(),1.,2,&table,error,sizeof(error)),error);
   require(table.values==saved && views.angular[3][0].r==1 && views.sums[1][31]==32,
           "sampling invalidated cached values or work buffers");
-  const OpenMXNonlocalShape small{0,1,0,1,views.projector_counts,nullptr,0,nullptr,0};
+  const OpenMXNonlocalShape small{0,1,0,1,views.projector_counts,nullptr,0,0,nullptr,0};
   int zero=0;
   auto empty=small; empty.projector_counts=&zero;
   OpenMXNonlocalBuffers independent{};
@@ -108,8 +107,8 @@ void angular_only_test()
   require(work.radial().size()==0 && work.nonlocal_radial().size()==0 && work.sums().size()==0,
           "device angular assembly allocated host radial buffers");
   rejects([&]{work.sample(1.,0);});
-  const int count=2; int row[]{0,2,0}; int* rows[]{row};
-  const OpenMXNonlocalShape shape{1,1,2,1,&count,rows,0,nullptr,0};
+  const int count=2; int row[]{0,2,0};
+  const OpenMXNonlocalShape shape{1,1,2,1,&count,row,3,0,nullptr,0};
   OpenMXNonlocalBuffers views{};char error[128];
   Owner owner(openmx_core_nonlocal_create(&shape,&views,error,sizeof(error)),openmx_core_nonlocal_destroy);
   require(owner!=nullptr,error);
@@ -134,8 +133,8 @@ void failure_test()
   rejects([&]{NonlocalWorkspace work({2,1,2},species,one);});
   const std::array nan_grid{0.,std::numeric_limits<double>::quiet_NaN()};
   rejects([&]{NonlocalWorkspace work({2,1,2},species,nan_grid);});
-  int count=2, row[]{0,0,2};int* rows[]{row};std::array grid{0.,1.,2.};
-  OpenMXNonlocalShape shape{2,1,2,1,&count,rows,3,grid.data(),0};
+  int count=2, row[]{0,0,2};std::array grid{0.,1.,2.};
+  OpenMXNonlocalShape shape{2,1,2,1,&count,row,3,3,grid.data(),0};
   OpenMXNonlocalBuffers views{}; char error[128];
   Owner owner(openmx_core_nonlocal_create(&shape,&views,error,sizeof(error)),openmx_core_nonlocal_destroy);
   require(owner!=nullptr,error);const auto saved=views;
@@ -147,6 +146,11 @@ void failure_test()
   require(!openmx_core_nonlocal_create(&bad,&views,error,sizeof(error)),"missing grid accepted");
   bad=shape;bad.projector_angular=nullptr;
   require(!openmx_core_nonlocal_create(&bad,&views,error,sizeof(error)),"missing projector row accepted");
+  bad=shape;bad.projector_angular_stride=2;
+  require(!openmx_core_nonlocal_create(&bad,&views,error,sizeof(error)),"short input stride accepted");
+  bad=shape;bad.projector_angular_stride=std::numeric_limits<std::size_t>::max();
+  require(!openmx_core_nonlocal_create(&bad,&views,error,sizeof(error)),"overflowing input stride accepted");
+  require(views.angular[0]==saved.angular[0],"invalid flat metadata changed output");
   count=-1;
   require(!openmx_core_nonlocal_create(&shape,&views,error,sizeof(error)),"negative count accepted");
   OpenMXPairBesselTable table{};
@@ -161,10 +165,10 @@ void failure_test()
 
 void allocation_test()
 {
-  int counts[]{3,1}, first[]{0,0,2,1},second[]{0,1};int* rows[]{first,second};
+  int counts[]{3,1}, rows[][4]{{0,0,2,1},{0,1,0,0}};
   const std::array grid{0.,1.,2.};
   for (int points : {0,3}) {
-    const OpenMXNonlocalShape shape{2,2,2,2,counts,rows,points,points?grid.data():nullptr,2};
+    const OpenMXNonlocalShape shape{2,2,2,2,counts,&rows[0][0],4,points,points?grid.data():nullptr,2};
     OpenMXNonlocalBuffers views{};char error[256];
     openmx::test::fail_allocation_after(1000);
     auto* retained=openmx_core_nonlocal_create(&shape,&views,error,sizeof(error));

@@ -491,7 +491,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
   /* allocation of arrays */
 
-#pragma omp parallel shared(Matomnum,time_per_atom,HCH,iHCH,iHNL,F_CH_flag,List_YOUSO,Dis,SpinP_switch,Spe_Total_NO,OLP,Spe_VPS_List,VPS_j_dependency,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch) 
+#pragma omp parallel shared(Matomnum,time_per_atom,HCH,iHCH,iHNL,F_CH_flag,List_YOUSO,Dis,SpinP_switch,Spe_Total_NO,OLP,VPS_j_dependency,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch)
   {
     int OMPID,Nthrds,Nprocs,Nloop;
     int Mc_AN,j,Gc_AN,Cwan,fan,jg,i1,j1,i;

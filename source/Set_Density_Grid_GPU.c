@@ -1569,7 +1569,7 @@ void Set_Density_Grid_GPU_EndCycle(void)
   SDG_local_delete_device(&SDG_local);
 }
 
-static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks)
+static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks)
 {
   SDGLocalContext *c = &SDG_local;
   int spin_count = SpinP_switch + 1;
@@ -1625,7 +1625,7 @@ static int SDG_local_prepare(int Cnt_kind, int Calc_CntOrbital_ON, int node_rank
           !(probe.orbs0_resident && probe.orbs1_resident && probe.nolg_resident && probe.meta_resident))
         my_ready = 0;
     }
-    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(table_kind, myid);
+    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(atomic, table_kind, myid);
     if (!(my_ready || my_otf)) return 0;
     if (my_otf) {
       if (c->ready && !c->otf) SDG_local_free();
@@ -1711,7 +1711,7 @@ static struct {
 /* Every rank participates, including OTF ranks, empty partitions and
    ranks whose local preparation failed.  A collective inside the CSR
    builder deadlocks when any other rank reuses a cache or chooses OTF. */
-int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
+int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON)
 {
   MPI_Comm node_comm = MPI_COMM_NULL;
   int node_ranks = 1, node_otf = 0, my_otf, ok, myid = 0, grow = 0, ws_declined = 0;
@@ -1733,7 +1733,7 @@ int Set_Density_Grid_GPU_Local_Prepare(int Cnt_kind, int Calc_CntOrbital_ON)
   MPI_Comm_rank(mpi_comm_level1, &myid);
   MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
   MPI_Comm_size(node_comm, &node_ranks);
-  ok = SDG_local_prepare(Cnt_kind, Calc_CntOrbital_ON, node_ranks);
+  ok = SDG_local_prepare(atomic, Cnt_kind, Calc_CntOrbital_ON, node_ranks);
   my_otf = ok && Matomnum > 0 && SDG_local.otf;
   MPI_Allreduce(&my_otf, &node_otf, 1, MPI_INT, MPI_SUM, node_comm);
   Set_Hamiltonian_OnTheFly_SetDensityRanks(node_otf);
@@ -2177,7 +2177,7 @@ static int SDG_local_distribute(SDGKernelInput *input)
   return ok;
 }
 
-int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
+int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid)
 {
   SDGLocalContext *c = &SDG_local;
   const int spin_count = c->spin_count;
@@ -2246,7 +2246,7 @@ int Set_Density_Grid_GPU_Local_Run(double *****CDM, double ***Tmp_Den_Grid)
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (ok) ok = SDG_pack_local_cdm(CDM, dm_otf, c->otf_dm_count, spin_count);
-    if (ok) ok = Set_Hamiltonian_OnTheFly_Density(c->cnt_kind, spin_count, dm_otf, c->otf_dm_count, den_otf, n_out,
+    if (ok) ok = Set_Hamiltonian_OnTheFly_Density(atomic, c->cnt_kind, spin_count, dm_otf, c->otf_dm_count, den_otf, n_out,
                                                   c->otf_out_base, myid);
     if (ok) {
       for (spin = 0; spin < spin_count; spin++) {

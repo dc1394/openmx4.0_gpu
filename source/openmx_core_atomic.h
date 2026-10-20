@@ -20,7 +20,15 @@ typedef struct {
   OpenMXRadialView2 vps_log_radii, vps_radii, neutral_potential, hartree_potential, partial_core_density;
   OpenMXRadialView4 projectors;
   OpenMXRadialView3 projector_energies;
+  int *projector_angular;
+  size_t projector_angular_species, projector_angular_stride;
 } OpenMXAtomicViews;
+
+/* Unchecked row access for validated species; projector 0 is padding. */
+static inline int *openmx_atomic_projector_angular(const OpenMXAtomicViews *views, size_t species)
+{
+  return views->projector_angular+species*views->projector_angular_stride;
+}
 
 /* No allocation or Kokkos initialization. Each absent owner is an empty view.
    Failure preserves output. Expiry follows the respective owner's release,

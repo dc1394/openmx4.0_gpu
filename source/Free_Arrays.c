@@ -2992,10 +2992,7 @@ static void array0(OpenMXCoreContext *core)
   /* Calculation-owned PAO/VPS tables. Borrowed real-space adapters expire. */
   openmx_core_pao_release(core);
   openmx_core_vps_release(core);
-  Spe_PAO_XV = Spe_PAO_RV = NULL;
-  Spe_PAO_RWF = NULL;
-  Spe_VNLE = NULL;
-  Spe_VPS_List = NULL;
+
 
   if ( (Solver==2 || Solver==3 || Solver==7) && MO_fileout==1 ){
 

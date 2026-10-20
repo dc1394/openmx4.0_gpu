@@ -575,9 +575,9 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
           MPI_Abort(mpi_comm_level1,1);
           return;
         }
-        Spe_PAO_XV = views.log_radii;
-        Spe_PAO_RV = views.radii;
-        Spe_PAO_RWF = views.orbitals;
+
+
+
       }
       break;
 
@@ -610,8 +610,8 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
           MPI_Abort(mpi_comm_level1,1);
           return;
         }
-        Spe_VNLE = views.energies;
-        Spe_VPS_List = views.angular;
+
+
       }
 
       if (ProExpn_VNA==1) {

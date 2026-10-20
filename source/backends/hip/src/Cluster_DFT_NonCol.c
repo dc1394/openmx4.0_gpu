@@ -3069,7 +3069,7 @@ static double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], 
 					double XANES_Res[10] );
 
 
-static void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
+static void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN, int *MP,
 			       int *is2, int *ie2, dcomplex *EVec1, double *ko);
 
 double Calc_DM_Cluster_non_collinear_ScaLAPACK(
@@ -3109,7 +3109,7 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
 
 
 
-double Cluster_DFT_NonCol(
+double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -3198,7 +3198,7 @@ double Cluster_DFT_NonCol(
   n = 0;
   for (i=1; i<=atomnum; i++){
     wanA  = WhatSpecies[i];
-    n  = n + Spe_Total_CNO[wanA];
+    n  = n + atomic->species.contracted_orbitals[wanA];
   }
   n2 = 2*n;
 
@@ -3243,7 +3243,7 @@ double Cluster_DFT_NonCol(
   TZ = 0.0;
   for (i=1; i<=atomnum; i++){
     wan = WhatSpecies[i];
-    TZ += Spe_Core_Charge[wan];
+    TZ += atomic->species.core_charge[wan];
   }
 
   /* ***************************************************
@@ -4018,7 +4018,7 @@ double Cluster_DFT_NonCol(
 	/* store eigenvector */
 	for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
 	  wanA = WhatSpecies[GA_AN];
-	  tnoA = Spe_Total_CNO[wanA];
+	  tnoA = atomic->species.contracted_orbitals[wanA];
 	  Anum = MP[GA_AN];
 	  for (i=0; i<tnoA; i++){
 
@@ -4074,7 +4074,7 @@ double Cluster_DFT_NonCol(
 	/* store eigenvector */
 	for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
 	  wanA = WhatSpecies[GA_AN];
-	  tnoA = Spe_Total_CNO[wanA];
+	  tnoA = atomic->species.contracted_orbitals[wanA];
 	  Anum = MP[GA_AN];
 	  for (i=0; i<tnoA; i++){
 	    LUMOs_Coef[0][0][j][GA_AN][i].r = array0[ (Anum+i-1)*2      ];
@@ -4188,10 +4188,10 @@ double Cluster_DFT_NonCol(
     for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
       GA_AN = M2G[MA_AN];
       wanA = WhatSpecies[GA_AN];
-      tnoA = Spe_Total_CNO[wanA];
+      tnoA = atomic->species.contracted_orbitals[wanA];
       for (j=0; j<=FNAN[GA_AN]; j++){
 	wanB = WhatSpecies[natn[GA_AN][j]];
-	tnoB = Spe_Total_CNO[wanB];
+	tnoB = atomic->species.contracted_orbitals[wanB];
 
 	/* non-spin-orbit coupling and non-LDA+U */
 	if (SO_switch==0 && Hub_U_switch==0 && Constraint_NCS_switch==0
@@ -4476,7 +4476,7 @@ double Cluster_DFT_NonCol(
 	    wan1 = WhatSpecies[Gc_AN];
 
 	    for (l=0; l<=Supported_MaxL; l++){
-	      for (mul=0; mul<Spe_Num_CBasis[wan1][l]; mul++){
+	      for (mul=0; mul<atomic->species.contracted_basis[(size_t)(wan1)*atomic->species.angular_channels+(l)]; mul++){
 		for (m=0; m<(2*l+1); m++){
 
 		  if (l==0 && mul==0 && m==0)
@@ -4539,7 +4539,7 @@ double Cluster_DFT_NonCol(
     Save_LCAO_NonCol(n,n2,MaxN,MP,CntOLP,EVec1,ko);
   }
   else if ( strcasecmp(mode,"xanes")==0 ){
-    Calc_XANES_NonCol(n,n2,MaxN,MP,is2,ie2,EVec1,ko);
+    Calc_XANES_NonCol(atomic, n,n2,MaxN,MP,is2,ie2,EVec1,ko);
   }
 
   if (measure_time){
@@ -5564,7 +5564,7 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
 
 
 
-void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
+void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN, int *MP,
 			int *is2, int *ie2, dcomplex *EVec1, double *ko)
 
 #define C1_ref(i,j) C1[ (n2)*(i)+(j) ]
@@ -5782,7 +5782,7 @@ void Calc_XANES_NonCol( int n, int n2, int MaxN, int *MP,
 
   /* calculation of momentum matrix elements */
 
-  Calc_OLPmo(OLPmo);
+  Calc_OLPmo(atomic, OLPmo);
 
   /* set MP */
 

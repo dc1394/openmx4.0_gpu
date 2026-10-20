@@ -88,7 +88,7 @@ void FT_PAO(OpenMXCoreContext *core, int device)
 
       {
         char error[256];
-        const OpenMXPaoTable table = {atomic->species.basis_lmax[spe],Spe_Num_Basis[spe],
+        const OpenMXPaoTable table = {atomic->species.basis_lmax[spe],atomic->species.basis_rows[spe],
           atomic->species.pao_mesh[spe],openmx_radial_row2(&atomic->pao_radii,spe),reciprocal.pao.orbitals[spe],Spe_RF_Bessel[spe]};
         const OpenMXUniformRadialGrid grid = {OneD_Grid,num_k,rmin,h,dk};
         if (!openmx_core_transform_pao(core,device,&table,&grid,error,sizeof(error))) {

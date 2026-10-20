@@ -98,6 +98,8 @@ void SetPara_DFT(OpenMXCoreContext *core)
   ****************************************************/
 
   ReadPara_DFT(core);
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   Check_InitDensity();
 
   Set_Atom_Weight();
@@ -137,7 +139,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
 
 
   if (Hub_U_switch==1 && Hub_Type==2){
-    Coulomb_Interaction();
+    Coulomb_Interaction(atomic);
   }
   /*******************/
 
@@ -232,7 +234,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
     j = 0;
     for (i=1; i<=atomnum; i++){
       wanA  = WhatSpecies[i];
-      j  = j + Spe_Total_CNO[wanA];
+      j  = j + atomic->species.contracted_orbitals[wanA];
     }
     Size_Total_Matrix = j;
 
@@ -255,7 +257,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
       j = 0;
       for (i=1; i<=atomnum; i++){
 	wanA  = WhatSpecies[i];
-	j += Spe_Total_CNO[wanA];
+	j += atomic->species.contracted_orbitals[wanA];
       }
 
       CWF_Coef = (double*******)malloc(sizeof(double******)*(SpinP_switch+1));
@@ -298,7 +300,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
       j = 0;
       for (i=1; i<=atomnum; i++){
 	wanA  = WhatSpecies[i];
-	j += Spe_Total_CNO[wanA];
+	j += atomic->species.contracted_orbitals[wanA];
       }
 
       CWF_Coef_NC = (double complex******)malloc(sizeof(double complex*****)*CWF_fileout_Num);
@@ -339,7 +341,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
       double TZ = 0.0;
       for (i=1; i<=atomnum; i++){
 	wan = WhatSpecies[i];
-	TZ += Spe_Core_Charge[wan];
+	TZ += atomic->species.core_charge[wan];
       }
       TZ -= system_charge; 
       TNum_CWFs = TZ/2;
@@ -350,7 +352,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
       double TZ = 0.0;
       for (i=1; i<=atomnum; i++){
 	wan = WhatSpecies[i];
-	TZ += Spe_Core_Charge[wan];
+	TZ += atomic->species.core_charge[wan];
       }
       TZ -= system_charge; 
       TNum_CWFs = TZ;
@@ -364,7 +366,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
 
   MaxCutoffR = 0.0;
   for (spe=0; spe<SpeciesNum; spe++){
-    if (MaxCutoffR < Spe_Atom_Cut1[spe]) MaxCutoffR = Spe_Atom_Cut1[spe];
+    if (MaxCutoffR < atomic->species.cutoff[spe]) MaxCutoffR = atomic->species.cutoff[spe];
   }
 
   CellNN_flag = 1;
@@ -386,7 +388,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
     j = 0;
     for (i=1; i<=atomnum; i++){
       wanA  = WhatSpecies[i];
-      j  = j + Spe_Total_CNO[wanA];
+      j  = j + atomic->species.contracted_orbitals[wanA];
     }
     Size_Total_Matrix = j;
 
@@ -442,7 +444,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
     j = 0;
     for (i=1; i<=atomnum; i++){
       wanA  = WhatSpecies[i];
-      j  = j + Spe_Total_CNO[wanA];
+      j  = j + atomic->species.contracted_orbitals[wanA];
     }
 
     for (i=0; i<empty_occupation_num; i++){
@@ -469,7 +471,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
 
     MaxCutoffR = 0.0;
     for (spe=0; spe<SpeciesNum; spe++){
-      if (MaxCutoffR < Spe_Atom_Cut1[spe]) MaxCutoffR = Spe_Atom_Cut1[spe];
+      if (MaxCutoffR < atomic->species.cutoff[spe]) MaxCutoffR = atomic->species.cutoff[spe];
     }
     BCR = 4.0*MaxCutoffR;
   }
@@ -778,7 +780,7 @@ void Read_PAO(OpenMXCoreContext *core, int spe, char *file)
     exit(0);
   }
   for (L=0; L<=atomic->species.basis_lmax[spe]; L++){
-    if ((atomic->species.pao_multiplicity[spe]<Spe_Num_Basis[spe][L]) && remake_headfile==0){
+    if ((atomic->species.pao_multiplicity[spe]<atomic->species.basis[(size_t)(spe)*atomic->species.angular_channels+(L)]) && remake_headfile==0){
       printf("Not enough data for PAO (%s)\n",file);
       exit(0);
     }
@@ -969,8 +971,8 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
       if (atomic->species.relativistic[spe]==0){
 	fscanf(fp,"%d %lf",&LVPS,&dum0);
 	if (remake_headfile==0){
-	  Spe_VNLE[0][spe][i] = dum0;
-	  Spe_VPS_List[spe][i+1] = LVPS;
+	  openmx_radial_row3(&atomic->projector_energies,0,spe)[i] = dum0;
+	  openmx_atomic_projector_angular(atomic,spe)[i+1] = LVPS;
 	}
       }
 
@@ -980,16 +982,16 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 	if (remake_headfile==0){
 
 	  if (SO_switch==1){
-	    Spe_VNLE[0][spe][i] = dum0;
-	    Spe_VNLE[1][spe][i] = dum1;
-	    Spe_VPS_List[spe][i+1] = LVPS;
+	    openmx_radial_row3(&atomic->projector_energies,0,spe)[i] = dum0;
+	    openmx_radial_row3(&atomic->projector_energies,1,spe)[i] = dum1;
+	    openmx_atomic_projector_angular(atomic,spe)[i+1] = LVPS;
 	  }
 
 	  /* j-averaging for a scalar relativistic treatment */
 	  else if (SO_switch==0){
 
-	    Spe_VNLE[0][spe][i] = ( (double)(LVPS+1)*dum0+(double)LVPS*dum1 )/(double)(2*LVPS+1);
-	    Spe_VPS_List[spe][i+1] = LVPS;
+	    openmx_radial_row3(&atomic->projector_energies,0,spe)[i] = ( (double)(LVPS+1)*dum0+(double)LVPS*dum1 )/(double)(2*LVPS+1);
+	    openmx_atomic_projector_angular(atomic,spe)[i+1] = LVPS;
 	  }
 
 	}
@@ -999,7 +1001,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
       t = t + 2*LVPS + 1;
       if (maxL<LVPS) maxL = LVPS;
       if (2<=level_stdout && remake_headfile==0){
-	printf("<Read_VPS>  i=%2d  Spe_VPS_List=%2d\n",i,Spe_VPS_List[spe][i+1]);
+	printf("<Read_VPS>  i=%2d  Spe_VPS_List=%2d\n",i,openmx_atomic_projector_angular(atomic,spe)[i+1]);
       }
     }
     atomic->species.projector_components[spe] = t;
@@ -1086,7 +1088,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
           if ( atomic->species.relativistic[spe]==1 && SO_factor_flag==1 ){
             for (j=0; j<atomic->species.radial_projectors[spe]; j++){
 
-              LVPS = Spe_VPS_List[spe][j+1];
+              LVPS = openmx_atomic_projector_angular(atomic,spe)[j+1];
               dum0 = openmx_radial_row4(&atomic->projectors,0,spe,j)[i];
               dum1 = openmx_radial_row4(&atomic->projectors,1,spe,j)[i];
  
@@ -1102,7 +1104,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
           if ( atomic->species.relativistic[spe]==1 && SO_switch==0 ){
             for (j=0; j<atomic->species.radial_projectors[spe]; j++){
 
-              LVPS = Spe_VPS_List[spe][j+1];
+              LVPS = openmx_atomic_projector_angular(atomic,spe)[j+1];
               openmx_radial_row4(&atomic->projectors,0,spe,j)[i] = ( (double)(LVPS+1)*TmpVNL[0][j]
                                        +(double)LVPS*TmpVNL[1][j] )/( (double)(2*LVPS+1) );
 	    }
@@ -1153,11 +1155,11 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
           if (maxL<LVPS) maxL = LVPS;
 
           if (remake_headfile==0){
-	    Spe_VPS_List[spe][k] = LVPS;
+	    openmx_atomic_projector_angular(atomic,spe)[k] = LVPS;
 	  }
 
           if (2<=level_stdout && remake_headfile==0){
-            printf("<Read_VPS>  k=%2d  Spe_VPS_List=%2d\n",k,Spe_VPS_List[spe][k]);
+            printf("<Read_VPS>  k=%2d  Spe_VPS_List=%2d\n",k,openmx_atomic_projector_angular(atomic,spe)[k]);
 	  }
         }
       }
@@ -1209,9 +1211,9 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
         if ( (fp=input_find("<projection.energies")) != NULL ) {
 	  for (i=0; i<atomic->species.radial_projectors[spe]; i++){
 
-	    fscanf(fp,"%d %lf",&j,&Spe_VNLE[0][spe][i]);
+	    fscanf(fp,"%d %lf",&j,&openmx_radial_row3(&atomic->projector_energies,0,spe)[i]);
             if (2<=level_stdout){
-              printf("<Read_VPS>  i=%2d Spe_VNLE=%15.12f\n",j,Spe_VNLE[0][spe][i]); 
+              printf("<Read_VPS>  i=%2d Spe_VNLE=%15.12f\n",j,openmx_radial_row3(&atomic->projector_energies,0,spe)[i]);
 	    }
 	  }    
           if (!input_last("projection.energies>")) {

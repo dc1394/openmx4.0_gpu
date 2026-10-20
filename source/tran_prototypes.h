@@ -713,7 +713,7 @@ int TRAN_Check_Region(
                       );
 
 /* TRAN_Main_Analysis.c */
-void TRAN_Main_Analysis(MPI_Comm comm1, 
+void TRAN_Main_Analysis(const OpenMXAtomicViews *atomic, MPI_Comm comm1,
                         int argc, char *argv[], 
                         int Matomnum, int *M2G, 
                         int *GridN_Atom, 
@@ -725,7 +725,7 @@ void TRAN_Main_Analysis(MPI_Comm comm1,
 
 
 /* TRAN_Main_Analysis_NC.c */
-void TRAN_Main_Analysis_NC( MPI_Comm comm1, 
+void TRAN_Main_Analysis_NC(const OpenMXAtomicViews *atomic,  MPI_Comm comm1,
                             int argc, char *argv[], 
                             int Matomnum, int *M2G, 
                             int *GridN_Atom, 
@@ -808,3 +808,4 @@ void TRAN_Set_SurfOverlap_NC( MPI_Comm comm1,
                            double k3);
 /* until here by Y. Xiao for Noncollinear NEGF calculations */
 
+#include "openmx_core_atomic.h"

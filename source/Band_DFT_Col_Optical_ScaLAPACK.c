@@ -27,7 +27,7 @@ void solve_evp_complex_( int *n2, int *MaxN, dcomplex *Hs2, int *na_rows2_1, dou
 
 #define  measure_time  0
 
-double Band_DFT_Col_Optical_ScaLAPACK(
+double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -189,7 +189,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(
   n = 0;
   for (i=1; i<=atomnum; i++){
     wanA  = WhatSpecies[i];
-    n += Spe_Total_CNO[wanA];
+    n += atomic->species.contracted_orbitals[wanA];
   }
 
   fd_dist = (double*)malloc(sizeof(double)*n);
@@ -201,7 +201,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(
   TZ = 0.0;
   for (i=1; i<=atomnum; i++){
     wan = WhatSpecies[i];
-    TZ += Spe_Core_Charge[wan];
+    TZ += atomic->species.core_charge[wan];
   }
 
   /***********************************************
@@ -450,7 +450,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(
   /* YTL-start */
 
   /* Step (1) : calculate < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
-  Calc_NabraMatrixElements();
+  Calc_NabraMatrixElements(atomic);
 
   Initialize_optical();
 
@@ -758,14 +758,14 @@ double Band_DFT_Col_Optical_ScaLAPACK(
       for (AN=1; AN<=atomnum; AN++){
 	GA_AN = order_GA[AN];
 	wanA = WhatSpecies[GA_AN];
-	tnoA = Spe_Total_CNO[wanA];
+	tnoA = atomic->species.contracted_orbitals[wanA];
 	Anum = MP[GA_AN];
 
 	for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	  GB_AN = natn[GA_AN][LB_AN];
 	  Rn = ncn[GA_AN][LB_AN];
 	  wanB = WhatSpecies[GB_AN];
-	  tnoB = Spe_Total_CNO[wanB];
+	  tnoB = atomic->species.contracted_orbitals[wanB];
 	  Bnum = MP[GB_AN];
 
 	  l1 = atv_ijk[Rn][1];
@@ -812,14 +812,14 @@ double Band_DFT_Col_Optical_ScaLAPACK(
     for (AN=1; AN<=atomnum; AN++){
       GA_AN = order_GA[AN];
       wanA = WhatSpecies[GA_AN];
-      tnoA = Spe_Total_CNO[wanA];
+      tnoA = atomic->species.contracted_orbitals[wanA];
       Anum = MP[GA_AN];
 
       for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	GB_AN = natn[GA_AN][LB_AN];
 	Rn = ncn[GA_AN][LB_AN];
 	wanB = WhatSpecies[GB_AN];
-	tnoB = Spe_Total_CNO[wanB];
+	tnoB = atomic->species.contracted_orbitals[wanB];
 	Bnum = MP[GB_AN];
 
 	l1 = atv_ijk[Rn][1];
@@ -1455,14 +1455,14 @@ double Band_DFT_Col_Optical_ScaLAPACK(
       for (AN=1; AN<=atomnum; AN++){
 	GA_AN = order_GA[AN];
 	wanA = WhatSpecies[GA_AN];
-	tnoA = Spe_Total_CNO[wanA];
+	tnoA = atomic->species.contracted_orbitals[wanA];
 	Anum = MP[GA_AN];
 
 	for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	  GB_AN = natn[GA_AN][LB_AN];
 	  Rn = ncn[GA_AN][LB_AN];
 	  wanB = WhatSpecies[GB_AN];
-	  tnoB = Spe_Total_CNO[wanB];
+	  tnoB = atomic->species.contracted_orbitals[wanB];
 	  Bnum = MP[GB_AN];
 
 	  l1 = atv_ijk[Rn][1];
@@ -1506,14 +1506,14 @@ double Band_DFT_Col_Optical_ScaLAPACK(
       for (AN=1; AN<=atomnum; AN++){
 	GA_AN = order_GA[AN];
 	wanA = WhatSpecies[GA_AN];
-	tnoA = Spe_Total_CNO[wanA];
+	tnoA = atomic->species.contracted_orbitals[wanA];
 	Anum = MP[GA_AN];
 
 	for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	  GB_AN = natn[GA_AN][LB_AN];
 	  Rn = ncn[GA_AN][LB_AN];
 	  wanB = WhatSpecies[GB_AN];
-	  tnoB = Spe_Total_CNO[wanB];
+	  tnoB = atomic->species.contracted_orbitals[wanB];
 	  Bnum = MP[GB_AN];
 
 	  l1 = atv_ijk[Rn][1];

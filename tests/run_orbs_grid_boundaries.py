@@ -13,7 +13,7 @@ root = Path(__file__).resolve().parents[1]
 source = (root / 'source/Set_Orbitals_Grid.c').read_text()
 helpers = source[source.index('typedef struct { float hi, lo; } SOG_df;'):
                  source.index('#pragma acc routine seq\nstatic void SOG_point_eval_df')]
-prepare = source[source.index('int SOG_Device_Prepare(void)'):
+prepare = source[source.index('int SOG_Device_Prepare(const OpenMXAtomicViews *atomic)'):
                  source.index('\nconst char *SOG_Device_EvalPrecisionName')]
 code = r'''
 #include <assert.h>
@@ -58,15 +58,21 @@ code += r'''
 #undef malloc
 #undef free
 int main(void) {
+  OpenMXAtomicViews atomic={0};
+  atomic.pao_radii=(OpenMXRadialView2){rv,{1,6}};
+  atomic.orbitals=(OpenMXRadialView4){rw,{1,1,1,6}};
+  atomic.species.pao_mesh=Spe_Num_Mesh_PAO;atomic.species.basis_lmax=Spe_MaxL_Basis;
+  atomic.species.basis=nb;atomic.species.angular_channels=1;
+
   for (int failure = 1; failure <= 11; ++failure) {
     fail_at = failure; allocation = 0;
-    assert(!SOG_Device_Prepare()); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
+    assert(!SOG_Device_Prepare(&atomic)); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
     assert(live == 0);
   }
   fail_at = 0; allocation = 0; fail_device = 1;
-  assert(!SOG_Device_Prepare()); assert(live == 0); assert(!SOG_dev.ready);
+  assert(!SOG_Device_Prepare(&atomic)); assert(live == 0); assert(!SOG_dev.ready);
   fail_device = 0; allocation = 0;
-  assert(SOG_Device_Prepare()); assert(live == 0); assert(allocation == 11);
+  assert(SOG_Device_Prepare(&atomic)); assert(live == 0); assert(allocation == 11);
   float *radial = malloc(12 * sizeof(float));
   assert(radial); memcpy(radial, SOG_dev.rwd, 12 * sizeof(float));
   /* Use the actual production mesh constants and radial hi/lo table. */
@@ -96,11 +102,11 @@ int main(void) {
   eval_df = 0;
   for (int failure = 1; failure <= 8; ++failure) {
     fail_at = failure; allocation = 0;
-    assert(!SOG_Device_Prepare()); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
+    assert(!SOG_Device_Prepare(&atomic)); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
     assert(live == 0);
   }
   fail_at = 0; allocation = 0;
-  assert(SOG_Device_Prepare()); assert(live == 0); assert(allocation == 8);
+  assert(SOG_Device_Prepare(&atomic)); assert(live == 0); assert(allocation == 8);
   assert(SOG_dev.bytes < df_bytes);
   assert(!SOG_dev.rwd && !SOG_dev.mcd && !SOG_dev.spl);
   assert(SOG_dev.rv && SOG_dev.rwf && !SOG_dev.eval_df);
@@ -108,7 +114,7 @@ int main(void) {
   eval_df = 1;
   for (int enabled = 0; enabled < 3; ++enabled) {
     openmx_set_fp32_enabled(enabled % 2); allocation = 0;
-    assert(SOG_Device_Prepare()); assert(live == 0);
+    assert(SOG_Device_Prepare(&atomic)); assert(live == 0);
     assert(allocation == (enabled % 2 ? 11 : 8));
     assert(SOG_dev.eval_df == enabled % 2);
     assert((SOG_dev.rwd != NULL) == enabled % 2);

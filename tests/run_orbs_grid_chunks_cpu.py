@@ -15,7 +15,7 @@ root = Path(__file__).resolve().parents[1]
 source = (root / "source/Set_Orbitals_Grid.c").read_text()
 point = source[source.index("#pragma acc routine seq\nstatic void SOG_point_eval("):
                source.index("/* One launch evaluates every grid point of one atom")]
-prepare = source[source.index("int SOG_Device_Prepare(void)"):
+prepare = source[source.index("int SOG_Device_Prepare(const OpenMXAtomicViews *atomic)"):
                  source.index("\nconst char *SOG_Device_EvalPrecisionName")]
 chunk_start = source.index("static void SOG_Device_EvalPairChunk_Part(")
 chunk = source[chunk_start:source.index("\n}\n", chunk_start)+3]
@@ -38,7 +38,7 @@ static int SpeciesNum=1, TCpyCell=2, Ngrid2=5, Ngrid3=7;
 static int Spe_Num_Mesh_PAO[]={8}, Spe_MaxL_Basis[]={3};
 static int nb[]={2,1,1,1}, *Spe_Num_Basis[]={nb};
 static double rv[]={0.08,0.16,0.32,0.64,1.28,2.56,5.12,10.24};
-static double radial[5][8], *Spe_PAO_RV[]={rv};
+static double radial[5][8], flat_radial[4][2][8], *Spe_PAO_RV[]={rv};
 static double *s[]={radial[0],radial[1]}, *p[]={radial[2]}, *d[]={radial[3]}, *f[]={radial[4]};
 static double **angular[]={s,p,d,f}, ***Spe_PAO_RWF[]={angular};
 static double atv[3][4]={{0,0,0,0},{0,0.21,-0.17,0.08},{0,-0.30,0.19,0.12}};
@@ -77,7 +77,14 @@ int main(void)
   int cases=0,shift_changes=0;
   for(int r=0;r<5;r++) for(int m=0;m<8;m++)
     radial[r][m]=(r+1)*exp(-rv[m]*(0.31+0.07*r))*(1+0.1*sin(rv[m]+r));
-  assert(SOG_Device_Prepare());
+  OpenMXAtomicViews atomic={0};
+  atomic.pao_radii=(OpenMXRadialView2){rv,{1,8}};
+  atomic.orbitals=(OpenMXRadialView4){&flat_radial[0][0][0],{1,4,2,8}};
+  atomic.species.pao_mesh=Spe_Num_Mesh_PAO;atomic.species.basis_lmax=Spe_MaxL_Basis;
+  atomic.species.basis=nb;atomic.species.angular_channels=4;
+  for(int l=0;l<4;l++) for(int m=0;m<nb[l];m++)
+    memcpy(flat_radial[l][m],Spe_PAO_RWF[0][l][m],sizeof(flat_radial[l][m]));
+  assert(SOG_Device_Prepare(&atomic));
   for(int i=0;i<GPREFIX+ROWS+7;i++) { gla[i]=0; cla[i]=0; }
   for(int i=0;i<ROWS;i++) { gla[GPREFIX+i]=(i*53)%557-278; cla[GPREFIX+i]=i%3; }
   for(int i=0;i<NPREFIX+POINTS+3;i++) nc[i]=0;
@@ -123,7 +130,7 @@ int main(void)
      while disabled and restoring them when a later input enables FP32. */
   for(int enabled=0;enabled<3;enabled++) {
     openmx_set_fp32_enabled(enabled%2);
-    assert(SOG_Device_Prepare());
+    assert(SOG_Device_Prepare(&atomic));
     assert(SOG_dev.eval_df==enabled%2);
     assert((SOG_dev.rwd!=NULL)==enabled%2);
     assert((SOG_dev.mcd!=NULL)==enabled%2);

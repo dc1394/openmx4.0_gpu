@@ -38,7 +38,7 @@ static double time_step2;
 /*----------------------------------------------------------------------
   Initialization of EXX for OpenMX
 ----------------------------------------------------------------------*/
-void EXX_on_OpenMX_Init(MPI_Comm comm)
+void EXX_on_OpenMX_Init(const OpenMXAtomicViews *atomic, MPI_Comm comm)
 {
   int i, j, l, m, k, system_type, myrank, nproc;
 
@@ -139,14 +139,14 @@ void EXX_on_OpenMX_Init(MPI_Comm comm)
   for (i=0; i<natom; i++) { atom_sp[i] = WhatSpecies[i+1]; }
 
   /* cut-off radii */
-  for (i=0; i<nspec; i++) { spec_rc[i] = Spe_Atom_Cut1[i]; }
+  for (i=0; i<nspec; i++) { spec_rc[i] = atomic->species.cutoff[i]; }
 
   /* number of basis */
   nbmax = 0;
   for (i=0; i<nspec; i++) {
     spec_nb[i] = 0;
-    for (l=0; l<=Spe_MaxL_Basis[i]; l++) {
-      mul = Spe_Num_Basis[i][l];
+    for (l=0; l<=atomic->species.basis_lmax[i]; l++) {
+      mul = atomic->species.basis[(size_t)(i)*atomic->species.angular_channels+(l)];
       spec_nb[i] += mul * (2*l+1);
     }
     if (nbmax<spec_nb[i]) { nbmax = spec_nb[i]; }
@@ -165,9 +165,9 @@ void EXX_on_OpenMX_Init(MPI_Comm comm)
   pao_fr = (double****)malloc(sizeof(double***)*nspec);
   pao_xr = (double**)malloc(sizeof(double*)*nspec);
   for (i=0; i<nspec; i++) { 
-    lmax  = Spe_PAO_LMAX[i]+1;
-    mul   = Spe_PAO_Mul[i];
-    nmesh = Spe_Num_Mesh_PAO[i];
+    lmax  = atomic->species.pao_lmax[i]+1;
+    mul   = atomic->species.pao_multiplicity[i];
+    nmesh = atomic->species.pao_mesh[i];
     pao_fr[i] = (double***)malloc(sizeof(double**)*lmax);
     for (l=0; l<lmax; l++) {
       nb = mul*(2*l+1);
@@ -182,8 +182,8 @@ void EXX_on_OpenMX_Init(MPI_Comm comm)
   /* rotating angular momentum quantum numbers */
   for (i=0; i<nspec; i++) {
     j = 0;
-    for (l=0; l<=Spe_MaxL_Basis[i]; l++) {
-      nmul = Spe_Num_Basis[i][l];
+    for (l=0; l<=atomic->species.basis_lmax[i]; l++) {
+      nmul = atomic->species.basis[(size_t)(i)*atomic->species.angular_channels+(l)];
       nm = 2*l+1;
       for (mul=0; mul<nmul; mul++) {
         for (m=0; m<nm; m++) {
@@ -222,22 +222,22 @@ void EXX_on_OpenMX_Init(MPI_Comm comm)
         }
       }
     }
-    spec_nmesh[i] = Spe_Num_Mesh_PAO[i];
+    spec_nmesh[i] = atomic->species.pao_mesh[i];
     
-    lmax  = Spe_PAO_LMAX[i]+1;
-    mul   = Spe_PAO_Mul[i];
-    nmesh = Spe_Num_Mesh_PAO[i];
+    lmax  = atomic->species.pao_lmax[i]+1;
+    mul   = atomic->species.pao_multiplicity[i];
+    nmesh = atomic->species.pao_mesh[i];
  
     for (l=0; l<lmax; l++) {
       for (m=0; m<mul; m++) {
         for (k=0; k<nmesh; k++) {
-          pao_fr[i][l][m][k] = Spe_PAO_RWF[i][l][m][k];
+          pao_fr[i][l][m][k] = openmx_radial_row4(&atomic->orbitals,i,l,m)[k];
         }
       }
     }
 
     for (k=0; k<nmesh; k++) {
-      pao_xr[i][k] = Spe_PAO_RV[i][k];
+      pao_xr[i][k] = openmx_radial_row2(&atomic->pao_radii,i)[k];
     } 
   }
 
@@ -319,11 +319,11 @@ void EXX_on_OpenMX_Init(MPI_Comm comm)
       for (iep=0; iep<nep; iep++) {
         Gc_AN = exx_atm1[iep]+1;
         Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
+        tno0 = atomic->species.orbitals[Cwan];
 
 	Gh_AN = exx_atm2[iep]+1;
 	Hwan = WhatSpecies[Gh_AN];
-	tno1 = Spe_Total_NO[Hwan];
+	tno1 = atomic->species.orbitals[Hwan];
 
         g_exx_DM[m][k][iep] = (dcomplex**)malloc(sizeof(dcomplex*)*tno0); 
         for (i=0; i<tno0; i++){
@@ -382,8 +382,8 @@ void EXX_on_OpenMX_Init(MPI_Comm comm)
   free(spec_nmesh);
   
   for (i=0; i<nspec; i++) { 
-    lmax  = Spe_PAO_LMAX[i]+1;
-    mul   = Spe_PAO_Mul[i];
+    lmax  = atomic->species.pao_lmax[i]+1;
+    mul   = atomic->species.pao_multiplicity[i];
     for (l=0; l<lmax; l++) {
       for (m=0; m<mul; m++) {
         free(pao_fr[i][l][m]);

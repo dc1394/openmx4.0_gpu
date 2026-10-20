@@ -80,7 +80,7 @@ static void TRAN_Calc_Orb2Real(int NUM_c, int *MP, double **JOrb, double *JReal,
 
 
 
-static void TRAN_Current_dOrb(int NUM_c, int *MP, double ***JSym, double **JASym, double **JReal)
+static void TRAN_Current_dOrb(const OpenMXAtomicViews *atomic, int NUM_c, int *MP, double ***JSym, double **JASym, double **JReal)
 {
   int myid;
   int Mc_AN, Gc_AN;
@@ -137,12 +137,12 @@ static void TRAN_Current_dOrb(int NUM_c, int *MP, double ***JSym, double **JASym
         y = Cxyz[2] + atv[Rn][2] - Gxyz[Gc_AN][2];
         z = Cxyz[3] + atv[Rn][3] - Gxyz[Gc_AN][3];
 
-        Get_dOrbitals(WhatSpecies[Gc_AN], x, y, z, dorbs0);
+        Get_dOrbitals(atomic, WhatSpecies[Gc_AN], x, y, z, dorbs0);
 
         if (G2ID[Gh_AN] == myid){
           for (iaxis = 0; iaxis < 3; iaxis++){
-            for (i = 0; i < Spe_Total_CNO[WhatSpecies[Gc_AN]]; i++){
-              for (j = 0; j < Spe_Total_CNO[WhatSpecies[Gh_AN]]; j++){
+            for (i = 0; i < atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]]; i++){
+              for (j = 0; j < atomic->species.contracted_orbitals[WhatSpecies[Gh_AN]]; j++){
                  JReal[iaxis][GN] +=
                   + JASym[MP[Gc_AN] + i - 1][MP[Gh_AN] + j - 1]
                   * dorbs0[iaxis + 1][i] * Orbs_Grid[Mh_AN][Nh][j]
@@ -154,8 +154,8 @@ static void TRAN_Current_dOrb(int NUM_c, int *MP, double ***JSym, double **JASym
         }/*if (G2ID[Gh_AN] == myid)*/
         else{
           for (iaxis = 0; iaxis < 3; iaxis++){
-            for (i = 0; i < Spe_Total_CNO[WhatSpecies[Gc_AN]]; i++){
-              for (j = 0; j < Spe_Total_CNO[WhatSpecies[Gh_AN]]; j++){
+            for (i = 0; i < atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]]; i++){
+              for (j = 0; j < atomic->species.contracted_orbitals[WhatSpecies[Gh_AN]]; j++){
                 JReal[iaxis][GN] +=
                   + JASym[MP[Gc_AN] + i - 1][MP[Gh_AN] + j - 1]
                   * dorbs0[iaxis + 1][i] * Orbs_Grid_FNAN[Mc_AN][h_AN][Nog][j]
@@ -1254,7 +1254,7 @@ void TRAN_Output_AveCdensity(double ***CDensity)
   }/* if (myid == Host_ID) */
 }
 
-void TRAN_CDen_Main(
+void TRAN_CDen_Main(const OpenMXAtomicViews *atomic,
   int NUM_c,
   int *MP,
   double ****JLocSym,
@@ -1318,7 +1318,7 @@ void TRAN_CDen_Main(
     TRAN_Calc_Orb2Real(NUM_c, MP, Jmat[ispin][0], RJmat[0], SCC);
     TRAN_Calc_Orb2Real(NUM_c, MP, Jmat[ispin][1], RJmat[1], SCC);
 
-    TRAN_Current_dOrb(NUM_c, MP, JLocSym[ispin], JLocASym[ispin], CDensity[ispin]);
+    TRAN_Current_dOrb(atomic, NUM_c, MP, JLocSym[ispin], JLocASym[ispin], CDensity[ispin]);
     TRAN_Current_NonLoc(RRho, CDensity[ispin]);
 
     TRAN_Integrate1D(RJmat, Jbound, CDensity[ispin][0]);

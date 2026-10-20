@@ -23,6 +23,7 @@
 #include <dirent.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_atomic.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "tran_prototypes.h"
@@ -677,6 +678,8 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
 
   init_alloc_first();
   CompTime[myid0][1] = readfile(argv,core);
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   MPI_Barrier(mpi_comm_level1);
 
   /* initialize PrintMemory routine */
@@ -705,7 +708,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
     if (ML_flag==1 && myid0==Host_ID) Get_VSZ(MD_iter);  
 
     if (Solver==4) {
-      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, Spe_Atom_Cut1,
+      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, atomic->species.cutoff,
                            Ngrid1, Grid_Origin, Gxyz, tv, gtv, rgtv, Left_tv, Right_tv );
 
       /* output: TRAN_region[], TRAN_grid_bound */
@@ -758,15 +761,15 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
   if (Solver == 4 && TRAN_analysis == 1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */
-    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(0);
+    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(atomic, 0);
 
     if (SpinP_switch == 3) {
-      TRAN_Main_Analysis_NC(mpi_comm_level1, argc, argv, Matomnum, M2G,
+      TRAN_Main_Analysis_NC(atomic, mpi_comm_level1, argc, argv, Matomnum, M2G,
         GridN_Atom, GridListAtom, CellListAtom,
         Orbs_Grid, TNumGrid);
     }
     else {
-      TRAN_Main_Analysis(mpi_comm_level1, argc, argv, Matomnum, M2G,
+      TRAN_Main_Analysis(atomic, mpi_comm_level1, argc, argv, Matomnum, M2G,
         GridN_Atom, GridListAtom, CellListAtom,
         Orbs_Grid, TNumGrid);
     }
@@ -777,14 +780,14 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
                   Making of output files
   ****************************************************/
 
-  CompTime[myid0][20] = OutData(argv[1]);
+  CompTime[myid0][20] = OutData(atomic, argv[1]);
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File("write",argv[1]);
+  if (HS_fileout==1) SCF2File(atomic, "write",argv[1]);
 
   /* elapsed time */
 

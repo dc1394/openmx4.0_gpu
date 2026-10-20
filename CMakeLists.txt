@@ -135,6 +135,9 @@ if(BUILD_TESTING)
   add_test(NAME atomic-hartree-interpolation COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_atomic_hartree_cpu.py")
   set_tests_properties(atomic-hartree-interpolation PROPERTIES TIMEOUT 120)
+  add_test(NAME orbital-evaluation COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_orbital_evaluation_cpu.py" "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(orbital-evaluation PROPERTIES TIMEOUT 180 LABELS "unit;orbitals")
   add_test(NAME dftd3-interpolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_dftd3_interpolation_cpu.py")
   set(_dense_kernel_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_dense_workers_cpu.py")
@@ -185,6 +188,15 @@ if(BUILD_TESTING)
       TIMEOUT 200 PROCESSORS 4)
   endif()
   if(_backend STREQUAL "CUDA")
+    add_test(NAME orbital-spline-boundaries COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/run_orbital_spline_cpu.py")
+    set_tests_properties(orbital-spline-boundaries PROPERTIES
+      ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
+    add_test(NAME orbital-device-tables COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/run_orbs_grid_boundaries.py")
+    add_test(NAME orbital-compact-gathers COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/run_orbs_grid_chunks_cpu.py")
+    set_tests_properties(orbital-device-tables orbital-compact-gathers PROPERTIES TIMEOUT 120)
     add_test(NAME force-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force4b_archived_cpu.py")
     add_test(NAME vna-archive-recovery

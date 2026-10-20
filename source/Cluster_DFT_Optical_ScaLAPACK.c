@@ -31,7 +31,7 @@ void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int 
 
 
 
-static double Cluster_collinear_Optical(
+static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
 				char *mode,
 				int SCF_iter,
 				int SpinP_switch,
@@ -63,7 +63,7 @@ static double Cluster_collinear_Optical(
 
 
 
-static double Cluster_non_collinear_Optical(
+static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -76,7 +76,7 @@ static double Cluster_non_collinear_Optical(
 
 
 
-double Cluster_DFT_Optical_ScaLAPACK(
+double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -116,7 +116,7 @@ double Cluster_DFT_Optical_ScaLAPACK(
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && SO_switch==0 ){
 
-    time0 = Cluster_collinear_Optical( mode,SCF_iter,SpinP_switch,Cluster_ko,
+    time0 = Cluster_collinear_Optical(atomic,  mode,SCF_iter,SpinP_switch,Cluster_ko,
 				       nh,  OLP0,CDM,EDM,exx,exx_CDM,Uexx,Eele0,Eele1,
 				       myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
 				       Comm_World_StartID1,MPI_CommWD1,is2,ie2,
@@ -138,7 +138,7 @@ double Cluster_DFT_Optical_ScaLAPACK(
   ****************************************************/
 
   else if (SpinP_switch==3){
-    time0 = Cluster_non_collinear_Optical(mode,SCF_iter,SpinP_switch,nh,ImNL,OLP0,CDM,EDM,Eele0,Eele1);
+    time0 = Cluster_non_collinear_Optical(atomic, mode,SCF_iter,SpinP_switch,nh,ImNL,OLP0,CDM,EDM,Eele0,Eele1);
   }
 
   return time0;
@@ -147,7 +147,7 @@ double Cluster_DFT_Optical_ScaLAPACK(
 
 
 
-static double Cluster_collinear_Optical(
+static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
 				char *mode,
 				int SCF_iter,
 				int SpinP_switch,
@@ -254,7 +254,7 @@ static double Cluster_collinear_Optical(
   n = 0;
   for (i=1; i<=atomnum; i++){
     wanA  = WhatSpecies[i];
-    n = n + Spe_Total_CNO[wanA];
+    n = n + atomic->species.contracted_orbitals[wanA];
   }
   n2 = n + 2;
 
@@ -276,7 +276,7 @@ static double Cluster_collinear_Optical(
   /* YTL-start */
 
   /* Step (1) : calculate < phi( atom a, orbital alpha ) | nabla operator | phi( atom b, orbital beta ) > */
-  Calc_NabraMatrixElements();
+  Calc_NabraMatrixElements(atomic);
 
   Set_MPIworld_for_optical(myid0,numprocs0); /* MPI for bands */
   Initialize_optical();
@@ -311,7 +311,7 @@ static double Cluster_collinear_Optical(
   TZ = 0.0;
   for (i=1; i<=atomnum; i++){
     wan = WhatSpecies[i];
-    TZ = TZ + Spe_Core_Charge[wan];
+    TZ = TZ + atomic->species.core_charge[wan];
   }
 
   /****************************************************
@@ -969,7 +969,7 @@ static double Cluster_collinear_Optical(
 
 
 
-static double Cluster_non_collinear_Optical(
+static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
 				    char *mode,
 				    int SCF_iter,
 				    int SpinP_switch,
@@ -1049,7 +1049,7 @@ static double Cluster_non_collinear_Optical(
   n = 0;
   for (i=1; i<=atomnum; i++){
     wanA  = WhatSpecies[i];
-    n  = n + Spe_Total_CNO[wanA];
+    n  = n + atomic->species.contracted_orbitals[wanA];
   }
   n2 = 2*n + 2;
 
@@ -1091,7 +1091,7 @@ static double Cluster_non_collinear_Optical(
 */
   /* YTL-start */
   /* Step (1) : calculate < phi( atom a, orbital alpha ) | nabla operator | phi( atom b, orbital beta ) > */
-  Calc_NabraMatrixElements();
+  Calc_NabraMatrixElements(atomic);
 
   Set_MPIworld_for_optical(myid,numprocs); /* MPI for bands */
   Initialize_optical();
@@ -1123,7 +1123,7 @@ static double Cluster_non_collinear_Optical(
   TZ = 0.0;
   for (i=1; i<=atomnum; i++){
     wan = WhatSpecies[i];
-    TZ = TZ + Spe_Core_Charge[wan];
+    TZ = TZ + atomic->species.core_charge[wan];
   }
 
   /****************************************************

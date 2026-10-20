@@ -1561,7 +1561,7 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
     My_EH0_threads = (double*)malloc(sizeof(double)*Nthrds0);
     for (Nloop=0; Nloop<Nthrds0; Nloop++) My_EH0_threads[Nloop] = 0.0;
 
-#pragma omp parallel shared(atomic,time_per_atom,RMI1,EH0_scaling,natn,FNAN,WhatSpecies,M2G,Matomnum,My_EH0_threads,DecEscc,Energy_Decomposition_flag,List_YOUSO,Spe_Num_Basis,SpinP_switch) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,wan1,h_AN,Gh_AN,wan2,factor,Etime_atom,TmpEH0)
+#pragma omp parallel shared(atomic,time_per_atom,RMI1,EH0_scaling,natn,FNAN,WhatSpecies,M2G,Matomnum,My_EH0_threads,DecEscc,Energy_Decomposition_flag,List_YOUSO,SpinP_switch) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,wan1,h_AN,Gh_AN,wan2,factor,Etime_atom,TmpEH0)
     {
 
       int l,p;
