@@ -17,6 +17,7 @@
 #include <complex.h>
 #include "openmx_common.h"
 #include "openmx_reciprocal.h"
+#include "openmx_atomic.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "openmx_gpu_device.h"
@@ -25,13 +26,13 @@
 
 static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
-static void Read_PAO(int spe, char *file);
+static void Read_PAO(OpenMXCoreContext *core, int spe, char *file);
 static void Read_VPS(OpenMXCoreContext *core, int spe, char *file);
 static void ReadPara_DFT(OpenMXCoreContext *core);
 static void Set_BasisPara();
 static void Set_Comp2Real();
 static void Check_InitDensity();
-static double V_Hart_atom(int Gensi, double R);
+static double V_Hart_atom(const OpenMXAtomicViews *atomic, int Gensi, double R);
 static void Inverse(int n, double **a, double **ia);
 static void output_structures();
 
@@ -529,7 +530,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_PAO,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_PAO(spe,FN_PAO);
+      Read_PAO(core,spe,FN_PAO);
       fclose(fp);
     }
     else{
@@ -554,7 +555,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_PAO,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_PAO(spe,FN_PAO);
+      Read_PAO(core,spe,FN_PAO);
       fclose(fp);
 
       if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){  
@@ -674,13 +675,13 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
   /*
   {
     double r,sum=0.0,dx;
-    dx = Spe_VPS_XV[0][1] - Spe_VPS_XV[0][0];
+    dx = openmx_radial_row2(&atomic->vps_log_radii,0)[1] - openmx_radial_row2(&atomic->vps_log_radii,0)[0];
     for (i=0; i<Spe_Num_Mesh_VPS[0]; i++){
-      r = Spe_VPS_RV[0][i];
+      r = openmx_radial_row2(&atomic->vps_radii,0)[i];
       printf("%15.12f %15.12f %15.12f %15.12f\n",
-         Spe_VPS_RV[0][i],Nonlocal_RadialF(0,0,0,r),Spe_VNL[0][0][0][i],RadialF(0,0,0,r));
+         openmx_radial_row2(&atomic->vps_radii,0)[i],Nonlocal_RadialF(0,0,0,r),openmx_radial_row4(&atomic->projectors,0,0,0)[i],RadialF(0,0,0,r));
 
-      sum += Spe_VNL[0][0][0][i]*RadialF(0,0,0,r)*r*r*r*dx;
+      sum += openmx_radial_row4(&atomic->projectors,0,0,0)[i]*RadialF(0,0,0,r)*r*r*r*dx;
 
       //sum += RadialF(0,0,0,r)*RadialF(0,0,0,r)*r*r*r*dx;
 
@@ -694,8 +695,10 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
 
 }
 
-void Read_PAO(int spe, char *file)
+void Read_PAO(OpenMXCoreContext *core, int spe, char *file)
 {
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   FILE *fp;
   char file1[YOUSO10],file2[YOUSO10],file3[YOUSO10];
   int i,j,L;
@@ -714,39 +717,39 @@ void Read_PAO(int spe, char *file)
   input_double("AtomSpecies",&dum,0.0);
 
   if (1.0e-15<dum && dum<1.0) 
-    Spe_WhatAtom[spe] = 1;
+    atomic->species.atomic_number[spe] = 1;
   else 
-    Spe_WhatAtom[spe] = (int)dum; 
+    atomic->species.atomic_number[spe] = (int)dum;
 
   /* dv_EH0 temporaliry is used. */
   dv_EH0[spe] = dum;
   
-  input_int("grid.num.output",&Spe_Num_Mesh_PAO[spe],0);
+  input_int("grid.num.output",&atomic->species.pao_mesh[spe],0);
 
   if (2<=level_stdout){
-    printf("<Read_PAO>  spe=%2d  AtomNum=%2d\n",spe,Spe_WhatAtom[spe]);
-    printf("<Read_PAO>  spe=%2d  Spe_Num_Mesh_PAO=%2d\n",spe,Spe_Num_Mesh_PAO[spe]);
+    printf("<Read_PAO>  spe=%2d  AtomNum=%2d\n",spe,atomic->species.atomic_number[spe]);
+    printf("<Read_PAO>  spe=%2d  Spe_Num_Mesh_PAO=%2d\n",spe,atomic->species.pao_mesh[spe]);
   }
 
-  if (List_YOUSO[21]<=(Spe_Num_Mesh_PAO[spe]+2))
-    List_YOUSO[21] = Spe_Num_Mesh_PAO[spe] + 2;
+  if (List_YOUSO[21]<=(atomic->species.pao_mesh[spe]+2))
+    List_YOUSO[21] = atomic->species.pao_mesh[spe] + 2;
 
   /* density */
 
   if (remake_headfile==0){
     if ( (fp=input_find("<valence.charge.density")) != NULL ) {
-      for (i=0; i<Spe_Num_Mesh_PAO[spe]; i++){
+      for (i=0; i<atomic->species.pao_mesh[spe]; i++){
 	for (j=0; j<=2; j++){
 	  if (fscanf(fp,"%lf",&dum)==EOF){
 	    printf("format error of valence.charge.density in %s\n",file);
 	    exit(0);
 	  }
 	  else{
-	    if      (j==0) Spe_PAO_XV[spe][i] = dum;
-	    else if (j==1) Spe_PAO_RV[spe][i] = dum;
+	    if      (j==0) openmx_radial_row2(&atomic->pao_log_radii,spe)[i] = dum;
+	    else if (j==1) openmx_radial_row2(&atomic->pao_radii,spe)[i] = dum;
 	    else if (j==2){
-              Spe_Atomic_Den[spe][i+1]  = dum;
-              Spe_Atomic_Den2[spe][i+1] = dum;
+              openmx_radial_row2(&atomic->density,spe)[i+1]  = dum;
+              openmx_radial_row2(&atomic->density_backup,spe)[i+1] = dum;
 	    }
 	  }
 	}
@@ -761,43 +764,43 @@ void Read_PAO(int spe, char *file)
 
   /* atomic orbitals */
 
-  input_double("radial.cutoff.pao",&Spe_Atom_Cut1[spe],(double)5.0);
-  input_int("PAO.Lmax",&Spe_PAO_LMAX[spe],0);
-  input_int("PAO.Mul",&Spe_PAO_Mul[spe],0);
+  input_double("radial.cutoff.pao",&atomic->species.cutoff[spe],(double)5.0);
+  input_int("PAO.Lmax",&atomic->species.pao_lmax[spe],0);
+  input_int("PAO.Mul",&atomic->species.pao_multiplicity[spe],0);
 
   /* Spe_Atom_Cut1[spe] = 4.0; */
 
-  if (List_YOUSO[25]<=(Spe_PAO_LMAX[spe]+1)) List_YOUSO[25] = Spe_PAO_LMAX[spe] + 1;
-  if (List_YOUSO[24]<=Spe_PAO_Mul[spe])      List_YOUSO[24] = Spe_PAO_Mul[spe];
+  if (List_YOUSO[25]<=(atomic->species.pao_lmax[spe]+1)) List_YOUSO[25] = atomic->species.pao_lmax[spe] + 1;
+  if (List_YOUSO[24]<=atomic->species.pao_multiplicity[spe])      List_YOUSO[24] = atomic->species.pao_multiplicity[spe];
 
-  if ((Spe_PAO_LMAX[spe]<Spe_MaxL_Basis[spe]) && remake_headfile==0){
+  if ((atomic->species.pao_lmax[spe]<atomic->species.basis_lmax[spe]) && remake_headfile==0){
     printf("Not enough data for PAO (%s)\n",file);
     exit(0);
   }
-  for (L=0; L<=Spe_MaxL_Basis[spe]; L++){
-    if ((Spe_PAO_Mul[spe]<Spe_Num_Basis[spe][L]) && remake_headfile==0){
+  for (L=0; L<=atomic->species.basis_lmax[spe]; L++){
+    if ((atomic->species.pao_multiplicity[spe]<Spe_Num_Basis[spe][L]) && remake_headfile==0){
       printf("Not enough data for PAO (%s)\n",file);
       exit(0);
     }
   }
  
   if (remake_headfile==0){
-    for (L=0; L<=Spe_PAO_LMAX[spe]; L++){
+    for (L=0; L<=atomic->species.pao_lmax[spe]; L++){
       sprintf(file1,"<pseudo.atomic.orbitals.L=%i",L);
       sprintf(file2,"pseudo.atomic.orbitals.L=%i>",L);
       if ( (fp=input_find(file1)) != NULL ) {
-	for (i=0; i<Spe_Num_Mesh_PAO[spe]; i++){
-	  for (j=0; j<=(Spe_PAO_Mul[spe]+1); j++){
+	for (i=0; i<atomic->species.pao_mesh[spe]; i++){
+	  for (j=0; j<=(atomic->species.pao_multiplicity[spe]+1); j++){
 	    if (fscanf(fp,"%lf",&dum)==EOF){
 	      printf("File error in pseudo.atomic.orbitals.L=%i\n",L);
 	    }
 	    else{
 	      if (j==0)
-		Spe_PAO_XV[spe][i] = dum;
+		openmx_radial_row2(&atomic->pao_log_radii,spe)[i] = dum;
 	      else if (j==1)
-		Spe_PAO_RV[spe][i] = dum;
+		openmx_radial_row2(&atomic->pao_radii,spe)[i] = dum;
 	      else
-		Spe_PAO_RWF[spe][L][j-2][i] = dum;
+		openmx_radial_row4(&atomic->orbitals,spe,L,j-2)[i] = dum;
 	    }
 	  }
 	}
@@ -826,8 +829,8 @@ void Read_PAO(int spe, char *file)
 
     if ( (fp=input_find("Lmax=")) != NULL ) {
 
-      for (l=0; l<=Spe_PAO_LMAX[spe]; l++){
-	for (mu=0; mu<Spe_PAO_Mul[spe]; mu++){
+      for (l=0; l<=atomic->species.pao_lmax[spe]; l++){
+	for (mu=0; mu<atomic->species.pao_multiplicity[spe]; mu++){
 	  fscanf(fp,"%s %s %d %d %lf",char1,char2,&i,&j,&val);
           if (i==L && j==0){
             core_hole_state_ev = val;            
@@ -848,6 +851,8 @@ void Read_PAO(int spe, char *file)
 
 void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 {
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   FILE *fp;
   int m,n,k,t,i,j,l,L,ii,jj,NVPS,LVPS,tmp0,maxL,po,p;
   int number_vps,local_part_vps,charge_pcc_calc;
@@ -909,40 +914,40 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
   else if (dv_EH0[spe]!=dum0 && tmp0==0){
 
     /* set zero */ 
-    for (i=0; i<Spe_Num_Mesh_PAO[spe]; i++){
-      Spe_Atomic_Den[spe][i+1]  = 0.0;   
-      Spe_Atomic_Den2[spe][i+1] = 0.0;   
+    for (i=0; i<atomic->species.pao_mesh[spe]; i++){
+      openmx_radial_row2(&atomic->density,spe)[i+1]  = 0.0;
+      openmx_radial_row2(&atomic->density_backup,spe)[i+1] = 0.0;
     }
 
-    Spe_WhatAtom[spe] = 0;
+    atomic->species.atomic_number[spe] = 0;
     dv_EH0[spe] = 0;
   }
 
   input_double("total.electron",&te,(double)dum0);
   input_double("valence.electron",&ve,(double)0.0);
-  Spe_Core_Charge[spe] = ve + dum0 - te;
+  atomic->species.core_charge[spe] = ve + dum0 - te;
 
   if (Number_of_Electrons_Species_flag==1){
 
-    if (Spe_Core_Charge[spe]!=0.0)
-      charge_factor = Number_of_Electrons_Species[spe]/Spe_Core_Charge[spe];
+    if (atomic->species.core_charge[spe]!=0.0)
+      charge_factor = atomic->species.electrons[spe]/atomic->species.core_charge[spe];
     else 
       charge_factor = 1.0;
 
-    Spe_Core_Charge[spe] = Number_of_Electrons_Species[spe]; 
+    atomic->species.core_charge[spe] = atomic->species.electrons[spe];
   }
 
-  input_int("grid.num.output",&Spe_Num_Mesh_VPS[spe],0);
+  input_int("grid.num.output",&atomic->species.vps_mesh[spe],0);
 
-  if (List_YOUSO[22]<=(Spe_Num_Mesh_VPS[spe]+2)){
-    List_YOUSO[22] = Spe_Num_Mesh_VPS[spe] + 2;
+  if (List_YOUSO[22]<=(atomic->species.vps_mesh[spe]+2)){
+    List_YOUSO[22] = atomic->species.vps_mesh[spe] + 2;
   }
 
   /**************************************************
       check j-dependency 
   **************************************************/
 
-  input_logical("j.dependent.pseudo.potentials",&VPS_j_dependency[spe],0);
+  input_logical("j.dependent.pseudo.potentials",&atomic->species.relativistic[spe],0);
 
   /**************************************************
        a new format from adpack1.2 and abred1.3
@@ -951,17 +956,17 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
   if ( (fp=input_find("<project.energies")) != NULL ){
 
     if (2<=level_stdout){
-      printf("<Read_VPS>  VPS of %s was a format of ADPACK1.7\n",SpeVPS[spe]);
+      printf("<Read_VPS>  VPS of %s was a format of ADPACK1.7\n",atomic->species.potential_file[spe]);
     }
 
-    fscanf(fp,"%d",&Spe_Num_RVPS[spe]);
+    fscanf(fp,"%d",&atomic->species.radial_projectors[spe]);
     t = 0;
     maxL = 0;
 
-    for (i=0; i<Spe_Num_RVPS[spe]; i++){
+    for (i=0; i<atomic->species.radial_projectors[spe]; i++){
 
       /* l-dependent */
-      if (VPS_j_dependency[spe]==0){
+      if (atomic->species.relativistic[spe]==0){
 	fscanf(fp,"%d %lf",&LVPS,&dum0);
 	if (remake_headfile==0){
 	  Spe_VNLE[0][spe][i] = dum0;
@@ -970,7 +975,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
       }
 
       /* j-dependent */
-      else if (VPS_j_dependency[spe]==1){
+      else if (atomic->species.relativistic[spe]==1){
 	fscanf(fp,"%d %lf %lf",&LVPS,&dum0,&dum1);
 	if (remake_headfile==0){
 
@@ -997,7 +1002,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 	printf("<Read_VPS>  i=%2d  Spe_VPS_List=%2d\n",i,Spe_VPS_List[spe][i+1]);
       }
     }
-    Spe_Total_VPS_Pro[spe] = t; 
+    atomic->species.projector_components[spe] = t;
 
     if (List_YOUSO[30]<=maxL){
       List_YOUSO[30] = maxL + 2;
@@ -1006,23 +1011,23 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
       List_YOUSO[30] = 2;
     }
 
-    if (List_YOUSO[19]<=Spe_Num_RVPS[spe]){
-      List_YOUSO[19] = Spe_Num_RVPS[spe] + 2; 
+    if (List_YOUSO[19]<=atomic->species.radial_projectors[spe]){
+      List_YOUSO[19] = atomic->species.radial_projectors[spe] + 2;
     }
     if (List_YOUSO[19]==0){
       List_YOUSO[19] = 3;
     }
 
-    if (List_YOUSO[20]<=Spe_Total_VPS_Pro[spe]){
-      List_YOUSO[20] = Spe_Total_VPS_Pro[spe] + 2;
+    if (List_YOUSO[20]<=atomic->species.projector_components[spe]){
+      List_YOUSO[20] = atomic->species.projector_components[spe] + 2;
     }
     if (List_YOUSO[20]==0){
       List_YOUSO[20] = 3;
     }
 
     if (2<=level_stdout){
-      printf("<Read_VPS>  spe=%2d  Spe_Total_VPS_Pro=%2d\n",spe,Spe_Total_VPS_Pro[spe]);
-      printf("<Read_VPS>  spe=%2d  Spe_Num_RVPS=%2d\n",spe,Spe_Num_RVPS[spe]);
+      printf("<Read_VPS>  spe=%2d  Spe_Total_VPS_Pro=%2d\n",spe,atomic->species.projector_components[spe]);
+      printf("<Read_VPS>  spe=%2d  Spe_Num_RVPS=%2d\n",spe,atomic->species.radial_projectors[spe]);
     }
 
     if (!input_last("project.energies>")){
@@ -1036,9 +1041,9 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 
     if (remake_headfile==0){
       if ( (fp=input_find("<Pseudo.Potentials")) != NULL ){
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
+        for (i=0; i<atomic->species.vps_mesh[spe]; i++){
 
-	  for (j=0; j<=( (VPS_j_dependency[spe]+1)*Spe_Num_RVPS[spe]+2 ); j++){
+	  for (j=0; j<=( (atomic->species.relativistic[spe]+1)*atomic->species.radial_projectors[spe]+2 ); j++){
 
 	    if (fscanf(fp,"%lf",&dum)==EOF){
 	      printf("format error of Pseudo_Potentials in %s\n",file);
@@ -1047,23 +1052,23 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 	    }
             else{
 	      if (j==0)
-                Spe_VPS_XV[spe][i] = dum;
+                openmx_radial_row2(&atomic->vps_log_radii,spe)[i] = dum;
 	      else if (j==1)
-                Spe_VPS_RV[spe][i] = dum;
+                openmx_radial_row2(&atomic->vps_radii,spe)[i] = dum;
 	      else if (j==2)
                 Vcore[i] = dum;
               else{
 
                 /* l-dependent */
-                if      (VPS_j_dependency[spe]==0){
-                  Spe_VNL[0][spe][j-3][i] = dum;
+                if      (atomic->species.relativistic[spe]==0){
+                  openmx_radial_row4(&atomic->projectors,0,spe,j-3)[i] = dum;
 		}
                 /* j-dependent */
-                else if (VPS_j_dependency[spe]==1){
+                else if (atomic->species.relativistic[spe]==1){
 
                   if (SO_switch==1){
-                    if (j%2==1)  Spe_VNL[0][spe][ (j-3)/2 ][i] = dum;
-                    else         Spe_VNL[1][spe][ (j-3)/2 ][i] = dum;
+                    if (j%2==1)  openmx_radial_row4(&atomic->projectors,0,spe, (j-3)/2 )[i] = dum;
+                    else         openmx_radial_row4(&atomic->projectors,1,spe, (j-3)/2 )[i] = dum;
 		  }
 
                   /* j-averaging for a scalar relativistic treatment */
@@ -1078,27 +1083,27 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 
           /* applying SO factor */
 
-          if ( VPS_j_dependency[spe]==1 && SO_factor_flag==1 ){
-  	    for (j=0; j<Spe_Num_RVPS[spe]; j++){
+          if ( atomic->species.relativistic[spe]==1 && SO_factor_flag==1 ){
+            for (j=0; j<atomic->species.radial_projectors[spe]; j++){
 
               LVPS = Spe_VPS_List[spe][j+1];
-              dum0 = Spe_VNL[0][spe][j][i];
-              dum1 = Spe_VNL[1][spe][j][i];
+              dum0 = openmx_radial_row4(&atomic->projectors,0,spe,j)[i];
+              dum1 = openmx_radial_row4(&atomic->projectors,1,spe,j)[i];
  
               sum = 0.5*(dum0 + dum1);
               dif = 0.5*(dum0 - dum1);
 
-              Spe_VNL[0][spe][j][i] = sum + SO_factor[spe][LVPS]*dif;
-              Spe_VNL[1][spe][j][i] = sum - SO_factor[spe][LVPS]*dif;
+              openmx_radial_row4(&atomic->projectors,0,spe,j)[i] = sum + SO_factor[spe][LVPS]*dif;
+              openmx_radial_row4(&atomic->projectors,1,spe,j)[i] = sum - SO_factor[spe][LVPS]*dif;
 	    }
 	  }
 
           /* j-averaging for a scalar relativistic treatment */
-          if ( VPS_j_dependency[spe]==1 && SO_switch==0 ){
-  	    for (j=0; j<Spe_Num_RVPS[spe]; j++){
+          if ( atomic->species.relativistic[spe]==1 && SO_switch==0 ){
+            for (j=0; j<atomic->species.radial_projectors[spe]; j++){
 
               LVPS = Spe_VPS_List[spe][j+1];
-              Spe_VNL[0][spe][j][i] = ( (double)(LVPS+1)*TmpVNL[0][j]
+              openmx_radial_row4(&atomic->projectors,0,spe,j)[i] = ( (double)(LVPS+1)*TmpVNL[0][j]
                                        +(double)LVPS*TmpVNL[1][j] )/( (double)(2*LVPS+1) );
 	    }
 	  }
@@ -1122,16 +1127,16 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
   else{
 
     if (2<=level_stdout){
-      printf("<Read_VPS>  VPS of %s was a format of ADPACK1.1\n",SpeVPS[spe]);
+      printf("<Read_VPS>  VPS of %s was a format of ADPACK1.1\n",atomic->species.potential_file[spe]);
     }
 
     input_int("number.vps",&number_vps,0);
     input_int("local.part.vps",&local_part_vps,0);
 
     if (2<=level_stdout){
-      printf("<Read_VPS>  spe=%2d  AtomNum=%2d\n",spe,Spe_WhatAtom[spe]);
-      printf("<Read_VPS>  spe=%2d  Spe_Core_Charge=%5.2f\n",spe,Spe_Core_Charge[spe]);
-      printf("<Read_VPS>  spe=%2d  Spe_Num_Mesh_VPS=%2d\n",spe,Spe_Num_Mesh_VPS[spe]);
+      printf("<Read_VPS>  spe=%2d  AtomNum=%2d\n",spe,atomic->species.atomic_number[spe]);
+      printf("<Read_VPS>  spe=%2d  Spe_Core_Charge=%5.2f\n",spe,atomic->species.core_charge[spe]);
+      printf("<Read_VPS>  spe=%2d  Spe_Num_Mesh_VPS=%2d\n",spe,atomic->species.vps_mesh[spe]);
       printf("<Read_VPS>  spe=%2d  number.vps=%2d\n",spe,number_vps);
       printf("<Read_VPS>  spe=%2d  local_part_vps=%2d\n",spe,local_part_vps);
     }
@@ -1156,8 +1161,8 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 	  }
         }
       }
-      Spe_Total_VPS_Pro[spe] = t; 
-      Spe_Num_RVPS[spe] = k;
+      atomic->species.projector_components[spe] = t;
+      atomic->species.radial_projectors[spe] = k;
 
       if (List_YOUSO[30]<=maxL){
         List_YOUSO[30] = maxL + 2;
@@ -1166,15 +1171,15 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
         List_YOUSO[30] = 2;
       }
 
-      if (List_YOUSO[19]<=Spe_Num_RVPS[spe]){
-        List_YOUSO[19] = Spe_Num_RVPS[spe] + 2;
+      if (List_YOUSO[19]<=atomic->species.radial_projectors[spe]){
+        List_YOUSO[19] = atomic->species.radial_projectors[spe] + 2;
       }
       if (List_YOUSO[19]==0){
         List_YOUSO[19] = 3;
       }
 
-      if (List_YOUSO[20]<=Spe_Total_VPS_Pro[spe]){
-        List_YOUSO[20] = Spe_Total_VPS_Pro[spe] + 2;
+      if (List_YOUSO[20]<=atomic->species.projector_components[spe]){
+        List_YOUSO[20] = atomic->species.projector_components[spe] + 2;
       }
       if (List_YOUSO[20]==0){
         List_YOUSO[20] = 3;
@@ -1185,8 +1190,8 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
       }
 
       if (2<=level_stdout){
-        printf("<Read_VPS>  spe=%2d  Spe_Total_VPS_Pro=%2d\n",spe,Spe_Total_VPS_Pro[spe]);
-        printf("<Read_VPS>  spe=%2d  Spe_Num_RVPS=%2d\n",spe,Spe_Num_RVPS[spe]);
+        printf("<Read_VPS>  spe=%2d  Spe_Total_VPS_Pro=%2d\n",spe,atomic->species.projector_components[spe]);
+        printf("<Read_VPS>  spe=%2d  Spe_Num_RVPS=%2d\n",spe,atomic->species.radial_projectors[spe]);
       }
 
       if (!input_last("pseudo.NandL>")) {
@@ -1200,9 +1205,9 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
     /* projection.energies */
 
     if (remake_headfile==0){
-      if (0<Spe_Num_RVPS[spe]){
+      if (0<atomic->species.radial_projectors[spe]){
         if ( (fp=input_find("<projection.energies")) != NULL ) {
-	  for (i=0; i<Spe_Num_RVPS[spe]; i++){
+	  for (i=0; i<atomic->species.radial_projectors[spe]; i++){
 
 	    fscanf(fp,"%d %lf",&j,&Spe_VNLE[0][spe][i]);
             if (2<=level_stdout){
@@ -1222,21 +1227,21 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 
     if (remake_headfile==0){
       if ( (fp=input_find("<Pseudo.Potentials")) != NULL ){
-        for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-  	  for (j=0; j<=(Spe_Num_RVPS[spe]+2); j++){
+        for (i=0; i<atomic->species.vps_mesh[spe]; i++){
+          for (j=0; j<=(atomic->species.radial_projectors[spe]+2); j++){
 	    if (fscanf(fp,"%lf",&dum)==EOF){
 	      printf("format error of Pseudo_Potentials in %s\n",file);
 	      exit(0);
 	    }
             else{
 	      if (j==0)
-                Spe_VPS_XV[spe][i] = dum;
+                openmx_radial_row2(&atomic->vps_log_radii,spe)[i] = dum;
 	      else if (j==1)
-                Spe_VPS_RV[spe][i] = dum;
+                openmx_radial_row2(&atomic->vps_radii,spe)[i] = dum;
 	      else if (j==2)
                 Vcore[i] = dum;
               else
-                Spe_VNL[0][spe][j-3][i] = dum;
+                openmx_radial_row4(&atomic->projectors,0,spe,j-3)[i] = dum;
 	    }
 	  }
         }
@@ -1255,13 +1260,13 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
     input_logical("charge.pcc.calc",&charge_pcc_calc,0);
 
     /* initialize Spe_Atomic_PCC */
-    for (i=0; i<(Spe_Num_Mesh_VPS[spe]+2); i++) {
-      Spe_Atomic_PCC[spe][i]=0.0;
+    for (i=0; i<(atomic->species.vps_mesh[spe]+2); i++) {
+      openmx_radial_row2(&atomic->partial_core_density,spe)[i]=0.0;
     }
 
     if (charge_pcc_calc==1){
       if ((fp=input_find("<density.PCC")) != NULL) {
-	for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
+	for (i=0; i<atomic->species.vps_mesh[spe]; i++){
 	  for (j=0; j<=2; j++){
 	    if (fscanf(fp,"%lf",&dum)==EOF){
 	      printf("format error of charge.pcc.calc in %s\n",file);
@@ -1269,7 +1274,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 	    }
 	    else{
 	      if (j==2){
-		Spe_Atomic_PCC[spe][i+1] = dum;
+		openmx_radial_row2(&atomic->partial_core_density,spe)[i+1] = dum;
 	      }
 	    }
 	  }
@@ -1286,10 +1291,10 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
       }
 
       /* set [0] and [Spe_Num_Mesh_VPS[spe]+1] */
-      Spe_Atomic_PCC[spe][0] = 2.0*Spe_Atomic_PCC[spe][1] - Spe_Atomic_PCC[spe][2];
-      Spe_Atomic_PCC[spe][Spe_Num_Mesh_VPS[spe]+1] =
-                     2.0*Spe_Atomic_PCC[spe][Spe_Num_Mesh_VPS[spe]] 
-                       - Spe_Atomic_PCC[spe][Spe_Num_Mesh_VPS[spe]-1];
+      openmx_radial_row2(&atomic->partial_core_density,spe)[0] = 2.0*openmx_radial_row2(&atomic->partial_core_density,spe)[1] - openmx_radial_row2(&atomic->partial_core_density,spe)[2];
+      openmx_radial_row2(&atomic->partial_core_density,spe)[atomic->species.vps_mesh[spe]+1] =
+                     2.0*openmx_radial_row2(&atomic->partial_core_density,spe)[atomic->species.vps_mesh[spe]]
+                       - openmx_radial_row2(&atomic->partial_core_density,spe)[atomic->species.vps_mesh[spe]-1];
     }
   }
 
@@ -1306,31 +1311,31 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
   if (remake_headfile==0){
 
     sum = 0.0;
-    dx = Spe_PAO_XV[spe][1] - Spe_PAO_XV[spe][0];
-    for (i=0; i<Spe_Num_Mesh_PAO[spe]; i++){
-      sum += Spe_Atomic_Den[spe][i+1]*exp(3.0*Spe_PAO_XV[spe][i]);
+    dx = openmx_radial_row2(&atomic->pao_log_radii,spe)[1] - openmx_radial_row2(&atomic->pao_log_radii,spe)[0];
+    for (i=0; i<atomic->species.pao_mesh[spe]; i++){
+      sum += openmx_radial_row2(&atomic->density,spe)[i+1]*exp(3.0*openmx_radial_row2(&atomic->pao_log_radii,spe)[i]);
     }
     sum *= 4.0*PI*dx;
 
-    if (Spe_WhatAtom[spe]!=0){
-      for (i=0; i<Spe_Num_Mesh_PAO[spe]; i++){
+    if (atomic->species.atomic_number[spe]!=0){
+      for (i=0; i<atomic->species.pao_mesh[spe]; i++){
 
-	Spe_Atomic_Den[spe][i+1]  = Spe_Atomic_Den[spe][i+1]*(Spe_Core_Charge[spe]/sum);
+	openmx_radial_row2(&atomic->density,spe)[i+1]  = openmx_radial_row2(&atomic->density,spe)[i+1]*(atomic->species.core_charge[spe]/sum);
  
-	Spe_Atomic_Den2[spe][i+1] = Spe_Atomic_Den2[spe][i+1]*(Spe_Core_Charge[spe]/sum)
-                                   +  KumoF( Spe_Num_Mesh_VPS[spe], Spe_PAO_XV[spe][i], 
- 			                     Spe_VPS_XV[spe], Spe_VPS_RV[spe], Spe_Atomic_PCC[spe]);
+	openmx_radial_row2(&atomic->density_backup,spe)[i+1] = openmx_radial_row2(&atomic->density_backup,spe)[i+1]*(atomic->species.core_charge[spe]/sum)
+                                   +  KumoF( atomic->species.vps_mesh[spe], openmx_radial_row2(&atomic->pao_log_radii,spe)[i],
+                                             openmx_radial_row2(&atomic->vps_log_radii,spe), openmx_radial_row2(&atomic->vps_radii,spe), openmx_radial_row2(&atomic->partial_core_density,spe));
       }
 
-      Spe_Atomic_Den[spe][0] = 2.0*Spe_Atomic_Den[spe][1] - Spe_Atomic_Den[spe][2];
-      Spe_Atomic_Den[spe][Spe_Num_Mesh_PAO[spe]+1] =
-                     2.0*Spe_Atomic_Den[spe][Spe_Num_Mesh_PAO[spe]] 
-                       - Spe_Atomic_Den[spe][Spe_Num_Mesh_PAO[spe]-1];
+      openmx_radial_row2(&atomic->density,spe)[0] = 2.0*openmx_radial_row2(&atomic->density,spe)[1] - openmx_radial_row2(&atomic->density,spe)[2];
+      openmx_radial_row2(&atomic->density,spe)[atomic->species.pao_mesh[spe]+1] =
+                     2.0*openmx_radial_row2(&atomic->density,spe)[atomic->species.pao_mesh[spe]]
+                       - openmx_radial_row2(&atomic->density,spe)[atomic->species.pao_mesh[spe]-1];
 
-      Spe_Atomic_Den2[spe][0] = 2.0*Spe_Atomic_Den2[spe][1] - Spe_Atomic_Den2[spe][2];
-      Spe_Atomic_Den2[spe][Spe_Num_Mesh_PAO[spe]+1] =
-                     2.0*Spe_Atomic_Den2[spe][Spe_Num_Mesh_PAO[spe]] 
-                       - Spe_Atomic_Den2[spe][Spe_Num_Mesh_PAO[spe]-1];
+      openmx_radial_row2(&atomic->density_backup,spe)[0] = 2.0*openmx_radial_row2(&atomic->density_backup,spe)[1] - openmx_radial_row2(&atomic->density_backup,spe)[2];
+      openmx_radial_row2(&atomic->density_backup,spe)[atomic->species.pao_mesh[spe]+1] =
+                     2.0*openmx_radial_row2(&atomic->density_backup,spe)[atomic->species.pao_mesh[spe]]
+                       - openmx_radial_row2(&atomic->density_backup,spe)[atomic->species.pao_mesh[spe]-1];
     }
   }
 
@@ -1344,35 +1349,35 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 
     if (Number_of_Electrons_Species_flag==1){
 
-      for (i=0; i<(Spe_Num_Mesh_VPS[spe]+2); i++){
+      for (i=0; i<(atomic->species.vps_mesh[spe]+2); i++){
         Vcore[i] = charge_factor*Vcore[i]; 
       }
     }
 
     /* calculation of Spe_VH_Atom */
 
-    for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-      r = Spe_VPS_RV[spe][i];
+    for (i=0; i<atomic->species.vps_mesh[spe]; i++){
+      r = openmx_radial_row2(&atomic->vps_radii,spe)[i];
       
-      if (Spe_WhatAtom[spe]==0) /* empty atom */ 
-        Spe_VH_Atom[spe][i+1] = 0.0;
+      if (atomic->species.atomic_number[spe]==0) /* empty atom */
+        openmx_radial_row2(&atomic->hartree_potential,spe)[i+1] = 0.0;
       else 
-        Spe_VH_Atom[spe][i+1] = V_Hart_atom(spe,r);
+        openmx_radial_row2(&atomic->hartree_potential,spe)[i+1] = V_Hart_atom(atomic, spe,r);
     }
 
-    Spe_VH_Atom[spe][0] = 2.0*Spe_VH_Atom[spe][1] - Spe_VH_Atom[spe][2];
-    Spe_VH_Atom[spe][Spe_Num_Mesh_VPS[spe]+1] =
-                     2.0*Spe_VH_Atom[spe][Spe_Num_Mesh_VPS[spe]] 
-                       - Spe_VH_Atom[spe][Spe_Num_Mesh_VPS[spe]-1];
+    openmx_radial_row2(&atomic->hartree_potential,spe)[0] = 2.0*openmx_radial_row2(&atomic->hartree_potential,spe)[1] - openmx_radial_row2(&atomic->hartree_potential,spe)[2];
+    openmx_radial_row2(&atomic->hartree_potential,spe)[atomic->species.vps_mesh[spe]+1] =
+                     2.0*openmx_radial_row2(&atomic->hartree_potential,spe)[atomic->species.vps_mesh[spe]]
+                       - openmx_radial_row2(&atomic->hartree_potential,spe)[atomic->species.vps_mesh[spe]-1];
 
     /* the nearest point to Spe_Atom_Cut1[spe] */
 
     dum = 1000.0;
 
-    for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
+    for (i=0; i<atomic->species.vps_mesh[spe]; i++){
 
-      r = Spe_VPS_RV[spe][i];
-      dum1 = fabs(r-Spe_Atom_Cut1[spe]);
+      r = openmx_radial_row2(&atomic->vps_radii,spe)[i];
+      dum1 = fabs(r-atomic->species.cutoff[spe]);
 
       if (dum1<dum){
         dum = dum1;
@@ -1382,26 +1387,26 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 
     /* correct the asymptotic behaviour of Spe_VH_Atom */
 
-    if (1.0e-15<Spe_Core_Charge[spe]){
+    if (1.0e-15<atomic->species.core_charge[spe]){
 
-      dum = -Vcore[ii]/Spe_VH_Atom[spe][ii+1];
+      dum = -Vcore[ii]/openmx_radial_row2(&atomic->hartree_potential,spe)[ii+1];
 
-      for (i=0; i<(Spe_Num_Mesh_VPS[spe]+2); i++){
-        Spe_VH_Atom[spe][i] *= dum;
+      for (i=0; i<(atomic->species.vps_mesh[spe]+2); i++){
+        openmx_radial_row2(&atomic->hartree_potential,spe)[i] *= dum;
       }
     }
 
     /* calculation of Spe_Vna */
 
-    for (i=0; i<Spe_Num_Mesh_VPS[spe]; i++){
-      r = Spe_VPS_RV[spe][i];
-      dumping = 1.0/(1.0+exp( 20.0*(r-Spe_Atom_Cut1[spe])) );
+    for (i=0; i<atomic->species.vps_mesh[spe]; i++){
+      r = openmx_radial_row2(&atomic->vps_radii,spe)[i];
+      dumping = 1.0/(1.0+exp( 20.0*(r-atomic->species.cutoff[spe])) );
 
       /* empty atom */ 
-      if (Spe_WhatAtom[spe]==0)
-        Spe_Vna[spe][i] = 0.0;
+      if (atomic->species.atomic_number[spe]==0)
+        openmx_radial_row2(&atomic->neutral_potential,spe)[i] = 0.0;
       else 
-        Spe_Vna[spe][i] = dumping*(Vcore[i] + Spe_VH_Atom[spe][i+1]);
+        openmx_radial_row2(&atomic->neutral_potential,spe)[i] = dumping*(Vcore[i] + openmx_radial_row2(&atomic->hartree_potential,spe)[i+1]);
 
     }
   }
@@ -1413,9 +1418,9 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
   if (remake_headfile==0 && ProExpn_VNA==1){
     const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
     const OpenMXNeutralExpansion input = {List_YOUSO[35],List_YOUSO[34],
-      Spe_Num_Mesh_VPS[spe],Spe_VPS_RV[spe],Spe_Vna[spe],
-      Spe_PAO_LMAX[spe],Spe_PAO_Mul[spe],Spe_Num_Mesh_PAO[spe],
-      Spe_PAO_RV[spe],Spe_PAO_RWF[spe],Spe_WhatAtom[spe]==0,
+      atomic->species.vps_mesh[spe],openmx_radial_row2(&atomic->vps_radii,spe),openmx_radial_row2(&atomic->neutral_potential,spe),
+      atomic->species.pao_lmax[spe],atomic->species.pao_multiplicity[spe],atomic->species.pao_mesh[spe],
+      openmx_radial_row2(&atomic->pao_radii,spe),reciprocal.pao.orbitals[spe],atomic->species.atomic_number[spe]==0,
       reciprocal.vps.neutral_projectors[spe],reciprocal.vps.neutral_energies[spe]};
     char error[256];
     if (!openmx_core_expand_neutral_projectors(&input,GL_Mesh,GL_Abscissae,GL_Weight,
@@ -1452,7 +1457,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 
 
 
-double V_Hart_atom(int spe, double R)
+double V_Hart_atom(const OpenMXAtomicViews *atomic, int spe, double R)
 { 
   int i;
   double xmin,xmax,Sx,Dx,x,rp,dx;
@@ -1467,7 +1472,7 @@ double V_Hart_atom(int spe, double R)
   ****************/
 
   /*
-  xmin = Spe_PAO_XV[spe][0];
+  xmin = openmx_radial_row2(&atomic->pao_log_radii,spe)[0];
   xmax = log(R);
   dx = (xmax - xmin)/(double)OneD_Grid;
 
@@ -1487,7 +1492,7 @@ double V_Hart_atom(int spe, double R)
      Gauss-Legendre
   ******************/
 
-  xmin = Spe_PAO_XV[spe][0];
+  xmin = openmx_radial_row2(&atomic->pao_log_radii,spe)[0];
   xmax = log(R);
   Sx = xmax + xmin;
   Dx = xmax - xmin;
@@ -1497,8 +1502,8 @@ double V_Hart_atom(int spe, double R)
     x = 0.50*(Dx*FineGL_Abscissae[i] + Sx);
     rp = exp(x);
     Inside = Inside +
-        KumoF( Spe_Num_Mesh_PAO[spe], x, 
-        Spe_PAO_XV[spe], Spe_PAO_RV[spe], Spe_Atomic_Den[spe])*FineGL_Weight[i]*rp*rp*rp;
+        KumoF( atomic->species.pao_mesh[spe], x,
+        openmx_radial_row2(&atomic->pao_log_radii,spe), openmx_radial_row2(&atomic->pao_radii,spe), openmx_radial_row2(&atomic->density,spe))*FineGL_Weight[i]*rp*rp*rp;
   } 
 
   Inside = 0.50*Dx*Inside;
@@ -1514,7 +1519,7 @@ double V_Hart_atom(int spe, double R)
 
   /*
   xmin = log(R);
-  xmax = Spe_PAO_XV[spe][Spe_Num_Mesh_PAO[spe]-1];
+  xmax = openmx_radial_row2(&atomic->pao_log_radii,spe)[Spe_Num_Mesh_PAO[spe]-1];
   dx = (xmax - xmin)/(double)OneD_Grid;
 
   Outside = 0.0;
@@ -1534,7 +1539,7 @@ double V_Hart_atom(int spe, double R)
   ******************/
 
   xmin = log(R);
-  xmax = Spe_PAO_XV[spe][Spe_Num_Mesh_PAO[spe]-1];
+  xmax = openmx_radial_row2(&atomic->pao_log_radii,spe)[atomic->species.pao_mesh[spe]-1];
   Sx = xmax + xmin;
   Dx = xmax - xmin;
   
@@ -1543,8 +1548,8 @@ double V_Hart_atom(int spe, double R)
     x = 0.50*(Dx*FineGL_Abscissae[i] + Sx);
     rp = exp(x);
     Outside = Outside +
-        KumoF( Spe_Num_Mesh_PAO[spe], x, 
-        Spe_PAO_XV[spe], Spe_PAO_RV[spe], Spe_Atomic_Den[spe])*FineGL_Weight[i]*rp*rp;
+        KumoF( atomic->species.pao_mesh[spe], x,
+        openmx_radial_row2(&atomic->pao_log_radii,spe), openmx_radial_row2(&atomic->pao_radii,spe), openmx_radial_row2(&atomic->density,spe))*FineGL_Weight[i]*rp*rp;
   } 
 
   Outside = 0.50*Dx*Outside;

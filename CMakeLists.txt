@@ -132,6 +132,9 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_unified_build.py")
   add_test(NAME cmake-driver
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cmake_driver.py")
+  add_test(NAME atomic-hartree-interpolation COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_atomic_hartree_cpu.py")
+  set_tests_properties(atomic-hartree-interpolation PROPERTIES TIMEOUT 120)
   add_test(NAME dftd3-interpolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_dftd3_interpolation_cpu.py")
   set(_dense_kernel_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_dense_workers_cpu.py")

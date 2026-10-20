@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_atomic.h"
 #include "openmx_reciprocal.h"
 #include "openmx_vna_matrix.h"
 #include "grid_precision.h"
@@ -447,6 +448,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   const OpenMXVnaMatrixViews *vna=&matrices;
   const OpenMXReciprocalViews radial_views=OpenMX_ReciprocalTables(core);
   const OpenMXReciprocalViews *reciprocal=&radial_views;
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   static int firsttime=1;
   double ECE[20],Eele0[2],Eele1[2];
   double pUele,ChemP_e0[2];
@@ -663,7 +666,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       else if (Cnt_switch==1)                             Cnt_kind = 1;
       else                                                Cnt_kind = 0;
 
-      time9 = Set_Aden_Grid();
+      time9 = Set_Aden_Grid(atomic);
 
       if (Solver==4) {
 
@@ -671,7 +674,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                           set grid for NEGF
 	*****************************************************/
 
-	TRAN_Set_Electrode_Grid(mpi_comm_level1, 
+	TRAN_Set_Electrode_Grid(atomic, mpi_comm_level1,
                                 &TRAN_Poisson_flag2,                                
 				Grid_Origin, tv, Left_tv, Right_tv, gtv,
 				Ngrid1, Ngrid2, Ngrid3);
@@ -679,11 +682,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	/* revised by Y. Xiao for Noncollinear NEGF calculations */
 	if (SpinP_switch<2) {
 	  TRAN_Allocate_Lead_Region(mpi_comm_level1);
-	  TRAN_Allocate_Cregion(mpi_comm_level1, SpinP_switch,atomnum,WhatSpecies,Spe_Total_CNO);
+	  TRAN_Allocate_Cregion(mpi_comm_level1, SpinP_switch,atomnum,WhatSpecies,atomic->species.contracted_orbitals);
 	}
 	else {
 	  TRAN_Allocate_Lead_Region_NC(mpi_comm_level1);
-	  TRAN_Allocate_Cregion_NC(mpi_comm_level1, SpinP_switch,atomnum,WhatSpecies,Spe_Total_CNO);
+	  TRAN_Allocate_Cregion_NC(mpi_comm_level1, SpinP_switch,atomnum,WhatSpecies,atomic->species.contracted_orbitals);
 	} /* until here by Y. Xiao for Noncollinear NEGF calculations*/
 
         /*****************************************************
@@ -744,7 +747,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
         if (SucceedReadingDMfile==0){
 
-          time9 += Set_Aden_Grid();
+          time9 += Set_Aden_Grid(atomic);
 
           if (Solver==4) {
 	    TRAN_Add_ADensity_Lead(mpi_comm_level1,
@@ -834,7 +837,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0) /* non-spin-orbit coupling and non-LDA+U */
 	    ){
 
-          time3 += Set_Hamiltonian(vna, "nostdout",
+          time3 += Set_Hamiltonian(atomic, vna, "nostdout",
                                     MD_iter,
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
@@ -858,7 +861,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  time4 += TRAN_Poisson(ReVk,ImVk,SCF_iter,TRAN_SCF_Iter_Band,SucceedReadingDMfile);
 	}
 
-	time3 += Set_Hamiltonian(vna, "nostdout",
+	time3 += Set_Hamiltonian(atomic, vna, "nostdout",
                                   MD_iter,
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
@@ -917,7 +920,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (xmcd_calc == 1) time4 += Set_XMCD_penalty(1,pre_spin_moment,SCF_iter); // S. An
 
-      time3 += Set_Hamiltonian(vna, "stdout",
+      time3 += Set_Hamiltonian(atomic, vna, "stdout",
                                 MD_iter,
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
@@ -1091,14 +1094,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	if (SpinP_switch<2) {
 	  time5 += TRAN_DFT(mpi_comm_level1, SucceedReadingDMfile,
 			    level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
-			    atomnum,Matomnum,WhatSpecies, Spe_Total_CNO, FNAN, natn,ncn,
+			    atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			    M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,
 			    DM[0],iDM[0],EDM,TRAN_DecMulP,Eele0,Eele1,ChemP_e0);
 	}
 	else {
 	  time5 += TRAN_DFT_NC(mpi_comm_level1, SucceedReadingDMfile,
 			       level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
-			       atomnum,Matomnum,WhatSpecies, Spe_Total_CNO, FNAN, natn,ncn,
+			       atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			       M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,koS,S_Band,
 			       DM[0],iDM[0],EDM,TRAN_DecMulP,Eele0,Eele1,ChemP_e0);
 	} /* until here by Y. Xiao for Noncollinear NEGF calculations*/
@@ -1262,14 +1265,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	if (SpinP_switch<2) {
 	  time5 += TRAN_DFT(mpi_comm_level1, SucceedReadingDMfile,
 			    level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
-			    atomnum,Matomnum,WhatSpecies, Spe_Total_CNO, FNAN, natn,ncn,
+			    atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			    M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,
 			    DM[0],iDM[0],EDM,TRAN_DecMulP,Eele0,Eele1,ChemP_e0);
 	} 
 	else {
 	  time5 += TRAN_DFT_NC(mpi_comm_level1, SucceedReadingDMfile,
 			       level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
-			       atomnum,Matomnum,WhatSpecies, Spe_Total_CNO, FNAN, natn,ncn,
+			       atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			       M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,koS,S_Band,
 			       DM[0],iDM[0],EDM,TRAN_DecMulP,Eele0,Eele1,ChemP_e0);
 	} /* until here by Y. Xiao for Noncollinear NEGF calculations*/
@@ -2319,7 +2322,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   /* revised by Y. Xiao for Noncollinear NEGF calculations */ /* iHNL is outputed */
   TRAN_Output_Trans_HS( mpi_comm_level1, Solver, SpinP_switch, ChemP, H, iHNL, OLP, H0,
                         atomnum, SpeciesNum, WhatSpecies, 
-                        Spe_Total_CNO, FNAN, natn, ncn, G2ID, atv_ijk,
+                        atomic->species.contracted_orbitals, FNAN, natn, ncn, G2ID, atv_ijk,
                         Max_FSNAN, ScaleSize, F_G2M, TCpyCell, List_YOUSO, 
                         filepath,filename,"tranb");
 
@@ -2525,7 +2528,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     else if (Solver==4){ /* NEGF */
 
       TRAN_DFT_Dosout( mpi_comm_level1, level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
-		       atomnum,Matomnum,WhatSpecies, Spe_Total_CNO, FNAN, natn, ncn, 
+		       atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn, ncn,
 		       M2G, G2ID, atv_ijk, List_YOUSO, Spe_Num_CBasis, SpeciesNum, filename, filepath,
                        SucceedReadingDMfile,
 		       DM[0],EDM,Eele0,Eele1 );
@@ -2689,10 +2692,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_gemmul8ReleaseWorkspaces();
   openmx_gemmul8ReleasePrepared();
 
-  if (!orbitalOpt_Force_Skip) time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
+  if (!orbitalOpt_Force_Skip) time7 += Force(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 
   if (scf_stress_flag){
-    Stress(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
+    Stress(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
   }
 
   /* Release any tables retained through Force3 by non-band runs or opt-out. */
@@ -2730,7 +2733,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(vna, MD_iter,ECE);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(atomic, vna, MD_iter,ECE);
 
   Uatom  = 0.0;
   Ucore  = ECE[0];

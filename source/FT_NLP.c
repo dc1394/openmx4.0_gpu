@@ -21,6 +21,7 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "openmx_reciprocal.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
 #include "openmx_core_radial.h"
 
@@ -28,6 +29,8 @@
 
 void FT_NLP(OpenMXCoreContext *core, int device)
 {
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   OpenMXReciprocalRows archive_rows;
   OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_NONLOCAL,&archive_rows);
   char archive_error[256];
@@ -79,21 +82,21 @@ void FT_NLP(OpenMXCoreContext *core, int device)
 
       num_k = Ngrid_NormK;
       dk = PAO_Nkmax/(double)num_k;
-      rmin = Spe_VPS_RV[spe][0];
-      rmax = Spe_Atom_Cut1[spe] + 0.5;
+      rmin = openmx_radial_row2(&atomic->vps_radii,spe)[0];
+      rmax = atomic->species.cutoff[spe] + 0.5;
       h = (rmax - rmin)/(double)OneD_Grid;
 
       {
         char error[256];
         OpenMXProjectorTable table = {0};
         const OpenMXUniformRadialGrid grid = {OneD_Grid,num_k,rmin,h,dk};
-        table.projector_count = Spe_Num_RVPS[spe];
+        table.projector_count = atomic->species.radial_projectors[spe];
         table.angular = Spe_VPS_List[spe]+1;
-        table.spin_count = VPS_j_dependency[spe]+1;
-        table.mesh_count = Spe_Num_Mesh_VPS[spe];
-        table.radii = Spe_VPS_RV[spe];
+        table.spin_count = atomic->species.relativistic[spe]+1;
+        table.mesh_count = atomic->species.vps_mesh[spe];
+        table.radii = openmx_radial_row2(&atomic->vps_radii,spe);
         for (so=0; so<table.spin_count && so<2; so++) {
-          table.values[so] = Spe_VNL[so][spe];
+          table.values[so] = reciprocal.vps.projectors[so][spe];
           table.output[so] = Spe_NLRF_Bessel[so][spe]+1;
         }
         if (!openmx_core_transform_projectors(core,device,&table,&grid,error,sizeof(error))) {

@@ -136,10 +136,10 @@ def main():
     root = Path(__file__).resolve().parents[1]
     source = (root / "source/Total_Energy.c").read_text()
     start = source.index("\ndouble Calc_Ekin()\n")
-    end = source.index("\ndouble Calc_Ena()\n", start)
+    end = source.index("\ndouble Calc_Ena(", start)
     stress = (root / "source/Stress.c").read_text()
     stress_start = stress.index("\nvoid Stress_core()\n")
-    stress_end = stress.index("\nvoid Stress_H0()\n", stress_start)
+    stress_end = stress.index("\nvoid Stress_H0(", stress_start)
     with tempfile.TemporaryDirectory(prefix="openmx_energy_omp_") as directory:
         cfile = Path(directory) / "check.c"
         binary = Path(directory) / "check"

@@ -5,6 +5,7 @@
 #include "openmx_core.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_core_reciprocal.h"
+#include "openmx_core_atomic.h"
 #include "openmx_periodic.h"
 #include "openmx_gpu_blas.h"
 #include "openmx_gpu_complex.h"
@@ -823,26 +824,7 @@ double **Spe_PAO_XV;
 *******************************************************/
 double **Spe_PAO_RV;
 
-/*******************************************************
- double **Spe_Atomic_Den;
-  atomic charge density on radial mesh of PAO 
-  size: Spe_Atomic_Den[List_YOUSO[18]]
-                      [List_YOUSO[21]]
-  allocation: call as Allocate_Arrays(6) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_Atomic_Den;
 
-/*******************************************************
- double **Spe_Atomic_Den2;
-  atomic charge density+PCC charge on radial mesh of PAO, 
-  where both the edges are extended by adding one more. 
-  size: Spe_Atomic_Den[List_YOUSO[18]]
-                      [List_YOUSO[21]+2]
-  allocation: call as Allocate_Arrays(6) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_Atomic_Den2;
 
 /*******************************************************
  double ****Spe_PAO_RWF;
@@ -857,70 +839,11 @@ double **Spe_Atomic_Den2;
 double ****Spe_PAO_RWF;
 
 
-/*******************************************************
- double **Spe_VPS_XV;
-  radial mesh (x=log(r)) for VPS 
-  size: Spe_VPS_XV[List_YOUSO[18]]
-                  [List_YOUSO[22]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_VPS_XV;
 
-/*******************************************************
- double **Spe_VPS_XV;
-  logarithmic radial mesh (r=exp(x)) for VPS 
-  size: Spe_VPS_RV[List_YOUSO[18]]
-                  [List_YOUSO[22]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_VPS_RV;
 
-/*******************************************************
- double **Spe_Vna;
-  neutral atom potentials on radial mesh of VPS
-  size: Spe_Vna[List_YOUSO[18]]
-               [List_YOUSO[22]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_Vna;
 
-/*******************************************************
- double **Spe_VH_Atom;
-  Hartree potentials of atomic charge densities
-  on radial mesh of VPS
-  size: Spe_VH_Atom[List_YOUSO[18]]
-                   [List_YOUSO[22]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_VH_Atom;
 
-/*******************************************************
- double **Spe_Atomic_PCC;
-  partial core correction charge densities on radial
-  mesh of VPS
-  size: Spe_Atomic_PCC[List_YOUSO[18]]
-                      [List_YOUSO[22]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_Atomic_PCC;
 
-/*******************************************************
- double ****Spe_VNL;
-  radial parts of projectors of non-local potentials
-  on radial mesh of VPS
-  size: Spe_VNL[SO_switch+1]
-               [List_YOUSO[18]]
-               [List_YOUSO[19]]
-               [List_YOUSO[22]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double ****Spe_VNL;
 
 /*******************************************************
  double ***Spe_VNLE;
@@ -2858,22 +2781,22 @@ void Check_Stress(char *argv[], OpenMXCoreContext *core);
 
 double RF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int GL, int Mul, double R);
 double RF_BesselF2(int Gensi, int GL, int Mul, int LB, double R);
-double Nonlocal_RadialF(int Gensi, int l, int so, double R);
+double Nonlocal_RadialF(const OpenMXAtomicViews *atomic, int Gensi, int l, int so, double R);
 double PhiF(double R, double *phi0, double *MRV, int Grid_Num);
 double AngularF(int l, int m, double Q, double P, int Use_switch,
                 double siQ, double coQ, double siP, double coP);
 double RadialF(int Gensi, int L, int Mul, double R);
 void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3]);
 double Smoothing_Func(double rcut,double r1);
-double VNAF(int Gensi, double R);
-double Dr_VNAF(int Gensi, double R);
-double VH_AtomF(int spe, int N, double x, double r, double *xv, double *rv, double *yv);
-double Dr_VH_AtomF(int spe, int N, double x, double r, double *xv, double *rv, double *yv);
+double VNAF(const OpenMXAtomicViews *atomic, int Gensi, double R);
+double Dr_VNAF(const OpenMXAtomicViews *atomic, int Gensi, double R);
+double VH_AtomF(double core_charge, int N, double x, double r, double *xv, double *rv, double *yv);
+double Dr_VH_AtomF(double core_charge, int N, double x, double r, double *xv, double *rv, double *yv);
 double KumoF(int N, double x, double *xv, double *rv, double *yv);
 double Dr_KumoF(int N, double x, double r, double *xv, double *rv, double *yv);
 
 double AtomicCoreDenF(int Gensi, double R);
-double Nonlocal_Basis(int wan, int Lnum_index, int Mnum, int so,
+double Nonlocal_Basis(const OpenMXAtomicViews *atomic, int wan, int Lnum_index, int Mnum, int so,
                       double r, double theta, double phi);
 
 void Get_Orbitals(int wan, double x, double y, double z, double *Chi);
@@ -2897,7 +2820,7 @@ double Set_dOrbitals_Grid_xyz(int Cnt_kind,int xyz);
 /* Fukuda+YTL-end */
 
 double Set_Orbitals_Grid(int Cnt_kind);
-double Set_Aden_Grid();
+double Set_Aden_Grid(const OpenMXAtomicViews *atomic);
 double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0);
 #if !OPENMX_GPU_HIP
 int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
@@ -3155,7 +3078,7 @@ double Poisson_ESM(int fft_charge_flag,
 
  /**  ESM end  **/
 
-double Set_Hamiltonian(const OpenMXVnaMatrixViews *vna, char *mode,
+double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char *mode,
                        int MD_iter,
                        int SCF_iter,
                        int SCF_iter0,
@@ -3278,13 +3201,13 @@ double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
 double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
-double Total_Energy(const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[]);
-double Force(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
+double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[]);
+double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 
 	     double *****EDM); 
-double Stress(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
+double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -3296,7 +3219,7 @@ double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter);  // S. A
 double Set_OLP_p(double *****OLP_p);
 
 double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
-void Set_Vpot(int MD_iter,
+void Set_Vpot(const OpenMXAtomicViews *atomic, int MD_iter,
               int SCF_iter, 
               int SCF_iter0,
               int TRAN_Poisson_flag2,
@@ -3309,7 +3232,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  double ***dEXC_dGD, 
                  double ***dDen_Grid);
 
-double Pot_NeutralAtom(int ct_AN, double Gx, double Gy, double Gz);
+double Pot_NeutralAtom(const OpenMXAtomicViews *atomic, int ct_AN, double Gx, double Gy, double Gz);
 double XC_Ceperly_Alder(double den, int P_switch);
 void XC_CA_LSDA(int SCF_iter, double den0, double den1, double XC[2], double X[2], double C[2], int P_switch);
 void XC_PW92C(int SCF_iter, double dens[2], double Ec[1], double Vc[2]);
@@ -3385,7 +3308,7 @@ void Calc_NAO_Krylov(double *****Hks, double ****OLP0, double *****CDM);
 /*-----------------------------------------------------------------------*/
 
 double readfile(char *argv[],OpenMXCoreContext *core);
-void Input_std(char *filename);
+void Input_std(char *filename, OpenMXCoreContext *core);
 
 double truncation(int MD_iter, int UCell_flag, OpenMXCoreContext *core);
 double truncation_FEF(int MD_iter, int UCell_flag);

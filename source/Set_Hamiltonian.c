@@ -1538,7 +1538,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
     return Set_Hamiltonian_GpuSolver_Cache.imnl[comp];
 }
 
-double Set_Hamiltonian(const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
+double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
                        double ***** H)
 {
@@ -1613,8 +1613,8 @@ double Set_Hamiltonian(const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter
                 Gh_AN = natn[Gc_AN][h_AN];
 
                 Hwan = WhatSpecies[Gh_AN];
-                for (i = 0; i < Spe_Total_NO[Cwan]; i++) {
-                    for (j = 0; j < Spe_Total_NO[Hwan]; j++) {
+                for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
+                    for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
 
                         if (ProExpn_VNA == 0) {
                             H[0][Mc_AN][h_AN][i][j] =
@@ -1675,8 +1675,8 @@ double Set_Hamiltonian(const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                 Gh_AN = natn[Gc_AN][h_AN];
                 Hwan  = WhatSpecies[Gh_AN];
-                for (i = 0; i < Spe_Total_NO[Cwan]; i++) {
-                    for (j = 0; j < Spe_Total_NO[Hwan]; j++) {
+                for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
+                    for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
                         for (spin = 0; spin <= SpinP_switch; spin++) {
 
                             if (ProExpn_VNA == 0) {
@@ -1728,7 +1728,7 @@ double Set_Hamiltonian(const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter
 
     XC_P_switch = 1;
     SETH_PROF_T0(prof_t0);
-    Set_Vpot(MD_iter, SCF_iter, SCF_iter0, TRAN_Poisson_flag2, XC_P_switch);
+    Set_Vpot(atomic, MD_iter, SCF_iter, SCF_iter0, TRAN_Poisson_flag2, XC_P_switch);
     SETH_PROF_ADD(vpot, prof_t0);
 
     if (measure_time) {

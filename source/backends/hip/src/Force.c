@@ -525,7 +525,7 @@ static size_t Force5_OpenACC(double***** OLP1,
     return total_terms;
 }
 
-static size_t Force4_OpenACC(double* Fx,
+static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx,
     double* Fy,
     double* Fz,
     size_t* atom_terms)
@@ -598,7 +598,7 @@ static size_t Force4_OpenACC(double* Fx,
             }
 
             if (1.0e-14 < r) {
-                tmp0 = Dr_VNAF(Cwan, r);
+                tmp0 = Dr_VNAF(atomic, Cwan, r);
                 dvx = tmp0 * dx / r;
                 dvy = tmp0 * dy / r;
                 dvz = tmp0 * dz / r;
@@ -2202,8 +2202,8 @@ static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy
 
 static void MPI_OLP(double***** OLP1);
 static void Force3();
-static void Force4();
-static size_t Force4_OpenACC(double* Fx, double* Fy, double* Fz, size_t* atom_terms);
+static void Force4(const OpenMXAtomicViews *atomic);
+static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx, double* Fy, double* Fz, size_t* atom_terms);
 static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0);
 
 static void Force_HNL(double***** CDM0, double***** iDM0);
@@ -2227,7 +2227,7 @@ static int Force_PhaseProfileEnabled(void)
 static void Force_HNL_GpuCase2Run(double***** CDM0);
 static void Force_CoreHole(double***** CDM0, double***** iDM0);
 
-double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -2364,7 +2364,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             } else {
                 Gc_AN = F_M2G[Mc_AN];
                 Cwan = WhatSpecies[Gc_AN];
-                tno0 = Spe_Total_CNO[Cwan];
+                tno0 = atomic->species.contracted_orbitals[Cwan];
             }
 
             CDM0[k][Mc_AN] = (double***)malloc(sizeof(double**) * (FNAN[Gc_AN] + 1));
@@ -2375,7 +2375,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 } else {
                     Gh_AN = natn[Gc_AN][h_AN];
                     Hwan = WhatSpecies[Gh_AN];
-                    tno1 = Spe_Total_CNO[Hwan];
+                    tno1 = atomic->species.contracted_orbitals[Hwan];
                 }
 
                 CDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*) * tno0);
@@ -2407,7 +2407,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 } else {
                     Gc_AN = F_M2G[Mc_AN];
                     Cwan = WhatSpecies[Gc_AN];
-                    tno0 = Spe_Total_CNO[Cwan];
+                    tno0 = atomic->species.contracted_orbitals[Cwan];
                 }
 
                 iDM0[k][Mc_AN] = (double***)malloc(sizeof(double**) * (FNAN[Gc_AN] + 1));
@@ -2418,7 +2418,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                     } else {
                         Gh_AN = natn[Gc_AN][h_AN];
                         Hwan = WhatSpecies[Gh_AN];
-                        tno1 = Spe_Total_CNO[Hwan];
+                        tno1 = atomic->species.contracted_orbitals[Hwan];
                     }
 
                     iDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*) * tno0);
@@ -2457,13 +2457,13 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
         Gc_AN = M2G[Mc_AN];
         Cwan = WhatSpecies[Gc_AN];
-        tno1 = Spe_Total_CNO[Cwan];
+        tno1 = atomic->species.contracted_orbitals[Cwan];
 
         for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
 
             Gh_AN = natn[Gc_AN][h_AN];
             Hwan = WhatSpecies[Gh_AN];
-            tno2 = Spe_Total_CNO[Hwan];
+            tno2 = atomic->species.contracted_orbitals[Hwan];
 
             for (spin = 0; spin <= SpinP_switch; spin++) {
                 for (i = 0; i < tno1; i++) {
@@ -2485,13 +2485,13 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
             Gc_AN = M2G[Mc_AN];
             Cwan = WhatSpecies[Gc_AN];
-            tno1 = Spe_Total_CNO[Cwan];
+            tno1 = atomic->species.contracted_orbitals[Cwan];
 
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
 
                 Gh_AN = natn[Gc_AN][h_AN];
                 Hwan = WhatSpecies[Gh_AN];
-                tno2 = Spe_Total_CNO[Hwan];
+                tno2 = atomic->species.contracted_orbitals[Hwan];
 
                 for (i = 0; i < tno1; i++) {
                     for (j = 0; j < tno2; j++) {
@@ -2530,11 +2530,11 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         Mc_AN = Snd_MAN[IDS][n];
                         Gc_AN = Snd_GAN[IDS][n];
                         Cwan = WhatSpecies[Gc_AN];
-                        tno1 = Spe_Total_CNO[Cwan];
+                        tno1 = atomic->species.contracted_orbitals[Cwan];
                         for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                             Gh_AN = natn[Gc_AN][h_AN];
                             Hwan = WhatSpecies[Gh_AN];
-                            tno2 = Spe_Total_CNO[Hwan];
+                            tno2 = atomic->species.contracted_orbitals[Hwan];
                             for (i = 0; i < tno1; i++) {
                                 for (j = 0; j < tno2; j++) {
                                     size1++;
@@ -2600,11 +2600,11 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         Mc_AN = Snd_MAN[IDS][n];
                         Gc_AN = Snd_GAN[IDS][n];
                         Cwan = WhatSpecies[Gc_AN];
-                        tno1 = Spe_Total_CNO[Cwan];
+                        tno1 = atomic->species.contracted_orbitals[Cwan];
                         for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                             Gh_AN = natn[Gc_AN][h_AN];
                             Hwan = WhatSpecies[Gh_AN];
-                            tno2 = Spe_Total_CNO[Hwan];
+                            tno2 = atomic->species.contracted_orbitals[Hwan];
                             for (i = 0; i < tno1; i++) {
                                 for (j = 0; j < tno2; j++) {
                                     tmp_array[num] = CDM[spin][Mc_AN][h_AN][i][j];
@@ -2638,12 +2638,12 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         Mc_AN++;
                         Gc_AN = Rcv_GAN[IDR][n];
                         Cwan = WhatSpecies[Gc_AN];
-                        tno1 = Spe_Total_CNO[Cwan];
+                        tno1 = atomic->species.contracted_orbitals[Cwan];
 
                         for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                             Gh_AN = natn[Gc_AN][h_AN];
                             Hwan = WhatSpecies[Gh_AN];
-                            tno2 = Spe_Total_CNO[Hwan];
+                            tno2 = atomic->species.contracted_orbitals[Hwan];
                             for (i = 0; i < tno1; i++) {
                                 for (j = 0; j < tno2; j++) {
                                     CDM0[spin][Mc_AN][h_AN][i][j] = tmp_array2[num];
@@ -2694,11 +2694,11 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             Mc_AN = Snd_MAN[IDS][n];
                             Gc_AN = Snd_GAN[IDS][n];
                             Cwan = WhatSpecies[Gc_AN];
-                            tno1 = Spe_Total_CNO[Cwan];
+                            tno1 = atomic->species.contracted_orbitals[Cwan];
                             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                                 Gh_AN = natn[Gc_AN][h_AN];
                                 Hwan = WhatSpecies[Gh_AN];
-                                tno2 = Spe_Total_CNO[Hwan];
+                                tno2 = atomic->species.contracted_orbitals[Hwan];
                                 for (i = 0; i < tno1; i++) {
                                     for (j = 0; j < tno2; j++) {
                                         size1++;
@@ -2765,11 +2765,11 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             Mc_AN = Snd_MAN[IDS][n];
                             Gc_AN = Snd_GAN[IDS][n];
                             Cwan = WhatSpecies[Gc_AN];
-                            tno1 = Spe_Total_CNO[Cwan];
+                            tno1 = atomic->species.contracted_orbitals[Cwan];
                             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                                 Gh_AN = natn[Gc_AN][h_AN];
                                 Hwan = WhatSpecies[Gh_AN];
-                                tno2 = Spe_Total_CNO[Hwan];
+                                tno2 = atomic->species.contracted_orbitals[Hwan];
                                 for (i = 0; i < tno1; i++) {
                                     for (j = 0; j < tno2; j++) {
                                         tmp_array[num] = iDM[0][so][Mc_AN][h_AN][i][j];
@@ -2803,12 +2803,12 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             Mc_AN++;
                             Gc_AN = Rcv_GAN[IDR][n];
                             Cwan = WhatSpecies[Gc_AN];
-                            tno1 = Spe_Total_CNO[Cwan];
+                            tno1 = atomic->species.contracted_orbitals[Cwan];
 
                             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                                 Gh_AN = natn[Gc_AN][h_AN];
                                 Hwan = WhatSpecies[Gh_AN];
-                                tno2 = Spe_Total_CNO[Hwan];
+                                tno2 = atomic->species.contracted_orbitals[Hwan];
                                 for (i = 0; i < tno1; i++) {
                                     for (j = 0; j < tno2; j++) {
                                         iDM0[so][Mc_AN][h_AN][i][j] = tmp_array2[num];
@@ -2875,7 +2875,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     Data_Grid_Copy_B2C_2(Vxc_Grid_B, Vxc_Grid);
     Data_Grid_Copy_B2C_2(Density_Grid_B, Density_Grid);
 
-#pragma omp parallel shared(myid, Spe_OpenCore_flag, Spe_Atomic_PCC, Spe_VPS_RV, Spe_VPS_XV, Spe_Num_Mesh_VPS, Spe_PAO_RV, Spe_Atomic_Den, Spe_PAO_XV, Spe_Num_Mesh_PAO, time_per_atom, level_stdout, GridVol, Vxc_Grid, RefVxc_Grid, SpinP_switch, F_Vxc_flag, PCC_switch, dVHart_Grid, F_dVHart_flag, Gxyz, atv, MGridListAtom, CellListAtom, GridListAtom, GridN_Atom, WhatSpecies, M2G, Matomnum) private(OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, Gc_AN, Cwan, sumx, sumy, sumz, Nc, GNc, GRc, MNc, Cxyz, x, y, z, dx, dy, dz, r, r2, tmp0, tmp1, tmp2, xx)
+#pragma omp parallel shared(atomic,myid, time_per_atom, level_stdout, GridVol, Vxc_Grid, RefVxc_Grid, SpinP_switch, F_Vxc_flag, PCC_switch, dVHart_Grid, F_dVHart_flag, Gxyz, atv, MGridListAtom, CellListAtom, GridListAtom, GridN_Atom, WhatSpecies, M2G, Matomnum) private(OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, Gc_AN, Cwan, sumx, sumy, sumz, Nc, GNc, GRc, MNc, Cxyz, x, y, z, dx, dy, dz, r, r2, tmp0, tmp1, tmp2, xx)
     {
 
         /* get info. on OpenMP */
@@ -2921,8 +2921,8 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                 if (1.0e-14 < r) {
 
-                    tmp0 = Dr_KumoF(Spe_Num_Mesh_PAO[Cwan], xx, r,
-                        Spe_PAO_XV[Cwan], Spe_PAO_RV[Cwan], Spe_Atomic_Den[Cwan]);
+                    tmp0 = Dr_KumoF(atomic->species.pao_mesh[Cwan], xx, r,
+                        openmx_radial_row2(&atomic->pao_log_radii,Cwan), openmx_radial_row2(&atomic->pao_radii,Cwan), openmx_radial_row2(&atomic->density,Cwan));
 
                     tmp1 = dVHart_Grid[MNc] * tmp0 / r * F_dVHart_flag;
                     sumx += tmp1 * dx;
@@ -2939,16 +2939,16 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                     /* partial core correction */
                     if (PCC_switch == 1) {
 
-                        tmp0 = 0.5 * F_Vxc_flag * Dr_KumoF(Spe_Num_Mesh_VPS[Cwan], xx, r, Spe_VPS_XV[Cwan], Spe_VPS_RV[Cwan], Spe_Atomic_PCC[Cwan]);
+                        tmp0 = 0.5 * F_Vxc_flag * Dr_KumoF(atomic->species.vps_mesh[Cwan], xx, r, openmx_radial_row2(&atomic->vps_log_radii,Cwan), openmx_radial_row2(&atomic->vps_radii,Cwan), openmx_radial_row2(&atomic->partial_core_density,Cwan));
 
                         if (SpinP_switch == 0) {
                             tmp2 = 2.0 * Vxc_Grid[0][MNc];
                         } else {
-                            if (Spe_OpenCore_flag[Cwan] == 0) {
+                            if (atomic->species.open_core[Cwan] == 0) {
                                 tmp2 = Vxc_Grid[0][MNc] + Vxc_Grid[1][MNc];
-                            } else if (Spe_OpenCore_flag[Cwan] == 1) {
+                            } else if (atomic->species.open_core[Cwan] == 1) {
                                 tmp2 = 2.0 * Vxc_Grid[0][MNc];
-                            } else if (Spe_OpenCore_flag[Cwan] == -1) {
+                            } else if (atomic->species.open_core[Cwan] == -1) {
                                 tmp2 = 2.0 * Vxc_Grid[1][MNc];
                             }
                         }
@@ -3114,7 +3114,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     }
 
     else {
-#pragma omp parallel shared(time_per_atom, Gxyz, myid, level_stdout, iDM0, CDM0, CntH0, H0, F_Kin_flag, NC_v_eff, v_eff, OLP, Hub_U_occupation, Cnt_switch, F_NL_flag, List_YOUSO, RMI1, Zeeman_NCO_switch, Zeeman_NCS_switch, Constraint_NCS_switch, F_U_flag, Hub_U_switch, SO_switch, SpinP_switch, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum) private(OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, Gc_AN, Cwan, dEx, dEy, dEz, h_AN, Gh_AN, Mh_AN, Hwan, ian, start_q_AN, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, so, i, j, k, Hx, Hy, Hz, HUx, HUy, HUz, NC_HUx, NC_HUy, NC_HUz, s1, s2, pref, spinmax, spin)
+#pragma omp parallel shared(atomic,time_per_atom, Gxyz, myid, level_stdout, iDM0, CDM0, CntH0, H0, F_Kin_flag, NC_v_eff, v_eff, OLP, Hub_U_occupation, Cnt_switch, F_NL_flag, List_YOUSO, RMI1, Zeeman_NCO_switch, Zeeman_NCS_switch, Constraint_NCS_switch, F_U_flag, Hub_U_switch, SO_switch, SpinP_switch, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum) private(OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, Gc_AN, Cwan, dEx, dEy, dEz, h_AN, Gh_AN, Mh_AN, Hwan, ian, start_q_AN, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, so, i, j, k, Hx, Hy, Hz, HUx, HUy, HUz, NC_HUx, NC_HUy, NC_HUz, s1, s2, pref, spinmax, spin)
         {
 
         /* allocation of arrays */
@@ -3232,7 +3232,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 Gh_AN = natn[Gc_AN][h_AN];
                 Mh_AN = F_G2M[Gh_AN];
                 Hwan = WhatSpecies[Gh_AN];
-                ian = Spe_Total_CNO[Hwan];
+                ian = atomic->species.contracted_orbitals[Hwan];
 
                 if (SpinP_switch == 3 && (SO_switch == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1))
                     start_q_AN = 0;
@@ -3244,7 +3244,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                     Gq_AN = natn[Gc_AN][q_AN];
                     Mq_AN = F_G2M[Gq_AN];
                     Qwan = WhatSpecies[Gq_AN];
-                    jan = Spe_Total_CNO[Qwan];
+                    jan = atomic->species.contracted_orbitals[Qwan];
                     kl = RMI1[Mc_AN][h_AN][q_AN];
 
                     if (0 <= kl) {
@@ -3450,8 +3450,8 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             else
                                 pref = 4.0;
 
-                            for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
+                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
+                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
                                     dEx += pref * CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r;
                                     dEy += pref * CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r;
                                     dEz += pref * CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r;
@@ -3468,8 +3468,8 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             else
                                 pref = 2.0;
 
-                            for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
+                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
+                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
 
                                     dEx += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].r);
                                     dEy += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].r);
@@ -3491,8 +3491,8 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                         else if (SpinP_switch == 3 && (SO_switch == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
 
-                            for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
+                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
+                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
 
                                     dEx += CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r
                                         - iDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].i
@@ -3719,7 +3719,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             gpu_atom_terms = (size_t*)malloc(sizeof(size_t) * (Matomnum + 1));
 
             dtime(&Stime_atom);
-            gpu_total_terms = Force4_OpenACC(Fx, Fy, Fz, gpu_atom_terms);
+            gpu_total_terms = Force4_OpenACC(atomic, Fx, Fy, Fz, gpu_atom_terms);
             dtime(&Etime_atom);
             Force_accumulate_atom_time_from_terms(gpu_atom_terms, gpu_total_terms, Etime_atom - Stime_atom);
 
@@ -3733,7 +3733,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             free(gpu_atom_terms);
             gpu_atom_terms = NULL;
         } else {
-            Force4();
+            Force4(atomic);
         }
     } else if (ProExpn_VNA == 1 && F_VNA_flag == 1) {
         Force4B(vna, reciprocal, CDM0);
@@ -3783,7 +3783,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     else {
     // comment out June 2nd, 2023 H. Kawai
 #if !defined(__NVCOMPILER) || NVHPC_VERSION >= 250000
-        #pragma omp parallel shared(Dis,time_per_atom,Fx,Fy,Fz,CntOLP,OLP,Cnt_switch,EDM,SpinP_switch,Spe_Total_CNO,natn,FNAN,WhatSpecies,M2G,Matomnum) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,dum,dx,dy,dz)
+        #pragma omp parallel shared(atomic,Dis,time_per_atom,Fx,Fy,Fz,CntOLP,OLP,Cnt_switch,EDM,SpinP_switch,natn,FNAN,WhatSpecies,M2G,Matomnum) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,dum,dx,dy,dz)
 #endif
         {
 
@@ -3805,8 +3805,8 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 Gh_AN = natn[Gc_AN][h_AN];
                 Hwan = WhatSpecies[Gh_AN];
 
-                for (i = 0; i < Spe_Total_CNO[Cwan]; i++) {
-                    for (j = 0; j < Spe_Total_CNO[Hwan]; j++) {
+                for (i = 0; i < atomic->species.contracted_orbitals[Cwan]; i++) {
+                    for (j = 0; j < atomic->species.contracted_orbitals[Hwan]; j++) {
 
                         if (SpinP_switch == 0) {
                             dum = 2.0 * EDM[0][Mc_AN][h_AN][i][j];
@@ -3951,20 +3951,20 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                         if (Cnt_switch == 0) {
 
-                            for (i = 0; i < Spe_Total_NO[Cwan]; i++) {
-                                for (j = 0; j < Spe_Total_NO[Hwan]; j++) {
+                            for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
+                                for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
 
                                     tmp1 = 0.0;
                                     tmp2 = 0.0;
                                     tmp3 = 0.0;
 
-                                    for (k = 0; k < Spe_Total_NO[Cwan]; k++) {
+                                    for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
                                         tmp1 += v_eff[spin][Mc_AN][i][k] * OLP[1][Mc_AN][h_AN][k][j];
                                         tmp2 += v_eff[spin][Mc_AN][i][k] * OLP[2][Mc_AN][h_AN][k][j];
                                         tmp3 += v_eff[spin][Mc_AN][i][k] * OLP[3][Mc_AN][h_AN][k][j];
                                     }
 
-                                    for (k = 0; k < Spe_Total_NO[Hwan]; k++) {
+                                    for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
                                         tmp1 += v_eff[spin][Mh_AN][k][j] * OLP[1][Mc_AN][h_AN][i][k];
                                         tmp2 += v_eff[spin][Mh_AN][k][j] * OLP[2][Mc_AN][h_AN][i][k];
                                         tmp3 += v_eff[spin][Mh_AN][k][j] * OLP[3][Mc_AN][h_AN][i][k];
@@ -3987,20 +3987,20 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                             /* HUx, HUy, HUz for primitive orbital */
 
-                            for (i = 0; i < Spe_Total_NO[Cwan]; i++) {
-                                for (j = 0; j < Spe_Total_NO[Hwan]; j++) {
+                            for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
+                                for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
 
                                     tmp1 = 0.0;
                                     tmp2 = 0.0;
                                     tmp3 = 0.0;
 
-                                    for (k = 0; k < Spe_Total_NO[Cwan]; k++) {
+                                    for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
                                         tmp1 += v_eff[spin][Mc_AN][i][k] * OLP[1][Mc_AN][h_AN][k][j];
                                         tmp2 += v_eff[spin][Mc_AN][i][k] * OLP[2][Mc_AN][h_AN][k][j];
                                         tmp3 += v_eff[spin][Mc_AN][i][k] * OLP[3][Mc_AN][h_AN][k][j];
                                     }
 
-                                    for (k = 0; k < Spe_Total_NO[Hwan]; k++) {
+                                    for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
                                         tmp1 += v_eff[spin][Mh_AN][k][j] * OLP[1][Mc_AN][h_AN][i][k];
                                         tmp2 += v_eff[spin][Mh_AN][k][j] * OLP[2][Mc_AN][h_AN][i][k];
                                         tmp3 += v_eff[spin][Mh_AN][k][j] * OLP[3][Mc_AN][h_AN][i][k];
@@ -4014,8 +4014,8 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                             /* contract HUx, HUy, HUz */
 
-                            for (al = 0; al < Spe_Total_CNO[Cwan]; al++) {
-                                for (be = 0; be < Spe_Total_CNO[Hwan]; be++) {
+                            for (al = 0; al < atomic->species.contracted_orbitals[Cwan]; al++) {
+                                for (be = 0; be < atomic->species.contracted_orbitals[Hwan]; be++) {
 
                                     tmp1 = 0.0;
                                     tmp2 = 0.0;
@@ -4074,8 +4074,8 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                     kl = RMI1[Mc_AN][h_AN][0];
 
-                    for (i = 0; i < Spe_Total_NO[Cwan]; i++) {
-                        for (j = 0; j < Spe_Total_NO[Hwan]; j++) {
+                    for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
+                        for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
 
                             Re00x = 0.0;
                             Re00y = 0.0;
@@ -4097,7 +4097,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             Im01y = 0.0;
                             Im01z = 0.0;
 
-                            for (k = 0; k < Spe_Total_NO[Cwan]; k++) {
+                            for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
 
                                 Re00x += NC_v_eff[0][0][Mc_AN][i][k].r * OLP[1][Mc_AN][h_AN][k][j];
                                 Re00y += NC_v_eff[0][0][Mc_AN][i][k].r * OLP[2][Mc_AN][h_AN][k][j];
@@ -4124,7 +4124,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                                 Im01z += NC_v_eff[0][1][Mc_AN][i][k].i * OLP[3][Mc_AN][h_AN][k][j];
                             }
 
-                            for (k = 0; k < Spe_Total_NO[Hwan]; k++) {
+                            for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
 
                                 Re00x += NC_v_eff[0][0][Mh_AN][k][j].r * OLP[1][Mc_AN][h_AN][i][k];
                                 Re00y += NC_v_eff[0][0][Mh_AN][k][j].r * OLP[2][Mc_AN][h_AN][i][k];
@@ -4196,7 +4196,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             Im01y = 0.0;
                             Im01z = 0.0;
 
-                            for (k = 0; k < Spe_Total_NO[Hwan]; k++) {
+                            for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
 
                                 Re00x += NC_v_eff[0][0][Mh_AN][j][k].r * OLP[1][Mc_AN][h_AN][i][k];
                                 Re00y += NC_v_eff[0][0][Mh_AN][j][k].r * OLP[2][Mc_AN][h_AN][i][k];
@@ -4223,7 +4223,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                                 Im01z += NC_v_eff[0][1][Mh_AN][j][k].i * OLP[3][Mc_AN][h_AN][i][k];
                             }
 
-                            for (k = 0; k < Spe_Total_NO[Cwan]; k++) {
+                            for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
 
                                 Re00x += NC_v_eff[0][0][Mc_AN][k][i].r * OLP[1][Mc_AN][h_AN][k][j];
                                 Re00y += NC_v_eff[0][0][Mc_AN][k][i].r * OLP[2][Mc_AN][h_AN][k][j];
@@ -4390,7 +4390,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             } else {
                 Gc_AN = F_M2G[Mc_AN];
                 Cwan = WhatSpecies[Gc_AN];
-                tno0 = Spe_Total_CNO[Cwan];
+                tno0 = atomic->species.contracted_orbitals[Cwan];
             }
 
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
@@ -4400,7 +4400,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 } else {
                     Gh_AN = natn[Gc_AN][h_AN];
                     Hwan = WhatSpecies[Gh_AN];
-                    tno1 = Spe_Total_CNO[Hwan];
+                    tno1 = atomic->species.contracted_orbitals[Hwan];
                 }
 
                 for (i = 0; i < tno0; i++) {
@@ -4431,7 +4431,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 } else {
                     Gc_AN = F_M2G[Mc_AN];
                     Cwan = WhatSpecies[Gc_AN];
-                    tno0 = Spe_Total_CNO[Cwan];
+                    tno0 = atomic->species.contracted_orbitals[Cwan];
                 }
 
                 for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
@@ -4441,7 +4441,7 @@ double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                     } else {
                         Gh_AN = natn[Gc_AN][h_AN];
                         Hwan = WhatSpecies[Gh_AN];
-                        tno1 = Spe_Total_CNO[Hwan];
+                        tno1 = atomic->species.contracted_orbitals[Hwan];
                     }
 
                     for (i = 0; i < tno0; i++) {
@@ -5772,7 +5772,7 @@ void Force3()
 }
 #endif
 
-void Force4()
+void Force4(const OpenMXAtomicViews *atomic)
 {
     /****************************************************
                         #4 of Force
@@ -5797,7 +5797,7 @@ void Force4()
 
         Gc_AN = M2G[Mc_AN];
         Cwan = WhatSpecies[Gc_AN];
-        NO0 = Spe_Total_CNO[Cwan];
+        NO0 = atomic->species.contracted_orbitals[Cwan];
 
         /***********************************
                      summation
@@ -5827,7 +5827,7 @@ void Force4()
                 r = 1.0e-10;
 
             if (1.0e-14 < r) {
-                tmp0 = Dr_VNAF(Cwan, r);
+                tmp0 = Dr_VNAF(atomic, Cwan, r);
                 dvx = tmp0 * dx / r;
                 dvy = tmp0 * dy / r;
                 dvz = tmp0 * dz / r;

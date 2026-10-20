@@ -19,7 +19,7 @@
 #include <omp.h>
 
 
-double Set_Aden_Grid()
+double Set_Aden_Grid(const OpenMXAtomicViews *atomic)
 {
   /****************************************************
           Densities by the atomic superposition
@@ -159,7 +159,7 @@ double Set_Aden_Grid()
     Gc_AN = M2G[Mc_AN];    
     Cwan = WhatSpecies[Gc_AN];
  
-#pragma omp parallel shared(Spe_Atomic_PCC,Spe_VPS_RV,Spe_VPS_XV,Spe_Num_Mesh_VPS,Spe_PAO_RV,Spe_Atomic_Den,Spe_PAO_XV,Spe_Num_Mesh_PAO,PCCDen_Grid,PCC_switch,AtomDen_Grid,Cwan,Gxyz,atv,Mc_AN,CellListAtom,GridListAtom,GridN_Atom,Gc_AN) private(OMPID,Nthrds,Nc,GNc,GRc,Cxyz,dx,dy,dz,r,x)
+#pragma omp parallel shared(atomic,PCCDen_Grid,PCC_switch,AtomDen_Grid,Cwan,Gxyz,atv,Mc_AN,CellListAtom,GridListAtom,GridN_Atom,Gc_AN) private(OMPID,Nthrds,Nc,GNc,GRc,Cxyz,dx,dy,dz,r,x)
     {
 
       /* get info. on OpenMP */ 
@@ -181,14 +181,14 @@ double Set_Aden_Grid()
 
 	/* atomic density */
 
-	AtomDen_Grid[Mc_AN][Nc] = KumoF( Spe_Num_Mesh_PAO[Cwan], x, 
- 		                         Spe_PAO_XV[Cwan], Spe_PAO_RV[Cwan], Spe_Atomic_Den[Cwan]);
+	AtomDen_Grid[Mc_AN][Nc] = KumoF( atomic->species.pao_mesh[Cwan], x,
+                                         openmx_radial_row2(&atomic->pao_log_radii,Cwan), openmx_radial_row2(&atomic->pao_radii,Cwan), openmx_radial_row2(&atomic->density,Cwan));
 
 	/*  partial core correction */
 
 	if (PCC_switch==1) {
-	  PCCDen_Grid[Mc_AN][Nc] =  KumoF( Spe_Num_Mesh_VPS[Cwan], x, 
- 			                   Spe_VPS_XV[Cwan], Spe_VPS_RV[Cwan], Spe_Atomic_PCC[Cwan]);
+	  PCCDen_Grid[Mc_AN][Nc] =  KumoF( atomic->species.vps_mesh[Cwan], x,
+                                           openmx_radial_row2(&atomic->vps_log_radii,Cwan), openmx_radial_row2(&atomic->vps_radii,Cwan), openmx_radial_row2(&atomic->partial_core_density,Cwan));
 	}
       }
 
@@ -360,7 +360,7 @@ double Set_Aden_Grid()
       Nd    = InitN_DSpin[Gc_AN];
 
       DenA0 = AtomDen_Rcv_Grid_A2B[ID][LN];
-      if (1.0e-10<Spe_Core_Charge[spe]) DenA = DenA0*Nele/Spe_Core_Charge[spe];
+      if (1.0e-10<atomic->species.core_charge[spe]) DenA = DenA0*Nele/atomic->species.core_charge[spe];
       else                              DenA = 0.0;
 
       if (1.0e-15<Nele){
@@ -417,14 +417,14 @@ double Set_Aden_Grid()
 	  }
           else {
 
-            if (Spe_OpenCore_flag[spe]==0){
+            if (atomic->species.open_core[spe]==0){
  	      PCCDensity_Grid_B[0][BN] += 0.5*PCCDen_Rcv_Grid_A2B[ID][LN];
 	      PCCDensity_Grid_B[1][BN] += 0.5*PCCDen_Rcv_Grid_A2B[ID][LN];
 	    }
-            else if (Spe_OpenCore_flag[spe]==1){
+            else if (atomic->species.open_core[spe]==1){
  	      PCCDensity_Grid_B[0][BN] += PCCDen_Rcv_Grid_A2B[ID][LN];
 	    }
-            else if (Spe_OpenCore_flag[spe]==-1){
+            else if (atomic->species.open_core[spe]==-1){
  	      PCCDensity_Grid_B[1][BN] += PCCDen_Rcv_Grid_A2B[ID][LN];
             }
           }

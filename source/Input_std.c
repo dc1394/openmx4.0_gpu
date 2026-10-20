@@ -51,7 +51,7 @@ void Get_Euler_Rotation_Angle(
 
 
 
-void Input_std(char *file)
+void Input_std(char *file, OpenMXCoreContext *core)
 {
   FILE *fp,*fp_check,*fp1;
   int i,j,k,itmp;
@@ -197,7 +197,7 @@ void Input_std(char *file)
   List_YOUSO[18] = SpeciesNum;
 
   /* memory allocation */
-  Allocate_Arrays(0);
+  Allocate_Arrays_with_context(0,core);
 
   /*************************************************************
      for LDA+U

@@ -14,11 +14,11 @@
 #include "openmx_common.h"
 #include "openmx_core_radial.h"
 
-double VNAF(int Gensi, double R)
+double VNAF(const OpenMXAtomicViews *atomic, int Gensi, double R)
 {
   double result;
-  if (!openmx_core_radial_sample(OPENMX_RADIAL_NEUTRAL_POTENTIAL,0,Spe_Num_Mesh_VPS[Gensi],
-        Spe_VPS_RV[Gensi],Spe_Vna[Gensi],Spe_Atom_Cut1[Gensi],R,&result)) {
+  if (!openmx_core_radial_sample(OPENMX_RADIAL_NEUTRAL_POTENTIAL,0,atomic->species.vps_mesh[Gensi],
+        openmx_radial_row2(&atomic->vps_radii,Gensi),openmx_radial_row2(&atomic->neutral_potential,Gensi),atomic->species.cutoff[Gensi],R,&result)) {
     fprintf(stderr,"VNAF: invalid radial interpolation input\n");
     MPI_Abort(mpi_comm_level1,1);
     return 0.0;

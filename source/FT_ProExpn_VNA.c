@@ -21,6 +21,7 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "openmx_reciprocal.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
 #include "openmx_core_neutral.h"
 
@@ -28,6 +29,8 @@
 
 void FT_ProExpn_VNA(OpenMXCoreContext *core, int device)
 {
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   OpenMXReciprocalRows archive_rows;
   OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_NEUTRAL_PROJECTOR,&archive_rows);
   char archive_error[256];
@@ -78,9 +81,9 @@ void FT_ProExpn_VNA(OpenMXCoreContext *core, int device)
       spe = Species_Top[myid] + Lspe;
 
       const OpenMXNeutralProjectorTable table = {List_YOUSO[35],List_YOUSO[34],
-        Spe_Num_Mesh_VPS[spe],Spe_VPS_RV[spe],Projector_VNA[spe],Spe_VNA_Bessel[spe]};
-      const OpenMXGaussRadialGrid grid = {GL_Mesh,GL_Mesh,Spe_VPS_RV[spe][0],
-        Spe_Atom_Cut1[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae,GL_Weight,GL_Abscissae};
+        atomic->species.vps_mesh[spe],openmx_radial_row2(&atomic->vps_radii,spe),Projector_VNA[spe],Spe_VNA_Bessel[spe]};
+      const OpenMXGaussRadialGrid grid = {GL_Mesh,GL_Mesh,openmx_radial_row2(&atomic->vps_radii,spe)[0],
+        atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae,GL_Weight,GL_Abscissae};
       char error[256];
       if (!openmx_core_transform_neutral_projectors(core,device,&table,&grid,error,sizeof(error))) {
         fprintf(stderr,"FT_ProExpn_VNA species %d: %s\n",spe,error);

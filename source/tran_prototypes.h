@@ -1,4 +1,5 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_core_atomic.h"
 #include "openmx_gpu_runtime.h"
 #include "f77func.h"
 #ifdef blaswrap
@@ -631,7 +632,7 @@ void TRAN_Set_CentOverlap(
 			   );
 
 /* TRAN_Set_Electrode_Grid.c  */
-void TRAN_Set_Electrode_Grid(MPI_Comm comm1,
+void TRAN_Set_Electrode_Grid(const OpenMXAtomicViews *atomic, MPI_Comm comm1,
                              int *TRAN_Poisson_flag2,
 			     double *Grid_Origin,   /* origin of the grid */
 			     double tv[4][4],       /* unit vector of the cell*/

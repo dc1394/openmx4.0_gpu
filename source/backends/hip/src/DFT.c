@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_atomic.h"
 #include "openmx_reciprocal.h"
 #include "openmx_vna_matrix.h"
 #include "openmx_vna_status.h"
@@ -397,6 +398,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   const OpenMXVnaMatrixViews *vna=&matrices;
   const OpenMXReciprocalViews radial_views=OpenMX_ReciprocalTables(core);
   const OpenMXReciprocalViews *reciprocal=&radial_views;
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   static int firsttime=1;
   double ECE[20],Eele0[2],Eele1[2];
   double pUele,ChemP_e0[2];
@@ -624,7 +627,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       else if (Cnt_switch==1)                             Cnt_kind = 1;
       else                                                Cnt_kind = 0;
 
-      time9 = Set_Aden_Grid();
+      time9 = Set_Aden_Grid(atomic);
 
       if (Solver==4) {
 
@@ -632,7 +635,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                           set grid for NEGF
 	*****************************************************/
 
-	TRAN_Set_Electrode_Grid(mpi_comm_level1, 
+	TRAN_Set_Electrode_Grid(atomic, mpi_comm_level1,
                                 &TRAN_Poisson_flag2,                                
 				Grid_Origin, tv, Left_tv, Right_tv, gtv,
 				Ngrid1, Ngrid2, Ngrid3);
@@ -713,7 +716,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
         if (SucceedReadingDMfile==0){
 
-          time9 += Set_Aden_Grid();
+          time9 += Set_Aden_Grid(atomic);
 
           if (Solver==4) {
 	    TRAN_Add_ADensity_Lead(mpi_comm_level1,
@@ -803,7 +806,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0) /* non-spin-orbit coupling and non-LDA+U */
 	    ){
 
-          time3 += Set_Hamiltonian(vna, "nostdout",
+          time3 += Set_Hamiltonian(atomic, vna, "nostdout",
                                     MD_iter,
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
@@ -836,7 +839,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  }
 	}
 
-	time3 += Set_Hamiltonian(vna, "nostdout",
+	time3 += Set_Hamiltonian(atomic, vna, "nostdout",
                                   MD_iter,
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
@@ -904,7 +907,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (xmcd_calc == 1) time4 += Set_XMCD_penalty(1,pre_spin_moment,SCF_iter); // S. An
 
-      time3 += Set_Hamiltonian(vna, "stdout",
+      time3 += Set_Hamiltonian(atomic, vna, "stdout",
                                 MD_iter,
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
@@ -2794,10 +2797,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_magma_release_fp32_workspace();
   (void)openmx_hipsolver_release_workspace();
   openmx_gpusolver_cache_release();
-  if (!orbitalOpt_Force_Skip) time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
+  if (!orbitalOpt_Force_Skip) time7 += Force(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
   
   if (scf_stress_flag){
-    Stress(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
+    Stress(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
   }
 
   /* the matrix-element tables that a non-band run (or a band run with
@@ -2839,7 +2842,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(vna, MD_iter,ECE);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(atomic, vna, MD_iter,ECE);
 
   Uatom  = 0.0;
   Ucore  = ECE[0];

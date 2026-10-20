@@ -24,7 +24,7 @@
 #endif
 #define MIN(a,b) ((a)<(b))?  (a):(b)
 
-double Dr_VH_AtomF(int spe, int N, double x, double r, double *xv, double *rv, double *yv)
+double Dr_VH_AtomF(double core_charge, int N, double x, double r, double *xv, double *rv, double *yv)
 {
   int i;
   double t,dt,y;
@@ -34,9 +34,9 @@ double Dr_VH_AtomF(int spe, int N, double x, double r, double *xv, double *rv, d
   xmax = xv[N-1];
 
   if (xmax<=x){
-    return -Spe_Core_Charge[spe]/r/r;
+    return -core_charge/r/r;
   }
-  else if (r<Spe_VPS_RV[spe][0]){
+  else if (r<rv[0]){
 
     int m;
     double rm,h1,h2,h3,f1,f2,f3,f4,a,b;

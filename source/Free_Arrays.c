@@ -2468,44 +2468,7 @@ static void array0(OpenMXCoreContext *core)
     }
   }
 
-  for (i=0; i<SpeciesNum; i++){
-    free(SpeName[i]);
-  }  
-  free(SpeName);
-
-  for (i=0; i<SpeciesNum; i++){
-    free(SpeBasis[i]);
-  }  
-  free(SpeBasis);
-
-  for (i=0; i<SpeciesNum; i++){
-    free(SpeBasisName[i]);
-  }  
-  free(SpeBasisName);
-
-  for (i=0; i<SpeciesNum; i++){
-    free(SpeVPS[i]);
-  }  
-  free(SpeVPS);
-
-  free(Spe_AtomicMass);
-
-  free(Spe_MaxL_Basis);
-
-  for (i=0; i<SpeciesNum; i++){
-    free(Spe_Num_Basis[i]);
-  }  
-  free(Spe_Num_Basis);
-
-  for (i=0; i<SpeciesNum; i++){
-    free(Spe_Num_CBasis[i]);
-  }  
-  free(Spe_Num_CBasis);
-
-  free(Spe_OpenCore_flag);
-
-  free(Number_of_Electrons_Species);
-  free(Spe_Spe2Ban);
+  /* Species metadata is released after the last legacy consumer below. */
   free(Species_Top);
   free(Species_End);
   free(F_Snd_Num);
@@ -2516,7 +2479,6 @@ static void array0(OpenMXCoreContext *core)
   free(S_TopMAN);
   free(Snd_HFS_Size);
   free(Rcv_HFS_Size);
-  free(VPS_j_dependency);
   free(Num_Snd_Grid_A2B);
   free(Num_Rcv_Grid_A2B);
   free(Num_Snd_Grid_B2C);
@@ -3030,10 +2992,8 @@ static void array0(OpenMXCoreContext *core)
   /* Calculation-owned PAO/VPS tables. Borrowed real-space adapters expire. */
   openmx_core_pao_release(core);
   openmx_core_vps_release(core);
-  Spe_PAO_XV = Spe_PAO_RV = Spe_Atomic_Den = Spe_Atomic_Den2 = NULL;
+  Spe_PAO_XV = Spe_PAO_RV = NULL;
   Spe_PAO_RWF = NULL;
-  Spe_VPS_XV = Spe_VPS_RV = Spe_Vna = Spe_VH_Atom = Spe_Atomic_PCC = NULL;
-  Spe_VNL = NULL;
   Spe_VNLE = NULL;
   Spe_VPS_List = NULL;
 
@@ -3278,19 +3238,8 @@ static void array0(OpenMXCoreContext *core)
 
    /* Allocation_Arrays(2) */
 
-  free(Spe_Atom_Cut1);
-  free(Spe_Core_Charge);
   free(TGN_EH0);
   free(dv_EH0);
-  free(Spe_Num_Mesh_VPS);
-  free(Spe_Num_Mesh_PAO);
-  free(Spe_Total_VPS_Pro);
-  free(Spe_Num_RVPS);
-  free(Spe_PAO_LMAX);
-  free(Spe_PAO_Mul);
-  free(Spe_WhatAtom);
-  free(Spe_Total_NO);
-  free(Spe_Total_CNO);
   free(FNAN);
   free(SNAN);
   free(ONAN);
@@ -3441,6 +3390,31 @@ static void array0(OpenMXCoreContext *core)
     free(qgrid_Rec_Coulomb);
   }
   
+  openmx_core_species_release(core);
+  SpeName=NULL;
+  SpeBasis=NULL;
+  SpeBasisName=NULL;
+  SpeVPS=NULL;
+  Spe_AtomicMass=NULL;
+  Spe_MaxL_Basis=NULL;
+  Spe_Num_Basis=NULL;
+  Spe_Num_CBasis=NULL;
+  Spe_OpenCore_flag=NULL;
+  Number_of_Electrons_Species=NULL;
+  Spe_Spe2Ban=NULL;
+  VPS_j_dependency=NULL;
+  Spe_Atom_Cut1=NULL;
+  Spe_Core_Charge=NULL;
+  Spe_Num_Mesh_VPS=NULL;
+  Spe_Num_Mesh_PAO=NULL;
+  Spe_Total_VPS_Pro=NULL;
+  Spe_Num_RVPS=NULL;
+  Spe_PAO_LMAX=NULL;
+  Spe_PAO_Mul=NULL;
+  Spe_WhatAtom=NULL;
+  Spe_Total_NO=NULL;
+  Spe_Total_CNO=NULL;
+
 }
 
 void array1()

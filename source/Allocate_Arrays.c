@@ -22,57 +22,39 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     case 0: 
       /* call from Input_std.c */
 
-      SpeName = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeName[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      SpeBasis = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeBasis[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      SpeBasisName = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeBasisName[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      SpeVPS = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeVPS[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      Spe_AtomicMass = (double*)malloc(sizeof(double)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Spe_AtomicMass[i] = -1.0;
-      }    
-
-      Spe_MaxL_Basis = (int*)malloc(sizeof(int)*SpeciesNum);
-
-      Spe_Num_Basis = (int**)malloc(sizeof(int*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Spe_Num_Basis[i] = (int*)malloc(sizeof(int)*(Supported_MaxL+1));
-      }  
-       
-      Spe_Num_CBasis = (int**)malloc(sizeof(int*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Spe_Num_CBasis[i] = (int*)malloc(sizeof(int)*(Supported_MaxL+1));
-      }  
-
-      for (p=0; p<SpeciesNum; p++){
-        for (l=0; l<=Supported_MaxL; l++){
-          Spe_Num_Basis[p][l]  = 0;
-          Spe_Num_CBasis[p][l] = 0;
-        } 
-      } 
-
-      Spe_OpenCore_flag = (int*)malloc(sizeof(int)*SpeciesNum);
-      for (p=0; p<SpeciesNum; p++){
-        Spe_OpenCore_flag[p] = 0;
+      {
+        const OpenMXSpeciesShape shape={SpeciesNum,Supported_MaxL+1,YOUSO10};
+        OpenMXSpeciesViews views;
+        char error[256];
+        if (!openmx_core_species_allocate(core,&shape,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays: species: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        SpeName=views.name;
+        SpeBasis=views.basis_name;
+        SpeBasisName=views.basis_file;
+        SpeVPS=views.potential_file;
+        Spe_AtomicMass=views.mass;
+        Spe_MaxL_Basis=views.basis_lmax;
+        Spe_Num_Basis=views.basis_rows;
+        Spe_Num_CBasis=views.contracted_basis_rows;
+        Spe_OpenCore_flag=views.open_core;
+        Number_of_Electrons_Species=views.electrons;
+        Spe_Spe2Ban=views.species_index;
+        VPS_j_dependency=views.relativistic;
+        Spe_Atom_Cut1=views.cutoff;
+        Spe_Core_Charge=views.core_charge;
+        Spe_Num_Mesh_VPS=views.vps_mesh;
+        Spe_Num_Mesh_PAO=views.pao_mesh;
+        Spe_Total_VPS_Pro=views.projector_components;
+        Spe_Num_RVPS=views.radial_projectors;
+        Spe_PAO_LMAX=views.pao_lmax;
+        Spe_PAO_Mul=views.pao_multiplicity;
+        Spe_WhatAtom=views.atomic_number;
+        Spe_Total_NO=views.orbitals;
+        Spe_Total_CNO=views.contracted_orbitals;
       }
-
-      Number_of_Electrons_Species = (double*)malloc(sizeof(double)*SpeciesNum);
-      Spe_Spe2Ban = (int*)malloc(sizeof(int)*SpeciesNum);
       Species_Top = (int*)malloc(sizeof(int)*Num_Procs);
       Species_End = (int*)malloc(sizeof(int)*Num_Procs);
       F_Snd_Num = (int*)malloc(sizeof(int)*Num_Procs);
@@ -98,7 +80,6 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
       Num_Snd_Grid_B_AB2C = (int*)malloc(sizeof(int)*Num_Procs);
       Num_Rcv_Grid_B_AB2C = (int*)malloc(sizeof(int)*Num_Procs);
 
-      VPS_j_dependency = (int*)malloc(sizeof(int)*SpeciesNum);
 
       EH0_scaling = (double**)malloc(sizeof(double*)*SpeciesNum);
       for (i=0; i<SpeciesNum; i++){
@@ -352,19 +333,8 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     case 2:
       /* call from readfile.c */
 
-      Spe_Atom_Cut1 = (double*)malloc(sizeof(double)*SpeciesNum);
-      Spe_Core_Charge = (double*)malloc(sizeof(double)*SpeciesNum);
       TGN_EH0 = (int*)malloc(sizeof(int)*SpeciesNum);
       dv_EH0 = (double*)malloc(sizeof(double)*SpeciesNum);
-      Spe_Num_Mesh_VPS = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Num_Mesh_PAO = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Total_VPS_Pro = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Num_RVPS = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_PAO_LMAX = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_PAO_Mul  = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_WhatAtom = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Total_NO = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Total_CNO = (int*)malloc(sizeof(int)*SpeciesNum);
       FNAN = (int*)malloc(sizeof(int)*(atomnum+1));
       SNAN = (int*)malloc(sizeof(int)*(atomnum+1));
       ONAN = (int*)malloc(sizeof(int)*(atomnum+1));
@@ -607,8 +577,6 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
         }
         Spe_PAO_XV = views.log_radii;
         Spe_PAO_RV = views.radii;
-        Spe_Atomic_Den = views.density;
-        Spe_Atomic_Den2 = views.density_backup;
         Spe_PAO_RWF = views.orbitals;
       }
       break;
@@ -642,12 +610,6 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
           MPI_Abort(mpi_comm_level1,1);
           return;
         }
-        Spe_VPS_XV = views.log_radii;
-        Spe_VPS_RV = views.radii;
-        Spe_Vna = views.neutral_potential;
-        Spe_VH_Atom = views.hartree_potential;
-        Spe_Atomic_PCC = views.partial_core_density;
-        Spe_VNL = views.projectors;
         Spe_VNLE = views.energies;
         Spe_VPS_List = views.angular;
       }

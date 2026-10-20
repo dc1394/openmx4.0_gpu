@@ -20,6 +20,7 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "openmx_reciprocal.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
 #include "openmx_core_radial.h"
 
@@ -29,6 +30,8 @@
 
 void FT_VNA(OpenMXCoreContext *core, int device)
 {
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   OpenMXReciprocalRows archive_rows;
   OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_NEUTRAL_POTENTIAL,&archive_rows);
   char archive_error[256];
@@ -81,10 +84,10 @@ void FT_VNA(OpenMXCoreContext *core, int device)
 
       {
         char error[256];
-        const OpenMXNeutralTable table = {Spe_Num_Mesh_VPS[spe],Spe_VPS_RV[spe],
-          Spe_Vna[spe],Spe_Atom_Cut1[spe],Spe_CrudeVNA_Bessel[spe]};
-        const OpenMXSquaredRadialGrid grid = {OneD_Grid,GL_Mesh,Spe_PAO_RV[spe][0],
-          Spe_Atom_Cut1[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae};
+        const OpenMXNeutralTable table = {atomic->species.vps_mesh[spe],openmx_radial_row2(&atomic->vps_radii,spe),
+          openmx_radial_row2(&atomic->neutral_potential,spe),atomic->species.cutoff[spe],Spe_CrudeVNA_Bessel[spe]};
+        const OpenMXSquaredRadialGrid grid = {OneD_Grid,GL_Mesh,openmx_radial_row2(&atomic->pao_radii,spe)[0],
+          atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae};
         if (!openmx_core_transform_neutral_potential(core,device,&table,&grid,error,sizeof(error))) {
           fprintf(stderr,"FT_VNA: %s\n",error);
           MPI_Abort(mpi_comm_level1,1);

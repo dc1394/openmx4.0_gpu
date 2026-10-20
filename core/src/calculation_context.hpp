@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pao_compat.hpp"
+#include "species_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
 #include "vna_matrix_compat.hpp"
@@ -12,6 +13,7 @@
 struct OpenMXCoreContext {
   explicit OpenMXCoreContext(bool host_only = false) : implementation(host_only) {}
   openmx::core::Context implementation;
+  std::unique_ptr<openmx::core::compat::SpeciesOwner> species;
   std::unique_ptr<openmx::core::compat::PaoOwner> pao;
   std::unique_ptr<openmx::core::compat::VpsOwner> vps;
   std::unique_ptr<openmx::core::compat::ProductOwner> products;

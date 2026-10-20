@@ -21,6 +21,7 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "openmx_reciprocal.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
 #include "openmx_core_radial.h"
 
@@ -28,6 +29,8 @@
 
 void FT_PAO(OpenMXCoreContext *core, int device)
 {
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   OpenMXReciprocalRows archive_rows;
   OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_PAO,&archive_rows);
   char archive_error[256];
@@ -79,14 +82,14 @@ void FT_PAO(OpenMXCoreContext *core, int device)
 
       num_k = Ngrid_NormK;
       dk = PAO_Nkmax/(double)num_k;
-      rmin = Spe_PAO_RV[spe][0];
-      rmax = Spe_Atom_Cut1[spe] + 0.5;
+      rmin = openmx_radial_row2(&atomic->pao_radii,spe)[0];
+      rmax = atomic->species.cutoff[spe] + 0.5;
       h = (rmax - rmin)/(double)OneD_Grid;
 
       {
         char error[256];
-        const OpenMXPaoTable table = {Spe_MaxL_Basis[spe],Spe_Num_Basis[spe],
-          Spe_Num_Mesh_PAO[spe],Spe_PAO_RV[spe],Spe_PAO_RWF[spe],Spe_RF_Bessel[spe]};
+        const OpenMXPaoTable table = {atomic->species.basis_lmax[spe],Spe_Num_Basis[spe],
+          atomic->species.pao_mesh[spe],openmx_radial_row2(&atomic->pao_radii,spe),reciprocal.pao.orbitals[spe],Spe_RF_Bessel[spe]};
         const OpenMXUniformRadialGrid grid = {OneD_Grid,num_k,rmin,h,dk};
         if (!openmx_core_transform_pao(core,device,&table,&grid,error,sizeof(error))) {
           fprintf(stderr,"FT_PAO: %s\n",error);

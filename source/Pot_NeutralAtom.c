@@ -14,7 +14,7 @@
 #include <math.h>
 #include "openmx_common.h"
 
-double Pot_NeutralAtom(int ct_AN, double Gx, double Gy, double Gz)
+double Pot_NeutralAtom(const OpenMXAtomicViews *atomic, int ct_AN, double Gx, double Gy, double Gz)
 {
   int h_AN,Gh_AN,wan,Rn;
   double sum,x,y,z,dx,dy,dz,r;
@@ -34,7 +34,7 @@ double Pot_NeutralAtom(int ct_AN, double Gx, double Gy, double Gz)
     dz = Gz - z;
     r = sqrt(dx*dx + dy*dy + dz*dz);  
 
-    sum = sum + VNAF(wan,r);
+    sum = sum + VNAF(atomic, wan,r);
   }
 
   return sum;

@@ -38,6 +38,8 @@ Set_ProExpn_VNA.o: openmx_projector_matrix.h
 DFT.o truncation.o: openmx_vna_matrix.h
 openmx_api.o: openmx_common.h openmx_core.h openmx_core_vna_matrix.h
 
+$(OBJS) openmx_api.o: openmx_core_species.h openmx_core_atomic.h
 $(OBJS) openmx_api.o: openmx_core_reciprocal.h
 $(OBJS) openmx_api.o: openmx_core_reciprocal_archive.h
 DFT.o FT_PAO.o FT_NLP.o FT_ProExpn_VNA.o FT_VNA.o FT_ProductPAO.o SetPara_DFT.o Generate_Wannier.o: openmx_reciprocal.h
+DFT.o FT_PAO.o FT_NLP.o FT_ProExpn_VNA.o FT_VNA.o FT_ProductPAO.o SetPara_DFT.o: openmx_atomic.h

@@ -128,6 +128,14 @@ preserving their binary formats and row order. Files close through RAII, and
 MPI ranks agree on restart failure before recomputing. The external C API owns
 the same tables with host radial execution, allowing consecutive calls without
 initializing or finalizing Kokkos for each input.
+Species names, basis counts, meshes, charges and other basic species fields now
+share a calculation-owned C++ store. Its contiguous arrays and label buffers
+replace manual allocation of the corresponding input tables. Real-space atomic
+densities, neutral/Hartree potentials, partial-core densities, VPS coordinates
+and nonlocal projector rows are passed explicitly to input normalization,
+Fourier transforms, initial-density grids, energy, force and stress consumers;
+eight more global pointers are removed. The Hartree interpolator and its radial
+derivative take both their row and asymptotic charge from the caller.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

@@ -4,6 +4,7 @@
 #include "legacy_rows.hpp"
 #include "openmx_core_vps.h"
 #include "openmx_core_reciprocal.h"
+#include "openmx_core_atomic.h"
 #include <memory>
 #include <optional>
 
@@ -45,6 +46,18 @@ class VpsOwner {
       partial_core_density_(storage_.partial_core_density()), projectors_(storage_.projectors()),
       energies_(storage_.energies()), angular_(storage_.angular()), transforms_(storage_.transforms()) {
     if (neutral) neutral_ = std::make_unique<NeutralProjectorOwner>(*neutral);
+  }
+  void atomic_views(OpenMXAtomicViews& output) noexcept {
+    const auto x=storage_.log_radii(), r=storage_.radii(), v=storage_.neutral_potential();
+    const auto h=storage_.hartree_potential(), c=storage_.partial_core_density();
+    const auto p=storage_.projectors(); const auto e=storage_.energies();
+    output.vps_log_radii={x.data_handle(),{x.extent(0),x.extent(1)}};
+    output.vps_radii={r.data_handle(),{r.extent(0),r.extent(1)}};
+    output.neutral_potential={v.data_handle(),{v.extent(0),v.extent(1)}};
+    output.hartree_potential={h.data_handle(),{h.extent(0),h.extent(1)}};
+    output.partial_core_density={c.data_handle(),{c.extent(0),c.extent(1)}};
+    output.projectors={p.data_handle(),{p.extent(0),p.extent(1),p.extent(2),p.extent(3)}};
+    output.projector_energies={e.data_handle(),{e.extent(0),e.extent(1),e.extent(2)}};
   }
   OpenMXVpsViews views() noexcept {
     OpenMXVpsViews output{log_radii_.data(),radii_.data(),neutral_potential_.data(),

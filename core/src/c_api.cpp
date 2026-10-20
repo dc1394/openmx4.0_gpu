@@ -902,6 +902,7 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
     context->pao.reset();
     context->vps.reset();
     context->products.reset();
+    context->species.reset();
     context->implementation.finish();
   }
 }

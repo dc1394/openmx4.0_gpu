@@ -23,18 +23,18 @@
 #include <omp.h>
 
 #if OPENMX_GPU_HIP
-static void Make_VNA_Grid();
+static void Make_VNA_Grid(const OpenMXAtomicViews *atomic);
 #endif
 
 #if OPENMX_GPU_HIP
 /* set_hamiltonian_hip.cu: the precision of the grid integrals' kernels */
 void openmx_grid_precision_announce(void);
 #else
-static void Make_VNA_Grid();
+static void Make_VNA_Grid(const OpenMXAtomicViews *atomic);
 #endif
 
 
-void Set_Vpot(int MD_iter,
+void Set_Vpot(const OpenMXAtomicViews *atomic, int MD_iter,
               int SCF_iter, 
               int SCF_iter0,
               int TRAN_Poisson_flag2,
@@ -133,7 +133,7 @@ void Set_Vpot(int MD_iter,
   ****************************************************/
 
   dtime(&vp_t1); vp_d2b = vp_t1 - vp_t0; vp_t0 = vp_t1;
-  if (SCF_iter<=2 && ProExpn_VNA==0) Make_VNA_Grid();
+  if (SCF_iter<=2 && ProExpn_VNA==0) Make_VNA_Grid(atomic);
   dtime(&vp_t1); vp_vna = vp_t1 - vp_t0; vp_t0 = vp_t1;
 
   /****************************************************
@@ -365,7 +365,7 @@ void Set_Vpot(int MD_iter,
 
 
 
-void Make_VNA_Grid()
+void Make_VNA_Grid(const OpenMXAtomicViews *atomic)
 {
   static int firsttime=1;
   unsigned long long int n2D,N2D,GNc,GN;
@@ -455,7 +455,7 @@ void Make_VNA_Grid()
 	dz = Cxyz[3] + atv[GRc][3] - Gxyz[Gc_AN][3];
 
 	r = sqrt(dx*dx + dy*dy + dz*dz);
-	AtomVNA_Grid[Mc_AN][Nc] = VNAF(Cwan,r);
+	AtomVNA_Grid[Mc_AN][Nc] = VNAF(atomic, Cwan,r);
       }
 
 #pragma omp flush(AtomVNA_Grid)
