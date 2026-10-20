@@ -111,8 +111,8 @@ void neb_run(OpenMXCoreContext *core, char *argv[], MPI_Comm mpi_commWD, int ind
   ****************************************************/
 
   MD_iter = 1;
-  CompTime[myid][2] += truncation(MD_iter,1);
-  CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+  CompTime[myid][2] += truncation(MD_iter,1,core);
+  CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
 
   /****************************************************
    store the total energy, coordinates, and gradients

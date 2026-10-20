@@ -1,0 +1,4 @@
+# Preserve checks on the content of legacy files whose line endings are CRLF.
+source/Free_Arrays.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/openmx_common.h whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/truncation.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

@@ -4,12 +4,23 @@
 #include "openmx_vna_status.h"
 #include "openmx_vna_cpu.h"
 
+/* The persistent ABI keeps the application's existing float projector
+   format. Standalone CPU evaluators remain generic in Type_DS_VNA. */
+#ifdef __cplusplus
+static_assert(sizeof(Type_DS_VNA)==sizeof(float),"VNA storage ABI requires float projectors");
+#else
+_Static_assert(sizeof(Type_DS_VNA)==sizeof(float),"VNA storage ABI requires float projectors");
+#endif
+
 /* The synchronous assembly is shared. Native dispatch adapters keep device
    admission, rank turns, capacity recovery and architecture policies local
    to the CUDA/HIP implementations. */
-static double SetPro_Separable(double ****HVNA,Type_DS_VNA *****DS_VNA,
+static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,
     const OpenMXVnaInvocationBuffers *invocation,const SetProVnaTables *tables,int *used_gpu)
 {
+  double ****HVNA=matrices->HVNA;
+  Type_DS_VNA *****DS_VNA=matrices->DS_VNA;
+  const OpenMXProjectorMatrix projectors_matrix={matrices->projectors.layout,matrices->projectors.values};
   double begin,end,communication_begin,communication_end;
   double time1=0,time2=0,time3=0,time4=0,time5=0;
   dtime(&begin);
@@ -32,7 +43,7 @@ static double SetPro_Separable(double ****HVNA,Type_DS_VNA *****DS_VNA,
     SetPro_DSVNA_GpuEnd(&gpu2);
   }
   else
-    SetPro_DSVNA_CPU(DS_VNA,preparation_owner,&preparation,wavevectors,pairs,tables,&time1,&time2,&time3);
+    SetPro_DSVNA_CPU(&projectors_matrix,preparation_owner,&preparation,wavevectors,pairs,tables,&time1,&time2,&time3);
 
   MPI_Barrier(mpi_comm_level1);
   if (measure_time) dtime(&communication_begin);
@@ -100,7 +111,7 @@ static double SetPro_Separable(double ****HVNA,Type_DS_VNA *****DS_VNA,
           for (int i=0;i<rows;++i)
             for (int j=0;j<components;++j) DS_VNA[0][Matomnum+1][h][i][j]=buffer[offset++];
         if (gpu) SetPro_HVNA_DispatchArchive(&hvna,DS_VNA,original_mc,gc);
-        else SetPro_HVNA_CPU_Halo(&hvna_geometry,&projectors,&halo_workspace,DS_VNA,HVNA,original_mc,gc,fp32);
+        else SetPro_HVNA_CPU_Halo(&hvna_geometry,&projectors,&halo_workspace,&projectors_matrix,&matrices->potential,original_mc,gc,fp32);
         ++received[source];
       }
       if (sending) { MPI_Wait(&request,&status);++sent[destination]; }
@@ -112,7 +123,7 @@ static double SetPro_Separable(double ****HVNA,Type_DS_VNA *****DS_VNA,
   openmx_core_hvna_workspace_destroy(halo_owner);
   if (measure_time) { dtime(&communication_end);time4=communication_end-communication_begin;dtime(&communication_begin); }
   if (gpu) *used_gpu|=SetPro_HVNA_DispatchRun(&hvna,HVNA);
-  else SetPro_HVNA_CPU_Local(&hvna_geometry,projector_owner,&projectors,DS_VNA,HVNA,fp32);
+  else SetPro_HVNA_CPU_Local(&hvna_geometry,projector_owner,&projectors,&projectors_matrix,&matrices->potential,fp32);
   openmx_core_hvna_projectors_destroy(projector_owner);
   if (measure_time) {
     dtime(&communication_end);time5=communication_end-communication_begin;
@@ -124,9 +135,11 @@ static double SetPro_Separable(double ****HVNA,Type_DS_VNA *****DS_VNA,
   return end-begin;
 }
 
-static double SetPro_OneCenter(double ****HVNA,double *****matrix,int mirror,
+static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
     const OpenMXVnaInvocationBuffers *invocation,const SetProVnaTables *tables,SetProGpu3Context *gpu)
 {
+  double *****matrix=mirror ? matrices->HVNA3 : matrices->HVNA2;
+  const OpenMXDoubleBlockMatrix *flat=mirror ? &matrices->mirrored : &matrices->one_center;
   double begin,end;
   dtime(&begin);
   const OpenMXAtomPairBuffers *pairs=&invocation->pairs;
@@ -134,17 +147,17 @@ static double SetPro_OneCenter(double ****HVNA,double *****matrix,int mirror,
   if (gpu->enabled)
     SetPro_VNA23_GpuRun(matrix,mirror,pairs->count,pairs->local,pairs->neighbor,invocation->wavevectors,gpu);
   else
-    SetPro_VNA23_CPU(matrix,mirror,invocation->wavevectors,basis,pairs,tables);
+    SetPro_VNA23_CPU(flat,mirror,invocation->wavevectors,basis,pairs,tables);
   if (!mirror) {
     /* Preserve h/i/j accumulation order for the on-site contribution. */
     for (int mc=1;mc<=pairs->local_atoms;++mc) {
       const size_t first=pairs->offsets[mc-1],last=pairs->offsets[mc];
       const int orbitals=basis->orbitals[pairs->central_species[first]];
       for (int i=0;i<orbitals;++i)
-        for (int j=0;j<orbitals;++j) HVNA[mc][0][i][j]=0.0;
+        for (int j=0;j<orbitals;++j) openmx_double_block_row(&matrices->potential,0,mc,0,i)[j]=0.0;
       for (size_t p=first;p<last;++p)
         for (int i=0;i<orbitals;++i)
-          for (int j=0;j<orbitals;++j) HVNA[mc][0][i][j]+=matrix[0][mc][pairs->neighbor[p]][i][j];
+          for (int j=0;j<orbitals;++j) openmx_double_block_row(&matrices->potential,0,mc,0,i)[j]+=openmx_double_block_row(flat,0,mc,pairs->neighbor[p],i)[j];
     }
   }
   dtime(&end);
@@ -153,7 +166,7 @@ static double SetPro_OneCenter(double ****HVNA,double *****matrix,int mirror,
 
 /* This boundary borrows the legacy application state explicitly. Everything
    exported by invocation (basis, task maps, geometry, wavevectors) is owned. */
-double Set_ProExpn_VNA_WithStatus(double ****HVNA,double *****HVNA2,Type_DS_VNA *****DS_VNA,int *used_gpu)
+double Set_ProExpn_VNA_WithStatus(const OpenMXVnaMatrixViews *vna,int *used_gpu)
 {
   const OpenMXVnaInvocationInput input={
     {List_YOUSO[25],List_YOUSO[24],List_YOUSO[35],List_YOUSO[34],GL_Mesh,
@@ -171,11 +184,11 @@ double Set_ProExpn_VNA_WithStatus(double ****HVNA,double *****HVNA2,Type_DS_VNA 
   int hvna_gpu_used=0;
   if (used_gpu) *used_gpu=0;
   SetPro_note("entry","");
-  const double time1=SetPro_Separable(HVNA,DS_VNA,&invocation,&tables,&hvna_gpu_used);
+  const double time1=SetPro_Separable(vna,&invocation,&tables,&hvna_gpu_used);
   SetProGpu3Context gpu3={0};
   const int vna23_gpu=SetPro_VNA23_GpuBegin(&gpu3);
-  const double time2=SetPro_OneCenter(HVNA,HVNA2,0,&invocation,&tables,&gpu3);
-  const double time3=SetPro_OneCenter(NULL,HVNA3,1,&invocation,&tables,&gpu3);
+  const double time2=SetPro_OneCenter(vna,0,&invocation,&tables,&gpu3);
+  const double time3=SetPro_OneCenter(vna,1,&invocation,&tables,&gpu3);
   const int vna23_gpu_used=gpu3.used_gpu;
   if (vna23_gpu) SetPro_VNA23_GpuEnd(&gpu3);
   openmx_core_vna_invocation_destroy(owner);
@@ -186,8 +199,8 @@ double Set_ProExpn_VNA_WithStatus(double ****HVNA,double *****HVNA2,Type_DS_VNA 
   return time1+time2+time3;
 }
 
-double Set_ProExpn_VNA(double ****HVNA,double *****HVNA2,Type_DS_VNA *****DS_VNA)
+double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna)
 {
-  return Set_ProExpn_VNA_WithStatus(HVNA,HVNA2,DS_VNA,NULL);
+  return Set_ProExpn_VNA_WithStatus(vna,NULL);
 }
 #endif

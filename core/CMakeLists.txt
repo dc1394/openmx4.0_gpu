@@ -77,7 +77,7 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vp
   src/product_storage.cpp src/neutral_projectors.cpp src/pair_bessel.cpp
   src/overlap_workspace.cpp src/nonlocal_workspace.cpp src/vna_workspace.cpp src/vna_preparation.cpp
   src/dsvna_workspace.cpp src/hvna_layout.cpp src/hvna_workspace.cpp src/atom_pairs.cpp
-  src/projector_exchange.cpp src/vna_invocation.cpp src/c_api.cpp)
+  src/projector_exchange.cpp src/vna_invocation.cpp src/block_matrix.cpp src/vna_matrix_storage.cpp src/c_api.cpp)
 add_library(openmx_core SHARED ${_core_sources})
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC

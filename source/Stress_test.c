@@ -26,7 +26,7 @@
  
 
 
-void Check_Stress(char *argv[]);
+void Check_Stress(char *argv[], OpenMXCoreContext *core);
 
 #define nflags1  9
 #define nflags2  7
@@ -241,7 +241,7 @@ void Stress_test(int argc, char *argv[])
 
 
 
-void Check_Stress(char *argv[])
+void Check_Stress(char *argv[], OpenMXCoreContext *core)
 {
   int i,j,k,pq,Gc_AN;
   int time1,time2,MD_iter;
@@ -286,8 +286,8 @@ void Check_Stress(char *argv[])
   ****************************************************************/
 
   MD_iter = 1;
-  time1 = truncation(MD_iter,1);
-  time2 = DFT(MD_iter,0);
+  time1 = truncation(MD_iter,1,core);
+  time2 = DFT(MD_iter,0,core);
 
   for (i=0; i<9; i++){
     Analytic_Stress[i] = Stress_Tensor[i];
@@ -363,8 +363,8 @@ void Check_Stress(char *argv[])
     /* perform the total energy calculation */
 
     MD_iter = 2;
-    time1 = truncation(MD_iter,1);
-    time2 = DFT(MD_iter,0);
+    time1 = truncation(MD_iter,1,core);
+    time2 = DFT(MD_iter,0,core);
     Utot2 = Utot;
 
     /**********************
@@ -421,8 +421,8 @@ void Check_Stress(char *argv[])
     /* perform total energy calculation */
 
     MD_iter = 3;
-    time1 = truncation(MD_iter,1);
-    time2 = DFT(MD_iter,0);
+    time1 = truncation(MD_iter,1,core);
+    time2 = DFT(MD_iter,0,core);
     Utot3 = Utot;
 
     /**********************

@@ -92,6 +92,9 @@ static void reset_output(void){
 }
 int main(void)
 {
+  size_t atom_offsets[(NA+1)+1],block_offsets[(NA+1)*NH+1];
+  int shapes[2*(NA+1)*NH];
+  const OpenMXProjectorMatrix matrix={test_rectangular_matrix(NA+1,4,NH,NO,NC,atom_offsets,block_offsets,shapes),&output[0][0][0][0][0]};
   double wavevectors[NP],maximum_error=0;int cases=0;
   /* The highest derivative reads sb[lmax+1] even for exactly zero k. */
   for(int l=0;l<=28;l++){
@@ -152,7 +155,7 @@ int main(void)
         for(int r=0;r<2;++r)projector_values[s][l][r]=Spe_VNA_Bessel[s][l][r];}}
     const SetProVnaTables tables={projector_species,NULL,NULL,&Comp2Real[0][0][0],5,
         NULL,Radial_kmin,PAO_Nkmax,time_per_atom};
-    SetPro_DSVNA_CPU(channels,owner,&view,wavevectors,&pairs,&tables,timing,timing+1,timing+2);
+    SetPro_DSVNA_CPU(&matrix,owner,&view,wavevectors,&pairs,&tables,timing,timing+1,timing+2);
     openmx_core_atom_pairs_destroy(plan);
     memcpy(List_YOUSO,saved,sizeof(saved));memcpy(Spe_Num_Basis,basis_cases[basis],sizeof(Spe_Num_Basis));
     for(int a=1;a<=NA;a++)assert(time_per_atom[a]==NH);
@@ -198,7 +201,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-dsvna-workspace-") as folder:
     src.write_text('#include <assert.h>\n#include <math.h>\n#include <stdio.h>\n#include <stdlib.h>\n'
                    '#include <string.h>\n#include <omp.h>\n#include "openmx_core_dsvna.h"\n'
                    + HARNESS + bessel + '\n#include "openmx_dsvna_cpu.h"\n'
-                   + REFERENCE_HEAD + reference + '\n}\n' + '\n#include \"vna_pair_fixture.h\"\n' + MAIN)
+                   + REFERENCE_HEAD + reference + '\n}\n' + '\n#include \"vna_pair_fixture.h\"\n' + '\n#include "block_matrix_fixture.h"\n' + MAIN)
     for precision in ("float", "double"):
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +
                        ["-std=c11", "-fopenmp", "-DOPENMX_TEST_DS_TYPE=" + precision,

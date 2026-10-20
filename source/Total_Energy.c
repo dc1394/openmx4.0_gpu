@@ -18,6 +18,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_core_vna_matrix.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -48,7 +49,7 @@ static int TotalEnergy_ProfileEnabled(void)
 static double Calc_Ecore();
 static double Calc_EH0(int MD_iter);
 static double Calc_Ekin();
-static double Calc_Ena();
+static double Calc_Ena(const OpenMXVnaMatrixViews *vna);
 static double Calc_Enl();
 static double Calc_ECH();
 static void Calc_EXC_EH1(double ECE[]);
@@ -115,7 +116,7 @@ static int TotalEnergyUseOpenACC(void)
 
 
 
-double Total_Energy(int MD_iter, double ECE[])
+double Total_Energy(const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[])
 { 
   double time0;
   double TStime,TEtime;
@@ -200,7 +201,7 @@ double Total_Energy(int MD_iter, double ECE[])
 
   dtime(&stime);
 
-  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena();
+  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(vna);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -536,7 +537,7 @@ double Calc_Ekin()
 
 
 
-double Calc_Ena()
+double Calc_Ena(const OpenMXVnaMatrixViews *vna)
 {
   /****************************************************
      calculate the neutral atom potential energy, Ena
@@ -571,12 +572,12 @@ double Calc_Ena()
 
     if (Cnt_switch==1){
       /* temporaly, we borrow the CntH0 matrix */
-      Cont_Matrix0(HVNA,CntH0[0]);
+      Cont_Matrix0(vna->HVNA,CntH0[0]);
     }
 
     for (spin=0; spin<=SpinP_switch; spin++){
 
-#pragma omp parallel shared(spin,SpinP_switch,time_per_atom,CntH0,HVNA,DM,My_Ena_threads,Spe_Total_CNO,Cnt_switch,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
+#pragma omp parallel shared(spin,SpinP_switch,time_per_atom,CntH0,vna,DM,My_Ena_threads,Spe_Total_CNO,Cnt_switch,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
       {
 
 	/* get info. on OpenMP */ 
@@ -609,7 +610,7 @@ double Calc_Ena()
 	  if (Cnt_switch==0){
 	    for (i=0; i<Spe_Total_CNO[Cwan]; i++){
 	      for (j=0; j<Spe_Total_CNO[Hwan]; j++){
-		My_Ena_threads[OMPID] += DM[0][spin][Mc_AN][h_AN][i][j]*HVNA[Mc_AN][h_AN][i][j];
+		My_Ena_threads[OMPID] += DM[0][spin][Mc_AN][h_AN][i][j]*openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j];
 	      }
 	    }
 	  }
@@ -636,7 +637,7 @@ double Calc_Ena()
   }
   else if (SpinP_switch==3){
 
-#pragma omp parallel shared(time_per_atom,HVNA,DM,Spe_Total_CNO,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,Gc_AN,h_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
+#pragma omp parallel shared(time_per_atom,vna,DM,Spe_Total_CNO,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,Gc_AN,h_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
     {
 
       /* get info. on OpenMP */ 
@@ -668,7 +669,7 @@ double Calc_Ena()
 
 	for (i=0; i<Spe_Total_CNO[Cwan]; i++){
 	  for (j=0; j<Spe_Total_CNO[Hwan]; j++){
-	    My_Ena_threads[OMPID] += (DM[0][0][Mc_AN][h_AN][i][j]+DM[0][1][Mc_AN][h_AN][i][j])*HVNA[Mc_AN][h_AN][i][j];
+	    My_Ena_threads[OMPID] += (DM[0][0][Mc_AN][h_AN][i][j]+DM[0][1][Mc_AN][h_AN][i][j])*openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j];
 	  }
 	}
 

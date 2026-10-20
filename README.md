@@ -112,6 +112,13 @@ CPU integrals receive explicit geometry and Fourier-table views. Projector
 communication in VNA, nonlocal integrals, forces, stress and core-hole matrices
 uses per-call C++ owners for progress, message sizes and reusable send/receive
 buffers, replacing shared progress globals and repeated message allocation.
+The final VNA matrices now also have calculation-scoped ownership: four
+primitive and three optional contracted matrix families use contiguous ragged
+blocks with mdspan views. Their seven global arrays are removed. DFT,
+Hamiltonian assembly, total energy, forces and stress receive the matrix state
+explicitly; CPU VNA assembly uses flat views, while native kernels borrow
+stable row adapters. Repartitioning and teardown release these owners without
+walking the old atom or neighbor arrays.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

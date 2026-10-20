@@ -15,6 +15,7 @@
 #include "grid_precision.h"
 #include "orbs_grid_gpu.h"
 #include "openmx_common.h"
+#include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
@@ -76,7 +77,7 @@ static int SetH_ProfileEnabled(void)
 
 void Calc_MatrixElements_dVH_Vxc_VNA(int Cnt_kind);
 static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind);
-static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double *****HNL, double *****H);
+static void Set_Hamiltonian_Base_OpenACC(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H);
 static size_t Set_Hamiltonian_Base_OpenACC_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, int myid);
 static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid);
@@ -1537,7 +1538,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
     return Set_Hamiltonian_GpuSolver_Cache.imnl[comp];
 }
 
-double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
+double Set_Hamiltonian(const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
                        double ***** H)
 {
@@ -1598,7 +1599,7 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
     SETH_PROF_T0(prof_t0);
 
     if (use_base_openacc) {
-        Set_Hamiltonian_Base_OpenACC(SCF_iter,H0,HNL,H);
+        Set_Hamiltonian_Base_OpenACC(vna, SCF_iter,H0,HNL,H);
     }
 
     /* spin non-collinear */
@@ -1624,10 +1625,10 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
                             H[3][Mc_AN][h_AN][i][j] = 0.0;
                         } else {
                             H[0][Mc_AN][h_AN][i][j] = F_Kin_flag * H0[0][Mc_AN][h_AN][i][j] +
-                                                      F_VNA_flag * HVNA[Mc_AN][h_AN][i][j] +
+                                                      F_VNA_flag * openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j] +
                                                       F_NL_flag * HNL[0][Mc_AN][h_AN][i][j];
                             H[1][Mc_AN][h_AN][i][j] = F_Kin_flag * H0[0][Mc_AN][h_AN][i][j] +
-                                                      F_VNA_flag * HVNA[Mc_AN][h_AN][i][j] +
+                                                      F_VNA_flag * openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j] +
                                                       F_NL_flag * HNL[1][Mc_AN][h_AN][i][j];
                             H[2][Mc_AN][h_AN][i][j] = F_NL_flag * HNL[2][Mc_AN][h_AN][i][j];
                             H[3][Mc_AN][h_AN][i][j] = 0.0;
@@ -1683,7 +1684,7 @@ double Set_Hamiltonian(char * mode, int MD_iter, int SCF_iter, int SCF_iter0, in
                                     F_Kin_flag * H0[0][Mc_AN][h_AN][i][j] + F_NL_flag * HNL[spin][Mc_AN][h_AN][i][j];
                             } else {
                                 H[spin][Mc_AN][h_AN][i][j] = F_Kin_flag * H0[0][Mc_AN][h_AN][i][j] +
-                                                             F_VNA_flag * HVNA[Mc_AN][h_AN][i][j] +
+                                                             F_VNA_flag * openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j] +
                                                              F_NL_flag * HNL[spin][Mc_AN][h_AN][i][j];
                             }
 
@@ -2462,7 +2463,7 @@ static void SetH_base_capacity_kernel(size_t first,size_t n,const void *paramete
     }
 }
 
-static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double *****HNL, double *****H)
+static void Set_Hamiltonian_Base_OpenACC(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H)
 {
     int Mc_AN, h_AN, Gc_AN, Gh_AN, Cwan, Hwan;
     int numprocs, myid;
@@ -2554,7 +2555,7 @@ static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double **
                     size_t mij = total_mat + ij;
                     h0buf[mij] = H0[0][Mc_AN][h_AN][i][j];
                     if (use_vna) {
-                        hvnabuf[mij] = HVNA[Mc_AN][h_AN][i][j];
+                        hvnabuf[mij] = openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j];
                     }
                     for (spin = 0; spin < spin_count; spin++) {
                         size_t idx = (total_mat + ij) * spin_count + spin;

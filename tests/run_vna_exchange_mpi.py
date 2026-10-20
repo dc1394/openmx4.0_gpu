@@ -23,6 +23,9 @@ start = assembly.index("  int pending;\n  do {")
 finish = assembly.index("  openmx_core_hvna_workspace_destroy(halo_owner);", start)
 production = assembly[start:finish]
 reference = (ROOT / "tests/fixtures/vna_exchange_before_raii.c").read_text()
+# The frozen loop keeps its pointer-row callback; production now passes flat
+# views. Both callbacks independently inspect the same received payload.
+reference = reference.replace("SetPro_HVNA_CPU_Halo(", "reference_consume_halo(")
 PREFIX = r'''
 #include "openmx_projector_exchange.h"
 #include <assert.h>
@@ -35,6 +38,7 @@ PREFIX = r'''
 #define NO 3
 #define NP 8
 typedef TEST_DS_TYPE Type_DS_VNA;
+#include "openmx_projector_matrix.h"
 static MPI_Comm mpi_comm_level1;
 static MPI_Datatype MPI_Type_DS_VNA;
 static int Matomnum,M2G[NA+1],WhatSpecies[NG+1],FNAN[NG+1],Spe_Total_NO[2],List_YOUSO[40];
@@ -42,6 +46,10 @@ static int F_Snd_Num[4],F_Rcv_Num[4],F_TopMAN[4],F_Snd_Num_WK[4],F_Rcv_Num_WK[4]
 static int send_local[4][NA],send_global[4][NA],receive_global[4][NA];
 static int *Snd_MAN[4],*Snd_GAN[4],*Rcv_GAN[4],natn[NG+1][NH];
 static Type_DS_VNA values[NA+2][NH][NO][NP],*rows[NA+2][NH][NO],**neighbors[NA+2][NH],***atoms[NA+2],****channels[1]={atoms};
+static size_t matrix_atoms[NA+3],matrix_blocks[(NA+2)*NH+1];
+static int matrix_shapes[2*(NA+2)*NH];
+static OpenMXProjectorMatrix ds_matrix;
+static OpenMXVnaMatrixViews matrix_views;
 static int trace[NG+1],trace_size,events[1024][3],event_size,active_components;
 static void event(int kind,int peer,int count) {
   assert(event_size<1024);events[event_size][0]=kind;events[event_size][1]=peer;events[event_size++][2]=count;
@@ -68,9 +76,20 @@ static void consume(int original,int gc) {
 }
 static void SetPro_HVNA_GpuArchiveHalo(const void *g,Type_DS_VNA *****ds,int original,int gc) {(void)g;(void)ds;consume(original,gc);}
 static void SetPro_HVNA_DispatchArchive(const void *g,Type_DS_VNA *****ds,int original,int gc) {SetPro_HVNA_GpuArchiveHalo(g,ds,original,gc);}
-static void SetPro_HVNA_CPU_Halo(const void *geometry,const void *projectors,const void *workspace,
+static void reference_consume_halo(const void *geometry,const void *projectors,const void *workspace,
     Type_DS_VNA *****ds,double ****hvna,int original,int gc,int fp32) {
   (void)geometry;(void)projectors;(void)workspace;(void)ds;(void)hvna;(void)fp32;consume(original,gc);
+}
+'''
+FLAT_CALLBACK = r'''
+static void SetPro_HVNA_CPU_Halo(const void *geometry,const void *projectors,const void *workspace,
+    const OpenMXProjectorMatrix *ds,const OpenMXDoubleBlockMatrix *hvna,int original,int gc,int fp32) {
+  (void)geometry;(void)projectors;(void)workspace;(void)hvna;(void)fp32;
+  for(int h=0;h<=FNAN[gc];++h)
+    for(int i=0;i<Spe_Total_NO[WhatSpecies[gc]];++i)
+      for(int j=0;j<active_components;++j)
+        assert(openmx_projector_block_row(ds,0,Matomnum+1,h,i)[j]==expected(gc,h,i,j));
+  consume(original,gc);
 }
 '''
 LEGACY = r'''
@@ -89,6 +108,8 @@ static void candidate(int gpu) {
   int *send_sizes=transfer.buffers.send_sizes,*receive_sizes=transfer.buffers.receive_sizes;
   const int components=active_components,fp32=1,hvna=0,hvna_geometry=0,projectors=0,halo_workspace=0;
   Type_DS_VNA *****DS_VNA=channels;double ****HVNA=NULL;
+  const OpenMXProjectorMatrix projectors_matrix=ds_matrix;
+  const OpenMXVnaMatrixViews *matrices=&matrix_views;
   struct {int *orbitals;} preparation={Spe_Total_NO};
 '''
 MAIN = r'''
@@ -113,6 +134,13 @@ static void configure(int rank,int peers,int scenario) {
   }
   for(int mc=1;mc<=Matomnum;++mc)for(int h=0;h<NH;++h)for(int i=0;i<NO;++i)for(int j=0;j<NP;++j)
     values[mc][h][i][j]=expected(M2G[mc],h,i,j);
+  for(int a=0;a<=NA+2;++a)matrix_atoms[a]=(size_t)a*NH;
+  for(int b=0;b<=(NA+2)*NH;++b){
+    matrix_blocks[b]=(size_t)b*NO*NP;
+    if(b<(NA+2)*NH){matrix_shapes[2*b]=NO;matrix_shapes[2*b+1]=NP;}
+  }
+  ds_matrix=(OpenMXProjectorMatrix){{NA+2,1,(NA+2)*NH,(NA+2)*NH*NO*NP,(NA+2)*NH*NO*NP,
+      matrix_atoms,matrix_blocks,matrix_shapes},&values[0][0][0][0]};
   event_size=trace_size=0;memset(events,0,sizeof(events));memset(trace,0,sizeof(trace));
 }
 int main(int argc,char** argv) {
@@ -136,7 +164,7 @@ int main(int argc,char** argv) {
 with tempfile.TemporaryDirectory(prefix="openmx-vna-exchange-") as directory:
     folder = Path(directory)
     src, exe = folder / "check.c", folder / "check"
-    src.write_text(PREFIX + LEGACY + reference + "\n}\n" + PRODUCTION + production
+    src.write_text(PREFIX + FLAT_CALLBACK + LEGACY + reference + "\n}\n" + PRODUCTION + production
                    + "\nOpenMX_TransferEnd(&transfer);\n}\n" + MAIN)
     environment = os.environ.copy()
     environment.setdefault("OMPI_CC", "cc")

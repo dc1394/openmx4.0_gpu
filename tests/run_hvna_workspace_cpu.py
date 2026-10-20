@@ -39,6 +39,7 @@ PREFIX = r'''
 #define NL 15
 #define NR 2
 typedef OPENMX_TEST_DS_TYPE Type_DS_VNA;
+#include "openmx_projector_matrix.h"
 static int Matomnum,fp32,Num_RVNA,List_YOUSO[40],VNA_List[NL*NR+2],VNA_List2[NL*NR+2];
 static int M2G[NG+1],F_G2M[NG+1],WhatSpecies[NG+1],FNAN[NG+1],Spe_Total_NO[NS];
 static int neighbor_storage[NG+1][NB],*natn[NG+1];
@@ -50,10 +51,15 @@ static Type_DS_VNA values[NG+2][NB][NO][NC];
 static Type_DS_VNA *ds_rows[NG+2][NB][NO],**ds_neighbors[NG+2][NB],***ds_atoms[NG+2],****ds_channels[1]={ds_atoms};
 static double output[NG+1][NB][NO][NO],expected[NG+1][NB][NO][NO];
 static double *out_rows[NG+1][NB][NO],**out_neighbors[NG+1][NB],***hvna[NG+1];
+static size_t ds_atom_offsets[NG+3],ds_block_offsets[(NG+2)*NB+1],out_atom_offsets[NG+2],out_block_offsets[(NG+1)*NB+1];
+static int ds_shapes[2*(NG+2)*NB],out_shapes[2*(NG+1)*NB];
+static OpenMXProjectorMatrix ds_matrix;
+static OpenMXDoubleBlockMatrix out_matrix;
 static void dtime(double *time){static _Thread_local double tick;*time=tick++;}
 static double dampingF(double cutoff,double distance){return 1.0-distance/(2.0*cutoff);}
 static void SetPro_gpu_abort(const char *error){fprintf(stderr,"%s\n",error);abort();}
 #include "openmx_hvna_cpu.h"
+#include "block_matrix_fixture.h"
 '''
 
 MAIN = r'''
@@ -68,6 +74,8 @@ static void poison(void){
 static void configure(int local){
   const int order[NG+1]={0,3,1,5,4,2,6};
   Matomnum=local;
+  ds_matrix=(OpenMXProjectorMatrix){test_rectangular_matrix(NG+2,1,NB,NO,NC,ds_atom_offsets,ds_block_offsets,ds_shapes),&values[0][0][0][0]};
+  out_matrix=(OpenMXDoubleBlockMatrix){test_rectangular_matrix(NG+1,1,NB,NO,NO,out_atom_offsets,out_block_offsets,out_shapes),&output[0][0][0][0]};
   for(int a=1;a<=NG;++a){M2G[a]=order[a];F_G2M[order[a]]=a;}
   for(int g=0;g<=NG;++g){
     WhatSpecies[g]=(g%3==0?0:1);FNAN[g]=1+g%3;
@@ -90,6 +98,7 @@ static void configure(int local){
     const int global=a==Matomnum+1?NG+1:(a<=NG?M2G[a]:0);
     for(int k=0;k<NB;++k){
       ds_neighbors[a][k]=ds_rows[a][k];
+      ds_block_offsets[a*NB+k]=((size_t)global*NB+k)*NO*NC;
       for(int m=0;m<NO;++m)ds_rows[a][k][m]=values[global][k][m];
     }
   }
@@ -125,10 +134,10 @@ static void execute(const SetProHvnaGeometry *geometry,const OpenMXHvnaProjector
     const OpenMXHvnaProjectorBuffers *table,const OpenMXHvnaWorkspaceBuffers *work){
   for(int remote=NG;remote>Matomnum;--remote){
     receive(M2G[remote]);
-    SetPro_HVNA_CPU_Halo(geometry,table,work,ds_channels,hvna,remote,M2G[remote],fp32);
+    SetPro_HVNA_CPU_Halo(geometry,table,work,&ds_matrix,&out_matrix,remote,M2G[remote],fp32);
     poison();
   }
-  SetPro_HVNA_CPU_Local(geometry,owner,table,ds_channels,hvna,fp32);
+  SetPro_HVNA_CPU_Local(geometry,owner,table,&ds_matrix,&out_matrix,fp32);
 }
 int main(void){
   omp_set_dynamic(0);
@@ -204,7 +213,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-hvna-cpu-") as directory:
         command = shlex.split(os.environ.get("CC", "cc")) + [
             "-std=c11", "-O1", "-g", "-fopenmp", "-ffp-contract=off",
             "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
-            "-DOPENMX_TEST_DS_TYPE=" + storage, "-I" + str(ROOT / "source"),
+            "-DOPENMX_TEST_DS_TYPE=" + storage, "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"),
             str(src), str(CORE), "-Wl,-rpath," + str(CORE.parent), "-lm", "-o", str(executable)]
         subprocess.run(command, check=True)
         def sanitizer_stack():

@@ -3,10 +3,11 @@
 #include "openmx_core_vna.h"
 #include "openmx_core_atom_pairs.h"
 #include "openmx_vna_tables.h"
+#include "openmx_core_vna_matrix.h"
 
 /* Internal host adapter shared by CUDA/HIP and both pair orientations.
    Basis and geometry are owned snapshots; Fourier/output tables are explicit borrowed views. */
-static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_NormK,
+static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, const double *GL_NormK,
     const OpenMXVnaPreparationBuffers *preparation,const OpenMXAtomPairBuffers *pairs,
     const SetProVnaTables *tables)
 {
@@ -380,40 +381,40 @@ static void SetPro_VNA23_CPU(double *****HVNA23, int mirror, const double *GL_No
 
 		  }
 
-		  HVNA23[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS0.r;
+		  openmx_double_block_row(HVNA23,0,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 8.0*CsumS0.r;
 
 		  if (h_AN!=0){
 
 		    if (fabs(siT)<10e-14){
 
-		      HVNA23[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		      openmx_double_block_row(HVNA23,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r);
 
-		      HVNA23[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		      openmx_double_block_row(HVNA23,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r);
 
-		      HVNA23[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		      openmx_double_block_row(HVNA23,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
 		    }
 
 		    else{
 
-		      HVNA23[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		      openmx_double_block_row(HVNA23,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r
 			     - siP/siT/r*CsumSp.r);
 
-		      HVNA23[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		      openmx_double_block_row(HVNA23,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r
 			     + coP/siT/r*CsumSp.r);
 
-		      HVNA23[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		      openmx_double_block_row(HVNA23,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
 		    }
 		  }
 		  else{
-		    HVNA23[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    HVNA23[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    HVNA23[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
+		    openmx_double_block_row(HVNA23,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
+		    openmx_double_block_row(HVNA23,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
+		    openmx_double_block_row(HVNA23,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
 		  }
 
 		}

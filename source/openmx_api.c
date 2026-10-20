@@ -27,6 +27,9 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   double TStime,TEtime;
   char fileMemory[YOUSO10];
   char input_file_buf[YOUSO10];
+  char core_error[256];
+  OpenMXCoreContext *core=openmx_core_create(core_error,sizeof(core_error));
+  if (!core) { fprintf(stderr,"OpenMX core: %s\n",core_error); return 1; }
 
   /* MPI set-up */
 
@@ -59,7 +62,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
     the NEB calculation.
   *******************************************************/
 
-  if (neb_check(argv)) { neb(argc,argv,NULL); return 0; }
+  if (neb_check(argv)) { neb(argc,argv,core); openmx_core_destroy(core); return 0; }
 
   /*******************************************************
    allocation of CompTime and show the greeting message 
@@ -93,6 +96,10 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
 
   init_alloc_first();
 
+  /* Preserve the stateless radial path for callers invoking this API more
+     than once: a transient owner must not initialize/finalize Kokkos between
+     inputs. The context below owns only the VNA output matrices; it survives
+     their topology rebuilds and is destroyed after legacy array teardown. */
   CompTime[myid][1] = readfile(argv);
   MPI_Barrier(MPI_COMM_WORLD1);
 
@@ -120,11 +127,11 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
     if (dftD_switch==1 && version_dftD==3) DFTD3vdW_init(MD_iter);  /* DFT-D3 */
 
     if (MD_switch==12)
-      CompTime[myid][2] += truncation(1,1);  /* EvsLC */
+      CompTime[myid][2] += truncation(1,1,core);  /* EvsLC */
     else if (MD_cellopt_flag==1)
-      CompTime[myid][2] += truncation(1,1);  /* cell optimization */
+      CompTime[myid][2] += truncation(1,1,core);  /* cell optimization */
     else{ 
-      CompTime[myid][2] += truncation(MD_iter,1);
+      CompTime[myid][2] += truncation(MD_iter,1,core);
     }
 
     if (ML_flag==1 && myid==Host_ID) Get_VSZ(MD_iter);
@@ -138,7 +145,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
 
     if (Solver!=4 || TRAN_SCF_skip==0){
 
-      CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+      CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
       iterout(MD_iter+MD_Current_Iter,MD_TimeStep*(MD_iter+MD_Current_Iter-1),filepath,filename);
 
       /* MD or geometry optimization */
@@ -275,6 +282,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
     printf("\nThe calculation was normally finished.\n");fflush(stdout);
   }
 
+  openmx_core_destroy(core);
   return 0;
 }
 

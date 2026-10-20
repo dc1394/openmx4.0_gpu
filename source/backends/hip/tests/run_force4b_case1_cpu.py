@@ -21,6 +21,9 @@ import run_force4b_stream_cpu as common
 
 
 GLOBALS = r'''
+#include "openmx_core_vna_matrix.h"
+static OpenMXVnaMatrixViews matrices;
+static const OpenMXVnaMatrixViews *vna=&matrices;
 static int MatomnumF = 3;
 static int *F_M2G, **ncn;
 static double **atv, ****HVNA;
@@ -34,6 +37,9 @@ static double deri_dampingF(double cutoff, double distance)
 
 CASE1_FIXTURE = r'''
 static Type_DS_VNA***** true_ds;
+static double potential_values[LOCAL_SLOTS][NEIGHBORS][ORBITALS][ORBITALS];
+static size_t potential_atoms[LOCAL_SLOTS+1],potential_blocks[LOCAL_SLOTS*NEIGHBORS+1];
+static int potential_shapes[2*LOCAL_SLOTS*NEIGHBORS];
 
 static void allocate_case1_fixture(void)
 {
@@ -68,6 +74,20 @@ static void allocate_case1_fixture(void)
             }
         }
     }
+    /* Snapshot the reference rows through an independently laid-out flat
+       view. Production kernels must consume the passed calculation state. */
+    const size_t blocks=LOCAL_SLOTS*NEIGHBORS,stride=blocks*ORBITALS*ORBITALS;
+    for (mc=0;mc<=LOCAL_SLOTS;++mc) potential_atoms[mc]=(size_t)mc*NEIGHBORS;
+    for (size_t b=0;b<=blocks;++b) {
+        potential_blocks[b]=b*ORBITALS*ORBITALS;
+        if (b<blocks) potential_shapes[2*b]=potential_shapes[2*b+1]=ORBITALS;
+    }
+    matrices.potential=(OpenMXDoubleBlockMatrix){
+        {LOCAL_SLOTS,1,blocks,stride,stride,potential_atoms,potential_blocks,potential_shapes},
+        &potential_values[0][0][0][0]};
+    for (mc=1;mc<=Matomnum;++mc) for (k=0;k<NEIGHBORS;++k)
+        for (i=0;i<ORBITALS;++i) for (j=0;j<ORBITALS;++j)
+            potential_values[mc][k][i][j]=HVNA[mc][k][i][j];
     /* This pair has only its damping derivative contribution. */
     for (k = 0; k < NEIGHBORS; k++) RMI1[1][2][k] = -1;
     true_ds = calloc(4, sizeof(*true_ds));
@@ -245,7 +265,7 @@ int main(void)
                 for (mc = 1; mc <= Matomnum; mc++) {
                     for (q = 1; q <= FNAN[M2G[mc]]; q++) {
                         stage_source(F_G2M[natn[M2G[mc]][q]]);
-                        Force4B_case1_trace_fused(mc, M2G[mc], q, cdm, ds,
+                        Force4B_case1_trace_fused(vna, mc, M2G[mc], q, cdm, ds,
                             &expected[mc][0], &expected[mc][1], &expected[mc][2]);
                     }
                     for (i = 0; i < 3; i++) Gxyz[M2G[mc]][41 + i] = 0.37;
@@ -274,7 +294,7 @@ int main(void)
                 }
                 for (mc = 1; mc <= Matomnum; mc++)
                     for (i = 0; i < 3; i++) CHECK(Gxyz[M2G[mc]][41 + i] == 0.37);
-                Force4B_GpuCase1StreamAccumulate(cdm);
+                Force4B_GpuCase1StreamAccumulate(vna, cdm);
                 for (mc = 1; mc <= Matomnum; mc++) {
                     for (i = 0; i < 3; i++) {
                         const double error = fabs(Gxyz[M2G[mc]][41 + i] - (0.37 + expected[mc][i]));

@@ -3,10 +3,11 @@
 #include "openmx_core_dsvna.h"
 #include "openmx_core_atom_pairs.h"
 #include "openmx_vna_tables.h"
+#include "openmx_projector_matrix.h"
 
 /* Shared CPU projector assembly. Preparation outlives all workers; only
    Fourier values and output retain explicit borrowed views; geometry is owned. */
-static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation *owner,
+static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVnaPreparation *owner,
     const OpenMXVnaPreparationBuffers *preparation, const double *GL_NormK,
     const OpenMXAtomPairBuffers *pairs,const SetProVnaTables *tables,
     double *time1, double *time2, double *time3)
@@ -422,42 +423,42 @@ static void SetPro_DSVNA_CPU(Type_DS_VNA *****DS_VNA, const OpenMXVnaPreparation
 
 		}
 
-		DS_VNA[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*(Type_DS_VNA)CsumNL0.r;
+		openmx_projector_block_row(DS_VNA,0,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 8.0*(Type_DS_VNA)CsumNL0.r;
 
 		if (h_AN!=0){
 
 		  if (fabs(siT)<10e-14){
 
-		    DS_VNA[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		    openmx_projector_block_row(DS_VNA,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 		      -8.0*(Type_DS_VNA)(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r);
 
-		    DS_VNA[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		    openmx_projector_block_row(DS_VNA,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 		      -8.0*(Type_DS_VNA)(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r);
 
-		    DS_VNA[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		    openmx_projector_block_row(DS_VNA,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 		      -8.0*(Type_DS_VNA)(coT*CsumNLr.r - siT/r*CsumNLt.r);
 		  }
 
 		  else{
 
-		    DS_VNA[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		    openmx_projector_block_row(DS_VNA,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 		      -8.0*(Type_DS_VNA)(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r
 					- siP/siT/r*CsumNLp.r);
 
-		    DS_VNA[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		    openmx_projector_block_row(DS_VNA,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 		      -8.0*(Type_DS_VNA)(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r
 					+ coP/siT/r*CsumNLp.r);
 
-		    DS_VNA[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
+		    openmx_projector_block_row(DS_VNA,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
 		      -8.0*(Type_DS_VNA)(coT*CsumNLr.r - siT/r*CsumNLt.r);
 		  }
 
 		}
 
 		else{
-		  DS_VNA[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		  DS_VNA[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		  DS_VNA[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
+		  openmx_projector_block_row(DS_VNA,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
+		  openmx_projector_block_row(DS_VNA,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
+		  openmx_projector_block_row(DS_VNA,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
 		}
 
 	      }

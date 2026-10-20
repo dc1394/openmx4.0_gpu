@@ -699,7 +699,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   if (ForceConsistency_flag==1){
 
-    Check_Force(argv);
+    Check_Force(argv,core);
     CompTime[myid][20] = OutData(argv[1]);
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
@@ -737,7 +737,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   */
 
   if (StressConsistency_flag==1){
-    Check_Stress(argv);
+    Check_Stress(argv,core);
     CompTime[myid][20] = OutData(argv[1]);
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
@@ -760,11 +760,11 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
     if (dftD_switch==1 && version_dftD==3) DFTD3vdW_init(MD_iter);  /* DFT-D3 */
 
     if (MD_switch==12)
-      CompTime[myid][2] += truncation(1,1);  /* EvsLC */
+      CompTime[myid][2] += truncation(1,1,core);  /* EvsLC */
     else if (MD_cellopt_flag==1)
-      CompTime[myid][2] += truncation(1,1);  /* cell optimization */
+      CompTime[myid][2] += truncation(1,1,core);  /* cell optimization */
     else{ 
-      CompTime[myid][2] += truncation(MD_iter,1);
+      CompTime[myid][2] += truncation(MD_iter,1,core);
     }
 
     if (ML_flag==1 && myid==Host_ID) Get_VSZ(MD_iter);
@@ -788,7 +788,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
       }
 
 #endif
-      CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+      CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
       iterout(MD_iter+MD_Current_Iter,MD_TimeStep*(MD_iter+MD_Current_Iter-1),filepath,filename);
 
       /* MD or geometry optimization */

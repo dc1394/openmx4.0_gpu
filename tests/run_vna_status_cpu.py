@@ -41,7 +41,7 @@ typedef float Type_DS_VNA;
 static const int GL_Mesh=4;
 static const double PAO_Nkmax=3,Radial_kmin=.1;
 static const double GL_Abscissae[]={-1,-1.0/3,1.0/3,1};
-static double *****HVNA3;
+
 static int List_YOUSO[40]={[24]=1},SpeciesNum=1,atomnum=0,Matomnum=0,TCpyCell=-1;
 static int angular[1]={0},count[1]={1},*Spe_Num_Basis[1]={count},*Spe_MaxL_Basis=angular;
 static int *M2G,*WhatSpecies,*FNAN,**natn,**ncn;
@@ -51,18 +51,18 @@ static double GL_Weight[4],*time_per_atom;
 static void SetPro_gpu_abort(const char *message){fprintf(stderr,"%s\n",message);abort();}
 static _Thread_local int mode,notes,ends;
 static void SetPro_note(const char *stage,const char *format,...){(void)stage;(void)format;notes++;}
-static double SetPro_Separable(double ****h,Type_DS_VNA *****d,
+static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,
     const OpenMXVnaInvocationBuffers *call,const SetProVnaTables *tables,int *status){
- (void)h;(void)d;(void)tables;const double *k=call->wavevectors;
+ (void)matrices;(void)tables;const double *k=call->wavevectors;
  assert(*status==0);assert(fabs(k[0]-.1)<1e-14 && fabs(k[3]-3)<1e-14);
  assert(call->pairs.count==0 && call->preparation.orbitals[0]==1);
  *status=!!(mode&1);return 1;
 }
 static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g){g->enabled=!(mode&8);return g->enabled;}
 static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g){assert(g->enabled);memset(g,0,sizeof(*g));ends++;}
-static double SetPro_OneCenter(double ****h,double *****matrix,int mirror,
+static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
     const OpenMXVnaInvocationBuffers *call,const SetProVnaTables *tables,SetProGpu3Context *g){
- (void)h;(void)matrix;(void)call;(void)tables;
+ (void)matrices;(void)call;(void)tables;
  if(g->enabled && (mode & (mirror?4:2)))g->used_gpu=1;return mirror?3:2;
 }
 '''
@@ -75,15 +75,15 @@ int main(void){
   for(int scenario=0;scenario<16;++scenario){
    mode=scenario;notes=ends=0;
    int result=77;
-   double time=Set_ProExpn_VNA_WithStatus(NULL,NULL,NULL,&result);
+   double time=Set_ProExpn_VNA_WithStatus(NULL,&result);
    const int expected=!!(mode&1) || (!(mode&8) && !!(mode&6));
    assert(time==6 && result==expected && notes==2 && ends==!(mode&8));calls++;
    /* Compatibility calls and a subsequent CPU call must not retain a
       previous caller's marker. End has already cleared its local batch. */
-   notes=ends=0;assert(Set_ProExpn_VNA(NULL,NULL,NULL)==6);
+   notes=ends=0;assert(Set_ProExpn_VNA(NULL)==6);
    assert(notes==2 && ends==!(mode&8));calls++;
    mode=0;result=77;notes=ends=0;
-   assert(Set_ProExpn_VNA_WithStatus(NULL,NULL,NULL,&result)==6 && result==0);
+   assert(Set_ProExpn_VNA_WithStatus(NULL,&result)==6 && result==0);
    assert(notes==2 && ends==1);calls++;
   }
  }

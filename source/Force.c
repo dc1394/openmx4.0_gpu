@@ -13,6 +13,7 @@
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
 #include "openmx_common.h"
+#include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
@@ -1932,7 +1933,7 @@ static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
     }
 }
 
-static void Force4B_case1_trace_fused_rows(int Mc_AN, int Gc_AN, int q_AN,
+static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int Mc_AN, int Gc_AN, int q_AN,
     double***** CDM0, Type_DS_VNA***** DS_VNA,
     const Type_DS_VNA* cached_q,
     double* dEx, double* dEy, double* dEz)
@@ -2025,7 +2026,7 @@ static void Force4B_case1_trace_fused_rows(int Mc_AN, int Gc_AN, int q_AN,
                     const double cdm = (SpinP_switch == 0)
                         ? cdm0_row[n]
                         : cdm0_row[n] + cdm1_row[n];
-                    trace_hvna += pref * cdm * HVNA[Mc_AN][q_AN][m][n];
+                    trace_hvna += pref * cdm * openmx_double_block_row(&vna->potential,0,Mc_AN,q_AN,m)[n];
                 }
             }
 
@@ -2049,11 +2050,11 @@ static void Force4B_case1_trace_fused_rows(int Mc_AN, int Gc_AN, int q_AN,
     *dEz += force_z;
 }
 
-static void Force4B_case1_trace_fused(int Mc_AN, int Gc_AN, int q_AN,
+static void Force4B_case1_trace_fused(const OpenMXVnaMatrixViews *vna, int Mc_AN, int Gc_AN, int q_AN,
     double***** CDM0, Type_DS_VNA***** DS_VNA,
     double* dEx, double* dEy, double* dEz)
 {
-    Force4B_case1_trace_fused_rows(Mc_AN, Gc_AN, q_AN, CDM0, DS_VNA, NULL,
+    Force4B_case1_trace_fused_rows(vna, Mc_AN, Gc_AN, q_AN, CDM0, DS_VNA, NULL,
         dEx, dEy, dEz);
 }
 
@@ -2070,7 +2071,7 @@ static void dHNL(int where_flag,
     double****** DS_NL1,
     dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz);
 
-static void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
+static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
     Type_DS_VNA***** DS_VNA1,
     double***** TmpHVNA2, double***** TmpHVNA3,
     double** Hx, double** Hy, double** Hz);
@@ -2123,7 +2124,7 @@ static void MPI_OLP(double***** OLP1);
 static void Force3();
 static void Force4();
 static size_t Force4_OpenACC(double* Fx, double* Fy, double* Fz, size_t* atom_terms);
-static void Force4B(double***** CDM0);
+static void Force4B(const OpenMXVnaMatrixViews *vna, double***** CDM0);
 
 static void Force_HNL(double***** CDM0, double***** iDM0);
 static int Force_HNL_GpuBegin(double****** DS_NL);
@@ -2146,7 +2147,7 @@ static int Force_PhaseProfileEnabled(void)
 static void Force_HNL_GpuCase2Run(double***** CDM0);
 static void Force_CoreHole(double***** CDM0, double***** iDM0);
 
-double Force(double***** H0,
+double Force(const OpenMXVnaMatrixViews *vna, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -3653,7 +3654,7 @@ double Force(double***** H0,
             Force4();
         }
     } else if (ProExpn_VNA == 1 && F_VNA_flag == 1) {
-        Force4B(CDM0);
+        Force4B(vna, CDM0);
     }
 
     dtime(&etime);
@@ -7919,7 +7920,7 @@ static void Force4B_GpuCase1Kernel(int num_proj, float* flat, float* halo,
 
 
 /* Apply each completed item in the same mc/q order for either GPU path. */
-static void Force4B_GpuCase1Accumulate(double***** CDM0, int mc, int q_AN,
+static void Force4B_GpuCase1Accumulate(const OpenMXVnaMatrixViews *vna, double***** CDM0, int mc, int q_AN,
     int ian, int jan, const double* force)
 {
     int Gc_AN = M2G[mc];
@@ -7954,7 +7955,7 @@ static void Force4B_GpuCase1Accumulate(double***** CDM0, int mc, int q_AN,
             for (n = 0; n < jan; n++) {
                 const double cdm = (c1 == NULL) ? c0[n] : (c0[n] + c1[n]);
 
-                trace_hvna += pref * cdm * HVNA[mc][q_AN][m][n];
+                trace_hvna += pref * cdm * openmx_double_block_row(&vna->potential,0,mc,q_AN,m)[n];
             }
         }
 
@@ -8355,7 +8356,7 @@ static void Force4B_GpuCase1StreamSource(int source, double***** CDM0, Type_DS_V
     }
 }
 
-static void Force4B_GpuCase1StreamAccumulate(double***** CDM0)
+static void Force4B_GpuCase1StreamAccumulate(const OpenMXVnaMatrixViews *vna, double***** CDM0)
 {
     Force4BCase1Stream* g = &F4B_stream1;
     size_t pair;
@@ -8364,7 +8365,7 @@ static void Force4B_GpuCase1StreamAccumulate(double***** CDM0)
         const int mc = g->pair_mc[pair], q = g->pair_q[pair];
         const int gc = M2G[mc];
         if (!g->done[pair]) Force4B_gpu_abort("Force4B GPU: missing streamed case-1 pair.");
-        Force4B_GpuCase1Accumulate(CDM0, mc, q, Spe_Total_CNO[WhatSpecies[gc]],
+        Force4B_GpuCase1Accumulate(vna, CDM0, mc, q, Spe_Total_CNO[WhatSpecies[gc]],
             Spe_Total_CNO[WhatSpecies[natn[gc][q]]], g->forces + 3U * pair);
     }
 }
@@ -8720,7 +8721,7 @@ static int Force4B_GpuCase1TurnsDevice(Type_DS_VNA***** DS_VNA)
     return 1;
 }
 
-static void Force4B_GpuCase1TurnsAccumulate(double***** CDM0, Type_DS_VNA***** DS_VNA, int on_device)
+static void Force4B_GpuCase1TurnsAccumulate(const OpenMXVnaMatrixViews *vna, double***** CDM0, Type_DS_VNA***** DS_VNA, int on_device)
 {
     Force4BCase1Turns* g = &F4B_turns1;
     const double* forces = (const double*)(const void*)(g->metadata + (g->plan.item_f - g->plan.items));
@@ -8730,13 +8731,13 @@ static void Force4B_GpuCase1TurnsAccumulate(double***** CDM0, Type_DS_VNA***** D
         for (q = 1; q <= FNAN[gc]; q++) {
             const int gq = natn[gc][q], source = F_G2M[gq];
             if (on_device) {
-                Force4B_GpuCase1Accumulate(CDM0, mc, q, ian,
+                Force4B_GpuCase1Accumulate(vna, CDM0, mc, q, ian,
                     Spe_Total_CNO[WhatSpecies[gq]], forces + 3U * (size_t)item);
             } else {
                 double force[3] = { 0.0, 0.0, 0.0 };
                 const Type_DS_VNA* cached_q = source <= Matomnum ? NULL
                     : g->halo_host + g->halo_off[source - Matomnum];
-                Force4B_case1_trace_fused_rows(mc, gc, q, CDM0, DS_VNA, cached_q,
+                Force4B_case1_trace_fused_rows(vna, mc, gc, q, CDM0, DS_VNA, cached_q,
                     &force[0], &force[1], &force[2]);
                 Gxyz[gc][41] += force[0];
                 Gxyz[gc][42] += force[1];
@@ -8762,7 +8763,7 @@ static int Force4B_GpuCase1TurnsConcurrency(size_t free_bytes, size_t max_arena,
     return (int)fit;
 }
 
-static void Force4B_GpuCase1TurnsRun(double***** CDM0, Type_DS_VNA***** DS_VNA)
+static void Force4B_GpuCase1TurnsRun(const OpenMXVnaMatrixViews *vna, double***** CDM0, Type_DS_VNA***** DS_VNA)
 {
     Force4BCase1Turns* g = &F4B_turns1;
     int on_device = 0, concurrency, local_concurrency, requested = 0;
@@ -8816,7 +8817,7 @@ static void Force4B_GpuCase1TurnsRun(double***** CDM0, Type_DS_VNA***** DS_VNA)
                 fflush(stderr);
             }
         }
-        Force4B_GpuCase1TurnsAccumulate(CDM0, DS_VNA, on_device);
+        Force4B_GpuCase1TurnsAccumulate(vna, CDM0, DS_VNA, on_device);
     }
     Force4B_GpuCase1TurnsEnd();
 }
@@ -8900,7 +8901,7 @@ static void Force4B_capacity(int kind,Force4BGpuContext *g,int nitems,Force4BGpu
     }
 }
 
-static void Force4B_GpuCase1Run(double***** CDM0)
+static void Force4B_GpuCase1Run(const OpenMXVnaMatrixViews *vna, double***** CDM0)
 {
     Force4BGpuContext* g = &F4B_gpu;
     const int num_proj = g->num_proj;
@@ -9050,7 +9051,7 @@ f4b_capacity:
     Force4B_capacity(1,g,nitems,items,krowA,krowB,krow_halo,cdm_pref,item_f,gpu_done);
 
     for (p = 0; p < nitems; p++) {
-        Force4B_GpuCase1Accumulate(CDM0, item_atom[p], item_q[p],
+        Force4B_GpuCase1Accumulate(vna, CDM0, item_atom[p], item_q[p],
             items[p].ian, items[p].jan, item_f + 3U * (size_t)p);
     }
 
@@ -10614,8 +10615,14 @@ static void Force_HNL_GpuCase2Run(double *****CDM0)
     Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0);
 }
 
-void Force4B(double***** CDM0)
+void Force4B(const OpenMXVnaMatrixViews *vna, double***** CDM0)
 {
+  double *****HVNA2=vna->HVNA2;
+  double *****HVNA3=vna->HVNA3;
+  double *****CntHVNA2=vna->CntHVNA2;
+  double *****CntHVNA3=vna->CntHVNA3;
+  Type_DS_VNA *****DS_VNA=vna->DS_VNA;
+  Type_DS_VNA *****CntDS_VNA=vna->CntDS_VNA;
     /****************************************************
                         #4 of Force
 
@@ -11117,7 +11124,7 @@ void Force4B(double***** CDM0)
                                     continue;
                                 }
 
-                                dHVNA(0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
+                                dHVNA(vna, 0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
                                 pref = (SpinP_switch == 0)
                                     ? ((q_AN == h_AN) ? 2.0 : 4.0)
@@ -11195,13 +11202,13 @@ void Force4B(double***** CDM0)
 
                                 if (use_force4b_fused && q_AN != 0) {
                                     if (!f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1) {
-                                        Force4B_case1_trace_fused(Mc_AN, Gc_AN, q_AN,
+                                        Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
                                             CDM0, DS_VNA, &dEx, &dEy, &dEz);
                                     }
                                     continue;
                                 }
 
-                                dHVNA(0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
+                                dHVNA(vna, 0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
                                 /* contribution of force = Trace(CDM0*dH) */
 
@@ -11392,7 +11399,7 @@ void Force4B(double***** CDM0)
                             continue;
                         }
 
-                        dHVNA(0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
+                        dHVNA(vna, 0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
                         pref = (SpinP_switch == 0)
                             ? ((q_AN == h_AN) ? 2.0 : 4.0)
@@ -11461,13 +11468,13 @@ void Force4B(double***** CDM0)
 
                         if (use_force4b_fused && q_AN != 0) {
                             if (!f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1) {
-                                Force4B_case1_trace_fused(Mc_AN, Gc_AN, q_AN,
+                                Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
                                     CDM0, DS_VNA, &dEx, &dEy, &dEz);
                             }
                             continue;
                         }
 
-                        dHVNA(0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
+                        dHVNA(vna, 0, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
                         if (SpinP_switch == 0) {
 
@@ -11535,10 +11542,10 @@ void Force4B(double***** CDM0)
 
     /* batched device evaluation of every skipped fused case-1 trace */
     if (f4b_gpu_case1) {
-        Force4B_GpuCase1Run(CDM0);
+        Force4B_GpuCase1Run(vna, CDM0);
     }
     if (f4b_stream_case1) {
-        Force4B_GpuCase1StreamAccumulate(CDM0);
+        Force4B_GpuCase1StreamAccumulate(vna, CDM0);
         Force4B_GpuCase1StreamEnd();
     }
     /* Release every concurrent case-1 allocation before admitting a
@@ -11888,7 +11895,7 @@ void Force4B(double***** CDM0)
                             continue;
                         }
 
-                        dHVNA(1, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
+                        dHVNA(vna, 1, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
                         pref = ((Solver == 5 || Solver == 8 || Solver == 11) || q_AN == h_AN)
                             ? ((SpinP_switch == 0) ? 2.0 : 1.0)
@@ -11953,7 +11960,7 @@ void Force4B(double***** CDM0)
                                 continue;
                             }
 
-                            dHVNA(1, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
+                            dHVNA(vna, 1, Mc_AN, h_AN, q_AN, DS_VNA, ActiveHVNA2, ActiveHVNA3, HVNAx, HVNAy, HVNAz);
 
                             /* contribution of force = Trace(CDM0*dH) */
 
@@ -13125,7 +13132,7 @@ void dHNL(int where_flag,
     }
 }
 
-void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
+void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
     Type_DS_VNA***** DS_VNA1,
     double***** TmpHVNA2, double***** TmpHVNA3,
     double** Hx, double** Hy, double** Hz)
@@ -13506,9 +13513,9 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
         if (h_AN == 0) {
             for (m = 0; m < ian; m++) {
                 for (n = 0; n < jan; n++) {
-                    Hx[m][n] += HVNA[Mc_AN][kl][m][n] * dx;
-                    Hy[m][n] += HVNA[Mc_AN][kl][m][n] * dy;
-                    Hz[m][n] += HVNA[Mc_AN][kl][m][n] * dz;
+                    Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n] * dx;
+                    Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n] * dy;
+                    Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n] * dz;
                 }
             }
         }
@@ -13516,9 +13523,9 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
         else if (q_AN == 0) {
             for (m = 0; m < ian; m++) {
                 for (n = 0; n < jan; n++) {
-                    Hx[m][n] += HVNA[Mc_AN][kl][n][m] * dx;
-                    Hy[m][n] += HVNA[Mc_AN][kl][n][m] * dy;
-                    Hz[m][n] += HVNA[Mc_AN][kl][n][m] * dz;
+                    Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m] * dx;
+                    Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m] * dy;
+                    Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m] * dz;
                 }
             }
         }

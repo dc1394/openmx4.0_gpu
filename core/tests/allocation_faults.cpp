@@ -1,12 +1,15 @@
 #include "allocation_faults.hpp"
+#include <atomic>
 #include <cstdlib>
 #include <new>
 
 // Compile this test-only interposition as ordinary C++, even for CUDA/HIP
 // tests: device allocation operators must retain their native semantics.
 namespace {
-long countdown = -1;
-long live = 0;
+// Fault injection is controlled by a single test thread. Allocation counting
+// also supports independent owners being exercised concurrently.
+std::atomic<long> countdown{-1};
+std::atomic<long> live{0};
 }
 namespace openmx::test {
 void fail_allocation_after(long successes) noexcept { countdown = successes; }

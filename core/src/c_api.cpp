@@ -9,9 +9,7 @@
 #include "openmx_core_dsvna.h"
 #include "openmx_core_hvna.h"
 #include "openmx_core_hvna_workspace.h"
-#include "pao_compat.hpp"
-#include "vps_compat.hpp"
-#include "product_compat.hpp"
+#include "calculation_context.hpp"
 #include <openmx/core/radial.hpp>
 #include <openmx/core/radial_table.hpp>
 #include <openmx/core/neutral_projectors.hpp>
@@ -30,13 +28,6 @@
 #include <cstdio>
 #include <exception>
 #include <algorithm>
-
-struct OpenMXCoreContext {
-  openmx::core::Context implementation;
-  std::unique_ptr<openmx::core::compat::PaoOwner> pao;
-  std::unique_ptr<openmx::core::compat::VpsOwner> vps;
-  std::unique_ptr<openmx::core::compat::ProductOwner> products;
-};
 
 struct OpenMXPairBesselWorkspace {
   openmx::core::PairBesselWorkspace implementation;
@@ -907,12 +898,22 @@ extern "C" int openmx_core_run(int argc, char** argv, OpenMXCoreEntry entry)
 extern "C" void openmx_core_finish(OpenMXCoreContext* context)
 {
   if (context) {
+    context->vna_matrices.reset();
     context->pao.reset();
     context->vps.reset();
     context->products.reset();
     context->implementation.finish();
   }
 }
+
+extern "C" OpenMXCoreContext* openmx_core_create(char* error,std::size_t capacity)
+{
+  OpenMXCoreContext* result=nullptr;
+  checked_call(error,capacity,[&] { result=new OpenMXCoreContext; });
+  return result;
+}
+
+extern "C" void openmx_core_destroy(OpenMXCoreContext* context) { delete context; }
 
 extern "C" int openmx_core_has_accelerator(void)
 {

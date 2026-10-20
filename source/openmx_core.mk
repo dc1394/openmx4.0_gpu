@@ -31,3 +31,9 @@ SetPara_DFT.o: openmx_gpu_device.h
 SetPara_DFT.o FT_ProExpn_VNA.o: openmx_core_neutral.h openmx_core_radial.h
 Allocate_Arrays.o Free_Arrays.o: openmx_core_pao.h openmx_core_vps.h openmx_core_product.h
 FT_ProductPAO.o: openmx_core_product.h openmx_core_radial.h
+
+# Calculation-scoped ragged matrices are visible through openmx_common.h.
+$(OBJS): openmx_core_vna_matrix.h
+Set_ProExpn_VNA.o: openmx_projector_matrix.h
+DFT.o truncation.o: openmx_vna_matrix.h
+openmx_api.o: openmx_common.h openmx_core.h openmx_core_vna_matrix.h

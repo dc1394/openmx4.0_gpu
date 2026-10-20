@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_vna_matrix.h"
 #include "openmx_vna_status.h"
 #include "Inputtools.h"
 #include "mpi.h"
@@ -389,8 +390,10 @@ void Allocate_Free_GridData(int todo_flag);
 void Allocate_Free_OrbOpt(int todo_flag);
 
 
-double DFT(int MD_iter, int Cnt_Now)
+double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
+  const OpenMXVnaMatrixViews matrices=OpenMX_VnaMatrices(core,mpi_comm_level1);
+  const OpenMXVnaMatrixViews *vna=&matrices;
   static int firsttime=1;
   double ECE[20],Eele0[2],Eele1[2];
   double pUele,ChemP_e0[2];
@@ -519,7 +522,7 @@ double DFT(int MD_iter, int Cnt_Now)
 
   if (ProExpn_VNA==1){
     int vna_gpu_used = 0;
-    time12 = Set_ProExpn_VNA_WithStatus(HVNA, HVNA2, DS_VNA, &vna_gpu_used);
+    time12 = Set_ProExpn_VNA_WithStatus(vna, &vna_gpu_used);
     {
       const char *gpu_label = DFT_GPU_StageLabel(vna_gpu_used);
       if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
@@ -797,7 +800,7 @@ double DFT(int MD_iter, int Cnt_Now)
                && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0) /* non-spin-orbit coupling and non-LDA+U */
 	    ){
 
-  	  time3 += Set_Hamiltonian("nostdout",
+          time3 += Set_Hamiltonian(vna, "nostdout",
                                     MD_iter,
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
@@ -830,7 +833,7 @@ double DFT(int MD_iter, int Cnt_Now)
 	  }
 	}
 
-	time3 += Set_Hamiltonian("nostdout",
+	time3 += Set_Hamiltonian(vna, "nostdout",
                                   MD_iter,
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
@@ -898,7 +901,7 @@ double DFT(int MD_iter, int Cnt_Now)
 
       if (xmcd_calc == 1) time4 += Set_XMCD_penalty(1,pre_spin_moment,SCF_iter); // S. An
 
-      time3 += Set_Hamiltonian("stdout",
+      time3 += Set_Hamiltonian(vna, "stdout",
                                 MD_iter,
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
@@ -1545,8 +1548,8 @@ double DFT(int MD_iter, int Cnt_Now)
       /*
 	time10 += Set_Orbitals_Grid(1);
 	time11 += Set_Density_Grid(1, 0, DM[0], Density_Grid_B);
-	time7 += Force(H0,DS_NL,OLP,DM[0],EDM);
-	time8 += Total_Energy(MD_iter,ECE);
+	time7 += Force(vna, H0,DS_NL,OLP,DM[0],EDM);
+	time8 += Total_Energy(vna, MD_iter,ECE);
 	time10 += Set_Orbitals_Grid(0);
 
 	TotalE = 0.0;
@@ -2788,10 +2791,10 @@ double DFT(int MD_iter, int Cnt_Now)
   openmx_magma_release_fp32_workspace();
   (void)openmx_hipsolver_release_workspace();
   openmx_gpusolver_cache_release();
-  if (!orbitalOpt_Force_Skip) time7 += Force(H0,DS_NL,OLP,DM[0],EDM);
+  if (!orbitalOpt_Force_Skip) time7 += Force(vna, H0,DS_NL,OLP,DM[0],EDM);
   
   if (scf_stress_flag){
-    Stress(H0,DS_NL,OLP,DM[0],EDM); 
+    Stress(vna, H0,DS_NL,OLP,DM[0],EDM);
   }
 
   /* the matrix-element tables that a non-band run (or a band run with
@@ -2806,7 +2809,7 @@ double DFT(int MD_iter, int Cnt_Now)
     Stress_NC(H0,DS_NL,OLP,DM[0],EDM); 
   }
   else{  
-    Stress(H0,DS_NL,OLP,DM[0],EDM); 
+    Stress(vna, H0,DS_NL,OLP,DM[0],EDM);
   }
   */
 
@@ -2833,7 +2836,7 @@ double DFT(int MD_iter, int Cnt_Now)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(MD_iter,ECE);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(vna, MD_iter,ECE);
 
   Uatom  = 0.0;
   Ucore  = ECE[0];

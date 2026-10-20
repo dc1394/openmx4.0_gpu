@@ -22,6 +22,8 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_vna_matrix.h"
+#include <limits.h>
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
 #include "openmx_host_memory.h"
@@ -51,7 +53,7 @@ static int Trunc_ProfileEnabled(void)
 static void Fixed_FNAN_SNAN();
 static int Set_Periodic(int CpyN, int Allocate_switch);
 static void Free_truncation(int CpyN, int TN, int Free_switch);
-static void free_arrays_truncation0();
+static void free_arrays_truncation0(OpenMXCoreContext *core);
 static void Trn_System(int MD_iter, int CpyCell, int TCpyCell);
 static void Estimate_Trn_System(int CpyCell, int TCpyCell);
 static void Check_System();
@@ -68,7 +70,7 @@ int TFNAN,TFNAN2,TSNAN,TSNAN2;
 
 
 
-double truncation(int MD_iter,int UCell_flag)
+double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
 { 
   static int firsttime=1;
   int i,j,k,m,ct_AN,h_AN,Gh_AN,Mc_AN,Gc_AN,s1,s2;
@@ -83,9 +85,9 @@ double truncation(int MD_iter,int UCell_flag)
   int size_DS_NL=0,size_CntDS_NL=0;
   int size_NumOLG=0,size_OLP=0,size_OLP_CH=0,size_CntOLP=0;
   int size_OLP_L=0,size_OLP_p=0;
-  int size_HVNA=0,size_DS_VNA=0,size_CntDS_VNA=0;
-  int size_HVNA2=0,size_CntHVNA2=0;
-  int size_HVNA3=0,size_CntHVNA3=0;
+  size_t size_HVNA=0,size_DS_VNA=0,size_CntDS_VNA=0;
+  size_t size_HVNA2=0,size_CntHVNA2=0;
+  size_t size_HVNA3=0,size_CntHVNA3=0;
   int size_H_Hub=0,size_DM_onsite=0,size_DM0=0;
   int size_v_eff=0,size_NC_OcpN=0,size_NC_v_eff=0;
   int size_S12,size_iDM=0;
@@ -158,7 +160,7 @@ double truncation(int MD_iter,int UCell_flag)
     }
   } 
 
-  free_arrays_truncation0();
+  free_arrays_truncation0(core);
 
   if (measure_time){
     dtime(&etime); 
@@ -2492,274 +2494,34 @@ double truncation(int MD_iter,int UCell_flag)
   }
 
   if (ProExpn_VNA==1){
-
-    /* HVNA */  
-
-    size_HVNA = 0;
-    HVNA = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      HVNA[Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        HVNA[Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          HVNA[Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-          size_HVNA += tno1;
-        }
-      }
+    /* Numeric blocks and legacy views belong to this calculation/topology. */
+    if (List_YOUSO[35]<0 || List_YOUSO[35]==INT_MAX || List_YOUSO[34]<0 ||
+        List_YOUSO[8]<0 || List_YOUSO[8]==INT_MAX) {
+      fprintf(stderr,"Invalid VNA matrix capacity\n");
+      MPI_Abort(mpi_comm_level1,1); abort();
     }
-
-    /* DS_VNA */
-
-    size_DS_VNA = 0;
-    DS_VNA = (Type_DS_VNA*****)malloc(sizeof(Type_DS_VNA****)*4); 
-    for (k=0; k<4; k++){
-
-      DS_VNA[k] = (Type_DS_VNA****)malloc(sizeof(Type_DS_VNA***)*(Matomnum+2)); 
-
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-          fan = FNAN[Gc_AN];
-	}
-	else if ( (Matomnum+1)<=Mc_AN ){
-          fan = List_YOUSO[8];
-          tno0 = List_YOUSO[7];
-        }
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-          fan = FNAN[Gc_AN];
-	}
-          
-	DS_VNA[k][Mc_AN] = (Type_DS_VNA***)malloc(sizeof(Type_DS_VNA**)*(fan+1)); 
-
-	for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	  } 
-
-	  DS_VNA[k][Mc_AN][h_AN] = (Type_DS_VNA**)malloc(sizeof(Type_DS_VNA*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    DS_VNA[k][Mc_AN][h_AN][i] = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*tno1);
-	    size_DS_VNA += tno1;
-	  }
-	}
-      }
+    const size_t angular=(size_t)List_YOUSO[35]+1;
+    if (angular>(size_t)INT_MAX/angular ||
+        (List_YOUSO[34] && angular*angular>(size_t)INT_MAX/(size_t)List_YOUSO[34])) {
+      fprintf(stderr,"VNA projector dimension exceeds int\n");
+      MPI_Abort(mpi_comm_level1,1); abort();
     }
-
-    /* CntDS_VNA */  
-
-    if (Cnt_switch==1){
-
-      size_CntDS_VNA = 0;
-      CntDS_VNA = (Type_DS_VNA*****)malloc(sizeof(Type_DS_VNA****)*4); 
-      for (k=0; k<4; k++){
-
-	CntDS_VNA[k] = (Type_DS_VNA****)malloc(sizeof(Type_DS_VNA***)*(Matomnum+2));
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-            fan = FNAN[Gc_AN];
-	  }
-	  else if ( Mc_AN==(Matomnum+1) ){
-            fan = List_YOUSO[8];
-            tno0 = List_YOUSO[7];
-          }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-            fan = FNAN[Gc_AN];
-	  }
-          
-	  CntDS_VNA[k][Mc_AN] = (Type_DS_VNA***)malloc(sizeof(Type_DS_VNA**)*(fan+1)); 
-	  for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	    } 
-
-	    CntDS_VNA[k][Mc_AN][h_AN] = (Type_DS_VNA**)malloc(sizeof(Type_DS_VNA*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      CntDS_VNA[k][Mc_AN][h_AN][i] = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*tno1); 
-	      size_CntDS_VNA += tno1;
-	    }
-	  }
-	}
-      }
+    const OpenMXVnaMatrixInput input={atomnum,Matomnum,SpeciesNum,Cnt_switch,
+      List_YOUSO[8]+1,List_YOUSO[7],(int)(angular*angular*(size_t)List_YOUSO[34]),
+      M2G,F_M2G,WhatSpecies,FNAN,natn,Spe_Total_NO,Spe_Total_CNO};
+    OpenMXVnaMatrixViews matrices;
+    char error[256];
+    if (!openmx_core_vna_matrices_allocate(core,&input,&matrices,error,sizeof(error))) {
+      fprintf(stderr,"VNA matrix allocation: %s\n",error);
+      MPI_Abort(mpi_comm_level1,1); abort();
     }
-
-    /* HVNA2 */  
-
-    size_HVNA2 = 0;
-    HVNA2 = (double*****)malloc(sizeof(double****)*4);
-    for (k=0; k<4; k++){
-      HVNA2[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	HVNA2[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  HVNA2[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    HVNA2[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	    size_HVNA2 += tno0;
-	  }
-	}
-      }
-    }
-
-    /* HVNA3 */  
-
-    size_HVNA3 = 0;
-    HVNA3 = (double*****)malloc(sizeof(double****)*4);
-    for (k=0; k<4; k++){
-      HVNA3[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0)  Gc_AN = 0;
-	else           Gc_AN = F_M2G[Mc_AN];
-
-	HVNA3[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno0 = 1;
-	  }
-	  else{
-            Gh_AN = natn[Gc_AN][h_AN];        
-            Hwan = WhatSpecies[Gh_AN];
-	    tno0 = Spe_Total_NO[Hwan];  
-	  }    
-
-	  HVNA3[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    HVNA3[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	    size_HVNA3 += tno0;
-	  }
-	}
-      }
-    }
-
-    /* CntHVNA2 */  
-
-    if (Cnt_switch==1){
-
-      size_CntHVNA2 = 0;
-      CntHVNA2 = (double*****)malloc(sizeof(double****)*4);
-      for (k=0; k<4; k++){
-	CntHVNA2[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-	  }    
-
-	  CntHVNA2[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    CntHVNA2[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      CntHVNA2[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	      size_CntHVNA2 += tno0;
-	    }
-	  }
-	}
-      }
-    }
-
-    /* CntHVNA3 */  
-
-    if (Cnt_switch==1){
-
-      size_CntHVNA3 = 0;
-      CntHVNA3 = (double*****)malloc(sizeof(double****)*4);
-      for (k=0; k<4; k++){
-	CntHVNA3[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0) Gc_AN = 0;
-	  else          Gc_AN = F_M2G[Mc_AN];
-
-	  CntHVNA3[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno0 = 1;
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];        
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno0 = Spe_Total_CNO[Hwan];  
-	    }    
-
-	    CntHVNA3[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      CntHVNA3[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	      size_CntHVNA3 += tno0;
-	    }
-	  }
-	}
-      }
-    }
-
+    size_HVNA=matrices.potential.layout.elements;
+    size_DS_VNA=matrices.projectors.layout.elements;
+    size_HVNA2=matrices.one_center.layout.elements;
+    size_HVNA3=matrices.mirrored.layout.elements;
+    size_CntDS_VNA=matrices.contracted_projectors.layout.elements;
+    size_CntHVNA2=matrices.contracted_one_center.layout.elements;
+    size_CntHVNA3=matrices.contracted_mirrored.layout.elements;
   }
 
   if (Solver==8) { /* Krylov subspace method */
@@ -6137,7 +5899,7 @@ void Free_truncation(int CpyN, int TN, int Free_switch)
 
 
 
-void free_arrays_truncation0()
+void free_arrays_truncation0(OpenMXCoreContext *core)
 {
   int i,j,k,m,ct_AN,h_AN,Gh_AN,Hwan;
   int tno0,tno1,tno2,tno,Cwan,so,s1,s2;
@@ -7791,256 +7553,7 @@ void free_arrays_truncation0()
       free(CntCoes_Species);
     }
 
-    if (ProExpn_VNA==1){
-
-      /* HVNA */  
-
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(HVNA[Mc_AN][h_AN][i]);
-	  }
-          free(HVNA[Mc_AN][h_AN]);
-	}
-        free(HVNA[Mc_AN]);
-      }
-      free(HVNA);
-
-      /* DS_VNA */  
-
-      for (k=0; k<4; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    fan = FNAN[Gc_AN];
-	  }
-  	  else if ( (Matomnum+1)<=Mc_AN ){
-	    fan = List_YOUSO[8];
-	    tno0 = List_YOUSO[7];
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	    fan = FNAN[Gc_AN];
-	  }
-          
-	  for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(DS_VNA[k][Mc_AN][h_AN][i]);
-	    }
-            free(DS_VNA[k][Mc_AN][h_AN]);
-	  }
-          free(DS_VNA[k][Mc_AN]);
-	}
-        free(DS_VNA[k]);
-      }
-      free(DS_VNA);
-
-      /* CntDS_VNA */  
-
-      if (Cnt_switch==1){
-
-	for (k=0; k<4; k++){
-
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	      fan = FNAN[Gc_AN];
-	    }
-	    else if ( Mc_AN==(Matomnum+1) ){
-	      fan = List_YOUSO[8];
-	      tno0 = List_YOUSO[7];
-	    }
-	    else{
-	      Gc_AN = F_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_CNO[Cwan];  
-              fan = FNAN[Gc_AN];
-	    }
-
-	    for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(CntDS_VNA[k][Mc_AN][h_AN][i]);
-	      }
- 	      free(CntDS_VNA[k][Mc_AN][h_AN]);
-	    }
-            free(CntDS_VNA[k][Mc_AN]);
-	  }
-          free(CntDS_VNA[k]);
-	}
-        free(CntDS_VNA);
-      }
-
-      /* HVNA2 */
-
-      for (k=0; k<4; k++){
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(HVNA2[k][Mc_AN][h_AN][i]);
-	    }
-	    free(HVNA2[k][Mc_AN][h_AN]);
-	  }
-	  free(HVNA2[k][Mc_AN]);
-	}
-	free(HVNA2[k]);
-      }
-      free(HVNA2);
-
-      /* HVNA3 */
-
-      for (k=0; k<4; k++){
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0)  Gc_AN = 0;
-	  else           Gc_AN = F_M2G[Mc_AN];
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno0 = 1;
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];        
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno0 = Spe_Total_NO[Hwan];  
-	    }    
-
-	    for (i=0; i<tno0; i++){
-	      free(HVNA3[k][Mc_AN][h_AN][i]);
-	    }
-	    free(HVNA3[k][Mc_AN][h_AN]);
-	  }
-	  free(HVNA3[k][Mc_AN]);
-	}
-	free(HVNA3[k]);
-      }
-      free(HVNA3);
-
-      /* CntHVNA2 */
-
-      if (Cnt_switch==1){
-
-	for (k=0; k<4; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = F_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_CNO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	      for (i=0; i<tno0; i++){
-		free(CntHVNA2[k][Mc_AN][h_AN][i]);
-	      }
-	      free(CntHVNA2[k][Mc_AN][h_AN]);
-	    }
-	    free(CntHVNA2[k][Mc_AN]);
-	  }
-	  free(CntHVNA2[k]);
-	}
-	free(CntHVNA2);
-      }
-
-      /* CntHVNA3 */
-
-      if (Cnt_switch==1){
-
-	for (k=0; k<4; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0) Gc_AN = 0;
-	    else          Gc_AN = F_M2G[Mc_AN];
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno0 = 1;
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];        
-		Hwan = WhatSpecies[Gh_AN];
-		tno0 = Spe_Total_CNO[Hwan];  
-	      }    
-
-	      for (i=0; i<tno0; i++){
-		free(CntHVNA3[k][Mc_AN][h_AN][i]);
-	      }
-	      free(CntHVNA3[k][Mc_AN][h_AN]);
-	    }
-	    free(CntHVNA3[k][Mc_AN]);
-	  }
-	  free(CntHVNA3[k]);
-	}
-	free(CntHVNA3);
-      }
-    }  
+    openmx_core_vna_matrices_release(core);
 
     if (Solver==8) { /* Krylov subspace method */
 

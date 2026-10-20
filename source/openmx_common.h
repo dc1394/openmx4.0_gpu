@@ -3,6 +3,7 @@
 
 #include "openmx_gpu_backend.h"
 #include "openmx_core.h"
+#include "openmx_core_vna_matrix.h"
 #include "openmx_periodic.h"
 #include "openmx_gpu_blas.h"
 #include "openmx_gpu_complex.h"
@@ -2385,108 +2386,8 @@ double **Spe_CrudeVNA_Bessel;
 *******************************************************/
 double *******Spe_ProductRF_Bessel;
 
-/*******************************************************
- double ****HVNA;
-  real matrix elements of basis orbitals for VNA projectors
-  size: HVNA[Matomnum+1]
-            [FNAN[Gc_AN]+1]
-            [Spe_Total_NO[Cwan]]
-            [Spe_Total_NO[Hwan]] 
-  allocation: allocate in truncation.c
-  free:       in truncation.c
-              and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double ****HVNA;
-
-/*******************************************************
- Type_DS_VNA *****DS_VNA;
-  overlap matrix elements between projectors of VNA
-  potentials, and basis orbitals 
-  size: DS_VNA[4]
-              [Matomnum+4]
-              [FNAN[Gc_AN]+1]
-              [Spe_Total_NO[Cwan]]
-              [(YOUSO35+1)*(YOUSO35+1)*YOUSO34]
-  allocation: allocate in truncation.c
-  free:       in truncation.c
-              and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-Type_DS_VNA *****DS_VNA;
-
-/*******************************************************
- Type_DS_VNA *****CntDS_VNA;
-  overlap matrix elements between projectors of VNA
-  potentials, and contracted basis orbitals 
-  size: CntDS_VNA[4]
-                 [Matomnum+MatomnumF+1]
-                 [FNAN[Gc_AN]+1]
-                 [Spe_Total_CNO[Cwan]]
-                 [(YOUSO35+1)*(YOUSO35+1)*YOUSO34]
-  allocation: allocate in truncation.c
-  free:       in truncation.c
-              and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-Type_DS_VNA *****CntDS_VNA;
-
-/*******************************************************
- double ****HVNA2;
-  real matrix elements of basis orbitals for VNA projectors
-  <Phi_{LM,L'M'}|VNA>
-  size: HVNA2[4]
-             [Matomnum+1]
-             [FNAN[Gc_AN]+1]
-             [Spe_Total_NO[Cwan]]
-             [Spe_Total_NO[Cwan]] 
-  allocation: allocate in truncation.c
-  free:       in truncation.c
-              and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double *****HVNA2;
-
-/*******************************************************
- double ****HVNA3;
-  real matrix elements of basis orbitals for VNA projectors
-  <VNA|Phi_{LM,L'M'}>
-  size: HVNA3[4]
-             [Matomnum+1]
-             [FNAN[Gc_AN]+1]
-             [Spe_Total_NO[Cwan]]
-             [Spe_Total_NO[Cwan]] 
-  allocation: allocate in truncation.c
-  free:       in truncation.c
-              and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double *****HVNA3;
-
-/*******************************************************
- double ****CntHVNA2;
-  real matrix elements of basis orbitals for VNA projectors
-  <Phi_{LM,L'M'}|VNA>
-  size: CntHVNA2[4]
-                [Matomnum+1]
-                [FNAN[Gc_AN]+1]
-                [Spe_Total_CNO[Cwan]]
-                [Spe_Total_CNO[Cwan]] 
-  allocation: allocate in truncation.c
-  free:       in truncation.c
-              and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double *****CntHVNA2;
-
-/*******************************************************
- double ****CntHVNA3;
-  real matrix elements of basis orbitals for VNA projectors
-  <VNA|Phi_{LM,L'M'}>
-  size: CntHVNA3[4]
-                [Matomnum+1]
-                [FNAN[Gc_AN]+1]
-                [Spe_Total_CNO[Cwan]]
-                [Spe_Total_CNO[Cwan]] 
-  allocation: allocate in truncation.c
-  free:       in truncation.c
-              and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double *****CntHVNA3;
+/* VNA output matrices are owned by OpenMXCoreContext and passed explicitly
+   as OpenMXVnaMatrixViews. Legacy row tables are borrowed adapters only. */
 
 /*******************************************************
  double ***Krylov_U (for BLAS3 version) 
@@ -3026,9 +2927,9 @@ void Memory_Leak_test(int argc, char *argv[]);
 void Get_VSZ(int MD_iter);
 void Get_VSZ2(int MD_iter);
 void Force_test(int argc, char *argv[]);
-void Check_Force(char *argv[]);
+void Check_Force(char *argv[], OpenMXCoreContext *core);
 void Stress_test(int argc, char *argv[]); 
-void Check_Stress(char *argv[]);
+void Check_Stress(char *argv[], OpenMXCoreContext *core);
 
 double RF_BesselF(int Gensi, int GL, int Mul, double R);
 double RF_BesselF2(int Gensi, int GL, int Mul, int LB, double R);
@@ -3329,7 +3230,7 @@ double Poisson_ESM(int fft_charge_flag,
 
  /**  ESM end  **/
 
-double Set_Hamiltonian(char *mode,
+double Set_Hamiltonian(const OpenMXVnaMatrixViews *vna, char *mode,
                        int MD_iter,
                        int SCF_iter,
                        int SCF_iter0,
@@ -3452,13 +3353,13 @@ double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
 double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
-double Total_Energy(int MD_iter, double ECE[]);
-double Force(double *****H0,
+double Total_Energy(const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[]);
+double Force(const OpenMXVnaMatrixViews *vna, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 
 	     double *****EDM); 
-double Stress(double *****H0,
+double Stress(const OpenMXVnaMatrixViews *vna, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -3469,7 +3370,7 @@ double Set_CoreHoleMatrix(double *****HCH);
 double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter);  // S. An 
 double Set_OLP_p(double *****OLP_p);
 
-double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_VNA);
+double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna);
 void Set_Vpot(int MD_iter,
               int SCF_iter, 
               int SCF_iter0,
@@ -3562,9 +3463,9 @@ double readfile(char *argv[]);
 double readfile_with_context(char *argv[], OpenMXCoreContext *core);
 void Input_std(char *filename);
 
-double truncation(int MD_iter, int UCell_flag);
+double truncation(int MD_iter, int UCell_flag, OpenMXCoreContext *core);
 double truncation_FEF(int MD_iter, int UCell_flag);
-double DFT(int MD_iter, int Cnt_Now);
+double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core);
 
 double Cluster_DFT_Col(
                    char *mode,

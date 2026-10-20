@@ -101,6 +101,9 @@ static void context_lifetime_test(void)
 
 int main(void)
 {
+  size_t atom_offsets[(NA+1)+1],block_offsets[(NA+1)*NH+1];
+  int shapes[2*(NA+1)*NH];
+  const OpenMXDoubleBlockMatrix matrix={test_rectangular_matrix(NA+1,4,NH,2,2,atom_offsets,block_offsets,shapes),&output[0][0][0][0][0]};
   double wavevectors[NP], max_error=0;
   int cases=0;
   context_lifetime_test();
@@ -157,7 +160,7 @@ int main(void)
       for(int i=0;i<2;++i){p3[s][0][i]=p4[s][0][i];p4[s][0][i][0]=p5[s][0][i][0];
         for(int j=0;j<2;++j){p5[s][0][i][0][j]=p6[s][0][i][0][j];p6[s][0][i][0][j][0]=Spe_ProductRF_Bessel[s][0][i][0][j][0];}}}
     const SetProVnaTables tables={NULL,p1,crude,&Comp2Real[0][0][0],1,GL_Weight,Radial_kmin,PAO_Nkmax,time_per_atom};
-    SetPro_VNA23_CPU(channels,mirror,wavevectors,&prepared_basis,&pairs,&tables);
+    SetPro_VNA23_CPU(&matrix,mirror,wavevectors,&prepared_basis,&pairs,&tables);
     openmx_core_atom_pairs_destroy(plan);openmx_core_vna_preparation_destroy(basis_owner);
     for(int a=1;a<=NA;a++){
       assert(time_per_atom[a]==NH);
@@ -207,7 +210,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-vna-workspace-") as folder:
                    '#include "openmx_core_vna.h"\n#include "openmx_vna_gpu_context.h"\n'
                    '#define xmin 0.0\n#define asize_lmax 30\n'
                    + HARNESS + bessel + '\n' + verbose + '\n' + end_context
-                   + '\n#include "openmx_vna_cpu.h"\n#include "vna_pair_fixture.h"\n' + MAIN)
+                   + '\n#include "openmx_vna_cpu.h"\n#include "vna_pair_fixture.h"\n' + '\n#include "block_matrix_fixture.h"\n' + MAIN)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
                    shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +
                    ["-std=c11", "-fopenmp", "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), str(src), str(CORE),

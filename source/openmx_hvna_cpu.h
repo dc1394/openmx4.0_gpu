@@ -1,11 +1,12 @@
 #ifndef OPENMX_HVNA_CPU_H
 #define OPENMX_HVNA_CPU_H
 #include "openmx_core_hvna_workspace.h"
+#include "openmx_projector_matrix.h"
 #include <omp.h>
 
-/* Borrowed for the synchronous CPU assembly. Geometry and the legacy input /
-   output rows are still owned by the application; no global lookup occurs
-   inside the contraction. Atom and neighbor maps retain their legacy bases. */
+/* Borrowed geometry for synchronous CPU assembly. Matrix values and shape
+   metadata have calculation-scoped C++ owners. Atom/neighbor maps retain
+   their legacy bases; no global lookup occurs inside the contraction. */
 typedef struct {
   int local_atoms;
   const int *local_to_global, *global_to_local, *species, *neighbor_counts;
@@ -31,7 +32,8 @@ static OpenMXHvnaWorkspace *SetPro_HVNA_CPU_Workspace(const OpenMXHvnaProjectors
 /* Preserve group/member summation order and the float-product rounding point.
    Each row writes a disjoint part of the worker's flat matrix. */
 static inline void SetPro_HVNA_CPU_Row(const OpenMXHvnaProjectorBuffers *projectors,
-    Type_DS_VNA **left, Type_DS_VNA **right, int species, int columns, int m,
+    const Type_DS_VNA *left, size_t left_stride, const Type_DS_VNA *right, size_t right_stride,
+    int species, int columns, int m,
     double *matrix, size_t stride, int first, int fp32)
 {
   double *row = matrix+(size_t)m*stride;
@@ -42,8 +44,8 @@ static inline void SetPro_HVNA_CPU_Row(const OpenMXHvnaProjectorBuffers *project
       const double ene = projectors->energies[(size_t)species*projectors->groups+group];
       double tmp0 = 0.0;
       for (int member=0; member<projectors->lengths[group]; ++member) {
-        tmp0 += fp32 ? (double)(left[m][L]*right[n][L])
-                     : (double)left[m][L]*(double)right[n][L];
+        tmp0 += fp32 ? (double)(left[(size_t)m*left_stride+L]*right[(size_t)n*right_stride+L])
+                     : (double)left[(size_t)m*left_stride+L]*(double)right[(size_t)n*right_stride+L];
         ++L;
       }
       sum += ene*tmp0;
@@ -55,7 +57,8 @@ static inline void SetPro_HVNA_CPU_Row(const OpenMXHvnaProjectorBuffers *project
 
 static void SetPro_HVNA_CPU_Pair(const SetProHvnaGeometry *geometry,
     const OpenMXHvnaProjectorBuffers *projectors, const OpenMXHvnaWorkspaceBuffers *workspace,
-    Type_DS_VNA *****ds, double ****hvna, int mc, int j, int partner, int partner_species,
+    const OpenMXProjectorMatrix *ds, const OpenMXDoubleBlockMatrix *hvna,
+    int mc, int j, int partner, int partner_species,
     int parallel_rows, int fp32)
 {
   const int gc = geometry->local_to_global[mc];
@@ -66,15 +69,19 @@ static void SetPro_HVNA_CPU_Pair(const SetProHvnaGeometry *geometry,
     const int kl = geometry->intersections[mc][j][k];
     if (kl<0) continue;
     const int projector_species = geometry->species[geometry->neighbors[gc][k]];
+    const Type_DS_VNA *left=openmx_projector_block_row(ds,0,mc,k,0);
+    const Type_DS_VNA *right=openmx_projector_block_row(ds,0,partner,kl,0);
+    const size_t left_stride=(size_t)ds->layout.shapes[2*openmx_block_index(&ds->layout,mc,k)+1];
+    const size_t right_stride=(size_t)ds->layout.shapes[2*openmx_block_index(&ds->layout,partner,kl)+1];
     if (parallel_rows && rows>8) {
 #pragma omp parallel for
       for (int m=0; m<rows; ++m)
-        SetPro_HVNA_CPU_Row(projectors,ds[0][mc][k],ds[0][partner][kl],projector_species,
+        SetPro_HVNA_CPU_Row(projectors,left,left_stride,right,right_stride,projector_species,
             columns,m,workspace->matrix,workspace->orbital_capacity,!initialized,fp32);
     }
     else {
       for (int m=0; m<rows; ++m)
-        SetPro_HVNA_CPU_Row(projectors,ds[0][mc][k],ds[0][partner][kl],projector_species,
+        SetPro_HVNA_CPU_Row(projectors,left,left_stride,right,right_stride,projector_species,
             columns,m,workspace->matrix,workspace->orbital_capacity,!initialized,fp32);
     }
     initialized = 1;
@@ -83,12 +90,13 @@ static void SetPro_HVNA_CPU_Pair(const SetProHvnaGeometry *geometry,
   const double dmp = dampingF(rcut,geometry->distances[gc][j]);
   for (int m=0; m<rows; ++m)
     for (int n=0; n<columns; ++n)
-      hvna[mc][j][m][n] = dmp*(initialized ? workspace->matrix[(size_t)m*workspace->orbital_capacity+n] : 0.0);
+      openmx_double_block_row(hvna,0,mc,j,m)[n] = dmp*(initialized ? workspace->matrix[(size_t)m*workspace->orbital_capacity+n] : 0.0);
 }
 
 static void SetPro_HVNA_CPU_Halo(const SetProHvnaGeometry *geometry,
     const OpenMXHvnaProjectorBuffers *projectors, const OpenMXHvnaWorkspaceBuffers *workspace,
-    Type_DS_VNA *****ds, double ****hvna, int original_mc, int received_global, int fp32)
+    const OpenMXProjectorMatrix *ds, const OpenMXDoubleBlockMatrix *hvna,
+    int original_mc, int received_global, int fp32)
 {
   for (int mc=1; mc<=geometry->local_atoms; ++mc) {
     double begin, end;
@@ -107,7 +115,7 @@ static void SetPro_HVNA_CPU_Halo(const SetProHvnaGeometry *geometry,
 
 static void SetPro_HVNA_CPU_Local(const SetProHvnaGeometry *geometry,
     const OpenMXHvnaProjectors *owner, const OpenMXHvnaProjectorBuffers *projectors,
-    Type_DS_VNA *****ds, double ****hvna, int fp32)
+    const OpenMXProjectorMatrix *ds, const OpenMXDoubleBlockMatrix *hvna, int fp32)
 {
 #pragma omp parallel
   {

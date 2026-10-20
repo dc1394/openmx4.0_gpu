@@ -14,6 +14,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_core_vna_matrix.h"
 #include "openmx_precision.h"
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
@@ -26,7 +27,7 @@
 static void MPI_OLP(double *****OLP1);
 static void Stress3();
 static void Stress4();
-static void Stress4B(double *****CDM0);
+static void Stress4B(const OpenMXVnaMatrixViews *vna, double *****CDM0);
 static void Stress_core();
 static void Stress_H0();
 static void Stress_H1();
@@ -35,7 +36,7 @@ static void Stress_plus_U_dual(double *****CDM0);
 static void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4]); /*from Total_Energy.c*/
 static void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
 
-static void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
+static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
 		  Type_DS_VNA *****DS_VNA1, 
 		  double *****TmpHVNA2, double *****TmpHVNA3, 
 		  double **Hx, double **Hy, double **Hz, 
@@ -82,7 +83,7 @@ static void dHNL_SO(
 
 
 
-double Stress(double *****H0,
+double Stress(const OpenMXVnaMatrixViews *vna, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -1848,7 +1849,7 @@ double Stress(double *****H0,
     Stress4();
   }
   else if (ProExpn_VNA==1 && F_VNA_flag==1){
-    Stress4B(CDM0);
+    Stress4B(vna, CDM0);
   }
 
   dtime(&etime);
@@ -2969,8 +2970,14 @@ void Stress4()
 
 
 
-void Stress4B(double *****CDM0)
+void Stress4B(const OpenMXVnaMatrixViews *vna, double *****CDM0)
 {
+  double *****HVNA2=vna->HVNA2;
+  double *****HVNA3=vna->HVNA3;
+  double *****CntHVNA2=vna->CntHVNA2;
+  double *****CntHVNA3=vna->CntHVNA3;
+  Type_DS_VNA *****DS_VNA=vna->DS_VNA;
+  Type_DS_VNA *****CntDS_VNA=vna->CntDS_VNA;
   /****************************************************
                       #4 of Stress
 
@@ -3451,10 +3458,10 @@ void Stress4B(double *****CDM0)
 		kl = RMI1[Mc_AN][h_AN][q_AN];
 
 		if (Cnt_switch==0) {
-		  dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 		}
 		else { 
-		  dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 		}
 
 		/* contribution of force = Trace(CDM0*dH) */
@@ -3686,10 +3693,10 @@ void Stress4B(double *****CDM0)
 	  kl = RMI1[Mc_AN][h_AN][q_AN];
 
 	  if (Cnt_switch==0) {
-	    dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 	  }
 	  else { 
-	    dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 	  }
 
 	  if (SpinP_switch==0){
@@ -6030,7 +6037,7 @@ void Stress_plus_U_dual(double *****CDM0)
 
 
 
-void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
+void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
            Type_DS_VNA *****DS_VNA1, 
            double *****TmpHVNA2, double *****TmpHVNA3, 
            double **Hx, double **Hy, double **Hz, 
@@ -6487,9 +6494,9 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
 
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
-	  Hx[m][n] += HVNA[Mc_AN][kl][m][n]*dx;
-	  Hy[m][n] += HVNA[Mc_AN][kl][m][n]*dy;
-	  Hz[m][n] += HVNA[Mc_AN][kl][m][n]*dz;
+	  Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx;
+	  Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy;
+	  Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz;
         }
       }
 
@@ -6497,15 +6504,15 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
 
       for (m=0; m<ian; m++){
 	for (n=0; n<jan; n++){
-	  H_sts[1][1][m][n] += HVNA[Mc_AN][kl][m][n]*dx*tx;
-	  H_sts[1][2][m][n] += HVNA[Mc_AN][kl][m][n]*dx*ty;
-	  H_sts[1][3][m][n] += HVNA[Mc_AN][kl][m][n]*dx*tz;
-	  H_sts[2][1][m][n] += HVNA[Mc_AN][kl][m][n]*dy*tx;
-	  H_sts[2][2][m][n] += HVNA[Mc_AN][kl][m][n]*dy*ty;
-	  H_sts[2][3][m][n] += HVNA[Mc_AN][kl][m][n]*dy*tz;
-	  H_sts[3][1][m][n] += HVNA[Mc_AN][kl][m][n]*dz*tx;
-	  H_sts[3][2][m][n] += HVNA[Mc_AN][kl][m][n]*dz*ty;
-	  H_sts[3][3][m][n] += HVNA[Mc_AN][kl][m][n]*dz*tz;
+	  H_sts[1][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tx;
+	  H_sts[1][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*ty;
+	  H_sts[1][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tz;
+	  H_sts[2][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tx;
+	  H_sts[2][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*ty;
+	  H_sts[2][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tz;
+	  H_sts[3][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tx;
+	  H_sts[3][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*ty;
+	  H_sts[3][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tz;
 	}
       }
 
@@ -6517,9 +6524,9 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
 
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
-	  Hx[m][n] += HVNA[Mc_AN][kl][n][m]*dx;
-	  Hy[m][n] += HVNA[Mc_AN][kl][n][m]*dy;
-	  Hz[m][n] += HVNA[Mc_AN][kl][n][m]*dz;
+	  Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dx;
+	  Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dy;
+	  Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dz;
         }
       }
 

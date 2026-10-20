@@ -700,7 +700,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
 
   do {
 
-    CompTime[myid0][2] += truncation(MD_iter,1);
+    CompTime[myid0][2] += truncation(MD_iter,1,core);
 
     if (ML_flag==1 && myid0==Host_ID) Get_VSZ(MD_iter);  
 
@@ -711,7 +711,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
       /* output: TRAN_region[], TRAN_grid_bound */
     }
 
-    CompTime[myid0][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+    CompTime[myid0][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
     if (myid0==Host_ID) iterout(MD_iter,MD_TimeStep*MD_iter,filepath,filename);
 
     if (ML_flag==0) CompTime[myid0][4] += MD_pac(MD_iter,argv[1]);

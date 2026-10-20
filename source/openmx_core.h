@@ -9,10 +9,15 @@ extern "C" {
 
 /* The application owns this context on its stack through openmx_core_run.
    It is passed explicitly, never installed in a process-global variable.
-   A null context selects the host implementation for legacy library callers. */
+   A null context selects the host implementation for stateless radial calls;
+   calculation storage always requires an explicit context. */
 typedef struct OpenMXCoreContext OpenMXCoreContext;
 typedef int (*OpenMXCoreEntry)(int argc, char **argv, OpenMXCoreContext *context);
 int openmx_core_run(int argc, char **argv, OpenMXCoreEntry entry);
+/* Explicit ownership for library callers that cannot use the entry callback.
+   Creation does not initialize MPI or a GPU. Destroy before MPI_Finalize. */
+OpenMXCoreContext *openmx_core_create(char *error, size_t error_capacity);
+void openmx_core_destroy(OpenMXCoreContext *context);
 /* Release calculation storage and the owned Kokkos runtime before
    MPI_Finalize. Invalidates all borrowed views. Idempotent. */
 void openmx_core_finish(OpenMXCoreContext *context);
