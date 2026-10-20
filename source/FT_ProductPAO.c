@@ -20,6 +20,7 @@
 #include <unistd.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
 #include "mpi.h"
 #include "openmx_core_product.h"
 
@@ -28,14 +29,18 @@
 
 void FT_ProductPAO(OpenMXCoreContext *core, int device)
 {
+  OpenMXReciprocalRows archive_rows;
+  OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_PRODUCT,&archive_rows);
+  char archive_error[256];
+  const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
+  double *******Spe_ProductRF_Bessel=reciprocal.products.rows;
+
   int numprocs,myid,ID,NumSpe;
-  int l,Lmax,Lspe,spe,GL1,Mul1,GL2,Mul2;
+  int Lspe,spe;
   int RestartRead_Succeed;
   double TStime,TEtime;
 
   char fileFT[YOUSO10];
-  FILE *fp;
-  size_t size; 
 
   dtime(&TStime);
 
@@ -54,47 +59,12 @@ void FT_ProductPAO(OpenMXCoreContext *core, int device)
   ***********************************************************/
 
   if (Scf_RestartFromFile==1){
-
-    /***********************************************************
-                        read Spe_ProductRF_Bessel
-    ***********************************************************/
-
     sprintf(fileFT,"%s%s_rst/%s.ftProPAO",filepath,restart_filename,restart_filename);
-
-    if ((fp = fopen(fileFT,"rb")) != NULL){
-
-      RestartRead_Succeed = 1;
-
-      for (spe=0; spe<SpeciesNum; spe++){
-	for (GL1=0; GL1<=Spe_MaxL_Basis[spe]; GL1++){
-	  for (Mul1=0; Mul1<Spe_Num_Basis[spe][GL1]; Mul1++){
-	    for (GL2=0; GL2<=Spe_MaxL_Basis[spe]; GL2++){
-
-	      if (GL1<=GL2){
-
-		Lmax = 2*GL2;
-
-		for (Mul2=0; Mul2<Spe_Num_Basis[spe][GL2]; Mul2++){
-		  for(l=0; l<=Lmax; l++){
-
-		    size = fread(&Spe_ProductRF_Bessel[spe][GL1][Mul1][GL2][Mul2][l][0],
-       		                 sizeof(double),GL_Mesh,fp);
- 
-		    if (size!=GL_Mesh) RestartRead_Succeed = 0;
-
-		  }
-		}
-	      }
-	    }
-	  }
-	}
-      }
-
-      fclose(fp);
-    }
-    else{
-      printf("Could not open a file %s in FT_ProductPAO\n",fileFT);
-    }
+    RestartRead_Succeed=openmx_core_reciprocal_archive_read(archive,fileFT,archive_error,sizeof(archive_error));
+    if (!RestartRead_Succeed)
+      fprintf(stderr,"FT_ProductPAO: %s: %s\n",fileFT,archive_error);
+    /* Every rank must take the same recompute/distribution branch. */
+    MPI_Allreduce(MPI_IN_PLACE,&RestartRead_Succeed,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
 
   /***********************************************************
@@ -124,29 +94,13 @@ void FT_ProductPAO(OpenMXCoreContext *core, int device)
     ***********************************************************/
 
     for (ID=0; ID<Num_Procs2; ID++) {
-      NumSpe = Species_End[ID] - Species_Top[ID] + 1;
-      for (Lspe=0; Lspe<NumSpe; Lspe++){
-	spe = Species_Top[ID] + Lspe;
-
-	for (GL1=0; GL1<=Spe_MaxL_Basis[spe]; GL1++){
-	  for (Mul1=0; Mul1<Spe_Num_Basis[spe][GL1]; Mul1++){
-	    for (GL2=0; GL2<=Spe_MaxL_Basis[spe]; GL2++){
-
-	      if (GL1<=GL2){
-
-		Lmax = 2*GL2;
-
-		for (Mul2=0; Mul2<Spe_Num_Basis[spe][GL2]; Mul2++){
-		  for(l=0; l<=Lmax; l++){
-                    MPI_Barrier(mpi_comm_level1);
-		    MPI_Bcast(&Spe_ProductRF_Bessel[spe][GL1][Mul1][GL2][Mul2][l][0],
-			      GL_Mesh,MPI_DOUBLE,ID,mpi_comm_level1);
-		  }
-		}
-	      }
-	    }
-	  }
-	}
+      NumSpe=Species_End[ID]-Species_Top[ID]+1;
+      for (Lspe=0;Lspe<NumSpe;++Lspe) {
+        spe=Species_Top[ID]+Lspe;
+        for (size_t row=archive_rows.species_offsets[spe];row<archive_rows.species_offsets[spe+1];++row) {
+          MPI_Barrier(mpi_comm_level1);
+          MPI_Bcast(archive_rows.row[row].values,archive_rows.row[row].count,MPI_DOUBLE,ID,mpi_comm_level1);
+        }
       }
     }
 
@@ -155,37 +109,9 @@ void FT_ProductPAO(OpenMXCoreContext *core, int device)
     ***********************************************************/
 
     if (myid==Host_ID){
-
       sprintf(fileFT,"%s%s_rst/%s.ftProPAO",filepath,filename,filename);
-
-      if ((fp = fopen(fileFT,"wb")) != NULL){
-
-	for (spe=0; spe<SpeciesNum; spe++){
-	  for (GL1=0; GL1<=Spe_MaxL_Basis[spe]; GL1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[spe][GL1]; Mul1++){
-	      for (GL2=0; GL2<=Spe_MaxL_Basis[spe]; GL2++){
-
-		if (GL1<=GL2){
-
-		  Lmax = 2*GL2;
-
-		  for (Mul2=0; Mul2<Spe_Num_Basis[spe][GL2]; Mul2++){
-		    for(l=0; l<=Lmax; l++){
-		      fwrite(&Spe_ProductRF_Bessel[spe][GL1][Mul1][GL2][Mul2][l][0],
-			     sizeof(double),GL_Mesh,fp);
-		    }
-		  }
-		}
-	      }
-	    }
-	  }
-	}
-
-	fclose(fp);
-      }
-      else{
-	printf("Could not open a file %s in FT_ProductPAO\n",fileFT);
-      }
+      if (!openmx_core_reciprocal_archive_write(archive,fileFT,archive_error,sizeof(archive_error)))
+        fprintf(stderr,"FT_ProductPAO: %s: %s\n",fileFT,archive_error);
     }
 
   } /* if (RestartRead_Succeed==0) */
@@ -194,6 +120,7 @@ void FT_ProductPAO(OpenMXCoreContext *core, int device)
                          elapsed time
   ***********************************************************/
 
+  openmx_core_reciprocal_archive_destroy(archive);
   dtime(&TEtime);
 
   /*

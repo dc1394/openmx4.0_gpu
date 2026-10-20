@@ -205,8 +205,8 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
                 tmp2 = 0.0;
 
                 for (i=0; i<points; i++){
-                  tmp1 += Bes00[i]*tables->projectors[Hwan][L1][Mul1][i];
-                  tmp2 += Bes01[i]*tables->projectors[Hwan][L1][Mul1][i];
+                  tmp1 += Bes00[i]*openmx_radial_row4(&tables->projectors,Hwan,L1,Mul1)[i];
+                  tmp2 += Bes01[i]*openmx_radial_row4(&tables->projectors,Hwan,L1,Mul1)[i];
 		}
 
 		SumNL0[openmx_core_dsvna_sum(&buffers,preparation,Cwan,L0,Mul0,L)]  = tmp1;

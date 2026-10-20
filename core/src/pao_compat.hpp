@@ -2,6 +2,7 @@
 
 #include <openmx/core/pao_storage.hpp>
 #include "openmx_core_pao.h"
+#include "openmx_core_reciprocal.h"
 #include "legacy_rows.hpp"
 
 namespace openmx::core::compat {
@@ -15,6 +16,11 @@ class PaoOwner {
   OpenMXPaoViews views() noexcept {
     return {log_radii_.data(),radii_.data(),density_.data(),density_backup_.data(),
             orbitals_.data(),transforms_.data()};
+  }
+  void reciprocal_views(OpenMXReciprocalViews& output) noexcept {
+    const auto v=storage_.transforms();
+    output.pao_transform={v.data_handle(),{v.extent(0),v.extent(1),v.extent(2),v.extent(3)}};
+    output.pao=views();
   }
  private:
   PaoStorage storage_;

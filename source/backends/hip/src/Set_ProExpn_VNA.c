@@ -41,7 +41,7 @@
 
 extern int openmx_gpu_is_apu(void);
 
-static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g);
+static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpu3Context *g);
 static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g);
 /* forward: SetPro_DSVNA_GpuBegin releases its tables through this when the
    device-memory check sends the DS_VNA build down the CPU path */
@@ -263,7 +263,7 @@ static double SetPro_HVNA_element(size_t oe, int num_proj, int num_rvna,
 }
 #pragma omp end declare target
 
-static int SetPro_HVNA_GpuBegin(SetProGpuContext *g, Type_DS_VNA *****DS_VNA,
+static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpuContext *g, Type_DS_VNA *****DS_VNA,
                                 const OpenMXVnaPreparation *preparation, int Num_RVNA)
 {
   int Mc_AN,spe,node_ranks = 1,node_rank = 0;
@@ -389,7 +389,7 @@ static int SetPro_HVNA_GpuBegin(SetProGpuContext *g, Type_DS_VNA *****DS_VNA,
   MPI_Comm_free(&node_comm);
 
   const OpenMXHvnaInput layout_input = {
-    atomnum,Matomnum,MatomnumF,M2G,F_M2G,WhatSpecies,FNAN,VNA_proj_ene
+    atomnum,Matomnum,MatomnumF,M2G,F_M2G,WhatSpecies,FNAN,reciprocal->vps.neutral_energies
   };
   char layout_error[256];
   if (!SetPro_HVNA_LayoutCreate(g,preparation,&layout_input,layout_error,sizeof(layout_error))) {
@@ -824,7 +824,7 @@ static void SetProCapacity_note(const char *stage, const char *fmt, ...)
   fflush(stderr);
 }
 
-static int SetProCapacity_HVNA_GpuBegin(SetProGpuContext *g, Type_DS_VNA *****DS_VNA,
+static int SetProCapacity_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpuContext *g, Type_DS_VNA *****DS_VNA,
                                 const OpenMXVnaPreparation *preparation, int Num_RVNA)
 {
   int Mc_AN,spe,node_ranks = 1,node_rank = 0;
@@ -916,7 +916,7 @@ static int SetProCapacity_HVNA_GpuBegin(SetProGpuContext *g, Type_DS_VNA *****DS
   MPI_Comm_free(&node_comm);
 
   const OpenMXHvnaInput layout_input = {
-    atomnum,Matomnum,MatomnumF,M2G,F_M2G,WhatSpecies,FNAN,VNA_proj_ene
+    atomnum,Matomnum,MatomnumF,M2G,F_M2G,WhatSpecies,FNAN,reciprocal->vps.neutral_energies
   };
   char layout_error[256];
   if (!SetPro_HVNA_LayoutCreate(g,preparation,&layout_input,layout_error,sizeof(layout_error))) {
@@ -1388,14 +1388,14 @@ typedef struct {
   int native;
 } SetProHvnaDispatch;
 
-static int SetPro_HVNA_DispatchBegin(SetProHvnaDispatch *context, Type_DS_VNA *****v,
+static int SetPro_HVNA_DispatchBegin(const OpenMXReciprocalViews *reciprocal, SetProHvnaDispatch *context, Type_DS_VNA *****v,
     const OpenMXVnaPreparation *preparation, int n)
 {
     context->native=0;
     if(!openmx_gpu_capacity_test_recovery() && !openmx_gpu_workers_requested())
-        context->native=SetPro_HVNA_GpuBegin(&context->gpu,v,preparation,n);
+        context->native=SetPro_HVNA_GpuBegin(reciprocal, &context->gpu,v,preparation,n);
     if(context->native)return 1;
-    return SetProCapacity_HVNA_GpuBegin(&context->gpu,v,preparation,n);
+    return SetProCapacity_HVNA_GpuBegin(reciprocal, &context->gpu,v,preparation,n);
 }
 static void SetPro_HVNA_DispatchArchive(SetProHvnaDispatch *context, Type_DS_VNA *****v,int m,int g)
 {
@@ -1574,7 +1574,7 @@ static size_t SetPro_DSVNA_DeviceBytes(const SetProGpu2Context *g)
   return bytes;
 }
 
-static int SetPro_DSVNA_GpuBegin(SetProGpu2Context *g,
+static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpu2Context *g,
     const OpenMXVnaPreparationBuffers *preparation)
 {
   const int *VNA_List = preparation->projector_angular;
@@ -1687,7 +1687,7 @@ static int SetPro_DSVNA_GpuBegin(SetProGpu2Context *g,
     for (L=0; L<Num_RVNA; L++){
       for (i=0; i<points; i++){
         g->vnab[((size_t)spe*g->num_rvna+L)*points+i]
-          = Spe_VNA_Bessel[spe][VNA_List[L]][VNA_List2[L]][i];
+          = openmx_radial_row4(&reciprocal->neutral_transform,spe,VNA_List[L],VNA_List2[L])[i];
       }
     }
   }
@@ -2348,7 +2348,7 @@ static size_t SetPro_VNA23_DeviceBytes(const SetProGpu3Context *g)
   return bytes;
 }
 
-static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g)
+static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpu3Context *g)
 {
   int spe,L0,Mul0,L1,Mul1,LL,i,c0,c1,k;
   size_t free_bytes = 0,total_bytes = 0;
@@ -2416,7 +2416,7 @@ static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g)
   g->crude = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)SpeciesNum*GL_Mesh);
   for (spe=0; spe<SpeciesNum; spe++){
     for (i=0; i<GL_Mesh; i++){
-      g->crude[(size_t)spe*GL_Mesh+i] = Spe_CrudeVNA_Bessel[spe][i];
+      g->crude[(size_t)spe*GL_Mesh+i] = openmx_radial_row2(&reciprocal->potential_transform,spe)[i];
     }
   }
 
@@ -2442,7 +2442,7 @@ static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g)
                 for (LL=0; LL<=2*L1; LL++){
                   for (i=0; i<GL_Mesh; i++){
                     g->prod[((((size_t)spe*g->cmb_max+ca)*g->cmb_max+cb)*nLL+LL)*GL_Mesh+i]
-                      = Spe_ProductRF_Bessel[spe][L0][Mul0][L1][Mul1][LL][i];
+                      = openmx_product_radial_row(&reciprocal->product_transform,spe,L0,Mul0,L1,Mul1,LL)[i];
                   }
                 }
               }

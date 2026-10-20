@@ -641,7 +641,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   init_alloc_first();
 
-  CompTime[myid][1] = readfile_with_context(argv,core);
+  CompTime[myid][1] = readfile(argv,core);
   MPI_Barrier(MPI_COMM_WORLD1);
 
   /* initialize PrintMemory routine */
@@ -840,7 +840,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   if(Wannier_Func_Calc){
     if (myid==Host_ID) printf("Calling Generate_Wannier...\n");fflush(0);
 
-    Generate_Wannier(argv[1]);
+    Generate_Wannier(argv[1],core);
   }
 
   /****************************************************

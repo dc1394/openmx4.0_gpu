@@ -10,6 +10,7 @@
 // Declaration order keeps the runtime alive until all calculation storage has
 // been destroyed, including when an API entry unwinds after a failure.
 struct OpenMXCoreContext {
+  explicit OpenMXCoreContext(bool host_only = false) : implementation(host_only) {}
   openmx::core::Context implementation;
   std::unique_ptr<openmx::core::compat::PaoOwner> pao;
   std::unique_ptr<openmx::core::compat::VpsOwner> vps;

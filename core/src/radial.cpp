@@ -374,7 +374,7 @@ Tensor<double,2> Context::transform(const RadialSamples& samples, int device)
   if (finished_) throw std::logic_error("OpenMX core context already finished");
   // GPU-enabled Kokkos initializes its GPU even for a Serial dispatch. A CPU
   // request must remain usable on machines without a visible accelerator.
-  if (has_accelerator() && device < 0) return transform_host(samples);
+  if (host_only_ || (has_accelerator() && device < 0)) return transform_host(samples);
   if (!has_accelerator()) device = -1;
   // A later input can change legacy rank/device mapping. Until execution-space
   // instances are migrated, keep that calculation on the host safely.

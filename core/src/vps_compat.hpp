@@ -3,6 +3,7 @@
 #include <openmx/core/vps_storage.hpp>
 #include "legacy_rows.hpp"
 #include "openmx_core_vps.h"
+#include "openmx_core_reciprocal.h"
 #include <memory>
 #include <optional>
 
@@ -18,6 +19,15 @@ class NeutralProjectorOwner {
     output.neutral_energies = energies_.data();
     output.neutral_transforms = transforms_.data();
     output.potential_transform = potential_transform_.data();
+  }
+  void reciprocal_views(OpenMXReciprocalViews& output) noexcept {
+    const auto p=storage_.projectors(), t=storage_.transforms();
+    const auto e=storage_.energies();
+    const auto c=storage_.potential_transform();
+    output.neutral_projectors={p.data_handle(),{p.extent(0),p.extent(1),p.extent(2),p.extent(3)}};
+    output.neutral_transform={t.data_handle(),{t.extent(0),t.extent(1),t.extent(2),t.extent(3)}};
+    output.neutral_energies={e.data_handle(),{e.extent(0),e.extent(1),e.extent(2)}};
+    output.potential_transform={c.data_handle(),{c.extent(0),c.extent(1)}};
   }
  private:
   NeutralProjectorStorage storage_;
@@ -42,6 +52,12 @@ class VpsOwner {
       angular_.data(),transforms_.data(),nullptr,nullptr,nullptr,nullptr};
     if (neutral_) neutral_->views(output);
     return output;
+  }
+  void reciprocal_views(OpenMXReciprocalViews& output) noexcept {
+    const auto v=storage_.transforms();
+    output.nonlocal_transform={v.data_handle(),{v.extent(0),v.extent(1),v.extent(2),v.extent(3)}};
+    output.vps=views();
+    if (neutral_) neutral_->reciprocal_views(output);
   }
  private:
   VpsStorage storage_;

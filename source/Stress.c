@@ -27,7 +27,7 @@
 static void MPI_OLP(double *****OLP1);
 static void Stress3();
 static void Stress4();
-static void Stress4B(const OpenMXVnaMatrixViews *vna, double *****CDM0);
+static void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0);
 static void Stress_core();
 static void Stress_H0();
 static void Stress_H1();
@@ -83,7 +83,7 @@ static void dHNL_SO(
 
 
 
-double Stress(const OpenMXVnaMatrixViews *vna, double *****H0,
+double Stress(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -1849,7 +1849,7 @@ double Stress(const OpenMXVnaMatrixViews *vna, double *****H0,
     Stress4();
   }
   else if (ProExpn_VNA==1 && F_VNA_flag==1){
-    Stress4B(vna, CDM0);
+    Stress4B(vna, reciprocal, CDM0);
   }
 
   dtime(&etime);
@@ -2970,7 +2970,7 @@ void Stress4()
 
 
 
-void Stress4B(const OpenMXVnaMatrixViews *vna, double *****CDM0)
+void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0)
 {
   double *****HVNA2=vna->HVNA2;
   double *****HVNA3=vna->HVNA3;
@@ -3163,7 +3163,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, double *****CDM0)
 
   if (0){
 
-#pragma omp parallel shared(CntDS_VNA,DS_VNA,Cnt_switch,VNA_proj_ene,VNA_List2,VNA_List,Num_RVNA,natn,FNAN,Spe_Total_CNO,WhatSpecies,F_M2G,Matomnum) private(kk,OMPID,Nthrds,Nprocs,Gc_AN,Cwan,tno0,Mc_AN,h_AN,Gh_AN,Hwan,i,l,l1,LL,Mul1,ene,l2,l3)
+#pragma omp parallel shared(CntDS_VNA,DS_VNA,Cnt_switch,reciprocal,VNA_List2,VNA_List,Num_RVNA,natn,FNAN,Spe_Total_CNO,WhatSpecies,F_M2G,Matomnum) private(kk,OMPID,Nthrds,Nprocs,Gc_AN,Cwan,tno0,Mc_AN,h_AN,Gh_AN,Hwan,i,l,l1,LL,Mul1,ene,l2,l3)
   {
 
     /* get info. on OpenMP */ 
@@ -3192,7 +3192,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, double *****CDM0)
 	      LL   = VNA_List[l1];
 	      Mul1 = VNA_List2[l1];
 
-	      ene = VNA_proj_ene[Hwan][LL][Mul1];
+	      ene = openmx_radial_value3(&reciprocal->neutral_energies,Hwan,LL,Mul1);
 	      l2 = 2*VNA_List[l1];
 
 	      if (Cnt_switch==0){

@@ -149,12 +149,8 @@ int main(void)
     int saved[40];memcpy(saved,List_YOUSO,sizeof(saved));memset(List_YOUSO,0,sizeof(List_YOUSO));
     memset(Spe_Num_Basis,0,sizeof(Spe_Num_Basis));
     OpenMXAtomPairBuffers pairs;OpenMXAtomPairPlan *plan=test_vna_pairs(&pairs);
-    double *projector_values[NS][3][2],**projector_angular[NS][3],***projector_species[NS];
-    for(int s=0;s<NS;++s){projector_species[s]=projector_angular[s];
-      for(int l=0;l<3;++l){projector_angular[s][l]=projector_values[s][l];
-        for(int r=0;r<2;++r)projector_values[s][l][r]=Spe_VNA_Bessel[s][l][r];}}
-    const SetProVnaTables tables={projector_species,NULL,NULL,&Comp2Real[0][0][0],5,
-        NULL,Radial_kmin,PAO_Nkmax,time_per_atom};
+    const SetProVnaTables tables={{&Spe_VNA_Bessel[0][0][0][0],{NS,3,2,NP}},{0},{0},
+        &Comp2Real[0][0][0],5,NULL,Radial_kmin,PAO_Nkmax,time_per_atom};
     SetPro_DSVNA_CPU(&matrix,owner,&view,wavevectors,&pairs,&tables,timing,timing+1,timing+2);
     openmx_core_atom_pairs_destroy(plan);
     memcpy(List_YOUSO,saved,sizeof(saved));memcpy(Spe_Num_Basis,basis_cases[basis],sizeof(Spe_Num_Basis));

@@ -21,11 +21,11 @@ static OpenMXNonlocalWorkspace *SetNonlocal_Workspace(int points, const double *
   return owner;
 }
 
-static void SetNonlocal_CalcDSNL_CPU(double ******DS_NL, const double *Normk_grid,
+static void SetNonlocal_CalcDSNL_CPU(const OpenMXReciprocalViews *reciprocal, double ******DS_NL, const double *Normk_grid,
     int grid_dim, double grid_h, const int *OneD2Mc_AN, const int *OneD2h_AN,
     int OneD_Nloop, int bessel_cache_entries)
 {
-#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,Spe_Num_RVPS,Spe_VPS_List,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,VPS_j_dependency,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,Spe_NLRF_Bessel)
+#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,Spe_Num_RVPS,Spe_VPS_List,Spe_Num_Basis,Spe_MaxL_Basis,PAO_Nkmax,VPS_j_dependency,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,reciprocal)
     {
 
       int OMPID,Nthrds,Nprocs,Nloop;
@@ -147,7 +147,7 @@ static void SetNonlocal_CalcDSNL_CPU(double ******DS_NL, const double *Normk_gri
 
             rf_offset = (L0*List_YOUSO[24] + Mul0)*grid_dim;
             for (i=0; i<grid_dim; i++){
-              RF_BesselCache[rf_offset + i] = RF_BesselF(Cwan,L0,Mul0,Normk_grid[i]);
+              RF_BesselCache[rf_offset + i] = RF_BesselF(reciprocal, Cwan,L0,Mul0,Normk_grid[i]);
             }
           }
         }
@@ -205,7 +205,7 @@ static void SetNonlocal_CalcDSNL_CPU(double ******DS_NL, const double *Normk_gri
 
             nlrf_offset = L*grid_dim;
             for (i=0; i<grid_dim; i++){
-              NLRF_BesselCache[so][nlrf_offset + i] = NLRF_BesselF(Hwan,L,so,Normk_grid[i]);
+              NLRF_BesselCache[so][nlrf_offset + i] = NLRF_BesselF(reciprocal, Hwan,L,so,Normk_grid[i]);
             }
           }
           cached_Hwan[so] = Hwan;

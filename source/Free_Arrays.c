@@ -2179,43 +2179,7 @@ static void array0(OpenMXCoreContext *core)
   free(Spe_Trans_Orbital);
   free(Spe_Specified_Num);
 
-  /* Spe_ProductRF_Bessel by Allocate_Arrays(7) in SetPara_DFT.c */
-
-  if (core) {
-    openmx_core_product_release(core);
-  }
-  else if (ProExpn_VNA==1){
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      for (j=0; j<(Spe_MaxL_Basis[i]+1); j++){
-	for (k=0; k<Spe_Num_Basis[i][j]; k++){
-	  for (l=0; l<(Spe_MaxL_Basis[i]+1); l++){
-
-	    if (j<=l){
-	      Lmax = 2*l;
-	    }
-	    else{
-	      Lmax = 1; 
-	    }
-
-	    for (m=0; m<Spe_Num_Basis[i][l]; m++){
-	      for (n=0; n<=Lmax; n++){
-		free(Spe_ProductRF_Bessel[i][j][k][l][m][n]);
-	      }
-              free(Spe_ProductRF_Bessel[i][j][k][l][m]);
-	    }
-            free(Spe_ProductRF_Bessel[i][j][k][l]);
-	  }
-          free(Spe_ProductRF_Bessel[i][j][k]);
-	}
-        free(Spe_ProductRF_Bessel[i][j]);
-      }
-      free(Spe_ProductRF_Bessel[i]);
-    }
-    free(Spe_ProductRF_Bessel);
-
-  }
-  Spe_ProductRF_Bessel = NULL;
+  openmx_core_product_release(core);
 
   if (alloc_first[23]==0){
     free(NE_T_k_op);
@@ -3063,166 +3027,15 @@ static void array0(OpenMXCoreContext *core)
   }
   free(atv_ijk);
 
-  /* Allocate_Arrays(6) in SetPara_DFT.c */
-
-  if (core) {
-    openmx_core_pao_release(core);
-  }
-  else {
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_PAO_XV[i]);
-    }
-    free(Spe_PAO_XV);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_PAO_RV[i]);
-    }
-    free(Spe_PAO_RV);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_Atomic_Den[i]);
-    }
-    free(Spe_Atomic_Den);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_Atomic_Den2[i]);
-    }
-    free(Spe_Atomic_Den2);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      for (j=0; j<=List_YOUSO[25]; j++){
-        for (k=0; k<List_YOUSO[24]; k++){
-          free(Spe_PAO_RWF[i][j][k]);
-        }
-        free(Spe_PAO_RWF[i][j]);
-      }
-      free(Spe_PAO_RWF[i]);
-    }
-    free(Spe_PAO_RWF);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      for (j=0; j<=List_YOUSO[25]; j++){
-        for (k=0; k<List_YOUSO[24]; k++){
-          free(Spe_RF_Bessel[i][j][k]);
-        }
-        free(Spe_RF_Bessel[i][j]);
-      }
-      free(Spe_RF_Bessel[i]);
-    }
-    free(Spe_RF_Bessel);
-  }
+  /* Calculation-owned PAO/VPS tables. Borrowed real-space adapters expire. */
+  openmx_core_pao_release(core);
+  openmx_core_vps_release(core);
   Spe_PAO_XV = Spe_PAO_RV = Spe_Atomic_Den = Spe_Atomic_Den2 = NULL;
-  Spe_PAO_RWF = Spe_RF_Bessel = NULL;
-
-  /* Allocate_Arrays(7) in SetPara_DFT.c */
-
-  if (core) {
-    openmx_core_vps_release(core);
-  }
-  else {
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_VPS_XV[i]);
-    }
-    free(Spe_VPS_XV);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_VPS_RV[i]);
-    }
-    free(Spe_VPS_RV);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_Vna[i]);
-    }
-    free(Spe_Vna);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_VH_Atom[i]);
-    }
-    free(Spe_VH_Atom);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_Atomic_PCC[i]);
-    }
-    free(Spe_Atomic_PCC);
-
-    for (so=0; so<(SO_switch+1); so++){
-      for (i=0; i<List_YOUSO[18]; i++){
-        for (j=0; j<List_YOUSO[19]; j++){
-          free(Spe_VNL[so][i][j]);
-        }
-        free(Spe_VNL[so][i]);
-      }
-      free(Spe_VNL[so]);
-    }
-    free(Spe_VNL);
-
-    for (so=0; so<(SO_switch+1); so++){
-      for (i=0; i<List_YOUSO[18]; i++){
-        free(Spe_VNLE[so][i]);
-      }
-      free(Spe_VNLE[so]);
-    }
-    free(Spe_VNLE);
-
-    for (i=0; i<List_YOUSO[18]; i++){
-      free(Spe_VPS_List[i]);
-    }
-    free(Spe_VPS_List);
-
-    for (so=0; so<(SO_switch+1); so++){
-      for (i=0; i<List_YOUSO[18]; i++){
-        for (j=0; j<(List_YOUSO[19]+2); j++){
-          free(Spe_NLRF_Bessel[so][i][j]);
-        }
-        free(Spe_NLRF_Bessel[so][i]);
-      }
-      free(Spe_NLRF_Bessel[so]);
-    }
-    free(Spe_NLRF_Bessel);
-
-    if (ProExpn_VNA==1){
-
-      for (i=0; i<List_YOUSO[18]; i++){
-        for (L=0; L<(List_YOUSO[35]+1); L++){
-          for (j=0; j<List_YOUSO[34]; j++){
-            free(Projector_VNA[i][L][j]);
-          }
-          free(Projector_VNA[i][L]);
-        }
-        free(Projector_VNA[i]);
-      }
-      free(Projector_VNA);
-
-      for (i=0; i<List_YOUSO[18]; i++){
-        for (L=0; L<(List_YOUSO[35]+1); L++){
-          free(VNA_proj_ene[i][L]);
-        }
-        free(VNA_proj_ene[i]);
-      }
-      free(VNA_proj_ene);
-
-      for (i=0; i<List_YOUSO[18]; i++){
-        for (L=0; L<(List_YOUSO[35]+1); L++){
-          for (j=0; j<List_YOUSO[34]; j++){
-            free(Spe_VNA_Bessel[i][L][j]);
-          }
-          free(Spe_VNA_Bessel[i][L]);
-        }
-        free(Spe_VNA_Bessel[i]);
-      }
-      free(Spe_VNA_Bessel);
-
-      for (i=0; i<List_YOUSO[18]; i++){
-        free(Spe_CrudeVNA_Bessel[i]);
-      }
-      free(Spe_CrudeVNA_Bessel);
-    }
-  }
+  Spe_PAO_RWF = NULL;
   Spe_VPS_XV = Spe_VPS_RV = Spe_Vna = Spe_VH_Atom = Spe_Atomic_PCC = NULL;
-  Spe_VNL = Spe_NLRF_Bessel = Projector_VNA = Spe_VNA_Bessel = NULL;
-  Spe_VNLE = VNA_proj_ene = NULL;
+  Spe_VNL = NULL;
+  Spe_VNLE = NULL;
   Spe_VPS_List = NULL;
-  Spe_CrudeVNA_Bessel = NULL;
 
   if ( (Solver==2 || Solver==3 || Solver==7) && MO_fileout==1 ){
 

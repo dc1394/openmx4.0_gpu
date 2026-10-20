@@ -39,13 +39,13 @@
 #include "set_cuda_default_device_from_local_rank.h"
 
 #ifdef kcomp
-static double NLRF_BesselF(int Gensi, int L, int so, double R);
-static void Nonlocal0(double *****HNL, double ******DS_NL);
+static double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
+static void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
 static void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
                            int Cwan, int Hwan, int wakg, dcomplex ***NLH);
 #else
-inline double NLRF_BesselF(int Gensi, int L, int so, double R);
-inline void Nonlocal0(double *****HNL, double ******DS_NL);
+inline double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
+inline void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
 inline void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
                            int Cwan, int Hwan, int wakg, dcomplex ***NLH);
 #endif
@@ -143,7 +143,7 @@ static void *SetNonlocal_ArenaTry(size_t bytes)
   return arena;
 }
 
-static void SetNonlocal_ValidateGlobalState(void)
+static void SetNonlocal_ValidateGlobalState(const OpenMXReciprocalViews *reciprocal)
 {
   int spe,L;
   size_t component_count,tmp_count;
@@ -165,7 +165,7 @@ static void SetNonlocal_ValidateGlobalState(void)
     SetNonlocal_AbortWithMessage("Invalid reciprocal grid spacing in Set_Nonlocal.c.");
   }
 
-  if (Spe_NLRF_Bessel == NULL){
+  if (reciprocal->nonlocal_transform.values == NULL){
     SetNonlocal_AbortWithMessage("Spe_NLRF_Bessel is NULL in Set_Nonlocal.c.");
   }
 
@@ -388,7 +388,7 @@ static void SetNL_capacity_kernel(size_t first,size_t rows,const void *parameter
    returns 0 and the caller runs the original host path instead.
    Returns 1 when DS_NL was evaluated here.
 */
-static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
+static int SetNonlocal_CalcDSNL_Part(const OpenMXReciprocalViews *reciprocal, double ******DS_NL,
                                          double *Normk_grid,
                                          int basis_l_dim,
                                          int basis_m_dim,
@@ -473,7 +473,7 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
         size_t rf_offset = (size_t)w*rf_sp_stride + (size_t)(L0*List_YOUSO[24] + Mul0)*grid_dim;
 
         for (i=0; i<grid_dim; i++){
-          RF_all[rf_offset + i] = RF_BesselF(w,L0,Mul0,Normk_grid[i]);
+          RF_all[rf_offset + i] = RF_BesselF(reciprocal, w,L0,Mul0,Normk_grid[i]);
         }
       }
     }
@@ -483,7 +483,7 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
         size_t nlrf_offset = ((size_t)so*nsp + w)*nlrf_sp_stride + (size_t)L*grid_dim;
 
         for (i=0; i<grid_dim; i++){
-          NLRF_all[nlrf_offset + i] = NLRF_BesselF(w,L,so,Normk_grid[i]);
+          NLRF_all[nlrf_offset + i] = NLRF_BesselF(reciprocal, w,L,so,Normk_grid[i]);
         }
       }
     }
@@ -1341,13 +1341,13 @@ static int SetNonlocal_CalcDSNL_Part(double ******DS_NL,
 }
 
 
-double Set_Nonlocal(double *****HNL, double ******DS_NL)
+double Set_Nonlocal(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
 {
   double TStime,TEtime;
 
   dtime(&TStime);
 
-  Nonlocal0(HNL, DS_NL);
+  Nonlocal0(reciprocal, HNL, DS_NL);
 
   /* for time */
   dtime(&TEtime);
@@ -1356,7 +1356,7 @@ double Set_Nonlocal(double *****HNL, double ******DS_NL)
 
 
 
-void Nonlocal0(double *****HNL, double ******DS_NL)
+void Nonlocal0(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
 {
   /****************************************************
    Evaluate matrix elements of nonlocal potentials
@@ -1402,7 +1402,7 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   int *receive_progress=projector_transfer.buffers.received;
 
 
-  SetNonlocal_ValidateGlobalState();
+  SetNonlocal_ValidateGlobalState(reciprocal);
 
   basis_l_dim = SetNonlocal_SizeTToInt(SetNonlocal_CheckedAddCount((size_t)List_YOUSO[25],1u,
                                                                    "basis_l_dim"),
@@ -1534,14 +1534,14 @@ void Nonlocal0(double *****HNL, double ******DS_NL)
   int radial_requested=SetNonlocalUseOpenACC();
   MPI_Allreduce(MPI_IN_PLACE,&radial_requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if (radial_requested){
-    DSNL_on_device = SetNonlocal_CalcDSNL_Part(DS_NL,Normk_grid,
+    DSNL_on_device = SetNonlocal_CalcDSNL_Part(reciprocal, DS_NL,Normk_grid,
                                  basis_l_dim,basis_m_dim,rvps_dim,rvps_sum_dim,proj_m_dim,
                                  grid_dim,max_Lmax_Four_Int,max_sph_rows,
                                  OneD2Mc_AN,OneD2h_AN,OneD_Nloop,grid_h,myid);
   }
 
   if (!DSNL_on_device)
-    SetNonlocal_CalcDSNL_CPU(DS_NL,Normk_grid,grid_dim,grid_h,
+    SetNonlocal_CalcDSNL_CPU(reciprocal, DS_NL,Normk_grid,grid_dim,grid_h,
         OneD2Mc_AN,OneD2h_AN,OneD_Nloop,bessel_cache_entries);
 
   if (measure_time || SetNonlocal_ProfileEnabled()){
@@ -2440,11 +2440,11 @@ void Multiply_DS_NL(int Mc_AN, int Mj_AN, int k, int kl,
 
 
 
-double NLRF_BesselF(int Gensi, int L, int so, double R)
+double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R)
 {
   double result;
   if (!openmx_core_reciprocal_sample(OPENMX_RECIPROCAL_PROJECTOR,Ngrid_NormK,
-        PAO_Nkmax/(double)Ngrid_NormK,Spe_NLRF_Bessel[so][Gensi][L],R,&result)) {
+        PAO_Nkmax/(double)Ngrid_NormK,openmx_radial_row4(&reciprocal->nonlocal_transform,so,Gensi,L),R,&result)) {
     SetNonlocal_AbortWithMessage("Invalid reciprocal interpolation input in NLRF_BesselF.");
     return 0.0;
   }

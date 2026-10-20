@@ -20,6 +20,7 @@
 #include <unistd.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
 #include "mpi.h"
 #include "openmx_core_neutral.h"
 
@@ -27,14 +28,19 @@
 
 void FT_ProExpn_VNA(OpenMXCoreContext *core, int device)
 {
+  OpenMXReciprocalRows archive_rows;
+  OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_NEUTRAL_PROJECTOR,&archive_rows);
+  char archive_error[256];
+  const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
+  double ****Projector_VNA=reciprocal.vps.neutral_projectors;
+  double ****Spe_VNA_Bessel=reciprocal.vps.neutral_transforms;
+
   int numprocs,myid,ID,NumSpe;
-  int L,Lspe,spe,Mul;
+  int Lspe,spe;
   int RestartRead_Succeed;
   double TStime,TEtime;
 
   char fileFT[YOUSO10];
-  FILE *fp;
-  size_t size; 
 
   dtime(&TStime);
 
@@ -53,32 +59,12 @@ void FT_ProExpn_VNA(OpenMXCoreContext *core, int device)
   ***********************************************************/
 
   if (Scf_RestartFromFile==1){
-
-    /***********************************************************
-                        read Spe_VNA_Bessel
-    ***********************************************************/
-
     sprintf(fileFT,"%s%s_rst/%s.ftPEvna",filepath,restart_filename,restart_filename);
-
-    if ((fp = fopen(fileFT,"rb")) != NULL){
-
-      RestartRead_Succeed = 1;
-
-      for (spe=0; spe<SpeciesNum; spe++){
-        for (L=0; L<=List_YOUSO[35]; L++){
-	  for (Mul=0; Mul<List_YOUSO[34]; Mul++){
-
-	    size = fread(&Spe_VNA_Bessel[spe][L][Mul][0],sizeof(double),GL_Mesh,fp);
-	    if (size!=GL_Mesh) RestartRead_Succeed = 0;
-	  }
-        }
-      }
-
-      fclose(fp);
-    }
-    else{
-      printf("Could not open a file %s in FT_ProExpn_VNA\n",fileFT);
-    }
+    RestartRead_Succeed=openmx_core_reciprocal_archive_read(archive,fileFT,archive_error,sizeof(archive_error));
+    if (!RestartRead_Succeed)
+      fprintf(stderr,"FT_ProExpn_VNA: %s: %s\n",fileFT,archive_error);
+    /* Every rank must take the same recompute/distribution branch. */
+    MPI_Allreduce(MPI_IN_PLACE,&RestartRead_Succeed,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
 
   /***********************************************************
@@ -109,15 +95,12 @@ void FT_ProExpn_VNA(OpenMXCoreContext *core, int device)
     ***********************************************************/
 
     for (ID=0; ID<Num_Procs2; ID++){
-      NumSpe = Species_End[ID] - Species_Top[ID] + 1;
-      for (Lspe=0; Lspe<NumSpe; Lspe++){
-	spe = Species_Top[ID] + Lspe;
-	for (L=0; L<=List_YOUSO[35]; L++){
-	  for (Mul=0; Mul<List_YOUSO[34]; Mul++){
-	    MPI_Bcast(&Spe_VNA_Bessel[spe][L][Mul][0],
-		      GL_Mesh,MPI_DOUBLE,ID,mpi_comm_level1);
-	  }
-	}
+      NumSpe=Species_End[ID]-Species_Top[ID]+1;
+      for (Lspe=0;Lspe<NumSpe;++Lspe) {
+        spe=Species_Top[ID]+Lspe;
+        for (size_t row=archive_rows.species_offsets[spe];row<archive_rows.species_offsets[spe+1];++row) {
+          MPI_Bcast(archive_rows.row[row].values,archive_rows.row[row].count,MPI_DOUBLE,ID,mpi_comm_level1);
+        }
       }
     }
 
@@ -126,24 +109,9 @@ void FT_ProExpn_VNA(OpenMXCoreContext *core, int device)
     ***********************************************************/
 
     if (myid==Host_ID){
-
       sprintf(fileFT,"%s%s_rst/%s.ftPEvna",filepath,filename,filename);
-
-      if ((fp = fopen(fileFT,"wb")) != NULL){
-
-	for (spe=0; spe<SpeciesNum; spe++){
-	  for (L=0; L<=List_YOUSO[35]; L++){
-	    for (Mul=0; Mul<List_YOUSO[34]; Mul++){
-	      fwrite(&Spe_VNA_Bessel[spe][L][Mul][0],sizeof(double),GL_Mesh,fp);
-	    }
-	  }
-	}
-
-	fclose(fp);
-      }
-      else{
-	printf("Could not open a file %s in FT_ProExpn_VNA\n",fileFT);
-      }
+      if (!openmx_core_reciprocal_archive_write(archive,fileFT,archive_error,sizeof(archive_error)))
+        fprintf(stderr,"FT_ProExpn_VNA: %s: %s\n",fileFT,archive_error);
     }
 
   } /* if (RestartRead_Succeed==0) */
@@ -152,6 +120,7 @@ void FT_ProExpn_VNA(OpenMXCoreContext *core, int device)
                          elapsed time
   ***********************************************************/
 
+  openmx_core_reciprocal_archive_destroy(archive);
   dtime(&TEtime);
 
   /*

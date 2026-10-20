@@ -5,7 +5,7 @@
 
 /* Internal CPU adapter. RF_BesselF is the legacy scalar interpolator;
    all loop bounds and table addresses come from the owned basis snapshot. */
-static void SetPro_PrepareRadials(OpenMXVnaPreparationBuffers *preparation,
+static void SetPro_PrepareRadials(const OpenMXReciprocalViews *reciprocal, OpenMXVnaPreparationBuffers *preparation,
     const double *wavevectors, const double *weights, double Dk)
 {
   const int points = preparation->points;
@@ -22,7 +22,7 @@ static void SetPro_PrepareRadials(OpenMXVnaPreparationBuffers *preparation,
           for (int i=thread*points/threads; i<(thread+1)*points/threads; ++i) {
             const double Normk = wavevectors[i];
             const double factor = 0.50*Dk*weights[i]*Normk*Normk;
-            pro0[i] = RF_BesselF(species,angular,radial,Normk)*factor;
+            pro0[i] = RF_BesselF(reciprocal, species,angular,radial,Normk)*factor;
             pro1[i] = pro0[i]*Normk;
           }
         }

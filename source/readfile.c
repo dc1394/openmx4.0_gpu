@@ -18,15 +18,7 @@
 #include "tran_prototypes.h"
 
 
-/* Compatibility entry point for external library callers. The CPU numerical
-   module needs no process-wide runtime; application drivers pass their owned
-   context through readfile_with_context instead. */
-double readfile(char *argv[])
-{
-  return readfile_with_context(argv,NULL);
-}
-
-double readfile_with_context(char *argv[], OpenMXCoreContext *core)
+double readfile(char *argv[], OpenMXCoreContext *core)
 { 
   double time0;
   double TStime,TEtime;

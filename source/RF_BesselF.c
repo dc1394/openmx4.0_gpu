@@ -14,11 +14,11 @@
 #include "openmx_common.h"
 #include "openmx_core_radial.h"
 
-double RF_BesselF(int Gensi, int GL, int Mul, double R)
+double RF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int GL, int Mul, double R)
 {
   double result;
   if (!openmx_core_reciprocal_sample(OPENMX_RECIPROCAL_PAO,Ngrid_NormK,
-        PAO_Nkmax/(double)Ngrid_NormK,Spe_RF_Bessel[Gensi][GL][Mul],R,&result)) {
+        PAO_Nkmax/(double)Ngrid_NormK,openmx_radial_row4(&reciprocal->pao_transform,Gensi,GL,Mul),R,&result)) {
     fprintf(stderr,"RF_BesselF: invalid reciprocal interpolation input\n");
     MPI_Abort(mpi_comm_level1,1);
     return 0.0;

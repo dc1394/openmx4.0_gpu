@@ -4,6 +4,7 @@
 #include "openmx_gpu_backend.h"
 #include "openmx_core.h"
 #include "openmx_core_vna_matrix.h"
+#include "openmx_core_reciprocal.h"
 #include "openmx_periodic.h"
 #include "openmx_gpu_blas.h"
 #include "openmx_gpu_complex.h"
@@ -855,18 +856,6 @@ double **Spe_Atomic_Den2;
 *******************************************************/
 double ****Spe_PAO_RWF;
 
-/*******************************************************
- double ****Spe_RF_Bessel;
-  radial parts of basis orbitals on radial mesh in the
-  momentum space
-  size: Spe_RF_Bessel[List_YOUSO[18]]
-                     [List_YOUSO[25]+1]
-                     [List_YOUSO[24]]
-                     [List_YOUSO[15]]
-  allocation: call as Allocate_Arrays(6) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double ****Spe_RF_Bessel;
 
 /*******************************************************
  double **Spe_VPS_XV;
@@ -956,18 +945,6 @@ double ***Spe_VNLE;
 *******************************************************/
 int **Spe_VPS_List;
 
-/*******************************************************
- double ****Spe_NLRF_Bessel;
-  radial parts of projectors of non-local potentials
-  on radial mesh in the momentum space
-  size: Spe_RF_Bessel[SO_switch+1]
-                     [List_YOUSO[18]]
-                     [List_YOUSO[19]+2]
-                     [List_YOUSO[15]]
-  allocation: call as Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-double ****Spe_NLRF_Bessel;
 
 /*****************************************************************************
                    allocated arrays at every MD step 
@@ -2329,62 +2306,10 @@ int *F_M2G,*S_M2G;
 *******************************************************/
 int *VPS_j_dependency;
 
-/*******************************************************
- double ***Projector_VNA;
-  Projectors for a projector expansion of VNA
-  size: Projector_VNA[List_YOUSO[18]][YOUSO35+1][YOUSO34][List_YOUSO[22]]
-  allocation: call Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call Free_Arrays(0) in openmx.c
-*******************************************************/
-double ****Projector_VNA;
 
-/*******************************************************
- double **VNA_proj_ene;
-  Projector energy for a projector expansion of VNA
-  size: VNA_proj_ene[List_YOUSO[18]][YOUSO35+1][YOUSO34]
-  allocation: call Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call Free_Arrays(0) in openmx.c
-*******************************************************/
-double ***VNA_proj_ene;
 
-/*******************************************************
- double ***Spe_VNA_Bessel;
-  radial parts of projectors of VNA on radial mesh
-  in the momentum space
-  size: Spe_VNA_Bessel[List_YOUSO[18]][YOUSO35+1][YOUSO34][List_YOUSO[15]]
-  allocation: call Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call Free_Arrays(0) in openmx.c
-*******************************************************/
-double ****Spe_VNA_Bessel;
 
-/*******************************************************
- double **Spe_CrudeVNA_Bessel;
-  radial parts of crude VNA potentials on
-  Gauss-Legendre radial mesh in the momentum space
-  size: Spe_CrudeVNA_Bessel[List_YOUSO[18]][GL_Mesh+2]
-  allocation: call Allocate_Arrays(7) in SetPara_DFT.c
-  free:       call Free_Arrays(0) in openmx.c
-*******************************************************/
-double **Spe_CrudeVNA_Bessel;
 
-/*******************************************************
- double *******Spe_ProductRF_Bessel;
-  radial parts of product of two PAOs on
-  Gauss-Legendre radial mesh in the momentum space
-  size: Spe_ProductRF_Bessel[List_YOUSO[18]]
-                            [Spe_MaxL_Basis[i]+1]
-                            [Spe_Num_Basis[i][j]]
-                            [Spe_MaxL_Basis[i]+1]
-                            [Spe_Num_Basis[i][l]]
-                            [Lmax+1]
-                            [GL_Mesh+2]
-  With a core context this is a borrowed view of ProductStorage: one numeric
-  allocation with offsets, active blocks j<=l only (others are null).
-  The null-context C compatibility path retains its legacy allocation.
-  allocation: Allocate_Arrays_with_context(7,core) in SetPara_DFT.c
-  free:       Free_Arrays_with_context(0,core) in openmx.c
-*******************************************************/
-double *******Spe_ProductRF_Bessel;
 
 /* VNA output matrices are owned by OpenMXCoreContext and passed explicitly
    as OpenMXVnaMatrixViews. Legacy row tables are borrowed adapters only. */
@@ -2931,7 +2856,7 @@ void Check_Force(char *argv[], OpenMXCoreContext *core);
 void Stress_test(int argc, char *argv[]); 
 void Check_Stress(char *argv[], OpenMXCoreContext *core);
 
-double RF_BesselF(int Gensi, int GL, int Mul, double R);
+double RF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int GL, int Mul, double R);
 double RF_BesselF2(int Gensi, int GL, int Mul, int LB, double R);
 double Nonlocal_RadialF(int Gensi, int l, int so, double R);
 double PhiF(double R, double *phi0, double *MRV, int Grid_Num);
@@ -3132,7 +3057,7 @@ void Cont_Matrix4(double ****Mat, double ****CMat);
 double Calc_polarization();
 
 /* hmweng */
-void Generate_Wannier(char *inputfile);
+void Generate_Wannier(char *inputfile,OpenMXCoreContext *core);
 
 void Population_Analysis_Wannier(char *argv[]);
 void Population_Analysis_Wannier2(char *argv[]);
@@ -3354,23 +3279,23 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
 double Total_Energy(const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[]);
-double Force(const OpenMXVnaMatrixViews *vna, double *****H0,
+double Force(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 
 	     double *****EDM); 
-double Stress(const OpenMXVnaMatrixViews *vna, double *****H0,
+double Stress(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
 	      double *****EDM);
-double Set_OLP_Kin(double *****OLP, double *****H0);
-double Set_Nonlocal(double *****HNL, double ******DS_NL);
+double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0);
+double Set_Nonlocal(const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
 double Set_CoreHoleMatrix(double *****HCH);
 double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter);  // S. An 
 double Set_OLP_p(double *****OLP_p);
 
-double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna);
+double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
 void Set_Vpot(int MD_iter,
               int SCF_iter, 
               int SCF_iter0,
@@ -3459,8 +3384,7 @@ void Calc_NAO_Krylov(double *****Hks, double ****OLP0, double *****CDM);
 
 /*-----------------------------------------------------------------------*/
 
-double readfile(char *argv[]);
-double readfile_with_context(char *argv[], OpenMXCoreContext *core);
+double readfile(char *argv[],OpenMXCoreContext *core);
 void Input_std(char *filename);
 
 double truncation(int MD_iter, int UCell_flag, OpenMXCoreContext *core);

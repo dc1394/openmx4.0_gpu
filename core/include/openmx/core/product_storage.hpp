@@ -17,6 +17,8 @@ class ProductLayout {
   std::span<const ProductChannel> channels() const noexcept { return channels_; }
   std::size_t orbital_count() const noexcept { return orbital_offsets_.empty() ? 0 : orbital_offsets_.back(); }
   std::size_t pair_count() const noexcept { return pairs_; }
+  std::span<const std::size_t> orbital_offsets() const noexcept { return orbital_offsets_; }
+  std::span<const std::size_t> pair_rows() const noexcept { return rows_; }
   std::size_t row(std::size_t l1, std::size_t m1, std::size_t l2, std::size_t m2) const;
 
   ProductLayout(const ProductLayout&) = default;
@@ -40,6 +42,7 @@ class ProductStorage {
   ProductStorage(std::span<const ProductSpecies> species, std::size_t wavevectors);
   const ProductLayout& layout(std::size_t species) const { return layouts_.at(species); }
   std::size_t species_count() const noexcept { return layouts_.size(); }
+  std::span<const std::size_t> species_rows() const noexcept { return species_rows_; }
   auto values() { return values_.view(); }
   auto values() const { return values_.view(); }
   Tensor<double,2>::view_type species(std::size_t species);

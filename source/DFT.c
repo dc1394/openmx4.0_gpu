@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
 #include "openmx_vna_matrix.h"
 #include "grid_precision.h"
 #include "Inputtools.h"
@@ -444,6 +445,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
   const OpenMXVnaMatrixViews matrices=OpenMX_VnaMatrices(core,mpi_comm_level1);
   const OpenMXVnaMatrixViews *vna=&matrices;
+  const OpenMXReciprocalViews radial_views=OpenMX_ReciprocalTables(core);
+  const OpenMXReciprocalViews *reciprocal=&radial_views;
   static int firsttime=1;
   double ECE[20],Eele0[2],Eele1[2];
   double pUele,ChemP_e0[2];
@@ -553,7 +556,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     fflush(stdout);
   }
 
-  time1 = Set_OLP_Kin(OLP,H0);
+  time1 = Set_OLP_Kin(reciprocal, OLP,H0);
 
   if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
     printf("<MD=%2d>  Calculation of the nonlocal matrix%s\n",MD_iter,
@@ -561,7 +564,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     fflush(stdout);
   }
 
-  time2 = Set_Nonlocal(HNL,DS_NL);
+  time2 = Set_Nonlocal(reciprocal, HNL,DS_NL);
 
   if (core_hole_state_flag==1){
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
@@ -576,7 +579,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
              DFT_SetProExpnVNAUseGPU() ? " (GPU-accelerated)" : "");
       fflush(stdout);
     }
-    time12 = Set_ProExpn_VNA(vna);
+    time12 = Set_ProExpn_VNA(vna,reciprocal);
   }
 
   /* SCF loop */
@@ -717,7 +720,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
         /* Calling RestartFileDFT overwrites HNL.
         Thus, we call Set_Nonlocal again, since HNL depends on basis functions. */
-        if (core_hole_state_flag==1) time2 = Set_Nonlocal(HNL,DS_NL);
+        if (core_hole_state_flag==1) time2 = Set_Nonlocal(reciprocal, HNL,DS_NL);
         if (xmcd_calc==1) time2 += Set_XMCD_penalty(0,pre_spin_moment,SCF_iter); // S. An
 
         time13 += etime;
@@ -1483,7 +1486,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       /*
 	time10 += Set_Orbitals_Grid(1);
 	time11 += Set_Density_Grid(1, 0, DM[0], Density_Grid_B);
-	time7 += Force(vna, H0,DS_NL,OLP,DM[0],EDM);
+	time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 	time8 += Total_Energy(vna, MD_iter,ECE);
 	time10 += Set_Orbitals_Grid(0);
 
@@ -2686,10 +2689,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_gemmul8ReleaseWorkspaces();
   openmx_gemmul8ReleasePrepared();
 
-  if (!orbitalOpt_Force_Skip) time7 += Force(vna, H0,DS_NL,OLP,DM[0],EDM);
+  if (!orbitalOpt_Force_Skip) time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 
   if (scf_stress_flag){
-    Stress(vna, H0,DS_NL,OLP,DM[0],EDM);
+    Stress(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
   }
 
   /* Release any tables retained through Force3 by non-band runs or opt-out. */
@@ -2700,7 +2703,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     Stress_NC(H0,DS_NL,OLP,DM[0],EDM); 
   }
   else{  
-    Stress(vna, H0,DS_NL,OLP,DM[0],EDM);
+    Stress(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
   }
   */
 

@@ -339,7 +339,8 @@ static int begin(void) {
     OpenMXVnaPreparationBuffers views; char error[256];
     OpenMXVnaPreparation *preparation=openmx_core_vna_preparation_create(&shape,&views,error,sizeof(error));
     CHECK(preparation);
-    int enabled=SetPro_HVNA_GpuBegin(&context,ds,preparation,NRVNA);
+    const OpenMXReciprocalViews reciprocal={.vps={.neutral_energies=VNA_proj_ene}};
+    int enabled=SetPro_HVNA_GpuBegin(&reciprocal,&context,ds,preparation,NRVNA);
     openmx_core_vna_preparation_destroy(preparation);
     return enabled;
 }
@@ -441,7 +442,7 @@ int main(void)
 
 
 def make_harness(source: str, gpu: bool) -> str:
-    parts = [PREFIX, '#include "openmx_precision.h"', HIP_DEVICE if gpu else HOST_DEVICE,
+    parts = ['#include "openmx_core_reciprocal.h"', PREFIX, '#include "openmx_precision.h"', HIP_DEVICE if gpu else HOST_DEVICE,
              "static SetProGpuContext context = { 0 };\n"]
     for name in ("SetPro_gpu_abort", "SetPro_checked_malloc", "SetPro_collective_env_flag",
                  "SetPro_gpu_default_enabled", "SetPro_gpu_stage_enabled", "SetPro_verbose",

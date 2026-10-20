@@ -17,6 +17,10 @@ int openmx_core_run(int argc, char **argv, OpenMXCoreEntry entry);
 /* Explicit ownership for library callers that cannot use the entry callback.
    Creation does not initialize MPI or a GPU. Destroy before MPI_Finalize. */
 OpenMXCoreContext *openmx_core_create(char *error, size_t error_capacity);
+/* Same calculation ownership, with stateless host radial transforms. Never
+   initializes/finalizes Kokkos, even in a CUDA/HIP build. Suitable for a C
+   library entry that creates a fresh context on each call. */
+OpenMXCoreContext *openmx_core_create_host(char *error, size_t error_capacity);
 void openmx_core_destroy(OpenMXCoreContext *context);
 /* Release calculation storage and the owned Kokkos runtime before
    MPI_Finalize. Invalidates all borrowed views. Idempotent. */

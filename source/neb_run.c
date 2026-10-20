@@ -64,7 +64,7 @@ void neb_run(OpenMXCoreContext *core, char *argv[], MPI_Comm mpi_commWD, int ind
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
   init_alloc_first();
-  CompTime[myid][1] = readfile_with_context(argv,core);
+  CompTime[myid][1] = readfile(argv,core);
 
   /*
   if (index_images==8){

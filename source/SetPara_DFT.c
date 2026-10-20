@@ -16,6 +16,7 @@
 #include <string.h>
 #include <complex.h>
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "openmx_gpu_device.h"
@@ -25,7 +26,7 @@
 static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
 static void Read_PAO(int spe, char *file);
-static void Read_VPS(int spe, char *file);
+static void Read_VPS(OpenMXCoreContext *core, int spe, char *file);
 static void ReadPara_DFT(OpenMXCoreContext *core);
 static void Set_BasisPara();
 static void Set_Comp2Real();
@@ -590,7 +591,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_VPS,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_VPS(spe,FN_VPS);
+      Read_VPS(core,spe,FN_VPS);
       fclose(fp);
     }
     else{
@@ -614,7 +615,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_VPS,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_VPS(spe,FN_VPS);
+      Read_VPS(core,spe,FN_VPS);
       fclose(fp);
 
       if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){  
@@ -845,7 +846,7 @@ void Read_PAO(int spe, char *file)
 
 
 
-void Read_VPS(int spe, char *file)
+void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
 {
   FILE *fp;
   int m,n,k,t,i,j,l,L,ii,jj,NVPS,LVPS,tmp0,maxL,po,p;
@@ -1410,11 +1411,12 @@ void Read_VPS(int spe, char *file)
   ****************************************************/
 
   if (remake_headfile==0 && ProExpn_VNA==1){
+    const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
     const OpenMXNeutralExpansion input = {List_YOUSO[35],List_YOUSO[34],
       Spe_Num_Mesh_VPS[spe],Spe_VPS_RV[spe],Spe_Vna[spe],
       Spe_PAO_LMAX[spe],Spe_PAO_Mul[spe],Spe_Num_Mesh_PAO[spe],
       Spe_PAO_RV[spe],Spe_PAO_RWF[spe],Spe_WhatAtom[spe]==0,
-      Projector_VNA[spe],VNA_proj_ene[spe]};
+      reciprocal.vps.neutral_projectors[spe],reciprocal.vps.neutral_energies[spe]};
     char error[256];
     if (!openmx_core_expand_neutral_projectors(&input,GL_Mesh,GL_Abscissae,GL_Weight,
                                               error,sizeof(error))) {

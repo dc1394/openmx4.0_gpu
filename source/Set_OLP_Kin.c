@@ -186,7 +186,7 @@ static int SetOLP_ProfileEnabled(void)
 }
 
 
-double Set_OLP_Kin(double *****OLP, double *****H0)
+double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0)
 {
   /****************************************************
           Evaluate overlap and kinetic integrals
@@ -506,7 +506,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 		    rf_offset = (L0*List_YOUSO[24] + Mul0)*grid_dim;
 		    for (i=0; i<grid_dim; i++){
-		      RF_BesselCache0[rf_offset + i] = RF_BesselF(Cwan,L0,Mul0,Normk_grid[i]);
+		      RF_BesselCache0[rf_offset + i] = RF_BesselF(reciprocal, Cwan,L0,Mul0,Normk_grid[i]);
 		    }
 		  }
 		}
@@ -520,7 +520,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 		    rf_offset = (L1*List_YOUSO[24] + Mul1)*grid_dim;
 		    for (i=0; i<grid_dim; i++){
-		      RF_BesselCache1[rf_offset + i] = RF_BesselF(Hwan,L1,Mul1,Normk_grid[i]);
+		      RF_BesselCache1[rf_offset + i] = RF_BesselF(reciprocal, Hwan,L1,Mul1,Normk_grid[i]);
 		    }
 		  }
 		}

@@ -676,7 +676,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
   ****************************************************/
 
   init_alloc_first();
-  CompTime[myid0][1] = readfile_with_context(argv,core);
+  CompTime[myid0][1] = readfile(argv,core);
   MPI_Barrier(mpi_comm_level1);
 
   /* initialize PrintMemory routine */
@@ -745,7 +745,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
   if(Wannier_Func_Calc){
     if (myid0==Host_ID) printf("Calling Generate_Wannier...\n");fflush(0);
 
-    Generate_Wannier(argv[1]);
+    Generate_Wannier(argv[1],core);
   }
 
   /*S MitsuakiKAWAMURA*/

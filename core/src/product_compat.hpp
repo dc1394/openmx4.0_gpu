@@ -2,6 +2,7 @@
 
 #include <openmx/core/product_storage.hpp>
 #include "openmx_core_product.h"
+#include "openmx_core_reciprocal.h"
 
 namespace openmx::core::compat {
 
@@ -10,10 +11,12 @@ namespace openmx::core::compat {
 class ProductOwner {
  public:
   ProductOwner(std::span<const ProductSpecies> species, std::size_t wavevectors)
-    : storage_(species,wavevectors), species_(species.size()) {
+    : storage_(species,wavevectors), species_(species.size()), flat_species_(species.size()) {
     std::size_t angular = 0, orbitals = 0, right_groups = 0, pairs = 0;
     for (std::size_t s = 0; s < species.size(); ++s) {
       const auto& layout = storage_.layout(s);
+      flat_species_[s]={layout.orbital_count(),storage_.species_rows()[s],
+          layout.orbital_offsets().data(),layout.pair_rows().data()};
       angular += layout.multiplicities().size();
       orbitals += layout.orbital_count();
       right_groups += layout.orbital_count()*layout.multiplicities().size();
@@ -44,6 +47,11 @@ class ProductOwner {
     }
   }
   OpenMXProductViews views() noexcept { return {species_.data()}; }
+  void reciprocal_views(OpenMXReciprocalViews& output) noexcept {
+    const auto v=storage_.values();
+    output.product_transform={v.data_handle(),species_.size(),v.extent(0),v.extent(1),flat_species_.data()};
+    output.products=views();
+  }
 
  private:
   ProductStorage storage_;
@@ -53,6 +61,7 @@ class ProductOwner {
   std::vector<double***> right_angular_;
   std::vector<double**> right_orbitals_;
   std::vector<double*> rows_;
+  std::vector<OpenMXProductSpeciesView> flat_species_;
 };
 
 } // namespace openmx::core::compat

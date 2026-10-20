@@ -30,8 +30,13 @@ add_executable(openmx_projector_pipeline_tests test_projector_pipeline.cpp alloc
 target_link_libraries(openmx_projector_pipeline_tests PRIVATE OpenMX::core)
 add_executable(openmx_vna_matrix_tests test_vna_matrix_storage.cpp allocation_faults.cpp)
 target_link_libraries(openmx_vna_matrix_tests PRIVATE OpenMX::core)
+add_executable(openmx_reciprocal_tests test_reciprocal_views.cpp allocation_faults.cpp)
+target_link_libraries(openmx_reciprocal_tests PRIVATE OpenMX::core)
+add_executable(openmx_reciprocal_archive_tests test_reciprocal_archive.cpp allocation_faults.cpp)
+target_link_libraries(openmx_reciprocal_archive_tests PRIVATE OpenMX::core)
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
-  set_source_files_properties(test_projector_pipeline.cpp test_vna_matrix_storage.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+  set_source_files_properties(test_projector_pipeline.cpp test_vna_matrix_storage.cpp test_reciprocal_views.cpp
+    test_reciprocal_archive.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
   set_source_files_properties(test_core.cpp test_radial_table.cpp test_pao_storage.cpp test_vps_storage.cpp test_products.cpp test_neutral_projectors.cpp test_pair_bessel.cpp test_overlap_workspace.cpp test_nonlocal_workspace.cpp test_vna_workspace.cpp test_vna_preparation.cpp test_dsvna_workspace.cpp test_hvna_layout.cpp test_hvna_workspace.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
@@ -101,8 +106,16 @@ foreach(_case layout mdspan ownership empty replacement invalid overflow concurr
   add_test(NAME "core-vna-matrix-${_case}" COMMAND openmx_vna_matrix_tests "${_case}")
   set_tests_properties("core-vna-matrix-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
 endforeach()
+foreach(_case layout products lifecycle host-runtime finalized-runtime invalid allocation concurrent)
+  add_test(NAME "core-reciprocal-${_case}" COMMAND openmx_reciprocal_tests "${_case}")
+  set_tests_properties("core-reciprocal-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
+endforeach()
+foreach(_case layout io failure allocation lifetime empty)
+  add_test(NAME "core-reciprocal-archive-${_case}" COMMAND openmx_reciprocal_archive_tests "${_case}")
+  set_tests_properties("core-reciprocal-archive-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
+endforeach()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
   set_tests_properties(core-radial-execution core-c-api core-lifecycle core-borrowed-runtime
-    core-table-execution core-table-c-api core-vps-execution core-product-execution core-neutral-execution
+    core-table-execution core-table-c-api core-vps-execution core-product-execution core-neutral-execution core-reciprocal-finalized-runtime
     PROPERTIES LABELS "unit;core;gpu" RESOURCE_LOCK openmx_core_gpu)
 endif()

@@ -61,7 +61,9 @@ RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities
 
 class Context {
  public:
-  Context() = default;
+  // Library calls may own calculation storage without owning a Kokkos
+  // runtime. This mode supports repeated create/transform/destroy calls.
+  explicit Context(bool host_only = false) : host_only_(host_only) {}
   Context(const Context&) = delete;
   Context& operator=(const Context&) = delete;
   ~Context() = default;
@@ -76,6 +78,7 @@ class Context {
   std::unique_ptr<Kokkos::ScopeGuard> runtime_;
   int device_ = -1;
   bool finished_ = false;
+  const bool host_only_;
 };
 
 bool has_accelerator() noexcept;

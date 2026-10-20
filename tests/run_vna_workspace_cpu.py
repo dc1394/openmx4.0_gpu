@@ -153,13 +153,12 @@ int main(void)
     OpenMXVnaPreparationBuffers prepared_basis;char error[256];
     OpenMXVnaPreparation *basis_owner=openmx_core_vna_preparation_create(&shape,&prepared_basis,error,sizeof(error));assert(basis_owner);
     OpenMXAtomPairBuffers pairs;OpenMXAtomPairPlan *plan=test_vna_pairs(&pairs);
-    double *p6[NS][1][2][1][2][1],**p5[NS][1][2][1][2],***p4[NS][1][2][1];
-    double ****p3[NS][1][2],*****p2[NS][1],******p1[NS];
-    double *crude[NS];
-    for(int s=0;s<NS;++s){p1[s]=p2[s];p2[s][0]=p3[s][0];crude[s]=Spe_CrudeVNA_Bessel[s];
-      for(int i=0;i<2;++i){p3[s][0][i]=p4[s][0][i];p4[s][0][i][0]=p5[s][0][i][0];
-        for(int j=0;j<2;++j){p5[s][0][i][0][j]=p6[s][0][i][0][j];p6[s][0][i][0][j][0]=Spe_ProductRF_Bessel[s][0][i][0][j][0];}}}
-    const SetProVnaTables tables={NULL,p1,crude,&Comp2Real[0][0][0],1,GL_Weight,Radial_kmin,PAO_Nkmax,time_per_atom};
+    const size_t orbitals[]={0,2},row_indices[]={0,1,2,3};
+    OpenMXProductSpeciesView layouts[NS];
+    for(int s=0;s<NS;++s)layouts[s]=(OpenMXProductSpeciesView){2,(size_t)s*4,orbitals,row_indices};
+    const SetProVnaTables tables={{0},{&Spe_ProductRF_Bessel[0][0][0][0][0][0][0],NS,NS*4,NP,layouts},
+        {&Spe_CrudeVNA_Bessel[0][0],{NS,NP}},&Comp2Real[0][0][0],1,
+        GL_Weight,Radial_kmin,PAO_Nkmax,time_per_atom};
     SetPro_VNA23_CPU(&matrix,mirror,wavevectors,&prepared_basis,&pairs,&tables);
     openmx_core_atom_pairs_destroy(plan);openmx_core_vna_preparation_destroy(basis_owner);
     for(int a=1;a<=NA;a++){

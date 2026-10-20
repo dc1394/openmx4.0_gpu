@@ -20,6 +20,7 @@
 #include <unistd.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
 #include "mpi.h"
 #include "openmx_core_radial.h"
 
@@ -27,16 +28,19 @@
 
 void FT_PAO(OpenMXCoreContext *core, int device)
 {
+  OpenMXReciprocalRows archive_rows;
+  OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_PAO,&archive_rows);
+  char archive_error[256];
+  const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
+  double ****Spe_RF_Bessel=reciprocal.pao.transforms;
+
   int numprocs,myid,ID,NumSpe;
-  int num_k,Lspe,spe,GL,Mul;
+  int num_k,Lspe,spe;
   int RestartRead_Succeed;
   double dk,h,rmin,rmax;
   double TStime, TEtime;
 
   char fileFT[YOUSO10];
-  char operate[300];
-  FILE *fp;
-  size_t size; 
 
   dtime(&TStime);
 
@@ -55,33 +59,12 @@ void FT_PAO(OpenMXCoreContext *core, int device)
   ***********************************************************/
 
   if (Scf_RestartFromFile==1){
-
-    /***********************************************************
-                      read Spe_RF_Bessel
-    ***********************************************************/
-
     sprintf(fileFT,"%s%s_rst/%s.ftpao",filepath,restart_filename,restart_filename);
-
-    if ((fp = fopen(fileFT,"rb")) != NULL){
-
-      RestartRead_Succeed = 1;
-
-      for (spe=0; spe<SpeciesNum; spe++){
-	for (GL=0; GL<=Spe_MaxL_Basis[spe]; GL++){
-	  for (Mul=0; Mul<Spe_Num_Basis[spe][GL]; Mul++){
-
-	    size = fread(&Spe_RF_Bessel[spe][GL][Mul][0],sizeof(double),List_YOUSO[15],fp);
-            if (size!=List_YOUSO[15]) RestartRead_Succeed = 0;
-	  }
-	}
-      }  
-
-      fclose(fp);
-    }
-    else{
-      printf("Could not open a file %s in FT_PAO\n",fileFT);
-    }
-
+    RestartRead_Succeed=openmx_core_reciprocal_archive_read(archive,fileFT,archive_error,sizeof(archive_error));
+    if (!RestartRead_Succeed)
+      fprintf(stderr,"FT_PAO: %s: %s\n",fileFT,archive_error);
+    /* Every rank must take the same recompute/distribution branch. */
+    MPI_Allreduce(MPI_IN_PLACE,&RestartRead_Succeed,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
 
   /***********************************************************
@@ -119,17 +102,13 @@ void FT_PAO(OpenMXCoreContext *core, int device)
     ***********************************************************/
 
     for (ID=0; ID<Num_Procs2; ID++){
-      NumSpe = Species_End[ID] - Species_Top[ID] + 1;
-      for (Lspe=0; Lspe<NumSpe; Lspe++){
-	spe = Species_Top[ID] + Lspe;
-	for (GL=0; GL<=Spe_MaxL_Basis[spe]; GL++){
-	  for (Mul=0; Mul<Spe_Num_Basis[spe][GL]; Mul++){
-
-	    MPI_Bcast(&Spe_RF_Bessel[spe][GL][Mul][0],
-		      List_YOUSO[15],MPI_DOUBLE,ID, mpi_comm_level1);
-            MPI_Barrier(mpi_comm_level1);
-	  }
-	}
+      NumSpe=Species_End[ID]-Species_Top[ID]+1;
+      for (Lspe=0;Lspe<NumSpe;++Lspe) {
+        spe=Species_Top[ID]+Lspe;
+        for (size_t row=archive_rows.species_offsets[spe];row<archive_rows.species_offsets[spe+1];++row) {
+          MPI_Bcast(archive_rows.row[row].values,archive_rows.row[row].count,MPI_DOUBLE,ID,mpi_comm_level1);
+          MPI_Barrier(mpi_comm_level1);
+        }
       }
     }
 
@@ -138,27 +117,12 @@ void FT_PAO(OpenMXCoreContext *core, int device)
     ***********************************************************/
 
     if (myid==Host_ID){
-
+      char operate[300];
       sprintf(operate,"%s%s_rst",filepath,filename);
-      mkdir(operate,0775); 
-   
+      mkdir(operate,0775);
       sprintf(fileFT,"%s%s_rst/%s.ftpao",filepath,filename,filename);
-
-      if ((fp = fopen(fileFT,"wb")) != NULL){
-
-	for (spe=0; spe<SpeciesNum; spe++){
-	  for (GL=0; GL<=Spe_MaxL_Basis[spe]; GL++){
-	    for (Mul=0; Mul<Spe_Num_Basis[spe][GL]; Mul++){
-	      fwrite(&Spe_RF_Bessel[spe][GL][Mul][0],sizeof(double),List_YOUSO[15],fp);
-	    }
-	  }
-	}  
-
-	fclose(fp);
-      }
-      else{
-	printf("Could not open a file %s in FT_PAO\n",fileFT);
-      }
+      if (!openmx_core_reciprocal_archive_write(archive,fileFT,archive_error,sizeof(archive_error)))
+        fprintf(stderr,"FT_PAO: %s: %s\n",fileFT,archive_error);
     }
 
   } /* if (RestartRead_Succeed==0) */
@@ -167,6 +131,7 @@ void FT_PAO(OpenMXCoreContext *core, int device)
                          elapsed time
   ***********************************************************/
 
+  openmx_core_reciprocal_archive_destroy(archive);
   dtime(&TEtime);
 
   /*

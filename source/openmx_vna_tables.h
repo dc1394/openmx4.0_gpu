@@ -1,14 +1,15 @@
 #ifndef OPENMX_VNA_TABLES_H
 #define OPENMX_VNA_TABLES_H
 #include "openmx_complex.h"
+#include "openmx_core_reciprocal.h"
 #include <stddef.h>
 
 /* Fourier/output tables remain borrowed for this synchronous invocation.
    Their ownership is independent of the immutable basis and geometry plan. */
 typedef struct {
-  double ****projectors;
-  double *******products;
-  double **crude;
+  OpenMXRadialView4 projectors;
+  OpenMXProductRadialView products;
+  OpenMXRadialView2 crude;
   const dcomplex *conversion;
   size_t conversion_width;
   const double *weights;

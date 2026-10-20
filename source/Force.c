@@ -2124,7 +2124,7 @@ static void MPI_OLP(double***** OLP1);
 static void Force3();
 static void Force4();
 static size_t Force4_OpenACC(double* Fx, double* Fy, double* Fz, size_t* atom_terms);
-static void Force4B(const OpenMXVnaMatrixViews *vna, double***** CDM0);
+static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0);
 
 static void Force_HNL(double***** CDM0, double***** iDM0);
 static int Force_HNL_GpuBegin(double****** DS_NL);
@@ -2147,7 +2147,7 @@ static int Force_PhaseProfileEnabled(void)
 static void Force_HNL_GpuCase2Run(double***** CDM0);
 static void Force_CoreHole(double***** CDM0, double***** iDM0);
 
-double Force(const OpenMXVnaMatrixViews *vna, double***** H0,
+double Force(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -3654,7 +3654,7 @@ double Force(const OpenMXVnaMatrixViews *vna, double***** H0,
             Force4();
         }
     } else if (ProExpn_VNA == 1 && F_VNA_flag == 1) {
-        Force4B(vna, CDM0);
+        Force4B(vna, reciprocal, CDM0);
     }
 
     dtime(&etime);
@@ -10615,7 +10615,7 @@ static void Force_HNL_GpuCase2Run(double *****CDM0)
     Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0);
 }
 
-void Force4B(const OpenMXVnaMatrixViews *vna, double***** CDM0)
+void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0)
 {
   double *****HVNA2=vna->HVNA2;
   double *****HVNA3=vna->HVNA3;
@@ -10812,7 +10812,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, double***** CDM0)
 
     dtime(&stime);
 
-#pragma omp parallel shared(CntDS_VNA, DS_VNA, Cnt_switch, VNA_proj_ene, VNA_List2, VNA_List, Num_RVNA, natn, FNAN, Spe_Total_CNO, WhatSpecies, F_M2G, Matomnum) private(kk, OMPID, Nthrds, Nprocs, Gc_AN, Cwan, tno0, Mc_AN, h_AN, Gh_AN, Hwan, i, l, l1, LL, Mul1, ene, l2, l3)
+#pragma omp parallel shared(CntDS_VNA, DS_VNA, Cnt_switch, reciprocal, VNA_List2, VNA_List, Num_RVNA, natn, FNAN, Spe_Total_CNO, WhatSpecies, F_M2G, Matomnum) private(kk, OMPID, Nthrds, Nprocs, Gc_AN, Cwan, tno0, Mc_AN, h_AN, Gh_AN, Hwan, i, l, l1, LL, Mul1, ene, l2, l3)
     {
 
         /* get info. on OpenMP */
@@ -10841,7 +10841,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, double***** CDM0)
                             LL = VNA_List[l1];
                             Mul1 = VNA_List2[l1];
 
-                            ene = VNA_proj_ene[Hwan][LL][Mul1];
+                            ene = openmx_radial_value3(&reciprocal->neutral_energies,Hwan,LL,Mul1);
                             l2 = 2 * VNA_List[l1];
 
                             if (Cnt_switch == 0) {

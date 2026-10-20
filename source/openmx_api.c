@@ -28,7 +28,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   char fileMemory[YOUSO10];
   char input_file_buf[YOUSO10];
   char core_error[256];
-  OpenMXCoreContext *core=openmx_core_create(core_error,sizeof(core_error));
+  OpenMXCoreContext *core=openmx_core_create_host(core_error,sizeof(core_error));
   if (!core) { fprintf(stderr,"OpenMX core: %s\n",core_error); return 1; }
 
   /* MPI set-up */
@@ -98,9 +98,10 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
 
   /* Preserve the stateless radial path for callers invoking this API more
      than once: a transient owner must not initialize/finalize Kokkos between
-     inputs. The context below owns only the VNA output matrices; it survives
-     their topology rebuilds and is destroyed after legacy array teardown. */
-  CompTime[myid][1] = readfile(argv);
+     inputs. This context owns PAO/VPS, reciprocal tables and VNA matrices;
+     its host radial mode never owns a Kokkos runtime. It survives matrix
+     topology rebuilds and is destroyed after calculation array teardown. */
+  CompTime[myid][1] = readfile(argv,core);
   MPI_Barrier(MPI_COMM_WORLD1);
 
   /* initialize PrintMemory routine */
@@ -197,7 +198,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   if(Wannier_Func_Calc){
     if (myid==Host_ID) printf("Calling Generate_Wannier...\n");fflush(0);
 
-    Generate_Wannier(argv[1]);
+    Generate_Wannier(argv[1],core);
   }
 
   /****************************************************
@@ -271,7 +272,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
 
   /* free arrays */
 
-  Free_Arrays(0);
+  Free_Arrays_with_context(0,core);
 
   /* print memory */
 

@@ -185,8 +185,8 @@ static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, 
 		      sj  =  SphB[LL*points+i];
 		      sjp = SphBp[LL*points+i];
 
-		      tmp0 = tables->crude[potential_species][i];
-		      tmp1 = tables->products[product_species][L0][Mul0][L1][Mul1][LL][i];
+		      tmp0 = openmx_radial_row2(&tables->crude,potential_species)[i];
+		      tmp1 = openmx_product_radial_row(&tables->products,product_species,L0,Mul0,L1,Mul1,LL)[i];
 		      tmp10 = 0.50*Dk*tmp0*tmp1*tables->weights[i]*Normk*Normk;
 
 		      sum  += tmp10*sj;

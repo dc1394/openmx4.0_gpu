@@ -915,6 +915,13 @@ extern "C" OpenMXCoreContext* openmx_core_create(char* error,std::size_t capacit
 
 extern "C" void openmx_core_destroy(OpenMXCoreContext* context) { delete context; }
 
+extern "C" OpenMXCoreContext* openmx_core_create_host(char* error,std::size_t capacity)
+{
+  OpenMXCoreContext* result=nullptr;
+  checked_call(error,capacity,[&] { result=new OpenMXCoreContext(true); });
+  return result;
+}
+
 extern "C" int openmx_core_has_accelerator(void)
 {
   return openmx::core::has_accelerator();

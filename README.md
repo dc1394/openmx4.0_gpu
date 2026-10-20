@@ -119,6 +119,15 @@ Hamiltonian assembly, total energy, forces and stress receive the matrix state
 explicitly; CPU VNA assembly uses flat views, while native kernels borrow
 stable row adapters. Repartitioning and teardown release these owners without
 walking the old atom or neighbor arrays.
+PAO/nonlocal Fourier tables, neutral projectors and energies, and orbital-product
+Fourier tables now also travel through an explicit calculation view; their
+seven global pointers and the null-context manual allocation/free paths are
+removed. Host interpolation and VNA consumers use flat views. One C++ row plan
+shares restart I/O and MPI distribution across all five Fourier transforms,
+preserving their binary formats and row order. Files close through RAII, and
+MPI ranks agree on restart failure before recomputing. The external C API owns
+the same tables with host radial execution, allowing consecutive calls without
+initializing or finalizing Kokkos for each input.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

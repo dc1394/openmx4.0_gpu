@@ -20,6 +20,7 @@
 #include <sys/time.h> 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
 #include "lapack_prototypes.h"
 #include <omp.h>
  
@@ -138,7 +139,7 @@ void Hamiltonian_Band_NC_Wannier(double *****RH, double *****IH,
 
 void Calc_OLP_exp(int tot_bvector, double **bvector);
 void Find_NN_Projectors_Basis();
-void Set_OLP_Projector_Basis(double ****OLP_WP);
+void Set_OLP_Projector_Basis(const OpenMXReciprocalViews *reciprocal, double ****OLP_WP);
 
 
 void Wannier(int Solver, 
@@ -181,8 +182,10 @@ void Wannier(int Solver,
 
 
 #pragma optimization_level 1
-void Generate_Wannier(char *inputfile)
+void Generate_Wannier(char *inputfile, OpenMXCoreContext *core)
 {
+  const OpenMXReciprocalViews radial_views=OpenMX_ReciprocalTables(core);
+  const OpenMXReciprocalViews *reciprocal=&radial_views;
   int ct_AN,wan1,TNO1;
   int p,num,L,h_AN,Gh_AN,wan,tno,i;
   double ****tmpOLP;
@@ -246,7 +249,7 @@ void Generate_Wannier(char *inputfile)
 
     /* calculate overlap matrix between projectors and basis functions */
 
-    Set_OLP_Projector_Basis(tmpOLP);
+    Set_OLP_Projector_Basis(reciprocal, tmpOLP);
 
     for (p=0; p<Wannier_Num_Kinds_Projectors; p++){
 
@@ -367,7 +370,7 @@ void Generate_Wannier(char *inputfile)
 
 
 #pragma optimization_level 1
-void Set_OLP_Projector_Basis(double ****OLP_WP)
+void Set_OLP_Projector_Basis(const OpenMXReciprocalViews *reciprocal, double ****OLP_WP)
 {
   /****************************************************
           Evaluate overlap and kinetic integrals
@@ -567,7 +570,7 @@ void Set_OLP_Projector_Basis(double ****OLP_WP)
 	  for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
 	    for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
 
-	      Bessel_Pro0 = RF_BesselF(Cwan,L0,Mul0,Normk);
+	      Bessel_Pro0 = RF_BesselF(reciprocal, Cwan,L0,Mul0,Normk);
 
               tmp0 = coe0*h*Normk2*Bessel_Pro0;
               tmp1 = tmp0*sj;
@@ -576,7 +579,7 @@ void Set_OLP_Projector_Basis(double ****OLP_WP)
 	      for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
 		for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
 
-                  Bessel_Pro1 = RF_BesselF(Hwan,L1,Mul1,Normk);
+                  Bessel_Pro1 = RF_BesselF(reciprocal, Hwan,L1,Mul1,Normk);
 
                   tmp3 = tmp1*Bessel_Pro1;
                   tmp4 = tmp2*Bessel_Pro1;
