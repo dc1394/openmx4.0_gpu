@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "openmx_common.h"
+#include "openmx_vna_status.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
@@ -39,7 +40,7 @@
 
 extern int openmx_gpu_is_apu(void);
 
-static double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK);
+static double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK, int *used_gpu);
 static double Set_VNA2(double ****HVNA, double *****HVNA2, double *GL_NormK, SetProGpu3Context *gpu);
 static double Set_VNA3(double *****HVNA3, double *GL_NormK, SetProGpu3Context *gpu);
 static int SetPro_VNA23_GpuBegin(SetProGpu3Context *g);
@@ -49,12 +50,6 @@ static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g);
 static void SetPro_DSVNA_GpuEnd(SetProGpu2Context *g);
 /* forward: the OPENMX_SETPRO_VERBOSE diagnostics (defined below the driver) */
 static void SetPro_note(const char *stage, const char *fmt, ...);
-static int SetPro_gpu_used = 0;
-
-int Set_ProExpn_VNA_Used_GPU(void)
-{
-  return SetPro_gpu_used;
-}
 
 #ifdef kcomp
 static void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
@@ -63,7 +58,7 @@ static inline void Spherical_Bessel2( double x, int lmax, double *sb, double *ds
 #endif      
 
 
-double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_VNA)
+double Set_ProExpn_VNA_WithStatus(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_VNA, int *used_gpu)
 {
   double time1,time2,time3;
   int vna23_gpu;
@@ -73,12 +68,13 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
   const double dk = PAO_Nkmax-Radial_kmin, sk = PAO_Nkmax+Radial_kmin;
   for (int i=0; i<GL_Mesh; ++i) GL_NormK[i] = 0.5*(dk*GL_Abscissae[i]+sk);
 
-  SetPro_gpu_used = 0;
+  int hvna_gpu_used = 0;
+  if (used_gpu) *used_gpu = 0;
   SetPro_note("entry","");
 
   /* separable form */
 
-  time1 = Set_ProExpn(HVNA, DS_VNA, GL_NormK);
+  time1 = Set_ProExpn(HVNA, DS_VNA, GL_NormK, &hvna_gpu_used);
 
   /* batched device path for the one-centre pair integrals */
 
@@ -92,7 +88,9 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
 
   time3 = Set_VNA3(HVNA3, GL_NormK, &gpu3);
 
+  const int vna23_gpu_used = gpu3.used_gpu;
   if (vna23_gpu) SetPro_VNA23_GpuEnd(&gpu3);
+  if (used_gpu) *used_gpu = hvna_gpu_used || vna23_gpu_used;
 
   SetPro_note("exit","Set_ProExpn %.2f s, Set_VNA2 %.2f s, Set_VNA3 %.2f s",time1,time2,time3);
 
@@ -101,6 +99,12 @@ double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_V
   }
 
   return time1+time2+time3;
+}
+
+
+double Set_ProExpn_VNA(double ****HVNA, double *****HVNA2, Type_DS_VNA *****DS_VNA)
+{
+  return Set_ProExpn_VNA_WithStatus(HVNA,HVNA2,DS_VNA,NULL);
 }
 
 
@@ -726,7 +730,7 @@ static void SetPro_HVNA_GpuRun(SetProGpuContext *g, double ****HVNA)
         }
 
         on_device = hipMemcpy(out,arena+o_out,sizeof(double)*out_c,hipMemcpyDeviceToHost)==hipSuccess;
-        if (on_device && out_c > 0) SetPro_gpu_used = 1;
+        if (on_device && out_c > 0) g->used_gpu = 1;
       }
       (void)hipFree(arena);
     }
@@ -789,7 +793,6 @@ static void SetPro_HVNA_GpuRun(SetProGpuContext *g, double ****HVNA)
 
 
 
-static int SetProCapacity_worker_rank = 0;
 
 static void SetProCapacity_gpu_abort(const char *message)
 {
@@ -863,7 +866,7 @@ static void SetProCapacity_note(const char *stage, const char *fmt, ...)
   va_start(ap,fmt);
   vsnprintf(detail,sizeof(detail),fmt,ap);
   va_end(ap);
-  if (openmx_gpu_worker_device()>=0) myid=SetProCapacity_worker_rank;
+  if (openmx_gpu_worker_device()>=0) myid=0;
   else MPI_Comm_rank(mpi_comm_level1,&myid);
   {
     const double mib = SetProCapacity_free_mib();
@@ -1452,7 +1455,7 @@ static void SetPro_HVNA_DispatchArchive(SetProHvnaDispatch *context, Type_DS_VNA
     if(context->native)SetPro_HVNA_GpuArchiveHalo(&context->gpu,v,m,g);
     else SetProCapacity_HVNA_GpuArchiveHalo(&context->gpu,v,m,g);
 }
-static void SetPro_HVNA_DispatchRun(SetProHvnaDispatch *context, double ****h)
+static int SetPro_HVNA_DispatchRun(SetProHvnaDispatch *context, double ****h)
 {
     SetProGpuContext *g=&context->gpu;
     if(context->native){
@@ -1460,12 +1463,14 @@ static void SetPro_HVNA_DispatchRun(SetProHvnaDispatch *context, double ****h)
             if(turn==g->turn)SetPro_HVNA_GpuRun(g,h);
             if(g->turns>1)MPI_Barrier(mpi_comm_level1);
         }
-        SetPro_HVNA_GpuEnd(g);
     }else{
         SetProCapacity_HVNA_GpuRun(g,h);
-        SetProCapacity_HVNA_GpuEnd(g);
     }
+    const int used_gpu=g->used_gpu;
+    if(context->native)SetPro_HVNA_GpuEnd(g);
+    else SetProCapacity_HVNA_GpuEnd(g);
     context->native=0;
+    return used_gpu;
 }
 
 /* Batched device construction of DS_VNA (the <chi0|P> expansion and
@@ -3062,7 +3067,7 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
       openmx_gpu_task_execute(mpi_comm_level1,&task,1,"SetPro_VNA23");
 
 
-      if (np > 0) SetPro_gpu_used = 1;
+      if (np > 0) g->used_gpu = 1;
 
       /* host: scatter into HVNA2 or HVNA3 */
 
@@ -3111,8 +3116,9 @@ static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,int *mc,
 
 
 #include "openmx_dsvna_cpu.h"
+#include "openmx_hvna_cpu.h"
 
-double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
+double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK, int *used_gpu)
 {
   const int fp32 = openmx_fp32_enabled();
   /****************************************************
@@ -3138,7 +3144,6 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   const int *VNA_List;
   const int *VNA_List2;
   int Num_RVNA;
-  double **NLH;
   double time0,time1,time2,time3,time4,time5;
   dcomplex sum0,sum1,sum2; 
 
@@ -3261,11 +3266,22 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   SetProHvnaDispatch hvna = {0};
   setpro_gpu = SetPro_HVNA_DispatchBegin(&hvna,DS_VNA,preparation_owner,Num_RVNA);
 
-  /* allocation of array */
-
-  NLH = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    NLH[i] = (double*)malloc(sizeof(double)*List_YOUSO[7]); 
+  const SetProHvnaGeometry hvna_geometry = {
+    Matomnum,M2G,F_G2M,WhatSpecies,FNAN,natn,RMI1,Spe_Atom_Cut1,Dis,time_per_atom
+  };
+  OpenMXHvnaProjectorBuffers hvna_projectors;
+  OpenMXHvnaProjectors *hvna_projector_owner = NULL;
+  OpenMXHvnaWorkspaceBuffers halo_workspace;
+  OpenMXHvnaWorkspace *halo_owner = NULL;
+  if (!setpro_gpu) {
+    char error[256];
+    hvna_projector_owner = openmx_core_hvna_projectors_create(preparation_owner,
+        VNA_proj_ene,&hvna_projectors,error,sizeof(error));
+    if (!hvna_projector_owner) {
+      SetPro_gpu_abort(error);
+      abort();
+    }
+    halo_owner = SetPro_HVNA_CPU_Workspace(hvna_projector_owner,&halo_workspace);
   }
 
   for (ID=0; ID<numprocs; ID++){
@@ -3421,103 +3437,10 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
               multiplying overlap integrals
 	*****************************************/
 
-	if (!setpro_gpu){
-
-	for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-	  dtime(&Stime_atom);
-    
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  fan = FNAN[Gc_AN];
-	  rcutA = Spe_Atom_Cut1[Cwan];
-
-	  n = F_Rcv_Num_WK[IDR];
-	  jg = Rcv_GAN[IDR][n];
-
-	  for (j0=0; j0<=fan; j0++){
-
-	    jg0 = natn[Gc_AN][j0];
-	    Mj_AN0 = F_G2M[jg0];
-
-  	    po = 0;
-	    if (Original_Mc_AN==Mj_AN0){
-	      po = 1;
-	      j = j0;
-	    }
-  
-	    if (po==1){
-
-	      Hwan = WhatSpecies[jg];
-	      rcutB = Spe_Atom_Cut1[Hwan];
-	      rcut = rcutA + rcutB;
-
-	      for (k=0; k<=fan; k++){
-
-		kg = natn[Gc_AN][k];
-		wakg = WhatSpecies[kg];
-		kl = RMI1[Mc_AN][j][k];
-
-		if (0<=kl){
-#pragma omp parallel for private(m, n, sum, L ,L1, GL, Mul1, ene, L2 ,tmp0, L3) default(shared) if(Spe_Total_NO[Cwan] > 8)
-		  for (m=0; m<Spe_Total_NO[Cwan]; m++){
-		    for (n=0; n<Spe_Total_NO[Hwan]; n++){
-
-		      sum = 0.0;
-		      L = 0;
-
-		      for (L1=0; L1<Num_RVNA; L1++){
-
-			GL = VNA_List[L1]; 
-			Mul1 = VNA_List2[L1];
-            
-			ene = VNA_proj_ene[wakg][GL][Mul1];
-			L2 = 2*VNA_List[L1];
-
-			tmp0 = 0.0;
-
-			for (L3=0; L3<=L2; L3++){
-
-			  tmp0 += fp32 ? (double)(DS_VNA[0][Mc_AN][k][m][L] * DS_VNA[0][Matomnum+1][kl][n][L])
-			                   : (double)DS_VNA[0][Mc_AN][k][m][L] * (double)DS_VNA[0][Matomnum+1][kl][n][L];
-
-			  L++;
-			}
-
-			sum += ene*tmp0; 
-
-		      }
-
-		      if (k==0)  NLH[m][n]  = sum;  
-		      else       NLH[m][n] += sum; 
-
-		    } /* n */
-		  } /* m */
-		} /* if (0<=kl)*/
-	      } /* k */ 
-       
-	      /****************************************************
-                            NLH to HVNA
-	      ****************************************************/
-
-	      dmp = dampingF(rcut,Dis[Gc_AN][j]);
-
-	      for (i1=0; i1<Spe_Total_NO[Cwan]; i1++){
-		for (j1=0; j1<Spe_Total_NO[Hwan]; j1++){
-		  HVNA[Mc_AN][j][i1][j1] = dmp*NLH[i1][j1];
-		}
-	      }
-
-	    } /* if (po==1) */
-
-	  } /* j */            
-
-	  dtime(&Etime_atom);
-	  time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-
-	} /* Mc_AN */
-
-	} /* if (!setpro_gpu) */
+        if (!setpro_gpu) {
+          SetPro_HVNA_CPU_Halo(&hvna_geometry,&hvna_projectors,&halo_workspace,
+              DS_VNA,HVNA,Original_Mc_AN,Rcv_GAN[IDR][F_Rcv_Num_WK[IDR]],fp32);
+        }
 
 	/********************************************
             increment of F_Rcv_Num_WK[IDR] 
@@ -3556,13 +3479,8 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   
   } while (po!=0);
   
-  /* freeing of arrays */
-  
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(NLH[i]);
-  }
-  free(NLH);
-  
+  openmx_core_hvna_workspace_destroy(halo_owner);
+
   if (measure_time){
     dtime(&etime);
     time4 += etime - stime;
@@ -3576,129 +3494,13 @@ double Set_ProExpn(double ****HVNA, Type_DS_VNA *****DS_VNA, double *GL_NormK)
   
   if (measure_time) dtime(&stime);
 
-  if (!setpro_gpu){
-  
-#pragma omp parallel shared(List_YOUSO,time_per_atom,HVNA,Dis,DS_VNA,VNA_proj_ene,VNA_List2,VNA_List,Num_RVNA,Spe_Total_NO,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,Matomnum) 
-  {         
-  
-    int OMPID,Nthrds,Nprocs;
-    int Mc_AN,Gc_AN,Cwan,fan,Mj_AN,Hwan;
-    int L,L1,GL,Mul1,L2,L3,i1,j1;
-    int k,kg,wakg,kl,i,j,jg,m,n;
-    double **NLH;
-    double rcutA,rcutB,rcut,sum,ene,tmp0,dmp;
-    double Stime_atom,Etime_atom;
-
-    /* allocation of array */
-
-    NLH = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-    for (i=0; i<List_YOUSO[7]; i++){
-      NLH[i] = (double*)malloc(sizeof(double)*List_YOUSO[7]); 
-    }
-
-    /* get info. on OpenMP */ 
-
-    OMPID = omp_get_thread_num();
-    Nthrds = omp_get_num_threads();
-    Nprocs = omp_get_num_procs();
-
-    for (Mc_AN=(OMPID*Matomnum/Nthrds+1); Mc_AN<((OMPID+1)*Matomnum/Nthrds+1); Mc_AN++){
-
-      dtime(&Stime_atom);
-    
-      Gc_AN = M2G[Mc_AN];
-      Cwan = WhatSpecies[Gc_AN];
-      fan = FNAN[Gc_AN];
-      rcutA = Spe_Atom_Cut1[Cwan];
-  
-      for (j=0; j<=fan; j++){
-  
-	jg = natn[Gc_AN][j];
-	Mj_AN = F_G2M[jg];
-
-	if (Mj_AN<=Matomnum){
-
-	  Hwan = WhatSpecies[jg];
-	  rcutB = Spe_Atom_Cut1[Hwan];
-	  rcut = rcutA + rcutB;
-
-	  for (k=0; k<=fan; k++){
-
-	    kg = natn[Gc_AN][k];
-	    wakg = WhatSpecies[kg];
-	    kl = RMI1[Mc_AN][j][k];
-
-	    if (0<=kl){
-
-	      for (m=0; m<Spe_Total_NO[Cwan]; m++){
-		for (n=0; n<Spe_Total_NO[Hwan]; n++){
-
-		  sum = 0.0;
-		  L = 0;
-
-		  for (L1=0; L1<Num_RVNA; L1++){
-
-		    GL = VNA_List[L1]; 
-		    Mul1 = VNA_List2[L1];
-            
-		    ene = VNA_proj_ene[wakg][GL][Mul1];
-		    L2 = 2*VNA_List[L1];
-
-		    tmp0 = 0.0;
-
-		    for (L3=0; L3<=L2; L3++){
-		      tmp0 += fp32 ? (double)(DS_VNA[0][Mc_AN][k][m][L] * DS_VNA[0][Mj_AN][kl][n][L])
-		                       : (double)DS_VNA[0][Mc_AN][k][m][L] * (double)DS_VNA[0][Mj_AN][kl][n][L];
-		      L++;
-		    }
-
-		    sum += ene*tmp0; 
-
-		  }
-
-		  if (k==0)  NLH[m][n]  = sum;  
-		  else       NLH[m][n] += sum; 
-
-		}
-	      }
-	    }
-	  } /* k */ 
-       
-	  /****************************************************
-                            NLH to HVNA
-	  ****************************************************/
-
-	  dmp = dampingF(rcut,Dis[Gc_AN][j]);
-
-	  for (i1=0; i1<Spe_Total_NO[Cwan]; i1++){
-	    for (j1=0; j1<Spe_Total_NO[Hwan]; j1++){
-	      HVNA[Mc_AN][j][i1][j1] = dmp*NLH[i1][j1];
-	    }
-	  }
-
-	} /* if (Mj_AN<=Matomnum) */
-      } /* j */
-
-      dtime(&Etime_atom);
-      time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-
-    } /* Mc_AN */
-
-    /* freeing of arrays */
- 
-    for (i=0; i<List_YOUSO[7]; i++){
-      free(NLH[i]);
-    }
-    free(NLH);
-
-#pragma omp flush(HVNA)
-
-  } /* #pragma omp parallel */
-
-  } /* if (!setpro_gpu) */
+  if (!setpro_gpu) {
+    SetPro_HVNA_CPU_Local(&hvna_geometry,hvna_projector_owner,&hvna_projectors,DS_VNA,HVNA,fp32);
+  }
+  openmx_core_hvna_projectors_destroy(hvna_projector_owner);
 
   if (setpro_gpu){
-    SetPro_HVNA_DispatchRun(&hvna,HVNA);
+    *used_gpu |= SetPro_HVNA_DispatchRun(&hvna,HVNA);
     setpro_gpu = 0;
   }
 

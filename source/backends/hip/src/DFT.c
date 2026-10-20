@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_vna_status.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "tran_prototypes.h"
@@ -35,7 +36,6 @@ int TRAN_SCF_Iter_Band;
 static int DFT_GPU_BasisCount(void);
 static int DFT_GPU_DenseSwitchNum(void);
 int Set_Nonlocal_Used_GPU(void);
-int Set_ProExpn_VNA_Used_GPU(void);
 double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1);
 extern int BandNonCol_HamiltonianUseHipSolver(void);
 extern int openmx_gpu_is_mi300a(void);
@@ -518,9 +518,10 @@ double DFT(int MD_iter, int Cnt_Now)
   }
 
   if (ProExpn_VNA==1){
-    time12 = Set_ProExpn_VNA(HVNA, HVNA2, DS_VNA);
+    int vna_gpu_used = 0;
+    time12 = Set_ProExpn_VNA_WithStatus(HVNA, HVNA2, DS_VNA, &vna_gpu_used);
     {
-      const char *gpu_label = DFT_GPU_StageLabel(Set_ProExpn_VNA_Used_GPU());
+      const char *gpu_label = DFT_GPU_StageLabel(vna_gpu_used);
       if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
         printf("<MD=%2d>  Calculation of the VNA projector matrix%s\n",MD_iter,gpu_label);
         fflush(stdout);

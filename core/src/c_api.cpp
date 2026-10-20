@@ -8,6 +8,7 @@
 #include "openmx_core_vna_preparation.h"
 #include "openmx_core_dsvna.h"
 #include "openmx_core_hvna.h"
+#include "openmx_core_hvna_workspace.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -23,6 +24,7 @@
 #include <openmx/core/vna_preparation.hpp>
 #include <openmx/core/dsvna_workspace.hpp>
 #include <openmx/core/hvna_layout.hpp>
+#include <openmx/core/hvna_workspace.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -77,6 +79,17 @@ struct OpenMXHvnaLayout {
   openmx::core::HvnaLayout implementation;
 };
 
+struct OpenMXHvnaProjectors {
+  OpenMXHvnaProjectors(const openmx::core::VnaPreparation& preparation, std::span<const double> energies)
+    : implementation(preparation,energies) {}
+  openmx::core::HvnaProjectors implementation;
+};
+
+struct OpenMXHvnaWorkspace {
+  explicit OpenMXHvnaWorkspace(const openmx::core::HvnaProjectors& projectors) : implementation(projectors) {}
+  openmx::core::HvnaWorkspace implementation;
+};
+
 namespace {
 
 template<class Function>
@@ -92,6 +105,22 @@ int checked_call(char* error, std::size_t capacity, Function&& function) noexcep
     if (error && capacity) std::snprintf(error,capacity,"unexpected OpenMX core exception");
   }
   return 0;
+}
+
+std::vector<double> hvna_energies(const openmx::core::VnaPreparation& prep, double*** input)
+{
+  std::vector<double> energies;
+  for (std::size_t s = 0; s < prep.basis().orbitals().size(); ++s) {
+    if (prep.projector_count() && (!input || !input[s]))
+      throw std::invalid_argument("missing HVNA species energies");
+    for (int p = 0; p < prep.projector_count(); ++p) {
+      const int l = openmx::core::element(prep.projectors(),0,p);
+      const int r = openmx::core::element(prep.projectors(),1,p);
+      if (!input[s][l]) throw std::invalid_argument("missing HVNA projector energies");
+      energies.push_back(input[s][l][r]);
+    }
+  }
+  return energies;
 }
 
 std::span<const double> mesh(const double* radii, int count)
@@ -610,16 +639,7 @@ extern "C" OpenMXHvnaLayout* openmx_core_hvna_create(const OpenMXVnaPreparation*
     };
     const auto local = blocks(1,input->local_atoms,input->local_to_global);
     const auto halo = blocks(input->local_atoms+1,input->halo_atoms,input->extended_to_global);
-    std::vector<double> energies;
-    for (std::size_t s = 0; s < orbitals.size(); ++s) {
-      if (!input->energies[s]) throw std::invalid_argument("missing HVNA species energies");
-      for (int p = 0; p < prep.projector_count(); ++p) {
-        const int l = openmx::core::element(prep.projectors(),0,p);
-        const int r = openmx::core::element(prep.projectors(),1,p);
-        if (!input->energies[s][l]) throw std::invalid_argument("missing HVNA projector energies");
-        energies.push_back(input->energies[s][l][r]);
-      }
-    }
+    const auto energies = hvna_energies(prep,input->energies);
     auto owner = std::make_unique<OpenMXHvnaLayout>(prep,local,halo,energies);
     auto& layout = owner->implementation;
     OpenMXHvnaBuffers views{};
@@ -637,6 +657,53 @@ extern "C" OpenMXHvnaLayout* openmx_core_hvna_create(const OpenMXVnaPreparation*
 extern "C" void openmx_core_hvna_destroy(OpenMXHvnaLayout* layout)
 {
   delete layout;
+}
+
+extern "C" OpenMXHvnaProjectors* openmx_core_hvna_projectors_create(const OpenMXVnaPreparation* preparation,
+    double*** energies, OpenMXHvnaProjectorBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXHvnaProjectors* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!preparation || !buffers) throw std::invalid_argument("missing HVNA preparation or projector output");
+    const auto values = hvna_energies(preparation->implementation,energies);
+    auto owner = std::make_unique<OpenMXHvnaProjectors>(preparation->implementation,values);
+    const auto& projectors = owner->implementation;
+    OpenMXHvnaProjectorBuffers views{};
+    views.species = static_cast<int>(projectors.orbitals().size());
+    views.groups = projectors.groups(); views.components = projectors.components();
+    views.orbitals = projectors.orbitals().data(); views.lengths = projectors.lengths().data();
+    if (projectors.energies().size()) views.energies = projectors.energies().data_handle();
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" void openmx_core_hvna_projectors_destroy(OpenMXHvnaProjectors* projectors)
+{
+  delete projectors;
+}
+
+extern "C" OpenMXHvnaWorkspace* openmx_core_hvna_workspace_create(const OpenMXHvnaProjectors* projectors,
+    OpenMXHvnaWorkspaceBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXHvnaWorkspace* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!projectors || !buffers) throw std::invalid_argument("missing HVNA projectors or workspace output");
+    auto owner = std::make_unique<OpenMXHvnaWorkspace>(projectors->implementation);
+    const auto matrix = owner->implementation.matrix();
+    OpenMXHvnaWorkspaceBuffers views{};
+    views.orbital_capacity = matrix.extent(1);
+    if (matrix.size()) views.matrix = matrix.data_handle();
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" void openmx_core_hvna_workspace_destroy(OpenMXHvnaWorkspace* workspace)
+{
+  delete workspace;
 }
 
 extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,

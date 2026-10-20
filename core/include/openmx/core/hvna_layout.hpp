@@ -1,6 +1,6 @@
 #pragma once
 
-#include <openmx/core/vna_preparation.hpp>
+#include <openmx/core/hvna_workspace.hpp>
 
 namespace openmx::core {
 
@@ -34,12 +34,11 @@ class HvnaLayout {
   HvnaLayout& operator=(const HvnaLayout&) = delete;
   ProjectorArchiveLayout& local() noexcept { return local_; }
   ProjectorArchiveLayout& halo() noexcept { return halo_; }
-  auto energies() noexcept { return energies_.view(); }
-  std::span<int> lengths() noexcept { return lengths_; }
+  auto energies() noexcept { return projectors_.energies(); }
+  std::span<int> lengths() noexcept { return projectors_.lengths(); }
  private:
   ProjectorArchiveLayout local_, halo_;
-  Tensor<double,2> energies_;
-  std::vector<int> lengths_;
+  HvnaProjectors projectors_;
 };
 
 } // namespace openmx::core

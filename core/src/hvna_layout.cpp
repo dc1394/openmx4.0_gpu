@@ -39,15 +39,7 @@ HvnaLayout::HvnaLayout(const VnaPreparation& preparation,
     std::span<const double> energies)
   : local_(preparation.projector_components(),local),
     halo_(preparation.projector_components(),halo),
-    energies_({preparation.basis().orbitals().size(),
-               static_cast<std::size_t>(preparation.projector_count())}),
-    lengths_(preparation.projector_count())
-{
-  if (energies.size() != energies_.size())
-    throw std::invalid_argument("invalid HVNA energy table size");
-  std::copy(energies.begin(),energies.end(),energies_.data());
-  for (std::size_t p = 0; p < lengths_.size(); ++p)
-    lengths_[p] = 2*element(preparation.projectors(),0,p)+1;
-}
+    projectors_(preparation,energies)
+{}
 
 } // namespace openmx::core

@@ -60,7 +60,6 @@ PREFIX = r'''
 #include <stdint.h>
 #include <stdio.h>
 static int level_stdout=3;
-static int SetPro_gpu_used=0;
 #include <stdlib.h>
 #include <string.h>
 
@@ -318,9 +317,9 @@ static double run_batch(void)
     for (k = 0; k < NB; k++)            /* the receive slot is stale now */
         for (i = 0; i < 3; i++)
             for (j = 0; j < PROJ; j++) ds[0][Matomnum + 1][k][i][j] = NAN;
-    SetPro_gpu_used = 0;
+    context.used_gpu = 0;
     SetPro_HVNA_GpuRun(&context,hvna);
-    CHECK(SetPro_gpu_used == !device_fail);
+    CHECK(context.used_gpu == !device_fail);
     for (mc = 1; mc <= Matomnum; mc++)
         for (j = 0; j <= FNAN[mc]; j++)
             for (m = 0; m < Spe_Total_NO[WhatSpecies[mc]]; m++)

@@ -5,7 +5,7 @@
 /* Local to one Set_ProExpn invocation. Layout owns the six metadata arrays;
    the backend owns numeric archives and releases them before the layout. */
 typedef struct {
-  int enabled, turn, turns, host_archive, num_proj, num_rvna;
+  int enabled, used_gpu, turn, turns, host_archive, num_proj, num_rvna;
   size_t device_bytes, flat_count, halo_count, bounce_count;
   float *flat_dev, *flat_host, *halo_dev, *halo_host, *bounce;
   float *flat, *halo; /* Native HIP host archives, mapped one rank turn at a time. */
@@ -60,6 +60,7 @@ typedef struct {
 /* VNA2/VNA3 pair batches. */
 typedef struct {
   int enabled;
+  int used_gpu;         /* invocation-local HIP stage diagnostic */
   int chunk;            /* admitted pair batch, shared by sizing and execution */
   int l0max;            /* max Spe_MaxL_Basis                          */
   int lfi_max;          /* 2*l0max                                     */

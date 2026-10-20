@@ -402,7 +402,6 @@
     "Cluster_DFT_Col_dm_hip.cu": "src/Cluster_DFT_Col_dm_hip.cu",
     "Cluster_DFT_NonCol.c": "src/Cluster_DFT_NonCol.c",
     "Cluster_DFT_NonCol_dm_hip.cu": "src/Cluster_DFT_NonCol_dm_hip.cu",
-    "DFT.c": "src/DFT.c",
     "Divide_Conquer.c": "src/Divide_Conquer.c",
     "Divide_Conquer_LNO.c": "src/Divide_Conquer_LNO.c",
     "Krylov.c": "src/Krylov.c",
@@ -624,7 +623,6 @@
     "Contract_Hamiltonian.c": "4b981bd3ea4b10c5656af2fe65705d191061193927e3af577823d217a5c9e4a6",
     "Contract_iHNL.c": "4df1f67eff47f434ab882bd8ec66ef6ca1a132a19b12ec590bbd5fa301a6cee5",
     "Coulomb_Interaction.c": "bf00d3bc238b3049258c0de63a48cc57b5f3ddf4d86de035c4e564ec8d8e404d",
-    "DFT.c": "181e11b45b8fff8eaa509b10d852d43ec33861bdac2008b76e375aa1867796cf",
     "DFTD3vdW_init.c": "098b834ff204d2dd267f8385586ff4d2d56d8711ec565b617ac517981ff47153",
     "DFTDvdW_init.c": "5a48e3d00cb5fdc68f702a3b4811f29b9542131e6e60a6584ba53b451a03c46b",
     "DIIS_Mixing_DM.c": "1f36e5af473bdc7b4cbfad9e14e0546b136579fb6f6285b8f995cb8ca2a8a8cf",
@@ -1072,6 +1070,9 @@
     "openmx_core.mk",
     "openmx_core_dsvna.h",
     "openmx_core_hvna.h",
+    "openmx_core_hvna_workspace.h",
+    "openmx_hvna_cpu.h",
+    "openmx_vna_status.h",
     "openmx_core_neutral.h",
     "openmx_core_nonlocal.h",
     "openmx_core_orbitals.h",
@@ -1129,6 +1130,7 @@
   "integrated_overrides": {
     "Force.c": "src/Force.c",
     "Set_Nonlocal.c": "src/Set_Nonlocal.c",
-    "Set_ProExpn_VNA.c": "src/Set_ProExpn_VNA.c"
+    "Set_ProExpn_VNA.c": "src/Set_ProExpn_VNA.c",
+    "DFT.c": "src/DFT.c"
   }
 }

@@ -342,3 +342,34 @@ Radeon、MI300、A100/H100 の実機を再測定した結果は含みません�
 入力・実行条件・ハッシュ・全物理量と処理別時間は
 `build/hvna-layout-migration/after-{gpu,cpu}/result.json`、Intel 版との照合は
 同ディレクトリの `cpu-intel-comparison.json` に記録しています。
+
+## HVNA の CPU 収縮と作業領域を移行した後の確認
+
+第14段階の比較元は `6227226a` です。同じ `sidia333_nc_cluster.dat`、
+216原子・140³格子・25 SCF、18 MPI × 1 OpenMPで、ほかの計算やビルドと重ねずに
+実行しました。比較元と Intel 版の時間は保存済みの測定記録です。
+
+| 実行経路 | Total Computational Time (秒) | MPI 起動を含む経過時間 (秒) |
+| --- | ---: | ---: |
+| 第13段階 GPU＋MPS（`6227226a`） | 103.211 | 106.919 |
+| HVNA CPU 収縮の移行後 GPU＋MPS | 103.244 | 106.966 |
+| 第13段階 CPU（`6227226a`） | 752.036 | 754.934 |
+| HVNA CPU 収縮の移行後 CPU | 749.603 | 752.543 |
+| Intel コンパイラ版 CPU（保存済みの比較記録） | 800.460 | 803.226 |
+
+RTX 5080＋MPS は約105秒の目標を維持しました。MPS サーバーは測定開始前から稼働していました。
+GPU のエネルギーは前回と出力桁で一致し、全 Force 成分の最大差は `1.01e-12 Ha/bohr` 以下です。
+CPU はエネルギー・全 Force 成分・座標・FFT 格子が前回と一致しました。
+Intel 版との差はエネルギー `7.30e-11 Ha` 以下、Force `1.23e-10 Ha/bohr` 以下です。
+
+`Set_ProExpn_VNA` の全ランク中の最大時間は、CPU が25.868→24.308秒、
+GPU が7.577→7.626秒でした。CPU では重複した表参照と行別の一時確保を除きました。
+全体性能は Intel 版に比肩していますが、それぞれ1回の測定であり、
+時間の差を今回の変更だけによる速度向上とはみなしません。
+
+GPU の数値演算・メモリ予算・容量復旧、GeForce と A100/H100 の演算方針、
+Radeon 向けの半径積分・Force4B 最適化は維持しています。
+Radeon、MI300、A100/H100 の実機を再測定した結果は含みません。
+入力・条件・ハッシュ・全物理量と処理別時間は
+`build/hvna-cpu-migration/after-{gpu,cpu}/result.json`、Intel 版との照合は
+同ディレクトリの `cpu-intel-comparison.json` に記録しています。

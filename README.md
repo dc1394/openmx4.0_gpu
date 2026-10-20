@@ -102,6 +102,10 @@ it reads, and per-atom timing updates are safe across threads.
 HVNA archive offsets and projector energies now share one C++ owner across
 CUDA/HIP. Resident archives, rank turns and capacity recovery receive explicit
 invocation state; their backend memory budgets and contraction order are preserved.
+CPU HVNA contraction also shares one evaluator for local and received atoms.
+A C++ snapshot owns projector groups, energies and basis sizes; per-worker packed
+matrices replace two-level scratch pointers. Geometry is passed explicitly, and
+HIP returns its per-call stage diagnostic directly to the DFT caller.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.
