@@ -185,6 +185,23 @@ if(BUILD_TESTING)
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setpro_batch_cpu.py")
   endif()
   if(_backend STREQUAL "HIP")
+    if(OPENMX_TEST_MPICC AND _core_backend STREQUAL "HIP")
+      string(JOIN "," _vector_test_arch ${CMAKE_HIP_ARCHITECTURES})
+      add_test(NAME hip-vector-reductions
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_reductions_hip.py"
+          --rocm "${CMAKE_HIP_COMPILER_ROCM_ROOT}" --cc "${CMAKE_HIP_COMPILER}"
+          --arch "${_vector_test_arch}" --mpicc "${OPENMX_TEST_MPICC}")
+      set_tests_properties(hip-vector-reductions PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OMP_DYNAMIC=FALSE"
+        LABELS "gpu;integration" TIMEOUT 240)
+      add_test(NAME hip-setham-capacity
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setham_capacity_hip.py"
+          --rocm "${CMAKE_HIP_COMPILER_ROCM_ROOT}" --cc "${CMAKE_HIP_COMPILER}"
+          --arch "${_vector_test_arch}" --mpicc "${OPENMX_TEST_MPICC}")
+      set_tests_properties(hip-setham-capacity PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OMP_DYNAMIC=FALSE"
+        LABELS "gpu;integration" TIMEOUT 240)
+    endif()
     add_test(NAME hip-vna-archive
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_BINARY_DIR}/native/tests/run_setpro_hvna_cpu.py" --sanitize)
     set_tests_properties(hip-vna-archive PROPERTIES

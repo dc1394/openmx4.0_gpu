@@ -2247,7 +2247,9 @@ static void MixH_GramPart(MixH_GpuShard *shard,int dim, int npair, const int *pm
 
   if (0 < Lk){
 #if OPENMX_GPU_HIP
-#pragma omp target teams distribute parallel for is_device_ptr(ring,w,ap) map(to:pm[0:npair],pn[0:npair],pslot[0:dim])
+    /* Match the host-backed vector worker: each pair gets a team-wide
+       FP64 reduction rather than a single lane walking the history. */
+#pragma omp target teams distribute thread_limit(256) is_device_ptr(ring,w,ap) map(to:pm[0:npair],pn[0:npair],pslot[0:dim])
 #else
 #pragma acc parallel loop gang deviceptr(ring,w,ap) copyin(pm[0:npair],pn[0:npair],pslot[0:dim])
 #endif
@@ -2256,7 +2258,9 @@ static void MixH_GramPart(MixH_GpuShard *shard,int dim, int npair, const int *pm
       const double *Rn = ring + (size_t)pslot[pn[p]]*Ls;
       double s = 0.0;
       long k;
-#if !OPENMX_GPU_HIP
+#if OPENMX_GPU_HIP
+#pragma omp parallel for reduction(+:s)
+#else
 #pragma acc loop vector reduction(+:s)
 #endif
       for (k=0; k<Lk; k++) s += w[k]*Rm[k]*Rn[k];

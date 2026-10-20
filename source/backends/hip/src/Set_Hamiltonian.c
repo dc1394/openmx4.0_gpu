@@ -2487,21 +2487,25 @@ static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,vo
     const SetHCapacityPair *pairs=v[0];const size_t *pa=v[1],*pb=v[2],*pw=v[3];
     const double *a=openmx_gpu_task_ragged_data(v[1],n),*b=openmx_gpu_task_ragged_data(v[2],n),*w=openmx_gpu_task_ragged_data(v[3],n);
     double *out=v[4];
+    const size_t plane=(size_t)max_no*max_no,stride=(size_t)spins*plane;
+    /* The task arena already bounds n*stride. A small molecule can have
+       only a few pairs but hundreds of independent matrix elements. Give
+       each element a lane while retaining its ascending quadrature sum. */
 #pragma omp target teams distribute parallel for is_device_ptr(pairs,pa,pb,pw,a,b,w,out) if(gpu)
-    for(size_t pair=0;pair<n;pair++) {
+    for(size_t element=0;element<n*stride;element++) {
+        const size_t pair=element/stride,local=element%stride;
         const int n0=pairs[pair].n0,n1=pairs[pair].n1,points=pairs[pair].points;
+        const int spin=(int)(local/plane),i=(int)((local%plane)/max_no),j=(int)(local%max_no);
+        double sum=0;
 
-        for(int e=0;e<spins*max_no*max_no;e++) {
-            int spin=e/(max_no*max_no),ij=e%(max_no*max_no),i=ij/max_no,j=ij%max_no;double sum=0;
-            if(i<n0 && j<n1) {
+        if(i<n0 && j<n1) {
 
-                for(int k=0;k<points;k++) {
-                    double weight=volume*w[pw[pair]+(size_t)k*spins+spin];
-                    sum+=(weight*a[pa[pair]+(size_t)k*n0+i])*b[pb[pair]+(size_t)k*n1+j];
-                }
+            for(int k=0;k<points;k++) {
+                double weight=volume*w[pw[pair]+(size_t)k*spins+spin];
+                sum+=(weight*a[pa[pair]+(size_t)k*n0+i])*b[pb[pair]+(size_t)k*n1+j];
             }
-            out[pair*(size_t)spins*max_no*max_no+e]=sum;
         }
+        out[element]=sum;
     }
 }
 
