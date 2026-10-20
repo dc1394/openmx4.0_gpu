@@ -1,5 +1,32 @@
 #ifndef OPENMX_VNA_GPU_CONTEXT_H
 #define OPENMX_VNA_GPU_CONTEXT_H
+#include "openmx_core_hvna.h"
+
+/* Local to one Set_ProExpn invocation. Layout owns the six metadata arrays;
+   the backend owns numeric archives and releases them before the layout. */
+typedef struct {
+  int enabled, turn, turns, host_archive, num_proj, num_rvna;
+  size_t device_bytes, flat_count, halo_count, bounce_count;
+  float *flat_dev, *flat_host, *halo_dev, *halo_host, *bounce;
+  float *flat, *halo; /* Native HIP host archives, mapped one rank turn at a time. */
+  size_t *mck_off, *halo_off;
+  int *mck_base, *halo_base, *l2p1;
+  double *ene;
+  OpenMXHvnaLayout *layout;
+} SetProGpuContext;
+
+static inline int SetPro_HVNA_LayoutCreate(SetProGpuContext *g,
+    const OpenMXVnaPreparation *preparation, const OpenMXHvnaInput *input,
+    char *error, size_t capacity)
+{
+  OpenMXHvnaBuffers views;
+  g->layout = openmx_core_hvna_create(preparation,input,&views,error,capacity);
+  if (!g->layout) return 0;
+  g->mck_base = views.local_bases; g->mck_off = views.local_offsets;
+  g->halo_base = views.halo_bases; g->halo_off = views.halo_offsets;
+  g->l2p1 = views.lengths; g->ene = views.energies;
+  return 1;
+}
 
 /* Invocation-owned VNA batch state, borrowed until synchronous
    completion. Native begin/end routines retain their backend memory policy. */

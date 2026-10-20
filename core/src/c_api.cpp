@@ -7,6 +7,7 @@
 #include "openmx_core_vna.h"
 #include "openmx_core_vna_preparation.h"
 #include "openmx_core_dsvna.h"
+#include "openmx_core_hvna.h"
 #include "pao_compat.hpp"
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
@@ -21,6 +22,7 @@
 #include <openmx/core/vna_workspace.hpp>
 #include <openmx/core/vna_preparation.hpp>
 #include <openmx/core/dsvna_workspace.hpp>
+#include <openmx/core/hvna_layout.hpp>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -65,6 +67,14 @@ struct OpenMXVnaPreparation {
 struct OpenMXDsvnaWorkspace {
   explicit OpenMXDsvnaWorkspace(const openmx::core::VnaPreparation& preparation) : implementation(preparation) {}
   openmx::core::DsvnaWorkspace implementation;
+};
+
+struct OpenMXHvnaLayout {
+  OpenMXHvnaLayout(const openmx::core::VnaPreparation& preparation,
+      std::span<const openmx::core::ProjectorAtomBlock> local,
+      std::span<const openmx::core::ProjectorAtomBlock> halo, std::span<const double> energies)
+    : implementation(preparation,local,halo,energies) {}
+  openmx::core::HvnaLayout implementation;
 };
 
 namespace {
@@ -567,6 +577,66 @@ extern "C" OpenMXDsvnaWorkspace* openmx_core_dsvna_create(const OpenMXVnaPrepara
 extern "C" void openmx_core_dsvna_destroy(OpenMXDsvnaWorkspace* workspace)
 {
   delete workspace;
+}
+
+extern "C" OpenMXHvnaLayout* openmx_core_hvna_create(const OpenMXVnaPreparation* preparation,
+    const OpenMXHvnaInput* input, OpenMXHvnaBuffers* buffers, char* error, std::size_t capacity)
+{
+  OpenMXHvnaLayout* result = nullptr;
+  checked_call(error,capacity,[&] {
+    if (!preparation || !input || !buffers || input->atoms < 0 ||
+        input->local_atoms < 0 || input->local_atoms > INT_MAX-2 ||
+        input->halo_atoms < 0 || input->halo_atoms > INT_MAX-2 ||
+        input->local_atoms > input->atoms || input->halo_atoms > input->atoms-input->local_atoms ||
+        !input->energies)
+      throw std::invalid_argument("invalid HVNA input or output");
+    const auto& prep = preparation->implementation;
+    const auto orbitals = prep.basis().orbitals();
+    auto blocks = [&](int first, int count, const int* map) {
+      std::vector<openmx::core::ProjectorAtomBlock> atoms;
+      if (count && (!map || !input->species || !input->neighbors))
+        throw std::invalid_argument("missing HVNA atom mapping");
+      for (int i = 0; i < count; ++i) {
+        const int global = map[first+i];
+        if (global < 1 || global > input->atoms)
+          throw std::invalid_argument("HVNA global atom index out of range");
+        const int species = input->species[global], neighbors = input->neighbors[global];
+        if (species < 0 || static_cast<std::size_t>(species) >= orbitals.size() ||
+            neighbors < 0 || neighbors == INT_MAX)
+          throw std::invalid_argument("invalid HVNA species or neighbor count");
+        atoms.push_back({orbitals[species],neighbors+1});
+      }
+      return atoms;
+    };
+    const auto local = blocks(1,input->local_atoms,input->local_to_global);
+    const auto halo = blocks(input->local_atoms+1,input->halo_atoms,input->extended_to_global);
+    std::vector<double> energies;
+    for (std::size_t s = 0; s < orbitals.size(); ++s) {
+      if (!input->energies[s]) throw std::invalid_argument("missing HVNA species energies");
+      for (int p = 0; p < prep.projector_count(); ++p) {
+        const int l = openmx::core::element(prep.projectors(),0,p);
+        const int r = openmx::core::element(prep.projectors(),1,p);
+        if (!input->energies[s][l]) throw std::invalid_argument("missing HVNA projector energies");
+        energies.push_back(input->energies[s][l][r]);
+      }
+    }
+    auto owner = std::make_unique<OpenMXHvnaLayout>(prep,local,halo,energies);
+    auto& layout = owner->implementation;
+    OpenMXHvnaBuffers views{};
+    views.local_elements = layout.local().elements(); views.halo_elements = layout.halo().elements();
+    views.local_rows = layout.local().rows(); views.halo_rows = layout.halo().rows();
+    views.local_bases = layout.local().bases().data(); views.halo_bases = layout.halo().bases().data();
+    views.local_offsets = layout.local().offsets().data(); views.halo_offsets = layout.halo().offsets().data();
+    views.lengths = layout.lengths().data(); views.energies = layout.energies().data_handle();
+    *buffers = views;
+    result = owner.release();
+  });
+  return result;
+}
+
+extern "C" void openmx_core_hvna_destroy(OpenMXHvnaLayout* layout)
+{
+  delete layout;
 }
 
 extern "C" int openmx_core_reciprocal_sample(OpenMXReciprocalKind kind, int count,

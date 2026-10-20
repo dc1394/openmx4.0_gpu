@@ -1071,6 +1071,7 @@
     "openmx_core.h",
     "openmx_core.mk",
     "openmx_core_dsvna.h",
+    "openmx_core_hvna.h",
     "openmx_core_neutral.h",
     "openmx_core_nonlocal.h",
     "openmx_core_orbitals.h",

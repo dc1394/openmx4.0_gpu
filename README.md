@@ -99,6 +99,9 @@ workspaces own packed angular matrices, radial sums and Bessel scratch;
 species-local offsets replace temporary five-level pointers and omit empty
 basis groups. The zero-wavevector Bessel derivative initializes the extra order
 it reads, and per-atom timing updates are safe across threads.
+HVNA archive offsets and projector energies now share one C++ owner across
+CUDA/HIP. Resident archives, rank turns and capacity recovery receive explicit
+invocation state; their backend memory budgets and contraction order are preserved.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

@@ -28,9 +28,6 @@ def function(declaration):
     return source[start:end]
 
 
-end = source.index("} SetProGpuContext;") + len("} SetProGpuContext;")
-context = source[source.rfind("typedef struct {", 0, end):end]
-
 prefix = r'''
 #include <assert.h>
 #include <math.h>
@@ -40,6 +37,7 @@ prefix = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "openmx_gpu_task.h"
+#include "openmx_vna_gpu_context.h"
 enum {cudaSuccess, cudaMemcpyHostToDevice, cudaMemcpyDeviceToHost};
 enum {MPI_INT, MPI_MAX};
 static int Matomnum=2,SpeciesNum=2,mpi_comm_level1=0,fp32;
@@ -176,11 +174,10 @@ int main(void){
    if(!committed)assert(!memcmp(values,initial,sizeof(values)));
    memcpy(values,initial,sizeof(values));
    faults(scenario,g.device_bytes);
-   SetPro_gpu=g;
-   SetPro_HVNA_GpuRun(atoms);
+   SetPro_HVNA_GpuRun(&g,atoms);
    assert(!held && !live && collectives>=1);
-   assert(SetPro_gpu.flat_dev==NULL && SetPro_gpu.halo_dev==NULL);
-   assert(SetPro_gpu.flat_host==local && SetPro_gpu.halo_host==halo);
+   assert(g.flat_dev==NULL && g.halo_dev==NULL);
+   assert(g.flat_host==local && g.halo_host==halo);
    if(scenario==0){assert(uploads==2 && allocations==3 && capacity_calls==0);}
    else if(scenario<22)assert(capacity_calls>0);
    else assert(uploads==2 && capacity_calls==0); /* failure index past the last copy */
@@ -196,7 +193,7 @@ int main(void){
 }
 '''
 
-functions = context + "\nstatic SetProGpuContext SetPro_gpu;\n"
+functions = ""
 functions += function("static int SetPro_HVNA_GpuRun_Part(") + "\n"
 start = source.index("typedef struct {int num_proj,num_rvna,fp32;}")
 end = source.index("/* ------------------------------------------------------------------ */", start)
