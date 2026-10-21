@@ -18,6 +18,7 @@
 ***********************************************************************/
 
 #include "openmx_common.h"
+#include "openmx_solver_workspace.h"
 #include "lapack_prototypes.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include <math.h>
@@ -288,10 +289,10 @@ static double DC_NonCol(char * mode, int MD_iter, int SCF_iter, int SucceedReadi
                         double ***** Hks, double ***** ImNL, double **** OLP0,
                         double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
-static void Save_DOS_Col(double ****** Residues, double **** OLP0, double *** EVal,
+static void Save_DOS_Col(OpenMXSolverResidueView Residues, double **** OLP0, OpenMXSolverRealFieldView EVal,
                          int ** LO_TC, int ** HO_TC);
 
-static void Save_DOS_NonCol(dcomplex ****** Residues, double **** OLP0, double ** EVal,
+static void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double **** OLP0, OpenMXSolverRealFieldView EVal,
                             int * LO_TC, int * HO_TC);
 
 /* ------------------------------------------------------------------ */
@@ -391,36 +392,7 @@ static void *DCLNO_CallocArray(size_t count, size_t elem_size, const char *label
    Retain the existing pointer view but allocate its values in one block;
    a large DC-LNO system otherwise makes millions of small allocations per
    SCF step.  The self pair [0][0][0] owns the block (freed by the caller). */
-static void DCLNO_AllocateResidueValues(double ****rows, int Gc_AN, int states)
-{
-    const int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
-    size_t row_count = 0, offset = 0;
-    double *values;
 
-    /* two leading entries hold the occupied-state density and energy sums */
-    if (no0 <= 0 || FNAN[Gc_AN] < 0 || states < 2)
-        DCLNO_AbortWithMessage("Invalid residue dimensions in DC-LNO.");
-    for (int h = 0; h <= FNAN[Gc_AN]; h++) {
-        const int no1 = Spe_Total_CNO[WhatSpecies[natn[Gc_AN][h]]];
-        const size_t pair_rows = DCLNO_CheckedMulCount((size_t)no0, (size_t)no1,
-                                                       "residue pair rows");
-        if (no1 <= 0 || SIZE_MAX - row_count < pair_rows)
-            DCLNO_AbortWithMessage("Residue row count overflow in DC-LNO.");
-        row_count += pair_rows;
-    }
-    values = (double*)DCLNO_MallocArray(
-        DCLNO_CheckedMulCount(row_count, (size_t)states, "residue value block"),
-        sizeof(double), "residue value block");
-    for (int h = 0; h <= FNAN[Gc_AN]; h++) {
-        const int no1 = Spe_Total_CNO[WhatSpecies[natn[Gc_AN][h]]];
-        for (int i = 0; i < no0; i++) {
-            for (int j = 0; j < no1; j++) {
-                rows[h][i][j] = values + offset;
-                offset += (size_t)states;
-            }
-        }
-    }
-}
 
 static void DCLNO_GPUProxy_Init(void)
 {
@@ -1532,10 +1504,41 @@ double Divide_Conquer_LNO(char * mode, int MD_iter, int SCF_iter, int SucceedRea
 /* collinear main                                                     */
 /* ------------------------------------------------------------------ */
 
+typedef struct {
+  char * mode;
+  int MD_iter;
+  int SCF_iter;
+  int SucceedReadingDMfile;
+  double ***** Hks;
+  double **** OLP0;
+  double ***** CDM;
+  double ***** EDM;
+  double *Eele0;
+  double *Eele1;
+  const OpenMXLocalBasisViews *local_basis;
+} DC_Col_arguments;
+static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+                     double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
+                     double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner);
+static int DC_Col_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  DC_Col_arguments *a=(DC_Col_arguments*)arguments;
+  *result=DC_Col_owned(a->mode,a->MD_iter,a->SCF_iter,a->SucceedReadingDMfile,a->Hks,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,a->local_basis,owner);
+  return 1;
+}
 static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
                      double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
+  DC_Col_arguments arguments={mode,MD_iter,SCF_iter,SucceedReadingDMfile,Hks,OLP0,CDM,EDM,Eele0,Eele1,local_basis};
+  return OpenMX_Solver_Run(DC_Col_operation,&arguments);
+}
+
+static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+                     double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
+                     double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner)
+{
+
 
     static int      firsttime = 1;
     static int      BLAS_allocate_flag = 0;
@@ -1563,9 +1566,9 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     double          ChemP_MAX, ChemP_MIN, spin_degeneracy;
     double *        Sc, *Hc, *Stmp, *Htmp;
     double *        ko, **C;
-    double ***      EVal;
-    double ******   Residues;
-    double ***      PDOS_DC;
+    OpenMXSolverRealFieldView EVal;
+    OpenMXSolverResidueView Residues;
+    OpenMXSolverRealFieldView PDOS_DC;
     int *           MP, *Msize, Max_Msize;
     double *        BLAS_H, *BLAS_C, *BLAS_Tmp, *BLAS_Eig_A, *BLAS_Eig_Work;
     INTEGER *       BLAS_Eig_IWork;
@@ -1704,14 +1707,12 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
       sizing
     ****************************************************/
 
-    Msize = (int*)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(int), "cluster matrix sizes");
+    Msize=OpenMX_Solver_Int(solver_owner,"Msize",(size_t)(Matomnum + 1));
     Max_Msize = 0;
     m_size = 0;
 
-    EVal = (double***)DCLNO_MallocArray((size_t)(SpinP_switch + 1), sizeof(double**), "eigenvalue spin pointers");
+    EVal=OpenMX_Solver_Field(solver_owner,(size_t)(SpinP_switch + 1),(size_t)(Matomnum + 1));
     for (spin = 0; spin <= SpinP_switch; spin++) {
-        EVal[spin] = (double**)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(double*),
-                                                 "eigenvalue atom pointers");
 
         for (Mc_AN = 0; Mc_AN <= Matomnum; Mc_AN++) {
 
@@ -1741,7 +1742,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
 
             if (Max_Msize < Msize[Mc_AN]) Max_Msize = Msize[Mc_AN];
             m_size += n2;
-            EVal[spin][Mc_AN] = (double*)DCLNO_MallocArray((size_t)n2, sizeof(double), "eigenvalue row");
+            OpenMX_Solver_FieldResize(EVal,spin,Mc_AN,(size_t)n2);
         }
     }
 
@@ -1764,50 +1765,39 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
         BLAS_allocate_flag = 1;
     }
 
-    BLAS_H = (double*)DCLNO_MallocArray(
-        DCLNO_CheckedMulCount(DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
+    BLAS_H=OpenMX_Solver_Real(solver_owner,"BLAS_H",DCLNO_CheckedMulCount(DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
                                                     "Hamiltonian work buffer matrix dimensions"),
                               (size_t)(SpinP_switch + 1),
-                              "Hamiltonian work buffer spin dimensions"),
-        sizeof(double), "Hamiltonian work buffer");
-    BLAS_Tmp = (double*)DCLNO_MallocArray(
-        DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
-                              "local eigensolver scratch matrix dimensions"),
-        sizeof(double), "local eigensolver scratch matrix");
+                              "Hamiltonian work buffer spin dimensions"));
+    BLAS_Tmp=OpenMX_Solver_Real(solver_owner,"BLAS_Tmp",DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
+                              "local eigensolver scratch matrix dimensions"));
     eig_matrix_count = DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
                                              "local eigensolver LAPACK matrix dimensions");
     eig_work_count = 1 + 6*(size_t)Max_Msize + 2*eig_matrix_count;
     eig_iwork_count = 3 + 5*(size_t)Max_Msize;
-    BLAS_Eig_A = (double*)DCLNO_MallocArray(eig_matrix_count,
-                                            sizeof(double), "local eigensolver LAPACK matrix");
-    BLAS_Eig_Work = (double*)DCLNO_MallocArray(eig_work_count,
-                                               sizeof(double), "local eigensolver LAPACK work");
-    BLAS_Eig_IWork = (INTEGER*)DCLNO_MallocArray(eig_iwork_count,
-                                                 sizeof(INTEGER), "local eigensolver LAPACK iwork");
-    BLAS_C = (double*)DCLNO_MallocArray((size_t)(Max_Msize + 1), sizeof(double), "occupation buffer");
+    BLAS_Eig_A=OpenMX_Solver_Real(solver_owner,"BLAS_Eig_A",eig_matrix_count);
+    BLAS_Eig_Work=OpenMX_Solver_Real(solver_owner,"BLAS_Eig_Work",eig_work_count);
+    BLAS_Eig_IWork = (INTEGER*)OpenMX_Solver_Bytes(solver_owner,"BLAS_Eig_IWork",eig_iwork_count,sizeof(INTEGER));
+    BLAS_C=OpenMX_Solver_Real(solver_owner,"BLAS_C",(size_t)(Max_Msize + 1));
 
-    ko = (double*)DCLNO_MallocArray((size_t)(Max_Msize + 2), sizeof(double), "eigenvalue scratch");
-    C  = DCLNO_AllocRealMatrix1B(Max_Msize + 1);
+    ko=OpenMX_Solver_Real(solver_owner,"ko",(size_t)(Max_Msize + 2));
+    C = OpenMX_Solver_RealMatrix(solver_owner,"C",Max_Msize+2,Max_Msize+2);
 
-    Sc   = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
-                                                            "Sc scratch dimensions"),
-                                      sizeof(double), "Sc scratch");
-    Hc   = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
-                                                            "Hc scratch dimensions"),
-                                      sizeof(double), "Hc scratch");
-    Stmp = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
-                                                            "Stmp scratch dimensions"),
-                                      sizeof(double), "Stmp scratch");
-    Htmp = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
-                                                            "Htmp scratch dimensions"),
-                                      sizeof(double), "Htmp scratch");
+    Sc=OpenMX_Solver_Real(solver_owner,"Sc",DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
+                                                            "Sc scratch dimensions"));
+    Hc=OpenMX_Solver_Real(solver_owner,"Hc",DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
+                                                            "Hc scratch dimensions"));
+    Stmp=OpenMX_Solver_Real(solver_owner,"Stmp",DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
+                                                            "Stmp scratch dimensions"));
+    Htmp=OpenMX_Solver_Real(solver_owner,"Htmp",DCLNO_CheckedMulCount((size_t)List_YOUSO[7], (size_t)List_YOUSO[7],
+                                                            "Htmp scratch dimensions"));
 
-    Snd_H_Size = (int*)DCLNO_MallocArray((size_t)numprocs0, sizeof(int), "send Hamiltonian sizes");
-    Rcv_H_Size = (int*)DCLNO_MallocArray((size_t)numprocs0, sizeof(int), "recv Hamiltonian sizes");
-    Snd_S_Size = (int*)DCLNO_MallocArray((size_t)numprocs0, sizeof(int), "send overlap sizes");
-    Rcv_S_Size = (int*)DCLNO_MallocArray((size_t)numprocs0, sizeof(int), "recv overlap sizes");
+    Snd_H_Size=OpenMX_Solver_Int(solver_owner,"Snd_H_Size",(size_t)numprocs0);
+    Rcv_H_Size=OpenMX_Solver_Int(solver_owner,"Rcv_H_Size",(size_t)numprocs0);
+    Snd_S_Size=OpenMX_Solver_Int(solver_owner,"Snd_S_Size",(size_t)numprocs0);
+    Rcv_S_Size=OpenMX_Solver_Int(solver_owner,"Rcv_S_Size",(size_t)numprocs0);
 
-    MP = (int*)DCLNO_MallocArray((size_t)List_YOUSO[2], sizeof(int), "MP map");
+    MP=OpenMX_Solver_Int(solver_owner,"MP",(size_t)List_YOUSO[2]);
 
     if (use_gpu_accel && !use_gpu_proxy &&
         !DCLNO_GpuGroupMemoryFits(Max_Msize >= DCLNO_GpuEigenThreshold() ? Max_Msize : 0, 0)) {
@@ -1829,44 +1819,16 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
       allocation of Residues
     ****************************************************/
 
-    Residues = (double******)DCLNO_MallocArray((size_t)(SpinP_switch + 1), sizeof(double*****),
-                                               "residue spin pointers");
-    for (spin = 0; spin <= SpinP_switch; spin++) {
-        Residues[spin] = (double*****)DCLNO_MallocArray((size_t)Matomnum, sizeof(double****),
-                                                        "residue atom pointers");
-        for (Mc_AN = 0; Mc_AN < Matomnum; Mc_AN++) {
-            Gc_AN = M2G[Mc_AN + 1];
-            wanA  = WhatSpecies[Gc_AN];
-            tno1  = Spe_Total_CNO[wanA];
-
-            Residues[spin][Mc_AN] = (double****)DCLNO_MallocArray((size_t)(FNAN[Gc_AN] + 1), sizeof(double***),
-                                                                  "residue neighbor pointers");
-
-            for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-                Gh_AN = natn[Gc_AN][h_AN];
-                wanB  = WhatSpecies[Gh_AN];
-                tno2  = Spe_Total_CNO[wanB];
-
-                Residues[spin][Mc_AN][h_AN] = (double***)DCLNO_MallocArray((size_t)tno1, sizeof(double**),
-                                                                           "residue orbital-row pointers");
-                for (i = 0; i < tno1; i++) {
-                    Residues[spin][Mc_AN][h_AN][i] = (double**)DCLNO_MallocArray((size_t)tno2, sizeof(double*),
-                                                                                  "residue orbital-column pointers");
-                }
-            }
-        }
-    }
+    Residues=OpenMX_Solver_Residues(solver_owner,(size_t)(SpinP_switch + 1),0,0);
 
     /****************************************************
       PDOS
     ****************************************************/
 
-    PDOS_DC = (double***)DCLNO_MallocArray((size_t)(SpinP_switch + 1), sizeof(double**), "PDOS spin pointers");
+    PDOS_DC=OpenMX_Solver_Field(solver_owner,(size_t)(SpinP_switch + 1),(size_t)Matomnum);
     for (spin = 0; spin <= SpinP_switch; spin++) {
-        PDOS_DC[spin] = (double**)DCLNO_MallocArray((size_t)Matomnum, sizeof(double*), "PDOS atom pointers");
         for (Mc_AN = 0; Mc_AN < Matomnum; Mc_AN++) {
-            PDOS_DC[spin][Mc_AN] = (double*)DCLNO_MallocArray((size_t)(Msize[Mc_AN + 1] + 3), sizeof(double),
-                                                              "PDOS row");
+            OpenMX_Solver_FieldResize(PDOS_DC,spin,Mc_AN,(size_t)(Msize[Mc_AN + 1] + 3));
         }
     }
 
@@ -1944,7 +1906,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
             if ((F_Snd_Num[IDS] + S_Snd_Num[IDS]) != 0) {
 
                 size1 = Snd_H_Size[IDS];
-                tmp_array = (double*)DCLNO_MallocArray((size_t)size1, sizeof(double), "MPI send Hamiltonian buffer");
+                tmp_array=OpenMX_Solver_Real(solver_owner,"tmp_array",(size_t)size1);
 
                 num = 0;
                 for (spin = 0; spin <= SpinP_switch; spin++) {
@@ -1973,7 +1935,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
             if ((F_Rcv_Num[IDR] + S_Rcv_Num[IDR]) != 0) {
 
                 size2 = Rcv_H_Size[IDR];
-                tmp_array2 = (double*)DCLNO_MallocArray((size_t)size2, sizeof(double), "MPI recv Hamiltonian buffer");
+                tmp_array2=OpenMX_Solver_Real(solver_owner,"tmp_array2",(size_t)size2);
                 MPI_Recv(tmp_array2, size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
                 num = 0;
@@ -1999,12 +1961,11 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                     }
                 }
 
-                free(tmp_array2);
+                ;
             }
 
             if ((F_Snd_Num[IDS] + S_Snd_Num[IDS]) != 0) {
                 MPI_Wait(&request, &stat);
-                free(tmp_array);
             }
         }
     }
@@ -2072,7 +2033,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                 if ((F_Snd_Num[IDS] + S_Snd_Num[IDS]) != 0) {
 
                     size1 = Snd_S_Size[IDS];
-                    tmp_array = (double*)DCLNO_MallocArray((size_t)size1, sizeof(double), "MPI send overlap buffer");
+                    tmp_array=OpenMX_Solver_Real(solver_owner,"tmp_array",(size_t)size1);
 
                     num = 0;
                     for (n = 0; n < (F_Snd_Num[IDS] + S_Snd_Num[IDS]); n++) {
@@ -2099,7 +2060,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                 if ((F_Rcv_Num[IDR] + S_Rcv_Num[IDR]) != 0) {
 
                     size2 = Rcv_S_Size[IDR];
-                    tmp_array2 = (double*)DCLNO_MallocArray((size_t)size2, sizeof(double), "MPI recv overlap buffer");
+                    tmp_array2=OpenMX_Solver_Real(solver_owner,"tmp_array2",(size_t)size2);
                     MPI_Recv(tmp_array2, size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
                     num   = 0;
@@ -2123,12 +2084,11 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                         }
                     }
 
-                    free(tmp_array2);
+                    ;
                 }
 
                 if ((F_Snd_Num[IDS] + S_Snd_Num[IDS]) != 0) {
                     MPI_Wait(&request, &stat);
-                    free(tmp_array);
                 }
             }
         }
@@ -2505,8 +2465,11 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
             Gc_AN = M2G[Mc_AN];
             NUM   = Msize[Mc_AN];
 
-            for (i1 = 1; i1 <= NUM2; i1++) {
-                EVal[spin][Mc_AN][i1] = ko[i1];
+            {
+              double *eval_row_56=openmx_solver_field_row(&EVal,spin,Mc_AN);
+              for (i1 = 1; i1 <= NUM2; i1++) {
+                eval_row_56[i1] = ko[i1];
+            }
             }
 
             /* store eigenvectors in H_ref(spin,i_eig,basis) layout */
@@ -2526,7 +2489,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
             ip  = 1;
             po1 = 0;
             do {
-                if ((ChemP - Erange) < EVal[spin][Mc_AN][i]) {
+                if ((ChemP - Erange) < openmx_solver_field_row(&EVal,spin,Mc_AN)[i]) {
                     ip  = i;
                     po1 = 1;
                 }
@@ -2542,7 +2505,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
             ip  = NUM2;
             po1 = 0;
             do {
-                if ((ChemP + Erange) < EVal[spin][Mc_AN][i]) {
+                if ((ChemP + Erange) < openmx_solver_field_row(&EVal,spin,Mc_AN)[i]) {
                     ip  = i;
                     po1 = 1;
                 }
@@ -2561,12 +2524,14 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
               store residues
             ******************************************************/
 
-            DCLNO_AllocateResidueValues(Residues[spin][Mc_AN - 1], Gc_AN, n2);
+            OpenMX_Solver_ResidueResize(Residues,spin,Mc_AN - 1,n2);
 
             wanA = WhatSpecies[Gc_AN];
             tno1 = Spe_Total_CNO[wanA];
 
-            for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
+            {
+              double *eval_row_55=openmx_solver_field_row(&EVal,spin,Mc_AN);
+              for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
 
                 Gh_AN = natn[Gc_AN][h_AN];
                 wanB  = WhatSpecies[Gh_AN];
@@ -2577,22 +2542,29 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                     for (j = 0; j < tno2; j++) {
 
                         size_Residues += n2;
-                        Residues[spin][Mc_AN - 1][h_AN][i][j][0] = 0.0;
-                        Residues[spin][Mc_AN - 1][h_AN][i][j][1] = 0.0;
+                        openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j)[0] = 0.0;
+                        openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j)[1] = 0.0;
 
-                        for (i1 = 1; i1 < LO_TC[spin][Mc_AN]; i1++) {
+                        {
+                          double *residues_row_51=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
+                          for (i1 = 1; i1 < LO_TC[spin][Mc_AN]; i1++) {
                             tmp1 = H_ref(spin, i1, 1 + i) * H_ref(spin, i1, Bnum + j);
-                            Residues[spin][Mc_AN - 1][h_AN][i][j][0] += tmp1;
-                            Residues[spin][Mc_AN - 1][h_AN][i][j][1] += tmp1 * EVal[spin][Mc_AN][i1];
+                            residues_row_51[0] += tmp1;
+                            residues_row_51[1] += tmp1 * eval_row_55[i1];
+                        }
                         }
 
-                        for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
+                        {
+                          double *residues_row_50=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
+                          for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
                             i2 = i1 - LO_TC[spin][Mc_AN] + 2;
-                            Residues[spin][Mc_AN - 1][h_AN][i][j][i2] =
+                            residues_row_50[i2] =
                                 H_ref(spin, i1, 1 + i) * H_ref(spin, i1, Bnum + j);
+                        }
                         }
                     }
                 }
+            }
             }
 
             if (timed) {
@@ -2622,11 +2594,16 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                 wanA  = WhatSpecies[Gc_AN];
                 tno1  = Spe_Total_CNO[wanA];
 
-                for (i1 = 0; i1 < (Msize[Mc_AN] + 3); i1++) {
-                    PDOS_DC[spin][Mc_AN - 1][i1] = 0.0;
+                {
+                  double *pdos_dc_row_49=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
+                  for (i1 = 0; i1 < (Msize[Mc_AN] + 3); i1++) {
+                    pdos_dc_row_49[i1] = 0.0;
+                }
                 }
 
-                for (i = 0; i < tno1; i++) {
+                {
+                  double *pdos_dc_row_48=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
+                  for (i = 0; i < tno1; i++) {
                     for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                         Gh_AN = natn[Gc_AN][h_AN];
                         wanB  = WhatSpecies[Gh_AN];
@@ -2634,16 +2611,20 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
 
                         for (j = 0; j < tno2; j++) {
                             tmp1 = OLP0[Mc_AN][h_AN][i][j];
-                            PDOS_DC[spin][Mc_AN - 1][0] += Residues[spin][Mc_AN - 1][h_AN][i][j][0] * tmp1;
-                            PDOS_DC[spin][Mc_AN - 1][1] += Residues[spin][Mc_AN - 1][h_AN][i][j][1] * tmp1;
+                            pdos_dc_row_48[0] += openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j)[0] * tmp1;
+                            pdos_dc_row_48[1] += openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j)[1] * tmp1;
 
-                            for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
+                            {
+                              double *residues_row_45=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
+                              for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
                                 i2 = i1 - LO_TC[spin][Mc_AN] + 2;
-                                PDOS_DC[spin][Mc_AN - 1][i2] +=
-                                    Residues[spin][Mc_AN - 1][h_AN][i][j][i2] * tmp1;
+                                pdos_dc_row_48[i2] +=
+                                    residues_row_45[i2] * tmp1;
+                            }
                             }
                         }
                     }
+                }
                 }
             }
         }
@@ -2683,19 +2664,23 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
 
             for (spin = 0; spin <= SpinP_switch; spin++) {
                 for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-                    My_Num_State += spin_degeneracy * PDOS_DC[spin][Mc_AN - 1][0];
+                    My_Num_State += spin_degeneracy * openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1)[0];
 
-                    for (i = LO_TC[spin][Mc_AN]; i <= HO_TC[spin][Mc_AN]; i++) {
+                    {
+                      double *eval_row_42=openmx_solver_field_row(&EVal,spin,Mc_AN);
+                      double *pdos_dc_row_43=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
+                      for (i = LO_TC[spin][Mc_AN]; i <= HO_TC[spin][Mc_AN]; i++) {
                         i1 = i - LO_TC[spin][Mc_AN] + 2;
-                        x  = (EVal[spin][Mc_AN][i] - ChemP) * Beta;
+                        x  = (eval_row_42[i] - ChemP) * Beta;
                         if (x <= -max_x) x = -max_x;
                         if ( max_x <= x) x =  max_x;
 
                         ex  = exp(x);
                         ex1 = 1.0 + ex;
-                        coe = spin_degeneracy * PDOS_DC[spin][Mc_AN - 1][i1];
+                        coe = spin_degeneracy * pdos_dc_row_43[i1];
 
                         My_Num_State += coe / ex1;
+                    }
                     }
                 }
             }
@@ -2728,17 +2713,21 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
 
         for (spin = 0; spin <= SpinP_switch; spin++) {
             for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-                My_Eele0[spin] += PDOS_DC[spin][Mc_AN - 1][1];
+                My_Eele0[spin] += openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1)[1];
 
-                for (i = LO_TC[spin][Mc_AN]; i <= HO_TC[spin][Mc_AN]; i++) {
+                {
+                  double *eval_row_40=openmx_solver_field_row(&EVal,spin,Mc_AN);
+                  double *pdos_dc_row_41=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
+                  for (i = LO_TC[spin][Mc_AN]; i <= HO_TC[spin][Mc_AN]; i++) {
                     i1 = i - LO_TC[spin][Mc_AN] + 2;
-                    x  = (EVal[spin][Mc_AN][i] - ChemP) * Beta;
+                    x  = (eval_row_40[i] - ChemP) * Beta;
                     if (x <= -max_x) x = -max_x;
                     if ( max_x <= x) x =  max_x;
                     FermiF = 1.0 / (1.0 + exp(x));
 
-                    My_Eele0[spin] += FermiF * EVal[spin][Mc_AN][i] *
-                                      PDOS_DC[spin][Mc_AN - 1][i1];
+                    My_Eele0[spin] += FermiF * eval_row_40[i] *
+                                      pdos_dc_row_41[i1];
+                }
                 }
             }
         }
@@ -2768,14 +2757,19 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                 wanA  = WhatSpecies[Gc_AN];
                 tno1  = Spe_Total_CNO[wanA];
 
-                for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
-                    x = (EVal[spin][Mc_AN][i1] - ChemP) * Beta;
+                {
+                  double *eval_row_39=openmx_solver_field_row(&EVal,spin,Mc_AN);
+                  for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
+                    x = (eval_row_39[i1] - ChemP) * Beta;
                     if (x <= -max_x) x = -max_x;
                     if ( max_x <= x) x =  max_x;
                     BLAS_C[i1] = 1.0 / (1.0 + exp(x));
                 }
+                }
 
-                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
+                {
+                  double *eval_row_38=openmx_solver_field_row(&EVal,spin,Mc_AN);
+                  for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                     Gh_AN = natn[Gc_AN][h_AN];
                     wanB  = WhatSpecies[Gh_AN];
                     tno2  = Spe_Total_CNO[wanB];
@@ -2783,20 +2777,24 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                     for (i = 0; i < tno1; i++) {
                         for (j = 0; j < tno2; j++) {
 
-                            double sum1 = Residues[spin][Mc_AN - 1][h_AN][i][j][0];
-                            double sum2 = Residues[spin][Mc_AN - 1][h_AN][i][j][1];
+                            double sum1 = openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j)[0];
+                            double sum2 = openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j)[1];
 
-                            for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
+                            {
+                              double *residues_row_34=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
+                              for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
                                 i2   = i1 - LO_TC[spin][Mc_AN] + 2;
-                                tmp1 = BLAS_C[i1] * Residues[spin][Mc_AN - 1][h_AN][i][j][i2];
+                                tmp1 = BLAS_C[i1] * residues_row_34[i2];
                                 sum1 += tmp1;
-                                sum2 += tmp1 * EVal[spin][Mc_AN][i1];
+                                sum2 += tmp1 * eval_row_38[i1];
+                            }
                             }
 
                             CDM[spin][Mc_AN][h_AN][i][j] = sum1;
                             EDM[spin][Mc_AN][h_AN][i][j] = sum2;
                         }
                     }
+                }
                 }
             }
         }
@@ -2863,65 +2861,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
         PrintMemory("Divide_Conquer_LNO(col): Residues", sizeof(double) * size_Residues, NULL);
     }
 
-    /****************************************************
-      free
-    ****************************************************/
-
-    free(MP);
-    free(Sc);
-    free(Hc);
-    free(Stmp);
-    free(Htmp);
-    free(Snd_H_Size);
-    free(Rcv_H_Size);
-    free(Snd_S_Size);
-    free(Rcv_S_Size);
-    free(Msize);
-    free(BLAS_H);
-    free(BLAS_Tmp);
-    free(BLAS_Eig_A);
-    free(BLAS_Eig_Work);
-    free(BLAS_Eig_IWork);
-    free(BLAS_C);
-    free(ko);
-    DCLNO_FreeRealMatrix1B(C, Max_Msize + 1);
-
-    for (spin = 0; spin <= SpinP_switch; spin++) {
-        for (Mc_AN = 0; Mc_AN <= Matomnum; Mc_AN++) free(EVal[spin][Mc_AN]);
-        free(EVal[spin]);
-    }
-    free(EVal);
-
-    for (spin = 0; spin <= SpinP_switch; spin++) {
-        for (Mc_AN = 0; Mc_AN < Matomnum; Mc_AN++) {
-            Gc_AN = M2G[Mc_AN + 1];
-            wanA  = WhatSpecies[Gc_AN];
-            tno1  = Spe_Total_CNO[wanA];
-
-            /* the self pair's first row owns the atom's value block */
-            free(Residues[spin][Mc_AN][0][0][0]);
-
-            for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-                Gh_AN = natn[Gc_AN][h_AN];
-                wanB  = WhatSpecies[Gh_AN];
-                tno2  = Spe_Total_CNO[wanB];
-
-                for (i = 0; i < tno1; i++) {
-                    free(Residues[spin][Mc_AN][h_AN][i]);
-                }
-                free(Residues[spin][Mc_AN][h_AN]);
-            }
-            free(Residues[spin][Mc_AN]);
-        }
-        free(Residues[spin]);
-    }
-    free(Residues);
-
-    for (spin = 0; spin <= SpinP_switch; spin++) {
-        for (Mc_AN = 0; Mc_AN < Matomnum; Mc_AN++) free(PDOS_DC[spin][Mc_AN]);
-        free(PDOS_DC[spin]);
-    }
-    free(PDOS_DC);
+    /* Host workspaces are released by the C++ invocation. */
 
     if (SCF_iter == 2) firsttime = 0;
 
@@ -2939,6 +2879,37 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
     return (TEtime - TStime);
 }
 
+typedef struct {
+  char *mode;
+  int MD_iter;
+  int SCF_iter;
+  int SucceedReadingDMfile;
+  double *****Hks;
+  double *****ImNL;
+  double ****OLP0;
+  double *****CDM;
+  double *****EDM;
+  double *Eele0;
+  double *Eele1;
+  const OpenMXElectronicViews *electronic;
+  const OpenMXLocalBasisViews *local_basis;
+} DC_NonCol_arguments;
+static double DC_NonCol_owned(char *mode,
+			int MD_iter,
+			int SCF_iter,
+			int SucceedReadingDMfile,
+			double *****Hks,
+			double *****ImNL,
+                        double ****OLP0,
+			double *****CDM,
+			double *****EDM,
+			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner);
+static int DC_NonCol_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  DC_NonCol_arguments *a=(DC_NonCol_arguments*)arguments;
+  *result=DC_NonCol_owned(a->mode,a->MD_iter,a->SCF_iter,a->SucceedReadingDMfile,a->Hks,a->ImNL,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,a->electronic,a->local_basis,owner);
+  return 1;
+}
 static double DC_NonCol(char *mode,
 			int MD_iter,
 			int SCF_iter,
@@ -2950,6 +2921,22 @@ static double DC_NonCol(char *mode,
 			double *****EDM,
 			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  DC_NonCol_arguments arguments={mode,MD_iter,SCF_iter,SucceedReadingDMfile,Hks,ImNL,OLP0,CDM,EDM,Eele0,Eele1,electronic,local_basis};
+  return OpenMX_Solver_Run(DC_NonCol_operation,&arguments);
+}
+
+static double DC_NonCol_owned(char *mode,
+			int MD_iter,
+			int SCF_iter,
+			int SucceedReadingDMfile,
+			double *****Hks,
+			double *****ImNL,
+                        double ****OLP0,
+			double *****CDM,
+			double *****EDM,
+			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner)
+{
+
 
   double ******iDM=electronic->iDM;
 
@@ -2959,7 +2946,7 @@ static double DC_NonCol(char *mode,
   static int BLAS_allocate_flag=0;
   static dcomplex *BLAS_OLP;
   dcomplex *BLAS_H,*BLAS_C;
-  dcomplex **C;
+  OpenMXSolverComplexTensor C;
   int LNO_recalc_flag,so;
   int Mi,Mj,ig,ian,j,kl,jg,jan,Bnum,m,n,spin;
   int l,i1,j1,i2,ip,po1,m_size,ns,ne,BM,BN,BK,ni,nj;
@@ -2982,10 +2969,10 @@ static double DC_NonCol(char *mode,
   double *Hc00r_tmp,*Hc11r_tmp,*Hc01r_tmp;
   double *Hc00i_tmp,*Hc11i_tmp,*Hc01i_tmp;
   double *ko;
-  double **EVal;
+  OpenMXSolverRealFieldView EVal;
   double sumH00r,sumH00i,sumH11r,sumH11i,sumH01r,sumH01i;
-  dcomplex ******Residues;
-  double **PDOS_DC;
+  OpenMXSolverResidueView Residues;
+  OpenMXSolverRealFieldView PDOS_DC;
   int *MP,*Msize,Max_Msize;
   int *is1,*ie1,*is2,*ie2;
   MPI_Status *stat_send;
@@ -3156,36 +3143,36 @@ static double DC_NonCol(char *mode,
     double EVal[Matomnum+1][n2];
   ****************************************************/
 
-  Sc = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
+  Sc=OpenMX_Solver_Real(solver_owner,"Sc",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
 
-  Hc00r = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc11r = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc01r = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc00i = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc11i = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc01i = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc00r=OpenMX_Solver_Real(solver_owner,"Hc00r",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc11r=OpenMX_Solver_Real(solver_owner,"Hc11r",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc01r=OpenMX_Solver_Real(solver_owner,"Hc01r",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc00i=OpenMX_Solver_Real(solver_owner,"Hc00i",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc11i=OpenMX_Solver_Real(solver_owner,"Hc11i",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc01i=OpenMX_Solver_Real(solver_owner,"Hc01i",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
 
-  Hc00r_tmp = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc11r_tmp = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc01r_tmp = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc00i_tmp = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc11i_tmp = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-  Hc01i_tmp = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc00r_tmp=OpenMX_Solver_Real(solver_owner,"Hc00r_tmp",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc11r_tmp=OpenMX_Solver_Real(solver_owner,"Hc11r_tmp",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc01r_tmp=OpenMX_Solver_Real(solver_owner,"Hc01r_tmp",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc00i_tmp=OpenMX_Solver_Real(solver_owner,"Hc00i_tmp",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc11i_tmp=OpenMX_Solver_Real(solver_owner,"Hc11i_tmp",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
+  Hc01i_tmp=OpenMX_Solver_Real(solver_owner,"Hc01i_tmp",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
 
-  Stmp = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
+  Stmp=OpenMX_Solver_Real(solver_owner,"Stmp",((size_t)1)*List_YOUSO[7]*List_YOUSO[7]);
 
-  Snd_H_Size = (int*)malloc(sizeof(int)*numprocs0);
-  Rcv_H_Size = (int*)malloc(sizeof(int)*numprocs0);
-  Snd_iHNL_Size = (int*)malloc(sizeof(int)*numprocs0);
-  Rcv_iHNL_Size = (int*)malloc(sizeof(int)*numprocs0);
-  Snd_S_Size = (int*)malloc(sizeof(int)*numprocs0);
-  Rcv_S_Size = (int*)malloc(sizeof(int)*numprocs0);
+  Snd_H_Size=OpenMX_Solver_Int(solver_owner,"Snd_H_Size",((size_t)1)*numprocs0);
+  Rcv_H_Size=OpenMX_Solver_Int(solver_owner,"Rcv_H_Size",((size_t)1)*numprocs0);
+  Snd_iHNL_Size=OpenMX_Solver_Int(solver_owner,"Snd_iHNL_Size",((size_t)1)*numprocs0);
+  Rcv_iHNL_Size=OpenMX_Solver_Int(solver_owner,"Rcv_iHNL_Size",((size_t)1)*numprocs0);
+  Snd_S_Size=OpenMX_Solver_Int(solver_owner,"Snd_S_Size",((size_t)1)*numprocs0);
+  Rcv_S_Size=OpenMX_Solver_Int(solver_owner,"Rcv_S_Size",((size_t)1)*numprocs0);
 
   m_size = 0;
-  Msize = (int*)malloc(sizeof(int)*(Matomnum+1));
+  Msize=OpenMX_Solver_Int(solver_owner,"Msize",((size_t)1)*(Matomnum+1));
   Max_Msize = 0;
 
-  EVal = (double**)malloc(sizeof(double*)*(Matomnum+1));
+  EVal=OpenMX_Solver_Field(solver_owner,1,((size_t)1)*(Matomnum+1));
   for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
 
     if (Mc_AN==0){
@@ -3219,7 +3206,7 @@ static double DC_NonCol(char *mode,
     if ( Max_Msize<Msize[Mc_AN] ) Max_Msize = Msize[Mc_AN]; 
 
     m_size += n2;
-    EVal[Mc_AN] = (double*)malloc(sizeof(double)*n2);
+    OpenMX_Solver_FieldResize(EVal,0,Mc_AN,((size_t)1)*n2);
   }
 
   if (Eigen_MPI_flag==1){
@@ -3241,14 +3228,13 @@ static double DC_NonCol(char *mode,
     BLAS_allocate_flag = 1;
   }
 
-  BLAS_H = (dcomplex*)malloc(sizeof(dcomplex)*Max_Msize*Max_Msize);
-  BLAS_C = (dcomplex*)malloc(sizeof(dcomplex)*Max_Msize*Max_Msize);
+  BLAS_H=OpenMX_Solver_Complex(solver_owner,"BLAS_H",((size_t)1)*Max_Msize*Max_Msize);
+  BLAS_C=OpenMX_Solver_Complex(solver_owner,"BLAS_C",((size_t)1)*Max_Msize*Max_Msize);
 
-  ko = (double*)malloc(sizeof(double)*(Max_Msize+2));
+  ko=OpenMX_Solver_Real(solver_owner,"ko",((size_t)1)*(Max_Msize+2));
 
-  C = (dcomplex**)malloc(sizeof(dcomplex*)*(Max_Msize+2));
+  C=OpenMX_Solver_ComplexView(solver_owner,"C",((size_t)1)*(Max_Msize+2),((size_t)1)*(Max_Msize+2));
   for (i=0; i<(Max_Msize+2); i++){
-    C[i] = (dcomplex*)malloc(sizeof(dcomplex)*(Max_Msize+2));
   }
 
   if (firsttime){
@@ -3280,35 +3266,10 @@ static double DC_NonCol(char *mode,
 
   if ( Eigen_MPI_flag==0 || (Eigen_MPI_flag==1 && myid2==0) ){ 
 
-    Residues = (dcomplex******)malloc(sizeof(dcomplex*****)*3);
-    for (spin=0; spin<3; spin++){
-      Residues[spin] = (dcomplex*****)malloc(sizeof(dcomplex****)*Matomnum);
-      for (Mc_AN=0; Mc_AN<Matomnum; Mc_AN++){
-
-	Gc_AN = M2G[Mc_AN+1];
-	wanA = WhatSpecies[Gc_AN];
-	tno1 = Spe_Total_CNO[wanA];
-	n2 = Msize[Mc_AN+1] + 2;
-
-	Residues[spin][Mc_AN] = (dcomplex****)malloc(sizeof(dcomplex***)*(FNAN[Gc_AN]+1));
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  Gh_AN = natn[Gc_AN][h_AN];
-	  wanB = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_CNO[wanB];
-
-	  Residues[spin][Mc_AN][h_AN] = (dcomplex***)malloc(sizeof(dcomplex**)*tno1);
-	  for (i=0; i<tno1; i++){
-	    Residues[spin][Mc_AN][h_AN][i] = (dcomplex**)malloc(sizeof(dcomplex*)*tno2);
-	    /* note that the array is allocated once more in the loop */
-	  }
-	}
-      }
-    }
+    Residues=OpenMX_Solver_Residues(solver_owner,((size_t)1)*3,0,1);
   }
 
-  MP = (int*)malloc(sizeof(int)*List_YOUSO[2]);
+  MP=OpenMX_Solver_Int(solver_owner,"MP",((size_t)1)*List_YOUSO[2]);
 
   /****************************************************
     allocation of arrays:
@@ -3317,12 +3278,12 @@ static double DC_NonCol(char *mode,
   ****************************************************/
 
   m_size = 0;
-  PDOS_DC = (double**)malloc(sizeof(double*)*Matomnum);
+  PDOS_DC=OpenMX_Solver_Field(solver_owner,1,((size_t)1)*Matomnum);
   for (Mc_AN=0; Mc_AN<Matomnum; Mc_AN++){
 
     n2 = Msize[Mc_AN+1] + 3;
     m_size += n2;
-    PDOS_DC[Mc_AN] = (double*)malloc(sizeof(double)*n2);
+    OpenMX_Solver_FieldResize(PDOS_DC,0,Mc_AN,((size_t)1)*n2);
   }
 
   if (firsttime){
@@ -3414,7 +3375,7 @@ static double DC_NonCol(char *mode,
 
         /* allocation of array */
 
-        tmp_array = (double*)malloc(sizeof(double)*size1);
+        tmp_array=OpenMX_Solver_Real(solver_owner,"tmp_array",((size_t)1)*size1);
 
 	if (firsttime){
 	  PrintMemory("Divide_Conquer_LNO: tmp_array",sizeof(double)*size1,NULL);
@@ -3456,7 +3417,7 @@ static double DC_NonCol(char *mode,
         size2 = Rcv_H_Size[IDR];
         
         /* allocation of array */
-        tmp_array2 = (double*)malloc(sizeof(double)*size2);
+        tmp_array2=OpenMX_Solver_Real(solver_owner,"tmp_array2",((size_t)1)*size2);
         
 	if (firsttime){
 	  PrintMemory("Divide_Conquer_LNO: tmp_array2",sizeof(double)*size2,NULL);
@@ -3488,12 +3449,11 @@ static double DC_NonCol(char *mode,
 	}
 
         /* freeing of array */
-        free(tmp_array2);
+        ;
       }
 
       if ((F_Snd_Num[IDS]+S_Snd_Num[IDS])!=0){
         MPI_Wait(&request,&stat);
-        free(tmp_array); /* freeing of array */
       }
     }
   }
@@ -3592,7 +3552,7 @@ static double DC_NonCol(char *mode,
 
 	  /* allocation of array */
 
-	  tmp_array = (double*)malloc(sizeof(double)*size1);
+	  tmp_array=OpenMX_Solver_Real(solver_owner,"tmp_array",((size_t)1)*size1);
 
 	  /* multidimentional array to vector array */
 
@@ -3630,7 +3590,7 @@ static double DC_NonCol(char *mode,
 	  size2 = Rcv_iHNL_Size[IDR];
         
 	  /* allocation of array */
-	  tmp_array2 = (double*)malloc(sizeof(double)*size2);
+	  tmp_array2=OpenMX_Solver_Real(solver_owner,"tmp_array2",((size_t)1)*size2);
         
 	  MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -3658,12 +3618,11 @@ static double DC_NonCol(char *mode,
 	  }
 
 	  /* freeing of array */
-	  free(tmp_array2);
+	  ;
 	}
 
 	if ((F_Snd_Num[IDS]+S_Snd_Num[IDS])!=0){
 	  MPI_Wait(&request,&stat);
-	  free(tmp_array); /* freeing of array */
 	}
       }
     }
@@ -3757,7 +3716,7 @@ static double DC_NonCol(char *mode,
 
           /* allocation of array */
 
-          tmp_array = (double*)malloc(sizeof(double)*size1);
+          tmp_array=OpenMX_Solver_Real(solver_owner,"tmp_array",((size_t)1)*size1);
 
           /* multidimentional array to vector array */
 
@@ -3793,7 +3752,7 @@ static double DC_NonCol(char *mode,
           size2 = Rcv_S_Size[IDR];
         
          /* allocation of array */
-          tmp_array2 = (double*)malloc(sizeof(double)*size2);
+          tmp_array2=OpenMX_Solver_Real(solver_owner,"tmp_array2",((size_t)1)*size2);
          
           MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -3819,13 +3778,12 @@ static double DC_NonCol(char *mode,
 	  }        
 
           /* freeing of array */
-          free(tmp_array2);
+          ;
 
         }
 
         if ((F_Snd_Num[IDS]+S_Snd_Num[IDS])!=0){
           MPI_Wait(&request,&stat);
-          free(tmp_array); /* freeing of array */
 	}
       }
     }
@@ -3838,15 +3796,15 @@ static double DC_NonCol(char *mode,
               atom i in arraies H and S
   ****************************************************/
 
-  is1 = (int*)malloc(sizeof(int)*numprocs2);
-  ie1 = (int*)malloc(sizeof(int)*numprocs2);
+  is1=OpenMX_Solver_Int(solver_owner,"is1",((size_t)1)*numprocs2);
+  ie1=OpenMX_Solver_Int(solver_owner,"ie1",((size_t)1)*numprocs2);
 
-  is2 = (int*)malloc(sizeof(int)*numprocs2);
-  ie2 = (int*)malloc(sizeof(int)*numprocs2);
+  is2=OpenMX_Solver_Int(solver_owner,"is2",((size_t)1)*numprocs2);
+  ie2=OpenMX_Solver_Int(solver_owner,"ie2",((size_t)1)*numprocs2);
 
-  stat_send = malloc(sizeof(MPI_Status)*numprocs2);
-  request_send = malloc(sizeof(MPI_Request)*numprocs2);
-  request_recv = malloc(sizeof(MPI_Request)*numprocs2);
+  stat_send=OpenMX_Solver_Bytes(solver_owner,"stat_send",((size_t)1)*numprocs2,sizeof(MPI_Status));
+  request_send=OpenMX_Solver_Bytes(solver_owner,"request_send",((size_t)1)*numprocs2,sizeof(MPI_Request));
+  request_recv=OpenMX_Solver_Bytes(solver_owner,"request_recv",((size_t)1)*numprocs2,sizeof(MPI_Request));
 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
@@ -4538,13 +4496,16 @@ static double DC_NonCol(char *mode,
       ****************************************************/
 
       for (i1=1; i1<=NUMH; i1++){
-	for (j1=1; j1<=NUMH; j1++){
-	  C[i1][j1] = SNC_ref(i1,j1);
+	{
+	  dcomplex *c_row_33=openmx_solver_complex_matrix_row(&C,i1);
+	  for (j1=1; j1<=NUMH; j1++){
+	  c_row_33[j1] = SNC_ref(i1,j1);
+	}
 	}
       }
 
       bcast_flag = 1;
-      Eigen_PHH(MPI_CommWD2_DCLNO[myworld2_DCLNO],C,ko,NUMH,NUMH,bcast_flag);
+      Eigen_PHH(MPI_CommWD2_DCLNO[myworld2_DCLNO],OpenMX_Solver_ComplexMatrix(solver_owner,"C",C.extent[0],C.extent[1]),ko,NUMH,NUMH,bcast_flag);
 
       /***********************************************
                 calculation of S^{-1/2}
@@ -4557,11 +4518,14 @@ static double DC_NonCol(char *mode,
        }
 
       for (i1=1; i1<=NUMH; i1++){
-	for (j1=1; j1<=NUMH; j1++){
-	  SNC2_ref(i1,     j1     ).r = C[i1][j1].r*ko[j1];
-	  SNC2_ref(i1,     j1     ).i = C[i1][j1].i*ko[j1];
-	  SNC2_ref(i1+NUMH,j1+NUMH).r = C[i1][j1].r*ko[j1];
-	  SNC2_ref(i1+NUMH,j1+NUMH).i = C[i1][j1].i*ko[j1];
+	{
+	  dcomplex *c_row_32=openmx_solver_complex_matrix_row(&C,i1);
+	  for (j1=1; j1<=NUMH; j1++){
+	  SNC2_ref(i1,     j1     ).r = c_row_32[j1].r*ko[j1];
+	  SNC2_ref(i1,     j1     ).i = c_row_32[j1].i*ko[j1];
+	  SNC2_ref(i1+NUMH,j1+NUMH).r = c_row_32[j1].r*ko[j1];
+	  SNC2_ref(i1+NUMH,j1+NUMH).i = c_row_32[j1].i*ko[j1];
+	}
 	}
       }
     }
@@ -4646,8 +4610,11 @@ static double DC_NonCol(char *mode,
     }
 
     for (j1=ns; j1<=ne; j1++){
-      for (i1=1; i1<=NUM; i1++){
-	C[j1][i1] = BLAS_H[(j1-1)*NUM+i1-1];
+      {
+        dcomplex *c_row_31=openmx_solver_complex_matrix_row(&C,j1);
+        for (i1=1; i1<=NUM; i1++){
+	c_row_31[i1] = BLAS_H[(j1-1)*NUM+i1-1];
+      }
       }
     }
 
@@ -4677,7 +4644,7 @@ static double DC_NonCol(char *mode,
 
     if (Eigen_MPI_flag==1){
 
-      BroadCast_ComplexMatrix( MPI_CommWD2_DCLNO[myworld2_DCLNO], C,
+      BroadCast_ComplexMatrix( MPI_CommWD2_DCLNO[myworld2_DCLNO], OpenMX_Solver_ComplexMatrix(solver_owner,"C",C.extent[0],C.extent[1]),
 		 	       NUM, is1, ie1, myid2, numprocs2,
 			       stat_send, request_send, request_recv );
     }
@@ -4775,14 +4742,17 @@ static double DC_NonCol(char *mode,
     ************************************************/
 
     bcast_flag = 0;
-    Eigen_PHH(MPI_CommWD2_DCLNO[myworld2_DCLNO],C,ko,NUM,NUM2,bcast_flag);
+    Eigen_PHH(MPI_CommWD2_DCLNO[myworld2_DCLNO],OpenMX_Solver_ComplexMatrix(solver_owner,"C",C.extent[0],C.extent[1]),ko,NUM,NUM2,bcast_flag);
 
     /* The H matrix is distributed by column */
     /* C to H */
 
     for (i1=1; i1<=NUM; i1++){
-      for (j1=is2[myid2]; j1<=ie2[myid2]; j1++){
-	BLAS_H[(j1-1)*NUM+i1-1] = C[i1][j1];
+      {
+        dcomplex *c_row_30=openmx_solver_complex_matrix_row(&C,i1);
+        for (j1=is2[myid2]; j1<=ie2[myid2]; j1++){
+	BLAS_H[(j1-1)*NUM+i1-1] = c_row_30[j1];
+      }
       }
     }
 
@@ -4813,8 +4783,11 @@ static double DC_NonCol(char *mode,
     }
 
     for (j1=ns; j1<=ne; j1++){
-      for (i1=1; i1<=NUM; i1++){
-	C[j1][i1] = BLAS_C[(j1-1)*NUM+i1-1];            
+      {
+        dcomplex *c_row_29=openmx_solver_complex_matrix_row(&C,j1);
+        for (i1=1; i1<=NUM; i1++){
+	c_row_29[i1] = BLAS_C[(j1-1)*NUM+i1-1];
+      }
       }
     }
 
@@ -4824,7 +4797,7 @@ static double DC_NonCol(char *mode,
 
     if (Eigen_MPI_flag==1){
 
-      BroadCast_ComplexMatrix( MPI_CommWD2_DCLNO[myworld2_DCLNO], C, 
+      BroadCast_ComplexMatrix( MPI_CommWD2_DCLNO[myworld2_DCLNO], OpenMX_Solver_ComplexMatrix(solver_owner,"C",C.extent[0],C.extent[1]),
 		 	       NUM, is2, ie2, myid2, numprocs2,
 			       stat_send, request_send, request_recv );
     }
@@ -4834,8 +4807,11 @@ static double DC_NonCol(char *mode,
     */ 
 
     for (i1=1; i1<=NUM2; i1++){
-      for (j1=1; j1<=NUM; j1++){
-	HNC_ref(i1,j1) = C[i1][j1];
+      {
+        dcomplex *c_row_28=openmx_solver_complex_matrix_row(&C,i1);
+        for (j1=1; j1<=NUM; j1++){
+	HNC_ref(i1,j1) = c_row_28[j1];
+      }
       }
     }
 
@@ -4854,8 +4830,11 @@ static double DC_NonCol(char *mode,
 
     if ( Eigen_MPI_flag==0 || (Eigen_MPI_flag==1 && myid2==0) ){ 
 
-      for (i1=1; i1<=NUM2; i1++){
-	EVal[Mc_AN][i1] = ko[i1];
+      {
+        double *eval_row_27=openmx_solver_field_row(&EVal,0,Mc_AN);
+        for (i1=1; i1<=NUM2; i1++){
+	eval_row_27[i1] = ko[i1];
+      }
       }
 
       /******************************************************
@@ -4874,7 +4853,7 @@ static double DC_NonCol(char *mode,
       ip = 1;
       po1 = 0;
       do{
-	if ( (ChemP-Erange)<EVal[Mc_AN][i]){
+	if ( (ChemP-Erange)<openmx_solver_field_row(&EVal,0,Mc_AN)[i]){
 	  ip = i;
 	  po1 = 1; 
 	}
@@ -4888,7 +4867,7 @@ static double DC_NonCol(char *mode,
       ip = NUM2;
       po1 = 0;
       do{
-	if ( (ChemP+Erange)<EVal[Mc_AN][i]){
+	if ( (ChemP+Erange)<openmx_solver_field_row(&EVal,0,Mc_AN)[i]){
 	  ip = i;
 	  po1 = 1; 
 	}
@@ -4904,10 +4883,15 @@ static double DC_NonCol(char *mode,
           store residues of poles
       ***********************************************/
 
+      for (spin=0; spin<3; spin++)
+        OpenMX_Solver_ResidueResize(Residues,spin,Mc_AN-1,n2);
+
       wanA = WhatSpecies[Gc_AN];
       tno1 = Spe_Total_CNO[wanA];
 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
+      {
+        double *eval_row_26=openmx_solver_field_row(&EVal,0,Mc_AN);
+        for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 
 	Gh_AN = natn[Gc_AN][h_AN];
 	wanB = WhatSpecies[Gh_AN];
@@ -4919,39 +4903,37 @@ static double DC_NonCol(char *mode,
 
 	    /* <allocation of Residues */
             size_Residues += n2*3;
-            for (spin=0; spin<=2; spin++){
-              Residues[spin][Mc_AN-1][h_AN][i][j] = (dcomplex*)malloc(sizeof(dcomplex)*n2);
-	    }
+
 	    /* allocation of Residues> */
 
             for (spin=0; spin<=2; spin++){
-              Residues[spin][Mc_AN-1][h_AN][i][j][0].r = 0.0;
-              Residues[spin][Mc_AN-1][h_AN][i][j][1].r = 0.0;
-              Residues[spin][Mc_AN-1][h_AN][i][j][0].i = 0.0;
-              Residues[spin][Mc_AN-1][h_AN][i][j][1].i = 0.0;
+              openmx_solver_complex_residue_row(&Residues,spin,Mc_AN-1,h_AN,i,j)[0].r = 0.0;
+              openmx_solver_complex_residue_row(&Residues,spin,Mc_AN-1,h_AN,i,j)[1].r = 0.0;
+              openmx_solver_complex_residue_row(&Residues,spin,Mc_AN-1,h_AN,i,j)[0].i = 0.0;
+              openmx_solver_complex_residue_row(&Residues,spin,Mc_AN-1,h_AN,i,j)[1].i = 0.0;
 	    }
 
 	    for (i1=1; i1<LO_TC[Mc_AN]; i1++){
 
 	      /* Re11 */
 	      tmp1 = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).r + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j).i;
-	      Residues[0][Mc_AN-1][h_AN][i][j][0].r += tmp1;
-	      Residues[0][Mc_AN-1][h_AN][i][j][1].r += tmp1*EVal[Mc_AN][i1];
+	      openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[0].r += tmp1;
+	      openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[1].r += tmp1*eval_row_26[i1];
 
 	      /* Re22 */
 	      tmp1 = HNC_ref(i1,1+i+NUMH).r*HNC_ref(i1,Bnum+j+NUMH).r + HNC_ref(i1,1+i+NUMH).i*HNC_ref(i1,Bnum+j+NUMH).i;
-	      Residues[1][Mc_AN-1][h_AN][i][j][0].r += tmp1;
-	      Residues[1][Mc_AN-1][h_AN][i][j][1].r += tmp1*EVal[Mc_AN][i1];
+	      openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[0].r += tmp1;
+	      openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[1].r += tmp1*eval_row_26[i1];
 
 	      /* Re12 */
 	      tmp1 = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j+NUMH).r + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j+NUMH).i;
-	      Residues[2][Mc_AN-1][h_AN][i][j][0].r += tmp1;
-	      Residues[2][Mc_AN-1][h_AN][i][j][1].r += tmp1*EVal[Mc_AN][i1];
+	      openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[0].r += tmp1;
+	      openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[1].r += tmp1*eval_row_26[i1];
 
 	      /* Im12 */
 	      tmp1 = -HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j+NUMH).i + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j+NUMH).r;
-	      Residues[2][Mc_AN-1][h_AN][i][j][0].i += tmp1;
-	      Residues[2][Mc_AN-1][h_AN][i][j][1].i += tmp1*EVal[Mc_AN][i1];
+	      openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[0].i += tmp1;
+	      openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[1].i += tmp1*eval_row_26[i1];
 	    }      
 
 	    /* spin-orbit coupling or LDA+U */
@@ -4962,13 +4944,13 @@ static double DC_NonCol(char *mode,
 
 		/* Im11 */
 		tmp1 = -HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).i + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j).r;
-		Residues[0][Mc_AN-1][h_AN][i][j][0].i += tmp1;
-		Residues[0][Mc_AN-1][h_AN][i][j][1].i += tmp1*EVal[Mc_AN][i1];
+		openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[0].i += tmp1;
+		openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[1].i += tmp1*eval_row_26[i1];
 
 		/* Im22 */
 		tmp1 = -HNC_ref(i1,1+i+NUMH).r*HNC_ref(i1,Bnum+j+NUMH).i + HNC_ref(i1,1+i+NUMH).i*HNC_ref(i1,Bnum+j+NUMH).r;
-		Residues[1][Mc_AN-1][h_AN][i][j][0].i += tmp1;
-		Residues[1][Mc_AN-1][h_AN][i][j][1].i += tmp1*EVal[Mc_AN][i1];
+		openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[0].i += tmp1;
+		openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[1].i += tmp1*eval_row_26[i1];
 	      }
 	    }
 
@@ -4977,19 +4959,19 @@ static double DC_NonCol(char *mode,
               i2 = i1 - LO_TC[Mc_AN] + 2;
 
 	      /* Re11 */
-	      Residues[0][Mc_AN-1][h_AN][i][j][i2].r = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).r 
+	      openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[i2].r = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).r
                                                      + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j).i;
 
 	      /* Re22 */
-	      Residues[1][Mc_AN-1][h_AN][i][j][i2].r = HNC_ref(i1,1+i+NUMH).r*HNC_ref(i1,Bnum+j+NUMH).r 
+	      openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[i2].r = HNC_ref(i1,1+i+NUMH).r*HNC_ref(i1,Bnum+j+NUMH).r
                                                      + HNC_ref(i1,1+i+NUMH).i*HNC_ref(i1,Bnum+j+NUMH).i;
 
 	      /* Re12 */
-	      Residues[2][Mc_AN-1][h_AN][i][j][i2].r = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j+NUMH).r 
+	      openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[i2].r = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j+NUMH).r
                                                      + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j+NUMH).i;
 
 	      /* Im12 */
-	      Residues[2][Mc_AN-1][h_AN][i][j][i2].i = -HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j+NUMH).i 
+	      openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[i2].i = -HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j+NUMH).i
                                                        +HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j+NUMH).r;
                                                      
   	      /* spin-orbit coupling or LDA+U */
@@ -4997,7 +4979,7 @@ static double DC_NonCol(char *mode,
 		   || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
 
 		/* Im11 */
-		Residues[0][Mc_AN-1][h_AN][i][j][i2].i =-HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).i
+		openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[i2].i =-HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).i
                                                         +HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j).r;
 
 		/*
@@ -5006,12 +4988,13 @@ static double DC_NonCol(char *mode,
 		*/
                                                      
 		/* Im22 */
-		Residues[1][Mc_AN-1][h_AN][i][j][i2].i =-HNC_ref(i1,1+i+NUMH).r*HNC_ref(i1,Bnum+j+NUMH).i 
+		openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[i2].i =-HNC_ref(i1,1+i+NUMH).r*HNC_ref(i1,Bnum+j+NUMH).i
                                                         +HNC_ref(i1,1+i+NUMH).i*HNC_ref(i1,Bnum+j+NUMH).r;
 	      }
 	    }
 	  }
 	}
+      }
       }
 
     } /* end of if ( Eigen_MPI_flag==0 || (Eigen_MPI_flag==1 && myid2==0) ) */
@@ -5051,11 +5034,16 @@ static double DC_NonCol(char *mode,
       wanA = WhatSpecies[Gc_AN];
       tno1 = Spe_Total_CNO[wanA];
 
-      for (i1=0; i1<(Msize[Mc_AN]+3); i1++){
-	PDOS_DC[Mc_AN-1][i1] = 0.0;
+      {
+        double *pdos_dc_row_21=openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1);
+        for (i1=0; i1<(Msize[Mc_AN]+3); i1++){
+	pdos_dc_row_21[i1] = 0.0;
+      }
       }
 
-      for (i=0; i<tno1; i++){
+      {
+        double *pdos_dc_row_20=openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1);
+        for (i=0; i<tno1; i++){
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  wanB = WhatSpecies[Gh_AN];
@@ -5063,15 +5051,20 @@ static double DC_NonCol(char *mode,
 	  for (j=0; j<tno2; j++){
 
 	    tmp1 = OLP0[Mc_AN][h_AN][i][j];
-            PDOS_DC[Mc_AN-1][0] += (Residues[0][Mc_AN-1][h_AN][i][j][0].r+Residues[1][Mc_AN-1][h_AN][i][j][0].r)*tmp1;
-            PDOS_DC[Mc_AN-1][1] += (Residues[0][Mc_AN-1][h_AN][i][j][1].r+Residues[1][Mc_AN-1][h_AN][i][j][1].r)*tmp1;
+            pdos_dc_row_20[0] += (openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[0].r+openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[0].r)*tmp1;
+            pdos_dc_row_20[1] += (openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[1].r+openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[1].r)*tmp1;
 
-	    for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
+	    {
+	      dcomplex *residues_row_16=openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j);
+	      dcomplex *residues_row_17=openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j);
+	      for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
               i2 = i1 - LO_TC[Mc_AN] + 2;
-	      PDOS_DC[Mc_AN-1][i2] += (Residues[0][Mc_AN-1][h_AN][i][j][i2].r+Residues[1][Mc_AN-1][h_AN][i][j][i2].r)*tmp1;
+	      pdos_dc_row_20[i2] += (residues_row_16[i2].r+residues_row_17[i2].r)*tmp1;
+	    }
 	    }
 	  }            
 	}        
+      }
       }
 
       dtime(&Etime_atom);
@@ -5113,21 +5106,25 @@ static double DC_NonCol(char *mode,
 	dtime(&Stime_atom);
 
 	Gc_AN = M2G[Mc_AN];
-        My_Num_State += PDOS_DC[Mc_AN-1][0];
+        My_Num_State += openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1)[0];
 
-        for (i=LO_TC[Mc_AN]; i<=HO_TC[Mc_AN]; i++){
+        {
+          double *eval_row_13=openmx_solver_field_row(&EVal,0,Mc_AN);
+          double *pdos_dc_row_14=openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1);
+          for (i=LO_TC[Mc_AN]; i<=HO_TC[Mc_AN]; i++){
 
           i1 = i - LO_TC[Mc_AN] + 2;
-	  x = (EVal[Mc_AN][i] - ChemP)*Beta;
+	  x = (eval_row_13[i] - ChemP)*Beta;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
 
 	  ex = exp(x);
 	  ex1 = 1.0 + ex;
-	  coe = PDOS_DC[Mc_AN-1][i1];
+	  coe = pdos_dc_row_14[i1];
 
 	  My_Num_State += coe/ex1;
 	}
+        }
 
 	dtime(&Etime_atom);
 	time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
@@ -5171,17 +5168,21 @@ static double DC_NonCol(char *mode,
       dtime(&Stime_atom);
 
       Gc_AN = M2G[Mc_AN];
-      My_Eele0[0] += PDOS_DC[Mc_AN-1][1];
+      My_Eele0[0] += openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1)[1];
 
-      for (i=LO_TC[Mc_AN]; i<=HO_TC[Mc_AN]; i++){
+      {
+        double *eval_row_11=openmx_solver_field_row(&EVal,0,Mc_AN);
+        double *pdos_dc_row_12=openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1);
+        for (i=LO_TC[Mc_AN]; i<=HO_TC[Mc_AN]; i++){
 
         i1 = i - LO_TC[Mc_AN] + 2;
-	x = (EVal[Mc_AN][i] - ChemP)*Beta;
+	x = (eval_row_11[i] - ChemP)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = 1.0/(1.0 + exp(x));
 
-	My_Eele0[0] += FermiF*EVal[Mc_AN][i]*PDOS_DC[Mc_AN-1][i1];
+	My_Eele0[0] += FermiF*eval_row_11[i]*pdos_dc_row_12[i1];
+      }
       }
 
       dtime(&Etime_atom);
@@ -5257,14 +5258,19 @@ static double DC_NonCol(char *mode,
       wanA = WhatSpecies[Gc_AN];
       tno1 = Spe_Total_CNO[wanA];
 
-      for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
-	x   = (EVal[Mc_AN][i1] - ChemP)*Beta;
+      {
+        double *eval_row_10=openmx_solver_field_row(&EVal,0,Mc_AN);
+        for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
+	x   = (eval_row_10[i1] - ChemP)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	ko[i1] = 1.0/(1.0 + exp(x));  /* temporal use of ko */
       }
+      }
 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
+      {
+        double *eval_row_9=openmx_solver_field_row(&EVal,0,Mc_AN);
+        for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 
 	Gh_AN = natn[Gc_AN][h_AN];
 	wanB = WhatSpecies[Gh_AN];
@@ -5273,54 +5279,58 @@ static double DC_NonCol(char *mode,
 	for (i=0; i<tno1; i++){
 	  for (j=0; j<tno2; j++){
 
-	    CDM[0][Mc_AN][h_AN][i][j] = Residues[0][Mc_AN-1][h_AN][i][j][0].r;
-	    EDM[0][Mc_AN][h_AN][i][j] = Residues[0][Mc_AN-1][h_AN][i][j][1].r;
+	    CDM[0][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[0].r;
+	    EDM[0][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[1].r;
 
-	    CDM[1][Mc_AN][h_AN][i][j] = Residues[1][Mc_AN-1][h_AN][i][j][0].r;
-	    EDM[1][Mc_AN][h_AN][i][j] = Residues[1][Mc_AN-1][h_AN][i][j][1].r;
+	    CDM[1][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[0].r;
+	    EDM[1][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[1].r;
 
-	    CDM[2][Mc_AN][h_AN][i][j] = Residues[2][Mc_AN-1][h_AN][i][j][0].r;
-	    EDM[2][Mc_AN][h_AN][i][j] = Residues[2][Mc_AN-1][h_AN][i][j][1].r;
+	    CDM[2][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[0].r;
+	    EDM[2][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[1].r;
 
-	    CDM[3][Mc_AN][h_AN][i][j] = Residues[2][Mc_AN-1][h_AN][i][j][0].i;
-	    EDM[3][Mc_AN][h_AN][i][j] = Residues[2][Mc_AN-1][h_AN][i][j][1].i;
+	    CDM[3][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[0].i;
+	    EDM[3][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[1].i;
 
 	    /* spin-orbit coupling or LDA+U */
 	    if (SO_switch==1 || Hub_U_switch==1 || 1<=Constraint_NCS_switch
 		|| Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
 
-	      iDM[0][0][Mc_AN][h_AN][i][j] = Residues[0][Mc_AN-1][h_AN][i][j][0].i;
-	      iDM[0][1][Mc_AN][h_AN][i][j] = Residues[1][Mc_AN-1][h_AN][i][j][0].i;
+	      iDM[0][0][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[0].i;
+	      iDM[0][1][Mc_AN][h_AN][i][j] = openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[0].i;
 	    }
 
-            for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
+            {
+              dcomplex *residues_row_3=openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j);
+              dcomplex *residues_row_5=openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j);
+              dcomplex *residues_row_6=openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j);
+              for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
 
               i2 = i1 - LO_TC[Mc_AN] + 2;
 
-	      tmp1 = ko[i1]*Residues[0][Mc_AN-1][h_AN][i][j][i2].r;
+	      tmp1 = ko[i1]*residues_row_3[i2].r;
 	      sum1 = tmp1;
-	      sum2 = tmp1*EVal[Mc_AN][i1];
+	      sum2 = tmp1*eval_row_9[i1];
 
 	      CDM[0][Mc_AN][h_AN][i][j] += sum1;
 	      EDM[0][Mc_AN][h_AN][i][j] += sum2;
 
-	      tmp1 = ko[i1]*Residues[1][Mc_AN-1][h_AN][i][j][i2].r;
+	      tmp1 = ko[i1]*residues_row_5[i2].r;
 	      sum1 = tmp1;
-	      sum2 = tmp1*EVal[Mc_AN][i1];
+	      sum2 = tmp1*eval_row_9[i1];
 
 	      CDM[1][Mc_AN][h_AN][i][j] += sum1;
 	      EDM[1][Mc_AN][h_AN][i][j] += sum2;
 
-	      tmp1 = ko[i1]*Residues[2][Mc_AN-1][h_AN][i][j][i2].r;
+	      tmp1 = ko[i1]*residues_row_6[i2].r;
 	      sum1 = tmp1;
-	      sum2 = tmp1*EVal[Mc_AN][i1];
+	      sum2 = tmp1*eval_row_9[i1];
 
 	      CDM[2][Mc_AN][h_AN][i][j] += sum1;
 	      EDM[2][Mc_AN][h_AN][i][j] += sum2;
 
-	      tmp1 = ko[i1]*Residues[2][Mc_AN-1][h_AN][i][j][i2].i;
+	      tmp1 = ko[i1]*residues_row_6[i2].i;
 	      sum1 = tmp1;
-	      sum2 = tmp1*EVal[Mc_AN][i1];
+	      sum2 = tmp1*eval_row_9[i1];
 
 	      CDM[3][Mc_AN][h_AN][i][j] += sum1;
 	      EDM[3][Mc_AN][h_AN][i][j] += sum2;
@@ -5329,12 +5339,14 @@ static double DC_NonCol(char *mode,
 	      if (SO_switch==1 || Hub_U_switch==1 || 1<=Constraint_NCS_switch
 		  || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
 
-		iDM[0][0][Mc_AN][h_AN][i][j] += ko[i1]*Residues[0][Mc_AN-1][h_AN][i][j][i2].i;
-		iDM[0][1][Mc_AN][h_AN][i][j] += ko[i1]*Residues[1][Mc_AN-1][h_AN][i][j][i2].i;
+		iDM[0][0][Mc_AN][h_AN][i][j] += ko[i1]*residues_row_3[i2].i;
+		iDM[0][1][Mc_AN][h_AN][i][j] += ko[i1]*residues_row_5[i2].i;
 	      }
 	    }
+            }
 	  }
 	}
+      }
       }
 
       dtime(&Etime_atom);
@@ -5447,98 +5459,7 @@ static double DC_NonCol(char *mode,
     PrintMemory("Divide_Conquer_LNO: Residues",sizeof(double)*size_Residues,NULL);
   }
 
-  if (Eigen_MPI_flag==1) Matomnum = 1;     
-
-  free(MP);
-
-  free(is1);
-  free(ie1);
-
-  free(is2);
-  free(ie2);
-
-  free(stat_send);
-  free(request_send);
-  free(request_recv);
-
-  free(Sc);
-  free(Stmp);
-
-  free(Hc00r);
-  free(Hc11r);
-  free(Hc01r);
-  free(Hc00i);
-  free(Hc11i);
-  free(Hc01i);
-
-  free(Hc00r_tmp);
-  free(Hc11r_tmp);
-  free(Hc01r_tmp);
-  free(Hc00i_tmp);
-  free(Hc11i_tmp);
-  free(Hc01i_tmp);
-
-  free(Snd_H_Size);
-  free(Rcv_H_Size);
-
-  free(Snd_iHNL_Size);
-  free(Rcv_iHNL_Size);
-
-  free(Snd_S_Size);
-  free(Rcv_S_Size);
-
-  free(Msize);
-
-  free(BLAS_H);
-  free(BLAS_C);
-
-  free(ko);
-
-  for (i=0; i<(Max_Msize+2); i++){
-    free(C[i]);
-  }
-  free(C);
-
-  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-    free(EVal[Mc_AN]);
-  }
-  free(EVal);
-
-  if ( Eigen_MPI_flag==0 || (Eigen_MPI_flag==1 && myid2==0) ){ 
-
-    for (spin=0; spin<3; spin++){
-      for (Mc_AN=0; Mc_AN<Matomnum; Mc_AN++){
-
-	Gc_AN = M2G[Mc_AN+1];
-	wanA = WhatSpecies[Gc_AN];
-	tno1 = Spe_Total_CNO[wanA];
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  Gh_AN = natn[Gc_AN][h_AN];
-	  wanB = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_CNO[wanB];
-
-	  for (i=0; i<tno1; i++){
-
-	    for (j=0; j<tno2; j++){
-	      free(Residues[spin][Mc_AN][h_AN][i][j]);
-	    }
-	    free(Residues[spin][Mc_AN][h_AN][i]);
-	  }
-	  free(Residues[spin][Mc_AN][h_AN]);
-	}
-	free(Residues[spin][Mc_AN]);
-      }
-      free(Residues[spin]);
-    }
-    free(Residues);
-  }
-
-  for (Mc_AN=0; Mc_AN<Matomnum; Mc_AN++){
-    free(PDOS_DC[Mc_AN]);
-  }
-  free(PDOS_DC);
+  /* Host workspace destruction does not depend on Matomnum. */
 
   /* reset Matomnum */
 
@@ -5570,7 +5491,7 @@ static double DC_NonCol(char *mode,
 
 
 
-void Save_DOS_Col(double ******Residues, double ****OLP0, double ***EVal, int **LO_TC, int **HO_TC)
+void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, int **LO_TC, int **HO_TC)
 {
   int spin,Mc_AN,wanA,Gc_AN,tno1;
   int i1,i,j,MaxL,l,h_AN,Gh_AN,wanB,tno2;
@@ -5623,9 +5544,11 @@ void Save_DOS_Col(double ******Residues, double ****OLP0, double ***EVal, int **
       fprintf(fp_ev,"<AN%dAN%d\n",Gc_AN,spin);
       fprintf(fp_ev,"%d\n",(HO_TC[spin][Mc_AN]-LO_TC[spin][Mc_AN]+1));
 
-      for (i1=0; i1<(HO_TC[spin][Mc_AN]-LO_TC[spin][Mc_AN]+1); i1++){
+      {
+        double *eval_row_2=openmx_solver_field_row(&EVal,spin,Mc_AN);
+        for (i1=0; i1<(HO_TC[spin][Mc_AN]-LO_TC[spin][Mc_AN]+1); i1++){
 
-	fprintf(fp_ev,"%4d  %10.6f  ",i1,EVal[spin][Mc_AN][i1+LO_TC[spin][Mc_AN]]);
+	fprintf(fp_ev,"%4d  %10.6f  ",i1,eval_row_2[i1+LO_TC[spin][Mc_AN]]);
 
 	for (i=0; i<tno1; i++){
 
@@ -5636,7 +5559,7 @@ void Save_DOS_Col(double ******Residues, double ****OLP0, double ***EVal, int **
 	    tno2 = Spe_Total_CNO[wanB];
 	    for (j=0; j<tno2; j++){
 
-	      sum += Residues[spin][Mc_AN-1][h_AN][i][j][i1+2]*
+	      sum += openmx_solver_residue_row(&Residues,spin,Mc_AN-1,h_AN,i,j)[i1+2]*
 		               OLP0[Mc_AN][h_AN][i][j];
 
 	    }
@@ -5645,6 +5568,7 @@ void Save_DOS_Col(double ******Residues, double ****OLP0, double ***EVal, int **
 	  fprintf(fp_ev,"%8.5f",sum);
 	}
 	fprintf(fp_ev,"\n");
+      }
       }
 
       fprintf(fp_ev,"AN%dAN%d>\n",Gc_AN,spin);
@@ -5705,7 +5629,7 @@ void Save_DOS_Col(double ******Residues, double ****OLP0, double ***EVal, int **
 
 
 
-void Save_DOS_NonCol(dcomplex ******Residues, double ****OLP0, double **EVal, int *LO_TC, int *HO_TC)
+void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, int *LO_TC, int *HO_TC)
 {
   int spin,Mc_AN,wanA,Gc_AN,tno1;
   int i1,i2,i,j,MaxL,l,h_AN,Gh_AN,wanB,tno2;
@@ -5764,11 +5688,13 @@ void Save_DOS_NonCol(dcomplex ******Residues, double ****OLP0, double **EVal, in
     fprintf(fp_ev,"<AN%d\n",Gc_AN);
     fprintf(fp_ev,"%d %d\n",HO_TC[Mc_AN]-LO_TC[Mc_AN]+1,HO_TC[Mc_AN]-LO_TC[Mc_AN]+1);
 
-    for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
+    {
+      double *eval_row_1=openmx_solver_field_row(&EVal,0,Mc_AN);
+      for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
 
       i2 = i1 - LO_TC[Mc_AN] + 2;
 
-      fprintf(fp_ev,"%4d  %10.6f %10.6f ",i1,EVal[Mc_AN][i1],EVal[Mc_AN][i1]);
+      fprintf(fp_ev,"%4d  %10.6f %10.6f ",i1,eval_row_1[i1],eval_row_1[i1]);
 
       for (i=0; i<tno1; i++){
 
@@ -5785,16 +5711,16 @@ void Save_DOS_NonCol(dcomplex ******Residues, double ****OLP0, double **EVal, in
 
 	  for (j=0; j<tno2; j++){
 
-	    Re11 += Residues[0][Mc_AN-1][h_AN][i][j][i2].r*
+	    Re11 += openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[i2].r*
 	                   OLP0[Mc_AN][h_AN][i][j];
 
-	    Re22 += Residues[1][Mc_AN-1][h_AN][i][j][i2].r*
+	    Re22 += openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j)[i2].r*
 	                   OLP0[Mc_AN][h_AN][i][j];
 
-	    Re12 += Residues[2][Mc_AN-1][h_AN][i][j][i2].r*
+	    Re12 += openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[i2].r*
  	                   OLP0[Mc_AN][h_AN][i][j];
 
-	    Im12 += Residues[2][Mc_AN-1][h_AN][i][j][i2].i*
+	    Im12 += openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j)[i2].i*
 	                   OLP0[Mc_AN][h_AN][i][j];
 
 	  }
@@ -5810,6 +5736,7 @@ void Save_DOS_NonCol(dcomplex ******Residues, double ****OLP0, double **EVal, in
 	fprintf(fp_ev,"%8.5f %8.5f ",SDup,SDdn);
       }
       fprintf(fp_ev,"\n");
+    }
     }
 
     fprintf(fp_ev,"AN%d>\n",Gc_AN);

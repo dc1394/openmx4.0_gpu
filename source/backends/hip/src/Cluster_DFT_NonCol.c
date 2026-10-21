@@ -12,6 +12,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_solver_workspace.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_cluster_capacity.h"
 #include "elpa_cosma_bridge.h"
@@ -3109,6 +3110,74 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
 
 
 
+typedef struct {
+  const OpenMXAtomicViews *atomic;
+  char *mode;
+  int SCF_iter;
+  int SpinP_switch;
+  double *ko;
+  double *****nh;
+  double *****ImNL;
+  double ****CntOLP;
+  double *****CDM;
+  double *****EDM;
+  double *Eele0;
+  double *Eele1;
+  int *MP;
+  int *is2;
+  int *ie2;
+  double *Ss;
+  double *Cs;
+  double *rHs11;
+  double *rHs12;
+  double *rHs22;
+  double *iHs11;
+  double *iHs12;
+  double *iHs22;
+  dcomplex *Ss2;
+  dcomplex *Hs2;
+  dcomplex *Cs2;
+  double *DM1;
+  int size_H1;
+  dcomplex *EVec1;
+  double *Work1;
+  const OpenMXElectronicViews *electronic;
+} Cluster_DFT_NonCol_arguments;
+static double Cluster_DFT_NonCol_owned(const OpenMXAtomicViews *atomic,
+                   char *mode,
+                   int SCF_iter,
+                   int SpinP_switch,
+                   double *ko,
+                   double *****nh,
+                   double *****ImNL,
+                   double ****CntOLP,
+                   double *****CDM,
+                   double *****EDM,
+                   double Eele0[2], double Eele1[2],
+                   int *MP,
+		   int *is2,
+		   int *ie2,
+		   double *Ss,
+		   double *Cs,
+		   double *rHs11,
+		   double *rHs12,
+		   double *rHs22,
+		   double *iHs11,
+		   double *iHs12,
+		   double *iHs22,
+                   dcomplex *Ss2,
+                   dcomplex *Hs2,
+                   dcomplex *Cs2,
+		   double *DM1,
+		   int size_H1,
+                   dcomplex *EVec1,
+                   double *Work1, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner);
+static int Cluster_DFT_NonCol_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Cluster_DFT_NonCol_arguments *a=(Cluster_DFT_NonCol_arguments*)arguments;
+  *result=Cluster_DFT_NonCol_owned(a->atomic,a->mode,a->SCF_iter,a->SpinP_switch,a->ko,a->nh,a->ImNL,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->MP,a->is2,a->ie2,a->Ss,a->Cs,a->rHs11,a->rHs12,a->rHs22,a->iHs11,a->iHs12,a->iHs22,a->Ss2,a->Hs2,a->Cs2,a->DM1,a->size_H1,a->EVec1,a->Work1,a->electronic,owner);
+  return 1;
+}
 double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
@@ -3139,6 +3208,41 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
                    dcomplex *EVec1,
                    double *Work1, const OpenMXElectronicViews *electronic)
 {
+  Cluster_DFT_NonCol_arguments arguments={atomic,mode,SCF_iter,SpinP_switch,ko,nh,ImNL,CntOLP,CDM,EDM,Eele0,Eele1,MP,is2,ie2,Ss,Cs,rHs11,rHs12,rHs22,iHs11,iHs12,iHs22,Ss2,Hs2,Cs2,DM1,size_H1,EVec1,Work1,electronic};
+  return OpenMX_Solver_Run(Cluster_DFT_NonCol_operation,&arguments);
+}
+
+static double Cluster_DFT_NonCol_owned(const OpenMXAtomicViews *atomic,
+                   char *mode,
+                   int SCF_iter,
+                   int SpinP_switch,
+                   double *ko,
+                   double *****nh,
+                   double *****ImNL,
+                   double ****CntOLP,
+                   double *****CDM,
+                   double *****EDM,
+                   double Eele0[2], double Eele1[2],
+                   int *MP,
+		   int *is2,
+		   int *ie2,
+		   double *Ss,
+		   double *Cs,
+		   double *rHs11,
+		   double *rHs12,
+		   double *rHs22,
+		   double *iHs11,
+		   double *iHs12,
+		   double *iHs22,
+                   dcomplex *Ss2,
+                   dcomplex *Hs2,
+                   dcomplex *Cs2,
+		   double *DM1,
+		   int size_H1,
+                   dcomplex *EVec1,
+                   double *Work1, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner)
+{
+
   double ******iDM=electronic->iDM;
 
   int mgpu_scope_previous=openmx_mgpu_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag);
@@ -3223,8 +3327,8 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
                   allocation of arrays
   ****************************************************/
 
-  Num_Snd_EV = (int*)malloc(sizeof(int)*numprocs);
-  Num_Rcv_EV = (int*)malloc(sizeof(int)*numprocs);
+  Num_Snd_EV=OpenMX_Solver_Int(solver_owner,"Num_Snd_EV",((size_t)1)*numprocs);
+  Num_Rcv_EV=OpenMX_Solver_Int(solver_owner,"Num_Rcv_EV",((size_t)1)*numprocs);
 
   /* initialize variables of measuring elapsed time */
 
@@ -3348,12 +3452,12 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
   Max_Num_Snd_EV++;
   Max_Num_Rcv_EV++;
 
-  index_Snd_i = (int*)malloc(sizeof(int)*Max_Num_Snd_EV);
-  index_Snd_j = (int*)malloc(sizeof(int)*Max_Num_Snd_EV);
-  EVec_Snd = (double*)malloc(sizeof(double)*Max_Num_Snd_EV*2);
-  index_Rcv_i = (int*)malloc(sizeof(int)*Max_Num_Rcv_EV);
-  index_Rcv_j = (int*)malloc(sizeof(int)*Max_Num_Rcv_EV);
-  EVec_Rcv = (double*)malloc(sizeof(double)*Max_Num_Rcv_EV*2);
+  index_Snd_i=OpenMX_Solver_Int(solver_owner,"index_Snd_i",((size_t)1)*Max_Num_Snd_EV);
+  index_Snd_j=OpenMX_Solver_Int(solver_owner,"index_Snd_j",((size_t)1)*Max_Num_Snd_EV);
+  EVec_Snd=OpenMX_Solver_Real(solver_owner,"EVec_Snd",((size_t)1)*Max_Num_Snd_EV*2);
+  index_Rcv_i=OpenMX_Solver_Int(solver_owner,"index_Rcv_i",((size_t)1)*Max_Num_Rcv_EV);
+  index_Rcv_j=OpenMX_Solver_Int(solver_owner,"index_Rcv_j",((size_t)1)*Max_Num_Rcv_EV);
+  EVec_Rcv=OpenMX_Solver_Real(solver_owner,"EVec_Rcv",((size_t)1)*Max_Num_Rcv_EV*2);
 
   /* print memory size */
 
@@ -3816,14 +3920,7 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
       if (myid==Host_ID) ClusterNonCol_DeviceSolveEndStep();
     }
 
-    free(Num_Snd_EV);
-    free(Num_Rcv_EV);
-    free(index_Snd_i);
-    free(index_Snd_j);
-    free(EVec_Snd);
-    free(index_Rcv_i);
-    free(index_Rcv_j);
-    free(EVec_Rcv);
+    ;
 
     MPI_Barrier(mpi_comm_level1);
     dtime(&TEtime);
@@ -3948,9 +4045,9 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
       double *array0;
       int *is3,*ie3;
 
-      array0 = (double*)malloc(sizeof(double)*(n2+2)*2);
-      is3 = (int*)malloc(sizeof(int)*numprocs);
-      ie3 = (int*)malloc(sizeof(int)*numprocs);
+      array0=OpenMX_Solver_Real(solver_owner,"array0",((size_t)1)*(n2+2)*2);
+      is3=OpenMX_Solver_Int(solver_owner,"is3",((size_t)1)*numprocs);
+      ie3=OpenMX_Solver_Int(solver_owner,"ie3",((size_t)1)*numprocs);
 
       /* set is3 and ie3 */
 
@@ -4087,9 +4184,7 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
 	}
       }
 
-      free(array0);
-      free(is3);
-      free(ie3);
+      ;
 
     } /* end of if (MO_fileout==1) */
 
@@ -4313,9 +4408,9 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
       double *array0;
       int *is3,*ie3;
 
-      array0 = (double*)malloc(sizeof(double)*(n2+2)*4);
-      is3 = (int*)malloc(sizeof(int)*numprocs);
-      ie3 = (int*)malloc(sizeof(int)*numprocs);
+      array0=OpenMX_Solver_Real(solver_owner,"array0",((size_t)1)*(n2+2)*4);
+      is3=OpenMX_Solver_Int(solver_owner,"is3",((size_t)1)*numprocs);
+      ie3=OpenMX_Solver_Int(solver_owner,"ie3",((size_t)1)*numprocs);
 
       /* set is3 and ie3 */
 
@@ -4515,9 +4610,7 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
 
       /* freeing of arrays */
 
-      free(array0);
-      free(is3);
-      free(ie3);
+      ;
 
       /* fclose of fp_EV */
 
@@ -4553,15 +4646,9 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
                           Free
   ****************************************************/
 
-  free(Num_Snd_EV);
-  free(Num_Rcv_EV);
+  ;
 
-  free(index_Snd_i);
-  free(index_Snd_j);
-  free(EVec_Snd);
-  free(index_Rcv_i);
-  free(index_Rcv_j);
-  free(EVec_Rcv);
+  ;
 
   if (use_gpusolver_direct_cluster_dm && myid==Host_ID) ClusterNonCol_DeviceSolveEndStep();
 

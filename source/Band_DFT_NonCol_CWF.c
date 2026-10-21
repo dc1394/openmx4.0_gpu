@@ -93,8 +93,7 @@ static void BandNonColCWF_GEMMul8Zgemm_OpenACC(OpenMXBlasOperation transa, OpenM
     }
 }
 
-double **ReEVec_i1,**ImEVec_i1,**ReEVec_i2,**ImEVec_i2;
-double **ReEVec_j1,**ImEVec_j1,**ReEVec_j2,**ImEVec_j2;
+
 double complex ***CWF_Guiding_MOs_NC;
 double complex ******CWF_Coef_NC;
 double DM_func;
@@ -482,46 +481,6 @@ double Band_DFT_NonCol_CWF(
   My_NZeros = (int*)malloc(sizeof(int)*numprocs0);
   SP_NZeros = (int*)malloc(sizeof(int)*numprocs0);
   SP_Atoms = (int*)malloc(sizeof(int)*numprocs0);
-
-  ReEVec_i1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_i1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_i1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_i1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ReEVec_i2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_i2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_i2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_i2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ReEVec_j1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_j1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_j1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_j1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ReEVec_j2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_j2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_j2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_j2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
 
   if (way_of_kpoint==1){
 
@@ -1306,46 +1265,6 @@ double Band_DFT_NonCol_CWF(
   free(SP_NZeros);
   free(SP_Atoms);
 
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_i1[i]);
-  }
-  free(ReEVec_i1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_i1[i]);
-  }
-  free(ImEVec_i1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_i2[i]);
-  }
-  free(ReEVec_i2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_i2[i]);
-  }
-  free(ImEVec_i2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_j1[i]);
-  }
-  free(ReEVec_j1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_j1[i]);
-  }
-  free(ImEVec_j1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_j2[i]);
-  }
-  free(ReEVec_j2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_j2[i]);
-  }
-  free(ImEVec_j2);
-
   free(is1);
   free(ie1);
 
@@ -1394,9 +1313,6 @@ double Band_DFT_NonCol_CWF(
   time0 = TEtime - TStime;
   return time0;
 }
-
-
-
 
 static double Calc_CWF_Band_NonCol(
     char *mode,
@@ -2885,10 +2801,6 @@ static double Calc_CWF_Band_NonCol(
   return (etime-stime);
 }
 
-
-
-
-
 void Allocate_Free_Band_NonCol_CWF( int todo_flag, 
 				    int myworld2, 
 				    MPI_Comm *MPI_CommWD2,
@@ -3160,12 +3072,6 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
 
 }
 
-
-
-
-
-
-
 void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomplex *Ms, 
                         int *MP, double k1, double k2, double k3)
 {
@@ -3416,8 +3322,6 @@ void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomplex *Ms,
     printf("timeB_all myid=%2d %15.12f\n",myid,AEtime-AStime);
   }
 }
-
-
 
 void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char ***kname, 
 				 int TNum_CWFs, double complex ****TB_Hopping, 

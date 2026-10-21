@@ -175,6 +175,14 @@ tests compare the numerical paths with frozen implementations and check s/p
 gradients with finite differences, including tied magnetic channels and radial
 constraints. Exactly zero gradients and the species DIIS small-gradient limit
 are handled explicitly.
+The collinear/noncollinear Cluster and Band solvers, DC, DC-LNO and both
+Krylov dispatches now share a C++ invocation owner for ordinary host scratch.
+Matrices, integer/MPI work buffers, eigenvalue/PDOS rows and pole residues use
+RAII storage; ragged residues replace six-level numerical pointer trees with
+contiguous atom blocks and explicit offsets. Noncollinear Band spinor scratch
+is local to each call, removing eight shared arrays. Native BLAS/eigensolver
+interfaces borrow owned row adapters. Optional Band caches, persistent solver
+and device caches, and deeper native helper allocations remain migration work.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

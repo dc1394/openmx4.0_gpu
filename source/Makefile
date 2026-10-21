@@ -1704,3 +1704,6 @@ Set_ProExpn_VNA.o: openmx_vna_assembly.h openmx_core_vna_invocation.h openmx_cor
 # Shared flat orbital optimization and Hubbard force boundaries.
 DFT.o Opt_Contraction.o: openmx_orbital_optimization.h openmx_core_orbital_optimization.h
 Force.o: openmx_hubbard_force.h
+
+# Solver invocation RAII and flat spectral workspaces.
+Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_Conquer.o Divide_Conquer_LNO.o Krylov.o: openmx_solver_workspace.h openmx_core_solver_workspace.h

@@ -13,6 +13,7 @@
 #include "mpi.h"
 #include "lapack_prototypes.h"
 #include "openmx_common.h"
+#include "openmx_solver_workspace.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
 #include "openmx_mgpu_band_plan.h"
@@ -2934,6 +2935,67 @@ static void BandCol_ConstructDenseCsHs_HIP(int need_s, int n, double k1, double 
     BandCol_last_construct_on_device = 1;
 }
 
+typedef struct {
+  int SCF_iter;
+  int knum_i;
+  int knum_j;
+  int knum_k;
+  int SpinP_switch;
+  int ParDM_flag;
+  double ***** nh;
+  double ***** ImNL;
+  double **** CntOLP;
+  double ***** CDM;
+  double ***** EDM;
+  double *Eele0;
+  double *Eele1;
+  int * MP;
+  int * order_GA;
+  double * ko;
+  double * koS;
+  double *** EIGEN;
+  double * H1;
+  double * S1;
+  double * CDM1;
+  double * EDM1;
+  dcomplex ** EVec1;
+  dcomplex * Ss;
+  dcomplex * Cs;
+  dcomplex * Hs;
+  int *** k_op;
+  int * T_k_op;
+  int ** T_k_ID;
+  double * T_KGrids1;
+  double * T_KGrids2;
+  double * T_KGrids3;
+  int myworld1;
+  int * NPROCS_ID1;
+  int * Comm_World1;
+  int * NPROCS_WD1;
+  int * Comm_World_StartID1;
+  MPI_Comm * MPI_CommWD1;
+  int myworld2;
+  int * NPROCS_ID2;
+  int * NPROCS_WD2;
+  int * Comm_World2;
+  int * Comm_World_StartID2;
+  MPI_Comm * MPI_CommWD2;
+  const OpenMXElectronicViews *electronic;
+} Band_DFT_Col_arguments;
+static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
+                    double ***** ImNL, double **** CntOLP, double ***** CDM, double ***** EDM, double Eele0[2],
+                    double Eele1[2], int * MP, int * order_GA, double * ko, double * koS, double *** EIGEN, double * H1,
+                    double * S1, double * CDM1, double * EDM1, dcomplex ** EVec1, dcomplex * Ss, dcomplex * Cs,
+                    dcomplex * Hs, int *** k_op, int * T_k_op, int ** T_k_ID, double * T_KGrids1, double * T_KGrids2,
+                    double * T_KGrids3, int myworld1, int * NPROCS_ID1, int * Comm_World1, int * NPROCS_WD1,
+                    int * Comm_World_StartID1, MPI_Comm * MPI_CommWD1, int myworld2, int * NPROCS_ID2, int * NPROCS_WD2,
+                    int * Comm_World2, int * Comm_World_StartID2, MPI_Comm * MPI_CommWD2, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner);
+static int Band_DFT_Col_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Band_DFT_Col_arguments *a=(Band_DFT_Col_arguments*)arguments;
+  *result=Band_DFT_Col_owned(a->SCF_iter,a->knum_i,a->knum_j,a->knum_k,a->SpinP_switch,a->ParDM_flag,a->nh,a->ImNL,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->MP,a->order_GA,a->ko,a->koS,a->EIGEN,a->H1,a->S1,a->CDM1,a->EDM1,a->EVec1,a->Ss,a->Cs,a->Hs,a->k_op,a->T_k_op,a->T_k_ID,a->T_KGrids1,a->T_KGrids2,a->T_KGrids3,a->myworld1,a->NPROCS_ID1,a->Comm_World1,a->NPROCS_WD1,a->Comm_World_StartID1,a->MPI_CommWD1,a->myworld2,a->NPROCS_ID2,a->NPROCS_WD2,a->Comm_World2,a->Comm_World_StartID2,a->MPI_CommWD2,a->electronic,owner);
+  return 1;
+}
 double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
                     double ***** ImNL, double **** CntOLP, double ***** CDM, double ***** EDM, double Eele0[2],
                     double Eele1[2], int * MP, int * order_GA, double * ko, double * koS, double *** EIGEN, double * H1,
@@ -2943,6 +3005,20 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
                     int * Comm_World_StartID1, MPI_Comm * MPI_CommWD1, int myworld2, int * NPROCS_ID2, int * NPROCS_WD2,
                     int * Comm_World2, int * Comm_World_StartID2, MPI_Comm * MPI_CommWD2, const OpenMXElectronicViews *electronic)
 {
+  Band_DFT_Col_arguments arguments={SCF_iter,knum_i,knum_j,knum_k,SpinP_switch,ParDM_flag,nh,ImNL,CntOLP,CDM,EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN,H1,S1,CDM1,EDM1,EVec1,Ss,Cs,Hs,k_op,T_k_op,T_k_ID,T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,Comm_World_StartID2,MPI_CommWD2,electronic};
+  return OpenMX_Solver_Run(Band_DFT_Col_operation,&arguments);
+}
+
+static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
+                    double ***** ImNL, double **** CntOLP, double ***** CDM, double ***** EDM, double Eele0[2],
+                    double Eele1[2], int * MP, int * order_GA, double * ko, double * koS, double *** EIGEN, double * H1,
+                    double * S1, double * CDM1, double * EDM1, dcomplex ** EVec1, dcomplex * Ss, dcomplex * Cs,
+                    dcomplex * Hs, int *** k_op, int * T_k_op, int ** T_k_ID, double * T_KGrids1, double * T_KGrids2,
+                    double * T_KGrids3, int myworld1, int * NPROCS_ID1, int * Comm_World1, int * NPROCS_WD1,
+                    int * Comm_World_StartID1, MPI_Comm * MPI_CommWD1, int myworld2, int * NPROCS_ID2, int * NPROCS_WD2,
+                    int * Comm_World2, int * Comm_World_StartID2, MPI_Comm * MPI_CommWD2, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner)
+{
+
   double ******iDM=electronic->iDM;
 
     openmx_mgpu_band_scope input_scope={0};
@@ -3154,9 +3230,9 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
        allocation of arrays
     ***********************************************/
 
-    My_NZeros = (int *)malloc(sizeof(int) * numprocs0);
-    SP_NZeros = (int *)malloc(sizeof(int) * numprocs0);
-    SP_Atoms  = (int *)malloc(sizeof(int) * numprocs0);
+    My_NZeros=OpenMX_Solver_Int(solver_owner,"My_NZeros",((size_t)1) * numprocs0);
+    SP_NZeros=OpenMX_Solver_Int(solver_owner,"SP_NZeros",((size_t)1) * numprocs0);
+    SP_Atoms=OpenMX_Solver_Int(solver_owner,"SP_Atoms",((size_t)1) * numprocs0);
     /***********************************************
                 k-points by regular mesh
     ***********************************************/
@@ -3529,7 +3605,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
     if (use_gpusolver_dense && all_knum != 1) {
         const int turns = Num_Comm_World1 * T_knum;
         int interleave_k = 1;
-        gpu_k_order = (int*)malloc(sizeof(int)*(size_t)turns);
+        gpu_k_order=OpenMX_Solver_Int(solver_owner,"gpu_k_order",((size_t)1)*(size_t)turns);
         if (gpu_k_order == NULL)
             BandCol_AbortWithMessage("Cannot allocate GPU k-point turn order.");
         for (int point=0; point<turns; ++point) gpu_k_order[point] = point;
@@ -3541,7 +3617,7 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         }
         MPI_Bcast(&interleave_k, 1, MPI_INT, Host_ID, mpi_comm_level1);
         if (interleave_k) {
-            int *owners = (int*)malloc(sizeof(int)*(size_t)turns);
+            int *owners=OpenMX_Solver_Int(solver_owner,"owners",((size_t)1)*(size_t)turns);
             int *next = (int*)calloc((size_t)numprocs0, sizeof(int));
             int turn = 0;
             if (owners == NULL || next == NULL)
@@ -3568,7 +3644,6 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
                 }
             }
             free(next);
-            free(owners);
         }
     }
 
@@ -3693,14 +3768,14 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
 
         /* allocation */
 
-        is1 = (int *)malloc(sizeof(int) * numprocs2);
-        ie1 = (int *)malloc(sizeof(int) * numprocs2);
+        is1=OpenMX_Solver_Int(solver_owner,"is1",((size_t)1) * numprocs2);
+        ie1=OpenMX_Solver_Int(solver_owner,"ie1",((size_t)1) * numprocs2);
 
-        is2 = (int *)malloc(sizeof(int) * numprocs2);
-        ie2 = (int *)malloc(sizeof(int) * numprocs2);
+        is2=OpenMX_Solver_Int(solver_owner,"is2",((size_t)1) * numprocs2);
+        ie2=OpenMX_Solver_Int(solver_owner,"ie2",((size_t)1) * numprocs2);
 
-        Num_Snd_EV = (int *)malloc(sizeof(int) * numprocs2);
-        Num_Rcv_EV = (int *)malloc(sizeof(int) * numprocs2);
+        Num_Snd_EV=OpenMX_Solver_Int(solver_owner,"Num_Snd_EV",((size_t)1) * numprocs2);
+        Num_Rcv_EV=OpenMX_Solver_Int(solver_owner,"Num_Rcv_EV",((size_t)1) * numprocs2);
 
         /* make is1 and ie1 */
 
@@ -3806,12 +3881,12 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
         Max_Num_Snd_EV++;
         Max_Num_Rcv_EV++;
 
-        index_Snd_i = (int *)malloc(sizeof(int) * Max_Num_Snd_EV);
-        index_Snd_j = (int *)malloc(sizeof(int) * Max_Num_Snd_EV);
-        EVec_Snd    = (double *)malloc(sizeof(double) * Max_Num_Snd_EV * 2);
-        index_Rcv_i = (int *)malloc(sizeof(int) * Max_Num_Rcv_EV);
-        index_Rcv_j = (int *)malloc(sizeof(int) * Max_Num_Rcv_EV);
-        EVec_Rcv    = (double *)malloc(sizeof(double) * Max_Num_Rcv_EV * 2);
+        index_Snd_i=OpenMX_Solver_Int(solver_owner,"index_Snd_i",((size_t)1) * Max_Num_Snd_EV);
+        index_Snd_j=OpenMX_Solver_Int(solver_owner,"index_Snd_j",((size_t)1) * Max_Num_Snd_EV);
+        EVec_Snd=OpenMX_Solver_Real(solver_owner,"EVec_Snd",((size_t)1) * Max_Num_Snd_EV * 2);
+        index_Rcv_i=OpenMX_Solver_Int(solver_owner,"index_Rcv_i",((size_t)1) * Max_Num_Rcv_EV);
+        index_Rcv_j=OpenMX_Solver_Int(solver_owner,"index_Rcv_j",((size_t)1) * Max_Num_Rcv_EV);
+        EVec_Rcv=OpenMX_Solver_Real(solver_owner,"EVec_Rcv",((size_t)1) * Max_Num_Rcv_EV * 2);
 
     } /* if (all_knum==1) */
 
@@ -6164,24 +6239,14 @@ diagonalize1:
 
     if (all_knum == 1) {
 
-        free(EVec_Rcv);
-        free(index_Rcv_j);
-        free(index_Rcv_i);
-        free(EVec_Snd);
-        free(index_Snd_j);
-        free(index_Snd_i);
+        ;
 
-        free(Num_Rcv_EV);
-        free(Num_Snd_EV);
+        ;
 
-        free(ie2);
-        free(is2);
-        free(ie1);
-        free(is1);
+        ;
     }
 
-    free(SP_Atoms);
-    free(gpu_k_order);
+    ;
     if (k_evec_cache != NULL) {
         for (size_t point = 0; point < (size_t)Num_Comm_World1 * T_knum; ++point)
             free(k_evec_cache[point]);
@@ -6191,8 +6256,6 @@ diagonalize1:
         printf("BAND_COL_CACHE rank=%d SCF=%d evec_hits=%d overlap_hits=%d evec=%.1f MiB overlap=%.1f MiB\n",
                myid0, SCF_iter, k_cache_hits, k_overlap_hits,
                k_cache_used / 1048576.0, BandCol_k_overlap_used / 1048576.0);
-    free(SP_NZeros);
-    free(My_NZeros);
 
     /* for PrintMemory and allocation */
     firsttime = 0;

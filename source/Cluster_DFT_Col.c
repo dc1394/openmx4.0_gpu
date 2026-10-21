@@ -11,6 +11,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_solver_workspace.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
 #include "openmx_gpu_dm_collective.h"
@@ -2497,6 +2498,76 @@ static double Calc_HF_Vx_single(
 static double Exchange_Poisson( double *work1_on_grid, double *work2_on_grid );
 
 
+typedef struct {
+  const OpenMXAtomicViews *atomic;
+  char *mode;
+  int SCF_iter;
+  int SpinP_switch;
+  double **ko;
+  double *****nh;
+  double ****CntOLP;
+  double *****CDM;
+  double *****EDM;
+  double *Eele0;
+  double *Eele1;
+  int myworld1;
+  int *NPROCS_ID1;
+  int *Comm_World1;
+  int *NPROCS_WD1;
+  int *Comm_World_StartID1;
+  MPI_Comm *MPI_CommWD1;
+  int *MP;
+  int *is2;
+  int *ie2;
+  double *Ss;
+  double *Cs;
+  double *Hs;
+  double *CDM1;
+  double *EDM1;
+  double *PDM1;
+  int size_H1;
+  int *SP_NZeros;
+  int *SP_Atoms;
+  double **EVec1;
+  double *Work1;
+  const OpenMXElectronicViews *electronic;
+} Cluster_DFT_Col_arguments;
+static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
+                   char *mode,
+                   int SCF_iter,
+                   int SpinP_switch,
+                   double **ko,
+                   double *****nh,
+                   double ****CntOLP,
+                   double *****CDM,
+                   double *****EDM,
+                   double Eele0[2], double Eele1[2],
+		   int myworld1,
+		   int *NPROCS_ID1,
+		   int *Comm_World1,
+		   int *NPROCS_WD1,
+		   int *Comm_World_StartID1,
+		   MPI_Comm *MPI_CommWD1,
+                   int *MP,
+		   int *is2,
+		   int *ie2,
+		   double *Ss,
+		   double *Cs,
+		   double *Hs,
+		   double *CDM1,
+		   double *EDM1,
+		   double *PDM1,
+		   int size_H1,
+                   int *SP_NZeros,
+                   int *SP_Atoms,
+                   double **EVec1,
+                   double *Work1, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner);
+static int Cluster_DFT_Col_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Cluster_DFT_Col_arguments *a=(Cluster_DFT_Col_arguments*)arguments;
+  *result=Cluster_DFT_Col_owned(a->atomic,a->mode,a->SCF_iter,a->SpinP_switch,a->ko,a->nh,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->myworld1,a->NPROCS_ID1,a->Comm_World1,a->NPROCS_WD1,a->Comm_World_StartID1,a->MPI_CommWD1,a->MP,a->is2,a->ie2,a->Ss,a->Cs,a->Hs,a->CDM1,a->EDM1,a->PDM1,a->size_H1,a->SP_NZeros,a->SP_Atoms,a->EVec1,a->Work1,a->electronic,owner);
+  return 1;
+}
 double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
@@ -2528,6 +2599,42 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
                    double **EVec1,
                    double *Work1, const OpenMXElectronicViews *electronic)
 {
+  Cluster_DFT_Col_arguments arguments={atomic,mode,SCF_iter,SpinP_switch,ko,nh,CntOLP,CDM,EDM,Eele0,Eele1,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1,electronic};
+  return OpenMX_Solver_Run(Cluster_DFT_Col_operation,&arguments);
+}
+
+static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
+                   char *mode,
+                   int SCF_iter,
+                   int SpinP_switch,
+                   double **ko,
+                   double *****nh,
+                   double ****CntOLP,
+                   double *****CDM,
+                   double *****EDM,
+                   double Eele0[2], double Eele1[2],
+		   int myworld1,
+		   int *NPROCS_ID1,
+		   int *Comm_World1,
+		   int *NPROCS_WD1,
+		   int *Comm_World_StartID1,
+		   MPI_Comm *MPI_CommWD1,
+                   int *MP,
+		   int *is2,
+		   int *ie2,
+		   double *Ss,
+		   double *Cs,
+		   double *Hs,
+		   double *CDM1,
+		   double *EDM1,
+		   double *PDM1,
+		   int size_H1,
+                   int *SP_NZeros,
+                   int *SP_Atoms,
+                   double **EVec1,
+                   double *Work1, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner)
+{
+
   double *****ParDM=electronic->ParDM;
 
   int mgpu_scope_previous = openmx_mgpu_scope_enter(
@@ -2631,11 +2738,11 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
                  Allocation of arrays
   ****************************************************/
 
-  is1 = (int*)malloc(sizeof(int)*numprocs1);
-  ie1 = (int*)malloc(sizeof(int)*numprocs1);
+  is1=OpenMX_Solver_Int(solver_owner,"is1",((size_t)1)*numprocs1);
+  ie1=OpenMX_Solver_Int(solver_owner,"ie1",((size_t)1)*numprocs1);
 
-  Num_Snd_EV = (int*)malloc(sizeof(int)*numprocs1);
-  Num_Rcv_EV = (int*)malloc(sizeof(int)*numprocs1);
+  Num_Snd_EV=OpenMX_Solver_Int(solver_owner,"Num_Snd_EV",((size_t)1)*numprocs1);
+  Num_Rcv_EV=OpenMX_Solver_Int(solver_owner,"Num_Rcv_EV",((size_t)1)*numprocs1);
 
   if (measure_time){
     time1 = 0.0;
@@ -2926,12 +3033,12 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
   Max_Num_Snd_EV++;
   Max_Num_Rcv_EV++;
 
-  index_Snd_i = (int*)malloc(sizeof(int)*Max_Num_Snd_EV);
-  index_Snd_j = (int*)malloc(sizeof(int)*Max_Num_Snd_EV);
-  EVec_Snd = (double*)malloc(sizeof(double)*Max_Num_Snd_EV);
-  index_Rcv_i = (int*)malloc(sizeof(int)*Max_Num_Rcv_EV);
-  index_Rcv_j = (int*)malloc(sizeof(int)*Max_Num_Rcv_EV);
-  EVec_Rcv = (double*)malloc(sizeof(double)*Max_Num_Rcv_EV);
+  index_Snd_i=OpenMX_Solver_Int(solver_owner,"index_Snd_i",((size_t)1)*Max_Num_Snd_EV);
+  index_Snd_j=OpenMX_Solver_Int(solver_owner,"index_Snd_j",((size_t)1)*Max_Num_Snd_EV);
+  EVec_Snd=OpenMX_Solver_Real(solver_owner,"EVec_Snd",((size_t)1)*Max_Num_Snd_EV);
+  index_Rcv_i=OpenMX_Solver_Int(solver_owner,"index_Rcv_i",((size_t)1)*Max_Num_Rcv_EV);
+  index_Rcv_j=OpenMX_Solver_Int(solver_owner,"index_Rcv_j",((size_t)1)*Max_Num_Rcv_EV);
+  EVec_Rcv=OpenMX_Solver_Real(solver_owner,"EVec_Rcv",((size_t)1)*Max_Num_Rcv_EV);
 
   /* for PrintMemory */
 
@@ -3384,9 +3491,9 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
       int *is3,*ie3;
       int numprocs3,ID1;
 
-      array0 = (double*)malloc(sizeof(double)*(n+2));
-      is3 = (int*)malloc(sizeof(int)*numprocs0);
-      ie3 = (int*)malloc(sizeof(int)*numprocs0);
+      array0=OpenMX_Solver_Real(solver_owner,"array0",((size_t)1)*(n+2));
+      is3=OpenMX_Solver_Int(solver_owner,"is3",((size_t)1)*numprocs0);
+      ie3=OpenMX_Solver_Int(solver_owner,"ie3",((size_t)1)*numprocs0);
 
       /* HOMOs */
 
@@ -3562,9 +3669,7 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
 
       /* freeing of array0 */
 
-      free(ie3);
-      free(is3);
-      free(array0);
+      ;
     }
 
     /****************************************************
@@ -3731,9 +3836,9 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
       int *is3,*ie3;
       int numprocs3,ID1;
 
-      array0 = (double*)malloc(sizeof(double)*(n+2)*7);
-      is3 = (int*)malloc(sizeof(int)*numprocs0);
-      ie3 = (int*)malloc(sizeof(int)*numprocs0);
+      array0=OpenMX_Solver_Real(solver_owner,"array0",((size_t)1)*(n+2)*7);
+      is3=OpenMX_Solver_Int(solver_owner,"is3",((size_t)1)*numprocs0);
+      ie3=OpenMX_Solver_Int(solver_owner,"ie3",((size_t)1)*numprocs0);
 
       /* start of loop spin and i */
 
@@ -3922,9 +4027,7 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
 
       /* freeing of arrays */
 
-      free(ie3);
-      free(is3);
-      free(array0);
+      ;
 
       /* fclose of fp_EV */
 
@@ -3968,17 +4071,9 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
                           Free
   ****************************************************/
 
-  free(EVec_Rcv);
-  free(index_Rcv_j);
-  free(index_Rcv_i);
-  free(EVec_Snd);
-  free(index_Snd_j);
-  free(index_Snd_i);
+  ;
 
-  free(Num_Rcv_EV);
-  free(Num_Snd_EV);
-  free(ie1);
-  free(is1);
+  ;
 
   if (strcasecmp(mode,"scf")==0) ClusterCol_TrimScratch();
 

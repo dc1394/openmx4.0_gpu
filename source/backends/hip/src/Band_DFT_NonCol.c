@@ -15,6 +15,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_solver_workspace.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
 #include "openmx_mgpu_band_plan.h"
@@ -4340,8 +4341,7 @@ static void BandNonCol_BuildDenseHs2_OpenMP(int n, int n2, const dcomplex *H11,
     }
 }
 
-double **ReEVec_i1,**ImEVec_i1,**ReEVec_i2,**ImEVec_i2;
-double **ReEVec_j1,**ImEVec_j1,**ReEVec_j2,**ImEVec_j2;
+
 
 void solve_evp_complex_( int *n2, int *MaxN, dcomplex *Hs2, int *na_rows2_1, double *a, dcomplex *Cs2, int *na_rows2_2, 
                          int *nblk2, int *mpi_comm_rows_int, int *mpi_comm_cols_int );
@@ -4389,7 +4389,7 @@ static double Calc_DM_Band_non_collinear(
     double *iDM11,
     double *iDM22, 
     double *rEDM11,
-    double *rEDM22);
+    double *rEDM22, const OpenMXBandSpinorScratch *spinors);
 
 
 double Calc_ParDM_Band_non_collinear(
@@ -4416,11 +4416,111 @@ double Calc_ParDM_Band_non_collinear(
     double *rDM12,
     double *iDM12,
     double *iDM11,
-    double *iDM22);
+    double *iDM22, const OpenMXBandSpinorScratch *spinors);
 
 
 
 #pragma GCC optimize("O2")
+typedef struct {
+  char *mode;
+  int SCF_iter;
+  int knum_i;
+  int knum_j;
+  int knum_k;
+  int SpinP_switch;
+  double *****nh;
+  double *****ImNL;
+  double ****CntOLP;
+  double *****CDM;
+  double *****EDM;
+  double *Eele0;
+  double *Eele1;
+  int *MP;
+  int *order_GA;
+  double *ko;
+  double *koS;
+  double ***EIGEN;
+  double *H1;
+  dcomplex *Hs11;
+  dcomplex *Hs22;
+  dcomplex *Hs12;
+  dcomplex **EVec1;
+  dcomplex *Ss;
+  dcomplex *Cs;
+  dcomplex *Hs;
+  dcomplex *Ss2;
+  dcomplex *Cs2;
+  dcomplex *Hs2;
+  int ***k_op;
+  int *T_k_op;
+  int **T_k_ID;
+  double *T_KGrids1;
+  double *T_KGrids2;
+  double *T_KGrids3;
+  int myworld1;
+  int *NPROCS_ID1;
+  int *Comm_World1;
+  int *NPROCS_WD1;
+  int *Comm_World_StartID1;
+  MPI_Comm *MPI_CommWD1;
+  int myworld2;
+  int *NPROCS_ID2;
+  int *NPROCS_WD2;
+  int *Comm_World2;
+  int *Comm_World_StartID2;
+  MPI_Comm *MPI_CommWD2;
+  const OpenMXElectronicViews *electronic;
+} Band_DFT_NonCol_arguments;
+static double Band_DFT_NonCol_owned(char *mode,
+                    int SCF_iter,
+                    int knum_i, int knum_j, int knum_k,
+		    int SpinP_switch,
+		    double *****nh,
+		    double *****ImNL,
+		    double ****CntOLP,
+		    double *****CDM,
+		    double *****EDM,
+		    double Eele0[2], double Eele1[2],
+		    int *MP,
+		    int *order_GA,
+		    double *ko,
+		    double *koS,
+		    double ***EIGEN,
+		    double *H1,
+		    dcomplex *Hs11,
+		    dcomplex *Hs22,
+		    dcomplex *Hs12,
+		    dcomplex **EVec1,
+		    dcomplex *Ss,
+		    dcomplex *Cs,
+                    dcomplex *Hs,
+		    dcomplex *Ss2,
+		    dcomplex *Cs2,
+                    dcomplex *Hs2,
+		    int ***k_op,
+		    int *T_k_op,
+		    int **T_k_ID,
+		    double *T_KGrids1,
+		    double *T_KGrids2,
+		    double *T_KGrids3,
+                    int myworld1,
+		    int *NPROCS_ID1,
+		    int *Comm_World1,
+		    int *NPROCS_WD1,
+		    int *Comm_World_StartID1,
+		    MPI_Comm *MPI_CommWD1,
+                    int myworld2,
+		    int *NPROCS_ID2,
+		    int *NPROCS_WD2,
+		    int *Comm_World2,
+		    int *Comm_World_StartID2,
+		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner);
+static int Band_DFT_NonCol_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Band_DFT_NonCol_arguments *a=(Band_DFT_NonCol_arguments*)arguments;
+  *result=Band_DFT_NonCol_owned(a->mode,a->SCF_iter,a->knum_i,a->knum_j,a->knum_k,a->SpinP_switch,a->nh,a->ImNL,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->MP,a->order_GA,a->ko,a->koS,a->EIGEN,a->H1,a->Hs11,a->Hs22,a->Hs12,a->EVec1,a->Ss,a->Cs,a->Hs,a->Ss2,a->Cs2,a->Hs2,a->k_op,a->T_k_op,a->T_k_ID,a->T_KGrids1,a->T_KGrids2,a->T_KGrids3,a->myworld1,a->NPROCS_ID1,a->Comm_World1,a->NPROCS_WD1,a->Comm_World_StartID1,a->MPI_CommWD1,a->myworld2,a->NPROCS_ID2,a->NPROCS_WD2,a->Comm_World2,a->Comm_World_StartID2,a->MPI_CommWD2,a->electronic,owner);
+  return 1;
+}
 double Band_DFT_NonCol(
                     char *mode,
                     int SCF_iter,
@@ -4467,6 +4567,58 @@ double Band_DFT_NonCol(
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic)
 {
+  Band_DFT_NonCol_arguments arguments={mode,SCF_iter,knum_i,knum_j,knum_k,SpinP_switch,nh,ImNL,CntOLP,CDM,EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN,H1,Hs11,Hs22,Hs12,EVec1,Ss,Cs,Hs,Ss2,Cs2,Hs2,k_op,T_k_op,T_k_ID,T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,Comm_World_StartID2,MPI_CommWD2,electronic};
+  return OpenMX_Solver_Run(Band_DFT_NonCol_operation,&arguments);
+}
+
+static double Band_DFT_NonCol_owned(char *mode,
+                    int SCF_iter,
+                    int knum_i, int knum_j, int knum_k,
+		    int SpinP_switch,
+		    double *****nh,
+		    double *****ImNL,
+		    double ****CntOLP,
+		    double *****CDM,
+		    double *****EDM,
+		    double Eele0[2], double Eele1[2],
+		    int *MP,
+		    int *order_GA,
+		    double *ko,
+		    double *koS,
+		    double ***EIGEN,
+		    double *H1,
+		    dcomplex *Hs11,
+		    dcomplex *Hs22,
+		    dcomplex *Hs12,
+		    dcomplex **EVec1,
+		    dcomplex *Ss,
+		    dcomplex *Cs,
+                    dcomplex *Hs,
+		    dcomplex *Ss2,
+		    dcomplex *Cs2,
+                    dcomplex *Hs2,
+		    int ***k_op,
+		    int *T_k_op,
+		    int **T_k_ID,
+		    double *T_KGrids1,
+		    double *T_KGrids2,
+		    double *T_KGrids3,
+                    int myworld1,
+		    int *NPROCS_ID1,
+		    int *Comm_World1,
+		    int *NPROCS_WD1,
+		    int *Comm_World_StartID1,
+		    MPI_Comm *MPI_CommWD1,
+                    int myworld2,
+		    int *NPROCS_ID2,
+		    int *NPROCS_WD2,
+		    int *Comm_World2,
+		    int *Comm_World_StartID2,
+		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *solver_owner)
+{
+  OpenMXBandSpinorScratch spinors;
+
+
   double *****ParDM=electronic->ParDM;
   double ******iDM=electronic->iDM;
   double *****iParDM=electronic->iParDM;
@@ -4646,48 +4798,40 @@ double Band_DFT_NonCol(
      allocation of arrays
   ***********************************************/
 
-  My_NZeros = (int*)malloc(sizeof(int)*numprocs0);
-  SP_NZeros = (int*)malloc(sizeof(int)*numprocs0);
-  SP_Atoms = (int*)malloc(sizeof(int)*numprocs0);
+  My_NZeros=OpenMX_Solver_Int(solver_owner,"My_NZeros",((size_t)1)*numprocs0);
+  SP_NZeros=OpenMX_Solver_Int(solver_owner,"SP_NZeros",((size_t)1)*numprocs0);
+  SP_Atoms=OpenMX_Solver_Int(solver_owner,"SP_Atoms",((size_t)1)*numprocs0);
 
-  ReEVec_i1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ReEVec_i1=OpenMX_Solver_RealView(solver_owner,"ReEVec_i1",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_i1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
-  ImEVec_i1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ImEVec_i1=OpenMX_Solver_RealView(solver_owner,"ImEVec_i1",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_i1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
-  ReEVec_i2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ReEVec_i2=OpenMX_Solver_RealView(solver_owner,"ReEVec_i2",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_i2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
-  ImEVec_i2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ImEVec_i2=OpenMX_Solver_RealView(solver_owner,"ImEVec_i2",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_i2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
-  ReEVec_j1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ReEVec_j1=OpenMX_Solver_RealView(solver_owner,"ReEVec_j1",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_j1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
-  ImEVec_j1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ImEVec_j1=OpenMX_Solver_RealView(solver_owner,"ImEVec_j1",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_j1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
-  ReEVec_j2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ReEVec_j2=OpenMX_Solver_RealView(solver_owner,"ReEVec_j2",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_j2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
-  ImEVec_j2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
+  spinors.ImEVec_j2=OpenMX_Solver_RealView(solver_owner,"ImEVec_j2",((size_t)1)*List_YOUSO[7],((size_t)1)*(MaxN+1));
   for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_j2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
   }
 
   /****************************************************
@@ -4700,14 +4844,14 @@ double Band_DFT_NonCol(
      allocation of arrays 
   ***********************************************/
 
-  rDM11 = (double*)malloc(sizeof(double)*size_H1);
-  rDM22= (double*)malloc(sizeof(double)*size_H1);
-  rDM12 = (double*)malloc(sizeof(double)*size_H1);
-  iDM11 = (double*)malloc(sizeof(double)*size_H1);
-  iDM22 = (double*)malloc(sizeof(double)*size_H1);
-  iDM12 = (double*)malloc(sizeof(double)*size_H1);
-  rEDM11 = (double*)malloc(sizeof(double)*size_H1);
-  rEDM22 = (double*)malloc(sizeof(double)*size_H1);
+  rDM11=OpenMX_Solver_Real(solver_owner,"rDM11",((size_t)1)*size_H1);
+  rDM22=OpenMX_Solver_Real(solver_owner,"rDM22",((size_t)1)*size_H1);
+  rDM12=OpenMX_Solver_Real(solver_owner,"rDM12",((size_t)1)*size_H1);
+  iDM11=OpenMX_Solver_Real(solver_owner,"iDM11",((size_t)1)*size_H1);
+  iDM22=OpenMX_Solver_Real(solver_owner,"iDM22",((size_t)1)*size_H1);
+  iDM12=OpenMX_Solver_Real(solver_owner,"iDM12",((size_t)1)*size_H1);
+  rEDM11=OpenMX_Solver_Real(solver_owner,"rEDM11",((size_t)1)*size_H1);
+  rEDM22=OpenMX_Solver_Real(solver_owner,"rEDM22",((size_t)1)*size_H1);
 
   for (i=0; i<size_H1; i++){
     rDM11[i] = 0.0;
@@ -5063,7 +5207,7 @@ double Band_DFT_NonCol(
 			      BandNonCol_KRefEnsure(T_knum,n2);
 			  }
 			  if (use_k_dense_gpusolver){
-			    dense_k_owner = (int*)malloc(sizeof(int)*(size_t)T_knum);
+			    dense_k_owner=OpenMX_Solver_Int(solver_owner,"dense_k_owner",((size_t)1)*(size_t)T_knum);
 			    if (dense_k_owner==NULL){
 			      BandNonCol_AbortWithMessage("Failed to allocate dense k-point owner table in Band_DFT_NonCol.c.");
 			    }
@@ -5095,7 +5239,7 @@ double Band_DFT_NonCol(
       if (myid0 == Host_ID && BandNonCol_GpuVerbose())
         printf("<Band> SCF %d: reusing shared packed H/S for all non-collinear k points.\n", SCF_iter);
     }
-    dense_k_order = (int*)malloc(sizeof(int)*(size_t)T_knum);
+    dense_k_order=OpenMX_Solver_Int(solver_owner,"dense_k_order",((size_t)1)*(size_t)T_knum);
     if (dense_k_order == NULL)
       BandNonCol_AbortWithMessage("Cannot allocate GPU k-point turn order.");
     /* Consecutive k points normally belong to the same MPI rank. A
@@ -5133,13 +5277,13 @@ double Band_DFT_NonCol(
 
   /* allocation */
 
-  is1 = (int*)malloc(sizeof(int)*numprocs2);
-  ie1 = (int*)malloc(sizeof(int)*numprocs2);
-  is2 = (int*)malloc(sizeof(int)*numprocs2);
-  ie2 = (int*)malloc(sizeof(int)*numprocs2);
+  is1=OpenMX_Solver_Int(solver_owner,"is1",((size_t)1)*numprocs2);
+  ie1=OpenMX_Solver_Int(solver_owner,"ie1",((size_t)1)*numprocs2);
+  is2=OpenMX_Solver_Int(solver_owner,"is2",((size_t)1)*numprocs2);
+  ie2=OpenMX_Solver_Int(solver_owner,"ie2",((size_t)1)*numprocs2);
 
-  Num_Snd_EV = (int*)malloc(sizeof(int)*numprocs2);
-  Num_Rcv_EV = (int*)malloc(sizeof(int)*numprocs2);
+  Num_Snd_EV=OpenMX_Solver_Int(solver_owner,"Num_Snd_EV",((size_t)1)*numprocs2);
+  Num_Rcv_EV=OpenMX_Solver_Int(solver_owner,"Num_Rcv_EV",((size_t)1)*numprocs2);
 
   /* make is1 and ie1 */ 
 
@@ -5243,12 +5387,12 @@ double Band_DFT_NonCol(
   Max_Num_Snd_EV++;
   Max_Num_Rcv_EV++;
 
-  index_Snd_i = (int*)malloc(sizeof(int)*Max_Num_Snd_EV);
-  index_Snd_j = (int*)malloc(sizeof(int)*Max_Num_Snd_EV);
-  EVec_Snd = (double*)malloc(sizeof(double)*Max_Num_Snd_EV*2);
-  index_Rcv_i = (int*)malloc(sizeof(int)*Max_Num_Rcv_EV);
-  index_Rcv_j = (int*)malloc(sizeof(int)*Max_Num_Rcv_EV);
-  EVec_Rcv = (double*)malloc(sizeof(double)*Max_Num_Rcv_EV*2);
+  index_Snd_i=OpenMX_Solver_Int(solver_owner,"index_Snd_i",((size_t)1)*Max_Num_Snd_EV);
+  index_Snd_j=OpenMX_Solver_Int(solver_owner,"index_Snd_j",((size_t)1)*Max_Num_Snd_EV);
+  EVec_Snd=OpenMX_Solver_Real(solver_owner,"EVec_Snd",((size_t)1)*Max_Num_Snd_EV*2);
+  index_Rcv_i=OpenMX_Solver_Int(solver_owner,"index_Rcv_i",((size_t)1)*Max_Num_Rcv_EV);
+  index_Rcv_j=OpenMX_Solver_Int(solver_owner,"index_Rcv_j",((size_t)1)*Max_Num_Rcv_EV);
+  EVec_Rcv=OpenMX_Solver_Real(solver_owner,"EVec_Rcv",((size_t)1)*Max_Num_Rcv_EV*2);
 
   /****************************************************
                       PrintMemory
@@ -5331,30 +5475,22 @@ double Band_DFT_NonCol(
 	        }
 	      }
 	      else if (owns_dense_k_group){
-	        m_olp = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h12i = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_i11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_i22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_i12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+	        m_olp=OpenMX_Solver_Real(solver_owner,"m_olp",((size_t)1)*(size_t)size_H1);
+	        m_h11=OpenMX_Solver_Real(solver_owner,"m_h11",((size_t)1)*(size_t)size_H1);
+	        m_h22=OpenMX_Solver_Real(solver_owner,"m_h22",((size_t)1)*(size_t)size_H1);
+	        m_h12=OpenMX_Solver_Real(solver_owner,"m_h12",((size_t)1)*(size_t)size_H1);
+	        m_h12i=OpenMX_Solver_Real(solver_owner,"m_h12i",((size_t)1)*(size_t)size_H1);
+	        m_i11=OpenMX_Solver_Real(solver_owner,"m_i11",((size_t)1)*(size_t)size_H1);
+	        m_i22=OpenMX_Solver_Real(solver_owner,"m_i22",((size_t)1)*(size_t)size_H1);
+	        m_i12=OpenMX_Solver_Real(solver_owner,"m_i12",((size_t)1)*(size_t)size_H1);
 
 	        if (m_olp==NULL || m_h11==NULL || m_h22==NULL || m_h12==NULL ||
 	            m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
-	          free(m_olp);
-	          free(m_h11);
-	          free(m_h22);
-	          free(m_h12);
-	          free(m_h12i);
-	          free(m_i11);
-	          free(m_i22);
-	          free(m_i12);
 	          BandNonCol_AbortWithMessage("Failed to allocate dense k-point packed matrices in Band_DFT_NonCol.c.");
 	        }
 	      }
 	      else {
-	        pack_buffer = (double*)malloc(sizeof(double)*(size_t)size_H1);
+	        pack_buffer=OpenMX_Solver_Real(solver_owner,"pack_buffer",((size_t)1)*(size_t)size_H1);
 	        if (pack_buffer==NULL){
 	          BandNonCol_AbortWithMessage("Failed to allocate dense k-point packing buffer in Band_DFT_NonCol.c.");
 	        }
@@ -5369,7 +5505,6 @@ double Band_DFT_NonCol(
 	        BandNonCol_PackDenseM1(ImNL[0],owns_dense_k_group ? m_i11 : pack_buffer,MP,order_GA);
 	        BandNonCol_PackDenseM1(ImNL[1],owns_dense_k_group ? m_i22 : pack_buffer,MP,order_GA);
 	        BandNonCol_PackDenseM1(ImNL[2],owns_dense_k_group ? m_i12 : pack_buffer,MP,order_GA);
-	        free(pack_buffer);
 	        pack_buffer = NULL;
 	      }
 
@@ -5423,14 +5558,6 @@ double Band_DFT_NonCol(
 
 	      if (owns_dense_k_group){
 	        if (!use_k_packed_cache){
-	          free(m_olp);
-	          free(m_h11);
-	          free(m_h22);
-	          free(m_h12);
-	          free(m_h12i);
-	          free(m_i11);
-	          free(m_i22);
-	          free(m_i12);
 	          m_olp = NULL;
 	          m_h11 = NULL;
 	          m_h22 = NULL;
@@ -5545,30 +5672,22 @@ double Band_DFT_NonCol(
 	        }
 	      }
 	      else if (owns_root_dense_group){
-	        m_olp = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_h12i = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_i11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_i22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-	        m_i12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+	        m_olp=OpenMX_Solver_Real(solver_owner,"m_olp",((size_t)1)*(size_t)size_H1);
+	        m_h11=OpenMX_Solver_Real(solver_owner,"m_h11",((size_t)1)*(size_t)size_H1);
+	        m_h22=OpenMX_Solver_Real(solver_owner,"m_h22",((size_t)1)*(size_t)size_H1);
+	        m_h12=OpenMX_Solver_Real(solver_owner,"m_h12",((size_t)1)*(size_t)size_H1);
+	        m_h12i=OpenMX_Solver_Real(solver_owner,"m_h12i",((size_t)1)*(size_t)size_H1);
+	        m_i11=OpenMX_Solver_Real(solver_owner,"m_i11",((size_t)1)*(size_t)size_H1);
+	        m_i22=OpenMX_Solver_Real(solver_owner,"m_i22",((size_t)1)*(size_t)size_H1);
+	        m_i12=OpenMX_Solver_Real(solver_owner,"m_i12",((size_t)1)*(size_t)size_H1);
 
 	        if (m_olp==NULL || m_h11==NULL || m_h22==NULL || m_h12==NULL ||
 	            m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
-	          free(m_olp);
-	          free(m_h11);
-	          free(m_h22);
-	          free(m_h12);
-	          free(m_h12i);
-	          free(m_i11);
-	          free(m_i22);
-	          free(m_i12);
 	          BandNonCol_AbortWithMessage("Failed to allocate root dense packed matrices in Band_DFT_NonCol.c.");
 	        }
 	      }
 	      else {
-	        pack_buffer = (double*)malloc(sizeof(double)*(size_t)size_H1);
+	        pack_buffer=OpenMX_Solver_Real(solver_owner,"pack_buffer",((size_t)1)*(size_t)size_H1);
 	        if (pack_buffer==NULL){
 	          BandNonCol_AbortWithMessage("Failed to allocate root dense packing buffer in Band_DFT_NonCol.c.");
 	        }
@@ -5583,7 +5702,6 @@ double Band_DFT_NonCol(
 	        BandNonCol_PackDenseM1(ImNL[0],owns_root_dense_group ? m_i11 : pack_buffer,MP,order_GA);
 	        BandNonCol_PackDenseM1(ImNL[1],owns_root_dense_group ? m_i22 : pack_buffer,MP,order_GA);
 	        BandNonCol_PackDenseM1(ImNL[2],owns_root_dense_group ? m_i12 : pack_buffer,MP,order_GA);
-	        free(pack_buffer);
 	        pack_buffer = NULL;
 	      }
 
@@ -5733,14 +5851,6 @@ double Band_DFT_NonCol(
 	      }
 
 	      if (!use_setham_packed_cache && owns_root_dense_group){
-	        free(m_olp);
-	        free(m_h11);
-	        free(m_h22);
-	        free(m_h12);
-	        free(m_h12i);
-	        free(m_i11);
-	        free(m_i22);
-	        free(m_i12);
 	        m_olp = NULL;
 	        m_h11 = NULL;
 	        m_h22 = NULL;
@@ -6504,7 +6614,7 @@ double Band_DFT_NonCol(
 					    CDM,iDM[0],EDM,EIGEN[0][0],
 					    EVec1[0],
 					    rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
-					    rEDM11,rEDM22 );
+					    rEDM11,rEDM22 , &spinors);
 	      }
       else if (scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2)){
         BandNonCol_CalcDMAllK1_OpenMP( myid0,myid2,size_H1,
@@ -6521,7 +6631,7 @@ double Band_DFT_NonCol(
 				    CDM,iDM[0],EDM,EIGEN[0][kloop],
 				    EVec1[0],
 				    rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
-				    rEDM11,rEDM22 );
+				    rEDM11,rEDM22 , &spinors);
       }
     }
 
@@ -6531,7 +6641,7 @@ double Band_DFT_NonCol(
 				     myid0,myid2,size_H1,
 				     is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
 				     ParDM,iParDM,EIGEN[0][kloop],EVec1[0],
-				     rDM11,rDM22,rDM12,iDM12,iDM11,iDM22);
+				     rDM11,rDM22,rDM12,iDM12,iDM11,iDM22, &spinors);
     } 
 
   } /* if (all_knum==1) */
@@ -6663,30 +6773,22 @@ double Band_DFT_NonCol(
 		          }
 		        }
 		        else if (group_needs_solve && owns_dense_k_group){
-		          m_olp = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		          m_h11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		          m_h22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		          m_h12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		          m_h12i = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		          m_i11 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		          m_i22 = (double*)malloc(sizeof(double)*(size_t)size_H1);
-		          m_i12 = (double*)malloc(sizeof(double)*(size_t)size_H1);
+		          m_olp=OpenMX_Solver_Real(solver_owner,"m_olp",((size_t)1)*(size_t)size_H1);
+		          m_h11=OpenMX_Solver_Real(solver_owner,"m_h11",((size_t)1)*(size_t)size_H1);
+		          m_h22=OpenMX_Solver_Real(solver_owner,"m_h22",((size_t)1)*(size_t)size_H1);
+		          m_h12=OpenMX_Solver_Real(solver_owner,"m_h12",((size_t)1)*(size_t)size_H1);
+		          m_h12i=OpenMX_Solver_Real(solver_owner,"m_h12i",((size_t)1)*(size_t)size_H1);
+		          m_i11=OpenMX_Solver_Real(solver_owner,"m_i11",((size_t)1)*(size_t)size_H1);
+		          m_i22=OpenMX_Solver_Real(solver_owner,"m_i22",((size_t)1)*(size_t)size_H1);
+		          m_i12=OpenMX_Solver_Real(solver_owner,"m_i12",((size_t)1)*(size_t)size_H1);
 
 		          if (m_olp==NULL || m_h11==NULL || m_h22==NULL || m_h12==NULL ||
 		              m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
-		            free(m_olp);
-		            free(m_h11);
-		            free(m_h22);
-		            free(m_h12);
-		            free(m_h12i);
-		            free(m_i11);
-		            free(m_i22);
-		            free(m_i12);
 		            BandNonCol_AbortWithMessage("Failed to allocate dense k-point DM packed matrices in Band_DFT_NonCol.c.");
 		          }
 		        }
 		        else if (group_needs_solve){
-		          pack_buffer = (double*)malloc(sizeof(double)*(size_t)size_H1);
+		          pack_buffer=OpenMX_Solver_Real(solver_owner,"pack_buffer",((size_t)1)*(size_t)size_H1);
 		          if (pack_buffer==NULL){
 		            BandNonCol_AbortWithMessage("Failed to allocate dense k-point DM packing buffer in Band_DFT_NonCol.c.");
 		          }
@@ -6701,7 +6803,6 @@ double Band_DFT_NonCol(
 		          BandNonCol_PackDenseM1(ImNL[0],owns_dense_k_group ? m_i11 : pack_buffer,MP,order_GA);
 		          BandNonCol_PackDenseM1(ImNL[1],owns_dense_k_group ? m_i22 : pack_buffer,MP,order_GA);
 		          BandNonCol_PackDenseM1(ImNL[2],owns_dense_k_group ? m_i12 : pack_buffer,MP,order_GA);
-		          free(pack_buffer);
 		          pack_buffer = NULL;
 		        }
 
@@ -6754,14 +6855,6 @@ double Band_DFT_NonCol(
 
 		        if (owns_dense_k_group){
 		          if (!use_k_packed_cache){
-		            free(m_olp);
-		            free(m_h11);
-		            free(m_h22);
-		            free(m_h12);
-		            free(m_h12i);
-		            free(m_i11);
-		            free(m_i22);
-		            free(m_i12);
 		            m_olp = NULL;
 		            m_h11 = NULL;
 		            m_h22 = NULL;
@@ -6796,7 +6889,7 @@ double Band_DFT_NonCol(
 					  CDM,iDM[0],EDM,EIGEN[0][0],
 					  EVec1[0],
 					  rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
-					  rEDM11,rEDM22 );
+					  rEDM11,rEDM22 , &spinors);
 	    }
 	    else {
 
@@ -7140,7 +7233,7 @@ double Band_DFT_NonCol(
 				    CDM,iDM[0],EDM,EIGEN[0][kloop],
 				    EVec1[0],
 				    rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
-				    rEDM11,rEDM22 );
+				    rEDM11,rEDM22 , &spinors);
         }
       }
 
@@ -7150,7 +7243,7 @@ double Band_DFT_NonCol(
 				       myid0,myid2,size_H1,
 				       is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
 				       ParDM,iParDM,EIGEN[0][kloop],EVec1[0],
-				       rDM11,rDM22,rDM12,iDM12,iDM11,iDM22);
+				       rDM11,rDM22,rDM12,iDM12,iDM11,iDM22, &spinors);
 
       }
 
@@ -7171,7 +7264,7 @@ double Band_DFT_NonCol(
 				  CDM,iDM[0],EDM,EIGEN[0][kloop],
 				  EVec1[0],
 				  rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
-				  rEDM11,rEDM22 );
+				  rEDM11,rEDM22 , &spinors);
 
     }
 
@@ -7181,7 +7274,7 @@ double Band_DFT_NonCol(
 				     myid0,myid2,size_H1,
 				     is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
 				     ParDM,iParDM,EIGEN[0][kloop],EVec1[0],
-				     rDM11,rDM22,rDM12,iDM12,iDM11,iDM22);
+				     rDM11,rDM22,rDM12,iDM12,iDM11,iDM22, &spinors);
 
 	    }
 	    }
@@ -7354,80 +7447,7 @@ double Band_DFT_NonCol(
 
   } // end of if ( strcasecmp(mode,"scf")==0 ){ 
 
-  /****************************************************
-                       free arrays
-  ****************************************************/
-
-  free(My_NZeros);
-  free(SP_NZeros);
-  free(SP_Atoms);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_i1[i]);
-  }
-  free(ReEVec_i1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_i1[i]);
-  }
-  free(ImEVec_i1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_i2[i]);
-  }
-  free(ReEVec_i2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_i2[i]);
-  }
-  free(ImEVec_i2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_j1[i]);
-  }
-  free(ReEVec_j1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_j1[i]);
-  }
-  free(ImEVec_j1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_j2[i]);
-  }
-  free(ReEVec_j2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_j2[i]);
-  }
-  free(ImEVec_j2);
-
-  free(rDM11);
-  free(rDM22);
-  free(rDM12);
-  free(iDM11);
-  free(iDM22);
-  free(iDM12);
-  free(rEDM11);
-  free(rEDM22);
-
-  free(is1);
-  free(ie1);
-
-  free(is2);
-  free(ie2);
-
-  free(Num_Snd_EV);
-  free(Num_Rcv_EV);
-
-  free(index_Snd_i);
-  free(index_Snd_j);
-  free(EVec_Snd); 
-  free(index_Rcv_i);
-  free(index_Rcv_j);
-  free(EVec_Rcv);
-  free(dense_k_owner);
-  free(dense_k_order);
+  /* Ordinary workspaces are released by the C++ invocation. */
   if (k_evec_cache != NULL) {
     for (int point=0; point<T_knum; ++point) free(k_evec_cache[point]);
     free(k_evec_cache);
@@ -8109,7 +8129,7 @@ double Calc_DM_Band_non_collinear(
     double *iDM11,
     double *iDM22, 
     double *rEDM11,
-    double *rEDM22)
+    double *rEDM22, const OpenMXBandSpinorScratch *spinors)
 {
   int i,j,k,po,p,GA_AN,MA_AN,wanA,tnoA,Anum,Rn,kmin,kmax;
   int LB_AN,GB_AN,wanB,tnoB,Bnum,i1,j0,j1,i2,j2,ID,l1,l2,l3;
@@ -8177,11 +8197,17 @@ double Calc_DM_Band_non_collinear(
 	i1 = (Anum + i - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
         i2 = (Anum + i + n - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
 
-	for (k=kmin; k<=kmax; k++){
-	  ReEVec_i1[i][k] = EVec1[i1+k].r;
-	  ImEVec_i1[i][k] = EVec1[i1+k].i;
-	  ReEVec_i2[i][k] = EVec1[i2+k].r;
-	  ImEVec_i2[i][k] = EVec1[i2+k].i;
+	{
+	  double *re_i1_row_37=openmx_solver_real_matrix_row(&spinors->ReEVec_i1,i);
+	  double *im_i1_row_38=openmx_solver_real_matrix_row(&spinors->ImEVec_i1,i);
+	  double *re_i2_row_39=openmx_solver_real_matrix_row(&spinors->ReEVec_i2,i);
+	  double *im_i2_row_40=openmx_solver_real_matrix_row(&spinors->ImEVec_i2,i);
+	  for (k=kmin; k<=kmax; k++){
+	  re_i1_row_37[k] = EVec1[i1+k].r;
+	  im_i1_row_38[k] = EVec1[i1+k].i;
+	  re_i2_row_39[k] = EVec1[i2+k].r;
+	  im_i2_row_40[k] = EVec1[i2+k].i;
+	}
 	}
       }
 
@@ -8207,18 +8233,29 @@ double Calc_DM_Band_non_collinear(
         for (j=0; j<tnoB; j++){
 	  j1 = (Bnum + j - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
 	  j2 = (Bnum + j + n - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
-          for (k=kmin; k<=kmax; k++){
-	    ReEVec_j1[j][k] = EVec1[j1+k].r;
-	    ImEVec_j1[j][k] = EVec1[j1+k].i;
-	    ReEVec_j2[j][k] = EVec1[j2+k].r;
-	    ImEVec_j2[j][k] = EVec1[j2+k].i;
+          {
+            double *re_j1_row_33=openmx_solver_real_matrix_row(&spinors->ReEVec_j1,j);
+            double *im_j1_row_34=openmx_solver_real_matrix_row(&spinors->ImEVec_j1,j);
+            double *re_j2_row_35=openmx_solver_real_matrix_row(&spinors->ReEVec_j2,j);
+            double *im_j2_row_36=openmx_solver_real_matrix_row(&spinors->ImEVec_j2,j);
+            for (k=kmin; k<=kmax; k++){
+	    re_j1_row_33[k] = EVec1[j1+k].r;
+	    im_j1_row_34[k] = EVec1[j1+k].i;
+	    re_j2_row_35[k] = EVec1[j2+k].r;
+	    im_j2_row_36[k] = EVec1[j2+k].i;
+          }
           } 
         }
 
         /* loops for i and j */
 
 	for (i=0; i<tnoA; i++){
-	  for (j=0; j<tnoB; j++){
+	  {
+	    double *re_i1_row_29=openmx_solver_real_matrix_row(&spinors->ReEVec_i1,i);
+	    double *im_i1_row_30=openmx_solver_real_matrix_row(&spinors->ImEVec_i1,i);
+	    double *re_i2_row_31=openmx_solver_real_matrix_row(&spinors->ReEVec_i2,i);
+	    double *im_i2_row_32=openmx_solver_real_matrix_row(&spinors->ImEVec_i2,i);
+	    for (j=0; j<tnoB; j++){
 
 	    d1 = 0.0;
 	    d2 = 0.0;
@@ -8231,14 +8268,19 @@ double Calc_DM_Band_non_collinear(
 	    d9 = 0.0;
 	    d10= 0.0;
 
-	    for (k=kmin; k<=kmax; k++){
+	    {
+	      double *re_j1_row_22=openmx_solver_real_matrix_row(&spinors->ReEVec_j1,j);
+	      double *im_j1_row_24=openmx_solver_real_matrix_row(&spinors->ImEVec_j1,j);
+	      double *re_j2_row_26=openmx_solver_real_matrix_row(&spinors->ReEVec_j2,j);
+	      double *im_j2_row_28=openmx_solver_real_matrix_row(&spinors->ImEVec_j2,j);
+	      for (k=kmin; k<=kmax; k++){
 
-	      ReA = ReEVec_i1[i][k]*ReEVec_j1[j][k] + ImEVec_i1[i][k]*ImEVec_j1[j][k]; 
-	      ImA = ReEVec_i1[i][k]*ImEVec_j1[j][k] - ImEVec_i1[i][k]*ReEVec_j1[j][k];
-	      ReB = ReEVec_i2[i][k]*ReEVec_j2[j][k] + ImEVec_i2[i][k]*ImEVec_j2[j][k];
-	      ImB = ReEVec_i2[i][k]*ImEVec_j2[j][k] - ImEVec_i2[i][k]*ReEVec_j2[j][k];
-	      ReC = ReEVec_i1[i][k]*ReEVec_j2[j][k] + ImEVec_i1[i][k]*ImEVec_j2[j][k];
-	      ImC = ReEVec_i1[i][k]*ImEVec_j2[j][k] - ImEVec_i1[i][k]*ReEVec_j2[j][k]; 
+	      ReA = re_i1_row_29[k]*re_j1_row_22[k] + im_i1_row_30[k]*im_j1_row_24[k];
+	      ImA = re_i1_row_29[k]*im_j1_row_24[k] - im_i1_row_30[k]*re_j1_row_22[k];
+	      ReB = re_i2_row_31[k]*re_j2_row_26[k] + im_i2_row_32[k]*im_j2_row_28[k];
+	      ImB = re_i2_row_31[k]*im_j2_row_28[k] - im_i2_row_32[k]*re_j2_row_26[k];
+	      ReC = re_i1_row_29[k]*re_j2_row_26[k] + im_i1_row_30[k]*im_j2_row_28[k];
+	      ImC = re_i1_row_29[k]*im_j2_row_28[k] - im_i1_row_30[k]*re_j2_row_26[k];
 
 	      d1 += ReA;
 	      d2 += ImA;
@@ -8250,6 +8292,7 @@ double Calc_DM_Band_non_collinear(
 	      d8 += ImA*ko[k];
 	      d9 += ReB*ko[k];
 	      d10 += ImB*ko[k];
+	    }
 	    }
 
 	    /* Re DM11 */
@@ -8279,6 +8322,7 @@ double Calc_DM_Band_non_collinear(
 	    /* increment of p */
 	    p++;  
 
+	  }
 	  }
 	}
       }
@@ -8409,7 +8453,7 @@ double Calc_ParDM_Band_non_collinear(
     double *rDM12,
     double *iDM12,
     double *iDM11,
-    double *iDM22) 
+    double *iDM22, const OpenMXBandSpinorScratch *spinors)
 {
   int i,j,k,po,p,GA_AN,MA_AN,wanA,tnoA,Anum,Rn,kmin,kmax;
   int LB_AN,GB_AN,wanB,tnoB,Bnum,i1,j0,j1,i2,j2,ID,l1,l2,l3;
@@ -8491,11 +8535,17 @@ double Calc_ParDM_Band_non_collinear(
 	i1 = (Anum + i - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
         i2 = (Anum + i + n - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
 
-	for (k=kmin; k<=kmax; k++){
-	  ReEVec_i1[i][k] = EVec1[i1+k].r;
-	  ImEVec_i1[i][k] = EVec1[i1+k].i;
-	  ReEVec_i2[i][k] = EVec1[i2+k].r;
-	  ImEVec_i2[i][k] = EVec1[i2+k].i;
+	{
+	  double *re_i1_row_17=openmx_solver_real_matrix_row(&spinors->ReEVec_i1,i);
+	  double *im_i1_row_18=openmx_solver_real_matrix_row(&spinors->ImEVec_i1,i);
+	  double *re_i2_row_19=openmx_solver_real_matrix_row(&spinors->ReEVec_i2,i);
+	  double *im_i2_row_20=openmx_solver_real_matrix_row(&spinors->ImEVec_i2,i);
+	  for (k=kmin; k<=kmax; k++){
+	  re_i1_row_17[k] = EVec1[i1+k].r;
+	  im_i1_row_18[k] = EVec1[i1+k].i;
+	  re_i2_row_19[k] = EVec1[i2+k].r;
+	  im_i2_row_20[k] = EVec1[i2+k].i;
+	}
 	}
       }
 
@@ -8521,18 +8571,29 @@ double Calc_ParDM_Band_non_collinear(
         for (j=0; j<tnoB; j++){
 	  j1 = (Bnum + j - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
 	  j2 = (Bnum + j + n - 1)*(ie2[myid2]-is2[myid2]+1) - is2[myid2];
-          for (k=kmin; k<=kmax; k++){
-	    ReEVec_j1[j][k] = EVec1[j1+k].r;
-	    ImEVec_j1[j][k] = EVec1[j1+k].i;
-	    ReEVec_j2[j][k] = EVec1[j2+k].r;
-	    ImEVec_j2[j][k] = EVec1[j2+k].i;
+          {
+            double *re_j1_row_13=openmx_solver_real_matrix_row(&spinors->ReEVec_j1,j);
+            double *im_j1_row_14=openmx_solver_real_matrix_row(&spinors->ImEVec_j1,j);
+            double *re_j2_row_15=openmx_solver_real_matrix_row(&spinors->ReEVec_j2,j);
+            double *im_j2_row_16=openmx_solver_real_matrix_row(&spinors->ImEVec_j2,j);
+            for (k=kmin; k<=kmax; k++){
+	    re_j1_row_13[k] = EVec1[j1+k].r;
+	    im_j1_row_14[k] = EVec1[j1+k].i;
+	    re_j2_row_15[k] = EVec1[j2+k].r;
+	    im_j2_row_16[k] = EVec1[j2+k].i;
+          }
           } 
         }
 
         /* loops for i and j */
 
 	for (i=0; i<tnoA; i++){
-	  for (j=0; j<tnoB; j++){
+	  {
+	    double *re_i1_row_9=openmx_solver_real_matrix_row(&spinors->ReEVec_i1,i);
+	    double *im_i1_row_10=openmx_solver_real_matrix_row(&spinors->ImEVec_i1,i);
+	    double *re_i2_row_11=openmx_solver_real_matrix_row(&spinors->ReEVec_i2,i);
+	    double *im_i2_row_12=openmx_solver_real_matrix_row(&spinors->ImEVec_i2,i);
+	    for (j=0; j<tnoB; j++){
 
 	    d1 = 0.0;
 	    d2 = 0.0;
@@ -8541,14 +8602,19 @@ double Calc_ParDM_Band_non_collinear(
 	    d5 = 0.0;
 	    d6 = 0.0;
 
-	    for (k=kmin; k<=kmax; k++){
+	    {
+	      double *re_j1_row_2=openmx_solver_real_matrix_row(&spinors->ReEVec_j1,j);
+	      double *im_j1_row_4=openmx_solver_real_matrix_row(&spinors->ImEVec_j1,j);
+	      double *re_j2_row_6=openmx_solver_real_matrix_row(&spinors->ReEVec_j2,j);
+	      double *im_j2_row_8=openmx_solver_real_matrix_row(&spinors->ImEVec_j2,j);
+	      for (k=kmin; k<=kmax; k++){
 
-	      ReA = ReEVec_i1[i][k]*ReEVec_j1[j][k] + ImEVec_i1[i][k]*ImEVec_j1[j][k]; 
-	      ImA = ReEVec_i1[i][k]*ImEVec_j1[j][k] - ImEVec_i1[i][k]*ReEVec_j1[j][k];
-	      ReB = ReEVec_i2[i][k]*ReEVec_j2[j][k] + ImEVec_i2[i][k]*ImEVec_j2[j][k];
-	      ImB = ReEVec_i2[i][k]*ImEVec_j2[j][k] - ImEVec_i2[i][k]*ReEVec_j2[j][k];
-	      ReC = ReEVec_i1[i][k]*ReEVec_j2[j][k] + ImEVec_i1[i][k]*ImEVec_j2[j][k];
-	      ImC = ReEVec_i1[i][k]*ImEVec_j2[j][k] - ImEVec_i1[i][k]*ReEVec_j2[j][k]; 
+	      ReA = re_i1_row_9[k]*re_j1_row_2[k] + im_i1_row_10[k]*im_j1_row_4[k];
+	      ImA = re_i1_row_9[k]*im_j1_row_4[k] - im_i1_row_10[k]*re_j1_row_2[k];
+	      ReB = re_i2_row_11[k]*re_j2_row_6[k] + im_i2_row_12[k]*im_j2_row_8[k];
+	      ImB = re_i2_row_11[k]*im_j2_row_8[k] - im_i2_row_12[k]*re_j2_row_6[k];
+	      ReC = re_i1_row_9[k]*re_j2_row_6[k] + im_i1_row_10[k]*im_j2_row_8[k];
+	      ImC = re_i1_row_9[k]*im_j2_row_8[k] - im_i1_row_10[k]*re_j2_row_6[k];
 
 	      d1 += windowF[k]*ReA;
 	      d2 += windowF[k]*ImA;
@@ -8557,6 +8623,7 @@ double Calc_ParDM_Band_non_collinear(
 	      d5 += windowF[k]*ReC;
 	      d6 += windowF[k]*ImC;
 
+	    }
 	    } // k
 
 	    /* Re DM11 */
@@ -8577,6 +8644,7 @@ double Calc_ParDM_Band_non_collinear(
 	    /* increment of p */
 	    p++;  
 
+	  }
 	  }
 	}
       }
