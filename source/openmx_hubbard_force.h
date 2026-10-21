@@ -2,10 +2,13 @@
 #define OPENMX_HUBBARD_FORCE_H
 /* Shared host Hubbard full-projector derivatives, originally in Force.c.
    Include after the native common declarations. Both backends use these exact
-   operations; local potentials and contraction coefficients are flat views. */
+   operations; local potentials and contraction coefficients are flat views.
+   The caller owns a reusable [9,max_orbitals,max_orbitals] transpose scratch;
+   every element read here is written during the current evaluation. */
 static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP,
-    double*** Hx, double*** Hy, double*** Hz, const OpenMXLocalBasisViews *local_basis)
+    double*** Hx, double*** Hy, double*** Hz, const OpenMXLocalBasisViews *local_basis,
+    OpenMXLocalTensor3 scratch)
 {
 
     int i, j, k, m, n, kg, kan, so, deri_kind, Mk_AN;
@@ -22,18 +25,10 @@ static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
     double sumx1, sumy1, sumz1;
     double sumx2, sumy2, sumz2;
 
-    const size_t shape[3]={9,(size_t)List_YOUSO[7],(size_t)List_YOUSO[7]};
-    OpenMXLocalTensor3 scratch;
-    char error[256];
-    OpenMXLocalTensorWorkspace *workspace=openmx_core_local_tensor_create(shape,&scratch,error,sizeof(error));
-    if(!workspace) {
-        fprintf(stderr,"Hubbard derivative scratch: %s\n",error);
-        MPI_Abort(mpi_comm_level1,1);abort();
-    }
-    const size_t stride=shape[1]*shape[2];
-    Hx2=(OpenMXLocalTensor3){3,shape[1],shape[2],scratch.values};
-    Hy2=(OpenMXLocalTensor3){3,shape[1],shape[2],scratch.values+3*stride};
-    Hz2=(OpenMXLocalTensor3){3,shape[1],shape[2],scratch.values+6*stride};
+    const size_t stride=scratch.n1*scratch.n2;
+    Hx2=(OpenMXLocalTensor3){3,scratch.n1,scratch.n2,scratch.values};
+    Hy2=(OpenMXLocalTensor3){3,scratch.n1,scratch.n2,scratch.values+3*stride};
+    Hz2=(OpenMXLocalTensor3){3,scratch.n1,scratch.n2,scratch.values+6*stride};
 
     /****************************************************
      start calc.
@@ -470,7 +465,6 @@ static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
         }
     }
 
-    openmx_core_local_tensor_destroy(workspace);
 }
 
 static void dH_U_NC_full(int Mc_AN, int h_AN, int q_AN,

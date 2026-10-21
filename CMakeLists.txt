@@ -138,6 +138,10 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_lifetime_cpu.py")
   set_tests_properties(force-invocation-lifetime PROPERTIES LABELS "unit;force"
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
+  add_test(NAME force-spin-trace-calls
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_traces_cpu.py")
+  set_tests_properties(force-spin-trace-calls PROPERTIES LABELS "unit;force"
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
   add_test(NAME nonlocal-invocation-lifetime
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_nonlocal_lifetime_cpu.py")
   set_tests_properties(nonlocal-invocation-lifetime PROPERTIES LABELS "unit;integrals"

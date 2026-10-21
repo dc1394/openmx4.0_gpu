@@ -27,6 +27,15 @@ OrbitalWorkspace::OrbitalWorkspace(OrbitalShape shape, Validated)
     angular_({shape.derivatives ? 3U : 1U,static_cast<std::size_t>(shape.maximum_angular+1),
               static_cast<std::size_t>(2*(shape.maximum_angular+1)+1)})
 {}
+OpenMXOrbitalBuffers OrbitalWorkspace::buffers() noexcept
+{
+  const auto r=radial(),a=angular();
+  const auto rn=r.extent(1)*r.extent(2),an=a.extent(1)*a.extent(2);
+  return {r.extent(1),r.extent(2),a.extent(2),r.data_handle(),
+    shape_.derivatives ? r.data_handle()+rn : nullptr,a.data_handle(),
+    shape_.derivatives ? a.data_handle()+an : nullptr,
+    shape_.derivatives ? a.data_handle()+2*an : nullptr};
+}
 } // namespace openmx::core
 
 struct OpenMXOrbitalWorkspace {
@@ -43,12 +52,7 @@ extern "C" OpenMXOrbitalWorkspace *openmx_core_orbital_create(const OpenMXOrbita
       throw std::invalid_argument("orbital allocation requires shape, buffers and a derivative flag");
     auto owner=std::make_unique<OpenMXOrbitalWorkspace>(openmx::core::OrbitalShape{
       shape->maximum_angular,shape->multiplicity,shape->derivatives != 0});
-    const auto r=owner->implementation.radial(), a=owner->implementation.angular();
-    const auto rn=r.extent(1)*r.extent(2), an=a.extent(1)*a.extent(2);
-    *buffers={r.extent(1),r.extent(2),a.extent(2),r.data_handle(),
-      shape->derivatives ? r.data_handle()+rn : nullptr,a.data_handle(),
-      shape->derivatives ? a.data_handle()+an : nullptr,
-      shape->derivatives ? a.data_handle()+2*an : nullptr};
+    *buffers=owner->implementation.buffers();
     return owner.release();
   } catch (const std::exception& e) {
     if (error && capacity) std::snprintf(error,capacity,"%s",e.what());

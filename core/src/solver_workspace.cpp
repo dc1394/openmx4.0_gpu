@@ -1,5 +1,6 @@
 #include "openmx_core_solver_workspace.h"
 #include <openmx/core/tensor.hpp>
+#include <openmx/core/orbital_workspace.hpp>
 #include <array>
 #include <climits>
 #include <cstdio>
@@ -62,6 +63,7 @@ struct Worker {
   Slots<std::max_align_t> bytes;
   Aliases<double> real_aliases;
   Aliases<dcomplex> complex_aliases;
+  std::map<std::string,std::unique_ptr<openmx::core::OrbitalWorkspace>,std::less<>> orbitals;
 };
 template<class T> T*** alias(Aliases<T>& slots,const char* name,const size_t* dimensions,T* values) {
   require(name && *name && dimensions,"missing solver alias name or dimensions");
@@ -169,6 +171,24 @@ extern "C" int openmx_core_solver_real(OpenMXSolverInvocation* scope,int worker,
   return checked(error,capacity,[&]{require(scope && out,"missing solver scope or output");
     const auto shape=shape4(dimensions);auto& b=buffer(scope->worker(worker).real,name,shape);
     *out={{shape[0],shape[1],shape[2],shape[3]},b.view().data_handle()};});
+}
+extern "C" int openmx_core_solver_orbitals(OpenMXSolverInvocation* scope,int worker,const char* name,
+    const OpenMXOrbitalShape* shape,OpenMXOrbitalBuffers* out,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && name && *name && shape && out && (shape->derivatives==0 || shape->derivatives==1),
+        "invalid solver orbital workspace request");
+    auto& slots=scope->worker(worker).orbitals;auto found=slots.find(name);
+    if(found!=slots.end()) {
+      const auto& current=found->second->shape();
+      if(current.maximum_angular==shape->maximum_angular && current.multiplicity==shape->multiplicity &&
+          current.derivatives==bool(shape->derivatives)) {*out=found->second->buffers();return;}
+    }
+    auto owner=std::make_unique<openmx::core::OrbitalWorkspace>(openmx::core::OrbitalShape{
+        shape->maximum_angular,shape->multiplicity,shape->derivatives!=0});
+    const auto view=owner->buffers();
+    if(found==slots.end())slots.emplace(name,std::move(owner));else found->second=std::move(owner);
+    *out=view;
+  });
 }
 extern "C" int openmx_core_solver_complex(OpenMXSolverInvocation* scope,int worker,const char* name,
     const size_t* dimensions,OpenMXSolverComplexTensor* out,char* error,size_t capacity) {

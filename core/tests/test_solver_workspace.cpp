@@ -89,6 +89,48 @@ int rows(OpenMXSolverInvocation* owner,void*,double* result) {
   equal(openmx_solver_complex_plane_row(&scratch,2,1)[4].r,214);
   *result=17;return 1;
 }
+int orbitals(OpenMXSolverInvocation* owner,void*,double* result) {
+  char error[256];const OpenMXOrbitalShape shape{4,3,1};OpenMXOrbitalBuffers view{};
+  const char* key="force-orbital-sampler-with-allocation-free-lookup";
+  require(openmx_core_solver_orbitals(owner,0,key,&shape,&view,error,sizeof(error)),error);
+  require(view.angular_channels==5 && view.multiplicity==3 && view.magnetic_capacity==11,"orbital cache dimensions");
+  require(view.dRF==view.RF+15 && view.dAFQ==view.AF+55 && view.dAFP==view.AF+110,"orbital cache channel strides");
+  for(int i=0;i<15;i++){equal(view.RF[i],0);equal(view.dRF[i],0);view.RF[i]=i+.25;}
+  for(int i=0;i<55;i++){equal(view.AF[i],0);equal(view.dAFQ[i],0);equal(view.dAFP[i],0);view.dAFP[i]=i-.5;}
+  const auto saved=view;
+  openmx::test::fail_allocation_after(0);
+  const int reused=openmx_core_solver_orbitals(owner,0,key,&shape,&view,error,sizeof(error));
+  openmx::test::fail_allocation_after(-1);
+  require(reused && view.RF==saved.RF && view.AF==saved.AF,"equal orbital shape allocated or changed buffers");
+  equal(view.RF[14],14.25);equal(view.dAFP[54],53.5);
+  const OpenMXOrbitalShape larger{5,4,1};
+  for(long failure=0;failure<3;failure++) {
+    openmx::test::fail_allocation_after(failure);
+    const int ok=openmx_core_solver_orbitals(owner,0,key,&larger,&view,error,sizeof(error));
+    openmx::test::fail_allocation_after(-1);
+    require(!ok && error[0] && view.RF==saved.RF,"failed orbital replacement changed output");
+    equal(saved.RF[14],14.25);equal(saved.dAFP[54],53.5);
+  }
+  require(openmx_core_solver_orbitals(owner,1,key,&shape,&view,error,sizeof(error)),error);
+  require(view.RF!=saved.RF && view.AF!=saved.AF,"workers alias orbital buffers");
+  equal(view.RF[14],0);equal(view.dAFP[54],0);
+  const OpenMXOrbitalShape value_only{2,2,0};
+  require(openmx_core_solver_orbitals(owner,0,key,&value_only,&view,error,sizeof(error)),error);
+  require(view.angular_channels==3 && view.multiplicity==2 && view.magnetic_capacity==7 &&
+      !view.dRF && !view.dAFQ && !view.dAFP,"value-only orbital replacement retained derivative channels");
+  equal(view.RF[5],0);equal(view.AF[20],0);
+  const auto current=view;
+  for(const auto bad:std::array<OpenMXOrbitalShape,4>{{{-1,2,1},{15,2,1},{2,0,1},{2,2,2}}}) {
+    require(!openmx_core_solver_orbitals(owner,0,key,&bad,&view,error,sizeof(error)),"invalid orbital shape accepted");
+    require(view.RF==current.RF && view.angular_channels==current.angular_channels,"invalid shape changed orbital output");
+  }
+  require(!openmx_core_solver_orbitals(owner,-1,key,&shape,&view,error,sizeof(error)),"invalid orbital worker accepted");
+  require(!openmx_core_solver_orbitals(owner,0,"",&shape,&view,error,sizeof(error)),"empty orbital key accepted");
+  require(!openmx_core_solver_orbitals(nullptr,0,key,&shape,&view,error,sizeof(error)),"missing orbital scope accepted");
+  require(!openmx_core_solver_orbitals(owner,0,key,nullptr,&view,error,sizeof(error)),"missing orbital shape accepted");
+  require(!openmx_core_solver_orbitals(owner,0,key,&shape,nullptr,error,sizeof(error)),"missing orbital output accepted");
+  *result=17;return 1;
+}
 int fields(OpenMXSolverInvocation* owner,void*,double* result) {
   char error[256];OpenMXSolverRealFieldView view;
   require(openmx_core_solver_field_create(owner,2,3,&view,error,sizeof(error)),error);
@@ -178,7 +220,8 @@ int invalid(OpenMXSolverInvocation* owner,void*,double* result) {
   *result=17;return 1;
 }
 int lifetime_callback(OpenMXSolverInvocation* owner,void* mode,double* result) {
-  double ignored;buffers(owner,nullptr,&ignored);rows(owner,nullptr,&ignored);fields(owner,nullptr,&ignored);residues(owner,nullptr,&ignored);
+  double ignored;buffers(owner,nullptr,&ignored);rows(owner,nullptr,&ignored);orbitals(owner,nullptr,&ignored);
+  fields(owner,nullptr,&ignored);residues(owner,nullptr,&ignored);
   const auto behavior=*static_cast<int*>(mode);
   if(behavior==1)return 0;
   if(behavior==2)throw std::runtime_error("callback exception");
@@ -204,6 +247,10 @@ int allocating(OpenMXSolverInvocation* owner,void*,double* result) {
   if(!openmx_core_solver_field_resize(field.owner,0,0,8,error,sizeof(error)))return 0;
   auto r=residue(owner,0,1);
   if(!openmx_core_solver_residue_resize(r.owner,1,1,8,error,sizeof(error)))return 0;
+  OpenMXOrbitalBuffers sampler;const OpenMXOrbitalShape orbital_shape{4,3,1};
+  if(!openmx_core_solver_orbitals(owner,0,"sampler",&orbital_shape,&sampler,error,sizeof(error)))return 0;
+  const OpenMXOrbitalShape larger{6,4,0};
+  if(!openmx_core_solver_orbitals(owner,0,"sampler",&larger,&sampler,error,sizeof(error)))return 0;
   *result=17;return 1;
 }
 void allocation_test() {
@@ -224,12 +271,15 @@ int concurrent(OpenMXSolverInvocation* owner,void*,double* result) {
   std::array<int,4> status{};std::vector<std::thread> threads;
   for(int worker=0;worker<4;worker++)threads.emplace_back([&,worker]{try {
     const size_t shape[4]={3,3,1,1};OpenMXSolverRealTensor view;
+    const OpenMXOrbitalShape orbital_shape{3,2,1};OpenMXOrbitalBuffers sampler;
     for(int n=0;n<10;n++) {
       require(openmx_core_solver_real(owner,worker,"worker",shape,&view,nullptr,0),"concurrent buffer request");
       for(int i=0;i<9;i++)view.values[i]=worker*100+n*10+i;
+      require(openmx_core_solver_orbitals(owner,worker,"sampler",&orbital_shape,&sampler,nullptr,0),"concurrent orbital request");
+      for(int i=0;i<8;i++)sampler.dRF[i]=worker*100+n*10+i;
       require(openmx_core_solver_field_resize(fields.owner,0,worker,n+1,nullptr,0),"concurrent field resize");
     }
-    equal(view.values[8],worker*100+98);status[worker]=1;
+    equal(view.values[8],worker*100+98);equal(sampler.dRF[7],worker*100+97);status[worker]=1;
   }catch(...){status[worker]=-1;}});
   for(auto& t:threads)t.join();for(auto s:status)require(s==1,"worker state raced or aliased");
   *result=17;return 1;
@@ -239,6 +289,7 @@ int main(int argc,char** argv) {
   try {
     const std::string name=argc==2?argv[1]:"";
     if(name=="buffers")run(buffers);else if(name=="rows")run(rows);else if(name=="fields")run(fields);
+    else if(name=="orbitals")run(orbitals);
     else if(name=="residues")run(residues);else if(name=="invalid")run(invalid);else if(name=="lifetime")lifetime_test();
     else if(name=="allocation")allocation_test();else if(name=="concurrent")run(concurrent);else throw std::runtime_error("unknown solver workspace test");
     std::cout<<"PASS solver workspace "<<name<<'\n';return 0;

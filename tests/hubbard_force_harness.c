@@ -81,6 +81,8 @@ int main(void) {
       }
     }
   }}
+  double transpose[9*3*3];
+  OpenMXLocalTensor3 scratch={9,3,3,transpose};
   int cases=0;
   for(int contraction=0;contraction<2;contraction++)for(int mode=0;mode<3;mode++)for(int missing=0;missing<2;missing++) {
     Cnt_switch=contraction;SpinP_switch=mode==2?3:mode;
@@ -95,7 +97,9 @@ int main(void) {
       if(mode<2) {
         RealOutput actual[3],expected[3];for(int i=0;i<3;i++){real_output(actual+i);real_output(expected+i);}
         reference_dH_U_full(a,h,q,overlap.component,v_eff,expected[0].component,expected[1].component,expected[2].component,&local);
-        dH_U_full(a,h,q,overlap.component,actual[0].component,actual[1].component,actual[2].component,&local);
+        /* Reused buffers contain unrelated data: no entry may rely on calloc. */
+        for(size_t k=0;k<sizeof(transpose)/sizeof(*transpose);k++)transpose[k]=NAN;
+        dH_U_full(a,h,q,overlap.component,actual[0].component,actual[1].component,actual[2].component,&local,scratch);
         for(int i=0;i<3;i++)compare_real(actual+i,expected+i);
       }else {
         ComplexOutput actual[3],expected[3];for(int i=0;i<3;i++){complex_output(actual+i);complex_output(expected+i);}

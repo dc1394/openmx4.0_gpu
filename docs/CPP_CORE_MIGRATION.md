@@ -2999,6 +2999,94 @@ handle、native の幾何・分配・Hubbard 表と借用の多重ポインタ�
 今回の段階で Force 全体の大域変数ゼロや、GPU カーネルの Kokkos 化が完了したわけでは
 ありません。検証成果物は `build/force-refactor-20261021/` に保存します。
 
+## 第28段階: HNL・core-hole の共通縮約と軌道・Hubbard scratch の再利用
+
+AMD側の `d437109f` の確認・最適化を引き継ぎ、HIPの原子内チーム並列縮約を維持しました。
+`Force_HNL` と `Force_CoreHole` の各13か所、CUDA/HIP合計52か所に残っていた
+スカラー・共線・スピノルの密度と微分の積和を、既存の共通C++ `force_spin_trace` に移しました。
+数値処理は多重ポインタを辿らず、密度と微分を寸法・ストライド付きのmdspanで参照します。
+順方向・逆方向の原子対、オンサイト・対称ペア・DC系の係数の選択はnative側に残し、
+各ループの積和順序、虚部の符号、逆向きの密度ブロック・微分行列を保持しています。
+
+`OpenMXSolverInvocation` の各workerが名前付き `OrbitalWorkspace` を `unique_ptr` で所有する
+APIを追加しました。Force3の通常処理と遅延GPU回復はこの領域を借用し、手動での
+`orbital_create` / `orbital_destroy` を必要としません。同じ形状なら確保せずに再利用し、
+形状変更の失敗時には従来の所有領域と出力を保持します。呼び出し終了・早期return・例外で
+解放され、MPIやGPU SDK、可変大域キャッシュには依存しません。公開の軌道確保APIと
+このAPIのビュー生成は `OrbitalWorkspace::buffers()` に一本化しました。
+nativeヘルパーは出力引数でビューを受け取ります。大きな構造体の値返しを使った初版は
+この環境のNVHPC 26.9のForce3 OpenMP領域で不正なグリッド添字による異常終了を再現し、
+出力引数へ変更した最終版でCPU実計算を再検証しました。
+
+Hubbard full-projectorの共線導関数は、原子対ごとのtranspose領域の確保・解放を除去しました。
+呼び出し側のworkerが一度確保した平坦なテンソルを明示的な引数で渡します。
+補助関数内の `List_YOUSO` 参照も取り除きました。再利用領域をNaNで埋めてから旧実装と
+比較する試験で、初期ゼロ値や前の原子対の値に依存しないことを確認しています。
+
+追加試験では実際の両backend・両関数の呼び出し式を抽出し、旧13形式のループと比較します。
+25種類の矩形寸法、余白付き微分、逆向き原子対、スカラーの縮退係数、共線NC、スピノル、
+スレッド別の力配列を対象とします。軌道cacheは無確保での再利用、形状変更の失敗、
+worker間の独立性、全確保位置での失敗、例外・早期returnでの解放を検証しました。
+
+ルートCTest全230件、GCC ASan/UBSan・Intel C++・Kokkos CUDAのコア各197件が通過しました。
+新しい縮約呼び出し試験、実Force wrapperの寿命試験、旧Hubbard導関数との216条件の
+比較もASan/UBSanで通過しました。CUDA sm_80、HIPの通常版・`f3omp`版、
+共通Force・軌道・solverのC++3翻訳単位のHIP/gfx942コンパイルを確認しました。
+実wrapperの84呼び出し×両backend・1/2/4/8 workerは、native軌道ヘルパーも通して
+NVHPCで確認しました。Intel SYCL構成もビルドし、関連22試験を通過しました。
+
+CPU/GPUの `-runtest` 各14例は変更前後・CPU対GPU・同梱基準との5比較で `1e-7` 以内でした。
+Cluster/Bandの共線・非共線、DC・DC-LNO・Krylovの9経路×CPU/GPU、core-holeの共線・
+非共線、Hubbard dual、縮約Methane、Force4Bの非融合経路、GPU固有値解法からの
+CPU Forceへの切り替え、高精度Hubbardの計27比較もエネルギー・全Forceが `1e-7` 以内でした。
+最大差はHubbard dualのエネルギー `1.2820e-9 Ha`、Force `1.2726e-8 Ha/bohr` です。
+この例を収束条件 `1e-10`・4 MPI×1 OpenMPで確認したところ、前後とも176 SCFで
+エネルギー・全Forceが完全一致しました。各計算のSCF完了表示も確認し、縮約Methaneは
+CPU/GPUとも18回の `G-SCF/L-SCF` の並びを照合しました。
+
+厳密なSCF反復数の比較はGPU Cluster NCの59→51、GPU Band NCの20→16、
+2 OpenMPのCPU core-hole NCの20→21の3件で不一致を残しました。対応するForce最大差は
+`1.056e-9`、`5.4e-11`、`6.71e-10 Ha/bohr` です。GPUの2例では同一の旧バイナリ・入力・
+coreでも前回の実行の53/19回と今回の59/20回が異なっています。反復数の不一致を
+合格に書き換えず、数値の比較と区別して保存しています。標準スイートと個別経路の
+並行検証中の時間は性能評価に使いません。
+
+他の実計算・ビルド・試験を止め、18 MPI×1 OpenMPで性能を比較しました。
+sidiaはRTX 5080の既存MPSに両版とも18クライアントが接続し、25 SCF・140³格子でした。
+元入力の `scf.maxIter=25`、`scf.criterion=1e-13` を保持し、両版とも
+`The SCF was not fully achieved` と終了しています。この測定は同条件での速度比較であり、
+収束完了の検証とは区別します。C60 CPUは各3回、実行順を変えた中央値で、
+全6回が27 SCF・84³格子で収束し、エネルギー・全Forceが完全一致しました。
+
+| 条件 | 内部最大計算時間 (秒) | 起動・終了を含む実時間 (秒) | Force (秒) |
+| --- | ---: | ---: | ---: |
+| sidia GPU＋MPS・変更前 `d437109f` のCUDA経路 | 104.024 | 107.516 | 15.684 |
+| sidia GPU＋MPS・変更後 | 103.729 | 107.069 | 15.604 |
+| C60 CPU・変更前、3回中央値 | 8.690 | 10.687 | 0.202 |
+| C60 CPU・変更後、3回中央値 | 8.644 | 10.737 | 0.203 |
+| C60 CPU・Intel版 `~/openmx4.0`、1回 | 9.759 | 10.285 | 0.193 |
+
+sidiaのエネルギー差は0、Force最大差は約 `1e-12 Ha/bohr` でした。Intel版との差は
+エネルギー約 `1e-11 Ha`、Force約 `1.4e-11 Ha/bohr` です。今回の例では性能を維持し、
+sidiaの内部計算時間は約105秒以内でした。起動・終了込みの105秒は未達です。
+C60の実時間中央値は約0.05秒増えており、汎用的な高速化や全CPU経路でのIntel版との
+同等性能を示す結果ではありません。Intel版との構成・MPI・出力処理の差も残ります。
+
+CUDA/HIPのMakefileにForceの共有ヘッダ依存を追加し、ヘッダだけを変更しても
+`Force.o` が更新されることを8条件のdry-runで確認しました。依存追記後の再ビルドでは
+NVHPCの一時fatbin名・module IDだけが変わり、CPU命令・GPU画像・定数・配置は
+測定版と同一でした。最終インストール版でもCPU/GPUのCluster実計算が完走し、
+変更前とのエネルギー・全Force・SCF反復数が基準を満たしました。
+
+GPUカーネルを含むnative補助関数はCUDAの103関数・HIPの109関数のトークン比較、保護対象5ファイルは
+ハッシュで不変を確認しました。AMDの最適化済み縮約、GeForceとA100/H100の精度・
+バッチ・容量方針を変更していません。AMD・A100/H100・Intel/Apple GPUの実機確認は
+この環境では行っていません。検証成果物は `build/force-deep-refactor-20261021/` に保存します。
+
+nativeの幾何・原子分配・Hubbard係数の大域参照、借用の多重ポインタ、GPU packetの確保と
+一部のstatic contextは残っています。この段階でForce全体の大域変数ゼロや、
+GPU数値カーネルのKokkos移行が完了したわけではありません。
+
 ## 次の移行単位と完了条件
 
 1. 化学種の基本情報23表と PAO/VPS・Fourier の数値領域の所有、実空間・Fourier 表の
@@ -3013,7 +3101,7 @@ handle、native の幾何・分配・Hubbard 表と借用の多重ポインタ�
    軌道最適化の履歴・微分も所有化済み。原子種別の Hubbard 相互作用係数等を移す。
    密行列には `layout_left` / `layout_right` を明示し、BLAS の leading dimension を保持する。
 4. Hamiltonian・密度格子、二中心積分の基底変換、Forceのスピン・重なり縮約は共通CPU実装と
-   独立テストへ移行済み。残るHNL/core-holeの縮約、動径/Gaunt積分、混合等にも同じ境界を
+   独立テストへ移行済み。HNL/core-holeのスピン縮約も共通化済み。動径/Gaunt積分、混合等にも同じ境界を
    設け、Kokkos実装へ移す。既存CUDA/HIP実装は各段階の同等性確認後に削除する。
 5. SCF / MD / NEB の状態と MPI communicator・BLAS/solver ハンドル・GPU バッファを
    明示的な所有オブジェクトへ集約する。ランタイムの寿命と計算ケースの寿命を分離する。

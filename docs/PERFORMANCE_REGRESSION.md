@@ -778,3 +778,57 @@ L全例・L2/L3、NEB、CoreHole の実計算は再検証していません。
 記録は `work/codex_radeon_refactor_20261021/final/summary.json` です。
 親ディレクトリの初期最適化は `superseded.json` で区別しています。
 実行ファイルは `build/hip/openmx`、インストールは行っていません。
+
+
+## 2026-10-21: HNL・core-hole の共通縮約と作業領域の再利用（RTX 5080）
+
+AMD確認済みの `d437109f` を基準に、CUDA/HIPのHNL・core-holeのスピン縮約52か所を
+共通mdspan実装へ移し、Force3の軌道領域とHubbard転置領域をworkerごとのRAII所有にしました。
+HIPの原子内チーム並列縮約と、GeForce・A100/H100・AMDの精度・容量方針は保持しています。
+基準のCUDAコードとcoreは `4a66dfd9` と同一であることを確認し、前回の検証済み実行ファイルを
+変更前として固定しました。GPUカーネルを含むnative補助関数103/109個と保護対象5ソースは不変です。
+
+他の実計算・ビルド・テストと重ねず、18 MPI×1 OpenMPで測定しました。
+GPUは既存MPSの18接続を確認しました。sidiaは同一入力の25 SCF・140³格子です。
+入力の `scf.maxIter=25`、`scf.criterion=1e-13` は変更せず、両版ともSCF未収束の表示で
+終了しています。速度比較として扱い、収束確認や物理結果の精度の検証とは区別します。
+C60 CPUは前後各3回の中央値で、全回27 SCF・84³格子で収束しました。
+
+| 条件 | 内部最大時間 (秒) | 実時間 (秒) | Force (秒) |
+| --- | ---: | ---: | ---: |
+| sidia GPU＋MPS・変更前 | 104.024 | 107.516 | 15.684 |
+| sidia GPU＋MPS・変更後 | 103.729 | 107.069 | 15.604 |
+| C60 CPU・変更前、3回中央値 | 8.690 | 10.687 | 0.202 |
+| C60 CPU・変更後、3回中央値 | 8.644 | 10.737 | 0.203 |
+| C60 CPU・Intel版 `~/openmx4.0`、1回 | 9.759 | 10.285 | 0.193 |
+
+sidiaはエネルギー差0、Force最大差約 `1e-12 Ha/bohr`、C60 CPUの前後は全6回で
+エネルギー・全Forceが一致しました。Intel版との差はそれぞれ約 `1e-11 Ha`、
+`1.4e-11 Ha/bohr` です。GPU全般の高速化を示す測定ではありません。sidiaは内部時間が
+約105秒以内ですが、起動・終了込みの105秒は未達です。CPUの実時間中央値は約0.05秒増え、
+Intel版との構成・MPI・出力処理の差もあるため、全CPU計算の性能達成とは扱いません。
+
+標準SのCPU/GPU各14例を前後比較・CPU対GPU・同梱基準の5比較で確認しました。
+同梱基準との差はエネルギー最大 `6.1e-11 Ha`、Force最大 `7.8e-11 Ha/bohr` です。
+9つの主要SCF経路、core-hole・Hubbard dual・縮約基底・非融合Force・GPUからのCPU Forceへの
+切り替え等の個別27比較は、エネルギーと全Forceが `1e-7` 以内でした。
+最大Force差は緩い収束条件のHubbard dualの `1.2726e-8 Ha/bohr` です。同じ入力を
+`1e-10`・4 MPI×1 OpenMPにすると両版176 SCFでエネルギー・全Forceが完全一致しました。
+
+厳密な反復数比較の失敗3件（GPU Cluster NC 59→51、GPU Band NC 20→16、
+CPU core-hole NC・2 OpenMP 20→21）はそのまま保存しました。Force差は順に
+`1.056e-9`、`5.4e-11`、`6.71e-10 Ha/bohr` です。GPUの2例は同一の旧バイナリ・入力・coreを
+再実行しただけでも、前回53/19と今回59/20で反復数が変わっています。
+
+CTest230件、GCC ASan/UBSan・Intel C++・Kokkos CUDAのcore各197件、SYCL関連22件が
+通過しました。NVHPCでのnative軌道ヘルパーと1〜8 workerの寿命試験、CUDA sm_80・HIPの
+通常/代替Force3のコンパイル、C++3翻訳単位のHIP/gfx942コンパイルも確認しました。
+開発中にNVHPCのForce3 OpenMP領域で大きな構造体の値返しによる異常終了を検出し、
+出力引数に変更してCPU実計算をやり直しました。初版の失敗は `first-pass/` に区別しています。
+
+この環境ではAMD・A100/H100・Intel/Apple GPUの実機確認はしていません。
+入力・バイナリ/coreの指紋、全Force、反復数、格子、各試行値、MPS接続は
+`build/force-deep-refactor-20261021/` に保存しています。共有ヘッダ依存の追記後の再ビルドは
+一時fatbin名・module IDだけが変わり、ロードされるCPU命令・GPU画像・定数と配置の
+同一性を `dependency-rebuild-equivalence.json` に記録しました。
+最終インストール版のCPU/GPU Cluster計算と、関連CTest4件も通過しました。

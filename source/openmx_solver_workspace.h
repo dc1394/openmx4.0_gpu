@@ -26,6 +26,16 @@ static inline double *OpenMX_Solver_Real(OpenMXSolverInvocation *owner,const cha
   if(!openmx_core_solver_real(owner,omp_get_thread_num(),name,shape,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
   return view.values;
 }
+/* Keep the output parameter: returning this large aggregate by value inside
+   Force3's OpenMP region produced invalid loop indices with NVHPC 26.9. */
+static inline void OpenMX_Solver_Orbitals(OpenMXSolverInvocation *owner,
+    const char *name,int maximum_angular,int multiplicity,int derivatives,OpenMXOrbitalBuffers *view)
+{
+  const OpenMXOrbitalShape shape={maximum_angular,multiplicity,derivatives};
+  char error[256];
+  if(!openmx_core_solver_orbitals(owner,omp_get_thread_num(),name,&shape,view,error,sizeof(error)))
+    OpenMX_Solver_Failure(error);
+}
 static inline dcomplex *OpenMX_Solver_Complex(OpenMXSolverInvocation *owner,const char *name,size_t count)
 {
   const size_t shape[4]={count,1,1,1};OpenMXSolverComplexTensor view;char error[256];

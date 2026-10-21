@@ -2112,7 +2112,8 @@ static void Force4B_case1_trace_fused(const OpenMXVnaMatrixViews *vna, int Mc_AN
 
 static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP,
-    double*** Hx, double*** Hy, double*** Hz, const OpenMXLocalBasisViews *local_basis);
+    double*** Hx, double*** Hy, double*** Hz, const OpenMXLocalBasisViews *local_basis,
+    OpenMXLocalTensor3 scratch);
 
 static void dH_U_NC_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP,
@@ -3042,6 +3043,8 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
 
         /* allocation of arrays */
 
+        OpenMXLocalTensor3 hubbard_scratch={0};
+
         Hx = OpenMX_ForceComplexVolume(scratch,"Force:Hx",3,List_YOUSO[7],List_YOUSO[7]);
 
         Hy = OpenMX_ForceComplexVolume(scratch,"Force:Hy",3,List_YOUSO[7],List_YOUSO[7]);
@@ -3057,6 +3060,7 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
             HUy = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUy",3,List_YOUSO[7],List_YOUSO[7]);
 
             HUz = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUz",3,List_YOUSO[7],List_YOUSO[7]);
+            if(Hub_U_occupation==1)hubbard_scratch=OpenMX_ForceHubbardScratch(scratch,List_YOUSO[7]);
         }
 
         if ((Hub_U_switch == 1 || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
@@ -3143,7 +3147,7 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
                                     }
                                 }
 
-                                dH_U_full(Mc_AN, h_AN, q_AN, OLP, HUx, HUy, HUz, local_basis);
+                                dH_U_full(Mc_AN, h_AN, q_AN, OLP, HUx, HUy, HUz, local_basis, hubbard_scratch);
 
                                 /* add the contribution to Hx, Hy, and Hz */
 
@@ -4182,7 +4186,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
         double* orbs1 = OpenMX_Solver_Real(scratch,"Force3:neighbor-orbitals",List_YOUSO[7]);
 
         OpenMXOrbitalBuffers work_dObs;
-        OpenMXOrbitalWorkspace *orbital_workspace=OpenMX_OrbitalWorkspace(
+        OpenMX_Solver_Orbitals(scratch,"Force3:orbital-sampler",
             (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work_dObs);
 
 #if measure_time
@@ -4904,12 +4908,6 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
         printf("<Force>  force(3) myid=%2d  time1, 2 = %lf [s], %lf [s]\n", myid, time1, time2);
 #endif
 
-        /* freeing of arrays */
-
-        int i;
-
-        openmx_core_orbital_destroy(orbital_workspace);
-
     } /* #pragma omp parallel */
 
     int late=use_gpu_trace && !Force3_GpuTrace(atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget, electronic);
@@ -4926,15 +4924,15 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 #pragma omp parallel
                     {
                         OpenMXOrbitalBuffers work;
-        OpenMXOrbitalWorkspace *orbital_workspace=OpenMX_OrbitalWorkspace(
-            (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work);
+                        OpenMX_Solver_Orbitals(scratch,"Force3:orbital-sampler",
+                            (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work);
                         double storage[4][List_YOUSO[7]],*dorbs[4]={storage[0],storage[1],storage[2],storage[3]};
 #pragma omp for
                         for(int nc=0;nc<ng;nc++){
                             Get_dOrbitals_work(atomic, WhatSpecies[gc],xyz_stage[3*(size_t)nc],xyz_stage[3*(size_t)nc+1],xyz_stage[3*(size_t)nc+2],dorbs,work);
                             for(int i=0;i<no;i++)for(int axis=0;axis<3;axis++)dChi0[nc][i][axis]=dorbs[axis+1][i];
                         }
-                        openmx_core_orbital_destroy(orbital_workspace);
+
                     }
                 }else for(int nc=0;nc<ng;nc++)for(int i=0;i<no;i++)memcpy(dChi0[nc][i],dchi_all+dchi_off[mc]+3*((size_t)nc*no+i),3*sizeof(double));
             }
@@ -5701,14 +5699,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                 else
                                     pref = 4.0;
 
-                                for (i = 0; i < ian; i++) {
-                                    for (j = 0; j < jan; j++) {
-
-                                        dEx += pref * CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r;
-                                        dEy += pref * CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r;
-                                        dEz += pref * CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r;
-                                    }
-                                }
+                                OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                    ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                    List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                             }
 
                             /* collinear spin polarized or non-colliear without SO and LDA+U */
@@ -5720,14 +5713,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                 else
                                     pref = 2.0;
 
-                                for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
-                                    for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
-
-                                        dEx += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r);
-                                        dEy += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r);
-                                        dEz += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r);
-                                    }
-                                }
+                                OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                    atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                    List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                             }
 
                             /* spin non-collinear with spin-orbit coupling or with LDA+U */
@@ -5736,91 +5724,23 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                                 if (q_AN == h_AN) {
 
-                                    for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
-                                        for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
-
-                                            dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                            dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                            dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-                                        }
-                                    }
+                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                        atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                        List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                                 }
 
                                 else {
 
-                                    for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) { /* Hwan */
-                                        for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) { /* Qwan  */
-
-                                            dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                            dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                            dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-
-                                        } /* j */
-                                    } /* i */
+                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                        atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                        List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
 
                                     dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
                                     kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
-                                    for (i = 0; i < atomic->species.contracted_orbitals[Qwan]; i++) { /* Qwan */
-                                        for (j = 0; j < atomic->species.contracted_orbitals[Hwan]; j++) { /* Hwan */
-
-                                            dEx += CDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].r
-                                                - iDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].i
-                                                + CDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].r
-                                                - iDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].i
-                                                + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hx1[2][i][j].r
-                                                - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hx1[2][i][j].i;
-
-                                            dEy += CDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].r
-                                                - iDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].i
-                                                + CDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].r
-                                                - iDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].i
-                                                + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hy1[2][i][j].r
-                                                - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hy1[2][i][j].i;
-
-                                            dEz += CDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].r
-                                                - iDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].i
-                                                + CDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].r
-                                                - iDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].i
-                                                + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hz1[2][i][j].r
-                                                - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hz1[2][i][j].i;
-
-                                        } /* j */
-                                    } /* i */
+                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                        atomic->species.contracted_orbitals[Qwan],atomic->species.contracted_orbitals[Hwan],CDM0,iDM0,Mq_AN,kl1,Hx1,Hy1,Hz1,
+                                        List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
                                 }
                             }
 
@@ -5970,14 +5890,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                         else
                             pref = 4.0;
 
-                        for (i = 0; i < ian; i++) {
-                            for (j = 0; j < jan; j++) {
-
-                                dEx += pref * CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r;
-                                dEy += pref * CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r;
-                                dEz += pref * CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r;
-                            }
-                        }
+                        OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                            ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                            List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                     }
 
                     /* collinear spin polarized or non-colliear without SO and LDA+U */
@@ -5989,14 +5904,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                         else
                             pref = 2.0;
 
-                        for (i = 0; i < ian; i++) {
-                            for (j = 0; j < jan; j++) {
-
-                                dEx += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r);
-                                dEy += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r);
-                                dEz += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r);
-                            }
-                        }
+                        OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                            ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                            List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                     }
 
                     /* spin non-collinear with spin-orbit coupling or with LDA+U */
@@ -6005,91 +5915,23 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                         if (q_AN == h_AN) {
 
-                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
-                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
-
-                                    dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                    dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                    dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                         }
 
                         else {
 
-                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) { /* Hwan */
-                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) { /* Qwan  */
-
-                                    dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                    dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                    dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-
-                                } /* j */
-                            } /* i */
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
 
                             dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
 
                             kl1 = RMI1[Mc_AN][q_AN][h_AN];
-                            for (i = 0; i < atomic->species.contracted_orbitals[Qwan]; i++) { /* Qwan */
-                                for (j = 0; j < atomic->species.contracted_orbitals[Hwan]; j++) { /* Hwan */
-
-                                    dEx += CDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].r
-                                        - iDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].i
-                                        + CDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].r
-                                        - iDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].i
-                                        + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hx1[2][i][j].r
-                                        - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hx1[2][i][j].i;
-
-                                    dEy += CDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].r
-                                        - iDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].i
-                                        + CDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].r
-                                        - iDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].i
-                                        + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hy1[2][i][j].r
-                                        - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hy1[2][i][j].i;
-
-                                    dEz += CDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].r
-                                        - iDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].i
-                                        + CDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].r
-                                        - iDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].i
-                                        + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hz1[2][i][j].r
-                                        - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hz1[2][i][j].i;
-
-                                } /* j */
-                            } /* i */
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                atomic->species.contracted_orbitals[Qwan],atomic->species.contracted_orbitals[Hwan],CDM0,iDM0,Mq_AN,kl1,Hx1,Hy1,Hz1,
+                                List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
                         }
                     }
                 }
@@ -6481,13 +6323,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                     pref = 4.0;
                             }
 
-                            for (i = 0; i < ian; i++) {
-                                for (j = 0; j < jan; j++) {
-                                    dEx_threads[OMPID] += pref * CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r;
-                                    dEy_threads[OMPID] += pref * CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r;
-                                    dEz_threads[OMPID] += pref * CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r;
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
+                                List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
 
                         }
 
@@ -6504,14 +6342,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                     pref = 2.0;
                             }
 
-                            for (i = 0; i < ian; i++) {
-                                for (j = 0; j < jan; j++) {
-
-                                    dEx_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].r);
-                                    dEy_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].r);
-                                    dEz_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].r);
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
+                                List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
                         }
 
                         /* spin non-collinear with spin-orbit coupling or with LDA+U */
@@ -6520,16 +6353,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                             pref = 1.0;
 
-                            for (i = 0; i < ian; i++) {
-                                for (j = 0; j < jan; j++) {
-
-                                    dEx_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r - iDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].i + CDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].r - iDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].i + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx[2][i][j].r - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx[2][i][j].i);
-
-                                    dEy_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r - iDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].i + CDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].r - iDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].i + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy[2][i][j].r - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy[2][i][j].i);
-
-                                    dEz_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r - iDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].i + CDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].r - iDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].i + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz[2][i][j].r - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz[2][i][j].i);
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
+                                List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
                         }
 
                     } /* if (0<=kl) */
@@ -15185,14 +15011,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                                 else
                                     pref = 4.0;
 
-                                for (i = 0; i < ian; i++) {
-                                    for (j = 0; j < jan; j++) {
-
-                                        dEx += pref * CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r;
-                                        dEy += pref * CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r;
-                                        dEz += pref * CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r;
-                                    }
-                                }
+                                OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                    ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                    List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                             }
 
                             /* collinear spin polarized or non-colliear without SO and LDA+U */
@@ -15204,14 +15025,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                                 else
                                     pref = 2.0;
 
-                                for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                    for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
-
-                                        dEx += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r);
-                                        dEy += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r);
-                                        dEz += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r);
-                                    }
-                                }
+                                OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                    Spe_Total_CNO[Hwan],Spe_Total_CNO[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                    List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                             }
 
                             /* spin non-collinear with spin-orbit coupling or with LDA+U */
@@ -15220,92 +15036,24 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                                 if (q_AN == h_AN) {
 
-                                    for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                        for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
-
-                                            dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                            dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                            dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-                                        }
-                                    }
+                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                        Spe_Total_CNO[Hwan],Spe_Total_CNO[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                        List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                                 }
 
                                 else {
 
-                                    for (i = 0; i < Spe_Total_CNO[Hwan]; i++) { /* Hwan */
-                                        for (j = 0; j < Spe_Total_CNO[Qwan]; j++) { /* Qwan  */
-
-                                            dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                            dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                            dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                                - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                                + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                                - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                                + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                                - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-
-                                        } /* j */
-                                    } /* i */
+                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                        Spe_Total_CNO[Hwan],Spe_Total_CNO[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                        List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
 
                                     dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic, scratch);
 
                                     kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
-                                    for (i = 0; i < Spe_Total_CNO[Qwan]; i++) { /* Qwan */
-                                        for (j = 0; j < Spe_Total_CNO[Hwan]; j++) { /* Hwan */
-
-                                            dEx += CDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].r
-                                                - iDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].i
-                                                + CDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].r
-                                                - iDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].i
-                                                + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hx1[2][i][j].r
-                                                - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hx1[2][i][j].i;
-
-                                            dEy += CDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].r
-                                                - iDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].i
-                                                + CDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].r
-                                                - iDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].i
-                                                + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hy1[2][i][j].r
-                                                - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hy1[2][i][j].i;
-
-                                            dEz += CDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].r
-                                                - iDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].i
-                                                + CDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].r
-                                                - iDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].i
-                                                + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hz1[2][i][j].r
-                                                - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hz1[2][i][j].i;
-
-                                        } /* j */
-                                    } /* i */
+                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                        Spe_Total_CNO[Qwan],Spe_Total_CNO[Hwan],CDM0,iDM0,Mq_AN,kl1,Hx1,Hy1,Hz1,
+                                        List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
                                 }
                             }
 
@@ -15450,14 +15198,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                         else
                             pref = 4.0;
 
-                        for (i = 0; i < ian; i++) {
-                            for (j = 0; j < jan; j++) {
-
-                                dEx += pref * CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r;
-                                dEy += pref * CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r;
-                                dEz += pref * CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r;
-                            }
-                        }
+                        OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                            ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                            List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                     }
 
                     /* collinear spin polarized or non-colliear without SO and LDA+U */
@@ -15469,14 +15212,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                         else
                             pref = 2.0;
 
-                        for (i = 0; i < ian; i++) {
-                            for (j = 0; j < jan; j++) {
-
-                                dEx += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r);
-                                dEy += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r);
-                                dEz += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r);
-                            }
-                        }
+                        OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                            ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                            List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                     }
 
                     /* spin non-collinear with spin-orbit coupling or with LDA+U */
@@ -15485,92 +15223,24 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                         if (q_AN == h_AN) {
 
-                            for (i = 0; i < Spe_Total_CNO[Hwan]; i++) {
-                                for (j = 0; j < Spe_Total_CNO[Qwan]; j++) {
-
-                                    dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                    dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                    dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                Spe_Total_CNO[Hwan],Spe_Total_CNO[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                         }
 
                         else {
 
-                            for (i = 0; i < Spe_Total_CNO[Hwan]; i++) { /* Hwan */
-                                for (j = 0; j < Spe_Total_CNO[Qwan]; j++) { /* Qwan  */
-
-                                    dEx += CDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hx0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hx0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx0[2][i][j].i;
-
-                                    dEy += CDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hy0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hy0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy0[2][i][j].i;
-
-                                    dEz += CDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hz0[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hz0[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz0[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz0[2][i][j].i;
-
-                                } /* j */
-                            } /* i */
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                Spe_Total_CNO[Hwan],Spe_Total_CNO[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
+                                List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
 
                             dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic, scratch);
 
                             kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
-                            for (i = 0; i < Spe_Total_CNO[Qwan]; i++) { /* Qwan */
-                                for (j = 0; j < Spe_Total_CNO[Hwan]; j++) { /* Hwan */
-
-                                    dEx += CDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].r
-                                        - iDM0[0][Mq_AN][kl1][i][j] * Hx1[0][i][j].i
-                                        + CDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].r
-                                        - iDM0[1][Mq_AN][kl1][i][j] * Hx1[1][i][j].i
-                                        + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hx1[2][i][j].r
-                                        - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hx1[2][i][j].i;
-
-                                    dEy += CDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].r
-                                        - iDM0[0][Mq_AN][kl1][i][j] * Hy1[0][i][j].i
-                                        + CDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].r
-                                        - iDM0[1][Mq_AN][kl1][i][j] * Hy1[1][i][j].i
-                                        + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hy1[2][i][j].r
-                                        - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hy1[2][i][j].i;
-
-                                    dEz += CDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].r
-                                        - iDM0[0][Mq_AN][kl1][i][j] * Hz1[0][i][j].i
-                                        + CDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].r
-                                        - iDM0[1][Mq_AN][kl1][i][j] * Hz1[1][i][j].i
-                                        + 2.0 * CDM0[2][Mq_AN][kl1][i][j] * Hz1[2][i][j].r
-                                        - 2.0 * CDM0[3][Mq_AN][kl1][i][j] * Hz1[2][i][j].i;
-
-                                } /* j */
-                            } /* i */
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                Spe_Total_CNO[Qwan],Spe_Total_CNO[Hwan],CDM0,iDM0,Mq_AN,kl1,Hx1,Hy1,Hz1,
+                                List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
                         }
                     }
                 }
@@ -15929,13 +15599,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                                     pref = 4.0;
                             }
 
-                            for (i = 0; i < ian; i++) {
-                                for (j = 0; j < jan; j++) {
-                                    dEx_threads[OMPID] += pref * CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r;
-                                    dEy_threads[OMPID] += pref * CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r;
-                                    dEz_threads[OMPID] += pref * CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r;
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
+                                List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
 
                         }
 
@@ -15952,14 +15618,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                                     pref = 2.0;
                             }
 
-                            for (i = 0; i < ian; i++) {
-                                for (j = 0; j < jan; j++) {
-
-                                    dEx_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].r);
-                                    dEy_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].r);
-                                    dEz_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].r);
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
+                                List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
                         }
 
                         /* spin non-collinear with spin-orbit coupling or with LDA+U */
@@ -15968,16 +15629,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                             pref = 1.0;
 
-                            for (i = 0; i < ian; i++) {
-                                for (j = 0; j < jan; j++) {
-
-                                    dEx_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r - iDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].i + CDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].r - iDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].i + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx[2][i][j].r - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx[2][i][j].i);
-
-                                    dEy_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r - iDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].i + CDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].r - iDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].i + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy[2][i][j].r - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy[2][i][j].i);
-
-                                    dEz_threads[OMPID] += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r - iDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].i + CDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].r - iDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].i + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz[2][i][j].r - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz[2][i][j].i);
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
+                                List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
                         }
 
                     } /* if (0<=kl) */

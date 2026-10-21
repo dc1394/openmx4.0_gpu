@@ -2,6 +2,7 @@
 #define OPENMX_CORE_SOLVER_WORKSPACE_H
 #include "openmx_core.h"
 #include "openmx_complex.h"
+#include "openmx_core_orbital_workspace.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +46,12 @@ int openmx_core_solver_real_alias(OpenMXSolverInvocation*, int worker, const cha
     const OpenMXSolverRealTensor*, double ****values, char*, size_t);
 int openmx_core_solver_complex_alias(OpenMXSolverInvocation*, int worker, const char *name,
     const OpenMXSolverComplexTensor*, dcomplex ****values, char*, size_t);
+
+/* Named orbital samplers share the invocation lifetime. Equal shapes reuse
+   values and addresses without allocating. A different shape replaces only
+   that named worker's sampler; failure preserves its buffers and the output. */
+int openmx_core_solver_orbitals(OpenMXSolverInvocation*, int worker, const char *name,
+    const OpenMXOrbitalShape*, OpenMXOrbitalBuffers*, char*, size_t);
 
 /* Ragged eigenvalue / projected-density rows. Each numerical row is one owned
    tensor; a fixed descriptor array replaces the former three-level table. */

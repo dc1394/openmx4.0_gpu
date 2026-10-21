@@ -1,6 +1,7 @@
 #pragma once
 
 #include <openmx/core/tensor.hpp>
+#include <openmx_core_orbital_workspace.h>
 
 namespace openmx::core {
 
@@ -23,6 +24,7 @@ class OrbitalWorkspace {
   auto angular() noexcept { return angular_.view(); }
   auto radial() const noexcept { return radial_.view(); }
   auto angular() const noexcept { return angular_.view(); }
+  OpenMXOrbitalBuffers buffers() noexcept;
 
  private:
   struct Validated {};

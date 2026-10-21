@@ -38,6 +38,7 @@ static int expected_imaginary,invocations;
 static const OpenMXAtomicViews *expected_atomic;
 static double *****expected_h0,******expected_ds,*****expected_olp,*****expected_cdm,*****expected_edm;
 static void dtime(double *out){static double clock;*out=clock++;}
+static void OpenMX_Solver_Failure(const char *error){fprintf(stderr,"%s\n",error);abort();}
 static double OpenMX_ForceRun(const OpenMXForceInput *in,OpenMXForceOperation op,void *args){
   double result;char error[256];
   assert(in->imaginary_density==expected_imaginary);
@@ -92,6 +93,14 @@ BODY = r'''
     assert(values.values[104].r==0);values.values[104].r=worker+1;
     assert(openmx_core_solver_complex(force_work->scratch,worker,"force-test",shape,&again,error,sizeof(error)));
     assert(values.values==again.values && again.values[104].r==worker+1);
+    OpenMXOrbitalBuffers sampler,again_sampler;
+    OpenMX_Solver_Orbitals(force_work->scratch,"native-force-orbitals",4,3,1,&sampler);
+    assert(sampler.angular_channels==5 && sampler.multiplicity==3 && sampler.magnetic_capacity==11);
+    assert(sampler.dRF==sampler.RF+15 && sampler.dAFP==sampler.AF+110);
+    assert(sampler.RF[14]==0 && sampler.dAFP[54]==0);
+    sampler.RF[14]=worker+1;sampler.dAFP[54]=worker+3;
+    OpenMX_Solver_Orbitals(force_work->scratch,"native-force-orbitals",4,3,1,&again_sampler);
+    assert(sampler.RF==again_sampler.RF && again_sampler.dAFP[54]==worker+3);
   }
   assert(FNAN[0]==27);++invocations;return 23;
 }
@@ -130,7 +139,9 @@ with tempfile.TemporaryDirectory(prefix="openmx-force-lifetime-") as directory:
         assert arguments, name
         first = source.index("static double Force_Impl(")
         declaration = source[first:source.index(";", first)]
-        program = PREFIX + STAGES + arguments[0] + "\n" + declaration + ";\n"
+        adapter = function((ROOT / "source/openmx_solver_workspace.h").read_text(),
+                           "static inline void OpenMX_Solver_Orbitals(")
+        program = PREFIX + adapter + STAGES + arguments[0] + "\n" + declaration + ";\n"
         program += function(source, "static int Force_Operation(") + "\n" + function(source, "double Force(")
         program += "\n" + declaration + BODY + MAIN
         c = tmp / (backend + ".c"); c.write_text(program); exe = c.with_suffix("")

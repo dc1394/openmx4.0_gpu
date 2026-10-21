@@ -85,7 +85,7 @@ foreach(_case lifecycle host domains ordering state invalid allocation concurren
 endforeach()
 add_executable(openmx_solver_workspace_tests test_solver_workspace.cpp allocation_faults.cpp)
 target_link_libraries(openmx_solver_workspace_tests PRIVATE OpenMX::core)
-foreach(_case buffers rows fields residues invalid lifetime allocation concurrent)
+foreach(_case buffers rows orbitals fields residues invalid lifetime allocation concurrent)
   add_test(NAME "core-solver-workspace-${_case}" COMMAND openmx_solver_workspace_tests "${_case}")
   set_tests_properties("core-solver-workspace-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
 endforeach()
