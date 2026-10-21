@@ -8,11 +8,12 @@ namespace openmx::core::compat {
 // Four flat pointer tables replace thousands of individually owned rows.
 // Addresses remain stable until this calculation/topology owner is destroyed.
 template<class Scalar>
-class BlockMatrixOwner {
+class BlockMatrixRows {
  public:
-  BlockMatrixOwner(AtomBlockLayout layout, std::size_t components)
-      : matrix_(std::move(layout),components), components_(components) {
-    const auto& shape=matrix_.layout();
+  explicit BlockMatrixRows(AtomBlockMatrix<Scalar>& matrix)
+      : components_(matrix.values().extent(0)) {
+    const auto components=components_.size();
+    const auto& shape=matrix.layout();
     // Tensor checks the component*element product. The smaller pointer tables
     // also need independent checked products when blocks have zero width.
     atoms_.resize(product(components,shape.atoms()));
@@ -32,7 +33,7 @@ class BlockMatrixOwner {
         const auto first=shape.atom_offsets()[a],last=shape.atom_offsets()[a+1];
         atoms_[c*shape.atoms()+a]=last>first ? blocks_.data()+c*shape.blocks()+first : nullptr;
         for (auto b=first;b<last;++b) {
-          const auto block=matrix_.block(c,a,b-first);
+          const auto block=matrix.block(c,a,b-first);
           const auto height=block.extent(0),width=block.extent(1);
           blocks_[c*shape.blocks()+b]=height ? rows_.data()+r : nullptr;
           for (std::size_t i=0;i<height;++i)
@@ -41,9 +42,9 @@ class BlockMatrixOwner {
       }
     }
   }
-  auto& matrix() noexcept { return matrix_; }
-  const auto& matrix() const noexcept { return matrix_; }
-  Scalar***** legacy() noexcept { return components_.data(); }
+  BlockMatrixRows(const BlockMatrixRows&) = delete;
+  BlockMatrixRows& operator=(const BlockMatrixRows&) = delete;
+  Scalar***** data() noexcept { return components_.data(); }
 
  private:
   static std::size_t product(std::size_t a,std::size_t b) {
@@ -51,12 +52,26 @@ class BlockMatrixOwner {
       throw std::length_error("matrix pointer-table count overflow");
     return a*b;
   }
-  AtomBlockMatrix<Scalar> matrix_;
   std::vector<Scalar****> components_;
   std::vector<Scalar***> atoms_;
   std::vector<Scalar**> blocks_;
   std::vector<Scalar*> rows_;
   Scalar empty_{};
+};
+
+// Ordinary owners compose the same borrowed adapter as invocation-owned Force
+// matrices; every numerical value still belongs to the AtomBlockMatrix.
+template<class Scalar>
+class BlockMatrixOwner {
+ public:
+  BlockMatrixOwner(AtomBlockLayout layout,std::size_t components)
+      : matrix_(std::move(layout),components),rows_(matrix_) {}
+  auto& matrix() noexcept {return matrix_;}
+  const auto& matrix() const noexcept {return matrix_;}
+  Scalar***** legacy() noexcept {return rows_.data();}
+ private:
+  AtomBlockMatrix<Scalar> matrix_;
+  BlockMatrixRows<Scalar> rows_;
 };
 
 } // namespace openmx::core::compat

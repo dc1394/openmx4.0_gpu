@@ -212,6 +212,12 @@ and overlap/nonlocal pair lists use owned topology plans. Native output order,
 onsite derivatives and overlap stabilization calls are preserved. The module
 borrows explicit conversion and geometry views and contains no vendor SDK
 types; the optimized CUDA/HIP device kernels retain their existing policies.
+Force now owns its halo density matrices and per-atom accumulators in a C++
+invocation. CPU derivative, grid, nonlocal and core-hole scratch uses reusable
+per-worker tensors; stage scopes release large grid buffers before later GPU
+archives are prepared. CUDA/HIP share the overlap and spin-density traces,
+with explicit strides and independently tested spinor signs. The native GPU
+batch kernels and device-specific memory/precision policies are retained.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

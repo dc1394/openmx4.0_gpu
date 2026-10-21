@@ -13,6 +13,7 @@
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
 #include "openmx_common.h"
+#include "openmx_force_workspace.h"
 #include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_workers.h"
@@ -110,54 +111,6 @@ static void Force_profile_report(const char* label, double local_elapsed,
         printf("[Force profile] %-12s max=%10.6f s  avg=%10.6f s\n",
             label, max_elapsed, sum_elapsed / (double)numprocs);
         fflush(stdout);
-    }
-}
-
-static int** Force_alloc_int_matrix(int rows, int cols)
-{
-    int i;
-    int** matrix;
-    int* data;
-
-    matrix = (int**)malloc(sizeof(int*) * rows);
-    data = (int*)malloc(sizeof(int) * rows * cols);
-
-    for (i = 0; i < rows; i++) {
-        matrix[i] = data + i * cols;
-    }
-
-    return matrix;
-}
-
-static void Force_free_int_matrix(int** matrix)
-{
-    if (matrix != NULL) {
-        free(matrix[0]);
-        free(matrix);
-    }
-}
-
-static double** Force_alloc_double_matrix(int rows, int cols)
-{
-    int i;
-    double** matrix;
-    double* data;
-
-    matrix = (double**)malloc(sizeof(double*) * rows);
-    data = (double*)malloc(sizeof(double) * rows * cols);
-
-    for (i = 0; i < rows; i++) {
-        matrix[i] = data + i * cols;
-    }
-
-    return matrix;
-}
-
-static void Force_free_double_matrix(double** matrix)
-{
-    if (matrix != NULL) {
-        free(matrix[0]);
-        free(matrix);
     }
 }
 
@@ -278,7 +231,6 @@ static void Force_openacc_reduce_xyz(int num_atoms,const size_t *offsets,size_t 
     /* Force #2/#4/#5 enter this phase on every rank, including empty ones. */
     openmx_gpu_task_execute(mpi_comm_level1,&t,1,"force-atom-reduction");
 }
-
 
 static size_t Force2_Kinetic_OpenACC(double***** H0_src,
     double***** CDM0,
@@ -603,9 +555,6 @@ static void Force_Term_Kernel(size_t first,size_t n,const void *parameters,void 
     {out[0]=sx;out[1]=sy;out[2]=sz;}
 }
 
-
-
-
 static size_t Force4B_pack_trace_terms(double***** CDM0,
     int Mh_AN,
     int kl,
@@ -783,7 +732,6 @@ static int Force3_GpuTrace_Part(const OpenMXAtomicViews *atomic, int first,int l
     int* sp_maxl = NULL;
     int* sp_nb = NULL;
     size_t pao_rv_count = 0, pao_rwf_count = 0;
-
 
     /* ---- flatten the local orbital table (float) into a device-resident
             buffer, one atom block at a time through a staging buffer ---- */
@@ -2109,7 +2057,7 @@ static void dHNL_SO_rows(
 static void dHCH(int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double***** OLP1,
-    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic);
+    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch);
 
 static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy0i, double* sumz0r, double* sumz0i,
     double* sumx1r, double* sumx1i, double* sumy1r, double* sumy1i, double* sumz1r, double* sumz1i,
@@ -2121,13 +2069,13 @@ static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy
     double penalty_value,
     double***** OLP1);
 
-static void MPI_OLP(double***** OLP1);
-static void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void MPI_OLP(double***** OLP1, OpenMXSolverInvocation *scratch);
+static void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
 static void Force4(const OpenMXAtomicViews *atomic);
 static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx, double* Fy, double* Fz, size_t* atom_terms);
-static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis);
+static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
 
-static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
 static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL);
 static void Force_HNL_GpuEnd(void);
 static void Force_HNL_GpuArchiveHalo(double****** DS_NL, int Original_Mc_AN, int Gc_AN);
@@ -2146,14 +2094,54 @@ static int Force_PhaseProfileEnabled(void)
     return cached;
 }
 static void Force_HNL_GpuCase2Run(double***** CDM0, const OpenMXElectronicViews *electronic);
-static void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic);
+static void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch);
+#include "openmx_force_stages.h"
 
+typedef struct {
+    const OpenMXAtomicViews *atomic;
+    const OpenMXVnaMatrixViews *vna;
+    const OpenMXReciprocalViews *reciprocal;
+    double *****H0,******DS_NL,*****OLP,*****CDM,*****EDM;
+    const OpenMXElectronicViews *electronic;
+    const OpenMXLocalBasisViews *local_basis;
+} ForceArguments;
+static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+    double****** DS_NL,
+    double***** OLP,
+    double***** CDM,
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, const OpenMXForceWorkspace *force_work);
+static int Force_Operation(const OpenMXForceWorkspace *work,void *opaque,double *result)
+{
+    const ForceArguments *a=opaque;
+    *result=Force_Impl(a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,a->OLP,a->CDM,a->EDM,
+        a->electronic,a->local_basis,work);
+    return 1;
+}
 double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
     double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+    const int imaginary=(SO_switch==1 || (Hub_U_switch==1 && F_U_flag==1 && SpinP_switch==3)
+        || Constraint_NCS_switch>=1 || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1);
+    const OpenMXForceInput input={atomnum,Matomnum,MatomnumF,SpeciesNum,SpinP_switch,imaginary,
+        F_M2G,WhatSpecies,atomic->species.contracted_orbitals,FNAN,natn};
+    ForceArguments args={atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+    double begin,end;
+    dtime(&begin);
+    (void)OpenMX_ForceRun(&input,Force_Operation,&args);
+    dtime(&end);
+    return end-begin;
+}
+
+static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+    double****** DS_NL,
+    double***** OLP,
+    double***** CDM,
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, const OpenMXForceWorkspace *force_work)
+{
+    OpenMXSolverInvocation *scratch=force_work->scratch;
 
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
@@ -2167,7 +2155,8 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     double sumx, sumy, sumz, r, dege, pref;
     int i, j, k, l, Hwan, Qwan, so, p0, q, q0;
     int h_AN, Gh_AN, q_AN, Gq_AN;
-    int ian, jan, kl, spin, spinmax, al, be, p, size_CDM0, size_iDM0;
+    int ian, jan, kl, spin, spinmax, al, be, p;
+    size_t size_CDM0, size_iDM0;
     int tno0, tno1, tno2, Mh_AN, Mq_AN, n, num, size1, size2;
     int wanA, wanB, Gc_BN;
     int XC_P_switch;
@@ -2185,9 +2174,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     dcomplex**** NC_HUx = NULL;
     dcomplex**** NC_HUy = NULL;
     dcomplex**** NC_HUz = NULL;
-    double** HVNAx;
-    double** HVNAy;
-    double** HVNAz;
+
     double***** CDM0;
     double***** iDM0 = NULL;
     double* tmp_array;
@@ -2257,107 +2244,15 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
      allocation of arrays:
     ****************************************************/
 
-    Fx = (double*)malloc(sizeof(double) * (Matomnum + 1));
-    Fy = (double*)malloc(sizeof(double) * (Matomnum + 1));
-    Fz = (double*)malloc(sizeof(double) * (Matomnum + 1));
-
-    HVNAx = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-    for (j = 0; j < List_YOUSO[7]; j++) {
-        HVNAx[j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-    }
-
-    HVNAy = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-    for (j = 0; j < List_YOUSO[7]; j++) {
-        HVNAy[j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-    }
-
-    HVNAz = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-    for (j = 0; j < List_YOUSO[7]; j++) {
-        HVNAz[j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-    }
-
-    /* CDM0 */
-    size_CDM0 = 0;
-    CDM0 = (double*****)malloc(sizeof(double****) * (SpinP_switch + 1));
-    for (k = 0; k <= SpinP_switch; k++) {
-        CDM0[k] = (double****)malloc(sizeof(double***) * (Matomnum + MatomnumF + 1));
-        FNAN[0] = 0;
-        for (Mc_AN = 0; Mc_AN <= (Matomnum + MatomnumF); Mc_AN++) {
-
-            if (Mc_AN == 0) {
-                Gc_AN = 0;
-                tno0 = 1;
-            } else {
-                Gc_AN = F_M2G[Mc_AN];
-                Cwan = WhatSpecies[Gc_AN];
-                tno0 = atomic->species.contracted_orbitals[Cwan];
-            }
-
-            CDM0[k][Mc_AN] = (double***)malloc(sizeof(double**) * (FNAN[Gc_AN] + 1));
-            for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-
-                if (Mc_AN == 0) {
-                    tno1 = 1;
-                } else {
-                    Gh_AN = natn[Gc_AN][h_AN];
-                    Hwan = WhatSpecies[Gh_AN];
-                    tno1 = atomic->species.contracted_orbitals[Hwan];
-                }
-
-                CDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*) * tno0);
-                for (i = 0; i < tno0; i++) {
-                    CDM0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double) * tno1);
-                    size_CDM0 += tno1;
-                }
-            }
-        }
-    }
-
-    Snd_CDM0_Size = (int*)malloc(sizeof(int) * numprocs);
-    Rcv_CDM0_Size = (int*)malloc(sizeof(int) * numprocs);
-
-    /* iDM0 */
-
-    if (use_iDM0) {
-
-        size_iDM0 = 0;
-        iDM0 = (double*****)malloc(sizeof(double****) * 2);
-        for (k = 0; k < 2; k++) {
-            iDM0[k] = (double****)malloc(sizeof(double***) * (Matomnum + MatomnumF + 1));
-            FNAN[0] = 0;
-            for (Mc_AN = 0; Mc_AN <= (Matomnum + MatomnumF); Mc_AN++) {
-
-                if (Mc_AN == 0) {
-                    Gc_AN = 0;
-                    tno0 = 1;
-                } else {
-                    Gc_AN = F_M2G[Mc_AN];
-                    Cwan = WhatSpecies[Gc_AN];
-                    tno0 = atomic->species.contracted_orbitals[Cwan];
-                }
-
-                iDM0[k][Mc_AN] = (double***)malloc(sizeof(double**) * (FNAN[Gc_AN] + 1));
-                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-
-                    if (Mc_AN == 0) {
-                        tno1 = 1;
-                    } else {
-                        Gh_AN = natn[Gc_AN][h_AN];
-                        Hwan = WhatSpecies[Gh_AN];
-                        tno1 = atomic->species.contracted_orbitals[Hwan];
-                    }
-
-                    iDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*) * tno0);
-                    for (i = 0; i < tno0; i++) {
-                        iDM0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double) * tno1);
-                        size_iDM0 += tno1;
-                    }
-                }
-            }
-        }
-
-        Snd_iDM0_Size = (int*)malloc(sizeof(int) * numprocs);
-        Rcv_iDM0_Size = (int*)malloc(sizeof(int) * numprocs);
+    Fx=force_work->forces[0];Fy=force_work->forces[1];Fz=force_work->forces[2];
+    CDM0=force_work->density_rows;iDM0=force_work->imaginary_rows;
+    size_CDM0=force_work->density.layout.elements;
+    size_iDM0=force_work->imaginary.layout.elements;
+    Snd_CDM0_Size=OpenMX_Solver_Int(scratch,"Force:send-density-counts",numprocs);
+    Rcv_CDM0_Size=OpenMX_Solver_Int(scratch,"Force:receive-density-counts",numprocs);
+    if(use_iDM0){
+        Snd_iDM0_Size=OpenMX_Solver_Int(scratch,"Force:send-imaginary-counts",numprocs);
+        Rcv_iDM0_Size=OpenMX_Solver_Int(scratch,"Force:receive-imaginary-counts",numprocs);
     }
 
     /****************************************************
@@ -2516,7 +2411,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
                 /* allocation of array */
 
-                tmp_array = (double*)malloc(sizeof(double) * size1);
+                tmp_array = OpenMX_Solver_Real(scratch,"Force:send-density",size1);
 
                 /* multidimentional array to vector array */
 
@@ -2553,7 +2448,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                 size2 = Rcv_CDM0_Size[IDR];
 
                 /* allocation of array */
-                tmp_array2 = (double*)malloc(sizeof(double) * size2);
+                tmp_array2 = OpenMX_Solver_Real(scratch,"Force:receive-density",size2);
 
                 MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -2581,12 +2476,12 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                 }
 
                 /* freeing of array */
-                free(tmp_array2);
+
             }
 
             if (F_Snd_Num[IDS] != 0) {
                 MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+
             }
         }
     }
@@ -2681,7 +2576,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
                     /* allocation of array */
 
-                    tmp_array = (double*)malloc(sizeof(double) * size1);
+                    tmp_array = OpenMX_Solver_Real(scratch,"Force:send-density",size1);
 
                     /* multidimentional array to vector array */
 
@@ -2718,7 +2613,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                     size2 = Rcv_iDM0_Size[IDR];
 
                     /* allocation of array */
-                    tmp_array2 = (double*)malloc(sizeof(double) * size2);
+                    tmp_array2 = OpenMX_Solver_Real(scratch,"Force:receive-density",size2);
 
                     MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -2746,12 +2641,12 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                     }
 
                     /* freeing of array */
-                    free(tmp_array2);
+
                 }
 
                 if (F_Snd_Num[IDS] != 0) {
                     MPI_Wait(&request, &stat);
-                    free(tmp_array); /* freeing of array */
+
                 }
             }
         }
@@ -2991,7 +2886,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     }
 
     if (Hub_U_switch == 1 && Hub_U_occupation == 1) {
-        MPI_OLP(OLP);
+        MPI_OLP(OLP, scratch);
     }
 
     MPI_Barrier(mpi_comm_level1);
@@ -3014,7 +2909,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     if (use_force2_openacc) {
 
         Force2_source = (Cnt_switch == 0) ? H0 : CntH0;
-        gpu_atom_terms = (size_t*)malloc(sizeof(size_t) * (Matomnum + 1));
+        gpu_atom_terms = OpenMX_Solver_Bytes(scratch,"Force:atom-terms",(size_t)Matomnum+1,sizeof(size_t));
 
         dtime(&Stime_atom);
         gpu_total_terms = Force2_Kinetic_OpenACC(Force2_source, CDM0, Fx, Fy, Fz, gpu_atom_terms);
@@ -3035,7 +2930,6 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
             Gxyz[Gc_AN][19] += Fz[Mc_AN];
         }
 
-        free(gpu_atom_terms);
         gpu_atom_terms = NULL;
     }
 
@@ -3045,95 +2939,32 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
         /* allocation of arrays */
 
-        Hx = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hx[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hx[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hx = OpenMX_ForceComplexVolume(scratch,"Force:Hx",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hy = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hy[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hy[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hy = OpenMX_ForceComplexVolume(scratch,"Force:Hy",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hz = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hz[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hz[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hz = OpenMX_ForceComplexVolume(scratch,"Force:Hz",3,List_YOUSO[7],List_YOUSO[7]);
 
         if ((Hub_U_switch == 1 || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
             && (Hub_U_occupation == 1 || Hub_U_occupation == 2)
             && SpinP_switch != 3) {
 
-            HUx = (double***)malloc(sizeof(double**) * 3);
-            for (i = 0; i < 3; i++) {
-                HUx[i] = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-                for (j = 0; j < List_YOUSO[7]; j++) {
-                    HUx[i][j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-                }
-            }
+            HUx = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUx",3,List_YOUSO[7],List_YOUSO[7]);
 
-            HUy = (double***)malloc(sizeof(double**) * 3);
-            for (i = 0; i < 3; i++) {
-                HUy[i] = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-                for (j = 0; j < List_YOUSO[7]; j++) {
-                    HUy[i][j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-                }
-            }
+            HUy = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUy",3,List_YOUSO[7],List_YOUSO[7]);
 
-            HUz = (double***)malloc(sizeof(double**) * 3);
-            for (i = 0; i < 3; i++) {
-                HUz[i] = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-                for (j = 0; j < List_YOUSO[7]; j++) {
-                    HUz[i][j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-                }
-            }
+            HUz = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUz",3,List_YOUSO[7],List_YOUSO[7]);
         }
 
         if ((Hub_U_switch == 1 || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
             && (Hub_U_occupation == 1 || Hub_U_occupation == 2)
             && SpinP_switch == 3) {
 
-            NC_HUx = (dcomplex****)malloc(sizeof(dcomplex***) * 2);
-            for (i = 0; i < 2; i++) {
-                NC_HUx[i] = (dcomplex***)malloc(sizeof(dcomplex**) * 2);
-                for (j = 0; j < 2; j++) {
-                    NC_HUx[i][j] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (k = 0; k < List_YOUSO[7]; k++) {
-                        NC_HUx[i][j][k] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
-            }
+            NC_HUx = OpenMX_ForceSpinorMatrix(scratch,"Force:NC_HUx",List_YOUSO[7]);
 
-            NC_HUy = (dcomplex****)malloc(sizeof(dcomplex***) * 2);
-            for (i = 0; i < 2; i++) {
-                NC_HUy[i] = (dcomplex***)malloc(sizeof(dcomplex**) * 2);
-                for (j = 0; j < 2; j++) {
-                    NC_HUy[i][j] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (k = 0; k < List_YOUSO[7]; k++) {
-                        NC_HUy[i][j][k] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
-            }
+            NC_HUy = OpenMX_ForceSpinorMatrix(scratch,"Force:NC_HUy",List_YOUSO[7]);
 
-            NC_HUz = (dcomplex****)malloc(sizeof(dcomplex***) * 2);
-            for (i = 0; i < 2; i++) {
-                NC_HUz[i] = (dcomplex***)malloc(sizeof(dcomplex**) * 2);
-                for (j = 0; j < 2; j++) {
-                    NC_HUz[i][j] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (k = 0; k < List_YOUSO[7]; k++) {
-                        NC_HUz[i][j][k] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
-            }
+            NC_HUz = OpenMX_ForceSpinorMatrix(scratch,"Force:NC_HUz",List_YOUSO[7]);
         }
 
         /* get info. on OpenMP */
@@ -3376,13 +3207,9 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                             else
                                 pref = 4.0;
 
-                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
-                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
-                                    dEx += pref * CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r;
-                                    dEy += pref * CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r;
-                                    dEz += pref * CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r;
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],
+                                CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                         }
 
                         /* collinear spin polarized or non-colliear without SO and LDA+U */
@@ -3394,14 +3221,9 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                             else
                                 pref = 2.0;
 
-                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
-                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
-
-                                    dEx += pref * (CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].r);
-                                    dEy += pref * (CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].r);
-                                    dEz += pref * (CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r + CDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].r);
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],
+                                CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                         }
 
                         /* spin collinear with spin-orbit coupling */
@@ -3417,31 +3239,9 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
                         else if (SpinP_switch == 3 && (SO_switch == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
 
-                            for (i = 0; i < atomic->species.contracted_orbitals[Hwan]; i++) {
-                                for (j = 0; j < atomic->species.contracted_orbitals[Qwan]; j++) {
-
-                                    dEx += CDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hx[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hx[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hx[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hx[2][i][j].i;
-
-                                    dEy += CDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hy[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hy[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hy[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hy[2][i][j].i;
-
-                                    dEz += CDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].r
-                                        - iDM0[0][Mh_AN][kl][i][j] * Hz[0][i][j].i
-                                        + CDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].r
-                                        - iDM0[1][Mh_AN][kl][i][j] * Hz[1][i][j].i
-                                        + 2.0 * CDM0[2][Mh_AN][kl][i][j] * Hz[2][i][j].r
-                                        - 2.0 * CDM0[3][Mh_AN][kl][i][j] * Hz[2][i][j].i;
-                                }
-                            }
+                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],
+                                CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                         }
 
                     } /* if (0<=kl) */
@@ -3468,97 +3268,6 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         } /* Mc_AN */
 
         /* freeing of arrays */
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hx[i][j]);
-            }
-            free(Hx[i]);
-        }
-        free(Hx);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hy[i][j]);
-            }
-            free(Hy[i]);
-        }
-        free(Hy);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hz[i][j]);
-            }
-            free(Hz[i]);
-        }
-        free(Hz);
-
-        if ((Hub_U_switch == 1 || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
-            && (Hub_U_occupation == 1 || Hub_U_occupation == 2)
-            && SpinP_switch != 3) {
-
-            for (i = 0; i < 3; i++) {
-                for (j = 0; j < List_YOUSO[7]; j++) {
-                    free(HUx[i][j]);
-                }
-                free(HUx[i]);
-            }
-            free(HUx);
-
-            for (i = 0; i < 3; i++) {
-                for (j = 0; j < List_YOUSO[7]; j++) {
-                    free(HUy[i][j]);
-                }
-                free(HUy[i]);
-            }
-            free(HUy);
-
-            for (i = 0; i < 3; i++) {
-                for (j = 0; j < List_YOUSO[7]; j++) {
-                    free(HUz[i][j]);
-                }
-                free(HUz[i]);
-            }
-            free(HUz);
-        }
-
-        if ((Hub_U_switch == 1 || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
-            && (Hub_U_occupation == 1 || Hub_U_occupation == 2)
-            && SpinP_switch == 3) {
-
-            for (i = 0; i < 2; i++) {
-                for (j = 0; j < 2; j++) {
-                    for (k = 0; k < List_YOUSO[7]; k++) {
-                        free(NC_HUx[i][j][k]);
-                    }
-                    free(NC_HUx[i][j]);
-                }
-                free(NC_HUx[i]);
-            }
-            free(NC_HUx);
-
-            for (i = 0; i < 2; i++) {
-                for (j = 0; j < 2; j++) {
-                    for (k = 0; k < List_YOUSO[7]; k++) {
-                        free(NC_HUy[i][j][k]);
-                    }
-                    free(NC_HUy[i][j]);
-                }
-                free(NC_HUy[i]);
-            }
-            free(NC_HUy);
-
-            for (i = 0; i < 2; i++) {
-                for (j = 0; j < 2; j++) {
-                    for (k = 0; k < List_YOUSO[7]; k++) {
-                        free(NC_HUz[i][j][k]);
-                    }
-                    free(NC_HUz[i][j]);
-                }
-                free(NC_HUz[i]);
-            }
-            free(NC_HUz);
-        }
 
         } /* #pragma omp parallel */
     }
@@ -3590,7 +3299,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         fflush(stdout);
     }
 
-    Force3(atomic, electronic, local_basis);
+    OpenMX_ForceGrid(atomic,electronic,local_basis);
 
     dtime(&etime);
     if (force_profile) {
@@ -3640,7 +3349,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
     if (ProExpn_VNA == 0 && F_VNA_flag == 1) {
         if (use_force_openacc) {
-            gpu_atom_terms = (size_t*)malloc(sizeof(size_t) * (Matomnum + 1));
+            gpu_atom_terms = OpenMX_Solver_Bytes(scratch,"Force:atom-terms",(size_t)Matomnum+1,sizeof(size_t));
 
             dtime(&Stime_atom);
             gpu_total_terms = Force4_OpenACC(atomic, Fx, Fy, Fz, gpu_atom_terms);
@@ -3654,13 +3363,12 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                 Gxyz[Gc_AN][19] += Fz[Mc_AN];
             }
 
-            free(gpu_atom_terms);
             gpu_atom_terms = NULL;
         } else {
             Force4(atomic);
         }
     } else if (ProExpn_VNA == 1 && F_VNA_flag == 1) {
-        Force4B(vna, reciprocal, CDM0, local_basis);
+        OpenMX_ForceVna(vna,reciprocal,CDM0,local_basis);
     }
 
     dtime(&etime);
@@ -3693,14 +3401,13 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     }
     if (use_force_openacc) {
         Force5_source = (Cnt_switch == 0) ? OLP : CntOLP;
-        gpu_atom_terms = (size_t*)malloc(sizeof(size_t) * (Matomnum + 1));
+        gpu_atom_terms = OpenMX_Solver_Bytes(scratch,"Force:atom-terms",(size_t)Matomnum+1,sizeof(size_t));
 
         dtime(&Stime_atom);
         gpu_total_terms = Force5_OpenACC(Force5_source, EDM, Fx, Fy, Fz, gpu_atom_terms);
         dtime(&Etime_atom);
         Force_accumulate_atom_time_from_terms(gpu_atom_terms, gpu_total_terms, Etime_atom - Stime_atom);
 
-        free(gpu_atom_terms);
         gpu_atom_terms = NULL;
     }
 
@@ -3724,35 +3431,31 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
             Gc_AN = M2G[Mc_AN];
             Cwan = WhatSpecies[Gc_AN];
 
-            for (h_AN = 1; h_AN <= FNAN[Gc_AN]; h_AN++) {
-
-                Gh_AN = natn[Gc_AN][h_AN];
-                Hwan = WhatSpecies[Gh_AN];
-
-                for (i = 0; i < atomic->species.contracted_orbitals[Cwan]; i++) {
-                    for (j = 0; j < atomic->species.contracted_orbitals[Hwan]; j++) {
-
-                        if (SpinP_switch == 0) {
-                            dum = 2.0 * EDM[0][Mc_AN][h_AN][i][j];
-                        } else if (SpinP_switch == 1 || SpinP_switch == 3) {
-                            dum = EDM[0][Mc_AN][h_AN][i][j] + EDM[1][Mc_AN][h_AN][i][j];
+            /* Canonical matrices have flat typed views. Keep the public C
+               entry's explicit OLP/EDM arguments valid for borrowed callers. */
+            if ((Cnt_switch!=0 || OLP==electronic->OLP) && EDM==electronic->EDM) {
+                const OpenMXElectronicMatrixView *overlap_view=&electronic->fields[
+                    Cnt_switch==0?OPENMX_ELECTRONIC_OVERLAP:OPENMX_ELECTRONIC_CONTRACTED_OVERLAP];
+                double force[3]={Fx[Mc_AN],Fy[Mc_AN],Fz[Mc_AN]};
+                char error[256];
+                if(!openmx_core_force_overlap(overlap_view,&electronic->fields[OPENMX_ELECTRONIC_ENERGY_DENSITY],
+                    SpinP_switch,Mc_AN,FNAN[Gc_AN],force,error,sizeof(error)))OpenMX_Solver_Failure(error);
+                Fx[Mc_AN]=force[0];Fy[Mc_AN]=force[1];Fz[Mc_AN]=force[2];
+            } else {
+                double *****overlap=Cnt_switch==0?OLP:CntOLP;
+                for(h_AN=1;h_AN<=FNAN[Gc_AN];++h_AN) {
+                    Hwan=WhatSpecies[natn[Gc_AN][h_AN]];
+                    for(i=0;i<atomic->species.contracted_orbitals[Cwan];++i)
+                        for(j=0;j<atomic->species.contracted_orbitals[Hwan];++j) {
+                            dum=SpinP_switch==0?2.0*EDM[0][Mc_AN][h_AN][i][j]:
+                                EDM[0][Mc_AN][h_AN][i][j]+EDM[1][Mc_AN][h_AN][i][j];
+                            dx=dum*overlap[1][Mc_AN][h_AN][i][j];
+                            dy=dum*overlap[2][Mc_AN][h_AN][i][j];
+                            dz=dum*overlap[3][Mc_AN][h_AN][i][j];
+                            Fx[Mc_AN]=Fx[Mc_AN]-2.0*dx;
+                            Fy[Mc_AN]=Fy[Mc_AN]-2.0*dy;
+                            Fz[Mc_AN]=Fz[Mc_AN]-2.0*dz;
                         }
-
-                        if (Cnt_switch == 0) {
-
-                            dx = dum * OLP[1][Mc_AN][h_AN][i][j];
-                            dy = dum * OLP[2][Mc_AN][h_AN][i][j];
-                            dz = dum * OLP[3][Mc_AN][h_AN][i][j];
-                        } else {
-                            dx = dum * CntOLP[1][Mc_AN][h_AN][i][j];
-                            dy = dum * CntOLP[2][Mc_AN][h_AN][i][j];
-                            dz = dum * CntOLP[3][Mc_AN][h_AN][i][j];
-                        }
-
-                        Fx[Mc_AN] = Fx[Mc_AN] - 2.0 * dx;
-                        Fy[Mc_AN] = Fy[Mc_AN] - 2.0 * dy;
-                        Fz[Mc_AN] = Fz[Mc_AN] - 2.0 * dz;
-                    }
                 }
             }
 
@@ -3802,29 +3505,11 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         && (Hub_U_occupation == 1 || Hub_U_occupation == 2)
         && SpinP_switch != 3) {
 
-        HUx = (double***)malloc(sizeof(double**) * 3);
-        for (i = 0; i < 3; i++) {
-            HUx[i] = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                HUx[i][j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-            }
-        }
+        HUx = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUx",3,List_YOUSO[7],List_YOUSO[7]);
 
-        HUy = (double***)malloc(sizeof(double**) * 3);
-        for (i = 0; i < 3; i++) {
-            HUy[i] = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                HUy[i][j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-            }
-        }
+        HUy = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUy",3,List_YOUSO[7],List_YOUSO[7]);
 
-        HUz = (double***)malloc(sizeof(double**) * 3);
-        for (i = 0; i < 3; i++) {
-            HUz[i] = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                HUz[i][j] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-            }
-        }
+        HUz = OpenMX_Solver_AlignedRealVolume(scratch,"Force:HUz",3,List_YOUSO[7],List_YOUSO[7]);
     }
 
     if ((Hub_U_switch == 1 || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
@@ -4234,7 +3919,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     ****************************************************/
 
     dtime(&stime);
-    Force_HNL(atomic, CDM0, iDM0, electronic, local_basis);
+    OpenMX_ForceNonlocal(atomic,CDM0,iDM0,electronic,local_basis);
     dtime(&etime);
     if (force_profile) {
         Force_profile_report("force-HNL", etime - stime,
@@ -4248,140 +3933,14 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     ****************************************************/
 
     if (core_hole_state_flag == 1) {
-        Force_CoreHole(CDM0, iDM0, electronic);
+        OpenMX_ForceCoreHole(CDM0,iDM0,electronic);
     }
 
     /****************************************************
      freeing of arrays:
     ****************************************************/
 
-    if ((Hub_U_switch == 1 || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
-        && (Hub_U_occupation == 1 || Hub_U_occupation == 2)
-        && SpinP_switch != 3) {
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(HUx[i][j]);
-            }
-            free(HUx[i]);
-        }
-        free(HUx);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(HUy[i][j]);
-            }
-            free(HUy[i]);
-        }
-        free(HUy);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(HUz[i][j]);
-            }
-            free(HUz[i]);
-        }
-        free(HUz);
-    }
-
-    free(Fx);
-    free(Fy);
-    free(Fz);
-
-    for (j = 0; j < List_YOUSO[7]; j++) {
-        free(HVNAx[j]);
-    }
-    free(HVNAx);
-
-    for (j = 0; j < List_YOUSO[7]; j++) {
-        free(HVNAy[j]);
-    }
-    free(HVNAy);
-
-    for (j = 0; j < List_YOUSO[7]; j++) {
-        free(HVNAz[j]);
-    }
-    free(HVNAz);
-
-    /* CDM0 */
-    for (k = 0; k <= SpinP_switch; k++) {
-        FNAN[0] = 0;
-        for (Mc_AN = 0; Mc_AN <= (Matomnum + MatomnumF); Mc_AN++) {
-
-            if (Mc_AN == 0) {
-                Gc_AN = 0;
-                tno0 = 1;
-            } else {
-                Gc_AN = F_M2G[Mc_AN];
-                Cwan = WhatSpecies[Gc_AN];
-                tno0 = atomic->species.contracted_orbitals[Cwan];
-            }
-
-            for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-
-                if (Mc_AN == 0) {
-                    tno1 = 1;
-                } else {
-                    Gh_AN = natn[Gc_AN][h_AN];
-                    Hwan = WhatSpecies[Gh_AN];
-                    tno1 = atomic->species.contracted_orbitals[Hwan];
-                }
-
-                for (i = 0; i < tno0; i++) {
-                    free(CDM0[k][Mc_AN][h_AN][i]);
-                }
-                free(CDM0[k][Mc_AN][h_AN]);
-            }
-            free(CDM0[k][Mc_AN]);
-        }
-        free(CDM0[k]);
-    }
-    free(CDM0);
-
-    free(Snd_CDM0_Size);
-    free(Rcv_CDM0_Size);
-
-    /* iDM0 */
-    if (use_iDM0) {
-
-        for (k = 0; k < 2; k++) {
-
-            FNAN[0] = 0;
-            for (Mc_AN = 0; Mc_AN <= (Matomnum + MatomnumF); Mc_AN++) {
-
-                if (Mc_AN == 0) {
-                    Gc_AN = 0;
-                    tno0 = 1;
-                } else {
-                    Gc_AN = F_M2G[Mc_AN];
-                    Cwan = WhatSpecies[Gc_AN];
-                    tno0 = atomic->species.contracted_orbitals[Cwan];
-                }
-
-                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-
-                    if (Mc_AN == 0) {
-                        tno1 = 1;
-                    } else {
-                        Gh_AN = natn[Gc_AN][h_AN];
-                        Hwan = WhatSpecies[Gh_AN];
-                        tno1 = atomic->species.contracted_orbitals[Hwan];
-                    }
-
-                    for (i = 0; i < tno0; i++) {
-                        free(iDM0[k][Mc_AN][h_AN][i]);
-                    }
-                    free(iDM0[k][Mc_AN][h_AN]);
-                }
-                free(iDM0[k][Mc_AN]);
-            }
-            free(iDM0[k]);
-        }
-        free(iDM0);
-
-        free(Snd_iDM0_Size);
-        free(Rcv_iDM0_Size);
-    }
+    /* Invocation-owned matrices and scratch are released after this callback. */
 
     /* for time */
 
@@ -4402,7 +3961,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 /* OMP by A. Ito */
 
 #ifndef f3omp
-void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
   double ******DM=electronic->DM;
 
@@ -4424,32 +3983,9 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
     **********************************************************/
     /* shared memory for force */
 
-    double** Vpot_grid = (double**)malloc(sizeof(double*) * (SpinP_switch + 1));
-    {
-        double* p2 = (double*)malloc(sizeof(double) * (SpinP_switch + 1) * Max_GridN_Atom);
+    double **Vpot_grid = OpenMX_Solver_RealMatrix(scratch,"Force3:potential",SpinP_switch+1,Max_GridN_Atom);
 
-        int spin;
-        for (spin = 0; spin < (SpinP_switch + 1); spin++) {
-            Vpot_grid[spin] = p2;
-            p2 += Max_GridN_Atom;
-        }
-    }
-
-    double*** dChi0 = (double***)malloc(sizeof(double**) * Max_GridN_Atom);
-    {
-        double** p2 = (double**)malloc(sizeof(double*) * Max_GridN_Atom * List_YOUSO[7]);
-        double* p = (double*)malloc(sizeof(double) * Max_GridN_Atom * List_YOUSO[7] * 3);
-        int Nc;
-        for (Nc = 0; Nc < Max_GridN_Atom; Nc++) {
-            dChi0[Nc] = p2;
-            p2 += List_YOUSO[7];
-            int i;
-            for (i = 0; i < List_YOUSO[7]; i++) {
-                dChi0[Nc][i] = p;
-                p += 3;
-            }
-        }
-    }
+    double ***dChi0 = OpenMX_Solver_RealVolume(scratch,"Force3:derivatives",Max_GridN_Atom,List_YOUSO[7],3);
 
     double sumx = 0.0; /* this must be defined out of parallel pragma */
     double sumy = 0.0;
@@ -4537,14 +4073,8 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
         /* allocation of arrays */
 
-        double** dorbs0 = (double**)malloc(sizeof(double*) * 4);
-        {
-            int i;
-            for (i = 0; i < 4; i++) {
-                dorbs0[i] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-            }
-        }
-        double* orbs1 = (double*)malloc(sizeof(double) * List_YOUSO[7]);
+        double **dorbs0 = OpenMX_Solver_AlignedRealMatrix(scratch,"Force3:orbitals",4,List_YOUSO[7]);
+        double* orbs1 = OpenMX_Solver_Real(scratch,"Force3:neighbor-orbitals",List_YOUSO[7]);
 
         OpenMXOrbitalBuffers work_dObs;
         OpenMXOrbitalWorkspace *orbital_workspace=OpenMX_OrbitalWorkspace(
@@ -5271,13 +4801,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
         /* freeing of arrays */
 
-        free(orbs1);
-
         int i;
-        for (i = 0; i < 4; i++) {
-            free(dorbs0[i]);
-        }
-        free(dorbs0);
 
         openmx_core_orbital_destroy(orbital_workspace);
 
@@ -5325,18 +4849,12 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
     free(vpot_off);
     free(dchi_off);
 
-    free(dChi0[0][0]);
-    free(dChi0[0]);
-    free(dChi0);
-
-    free(Vpot_grid[0]);
-    free(Vpot_grid);
 }
 
 /* OMP by Ozaki */
 
 #else
-void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
   double ******DM=electronic->DM;
 
@@ -5375,28 +4893,13 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
         /* allocation of arrays */
 
-        dorbs0 = (double**)malloc(sizeof(double*) * 4);
-        for (i = 0; i < 4; i++) {
-            dorbs0[i] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-        }
+        dorbs0 = OpenMX_Solver_AlignedRealMatrix(scratch,"Force3:orbitals",4,List_YOUSO[7]);
 
-        orbs1 = (double*)malloc(sizeof(double) * List_YOUSO[7]);
+        orbs1 = OpenMX_Solver_Real(scratch,"Force3:neighbor-orbitals",List_YOUSO[7]);
 
-        dDen_Grid = (double***)malloc(sizeof(double**) * (SpinP_switch + 1));
-        for (i = 0; i < (SpinP_switch + 1); i++) {
-            dDen_Grid[i] = (double**)malloc(sizeof(double*) * 3);
-            for (k = 0; k < 3; k++) {
-                dDen_Grid[i][k] = (double*)malloc(sizeof(double) * Max_GridN_Atom);
-            }
-        }
+        dDen_Grid = OpenMX_Solver_RealVolume(scratch,"Force3:density-grid",SpinP_switch+1,3,Max_GridN_Atom);
 
-        dChi0 = (double***)malloc(sizeof(double**) * 3);
-        for (k = 0; k < 3; k++) {
-            dChi0[k] = (double**)malloc(sizeof(double*) * List_YOUSO[7]);
-            for (i = 0; i < List_YOUSO[7]; i++) {
-                dChi0[k][i] = (double*)malloc(sizeof(double) * Max_GridN_Atom);
-            }
-        }
+        dChi0 = OpenMX_Solver_RealVolume(scratch,"Force3:derivatives",3,List_YOUSO[7],Max_GridN_Atom);
 
         /* get info. on OpenMP */
 
@@ -5678,29 +5181,6 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
         /* freeing of arrays */
 
-        for (k = 0; k < 3; k++) {
-            for (i = 0; i < List_YOUSO[7]; i++) {
-                free(dChi0[k][i]);
-            }
-            free(dChi0[k]);
-        }
-        free(dChi0);
-
-        for (i = 0; i < (SpinP_switch + 1); i++) {
-            for (k = 0; k < 3; k++) {
-                free(dDen_Grid[i][k]);
-            }
-            free(dDen_Grid[i]);
-        }
-        free(dDen_Grid);
-
-        free(orbs1);
-
-        for (i = 0; i < 4; i++) {
-            free(dorbs0[i]);
-        }
-        free(dorbs0);
-
     } /* #pragma omp parallel */
 }
 #endif
@@ -5789,7 +5269,7 @@ void Force4(const OpenMXAtomicViews *atomic)
     }
 }
 
-void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
   double ******CntDS_NL=electronic->CntDS_NL;
   double ******DS_NL=electronic->DS_NL;
@@ -5842,24 +5322,17 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
   int *send_progress=projector_transfer.buffers.sent;
   int *receive_progress=projector_transfer.buffers.received;
 
-
     dtime(&stime);
 
     /****************************
          allocation of arrays
     *****************************/
 
-    Indicator = (int*)malloc(sizeof(int) * numprocs);
+    Indicator = OpenMX_Solver_Int(scratch,"Force_HNL:Indicator",numprocs);
 
-    S_array = (int**)malloc(sizeof(int*) * numprocs);
-    for (ID = 0; ID < numprocs; ID++) {
-        S_array[ID] = (int*)malloc(sizeof(int) * 3);
-    }
+    S_array = OpenMX_ForceIntMatrix(scratch,"Force_HNL:S_array",numprocs,3);
 
-    R_array = (int**)malloc(sizeof(int*) * numprocs);
-    for (ID = 0; ID < numprocs; ID++) {
-        R_array[ID] = (int*)malloc(sizeof(int) * 3);
-    }
+    R_array = OpenMX_ForceIntMatrix(scratch,"Force_HNL:R_array",numprocs,3);
 
     Snd_DS_NL_Size = projector_transfer.buffers.send_sizes;
     Rcv_DS_NL_Size = projector_transfer.buffers.receive_sizes;
@@ -5909,53 +5382,17 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
     MPI_Barrier(mpi_comm_level1);
     dtime(&stime);
 
-    Hx0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hx0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hx0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hx0 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hx0",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hy0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hy0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hy0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hy0 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hy0",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hz0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hz0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hz0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hz0 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hz0",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hx1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hx1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hx1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hx1 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hx1",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hy1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hy1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hy1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hy1 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hy1",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hz1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hz1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hz1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hz1 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hz1",3,List_YOUSO[7],List_YOUSO[7]);
 
     for (ID = 0; ID < numprocs; ID++) {
         send_progress[ID] = 0;
@@ -6096,7 +5533,6 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                 }
 
                 /* free tmp_array2 */
-
 
                 if (fhnl_gpu) {
                     Force_HNL_GpuArchiveHalo(DS_NL, Original_Mc_AN, Gc_AN);
@@ -6340,54 +5776,6 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
     } while (po != 0);
 
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hx0[i][j]);
-        }
-        free(Hx0[i]);
-    }
-    free(Hx0);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hy0[i][j]);
-        }
-        free(Hy0[i]);
-    }
-    free(Hy0);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hz0[i][j]);
-        }
-        free(Hz0[i]);
-    }
-    free(Hz0);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hx1[i][j]);
-        }
-        free(Hx1[i]);
-    }
-    free(Hx1);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hy1[i][j]);
-        }
-        free(Hy1[i]);
-    }
-    free(Hy1);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hz1[i][j]);
-        }
-        free(Hz1[i]);
-    }
-    free(Hz1);
-
     dtime(&etime);
     if (myid == 0 && measure_time) {
         printf("Time for part1 of force_NL=%18.5f\n", etime - stime);
@@ -6421,53 +5809,17 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
         /* allocation of array */
 
-        Hx0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hx0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hx0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hx0 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hx0",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hy0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hy0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hy0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hy0 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hy0",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hz0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hz0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hz0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hz0 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hz0",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hx1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hx1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hx1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hx1 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hx1",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hy1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hy1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hy1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hy1 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hy1",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hz1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hz1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hz1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hz1 = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hz1",3,List_YOUSO[7],List_YOUSO[7]);
 
         /* get info. on OpenMP */
 
@@ -6654,54 +6006,6 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
         /* freeing of array */
 
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hx0[i][j]);
-            }
-            free(Hx0[i]);
-        }
-        free(Hx0);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hy0[i][j]);
-            }
-            free(Hy0[i]);
-        }
-        free(Hy0);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hz0[i][j]);
-            }
-            free(Hz0[i]);
-        }
-        free(Hz0);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hx1[i][j]);
-            }
-            free(Hx1[i]);
-        }
-        free(Hx1);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hy1[i][j]);
-            }
-            free(Hy1[i]);
-        }
-        free(Hy1);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hz1[i][j]);
-            }
-            free(Hz1[i]);
-        }
-        free(Hz1);
-
     } /* #pragma omp parallel */
 
     if (fhnl_gpu) {
@@ -6750,8 +6054,8 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
         }
     }
 
-    OneD2h_AN = (int*)malloc(sizeof(int) * max_ODNloop);
-    OneD2q_AN = (int*)malloc(sizeof(int) * max_ODNloop);
+    OneD2h_AN = OpenMX_Solver_Int(scratch,"Force_HNL:OneD2h_AN",max_ODNloop);
+    OneD2q_AN = OpenMX_Solver_Int(scratch,"Force_HNL:OneD2q_AN",max_ODNloop);
 
     for (Mc_AN = 1; Mc_AN <= Max_Matomnum; Mc_AN++) {
 
@@ -6949,7 +6253,6 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                 /* free tmp_array2 */
 
-
             } /* if (R_comm_flag==1) */
 
             if (S_comm_flag == 1) {
@@ -6972,9 +6275,9 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
             Nthrds0 = omp_get_max_threads();
 
             /* allocation of arrays */
-            dEx_threads = (double*)malloc(sizeof(double) * Nthrds0);
-            dEy_threads = (double*)malloc(sizeof(double) * Nthrds0);
-            dEz_threads = (double*)malloc(sizeof(double) * Nthrds0);
+            dEx_threads = OpenMX_Solver_Real(scratch,"Force_HNL:dEx_threads",Nthrds0);
+            dEy_threads = OpenMX_Solver_Real(scratch,"Force_HNL:dEy_threads",Nthrds0);
+            dEz_threads = OpenMX_Solver_Real(scratch,"Force_HNL:dEz_threads",Nthrds0);
 
             for (Nloop = 0; Nloop < Nthrds0; Nloop++) {
                 dEx_threads[Nloop] = 0.0;
@@ -6984,8 +6287,8 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
             /* one-dimensionalize the h_AN and q_AN loops */
 
-            OneD2h_AN = (int*)malloc(sizeof(int) * (FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
-            OneD2q_AN = (int*)malloc(sizeof(int) * (FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
+            OneD2h_AN = OpenMX_Solver_Int(scratch,"Force_HNL:OneD2h_AN",(FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
+            OneD2q_AN = OpenMX_Solver_Int(scratch,"Force_HNL:OneD2q_AN",(FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
 
             ODNloop = 0;
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
@@ -7016,29 +6319,11 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                 /* allocation of arrays */
 
-                Hx = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-                for (i = 0; i < 3; i++) {
-                    Hx[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        Hx[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
+                Hx = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hx",3,List_YOUSO[7],List_YOUSO[7]);
 
-                Hy = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-                for (i = 0; i < 3; i++) {
-                    Hy[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        Hy[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
+                Hy = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hy",3,List_YOUSO[7],List_YOUSO[7]);
 
-                Hz = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-                for (i = 0; i < 3; i++) {
-                    Hz[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        Hz[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
+                Hz = OpenMX_ForceComplexVolume(scratch,"Force_HNL:Hz",3,List_YOUSO[7],List_YOUSO[7]);
 
                 /* get info. on OpenMP */
 
@@ -7144,30 +6429,6 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                 /* freeing of arrays */
 
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        free(Hx[i][j]);
-                    }
-                    free(Hx[i]);
-                }
-                free(Hx);
-
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        free(Hy[i][j]);
-                    }
-                    free(Hy[i]);
-                }
-                free(Hy);
-
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        free(Hz[i][j]);
-                    }
-                    free(Hz[i]);
-                }
-                free(Hz);
-
             } /* #pragma omp parallel */
 
             /* sum of dEx_threads */
@@ -7197,11 +6458,6 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
             }
 
             /* freeing of array */
-            free(OneD2q_AN);
-            free(OneD2h_AN);
-            free(dEx_threads);
-            free(dEy_threads);
-            free(dEz_threads);
 
             } /* if (!fhnl_gpu) */
 
@@ -7242,20 +6498,6 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
     /***********************************
               freeing of arrays
     ************************************/
-
-    free(Indicator);
-
-    for (ID = 0; ID < numprocs; ID++) {
-        free(S_array[ID]);
-    }
-    free(S_array);
-
-    for (ID = 0; ID < numprocs; ID++) {
-        free(R_array[ID]);
-    }
-    free(R_array);
-
-
 
   OpenMX_TransferEnd(&projector_transfer);
 }
@@ -7828,7 +7070,6 @@ static void Force4B_GpuCase1Kernel_Single(int num_proj, float* flat, float* halo
     }
 }
 
-
 static void Force4B_GpuCase2Kernel_Single(int num_proj, float* c2,
     size_t flat_stride, int nitems_c, const Force4BGpuItem* items,
     const size_t* pair_h_off, const size_t* pair_q_off,
@@ -7934,8 +7175,6 @@ static void Force4B_GpuCase1Kernel(int num_proj, float* flat, float* halo,
 {
         Force4B_GpuCase1Kernel_Single(num_proj,flat,halo,flat_stride,nitems_c,items,krowA,krowB,krow_halo,cdm_pref,item_f);
 }
-
-
 
 /* Apply each completed item in the same mc/q order for either GPU path. */
 static void Force4B_GpuCase1Accumulate(const OpenMXVnaMatrixViews *vna, double***** CDM0, int mc, int q_AN,
@@ -9145,8 +8384,6 @@ static void Force4B_GpuCase2Kernel(int num_proj, float* c2,
 {
         Force4B_GpuCase2Kernel_Single(num_proj,c2,flat_stride,nitems_c,items,pair_h_off,pair_q_off,cdm_scale,item_f);
 }
-
-
 
 typedef struct {
     size_t stride, bytes, cdm_count;
@@ -10641,7 +9878,7 @@ static void Force_HNL_GpuCase2Run(double *****CDM0, const OpenMXElectronicViews 
     Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0, electronic);
 }
 
-void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis)
+void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
   double *****HVNA2=vna->HVNA2;
   double *****HVNA3=vna->HVNA3;
@@ -10702,23 +9939,22 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
   int *send_progress=projector_transfer.buffers.sent;
   int *receive_progress=projector_transfer.buffers.received;
 
-
     dtime(&stime);
 
     /****************************
          allocation of arrays
     *****************************/
 
-    Indicator = (int*)malloc(sizeof(int) * numprocs);
+    Indicator = OpenMX_Solver_Int(scratch,"Force4B:Indicator",numprocs);
 
-    S_array = Force_alloc_int_matrix(numprocs, 3);
-    R_array = Force_alloc_int_matrix(numprocs, 3);
+    S_array = OpenMX_ForceIntMatrix(scratch,"Force4B:S_array",numprocs,3);
+    R_array = OpenMX_ForceIntMatrix(scratch,"Force4B:R_array",numprocs,3);
 
     Snd_DS_VNA_Size = projector_transfer.buffers.send_sizes;
     Rcv_DS_VNA_Size = projector_transfer.buffers.receive_sizes;
 
-    VNA_List = (int*)malloc(sizeof(int) * (List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
-    VNA_List2 = (int*)malloc(sizeof(int) * (List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
+    VNA_List = OpenMX_Solver_Int(scratch,"Force4B:VNA_List",(List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
+    VNA_List2 = OpenMX_Solver_Int(scratch,"Force4B:VNA_List2",(List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
 
     /* initialize the temporal array storing the force contribution */
 
@@ -11059,7 +10295,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                 /* free tmp_array2 */
 
-
                 if (f4b_gpu_case1) {
                     Force4B_GpuArchiveHalo(DS_VNA, Original_Mc_AN, Gc_AN);
                 } else if (f4b_turns_case1) {
@@ -11078,9 +10313,9 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                         /* allocation of array */
 
-                        HVNAx = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                        HVNAy = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                        HVNAz = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
+                        HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
+                        HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
+                        HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
 
 #pragma omp for schedule(static)
                         for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -11186,10 +10421,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                         /* freeing of array */
 
-                        Force_free_double_matrix(HVNAx);
-                        Force_free_double_matrix(HVNAy);
-                        Force_free_double_matrix(HVNAz);
-
                     } /* #pragma omp parallel */
                 }
 
@@ -11263,9 +10494,9 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
             /* allocation of array */
 
-            HVNAx = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-            HVNAy = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-            HVNAz = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
+            HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
+            HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
+            HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
 
 #pragma omp for schedule(static)
             for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -11361,10 +10592,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
             /* freeing of array */
 
-            Force_free_double_matrix(HVNAx);
-            Force_free_double_matrix(HVNAy);
-            Force_free_double_matrix(HVNAz);
-
         } /* #pragma omp parallel */
     }
 
@@ -11407,7 +10634,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     for (ID = 0; ID < numprocs; ID++)
         Indicator[ID] = 0;
 
-
     max_ODNloop = 1;
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         Gc_AN = M2G[Mc_AN];
@@ -11417,8 +10643,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
         }
     }
 
-    OneD2h_AN = (int*)malloc(sizeof(int) * max_ODNloop);
-    OneD2q_AN = (int*)malloc(sizeof(int) * max_ODNloop);
+    OneD2h_AN = OpenMX_Solver_Int(scratch,"Force4B:OneD2h_AN",max_ODNloop);
+    OneD2q_AN = OpenMX_Solver_Int(scratch,"Force4B:OneD2q_AN",max_ODNloop);
 
     for (Mc_AN = 1; Mc_AN <= Max_Matomnum; Mc_AN++) {
 
@@ -11617,7 +10843,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                 /* free tmp_array2 */
 
-
             } /* if (R_comm_flag==1) */
 
             if (S_comm_flag == 1) {
@@ -11679,9 +10904,9 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                     /* allocation of arrays */
 
-                    HVNAx = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                    HVNAy = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
-                    HVNAz = Force_alloc_double_matrix(List_YOUSO[7], List_YOUSO[7]);
+                    HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
+                    HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
+                    HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
 
 #pragma omp for schedule(static)
                     for (Nloop = 0; Nloop < ODNloop; Nloop++) {
@@ -11769,10 +10994,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                     /* freeing of arrays */
 
-                    Force_free_double_matrix(HVNAx);
-                    Force_free_double_matrix(HVNAy);
-                    Force_free_double_matrix(HVNAz);
-
                 } /* #pragma omp parallel */
             }
 
@@ -11815,9 +11036,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
         }
     }
 
-    free(OneD2q_AN);
-    free(OneD2h_AN);
-
     dtime(&etime);
     if (force_profile) {
         Force_profile_report("f4b-case2", etime - stime,
@@ -11845,16 +11063,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     /***********************************
               freeing of arrays
     ************************************/
-
-    free(Indicator);
-    Force_free_int_matrix(S_array);
-    Force_free_int_matrix(R_array);
-
-
-
-
-    free(VNA_List);
-    free(VNA_List2);
 
   OpenMX_TransferEnd(&projector_transfer);
 }
@@ -13642,12 +12850,10 @@ static void dHNL_SO_rows(
 
 #include "openmx_hubbard_force.h"
 
-
-
 void dHCH(int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double***** OLP1,
-    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic)
+    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch)
 {
   double *****HCH=electronic->HCH;
   double *****iHCH=electronic->iHCH;
@@ -13675,10 +12881,7 @@ void dHCH(int where_flag,
 
     penalty_value = base_core_hole_penalty_value - core_hole_state_ev;
 
-    penalty = (double**)malloc(sizeof(double*) * 2);
-    for (i = 0; i < 2; i++) {
-        penalty[i] = (double*)malloc(sizeof(double) * List_YOUSO[7]);
-    }
+    penalty = OpenMX_Solver_AlignedRealMatrix(scratch,"dHCH:penalty",2,List_YOUSO[7]);
 
     wakg = WhatSpecies[Core_Hole_Atom];
 
@@ -14582,10 +13785,6 @@ void dHCH(int where_flag,
 
     /* freeing of array */
 
-    for (i = 0; i < 2; i++) {
-        free(penalty[i]);
-    }
-    free(penalty);
 }
 
 void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy0i, double* sumz0r, double* sumz0i,
@@ -15266,7 +14465,7 @@ void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy0i, dou
     } /* l */
 }
 
-void MPI_OLP(double***** OLP1)
+void MPI_OLP(double***** OLP1, OpenMXSolverInvocation *scratch)
 {
     int i, j, h_AN, Gh_AN, Hwan, n;
     int tno1, tno2, Mc_AN, Gc_AN, Cwan;
@@ -15287,8 +14486,8 @@ void MPI_OLP(double***** OLP1)
       allocation of arrays:
     ****************************************************/
 
-    Snd_S_Size = (int*)malloc(sizeof(int) * numprocs);
-    Rcv_S_Size = (int*)malloc(sizeof(int) * numprocs);
+    Snd_S_Size = OpenMX_Solver_Int(scratch,"MPI_OLP:Snd_S_Size",numprocs);
+    Rcv_S_Size = OpenMX_Solver_Int(scratch,"MPI_OLP:Rcv_S_Size",numprocs);
 
     /******************************************************************
      MPI
@@ -15392,7 +14591,7 @@ void MPI_OLP(double***** OLP1)
 
                 /* allocation of array */
 
-                tmp_array = (double*)malloc(sizeof(double) * size1);
+                tmp_array = OpenMX_Solver_Real(scratch,"MPI_OLP:tmp_array",size1);
 
                 /* multidimentional array to vector array */
 
@@ -15430,7 +14629,7 @@ void MPI_OLP(double***** OLP1)
                 size2 = Rcv_S_Size[IDR];
 
                 /* allocation of array */
-                tmp_array2 = (double*)malloc(sizeof(double) * size2);
+                tmp_array2 = OpenMX_Solver_Real(scratch,"MPI_OLP:tmp_array2",size2);
 
                 MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -15459,12 +14658,12 @@ void MPI_OLP(double***** OLP1)
                 }
 
                 /* freeing of array */
-                free(tmp_array2);
+
             }
 
             if (F_Snd_Num[IDS] != 0) {
                 MPI_Wait(&request, &stat);
-                free(tmp_array); /* freeing of array */
+
             }
         }
     }
@@ -15473,11 +14672,9 @@ void MPI_OLP(double***** OLP1)
       freeing of arrays:
     ****************************************************/
 
-    free(Snd_S_Size);
-    free(Rcv_S_Size);
 }
 
-void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic)
+void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch)
 {
   double *****OLP_CH=electronic->OLP_CH;
 
@@ -15529,24 +14726,17 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
   int *send_progress=projector_transfer.buffers.sent;
   int *receive_progress=projector_transfer.buffers.received;
 
-
     dtime(&stime);
 
     /****************************
          allocation of arrays
     *****************************/
 
-    Indicator = (int*)malloc(sizeof(int) * numprocs);
+    Indicator = OpenMX_Solver_Int(scratch,"Force_CoreHole:Indicator",numprocs);
 
-    S_array = (int**)malloc(sizeof(int*) * numprocs);
-    for (ID = 0; ID < numprocs; ID++) {
-        S_array[ID] = (int*)malloc(sizeof(int) * 3);
-    }
+    S_array = OpenMX_ForceIntMatrix(scratch,"Force_CoreHole:S_array",numprocs,3);
 
-    R_array = (int**)malloc(sizeof(int*) * numprocs);
-    for (ID = 0; ID < numprocs; ID++) {
-        R_array[ID] = (int*)malloc(sizeof(int) * 3);
-    }
+    R_array = OpenMX_ForceIntMatrix(scratch,"Force_CoreHole:R_array",numprocs,3);
 
     Snd_OLP_Size = projector_transfer.buffers.send_sizes;
     Rcv_OLP_Size = projector_transfer.buffers.receive_sizes;
@@ -15578,53 +14768,17 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
     MPI_Barrier(mpi_comm_level1);
     dtime(&stime);
 
-    Hx0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hx0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hx0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hx0 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hx0",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hy0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hy0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hy0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hy0 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hy0",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hz0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hz0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hz0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hz0 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hz0",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hx1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hx1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hx1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hx1 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hx1",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hy1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hy1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hy1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hy1 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hy1",3,List_YOUSO[7],List_YOUSO[7]);
 
-    Hz1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-    for (i = 0; i < 3; i++) {
-        Hz1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            Hz1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-        }
-    }
+    Hz1 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hz1",3,List_YOUSO[7],List_YOUSO[7]);
 
     for (ID = 0; ID < numprocs; ID++) {
         send_progress[ID] = 0;
@@ -15762,7 +14916,6 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                 /* free tmp_array2 */
 
-
                 /*****************************************************************
                                    multiplying overlap integrals
                 *****************************************************************/
@@ -15807,7 +14960,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                             jan = Spe_Total_CNO[Qwan];
                             kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                            dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0, electronic);
+                            dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0, electronic, scratch);
 
                             /* contribution of force = Trace(CDM0*dH) */
                             /* spin non-polarization */
@@ -15910,7 +15063,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                                         } /* j */
                                     } /* i */
 
-                                    dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic);
+                                    dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic, scratch);
 
                                     kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
@@ -15998,54 +15151,6 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
     } while (po != 0);
 
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hx0[i][j]);
-        }
-        free(Hx0[i]);
-    }
-    free(Hx0);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hy0[i][j]);
-        }
-        free(Hy0[i]);
-    }
-    free(Hy0);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hz0[i][j]);
-        }
-        free(Hz0[i]);
-    }
-    free(Hz0);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hx1[i][j]);
-        }
-        free(Hx1[i]);
-    }
-    free(Hx1);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hy1[i][j]);
-        }
-        free(Hy1[i]);
-    }
-    free(Hy1);
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < List_YOUSO[7]; j++) {
-            free(Hz1[i][j]);
-        }
-        free(Hz1[i]);
-    }
-    free(Hz1);
-
     dtime(&etime);
     if (myid == 0 && measure_time) {
         printf("Time for part1 of force_HCH=%18.5f\n", etime - stime);
@@ -16079,53 +15184,17 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
         /* allocation of array */
 
-        Hx0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hx0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hx0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hx0 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hx0",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hy0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hy0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hy0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hy0 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hy0",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hz0 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hz0[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hz0[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hz0 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hz0",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hx1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hx1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hx1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hx1 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hx1",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hy1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hy1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hy1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hy1 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hy1",3,List_YOUSO[7],List_YOUSO[7]);
 
-        Hz1 = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-        for (i = 0; i < 3; i++) {
-            Hz1[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                Hz1[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-            }
-        }
+        Hz1 = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hz1",3,List_YOUSO[7],List_YOUSO[7]);
 
         /* get info. on OpenMP */
 
@@ -16159,7 +15228,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                     jan = Spe_Total_CNO[Qwan];
                     kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                    dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0, electronic);
+                    dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0, electronic, scratch);
 
                     if (SpinP_switch == 0) {
 
@@ -16259,7 +15328,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
                                 } /* j */
                             } /* i */
 
-                            dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic);
+                            dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic, scratch);
 
                             kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
@@ -16309,54 +15378,6 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
         } /* Mc_AN */
 
         /* freeing of array */
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hx0[i][j]);
-            }
-            free(Hx0[i]);
-        }
-        free(Hx0);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hy0[i][j]);
-            }
-            free(Hy0[i]);
-        }
-        free(Hy0);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hz0[i][j]);
-            }
-            free(Hz0[i]);
-        }
-        free(Hz0);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hx1[i][j]);
-            }
-            free(Hx1[i]);
-        }
-        free(Hx1);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hy1[i][j]);
-            }
-            free(Hy1[i]);
-        }
-        free(Hy1);
-
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < List_YOUSO[7]; j++) {
-                free(Hz1[i][j]);
-            }
-            free(Hz1[i]);
-        }
-        free(Hz1);
 
     } /* #pragma omp parallel */
 
@@ -16584,7 +15605,6 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                 /* free tmp_array2 */
 
-
             } /* if (R_comm_flag==1) */
 
             if (S_comm_flag == 1) {
@@ -16601,9 +15621,9 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
             Nthrds0 = omp_get_max_threads();
 
             /* allocation of arrays */
-            dEx_threads = (double*)malloc(sizeof(double) * Nthrds0);
-            dEy_threads = (double*)malloc(sizeof(double) * Nthrds0);
-            dEz_threads = (double*)malloc(sizeof(double) * Nthrds0);
+            dEx_threads = OpenMX_Solver_Real(scratch,"Force_CoreHole:dEx_threads",Nthrds0);
+            dEy_threads = OpenMX_Solver_Real(scratch,"Force_CoreHole:dEy_threads",Nthrds0);
+            dEz_threads = OpenMX_Solver_Real(scratch,"Force_CoreHole:dEz_threads",Nthrds0);
 
             for (Nloop = 0; Nloop < Nthrds0; Nloop++) {
                 dEx_threads[Nloop] = 0.0;
@@ -16613,8 +15633,8 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
             /* one-dimensionalize the h_AN and q_AN loops */
 
-            OneD2h_AN = (int*)malloc(sizeof(int) * (FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
-            OneD2q_AN = (int*)malloc(sizeof(int) * (FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
+            OneD2h_AN = OpenMX_Solver_Int(scratch,"Force_CoreHole:OneD2h_AN",(FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
+            OneD2q_AN = OpenMX_Solver_Int(scratch,"Force_CoreHole:OneD2q_AN",(FNAN[Gc_AN] + 1) * (FNAN[Gc_AN] + 2));
 
             ODNloop = 0;
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
@@ -16642,29 +15662,11 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                 /* allocation of arrays */
 
-                Hx = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-                for (i = 0; i < 3; i++) {
-                    Hx[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        Hx[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
+                Hx = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hx",3,List_YOUSO[7],List_YOUSO[7]);
 
-                Hy = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-                for (i = 0; i < 3; i++) {
-                    Hy[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        Hy[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
+                Hy = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hy",3,List_YOUSO[7],List_YOUSO[7]);
 
-                Hz = (dcomplex***)malloc(sizeof(dcomplex**) * 3);
-                for (i = 0; i < 3; i++) {
-                    Hz[i] = (dcomplex**)malloc(sizeof(dcomplex*) * List_YOUSO[7]);
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        Hz[i][j] = (dcomplex*)malloc(sizeof(dcomplex) * List_YOUSO[7]);
-                    }
-                }
+                Hz = OpenMX_ForceComplexVolume(scratch,"Force_CoreHole:Hz",3,List_YOUSO[7],List_YOUSO[7]);
 
                 /* get info. on OpenMP */
 
@@ -16697,7 +15699,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                     if (0 <= kl) {
 
-                        dHCH(1, Mc_AN, h_AN, q_AN, OLP_CH, Hx, Hy, Hz, electronic);
+                        dHCH(1, Mc_AN, h_AN, q_AN, OLP_CH, Hx, Hy, Hz, electronic, scratch);
 
                         /* contribution of force = Trace(CDM0*dH) */
 
@@ -16770,30 +15772,6 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
 
                 /* freeing of arrays */
 
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        free(Hx[i][j]);
-                    }
-                    free(Hx[i]);
-                }
-                free(Hx);
-
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        free(Hy[i][j]);
-                    }
-                    free(Hy[i]);
-                }
-                free(Hy);
-
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < List_YOUSO[7]; j++) {
-                        free(Hz[i][j]);
-                    }
-                    free(Hz[i]);
-                }
-                free(Hz);
-
             } /* #pragma omp parallel */
 
             /* sum of dEx_threads */
@@ -16823,11 +15801,6 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
             }
 
             /* freeing of array */
-            free(OneD2q_AN);
-            free(OneD2h_AN);
-            free(dEx_threads);
-            free(dEy_threads);
-            free(dEz_threads);
 
         } /* if (Mc_AN<=Matomnum) */
 
@@ -16860,20 +15833,6 @@ void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicVi
     /***********************************
               freeing of arrays
     ************************************/
-
-    free(Indicator);
-
-    for (ID = 0; ID < numprocs; ID++) {
-        free(S_array[ID]);
-    }
-    free(S_array);
-
-    for (ID = 0; ID < numprocs; ID++) {
-        free(R_array[ID]);
-    }
-    free(R_array);
-
-
 
   OpenMX_TransferEnd(&projector_transfer);
 }

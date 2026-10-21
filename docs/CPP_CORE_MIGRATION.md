@@ -2892,6 +2892,113 @@ Kokkos GPU 移行や Intel/Apple GPU 実装の完了を意味しません。
 
 検証成果物は `build/two-center-refactor-20261021/` に保存します。
 
+## 第27段階: Force の呼び出し所有・段階別 scratch と共通縮約
+
+`Force` のハロー密度行列 `CDM0` / `iDM0` と原子ごとの力を
+`ForceMatrices` の所有へ移しました。`F_M2G`、原子種、縮約軌道数、近接リストから
+不変のブロック配置を作り、スピン成分ごとの数値を連続した `AtomBlockMatrix` で保持します。
+原子0の1×1パディングを明示するため、旧 allocator の `FNAN[0]=0` という大域表への
+書き込みも不要です。残る C 数値ループには数値を所有しない互換行ビューを貸し出します。
+この行ビュー生成を既存の VNA/SCF 行列所有と共有し、所有と借用を分離しました。
+
+主処理、`Force3` の両 OpenMP 実装、`Force_HNL`、`Force4B`、`Force_CoreHole`、
+深部の `dHCH` と `MPI_OLP` に明示的な scratch を渡します。複素微分3成分、Hubbard の
+実数3成分・2×2スピン行列、VNA の微分、グリッド微分、ペアの添字、worker の縮約値、
+MPI のメッセージとカウントは再利用する C++ テンソルが所有します。行ごとの確保・解放を
+削除し、同じ worker が原子・受信ハローを切り替えても容量を再利用します。
+MPI 送信と受信の領域は独立させ、未完了の `MPI_Isend` を待ってから再利用する順序を保ちました。
+
+`openmx_force_stages.h` の共通 dispatcher が各段階を入れ子の C++ invocation で実行します。
+大きな `Force3` のグリッド微分領域は同段階の終了時に解放し、後続の VNA/HNL の
+GPU archive とホストメモリのピークを重ねません。通常 return、早期 return、例外、
+途中の確保失敗でも同じ所有規則が働きます。公開 `Force` の返す時間は外側で計測し、
+密度配置の生成と最終の解放も含めます。
+
+Force#2 のスピン縮約と Force#5 の重なりの縮約は、CUDA/HIP 共通の
+`core/src/force_workspace.cpp` を使います。密度と各 Cartesian 微分を mdspan で参照し、
+非スピンの縮退、対称ペアの係数、複素対角・非対角密度の符号を維持します。
+微分テンソルの確保行数・行ストライドを実際の積分ブロックの寸法と別に渡します。
+重なりは h=0 を除外し、元の重みの乗算・差し引き順を保ちます。縮約計算では EDM が
+primitive 基底の大きなブロックを確保している場合があり、CntOLP の寸法を使って EDM の
+行ストライドを推定しません。大きな EDM ブロック内の先頭の縮約領域を、そのブロック自身の
+寸法で参照します。実際の縮約 Methane と余白付き行列の単体試験で確認しました。公開 C 引数に
+別の OLP/EDM 行ビューが渡された場合も既存の挙動を保ちます。共通数値処理は大域変数、
+MPI、GPU SDK、既定 context を参照せず、呼び出し側の worker 上で動作します。
+
+追加した単体テストは、独立した long double のスピン密度行列積と有限差分を基準に、
+スピン0/1/3、spin-orbit、対称ペア係数、異なる原子種・ハロー・矩形寸法、余白付き行と
+成分ストライド、オンサイト除外、不正入力時に部分的な力を残さないことを検査します。
+寿命・確保失敗・例外・並列 invocation と、CUDA/HIP 両方の実 wrapper による
+1/2/4/8 worker・段階ごとの scratch 解放と呼び出し間の再初期化も検証します。
+
+ルートの CTest 全228件、GCC ASan/UBSan・Intel C++・Kokkos CUDA の core 全196件が
+通過しました。SYCL は Force と共通行アダプターに関係する24件を通過しました。
+実 wrapper の寿命試験も ASan/UBSan で確認しています。CUDA sm_80 と HIP の両方で、
+通常版と `f3omp` 版の Force をコンパイルしました。Force の新 C++ 数値処理と既存の
+SCF/VNA 行列アダプターも HIP/gfx942 でコンパイルしました。
+
+CPU/GPU の `-runtest` 各14例を、それぞれ同じ MPI プロセスで連続実行しました。
+変更前後・CPU対GPU・同梱基準との5比較は全て `1e-7` 以内です。同梱基準との差は
+エネルギー最大 `6.1e-11 Ha`、Force 最大 `7.8e-11 Ha/bohr` でした。
+Cluster/Band の collinear/noncollinear、DC・DC-LNO・Krylov の9経路×CPU/GPU、
+分極DC・2 OpenMPのKrylov・空rankを含む8 MPIのDC-LNOの5比較、core-holeの
+collinear/noncollinear・Hubbard dual・縮約Methaneの6比較を実行しました。
+計29比較のエネルギーと全Force成分は `1e-7` 以内です。縮約Methaneの通常のSCF表示は
+専用のため、汎用runnerの反復数欄だけに頼らず、18回の `G-SCF/L-SCF` の順序もCPU/GPUの両経路で
+変更前後に一致することを別途検査しました。
+
+緩いSCF条件 `1e-6` の NiO Hubbard dual では、Force 最大差が `7.4103e-8 Ha/bohr`、
+エネルギー差が `2.5780e-9 Ha` で、今回の29比較の最大でした。この例ではForceの前の
+最終 `Uele` も約 `1.21e-7 Ha` 異なっているため、より厳しい収束条件と再現性も追加検査しました。
+同じNiO入力を `1e-10` とした追加試験では、4 MPI×1 OpenMPは変更前後とも176 SCFで
+エネルギー・全Forceが完全一致しました。一方、4 MPI×2 OpenMPでは、同じ旧バイナリ・入力の
+再実行だけでも159→175 SCFと変わりました。新バイナリの追加試験は200 SCFの上限に達し、
+この条件での収束完了は確認できていません。エネルギー差 `2.5080e-9 Ha`、Force最大差
+`3.8636e-8 Ha/bohr` は許容値内ですが、この試験を収束成功や反復数一致として扱いません。
+並列SCFの再現性と、この高精度Hubbard条件の安定化は残る検証課題です。
+
+他の例ではForce最大差は `1.264e-9 Ha/bohr` 以下でした。厳密な反復回数比較は
+小規模NCの3例で失敗を残しています。GPU Clusterは62→53、GPU Bandは16→19、
+2 OpenMPのCPU core-hole NCは21→20回です。対応するエネルギー差はそれぞれ
+`1.0101e-10`、`1.6996e-11`、`3.7005e-11 Ha`、Force最大差は `6.11e-10`、
+`3.9e-11`、`1.264e-9 Ha/bohr` でした。元の `result.json` の失敗を残し、
+別の数値監査で評価しています。
+
+`OPENMX_FORCE4B_FUSED=0` の従来の微分行列経路と、GPU固有値計算から
+`OPENMX_FORCE_GPU=0` でForceだけCPUへ切り替える経路も4 MPI×2 OpenMPで比較し、
+エネルギー・全Forceが許容差内でした。上記の追加Hubbard比較とCPU再測定を含めた
+個別の数値監査35組は全て `1e-7` 以内です。反復数の不一致4件と、そのうち高精度Hubbardの
+未収束1件は数値の差と分けて記録しています。
+
+他の計算・ビルド・テストと重ねず、18 MPI×1 OpenMPで性能を比較しました。
+sidiaは既存MPSに18クライアントが接続し、25 SCF・140³格子を保ちました。
+C60のCPU経路は27 SCF・84³格子で、実行順を変えて各3回測定した中央値です。
+
+| 条件 | 内部最大計算時間 (秒) | 起動・終了を含む実時間 (秒) | Force (秒) |
+| --- | ---: | ---: | ---: |
+| sidia GPU＋MPS・変更前 `e6fd469c` | 104.142 | 107.668 | 15.652 |
+| sidia GPU＋MPS・変更後 | 103.927 | 107.267 | 15.515 |
+| C60 CPU・変更前、3回中央値 | 8.708 | 10.786 | 0.208 |
+| C60 CPU・変更後、3回中央値 | 8.675 | 10.786 | 0.201 |
+| C60 CPU・Intel版 `~/openmx4.0`、1回 | 9.809 | 10.336 | 0.178 |
+
+sidiaのエネルギー・Force最大差はいずれも約 `1e-12`、C60 CPUの変更前後は全6回で
+エネルギー・全Forceが一致しました。Intel版との差はエネルギー約 `1e-11 Ha`、
+Force約 `1.4e-11 Ha/bohr` です。Force時間にはC++所有の生成・解放も含め、計算部分の
+約105秒とCPUの性能を維持しました。sidiaは各1回であり、GPU全般の高速化を示す結果では
+ありません。起動・終了を含むsidiaの105秒は未達です。CPUのIntel版も構成・MPI・出力処理が
+異なるため、このC60の結果だけで全CPU計算の性能を判断しません。
+
+今回も NVIDIA の GPU 数値カーネル、AMD の APU 判定・FP64 方針、GeForce と
+A100/H100 のバッチ・メモリ・精度選択は保持しています。GPU 補助関数のトークン比較と、
+A100 向け Hamiltonian・multi-GPU GEMM・密度 packing の保護対象5ソースのハッシュで
+確認しました。AMD・A100/H100・Intel/Apple GPU の実機確認はこの環境では行っていません。
+
+GPU archive の一部の static context、GPU packet の手作業の確保、Force3 の軌道補助
+handle、native の幾何・分配・Hubbard 表と借用の多重ポインタは引き続き残っています。
+今回の段階で Force 全体の大域変数ゼロや、GPU カーネルの Kokkos 化が完了したわけでは
+ありません。検証成果物は `build/force-refactor-20261021/` に保存します。
+
 ## 次の移行単位と完了条件
 
 1. 化学種の基本情報23表と PAO/VPS・Fourier の数値領域の所有、実空間・Fourier 表の
@@ -2905,8 +3012,9 @@ Kokkos GPU 移行や Intel/Apple GPU 実装の完了を意味しません。
    消費側の借用行ポインタを減らし、ブロックごとに `mdspan` または平坦なビューを渡す。
    軌道最適化の履歴・微分も所有化済み。原子種別の Hubbard 相互作用係数等を移す。
    密行列には `layout_left` / `layout_right` を明示し、BLAS の leading dimension を保持する。
-4. Hamiltonian、重なり、密度、混合、力の順に、CPU 参照実装と独立した数値テストを用意して
-   Kokkos 実装へ移す。既存の CUDA/HIP 実装は各段階の同等性確認後に削除する。
+4. Hamiltonian・密度格子、二中心積分の基底変換、Forceのスピン・重なり縮約は共通CPU実装と
+   独立テストへ移行済み。残るHNL/core-holeの縮約、動径/Gaunt積分、混合等にも同じ境界を
+   設け、Kokkos実装へ移す。既存CUDA/HIP実装は各段階の同等性確認後に削除する。
 5. SCF / MD / NEB の状態と MPI communicator・BLAS/solver ハンドル・GPU バッファを
    明示的な所有オブジェクトへ集約する。ランタイムの寿命と計算ケースの寿命を分離する。
 6. 入出力、restart、輸送、解析機能まで引数で依存を受け渡し、`openmx_common.h` の可変
