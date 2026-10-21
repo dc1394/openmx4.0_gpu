@@ -222,11 +222,6 @@ remains available for unsupported sizes and resource limits. Orbital tile
 storage retains its existing format; changing the arithmetic does not change
 that storage contract.
 
-On `sm_80`, native FP64 Hamiltonian quadrature uses 2x2 register tiles,
-separate spin blocks and adaptive point chunks. `OPENMX_SETHAM_FP64_TILED=0`
-restores the original FP64 kernel; `OPENMX_SETHAM_FP64_SPLIT=1..64` overrides
-the chunk count for measurements. GeForce's double-float kernel is unchanged.
-
 On full A100-class `sm_80` devices (at least 100 SMs), real square cluster
 forward products at dimension 6144 or above automatically use full-workspace
 GEMMul8 when memory permits. Smaller transforms keep native FP64; a full
@@ -248,9 +243,6 @@ boundary, avoiding emulation's full-matrix retry backup on A100.
 
 Build instructions, control precedence, regression commands and the new
 validation record are in [the A100 optimization report](doc/a100_optimization.txt).
-The [2026-10-21 validation of the unified code](doc/a100_validation_20261021.txt)
-includes the new quadrature, Kugui's optimized host FFTW build and CPU ELPA
-recovery without a visible GPU.
 
 ### Forward transform of the collinear cluster solver
 The two products of the orthogonalization transform, `B = H X` and `X^T B`, have entry points of their own (`openmx_gemmul8DgemmFixed`), because `X` stays fixed during the SCF.

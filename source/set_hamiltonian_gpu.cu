@@ -352,71 +352,6 @@ __global__ void matrix_elements_kernel_df2(
     }
 }
 
-/* Native FP64 on A100: reuse a 2x2 register tile and stage only this
-   block's spin channel. Unlike the DF kernel, no split-float potential or
-   compensated FP32 operations are needed. Point chunks provide parallelism
-   for small pair batches; each chunk adds to the caller's existing matrix. */
-__global__ void matrix_elements_kernel_fp64_tiled(
-    int spin_count, std::size_t vpot_len, double grid_vol, int max_no, int grid_tile,
-    const int *__restrict__ pair_NO0, const int *__restrict__ pair_NO1,
-    const int *__restrict__ pair_NOLG, const int *__restrict__ nolg_MN,
-    const int *__restrict__ nolg_Nc, const std::size_t *__restrict__ pair_h_offset,
-    const std::size_t *__restrict__ pair_nolg_offset,
-    const std::size_t *__restrict__ pair_orbs0_offset,
-    const std::size_t *__restrict__ pair_orbs1_offset,
-    const float *__restrict__ orbs0buf, const float *__restrict__ orbs1buf,
-    const double *__restrict__ vpotgrid, double *__restrict__ hbuf)
-{
-    const int pair = blockIdx.x, spin = blockIdx.z % spin_count;
-    const int no0 = pair_NO0[pair], no1 = pair_NO1[pair], points = pair_NOLG[pair];
-    const int rows = (no0 + 1) / 2, cols = (no1 + 1) / 2;
-    const int q = blockIdx.y * blockDim.x + threadIdx.x;
-    if (points <= 0 || static_cast<int>(blockIdx.y * blockDim.x) >= rows * cols) return;
-    const std::size_t chunks = gridDim.z / spin_count;
-    const std::size_t tiles = 1 + (static_cast<std::size_t>(points) - 1) / grid_tile;
-    const std::size_t chunk_points = ((tiles + chunks - 1) / chunks) * grid_tile;
-    const std::size_t first = (blockIdx.z / spin_count) * chunk_points;
-    if (first >= static_cast<std::size_t>(points)) return;
-    const std::size_t last = min(first + chunk_points, static_cast<std::size_t>(points));
-    const bool active = q < rows * cols;
-    const int i0 = active ? 2 * (q / cols) : 0, j0 = active ? 2 * (q % cols) : 0;
-    const int i1 = i0 + 1 < no0 ? i0 + 1 : i0, j1 = j0 + 1 < no1 ? j0 + 1 : j0;
-    const auto noff = pair_nolg_offset[pair], aoff = pair_orbs0_offset[pair], boff = pair_orbs1_offset[pair];
-    extern __shared__ unsigned char shared[];
-    double *weighted = reinterpret_cast<double *>(shared);
-    float *right = reinterpret_cast<float *>(weighted + static_cast<std::size_t>(grid_tile) * max_no);
-    double s00 = 0, s01 = 0, s10 = 0, s11 = 0;
-    for (std::size_t base = first; base < last; base += grid_tile) {
-        const int count = min(static_cast<std::size_t>(grid_tile), last - base);
-        for (int k = threadIdx.x; k < count * no0; k += blockDim.x) {
-            const int g = k / no0, i = k % no0;
-            const std::size_t point = noff + base + g;
-            const double v = grid_vol * vpotgrid[static_cast<std::size_t>(spin) * vpot_len + nolg_MN[point]];
-            weighted[static_cast<std::size_t>(g) * max_no + i] =
-                v * static_cast<double>(orbs0buf[aoff + static_cast<std::size_t>(nolg_Nc[point]) * no0 + i]);
-        }
-        for (int k = threadIdx.x; k < count * no1; k += blockDim.x)
-            right[static_cast<std::size_t>(k / no1) * max_no + k % no1] = orbs1buf[boff + base * no1 + k];
-        __syncthreads();
-        if (active) {
-            for (int g = 0; g < count; ++g) {
-                const auto offset = static_cast<std::size_t>(g) * max_no;
-                const double a = weighted[offset + i0], b = weighted[offset + i1];
-                const double c = right[offset + j0], d = right[offset + j1];
-                s00 += a * c; s01 += a * d; s10 += b * c; s11 += b * d;
-            }
-        }
-        __syncthreads();
-    }
-    if (active) {
-        const auto offset = pair_h_offset[pair] + static_cast<std::size_t>(spin) * no0 * no1;
-        atomicAdd(hbuf + offset + static_cast<std::size_t>(i0) * no1 + j0, s00);
-        if (j1 != j0) atomicAdd(hbuf + offset + static_cast<std::size_t>(i0) * no1 + j1, s01);
-        if (i1 != i0) atomicAdd(hbuf + offset + static_cast<std::size_t>(i1) * no1 + j0, s10);
-        if (i1 != i0 && j1 != j0) atomicAdd(hbuf + offset + static_cast<std::size_t>(i1) * no1 + j1, s11);
-    }
-}
-
 /* The on-the-fly density of a batch of atom pairs, double-float (the
    density matrix as hi + lo floats): one thread per overlap point, the
    pair's density matrix staged once per block in shared memory (float2),
@@ -793,21 +728,9 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
     if (cudaGetDevice(&device) != cudaSuccess) return -1;
     if (cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlock, device) != cudaSuccess) return -1;
 
-    bool fp64_tiled = false;
-    int sms = 0;
-    if (mode == 0) {
-        int major = 0, minor = 0;
-        const char *control = std::getenv("OPENMX_SETHAM_FP64_TILED");
-        if (cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) return -1;
-        if (control && *control) fp64_tiled = std::atoi(control) != 0;
-        else if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
-                 cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device) == cudaSuccess)
-            fp64_tiled = major == 8 && minor == 0;
-    }
-
     auto shared_size = [=](int tile) {
         return static_cast<std::size_t>(tile) * static_cast<std::size_t>(max_no) *
-               (static_cast<std::size_t>(fp64_tiled ? 1 : spin_count) * (mode == 1 ? sizeof(float) : sizeof(double)) + sizeof(float)) +
+               (static_cast<std::size_t>(spin_count) * (mode == 1 ? sizeof(float) : sizeof(double)) + sizeof(float)) +
                (mode == 2 ? static_cast<std::size_t>(tile) * static_cast<std::size_t>(spin_count) * sizeof(float2) : 0);
     };
 
@@ -817,23 +740,7 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
     const dim3 block(kThreads, 1u, 1u);
     const dim3 grid(static_cast<unsigned>(pair_count),
                     static_cast<unsigned>((max_output_count + kThreads - 1) / kThreads), 1u);
-    if (fp64_tiled) {
-        constexpr int threads = 128;
-        const std::size_t half = (static_cast<std::size_t>(max_no) + 1) / 2;
-        const std::size_t blocks_y = (half * half + threads - 1) / threads;
-        const std::size_t blocks = static_cast<std::size_t>(pair_count) * spin_count * blocks_y;
-        int split = static_cast<int>(std::max(std::size_t(1), std::min(std::size_t(32),
-            (static_cast<std::size_t>(sms) * 4 + blocks - 1) / blocks)));
-        const char *control = std::getenv("OPENMX_SETHAM_FP64_SPLIT");
-        if (control && std::atoi(control) > 0) split = std::min(64, std::atoi(control));
-        if (blocks_y > 65535 || static_cast<std::size_t>(split) * spin_count > 65535) return 1;
-        const dim3 tiled_grid(pair_count, static_cast<unsigned>(blocks_y), split * spin_count);
-        matrix_elements_kernel_fp64_tiled<<<tiled_grid, threads, shared_size(grid_tile)>>>(
-            spin_count, vpot_len, grid_vol, max_no, grid_tile,
-            pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
-            pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf);
-    }
-    else if (mode == 1)
+    if (mode == 1)
         matrix_elements_kernel<1><<<grid, block, shared_size(grid_tile)>>>(
             pair_count, spin_count, vpot_len, grid_vol, max_no, grid_tile,
             pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
@@ -1002,13 +909,7 @@ extern "C" int Set_Hamiltonian_Cuda_MatrixElements(int pair_count,int spin_count
     const float *orbs0buf,const float *orbs1buf,const double *vpotgrid,double *hbuf,int mode)
 {
     if(pair_count<=0 || spin_count<=0 || max_no<=0 || max_output_count<=0)return 0;
-    /* Admission can decline distribution without downloading pair metadata.
-       In the default owner-only path this avoids a synchronization, a host
-       allocation and a D2H copy on every quadrature batch. The exact item
-       count is still checked below when multiple workers are eligible. */
-    OpenMXGpuWorkers candidates{};
-    openmx_gpu_workers_local(&candidates, OPENMX_GPU_WORKERS_MAX);
-    if(candidates.count>1 && openmx_gpu_worker_device()<0) {
+    if(openmx_gpu_worker_device()<0) {
         try {
             MatrixGpuWork w{};
             w.pairs=pair_count;w.spins=spin_count;w.vpot_len=vpot_len;w.volume=grid_vol;

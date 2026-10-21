@@ -135,15 +135,12 @@ FFTW3_CC       ?= $(NVHPC_COMPILER_BIN)/nvc
 FFTW3_CXX      ?= $(NVHPC_COMPILER_BIN)/nvc++
 FFTW3_FC       ?= $(NVHPC_COMPILER_BIN)/nvfortran
 FFTW3_F77      ?= $(FFTW3_FC)
-# Keep the portable build policy; site files can enable host optimization
-# without importing unrelated user CFLAGS into this bundled dependency.
-FFTW3_CFLAGS   ?=
 # OpenMX links only libfftw3.a.  --disable-doc also spares the build makeinfo:
 # the overlay below keeps the release dates of the tarball's files, so the
 # info manual would look older than the checked-out .texi sources.
 FFTW3_CONFIGURE_OPTIONS ?= --enable-static --disable-shared --disable-doc
 FFTW3_CONFIGURE_TRIPLET ?= x86_64-pc-linux-gnu
-FFTW3_BUILD_ENV = PATH="$(PATH)" CONFIG_SITE= build_alias= host_alias= BUILD= HOST= CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= CFLAGS="$(FFTW3_CFLAGS)" CXXFLAGS= CPPFLAGS= FCFLAGS= FFLAGS= LDFLAGS= LIBS= CPP="$(FFTW3_CC) -E" AR=/usr/bin/ar AS=/usr/bin/as RANLIB=/usr/bin/ranlib NM=/usr/bin/nm LD=/usr/bin/ld OBJDUMP=/usr/bin/objdump STRIP=/usr/bin/strip READELF=/usr/bin/readelf ADDR2LINE=/usr/bin/addr2line DLLTOOL=
+FFTW3_BUILD_ENV = PATH="$(PATH)" CONFIG_SITE= build_alias= host_alias= BUILD= HOST= CPATH= C_INCLUDE_PATH= CPLUS_INCLUDE_PATH= LIBRARY_PATH= LD_LIBRARY_PATH= CFLAGS= CXXFLAGS= CPPFLAGS= FCFLAGS= FFLAGS= LDFLAGS= LIBS= CPP="$(FFTW3_CC) -E" AR=/usr/bin/ar AS=/usr/bin/as RANLIB=/usr/bin/ranlib NM=/usr/bin/nm LD=/usr/bin/ld OBJDUMP=/usr/bin/objdump STRIP=/usr/bin/strip READELF=/usr/bin/readelf ADDR2LINE=/usr/bin/addr2line DLLTOOL=
 FFTW3_SRC_ABS  := $(abspath $(FFTW3_SRC_DIR))
 FFTW3_BUILD_ABS := $(abspath $(FFTW3_BUILD_DIR))
 FFTW3_CODELET_SENTINEL := $(FFTW3_SRC_ABS)/dft/scalar/codelets/n1_2.c
@@ -473,17 +470,6 @@ $(OPENMX_BUILD_CONFIG): openmx-toolchain-force
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
 
 $(OBJS) $(GEMMUL8_OPENMX_OBJ) $(FFTW3_BUILD_DIR)/config.status: $(OPENMX_BUILD_CONFIG)
-
-# A changed FFTW compiler/optimization policy must rebuild the static library,
-# but should not recompile unrelated CUDA/OpenMX objects.
-FFTW3_BUILD_CONFIG := $(FFTW3_BUILD_DIR)/make-toolchain.conf
-.PHONY: fftw3-toolchain-force
-$(FFTW3_BUILD_CONFIG): fftw3-toolchain-force
-	@mkdir -p "$(dir $(FFTW3_BUILD_CONFIG))"
-	@printf '%s\n' '$(FFTW3_CC)' '$(FFTW3_CXX)' '$(FFTW3_FC)' '$(FFTW3_F77)' '$(FFTW3_CFLAGS)' '$(FFTW3_CONFIGURE_OPTIONS)' '$(FFTW3_CONFIGURE_TRIPLET)' '$(FFTW3_PREFIX)' '$(FFTW3_TAG)' > "$@.tmp"
-	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
-
-$(FFTW3_BUILD_DIR)/config.status: $(FFTW3_BUILD_CONFIG)
 
 # Stack-only overrides must reach the dependency builder without rebuilding
 # unrelated OpenMX objects or FFTW. Keep these fields in sync with its

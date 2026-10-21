@@ -50,16 +50,6 @@ export GPUSOLVER2_HOST_LIBDIR ?= $(KUGUI_GCC_LIBDIR)
 WITH_MAGMA ?= 1
 MAGMA_HOST_LIBDIR ?= $(KUGUI_GCC_LIBDIR)
 MAGMA_CMAKE ?= $(if $(wildcard $(CURDIR)/build/cmake-python/cmake/data/bin/cmake),$(CURDIR)/build/cmake-python/cmake/data/bin/cmake,cmake)
-GPUSOLVER2_CMAKE ?= $(MAGMA_CMAKE)
-
-# Poisson/mixing still use host FFTs in GPU calculations. Explicit flags
-# avoid configure treating an empty CFLAGS as a request for unoptimized
-# scalar code. FFTW dispatches the AVX2/FMA codelets at runtime; do not use
-# fast-math, which could change the SCF/force accuracy policy.
-FFTW3_CC ?= $(KUGUI_GCC_ROOT)/bin/gcc
-FFTW3_CXX ?= $(KUGUI_GCC_ROOT)/bin/g++
-FFTW3_CFLAGS ?= -O3
-FFTW3_CONFIGURE_OPTIONS ?= --enable-static --disable-shared --disable-doc --enable-sse2 --enable-avx --enable-avx2 --enable-fma
 
 # The stock default is nproc, which follows OMP_NUM_THREADS (1 in the
 # login environment).

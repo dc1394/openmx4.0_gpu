@@ -171,7 +171,6 @@ def main():
     parser.add_argument('--native-source', type=Path, default=ROOT / 'build/cuda/native/source')
     parser.add_argument('--mpiexec', default=os.environ.get('MPIEXEC', 'mpirun'))
     parser.add_argument('--make', default='make')
-    parser.add_argument('--makefile', default='Makefile', help='Native site configuration, e.g. Makefile.kugui')
     parser.add_argument('--timeout', type=int, default=180)
     args = parser.parse_args()
     native = args.native_source.resolve()
@@ -190,10 +189,10 @@ def main():
             f'-I{shlex.quote(str(ROOT / "source"))} '
             f'{shlex.quote(str(ROOT / "source/openmx_elpa_cpu.c"))} '
             f'{shlex.quote(str(driver))} -o {shlex.quote(str(binary))} $(LIB)\n')
-        subprocess.run([args.make, '-C', str(native), '-f', args.makefile, '-f', str(makefile),
+        subprocess.run([args.make, '-C', str(native), '-f', 'Makefile', '-f', str(makefile),
                         'check-elpa-cpu'], check=True, timeout=args.timeout)
         env = os.environ.copy()
-        env.update(OPENMX_GPU='0', CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
+        env.update(OPENMX_GPU='0', OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
         subprocess.run([*shlex.split(args.mpiexec), '-np', '6', '--bind-to', 'core', str(binary)],
                        check=True, timeout=args.timeout, env=env)
 

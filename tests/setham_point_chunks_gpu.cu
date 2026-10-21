@@ -10,11 +10,6 @@
 #include <vector>
 extern "C" void openmx_gpu_test_use_visible_pool(void);
 extern "C" void openmx_gpu_test_worker_failures(void);
-extern "C" int Set_Hamiltonian_Cuda_MatrixElements(
-    int, int, std::size_t, double, int, int, const int *, const int *, const int *,
-    const int *, const int *, const std::size_t *, const std::size_t *,
-    const std::size_t *, const std::size_t *, const float *, const float *,
-    const double *, double *, int);
 
 extern "C" int Set_Hamiltonian_Cuda_Density(
     int, int, int, int, const int *, const int *, const int *,
@@ -293,14 +288,8 @@ static double exercise_multi(int spins, bool compact)
    synchronization; excludes host packing, transfers and orbital evaluation. */
 static void benchmark_density(int no, int spins, int repeats)
 {
-    const char *pairs_env = std::getenv("SETPOINT_BENCH_PAIRS"), *points_env = std::getenv("SETPOINT_BENCH_POINTS");
-    const int pairs = pairs_env ? std::atoi(pairs_env) : 16;
-    const int points = points_env ? std::atoi(points_env) : 8192;
-    if (pairs < 1 || pairs > 4096 || points < 1 || points > 8192 ||
-        static_cast<std::size_t>(pairs) * points > 1048576) {
-        std::fprintf(stderr, "invalid quadrature benchmark size\n"); std::exit(2);
-    }
-    const std::size_t output_count = static_cast<std::size_t>(pairs) * points;
+    constexpr int pairs = 16, points = 8192;
+    constexpr std::size_t output_count = pairs * points;
     const std::size_t mat = static_cast<std::size_t>(no) * no;
     std::vector<int> nos(pairs, no), counts(pairs, points), nc(pairs * points);
     std::vector<std::size_t> hoff(pairs), noff(pairs), ooff(pairs), outbase(pairs);
@@ -346,29 +335,6 @@ static void benchmark_density(int no, int spins, int repeats)
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / repeats;
     }
     std::printf("DENSITY_BENCH orbitals=%d spins=%d pairs=%d points=%d repeats=%d "
-                "native_fp64_ms=%.6f df_ms=%.6f df_over_native=%.3f\n",
-                no, spins, pairs, points, repeats, elapsed[0], elapsed[1], elapsed[1] / elapsed[0]);
-    /* Include the production wrapper's synchronization/metadata cost, not
-       just kernel-event time. Reuse the same heterogeneous-data layout. */
-    std::vector<double> potential(spins * points), matrix(dm.size(), 0.0);
-    for (std::size_t j = 0; j < potential.size(); ++j) potential[j] = sample(j + 271) * 0.731;
-    Device<double> d_potential(potential), d_matrix(matrix);
-    auto matrix_launch = [&](int mode) {
-        return Set_Hamiltonian_Cuda_MatrixElements(pairs, spins, points, 0.071238947,
-            no, spins * mat, d_no.p, d_no.p, d_count.p, d_nc.p, d_nc.p,
-            d_hoff.p, d_noff.p, d_ooff.p, d_ooff.p, d_a.p, d_b.p,
-            d_potential.p, d_matrix.p, mode);
-    };
-    for (int mode : {0, 2}) {
-        for (int i = 0; i < 2; ++i)
-            if (matrix_launch(mode)) { std::fprintf(stderr, "matrix benchmark warmup failed\n"); std::exit(2); }
-        const auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < repeats; ++i)
-            if (matrix_launch(mode)) { std::fprintf(stderr, "matrix benchmark failed\n"); std::exit(2); }
-        elapsed[mode == 0 ? 0 : 1] =
-            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / repeats;
-    }
-    std::printf("MATRIX_BENCH orbitals=%d spins=%d pairs=%d points=%d repeats=%d "
                 "native_fp64_ms=%.6f df_ms=%.6f df_over_native=%.3f\n",
                 no, spins, pairs, points, repeats, elapsed[0], elapsed[1], elapsed[1] / elapsed[0]);
 }
