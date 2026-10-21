@@ -88,6 +88,17 @@ static inline double ***OpenMX_Solver_RealVolume(OpenMXSolverInvocation *owner,c
   if(!openmx_core_solver_real(owner,omp_get_thread_num(),name,shape,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
   return OpenMX_Solver_RealPlanes(owner,name,view.values,components,rows,columns);
 }
+/* Legacy SIMD kernels may map unaligned intrinsics to aligned loads on some
+   targets. An even row stride retains the former per-row malloc alignment. */
+static inline size_t OpenMX_Solver_SimdColumns(size_t columns)
+{
+  if(columns==(size_t)-1)OpenMX_Solver_Failure("solver SIMD row stride overflows");
+  return columns+(columns&1U);
+}
+static inline double **OpenMX_Solver_AlignedRealMatrix(OpenMXSolverInvocation *owner,const char *name,size_t rows,size_t columns)
+{ return OpenMX_Solver_RealMatrix(owner,name,rows,OpenMX_Solver_SimdColumns(columns)); }
+static inline double ***OpenMX_Solver_AlignedRealVolume(OpenMXSolverInvocation *owner,const char *name,size_t components,size_t rows,size_t columns)
+{ return OpenMX_Solver_RealVolume(owner,name,components,rows,OpenMX_Solver_SimdColumns(columns)); }
 static inline dcomplex **OpenMX_Solver_ComplexAlias(OpenMXSolverInvocation *owner,const char *name,dcomplex *values,size_t rows,size_t columns)
 {
   const OpenMXSolverComplexTensor view={{1,rows,columns,1},values};dcomplex ***aliases;char error[256];

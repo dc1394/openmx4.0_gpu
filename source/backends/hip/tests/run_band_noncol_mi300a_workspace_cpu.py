@@ -15,6 +15,15 @@ import shlex
 import subprocess
 import tempfile
 
+# The SDK/ownership boundary is mocked here; the real ownership adapters are
+# exercised independently by the core-native-resource/adapter tests.
+try:
+    from native_resource_test_bridge import isolate_native_resources
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
+    from native_resource_test_bridge import isolate_native_resources
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -198,7 +207,7 @@ def main():
     parser.add_argument('--cc', default=os.environ.get('CC', 'cc'))
     parser.add_argument('--sanitize', action='store_true')
     args = parser.parse_args()
-    source = (ROOT / 'source/Band_DFT_NonCol.c').read_text()
+    source = isolate_native_resources((ROOT / 'source/Band_DFT_NonCol.c').read_text(), 'HIP')
     names = ('BandNonCol_HipSolverWorkspaceTurnRelease', 'BandNonCol_MagmaWorkspaceTurnRelease',
              'BandNonCol_MI300ANativePolicy', 'BandNonCol_ReleaseSolverTurnWorkspaces',
              'BandNonCol_ReleaseOverlapWorkspace', 'BandNonCol_HamiltonianUseHipSolver',

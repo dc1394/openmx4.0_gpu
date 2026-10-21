@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <complex.h>
 #include "openmx_common.h"
+#include "openmx_core_native_resources.h"
 #include "openmx_electronic.h"
 #include "openmx_core_pao.h"
 #include "openmx_core_vps.h"
@@ -54,6 +55,7 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     Divide_Conquer_Release_GPU_Caches();
     Divide_Conquer_LNO_Release_GPU_Caches();
     Krylov_Release_GPU_Caches();
+    openmx_core_native_resources_clear(core);
 #if !OPENMX_GPU_HIP
     openmx_gpusolver_cache_release();
 #endif

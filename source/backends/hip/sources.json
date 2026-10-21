@@ -330,8 +330,6 @@
     "Set_XC_Grid.c": "src/Set_XC_Grid.c",
     "cuda_fp8.h": "include/cuda_fp8.h",
     "cusolverDn.h": "include/cusolverDn.h",
-    "eigen_refine_gpu.cu": "src/eigen_refine_gpu.cu",
-    "eigen_refine_gpu.h": "include/eigen_refine_gpu.h",
     "eigen_refine_hooks.h": "include/eigen_refine_hooks.h",
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",
     "gemmul8_openmx.cu": "src/gemmul8_openmx.cu",
@@ -672,8 +670,6 @@
     "diff_gcube.c": "1cd589b1333c10e65153b50e10fe0fcc2c555b9ef6fe069de13c9718367582e8",
     "diff_geo.c": "e90c083e7b10ffec1b2e977c18495154e5cb1de296a8a9c3f8047977abb99934",
     "dtime.c": "c93253896c46187de7aa493d5d345c5336c86fde8cd18be23ab073d8ad823b4d",
-    "eigen_refine_gpu.cu": "d0ec6ee989cf3bb21b54db5e2882c7e969e7e178511e14eb1a8211a7b4c30842",
-    "eigen_refine_gpu.h": "5c1e520f46e47e9e8095a450a1fb26bf8847d6071377dd61f769d470011c277e",
     "eigen_refine_hooks.h": "ac736cdaf6b77bb622c869cbc3ce2e60ef642983aaf267fd2563b62a9370e5f6",
     "elpa_col.c": "6070fd6c528c5f02afab537981f8dc88f9c78735910729d3cf266c6dbcb91294",
     "elpa_cosma_memory.cpp": "31941341e0f7c01ea1c4eb666f91f9e094d8dba6ac8be8467b8329de7c88145d",
@@ -1044,7 +1040,9 @@
     "outputfile1.c",
     "readfile.c",
     "tran_prototypes.h",
-    "truncation.c"
+    "truncation.c",
+    "openmx_core_native_resources.h",
+    "openmx_native_resources.h"
   ],
   "integrated_overrides": {
     "Cluster_DFT_Col.c": "src/Cluster_DFT_Col.c",
@@ -1071,6 +1069,8 @@
     "hipblas_compat.h": "include/hipblas_compat.h",
     "hipsolver_compat.h": "include/hipsolver_compat.h",
     "my_hipblasDgemm.c": "src/my_hipblasDgemm.c",
-    "my_hipblasZgemm.c": "src/my_hipblasZgemm.c"
+    "my_hipblasZgemm.c": "src/my_hipblasZgemm.c",
+    "eigen_refine_gpu.cu": "src/eigen_refine_gpu.cu",
+    "eigen_refine_gpu.h": "include/eigen_refine_gpu.h"
   }
 }

@@ -49,6 +49,7 @@
    and every loop is a kernel on the stream of the caller's hipBLAS handle.
 */
 #include "eigen_refine_gpu.h"
+#include "openmx_native_resources.h"
 #include "openmx_precision.h"
 #include "openmx_stdout_level.h"
 
@@ -435,7 +436,7 @@ int fp32_backend_magma()
 
 void refine_blocks_release(EigenRefineState *st)
 {
-    if (st->own != NULL) refine_check(hipFree(st->own), "hipFree blocks");
+    if (st->own != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->own), "hipFree blocks");
     st->own = NULL;
     st->b1 = st->b2 = st->b3 = NULL;
     st->products_ready = 0;
@@ -546,7 +547,7 @@ void refine_work_release(EigenRefineDevice *dev, hipStream_t stream)
 {
     if (*dev->d_work != NULL) {
         refine_check(hipStreamSynchronize(stream), "synchronize");
-        refine_check(hipFree(*dev->d_work), "hipFree workspace");
+        refine_check(OpenMX_Resource_GpuFree(dev->resources,*dev->d_work), "hipFree workspace");
         *dev->d_work = NULL;
     }
     *dev->d_work_bytes = 0;
@@ -559,7 +560,7 @@ int refine_work_ensure(EigenRefineDevice *dev, size_t bytes, const char *what)
         void *grown = NULL;
 
         if (*dev->d_work != NULL) {
-            refine_check(hipFree(*dev->d_work), "hipFree workspace");
+            refine_check(OpenMX_Resource_GpuFree(dev->resources,*dev->d_work), "hipFree workspace");
             *dev->d_work = NULL;
             *dev->d_work_bytes = 0;
         }
@@ -641,7 +642,7 @@ int refine_fp32_rocsolver(EigenRefineDevice *dev, hipStream_t stream, int cplx, 
         refine_check(hipGetLastError(), "FP32 finite check");
         refine_check(hipMemcpyAsync(&finite, flag, sizeof(int), hipMemcpyDeviceToHost, stream), "download flag");
         refine_check(hipStreamSynchronize(stream), "synchronize");
-        refine_check(hipFree(flag), "hipFree flag");
+        refine_check(OpenMX_Resource_GpuFree(dev->resources,flag), "hipFree flag");
         if (!finite) {
             if (OPENMX_STDOUT_LEVEL(2)) {
                 printf("<eigen_refine_gpu> FP32 rocSOLVER eigensolver returned non-finite eigenpairs\n");
@@ -710,14 +711,14 @@ int refine_fp32_solve(EigenRefineDevice *dev, hipStream_t stream, int cplx, int 
                     fflush(stdout);
                 }
             }
-            free(w);
+            openmx_core_native_free(dev->resources,w);
         }
         else if (refine_fp32_rocsolver(dev, stream, cplx, n, af, wf)) {
             float *w = (float *)dev->host_malloc((size_t)n, sizeof(float), "FP32 eigenvalues");
 
             refine_check(hipMemcpy(w, wf, (size_t)n * sizeof(float), hipMemcpyDeviceToHost), "download eigenvalues");
             for (int i = 0; i < n; i++) e0[i] = (double)w[i];
-            free(w);
+            openmx_core_native_free(dev->resources,w);
             ok = 1;
         }
         if (ok) {
@@ -762,13 +763,13 @@ int refine_maxima(const EigenRefineDevice *dev, hipStream_t stream, int cplx, co
     refine_check(hipMemcpyAsync(host, partial, (size_t)blocks * 3 * sizeof(double), hipMemcpyDeviceToHost, stream),
                  "download maxima");
     refine_check(hipStreamSynchronize(stream), "synchronize");
-    refine_check(hipFree(partial), "hipFree maxima");
+    refine_check(OpenMX_Resource_GpuFree(dev->resources,partial), "hipFree maxima");
     for (unsigned b = 0; b < blocks; b++) {
         max_s = fmax(max_s, host[3 * b]);
         max_r = fmax(max_r, host[3 * b + 1]);
         finite = fmin(finite, host[3 * b + 2]);
     }
-    free(host);
+    openmx_core_native_free(dev->resources,host);
     *max_s_out = max_s;
     *max_r_out = max_r;
     return finite == 1.0 && std::isfinite(max_s) && std::isfinite(max_r);
@@ -808,7 +809,7 @@ int refine_result_finite(const EigenRefineDevice *dev, hipStream_t stream, int w
     refine_check(hipGetLastError(), "finite check");
     refine_check(hipMemcpyAsync(&finite, flag, sizeof(int), hipMemcpyDeviceToHost, stream), "download flag");
     refine_check(hipStreamSynchronize(stream), "synchronize");
-    refine_check(hipFree(flag), "hipFree flag");
+    refine_check(OpenMX_Resource_GpuFree(dev->resources,flag), "hipFree flag");
     return finite;
 }
 
@@ -861,14 +862,14 @@ int refine_rayleigh_ritz(EigenRefineDevice *dev, hipStream_t stream, int cplx, c
         work = (double *)dev->host_malloc((size_t)width * (size_t)lwork, sizeof(double), "cluster Rayleigh-Ritz");
         if (cplx) zhegv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, rwork, &info);
         else dsygv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, &info);
-        free(work);
-        free(rwork);
+        openmx_core_native_free(dev->resources,work);
+        openmx_core_native_free(dev->resources,rwork);
         if (info == 0) {
             refine_check(hipMemcpyAsync(small, h, width * mm * sizeof(double), hipMemcpyHostToDevice, stream),
                          "upload Y");
             refine_check(hipStreamSynchronize(stream), "synchronize");
         }
-        free(h);
+        openmx_core_native_free(dev->resources,h);
         if (info != 0) return 0;
     }
     else {
@@ -909,7 +910,7 @@ int refine_rayleigh_ritz(EigenRefineDevice *dev, hipStream_t stream, int cplx, c
             refine_check(hipMemcpyAsync(&dev_info, dev->d_info, sizeof(int32_t), hipMemcpyDeviceToHost, stream),
                          "download info");
         refine_check(hipStreamSynchronize(stream), "synchronize");
-        if (own_work) refine_check(hipFree(work), "hipFree");
+        if (own_work) refine_check(OpenMX_Resource_GpuFree(dev->resources,work), "hipFree");
         if (status != HIPSOLVER_STATUS_SUCCESS || dev_info != 0) return 0;
         refine_check(hipMemcpy(w, w_dev, (size_t)m * sizeof(double), hipMemcpyDeviceToHost), "download w");
     }
@@ -1109,11 +1110,12 @@ extern "C" void openmx_eigen_refine_abandon(EigenRefineState *st)
 extern "C" void openmx_eigen_refine_state_release(EigenRefineState *st)
 {
     refine_blocks_release(st);
-    if (st->lam != NULL) refine_check(hipFree(st->lam), "hipFree lam");
-    if (st->occ != NULL) refine_check(hipFree(st->occ), "hipFree occ");
+    if (st->lam != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->lam), "hipFree lam");
+    if (st->occ != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->occ), "hipFree occ");
     st->lam = st->occ = NULL;
     st->capacity = 0;
     st->basis_valid = 0;
+    st->resources = NULL;
 }
 
 extern "C" void openmx_eigen_refine_device_release(EigenRefineDevice *dev)
@@ -1155,9 +1157,10 @@ extern "C" int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevi
 
     if (st->capacity < n) {
         openmx_eigen_refine_state_release(st);
+        st->resources = dev->resources;
         if (dev->try_malloc((void **)&st->lam, (size_t)n * sizeof(double)) != hipSuccess ||
             dev->try_malloc((void **)&st->occ, (size_t)n * sizeof(double)) != hipSuccess) {
-            if (st->lam != NULL) refine_check(hipFree(st->lam), "hipFree lam");
+            if (st->lam != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->lam), "hipFree lam");
             st->lam = NULL;
             if (OPENMX_STDOUT_LEVEL(2)) {
                 printf("<eigen_refine_gpu> no room for the refinement eigenvalues; FP64 eigensolver%s\n",
@@ -1476,12 +1479,12 @@ extern "C" int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevic
                    "columns), empty %.1e; orthogonality max %.1e\n",
                    kc, res_occ, worst_occ + 1, res_part, n_part, res_empty, orth);
             fflush(stdout);
-            free(rh);
+            openmx_core_native_free(dev->resources,rh);
         }
-        free(lh);
-        free(fh);
-        free(c0s);
-        free(ms);
+        openmx_core_native_free(dev->resources,lh);
+        openmx_core_native_free(dev->resources,fh);
+        openmx_core_native_free(dev->resources,c0s);
+        openmx_core_native_free(dev->resources,ms);
     }
     if (!rr_ok) {
         /* a still holds the symmetric matrix: the caller solves it in FP64 */

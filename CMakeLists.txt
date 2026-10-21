@@ -128,6 +128,10 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME eigen-refine-resource-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_eigen_refine_faults.py"
+      --core-library "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(eigen-refine-resource-lifecycle PROPERTIES LABELS "unit" TIMEOUT 120)
   add_test(NAME build-backend-isolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_unified_build.py")
   add_test(NAME cmake-driver

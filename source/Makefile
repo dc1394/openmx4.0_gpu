@@ -946,7 +946,7 @@ Divide_Conquer.o: Divide_Conquer.c openmx_common.h
 	$(CC3) -c Divide_Conquer.c
 Divide_Conquer_LNO.o: Divide_Conquer_LNO.c openmx_common.h
 	$(CC) -c Divide_Conquer_LNO.c
-eigen_refine_gpu.o: eigen_refine_gpu.c eigen_refine_gpu.h openmx_stdout_level.h openmx_precision.h
+eigen_refine_gpu.o: eigen_refine_gpu.c eigen_refine_gpu.h openmx_stdout_level.h openmx_precision.h openmx_native_resources.h openmx_core_native_resources.h
 	$(CC) -c eigen_refine_gpu.c
 grid_precision.o: grid_precision.c grid_precision.h openmx_precision.h
 	$(CC) -c grid_precision.c
@@ -1707,3 +1707,7 @@ Force.o: openmx_hubbard_force.h
 
 # Solver invocation RAII and flat spectral workspaces.
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_Conquer.o Divide_Conquer_LNO.o Krylov.o: openmx_solver_workspace.h openmx_core_solver_workspace.h
+
+# Calculation-owned native GPU resources.
+DFT.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_Conquer.o Divide_Conquer_LNO.o Krylov.o: openmx_native_resources.h openmx_core_native_resources.h
+Free_Arrays.o: openmx_core_native_resources.h

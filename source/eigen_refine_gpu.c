@@ -45,6 +45,7 @@
    bias of 2e-10 Ha across warm starts; OPENMX_EIGEN_REFINE_COMPLEMENT).
 */
 #include "eigen_refine_gpu.h"
+#include "openmx_native_resources.h"
 #include "openmx_precision.h"
 #include "openmx_stdout_level.h"
 
@@ -189,7 +190,7 @@ int openmx_eigen_refine_warm_band_step(int scf_iter)
 
 static void refine_blocks_release(EigenRefineState *st)
 {
-    if (st->own != NULL) refine_check(cudaFree(st->own), "cudaFree blocks");
+    if (st->own != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->own), "cudaFree blocks");
     st->own = NULL;
     st->b1 = st->b2 = st->b3 = NULL;
     st->products_ready = 0;
@@ -235,11 +236,12 @@ void openmx_eigen_refine_abandon(EigenRefineState *st)
 void openmx_eigen_refine_state_release(EigenRefineState *st)
 {
     refine_blocks_release(st);
-    if (st->lam != NULL) refine_check(cudaFree(st->lam), "cudaFree lam");
-    if (st->occ != NULL) refine_check(cudaFree(st->occ), "cudaFree occ");
+    if (st->lam != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->lam), "cudaFree lam");
+    if (st->occ != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->occ), "cudaFree occ");
     st->lam = st->occ = NULL;
     st->capacity = 0;
     st->basis_valid = 0;
+    st->resources = NULL;
 }
 
 void openmx_eigen_refine_device_release(EigenRefineDevice *dev)
@@ -357,12 +359,12 @@ static int refine_fp32_attempt(EigenRefineDevice *dev, int cplx, int n, const vo
             }
             return 0;
         }
-        if (*dev->d_work != NULL) refine_check(cudaFree(*dev->d_work), "cudaFree workspace");
+        if (*dev->d_work != NULL) refine_check(OpenMX_Resource_GpuFree(dev->resources,*dev->d_work), "cudaFree workspace");
         *dev->d_work = grown;
         *dev->d_work_bytes = d_bytes;
     }
     if (*dev->h_work_bytes < h_bytes) {
-        free(*dev->h_work);
+        openmx_core_native_free(dev->resources,*dev->h_work);
         *dev->h_work = dev->host_malloc(h_bytes, 1, "cuSOLVER host workspace");
         *dev->h_work_bytes = h_bytes;
     }
@@ -570,6 +572,7 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
 
     if (st->capacity < n) {
         openmx_eigen_refine_state_release(st);
+        st->resources = dev->resources;
         if (dev->try_malloc((void **)&st->lam, (size_t)n * sizeof(double)) != cudaSuccess ||
             dev->try_malloc((void **)&st->occ, (size_t)n * sizeof(double)) != cudaSuccess) {
             if (OPENMX_STDOUT_LEVEL(2)) {
@@ -646,7 +649,7 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
         w = (float *)dev->host_malloc((size_t)n, sizeof(float), "FP32 eigenvalues");
         refine_check(cudaMemcpy(w, wf, (size_t)n * sizeof(float), cudaMemcpyDeviceToHost), "download eigenvalues");
         for (int i = 0; i < n; i++) e0[i] = (double)w[i];
-        free(w);
+        openmx_core_native_free(dev->resources,w);
         for (int i = 0; i < n; i++) {
             if (!isfinite(e0[i])) return refine_nonfinite(st, pb, report);
         }
@@ -706,15 +709,15 @@ static int refine_rayleigh_ritz(EigenRefineDevice *dev, int cplx, const void *a,
         work = (double *)dev->host_malloc((size_t)width * (size_t)lwork, sizeof(double), "cluster Rayleigh-Ritz");
         if (cplx) zhegv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, rwork, &info);
         else dsygv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, &info);
-        free(work);
-        free(rwork);
+        openmx_core_native_free(dev->resources,work);
+        openmx_core_native_free(dev->resources,rwork);
         if (info == 0) {
             /* complete before the products on the solver's stream read it */
             refine_check(cudaMemcpyAsync(small, h, width * mm * sizeof(double), cudaMemcpyHostToDevice, dev->stream),
                          "upload Y");
             refine_check(cudaStreamSynchronize(dev->stream), "synchronize");
         }
-        free(h);
+        openmx_core_native_free(dev->resources,h);
         if (info != 0) return 0;
     }
     else {
@@ -752,7 +755,7 @@ static int refine_rayleigh_ritz(EigenRefineDevice *dev, int cplx, const void *a,
             refine_check(cudaMemcpyAsync(&dev_info, dev->d_info, sizeof(int32_t), cudaMemcpyDeviceToHost, dev->stream),
                          "download info");
         refine_check(cudaStreamSynchronize(dev->stream), "synchronize");
-        if (own_work) refine_check(cudaFree(work), "cudaFree");
+        if (own_work) refine_check(OpenMX_Resource_GpuFree(dev->resources,work), "cudaFree");
         if (status != CUSOLVER_STATUS_SUCCESS || dev_info != 0) return 0;
         refine_check(cudaMemcpy(w, w_dev, (size_t)m * sizeof(double), cudaMemcpyDeviceToHost), "download w");
     }
@@ -1062,12 +1065,12 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                    "columns), empty %.1e; orthogonality max %.1e\n",
                    kc, res_occ, worst_occ + 1, res_part, n_part, res_empty, orth);
             fflush(stdout);
-            free(rh);
+            openmx_core_native_free(dev->resources,rh);
         }
-        free(lh);
-        free(fh);
-        free(c0s);
-        free(ms);
+        openmx_core_native_free(dev->resources,lh);
+        openmx_core_native_free(dev->resources,fh);
+        openmx_core_native_free(dev->resources,c0s);
+        openmx_core_native_free(dev->resources,ms);
     }
     if (!rr_ok) {
         /* a still holds the symmetric matrix: the caller solves it in FP64 */

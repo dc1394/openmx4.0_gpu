@@ -19,6 +19,8 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "openmx_solver_workspace.h"
+#include "openmx_native_resources.h"
+OPENMX_NATIVE_RESOURCE_GROUP(Krylov,Krylov_Release_GPU_Caches)
 #include "lapack_prototypes.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include <omp.h>
@@ -241,7 +243,7 @@ static void Krylov_GPU_InitOnce(void)
   }
 
   if (Krylov_GPU_Enabled()){
-    wait_hipfunc(hipFree(0));
+    wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,0));
   }
 }
 
@@ -255,7 +257,7 @@ static void Krylov_GPU_PreparePool(int nthrds)
   if (!Krylov_GPU_Enabled() || nthrds <= Krylov_gpu_ws_pool_size) return;
 
   Krylov_GPU_Workspace *new_pool =
-    (Krylov_GPU_Workspace*)realloc(Krylov_gpu_ws_pool, sizeof(Krylov_GPU_Workspace)*(size_t)nthrds);
+    (Krylov_GPU_Workspace*)openmx_core_native_realloc(Krylov_resources,Krylov_gpu_ws_pool,sizeof(Krylov_GPU_Workspace)*(size_t)nthrds);
   if (new_pool == NULL){
     fprintf(stderr,"Krylov: could not allocate GPU workspace pool.\n");
     MPI_Abort(MPI_COMM_WORLD,1);
@@ -307,10 +309,10 @@ static int Krylov_GPU_EnsureDouble(double **ptr, size_t *capacity, size_t count)
   if (*capacity < count){
     hipError_t err;
 
-    if (*ptr != NULL) wait_hipfunc(hipFree(*ptr));
+    if (*ptr != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,*ptr));
     *ptr = NULL;
     *capacity = 0;
-    err = hipMalloc((void**)ptr, sizeof(double)*count);
+    err = OpenMX_Resource_GpuMalloc(Krylov_resources,(void**)ptr,sizeof(double)*count);
     if (err != hipSuccess){
       (void)hipGetLastError();
       *ptr = NULL;
@@ -331,7 +333,7 @@ static int Krylov_GPU_Usable(const Krylov_GPU_Workspace *ws)
 static void Krylov_GPU_EnsureHostMatrix(Krylov_GPU_Workspace *ws, size_t count)
 {
   if (ws->h_A_count < count){
-    double *p = (double*)realloc(ws->h_A, sizeof(double)*count);
+    double *p = (double*)openmx_core_native_realloc(Krylov_resources,ws->h_A,sizeof(double)*count);
     if (p == NULL){
       fprintf(stderr,"Krylov: could not allocate host staging matrix.\n");
       MPI_Abort(MPI_COMM_WORLD,1);
@@ -348,18 +350,18 @@ static void Krylov_GPU_Workspace_Init(Krylov_GPU_Workspace *ws)
   if (!Krylov_GPU_Enabled()) return;
 
   ws->active = 1;
-  wait_hipfunc(hipStreamCreateWithFlags(&ws->stream, hipStreamNonBlocking));
+  wait_hipfunc(OpenMX_Resource_StreamCreate(Krylov_resources,&ws->stream,hipStreamNonBlocking));
 }
 
 static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws)
 {
   if (ws->stream != NULL) wait_hipfunc(hipStreamSynchronize(ws->stream));
-  if (ws->d_A    != NULL) wait_hipfunc(hipFree(ws->d_A));
-  if (ws->d_B    != NULL) wait_hipfunc(hipFree(ws->d_B));
-  if (ws->d_C    != NULL) wait_hipfunc(hipFree(ws->d_C));
-  if (ws->h_A    != NULL) free(ws->h_A);
-  if (ws->hipblas   != NULL) OpenMXBlasWait(hipblasDestroy(ws->hipblas));
-  if (ws->stream   != NULL) wait_hipfunc(hipStreamDestroy(ws->stream));
+  if (ws->d_A    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,ws->d_A));
+  if (ws->d_B    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,ws->d_B));
+  if (ws->d_C    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,ws->d_C));
+  if (ws->h_A    != NULL) openmx_core_native_free(Krylov_resources,ws->h_A);
+  if (ws->hipblas   != NULL) OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Krylov_resources,ws->hipblas));
+  if (ws->stream   != NULL) wait_hipfunc(OpenMX_Resource_StreamDestroy(Krylov_resources,ws->stream));
   memset(ws,0,sizeof(Krylov_GPU_Workspace));
 }
 
@@ -367,7 +369,7 @@ static int Krylov_GPU_EnsureHipblas(Krylov_GPU_Workspace *ws)
 {
   if (ws->hipblas == NULL){
     hipblasHandle_t handle = NULL;
-    hipblasStatus_t status = hipblasCreate(&handle);
+    hipblasStatus_t status = OpenMX_Resource_BlasCreate(Krylov_resources,&handle);
 
     /* the handle owns the BLAS workspace pool, so this is where a full
        device shows up first */
@@ -541,11 +543,11 @@ static Krylov_KUCache Krylov_kucache = {0};
 
 void Krylov_Release_GPU_KUCache(void)
 {
-  if (Krylov_kucache.d_arena != NULL) wait_hipfunc(hipFree(Krylov_kucache.d_arena));
-  free(Krylov_kucache.dim_n);
-  free(Krylov_kucache.dim_m);
-  free(Krylov_kucache.valid);
-  free(Krylov_kucache.off);
+  if (Krylov_kucache.d_arena != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,Krylov_kucache.d_arena));
+  openmx_core_native_free(Krylov_resources,Krylov_kucache.dim_n);
+  openmx_core_native_free(Krylov_resources,Krylov_kucache.dim_m);
+  openmx_core_native_free(Krylov_resources,Krylov_kucache.valid);
+  openmx_core_native_free(Krylov_resources,Krylov_kucache.off);
   memset(&Krylov_kucache,0,sizeof(Krylov_kucache));
 }
 
@@ -560,7 +562,7 @@ void Krylov_Release_GPU_Caches(void)
   for (i=0; i<Krylov_gpu_ws_pool_size; i++){
     Krylov_GPU_Workspace_Free(&Krylov_gpu_ws_pool[i]);
   }
-  free(Krylov_gpu_ws_pool);
+  openmx_core_native_free(Krylov_resources,Krylov_gpu_ws_pool);
   Krylov_gpu_ws_pool = NULL;
   Krylov_gpu_ws_pool_size = 0;
 
@@ -603,10 +605,10 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize,
   }
   if (Krylov_kucache.state==-1) return;
 
-  Krylov_kucache.dim_n=(int*)calloc(nslot,sizeof(int));
-  Krylov_kucache.dim_m=(int*)calloc(nslot,sizeof(int));
-  Krylov_kucache.valid=(int*)calloc(nslot,sizeof(int));
-  Krylov_kucache.off=(size_t*)calloc(nslot,sizeof(size_t));
+  Krylov_kucache.dim_n=(int*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(int),1);
+  Krylov_kucache.dim_m=(int*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(int),1);
+  Krylov_kucache.valid=(int*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(int),1);
+  Krylov_kucache.off=(size_t*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(size_t),1);
   if (Krylov_kucache.dim_n==NULL || Krylov_kucache.dim_m==NULL ||
       Krylov_kucache.valid==NULL || Krylov_kucache.off==NULL){
     fprintf(stderr,"Krylov: could not allocate KU-cache tables.\n");
@@ -633,7 +635,7 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize,
     used+=elems;
     admitted++;
   }
-  if (used!=0 && hipMalloc((void**)&Krylov_kucache.d_arena,used*sizeof(double))!=hipSuccess){
+  if (used!=0 && OpenMX_Resource_GpuMalloc(Krylov_resources,(void**)&Krylov_kucache.d_arena,used*sizeof(double))!=hipSuccess){
     (void)hipGetLastError();
     Krylov_Release_GPU_KUCache();
     Krylov_kucache.state=-1;
@@ -2459,11 +2461,53 @@ static double Krylov_Col_owned(char *mode,
 
 
 
+typedef struct {
+  int myid;
+  int spin;
+  int Mc_AN;
+  double *****Hks;
+  double ****OLP0;
+  double **invS;
+  double ***Krylov_U;
+  double ***Krylov_U_OLP;
+  double **inv_RS;
+  int *MP;
+  int *Msize;
+  int *Msize2;
+  int *Msize3;
+  int *Msize4;
+  int Msize2_max;
+  double **tmpvec0;
+  double **tmpvec1;
+  double **tmpvec2;
+} Generate_pMatrix_scratch_arguments;
+static void Generate_pMatrix_raii( int myid, int spin, int Mc_AN, double *****Hks,
+                       double ****OLP0, double **invS,
+                       double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                       int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
+                       double **tmpvec0, double **tmpvec1, double **tmpvec2 ,OpenMXSolverInvocation *solver_owner);
+static int Generate_pMatrix_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Generate_pMatrix_scratch_arguments *a=(Generate_pMatrix_scratch_arguments*)arguments;
+  Generate_pMatrix_raii(a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->invS,a->Krylov_U,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize,a->Msize2,a->Msize3,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,a->tmpvec2,owner);
+  *result=0;
+  return 1;
+}
 void Generate_pMatrix( int myid, int spin, int Mc_AN, double *****Hks, 
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP, 
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max, 
-                       double **tmpvec0, double **tmpvec1, double **tmpvec2 ) 
+                       double **tmpvec0, double **tmpvec1, double **tmpvec2 )
+{
+  Generate_pMatrix_scratch_arguments arguments={myid,spin,Mc_AN,Hks,OLP0,invS,Krylov_U,Krylov_U_OLP,inv_RS,MP,Msize,Msize2,Msize3,Msize4,Msize2_max,tmpvec0,tmpvec1,tmpvec2};
+  OpenMX_Solver_Run(Generate_pMatrix_scratch_operation,&arguments);
+}
+
+static void Generate_pMatrix_raii( int myid, int spin, int Mc_AN, double *****Hks,
+                       double ****OLP0, double **invS,
+                       double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                       int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
+                       double **tmpvec0, double **tmpvec1, double **tmpvec2 ,OpenMXSolverInvocation *solver_owner)
 {
   int rl,rl0,rl1,ct_AN,fan,san,can,wan,ct_on,i,j;
   int n,Anum,Bnum,k,ian,ih,kl,jg,ig,jan,m,m1,n1;
@@ -2504,41 +2548,41 @@ void Generate_pMatrix( int myid, int spin, int Mc_AN, double *****Hks,
 
   /* allocation of arrays */
 
-  Utmp = (double**)malloc(sizeof(double*)*rlmax_EC[Mc_AN]);
+  Utmp=OpenMX_Solver_AlignedRealMatrix(solver_owner,"Utmp-1",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN]);
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    Utmp[i] = (double*)malloc(sizeof(double)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  U0 = (double***)malloc(sizeof(double**)*rlmax_EC[Mc_AN]);
+  U0=OpenMX_Solver_AlignedRealVolume(solver_owner,"U0-2",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN],((size_t)1)*(Msize2[Mc_AN]+3));
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    U0[i] = (double**)malloc(sizeof(double*)*EKC_core_size[Mc_AN]);
+    ;
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      U0[i][j] = (double*)malloc(sizeof(double)*(Msize2[Mc_AN]+3));
+      ;
       for (k=0; k<(Msize2[Mc_AN]+3); k++)  U0[i][j][k] = 0.0;
     }
   }  
 
-  tmpmat0 = (double**)malloc(sizeof(double*)*(EKC_core_size[Mc_AN]+4));
+  tmpmat0=OpenMX_Solver_AlignedRealMatrix(solver_owner,"tmpmat0-3",((size_t)1)*(EKC_core_size[Mc_AN]+4),((size_t)1)*(EKC_core_size[Mc_AN]+4));
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    tmpmat0[i] = (double*)malloc(sizeof(double)*(EKC_core_size[Mc_AN]+4));
+    ;
   }
 
-  FS = (double**)malloc(sizeof(double*)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  FS=OpenMX_Solver_AlignedRealMatrix(solver_owner,"FS-4",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN],((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    FS[i] = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  ko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
-  iko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  ko=(double*)OpenMX_Solver_Real(solver_owner,"ko-7",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  iko=(double*)OpenMX_Solver_Real(solver_owner,"iko-8",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
 
-  matRS0 = (double**)malloc(sizeof(double*)*(EKC_core_size[Mc_AN]+2));
+  matRS0=OpenMX_Solver_AlignedRealMatrix(solver_owner,"matRS0-5",((size_t)1)*(EKC_core_size[Mc_AN]+2),((size_t)1)*(Msize4[Mc_AN]+3));
   for (i=0; i<(EKC_core_size[Mc_AN]+2); i++){
-    matRS0[i] = (double*)malloc(sizeof(double)*(Msize4[Mc_AN]+3));
+    ;
   }
 
-  matRS1 = (double**)malloc(sizeof(double*)*(Msize4[Mc_AN]+3));
+  matRS1=OpenMX_Solver_AlignedRealMatrix(solver_owner,"matRS1-6",((size_t)1)*(Msize4[Mc_AN]+3),((size_t)1)*(EKC_core_size[Mc_AN]+2));
   for (i=0; i<(Msize4[Mc_AN]+3); i++){
-    matRS1[i] = (double*)malloc(sizeof(double)*(EKC_core_size[Mc_AN]+2));
+    ;
   }
 
   /****************************************************
@@ -3832,40 +3876,40 @@ void Generate_pMatrix( int myid, int spin, int Mc_AN, double *****Hks,
   /* freeing of arrays */
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    free(Utmp[i]);
+    ;
   }
-  free(Utmp);
+  ;
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      free(U0[i][j]);
+      ;
     }
-    free(U0[i]);
+    ;
   }  
-  free(U0);
+  ;
 
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    free(tmpmat0[i]);
+    ;
   }
-  free(tmpmat0);
+  ;
 
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    free(FS[i]);
+    ;
   }
-  free(FS);
+  ;
 
-  free(ko);
-  free(iko);
+  ;
+  ;
 
   for (i=0; i<(EKC_core_size[Mc_AN]+2); i++){
-    free(matRS0[i]);
+    ;
   }
-  free(matRS0);
+  ;
 
   for (i=0; i<(Msize4[Mc_AN]+3); i++){
-    free(matRS1[i]);
+    ;
   }
-  free(matRS1);
+  ;
 }
 
 
@@ -3875,9 +3919,40 @@ void Generate_pMatrix( int myid, int spin, int Mc_AN, double *****Hks,
 
 
 
+typedef struct {
+  int myid;
+  int spin;
+  int Mc_AN;
+  double *****Hks;
+  double ****OLP0;
+  double ***Krylov_U;
+  int *MP;
+  int *Msize;
+  int *Msize2;
+  int *Msize3;
+  double **tmpvec1;
+} Generate_pMatrix2_scratch_arguments;
+static void Generate_pMatrix2_raii( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0,
+                        double ***Krylov_U, int *MP, int *Msize, int *Msize2, int *Msize3,
+                        double **tmpvec1,OpenMXSolverInvocation *solver_owner);
+static int Generate_pMatrix2_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Generate_pMatrix2_scratch_arguments *a=(Generate_pMatrix2_scratch_arguments*)arguments;
+  Generate_pMatrix2_raii(a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->Krylov_U,a->MP,a->Msize,a->Msize2,a->Msize3,a->tmpvec1,owner);
+  *result=0;
+  return 1;
+}
 void Generate_pMatrix2( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0, 
                         double ***Krylov_U, int *MP, int *Msize, int *Msize2, int *Msize3, 
                         double **tmpvec1)
+{
+  Generate_pMatrix2_scratch_arguments arguments={myid,spin,Mc_AN,Hks,OLP0,Krylov_U,MP,Msize,Msize2,Msize3,tmpvec1};
+  OpenMX_Solver_Run(Generate_pMatrix2_scratch_operation,&arguments);
+}
+
+static void Generate_pMatrix2_raii( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0,
+                        double ***Krylov_U, int *MP, int *Msize, int *Msize2, int *Msize3,
+                        double **tmpvec1,OpenMXSolverInvocation *solver_owner)
 {
   int rl,rl0,rl1,ct_AN,fan,san,can,wan,ct_on,i,j;
   int n,Anum,Bnum,k,ian,ih,kl,jg,ig,jan,m,m1,n1;
@@ -3913,27 +3988,27 @@ void Generate_pMatrix2( int myid, int spin, int Mc_AN, double *****Hks, double *
 
   /* allocation of arrays */
 
-  Utmp = (double**)malloc(sizeof(double*)*rlmax_EC[Mc_AN]);
+  Utmp=OpenMX_Solver_AlignedRealMatrix(solver_owner,"Utmp-1",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN]);
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    Utmp[i] = (double*)malloc(sizeof(double)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  U0 = (double***)malloc(sizeof(double**)*rlmax_EC[Mc_AN]);
+  U0=OpenMX_Solver_AlignedRealVolume(solver_owner,"U0-2",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN],((size_t)1)*(Msize2[Mc_AN]+3));
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    U0[i] = (double**)malloc(sizeof(double*)*EKC_core_size[Mc_AN]);
+    ;
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      U0[i][j] = (double*)malloc(sizeof(double)*(Msize2[Mc_AN]+3));
+      ;
       for (k=0; k<(Msize2[Mc_AN]+3); k++)  U0[i][j][k] = 0.0;
     }
   }  
 
-  FS = (double**)malloc(sizeof(double*)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  FS=OpenMX_Solver_AlignedRealMatrix(solver_owner,"FS-3",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN],((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    FS[i] = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  ko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
-  iko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  ko=(double*)OpenMX_Solver_Real(solver_owner,"ko-4",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  iko=(double*)OpenMX_Solver_Real(solver_owner,"iko-5",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
 
   /****************************************************
    initialize 
@@ -4499,25 +4574,25 @@ void Generate_pMatrix2( int myid, int spin, int Mc_AN, double *****Hks, double *
   /* freeing of arrays */
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    free(Utmp[i]);
+    ;
   }
-  free(Utmp);
+  ;
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      free(U0[i][j]);
+      ;
     }
-    free(U0[i]);
+    ;
   }  
-  free(U0);
+  ;
 
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    free(FS[i]);
+    ;
   }
-  free(FS);
+  ;
 
-  free(ko);
-  free(iko);
+  ;
+  ;
 }
 
 
@@ -5111,8 +5186,36 @@ void Embedding_Matrix(int spin, int Mc_AN, double *****Hks,
 
 
 
+typedef struct {
+  int Mc_AN;
+  double ****OLP0;
+  double ***Krylov_U_OLP;
+  double **inv_RS;
+  int *MP;
+  int *Msize2;
+  int *Msize4;
+  int Msize2_max;
+  double **tmpvec0;
+  double **tmpvec1;
+} Krylov_IOLP_scratch_arguments;
+static void Krylov_IOLP_raii( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                  int *Msize2, int *Msize4, int Msize2_max, double **tmpvec0, double **tmpvec1 ,OpenMXSolverInvocation *solver_owner);
+static int Krylov_IOLP_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Krylov_IOLP_scratch_arguments *a=(Krylov_IOLP_scratch_arguments*)arguments;
+  Krylov_IOLP_raii(a->Mc_AN,a->OLP0,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize2,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,owner);
+  *result=0;
+  return 1;
+}
 void Krylov_IOLP( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **inv_RS, int *MP, 
                   int *Msize2, int *Msize4, int Msize2_max, double **tmpvec0, double **tmpvec1 )
+{
+  Krylov_IOLP_scratch_arguments arguments={Mc_AN,OLP0,Krylov_U_OLP,inv_RS,MP,Msize2,Msize4,Msize2_max,tmpvec0,tmpvec1};
+  OpenMX_Solver_Run(Krylov_IOLP_scratch_operation,&arguments);
+}
+
+static void Krylov_IOLP_raii( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                  int *Msize2, int *Msize4, int Msize2_max, double **tmpvec0, double **tmpvec1 ,OpenMXSolverInvocation *solver_owner)
 {
   int rl,ct_AN,fan,san,can,wan,ct_on,i,j;
   int n,Anum,Bnum,k,ian,ih,kl,jg,ig,jan,m,m1,n1;
@@ -5132,18 +5235,18 @@ void Krylov_IOLP( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **i
 
   /* allocation of arrays */
 
-  tmpmat0 = (double**)malloc(sizeof(double*)*(EKC_core_size[Mc_AN]+4));
+  tmpmat0=OpenMX_Solver_AlignedRealMatrix(solver_owner,"tmpmat0-1",((size_t)1)*(EKC_core_size[Mc_AN]+4),((size_t)1)*(EKC_core_size[Mc_AN]+4));
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    tmpmat0[i] = (double*)malloc(sizeof(double)*(EKC_core_size[Mc_AN]+4));
+    ;
   }
 
-  FS = (double**)malloc(sizeof(double*)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  FS=OpenMX_Solver_AlignedRealMatrix(solver_owner,"FS-2",((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN],((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
   for (i=0; i<(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    FS[i] = (double*)malloc(sizeof(double)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  ko = (double*)malloc(sizeof(double)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
-  iko = (double*)malloc(sizeof(double)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  ko=(double*)OpenMX_Solver_Real(solver_owner,"ko-3",((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  iko=(double*)OpenMX_Solver_Real(solver_owner,"iko-4",((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
 
   /****************************************************
       initialize 
@@ -5544,17 +5647,17 @@ void Krylov_IOLP( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **i
   /* freeing of arrays */
 
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    free(tmpmat0[i]);
+    ;
   }
-  free(tmpmat0);
+  ;
 
   for (i=0; i<(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    free(FS[i]);
+    ;
   }
-  free(FS);
+  ;
 
-  free(ko);
-  free(iko);
+  ;
+  ;
 }
 
 
@@ -7563,17 +7666,53 @@ static double Krylov_Col_trd_owned(char *mode,
 
 
 
+typedef struct {
+  int myid;
+  int spin;
+  int Mc_AN;
+  double *****Hks;
+  double ****OLP0;
+  double **invS;
+  double ***Krylov_U;
+  double ***Krylov_U_OLP;
+  double **inv_RS;
+  int *MP;
+  int *Msize;
+  int *Msize2;
+  int *Msize3;
+  int *Msize4;
+  int Msize2_max;
+  double **tmpvec0;
+  double **tmpvec1;
+  double **tmpvec2;
+} Generate_pMatrix_trd_scratch_arguments;
+static void Generate_pMatrix_trd_raii( int myid, int spin, int Mc_AN, double *****Hks,
+                       double ****OLP0, double **invS,
+                       double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                       int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
+                       double **tmpvec0, double **tmpvec1, double **tmpvec2 ,OpenMXSolverInvocation *solver_owner);
+static int Generate_pMatrix_trd_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Generate_pMatrix_trd_scratch_arguments *a=(Generate_pMatrix_trd_scratch_arguments*)arguments;
+  Generate_pMatrix_trd_raii(a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->invS,a->Krylov_U,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize,a->Msize2,a->Msize3,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,a->tmpvec2,owner);
+  *result=0;
+  return 1;
+}
 void Generate_pMatrix_trd( int myid, int spin, int Mc_AN, double *****Hks, 
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP, 
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max, 
-                       double **tmpvec0, double **tmpvec1, double **tmpvec2 ) 
+                       double **tmpvec0, double **tmpvec1, double **tmpvec2 )
+{
+  Generate_pMatrix_trd_scratch_arguments arguments={myid,spin,Mc_AN,Hks,OLP0,invS,Krylov_U,Krylov_U_OLP,inv_RS,MP,Msize,Msize2,Msize3,Msize4,Msize2_max,tmpvec0,tmpvec1,tmpvec2};
+  OpenMX_Solver_Run(Generate_pMatrix_trd_scratch_operation,&arguments);
+}
 
-/* This subroutine is exactly the same as the original Generate_pMatrix,
-except for the OMP parallelized loops in orthogonalization by diagonalization,
-and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
-*/
-
+static void Generate_pMatrix_trd_raii( int myid, int spin, int Mc_AN, double *****Hks,
+                       double ****OLP0, double **invS,
+                       double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                       int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
+                       double **tmpvec0, double **tmpvec1, double **tmpvec2 ,OpenMXSolverInvocation *solver_owner)
 {
   int rl,rl0,rl1,ct_AN,fan,san,can,wan,ct_on,i,j;
   int n,Anum,Bnum,k,ian,ih,kl,jg,ig,jan,m,m1,n1;
@@ -7617,41 +7756,41 @@ and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
 
   /* allocation of arrays */
 
-  Utmp = (double**)malloc(sizeof(double*)*rlmax_EC[Mc_AN]);
+  Utmp=OpenMX_Solver_AlignedRealMatrix(solver_owner,"Utmp-1",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN]);
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    Utmp[i] = (double*)malloc(sizeof(double)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  U0 = (double***)malloc(sizeof(double**)*rlmax_EC[Mc_AN]);
+  U0=OpenMX_Solver_AlignedRealVolume(solver_owner,"U0-2",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN],((size_t)1)*(Msize2[Mc_AN]+3));
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    U0[i] = (double**)malloc(sizeof(double*)*EKC_core_size[Mc_AN]);
+    ;
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      U0[i][j] = (double*)malloc(sizeof(double)*(Msize2[Mc_AN]+3));
+      ;
       for (k=0; k<(Msize2[Mc_AN]+3); k++)  U0[i][j][k] = 0.0;
     }
   }  
 
-  tmpmat0 = (double**)malloc(sizeof(double*)*(EKC_core_size[Mc_AN]+4));
+  tmpmat0=OpenMX_Solver_AlignedRealMatrix(solver_owner,"tmpmat0-3",((size_t)1)*(EKC_core_size[Mc_AN]+4),((size_t)1)*(EKC_core_size[Mc_AN]+4));
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    tmpmat0[i] = (double*)malloc(sizeof(double)*(EKC_core_size[Mc_AN]+4));
+    ;
   }
 
-  FS = (double**)malloc(sizeof(double*)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  FS=OpenMX_Solver_AlignedRealMatrix(solver_owner,"FS-4",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN],((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    FS[i] = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  ko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
-  iko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  ko=(double*)OpenMX_Solver_Real(solver_owner,"ko-9",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  iko=(double*)OpenMX_Solver_Real(solver_owner,"iko-10",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
 
-  matRS0 = (double**)malloc(sizeof(double*)*(EKC_core_size[Mc_AN]+2));
+  matRS0=OpenMX_Solver_AlignedRealMatrix(solver_owner,"matRS0-5",((size_t)1)*(EKC_core_size[Mc_AN]+2),((size_t)1)*(Msize4[Mc_AN]+3));
   for (i=0; i<(EKC_core_size[Mc_AN]+2); i++){
-    matRS0[i] = (double*)malloc(sizeof(double)*(Msize4[Mc_AN]+3));
+    ;
   }
 
-  matRS1 = (double**)malloc(sizeof(double*)*(Msize4[Mc_AN]+3));
+  matRS1=OpenMX_Solver_AlignedRealMatrix(solver_owner,"matRS1-6",((size_t)1)*(Msize4[Mc_AN]+3),((size_t)1)*(EKC_core_size[Mc_AN]+2));
   for (i=0; i<(Msize4[Mc_AN]+3); i++){
-    matRS1[i] = (double*)malloc(sizeof(double)*(EKC_core_size[Mc_AN]+2));
+    ;
   }
 
   /****************************************************
@@ -8351,9 +8490,9 @@ and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
 
     double **tmpvec1;
 
-    tmpvec1 = (double**)malloc(sizeof(double*)*EKC_core_size_max);
+    tmpvec1=OpenMX_Solver_AlignedRealMatrix(solver_owner,"tmpvec1-7",((size_t)1)*EKC_core_size_max,((size_t)1)*Msize2_max);
     for (i=0; i<EKC_core_size_max; i++){
-      tmpvec1[i] = (double*)malloc(sizeof(double)*Msize2_max);
+      ;
     }
 
 
@@ -8589,9 +8728,9 @@ and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
   }
 
     for (i=0; i<EKC_core_size_max; i++){
-      free(tmpvec1[i]);
+      ;
     }
-    free(tmpvec1);
+    ;
 
   } /* #pragma omp parallel */
 
@@ -8767,9 +8906,9 @@ and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
   {
 
     double ** Utmp;
-    Utmp = (double**)malloc(sizeof(double*)*rlmax_EC[Mc_AN]);
+    Utmp=OpenMX_Solver_AlignedRealMatrix(solver_owner,"Utmp-8",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN]);
     for (i=0; i<rlmax_EC[Mc_AN]; i++){
-      Utmp[i] = (double*)malloc(sizeof(double)*EKC_core_size[Mc_AN]);
+      ;
     }
 
     OMPID = omp_get_thread_num();
@@ -8889,9 +9028,9 @@ and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
   } /* i */
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    free(Utmp[i]);
+    ;
   }
-  free(Utmp);
+  ;
 
 
   } /* #pragma omp parallel */
@@ -8996,40 +9135,40 @@ and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
   /* freeing of arrays */
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    free(Utmp[i]);
+    ;
   }
-  free(Utmp);
+  ;
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      free(U0[i][j]);
+      ;
     }
-    free(U0[i]);
+    ;
   }  
-  free(U0);
+  ;
 
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    free(tmpmat0[i]);
+    ;
   }
-  free(tmpmat0);
+  ;
 
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    free(FS[i]);
+    ;
   }
-  free(FS);
+  ;
 
-  free(ko);
-  free(iko);
+  ;
+  ;
 
   for (i=0; i<(EKC_core_size[Mc_AN]+2); i++){
-    free(matRS0[i]);
+    ;
   }
-  free(matRS0);
+  ;
 
   for (i=0; i<(Msize4[Mc_AN]+3); i++){
-    free(matRS1[i]);
+    ;
   }
-  free(matRS1);
+  ;
 }
 
 
@@ -9039,14 +9178,40 @@ and Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
 
 
 
+typedef struct {
+  int myid;
+  int spin;
+  int Mc_AN;
+  double *****Hks;
+  double ****OLP0;
+  double ***Krylov_U;
+  int *MP;
+  int *Msize;
+  int *Msize2;
+  int *Msize3;
+  double **tmpvec1;
+} Generate_pMatrix2_trd_scratch_arguments;
+static void Generate_pMatrix2_trd_raii( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0,
+                        double ***Krylov_U, int *MP, int *Msize, int *Msize2, int *Msize3,
+                        double **tmpvec1,OpenMXSolverInvocation *solver_owner);
+static int Generate_pMatrix2_trd_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Generate_pMatrix2_trd_scratch_arguments *a=(Generate_pMatrix2_trd_scratch_arguments*)arguments;
+  Generate_pMatrix2_trd_raii(a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->Krylov_U,a->MP,a->Msize,a->Msize2,a->Msize3,a->tmpvec1,owner);
+  *result=0;
+  return 1;
+}
 void Generate_pMatrix2_trd( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0, 
                         double ***Krylov_U, int *MP, int *Msize, int *Msize2, int *Msize3, 
                         double **tmpvec1)
+{
+  Generate_pMatrix2_trd_scratch_arguments arguments={myid,spin,Mc_AN,Hks,OLP0,Krylov_U,MP,Msize,Msize2,Msize3,tmpvec1};
+  OpenMX_Solver_Run(Generate_pMatrix2_trd_scratch_operation,&arguments);
+}
 
-/* This subroutine is exactly the same as the original Generate_pMatrix2,
-except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
-*/
-
+static void Generate_pMatrix2_trd_raii( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0,
+                        double ***Krylov_U, int *MP, int *Msize, int *Msize2, int *Msize3,
+                        double **tmpvec1,OpenMXSolverInvocation *solver_owner)
 {
   int rl,rl0,rl1,ct_AN,fan,san,can,wan,ct_on,i,j;
   int n,Anum,Bnum,k,ian,ih,kl,jg,ig,jan,m,m1,n1,info;
@@ -9082,27 +9247,27 @@ except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
 
   /* allocation of arrays */
 
-  Utmp = (double**)malloc(sizeof(double*)*rlmax_EC[Mc_AN]);
+  Utmp=OpenMX_Solver_AlignedRealMatrix(solver_owner,"Utmp-1",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN]);
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    Utmp[i] = (double*)malloc(sizeof(double)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  U0 = (double***)malloc(sizeof(double**)*rlmax_EC[Mc_AN]);
+  U0=OpenMX_Solver_AlignedRealVolume(solver_owner,"U0-2",((size_t)1)*rlmax_EC[Mc_AN],((size_t)1)*EKC_core_size[Mc_AN],((size_t)1)*(Msize2[Mc_AN]+3));
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    U0[i] = (double**)malloc(sizeof(double*)*EKC_core_size[Mc_AN]);
+    ;
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      U0[i][j] = (double*)malloc(sizeof(double)*(Msize2[Mc_AN]+3));
+      ;
       for (k=0; k<(Msize2[Mc_AN]+3); k++)  U0[i][j][k] = 0.0;
     }
   }  
 
-  FS = (double**)malloc(sizeof(double*)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  FS=OpenMX_Solver_AlignedRealMatrix(solver_owner,"FS-3",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN],((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    FS[i] = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  ko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
-  iko = (double*)malloc(sizeof(double)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  ko=(double*)OpenMX_Solver_Real(solver_owner,"ko-4",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  iko=(double*)OpenMX_Solver_Real(solver_owner,"iko-5",((size_t)1)*(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]);
   
   /****************************************************
    initialize 
@@ -9637,25 +9802,25 @@ except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
   /* freeing of arrays */
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
-    free(Utmp[i]);
+    ;
   }
-  free(Utmp);
+  ;
 
   for (i=0; i<rlmax_EC[Mc_AN]; i++){
     for (j=0; j<EKC_core_size[Mc_AN]; j++){
-      free(U0[i][j]);
+      ;
     }
-    free(U0[i]);
+    ;
   }  
-  free(U0);
+  ;
 
   for (i=0; i<(rlmax_EC[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    free(FS[i]);
+    ;
   }
-  free(FS);
+  ;
 
-  free(ko);
-  free(iko);
+  ;
+  ;
 }
 
 
@@ -9664,15 +9829,44 @@ except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
 
 
 
+typedef struct {
+  int spin;
+  int Mc_AN;
+  double *****Hks;
+  double ***Krylov_U;
+  double ****EC_matrix;
+  int *MP;
+  int *Msize;
+  int *Msize2;
+  int *Msize3;
+  double **tmpvec;
+  int EKC_core_size_max;
+  int Msize2_max;
+} Embedding_Matrix_trd_scratch_arguments;
+static void Embedding_Matrix_trd_raii(int spin, int Mc_AN, double *****Hks,
+                      double ***Krylov_U, double ****EC_matrix,
+                      int *MP, int *Msize, int *Msize2, int *Msize3,
+                      double **tmpvec, int EKC_core_size_max, int Msize2_max,OpenMXSolverInvocation *solver_owner);
+static int Embedding_Matrix_trd_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Embedding_Matrix_trd_scratch_arguments *a=(Embedding_Matrix_trd_scratch_arguments*)arguments;
+  Embedding_Matrix_trd_raii(a->spin,a->Mc_AN,a->Hks,a->Krylov_U,a->EC_matrix,a->MP,a->Msize,a->Msize2,a->Msize3,a->tmpvec,a->EKC_core_size_max,a->Msize2_max,owner);
+  *result=0;
+  return 1;
+}
 void Embedding_Matrix_trd(int spin, int Mc_AN, double *****Hks,
                       double ***Krylov_U, double ****EC_matrix, 
                       int *MP, int *Msize, int *Msize2, int *Msize3, 
                       double **tmpvec, int EKC_core_size_max, int Msize2_max)
+{
+  Embedding_Matrix_trd_scratch_arguments arguments={spin,Mc_AN,Hks,Krylov_U,EC_matrix,MP,Msize,Msize2,Msize3,tmpvec,EKC_core_size_max,Msize2_max};
+  OpenMX_Solver_Run(Embedding_Matrix_trd_scratch_operation,&arguments);
+}
 
-/* This subroutine is exactly the same as the original Embedding_Matrix,
-except for the OMP parallelized loops 
-*/
-
+static void Embedding_Matrix_trd_raii(int spin, int Mc_AN, double *****Hks,
+                      double ***Krylov_U, double ****EC_matrix,
+                      int *MP, int *Msize, int *Msize2, int *Msize3,
+                      double **tmpvec, int EKC_core_size_max, int Msize2_max,OpenMXSolverInvocation *solver_owner)
 {
   int ct_AN,fan,san,can,wan,ct_on;
   int rl,rl0,m,n,i,j,k,kl,jg,jan,ih,ian;
@@ -9711,9 +9905,9 @@ except for the OMP parallelized loops
   {
 
     double **tmpvec1;
-    tmpvec1 = (double**)malloc(sizeof(double*)*EKC_core_size_max);
+    tmpvec1=OpenMX_Solver_AlignedRealMatrix(solver_owner,"tmpvec1-1",((size_t)1)*EKC_core_size_max,((size_t)1)*Msize2_max);
     for (i=0; i<EKC_core_size_max; i++){
-      tmpvec1[i] = (double*)malloc(sizeof(double)*Msize2_max);
+      ;
     }
 
     /* get info. on OpenMP */ 
@@ -9945,9 +10139,9 @@ except for the OMP parallelized loops
   } /* rl */
 
   for (i=0; i<EKC_core_size_max; i++){
-    free(tmpvec1[i]);
+    ;
   }
-  free(tmpvec1);
+  ;
     
 
   } /* #pragma omp parallel */
@@ -9977,9 +10171,9 @@ except for the OMP parallelized loops
   {
 
     double **tmpvec1;
-    tmpvec1 = (double**)malloc(sizeof(double*)*EKC_core_size_max);
+    tmpvec1=OpenMX_Solver_AlignedRealMatrix(solver_owner,"tmpvec1-2",((size_t)1)*EKC_core_size_max,((size_t)1)*Msize2_max);
     for (i=0; i<EKC_core_size_max; i++){
-      tmpvec1[i] = (double*)malloc(sizeof(double)*Msize2_max);
+      ;
     }
 
     /* get info. on OpenMP */ 
@@ -10212,9 +10406,9 @@ except for the OMP parallelized loops
   } /* rl */
 
     for (i=0; i<EKC_core_size_max; i++){
-      free(tmpvec1[i]);
+      ;
     }
-    free(tmpvec1);
+    ;
 
   } /* #pragma omp parallel */
 
@@ -10229,13 +10423,36 @@ except for the OMP parallelized loops
 
 
 
+typedef struct {
+  int Mc_AN;
+  double ****OLP0;
+  double ***Krylov_U_OLP;
+  double **inv_RS;
+  int *MP;
+  int *Msize2;
+  int *Msize4;
+  int Msize2_max;
+  double **tmpvec0;
+  double **tmpvec1;
+} Krylov_IOLP_trd_scratch_arguments;
+static void Krylov_IOLP_trd_raii( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                  int *Msize2, int *Msize4, int Msize2_max, double **tmpvec0, double **tmpvec1 ,OpenMXSolverInvocation *solver_owner);
+static int Krylov_IOLP_trd_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Krylov_IOLP_trd_scratch_arguments *a=(Krylov_IOLP_trd_scratch_arguments*)arguments;
+  Krylov_IOLP_trd_raii(a->Mc_AN,a->OLP0,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize2,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,owner);
+  *result=0;
+  return 1;
+}
 void Krylov_IOLP_trd( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **inv_RS, int *MP, 
                   int *Msize2, int *Msize4, int Msize2_max, double **tmpvec0, double **tmpvec1 )
+{
+  Krylov_IOLP_trd_scratch_arguments arguments={Mc_AN,OLP0,Krylov_U_OLP,inv_RS,MP,Msize2,Msize4,Msize2_max,tmpvec0,tmpvec1};
+  OpenMX_Solver_Run(Krylov_IOLP_trd_scratch_operation,&arguments);
+}
 
-/* This subroutine is exactly the same as the original Krylov_IOLP,
-except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
-*/
-
+static void Krylov_IOLP_trd_raii( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, double **inv_RS, int *MP,
+                  int *Msize2, int *Msize4, int Msize2_max, double **tmpvec0, double **tmpvec1 ,OpenMXSolverInvocation *solver_owner)
 {
   int rl,ct_AN,fan,san,can,wan,ct_on,i,j;
   int n,Anum,Bnum,k,ian,ih,kl,jg,ig,jan,m,m1,n1,info;
@@ -10255,18 +10472,18 @@ except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
 
   /* allocation of arrays */
 
-  tmpmat0 = (double**)malloc(sizeof(double*)*(EKC_core_size[Mc_AN]+4));
+  tmpmat0=OpenMX_Solver_AlignedRealMatrix(solver_owner,"tmpmat0-1",((size_t)1)*(EKC_core_size[Mc_AN]+4),((size_t)1)*(EKC_core_size[Mc_AN]+4));
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    tmpmat0[i] = (double*)malloc(sizeof(double)*(EKC_core_size[Mc_AN]+4));
+    ;
   }
 
-  FS = (double**)malloc(sizeof(double*)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  FS=OpenMX_Solver_AlignedRealMatrix(solver_owner,"FS-2",((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN],((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
   for (i=0; i<(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    FS[i] = (double*)malloc(sizeof(double)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+    ;
   }
 
-  ko = (double*)malloc(sizeof(double)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
-  iko = (double*)malloc(sizeof(double)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  ko=(double*)OpenMX_Solver_Real(solver_owner,"ko-3",((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
+  iko=(double*)OpenMX_Solver_Real(solver_owner,"iko-4",((size_t)1)*(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]);
 
   /****************************************************
       initialize 
@@ -10678,17 +10895,17 @@ except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
   /* freeing of arrays */
 
   for (i=0; i<(EKC_core_size[Mc_AN]+4); i++){
-    free(tmpmat0[i]);
+    ;
   }
-  free(tmpmat0);
+  ;
 
   for (i=0; i<(rlmax_EC2[Mc_AN]+2)*EKC_core_size[Mc_AN]; i++){
-    free(FS[i]);
+    ;
   }
-  free(FS);
+  ;
 
-  free(ko);
-  free(iko);
+  ;
+  ;
 }
 
 
@@ -11002,7 +11219,26 @@ except that Eigen_lapack is replaced with Eigen_lapack_d, _x, or _r
 }
 
 
+typedef struct {
+  double **a;
+  double *ko;
+  int n0;
+  int EVmax;
+} Eigen_lapack_x_scratch_arguments;
+static int Eigen_lapack_x_raii(double **a, double *ko, int n0, int EVmax,OpenMXSolverInvocation *solver_owner);
+static int Eigen_lapack_x_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Eigen_lapack_x_scratch_arguments *a=(Eigen_lapack_x_scratch_arguments*)arguments;
+  *result=(double)Eigen_lapack_x_raii(a->a,a->ko,a->n0,a->EVmax,owner);
+  return 1;
+}
 int Eigen_lapack_x(double **a, double *ko, int n0, int EVmax)
+{
+  Eigen_lapack_x_scratch_arguments arguments={a,ko,n0,EVmax};
+  return (int)OpenMX_Solver_Run(Eigen_lapack_x_scratch_operation,&arguments);
+}
+
+static int Eigen_lapack_x_raii(double **a, double *ko, int n0, int EVmax,OpenMXSolverInvocation *solver_owner)
 {
 
   /*
@@ -11036,13 +11272,13 @@ int Eigen_lapack_x(double **a, double *ko, int n0, int EVmax)
 
   int i,j;
 
-  A=(double*)malloc(sizeof(double)*n*n);
-  Z=(double*)malloc(sizeof(double)*n*n);
+  A=(double*)OpenMX_Solver_Real(solver_owner,"A-1",((size_t)1)*n*n);
+  Z=(double*)OpenMX_Solver_Real(solver_owner,"Z-2",((size_t)1)*n*n);
 
   LWORK=n*8;
-  WORK=(double*)malloc(sizeof(double)*LWORK);
-  IWORK=(INTEGER*)malloc(sizeof(INTEGER)*n*5);
-  IFAIL=(INTEGER*)malloc(sizeof(INTEGER)*n);
+  WORK=(double*)OpenMX_Solver_Real(solver_owner,"WORK-3",((size_t)1)*LWORK);
+  IWORK=(INTEGER*)OpenMX_Solver_Bytes(solver_owner,"IWORK-4",((size_t)1)*n*5,sizeof(INTEGER));
+  IFAIL=(INTEGER*)OpenMX_Solver_Bytes(solver_owner,"IFAIL-5",((size_t)1)*n,sizeof(INTEGER));
 
   IL = 1;
   IU = EVmax;
@@ -11088,13 +11324,32 @@ int Eigen_lapack_x(double **a, double *ko, int n0, int EVmax)
     /* printf("\n%s: error in dsyevx_, info=%d\n\n",name,INFO); */
   }
    
-  free(IFAIL); free(IWORK); free(WORK); free(Z); free(A);
+  ; ; ; ; ;
   return INFO;
 
 }
 
 
+typedef struct {
+  double **a;
+  double *ko;
+  int n0;
+  int EVmax;
+} Eigen_lapack_d_scratch_arguments;
+static int Eigen_lapack_d_raii(double **a, double *ko, int n0, int EVmax,OpenMXSolverInvocation *solver_owner);
+static int Eigen_lapack_d_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Eigen_lapack_d_scratch_arguments *a=(Eigen_lapack_d_scratch_arguments*)arguments;
+  *result=(double)Eigen_lapack_d_raii(a->a,a->ko,a->n0,a->EVmax,owner);
+  return 1;
+}
 int Eigen_lapack_d(double **a, double *ko, int n0, int EVmax)
+{
+  Eigen_lapack_d_scratch_arguments arguments={a,ko,n0,EVmax};
+  return (int)OpenMX_Solver_Run(Eigen_lapack_d_scratch_operation,&arguments);
+}
+
+static int Eigen_lapack_d_raii(double **a, double *ko, int n0, int EVmax,OpenMXSolverInvocation *solver_owner)
 {
 
   /* 
@@ -11127,13 +11382,13 @@ int Eigen_lapack_d(double **a, double *ko, int n0, int EVmax)
 
   int i,j;
 
-  A=(double*)malloc(sizeof(double)*n*n);
+  A=(double*)OpenMX_Solver_Real(solver_owner,"A-1",((size_t)1)*n*n);
 
   LWORK=  1 + 6*n + 2*n*n;
-  WORK=(double*)malloc(sizeof(double)*LWORK);
+  WORK=(double*)OpenMX_Solver_Real(solver_owner,"WORK-2",((size_t)1)*LWORK);
 
   LIWORK = 3 + 5*n;
-  IWORK=(INTEGER*)malloc(sizeof(INTEGER)*LIWORK);
+  IWORK=(INTEGER*)OpenMX_Solver_Bytes(solver_owner,"IWORK-3",((size_t)1)*LIWORK,sizeof(INTEGER));
 
 
   IL = 1;
@@ -11178,12 +11433,31 @@ int Eigen_lapack_d(double **a, double *ko, int n0, int EVmax)
     /* printf("\n%s: error in dsyevd_, info=%d\n\n",name,INFO); */
   }
    
-  free(IWORK); free(WORK); free(A);
+  ; ; ;
   return INFO;
 }
 
 
+typedef struct {
+  double **a;
+  double *ko;
+  int n0;
+  int EVmax;
+} Eigen_lapack_r_scratch_arguments;
+static int Eigen_lapack_r_raii(double **a, double *ko, int n0, int EVmax,OpenMXSolverInvocation *solver_owner);
+static int Eigen_lapack_r_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
+{
+  Eigen_lapack_r_scratch_arguments *a=(Eigen_lapack_r_scratch_arguments*)arguments;
+  *result=(double)Eigen_lapack_r_raii(a->a,a->ko,a->n0,a->EVmax,owner);
+  return 1;
+}
 int Eigen_lapack_r(double **a, double *ko, int n0, int EVmax)
+{
+  Eigen_lapack_r_scratch_arguments arguments={a,ko,n0,EVmax};
+  return (int)OpenMX_Solver_Run(Eigen_lapack_r_scratch_operation,&arguments);
+}
+
+static int Eigen_lapack_r_raii(double **a, double *ko, int n0, int EVmax,OpenMXSolverInvocation *solver_owner)
 {
 
   /* 
@@ -11218,16 +11492,16 @@ int Eigen_lapack_r(double **a, double *ko, int n0, int EVmax)
 
   int i,j;
 
-  A=(double*)malloc(sizeof(double)*n*n);
-  Z=(double*)malloc(sizeof(double)*n*n);
+  A=(double*)OpenMX_Solver_Real(solver_owner,"A-1",((size_t)1)*n*n);
+  Z=(double*)OpenMX_Solver_Real(solver_owner,"Z-2",((size_t)1)*n*n);
 
   LWORK= (n+16)*n;   /*  n*26 of (n+6)*n */
-  WORK=(double*)malloc(sizeof(double)*LWORK);
+  WORK=(double*)OpenMX_Solver_Real(solver_owner,"WORK-3",((size_t)1)*LWORK);
 
   LIWORK = (n+1)*n;  /*  n*10 or ??? */
-  IWORK=(INTEGER*)malloc(sizeof(INTEGER)*LIWORK);
+  IWORK=(INTEGER*)OpenMX_Solver_Bytes(solver_owner,"IWORK-4",((size_t)1)*LIWORK,sizeof(INTEGER));
 
-  ISUPPZ =(INTEGER*)malloc(sizeof(INTEGER)*n*2);
+  ISUPPZ=(INTEGER*)OpenMX_Solver_Bytes(solver_owner,"ISUPPZ-5",((size_t)1)*n*2,sizeof(INTEGER));
 
   IL = 1;
   IU = EVmax; 
@@ -11275,7 +11549,7 @@ int Eigen_lapack_r(double **a, double *ko, int n0, int EVmax)
      exit(10);
   }
    
-  free(ISUPPZ); free(IWORK); free(WORK); free(Z); free(A);
+  ; ; ; ; ;
 
   return INFO;
 }

@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_native_resources.h"
 #include "openmx_local_basis.h"
 #include "openmx_orbital_optimization.h"
 #include "openmx_electronic.h"
@@ -392,6 +393,8 @@ void Allocate_Free_GridData(int todo_flag);
 
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
+  OpenMX_Native_Resources_Bind(core);
+
   const OpenMXLocalBasisViews local_basis_storage=OpenMX_LocalBasis(core,mpi_comm_level1);
   const OpenMXLocalBasisViews *local_basis=&local_basis_storage;
   double orbital_norm=1.0e5;

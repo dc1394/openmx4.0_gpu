@@ -181,8 +181,16 @@ Matrices, integer/MPI work buffers, eigenvalue/PDOS rows and pole residues use
 RAII storage; ragged residues replace six-level numerical pointer trees with
 contiguous atom blocks and explicit offsets. Noncollinear Band spinor scratch
 is local to each call, removing eight shared arrays. Native BLAS/eigensolver
-interfaces borrow owned row adapters. Optional Band caches, persistent solver
-and device caches, and deeper native helper allocations remain migration work.
+interfaces borrow owned row adapters. Persistent Band/solver caches, device
+buffers, pinned memory, streams and BLAS/solver handles in these seven CUDA/HIP
+modules now have calculation-scoped C++ owners. Native cache metadata and SDK
+aliases remain borrowed during this transition; existing cache budgets,
+eviction and device-specific execution policies are preserved. DC-LNO histories
+and the CUDA noncollinear Cluster GEMM handle reset with each calculation.
+Deeper Krylov helpers use their own RAII scratch scopes and contiguous matrices;
+FP32 eigenvalue refinement shares its caller's owner for both allocation and
+release. The common ownership module contains no vendor SDK types. Remaining
+native globals, borrowed row interfaces and kernels still require migration.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

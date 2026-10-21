@@ -14,6 +14,8 @@
 #include "lapack_prototypes.h"
 #include "openmx_common.h"
 #include "openmx_solver_workspace.h"
+#include "openmx_native_resources.h"
+OPENMX_NATIVE_RESOURCE_GROUP(Band_DFT_Col,Band_DFT_Col_Release_GPU_Caches)
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
 #include "openmx_gpu_dm_collective.h"
@@ -219,7 +221,7 @@ static int                  BandCol_refine_e0_n = 0;
 
 static void BandCol_RefineDropBasis(void)
 {
-    if (BandCol_refine_x != NULL) wait_cudafunc(cudaFree(BandCol_refine_x));
+    if (BandCol_refine_x != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,BandCol_refine_x));
     BandCol_refine_x = NULL;
     BandCol_refine_x_n = 0;
     BandCol_refine_state.basis_valid = 0;
@@ -232,7 +234,7 @@ static void BandCol_RefineRelease(void)
     BandCol_KRefReset();
     openmx_eigen_refine_device_release(&BandCol_refine_dev);
     BandCol_RefineDropBasis();
-    free(BandCol_refine_e0);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_refine_e0);
     BandCol_refine_e0 = NULL;
     BandCol_refine_e0_n = 0;
 }
@@ -420,8 +422,8 @@ static size_t BandCol_k_overlap_bytes = 0, BandCol_k_overlap_used = 0;
 static void BandCol_KOverlapReset(void)
 {
     for (int k = 0; k < BandCol_k_overlap_points; ++k)
-        free(BandCol_k_overlap[k].matrix);
-    free(BandCol_k_overlap);
+        openmx_core_native_free(Band_DFT_Col_resources,BandCol_k_overlap[k].matrix);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_k_overlap);
     BandCol_k_overlap = NULL;
     BandCol_k_overlap_n = BandCol_k_overlap_points = 0;
     BandCol_k_overlap_bytes = BandCol_k_overlap_used = 0;
@@ -473,7 +475,7 @@ static void BandCol_KOverlapPrepare(int n, int points)
     if ((size_t)n > (SIZE_MAX - matrix_bytes) / sizeof(double)) return;
     bytes = matrix_bytes + (size_t)n * sizeof(double);
     if (bytes > BandCol_HostCacheLimit("OPENMX_BAND_COL_OVERLAP_CACHE_MB", 512.0)) return;
-    BandCol_k_overlap = (BandColKOverlap*)calloc((size_t)points, sizeof(BandColKOverlap));
+    BandCol_k_overlap = (BandColKOverlap*)openmx_core_native_malloc(Band_DFT_Col_resources,(size_t)points,sizeof(BandColKOverlap),1);
     if (BandCol_k_overlap == NULL) return;
     BandCol_k_overlap_n = n;
     BandCol_k_overlap_points = points;
@@ -514,7 +516,7 @@ static void BandCol_KOverlapSave(int point, double k1, double k2, double k3, con
     if (entry->matrix == NULL) {
         size_t limit = BandCol_HostCacheLimit("OPENMX_BAND_COL_OVERLAP_CACHE_MB", 512.0);
         if (BandCol_k_overlap_used > limit || BandCol_k_overlap_bytes > limit - BandCol_k_overlap_used) return;
-        entry->matrix = (dcomplex*)malloc(BandCol_k_overlap_bytes);
+        entry->matrix = (dcomplex*)openmx_core_native_malloc(Band_DFT_Col_resources,1,BandCol_k_overlap_bytes,0);
         if (entry->matrix == NULL) return;
         BandCol_k_overlap_used += BandCol_k_overlap_bytes;
     }
@@ -778,12 +780,12 @@ static size_t BandCol_QueryGpuSolverWorkBytes(int n, int maxn)
         }
     }
 
-    cuda_status = cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    cuda_status = OpenMX_Resource_StreamCreate(Band_DFT_Col_resources,&stream,cudaStreamNonBlocking);
     if (cuda_status != cudaSuccess) {
         return fallback;
     }
 
-    solver_status = cusolverDnCreate(&handle);
+    solver_status = OpenMX_Resource_SolverCreate(Band_DFT_Col_resources,&handle);
     if (solver_status == CUSOLVER_STATUS_SUCCESS) {
         solver_status = cusolverDnSetStream(handle, stream);
     }
@@ -795,9 +797,9 @@ static size_t BandCol_QueryGpuSolverWorkBytes(int n, int maxn)
     }
 
     if (handle != NULL) {
-        cusolverDnDestroy(handle);
+        OpenMX_Resource_SolverDestroy(Band_DFT_Col_resources,handle);
     }
-    cudaStreamDestroy(stream);
+    OpenMX_Resource_StreamDestroy(Band_DFT_Col_resources,stream);
 
     if (solver_status != CUSOLVER_STATUS_SUCCESS || d_bytes == 0U) {
         return fallback;
@@ -1117,8 +1119,7 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
         }
     }
 
-    node_uuids = (BandColGpuUuidRecord *)malloc(
-        sizeof(BandColGpuUuidRecord) * (size_t)node_ranks);
+    node_uuids = (BandColGpuUuidRecord *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(BandColGpuUuidRecord) * (size_t)node_ranks,0);
     if (node_uuids == NULL) {
         BandCol_AbortWithMessage("Failed to allocate Band GPU UUID table.");
     }
@@ -1135,7 +1136,7 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
             }
         }
     }
-    free(node_uuids);
+    openmx_core_native_free(Band_DFT_Col_resources,node_uuids);
 
     MPI_Comm_split(node_comm, color, node_rank, &device_comm);
     MPI_Comm_free(&node_comm);
@@ -1176,8 +1177,7 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
         MPI_Allreduce(&local_total, &group_total, 1, MPI_UNSIGNED_LONG_LONG,
                       MPI_MIN, device_comm);
 
-        requirements = (unsigned long long *)malloc(
-            sizeof(unsigned long long) * (size_t)device_ranks);
+        requirements = (unsigned long long *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(unsigned long long) * (size_t)device_ranks,0);
         if (requirements == NULL) {
             BandCol_AbortWithMessage("Failed to allocate Band GPU requirement table.");
         }
@@ -1278,7 +1278,7 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
             }
         }
 
-        free(requirements);
+        openmx_core_native_free(Band_DFT_Col_resources,requirements);
         MPI_Comm_free(&device_comm);
     }
 
@@ -1290,15 +1290,15 @@ static int BandCol_AutoGpuTurnLimit(int requested, int n, int maxn,
 static void BandCol_ConstructCache_Reset(void)
 {
     if (BandCol_construct_cache.dense_entries_dev != NULL) {
-        wait_cudafunc(cudaFree(BandCol_construct_cache.dense_entries_dev));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,BandCol_construct_cache.dense_entries_dev));
     }
 
-    free(BandCol_construct_cache.local_entries);
-    free(BandCol_construct_cache.dense_phase_l1);
-    free(BandCol_construct_cache.dense_phase_l2);
-    free(BandCol_construct_cache.dense_phase_l3);
-    free(BandCol_construct_cache.dense_phase_r);
-    free(BandCol_construct_cache.dense_phase_i);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.local_entries);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_l1);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_l2);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_l3);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_r);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_i);
     memset(&BandCol_construct_cache, 0, sizeof(BandCol_construct_cache));
 }
 
@@ -1409,22 +1409,22 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int wan
     }
 
     if (want_dense) {
-        dense_host = (BandColConstructEntry *)malloc(sizeof(BandColConstructEntry) * (size_t)(dense_count + 1));
-        cache->dense_phase_l1 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
-        cache->dense_phase_l2 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
-        cache->dense_phase_l3 = (int *)malloc(sizeof(int) * (size_t)(dense_phase_count + 1));
-        cache->dense_phase_r  = (double *)malloc(sizeof(double) * (size_t)(dense_phase_count + 1));
-        cache->dense_phase_i  = (double *)malloc(sizeof(double) * (size_t)(dense_phase_count + 1));
+        dense_host = (BandColConstructEntry *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(BandColConstructEntry) * (size_t)(dense_count + 1),0);
+        cache->dense_phase_l1 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_l2 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_l3 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_r  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_i  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(dense_phase_count + 1),0);
 
         if (dense_host == NULL || cache->dense_phase_l1 == NULL ||
             cache->dense_phase_l2 == NULL || cache->dense_phase_l3 == NULL || cache->dense_phase_r == NULL ||
             cache->dense_phase_i == NULL) {
-            free(dense_host);
+            openmx_core_native_free(Band_DFT_Col_resources,dense_host);
             BandCol_ConstructCache_Reset();
             BandCol_AbortWithMessage("Failed to allocate Construct_Band_CsHs cache in Band_DFT_Col.c.");
         }
     } else {
-        cache->local_entries = (BandColConstructEntry *)malloc(sizeof(BandColConstructEntry) * (size_t)(local_count + 1));
+        cache->local_entries = (BandColConstructEntry *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(BandColConstructEntry) * (size_t)(local_count + 1),0);
 
         if (cache->local_entries == NULL) {
             BandCol_ConstructCache_Reset();
@@ -1537,10 +1537,10 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int wan
            a build scratch and is released right here */
         size_t dense_bytes = sizeof(BandColConstructEntry) * (size_t)dense_count;
 
-        wait_cudafunc(cudaMalloc((void **)&cache->dense_entries_dev, dense_bytes));
+        wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&cache->dense_entries_dev,dense_bytes));
         wait_cudafunc(cudaMemcpy(cache->dense_entries_dev, dense_host, dense_bytes, cudaMemcpyHostToDevice));
     }
-    free(dense_host);
+    openmx_core_native_free(Band_DFT_Col_resources,dense_host);
 
     cache->valid       = 1;
     cache->n           = n;
@@ -1564,16 +1564,16 @@ static void BandCol_DMWorkspace_Reset(void)
 {
     BandColDMWorkspace *ws = &BandCol_dm_workspace;
 
-    free(ws->buf_Re0);
-    free(ws->buf_Im0);
-    free(ws->buf_Re1);
-    free(ws->buf_Im1);
-    free(ws->TmpEIGEN);
-    free(ws->OccWeight);
-    free(ws->ReEVec0);
-    free(ws->ImEVec0);
-    free(ws->ReEVec1);
-    free(ws->ImEVec1);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Re0);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Im0);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Re1);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Im1);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->TmpEIGEN);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->OccWeight);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->ReEVec0);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->ImEVec0);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->ReEVec1);
+    openmx_core_native_free(Band_DFT_Col_resources,ws->ImEVec1);
 
     memset(ws, 0, sizeof(*ws));
 }
@@ -1595,16 +1595,16 @@ static void BandCol_DMWorkspace_Ensure(int max_tno, int nk)
 
     vec_bytes = sizeof(double) * (size_t)max_tno * (size_t)nk;
 
-    ws->buf_Re0  = (double *)malloc(vec_bytes);
-    ws->buf_Im0  = (double *)malloc(vec_bytes);
-    ws->buf_Re1  = (double *)malloc(vec_bytes);
-    ws->buf_Im1  = (double *)malloc(vec_bytes);
-    ws->TmpEIGEN = (double *)malloc(sizeof(double) * (size_t)nk);
-    ws->OccWeight = (double *)malloc(sizeof(double) * (size_t)nk);
-    ws->ReEVec0  = (double **)malloc(sizeof(double *) * (size_t)max_tno);
-    ws->ImEVec0  = (double **)malloc(sizeof(double *) * (size_t)max_tno);
-    ws->ReEVec1  = (double **)malloc(sizeof(double *) * (size_t)max_tno);
-    ws->ImEVec1  = (double **)malloc(sizeof(double *) * (size_t)max_tno);
+    ws->buf_Re0  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
+    ws->buf_Im0  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
+    ws->buf_Re1  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
+    ws->buf_Im1  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
+    ws->TmpEIGEN = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)nk,0);
+    ws->OccWeight = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)nk,0);
+    ws->ReEVec0  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
+    ws->ImEVec0  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
+    ws->ReEVec1  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
+    ws->ImEVec1  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
 
     if (ws->buf_Re0 == NULL || ws->buf_Im0 == NULL || ws->buf_Re1 == NULL || ws->buf_Im1 == NULL ||
         ws->TmpEIGEN == NULL || ws->OccWeight == NULL || ws->ReEVec0 == NULL || ws->ImEVec0 == NULL || ws->ReEVec1 == NULL ||
@@ -1634,14 +1634,14 @@ static void BandCol_DMWorkspace_SetPointers(BandColDMWorkspace *ws, int max_tno,
 
 static void BandCol_DMEntryCache_Reset(void)
 {
-    free(BandCol_dm_entry_cache.basis0);
-    free(BandCol_dm_entry_cache.basis1);
-    free(BandCol_dm_entry_cache.phase_index);
-    free(BandCol_dm_entry_cache.pair_l1);
-    free(BandCol_dm_entry_cache.pair_l2);
-    free(BandCol_dm_entry_cache.pair_l3);
-    free(BandCol_dm_entry_cache.phase_r);
-    free(BandCol_dm_entry_cache.phase_i);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.basis0);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.basis1);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.phase_index);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.pair_l1);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.pair_l2);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.pair_l3);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.phase_r);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.phase_i);
     memset(&BandCol_dm_entry_cache, 0, sizeof(BandCol_dm_entry_cache));
 }
 
@@ -1672,14 +1672,14 @@ static void BandCol_DMEntryCache_Ensure(int *order_GA, int *MP, int n)
         }
     }
 
-    cache->basis0 = (int *)malloc(sizeof(int) * (size_t)(entry_count + 1));
-    cache->basis1 = (int *)malloc(sizeof(int) * (size_t)(entry_count + 1));
-    cache->phase_index = (int *)malloc(sizeof(int) * (size_t)(entry_count + 1));
-    cache->pair_l1 = (int *)malloc(sizeof(int) * (size_t)(pair_count + 1));
-    cache->pair_l2 = (int *)malloc(sizeof(int) * (size_t)(pair_count + 1));
-    cache->pair_l3 = (int *)malloc(sizeof(int) * (size_t)(pair_count + 1));
-    cache->phase_r = (double *)malloc(sizeof(double) * (size_t)(pair_count + 1));
-    cache->phase_i = (double *)malloc(sizeof(double) * (size_t)(pair_count + 1));
+    cache->basis0 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
+    cache->basis1 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
+    cache->phase_index = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
+    cache->pair_l1 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
+    cache->pair_l2 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
+    cache->pair_l3 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
+    cache->phase_r = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(pair_count + 1),0);
+    cache->phase_i = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(pair_count + 1),0);
 
     if (cache->basis0 == NULL || cache->basis1 == NULL || cache->phase_index == NULL || cache->pair_l1 == NULL ||
         cache->pair_l2 == NULL || cache->pair_l3 == NULL || cache->phase_r == NULL || cache->phase_i == NULL) {
@@ -1892,29 +1892,29 @@ static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
     BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
 
     if (ctx->d_S != NULL)
-        wait_cudafunc(cudaFree(ctx->d_S));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_S));
     if (ctx->d_H != NULL)
-        wait_cudafunc(cudaFree(ctx->d_H));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_H));
     if (ctx->d_tmp != NULL)
-        wait_cudafunc(cudaFree(ctx->d_tmp));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_tmp));
     if (ctx->d_evec != NULL)
-        wait_cudafunc(cudaFree(ctx->d_evec));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_evec));
     if (ctx->d_scale != NULL)
-        wait_cudafunc(cudaFree(ctx->d_scale));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_scale));
     if (ctx->d_W != NULL)
-        wait_cudafunc(cudaFree(ctx->d_W));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_W));
     if (ctx->d_info != NULL)
-        wait_cudafunc(cudaFree(ctx->d_info));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_info));
     if (ctx->d_work != NULL)
-        wait_cudafunc(cudaFree(ctx->d_work));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_work));
     if (ctx->h_work != NULL)
-        free(ctx->h_work);
+        openmx_core_native_free(Band_DFT_Col_resources,ctx->h_work);
     if (ctx->h_scale != NULL)
-        free(ctx->h_scale);
+        openmx_core_native_free(Band_DFT_Col_resources,ctx->h_scale);
     if (ctx->gpusolver != NULL)
-        OpenMXSolverWait(cusolverDnDestroy(ctx->gpusolver));
+        OpenMXSolverWait(OpenMX_Resource_SolverDestroy(Band_DFT_Col_resources,ctx->gpusolver));
     if (ctx->cublas != NULL)
-        OpenMXBlasWait(cublasDestroy(ctx->cublas));
+        OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Band_DFT_Col_resources,ctx->cublas));
 
     ctx->initialized         = 0;
     ctx->device_id           = -1;
@@ -1946,8 +1946,8 @@ static void BandCol_GpuSolver_Destroy(void)
 
     BandCol_GpuSolver_ReleaseDeviceMemory();
     BandCol_RefineRelease();
-    free(ctx->h_evec);
-    free(ctx->h_transformed_s);
+    openmx_core_native_free(Band_DFT_Col_resources,ctx->h_evec);
+    openmx_core_native_free(Band_DFT_Col_resources,ctx->h_transformed_s);
     ctx->h_evec      = NULL;
     ctx->h_evec_dim  = 0;
     ctx->h_evec_cols = 0;
@@ -1975,7 +1975,7 @@ static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(dcomplex *evec_device,
     panel_count = (size_t)n * (size_t)maxn;
 
     if (ctx->h_evec_dim < n || ctx->h_evec_cols != maxn) {
-        dcomplex *new_evec = (dcomplex *)realloc(ctx->h_evec, sizeof(dcomplex) * panel_count);
+        dcomplex *new_evec = (dcomplex *)openmx_core_native_realloc(Band_DFT_Col_resources,ctx->h_evec,sizeof(dcomplex) * panel_count);
         if (new_evec == NULL) {
             BandCol_AbortWithMessage("Failed to allocate host eigenvector buffer in Band_DFT_Col.c.");
         }
@@ -2020,10 +2020,10 @@ static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n, int maxn,int *h
 
     if (ctx->d_evec_dim < n || ctx->d_evec_cols != maxn) {
         if (ctx->d_evec != NULL) {
-            wait_cudafunc(cudaFree(ctx->d_evec));
+            wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_evec));
         }
         ctx->d_evec=NULL;ctx->d_evec_dim=ctx->d_evec_cols=0;
-        if(cudaMalloc((void**)&ctx->d_evec,sizeof(dcomplex)*panel_count)!=cudaSuccess){
+        if(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void**)&ctx->d_evec,sizeof(dcomplex)*panel_count)!=cudaSuccess){
             (void)cudaGetLastError();*host=1;return ctx->h_evec;
         }
         ctx->d_evec_dim  = n;
@@ -2058,7 +2058,7 @@ static void BandCol_GpuSolver_SaveTransformedS(int n)
     matrix_count = (size_t)n * (size_t)n;
 
     if (ctx->h_transformed_s_dim < n) {
-        dcomplex *new_s = (dcomplex *)realloc(ctx->h_transformed_s, sizeof(dcomplex) * matrix_count);
+        dcomplex *new_s = (dcomplex *)openmx_core_native_realloc(Band_DFT_Col_resources,ctx->h_transformed_s,sizeof(dcomplex) * matrix_count);
         if (new_s == NULL) {
             BandCol_AbortWithMessage("Failed to allocate host transformed-overlap buffer in Band_DFT_Col.c.");
         }
@@ -2095,7 +2095,7 @@ static void BandCol_GpuSolver_ClearHostEigenvectors(void)
 {
     BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
 
-    free(ctx->h_evec);
+    openmx_core_native_free(Band_DFT_Col_resources,ctx->h_evec);
     ctx->h_evec      = NULL;
     ctx->h_evec_dim  = 0;
     ctx->h_evec_cols = 0;
@@ -2116,8 +2116,8 @@ static void BandCol_GpuSolver_Init(void)
         BandCol_GpuSolver_Destroy();
     }
 
-    OpenMXBlasWait(cublasCreate(&ctx->cublas));
-    OpenMXSolverWait(cusolverDnCreate(&ctx->gpusolver));
+    OpenMXBlasWait(OpenMX_Resource_BlasCreate(Band_DFT_Col_resources,&ctx->cublas));
+    OpenMXSolverWait(OpenMX_Resource_SolverCreate(Band_DFT_Col_resources,&ctx->gpusolver));
 
     ctx->initialized = 1;
     ctx->device_id   = current_device;
@@ -2140,27 +2140,27 @@ static void BandCol_GpuSolver_EnsureMatrixCapacity(int n)
     }
 
     if (ctx->d_S != NULL)
-        wait_cudafunc(cudaFree(ctx->d_S));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_S));
     if (ctx->d_H != NULL)
-        wait_cudafunc(cudaFree(ctx->d_H));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_H));
     if (ctx->d_tmp != NULL)
-        wait_cudafunc(cudaFree(ctx->d_tmp));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_tmp));
     if (ctx->d_scale != NULL)
-        wait_cudafunc(cudaFree(ctx->d_scale));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_scale));
     if (ctx->d_W != NULL)
-        wait_cudafunc(cudaFree(ctx->d_W));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_W));
     if (ctx->d_info != NULL)
-        wait_cudafunc(cudaFree(ctx->d_info));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_info));
 
     matrix_bytes = sizeof(dcomplex) * (size_t)n * (size_t)n;
     vector_bytes = sizeof(dcomplex) * (size_t)n;
 
-    wait_cudafunc(cudaMalloc((void **)&ctx->d_S, matrix_bytes));
-    wait_cudafunc(cudaMalloc((void **)&ctx->d_H, matrix_bytes));
-    wait_cudafunc(cudaMalloc((void **)&ctx->d_tmp, matrix_bytes));
-    wait_cudafunc(cudaMalloc((void **)&ctx->d_scale, vector_bytes));
-    wait_cudafunc(cudaMalloc((void **)&ctx->d_W, sizeof(double) * (size_t)n));
-    wait_cudafunc(cudaMalloc((void **)&ctx->d_info, sizeof(int32_t)));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_S,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_H,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_tmp,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_scale,vector_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_W,sizeof(double) * (size_t)n));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_info,sizeof(int32_t)));
 
     ctx->matrix_dim          = n;
     ctx->transformed_s_valid = 0;
@@ -2193,23 +2193,23 @@ static void BandCol_GpuSolver_EnsureWorkspace(int m, int maxn, dcomplex * d_A, i
 
     if (d_bytes > ctx->d_work_bytes) {
         if (ctx->d_work != NULL)
-            wait_cudafunc(cudaFree(ctx->d_work));
+            wait_cudafunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_work));
         ctx->d_work = NULL;
         if (d_bytes > 0) {
-            wait_cudafunc(cudaMalloc((void **)&ctx->d_work, d_bytes));
+            wait_cudafunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_work,d_bytes));
         }
         ctx->d_work_bytes = d_bytes;
     }
 
     if (h_bytes == 0) {
         if (ctx->h_work != NULL)
-            free(ctx->h_work);
+            openmx_core_native_free(Band_DFT_Col_resources,ctx->h_work);
         ctx->h_work       = NULL;
         ctx->h_work_bytes = 0;
     } else if (h_bytes > ctx->h_work_bytes) {
         if (ctx->h_work != NULL)
-            free(ctx->h_work);
-        ctx->h_work = malloc(h_bytes);
+            openmx_core_native_free(Band_DFT_Col_resources,ctx->h_work);
+        ctx->h_work = openmx_core_native_malloc(Band_DFT_Col_resources,1,h_bytes,0);
         if (ctx->h_work == NULL) {
             BandCol_AbortWithMessage("Failed to allocate host workspace in BandCol_GpuSolver_EnsureWorkspace.");
         }
@@ -2253,10 +2253,10 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
 static void BandCol_HostEnsure(int n)
 {
     if (BandCol_host_n==n) return;
-    free(BandCol_host_s); free(BandCol_host_h); free(BandCol_host_tmp);
-    BandCol_host_s=malloc((size_t)n*n*sizeof(dcomplex));
-    BandCol_host_h=malloc((size_t)n*n*sizeof(dcomplex));
-    BandCol_host_tmp=malloc((size_t)n*n*sizeof(dcomplex));
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_s); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_h); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_tmp);
+    BandCol_host_s=openmx_core_native_malloc(Band_DFT_Col_resources,1,(size_t)n*n*sizeof(dcomplex),0);
+    BandCol_host_h=openmx_core_native_malloc(Band_DFT_Col_resources,1,(size_t)n*n*sizeof(dcomplex),0);
+    BandCol_host_tmp=openmx_core_native_malloc(Band_DFT_Col_resources,1,(size_t)n*n*sizeof(dcomplex),0);
     if (!BandCol_host_s || !BandCol_host_h || !BandCol_host_tmp)
         BandCol_AbortWithMessage("Cannot allocate MAGMA host dense workspace");
     BandCol_host_n=n;
@@ -2303,7 +2303,7 @@ static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n,
         BandCol_GpuSolver_Eigen(ctx->d_S, n, n, ko + 1, 1);
 
         if (n > ctx->scale_dim) {
-            dcomplex *new_scale = (dcomplex *)realloc(ctx->h_scale, sizeof(dcomplex) * (size_t)n);
+            dcomplex *new_scale = (dcomplex *)openmx_core_native_realloc(Band_DFT_Col_resources,ctx->h_scale,sizeof(dcomplex) * (size_t)n);
             if (new_scale == NULL) {
                 BandCol_AbortWithMessage("Failed to allocate overlap scale buffer in Band_DFT_Col.c.");
             }
@@ -2379,7 +2379,7 @@ static void BandCol_GpuSolver_EigenHost(dcomplex *A, double *ko, int n, int maxn
 
 static cudaError_t BandCol_TryDeviceMalloc(void **ptr, size_t bytes)
 {
-    cudaError_t status = cudaMalloc(ptr, bytes);
+    cudaError_t status = OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,ptr,bytes);
 
     if (status != cudaSuccess) {
         *ptr = NULL;
@@ -2390,7 +2390,7 @@ static cudaError_t BandCol_TryDeviceMalloc(void **ptr, size_t bytes)
 
 static void *BandCol_MallocArray(size_t count, size_t elem_size, const char *label)
 {
-    void *ptr = malloc(count * elem_size);
+    void *ptr = openmx_core_native_malloc(Band_DFT_Col_resources,1,count * elem_size,0);
 
     if (ptr == NULL) {
         char msg[256];
@@ -2496,6 +2496,7 @@ static void BandCol_RefineBindDevice(EigenRefineDevice *dev)
     dev->h_work_bytes = &ctx->h_work_bytes;
     dev->d_info = ctx->d_info;
     dev->try_malloc = BandCol_TryDeviceMalloc;
+    dev->resources = Band_DFT_Col_resources;
     dev->host_malloc = BandCol_MallocArray;
 }
 
@@ -2524,10 +2525,10 @@ static void BandCol_KRefReset(void)
 {
     if (BandCol_kref != NULL) {
         for (int slot = 0; slot < BandCol_kref_slots; slot++) {
-            free(BandCol_kref[slot].basis);
-            free(BandCol_kref[slot].lam);
+            openmx_core_native_free(Band_DFT_Col_resources,BandCol_kref[slot].basis);
+            openmx_core_native_free(Band_DFT_Col_resources,BandCol_kref[slot].lam);
         }
-        free(BandCol_kref);
+        openmx_core_native_free(Band_DFT_Col_resources,BandCol_kref);
     }
     BandCol_kref = NULL;
     BandCol_kref_slots = 0;
@@ -2558,11 +2559,11 @@ static int BandCol_KRefSlotAllocate(BandColKRefineSlot *slot, int n)
 
         if (limit < BandCol_kref_used || bytes > limit - BandCol_kref_used) return 0;
     }
-    slot->basis = (dcomplex *)malloc(sizeof(dcomplex) * (size_t)n * (size_t)n);
-    slot->lam = (double *)malloc(sizeof(double) * (size_t)n);
+    slot->basis = (dcomplex *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(dcomplex) * (size_t)n * (size_t)n,0);
+    slot->lam = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)n,0);
     if (slot->basis == NULL || slot->lam == NULL) {
-        free(slot->basis);
-        free(slot->lam);
+        openmx_core_native_free(Band_DFT_Col_resources,slot->basis);
+        openmx_core_native_free(Band_DFT_Col_resources,slot->lam);
         slot->basis = NULL;
         slot->lam = NULL;
         return 0;
@@ -2576,8 +2577,8 @@ static void BandCol_KRefSlotFree(BandColKRefineSlot *slot, int n)
     if (slot->basis != NULL) {
         BandCol_kref_used -= sizeof(dcomplex) * (size_t)n * (size_t)n + sizeof(double) * (size_t)n;
     }
-    free(slot->basis);
-    free(slot->lam);
+    openmx_core_native_free(Band_DFT_Col_resources,slot->basis);
+    openmx_core_native_free(Band_DFT_Col_resources,slot->lam);
     slot->basis = NULL;
     slot->lam = NULL;
     slot->valid = 0;
@@ -2642,8 +2643,8 @@ static int BandCol_KDenseRefinedSolve(int n, int maxn, double *ko, BandColKRefin
         rc = openmx_eigen_refine_finish(ks, dev, &pb, f0, &rep);
     }
     if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
-    free(e0);
-    free(f0);
+    openmx_core_native_free(Band_DFT_Col_resources,e0);
+    openmx_core_native_free(Band_DFT_Col_resources,f0);
     if (rc != 1) {
         ks->basis_valid = 0;
         slot->valid = 0;
@@ -2771,7 +2772,7 @@ static dcomplex *BandCol_RefinedFirstHalf(int n, int maxn, const dcomplex *H_in,
         }
     }
     if (BandCol_refine_e0_n != n) {
-        free(BandCol_refine_e0);
+        openmx_core_native_free(Band_DFT_Col_resources,BandCol_refine_e0);
         BandCol_refine_e0 = (double *)BandCol_MallocArray((size_t)n, sizeof(double), "refinement eigenvalues");
         BandCol_refine_e0_n = n;
     }
@@ -2785,6 +2786,7 @@ static dcomplex *BandCol_RefinedFirstHalf(int n, int maxn, const dcomplex *H_in,
         dev->h_work_bytes = &ctx->h_work_bytes;
         dev->d_info = ctx->d_info;
         dev->try_malloc = BandCol_TryDeviceMalloc;
+        dev->resources = Band_DFT_Col_resources;
         dev->host_malloc = BandCol_MallocArray;
 
         memset(pb, 0, sizeof(*pb));
@@ -2849,7 +2851,7 @@ static dcomplex *BandCol_RefinedSecondHalf(int n, int maxn, double *ko, double m
     for (int i = 0; i < n; i++) f0[i] = BandCol_RefineFermi(BandCol_refine_e0[i], i + 1, &BandCol_refine_occ);
     BANDCOL_PROF_T0(prof_t0);
     rc = openmx_eigen_refine_finish(&BandCol_refine_state, &BandCol_refine_dev, pb, f0, &rep);
-    free(f0);
+    openmx_core_native_free(Band_DFT_Col_resources,f0);
     st->pending = 0;
     if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
     if (rc == 1) {
@@ -3797,7 +3799,7 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
             k_cache_bytes = (size_t)n * (size_t)MaxN * sizeof(dcomplex);
             k_cache_limit = BandCol_HostCacheLimit("OPENMX_BAND_COL_KCACHE_MB", 1024.0);
             if (k_cache_bytes <= k_cache_limit)
-                k_evec_cache = (dcomplex**)calloc((size_t)Num_Comm_World1 * T_knum, sizeof(dcomplex*));
+                k_evec_cache = (dcomplex**)openmx_core_native_malloc(Band_DFT_Col_resources,(size_t)Num_Comm_World1 * T_knum,sizeof(dcomplex*),1);
         }
     }
     use_setham_packed_cache =
@@ -4224,7 +4226,7 @@ diagonalize1:
                     size_t limit = BandCol_HostCacheLimit("OPENMX_BAND_COL_KCACHE_MB", 1024.0);
                     if (limit > k_cache_limit) limit = k_cache_limit;
                     if (k_cache_used <= limit && k_cache_bytes <= limit - k_cache_used)
-                        host_panel = (dcomplex*)malloc(k_cache_bytes);
+                        host_panel = (dcomplex*)openmx_core_native_malloc(Band_DFT_Col_resources,1,k_cache_bytes,0);
                 }
                 if (refined_pass1) {
                     /* the refined pass 2 recomputes the vectors from the kept basis */
@@ -5729,7 +5731,7 @@ diagonalize1:
                             evec_device = BandCol_gpusolver_ctx.d_tmp;
                             wait_cudafunc(cudaMemcpy(evec_device,k_evec_cache[cache_slot],k_cache_bytes,cudaMemcpyHostToDevice));
                         }
-                        free(k_evec_cache[cache_slot]);
+                        openmx_core_native_free(Band_DFT_Col_resources,k_evec_cache[cache_slot]);
                         k_evec_cache[cache_slot] = NULL;
                         evec_stride = MaxN;
                         memcpy(ko + 1, EIGEN[spin][kloop] + 1, sizeof(double) * (size_t)MaxN);
@@ -6415,8 +6417,8 @@ diagonalize1:
 
     if (k_evec_cache != NULL) {
         for (size_t point = 0; point < (size_t)Num_Comm_World1 * T_knum; ++point)
-            free(k_evec_cache[point]);
-        free(k_evec_cache);
+            openmx_core_native_free(Band_DFT_Col_resources,k_evec_cache[point]);
+        openmx_core_native_free(Band_DFT_Col_resources,k_evec_cache);
     }
     if (use_gpusolver_dense && all_knum != 1 && BandCol_CacheTraceEnabled()) {
         printf("BAND_COL_CACHE rank=%d SCF=%d evec_hits=%d overlap_hits=%d evec=%.1f MiB overlap=%.1f MiB\n",
@@ -6678,7 +6680,7 @@ static double get_max_value(double local_value)
    Called on every rank before Free_Arrays(0) frees the current system. */
 void Band_DFT_Col_Release_GPU_Caches(void)
 {
-    free(BandCol_host_s); free(BandCol_host_h); free(BandCol_host_tmp);
+    openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_s); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_h); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_tmp);
     BandCol_host_s=BandCol_host_h=BandCol_host_tmp=NULL; BandCol_host_n=0;
     BandCol_mgpu_host_dense=0;
     BandCol_KOverlapReset();
@@ -6686,4 +6688,7 @@ void Band_DFT_Col_Release_GPU_Caches(void)
     BandCol_DMWorkspace_Reset();
     BandCol_DMEntryCache_Reset();
     BandCol_GpuSolver_Destroy();
+    /* The next input owns a fresh refinement policy and no prior basis. */
+    const BandColRefineState initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    BandCol_refine = initial;
 }

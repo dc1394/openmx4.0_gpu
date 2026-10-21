@@ -19,6 +19,8 @@
 
 #include "openmx_common.h"
 #include "openmx_solver_workspace.h"
+#include "openmx_native_resources.h"
+OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer_LNO,Divide_Conquer_LNO_Release_GPU_Caches)
 #include "lapack_prototypes.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include <math.h>
@@ -360,7 +362,7 @@ static size_t DCLNO_CheckedMulCount(size_t a, size_t b, const char *label)
 static void *DCLNO_MallocArray(size_t count, size_t elem_size, const char *label)
 {
     size_t bytes = DCLNO_CheckedArrayBytes(count, elem_size, label);
-    void * ptr = malloc((bytes == 0) ? 1 : bytes);
+    void * ptr = openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,(bytes == 0) ? 1 : bytes,0);
 
     if (ptr == NULL) {
         char msg[512];
@@ -376,7 +378,7 @@ static void *DCLNO_CallocArray(size_t count, size_t elem_size, const char *label
     void * ptr;
 
     (void)DCLNO_CheckedArrayBytes(count, elem_size, label);
-    ptr = calloc((count == 0) ? 1 : count, (elem_size == 0) ? 1 : elem_size);
+    ptr = openmx_core_native_malloc(Divide_Conquer_LNO_resources,(count == 0) ? 1 : count,(elem_size == 0) ? 1 : elem_size,1);
 
     if (ptr == NULL) {
         char msg[512];
@@ -455,8 +457,8 @@ static void DCLNO_FreeRealMatrix1B(double **a, int n)
 {
     int i;
     if (a==NULL) return;
-    for (i=0; i<=n; i++) free(a[i]);
-    free(a);
+    for (i=0; i<=n; i++) openmx_core_native_free(Divide_Conquer_LNO_resources,a[i]);
+    openmx_core_native_free(Divide_Conquer_LNO_resources,a);
 }
 
 static void DCLNO_PackRealC(double **C, int num, double *buf)
@@ -553,12 +555,12 @@ static void DCLNO_GpuSolver_Destroy(void)
     DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
 
     if (ctx->stream != NULL) wait_hipfunc(hipStreamSynchronize(ctx->stream));
-    if (ctx->d_S    != NULL) wait_hipfunc(hipFree(ctx->d_S));
-    if (ctx->d_H    != NULL) wait_hipfunc(hipFree(ctx->d_H));
-    if (ctx->d_tmp  != NULL) wait_hipfunc(hipFree(ctx->d_tmp));
-    if (ctx->d_W    != NULL) wait_hipfunc(hipFree(ctx->d_W));
-    if (ctx->hipblas   != NULL) OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
-    if (ctx->stream   != NULL) wait_hipfunc(hipStreamDestroy(ctx->stream));
+    if (ctx->d_S    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
+    if (ctx->d_H    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
+    if (ctx->d_tmp  != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
+    if (ctx->d_W    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
+    if (ctx->hipblas   != NULL) OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Divide_Conquer_LNO_resources,ctx->hipblas));
+    if (ctx->stream   != NULL) wait_hipfunc(OpenMX_Resource_StreamDestroy(Divide_Conquer_LNO_resources,ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
 }
@@ -606,8 +608,8 @@ static void DCLNO_GpuSolver_Init(void)
 
     if (ctx->initialized) return;
 
-    wait_hipfunc(hipStreamCreateWithFlags(&ctx->stream, hipStreamNonBlocking));
-    OpenMXBlasWait(hipblasCreate(&ctx->hipblas));
+    wait_hipfunc(OpenMX_Resource_StreamCreate(Divide_Conquer_LNO_resources,&ctx->stream,hipStreamNonBlocking));
+    OpenMXBlasWait(OpenMX_Resource_BlasCreate(Divide_Conquer_LNO_resources,&ctx->hipblas));
     OpenMXBlasWait(hipblasSetStream(ctx->hipblas, ctx->stream));
 
     ctx->initialized = 1;
@@ -626,21 +628,20 @@ static void DCLNO_GpuSolver_EnsureMatrixCapacity(int num)
 
     if (num <= ctx->max_num) return;
 
-    if (ctx->d_S    != NULL) wait_hipfunc(hipFree(ctx->d_S));
-    if (ctx->d_H    != NULL) wait_hipfunc(hipFree(ctx->d_H));
-    if (ctx->d_tmp  != NULL) wait_hipfunc(hipFree(ctx->d_tmp));
-    if (ctx->d_W    != NULL) wait_hipfunc(hipFree(ctx->d_W));
+    if (ctx->d_S    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
+    if (ctx->d_H    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
+    if (ctx->d_tmp  != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
+    if (ctx->d_W    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
 
     matrix_bytes = DCLNO_CheckedArrayBytes(DCLNO_CheckedMulCount((size_t)num, (size_t)num,
                                                                  "GPU solver dense matrix dimensions"),
                                            sizeof(double),
                                            "GPU solver dense matrix buffer");
 
-    wait_hipfunc(hipMalloc((void**)&ctx->d_S, matrix_bytes));
-    wait_hipfunc(hipMalloc((void**)&ctx->d_H, matrix_bytes));
-    wait_hipfunc(hipMalloc((void**)&ctx->d_tmp, matrix_bytes));
-    wait_hipfunc(hipMalloc((void**)&ctx->d_W,
-                             DCLNO_CheckedArrayBytes((size_t)num, sizeof(double), "GPU solver eigenvalue buffer")));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_S,matrix_bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_H,matrix_bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_tmp,matrix_bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_W,DCLNO_CheckedArrayBytes((size_t)num, sizeof(double), "GPU solver eigenvalue buffer")));
 
     ctx->max_num = num;
 }
@@ -865,7 +866,7 @@ static void DCLNO_Solve_Col_Local(int NUM,
         memcpy(C[j1] + 1, Tmp + (size_t)(j1-1)*NUM, sizeof(double)*(size_t)NUM);
     }
 
-    if (owns_tmp) free(Tmp);
+    if (owns_tmp) openmx_core_native_free(Divide_Conquer_LNO_resources,Tmp);
 }
 
 /* ------------------------------------------------------------------ */
@@ -891,11 +892,11 @@ static void DCLNO_GpuSolverZ_FreeBuffers(DCLNO_GpuSolverZCtx *ctx)
 {
     if (ctx->stream != NULL)  wait_hipfunc(hipStreamSynchronize(ctx->stream));
 
-    if (ctx->d_S != NULL)     wait_hipfunc(hipFree(ctx->d_S));
-    if (ctx->d_H != NULL)     wait_hipfunc(hipFree(ctx->d_H));
-    if (ctx->d_tmp != NULL)   wait_hipfunc(hipFree(ctx->d_tmp));
-    if (ctx->d_scale != NULL) wait_hipfunc(hipFree(ctx->d_scale));
-    free(ctx->h_scale);
+    if (ctx->d_S != NULL)     wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
+    if (ctx->d_H != NULL)     wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)   wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
+    if (ctx->d_scale != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_scale));
+    openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_scale);
 
     ctx->d_S = NULL;
     ctx->d_H = NULL;
@@ -912,8 +913,8 @@ static void DCLNO_GpuSolverZ_Destroy(void)
     if (!ctx->initialized) return;
 
     DCLNO_GpuSolverZ_FreeBuffers(ctx);
-    if (ctx->hipblas != NULL)    OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
-    if (ctx->stream != NULL)    wait_hipfunc(hipStreamDestroy(ctx->stream));
+    if (ctx->hipblas != NULL)    OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Divide_Conquer_LNO_resources,ctx->hipblas));
+    if (ctx->stream != NULL)    wait_hipfunc(OpenMX_Resource_StreamDestroy(Divide_Conquer_LNO_resources,ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
 }
@@ -926,11 +927,11 @@ static int DCLNO_GpuSolverZ_Init(void)
 
     if (ctx->initialized) return 1;
 
-    wait_hipfunc(hipStreamCreateWithFlags(&ctx->stream, hipStreamNonBlocking));
-    if (hipblasCreate(&ctx->hipblas) != HIPBLAS_STATUS_SUCCESS) {
+    wait_hipfunc(OpenMX_Resource_StreamCreate(Divide_Conquer_LNO_resources,&ctx->stream,hipStreamNonBlocking));
+    if (OpenMX_Resource_BlasCreate(Divide_Conquer_LNO_resources,&ctx->hipblas) != HIPBLAS_STATUS_SUCCESS) {
         (void)hipGetLastError();
         ctx->hipblas = NULL;
-        wait_hipfunc(hipStreamDestroy(ctx->stream));
+        wait_hipfunc(OpenMX_Resource_StreamDestroy(Divide_Conquer_LNO_resources,ctx->stream));
         ctx->stream = NULL;
         return 0;
     }
@@ -971,7 +972,7 @@ static int DCLNO_GpuSolverZ_EnsureMatrixCapacity(int num)
     bytes[3] = DCLNO_CheckedArrayBytes((size_t)num, sizeof(dcomplex), "GPUSOLVER NC scale buffer");
 
     for (b = 0; b < 4; b++) {
-        if (hipMalloc((void**)buffers[b], bytes[b]) != hipSuccess) {
+        if (OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)buffers[b],bytes[b]) != hipSuccess) {
             *buffers[b] = NULL;
             (void)hipGetLastError();
             DCLNO_GpuSolverZ_FreeBuffers(ctx);
@@ -1236,10 +1237,10 @@ static void DCLNO_GpuSolver_ReleaseDeviceMemory(void)
 
     if (ctx->stream != NULL) wait_hipfunc(hipStreamSynchronize(ctx->stream));
 
-    if (ctx->d_S != NULL)    wait_hipfunc(hipFree(ctx->d_S));
-    if (ctx->d_H != NULL)    wait_hipfunc(hipFree(ctx->d_H));
-    if (ctx->d_tmp != NULL)  wait_hipfunc(hipFree(ctx->d_tmp));
-    if (ctx->d_W != NULL)    wait_hipfunc(hipFree(ctx->d_W));
+    if (ctx->d_S != NULL)    wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
+    if (ctx->d_H != NULL)    wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)  wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
+    if (ctx->d_W != NULL)    wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
 
     ctx->d_S = NULL;
     ctx->d_H = NULL;
@@ -1356,7 +1357,7 @@ static int DCLNO_GPUProxy_Col_Service(int active,
     }
 
     if (!any_active) {
-        free(allinfo);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,allinfo);
         return 0;
     }
 
@@ -1435,16 +1436,16 @@ static int DCLNO_GPUProxy_Col_Service(int active,
                              DCLNO_PROXY_TAG_COL_CVEC, DCLNO_gpu_group_comm);
                 }
 
-                free(Sbuf);
-                free(Hbuf);
-                free(kbuf);
+                openmx_core_native_free(Divide_Conquer_LNO_resources,Sbuf);
+                openmx_core_native_free(Divide_Conquer_LNO_resources,Hbuf);
+                openmx_core_native_free(Divide_Conquer_LNO_resources,kbuf);
             }
         }
 
-        free(recv_Sbuf);
-        free(recv_Hbuf);
-        free(recv_Sreq);
-        free(recv_Hreq);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Sbuf);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Hbuf);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Sreq);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Hreq);
     }
     else if (active) {
         double *Cbuf = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM2,
@@ -1468,10 +1469,10 @@ static int DCLNO_GPUProxy_Col_Service(int active,
             DCLNO_CopyPackedEigvecsToC(Cbuf, NUM, NUM2, C);
         }
 
-        free(Cbuf);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,Cbuf);
     }
 
-    free(allinfo);
+    openmx_core_native_free(Divide_Conquer_LNO_resources,allinfo);
     return retry_info;
 }
 
@@ -1538,14 +1539,12 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
                      double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner)
 {
+  struct History { double *BLAS_OLP; int **LO_TC,**HO_TC; int BLAS_allocate_flag,LO_HO_allocate_flag; };
+  struct History *history=(struct History*)OpenMX_Resource_State(Divide_Conquer_LNO_resources,"DC_Col_owned",sizeof(struct History));
+
 
 
     static int      firsttime = 1;
-    static int      BLAS_allocate_flag = 0;
-    static double * BLAS_OLP = NULL;
-    static int      LO_HO_allocate_flag = 0;
-    static int **   LO_TC = NULL;
-    static int **   HO_TC = NULL;
 
     int             Mc_AN, Gc_AN, i, Gi, wan, wanA, wanB, Anum;
     int             size1, size2, num, NUM, NUM2, n2, Cwan, Hwan;
@@ -1602,25 +1601,25 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
     dtime(&TStime);
 
     if (strcasecmp(mode, "free") == 0) {
-        if (LO_HO_allocate_flag == 1) {
-            if (LO_TC != NULL) {
-                for (spin = 0; spin < 2; spin++) free(LO_TC[spin]);
-                free(LO_TC);
-                LO_TC = NULL;
+        if (history->LO_HO_allocate_flag == 1) {
+            if (history->LO_TC != NULL) {
+                for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC[spin]);
+                openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
+                history->LO_TC = NULL;
             }
 
-            if (HO_TC != NULL) {
-                for (spin = 0; spin < 2; spin++) free(HO_TC[spin]);
-                free(HO_TC);
-                HO_TC = NULL;
+            if (history->HO_TC != NULL) {
+                for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC[spin]);
+                openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+                history->HO_TC = NULL;
             }
 
-            LO_HO_allocate_flag = 0;
+            history->LO_HO_allocate_flag = 0;
         }
 
-        free(BLAS_OLP);
-        BLAS_OLP = NULL;
-        BLAS_allocate_flag = 0;
+        openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+        history->BLAS_OLP = NULL;
+        history->BLAS_allocate_flag = 0;
         firsttime = 1;
 
         DCLNO_GPUProxy_Finalize();
@@ -1679,28 +1678,28 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
       allocation of LO/HO trackers
     ****************************************************/
 
-    if (LO_HO_allocate_flag == 1 && SCF_iter == 1) {
-        for (spin = 0; spin < 2; spin++) free(LO_TC[spin]);
-        free(LO_TC);
-        for (spin = 0; spin < 2; spin++) free(HO_TC[spin]);
-        free(HO_TC);
-        LO_HO_allocate_flag = 0;
+    if (history->LO_HO_allocate_flag == 1 && SCF_iter == 1) {
+        for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC[spin]);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
+        for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC[spin]);
+        openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+        history->LO_HO_allocate_flag = 0;
     }
 
-    if (LO_HO_allocate_flag == 0) {
-        LO_TC = (int**)DCLNO_MallocArray(2, sizeof(int*), "LO tracker pointers");
-        HO_TC = (int**)DCLNO_MallocArray(2, sizeof(int*), "HO tracker pointers");
+    if (history->LO_HO_allocate_flag == 0) {
+        history->LO_TC = (int**)DCLNO_MallocArray(2, sizeof(int*), "LO tracker pointers");
+        history->HO_TC = (int**)DCLNO_MallocArray(2, sizeof(int*), "HO tracker pointers");
 
         for (spin = 0; spin < 2; spin++) {
-            LO_TC[spin] = (int*)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(int), "LO tracker");
-            HO_TC[spin] = (int*)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(int), "HO tracker");
+            history->LO_TC[spin] = (int*)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(int), "LO tracker");
+            history->HO_TC[spin] = (int*)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(int), "HO tracker");
             for (i = 0; i <= Matomnum; i++) {
-                LO_TC[spin][i] = 1;
-                HO_TC[spin][i] = 1;
+                history->LO_TC[spin][i] = 1;
+                history->HO_TC[spin][i] = 1;
             }
         }
 
-        LO_HO_allocate_flag = 1;
+        history->LO_HO_allocate_flag = 1;
     }
 
     /****************************************************
@@ -1750,19 +1749,19 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
       static work array
     ****************************************************/
 
-    if (BLAS_allocate_flag == 1 && LNO_recalc_flag == 1) {
-        free(BLAS_OLP);
-        BLAS_allocate_flag = 0;
+    if (history->BLAS_allocate_flag == 1 && LNO_recalc_flag == 1) {
+        openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+        history->BLAS_allocate_flag = 0;
     }
 
-    if (BLAS_allocate_flag == 0) {
-        BLAS_OLP = (double*)DCLNO_MallocArray(
+    if (history->BLAS_allocate_flag == 0) {
+        history->BLAS_OLP = (double*)DCLNO_MallocArray(
             DCLNO_CheckedMulCount(DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
                                                         "overlap work buffer matrix dimensions"),
                                   (size_t)(SpinP_switch + 1),
                                   "overlap work buffer spin dimensions"),
             sizeof(double), "overlap work buffer");
-        BLAS_allocate_flag = 1;
+        history->BLAS_allocate_flag = 1;
     }
 
     BLAS_H=OpenMX_Solver_Real(solver_owner,"BLAS_H",DCLNO_CheckedMulCount(DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
@@ -2137,7 +2136,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
             NUM = Anum - 1;
             n2  = NUM + 3;
 
-#define S_ref(k, i, j) BLAS_OLP[(k) * NUM * NUM + ((j) - 1) * NUM + ((i) - 1)]
+#define S_ref(k, i, j) history->BLAS_OLP[(k) * NUM * NUM + ((j) - 1) * NUM + ((i) - 1)]
 #define H_ref(k, i, j) BLAS_H[(k) * NUM * NUM + ((j) - 1) * NUM + ((i) - 1)]
 
             for (spin = 0; spin <= SpinP_switch; spin++) {
@@ -2366,7 +2365,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                     NUM2 = NUM;
                 }
                 else {
-                    NUM2 = HO_TC[spin][Mc_AN] + 100;
+                    NUM2 = history->HO_TC[spin][Mc_AN] + 100;
                     if (NUM < NUM2) NUM2 = NUM;
                     if (NUM2 < 1)   NUM2 = NUM;
                 }
@@ -2392,7 +2391,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                     double gpu_start = 0.0, gpu_stop;
                     if (gpu_profile) dtime(&gpu_start);
                     gpu_retry_info = DCLNO_Solve_Col_GpuSolver(NUM, NUM2,
-                                                               &BLAS_OLP[spin * NUM * NUM],
+                                                               &history->BLAS_OLP[spin * NUM * NUM],
                                                                &BLAS_H[spin * NUM * NUM],
                                                                ko);
                     if (gpu_retry_info == 0)
@@ -2413,7 +2412,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 }
                 else if (!use_gpu_task) {
                     DCLNO_Solve_Col_Local(NUM, NUM2,
-                                          &BLAS_OLP[spin * NUM * NUM],
+                                          &history->BLAS_OLP[spin * NUM * NUM],
                                           &BLAS_H[spin * NUM * NUM],
                                           C, ko, BLAS_Tmp,
                                           BLAS_Eig_A, BLAS_Eig_Work, BLAS_Eig_IWork);
@@ -2429,7 +2428,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 gpu_retry_info = DCLNO_GPUProxy_Col_Service(use_gpu_task,
                                            NUM,
                                            NUM2,
-                                           (have_local_atom ? &BLAS_OLP[spin * NUM * NUM] : NULL),
+                                           (have_local_atom ? &history->BLAS_OLP[spin * NUM * NUM] : NULL),
                                            (have_local_atom ? &BLAS_H[spin * NUM * NUM]   : NULL),
                                            C, ko);
             }
@@ -2440,7 +2439,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 /* Both direct and proxy failures retain these host inputs.
                    Retry here so remote tasks use their origin's scratch. */
                 DCLNO_Solve_Col_Local(NUM, NUM2,
-                                      &BLAS_OLP[spin * NUM * NUM],
+                                      &history->BLAS_OLP[spin * NUM * NUM],
                                       &BLAS_H[spin * NUM * NUM],
                                       C, ko, BLAS_Tmp,
                                       BLAS_Eig_A, BLAS_Eig_Work, BLAS_Eig_IWork);
@@ -2496,10 +2495,10 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 i++;
             } while (po1 == 0 && i <= NUM2);
 
-            LO_TC[spin][Mc_AN] = ip;
+            history->LO_TC[spin][Mc_AN] = ip;
 
-            if ((TZ / 2 - 5) < LO_TC[spin][Mc_AN]) LO_TC[spin][Mc_AN] -= 30;
-            if (LO_TC[spin][Mc_AN] < 1) LO_TC[spin][Mc_AN] = 1;
+            if ((TZ / 2 - 5) < history->LO_TC[spin][Mc_AN]) history->LO_TC[spin][Mc_AN] -= 30;
+            if (history->LO_TC[spin][Mc_AN] < 1) history->LO_TC[spin][Mc_AN] = 1;
 
             i   = 1;
             ip  = NUM2;
@@ -2512,12 +2511,12 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 i++;
             } while (po1 == 0 && i <= NUM2);
 
-            HO_TC[spin][Mc_AN] = ip;
+            history->HO_TC[spin][Mc_AN] = ip;
 
-            if (HO_TC[spin][Mc_AN] < (TZ / 2 + 5)) HO_TC[spin][Mc_AN] += 30;
-            if (NUM2 < HO_TC[spin][Mc_AN]) HO_TC[spin][Mc_AN] = NUM2;
+            if (history->HO_TC[spin][Mc_AN] < (TZ / 2 + 5)) history->HO_TC[spin][Mc_AN] += 30;
+            if (NUM2 < history->HO_TC[spin][Mc_AN]) history->HO_TC[spin][Mc_AN] = NUM2;
 
-            n2 = HO_TC[spin][Mc_AN] - LO_TC[spin][Mc_AN] + 3;
+            n2 = history->HO_TC[spin][Mc_AN] - history->LO_TC[spin][Mc_AN] + 3;
             if (n2 < 1) n2 = 1;
 
             /******************************************************
@@ -2547,7 +2546,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
                         {
                           double *residues_row_51=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
-                          for (i1 = 1; i1 < LO_TC[spin][Mc_AN]; i1++) {
+                          for (i1 = 1; i1 < history->LO_TC[spin][Mc_AN]; i1++) {
                             tmp1 = H_ref(spin, i1, 1 + i) * H_ref(spin, i1, Bnum + j);
                             residues_row_51[0] += tmp1;
                             residues_row_51[1] += tmp1 * eval_row_55[i1];
@@ -2556,8 +2555,8 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
                         {
                           double *residues_row_50=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
-                          for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
-                            i2 = i1 - LO_TC[spin][Mc_AN] + 2;
+                          for (i1 = history->LO_TC[spin][Mc_AN]; i1 <= history->HO_TC[spin][Mc_AN]; i1++) {
+                            i2 = i1 - history->LO_TC[spin][Mc_AN] + 2;
                             residues_row_50[i2] =
                                 H_ref(spin, i1, 1 + i) * H_ref(spin, i1, Bnum + j);
                         }
@@ -2616,8 +2615,8 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
                             {
                               double *residues_row_45=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
-                              for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
-                                i2 = i1 - LO_TC[spin][Mc_AN] + 2;
+                              for (i1 = history->LO_TC[spin][Mc_AN]; i1 <= history->HO_TC[spin][Mc_AN]; i1++) {
+                                i2 = i1 - history->LO_TC[spin][Mc_AN] + 2;
                                 pdos_dc_row_48[i2] +=
                                     residues_row_45[i2] * tmp1;
                             }
@@ -2669,8 +2668,8 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                     {
                       double *eval_row_42=openmx_solver_field_row(&EVal,spin,Mc_AN);
                       double *pdos_dc_row_43=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
-                      for (i = LO_TC[spin][Mc_AN]; i <= HO_TC[spin][Mc_AN]; i++) {
-                        i1 = i - LO_TC[spin][Mc_AN] + 2;
+                      for (i = history->LO_TC[spin][Mc_AN]; i <= history->HO_TC[spin][Mc_AN]; i++) {
+                        i1 = i - history->LO_TC[spin][Mc_AN] + 2;
                         x  = (eval_row_42[i] - ChemP) * Beta;
                         if (x <= -max_x) x = -max_x;
                         if ( max_x <= x) x =  max_x;
@@ -2718,8 +2717,8 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 {
                   double *eval_row_40=openmx_solver_field_row(&EVal,spin,Mc_AN);
                   double *pdos_dc_row_41=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
-                  for (i = LO_TC[spin][Mc_AN]; i <= HO_TC[spin][Mc_AN]; i++) {
-                    i1 = i - LO_TC[spin][Mc_AN] + 2;
+                  for (i = history->LO_TC[spin][Mc_AN]; i <= history->HO_TC[spin][Mc_AN]; i++) {
+                    i1 = i - history->LO_TC[spin][Mc_AN] + 2;
                     x  = (eval_row_40[i] - ChemP) * Beta;
                     if (x <= -max_x) x = -max_x;
                     if ( max_x <= x) x =  max_x;
@@ -2759,7 +2758,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
                 {
                   double *eval_row_39=openmx_solver_field_row(&EVal,spin,Mc_AN);
-                  for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
+                  for (i1 = history->LO_TC[spin][Mc_AN]; i1 <= history->HO_TC[spin][Mc_AN]; i1++) {
                     x = (eval_row_39[i1] - ChemP) * Beta;
                     if (x <= -max_x) x = -max_x;
                     if ( max_x <= x) x =  max_x;
@@ -2782,8 +2781,8 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
                             {
                               double *residues_row_34=openmx_solver_residue_row(&Residues,spin,Mc_AN - 1,h_AN,i,j);
-                              for (i1 = LO_TC[spin][Mc_AN]; i1 <= HO_TC[spin][Mc_AN]; i1++) {
-                                i2   = i1 - LO_TC[spin][Mc_AN] + 2;
+                              for (i1 = history->LO_TC[spin][Mc_AN]; i1 <= history->HO_TC[spin][Mc_AN]; i1++) {
+                                i2   = i1 - history->LO_TC[spin][Mc_AN] + 2;
                                 tmp1 = BLAS_C[i1] * residues_row_34[i2];
                                 sum1 += tmp1;
                                 sum2 += tmp1 * eval_row_38[i1];
@@ -2841,7 +2840,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
     }
 
     else if (strcasecmp(mode, "dos") == 0) {
-        Save_DOS_Col(Residues, OLP0, EVal, LO_TC, HO_TC);
+        Save_DOS_Col(Residues, OLP0, EVal, history->LO_TC, history->HO_TC);
     }
 
     if (profile_enabled) {
@@ -2936,6 +2935,9 @@ static double DC_NonCol_owned(char *mode,
 			double *****EDM,
 			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner)
 {
+  struct History { dcomplex *BLAS_OLP; int *LO_TC,*HO_TC; int BLAS_allocate_flag,LO_HO_allocate_flag; };
+  struct History *history=(struct History*)OpenMX_Resource_State(Divide_Conquer_LNO_resources,"DC_NonCol_owned",sizeof(struct History));
+
 
 
   double ******iDM=electronic->iDM;
@@ -2943,8 +2945,6 @@ static double DC_NonCol_owned(char *mode,
   static int firsttime=1;
   int Mc_AN,Gc_AN,i,Gi,wan,wanA,wanB,Anum;
   int size1,size2,num,NUM,NUMH,NUM2,n2,Cwan,Hwan;
-  static int BLAS_allocate_flag=0;
-  static dcomplex *BLAS_OLP;
   dcomplex *BLAS_H,*BLAS_C;
   OpenMXSolverComplexTensor C;
   int LNO_recalc_flag,so;
@@ -2983,9 +2983,6 @@ static double DC_NonCol_owned(char *mode,
   int *Snd_H_Size,*Rcv_H_Size;
   int *Snd_iHNL_Size,*Rcv_iHNL_Size;
   int *Snd_S_Size,*Rcv_S_Size;
-  static int LO_HO_allocate_flag=0;
-  static int *LO_TC;
-  static int *HO_TC;
   int numprocs0,myid0,ID1,ID,IDS,IDR,tag=999;
   int numprocs1,myid1,numprocs2,myid2;
   double Stime_atom, Etime_atom;
@@ -3032,11 +3029,11 @@ static double DC_NonCol_owned(char *mode,
 
   if ( strcasecmp(mode,"free")==0 ){
 
-    free(LO_TC);
-    free(HO_TC);
-    LO_HO_allocate_flag = 0;
-    free(BLAS_OLP);
-    BLAS_allocate_flag = 0;
+    openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
+    openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+    history->LO_HO_allocate_flag = 0;
+    openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+    history->BLAS_allocate_flag = 0;
     return 0.0;
   }  
   
@@ -3123,16 +3120,16 @@ static double DC_NonCol_owned(char *mode,
     MPI_Bcast(&M2G[0], Matomnum+1, MPI_INT, 0, MPI_CommWD1_DCLNO[myworld1_DCLNO]);
   }
 
-  if (LO_HO_allocate_flag==1 && SCF_iter==1){
-    free(LO_TC);
-    free(HO_TC);
-    LO_HO_allocate_flag = 0;
+  if (history->LO_HO_allocate_flag==1 && SCF_iter==1){
+    openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
+    openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+    history->LO_HO_allocate_flag = 0;
   }
 
-  if (LO_HO_allocate_flag==0){
-    LO_TC = (int*)malloc(sizeof(int)*(Matomnum+1));
-    HO_TC = (int*)malloc(sizeof(int)*(Matomnum+1));
-    LO_HO_allocate_flag = 1;
+  if (history->LO_HO_allocate_flag==0){
+    history->LO_TC = (int*)openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,sizeof(int)*(Matomnum+1),0);
+    history->HO_TC = (int*)openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,sizeof(int)*(Matomnum+1),0);
+    history->LO_HO_allocate_flag = 1;
   }
 
   /****************************************************
@@ -3218,14 +3215,14 @@ static double DC_NonCol_owned(char *mode,
     use_gpu_accel_nc = 0;
   }
 
-  if (BLAS_allocate_flag==1 && LNO_recalc_flag==1){
-    free(BLAS_OLP);
-    BLAS_allocate_flag = 0;
+  if (history->BLAS_allocate_flag==1 && LNO_recalc_flag==1){
+    openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+    history->BLAS_allocate_flag = 0;
   }
 
-  if (BLAS_allocate_flag==0){
-    BLAS_OLP = (dcomplex*)malloc(sizeof(dcomplex)*Max_Msize*Max_Msize);
-    BLAS_allocate_flag = 1;
+  if (history->BLAS_allocate_flag==0){
+    history->BLAS_OLP = (dcomplex*)openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,sizeof(dcomplex)*Max_Msize*Max_Msize,0);
+    history->BLAS_allocate_flag = 1;
   }
 
   BLAS_H=OpenMX_Solver_Complex(solver_owner,"BLAS_H",((size_t)1)*Max_Msize*Max_Msize);
@@ -3852,8 +3849,8 @@ static double DC_NonCol_owned(char *mode,
 
     /* define S_ref(i,j) and H_ref(i,j) */  
 
-#define SNC_ref(i,j)  BLAS_OLP[(j-1)*NUMH+(i-1)]
-#define SNC2_ref(i,j) BLAS_OLP[(j-1)*NUM+(i-1)]
+#define SNC_ref(i,j)  history->BLAS_OLP[(j-1)*NUMH+(i-1)]
+#define SNC2_ref(i,j) history->BLAS_OLP[(j-1)*NUM+(i-1)]
 #define HNC_ref(i,j)  BLAS_H[(j-1)*NUM+(i-1)]
 
     /* making is1 and ie1 */
@@ -4373,7 +4370,7 @@ static double DC_NonCol_owned(char *mode,
       if (myworld2_DCLNO==0){
         MPI_Bcast(&BLAS_H[0], NUM*NUM*sizeof(dcomplex), MPI_BYTE, 0, MPI_CommWD2_DCLNO[myworld2_DCLNO]);
         if (LNO_recalc_flag==1){
-          MPI_Bcast(&BLAS_OLP[0], NUM*NUM*sizeof(dcomplex), MPI_BYTE, 0, MPI_CommWD2_DCLNO[myworld2_DCLNO]);
+          MPI_Bcast(&history->BLAS_OLP[0], NUM*NUM*sizeof(dcomplex), MPI_BYTE, 0, MPI_CommWD2_DCLNO[myworld2_DCLNO]);
 	}
       }
 
@@ -4439,7 +4436,7 @@ static double DC_NonCol_owned(char *mode,
     gpu_retry_info_nc = 0;
     {
       DCLNO_NCGuardStats s_stats, h_stats;
-      int guard_status = DCLNO_NCGuardProblem(use_gpu_task_nc, NUMH, BLAS_OLP,
+      int guard_status = DCLNO_NCGuardProblem(use_gpu_task_nc, NUMH, history->BLAS_OLP,
                                                NUM, BLAS_H, &s_stats, &h_stats);
       if (guard_status == 2) {
         DCLNO_AbortWithMessage("Invalid or non-finite matrix in MI300A NC DC-LNO Hermitian guard.");
@@ -4468,12 +4465,12 @@ static double DC_NonCol_owned(char *mode,
         NUM2 = NUM;
       }
       else{
-        NUM2 = HO_TC[Mc_AN] + 100;
+        NUM2 = history->HO_TC[Mc_AN] + 100;
         if (NUM<NUM2) NUM2 = NUM;
       }
 
       gpu_retry_info_nc = DCLNO_Solve_NonCol_GpuSolver(NUM, NUMH, NUM2, LNO_recalc_flag,
-                                                       BLAS_OLP, BLAS_H, ko);
+                                                       history->BLAS_OLP, BLAS_H, ko);
       if (gpu_retry_info_nc == DCLNO_RETRY_NO_MEMORY) gpu_no_memory_nc = 1;
 
       if (measure_time){
@@ -4514,7 +4511,7 @@ static double DC_NonCol_owned(char *mode,
       for (l=1; l<=NUMH; l++)  ko[l] = 1.0/sqrt(fabs(ko[l]));
 
        for (i=0; i<NUM*NUM; i++){
-         BLAS_OLP[i].r = 0.0; BLAS_OLP[i].i = 0.0;
+         history->BLAS_OLP[i].r = 0.0; history->BLAS_OLP[i].i = 0.0;
        }
 
       for (i1=1; i1<=NUMH; i1++){
@@ -4582,7 +4579,7 @@ static double DC_NonCol_owned(char *mode,
       F77_NAME(zgemm,ZGEMM)("N","N", &BM,&BN,&BK, 
 			    &ctmp1, 
 			    &BLAS_H[0], &BM,
-			    &BLAS_OLP[(ns-1)*NUM], &BK,
+			    &history->BLAS_OLP[(ns-1)*NUM], &BK,
 			    &ctmp2, 
 			    &BLAS_C[(ns-1)*NUM], &BM);
     }
@@ -4603,7 +4600,7 @@ static double DC_NonCol_owned(char *mode,
     if (0<BN){
       F77_NAME(zgemm,ZGEMM)("C","N", &BM,&BN,&BK, 
 			    &ctmp1,
-			    &BLAS_OLP[0], &BM,
+			    &history->BLAS_OLP[0], &BM,
 			    &BLAS_C[(ns-1)*NUM], &BK, 
 			    &ctmp2, 
 			    &BLAS_H[(ns-1)*NUM], &BM);
@@ -4695,14 +4692,14 @@ static double DC_NonCol_owned(char *mode,
     ***************************************************/
 
     if (Eigen_MPI_flag==1){
-      MPI_Bcast(&HO_TC[Mc_AN], 1, MPI_INT, 0, MPI_CommWD2_DCLNO[myworld2_DCLNO]);
+      MPI_Bcast(&history->HO_TC[Mc_AN], 1, MPI_INT, 0, MPI_CommWD2_DCLNO[myworld2_DCLNO]);
     }
 
     if (SCF_iter<=2){
       NUM2 = NUM;
     }
     else{
-      NUM2 = HO_TC[Mc_AN] + 100;
+      NUM2 = history->HO_TC[Mc_AN] + 100;
     }
 
     if (NUM<NUM2) NUM2 = NUM;
@@ -4776,7 +4773,7 @@ static double DC_NonCol_owned(char *mode,
     if (0<BN){
       F77_NAME(zgemm,ZGEMM)("N","N", &BM,&BN,&BK, 
 			    &ctmp1, 
-			    &BLAS_OLP[0], &BM,
+			    &history->BLAS_OLP[0], &BM,
 			    &BLAS_H[(ns-1)*NUM], &BK,
 			    &ctmp2, 
 			    &BLAS_C[(ns-1)*NUM], &BM);
@@ -4860,7 +4857,7 @@ static double DC_NonCol_owned(char *mode,
 	i++;
       } while (po1==0 && i<=NUM2);
 
-      LO_TC[Mc_AN] = ip;
+      history->LO_TC[Mc_AN] = ip;
 
       /* HO_TC */ 
       i = 1;
@@ -4874,9 +4871,9 @@ static double DC_NonCol_owned(char *mode,
 	i++;
       } while (po1==0 && i<=NUM2);
 
-      HO_TC[Mc_AN] = ip;
+      history->HO_TC[Mc_AN] = ip;
 
-      n2 = HO_TC[Mc_AN] - LO_TC[Mc_AN] + 3;
+      n2 = history->HO_TC[Mc_AN] - history->LO_TC[Mc_AN] + 3;
       if (n2<1) n2 = 1;
 
       /***********************************************
@@ -4913,7 +4910,7 @@ static double DC_NonCol_owned(char *mode,
               openmx_solver_complex_residue_row(&Residues,spin,Mc_AN-1,h_AN,i,j)[1].i = 0.0;
 	    }
 
-	    for (i1=1; i1<LO_TC[Mc_AN]; i1++){
+	    for (i1=1; i1<history->LO_TC[Mc_AN]; i1++){
 
 	      /* Re11 */
 	      tmp1 = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).r + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j).i;
@@ -4940,7 +4937,7 @@ static double DC_NonCol_owned(char *mode,
 	    if ( SO_switch==1 || Hub_U_switch==1 || 1<=Constraint_NCS_switch
 		 || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
 
-	      for (i1=1; i1<LO_TC[Mc_AN]; i1++){
+	      for (i1=1; i1<history->LO_TC[Mc_AN]; i1++){
 
 		/* Im11 */
 		tmp1 = -HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).i + HNC_ref(i1,1+i).i*HNC_ref(i1,Bnum+j).r;
@@ -4954,9 +4951,9 @@ static double DC_NonCol_owned(char *mode,
 	      }
 	    }
 
-	    for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
+	    for (i1=history->LO_TC[Mc_AN]; i1<=history->HO_TC[Mc_AN]; i1++){
 
-              i2 = i1 - LO_TC[Mc_AN] + 2;
+              i2 = i1 - history->LO_TC[Mc_AN] + 2;
 
 	      /* Re11 */
 	      openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j)[i2].r = HNC_ref(i1,1+i).r*HNC_ref(i1,Bnum+j).r
@@ -5057,8 +5054,8 @@ static double DC_NonCol_owned(char *mode,
 	    {
 	      dcomplex *residues_row_16=openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j);
 	      dcomplex *residues_row_17=openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j);
-	      for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
-              i2 = i1 - LO_TC[Mc_AN] + 2;
+	      for (i1=history->LO_TC[Mc_AN]; i1<=history->HO_TC[Mc_AN]; i1++){
+              i2 = i1 - history->LO_TC[Mc_AN] + 2;
 	      pdos_dc_row_20[i2] += (residues_row_16[i2].r+residues_row_17[i2].r)*tmp1;
 	    }
 	    }
@@ -5111,9 +5108,9 @@ static double DC_NonCol_owned(char *mode,
         {
           double *eval_row_13=openmx_solver_field_row(&EVal,0,Mc_AN);
           double *pdos_dc_row_14=openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1);
-          for (i=LO_TC[Mc_AN]; i<=HO_TC[Mc_AN]; i++){
+          for (i=history->LO_TC[Mc_AN]; i<=history->HO_TC[Mc_AN]; i++){
 
-          i1 = i - LO_TC[Mc_AN] + 2;
+          i1 = i - history->LO_TC[Mc_AN] + 2;
 	  x = (eval_row_13[i] - ChemP)*Beta;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
@@ -5173,9 +5170,9 @@ static double DC_NonCol_owned(char *mode,
       {
         double *eval_row_11=openmx_solver_field_row(&EVal,0,Mc_AN);
         double *pdos_dc_row_12=openmx_solver_field_row(&PDOS_DC,0,Mc_AN-1);
-        for (i=LO_TC[Mc_AN]; i<=HO_TC[Mc_AN]; i++){
+        for (i=history->LO_TC[Mc_AN]; i<=history->HO_TC[Mc_AN]; i++){
 
-        i1 = i - LO_TC[Mc_AN] + 2;
+        i1 = i - history->LO_TC[Mc_AN] + 2;
 	x = (eval_row_11[i] - ChemP)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
@@ -5260,7 +5257,7 @@ static double DC_NonCol_owned(char *mode,
 
       {
         double *eval_row_10=openmx_solver_field_row(&EVal,0,Mc_AN);
-        for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
+        for (i1=history->LO_TC[Mc_AN]; i1<=history->HO_TC[Mc_AN]; i1++){
 	x   = (eval_row_10[i1] - ChemP)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
@@ -5303,9 +5300,9 @@ static double DC_NonCol_owned(char *mode,
               dcomplex *residues_row_3=openmx_solver_complex_residue_row(&Residues,0,Mc_AN-1,h_AN,i,j);
               dcomplex *residues_row_5=openmx_solver_complex_residue_row(&Residues,1,Mc_AN-1,h_AN,i,j);
               dcomplex *residues_row_6=openmx_solver_complex_residue_row(&Residues,2,Mc_AN-1,h_AN,i,j);
-              for (i1=LO_TC[Mc_AN]; i1<=HO_TC[Mc_AN]; i1++){
+              for (i1=history->LO_TC[Mc_AN]; i1<=history->HO_TC[Mc_AN]; i1++){
 
-              i2 = i1 - LO_TC[Mc_AN] + 2;
+              i2 = i1 - history->LO_TC[Mc_AN] + 2;
 
 	      tmp1 = ko[i1]*residues_row_3[i2].r;
 	      sum1 = tmp1;
@@ -5442,7 +5439,7 @@ static double DC_NonCol_owned(char *mode,
   else if ( strcasecmp(mode,"dos")==0 ){
 
     if ( Eigen_MPI_flag==0 || (Eigen_MPI_flag==1 && myid2==0) ){ 
-      Save_DOS_NonCol(Residues,OLP0,EVal,LO_TC,HO_TC);
+      Save_DOS_NonCol(Residues,OLP0,EVal,history->LO_TC,history->HO_TC);
     }
   }
 

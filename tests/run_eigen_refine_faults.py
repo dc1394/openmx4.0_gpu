@@ -3,7 +3,8 @@
 
 The production functions are extracted verbatim; CUDA/cuSOLVER are host stubs.
 This verifies fallback input preservation and error propagation, not GPU timing
-or the numerical convergence of cuSOLVER. --sanitize adds ASan/UBSan.
+or the numerical convergence of cuSOLVER. With --core-library, the real C++
+owner tracks callback allocations, including repeated release and reuse. --sanitize adds ASan/UBSan.
 """
 import argparse
 import os
@@ -34,6 +35,7 @@ PREFIX = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "openmx_precision.h"
+#include "openmx_core_native_resources.h"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); exit(2); } } while (0)
 typedef int cudaError_t;
 typedef int cusolverStatus_t;
@@ -171,10 +173,12 @@ typedef struct {
     double *b1,*b2,*b3,*lam,*occ; void *own; int products_ready,basis_valid,basis_n;
     double delta_cold;
     int cplx,capacity;
+    OpenMXNativeResources *resources;
 } EigenRefineState;
 typedef struct {
     int unused; void *(*host_malloc)(size_t,size_t,const char *);
     int (*try_malloc)(void **,size_t);
+    OpenMXNativeResources *resources;
 } EigenRefineDevice;
 typedef struct {
     int cplx,n,maxn,iterations,transient,warm,defaulted;
@@ -199,11 +203,29 @@ static long long openmx_gemmul8NativeCalls(int c) { return 0; }
 static int refine_blocks_ensure(EigenRefineState *s,EigenRefineDevice *d,const EigenRefineProblem *p,EigenRefineReport *r) {
     CHECK(0); return 0;
 }
-static void openmx_eigen_refine_state_release(EigenRefineState *s) { CHECK(0); }
+void openmx_eigen_refine_state_release(EigenRefineState *s);
 static int refine_fp32_solve(EigenRefineDevice *d,int c,int n,double *a,float *af,float *wf) {
     CHECK(0); return 0;
 }
-static void *hmalloc(size_t n,size_t w,const char *label) { void *p=malloc(n*w); CHECK(p); return p; }
+static OpenMXNativeResources *resources;
+#ifdef TEST_NATIVE_RESOURCES
+static int release_device(void *p,int device) { return cudaFree(p); }
+static int OpenMX_Resource_GpuFree(OpenMXNativeResources *owner,void *p) {
+    int status;
+    return openmx_core_native_release(owner,1,p,&status)?status:cudaFree(p);
+}
+#else
+#define openmx_core_native_free(owner,pointer) free(pointer)
+#define OpenMX_Resource_GpuFree(owner,pointer) cudaFree(pointer)
+#endif
+static void *hmalloc(size_t n,size_t w,const char *label) {
+#ifdef TEST_NATIVE_RESOURCES
+    void *p=openmx_core_native_malloc(resources,n,w,0);
+#else
+    void *p=malloc(n*w);
+#endif
+    CHECK(p); return p;
+}
 static int refine_gemm(const EigenRefineDevice *dev,int cplx,int ta,int tb,int m,int n,int k,
     const void *av,int lda,const void *bv,int ldb,double beta,void *cv,int ldc) {
     const double *a=av,*b=bv; double *c=cv; int w=cplx?2:1;
@@ -259,7 +281,7 @@ static void one(int cplx,int fault) {
     int n=4,width=cplx?2:1;
     double a[32]={0},saved[32],x[32]={0},lam[4]={1,2,3,4},occ[4],f[4]={1,0,0,0},out[4];
     EigenRefineState st={0}; EigenRefineReport rep={0};
-    EigenRefineDevice dev={0,hmalloc,NULL};
+    EigenRefineDevice dev={0,hmalloc,NULL,resources};
     EigenRefineProblem pb={cplx,n,n,2,0,0,0,a,x,NULL,out,0,occupation,NULL};
     gemm_calls=0; fault_call=0; rr_fault=0; fault_component=0; fault_value=NAN;
     for(int i=0;i<n;i++) { a[width*(i+i*n)]=lam[i]; x[width*(i+i*n)]=1; out[i]=-999; }
@@ -274,6 +296,10 @@ static void one(int cplx,int fault) {
     }
     memcpy(saved,a,sizeof(a)); st.lam=lam; st.occ=occ; st.basis_valid=1;
     st.own=calloc(64,sizeof(double)); CHECK(st.own); st.b1=st.own; st.b2=st.b1+32;
+#ifdef TEST_NATIVE_RESOURCES
+    char error[256]; st.resources=resources;
+    CHECK(openmx_core_native_adopt(resources,1,st.own,3,release_device,NULL,error,sizeof(error)));
+#endif
     int ok=openmx_eigen_refine_finish(&st,&dev,&pb,f,&rep);
     CHECK(ok==(fault==0)); CHECK(!st.own && !st.b1 && !st.b2);
     if(fault) {
@@ -284,11 +310,36 @@ static void one(int cplx,int fault) {
         CHECK(st.basis_valid);
         for(int i=0;i<n;i++) CHECK(fabs(out[i]-(i+1))<1e-14);
     }
+#ifdef TEST_NATIVE_RESOURCES
+    CHECK(!openmx_core_native_resource_count(resources));
+#endif
     checks++;
 }
 int main(void) {
+#ifdef TEST_NATIVE_RESOURCES
+    char error[256];
+    OpenMXCoreContext *core=openmx_core_create_host(error,sizeof(error)); CHECK(core);
+    CHECK(openmx_core_native_resources(core,"refinement",NULL,&resources,error,sizeof(error)));
+    // Exercise the production state cleanup repeatedly with the real owner.
+    // Reusing addresses must never leave stale entries or cause double release.
+    for(int iteration=0;iteration<1000;iteration++) {
+        EigenRefineState st={0}; st.resources=resources;
+        st.own=malloc(64);st.lam=malloc(32);st.occ=malloc(32);
+        CHECK(st.own && st.lam && st.occ);
+        CHECK(openmx_core_native_adopt(resources,1,st.own,2,release_device,NULL,error,sizeof(error)));
+        CHECK(openmx_core_native_adopt(resources,1,st.lam,2,release_device,NULL,error,sizeof(error)));
+        CHECK(openmx_core_native_adopt(resources,1,st.occ,2,release_device,NULL,error,sizeof(error)));
+        openmx_eigen_refine_state_release(&st);openmx_eigen_refine_state_release(&st);
+        CHECK(!st.resources && !openmx_core_native_resource_count(resources));
+    }
+#endif
     for(int c=0;c<=1;c++) for(int w=0;w<=1;w++) prepare_disabled(c,w);
     for(int c=0;c<=1;c++) for(int f=0;f<=7;f++) one(c,f);
+#ifdef TEST_NATIVE_RESOURCES
+    CHECK(!openmx_core_native_resource_count(resources));
+    openmx_core_destroy(core);
+    printf("PASS refinement ownership: 1000 state lifecycles and callback scratch released\n");
+#endif
     printf("PASS refinement: %d real/complex success and fallback-preservation checks\n",checks);
     return 0;
 }
@@ -298,6 +349,7 @@ int main(void) {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true")
+    parser.add_argument("--core-library", type=Path, default=os.environ.get("OPENMX_CORE_LIBRARY"))
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     retry = (root / "source/openmx_cusolver_compat.c").read_text()
@@ -306,9 +358,82 @@ def main():
         "retry": RETRY_PREFIX + "\n".join(function(retry, name) for name in
              ("openmx_solver_emulated", "openmx_solver_retry", "openmx_solver_both_modes")) + RETRY_HARNESS,
         "refine": REFINE_PREFIX + "\n".join(function(refine, name) for name in
-             ("refine_blocks_release", "refine_maxima", "refine_nonfinite", "refine_result_finite",
+             ("refine_blocks_release", "openmx_eigen_refine_state_release", "refine_maxima", "refine_nonfinite", "refine_result_finite",
               "openmx_eigen_refine_prepare", "openmx_eigen_refine_finish")) + REFINE_HARNESS,
     }
+    if args.core_library:
+        hip = (root / "source/backends/hip/src/eigen_refine_gpu.cu").read_text()
+        hip = hip.replace('extern "C" ', "")
+        lifecycle = REFINE_HARNESS.split("int main(void) {\n#ifdef TEST_NATIVE_RESOURCES\n", 1)[1]
+        lifecycle = lifecycle.split("#endif\n    for(int c=", 1)[0]
+        bodies["hip-lifetime"] = (REFINE_PREFIX + "\n".join(function(hip, name) for name in
+            ("refine_blocks_release", "openmx_eigen_refine_state_release")) +
+            "\nint main(void) {\n" + lifecycle +
+            '\nopenmx_core_destroy(core); puts("PASS HIP refinement ownership: 1000 state lifecycles"); return 0; }\n')
+    if args.core_library:
+        band = (root / "source/Band_DFT_NonCol.c").read_text()
+        end = band.index("} BandNonColRefineState;") + len("} BandNonColRefineState;")
+        state_type = band[band.rfind("typedef struct", 0, end):end]
+        boundary_prefix = r'''
+typedef cuDoubleComplex dcomplex;
+static OpenMXNativeResources *Band_DFT_NonCol_resources;
+static int BandNonCol_mgpu_host_dense;
+static EigenRefineState BandNonCol_refine_state;
+static EigenRefineDevice BandNonCol_refine_dev;
+static dcomplex *BandNonCol_refine_x;
+static double *BandNonCol_refine_e0;
+static int BandNonCol_refine_x_n,BandNonCol_refine_e0_n;
+static struct { double *occ,*eig_occ; } BandNonCol_dm_occ_workspace;
+static int boundary_releases;
+#define wait_cudafunc(status) refine_check(status,"cache cleanup")
+static void BandNonCol_KRefReset(void) {}
+void openmx_eigen_refine_device_release(EigenRefineDevice *dev) { boundary_releases++; }
+static void BandNonCol_KOverlapReset(void) {}
+static void BandNonCol_ConstructCache_Reset(void) {}
+static void BandNonCol_DMEntryCache_Reset(void) {}
+static void BandNonCol_RootDenseWorkspace_Reset(void) {}
+static void BandNonCol_GpuSolver_Destroy(void) {
+    CHECK(!BandNonCol_refine_state.lam && !BandNonCol_refine_state.occ);
+    CHECK(!BandNonCol_refine_state.resources && !BandNonCol_refine_x && !BandNonCol_refine_e0);
+}
+static void BandNonCol_DMGpu_Destroy(void) {}
+'''
+        boundary_harness = r'''
+static void *device_buffer(void) {
+    void *p=calloc(8,sizeof(double));char error[256]; CHECK(p);
+    CHECK(openmx_core_native_adopt(resources,1,p,3,release_device,NULL,error,sizeof(error)));
+    return p;
+}
+int main(void) {
+    char error[256];OpenMXCoreContext *core=openmx_core_create_host(error,sizeof(error)); CHECK(core);
+    CHECK(openmx_core_native_resources(core,"band-boundary",NULL,&resources,error,sizeof(error)));
+    Band_DFT_NonCol_resources=resources;
+    for(int iteration=0;iteration<100;iteration++) {
+        BandNonCol_refine_state.resources=resources;
+        BandNonCol_refine_state.lam=device_buffer();BandNonCol_refine_state.occ=device_buffer();
+        BandNonCol_refine_state.own=device_buffer();BandNonCol_refine_state.capacity=8;
+        BandNonCol_refine_x=device_buffer();BandNonCol_refine_x_n=8;
+        BandNonCol_refine_e0=hmalloc(8,sizeof(double),"estimates");BandNonCol_refine_e0_n=8;
+        BandNonCol_dm_occ_workspace.occ=hmalloc(8,sizeof(double),"occupation");
+        BandNonCol_dm_occ_workspace.eig_occ=hmalloc(8,sizeof(double),"weighted occupation");
+        BandNonCol_refine.iterations=8;BandNonCol_refine.force_fp64=1;BandNonCol_refine.kdense=1;
+        Band_DFT_NonCol_Release_GPU_Caches();Band_DFT_NonCol_Release_GPU_Caches();
+        CHECK(!openmx_core_native_resource_count(resources));
+        CHECK(!BandNonCol_refine_x_n && !BandNonCol_refine_e0_n);
+        CHECK(BandNonCol_refine.iterations==-1 && !BandNonCol_refine.force_fp64 && !BandNonCol_refine.kdense);
+        CHECK(boundary_releases==2*(iteration+1));
+    }
+    openmx_core_destroy(core);puts("PASS native band boundary: 100 cases, policy/aliases reset before solver teardown");
+    return 0;
+}
+'''
+        bodies["band-boundary"] = (REFINE_PREFIX + state_type +
+            "\nstatic BandNonColRefineState BandNonCol_refine;\n" + boundary_prefix +
+            "\n".join(function(refine, name) for name in
+                ("refine_blocks_release", "openmx_eigen_refine_state_release")) +
+            "\n".join(function(band, name) for name in
+                ("BandNonCol_RefineDropBasis", "BandNonCol_RefineRelease", "Band_DFT_NonCol_Release_GPU_Caches")) +
+            boundary_harness)
     cc = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))
     if args.sanitize:
@@ -318,9 +443,13 @@ def main():
             source = Path(tmp) / f"{name}.c"
             exe = Path(tmp) / name
             source.write_text(body)
+            linkage=[]
+            if name!="retry" and args.core_library:
+                library=Path(args.core_library).resolve(strict=True)
+                linkage=["-DTEST_NATIVE_RESOURCES",str(library),"-Wl,-rpath,"+str(library.parent)]
             subprocess.run(cc + flags + ["-std=c11", "-Wall", "-Wextra", "-Wno-unused-parameter",
                 "-Wno-unknown-pragmas", "-I" + str(root / "source"), str(source),
-                str(root / "source/openmx_precision.c"), "-lm", "-o", str(exe)], check=True)
+                str(root / "source/openmx_precision.c"), *linkage, "-lm", "-o", str(exe)], check=True)
             subprocess.run([str(exe)], check=True)
 
 

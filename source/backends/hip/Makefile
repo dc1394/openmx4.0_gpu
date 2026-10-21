@@ -849,7 +849,7 @@ gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h $(GEMMUL8_DIR)/include/gemmu
 openmx_precision.o: openmx_precision.c openmx_precision.h
 	$(CC_NOACC) -c openmx_precision.c
 
-eigen_refine_gpu.o: eigen_refine_gpu.cu eigen_refine_gpu.h hip_runtime_compat.h hipblas_compat.h openmx_stdout_level.h openmx_precision.h
+eigen_refine_gpu.o: eigen_refine_gpu.cu eigen_refine_gpu.h hip_runtime_compat.h hipblas_compat.h openmx_stdout_level.h openmx_precision.h openmx_native_resources.h openmx_core_native_resources.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) $(MPI_CFLAGS) -c eigen_refine_gpu.cu -o eigen_refine_gpu.o
 # double-float arithmetic: no floating-point contraction (-ffp-contract=off in the flags)
 orbs_otf_hip.o: orbs_otf_hip.cu orbs_otf_hip.h openmx_precision.h
@@ -1550,3 +1550,7 @@ Force.o: openmx_hubbard_force.h
 
 # Solver invocation RAII and flat spectral workspaces.
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_Conquer.o Divide_Conquer_LNO.o Krylov.o: openmx_solver_workspace.h openmx_core_solver_workspace.h
+
+# Calculation-owned native GPU resources.
+DFT.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_Conquer.o Divide_Conquer_LNO.o Krylov.o: openmx_native_resources.h openmx_core_native_resources.h
+Free_Arrays.o: openmx_core_native_resources.h

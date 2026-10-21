@@ -13,6 +13,8 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "openmx_solver_workspace.h"
+#include "openmx_native_resources.h"
+OPENMX_NATIVE_RESOURCE_GROUP(Cluster_DFT_NonCol,Cluster_DFT_NonCol_Release_GPU_Caches)
 #include "openmx_mgpu_runtime.h"
 #include "openmx_cluster_capacity.h"
 #include "elpa_cosma_bridge.h"
@@ -162,7 +164,7 @@ static size_t ClusterNonCol_CheckedAddCount(size_t a, size_t b, const char *labe
 static void *ClusterNonCol_MallocArray(size_t count, size_t elem_size, const char *label)
 {
     size_t bytes = ClusterNonCol_CheckedMulCount(count, elem_size, label);
-    void *ptr = malloc((bytes == 0) ? 1 : bytes);
+    void *ptr = openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,(bytes == 0) ? 1 : bytes,0);
 
     if (ptr == NULL) {
         char msg[512];
@@ -339,7 +341,7 @@ static void ClusterNonCol_TransformRealDenseMatricesGPU(int n, const double *S, 
     hipError_t hip_status;
     hipblasStatus_t blas_status = HIPBLAS_STATUS_SUCCESS;
 
-    if (handle == NULL) blas_status = hipblasCreate(&handle);
+    if (handle == NULL) blas_status = OpenMX_Resource_BlasCreate(Cluster_DFT_NonCol_resources,&handle);
     if (blas_status != HIPBLAS_STATUS_SUCCESS) {
         for (int i = 0; i < matrix_count; i++) {
             ClusterNonCol_LogGemmCpuFallback("ClusterNonCol_TransformRealDenseMatricesGPU:create", "D",
@@ -350,11 +352,11 @@ static void ClusterNonCol_TransformRealDenseMatricesGPU(int n, const double *S, 
         return;
     }
 
-    hip_status = hipMalloc((void **)&d_S, bytes);
+    hip_status = OpenMX_Resource_GpuMalloc(Cluster_DFT_NonCol_resources,(void **)&d_S,bytes);
     if (hip_status != hipSuccess) goto setup_failed;
-    hip_status = hipMalloc((void **)&d_A, bytes);
+    hip_status = OpenMX_Resource_GpuMalloc(Cluster_DFT_NonCol_resources,(void **)&d_A,bytes);
     if (hip_status != hipSuccess) goto setup_failed;
-    hip_status = hipMalloc((void **)&d_C, bytes);
+    hip_status = OpenMX_Resource_GpuMalloc(Cluster_DFT_NonCol_resources,(void **)&d_C,bytes);
     if (hip_status != hipSuccess) goto setup_failed;
     hip_status = hipMemcpy(d_S, S, bytes, hipMemcpyHostToDevice);
     if (hip_status != hipSuccess) goto setup_failed;
@@ -406,18 +408,18 @@ static void ClusterNonCol_TransformRealDenseMatricesGPU(int n, const double *S, 
         }
     }
 
-    if (d_C != NULL) wait_hipfunc(hipFree(d_C));
-    if (d_A != NULL) wait_hipfunc(hipFree(d_A));
-    if (d_S != NULL) wait_hipfunc(hipFree(d_S));
-    if (handle != shared) OpenMXBlasWait(hipblasDestroy(handle));
+    if (d_C != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_C));
+    if (d_A != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_A));
+    if (d_S != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_S));
+    if (handle != shared) OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Cluster_DFT_NonCol_resources,handle));
     return;
 
 setup_failed:
     ClusterNonCol_LogHipCpuFallback("ClusterNonCol_TransformRealDenseMatricesGPU:setup", "D", hip_status, n, n, n);
-    if (d_C != NULL) hipFree(d_C);
-    if (d_A != NULL) hipFree(d_A);
-    if (d_S != NULL) hipFree(d_S);
-    if (handle != NULL && handle != shared) hipblasDestroy(handle);
+    if (d_C != NULL) OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_C);
+    if (d_A != NULL) OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_A);
+    if (d_S != NULL) OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_S);
+    if (handle != NULL && handle != shared) OpenMX_Resource_BlasDestroy(Cluster_DFT_NonCol_resources,handle);
     for (int i = 0; i < matrix_count; i++) {
         ClusterNonCol_DgemmCPU(HIPBLAS_OP_N, HIPBLAS_OP_N, n, n, n, matrices[i], S, work);
         ClusterNonCol_DgemmCPU(HIPBLAS_OP_T, HIPBLAS_OP_N, n, n, n, S, work, matrices[i]);
@@ -468,7 +470,7 @@ static void ClusterNonCol_BackTransformHostStaged(int n, int n2, int maxn, const
         F77_NAME(dgemm, DGEMM)(&ta, &tb, &m2, &ni, &ni, &alpha, (double *)vt + (size_t)2 * (size_t)maxn * col, &ldv,
                                (double *)S, &lds, &beta, (double *)dense_evec + (size_t)2 * (size_t)ld * col, &ldc);
     }
-    free(vt);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,vt);
 }
 
 typedef struct
@@ -496,8 +498,8 @@ static ClusterNonColRootDMWorkspace ClusterNonCol_root_dm_workspace = {0};
 
 static void ClusterNonCol_DMEntryCache_Reset(void)
 {
-    free(ClusterNonCol_dm_entry_cache.basis0);
-    free(ClusterNonCol_dm_entry_cache.basis1);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,ClusterNonCol_dm_entry_cache.basis0);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,ClusterNonCol_dm_entry_cache.basis1);
     memset(&ClusterNonCol_dm_entry_cache, 0, sizeof(ClusterNonCol_dm_entry_cache));
 }
 
@@ -601,25 +603,25 @@ static void *ClusterNonCol_HostAlloc(size_t bytes, int *pinned)
     void *ptr = NULL;
 
     *pinned = 0;
-    if (hipHostMalloc(&ptr, (bytes == 0) ? 1 : bytes, 0) == hipSuccess && ptr != NULL) {
+    if (OpenMX_Resource_HostAlloc(Cluster_DFT_NonCol_resources,&ptr,(bytes == 0) ? 1 : bytes,0) == hipSuccess && ptr != NULL) {
         *pinned = 1;
         return ptr;
     }
     (void)hipGetLastError();
-    return malloc((bytes == 0) ? 1 : bytes);
+    return openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,(bytes == 0) ? 1 : bytes,0);
 }
 
 static void ClusterNonCol_HostFree(void *ptr, int pinned)
 {
     if (ptr == NULL) return;
-    if (pinned) (void)hipHostFree(ptr);
-    else free(ptr);
+    if (pinned) (void)OpenMX_Resource_HostFree(Cluster_DFT_NonCol_resources,ptr);
+    else openmx_core_native_free(Cluster_DFT_NonCol_resources,ptr);
 }
 
 static void ClusterNonCol_RootDMWorkspace_Reset(void)
 {
-    free(ClusterNonCol_root_dm_workspace.occ);
-    free(ClusterNonCol_root_dm_workspace.occ_e);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,ClusterNonCol_root_dm_workspace.occ);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,ClusterNonCol_root_dm_workspace.occ_e);
     ClusterNonCol_HostFree(ClusterNonCol_root_dm_workspace.dm_buffer, ClusterNonCol_root_dm_workspace.dm_pinned);
     memset(&ClusterNonCol_root_dm_workspace, 0, sizeof(ClusterNonCol_root_dm_workspace));
 }
@@ -964,7 +966,7 @@ static double ClusterNonCol_ScatterDenseEVecToLocal(int myid, int numprocs, int 
         }
     }
 
-    free(sendbuf);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,sendbuf);
     dtime(&etime);
     return etime - stime;
 }
@@ -1183,11 +1185,11 @@ static void ClusterNonCol_GpuSolver_DenseDsyevx(double *A, double *Z, double *ko
     double *d_A = NULL;
     size_t bytes = ClusterNonCol_CheckedMulCount((size_t)n * (size_t)n, sizeof(double), "MAGMA real eigensolver matrix");
 
-    wait_hipfunc(hipMalloc((void **)&d_A, bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(Cluster_DFT_NonCol_resources,(void **)&d_A,bytes));
     wait_hipfunc(hipMemcpy(d_A, A, bytes, hipMemcpyHostToDevice));
     info = openmx_magma_dsyevdx_gpu(n, maxn, d_A, ko, &mout);
     wait_hipfunc(hipMemcpy(A, d_A, bytes, hipMemcpyDeviceToHost));
-    wait_hipfunc(hipFree(d_A));
+    wait_hipfunc(OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_A));
 
     if (info!=0){
         fprintf(stderr,"%s: magma_dsyevdx_gpu failed, info=%d\n",where,info);
@@ -1217,11 +1219,11 @@ static void ClusterNonCol_GpuSolver_DenseZheevx(dcomplex *A, dcomplex *Z, double
     size_t bytes = ClusterNonCol_CheckedMulCount((size_t)n * (size_t)n, sizeof(dcomplex),
                                                  "MAGMA complex eigensolver matrix");
 
-    wait_hipfunc(hipMalloc(&d_A, bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(Cluster_DFT_NonCol_resources,&d_A,bytes));
     wait_hipfunc(hipMemcpy(d_A, A, bytes, hipMemcpyHostToDevice));
     info = openmx_magma_zheevdx_gpu(n, maxn, d_A, ko, &mout);
     wait_hipfunc(hipMemcpy(A, d_A, bytes, hipMemcpyDeviceToHost));
-    wait_hipfunc(hipFree(d_A));
+    wait_hipfunc(OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,d_A));
 
     if (info!=0){
         fprintf(stderr,"%s: magma_zheevdx_gpu failed, info=%d\n",where,info);
@@ -1418,7 +1420,7 @@ static void ClusterNonCol_BuildDenseFromGathered(const double *H1, const int *or
         }
     }
 
-    free(atom_offsets);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,atom_offsets);
 }
 
 static void Patch2Full_Cluster_NonCol_Owner(double ****RH, double *H, int *MP, int owns_dense, int n)
@@ -1511,13 +1513,13 @@ static void Patch2Full_Cluster_NonCol_Owner(double ****RH, double *H, int *MP, i
         ClusterNonCol_BuildDenseFromGathered(gathered_H1, order_GA, MP, H, n, gathered_nzeros);
     }
 
-    free(gathered_H1);
-    free(order_GA);
-    free(atom_displs);
-    free(h1_displs);
-    free(recv_matomnum);
-    free(recv_nzeros);
-    free(local_H1);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,gathered_H1);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,order_GA);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,atom_displs);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,h1_displs);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,recv_matomnum);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,recv_nzeros);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,local_H1);
 }
 
 static void ClusterNonCol_BuildDenseIndexFromGathered(const int *order_GA, int *MP, int n, int tnum,
@@ -1624,7 +1626,7 @@ static void ClusterNonCol_DenseStageSet(double *d_values, int *d_index, size_t c
 {
     ClusterNonColDenseStage *st = &ClusterNonCol_dense_stage;
 
-    free(st->index_host);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,st->index_host);
     memset(st, 0, sizeof(*st));
     st->d_values = d_values;
     st->d_index = d_index;
@@ -1655,7 +1657,7 @@ static void ClusterNonCol_BuildDenseOnDevice(const double *H1, const int *dense_
         memset(H, 0, nn * sizeof(double));
         for (int p = 0; p < tnum; p++) H[dense_index[p]] += H1[p];
         wait_hipfunc(hipMemcpy(d_H, H, nn * sizeof(double), hipMemcpyHostToDevice));
-        free(H);
+        openmx_core_native_free(Cluster_DFT_NonCol_resources,H);
     }
 }
 
@@ -1675,7 +1677,7 @@ static void ClusterNonCol_LoadDeviceDenseFromSetHamCache(const double *H1, int *
         ClusterNonColDenseStage *st = &ClusterNonCol_dense_stage;
 
         if (st->index_host == NULL || st->index_tnum != tnum) {
-            free(st->index_host);
+            openmx_core_native_free(Cluster_DFT_NonCol_resources,st->index_host);
             st->index_host = (int *)ClusterNonCol_MallocArray((size_t)tnum, sizeof(int), "Set_Hamiltonian dense_index");
             ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, tnum, st->index_host);
             st->index_tnum = tnum;
@@ -1689,7 +1691,7 @@ static void ClusterNonCol_LoadDeviceDenseFromSetHamCache(const double *H1, int *
     dense_index = (int *)ClusterNonCol_MallocArray((size_t)tnum, sizeof(int), "Set_Hamiltonian dense_index");
     ClusterNonCol_BuildDenseIndexFromGathered(order_GA, MP, n, tnum, dense_index);
     ClusterNonCol_BuildDeviceDenseFromGathered(H1, dense_index, tnum, n, H);
-    free(dense_index);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,dense_index);
 }
 
 /* every rank: the gather of a sparse matrix to the dense root, which builds
@@ -1791,14 +1793,14 @@ static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP,
             ClusterNonCol_BuildDeviceDenseFromGathered(gathered_H1, dense_index, gathered_nzeros, n, H);
     }
 
-    free(dense_index);
-    free(gathered_H1);
-    free(order_GA);
-    free(atom_displs);
-    free(h1_displs);
-    free(recv_matomnum);
-    free(recv_nzeros);
-    free(local_H1);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,dense_index);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,gathered_H1);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,order_GA);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,atom_displs);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,h1_displs);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,recv_matomnum);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,recv_nzeros);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,local_H1);
 }
 
 /* ------------------------------------------------------------------
@@ -2204,7 +2206,7 @@ static int ClusterNonCol_DeviceSolveEnabled(void)
 
 static hipError_t ClusterNonCol_TryDeviceMalloc(void **ptr, size_t bytes)
 {
-    hipError_t status = hipMalloc(ptr, (bytes == 0) ? 1 : bytes);
+    hipError_t status = OpenMX_Resource_GpuMalloc(Cluster_DFT_NonCol_resources,ptr,(bytes == 0) ? 1 : bytes);
 
     if (status != hipSuccess) {
         *ptr = NULL;
@@ -2224,7 +2226,7 @@ static void *ClusterNonCol_RefineHostMalloc(size_t count, size_t elem, const cha
 static void ClusterNonCol_DeviceFree(void **ptr)
 {
     if (*ptr != NULL) {
-        wait_hipfunc(hipFree(*ptr));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Cluster_DFT_NonCol_resources,*ptr));
         *ptr = NULL;
     }
 }
@@ -2260,7 +2262,7 @@ static void ClusterNonCol_DeviceSolveRelease(void)
     ds->h_x_valid = 0;
     ds->n = ds->n2 = 0;
     if (ds->hipblas != NULL) {
-        (void)hipblasDestroy(ds->hipblas);
+        (void)OpenMX_Resource_BlasDestroy(Cluster_DFT_NonCol_resources,ds->hipblas);
         ds->hipblas = NULL;
     }
 }
@@ -2381,7 +2383,7 @@ static int ClusterNonCol_DeviceSolveEnsure(int n, int n2, int maxn, int refine)
        MiB) beside its buffers */
     if (refine) reserve += (size_t)256 * 1024 * 1024;
     if (ds->n2 != n2 || ds->n != n) ClusterNonCol_DeviceSolveRelease();
-    if (ds->hipblas == NULL && hipblasCreate(&ds->hipblas) != HIPBLAS_STATUS_SUCCESS) {
+    if (ds->hipblas == NULL && OpenMX_Resource_BlasCreate(Cluster_DFT_NonCol_resources,&ds->hipblas) != HIPBLAS_STATUS_SUCCESS) {
         ds->hipblas = NULL;
         return 0;
     }
@@ -2459,6 +2461,7 @@ static int ClusterNonCol_RefinedSolveDevice(int n2, int maxn, double *ko, int tr
     dev.d_work_bytes = &ds->d_work_bytes;
     dev.d_info = ds->d_info;
     dev.try_malloc = ClusterNonCol_TryDeviceMalloc;
+    dev.resources = Cluster_DFT_NonCol_resources;
     dev.host_malloc = ClusterNonCol_RefineHostMalloc;
 
     memset(&pb, 0, sizeof(pb));
@@ -2484,8 +2487,8 @@ static int ClusterNonCol_RefinedSolveDevice(int n2, int maxn, double *ko, int tr
         ClusterNonCol_RefineOccupations(e0, n2, maxn, f0, &occ.mu);
         rc = openmx_eigen_refine_finish(&ClusterNonCol_refine_state, &dev, &pb, f0, &rep);
     }
-    free(e0);
-    free(f0);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,e0);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,f0);
     *persistent = rep.persistent;
     if (rc == 1) {
         wait_hipfunc(hipMemcpy(ko + 1, ds->d_w, (size_t)maxn * sizeof(double), hipMemcpyDeviceToHost));
@@ -2567,8 +2570,8 @@ static void ClusterNonCol_TransformDeviceMatrices(hipblasHandle_t handle, int n,
             }
             ClusterNonCol_DgemmCPU(HIPBLAS_OP_T, HIPBLAS_OP_N, n, n, n, S, work, M);
             wait_hipfunc(hipMemcpy(d_mats[i], M, nn * sizeof(double), hipMemcpyHostToDevice));
-            free(work);
-            free(M);
+            openmx_core_native_free(Cluster_DFT_NonCol_resources,work);
+            openmx_core_native_free(Cluster_DFT_NonCol_resources,M);
         }
     }
 }
@@ -2665,11 +2668,11 @@ static void ClusterNonCol_MagmaRootDensePath(int SCF_iter, double *ko, double **
                 (double *)(out+(size_t)half*n*MaxN),2*MaxN))
                 ClusterNonCol_AbortWithMessage(openmx_mgpu_host_error());
         }
-        free(vt);
+        openmx_core_native_free(Cluster_DFT_NonCol_resources,vt);
         if (profile) ClusterNonCol_ProfileLap(NCPROF_BACK,&t0);
         *dense_evec_out=out;
         *dense_evec_ld_out=MaxN;
-        free(host_blocks); free(q);
+        openmx_core_native_free(Cluster_DFT_NonCol_resources,host_blocks); openmx_core_native_free(Cluster_DFT_NonCol_resources,q);
     }
     MPI_Bcast(ko,n2+1,MPI_DOUBLE,Host_ID,mpi_comm_level1);
 }
@@ -3004,8 +3007,8 @@ static void ClusterNonCol_GpuSolverRootDensePath(int SCF_iter, double *ko, doubl
         }
     }
 
-    free(host_blocks);
-    free(Hs2);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,host_blocks);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,Hs2);
 }
 
 int Cluster_DFT_NonCol_MgpuCachedEDM(int n,int size_H1,int *MP,double *ko,double *****EDM,double *elapsed)
@@ -5161,14 +5164,14 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
 
   /* allocation of arrays */
 
-  array0 = (float*)malloc(sizeof(float)*(n2+2)*2);
-  is3 = (int*)malloc(sizeof(int)*numprocs);
-  ie3 = (int*)malloc(sizeof(int)*numprocs);
-  SD = (float*)malloc(sizeof(float)*2*(atomnum+1)*List_YOUSO[7]);
-  Re11 = (float*)malloc(sizeof(float)*(atomnum+1)*List_YOUSO[7]);
-  Re22 = (float*)malloc(sizeof(float)*(atomnum+1)*List_YOUSO[7]);
-  Re12 = (float*)malloc(sizeof(float)*(atomnum+1)*List_YOUSO[7]);
-  Im12 = (float*)malloc(sizeof(float)*(atomnum+1)*List_YOUSO[7]);
+  array0 = (float*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(float)*(n2+2)*2,0);
+  is3 = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*numprocs,0);
+  ie3 = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*numprocs,0);
+  SD = (float*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(float)*2*(atomnum+1)*List_YOUSO[7],0);
+  Re11 = (float*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(float)*(atomnum+1)*List_YOUSO[7],0);
+  Re22 = (float*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(float)*(atomnum+1)*List_YOUSO[7],0);
+  Re12 = (float*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(float)*(atomnum+1)*List_YOUSO[7],0);
+  Im12 = (float*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(float)*(atomnum+1)*List_YOUSO[7],0);
 
   /* open file pointers */
 
@@ -5463,14 +5466,14 @@ void Save_DOS_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomplex
 
   /* freeing of array */
 
-  free(array0);
-  free(is3);
-  free(ie3);
-  free(SD);
-  free(Re11);
-  free(Re22);
-  free(Re12);
-  free(Im12);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,array0);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,is3);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,ie3);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,SD);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Re11);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Re22);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Re12);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Im12);
 }
 
 
@@ -5499,9 +5502,9 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
 
   /* allocation of arrays */
 
-  array0 = (double*)malloc(sizeof(double)*(n2+2)*2);
-  is3 = (int*)malloc(sizeof(int)*numprocs);
-  ie3 = (int*)malloc(sizeof(int)*numprocs);
+  array0 = (double*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double)*(n2+2)*2,0);
+  is3 = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*numprocs,0);
+  ie3 = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*numprocs,0);
 
   /* open file pointers */
 
@@ -5650,9 +5653,9 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
 
   /* freeing of array */
 
-  free(array0);
-  free(is3);
-  free(ie3);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,array0);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,is3);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,ie3);
 }
 
 
@@ -5710,10 +5713,10 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 
   /* allocation of arrays */
 
-  array0 = (double*)malloc(sizeof(dcomplex)*(n2+2)*2);
-  is3 = (int*)malloc(sizeof(int)*numprocs);
-  ie3 = (int*)malloc(sizeof(int)*numprocs);
-  C2 = (dcomplex*)malloc(sizeof(dcomplex)*n2*MaxN);
+  array0 = (double*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*(n2+2)*2,0);
+  is3 = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*numprocs,0);
+  ie3 = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*numprocs,0);
+  C2 = (dcomplex*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*n2*MaxN,0);
 
   /* set iemin and imax */
 
@@ -5816,7 +5819,7 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 
     /* allocation of C1 */
 
-    C1 = (dcomplex*)malloc(sizeof(dcomplex)*n2*MaxN1);
+    C1 = (dcomplex*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*n2*MaxN1,0);
 
     /* read LCAO coefficients */
 
@@ -5838,10 +5841,10 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 
   /* OLPmo: matrix for momentum operator */
 
-  OLPmo = (double*****)malloc(sizeof(double****)*3);
+  OLPmo = (double*****)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double****)*3,0);
   for (direction=0; direction<3; direction++){
 
-    OLPmo[direction] = (double****)malloc(sizeof(double***)*(Matomnum+1));
+    OLPmo[direction] = (double****)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double***)*(Matomnum+1),0);
     FNAN[0] = 0;
     for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
 
@@ -5855,7 +5858,7 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 	tno0 = Spe_Total_CNO[Cwan];
       }
 
-      OLPmo[direction][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
+      OLPmo[direction][Mc_AN] = (double***)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double**)*(FNAN[Gc_AN]+1),0);
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 
 	if (Mc_AN==0){
@@ -5867,9 +5870,9 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 	  tno1 = Spe_Total_CNO[Hwan];
 	}
 
-	OLPmo[direction][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0);
+	OLPmo[direction][Mc_AN][h_AN] = (double**)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double*)*tno0,0);
 	for (i=0; i<tno0; i++){
-	  OLPmo[direction][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1);
+	  OLPmo[direction][Mc_AN][h_AN][i] = (double*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double)*tno1,0);
 	}
       }
     }
@@ -5881,7 +5884,7 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 
   /* set MP */
 
-  MP2 = (int*)malloc(sizeof(int)*(atomnum+1));
+  MP2 = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*(atomnum+1),0);
 
   p = 0;
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
@@ -5918,17 +5921,17 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 
   Num_XANES_Out = Num_Excited_States;
 
-  XANES_Out = (double**)malloc(sizeof(double*)*Num_XANES_Out);
+  XANES_Out = (double**)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double*)*Num_XANES_Out,0);
   for (i=0; i<Num_XANES_Out; i++){
-    XANES_Out[i] = (double*)malloc(sizeof(double)*10);
+    XANES_Out[i] = (double*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(double)*10,0);
   }
 
-  Z = (dcomplex*)malloc(sizeof(dcomplex)*UMOmax*UMOmax);
-  Ax = (dcomplex*)malloc(sizeof(dcomplex)*UMOmax*UMOmax);
-  Ay = (dcomplex*)malloc(sizeof(dcomplex)*UMOmax*UMOmax);
-  Az = (dcomplex*)malloc(sizeof(dcomplex)*UMOmax*UMOmax);
+  Z = (dcomplex*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*UMOmax*UMOmax,0);
+  Ax = (dcomplex*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*UMOmax*UMOmax,0);
+  Ay = (dcomplex*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*UMOmax*UMOmax,0);
+  Az = (dcomplex*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*UMOmax*UMOmax,0);
 
-  ind2ind = (int*)malloc(sizeof(int)*UMOmax);
+  ind2ind = (int*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*UMOmax,0);
 
   /**************************************************************
    calculations of the overlap, px, py, and pz matrices between
@@ -6081,22 +6084,22 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
   *******************************************************/
 
   for (i=0; i<Num_XANES_Out; i++){
-    free(XANES_Out[i]);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,XANES_Out[i]);
   }
-  free(XANES_Out);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,XANES_Out);
 
-  free(Z);
-  free(Ax);
-  free(Ay);
-  free(Az);
-  free(ind2ind);
-  free(MP2);
-  free(C2);
-  free(C1);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Z);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Ax);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Ay);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,Az);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,ind2ind);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,MP2);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,C2);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,C1);
 
-  free(array0);
-  free(is3);
-  free(ie3);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,array0);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,is3);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,ie3);
 
   for (direction=0; direction<3; direction++){
 
@@ -6125,15 +6128,15 @@ void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN
 	}
 
 	for (i=0; i<tno0; i++){
-	  free(OLPmo[direction][Mc_AN][h_AN][i]);
+	  openmx_core_native_free(Cluster_DFT_NonCol_resources,OLPmo[direction][Mc_AN][h_AN][i]);
 	}
-	free(OLPmo[direction][Mc_AN][h_AN]);
+	openmx_core_native_free(Cluster_DFT_NonCol_resources,OLPmo[direction][Mc_AN][h_AN]);
       }
-      free(OLPmo[direction][Mc_AN]);
+      openmx_core_native_free(Cluster_DFT_NonCol_resources,OLPmo[direction][Mc_AN]);
     }
-    free(OLPmo[direction]);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,OLPmo[direction]);
   }
-  free(OLPmo);
+  openmx_core_native_free(Cluster_DFT_NonCol_resources,OLPmo);
   OLPmo=NULL;
 }
 
@@ -6271,7 +6274,7 @@ dcomplex Lapack_LU_Zinverse(int n, dcomplex *A)
 
     /* L*U factorization */
 
-    ipiv = (int*) malloc(sizeof(int)*n);
+    ipiv = (int*) openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(int)*n,0);
 
     F77_NAME(zgetrf,ZGETRF)(&n,&n,A,&n,ipiv,&info);
 
@@ -6303,7 +6306,7 @@ dcomplex Lapack_LU_Zinverse(int n, dcomplex *A)
     /* inverse L*U factorization */
 
     lwork = 4*n;
-    work = (dcomplex*)malloc(sizeof(dcomplex)*lwork);
+    work = (dcomplex*)openmx_core_native_malloc(Cluster_DFT_NonCol_resources,1,sizeof(dcomplex)*lwork,0);
 
     F77_NAME(zgetri,ZGETRI)(&n, A, &n, ipiv, work, &lwork, &info);
 
@@ -6311,7 +6314,7 @@ dcomplex Lapack_LU_Zinverse(int n, dcomplex *A)
       printf("zgetrf failed, info=%i, %s\n",info,thisprogram);
     }
 
-    free(work); free(ipiv);
+    openmx_core_native_free(Cluster_DFT_NonCol_resources,work); openmx_core_native_free(Cluster_DFT_NonCol_resources,ipiv);
 
     return det;
 }

@@ -19,6 +19,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "openmx_core_native_resources.h"
 
 #include "hip_runtime_compat.h"
 #include "hipblas_compat.h"
@@ -41,6 +42,7 @@ typedef struct {
     int             shared;        /* other ranks may solve on the device at the same time (the band solvers'
                                       k-point turns): the products keep to the capped GEMMul8 workspace instead
                                       of taking all the room there is */
+    OpenMXNativeResources *resources; /* borrowed from the calling calculation */
 } EigenRefineDevice;
 
 /* One eigenproblem instance (a spin, a k-point): what persists between its
@@ -59,6 +61,7 @@ typedef struct {
     int     products_ready; /* a warm prepare left the first step's products G in b1 and S in b2 */
     double  delta_cold;    /* delta of the first refinement step after the latest FP32 solve: a warm start's floor */
     double  anorm;         /* spectral radius estimate of the latest prepare */
+    OpenMXNativeResources *resources; /* borrowed from the calling calculation */
 } EigenRefineState;
 
 /* Fermi occupation of a state with estimate e and 1-based index (for

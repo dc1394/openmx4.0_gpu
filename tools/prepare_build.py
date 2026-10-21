@@ -137,6 +137,11 @@ def prepare(source_root, build_root, backend):
         for directory in ('tests', 'tools'):
             if (hip / directory).is_dir():
                 copy_sources(hip / directory, native / directory)
+        # Native extraction tests share the ownership-boundary SDK shim with
+        # the root tests; keep one implementation in both source projections.
+        resource_bridge = source_root / 'tests' / 'native_resource_test_bridge.py'
+        if resource_bridge.is_file():
+            link_file(resource_bridge, native / 'tests' / resource_bridge.name)
         # Copied regression runners read their default templates from ../work.
         # Share only the immutable input suites; keep work/ itself private so
         # their generated inputs and results stay inside the selected build.

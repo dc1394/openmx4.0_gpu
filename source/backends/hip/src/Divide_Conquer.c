@@ -12,6 +12,8 @@
 
 #include "openmx_common.h"
 #include "openmx_solver_workspace.h"
+#include "openmx_native_resources.h"
+OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer,Divide_Conquer_Release_GPU_Caches)
 #include "set_hip_default_device_from_local_rank.h"
 #include "set_openmp_device_from_local_rank.h"
 #include <assert.h>
@@ -240,7 +242,7 @@ static size_t DC_CheckedArrayBytes(size_t count, size_t elem_size, const char *l
 static void *DC_MallocArray(size_t count, size_t elem_size, const char *label)
 {
     size_t bytes = DC_CheckedArrayBytes(count, elem_size, label);
-    void * ptr   = malloc(bytes == 0 ? 1 : bytes);
+    void * ptr   = openmx_core_native_malloc(Divide_Conquer_resources,1,bytes == 0 ? 1 : bytes,0);
 
     if (ptr == NULL) {
         char msg[512];
@@ -305,10 +307,10 @@ static int DC_GpuSolver_EigenDisabled(void);
 
 void Divide_Conquer_Release_GPU_SCache(void)
 {
-    if (DC_scache.d_arena != NULL) wait_hipfunc(hipFree(DC_scache.d_arena));
-    free(DC_scache.dim);
-    free(DC_scache.valid);
-    free(DC_scache.off);
+    if (DC_scache.d_arena != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,DC_scache.d_arena));
+    openmx_core_native_free(Divide_Conquer_resources,DC_scache.dim);
+    openmx_core_native_free(Divide_Conquer_resources,DC_scache.valid);
+    openmx_core_native_free(Divide_Conquer_resources,DC_scache.off);
     memset(&DC_scache, 0, sizeof(DC_scache));
 }
 
@@ -365,9 +367,9 @@ static void DCCol_SCache_Prepare(int matomnum, const int *Msize, int scf_iter)
     }
     if (DC_scache.state == -1) return;
 
-    DC_scache.dim = (int*)calloc((size_t)matomnum+1, sizeof(int));
-    DC_scache.valid = (int*)calloc((size_t)matomnum+1, sizeof(int));
-    DC_scache.off = (size_t*)calloc((size_t)matomnum+1, sizeof(size_t));
+    DC_scache.dim = (int*)openmx_core_native_malloc(Divide_Conquer_resources,(size_t)matomnum+1,sizeof(int),1);
+    DC_scache.valid = (int*)openmx_core_native_malloc(Divide_Conquer_resources,(size_t)matomnum+1,sizeof(int),1);
+    DC_scache.off = (size_t*)openmx_core_native_malloc(Divide_Conquer_resources,(size_t)matomnum+1,sizeof(size_t),1);
     if (DC_scache.dim == NULL || DC_scache.valid == NULL || DC_scache.off == NULL)
         DC_AbortWithMessage("Could not allocate DC GPU S-cache tables.");
 
@@ -387,7 +389,7 @@ static void DCCol_SCache_Prepare(int matomnum, const int *Msize, int scf_iter)
         used += (elems + DC_SCACHE_SLOT_ALIGN - 1) / DC_SCACHE_SLOT_ALIGN * DC_SCACHE_SLOT_ALIGN;
         admitted++;
     }
-    if (used != 0 && hipMalloc((void**)&DC_scache.d_arena, used*sizeof(double)) != hipSuccess) {
+    if (used != 0 && OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void**)&DC_scache.d_arena,used*sizeof(double)) != hipSuccess) {
         /* the run goes on without the cache: no latched error may remain
            for the next hipGetLastError() caller */
         DC_scache.d_arena = NULL;
@@ -581,19 +583,19 @@ static void DC_GpuSolver_ReleaseGemmScratch(void)
     DCGpuSolverCtx *ctx = &DC_gpusolver_ctx;
 
     if (ctx->d_H != NULL) {
-        wait_hipfunc(hipFree(ctx->d_H));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_H));
         ctx->d_H = NULL;
     }
     if (ctx->d_tmp != NULL) {
-        wait_hipfunc(hipFree(ctx->d_tmp));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_tmp));
         ctx->d_tmp = NULL;
     }
     if (ctx->d_A != NULL) {
-        wait_hipfunc(hipFree(ctx->d_A));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_A));
         ctx->d_A = NULL;
     }
     if (ctx->d_C != NULL) {
-        wait_hipfunc(hipFree(ctx->d_C));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_C));
         ctx->d_C = NULL;
     }
 }
@@ -603,11 +605,11 @@ static void DC_GpuSolver_ReleaseTransformScratch(void)
     DCGpuSolverCtx *ctx = &DC_gpusolver_ctx;
 
     if (ctx->d_H != NULL) {
-        wait_hipfunc(hipFree(ctx->d_H));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_H));
         ctx->d_H = NULL;
     }
     if (ctx->d_tmp != NULL) {
-        wait_hipfunc(hipFree(ctx->d_tmp));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_tmp));
         ctx->d_tmp = NULL;
     }
 }
@@ -617,7 +619,7 @@ static void DC_GpuSolver_ReleaseOverlapBuffer(void)
     DCGpuSolverCtx *ctx = &DC_gpusolver_ctx;
 
     if (ctx->d_S != NULL) {
-        wait_hipfunc(hipFree(ctx->d_S));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_S));
         ctx->d_S = NULL;
     }
     ctx->loaded_s_dim = 0;
@@ -884,21 +886,21 @@ static void DC_GpuSolver_Destroy(void)
     DCGpuSolverCtx *ctx = &DC_gpusolver_ctx;
 
     if (ctx->d_S != NULL)
-        wait_hipfunc(hipFree(ctx->d_S));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_S));
     if (ctx->d_H != NULL)
-        wait_hipfunc(hipFree(ctx->d_H));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_H));
     if (ctx->d_tmp != NULL)
-        wait_hipfunc(hipFree(ctx->d_tmp));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_tmp));
     if (ctx->d_A != NULL)
-        wait_hipfunc(hipFree(ctx->d_A));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_A));
     if (ctx->d_C != NULL)
-        wait_hipfunc(hipFree(ctx->d_C));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_C));
     if (ctx->h_matrix != NULL)
-        wait_hipfunc(hipHostFree(ctx->h_matrix));
+        wait_hipfunc(OpenMX_Resource_HostFree(Divide_Conquer_resources,ctx->h_matrix));
     if (ctx->hipblas != NULL)
-        OpenMXBlasWait(hipblasDestroy(ctx->hipblas));
+        OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Divide_Conquer_resources,ctx->hipblas));
     if (ctx->stream != NULL)
-        wait_hipfunc(hipStreamDestroy(ctx->stream));
+        wait_hipfunc(OpenMX_Resource_StreamDestroy(Divide_Conquer_resources,ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id    = -1;
@@ -928,14 +930,14 @@ static int DC_GpuSolver_Init(void)
         DC_GpuSolver_Destroy();
     }
 
-    hip_status = hipStreamCreateWithFlags(&ctx->stream, hipStreamNonBlocking);
+    hip_status = OpenMX_Resource_StreamCreate(Divide_Conquer_resources,&ctx->stream,hipStreamNonBlocking);
     if (hip_status != hipSuccess) {
         ctx->stream = NULL;
         DC_GpuSolver_DisableGemmPathHip("hipStreamCreateWithFlags", hip_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    blas_status = hipblasCreate(&ctx->hipblas);
+    blas_status = OpenMX_Resource_BlasCreate(Divide_Conquer_resources,&ctx->hipblas);
     if (blas_status != HIPBLAS_STATUS_SUCCESS) {
         ctx->hipblas = NULL;
     } else {
@@ -979,7 +981,7 @@ static int DC_GpuSolver_EnsureMatrixCapacity(int num)
     DC_GpuSolver_ReleaseOverlapBuffer();
     DC_GpuSolver_ReleaseGemmScratch();
     if (ctx->h_matrix != NULL) {
-        wait_hipfunc(hipHostFree(ctx->h_matrix));
+        wait_hipfunc(OpenMX_Resource_HostFree(Divide_Conquer_resources,ctx->h_matrix));
         ctx->h_matrix = NULL;
     }
 
@@ -989,7 +991,7 @@ static int DC_GpuSolver_EnsureMatrixCapacity(int num)
     matrix_bytes = DC_CheckedArrayBytes(DC_CheckedMulCount((size_t)num, (size_t)num, "GPU solver dense matrix"),
                                         sizeof(double), "GPU solver dense matrix");
 
-    hip_status = hipHostMalloc((void **)&ctx->h_matrix, matrix_bytes, 0);
+    hip_status = OpenMX_Resource_HostAlloc(Divide_Conquer_resources,(void **)&ctx->h_matrix,matrix_bytes,0);
     if (hip_status != hipSuccess) {
         ctx->h_matrix = NULL;
         DC_GpuSolver_DisableGemmPathHip("hipHostMalloc(h_matrix)", hip_status);
@@ -1021,7 +1023,7 @@ static int DC_GpuSolver_AllocMatrix(double **d_matrix, const char *where)
                                                            "GPU solver dense matrix"),
                                         sizeof(double), "GPU solver dense matrix");
 
-    hip_status = hipMalloc((void **)d_matrix, matrix_bytes);
+    hip_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)d_matrix,matrix_bytes);
     if (hip_status != hipSuccess) {
         *d_matrix = NULL;
         DC_GpuSolver_DisableGemmPathHip(where, hip_status);
@@ -1555,11 +1557,11 @@ static void DCNonCol_GpuRelease(int keep_stage)
     DCNonColGpuCtx *nc = &DC_noncol_gpu;
 
     if (nc->d_A != NULL)
-        wait_hipfunc(hipFree(nc->d_A));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,nc->d_A));
     if (nc->d_Y != NULL)
-        wait_hipfunc(hipFree(nc->d_Y));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,nc->d_Y));
     if (nc->d_T != NULL)
-        wait_hipfunc(hipFree(nc->d_T));
+        wait_hipfunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,nc->d_T));
     nc->d_A = NULL;
     nc->d_Y = NULL;
     nc->d_T = NULL;
@@ -1567,7 +1569,7 @@ static void DCNonCol_GpuRelease(int keep_stage)
 
     if (!keep_stage) {
         if (nc->h_stage != NULL)
-            wait_hipfunc(hipHostFree(nc->h_stage));
+            wait_hipfunc(OpenMX_Resource_HostFree(Divide_Conquer_resources,nc->h_stage));
         nc->h_stage       = NULL;
         nc->h_stage_bytes = 0;
         nc->reports       = 0;
@@ -1694,21 +1696,21 @@ static int DCNonCol_GpuEnsure(int num)
     }
     DCNonCol_GpuRelease(1);
 
-    if ((status = hipMalloc((void **)&nc->d_A, zbytes)) != hipSuccess) {
+    if ((status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&nc->d_A,zbytes)) != hipSuccess) {
         nc->d_A = NULL;
         what    = "hipMalloc(non-collinear H)";
-    } else if ((status = hipMalloc((void **)&nc->d_Y, zbytes)) != hipSuccess) {
+    } else if ((status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&nc->d_Y,zbytes)) != hipSuccess) {
         nc->d_Y = NULL;
         what    = "hipMalloc(non-collinear work)";
-    } else if ((status = hipMalloc((void **)&nc->d_T, dbytes)) != hipSuccess) {
+    } else if ((status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&nc->d_T,dbytes)) != hipSuccess) {
         nc->d_T = NULL;
         what    = "hipMalloc(non-collinear overlap)";
     } else if (nc->h_stage_bytes < sbytes) {
         if (nc->h_stage != NULL)
-            wait_hipfunc(hipHostFree(nc->h_stage));
+            wait_hipfunc(OpenMX_Resource_HostFree(Divide_Conquer_resources,nc->h_stage));
         nc->h_stage       = NULL;
         nc->h_stage_bytes = 0;
-        if ((status = hipHostMalloc(&nc->h_stage, sbytes, 0)) != hipSuccess) {
+        if ((status = OpenMX_Resource_HostAlloc(Divide_Conquer_resources,&nc->h_stage,sbytes,0)) != hipSuccess) {
             nc->h_stage = NULL;
             what        = "hipHostMalloc(non-collinear staging)";
         } else {

@@ -12,6 +12,8 @@
 
 #include "openmx_common.h"
 #include "openmx_solver_workspace.h"
+#include "openmx_native_resources.h"
+OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer,Divide_Conquer_Release_GPU_Caches)
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
 #include <assert.h>
@@ -227,7 +229,7 @@ static size_t DC_CheckedArrayBytes(size_t count, size_t elem_size, const char *l
 static void *DC_MallocArray(size_t count, size_t elem_size, const char *label)
 {
     size_t bytes = DC_CheckedArrayBytes(count, elem_size, label);
-    void * ptr   = malloc(bytes == 0 ? 1 : bytes);
+    void * ptr   = openmx_core_native_malloc(Divide_Conquer_resources,1,bytes == 0 ? 1 : bytes,0);
 
     if (ptr == NULL) {
         char msg[512];
@@ -718,9 +720,9 @@ static int DC_NodeRanks(void)
 
 static void DCCol_SCache_FreeHostTables(void)
 {
-    free(DC_scache.dim);
-    free(DC_scache.valid);
-    free(DC_scache.off);
+    openmx_core_native_free(Divide_Conquer_resources,DC_scache.dim);
+    openmx_core_native_free(Divide_Conquer_resources,DC_scache.valid);
+    openmx_core_native_free(Divide_Conquer_resources,DC_scache.off);
     DC_scache.dim   = NULL;
     DC_scache.valid = NULL;
     DC_scache.off   = NULL;
@@ -729,7 +731,7 @@ static void DCCol_SCache_FreeHostTables(void)
 void Divide_Conquer_Release_GPU_SCache(void)
 {
     if (DC_scache.d_arena != NULL) {
-        wait_cudafunc(cudaFree(DC_scache.d_arena));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,DC_scache.d_arena));
     }
     DCCol_SCache_FreeHostTables();
     DC_scache.d_arena     = NULL;
@@ -826,8 +828,7 @@ static void DCCol_SCache_Prepare(int matomnum, const int *Msize, int scf_iter, i
     }
 
     if (0 < used_elems) {
-        cuda_status = cudaMalloc((void **)&DC_scache.d_arena,
-                                 DC_CheckedArrayBytes(used_elems, sizeof(double), "DC S-cache arena"));
+        cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&DC_scache.d_arena,DC_CheckedArrayBytes(used_elems, sizeof(double), "DC S-cache arena"));
         if (cuda_status != cudaSuccess) {
             DC_scache.d_arena = NULL;
             DCCol_SCache_FreeHostTables();
@@ -856,31 +857,31 @@ static void DC_GpuSolver_Destroy(void)
     DCGpuSolverCtx *ctx = &DC_gpusolver_ctx;
 
     if (ctx->d_S != NULL)
-        wait_cudafunc(cudaFree(ctx->d_S));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_S));
     if (ctx->d_H != NULL)
-        wait_cudafunc(cudaFree(ctx->d_H));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_H));
     if (ctx->d_tmp != NULL)
-        wait_cudafunc(cudaFree(ctx->d_tmp));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_tmp));
     if (ctx->d_A != NULL)
-        wait_cudafunc(cudaFree(ctx->d_A));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_A));
     if (ctx->d_C != NULL)
-        wait_cudafunc(cudaFree(ctx->d_C));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_C));
     if (ctx->d_W != NULL)
-        wait_cudafunc(cudaFree(ctx->d_W));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_W));
     if (ctx->d_info != NULL)
-        wait_cudafunc(cudaFree(ctx->d_info));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_info));
     if (ctx->d_work != NULL)
-        wait_cudafunc(cudaFree(ctx->d_work));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_work));
     if (ctx->h_work != NULL)
-        free(ctx->h_work);
+        openmx_core_native_free(Divide_Conquer_resources,ctx->h_work);
     if (ctx->h_matrix != NULL)
-        wait_cudafunc(cudaFreeHost(ctx->h_matrix));
+        wait_cudafunc(OpenMX_Resource_HostFree(Divide_Conquer_resources,ctx->h_matrix));
     if (ctx->gpusolver != NULL)
-        OpenMXSolverWait(cusolverDnDestroy(ctx->gpusolver));
+        OpenMXSolverWait(OpenMX_Resource_SolverDestroy(Divide_Conquer_resources,ctx->gpusolver));
     if (ctx->cublas != NULL)
-        OpenMXBlasWait(cublasDestroy(ctx->cublas));
+        OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Divide_Conquer_resources,ctx->cublas));
     if (ctx->stream != NULL)
-        wait_cudafunc(cudaStreamDestroy(ctx->stream));
+        wait_cudafunc(OpenMX_Resource_StreamDestroy(Divide_Conquer_resources,ctx->stream));
 
     Divide_Conquer_Release_GPU_SCache();
 
@@ -904,9 +905,9 @@ static void DC_GpuSolver_Init(void)
         DC_GpuSolver_Destroy();
     }
 
-    wait_cudafunc(cudaStreamCreateWithFlags(&ctx->stream, cudaStreamNonBlocking));
-    OpenMXBlasWait(cublasCreate(&ctx->cublas));
-    OpenMXSolverWait(cusolverDnCreate(&ctx->gpusolver));
+    wait_cudafunc(OpenMX_Resource_StreamCreate(Divide_Conquer_resources,&ctx->stream,cudaStreamNonBlocking));
+    OpenMXBlasWait(OpenMX_Resource_BlasCreate(Divide_Conquer_resources,&ctx->cublas));
+    OpenMXSolverWait(OpenMX_Resource_SolverCreate(Divide_Conquer_resources,&ctx->gpusolver));
     OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
     OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
@@ -932,45 +933,45 @@ static int DC_GpuSolver_EnsureMatrixCapacity(int num)
     }
 
     if (ctx->d_S != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_S));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_S));
         ctx->d_S = NULL;
     }
     if (ctx->d_H != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_H));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_H));
         ctx->d_H = NULL;
     }
     if (ctx->d_tmp != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_tmp));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_tmp));
         ctx->d_tmp = NULL;
     }
     if (ctx->d_A != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_A));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_A));
         ctx->d_A = NULL;
     }
     if (ctx->d_C != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_C));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_C));
         ctx->d_C = NULL;
     }
     if (ctx->d_W != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_W));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_W));
         ctx->d_W = NULL;
     }
     if (ctx->d_info != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_info));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_info));
         ctx->d_info = NULL;
     }
     if (ctx->d_work != NULL) {
-        wait_cudafunc(cudaFree(ctx->d_work));
+        wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_work));
         ctx->d_work       = NULL;
         ctx->d_work_bytes = 0;
     }
     if (ctx->h_work != NULL) {
-        free(ctx->h_work);
+        openmx_core_native_free(Divide_Conquer_resources,ctx->h_work);
         ctx->h_work       = NULL;
         ctx->h_work_bytes = 0;
     }
     if (ctx->h_matrix != NULL) {
-        wait_cudafunc(cudaFreeHost(ctx->h_matrix));
+        wait_cudafunc(OpenMX_Resource_HostFree(Divide_Conquer_resources,ctx->h_matrix));
         ctx->h_matrix = NULL;
     }
 
@@ -980,50 +981,49 @@ static int DC_GpuSolver_EnsureMatrixCapacity(int num)
     matrix_bytes = DC_CheckedArrayBytes(DC_CheckedMulCount((size_t)num, (size_t)num, "GPUSOLVER dense matrix"),
                                         sizeof(double), "GPUSOLVER dense matrix");
 
-    cuda_status = cudaMalloc((void **)&ctx->d_S, matrix_bytes);
+    cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_S,matrix_bytes);
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(d_S)", cuda_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    cuda_status = cudaMalloc((void **)&ctx->d_H, matrix_bytes);
+    cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_H,matrix_bytes);
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(d_H)", cuda_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    cuda_status = cudaMalloc((void **)&ctx->d_tmp, matrix_bytes);
+    cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_tmp,matrix_bytes);
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(d_tmp)", cuda_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    cuda_status = cudaMalloc((void **)&ctx->d_A, matrix_bytes);
+    cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_A,matrix_bytes);
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(d_A)", cuda_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    cuda_status = cudaMalloc((void **)&ctx->d_C, matrix_bytes);
+    cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_C,matrix_bytes);
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(d_C)", cuda_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    cuda_status = cudaMalloc((void **)&ctx->d_W,
-                             DC_CheckedArrayBytes((size_t)num, sizeof(double), "GPUSOLVER eigenvalue buffer"));
+    cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_W,DC_CheckedArrayBytes((size_t)num, sizeof(double), "GPUSOLVER eigenvalue buffer"));
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(d_W)", cuda_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    cuda_status = cudaMalloc((void **)&ctx->d_info, sizeof(int32_t));
+    cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_info,sizeof(int32_t));
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(d_info)", cuda_status);
         DC_GpuSolver_Destroy();
         return 0;
     }
-    cuda_status = cudaMallocHost((void **)&ctx->h_matrix, matrix_bytes);
+    cuda_status = OpenMX_Resource_HostAlloc(Divide_Conquer_resources,(void **)&ctx->h_matrix,matrix_bytes,0);
     if (cuda_status != cudaSuccess) {
         DC_GpuSolver_DisableGemmPathCuda("cudaMallocHost(h_matrix)", cuda_status);
         DC_GpuSolver_Destroy();
@@ -1086,11 +1086,11 @@ static int DC_GpuSolver_EnsureWorkspace(int m, int maxn, double *d_A, const char
         }
 
         if (ctx->d_work != NULL) {
-            wait_cudafunc(cudaFree(ctx->d_work));
+            wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_resources,ctx->d_work));
         }
         ctx->d_work = NULL;
         if (0 < d_bytes) {
-            cuda_status = cudaMalloc((void **)&ctx->d_work, d_bytes);
+            cuda_status = OpenMX_Resource_GpuMalloc(Divide_Conquer_resources,(void **)&ctx->d_work,d_bytes);
             if (cuda_status != cudaSuccess) {
                 ctx->d_work_bytes = 0;
                 DC_GpuSolver_DisableGemmPathCuda("cudaMalloc(gpuSOLVER device workspace)", cuda_status);
@@ -1102,14 +1102,14 @@ static int DC_GpuSolver_EnsureWorkspace(int m, int maxn, double *d_A, const char
 
     if (h_bytes == 0) {
         if (ctx->h_work != NULL)
-            free(ctx->h_work);
+            openmx_core_native_free(Divide_Conquer_resources,ctx->h_work);
         ctx->h_work       = NULL;
         ctx->h_work_bytes = 0;
     } else if (h_bytes > ctx->h_work_bytes) {
         if (ctx->h_work != NULL)
-            free(ctx->h_work);
+            openmx_core_native_free(Divide_Conquer_resources,ctx->h_work);
         ctx->h_work       = NULL;
-        new_h_work        = malloc(h_bytes);
+        new_h_work        = openmx_core_native_malloc(Divide_Conquer_resources,1,h_bytes,0);
         if (new_h_work == NULL) {
             ctx->h_work_bytes = 0;
             DC_GpuSolver_DisableEigenPathHost(where, h_bytes);
@@ -2768,7 +2768,7 @@ static void DCNonCol_EigenGpuFlat(dcomplex *C_store, int ld, double *ko, int n)
         exit(10);
     }
 
-    free(A);
+    openmx_core_native_free(Divide_Conquer_resources,A);
 }
 
 #pragma optimization_level 2

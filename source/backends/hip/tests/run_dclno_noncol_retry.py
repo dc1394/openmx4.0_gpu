@@ -46,6 +46,15 @@ import shlex
 import subprocess
 import tempfile
 
+# The SDK/ownership boundary is mocked here; the real ownership adapters are
+# exercised independently by the core-native-resource/adapter tests.
+try:
+    from native_resource_test_bridge import isolate_native_resources
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
+    from native_resource_test_bridge import isolate_native_resources
+
 
 def function(source, name):
     match = re.search(r"^static [^;{}]*\b" + re.escape(name) + r"\([^;]*?\)\s*\{",
@@ -509,7 +518,7 @@ def main():
                         help="LP64 CPU LAPACK/BLAS libraries (default: -llapack -lblas)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    source = (root / "source/Divide_Conquer_LNO.c").read_text()
+    source = isolate_native_resources((root / "source/Divide_Conquer_LNO.c").read_text(), "HIP")
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))
     if args.sanitize:
         flags += ["-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
