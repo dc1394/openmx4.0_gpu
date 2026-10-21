@@ -136,10 +136,10 @@ static const char *Set_Hamiltonian_Simd_Mode_Name(int mode)
     return "baseline";
 }
 
-void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind);
-static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind);
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atomic, int Cnt_kind);
-static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H);
+void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
+static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind, const OpenMXElectronicViews *electronic);
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
+static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H, const OpenMXElectronicViews *electronic);
 static size_t Set_Hamiltonian_Base_OpenMP_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenMP_DeviceBytes(int Cnt_kind, int myid);
 int Set_Hamiltonian_Hip_MatrixElements(
@@ -938,8 +938,15 @@ void Set_Hamiltonian_GpuSolver_SetMP(int *MP)
     }
 }
 
-void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_static)
+void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_static, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****CntOLP=electronic->CntOLP;
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+  double *****iCntHNL=electronic->iCntHNL;
+  double *****iHNL=electronic->iHNL;
+
     SetHamiltonianGpuSolverPackedCache *cache = &Set_Hamiltonian_GpuSolver_Cache;
     int myid, numprocs;
     int local_selected;
@@ -1177,8 +1184,16 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
 
 double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
-                       double ***** H)
+                       double ***** H, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****CntOLP=electronic->CntOLP;
+  double *****HCH=electronic->HCH;
+  double *****H_Hub=electronic->H_Hub;
+  double *****OLP=electronic->OLP;
+  double *****iCntHNL=electronic->iCntHNL;
+  double *****iHNL=electronic->iHNL;
+
     /***************************************************************
       Cnt_kind
         0:  Uncontracted Hamiltonian
@@ -1227,7 +1242,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
 
     SETH_PROF_T0(prof_t0);
     if (use_base_openmp) {
-        Set_Hamiltonian_Base_OpenMP(vna, SCF_iter, H0, HNL, H);
+        Set_Hamiltonian_Base_OpenMP(vna, SCF_iter, H0, HNL, H, electronic);
     }
 
     /* spin non-collinear */
@@ -1361,7 +1376,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
   *****************************************************/
 
     SETH_PROF_T0(prof_t0);
-    Calc_MatrixElements_dVH_Vxc_VNA(atomic, Cnt_kind);
+    Calc_MatrixElements_dVH_Vxc_VNA(atomic, Cnt_kind, electronic);
     SETH_PROF_ADD(matel, prof_t0);
     if (trace_timing) dtime(&trace_matrix_end);
 
@@ -2098,8 +2113,10 @@ static int SetH_OTF_UploadPotential(double *d_vgrid, int spin_count, size_t vgri
 
 /* 1 when this rank's matrix elements were computed on the device; 0 leaves
    them untouched for the table or CPU path.  Rank-local. */
-static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(const OpenMXAtomicViews *atomic, int Cnt_kind, int myid)
+static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(const OpenMXAtomicViews *atomic, int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+
     const int spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
     const size_t vgrid_len = (size_t)My_NumGridC;
     SetHamOTFState *st = &Set_Hamiltonian_OTF_State;
@@ -2463,8 +2480,11 @@ done:
     return ok;
 }
 
-static void Set_Hamiltonian_Stream_PairCPU(int cnt_kind,int mc,int h,int rank)
+static void Set_Hamiltonian_Stream_PairCPU(int cnt_kind,int mc,int h,int rank, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     const int gc=M2G[mc],gh=natn[gc][h],mh=F_G2M[gh];
     const int n0=cnt_kind?Spe_Total_CNO[WhatSpecies[gc]]:Spe_Total_NO[WhatSpecies[gc]];
     const int n1=cnt_kind?Spe_Total_CNO[WhatSpecies[gh]]:Spe_Total_NO[WhatSpecies[gh]];
@@ -2513,8 +2533,11 @@ static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,vo
 /* Enter once per quadrature phase on all ranks. Only ranks whose existing
    owner/streamed path declined pack work; completed ranks can lend GPUs.
    Bounded host tiles avoid duplicating a full orbital cache on the host. */
-static int SetH_capacity_recover(int cnt_kind,int local_done,int rank)
+static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     const char *gpu=getenv("OPENMX_GPU");
     int enabled=scf_eigen_lib_flag==GPUSOLVER && !(gpu && atoi(gpu)==0) && Set_Hamiltonian_MatrixElements_OpenMP_Enabled();
     int pending=enabled && !local_done,any=0;
@@ -2561,7 +2584,7 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank)
             if(!a || !b || !weights || !out) {
                 /* Earlier tiles have already been added: retry just these
                    pairs on the CPU, never add the full Hamiltonian twice. */
-                for(int i=0;i<n;i++)Set_Hamiltonian_Stream_PairCPU(cnt_kind,mc_table[first+i],h_table[first+i],rank);
+                for(int i=0;i<n;i++)Set_Hamiltonian_Stream_PairCPU(cnt_kind,mc_table[first+i],h_table[first+i],rank, electronic);
                 first+=n;n=0;
             }
         }
@@ -2592,7 +2615,7 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank)
     free(mc_table);free(h_table);return local_done || (pending && ready);
 }
 
-void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind)
+void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
     int myid,use_tables=0,local_done=0;
     Set_Hamiltonian_MatrixElements_GPU_Used=0;
@@ -2600,18 +2623,18 @@ void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_ki
     if(!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())) {
         use_tables=Set_Hamiltonian_MatrixElements_Use_OpenMP(Cnt_kind,myid);
         if(use_tables && (Set_Hamiltonian_ME_CacheReusable(Cnt_kind) || Set_Hamiltonian_ME_KeepDeviceResident())) {
-            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(atomic, Cnt_kind);local_done=1;
-        } else if(Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(atomic, Cnt_kind,myid)) {
+            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(atomic, Cnt_kind, electronic);local_done=1;
+        } else if(Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(atomic, Cnt_kind,myid, electronic)) {
             if(Matomnum>0)Set_Hamiltonian_MatrixElements_GPU_Used=1;
             local_done=1;
         } else if(use_tables) {
-            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(atomic, Cnt_kind);local_done=1;
+            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(atomic, Cnt_kind, electronic);local_done=1;
         }
     }
     /* All ranks rendezvous after the existing MI300A/Radeon fast paths.
        Completed ranks can lend capacity without adding their matrix twice. */
-    if(!SetH_capacity_recover(Cnt_kind,local_done,myid))
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
+    if(!SetH_capacity_recover(Cnt_kind,local_done,myid, electronic))
+        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind, electronic);
 }
 
 static size_t Set_Hamiltonian_Base_OpenMP_DeviceBytes(int SCF_iter, int myid)
@@ -2780,8 +2803,11 @@ static void SetH_base_capacity_kernel(size_t first,size_t n,const void *paramete
     }
 }
 
-static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H)
+static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H, const OpenMXElectronicViews *electronic)
 {
+  double *****HCH=electronic->HCH;
+  double *****H_Hub=electronic->H_Hub;
+
     int Mc_AN, h_AN, Gc_AN, Gh_AN, Cwan, Hwan;
     int numprocs, myid;
     int spin_count, pair_count, pair;
@@ -2944,8 +2970,11 @@ static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF
    iteration moves the vpotbuf/hbuf arrays instead of the multi-GB orbital
    tables, and the resident copies earn their keep instead of merely
    waiting for Force3. */
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(int Cnt_kind)
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     const SetHamiltonianMETableCache *c = &Set_Hamiltonian_ME_Tables;
     const int ompdev = omp_get_default_device();
     const int spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
@@ -3028,7 +3057,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(int Cnt_kind)
            device): the host path, whose blocked loops are an order of
            magnitude faster than a scan of the packed tables; it adds to H
            itself, so the packed results are not written back */
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
+        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind, electronic);
         free(vpotbuf);
         free(hbuf);
         return;
@@ -3063,8 +3092,11 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(int Cnt_kind)
     free(hbuf);
 }
 
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atomic, int Cnt_kind)
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     int Mc_AN, Gc_AN, h_AN, Gh_AN, Mh_AN, Cwan, Hwan;
     int numprocs, myid;
     int spin_count, pair_count, pair;
@@ -3082,7 +3114,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atom
     (void)numprocs;
 
     if (Set_Hamiltonian_ME_CacheReusable(Cnt_kind)) {
-        Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(Cnt_kind);
+        Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(Cnt_kind, electronic);
         return;
     }
     Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
@@ -3268,7 +3300,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atom
         /* the device call failed: the host path (blocked loops, it adds to
            H itself) instead of a scan of the packed tables; the tables
            are still cached below */
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
+        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind, electronic);
         host_done = 1;
     }
 
@@ -3778,8 +3810,11 @@ SETH_DEFINE_SPIN1_WRAPPER(Set_Hamiltonian_ME_Pair_Spin1_AVX512,SETH_TARGET_AVX51
 
 #undef SETH_DEFINE_SPIN1_WRAPPER
 
-static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
+static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     int    Mc_AN, Gc_AN, Mh_AN, h_AN, Gh_AN;
     int    Nh0, Nh1, Nh2, Nh3;
     int    Nc0, Nc1, Nc2, Nc3;

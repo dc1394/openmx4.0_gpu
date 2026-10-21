@@ -13,7 +13,7 @@ def literal(path,name):
 prefix=literal('tests/run_gpu_vector_cpu.py','prefix')
 body=(root/'source/openmx_gpu_task.c').read_text().replace('#include <cuda_runtime.h>','').replace('#include "set_cuda_default_device_from_local_rank.h"','')
 source=(root/'source/Set_Hamiltonian.c').read_text()
-base=source[source.index('typedef struct {int spins,nc,hub,hch,vna;'):source.index('static void Set_Hamiltonian_Base_OpenACC(int SCF_iter, double *****H0, double *****HNL, double *****H)\n{')]
+base=source[source.index('typedef struct {int spins,nc,hub,hch,vna;'):source.index('static void Set_Hamiltonian_Base_OpenACC(',source.index('typedef struct {int spins,nc,hub,hch,vna;'))]
 pair=source[source.index('typedef struct {int n0,n1,points;}'):source.index('/* Enter once per quadrature phase')]
 main=r'''
 int main(void){

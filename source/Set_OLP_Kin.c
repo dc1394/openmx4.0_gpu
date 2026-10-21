@@ -186,8 +186,10 @@ static int SetOLP_ProfileEnabled(void)
 }
 
 
-double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0)
+double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP_L=electronic->OLP_L;
+
   /****************************************************
           Evaluate overlap and kinetic integrals
                  in the momentum space

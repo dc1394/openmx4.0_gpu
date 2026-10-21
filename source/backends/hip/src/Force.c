@@ -809,8 +809,10 @@ static int Force3_GpuDorbMode(void)
 static int Force3_GpuTrace_Part(const OpenMXAtomicViews *atomic, int first,int last,int myid,double *forces,const SetHamiltonianMETables *shared_tables,const float *shared_orbs1,const double* dchi_all, const size_t* dchi_off,
     double* vpot_dev_full, const size_t* vpot_off,
     double* xyz_dev_full, const size_t* xyz_off, int dorb_mode,
-    size_t chunk_budget)
+    size_t chunk_budget, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+
     int Mc_AN, h_AN;
     size_t orbs_local_count = 0;
     size_t* orb_off;
@@ -1812,17 +1814,18 @@ f3_chunk_cleanup:
 }
 
 static int Force3_GpuTrace(const OpenMXAtomicViews *atomic, const double *dchi,const size_t *dchi_off,
-    double *potential,const size_t *vpot_off,double *xyz,const size_t *xyz_off,int dorb,size_t budget)
+    double *potential,const size_t *vpot_off,double *xyz,const size_t *xyz_off,int dorb,size_t budget, const OpenMXElectronicViews *electronic)
 {
     SetHamiltonianMETables tables;const float *orbs1=NULL;int rank;
     MPI_Comm_rank(mpi_comm_level1,&rank);int kind=Cnt_switch==1;
     int have=Set_Hamiltonian_MatrixElementsTables_Ready(kind) && Set_Hamiltonian_GetMatrixElementsTables(kind,&tables) && tables.orbs1_resident;
     if(have){orbs1=openmx_target_deviceptr((void*)tables.orbs1buf);if(!orbs1)have=0;}
-    return Force3_GpuTrace_Part(atomic, 1,Matomnum+1,rank,NULL,have?&tables:NULL,orbs1,dchi,dchi_off,potential,vpot_off,xyz,xyz_off,dorb,budget);
+    return Force3_GpuTrace_Part(atomic, 1,Matomnum+1,rank,NULL,have?&tables:NULL,orbs1,dchi,dchi_off,potential,vpot_off,xyz,xyz_off,dorb,budget, electronic);
 }
 
 typedef struct {
     int mc,rank,points,no;double ***derivative,**potential;
+    const OpenMXElectronicViews *electronic;
     size_t *offset;int *neighbor,*point;double force[3];
 } Force3Capacity;
 static int Force3_capacity_visit(void *context,size_t row,OpenMXBilinearEmit emit,void *target)
@@ -1835,7 +1838,7 @@ static int Force3_capacity_visit(void *context,size_t row,OpenMXBilinearEmit emi
         for(int spin=0;spin<=SpinP_switch;spin++){
             OpenMXBilinearTerm t={0};t.left=(OpenMXBilinearSpan){NULL,c->derivative[nc],axis,0,c->no,sizeof(double)};
             t.right=(OpenMXBilinearSpan){orb,NULL,0,1,no1,sizeof(Type_Orbs_Grid)};
-            t.matrix_rows[0]=DM[0][spin][c->mc][h];t.scaled=1;t.scale[0]=c->potential[spin][nc];
+            t.matrix_rows[0]=c->electronic->DM[0][spin][c->mc][h];t.scaled=1;t.scale[0]=c->potential[spin][nc];
             if(!emit(target,&t))return 0;
         }
     }
@@ -1846,9 +1849,9 @@ static void Force3_capacity_commit(void *context,size_t first,size_t last,const 
     Force3Capacity *c=context;
     for(size_t row=first;row<last;row++)c->force[row/c->points]+=values[row-first];
 }
-static int Force3_capacity_atom(int mc,int rank,double ***derivative,double **potential,int enabled)
+static int Force3_capacity_atom(int mc,int rank,double ***derivative,double **potential,int enabled, const OpenMXElectronicViews *electronic)
 {
-    Force3Capacity c={0};c.mc=mc;c.rank=rank;c.derivative=derivative;c.potential=potential;
+    Force3Capacity c={0};c.electronic=electronic;c.mc=mc;c.rank=rank;c.derivative=derivative;c.potential=potential;
     size_t terms=0;int valid=1;
     if(mc){
         int gc=M2G[mc];c.points=GridN_Atom[gc];c.no=Spe_Total_CNO[WhatSpecies[gc]];
@@ -1873,8 +1876,10 @@ static int Force3_capacity_atom(int mc,int rank,double ***derivative,double **po
     free(c.offset);free(c.neighbor);free(c.point);return ok;
 }
 
-static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot_grid)
+static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot_grid, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+
     int Gc_AN=M2G[Mc_AN],NO0=Spe_Total_CNO[WhatSpecies[Gc_AN]];
     double sumx=0,sumy=0,sumz=0;
             int h_AN;
@@ -2150,7 +2155,7 @@ static void dH_U_NC_full(int Mc_AN, int h_AN, int q_AN,
 static void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double****** DS_NL1,
-    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz);
+    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic);
 
 static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
     Type_DS_VNA***** DS_VNA1,
@@ -2189,7 +2194,7 @@ static void dHNL_SO_rows(
 static void dHCH(int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double***** OLP1,
-    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz);
+    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic);
 
 static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy0i, double* sumz0r, double* sumz0i,
     double* sumx1r, double* sumx1i, double* sumy1r, double* sumy1i, double* sumz1r, double* sumz1i,
@@ -2202,17 +2207,17 @@ static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy
     double***** OLP1);
 
 static void MPI_OLP(double***** OLP1);
-static void Force3(const OpenMXAtomicViews *atomic);
+static void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic);
 static void Force4(const OpenMXAtomicViews *atomic);
 static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx, double* Fy, double* Fz, size_t* atom_terms);
 static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0);
 
-static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0);
+static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic);
 static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL);
 static void Force_HNL_GpuEnd(void);
 static void Force_HNL_GpuArchiveHalo(double****** DS_NL, int Original_Mc_AN, int Gc_AN);
 static void Force_HNL_GpuArchiveCase2(double****** DS_NL, int Mc_AN, int Gc_AN);
-static void Force_HNL_GpuCase1Run(double***** CDM0);
+static void Force_HNL_GpuCase1Run(double***** CDM0, const OpenMXElectronicViews *electronic);
 /* OPENMX_BAND_PROFILE=1: per-rank section lines of the force batches on
    stderr (no collective, unlike Force_profile_report) */
 static int Force_PhaseProfileEnabled(void)
@@ -2225,15 +2230,19 @@ static int Force_PhaseProfileEnabled(void)
     }
     return cached;
 }
-static void Force_HNL_GpuCase2Run(double***** CDM0);
-static void Force_CoreHole(double***** CDM0, double***** iDM0);
+static void Force_HNL_GpuCase2Run(double***** CDM0, const OpenMXElectronicViews *electronic);
+static void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic);
 
 double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM)
+    double***** EDM, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH0=electronic->CntH0;
+  double *****CntOLP=electronic->CntOLP;
+  double ******iDM=electronic->iDM;
+
     static int firsttime = 1;
     int Nc, GNc, GRc, Cwan, s1, s2, BN_AB;
     int Mc_AN, Gc_AN, MNc, start_q_AN;
@@ -3666,7 +3675,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         fflush(stdout);
     }
 
-    Force3(atomic);
+    Force3(atomic, electronic);
 
     dtime(&etime);
     if (force_profile) {
@@ -4311,7 +4320,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     ****************************************************/
 
     dtime(&stime);
-    Force_HNL(atomic, CDM0, iDM0);
+    Force_HNL(atomic, CDM0, iDM0, electronic);
     dtime(&etime);
     if (force_profile) {
         Force_profile_report("force-HNL", etime - stime,
@@ -4325,7 +4334,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     ****************************************************/
 
     if (core_hole_state_flag == 1) {
-        Force_CoreHole(CDM0, iDM0);
+        Force_CoreHole(CDM0, iDM0, electronic);
     }
 
     /****************************************************
@@ -4479,8 +4488,10 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 /* OMP by A. Ito */
 
 #ifndef f3omp
-void Force3(const OpenMXAtomicViews *atomic)
+void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+
     /****************************************************
           #3 of Force
           dn/dx * (VNA + dVH + Vxc)
@@ -5232,7 +5243,7 @@ void Force3(const OpenMXAtomicViews *atomic)
             if(recover){
 #pragma omp barrier
 #pragma omp master
-                {recovered=Force3_capacity_atom(!use_gpu_trace && Mc_AN<=Matomnum?Mc_AN:0,myid,dChi0,Vpot_grid,capacity_enabled);}
+                {recovered=Force3_capacity_atom(!use_gpu_trace && Mc_AN<=Matomnum?Mc_AN:0,myid,dChi0,Vpot_grid,capacity_enabled, electronic);}
 #pragma omp barrier
             }
             if(Mc_AN<=Matomnum){
@@ -5358,7 +5369,7 @@ void Force3(const OpenMXAtomicViews *atomic)
 
     } /* #pragma omp parallel */
 
-    int late=use_gpu_trace && !Force3_GpuTrace(atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget);
+    int late=use_gpu_trace && !Force3_GpuTrace(atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget, electronic);
     int late_any=late;MPI_Allreduce(MPI_IN_PLACE,&late_any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(late_any){
         int max_atoms=Matomnum;MPI_Allreduce(MPI_IN_PLACE,&max_atoms,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -5385,8 +5396,8 @@ void Force3(const OpenMXAtomicViews *atomic)
                 }else for(int nc=0;nc<ng;nc++)for(int i=0;i<no;i++)memcpy(dChi0[nc][i],dchi_all+dchi_off[mc]+3*((size_t)nc*no+i),3*sizeof(double));
             }
             int mc_work=late && mc<=Matomnum?mc:0;
-            if(!Force3_capacity_atom(mc_work,myid,dChi0,Vpot_grid,capacity_enabled) && mc_work)
-                Force3_capacity_cpu(mc_work,myid,dChi0,Vpot_grid);
+            if(!Force3_capacity_atom(mc_work,myid,dChi0,Vpot_grid,capacity_enabled, electronic) && mc_work)
+                Force3_capacity_cpu(mc_work,myid,dChi0,Vpot_grid, electronic);
         }
     }
 
@@ -5411,8 +5422,10 @@ void Force3(const OpenMXAtomicViews *atomic)
 /* OMP by Ozaki */
 
 #else
-void Force3(const OpenMXAtomicViews *atomic)
+void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+
     /****************************************************
                         #3 of Force
 
@@ -5862,8 +5875,11 @@ void Force4(const OpenMXAtomicViews *atomic)
     }
 }
 
-void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0)
+void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic)
 {
+  double ******CntDS_NL=electronic->CntDS_NL;
+  double ******DS_NL=electronic->DS_NL;
+
     /****************************************************
                     Force arising from HNL
     ****************************************************/
@@ -6218,7 +6234,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                             jan = atomic->species.contracted_orbitals[Qwan];
                             kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                            dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0);
+                            dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0, electronic);
 
                             /* contribution of force = Trace(CDM0*dH) */
                             /* spin non-polarization */
@@ -6321,7 +6337,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                         } /* j */
                                     } /* i */
 
-                                    dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1);
+                                    dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
                                     kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
                                     for (i = 0; i < atomic->species.contracted_orbitals[Qwan]; i++) { /* Qwan */
@@ -6574,7 +6590,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                     jan = atomic->species.contracted_orbitals[Qwan];
                     kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                    dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0);
+                    dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0, electronic);
 
                     if (SpinP_switch == 0) {
 
@@ -6674,7 +6690,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                 } /* j */
                             } /* i */
 
-                            dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1);
+                            dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
 
                             kl1 = RMI1[Mc_AN][q_AN][h_AN];
                             for (i = 0; i < atomic->species.contracted_orbitals[Qwan]; i++) { /* Qwan */
@@ -6775,7 +6791,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
     } /* #pragma omp parallel */
 
     if (fhnl_gpu) {
-        Force_HNL_GpuCase1Run(CDM0);
+        Force_HNL_GpuCase1Run(CDM0, electronic);
     }
 
     dtime(&etime);
@@ -7144,7 +7160,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                     if (0 <= kl) {
 
-                        dHNL(atomic, 1, Mc_AN, h_AN, q_AN, DS_NL, Hx, Hy, Hz);
+                        dHNL(atomic, 1, Mc_AN, h_AN, q_AN, DS_NL, Hx, Hy, Hz, electronic);
 
                         /* contribution of force = Trace(CDM0*dH) */
 
@@ -7283,7 +7299,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
     } /* Mc_AN */
 
     if (fhnl_gpu) {
-        Force_HNL_GpuCase2Run(CDM0);
+        Force_HNL_GpuCase2Run(CDM0, electronic);
         Force_HNL_GpuEnd();
         fhnl_gpu = 0;
     }
@@ -10119,8 +10135,10 @@ static void Force_HNL_capacity(int kind,ForceHNLGpuContext *g,int nitems,const F
 
 /* the unified first-case batch: every (local atom, q_AN != 0) pair;
    local q reads the flat table, halo q reads the halo archive */
-static void Force_HNL_GpuCase1Run_Part(int first,int last,ForceHNLGpuContext *g,double *forces,int myid_p,double***** CDM0)
+static void Force_HNL_GpuCase1Run_Part(int first,int last,ForceHNLGpuContext *g,double *forces,int myid_p,double***** CDM0, const OpenMXElectronicViews *electronic)
 {
+  double *****HNL=electronic->HNL;
+
     int Mc_AN, q_AN, k;
     int nitems = 0, kslots = 0;
     size_t cdm_count = 0;
@@ -10409,8 +10427,10 @@ hnl_capacity:
 /* the second-case batch: all (h,q) pairs of every centre, reading the
    archived 4-direction stagings (the centre's own k=0 row serves as the
    value side of the h_AN==0 pairs) */
-static void Force_HNL_GpuCase2Run_Part(int first,int last,ForceHNLGpuContext *g,double *forces,int myid_p,double***** CDM0)
+static void Force_HNL_GpuCase2Run_Part(int first,int last,ForceHNLGpuContext *g,double *forces,int myid_p,double***** CDM0, const OpenMXElectronicViews *electronic)
 {
+  double *****HNL=electronic->HNL;
+
     const int solver_flat = (Solver == 5 || Solver == 8 || Solver == 11);
     int Mc_AN, h_AN, q_AN;
     int nitems = 0;
@@ -10767,15 +10787,15 @@ hnl_capacity:
     free(items);
 }
 
-static void Force_HNL_GpuCase1Run(double *****CDM0)
+static void Force_HNL_GpuCase1Run(double *****CDM0, const OpenMXElectronicViews *electronic)
 {
     int rank;MPI_Comm_rank(mpi_comm_level1,&rank);
-    Force_HNL_GpuCase1Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0);
+    Force_HNL_GpuCase1Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0, electronic);
 }
-static void Force_HNL_GpuCase2Run(double *****CDM0)
+static void Force_HNL_GpuCase2Run(double *****CDM0, const OpenMXElectronicViews *electronic)
 {
     int rank;MPI_Comm_rank(mpi_comm_level1,&rank);
-    Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0);
+    Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0, electronic);
 }
 
 void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0)
@@ -12036,8 +12056,11 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double****** DS_NL1,
-    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz)
+    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic)
 {
+  double *****HNL=electronic->HNL;
+  double *****iHNL=electronic->iHNL;
+
     int i, j, k, m, n, l, kg, kan, so, deri_kind;
     int ig, ian, jg, jan, kl, kl1, kl2;
     int wakg, l1, l2, l3, Gc_AN, Mi_AN, Mi_AN2, Mj_AN, Mj_AN2;
@@ -15004,8 +15027,11 @@ void dH_U_NC_full(int Mc_AN, int h_AN, int q_AN,
 void dHCH(int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double***** OLP1,
-    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz)
+    dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic)
 {
+  double *****HCH=electronic->HCH;
+  double *****iHCH=electronic->iHCH;
+
     int i, j, k, m, n, l, kg, kan, so, deri_kind, L;
     int ig, ian, jg, jan, kl, kl1, kl2, mul;
     int wakg, l1, l2, l3, Gc_AN, Mi_AN, Mi_AN2, Mj_AN, Mj_AN2;
@@ -16831,8 +16857,10 @@ void MPI_OLP(double***** OLP1)
     free(Rcv_S_Size);
 }
 
-void Force_CoreHole(double***** CDM0, double***** iDM0)
+void Force_CoreHole(double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP_CH=electronic->OLP_CH;
+
     /****************************************************
           Force arising from the penalty functional
           to create a core hole
@@ -17159,7 +17187,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                             jan = Spe_Total_CNO[Qwan];
                             kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                            dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0);
+                            dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0, electronic);
 
                             /* contribution of force = Trace(CDM0*dH) */
                             /* spin non-polarization */
@@ -17262,7 +17290,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                                         } /* j */
                                     } /* i */
 
-                                    dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1);
+                                    dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic);
 
                                     kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
@@ -17511,7 +17539,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                     jan = Spe_Total_CNO[Qwan];
                     kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                    dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0);
+                    dHCH(0, Mc_AN, h_AN, q_AN, OLP_CH, Hx0, Hy0, Hz0, electronic);
 
                     if (SpinP_switch == 0) {
 
@@ -17611,7 +17639,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
                                 } /* j */
                             } /* i */
 
-                            dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1);
+                            dHCH(0, Mc_AN, q_AN, h_AN, OLP_CH, Hx1, Hy1, Hz1, electronic);
 
                             kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
@@ -18049,7 +18077,7 @@ void Force_CoreHole(double***** CDM0, double***** iDM0)
 
                     if (0 <= kl) {
 
-                        dHCH(1, Mc_AN, h_AN, q_AN, OLP_CH, Hx, Hy, Hz);
+                        dHCH(1, Mc_AN, h_AN, q_AN, OLP_CH, Hx, Hy, Hz, electronic);
 
                         /* contribution of force = Trace(CDM0*dH) */
 

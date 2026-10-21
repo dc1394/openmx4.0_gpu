@@ -26,7 +26,10 @@
 
 #define  measure_time 0
 
-void Calc_NAO_Cluster(double *****CDM){
+void Calc_NAO_Cluster(double *****CDM, const OpenMXElectronicViews *electronic){
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+
 
   /* loop */
   int spin0,spin,Gc_AN,Gh_AN,Gb_AN,h_AN,Mc_AN,L1,M1,i,j,i2,j2,k,l,is;

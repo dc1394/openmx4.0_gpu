@@ -14,7 +14,7 @@ def literal(path,name):
 prefix=literal('tests/run_gpu_vector_cpu.py','prefix')
 body=(root/'source/openmx_gpu_task.c').read_text().replace('#include "hip_runtime_compat.h"','').replace('#include "set_hip_default_device_from_local_rank.h"','')
 source=(root/'source/Set_Hamiltonian.c').read_text()
-base=source[source.index('typedef struct {int spins,nc,hub,hch,vna;'):source.index('static void Set_Hamiltonian_Base_OpenMP(int SCF_iter, double *****H0, double *****HNL, double *****H)\n{')]
+base=source[source.index('typedef struct {int spins,nc,hub,hch,vna;'):source.index('static void Set_Hamiltonian_Base_OpenMP(',source.index('typedef struct {int spins,nc,hub,hch,vna;'))]
 pair=source[source.index('typedef struct {int n0,n1,points;}'):source.index('/* Enter once per quadrature phase')]
 main=r'''
 int main(void){

@@ -93,8 +93,13 @@ double ******DM_r;
 
 /***************************************************************************/
 
-int TRAN_Output_HKS(char *fileHKS)
+int TRAN_Output_HKS(char *fileHKS, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+  double *****iHNL=electronic->iHNL;
+
   FILE *fp;
   int i_vec[100],i2_vec[2];
   double *d_vec;

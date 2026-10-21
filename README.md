@@ -143,6 +143,16 @@ PAO-coordinate/orbital and nonlocal angular/energy global pointers are removed.
 Evaluation scratch uses worker-local C++ owners with flat mdspan storage,
 transactional allocation and reusable derivative buffers. No owner lookup or
 allocation is added inside the reusable evaluator's grid-point loops.
+The main SCF matrices now also belong to the calculation: 32 kinetic,
+nonlocal, overlap, Hamiltonian, density and mixing-history families replace
+their global arrays with contiguous C++ storage. Component/atom/neighbor
+offsets describe their unequal block sizes and expose mdspan views. SCF,
+solvers, energy, forces, restart and output pass these matrices explicitly;
+legacy native kernels borrow row adapters into the same storage. Replacement
+is transactional, and release does not depend on old atom or neighbor lists.
+CUDA/HIP share this ownership layer while retaining their current kernel and
+device-specific execution policies. Removing the remaining borrowed pointer
+tables from numerical consumers is a later migration step.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

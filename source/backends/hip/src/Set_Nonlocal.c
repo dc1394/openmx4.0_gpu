@@ -42,14 +42,14 @@
 
 #ifdef kcomp
 static double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
-static void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
+static void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
 static void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
-                           int Cwan, int Hwan, int wakg, dcomplex ***NLH);
+                           int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic);
 #else
 inline double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
-inline void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
+inline void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
 inline void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
-                           int Cwan, int Hwan, int wakg, dcomplex ***NLH);
+                           int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic);
 #endif
 
 static void SetNonlocal_AbortWithMessage(const char *message)
@@ -1365,14 +1365,14 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
 }
 
 
-double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
+double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic)
 {
   double TStime,TEtime;
 
   dtime(&TStime);
   SetNonlocal_gpu_used = 0;
 
-  Nonlocal0(atomic, reciprocal, HNL, DS_NL);
+  Nonlocal0(atomic, reciprocal, HNL, DS_NL, electronic);
 
   /* for time */
   dtime(&TEtime);
@@ -1381,8 +1381,11 @@ double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews
 
 
 
-void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL)
+void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic)
 {
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   /****************************************************
    Evaluate matrix elements of nonlocal potentials
    in the KB or Blochl separable form in momentum space.
@@ -1820,7 +1823,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
                 if (0<=kl){
 
-                  Multiply_DS_NL(atomic, Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLHt);
+                  Multiply_DS_NL(atomic, Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLHt, electronic);
 
 		} /* if (0<=kl) */
 
@@ -2006,7 +2009,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
 	  if (0<=kl){
 
-	    Multiply_DS_NL(atomic, Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH);
+	    Multiply_DS_NL(atomic, Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH, electronic);
 
 	  } /* if (0<=kl) */
 	} /* k */
@@ -2090,8 +2093,10 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
 
 void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
-                    int Cwan, int Hwan, int wakg, dcomplex ***NLH)
+                    int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic)
 {
+  double ******DS_NL=electronic->DS_NL;
+
   int m,n,L,L1,L2,L3,spin,target_spin;
   int GA_AN,GB_AN;
   double ene_core_hole[2][20];

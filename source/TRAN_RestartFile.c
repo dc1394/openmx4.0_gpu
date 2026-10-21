@@ -517,7 +517,7 @@ int TRAN_Input_HKS( MPI_Comm comm1, char *fileHKS)
 
 
 
-int TRAN_RestartFile(MPI_Comm comm1, char *mode, char *position,char *filepath, char *filename)
+int TRAN_RestartFile(MPI_Comm comm1, char *mode, char *position,char *filepath, char *filename, const OpenMXElectronicViews *electronic)
 {
   int i,side,j,k;
   char fileHKS[YOUSO10];
@@ -557,7 +557,7 @@ int TRAN_RestartFile(MPI_Comm comm1, char *mode, char *position,char *filepath, 
 
   if (strcasecmp(mode,"write")==0) {
 
-    TRAN_Output_HKS(fileHKS);
+    TRAN_Output_HKS(fileHKS, electronic);
   }
 
   /*******************

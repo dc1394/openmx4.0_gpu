@@ -48,10 +48,10 @@ static int TotalEnergy_ProfileEnabled(void)
 
 static double Calc_Ecore();
 static double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter);
-static double Calc_Ekin();
-static double Calc_Ena(const OpenMXVnaMatrixViews *vna);
-static double Calc_Enl();
-static double Calc_ECH();
+static double Calc_Ekin(const OpenMXElectronicViews *electronic);
+static double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic);
+static double Calc_Enl(const OpenMXElectronicViews *electronic);
+static double Calc_ECH(const OpenMXElectronicViews *electronic);
 static void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[]);
 static void Calc_Edc(double ECE[]);
 static double Calc_Ehub();   /* --- added by MJ  */
@@ -59,7 +59,7 @@ static double Calc_EdftD();  /* added by okuno */
 static double Calc_EdftD3(); /* added by Ellner */
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
 static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
-static void Energy_Decomposition(double ECE[]);
+static void Energy_Decomposition(double ECE[], const OpenMXElectronicViews *electronic);
 static void Energy_Decomposition_CWF(double ECE[]);
 #if OPENMX_GPU_HIP
 static int TotalEnergyUseOpenMP(void);
@@ -116,7 +116,7 @@ static int TotalEnergyUseOpenACC(void)
 
 
 
-double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[])
+double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic)
 { 
   double time0;
   double TStime,TEtime;
@@ -188,7 +188,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
   dtime(&stime);
 
-  if (F_Kin_flag==1)  ECE[2] = Calc_Ekin();
+  if (F_Kin_flag==1)  ECE[2] = Calc_Ekin(electronic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -201,7 +201,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
   dtime(&stime);
 
-  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(vna);
+  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(vna, electronic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -214,7 +214,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
   dtime(&stime);
 
-  if (F_NL_flag==1)  ECE[4] = Calc_Enl();
+  if (F_NL_flag==1)  ECE[4] = Calc_Enl(electronic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -228,7 +228,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
   dtime(&stime);
 
   if (core_hole_state_flag==1 && F_CH_flag==1){
-    ECE[14] = Calc_ECH();
+    ECE[14] = Calc_ECH(electronic);
   }
 
   dtime(&etime);
@@ -342,7 +342,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
   if (Energy_Decomposition_flag==1){
 
-    Energy_Decomposition(ECE);
+    Energy_Decomposition(ECE, electronic);
   }
 
   /*********************************************************
@@ -375,8 +375,12 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
 
 
-double Calc_Ekin()
+double Calc_Ekin(const OpenMXElectronicViews *electronic)
 {
+  double *****CntH0=electronic->CntH0;
+  double ******DM=electronic->DM;
+  double *****H0=electronic->H0;
+
   /****************************************************
           calculate the kinetic energy, Ekin
   ****************************************************/
@@ -537,8 +541,11 @@ double Calc_Ekin()
 
 
 
-double Calc_Ena(const OpenMXVnaMatrixViews *vna)
+double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH0=electronic->CntH0;
+  double ******DM=electronic->DM;
+
   /****************************************************
      calculate the neutral atom potential energy, Ena
   ****************************************************/
@@ -705,8 +712,14 @@ double Calc_Ena(const OpenMXVnaMatrixViews *vna)
 
 
 
-double Calc_Enl()
+double Calc_Enl(const OpenMXElectronicViews *electronic)
 {
+  double *****CntH0=electronic->CntH0;
+  double ******DM=electronic->DM;
+  double *****HNL=electronic->HNL;
+  double ******iDM=electronic->iDM;
+  double *****iHNL0=electronic->iHNL0;
+
   /****************************************************
      calculate the non-local pseudo potential energy
   ****************************************************/
@@ -877,8 +890,13 @@ double Calc_Enl()
 }
 
 
-double Calc_ECH()
+double Calc_ECH(const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****HCH=electronic->HCH;
+  double ******iDM=electronic->iDM;
+  double *****iHCH=electronic->iHCH;
+
   /****************************************************
     calculate the penalty term to create a core-hole 
   ****************************************************/
@@ -4263,8 +4281,15 @@ double Calc_EdftD3()
 /* Ellner */
 
 
-void Energy_Decomposition(double ECE[])
+void Energy_Decomposition(double ECE[], const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****H=electronic->H;
+  double *****H0=electronic->H0;
+  double *****OLP=electronic->OLP;
+  double ******iDM=electronic->iDM;
+  double *****iHNL=electronic->iHNL;
+
   static int firsttime=1;
   int i,spin,spinmax,XC_P_switch;
   int numS,numR,My_GNum,BN_AB,max_ene;

@@ -75,9 +75,9 @@ static int SetH_ProfileEnabled(void)
         }                                                                                                              \
     } while (0)
 
-void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind);
-static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind);
-static void Set_Hamiltonian_Base_OpenACC(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H);
+void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
+static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind, const OpenMXElectronicViews *electronic);
+static void Set_Hamiltonian_Base_OpenACC(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H, const OpenMXElectronicViews *electronic);
 static size_t Set_Hamiltonian_Base_OpenACC_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, int myid);
 static void *Set_Hamiltonian_malloc(size_t bytes, const char *name, int myid);
@@ -245,9 +245,9 @@ static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixE
                                                                                               int myid,
                                                                                               int direct_mask);
 static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work,
-                                                            int Cnt_kind, int myid);
+                                                            int Cnt_kind, int myid, const OpenMXElectronicViews *electronic);
 static int Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work);
-static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work);
+static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work, const OpenMXElectronicViews *electronic);
 
 static void Set_Hamiltonian_abort(const char *where, const char *message, int myid)
 {
@@ -335,9 +335,9 @@ typedef struct {
 } SetHamiltonianGpuTurnPlan;
 
 static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
-                                                  int Cnt_kind, int myid);
+                                                  int Cnt_kind, int myid, const OpenMXElectronicViews *electronic);
 static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atomic, const SetHamiltonianGpuTurnPlan *plan,
-                                                    int Cnt_kind, int myid);
+                                                    int Cnt_kind, int myid, const OpenMXElectronicViews *electronic);
 
 typedef struct {
     int valid;
@@ -1343,8 +1343,15 @@ void Set_Hamiltonian_GpuSolver_SetMP(int *MP)
     }
 }
 
-void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted)
+void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****CntOLP=electronic->CntOLP;
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+  double *****iCntHNL=electronic->iCntHNL;
+  double *****iHNL=electronic->iHNL;
+
     SetHamiltonianGpuSolverPackedCache *cache = &Set_Hamiltonian_GpuSolver_Cache;
     int myid, numprocs;
     int local_selected;
@@ -1540,8 +1547,17 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
 
 double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
-                       double ***** H)
+                       double ***** H, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****CntOLP=electronic->CntOLP;
+  double *****HCH=electronic->HCH;
+  double *****H_Hub=electronic->H_Hub;
+  double *****H_XMCD=electronic->H_XMCD;
+  double *****OLP=electronic->OLP;
+  double *****iCntHNL=electronic->iCntHNL;
+  double *****iHNL=electronic->iHNL;
+
     /***************************************************************
       Cnt_kind
         0:  Uncontracted Hamiltonian
@@ -1599,7 +1615,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
     SETH_PROF_T0(prof_t0);
 
     if (use_base_openacc) {
-        Set_Hamiltonian_Base_OpenACC(vna, SCF_iter,H0,HNL,H);
+        Set_Hamiltonian_Base_OpenACC(vna, SCF_iter,H0,HNL,H, electronic);
     }
 
     /* spin non-collinear */
@@ -1742,7 +1758,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
   *****************************************************/
 
     SETH_PROF_T0(prof_t0);
-    Calc_MatrixElements_dVH_Vxc_VNA(atomic, Cnt_kind);
+    Calc_MatrixElements_dVH_Vxc_VNA(atomic, Cnt_kind, electronic);
     SETH_PROF_ADD(matel, prof_t0);
 
     /* for time */
@@ -1768,7 +1784,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
     return time0;
 }
 
-static void Set_Hamiltonian_Stream_PairCPU(int,int,int,int);
+static void Set_Hamiltonian_Stream_PairCPU(int,int,int,int, const OpenMXElectronicViews *electronic);
 typedef struct {int n0,n1,points;} SetHCapacityPair;
 typedef struct {int spins,max_no;double volume;} SetHCapacityParameters;
 static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,void *const v[],int gpu)
@@ -1799,8 +1815,11 @@ static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,vo
 /* Enter once per quadrature phase on all ranks. Only ranks whose existing
    owner/streamed path declined pack work; completed ranks can lend GPUs.
    Bounded host tiles avoid duplicating a full orbital cache on the host. */
-static int SetH_capacity_recover(int cnt_kind,int local_done,int rank)
+static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     int enabled=scf_eigen_lib_flag==GPUSOLVER && Set_Hamiltonian_MatrixElements_OpenACC_Enabled();
     int pending=enabled && !local_done,any=0;
     MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -1846,7 +1865,7 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank)
             if(!a || !b || !weights || !out) {
                 /* Earlier tiles have already been added: retry just these
                    pairs on the CPU, never add the full Hamiltonian twice. */
-                for(int i=0;i<n;i++)Set_Hamiltonian_Stream_PairCPU(cnt_kind,mc_table[first+i],h_table[first+i],rank);
+                for(int i=0;i<n;i++)Set_Hamiltonian_Stream_PairCPU(cnt_kind,mc_table[first+i],h_table[first+i],rank, electronic);
                 first+=n;n=0;
             }
         }
@@ -1877,7 +1896,7 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank)
     free(mc_table);free(h_table);return local_done || (pending && ready);
 }
 
-void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind)
+void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
     int myid;
     int prefer_streaming = 0,local_done=0;
@@ -1972,8 +1991,8 @@ void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_ki
         /* Once the group chooses streaming, an allocation failure falls
            back to the CPU, never to a competing whole-rank GPU buffer.
            The on-the-fly tiles come first: no tables to stream at all. */
-        local_done=Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan,Cnt_kind,myid) ||
-            Set_Hamiltonian_Stream_MatrixElements(&plan,Cnt_kind,myid);
+        local_done=Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan,Cnt_kind,myid, electronic) ||
+            Set_Hamiltonian_Stream_MatrixElements(&plan,Cnt_kind,myid, electronic);
     }
     else if (plan.use_gpu && Set_Hamiltonian_GpuSerialWaves()) {
         /* The orbital/topology cache is host-only.  Build it concurrently on
@@ -1982,7 +2001,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_ki
            every wave. */
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
-        Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
+        Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid, electronic);
         for (int turn = 0; turn < plan.turns; turn++) {
             MPI_Barrier(plan.device_comm);
             if (plan.turn == turn) {
@@ -1992,16 +2011,16 @@ void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_ki
             }
             MPI_Barrier(plan.device_comm);
         }
-        Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
+        Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work, electronic);
     }
     else if (plan.use_gpu && plan.turn == 0) {
         Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache(Cnt_kind, myid, plan.resident_admit_mask);
         if (plan.resident_admit_mask != 0) Set_Hamiltonian_ME_EnterDeviceCache(&plan);
-        Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid);
+        Set_Hamiltonian_Prepare_OpenACC_MatrixElements(&work, Cnt_kind, myid, electronic);
         local_done = Set_Hamiltonian_Run_OpenACC_MatrixElements(&work);
         acc_wait_all();
         acc_clear_freelists();
-        Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
+        Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work, electronic);
     }
     else {
         /* A rank's full orbital table can exceed the entire device.  In
@@ -2011,10 +2030,10 @@ void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_ki
         /* a rank without resident tables: the on-the-fly tiles on the
            device beside the resident ranks, before the CPU */
         if (plan.selected && plan.device_comm != MPI_COMM_NULL) {
-            streamed = Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan, Cnt_kind, myid);
+            streamed = Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan, Cnt_kind, myid, electronic);
         }
         if (!streamed && plan.selected && plan.device_comm != MPI_COMM_NULL && plan.concurrent_ranks == 0) {
-            streamed = Set_Hamiltonian_Stream_MatrixElements(&plan, Cnt_kind, myid);
+            streamed = Set_Hamiltonian_Stream_MatrixElements(&plan, Cnt_kind, myid, electronic);
         }
         local_done=streamed;
     }
@@ -2024,8 +2043,8 @@ capacity_recovery:
         Set_Hamiltonian_ME_ReleaseDeviceCache(0);
         Set_Hamiltonian_ME_Cache.resident_blocked = 1;
     }
-    if (!SetH_capacity_recover(Cnt_kind,local_done,myid))
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind);
+    if (!SetH_capacity_recover(Cnt_kind,local_done,myid, electronic))
+        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind, electronic);
 
     if (plan.release_resident) {
         /* A registered GPU phase can no longer reach its full concurrency
@@ -2463,8 +2482,11 @@ static void SetH_base_capacity_kernel(size_t first,size_t n,const void *paramete
     }
 }
 
-static void Set_Hamiltonian_Base_OpenACC(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H)
+static void Set_Hamiltonian_Base_OpenACC(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H, const OpenMXElectronicViews *electronic)
 {
+  double *****HCH=electronic->HCH;
+  double *****H_Hub=electronic->H_Hub;
+
     int Mc_AN, h_AN, Gc_AN, Gh_AN, Cwan, Hwan;
     int numprocs, myid;
     int spin_count, pair_count, pair;
@@ -2874,8 +2896,11 @@ static SetHamiltonianMatrixElementsCache *Set_Hamiltonian_Ensure_OpenACC_MatrixE
 }
 
 static void Set_Hamiltonian_Prepare_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work,
-                                                            int Cnt_kind, int myid)
+                                                            int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     double start = 0.0, finish = 0.0;
     if (SetH_ProfileEnabled()) dtime(&start);
 
@@ -3225,8 +3250,11 @@ static int Set_Hamiltonian_Run_OpenACC_MatrixElements(SetHamiltonianMatrixElemen
     return 1;
 }
 
-static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work)
+static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixElementsWork *work, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     SetHamiltonianMatrixElementsCache *cache = work->cache;
     const int spin_count = cache->spin_count;
     const int pair_count = cache->pair_count;
@@ -3269,8 +3297,11 @@ static void Set_Hamiltonian_Finish_OpenACC_MatrixElements(SetHamiltonianMatrixEl
 /* Fallback for a single pair larger than the streaming budget, or for a
    recoverable CUDA failure.  The initial H and the grid accumulation order
    agree with the device kernel; no partially computed batch is committed. */
-static void Set_Hamiltonian_Stream_PairRangeCPU(int Cnt_kind, int Mc_AN, int h_AN, int first_nolg, int nolg, int myid)
+static void Set_Hamiltonian_Stream_PairRangeCPU(int Cnt_kind, int Mc_AN, int h_AN, int first_nolg, int nolg, int myid, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     const int Gc_AN = M2G[Mc_AN];
     const int Gh_AN = natn[Gc_AN][h_AN];
     const int Mh_AN = F_G2M[Gh_AN];
@@ -3297,9 +3328,9 @@ static void Set_Hamiltonian_Stream_PairRangeCPU(int Cnt_kind, int Mc_AN, int h_A
     }
 }
 
-static void Set_Hamiltonian_Stream_PairCPU(int Cnt_kind, int Mc_AN, int h_AN, int myid)
+static void Set_Hamiltonian_Stream_PairCPU(int Cnt_kind, int Mc_AN, int h_AN, int myid, const OpenMXElectronicViews *electronic)
 {
-    Set_Hamiltonian_Stream_PairRangeCPU(Cnt_kind, Mc_AN, h_AN, 0, NumOLG[Mc_AN][h_AN], myid);
+    Set_Hamiltonian_Stream_PairRangeCPU(Cnt_kind, Mc_AN, h_AN, 0, NumOLG[Mc_AN][h_AN], myid, electronic);
 }
 
 static void Set_Hamiltonian_Stream_FreeBatch(SetHamiltonianMatrixElementsCache *cache)
@@ -3877,8 +3908,10 @@ static void Set_Hamiltonian_OTF_GridIndices(int pair_count, const int *d_NOLG, c
 }
 
 static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atomic, const SetHamiltonianGpuTurnPlan *plan,
-                                                    int Cnt_kind, int myid)
+                                                    int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+
     const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
     const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
     const size_t vpot_len = (size_t)My_NumGridC;
@@ -4015,7 +4048,7 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atom
             if (bt->pair_count == 0) {
                 /* a single pair beyond the workspace: the CPU */
                 SETH_OTF_PROFILE_ADD(pack_seconds);
-                Set_Hamiltonian_Stream_PairCPU(Cnt_kind, otf_plan->mc_table[bt->first], otf_plan->h_table[bt->first], myid);
+                Set_Hamiltonian_Stream_PairCPU(Cnt_kind, otf_plan->mc_table[bt->first], otf_plan->h_table[bt->first], myid, electronic);
                 SETH_OTF_PROFILE_ADD(cpu_seconds);
                 cpu_pairs++;
                 continue;
@@ -4114,7 +4147,7 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atom
                     for (int q = bt->first; q < bt->last; q++) {
                         const int Mc_AN = otf_plan->mc_table[q], h_AN = otf_plan->h_table[q];
                         Set_Hamiltonian_Stream_PairRangeCPU(Cnt_kind, Mc_AN, h_AN, bt->first_nolg,
-                            bt->compact_orbs0 ? (int)bt->total_nolg : NumOLG[Mc_AN][h_AN], myid);
+                            bt->compact_orbs0 ? (int)bt->total_nolg : NumOLG[Mc_AN][h_AN], myid, electronic);
                     }
                     cpu_pairs += bt->pair_count;
                     SETH_OTF_PROFILE_ADD(cpu_seconds);
@@ -4954,8 +4987,11 @@ int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_ki
 }
 
 static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
-                                                  int Cnt_kind, int myid)
+                                                  int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     const char *enabled = getenv("OPENMX_SETHAM_STREAMING");
     const char *limit_env = getenv("OPENMX_SETHAM_STREAM_MB");
     const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
@@ -5082,7 +5118,7 @@ static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan
         }
         if (last == first) {
             SETH_STREAM_PROFILE_ADD(pack_seconds);
-            Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[first], h_table[first], myid);
+            Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[first], h_table[first], myid, electronic);
             SETH_STREAM_PROFILE_ADD(cpu_seconds);
             cpu_pairs++;
             first++;
@@ -5175,13 +5211,13 @@ static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan
             SETH_STREAM_PROFILE_ADD(device_seconds);
             if (status < 0) Set_Hamiltonian_abort("stream matrix elements", "unrecoverable CUDA failure", myid);
             if (status == 0) {
-                Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work);
+                Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work, electronic);
             }
             else {
                 /* H is only committed after a successful device result. */
                 free(work.hbuf);
                 for (int p = first; p < last; p++)
-                    Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[p], h_table[p], myid);
+                    Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[p], h_table[p], myid, electronic);
                 cpu_pairs += last - first;
                 SETH_STREAM_PROFILE_ADD(cpu_seconds);
             }
@@ -5274,8 +5310,11 @@ static void Set_Hamiltonian_ME_Pair_Blocked_Spin0(int Mc_AN, int h_AN, int Mh_AN
     }
 }
 
-static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind)
+static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****H=electronic->H;
+
     int    Mc_AN, Gc_AN, Mh_AN, h_AN, Gh_AN;
     int    Nh0, Nh1, Nh2, Nh3;
     int    Nc0, Nc1, Nc2, Nc3;

@@ -10,6 +10,7 @@
 #endif
 #include <ctype.h>
 #include "openmx_common.h"
+#include "openmx_electronic.h"
 #include "openmx_precision.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_mgpu_band_plan.h"
@@ -53,6 +54,8 @@ void Get_Euler_Rotation_Angle(
 
 void Input_std(char *file, OpenMXCoreContext *core)
 {
+  OpenMXElectronicViews electronic_storage;
+
   FILE *fp,*fp_check,*fp1;
   int i,j,k,itmp;
   int num_wannier_total_projectors;
@@ -1337,7 +1340,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
   input_doublev("scf.fixed.grid",3,scf_fixed_origin,r_vec);
 
   TRAN_Input_std(mpi_comm_level1, Solver, SpinP_switch, filepath, kB, 
-                 eV2Hartree, E_Temp, &output_hks);
+                 eV2Hartree, E_Temp, &output_hks, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* YTL-start */
   /*************************************************************************

@@ -45,7 +45,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                      double Eele0[2], double Eele1[2]);
 
 static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ***** ImNL, double **** OLP0,
-                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2]);
+                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
 
 static void Save_DOS_Col(double ****** Residues, double **** OLP0, double *** EVal, int * Msize);
 static void Save_DOS_NonCol(dcomplex ****** Residues, double **** OLP0, double ** EVal, int * Msize);
@@ -1925,7 +1925,7 @@ static int DCNonCol_GpuSolve(int num, int capacity, double **S_DC, dcomplex **H_
 }
 
 double Divide_Conquer(char * mode, int SCF_iter, double ***** Hks, double ***** ImNL, double **** OLP0,
-                      double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2])
+                      double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
 {
     double time0;
 
@@ -1942,7 +1942,7 @@ double Divide_Conquer(char * mode, int SCF_iter, double ***** Hks, double ***** 
     ****************************************************/
 
     else if (SpinP_switch == 3) {
-        time0 = DC_NonCol(mode, SCF_iter, Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1);
+        time0 = DC_NonCol(mode, SCF_iter, Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1, electronic);
     }
 
     return time0;
@@ -3192,8 +3192,10 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
 
 #pragma optimization_level 2
 static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ***** ImNL, double **** OLP0,
-                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2])
+                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
     static int      firsttime = 1;
     int             Mc_AN, Gc_AN, i, Gi, wan, wanA, wanB, Anum;
     int             size1, size2, num, NUM, NUM1, n2, Cwan, Hwan;

@@ -19,14 +19,14 @@
 #include "lapack_prototypes.h"
 
 
-static void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 );
-static void Pulay_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 );
-static void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 );
-static void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_iter0 );
+static void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Pulay_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Inverse(int n, double **a, double **ia);
 
 
-double Mixing_H( int MD_iter, int SCF_iter, int SCF_iter0 )
+double Mixing_H( int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double time0;
   double TStime,TEtime;
@@ -44,7 +44,7 @@ double Mixing_H( int MD_iter, int SCF_iter, int SCF_iter0 )
   *******************************************************/
 
   if ( SCF_iter<=(Pulay_SCF-1) ){
-    Simple_Mixing_H( MD_iter, SCF_iter, SCF_iter0 );
+    Simple_Mixing_H( MD_iter, SCF_iter, SCF_iter0 , electronic);
   }
 
   /*******************************************************
@@ -55,7 +55,7 @@ double Mixing_H( int MD_iter, int SCF_iter, int SCF_iter0 )
 
   else{
 
-    Pulay_Mixing_H( MD_iter, SCF_iter, SCF_iter0 );
+    Pulay_Mixing_H( MD_iter, SCF_iter, SCF_iter0 , electronic);
 
     /*
     Pulay_Mixing_H_with_One_Shot_Hessian( MD_iter, SCF_iter, SCF_iter0 );
@@ -79,8 +79,15 @@ double Mixing_H( int MD_iter, int SCF_iter, int SCF_iter0 )
 
 
 
-void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 )
+void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,Cwan,Hwan,h_AN,Gh_AN,i,j,spin;
   int dim,m,n,flag_nan;
   double sum,my_sum,tmp1,tmp2,alpha;
@@ -991,8 +998,15 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 )
 
 
 
-void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_iter0 )
+void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,Cwan,Hwan,h_AN,Gh_AN,i,j,spin;
   int dim,m,n,flag_nan;
   double my_sum,tmp1,tmp2,alpha;
@@ -1947,8 +1961,15 @@ static void MixH_RotatePtr6(double ******arr, int hi)
 
 /* Compute the fresh residual into the (already rotated) host slot 0 and,
    when dst is non-NULL, the packed flat image of that slot. */
-static void MixH_Residual0Fused(double *dst)
+static void MixH_Residual0Fused(double *dst, const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,spin;
 
   if (SpinP_switch==3){
@@ -2023,8 +2044,11 @@ static void MixH_Residual0Fused(double *dst)
 }
 
 /* pack the host jagged residual slot m into a flat buffer (seeding) */
-static void MixH_PackResidualSlot(int m, double *dst)
+static void MixH_PackResidualSlot(int m, double *dst, const OpenMXElectronicViews *electronic)
 {
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+
   int Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,spin;
 
   if (SpinP_switch==3){
@@ -2110,8 +2134,13 @@ static void MixH_PackMetricW(double **metric, double *dst)
 
 /* H = sum_m coes[m+1]*HisH1[m] + alpha*r  (and iHNL analogously for NC) */
 static void MixH_MixFromHistory(int dim, double alpha, const double *coes,
-                                const double *r_flat)
+                                const double *r_flat, const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,spin,m;
 
   if (SpinP_switch==3){
@@ -2182,8 +2211,13 @@ static void MixH_MixFromHistory(int dim, double alpha, const double *coes,
 }
 
 /* save the mixed Hamiltonian into the (already rotated) history slot 0 */
-static void MixH_SaveHistory0(void)
+static void MixH_SaveHistory0(const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,spin;
 
   if (SpinP_switch==3){
@@ -2656,8 +2690,11 @@ static void MixH_IncBuild(int nslot)
 
 /* compute the block Gram row of logical slot mlog against logical slots
    0..nmax and store it (symmetrically) under physical indexing */
-static void MixH_IncComputeRow(int mlog, int nmax)
+static void MixH_IncComputeRow(int mlog, int nmax, const OpenMXElectronicViews *electronic)
 {
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+
   int Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,n,spin;
   const int nslot = MixH_inc.nslot;
   const int nblk = MixH_inc.nblk;
@@ -2750,8 +2787,15 @@ static void MixH_IncComputeRow(int mlog, int nmax)
 
 /* fused optimum-residual + Hamiltonian mixing sweep:
    H = sum_m coes[m+1]*HisH1[m] + alpha * sum_m coes[m+1]*ResidualH1[m] */
-static void MixH_IncMixSweep(int dim, double alpha, const double *coes)
+static void MixH_IncMixSweep(int dim, double alpha, const double *coes, const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,m,spin;
 
   if (SpinP_switch==3){
@@ -2828,8 +2872,13 @@ static void MixH_IncMixSweep(int dim, double alpha, const double *coes)
   }
 }
 
-static void Pulay_Mixing_H_Inc(int MD_iter, int SCF_iter, int SCF_iter0, int dim)
+static void Pulay_Mixing_H_Inc(int MD_iter, int SCF_iter, int SCF_iter0, int dim, const OpenMXElectronicViews *electronic)
 {
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+
   int Mc_AN,Gc_AN,Cwan,i,m,n,flag_nan;
   int seed;
   double alpha,d;
@@ -2883,18 +2932,18 @@ static void Pulay_Mixing_H_Inc(int MD_iter, int SCF_iter, int SCF_iter0, int dim
 
   MixH_RotatePtr6(ResidualH1, dim);
   if (SpinP_switch==3) MixH_RotatePtr6(ResidualH2, dim);
-  MixH_Residual0Fused(NULL);
+  MixH_Residual0Fused(NULL, electronic);
 
   if (seed){
     for (m=0; m<MixH_inc.nslot; m++) MixH_inc.perm[m] = m;
-    for (m=0; m<dim; m++) MixH_IncComputeRow(m, m);
+    for (m=0; m<dim; m++) MixH_IncComputeRow(m, m, electronic);
     MixH_inc.valid = 1;
   }
   else{
     int last = MixH_inc.perm[MixH_inc.nslot-1];
     for (m=MixH_inc.nslot-1; 0<m; m--) MixH_inc.perm[m] = MixH_inc.perm[m-1];
     MixH_inc.perm[0] = last;
-    MixH_IncComputeRow(0, dim-1);
+    MixH_IncComputeRow(0, dim-1, electronic);
   }
   MixH_inc.last_scf_iter = SCF_iter;
 
@@ -2991,13 +3040,13 @@ static void Pulay_Mixing_H_Inc(int MD_iter, int SCF_iter, int SCF_iter0, int dim
   else
     alpha = 1.0;
 
-  MixH_IncMixSweep(dim, alpha, coes);
+  MixH_IncMixSweep(dim, alpha, coes, electronic);
 
   /* Hamiltonian history shift (pointer rotation) and save of the mixed H */
 
   MixH_RotatePtr6(HisH1, dim);
   if (SpinP_switch==3) MixH_RotatePtr6(HisH2, dim);
-  MixH_SaveHistory0();
+  MixH_SaveHistory0(electronic);
 
   /* freeing of the host work arrays */
 
@@ -3022,8 +3071,13 @@ static void Pulay_Mixing_H_Inc(int MD_iter, int SCF_iter, int SCF_iter0, int dim
   (void)SCF_iter0;
 }
 
-static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim)
+static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim, const OpenMXElectronicViews *electronic)
 {
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+
   int Mc_AN,Gc_AN,Cwan,i,m,n,flag_nan;
   int seed;
   double alpha,d;
@@ -3076,7 +3130,7 @@ static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim
 
   MixH_RotatePtr6(ResidualH1, dim);
   if (SpinP_switch==3) MixH_RotatePtr6(ResidualH2, dim);
-  MixH_Residual0Fused(MixH_gpu.h_flat);
+  MixH_Residual0Fused(MixH_gpu.h_flat, electronic);
 
   /* bring the device ring up to date */
 
@@ -3085,7 +3139,7 @@ static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim
     if (0U < MixH_gpu.L){
       MixH_Upload(0);
       for (m=1; m<dim; m++){
-        MixH_PackResidualSlot(m, MixH_gpu.h_flat);
+        MixH_PackResidualSlot(m, MixH_gpu.h_flat, electronic);
         MixH_Upload(m);
       }
     }
@@ -3202,13 +3256,13 @@ static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim
   else
     alpha = 1.0;
 
-  MixH_MixFromHistory(dim, alpha, coes, MixH_gpu.h_r);
+  MixH_MixFromHistory(dim, alpha, coes, MixH_gpu.h_r, electronic);
 
   /* shift the Hamiltonian history (pointer rotation) and save the mixed H */
 
   MixH_RotatePtr6(HisH1, dim);
   if (SpinP_switch==3) MixH_RotatePtr6(HisH2, dim);
-  MixH_SaveHistory0();
+  MixH_SaveHistory0(electronic);
 
   /* freeing of the host work arrays */
 
@@ -3233,8 +3287,15 @@ static void Pulay_Mixing_H_GPU(int MD_iter, int SCF_iter, int SCF_iter0, int dim
   (void)SCF_iter0;
 }
 
-void Pulay_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 )
+void Pulay_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,Cwan,Hwan,h_AN,Gh_AN,i,j,spin;
   int dim,m,n,flag_nan,tno;
   double my_sum,tmp1,tmp2,alpha,max_diff,d;
@@ -3258,11 +3319,11 @@ void Pulay_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 )
     MPI_Comm_rank(mpi_comm_level1,&myid_mixh);
     tier = MixH_GpuPreflight(MD_iter, myid_mixh);
     if (tier == 1){
-      Pulay_Mixing_H_GPU(MD_iter, SCF_iter, SCF_iter0, dim);
+      Pulay_Mixing_H_GPU(MD_iter, SCF_iter, SCF_iter0, dim, electronic);
       return;
     }
     if (tier == 2){
-      Pulay_Mixing_H_Inc(MD_iter, SCF_iter, SCF_iter0, dim);
+      Pulay_Mixing_H_Inc(MD_iter, SCF_iter, SCF_iter0, dim, electronic);
       return;
     }
   }
@@ -3834,8 +3895,19 @@ void Pulay_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 )
 
 
 
-void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 )
+void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******HisH2=electronic->HisH2;
+  double ******ResidualDM=electronic->ResidualDM;
+  double ******ResidualH1=electronic->ResidualH1;
+  double ******ResidualH2=electronic->ResidualH2;
+  double ******iDM=electronic->iDM;
+  double *****iHNL=electronic->iHNL;
+  double ******iResidualDM=electronic->iResidualDM;
+
   int m,Mc_AN,Gc_AN,Cwan,spin,dim;
   int i,j,h_AN,Gh_AN,Hwan,ian,jan,n;
   double w1,w2,My_Norm,Norm;

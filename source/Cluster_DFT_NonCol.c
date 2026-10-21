@@ -2941,7 +2941,7 @@ static double Calc_Oscillator_Strength( int n, int n2, int UMOmax, int Nocc[2], 
 
 
 static void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN, int *MP,
-			       int *is2, int *ie2, dcomplex *EVec1, double *ko);
+			       int *is2, int *ie2, dcomplex *EVec1, double *ko, const OpenMXElectronicViews *electronic);
 
 double Calc_DM_Cluster_non_collinear_ScaLAPACK(
     int calc_flag,
@@ -2959,7 +2959,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
     double *ko,
     double *DM1,
     double *Work1,
-    dcomplex *EVec1 );
+    dcomplex *EVec1 , const OpenMXElectronicViews *electronic);
 
 
 double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
@@ -2975,7 +2975,7 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
     double *ko,
     double *DM1,
     double *Work1,
-    dcomplex *EVec1 );
+    dcomplex *EVec1 , const OpenMXElectronicViews *electronic);
 
 
 
@@ -3008,8 +3008,10 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
 		   double *DM1,
 		   int size_H1,
                    dcomplex *EVec1,
-                   double *Work1)
+                   double *Work1, const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
   int mgpu_scope_previous = openmx_mgpu_scope_enter(
       scf_eigen_lib_flag == GPUSOLVER && !gpusolver2_flag);
 
@@ -3996,38 +3998,38 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
       /* DM */
 
       time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
       time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 2, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
       time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 3, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
       time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 4, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
       time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 5, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
       time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 6, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                        CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
       /* EDM */
 
       if (Cnt_switch==1){
 
         time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 7, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
         time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 8, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
         time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 9, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
         time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 10, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1);
+                                                          CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
       }
 
       /* calculation of ParDM */
@@ -4035,7 +4037,7 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
       if ( strcasecmp(mode,"ParDM")==0 ){
         for (i=1; i<=6; i++){
           time6 += Calc_ParDM_Cluster_non_collinear_ScaLAPACK( i, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
-                                                               ko, DM1, Work1, EVec1);
+                                                               ko, DM1, Work1, EVec1, electronic);
         }
       }
     }
@@ -4401,7 +4403,7 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
     Save_LCAO_NonCol(n,n2,MaxN,MP,CntOLP,EVec1,ko);
   }
   else if ( strcasecmp(mode,"xanes")==0 ){
-    Calc_XANES_NonCol(atomic, n,n2,MaxN,MP,is2,ie2,EVec1,ko);
+    Calc_XANES_NonCol(atomic, n,n2,MaxN,MP,is2,ie2,EVec1,ko, electronic);
   }
 
   if (measure_time){
@@ -4452,8 +4454,10 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
     double *ko,
     double *DM1,
     double *Work1,
-    dcomplex *EVec1 )
+    dcomplex *EVec1 , const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int i,j,k,po,p,GA_AN,MA_AN,wanA,tnoA,Anum;
   int LB_AN,GB_AN,wanB,tnoB,Bnum,i1,j1,ID;
   double max_x=60.0,dum;
@@ -4709,8 +4713,11 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
     double *ko,
     double *DM1,
     double *Work1,
-    dcomplex *EVec1 )
+    dcomplex *EVec1 , const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+  double *****iParDM=electronic->iParDM;
+
   int i,j,k,po,p,GA_AN,MA_AN,wanA,tnoA,Anum;
   int LB_AN,GB_AN,wanB,tnoB,Bnum,i1,j1,ID;
   double windowF_Eps = 1.0e-13;
@@ -5425,12 +5432,13 @@ void Save_LCAO_NonCol(int n, int n2, int MaxN, int *MP, double ****OLP0, dcomple
 
 
 void Calc_XANES_NonCol(const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN, int *MP,
-			int *is2, int *ie2, dcomplex *EVec1, double *ko)
+			int *is2, int *ie2, dcomplex *EVec1, double *ko, const OpenMXElectronicViews *electronic)
 
 #define C1_ref(i,j) C1[ (n2)*(i)+(j) ]
 #define C2_ref(i,j) C2[ (n2)*(i)+(j) ]
 
 {
+  double *****OLP=electronic->OLP;
   int ii,jj,ia,jb,TNO1,TNO2,Rn;
   int spin,i,j,iemin,iemax,GA_AN,k,l;
   int Anum,Bnum,tnoA,tnoB,wanA,wanB;

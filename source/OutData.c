@@ -53,7 +53,7 @@ static void out_LNAO();
 static void out_LNBO();
 static void out_Cluster_NBO(); /* added by T.Ohwaki */
 static void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile);
-static void out_Partial_Charge_Density();
+static void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic);
 static void Set_Partial_Density_Grid(double *****CDM);
 static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2);
 static void Print_CubeTitle2(FILE *fp,int N1,int N2,int N3,double *sc_org,int atomnum_sc,int *a_sc);
@@ -70,7 +70,7 @@ static void Print_VectorData_bin(FILE *fp, char fext[],
                                  double *data0, double *data1,
                                  double *data2, double *data3);
 
-double OutData(const OpenMXAtomicViews *atomic, char *inputfile)
+double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic)
 {
   char operate[YOUSO10];
   int i,c,fd;
@@ -170,7 +170,7 @@ double OutData(const OpenMXAtomicViews *atomic, char *inputfile)
   *************************************************/
 
   if ( cal_partial_charge ){
-    out_Partial_Charge_Density();
+    out_Partial_Charge_Density(electronic);
   }
 
   /* divide-conquer, gdc, or Krylov */
@@ -4199,8 +4199,10 @@ static void Print_CubeCData_MO(FILE *fp, dcomplex *data,char *op)
 
 
 
-void out_Partial_Charge_Density()
+void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int ct_AN,spe,i1,i2,i3,GN,i,j,k;
   int MN;
   double x,y,z,vx,vy,vz;

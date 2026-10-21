@@ -56,8 +56,11 @@ static void MixDM_RotateSlots1(double ******arr, int nslot)
 
 
 
-void DIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM)
+void DIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double ******iDM=electronic->iDM;
+
   static int firsttime=1;
   int spin,Mc_AN,Gc_AN,wan1,TNO1,h_AN,Gh_AN;
   int wan2,TNO2,i,j,k,NumMix,NumSlide;

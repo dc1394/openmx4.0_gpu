@@ -32,28 +32,28 @@ static double Band_DFT_Dosout_Col(
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP);
+                           double ****CntOLP, const OpenMXElectronicViews *electronic);
 
 static double Band_DFT_DosoutGauss_Col(
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP);
+                           double ****CntOLP, const OpenMXElectronicViews *electronic);
 
 static double Band_DFT_Dosout_NonCol(
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP);
+                           double ****CntOLP, const OpenMXElectronicViews *electronic);
 
 static double Band_DFT_DosoutGauss_NonCol(
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP);
+                           double ****CntOLP, const OpenMXElectronicViews *electronic);
 
 
 
@@ -61,28 +61,28 @@ double Band_DFT_Dosout( int knum_i, int knum_j, int knum_k,
                         int SpinP_switch,
                         double *****nh,
                         double *****ImNL,
-                        double ****CntOLP)
+                        double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
   static double time0;
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && Dos_fileout){
 
-    time0 = Band_DFT_Dosout_Col( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP);
+    time0 = Band_DFT_Dosout_Col( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   else if ( (SpinP_switch==0 || SpinP_switch==1) && DosGauss_fileout){
 
-    time0 = Band_DFT_DosoutGauss_Col( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP);
+    time0 = Band_DFT_DosoutGauss_Col( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   else if (SpinP_switch==3 && Dos_fileout){
 
-    time0 = Band_DFT_Dosout_NonCol( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP);
+    time0 = Band_DFT_Dosout_NonCol( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   else if (SpinP_switch==3 && DosGauss_fileout){
 
-    time0 = Band_DFT_DosoutGauss_NonCol( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP);
+    time0 = Band_DFT_DosoutGauss_NonCol( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   return time0;
@@ -100,8 +100,10 @@ static double Band_DFT_DosoutGauss_Col(
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP)
+                           double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int i,j,k,spin,l,i1,j1,n1;
   int n, wanA;
   int *MP;
@@ -1444,8 +1446,10 @@ static double Band_DFT_DosoutGauss_NonCol(
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP)
+                           double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int i,j,k,spin,l,i1,j1,ik,n1;
   int n, wanA,ii1,jj1,m,n2;
   int *MP;
@@ -2791,8 +2795,10 @@ static double Band_DFT_Dosout_Col(
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP)
+                           double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int i,j,k,spin,l,i1,j1,n1,i3;
   int n, wanA;
   int *MP;
@@ -4695,8 +4701,10 @@ static double Band_DFT_Dosout_NonCol(
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP)
+                           double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int i,j,k,spin,l,i1,j1,n1;
   int n, wanA,ii1,jj1,m,n2;
   int *MP;

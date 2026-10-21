@@ -2386,7 +2386,7 @@ static void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, in
 			    int *SP_NZeros,
 			    int *SP_Atoms,
 			    double **EVec1,
-			    double *Work1);
+			    double *Work1, const OpenMXElectronicViews *electronic);
 
 static void Save_LCAO_Col( int n, int MaxN, int myid1, int *is2, int *ie2, 
 			   int *MP, double ****OLP0, double **EVec1, 
@@ -2419,7 +2419,7 @@ static double Calc_DM_Cluster_collinear(int myid0,
 					double *Work1,
 					double **EVec1, 
 					int *SP_NZeros,
-					int *SP_Atoms );
+					int *SP_Atoms , const OpenMXElectronicViews *electronic);
 
 static double Calc_ParDM_Cluster_collinear(
 					   int myid0,
@@ -2526,8 +2526,10 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
                    int *SP_NZeros,
                    int *SP_Atoms,
                    double **EVec1,
-                   double *Work1)
+                   double *Work1, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+
   int mgpu_scope_previous = openmx_mgpu_scope_enter(
       scf_eigen_lib_flag == GPUSOLVER && !gpusolver2_flag);
 
@@ -3572,7 +3574,7 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
 
     time6 += Calc_DM_Cluster_collinear( myid0,numprocs0,myid1,numprocs1,myworld1,
 					size_H1,is2,ie2,MP,n,MPI_CommWD1,Comm_World_StartID1,
-					CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms);
+					CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms, electronic);
 
     /****************************************************
                    calculation of ParDM
@@ -3950,7 +3952,7 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
   else if ( strcasecmp(mode,"xanes")==0 ){
     Calc_XANES_Col(atomic,  n,MaxN,myid1,ko,nh,CntOLP,CDM,EDM,Eele0,Eele1,myworld1,NPROCS_ID1,
                     Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,
-                    MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1);
+                    MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1, electronic);
   }
 
   else if ( strcasecmp(mode,"diag")==0 ){
@@ -4081,8 +4083,10 @@ double Calc_DM_Cluster_collinear(
     double *Work1,
     double **EVec1, 
     int *SP_NZeros,
-    int *SP_Atoms )
+    int *SP_Atoms , const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int spin,i,j,i0,j0,k,kmin,kmax,po,p,GA_AN,MA_AN,wanA,tnoA,Anum;
   int LB_AN,GB_AN,wanB,tnoB,Bnum,i1,j1,ID;
   double max_x=60.0,dum;
@@ -5276,8 +5280,10 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 		     int *SP_NZeros,
 		     int *SP_Atoms,
 		     double **EVec1,
-		     double *Work1)
+		     double *Work1, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP=electronic->OLP;
+
   int spin,i,j,iemin,iemax,GA_AN,k,l,ii,jj;
   int TNO1,TNO2,ia,jb;
   int Anum,Bnum,tnoA,tnoB,wanA,wanB;

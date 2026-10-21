@@ -20,6 +20,7 @@
 #include <sys/time.h> 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_electronic.h"
 #include "openmx_reciprocal.h"
 #include "lapack_prototypes.h"
 #include <omp.h>
@@ -184,6 +185,12 @@ void Wannier(int Solver,
 #pragma optimization_level 1
 void Generate_Wannier(char *inputfile, OpenMXCoreContext *core)
 {
+  const OpenMXElectronicViews electronic_storage=OpenMX_ElectronicMatrices(core,mpi_comm_level1);
+  const OpenMXElectronicViews *electronic=&electronic_storage;
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+  double *****iHNL=electronic->iHNL;
+
   const OpenMXReciprocalViews radial_views=OpenMX_ReciprocalTables(core);
   const OpenMXReciprocalViews *reciprocal=&radial_views;
   int ct_AN,wan1,TNO1;

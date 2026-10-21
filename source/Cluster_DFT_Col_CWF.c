@@ -189,8 +189,10 @@ double Cluster_DFT_Col_CWF(
                    int *SP_NZeros,
                    int *SP_Atoms,
                    double **EVec1,
-                   double *Work1)
+                   double *Work1, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+
   static int firsttime=1;
   int i,j,l,n,n2,n1,i1,i1s,j1,k1,l1;
   int wan,HOMO0,HOMO1;

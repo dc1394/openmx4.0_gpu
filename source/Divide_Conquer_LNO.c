@@ -155,7 +155,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
 
 static double DC_NonCol(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                         double ***** Hks, double ***** ImNL, double **** OLP0,
-                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2]);
+                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
 
 static void Save_DOS_Col(double ****** Residues, double **** OLP0, double *** EVal,
                          int ** LO_TC, int ** HO_TC);
@@ -1376,7 +1376,7 @@ static int DCLNO_GPUProxy_Col_Service(int active,
 
 double Divide_Conquer_LNO(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                           double ***** Hks, double ***** ImNL, double **** OLP0,
-                          double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2])
+                          double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
 {
     double time0;
 
@@ -1386,7 +1386,7 @@ double Divide_Conquer_LNO(char * mode, int MD_iter, int SCF_iter, int SucceedRea
     }
     else if (SpinP_switch == 3) {
         time0 = DC_NonCol(mode, MD_iter, SCF_iter, SucceedReadingDMfile,
-                          Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1);
+                          Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1, electronic);
     }
     else {
         time0 = 0.0;
@@ -2792,8 +2792,10 @@ static double DC_NonCol(char *mode,
                         double ****OLP0,
 			double *****CDM,
 			double *****EDM,
-			double Eele0[2], double Eele1[2])
+			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
   static int firsttime=1;
   int Mc_AN,Gc_AN,i,Gi,wan,wanA,wanB,Anum;
   int size1,size2,num,NUM,NUMH,NUM2,n2,Cwan,Hwan;

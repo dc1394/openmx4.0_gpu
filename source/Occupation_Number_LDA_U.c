@@ -31,15 +31,15 @@
 #define quickcalc_flag  0
 
 
-static void occupation_onsite();
-static void occupation_full();
-static void occupation_dual();
+static void occupation_onsite(const OpenMXElectronicViews *electronic);
+static void occupation_full(const OpenMXElectronicViews *electronic);
+static void occupation_dual(const OpenMXElectronicViews *electronic);
 static void mixing_occupation(int SCF_iter);
-static void Induce_Orbital_Polarization(int Mc_AN);
-static void Induce_Orbital_Polarization_Together(int Mc_AN);
-static void Induce_NC_Orbital_Polarization(int Mc_AN);
+static void Induce_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic);
+static void Induce_Orbital_Polarization_Together(int Mc_AN, const OpenMXElectronicViews *electronic);
+static void Induce_NC_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic);
 static void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele);
-static void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[]);
+static void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], const OpenMXElectronicViews *electronic);
 static void Output_Collinear_OcpN();
 static void Output_NonCollinear_OcpN();
 static void Calc_dTN( int constraint_flag, 
@@ -56,7 +56,7 @@ void Calc_dSxyz( dcomplex TN[2][2],
                  double theta[2], double phi[2] );
 
 
-void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode)
+void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode, const OpenMXElectronicViews *electronic)
 {
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4 ;
   int Mc_AN,Gc_AN,Cwan,num,l,m,mul,n,k,tno1,tno0;
@@ -75,17 +75,17 @@ void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUel
 
   /* on site */
   if      (Hub_U_occupation==0){
-    occupation_onsite();
+    occupation_onsite(electronic);
   }
 
   /* full */
   else if (Hub_U_occupation==1){
-    occupation_full();
+    occupation_full(electronic);
   }
 
   /* dual */
   else if (Hub_U_occupation==2){
-    occupation_dual();
+    occupation_dual(electronic);
   }
 
   /****************************************************
@@ -95,9 +95,9 @@ void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUel
   if (SCF_iter<SCF_Enhance_OP && SucceedReadingDMfile==0 && Hub_U_switch==1){
 
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      if      (SpinP_switch==0) Induce_Orbital_Polarization(Mc_AN);
-      else if (SpinP_switch==1) Induce_Orbital_Polarization_Together(Mc_AN);
-      else if (SpinP_switch==3) Induce_NC_Orbital_Polarization(Mc_AN); 
+      if      (SpinP_switch==0) Induce_Orbital_Polarization(Mc_AN, electronic);
+      else if (SpinP_switch==1) Induce_Orbital_Polarization_Together(Mc_AN, electronic);
+      else if (SpinP_switch==3) Induce_NC_Orbital_Polarization(Mc_AN, electronic);
     }
   }
   
@@ -115,7 +115,7 @@ void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUel
   ****************************************************/
 
   if (SpinP_switch!=3)  make_v_eff(SCF_iter, SucceedReadingDMfile, dUele);
-  else                  make_NC_v_eff(SCF_iter, SucceedReadingDMfile, dUele, ECE);
+  else                  make_NC_v_eff(SCF_iter, SucceedReadingDMfile, dUele, ECE, electronic);
 
   /****************************************************
    write a file, *.DM_onsite
@@ -203,8 +203,11 @@ void mixing_occupation(int SCF_iter)
 
 
 
-void occupation_onsite()
+void occupation_onsite(const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double ******iDM=electronic->iDM;
+
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4;
   int Mc_AN,Gc_AN,Cwan,num,l,m,mul;
   int wan1,wan2,i,j,spin;
@@ -446,8 +449,12 @@ void occupation_onsite()
 }
 
 
-void occupation_full()
+void occupation_full(const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****OLP=electronic->OLP;
+  double ******iDM=electronic->iDM;
+
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4 ;
   int Mc_AN,Gc_AN,Cwan,num,l,m,n,mul,kl,hL_AN,hR_AN;
   int MR_AN,ML_AN,GR_AN,GL_AN,Rwan,Lwan;
@@ -1374,8 +1381,12 @@ void occupation_full()
 
 
 
-void occupation_dual()
+void occupation_dual(const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****OLP=electronic->OLP;
+  double ******iDM=electronic->iDM;
+
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4 ;
   int Mc_AN,Gc_AN,Cwan,num,l,m,n,mul,kl,hL_AN,hR_AN;
   int MR_AN,ML_AN,GR_AN,GL_AN,Rwan,Lwan,Mh_AN;
@@ -2398,8 +2409,10 @@ void occupation_dual()
 
  
 
-void Induce_Orbital_Polarization(int Mc_AN)
+void Induce_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+
   int wan1,Gc_AN,spin,spinmax;
   int i,j,to1,to2,l1,mul1,m0,m1,m2,m3;
   int ***trans_index;
@@ -2579,8 +2592,10 @@ void Induce_Orbital_Polarization(int Mc_AN)
 
 
 
-void Induce_Orbital_Polarization_Together(int Mc_AN)
+void Induce_Orbital_Polarization_Together(int Mc_AN, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+
   int wan1,Gc_AN,spin,spinmax;
   int i,j,k,to1,to2,l1,mul1,m0,m1,m2,m3;
   int ***trans_index;
@@ -2749,8 +2764,11 @@ void Induce_Orbital_Polarization_Together(int Mc_AN)
 
 
 
-void Induce_NC_Orbital_Polarization(int Mc_AN)
+void Induce_NC_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double ******iDM=electronic->iDM;
+
   int wan1,Gc_AN;
   int i,j,k,to1,to2,l1,mul1,m0,m1,m2,m3;
   int ***trans_index;
@@ -3412,8 +3430,10 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 
 
 #pragma optimization_level 1
-void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[])
+void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], const OpenMXElectronicViews *electronic)
 {
+  double *****OLP_L=electronic->OLP_L;
+
   int i,j,k,tno0,tno1,tno2,Cwan,Gc_AN,spin;
   int Mc_AN,num,n,size1,size2,to1,to2;
   int l1,l2,m1,m2,mul1,mul2,wan1,s1,s2,s3,s4;

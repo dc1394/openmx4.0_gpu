@@ -14,8 +14,15 @@
 #include "mpi.h"
 #include <omp.h>
 
-double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter)
-{ 
+double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter, const OpenMXElectronicViews *electronic)
+{
+  double *****HCH=electronic->HCH;
+  double *****HNL=electronic->HNL;
+  double *****H_XMCD=electronic->H_XMCD;
+  double *****OLP=electronic->OLP;
+  double *****iHCH=electronic->iHCH;
+  double *****iHNL=electronic->iHNL;
+
   static int firsttime=1;
   double TStime,TEtime;
   int i,j,kl,n,m,Rn;

@@ -3120,8 +3120,10 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
                     dcomplex * Hs, int *** k_op, int * T_k_op, int ** T_k_ID, double * T_KGrids1, double * T_KGrids2,
                     double * T_KGrids3, int myworld1, int * NPROCS_ID1, int * Comm_World1, int * NPROCS_WD1,
                     int * Comm_World_StartID1, MPI_Comm * MPI_CommWD1, int myworld2, int * NPROCS_ID2, int * NPROCS_WD2,
-                    int * Comm_World2, int * Comm_World_StartID2, MPI_Comm * MPI_CommWD2)
+                    int * Comm_World2, int * Comm_World_StartID2, MPI_Comm * MPI_CommWD2, const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
     static int firsttime = 1;
     int        i, j, k, l, m, n, p, wan, MaxN, i0, ks;
     int        i1, i1s, j1, ia, jb, lmax, kmin, kmax, po, po1, spin, s1, e1;

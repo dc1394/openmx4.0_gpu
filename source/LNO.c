@@ -23,7 +23,7 @@
 #define  measure_time   0
 
 static double LNO_Col_Projection(char *mode, int SCF_iter,
-			         double ****OLP0, double *****Hks, double *****CDM);
+			         double ****OLP0, double *****Hks, double *****CDM, const OpenMXElectronicViews *electronic);
 
 static double LNO_Col_Schur(char *mode, int SCF_iter,
 			    double ****OLP0, double *****Hks, double *****CDM);
@@ -94,8 +94,10 @@ double LNO(char *mode,
 
 
 static double LNO_Col_Projection( char *mode, int SCF_iter,
-                                  double ****OLP0, double *****Hks, double *****CDM)
+                                  double ****OLP0, double *****Hks, double *****CDM, const OpenMXElectronicViews *electronic)
 {
+  double *****DM0=electronic->DM0;
+
   int i,j,k,l,n,Mc_AN,Gc_AN,h_AN,Mh_AN,Gh_AN;
   int Cwan,Hwan,num,wan1,wan2,tno0,tno1,tno2,spin;
   int Nloop,po,p,q,tnoA,tnoB,GA,GB,na,nb;

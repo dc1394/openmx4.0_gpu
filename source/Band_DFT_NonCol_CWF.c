@@ -135,8 +135,8 @@ static void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomple
 
 void AllocateArrays_NonCol_QAO2();
 void FreeArrays_NonCol_QAO2();
-double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM );
-double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM );
+double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM , const OpenMXElectronicViews *electronic);
+double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
 
 static void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char ***kname, 
 					int TNum_CWFs, double complex ****TB_Hopping, 
@@ -242,8 +242,11 @@ double Band_DFT_NonCol_CWF(
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2,
                     int nkpath, int *n_perk, 
-                    double ***kpath, char ***kname)
+                    double ***kpath, char ***kname, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+  double *****iParDM=electronic->iParDM;
+
   static int firsttime=1;
   int i,j,k,l,m,n,n2,p,wan,MaxN,MinN,i0,ks;
   int i1,i1s,j1,ia,jb,lmax,po,po1,spin;
@@ -380,11 +383,11 @@ double Band_DFT_NonCol_CWF(
 
   if ( CWF_Guiding_Orbital==1 || CWF_Guiding_Orbital==2 ){
     AllocateArrays_NonCol_QAO2();
-    time1 = Calc_Hybrid_AO_NonCol(CntOLP, nh, CDM);
+    time1 = Calc_Hybrid_AO_NonCol(CntOLP, nh, CDM, electronic);
   }
 
   else if (CWF_Guiding_Orbital==3){
-    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM);
+    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM, electronic);
   }
 
   /****************************************************

@@ -26,7 +26,7 @@
 #define SCFOUT_VERSION 3
 /* ***/
 
-static void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo );
+static void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , const OpenMXElectronicViews *electronic);
 static void Calc_OLPpo( double ******OLPpo );
 void Calc_OLPmo(const OpenMXAtomicViews *atomic,  double *****OLPmo );
 
@@ -43,7 +43,7 @@ static void free_Position_all_matrix_elements();
 int order_max=1;
 /* ***/
 
-void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile)
+void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile, const OpenMXElectronicViews *electronic)
 {
   int Mc_AN,Gc_AN,tno0,tno1;
   int Cwan,h_AN,Gh_AN,Hwan;
@@ -179,7 +179,7 @@ void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile)
       /* matrix elements for momentum operator */
       Calc_OLPmo(atomic, OLPmo);
 
-      Output( fp, inputfile, OLPpo, OLPmo );
+      Output( fp, inputfile, OLPpo, OLPmo , electronic);
 
       if (myid==Host_ID) fclose(fp);
     } 
@@ -273,8 +273,16 @@ void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile)
 
 
 
-void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo )
+void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , const OpenMXElectronicViews *electronic)
 {
+  double *****CntH=electronic->CntH;
+  double *****CntOLP=electronic->CntOLP;
+  double ******DM=electronic->DM;
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+  double ******iDM=electronic->iDM;
+  double *****iHNL=electronic->iHNL;
+
   int Gc_AN,Mc_AN,ct_AN,h_AN,i,j,can,Gh_AN;
   int num,wan1,wan2,TNO1,TNO2,spin,Rn,count;
   int k,Mh_AN,Rnh,Hwan,NO0,NO1,Qwan;
@@ -1579,7 +1587,7 @@ void Calc_OLPpo2()
 }
 
 
-void Calc_OLP_r(int option_OLPpo,int myid0){
+void Calc_OLP_r(int option_OLPpo,int myid0, const OpenMXElectronicViews *electronic){
 
   int Mc_AN,h_AN,Gc_AN,Gh_AN,Cwan,Hwan,i,tno0,tno1;
   /* allocation of array */
@@ -1686,12 +1694,12 @@ void Calc_OLP_r(int option_OLPpo,int myid0){
   if (option_OLPpo==1) Calc_OLPpo2();
 
   if (SpinP_switch==0 || SpinP_switch==1){
-    broadcast_H_matrix_elements_to_all_processes(myid0);
+    broadcast_H_matrix_elements_to_all_processes(myid0, electronic);
   }else if (SpinP_switch==3){
-    broadcast_Hnoncol_matrix_elements_to_all_processes(myid0);
+    broadcast_Hnoncol_matrix_elements_to_all_processes(myid0, electronic);
   }
 
-  broadcast_S_matrix_elements_to_all_processes(myid0);
+  broadcast_S_matrix_elements_to_all_processes(myid0, electronic);
   broadcast_Position_matrix_elements_to_all_processes(myid0);
 }
 
@@ -2073,7 +2081,9 @@ void free_Position_all_matrix_elements(){
 }
 
 
-void broadcast_H_matrix_elements_to_all_processes(int myid0){
+void broadcast_H_matrix_elements_to_all_processes(int myid0, const OpenMXElectronicViews *electronic){
+  double *****H=electronic->H;
+
 
   /* allocation of array */
 
@@ -2273,7 +2283,10 @@ void broadcast_H_matrix_elements_to_all_processes(int myid0){
 }
 
 
-void broadcast_Hnoncol_matrix_elements_to_all_processes(int myid0){
+void broadcast_Hnoncol_matrix_elements_to_all_processes(int myid0, const OpenMXElectronicViews *electronic){
+  double *****H=electronic->H;
+  double *****iHNL=electronic->iHNL;
+
 
   /* allocation of array */
 
@@ -2628,7 +2641,9 @@ void broadcast_Hnoncol_matrix_elements_to_all_processes(int myid0){
   */
 }
 
-void broadcast_S_matrix_elements_to_all_processes(int myid0){
+void broadcast_S_matrix_elements_to_all_processes(int myid0, const OpenMXElectronicViews *electronic){
+  double *****OLP=electronic->OLP;
+
 
   int Gh_AN,Cwan,Hwan,tno0,tno1,Gc_AN,h_AN,i,j,Mc_AN,k=0,count;
 

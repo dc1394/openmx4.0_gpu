@@ -4,6 +4,7 @@
 #include "openmx_gpu_backend.h"
 #include "openmx_gpu_error.h"
 #include "openmx_core.h"
+#include "openmx_core_electronic.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_core_reciprocal.h"
 #include "openmx_core_atomic.h"
@@ -1318,7 +1319,6 @@ extern double **CWF_Energy;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****H0;
 
 /*******************************************************
  double *****CntH0;
@@ -1332,7 +1332,6 @@ extern double *****H0;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****CntH0;
 
 /*******************************************************
  double *****HNL;
@@ -1346,7 +1345,6 @@ extern double *****CntH0;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****HNL;
 
 /*******************************************************
  double *****iHNL;
@@ -1360,7 +1358,6 @@ extern double *****HNL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****iHNL;
 
 /*******************************************************
  double *****iCntHNL;
@@ -1375,7 +1372,6 @@ extern double *****iHNL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****iCntHNL;
 
 /*******************************************************
  double *****HCH;
@@ -1389,7 +1385,6 @@ extern double *****iCntHNL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****HCH;
 
 /*******************************************************
  double *****iHCH;
@@ -1403,7 +1398,6 @@ extern double *****HCH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****iHCH;
 
 /*******************************************************
  double *****OLP_L;
@@ -1419,7 +1413,6 @@ extern double *****iHCH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****OLP_L;
 
 /*******************************************************
  double *****OLP;
@@ -1433,7 +1426,6 @@ extern double *****OLP_L;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****OLP;
 
 /*** added by Ohwaki ***/
 
@@ -1467,7 +1459,6 @@ extern double *****OLP_p;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****OLP_CH;
 
 /*******************************************************
  double *****CntOLP;
@@ -1481,7 +1472,6 @@ extern double *****OLP_CH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****CntOLP;
 
 /*******************************************************
  double *****H;
@@ -1495,7 +1485,6 @@ extern double *****CntOLP;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****H;
 
 /*******************************************************
  double *****CntH;
@@ -1509,7 +1498,6 @@ extern double *****H;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****CntH;
 
 /*******************************************************
  double ******HisH1;
@@ -1525,7 +1513,6 @@ extern double *****CntH;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******HisH1;
 
 /*******************************************************
  double ******HisH2;
@@ -1541,7 +1528,6 @@ extern double ******HisH1;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******HisH2;
 
 /*******************************************************
  double ******ResidualH1;
@@ -1557,7 +1543,6 @@ extern double ******HisH2;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******ResidualH1;
 
 /*******************************************************
  double ******ResidualH2;
@@ -1573,7 +1558,6 @@ extern double ******ResidualH1;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******ResidualH2;
 
 /*******************************************************
  double *****H_Hub;             --- added by MJ
@@ -1590,7 +1574,6 @@ extern double ******ResidualH2;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****H_Hub;           /* --- added by MJ  */
 
 /*******************************************************
  double *****iHNL0;             --- added by TO
@@ -1604,7 +1587,6 @@ extern double *****H_Hub;           /* --- added by MJ  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****iHNL0;           /* --- added by TO  */
 
 /*******************************************************
  double ******DS_NL;
@@ -1620,7 +1602,6 @@ extern double *****iHNL0;           /* --- added by TO  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******DS_NL;
 
 /*******************************************************
  double ******CntDS_NL;
@@ -1636,7 +1617,6 @@ extern double ******DS_NL;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******CntDS_NL;
 
 /*******************************************************
  double ***H_Zeeman_NCO;          
@@ -1679,7 +1659,6 @@ extern double ***TRAN_DecMulP;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******DM;
 
 /*******************************************************
  double *****DM0;
@@ -1693,7 +1672,6 @@ extern double ******DM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****DM0;
 
 /*******************************************************
  double *****ParDM;
@@ -1707,7 +1685,6 @@ extern double *****DM0;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****ParDM;
 
 /*******************************************************
  double *****iParDM;
@@ -1721,7 +1698,6 @@ extern double *****ParDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****iParDM;
 
 /*******************************************************
  double *****Partial_DM;
@@ -1739,7 +1715,6 @@ extern double *****iParDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****Partial_DM;
 
 /*******************************************************
  double ****DM_onsite;     --- added by MJ
@@ -1835,7 +1810,6 @@ extern dcomplex *****NC_v_eff;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******ResidualDM;
 
 /*******************************************************
  double ******iResidualDM;
@@ -1852,7 +1826,6 @@ extern double ******ResidualDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******iResidualDM;
 
 /*******************************************************
  double *****EDM;
@@ -1866,7 +1839,6 @@ extern double ******iResidualDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****EDM;
 
 /*******************************************************
  double *****PDM;
@@ -1880,7 +1852,6 @@ extern double *****EDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****PDM;
 
 /*******************************************************
  double ******iDM;
@@ -1895,7 +1866,6 @@ extern double *****PDM;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ******iDM;
 
 /*******************************************************
  double ***S12;
@@ -2382,7 +2352,6 @@ extern double ***LNAO1_pops;
 extern dcomplex **QAO2_coes;
 
 extern double *pre_spin_moment; // S. An
-extern double *****H_XMCD;      // S. An
 extern dcomplex *zp,*Ep,*Rp;
 extern double GL_Abscissae[GL_Mesh+2],GL_Weight[GL_Mesh+2];
 extern double FineGL_Abscissae[FineGL_Mesh+2],FineGL_Weight[FineGL_Mesh+2];
@@ -2767,15 +2736,15 @@ void Data_Grid_Copy_B2C_1(double *data_B, double *data_C);
 void Data_Grid_Copy_B2C_2(double **data_B, double **data_C); 
 void Density_Grid_Copy_B2D(double **Density_Grid_B0);
 double Set_Initial_DM(double *****CDM, double *****H);
-double Mulliken_Charge( char *mode );
+double Mulliken_Charge( char *mode , const OpenMXElectronicViews *electronic);
 double LNO(char *mode, int SCF_iter, double ****OLP0, double *****Hks, double *****CDM);
 double Calc_LNAO( double ****OLP0, double *****Hks, double *****CDM);
 double Calc_LNBO( double ****OLP0, double *****Hks, double *****CDM);
 
 /* added by MJ */
-void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode);
+void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode, const OpenMXElectronicViews *electronic);
 /* added by MJ */
-void Eff_Hub_Pot(int SCF_iter, double ****OLP0);
+void Eff_Hub_Pot(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic);
 void EulerAngle_Spin( int quickcalc_flag,
                       double Re11, double Re22,
                       double Re12, double Im12,
@@ -2783,7 +2752,7 @@ void EulerAngle_Spin( int quickcalc_flag,
                       double Nup[2], double Ndown[2],
                       double t[2], double p[2] );
 
-void Orbital_Moment(char *mode);
+void Orbital_Moment(char *mode, const OpenMXElectronicViews *electronic);
 
 /* added by S.Ryee */
 void Coulomb_Interaction(const OpenMXAtomicViews *atomic);
@@ -2806,11 +2775,11 @@ double Mixing_DM(int MD_iter,
                  double *ReVk,
                  double *ImVk,
                  double *ReRhoAtomk,
-                 double *ImRhoAtomk);
+                 double *ImRhoAtomk, const OpenMXElectronicViews *electronic);
 
 double Mixing_H( int MD_iter,
                  int SCF_iter,
-                 int SCF_iter0 );
+                 int SCF_iter0 , const OpenMXElectronicViews *electronic);
 
 double Mixing_V( int MD_iter,
 		 int SCF_iter,
@@ -2827,9 +2796,9 @@ void Simple_Mixing_DM(int Change_switch,
                       double *****RDM,
                       double *****iRDM);
 
-void DIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM);
-void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM);
-void GR_Pulay_DM(int SCF_iter, double ******ResidualDM);
+void DIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic);
+void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic);
+void GR_Pulay_DM(int SCF_iter, double ******ResidualDM, const OpenMXElectronicViews *electronic);
 
 
 void Kerker_Mixing_Rhok(int Change_switch,
@@ -2917,8 +2886,8 @@ double Calc_polarization();
 /* hmweng */
 void Generate_Wannier(char *inputfile,OpenMXCoreContext *core);
 
-void Population_Analysis_Wannier(char *argv[]);
-void Population_Analysis_Wannier2(char *argv[]);
+void Population_Analysis_Wannier(char *argv[], const OpenMXElectronicViews *electronic);
+void Population_Analysis_Wannier2(char *argv[], const OpenMXElectronicViews *electronic);
 
 double EC(char *mode,
           int SCF_iter,
@@ -2936,7 +2905,7 @@ double Divide_Conquer(char *mode,
                       double ****OLP0,
                       double *****CDM,
                       double *****EDM,
-                      double Eele0[2], double Eele1[2]);
+                      double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
 
 double Divide_Conquer_LNO(char *mode,
                           int MD_iter,
@@ -2947,7 +2916,7 @@ double Divide_Conquer_LNO(char *mode,
                           double ****OLP0,
                           double *****CDM,
                           double *****EDM,
-                          double Eele0[2], double Eele1[2]);
+                          double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
 
 double Krylov(char *mode,
               int SCF_iter,
@@ -2978,7 +2947,7 @@ double deri_dampingF(double rcut, double r);
 void xyz2spherical(double x, double y, double z,
                    double xo, double yo, double zo,
                    double S_coordinate[3]);
-int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double *****CntH, double *etime);
+int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double *****CntH, double *etime, const OpenMXElectronicViews *electronic);
 void FT_PAO(OpenMXCoreContext *core, int device);
 void FT_NLP(OpenMXCoreContext *core, int device);
 void FT_ProExpn_VNA(OpenMXCoreContext *core, int device);
@@ -3023,12 +2992,12 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
                        double *****H0,
                        double *****HNL,
                        double *****CDM,
-		       double *****H);
+		       double *****H, const OpenMXElectronicViews *electronic);
 #if OPENMX_GPU_HIP
 void Set_Hamiltonian_Set_OpenMP_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenMP_Rank_Is_Selected(void);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
-void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_static);
+void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_static, const OpenMXElectronicViews *electronic);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 void Mixing_H_Release_GPU(void);
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
@@ -3123,7 +3092,7 @@ int Set_Density_Grid_GPU_Local_KeepDistributed(void);
 int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid);
 void Set_Density_Grid_GPU_Local_Report(int path, int failed);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
-void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted);
+void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, const OpenMXElectronicViews *electronic);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 #endif
 int Set_Hamiltonian_GpuSolver_Packed_CacheReady(void);
@@ -3136,21 +3105,21 @@ double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
 double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
-double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[]);
+double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic);
 double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 
-	     double *****EDM); 
+	     double *****EDM, const OpenMXElectronicViews *electronic);
 double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM);
-double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0);
-double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL);
-double Set_CoreHoleMatrix(double *****HCH);
-double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter);  // S. An 
+	      double *****EDM, const OpenMXElectronicViews *electronic);
+double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic);
+double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
+double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electronic);
+double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter, const OpenMXElectronicViews *electronic);  // S. An
 double Set_OLP_p(double *****OLP_p);
 
 double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
@@ -3176,7 +3145,7 @@ void XC_PBE(int SCF_iter, double dens[2], double GDENS[3][2], double Exc[2],
             double DEXDGD[3][2], double DECDGD[3][2]);
 void XC_EX(int NSP, double DS0, double DS[2], double EX[1], double VX[2]);
 void Voronoi_Charge();
-void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic);
+void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic);
 
 double Fuzzy_Weight(int ct_AN, int Mc_AN, int Rn, double x, double y, double z);
 
@@ -3229,7 +3198,7 @@ extern int *F_M2G_NAO, *S_M2G_NAO;
 extern int MatomnumF_NAO, MatomnumS_NAO;
 extern int *Snd_HFS_Size_NAO, *Rcv_HFS_Size_NAO;
 
-void Calc_NAO_Cluster(double *****CDM);
+void Calc_NAO_Cluster(double *****CDM, const OpenMXElectronicViews *electronic);
 void Calc_NAO_Band(
 		   int nkpoint, double **kpoint,
 		   int SpinP_switch,
@@ -3277,7 +3246,7 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic, char *mode,
                    int *SP_NZeros,
                    int *SP_Atoms,
                    double **EVec1,
-                   double *Work1);
+                   double *Work1, const OpenMXElectronicViews *electronic);
 
 double Cluster_DFT_Col_LNO(
                    char *mode,
@@ -3341,7 +3310,7 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
 		   double *DM1,
 		   int size_H1, 
                    dcomplex *EVec1,
-                   double *Work1);
+                   double *Work1, const OpenMXElectronicViews *electronic);
 #if !OPENMX_GPU_HIP
 
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
@@ -3382,7 +3351,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
     double *ko,
     double *DM1,
     double *Work1,
-    dcomplex *EVec1 );
+    dcomplex *EVec1 , const OpenMXElectronicViews *electronic);
 
 
 double Cluster_DFT_LNO(char *mode,
@@ -3457,7 +3426,7 @@ double Band_DFT_Col(
 		    int *NPROCS_WD2,
 		    int *Comm_World2,
 		    int *Comm_World_StartID2,
-		    MPI_Comm *MPI_CommWD2);
+		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic);
 
 
 double Band_DFT_NonCol(
@@ -3504,7 +3473,7 @@ double Band_DFT_NonCol(
 		    int *NPROCS_WD2,
 		    int *Comm_World2,
 		    int *Comm_World_StartID2,
-		    MPI_Comm *MPI_CommWD2);
+		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic);
 
 double Band_DFT_NonCol_CWF(
                     int SCF_iter,
@@ -3551,7 +3520,7 @@ double Band_DFT_NonCol_CWF(
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2,
                     int nkpath, int *n_perk, 
-                    double ***kpath, char ***kname);
+                    double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
 double Band_DFT_Col_CWF(
                     int SCF_iter,
@@ -3595,7 +3564,7 @@ double Band_DFT_Col_CWF(
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2,
                     int nkpath, int *n_perk, 
-                    double ***kpath, char ***kname);
+                    double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
 
 double Cluster_DFT_Col_CWF(
@@ -3626,7 +3595,7 @@ double Cluster_DFT_Col_CWF(
                    int *SP_NZeros,
                    int *SP_Atoms,
                    double **EVec1,
-                   double *Work1);
+                   double *Work1, const OpenMXElectronicViews *electronic);
 
 
 double Cluster_DFT_NonCol_CWF(
@@ -3656,7 +3625,7 @@ double Cluster_DFT_NonCol_CWF(
 		   double *DM1,
 		   int size_H1, 
                    dcomplex *EVec1,
-                   double *Work1);
+                   double *Work1, const OpenMXElectronicViews *electronic);
 
 
 double Electric_Polarization_BandCol(
@@ -3743,7 +3712,7 @@ double Electric_Polarization_BandNonCol(
 		    int *NPROCS_WD2,
 		    int *Comm_World2,
 		    int *Comm_World_StartID2,
-		    MPI_Comm *MPI_CommWD2);
+		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic);
 
 
 double ABC_BandCol(
@@ -3804,7 +3773,7 @@ double Band_DFT_NonCol_GB(int SCF_iter,
 			  double ****CntOLP,
 			  double *****CDM,
 			  double *****EDM,
-			  double Eele0[2], double Eele1[2]);
+			  double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
 
 
 void k_inversion(int i,  int j,  int k, 
@@ -3833,7 +3802,7 @@ double Band_DFT_Dosout( int knum_i, int knum_j, int knum_k,
                         int SpinP_switch,
                         double *****nh,
                         double *****ImNL,
-                        double ****CntOLP );
+                        double ****CntOLP , const OpenMXElectronicViews *electronic);
 
 void Unfolding_Bands(
 		     int SpinP_switch, 
@@ -4058,10 +4027,10 @@ void Allocate_Arrays(int wherefrom);
 void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
 void Free_Arrays(int dokokara);
 void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
-double OutData(const OpenMXAtomicViews *atomic, char *inputfile);
+double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic);
 void init_alloc_first();
 int File_CntCoes(char *mode);
-void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile);
+void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile, const OpenMXElectronicViews *electronic);
 void Determine_Cell_from_ECutoff(double tv[4][4], double ECut);
 
 /*
@@ -4936,7 +4905,7 @@ extern int CDDF_printk; /* print k at n step in optical calculations */
 extern double ****OLPpox;
 extern double ****OLPpoy;
 extern double ****OLPpoz;
-void Calc_OLP_r(int option_OLPpo,int myid0);
+void Calc_OLP_r(int option_OLPpo,int myid0, const OpenMXElectronicViews *electronic);
 void Calc_OLPpo2();
 void free_OLP_r();
 
@@ -4946,9 +4915,9 @@ extern double ****OLP_all;
 extern double ****OLPpox_all;
 extern double ****OLPpoy_all;
 extern double ****OLPpoz_all;
-void broadcast_H_matrix_elements_to_all_processes(int myid0); /* H matrix elements */
-void broadcast_Hnoncol_matrix_elements_to_all_processes(int myid0); /* H matrix elements */
-void broadcast_S_matrix_elements_to_all_processes(int myid0); /* S overlap matrix elements */
+void broadcast_H_matrix_elements_to_all_processes(int myid0, const OpenMXElectronicViews *electronic); /* H matrix elements */
+void broadcast_Hnoncol_matrix_elements_to_all_processes(int myid0, const OpenMXElectronicViews *electronic); /* H matrix elements */
+void broadcast_S_matrix_elements_to_all_processes(int myid0, const OpenMXElectronicViews *electronic); /* S overlap matrix elements */
 void broadcast_Position_matrix_elements_to_all_processes(int myid0); /* position x/y/z matrix elements */
 /* YTL-New-end */
 

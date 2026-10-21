@@ -3410,8 +3410,12 @@ double Band_DFT_NonCol(
 		    int *NPROCS_WD2,
 		    int *Comm_World2,
 		    int *Comm_World_StartID2,
-		    MPI_Comm *MPI_CommWD2)
+		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+  double ******iDM=electronic->iDM;
+  double *****iParDM=electronic->iParDM;
+
   static int firsttime=1;
   int i,j,k,l,m,n,n2,p,wan,MaxN,i0,ks;
   int i1,i1s,j1,ia,jb,lmax,po,po1,spin,s1,e1;

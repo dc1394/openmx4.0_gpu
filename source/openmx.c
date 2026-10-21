@@ -76,6 +76,7 @@
 #endif
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_electronic.h"
 #include "openmx_atomic.h"
 #include "mpi.h"
 #include <omp.h>
@@ -106,7 +107,9 @@ int main(int argc, char *argv[])
 }
 
 static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
-{ 
+{
+  OpenMXElectronicViews electronic_storage;
+
   int numprocs=0,myid=0;
   int MD_iter=0,i=0,j=0,po=0,ip=0;
   char fileMemory[YOUSO10];
@@ -703,7 +706,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   if (ForceConsistency_flag==1){
 
     Check_Force(argv,core);
-    CompTime[myid][20] = OutData(atomic, argv[1]);
+    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
@@ -741,7 +744,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   if (StressConsistency_flag==1){
     Check_Stress(argv,core);
-    CompTime[myid][20] = OutData(atomic, argv[1]);
+    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
@@ -808,7 +811,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   if ( TRAN_output_hks ) {
      /* left is dummy */
-     TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename);
+     TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /****************************************************
@@ -821,7 +824,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
         calculate Voronoi orbital magnetic moment
   ****************************************************/
  
-  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment(atomic);
+  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment(atomic, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /****************************************************
         output analysis of decomposed energies
@@ -854,7 +857,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   if(pop_anal_aow_flag){
     if (myid==Host_ID) printf("Population analysis based on atomic orbitals resembling Wannier functions\n");fflush(0);
 
-    Population_Analysis_Wannier2(argv);
+    Population_Analysis_Wannier2(argv, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /*********************************************************
@@ -884,14 +887,14 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
                   Making of output files
   ****************************************************/
 
-  CompTime[myid][20] = OutData(atomic, argv[1]);
+  CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File(atomic, "write",argv[1]);
+  if (HS_fileout==1) SCF2File(atomic, "write",argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* elapsed time */
 

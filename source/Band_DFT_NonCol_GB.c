@@ -37,8 +37,10 @@ double Band_DFT_NonCol_GB(int SCF_iter,
 		       double ****CntOLP,
 		       double *****CDM,
 		       double *****EDM,
-		       double Eele0[2], double Eele1[2])
+		       double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
   static int firsttime=1;
   int i,j,k,l,n,n2,wan;
   int ii1,m,mn,lmn,lmax;

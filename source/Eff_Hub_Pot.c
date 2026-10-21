@@ -17,12 +17,16 @@
 #include "openmx_common.h"
 #include "mpi.h"
  
-static void H_U_onsite();
-static void H_U_full(int SCF_iter, double ****OLP0);
-static void H_U_dual(int SCF_iter, double ****OLP0);
+static void H_U_onsite(const OpenMXElectronicViews *electronic);
+static void H_U_full(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic);
+static void H_U_dual(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic);
 
-void Eff_Hub_Pot(int SCF_iter, double ****OLP0)
+void Eff_Hub_Pot(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic)
 {
+  double *****iHCH=electronic->iHCH;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   /****************************************************
     Important note: 
 
@@ -44,17 +48,17 @@ void Eff_Hub_Pot(int SCF_iter, double ****OLP0)
 
     /* on site */
     if      (Hub_U_occupation==0){
-      H_U_onsite();
+      H_U_onsite(electronic);
     }
 
     /* full */
     else if (Hub_U_occupation==1){
-      H_U_full(SCF_iter, OLP0);
+      H_U_full(SCF_iter, OLP0, electronic);
     }
 
     /* dual */
     else if (Hub_U_occupation==2){
-      H_U_dual(SCF_iter, OLP0);
+      H_U_dual(SCF_iter, OLP0, electronic);
     }
 
   } /* if */
@@ -119,8 +123,12 @@ void Eff_Hub_Pot(int SCF_iter, double ****OLP0)
 
 
 
-void H_U_onsite()
+void H_U_onsite(const OpenMXElectronicViews *electronic)
 {
+  double *****H_Hub=electronic->H_Hub;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   int spin,a,b;  
   int l,fan,j,k,i,jg,kg,ig,wakg,waig,kl,il1,il2,m,n;
   int Cwan,Hwan,Mul1,tno0,tno1,tno2;
@@ -227,8 +235,12 @@ void H_U_onsite()
 }
 
 
-void H_U_full(int SCF_iter, double ****OLP0)
+void H_U_full(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic)
 {
+  double *****H_Hub=electronic->H_Hub;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   int spin,a,b;  
   int l,fan,j,k,i,jg,kg,ig,wakg,waig,kl,il1,il2,m,n;
   int Cwan,Hwan,Mul1,tno0,tno1,tno2;
@@ -581,8 +593,12 @@ void H_U_full(int SCF_iter, double ****OLP0)
 
 
 
-void H_U_dual(int SCF_iter, double ****OLP0)
+void H_U_dual(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic)
 {
+  double *****H_Hub=electronic->H_Hub;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   int spin,a,b;  
   int l,fan,j,k,i,jg,kg,ig,wakg,waig,kl,il1,il2,m,n;
   int Cwan,Hwan,Mul1,tno0,tno1,tno2;

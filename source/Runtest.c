@@ -23,6 +23,7 @@
 #include <dirent.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_electronic.h"
 #include "openmx_atomic.h"
 #include "Inputtools.h"
 #include "mpi.h"
@@ -627,6 +628,8 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
 static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid0,
                                  OpenMXCoreContext *core)
 {
+  OpenMXElectronicViews electronic_storage;
+
   int MD_iter,i,j,po,ip;
   char fileE[YOUSO10] = ".ene"; 
   char fileDRC[YOUSO10] = ".md";
@@ -725,7 +728,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
 
   if ( TRAN_output_hks ) {
     /* left is dummy */
-    TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename);
+    TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /****************************************************
@@ -780,14 +783,14 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
                   Making of output files
   ****************************************************/
 
-  CompTime[myid0][20] = OutData(atomic, argv[1]);
+  CompTime[myid0][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File(atomic, "write",argv[1]);
+  if (HS_fileout==1) SCF2File(atomic, "write",argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* elapsed time */
 

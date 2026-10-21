@@ -25,8 +25,10 @@ void Orbitals_on_Grid(const OpenMXAtomicViews *atomic, int wan, int Lmax, int Nm
 void Generate_L_Matrix(int Lmax, double ***Lx0, double ***Ly0, double ***Lz0);
 
 
-void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic)
+void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
   int Lmax,Nmul;
   int L,M,p,Mc_AN,Gc_AN,tno0,tno1;
   int i,j,k,Cwan,h_AN,Mh_AN,Nog,Nc,Nh;

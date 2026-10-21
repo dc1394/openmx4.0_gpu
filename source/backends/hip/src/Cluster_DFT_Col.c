@@ -611,8 +611,10 @@ static int ClusterCol_PrecomputeOccupations(int spin, int kmin, int kmax, const 
 }
 
 static void ClusterCol_StoreDMComponents(int myid0, int spin, int *MP, double *****CDM, double *****EDM,
-                                         const double *DM1, const double *EDM1, const double *PDM1)
+                                         const double *DM1, const double *EDM1, const double *PDM1, const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
     int p = 0;
 
     for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
@@ -2056,7 +2058,7 @@ static double ClusterCol_ScatterGpuSolverCachedEVec(int SpinP_switch, int numpro
 static void ClusterCol_CalcOneSpinDMRootDense(int myid0, int myid1, int spin, int size_H1,
                                               int *MP, int n, int MaxN, MPI_Comm comm,
                                               double *****CDM, double *****EDM, double **ko,
-                                              double *DM1, double *EDM1, double *PDM1)
+                                              double *DM1, double *EDM1, double *PDM1, const OpenMXElectronicViews *electronic)
 {
     ClusterColRootDMWorkspace *ws = &ClusterCol_root_dm_workspace;
     const int calc_pdm = cal_partial_charge;
@@ -2121,13 +2123,13 @@ static void ClusterCol_CalcOneSpinDMRootDense(int myid0, int myid1, int spin, in
         memcpy(PDM1, ws->dm_buffer + (size_t)size_H1 * 2u, sizeof(double) * (size_t)size_H1);
     }
 
-    ClusterCol_StoreDMComponents(myid0, spin, MP, CDM, EDM, DM1, EDM1, PDM1);
+    ClusterCol_StoreDMComponents(myid0, spin, MP, CDM, EDM, DM1, EDM1, PDM1, electronic);
 }
 
 static void ClusterCol_ExchangeAndStoreOtherSpinDM(int myid0, int myworld1, int size_H1, int *MP,
                                                    MPI_Comm *MPI_CommWD1, int *Comm_World_StartID1,
                                                    double *****CDM, double *****EDM,
-                                                   double *DM1, double *EDM1, double *PDM1, double *Work1)
+                                                   double *DM1, double *EDM1, double *PDM1, double *Work1, const OpenMXElectronicViews *electronic)
 {
     int other_spin = (myworld1 == 0) ? 1 : 0;
     int root_this = Comm_World_StartID1[myworld1];
@@ -2160,7 +2162,7 @@ static void ClusterCol_ExchangeAndStoreOtherSpinDM(int myid0, int myworld1, int 
         memcpy(PDM1, Work1, sizeof(double) * (size_t)size_H1);
     }
 
-    ClusterCol_StoreDMComponents(myid0, other_spin, MP, CDM, EDM, DM1, EDM1, PDM1);
+    ClusterCol_StoreDMComponents(myid0, other_spin, MP, CDM, EDM, DM1, EDM1, PDM1, electronic);
 }
 
 static double ClusterCol_CalcDMRootDense_HIP_Path(int myid0, int numprocs0, int myid1, int numprocs1,
@@ -2168,7 +2170,7 @@ static double ClusterCol_CalcDMRootDense_HIP_Path(int myid0, int numprocs0, int 
                                                   int *MP, int n, int MaxN, MPI_Comm *MPI_CommWD1,
                                                   int *Comm_World_StartID1,
                                                   double *****CDM, double *****EDM, double **ko,
-                                                  double *DM1, double *EDM1, double *PDM1, double *Work1)
+                                                  double *DM1, double *EDM1, double *PDM1, double *Work1, const OpenMXElectronicViews *electronic)
 {
     double stime, etime;
 
@@ -2177,19 +2179,19 @@ static double ClusterCol_CalcDMRootDense_HIP_Path(int myid0, int numprocs0, int 
 
     if (SpinP_switch == 0) {
         ClusterCol_CalcOneSpinDMRootDense(myid0, myid1, 0, size_H1, MP, n, MaxN,
-                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1);
+                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1, electronic);
     }
     else if (numprocs0 == 1) {
         ClusterCol_CalcOneSpinDMRootDense(myid0, myid1, 0, size_H1, MP, n, MaxN,
-                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1);
+                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1, electronic);
         ClusterCol_CalcOneSpinDMRootDense(myid0, myid1, 1, size_H1, MP, n, MaxN,
-                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1);
+                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1, electronic);
     }
     else {
         ClusterCol_CalcOneSpinDMRootDense(myid0, myid1, myworld1, size_H1, MP, n, MaxN,
-                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1);
+                                          MPI_CommWD1[myworld1], CDM, EDM, ko, DM1, EDM1, PDM1, electronic);
         ClusterCol_ExchangeAndStoreOtherSpinDM(myid0, myworld1, size_H1, MP, MPI_CommWD1,
-                                               Comm_World_StartID1, CDM, EDM, DM1, EDM1, PDM1, Work1);
+                                               Comm_World_StartID1, CDM, EDM, DM1, EDM1, PDM1, Work1, electronic);
     }
 
     dtime(&etime);
@@ -2994,7 +2996,7 @@ static void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, in
 			    int *SP_NZeros,
 			    int *SP_Atoms,
 			    double **EVec1,
-			    double *Work1);
+			    double *Work1, const OpenMXElectronicViews *electronic);
 
 static void Save_LCAO_Col( int n, int MaxN, int myid1, int *is2, int *ie2, 
 			   int *MP, double ****OLP0, double **EVec1, 
@@ -3027,7 +3029,7 @@ static double Calc_DM_Cluster_collinear(int myid0,
 					double *Work1,
 					double **EVec1, 
 					int *SP_NZeros,
-					int *SP_Atoms );
+					int *SP_Atoms , const OpenMXElectronicViews *electronic);
 
 static double Calc_ParDM_Cluster_collinear(
 					   int myid0,
@@ -3134,8 +3136,10 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
                    int *SP_NZeros,
                    int *SP_Atoms,
                    double **EVec1,
-                   double *Work1)
+                   double *Work1, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+
   int mgpu_scope_previous=openmx_mgpu_scope_enter(scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag);
   static int firsttime=1;
   int i,j,l,n,n2,n1,i1,i1s,j1,k1,l1;
@@ -4217,12 +4221,12 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
       time6 += ClusterCol_CalcDMRootDense_HIP_Path(myid0,numprocs0,myid1,numprocs1,myworld1,
                                                    SpinP_switch,size_H1,MP,n,MaxN,
                                                    MPI_CommWD1,Comm_World_StartID1,
-                                                   CDM,EDM,ko,CDM1,EDM1,PDM1,Work1);
+                                                   CDM,EDM,ko,CDM1,EDM1,PDM1,Work1, electronic);
     }
     else{
       time6 += Calc_DM_Cluster_collinear( myid0,numprocs0,myid1,numprocs1,myworld1,
 					  size_H1,is2,ie2,MP,n,MPI_CommWD1,Comm_World_StartID1,
-					  CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms);
+					  CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms, electronic);
     }
 
     /****************************************************
@@ -4628,7 +4632,7 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
     }
     Calc_XANES_Col(atomic,  n,MaxN,myid1,ko,nh,CntOLP,CDM,EDM,Eele0,Eele1,myworld1,NPROCS_ID1,
                     Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,
-                    MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1);
+                    MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1, electronic);
   }
 
   else if ( strcasecmp(mode,"diag")==0 ){
@@ -4761,8 +4765,10 @@ double Calc_DM_Cluster_collinear(
     double *Work1,
     double **EVec1, 
     int *SP_NZeros,
-    int *SP_Atoms )
+    int *SP_Atoms , const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int spin,i,j,i0,j0,k,kmin,kmax,po,p,GA_AN,MA_AN,wanA,tnoA,Anum;
   int LB_AN,GB_AN,wanB,tnoB,Bnum,i1,j1,ID;
   double max_x=60.0,dum;
@@ -5946,8 +5952,10 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 		     int *SP_NZeros,
 		     int *SP_Atoms,
 		     double **EVec1,
-		     double *Work1)
+		     double *Work1, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP=electronic->OLP;
+
   int spin,i,j,iemin,iemax,GA_AN,k,l,ii,jj;
   int TNO1,TNO2,ia,jb;
   int Anum,Bnum,tnoA,tnoB,wanA,wanB;

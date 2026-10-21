@@ -28,11 +28,17 @@
 #include <omp.h>
 
 static void Multiply_OLP(int Mc_AN, int Mj_AN, int k, int kl, 
-                         int Cwan, int Hwan, int wakg, dcomplex ***NLH);
+                         int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic);
 
 
-double Set_CoreHoleMatrix(double *****HCH)
+double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electronic)
 {
+  double *****HNL=electronic->HNL;
+  double *****OLP=electronic->OLP;
+  double *****OLP_CH=electronic->OLP_CH;
+  double *****iHCH=electronic->iHCH;
+  double *****iHNL=electronic->iHNL;
+
   static int firsttime=1;
   double TStime,TEtime;
   int i,j,kl,n,m,Rn;
@@ -387,7 +393,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
                 if (0<=kl){
 
-                  Multiply_OLP(Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLH);
+                  Multiply_OLP(Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLH, electronic);
 
 		} /* if (0<=kl) */
 
@@ -569,7 +575,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
 	  if (0<=kl){
 
-	    Multiply_OLP(Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH);
+	    Multiply_OLP(Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH, electronic);
 
 	  } /* if (0<=kl) */
 
@@ -656,8 +662,10 @@ double Set_CoreHoleMatrix(double *****HCH)
 
 
 void Multiply_OLP(int Mc_AN, int Mj_AN, int k, int kl, 
-                  int Cwan, int Hwan, int wakg, dcomplex ***NLH)
+                  int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP_CH=electronic->OLP_CH;
+
   int m,n,L,L1,L2,spin,target_spin;
   int i,j,apply_flag,l,mul;
   int done_flag,GA_AN,GB_AN;

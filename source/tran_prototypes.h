@@ -1,5 +1,6 @@
 #include "openmx_gpu_backend.h"
 #include "openmx_core_atomic.h"
+#include "openmx_core_electronic.h"
 #include "openmx_gpu_runtime.h"
 #include "f77func.h"
 #ifdef blaswrap
@@ -341,7 +342,7 @@ double TRAN_DFT(
 		double *****EDM,   
                 double ***TRAN_DecMulP,
 		double Eele0[2], double Eele1[2], 
-                double ChemP_e0[2]);
+                double ChemP_e0[2], const OpenMXElectronicViews *electronic);
 
 /* TRAN_DFT_Dosout.c  */
 double TRAN_DFT_Dosout(
@@ -399,7 +400,7 @@ void TRAN_Input_std(
   double TRAN_eV2Hartree,  
   double Electronic_Temperature,
   int *output_hks
-);
+, const OpenMXElectronicViews *electronic);
 
 /* TRAN_Input_std_Atoms.c  */
 void TRAN_Input_std_Atoms(  MPI_Comm comm1, int Solver );
@@ -407,7 +408,7 @@ void TRAN_Input_std_Atoms(  MPI_Comm comm1, int Solver );
 
 
 /* TRAN_Output_HKS.c  */
-int TRAN_Output_HKS(char *fileHKS);
+int TRAN_Output_HKS(char *fileHKS, const OpenMXElectronicViews *electronic);
 
 /* TRAN_Output_HKS_Write_Grid.c  */
 void TRAN_Output_HKS_Write_Grid(
@@ -605,7 +606,7 @@ void TRAN_FRead2_binary_double(FILE *fp, int n1, int n2, double *gc);
 int TRAN_Input_HKS( MPI_Comm comm1, char *fileHKS);
 
 /* TRAN_RestartFile.c  */
-int TRAN_RestartFile(MPI_Comm comm1, char *mode, char *position,char *filepath, char *filename);
+int TRAN_RestartFile(MPI_Comm comm1, char *mode, char *position,char *filepath, char *filename, const OpenMXElectronicViews *electronic);
 
 /* TRAN_Set_CentOverlap.c  */
 void TRAN_Set_CentOverlap( 
@@ -763,7 +764,7 @@ double TRAN_DFT_NC(
                 double *****EDM,
                 double ***TRAN_DecMulP,
                 double Eele0[2], double Eele1[2],
-                double ChemP_e0[2]);
+                double ChemP_e0[2], const OpenMXElectronicViews *electronic);
 
 void TRAN_Allocate_Cregion_NC(MPI_Comm mpi_comm_level1,
                            int SpinP_switch,
@@ -809,3 +810,4 @@ void TRAN_Set_SurfOverlap_NC( MPI_Comm comm1,
 /* until here by Y. Xiao for Noncollinear NEGF calculations */
 
 #include "openmx_core_atomic.h"
+#include "openmx_core_electronic.h"

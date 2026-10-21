@@ -236,8 +236,10 @@ double Band_DFT_Col_CWF(
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2,
                     int nkpath, int *n_perk, 
-                    double ***kpath, char ***kname)
+                    double ***kpath, char ***kname, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+
   static int firsttime=1;
   int i,j,k,l,m,n,p,wan,MaxN,MinN,i0,ks;
   int i1,i1s,j1,ia,jb,lmax,kmin,kmax,po,po1,spin;

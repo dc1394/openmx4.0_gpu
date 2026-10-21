@@ -26,14 +26,14 @@
 
 /*** subroutine */
 static void MPI_OLP(double *****OLP1);
-static void Stress3(const OpenMXAtomicViews *atomic);
+static void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic);
 static void Stress4(const OpenMXAtomicViews *atomic);
 static void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0);
 static void Stress_core();
 static void Stress_H0(const OpenMXAtomicViews *atomic);
 static void Stress_H1();
-static void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0);
-static void Stress_plus_U_dual(double *****CDM0);
+static void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic);
+static void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic);
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]); /*from Total_Energy.c*/
 static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
 
@@ -47,7 +47,7 @@ static void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 		 int Mc_AN, int h_AN, int q_AN,
 		 double ******DS_NL1,
 		 dcomplex ***Hx, dcomplex ***Hy, dcomplex ***Hz,
-		 dcomplex *****H_sts);
+		 dcomplex *****H_sts, const OpenMXElectronicViews *electronic);
 
 static void dHNL_SO(
 	     double *sumx0r,
@@ -88,8 +88,12 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM)
+	      double *****EDM, const OpenMXElectronicViews *electronic)
 {
+  double *****CntH0=electronic->CntH0;
+  double *****CntOLP=electronic->CntOLP;
+  double ******iDM=electronic->iDM;
+
   /*** variables **/
   static int firsttime=1;
   int Nc,GNc,GRc,Cwan,s1,s2,BN_AB;
@@ -1826,7 +1830,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
     printf("  Stress calculation #3\n");fflush(stdout);
   }
 
-  Stress3(atomic);
+  Stress3(atomic, electronic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -2001,7 +2005,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
             Stress from non-local potentials 
   ****************************************************/
 
-  Stress_HNL(atomic, CDM0, iDM0);
+  Stress_HNL(atomic, CDM0, iDM0, electronic);
 
   /* begin(yshiihara) */
   /****************************************************
@@ -2046,7 +2050,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
   ****************************************************/
 
   if (Hub_U_switch==1){
-    if (Hub_U_occupation==2) Stress_plus_U_dual(CDM0); /* dual */
+    if (Hub_U_occupation==2) Stress_plus_U_dual(CDM0, electronic); /* dual */
   }
 
   /****************************************************
@@ -2162,8 +2166,10 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
 }
 
 
-void Stress3(const OpenMXAtomicViews *atomic)
+void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+
   /****************************************************
   	#3 of Stress
  
@@ -4590,8 +4596,11 @@ void Stress_H1()
 
 
 
-void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0)
+void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic)
 {
+  double ******CntDS_NL=electronic->CntDS_NL;
+  double ******DS_NL=electronic->DS_NL;
+
   /****************************************************
                   Stress arising from HNL
   ****************************************************/
@@ -4967,7 +4976,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 	      jan = atomic->species.contracted_orbitals[Qwan];
 	      kl = RMI1[Mc_AN][h_AN][q_AN];
 
-              dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts);
+              dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts, electronic);
 
 	      /* contribution of force = Trace(CDM0*dH) */
 	      /* spin non-polarization */
@@ -5153,7 +5162,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
                   /* call dHNL */
 
-		  dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts);
+		  dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts, electronic);
 		  kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
                   /* for forces */ 
@@ -5455,7 +5464,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 	  jan = atomic->species.contracted_orbitals[Qwan];
 	  kl = RMI1[Mc_AN][h_AN][q_AN];
 
-          dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts);
+          dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts, electronic);
 
 	  if (SpinP_switch==0){
 
@@ -5637,7 +5646,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
               /* call dHNL */
 
-              dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts);
+              dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts, electronic);
        	      kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
               /* for forces */ 
@@ -5866,8 +5875,10 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
 
 
-void Stress_plus_U_dual(double *****CDM0)
+void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP=electronic->OLP;
+
   int i,j;
   int numprocs,myid;
   int Nthrds0;
@@ -6553,8 +6564,11 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
           int Mc_AN, int h_AN, int q_AN,
           double ******DS_NL1,
           dcomplex ***Hx, dcomplex ***Hy, dcomplex ***Hz,
-          dcomplex *****H_sts)
+          dcomplex *****H_sts, const OpenMXElectronicViews *electronic)
 {
+  double *****HNL=electronic->HNL;
+  double *****iHNL=electronic->iHNL;
+
   int i,j,k,m,n,l,kg,kan,so,deri_kind;
   int ig,ian,jg,jan,kl,kl1,kl2;
   int wakg,l1,l2,l3,Gc_AN,Mi_AN,Mi_AN2,Mj_AN,Mj_AN2;

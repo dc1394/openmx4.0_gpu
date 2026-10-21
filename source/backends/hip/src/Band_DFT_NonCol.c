@@ -4465,8 +4465,12 @@ double Band_DFT_NonCol(
 		    int *NPROCS_WD2,
 		    int *Comm_World2,
 		    int *Comm_World_StartID2,
-		    MPI_Comm *MPI_CommWD2)
+		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+  double ******iDM=electronic->iDM;
+  double *****iParDM=electronic->iParDM;
+
   openmx_mgpu_scope_state input_scope=openmx_mgpu_band_scope_enter(0,0,0);
   static int firsttime=1;
   int i,j,k,l,m,n,n2,p,wan,MaxN,i0,ks;
