@@ -70,8 +70,8 @@ static void Force_HNL(const OpenMXAtomicViews *a,double *****d,double *****im,
   const OpenMXElectronicViews *e,const OpenMXLocalBasisViews *l,OpenMXSolverInvocation *s){
   assert(a==expected_atomic && d==expected_cdm && im==expected_edm && !e && !l);stage_scratch(s);
 }
-static void Force_CoreHole(double *****d,double *****im,const OpenMXElectronicViews *e,OpenMXSolverInvocation *s){
-  assert(d==expected_cdm && im==expected_edm && !e);stage_scratch(s);
+static void Force_CoreHole(const OpenMXAtomicViews *a,double *****d,double *****im,const OpenMXElectronicViews *e,OpenMXSolverInvocation *s){
+  assert(a==expected_atomic && d==expected_cdm && im==expected_edm && !e);stage_scratch(s);
 }
 #include "openmx_force_stages.h"
 '''
@@ -125,7 +125,7 @@ int main(void){
     OpenMX_ForceGrid(&atomic,NULL,NULL);
     OpenMX_ForceVna(NULL,NULL,expected_cdm,NULL);
     OpenMX_ForceNonlocal(&atomic,expected_cdm,expected_edm,NULL,NULL);
-    OpenMX_ForceCoreHole(expected_cdm,expected_edm,NULL);
+    OpenMX_ForceCoreHole(&atomic,expected_cdm,expected_edm,NULL);
   }
   assert(stage_calls==12);
   printf("PASS: %d Force invocations with real topology/RAII owner, argument forwarding and 1-8 workers\n",invocations);

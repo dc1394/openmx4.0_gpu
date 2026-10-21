@@ -1051,7 +1051,9 @@
     "openmx_core_two_center.h",
     "openmx_core_force.h",
     "openmx_force_workspace.h",
-    "openmx_force_stages.h"
+    "openmx_force_stages.h",
+    "openmx_force_projectors.h",
+    "openmx_core_core_hole.h"
   ],
   "integrated_overrides": {
     "Cluster_DFT_Col.c": "src/Cluster_DFT_Col.c",

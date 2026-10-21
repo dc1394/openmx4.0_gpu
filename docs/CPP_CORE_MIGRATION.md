@@ -35,6 +35,7 @@ C++20 の言語機能である named modules は使用していません。
 | DS_VNA の CPU 作業領域 | `core/src/dsvna_workspace.cpp` | 4 チャネルの角度行列、動径和、複素実変換と Bessel の一時領域をワーカーごとに所有。化学種内の実在する基底を軌道・動径オフセットで並べ、C++ は `mdspan`、CUDA/HIP 共通 CPU 処理は平坦なビューを借用する。 |
 | onsite・DC・LNO・縮約係数 | `core/src/local_basis_state.cpp` | 9系統を計算コンテキストが所有。原子ごとの不均一な行列はオフセット付きの連続領域、係数は矩形 Tensor。数値処理へ平坦な行ビューを渡し、再分配後は旧トポロジーを使わず解放する。 |
 | 軌道最適化 | `core/src/orbital_optimization.cpp` | DFT 呼び出しごとに履歴・Hessian・トポロジーの写し・再利用する作業領域を所有。atoms/species、DIIS/EF、勾配・正規化を共通化し、演算対象は平坦な行列ビュー、MPI/LAPACK は明示的なサービスとして受け取る。 |
+| core-hole の係数と Force のスピノル演算 | `core/src/core_hole.cpp` | Force 段階の呼び出しが基底配置・スピン・状態番号と正負の係数を所有。係数は一度生成し、全ワーカーが不変ビューを借用する。重なりの平坦な行と出力の `mdspan` を使い、SDK・MPI・大域変数に依存しない。 |
 | 動径表と補間 | `core/src/radial_table.cpp` | `RadialTableView` が格子と全入力値を検証して借用する。独立したコピーが必要な場合は `RadialTable` が所有。PAO、非局所 projector、中性原子ポテンシャル、VNA 分離射影子の境界条件を明示して補間する。 |
 | 波数空間の補間 | `core/src/radial_table.cpp` | 波数を `i*step` で求め、PAO/projector の共通補間へ渡す。格子配列を所有せず、`NormK` を必要としない。 |
 | PAO/NLP/VNA・軌道積の Fourier 変換 | `core/src/radial.cpp` | 半径、積分の測度・方式、波数、チャネル、サンプルを明示的に受け取る。ホスト配列は `Tensor`、実行用配列は `Kokkos::View` が所有。 |
@@ -3087,6 +3088,82 @@ nativeの幾何・原子分配・Hubbard係数の大域参照、借用の多重�
 一部のstatic contextは残っています。この段階でForce全体の大域変数ゼロや、
 GPU数値カーネルのKokkos移行が完了したわけではありません。
 
+## 第29段階: HNL・core-hole の共有化と不変な係数の所有
+
+`0216ce1d` を基準に、CUDA/HIP の `Force.c` に重複していた `dHNL`、
+`dHNL_SO_rows`、`dHCH`、`dHCH_SO` を分離しました。native の射影子処理は
+`source/openmx_force_projectors.h` の一つの実装を両バックエンドで使い、
+core-hole の係数生成とスピノル演算は `core/src/core_hole.cpp` に移しました。
+HNL の加算順序と、バックエンド固有の GPU 実装・精度・容量方針を保持しています。
+
+`CoreHole` は対象原子、スピン、spin-orbit、角運動量、状態番号、基底の配置と
+penalty を明示的に受け取ります。基底数・磁気成分のオフセットを検証し、
+入力メタデータを保持せず、必要な値と連続配置の係数だけを所有します。
+`OpenMXSolverInvocation` が `unique_ptr` で所有し、後続の準備で所有者リストが
+拡張されても公開済みビューのアドレスは変わりません。正常終了、途中終了、例外、
+確保途中の失敗で自動解放し、不完全なビューを公開しません。
+
+従来は `dHCH` の原子対ごとにコリニア係数を準備し、`dHCH_SO` の呼び出しごとに
+基底配置と相対論的係数を組み直していました。新しい準備は `Force_CoreHole` 段階の
+開始時に一度だけ行い、ワーカー間では不変ビューを共有します。数値ループ内では
+係数の確保・初期化・所有者検索を行いません。s/p/d/f と全状態番号を扱い、
+対象の基底が存在しない場合は従来どおり寄与を加えません。
+
+正負の penalty は別々に元の除算・乗算順序で生成します。元の式には導関数の符号に
+依存しない対角項があるため、penalty の反転を導関数の符号へまとめていません。
+演算本体は平坦な重なりの4行と `[spin component, Cartesian direction]` の
+複素 `mdspan` を受け取り、元の実部・虚部・加算順序を維持します。
+MPI、SDK 型、`openmx_common.h`、Kokkos の初期化は必要としません。
+
+native の `dHCH` は化学種の軌道数、収縮軌道数、cutoff、相対論的設定と
+projector 成分数を `OpenMXAtomicViews` から受け取り、core-hole の設定を
+`OpenMXCoreHoleView` から受け取ります。`dHNL_SO_rows` のスピンも引数にしました。
+既存 C の多重ポインタは薄い接続で行ビューへ変換し、core-hole の C++ 演算には
+渡しません。native の接続は出力引数を使い、NVHPC で問題になった大きな構造体の
+値返しを追加していません。
+
+### 第29段階の検証
+
+コアの6テストは係数、入力の寿命、ビューの安定性、不正入力時の出力保持、
+正常・途中終了・例外の寿命、すべての確保地点での失敗、並行参照を検査します。
+`tests/fixtures/core_hole_spinor_before_views.c` は変更前のスピノル処理を固定した
+比較対象です。実際の native 接続と C++ 演算を使う5,184条件の比較を ASan/UBSan で
+実行しました。s/p/d/f、全状態、スピン0/1/3、正負の penalty、導関数の符号、
+複数の同一角運動量基底、対象基底の欠如、別原子を含みます。物理式の正しさを
+独立に証明する検査ではなく、従来の式との数値同等性と境界・寿命の検査です。
+
+本体 CTest 237件、GCC ASan/UBSan・Intel C++・Kokkos CUDA のコア各203件、
+SYCL の関連28件が通過しました。CUDA/HIP の native Force 寿命検査は GCC の
+ASan/UBSan と NVHPC の双方で通過し、原子ビューの受け渡しも検査しました。
+CUDA sm_80 と HIP の通常/代替 Force3 のコンパイル、および C++ の2翻訳単位の
+HIP/gfx942 コンパイルも通過しました。
+
+標準 S 全14例は CPU/GPU それぞれ4 MPI×1 OpenMPで変更前後を実行し、
+前後・CPU対GPU・同梱参照の5比較が通過しました。同梱参照との差はエネルギー最大
+`6.3e-11 Ha`、Force最大 `7.8e-11 Ha/bohr` です。Cluster/Band の共線・非共線、
+DC/DC-LNO/Krylov、core-hole、Hubbard dual、縮約基底、非融合 Force と GPU から
+CPU Force への切り替えの計26比較は、エネルギー・全Forceが既定の `1e-7` 以内でした。
+個別計算52回はすべてSCF収束を確認しました。最大差は、収束条件 `1e-6` の
+Hubbard dual のエネルギー `1.1153e-8 Ha`、Force `5.2298e-8 Ha/bohr` です。
+
+厳密な反復数の比較は GPU Cluster NC の51→53、GPU Band NC の19→18、
+CPU core-hole NC・2 OpenMP の20→21で不一致でした。Force最大差は順に
+`1.05e-10`、`1.7e-11`、`3.702e-9 Ha/bohr` です。不一致の結果は保存し、
+数値が許容差内であることと区別しています。他の計算を止めた性能比較は
+[性能検証記録](PERFORMANCE_REGRESSION.md) に記載します。
+
+共有化した4関数以外では、CUDA の102定義・HIP の108定義がトークン単位で
+不変でした。共有化した HNL の2関数も明示的なスピン引数以外の演算は不変です。
+保護対象5ソースはハッシュで不変を確認しました。AMD の最適化済み原子内チーム縮約、
+GeForce と A100/H100 の既存の切り替え方針を変更していません。
+AMD・A100/H100・Intel/Apple GPU の実機検証はこの環境では行っていません。
+検証成果物は `build/force-projector-refactor-20261022/` に保存します。
+
+HNL/core-hole の native 処理には、原子分配、近接リスト、幾何、Hubbard 等の
+大域参照と借用の多重ポインタが残っています。今回の共有化は host の重複除去と
+core-hole の数値・所有境界の分離であり、GPU 数値カーネルの Kokkos 移行や
+Force 全体の大域変数ゼロは引き続き未完了です。
+
 ## 次の移行単位と完了条件
 
 1. 化学種の基本情報23表と PAO/VPS・Fourier の数値領域の所有、実空間・Fourier 表の
@@ -3101,8 +3178,9 @@ GPU数値カーネルのKokkos移行が完了したわけではありません�
    軌道最適化の履歴・微分も所有化済み。原子種別の Hubbard 相互作用係数等を移す。
    密行列には `layout_left` / `layout_right` を明示し、BLAS の leading dimension を保持する。
 4. Hamiltonian・密度格子、二中心積分の基底変換、Forceのスピン・重なり縮約は共通CPU実装と
-   独立テストへ移行済み。HNL/core-holeのスピン縮約も共通化済み。動径/Gaunt積分、混合等にも同じ境界を
-   設け、Kokkos実装へ移す。既存CUDA/HIP実装は各段階の同等性確認後に削除する。
+   独立テストへ移行済み。HNL/core-holeのhost実装も共有化し、core-holeの係数と
+   スピノル演算をC++化済み。動径/Gaunt積分、混合等にも同じ境界を設け、Kokkos実装へ移す。
+   既存CUDA/HIP実装は各段階の同等性確認後に削除する。
 5. SCF / MD / NEB の状態と MPI communicator・BLAS/solver ハンドル・GPU バッファを
    明示的な所有オブジェクトへ集約する。ランタイムの寿命と計算ケースの寿命を分離する。
 6. 入出力、restart、輸送、解析機能まで引数で依存を受け渡し、`openmx_common.h` の可変

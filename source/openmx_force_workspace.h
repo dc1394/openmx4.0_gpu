@@ -2,7 +2,20 @@
 #define OPENMX_FORCE_WORKSPACE_H
 #include "openmx_core_force.h"
 #include "openmx_core_local_basis.h"
+#include "openmx_core_core_hole.h"
 #include "openmx_solver_workspace.h"
+#include <string.h>
+
+static inline void OpenMX_ForcePrepareCoreHole(OpenMXSolverInvocation *owner,const OpenMXAtomicViews *atomic,
+    int atom,int species,const char *orbital,int state,int spin,int spin_orbit,double penalty,OpenMXCoreHoleView *view)
+{
+  if(species<0 || (size_t)species>=atomic->species.species)OpenMX_Solver_Failure("invalid core-hole species");
+  const int angular=!strcmp(orbital,"s")?0:!strcmp(orbital,"p")?1:!strcmp(orbital,"d")?2:!strcmp(orbital,"f")?3:-1;
+  const OpenMXCoreHoleInput input={atom,spin,spin_orbit,angular,state,atomic->species.basis_lmax[species],
+      atomic->species.orbitals[species],atomic->species.basis+(size_t)species*atomic->species.angular_channels,penalty};
+  char error[256];
+  if(!openmx_core_core_hole_prepare(owner,&input,view,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
 
 static inline double OpenMX_ForceRun(const OpenMXForceInput *input,OpenMXForceOperation operation,void *args)
 {

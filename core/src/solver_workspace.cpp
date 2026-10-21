@@ -1,6 +1,7 @@
 #include "openmx_core_solver_workspace.h"
 #include <openmx/core/tensor.hpp>
 #include <openmx/core/orbital_workspace.hpp>
+#include <openmx/core/core_hole.hpp>
 #include <array>
 #include <climits>
 #include <cstdio>
@@ -153,6 +154,7 @@ struct OpenMXSolverInvocation {
   std::vector<Worker> workers;
   std::vector<std::unique_ptr<OpenMXSolverRealField>> fields;
   std::vector<std::unique_ptr<OpenMXSolverResidues>> residues;
+  std::vector<std::unique_ptr<openmx::core::CoreHole>> core_holes;
   explicit OpenMXSolverInvocation(int n):workers(n) {}
   Worker& worker(int n) {require(n>=0 && size_t(n)<workers.size(),"invalid solver worker ID");return workers[n];}
 };
@@ -171,6 +173,14 @@ extern "C" int openmx_core_solver_real(OpenMXSolverInvocation* scope,int worker,
   return checked(error,capacity,[&]{require(scope && out,"missing solver scope or output");
     const auto shape=shape4(dimensions);auto& b=buffer(scope->worker(worker).real,name,shape);
     *out={{shape[0],shape[1],shape[2],shape[3]},b.view().data_handle()};});
+}
+extern "C" int openmx_core_core_hole_prepare(OpenMXSolverInvocation* scope,const OpenMXCoreHoleInput* input,
+    OpenMXCoreHoleView* out,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && input && out,"missing core-hole scope, input or output");
+    auto owner=std::make_unique<openmx::core::CoreHole>(*input);const auto view=owner->view();
+    scope->core_holes.push_back(std::move(owner));*out=view;
+  });
 }
 extern "C" int openmx_core_solver_orbitals(OpenMXSolverInvocation* scope,int worker,const char* name,
     const OpenMXOrbitalShape* shape,OpenMXOrbitalBuffers* out,char* error,size_t capacity) {

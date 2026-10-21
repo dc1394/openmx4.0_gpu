@@ -26,7 +26,7 @@ static int OpenMX_ForceStageOperation(OpenMXSolverInvocation *scratch,void *opaq
     case OPENMX_FORCE_NONLOCAL:
         Force_HNL(a->atomic,a->density,a->imaginary,a->electronic,a->local_basis,scratch);break;
     case OPENMX_FORCE_CORE_HOLE:
-        Force_CoreHole(a->density,a->imaginary,a->electronic,scratch);break;
+        Force_CoreHole(a->atomic,a->density,a->imaginary,a->electronic,scratch);break;
     default:
         return 0;
     }
@@ -54,10 +54,10 @@ static inline void OpenMX_ForceNonlocal(const OpenMXAtomicViews *atomic,
         .density=density,.imaginary=imaginary,.electronic=electronic,.local_basis=local_basis};
     (void)OpenMX_Solver_Run(OpenMX_ForceStageOperation,&a);
 }
-static inline void OpenMX_ForceCoreHole(double *****density,double *****imaginary,
+static inline void OpenMX_ForceCoreHole(const OpenMXAtomicViews *atomic,double *****density,double *****imaginary,
     const OpenMXElectronicViews *electronic)
 {
-    OpenMXForceStageArguments a={.kind=OPENMX_FORCE_CORE_HOLE,
+    OpenMXForceStageArguments a={.kind=OPENMX_FORCE_CORE_HOLE,.atomic=atomic,
         .density=density,.imaginary=imaginary,.electronic=electronic};
     (void)OpenMX_Solver_Run(OpenMX_ForceStageOperation,&a);
 }
