@@ -235,12 +235,43 @@ Completed host checks:
 - CPU ELPA on six ranks with no CUDA devices passed all 20 cases per rank.
 - CPU-only Cr2, Crys-MnO, GaAs and H2O passed the distributed references.
 
-The A100 regression allocation (PBS 943363) is queued as of 10:50 JST.
-Results will be recorded after execution; none of the earlier A100 results
-above should be interpreted as completed validation of this branch.
+Code revision 4d3fafb2 was then validated in PBS allocation 943363 on acc008,
+with one A100-SXM4-40GB, 16 CPU cores and 60 GiB host memory. The job exited
+successfully and its private MPS daemon was stopped. Results on this branch:
+- All 14 S cases passed the reference energy/force limits of 1e-7. Maximum
+  differences were 1.01e-10 Ha and 7.8e-11 Ha/bohr. The native suite reported
+  76.67 seconds total elapsed time. Comparison with the initial optimized
+  main build also passed (maxima 1.35e-10 Ha and 1.5e-11 Ha/bohr).
+- All four Si216 cases passed, with the same inputs, two SCF iterations,
+  4 ranks x 4 threads and no CPU eigensolver fallback. Against the initial
+  optimized main build, maximum energy/force differences were 3.98e-12 Ha
+  and 1.0e-12 Ha/bohr; maximum energy-component difference was 5.01e-12 Ha.
+  Application seconds: cluster_col 34.054, cluster_nc 102.100,
+  band_col 37.888, band_nc 97.860. Peak process-tree RSS was 27.5--47.6 GiB.
+- The five explicit DF cases also passed against the initial optimized main
+  build (maximum energy difference 2.27e-10 Ha, force 2.5e-11 Ha/bohr).
+- With this same refactor executable, gpusolver2 GPU versus forced CPU
+  recovery passed for collinear and NC clusters: maximum energy difference
+  3.51e-11 Ha and force difference 2.12e-10 Ha/bohr.
+- The rebuilt quadrature fixture passed all 78 FP64/DF cases, 96 guarded
+  range checks and worker rollback/publication checks. Maximum scaled error
+  was 6.343e-14; Compute Sanitizer reported zero memory errors.
+- The old-versus-tiled FP64 kernel was remeasured using the same refactor
+  fixture and OPENMX_SETHAM_FP64_TILED=0/1: 16 pairs x 8192 points,
+  13/26/48 orbitals and 1/2/4 spins, two warmups and 30 repetitions. Across
+  these nine shapes the measured kernel-wrapper speedup was 2.56--13.10x.
+
+The comparisons against main above check numerical compatibility. They
+include all intervening refactor changes and use separate allocations, so
+their whole-application timings do not isolate the A100 optimizations.
+Physical multi-A100, RTX 5080 and HIP execution remain untested here.
 
 Commands, logs and frozen artifacts for this branch are kept separately in
 work/codex_a100_refactor_20261021. The compiled executable SHA-256 is:
   986abbb507fe2232fbb0f6e11efbc5f749e0cca6d61171219a26f00a7bdec094
 The accompanying libopenmx_core.so SHA-256 is:
   ddf3198f88228c318735b9efc531e5397f3708075b5b3da092bd1fad92c4710f
+work/openmx and work/lib/libopenmx_core.so contain these validated files.
+In addition to the commands/ logs, see refactor-S-reference.txt,
+refactor-S-vs-main.txt, compare-si216.json, refactor-df-compare.txt,
+gs2-recovery/summary.json, quadrature-memcheck.log and kernel-tiled-*.log.
