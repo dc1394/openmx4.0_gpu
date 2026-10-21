@@ -1700,3 +1700,7 @@ Band_DFT_Col.o Band_DFT_NonCol.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_
 # Invocation-owned projector communication and shared VNA orchestration.
 Force.o Stress.o Set_Nonlocal.o Set_CoreHoleMatrix.o Set_ProExpn_VNA.o: openmx_projector_exchange.h openmx_core_projector_exchange.h
 Set_ProExpn_VNA.o: openmx_vna_assembly.h openmx_core_vna_invocation.h openmx_core_atom_pairs.h openmx_vna_tables.h openmx_vna_status.h
+
+# Shared flat orbital optimization and Hubbard force boundaries.
+DFT.o Opt_Contraction.o: openmx_orbital_optimization.h openmx_core_orbital_optimization.h
+Force.o: openmx_hubbard_force.h

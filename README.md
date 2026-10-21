@@ -158,12 +158,23 @@ coefficients/populations and contracted-orbital coefficients now share another
 calculation-owned store. Nine families use contiguous values with explicit
 atom offsets or rectangular strides; ten globals, including one unused Zeeman
 allocation, are removed. Their numerical consumers use flat row views through
-SCF, forces, stress, orbital optimization and output. A few force/stress and
-optimization helpers still borrow temporary row adapters. Allocation failure
-preserves the previous state, and repartitioning releases storage independently
-of old topology. The same implementation serves CUDA/HIP and has no vendor SDK
-types. Noncollinear Hamiltonian contraction also handles all four spin
-components without overrunning its accumulation buffer.
+SCF, forces, stress, orbital optimization and output. These nine families now
+expose only flat views; their temporary row adapters are removed. Allocation
+failure preserves the previous state, and repartitioning releases storage
+independently of old topology. The same implementation serves CUDA/HIP and has
+no vendor SDK types. Noncollinear Hamiltonian contraction also handles all four
+spin components without overrunning its accumulation buffer.
+Orbital optimization now runs in the common C++ core. Each DFT invocation owns
+its histories, Hessian, copied topology, halo packet plans and reusable scratch.
+Atoms/species optimization, DIIS/EF updates, normalization and gradients use flat
+matrix/tensor views; MPI and native LAPACK are explicit service callbacks. Seven
+more globals are removed, and the optimization norm travels as an argument.
+CUDA/HIP also share the full-projector Hubbard force derivatives, with one
+contiguous C++ scratch owner replacing their temporary pointer trees. Regression
+tests compare the numerical paths with frozen implementations and check s/p
+gradients with finite differences, including tied magnetic channels and radial
+constraints. Exactly zero gradients and the species DIIS small-gradient limit
+are handled explicitly.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

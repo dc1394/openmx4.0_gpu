@@ -72,87 +72,17 @@ template<class T> OpenMXLocalMatrixLayout layout_view(AtomBlockMatrix<T>& m)
 }
 }
 
-template<class T> void LocalBasisOwner::MatrixRows<T>::bind(AtomBlockMatrix<T>& matrix)
-{
-  const auto& layout=matrix.layout();const auto values=matrix.values();
-  const auto count=values.extent(0),n=layout.atoms();
-  if (n && count>std::numeric_limits<std::size_t>::max()/n)
-    throw std::length_error("local matrix adapter extent overflow");
-  components.resize(count);atoms.resize(count*n);
-  std::size_t total_rows=0;
-  for (std::size_t a=0;a<n;++a) {
-    const auto height=static_cast<std::size_t>(element(layout.shapes(),a,0));
-    if (height>std::numeric_limits<std::size_t>::max()-total_rows)
-      throw std::length_error("local matrix row count overflow");
-    total_rows+=height;
-  }
-  if (count && total_rows>std::numeric_limits<std::size_t>::max()/count)
-    throw std::length_error("local matrix row adapter extent overflow");
-  rows.resize(count*total_rows);
-  std::size_t next=0;
-  for (std::size_t c=0;c<count;++c) {
-    components[c]=n ? atoms.data()+c*n : nullptr;
-    for (std::size_t a=0;a<n;++a) {
-      const auto height=static_cast<std::size_t>(element(layout.shapes(),a,0));
-      const auto width=static_cast<std::size_t>(element(layout.shapes(),a,1));
-      atoms[c*n+a]=height ? rows.data()+next : nullptr;
-      for (std::size_t i=0;i<height;++i)
-        rows[next++]=width ? values.data_handle()+c*layout.stride()+layout.block_offsets()[a]+i*width : &empty;
-    }
-  }
-}
-
-void LocalBasisOwner::TensorRows::bind(Tensor<double,3>& tensor)
-{
-  const auto n0=tensor.extent(0),n1=tensor.extent(1),n2=tensor.extent(2);
-  if (n1 && n0>std::numeric_limits<std::size_t>::max()/n1)
-    throw std::length_error("local tensor adapter extent overflow");
-  planes.resize(n0);rows.resize(n0*n1);
-  for (std::size_t i=0;i<n0;++i) {
-    planes[i]=n1 ? rows.data()+i*n1 : nullptr;
-    for (std::size_t j=0;j<n1;++j) rows[i*n1+j]=n2 ? tensor.data()+(i*n1+j)*n2 : &empty;
-  }
-}
-
-LocalBasisOwner::LocalBasisOwner(const OpenMXLocalBasisInput& in) : state_(create(in))
-{
-  for (std::size_t i=0;i<real_.size();++i)
-    if (auto* m=state_->real(static_cast<LocalRealField>(i))) real_[i].bind(*m);
-  for (std::size_t i=0;i<complex_.size();++i)
-    if (auto* m=state_->complex(static_cast<LocalComplexField>(i))) complex_[i].bind(*m);
-  for (std::size_t i=0;i<tensors_.size();++i)
-    if (auto* t=state_->tensor(static_cast<LocalTensorField>(i))) tensors_[i].bind(*t);
-  if (!real_[0].components.empty()) {
-    density_groups_.resize(2);
-    for (std::size_t m=0;m<2;++m) density_groups_[m]=real_[0].components.data()+m*(in.spin+1);
-  }
-  if (!complex_[0].components.empty()) {
-    occupation_spins_.resize(4);occupation_history_.resize(2);potential_spins_.resize(2);
-    for (std::size_t i=0;i<4;++i) occupation_spins_[i]=complex_[0].components.data()+2*i;
-    for (std::size_t i=0;i<2;++i) {
-      occupation_history_[i]=occupation_spins_.data()+2*i;
-      potential_spins_[i]=complex_[1].components.data()+2*i;
-    }
-  }
-}
+LocalBasisOwner::LocalBasisOwner(const OpenMXLocalBasisInput& in) : state_(create(in)) {}
 
 OpenMXLocalBasisViews LocalBasisOwner::views() noexcept
 {
   OpenMXLocalBasisViews result{};
-  for (std::size_t i=0;i<real_.size();++i)
+  for (std::size_t i=0;i<OPENMX_LOCAL_REAL_COUNT;++i)
     if (auto* m=state_->real(static_cast<LocalRealField>(i))) result.real[i]={layout_view(*m),m->values().data_handle()};
-  for (std::size_t i=0;i<complex_.size();++i)
+  for (std::size_t i=0;i<OPENMX_LOCAL_COMPLEX_COUNT;++i)
     if (auto* m=state_->complex(static_cast<LocalComplexField>(i))) result.complex_values[i]={layout_view(*m),m->values().data_handle()};
-  for (std::size_t i=0;i<tensors_.size();++i)
+  for (std::size_t i=0;i<OPENMX_LOCAL_TENSOR_COUNT;++i)
     if (auto* t=state_->tensor(static_cast<LocalTensorField>(i))) result.tensors[i]={t->extent(0),t->extent(1),t->extent(2),t->data()};
-  result.DM_onsite=density_groups_.empty() ? nullptr : density_groups_.data();
-  result.v_eff=real_[1].components.empty() ? nullptr : real_[1].components.data();
-  result.S12=real_[2].components.empty() ? nullptr : real_[2].components[0];
-  result.NC_OcpN=occupation_history_.empty() ? nullptr : occupation_history_.data();
-  result.NC_v_eff=potential_spins_.empty() ? nullptr : potential_spins_.data();
-  const auto tensor=[&](std::size_t i) {return tensors_[i].planes.empty() ? nullptr : tensors_[i].planes.data();};
-  result.LNO_coes=tensor(0);result.LNO_pops=tensor(1);
-  result.CntCoes=tensor(2);result.CntCoes_Species=tensor(3);
   return result;
 }
 } // namespace openmx::core::compat
@@ -188,3 +118,20 @@ extern "C" int openmx_core_local_basis_get(OpenMXCoreContext* context,
 }
 extern "C" void openmx_core_local_basis_release(OpenMXCoreContext* context)
 { if (context) context->local_basis.reset(); }
+
+struct OpenMXLocalTensorWorkspace {
+  explicit OpenMXLocalTensorWorkspace(const size_t* n) : values({n[0],n[1],n[2]}) {}
+  openmx::core::Tensor<double,3> values;
+};
+extern "C" OpenMXLocalTensorWorkspace *openmx_core_local_tensor_create(const size_t extent[3],
+    OpenMXLocalTensor3* view,char* error,size_t capacity)
+{
+  std::unique_ptr<OpenMXLocalTensorWorkspace> owner;
+  if (!checked(error,capacity,[&] {
+    if(!extent || !view) throw std::invalid_argument("missing local tensor shape or view");
+    owner=std::make_unique<OpenMXLocalTensorWorkspace>(extent);
+    const auto& v=owner->values;*view={v.extent(0),v.extent(1),v.extent(2),owner->values.data()};
+  })) return nullptr;
+  return owner.release();
+}
+extern "C" void openmx_core_local_tensor_destroy(OpenMXLocalTensorWorkspace* owner) {delete owner;}

@@ -904,6 +904,7 @@ extern "C" int openmx_core_run(int argc, char** argv, OpenMXCoreEntry entry)
 extern "C" void openmx_core_finish(OpenMXCoreContext* context)
 {
   if (context) {
+    context->orbital_optimization.reset();
     context->local_basis.reset();
     context->electronic.reset();
     context->vna_matrices.reset();

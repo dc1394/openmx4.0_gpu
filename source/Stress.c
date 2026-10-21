@@ -90,8 +90,6 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
 	      double *****CDM,
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
-  dcomplex *****NC_v_eff=local_basis->NC_v_eff;
-  double ****v_eff=local_basis->v_eff;
 
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
@@ -1407,7 +1405,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
   }
   /* end(yshiihara) */
   
-#pragma omp parallel shared(atomic,time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,NC_v_eff,v_eff,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
+#pragma omp parallel shared(atomic,time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,local_basis,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
   {
 
     Hx = (dcomplex***)malloc(sizeof(dcomplex**)*3);
@@ -5880,7 +5878,6 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
 void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
-  double ****v_eff=local_basis->v_eff;
 
   double *****OLP=electronic->OLP;
 
@@ -5915,7 +5912,7 @@ void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electroni
 
   /* OpenMP threading for Mc_AN loop */
 
-#pragma omp parallel shared(List_YOUSO,Matomnum,M2G,WhatSpecies,natn,ncn,F_G2M,Spe_Total_NO,Gxyz,atv,FNAN,RMI1,v_eff,OLP,SpinP_switch,CDM0,My_Stress_threads)
+#pragma omp parallel shared(List_YOUSO,Matomnum,M2G,WhatSpecies,natn,ncn,F_G2M,Spe_Total_NO,Gxyz,atv,FNAN,RMI1,local_basis,OLP,SpinP_switch,CDM0,My_Stress_threads)
   {
     int i,j,k,Mc_AN,so,Rn,Gc_AN,Cwan;
     int spin,Gh_AN,Mh_AN,Hwan,h_AN,spinmax;

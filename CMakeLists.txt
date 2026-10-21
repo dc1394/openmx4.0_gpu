@@ -153,6 +153,9 @@ if(BUILD_TESTING)
   add_test(NAME suite-output COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/test_suite_output.py")
   set_tests_properties(suite-output PROPERTIES TIMEOUT 30 LABELS "unit")
+  add_test(NAME hubbard-force-views COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_hubbard_force_cpu.py" "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(hubbard-force-views PROPERTIES TIMEOUT 180 LABELS "unit")
   add_test(NAME dftd3-interpolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_dftd3_interpolation_cpu.py")
   set(_dense_kernel_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_dense_workers_cpu.py")

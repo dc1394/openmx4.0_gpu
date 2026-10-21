@@ -7,6 +7,7 @@
 #include "vna_matrix_compat.hpp"
 #include "electronic_matrix_compat.hpp"
 #include "local_basis_compat.hpp"
+#include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
 
 // Private definition shared by C ABI modules. No implicit/default context.
@@ -22,4 +23,5 @@ struct OpenMXCoreContext {
   std::unique_ptr<openmx::core::compat::VnaMatrixOwner> vna_matrices;
   std::unique_ptr<openmx::core::compat::ElectronicMatrixOwner> electronic;
   std::unique_ptr<openmx::core::compat::LocalBasisOwner> local_basis;
+  std::unique_ptr<openmx::core::OrbitalOptimization> orbital_optimization;
 };

@@ -40,12 +40,14 @@ typedef struct {
   OpenMXLocalRealMatrix real[OPENMX_LOCAL_REAL_COUNT];
   OpenMXLocalComplexMatrix complex_values[OPENMX_LOCAL_COMPLEX_COUNT];
   OpenMXLocalTensor3 tensors[OPENMX_LOCAL_TENSOR_COUNT];
-  /* Transitional row adapters borrow the flat values. Never free or rebind
-     their rows. All views expire at successful replacement/release/finish. */
-  double *****DM_onsite, ****v_eff;
-  dcomplex ******NC_OcpN, *****NC_v_eff;
-  double ***S12, ***LNO_coes, ***LNO_pops, ***CntCoes, ***CntCoes_Species;
+  /* All views expire at successful replacement, release or context finish. */
 } OpenMXLocalBasisViews;
+
+/* Invocation-owned contiguous scratch. No pointer tables or runtime setup. */
+typedef struct OpenMXLocalTensorWorkspace OpenMXLocalTensorWorkspace;
+OpenMXLocalTensorWorkspace *openmx_core_local_tensor_create(const size_t extent[3],
+    OpenMXLocalTensor3 *view, char *error, size_t capacity);
+void openmx_core_local_tensor_destroy(OpenMXLocalTensorWorkspace*);
 
 /* All input metadata is copied or converted to owned layouts. Failed
    replacement preserves both the old owner and the caller's view. No MPI,
@@ -60,7 +62,7 @@ void openmx_core_local_basis_release(OpenMXCoreContext*);
 #endif
 
 static inline double *openmx_local_tensor_row(const OpenMXLocalTensor3 *v, size_t i, size_t j)
-{ return v->values+(i*v->n1+j)*v->n2; }
+{ return v->n2 ? v->values+(i*v->n1+j)*v->n2 : v->values; }
 static inline double *openmx_local_real_row(const OpenMXLocalRealMatrix *v,
     size_t component, size_t atom, size_t row)
 { return v->values+component*v->layout.stride+v->layout.offsets[atom]+row*(size_t)v->layout.shapes[2*atom+1]; }

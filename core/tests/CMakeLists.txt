@@ -44,6 +44,12 @@ add_executable(openmx_electronic_matrix_tests test_electronic_matrices.cpp alloc
 target_link_libraries(openmx_electronic_matrix_tests PRIVATE OpenMX::core)
 add_executable(openmx_local_basis_tests test_local_basis_state.cpp allocation_faults.cpp)
 target_link_libraries(openmx_local_basis_tests PRIVATE OpenMX::core)
+add_executable(openmx_orbital_optimization_tests test_orbital_optimization.cpp allocation_faults.cpp)
+target_link_libraries(openmx_orbital_optimization_tests PRIVATE OpenMX::core)
+foreach(_case reference gradient layouts ownership invalid allocation lifecycle concurrent stationary exchange services scratch)
+  add_test(NAME "core-orbopt-${_case}" COMMAND openmx_orbital_optimization_tests "${_case}")
+  set_tests_properties("core-orbopt-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
+endforeach()
 foreach(_case layouts modes mdspan ownership lifecycle invalid allocation concurrent)
   add_test(NAME "core-local-basis-${_case}" COMMAND openmx_local_basis_tests "${_case}")
   set_tests_properties("core-local-basis-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
@@ -53,7 +59,7 @@ foreach(_case layout modes mdspan ownership lifecycle invalid allocation concurr
   set_tests_properties("core-electronic-matrix-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
 endforeach()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
-  set_source_files_properties(test_local_basis_state.cpp test_electronic_matrices.cpp test_projector_pipeline.cpp test_vna_matrix_storage.cpp test_reciprocal_views.cpp
+  set_source_files_properties(test_orbital_optimization.cpp test_local_basis_state.cpp test_electronic_matrices.cpp test_projector_pipeline.cpp test_vna_matrix_storage.cpp test_reciprocal_views.cpp
     test_reciprocal_archive.cpp test_species_storage.cpp test_atomic_views.cpp test_orbital_workspace.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")

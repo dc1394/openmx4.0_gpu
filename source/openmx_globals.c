@@ -293,7 +293,6 @@ char filename[YOUSO10] = {0},filepath[YOUSO10] = {0},command[YOUSO10] = {0};
 char ref_diff_charge_filename[YOUSO10] = {0};
 char restart_filename[YOUSO10] = {0};
 char DFT_DATA_PATH[YOUSO10] = {0};
-double Oopt_NormD[10] = {0};
 double bias_weight = {0},Past_Utot[10] = {0},Past_Norm[10] = {0};
 double Max_Force = {0},GridVol = {0},W_OrthoNorm = {0};
 double SD_scaling = {0},SD_scaling_user = {0};

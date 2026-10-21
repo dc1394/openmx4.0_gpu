@@ -2501,7 +2501,6 @@ extern char filename[YOUSO10],filepath[YOUSO10],command[YOUSO10];
 extern char ref_diff_charge_filename[YOUSO10];
 extern char restart_filename[YOUSO10];
 extern char DFT_DATA_PATH[YOUSO10];
-extern double Oopt_NormD[10];
 extern double bias_weight,Past_Utot[10],Past_Norm[10];
 extern double Max_Force,GridVol,W_OrthoNorm;
 extern double SD_scaling,SD_scaling_user;
@@ -2849,19 +2848,7 @@ void Matrix_Band_LNO(int Host_ID1, int spin, double ****OLP, dcomplex **S, int *
 
 void Initial_CntCoes(double *****nh, double *****OLP, const OpenMXLocalBasisViews *local_basis);
 void Initial_CntCoes2(double *****nh, double *****OLP, const OpenMXLocalBasisViews *local_basis);
-double Opt_Contraction(
-         int orbitalOpt_iter,
-         double TotalE,
-         double *****H, 
-         double *****OLP,
-         double *****CDM,
-         double *****EDM,
-         double ****His_CntCoes,
-         double ****His_D_CntCoes,
-         double ****His_CntCoes_Species,
-         double ****His_D_CntCoes_Species,
-         double *His_OrbOpt_Etot,
-         double **OrbOpt_Hessian, const OpenMXLocalBasisViews *local_basis);
+
 
 void Contract_Hamiltonian(double *****H,   double *****CntH,
                           double *****OLP, double *****CntOLP, const OpenMXLocalBasisViews *local_basis);
@@ -3812,7 +3799,7 @@ void iterout(int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
 void iterout_md(int iter,double drctime,char fileSE[YOUSO10]);
 void outputfile1(int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10],
-                 double ChemP_e0[2]);
+                 double ChemP_e0[2], double orbital_norm);
 void init();
 void Find_CGrids(int Real_Position, int n1, int n2, int n3,
                  double Cxyz[4], int NOC[4]);

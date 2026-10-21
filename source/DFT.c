@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include "openmx_common.h"
 #include "openmx_local_basis.h"
+#include "openmx_orbital_optimization.h"
 #include "openmx_electronic.h"
 #include "openmx_atomic.h"
 #include "openmx_reciprocal.h"
@@ -270,10 +271,6 @@ dcomplex **H_Band_Col,**S_Band;
 double *ReVk,*ImVk,*ReRhoAtomk,*ImRhoAtomk;
 double ***ReRhok,***ImRhok,**Residual_ReRhok,**Residual_ImRhok;
 
-/* for orbital optimization */
-double ****His_CntCoes,****His_D_CntCoes;
-double ****His_CntCoes_Species,****His_D_CntCoes_Species;
-double **OrbOpt_Hessian,*His_OrbOpt_Etot;
 
 static int DFT_SetHamiltonianOpenACCSelectedRank(int myid0)
 {
@@ -441,13 +438,13 @@ void Allocate_Free_Band_Col(int todo_flag, const OpenMXElectronicViews *electron
 void Allocate_Free_Band_NonCol(int todo_flag, const OpenMXElectronicViews *electronic);
 void Allocate_Free_NEGF_NonCol(int todo_flag);
 void Allocate_Free_GridData(int todo_flag);
-void Allocate_Free_OrbOpt(int todo_flag);
 
 
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
   const OpenMXLocalBasisViews local_basis_storage=OpenMX_LocalBasis(core,mpi_comm_level1);
   const OpenMXLocalBasisViews *local_basis=&local_basis_storage;
+  double orbital_norm=1.0e5;
 
   const OpenMXElectronicViews electronic_storage=OpenMX_ElectronicMatrices(core,mpi_comm_level1);
   const OpenMXElectronicViews *electronic=&electronic_storage;
@@ -527,7 +524,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   DFT_ConfigureSetHamiltonianOpenACC(myid0);
 
   Allocate_Free_GridData(1);
-  if (Cnt_switch==1) Allocate_Free_OrbOpt(1);
+  if (Cnt_switch==1) Begin_Orbital_Optimization(core,atomic);
 
   /****************************************************
     print some informations to the standard output
@@ -610,7 +607,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   
   if (Cnt_switch==1 && Cnt_Now==1){
     SCF_MAX = orbitalOpt_SCF*(orbitalOpt_MD+1)-1;
-    Oopt_NormD[1] = 1.0e+5;
+    orbital_norm = 1.0e+5;
   }
   else{
     SCF_MAX = DFTSCF_loop;
@@ -1523,19 +1520,15 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* optimization of contraction coefficients */
 
-      if (Opt_Contraction(orbitalOpt_iter,
-                          0.0, /* <- TotalE  */
-                          H,OLP,DM[0],EDM,
-                          His_CntCoes,His_D_CntCoes,
-                          His_CntCoes_Species,His_D_CntCoes_Species,
-                          His_OrbOpt_Etot,OrbOpt_Hessian, local_basis)<orbitalOpt_criterion){
+      orbital_norm=Opt_Contraction(core,orbitalOpt_iter,0.0,electronic,local_basis);
+      if (orbital_norm<orbitalOpt_criterion){
 
         SCF_MAX = SCF_iter + orbitalOpt_SCF - 1;
         OrbOpt_end = 1;
       }
 
       /* save the information at iteration */
-      outputfile1(4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0); 
+      outputfile1(4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
 
       orbitalOpt_iter++;
       LSCF_iter = 0;
@@ -1810,7 +1803,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       } 
     }
 
-    outputfile1(1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0); 
+    outputfile1(1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
       Cluster_DFT_NonCol_RefineAfterMixing(sqrt(fabs(NormRD[0])));
@@ -2778,11 +2771,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if ( Solver!=12 ){
     Utot = Ucore + UH0 + Ukin + Una + Unl + UH1 + Uxc0 + Uxc1 + Uhub + Ucs + Uzs + Uzo + Uef + UvdW + Uch;
-    outputfile1(2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0);
+    outputfile1(2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
     Utot = Uele + UH1 + UH_dc + Uxc0 + Uxc1 + Uxc0_dc + Uxc1_dc + Ucore + UH0;
-    outputfile1(3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0);
+    outputfile1(3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   
   /* elapsed time */
@@ -3311,7 +3304,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   *********************************************************/
 
   Allocate_Free_GridData(2);
-  if (Cnt_switch==1) Allocate_Free_OrbOpt(2);
+  if (Cnt_switch==1) openmx_core_orbopt_end(core);
 
   if (Solver==4){
 
@@ -5398,161 +5391,5 @@ void Allocate_Free_GridData(int todo_flag)
       }
       free(Residual_ImRhok);
     }
-  }
-}
-
-
-void Allocate_Free_OrbOpt(int todo_flag)
-{
-  static int firsttime=1;
-  int i,j,k,p,al,wan,dim_H;
-
-  MPI_Barrier(mpi_comm_level1);
-
-  /********************************************
-              allocation of arrays 
-  ********************************************/
-
-  if (todo_flag==1){
-
-    His_CntCoes = (double****)malloc(sizeof(double***)*(orbitalOpt_History+1));
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      His_CntCoes[k] = (double***)malloc(sizeof(double**)*(Matomnum+1));
-      for (i=0; i<=Matomnum; i++){
-	His_CntCoes[k][i] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	for (j=0; j<List_YOUSO[7]; j++){
-	  His_CntCoes[k][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[24]);
-	}
-      }
-    }
-
-    His_D_CntCoes = (double****)malloc(sizeof(double***)*(orbitalOpt_History+1));
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      His_D_CntCoes[k] = (double***)malloc(sizeof(double**)*(Matomnum+1));
-      for (i=0; i<=Matomnum; i++){
-	His_D_CntCoes[k][i] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	for (j=0; j<List_YOUSO[7]; j++){
-	  His_D_CntCoes[k][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[24]);
-	}
-      }
-    }
-
-    His_CntCoes_Species = (double****)malloc(sizeof(double***)*(orbitalOpt_History+1));
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      His_CntCoes_Species[k] = (double***)malloc(sizeof(double**)*(SpeciesNum+1));
-      for (i=0; i<=SpeciesNum; i++){
-	His_CntCoes_Species[k][i] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	for (j=0; j<List_YOUSO[7]; j++){
-	  His_CntCoes_Species[k][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[24]);
-	}
-      }
-    }
-
-    His_D_CntCoes_Species = (double****)malloc(sizeof(double***)*(orbitalOpt_History+1));
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      His_D_CntCoes_Species[k] = (double***)malloc(sizeof(double**)*(SpeciesNum+1));
-      for (i=0; i<=SpeciesNum; i++){
-	His_D_CntCoes_Species[k][i] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	for (j=0; j<List_YOUSO[7]; j++){
-	  His_D_CntCoes_Species[k][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[24]);
-	}
-      }
-    }
-
-    dim_H = 0;
-    for (wan=0; wan<SpeciesNum; wan++){
-      for (al=0; al<Spe_Total_CNO[wan]; al++){
-	for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	  dim_H++;
-	}
-      }
-    }
-
-    OrbOpt_Hessian = (double**)malloc(sizeof(double*)*(dim_H+2));
-    for (i=0; i<(dim_H+2); i++){
-      OrbOpt_Hessian[i] = (double*)malloc(sizeof(double)*(dim_H+2));
-    }      
-
-    His_OrbOpt_Etot = (double*)malloc(sizeof(double)*(orbitalOpt_History+2));
-
-    /* PrintMemory */
-
-    if (firsttime && memoryusage_fileout) {
-      PrintMemory("Allocate_Free_OrbOpt: His_CntCoes",sizeof(double)*(orbitalOpt_History+1)*(Matomnum+1)*List_YOUSO[7]*List_YOUSO[24],NULL);
-      PrintMemory("Allocate_Free_OrbOpt: His_D_CntCoes",sizeof(double)*(orbitalOpt_History+1)*(Matomnum+1)*List_YOUSO[7]*List_YOUSO[24],NULL);
-      PrintMemory("Allocate_Free_OrbOpt: His_CntCoes_Species",sizeof(double)*(orbitalOpt_History+1)*(Matomnum+1)*List_YOUSO[7]*List_YOUSO[24],NULL);
-      PrintMemory("Allocate_Free_OrbOpt: His_D_CntCoes_Species",sizeof(double)*(orbitalOpt_History+1)*(Matomnum+1)*List_YOUSO[7]*List_YOUSO[24],NULL);
-      PrintMemory("Allocate_Free_OrbOpt: OrbOpt_Hessian",sizeof(double)*(dim_H+2)*(dim_H+2),NULL);
-      PrintMemory("Allocate_Free_OrbOpt: His_OrbOpt_Etot",sizeof(double)*(orbitalOpt_History+2),NULL);
-    }
-    firsttime = 0;
-
-  } /* end of if (todo_flag==1) */
-
-  /********************************************
-               freeing of arrays 
-  ********************************************/
-
-  if (todo_flag==2){
-
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      for (i=0; i<=Matomnum; i++){
-	for (j=0; j<List_YOUSO[7]; j++){
-	  free(His_CntCoes[k][i][j]);
-	}
-	free(His_CntCoes[k][i]);
-      }
-      free(His_CntCoes[k]);
-    }
-    free(His_CntCoes);
-
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      for (i=0; i<=Matomnum; i++){
-	for (j=0; j<List_YOUSO[7]; j++){
-	  free(His_D_CntCoes[k][i][j]);
-	}
-	free(His_D_CntCoes[k][i]);
-      }
-      free(His_D_CntCoes[k]);
-    }
-    free(His_D_CntCoes);
-
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      for (i=0; i<=SpeciesNum; i++){
-	for (j=0; j<List_YOUSO[7]; j++){
-	  free(His_CntCoes_Species[k][i][j]);
-	}
-	free(His_CntCoes_Species[k][i]);
-      }
-      free(His_CntCoes_Species[k]);
-    }
-    free(His_CntCoes_Species);
-
-    for (k=0; k<(orbitalOpt_History+1); k++){
-      for (i=0; i<=SpeciesNum; i++){
-	for (j=0; j<List_YOUSO[7]; j++){
-	  free(His_D_CntCoes_Species[k][i][j]);
-	}
-	free(His_D_CntCoes_Species[k][i]);
-      }
-      free(His_D_CntCoes_Species[k]);
-    }
-    free(His_D_CntCoes_Species);
-
-    dim_H = 0;
-    for (wan=0; wan<SpeciesNum; wan++){
-      for (al=0; al<Spe_Total_CNO[wan]; al++){
-	for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	  dim_H++;
-	}
-      }
-    }
-
-    for (i=0; i<(dim_H+2); i++){
-      free(OrbOpt_Hessian[i]);
-    }      
-    free(OrbOpt_Hessian);
-
-    free(His_OrbOpt_Etot);
   }
 }
