@@ -135,6 +135,12 @@ matrices of earlier steps, so its host estimate starts from the same
 baseline each time. A job with more than two nodes uses all of them; the
 grids are not restricted to two nodes.
 
+OPENMX_GS2_PROFILE=1 prints GS2PROF records for ELPA eigensolves and
+COSMA/ScaLAPACK products. They include matrix dimensions, real/complex type,
+the selected GPU/CPU path, and the grid root's complete call time (including
+admission/setup). Profiling adds no MPI collectives or device-wide barriers;
+the time is rank 0's elapsed time, not a maximum reduced across the grid.
+
 Eigensolver selection and memory
 -------------------------------
 MAGMA defaults to dsyevdx_m / zheevdx_m in native FP64, including leading subsets.

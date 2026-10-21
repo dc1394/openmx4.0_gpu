@@ -11,6 +11,22 @@ root=Path(__file__).resolve().parents[1]
 tree=ast.parse((root/"tests/run_gpu_vector_cpu.py").read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body
             if isinstance(n,ast.Assign) and any(getattr(t,"id","")=="prefix" for t in n.targets))
+prefix+=r'''
+static int current_device=3;
+static size_t device_room[4]={1ULL<<35,1ULL<<35,1ULL<<35,1ULL<<35};
+static int cudaGetDevice(int *d){*d=current_device;return 0;}
+static int cudaSetDevice(int d){assert(d>=0 && d<4);current_device=d;return 0;}
+static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t){*f=device_room[current_device];*t=1ULL<<36;return 0;}
+int openmx_gpu_workers_capacity_device(OpenMXGpuWorkers *p,size_t n,int kind,OpenMXGpuWorkerDeviceCost cost,void *ctx){
+ (void)kind;p->items=n;p->count=n<(size_t)workers?(int)n:workers;
+ if(local_fail && !remote)return 0;
+ for(;p->count>0;p->count--){
+  int fit=1;for(int i=0;i<p->count;i++){p->devices[i]=i;size_t nb=cost(ctx,i,p->count,i);assert(nb>0);if(nb==SIZE_MAX)fit=0;}
+  if(fit)return 1;
+ }
+ return 0;
+}
+'''
 body=(root/"source/openmx_gpu_bilinear.c").read_text().replace('#include "openmx_gpu_device.h"', '')
 body=body.replace('#include <cuda_runtime.h>','').replace('#include "set_cuda_default_device_from_local_rank.h"','')
 main=r'''
@@ -18,12 +34,12 @@ unsigned long long openmx_host_mem_available(void){return 1ULL<<36;}
 int openmx_gpu_local_size_noncollective(void){return 2;}
 
 enum {ROWS=13};
-static int spins,negative,scaled;
+static int spins,negative,scaled,visits;
 static double jagged[3][ROWS],*jrows[3],flat[7],mat[4][3][2],*mrows[4][3],dm[12];
 static float floats[5];
 static double result[ROWS*4+2],expected[ROWS*4];
 static int visit(void *context,size_t row,OpenMXBilinearEmit emit,void *target){
- (void)context;
+ (void)context;visits++;
  for(size_t k=0;k<row%4;k++){
   OpenMXBilinearTerm t={0};
   if(k%2==0){
@@ -66,7 +82,27 @@ int main(void){
   void *packet=NULL;size_t nb=0;assert(openmx_gpu_bilinear_pack(&source,0,ROWS,&packet,&nb));
   PackedSource p={0};assert(packed_open(packet,nb,&p));
   assert(p.h.matrices==(uint64_t)spins*9 && p.h.orbitals<p.h.terms*5);
-  assert(!packed_open(packet,nb-1,&p));free(packet);
+  assert(!packed_open(packet,nb-1,&p));
+  void *limited=NULL;size_t limited_bytes=0;
+  assert(openmx_gpu_bilinear_pack_limit(&source,0,ROWS,nb,&limited,&limited_bytes));
+  assert(limited_bytes==nb && memcmp(packet,limited,nb)==0);free(limited);
+  limited=(void*)1;limited_bytes=123;
+  assert(!openmx_gpu_bilinear_pack_limit(&source,0,ROWS,nb-1,&limited,&limited_bytes));
+  assert(limited==NULL && limited_bytes==0);
+  visits=0;
+  OpenMXBilinearSource huge=source;huge.rows=1ULL<<32;
+  assert(!openmx_gpu_bilinear_pack_limit(&huge,0,huge.rows,1024,&limited,&limited_bytes));
+  assert(visits==0 && limited==NULL && limited_bytes==0);
+  BilinearWork admission={0};admission.source=&source;
+  const size_t reserve=(size_t)256*1024*1024,outputs=ROWS*(size_t)spins*sizeof(double);
+  device_room[0]=reserve+outputs+nb-1;device_room[1]=reserve+outputs+nb;
+  assert(bilinear_cost(&admission,0,1,0)==SIZE_MAX);
+  int rejected_visits=visits;
+  assert(bilinear_cost(&admission,0,1,0)==SIZE_MAX && visits==rejected_visits);
+  assert(bilinear_cost(&admission,0,1,1)==nb+outputs);
+  assert(current_device==3 && memcmp(packet,admission.packet[0],nb)==0);
+  free(admission.packet[0]);free(packet);
+  device_room[0]=device_room[1]=1ULL<<35;
   for(workers=1;workers<=4;workers++)for(int tier=0;tier<4;tier++){
    local_fail=tier>0;remote_fail=tier==2;fail_alloc=tier==3;
    for(int i=0;i<ROWS*4+2;i++)result[i]=1234;
@@ -84,7 +120,7 @@ int main(void){
  assert(openmx_gpu_bilinear_execute(0,&retry,0,1,"late allocation"));
  assert(remote_calls==0 && fail_once==0);
  for(int i=0;i<ROWS*spins;i++)assert(fabs(result[i+1]-expected[i])<1e-12);
- printf("PASS: %d sparse density cases (FP32/FP64/jagged orbitals, spin, remotes and rollback)\n",cases);
+ printf("PASS: %d sparse density cases plus bounded packing (exact limits, early rejection, heterogeneous GPUs, device restoration); FP32/FP64/jagged orbitals, spin, remotes and rollback\n",cases);
 }
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-bilinear-") as folder:

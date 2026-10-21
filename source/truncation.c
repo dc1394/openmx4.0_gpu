@@ -22,6 +22,9 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_electronic.h"
+#include "openmx_vna_matrix.h"
+#include <limits.h>
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
 #include "openmx_host_memory.h"
@@ -29,6 +32,7 @@
 #include "omp.h"
 #if !OPENMX_GPU_HIP
 #include <openacc.h>
+extern void acc_clear_freelists(void);
 #endif
 
 #include "tran_prototypes.h"
@@ -51,7 +55,7 @@ static int Trunc_ProfileEnabled(void)
 static void Fixed_FNAN_SNAN();
 static int Set_Periodic(int CpyN, int Allocate_switch);
 static void Free_truncation(int CpyN, int TN, int Free_switch);
-static void free_arrays_truncation0();
+static void free_arrays_truncation0(OpenMXCoreContext *core);
 static void Trn_System(int MD_iter, int CpyCell, int TCpyCell);
 static void Estimate_Trn_System(int CpyCell, int TCpyCell);
 static void Check_System();
@@ -68,31 +72,23 @@ int TFNAN,TFNAN2,TSNAN,TSNAN2;
 
 
 
-double truncation(int MD_iter,int UCell_flag)
+double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
 { 
   static int firsttime=1;
   int i,j,k,m,ct_AN,h_AN,Gh_AN,Mc_AN,Gc_AN,s1,s2;
   int tno0,tno1,tno2,Cwan,Hwan,N,so,spin;
   int num,n2,wanA,wanB,Gi,NO1;
   int Anum,Bnum,fan,csize,NUM;
-  int size_Orbs_Grid=0,size_COrbs_Grid=0;
+  int size_Orbs_Grid=0, size_COrbs_Grid=0;
   int size_Orbs_Grid_FNAN=0;
-  int size_H0=0,size_CntH0=0,size_H=0,size_CntH=0;
-  int size_HNL=0,size_HisH1=0,size_HisH2=0;
-  int size_iHNL=0,size_iHNL0=0,size_iCntHNL=0;
-  int size_DS_NL=0,size_CntDS_NL=0;
-  int size_NumOLG=0,size_OLP=0,size_OLP_CH=0,size_CntOLP=0;
-  int size_OLP_L=0,size_OLP_p=0;
-  int size_HVNA=0,size_DS_VNA=0,size_CntDS_VNA=0;
-  int size_HVNA2=0,size_CntHVNA2=0;
-  int size_HVNA3=0,size_CntHVNA3=0;
-  int size_H_Hub=0,size_DM_onsite=0,size_DM0=0;
-  int size_v_eff=0,size_NC_OcpN=0,size_NC_v_eff=0;
-  int size_S12,size_iDM=0;
-  int size_ResidualDM=0,size_iResidualDM=0;
-  int size_Krylov_U=0,size_EC_matrix=0;
-  int size_H_Zeeman_NCO=0;
-  int size_TRAN_DecMulP=0,size_DecEkin=0,size_SubSpace_EC=0;
+  int size_NumOLG=0;
+  int size_OLP_p=0;
+  size_t size_HVNA=0,size_DS_VNA=0,size_CntDS_VNA=0;
+  size_t size_HVNA2=0,size_CntHVNA2=0;
+  size_t size_HVNA3=0,size_CntHVNA3=0;
+
+  int size_Krylov_U=0, size_EC_matrix=0;
+  int size_TRAN_DecMulP=0, size_DecEkin=0, size_SubSpace_EC=0;
   int My_Max_GridN_Atom,My_Max_OneD_Grids,My_Max_NumOLG;
   int numprocs,myid,ID;
   double r0,scale_rc0;
@@ -158,7 +154,7 @@ double truncation(int MD_iter,int UCell_flag)
     }
   } 
 
-  free_arrays_truncation0();
+  free_arrays_truncation0(core);
 
   if (measure_time){
     dtime(&etime); 
@@ -205,7 +201,7 @@ double truncation(int MD_iter,int UCell_flag)
 
        In Set_Periodic(CpyCell,0)
          allocation of arrays:
-            ratv           (global)
+            periodic cell indices (computed)
             atv            (global
             atv_ijk        (global)
             and
@@ -219,7 +215,7 @@ double truncation(int MD_iter,int UCell_flag)
 
        In Free_truncation(CpyCell,TCpyCell,0)
          freeing of arrays:
-            ratv           (global)
+            periodic cell indices (computed)
             atv            (global)
             atv_ijk        (global)
 
@@ -617,2156 +613,93 @@ double truncation(int MD_iter,int UCell_flag)
 
   if (measure_time) dtime(&stime); 
 
-  /* H0 */  
-
-  size_H0 = 0;
-  H0 = (double*****)malloc(sizeof(double****)*4);
-  for (k=0; k<4; k++){
-    H0[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      H0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        H0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          H0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-          size_H0 += tno1;
-        }
-      }
-    }
+  /* SCF numeric storage and all adapter tables belong to the calculation. */
+  if (List_YOUSO[8]<0 || List_YOUSO[8]==INT_MAX) {
+    fprintf(stderr,"Invalid electronic neighbor capacity\n");
+    MPI_Abort(mpi_comm_level1,1); abort();
   }
-
-  /* CntH0 */  
-
-  size_CntH0 = 0;
-
-  if (Cnt_switch==1){
-
-    CntH0 = (double*****)malloc(sizeof(double****)*4);
-    for (k=0; k<4; k++){
-      CntH0[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];  
-	}    
-
-	CntH0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
-	  } 
-
-	  CntH0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    CntH0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    size_CntH0 += tno1;
-	  }
-	}
-      }
-    }
+  const OpenMXElectronicMatrixInput electronic_input={
+    .atoms=atomnum, .local_atoms=Matomnum, .first_halo_atoms=MatomnumF,
+    .second_halo_atoms=MatomnumS, .species=SpeciesNum,
+    .spin=SpinP_switch, .spin_orbit=SO_switch, .mixing=Mixing_switch,
+    .nonlocal_components=List_YOUSO[5], .density_history=List_YOUSO[16],
+    .hamiltonian_history=List_YOUSO[39], .scratch_orbitals=List_YOUSO[7],
+    .scratch_neighbors=List_YOUSO[8]+1, .scratch_projectors=List_YOUSO[20],
+    .contracted=Cnt_switch==1, .core_hole=core_hole_state_flag==1, .xmcd=xmcd_calc==1,
+    .interactions=Hub_U_switch==1 || Constraint_NCS_switch>=1 ||
+                  Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1,
+    .lno=LNO_flag==1, .guiding_density=CWF_Calc==1 && CWF_Guiding_Orbital==3,
+    .partial_density=cal_partial_charge==1,
+    .full_overlap_halo_derivatives=Hub_U_switch==1 && Hub_U_occupation==1 && core_hole_state_flag==1,
+    .atom_species=WhatSpecies, .orbitals=Spe_Total_NO, .contracted_orbitals=Spe_Total_CNO,
+    .projector_components=Spe_Total_VPS_Pro, .local_to_global=M2G,
+    .first_to_global=F_M2G, .second_to_global=S_M2G, .neighbors=FNAN, .neighbor_atoms=natn
+  };
+  OpenMXElectronicViews electronic_storage;
+  char electronic_error[256];
+  if (!openmx_core_electronic_allocate(core,&electronic_input,&electronic_storage,
+                                      electronic_error,sizeof(electronic_error))) {
+    fprintf(stderr,"Electronic matrix allocation: %s\n",electronic_error);
+    MPI_Abort(mpi_comm_level1,1); abort();
   }
-
-  /* HNL */  
-
-  size_HNL = 0;
-  HNL = (double*****)malloc(sizeof(double****)*List_YOUSO[5]);
-  for (k=0; k<List_YOUSO[5]; k++){
-    HNL[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      HNL[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        HNL[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          HNL[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-          size_HNL += tno1;
-	  for (j=0; j<tno1; j++) HNL[k][Mc_AN][h_AN][i][j] = 0.0;
-        }
-      }
-    }
-  }
-
-  /* iHNL */  
-
-  if ( SpinP_switch==3 ){
-
-    size_iHNL = 0;
-    iHNL = (double*****)malloc(sizeof(double****)*List_YOUSO[5]);
-    for (k=0; k<List_YOUSO[5]; k++){
-      iHNL[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	iHNL[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  iHNL[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    iHNL[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-  	    for (j=0; j<tno1; j++) iHNL[k][Mc_AN][h_AN][i][j] = 0.0;
-	  }
-          size_iHNL += tno0*tno1;  
-	}
-      }
-    }
-  }
-
-  /* iCntHNL */  
-
-  if (SO_switch==1 && Cnt_switch==1){
-
-    size_iCntHNL = 0;
-    iCntHNL = (double*****)malloc(sizeof(double****)*List_YOUSO[5]);
-    for (k=0; k<List_YOUSO[5]; k++){
-      iCntHNL[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];  
-	}    
-
-	iCntHNL[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
-	  } 
-
-	  iCntHNL[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    iCntHNL[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-            for (j=0; j<tno1; j++) iCntHNL[k][Mc_AN][h_AN][i][j] = 0.0;
-            size_iCntHNL += tno1;  
-	  }
-	}
-      }
-    }
-  }
-
-  /* for core hole calculations */
-
-  if (core_hole_state_flag==1){
-
-    HCH = (double*****)malloc(sizeof(double****)*List_YOUSO[5]);
-    for (k=0; k<List_YOUSO[5]; k++){
-      HCH[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	HCH[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  HCH[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    HCH[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    for (j=0; j<tno1; j++) HCH[k][Mc_AN][h_AN][i][j] = 0.0;
-	  }
-	}
-      }
-    }
-
-    /* iHCH */  
-
-    if ( SpinP_switch==3 ){
-
-      iHCH = (double*****)malloc(sizeof(double****)*List_YOUSO[5]);
-      for (k=0; k<List_YOUSO[5]; k++){
-	iHCH[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  iHCH[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    iHCH[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      iHCH[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	      for (j=0; j<tno1; j++) iHCH[k][Mc_AN][h_AN][i][j] = 0.0;
-	    }
-	  }
-	}
-      }
-    }
-  }
-
-  if (xmcd_calc==1){
-
-    // ASK, S. An
-    pre_spin_moment = (double*)malloc(sizeof(double)*(3));
-
-    H_XMCD = (double*****)malloc(sizeof(double****)*(SpinP_switch+1));
-    for (k=0; k<=SpinP_switch; k++){
-      H_XMCD[k] = (double****)malloc(sizeof(double***)*(Matomnum+1));
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];
-	}
-
-	H_XMCD[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  }
-
-	  H_XMCD[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0);
-	  for (i=0; i<tno0; i++){
-	    H_XMCD[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1);
-	    for (j=0; j<tno1; j++) H_XMCD[k][Mc_AN][h_AN][i][j] = 0.0;
-	  }
-	}
-      }
-    }
-  }
-
-  /* H_Hub  --- added by MJ */  
-
-  if (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
-
-    size_H_Hub = 0;
-
-    H_Hub = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-      H_Hub[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	H_Hub[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  H_Hub[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    H_Hub[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-  	    for (j=0; j<tno1; j++) H_Hub[k][Mc_AN][h_AN][i][j] = 0.0;
-	  }
-
-          size_H_Hub += tno0*tno1;
-
-	}
-      }
-    }
-  }
-
-  /* H_Zeeman_NCO */  
-
-  if (Zeeman_NCO_switch==1){
-
-    size_H_Zeeman_NCO = 0;
-
-    H_Zeeman_NCO = (double***)malloc(sizeof(double**)*(Matomnum+1)); 
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-	Gc_AN = 0;
-	tno0 = 1;
-      }
-      else{
-	Gc_AN = M2G[Mc_AN];
-	Cwan = WhatSpecies[Gc_AN];
-	tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      H_Zeeman_NCO[Mc_AN] = (double**)malloc(sizeof(double*)*tno0); 
-      for (i=0; i<tno0; i++){
-        H_Zeeman_NCO[Mc_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	for (j=0; j<tno0; j++) H_Zeeman_NCO[Mc_AN][i][j] = 0.0;
-      }
-
-      size_H_Zeeman_NCO += tno0*tno0;
-    }
-  }
-
-  /* iHNL0 */
-
-  size_iHNL0 = 0;
-
-  if (SpinP_switch==3){
-
-    iHNL0 = (double*****)malloc(sizeof(double****)*List_YOUSO[5]);
-    for (k=0; k<List_YOUSO[5]; k++){
-      iHNL0[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	iHNL0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  iHNL0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    iHNL0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-  	    for (j=0; j<tno1; j++) iHNL0[k][Mc_AN][h_AN][i][j] = 0.0;
-	  }
-          size_iHNL0 += tno0*tno1;  
-	}
-      }
-    }
-  }
-
-  /* OLP_L */  
-
-  size_OLP_L = 0;
-
-  OLP_L = (double*****)malloc(sizeof(double****)*3); 
-  for (k=0; k<3; k++){
-
-    OLP_L[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-	Gc_AN = 0;
-	tno0 = 1;
-      }
-      else{
-	Gc_AN = F_M2G[Mc_AN];
-	Cwan = WhatSpecies[Gc_AN];
-	tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      OLP_L[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	if (Mc_AN==0){
-	  tno1 = 1;  
-	}
-	else{
-	  Gh_AN = natn[Gc_AN][h_AN];
-	  Hwan = WhatSpecies[Gh_AN];
-	  tno1 = Spe_Total_NO[Hwan];
-	} 
-
-	OLP_L[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	for (i=0; i<tno0; i++){
-	  OLP_L[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	  size_OLP_L += tno1;
-	}
-      }
-    }
-  }
-
-  /* OLP */  
-
-  OLP = (double*****)malloc(sizeof(double****)*4);
-  size_OLP = 0;
-  for (k=0; k<4; k++){
-    OLP[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+2)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<(Matomnum+MatomnumF+MatomnumS+2); Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-        fan = FNAN[Gc_AN]; 
-      }
-      else if (Mc_AN==(Matomnum+1)){
-        tno0 = List_YOUSO[7];
-        fan = List_YOUSO[8];
-      }
-      else if ( (Hub_U_switch==0 || Hub_U_occupation!=1 || core_hole_state_flag!=1) 
-                && 0<k 
-                && (Matomnum+1)<Mc_AN
-                && Mc_AN<=(Matomnum+MatomnumF+MatomnumS)){
-
-        Gc_AN = S_M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = 1;
-        fan = FNAN[Gc_AN]; 
-      }
-      else if ( Mc_AN<=(Matomnum+MatomnumF+MatomnumS) ){
-
-        Gc_AN = S_M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-        fan = FNAN[Gc_AN]; 
-      }    
-      else {
-        tno0 = List_YOUSO[7];
-        fan = List_YOUSO[8];
-      }
-
-      OLP[k][Mc_AN] = (double***)malloc(sizeof(double**)*(fan+1)); 
-      for (h_AN=0; h_AN<=fan; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else if (Mc_AN==(Matomnum+1)){
-          tno1 = List_YOUSO[7];
-        }
-        else if ( (Hub_U_switch==0 || Hub_U_occupation!=1 || core_hole_state_flag!=1) 
-                  && 0<k 
-                  && (Matomnum+1)<Mc_AN
-                  && Mc_AN<=(Matomnum+MatomnumF+MatomnumS)){
-
-          tno1 = 1;
-	}
-        else if ( Mc_AN<=(Matomnum+MatomnumF+MatomnumS) ){
-
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-	}
-        else{
-          tno1 = List_YOUSO[7];
-        } 
-
-        OLP[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          OLP[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-          for (j=0; j<tno1; j++) OLP[k][Mc_AN][h_AN][i][j] = 0.0;
-          size_OLP += tno1;
-        }
-      }
-    }
-  }
-
-  /* OLP_CH */  
-
-  if (core_hole_state_flag==1){
-
-    OLP_CH = (double*****)malloc(sizeof(double****)*4);
-    size_OLP_CH = 0;
-    for (k=0; k<4; k++){
-      OLP_CH[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+2)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<(Matomnum+MatomnumF+MatomnumS+2); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	  fan = FNAN[Gc_AN]; 
-	}
-	else if (Mc_AN==(Matomnum+1)){
-	  tno0 = List_YOUSO[7];
-	  fan = List_YOUSO[8];
-	}
-	else if ( Mc_AN<=(Matomnum+MatomnumF+MatomnumS) ){
-
-	  Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	  fan = FNAN[Gc_AN]; 
-	}    
-	else {
-	  tno0 = List_YOUSO[7];
-	  fan = List_YOUSO[8];
-	}
-
-	OLP_CH[k][Mc_AN] = (double***)malloc(sizeof(double**)*(fan+1)); 
-	for (h_AN=0; h_AN<=fan; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else if (Mc_AN==(Matomnum+1)){
-	    tno1 = List_YOUSO[7];
-	  }
-	  else if ( (Hub_U_switch==0 || Hub_U_occupation!=1 || core_hole_state_flag!=1) 
-		    && 0<k 
-		    && (Matomnum+1)<Mc_AN
-		    && Mc_AN<=(Matomnum+MatomnumF+MatomnumS)){
-
-	    tno1 = 1;
-	  }
-	  else if ( Mc_AN<=(Matomnum+MatomnumF+MatomnumS) ){
-
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  }
-	  else{
-	    tno1 = List_YOUSO[7];
-	  } 
-
-	  OLP_CH[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    OLP_CH[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    size_OLP_CH += tno1;
-	  }
-	}
-      }
-    }
-  }
-
-  /* CntOLP */  
-
-  size_CntOLP = 0;
-
-  if (Cnt_switch==1){
- 
-    CntOLP = (double*****)malloc(sizeof(double****)*4);
-    for (k=0; k<4; k++){
-      CntOLP[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];  
-	}    
-
-	CntOLP[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
-	  } 
-
-	  CntOLP[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    CntOLP[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    size_CntOLP += tno1;
-	  }
-	}
-      }
-    }
-  }
-
-  /* H */  
-
-  size_H = 0;
-  H = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-  for (k=0; k<=SpinP_switch; k++){
-    H[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = S_M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      H[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        H[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          H[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-          for (j=0; j<tno1; j++) H[k][Mc_AN][h_AN][i][j] = 0.0;
-          size_H += tno1;  
-        }
-      }
-    }
-  }
-
-  /* CntH */  
-
-  size_CntH = 0;
-
-  if (Cnt_switch==1){
-
-    CntH = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-      CntH[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+MatomnumS+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];  
-	}    
-
-	CntH[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
-	  } 
-
-	  CntH[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    CntH[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-            for (j=0; j<tno1; j++) CntH[k][Mc_AN][h_AN][i][j] = 0.0;
-	    size_CntH += tno1;  
-	  }
-	}
-      }
-    }
-  }
-
-  /* DS_NL */  
-
-  size_DS_NL = 0;
-  DS_NL = (double******)malloc(sizeof(double*****)*(SO_switch+1));
-  for (so=0; so<(SO_switch+1); so++){
-    DS_NL[so] = (double*****)malloc(sizeof(double****)*4);
-    for (k=0; k<4; k++){
-      DS_NL[so][k] = (double****)malloc(sizeof(double***)*(Matomnum+2)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-          fan = FNAN[Gc_AN];
-	}
-	else if ( (Matomnum+1)<=Mc_AN ){
-          fan = List_YOUSO[8];
-          tno0 = List_YOUSO[7];
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-          fan = FNAN[Gc_AN];
-	}    
-
-	DS_NL[so][k][Mc_AN] = (double***)malloc(sizeof(double**)*(fan+1)); 
-	for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-  	  else if ( (Matomnum+1)<=Mc_AN ){
-	    tno1 = List_YOUSO[20];  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_VPS_Pro[Hwan] + 2;
-	  } 
-
-	  DS_NL[so][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    DS_NL[so][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    size_DS_NL += tno1;
-	    for (j=0; j<tno1; j++) DS_NL[so][k][Mc_AN][h_AN][i][j] = 0.0; 
-	  }
-	}
-      }
-    }
-  }
-
-  /* CntDS_NL */  
-
-  size_CntDS_NL = 0;
-
-  if (Cnt_switch==1){
-
-    CntDS_NL = (double******)malloc(sizeof(double*****)*(SO_switch+1));
-    for (so=0; so<(SO_switch+1); so++){
-      CntDS_NL[so] = (double*****)malloc(sizeof(double****)*4); 
-      for (k=0; k<4; k++){
-	CntDS_NL[so][k] = (double****)malloc(sizeof(double***)*(Matomnum+2)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-            fan = FNAN[Gc_AN];
-	  }
-	  else if ( (Matomnum+1)<=Mc_AN ){
-            fan = List_YOUSO[8];
-            tno0 = List_YOUSO[7];
-  	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-            fan = FNAN[Gc_AN];
-	  }    
-
-	  CntDS_NL[so][k][Mc_AN] = (double***)malloc(sizeof(double**)*(fan+1)); 
-	  for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-  	    else if ( (Matomnum+1)<=Mc_AN ){
-	      tno1 = List_YOUSO[20];  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_VPS_Pro[Hwan] + 2;
-	    } 
-
-	    CntDS_NL[so][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      CntDS_NL[so][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	      size_CntDS_NL += tno1;
-	    }
-	  }
-	}
-      }
-    }
-  }
-
-  /* LNO_coes */  
-
-  if (LNO_flag==1){
-
-    LNO_coes = (double***)malloc(sizeof(double**)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-      LNO_coes[k] = (double**)malloc(sizeof(double*)*(Matomnum+MatomnumF+MatomnumS+1)); 
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-        LNO_coes[k][Mc_AN] = (double*)malloc(sizeof(double)*List_YOUSO[7]*List_YOUSO[7]);
-      }
-    }
-
-    LNO_pops = (double***)malloc(sizeof(double**)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-      LNO_pops[k] = (double**)malloc(sizeof(double*)*(Matomnum+MatomnumF+MatomnumS+1)); 
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-        LNO_pops[k][Mc_AN] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-      }
-    }
-
-    /* DM0 */
-     
-    size_DM0 = 0;
-    DM0 = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-      DM0[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	DM0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  DM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    DM0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    for (j=0; j<tno1; j++) DM0[k][Mc_AN][h_AN][i][j] = 0.0;
-	  }
-	  size_DM0 += tno0*tno1;  
-	}
-      }
-    }
-  }
-
-  /* for RMM-DIISH */
-
-  size_HisH1 = 0;
-  size_HisH2 = 0;
-
-  if (Mixing_switch==5){
-
-    /* HisH1 */
-
-    HisH1 = (double******)malloc(sizeof(double*****)*List_YOUSO[39]); 
-    for (m=0; m<List_YOUSO[39]; m++){
-      HisH1[m] = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-      for (k=0; k<=SpinP_switch; k++){
-	HisH1[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  HisH1[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    HisH1[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      HisH1[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	      for (j=0; j<tno1; j++) HisH1[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	    }
-
-            size_HisH1 += tno0*tno1;  
-
-	  }
-	}
-      }
-    }
-
-    /* HisH2 */
-
-    if (SpinP_switch==3){
-
-      HisH2 = (double******)malloc(sizeof(double*****)*List_YOUSO[39]); 
-
-      for (m=0; m<List_YOUSO[39]; m++){
-	HisH2[m] = (double*****)malloc(sizeof(double****)*SpinP_switch); 
-	for (k=0; k<SpinP_switch; k++){
-	  HisH2[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = S_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    HisH2[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      HisH2[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	      for (i=0; i<tno0; i++){
-		HisH2[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-		for (j=0; j<tno1; j++) HisH2[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	      }
-
-	      size_HisH2 += tno0*tno1;  
-
-	    }
-	  }
-	}
-      }
-    }
-
-    /* ResidualH1 */
-
-    ResidualH1 = (double******)malloc(sizeof(double*****)*List_YOUSO[39]); 
-    for (m=0; m<List_YOUSO[39]; m++){
-      ResidualH1[m] = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-      for (k=0; k<=SpinP_switch; k++){
-	ResidualH1[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  ResidualH1[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    ResidualH1[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      ResidualH1[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	      for (j=0; j<tno1; j++) ResidualH1[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	    }
-	  }
-	}
-      }
-    }
-
-    /* ResidualH2 */
-
-    if (SpinP_switch==3){
-
-      ResidualH2 = (double******)malloc(sizeof(double*****)*List_YOUSO[39]); 
-
-      for (m=0; m<List_YOUSO[39]; m++){
-	ResidualH2[m] = (double*****)malloc(sizeof(double****)*SpinP_switch); 
-	for (k=0; k<SpinP_switch; k++){
-	  ResidualH2[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = S_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    ResidualH2[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      ResidualH2[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	      for (i=0; i<tno0; i++){
-		ResidualH2[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-		for (j=0; j<tno1; j++) ResidualH2[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	      }
-	    }
-	  }
-	}
-      }
-    }
-
-  } /* if (Mixing_switch==5) */
-
-  /* for RMM-DIIS and RMM-ADIIS */
-
-  if (Mixing_switch==1 || Mixing_switch==6){
-
-    size_HisH1 = 0;
-    size_HisH2 = 0;
-
-    /* HisH1 */
-
-    HisH1 = (double******)malloc(sizeof(double*****)*List_YOUSO[39]); 
-    for (m=0; m<List_YOUSO[39]; m++){
-      HisH1[m] = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-      for (k=0; k<=SpinP_switch; k++){
-	HisH1[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  HisH1[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    HisH1[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      HisH1[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	      for (j=0; j<tno1; j++) HisH1[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	    }
-
-            size_HisH1 += tno0*tno1;  
-
-	  }
-	}
-      }
-    }
-
-    /* HisH2 */
-
-    if (SpinP_switch==3){
-
-      HisH2 = (double******)malloc(sizeof(double*****)*List_YOUSO[39]); 
-
-      for (m=0; m<List_YOUSO[39]; m++){
-	HisH2[m] = (double*****)malloc(sizeof(double****)*SpinP_switch); 
-	for (k=0; k<SpinP_switch; k++){
-	  HisH2[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = S_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    HisH2[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      HisH2[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	      for (i=0; i<tno0; i++){
-		HisH2[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-		for (j=0; j<tno1; j++) HisH2[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	      }
-
-	      size_HisH2 += tno0*tno1;  
-
-	    }
-	  }
-	}
-      }
-    }
-
-  } /* if (Mixing_switch==1 || Mixing_switch==6) */
-
-  /* DM */
-
-  DM = (double******)malloc(sizeof(double*****)*List_YOUSO[16]); 
-  for (m=0; m<List_YOUSO[16]; m++){
-    DM[m] = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-      DM[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-          Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-          Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	DM[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  DM[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    DM[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-  	    for (j=0; j<tno1; j++) DM[m][k][Mc_AN][h_AN][i][j] = 0.0; 
-	  }
-	}
-      }
-    }
-  }
-
-  /* For CWF and MO guiding functions */
-
-  if (CWF_Calc==1 && CWF_Guiding_Orbital==3){
-
-    ParDM = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-      ParDM[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	ParDM[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  ParDM[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    ParDM[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    for (j=0; j<tno1; j++) ParDM[k][Mc_AN][h_AN][i][j] = 0.0; 
-	  }
-	}
-      }
-    }
-
-    if (SpinP_switch==3){
-
-      iParDM = (double*****)malloc(sizeof(double****)*2); 
-      for (k=0; k<2; k++){
-	iParDM[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  iParDM[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    iParDM[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      iParDM[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	      for (j=0; j<tno1; j++) iParDM[k][Mc_AN][h_AN][i][j] = 0.0; 
-	    }
-	  }
-	}
-      }
-    } // end of if (SpinP_switch==3)
-  }
-
-  /* Partial_DM */
-
-  if (cal_partial_charge==1){
-
-    Partial_DM = (double*****)malloc(sizeof(double****)*2); 
-    for (k=0; k<=1; k++){
-      Partial_DM[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-          Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-          Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	Partial_DM[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1));
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  Partial_DM[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    Partial_DM[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-  	    for (j=0; j<tno1; j++) Partial_DM[k][Mc_AN][h_AN][i][j] = 0.0; 
-	  }
-	}
-      }
-    }
-  }
-
-  /* DM_onsite   --- MJ */  
-
-  if (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
-  
-    size_DM_onsite = 0;
-
-    DM_onsite = (double*****)malloc(sizeof(double****)*2); 
-
-    for (m=0; m<2; m++){
-
-      DM_onsite[m] = (double****)malloc(sizeof(double***)*(SpinP_switch+1)); 
-      for (k=0; k<=SpinP_switch; k++){
-
-	DM_onsite[m][k] = (double***)malloc(sizeof(double**)*(Matomnum+1)); 
-	FNAN[0] = 0;
-
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-	  
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }  
-
-	  h_AN = 0;
-	      
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  DM_onsite[m][k][Mc_AN] = (double**)malloc(sizeof(double*)*tno0); 
-
-	  for (i=0; i<tno0; i++){
-	    DM_onsite[m][k][Mc_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    for (j=0; j<tno1; j++) DM_onsite[m][k][Mc_AN][i][j] = 0.0;
-	  }
-
-	  size_DM_onsite += tno0*tno1;
-
-	}
-      }
-    }
-  }
-
-  /*  v_eff  --- MJ */
-
-  if (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
-
-    size_v_eff = 0;
-
-    v_eff = (double****)malloc(sizeof(double***)*(SpinP_switch+1)); 
-    for (k=0; k<=SpinP_switch; k++){
-
-      v_eff[k] = (double***)malloc(sizeof(double**)*(Matomnum+MatomnumF+1)); 
-      FNAN[0] = 0;
-
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-	  
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}  
-
-	v_eff[k][Mc_AN] = (double**)malloc(sizeof(double*)*tno0); 
-
-	for (i=0; i<tno0; i++){
-	  v_eff[k][Mc_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	  for (j=0; j<tno0; j++) v_eff[k][Mc_AN][i][j] = 0.0; 
-	}
-
-        size_v_eff += tno0*tno0;
-      }
-    }
-  }
-
-  /*  NC_OcpN */
-
-  if ( (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1) 
-       && SpinP_switch==3 ){
-
-    size_NC_OcpN = 0;
-
-    NC_OcpN = (dcomplex******)malloc(sizeof(dcomplex*****)*2); 
-
-    for (m=0; m<2; m++){
-
-      NC_OcpN[m] = (dcomplex*****)malloc(sizeof(dcomplex****)*2); 
-      for (s1=0; s1<2; s1++){
-	NC_OcpN[m][s1] = (dcomplex****)malloc(sizeof(dcomplex***)*2);
-	for (s2=0; s2<2; s2++){
-	  NC_OcpN[m][s1][s2] = (dcomplex***)malloc(sizeof(dcomplex**)*(Matomnum+1));
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }  
-
-	    NC_OcpN[m][s1][s2][Mc_AN] = (dcomplex**)malloc(sizeof(dcomplex*)*tno0);
-
-	    for (i=0; i<tno0; i++){
-	      NC_OcpN[m][s1][s2][Mc_AN][i] = (dcomplex*)malloc(sizeof(dcomplex)*tno0);
-	      for (j=0; j<tno0; j++)  NC_OcpN[m][s1][s2][Mc_AN][i][j] = Complex(0.0,0.0);
-	    }
-
-	    size_NC_OcpN += tno0*tno0;
-	  }
-	}
-      }
-    }           
-  }
-
-  /*  NC_v_eff */
-
-  if ( (Hub_U_switch==1 
-     || 1<=Constraint_NCS_switch
-     || Zeeman_NCS_switch==1 
-     || Zeeman_NCO_switch==1) && SpinP_switch==3 ){
-
-    size_NC_v_eff = 0;
-
-    NC_v_eff = (dcomplex*****)malloc(sizeof(dcomplex****)*2); 
-    for (s1=0; s1<2; s1++){
-
-      NC_v_eff[s1] = (dcomplex****)malloc(sizeof(dcomplex***)*2);
-
-      for (s2=0; s2<2; s2++){
-
-	NC_v_eff[s1][s2] = (dcomplex***)malloc(sizeof(dcomplex**)*(Matomnum+MatomnumF+1));
-
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }  
-
-	  NC_v_eff[s1][s2][Mc_AN] = (dcomplex**)malloc(sizeof(dcomplex*)*tno0);
-
-	  for (i=0; i<tno0; i++){
-
-	    NC_v_eff[s1][s2][Mc_AN][i] = (dcomplex*)malloc(sizeof(dcomplex)*tno0);
-	    for (j=0; j<tno0; j++)  NC_v_eff[s1][s2][Mc_AN][i][j] = Complex(0.0,0.0);
-	  }
-
-	  size_NC_v_eff += tno0*tno0;
-	}
-      }
-    }
-  }
-
-  /* ResidualDM */  
-
-  size_ResidualDM = 0;
-  if ( Mixing_switch==0 || Mixing_switch==1 || Mixing_switch==2 || Mixing_switch==6 ){
-
-    ResidualDM = (double******)malloc(sizeof(double*****)*List_YOUSO[16]); 
-    for (m=0; m<List_YOUSO[16]; m++){
-      ResidualDM[m] = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-      for (k=0; k<=SpinP_switch; k++){
-	ResidualDM[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  ResidualDM[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    ResidualDM[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      ResidualDM[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-  	      for (j=0; j<tno1; j++) ResidualDM[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	    }
-
-            size_ResidualDM += tno0*tno1; 
-	  }
-	}
-      }
-    }
-  }
-
-  /* iResidualDM */
-
-  size_iResidualDM = 0;
-
-  if ( (Mixing_switch==0 || Mixing_switch==1 || Mixing_switch==2 || Mixing_switch==6)
-       && SpinP_switch==3 && ( SO_switch==1 || Hub_U_switch==1 || 1<=Constraint_NCS_switch
-        || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1) ){
-
-    iResidualDM = (double******)malloc(sizeof(double*****)*List_YOUSO[16]); 
-    for (m=0; m<List_YOUSO[16]; m++){
-      iResidualDM[m] = (double*****)malloc(sizeof(double****)*2); 
-      for (k=0; k<2; k++){
-	iResidualDM[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  iResidualDM[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    iResidualDM[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      iResidualDM[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-  	      for (j=0; j<tno1; j++) iResidualDM[m][k][Mc_AN][h_AN][i][j] = 0.0;
-	    }
-
-            size_iResidualDM += tno0*tno1; 
-	  }
-	}
-      }
-    }
-  }
-
-  else {
-    iResidualDM = (double******)malloc(sizeof(double*****)*List_YOUSO[16]); 
-    for (m=0; m<List_YOUSO[16]; m++){
-      iResidualDM[m] = (double*****)malloc(sizeof(double****)*1); 
-      iResidualDM[m][0] = (double****)malloc(sizeof(double***)*1); 
-      iResidualDM[m][0][0] = (double***)malloc(sizeof(double**)*1); 
-      iResidualDM[m][0][0][0] = (double**)malloc(sizeof(double*)*1); 
-      iResidualDM[m][0][0][0][0] = (double*)malloc(sizeof(double)*1); 
-    }   
-  }
-
-  /* EDM */  
-
-  EDM = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-  for (k=0; k<=SpinP_switch; k++){
-    EDM[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      EDM[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        EDM[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          EDM[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-        }
-      }
-    }
-  }
-
-  /* PDM */  
-
-  PDM = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-  for (k=0; k<=SpinP_switch; k++){
-    PDM[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      PDM[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        PDM[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          PDM[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-        }
-      }
-    }
-  }
-
-  /* iDM */  
-
-  size_iDM = 0;
-  iDM = (double******)malloc(sizeof(double*****)*List_YOUSO[16]);
-  for (m=0; m<List_YOUSO[16]; m++){
-    iDM[m] = (double*****)malloc(sizeof(double****)*2); 
-    for (k=0; k<2; k++){
-      iDM[m][k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	iDM[m][k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  iDM[m][k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    iDM[m][k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    for (j=0; j<tno1; j++)  iDM[m][k][Mc_AN][h_AN][i][j] = 0.0; 
-	  }
-	  size_iDM += tno0*tno1;
-	}
-      }
-    }
-  }
-
-  /* S12 for recursion, or DC */  
-
-  if (Solver==1 || Solver==5){
-
-    size_S12 = 0;
-    int *Msize,myid1;
-
-    Msize = (int*)malloc(sizeof(int)*(Matomnum+2));
-
-    if ( Solver==1 || Solver==5 ){
-
-      S12 = (double***)malloc(sizeof(double**)*(Matomnum+1));
-
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0) n2 = 1;
-	else{
-	  Gc_AN = M2G[Mc_AN];
-
-	  num = 1;
-	  for (i=0; i<=(FNAN[Gc_AN]+SNAN[Gc_AN]); i++){
-	    Gi = natn[Gc_AN][i];
-	    wanA = WhatSpecies[Gi];
-	    num += Spe_Total_CNO[wanA];
-	  }
-	  n2 = num + 2;
-	}
-
-	S12[Mc_AN] = (double**)malloc(sizeof(double*)*n2);
-	for (i=0; i<n2; i++){
-	  S12[Mc_AN][i] = (double*)malloc(sizeof(double)*n2);
-	}
-	size_S12 += n2*n2;
-
-	Msize[Mc_AN] = n2;
-      }
-  }
-
-    free(Msize);
-  }
-
-  /* CntCoes */
-
-  if (Cnt_switch==1){
-    CntCoes = (double***)malloc(sizeof(double**)*(Matomnum+MatomnumF+1));
-    for (i=0; i<=(Matomnum+MatomnumF); i++){
-      CntCoes[i] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	CntCoes[i][j] = (double*)malloc(sizeof(double)*List_YOUSO[24]);
-      }
-    }
-
-    CntCoes_Species = (double***)malloc(sizeof(double**)*(SpeciesNum+1));
-    for (i=0; i<(SpeciesNum+1); i++){
-      CntCoes_Species[i] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	CntCoes_Species[i][j] = (double*)malloc(sizeof(double)*List_YOUSO[24]);
-      }
-    }
+  FNAN[0]=0;
+  if (xmcd_calc==1) pre_spin_moment=(double*)malloc(sizeof(double)*3);
+
+  const OpenMXLocalBasisInput local_basis_input={
+    .atoms=atomnum, .local_atoms=Matomnum, .first_halo_atoms=MatomnumF,
+    .second_halo_atoms=MatomnumS, .species=SpeciesNum, .spin=SpinP_switch,
+    .max_orbitals=List_YOUSO[7], .max_coefficients=List_YOUSO[24],
+    .interactions=Hub_U_switch==1 || Constraint_NCS_switch>=1 ||
+                  Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1,
+    .lno=LNO_flag==1, .contraction=Cnt_switch==1, .inverse_overlap=Solver==1 || Solver==5,
+    .atom_species=WhatSpecies, .orbitals=Spe_Total_NO, .contracted_orbitals=Spe_Total_CNO,
+    .local_to_global=M2G, .first_to_global=F_M2G, .first_neighbors=FNAN,
+    .second_neighbors=SNAN, .neighbor_atoms=natn
+  };
+  OpenMXLocalBasisViews local_basis_storage;
+  char local_basis_error[256];
+  if (!openmx_core_local_basis_allocate(core,&local_basis_input,&local_basis_storage,
+                                      local_basis_error,sizeof(local_basis_error))) {
+    fprintf(stderr,"Local basis allocation: %s\n",local_basis_error);
+    MPI_Abort(mpi_comm_level1,1); abort();
   }
 
   if (ProExpn_VNA==1){
-
-    /* HVNA */  
-
-    size_HVNA = 0;
-    HVNA = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      HVNA[Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        HVNA[Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          HVNA[Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-          size_HVNA += tno1;
-        }
-      }
+    /* Numeric blocks and legacy views belong to this calculation/topology. */
+    if (List_YOUSO[35]<0 || List_YOUSO[35]==INT_MAX || List_YOUSO[34]<0 ||
+        List_YOUSO[8]<0 || List_YOUSO[8]==INT_MAX) {
+      fprintf(stderr,"Invalid VNA matrix capacity\n");
+      MPI_Abort(mpi_comm_level1,1); abort();
     }
-
-    /* DS_VNA */
-
-    size_DS_VNA = 0;
-    DS_VNA = (Type_DS_VNA*****)malloc(sizeof(Type_DS_VNA****)*4); 
-    for (k=0; k<4; k++){
-
-      DS_VNA[k] = (Type_DS_VNA****)malloc(sizeof(Type_DS_VNA***)*(Matomnum+2)); 
-
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-          fan = FNAN[Gc_AN];
-	}
-	else if ( (Matomnum+1)<=Mc_AN ){
-          fan = List_YOUSO[8];
-          tno0 = List_YOUSO[7];
-        }
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-          fan = FNAN[Gc_AN];
-	}
-          
-	DS_VNA[k][Mc_AN] = (Type_DS_VNA***)malloc(sizeof(Type_DS_VNA**)*(fan+1)); 
-
-	for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	  } 
-
-	  DS_VNA[k][Mc_AN][h_AN] = (Type_DS_VNA**)malloc(sizeof(Type_DS_VNA*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    DS_VNA[k][Mc_AN][h_AN][i] = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*tno1);
-	    size_DS_VNA += tno1;
-	  }
-	}
-      }
+    const size_t angular=(size_t)List_YOUSO[35]+1;
+    if (angular>(size_t)INT_MAX/angular ||
+        (List_YOUSO[34] && angular*angular>(size_t)INT_MAX/(size_t)List_YOUSO[34])) {
+      fprintf(stderr,"VNA projector dimension exceeds int\n");
+      MPI_Abort(mpi_comm_level1,1); abort();
     }
-
-    /* CntDS_VNA */  
-
-    if (Cnt_switch==1){
-
-      size_CntDS_VNA = 0;
-      CntDS_VNA = (Type_DS_VNA*****)malloc(sizeof(Type_DS_VNA****)*4); 
-      for (k=0; k<4; k++){
-
-	CntDS_VNA[k] = (Type_DS_VNA****)malloc(sizeof(Type_DS_VNA***)*(Matomnum+2));
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-            fan = FNAN[Gc_AN];
-	  }
-	  else if ( Mc_AN==(Matomnum+1) ){
-            fan = List_YOUSO[8];
-            tno0 = List_YOUSO[7];
-          }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-            fan = FNAN[Gc_AN];
-	  }
-          
-	  CntDS_VNA[k][Mc_AN] = (Type_DS_VNA***)malloc(sizeof(Type_DS_VNA**)*(fan+1)); 
-	  for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	    } 
-
-	    CntDS_VNA[k][Mc_AN][h_AN] = (Type_DS_VNA**)malloc(sizeof(Type_DS_VNA*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      CntDS_VNA[k][Mc_AN][h_AN][i] = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*tno1); 
-	      size_CntDS_VNA += tno1;
-	    }
-	  }
-	}
-      }
+    const OpenMXVnaMatrixInput input={atomnum,Matomnum,SpeciesNum,Cnt_switch,
+      List_YOUSO[8]+1,List_YOUSO[7],(int)(angular*angular*(size_t)List_YOUSO[34]),
+      M2G,F_M2G,WhatSpecies,FNAN,natn,Spe_Total_NO,Spe_Total_CNO};
+    OpenMXVnaMatrixViews matrices;
+    char error[256];
+    if (!openmx_core_vna_matrices_allocate(core,&input,&matrices,error,sizeof(error))) {
+      fprintf(stderr,"VNA matrix allocation: %s\n",error);
+      MPI_Abort(mpi_comm_level1,1); abort();
     }
-
-    /* HVNA2 */  
-
-    size_HVNA2 = 0;
-    HVNA2 = (double*****)malloc(sizeof(double****)*4);
-    for (k=0; k<4; k++){
-      HVNA2[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	HVNA2[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  HVNA2[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    HVNA2[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	    size_HVNA2 += tno0;
-	  }
-	}
-      }
-    }
-
-    /* HVNA3 */  
-
-    size_HVNA3 = 0;
-    HVNA3 = (double*****)malloc(sizeof(double****)*4);
-    for (k=0; k<4; k++){
-      HVNA3[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0)  Gc_AN = 0;
-	else           Gc_AN = F_M2G[Mc_AN];
-
-	HVNA3[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno0 = 1;
-	  }
-	  else{
-            Gh_AN = natn[Gc_AN][h_AN];        
-            Hwan = WhatSpecies[Gh_AN];
-	    tno0 = Spe_Total_NO[Hwan];  
-	  }    
-
-	  HVNA3[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    HVNA3[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	    size_HVNA3 += tno0;
-	  }
-	}
-      }
-    }
-
-    /* CntHVNA2 */  
-
-    if (Cnt_switch==1){
-
-      size_CntHVNA2 = 0;
-      CntHVNA2 = (double*****)malloc(sizeof(double****)*4);
-      for (k=0; k<4; k++){
-	CntHVNA2[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-	  }    
-
-	  CntHVNA2[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    CntHVNA2[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      CntHVNA2[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	      size_CntHVNA2 += tno0;
-	    }
-	  }
-	}
-      }
-    }
-
-    /* CntHVNA3 */  
-
-    if (Cnt_switch==1){
-
-      size_CntHVNA3 = 0;
-      CntHVNA3 = (double*****)malloc(sizeof(double****)*4);
-      for (k=0; k<4; k++){
-	CntHVNA3[k] = (double****)malloc(sizeof(double***)*(Matomnum+1)); 
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0) Gc_AN = 0;
-	  else          Gc_AN = F_M2G[Mc_AN];
-
-	  CntHVNA3[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno0 = 1;
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];        
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno0 = Spe_Total_CNO[Hwan];  
-	    }    
-
-	    CntHVNA3[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	    for (i=0; i<tno0; i++){
-	      CntHVNA3[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno0); 
-	      size_CntHVNA3 += tno0;
-	    }
-	  }
-	}
-      }
-    }
-
+    size_HVNA=matrices.potential.layout.elements;
+    size_DS_VNA=matrices.projectors.layout.elements;
+    size_HVNA2=matrices.one_center.layout.elements;
+    size_HVNA3=matrices.mirrored.layout.elements;
+    size_CntDS_VNA=matrices.contracted_projectors.layout.elements;
+    size_CntHVNA2=matrices.contracted_one_center.layout.elements;
+    size_CntHVNA3=matrices.contracted_mirrored.layout.elements;
   }
 
   if (Solver==8) { /* Krylov subspace method */
 
     if (EKC_expand_core_flag==1)
       scale_rc0 = 1.10;
-    else 
+    else
       scale_rc0 = 0.80;
 
     EKC_core_size = (int*)malloc(sizeof(int)*(Matomnum+1));
@@ -2779,13 +712,13 @@ double truncation(int MD_iter,int UCell_flag)
       ct_AN = M2G[i];
       wanA = WhatSpecies[ct_AN];
 
-      /* find the nearest atom with distance of r0 */   
+      /* find the nearest atom with distance of r0 */
 
       r0 = 1.0e+10;
       for (h_AN=1; h_AN<=FNAN[ct_AN]; h_AN++){
         Gh_AN = natn[ct_AN][h_AN];
         wanB = WhatSpecies[Gh_AN];
-        if (Dis[ct_AN][h_AN]<r0)  r0 = Dis[ct_AN][h_AN]; 
+        if (Dis[ct_AN][h_AN]<r0)  r0 = Dis[ct_AN][h_AN];
       }
 
       /* find atoms within scale_rc_EKC times r0 */
@@ -2793,7 +726,7 @@ double truncation(int MD_iter,int UCell_flag)
       po0 = 0;
 
       do {
-      
+
         Anum = 0;
         for (h_AN=0; h_AN<=FNAN[ct_AN]; h_AN++){
           Gh_AN = natn[ct_AN][h_AN];
@@ -2805,17 +738,17 @@ double truncation(int MD_iter,int UCell_flag)
 
         if (EKC_expand_core_flag==1){
           if (30<Anum || 1<=po0) po0 = 3;
-          else                   scale_rc_EKC[i] *= 1.2;  
+          else                   scale_rc_EKC[i] *= 1.2;
 	}
         else{
-     	  po0 = 3;
+          po0 = 3;
 	}
 
 	po0++;
 
       } while(po0<2);
 
-      EKC_core_size[i] = Anum;  
+      EKC_core_size[i] = Anum;
     }
 
     rlmax_EC  = (int*)malloc(sizeof(int)*(Matomnum+1));
@@ -2838,7 +771,7 @@ double truncation(int MD_iter,int UCell_flag)
 	  tno0 = 1;
           FNAN[0] = 1;
           rlmax_EC[0] = 1;
-          Anum = 1; 
+          Anum = 1;
           Bnum = 0;
           EKC_core_size[0] = 1;
 	}
@@ -2847,14 +780,14 @@ double truncation(int MD_iter,int UCell_flag)
 	  Cwan = WhatSpecies[Gc_AN];
 	  tno0 = Spe_Total_NO[Cwan];  
 
-          Anum = 0;  
+          Anum = 0;
           for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
             Gh_AN = natn[Gc_AN][h_AN];
             wanA = WhatSpecies[Gh_AN];
             Anum += Spe_Total_CNO[wanA];
 	  }
 
-          Bnum = 0;  
+          Bnum = 0;
           for (h_AN=0; h_AN<=(FNAN[Gc_AN]+SNAN[Gc_AN]); h_AN++){
             Gh_AN = natn[Gc_AN][h_AN];
             wanA = WhatSpecies[Gh_AN];
@@ -2863,17 +796,17 @@ double truncation(int MD_iter,int UCell_flag)
 
           if (KrylovH_order<Bnum){
             rlmax_EC[j] = (int)ceil((double)KrylovH_order/(double)EKC_core_size[j]);
-	  }	
+	  }
           else{
             rlmax_EC[j] = (int)ceil((double)Bnum/(double)EKC_core_size[j]);
-          } 
+          }
 
           if (KrylovS_order<Bnum){
             rlmax_EC2[j] = (int)ceil((double)KrylovS_order/(double)EKC_core_size[j]);
 	  }
           else{
             rlmax_EC2[j] = (int)ceil((double)Bnum/(double)EKC_core_size[j]);
-          } 
+          }
 
           if (2<=level_stdout){
             printf("<Krylov parameters>  Gc_AN=%4d rlmax_EC=%3d rlmax_EC2=%3d EKC_core_size=%3d\n",
@@ -2883,10 +816,10 @@ double truncation(int MD_iter,int UCell_flag)
           My_KryDH += rlmax_EC[j]*EKC_core_size[j];
           My_KryDS += rlmax_EC2[j]*EKC_core_size[j];
 
-	}    
+	}
 
 	csize = Bnum + 2;
-	
+
 	Krylov_U[i][j] = (double*)malloc(sizeof(double)*rlmax_EC[j]*EKC_core_size[j]*csize);
 
         size_Krylov_U += rlmax_EC[j]*EKC_core_size[j]*csize;
@@ -2900,7 +833,7 @@ double truncation(int MD_iter,int UCell_flag)
         if (MYID_MPI_COMM_WORLD==Host_ID && 2<=level_stdout){
 	  printf("<Krylov parameters>  Av Krlov dimension H=%10.5f S=%10.5f\n",
                    KryDH/atomnum,KryDS/atomnum);
-        }       
+        }
       }
 
     } /* i */
@@ -2920,7 +853,7 @@ double truncation(int MD_iter,int UCell_flag)
 	else{
 	  Gc_AN = M2G[j];
 	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
+          tno0 = Spe_Total_NO[Cwan];
 	}    
 
         EC_matrix[i][j] = (double**)malloc(sizeof(double*)*(rlmax_EC[j]*EKC_core_size[j]+1));
@@ -2934,7 +867,7 @@ double truncation(int MD_iter,int UCell_flag)
     }
 
     /* find EKC_core_size_max */
-        
+
     EKC_core_size_max = 0;
     for (j=1; j<=Matomnum; j++){
       if (EKC_core_size_max<EKC_core_size[j]) EKC_core_size_max = EKC_core_size[j];
@@ -2945,7 +878,7 @@ double truncation(int MD_iter,int UCell_flag)
   /* NEGF */
 
   if (Solver==4){
- 
+
     size_TRAN_DecMulP = (SpinP_switch+1)*(Matomnum+1)*List_YOUSO[7];
 
     TRAN_DecMulP = (double***)malloc(sizeof(double**)*(SpinP_switch+1));
@@ -3023,36 +956,35 @@ double truncation(int MD_iter,int UCell_flag)
   /* PrintMemory */
 
   if (firsttime){
-  PrintMemory("truncation: H0",      sizeof(double)*size_H0,      NULL);
-  PrintMemory("truncation: CntH0",   sizeof(double)*size_CntH0,   NULL);
-  PrintMemory("truncation: HNL",     sizeof(double)*size_HNL,     NULL);
-  PrintMemory("truncation: OLP",     sizeof(double)*size_OLP,     NULL);
+  PrintMemory("truncation: H0", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_KINETIC].elements, NULL);
+  PrintMemory("truncation: CntH0", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_CONTRACTED_KINETIC].elements, NULL);
+  PrintMemory("truncation: HNL", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_NONLOCAL].elements, NULL);
+  PrintMemory("truncation: OLP", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_OVERLAP].elements, NULL);
   if (core_hole_state_flag==1){
-  PrintMemory("truncation: OLP_CH",  sizeof(double)*size_OLP_CH,     NULL);
+  PrintMemory("truncation: OLP_CH", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_CORE_HOLE_OVERLAP].elements, NULL);
   }
-  PrintMemory("truncation: CntOLP",  sizeof(double)*size_CntOLP,  NULL);
-  PrintMemory("truncation: OLP_L",   sizeof(double)*size_OLP_L,   NULL);
-  PrintMemory("truncation: H",       sizeof(double)*size_H,       NULL);
-  PrintMemory("truncation: CntH",    sizeof(double)*size_CntH,    NULL);
-  PrintMemory("truncation: DS_NL",   sizeof(double)*size_DS_NL,   NULL);
-  PrintMemory("truncation: CntDS_NL",sizeof(double)*size_CntDS_NL,NULL);
-  PrintMemory("truncation: HisH1",   sizeof(double)*size_HisH1,   NULL);
-  PrintMemory("truncation: HisH2",   sizeof(double)*size_HisH2,   NULL);
-  PrintMemory("truncation: ResidualH1",   sizeof(double)*size_HisH1,   NULL);
-  PrintMemory("truncation: ResidualH2",   sizeof(double)*size_HisH2,   NULL);
-  PrintMemory("truncation: DM",      sizeof(double)*List_YOUSO[16]*
-                                                        size_H0,  NULL);
-  PrintMemory("truncation: iDM",     sizeof(double)*size_iDM,     NULL);
-  PrintMemory("truncation: ResidualDM",sizeof(double)*size_ResidualDM,  NULL);
-  PrintMemory("truncation: EDM",     sizeof(double)*size_H0,      NULL);
-  PrintMemory("truncation: PDM",     sizeof(double)*size_H0,      NULL);
+  PrintMemory("truncation: CntOLP", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_CONTRACTED_OVERLAP].elements, NULL);
+  PrintMemory("truncation: OLP_L", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_ANGULAR_OVERLAP].elements, NULL);
+  PrintMemory("truncation: H", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_HAMILTONIAN].elements, NULL);
+  PrintMemory("truncation: CntH", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_CONTRACTED_HAMILTONIAN].elements, NULL);
+  PrintMemory("truncation: DS_NL", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_PROJECTORS].elements, NULL);
+  PrintMemory("truncation: CntDS_NL", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_CONTRACTED_PROJECTORS].elements, NULL);
+  PrintMemory("truncation: HisH1", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_HAMILTONIAN_HISTORY].elements, NULL);
+  PrintMemory("truncation: HisH2", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_IMAGINARY_HAMILTONIAN_HISTORY].elements, NULL);
+  PrintMemory("truncation: ResidualH1", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_HAMILTONIAN_RESIDUAL].elements, NULL);
+  PrintMemory("truncation: ResidualH2", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_IMAGINARY_HAMILTONIAN_RESIDUAL].elements, NULL);
+  PrintMemory("truncation: DM", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_DENSITY].elements, NULL);
+  PrintMemory("truncation: iDM", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_IMAGINARY_DENSITY].elements, NULL);
+  PrintMemory("truncation: ResidualDM", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_DENSITY_RESIDUAL].elements, NULL);
+  PrintMemory("truncation: EDM", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_ENERGY_DENSITY].elements, NULL);
+  PrintMemory("truncation: PDM", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_PREVIOUS_DENSITY].elements, NULL);
   if (SO_switch==1 || SpinP_switch==3){
-  PrintMemory("truncation: iResidualDM",sizeof(double)*size_iResidualDM,  NULL);
-  PrintMemory("truncation: iHNL",    sizeof(double)*size_iHNL,    NULL);
-  PrintMemory("truncation: iHNL0",   sizeof(double)*size_iHNL0,   NULL);
+  PrintMemory("truncation: iResidualDM", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_IMAGINARY_DENSITY_RESIDUAL].elements, NULL);
+  PrintMemory("truncation: iHNL", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_IMAGINARY_NONLOCAL].elements, NULL);
+  PrintMemory("truncation: iHNL0", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_IMAGINARY_NONLOCAL_REFERENCE].elements, NULL);
   }
   if (SO_switch==1 && Cnt_switch==1){
-  PrintMemory("truncation: iCntHNL", sizeof(double)*size_iCntHNL,     NULL);
+  PrintMemory("truncation: iCntHNL", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_CONTRACTED_IMAGINARY_NONLOCAL].elements, NULL);
   }
   if (ProExpn_VNA==1){
   PrintMemory("truncation: DS_VNA",  sizeof(Type_DS_VNA)*size_DS_VNA,      NULL);
@@ -3066,23 +998,20 @@ double truncation(int MD_iter,int UCell_flag)
   PrintMemory("truncation: CntHVNA3", sizeof(double)*size_CntHVNA3,   NULL);
   }
   if (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
-  PrintMemory("truncation: H_Hub",     sizeof(double)*size_H_Hub,     NULL);
-  PrintMemory("truncation: DM_onsite", sizeof(double)*size_DM_onsite, NULL);
-  PrintMemory("truncation: v_eff",     sizeof(double)*size_v_eff,     NULL);
+  PrintMemory("truncation: H_Hub", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_HUBBARD].elements, NULL);
+  PrintMemory("truncation: DM_onsite", sizeof(double)*local_basis_storage.real[OPENMX_LOCAL_DENSITY].layout.elements, NULL);
+  PrintMemory("truncation: v_eff",     sizeof(double)*local_basis_storage.real[OPENMX_LOCAL_POTENTIAL].layout.elements,     NULL);
   }
   if (LNO_flag==1){
-  PrintMemory("truncation: size_DM0",   sizeof(double)*size_DM0,     NULL);
+  PrintMemory("truncation: DM0", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_LNO_DENSITY].elements, NULL);
   }
-  if (Zeeman_NCO_switch==1){
-  PrintMemory("truncation: size_H_Zeeman_NCO",   sizeof(double)*size_H_Zeeman_NCO,     NULL);
-  }
-  if ( (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1) 
+  if ( (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1)
         && SpinP_switch==3 ){
-  PrintMemory("truncation: size_NC_OcpN",   sizeof(dcomplex)*size_NC_OcpN,     NULL);
-  PrintMemory("truncation: size_NC_v_eff",  sizeof(dcomplex)*size_NC_v_eff,    NULL);
+  PrintMemory("truncation: NC_OcpN",   sizeof(dcomplex)*local_basis_storage.complex_values[OPENMX_LOCAL_OCCUPATION].layout.elements,     NULL);
+  PrintMemory("truncation: NC_v_eff",  sizeof(dcomplex)*local_basis_storage.complex_values[OPENMX_LOCAL_COMPLEX_POTENTIAL].layout.elements,    NULL);
   }
   if (Solver==1 || Solver==5 || Solver==6){
-  PrintMemory("truncation: S12",       sizeof(double)*size_S12,       NULL);
+  PrintMemory("truncation: S12",       sizeof(double)*local_basis_storage.real[OPENMX_LOCAL_INVERSE_OVERLAP].layout.elements,       NULL);
   }
   if (Solver==8){
   PrintMemory("truncation: Krylov_U",      sizeof(double)*size_Krylov_U,      NULL);
@@ -3099,9 +1028,9 @@ double truncation(int MD_iter,int UCell_flag)
   PrintMemory("truncation: DecEvdw",      sizeof(double)*size_DecEkin,        NULL);
   }
   if (core_hole_state_flag==1){
-  PrintMemory("truncation: HCH",     sizeof(double)*size_HNL,     NULL);
+  PrintMemory("truncation: HCH", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_CORE_HOLE].elements, NULL);
   if ( SpinP_switch==3 ){
-  PrintMemory("truncation: iHCH",    sizeof(double)*size_HNL,     NULL);
+  PrintMemory("truncation: iHCH", sizeof(double)*electronic_storage.fields[OPENMX_ELECTRONIC_IMAGINARY_CORE_HOLE].elements, NULL);
   }
   }
 
@@ -3116,85 +1045,85 @@ double truncation(int MD_iter,int UCell_flag)
     N = My_NumGridC;
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Density_Grid = (double**)malloc(sizeof(double*)*4); 
+      Density_Grid = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Density_Grid[k] = (double*)malloc(sizeof(double)*N); 
+        Density_Grid[k] = (double*)malloc(sizeof(double)*N);
         for (i=0; i<N; i++) Density_Grid[k][i] = 0.0;
       }
     }
     else{
-      Density_Grid = (double**)malloc(sizeof(double*)*2); 
+      Density_Grid = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
-        Density_Grid[k] = (double*)malloc(sizeof(double)*N); 
+        Density_Grid[k] = (double*)malloc(sizeof(double)*N);
         for (i=0; i<N; i++) Density_Grid[k][i] = 0.0;
       }
     }
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Vxc_Grid = (double**)malloc(sizeof(double*)*4); 
+      Vxc_Grid = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Vxc_Grid[k] = (double*)malloc(sizeof(double)*N); 
+        Vxc_Grid[k] = (double*)malloc(sizeof(double)*N);
       }
     }
     else{
-      Vxc_Grid = (double**)malloc(sizeof(double*)*2); 
+      Vxc_Grid = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
-        Vxc_Grid[k] = (double*)malloc(sizeof(double)*N); 
+        Vxc_Grid[k] = (double*)malloc(sizeof(double)*N);
       }
     }
 
-    RefVxc_Grid = (double*)malloc(sizeof(double)*N); 
+    RefVxc_Grid = (double*)malloc(sizeof(double)*N);
 
-    dVHart_Grid = (double*)malloc(sizeof(double)*N); 
+    dVHart_Grid = (double*)malloc(sizeof(double)*N);
     for (i=0; i<N; i++) dVHart_Grid[i] = 0.0;
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Vpot_Grid = (double**)malloc(sizeof(double*)*4); 
+      Vpot_Grid = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Vpot_Grid[k] = (double*)malloc(sizeof(double)*N); 
+        Vpot_Grid[k] = (double*)malloc(sizeof(double)*N);
       }
     }
     else{
-      Vpot_Grid = (double**)malloc(sizeof(double*)*2); 
+      Vpot_Grid = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
-        Vpot_Grid[k] = (double*)malloc(sizeof(double)*N); 
+        Vpot_Grid[k] = (double*)malloc(sizeof(double)*N);
       }
     }
 
     /* arrays for the partitions B and C */
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Density_Grid_B = (double**)malloc(sizeof(double*)*4); 
+      Density_Grid_B = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Density_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+        Density_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
         for (i=0; i<My_NumGridB_AB; i++) Density_Grid_B[k][i] = 0.0;
       }
     }
     else{
-      Density_Grid_B = (double**)malloc(sizeof(double*)*2); 
+      Density_Grid_B = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
-        Density_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+        Density_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
         for (i=0; i<My_NumGridB_AB; i++) Density_Grid_B[k][i] = 0.0;
       }
     }
 
-    ADensity_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+    ADensity_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB);
 
-    PCCDensity_Grid_B = (double**)malloc(sizeof(double*)*2); 
-    PCCDensity_Grid_B[0] = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
-    PCCDensity_Grid_B[1] = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+    PCCDensity_Grid_B = (double**)malloc(sizeof(double*)*2);
+    PCCDensity_Grid_B[0] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
+    PCCDensity_Grid_B[1] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
 
     for (i=0; i<My_NumGridB_AB; i++){
-      PCCDensity_Grid_B[0][i] = 0.0;  
+      PCCDensity_Grid_B[0][i] = 0.0;
       PCCDensity_Grid_B[1][i] = 0.0;
     }
 
-    dVHart_Grid_B = (double*)malloc(sizeof(double)*My_Max_NumGridB); 
+    dVHart_Grid_B = (double*)malloc(sizeof(double)*My_Max_NumGridB);
     for (i=0; i<My_Max_NumGridB; i++) dVHart_Grid_B[i] = 0.0;
 
     if ( (core_hole_state_flag==1 && Scf_RestartFromFile==1) || scf_coulomb_cutoff_CoreHole==1 ){
-      dVHart_Periodic_Grid_B = (double*)malloc(sizeof(double)*My_Max_NumGridB); 
-      Density_Periodic_Grid_B = (double*)malloc(sizeof(double)*My_Max_NumGridB); 
+      dVHart_Periodic_Grid_B = (double*)malloc(sizeof(double)*My_Max_NumGridB);
+      Density_Periodic_Grid_B = (double*)malloc(sizeof(double)*My_Max_NumGridB);
 
       for (i=0; i<My_Max_NumGridB; i++){
         dVHart_Periodic_Grid_B[i] = 0.0;
@@ -3202,29 +1131,29 @@ double truncation(int MD_iter,int UCell_flag)
       }
     }
 
-    RefVxc_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+    RefVxc_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB);
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Vxc_Grid_B = (double**)malloc(sizeof(double*)*4); 
+      Vxc_Grid_B = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Vxc_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+        Vxc_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
       }
     }
     else{
-      Vxc_Grid_B = (double**)malloc(sizeof(double*)*2); 
+      Vxc_Grid_B = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
         Vxc_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
       }
     }
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Vpot_Grid_B = (double**)malloc(sizeof(double*)*4); 
+      Vpot_Grid_B = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Vpot_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+        Vpot_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
       }
     }
     else{
-      Vpot_Grid_B = (double**)malloc(sizeof(double*)*2); 
+      Vpot_Grid_B = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
         Vpot_Grid_B[k] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
       }
@@ -3240,82 +1169,82 @@ double truncation(int MD_iter,int UCell_flag)
       else if (SpinP_switch==1)  spinmax = 2;
       else if (SpinP_switch==3)  spinmax = 3;
 
-      ReVKSk = (double***)malloc(sizeof(double**)*List_YOUSO[38]); 
+      ReVKSk = (double***)malloc(sizeof(double**)*List_YOUSO[38]);
       for (m=0; m<List_YOUSO[38]; m++){
-	ReVKSk[m] = (double**)malloc(sizeof(double*)*spinmax); 
+	ReVKSk[m] = (double**)malloc(sizeof(double*)*spinmax);
 	for (spin=0; spin<spinmax; spin++){
-	  ReVKSk[m][spin] = (double*)malloc(sizeof(double)*My_Max_NumGridB); 
+	  ReVKSk[m][spin] = (double*)malloc(sizeof(double)*My_Max_NumGridB);
 	  for (i=0; i<My_Max_NumGridB; i++) ReVKSk[m][spin][i] = 0.0;
 	}
       }
 
-      ImVKSk = (double***)malloc(sizeof(double**)*List_YOUSO[38]); 
+      ImVKSk = (double***)malloc(sizeof(double**)*List_YOUSO[38]);
       for (m=0; m<List_YOUSO[38]; m++){
-	ImVKSk[m] = (double**)malloc(sizeof(double*)*spinmax); 
+	ImVKSk[m] = (double**)malloc(sizeof(double*)*spinmax);
 	for (spin=0; spin<spinmax; spin++){
-	  ImVKSk[m][spin] = (double*)malloc(sizeof(double)*My_Max_NumGridB); 
+	  ImVKSk[m][spin] = (double*)malloc(sizeof(double)*My_Max_NumGridB);
 	  for (i=0; i<My_Max_NumGridB; i++) ImVKSk[m][spin][i] = 0.0;
 	}
       }
 
-      Residual_ReVKSk = (double**)malloc(sizeof(double*)*spinmax); 
+      Residual_ReVKSk = (double**)malloc(sizeof(double*)*spinmax);
       for (spin=0; spin<spinmax; spin++){
-	Residual_ReVKSk[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB*List_YOUSO[38]); 
+	Residual_ReVKSk[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB*List_YOUSO[38]);
 	for (i=0; i<My_NumGridB_CB*List_YOUSO[38]; i++) Residual_ReVKSk[spin][i] = 0.0;
       }
 
-      Residual_ImVKSk = (double**)malloc(sizeof(double*)*spinmax); 
+      Residual_ImVKSk = (double**)malloc(sizeof(double*)*spinmax);
       for (spin=0; spin<spinmax; spin++){
-	Residual_ImVKSk[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB*List_YOUSO[38]); 
+	Residual_ImVKSk[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB*List_YOUSO[38]);
 	for (i=0; i<My_NumGridB_CB*List_YOUSO[38]; i++) Residual_ImVKSk[spin][i] = 0.0;
       }
     }
 
     /* if (ProExpn_VNA==off) */
     if (ProExpn_VNA==0){
-      VNA_Grid = (double*)malloc(sizeof(double)*N); 
-      VNA_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+      VNA_Grid = (double*)malloc(sizeof(double)*N);
+      VNA_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB);
     }
 
     /* electric energy by electric field */
     if (E_Field_switch==1){
-      VEF_Grid = (double*)malloc(sizeof(double)*N); 
-      VEF_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB); 
+      VEF_Grid = (double*)malloc(sizeof(double)*N);
+      VEF_Grid_B = (double*)malloc(sizeof(double)*My_NumGridB_AB);
     }
 
     /* arrays for the partitions D */
 
-    PCCDensity_Grid_D = (double**)malloc(sizeof(double*)*2); 
-    PCCDensity_Grid_D[0] = (double*)malloc(sizeof(double)*My_NumGridD); 
-    PCCDensity_Grid_D[1] = (double*)malloc(sizeof(double)*My_NumGridD); 
+    PCCDensity_Grid_D = (double**)malloc(sizeof(double*)*2);
+    PCCDensity_Grid_D[0] = (double*)malloc(sizeof(double)*My_NumGridD);
+    PCCDensity_Grid_D[1] = (double*)malloc(sizeof(double)*My_NumGridD);
 
     for (i=0; i<My_NumGridD; i++){
-      PCCDensity_Grid_D[0][i] = 0.0; PCCDensity_Grid_D[1][i] = 0.0; 
+      PCCDensity_Grid_D[0][i] = 0.0; PCCDensity_Grid_D[1][i] = 0.0;
     }
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Density_Grid_D = (double**)malloc(sizeof(double*)*4); 
+      Density_Grid_D = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Density_Grid_D[k] = (double*)malloc(sizeof(double)*My_NumGridD); 
+        Density_Grid_D[k] = (double*)malloc(sizeof(double)*My_NumGridD);
         for (i=0; i<My_NumGridD; i++) Density_Grid_D[k][i] = 0.0;
       }
     }
     else{
-      Density_Grid_D = (double**)malloc(sizeof(double*)*2); 
+      Density_Grid_D = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
-        Density_Grid_D[k] = (double*)malloc(sizeof(double)*My_NumGridD); 
+        Density_Grid_D[k] = (double*)malloc(sizeof(double)*My_NumGridD);
         for (i=0; i<My_NumGridD; i++) Density_Grid_D[k][i] = 0.0;
       }
     }
 
     if (SpinP_switch==3){ /* spin non-collinear */
-      Vxc_Grid_D = (double**)malloc(sizeof(double*)*4); 
+      Vxc_Grid_D = (double**)malloc(sizeof(double*)*4);
       for (k=0; k<=3; k++){
-        Vxc_Grid_D[k] = (double*)malloc(sizeof(double)*My_NumGridD); 
+        Vxc_Grid_D[k] = (double*)malloc(sizeof(double)*My_NumGridD);
       }
     }
     else{
-      Vxc_Grid_D = (double**)malloc(sizeof(double*)*2); 
+      Vxc_Grid_D = (double**)malloc(sizeof(double*)*2);
       for (k=0; k<=1; k++){
         Vxc_Grid_D[k] = (double*)malloc(sizeof(double)*My_NumGridD);
       }
@@ -3352,15 +1281,15 @@ double truncation(int MD_iter,int UCell_flag)
     /* COrbs_Grid */
     size_COrbs_Grid = 0;
     if (Cnt_switch!=0){
-      COrbs_Grid = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*(Matomnum+MatomnumF+1)); 
-      COrbs_Grid[0] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1); 
-      COrbs_Grid[0][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1); 
+      COrbs_Grid = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*(Matomnum+MatomnumF+1));
+      COrbs_Grid[0] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1);
+      COrbs_Grid[0][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1);
       for (Mc_AN=1; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
         Gc_AN = F_M2G[Mc_AN];
         Cwan = WhatSpecies[Gc_AN];
-        COrbs_Grid[Mc_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*Spe_Total_CNO[Cwan]); 
+        COrbs_Grid[Mc_AN] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*Spe_Total_CNO[Cwan]);
         for (i=0; i<Spe_Total_CNO[Cwan]; i++){
-          COrbs_Grid[Mc_AN][i] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*GridN_Atom[Gc_AN]); 
+          COrbs_Grid[Mc_AN][i] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*GridN_Atom[Gc_AN]);
           size_COrbs_Grid += GridN_Atom[Gc_AN];
         }
       }
@@ -3368,15 +1297,15 @@ double truncation(int MD_iter,int UCell_flag)
 
     /* Orbs_Grid_FNAN */
     size_Orbs_Grid_FNAN = 0;
-    Orbs_Grid_FNAN = (Type_Orbs_Grid****)malloc(sizeof(Type_Orbs_Grid***)*(Matomnum+1)); 
-    Orbs_Grid_FNAN[0] = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*1); 
-    Orbs_Grid_FNAN[0][0] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1); 
-    Orbs_Grid_FNAN[0][0][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1); 
+    Orbs_Grid_FNAN = (Type_Orbs_Grid****)malloc(sizeof(Type_Orbs_Grid***)*(Matomnum+1));
+    Orbs_Grid_FNAN[0] = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*1);
+    Orbs_Grid_FNAN[0][0] = (Type_Orbs_Grid**)malloc(sizeof(Type_Orbs_Grid*)*1);
+    Orbs_Grid_FNAN[0][0][0] = (Type_Orbs_Grid*)malloc(sizeof(Type_Orbs_Grid)*1);
 
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
-      Gc_AN = M2G[Mc_AN];    
-      Orbs_Grid_FNAN[Mc_AN] = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*(FNAN[Gc_AN]+1)); 
+      Gc_AN = M2G[Mc_AN];
+      Orbs_Grid_FNAN[Mc_AN] = (Type_Orbs_Grid***)malloc(sizeof(Type_Orbs_Grid**)*(FNAN[Gc_AN]+1));
 
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 
@@ -3450,7 +1379,7 @@ double truncation(int MD_iter,int UCell_flag)
 	PrintMemory("truncation: VEF_Grid_B",       sizeof(double)*My_NumGridB_AB,   NULL);
       }
     }
-  
+
   } /* if (UCell_flag==1) */
 
   /****************************************************
@@ -3471,7 +1400,7 @@ double truncation(int MD_iter,int UCell_flag)
   }
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time16 += etime - stime;
   }
 
@@ -3486,7 +1415,7 @@ double truncation(int MD_iter,int UCell_flag)
 
   /* for PrintMemory */
   firsttime = 0;
- 
+
   /* for time */
   dtime(&TEtime);
   return (TEtime-TStime);
@@ -3524,19 +1453,19 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
   {
 
     /* allocation of arrays */
- 
+
     size_array = (int)((Max_FSNAN+2)*ScaleSize);
 
-    fDis = (double*)malloc(sizeof(double)*size_array); 
+    fDis = (double*)malloc(sizeof(double)*size_array);
     sDis = (double*)malloc(sizeof(double)*size_array);
 
     fnan2 = (int*)malloc(sizeof(int)*size_array);
-    fncn  = (int*)malloc(sizeof(int)*size_array); 
-    snan2 = (int*)malloc(sizeof(int)*size_array); 
-    sncn  = (int*)malloc(sizeof(int)*size_array); 
+    fncn  = (int*)malloc(sizeof(int)*size_array);
+    snan2 = (int*)malloc(sizeof(int)*size_array);
+    sncn  = (int*)malloc(sizeof(int)*size_array);
 
-    /* get info. on OpenMP */ 
-  
+    /* get info. on OpenMP */
+
     OMPID = omp_get_thread_num();
     Nthrds = omp_get_num_threads();
     Nprocs = omp_get_num_procs();
@@ -3557,7 +1486,7 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
 	rcut = rcutA + rcutB;
 
 	if (rcut<BCR) rcut_max = BCR;
-	else          rcut_max = rcut; 
+	else          rcut_max = rcut;
 
 	for (Rn=0; Rn<=TCpyCell; Rn++){
 
@@ -3566,7 +1495,7 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
 	    ncn[ct_AN][0]  = 0;
 	    Dis[ct_AN][0]  = 0.0;
 	  }
-            
+
 	  else{
 
 	    dx = fabs(Gxyz[ct_AN][1] - Gxyz[j][1] - atv[Rn][1]);
@@ -3615,7 +1544,7 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
 	       myid,CpyCell,ct_AN,FNAN[ct_AN],SNAN[ct_AN]);fflush(stdout);
       }
 
-    } /* i */  
+    } /* i */
 
     /* freeing of arrays */
 
@@ -3635,7 +1564,7 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
    FNAN and SNAN should be fixed to avoid the energy jump.
   **************************************************************/
 
-  if (orderN_FNAN_SNAN_flag==1 && MD_iter==1){ 
+  if (orderN_FNAN_SNAN_flag==1 && MD_iter==1){
     Fixed_FNAN_SNAN();
   }
 
@@ -3652,13 +1581,13 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
 
       qsort_double3B( SNAN[ct_AN],
                       &Dis[ct_AN][FNAN[ct_AN]+1],
-		      &natn[ct_AN][FNAN[ct_AN]+1], 
+		      &natn[ct_AN][FNAN[ct_AN]+1],
 		      &ncn[ct_AN][FNAN[ct_AN]+1]);
 
       r0 = 0.0;
       for (h_AN=1; h_AN<=FNAN[ct_AN]; h_AN++){
-        if (r0<Dis[ct_AN][h_AN]) r0 = Dis[ct_AN][h_AN]; 
-      } 
+        if (r0<Dis[ct_AN][h_AN]) r0 = Dis[ct_AN][h_AN];
+      }
 
       sf = 0.1;
       po = 0;
@@ -3668,7 +1597,7 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
 
         rc = r0 + sf*(BCR-r0);
         for (h_AN=(FNAN[ct_AN]+1); h_AN<=(FNAN[ct_AN]+SNAN[ct_AN]); h_AN++){
-  	  if (rc<Dis[ct_AN][h_AN]) break;
+          if (rc<Dis[ct_AN][h_AN]) break;
         }
         h_AN--;
 
@@ -3679,7 +1608,7 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
           sf = 1.05*sf;
 	}
 
-        num++; 
+        num++;
 
       }	while (po==0 && num<400);
 
@@ -3695,12 +1624,12 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
   }
 
   /****************************************************
-   MPI: 
+   MPI:
 
          My_TFNAN -> TFNAN
          My_TSNAN -> TSNAN
          FNAN
-         SNAN 
+         SNAN
          natn
          ncn
          Dis
@@ -3727,19 +1656,19 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
 
   /*
   if (Wannier90_fileout==7 || Wannier90_fileout==8){
-    printf("GGG1 Wannier90_fileout=%2d\n",Wannier90_fileout); 
+    printf("GGG1 Wannier90_fileout=%2d\n",Wannier90_fileout);
 
     int tmp=myid+1;
     MPI_Bcast(&FNAN[1], 1, MPI_INT, 0, mpi_comm_level1);
     printf("WWW1 %2d %2d\n",Wannier90_fileout,tmp);
     MPI_Finalize();
     exit(0);
-  }  
+  }
   */
 
 
   if (Wannier90_fileout==7 || Wannier90_fileout==8){
-    printf("GGG1 Wannier90_fileout=%2d\n",Wannier90_fileout); 
+    printf("GGG1 Wannier90_fileout=%2d\n",Wannier90_fileout);
 
     ct_AN = 1;
     ID = G2ID[ct_AN];
@@ -3747,7 +1676,7 @@ void Trn_System(int MD_iter, int CpyCell, int TCpyCell)
     MPI_Bcast(&FNAN[ct_AN], 1, MPI_INT, ID, mpi_comm_level1);
     MPI_Finalize();
     exit(0);
-  }  
+  }
 
 
 
@@ -3819,14 +1748,14 @@ void Estimate_Trn_System(int CpyCell, int TCpyCell)
 #pragma omp parallel shared(CpyCell,level_stdout,BCR,Spe_WhatAtom,atv,Gxyz,TCpyCell,SNAN,FNAN,Spe_Atom_Cut1,WhatSpecies,M2G,Matomnum,atomnum) private(i,ct_AN,wanA,rcutA,j,wanB,rcutB,rcut,Rn,dx,dy,dz,r,spe1,spe2,OMPID,Nthrds,Nprocs,rcut_max,my_abnormal_bond)
 
   {
-    /* get info. on OpenMP */ 
-  
+    /* get info. on OpenMP */
+
     OMPID = omp_get_thread_num();
     Nthrds = omp_get_num_threads();
     Nprocs = omp_get_num_procs();
 
     for (i=(OMPID+1); i<=Matomnum; i+=Nthrds){
-        
+
       ct_AN = M2G[i];
       wanA = WhatSpecies[ct_AN];
       rcutA = Spe_Atom_Cut1[wanA];
@@ -3841,14 +1770,14 @@ void Estimate_Trn_System(int CpyCell, int TCpyCell)
 	rcut = rcutA + rcutB;
 
 	if (rcut<BCR) rcut_max = BCR;
-	else          rcut_max = rcut; 
+	else          rcut_max = rcut;
 
 	for (Rn=0; Rn<=TCpyCell; Rn++){
 
 	  if ((ct_AN==j) && Rn==0){
 	    /* Nothing to be done */
 	  }
- 
+
 	  else{
 
 	    dx = fabs(Gxyz[ct_AN][1] - Gxyz[j][1] - atv[Rn][1]);
@@ -3861,7 +1790,7 @@ void Estimate_Trn_System(int CpyCell, int TCpyCell)
 	      if (r<=rcut)     FNAN[ct_AN]++;
 	      else if (r<=BCR) SNAN[ct_AN]++;
 
-              
+
 	      if (r<0.4){
                 my_abnormal_bond = 1;
 
@@ -3877,7 +1806,7 @@ void Estimate_Trn_System(int CpyCell, int TCpyCell)
 	printf("<truncation> CpyCell=%2d ct_AN=%2d FNAN SNAN %2d %2d\n",
 	       CpyCell,i,FNAN[ct_AN],SNAN[ct_AN]);
       }
-  
+
     } /* i */
 
   } /* #pragma omp parallel */
@@ -3899,7 +1828,7 @@ void Estimate_Trn_System(int CpyCell, int TCpyCell)
    MPI:
          MFNAN
          MFSNAN
-  ***************************************************/ 
+  ***************************************************/
 
   /* printf("A myid=%i Max_FNAN=%i Max_FSNAN=%i\n",myid,Max_FNAN,Max_FSNAN); */
 
@@ -3961,7 +1890,7 @@ void Check_System()
     }
   }
 
-  num = 0;  
+  num = 0;
   for (i=1; i<=3; i++){
     if (po[i]==1) num++;
   }
@@ -3972,7 +1901,7 @@ void Check_System()
   s_vec[3] = "bulk.";
 
   specified_system = num;
-  
+
   if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout) printf("<Check_System> The system is %s\n",s_vec[num]);
 
   /* in case of solver==cluster */
@@ -4026,53 +1955,53 @@ void Set_RMI()
           [FNAN[Gc_AN]+SNAN[Gc_AN]+1]
           [FNAN[Gc_AN]+SNAN[Gc_AN]+1]
   ****************************************************/
-  
+
   FNAN[0] = 0;
   SNAN[0] = 0;
 
   size_RMI1 = 0;
-  RMI1 = (int***)malloc(sizeof(int**)*(Matomnum+1)); 
+  RMI1 = (int***)malloc(sizeof(int**)*(Matomnum+1));
   for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
     if (Mc_AN==0) Gc_AN = 0;
     else          Gc_AN = M2G[Mc_AN];
-    RMI1[Mc_AN] = (int**)malloc(sizeof(int*)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1)); 
+    RMI1[Mc_AN] = (int**)malloc(sizeof(int*)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1));
     for (i=0; i<=(FNAN[Gc_AN]+SNAN[Gc_AN]); i++){
-      RMI1[Mc_AN][i] = (int*)malloc(sizeof(int)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1)); 
+      RMI1[Mc_AN][i] = (int*)malloc(sizeof(int)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1));
       size_RMI1 += FNAN[Gc_AN]+SNAN[Gc_AN]+1;
-    }      
+    }
   }
-  
-  RMI2 = (int***)malloc(sizeof(int**)*(Matomnum+1)); 
+
+  RMI2 = (int***)malloc(sizeof(int**)*(Matomnum+1));
   for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
     if (Mc_AN==0) Gc_AN = 0;
     else          Gc_AN = M2G[Mc_AN];
-    RMI2[Mc_AN] = (int**)malloc(sizeof(int*)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1)); 
+    RMI2[Mc_AN] = (int**)malloc(sizeof(int*)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1));
     for (i=0; i<=(FNAN[Gc_AN]+SNAN[Gc_AN]); i++){
-      RMI2[Mc_AN][i] = (int*)malloc(sizeof(int)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1)); 
-    }      
+      RMI2[Mc_AN][i] = (int*)malloc(sizeof(int)*(FNAN[Gc_AN]+SNAN[Gc_AN]+1));
+    }
   }
 
   alloc_first[6] = 0;
-  
+
   if (firsttime){
   PrintMemory("truncation: RMI1", sizeof(int)*size_RMI1, NULL);
   PrintMemory("truncation: RMI2", sizeof(int)*size_RMI1, NULL);
-  firsttime = 0; 
+  firsttime = 0;
   }
 
   /****************************************************
                   setting of RMI matrix
   ****************************************************/
 
-#pragma omp parallel shared(time_per_atom,RMI2,RMI1,ratv,CpyCell,atv_ijk,ncn,natn,WhatSpecies,SNAN,FNAN,M2G) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,fan,san,can,wan,i,ig,Rni,j,jg,Rnj,l1,l2,l3,m1,m2,m3,Rn,i_rlt,k,po,Etime_atom)
+#pragma omp parallel shared(time_per_atom,RMI2,RMI1,CpyCell,atv_ijk,ncn,natn,WhatSpecies,SNAN,FNAN,M2G) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,fan,san,can,wan,i,ig,Rni,j,jg,Rnj,l1,l2,l3,m1,m2,m3,Rn,i_rlt,k,po,Etime_atom)
   {
 
-    /* get info. on OpenMP */ 
-  
+    /* get info. on OpenMP */
+
     OMPID = omp_get_thread_num();
     Nthrds = omp_get_num_threads();
     Nprocs = omp_get_num_procs();
-  
+
     for (Mc_AN=(OMPID+1); Mc_AN<=Matomnum; Mc_AN+=Nthrds){
 
       dtime(&Stime_atom);
@@ -4101,7 +2030,7 @@ void Set_RMI()
 
 	  if (m1<=CpyCell && m2<=CpyCell && m3<=CpyCell){
 
-	    Rn = ratv[l1+CpyCell][l2+CpyCell][l3+CpyCell];
+	    Rn = openmx_periodic_index(CpyCell,l1,l2,l3);
 
 	    /* FNAN */
 
@@ -4166,7 +2095,7 @@ void Fixed_FNAN_SNAN()
     if ( (orderN_FNAN[Gc_AN]+orderN_SNAN[Gc_AN])<=(FNAN[Gc_AN]+SNAN[Gc_AN]) ){
 
       qsort_double3B(SNAN[Gc_AN], &Dis[Gc_AN][FNAN[Gc_AN]+1],
-                                  &natn[Gc_AN][FNAN[Gc_AN]+1], 
+                                  &natn[Gc_AN][FNAN[Gc_AN]+1],
                                   &ncn[Gc_AN][FNAN[Gc_AN]+1]);
 
       SNAN[Gc_AN] = orderN_FNAN[Gc_AN] + orderN_SNAN[Gc_AN] - FNAN[Gc_AN];
@@ -4236,7 +2165,7 @@ void Output_Connectivity(FILE *fp)
       for (j=0; j<=can; j++){
         if (j==0)
           fprintf(fp,"      %i ",RMI1[ct_AN][i][j]);
-        else 
+        else
           fprintf(fp,"%i ",RMI1[ct_AN][i][j]);
       }
       fprintf(fp,"\n");
@@ -4251,7 +2180,7 @@ void Output_Connectivity(FILE *fp)
       for (j=0; j<=can; j++){
         if (j==0)
           fprintf(fp,"      %i ",RMI2[ct_AN][i][j]);
-        else 
+        else
           fprintf(fp,"%i ",RMI2[ct_AN][i][j]);
       }
       fprintf(fp,"\n");
@@ -4263,7 +2192,7 @@ void Output_Connectivity(FILE *fp)
 
 
 
-  
+
 
 /**********************************************************************
   GPU fast path for the "find overlap grids between two orbitals"
@@ -4488,7 +2417,7 @@ static int UCellBox_OLG_GPU_Part(int first,int last,int myid,int estimate_switch
     for (k = 0; k < rdim; k++) {
       int l;
       for (l = 0; l < rdim; l++) {
-        ratv_flat[((size_t)m*rdim + (size_t)k)*rdim + (size_t)l] = ratv[m][k][l];
+        ratv_flat[((size_t)m*rdim + (size_t)k)*rdim + (size_t)l] = openmx_periodic_index(CpyCell,m-CpyCell,k-CpyCell,l-CpyCell);
       }
     }
   }
@@ -4719,7 +2648,7 @@ static int UCellBox_OLG_GPU(int estimate_switch,int CpyCell,int **grid,int **cel
     return 0;
   }
   for(int i=0;i<=TCpyCell;i++)for(int a=0;a<3;a++)atvf[3*i+a]=atv_ijk[i][a+1];
-  for(int a=0;a<rdim;a++)for(int b=0;b<rdim;b++)for(int c=0;c<rdim;c++)ratvf[((size_t)a*rdim+b)*rdim+c]=ratv[a][b][c];
+  for(int a=0;a<rdim;a++)for(int b=0;b<rdim;b++)for(int c=0;c<rdim;c++)ratvf[((size_t)a*rdim+b)*rdim+c]=openmx_periodic_index(CpyCell,a-CpyCell,b-CpyCell,c-CpyCell);
   for(;;){
     int pending=mc<=Matomnum,any;
     MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);if(!any)break;
@@ -4772,7 +2701,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   static int firsttime=1;
   int size_GListTAtoms1;
   int po,N3[4],i,j,k;
-  int size_GridListAtom,size_MGridListAtom;
+  int size_GridListAtom, size_MGridListAtom;
   int NOC[4],nn1,nn2,nn3,l1,l2,l3,lmax;
   int ct_AN,N,n1,n2,n3,Cwan,Rn,Rn1,Ng1,Ng2,Ng3;
   int p,q,r,s,pmax,qmax,rmax,smax,popt,qopt,ropt,sopt;
@@ -4818,19 +2747,19 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
                 Reciprocal lattice vectors
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   if (estimate_switch<=1){
-  
+
     Cross_Product(tv[2],tv[3],tmp);
-    CellV = Dot_Product(tv[1],tmp); 
+    CellV = Dot_Product(tv[1],tmp);
     Cell_Volume = fabs(CellV);
-  
+
     Cross_Product(tv[2],tv[3],tmp);
     rtv[1][1] = 2.0*PI*tmp[1]/CellV;
     rtv[1][2] = 2.0*PI*tmp[2]/CellV;
     rtv[1][3] = 2.0*PI*tmp[3]/CellV;
-  
+
     Cross_Product(tv[3],tv[1],tmp);
     rtv[2][1] = 2.0*PI*tmp[1]/CellV;
     rtv[2][2] = 2.0*PI*tmp[2]/CellV;
@@ -4841,7 +2770,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
     rtv[3][2] = 2.0*PI*tmp[2]/CellV;
     rtv[3][3] = 2.0*PI*tmp[3]/CellV;
 
-    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){    
+    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
 
       printf("lattice vectors (bohr)\n");
       printf("A  = %15.12f, %15.12f, %15.12f\n",tv[1][1],tv[1][2],tv[1][3]);
@@ -4852,20 +2781,20 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
       printf("RA = %15.12f, %15.12f, %15.12f\n",rtv[1][1],rtv[1][2],rtv[1][3]);
       printf("RB = %15.12f, %15.12f, %15.12f\n",rtv[2][1],rtv[2][2],rtv[2][3]);
       printf("RC = %15.12f, %15.12f, %15.12f\n",rtv[3][1],rtv[3][2],rtv[3][3]);
-    }  
+    }
 
     if (Ngrid_fixed_flag==0){
 
-      /* find proper N1, N2, and N3 */ 
+      /* find proper N1, N2, and N3 */
 
       Cross_Product(tv[2],tv[3],tmp);
-      A1 = PI*PI*Dot_Product(tmp,tmp)/Cell_Volume/Cell_Volume; 
-      
+      A1 = PI*PI*Dot_Product(tmp,tmp)/Cell_Volume/Cell_Volume;
+
       Cross_Product(tv[3],tv[1],tmp);
-      A2 = PI*PI*Dot_Product(tmp,tmp)/Cell_Volume/Cell_Volume; 
+      A2 = PI*PI*Dot_Product(tmp,tmp)/Cell_Volume/Cell_Volume;
 
       Cross_Product(tv[1],tv[2],tmp);
-      A3 = PI*PI*Dot_Product(tmp,tmp)/Cell_Volume/Cell_Volume; 
+      A3 = PI*PI*Dot_Product(tmp,tmp)/Cell_Volume/Cell_Volume;
 
       DouN[1] = sqrt(Grid_Ecut/A1);
       DouN[2] = sqrt(Grid_Ecut/A2);
@@ -4880,18 +2809,18 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
         LgN = log(DouN[i]);
         MinD = 10e+10;
-        
-        pmax = ceil(LgN/Lg2); 
+
+        pmax = ceil(LgN/Lg2);
         for (p=0; p<=pmax; p++){
-          qmax = ceil((LgN-p*Lg2)/Lg3); 
+          qmax = ceil((LgN-p*Lg2)/Lg3);
           for (q=0; q<=qmax; q++){
-            rmax = ceil((LgN-p*Lg2-q*Lg3)/Lg5); 
+            rmax = ceil((LgN-p*Lg2-q*Lg3)/Lg5);
             for (r=0; r<=rmax; r++){
-              smax = ceil((LgN-p*Lg2-q*Lg3-r*Lg5)/Lg7); 
+              smax = ceil((LgN-p*Lg2-q*Lg3-r*Lg5)/Lg7);
               for (s=0; s<=smax; s++){
-                
+
                 LgTN = p*Lg2+q*Lg3+r*Lg5+s*Lg7;
-                
+
                 if (fabs(LgTN-LgN)<MinD){
                   MinD = fabs(LgTN-LgN);
                   popt = p;
@@ -4903,7 +2832,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 	    }
 	  }
         }
-        
+
         k = 1;
         for (p=0; p<popt; p++) k *= 2;
         for (q=0; q<qopt; q++) k *= 3;
@@ -4928,18 +2857,18 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
     gtv[1][1] = tv[1][1]/(double)Ngrid1;
     gtv[1][2] = tv[1][2]/(double)Ngrid1;
     gtv[1][3] = tv[1][3]/(double)Ngrid1;
-    
+
     gtv[2][1] = tv[2][1]/(double)Ngrid2;
     gtv[2][2] = tv[2][2]/(double)Ngrid2;
     gtv[2][3] = tv[2][3]/(double)Ngrid2;
-    
+
     gtv[3][1] = tv[3][1]/(double)Ngrid3;
     gtv[3][2] = tv[3][2]/(double)Ngrid3;
     gtv[3][3] = tv[3][3]/(double)Ngrid3;
 
     Cross_Product(gtv[2],gtv[3],tmp);
 
-    GridV = Dot_Product(gtv[1],tmp); 
+    GridV = Dot_Product(gtv[1],tmp);
     GVolume = fabs( GridV );
 
     Cross_Product(gtv[2],gtv[3],tmp);
@@ -4951,7 +2880,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
     rgtv[2][1] = 2.0*PI*tmp[1]/GridV;
     rgtv[2][2] = 2.0*PI*tmp[2]/GridV;
     rgtv[2][3] = 2.0*PI*tmp[3]/GridV;
-    
+
     Cross_Product(gtv[1],gtv[2],tmp);
     rgtv[3][1] = 2.0*PI*tmp[1]/GridV;
     rgtv[3][2] = 2.0*PI*tmp[2]/GridV;
@@ -5007,7 +2936,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
           fprintf(fp,"  Num.Grid3. %5d\n",Ngrid3);
           fprintf(fp,"\n\n");
 
-          fclose(fp); 
+          fclose(fp);
         }
       }
     }
@@ -5019,7 +2948,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   } /* if (estimate_switch<=1) */
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time0 += etime - stime;
   }
 
@@ -5027,7 +2956,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
        Setting the center of unit cell and grids
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   /* the center of the system */
 
@@ -5096,9 +3025,9 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
     gtv[3][2] = tv[3][2]/(double)Ngrid3;
     gtv[3][3] = tv[3][3]/(double)Ngrid3;
 
-    sn1 = 0.5*( (Ngrid1+1) % 2 ); 
-    sn2 = 0.5*( (Ngrid2+1) % 2 ); 
-    sn3 = 0.5*( (Ngrid3+1) % 2 ); 
+    sn1 = 0.5*( (Ngrid1+1) % 2 );
+    sn2 = 0.5*( (Ngrid2+1) % 2 );
+    sn3 = 0.5*( (Ngrid3+1) % 2 );
 
     xm = ( (double)(Ngrid1/2) - sn1 )*gtv[1][1]
        + ( (double)(Ngrid2/2) - sn2 )*gtv[2][1]
@@ -5132,11 +3061,11 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
       Grid_Origin[2] = scf_fixed_origin[1];
       Grid_Origin[3] = scf_fixed_origin[2];
     }
-    
+
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
       printf("Grid_Origin %15.12f %15.12f %15.12f\n",
               Grid_Origin[1],Grid_Origin[2],Grid_Origin[3]);
-    }    
+    }
 
     TNumGrid = Ngrid1*Ngrid2*Ngrid3;
     Last_TNumGrid = (int)(ScaleSize*Ngrid1*Ngrid2*Ngrid3);
@@ -5158,8 +3087,8 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
       double Cxyz[4];
 
-      /* get info. on OpenMP */ 
-  
+      /* get info. on OpenMP */
+
       OMPID = omp_get_thread_num();
       Nthrds = omp_get_num_threads();
       Nprocs = omp_get_num_procs();
@@ -5179,7 +3108,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 		 Gc_AN,
 		 Cell_Gxyz[Gc_AN][1],
 		 Cell_Gxyz[Gc_AN][2],
-		 Cell_Gxyz[Gc_AN][3]); 
+		 Cell_Gxyz[Gc_AN][3]);
 	}
 
       }
@@ -5187,7 +3116,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
     } /* #pragma omp parallel */
 
     /****************
-     MPI: 
+     MPI:
          Cell_Gxyz
     *****************/
 
@@ -5240,14 +3169,14 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   rgtv[3][2] = 2.0*PI*tmp[2]/GridV;
   rgtv[3][3] = 2.0*PI*tmp[3]/GridV;
 
-  if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){    
-    printf("Cell_Volume = %19.12f (Bohr^3)\n",Cell_Volume); 
-    printf("GridVol     = %19.12f (Bohr^3)\n",GridVol); 
+  if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+    printf("Cell_Volume = %19.12f (Bohr^3)\n",Cell_Volume);
+    printf("GridVol     = %19.12f (Bohr^3)\n",GridVol);
   }
 
   if ( (estimate_switch==0 || 2<=level_stdout) && MYID_MPI_COMM_WORLD==Host_ID ){
 
-    if (0<level_stdout){ 
+    if (0<level_stdout){
 
       printf("Cell vectors (bohr) of the grid cell (gtv)\n");
       printf("  gtv_a = %15.12f, %15.12f, %15.12f\n",gtv[1][1],gtv[1][2],gtv[1][3]);
@@ -5268,8 +3197,8 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
     if (fp!=NULL && estimate_switch==0){
 
-      fprintf(fp,"  Cell_Volume = %19.12f (Bohr^3)\n",Cell_Volume); 
-      fprintf(fp,"  GridVol     = %19.12f (Bohr^3)\n",GridVol); 
+      fprintf(fp,"  Cell_Volume = %19.12f (Bohr^3)\n",Cell_Volume);
+      fprintf(fp,"  GridVol     = %19.12f (Bohr^3)\n",GridVol);
 
       fprintf(fp,"  Cell vectors (bohr) of the grid cell (gtv)\n");
       fprintf(fp,"    gtv_a = %15.12f, %15.12f, %15.12f\n",gtv[1][1],gtv[1][2],gtv[1][3]);
@@ -5282,17 +3211,17 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
       fprintf(fp,"\n***********************************************************\n");
       fprintf(fp,"***********************************************************\n\n");
 
-      fclose(fp); 
+      fclose(fp);
     }
   }
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time1 += etime - stime;
   }
 
   /**********************************
-    allocation of arrays: 
+    allocation of arrays:
 
     Tmp_GridListAtom
     Tmp_CellListAtom
@@ -5309,11 +3238,11 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
   /****************************************************
    1) find a neighbouring point of the atom Mc_AN
-   2) the ranges which deterinie a box on the atom Mc_AN 
+   2) the ranges which deterinie a box on the atom Mc_AN
    3) determine whether overlap exists or not
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   /* for allocation of arrays */
 
@@ -5363,14 +3292,14 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
         j = nmax[k];
         nmin[k] = j;
         nmax[k] = i;
-      } 
-  
-    } /* k */  
+      }
 
-    /* allocation of arrays */ 
+    } /* k */
+
+    /* allocation of arrays */
 
     Np = (nmax[1]-nmin[1]+1)*(nmax[2]-nmin[2]+1)*(nmax[3]-nmin[3]+1)*3/2;
-    
+
     Tmp_GridListAtom[Mc_AN] = (int*)malloc(sizeof(int)*Np);
     Tmp_CellListAtom[Mc_AN] = (int*)malloc(sizeof(int)*Np);
     MGridListAtom[Mc_AN] = (int*)malloc(sizeof(int)*Np);
@@ -5380,8 +3309,8 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   /* store Tmp_GridListAtom and Tmp_CellListAtom */
 
   size_array = (int)(Max_GridN_Atom*ScaleSize);
-  TempGrid = (int*)malloc(sizeof(int)*size_array); 
-  TempCell = (int*)malloc(sizeof(int)*size_array); 
+  TempGrid = (int*)malloc(sizeof(int)*size_array);
+  TempCell = (int*)malloc(sizeof(int)*size_array);
 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
@@ -5423,15 +3352,15 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
       /* find the mimum range of grids */
       nmin[k] = Dot_Product(Cxyz,rgtv[k])*0.5/PI;
-  
+
       if (nmax[k]<nmin[k]){
         i = nmin[k];
         j = nmax[k];
         nmin[k] = j;
         nmax[k] = i;
-      } 
+      }
 
-    } /* k */  
+    } /* k */
 
     CutR2 = Spe_Atom_Cut1[Cwan]*Spe_Atom_Cut1[Cwan];
 
@@ -5456,7 +3385,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 	    if (estimate_switch!=1){
 	      TempGrid[Nct+1] = N;
 	      TempCell[Nct+1] = Rn;
-	    }             
+	    }
 	    Nct++;
 	  }
 	}
@@ -5465,9 +3394,9 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
     Np = (nmax[1]-nmin[1]+1)*(nmax[2]-nmin[2]+1)*(nmax[3]-nmin[3]+1)*3/2;
     if (Np<Nct){
-      printf("Invalid access in truncation.c\n"); 
+      printf("Invalid access in truncation.c\n");
       MPI_Finalize();
-      exit(0); 
+      exit(0);
     }
 
     GridN_Atom[Gc_AN] = Nct;
@@ -5497,17 +3426,17 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   }
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time2 += etime - stime;
   }
 
   /****************************************************
-   MPI: 
+   MPI:
 
        GridN_Atom
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   for (ct_AN=1; ct_AN<=atomnum; ct_AN++){
     ID = G2ID[ct_AN];
@@ -5534,7 +3463,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
     Tmp_GridListAtom
     Tmp_CellListAtom
   ****************************************************/
-  
+
   size_MGridListAtom = size_GridListAtom;
 
   for (Mc_AN=Matomnum+1; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
@@ -5551,18 +3480,18 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   }
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time3 += etime - stime;
   }
 
   /****************************************************
-   MPI: 
+   MPI:
 
        Tmp_GridListAtom
        Tmp_CellListAtom
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   /* MPI_Barrier */
   MPI_Barrier(mpi_comm_level1);
@@ -5594,11 +3523,11 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
           Gc_AN = F_M2G[Mc_AN];
           MPI_Recv(&Tmp_GridListAtom[Mc_AN][0], GridN_Atom[Gc_AN], MPI_INT,
                    IDR, tag, mpi_comm_level1, &stat);
-	}          
+	}
       }
 
       if (F_Snd_Num[IDS]!=0) MPI_Wait(&request,&stat);
-    }     
+    }
   }
 
   /* Tmp_CellListAtom */
@@ -5628,29 +3557,29 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
           Gc_AN = F_M2G[Mc_AN];
           MPI_Recv(&Tmp_CellListAtom[Mc_AN][0], GridN_Atom[Gc_AN], MPI_INT,
                    IDR, tag, mpi_comm_level1, &stat);
-	}          
+	}
       }
 
       if (F_Snd_Num[IDS]!=0) MPI_Wait(&request,&stat);
-    }     
+    }
   }
 
   /* MPI_Barrier */
   MPI_Barrier(mpi_comm_level1);
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time4 += etime - stime;
   }
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   if (estimate_switch!=1){
 
     /****************************************************
             Find overlap grids between two orbitals
     ****************************************************/
-    
+
     if (estimate_switch==0){
       size_GListTAtoms1 = 0;
 
@@ -5673,7 +3602,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
       if (Mc_AN==0){
 
-	FNAN[0] = 0; 
+	FNAN[0] = 0;
 
         if (estimate_switch==0){
 
@@ -5696,7 +3625,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
         h_AN0 = 0;
 
 #pragma omp parallel shared(List_YOUSO,GListTAtoms1,GListTAtoms2,ScaleSize,Max_NumOLG,size_GListTAtoms1,level_stdout,NumOLG,estimate_switch,CpyCell,Mc_AN,Tmp_CellListAtom,Tmp_GridListAtom,GridN_Atom,atv_ijk,ncn,F_G2M,natn,h_AN0,FNAN,Gc_AN) private(OMPID,Nthrds,Nprocs,h_AN,Gh_AN,Mh_AN,Rh,l1,l2,l3,Nog,Nc,Nh,GNh,GRh,ll1,ll2,ll3,lll1,lll2,lll3,GRh1,po,GNc,GRc,TAtoms0,TCells0,TAtoms1,TAtoms2,size_array,i)
-	{        
+	{
 
 	  /*******************************************************
             allocation of temporal arrays
@@ -5708,13 +3637,13 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 	  TAtoms1 = (int*)malloc(sizeof(int)*size_array);
 	  TAtoms2 = (int*)malloc(sizeof(int)*size_array);
 
-	  /* get info. on OpenMP */ 
-  
+	  /* get info. on OpenMP */
+
 	  OMPID = omp_get_thread_num();
 	  Nthrds = omp_get_num_threads();
 	  Nprocs = omp_get_num_procs();
 
-          do {  
+          do {
 
 #pragma omp barrier
             h_AN = h_AN0 + OMPID;
@@ -5728,7 +3657,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 	      l1 = atv_ijk[Rh][1];
 	      l2 = atv_ijk[Rh][2];
 	      l3 = atv_ijk[Rh][3];
-  
+
 	      Nog = -1;
 	      Nc = 0;
 
@@ -5787,8 +3716,8 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 		      }
 
 		      else if (GNh<GNc){
-			po = 1; 
-		      } 
+			po = 1;
+		      }
 
 		      Nc++;
 
@@ -5815,7 +3744,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 		printf("Num. of grids overlapping between atoms %2d (G) and %2d (L) = %2d\n",
 		       Gc_AN,h_AN,Nog+1);
 	      }
-	    
+
 	    } /* if (h_AN<=FNAN[Gc_AN]) */
 
 #pragma omp barrier
@@ -5904,16 +3833,16 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   MPI_Barrier(mpi_comm_level1);
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time5 += etime - stime;
   }
 
   /****************************************************
        Tmp_GridListAtom -> GridListAtom
-       Tmp_CellListAtom -> CellListAtom                     
+       Tmp_CellListAtom -> CellListAtom
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   size_GridListAtom = 0;
 
@@ -5968,8 +3897,8 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 #pragma omp parallel shared(Min_Grid_Index,atv_ijk,Ng1,Ng2,Ng3,Ngrid1,Ngrid2,Ngrid3,MGridListAtom,Mc_AN,Tmp_GridListAtom,Tmp_CellListAtom,GridN_Atom,Gc_AN) private(Nc,GNc,GRc,N3,n1,n2,n3,N,OMPID,Nthrds,Nprocs)
       {
 
-	/* get info. on OpenMP */ 
-  
+	/* get info. on OpenMP */
+
 	OMPID = omp_get_thread_num();
 	Nthrds = omp_get_num_threads();
 	Nprocs = omp_get_num_procs();
@@ -5981,23 +3910,23 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
 	  GN2N(GNc,N3);
 
-	  n1 = N3[1] + Ngrid1*atv_ijk[GRc][1] - Min_Grid_Index[1];  
-	  n2 = N3[2] + Ngrid2*atv_ijk[GRc][2] - Min_Grid_Index[2];  
-	  n3 = N3[3] + Ngrid3*atv_ijk[GRc][3] - Min_Grid_Index[3];  
+	  n1 = N3[1] + Ngrid1*atv_ijk[GRc][1] - Min_Grid_Index[1];
+	  n2 = N3[2] + Ngrid2*atv_ijk[GRc][2] - Min_Grid_Index[2];
+	  n3 = N3[3] + Ngrid3*atv_ijk[GRc][3] - Min_Grid_Index[3];
 
 	  MGridListAtom[Mc_AN][Nc] = n1*Ng2*Ng3 + n2*Ng3 + n3;
 	}
 
       } /* #pragma omp parallel */
 
-      dtime(&Etime_atom); 
+      dtime(&Etime_atom);
       time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
     }
 
   }
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time6 += etime - stime;
   }
 
@@ -6008,7 +3937,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
                           Free
   ****************************************************/
 
-  if (measure_time) dtime(&stime); 
+  if (measure_time) dtime(&stime);
 
   /* MPI_Barrier */
   MPI_Barrier(mpi_comm_level1);
@@ -6039,7 +3968,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
   }
 
   if (measure_time){
-    dtime(&etime); 
+    dtime(&etime);
     time7 += etime - stime;
   }
 
@@ -6058,11 +3987,16 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
 int Set_Periodic(int CpyN, int Allocate_switch)
 {
-  static int firsttime=1;
-  int i,j,n,n2,TN;
+  int i,TN;
   long n3;
 
-  TN = (2*CpyN+1)*(2*CpyN+1)*(2*CpyN+1) - 1;
+  TN = openmx_periodic_count(CpyN);
+  if (TN < 0) {
+    fprintf(stderr,"Invalid periodic-cell radius: %d\n",CpyN);
+    MPI_Abort(mpi_comm_level1,1);
+    return -1;
+  }
+  --TN;
 
   if (Allocate_switch==0){
 
@@ -6075,26 +4009,12 @@ int Set_Periodic(int CpyN, int Allocate_switch)
       atv[i] = (double*)malloc(sizeof(double)*4);
     }
 
-    n = 2*CpyN + 4;
-    ratv = (int***)malloc(sizeof(int**)*n);
-    for (i=0; i<n; i++){
-      ratv[i] = (int**)malloc(sizeof(int*)*n);
-      for (j=0; j<n; j++){
-	ratv[i][j] = (int*)malloc(sizeof(int)*n);
-      }
-    }
-    if (firsttime) 
-    PrintMemory("Set_Periodic: ratv",sizeof(int)*n*n*n,NULL);
-
     atv_ijk = (int**)malloc(sizeof(int*)*(TN+1));
     for (i=0; i<(TN+1); i++){
       atv_ijk[i] = (int*)malloc(sizeof(int)*4);
     }
 
     alloc_first[7] = 0;
-
-    /* for PrintMemory */
-    firsttime=0;
 
     /****************************************************
            setting of parameters of periodic cells
@@ -6131,23 +4051,13 @@ void Free_truncation(int CpyN, int TN, int Free_switch)
       }
       free(atv);
 
-      n = 2*CpyN + 4;
-
-      for (i=0; i<n; i++){
-        for (j=0; j<n; j++){
-	  free(ratv[i][j]);
-        }
-        free(ratv[i]);
-      }
-      free(ratv);
-
       for (i=0; i<(TN+1); i++){
         free(atv_ijk[i]);
       }
       free(atv_ijk);
     }
   }
-} 
+}
 
 
 
@@ -6156,7 +4066,7 @@ void Free_truncation(int CpyN, int TN, int Free_switch)
 
 
 
-void free_arrays_truncation0()
+void free_arrays_truncation0(OpenMXCoreContext *core)
 {
   int i,j,k,m,ct_AN,h_AN,Gh_AN,Hwan;
   int tno0,tno1,tno2,tno,Cwan,so,s1,s2;
@@ -6198,1868 +4108,12 @@ void free_arrays_truncation0()
 
   if (alloc_first[4]==0){
 
-    /* H0 */
+    openmx_core_electronic_release(core);
+    if (xmcd_calc==1) free(pre_spin_moment);
 
-    for (k=0; k<4; k++){
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
+    openmx_core_local_basis_release(core);
 
-	if (Mc_AN==0){
-          Gc_AN = 0;
-	  tno0 = 1;
-          FNAN[0] = 0;
-	}
-	else{
-          Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	  for (i=0; i<tno0; i++){
-	    free(H0[k][Mc_AN][h_AN][i]);
-	  }
-	  free(H0[k][Mc_AN][h_AN]);
-	}
-	free(H0[k][Mc_AN]);
-      }
-      free(H0[k]);
-    }
-    free(H0);
-
-    /* CntH0 */
-
-    if (Cnt_switch==1){
-      for (k=0; k<4; k++){
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    FNAN[0] = 0;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(CntH0[k][Mc_AN][h_AN][i]);
-	    }
-	    free(CntH0[k][Mc_AN][h_AN]);
-	  }
-	  free(CntH0[k][Mc_AN]);
-	}
-	free(CntH0[k]);
-      }
-      free(CntH0);
-    }
-
-    /* HNL */
-
-    for (k=0; k<List_YOUSO[5]; k++){
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-          Gc_AN = 0;
-	  tno0 = 1;
-          FNAN[0] = 0;
-	}
-	else{
-          Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	  for (i=0; i<tno0; i++){
-	    free(HNL[k][Mc_AN][h_AN][i]);
-	  }
-	  free(HNL[k][Mc_AN][h_AN]);
-	}
-	free(HNL[k][Mc_AN]);
-      }
-      free(HNL[k]);
-    }
-    free(HNL);
-
-    /* iHNL */
-
-    if ( SpinP_switch==3 ){
-
-      for (k=0; k<List_YOUSO[5]; k++){
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    FNAN[0] = 0;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(iHNL[k][Mc_AN][h_AN][i]);
-	    }
-	    free(iHNL[k][Mc_AN][h_AN]);
-	  }
-	  free(iHNL[k][Mc_AN]);
-	}
-	free(iHNL[k]);
-      }
-      free(iHNL);
-    }
-
-    /* iCntHNL */
-
-    if (SO_switch==1 && Cnt_switch==1){
-
-      for (k=0; k<List_YOUSO[5]; k++){
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    FNAN[0] = 0;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(iCntHNL[k][Mc_AN][h_AN][i]);
-	    }
-	    free(iCntHNL[k][Mc_AN][h_AN]);
-	  }
-	  free(iCntHNL[k][Mc_AN]);
-	}
-	free(iCntHNL[k]);
-      }
-      free(iCntHNL);
-    }
-
-    /* for core hole calculations */
-
-    if (core_hole_state_flag==1){
-
-      /* HCH */
-
-      for (k=0; k<List_YOUSO[5]; k++){
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    FNAN[0] = 0;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(HCH[k][Mc_AN][h_AN][i]);
-	    }
-	    free(HCH[k][Mc_AN][h_AN]);
-	  }
-	  free(HCH[k][Mc_AN]);
-	}
-	free(HCH[k]);
-      }
-      free(HCH);
-
-      /* iHCH */
-
-      if ( SpinP_switch==3 ){
-
-	for (k=0; k<List_YOUSO[5]; k++){
-	  for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	      FNAN[0] = 0;
-	    }
-	    else{
-	      Gc_AN = S_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	      for (i=0; i<tno0; i++){
-		free(iHCH[k][Mc_AN][h_AN][i]);
-	      }
-	      free(iHCH[k][Mc_AN][h_AN]);
-	    }
-	    free(iHCH[k][Mc_AN]);
-	  }
-	  free(iHCH[k]);
-	}
-	free(iHCH);
-      }
-    }
-
-    if (xmcd_calc==1){
-
-      // ASK, S. An
-      free(pre_spin_moment);
-
-      for (k=0; k<=SpinP_switch; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];
-	  }
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    }
-            
-	    for (i=0; i<tno0; i++){
-	      free(H_XMCD[k][Mc_AN][h_AN][i]);
-	    }
-            free(H_XMCD[k][Mc_AN][h_AN]);
-	  }
-          free(H_XMCD[k][Mc_AN]);
-	}
-        free(H_XMCD[k]);
-      }
-      free(H_XMCD);
-    }
-
-    /* H_Hub  --- added by MJ */  
-
-    if (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
-
-      for (k=0; k<=SpinP_switch; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(H_Hub[k][Mc_AN][h_AN][i]);
-	    }
-            free(H_Hub[k][Mc_AN][h_AN]);
-	  }
-          free(H_Hub[k][Mc_AN]);
-	}
-        free(H_Hub[k]);
-      }
-      free(H_Hub);
-    }
-
-    /* H_Zeeman_NCO */  
-
-    if (Zeeman_NCO_switch==1){
-
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (i=0; i<tno0; i++){
-	  free(H_Zeeman_NCO[Mc_AN][i]);
-	}
-        free(H_Zeeman_NCO[Mc_AN]);
-      }
-      free(H_Zeeman_NCO);
-    }
-
-    /* iHNL0 */
-
-    if (SpinP_switch==3){
-
-      for (k=0; k<List_YOUSO[5]; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(iHNL0[k][Mc_AN][h_AN][i]);
-	    }
-	    free(iHNL0[k][Mc_AN][h_AN]);
-	  }
-	  free(iHNL0[k][Mc_AN]);
-	}
-        free(iHNL0[k]);
-      }
-      free(iHNL0);
-    }
-
-    /* OLP_L */  
-
-    for (k=0; k<3; k++){
-
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(OLP_L[k][Mc_AN][h_AN][i]);
-	  }
-          free(OLP_L[k][Mc_AN][h_AN]);
-	}
-        free(OLP_L[k][Mc_AN]);
-      }
-      free(OLP_L[k]);
-    }
-    free(OLP_L);
-
-    /* OLP */
-
-    for (k=0; k<4; k++){
-      for (Mc_AN=0; Mc_AN<(Matomnum+MatomnumF+MatomnumS+2); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-          FNAN[0] = 0;
-	  fan = FNAN[Gc_AN]; 
-	}
-        else if (Mc_AN==(Matomnum+1)){
-          tno0 = List_YOUSO[7];
-          fan = List_YOUSO[8];
-        }
-        else if ( (Hub_U_switch==0 || Hub_U_occupation!=1 || core_hole_state_flag!=1) 
-                  && 0<k 
-                  && (Matomnum+1)<Mc_AN
-                  && Mc_AN<=(Matomnum+MatomnumF+MatomnumS)){
-
-	  Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = 1;
-	  fan = FNAN[Gc_AN]; 
-	}
-	else if ( Mc_AN<=(Matomnum+MatomnumF+MatomnumS) ){
-	  Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	  fan = FNAN[Gc_AN]; 
-	}    
-	else {
-	  tno0 = List_YOUSO[7];
-	  fan = List_YOUSO[8];
-	}
-
-	for (h_AN=0; h_AN<=fan; h_AN++){
-	  for (i=0; i<tno0; i++){
-	    free(OLP[k][Mc_AN][h_AN][i]);
-	  }
-          free(OLP[k][Mc_AN][h_AN]);
-	}
-        free(OLP[k][Mc_AN]);
-      }
-      free(OLP[k]);
-    }
-    free(OLP);
-
-    /* OLP_CH */
-
-    if (core_hole_state_flag==1){
-
-      for (k=0; k<4; k++){
-	for (Mc_AN=0; Mc_AN<(Matomnum+MatomnumF+MatomnumS+2); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    FNAN[0] = 0;
-	    fan = FNAN[Gc_AN]; 
-	  }
-	  else if (Mc_AN==(Matomnum+1)){
-	    tno0 = List_YOUSO[7];
-	    fan = List_YOUSO[8];
-	  }
-	  else if ( Mc_AN<=(Matomnum+MatomnumF+MatomnumS) ){
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	    fan = FNAN[Gc_AN]; 
-	  }    
-	  else {
-	    tno0 = List_YOUSO[7];
-	    fan = List_YOUSO[8];
-	  }
-
-	  for (h_AN=0; h_AN<=fan; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(OLP_CH[k][Mc_AN][h_AN][i]);
-	    }
-	    free(OLP_CH[k][Mc_AN][h_AN]);
-	  }
-	  free(OLP_CH[k][Mc_AN]);
-	}
-	free(OLP_CH[k]);
-      }
-      free(OLP_CH);
-    }
-
-    /* CntOLP */
-
-    if (Cnt_switch==1){
-
-      for (k=0; k<4; k++){
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    FNAN[0] = 0;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(CntOLP[k][Mc_AN][h_AN][i]);
-	    }
-	    free(CntOLP[k][Mc_AN][h_AN]);
-	  }
-	  free(CntOLP[k][Mc_AN]);
-	}
-	free(CntOLP[k]);
-      }
-      free(CntOLP);
-    }
-
-    /* H */
-
-    for (k=0; k<=SpinP_switch; k++){
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	if (Mc_AN==0){
-          Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-          Gc_AN = S_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(H[k][Mc_AN][h_AN][i]);
-	  }
-
-	  free(H[k][Mc_AN][h_AN]);
-	}
-	free(H[k][Mc_AN]);
-      }
-      free(H[k]);
-    }
-    free(H);
-
-    /* CntH */
-
-    if (Cnt_switch==1){
-
-      for (k=0; k<=SpinP_switch; k++){
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = S_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_CNO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_CNO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(CntH[k][Mc_AN][h_AN][i]);
-	    }
-
-	    free(CntH[k][Mc_AN][h_AN]);
-	  }
-	  free(CntH[k][Mc_AN]);
-	}
-	free(CntH[k]);
-      }
-      free(CntH);
-    }
-
-    /* DS_NL */  
-
-    for (so=0; so<(SO_switch+1); so++){
-      for (k=0; k<4; k++){
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    fan = FNAN[Gc_AN];
-	  }
-	  else if ( (Matomnum+1)<=Mc_AN ){
-	    fan = List_YOUSO[8];
-	    tno0 = List_YOUSO[7];
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	    fan = FNAN[Gc_AN];
-	  }    
-
-	  for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else if ( (Matomnum+1)<=Mc_AN ){
-	      tno1 = List_YOUSO[20];  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_VPS_Pro[Hwan] + 2;
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(DS_NL[so][k][Mc_AN][h_AN][i]);
-	    }
-	    free(DS_NL[so][k][Mc_AN][h_AN]);
-	  }
-	  free(DS_NL[so][k][Mc_AN]);
-	}
-	free(DS_NL[so][k]);
-      }
-      free(DS_NL[so]);
-    }
-    free(DS_NL);
-
-    /* CntDS_NL */  
-
-    if (Cnt_switch==1){
-
-      for (so=0; so<(SO_switch+1); so++){
-	for (k=0; k<4; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	      fan = FNAN[Gc_AN];
-	    }
-	    else if ( (Matomnum+1)<=Mc_AN ){
-	      fan = List_YOUSO[8];
-	      tno0 = List_YOUSO[7];
-	    }
-	    else{
-	      Gc_AN = F_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_CNO[Cwan];  
-	      fan = FNAN[Gc_AN];
-	    }    
-
-	    for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else if ( (Matomnum+1)<=Mc_AN ){
-		tno1 = List_YOUSO[20];  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_VPS_Pro[Hwan] + 2;
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(CntDS_NL[so][k][Mc_AN][h_AN][i]);
-	      }
-	      free(CntDS_NL[so][k][Mc_AN][h_AN]);
-	    }
-	    free(CntDS_NL[so][k][Mc_AN]);
-	  }
-	  free(CntDS_NL[so][k]);
-	}
-	free(CntDS_NL[so]);
-      }
-      free(CntDS_NL);
-    }
-
-    /* for LNO */  
-
-    if (LNO_flag==1){
-
-      for (k=0; k<=SpinP_switch; k++){
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-	  free(LNO_coes[k][Mc_AN]);
-	}
-        free(LNO_coes[k]);
-      }
-      free(LNO_coes);
-
-      for (k=0; k<=SpinP_switch; k++){
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF+MatomnumS); Mc_AN++){
-	  free(LNO_pops[k][Mc_AN]);
-	}
-        free(LNO_pops[k]);
-      }
-      free(LNO_pops);
-
-      for (k=0; k<=SpinP_switch; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(DM0[k][Mc_AN][h_AN][i]);
-	    }
-            free(DM0[k][Mc_AN][h_AN]);
-	  }
-          free(DM0[k][Mc_AN]);
-	}
-        free(DM0[k]);
-      }
-      free(DM0);
-
-    }
-
-    /* for RMM-DIISH */
-
-    if (Mixing_switch==5){
-
-      /* HisH1 */
-
-      for (m=0; m<List_YOUSO[39]; m++){
-	for (k=0; k<=SpinP_switch; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = S_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(HisH1[m][k][Mc_AN][h_AN][i]);
-	      }
-              free(HisH1[m][k][Mc_AN][h_AN]);
-	    }
-            free(HisH1[m][k][Mc_AN]);
-	  }
-          free(HisH1[m][k]);
-	}
-        free(HisH1[m]);
-      }
-      free(HisH1);
-
-      /* HisH2 */
-
-      if (SpinP_switch==3){
-
-	for (m=0; m<List_YOUSO[39]; m++){
-	  for (k=0; k<SpinP_switch; k++){
-	    FNAN[0] = 0;
-	    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	      if (Mc_AN==0){
-		Gc_AN = 0;
-		tno0 = 1;
-	      }
-	      else{
-		Gc_AN = S_M2G[Mc_AN];
-		Cwan = WhatSpecies[Gc_AN];
-		tno0 = Spe_Total_NO[Cwan];  
-	      }    
-
-	      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-		if (Mc_AN==0){
-		  tno1 = 1;  
-		}
-		else{
-		  Gh_AN = natn[Gc_AN][h_AN];
-		  Hwan = WhatSpecies[Gh_AN];
-		  tno1 = Spe_Total_NO[Hwan];
-		} 
-
-		for (i=0; i<tno0; i++){
-		  free(HisH2[m][k][Mc_AN][h_AN][i]);
-		}
-                free(HisH2[m][k][Mc_AN][h_AN]);
-	      }
-              free(HisH2[m][k][Mc_AN]);
-	    }
-            free(HisH2[m][k]);
-	  }
-          free(HisH2[m]);
-	}
-        free(HisH2);
-
-      } /* if (SpinP_switch==3) */
-
-      /* ResidualH1 */
-
-      for (m=0; m<List_YOUSO[39]; m++){
-	for (k=0; k<=SpinP_switch; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = S_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(ResidualH1[m][k][Mc_AN][h_AN][i]);
-	      }
-              free(ResidualH1[m][k][Mc_AN][h_AN]);
-	    }
-            free(ResidualH1[m][k][Mc_AN]);
-	  }
-          free(ResidualH1[m][k]);
-	}
-        free(ResidualH1[m]);
-      }
-      free(ResidualH1);
-
-      /* ResidualH2 */
-
-      if (SpinP_switch==3){
-
-	for (m=0; m<List_YOUSO[39]; m++){
-	  for (k=0; k<SpinP_switch; k++){
-	    FNAN[0] = 0;
-	    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	      if (Mc_AN==0){
-		Gc_AN = 0;
-		tno0 = 1;
-	      }
-	      else{
-		Gc_AN = S_M2G[Mc_AN];
-		Cwan = WhatSpecies[Gc_AN];
-		tno0 = Spe_Total_NO[Cwan];  
-	      }    
-
-	      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-		if (Mc_AN==0){
-		  tno1 = 1;  
-		}
-		else{
-		  Gh_AN = natn[Gc_AN][h_AN];
-		  Hwan = WhatSpecies[Gh_AN];
-		  tno1 = Spe_Total_NO[Hwan];
-		} 
-
-		for (i=0; i<tno0; i++){
-		  free(ResidualH2[m][k][Mc_AN][h_AN][i]);
-		}
-                free(ResidualH2[m][k][Mc_AN][h_AN]);
-	      }
-              free(ResidualH2[m][k][Mc_AN]);
-	    }
-            free(ResidualH2[m][k]);
-	  }
-          free(ResidualH2[m]);
-	}
-        free(ResidualH2);
-
-      } /* if (SpinP_switch==3) */
-
-    } /* if (Mixing_switch==5) */
-
-    /* for RMM-DIIS */
-
-    if (Mixing_switch==1 || Mixing_switch==6){
-
-      /* HisH1 */
-
-      for (m=0; m<List_YOUSO[39]; m++){
-	for (k=0; k<=SpinP_switch; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = S_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(HisH1[m][k][Mc_AN][h_AN][i]);
-	      }
-              free(HisH1[m][k][Mc_AN][h_AN]);
-	    }
-            free(HisH1[m][k][Mc_AN]);
-	  }
-          free(HisH1[m][k]);
-	}
-        free(HisH1[m]);
-      }
-      free(HisH1);
-
-      /* HisH2 */
-
-      if (SpinP_switch==3){
-
-	for (m=0; m<List_YOUSO[39]; m++){
-	  for (k=0; k<SpinP_switch; k++){
-	    FNAN[0] = 0;
-	    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	      if (Mc_AN==0){
-		Gc_AN = 0;
-		tno0 = 1;
-	      }
-	      else{
-		Gc_AN = S_M2G[Mc_AN];
-		Cwan = WhatSpecies[Gc_AN];
-		tno0 = Spe_Total_NO[Cwan];  
-	      }    
-
-	      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-		if (Mc_AN==0){
-		  tno1 = 1;  
-		}
-		else{
-		  Gh_AN = natn[Gc_AN][h_AN];
-		  Hwan = WhatSpecies[Gh_AN];
-		  tno1 = Spe_Total_NO[Hwan];
-		} 
-
-		for (i=0; i<tno0; i++){
-		  free(HisH2[m][k][Mc_AN][h_AN][i]);
-		}
-                free(HisH2[m][k][Mc_AN][h_AN]);
-	      }
-              free(HisH2[m][k][Mc_AN]);
-	    }
-            free(HisH2[m][k]);
-	  }
-          free(HisH2[m]);
-	}
-        free(HisH2);
-
-      } /* if (SpinP_switch==3) */
-
-    } /* if (Mixing_switch==1 || Mixing_switch==6) */
-
-    /* DM */  
-
-    for (m=0; m<List_YOUSO[16]; m++){
-      for (k=0; k<=SpinP_switch; k++){
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-            Gc_AN = 0;
-	    tno0 = 1;
-            FNAN[0] = 0;
-	  }
-	  else{
-            Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(DM[m][k][Mc_AN][h_AN][i]);
-	    }
-            free(DM[m][k][Mc_AN][h_AN]);
-	  }
-          free(DM[m][k][Mc_AN]);
-	}
-        free(DM[m][k]);
-      }
-      free(DM[m]);
-    }
-    free(DM);
-
-    /* For CWF and MO guiding functions */
-
-    if (CWF_Calc==1 && CWF_Guiding_Orbital==3){
-
-      for (k=0; k<=SpinP_switch; k++){
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(ParDM[k][Mc_AN][h_AN][i]);
-	    }
-            free(ParDM[k][Mc_AN][h_AN]);
-	  }
-          free(ParDM[k][Mc_AN]);
-	}
-        free(ParDM[k]);
-      }
-      free(ParDM);
-
-      if (SpinP_switch==3){
-
-	for (k=0; k<2; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(iParDM[k][Mc_AN][h_AN][i]);
-	      }
- 	      free(iParDM[k][Mc_AN][h_AN]);
-	    }
-            free(iParDM[k][Mc_AN]);
-	  }
-          free(iParDM[k]);
-	}
-        free(iParDM);
-
-      } // end of if (SpinP_switch==3)
-    }
-
-    /* Partial_DM */
-
-    if (cal_partial_charge==1){
-
-      for (k=0; k<=1; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(Partial_DM[k][Mc_AN][h_AN][i]);
-	    }
-            free(Partial_DM[k][Mc_AN][h_AN]);
-	  }
-          free(Partial_DM[k][Mc_AN]);
-	}
-        free(Partial_DM[k]);
-      }
-      free(Partial_DM);
-    }
-
-    /* DM_onsite   --- MJ */  
-
-    if (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
-
-      for (m=0; m<2; m++){
-	for (k=0; k<=SpinP_switch; k++){
-
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-	  
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }  
-
-	    h_AN = 0;
-	      
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(DM_onsite[m][k][Mc_AN][i]);
-	    }
-
-            free(DM_onsite[m][k][Mc_AN]);
-	  }
-          free(DM_onsite[m][k]);
-	}
-        free(DM_onsite[m]);
-      }
-      free(DM_onsite);
-    }
-
-    /* v_eff   --- MJ */  
-
-    if (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1){
-   
-      for (k=0; k<=SpinP_switch; k++){
-
-	FNAN[0] = 0;
-
-        for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }  
-
-	  for (i=0; i<tno0; i++){
-	    free(v_eff[k][Mc_AN][i]);
-	  }
-	  free(v_eff[k][Mc_AN]);
-
-	}
-	free(v_eff[k]);
-      }
-      free(v_eff);
-    }
-
-    /*  NC_OcpN */
-
-    if ( (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1) 
-         && SpinP_switch==3 ){
-
-      for (m=0; m<2; m++){
-	for (s1=0; s1<2; s1++){
-	  for (s2=0; s2<2; s2++){
-	    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	      if (Mc_AN==0){
-		Gc_AN = 0;
-		tno0 = 1;
-	      }
-	      else{
-		Gc_AN = M2G[Mc_AN];
-		Cwan = WhatSpecies[Gc_AN];
-		tno0 = Spe_Total_NO[Cwan];  
-	      }  
-
-	      for (i=0; i<tno0; i++){
-                free(NC_OcpN[m][s1][s2][Mc_AN][i]);
-	      }
-              free(NC_OcpN[m][s1][s2][Mc_AN]);
-	    }
-            free(NC_OcpN[m][s1][s2]);
-	  }
-          free(NC_OcpN[m][s1]);
-	}
-        free(NC_OcpN[m]);
-      }
-      free(NC_OcpN);
-    }
-
-    /*  NC_v_eff */
-
-    if ( (Hub_U_switch==1 || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1)
-         && SpinP_switch==3 ){
-
-      for (s1=0; s1<2; s1++){
-	for (s2=0; s2<2; s2++){
-	  for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = F_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }  
-
-	    for (i=0; i<tno0; i++){
-	      free(NC_v_eff[s1][s2][Mc_AN][i]);
-	    }
-            free(NC_v_eff[s1][s2][Mc_AN]);
-	  }
-          free(NC_v_eff[s1][s2]);
-	}
-        free(NC_v_eff[s1]);
-      }           
-      free(NC_v_eff);
-    }
-
-    /* ResidualDM */  
-
-    if ( Mixing_switch==0 || Mixing_switch==1 || Mixing_switch==2 || Mixing_switch==6 ){
-
-      for (m=0; m<List_YOUSO[16]; m++){
-	for (k=0; k<=SpinP_switch; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(ResidualDM[m][k][Mc_AN][h_AN][i]);
-	      }
-	      free(ResidualDM[m][k][Mc_AN][h_AN]);
-	    }
-	    free(ResidualDM[m][k][Mc_AN]);
-	  }
-	  free(ResidualDM[m][k]);
-	}
-	free(ResidualDM[m]);
-      }
-      free(ResidualDM);
-    }
-
-    /* iResidualDM */  
-
-    if ( (Mixing_switch==0 || Mixing_switch==1 || Mixing_switch==2 || Mixing_switch==6)
-	 && SpinP_switch==3 && ( SO_switch==1 || Hub_U_switch==1 || 1<=Constraint_NCS_switch
-         || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1) ){
-
-      for (m=0; m<List_YOUSO[16]; m++){
-        for (k=0; k<2; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_NO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];
-		Hwan = WhatSpecies[Gh_AN];
-		tno1 = Spe_Total_NO[Hwan];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(iResidualDM[m][k][Mc_AN][h_AN][i]);
-	      }
- 	      free(iResidualDM[m][k][Mc_AN][h_AN]);
-	    }
-            free(iResidualDM[m][k][Mc_AN]);
-	  }
-          free(iResidualDM[m][k]);
-	}
-        free(iResidualDM[m]);
-      }
-      free(iResidualDM);
-    }
-    else{
-      for (m=0; m<List_YOUSO[16]; m++){
-        free(iResidualDM[m][0][0][0][0]);
-        free(iResidualDM[m][0][0][0]);
-        free(iResidualDM[m][0][0]);
-        free(iResidualDM[m][0]);
-        free(iResidualDM[m]);
-      }   
-      free(iResidualDM);
-    }
-
-    /* EDM */
-
-    for (k=0; k<=SpinP_switch; k++){
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-          Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-          Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(EDM[k][Mc_AN][h_AN][i]);
-	  }
-
-	  free(EDM[k][Mc_AN][h_AN]);
-	}
-	free(EDM[k][Mc_AN]);
-      }
-      free(EDM[k]);
-    }
-    free(EDM);
-
-    /* PDM */
-
-    for (k=0; k<=SpinP_switch; k++){
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-          Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-          Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(PDM[k][Mc_AN][h_AN][i]);
-	  }
-
-	  free(PDM[k][Mc_AN][h_AN]);
-	}
-	free(PDM[k][Mc_AN]);
-      }
-      free(PDM[k]);
-    }
-    free(PDM);
-
-    /* iDM */
-
-    for (m=0; m<List_YOUSO[16]; m++){
-      for (k=0; k<2; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno1 = Spe_Total_NO[Hwan];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(iDM[m][k][Mc_AN][h_AN][i]);
-	    }
-	    free(iDM[m][k][Mc_AN][h_AN]);
-	  }
-	  free(iDM[m][k][Mc_AN]);
-	}
-	free(iDM[m][k]);
-      }
-      free(iDM[m]);
-    }
-    free(iDM);
-
-    /* S12 for DC, recursion, or DCLNO */  
-
-    if (Solver==1 || Solver==5 ){
-
-      int *Msize,myid1;
-
-      Msize = (int*)malloc(sizeof(int)*(Matomnum+2));
-
-      if ( Solver==1 || Solver==5 ){
-
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0) n2 = 1;
-	  else{
-	    Gc_AN = M2G[Mc_AN];
-
-	    num = 1;
-	    for (i=0; i<=(FNAN[Gc_AN]+SNAN[Gc_AN]); i++){
-	      Gi = natn[Gc_AN][i];
-	      wanA = WhatSpecies[Gi];
-	      num += Spe_Total_CNO[wanA];
-	    }
-	    n2 = num + 2;
-	  }
-
-  	  Msize[Mc_AN] = n2;
-
-	  for (i=0; i<n2; i++){
-	    free(S12[Mc_AN][i]);
-	  }
-	  free(S12[Mc_AN]);
-	}
-	free(S12);
-      }
-
-      free(Msize);
-    }
-
-    /* CntCoes */
-
-    if (Cnt_switch==1){
-      for (i=0; i<=(Matomnum+MatomnumF); i++){
-	for (j=0; j<List_YOUSO[7]; j++){
-	  free(CntCoes[i][j]);
-	}
-	free(CntCoes[i]);
-      }
-      free(CntCoes);
-
-      for (i=0; i<(SpeciesNum+1); i++){
-	for (j=0; j<List_YOUSO[7]; j++){
-	  free(CntCoes_Species[i][j]);
-	}
-	free(CntCoes_Species[i]);
-      }
-      free(CntCoes_Species);
-    }
-
-    if (ProExpn_VNA==1){
-
-      /* HVNA */  
-
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(HVNA[Mc_AN][h_AN][i]);
-	  }
-          free(HVNA[Mc_AN][h_AN]);
-	}
-        free(HVNA[Mc_AN]);
-      }
-      free(HVNA);
-
-      /* DS_VNA */  
-
-      for (k=0; k<4; k++){
-
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	    fan = FNAN[Gc_AN];
-	  }
-  	  else if ( (Matomnum+1)<=Mc_AN ){
-	    fan = List_YOUSO[8];
-	    tno0 = List_YOUSO[7];
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	    fan = FNAN[Gc_AN];
-	  }
-          
-	  for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	    if (Mc_AN==0){
-	      tno1 = 1;  
-	    }
-	    else{
-	      tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	    } 
-
-	    for (i=0; i<tno0; i++){
-	      free(DS_VNA[k][Mc_AN][h_AN][i]);
-	    }
-            free(DS_VNA[k][Mc_AN][h_AN]);
-	  }
-          free(DS_VNA[k][Mc_AN]);
-	}
-        free(DS_VNA[k]);
-      }
-      free(DS_VNA);
-
-      /* CntDS_VNA */  
-
-      if (Cnt_switch==1){
-
-	for (k=0; k<4; k++){
-
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<(Matomnum+2); Mc_AN++){
-          
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	      fan = FNAN[Gc_AN];
-	    }
-	    else if ( Mc_AN==(Matomnum+1) ){
-	      fan = List_YOUSO[8];
-	      tno0 = List_YOUSO[7];
-	    }
-	    else{
-	      Gc_AN = F_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_CNO[Cwan];  
-              fan = FNAN[Gc_AN];
-	    }
-
-	    for (h_AN=0; h_AN<(fan+1); h_AN++){
-
-	      if (Mc_AN==0){
-		tno1 = 1;  
-	      }
-	      else{
-		tno1 = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
-	      } 
-
-	      for (i=0; i<tno0; i++){
-		free(CntDS_VNA[k][Mc_AN][h_AN][i]);
-	      }
- 	      free(CntDS_VNA[k][Mc_AN][h_AN]);
-	    }
-            free(CntDS_VNA[k][Mc_AN]);
-	  }
-          free(CntDS_VNA[k]);
-	}
-        free(CntDS_VNA);
-      }
-
-      /* HVNA2 */
-
-      for (k=0; k<4; k++){
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0){
-	    Gc_AN = 0;
-	    tno0 = 1;
-	  }
-	  else{
-	    Gc_AN = F_M2G[Mc_AN];
-	    Cwan = WhatSpecies[Gc_AN];
-	    tno0 = Spe_Total_NO[Cwan];  
-	  }    
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    for (i=0; i<tno0; i++){
-	      free(HVNA2[k][Mc_AN][h_AN][i]);
-	    }
-	    free(HVNA2[k][Mc_AN][h_AN]);
-	  }
-	  free(HVNA2[k][Mc_AN]);
-	}
-	free(HVNA2[k]);
-      }
-      free(HVNA2);
-
-      /* HVNA3 */
-
-      for (k=0; k<4; k++){
-	FNAN[0] = 0;
-	for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	  if (Mc_AN==0)  Gc_AN = 0;
-	  else           Gc_AN = F_M2G[Mc_AN];
-
-	  for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	    if (Mc_AN==0){
-	      tno0 = 1;
-	    }
-	    else{
-	      Gh_AN = natn[Gc_AN][h_AN];        
-	      Hwan = WhatSpecies[Gh_AN];
-	      tno0 = Spe_Total_NO[Hwan];  
-	    }    
-
-	    for (i=0; i<tno0; i++){
-	      free(HVNA3[k][Mc_AN][h_AN][i]);
-	    }
-	    free(HVNA3[k][Mc_AN][h_AN]);
-	  }
-	  free(HVNA3[k][Mc_AN]);
-	}
-	free(HVNA3[k]);
-      }
-      free(HVNA3);
-
-      /* CntHVNA2 */
-
-      if (Cnt_switch==1){
-
-	for (k=0; k<4; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0){
-	      Gc_AN = 0;
-	      tno0 = 1;
-	    }
-	    else{
-	      Gc_AN = F_M2G[Mc_AN];
-	      Cwan = WhatSpecies[Gc_AN];
-	      tno0 = Spe_Total_CNO[Cwan];  
-	    }    
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-	      for (i=0; i<tno0; i++){
-		free(CntHVNA2[k][Mc_AN][h_AN][i]);
-	      }
-	      free(CntHVNA2[k][Mc_AN][h_AN]);
-	    }
-	    free(CntHVNA2[k][Mc_AN]);
-	  }
-	  free(CntHVNA2[k]);
-	}
-	free(CntHVNA2);
-      }
-
-      /* CntHVNA3 */
-
-      if (Cnt_switch==1){
-
-	for (k=0; k<4; k++){
-	  FNAN[0] = 0;
-	  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	    if (Mc_AN==0) Gc_AN = 0;
-	    else          Gc_AN = F_M2G[Mc_AN];
-
-	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	      if (Mc_AN==0){
-		tno0 = 1;
-	      }
-	      else{
-		Gh_AN = natn[Gc_AN][h_AN];        
-		Hwan = WhatSpecies[Gh_AN];
-		tno0 = Spe_Total_CNO[Hwan];  
-	      }    
-
-	      for (i=0; i<tno0; i++){
-		free(CntHVNA3[k][Mc_AN][h_AN][i]);
-	      }
-	      free(CntHVNA3[k][Mc_AN][h_AN]);
-	    }
-	    free(CntHVNA3[k][Mc_AN]);
-	  }
-	  free(CntHVNA3[k]);
-	}
-	free(CntHVNA3);
-      }
-    }  
+    openmx_core_vna_matrices_release(core);
 
     if (Solver==8) { /* Krylov subspace method */
 
@@ -8468,7 +4522,6 @@ void free_arrays_truncation0()
   /****************************************************
     freeing of arrays:
 
-      ratv
       atv
       atv_ijk
   ****************************************************/
@@ -8479,14 +4532,6 @@ void free_arrays_truncation0()
       free(atv[i]);
     }
     free(atv);
-
-    for (i=0; i<(2*CpyCell+4); i++){
-      for (j=0; j<(2*CpyCell+4); j++){
-	free(ratv[i][j]);
-      }
-      free(ratv[i]);
-    }
-    free(ratv);
 
     for (i=0; i<(TCpyCell+1); i++){
       free(atv_ijk[i]);
@@ -11548,7 +7593,7 @@ void Construct_ONAN()
 
         if (m1<=CpyCell && m2<=CpyCell && m3<=CpyCell){
 
-          Rn = ratv[l1+CpyCell][l2+CpyCell][l3+CpyCell];
+          Rn = openmx_periodic_index(CpyCell,l1,l2,l3);
 
           /* RMI1_EGAC */
 

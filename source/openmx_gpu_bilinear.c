@@ -94,21 +94,46 @@ typedef struct {
     int planned;
     void *packet[OPENMX_GPU_WORKERS_MAX],*device[OPENMX_GPU_WORKERS_MAX];
     size_t bytes[OPENMX_GPU_WORKERS_MAX];
+    size_t declined_limit[OPENMX_GPU_WORKERS_MAX];
+    unsigned char declined[OPENMX_GPU_WORKERS_MAX],rejected[OPENMX_GPU_WORKERS_MAX+1];
     double *result[OPENMX_GPU_WORKERS_MAX];
 } BilinearWork;
 
-static size_t bilinear_cost(void *context,int worker,int count)
+static size_t bilinear_cost(void *context,int worker,int count,int device)
 {
     BilinearWork *w=context;
+    if (count<1 || count>OPENMX_GPU_WORKERS_MAX || w->rejected[count]) return SIZE_MAX;
     if (w->planned!=count) {
         for (int i=0;i<OPENMX_GPU_WORKERS_MAX;i++) {free(w->packet[i]);w->packet[i]=NULL;w->bytes[i]=0;}
+        memset(w->declined,0,sizeof(w->declined));
         w->planned=count;
     }
     size_t lo=openmx_gpu_worker_cut(w->source->rows,worker,count),hi=openmx_gpu_worker_cut(w->source->rows,worker+1,count);
-    if (!w->packet[worker] && !openmx_gpu_bilinear_pack(w->source,lo,hi,&w->packet[worker],&w->bytes[worker])) return SIZE_MAX;
+    const int spins=w->source->spins;
+    if ((spins!=1 && spins!=2 && spins!=4) || hi-lo>SIZE_MAX/sizeof(double)/(unsigned)spins) return SIZE_MAX;
+    const size_t output_bytes=(hi-lo)*(size_t)spins*sizeof(double);
+    if (!w->packet[worker]) {
+        /* Admission must not first build a multi-GiB packet that a nearly
+           full GPU cannot hold. Bound packing by this candidate device's
+           room; a larger device or a smaller shard may still be tried. */
+        int original=-1;
+        size_t available=0,total=0;
+        const size_t reserve=(size_t)256*1024*1024;
+        if (OpenMXGpuGetDevice(&original)!=OPENMX_GPU_SUCCESS) return SIZE_MAX;
+        int ok=OpenMXGpuSetDevice(device)==OPENMX_GPU_SUCCESS &&
+            OpenMX_GpuMemGetInfo(&available,&total)==OPENMX_GPU_SUCCESS;
+        if (OpenMXGpuSetDevice(original)!=OPENMX_GPU_SUCCESS || !ok || available<=reserve ||
+            output_bytes>=available-reserve) return SIZE_MAX;
+        const size_t limit=available-reserve-output_bytes;
+        if (w->declined[worker] && limit<=w->declined_limit[worker]) return SIZE_MAX;
+        if (!openmx_gpu_bilinear_pack_limit(w->source,lo,hi,limit,&w->packet[worker],&w->bytes[worker])) {
+            w->declined[worker]=1;w->declined_limit[worker]=limit;
+            return SIZE_MAX;
+        }
+    }
     size_t nb=w->bytes[worker];
-    if (hi-lo>(SIZE_MAX-nb)/sizeof(double)/(unsigned)w->source->spins) return SIZE_MAX;
-    return nb+(hi-lo)*(size_t)w->source->spins*sizeof(double);
+    if (output_bytes>SIZE_MAX-nb) return SIZE_MAX;
+    return nb+output_bytes;
 }
 static int bilinear_worker(void *context,int worker,int phase)
 {
@@ -134,19 +159,18 @@ static int bilinear_local(OpenMXBilinearSource *source,const char *label)
 {
     if (!source->rows) return 1;
     BilinearWork w={0};w.source=source;
-    OpenMXGpuWorkerRetry retry={bilinear_cost,&w,{0}};
     int ok=0;
-    while (openmx_gpu_workers_capacity(&w.pool,source->rows,1,openmx_gpu_worker_retry_cost,&retry)) {
+    while (openmx_gpu_workers_capacity_device(&w.pool,source->rows,1,bilinear_cost,&w)) {
         ok=1;
         /* A rejected larger forced group can leave a different cached layout.
            Reconfirm the final count before launching any worker. */
-        if (ok) for (int i=0;i<w.pool.count;i++) if (bilinear_cost(&w,i,w.pool.count)==SIZE_MAX) ok=0;
+        if (ok) for (int i=0;i<w.pool.count;i++) if (bilinear_cost(&w,i,w.pool.count,w.pool.devices[i])==SIZE_MAX) ok=0;
         if (ok) ok=openmx_gpu_workers_run(&w.pool,bilinear_worker,&w,label);
         if (ok) for (int i=0;i<w.pool.count;i++) source->commit(source->context,
             openmx_gpu_worker_cut(source->rows,i,w.pool.count),openmx_gpu_worker_cut(source->rows,i+1,w.pool.count),w.result[i]);
         for (int i=0;i<OPENMX_GPU_WORKERS_MAX;i++) {free(w.result[i]);w.result[i]=NULL;w.device[i]=NULL;}
         if (ok) break;
-        retry.rejected[w.pool.count]=1;
+        w.rejected[w.pool.count]=1;
     }
     for (int i=0;i<OPENMX_GPU_WORKERS_MAX;i++) free(w.packet[i]);
     return ok;

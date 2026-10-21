@@ -134,8 +134,13 @@ double TRAN_DFT_NC(
 		double *****EDM,  /* not used */
                 double ***TRAN_DecMulP, /* output, partial DecMulP */
 		double Eele0[2], double Eele1[2], 
-                double ChemP_e0[2]) 
+                double ChemP_e0[2], const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+  double *****iHNL=electronic->iHNL;
+
   double TStime,TEtime,time5;
 
   dtime(&TStime);
@@ -458,7 +463,7 @@ double TRAN_DFT_NC(
 			     NPROCS_WD2,
 			     Comm_World2,
 			     Comm_World_StartID2,
-			     MPI_CommWD2);
+			     MPI_CommWD2, electronic);
 
 
     Eele0[0] = 0.0;

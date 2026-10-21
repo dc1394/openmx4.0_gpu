@@ -107,7 +107,7 @@ struct Operation {
 #if OPENMX_GPU_HIP
     bool host_matrices=false,host_result=false;
 #else
-    bool host_matrices=false,host_result=false,pageable=false;
+    bool host_matrices=false,host_result=false,pageable=false,async_gather=true;
 #endif
     OpenMXGpuStream copy_stream=nullptr;
     OpenMXGpuEvent ready=nullptr;
@@ -182,7 +182,6 @@ bool input_copy(Operation &op,Worker &w,void *dst,const void *src,size_t spitch,
     if(w.peer) {
         const OpenMXGpuError err=peer_copy(dst,w.ctx->device,width,src,op.origin,spitch,width,height,w.ctx->stream);
         if(err==OPENMX_GPU_SUCCESS) {if(w.ctx->device!=op.origin) ++report.peer_transfers;return true;}
-        (void)OpenMXGpuGetLastError();
         return false; // no user output was touched: original backend may retry
     }
     if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS ||
@@ -204,8 +203,14 @@ bool output_copy(Operation &op,Worker &w,void *dst,size_t dpitch,const void *src
             ++report.host_transfers;return true;
         }
 #endif
-        if(OpenMXGpuMemcpyAsync(host,src,width*height,OPENMX_GPU_COPY_DEVICE_TO_HOST,w.ctx->stream)!=OPENMX_GPU_SUCCESS ||
-           OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS) return false;
+        if(OpenMXGpuMemcpyAsync(host,src,width*height,OPENMX_GPU_COPY_DEVICE_TO_HOST,w.ctx->stream)!=OPENMX_GPU_SUCCESS)
+            return false;
+#if !OPENMX_GPU_HIP
+        // Queue every device's download before waiting on any of them. The
+        // pinned output tile remains private until the wave's completion loop.
+        if(op.async_gather) {++report.host_transfers;return true;}
+#endif
+        if(OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS) return false;
 #if !OPENMX_GPU_HIP
         #pragma omp parallel for schedule(static) if(width*height>16*MiB)
 #endif
@@ -216,7 +221,7 @@ bool output_copy(Operation &op,Worker &w,void *dst,size_t dpitch,const void *src
     if(w.peer) {
         const OpenMXGpuError err=peer_copy(dst,op.origin,dpitch,src,w.ctx->device,width,width,height,w.ctx->stream);
         if(err==OPENMX_GPU_SUCCESS) {if(w.ctx->device!=op.origin) ++report.peer_transfers;return true;}
-        (void)OpenMXGpuGetLastError();return false;
+        return false;
     }
     if(OpenMXGpuMemcpyAsync(host,src,width*height,OPENMX_GPU_COPY_DEVICE_TO_HOST,w.ctx->stream)!=OPENMX_GPU_SUCCESS ||
        OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS ||
@@ -250,7 +255,12 @@ template<class T> OpenMXBlasStatus local_gemm(OpenMXBlasHandle h,OpenMXBlasOpera
 bool owned_pointer(const void *p,int device)
 {
     OpenMXGpuPointerAttributes attr={};
-    if(OpenMXGpuPointerGetAttributes(&attr,p)!=OPENMX_GPU_SUCCESS) {(void)OpenMXGpuGetLastError();return false;}
+    const auto error=OpenMXGpuPointerGetAttributes(&attr,p);
+    if(error!=OPENMX_GPU_SUCCESS) {
+        if(error==OPENMX_GPU_INVALID_VALUE && OpenMXGpuPeekAtLastError()==error)
+            (void)OpenMXGpuGetLastError(); // our unsupported host-pointer query
+        return false;
+    }
     return attr.type==OPENMX_GPU_DEVICE_MEMORY && attr.device==device;
 }
 bool valid_op(OpenMXBlasOperation op) { return op==OPENMX_BLAS_OP_N || op==OPENMX_BLAS_OP_T || op==OPENMX_BLAS_OP_C; }
@@ -270,8 +280,13 @@ bool enable_peer_pair(int first,int second)
         if(OpenMXGpuSetDevice(from)!=OPENMX_GPU_SUCCESS) return false;
         const OpenMXGpuError e=OpenMXGpuDeviceEnablePeerAccess(to,0);
         if(e!=OPENMX_GPU_SUCCESS) {
-            (void)OpenMXGpuGetLastError();
-            if(e!=OPENMX_GPU_PEER_ALREADY_ENABLED) {enabled[key]=false;return false;}
+            if(e==OPENMX_GPU_PEER_ALREADY_ENABLED || e==OPENMX_GPU_PEER_UNSUPPORTED) {
+                if(OpenMXGpuPeekAtLastError()==e) (void)OpenMXGpuGetLastError();
+            }
+            if(e!=OPENMX_GPU_PEER_ALREADY_ENABLED) {
+                if(e==OPENMX_GPU_PEER_UNSUPPORTED) enabled[key]=false;
+                return false;
+            }
         }
         enabled[key]=true;
     }
@@ -289,6 +304,10 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     report={};report.requested_gpus=ngpu;report.reason="not eligible";
     if(!status) return 0;
     *status=OPENMX_BLAS_SUCCESS;
+    if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS) {
+        *status=OPENMX_BLAS_EXECUTION_FAILED;
+        report.reason="pending caller GPU error";return 1;
+    }
     if(ngpu<2 || ngpu>64 || !devices || m<=0 || n<=0 || k<=0) return 0;
     if(!valid_op(ta) || !valid_op(tb) || lda<(ta==OPENMX_BLAS_OP_N?m:k) || ldb<(tb==OPENMX_BLAS_OP_N?k:n) ||
        ldc<m || !alpha || !beta || !a || !b || !c) {
@@ -298,6 +317,8 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     op.host_matrices=host_matrices;
 #if !OPENMX_GPU_HIP
     op.pageable=host_matrices && option("OPENMX_MGPU_GEMM_PAGEABLE");
+    const char *gather_control=std::getenv("OPENMX_MGPU_GEMM_ASYNC_GATHER");
+    op.async_gather=!(gather_control && std::strcmp(gather_control,"0")==0);
 #endif
     if(OpenMXGpuGetDevice(&op.origin)!=OPENMX_GPU_SUCCESS) {report.reason="current device unavailable";return 0;}
     auto finish=[&](int handled,const char *reason) {
@@ -305,7 +326,14 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         if(!op.clean) {handled=1;*status=OPENMX_BLAS_EXECUTION_FAILED;reason=OPENMX_GPU_RUNTIME_NAME " cleanup/synchronization failure";}
         if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS) {handled=1;*status=OPENMX_BLAS_EXECUTION_FAILED;reason="restore device failure";}
         report.reason=reason;report.seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
-        if(!handled) (void)OpenMXGpuGetLastError();
+        if(!handled) {
+            const auto pending=OpenMXGpuPeekAtLastError();
+            if(pending==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
+            else if(pending!=OPENMX_GPU_SUCCESS) {
+                handled=1;*status=OPENMX_BLAS_EXECUTION_FAILED;
+                report.reason="GPU execution error during preparation";
+            }
+        }
         op.origin=-1;return handled;
     };
     if(!host_matrices && (!owned_pointer(a,op.origin) || !owned_pointer(b,op.origin) || !owned_pointer(c,op.origin)))
@@ -348,8 +376,12 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         op.result=std::malloc(result_bytes);
         tile_budget=std::min(tile_budget,host_budget);
         if(!op.result) return finish(0,"host transaction allocation failed");
-    } else if(OpenMXGpuMalloc(&op.result,result_bytes)!=OPENMX_GPU_SUCCESS) {
-        (void)OpenMXGpuGetLastError();
+    } else if(const auto error=OpenMXGpuMalloc(&op.result,result_bytes); error!=OPENMX_GPU_SUCCESS) {
+        if(error!=OPENMX_GPU_OUT_OF_MEMORY) {
+            *status=OPENMX_BLAS_EXECUTION_FAILED;
+            return finish(1,"device transaction allocation failed");
+        }
+        if(OpenMXGpuPeekAtLastError()==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
         op.host_result=true;
         if(result_bytes>budget("OPENMX_MGPU_GEMM_HOST_RESULT_MB",65536))
             return finish(0,"host transaction budget exceeded");
@@ -371,6 +403,8 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
                     OpenMXGpuDeviceCanAccessPeer(&reverse,op.origin,devices[i])!=OPENMX_GPU_SUCCESS)) return finish(0,"peer query failed");
         w.peer=!host_matrices && (devices[i]==op.origin || (can && reverse && !option("OPENMX_MGPU_GEMM_FORCE_HOST") &&
                                        enable_peer_pair(devices[i],op.origin)));
+        if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS)
+            return finish(0,"peer setup failed");
         if(!w.peer) tile_budget=std::min(tile_budget,host_budget);
         op.workers.push_back(w);
     }
@@ -396,6 +430,23 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     if(worker_bytes>tile_budget) return finish(0,"full K does not fit the worker budget");
     const size_t tile_rows=(size_t(m)+tile_m-1)/tile_m,tile_cols=(size_t(n)+tile_n-1)/tile_n;
     if(tile_rows*tile_cols<size_t(ngpu)) return finish(0,"too few output tiles");
+    bool column_tiles=false;
+#if !OPENMX_GPU_HIP
+    if(host_matrices) {
+        // Each worker retains its last A row and B column. With round-robin
+        // workers, the fast tile index is reused only when its count divides
+        // ngpu. Count operand elements (apart from common K), including edge
+        // tiles, and choose the traversal that uploads less host data.
+        const size_t g=size_t(ngpu);
+        const size_t row_cost=size_t(m)*std::min(tile_cols,g)+size_t(n)*
+            (g%tile_cols==0?std::min(tile_rows,g/tile_cols):tile_rows);
+        const size_t col_cost=size_t(n)*std::min(tile_rows,g)+size_t(m)*
+            (g%tile_rows==0?std::min(tile_cols,g/tile_rows):tile_cols);
+        const char *order=std::getenv("OPENMX_MGPU_GEMM_TRAVERSAL");
+        column_tiles=order && std::strcmp(order,"column")==0 ? true :
+            order && std::strcmp(order,"row")==0 ? false : col_cost<row_cost;
+    }
+#endif
     report.transaction_bytes=result_bytes;report.worker_bytes=worker_bytes;
     if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS) return finish(0,"origin device selection failed");
     if(OpenMXGpuStreamCreateWithFlags(&op.copy_stream,OPENMX_GPU_STREAM_NONBLOCKING)!=OPENMX_GPU_SUCCESS ||
@@ -443,7 +494,9 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         const int active=int(std::min(size_t(ngpu),tile_rows*tile_cols-first));
         for(int i=0;i<active;++i) {
             Worker &w=op.workers[i];
-            w.row=int((first+i)/tile_cols)*tile_m;w.col=int((first+i)%tile_cols)*tile_n;
+            const size_t tile=first+i;
+            w.row=int(column_tiles?tile%tile_rows:tile/tile_cols)*tile_m;
+            w.col=int(column_tiles?tile/tile_rows:tile%tile_cols)*tile_n;
             w.m=std::min(tile_m,m-w.row);w.n=std::min(tile_n,n-w.col);
             T *wa=static_cast<T *>(w.buffer),*wb=wa+a_elements,*wc=wb+b_elements;
             T *ha=static_cast<T *>(w.host),*hb=ha?ha+a_elements:nullptr,*hc=ha?hb+b_elements:nullptr;
@@ -464,7 +517,10 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
             if(OpenMXGpuSetDevice(w.ctx->device)!=OPENMX_GPU_SUCCESS) return finish(0,"worker device selection failed");
             const OpenMXBlasStatus local=local_gemm(w.ctx->blas,ta,tb,w.m,w.n,k,&host_alpha,wa,
                 ta==OPENMX_BLAS_OP_N?w.m:k,wb,tb==OPENMX_BLAS_OP_N?k:w.n,&host_beta,wc,w.m);
-            if(local!=OPENMX_BLAS_SUCCESS) return finish(0,"worker GEMM failed before commit");
+            if(local!=OPENMX_BLAS_SUCCESS) {
+                if(local==OPENMX_BLAS_ALLOC_FAILED) return finish(0,"worker GEMM allocation failed before commit");
+                *status=local;return finish(1,"worker GEMM failed before commit");
+            }
             if(!w.used) {w.used=true;++report.active_gpus;}
             ++report.tiles;
         }
@@ -483,6 +539,18 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
             Worker &w=op.workers[i];
             if(OpenMXGpuSetDevice(w.ctx->device)!=OPENMX_GPU_SUCCESS || OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS)
                 return finish(0,"worker synchronization failed before commit");
+#if !OPENMX_GPU_HIP
+            if(op.host_result && !op.pageable && op.async_gather) {
+                // Each stream has finished its copy into this worker's pinned
+                // tile. Scatter it while other devices continue downloading;
+                // do not publish any part of the caller's C until all succeed.
+                const T *hc=static_cast<const T *>(w.host)+a_elements+b_elements;
+                T *dst=static_cast<T *>(op.result)+size_t(w.col)*m+w.row;
+                #pragma omp parallel for schedule(static) if(size_t(w.m)*w.n*sizeof(T)>16*MiB)
+                for(int j=0;j<w.n;++j)
+                    std::memcpy(dst+size_t(j)*m,hc+size_t(j)*w.m,size_t(w.m)*sizeof(T));
+            }
+#endif
         }
     }
     if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS || OpenMXGpuStreamSynchronize(op.copy_stream)!=OPENMX_GPU_SUCCESS)

@@ -18,8 +18,11 @@ with tempfile.TemporaryDirectory(prefix='openmx-aux-workers-') as directory:
 #include <stddef.h>
 typedef int cudaError_t;
 #define cudaSuccess 0
+#define cudaErrorMemoryAllocation 2
+#define cudaDevAttrSingleToDoublePrecisionPerfRatio 1
 int cudaGetDevice(int*);int cudaSetDevice(int);int cudaFree(void*);
-int cudaGetLastError(void);int cudaDeviceSynchronize(void);
+int cudaDeviceGetAttribute(int*,int,int);
+int cudaGetLastError(void);int cudaPeekAtLastError(void);int cudaDeviceSynchronize(void);
 int openmx_mgpu_scope_enter(int);void openmx_mgpu_scope_leave(int);
 int openmx_mgpu_pool_devices(int*,int);int openmx_mgpu_scope_devices(int*,int);
 void *openmx_mgpu_admit_devices(const int*,int);void openmx_mgpu_release_devices(void*);
@@ -48,7 +51,9 @@ void *acc_malloc(size_t);void acc_free(void*);void acc_wait_all(void);
 #include <stdlib.h>
 #include <string.h>
 static _Thread_local int device=0,acc_device=0,acc_type=5,scope=0;
+static _Thread_local int pending_error=0;
 static int permitted=4,group_first=0,group_count=0,held=0;
+static int ratios[64],attribute_failure;
 static size_t memory[64]; static int queried[64];
 static pthread_mutex_t admission=PTHREAD_MUTEX_INITIALIZER;
 static long checks=0;
@@ -56,7 +61,12 @@ static long checks=0;
 int cudaGetDevice(int *p){*p=device;return 0;}
 int cudaSetDevice(int v){device=v;return 0;}
 int cudaFree(void *p){assert(!p);return 0;}
-int cudaGetLastError(void){return 0;}
+int cudaGetLastError(void){int old=pending_error;pending_error=0;return old;}
+int cudaPeekAtLastError(void){return pending_error;}
+_Noreturn void openmx_gpu_fatal(const char *message,const char *file,int line){
+ fprintf(stderr,"%s at %s:%d\n",message,file,line);exit(1);
+}
+int cudaDeviceGetAttribute(int *p,int attribute,int d){assert(attribute==1);*p=ratios[d];return attribute_failure;}
 int gpu_rank_device_usable(void){return 1;}
 int cudaDeviceSynchronize(void){return 0;}
 int acc_get_device_type(void){return acc_type;}
@@ -75,12 +85,16 @@ int openmx_mgpu_scope_devices(int *p,int capacity){assert(group_count<=capacity)
 void *openmx_mgpu_admit_devices(const int *p,int n){for(int i=0;i<n;i++)assert(p[i]>=0 && p[i]<64);pthread_mutex_lock(&admission);assert(!held);held=1;return &held;}
 void openmx_mgpu_release_devices(void *p){assert(p==&held && held);held=0;pthread_mutex_unlock(&admission);}
 int openmx_gpu_map_rank_to_device(int rank,int size,int count){return count>0?rank/((size+count-1)/count):-1;}
-typedef struct { const OpenMXGpuWorkers *pool;int fail_worker,fail_phase;
+typedef struct { const OpenMXGpuWorkers *pool;int fail_worker,fail_phase,overlap;
  int prepared[64],executed[64],committed[64],released[64];size_t offset[65];int *staging[64];int output[173]; } Job;
 static int callback(void *opaque,int worker,int phase){
  Job *j=opaque;
  assert(device==j->pool->devices[worker] && acc_device==device && acc_type==5);
  assert(openmx_gpu_worker_device()==device && scope==0);
+ /* A failed prepare keeps admission through rollback; otherwise prepared
+    execution must retain every private buffer after releasing admission. */
+ assert(held==(phase==OPENMX_GPU_WORKER_PREPARE || !j->overlap ||
+               (j->fail_worker>=0 && j->fail_phase==OPENMX_GPU_WORKER_PREPARE)));
  if(phase==OPENMX_GPU_WORKER_PREPARE){
   j->staging[worker]=malloc(173*sizeof(int));assert(j->staging[worker]);j->prepared[worker]++;
  }
@@ -105,7 +119,31 @@ static size_t cost(void *opaque,int worker,int count){
 static size_t uneven_cost(void *context,int worker,int count){
  (void)context;return (size_t)(count==1?5:worker?3:2)<<30;
 }
-int main(void){
+static size_t device_cost(void *context,int worker,int count,int target){
+ (void)context;(void)worker;(void)count;
+ /* A remote density worker must also stage the full input eigenvectors. */
+ return (size_t)(target==0?1:5)<<30;
+}
+int main(int argc,char **argv){
+ for(int i=0;i<64;i++)ratios[i]=64;
+ if(argc==3){
+  OpenMXGpuWorkers p={0};p.count=2;p.items=173;p.devices[0]=0;p.devices[1]=1;
+  Job j={0};j.pool=&p;j.fail_worker=0;j.fail_phase=atoi(argv[1]);j.overlap=atoi(argv[2]);
+  for(int i=0;i<=2;i++)j.offset[i]=openmx_gpu_worker_cut(173,i,2);
+  setenv("OPENMX_GPU_WORKER_OVERLAP",argv[2],1);
+  if(j.overlap)openmx_gpu_workers_run_prepared(&p,callback,&j,"publication-failure");
+  else openmx_gpu_workers_run(&p,callback,&j,"publication-failure");
+  return 9; /* A publication/cleanup failure must exit inside the executor. */
+ }
+ unsetenv("OPENMX_GPU_WORKER_OVERLAP");
+ CHECK(openmx_gpu_worker_can_overlap(0));
+ ratios[0]=2;CHECK(!openmx_gpu_worker_can_overlap(0));
+ ratios[0]=64;attribute_failure=1;CHECK(!openmx_gpu_worker_can_overlap(0));attribute_failure=0;
+ setenv("OPENMX_GPU_WORKER_OVERLAP","0",1);CHECK(!openmx_gpu_worker_can_overlap(0));
+ setenv("OPENMX_GPU_WORKER_OVERLAP","1",1);ratios[0]=2;CHECK(openmx_gpu_worker_can_overlap(0));
+ CHECK(!openmx_gpu_device_weak_fp64(0));
+ setenv("OPENMX_GPU_WORKER_OVERLAP","auto",1);CHECK(!openmx_gpu_worker_can_overlap(0));
+ ratios[0]=64;CHECK(openmx_gpu_worker_can_overlap(0));
  /* Auto leaves other CUDA devices untouched while the owner fits; when
     it does not, it uses the smallest admitted group, then reports CPU. */
  {OpenMXGpuWorkers p;size_t need=(size_t)1<<30;
@@ -132,6 +170,15 @@ int main(void){
   group_count=0;
   memory[0]=1;need=(size_t)1<<30;
   CHECK(openmx_gpu_workers_capacity(&p,1,0,cost,&need) && p.count==1 && p.devices[0]!=0);
+  CHECK(!openmx_gpu_workers_capacity_device(&p,1,0,device_cost,NULL));
+  memory[2]=(size_t)6<<30;
+  CHECK(openmx_gpu_workers_capacity_device(&p,1,0,device_cost,NULL) && p.count==1 && p.devices[0]==2);
+  memory[2]=0;
+  pending_error=77;
+  CHECK(!openmx_gpu_workers_capacity(&p,1,0,cost,&need) && pending_error==77);
+  p.count=1;p.devices[0]=0;
+  CHECK(!openmx_gpu_workers_run(&p,callback,NULL,"pending") && pending_error==77);
+  pending_error=0;
   permitted=3;memory[1]=((size_t)2<<30)+((size_t)300<<20);memory[2]=((size_t)3<<30)+((size_t)300<<20);
   CHECK(openmx_gpu_workers_capacity(&p,173,0,uneven_cost,NULL) && p.count==2 && p.devices[0]==1 && p.devices[1]==2);
   memset(memory,0,sizeof(memory));permitted=4;need=SIZE_MAX;
@@ -179,20 +226,28 @@ int main(void){
  }
  permitted=4;device=acc_device=3;scope=11;
  openmx_gpu_workers_configure(0,1,4);
+ for(int mode=0;mode<6;mode++)
  for(int dynamic=0;dynamic<2;dynamic++)for(int workers=1;workers<=4;workers*=2)
  for(int failure=-1;failure<workers;failure++)for(int phase=0;phase<2;phase++){
   omp_set_dynamic(dynamic);group_first=4-workers;group_count=workers;
   OpenMXGpuWorkers p;openmx_gpu_workers_scope(&p,173);CHECK(p.count==workers);
   for(int i=0;i<workers;i++)CHECK(p.devices[i]==group_first+i);
+  for(int i=0;i<64;i++)ratios[i]=mode==2?2:64;
+  /* A heterogeneous pool keeps admission if any device needs it. */
+  if(mode==5)ratios[p.devices[workers-1]]=2;
+  setenv("OPENMX_GPU_WORKER_OVERLAP",mode==3?"0":mode==4?"1":"auto",1);
   Job j={0};j.pool=&p;j.fail_worker=failure;j.fail_phase=phase;
+  j.overlap=mode==1 || mode==4;
   for(int i=0;i<173;i++)j.output[i]=999;
   for(int i=0;i<=workers;i++)j.offset[i]=openmx_gpu_worker_cut(173,i,workers);
-  CHECK(openmx_gpu_workers_run(&p,callback,&j,"test")== (failure<0));
+  int completed=mode==0?openmx_gpu_workers_run(&p,callback,&j,"test"):
+                       openmx_gpu_workers_run_prepared(&p,callback,&j,"prepared");
+  CHECK(completed==(failure<0) && !held);
   CHECK(device==3 && acc_device==3 && scope==11 && openmx_gpu_worker_device()==-1);
   for(int i=0;i<workers;i++)CHECK(j.released[i]==1 && j.staging[i]==NULL);
   for(int i=0;i<173;i++)CHECK(j.output[i]==(failure<0?i*7-4:999));
  }
- puts("PASS: GPU worker ownership, limits, cuts, phase barriers, failure rollback, binding restoration and dynamic OpenMP teams");
+ puts("PASS: GPU worker ownership, limits, cuts, admission policy, prepared overlap, rollback, binding restoration and dynamic OpenMP teams");
  printf("checks=%ld\n",checks);return 0;
 }
 '''
@@ -200,4 +255,10 @@ int main(void){
     (tmp/'openmx_gpu_workers.c').write_text((HERE/'openmx_gpu_workers.c').read_text())
     exe=tmp/'check'
     subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-fopenmp','-pthread','-Wall','-Wextra','-I'+str(tmp),'-I'+str(HERE),str(tmp/'openmx_gpu_workers.c'),str(tmp/'check.c'),'-o',str(exe)],check=True)
-    subprocess.run([str(exe)],env={**os.environ,'OMP_NUM_THREADS':'1','OMP_THREAD_LIMIT':'4'},check=True)
+    environment={**os.environ,'OMP_NUM_THREADS':'1','OMP_THREAD_LIMIT':'4'}
+    subprocess.run([str(exe)],env=environment,check=True)
+    for phase in (2,3):
+        for overlap in (0,1):
+            result=subprocess.run([str(exe),str(phase),str(overlap)],env=environment,capture_output=True,text=True,timeout=30)
+            assert result.returncode==1 and 'failed during result publication or cleanup' in result.stderr,result
+    print('PASS: serialized/prepared publication and cleanup errors terminate without a CPU retry')

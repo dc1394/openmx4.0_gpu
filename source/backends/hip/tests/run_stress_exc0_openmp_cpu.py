@@ -6,6 +6,7 @@ thread-local buffers and nine-component accumulation execute with libgomp.
 """
 
 import os
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -18,6 +19,7 @@ PREFIX = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "openmx_core_atomic.h"
 static double KumoF(int n, double x, double *a, double *b, double *c)
 { return exp(-0.1 * exp(2.0*x)); }
 static double Dr_KumoF(int n, double x, double r, double *a, double *b, double *c)
@@ -43,6 +45,11 @@ static void run(int threads, double result[10])
     double radial[1] = {0}, *Spe_PAO_XV[1] = {radial};
     double *Spe_PAO_RV[1] = {radial}, *Spe_Atomic_Den2[1] = {radial};
     int Spe_Num_Mesh_PAO[1] = {1};
+    OpenMXAtomicViews atomic_values={0},*atomic=&atomic_values;
+    atomic->species.pao_mesh=Spe_Num_Mesh_PAO;
+    atomic->pao_log_radii=(OpenMXRadialView2){radial,{1,1}};
+    atomic->pao_radii=(OpenMXRadialView2){radial,{1,1}};
+    atomic->density_backup=(OpenMXRadialView2){radial,{1,1}};
     double My_sumr[4] = {0}, sx[4][8] = {{0}}, sy[4][8] = {{0}}, sz[4][8] = {{0}};
     double *My_sumrx[4], *My_sumry[4], *My_sumrz[4];
     double My_Stress[9] = {0}, st[4][9] = {{0}}, *My_Stress_threads[4];
@@ -91,7 +98,7 @@ int main(void)
 
 
 def region(source):
-    start = source.index("#pragma omp parallel shared(Leb_Grid_XYZW")
+    start = re.search(r"#pragma omp parallel shared\([^\n]*\bLeb_Grid_XYZW\b", source).start()
     brace = source.index("{", start)
     depth, end = 1, brace + 1
     while depth:
@@ -110,7 +117,7 @@ def main():
         command = shlex.split(os.environ.get("CC", "gcc"))
         # Keep the loop-counter loads/stores visible: optimization can hide
         # the original race by keeping the shared counter in a register.
-        command += ["-std=c11", "-O0", "-g", "-fopenmp"]
+        command += ["-std=c11", "-O0", "-g", "-fopenmp", "-I" + str(root / "source")]
         command += shlex.split(os.environ.get("CFLAGS", ""))
         subprocess.run(command + [str(cfile), "-lm", "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)

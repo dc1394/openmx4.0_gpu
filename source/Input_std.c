@@ -10,6 +10,7 @@
 #endif
 #include <ctype.h>
 #include "openmx_common.h"
+#include "openmx_electronic.h"
 #include "openmx_precision.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_mgpu_band_plan.h"
@@ -51,8 +52,10 @@ void Get_Euler_Rotation_Angle(
 
 
 
-void Input_std(char *file)
+void Input_std(char *file, OpenMXCoreContext *core)
 {
+  OpenMXElectronicViews electronic_storage;
+
   FILE *fp,*fp_check,*fp1;
   int i,j,k,itmp;
   int num_wannier_total_projectors;
@@ -176,11 +179,7 @@ void Input_std(char *file)
 
       printf("scf.Ngrid must be divisible by \n");
 
-      printf("    ");
-      for (i=0; i<NfundamentalNum; i++){
-        printf("%3d ",fundamentalNum[i]);
-      } 
-      printf("\n");
+      printf("      2   3   5   7 \n");
 
       MPI_Finalize(); 
       exit(0);
@@ -201,7 +200,7 @@ void Input_std(char *file)
   List_YOUSO[18] = SpeciesNum;
 
   /* memory allocation */
-  Allocate_Arrays(0);
+  Allocate_Arrays_with_context(0,core);
 
   /*************************************************************
      for LDA+U
@@ -1341,7 +1340,7 @@ void Input_std(char *file)
   input_doublev("scf.fixed.grid",3,scf_fixed_origin,r_vec);
 
   TRAN_Input_std(mpi_comm_level1, Solver, SpinP_switch, filepath, kB, 
-                 eV2Hartree, E_Temp, &output_hks);
+                 eV2Hartree, E_Temp, &output_hks, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* YTL-start */
   /*************************************************************************
@@ -6545,32 +6544,7 @@ void Set_Cluster_UnitCell(double tv[4][4], int unitflag)
 
 int divisible_cheker(int N)
 {
-  /************************
-   return 0; non-divisible 
-   return 1; divisible 
-  ************************/
-
-  int i,po;
-
-  if (N!=1){
-    po = 1; 
-    for (i=0; i<NfundamentalNum; i++){
-      if ( N!=1 && (N % fundamentalNum[i])==0 ){
-	po = 0;
-	N = N/fundamentalNum[i];
-      }
-    }
-  }
-  else{
-    po = 0;
-  }
-
-  if (po==0 && N!=1){
-    divisible_cheker(N);
-  }
-
-  if (po==0) return 1;
-  else       return 0;
+  return openmx_core_fft_grid_supported(N);
 }
 
 

@@ -20,6 +20,14 @@ libtool
 /source/*.mod
 /source/third_party/fftw3-install/
 
+# Dependencies installed beside the default work/openmx executable.
+/work/bin/hpcbind
+/work/bin/kokkos_launch_compiler
+/work/bin/nvcc_wrapper
+/work/include/kokkos/
+/work/lib/cmake/Kokkos/
+/work/share/licenses/openmx_core/
+
 # === Editor / IDE ===
 .vscode/
 
@@ -27,6 +35,8 @@ libtool
 *.out
 *.ene
 *.md
+!docs/PERFORMANCE_REGRESSION.md
+!docs/CODE_REVIEW_20261020.md
 *.md2
 *.xyz
 *.cif
@@ -91,4 +101,5 @@ __pycache__/
 
 # Documentation shipped with the integrated AMD backend
 !/docs/GPU_BACKENDS.md
+!/docs/CPP_CORE_MIGRATION.md
 !/source/third_party/hip/*.md

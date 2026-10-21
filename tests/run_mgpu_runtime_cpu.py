@@ -342,6 +342,19 @@ int main() {
  CHECK(staging_scopes==1);
  openmx_mgpu_scope_leave(nested);CHECK(openmx_mgpu_scope_active());openmx_mgpu_scope_leave(previous);
  CHECK(staging_scopes==0);
+ // Repeated k-point selections own one scope and restore an outer caller.
+ {auto outer=openmx_mgpu_band_scope_enter(1,7,3);
+  const int depth=staging_scopes;
+  openmx_mgpu_band_scope selection{};
+  for(int k=0;k<11;++k) {
+   openmx_mgpu_band_scope_select(&selection,1,11,k);
+   CHECK(staging_scopes==depth+1 && band_kpoints==11 && band_kpoint==k);
+  }
+  openmx_mgpu_band_scope_close(&selection);
+  CHECK(staging_scopes==depth && band_kpoints==7 && band_kpoint==3);
+  openmx_mgpu_band_scope_close(&selection);CHECK(staging_scopes==depth);
+  openmx_mgpu_band_scope_leave(outer);CHECK(staging_scopes==0);
+ }
  for(int setting=0;setting<6;++setting) {
   reset();openmx_mgpu_scope_enter(1);
   if(setting==0) openmx_mgpu_configure(-1,2,0);
@@ -502,6 +515,44 @@ int main() {
  }
  CHECK(waitpid(child,&child_status,0)==child && WIFEXITED(child_status) && WEXITSTATUS(child_status)==0);
  close(ready[0]);close(go[1]);
+ // A same-process competitor times out; its failed admission leaves the
+ // lock owned by the first operation and permits a later retry.
+ {setenv("OPENMX_GPU_LOCK_TIMEOUT_MS","20",1);
+  const int devs[2]={0,1};
+  {
+   Admission owner(devs,2);CHECK(owner.ok);
+   bool admitted=true;
+   std::thread competitor([&]{Admission blocked(devs,2);admitted=blocked.ok;});
+   competitor.join();CHECK(!admitted);
+  }
+  Admission retry(devs,2);CHECK(retry.ok);
+  unsetenv("OPENMX_GPU_LOCK_TIMEOUT_MS");
+ }
+ // An externally held file lock has the same deadline. A configured local
+ // directory is used, and an invalid relative path is rejected promptly.
+ {char directory[]="/tmp/openmx-admission-XXXXXX";CHECK(mkdtemp(directory));
+  setenv("OPENMX_GPU_LOCK_DIR",directory,1);
+  setenv("OPENMX_GPU_LOCK_TIMEOUT_MS","20",1);
+  const int devs[2]={0,1};
+  {Admission probe(devs,2);CHECK(probe.ok);}
+  cudaDeviceProp p;cudaGetDeviceProperties(&p,0);
+  char name[256];int used=std::snprintf(name,sizeof(name),"%s/.openmx-mgpu-%lu-",directory,(unsigned long)getuid());
+  for(unsigned char b:p.uuid.bytes)used+=std::snprintf(name+used,sizeof(name)-used,"%02x",unsigned(b));
+  int fd=open(name,O_RDWR);CHECK(fd>=0 && flock(fd,LOCK_EX|LOCK_NB)==0);
+  {Admission blocked(devs,2);CHECK(!blocked.ok);}
+  CHECK(flock(fd,LOCK_UN)==0);close(fd);
+  {Admission retry(devs,2);CHECK(retry.ok);}
+  for(int d=0;d<2;++d) {
+   cudaGetDeviceProperties(&p,d);
+   used=std::snprintf(name,sizeof(name),"%s/.openmx-mgpu-%lu-",directory,(unsigned long)getuid());
+   for(unsigned char b:p.uuid.bytes)used+=std::snprintf(name+used,sizeof(name)-used,"%02x",unsigned(b));
+   CHECK(unlink(name)==0);
+  }
+  CHECK(rmdir(directory)==0);
+  setenv("OPENMX_GPU_LOCK_DIR","relative",1);
+  {Admission invalid(devs,2);CHECK(!invalid.ok);}
+  unsetenv("OPENMX_GPU_LOCK_DIR");unsetenv("OPENMX_GPU_LOCK_TIMEOUT_MS");
+ }
  std::printf("PASS: multi-GPU runtime scope/topology/cache/rollback/publication (%d assertions)\n",checks);
  // Tests create PID-specific UUID lock files; remove only after all users
  // have exited their admission scope. Production intentionally never unlinks.
@@ -522,6 +573,10 @@ with tempfile.TemporaryDirectory(prefix="openmx-mgpu-runtime-") as folder:
         "-Wno-address", "-fsanitize=undefined", "-fno-sanitize-recover=all", "-pthread", "-I"+str(tmp),
         "-I"+str(root/"source"), str(tmp/"test.cpp"), "-ldl", "-o", str(tmp/"test")]
     subprocess.run(command, check=True)
+    symbols = subprocess.check_output(["nm", "-g", str(tmp/"test")], text=True)
+    for name in ("openmx_mgpu_scope_enter", "openmx_mgpu_scope_leave",
+                 "openmx_mgpu_band_scope_enter", "openmx_mgpu_band_scope_leave"):
+        assert " T " + name + "\n" in symbols, "runtime definition must be strong: " + name
     environment = os.environ.copy()
     environment["LD_LIBRARY_PATH"] = str(tmp) + ":" + environment.get("LD_LIBRARY_PATH", "")
     subprocess.run([str(tmp/"test")], check=True, timeout=30, env=environment)

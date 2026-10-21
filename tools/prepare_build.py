@@ -11,7 +11,7 @@ from pathlib import Path
 import shutil
 
 
-SOURCE_SUFFIXES = {'.c', '.h', '.cu', '.cuh', '.cpp', '.f', '.f90', '.F90'}
+SOURCE_SUFFIXES = {'.c', '.h', '.cu', '.cuh', '.cpp', '.f', '.f90', '.F90', '.mk'}
 COPY_IGNORE = shutil.ignore_patterns(
     '.git', '.libs', '.deps', '__pycache__', '*.o', '*.a', '*.lo', '*.la', '*.so', '*.so.*',
     '*.mod', '*.d', '*.pyc', 'config.log', 'config.status', 'config.cache',
@@ -72,6 +72,9 @@ def prepare(source_root, build_root, backend):
     native = build_root / 'native'
     stage = native / 'source'
     stage.mkdir(parents=True, exist_ok=True)
+    # C ABI forwarding headers keep direct Makefile builds compatible while
+    # their definitions belong to the independently buildable numerical core.
+    link_file(source_root / 'core', native / 'core')
 
     selected = {p.name: p for p in source.iterdir()
                 if p.is_file() and p.suffix in SOURCE_SUFFIXES}
@@ -83,7 +86,8 @@ def prepare(source_root, build_root, backend):
         # the same implementation in both GPU backends.
         selected = {name: source / name for name in manifest['shared'] + manifest.get('integrated_shared', [])
                     if len(Path(name).parts) == 1}
-        for name, relative in manifest['overrides'].items():
+        overrides = {**manifest['overrides'], **manifest.get('integrated_overrides', {})}
+        for name, relative in overrides.items():
             selected[name] = hip / relative
         selected['Makefile'] = hip / 'Makefile'
         selected['makefile'] = hip / 'Makefile'
@@ -133,6 +137,11 @@ def prepare(source_root, build_root, backend):
         for directory in ('tests', 'tools'):
             if (hip / directory).is_dir():
                 copy_sources(hip / directory, native / directory)
+        # Native extraction tests share the ownership-boundary SDK shim with
+        # the root tests; keep one implementation in both source projections.
+        resource_bridge = source_root / 'tests' / 'native_resource_test_bridge.py'
+        if resource_bridge.is_file():
+            link_file(resource_bridge, native / 'tests' / resource_bridge.name)
         # Copied regression runners read their default templates from ../work.
         # Share only the immutable input suites; keep work/ itself private so
         # their generated inputs and results stay inside the selected build.

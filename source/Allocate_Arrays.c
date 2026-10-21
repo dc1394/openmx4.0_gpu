@@ -1,9 +1,18 @@
 #include <math.h>
+#include <limits.h>
+#include "openmx_core_pao.h"
+#include "openmx_core_vps.h"
+#include "openmx_core_product.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_common.h"
 
 void Allocate_Arrays(int wherefrom)
+{
+  Allocate_Arrays_with_context(wherefrom,NULL);
+}
+
+void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 {
   int i,j,k,ii,L,ct_AN,wan,p,l,al,so,spin;
   int Lmax,num,m,n,spe,Ndim;
@@ -13,69 +22,47 @@ void Allocate_Arrays(int wherefrom)
     case 0: 
       /* call from Input_std.c */
 
-      SpeName = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeName[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      SpeBasis = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeBasis[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      SpeBasisName = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeBasisName[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      SpeVPS = (char**)malloc(sizeof(char*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        SpeVPS[i] = (char*)malloc(sizeof(char)*YOUSO10);
-      }  
-
-      Spe_AtomicMass = (double*)malloc(sizeof(double)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Spe_AtomicMass[i] = -1.0;
-      }    
-
-      Spe_MaxL_Basis = (int*)malloc(sizeof(int)*SpeciesNum);
-
-      Spe_Num_Basis = (int**)malloc(sizeof(int*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Spe_Num_Basis[i] = (int*)malloc(sizeof(int)*(Supported_MaxL+1));
-      }  
-       
-      Spe_Num_CBasis = (int**)malloc(sizeof(int*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Spe_Num_CBasis[i] = (int*)malloc(sizeof(int)*(Supported_MaxL+1));
-      }  
-
-      for (p=0; p<SpeciesNum; p++){
-        for (l=0; l<=Supported_MaxL; l++){
-          Spe_Num_Basis[p][l]  = 0;
-          Spe_Num_CBasis[p][l] = 0;
-        } 
-      } 
-
-      Spe_OpenCore_flag = (int*)malloc(sizeof(int)*SpeciesNum);
-      for (p=0; p<SpeciesNum; p++){
-        Spe_OpenCore_flag[p] = 0;
+      {
+        const OpenMXSpeciesShape shape={SpeciesNum,Supported_MaxL+1,YOUSO10};
+        OpenMXSpeciesViews views;
+        char error[256];
+        if (!openmx_core_species_allocate(core,&shape,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays: species: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        SpeName=views.name;
+        SpeBasis=views.basis_name;
+        SpeBasisName=views.basis_file;
+        SpeVPS=views.potential_file;
+        Spe_AtomicMass=views.mass;
+        Spe_MaxL_Basis=views.basis_lmax;
+        Spe_Num_Basis=views.basis_rows;
+        Spe_Num_CBasis=views.contracted_basis_rows;
+        Spe_OpenCore_flag=views.open_core;
+        Number_of_Electrons_Species=views.electrons;
+        Spe_Spe2Ban=views.species_index;
+        VPS_j_dependency=views.relativistic;
+        Spe_Atom_Cut1=views.cutoff;
+        Spe_Core_Charge=views.core_charge;
+        Spe_Num_Mesh_VPS=views.vps_mesh;
+        Spe_Num_Mesh_PAO=views.pao_mesh;
+        Spe_Total_VPS_Pro=views.projector_components;
+        Spe_Num_RVPS=views.radial_projectors;
+        Spe_PAO_LMAX=views.pao_lmax;
+        Spe_PAO_Mul=views.pao_multiplicity;
+        Spe_WhatAtom=views.atomic_number;
+        Spe_Total_NO=views.orbitals;
+        Spe_Total_CNO=views.contracted_orbitals;
       }
-
-      Number_of_Electrons_Species = (double*)malloc(sizeof(double)*SpeciesNum);
-      Spe_Spe2Ban = (int*)malloc(sizeof(int)*SpeciesNum);
       Species_Top = (int*)malloc(sizeof(int)*Num_Procs);
       Species_End = (int*)malloc(sizeof(int)*Num_Procs);
       F_Snd_Num = (int*)malloc(sizeof(int)*Num_Procs);
       S_Snd_Num = (int*)malloc(sizeof(int)*Num_Procs);
       F_Rcv_Num = (int*)malloc(sizeof(int)*Num_Procs);
       S_Rcv_Num = (int*)malloc(sizeof(int)*Num_Procs);
-      F_Snd_Num_WK = (int*)malloc(sizeof(int)*Num_Procs);
-      F_Rcv_Num_WK = (int*)malloc(sizeof(int)*Num_Procs);
       F_TopMAN = (int*)malloc(sizeof(int)*Num_Procs);
       S_TopMAN = (int*)malloc(sizeof(int)*Num_Procs);
-      Snd_DS_NL_Size = (int*)malloc(sizeof(int)*Num_Procs);
-      Rcv_DS_NL_Size = (int*)malloc(sizeof(int)*Num_Procs);
       Snd_HFS_Size = (int*)malloc(sizeof(int)*Num_Procs);
       Rcv_HFS_Size = (int*)malloc(sizeof(int)*Num_Procs);
 
@@ -93,7 +80,6 @@ void Allocate_Arrays(int wherefrom)
       Num_Snd_Grid_B_AB2C = (int*)malloc(sizeof(int)*Num_Procs);
       Num_Rcv_Grid_B_AB2C = (int*)malloc(sizeof(int)*Num_Procs);
 
-      VPS_j_dependency = (int*)malloc(sizeof(int)*SpeciesNum);
 
       EH0_scaling = (double**)malloc(sizeof(double*)*SpeciesNum);
       for (i=0; i<SpeciesNum; i++){
@@ -347,20 +333,8 @@ void Allocate_Arrays(int wherefrom)
     case 2:
       /* call from readfile.c */
 
-      NormK = (double*)malloc(sizeof(double)*(Ngrid_NormK+1));
-      Spe_Atom_Cut1 = (double*)malloc(sizeof(double)*SpeciesNum);
-      Spe_Core_Charge = (double*)malloc(sizeof(double)*SpeciesNum);
       TGN_EH0 = (int*)malloc(sizeof(int)*SpeciesNum);
       dv_EH0 = (double*)malloc(sizeof(double)*SpeciesNum);
-      Spe_Num_Mesh_VPS = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Num_Mesh_PAO = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Total_VPS_Pro = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Num_RVPS = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_PAO_LMAX = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_PAO_Mul  = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_WhatAtom = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Total_NO = (int*)malloc(sizeof(int)*SpeciesNum);
-      Spe_Total_CNO = (int*)malloc(sizeof(int)*SpeciesNum);
       FNAN = (int*)malloc(sizeof(int)*(atomnum+1));
       SNAN = (int*)malloc(sizeof(int)*(atomnum+1));
       ONAN = (int*)malloc(sizeof(int)*(atomnum+1));
@@ -580,200 +554,78 @@ void Allocate_Arrays(int wherefrom)
     break;
 
     case 6:
-
-      /* call from SetPara_DFT.c */
-
-      Spe_PAO_XV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_PAO_XV[i] = (double*)malloc(sizeof(double)*List_YOUSO[21]);
-        for (j=0; j<List_YOUSO[21]; j++) Spe_PAO_XV[i][j] = 0.0;
+      if (!core) {
+        fprintf(stderr,"Calculation tables require an explicit OpenMX core context\n");
+        MPI_Abort(mpi_comm_level1,1);
+        return;
       }
-      
-      Spe_PAO_RV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_PAO_RV[i] = (double*)malloc(sizeof(double)*List_YOUSO[21]);
-        for (j=0; j<List_YOUSO[21]; j++) Spe_PAO_RV[i][j] = 0.0;
-      }
+      {
+        char error[256];
+        OpenMXPaoViews views;
+        OpenMXPaoShape shape;
+        if (List_YOUSO[25] < 0 || List_YOUSO[25] == INT_MAX) {
+          fprintf(stderr,"Invalid PAO angular capacity\n");
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        shape = (OpenMXPaoShape){List_YOUSO[18],List_YOUSO[25]+1,List_YOUSO[24],
+                                List_YOUSO[21],List_YOUSO[15]};
+        if (!openmx_core_pao_allocate(core,&shape,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays(PAO): %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
 
-      Spe_Atomic_Den = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_Atomic_Den[i] = (double*)malloc(sizeof(double)*(List_YOUSO[21]+2));
-        for (j=0; j<(List_YOUSO[21]+2); j++) Spe_Atomic_Den[i][j] = 0.0;
-      }
 
-      Spe_Atomic_Den2 = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_Atomic_Den2[i] = (double*)malloc(sizeof(double)*(List_YOUSO[21]+2));
-        for (j=0; j<(List_YOUSO[21]+2); j++) Spe_Atomic_Den2[i][j] = 0.0;
-      }
 
-      Spe_PAO_RWF = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_PAO_RWF[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[25]+1));
-        for (j=0; j<=List_YOUSO[25]; j++){
-          Spe_PAO_RWF[i][j] = (double**)malloc(sizeof(double*)*List_YOUSO[24]);
-          for (k=0; k<List_YOUSO[24]; k++){
-            Spe_PAO_RWF[i][j][k] = (double*)malloc(sizeof(double)*List_YOUSO[21]);
-	  }
-	}
       }
-
-      Spe_RF_Bessel = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_RF_Bessel[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[25]+1));
-        for (j=0; j<=List_YOUSO[25]; j++){
-          Spe_RF_Bessel[i][j] = (double**)malloc(sizeof(double*)*List_YOUSO[24]);
-          for (k=0; k<List_YOUSO[24]; k++){
-            Spe_RF_Bessel[i][j][k] = (double*)malloc(sizeof(double)*List_YOUSO[15]);
-	  }
-	}
-      }
-
-    break;
+      break;
 
     case 7:
-
-      /* call from SetPara_DFT.c */
-
-      Spe_VPS_XV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VPS_XV[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-        for (j=0; j<List_YOUSO[22]; j++) Spe_VPS_XV[i][j] = 0.0;
+      if (!core) {
+        fprintf(stderr,"Calculation tables require an explicit OpenMX core context\n");
+        MPI_Abort(mpi_comm_level1,1);
+        return;
       }
-
-      Spe_VPS_RV = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VPS_RV[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-        for (j=0; j<List_YOUSO[22]; j++) Spe_VPS_RV[i][j] = 0.0;
-      }
-
-      Spe_Vna = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_Vna[i] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-        for (j=0; j<List_YOUSO[22]; j++) Spe_Vna[i][j] = 0.0;
-      }
-
-      Spe_VH_Atom = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VH_Atom[i] = (double*)malloc(sizeof(double)*(List_YOUSO[22]+2));
-        for (j=0; j<(List_YOUSO[22]+2); j++) Spe_VH_Atom[i][j] = 0.0;
-      }
-
-      Spe_Atomic_PCC = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_Atomic_PCC[i] = (double*)malloc(sizeof(double)*(List_YOUSO[22]+2));
-        for (j=0; j<(List_YOUSO[22]+2); j++) Spe_Atomic_PCC[i][j] = 0.0;
-      }
-
-      Spe_VNL = (double****)malloc(sizeof(double***)*(SO_switch+1));
-      for (so=0; so<(SO_switch+1); so++){
-        Spe_VNL[so] = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_VNL[so][i] = (double**)malloc(sizeof(double*)*List_YOUSO[19]);
-          for (j=0; j<List_YOUSO[19]; j++){
-            Spe_VNL[so][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-            for (k=0; k<List_YOUSO[22]; k++) Spe_VNL[so][i][j][k] = 0.0;
-          }
+      {
+        char error[256];
+        OpenMXVpsViews views;
+        OpenMXVpsShape shape;
+        OpenMXNeutralProjectorShape neutral_shape;
+        const OpenMXNeutralProjectorShape *neutral = NULL;
+        if (SO_switch < 0 || SO_switch > 1 ||
+            (ProExpn_VNA==1 && (List_YOUSO[35] < 0 || List_YOUSO[35] == INT_MAX))) {
+          fprintf(stderr,"Invalid VPS spin or VNA angular capacity\n");
+          MPI_Abort(mpi_comm_level1,1);
+          return;
         }
-      }
-
-      Spe_VNLE = (double***)malloc(sizeof(double**)*(SO_switch+1));
-      for (so=0; so<(SO_switch+1); so++){
-	Spe_VNLE[so] = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-	for (i=0; i<List_YOUSO[18]; i++){
-	  Spe_VNLE[so][i] = (double*)malloc(sizeof(double)*List_YOUSO[19]);
-	  for (j=0; j<List_YOUSO[19]; j++) Spe_VNLE[so][i][j] = 0.0;
-	}
-      }
-
-      Spe_VPS_List = (int**)malloc(sizeof(int*)*List_YOUSO[18]);
-      for (i=0; i<List_YOUSO[18]; i++){
-        Spe_VPS_List[i] = (int*)malloc(sizeof(int)*List_YOUSO[19]);
-        for (j=0; j<List_YOUSO[19]; j++) Spe_VPS_List[i][j] = 0;
-      }
-
-      Spe_NLRF_Bessel = (double****)malloc(sizeof(double***)*(SO_switch+1));
-      for (so=0; so<(SO_switch+1); so++){
-        Spe_NLRF_Bessel[so] = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_NLRF_Bessel[so][i] = (double**)malloc(sizeof(double*)*(List_YOUSO[19]+2));
-          for (j=0; j<(List_YOUSO[19]+2); j++){
-            Spe_NLRF_Bessel[so][i][j] = (double*)malloc(sizeof(double)*List_YOUSO[15]);
-	  }
+        shape = (OpenMXVpsShape){List_YOUSO[18],SO_switch+1,List_YOUSO[19],
+                                List_YOUSO[22],List_YOUSO[15]};
+        if (ProExpn_VNA==1) {
+          neutral_shape = (OpenMXNeutralProjectorShape){List_YOUSO[35]+1,List_YOUSO[34],GL_Mesh};
+          neutral = &neutral_shape;
         }
-      }
-
-      if (ProExpn_VNA==1){
-
-	Projector_VNA = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
-	for (i=0; i<List_YOUSO[18]; i++){
-  	  Projector_VNA[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[35]+1));
-  	  for (L=0; L<(List_YOUSO[35]+1); L++){
-  	    Projector_VNA[i][L] = (double**)malloc(sizeof(double*)*List_YOUSO[34]);
-  	    for (j=0; j<List_YOUSO[34]; j++){
-	      Projector_VNA[i][L][j] = (double*)malloc(sizeof(double)*List_YOUSO[22]);
-	      for (k=0; k<List_YOUSO[22]; k++) Projector_VNA[i][L][j][k] = 0.0;
-	    }
-	  }
-	}
-
-	VNA_proj_ene = (double***)malloc(sizeof(double**)*List_YOUSO[18]);
-	for (i=0; i<List_YOUSO[18]; i++){
-  	 VNA_proj_ene[i] = (double**)malloc(sizeof(double*)*(List_YOUSO[35]+1));
-  	  for (L=0; L<(List_YOUSO[35]+1); L++){
-    	    VNA_proj_ene[i][L] = (double*)malloc(sizeof(double)*List_YOUSO[34]);
-	  }
-	}
-
-        Spe_VNA_Bessel = (double****)malloc(sizeof(double***)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_VNA_Bessel[i] = (double***)malloc(sizeof(double**)*(List_YOUSO[35]+1));
-          for (L=0; L<(List_YOUSO[35]+1); L++){
-            Spe_VNA_Bessel[i][L] = (double**)malloc(sizeof(double*)*List_YOUSO[34]);
-            for (j=0; j<List_YOUSO[34]; j++){
-              Spe_VNA_Bessel[i][L][j] = (double*)malloc(sizeof(double)*(GL_Mesh+2));
-            }
-	  }
+        if (!openmx_core_vps_allocate(core,&shape,neutral,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays(VPS): %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
         }
 
-        Spe_CrudeVNA_Bessel = (double**)malloc(sizeof(double*)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_CrudeVNA_Bessel[i] = (double*)malloc(sizeof(double)*(GL_Mesh+2));
-	}
 
-        Spe_ProductRF_Bessel = (double*******)malloc(sizeof(double******)*List_YOUSO[18]);
-        for (i=0; i<List_YOUSO[18]; i++){
-          Spe_ProductRF_Bessel[i] = (double******)malloc(sizeof(double*****)*(Spe_MaxL_Basis[i]+1));
-          for (j=0; j<(Spe_MaxL_Basis[i]+1); j++){
-            Spe_ProductRF_Bessel[i][j] = (double*****)malloc(sizeof(double****)*Spe_Num_Basis[i][j]);
-            for (k=0; k<Spe_Num_Basis[i][j]; k++){
-              Spe_ProductRF_Bessel[i][j][k] = (double****)malloc(sizeof(double***)*(Spe_MaxL_Basis[i]+1));
-              for (l=0; l<(Spe_MaxL_Basis[i]+1); l++){
-                Spe_ProductRF_Bessel[i][j][k][l] = (double***)malloc(sizeof(double**)*Spe_Num_Basis[i][l]);
-
-                if (j<=l){
-                  Lmax = 2*l;
-                  num = GL_Mesh + 2;
-		}
-                else{
-                  Lmax = 1; 
-                  num = 1;
-		}
-
-                for (m=0; m<Spe_Num_Basis[i][l]; m++){
-                  Spe_ProductRF_Bessel[i][j][k][l][m] = (double**)malloc(sizeof(double*)*(Lmax+1));
-                  for (n=0; n<=Lmax; n++){
-                    Spe_ProductRF_Bessel[i][j][k][l][m][n] = (double*)malloc(sizeof(double)*num);
-                  }
-		}
-	      }
-	    }
-	  }
-	}
       }
 
-    break;
-    
+      if (ProExpn_VNA==1) {
+        const OpenMXProductShape shape = {List_YOUSO[18],GL_Mesh,Spe_MaxL_Basis,Spe_Num_Basis};
+        OpenMXProductViews views;
+        char error[256];
+        if (!openmx_core_product_allocate(core,&shape,&views,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays(products): %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+      }
+      break;
+
     case 8:  /* hmweng */
 
       Wannier_ProSpeName = (char**)malloc(sizeof(char*)*Wannier_Num_Kinds_Projectors);

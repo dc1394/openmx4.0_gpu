@@ -20,33 +20,30 @@
 #include <unistd.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
-#include <omp.h>
+#include "openmx_core_radial.h"
 
 
 
-void FT_NLP()
+void FT_NLP(OpenMXCoreContext *core, int device)
 {
-  int numprocs,myid,ID,tag=999;
-  int count,NumSpe;
-  int i,kj,num_k,so;
-  int Lspe,spe,L,GL,MaxGL;
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
+  OpenMXReciprocalRows archive_rows;
+  OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_NONLOCAL,&archive_rows);
+  char archive_error[256];
+  const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
+  double ****Spe_NLRF_Bessel=reciprocal.vps.transforms;
+
+  int numprocs,myid,ID,NumSpe;
+  int num_k,so,Lspe,spe;
   int RestartRead_Succeed;
-  double dk,norm_k;
-  double rmin,rmax,r,r2,h,sum[2];
-  double **SphB,***TmpNRF;
-  double *tmp_SphB,*tmp_SphBp;
-  double TStime, TEtime;
-  /* for MPI */
-  MPI_Status stat;
-  MPI_Request request;
-  /* for OpenMP */
-  int OMPID,Nthrds,Nprocs;
+  double dk,rmin,rmax,h;
+  double TStime,TEtime;
 
   char fileFT[YOUSO10];
-  char operate[300];
-  FILE *fp;
-  size_t size; 
 
   dtime(&TStime);
 
@@ -65,41 +62,12 @@ void FT_NLP()
   ***********************************************************/
 
   if (Scf_RestartFromFile==1){
-
-    /****************************************************
-          generate radial grids in the k-space
-    ****************************************************/
-
-    dk = PAO_Nkmax/(double)Ngrid_NormK;
-    for (i=0; i<Ngrid_NormK; i++){
-      NormK[i] = (double)i*dk;
-    }
-
-    /***********************************************************
-                      read Spe_NLRF_Bessel
-    ***********************************************************/
-
     sprintf(fileFT,"%s%s_rst/%s.ftnlp",filepath,restart_filename,restart_filename);
-
-    if ((fp = fopen(fileFT,"rb")) != NULL){
-
-      RestartRead_Succeed = 1;
-
-      for (spe=0; spe<SpeciesNum; spe++){
-	for (so=0; so<=VPS_j_dependency[spe]; so++){
-	  for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-
-	    size = fread(&Spe_NLRF_Bessel[so][spe][L][0],sizeof(double),List_YOUSO[15],fp);
-	    if (size!=List_YOUSO[15]) RestartRead_Succeed = 0;
-	  }
-	}
-      }
-
-      fclose(fp);
-    }
-    else{
-      printf("Could not open a file %s in FT_NLP\n",fileFT);
-    }
+    RestartRead_Succeed=openmx_core_reciprocal_archive_read(archive,fileFT,archive_error,sizeof(archive_error));
+    if (!RestartRead_Succeed)
+      fprintf(stderr,"FT_NLP: %s: %s\n",fileFT,archive_error);
+    /* Every rank must take the same recompute/distribution branch. */
+    MPI_Allreduce(MPI_IN_PLACE,&RestartRead_Succeed,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
 
   /***********************************************************
@@ -114,155 +82,43 @@ void FT_NLP()
 
       num_k = Ngrid_NormK;
       dk = PAO_Nkmax/(double)num_k;
-      rmin = Spe_VPS_RV[spe][0];
-      rmax = Spe_Atom_Cut1[spe] + 0.5;
+      rmin = openmx_radial_row2(&atomic->vps_radii,spe)[0];
+      rmax = atomic->species.cutoff[spe] + 0.5;
       h = (rmax - rmin)/(double)OneD_Grid;
 
-      /* calculation of Nonlocal_RadialF */
-
-      TmpNRF = (double***)malloc(sizeof(double**)*2);
-      for (so=0; so<2; so++){
-        TmpNRF[so] = (double**)malloc(sizeof(double*)*(Spe_Num_RVPS[spe]+1));
-        for (L=0; L<(Spe_Num_RVPS[spe]+1); L++){
-          TmpNRF[so][L] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-	}
-      }
-
-      for (so=0; so<=VPS_j_dependency[spe]; so++){
-        for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-          for (i=0; i<=OneD_Grid; i++){
-            r = rmin + (double)i*h;
-            TmpNRF[so][L][i] = Nonlocal_RadialF(spe,L-1,so,r); 
-	  }
+      {
+        char error[256];
+        OpenMXProjectorTable table = {0};
+        const OpenMXUniformRadialGrid grid = {OneD_Grid,num_k,rmin,h,dk};
+        table.projector_count = atomic->species.radial_projectors[spe];
+        table.angular = openmx_atomic_projector_angular(atomic,spe)+1;
+        table.spin_count = atomic->species.relativistic[spe]+1;
+        table.mesh_count = atomic->species.vps_mesh[spe];
+        table.radii = openmx_radial_row2(&atomic->vps_radii,spe);
+        for (so=0; so<table.spin_count && so<2; so++) {
+          table.values[so] = reciprocal.vps.projectors[so][spe];
+          table.output[so] = Spe_NLRF_Bessel[so][spe]+1;
+        }
+        if (!openmx_core_transform_projectors(core,device,&table,&grid,error,sizeof(error))) {
+          fprintf(stderr,"FT_NLP: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
         }
       }
 
-      /* kj loop */
-
-#pragma omp parallel shared(Spe_VPS_List,spe,Spe_Num_RVPS,num_k,dk,OneD_Grid,rmin,h,VPS_j_dependency,Spe_NLRF_Bessel,TmpNRF)  private(MaxGL,L,GL,SphB,tmp_SphB,tmp_SphBp,OMPID,Nthrds,Nprocs,norm_k,i,r,r2,sum,so,kj)
-      {
-
-	/* allocate SphB */
-
-	MaxGL = -1;
-	for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-	  GL = Spe_VPS_List[spe][L];
-	  if (MaxGL<GL) MaxGL = GL;
-	}      
-
-	SphB = (double**)malloc(sizeof(double*)*(MaxGL+3));
-	for(GL=0; GL<(MaxGL+3); GL++){ 
-	  SphB[GL] = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-	}
-
-	tmp_SphB  = (double*)malloc(sizeof(double)*(MaxGL+3));
-	tmp_SphBp = (double*)malloc(sizeof(double)*(MaxGL+3));
-
-	/* get info. on OpenMP */ 
-
-	OMPID = omp_get_thread_num();
-	Nthrds = omp_get_num_threads();
-	Nprocs = omp_get_num_procs();
-
-	for ( kj=OMPID; kj<num_k; kj+=Nthrds ){
-
-	  norm_k = (double)kj*dk;
-
-	  /* calculate SphB */
-
-	  for (i=0; i<=OneD_Grid; i++){
-
-	    r = rmin + (double)i*h;
-
-	    Spherical_Bessel(norm_k*r,MaxGL,tmp_SphB,tmp_SphBp);
-
-	    r2 = r*r;
-	    for(GL=0; GL<=MaxGL; GL++){ 
-	      SphB[GL][i] = tmp_SphB[GL]*r2; 
-	    }
-	  }
-
-	  for(GL=0; GL<=MaxGL; GL++){ 
-	    SphB[GL][0] *= 0.5;
-	    SphB[GL][OneD_Grid] *= 0.5;
-	  }
-
-	  /* loof for L */
-
-	  for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-
-	    GL = Spe_VPS_List[spe][L];
-
-	    /****************************************************
-                      \int jL(k*r)*RL*r^2 dr 
-	    ****************************************************/
-
-	    sum[0] = 0.0;
-	    sum[1] = 0.0;
-
-            for (so=0; so<=VPS_j_dependency[spe]; so++){
-	      for (i=0; i<=OneD_Grid; i++){
-		sum[so] += TmpNRF[so][L][i]*SphB[GL][i];
-	      }
-	    }
-
-	    for (so=0; so<=VPS_j_dependency[spe]; so++){
-	      Spe_NLRF_Bessel[so][spe][L][kj] = sum[so]*h;
-	    }
-
-	  } /* L */
-	} /* kj */
-
-	/* free arrays */
-
-	for(GL=0; GL<(MaxGL+3); GL++){ 
-	  free(SphB[GL]);
-	}
-	free(SphB);
-
-	free(tmp_SphB);
-	free(tmp_SphBp);
-
-#pragma omp flush(Spe_NLRF_Bessel)
-
-      } /* #pragma omp parallel */
-
-      /* freeing TmpNRF */
-
-      for (so=0; so<2; so++){
-        for (L=0; L<(Spe_Num_RVPS[spe]+1); L++){
-          free(TmpNRF[so][L]);
-	}
-        free(TmpNRF[so]);
-      }
-      free(TmpNRF);
-
     } /* Lspe */
-
-    /****************************************************
-     Remedy for MSpeciesNum==0
-     generate radial grids in the k-space
-    ****************************************************/
-
-    dk = PAO_Nkmax/(double)Ngrid_NormK;
-    for (i=0; i<Ngrid_NormK; i++){
-      NormK[i] = (double)i*dk;
-    }
 
     /***********************************************************
         sending and receiving of Spe_RF_Bessel by MPI
     ***********************************************************/
 
     for (ID=0; ID<Num_Procs2; ID++){
-      NumSpe = Species_End[ID] - Species_Top[ID] + 1;
-      for (Lspe=0; Lspe<NumSpe; Lspe++){
-	spe = Species_Top[ID] + Lspe;
-	for (so=0; so<=VPS_j_dependency[spe]; so++){
-	  for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-	    MPI_Bcast(&Spe_NLRF_Bessel[so][spe][L][0],
-		      List_YOUSO[15],MPI_DOUBLE,ID,mpi_comm_level1);
-	  }
-	}
+      NumSpe=Species_End[ID]-Species_Top[ID]+1;
+      for (Lspe=0;Lspe<NumSpe;++Lspe) {
+        spe=Species_Top[ID]+Lspe;
+        for (size_t row=archive_rows.species_offsets[spe];row<archive_rows.species_offsets[spe+1];++row) {
+          MPI_Bcast(archive_rows.row[row].values,archive_rows.row[row].count,MPI_DOUBLE,ID,mpi_comm_level1);
+        }
       }
     }
 
@@ -271,24 +127,9 @@ void FT_NLP()
     ***********************************************************/
 
     if (myid==Host_ID){
-
       sprintf(fileFT,"%s%s_rst/%s.ftnlp",filepath,filename,filename);
-
-      if ((fp = fopen(fileFT,"wb")) != NULL){
-
-	for (spe=0; spe<SpeciesNum; spe++){
-  	  for (so=0; so<=VPS_j_dependency[spe]; so++){
-	    for (L=1; L<=Spe_Num_RVPS[spe]; L++){
-	      fwrite(&Spe_NLRF_Bessel[so][spe][L][0],sizeof(double),List_YOUSO[15],fp);
-	    }
-	  }
-	}  
-
-	fclose(fp);
-      }
-      else{
-	printf("Could not open a file %s in FT_NLP\n",fileFT);
-      }
+      if (!openmx_core_reciprocal_archive_write(archive,fileFT,archive_error,sizeof(archive_error)))
+        fprintf(stderr,"FT_NLP: %s: %s\n",fileFT,archive_error);
     }
 
   } /* if (RestartRead_Succeed==0) */
@@ -297,6 +138,7 @@ void FT_NLP()
                          elapsed time
   ***********************************************************/
 
+  openmx_core_reciprocal_archive_destroy(archive);
   dtime(&TEtime);
 
   /*

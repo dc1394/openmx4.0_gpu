@@ -24,14 +24,14 @@
 #include <omp.h>
 
 static void Set_Inf_SndRcv_for_PopAnal();
-static void Copy_OLP_DM();
+static void Copy_OLP_DM(const OpenMXElectronicViews *electronic);
 static void Opt_Object_Function( int Nto, int *atom_targeted_orbital, int *orbital_targeted_orbital, 
-                          int **spe_targeted_orbital, int *Num_vOrbs);
+                          int **spe_targeted_orbital, int *Num_vOrbs, const OpenMXElectronicViews *electronic);
 static void Calc_Gradient( int step, int dim, int Nto, int ****RMI3,
                            double ****acoes, double ****gra, double **occupation, 
                            double **similarity, double ****overlap_wanniers, double ****b,
                            int *MP, int *atom_targeted_orbital, int *orbital_targeted_orbital, 
-			   int **spe_targeted_orbital, int *Num_vOrbs);
+			   int **spe_targeted_orbital, int *Num_vOrbs, const OpenMXElectronicViews *electronic);
 
 
 int *dim_SRS;
@@ -40,7 +40,7 @@ double ****SPA;
 double ***SRS;
 
 #pragma optimization_level 1
-void Population_Analysis_Wannier2(char *argv[])
+void Population_Analysis_Wannier2(char *argv[], const OpenMXElectronicViews *electronic)
 {
   int spe,n,l,i,j,max_occupied_N,Number_VPS;
   int mul,ind,k,m,num,Nto,dim,ita,ocupied_flag;
@@ -301,14 +301,14 @@ void Population_Analysis_Wannier2(char *argv[])
                      Copy_OLP_DM
   ***************************************************/
 
-  Copy_OLP_DM();
+  Copy_OLP_DM(electronic);
 
   /***************************************************
           optimization of the object function
   ***************************************************/
 
   Opt_Object_Function(Nto, atom_targeted_orbital,orbital_targeted_orbital,
-                      spe_targeted_orbital,Num_vOrbs);
+                      spe_targeted_orbital,Num_vOrbs, electronic);
 
   /***************************************************
                      freeing of arrays
@@ -427,8 +427,11 @@ void Population_Analysis_Wannier2(char *argv[])
 
 
 
-void Copy_OLP_DM()
+void Copy_OLP_DM(const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****OLP=electronic->OLP;
+
   int spin,Gh_AN,h_AN,tno0,tno1,tno2,Cwan,Gc_AN;
   int n,num,size1,size2,i,j,k,Hwan,Mc_AN,Anum,NUM;
   int Bnum,Gi,wanA,jan,jg,m,ian,n2,ig,ih,kl,wan;
@@ -1059,7 +1062,7 @@ void Copy_OLP_DM()
 
 #pragma optimization_level 1
 void Opt_Object_Function( int Nto, int *atom_targeted_orbital, int *orbital_targeted_orbital, 
-                          int **spe_targeted_orbital, int *Num_vOrbs)
+                          int **spe_targeted_orbital, int *Num_vOrbs, const OpenMXElectronicViews *electronic)
 {
   int dim,wanA,i,j,k;
   int Gc_AN,gamma,step,ian,ih,kl;
@@ -1350,7 +1353,7 @@ void Opt_Object_Function( int Nto, int *atom_targeted_orbital, int *orbital_targ
 
     Calc_Gradient( step,dim,Nto,RMI3,
                    acoes,gra,occupation,similarity,overlap_wanniers, bb,
-                   MP,atom_targeted_orbital,orbital_targeted_orbital,spe_targeted_orbital,Num_vOrbs);
+                   MP,atom_targeted_orbital,orbital_targeted_orbital,spe_targeted_orbital,Num_vOrbs, electronic);
 
     /* update acoes by a steepest decent method */
 
@@ -1590,8 +1593,10 @@ void Calc_Gradient( int step, int dim, int Nto, int ****RMI3,
                     double ****acoes, double ****gra, double **occupation, 
                     double **similarity, double ****overlap_wanniers, double ****bb,
                     int *MP, int *atom_targeted_orbital, int *orbital_targeted_orbital, 
-                    int **spe_targeted_orbital, int *Num_vOrbs)
+                    int **spe_targeted_orbital, int *Num_vOrbs, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP=electronic->OLP;
+
   int i,j,k,l,m,Gc_AN;
   int ta,to,gamma,mu,nu,TGc_AN,TOrb;
   int wanA,wanB,GA_AN,GB_AN,h_AN,MA_AN;

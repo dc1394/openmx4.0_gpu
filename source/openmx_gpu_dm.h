@@ -19,7 +19,9 @@ int openmx_gpu_dm_entries(int kind,int n,int states,int stride,int entries,
     const int *phase_index,int phase_count,const double *phase_r,const double *phase_i,
     const double *occupation,const double *energy_weight,const double *partial_weight,
     double *const outputs[10],int accumulate);
-/* GPU-only attempt for a collective recovery phase; failure never publishes. */
+/* GPU-only attempt for a collective recovery phase; a returned failure never
+   publishes. A device error during publication is fatal, as in the common
+   worker executor, because a partially published result cannot be retried. */
 int openmx_gpu_dm_try_entries(int kind,int n,int states,int stride,int entries,
     const void *vectors,int host_vectors,const int *basis0,const int *basis1,
     const int *phase_index,int phase_count,const double *phase_r,const double *phase_i,

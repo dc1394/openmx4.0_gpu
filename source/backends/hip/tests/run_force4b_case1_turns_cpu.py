@@ -64,7 +64,7 @@ static void check_declined(int full_batch, int stream_mode, int mode)
 {
     CHECK(!Force4B_GpuCase1TurnsBegin(full_batch, stream_mode, mode, cdm));
     /* Even an inactive rank can own a communicator for its admitted peers. */
-    Force4B_GpuCase1TurnsRun(cdm, ds);
+    Force4B_GpuCase1TurnsRun(vna, cdm, ds);
     CHECK(F4B_turns1.device_comm == MPI_COMM_NULL);
     CHECK(F4B_turns1.halo_host == NULL && F4B_turns1.metadata == NULL);
     CHECK(F4B_turns1.stage == NULL);
@@ -118,7 +118,7 @@ int main(void)
                 for (mc = 1; mc <= Matomnum; mc++) {
                     for (q = 1; q <= FNAN[M2G[mc]]; q++) {
                         stage_source(F_G2M[natn[M2G[mc]][q]]);
-                        Force4B_case1_trace_fused(mc, M2G[mc], q, cdm, ds,
+                        Force4B_case1_trace_fused(vna, mc, M2G[mc], q, cdm, ds,
                             &expected[mc][0], &expected[mc][1], &expected[mc][2]);
                     }
                     for (i = 0; i < 3; i++) Gxyz[M2G[mc]][41 + i] = 0.37;
@@ -142,7 +142,7 @@ int main(void)
                     const char* caps[] = { "1", "2", "0", "-1", "bad", "999999999999999999999", "" };
                     setenv("OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS", caps[seed], 1);
                 }
-                Force4B_GpuCase1TurnsRun(cdm, ds);
+                Force4B_GpuCase1TurnsRun(vna, cdm, ds);
                 allocation_fail = 0;
                 for (mc = 1; mc <= Matomnum; mc++) {
                     for (i = 0; i < 3; i++) {
@@ -166,7 +166,7 @@ int main(void)
                         stage_source(source);
                         Force4B_GpuCase1StreamSource(source, cdm, ds);
                     }
-                    Force4B_GpuCase1StreamAccumulate(cdm);
+                    Force4B_GpuCase1StreamAccumulate(vna, cdm);
                     Force4B_GpuCase1StreamEnd();
                     for (mc = 1; mc <= Matomnum; mc++)
                         CHECK(memcmp(turns_f[mc], &Gxyz[M2G[mc]][41], sizeof(turns_f[mc])) == 0);

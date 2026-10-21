@@ -25,7 +25,7 @@ void get_LCAO_Coef(dcomplex** C2, dcomplex** LCAO,dcomplex** S,int n);
 
 
 
-double Band_DFT_NonCol_Optical(int SCF_iter,
+double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
 			       double *koS,
 			       dcomplex **S,
 			       int knum_i, int knum_j, int knum_k,
@@ -35,7 +35,7 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
 			       double ****CntOLP,
 			       double *****CDM,
 			       double *****EDM,
-			       double Eele0[2], double Eele1[2])
+			       double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
   static int firsttime=1;
   int i,j,k,l,n,n2,wan;
@@ -178,7 +178,7 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
   n = 0;
   for (i=1; i<=atomnum; i++){
     wanA  = WhatSpecies[i];
-    n += Spe_Total_CNO[wanA];
+    n += atomic->species.contracted_orbitals[wanA];
   }
   n2 = 2*n + 2;
 
@@ -189,7 +189,7 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
   TZ = 0.0;
   for (i=1; i<=atomnum; i++){
     wan = WhatSpecies[i];
-    TZ += Spe_Core_Charge[wan];
+    TZ += atomic->species.core_charge[wan];
   }
 
   /***********************************************
@@ -393,7 +393,7 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
     /* YTL-start */
 
     /* Step (1) : calculate < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
-    Calc_NabraMatrixElements();
+    Calc_NabraMatrixElements(atomic, local_basis);
 
     Initialize_optical();
 
@@ -711,14 +711,14 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
       for (AN=1; AN<=atomnum; AN++){
 	GA_AN = order_GA[AN];
 	wanA = WhatSpecies[GA_AN];
-	tnoA = Spe_Total_CNO[wanA];
+	tnoA = atomic->species.contracted_orbitals[wanA];
 	Anum = MP[GA_AN];
 
 	for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	  GB_AN = natn[GA_AN][LB_AN];
 	  Rn = ncn[GA_AN][LB_AN];
 	  wanB = WhatSpecies[GB_AN];
-	  tnoB = Spe_Total_CNO[wanB];
+	  tnoB = atomic->species.contracted_orbitals[wanB];
 	  Bnum = MP[GB_AN];
 
 	  l1 = atv_ijk[Rn][1];
@@ -770,14 +770,14 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
       for (AN=1; AN<=atomnum; AN++){
 	GA_AN = order_GA[AN];
 	wanA = WhatSpecies[GA_AN];
-	tnoA = Spe_Total_CNO[wanA];
+	tnoA = atomic->species.contracted_orbitals[wanA];
 	Anum = MP[GA_AN];
 
 	for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	  GB_AN = natn[GA_AN][LB_AN];
 	  Rn = ncn[GA_AN][LB_AN];
 	  wanB = WhatSpecies[GB_AN];
-	  tnoB = Spe_Total_CNO[wanB];
+	  tnoB = atomic->species.contracted_orbitals[wanB];
 	  Bnum = MP[GB_AN];
 
 	  l1 = atv_ijk[Rn][1];
@@ -1513,14 +1513,14 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
 	for (AN=1; AN<=atomnum; AN++){
 	  GA_AN = order_GA[AN];
 	  wanA = WhatSpecies[GA_AN];
-	  tnoA = Spe_Total_CNO[wanA];
+	  tnoA = atomic->species.contracted_orbitals[wanA];
 	  Anum = MP[GA_AN];
 
 	  for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	    GB_AN = natn[GA_AN][LB_AN];
 	    Rn = ncn[GA_AN][LB_AN];
 	    wanB = WhatSpecies[GB_AN];
-	    tnoB = Spe_Total_CNO[wanB];
+	    tnoB = atomic->species.contracted_orbitals[wanB];
 	    Bnum = MP[GB_AN];
 
 	    l1 = atv_ijk[Rn][1];
@@ -1562,14 +1562,14 @@ double Band_DFT_NonCol_Optical(int SCF_iter,
 	for (AN=1; AN<=atomnum; AN++){
 	  GA_AN = order_GA[AN];
 	  wanA = WhatSpecies[GA_AN];
-	  tnoA = Spe_Total_CNO[wanA];
+	  tnoA = atomic->species.contracted_orbitals[wanA];
 	  Anum = MP[GA_AN];
 
 	  for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
 	    GB_AN = natn[GA_AN][LB_AN];
 	    Rn = ncn[GA_AN][LB_AN];
 	    wanB = WhatSpecies[GB_AN];
-	    tnoB = Spe_Total_CNO[wanB];
+	    tnoB = atomic->species.contracted_orbitals[wanB];
 	    Bnum = MP[GB_AN];
 
 	    l1 = atv_ijk[Rn][1];

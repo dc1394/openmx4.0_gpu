@@ -265,10 +265,17 @@ int main(int argc,char **argv) {
 #endif
     host_operands=true;
     openmx_mgpuGemmStagingBegin();
-    for(auto ta:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) for(auto tb:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) {
-        run<double>(h,devices,ta,tb,65,47,71);
-        run<cuDoubleComplex>(h,devices,ta,tb,65,47,71,false,true);
+    for(const char *order:{"row","column","auto"}) {
+        setenv("OPENMX_MGPU_GEMM_TRAVERSAL",order,1);
+        for(auto ta:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) for(auto tb:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) {
+            run<double>(h,devices,ta,tb,65,47,71);
+            run<cuDoubleComplex>(h,devices,ta,tb,65,47,71,false,true);
+        }
+        // Multiple waves, unequal edge tiles, and a transposed long operand.
+        run<double>(h,devices,CUBLAS_OP_T,CUBLAS_OP_N,337,223,311);
+        run<cuDoubleComplex>(h,devices,CUBLAS_OP_C,CUBLAS_OP_T,223,337,311);
     }
+    unsetenv("OPENMX_MGPU_GEMM_TRAVERSAL");
     run<cuDoubleComplex>(h,devices,CUBLAS_OP_T,CUBLAS_OP_T,3,5,17001);
     if(count>=4) {
         std::vector<int> nonprefix={2,3};

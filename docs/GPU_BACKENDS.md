@@ -7,7 +7,7 @@ CUDA と HIP には別々のビルドディレクトリを使用してくださ�
 
 ## 必要なツールと構成
 
-CMake 3.20 以上、Python 3.8 以上、GNU make に加え、選択したバックエンドの
+CMake 3.25.2 以上、C++20 対応コンパイラ・標準ライブラリ、Python 3.8 以上、GNU make に加え、選択したバックエンドの
 コンパイラ、MPI、数値計算ライブラリが必要です。最初にリポジトリのルートで
 使用するバックエンドのサブモジュールを初期化します。HIP は GEMMul8 のみを使い、
 FFTW3 には AOCL のライブラリを使用します。
@@ -35,11 +35,26 @@ CPU と GPU の固有値計算は、同じ ELPA 2026.02.002 ライブラリを�
 OpenMX が以前内蔵していた古い ELPA のソースとビルドルールは除去しました。
 
 CMake は既存の Makefile にあるファイル別の最適化・オフロード設定を使います。
+単一構成の CMake ビルドは、種別を省略すると C++ コアも含めて `Release` を使います。
+以前の空の `CMAKE_BUILD_TYPE` も再構成時に `Release` となり、最適化なしのコアが
+意図せず計算に使われることを防ぎます。明示した `Debug` などの指定は維持します。
 `build/<backend>/native/source/` に選択したソースをリンクし、GEMMul8、FFTW、MAGMA、
 ELPA/COSMA などの変更される依存ソース・生成物をビルドごとに分離します。
 共通アーカイブは `source/third_party/dist/`、AMD 用 MAGMA パッチなどは
 `source/third_party/hip/` に保存しています。
 選択結果は各ビルドディレクトリの `selected-sources.json` で確認できます。
+
+`core/` の新しい C++ モジュールは CMake が構築し、両本体へ共有ライブラリとして
+リンクします。直接 make を使う場合も、この部分には CMake が必要です。
+初回の構成時に Kokkos 5.2.2 を取得して SHA-256 を検証します。オフラインでは
+`FETCHCONTENT_SOURCE_DIR_KOKKOS` で展開済みソースを指定できます。
+コアの既定値は `OPENMX_CORE_BACKEND=SERIAL` です。PAO 動径変換も GPU で実行する場合は
+`CUDA` / `HIP` と、対応するコンパイラ・Kokkos アーキテクチャを指定します。
+詳細は [C++ / Kokkos 移行手順](CPP_CORE_MIGRATION.md) を参照してください。
+コア単独では Intel の SYCL コンパイラによる `OPENMX_CORE_BACKEND=SYCL` も選択できます。
+選択したデバイスに FP64 がなければ動径変換を CPU で実行します。
+OpenMX 本体の Intel GPU・Metal バックエンドはまだありません。
+対応範囲と検証結果は [2026-10-20 レビュー対応](CODE_REVIEW_20261020.md) に記録しています。
 
 ## 共通コードとバックエンド境界
 
@@ -59,6 +74,10 @@ HIP の置換リストは 105 件から 49 件になり、共通化した元フ�
 実行時の切り替えや追加のデータ転送は行いません。HIP Makefile が定義する
 `__HIP_PLATFORM_AMD__` から `OPENMX_GPU_HIP` を決定します。GPU を使わない
 判定コードからも参照できるよう、`openmx_gpu_backend.h` は SDK に依存しません。
+明示的なバックエンド識別子も受け付け、未実装の SYCL・METAL・HOST を
+CUDA 専用アダプターへ渡すとコンパイルを停止します。
+コアの `openmx_accelerator.h` は SDK から独立して、バックエンド、FP64 能力、
+メモリモデルを記述します。実行方針は能力とバックエンド別の検証結果に基づきます。
 
 OpenACC と OpenMP target の指示、物理メモリ・UUID・GPU 間接続の取得、
 ELPA の GPU オプションと HIP 小行列対策はバックエンドごとの分岐に保持しています。
@@ -67,26 +86,52 @@ CUDA の弱 FP64 GPU 向け MAGMA FP32 補正と共有 Band グループ、HIP �
 主要 SCF ソルバー、Hamiltonian・密度・軌道・力などの専用実装と、
 ツールチェーン・依存ライブラリの構築は引き続きバックエンド別です。
 
-`sources.json` の `shared` と `import_sha256` は変更していない取り込み元を記録し、
-今回の共通実装は `integrated_shared` に登録します。共通コードを修正すると
+`sources.json` の `shared`、`overrides` と `import_sha256` は変更していない取り込み元を記録し、
+共通実装は `integrated_shared` に登録します。取り込み後に改修したバックエンド固有の
+実装は `integrated_overrides` に登録し、移植元の不変ファイルと区別します。共通コードを修正すると
 両ビルドへ反映されます。既存の HIP ビルドを再開したときも、準備処理が
 削除済みの置換ソースへのリンクを共通ソースへ張り替えます。
 両 Makefile は共通 GPU インターフェースヘッダーの変更を再コンパイルへ反映します。
+
+GeForce の MPS 実行では、入力・出力・作業領域をすべて確保した共通 GPU 処理が、
+計算開始前にメモリ確保の排他ロックを解放します。A100/H100 と HIP の既定は
+従来の実行方針を維持します。ハードウェアごとの方針、切り替え方法と計測条件は
+[性能回帰検証](PERFORMANCE_REGRESSION.md) に記載しています。
+
+GPU 占有ロックには、プロセス内・プロセス間とも待機上限があります。
+`OPENMX_GPU_LOCK_TIMEOUT_MS` の既定は `300000`（5分）で、`0` は待機しません。
+`OPENMX_GPU_LOCK_DIR` にはロックファイルを置く既存の絶対パスを指定できます。
+既定は `/tmp` です。同じユーザーで GPU を共有する全ランク・ジョブから見える、
+同じノード内のディレクトリを指定してください。コンテナごとに異なる `/tmp` を
+使う構成では、共有したローカルディレクトリへ変更する必要があります。
+期限切れやロック取得失敗は診断を出して、その GPU 処理の開始を辞退します。
+呼び出し元は既存の容量回復・CPU 経路、または明示的な異常終了を選びます。
 
 ## NVIDIA / CUDA
 
 既定の Makefile は NVIDIA HPC SDK 26.9 と CUDA 13.4 を使用します。
 その構成がインストールされている場合は、リポジトリのルートで次のようにビルドします。
-`120` は RTX 5080 の例です。A100 には `80`、H100 には `90` を指定します。
+`sm_120` は RTX 5080 の例です。A100 には `sm_80`、H100 には `sm_90` を指定します。
 
 ```sh
 cmake -S . -B build/cuda \
   -DOPENMX_GPU_BACKEND=CUDA \
-  -DOPENMX_GPU_ARCH=120 \
+  -DOPENMX_GPU_ARCH=sm_120 \
   -DOPENMX_BUILD_JOBS=4 \
   '-DOPENMX_MAKE_OPTIONS=GPUSOLVER2_JOBS=4'
 cmake --build build/cuda
 ```
+
+数値だけの `120` も指定できます。指定は NVHPC、nvcc、ELPA/COSMA と
+Kokkos/CUDA に伝わり、GPU を搭載していないログインノードでも構成できます。
+`OPENMX_GPU_ARCH` が未指定または `auto` の場合は、CMake の構成時に
+`nvidia-smi --query-gpu=compute_cap --format=csv,noheader` を実行し、
+最初の有効な compute capability からアーキテクチャを決定します。
+コマンドが存在しない場合、実行に失敗した場合、有効な GPU を認識できない場合は
+構成をエラー終了します。キャッシュ済みの `CMAKE_CUDA_ARCHITECTURES` があっても
+検出は省略しません。ログインノードなどでは `-DOPENMX_GPU_ARCH=sm_80` のように
+計算ノードの GPU に合わせて指定してください。CPU コアだけのビルドは GPU を検出しません。
+複数アーキテクチャの生成には、それぞれ別のビルドディレクトリを使用してください。
 
 別の SDK、CUDA、MPI を選ぶ場合はネイティブ Makefile の変数を渡します。
 次のパスは実際のインストール先に置き換えてください。
@@ -161,6 +206,18 @@ CMAKE_BIN=/absolute/path/to/cmake-bootstrap/bin/cmake
 "$CMAKE_BIN" --version
 ```
 
+CMake 4 系をインストール済みでも古いバージョンが表示される場合は、
+`type -a cmake` で実際の検索順を確認してください。例えば `~/bin/cmake` や
+`/usr/local/bin/cmake` が、更新した `/usr/bin/cmake` より先に選ばれることがあります。
+選んだ実行ファイルで `--version` を確認してから、構成とビルドの両方に同じパスを使います。
+シェル設定で古い版の `CMAKE_ROOT` を固定している場合も解除し、各 CMake に
+対応するモジュールを自動検出させてください。
+
+NVIDIA の直接 make は、コンパイラ用に `PATH` を変更する前に呼び出し元の CMake を
+絶対パスで記録し、C++ コアと MAGMA の構築に使います。個別に選ぶ場合は
+`OPENMX_CORE_CMAKE=/absolute/path/to/cmake` と `MAGMA_CMAKE=/absolute/path/to/cmake`
+を make に渡せます。
+
 ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3.24 以上を
 再利用するには `OPENMX_MAKE_OPTIONS` に `GPUSOLVER2_CMAKE=/absolute/path/to/cmake-bootstrap/bin/cmake`
 も追加します。これは CMake の再構築を省略するための指定で、依存ライブラリの
@@ -171,9 +228,14 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 | 変数 | 内容 |
 | --- | --- |
 | `OPENMX_GPU_BACKEND` | `CUDA`（既定）または `HIP`。別バックエンドには別ディレクトリを使用。 |
-| `OPENMX_GPU_ARCH` | CUDA は `80` / `90` / `120` など、HIP は `gfx942` / `gfx1200` など。未指定時はネイティブ Makefile の検出・既定値を使用。 |
+| `OPENMX_CORE_BACKEND` | 新しい C++ コアの実行空間。`SERIAL`（既定）、`OPENMP`、`CUDA`、`HIP`、`SYCL`。GPU は本体と同じバックエンドを選択。`SYCL` はコア単独で使用。 |
+| `OPENMX_BUILD_APPLICATION` | `OFF` なら MPI や GPU SDK を必要としないコア単独ビルド。既定は `ON`。 |
+| `OPENMX_GPU_ARCH` | CUDA は `sm_80` / `sm_90` / `sm_120`（数値のみも可）、HIP は `gfx942` / `gfx1200` など。CUDA コアの Kokkos 設定にも反映。CUDA で未指定または `auto` の場合は `nvidia-smi` で自動認識し、検出に失敗したら構成をエラー終了。 |
 | `OPENMX_BUILD_JOBS` | ネイティブ make の並列数。既定は `4`。 |
 | `OPENMX_MAKE_OPTIONS` | `NAME=value;NAME=value` 形式のネイティブ make 変数。シェルで引用符を付ける。 |
+| `OPENMX_COPY_TO_WORK` | 成功した本体ビルドを作業ディレクトリへコピー。既定は `ON`。 |
+| `OPENMX_WORK_DIR` | コピー先。既定はリポジトリの `work`。実行ファイル名は `openmx`。 |
+| `CMAKE_INSTALL_PREFIX` | 未指定なら `OPENMX_WORK_DIR` にローカル配置し、実行ファイルは直下の `openmx`。明示指定時は `<prefix>/bin/openmx`。`cmake --install` の `--prefix` でも変更可能。 |
 
 `cmake --build ... -jN` の外側の並列数では、内部の make の並列数は変更されません。
 `OPENMX_BUILD_JOBS` で指定してください。依存スタックの独立した並列数は
@@ -181,15 +243,43 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 `GPUSOLVER2_JOBS` を指定しない場合は `OPENMX_BUILD_JOBS` の値を使います。
 
 実行ファイルは `build/cuda/openmx` または `build/hip/openmx` に生成されます。
+ビルド成功後、既定では `work/openmx` も自動更新されます。コピーは一時ファイルを
+経由して置き換えるため、実行中の古い実行ファイルへ書き込みません。
+CUDA/HIP の両方をビルドする場合、最後に成功した側が `work/openmx` になります。
+別々のコピー先には `OPENMX_WORK_DIR`、自動コピーの無効化には
+`OPENMX_COPY_TO_WORK=OFF` を指定します。
 `cmake --build build/hip --target native-clean` で HIP 側のネイティブ生成物を清掃できます。
 コンパイラや依存ライブラリの構成を変更する場合は、新しいビルドディレクトリの使用が確実です。
 
 ```sh
-cmake --install build/hip --prefix /path/to/install
+# 既定: work/openmx と work/lib/libopenmx_core.so
+cmake --install build/cuda
+# HIP 版: cmake --install build/hip
+
+# 別の prefix を指定する場合: <prefix>/bin/openmx と <prefix>/lib/libopenmx_core.so
+cmake --install build/cuda --prefix "$HOME/.local"
 ```
 
-インストール対象は `bin/openmx` のみです。DFT データ、入力ファイル、起動スクリプト、
-依存ライブラリはコピーしません。実行時に参照するビルド内の依存ライブラリと、
+`--install` には `cmake -B` で構成したビルドディレクトリを指定します。
+上の例では `build` は親ディレクトリなので、`cmake --install build` は失敗します。
+`-B build` で構成した場合には `--install build` を使えます。
+インストールはビルドを実行しないため、先に `cmake --build` を完了してください。
+prefix を指定しない場合は `work/openmx` に配置します。ローカルの配置先は
+`OPENMX_WORK_DIR` で変更できます。構成時の `-DCMAKE_INSTALL_PREFIX=...` または
+インストール時の `--prefix` で明示指定した場合は、`<prefix>/bin/openmx` に配置します。
+
+既存のビルドに以前の `/usr/local` などの prefix がキャッシュされている場合は、
+次のように一度リセットしてからビルド・インストールしてください。
+
+```sh
+cmake -S . -B build/cuda -UCMAKE_INSTALL_PREFIX
+cmake --build build/cuda
+cmake --install build/cuda
+```
+
+OpenMX のインストール対象は実行ファイルと `lib/libopenmx_core.so` です。
+Kokkos のインストール規則も実行されます。DFT データ、入力ファイル、起動スクリプト、
+既存の数値計算ライブラリはコピーしません。実行時に参照するビルド内の依存ライブラリと、
 ROCm / CUDA / MPI / AOCL のライブラリ配置を維持してください。
 
 ## 実行時の入力パスと MI300A
@@ -223,6 +313,9 @@ mpirun -np 8 --map-by ppr:8:node:PE=3 --bind-to core \
   "$PWD/build/hip/openmx" /absolute/path/to/input.dat -nt 3
 ```
 
+C++ コアの HIP 実機検証は [C++ / Kokkos 移行記録](CPP_CORE_MIGRATION.md) の
+「AMD 実機検証（2026-10-19）」を参照してください。以下はコア導入前の検証記録です。
+
 2026-10-17 に Radeon RX 9060 XT（gfx1200、1 GPU）、ROCm 7.2.0、
 ROCm clang 版 OpenMPI 5.0.9、AOCL 5.2.0 で HIP 版を依存ライブラリから構築し、
 4 MPI × 4 スレッド／8 MPI × 2 スレッド（最大 16 CPU コア）で検証しました。
@@ -239,10 +332,51 @@ L/L2/L3 全例の実行・性能評価はこの検証に含みません。
 
 ## 検証
 
+2026-10-19 の Force 改善では、216 Si、非共線 Cluster、18 MPI × 1 スレッド、
+RTX 5080・MPS 有効の同一入力で比較しました。Force は `147.03 s` から `20.85 s`、
+VNA の case-1 ローカル計算は `135.22 s` から `9.06 s` に短縮しました。
+全 25 SCF 反復と力の計算は正常終了し、変更前との差は全エネルギー `1.03e-12 Ha`、
+力の最大成分差 `1.01e-12 Ha/bohr` 以下でした。GPU に全ランク分が同時に収まらない
+場合も、1 ランク分が収まれば配列を一度だけ転送して既存の力カーネルで一括計算します。
+メモリ確保に失敗した場合は分割計算へ復旧します。比較とログは
+`build/build-force-d3-20261019/force-comparison.json` と同ディレクトリに保存しています。
+
+DFT-D3 の C6 補間は、提供された修正版の最大指数を引く処理を取り込みました。
+参照値から離れた配位数でも重みのアンダーフローによる C6 の欠落を防ぎ、
+エネルギーと力に使う比・配位数微分を保ちます。CUDA/HIP 共通の処理です。
+`dftd3-interpolation` は高精度計算と有限差分でこの補間と微分を検証します。
+
+新コアの単体テストは [移行手順](CPP_CORE_MIGRATION.md#テスト) を参照してください。
+以下の CTest は、コアを含むビルドの完了後に実行します。コアの GPU テストは実機を使います。
+
 ```sh
 ctest --test-dir build/cuda --output-on-failure
 ctest --test-dir build/hip --output-on-failure
 ```
+
+CUDA の `vna-archive-recovery` は、VNA 行列の一括計算と容量不足時の復旧を
+ASan/UBSan で検証します。FP32/FP64、ハロー、空ランク、メモリ確保・転送の失敗、
+ロックと一時配列の解放、CPU 復旧後の数値結果を確認します。
+実際の GPU カーネルを使う同じ試験は次のように実行できます。
+
+```sh
+OPENMX_TEST_GPU=1 CC=nvc python3 tests/run_setpro_archived_cpu.py
+```
+
+多数の MPI ランクで大きなセルを計算すると、VNA の全ランク分の配列が GPU に
+同時には収まらないことがあります。CUDA 版はその場合、GPU の使用をランク間で
+調整し、各ランクの配列を一度だけ転送して一括計算します。単一ランク分も収まらない
+場合は、分割計算に進みます。`OPENMX_SETPRO_VERBOSE=1` を設定すると、
+`HVNA archived GPU batch` を含む各段階の進行状況を標準エラーへ出力します。
+
+2026-10-19 に RTX 5080、NVHPC 26.9 / CUDA 13.4 で、216 原子の Si
+（Si7.0-s2p2d1 / Si_PBE19、200 Ry、非共線 Cluster）を検証しました。
+18 MPI × 1 スレッド、MPS 有効の GPU 計算と `OPENMX_GPU=0` の CPU 計算は、
+いずれも入力の全 25 SCF 反復と力の計算を正常終了しました。CPU/GPU の差は
+全エネルギー `2.13e-10 Ha`、力の最大成分差 `1.28e-10 Ha/bohr` で、
+両者とも許容誤差 `1e-7` 内です。CTest 全 35 件と、上記の GPU カーネル試験も合格しました。
+入力、実行ログ、全エネルギー成分・648 成分の力の照合結果は
+`build/sidia333-freeze/validation.json` と同ディレクトリに保存しています。
 
 共通テストはソースの選択、取り込み時のチェックサム、CUDA ヘッダーと HIP 互換
 ヘッダーの分離、依存物の独立性、両 Makefile のコンパイル指示を検証します。

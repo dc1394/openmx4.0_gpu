@@ -1,0 +1,228 @@
+A100 multi-GPU validation, 2026-10-21
+===================================
+
+Status
+------
+Work is on refactor/cpp-kokkos-core, based on 9395c05ba7948de607f866d0c58b019c0119b2fa.
+The measurements below are from two physical A100-SXM4-40GB GPUs on acc008.
+Four-GPU and physical two-node runs are not yet validated. Their allocation
+scripts and current job IDs are under work/codex_a100_multi_20261021/.
+Do not interpret the CPU/mock MPI tests as physical multi-node results.
+At 12:59 JST the remaining jobs are queued for resources: 943432 (four-GPU
+suite), 943375 (Si1000 on one full node), and 943376 (two physical nodes).
+The last has no estimated start time; 943375 is estimated at 19:10 JST.
+These are prepared jobs, not successful measurements. The two-GPU runs
+943389 and 943417 have ended; their individual stage status is recorded.
+
+The capacity-pressure SCF test exposed unbounded sparse density packing
+after the dense CPU fallback. Packing is now limited by the candidate GPU's
+remaining capacity. Both collinear and noncollinear CPU-recovery tests pass,
+including the default automatic auxiliary-distribution setting.
+
+Build and provenance
+--------------------
+CUDA 12.5, NVHPC 24.7, Open MPI 4.1.6, GCC 12.2 host compiler, cc80.
+Kokkos 5.2.2 uses its SERIAL backend; native CUDA/OpenACC kernels remain active.
+Makefile.kugui retains the -Mnovect workaround from the preceding A100 validation.
+
+  make -C source -f Makefile.kugui -j3 openmx WITH_MAGMA=1 \
+    MAGMA_JOBS=3 GPUSOLVER2_JOBS=3
+
+Frozen binaries in work/codex_a100_multi_20261021/bin/:
+  openmx-baseline SHA256
+    986abbb507fe2232fbb0f6e11efbc5f749e0cca6d61171219a26f00a7bdec094
+  openmx-gemm-candidate SHA256 (GEMM traversal/gather and optional GS2 profiling)
+    f25105c6e50467d3d643a92748d41536d5f4608b84dc0908c48c75f99953b4a5
+  openmx-candidate SHA256 (also includes bounded sparse density packing)
+    5be3f51481432884034e9c3dc624351bec97af3d13f50f291f80a30af96d3a4e
+  libopenmx_core.so SHA256
+    ddf3198f88228c318735b9efc531e5397f3708075b5b3da092bd1fad92c4710f
+The executable's RPATH still references source/build/cpp-core; allocations
+verify the shared library's hash before running. These are not relocatable
+standalone executable copies.
+The final candidate is built as source/openmx and installed atomically as
+work/openmx; both hashes match openmx-candidate above.
+
+Local capacity GEMM optimization
+--------------------------------
+CUDA host-backed products now choose row-first or column-first output tiles
+according to the bytes uploaded with the existing per-worker A/B cache.
+Partial tiles and the round-robin worker assignment are included. Full K,
+tile budgets, FP64 arithmetic and transactional publication are unchanged.
+Pinned output downloads are enqueued on all workers before the completion
+loop scatters them into the private host result. Device-resident calls and
+HIP keep their existing traversal.
+
+PBS 943389, two allocated GPUs, 8 CPU threads, n=8192, H X then X^H H X
+(real uses transpose), host operands/results, five timed repetitions after
+warm-up per process, two process samples per setting:
+
+                            real (ms)     complex (ms)
+  old gather + row           1795.900        4828.537
+  async gather + row         1788.886        4821.293
+  async gather + auto         1468.020        3519.913
+  old/new speedup                1.223           1.372
+  time reduction                18.26%          27.10%
+
+The isolated gather difference is within measurement noise. The traversal
+change accounts for the observed gain. The single-GPU host bridge takes
+about 280 ms (real) and 705 ms (complex) on this fitting problem, so these
+results do not justify spreading fitting single-GPU work over more GPUs.
+The capacity-first default is preserved. The native benchmark preallocates
+its device scratch; cooperative timings include per-call worker allocation.
+Both timed paths include host transfers. No extra memory budget was granted.
+
+The independent entrywise comparison against the single-GPU result gives
+relative errors 1.132e-13 (real) and 0 (complex). Both GPUs participate.
+Raw samples and commands: shared-two/commands/02-host-gemm.sh{,.log};
+derived medians: shared-two/host-gemm-summary.json.
+
+PBS 943417 also checks complex n=13000 (the scalar order of Si1000), with
+two GPUs, three timed repetitions and one process sample per setting:
+row traversal 19987.826 ms, automatic traversal 11402.707 ms, a 42.95%
+time reduction. The single-GPU bridge takes 2504--2528 ms. The multi-GPU
+worker budget is unchanged at 259054256 bytes and the private host result
+at 2704000000 bytes; entrywise difference from the native result is zero
+at the benchmark's printed precision. This is a dense kernel measurement,
+not a completed Si1000 SCF run. Log:
+capacity-debug/commands/04-large-host-gemm.sh.log.
+
+SCF/force comparisons
+---------------------
+Si216, Si7.0-s2p2d1, 200 Ry, two SCF iterations, two MPI ranks with eight
+threads each. Both binaries use gpusolver3 and two GPUs, with native FP64.
+The noncollinear input includes SOC and a non-axis-aligned spin direction.
+Successful MAGMA records and custom multi-GPU GEMM records are required;
+no ELPA eigensolve occurs in these single-node comparisons.
+
+                         total old/new(s)   diagonalization old/new(s)
+  collinear Cluster       39.145 / 39.270       3.985 / 3.989
+  noncollinear Cluster   132.367 / 132.444      11.495 / 11.391
+
+Maximum absolute total-energy differences: 2.96e-12 / 3.07e-12 Ha.
+Maximum absolute force differences: 1.00e-12 Ha/bohr in both cases.
+There is no established overall SCF speedup at this size. These timings
+are OpenMX phase totals, excluding MPI startup, not benchmark wall times.
+Results and energy-component comparisons: shared-two/host-scf/summary.json.
+
+With the final candidate on both sides, PBS 943417 compares native one-GPU
+cuSOLVER against forced two-GPU MAGMA on the same Si216 inputs (two SCF
+steps, two MPI ranks, eight threads per rank):
+
+                         total cuSOLVER/MAGMA(s)    diagonalization(s)
+  collinear Cluster            36.796 / 39.129         1.605 / 4.008
+  noncollinear Cluster        145.515 / 132.460       23.606 / 11.358
+
+Energy and forces agree within 1.03e-12 Ha and 1.01e-12 Ha/bohr. These are
+single samples, not a tuned crossover rule. The default still selects one
+GPU when it fits, as requested. Results:
+capacity-debug/native-vs-magma/summary.json.
+
+Forced auxiliary distribution also passes four Si64 Cluster runs (collinear
+and noncollinear, old workers-off baseline versus new workers-on), with
+maximum energy difference 1.03e-12 Ha and force difference 2.01e-12 Ha/bohr.
+Results: shared-two/workers/summary.json. This checks correctness, not a
+claim that forced distribution improves fitting small-system performance.
+
+Low-memory recovery and bounded packing
+---------------------------------------
+PBS 943417, two A100 GPUs, Si64 Cluster collinear/noncollinear, two MPI
+ranks and eight threads each. A test-only LD_PRELOAD interposer caps reported
+free GPU memory at 280 MiB after the process creates its first cuSOLVER
+handle. This leaves only 24 MiB after the auxiliary worker reserve; it
+does not allocate artificial pressure or replace any arithmetic kernel.
+Ranks that never create a handle keep their real memory report.
+
+The previous implementation built a multi-GiB sparse density packet before
+testing whether a GPU could hold it. A timed owner-thread backtrace found
+vector growth in Builder::term -> SDG_recovery_visit -> bilinear_cost, while
+the other MPI rank waited for collective recovery. The delayed-cap run did
+not finish within 150 seconds. This was excessive host packing, not a
+demonstrated MPI deadlock.
+
+The new packer checks header/row metadata before visiting rows, then bounds
+terms, unique orbitals and matrix data by the receiver's actual remaining
+room. It stops without publishing a partial packet. A failed equal/smaller
+budget is cached within the call; a larger GPU or smaller shard can retry.
+The separate host-memory guard remains active. Remote source packets still
+use the host guard; the receiving node applies the device limit locally.
+
+All eight final Si64 runs pass energy-component and force comparisons:
+  workers off, 1 SCF step: CPU recovery completes in 71.86 / 101.32 s;
+  workers auto, 2 SCF steps: recovery completes in 101.20 / 176.00 s.
+These are elapsed process times including MPI startup. The default-auto
+pair has max energy difference 8.51e-11 Ha, force difference 2.36e-10
+Ha/bohr, and energy-component difference 5.22e-9 Ha (tolerance 1e-7).
+The cap also sends integral/force work to CPU, so these are recovery tests,
+not low-memory performance predictions. Logs and summaries:
+  capacity-debug/bounded-capacity/
+  capacity-debug/bounded-capacity-auto/
+
+A separate Si8 collinear/noncollinear test forces the sparse density GPU
+path, with enough real memory and no interposer. Both GPUs execute the
+bounded packets; energy/force differences are at most 1.01e-12.
+Results: capacity-debug/density-gpu/summary.json.
+
+Kernel and policy checks
+------------------------
+Two physical GPUs:
+  - GEMM smoke: 169 cases, independent long-double reference, max error
+    2.397e-14; compute-sanitizer memcheck reports 0 errors.
+  - MAGMA real/complex n=1025, nev=507, repeated solves: eigenvalue errors
+    <=1.03e-14, residuals <=2.96e-15, orthogonality errors <=2.27e-14.
+  - CUDA/OpenACC task fixture --local: owner/local/CPU paths and late OOM pass.
+Logs: shared-two/commands/01-kernels.sh.log and 04-memcheck.sh.log.
+
+Host/MPI tests with mocked CUDA/topology:
+  - 344 GEMM cases, including row/column/auto traversal and rollback.
+  - 23/23 Cluster capacity-policy cases.
+  - 18/18 distributed bridge admission/lifecycle cases.
+  - 192 sparse bilinear cases under ASan/UBSan, plus exact-limit,
+    one-byte-under-limit, oversized-metadata, asymmetric-device retry and
+    failed-budget caching checks against the production packer.
+Logs: gemm-traversal-cpu.log, cluster-capacity-policy.log, gs2-memory-gcc.log.
+The bounded-packing log is bilinear-capacity-cpu.log.
+
+Capacity hierarchy and remaining validation
+-------------------------------------------
+The default Cluster selector already implements:
+  fitting owner GPU -> local MAGMA/custom GEMM -> distributed ELPA/COSMA
+  (multi-node only) -> CPU.
+A one-GPU-per-node pool skips local MAGMA. scf.Gpu.Num remains a per-node
+upper bound. gpusolver3 forces the local MAGMA family and does not opt into
+ELPA/COSMA. Explicit gpusolver2 selects the distributed family directly.
+No automatic ELPA/COSMA test is used on one physical node.
+
+PBS 943417 verifies the default gpusolver -> local MAGMA transition on two
+real A100s, for Si64 collinear and noncollinear Cluster. A 65536 MiB native
+cuSOLVER reserve triggers admission failure while MAGMA uses its real
+memory budget. Both runs require the automatic-transition banner, valid
+MAGMA solves and custom multi-GPU GEMM, and reject any ELPA solve. Against
+the same candidate's native path, energy differences are <=9.67e-13 Ha and
+force differences <=2.01e-12 Ha/bohr. Results:
+capacity-debug/automatic-local-magma/summary.json.
+
+The prepared physical two-node tests separately require:
+  - default cuSOLVER admission failure -> local MAGMA;
+  - local MAGMA memory admission failure -> GPU ELPA and COSMA;
+  - one visible GPU per node -> directly distributed GPU execution;
+  - four visible GPUs with scf.Gpu.Num=1 -> the same capped transition;
+  - failure of every GPU tier -> completed CPU SCF/forces.
+They record physical rank placement, selector diagnostics, backend profiles,
+energy components, coordinates and forces. Test-only cudaMemGetInfo capping
+does not allocate pressure or substitute GPU kernels. Reserve/tile overrides
+used to force a transition are routing tests, not realistic capacity timings.
+OPENMX_GS2_PROFILE records the grid root's complete call time, not an MPI
+maximum or independent proof of COSMA's internal kernel choices.
+
+Band's existing local cooperative pool rejects multi-node runs; its automatic
+ELPA/COSMA fallback is not connected. Cluster policy results must not be
+generalized to Band. Late MAGMA resource failures after successful admission
+currently recover with CPU LAPACK, rather than re-entering the distributed
+layout. These limitations are separate from the preflight hierarchy above.
+
+Failed pre-fix attempts and diagnostic stacks are retained in shared-two/
+device-capacity-cpu/, shared-two-capacity/ and capacity-debug/stack-capacity/.
+The diagnostic stack stage intentionally times out. The allocation's zero
+PBS exit status alone is not a test-suite pass; inspect each stage and the
+final per-comparison summaries rather than treating that stage as a pass.

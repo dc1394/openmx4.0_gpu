@@ -12,6 +12,15 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+
+# The SDK/ownership boundary is mocked here; the real ownership adapters are
+# exercised independently by the core-native-resource/adapter tests.
+try:
+    from native_resource_test_bridge import isolate_native_resources
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
+    from native_resource_test_bridge import isolate_native_resources
 import unittest
 
 
@@ -201,7 +210,7 @@ class CleanupTest(unittest.TestCase):
             directory = Path(temporary)
             source = directory / 'check.c'
             binary = directory / 'check'
-            source.write_text(MOCK + production(SOURCE.read_text()) + DRIVER)
+            source.write_text(MOCK + production(isolate_native_resources(SOURCE.read_text(), 'HIP')) + DRIVER)
             command = shlex.split(os.environ.get('CC', 'cc'))
             subprocess.run(command + ['-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
                                       str(source), '-o', str(binary)], check=True, timeout=60)

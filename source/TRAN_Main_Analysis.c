@@ -229,7 +229,7 @@ void TRAN_Calc_CurrentDensity(
   double ***Jmat
   );
 
-void TRAN_CDen_Main(
+void TRAN_CDen_Main(const OpenMXAtomicViews *atomic,
   int NUM_c,
   int *MP,
   double ****JLocSym,
@@ -421,7 +421,7 @@ static void MTRAN_Allocate_HS(
 
 
 
-void TRAN_Main_Analysis( MPI_Comm comm1, 
+void TRAN_Main_Analysis(const OpenMXAtomicViews *atomic,  MPI_Comm comm1,
                          int argc, char *argv[], 
                          int Matomnum, int *M2G, 
                          int *GridN_Atom, 
@@ -770,7 +770,7 @@ void TRAN_Main_Analysis( MPI_Comm comm1,
 			    atomnum_e,
 			    WhatSpecies,
 			    WhatSpecies_e,
-			    Spe_Total_CNO,
+			    atomic->species.contracted_orbitals,
 			    Spe_Total_CNO_e,
 			    FNAN,
 			    natn,
@@ -991,7 +991,7 @@ void TRAN_Main_Analysis( MPI_Comm comm1,
     if (myid0 == Host_ID) printf("\nCurrentdensity:  file\n\n"); fflush(stdout);
 
     MP = (int*)malloc(sizeof(int)*(atomnum + 1));
-    MTRAN_Set_MP(1, atomnum, WhatSpecies, Spe_Total_CNO, &i, MP);
+    MTRAN_Set_MP(1, atomnum, WhatSpecies, atomic->species.contracted_orbitals, &i, MP);
 
     for (k = 0; k < SpinP_switch + 1; k++){
       for (iside = 0; iside < 3; iside++){
@@ -1032,7 +1032,7 @@ void TRAN_Main_Analysis( MPI_Comm comm1,
       } /* for (i = 0; i < NUM_c; i++) */
     } /* for (k = 0; k < SpinP_switch + 1; k++) */
 
-    TRAN_CDen_Main(NUM_c, MP, JLocSym, JLocASym, RhoNL, Jmat, SCC, TRAN_OffDiagonalCurrent);
+    TRAN_CDen_Main(atomic, NUM_c, MP, JLocSym, JLocASym, RhoNL, Jmat, SCC, TRAN_OffDiagonalCurrent);
     free(MP);
 
   } /*if (TRAN_CurrentDensity == 1)*/
@@ -1227,7 +1227,7 @@ void TRAN_Main_Analysis( MPI_Comm comm1,
         atomnum_e,
         WhatSpecies,
         WhatSpecies_e,
-        Spe_Total_CNO,
+        atomic->species.contracted_orbitals,
         Spe_Total_CNO_e,
         FNAN,
         natn,
@@ -1276,7 +1276,7 @@ void TRAN_Main_Analysis( MPI_Comm comm1,
     fflush(stdout);
 
     MP = (int*)malloc(sizeof(int)*(atomnum + 1));
-    MTRAN_Set_MP(1, atomnum, WhatSpecies, Spe_Total_CNO, &i, MP);
+    MTRAN_Set_MP(1, atomnum, WhatSpecies, atomic->species.contracted_orbitals, &i, MP);
 
     for (kloop = 0; kloop < TRAN_Channel_Nkpoint; kloop++){
       for (iw = 0; iw < TRAN_Channel_Nenergy; iw++){

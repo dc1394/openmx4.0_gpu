@@ -24,7 +24,7 @@
 // alpha, beta = orbital index of atom i/j
 // Nabla = the first derivative wiht respect to x/y/z
 
-void Calc_NabraMatrixElements()
+void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic, const OpenMXLocalBasisViews *local_basis)
 {
   double time0;
   int Mc_AN,Gc_AN,Mh_AN,h_AN,Gh_AN;
@@ -115,12 +115,12 @@ void Calc_NabraMatrixElements()
   MME_allorb = (double*****)malloc(sizeof(double****)*(atomnum+1)); // real number
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
     Cwan = WhatSpecies[Gc_AN];
-    tno0 = Spe_Total_CNO[Cwan];
+    tno0 = atomic->species.contracted_orbitals[Cwan];
     MME_allorb[Gc_AN] = (double****)malloc(sizeof(double***)*(FNAN[Gc_AN]+1));
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
       Gh_AN = natn[Gc_AN][h_AN];
       Hwan = WhatSpecies[Gh_AN];
-      tno1 = Spe_Total_CNO[Hwan];
+      tno1 = atomic->species.contracted_orbitals[Hwan];
       MME_allorb[Gc_AN][h_AN] = (double***)malloc(sizeof(double**)*tno0);
       for (k=0; k<tno0; k++){
         MME_allorb[Gc_AN][h_AN][k] = (double**)malloc(sizeof(double*)*tno1);
@@ -138,13 +138,13 @@ void Calc_NabraMatrixElements()
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
     Gc_AN = M2G[Mc_AN];
     Cwan = WhatSpecies[Gc_AN];
-    NO0 = Spe_Total_CNO[Cwan];
+    NO0 = atomic->species.contracted_orbitals[Cwan];
 
     num = 0;      
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
       Gh_AN = natn[Gc_AN][h_AN];
       Hwan = WhatSpecies[Gh_AN];
-      NO1 = Spe_Total_CNO[Hwan];
+      NO1 = atomic->species.contracted_orbitals[Hwan];
       num += NO1;
     }
 
@@ -209,9 +209,9 @@ void Calc_NabraMatrixElements()
 
     Gc_AN = M2G[Mc_AN];
     Cwan = WhatSpecies[Gc_AN];
-    NO0 = Spe_Total_CNO[Cwan];
+    NO0 = atomic->species.contracted_orbitals[Cwan];
     
-    Set_dOrbitals_Grid_xyz(Global_Cnt_kind,1);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,1, local_basis);
 
     for (i=0; i<NO0; i++){
       for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
@@ -233,7 +233,7 @@ void Calc_NabraMatrixElements()
       }
     }
 
-    Set_dOrbitals_Grid_xyz(Global_Cnt_kind,2);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,2, local_basis);
 
     for (i=0; i<NO0; i++){
       for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
@@ -250,7 +250,7 @@ void Calc_NabraMatrixElements()
       }
     }
 
-    Set_dOrbitals_Grid_xyz(Global_Cnt_kind,3);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,3, local_basis);
 
     for (i=0; i<NO0; i++){
       for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
@@ -267,7 +267,7 @@ void Calc_NabraMatrixElements()
       }
     }
 
-    Set_dOrbitals_Grid_xyz(Global_Cnt_kind,0);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,0, local_basis);
     
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 
@@ -276,7 +276,7 @@ void Calc_NabraMatrixElements()
 
       Rnh = ncn[Gc_AN][h_AN];
       Hwan = WhatSpecies[Gh_AN];
-      NO1 = Spe_Total_CNO[Hwan];
+      NO1 = atomic->species.contracted_orbitals[Hwan];
 
       /* initialize */
 
@@ -363,8 +363,8 @@ void Calc_NabraMatrixElements()
   for (AN=1; AN<=atomnum; AN++){
     Gc_AN = order_GA[AN];  // get correct order of atomic serial index
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++)
-      for (i=0; i< Spe_Total_CNO[ WhatSpecies[Gc_AN] ] ; i++)
-        for (j=0; j< Spe_Total_CNO[ WhatSpecies[ natn[Gc_AN][h_AN] ] ]; j++){
+      for (i=0; i< atomic->species.contracted_orbitals[ WhatSpecies[Gc_AN] ] ; i++)
+        for (j=0; j< atomic->species.contracted_orbitals[ WhatSpecies[ natn[Gc_AN][h_AN] ] ]; j++){
           MME_allorb[Gc_AN][h_AN][i][j][0] = tmp_MME[0][k]; // x
           MME_allorb[Gc_AN][h_AN][i][j][1] = tmp_MME[1][k]; // y
           MME_allorb[Gc_AN][h_AN][i][j][2] = tmp_MME[2][k]; // z

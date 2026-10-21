@@ -15,6 +15,7 @@
 #include <cusolverDn.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "openmx_core_native_resources.h"
 
 /* The cuSOLVER and cuBLAS state of a solver: the refinement borrows its
    handles, its stream and its device workspace (grown through try_malloc,
@@ -32,6 +33,7 @@ typedef struct {
     void *(*host_malloc)(size_t count, size_t elem, const char *label);
     cusolverDnParams_t params32;        /* two-stage algorithm of the FP32 full solve, once tried */
     int                params32_tried;
+    OpenMXNativeResources *resources; /* borrowed from the calling calculation */
 } EigenRefineDevice;
 
 /* One eigenproblem instance (a spin, a k-point): what persists between its
@@ -49,6 +51,7 @@ typedef struct {
     void   *own;           /* their allocation when the FP32 scratch has no room */
     int     products_ready; /* a warm prepare left the first step's products G in b1 and S in b2 */
     double  delta_cold;    /* delta of the first refinement step after the latest FP32 solve: a warm start's floor */
+    OpenMXNativeResources *resources; /* borrowed from the calling calculation */
 } EigenRefineState;
 
 /* Fermi occupation of a state with estimate e and 1-based index (for

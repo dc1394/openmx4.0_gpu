@@ -54,8 +54,8 @@ static ClusterNonColCWFGpuSolverCtx ClusterNonColCWF_gpusolver_ctx = {0};
 static void ClusterNonColCWF_GpuSolver_Destroy(void)
 {
     ClusterNonColCWFGpuSolverCtx *ctx = &ClusterNonColCWF_gpusolver_ctx;
-    if (ctx->gpusolver != NULL) OpenMXGpuWait(OpenMXSolverDestroy(ctx->gpusolver));
-    if (ctx->blas != NULL)   OpenMXGpuWait(OpenMXBlasDestroy(ctx->blas));
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMXSolverDestroy(ctx->gpusolver));
+    if (ctx->blas != NULL)   OpenMXBlasWait(OpenMXBlasDestroy(ctx->blas));
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
 }
@@ -68,8 +68,8 @@ static void ClusterNonColCWF_GpuSolver_Init(void)
     if (ctx->device_id == current_device && ctx->blas != NULL) return;
     if (ctx->blas != NULL) ClusterNonColCWF_GpuSolver_Destroy();
     ctx->device_id = current_device;
-    OpenMXGpuWait(OpenMXBlasCreate(&ctx->blas));
-    OpenMXGpuWait(OpenMXSolverCreate(&ctx->gpusolver));
+    OpenMXBlasWait(OpenMXBlasCreate(&ctx->blas));
+    OpenMXSolverWait(OpenMXSolverCreate(&ctx->gpusolver));
 }
 
 #if OPENMX_GPU_HIP
@@ -87,7 +87,7 @@ static void ClusterNonColCWF_GEMMul8Zgemm_OpenACC(OpenMXBlasOperation transa, Op
     {
         OpenMXGpuComplex const alpha = OpenMXGpuMakeComplex(1.0, 0.0);
         OpenMXGpuComplex const beta  = OpenMXGpuMakeComplex(0.0, 0.0);
-        OpenMXGpuWait(openmx_gemmul8Zgemm(ClusterNonColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
+        OpenMXBlasWait(openmx_gemmul8Zgemm(ClusterNonColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
                                           (OpenMXGpuComplex const *)A, m, (OpenMXGpuComplex const *)B, k, &beta,
                                           (OpenMXGpuComplex *)C, m));
     }
@@ -109,8 +109,8 @@ void elpa_solve_evp_complex_2stage_double_impl_( int *n2, int *MaxN, dcomplex *H
                                                  int *na_rows2_2, int *nblk2, int *na_cols2, 
                                                  int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld );
 
-double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM );
-double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM );
+double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM , const OpenMXElectronicViews *electronic);
+double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
 
 void lapack_zheev(int n0, dcomplex *A, double *W);
 void AllocateArrays_NonCol_QAO2();
@@ -197,8 +197,11 @@ double Cluster_DFT_NonCol_CWF(
 		   double *DM1,
 		   int size_H1, 
                    dcomplex *EVec1,
-                   double *Work1)
+                   double *Work1, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+  double *****iParDM=electronic->iParDM;
+
   static int firsttime=1;
   int i,j,l,n,n2,n1,i1,i1s,j1,k1,l1;
   int ii1,jj1,jj2,ki,kj;
@@ -272,11 +275,11 @@ double Cluster_DFT_NonCol_CWF(
 
   if ( CWF_Guiding_Orbital==1 || CWF_Guiding_Orbital==2 ){
     AllocateArrays_NonCol_QAO2();
-    time1 = Calc_Hybrid_AO_NonCol(CntOLP, nh, CDM);
+    time1 = Calc_Hybrid_AO_NonCol(CntOLP, nh, CDM, electronic);
   }
 
   else if (CWF_Guiding_Orbital==3){
-    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM);
+    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM, electronic);
   }
 
   /****************************************************
@@ -2252,8 +2255,10 @@ void Allocate_Free_Cluster_NonCol_CWF( int todo_flag,
 
 
 
-double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM )
+double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM , const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
   int i,j,k,l,n,Mc_AN,Gc_AN,h_AN,Mh_AN,Gh_AN;
   int Cwan,num,wan1,wan2,tno0,tno1,tno2,spin;
   int Nloop,po,p,q,NumLNOs;
@@ -2418,8 +2423,12 @@ double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM 
 
 
 
-double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM )
+double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic)
 {
+  double *****H=electronic->H;
+  double *****OLP=electronic->OLP;
+  double *****iHNL=electronic->iHNL;
+
   int i,j,k,gidx,Lidx,GA_AN,GB_AN,GC_AN,tnum,wan1;
   int Lidx1,Lidx2,i0,j0,MA_AN,h_AN3,h_AN2,spin;
   int tno1,h_AN,Gh_AN,wan2,tno2,dim,dim2,l1,l2,l3,p,q;

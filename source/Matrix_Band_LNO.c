@@ -21,8 +21,9 @@ void Matrix_Band_LNO( int Host_ID1,
                        int spin,
                        double ****Mat,
                        dcomplex **S, int *MP,
-                       double k1, double k2, double k3)
+                       double k1, double k2, double k3, const OpenMXLocalBasisViews *local_basis)
 {
+
   static int firsttime=1;
   int i,j,k,wanA,wanB,tnoA,tnoB,Anum,Bnum;
   int NUM,MA_AN,GA_AN,LB_AN,GB_AN,MB_AN;
@@ -115,7 +116,7 @@ void Matrix_Band_LNO( int Host_ID1,
 	    for (q=0; q<tnoB; q++){
 
    	      s = Mat[MA_AN][LB_AN][p][q];
-              sumS += LNO_coes[spin][MA_AN][i*tnoA+p]*s*LNO_coes[spin][MB_AN][j*tnoB+q];
+              sumS += openmx_local_lno_row(local_basis, spin, MA_AN)[i*tnoA+p]*s*openmx_local_lno_row(local_basis, spin, MB_AN)[j*tnoB+q];
 	    }
 	  }
 

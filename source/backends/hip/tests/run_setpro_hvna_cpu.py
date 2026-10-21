@@ -15,8 +15,8 @@ admission can be exercised.  Checks:
   - the stage gates (OPENMX_SETPRO_GPU, OPENMX_SETPRO_HVNA_GPU, APU default);
   - OPENMX_SETPRO_VERBOSE notes only when requested.
 
-    python3 tests/run_setpro_hvna_cpu.py --cc /usr/bin/gcc [--sanitize]
-    python3 tests/run_setpro_hvna_cpu.py --gpu     # kernel on the GPU (gfx1200)
+    python3 tests/run_setpro_hvna_cpu.py --core-library /path/to/libopenmx_core.so [--sanitize]
+    OPENMX_CORE_LIBRARY=/path/to/libopenmx_core.so python3 tests/run_setpro_hvna_cpu.py --gpu
 """
 
 import argparse
@@ -51,21 +51,15 @@ def extract_function(source: str, name: str) -> str:
     raise ValueError(f"missing production function: {name}")
 
 
-def extract_struct(source: str, name: str) -> str:
-    match = re.search(r"typedef struct\s*\{[^{}]*\}\s*" + re.escape(name) + r";", source)
-    if match is None:
-        raise ValueError(f"missing production structure: {name}")
-    return match.group() + "\n"
-
 
 PREFIX = r'''
 #include <limits.h>
+#include "openmx_vna_gpu_context.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 static int level_stdout=3;
-static int SetPro_gpu_used=0;
 #include <stdlib.h>
 #include <string.h>
 
@@ -87,7 +81,7 @@ typedef int MPI_Comm;
 enum { hipSuccess = 0, hipMemcpyHostToDevice = 1, hipMemcpyDeviceToHost = 2 };
 
 static int scf_eigen_lib_flag = GPUSOLVER, mpi_comm_level1 = 1;
-static int Matomnum = 3, MatomnumF = 3, SpeciesNum = 2, List_YOUSO[50];
+static int atomnum = 6, Matomnum = 3, MatomnumF = 3, SpeciesNum = 2, List_YOUSO[50];
 static int *M2G, *F_M2G, *F_G2M, *FNAN, **natn, ***RMI1, *WhatSpecies, *Spe_Total_NO;
 static double ***VNA_proj_ene, *Spe_Atom_Cut1, **Dis;
 static int fake_node_ranks = 1, fake_node_rank = 0, apu = 0;
@@ -318,14 +312,14 @@ static double run_batch(void)
         for (k = 0; k < NB; k++)
             for (i = 0; i < Spe_Total_NO[WhatSpecies[source]]; i++)
                 memcpy(ds[0][Matomnum + 1][k][i], true0[source][k][i], sizeof(Type_DS_VNA) * PROJ);
-        SetPro_HVNA_GpuArchiveHalo(ds, source, F_M2G[source]);
+        SetPro_HVNA_GpuArchiveHalo(&context,ds, source, F_M2G[source]);
     }
     for (k = 0; k < NB; k++)            /* the receive slot is stale now */
         for (i = 0; i < 3; i++)
             for (j = 0; j < PROJ; j++) ds[0][Matomnum + 1][k][i][j] = NAN;
-    SetPro_gpu_used = 0;
-    SetPro_HVNA_GpuRun(hvna);
-    CHECK(SetPro_gpu_used == !device_fail);
+    context.used_gpu = 0;
+    SetPro_HVNA_GpuRun(&context,hvna);
+    CHECK(context.used_gpu == !device_fail);
     for (mc = 1; mc <= Matomnum; mc++)
         for (j = 0; j <= FNAN[mc]; j++)
             for (m = 0; m < Spe_Total_NO[WhatSpecies[mc]]; m++)
@@ -338,7 +332,18 @@ static double run_batch(void)
     return max_error;
 }
 
-static int begin(void) { return SetPro_HVNA_GpuBegin(ds, VNA_List, VNA_List2, NRVNA); }
+static int begin(void) {
+    int angular[2]={0,0}, first[1]={2}, second[1]={3};
+    int *counts[2]={first,second};
+    OpenMXVnaPreparationShape shape={0,3,1,3,1,2,angular,counts};
+    OpenMXVnaPreparationBuffers views; char error[256];
+    OpenMXVnaPreparation *preparation=openmx_core_vna_preparation_create(&shape,&views,error,sizeof(error));
+    CHECK(preparation);
+    const OpenMXReciprocalViews reciprocal={.vps={.neutral_energies=VNA_proj_ene}};
+    int enabled=SetPro_HVNA_GpuBegin(&reciprocal,&context,ds,preparation,NRVNA);
+    openmx_core_vna_preparation_destroy(preparation);
+    return enabled;
+}
 
 int main(void)
 {
@@ -351,33 +356,43 @@ int main(void)
     unsetenv("OPENMX_SETPRO_HVNA_TURNS");
     fixture();
 
+    CHECK(begin());
+    SetProGpuContext retained=context;
+    memset(&context,0,sizeof(context));
+    CHECK(begin() && context.layout != retained.layout && context.flat != retained.flat);
+    CHECK(context.mck_off != retained.mck_off && context.ene != retained.ene);
+    SetPro_HVNA_GpuEnd(&context);
+    context=retained;
+    err=run_batch(); if(max_error<err)max_error=err;
+    SetPro_HVNA_GpuEnd(&context);
+
     /* device batch, then the host fallback of a failed claim */
-    CHECK(begin() && SetPro_gpu.turns == 1 && SetPro_gpu.turn == 0);
+    CHECK(begin() && context.turns == 1 && context.turn == 0);
     err = run_batch(); if (max_error < err) max_error = err;
     CHECK(device_live == 0);
-    SetPro_HVNA_GpuEnd();
+    SetPro_HVNA_GpuEnd(&context);
     CHECK(begin());
     device_fail = 1;
     err = run_batch(); if (max_error < err) max_error = err;
     device_fail = 0;
     CHECK(device_live == 0);
-    SetPro_HVNA_GpuEnd();
+    SetPro_HVNA_GpuEnd(&context);
 
     /* four identical node ranks, ~64 MiB need each (the 64 MiB slack) */
     fake_node_ranks = 4;
     free_bytes_stub = 256 * MiB + 200 * MiB;     /* 3 per turn */
     fake_node_rank = 3;
-    CHECK(begin() && SetPro_gpu.turns == 2 && SetPro_gpu.turn == 1);
-    SetPro_HVNA_GpuEnd();
+    CHECK(begin() && context.turns == 2 && context.turn == 1);
+    SetPro_HVNA_GpuEnd(&context);
     free_bytes_stub = 256 * MiB + 100 * MiB;     /* 1 per turn */
-    CHECK(begin() && SetPro_gpu.turns == 4 && SetPro_gpu.turn == 3);
+    CHECK(begin() && context.turns == 4 && context.turn == 3);
     err = run_batch(); if (max_error < err) max_error = err;
-    SetPro_HVNA_GpuEnd();
+    SetPro_HVNA_GpuEnd(&context);
     setenv("OPENMX_SETPRO_HVNA_TURNS", "0", 1);  /* turns needed: CPU */
     CHECK(!begin());
     free_bytes_stub = (size_t)16 << 30;          /* all fit at once */
-    CHECK(begin() && SetPro_gpu.turns == 1);
-    SetPro_HVNA_GpuEnd();
+    CHECK(begin() && context.turns == 1);
+    SetPro_HVNA_GpuEnd(&context);
     unsetenv("OPENMX_SETPRO_HVNA_TURNS");
     free_bytes_stub = 256 * MiB + 60 * MiB;      /* not even one rank */
     CHECK(!begin());
@@ -387,18 +402,18 @@ int main(void)
     CHECK(!begin());
     host_kib_stub = 1024 * 1024;                 /* 512 MiB budget */
     CHECK(begin());
-    SetPro_HVNA_GpuEnd();
+    SetPro_HVNA_GpuEnd(&context);
     host_kib_stub = ULLONG_MAX;                  /* unreadable: no cap */
     CHECK(begin());
-    SetPro_HVNA_GpuEnd();
+    SetPro_HVNA_GpuEnd(&context);
     fake_node_ranks = 1;
     fake_node_rank = 0;
 
-    /* host archive failures (3rd: flat, 6th: halo malloc) */
-    for (countdown = 2; countdown <= 5; countdown += 3) {
+    /* Only numeric archives use C malloc; C++ metadata has separate allocation-failure tests. */
+    for (countdown = 0; countdown < 2; countdown++) {
         malloc_countdown = countdown;
         CHECK(!begin());
-        CHECK(SetPro_gpu.flat == NULL && SetPro_gpu.halo == NULL && SetPro_gpu.enabled == 0);
+        CHECK(context.flat == NULL && context.halo == NULL && context.enabled == 0);
         malloc_countdown = -1;
     }
 
@@ -407,7 +422,7 @@ int main(void)
     CHECK(!begin());
     setenv("OPENMX_SETPRO_HVNA_GPU", "1", 1);
     CHECK(begin());
-    SetPro_HVNA_GpuEnd();
+    SetPro_HVNA_GpuEnd(&context);
     unsetenv("OPENMX_SETPRO_GPU");
     unsetenv("OPENMX_SETPRO_HVNA_GPU");
     apu = 1;
@@ -427,9 +442,8 @@ int main(void)
 
 
 def make_harness(source: str, gpu: bool) -> str:
-    parts = [PREFIX, '#include "openmx_precision.h"', HIP_DEVICE if gpu else HOST_DEVICE,
-             extract_struct(source, "SetProGpuContext"),
-             "static SetProGpuContext SetPro_gpu = { 0 };\n"]
+    parts = ['#include "openmx_core_reciprocal.h"', PREFIX, '#include "openmx_precision.h"', HIP_DEVICE if gpu else HOST_DEVICE,
+             "static SetProGpuContext context = { 0 };\n"]
     for name in ("SetPro_gpu_abort", "SetPro_checked_malloc", "SetPro_collective_env_flag",
                  "SetPro_gpu_default_enabled", "SetPro_gpu_stage_enabled", "SetPro_verbose",
                  "SetPro_free_mib", "SetPro_note", "SetPro_arena_off", "SetPro_device_try",
@@ -448,6 +462,8 @@ def main() -> int:
     parser.add_argument("--gpu", action="store_true", help="offload the kernel (clang of --rocm)")
     parser.add_argument("--rocm", default=os.environ.get("ROCM_PATH", "/opt/rocm-7.2.0"))
     parser.add_argument("--arch", default="gfx1200")
+    parser.add_argument("--core-library", default=os.environ.get("OPENMX_CORE_LIBRARY"),
+                        required=not os.environ.get("OPENMX_CORE_LIBRARY"))
     args = parser.parse_args()
     try:
         harness = make_harness((ROOT / "source" / "Set_ProExpn_VNA.c").read_text(), args.gpu)
@@ -465,7 +481,10 @@ def main() -> int:
             src = Path(directory) / "hvna.c"
             exe = Path(directory) / "hvna"
             src.write_text(harness)
-            subprocess.run([*command, "-std=c11", "-Wno-unused-function", "-I", str(ROOT / "source"), str(src), str(ROOT / "source/openmx_precision.c"), "-lm", "-o", str(exe)],
+            core = Path(args.core_library).resolve(strict=True)
+            subprocess.run([*command, "-std=c11", "-Wno-unused-function", "-I", str(ROOT / "source"),
+                            str(src), str(ROOT / "source/openmx_precision.c"), str(core),
+                            "-Wl,-rpath," + str(core.parent), "-lm", "-o", str(exe)],
                            check=True)
             status = 0
             for verbose in ("", "1"):

@@ -31,17 +31,17 @@
 #define quickcalc_flag  0
 
 
-static void occupation_onsite();
-static void occupation_full();
-static void occupation_dual();
-static void mixing_occupation(int SCF_iter);
-static void Induce_Orbital_Polarization(int Mc_AN);
-static void Induce_Orbital_Polarization_Together(int Mc_AN);
-static void Induce_NC_Orbital_Polarization(int Mc_AN);
-static void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele);
-static void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[]);
-static void Output_Collinear_OcpN();
-static void Output_NonCollinear_OcpN();
+static void occupation_onsite(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void occupation_full(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void occupation_dual(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void mixing_occupation(int SCF_iter, const OpenMXLocalBasisViews *local_basis);
+static void Induce_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Induce_Orbital_Polarization_Together(int Mc_AN, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Induce_NC_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, const OpenMXLocalBasisViews *local_basis);
+static void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Output_Collinear_OcpN(const OpenMXLocalBasisViews *local_basis);
+static void Output_NonCollinear_OcpN(const OpenMXLocalBasisViews *local_basis);
 static void Calc_dTN( int constraint_flag, 
                       dcomplex TN[2][2],
                       dcomplex dTN[2][2][2][2],
@@ -56,7 +56,7 @@ void Calc_dSxyz( dcomplex TN[2][2],
                  double theta[2], double phi[2] );
 
 
-void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode)
+void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4 ;
   int Mc_AN,Gc_AN,Cwan,num,l,m,mul,n,k,tno1,tno0;
@@ -75,17 +75,17 @@ void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUel
 
   /* on site */
   if      (Hub_U_occupation==0){
-    occupation_onsite();
+    occupation_onsite(electronic, local_basis);
   }
 
   /* full */
   else if (Hub_U_occupation==1){
-    occupation_full();
+    occupation_full(electronic, local_basis);
   }
 
   /* dual */
   else if (Hub_U_occupation==2){
-    occupation_dual();
+    occupation_dual(electronic, local_basis);
   }
 
   /****************************************************
@@ -95,9 +95,9 @@ void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUel
   if (SCF_iter<SCF_Enhance_OP && SucceedReadingDMfile==0 && Hub_U_switch==1){
 
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      if      (SpinP_switch==0) Induce_Orbital_Polarization(Mc_AN);
-      else if (SpinP_switch==1) Induce_Orbital_Polarization_Together(Mc_AN);
-      else if (SpinP_switch==3) Induce_NC_Orbital_Polarization(Mc_AN); 
+      if      (SpinP_switch==0) Induce_Orbital_Polarization(Mc_AN, electronic, local_basis);
+      else if (SpinP_switch==1) Induce_Orbital_Polarization_Together(Mc_AN, electronic, local_basis);
+      else if (SpinP_switch==3) Induce_NC_Orbital_Polarization(Mc_AN, electronic, local_basis);
     }
   }
   
@@ -114,16 +114,16 @@ void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUel
                        make v_eff
   ****************************************************/
 
-  if (SpinP_switch!=3)  make_v_eff(SCF_iter, SucceedReadingDMfile, dUele);
-  else                  make_NC_v_eff(SCF_iter, SucceedReadingDMfile, dUele, ECE);
+  if (SpinP_switch!=3)  make_v_eff(SCF_iter, SucceedReadingDMfile, dUele, local_basis);
+  else                  make_NC_v_eff(SCF_iter, SucceedReadingDMfile, dUele, ECE, electronic, local_basis);
 
   /****************************************************
    write a file, *.DM_onsite
   ****************************************************/
 
   if ( strcasecmp(mode,"write")==0 ){
-    if (SpinP_switch!=3)  Output_Collinear_OcpN();
-    else                  Output_NonCollinear_OcpN();
+    if (SpinP_switch!=3)  Output_Collinear_OcpN(local_basis);
+    else                  Output_NonCollinear_OcpN(local_basis);
   }
 
 }
@@ -134,8 +134,9 @@ void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUel
 
 
 
-void mixing_occupation(int SCF_iter)
+void mixing_occupation(int SCF_iter, const OpenMXLocalBasisViews *local_basis)
 {
+
   int Mc_AN,Gc_AN,wan1,i,j,spin;
   double mixw0,mixw1,tmp;
 
@@ -162,10 +163,10 @@ void mixing_occupation(int SCF_iter)
 	for (spin=0; spin<=SpinP_switch; spin++){
 	  for (i=0; i<Spe_Total_NO[wan1]; i++){
 	    for (j=0; j<Spe_Total_NO[wan1]; j++){
-              tmp = mixw0*DM_onsite[0][spin][Mc_AN][i][j]
-                  + mixw1*DM_onsite[1][spin][Mc_AN][i][j];  
-              DM_onsite[0][spin][Mc_AN][i][j] = tmp;
-              DM_onsite[1][spin][Mc_AN][i][j] = tmp;
+              tmp = mixw0*openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j]
+                  + mixw1*openmx_local_density_row(local_basis, 1, spin, Mc_AN, i)[j];
+              openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j] = tmp;
+              openmx_local_density_row(local_basis, 1, spin, Mc_AN, i)[j] = tmp;
 	    }
 	  }
 	}
@@ -176,10 +177,10 @@ void mixing_occupation(int SCF_iter)
 	for (spin=0; spin<=SpinP_switch; spin++){
 	  for (i=0; i<Spe_Total_CNO[wan1]; i++){
 	    for (j=0; j<Spe_Total_CNO[wan1]; j++){
-              tmp = mixw0*DM_onsite[0][spin][Mc_AN][i][j]
-                  + mixw1*DM_onsite[1][spin][Mc_AN][i][j];  
-              DM_onsite[0][spin][Mc_AN][i][j] = tmp;
-              DM_onsite[1][spin][Mc_AN][i][j] = tmp;
+              tmp = mixw0*openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j]
+                  + mixw1*openmx_local_density_row(local_basis, 1, spin, Mc_AN, i)[j];
+              openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j] = tmp;
+              openmx_local_density_row(local_basis, 1, spin, Mc_AN, i)[j] = tmp;
 	    }
 	  }
 	}
@@ -203,8 +204,12 @@ void mixing_occupation(int SCF_iter)
 
 
 
-void occupation_onsite()
+void occupation_onsite(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double ******DM=electronic->DM;
+  double ******iDM=electronic->iDM;
+
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4;
   int Mc_AN,Gc_AN,Cwan,num,l,m,mul;
   int wan1,wan2,i,j,spin;
@@ -253,7 +258,7 @@ void occupation_onsite()
 
 	      /* store the DM_onsite --- MJ */
 
-	      DM_onsite[0][spin][Mc_AN][i][j] = DM[0][spin][Mc_AN][0][i][j];
+	      openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j] = DM[0][spin][Mc_AN][0][i][j];
 	    }
 	  }
 	} /* spin */
@@ -298,13 +303,13 @@ void occupation_onsite()
 			  to3 = Cnt_index[l1][mul3][m1];
 			  to4 = Cnt_index[l2][mul4][m2];
 
-			  sum += CntCoes[Mc_AN][to3][mul1]*CntCoes[Mc_AN][to4][mul2]
+			  sum += openmx_local_contraction_row(local_basis, Mc_AN, to3)[mul1]*openmx_local_contraction_row(local_basis, Mc_AN, to4)[mul2]
 			         *DM[0][spin][Mc_AN][0][to3][to4];
 			}
 		      }
 
 		      /* store the DM_onsite --- MJ */
-		      DM_onsite[0][spin][Mc_AN][to1][to2] = sum;
+		      openmx_local_density_row(local_basis, 0, spin, Mc_AN, to1)[to2] = sum;
 
 		      to2++;
 
@@ -337,15 +342,15 @@ void occupation_onsite()
 
 	  /* store NC_OcpN */
 
-	  NC_OcpN[0][0][0][Mc_AN][i][j].r = DM[0][0][Mc_AN][0][i][j];
-	  NC_OcpN[0][1][1][Mc_AN][i][j].r = DM[0][1][Mc_AN][0][i][j];
-	  NC_OcpN[0][0][1][Mc_AN][i][j].r = DM[0][2][Mc_AN][0][i][j];
-	  NC_OcpN[0][1][0][Mc_AN][i][j].r = DM[0][2][Mc_AN][0][j][i];
+	  openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[j].r = DM[0][0][Mc_AN][0][i][j];
+	  openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[j].r = DM[0][1][Mc_AN][0][i][j];
+	  openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[j].r = DM[0][2][Mc_AN][0][i][j];
+	  openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[j].r = DM[0][2][Mc_AN][0][j][i];
 
-	  NC_OcpN[0][0][0][Mc_AN][i][j].i = iDM[0][0][Mc_AN][0][i][j];
-	  NC_OcpN[0][1][1][Mc_AN][i][j].i = iDM[0][1][Mc_AN][0][i][j];
-	  NC_OcpN[0][0][1][Mc_AN][i][j].i = DM[0][3][Mc_AN][0][i][j];
-	  NC_OcpN[0][1][0][Mc_AN][i][j].i =-DM[0][3][Mc_AN][0][j][i];
+	  openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[j].i = iDM[0][0][Mc_AN][0][i][j];
+	  openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[j].i = iDM[0][1][Mc_AN][0][i][j];
+	  openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[j].i = DM[0][3][Mc_AN][0][i][j];
+	  openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[j].i =-DM[0][3][Mc_AN][0][j][i];
 	}
       }
 
@@ -446,8 +451,13 @@ void occupation_onsite()
 }
 
 
-void occupation_full()
+void occupation_full(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double ******DM=electronic->DM;
+  double *****OLP=electronic->OLP;
+  double ******iDM=electronic->iDM;
+
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4 ;
   int Mc_AN,Gc_AN,Cwan,num,l,m,n,mul,kl,hL_AN,hR_AN;
   int MR_AN,ML_AN,GR_AN,GL_AN,Rwan,Lwan;
@@ -780,7 +790,7 @@ void occupation_full()
 		}
 	      }
 
-	      DM_onsite[0][spin][Mc_AN][i][j] = ocn;
+	      openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j] = ocn;
 	    }
 	  }
 
@@ -834,7 +844,7 @@ void occupation_full()
 		      Lsum[m] = 0.0; 
 		      for (p=0; p<Spe_Specified_Num[Lwan][m]; p++){
 			p0 = Spe_Trans_Orbital[Lwan][m][p];
-			Lsum[m] += CntCoes[ML_AN][m][p]*OLP[0][Mc_AN][hL_AN][i][p0];
+			Lsum[m] += openmx_local_contraction_row(local_basis, ML_AN, m)[p]*OLP[0][Mc_AN][hL_AN][i][p0];
 		      }
 		    }
 
@@ -842,7 +852,7 @@ void occupation_full()
 		      Rsum[n] = 0.0; 
 		      for (p=0; p<Spe_Specified_Num[Rwan][n]; p++){
 			p0 = Spe_Trans_Orbital[Rwan][n][p];
-			Rsum[n] += CntCoes[MR_AN][n][p]*OLP[0][Mc_AN][hR_AN][j][p0];
+			Rsum[n] += openmx_local_contraction_row(local_basis, MR_AN, n)[p]*OLP[0][Mc_AN][hR_AN][j][p0];
 		      }
 		    }
 
@@ -856,7 +866,7 @@ void occupation_full()
 		}
 	      }
 
-	      DM_onsite[0][spin][Mc_AN][i][j] = ocn;
+	      openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j] = ocn;
 
 	    }
 	  }
@@ -1159,15 +1169,15 @@ void occupation_full()
 	    }
 	  }
 
-          NC_OcpN[0][0][0][Mc_AN][i][j].r = ReOcn00;
-          NC_OcpN[0][1][1][Mc_AN][i][j].r = ReOcn11;
-          NC_OcpN[0][0][1][Mc_AN][i][j].r = ReOcn01;
-          NC_OcpN[0][1][0][Mc_AN][j][i].r = ReOcn01;
+          openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[j].r = ReOcn00;
+          openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[j].r = ReOcn11;
+          openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[j].r = ReOcn01;
+          openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, j)[i].r = ReOcn01;
 
-          NC_OcpN[0][0][0][Mc_AN][i][j].i = ImOcn00;
-          NC_OcpN[0][1][1][Mc_AN][i][j].i = ImOcn11;
-          NC_OcpN[0][0][1][Mc_AN][i][j].i = ImOcn01;
-          NC_OcpN[0][1][0][Mc_AN][j][i].i =-ImOcn01;
+          openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[j].i = ImOcn00;
+          openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[j].i = ImOcn11;
+          openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[j].i = ImOcn01;
+          openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, j)[i].i =-ImOcn01;
 
 	}
       }
@@ -1374,8 +1384,13 @@ void occupation_full()
 
 
 
-void occupation_dual()
+void occupation_dual(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double ******DM=electronic->DM;
+  double *****OLP=electronic->OLP;
+  double ******iDM=electronic->iDM;
+
   int l1,l2,mul1,mul2,mul3,mul4,m1,m2,to1,to2,to3,to4 ;
   int Mc_AN,Gc_AN,Cwan,num,l,m,n,mul,kl,hL_AN,hR_AN;
   int MR_AN,ML_AN,GR_AN,GL_AN,Rwan,Lwan,Mh_AN;
@@ -1489,7 +1504,7 @@ void occupation_dual()
 		}
 	      }
 
-	      DM_onsite[0][spin][Mc_AN][m][n] = tmp0;
+	      openmx_local_density_row(local_basis, 0, spin, Mc_AN, m)[n] = tmp0;
 	    }
 	  }
 	} /* spin */
@@ -1531,7 +1546,7 @@ void occupation_dual()
 	for (spin=0; spin<=SpinP_switch; spin++){
 	  for (i=0; i<Spe_Total_NO[wan1]; i++){
 	    for (j=0; j<Spe_Total_NO[wan1]; j++){
-	      DM_onsite[0][spin][Mc_AN][i][j] = 0.0;
+	      openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j] = 0.0;
 	    }
 	  }
 	}
@@ -1573,7 +1588,7 @@ void occupation_dual()
 			    to3 = Cnt_index1[l1][mul3][m1];
 			    to4 = Cnt_index2[l2][mul4][m2];
 
-			    sum += CntCoes[Mc_AN][to3][mul1]*CntCoes[Mh_AN][to4][mul2]
+			    sum += openmx_local_contraction_row(local_basis, Mc_AN, to3)[mul1]*openmx_local_contraction_row(local_basis, Mh_AN, to4)[mul2]
 			          *DM[0][spin][Mc_AN][h_AN][to3][to4];
 			  }
 			}
@@ -1605,7 +1620,7 @@ void occupation_dual()
 			      + Primitive_DM[spin][m][k]*OLP[0][Mc_AN][h_AN][n][k]);
 		}
 
-		DM_onsite[0][spin][Mc_AN][m][n] += tmp0;
+		openmx_local_density_row(local_basis, 0, spin, Mc_AN, m)[n] += tmp0;
 	      }
 	    }
 	  }
@@ -2149,15 +2164,15 @@ void occupation_dual()
 	    }
 	  }
 
-          NC_OcpN[0][0][0][Mc_AN][m][n].r = ReOcn00;
-          NC_OcpN[0][1][1][Mc_AN][m][n].r = ReOcn11;
-          NC_OcpN[0][0][1][Mc_AN][m][n].r = ReOcn01;
-          NC_OcpN[0][1][0][Mc_AN][n][m].r = ReOcn01;
+          openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, m)[n].r = ReOcn00;
+          openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, m)[n].r = ReOcn11;
+          openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, m)[n].r = ReOcn01;
+          openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, n)[m].r = ReOcn01;
 
-          NC_OcpN[0][0][0][Mc_AN][m][n].i = ImOcn00;
-          NC_OcpN[0][1][1][Mc_AN][m][n].i = ImOcn11;
-          NC_OcpN[0][0][1][Mc_AN][m][n].i = ImOcn01;
-          NC_OcpN[0][1][0][Mc_AN][n][m].i =-ImOcn01;
+          openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, m)[n].i = ImOcn00;
+          openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, m)[n].i = ImOcn11;
+          openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, m)[n].i = ImOcn01;
+          openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, n)[m].i =-ImOcn01;
 	}
       }
 
@@ -2398,8 +2413,11 @@ void occupation_dual()
 
  
 
-void Induce_Orbital_Polarization(int Mc_AN)
+void Induce_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double ******DM=electronic->DM;
+
   int wan1,Gc_AN,spin,spinmax;
   int i,j,to1,to2,l1,mul1,m0,m1,m2,m3;
   int ***trans_index;
@@ -2546,7 +2564,7 @@ void Induce_Orbital_Polarization(int Mc_AN)
 	      to1 = trans_index[l1][mul1][m1];
 	      to2 = trans_index[l1][mul1][m2];
 
-	      DM_onsite[0][spin][Mc_AN][to1][to2] = sum1;
+	      openmx_local_density_row(local_basis, 0, spin, Mc_AN, to1)[to2] = sum1;
 	    }
 	  }
 	}
@@ -2579,8 +2597,11 @@ void Induce_Orbital_Polarization(int Mc_AN)
 
 
 
-void Induce_Orbital_Polarization_Together(int Mc_AN)
+void Induce_Orbital_Polarization_Together(int Mc_AN, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double ******DM=electronic->DM;
+
   int wan1,Gc_AN,spin,spinmax;
   int i,j,k,to1,to2,l1,mul1,m0,m1,m2,m3;
   int ***trans_index;
@@ -2715,10 +2736,10 @@ void Induce_Orbital_Polarization_Together(int Mc_AN)
 	    to2 = trans_index[l1][mul1][m2%k];
 
             if ( (m1/k)==0 && (m2/k)==0 ){
-	      DM_onsite[0][0][Mc_AN][to1][to2] = sum1;
+	      openmx_local_density_row(local_basis, 0, 0, Mc_AN, to1)[to2] = sum1;
 	    }
             else if ( (m1/k)==1 && (m2/k)==1 ){
-	      DM_onsite[0][1][Mc_AN][to1][to2] = sum1;
+	      openmx_local_density_row(local_basis, 0, 1, Mc_AN, to1)[to2] = sum1;
 	    }
 
 	  }
@@ -2749,8 +2770,12 @@ void Induce_Orbital_Polarization_Together(int Mc_AN)
 
 
 
-void Induce_NC_Orbital_Polarization(int Mc_AN)
+void Induce_NC_Orbital_Polarization(int Mc_AN, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double ******DM=electronic->DM;
+  double ******iDM=electronic->iDM;
+
   int wan1,Gc_AN;
   int i,j,k,to1,to2,l1,mul1,m0,m1,m2,m3;
   int ***trans_index;
@@ -2888,8 +2913,8 @@ void Induce_NC_Orbital_Polarization(int Mc_AN)
 	    to1 = trans_index[l1][mul1][m1%k];
 	    to2 = trans_index[l1][mul1][m2%k];
 
-	    NC_OcpN[0][m1/k][m2/k][Mc_AN][to2][to1].r = sum1.r;
-	    NC_OcpN[0][m1/k][m2/k][Mc_AN][to2][to1].i = sum1.i;
+	    openmx_local_occupation_row(local_basis, 0, m1/k, m2/k, Mc_AN, to2)[to1].r = sum1.r;
+	    openmx_local_occupation_row(local_basis, 0, m1/k, m2/k, Mc_AN, to2)[to1].i = sum1.i;
 	  }
 	}
       }
@@ -2917,8 +2942,9 @@ void Induce_NC_Orbital_Polarization(int Mc_AN)
 
 
 
-void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
+void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,k,tno0,tno1,tno2,Cwan,Gc_AN,spin;
   int Mc_AN,num,n,size1,size2,to1,to2;
   int l1,l2,m1,m2,mul1,mul2,wan1;
@@ -2972,7 +2998,7 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 	      for(mul2=0; mul2<Spe_Num_Basis[wan1][l2]; mul2++){
 		for(m2=0; m2<(2*l2+1); m2++){
 
-		  v_eff[spin][Mc_AN][to1][to2] = 0.0;
+		  openmx_local_potential_row(local_basis, spin, Mc_AN, to1)[to2] = 0.0;
 
 		  to2++;
 
@@ -3028,10 +3054,10 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
                       Uvalue = 0.0;
 
 		    if(to1 == to2){
-		      v_eff[spin][Mc_AN][to1][to2]= Uvalue*(0.5 - DM_onsite[0][spin][Mc_AN][to1][to2]);
+		      openmx_local_potential_row(local_basis, spin, Mc_AN, to1)[to2]= Uvalue*(0.5 - openmx_local_density_row(local_basis, 0, spin, Mc_AN, to1)[to2]);
 		    }
 		    else{
-		      v_eff[spin][Mc_AN][to1][to2]= Uvalue*(0.0 - DM_onsite[0][spin][Mc_AN][to1][to2]);
+		      openmx_local_potential_row(local_basis, spin, Mc_AN, to1)[to2]= Uvalue*(0.0 - openmx_local_density_row(local_basis, 0, spin, Mc_AN, to1)[to2]);
 		    }
 
 		    to2++;
@@ -3109,21 +3135,21 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
  
 		    ii = to1 - to_start;
 		    kk = to2 - to_start;
-		    v_eff[0][Mc_AN][to1][to2] = 0.0;
-	            v_eff[1][Mc_AN][to1][to2] = 0.0;
+		    openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] = 0.0;
+	            openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] = 0.0;
 
                     if(to1==to2){	/* double counting correction */
                       trace_spin=0.0;
                       trace_opp_spin=0.0;
                       for(dd=0; dd<(2*l1+1); dd++){
-                        trace_spin += DM_onsite[0][0][Mc_AN][to_start+dd][to_start+dd];
-                        trace_opp_spin += DM_onsite[0][1][Mc_AN][to_start+dd][to_start+dd];
+                        trace_spin += openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+dd)[to_start+dd];
+                        trace_opp_spin += openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+dd)[to_start+dd];
                       }
 
                       switch(dc_Type){
                       case 1: /* sFLL */
- 		        v_eff[0][Mc_AN][to1][to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5)-Jvalue*(trace_spin-0.5);	
-		        v_eff[1][Mc_AN][to1][to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5) -Jvalue*(trace_opp_spin-0.5);	
+                        openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5)-Jvalue*(trace_spin-0.5);
+		        openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5) -Jvalue*(trace_opp_spin-0.5);
 			break;
 
                       case 2: /* sAMF */
@@ -3131,12 +3157,12 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
                           for(jj=0; jj<(2*l1+1); jj++){
                             for(ll=0; ll<(2*l1+1); ll++){
                               if(jj==ll){    
-                                AMF_Array[NZUJ][0][0][jj][ll] = DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll]-trace_spin/((double)(2*l1+1));
-                                AMF_Array[NZUJ][1][0][jj][ll] = DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll]-trace_opp_spin/((double)(2*l1+1));
+                                AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll]-trace_spin/((double)(2*l1+1));
+                                AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll]-trace_opp_spin/((double)(2*l1+1));
                               }
                               else{
-                                AMF_Array[NZUJ][0][0][jj][ll] = DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll];
-                                AMF_Array[NZUJ][1][0][jj][ll] = DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll];
+                                AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll];
+                                AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll];
                               }
                             }
                           }
@@ -3145,9 +3171,9 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 			break;
 
                       case 3: /* cFLL */
- 		        v_eff[0][Mc_AN][to1][to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5) 
+                        openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5)
 			  -Jvalue*0.5*(trace_spin+trace_opp_spin-1.0);	
-		        v_eff[1][Mc_AN][to1][to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5) 
+		        openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] -= Uvalue*(trace_spin+trace_opp_spin-0.5)
 			  -Jvalue*0.5*(trace_spin+trace_opp_spin-1.0);	
 			break;
 
@@ -3156,12 +3182,12 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
                           for(jj=0; jj<(2*l1+1); jj++){
                             for(ll=0; ll<(2*l1+1); ll++){
                               if(jj==ll){    
-                                AMF_Array[NZUJ][0][0][jj][ll] = DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll]-(trace_spin+trace_opp_spin)/(2.0*((double)(2*l1+1)));
-                                AMF_Array[NZUJ][1][0][jj][ll] = DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll]-(trace_spin+trace_opp_spin)/(2.0*((double)(2*l1+1)));
+                                AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll]-(trace_spin+trace_opp_spin)/(2.0*((double)(2*l1+1)));
+                                AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll]-(trace_spin+trace_opp_spin)/(2.0*((double)(2*l1+1)));
                               }
                               else{
-                                AMF_Array[NZUJ][0][0][jj][ll] = DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll];
-                                AMF_Array[NZUJ][1][0][jj][ll] = DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll];
+                                AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll];
+                                AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll];
                               }
                             }
                           }
@@ -3177,25 +3203,25 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 		      for(ll=0; ll<(2*l1+1); ll++){
                         switch(dc_Type){
                         case 1: /* sFLL */
-			  v_eff[0][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-			    (DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll]
-			     +DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll])
+			  openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+			    (openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll]
+			     +openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
-			    DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll];
-		          v_eff[1][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-			    (DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll]
-			     +DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll])
+			    openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll];
+		          openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+			    (openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll]
+			     +openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
-			    DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll]; 
+			    openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll];
 			  break;
                         
                         case 2: /* sAMF */
-			  v_eff[0][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+			  openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
 			    (AMF_Array[NZUJ][1][0][jj][ll]
 			     +AMF_Array[NZUJ][0][0][jj][ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
 			    AMF_Array[NZUJ][0][0][jj][ll];
-		          v_eff[1][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+		          openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
 			    (AMF_Array[NZUJ][0][0][jj][ll]
 			     +AMF_Array[NZUJ][1][0][jj][ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
@@ -3203,25 +3229,25 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 			  break;
 
                         case 3: /* cFLL */
-			  v_eff[0][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-			    (DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll]
-			     +DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll])
+			  openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+			    (openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll]
+			     +openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
-			    DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll];
-		          v_eff[1][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-			    (DM_onsite[0][0][Mc_AN][to_start+jj][to_start+ll]
-			     +DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll])
+			    openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll];
+		          openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+			    (openmx_local_density_row(local_basis, 0, 0, Mc_AN, to_start+jj)[to_start+ll]
+			     +openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
-			    DM_onsite[0][1][Mc_AN][to_start+jj][to_start+ll];
+			    openmx_local_density_row(local_basis, 0, 1, Mc_AN, to_start+jj)[to_start+ll];
 			  break;
 
                         case 4: /* cAMF */
-			  v_eff[0][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+			  openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
 			    (AMF_Array[NZUJ][1][0][jj][ll]
 			     +AMF_Array[NZUJ][0][0][jj][ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
 			    AMF_Array[NZUJ][0][0][jj][ll];
-		          v_eff[1][Mc_AN][to1][to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
+		          openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] += Coulomb_Array[NZUJ][ii][jj][kk][ll]*
 			    (AMF_Array[NZUJ][0][0][jj][ll]
 			     +AMF_Array[NZUJ][1][0][jj][ll])
 			    -Coulomb_Array[NZUJ][ii][jj][ll][kk]*
@@ -3234,8 +3260,8 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 		       
 	 	  } /* mul_index1 == mul_index2 */
                   else{
-                    v_eff[0][Mc_AN][to1][to2] = 0.0;
-                    v_eff[1][Mc_AN][to1][to2] = 0.0;
+                    openmx_local_potential_row(local_basis, 0, Mc_AN, to1)[to2] = 0.0;
+                    openmx_local_potential_row(local_basis, 1, Mc_AN, to1)[to2] = 0.0;
 		  }
 
 		  to2++;
@@ -3348,7 +3374,7 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 	    tno1 = Spe_Total_NO[Cwan];
 	    for (i=0; i<tno1; i++){
 	      for (j=0; j<tno1; j++){
-		tmp_array[num] = v_eff[k][Mc_AN][i][j];
+		tmp_array[num] = openmx_local_potential_row(local_basis, k, Mc_AN, i)[j];
 		num++;
  	      } 
 	    } 
@@ -3381,7 +3407,7 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 	    tno1 = Spe_Total_NO[Cwan];
 	    for (i=0; i<tno1; i++){
 	      for (j=0; j<tno1; j++){
-		v_eff[k][Mc_AN][i][j] = tmp_array2[num];
+		openmx_local_potential_row(local_basis, k, Mc_AN, i)[j] = tmp_array2[num];
 		num++;
 	      }
 	    }
@@ -3412,8 +3438,11 @@ void make_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele)
 
 
 #pragma optimization_level 1
-void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[])
+void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double *****OLP_L=electronic->OLP_L;
+
   int i,j,k,tno0,tno1,tno2,Cwan,Gc_AN,spin;
   int Mc_AN,num,n,size1,size2,to1,to2;
   int l1,l2,m1,m2,mul1,mul2,wan1,s1,s2,s3,s4;
@@ -3478,14 +3507,14 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 	    for(mul2=0; mul2<Spe_Num_Basis[wan1][l2]; mul2++){
 	      for(m2=0; m2<(2*l2+1); m2++){
 
-		NC_v_eff[0][0][Mc_AN][to1][to2].r = 0.0;
-		NC_v_eff[0][0][Mc_AN][to1][to2].i = 0.0;
-		NC_v_eff[1][1][Mc_AN][to1][to2].r = 0.0;
-		NC_v_eff[1][1][Mc_AN][to1][to2].i = 0.0;
-		NC_v_eff[0][1][Mc_AN][to1][to2].r = 0.0;
-		NC_v_eff[0][1][Mc_AN][to1][to2].i = 0.0;
-		NC_v_eff[1][0][Mc_AN][to1][to2].r = 0.0;
-		NC_v_eff[1][0][Mc_AN][to1][to2].i = 0.0;
+		openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r = 0.0;
+		openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i = 0.0;
+		openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r = 0.0;
+		openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i = 0.0;
+		openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r = 0.0;
+		openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i = 0.0;
+		openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r = 0.0;
+		openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i = 0.0;
 
 		to2++;
 
@@ -3535,24 +3564,24 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 		      Uvalue = 0.0;
 
 		    if(to1==to2){
-		      NC_v_eff[0][0][Mc_AN][to1][to2].r = Uvalue*(0.5 - NC_OcpN[0][0][0][Mc_AN][to2][to1].r);
-		      NC_v_eff[0][0][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][0][0][Mc_AN][to2][to1].i);
-		      NC_v_eff[1][1][Mc_AN][to1][to2].r = Uvalue*(0.5 - NC_OcpN[0][1][1][Mc_AN][to2][to1].r);
-		      NC_v_eff[1][1][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][1][1][Mc_AN][to2][to1].i);
-		      NC_v_eff[0][1][Mc_AN][to1][to2].r = Uvalue*(0.0 - NC_OcpN[0][1][0][Mc_AN][to2][to1].r);
-		      NC_v_eff[0][1][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][1][0][Mc_AN][to2][to1].i);
-		      NC_v_eff[1][0][Mc_AN][to1][to2].r = Uvalue*(0.0 - NC_OcpN[0][0][1][Mc_AN][to2][to1].r);
-		      NC_v_eff[1][0][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][0][1][Mc_AN][to2][to1].i);
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r = Uvalue*(0.5 - openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to2)[to1].i);
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r = Uvalue*(0.5 - openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to2)[to1].i);
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to2)[to1].i);
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to2)[to1].i);
 		    }
 		    else{
-		      NC_v_eff[0][0][Mc_AN][to1][to2].r = Uvalue*(0.0 - NC_OcpN[0][0][0][Mc_AN][to2][to1].r);
-		      NC_v_eff[0][0][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][0][0][Mc_AN][to2][to1].i);
-		      NC_v_eff[1][1][Mc_AN][to1][to2].r = Uvalue*(0.0 - NC_OcpN[0][1][1][Mc_AN][to2][to1].r);
-		      NC_v_eff[1][1][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][1][1][Mc_AN][to2][to1].i);
-		      NC_v_eff[0][1][Mc_AN][to1][to2].r = Uvalue*(0.0 - NC_OcpN[0][1][0][Mc_AN][to2][to1].r);
-		      NC_v_eff[0][1][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][1][0][Mc_AN][to2][to1].i);
-		      NC_v_eff[1][0][Mc_AN][to1][to2].r = Uvalue*(0.0 - NC_OcpN[0][0][1][Mc_AN][to2][to1].r);
-		      NC_v_eff[1][0][Mc_AN][to1][to2].i = Uvalue*(0.0 - NC_OcpN[0][0][1][Mc_AN][to2][to1].i);
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to2)[to1].i);
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to2)[to1].i);
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to2)[to1].i);
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to2)[to1].r);
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i = Uvalue*(0.0 - openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to2)[to1].i);
 		    }
 
 		    to2++;
@@ -3615,14 +3644,14 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 
 		      ii = to1 - to_start;
 		      kk = to2 - to_start;
-		      NC_v_eff[0][0][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[0][0][Mc_AN][to1][to2].i = 0.0;
-		      NC_v_eff[1][1][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[1][1][Mc_AN][to1][to2].i = 0.0;
-		      NC_v_eff[0][1][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[0][1][Mc_AN][to1][to2].i = 0.0;
-		      NC_v_eff[1][0][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[1][0][Mc_AN][to1][to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i = 0.0;
                 
 		      if(to1 == to2){	/* double counting correction */
 			trace_N00.r = 0.0;
@@ -3635,29 +3664,29 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 			trace_N10.r = 0.0;
 			trace_N10.i = 0.0;
 			for(dd=0; dd<(2*l1+1); dd++){
-			  trace_N00.r += NC_OcpN[0][0][0][Mc_AN][to_start+dd][to_start+dd].r;
-			  trace_N00.i += NC_OcpN[0][0][0][Mc_AN][to_start+dd][to_start+dd].i;
-			  trace_N11.r += NC_OcpN[0][1][1][Mc_AN][to_start+dd][to_start+dd].r;
-			  trace_N11.i += NC_OcpN[0][1][1][Mc_AN][to_start+dd][to_start+dd].i;
+			  trace_N00.r += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+dd)[to_start+dd].r;
+			  trace_N00.i += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+dd)[to_start+dd].i;
+			  trace_N11.r += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+dd)[to_start+dd].r;
+			  trace_N11.i += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+dd)[to_start+dd].i;
 
-			  trace_N01.r += NC_OcpN[0][0][1][Mc_AN][to_start+dd][to_start+dd].r;
-			  trace_N01.i += NC_OcpN[0][0][1][Mc_AN][to_start+dd][to_start+dd].i;
-			  trace_N10.r += NC_OcpN[0][1][0][Mc_AN][to_start+dd][to_start+dd].r;
-			  trace_N10.i += NC_OcpN[0][1][0][Mc_AN][to_start+dd][to_start+dd].i;
+			  trace_N01.r += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+dd)[to_start+dd].r;
+			  trace_N01.i += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+dd)[to_start+dd].i;
+			  trace_N10.r += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+dd)[to_start+dd].r;
+			  trace_N10.i += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+dd)[to_start+dd].i;
 			}
 
 			/* Double counting term */
 			switch(dc_Type){
 			case 1:	/* sFLL */
-			  NC_v_eff[0][0][Mc_AN][to1][to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*(trace_N00.r - 0.5);
-			  NC_v_eff[0][0][Mc_AN][to1][to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N00.i);
-			  NC_v_eff[1][1][Mc_AN][to1][to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*(trace_N11.r - 0.5);
-			  NC_v_eff[1][1][Mc_AN][to1][to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N11.i);
+			  openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*(trace_N00.r - 0.5);
+			  openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N00.i);
+			  openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*(trace_N11.r - 0.5);
+			  openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N11.i);
 	
-			  NC_v_eff[0][1][Mc_AN][to1][to2].r -= -(Jvalue)*trace_N10.r;
-			  NC_v_eff[0][1][Mc_AN][to1][to2].i -= -(Jvalue)*trace_N10.i;
-			  NC_v_eff[1][0][Mc_AN][to1][to2].r -= -(Jvalue)*trace_N01.r;
-			  NC_v_eff[1][0][Mc_AN][to1][to2].i -= -(Jvalue)*trace_N01.i;
+			  openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r -= -(Jvalue)*trace_N10.r;
+			  openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i -= -(Jvalue)*trace_N10.i;
+			  openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r -= -(Jvalue)*trace_N01.r;
+			  openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i -= -(Jvalue)*trace_N01.i;
 			  break;
 
 			case 2:	/* sAMF */
@@ -3665,24 +3694,24 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 			    for(jj=0; jj<(2*l1+1); jj++){
 			      for(ll=0; ll<(2*l1+1); ll++){
 				if(jj==ll){
-				  AMF_Array[NZUJ][0][0][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r - trace_N00.r/((double)(2*l1+1));
-				  AMF_Array[NZUJ][0][1][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i - trace_N00.i/((double)(2*l1+1));
-				  AMF_Array[NZUJ][1][0][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r - trace_N11.r/((double)(2*l1+1));
-				  AMF_Array[NZUJ][1][1][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i - trace_N11.i/((double)(2*l1+1));
-				  AMF_Array[NZUJ][2][0][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].r - (trace_N01.r+trace_N10.r)/((double)(2*(2*l1+1)));
-				  AMF_Array[NZUJ][2][1][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].i - (trace_N01.i-trace_N10.i)/((double)(2*(2*l1+1)));
-				  AMF_Array[NZUJ][3][0][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].r - (trace_N01.r+trace_N10.r)/((double)(2*(2*l1+1)));
-				  AMF_Array[NZUJ][3][1][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].i + (trace_N01.i-trace_N10.i)/((double)(2*(2*l1+1)));
+				  AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r - trace_N00.r/((double)(2*l1+1));
+				  AMF_Array[NZUJ][0][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i - trace_N00.i/((double)(2*l1+1));
+				  AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r - trace_N11.r/((double)(2*l1+1));
+				  AMF_Array[NZUJ][1][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i - trace_N11.i/((double)(2*l1+1));
+				  AMF_Array[NZUJ][2][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].r - (trace_N01.r+trace_N10.r)/((double)(2*(2*l1+1)));
+				  AMF_Array[NZUJ][2][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].i - (trace_N01.i-trace_N10.i)/((double)(2*(2*l1+1)));
+				  AMF_Array[NZUJ][3][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].r - (trace_N01.r+trace_N10.r)/((double)(2*(2*l1+1)));
+				  AMF_Array[NZUJ][3][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].i + (trace_N01.i-trace_N10.i)/((double)(2*(2*l1+1)));
 				}
 				else{
-				  AMF_Array[NZUJ][0][0][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][0][1][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i;
-				  AMF_Array[NZUJ][1][0][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][1][1][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i;
-				  AMF_Array[NZUJ][2][0][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][2][1][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].i;
-				  AMF_Array[NZUJ][3][0][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][3][1][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].i;
+				  AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][0][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i;
+				  AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][1][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i;
+				  AMF_Array[NZUJ][2][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][2][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].i;
+				  AMF_Array[NZUJ][3][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][3][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].i;
 				}
 			      }
 			    }
@@ -3691,10 +3720,10 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 			  break;
 
 			case 3:	/* cFLL */
-			  NC_v_eff[0][0][Mc_AN][to1][to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*((trace_N00.r+trace_N11.r)/2.0 - 0.5);
-			  NC_v_eff[0][0][Mc_AN][to1][to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N00.i+trace_N11.i)/2.0;
-			  NC_v_eff[1][1][Mc_AN][to1][to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*((trace_N00.r+trace_N11.r)/2.0 - 0.5);
-			  NC_v_eff[1][1][Mc_AN][to1][to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N00.i+trace_N11.i)/2.0;
+			  openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*((trace_N00.r+trace_N11.r)/2.0 - 0.5);
+			  openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N00.i+trace_N11.i)/2.0;
+			  openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r -= (Uvalue)*(trace_N00.r+trace_N11.r - 0.5) - (Jvalue)*((trace_N00.r+trace_N11.r)/2.0 - 0.5);
+			  openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i -= (Uvalue)*(trace_N00.i+trace_N11.i) - (Jvalue)*(trace_N00.i+trace_N11.i)/2.0;
 			  break;
 
 			case 4:	/* cAMF */
@@ -3702,24 +3731,24 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 			    for(jj=0; jj<(2*l1+1); jj++){
 			      for(ll=0; ll<(2*l1+1); ll++){
 				if(jj==ll){
-				  AMF_Array[NZUJ][0][0][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r - (trace_N00.r+trace_N11.r)/(2.0*((double)(2*l1+1)));
-				  AMF_Array[NZUJ][0][1][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i - (trace_N00.i+trace_N11.i)/(2.0*((double)(2*l1+1)));
-				  AMF_Array[NZUJ][1][0][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r - (trace_N00.r+trace_N11.r)/(2.0*((double)(2*l1+1)));
-				  AMF_Array[NZUJ][1][1][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i - (trace_N00.i+trace_N11.i)/(2.0*((double)(2*l1+1)));
-				  AMF_Array[NZUJ][2][0][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][2][1][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].i;
-				  AMF_Array[NZUJ][3][0][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][3][1][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].i;
+				  AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r - (trace_N00.r+trace_N11.r)/(2.0*((double)(2*l1+1)));
+				  AMF_Array[NZUJ][0][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i - (trace_N00.i+trace_N11.i)/(2.0*((double)(2*l1+1)));
+				  AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r - (trace_N00.r+trace_N11.r)/(2.0*((double)(2*l1+1)));
+				  AMF_Array[NZUJ][1][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i - (trace_N00.i+trace_N11.i)/(2.0*((double)(2*l1+1)));
+				  AMF_Array[NZUJ][2][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][2][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].i;
+				  AMF_Array[NZUJ][3][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][3][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].i;
 				}
 				else{
-				  AMF_Array[NZUJ][0][0][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][0][1][jj][ll] = NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i;
-				  AMF_Array[NZUJ][1][0][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][1][1][jj][ll] = NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i;
-				  AMF_Array[NZUJ][2][0][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][2][1][jj][ll] = NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].i;
-				  AMF_Array[NZUJ][3][0][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].r;
-				  AMF_Array[NZUJ][3][1][jj][ll] = NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].i;
+				  AMF_Array[NZUJ][0][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][0][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i;
+				  AMF_Array[NZUJ][1][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][1][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i;
+				  AMF_Array[NZUJ][2][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][2][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].i;
+				  AMF_Array[NZUJ][3][0][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].r;
+				  AMF_Array[NZUJ][3][1][jj][ll] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].i;
 				}
 			      }
 			    }
@@ -3761,79 +3790,79 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 			for(ll=0; ll<(2*l1+1); ll++){
 			  switch(dc_Type){
 			  case 1: /* sFLL */
-			    NC_v_eff[0][0][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r
-												      +NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r);
-			    NC_v_eff[0][0][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i 
-												      +NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r 
-												      +NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i 
-												      +NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i);
-			    NC_v_eff[0][1][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].r;
-			    NC_v_eff[0][1][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].i;
-			    NC_v_eff[1][0][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].r;
-			    NC_v_eff[1][0][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].i;
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r
+												      +openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r);
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i
+												      +openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i);
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r
+												      +openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r);
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i
+												      +openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i);
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].r;
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].i;
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].r;
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].i;
 			    break;
                      
 			  case 2: /* sAMF */
-			    NC_v_eff[0][0][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][0][jj][ll]
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][0][jj][ll]
 												      +AMF_Array[NZUJ][1][0][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][0][0][jj][ll]);
-			    NC_v_eff[0][0][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][1][jj][ll] 
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][1][jj][ll]
 												      +AMF_Array[NZUJ][1][1][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][0][1][jj][ll]);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][0][jj][ll] 
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][0][jj][ll]
 												      +AMF_Array[NZUJ][0][0][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][1][0][jj][ll]);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][1][jj][ll] 
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][1][jj][ll]
 												      +AMF_Array[NZUJ][0][1][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][1][1][jj][ll]);
-			    NC_v_eff[0][1][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][0][jj][ll];
-			    NC_v_eff[0][1][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][1][jj][ll];
-			    NC_v_eff[1][0][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][0][jj][ll];
-			    NC_v_eff[1][0][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][1][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][0][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][1][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][0][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][1][jj][ll];
 			    break;
 
 			  case 3: /* cFLL */
-			    NC_v_eff[0][0][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r
-												      +NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r);
-			    NC_v_eff[0][0][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i 
-												      +NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r 
-												      +NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].r);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i 
-												      +NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].i)
-			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(NC_OcpN[0][1][1][Mc_AN][to_start+jj][to_start+ll].i);
-			    NC_v_eff[0][1][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].r;
-			    NC_v_eff[0][1][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][1][0][Mc_AN][to_start+jj][to_start+ll].i;
-			    NC_v_eff[1][0][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].r;
-			    NC_v_eff[1][0][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*NC_OcpN[0][0][1][Mc_AN][to_start+jj][to_start+ll].i;
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r
+												      +openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r);
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i
+												      +openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i);
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r
+												      +openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].r)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].r);
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i
+												      +openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, to_start+jj)[to_start+ll].i)
+			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, to_start+jj)[to_start+ll].i);
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].r;
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, to_start+jj)[to_start+ll].i;
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].r;
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, to_start+jj)[to_start+ll].i;
 			    break;
 
 			  case 4: /* cAMF */
-			    NC_v_eff[0][0][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][0][jj][ll]
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][0][jj][ll]
 												      +AMF_Array[NZUJ][1][0][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][0][0][jj][ll]);
-			    NC_v_eff[0][0][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][1][jj][ll] 
+			    openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][0][1][jj][ll]
 												      +AMF_Array[NZUJ][1][1][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][0][1][jj][ll]);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][0][jj][ll] 
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][0][jj][ll]
 												      +AMF_Array[NZUJ][0][0][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][1][0][jj][ll]);
-			    NC_v_eff[1][1][Mc_AN][to1][to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][1][jj][ll] 
+			    openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i += Coulomb_Array[NZUJ][ii][jj][kk][ll]*(AMF_Array[NZUJ][1][1][jj][ll]
 												      +AMF_Array[NZUJ][0][1][jj][ll])
 			      -Coulomb_Array[NZUJ][ii][jj][ll][kk]*(AMF_Array[NZUJ][1][1][jj][ll]);
-			    NC_v_eff[0][1][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][0][jj][ll];
-			    NC_v_eff[0][1][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][1][jj][ll];
-			    NC_v_eff[1][0][Mc_AN][to1][to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][0][jj][ll];
-			    NC_v_eff[1][0][Mc_AN][to1][to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][1][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][0][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][3][1][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][0][jj][ll];
+			    openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i += -Coulomb_Array[NZUJ][ii][jj][ll][kk]*AMF_Array[NZUJ][2][1][jj][ll];
 			    break;
 			    /*  case 3:
 				NC_v_eff[0][0][Mc_AN][to1][to2].r += Coulomb_Array[count][ii][jj][kk][ll]*dc_alpha[count]*(NC_OcpN[0][0][0][Mc_AN][to_start+jj][to_start+ll].r
@@ -3876,14 +3905,14 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 
 		    } /* U || J != 0.0 */
 		    else{
-		      NC_v_eff[0][0][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[0][0][Mc_AN][to1][to2].i = 0.0;
-		      NC_v_eff[1][1][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[1][1][Mc_AN][to1][to2].i = 0.0;
-		      NC_v_eff[0][1][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[0][1][Mc_AN][to1][to2].i = 0.0;
-		      NC_v_eff[1][0][Mc_AN][to1][to2].r = 0.0;
-		      NC_v_eff[1][0][Mc_AN][to1][to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, to1)[to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, to1)[to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, to1)[to2].i = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].r = 0.0;
+		      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, to1)[to2].i = 0.0;
 		    }
 		
 		    to2++;
@@ -3933,10 +3962,10 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 
       for (i=0; i<Spe_Total_NO[wan1]; i++){
 
-	TN[0][0].r += NC_OcpN[0][0][0][Mc_AN][i][i].r;
-	TN[0][1].r += NC_OcpN[0][0][1][Mc_AN][i][i].r;
-	TN[1][0].r += NC_OcpN[0][1][0][Mc_AN][i][i].r;
-	TN[1][1].r += NC_OcpN[0][1][1][Mc_AN][i][i].r;
+	TN[0][0].r += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[i].r;
+	TN[0][1].r += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[i].r;
+	TN[1][0].r += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[i].r;
+	TN[1][1].r += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[i].r;
 
         /*
         conjugate complex of TN due to difference
@@ -3944,10 +3973,10 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
         and charge density
         */
 
-	TN[0][0].i -= NC_OcpN[0][0][0][Mc_AN][i][i].i;
-	TN[0][1].i -= NC_OcpN[0][0][1][Mc_AN][i][i].i;
-	TN[1][0].i -= NC_OcpN[0][1][0][Mc_AN][i][i].i;
-	TN[1][1].i -= NC_OcpN[0][1][1][Mc_AN][i][i].i;
+	TN[0][0].i -= openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[i].i;
+	TN[0][1].i -= openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[i].i;
+	TN[1][0].i -= openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[i].i;
+	TN[1][1].i -= openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[i].i;
       }
 
 
@@ -4033,8 +4062,8 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 		}    /* s3 */
                 
 
-		NC_v_eff[s1][s2][Mc_AN][i][j].r += 2.0*Constraint_NCS_V*csum1.r;
-		NC_v_eff[s1][s2][Mc_AN][i][j].i += 2.0*Constraint_NCS_V*csum1.i;
+		openmx_local_complex_potential_row(local_basis, s1, s2, Mc_AN, i)[j].r += 2.0*Constraint_NCS_V*csum1.r;
+		openmx_local_complex_potential_row(local_basis, s1, s2, Mc_AN, i)[j].i += 2.0*Constraint_NCS_V*csum1.i;
 
               }  
             } 
@@ -4088,10 +4117,10 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 
       for (i=0; i<Spe_Total_NO[wan1]; i++){
 
-	TN[0][0].r += NC_OcpN[0][0][0][Mc_AN][i][i].r;
-	TN[0][1].r += NC_OcpN[0][0][1][Mc_AN][i][i].r;
-	TN[1][0].r += NC_OcpN[0][1][0][Mc_AN][i][i].r;
-	TN[1][1].r += NC_OcpN[0][1][1][Mc_AN][i][i].r;
+	TN[0][0].r += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[i].r;
+	TN[0][1].r += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[i].r;
+	TN[1][0].r += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[i].r;
+	TN[1][1].r += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[i].r;
 
         /*
         conjugate complex of TN due to difference
@@ -4099,10 +4128,10 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
         and charge density
         */
 
-	TN[0][0].i -= NC_OcpN[0][0][0][Mc_AN][i][i].i;
-	TN[0][1].i -= NC_OcpN[0][0][1][Mc_AN][i][i].i;
-	TN[1][0].i -= NC_OcpN[0][1][0][Mc_AN][i][i].i;
-	TN[1][1].i -= NC_OcpN[0][1][1][Mc_AN][i][i].i;
+	TN[0][0].i -= openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[i].i;
+	TN[0][1].i -= openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[i].i;
+	TN[1][0].i -= openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[i].i;
+	TN[1][1].i -= openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[i].i;
       }
 
       EulerAngle_Spin( 1,
@@ -4199,8 +4228,8 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 		}    /* s3 */
                 
 
-		NC_v_eff[s1][s2][Mc_AN][i][j].r += 2.0*Constraint_NCS_V*csum1.r;
-		NC_v_eff[s1][s2][Mc_AN][i][j].i += 2.0*Constraint_NCS_V*csum1.i;
+		openmx_local_complex_potential_row(local_basis, s1, s2, Mc_AN, i)[j].r += 2.0*Constraint_NCS_V*csum1.r;
+		openmx_local_complex_potential_row(local_basis, s1, s2, Mc_AN, i)[j].i += 2.0*Constraint_NCS_V*csum1.i;
 
               }  
             } 
@@ -4255,10 +4284,10 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 
       for (i=0; i<Spe_Total_NO[wan1]; i++){
 
-	TN[0][0].r += NC_OcpN[0][0][0][Mc_AN][i][i].r;
-	TN[0][1].r += NC_OcpN[0][0][1][Mc_AN][i][i].r;
-	TN[1][0].r += NC_OcpN[0][1][0][Mc_AN][i][i].r;
-	TN[1][1].r += NC_OcpN[0][1][1][Mc_AN][i][i].r;
+	TN[0][0].r += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[i].r;
+	TN[0][1].r += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[i].r;
+	TN[1][0].r += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[i].r;
+	TN[1][1].r += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[i].r;
 
         /*
         conjugate complex of TN due to difference
@@ -4266,10 +4295,10 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
         and charge density
         */
 
-	TN[0][0].i -= NC_OcpN[0][0][0][Mc_AN][i][i].i;
-	TN[0][1].i -= NC_OcpN[0][0][1][Mc_AN][i][i].i;
-	TN[1][0].i -= NC_OcpN[0][1][0][Mc_AN][i][i].i;
-	TN[1][1].i -= NC_OcpN[0][1][1][Mc_AN][i][i].i;
+	TN[0][0].i -= openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[i].i;
+	TN[0][1].i -= openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[i].i;
+	TN[1][0].i -= openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[i].i;
+	TN[1][1].i -= openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[i].i;
       }
 
       EulerAngle_Spin( 1,
@@ -4335,8 +4364,8 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
             for (s1=0; s1<2; s1++){
               for (s2=0; s2<2; s2++){
 
-		NC_v_eff[s1][s2][Mc_AN][i][j].r += Bx*dSx[s1][s2].r + By*dSy[s1][s2].r + Bz*dSz[s1][s2].r;
-		NC_v_eff[s1][s2][Mc_AN][i][j].i += Bx*dSx[s1][s2].i + By*dSy[s1][s2].i + Bz*dSz[s1][s2].i;
+		openmx_local_complex_potential_row(local_basis, s1, s2, Mc_AN, i)[j].r += Bx*dSx[s1][s2].r + By*dSy[s1][s2].r + Bz*dSz[s1][s2].r;
+		openmx_local_complex_potential_row(local_basis, s1, s2, Mc_AN, i)[j].i += Bx*dSx[s1][s2].i + By*dSy[s1][s2].i + Bz*dSz[s1][s2].i;
 	      }
 	    }
 	  }
@@ -4387,8 +4416,8 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
               + B*OLP_L[1][Mc_AN][0][i][j]
               + C*OLP_L[2][Mc_AN][0][i][j];
 
-          NC_v_eff[0][0][Mc_AN][i][j].i += tmp;
-          NC_v_eff[1][1][Mc_AN][i][j].i += tmp;
+          openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[j].i += tmp;
+          openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[j].i += tmp;
 
         }
       }
@@ -4502,14 +4531,14 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 	  tno1 = Spe_Total_NO[Cwan];
 	  for (i=0; i<tno1; i++){
 	    for (j=0; j<tno1; j++){
-	      tmp_array[num] = NC_v_eff[0][0][Mc_AN][i][j].r;  num++;
-	      tmp_array[num] = NC_v_eff[0][0][Mc_AN][i][j].i;  num++;
-	      tmp_array[num] = NC_v_eff[1][1][Mc_AN][i][j].r;  num++;
-	      tmp_array[num] = NC_v_eff[1][1][Mc_AN][i][j].i;  num++;
-	      tmp_array[num] = NC_v_eff[0][1][Mc_AN][i][j].r;  num++;
-	      tmp_array[num] = NC_v_eff[0][1][Mc_AN][i][j].i;  num++;
-	      tmp_array[num] = NC_v_eff[1][0][Mc_AN][i][j].r;  num++;
-	      tmp_array[num] = NC_v_eff[1][0][Mc_AN][i][j].i;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[j].r;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[j].i;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[j].r;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[j].i;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[j].r;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[j].i;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, i)[j].r;  num++;
+	      tmp_array[num] = openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, i)[j].i;  num++;
 	    } 
 	  } 
 	}
@@ -4540,14 +4569,14 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 	  tno1 = Spe_Total_NO[Cwan];
 	  for (i=0; i<tno1; i++){
 	    for (j=0; j<tno1; j++){
-	      NC_v_eff[0][0][Mc_AN][i][j].r = tmp_array2[num];  num++;
-	      NC_v_eff[0][0][Mc_AN][i][j].i = tmp_array2[num];  num++;
-	      NC_v_eff[1][1][Mc_AN][i][j].r = tmp_array2[num];  num++;
-	      NC_v_eff[1][1][Mc_AN][i][j].i = tmp_array2[num];  num++;
-	      NC_v_eff[0][1][Mc_AN][i][j].r = tmp_array2[num];  num++;
-	      NC_v_eff[0][1][Mc_AN][i][j].i = tmp_array2[num];  num++;
-	      NC_v_eff[1][0][Mc_AN][i][j].r = tmp_array2[num];  num++;
-	      NC_v_eff[1][0][Mc_AN][i][j].i = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[j].r = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[j].i = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[j].r = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[j].i = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[j].r = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[j].i = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, i)[j].r = tmp_array2[num];  num++;
+	      openmx_local_complex_potential_row(local_basis, 1, 0, Mc_AN, i)[j].i = tmp_array2[num];  num++;
 	    }
 	  }
 	}        
@@ -4576,8 +4605,9 @@ void make_NC_v_eff(int SCF_iter, int SucceedReadingDMfile, double dUele, double 
 
 
 
-void Output_Collinear_OcpN()
+void Output_Collinear_OcpN(const OpenMXLocalBasisViews *local_basis)
 {
+
   int Gc_AN,l,m,mul,spin,wan1,i,j,k,base;
   int tno0,Mc_AN,num,l1,mul1,m1,to1,Ns;
   int numprocs,myid,ID,tag=999;
@@ -4673,7 +4703,7 @@ void Output_Collinear_OcpN()
       for (spin=0; spin<=SpinP_switch; spin++){
 	for (i=0; i<Spe_Total_NO[wan1]; i++){
 	  for (j=0; j<Spe_Total_NO[wan1]; j++){
-	    tmp_vec[num] = DM_onsite[0][spin][Mc_AN][i][j];
+	    tmp_vec[num] = openmx_local_density_row(local_basis, 0, spin, Mc_AN, i)[j];
 	    num++; 
 	  }
 	}
@@ -4800,8 +4830,9 @@ void Output_Collinear_OcpN()
 
 
 
-void Output_NonCollinear_OcpN()
+void Output_NonCollinear_OcpN(const OpenMXLocalBasisViews *local_basis)
 {
+
   int Gc_AN,l,m,mul,spin,wan1,i,j,k;
   int tno0,Mc_AN,num,l1,mul1,m1,to1,Ns;
   int i1,j1,num0,num1;
@@ -4898,14 +4929,14 @@ void Output_NonCollinear_OcpN()
       num = 0; 
       for (i=0; i<Spe_Total_NO[wan1]; i++){
 	for (j=0; j<Spe_Total_NO[wan1]; j++){
-	  tmp_vec[num] = NC_OcpN[0][0][0][Mc_AN][i][j].r;  num++; 
-	  tmp_vec[num] = NC_OcpN[0][0][0][Mc_AN][i][j].i;  num++; 
-	  tmp_vec[num] = NC_OcpN[0][1][1][Mc_AN][i][j].r;  num++; 
-	  tmp_vec[num] = NC_OcpN[0][1][1][Mc_AN][i][j].i;  num++; 
-	  tmp_vec[num] = NC_OcpN[0][0][1][Mc_AN][i][j].r;  num++; 
-	  tmp_vec[num] = NC_OcpN[0][0][1][Mc_AN][i][j].i;  num++; 
-	  tmp_vec[num] = NC_OcpN[0][1][0][Mc_AN][i][j].r;  num++; 
-	  tmp_vec[num] = NC_OcpN[0][1][0][Mc_AN][i][j].i;  num++; 
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[j].r;  num++;
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, i)[j].i;  num++;
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[j].r;  num++;
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, i)[j].i;  num++;
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[j].r;  num++;
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, i)[j].i;  num++;
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[j].r;  num++;
+	  tmp_vec[num] = openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, i)[j].i;  num++;
 	}
       }
 

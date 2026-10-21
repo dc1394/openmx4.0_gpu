@@ -88,7 +88,7 @@ void Merge_LogFile(char *file)
 
     fprintf(fp1,"***********************************************************\n");
     fprintf(fp1,"***********************************************************\n\n");
-    fprintf(fp1,"  This calculation was performed by OpenMX Ver. %s\n",Version_OpenMX); 
+    fprintf(fp1,"  This calculation was performed by OpenMX Ver. %s\n",openmx_core_version());
     fprintf(fp1,"  using %d MPI processes and %d OpenMP threads.\n\n",numprocs,openmp_threads_num);
     fprintf(fp1,"  %s\n",asctime(date));
     fprintf(fp1,"***********************************************************\n");

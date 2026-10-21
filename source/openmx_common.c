@@ -42,7 +42,6 @@ void Generation_ATV(int N)
 	  atv_ijk[0][1] = 0;
 	  atv_ijk[0][2] = 0;
 	  atv_ijk[0][3] = 0;
-	  ratv[i+N][j+N][k+N] = 0;
 	}
 	else{
 	  atv[Rn][1] = di*tv[1][1] + dj*tv[2][1] + dk*tv[3][1];
@@ -51,7 +50,6 @@ void Generation_ATV(int N)
 	  atv_ijk[Rn][1] = i;
 	  atv_ijk[Rn][2] = j;
 	  atv_ijk[Rn][3] = k;
-	  ratv[i+N][j+N][k+N] = Rn;
 	  Rn = Rn + 1;
 	}
       }
@@ -77,9 +75,7 @@ double Dot_Product(double a[4], double b[4])
 
 int R_atv(int N, int i, int j, int k)
 {
-  int Rn;
-  Rn = ratv[i+N][j+N][k+N];
-  return Rn;
+  return openmx_periodic_index(N,i,j,k);
 }
 
 dcomplex Complex(double re, double im)

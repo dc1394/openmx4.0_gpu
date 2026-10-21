@@ -24,14 +24,21 @@
 #include <unistd.h>
 #include "openmx_common.h"
 #include "mpi.h"
+#include "openmx_projector_exchange.h"
 #include <omp.h>
 
 static void Multiply_OLP(int Mc_AN, int Mj_AN, int k, int kl, 
-                         int Cwan, int Hwan, int wakg, dcomplex ***NLH);
+                         int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic);
 
 
-double Set_CoreHoleMatrix(double *****HCH)
+double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electronic)
 {
+  double *****HNL=electronic->HNL;
+  double *****OLP=electronic->OLP;
+  double *****OLP_CH=electronic->OLP_CH;
+  double *****iHCH=electronic->iHCH;
+  double *****iHNL=electronic->iHNL;
+
   static int firsttime=1;
   double TStime,TEtime;
   int i,j,kl,n,m,Rn;
@@ -63,6 +70,10 @@ double Set_CoreHoleMatrix(double *****HCH)
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
+  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(double));
+  int *send_progress=projector_transfer.buffers.sent;
+  int *receive_progress=projector_transfer.buffers.received;
+
 
   /*************************************************************
     set scaled OLP = OLP_CH
@@ -188,12 +199,12 @@ double Set_CoreHoleMatrix(double *****HCH)
     }
   }
 
-  Snd_OLP_Size = (int*)malloc(sizeof(int)*numprocs);
-  Rcv_OLP_Size = (int*)malloc(sizeof(int)*numprocs);
+  Snd_OLP_Size = projector_transfer.buffers.send_sizes;
+  Rcv_OLP_Size = projector_transfer.buffers.receive_sizes;
 
   for (ID=0; ID<numprocs; ID++){
-    F_Snd_Num_WK[ID] = 0;
-    F_Rcv_Num_WK[ID] = 0;
+    send_progress[ID] = 0;
+    receive_progress[ID] = 0;
   }
 
   do {
@@ -209,10 +220,10 @@ double Set_CoreHoleMatrix(double *****HCH)
 
       /* find the data size to send the block data */
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
 
         size1 = 0;
-        n = F_Snd_Num_WK[IDS];
+        n = send_progress[IDS];
 
         Mc_AN = Snd_MAN[IDS][n];
         Gc_AN = Snd_GAN[IDS][n];
@@ -235,7 +246,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
       /* receiving of the size of the data */
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
         MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
         Rcv_OLP_Size[IDR] = size2;
       }
@@ -243,7 +254,7 @@ double Set_CoreHoleMatrix(double *****HCH)
         Rcv_OLP_Size[IDR] = 0;
       }
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) )  MPI_Wait(&request,&stat);
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) )  MPI_Wait(&request,&stat);
 
     } /* ID */
 
@@ -260,18 +271,18 @@ double Set_CoreHoleMatrix(double *****HCH)
          sending of the data 
       ******************************/
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
 
 	size1 = Snd_OLP_Size[IDS];
 
 	/* allocation of the array */
 
-	tmp_array = (double*)malloc(sizeof(double)*size1);
+	tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
 	/* multidimentional array to the vector array */
 
 	num = 0;
-	n = F_Snd_Num_WK[IDS];
+	n = send_progress[IDS];
 
 	Mc_AN = Snd_MAN[IDS][n];
 	Gc_AN = Snd_GAN[IDS][n];
@@ -298,16 +309,16 @@ double Set_CoreHoleMatrix(double *****HCH)
         receiving of the block data
       ******************************/
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
         
 	size2 = Rcv_OLP_Size[IDR];
-	tmp_array2 = (double*)malloc(sizeof(double)*size2);
+	tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
 	MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
 	/* store */
 
 	num = 0;
-	n = F_Rcv_Num_WK[IDR];
+	n = receive_progress[IDR];
 	Original_Mc_AN = F_TopMAN[IDR] + n;
 
 	Gc_AN = Rcv_GAN[IDR][n];
@@ -327,7 +338,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 	}
 
 	/* free tmp_array2 */
-	free(tmp_array2);
+
 
 	/*****************************************************************
                            multiplying overlap integrals
@@ -342,7 +353,7 @@ double Set_CoreHoleMatrix(double *****HCH)
           fan = FNAN[Gc_AN];
           rcutA = Spe_Atom_Cut1[Cwan];
 
-          n = F_Rcv_Num_WK[IDR];
+          n = receive_progress[IDR];
           jg = Rcv_GAN[IDR][n];
 
           for (j0=0; j0<=fan; j0++){
@@ -382,7 +393,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
                 if (0<=kl){
 
-                  Multiply_OLP(Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLH);
+                  Multiply_OLP(Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLH, electronic);
 
 		} /* if (0<=kl) */
 
@@ -421,22 +432,22 @@ double Set_CoreHoleMatrix(double *****HCH)
 	} /* Mc_AN */
 
         /********************************************                                               
-            increment of F_Rcv_Num_WK[IDR]                                                          
+            increment of receive_progress[IDR]
 	********************************************/
 
-        F_Rcv_Num_WK[IDR]++;
+        receive_progress[IDR]++;
       }
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) {
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) {
 
         MPI_Wait(&request,&stat);
-        free(tmp_array);  /* freeing of array */
+          /* freeing of array */
 
         /********************************************                                               
-             increment of F_Snd_Num_WK[IDS]                                                         
+             increment of send_progress[IDS]
 	********************************************/
 
-        F_Snd_Num_WK[IDS]++;
+        send_progress[IDS]++;
       }
 
     } /* ID */
@@ -451,16 +462,16 @@ double Set_CoreHoleMatrix(double *****HCH)
       IDS = (myid + ID) % numprocs;
       IDR = (myid - ID + numprocs) % numprocs;
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) po += F_Snd_Num[IDS]-F_Snd_Num_WK[IDS];
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ) po += F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR];
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) po += F_Snd_Num[IDS]-send_progress[IDS];
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ) po += F_Rcv_Num[IDR]-receive_progress[IDR];
     }
 
   } while (po!=0);
 
   /* freeing of array */
 
-  free(Rcv_OLP_Size);
-  free(Snd_OLP_Size);
+
+
 
   for (k=0; k<3; k++){
     for (i=0; i<List_YOUSO[7]; i++){
@@ -486,7 +497,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
   /* allocation of arrays */
 
-#pragma omp parallel shared(Matomnum,time_per_atom,HCH,iHCH,iHNL,F_CH_flag,List_YOUSO,Dis,SpinP_switch,Spe_Total_NO,OLP,Spe_VPS_List,VPS_j_dependency,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch) 
+#pragma omp parallel shared(Matomnum,time_per_atom,HCH,iHCH,iHNL,F_CH_flag,List_YOUSO,Dis,SpinP_switch,Spe_Total_NO,OLP,VPS_j_dependency,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch)
   {
     int OMPID,Nthrds,Nprocs,Nloop;
     int Mc_AN,j,Gc_AN,Cwan,fan,jg,i1,j1,i;
@@ -564,7 +575,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
 	  if (0<=kl){
 
-	    Multiply_OLP(Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH);
+	    Multiply_OLP(Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH, electronic);
 
 	  } /* if (0<=kl) */
 
@@ -641,6 +652,7 @@ double Set_CoreHoleMatrix(double *****HCH)
 
   /* for time */
   dtime(&TEtime);
+  OpenMX_TransferEnd(&projector_transfer);
   return TEtime - TStime;
 } 
 
@@ -650,8 +662,10 @@ double Set_CoreHoleMatrix(double *****HCH)
 
 
 void Multiply_OLP(int Mc_AN, int Mj_AN, int k, int kl, 
-                  int Cwan, int Hwan, int wakg, dcomplex ***NLH)
+                  int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP_CH=electronic->OLP_CH;
+
   int m,n,L,L1,L2,spin,target_spin;
   int i,j,apply_flag,l,mul;
   int done_flag,GA_AN,GB_AN;

@@ -5,13 +5,22 @@
 #include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <openacc.h>
 #include <omp.h>
 #include "openmx_gpu_workers.h"
+#include "openmx_gpu_error.h"
+/* This standalone fixture has no MPI world. A failed publication is fatal
+   here as in production; it must never look like a successful CPU retry. */
+_Noreturn void openmx_gpu_fatal(const char *message,const char *file,int line){
+    fprintf(stderr,"%s:%d: %s\n",file,line,message);
+    abort();
+}
 static pthread_mutex_t gate=PTHREAD_MUTEX_INITIALIZER;
 static _Thread_local int scope;
 int probe_gpus=4,probe_first=0,probe_count=4;
+int gpu_rank_device_usable(void){return 1;}
 /* Quadrature fixtures may run on one to four visible devices. Dense-group
    fixtures instead set their own exact non-prefix group configurations. */
 void openmx_gpu_test_use_visible_pool(void){

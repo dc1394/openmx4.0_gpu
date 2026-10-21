@@ -78,14 +78,19 @@ static int vector_worker(void *opaque,int worker,int phase)
         else {
             const int pairs=j->pairs;
 #if OPENMX_GPU_HIP
-#pragma omp target teams distribute parallel for is_device_ptr(data,weights,out,left,right)
+            /* One team owns a pair; its threads cooperate on the long
+               vector. Parallelizing only pairs leaves a handful of GPU
+               lanes doing the entire FP64 contraction serially. */
+#pragma omp target teams distribute thread_limit(256) is_device_ptr(data,weights,out,left,right)
 #else
 #pragma acc parallel loop gang deviceptr(data,weights,out,left,right)
 #endif
             for (int p=0;p<pairs;p++) {
                 double sum=0;
                 const size_t a=(size_t)left[p]*n,b=(size_t)right[p]*n;
-#if !OPENMX_GPU_HIP
+#if OPENMX_GPU_HIP
+#pragma omp parallel for reduction(+:sum)
+#else
 #pragma acc loop vector reduction(+:sum)
 #endif
                 for (size_t i=0;i<n;i++) sum+=weights[i]*data[a+i]*data[b+i];
@@ -108,7 +113,7 @@ static int vector_local(OpenMXGpuVector *job)
     VectorWork w={0};w.job=*job;
     OpenMXGpuWorkerRetry retry={vector_cost,job,{0}};
     while (openmx_gpu_workers_capacity(&w.workers,job->n,1,openmx_gpu_worker_retry_cost,&retry)) {
-        int ok=openmx_gpu_workers_run(&w.workers,vector_worker,&w,"vector-contraction");
+        int ok=openmx_gpu_workers_run_prepared(&w.workers,vector_worker,&w,"vector-contraction");
         if (ok) {
             if (!job->mode) memset(job->output,0,(size_t)job->pairs*sizeof(double));
             for (int worker=0;worker<w.workers.count;worker++) {

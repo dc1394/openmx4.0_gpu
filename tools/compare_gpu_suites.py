@@ -15,7 +15,16 @@ import re
 
 def read_output(path):
     text = path.read_text()
-    energy = float(re.search(r'^\s*Utot\.\s+(\S+)', text, re.M)[1])
+    summary = re.search(r'^\s*Utot\.\s+(\S+)', text, re.M)
+    if summary:
+        energy = float(summary[1])
+    else:
+        # Cluster-LNO omits the final Utot. summary. Use the last MD energy,
+        # while preferring the summary in normal outputs containing both.
+        energies = re.findall(r'^\s*Utot\s*=\s*(\S+)', text, re.M)
+        if not energies:
+            raise ValueError(f'Missing total energy: {path}')
+        energy = float(energies[-1])
     block = re.search(r'<coordinates.forces\s*\n\s*(\d+)\s*\n', text)
     count = int(block[1])
     atoms, forces = [], []

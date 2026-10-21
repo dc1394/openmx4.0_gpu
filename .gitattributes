@@ -1,0 +1,15 @@
+# Preserve checks on the content of legacy files whose line endings are CRLF.
+source/Free_Arrays.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/openmx_common.h whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/truncation.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Generate_Wannier.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Cluster_DFT_NonCol_DMmu.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Band_DFT_NonCol_GB.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/OutData.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/OutData_Binary.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Population_Analysis_Wannier.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Population_Analysis_Wannier2.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/SCF2File.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Voronoi_Orbital_Moment.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Set_Orbitals_Grid.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Set_dOrbitals_Grid.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

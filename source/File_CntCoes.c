@@ -19,10 +19,10 @@
 #include "mpi.h"
 
 
-static int   Input_CntCoes();
-static void Output_CntCoes();
+static int   Input_CntCoes(const OpenMXLocalBasisViews *local_basis);
+static void Output_CntCoes(const OpenMXLocalBasisViews *local_basis);
 
-int File_CntCoes(char *mode)
+int File_CntCoes(char *mode, const OpenMXLocalBasisViews *local_basis)
 {
   int ret;
   int numprocs,myid;
@@ -33,14 +33,15 @@ int File_CntCoes(char *mode)
 
   ret = 1;
 
-  if (     strcasecmp(mode,"write")==0 )   Output_CntCoes();
-  else if (strcasecmp(mode,"read" )==0 )   ret = Input_CntCoes();
+  if (     strcasecmp(mode,"write")==0 )   Output_CntCoes(local_basis);
+  else if (strcasecmp(mode,"read" )==0 )   ret = Input_CntCoes(local_basis);
 
   return ret;
 }
 
-int Input_CntCoes()
+int Input_CntCoes(const OpenMXLocalBasisViews *local_basis)
 {
+
   int Mc_AN,Gc_AN,i,j,k;
   int my_check,check;
   int numprocs,myid;
@@ -76,7 +77,7 @@ int Input_CntCoes()
       k = 0;
       for (i=0; i<List_YOUSO[7]; i++){
         for (j=0; j<List_YOUSO[24]; j++){
-          CntCoes[Mc_AN][i][j] = tmp0[k];
+          openmx_local_contraction_row(local_basis, Mc_AN, i)[j] = tmp0[k];
           k++;
         }
       }
@@ -102,8 +103,9 @@ int Input_CntCoes()
 }
 
 
-void Output_CntCoes()
+void Output_CntCoes(const OpenMXLocalBasisViews *local_basis)
 {
+
   int Mc_AN,Gc_AN,i,j,k;
   int numprocs,myid;
   double *tmp0;
@@ -133,7 +135,7 @@ void Output_CntCoes()
       k = 0;
       for (i=0; i<List_YOUSO[7]; i++){
         for (j=0; j<List_YOUSO[24]; j++){
-          tmp0[k] = CntCoes[Mc_AN][i][j];          
+          tmp0[k] = openmx_local_contraction_row(local_basis, Mc_AN, i)[j];
           k++;
         }
       }

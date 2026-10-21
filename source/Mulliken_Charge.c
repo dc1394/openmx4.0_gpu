@@ -22,8 +22,12 @@
 
 
 
-double Mulliken_Charge( char *mode )
+double Mulliken_Charge( char *mode , const OpenMXElectronicViews *electronic)
 {
+  double *****CntOLP=electronic->CntOLP;
+  double ******DM=electronic->DM;
+  double *****OLP=electronic->OLP;
+
   int Mc_AN,Gc_AN,tno0,Cwan,num,l,m,mul;
   int wan1,wan2,i,j,k,Gs_AN,s_AN,spin;
   int tag=999;

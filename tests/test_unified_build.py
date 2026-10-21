@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -72,7 +73,12 @@ class UnifiedBuildTest(unittest.TestCase):
 
     def test_backend_selects_production_sources(self):
         cuda, hip = self.stages["CUDA"], self.stages["HIP"]
-        for name, imported in self.manifest["overrides"].items():
+        integrated_overrides = self.manifest.get("integrated_overrides", {})
+        self.assertFalse(set(integrated_overrides).intersection(self.manifest["overrides"]))
+        self.assertFalse(set(integrated_overrides).intersection(self.manifest["shared"]))
+        self.assertFalse(set(integrated_overrides).intersection(self.manifest["import_sha256"]))
+        overrides = {**self.manifest["overrides"], **integrated_overrides}
+        for name, imported in overrides.items():
             with self.subTest(override=name):
                 self.assertEqual((hip / name).resolve(), (HIP / imported).resolve())
                 if (ROOT / "source" / name).is_file() and Path(name).suffix in COMPILE_SUFFIXES:
@@ -88,7 +94,7 @@ class UnifiedBuildTest(unittest.TestCase):
         integrated = self.manifest.get("integrated_shared", [])
         self.assertEqual(len(integrated), len(set(integrated)))
         self.assertFalse(set(integrated).intersection(self.manifest["shared"]))
-        self.assertFalse(set(integrated).intersection(self.manifest["overrides"]))
+        self.assertFalse(set(integrated).intersection(overrides))
         for name in integrated:
             with self.subTest(integrated=name):
                 canonical = ROOT / "source" / name
@@ -96,7 +102,7 @@ class UnifiedBuildTest(unittest.TestCase):
                 self.assertEqual((hip / name).resolve(), canonical)
                 self.assertFalse((HIP / "src" / name).exists())
                 self.assertFalse((HIP / "include" / name).exists())
-        amd_sources = (set(self.manifest["shared"]) | set(self.manifest["overrides"]) |
+        amd_sources = (set(self.manifest["shared"]) | set(overrides) |
                        set(self.manifest.get("integrated_shared", [])))
         for source in (ROOT / "source").iterdir():
             if source.is_file() and source.suffix in COMPILE_SUFFIXES and source.name not in amd_sources:
@@ -243,6 +249,74 @@ class UnifiedBuildTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual((stage / name).resolve(), ROOT / "source" / name)
         self.assertEqual(artifact.read_bytes(), b"native build output")
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
+    def test_kugui_core_selects_site_gcc_and_honors_override(self):
+        environment = dict(os.environ)
+        for name in ("OPENMX_CORE_CXX", "OPENMX_CORE_LIBRARY", "OPENMX_CORE_BACKEND"):
+            environment.pop(name, None)
+        for override in (False, True):
+            with self.subTest(override=override):
+                compiler = "/other/gcc/bin/g++" if override else "/site/gcc/12.2.0/bin/g++"
+                command = ["make", "--no-print-directory", "-n", "-C", str(self.stages["CUDA"]),
+                           "-f", str(ROOT / "source/Makefile.kugui"),
+                           "KUGUI_GCC_ROOT=/site/gcc/12.2.0", "openmx-core"]
+                if override:
+                    command.append("OPENMX_CORE_CXX=" + compiler)
+                completed = subprocess.run(command, capture_output=True, text=True,
+                                           check=False, env=environment)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertIn('-DCMAKE_CXX_COMPILER="' + compiler + '"', completed.stdout)
+                self.assertIn("-DOPENMX_CORE_BACKEND=SERIAL", completed.stdout)
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
+    def test_native_core_uses_callers_cmake_and_honors_override(self):
+        # CUDA replaces PATH for its compiler recipes. A CMake selected from
+        # the caller's PATH must still configure/build the core afterward.
+        # Execute the real rule with stand-ins; no compiler or download needed.
+        tools = self.workspace / "cmake tools"
+        tools.mkdir()
+        log = tools / "calls.log"
+        for name in ("cmake", "explicit-cmake"):
+            executable = tools / name
+            executable.write_text("#!/bin/sh\nprintf '%s\\n' \"$0\" \"$1\" >> " +
+                                  shlex.quote(str(log)) + "\n")
+            executable.chmod(0o755)
+        environment = {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"]}
+        for name in ("OPENMX_CORE_CMAKE", "OPENMX_CORE_LIBRARY", "MAGMA_CMAKE"):
+            environment.pop(name, None)
+        make = shutil.which("make")
+        for backend, stage in self.stages.items():
+            for override in (False, True):
+                with self.subTest(backend=backend, override=override):
+                    log.unlink(missing_ok=True)
+                    selected = tools / ("explicit-cmake" if override else "cmake")
+                    command = [make, "--no-print-directory", "-C", str(stage), "openmx-core"]
+                    if override:
+                        command.append("OPENMX_CORE_CMAKE=" + str(selected))
+                    completed = subprocess.run(command, capture_output=True, text=True,
+                                               check=False, env=environment)
+                    self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                    self.assertEqual(log.read_text().splitlines(),
+                                     [str(selected), "-S", str(selected), "--build"])
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
+    def test_explicit_cuda_architecture_does_not_query_a_gpu(self):
+        tools = self.workspace / "gpu-unavailable"
+        tools.mkdir(exist_ok=True)
+        marker = tools / "queried"
+        smi = tools / "nvidia-smi"
+        smi.write_text("#!/bin/sh\ntouch " + shlex.quote(str(marker)) + "\nexit 99\n")
+        smi.chmod(0o755)
+        command = ["make", "--no-print-directory", "-n", "-C", str(self.stages["CUDA"]),
+                   "GEMMUL8_GPU_ARCH=80", "WITH_MAGMA=0",
+                   "PATH=" + str(tools) + os.pathsep + os.environ["PATH"],
+                   "openmx.o", "openmx_gpu_dm.o"]
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertFalse(marker.exists(), "An explicit CUDA target must not query GPU hardware")
+        self.assertIn("-gpu=cc80", completed.stdout)
+        self.assertIn("compute_80,code=sm_80", completed.stdout)
 
     @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
     def test_native_object_recipes_preserve_each_backend_toolchain(self):

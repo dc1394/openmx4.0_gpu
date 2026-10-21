@@ -58,13 +58,36 @@ openmx_mgpu_scope_state openmx_mgpu_band_scope_enter(int allowed,
     int total_kpoints, int kpoint_index);
 void openmx_mgpu_band_scope_leave(openmx_mgpu_scope_state previous);
 
+/* One C caller owns at most one active k-point scope. Selecting another
+   k-point closes the previous scope first, including its staging lifetime. */
+typedef struct {
+    openmx_mgpu_scope_state previous;
+    int engaged;
+} openmx_mgpu_band_scope;
+static inline void openmx_mgpu_band_scope_close(openmx_mgpu_band_scope *scope)
+{
+    if (scope->engaged) {
+        openmx_mgpu_band_scope_leave(scope->previous);
+        scope->engaged = 0;
+    }
+}
+static inline void openmx_mgpu_band_scope_select(openmx_mgpu_band_scope *scope,
+    int allowed, int total_kpoints, int kpoint_index)
+{
+    openmx_mgpu_band_scope_close(scope);
+    scope->previous = openmx_mgpu_band_scope_enter(allowed, total_kpoints, kpoint_index);
+    scope->engaged = 1;
+}
+
 /* Host-backed capacity path. Planning is allowed outside an operation
  * scope; total_kpoints=0 means Cluster. Every selected group must admit
  * the MAGMA scratch estimate. Input/visibility limits are never expanded.
  * A Cluster plan uses the GPUs of the planning rank's node also in a
  * multi-node run (Band groups remain single-node).
  * A nonzero return from a host operation means success, otherwise callers
- * must stop (there is no implicit CPU or oversized single-GPU fallback). */
+ * must stop. Resource/unavailable failures may use the explicitly logged
+ * CPU LAPACK/BLAS capacity path. Numerical/execution/publication failures
+ * are not retried on the CPU; an oversized single-GPU solve is never used. */
 int openmx_mgpu_host_plan(int total_kpoints, int n, int complex_matrix);
 /* The checks of openmx_mgpu_host_plan that need no GPU (group size within
  * the pool, LP64 order): the group size, or 0 with openmx_mgpu_host_error()
@@ -79,7 +102,7 @@ int openmx_mgpu_host_zgemm(OpenMXBlasOperation ta, OpenMXBlasOperation tb,
 
 /* Optional hooks keep standalone tests of the existing bridges linkable
    without the new runtime. The complete application links it explicitly. */
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(OPENMX_MGPU_RUNTIME_IMPLEMENTATION)
 #define OPENMX_MGPU_OPTIONAL __attribute__((weak))
 #else
 #define OPENMX_MGPU_OPTIONAL

@@ -19,14 +19,16 @@
 #include "mpi.h"
 
 
-void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z, 
+void Orbitals_on_Grid(const OpenMXAtomicViews *atomic, int wan, int Lmax, int Nmul, double x, double y, double z,
                       double ***Chi, double **RF, double **AF);
 
 void Generate_L_Matrix(int Lmax, double ***Lx0, double ***Ly0, double ***Lz0);
 
 
-void Voronoi_Orbital_Moment()
+void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
 {
+  double ******iDM=electronic->iDM;
+
   int Lmax,Nmul;
   int L,M,p,Mc_AN,Gc_AN,tno0,tno1;
   int i,j,k,Cwan,h_AN,Mh_AN,Nog,Nc,Nh;
@@ -105,7 +107,7 @@ void Voronoi_Orbital_Moment()
     else{
       Gc_AN = M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
-      tno0 = Spe_Total_NO[Cwan];  
+      tno0 = atomic->species.orbitals[Cwan];
     }    
 
     WOLP[Mc_AN] = (double*****)malloc(sizeof(double****)*(FNAN[Gc_AN]+1));
@@ -138,7 +140,7 @@ void Voronoi_Orbital_Moment()
       else{
 	Gc_AN = F_M2G[Mc_AN];
 	Cwan = WhatSpecies[Gc_AN];
-	tno0 = Spe_Total_NO[Cwan];  
+	tno0 = atomic->species.orbitals[Cwan];
       }    
 
       iDM0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
@@ -150,7 +152,7 @@ void Voronoi_Orbital_Moment()
 	else{
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno1 = Spe_Total_NO[Hwan];
+	  tno1 = atomic->species.orbitals[Hwan];
 	} 
 
 	iDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
@@ -206,11 +208,11 @@ void Voronoi_Orbital_Moment()
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
       Gc_AN = M2G[Mc_AN];
       wan1 = WhatSpecies[Gc_AN];
-      tno1 = Spe_Total_NO[wan1];
+      tno1 = atomic->species.orbitals[wan1];
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	Gh_AN = natn[Gc_AN][h_AN];        
 	Hwan = WhatSpecies[Gh_AN];
-	tno2 = Spe_Total_NO[Hwan];
+	tno2 = atomic->species.orbitals[Hwan];
 	for (i=0; i<tno1; i++){
 	  for (j=0; j<tno2; j++){
 	    iDM0[k][Mc_AN][h_AN][i][j] = iDM[0][k][Mc_AN][h_AN][i][j];
@@ -251,11 +253,11 @@ void Voronoi_Orbital_Moment()
 	    Mc_AN = Snd_MAN[IDS][n];
 	    Gc_AN = Snd_GAN[IDS][n];
 	    Cwan = WhatSpecies[Gc_AN]; 
-	    tno1 = Spe_Total_NO[Cwan];
+	    tno1 = atomic->species.orbitals[Cwan];
 	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	      Gh_AN = natn[Gc_AN][h_AN];        
 	      Hwan = WhatSpecies[Gh_AN];
-	      tno2 = Spe_Total_NO[Hwan];
+	      tno2 = atomic->species.orbitals[Hwan];
 	      size1 += tno1*tno2; 
 	    }
 	  }
@@ -315,11 +317,11 @@ void Voronoi_Orbital_Moment()
 	    Mc_AN = Snd_MAN[IDS][n];
 	    Gc_AN = Snd_GAN[IDS][n];
 	    Cwan = WhatSpecies[Gc_AN]; 
-	    tno1 = Spe_Total_NO[Cwan];
+	    tno1 = atomic->species.orbitals[Cwan];
 	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	      Gh_AN = natn[Gc_AN][h_AN];        
 	      Hwan = WhatSpecies[Gh_AN];
-	      tno2 = Spe_Total_NO[Hwan];
+	      tno2 = atomic->species.orbitals[Hwan];
 	      for (i=0; i<tno1; i++){
 		for (j=0; j<tno2; j++){
 		  tmp_array[num] = iDM0[k][Mc_AN][h_AN][i][j];
@@ -354,12 +356,12 @@ void Voronoi_Orbital_Moment()
 	    Mc_AN++;
 	    Gc_AN = Rcv_GAN[IDR][n];
 	    Cwan = WhatSpecies[Gc_AN]; 
-	    tno1 = Spe_Total_NO[Cwan];
+	    tno1 = atomic->species.orbitals[Cwan];
 
 	    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	      Gh_AN = natn[Gc_AN][h_AN];        
 	      Hwan = WhatSpecies[Gh_AN];
-	      tno2 = Spe_Total_NO[Hwan];
+	      tno2 = atomic->species.orbitals[Hwan];
 	      for (i=0; i<tno1; i++){
 		for (j=0; j<tno2; j++){
 		  iDM0[k][Mc_AN][h_AN][i][j] = tmp_array2[num];
@@ -416,7 +418,7 @@ void Voronoi_Orbital_Moment()
       dz = z - Gxyz[Gc_AN][3];
 
       FuzzyW = Fuzzy_Weight(Gc_AN,Mc_AN,0,x,y,z);
-      Orbitals_on_Grid(Cwan,Lmax,Nmul,dx,dy,dz,Chi0,RF,AF);
+      Orbitals_on_Grid(atomic, Cwan,Lmax,Nmul,dx,dy,dz,Chi0,RF,AF);
 
       for (L=0; L<=Lmax; L++){
 	for (M=0; M<=(2*L); M++){
@@ -435,7 +437,7 @@ void Voronoi_Orbital_Moment()
       Gh_AN = natn[Gc_AN][h_AN];
       Mh_AN = F_G2M[Gh_AN];
       Hwan = WhatSpecies[Gh_AN];
-      tno1 = Spe_Total_CNO[Hwan];
+      tno1 = atomic->species.contracted_orbitals[Hwan];
 
       for (L=0; L<=Lmax; L++){
         for (M=0; M<=(2*L); M++){
@@ -500,8 +502,8 @@ void Voronoi_Orbital_Moment()
 
         if (0<=kl) {
 
-	  for (m=0; m<Spe_Total_CNO[Lwan]; m++){
-	    for (n=0; n<Spe_Total_CNO[Rwan]; n++){
+	  for (m=0; m<atomic->species.contracted_orbitals[Lwan]; m++){
+	    for (n=0; n<atomic->species.contracted_orbitals[Rwan]; n++){
 
               sumx = 0.0;
               sumy = 0.0;
@@ -583,7 +585,7 @@ void Voronoi_Orbital_Moment()
     else{
       Gc_AN = M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
-      tno0 = Spe_Total_NO[Cwan];  
+      tno0 = atomic->species.orbitals[Cwan];
     }    
 
      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -616,7 +618,7 @@ void Voronoi_Orbital_Moment()
       else{
 	Gc_AN = F_M2G[Mc_AN];
 	Cwan = WhatSpecies[Gc_AN];
-	tno0 = Spe_Total_NO[Cwan];  
+	tno0 = atomic->species.orbitals[Cwan];
       }    
 
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -627,7 +629,7 @@ void Voronoi_Orbital_Moment()
 	else{
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno1 = Spe_Total_NO[Hwan];
+	  tno1 = atomic->species.orbitals[Hwan];
 	} 
 
 	for (i=0; i<tno0; i++){
@@ -677,7 +679,7 @@ void Voronoi_Orbital_Moment()
 
 
 
-void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z, 
+void Orbitals_on_Grid(const OpenMXAtomicViews *atomic, int wan, int Lmax, int Nmul, double x, double y, double z,
                       double ***Chi, double **RF, double **AF)
 {
   int i,L0,Mul0,M0,i1,L;
@@ -702,9 +704,9 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
 
   po = 0;
   mp_min = 0;
-  mp_max = Spe_Num_Mesh_PAO[wan] - 1;
+  mp_max = atomic->species.pao_mesh[wan] - 1;
 
-  if (Spe_PAO_RV[wan][Spe_Num_Mesh_PAO[wan]-1]<R){
+  if (openmx_radial_row2(&atomic->pao_radii,wan)[atomic->species.pao_mesh[wan]-1]<R){
 
     for (L0=0; L0<=Lmax; L0++){
       for (Mul0=0; Mul0<Nmul; Mul0++){
@@ -715,19 +717,19 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
     po = 1;
   }
 
-  else if (R<Spe_PAO_RV[wan][0]){
+  else if (R<openmx_radial_row2(&atomic->pao_radii,wan)[0]){
 
     m = 4;
-    rm = Spe_PAO_RV[wan][m];
+    rm = openmx_radial_row2(&atomic->pao_radii,wan)[m];
 
-    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
-      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
-    h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
-      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
+      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
+    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m]   - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
+    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
+      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
 
-    x1 = rm - Spe_PAO_RV[wan][m-1];
-    x2 = rm - Spe_PAO_RV[wan][m];
+    x1 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
+    x2 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m];
     y1 = x1/h2;
     y2 = x2/h2;
     y12 = y1*y1;
@@ -742,19 +744,19 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
 
     for (L0=0; L0<=Lmax; L0++){
 
-      if (L0<=Spe_PAO_LMAX[wan]) L = L0;
-      else                       L = Spe_PAO_LMAX[wan];
+      if (L0<=atomic->species.pao_lmax[wan]) L = L0;
+      else                       L = atomic->species.pao_lmax[wan];
 
       for (Mul0=0; Mul0<Nmul; Mul0++){
 
-        if (Spe_PAO_Mul[wan]<=Mul0){
+        if (atomic->species.pao_multiplicity[wan]<=Mul0){
           printf("Fatal error in calculating Voronoi orbital moments\n");
         }
  
-        f1 = Spe_PAO_RWF[wan][L][Mul0][(m==1) ? m+1 : m-2];
-        f2 = Spe_PAO_RWF[wan][L][Mul0][m-1];
-        f3 = Spe_PAO_RWF[wan][L][Mul0][m];
-        f4 = Spe_PAO_RWF[wan][L][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
+        f1 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[(m==1) ? m+1 : m-2];
+        f2 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[m-1];
+        f3 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[m];
+        f4 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
 
         dum = f3 - f2;
         g1 = dum*dum1 + (f2-f1)*dum2;
@@ -800,7 +802,7 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
 
     do{
       m = (mp_min + mp_max)/2;
-      if (Spe_PAO_RV[wan][m]<R)
+      if (openmx_radial_row2(&atomic->pao_radii,wan)[m]<R)
         mp_min = m;
       else 
         mp_max = m;
@@ -808,14 +810,14 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
     while((mp_max-mp_min)!=1);
     m = mp_max;
 
-    h1 = (m==1) ? Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m+1]
-      : Spe_PAO_RV[wan][m-1] - Spe_PAO_RV[wan][m-2];
-    h2 = Spe_PAO_RV[wan][m]   - Spe_PAO_RV[wan][m-1];
-    h3 = (m==Spe_Num_Mesh_PAO[wan]-1) ? Spe_PAO_RV[wan][m-2] - Spe_PAO_RV[wan][m]
-      : Spe_PAO_RV[wan][m+1] - Spe_PAO_RV[wan][m];
+    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
+      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
+    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m]   - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
+    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
+      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
 
-    x1 = R - Spe_PAO_RV[wan][m-1];
-    x2 = R - Spe_PAO_RV[wan][m];
+    x1 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
+    x2 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m];
     y1 = x1/h2;
     y2 = x2/h2;
     y12 = y1*y1;
@@ -830,15 +832,15 @@ void Orbitals_on_Grid(int wan, int Lmax, int Nmul, double x, double y, double z,
 
     for (L0=0; L0<=Lmax; L0++){
 
-      if (L0<=Spe_PAO_LMAX[wan]) L = L0;
-      else                       L = Spe_PAO_LMAX[wan];
+      if (L0<=atomic->species.pao_lmax[wan]) L = L0;
+      else                       L = atomic->species.pao_lmax[wan];
 
       for (Mul0=0; Mul0<Nmul; Mul0++){
 
-        f1 = Spe_PAO_RWF[wan][L][Mul0][(m==1) ? m+1 : m-2];
-        f2 = Spe_PAO_RWF[wan][L][Mul0][m-1];
-        f3 = Spe_PAO_RWF[wan][L][Mul0][m];
-        f4 = Spe_PAO_RWF[wan][L][Mul0][(m==Spe_Num_Mesh_PAO[wan]-1) ? m-2 : m+1];
+        f1 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[(m==1) ? m+1 : m-2];
+        f2 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[m-1];
+        f3 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[m];
+        f4 = openmx_radial_row4(&atomic->orbitals,wan,L,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
 
         dum = f3 - f2;
         g1 = dum*dum1 + (f2-f1)*dum2;

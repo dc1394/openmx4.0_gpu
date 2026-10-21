@@ -26,7 +26,7 @@
  
 
 
-void Check_Force(char *argv[]);
+void Check_Force(char *argv[], OpenMXCoreContext *core);
 
 #define nflags1  9
 #define nflags2  7
@@ -239,7 +239,7 @@ void Force_test(int argc, char *argv[])
 
 
 
-void Check_Force(char *argv[])
+void Check_Force(char *argv[], OpenMXCoreContext *core)
 {
   int ixyz;
   int time1,time2,MD_iter;
@@ -293,8 +293,8 @@ void Check_Force(char *argv[])
     Gxyz[1][3] = original_z;
 
     MD_iter = 1;
-    time1 = truncation(MD_iter,1);
-    time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+    time1 = truncation(MD_iter,1,core);
+    time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
     Utot1 = Utot;
 
     /* analytic force */
@@ -310,8 +310,8 @@ void Check_Force(char *argv[])
 
     MD_iter = 2;
     Gxyz[1][ixyz] -= step; 
-    time1 = truncation(MD_iter,1);
-    time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+    time1 = truncation(MD_iter,1,core);
+    time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
     Utot2 = Utot;
 
     /*  do not use the restart files for later calculations */
@@ -319,8 +319,8 @@ void Check_Force(char *argv[])
 
     MD_iter = 3;
     Gxyz[1][ixyz] += 2.0*step; 
-    time1 = truncation(MD_iter,1);
-    time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+    time1 = truncation(MD_iter,1,core);
+    time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
     Utot3 = Utot;
 
     /* numerical force */

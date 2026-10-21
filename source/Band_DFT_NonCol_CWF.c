@@ -54,8 +54,8 @@ static BandNonColCWFGpuSolverCtx BandNonColCWF_gpusolver_ctx = {0};
 static void BandNonColCWF_GpuSolver_Destroy(void)
 {
     BandNonColCWFGpuSolverCtx *ctx = &BandNonColCWF_gpusolver_ctx;
-    if (ctx->gpusolver != NULL) OpenMXGpuWait(OpenMXSolverDestroy(ctx->gpusolver));
-    if (ctx->blas != NULL)   OpenMXGpuWait(OpenMXBlasDestroy(ctx->blas));
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMXSolverDestroy(ctx->gpusolver));
+    if (ctx->blas != NULL)   OpenMXBlasWait(OpenMXBlasDestroy(ctx->blas));
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
 }
@@ -68,8 +68,8 @@ static void BandNonColCWF_GpuSolver_Init(void)
     if (ctx->device_id == current_device && ctx->blas != NULL) return;
     if (ctx->blas != NULL) BandNonColCWF_GpuSolver_Destroy();
     ctx->device_id = current_device;
-    OpenMXGpuWait(OpenMXBlasCreate(&ctx->blas));
-    OpenMXGpuWait(OpenMXSolverCreate(&ctx->gpusolver));
+    OpenMXBlasWait(OpenMXBlasCreate(&ctx->blas));
+    OpenMXSolverWait(OpenMXSolverCreate(&ctx->gpusolver));
 }
 
 #if OPENMX_GPU_HIP
@@ -87,14 +87,13 @@ static void BandNonColCWF_GEMMul8Zgemm_OpenACC(OpenMXBlasOperation transa, OpenM
     {
         OpenMXGpuComplex const alpha = OpenMXGpuMakeComplex(1.0, 0.0);
         OpenMXGpuComplex const beta  = OpenMXGpuMakeComplex(0.0, 0.0);
-        OpenMXGpuWait(openmx_gemmul8Zgemm(BandNonColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
+        OpenMXBlasWait(openmx_gemmul8Zgemm(BandNonColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
                                           (OpenMXGpuComplex const *)A, m, (OpenMXGpuComplex const *)B, k, &beta,
                                           (OpenMXGpuComplex *)C, m));
     }
 }
 
-double **ReEVec_i1,**ImEVec_i1,**ReEVec_i2,**ImEVec_i2;
-double **ReEVec_j1,**ImEVec_j1,**ReEVec_j2,**ImEVec_j2;
+
 double complex ***CWF_Guiding_MOs_NC;
 double complex ******CWF_Coef_NC;
 double DM_func;
@@ -135,8 +134,8 @@ static void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomple
 
 void AllocateArrays_NonCol_QAO2();
 void FreeArrays_NonCol_QAO2();
-double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM );
-double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM );
+double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM , const OpenMXElectronicViews *electronic);
+double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
 
 static void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char ***kname, 
 					int TNum_CWFs, double complex ****TB_Hopping, 
@@ -242,8 +241,11 @@ double Band_DFT_NonCol_CWF(
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2,
                     int nkpath, int *n_perk, 
-                    double ***kpath, char ***kname)
+                    double ***kpath, char ***kname, const OpenMXElectronicViews *electronic)
 {
+  double *****ParDM=electronic->ParDM;
+  double *****iParDM=electronic->iParDM;
+
   static int firsttime=1;
   int i,j,k,l,m,n,n2,p,wan,MaxN,MinN,i0,ks;
   int i1,i1s,j1,ia,jb,lmax,po,po1,spin;
@@ -380,11 +382,11 @@ double Band_DFT_NonCol_CWF(
 
   if ( CWF_Guiding_Orbital==1 || CWF_Guiding_Orbital==2 ){
     AllocateArrays_NonCol_QAO2();
-    time1 = Calc_Hybrid_AO_NonCol(CntOLP, nh, CDM);
+    time1 = Calc_Hybrid_AO_NonCol(CntOLP, nh, CDM, electronic);
   }
 
   else if (CWF_Guiding_Orbital==3){
-    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM);
+    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM, electronic);
   }
 
   /****************************************************
@@ -479,46 +481,6 @@ double Band_DFT_NonCol_CWF(
   My_NZeros = (int*)malloc(sizeof(int)*numprocs0);
   SP_NZeros = (int*)malloc(sizeof(int)*numprocs0);
   SP_Atoms = (int*)malloc(sizeof(int)*numprocs0);
-
-  ReEVec_i1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_i1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_i1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_i1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ReEVec_i2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_i2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_i2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_i2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ReEVec_j1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_j1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_j1 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_j1[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ReEVec_j2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ReEVec_j2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
-
-  ImEVec_j2 = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-  for (i=0; i<List_YOUSO[7]; i++){
-    ImEVec_j2[i] = (double*)malloc(sizeof(double)*(MaxN+1));
-  }
 
   if (way_of_kpoint==1){
 
@@ -1303,46 +1265,6 @@ double Band_DFT_NonCol_CWF(
   free(SP_NZeros);
   free(SP_Atoms);
 
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_i1[i]);
-  }
-  free(ReEVec_i1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_i1[i]);
-  }
-  free(ImEVec_i1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_i2[i]);
-  }
-  free(ReEVec_i2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_i2[i]);
-  }
-  free(ImEVec_i2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_j1[i]);
-  }
-  free(ReEVec_j1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_j1[i]);
-  }
-  free(ImEVec_j1);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ReEVec_j2[i]);
-  }
-  free(ReEVec_j2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(ImEVec_j2[i]);
-  }
-  free(ImEVec_j2);
-
   free(is1);
   free(ie1);
 
@@ -1391,9 +1313,6 @@ double Band_DFT_NonCol_CWF(
   time0 = TEtime - TStime;
   return time0;
 }
-
-
-
 
 static double Calc_CWF_Band_NonCol(
     char *mode,
@@ -2882,10 +2801,6 @@ static double Calc_CWF_Band_NonCol(
   return (etime-stime);
 }
 
-
-
-
-
 void Allocate_Free_Band_NonCol_CWF( int todo_flag, 
 				    int myworld2, 
 				    MPI_Comm *MPI_CommWD2,
@@ -3157,12 +3072,6 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
 
 }
 
-
-
-
-
-
-
 void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomplex *Ms, 
                         int *MP, double k1, double k2, double k3)
 {
@@ -3413,8 +3322,6 @@ void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomplex *Ms,
     printf("timeB_all myid=%2d %15.12f\n",myid,AEtime-AStime);
   }
 }
-
-
 
 void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char ***kname, 
 				 int TNum_CWFs, double complex ****TB_Hopping, 

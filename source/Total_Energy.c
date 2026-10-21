@@ -18,6 +18,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_core_vna_matrix.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -46,19 +47,19 @@ static int TotalEnergy_ProfileEnabled(void)
 #define MIN(a,b) (((a)<(b))?  (a):(b))
 
 static double Calc_Ecore();
-static double Calc_EH0(int MD_iter);
-static double Calc_Ekin();
-static double Calc_Ena();
-static double Calc_Enl();
-static double Calc_ECH();
-static void Calc_EXC_EH1(double ECE[]);
+static double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter);
+static double Calc_Ekin(const OpenMXElectronicViews *electronic);
+static double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static double Calc_ECH(const OpenMXElectronicViews *electronic);
+static void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[]);
 static void Calc_Edc(double ECE[]);
-static double Calc_Ehub();   /* --- added by MJ  */
+static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- added by MJ  */
 static double Calc_EdftD();  /* added by okuno */
 static double Calc_EdftD3(); /* added by Ellner */
-static void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4]);
-static void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4]);
-static void Energy_Decomposition(double ECE[]);
+static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
+static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
+static void Energy_Decomposition(double ECE[], const OpenMXElectronicViews *electronic);
 static void Energy_Decomposition_CWF(double ECE[]);
 #if OPENMX_GPU_HIP
 static int TotalEnergyUseOpenMP(void);
@@ -77,12 +78,12 @@ void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy
                                      double *My_E_dpy_BG, double *My_E_dpz_BG);
 #if OPENMX_GPU_HIP
 void TotalEnergy_CWF_Dc_Grid_OpenMP(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
-void TotalEnergy_Exc0_Batch_OpenMP(int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
-void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
+void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #else
 void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
-void TotalEnergy_Exc0_Batch_OpenACC(int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
-void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
+void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #endif
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
@@ -115,7 +116,7 @@ static int TotalEnergyUseOpenACC(void)
 
 
 
-double Total_Energy(int MD_iter, double ECE[])
+double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 { 
   double time0;
   double TStime,TEtime;
@@ -174,7 +175,7 @@ double Total_Energy(int MD_iter, double ECE[])
 
   dtime(&stime);
 
-  ECE[1] = Calc_EH0(MD_iter);
+  ECE[1] = Calc_EH0(atomic, MD_iter);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -187,7 +188,7 @@ double Total_Energy(int MD_iter, double ECE[])
 
   dtime(&stime);
 
-  if (F_Kin_flag==1)  ECE[2] = Calc_Ekin();
+  if (F_Kin_flag==1)  ECE[2] = Calc_Ekin(electronic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -200,7 +201,7 @@ double Total_Energy(int MD_iter, double ECE[])
 
   dtime(&stime);
 
-  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena();
+  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(vna, electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -213,7 +214,7 @@ double Total_Energy(int MD_iter, double ECE[])
 
   dtime(&stime);
 
-  if (F_NL_flag==1)  ECE[4] = Calc_Enl();
+  if (F_NL_flag==1)  ECE[4] = Calc_Enl(electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -227,7 +228,7 @@ double Total_Energy(int MD_iter, double ECE[])
   dtime(&stime);
 
   if (core_hole_state_flag==1 && F_CH_flag==1){
-    ECE[14] = Calc_ECH();
+    ECE[14] = Calc_ECH(electronic);
   }
 
   dtime(&etime);
@@ -243,7 +244,7 @@ double Total_Energy(int MD_iter, double ECE[])
 
   dtime(&stime);
 
-  Calc_EXC_EH1(ECE);
+  Calc_EXC_EH1(atomic, ECE);
   if (Solver==12) Calc_Edc(ECE);
 
   dtime(&etime);
@@ -256,7 +257,7 @@ double Total_Energy(int MD_iter, double ECE[])
   ****************************************************/
 
   if (F_U_flag==1){
-    if (Hub_U_switch==1)  ECE[8] = Calc_Ehub();
+    if (Hub_U_switch==1)  ECE[8] = Calc_Ehub(local_basis);
     else                  ECE[8] = 0.0;
   }
 
@@ -341,7 +342,7 @@ double Total_Energy(int MD_iter, double ECE[])
 
   if (Energy_Decomposition_flag==1){
 
-    Energy_Decomposition(ECE);
+    Energy_Decomposition(ECE, electronic);
   }
 
   /*********************************************************
@@ -374,8 +375,12 @@ double Total_Energy(int MD_iter, double ECE[])
 
 
 
-double Calc_Ekin()
+double Calc_Ekin(const OpenMXElectronicViews *electronic)
 {
+  double *****CntH0=electronic->CntH0;
+  double ******DM=electronic->DM;
+  double *****H0=electronic->H0;
+
   /****************************************************
           calculate the kinetic energy, Ekin
   ****************************************************/
@@ -536,8 +541,11 @@ double Calc_Ekin()
 
 
 
-double Calc_Ena()
+double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  double *****CntH0=electronic->CntH0;
+  double ******DM=electronic->DM;
+
   /****************************************************
      calculate the neutral atom potential energy, Ena
   ****************************************************/
@@ -571,12 +579,12 @@ double Calc_Ena()
 
     if (Cnt_switch==1){
       /* temporaly, we borrow the CntH0 matrix */
-      Cont_Matrix0(HVNA,CntH0[0]);
+      Cont_Matrix0(vna->HVNA,CntH0[0], local_basis);
     }
 
     for (spin=0; spin<=SpinP_switch; spin++){
 
-#pragma omp parallel shared(spin,SpinP_switch,time_per_atom,CntH0,HVNA,DM,My_Ena_threads,Spe_Total_CNO,Cnt_switch,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
+#pragma omp parallel shared(spin,SpinP_switch,time_per_atom,CntH0,vna,DM,My_Ena_threads,Spe_Total_CNO,Cnt_switch,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
       {
 
 	/* get info. on OpenMP */ 
@@ -609,7 +617,7 @@ double Calc_Ena()
 	  if (Cnt_switch==0){
 	    for (i=0; i<Spe_Total_CNO[Cwan]; i++){
 	      for (j=0; j<Spe_Total_CNO[Hwan]; j++){
-		My_Ena_threads[OMPID] += DM[0][spin][Mc_AN][h_AN][i][j]*HVNA[Mc_AN][h_AN][i][j];
+		My_Ena_threads[OMPID] += DM[0][spin][Mc_AN][h_AN][i][j]*openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j];
 	      }
 	    }
 	  }
@@ -636,7 +644,7 @@ double Calc_Ena()
   }
   else if (SpinP_switch==3){
 
-#pragma omp parallel shared(time_per_atom,HVNA,DM,Spe_Total_CNO,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,Gc_AN,h_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
+#pragma omp parallel shared(time_per_atom,vna,DM,Spe_Total_CNO,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,Gc_AN,h_AN,Cwan,Gh_AN,Hwan,i,j,Etime_atom)
     {
 
       /* get info. on OpenMP */ 
@@ -668,7 +676,7 @@ double Calc_Ena()
 
 	for (i=0; i<Spe_Total_CNO[Cwan]; i++){
 	  for (j=0; j<Spe_Total_CNO[Hwan]; j++){
-	    My_Ena_threads[OMPID] += (DM[0][0][Mc_AN][h_AN][i][j]+DM[0][1][Mc_AN][h_AN][i][j])*HVNA[Mc_AN][h_AN][i][j];
+	    My_Ena_threads[OMPID] += (DM[0][0][Mc_AN][h_AN][i][j]+DM[0][1][Mc_AN][h_AN][i][j])*openmx_double_block_row(&vna->potential,0,Mc_AN,h_AN,i)[j];
 	  }
 	}
 
@@ -704,8 +712,14 @@ double Calc_Ena()
 
 
 
-double Calc_Enl()
+double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  double *****CntH0=electronic->CntH0;
+  double ******DM=electronic->DM;
+  double *****HNL=electronic->HNL;
+  double ******iDM=electronic->iDM;
+  double *****iHNL0=electronic->iHNL0;
+
   /****************************************************
      calculate the non-local pseudo potential energy
   ****************************************************/
@@ -741,7 +755,7 @@ double Calc_Enl()
 
       if (Cnt_switch==1){
         /* temporaly, borrow the CntH0 matrix */
-        Cont_Matrix0(HNL[spin],CntH0[0]);
+        Cont_Matrix0(HNL[spin],CntH0[0], local_basis);
       }
 
 #pragma omp parallel shared(spin,SpinP_switch,time_per_atom,CntH0,HNL,DM,My_Enl_threads,Spe_Total_CNO,Cnt_switch,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN,Hwan,Etime_atom,i,j)
@@ -876,8 +890,13 @@ double Calc_Enl()
 }
 
 
-double Calc_ECH()
+double Calc_ECH(const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****HCH=electronic->HCH;
+  double ******iDM=electronic->iDM;
+  double *****iHCH=electronic->iHCH;
+
   /****************************************************
     calculate the penalty term to create a core-hole 
   ****************************************************/
@@ -1164,7 +1183,7 @@ double Calc_Ecore()
 
 
 
-double Calc_EH0(int MD_iter)
+double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
 {
   /****************************************************
               EH0 = -1/2\int n^a(r) V^a_H dr
@@ -1216,8 +1235,8 @@ double Calc_EH0(int MD_iter)
 
     Max_Nd = 0;
     for (wan=0; wan<SpeciesNum; wan++){
-      Spe_Spe2Ban[wan] = wan;
-      bc = Spe_Atom_Cut1[wan];
+      atomic->species.species_index[wan] = wan;
+      bc = atomic->species.cutoff[wan];
       dx = PI/sqrt(Scale_Grid_Ecut);
       Nd = 2*(int)(bc/dx) + 1;
       if (Max_Nd<Nd) Max_Nd = Nd;
@@ -1228,8 +1247,8 @@ double Calc_EH0(int MD_iter)
     Max_TGN_EH0 = 0;
     for (wan=0; wan<SpeciesNum; wan++){
 
-      Spe_Spe2Ban[wan] = wan;
-      bc = Spe_Atom_Cut1[wan];
+      atomic->species.species_index[wan] = wan;
+      bc = atomic->species.cutoff[wan];
       dx = PI/sqrt(Scale_Grid_Ecut);
 
       Nd = 2*(int)(bc/dx) + 1;
@@ -1251,7 +1270,7 @@ double Calc_EH0(int MD_iter)
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(Spe_Num_Mesh_PAO,Spe_PAO_XV,Spe_Atomic_Den,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,Spe_Atom_Cut1,dv_EH0,Spe_Spe2Ban,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(atomic,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       int l,p;
@@ -1268,8 +1287,8 @@ double Calc_EH0(int MD_iter)
     
       for (wan=OMPID*SpeciesNum/Nthrds; wan<(OMPID+1)*SpeciesNum/Nthrds; wan++){
 
-	Spe_Spe2Ban[wan] = wan;
-	bc = Spe_Atom_Cut1[wan];
+	atomic->species.species_index[wan] = wan;
+	bc = atomic->species.cutoff[wan];
 	dx = PI/sqrt(Scale_Grid_Ecut);
 	Nd = 2*(int)(bc/dx) + 1;
 	dx = 2.0*bc/(double)(Nd-1);
@@ -1282,8 +1301,8 @@ double Calc_EH0(int MD_iter)
 	gnum = 0; 
         y = 0.0;
 
-        Sx = Spe_Atom_Cut1[wan] + 0.0;
-        Dx = Spe_Atom_Cut1[wan] - 0.0;
+        Sx = atomic->species.cutoff[wan] + 0.0;
+        Dx = atomic->species.cutoff[wan] - 0.0;
 
         for (n3=0; n3<Nd; n3++){
 
@@ -1299,8 +1318,8 @@ double Calc_EH0(int MD_iter)
 	    GridY_EH0[wan][gnum] = y;
 	    GridZ_EH0[wan][gnum] = z;
 
-      	    rho0 = KumoF( Spe_Num_Mesh_PAO[wan], xx, 
-                          Spe_PAO_XV[wan], Spe_PAO_RV[wan], Spe_Atomic_Den[wan]);
+            rho0 = KumoF( atomic->species.pao_mesh[wan], xx,
+                          openmx_radial_row2(&atomic->pao_log_radii,wan), openmx_radial_row2(&atomic->pao_radii,wan), openmx_radial_row2(&atomic->density,wan));
 
 	    Arho_EH0[wan][gnum] = rho0;
    	    Wt_EH0[wan][gnum] = PI*x*CoarseGL_Weight[n1]*Dx;
@@ -1340,16 +1359,16 @@ double Calc_EH0(int MD_iter)
 
     for (wan1=0; wan1<SpeciesNum; wan1++){
 
-      r1 = Spe_Atom_Cut1[wan1];
-      Z1 = Spe_Core_Charge[wan1];
+      r1 = atomic->species.cutoff[wan1];
+      Z1 = atomic->species.core_charge[wan1];
 
       for (wan2=0; wan2<SpeciesNum; wan2++){
 
 	/* EH0_TwoCenter_at_Cutoff is parallelized by OpenMP */      
-	EH0_TwoCenter_at_Cutoff(wan1, wan2, EH0ij);
+	EH0_TwoCenter_at_Cutoff(atomic, wan1, wan2, EH0ij);
 
-	r2 = Spe_Atom_Cut1[wan2];
-	Z2 = Spe_Core_Charge[wan2];
+	r2 = atomic->species.cutoff[wan2];
+	Z2 = atomic->species.core_charge[wan2];
 	tmp0 = Z1*Z2/(r1+r2);
 
 	if (1.0e-20<fabs(EH0ij[0])){ 
@@ -1425,7 +1444,7 @@ double Calc_EH0(int MD_iter)
         Gh_AN = natn[Gc_AN][h_AN];
         wan2 = WhatSpecies[Gh_AN];
 
-        pair_ban[pair_index] = Spe_Spe2Ban[wan1];
+        pair_ban[pair_index] = atomic->species.species_index[wan1];
         pair_wan2[pair_index] = wan2;
         pair_has_d = (h_AN!=0);
         pair_has_deriv[pair_index] = pair_has_d;
@@ -1455,7 +1474,7 @@ double Calc_EH0(int MD_iter)
         wan1 = WhatSpecies[Gc2_AN];
         wan2 = WhatSpecies[Gh2_AN];
 
-        pair_ban[pair_index] = Spe_Spe2Ban[wan1];
+        pair_ban[pair_index] = atomic->species.species_index[wan1];
         pair_wan2[pair_index] = wan2;
         pair_has_d = (h2_AN!=0);
         pair_has_deriv[pair_index] = pair_has_d;
@@ -1485,9 +1504,9 @@ double Calc_EH0(int MD_iter)
 
     dtime(&Stime_atom);
 #if OPENMX_GPU_HIP
-    TotalEnergy_EH0_TwoCenter_Batch_OpenMP(pair_count, pair_ban, pair_wan2,
+    TotalEnergy_EH0_TwoCenter_Batch_OpenMP(atomic, pair_count, pair_ban, pair_wan2,
 #else
-    TotalEnergy_EH0_TwoCenter_Batch_OpenACC(pair_count, pair_ban, pair_wan2,
+    TotalEnergy_EH0_TwoCenter_Batch_OpenACC(atomic, pair_count, pair_ban, pair_wan2,
 #endif
                                             pair_has_deriv, pair_dis,
                                             pair_dirx, pair_diry, pair_dirz,
@@ -1560,7 +1579,7 @@ double Calc_EH0(int MD_iter)
     My_EH0_threads = (double*)malloc(sizeof(double)*Nthrds0);
     for (Nloop=0; Nloop<Nthrds0; Nloop++) My_EH0_threads[Nloop] = 0.0;
 
-#pragma omp parallel shared(time_per_atom,RMI1,EH0_scaling,natn,FNAN,WhatSpecies,M2G,Matomnum,My_EH0_threads,DecEscc,Energy_Decomposition_flag,List_YOUSO,Spe_MaxL_Basis,Spe_Num_Basis,SpinP_switch) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,wan1,h_AN,Gh_AN,wan2,factor,Etime_atom,TmpEH0)
+#pragma omp parallel shared(atomic,time_per_atom,RMI1,EH0_scaling,natn,FNAN,WhatSpecies,M2G,Matomnum,My_EH0_threads,DecEscc,Energy_Decomposition_flag,List_YOUSO,SpinP_switch) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,wan1,h_AN,Gh_AN,wan2,factor,Etime_atom,TmpEH0)
     {
 
       int l,p;
@@ -1588,7 +1607,7 @@ double Calc_EH0(int MD_iter)
           if (h_AN==0) factor = 1.0;
           else         factor = EH0_scaling[wan1][wan2];
 
-          EH0_TwoCenter(Gc_AN, h_AN, EH0ij);
+          EH0_TwoCenter(atomic, Gc_AN, h_AN, EH0ij);
           TmpEH0 -= 0.250*factor*EH0ij[0];
           Fx[Mc_AN] = Fx[Mc_AN] - 0.5*factor*EH0ij[1];
           Fy[Mc_AN] = Fy[Mc_AN] - 0.5*factor*EH0ij[2];
@@ -1597,7 +1616,7 @@ double Calc_EH0(int MD_iter)
           if (h_AN==0) factor = 1.0;
           else         factor = EH0_scaling[wan2][wan1];
 
-          EH0_TwoCenter(Gh_AN, RMI1[Mc_AN][h_AN][0], EH0ij);
+          EH0_TwoCenter(atomic, Gh_AN, RMI1[Mc_AN][h_AN][0], EH0ij);
           TmpEH0 -= 0.250*factor*EH0ij[0];
           Fx[Mc_AN] = Fx[Mc_AN] + 0.5*factor*EH0ij[1];
           Fy[Mc_AN] = Fy[Mc_AN] + 0.5*factor*EH0ij[2];
@@ -1845,7 +1864,7 @@ void Calc_Edc(double ECE[])
 
 
 #pragma optimization_level 1
-void Calc_EXC_EH1(double ECE[])
+void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
 {
   /************************************************************
      EXC = \sum_{\sigma} (n_{\sigma}(r)+n_pcc(r)\epsilon_{xc}
@@ -2120,9 +2139,9 @@ void Calc_EXC_EH1(double ECE[])
 
     if (scf_eigen_lib_flag == GPUSOLVER){
 #if OPENMX_GPU_HIP
-      TotalEnergy_Exc0_Batch_OpenMP(Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+      TotalEnergy_Exc0_Batch_OpenMP(atomic, Num_Leb_Grid, Leb_Grid_XYZW, &sum);
 #else
-      TotalEnergy_Exc0_Batch_OpenACC(Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+      TotalEnergy_Exc0_Batch_OpenACC(atomic, Num_Leb_Grid, Leb_Grid_XYZW, &sum);
 #endif
     }
     else{
@@ -2131,7 +2150,7 @@ void Calc_EXC_EH1(double ECE[])
 
       Gc_AN = M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
-      re = Spe_Atom_Cut1[Cwan];
+      re = atomic->species.cutoff[Cwan];
       Sr = re + rs;
       Dr = re - rs;
 
@@ -2166,7 +2185,7 @@ void Calc_EXC_EH1(double ECE[])
 	}
       }
 
-#pragma omp parallel shared(Leb_Grid_XYZW,Num_Leb_Grid,Spe_Atomic_Den2,Spe_PAO_XV,Spe_Num_Mesh_PAO,My_sumr,My_sumrx,My_sumry,My_sumrz,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,i)
+#pragma omp parallel shared(atomic,Leb_Grid_XYZW,Num_Leb_Grid,My_sumr,My_sumrx,My_sumry,My_sumrz,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,i)
       {
 
 	double *gx,*gy,*gz,dexc0;
@@ -2212,7 +2231,7 @@ void Calc_EXC_EH1(double ECE[])
 	      Gh_AN = natn[Gc_AN][h_AN];
 	      Rn = ncn[Gc_AN][h_AN]; 
 	      Hwan = WhatSpecies[Gh_AN];
-	      rcutH2 = Spe_Atom_Cut1[Hwan]*Spe_Atom_Cut1[Hwan];
+	      rcutH2 = atomic->species.cutoff[Hwan]*atomic->species.cutoff[Hwan];
 
 	      x1 = Gxyz[Gh_AN][1] + atv[Rn][1];
 	      y1 = Gxyz[Gh_AN][2] + atv[Rn][2];
@@ -2234,8 +2253,8 @@ void Calc_EXC_EH1(double ECE[])
 
 		/* calculate density */
 
-		den += KumoF( Spe_Num_Mesh_PAO[Hwan], x, 
-			      Spe_PAO_XV[Hwan], Spe_PAO_RV[Hwan], Spe_Atomic_Den2[Hwan])*F_Vxc_flag;
+		den += KumoF( atomic->species.pao_mesh[Hwan], x,
+			      openmx_radial_row2(&atomic->pao_log_radii,Hwan), openmx_radial_row2(&atomic->pao_radii,Hwan), openmx_radial_row2(&atomic->density_backup,Hwan))*F_Vxc_flag;
 
 		if (h_AN==0) den0 = den;
 
@@ -2244,8 +2263,8 @@ void Calc_EXC_EH1(double ECE[])
 		if (h_AN!=0){
 
 		  r1 = sqrt(dx*dx + dy*dy + dz*dz);
-		  gden0 = Dr_KumoF( Spe_Num_Mesh_PAO[Hwan], x, r1, 
-				    Spe_PAO_XV[Hwan], Spe_PAO_RV[Hwan], Spe_Atomic_Den2[Hwan])*F_Vxc_flag;
+		  gden0 = Dr_KumoF( atomic->species.pao_mesh[Hwan], x, r1,
+				    openmx_radial_row2(&atomic->pao_log_radii,Hwan), openmx_radial_row2(&atomic->pao_radii,Hwan), openmx_radial_row2(&atomic->density_backup,Hwan))*F_Vxc_flag;
 
 		  gx[h_AN] = gden0/r1*dx;
 		  gy[h_AN] = gden0/r1*dy;
@@ -2522,7 +2541,7 @@ void Calc_EXC_EH1(double ECE[])
       z = Gxyz[Gc_AN][3];
 
       spe = WhatSpecies[Gc_AN];
-      charge = Spe_Core_Charge[spe];
+      charge = atomic->species.core_charge[spe];
       My_C_dpx += charge*x;
       My_C_dpy += charge*y;
       My_C_dpz += charge*z;
@@ -2613,7 +2632,7 @@ void Calc_EXC_EH1(double ECE[])
 
 
 
-void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
+void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4])
 { 
   int n1,ban;
   int Gh_AN,Rn,wan1,wan2;
@@ -2623,7 +2642,7 @@ void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
   Gh_AN = natn[Gc_AN][h_AN];
   Rn = ncn[Gc_AN][h_AN];
   wan1 = WhatSpecies[Gc_AN];
-  ban = Spe_Spe2Ban[wan1];
+  ban = atomic->species.species_index[wan1];
   wan2 = WhatSpecies[Gh_AN];
   dv = dv_EH0[ban];
   
@@ -2644,16 +2663,16 @@ void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
     /* for empty atoms or finite elemens basis */
     if (r<1.0e-10) r = 1.0e-10;
 
-    va0 = VH_AtomF(wan2, 
-                   Spe_Num_Mesh_VPS[wan2], xx, r, 
-                   Spe_VPS_XV[wan2], Spe_VPS_RV[wan2], Spe_VH_Atom[wan2]);
+    va0 = VH_AtomF(atomic->species.core_charge[wan2],
+                   atomic->species.vps_mesh[wan2], xx, r,
+                   openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
 
     sum += wt*va0*rho0;
 
     if (h_AN!=0 && 1.0e-14<r){
-      dr_va0 = Dr_VH_AtomF(wan2, 
-                           Spe_Num_Mesh_VPS[wan2], xx, r, 
-                           Spe_VPS_XV[wan2], Spe_VPS_RV[wan2], Spe_VH_Atom[wan2]);
+      dr_va0 = Dr_VH_AtomF(atomic->species.core_charge[wan2],
+                           atomic->species.vps_mesh[wan2], xx, r,
+                           openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
 
       sumr -= wt*rho0*dr_va0*z2/r;
     }
@@ -2700,7 +2719,7 @@ void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
 
 
 
-void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
+void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
 { 
   int n1,ban;
   double dv,x,y,z,r1,r2,va0,rho0,dr_va0,rcut;
@@ -2709,10 +2728,10 @@ void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
   int OMPID,Nthrds,Nthrds0,Nprocs,Nloop;
   double *my_sum_threads;
 
-  ban = Spe_Spe2Ban[wan1];
+  ban = atomic->species.species_index[wan1];
   dv  = dv_EH0[ban];
 
-  rcut = Spe_Atom_Cut1[wan1] + Spe_Atom_Cut1[wan2];
+  rcut = atomic->species.cutoff[wan1] + atomic->species.cutoff[wan2];
 
   /* get Nthrds0 */  
   /* Dynamic teams may grow after a separate probe region. */
@@ -2725,7 +2744,7 @@ void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
     my_sum_threads[Nloop] = 0.0;
   }
 
-#pragma omp parallel shared(Spe_VH_Atom,Spe_VPS_XV,Spe_VPS_RV,Spe_Num_Mesh_VPS,wan2,Wt_EH0,my_sum_threads,rcut,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,TGN_EH0,ban) private(n1,OMPID,Nthrds,Nprocs,x,y,z,rho0,wt,z2,r2,va0,r,xx)
+#pragma omp parallel shared(atomic,wan2,Wt_EH0,my_sum_threads,rcut,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,TGN_EH0,ban) private(n1,OMPID,Nthrds,Nprocs,x,y,z,rho0,wt,z2,r2,va0,r,xx)
   {
     /* get info. on OpenMP */
 
@@ -2745,9 +2764,9 @@ void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
       r = sqrt(r2);
       xx = 0.5*log(r2);
 
-      va0 = VH_AtomF(wan2, 
-                     Spe_Num_Mesh_VPS[wan2], xx, r, 
-                     Spe_VPS_XV[wan2], Spe_VPS_RV[wan2], Spe_VH_Atom[wan2]);
+      va0 = VH_AtomF(atomic->species.core_charge[wan2],
+                     atomic->species.vps_mesh[wan2], xx, r,
+                     openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
 
       my_sum_threads[OMPID] += wt*va0*rho0;
     }
@@ -2777,8 +2796,9 @@ void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
 
 
 
-double Calc_Ehub()
-{   
+double Calc_Ehub(const OpenMXLocalBasisViews *local_basis)
+{
+
  /****************************************************
          LDA+U energy correction added by MJ
   ****************************************************/
@@ -2834,7 +2854,7 @@ double Calc_Ehub()
 	      Uvalue = Hub_U_Basis[wan1][l1][mul1];
 	      for(m1=0; m1<(2*l1+1); m1++){
 
-                tmpv = 0.5*Uvalue*DM_onsite[0][spin][Mc_AN][cnt1][cnt1];
+                tmpv = 0.5*Uvalue*openmx_local_density_row(local_basis, 0, spin, Mc_AN, cnt1)[cnt1];
 	        My_Ehub += tmpv;
 
 	        cnt1++;
@@ -2860,8 +2880,8 @@ double Calc_Ehub()
 		      if (l1==l2 && mul1==mul2){
                       
 		        Uvalue = Hub_U_Basis[wan1][l1][mul1];
-		        sum -= 0.5*Uvalue*DM_onsite[0][spin][Mc_AN][cnt1][cnt2]*
-			                  DM_onsite[0][spin][Mc_AN][cnt2][cnt1];
+		        sum -= 0.5*Uvalue*openmx_local_density_row(local_basis, 0, spin, Mc_AN, cnt1)[cnt2]*
+			                  openmx_local_density_row(local_basis, 0, spin, Mc_AN, cnt2)[cnt1];
 		      }
 
 		      cnt2++;
@@ -2917,8 +2937,8 @@ double Calc_Ehub()
 	      trace_spin = 0.0;
 	      trace_opp_spin = 0.0;
 	      for(ii=0; ii<(2*l1+1); ii++){
-	        trace_spin += DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+ii];
-	        trace_opp_spin += DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+ii];
+	        trace_spin += openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+ii];
+	        trace_opp_spin += openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+ii];
 	      }
 	      /* dc Energy */
 	      if(dc_Type==1){  /* sFLL */
@@ -2945,15 +2965,15 @@ double Calc_Ehub()
                       switch(dc_Type){
                       case 1:  /* sFLL */
 		        tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-                                      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-			    	       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]);
+                                      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 		        tmpEhub2 = 0.5*(Coulomb_Array[NZUJ][ii][jj][kk][ll]-Coulomb_Array[NZUJ][ii][jj][ll][kk])*
-				      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-				       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]);
+				      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+				       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 	                My_Ehub += tmpEhub1 + tmpEhub2;
                       break;
               
@@ -2973,15 +2993,15 @@ double Calc_Ehub()
 
                       case 3:  /* cFLL */
 		        tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-                                      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-			    	       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]);
+                                      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 		        tmpEhub2 = 0.5*(Coulomb_Array[NZUJ][ii][jj][kk][ll]-Coulomb_Array[NZUJ][ii][jj][ll][kk])*
-				      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-				       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]);
+				      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+				       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 	                My_Ehub += tmpEhub1 + tmpEhub2;
                       break;
 
@@ -3053,8 +3073,8 @@ double Calc_Ehub()
 	    Uvalue = Hub_U_Basis[wan1][l1][mul1];
 	    for(m1=0; m1<(2*l1+1); m1++){
 
-	      tmpv = 0.5*Uvalue*( NC_OcpN[0][0][0][Mc_AN][cnt1][cnt1].r
-			      + NC_OcpN[0][1][1][Mc_AN][cnt1][cnt1].r);
+	      tmpv = 0.5*Uvalue*( openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt1].r
+			      + openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt1].r);
               My_Ehub += tmpv;
 
 	      cnt1++;
@@ -3080,29 +3100,29 @@ double Calc_Ehub()
 
 		      Uvalue = Hub_U_Basis[wan1][l1][mul1];
 
-		      sum -= 0.5*Uvalue*( NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].r*
-			                NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].r
+		      sum -= 0.5*Uvalue*( openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].r*
+			                openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].r
 					    +
-				        NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].i
+				        openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].i
 					    +
-				        NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].r*
-					NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].r
+				        openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].r*
+					openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].r
 					    +
-					NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].i
+					openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].i
 					    +
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].r*
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].r
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].r*
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].r
 					    +
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].i
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].i
 					    +
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].r*
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].r
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].r*
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].r
 					    +
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].i );
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].i );
 
 		    }
 
@@ -3165,15 +3185,15 @@ double Calc_Ehub()
             trace_N10.i = 0.0;
 
             for(dd=0; dd<(2*l1+1); dd++){
-              trace_N00.r += NC_OcpN[0][0][0][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-	      trace_N00.i += NC_OcpN[0][0][0][Mc_AN][cnt_start+dd][cnt_start+dd].i;
-	      trace_N11.r += NC_OcpN[0][1][1][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-	      trace_N11.i += NC_OcpN[0][1][1][Mc_AN][cnt_start+dd][cnt_start+dd].i;
+              trace_N00.r += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+	      trace_N00.i += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
+	      trace_N11.r += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+	      trace_N11.i += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
 
-              trace_N01.r += NC_OcpN[0][0][1][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-              trace_N01.i += NC_OcpN[0][0][1][Mc_AN][cnt_start+dd][cnt_start+dd].i;
-              trace_N10.r += NC_OcpN[0][1][0][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-              trace_N10.i += NC_OcpN[0][1][0][Mc_AN][cnt_start+dd][cnt_start+dd].i;
+              trace_N01.r += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+              trace_N01.i += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
+              trace_N10.r += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+              trace_N10.i += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
             }
 	    /* Double counting energy */
 	    if(dc_Type==1){  /* sFLL */
@@ -3204,25 +3224,25 @@ double Calc_Ehub()
 	          for(ll=0; ll<(2*l1+1); ll++){
                     switch(dc_Type){
                     case 1:  /* sFLL */
-		      N_00_ac.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_00_ac.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_11_ac.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_11_ac.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_00_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_00_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_11_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_11_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_00_bd.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_00_bd.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_11_bd.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_11_bd.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_00_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_00_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_11_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_11_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
-		      N_01_ac.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_01_ac.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_10_ac.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_10_ac.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_01_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_01_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_10_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_10_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_01_bd.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_01_bd.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_10_bd.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_10_bd.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_01_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_01_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_10_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_10_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
                       /* diagonal term */
    		      tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*
@@ -3272,25 +3292,25 @@ double Calc_Ehub()
                     break;
 
                     case 3:  /* cFLL */
-		      N_00_ac.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_00_ac.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_11_ac.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_11_ac.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_00_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_00_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_11_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_11_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_00_bd.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_00_bd.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_11_bd.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_11_bd.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_00_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_00_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_11_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_11_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
-		      N_01_ac.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_01_ac.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_10_ac.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_10_ac.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_01_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_01_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_10_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_10_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_01_bd.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_01_bd.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_10_bd.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_10_bd.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_01_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_01_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_10_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_10_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
                       /* diagonal term */
    		      tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*
@@ -3877,6 +3897,20 @@ double Calc_EdftD3()
 	  dZj=0.0;
 	  dWi=0.0;
 	  dWj=0.0;
+	  /* [d3fix 2026-10-14] log-sum-exp: shift the Gaussian exponents by their maximum so that W never
+	     underflows (the original code set C6=0 when W<1e-12, which drops e.g. phosphate-P pairs whose CN
+	     lies far above all P reference CNs). Ratios Z/W and dC6/dCN are unchanged by the common shift. */
+	  double maxarg_d3fix = -1.0e300;
+	  for (i=0; i<maxcn_dftD[wanA]; i++){
+	    for (j=0; j<maxcn_dftD[wanB]; j++){
+	      if (C6ab_dftD[wanA][wanB][i][j][0]>1.0e-12){
+		dAi = CN[Gc_AN] - C6ab_dftD[wanA][wanB][i][j][1];
+		dBj = CN[Gc_BN] - C6ab_dftD[wanA][wanB][i][j][2];
+		exparg = -k3_dftD*( dAi*dAi + dBj*dBj );
+		if (exparg>maxarg_d3fix) maxarg_d3fix = exparg;
+	      }
+	    }
+	  }
 	  for (i=0; i<maxcn_dftD[wanA]; i++){
 	    for (j=0; j<maxcn_dftD[wanB]; j++){
 	      C6_ref=C6ab_dftD[wanA][wanB][i][j][0];
@@ -3884,7 +3918,7 @@ double Calc_EdftD3()
 		dAi = CN[Gc_AN] - C6ab_dftD[wanA][wanB][i][j][1];
 		dBj = CN[Gc_BN] - C6ab_dftD[wanA][wanB][i][j][2];
 		exparg = -k3_dftD*( dAi*dAi + dBj*dBj );
-		Lij=exp(exparg);
+		Lij=exp(exparg - maxarg_d3fix);
 		Z += C6_ref*Lij;
 		W += Lij;
 		dZi+=C6_ref*Lij*2.0*k3_dftD*dAi;
@@ -4248,8 +4282,15 @@ double Calc_EdftD3()
 /* Ellner */
 
 
-void Energy_Decomposition(double ECE[])
+void Energy_Decomposition(double ECE[], const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****H=electronic->H;
+  double *****H0=electronic->H0;
+  double *****OLP=electronic->OLP;
+  double ******iDM=electronic->iDM;
+  double *****iHNL=electronic->iHNL;
+
   static int firsttime=1;
   int i,spin,spinmax,XC_P_switch;
   int numS,numR,My_GNum,BN_AB,max_ene;

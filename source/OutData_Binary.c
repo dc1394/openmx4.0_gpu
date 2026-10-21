@@ -36,8 +36,8 @@ static void out_coordinates_bulk();
 static void out_Cluster_MO();
 static void out_Cluster_NC_MO();
 static void out_Bulk_MO();
-static void out_OrbOpt(char *inputfile);
-static void out_Partial_Charge_Density();
+static void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXLocalBasisViews *local_basis);
+static void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic);
 static void Set_Partial_Density_Grid(double *****CDM);
 static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue);
 static void Print_CubeData(FILE *fp, char fext[], double *data, double *data1,char *op);
@@ -45,7 +45,7 @@ static void Print_VectorData(FILE *fp, char fext[],
                              double *data0, double *data1,
                              double *data2, double *data3);
 
-double OutData_Binary(char *inputfile)
+double OutData_Binary(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   char operate[YOUSO10];
   int i,c;
@@ -95,7 +95,7 @@ double OutData_Binary(char *inputfile)
   }
 
   if (Cnt_switch==1){
-    out_OrbOpt(inputfile);    
+    out_OrbOpt(atomic, inputfile, local_basis);
   } 
 
   /*************************************************
@@ -107,7 +107,7 @@ double OutData_Binary(char *inputfile)
   *************************************************/
 
   if ( cal_partial_charge ){
-    out_Partial_Charge_Density();
+    out_Partial_Charge_Density(electronic);
   }
 
   /* divide-conquer, gdc, or Krylov */
@@ -1834,8 +1834,9 @@ static void Print_VectorData(FILE *fp, char fext[],
 
 
 
-void out_OrbOpt(char *inputfile)
+void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,natom,po,al,p,wan,L0,Mul0,M0;
   int num,Mc_AN,Gc_AN,pmax,Mul1;
   int al1,al0;
@@ -1901,8 +1902,8 @@ void out_OrbOpt(char *inputfile)
       wan = WhatSpecies[Gc_AN];
 
       al = -1;
-      for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+      for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	  for (M0=0; M0<=2*L0; M0++){
 	    al++;
 	    tmp_index2[L0][Mul0][M0] = al;
@@ -1910,25 +1911,25 @@ void out_OrbOpt(char *inputfile)
 	}
       }
        
-      for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
+      for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
 	for (M0=0; M0<=2*L0; M0++){
 
 	  /**********************************************
                      extended Gauss elimination
 	  ***********************************************/
 
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    al0 = tmp_index2[L0][Mul0][M0]; 
-	    for (Mul1=0; Mul1<Spe_Num_CBasis[wan][L0]; Mul1++){
+	    for (Mul1=0; Mul1<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul1++){
 	      al1 = tmp_index2[L0][Mul1][M0];
 
               if (Mul1!=Mul0){
 
-                tmp0 = CntCoes[Mc_AN][al0][Mul0]; 
-                tmp1 = CntCoes[Mc_AN][al1][Mul0]; 
+                tmp0 = openmx_local_contraction_row(local_basis, Mc_AN, al0)[Mul0];
+                tmp1 = openmx_local_contraction_row(local_basis, Mc_AN, al1)[Mul0];
 
   	        for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-                  CntCoes[Mc_AN][al1][p] -= CntCoes[Mc_AN][al0][p]/tmp0*tmp1;
+                  openmx_local_contraction_row(local_basis, Mc_AN, al1)[p] -= openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]/tmp0*tmp1;
 		}
               }
 
@@ -1948,7 +1949,7 @@ void out_OrbOpt(char *inputfile)
              orthonormalization of optimized orbitals
 	  ***********************************************/
 
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    al0 = tmp_index2[L0][Mul0][M0]; 
 
 	    /* x - sum_i <x|e_i>e_i */
@@ -1962,16 +1963,16 @@ void out_OrbOpt(char *inputfile)
 
 	      sum = 0.0;
 	      for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-		sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al1][p];
+		sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	      }
 
 	      for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-		Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*CntCoes[Mc_AN][al1][p];
+		Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	      }
 	    }
 
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      CntCoes[Mc_AN][al0][p] = CntCoes[Mc_AN][al0][p] - Tmp_CntCoes[p];
+	      openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] - Tmp_CntCoes[p];
 	    }
 
 	    /* Normalize */
@@ -1980,9 +1981,9 @@ void out_OrbOpt(char *inputfile)
 	    Max0 = -100.0;
 	    pmax = 0;
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al0][p];
-	      if (Max0<fabs(CntCoes[Mc_AN][al0][p])){
-		Max0 = fabs(CntCoes[Mc_AN][al0][p]);
+	      sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
+	      if (Max0<fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p])){
+		Max0 = fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]);
 		pmax = p;
 	      }
 	    }
@@ -1992,10 +1993,10 @@ void out_OrbOpt(char *inputfile)
 	    else 
 	      tmp0 = 1.0/sqrt(sum); 
 
-	    tmp1 = sgn(CntCoes[Mc_AN][al0][pmax]);
+	    tmp1 = sgn(openmx_local_contraction_row(local_basis, Mc_AN, al0)[pmax]);
             
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      CntCoes[Mc_AN][al0][p] = tmp0*tmp1*CntCoes[Mc_AN][al0][p];
+	      openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = tmp0*tmp1*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
 	    }
 
 	  }
@@ -2029,12 +2030,12 @@ void out_OrbOpt(char *inputfile)
 
         al = -1;
         num = 0;
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	        Tmp_Vec[num] = CntCoes[Mc_AN][al][p];
+	        Tmp_Vec[num] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
                 num++;
 	      }
 	    }
@@ -2073,8 +2074,8 @@ void out_OrbOpt(char *inputfile)
         al = -1;
         num = 0;
 
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-  	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+          for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 
@@ -2132,12 +2133,12 @@ void out_OrbOpt(char *inputfile)
 
         al = -1;
         num = 0;
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	        Tmp_Vec[num] = CntCoes[Mc_AN][al][p];
+	        Tmp_Vec[num] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
                 num++;
 	      }
 	    }
@@ -2172,8 +2173,8 @@ void out_OrbOpt(char *inputfile)
         al = -1;
         num = 0;
 
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-          for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+          for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
             for (M0=0; M0<=2*L0; M0++){
               al++;
       
@@ -2182,7 +2183,7 @@ void out_OrbOpt(char *inputfile)
 	          tmp_coes[L0][Mul0][p] = Tmp_Vec[num];
                   num++; 
 	        }
-                for (p=Spe_Specified_Num[wan][al]; p<Spe_PAO_Mul[wan]; p++){
+                for (p=Spe_Specified_Num[wan][al]; p<atomic->species.pao_multiplicity[wan]; p++){
 	          tmp_coes[L0][Mul0][p] = 0.0;
 	        }
               }
@@ -2194,8 +2195,8 @@ void out_OrbOpt(char *inputfile)
 	    }
 	  }
 
-          for (Mul0=Spe_Num_CBasis[wan][L0]; Mul0<Spe_PAO_Mul[wan]; Mul0++){
-            for (p=0; p<Spe_PAO_Mul[wan]; p++) tmp_coes[L0][Mul0][p] = 0.0;
+          for (Mul0=atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0<atomic->species.pao_multiplicity[wan]; Mul0++){
+            for (p=0; p<atomic->species.pao_multiplicity[wan]; p++) tmp_coes[L0][Mul0][p] = 0.0;
             tmp_coes[L0][Mul0][Mul0] = 1.0;
 	  }
         }
@@ -2232,8 +2233,8 @@ void out_OrbOpt(char *inputfile)
 	  al = -1;
           num = 0;
 
-  	  for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	    for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+          for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	    for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	      for (M0=0; M0<=2*L0; M0++){
 
 	        al++;
@@ -2301,14 +2302,14 @@ void out_OrbOpt(char *inputfile)
                           contracted orbitals
           ****************************************************/
 
-          for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
+          for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
             fprintf(fp2,"<pseudo.atomic.orbitals.L=%d\n",L0);
-            for (i=0; i<Spe_Num_Mesh_PAO[wan]; i++){
-              fprintf(fp2,"%18.15f %18.15f ",Spe_PAO_XV[wan][i],Spe_PAO_RV[wan][i]); 
- 	      for (Mul0=0; Mul0<Spe_PAO_Mul[wan]; Mul0++){
+            for (i=0; i<atomic->species.pao_mesh[wan]; i++){
+              fprintf(fp2,"%18.15f %18.15f ",openmx_radial_row2(&atomic->pao_log_radii,wan)[i],openmx_radial_row2(&atomic->pao_radii,wan)[i]);
+              for (Mul0=0; Mul0<atomic->species.pao_multiplicity[wan]; Mul0++){
                 sum = 0.0;
-                for (p=0; p<Spe_PAO_Mul[wan]; p++){
-                  sum += tmp_coes[L0][Mul0][p]*Spe_PAO_RWF[wan][L0][p][i];
+                for (p=0; p<atomic->species.pao_multiplicity[wan]; p++){
+                  sum += tmp_coes[L0][Mul0][p]*openmx_radial_row4(&atomic->orbitals,wan,L0,p)[i];
 	        }
                 fprintf(fp2,"%18.15f ",sum);
               }
@@ -2317,12 +2318,12 @@ void out_OrbOpt(char *inputfile)
             fprintf(fp2,"pseudo.atomic.orbitals.L=%d>\n",L0);
 	  }
 
-          for (L0=(Spe_MaxL_Basis[wan]+1); L0<=Spe_PAO_LMAX[wan]; L0++){
+          for (L0=(atomic->species.basis_lmax[wan]+1); L0<=atomic->species.pao_lmax[wan]; L0++){
             fprintf(fp2,"<pseudo.atomic.orbitals.L=%d\n",L0);
-            for (i=0; i<Spe_Num_Mesh_PAO[wan]; i++){
-              fprintf(fp2,"%18.15f %18.15f ",Spe_PAO_XV[wan][i],Spe_PAO_RV[wan][i]); 
- 	      for (Mul0=0; Mul0<Spe_PAO_Mul[wan]; Mul0++){
-                fprintf(fp2,"%18.15f ",Spe_PAO_RWF[wan][L0][Mul0][i]);
+            for (i=0; i<atomic->species.pao_mesh[wan]; i++){
+              fprintf(fp2,"%18.15f %18.15f ",openmx_radial_row2(&atomic->pao_log_radii,wan)[i],openmx_radial_row2(&atomic->pao_radii,wan)[i]);
+              for (Mul0=0; Mul0<atomic->species.pao_multiplicity[wan]; Mul0++){
+                fprintf(fp2,"%18.15f ",openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[i]);
 	      }
               fprintf(fp2,"\n");
 	    }
@@ -2403,8 +2404,10 @@ static void Print_CubeData_MO(FILE *fp, double *data, double *data1,char *op)
 
 
 
-void out_Partial_Charge_Density()
+void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic)
 {
+  double *****Partial_DM=electronic->Partial_DM;
+
   int ct_AN,spe,i1,i2,i3,GN,i,j,k;
   int MN,digit;
   double x,y,z,vx,vy,vz;

@@ -365,7 +365,7 @@ static void TotalEnergy_EH0_Kernel(size_t first,size_t count,const void *paramet
     }
 }
 
-void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3)
@@ -410,9 +410,9 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int 
 
   for (spe=0; spe<species_count; spe++){
     tgn_flat[spe] = TGN_EH0[spe];
-    vps_n_flat[spe] = Spe_Num_Mesh_VPS[spe];
+    vps_n_flat[spe] = atomic->species.vps_mesh[spe];
     dv_flat[spe] = dv_EH0[spe];
-    core_charge_flat[spe] = Spe_Core_Charge[spe];
+    core_charge_flat[spe] = atomic->species.core_charge[spe];
 
     for (n=0; n<grid_stride; n++){
       i = spe*grid_stride + n;
@@ -434,13 +434,13 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(int pair_count, int *pair_ban, int 
 
     for (n=0; n<vps_stride; n++){
       i = spe*vps_stride + n;
-      vps_xv_flat[i] = Spe_VPS_XV[spe][n];
-      vps_rv_flat[i] = Spe_VPS_RV[spe][n];
+      vps_xv_flat[i] = openmx_radial_row2(&atomic->vps_log_radii,spe)[n];
+      vps_rv_flat[i] = openmx_radial_row2(&atomic->vps_radii,spe)[n];
     }
 
     for (n=0; n<vh_stride; n++){
       i = spe*vh_stride + n;
-      vh_atom_flat[i] = Spe_VH_Atom[spe][n];
+      vh_atom_flat[i] = openmx_radial_row2(&atomic->hartree_potential,spe)[n];
     }
   }
 
@@ -824,7 +824,7 @@ static void TotalEnergy_Exc0_Kernel(size_t first,size_t count,const void *parame
   }
 }
 
-void TotalEnergy_Exc0_Batch_OpenACC(int na,double **leb,double *sum)
+void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, int na,double **leb,double *sum)
 {
   int nbmax=1;
   for (int mc=1;mc<=Matomnum;mc++) if (nbmax<FNAN[M2G[mc]]+1) nbmax=FNAN[M2G[mc]]+1;
@@ -882,18 +882,18 @@ void TotalEnergy_Exc0_Batch_OpenACC(int na,double **leb,double *sum)
   double *energy=t.view[20].data;
   double *force_pairs=t.view[21].data;
   for (int spe=0;spe<SpeciesNum;spe++) {
-    pao_n_flat[spe]=Spe_Num_Mesh_PAO[spe];
-    memcpy(pao_xv_flat+(size_t)spe*p.pao_stride,Spe_PAO_XV[spe],(size_t)p.pao_stride*sizeof(double));
-    memcpy(pao_rv_flat+(size_t)spe*p.pao_stride,Spe_PAO_RV[spe],(size_t)p.pao_stride*sizeof(double));
-    memcpy(den2_flat+(size_t)spe*p.den_stride,Spe_Atomic_Den2[spe],(size_t)p.den_stride*sizeof(double));
+    pao_n_flat[spe]=atomic->species.pao_mesh[spe];
+    memcpy(pao_xv_flat+(size_t)spe*p.pao_stride,openmx_radial_row2(&atomic->pao_log_radii,spe),(size_t)p.pao_stride*sizeof(double));
+    memcpy(pao_rv_flat+(size_t)spe*p.pao_stride,openmx_radial_row2(&atomic->pao_radii,spe),(size_t)p.pao_stride*sizeof(double));
+    memcpy(den2_flat+(size_t)spe*p.den_stride,openmx_radial_row2(&atomic->density_backup,spe),(size_t)p.den_stride*sizeof(double));
   }
   for (int mc=0;mc<Matomnum;mc++) {
     int gc=M2G[mc+1];at_fnan[mc]=FNAN[gc];
-    at_cx[mc]=Gxyz[gc][1];at_cy[mc]=Gxyz[gc][2];at_cz[mc]=Gxyz[gc][3];at_dr[mc]=Spe_Atom_Cut1[WhatSpecies[gc]];
+    at_cx[mc]=Gxyz[gc][1];at_cy[mc]=Gxyz[gc][2];at_cz[mc]=Gxyz[gc][3];at_dr[mc]=atomic->species.cutoff[WhatSpecies[gc]];
     for (int h=0;h<=FNAN[gc];h++) {
       int gh=natn[gc][h],rn=ncn[gc][h],wan=WhatSpecies[gh];size_t k=(size_t)mc*nbmax+h;
       nb_wan[k]=wan;nb_x[k]=Gxyz[gh][1]+atv[rn][1];nb_y[k]=Gxyz[gh][2]+atv[rn][2];nb_z[k]=Gxyz[gh][3]+atv[rn][3];
-      nb_rcut2[k]=Spe_Atom_Cut1[wan]*Spe_Atom_Cut1[wan];
+      nb_rcut2[k]=atomic->species.cutoff[wan]*atomic->species.cutoff[wan];
     }
   }
   for (int i=0;i<na;i++) {leb_x[i]=leb[i][0];leb_y[i]=leb[i][1];leb_z[i]=leb[i][2];leb_w[i]=leb[i][3];}

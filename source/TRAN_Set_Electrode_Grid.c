@@ -57,7 +57,7 @@ double Dot_Product(double a[4], double b[4]);
 
 
 
-void TRAN_Set_Electrode_Grid(MPI_Comm comm1,
+void TRAN_Set_Electrode_Grid(const OpenMXAtomicViews *atomic, MPI_Comm comm1,
                              int *TRAN_Poisson_flag2,
 			     double *Grid_Origin,   /* origin of the grid */
 			     double tv[4][4],       /* unit vector of the cell*/
@@ -260,8 +260,8 @@ void TRAN_Set_Electrode_Grid(MPI_Comm comm1,
                 else         GA_AN = GA_AN_e + Latomnum + Catomnum;
 
 		wanA = WhatSpecies[GA_AN];
-		tnoA = Spe_Total_CNO[wanA];
-		rcutA = Spe_Atom_Cut1[wanA];
+		tnoA = atomic->species.contracted_orbitals[wanA];
+		rcutA = atomic->species.cutoff[wanA];
 
 		x1 = Gxyz[GA_AN][1]
                    + (double)direction*tv_e[side][1][1] 
@@ -289,7 +289,7 @@ void TRAN_Set_Electrode_Grid(MPI_Comm comm1,
                        ElectrodeDensity_Grid
                   ******************************/
 
-		  Get_Orbitals(wanA,dx1,dy1,dz1,Chi1);
+		  Get_Orbitals(atomic, wanA,dx1,dy1,dz1,Chi1);
 
 		  for (LB_AN_e=0; LB_AN_e<=FNAN_e[side][GA_AN_e]; LB_AN_e++){
 
@@ -300,8 +300,8 @@ void TRAN_Set_Electrode_Grid(MPI_Comm comm1,
 		    else         GB_AN = GB_AN_e + Latomnum + Catomnum;
 
 		    wanB = WhatSpecies[GB_AN];
-		    tnoB = Spe_Total_CNO[wanB];
-		    rcutB = Spe_Atom_Cut1[wanB];
+		    tnoB = atomic->species.contracted_orbitals[wanB];
+		    rcutB = atomic->species.cutoff[wanB];
 
 		    x2 = Gxyz[GB_AN][1]
 		      + (double)(direction+atv_ijk_e[side][Rn_e][1])*tv_e[side][1][1]
@@ -325,7 +325,7 @@ void TRAN_Set_Electrode_Grid(MPI_Comm comm1,
 
 		    if (r2<=rcutB){
 
-		      Get_Orbitals(wanB,dx2,dy2,dz2,Chi2);
+		      Get_Orbitals(atomic, wanB,dx2,dy2,dz2,Chi2);
 
 		      for (spin=0; spin<=SpinP_switch; spin++) {
 
@@ -376,9 +376,9 @@ void TRAN_Set_Electrode_Grid(MPI_Comm comm1,
 
   		  xx = 0.5*log(dx1*dx1 + dy1*dy1 + dz1*dz1);
                   gidx = (n1-l1[0])*Ngrid2*Ngrid3 + n2*Ngrid3 + n3; 
-                  ElectrodeADensity_Grid[side][gidx] += 0.5*KumoF( Spe_Num_Mesh_PAO[wanA], xx, 
-                                                            Spe_PAO_XV[wanA], Spe_PAO_RV[wanA], 
-                                                            Spe_Atomic_Den[wanA]);
+                  ElectrodeADensity_Grid[side][gidx] += 0.5*KumoF( atomic->species.pao_mesh[wanA], xx,
+                                                            openmx_radial_row2(&atomic->pao_log_radii,wanA), openmx_radial_row2(&atomic->pao_radii,wanA),
+                                                            openmx_radial_row2(&atomic->density,wanA));
 
 		} /* if (r1<=rcutA) */              
 	      }

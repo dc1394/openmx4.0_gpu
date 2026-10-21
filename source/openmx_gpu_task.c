@@ -125,7 +125,7 @@ static int task_local(OpenMXGpuTask *t,const char *label)
     TaskWork w={0};w.task=t;
     OpenMXGpuWorkerRetry retry={task_cost,t,{0}};
     while (openmx_gpu_workers_capacity(&w.pool,t->count,t->scope_kind==2?2:1,openmx_gpu_worker_retry_cost,&retry)) {
-        int ok=openmx_gpu_workers_run(&w.pool,task_worker,&w,label);
+        int ok=openmx_gpu_workers_run_prepared(&w.pool,task_worker,&w,label);
         if (ok) for (int i=0;i<w.pool.count;i++) {
             size_t lo=openmx_gpu_worker_cut(t->count,i,w.pool.count),hi=openmx_gpu_worker_cut(t->count,i+1,w.pool.count);
             task_commit(t,lo,hi,w.result[i],task_bytes(t,lo,hi,t->inputs,t->inputs+t->outputs));

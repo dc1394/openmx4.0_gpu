@@ -62,6 +62,28 @@ static long gs2_env_long(const char *name, long defval)
     return defval;
 }
 
+/* Optional timing of the complete host-array call, including admission and
+   setup. The APIs return completed host results; no device-wide barrier or
+   additional MPI collective is needed. Report the grid root's wall time. */
+static double gs2_profile_start(void)
+{
+    return gs2_env_long("OPENMX_GS2_PROFILE", 0) ? MPI_Wtime() : 0.0;
+}
+
+static void gs2_profile_report(MPI_Comm comm, const char *operation, int complex_matrix,
+                              int m, int n, int k, int gpu, double start)
+{
+    if (gs2_env_long("OPENMX_GS2_PROFILE", 0)) {
+        const double elapsed = MPI_Wtime() - start;
+        int rank;
+        MPI_Comm_rank(comm, &rank);
+        if (!rank) {
+            fprintf(stderr, "GS2PROF op=%s type=%c m=%d n=%d k=%d gpu=%d rank0_seconds=%.6f\n",
+                    operation, complex_matrix ? 'Z' : 'D', m, n, k, gpu, elapsed);
+        }
+    }
+}
+
 /* ---------------------------------------------------------------------
    GPU-memory preflight.
 
@@ -549,20 +571,23 @@ int openmx_gs2_eigen_real(int n, int nev, double *a, int *desca, double *w, doub
                           int *descz)
 {
     int err = 0;
+    const double started = gs2_profile_start();
     size_t free_before;
     gs2_handle_slot *s = gs2_get_handle(desca[1], n, nev, 0, desca[4], &err);
 
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
 
-    free_before = gs2_free_now();
-    elpa_eigenvectors_double(s->h, a, w, z, &err);
+    free_before = s->gpu ? gs2_free_now() : 0;
+    if (s->gpu) elpa_eigenvectors_double(s->h, a, w, z, &err);
+    else elpa_eigenvectors_a_h_a_d(s->h, a, w, z, &err);
     if (err != ELPA_OK) {
         fprintf(stderr, "openmx gpusolver2: elpa_eigenvectors_double failed: %s\n",
                 elpa_strerr(err));
         return err;
     }
-    gs2_update_retained(s, free_before, gs2_free_now());
+    gs2_update_retained(s, free_before, s->gpu ? gs2_free_now() : 0);
+    gs2_profile_report(s->comm, "elpa", 0, n, nev, 0, s->gpu, started);
     return 0;
 }
 
@@ -570,20 +595,23 @@ int openmx_gs2_eigen_complex(int n, int nev, void *a, int *desca, double *w, voi
                              int *descz)
 {
     int err = 0;
+    const double started = gs2_profile_start();
     size_t free_before;
     gs2_handle_slot *s = gs2_get_handle(desca[1], n, nev, 1, desca[4], &err);
 
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
 
-    free_before = gs2_free_now();
-    elpa_eigenvectors_double_complex(s->h, (double complex *)a, w, (double complex *)z, &err);
+    free_before = s->gpu ? gs2_free_now() : 0;
+    if (s->gpu) elpa_eigenvectors_double_complex(s->h, (double complex *)a, w, (double complex *)z, &err);
+    else elpa_eigenvectors_a_h_a_dc(s->h, (double complex *)a, w, (double complex *)z, &err);
     if (err != ELPA_OK) {
         fprintf(stderr, "openmx gpusolver2: elpa_eigenvectors_double_complex failed: %s\n",
                 elpa_strerr(err));
         return err;
     }
-    gs2_update_retained(s, free_before, gs2_free_now());
+    gs2_update_retained(s, free_before, s->gpu ? gs2_free_now() : 0);
+    gs2_profile_report(s->comm, "elpa", 1, n, nev, 0, s->gpu, started);
     return 0;
 }
 
@@ -846,7 +874,9 @@ void openmx_gs2_pdgemm_(const char *transa, const char *transb, const int *m, co
                         const int *jb, const int *descb, const double *beta, double *c,
                         const int *ic, const int *jc, const int *descc)
 {
-    if (gs2_gemm_use_gpu(transa, transb, *m, *n, *k, desca, descb, descc, 0)) {
+    const double started = gs2_profile_start();
+    const int gpu = gs2_gemm_use_gpu(transa, transb, *m, *n, *k, desca, descb, descc, 0);
+    if (gpu) {
         size_t before = gs2_free_now(), after;
         cosma_pdgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
                       b, ib, jb, descb, beta, c, ic, jc, descc);
@@ -857,6 +887,8 @@ void openmx_gs2_pdgemm_(const char *transa, const char *transb, const int *m, co
         pdgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
                 b, ib, jb, descb, beta, c, ic, jc, descc);
     }
+    if (gs2_env_long("OPENMX_GS2_PROFILE", 0))
+        gs2_profile_report(gs2_ictxt_comm(descc[1]), "gemm", 0, *m, *n, *k, gpu, started);
 }
 
 void openmx_gs2_pzgemm_(const char *transa, const char *transb, const int *m, const int *n,
@@ -865,7 +897,9 @@ void openmx_gs2_pzgemm_(const char *transa, const char *transb, const int *m, co
                         const int *jb, const int *descb, const double *beta, double *c,
                         const int *ic, const int *jc, const int *descc)
 {
-    if (gs2_gemm_use_gpu(transa, transb, *m, *n, *k, desca, descb, descc, 1)) {
+    const double started = gs2_profile_start();
+    const int gpu = gs2_gemm_use_gpu(transa, transb, *m, *n, *k, desca, descb, descc, 1);
+    if (gpu) {
         size_t before = gs2_free_now(), after;
         cosma_pzgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
                       b, ib, jb, descb, beta, c, ic, jc, descc);
@@ -876,6 +910,8 @@ void openmx_gs2_pzgemm_(const char *transa, const char *transb, const int *m, co
         pzgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
                 b, ib, jb, descb, beta, c, ic, jc, descc);
     }
+    if (gs2_env_long("OPENMX_GS2_PROFILE", 0))
+        gs2_profile_report(gs2_ictxt_comm(descc[1]), "gemm", 1, *m, *n, *k, gpu, started);
 }
 
 /* Admission of the distributed solve for the automatic capacity fallback

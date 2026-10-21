@@ -18,8 +18,9 @@
 #include "mpi.h"
 
 
-void Initial_CntCoes(double *****nh, double *****OLP)
+void Initial_CntCoes(double *****nh, double *****OLP, const OpenMXLocalBasisViews *local_basis)
 {
+
   static int firsttime=1;
   int i,j,l,n,n2,i1,j1;
   int wan;
@@ -470,7 +471,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
 
     for (al=0; al<Spe_Total_CNO[wan]; al++){
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-        CntCoes[Mc_AN][al][p] = 0.0;
+        openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = 0.0;
       }
     }
 
@@ -479,7 +480,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
       for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
         for (M0=0; M0<=2*L0; M0++){
           al++;
-          CntCoes[Mc_AN][al][Mul0] = 1.0;
+          openmx_local_contraction_row(local_basis, Mc_AN, al)[Mul0] = 1.0;
 	}
       }
     }
@@ -968,7 +969,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
 	    p0 = Spe_Trans_Orbital[wan][al][p];
 	    i = tmp_index[L0][M0];
             if (Simple_InitCnt[L0]==0)
-              CntCoes[Mc_AN][al][p] = B[p0+1][i];
+              openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = B[p0+1][i];
 	  }
 
           tmp_index[L0][M0] = tmp_index[L0][M0] + 1;
@@ -981,7 +982,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
           printf("A Init_CntCoes Mc_AN=%2d Gc_AN=%2d al=%2d p=%2d  %15.12f\n",
-                  Mc_AN,Gc_AN,al,p,CntCoes[Mc_AN][al][p]);
+                  Mc_AN,Gc_AN,al,p,openmx_local_contraction_row(local_basis, Mc_AN, al)[p]);
         }
       }
     }
@@ -1017,16 +1018,16 @@ void Initial_CntCoes(double *****nh, double *****OLP)
 
 	    sum = 0.0;
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al1][p];
+	      sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	    }
 
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*CntCoes[Mc_AN][al1][p];
+	      Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	    }
 	  }
 
 	  for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	    CntCoes[Mc_AN][al0][p] = CntCoes[Mc_AN][al0][p] - Tmp_CntCoes[p];
+	    openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] - Tmp_CntCoes[p];
 	  }
 
 	  /* Normalize */
@@ -1035,9 +1036,9 @@ void Initial_CntCoes(double *****nh, double *****OLP)
 	  Max0 = -100.0;
 	  pmax = 0;
 	  for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	    sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al0][p];
-	    if (Max0<fabs(CntCoes[Mc_AN][al0][p])){
-	      Max0 = fabs(CntCoes[Mc_AN][al0][p]);
+	    sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
+	    if (Max0<fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p])){
+	      Max0 = fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]);
 	      pmax = p;
 	    }
 	  }
@@ -1047,10 +1048,10 @@ void Initial_CntCoes(double *****nh, double *****OLP)
           else 
   	    tmp0 = 1.0/sqrt(sum); 
 
-	  tmp1 = sgn(CntCoes[Mc_AN][al0][pmax]);
+	  tmp1 = sgn(openmx_local_contraction_row(local_basis, Mc_AN, al0)[pmax]);
             
 	  for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	    CntCoes[Mc_AN][al0][p] = tmp0*tmp1*CntCoes[Mc_AN][al0][p];
+	    openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = tmp0*tmp1*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
 	  }
 
 	}
@@ -1061,7 +1062,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
           printf("B Init_CntCoes Mc_AN=%2d Gc_AN=%2d al=%2d p=%2d  %15.12f\n",
-                  Mc_AN,Gc_AN,al,p,CntCoes[Mc_AN][al][p]);
+                  Mc_AN,Gc_AN,al,p,openmx_local_contraction_row(local_basis, Mc_AN, al)[p]);
         }
       }
     }
@@ -1090,7 +1091,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
             FermiF = 1.0/(1.0 + exp(x));
 
             for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	      Tmp_CntCoes[p] = Tmp_CntCoes[p] + CntCoes[Mc_AN][al][p]*FermiF;
+	      Tmp_CntCoes[p] = Tmp_CntCoes[p] + openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*FermiF;
             }
           }
           al = al0;
@@ -1098,7 +1099,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
           for (M0=0; M0<=2*L0; M0++){
             al++;
             for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	      CntCoes[Mc_AN][al][p] = Tmp_CntCoes[p];
+	      openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = Tmp_CntCoes[p];
             }
           }
 
@@ -1136,16 +1137,16 @@ void Initial_CntCoes(double *****nh, double *****OLP)
 
 	      sum = 0.0;
 	      for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-		sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al1][p];
+		sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	      }
 
 	      for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-		Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*CntCoes[Mc_AN][al1][p];
+		Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	      }
 	    }
 
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      CntCoes[Mc_AN][al0][p] = CntCoes[Mc_AN][al0][p] - Tmp_CntCoes[p];
+	      openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] - Tmp_CntCoes[p];
 	    }
 
 	    /* Normalize */
@@ -1153,17 +1154,17 @@ void Initial_CntCoes(double *****nh, double *****OLP)
 	    Max0 = -100.0;
 	    pmax = 0;
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al0][p];
-	      if (Max0<fabs(CntCoes[Mc_AN][al0][p])){
-		Max0 = fabs(CntCoes[Mc_AN][al0][p]);
+	      sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
+	      if (Max0<fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p])){
+		Max0 = fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]);
 		pmax = p; 
 	      }
 	    }
 	    tmp0 = 1.0/sqrt(sum);
-	    tmp1 = sgn(CntCoes[Mc_AN][al0][pmax]);
+	    tmp1 = sgn(openmx_local_contraction_row(local_basis, Mc_AN, al0)[pmax]);
             
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      CntCoes[Mc_AN][al0][p] = tmp0*tmp1*CntCoes[Mc_AN][al0][p];
+	      openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = tmp0*tmp1*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
 	    }
 
 	  }
@@ -1175,7 +1176,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
           printf("C Init_CntCoes Mc_AN=%2d Gc_AN=%2d al=%2d p=%2d  %15.12f\n",
-                  Mc_AN,Gc_AN,al,p,CntCoes[Mc_AN][al][p]);
+                  Mc_AN,Gc_AN,al,p,openmx_local_contraction_row(local_basis, Mc_AN, al)[p]);
         }
       }
     }
@@ -1245,7 +1246,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
       wan = WhatSpecies[Gc_AN];
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-          My_CntCoes_Spe[wan][al][p] += CntCoes[Mc_AN][al][p];
+          My_CntCoes_Spe[wan][al][p] += openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
         }        
       }
     }
@@ -1266,7 +1267,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
       wan = WhatSpecies[Gc_AN];
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-          CntCoes[Mc_AN][al][p] = CntCoes_Spe[wan][al][p];
+          openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = CntCoes_Spe[wan][al][p];
         }        
       }
     }
@@ -1306,14 +1307,14 @@ void Initial_CntCoes(double *****nh, double *****OLP)
 	for (q=0; q<Spe_Specified_Num[wan][al]; q++){
           q0 = Spe_Trans_Orbital[wan][al][q];
 
-          tmp0 = CntCoes[Mc_AN][al][p]*CntCoes[Mc_AN][al][q];
+          tmp0 = openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al)[q];
           sum = sum + tmp0*OLP[0][Mc_AN][0][p0][q0]; 
         }
       }
 
       tmp0 = 1.0/sqrt(sum);
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-        CntCoes[Mc_AN][al][p] = CntCoes[Mc_AN][al][p]*tmp0;
+        openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*tmp0;
       }        
 
     }
@@ -1322,7 +1323,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
       for (al=0; al<Spe_Total_CNO[wan]; al++){
 	for (p=0; p<Spe_Specified_Num[wan][al]; p++){
 	  printf("D Init_CntCoes Mc_AN=%2d Gc_AN=%2d al=%2d p=%2d  %15.12f\n",
-		 Mc_AN,Gc_AN,al,p,CntCoes[Mc_AN][al][p]);
+		 Mc_AN,Gc_AN,al,p,openmx_local_contraction_row(local_basis, Mc_AN, al)[p]);
 	}
       }
     }
@@ -1417,7 +1418,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
           wan = WhatSpecies[Gc_AN]; 
           for (al=0; al<Spe_Total_CNO[wan]; al++){
             for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-              tmp_array[num] = CntCoes[Mc_AN][al][p];
+              tmp_array[num] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
               num++;
   	    }
 	  }
@@ -1447,7 +1448,7 @@ void Initial_CntCoes(double *****nh, double *****OLP)
           wan = WhatSpecies[Gc_AN];
           for (al=0; al<Spe_Total_CNO[wan]; al++){
             for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-              CntCoes[Mc_AN][al][p] = tmp_array2[num];
+              openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = tmp_array2[num];
               num++;
 	    }
   	  }

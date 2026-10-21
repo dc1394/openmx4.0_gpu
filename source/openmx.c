@@ -76,6 +76,9 @@
 #endif
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_local_basis.h"
+#include "openmx_electronic.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -97,11 +100,22 @@ static void Raise_Stack_Limit(void)
 #endif
 }
 
-int main(int argc, char *argv[]) 
-{ 
-  static int numprocs,myid;
-  static int MD_iter,i,j,po,ip;
-  static char fileMemory[YOUSO10]; 
+static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core);
+
+int main(int argc, char *argv[])
+{
+  return openmx_core_run(argc,argv,run_openmx);
+}
+
+static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
+{
+  OpenMXLocalBasisViews local_basis_storage;
+
+  OpenMXElectronicViews electronic_storage;
+
+  int numprocs=0,myid=0;
+  int MD_iter=0,i=0,j=0,po=0,ip=0;
+  char fileMemory[YOUSO10];
   double TStime,TEtime;
   MPI_Comm mpi_comm_parent;
 
@@ -172,8 +186,9 @@ int main(int argc, char *argv[])
   if (argc==1){
 
     if (myid==Host_ID) printf("\nCould not find an input file.\n\n");
+    openmx_core_finish(core);
     MPI_Finalize(); 
-    exit(0);
+    return 0;
   } 
 
   /* initialize Runtest_flag */
@@ -206,8 +221,9 @@ int main(int argc, char *argv[])
     if (myid==Host_ID){
       printf("cannot find the number of threads\n");
     }
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0);
+    return 0;
   }
 
   if ( po==1 ){
@@ -217,8 +233,9 @@ int main(int argc, char *argv[])
       if (myid==Host_ID){
         printf("check the number of threads\n");
       }
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return 0;
     }
   }
 
@@ -237,7 +254,7 @@ int main(int argc, char *argv[])
 
   if (strcmp(argv[1],"-show")==0){
     Show_DFT_DATA(argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -249,7 +266,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketest")==0){
     Maketest("S",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -266,11 +283,13 @@ int main(int argc, char *argv[])
       if (myid==Host_ID){
         printf("The number of MPI processes for runtest is limited to upto 64.\n");  
       }
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return 0;
     }
     
-    Runtest("S",argc,argv);
+    Runtest("S",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -283,7 +302,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestL")==0){
     Maketest("L",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -296,7 +315,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestL2")==0){
     Maketest("L2",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -309,7 +328,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestL3")==0){
     Maketest("L3",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -321,7 +340,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestL")==0){
-    Runtest("L",argc,argv);
+    Runtest("L",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -333,7 +353,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestL2")==0){
-    Runtest("L2",argc,argv);
+    Runtest("L2",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -345,7 +366,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestL3")==0){
-    Runtest("L3",argc,argv);
+    Runtest("L3",argc,argv,core);
+    return 0;
   }
 
   /*******************************************************
@@ -354,7 +376,7 @@ int main(int argc, char *argv[])
 
   if ( (argc==2 || argc==3) && strcmp(argv[1],"-mltest")==0){
     Memory_Leak_test(argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -367,7 +389,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestG")==0){
     Maketest("G",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -380,7 +402,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestC")==0){
     Maketest("C",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -392,7 +414,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestG")==0){
-    Runtest("G",argc,argv);
+    Runtest("G",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -405,7 +428,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestC")==0){
-    Runtest("C",argc,argv);
+    Runtest("C",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -418,7 +442,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestCWF")==0){
     Maketest("CWF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -431,7 +455,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestCWF")==0){
-    Runtest("CWF",argc,argv);
+    Runtest("CWF",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -444,7 +469,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestWF")==0){
     Maketest("WF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -456,7 +481,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestWF")==0){
-    Runtest("WF",argc,argv);
+    Runtest("WF",argc,argv,core);
+    return 0;
   }
 
   /****************************************************
@@ -469,7 +495,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestNEGF")==0){
     Maketest("NEGF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -480,9 +506,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestNEGF")==0){
-    Runtest("NEGF",argc,argv);
-    MPI_Finalize();
-    exit(0);
+    Runtest("NEGF",argc,argv,core);
+    return 0;
   }
 
   /********************************************************************
@@ -494,7 +519,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestCDDF")==0){
     Maketest("CDDF",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -505,9 +530,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestCDDF")==0){
-    Runtest("CDDF",argc,argv);
-    MPI_Finalize();
-    exit(0);
+    Runtest("CDDF",argc,argv,core);
+    return 0;
   }
 
   /********************************************************************
@@ -520,7 +544,7 @@ int main(int argc, char *argv[])
 
   if ( strcmp(argv[1],"-maketestDCLNO")==0){
     Maketest("DCLNO",argc,argv);
-    exit(0);
+    return 0;
   }
 
   /****************************************************
@@ -531,9 +555,8 @@ int main(int argc, char *argv[])
   ****************************************************/
 
   if (strcmp(argv[1],"-runtestDCLNO")==0){
-    Runtest("DCLNO",argc,argv);
-    MPI_Finalize();
-    exit(0);
+    Runtest("DCLNO",argc,argv,core);
+    return 0;
   }
 
   /*******************************************************
@@ -553,11 +576,11 @@ int main(int argc, char *argv[])
     else if (strcmp(argv[2],"8")==0) force_flag = 8;
     else {
       printf("unsupported flag for -forcetest\n");
-      exit(0);
+      return 0;
     }
 
     Force_test(argc,argv);
-    exit(0);
+    return 0;
   }
 
   /*********************************************************
@@ -577,12 +600,13 @@ int main(int argc, char *argv[])
     else if (strcmp(argv[2],"8")==0) stress_flag = 8;
     else {
       printf("unsupported flag for -stresstest\n");
-      exit(0);
+      return 0;
     }
 
     Stress_test(argc,argv);
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0);
+    return 0;
   }
 
   /*******************************************************
@@ -590,7 +614,7 @@ int main(int argc, char *argv[])
     the NEB calculation.
   *******************************************************/
 
-  if (neb_check(argv)) neb(argc,argv);
+  if (neb_check(argv)) { neb(argc,argv,core); return 0; }
 
   /*******************************************************
    allocation of CompTime and show the greeting message 
@@ -605,7 +629,7 @@ int main(int argc, char *argv[])
   if (myid==Host_ID){  
     printf("\n*******************************************************\n"); 
     printf("*******************************************************\n"); 
-    printf(" Welcome to OpenMX   Ver. %s                           \n",Version_OpenMX); 
+    printf(" Welcome to OpenMX   Ver. %s                           \n",openmx_core_version());
     printf(" Copyright (C), 2002-2026, T. Ozaki                    \n"); 
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n"); 
     printf(" This is free software, and you are welcome to         \n"); 
@@ -624,7 +648,9 @@ int main(int argc, char *argv[])
 
   init_alloc_first();
 
-  CompTime[myid][1] = readfile(argv);
+  CompTime[myid][1] = readfile(argv,core);
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   MPI_Barrier(MPI_COMM_WORLD1);
 
   /* initialize PrintMemory routine */
@@ -682,12 +708,12 @@ int main(int argc, char *argv[])
 
   if (ForceConsistency_flag==1){
 
-    Check_Force(argv);
-    CompTime[myid][20] = OutData(argv[1]);
+    Check_Force(argv,core);
+    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
     Merge_LogFile(argv[1]);
-    Free_Arrays(0);
+    Free_Arrays_with_context(0,core);
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0); 
     return 0;
   }
 
@@ -720,12 +746,12 @@ int main(int argc, char *argv[])
   */
 
   if (StressConsistency_flag==1){
-    Check_Stress(argv);
-    CompTime[myid][20] = OutData(argv[1]);
+    Check_Stress(argv,core);
+    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
     Merge_LogFile(argv[1]);
-    Free_Arrays(0);
+    Free_Arrays_with_context(0,core);
+    openmx_core_finish(core);
     MPI_Finalize();
-    exit(0); 
     return 0;
   }
 
@@ -743,17 +769,17 @@ int main(int argc, char *argv[])
     if (dftD_switch==1 && version_dftD==3) DFTD3vdW_init(MD_iter);  /* DFT-D3 */
 
     if (MD_switch==12)
-      CompTime[myid][2] += truncation(1,1);  /* EvsLC */
+      CompTime[myid][2] += truncation(1,1,core);  /* EvsLC */
     else if (MD_cellopt_flag==1)
-      CompTime[myid][2] += truncation(1,1);  /* cell optimization */
+      CompTime[myid][2] += truncation(1,1,core);  /* cell optimization */
     else{ 
-      CompTime[myid][2] += truncation(MD_iter,1);
+      CompTime[myid][2] += truncation(MD_iter,1,core);
     }
 
     if (ML_flag==1 && myid==Host_ID) Get_VSZ(MD_iter);
 
     if (Solver==4) {
-      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, Spe_Atom_Cut1,
+      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, atomic->species.cutoff,
                            Ngrid1, Grid_Origin, Gxyz, tv, gtv, rgtv, Left_tv, Right_tv );
 
       /* output: TRAN_region[], TRAN_grid_bound */
@@ -771,7 +797,7 @@ int main(int argc, char *argv[])
       }
 
 #endif
-      CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+      CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
       iterout(MD_iter+MD_Current_Iter,MD_TimeStep*(MD_iter+MD_Current_Iter-1),filepath,filename);
 
       /* MD or geometry optimization */
@@ -788,7 +814,7 @@ int main(int argc, char *argv[])
 
   if ( TRAN_output_hks ) {
      /* left is dummy */
-     TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename);
+     TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /****************************************************
@@ -801,7 +827,7 @@ int main(int argc, char *argv[])
         calculate Voronoi orbital magnetic moment
   ****************************************************/
  
-  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment();
+  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment(atomic, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /****************************************************
         output analysis of decomposed energies
@@ -823,7 +849,7 @@ int main(int argc, char *argv[])
   if(Wannier_Func_Calc){
     if (myid==Host_ID) printf("Calling Generate_Wannier...\n");fflush(0);
 
-    Generate_Wannier(argv[1]);
+    Generate_Wannier(argv[1],core);
   }
 
   /****************************************************
@@ -834,7 +860,7 @@ int main(int argc, char *argv[])
   if(pop_anal_aow_flag){
     if (myid==Host_ID) printf("Population analysis based on atomic orbitals resembling Wannier functions\n");fflush(0);
 
-    Population_Analysis_Wannier2(argv);
+    Population_Analysis_Wannier2(argv, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /*********************************************************
@@ -846,15 +872,15 @@ int main(int argc, char *argv[])
   if (Solver==4 && TRAN_analysis==1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */ 
-    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(0); 
+    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
     if (SpinP_switch==3) {
-      TRAN_Main_Analysis_NC( mpi_comm_level1, argc, argv, Matomnum, M2G,  
+      TRAN_Main_Analysis_NC(atomic,  mpi_comm_level1, argc, argv, Matomnum, M2G,
                              GridN_Atom, GridListAtom, CellListAtom, 
                              Orbs_Grid, TNumGrid );
     }
     else {
-      TRAN_Main_Analysis( mpi_comm_level1, argc, argv, Matomnum, M2G,  
+      TRAN_Main_Analysis(atomic,  mpi_comm_level1, argc, argv, Matomnum, M2G,
                           GridN_Atom, GridListAtom, CellListAtom, 
                           Orbs_Grid, TNumGrid );
     }
@@ -864,14 +890,14 @@ int main(int argc, char *argv[])
                   Making of output files
   ****************************************************/
 
-  CompTime[myid][20] = OutData(argv[1]);
+  CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File("write",argv[1]);
+  if (HS_fileout==1) SCF2File(atomic, "write",argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* elapsed time */
 
@@ -897,7 +923,7 @@ int main(int argc, char *argv[])
 
   /* free arrays */
 
-  Free_Arrays(0);
+  Free_Arrays_with_context(0,core);
 
   /* detect memory leak */
 
@@ -918,8 +944,8 @@ int main(int argc, char *argv[])
   /* shut down the ELPA library of gpusolver2 (no-op otherwise) */
   openmx_gs2_finalize();
 
-  MPI_Finalize();
-  exit(0);
+  openmx_core_finish(core);
 
+  MPI_Finalize();
   return 0;
 }

@@ -16,7 +16,7 @@
 #include <math.h>
 #include "openmx_common.h"
 
-void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3])
+void Dr_RadialF(const OpenMXAtomicViews *atomic, int Gensi, int L, int Mul, double R, double Deri_RF[3])
 {
   int mp_min,mp_max,m;
   double h1,h2,h3,f1,f2,f3,f4;
@@ -24,14 +24,14 @@ void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3])
   double result;
 
   mp_min = 0;
-  mp_max = Spe_Num_Mesh_PAO[Gensi] - 1;
+  mp_max = atomic->species.pao_mesh[Gensi] - 1;
  
-  if (R<Spe_PAO_RV[Gensi][0]){
-    f = Spe_PAO_RWF[Gensi][L][Mul][0];;
+  if (R<openmx_radial_row2(&atomic->pao_radii,Gensi)[0]){
+    f = openmx_radial_row4(&atomic->orbitals,Gensi,L,Mul)[0];;
     Df = 0.0;
     D2f = 0.0;
   }
-  else if (Spe_PAO_RV[Gensi][Spe_Num_Mesh_PAO[Gensi]-1]<R){
+  else if (openmx_radial_row2(&atomic->pao_radii,Gensi)[atomic->species.pao_mesh[Gensi]-1]<R){
     f = 0.0;
     Df = 0.0;
     D2f = 0.0;
@@ -39,7 +39,7 @@ void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3])
   else{
     do{ 
       m = (mp_min + mp_max)/2;
-      if (Spe_PAO_RV[Gensi][m]<R)
+      if (openmx_radial_row2(&atomic->pao_radii,Gensi)[m]<R)
         mp_min = m;
       else 
         mp_max = m;
@@ -49,21 +49,21 @@ void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3])
 
     if (m<2)
       m = 2;
-    else if (Spe_Num_Mesh_PAO[Gensi]<=m)
-      m = Spe_Num_Mesh_PAO[Gensi] - 2;
+    else if (atomic->species.pao_mesh[Gensi]<=m)
+      m = atomic->species.pao_mesh[Gensi] - 2;
 
     /****************************************************
                    Spline like interpolation
     ****************************************************/
 
-    h1 = Spe_PAO_RV[Gensi][m-1] - Spe_PAO_RV[Gensi][m-2];
-    h2 = Spe_PAO_RV[Gensi][m]   - Spe_PAO_RV[Gensi][m-1];
-    h3 = Spe_PAO_RV[Gensi][m+1] - Spe_PAO_RV[Gensi][m];
+    h1 = openmx_radial_row2(&atomic->pao_radii,Gensi)[m-1] - openmx_radial_row2(&atomic->pao_radii,Gensi)[m-2];
+    h2 = openmx_radial_row2(&atomic->pao_radii,Gensi)[m]   - openmx_radial_row2(&atomic->pao_radii,Gensi)[m-1];
+    h3 = openmx_radial_row2(&atomic->pao_radii,Gensi)[m+1] - openmx_radial_row2(&atomic->pao_radii,Gensi)[m];
 
-    f1 = Spe_PAO_RWF[Gensi][L][Mul][m-2];
-    f2 = Spe_PAO_RWF[Gensi][L][Mul][m-1];
-    f3 = Spe_PAO_RWF[Gensi][L][Mul][m];
-    f4 = Spe_PAO_RWF[Gensi][L][Mul][m+1];
+    f1 = openmx_radial_row4(&atomic->orbitals,Gensi,L,Mul)[m-2];
+    f2 = openmx_radial_row4(&atomic->orbitals,Gensi,L,Mul)[m-1];
+    f3 = openmx_radial_row4(&atomic->orbitals,Gensi,L,Mul)[m];
+    f4 = openmx_radial_row4(&atomic->orbitals,Gensi,L,Mul)[m+1];
 
     /****************************************************
                    Treatment of edge points
@@ -73,7 +73,7 @@ void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3])
       h1 = -(h2+h3);
       f1 = f4;
     }
-    if (m==(Spe_Num_Mesh_PAO[Gensi]-1)){
+    if (m==(atomic->species.pao_mesh[Gensi]-1)){
       h3 = -(h1+h2);
       f4 = f1;
     }
@@ -85,8 +85,8 @@ void Dr_RadialF(int Gensi, int L, int Mul, double R, double Deri_RF[3])
     g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
     g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
 
-    x1 = R - Spe_PAO_RV[Gensi][m-1];
-    x2 = R - Spe_PAO_RV[Gensi][m];
+    x1 = R - openmx_radial_row2(&atomic->pao_radii,Gensi)[m-1];
+    x2 = R - openmx_radial_row2(&atomic->pao_radii,Gensi)[m];
     y1 = x1/h2;
     y2 = x2/h2;
 

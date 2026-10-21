@@ -10,10 +10,12 @@
 #include "hip_complex_compat.h"
 #define OpenMXGpuComplex hipDoubleComplex
 #define OpenMXGpuMakeComplex make_hipDoubleComplex
-#else
+#elif OPENMX_GPU_CUDA
 #include <cuComplex.h>
 #define OpenMXGpuComplex cuDoubleComplex
 #define OpenMXGpuMakeComplex make_cuDoubleComplex
+#else
+#error "This native adapter supports CUDA/HIP only; use the portable core for other backends"
 #endif
 
 #endif /* OPENMX_GPU_COMPLEX_H */

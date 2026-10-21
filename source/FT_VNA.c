@@ -19,36 +19,31 @@
 #include <unistd.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_reciprocal.h"
+#include "openmx_atomic.h"
 #include "mpi.h"
-#include <omp.h>
+#include "openmx_core_radial.h"
 
 
 
 
 
-void FT_VNA()
+void FT_VNA(OpenMXCoreContext *core, int device)
 {
-  int numprocs,myid,ID,tag=999;
-  int count,NumSpe;
-  int L,i,j;
-  int Lspe,spe,GL,Mul;
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
+  OpenMXReciprocalRows archive_rows;
+  OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_NEUTRAL_POTENTIAL,&archive_rows);
+  char archive_error[256];
+  const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
+  double **Spe_CrudeVNA_Bessel=reciprocal.vps.potential_transform;
+
+  int numprocs,myid,ID,NumSpe;
+  int Lspe,spe;
   int RestartRead_Succeed;
-  double Sr,Dr,Sk,Dk,kmin,kmax;
-  double norm_k,h,dum0;
-  double xmin,xmax,x,r,sum;
-  double sj,*TmpVNAF;
-  double tmp0,tmp1;
-  double TStime, TEtime;
-  /* for MPI */
-  MPI_Status stat;
-  MPI_Request request;
-  /* for OpenMP */
-  int OMPID,Nthrds,Nprocs;
+  double TStime,TEtime;
 
   char fileFT[YOUSO10];
-  char operate[300];
-  FILE *fp;
-  size_t size; 
 
   dtime(&TStime);
 
@@ -67,42 +62,12 @@ void FT_VNA()
   ***********************************************************/
 
   if (Scf_RestartFromFile==1){
-
-    /****************************************************
-         regenerate radial grids in the k-space
-         for the MPI calculation
-    ****************************************************/
-
-    for (j=0; j<GL_Mesh; j++){
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-      norm_k = 0.50*(Dk*GL_Abscissae[j] + Sk);
-      GL_NormK[j] = norm_k;
-    }
-
-    /***********************************************************
-                        read Spe_VNA_Bessel
-    ***********************************************************/
-
     sprintf(fileFT,"%s%s_rst/%s.ftCvna",filepath,restart_filename,restart_filename);
-
-    if ((fp = fopen(fileFT,"rb")) != NULL){
-
-      RestartRead_Succeed = 1;
-
-      for (spe=0; spe<SpeciesNum; spe++){
-
-	size = fread(&Spe_CrudeVNA_Bessel[spe][0],sizeof(double),GL_Mesh,fp);
-	if (size!=GL_Mesh) RestartRead_Succeed = 0;
-      }
-
-      fclose(fp);
-    }
-    else{
-      printf("Error1: Could not open a file %s in FT_VNA\n",fileFT);
-    }
+    RestartRead_Succeed=openmx_core_reciprocal_archive_read(archive,fileFT,archive_error,sizeof(archive_error));
+    if (!RestartRead_Succeed)
+      fprintf(stderr,"FT_VNA: %s: %s\n",fileFT,archive_error);
+    /* Every rank must take the same recompute/distribution branch. */
+    MPI_Allreduce(MPI_IN_PLACE,&RestartRead_Succeed,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
 
   /***********************************************************
@@ -117,118 +82,32 @@ void FT_VNA()
 
       spe = Species_Top[myid] + Lspe;
 
-      /****************************************************
-                   \int jL(k*r)RL r^2 dr 
-      ****************************************************/
-
-      /* tabulation on Gauss-Legendre radial grid */
-
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-      xmin = sqrt(Spe_PAO_RV[spe][0]);
-      xmax = sqrt(Spe_Atom_Cut1[spe] + 0.5);
-      h = (xmax - xmin)/(double)OneD_Grid;
-
-      /* calculation of VNAF */
-
-      TmpVNAF = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-      for (i=0; i<=OneD_Grid; i++){
-        x = xmin + (double)i*h;
-        r = x*x; 
-        TmpVNAF[i] = VNAF(spe,r);
-      }  
-
-      /* loop for j */
-
-#pragma omp parallel shared(spe,Dk,Sk,GL_Abscissae,xmin,xmax,h,OneD_Grid,Spe_CrudeVNA_Bessel,TmpVNAF)  private(OMPID,Nthrds,Nprocs,j,norm_k,sum,x,r,i,sj)
       {
- 
-        double *tmp_SphB,*tmp_SphBp,*SphB;
-
-	/* allocation of arrays */
-
-        SphB = (double*)malloc(sizeof(double)*(OneD_Grid+1));
-	tmp_SphB  = (double*)malloc(sizeof(double)*3);
-	tmp_SphBp = (double*)malloc(sizeof(double)*3);
-
-	/* get info. on OpenMP */ 
-
-	OMPID = omp_get_thread_num();
-	Nthrds = omp_get_num_threads();
-	Nprocs = omp_get_num_procs();
-
-	for ( j=OMPID; j<GL_Mesh; j+=Nthrds ){
-
-	  norm_k = 0.50*(Dk*GL_Abscissae[j] + Sk);
-
-          /* calculation of SphB */
-
-	  for (i=0; i<=OneD_Grid; i++){
-	    x = xmin + (double)i*h;
-	    r = x*x; 
-	    Spherical_Bessel(norm_k*r,0,tmp_SphB,tmp_SphBp);
-            SphB[i] = 2.0*r*r*x*tmp_SphB[0];
-	  }
-          SphB[0] *= 0.5;
-          SphB[OneD_Grid] *= 0.5;
-
-	  /**************************
-           trapezoidal rule
-
-            grid: r = x^2
-                  dr = 2*x*dx 
-	  ***************************/
-
-	  sum = 0.0;
-	  for (i=0; i<=OneD_Grid; i++){
-            sum += SphB[i]*TmpVNAF[i];
-	  }
-	  Spe_CrudeVNA_Bessel[spe][j] = sum*h;
-
-	} /* j */
-
-	/* free arrays */
-
-        free(SphB);
-	free(tmp_SphB);
-	free(tmp_SphBp);
-
-#pragma omp flush(Spe_CrudeVNA_Bessel)
-
-      } /* #pragma omp parallel */
-
-      /* freeing of TmpVNAF */ 
-
-      free(TmpVNAF);
+        char error[256];
+        const OpenMXNeutralTable table = {atomic->species.vps_mesh[spe],openmx_radial_row2(&atomic->vps_radii,spe),
+          openmx_radial_row2(&atomic->neutral_potential,spe),atomic->species.cutoff[spe],Spe_CrudeVNA_Bessel[spe]};
+        const OpenMXSquaredRadialGrid grid = {OneD_Grid,GL_Mesh,openmx_radial_row2(&atomic->pao_radii,spe)[0],
+          atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae};
+        if (!openmx_core_transform_neutral_potential(core,device,&table,&grid,error,sizeof(error))) {
+          fprintf(stderr,"FT_VNA: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+      }
 
     } /* Lspe */
-
-    /****************************************************
-         regenerate radial grids in the k-space
-         for the MPI calculation
-    ****************************************************/
-
-    for (j=0; j<GL_Mesh; j++){
-      kmin = Radial_kmin;
-      kmax = PAO_Nkmax;
-      Sk = kmax + kmin;
-      Dk = kmax - kmin;
-      norm_k = 0.50*(Dk*GL_Abscissae[j] + Sk);
-      GL_NormK[j] = norm_k;
-    }
 
     /***********************************************************
       sending and receiving of Spe_CrudeVNA_Bessel by MPI
     ***********************************************************/
 
     for (ID=0; ID<Num_Procs2; ID++){
-      NumSpe = Species_End[ID] - Species_Top[ID] + 1;
-      for (Lspe=0; Lspe<NumSpe; Lspe++){
-	spe = Species_Top[ID] + Lspe;
-	MPI_Bcast(&Spe_CrudeVNA_Bessel[spe][0],
-		  GL_Mesh,MPI_DOUBLE,ID,mpi_comm_level1);
+      NumSpe=Species_End[ID]-Species_Top[ID]+1;
+      for (Lspe=0;Lspe<NumSpe;++Lspe) {
+        spe=Species_Top[ID]+Lspe;
+        for (size_t row=archive_rows.species_offsets[spe];row<archive_rows.species_offsets[spe+1];++row) {
+          MPI_Bcast(archive_rows.row[row].values,archive_rows.row[row].count,MPI_DOUBLE,ID,mpi_comm_level1);
+        }
       }
     }
 
@@ -237,20 +116,9 @@ void FT_VNA()
     ***********************************************************/
 
     if (myid==Host_ID){
-
       sprintf(fileFT,"%s%s_rst/%s.ftCvna",filepath,filename,filename);
-
-      if ((fp = fopen(fileFT,"wb")) != NULL){
-
-	for (spe=0; spe<SpeciesNum; spe++){
-	  fwrite(&Spe_CrudeVNA_Bessel[spe][0],sizeof(double),GL_Mesh,fp);
-	}
-
-	fclose(fp);
-      }
-      else{
-	printf("Error2: Could not open a file %s in FT_VNA\n",fileFT);
-      }
+      if (!openmx_core_reciprocal_archive_write(archive,fileFT,archive_error,sizeof(archive_error)))
+        fprintf(stderr,"FT_VNA: %s: %s\n",fileFT,archive_error);
     }
 
   } /* if (RestartRead_Succeed==0) */
@@ -259,6 +127,7 @@ void FT_VNA()
                          elapsed time
   ***********************************************************/
 
+  openmx_core_reciprocal_archive_destroy(archive);
   dtime(&TEtime);
 
   /*

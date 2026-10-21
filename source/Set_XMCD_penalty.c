@@ -14,8 +14,15 @@
 #include "mpi.h"
 #include <omp.h>
 
-double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter)
-{ 
+double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter, const OpenMXElectronicViews *electronic)
+{
+  double *****HCH=electronic->HCH;
+  double *****HNL=electronic->HNL;
+  double *****H_XMCD=electronic->H_XMCD;
+  double *****OLP=electronic->OLP;
+  double *****iHCH=electronic->iHCH;
+  double *****iHNL=electronic->iHNL;
+
   static int firsttime=1;
   double TStime,TEtime;
   int i,j,kl,n,m,Rn;
@@ -130,7 +137,7 @@ double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter)
   Total_SpinSy0 = Total_SpinS *sin(Total_SpinAngle0)*sin(Total_SpinAngle1);    
   Total_SpinSz0 = Total_SpinS *cos(Total_SpinAngle0);    
 
-#pragma omp parallel shared(Matomnum,time_per_atom,HCH,iHCH,iHNL,F_CH_flag,List_YOUSO,Dis,SpinP_switch,Spe_Total_NO,OLP,Spe_VPS_List,VPS_j_dependency,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch) 
+#pragma omp parallel shared(Matomnum,time_per_atom,HCH,iHCH,iHNL,F_CH_flag,List_YOUSO,Dis,SpinP_switch,Spe_Total_NO,OLP,VPS_j_dependency,RMI1,F_G2M,natn,Spe_Atom_Cut1,FNAN,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,SO_switch)
 {   
     int OMPID,Nthrds,Nprocs,Nloop;
     int Mc_AN,j,Gc_AN,Cwan,fan,jg,i1,j1,i;

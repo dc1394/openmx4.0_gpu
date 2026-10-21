@@ -6,7 +6,8 @@ def stage(root, directory, *sources):
     for header in (root/'source').glob('*.h'):
         target=directory/header.name
         if not header.name.startswith(('hip','set_hip','set_openmp')) and not target.exists():
-            target.write_bytes(header.read_bytes())
+            canonical=root/'core/include'/header.name
+            target.write_bytes((canonical if canonical.is_file() else header).read_bytes())
     backend = root/'source/openmx_gpu_backend.h'
     if backend.exists():
         (directory/backend.name).write_text('#define __HIP_PLATFORM_AMD__ 1\n' + backend.read_text())

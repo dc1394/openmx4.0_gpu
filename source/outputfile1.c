@@ -7,7 +7,7 @@
 
 void outputfile1(int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10], 
-                 double ChemP_e0[2])
+                 double ChemP_e0[2], double orbital_norm)
 {
   FILE *fp;
   int myid;
@@ -239,7 +239,7 @@ void outputfile1(int f_switch, int MD_iter, int orbitalOpt_iter,
         }
 
         fprintf(fp,"   iter= %3d  Gradient Norm= %15.12f  Uele= %15.12f\n",
-                orbitalOpt_iter,Oopt_NormD[1],Uele);
+                orbitalOpt_iter,orbital_norm,Uele);
         fclose(fp); 
       } 
     }

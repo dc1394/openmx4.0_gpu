@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Check DC-LNO solver failure handling without CUDA or MPI.
 
-Production helpers are extracted verbatim. Host CUDA stubs inject solver INFO
+Production numerical helpers are extracted with the ownership boundary mocked;
+the production ownership adapters have independent core tests. CUDA stubs inject solver INFO
 and eigenpair-count failures; successful solves and the CPU retry use real
 LAPACK/BLAS. This checks control flow, input preservation and numerical results,
 not real cuSOLVER convergence or MPI/GPU execution. --sanitize adds ASan/UBSan.
@@ -14,6 +15,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+from native_resource_test_bridge import isolate_native_resources
 
 
 def function(source, name):
@@ -323,7 +325,7 @@ def main():
                         help="LP64 CPU LAPACK/BLAS libraries (default: -llapack -lblas)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    source = (root / "source/Divide_Conquer_LNO.c").read_text()
+    source = isolate_native_resources((root / "source/Divide_Conquer_LNO.c").read_text())
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))
     if args.sanitize:
         flags += ["-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]

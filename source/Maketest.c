@@ -56,7 +56,7 @@ void Maketest(char *mode, int argc, char *argv[])
   if (myid==Host_ID){
     printf("\n*******************************************************\n"); fflush(stdout);  
     printf("*******************************************************\n"); fflush(stdout);  
-    printf(" Welcome to OpenMX  Ver. %s                            \n",Version_OpenMX); fflush(stdout);  
+    printf(" Welcome to OpenMX  Ver. %s                            \n",openmx_core_version()); fflush(stdout);
     printf(" Copyright (C), 2002-2026, T.Ozaki                     \n"); fflush(stdout);  
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n"); fflush(stdout);  
     printf(" This is free software, and you are welcome to         \n"); fflush(stdout);  

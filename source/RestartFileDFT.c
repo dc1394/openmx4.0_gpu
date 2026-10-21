@@ -26,15 +26,15 @@
 #include "mpi.h"
 
 
-static int  Input_HKS( int MD_iter, double *Uele, double *****CH );
-static void Output_HKS(int MD_iter, double *Uele, double *****CH );
+static int  Input_HKS( int MD_iter, double *Uele, double *****CH , const OpenMXElectronicViews *electronic);
+static void Output_HKS(int MD_iter, double *Uele, double *****CH , const OpenMXElectronicViews *electronic);
 static void Output_Charge_Density(int MD_iter);
 static int Input_Charge_Density(int MD_iter, double *extpln_coes);
 static void Inverse(int n, double **a, double **ia);
 static void Extp_Charge(int MD_iter, double *extpln_coes);
 
 
-int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double *****CntH, double *etime)
+int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double *****CntH, double *etime, const OpenMXElectronicViews *electronic)
 {
   int ret,ret1;
   int numprocs,myid;
@@ -57,8 +57,8 @@ int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double 
 
     MPI_Barrier(mpi_comm_level1);
 
-    if      (Cnt_switch==0)  Output_HKS(MD_iter, Uele, H);
-    else if (Cnt_switch==1)  Output_HKS(MD_iter, Uele, CntH);
+    if      (Cnt_switch==0)  Output_HKS(MD_iter, Uele, H, electronic);
+    else if (Cnt_switch==1)  Output_HKS(MD_iter, Uele, CntH, electronic);
 
     MPI_Barrier(mpi_comm_level1);
 
@@ -80,8 +80,8 @@ int RestartFileDFT(char *mode, int MD_iter, double *Uele, double *****H, double 
 
     if (Use_of_Collinear_Restart==0){
 
-      if      (Cnt_switch==0)  ret = Input_HKS(MD_iter, Uele, H);
-      else if (Cnt_switch==1)  ret = Input_HKS(MD_iter, Uele, CntH);
+      if      (Cnt_switch==0)  ret = Input_HKS(MD_iter, Uele, H, electronic);
+      else if (Cnt_switch==1)  ret = Input_HKS(MD_iter, Uele, CntH, electronic);
 
     }
 
@@ -350,8 +350,13 @@ void Inverse(int n, double **a, double **ia)
 
 
 
-int Input_HKS( int MD_iter, double *Uele, double *****CH )
+int Input_HKS( int MD_iter, double *Uele, double *****CH , const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****HNL=electronic->HNL;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   int Mc_AN,Gc_AN,h_AN,i,j,can;
   int Gh_AN,pSCF,spin,Rn;
   int wan1,wan2,TNO1,TNO2;
@@ -669,8 +674,11 @@ int Input_HKS( int MD_iter, double *Uele, double *****CH )
 
 
 
-void Output_HKS(int MD_iter, double *Uele, double *****CH )
+void Output_HKS(int MD_iter, double *Uele, double *****CH , const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****iHNL=electronic->iHNL;
+
   int Mc_AN,Gc_AN,h_AN,i,j,can,Gh_AN;
   int wan1,wan2,TNO1,TNO2,spin,Rn,po;
   int i_vec[20],*p_vec;

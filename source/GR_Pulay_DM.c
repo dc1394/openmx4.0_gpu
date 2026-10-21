@@ -45,8 +45,13 @@ static void MixGR_RotateSlots1(double ******arr, int nslot)
 
 static void Inverse(int n, double **a, double **ia);
 
-void GR_Pulay_DM(int SCF_iter, double ******ResidualDM)
+void GR_Pulay_DM(int SCF_iter, double ******ResidualDM, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****PDM=electronic->PDM;
+  double ******iDM=electronic->iDM;
+  double ******iResidualDM=electronic->iResidualDM;
+
   static int firsttime=1;
   int spin,Gc_AN,Mc_AN,wan1,TNO1,h_AN,Gh_AN;
   int wan2,TNO2,i,j,k,NumMix,NumSlide;

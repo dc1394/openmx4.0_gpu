@@ -15,8 +15,9 @@
 #include <time.h>
 #include "openmx_common.h"
 
-void Cont_Matrix1(double ****Mat, double ****CMat)
+void Cont_Matrix1(const OpenMXAtomicViews *atomic, double ****Mat, double ****CMat, const OpenMXLocalBasisViews *local_basis)
 {
+
   int spin,Mc_AN,Gc_AN,h_AN,Gh_AN,Mh_AN,L,L1,M1;
   int p,q,p0,q0,al,be,Cwan,Hwan;
   double sumS,tmp0;
@@ -30,16 +31,16 @@ void Cont_Matrix1(double ****Mat, double ****CMat)
       Hwan = WhatSpecies[Gh_AN];
       Mh_AN = F_G2M[Gh_AN];
 
-      for (al=0; al<Spe_Total_CNO[Cwan]; al++){
+      for (al=0; al<atomic->species.contracted_orbitals[Cwan]; al++){
 	be = -1;
-	for (L=1; L<=Spe_Num_RVPS[Hwan]; L++){
-	  L1 = Spe_VPS_List[Hwan][L];
+	for (L=1; L<=atomic->species.radial_projectors[Hwan]; L++){
+	  L1 = openmx_atomic_projector_angular(atomic,Hwan)[L];
 	  for (M1=-L1; M1<=L1; M1++){
 	    be++;
 	    sumS = 0.0;
 	    for (p=0; p<Spe_Specified_Num[Cwan][al]; p++){
 	      p0 = Spe_Trans_Orbital[Cwan][al][p];
-	      sumS += CntCoes[Mc_AN][al][p]*Mat[Mc_AN][h_AN][p0][be];
+	      sumS += openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*Mat[Mc_AN][h_AN][p0][be];
 	    }
 	    CMat[Mc_AN][h_AN][al][be] = sumS;
 	    Mat[Mc_AN][h_AN][al][be]  = sumS;

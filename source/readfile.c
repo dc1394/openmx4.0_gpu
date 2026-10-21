@@ -18,7 +18,7 @@
 #include "tran_prototypes.h"
 
 
-double readfile(char *argv[])
+double readfile(char *argv[], OpenMXCoreContext *core)
 { 
   double time0;
   double TStime,TEtime;
@@ -39,7 +39,7 @@ double readfile(char *argv[])
   if ((fp = fopen(argv[1],"r")) != NULL){
 
     setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-    Input_std(argv[1]);
+    Input_std(argv[1],core);
     fclose(fp);
   }
   else{
@@ -47,9 +47,9 @@ double readfile(char *argv[])
     exit(0);
   }
 
-  Allocate_Arrays(2);
+  Allocate_Arrays_with_context(2,core);
   Set_Allocate_Atom2CPU(0,1,0); /* for species */
-  SetPara_DFT();
+  SetPara_DFT(core);
 
   if ( TRAN_Check_Region_Lead(atomnum, WhatSpecies, Spe_Atom_Cut1, Gxyz, tv)==0 ) {
     printf("\n\nERROR: PAOs of lead atoms can overlap only to the next nearest region.\n\n");

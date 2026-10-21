@@ -24,15 +24,15 @@
 
 
 
-void OM_onsite( char *mode );
-void OM_dual( char *mode );
+void OM_onsite( char *mode , const OpenMXElectronicViews *electronic);
+void OM_dual( char *mode , const OpenMXElectronicViews *electronic);
 
 
-void Orbital_Moment( char *mode )
+void Orbital_Moment( char *mode , const OpenMXElectronicViews *electronic)
 {
 
 
-  OM_dual(mode);
+  OM_dual(mode, electronic);
 
   /*
   OM_onsite(mode);
@@ -44,8 +44,12 @@ void Orbital_Moment( char *mode )
 
 
 
-void OM_dual( char *mode )
+void OM_dual( char *mode , const OpenMXElectronicViews *electronic)
 {
+  double *****OLP=electronic->OLP;
+  double *****OLP_L=electronic->OLP_L;
+  double ******iDM=electronic->iDM;
+
   int i,j,k,l,m,n,mul,Gc_AN,Mc_AN;
   int spin,wan1,wan2,tno0,tno2,num,kl;
   int h_AN,Gh_AN,tno1,Mh_AN;
@@ -722,8 +726,11 @@ void OM_dual( char *mode )
 
 
 
-void OM_onsite( char *mode )
+void OM_onsite( char *mode , const OpenMXElectronicViews *electronic)
 {
+  double *****OLP_L=electronic->OLP_L;
+  double ******iDM=electronic->iDM;
+
   int i,j,k,l,m,mul,Gc_AN,Mc_AN;
   int spin,wan1,tno0,num;
   int numprocs,myid,ID;

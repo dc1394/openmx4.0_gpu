@@ -17,6 +17,22 @@ branches remain on the CPU. Dense transforms whose operands and result are
 already resident need no additional full matrix and retain their owner GPU.
 The dense eigensolver/GEMM ladder is described in cluster_mgpu.txt.
 
+On a multi-node Cluster run, the dense capacity order is still the owner's
+GPU, MAGMA plus the custom tiled products on rank 0's local node, then
+ELPA/COSMA over the distributed MPI grid, and finally CPU work. A one-GPU
+node has no local MAGMA group and proceeds directly to the distributed
+tier. Explicit gpusolver2 selection bypasses this automatic ladder;
+gpusolver3 requests local MAGMA and does not opt into ELPA/COSMA.
+
+Sparse density recovery bounds packet construction by the candidate GPU's
+current free space, after the worker reserve and output storage. It rejects
+oversized row metadata before visiting any orbital terms and stops packing
+as soon as deduplicated inputs exceed that limit. A rejected packet may be
+retried on a larger GPU or with a smaller shard; completed packets retain
+their exact size and numerical contents. This avoids constructing many GiB
+on the host only to reject a GPU with a few MiB available. The independent
+host-memory guard still applies, and failed packing publishes no output.
+
 Limits and controls
 -------------------
 CUDA_VISIBLE_DEVICES, scf.Gpu.Num and OPENMX_MGPU_NUM_GPUS bound each node's
@@ -131,6 +147,36 @@ Its --local mode needs one MPI rank and two GPUs and checks the local/CPU
 tiers, including a late allocation failure after successful admission.
 --logical-single uses two ranks and disjoint single GPUs to test recovery
 when each node is permitted only one GPU.
+
+Build the actual CUDA/OpenACC MPI fixture with an NVHPC-backed mpicc:
+  CUDA_HOME=/path/to/cuda CUDA_MATH_ROOT=/path/to/math GPU_ARCH=80 \
+    bash tests/run_gpu_task_mpi_check.sh /path/to/test-build --build-only
+On two allocated physical nodes, run one rank per node:
+  mpirun -np 2 --map-by ppr:1:node /path/to/test-build/gpu_task_mpi_check
+Each rank needs at least two visible GPUs for the full local/remote ladder.
+Use --single-gpu-per-node for the actual one-GPU-per-node case. Unlike the
+logical-node modes, it verifies each rank is alone on its physical node and
+does not substitute simulated MPI shared-memory groups.
+
+run_gpu_workers_regression.py accepts --ranks-per-node to request and verify
+physical placement, --mpi-arg for launcher options, and --rank-wrapper for a
+site's per-node GPU visibility/MPS setup. --candidate-input allows numerical
+comparisons between different eigensolver selectors on the same geometry.
+The results include application phase timings and a separate placement.json;
+--require-remote-work NAME rejects a run that did not execute that remote phase.
+--expect-candidate-backend magma/gs2-gpu/gs2-cpu checks actual dense dispatch;
+the GS2 assertions require OPENMX_GS2_PROFILE=1. --require-candidate-log TEXT
+can require the admission diagnostic as well, so a numerical pass cannot
+mistake a directly selected backend for an automatic capacity transition.
+
+tests/gpu_capacity_limit.c is a test-only LD_PRELOAD library which caps
+cudaMemGetInfo's reported free memory with OPENMX_TEST_GPU_FREE_MB. It never
+allocates artificial pressure or increases the reported free memory. This
+permits testing a failed local MAGMA admission followed by real distributed
+ELPA/COSMA kernels on allocated GPUs. Record the cap and any GS2 reserve/tile
+overrides; such a run tests routing and accuracy, not memory-use performance.
+OPENMX_TEST_GPU_FREE_AFTER_SOLVER=1 delays the cap until each rank first
+creates a cuSOLVER handle, avoiding unrelated early integral capacity paths.
 
 The 2026-10-16 build, numerical comparisons, fault-injection checks and
 physical multi-node validation limits are recorded in gpu_capacity_validation.txt.

@@ -45,6 +45,14 @@ import shlex
 import subprocess
 import tempfile
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from native_resource_test_bridge import isolate_native_resources
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tests"))
+    from native_resource_test_bridge import isolate_native_resources
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -559,9 +567,9 @@ int main(void)
 
 
 def make_harness():
-    nc = (ROOT / "source/Band_DFT_NonCol.c").read_text()
+    nc = isolate_native_resources((ROOT / "source/Band_DFT_NonCol.c").read_text(), "HIP")
     header = (ROOT / "source/eigen_refine_gpu.h").read_text()
-    types = block(header, "typedef struct {\n    hipblasHandle_t hipblas;", "} EigenRefineReport;")
+    types = "typedef struct OpenMXNativeResources OpenMXNativeResources;\n" + block(header, "typedef struct {\n    hipblasHandle_t hipblas;", "} EigenRefineReport;")
     statics = block(nc, "typedef struct\n{\n    int     iterations;",
                     "static int                     BandNonCol_refine_e0_n = 0;")
     names = ["BandNonCol_TryDeviceMalloc", "BandNonCol_MallocArray", "BandNonCol_RefineFreeDevice",

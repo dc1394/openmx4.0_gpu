@@ -24,8 +24,13 @@ static void Inverse(int n, double **a, double **ia);
 
 
 
-void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM)
+void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic)
 {
+  double ******DM=electronic->DM;
+  double *****H=electronic->H;
+  double ******HisH1=electronic->HisH1;
+  double ******iDM=electronic->iDM;
+
   static int firsttime=1;
   int spin,Mc_AN,Gc_AN,wan1,TNO1,h_AN,Gh_AN;
   int wan2,TNO2,i,j,k,NumMix,NumSlide;

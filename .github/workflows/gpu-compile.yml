@@ -1,0 +1,34 @@
+name: Native GPU compilation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hip:
+    runs-on: ubuntu-24.04
+    container: rocm/dev-ubuntu-24.04:7.2-complete
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host compilation dependencies
+        run: apt-get update && apt-get install -y python3 make libopenmpi-dev openmpi-bin libfftw3-dev
+      - name: ROCm C ABI and HIP kernels without a GPU
+        run: >-
+          python3 tools/check_gpu_compilation.py --backend HIP
+          --sdk /opt/rocm --cc /opt/rocm/llvm/bin/clang --cxx /opt/rocm/llvm/bin/clang++
+          --arch gfx942 --build build/hip-compile --jobs 2
+  cuda:
+    runs-on: ubuntu-24.04
+    container: nvcr.io/nvidia/nvhpc:26.9-devel-cuda13.3-ubuntu24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host compilation dependencies
+        run: apt-get update && apt-get install -y python3 make libopenmpi-dev openmpi-bin libfftw3-dev
+      - name: NVHPC C and CUDA kernels without a GPU
+        run: >-
+          python3 tools/check_gpu_compilation.py --backend CUDA
+          --sdk /opt/nvidia/hpc_sdk/Linux_x86_64/26.9/cuda/13.3
+          --cc /opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin/nvc
+          --cxx /opt/nvidia/hpc_sdk/Linux_x86_64/26.9/cuda/13.3/bin/nvcc
+          --include /opt/nvidia/hpc_sdk/Linux_x86_64/26.9/math_libs/13.3/targets/x86_64-linux/include
+          --arch 80 --build build/cuda-compile --jobs 2

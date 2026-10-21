@@ -20,6 +20,7 @@
 #include <time.h>
 #include "openmx_common.h"
 #include "openmx_gpu_task.h"
+#include "openmx_core_overlap.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -27,7 +28,9 @@ typedef struct {
   int grid_dim,grid_last,combo_count,h_AN,Lmax_Four_Int;
   size_t rf_cache_elems,sph_valid_elems,sum_valid_elems;
   double h;
-  double *norm,*rf0,*rf1,*sph,*sphp,*out[4];
+  const double *norm;
+  double *rf0,*rf1,*out[4];
+  const double *sph,*sphp;
   int *off0,*off1;
 } OLPKinRadialWork;
 typedef struct {int grid_dim,grid_last,combo_count,h_AN;double h;} OLPKinRadialParameters;
@@ -97,11 +100,11 @@ static void OLPKin_Radial_Distribute(OLPKinRadialWork *w)
   OLPKinRadialParameters p={w->grid_dim,w->grid_last,w->combo_count,w->h_AN,w->h};
   OpenMXGpuTask t={0};t.count=w->sum_valid_elems;t.parameters=&p;t.parameter_bytes=sizeof(p);
   t.inputs=7;t.outputs=4;t.kernel=OLPKin_Radial_Kernel;
-  t.view[0]=(OpenMXGpuTaskView){w->norm,(size_t)w->grid_dim*sizeof(double),0};
+  t.view[0]=(OpenMXGpuTaskView){(void*)w->norm,(size_t)w->grid_dim*sizeof(double),0};
   t.view[1]=(OpenMXGpuTaskView){w->rf0,w->rf_cache_elems*sizeof(double),0};
   t.view[2]=(OpenMXGpuTaskView){w->rf1,w->rf_cache_elems*sizeof(double),0};
-  t.view[3]=(OpenMXGpuTaskView){w->sph,w->sph_valid_elems*sizeof(double),0};
-  t.view[4]=(OpenMXGpuTaskView){w->sphp,w->sph_valid_elems*sizeof(double),0};
+  t.view[3]=(OpenMXGpuTaskView){(void*)w->sph,w->sph_valid_elems*sizeof(double),0};
+  t.view[4]=(OpenMXGpuTaskView){(void*)w->sphp,w->sph_valid_elems*sizeof(double),0};
   t.view[5]=(OpenMXGpuTaskView){w->off0,(size_t)w->combo_count*sizeof(int),0};
   t.view[6]=(OpenMXGpuTaskView){w->off1,(size_t)w->combo_count*sizeof(int),0};
   for(int c=0;c<4;c++)t.view[7+c]=(OpenMXGpuTaskView){w->out[c],0,sizeof(double)};
@@ -112,24 +115,6 @@ static void OLPKin_Radial_Distribute(OLPKinRadialWork *w)
 static int SetOLPKinUseOpenMP(void);
 #else
 static int SetOLPKinUseOpenACC(void);
-#endif
-
-#ifdef kcomp
-dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3,
-                                          int size_4, int size_5, int size_6);
-double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4);
-dcomplex** Allocate2D_dcomplex(int size_1, int size_2);
-void Free6D_dcomplex(dcomplex****** buffer);
-void Free4D_double(double**** buffer);
-void Free2D_dcomplex(dcomplex** buffer);
-#else
-static inline dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3,
-                                                 int size_4, int size_5, int size_6);
-static inline double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4);
-static inline dcomplex** Allocate2D_dcomplex(int size_1, int size_2);
-void Free6D_dcomplex(dcomplex****** buffer);
-void Free4D_double(double**** buffer);
-void Free2D_dcomplex(dcomplex** buffer);
 #endif
 
 
@@ -183,83 +168,6 @@ static int OLPKin_Bessel_CacheMax(void)
   return (limit < 0) ? 0 : limit;
 }
 
-typedef struct {
-  double *keys;
-  int *key_lmax;
-  double *tab;
-  int count;
-  int cap;
-  int lmax;       /* the table layout: 2 * (lmax + 1) rows of gdim */
-  int gdim;
-  long hits;
-  long misses;
-} OLPKinBesselCache;
-
-/* the hit and miss counts of all threads of the last call (profile line) */
-static long OLPKin_bessel_hits = 0;
-static long OLPKin_bessel_misses = 0;
-
-static size_t OLPKin_Bessel_Stride(const OLPKinBesselCache *c)
-{
-  return 2u * (size_t)(c->lmax + 1) * (size_t)c->gdim;
-}
-
-static const double *OLPKin_Bessel_Lookup(OLPKinBesselCache *c, double r, int lmax)
-{
-  int i;
-
-  for (i = 0; i < c->count; i++) {
-    if (c->keys[i] == r && c->key_lmax[i] == lmax) {
-      c->hits++;
-      return c->tab + (size_t)i * OLPKin_Bessel_Stride(c);
-    }
-  }
-  c->misses++;
-  return NULL;
-}
-
-static void OLPKin_Bessel_Free(OLPKinBesselCache *c)
-{
-  free(c->keys);
-  free(c->key_lmax);
-  free(c->tab);
-  c->keys = NULL;
-  c->key_lmax = NULL;
-  c->tab = NULL;
-  c->count = 0;
-  c->cap = 0;
-}
-
-static double *OLPKin_Bessel_Insert(OLPKinBesselCache *c, double r, int lmax, int cache_max)
-{
-  if (c->count >= cache_max) {
-    return NULL;
-  }
-
-  if (c->count >= c->cap) {
-    int new_cap = (c->cap == 0) ? 64 : 2 * c->cap;
-    double *new_keys;
-    int *new_lmax;
-    double *new_tab;
-
-    if (new_cap > cache_max) new_cap = cache_max;
-    new_keys = (double*)realloc(c->keys, sizeof(double) * (size_t)new_cap);
-    new_lmax = (int*)realloc(c->key_lmax, sizeof(int) * (size_t)new_cap);
-    new_tab = (double*)realloc(c->tab, sizeof(double) * (size_t)new_cap * OLPKin_Bessel_Stride(c));
-    if (new_keys != NULL) c->keys = new_keys;
-    if (new_lmax != NULL) c->key_lmax = new_lmax;
-    if (new_tab != NULL) c->tab = new_tab;
-    if (new_keys == NULL || new_lmax == NULL || new_tab == NULL) {
-      return NULL;
-    }
-    c->cap = new_cap;
-  }
-
-  c->keys[c->count] = r;
-  c->key_lmax[c->count] = lmax;
-  return c->tab + (size_t)(c->count++) * OLPKin_Bessel_Stride(c);
-}
-
 /* Runtime phase profiling gated by OPENMX_BAND_PROFILE=1 (one OLPKPROF line
    per rank on stderr; zero overhead when the variable is unset). */
 typedef struct
@@ -270,8 +178,6 @@ typedef struct
   double c2r;
 } SetOLPKinProfileCounters;
 
-static SetOLPKinProfileCounters SetOLP_prof = {0};
-
 static int SetOLP_ProfileEnabled(void)
 {
   const char *value = getenv("OPENMX_BAND_PROFILE");
@@ -280,20 +186,24 @@ static int SetOLP_ProfileEnabled(void)
 }
 
 
-double Set_OLP_Kin(double *****OLP, double *****H0)
+double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic)
 {
+  double *****OLP_L=electronic->OLP_L;
+
   /****************************************************
           Evaluate overlap and kinetic integrals
                  in the momentum space
   ****************************************************/
   static int firsttime=1;
-  int size_SumS0,size_TmpOLP;
+  size_t orbitals,radial_channels;
   double time0;
   double TStime,TEtime;
   int numprocs,myid;
   int Mc_AN,Gc_AN,h_AN;
   int OneD_Nloop;
   int *OneD2Mc_AN,*OneD2h_AN;
+  SetOLPKinProfileCounters profile = {0};
+  long bessel_hits = 0, bessel_misses = 0;
   /* Resolve runtime options before entering OpenMP.  A lazy shared static
      initialization from the worker threads races on the first call. */
   const int bessel_cache_max = OLPKin_Bessel_CacheMax();
@@ -315,22 +225,12 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
   if (firsttime) {
 
-    size_SumS0  = (List_YOUSO[25]+1)*List_YOUSO[24]*(List_YOUSO[25]+1)*List_YOUSO[24];
-    size_TmpOLP = (List_YOUSO[25]+1)*List_YOUSO[24]*(2*(List_YOUSO[25]+1)+1)*
-                  (List_YOUSO[25]+1)*List_YOUSO[24]*(2*(List_YOUSO[25]+1)+1);
-
-    PrintMemory("Set_OLP_Kin: SumS0",  sizeof(double)*size_SumS0,NULL);
-    PrintMemory("Set_OLP_Kin: SumK0",  sizeof(double)*size_SumS0,NULL);
-    PrintMemory("Set_OLP_Kin: SumSr0", sizeof(double)*size_SumS0,NULL);
-    PrintMemory("Set_OLP_Kin: SumKr0", sizeof(double)*size_SumS0,NULL);
-    PrintMemory("Set_OLP_Kin: TmpOLP", sizeof(dcomplex)*size_TmpOLP,NULL);
-    PrintMemory("Set_OLP_Kin: TmpOLPr",sizeof(dcomplex)*size_TmpOLP,NULL);
-    PrintMemory("Set_OLP_Kin: TmpOLPt",sizeof(dcomplex)*size_TmpOLP,NULL);
-    PrintMemory("Set_OLP_Kin: TmpOLPp",sizeof(dcomplex)*size_TmpOLP,NULL);
-    PrintMemory("Set_OLP_Kin: TmpKin", sizeof(dcomplex)*size_TmpOLP,NULL);
-    PrintMemory("Set_OLP_Kin: TmpKinr",sizeof(dcomplex)*size_TmpOLP,NULL);
-    PrintMemory("Set_OLP_Kin: TmpKint",sizeof(dcomplex)*size_TmpOLP,NULL);
-    PrintMemory("Set_OLP_Kin: TmpKinp",sizeof(dcomplex)*size_TmpOLP,NULL);
+    radial_channels = (size_t)(List_YOUSO[25]+1)*List_YOUSO[24];
+    orbitals = radial_channels*(List_YOUSO[25]+1);
+    PrintMemory("Set_OLP_Kin: angular workspace",8*sizeof(dcomplex)*orbitals*orbitals,NULL);
+    PrintMemory("Set_OLP_Kin: conversion workspace",8*sizeof(dcomplex)*(2*List_YOUSO[25]+1)*(2*List_YOUSO[25]+1),NULL);
+    PrintMemory("Set_OLP_Kin: radial workspace",sizeof(double)*(2*radial_channels*(OneD_Grid+1)+
+                4*(2*List_YOUSO[25]+1)*radial_channels*radial_channels+OneD_Grid+1),NULL);
     firsttime=0;
   }
 
@@ -382,18 +282,18 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	    int Lmax_Four_Int;
 	    int i,j,k,l,m,p;
 	    int num0,num1;
-	    int grid_dim,max_Lmax_Four_Int;
+	    int grid_dim;
 #if OPENMX_GPU_HIP
 	    int use_openmp_radial;
 #else
 	    int use_openacc_radial;
 #endif
-	    int use_bessel_cache;
-	    OLPKinBesselCache bessel_cache = {0};
+	    OpenMXOverlapWorkspace *workspace;
+	    OpenMXOverlapBuffers work_buffers;
+	    char bessel_error[256];
 	    int cached_Cwan,cached_Hwan;
 	    int combo_cached_Cwan,combo_cached_Hwan;
-	    int max_combo_count,combo_count,combo,grid_last;
-	    int *combo_L0,*combo_Mul0,*combo_L1,*combo_Mul1;
+	    int combo_count,combo,grid_last;
 	    int *combo_rf0_offset,*combo_rf1_offset;
 
 	    double Stime_atom,Etime_atom;
@@ -407,40 +307,35 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
     double sj,sjp,coe0,coe1;
     double Normk,Normk2;
 	    double gant,SH[2],dSHt[2],dSHp[2];
-	    double **SphB,**SphBp;
-	    double *SphB_flat,*SphBp_flat;
-	    double *tmp_SphB,*tmp_SphBp;
-	    double *Normk_grid;
+	    const double *SphB_flat,*SphBp_flat;
+	    const double *Normk_grid;
 	    double *RF_BesselCache0,*RF_BesselCache1;
 	    double *sumS0_flat,*sumK0_flat,*sumSr0_flat,*sumKr0_flat;
-	    double ****SumS0;
-	    double ****SumK0;
-	    double ****SumSr0;
-    double ****SumKr0;
+
 
     dcomplex CsumS_Lx,CsumS_Ly,CsumS_Lz;
     dcomplex CsumS0,CsumSr,CsumSt,CsumSp;
     dcomplex CsumK0,CsumKr,CsumKt,CsumKp;
     dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
     dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
-    dcomplex ******TmpOLP;
-    dcomplex ******TmpOLPr;
-    dcomplex ******TmpOLPt;
-    dcomplex ******TmpOLPp;
-    dcomplex ******TmpKin;
-    dcomplex ******TmpKinr;
-    dcomplex ******TmpKint;
-    dcomplex ******TmpKinp;
+    dcomplex *TmpOLP;
+    dcomplex *TmpOLPr;
+    dcomplex *TmpOLPt;
+    dcomplex *TmpOLPp;
+    dcomplex *TmpKin;
+    dcomplex *TmpKinr;
+    dcomplex *TmpKint;
+    dcomplex *TmpKinp;
 
-    dcomplex **CmatS0;
-    dcomplex **CmatSr;
-    dcomplex **CmatSt;
-    dcomplex **CmatSp;
-    dcomplex **CmatK0;
-	    dcomplex **CmatKr;
-	    dcomplex **CmatKt;
-	    dcomplex **CmatKp;
-	    size_t rf_cache_elems,sum_cache_elems;
+    dcomplex *CmatS0;
+    dcomplex *CmatSr;
+    dcomplex *CmatSt;
+    dcomplex *CmatSp;
+    dcomplex *CmatK0;
+	    dcomplex *CmatKr;
+	    dcomplex *CmatKt;
+	    dcomplex *CmatKp;
+	    size_t rf_cache_elems;
 	    double prof_t0_local = 0.0, prof_t1_local = 0.0;
 	    double prof_bessel = 0.0, prof_radial = 0.0, prof_gaunt = 0.0, prof_c2r = 0.0;
 
@@ -448,54 +343,42 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                           allocation of arrays:
     ****************************************************************/
 
-    TmpOLP  = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-    TmpOLPr = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-    TmpOLPt = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-    TmpOLPp = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-    TmpKin  = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-    TmpKinr = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-    TmpKint = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-    TmpKinp = Allocate6D_dcomplex(List_YOUSO[25]+1, List_YOUSO[24], (2*(List_YOUSO[25]+1)+1), (List_YOUSO[25]+1), List_YOUSO[24], (2*(List_YOUSO[25]+1)+1));
-
-    SumS0  = Allocate4D_double(List_YOUSO[25]+1, List_YOUSO[24], (List_YOUSO[25]+1), List_YOUSO[24]);
-    SumK0  = Allocate4D_double(List_YOUSO[25]+1, List_YOUSO[24], (List_YOUSO[25]+1), List_YOUSO[24]);
-    SumSr0 = Allocate4D_double(List_YOUSO[25]+1, List_YOUSO[24], (List_YOUSO[25]+1), List_YOUSO[24]);
-    SumKr0 = Allocate4D_double(List_YOUSO[25]+1, List_YOUSO[24], (List_YOUSO[25]+1), List_YOUSO[24]);
-
-    CmatS0 = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-    CmatSr = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-    CmatSt = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-    CmatSp = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-    CmatK0 = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-	    CmatKr = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-	    CmatKt = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-	    CmatKp = Allocate2D_dcomplex((2*(List_YOUSO[25]+1)+1), (2*(List_YOUSO[25]+1)+1));
-
-	    grid_dim = OneD_Grid + 1;
-	    max_Lmax_Four_Int = 2*List_YOUSO[25];
-	    max_combo_count = (List_YOUSO[25]+1)*List_YOUSO[24]*(List_YOUSO[25]+1)*List_YOUSO[24];
-	    grid_last = grid_dim - 1;
-	    rf_cache_elems = (size_t)(List_YOUSO[25]+1)*(size_t)List_YOUSO[24]*(size_t)grid_dim;
-	    sum_cache_elems = (size_t)(max_Lmax_Four_Int+1)*(size_t)max_combo_count;
-
-	    Normk_grid = (double*)malloc(sizeof(double)*grid_dim);
-	    RF_BesselCache0 = (double*)malloc(sizeof(double)*rf_cache_elems);
-	    RF_BesselCache1 = (double*)malloc(sizeof(double)*rf_cache_elems);
-	    sumS0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
-	    sumK0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
-	    sumSr0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
-	    sumKr0_flat = (double*)malloc(sizeof(double)*sum_cache_elems);
-	    combo_L0 = (int*)malloc(sizeof(int)*max_combo_count);
-	    combo_Mul0 = (int*)malloc(sizeof(int)*max_combo_count);
-	    combo_L1 = (int*)malloc(sizeof(int)*max_combo_count);
-	    combo_Mul1 = (int*)malloc(sizeof(int)*max_combo_count);
-	    combo_rf0_offset = (int*)malloc(sizeof(int)*max_combo_count);
-	    combo_rf1_offset = (int*)malloc(sizeof(int)*max_combo_count);
-
-	    h = (PAO_Nkmax - Radial_kmin)/(double)OneD_Grid;
-	    for (i=0; i<grid_dim; i++){
-	      Normk_grid[i] = Radial_kmin + (double)i*h;
-	    }
+    const OpenMXOverlapShape shape = {List_YOUSO[25],List_YOUSO[24],OneD_Grid+1,
+        Radial_kmin,PAO_Nkmax,(size_t)bessel_cache_max};
+    workspace = openmx_core_overlap_create(&shape,&work_buffers,bessel_error,sizeof(bessel_error));
+    if (workspace == NULL) {
+      fprintf(stderr,"Set_OLP_Kin: %s\n",bessel_error);
+      abort();
+    }
+    const size_t magnetic_capacity = work_buffers.magnetic_capacity;
+    grid_dim = work_buffers.points;
+    grid_last = grid_dim-1;
+    rf_cache_elems = work_buffers.radial_elements;
+    Normk_grid = work_buffers.wavevectors;
+    RF_BesselCache0 = work_buffers.radial[0];
+    RF_BesselCache1 = work_buffers.radial[1];
+    sumS0_flat = work_buffers.sums[0];
+    sumK0_flat = work_buffers.sums[1];
+    sumSr0_flat = work_buffers.sums[2];
+    sumKr0_flat = work_buffers.sums[3];
+    combo_rf0_offset = work_buffers.offsets[0];
+    combo_rf1_offset = work_buffers.offsets[1];
+    TmpOLP = work_buffers.angular[0];
+    TmpOLPr = work_buffers.angular[1];
+    TmpOLPt = work_buffers.angular[2];
+    TmpOLPp = work_buffers.angular[3];
+    TmpKin = work_buffers.angular[4];
+    TmpKinr = work_buffers.angular[5];
+    TmpKint = work_buffers.angular[6];
+    TmpKinp = work_buffers.angular[7];
+    CmatS0 = work_buffers.conversion[0];
+    CmatSr = work_buffers.conversion[1];
+    CmatSt = work_buffers.conversion[2];
+    CmatSp = work_buffers.conversion[3];
+    CmatK0 = work_buffers.conversion[4];
+    CmatKr = work_buffers.conversion[5];
+    CmatKt = work_buffers.conversion[6];
+    CmatKp = work_buffers.conversion[7];
 
 	    cached_Cwan = -1;
 	    cached_Hwan = -1;
@@ -512,10 +395,6 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 #else
 	    use_openacc_radial = radial_capacity;
 #endif
-	    use_bessel_cache = (0 < bessel_cache_max);
-	    bessel_cache.lmax = max_Lmax_Four_Int;
-	    bessel_cache.gdim = grid_dim;
-
     /* one-dimensionalized loop */
 
     for (Nloop=OMPID*radial_rounds/Nthrds; Nloop<(OMPID+1)*radial_rounds/Nthrds; Nloop++){
@@ -580,15 +459,16 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	      for (M0=-L0; M0<=L0; M0++){
 		for (M1=-L1; M1<=L1; M1++){
 
-                  TmpOLP[L0][Mul0][L0+M0][L1][Mul1][L1+M1]  = Complex(0.0,0.0);
-                  TmpOLPr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0);
-                  TmpOLPt[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0);
-                  TmpOLPp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0);
+                  const size_t pair_index = openmx_core_overlap_pair(&work_buffers,L0,Mul0,L0+M0,L1,Mul1,L1+M1);
+                  TmpOLP[pair_index]  = Complex(0.0,0.0);
+                  TmpOLPr[pair_index] = Complex(0.0,0.0);
+                  TmpOLPt[pair_index] = Complex(0.0,0.0);
+                  TmpOLPp[pair_index] = Complex(0.0,0.0);
 
-                  TmpKin[L0][Mul0][L0+M0][L1][Mul1][L1+M1]  = Complex(0.0,0.0);
-                  TmpKinr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0);
-                  TmpKint[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0);
-                  TmpKinp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] = Complex(0.0,0.0);
+                  TmpKin[pair_index]  = Complex(0.0,0.0);
+                  TmpKinr[pair_index] = Complex(0.0,0.0);
+                  TmpKint[pair_index] = Complex(0.0,0.0);
+                  TmpKinp[pair_index] = Complex(0.0,0.0);
 
 		}
 	      }
@@ -602,69 +482,18 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
       else
         Lmax_Four_Int = 2*Spe_MaxL_Basis[Cwan];
 
-	      /* allocate SphB and SphBp */
-
 	      if (prof_enabled) dtime(&prof_t0_local);
-
-	      SphB = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-	      SphB[0] = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3)*grid_dim);
-	      SphB_flat = SphB[0];
-	      for(l=1; l<(Lmax_Four_Int+3); l++){
-	        SphB[l] = SphB[0] + l*grid_dim;
-	      }
-
-	      SphBp = (double**)malloc(sizeof(double*)*(Lmax_Four_Int+3));
-	      SphBp[0] = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3)*grid_dim);
-	      SphBp_flat = SphBp[0];
-	      for(l=1; l<(Lmax_Four_Int+3); l++){
-	        SphBp[l] = SphBp[0] + l*grid_dim;
-	      }
-
-      tmp_SphB  = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-      tmp_SphBp = (double*)malloc(sizeof(double)*(Lmax_Four_Int+3));
-
-      /* calculate SphB and SphBp */
 
       h = (kmax - kmin)/(double)OneD_Grid;
 
-	      if (use_bessel_cache) {
-	        const double *hit = OLPKin_Bessel_Lookup(&bessel_cache, r, Lmax_Four_Int);
-
-	        if (hit != NULL) {
-	          for (l=0; l<=Lmax_Four_Int; l++){
-	            memcpy(SphB[l],  hit + (size_t)l*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
-	            memcpy(SphBp[l], hit + (size_t)(bessel_cache.lmax+1+l)*(size_t)grid_dim, sizeof(double)*(size_t)grid_dim);
-	          }
-	        } else {
-	          double *slot = OLPKin_Bessel_Insert(&bessel_cache, r, Lmax_Four_Int, bessel_cache_max);
-
-	          for (i=0; i<grid_dim; i++){
-	            Spherical_Bessel(Normk_grid[i]*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-	            for(l=0; l<=Lmax_Four_Int; l++){
-	              SphB[l][i]  = tmp_SphB[l];
-	              SphBp[l][i] = tmp_SphBp[l];
-	            }
-	            if (slot != NULL) {
-	              for(l=0; l<=Lmax_Four_Int; l++){
-	                slot[(size_t)l*(size_t)grid_dim + (size_t)i] = tmp_SphB[l];
-	                slot[(size_t)(bessel_cache.lmax+1+l)*(size_t)grid_dim + (size_t)i] = tmp_SphBp[l];
-	              }
-	            }
-	          }
-	        }
-	      } else {
-	        for (i=0; i<grid_dim; i++){
-	          Normk = Normk_grid[i];
-	          Spherical_Bessel(Normk*r,Lmax_Four_Int,tmp_SphB,tmp_SphBp);
-	          for(l=0; l<=Lmax_Four_Int; l++){
-	            SphB[l][i]  = tmp_SphB[l];
-	            SphBp[l][i] = tmp_SphBp[l];
-	          }
-	        }
-	      }
-
-	      free(tmp_SphB);
-	      free(tmp_SphBp);
+      OpenMXPairBesselTable bessel_table;
+      if (!openmx_core_overlap_sample(workspace,r,Lmax_Four_Int,
+          &bessel_table,bessel_error,sizeof(bessel_error))) {
+        fprintf(stderr,"Set_OLP_Kin: %s\n",bessel_error);
+        abort();
+      }
+      SphB_flat = bessel_table.values;
+      SphBp_flat = bessel_table.derivatives;
 
 	      if (prof_enabled) {
 	        dtime(&prof_t1_local);
@@ -679,7 +508,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 		    rf_offset = (L0*List_YOUSO[24] + Mul0)*grid_dim;
 		    for (i=0; i<grid_dim; i++){
-		      RF_BesselCache0[rf_offset + i] = RF_BesselF(Cwan,L0,Mul0,Normk_grid[i]);
+		      RF_BesselCache0[rf_offset + i] = RF_BesselF(reciprocal, Cwan,L0,Mul0,Normk_grid[i]);
 		    }
 		  }
 		}
@@ -693,7 +522,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 		    rf_offset = (L1*List_YOUSO[24] + Mul1)*grid_dim;
 		    for (i=0; i<grid_dim; i++){
-		      RF_BesselCache1[rf_offset + i] = RF_BesselF(Hwan,L1,Mul1,Normk_grid[i]);
+		      RF_BesselCache1[rf_offset + i] = RF_BesselF(reciprocal, Hwan,L1,Mul1,Normk_grid[i]);
 		    }
 		  }
 		}
@@ -706,10 +535,6 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 		  for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
 	            for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
 		      for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-		        combo_L0[combo_count] = L0;
-		        combo_Mul0[combo_count] = Mul0;
-		        combo_L1[combo_count] = L1;
-		        combo_Mul1[combo_count] = Mul1;
 		        combo_rf0_offset[combo_count] = (L0*List_YOUSO[24] + Mul0)*grid_dim;
 		        combo_rf1_offset[combo_count] = (L1*List_YOUSO[24] + Mul1)*grid_dim;
 		        combo_count++;
@@ -759,8 +584,8 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 		      Normk = Normk_grid[i];
 		      Normk2 = Normk*Normk;
-		      sj  = SphB[l][i];
-		      sjp = SphBp[l][i];
+		      sj  = SphB_flat[(size_t)l*grid_dim+i];
+		      sjp = SphBp_flat[(size_t)l*grid_dim+i];
 		      tmp0 = coe0*h*Normk2*RF_BesselCache0[rf0_offset + i];
 		      tmp1 = tmp0*sj;
 		      tmp2 = tmp0*Normk*sjp;
@@ -795,16 +620,6 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
 	      for(l=0; l<=Lmax_Four_Int; l++){
 
-	        for (combo=0; combo<combo_count; combo++){
-	          L0 = combo_L0[combo];
-	          Mul0 = combo_Mul0[combo];
-	          L1 = combo_L1[combo];
-	          Mul1 = combo_Mul1[combo];
-	          SumS0[L0][Mul0][L1][Mul1]  = sumS0_flat[l*combo_count + combo];
-	          SumK0[L0][Mul0][L1][Mul1]  = sumK0_flat[l*combo_count + combo];
-	          SumSr0[L0][Mul0][L1][Mul1] = sumSr0_flat[l*combo_count + combo];
-	          SumKr0[L0][Mul0][L1][Mul1] = sumKr0_flat[l*combo_count + combo];
-		}
 
 	        /****************************************************
           For overlap and the derivative,
@@ -829,10 +644,12 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
           CYt = Complex(dSHt[0],dSHt[1]);
           CYp = Complex(dSHp[0],dSHp[1]);
 
+          combo = 0;
           for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
             for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
               for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
                 for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
+                  const size_t radial_index = (size_t)l*combo_count + combo++;
 
                   Ls = -L0 + L1 + l;
 
@@ -848,64 +665,65 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 		      M1 = M0 - m;
 
                       if (abs(M1)<=L1){
+                        const size_t pair_index = openmx_core_overlap_pair(&work_buffers,L0,Mul0,L0+M0,L1,Mul1,L1+M1);
 
                         gant = Gaunt(L0,M0,L1,M1,l,m);
 
                         /* S */
 
-                        tmp0 = gant*SumS0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumS0_flat[radial_index];
                         Ctmp2 = CRmul(CY1,tmp0);
-                        TmpOLP[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpOLP[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpOLP[pair_index] =
+			  Cadd(TmpOLP[pair_index],Ctmp2);
 
                         /* dS/dr */
 
-                        tmp0 = gant*SumSr0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumSr0_flat[radial_index];
                         Ctmp2 = CRmul(CY1,tmp0);
-                        TmpOLPr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpOLPr[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpOLPr[pair_index] =
+			  Cadd(TmpOLPr[pair_index],Ctmp2);
 
                         /* dS/dt */
 
-                        tmp0 = gant*SumS0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumS0_flat[radial_index];
                         Ctmp2 = CRmul(CYt1,tmp0);
-                        TmpOLPt[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpOLPt[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpOLPt[pair_index] =
+			  Cadd(TmpOLPt[pair_index],Ctmp2);
 
                         /* dS/dp */
 
-                        tmp0 = gant*SumS0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumS0_flat[radial_index];
                         Ctmp2 = CRmul(CYp1,tmp0);
-                        TmpOLPp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpOLPp[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpOLPp[pair_index] =
+			  Cadd(TmpOLPp[pair_index],Ctmp2);
 
                         /* K */
 
-                        tmp0 = gant*SumK0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumK0_flat[radial_index];
                         Ctmp2 = CRmul(CY1,tmp0);
-                        TmpKin[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpKin[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpKin[pair_index] =
+			  Cadd(TmpKin[pair_index],Ctmp2);
 
                         /* dK/dr */
 
-                        tmp0 = gant*SumKr0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumKr0_flat[radial_index];
                         Ctmp2 = CRmul(CY1,tmp0);
-                        TmpKinr[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpKinr[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpKinr[pair_index] =
+			  Cadd(TmpKinr[pair_index],Ctmp2);
 
                         /* dK/dt */
 
-                        tmp0 = gant*SumK0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumK0_flat[radial_index];
                         Ctmp2 = CRmul(CYt1,tmp0);
-                        TmpKint[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpKint[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpKint[pair_index] =
+			  Cadd(TmpKint[pair_index],Ctmp2);
 
                         /* dK/dp */
 
-                        tmp0 = gant*SumK0[L0][Mul0][L1][Mul1];
+                        tmp0 = gant*sumK0_flat[radial_index];
                         Ctmp2 = CRmul(CYp1,tmp0);
-                        TmpKinp[L0][Mul0][L0+M0][L1][Mul1][L1+M1] =
-			  Cadd(TmpKinp[L0][Mul0][L0+M0][L1][Mul1][L1+M1],Ctmp2);
+                        TmpKinp[pair_index] =
+			  Cadd(TmpKinp[pair_index],Ctmp2);
 
 		      }
 		    }
@@ -917,14 +735,6 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 	  }
         }
       } /* l */
-
-      /* free SphB and SphBp */
-
-	      free(SphB[0]);
-	      free(SphB);
-
-	      free(SphBp[0]);
-	      free(SphBp);
 
       if (prof_enabled) {
         dtime(&prof_t1_local);
@@ -958,68 +768,69 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                   CsumKp = Complex(0.0,0.0);
 
      	          for (k=-L0; k<=L0; k++){
+                    const size_t pair_index = openmx_core_overlap_pair(&work_buffers,L0,Mul0,L0+k,L1,Mul1,L1+M1);
 
                     Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
 
                     /* S */
 
-                    Ctmp0 = TmpOLP[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpOLP[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumS0 = Cadd(CsumS0,Ctmp2);
 
                     /* dS/dr */
 
-                    Ctmp0 = TmpOLPr[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpOLPr[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumSr = Cadd(CsumSr,Ctmp2);
 
                     /* dS/dt */
 
-                    Ctmp0 = TmpOLPt[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpOLPt[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumSt = Cadd(CsumSt,Ctmp2);
 
                     /* dS/dp */
 
-                    Ctmp0 = TmpOLPp[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpOLPp[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumSp = Cadd(CsumSp,Ctmp2);
 
                     /* K */
 
-                    Ctmp0 = TmpKin[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpKin[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumK0 = Cadd(CsumK0,Ctmp2);
 
                     /* dK/dr */
 
-                    Ctmp0 = TmpKinr[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpKinr[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumKr = Cadd(CsumKr,Ctmp2);
 
                     /* dK/dt */
 
-                    Ctmp0 = TmpKint[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpKint[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumKt = Cadd(CsumKt,Ctmp2);
 
                     /* dK/dp */
 
-                    Ctmp0 = TmpKinp[L0][Mul0][L0+k][L1][Mul1][L1+M1];
+                    Ctmp0 = TmpKinp[pair_index];
                     Ctmp2 = Cmul(Ctmp1,Ctmp0);
                     CsumKp = Cadd(CsumKp,Ctmp2);
 
 		  }
 
-                  CmatS0[L0+M0][L1+M1] = CsumS0;
-                  CmatSr[L0+M0][L1+M1] = CsumSr;
-                  CmatSt[L0+M0][L1+M1] = CsumSt;
-                  CmatSp[L0+M0][L1+M1] = CsumSp;
+                  CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumS0;
+                  CmatSr[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumSr;
+                  CmatSt[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumSt;
+                  CmatSp[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumSp;
 
-                  CmatK0[L0+M0][L1+M1] = CsumK0;
-                  CmatKr[L0+M0][L1+M1] = CsumKr;
-                  CmatKt[L0+M0][L1+M1] = CsumKt;
-                  CmatKp[L0+M0][L1+M1] = CsumKp;
+                  CmatK0[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumK0;
+                  CmatKr[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumKr;
+                  CmatKt[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumKt;
+                  CmatKp[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumKp;
 		}
 	      }
 
@@ -1046,7 +857,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                     /*  Y k+1 */
                     if (k<L1){
                       coe0 = sqrt((double)((L1-k)*(L1+k+1)));
-                      Ctmp1 = Cmul(CmatS0[L0+M0][L1+k+1],Comp2Real[L1][L1+M1][L1+k]);
+                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k+1)],Comp2Real[L1][L1+M1][L1+k]);
                       Ctmp1.r = 0.5*coe0*Ctmp1.r;
                       Ctmp1.i = 0.5*coe0*Ctmp1.i;
                       CsumS_Lx = Cadd(CsumS_Lx,Ctmp1);
@@ -1055,7 +866,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                     /*  Y k-1 */
                     if (-L1<k){
                       coe1 = sqrt((double)((L1+k)*(L1-k+1)));
-                      Ctmp1 = Cmul(CmatS0[L0+M0][L1+k-1],Comp2Real[L1][L1+M1][L1+k]);
+                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k-1)],Comp2Real[L1][L1+M1][L1+k]);
                       Ctmp1.r = 0.5*coe1*Ctmp1.r;
                       Ctmp1.i = 0.5*coe1*Ctmp1.i;
                       CsumS_Lx = Cadd(CsumS_Lx,Ctmp1);
@@ -1066,7 +877,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                     /*  Y k+1 */
 
                     if (k<L1){
-                      Ctmp1 = Cmul(CmatS0[L0+M0][L1+k+1],Comp2Real[L1][L1+M1][L1+k]);
+                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k+1)],Comp2Real[L1][L1+M1][L1+k]);
                       Ctmp2.r = 0.5*coe0*Ctmp1.i;
                       Ctmp2.i =-0.5*coe0*Ctmp1.r;
                       CsumS_Ly = Cadd(CsumS_Ly,Ctmp2);
@@ -1075,7 +886,7 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
                     /*  Y k-1 */
 
                     if (-L1<k){
-                      Ctmp1 = Cmul(CmatS0[L0+M0][L1+k-1],Comp2Real[L1][L1+M1][L1+k]);
+                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k-1)],Comp2Real[L1][L1+M1][L1+k]);
                       Ctmp2.r =-0.5*coe1*Ctmp1.i;
                       Ctmp2.i = 0.5*coe1*Ctmp1.r;
                       CsumS_Ly = Cadd(CsumS_Ly,Ctmp2);
@@ -1083,49 +894,49 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
                     /*** S_Lz ***/
 
-                    Ctmp1    = Cmul(CmatS0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1    = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     Ctmp1.r = (double)k*Ctmp1.r;;
                     Ctmp1.i = (double)k*Ctmp1.i;
                     CsumS_Lz = Cadd(CsumS_Lz,Ctmp1);
 
                     /* S */
 
-                    Ctmp1 = Cmul(CmatS0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumS0 = Cadd(CsumS0,Ctmp1);
 
                     /* dS/dr */
 
-                    Ctmp1 = Cmul(CmatSr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatSr[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumSr = Cadd(CsumSr,Ctmp1);
 
                     /* dS/dt */
 
-                    Ctmp1 = Cmul(CmatSt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatSt[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumSt = Cadd(CsumSt,Ctmp1);
 
                     /* dS/dp */
 
-                    Ctmp1 = Cmul(CmatSp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatSp[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumSp = Cadd(CsumSp,Ctmp1);
 
                     /* K */
 
-                    Ctmp1 = Cmul(CmatK0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatK0[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumK0 = Cadd(CsumK0,Ctmp1);
 
                     /* dK/dr */
 
-                    Ctmp1 = Cmul(CmatKr[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatKr[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumKr = Cadd(CsumKr,Ctmp1);
 
                     /* dK/dt */
 
-                    Ctmp1 = Cmul(CmatKt[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatKt[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumKt = Cadd(CsumKt,Ctmp1);
 
                     /* dK/dp */
 
-                    Ctmp1 = Cmul(CmatKp[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatKp[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
                     CsumKp = Cadd(CsumKp,Ctmp1);
 
 		  }
@@ -1221,61 +1032,25 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
     if (prof_enabled) {
 #pragma omp atomic
-      SetOLP_prof.bessel += prof_bessel;
+      profile.bessel += prof_bessel;
 #pragma omp atomic
-      SetOLP_prof.radial += prof_radial;
+      profile.radial += prof_radial;
 #pragma omp atomic
-      SetOLP_prof.gaunt += prof_gaunt;
+      profile.gaunt += prof_gaunt;
 #pragma omp atomic
-      SetOLP_prof.c2r += prof_c2r;
+      profile.c2r += prof_c2r;
     }
 
 
-    /* freeing of arrays */
-    Free6D_dcomplex(TmpOLP);
-    Free6D_dcomplex(TmpOLPr);
-    Free6D_dcomplex(TmpOLPt);
-    Free6D_dcomplex(TmpOLPp);
-    Free6D_dcomplex(TmpKin);
-    Free6D_dcomplex(TmpKinr);
-    Free6D_dcomplex(TmpKint);
-    Free6D_dcomplex(TmpKinp);
-
-    Free4D_double(SumS0);
-    Free4D_double(SumK0);
-    Free4D_double(SumSr0);
-    Free4D_double(SumKr0);
-
-    Free2D_dcomplex(CmatS0);
-    Free2D_dcomplex(CmatSr);
-    Free2D_dcomplex(CmatSt);
-    Free2D_dcomplex(CmatSp);
-    Free2D_dcomplex(CmatK0);
-	    Free2D_dcomplex(CmatKr);
-	    Free2D_dcomplex(CmatKt);
-	    Free2D_dcomplex(CmatKp);
-
 	    if (prof_enabled) {
+      long thread_hits, thread_misses;
+      openmx_core_overlap_statistics(workspace,&thread_hits,&thread_misses);
 #pragma omp atomic
-	      OLPKin_bessel_hits += bessel_cache.hits;
+	      bessel_hits += thread_hits;
 #pragma omp atomic
-	      OLPKin_bessel_misses += bessel_cache.misses;
+	      bessel_misses += thread_misses;
 	    }
-	    OLPKin_Bessel_Free(&bessel_cache);
-
-	    free(Normk_grid);
-	    free(RF_BesselCache0);
-	    free(RF_BesselCache1);
-	    free(sumS0_flat);
-	    free(sumK0_flat);
-	    free(sumSr0_flat);
-	    free(sumKr0_flat);
-	    free(combo_L0);
-	    free(combo_Mul0);
-	    free(combo_L1);
-	    free(combo_Mul1);
-	    free(combo_rf0_offset);
-	    free(combo_rf1_offset);
+    openmx_core_overlap_destroy(workspace);
 
 	  } /* #pragma omp parallel */
 
@@ -1285,15 +1060,9 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
 
   if (prof_enabled) {
     fprintf(stderr, "OLPKPROF id=%d pairs=%d bessel=%.3f radial=%.3f gaunt=%.3f c2r=%.3f bhit=%ld bmiss=%ld\n", myid,
-            OneD_Nloop, SetOLP_prof.bessel, SetOLP_prof.radial, SetOLP_prof.gaunt, SetOLP_prof.c2r,
-            OLPKin_bessel_hits, OLPKin_bessel_misses);
-    memset(&SetOLP_prof, 0, sizeof(SetOLP_prof));
+            OneD_Nloop, profile.bessel, profile.radial, profile.gaunt, profile.c2r,
+            bessel_hits, bessel_misses);
   }
-
-  /* the exact-r keys cannot match once the geometry moves, so the table's
-     useful life ends with this call; give the memory back */
-  OLPKin_bessel_hits = 0;
-  OLPKin_bessel_misses = 0;
 
   free(OneD2h_AN);
   free(OneD2Mc_AN);
@@ -1303,120 +1072,4 @@ double Set_OLP_Kin(double *****OLP, double *****H0)
   time0 = TEtime - TStime;
 
   return time0;
-}
-
-
-
-#ifdef kcomp
-dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3, int size_4, int size_5, int size_6)
-#else
-static inline dcomplex****** Allocate6D_dcomplex(int size_1, int size_2, int size_3, int size_4, int size_5, int size_6)
-#endif
-{
-  int i, j, k, l, m, p;
-
-  dcomplex****** buffer = (dcomplex******)malloc(sizeof(dcomplex*****)*size_1);
-  buffer[0] = (dcomplex*****)malloc(sizeof(dcomplex****)*size_1*size_2);
-  buffer[0][0] = (dcomplex****)malloc(sizeof(dcomplex***)*size_1*size_2*size_3);
-  buffer[0][0][0] = (dcomplex***)malloc(sizeof(dcomplex**)*size_1*size_2*size_3*size_4);
-  buffer[0][0][0][0] = (dcomplex**)malloc(sizeof(dcomplex*)*size_1*size_2*size_3*size_4*size_5);
-  buffer[0][0][0][0][0] = (dcomplex*)malloc(sizeof(dcomplex)*size_1*size_2*size_3*size_4*size_5*size_6);
-
-  for (i=0; i<size_1; i++){
-    buffer[i] = buffer[0] + i * size_2;
-    for (j=0; j<size_2; j++){
-      buffer[i][j] = buffer[0][0] + (i * size_2 + j) * size_3;
-      for (k=0; k<size_3; k++){
-	buffer[i][j][k] = buffer[0][0][0] + ((i * size_2 + j) * size_3 + k) * size_4;
-	for (l=0; l<size_4; l++){
-	  buffer[i][j][k][l] = buffer[0][0][0][0] + (((i * size_2 + j) * size_3 + k) * size_4 + l) * size_5;
-	  for (m=0; m<size_5; m++){
-	    buffer[i][j][k][l][m] = buffer[0][0][0][0][0] + ((((i * size_2 + j) * size_3 + k) * size_4 + l) * size_5 + m) * size_6;
-	    for (p=0; p<size_6; p++) buffer[i][j][k][l][m][p] = Complex(0.0,0.0);
-	  }
-	}
-      }
-    }
-  }
-
-  return buffer;
-}
-
-
-#ifdef kcomp
-double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4)
-#else
-static inline double**** Allocate4D_double(int size_1, int size_2, int size_3, int size_4)
-#endif
-{
-  int i, j, k, l;
-
-  double**** buffer = (double****)malloc(sizeof(double***)*size_1);
-  buffer[0] = (double***)malloc(sizeof(double**)*size_1*size_2);
-  buffer[0][0] = (double**)malloc(sizeof(double*)*size_1*size_2*size_3);
-  buffer[0][0][0] = (double*)malloc(sizeof(double)*size_1*size_2*size_3*size_4);
-
-  for (i=0; i<size_1; i++){
-    buffer[i] = buffer[0] + i * size_2;
-    for (j=0; j<size_2; j++){
-      buffer[i][j] = buffer[0][0] + (i * size_2 + j) * size_3;
-      for (k=0; k<size_3; k++){
-	buffer[i][j][k] = buffer[0][0][0] + ((i * size_2 + j) * size_3 + k) * size_4;
-	for (l=0; l<size_4; l++){
-	  buffer[i][j][k][l] = 0.0;
-	}
-      }
-    }
-  }
-
-  return buffer;
-}
-
-
-#ifdef kcomp
-dcomplex** Allocate2D_dcomplex(int size_1, int size_2)
-#else
-static inline dcomplex** Allocate2D_dcomplex(int size_1, int size_2)
-#endif
-{
-  int i, j;
-
-  dcomplex** buffer = (dcomplex**)malloc(sizeof(dcomplex*)*size_1);
-  buffer[0] = (dcomplex*)malloc(sizeof(dcomplex)*size_1*size_2);
-
-  for (i=0; i<size_1; i++){
-    buffer[i] = buffer[0] + i * size_2;
-    for (j=0; j<size_2; j++){
-      buffer[i][j] = Complex(0.0,0.0);
-    }
-  }
-
-  return buffer;
-}
-
-
-void Free6D_dcomplex(dcomplex****** buffer)
-{
-  free(buffer[0][0][0][0][0]);
-  free(buffer[0][0][0][0]);
-  free(buffer[0][0][0]);
-  free(buffer[0][0]);
-  free(buffer[0]);
-  free(buffer);
-}
-
-
-void Free4D_double(double**** buffer)
-{
-  free(buffer[0][0][0]);
-  free(buffer[0][0]);
-  free(buffer[0]);
-  free(buffer);
-}
-
-
-void Free2D_dcomplex(dcomplex** buffer)
-{
-  free(buffer[0]);
-  free(buffer);
 }

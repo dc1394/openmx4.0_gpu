@@ -31,7 +31,7 @@ static void Band_DFT_kpath_Col(
                       int  SpinP_switch, 
                       double *****nh,
                       double *****ImNL,
-                      double ****CntOLP);
+                      double ****CntOLP, const OpenMXLocalBasisViews *local_basis);
 
 static void Band_DFT_kpath_NonCol(
                       int nkpath, int *n_perk,
@@ -46,11 +46,11 @@ void Band_DFT_kpath_LNO( int nkpath, int *n_perk,
                          int  SpinP_switch, 
                          double *****nh,
                          double *****ImNL,
-                         double ****CntOLP)
+                         double ****CntOLP, const OpenMXLocalBasisViews *local_basis)
 {
 
   if (SpinP_switch==0 || SpinP_switch==1){
-    Band_DFT_kpath_Col(nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
+    Band_DFT_kpath_Col(nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP, local_basis);
   }
   else if (SpinP_switch==3){
 
@@ -71,7 +71,7 @@ void Band_DFT_kpath_Col( int nkpath, int *n_perk,
                          int  SpinP_switch, 
                          double *****nh,
                          double *****ImNL,
-                         double ****CntOLP)
+                         double ****CntOLP, const OpenMXLocalBasisViews *local_basis)
 {
   static int firsttime=1;
   int i,j,k,l,n,wan;
@@ -289,7 +289,7 @@ void Band_DFT_kpath_Col( int nkpath, int *n_perk,
 	  k3 = kpath[ik][1][id]+
 	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
 
-	  Matrix_Band_LNO(ID,spin,CntOLP,TmpM,MP,k1,k2,k3);
+	  Matrix_Band_LNO(ID,spin,CntOLP,TmpM,MP,k1,k2,k3, local_basis);
 	  n = TmpM[0][0].r;
 
 	  if (myid==ID){
@@ -380,7 +380,7 @@ void Band_DFT_kpath_Col( int nkpath, int *n_perk,
 	  k3 = kpath[ik][1][id]+
 	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
 
-          Matrix_Band_LNO(ID, spin, nh[spin], TmpM, MP, k1, k2, k3);
+          Matrix_Band_LNO(ID, spin, nh[spin], TmpM, MP, k1, k2, k3, local_basis);
 
           if (myid==ID){
 	    for (i1=1; i1<=n; i1++){

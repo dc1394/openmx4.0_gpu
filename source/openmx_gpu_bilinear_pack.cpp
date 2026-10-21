@@ -31,6 +31,7 @@ struct Hash {
 struct Builder {
     int spins;
     size_t budget=SIZE_MAX,used=0;
+    size_t packet_budget=SIZE_MAX,packet_used=0;
     std::vector<uint64_t> ptr;
     std::vector<OpenMXBilinearIndex> terms;
     std::vector<double> orbitals,matrices;
@@ -39,11 +40,16 @@ struct Builder {
         if (count>(budget-used)/width) throw std::bad_alloc();
         used+=count*width;
     }
+    void reserve_packet(size_t count,size_t width) {
+        if (count>(packet_budget-packet_used)/width) throw std::bad_alloc();
+        packet_used+=count*width;
+    }
     uint64_t orbital(const OpenMXBilinearSpan &s) {
         if (s.count<1 || (s.width!=4 && s.width!=8) || (!s.data && !s.rows))
             throw std::invalid_argument("orbital span");
         Key key{s.rows?s.rows:s.data,s.offset,s.stride,s.count,s.width,s.rows!=nullptr};
         auto found=orb_map.find(key);if (found!=orb_map.end()) return found->second;
+        reserve_packet(static_cast<size_t>(s.count),sizeof(double));
         /* Include vector growth, the final packet and hash-map nodes. Do
            not let a capacity retry exhaust the node's host/cgroup memory. */
         reserve(1,128);reserve(static_cast<size_t>(s.count),3*sizeof(double));
@@ -52,6 +58,7 @@ struct Builder {
         return at;
     }
     int term(const OpenMXBilinearTerm &t) {
+        reserve_packet(1,sizeof(OpenMXBilinearIndex));
         OpenMXBilinearIndex x={orbital(t.left),orbital(t.right),0,t.left.count,t.right.count};
         for (int i=0;i<4;i++) x.scale[i]=t.scaled?t.scale[i]:1.0;
         Key key{t.matrix?t.matrix:t.matrix_rows[0],0,static_cast<size_t>(x.n1),x.n0,spins,t.matrix==nullptr};
@@ -59,6 +66,7 @@ struct Builder {
         auto found=dm_map.find(key);
         if (found!=dm_map.end()) x.matrix=found->second;
         else {
+            reserve_packet(static_cast<size_t>(spins)*x.n0*x.n1,sizeof(double));
             reserve(1,128);
             reserve(static_cast<size_t>(spins)*x.n0*x.n1,3*sizeof(double));
             x.matrix=matrices.size();dm_map.emplace(key,x.matrix);
@@ -79,14 +87,17 @@ bool append_bytes(size_t &bytes,size_t count,size_t width) {
 }
 }
 
-extern "C" int openmx_gpu_bilinear_pack(const OpenMXBilinearSource *source,
-    size_t first,size_t last,void **packet,size_t *bytes)
+extern "C" int openmx_gpu_bilinear_pack_limit(const OpenMXBilinearSource *source,
+    size_t first,size_t last,size_t limit,void **packet,size_t *bytes)
 {
     *packet=nullptr;*bytes=0;
     if (!source || !source->visit || last<first || last>source->rows || last-first==SIZE_MAX ||
         (source->spins!=1 && source->spins!=2 && source->spins!=4)) return 0;
     try {
         Builder b;b.spins=source->spins;
+        b.packet_budget=limit;
+        b.reserve_packet(1,sizeof(OpenMXBilinearHeader));
+        b.reserve_packet(last-first+1,sizeof(uint64_t));
         unsigned long long available=openmx_host_mem_available();
         int sharing=openmx_gpu_local_size_noncollective();if (sharing<1) sharing=1;
         if (available) b.budget=static_cast<size_t>(available/(2ULL*sharing));
@@ -109,4 +120,10 @@ extern "C" int openmx_gpu_bilinear_pack(const OpenMXBilinearSource *source,
         if (!b.matrices.empty()) memcpy(p,b.matrices.data(),b.matrices.size()*sizeof(double));
         *packet=h;*bytes=n;return 1;
     } catch (...) {return 0;}
+}
+
+extern "C" int openmx_gpu_bilinear_pack(const OpenMXBilinearSource *source,
+    size_t first,size_t last,void **packet,size_t *bytes)
+{
+    return openmx_gpu_bilinear_pack_limit(source,first,last,SIZE_MAX,packet,bytes);
 }

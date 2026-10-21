@@ -18,8 +18,9 @@
 #include "mpi.h"
 
 
-void Set_ContMat_Cluster_LNO(double ****OLP0, double *****nh, double ***S, double ***H, int *MP)
+void Set_ContMat_Cluster_LNO(double ****OLP0, double *****nh, double ***S, double ***H, int *MP, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,k,p,p_shift;
   int MA_AN,MB_AN,GA_AN,LB_AN,GB_AN,AN,spin;
   int wanA,wanB,tnoA,tnoA0,tnoB,tnoB0,Anum,Bnum,NUM;
@@ -172,8 +173,8 @@ void Set_ContMat_Cluster_LNO(double ****OLP0, double *****nh, double ***S, doubl
 	    sumH = 0.0;
 
 	    for (k=0; k<tnoA0; k++){
-	      sumS += LNO_coes[spin][MA_AN][tnoA0*i+k]*Sc[tnoA0*j+k];
-	      sumH += LNO_coes[spin][MA_AN][tnoA0*i+k]*Hc[tnoA0*j+k];
+	      sumS += openmx_local_lno_row(local_basis, spin, MA_AN)[tnoA0*i+k]*Sc[tnoA0*j+k];
+	      sumH += openmx_local_lno_row(local_basis, spin, MA_AN)[tnoA0*i+k]*Hc[tnoA0*j+k];
 	    }
 
 	    Stmp[i][j] = sumS;
@@ -188,8 +189,8 @@ void Set_ContMat_Cluster_LNO(double ****OLP0, double *****nh, double ***S, doubl
 	    sumH = 0.0;
 
 	    for (k=0; k<tnoB0; k++){
-	      sumS += Stmp[i][k]*LNO_coes[spin][MB_AN][tnoB0*j+k];
-	      sumH += Htmp[i][k]*LNO_coes[spin][MB_AN][tnoB0*j+k];
+	      sumS += Stmp[i][k]*openmx_local_lno_row(local_basis, spin, MB_AN)[tnoB0*j+k];
+	      sumH += Htmp[i][k]*openmx_local_lno_row(local_basis, spin, MB_AN)[tnoB0*j+k];
 	    }
 
 	    S1[p]         = sumS;

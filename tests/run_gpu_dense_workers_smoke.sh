@@ -28,5 +28,7 @@ done
   "$build/openmx_gpu_workers.o" "$build/openmx_gpu_views.o" "$build/openmx_gpu_transform.o" "$build/openmx_gpu_dm.o" \
   -L"$cuda/lib64" "-Wl,-rpath,$cuda/lib64" -lcudart -lpthread -o "$build/gpu_dense_workers_smoke"
 if [[ ${OPENMX_GPU_TEST_COMPILE_ONLY:-0} != 1 ]]; then
-  "$build/gpu_dense_workers_smoke"
+  arguments=()
+  if [[ ${OPENMX_GPU_TEST_SINGLE_DEVICE:-0} == 1 ]]; then arguments+=(--single-device); fi
+  "$build/gpu_dense_workers_smoke" "${arguments[@]}"
 fi

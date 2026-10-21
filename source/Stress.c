@@ -14,8 +14,11 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_orbitals.h"
+#include "openmx_core_vna_matrix.h"
 #include "openmx_precision.h"
 #include "mpi.h"
+#include "openmx_projector_exchange.h"
 #include <omp.h>
 #include <fftw3.h>
 
@@ -23,28 +26,28 @@
 
 /*** subroutine */
 static void MPI_OLP(double *****OLP1);
-static void Stress3();
-static void Stress4();
-static void Stress4B(double *****CDM0);
+static void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Stress4(const OpenMXAtomicViews *atomic);
+static void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
 static void Stress_core();
-static void Stress_H0();
+static void Stress_H0(const OpenMXAtomicViews *atomic);
 static void Stress_H1();
-static void Stress_HNL(double *****CDM0, double *****iDM0);
-static void Stress_plus_U_dual(double *****CDM0);
-static void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4]); /*from Total_Energy.c*/
-static void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
+static void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]); /*from Total_Energy.c*/
+static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
 
-static void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
+static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
 		  Type_DS_VNA *****DS_VNA1, 
 		  double *****TmpHVNA2, double *****TmpHVNA3, 
 		  double **Hx, double **Hy, double **Hz, 
 		  double ****H_sts);
 
-static void dHNL(int where_flag,
+static void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 		 int Mc_AN, int h_AN, int q_AN,
 		 double ******DS_NL1,
 		 dcomplex ***Hx, dcomplex ***Hy, dcomplex ***Hz,
-		 dcomplex *****H_sts);
+		 dcomplex *****H_sts, const OpenMXElectronicViews *electronic);
 
 static void dHNL_SO(
 	     double *sumx0r,
@@ -81,12 +84,17 @@ static void dHNL_SO(
 
 
 
-double Stress(double *****H0,
+double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM)
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double *****CntH0=electronic->CntH0;
+  double *****CntOLP=electronic->CntOLP;
+  double ******iDM=electronic->iDM;
+
   /*** variables **/
   static int firsttime=1;
   int Nc,GNc,GRc,Cwan,s1,s2,BN_AB;
@@ -170,7 +178,7 @@ double Stress(double *****H0,
       else{
         Gc_AN = F_M2G[Mc_AN];
         Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_CNO[Cwan];  
+        tno0 = atomic->species.contracted_orbitals[Cwan];
       }    
 
       CDM0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
@@ -182,7 +190,7 @@ double Stress(double *****H0,
         else{
           Gh_AN = natn[Gc_AN][h_AN];
           Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_CNO[Hwan];
+          tno1 = atomic->species.contracted_orbitals[Hwan];
         } 
 
         CDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
@@ -214,7 +222,7 @@ double Stress(double *****H0,
 	else{
 	  Gc_AN = F_M2G[Mc_AN];
 	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];  
+	  tno0 = atomic->species.contracted_orbitals[Cwan];
 	}    
 
 	iDM0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
@@ -226,7 +234,7 @@ double Stress(double *****H0,
 	  else{
 	    Gh_AN = natn[Gc_AN][h_AN];
 	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
+	    tno1 = atomic->species.contracted_orbitals[Hwan];
 	  } 
 
 	  iDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
@@ -256,13 +264,13 @@ double Stress(double *****H0,
   
     Gc_AN = M2G[Mc_AN];
     Cwan = WhatSpecies[Gc_AN];
-    tno1 = Spe_Total_CNO[Cwan];
+    tno1 = atomic->species.contracted_orbitals[Cwan];
   
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
   
       Gh_AN = natn[Gc_AN][h_AN];
       Hwan = WhatSpecies[Gh_AN];
-      tno2 = Spe_Total_CNO[Hwan];
+      tno2 = atomic->species.contracted_orbitals[Hwan];
   
       for (spin=0; spin<=SpinP_switch; spin++){
         for (i=0; i<tno1; i++){
@@ -285,13 +293,13 @@ double Stress(double *****H0,
 
       Gc_AN = M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
-      tno1 = Spe_Total_CNO[Cwan];
+      tno1 = atomic->species.contracted_orbitals[Cwan];
 
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 
 	Gh_AN = natn[Gc_AN][h_AN];
 	Hwan = WhatSpecies[Gh_AN];
-	tno2 = Spe_Total_CNO[Hwan];
+	tno2 = atomic->species.contracted_orbitals[Hwan];
 
 	for (i=0; i<tno1; i++){
 	  for (j=0; j<tno2; j++){
@@ -330,11 +338,11 @@ double Stress(double *****H0,
             Mc_AN = Snd_MAN[IDS][n];
             Gc_AN = Snd_GAN[IDS][n];
             Cwan = WhatSpecies[Gc_AN]; 
-            tno1 = Spe_Total_CNO[Cwan];
+            tno1 = atomic->species.contracted_orbitals[Cwan];
             for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
               Gh_AN = natn[Gc_AN][h_AN];        
               Hwan = WhatSpecies[Gh_AN];
-              tno2 = Spe_Total_CNO[Hwan];
+              tno2 = atomic->species.contracted_orbitals[Hwan];
               for (i=0; i<tno1; i++){
                 for (j=0; j<tno2; j++){
                   size1++; 
@@ -402,11 +410,11 @@ double Stress(double *****H0,
             Mc_AN = Snd_MAN[IDS][n];
             Gc_AN = Snd_GAN[IDS][n];
             Cwan = WhatSpecies[Gc_AN]; 
-            tno1 = Spe_Total_CNO[Cwan];
+            tno1 = atomic->species.contracted_orbitals[Cwan];
             for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
               Gh_AN = natn[Gc_AN][h_AN];
               Hwan = WhatSpecies[Gh_AN];
-              tno2 = Spe_Total_CNO[Hwan];
+              tno2 = atomic->species.contracted_orbitals[Hwan];
               for (i=0; i<tno1; i++){
                 for (j=0; j<tno2; j++){
                   tmp_array[num] = CDM[spin][Mc_AN][h_AN][i][j];
@@ -441,12 +449,12 @@ double Stress(double *****H0,
             Mc_AN++;
             Gc_AN = Rcv_GAN[IDR][n];
             Cwan = WhatSpecies[Gc_AN]; 
-            tno1 = Spe_Total_CNO[Cwan];
+            tno1 = atomic->species.contracted_orbitals[Cwan];
 
             for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
               Gh_AN = natn[Gc_AN][h_AN];        
               Hwan = WhatSpecies[Gh_AN];
-              tno2 = Spe_Total_CNO[Hwan];
+              tno2 = atomic->species.contracted_orbitals[Hwan];
               for (i=0; i<tno1; i++){
                 for (j=0; j<tno2; j++){
                   CDM0[spin][Mc_AN][h_AN][i][j] = tmp_array2[num];
@@ -500,11 +508,11 @@ double Stress(double *****H0,
 	      Mc_AN = Snd_MAN[IDS][n];
 	      Gc_AN = Snd_GAN[IDS][n];
 	      Cwan = WhatSpecies[Gc_AN]; 
-	      tno1 = Spe_Total_CNO[Cwan];
+	      tno1 = atomic->species.contracted_orbitals[Cwan];
 	      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 		Gh_AN = natn[Gc_AN][h_AN];        
 		Hwan = WhatSpecies[Gh_AN];
-		tno2 = Spe_Total_CNO[Hwan];
+		tno2 = atomic->species.contracted_orbitals[Hwan];
 		for (i=0; i<tno1; i++){
 		  for (j=0; j<tno2; j++){
 		    size1++; 
@@ -573,11 +581,11 @@ double Stress(double *****H0,
 	      Mc_AN = Snd_MAN[IDS][n];
 	      Gc_AN = Snd_GAN[IDS][n];
 	      Cwan = WhatSpecies[Gc_AN]; 
-	      tno1 = Spe_Total_CNO[Cwan];
+	      tno1 = atomic->species.contracted_orbitals[Cwan];
 	      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 		Gh_AN = natn[Gc_AN][h_AN];
 		Hwan = WhatSpecies[Gh_AN];
-		tno2 = Spe_Total_CNO[Hwan];
+		tno2 = atomic->species.contracted_orbitals[Hwan];
 		for (i=0; i<tno1; i++){
 		  for (j=0; j<tno2; j++){
 		    tmp_array[num] = iDM[0][so][Mc_AN][h_AN][i][j];
@@ -612,12 +620,12 @@ double Stress(double *****H0,
 	      Mc_AN++;
 	      Gc_AN = Rcv_GAN[IDR][n];
 	      Cwan = WhatSpecies[Gc_AN]; 
-	      tno1 = Spe_Total_CNO[Cwan];
+	      tno1 = atomic->species.contracted_orbitals[Cwan];
 
 	      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 		Gh_AN = natn[Gc_AN][h_AN];        
 		Hwan = WhatSpecies[Gh_AN];
-		tno2 = Spe_Total_CNO[Hwan];
+		tno2 = atomic->species.contracted_orbitals[Hwan];
 		for (i=0; i<tno1; i++){
 		  for (j=0; j<tno2; j++){
 		    iDM0[so][Mc_AN][h_AN][i][j] = tmp_array2[num];
@@ -725,7 +733,7 @@ double Stress(double *****H0,
     }
     /* end(yshiihara) */
   
-#pragma omp parallel shared(myid,Spe_OpenCore_flag,Spe_Atomic_PCC,Spe_VPS_RV,Spe_VPS_XV,Spe_Num_Mesh_VPS,Spe_PAO_RV,Spe_Atomic_Den,Spe_PAO_XV,Spe_Num_Mesh_PAO,time_per_atom,level_stdout,GridVol,Vxc_Grid,RefVxc_Grid,SpinP_switch,F_Vxc_flag,PCC_switch,dVHart_Grid,F_dVHart_flag,Gxyz,atv,MGridListAtom,CellListAtom,GridListAtom,GridN_Atom,WhatSpecies,M2G,Matomnum,Stress,My_Stress,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,sumx,sumy,sumz,Nc,GNc,GRc,MNc,Cxyz,x,y,z,dx,dy,dz,r,r2,tmp0,tmp1,tmp2,xx,sumt1,sumt2,sumt3,sumt4,sumt5,i)
+#pragma omp parallel shared(atomic,myid,time_per_atom,level_stdout,GridVol,Vxc_Grid,RefVxc_Grid,SpinP_switch,F_Vxc_flag,PCC_switch,dVHart_Grid,F_dVHart_flag,Gxyz,atv,MGridListAtom,CellListAtom,GridListAtom,GridN_Atom,WhatSpecies,M2G,Matomnum,Stress,My_Stress,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,sumx,sumy,sumz,Nc,GNc,GRc,MNc,Cxyz,x,y,z,dx,dy,dz,r,r2,tmp0,tmp1,tmp2,xx,sumt1,sumt2,sumt3,sumt4,sumt5,i)
     {
     
       /* get info. on OpenMP */ 
@@ -777,13 +785,13 @@ double Stress(double *****H0,
 
 	  if (1.0e-14<r){
 
-	    tmp0 = Dr_KumoF( Spe_Num_Mesh_PAO[Cwan], xx, r, 
-			     Spe_PAO_XV[Cwan], Spe_PAO_RV[Cwan], Spe_Atomic_Den[Cwan]);
+	    tmp0 = Dr_KumoF( atomic->species.pao_mesh[Cwan], xx, r,
+			     openmx_radial_row2(&atomic->pao_log_radii,Cwan), openmx_radial_row2(&atomic->pao_radii,Cwan), openmx_radial_row2(&atomic->density,Cwan));
 
 	    tmp1 = dVHart_Grid[MNc]*tmp0/r*F_dVHart_flag;
 	    /*begin(yshiihara) */ 
-	    tmp2 = KumoF( Spe_Num_Mesh_PAO[Cwan], xx, 
-			  Spe_PAO_XV[Cwan], Spe_PAO_RV[Cwan], Spe_Atomic_Den[Cwan]);
+	    tmp2 = KumoF( atomic->species.pao_mesh[Cwan], xx,
+			  openmx_radial_row2(&atomic->pao_log_radii,Cwan), openmx_radial_row2(&atomic->pao_radii,Cwan), openmx_radial_row2(&atomic->density,Cwan));
 	    /*end(yshiihara) */ 
 	    sumx += tmp1*dx;
 	    sumy += tmp1*dy;
@@ -830,20 +838,20 @@ double Stress(double *****H0,
 	    /* partial core correction */
 	    if (PCC_switch==1){
 
-	      tmp0 = 0.5*F_Vxc_flag*Dr_KumoF( Spe_Num_Mesh_VPS[Cwan], xx, r, 
-					      Spe_VPS_XV[Cwan], Spe_VPS_RV[Cwan], Spe_Atomic_PCC[Cwan]);
+	      tmp0 = 0.5*F_Vxc_flag*Dr_KumoF( atomic->species.vps_mesh[Cwan], xx, r,
+					      openmx_radial_row2(&atomic->vps_log_radii,Cwan), openmx_radial_row2(&atomic->vps_radii,Cwan), openmx_radial_row2(&atomic->partial_core_density,Cwan));
 
 	      if (SpinP_switch==0){
 		tmp2 = 2.0*Vxc_Grid[0][MNc];
 	      }
 	      else {
-		if (Spe_OpenCore_flag[Cwan]==0){
+		if (atomic->species.open_core[Cwan]==0){
 		  tmp2 = Vxc_Grid[0][MNc] + Vxc_Grid[1][MNc];
 		}
-		else if (Spe_OpenCore_flag[Cwan]==1){
+		else if (atomic->species.open_core[Cwan]==1){
 		  tmp2 = 2.0*Vxc_Grid[0][MNc];
 		}
-		else if (Spe_OpenCore_flag[Cwan]==-1){
+		else if (atomic->species.open_core[Cwan]==-1){
 		  tmp2 = 2.0*Vxc_Grid[1][MNc];
 		}
 	      }
@@ -1009,15 +1017,15 @@ double Stress(double *****H0,
   
   if (Cnt_switch==1){
 
-    Cont_Matrix0(H0[0],CntH0[0]);
-    Cont_Matrix0(H0[1],CntH0[1]);
-    Cont_Matrix0(H0[2],CntH0[2]);
-    Cont_Matrix0(H0[3],CntH0[3]);
+    Cont_Matrix0(H0[0],CntH0[0], local_basis);
+    Cont_Matrix0(H0[1],CntH0[1], local_basis);
+    Cont_Matrix0(H0[2],CntH0[2], local_basis);
+    Cont_Matrix0(H0[3],CntH0[3], local_basis);
 
-    Cont_Matrix0(OLP[0],CntOLP[0]);
-    Cont_Matrix0(OLP[1],CntOLP[1]);
-    Cont_Matrix0(OLP[2],CntOLP[2]);
-    Cont_Matrix0(OLP[3],CntOLP[3]);
+    Cont_Matrix0(OLP[0],CntOLP[0], local_basis);
+    Cont_Matrix0(OLP[1],CntOLP[1], local_basis);
+    Cont_Matrix0(OLP[2],CntOLP[2], local_basis);
+    Cont_Matrix0(OLP[3],CntOLP[3], local_basis);
   }
 
   if ( Hub_U_switch==1 && Hub_U_occupation==1 ){
@@ -1083,7 +1091,7 @@ double Stress(double *****H0,
 
 	Gc_AN = M2G[Mc_AN];
 	Cwan = WhatSpecies[Gc_AN];
-	re = Spe_Atom_Cut1[Cwan];
+	re = atomic->species.cutoff[Cwan];
 	Sr = re + rs;
 	Dr = re - rs;
 
@@ -1126,7 +1134,7 @@ double Stress(double *****H0,
 	  }
 	}
 	
-#pragma omp parallel shared(Leb_Grid_XYZW,Num_Leb_Grid,Spe_Atomic_Den2,Spe_PAO_XV,Spe_Num_Mesh_PAO,My_sumr,My_sumrx,My_sumry,My_sumrz,My_Stress,My_Stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
+#pragma omp parallel shared(atomic,Leb_Grid_XYZW,Num_Leb_Grid,My_sumr,My_sumrx,My_sumry,My_sumrz,My_Stress,My_Stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
 	{
 
 	  double dx2,dy2,dz2;
@@ -1187,8 +1195,8 @@ double Stress(double *****H0,
 
 		/* calculate density */
 
-		den += KumoF( Spe_Num_Mesh_PAO[Hwan], x, 
-			      Spe_PAO_XV[Hwan], Spe_PAO_RV[Hwan], Spe_Atomic_Den2[Hwan])*F_Vxc_flag;
+		den += KumoF( atomic->species.pao_mesh[Hwan], x,
+			      openmx_radial_row2(&atomic->pao_log_radii,Hwan), openmx_radial_row2(&atomic->pao_radii,Hwan), openmx_radial_row2(&atomic->density_backup,Hwan))*F_Vxc_flag;
 
 		if (h_AN==0) den0 = den;
 
@@ -1196,8 +1204,8 @@ double Stress(double *****H0,
 
 		if (h_AN!=0){
 		  r1 = sqrt(dx*dx + dy*dy + dz*dz);
-		  gden0 = Dr_KumoF( Spe_Num_Mesh_PAO[Hwan], x, r1, 
-				    Spe_PAO_XV[Hwan], Spe_PAO_RV[Hwan], Spe_Atomic_Den2[Hwan])*F_Vxc_flag;
+		  gden0 = Dr_KumoF( atomic->species.pao_mesh[Hwan], x, r1,
+				    openmx_radial_row2(&atomic->pao_log_radii,Hwan), openmx_radial_row2(&atomic->pao_radii,Hwan), openmx_radial_row2(&atomic->density_backup,Hwan))*F_Vxc_flag;
 
 		  gx[h_AN] = gden0/r1*dx;
 		  gy[h_AN] = gden0/r1*dy;
@@ -1397,7 +1405,7 @@ double Stress(double *****H0,
   }
   /* end(yshiihara) */
   
-#pragma omp parallel shared(time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,NC_v_eff,v_eff,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,Spe_Total_CNO,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
+#pragma omp parallel shared(atomic,time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,local_basis,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
   {
 
     Hx = (dcomplex***)malloc(sizeof(dcomplex**)*3);
@@ -1445,7 +1453,7 @@ double Stress(double *****H0,
 	Gh_AN = natn[Gc_AN][h_AN];
 	Mh_AN = F_G2M[Gh_AN];
 	Hwan = WhatSpecies[Gh_AN];
-	ian = Spe_Total_CNO[Hwan];
+	ian = atomic->species.contracted_orbitals[Hwan];
 	/*stress*/
 	Rn1 = ncn[Gc_AN][h_AN];
 	lx1 = Gxyz[Gc_AN][1] - Gxyz[Gh_AN][1] - atv[Rn1][1];
@@ -1466,7 +1474,7 @@ double Stress(double *****H0,
 	  Gq_AN = natn[Gc_AN][q_AN];
 	  Mq_AN = F_G2M[Gq_AN];
 	  Qwan = WhatSpecies[Gq_AN];
-	  jan = Spe_Total_CNO[Qwan];
+	  jan = atomic->species.contracted_orbitals[Qwan];
 	  kl = RMI1[Mc_AN][h_AN][q_AN];
 	  /*stress*/
 	  Rn2 = ncn[Gc_AN][q_AN];
@@ -1598,8 +1606,8 @@ double Stress(double *****H0,
 	      dEy = 0.0;
 	      dEz = 0.0;
 	      
-	      for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-		for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+	      for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 		  dEx += pref*CDM0[0][Mh_AN][kl][i][j]*Hx[0][i][j].r;
 		  dEy += pref*CDM0[0][Mh_AN][kl][i][j]*Hy[0][i][j].r;
 		  dEz += pref*CDM0[0][Mh_AN][kl][i][j]*Hz[0][i][j].r;
@@ -1670,8 +1678,8 @@ double Stress(double *****H0,
 	      dEy = 0.0;
 	      dEz = 0.0;
 	      
-	      for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-		for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+	      for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		  dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hx[0][i][j].r
 	                       + CDM0[1][Mh_AN][kl][i][j]*Hx[1][i][j].r);
@@ -1823,7 +1831,7 @@ double Stress(double *****H0,
     printf("  Stress calculation #3\n");fflush(stdout);
   }
 
-  Stress3();
+  Stress3(atomic, electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -1844,10 +1852,10 @@ double Stress(double *****H0,
   }
 
   if (ProExpn_VNA==0 && F_VNA_flag==1){
-    Stress4();
+    Stress4(atomic);
   }
   else if (ProExpn_VNA==1 && F_VNA_flag==1){
-    Stress4B(CDM0);
+    Stress4B(vna, reciprocal, CDM0, local_basis);
   }
 
   dtime(&etime);
@@ -1879,7 +1887,7 @@ double Stress(double *****H0,
   }
   /* end(yshiihara) */
 
-#pragma omp parallel shared(time_per_atom,Fx,Fy,Fz,CntOLP,OLP,Cnt_switch,EDM,SpinP_switch,Spe_Total_CNO,natn,ncn,FNAN,WhatSpecies,M2G,Gxyz,atv,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,dum,dx,dy,dz,lx,ly,lz,Rn1)
+#pragma omp parallel shared(atomic,time_per_atom,Fx,Fy,Fz,CntOLP,OLP,Cnt_switch,EDM,SpinP_switch,natn,ncn,FNAN,WhatSpecies,M2G,Gxyz,atv,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,dum,dx,dy,dz,lx,ly,lz,Rn1)
   {
 
     /* get info. on OpenMP */ 
@@ -1905,8 +1913,8 @@ double Stress(double *****H0,
 	ly = Gxyz[Gc_AN][2] - Gxyz[Gh_AN][2] - atv[Rn1][2];
 	lz = Gxyz[Gc_AN][3] - Gxyz[Gh_AN][3] - atv[Rn1][3];
 
-	for (i=0; i<Spe_Total_CNO[Cwan]; i++){
-	  for (j=0; j<Spe_Total_CNO[Hwan]; j++){
+	for (i=0; i<atomic->species.contracted_orbitals[Cwan]; i++){
+	  for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){
 
 	    if (SpinP_switch==0){
 	      dum = 2.0*EDM[0][Mc_AN][h_AN][i][j];
@@ -1998,7 +2006,7 @@ double Stress(double *****H0,
             Stress from non-local potentials 
   ****************************************************/
 
-  Stress_HNL(CDM0, iDM0); 
+  Stress_HNL(atomic, CDM0, iDM0, electronic, local_basis);
 
   /* begin(yshiihara) */
   /****************************************************
@@ -2030,7 +2038,7 @@ double Stress(double *****H0,
   }
   dtime(&stime);
   
-  Stress_H0();
+  Stress_H0(atomic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -2043,7 +2051,7 @@ double Stress(double *****H0,
   ****************************************************/
 
   if (Hub_U_switch==1){
-    if (Hub_U_occupation==2) Stress_plus_U_dual(CDM0); /* dual */
+    if (Hub_U_occupation==2) Stress_plus_U_dual(CDM0, electronic, local_basis); /* dual */
   }
 
   /****************************************************
@@ -2076,7 +2084,7 @@ double Stress(double *****H0,
       else{
 	Gc_AN = F_M2G[Mc_AN];
 	Cwan = WhatSpecies[Gc_AN];
-	tno0 = Spe_Total_CNO[Cwan];  
+	tno0 = atomic->species.contracted_orbitals[Cwan];
       }    
 
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -2087,7 +2095,7 @@ double Stress(double *****H0,
 	else{
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno1 = Spe_Total_CNO[Hwan];
+	  tno1 = atomic->species.contracted_orbitals[Hwan];
 	} 
 
 	for (i=0; i<tno0; i++){
@@ -2120,7 +2128,7 @@ double Stress(double *****H0,
 	else{
 	  Gc_AN = F_M2G[Mc_AN];
 	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_CNO[Cwan];  
+	  tno0 = atomic->species.contracted_orbitals[Cwan];
 	}    
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -2131,7 +2139,7 @@ double Stress(double *****H0,
 	  else{
 	    Gh_AN = natn[Gc_AN][h_AN];
 	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_CNO[Hwan];
+	    tno1 = atomic->species.contracted_orbitals[Hwan];
 	  } 
 
 	  for (i=0; i<tno0; i++){
@@ -2159,8 +2167,10 @@ double Stress(double *****H0,
 }
 
 
-void Stress3()
+void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  double ******DM=electronic->DM;
+
   /****************************************************
   	#3 of Stress
  
@@ -2264,8 +2274,9 @@ void Stress3()
     }
     double* orbs1 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
 		
-    struct WORK_DORBITAL work_dObs;
-    Get_dOrbitals_init(&work_dObs);
+    OpenMXOrbitalBuffers work_dObs;
+        OpenMXOrbitalWorkspace *orbital_workspace=OpenMX_OrbitalWorkspace(
+            (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work_dObs);
 
     double time1 = 0.0;
     double time2 = 0.0;
@@ -2278,7 +2289,7 @@ void Stress3()
 
       int Gc_AN = M2G[Mc_AN];
       int Cwan = WhatSpecies[Gc_AN];
-      int NO0 = Spe_Total_CNO[Cwan];
+      int NO0 = atomic->species.contracted_orbitals[Cwan];
 
       /***********************************
    	          calc dOrb0
@@ -2311,9 +2322,9 @@ void Stress3()
 
 	if (Cnt_switch == 0) {
 	  /* AITUNE201704 Get_dOrbitals(Cwan, dx, dy, dz, dorbs0);*/
-	  Get_dOrbitals_work(Cwan, dx, dy, dz, dorbs0, work_dObs);
+	  Get_dOrbitals_work(atomic, Cwan, dx, dy, dz, dorbs0, work_dObs);
 	} else {
-	  Get_Cnt_dOrbitals(Mc_AN, dx, dy, dz, dorbs0);
+	  Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0, local_basis);
 	}
 
 	int k;
@@ -2475,7 +2486,7 @@ void Stress3()
 	int Mh_AN = F_G2M[Gh_AN];
 	int Rnh = ncn[Gc_AN][h_AN];
 	int Hwan = WhatSpecies[Gh_AN];
-	int NO1 = Spe_Total_CNO[Hwan];
+	int NO1 = atomic->species.contracted_orbitals[Hwan];
 
 	int Nog;
 #pragma omp for reduction (+:sumx, sumy, sumz, sumt0, sumt1, sumt2, sumt3, sumt4, sumt5, sumt6, sumt7, sumt8)
@@ -2596,7 +2607,7 @@ void Stress3()
     }
     free(dorbs0);
 
-    Get_dOrbitals_free(work_dObs);
+    openmx_core_orbital_destroy(orbital_workspace);
 
   } /* #pragma omp parallel */
 
@@ -2825,7 +2836,7 @@ void Stress3()
       
 
 
-void Stress4()
+void Stress4(const OpenMXAtomicViews *atomic)
 {
   /****************************************************
                       #4 of Stress
@@ -2872,7 +2883,7 @@ void Stress4()
     
     Gc_AN = M2G[Mc_AN];
     Cwan = WhatSpecies[Gc_AN];
-    NO0 = Spe_Total_CNO[Cwan];
+    NO0 = atomic->species.contracted_orbitals[Cwan];
 
     /***********************************
                  summation 
@@ -2906,7 +2917,7 @@ void Stress4()
       if (r<1.0e-10) r = 1.0e-10;
 
       if (1.0e-14<r){
-        tmp0 = Dr_VNAF(Cwan,r);
+        tmp0 = Dr_VNAF(atomic, Cwan,r);
         dvx = tmp0*dx/r;
         dvy = tmp0*dy/r;
         dvz = tmp0*dz/r;
@@ -2968,8 +2979,14 @@ void Stress4()
 
 
 
-void Stress4B(double *****CDM0)
+void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis)
 {
+  double *****HVNA2=vna->HVNA2;
+  double *****HVNA3=vna->HVNA3;
+  double *****CntHVNA2=vna->CntHVNA2;
+  double *****CntHVNA3=vna->CntHVNA3;
+  Type_DS_VNA *****DS_VNA=vna->DS_VNA;
+  Type_DS_VNA *****CntDS_VNA=vna->CntDS_VNA;
   /****************************************************
                       #4 of Stress
 
@@ -3021,6 +3038,10 @@ void Stress4B(double *****CDM0)
 
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
+  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(Type_DS_VNA));
+  int *send_progress=projector_transfer.buffers.sent;
+  int *receive_progress=projector_transfer.buffers.received;
+
 
   dtime(&stime);
 
@@ -3040,8 +3061,8 @@ void Stress4B(double *****CDM0)
     R_array[ID] = (int*)malloc(sizeof(int)*3);
   }
 
-  Snd_DS_VNA_Size = (int*)malloc(sizeof(int)*numprocs);
-  Rcv_DS_VNA_Size = (int*)malloc(sizeof(int)*numprocs);
+  Snd_DS_VNA_Size = projector_transfer.buffers.send_sizes;
+  Rcv_DS_VNA_Size = projector_transfer.buffers.receive_sizes;
 
   VNA_List  = (int*)malloc(sizeof(int)*(List_YOUSO[34]*(List_YOUSO[35] + 1)+2) ); 
   VNA_List2 = (int*)malloc(sizeof(int)*(List_YOUSO[34]*(List_YOUSO[35] + 1)+2) );
@@ -3069,18 +3090,18 @@ void Stress4B(double *****CDM0)
 
   if (Cnt_switch==1 && ProExpn_VNA==1){
 
-    Cont_Matrix2(DS_VNA[0],CntDS_VNA[0]);
-    Cont_Matrix2(DS_VNA[1],CntDS_VNA[1]);
-    Cont_Matrix2(DS_VNA[2],CntDS_VNA[2]);
-    Cont_Matrix2(DS_VNA[3],CntDS_VNA[3]);
+    Cont_Matrix2(DS_VNA[0],CntDS_VNA[0], local_basis);
+    Cont_Matrix2(DS_VNA[1],CntDS_VNA[1], local_basis);
+    Cont_Matrix2(DS_VNA[2],CntDS_VNA[2], local_basis);
+    Cont_Matrix2(DS_VNA[3],CntDS_VNA[3], local_basis);
 
-    Cont_Matrix3(HVNA2[1],CntHVNA2[1]);
-    Cont_Matrix3(HVNA2[2],CntHVNA2[2]);
-    Cont_Matrix3(HVNA2[3],CntHVNA2[3]);
+    Cont_Matrix3(HVNA2[1],CntHVNA2[1], local_basis);
+    Cont_Matrix3(HVNA2[2],CntHVNA2[2], local_basis);
+    Cont_Matrix3(HVNA2[3],CntHVNA2[3], local_basis);
 
-    Cont_Matrix4(HVNA3[1],CntHVNA3[1]);
-    Cont_Matrix4(HVNA3[2],CntHVNA3[2]);
-    Cont_Matrix4(HVNA3[3],CntHVNA3[3]);
+    Cont_Matrix4(HVNA3[1],CntHVNA3[1], local_basis);
+    Cont_Matrix4(HVNA3[2],CntHVNA3[2], local_basis);
+    Cont_Matrix4(HVNA3[3],CntHVNA3[3], local_basis);
   }
 
   /*************************************************************
@@ -3151,7 +3172,7 @@ void Stress4B(double *****CDM0)
 
   if (0){
 
-#pragma omp parallel shared(CntDS_VNA,DS_VNA,Cnt_switch,VNA_proj_ene,VNA_List2,VNA_List,Num_RVNA,natn,FNAN,Spe_Total_CNO,WhatSpecies,F_M2G,Matomnum) private(kk,OMPID,Nthrds,Nprocs,Gc_AN,Cwan,tno0,Mc_AN,h_AN,Gh_AN,Hwan,i,l,l1,LL,Mul1,ene,l2,l3)
+#pragma omp parallel shared(CntDS_VNA,DS_VNA,Cnt_switch,reciprocal,VNA_List2,VNA_List,Num_RVNA,natn,FNAN,Spe_Total_CNO,WhatSpecies,F_M2G,Matomnum) private(kk,OMPID,Nthrds,Nprocs,Gc_AN,Cwan,tno0,Mc_AN,h_AN,Gh_AN,Hwan,i,l,l1,LL,Mul1,ene,l2,l3)
   {
 
     /* get info. on OpenMP */ 
@@ -3180,7 +3201,7 @@ void Stress4B(double *****CDM0)
 	      LL   = VNA_List[l1];
 	      Mul1 = VNA_List2[l1];
 
-	      ene = VNA_proj_ene[Hwan][LL][Mul1];
+	      ene = openmx_radial_value3(&reciprocal->neutral_energies,Hwan,LL,Mul1);
 	      l2 = 2*VNA_List[l1];
 
 	      if (Cnt_switch==0){
@@ -3228,8 +3249,8 @@ void Stress4B(double *****CDM0)
   dtime(&stime);
 
   for (ID=0; ID<numprocs; ID++){
-    F_Snd_Num_WK[ID] = 0;
-    F_Rcv_Num_WK[ID] = 0;
+    send_progress[ID] = 0;
+    receive_progress[ID] = 0;
   }
 
   do {
@@ -3245,10 +3266,10 @@ void Stress4B(double *****CDM0)
 
       /* find the data size to send the block data */
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
 
 	size1 = 0;
-	n = F_Snd_Num_WK[IDS];
+	n = send_progress[IDS];
 
 	Mc_AN = Snd_MAN[IDS][n];
 	Gc_AN = Snd_GAN[IDS][n];
@@ -3270,7 +3291,7 @@ void Stress4B(double *****CDM0)
 
       /* receiving of the size of the data */
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
 	MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
 	Rcv_DS_VNA_Size[IDR] = size2;
       }
@@ -3278,7 +3299,7 @@ void Stress4B(double *****CDM0)
 	Rcv_DS_VNA_Size[IDR] = 0;
       }
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) )  MPI_Wait(&request,&stat);
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) )  MPI_Wait(&request,&stat);
 
     } /* ID */
 
@@ -3295,18 +3316,18 @@ void Stress4B(double *****CDM0)
              sending of the data 
       ******************************/
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
 
 	size1 = Snd_DS_VNA_Size[IDS];
 
 	/* allocation of the array */
 
-	tmp_array = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*size1);
+	tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
 	/* multidimentional array to the vector array */
 
 	num = 0;
-	n = F_Snd_Num_WK[IDS];
+	n = send_progress[IDS];
 
 	Mc_AN = Snd_MAN[IDS][n];
 	Gc_AN = Snd_GAN[IDS][n];
@@ -3332,16 +3353,16 @@ void Stress4B(double *****CDM0)
           receiving of the block data
       ******************************/
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
         
 	size2 = Rcv_DS_VNA_Size[IDR];
-	tmp_array2 = (Type_DS_VNA*)malloc(sizeof(Type_DS_VNA)*size2);
+	tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
 	MPI_Recv(&tmp_array2[0], size2, MPI_Type_DS_VNA, IDR, tag, mpi_comm_level1, &stat);
 
 	/* store */
 
 	num = 0;
-	n = F_Rcv_Num_WK[IDR];
+	n = receive_progress[IDR];
 	Original_Mc_AN = F_TopMAN[IDR] + n;
 	Gc_AN = Rcv_GAN[IDR][n];
 	Cwan = WhatSpecies[Gc_AN];
@@ -3362,13 +3383,13 @@ void Stress4B(double *****CDM0)
 	}
 
 	/* free tmp_array2 */
-	free(tmp_array2);
+
 
 	/*****************************************
                multiplying overlap integrals
 	*****************************************/
 
-#pragma omp parallel shared(List_YOUSO,time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,Original_Mc_AN,IDR,Rcv_GAN,F_Rcv_Num_WK,Spe_Total_CNO,F_G2M,natn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,Mc_AN,Cwan,fan,h_AN,Gh_AN,Mh_AN,Hwan,ian,jg,j0,jg0,Mj_AN0,po2,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,HVNAx,HVNAy,HVNAz,HVNA_sts,i,j,k,m,n,pref)
+#pragma omp parallel shared(List_YOUSO,time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,Original_Mc_AN,IDR,Rcv_GAN,receive_progress,Spe_Total_CNO,F_G2M,natn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,Mc_AN,Cwan,fan,h_AN,Gh_AN,Mh_AN,Hwan,ian,jg,j0,jg0,Mj_AN0,po2,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,HVNAx,HVNAy,HVNAz,HVNA_sts,i,j,k,m,n,pref)
 	{
 
 	  /* allocation of array */
@@ -3423,7 +3444,7 @@ void Stress4B(double *****CDM0)
 	    Hwan = WhatSpecies[Gh_AN];
 	    ian = Spe_Total_CNO[Hwan];
 
-	    n = F_Rcv_Num_WK[IDR];
+	    n = receive_progress[IDR];
 	    jg = Rcv_GAN[IDR][n];
 
 	    for (j0=0; j0<=fan; j0++){
@@ -3446,10 +3467,10 @@ void Stress4B(double *****CDM0)
 		kl = RMI1[Mc_AN][h_AN][q_AN];
 
 		if (Cnt_switch==0) {
-		  dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 		}
 		else { 
-		  dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 		}
 
 		/* contribution of force = Trace(CDM0*dH) */
@@ -3566,23 +3587,23 @@ void Stress4B(double *****CDM0)
 	} /* #pragma omp parallel */
 
 	/********************************************
-              increment of F_Rcv_Num_WK[IDR] 
+              increment of receive_progress[IDR]
 	********************************************/
 
-	F_Rcv_Num_WK[IDR]++;
+	receive_progress[IDR]++;
 
-      } /* if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) */
+      } /* if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) */
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) {
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) {
 
 	MPI_Wait(&request,&stat);
-	free(tmp_array);  /* freeing of array */
+	  /* freeing of array */
 
 	/********************************************
-             increment of F_Snd_Num_WK[IDS]
+             increment of send_progress[IDS]
 	********************************************/
 
-	F_Snd_Num_WK[IDS]++;
+	send_progress[IDS]++;
       } 
 
     } /* ID */
@@ -3597,8 +3618,8 @@ void Stress4B(double *****CDM0)
       IDS = (myid + ID) % numprocs;
       IDR = (myid - ID + numprocs) % numprocs;
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) po += F_Snd_Num[IDS]-F_Snd_Num_WK[IDS];
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ) po += F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR];
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) po += F_Snd_Num[IDS]-send_progress[IDS];
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ) po += F_Rcv_Num[IDR]-receive_progress[IDR];
     }
 
   } while (po!=0);
@@ -3681,10 +3702,10 @@ void Stress4B(double *****CDM0)
 	  kl = RMI1[Mc_AN][h_AN][q_AN];
 
 	  if (Cnt_switch==0) {
-	    dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 	  }
 	  else { 
-	    dHVNA(0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
 	  }
 
 	  if (SpinP_switch==0){
@@ -3851,8 +3872,8 @@ void Stress4B(double *****CDM0)
   }
   free(R_array);
 
-  free(Snd_DS_VNA_Size);
-  free(Rcv_DS_VNA_Size);
+
+
 
   free(VNA_List);
   free(VNA_List2);
@@ -3862,6 +3883,7 @@ void Stress4B(double *****CDM0)
   }
   free(My_Stress_threads);
 
+  OpenMX_TransferEnd(&projector_transfer);
 }
 
 
@@ -4035,7 +4057,7 @@ void Stress_core()
 
 
 
-void Stress_H0()
+void Stress_H0(const OpenMXAtomicViews *atomic)
 {
   /****************************************************
               EH0 = -1/2\int n^a(r) V^a_H dr
@@ -4094,8 +4116,8 @@ void Stress_H0()
     
     Max_Nd = 0;
     for (wan=0; wan<SpeciesNum; wan++){
-      Spe_Spe2Ban[wan] = wan;
-      bc = Spe_Atom_Cut1[wan];
+      atomic->species.species_index[wan] = wan;
+      bc = atomic->species.cutoff[wan];
       dx = PI/sqrt(Scale_Grid_Ecut);
       Nd = 2*(int)(bc/dx) + 1;
       if (Max_Nd<Nd) Max_Nd = Nd;
@@ -4106,8 +4128,8 @@ void Stress_H0()
     Max_TGN_EH0 = 0;
     for (wan=0; wan<SpeciesNum; wan++){
       
-      Spe_Spe2Ban[wan] = wan;
-      bc = Spe_Atom_Cut1[wan];
+      atomic->species.species_index[wan] = wan;
+      bc = atomic->species.cutoff[wan];
       dx = PI/sqrt(Scale_Grid_Ecut);
 
       Nd = 2*(int)(bc/dx) + 1;
@@ -4126,8 +4148,8 @@ void Stress_H0()
     Max_TGN_EH0 = 0;
     for (wan=0; wan<SpeciesNum; wan++){
 
-      Spe_Spe2Ban[wan] = wan;
-      bc = Spe_Atom_Cut1[wan];
+      atomic->species.species_index[wan] = wan;
+      bc = atomic->species.cutoff[wan];
       dx = PI/sqrt(Scale_Grid_Ecut);
 
       Nd = 2*(int)(bc/dx) + 1;
@@ -4147,7 +4169,7 @@ void Stress_H0()
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(Spe_Num_Mesh_PAO,Spe_PAO_XV,Spe_Atomic_Den,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,Spe_Atom_Cut1,dv_EH0,Spe_Spe2Ban,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(atomic,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       /* allocation of arrays g0 */
@@ -4162,8 +4184,8 @@ void Stress_H0()
 
       for (wan=OMPID*SpeciesNum/Nthrds; wan<(OMPID+1)*SpeciesNum/Nthrds; wan++){
 
-        Spe_Spe2Ban[wan] = wan;
-        bc = Spe_Atom_Cut1[wan];
+        atomic->species.species_index[wan] = wan;
+        bc = atomic->species.cutoff[wan];
         dx = PI/sqrt(Scale_Grid_Ecut);
         Nd = 2*(int)(bc/dx) + 1;
         dx = 2.0*bc/(double)(Nd-1);
@@ -4176,8 +4198,8 @@ void Stress_H0()
         gnum = 0;
         y = 0.0;
 
-        Sx = Spe_Atom_Cut1[wan] + 0.0;
-        Dx = Spe_Atom_Cut1[wan] - 0.0;
+        Sx = atomic->species.cutoff[wan] + 0.0;
+        Dx = atomic->species.cutoff[wan] - 0.0;
 
         for (n3=0; n3<Nd; n3++){
 
@@ -4192,8 +4214,8 @@ void Stress_H0()
             GridY_EH0[wan][gnum] = y;
             GridZ_EH0[wan][gnum] = z;
 
-            rho0 = KumoF( Spe_Num_Mesh_PAO[wan], xx,
-                          Spe_PAO_XV[wan], Spe_PAO_RV[wan], Spe_Atomic_Den[wan]);
+            rho0 = KumoF( atomic->species.pao_mesh[wan], xx,
+                          openmx_radial_row2(&atomic->pao_log_radii,wan), openmx_radial_row2(&atomic->pao_radii,wan), openmx_radial_row2(&atomic->density,wan));
 
             Arho_EH0[wan][gnum] = rho0;
             Wt_EH0[wan][gnum] = PI*x*CoarseGL_Weight[n1]*Dx;
@@ -4231,16 +4253,16 @@ void Stress_H0()
 
     for (wan1=0; wan1<SpeciesNum; wan1++){
 
-      r1 = Spe_Atom_Cut1[wan1];
-      Z1 = Spe_Core_Charge[wan1];
+      r1 = atomic->species.cutoff[wan1];
+      Z1 = atomic->species.core_charge[wan1];
 
       for (wan2=0; wan2<SpeciesNum; wan2++){
 
         /* EH0_TwoCenter_at_Cutoff is parallelized by OpenMP */
-        EH0_TwoCenter_at_Cutoff(wan1, wan2, EH0ij);
+        EH0_TwoCenter_at_Cutoff(atomic, wan1, wan2, EH0ij);
 
-        r2 = Spe_Atom_Cut1[wan2];
-        Z2 = Spe_Core_Charge[wan2];
+        r2 = atomic->species.cutoff[wan2];
+        Z2 = atomic->species.core_charge[wan2];
         tmp0 = Z1*Z2/(r1+r2);
 
 
@@ -4310,7 +4332,7 @@ void Stress_H0()
 	if (h_AN==0) factor = 1.0;
 	else         factor = EH0_scaling[wan1][wan2];
 
-	EH0_TwoCenter(Gc_AN, h_AN, EH0ij);
+	EH0_TwoCenter(atomic, Gc_AN, h_AN, EH0ij);
 
 
 	/* begin(yshiihara) */
@@ -4341,7 +4363,7 @@ void Stress_H0()
 	if (h_AN==0) factor = 1.0;
 	else         factor = EH0_scaling[wan2][wan1];
 
-	EH0_TwoCenter(Gh_AN, RMI1[Mc_AN][h_AN][0], EH0ij);
+	EH0_TwoCenter(atomic, Gh_AN, RMI1[Mc_AN][h_AN][0], EH0ij);
 
 	/* begin(yshiihara) */
 
@@ -4575,8 +4597,11 @@ void Stress_H1()
 
 
 
-void Stress_HNL(double *****CDM0, double *****iDM0)
+void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  double ******CntDS_NL=electronic->CntDS_NL;
+  double ******DS_NL=electronic->DS_NL;
+
   /****************************************************
                   Stress arising from HNL
   ****************************************************/
@@ -4625,6 +4650,10 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
+  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(double));
+  int *send_progress=projector_transfer.buffers.sent;
+  int *receive_progress=projector_transfer.buffers.received;
+
 
   dtime(&stime);
 
@@ -4644,8 +4673,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
     R_array[ID] = (int*)malloc(sizeof(int)*3);
   }
 
-  Snd_DS_NL_Size = (int*)malloc(sizeof(int)*numprocs);
-  Rcv_DS_NL_Size = (int*)malloc(sizeof(int)*numprocs);
+  Snd_DS_NL_Size = projector_transfer.buffers.send_sizes;
+  Rcv_DS_NL_Size = projector_transfer.buffers.receive_sizes;
 
   /* get Nthrds0 */  
   /* Dynamic teams may grow after a separate probe region. */
@@ -4671,10 +4700,10 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
   if (Cnt_switch==1){
     for (so=0; so<(SO_switch+1); so++){
-      Cont_Matrix1(DS_NL[so][0],CntDS_NL[so][0]);
-      Cont_Matrix1(DS_NL[so][1],CntDS_NL[so][1]);
-      Cont_Matrix1(DS_NL[so][2],CntDS_NL[so][2]);
-      Cont_Matrix1(DS_NL[so][3],CntDS_NL[so][3]);
+      Cont_Matrix1(atomic, DS_NL[so][0],CntDS_NL[so][0], local_basis);
+      Cont_Matrix1(atomic, DS_NL[so][1],CntDS_NL[so][1], local_basis);
+      Cont_Matrix1(atomic, DS_NL[so][2],CntDS_NL[so][2], local_basis);
+      Cont_Matrix1(atomic, DS_NL[so][3],CntDS_NL[so][3], local_basis);
     }
   }
 
@@ -4758,11 +4787,11 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
     }
   }
 
-  /* initialization of F_Snd_Num_WK and F_Rcv_Num_WK */
+  /* initialization of send_progress and receive_progress */
 
   for (ID=0; ID<numprocs; ID++){
-    F_Snd_Num_WK[ID] = 0;
-    F_Rcv_Num_WK[ID] = 0;
+    send_progress[ID] = 0;
+    receive_progress[ID] = 0;
   }
 
   /* start do loop */
@@ -4780,21 +4809,21 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
       /* find the data size to send the block data */
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
 
 	size1 = 0;
-	n = F_Snd_Num_WK[IDS];
+	n = send_progress[IDS];
 
 	Mc_AN = Snd_MAN[IDS][n];
 	Gc_AN = Snd_GAN[IDS][n];
 	Cwan = WhatSpecies[Gc_AN];
-	tno1 = Spe_Total_NO[Cwan];
+	tno1 = atomic->species.orbitals[Cwan];
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_VPS_Pro[Hwan];
-	  size1 += (VPS_j_dependency[Hwan]+1)*tno1*tno2;
+	  tno2 = atomic->species.projector_components[Hwan];
+	  size1 += (atomic->species.relativistic[Hwan]+1)*tno1*tno2;
 	}
 
 	Snd_DS_NL_Size[IDS] = size1;
@@ -4806,7 +4835,7 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
       /* receiving of the size of the data */
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
 	MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
 	Rcv_DS_NL_Size[IDR] = size2;
       }
@@ -4814,7 +4843,7 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 	Rcv_DS_NL_Size[IDR] = 0;
       }
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) )  MPI_Wait(&request,&stat);
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) )  MPI_Wait(&request,&stat);
 
     } /* ID */
 
@@ -4831,30 +4860,30 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
             sending of the data 
       ******************************/
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ){
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ){
 
 	size1 = Snd_DS_NL_Size[IDS];
 
 	/* allocation of the array */
 
-	tmp_array = (double*)malloc(sizeof(double)*size1);
+	tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
 
 	/* multidimentional array to the vector array */
 
 	num = 0;
-	n = F_Snd_Num_WK[IDS];
+	n = send_progress[IDS];
 
 	Mc_AN = Snd_MAN[IDS][n];
 	Gc_AN = Snd_GAN[IDS][n];
 	Cwan = WhatSpecies[Gc_AN]; 
-	tno1 = Spe_Total_NO[Cwan];
+	tno1 = atomic->species.orbitals[Cwan];
 
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	  Gh_AN = natn[Gc_AN][h_AN];        
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_VPS_Pro[Hwan];
+	  tno2 = atomic->species.projector_components[Hwan];
 
-	  for (so=0; so<=VPS_j_dependency[Hwan]; so++){
+	  for (so=0; so<=atomic->species.relativistic[Hwan]; so++){
 	    for (i=0; i<tno1; i++){
 	      for (j=0; j<tno2; j++){
 		tmp_array[num] = DS_NL[so][0][Mc_AN][h_AN][i][j];
@@ -4871,27 +4900,27 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
         receiving of the block data
       ******************************/
 
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ){
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ){
         
 	size2 = Rcv_DS_NL_Size[IDR];
-	tmp_array2 = (double*)malloc(sizeof(double)*size2);
+	tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
 	MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
 	/* store */
 
 	num = 0;
-	n = F_Rcv_Num_WK[IDR];
+	n = receive_progress[IDR];
 	Original_Mc_AN = F_TopMAN[IDR] + n;
 
 	Gc_AN = Rcv_GAN[IDR][n];
 	Cwan = WhatSpecies[Gc_AN];
-	tno1 = Spe_Total_NO[Cwan];
+	tno1 = atomic->species.orbitals[Cwan];
 	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  tno2 = Spe_Total_VPS_Pro[Hwan];
+	  tno2 = atomic->species.projector_components[Hwan];
 
-	  for (so=0; so<=VPS_j_dependency[Hwan]; so++){
+	  for (so=0; so<=atomic->species.relativistic[Hwan]; so++){
 	    for (i=0; i<tno1; i++){
 	      for (j=0; j<tno2; j++){
 		DS_NL[so][0][Matomnum+1][h_AN][i][j] = tmp_array2[num];
@@ -4902,7 +4931,7 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 	}
 
 	/* free tmp_array2 */
-	free(tmp_array2);
+
 
 	/*****************************************************************
                            multiplying overlap integrals
@@ -4924,9 +4953,9 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 	  Gh_AN = natn[Gc_AN][h_AN];
 	  Mh_AN = F_G2M[Gh_AN];
 	  Hwan = WhatSpecies[Gh_AN];
-	  ian = Spe_Total_CNO[Hwan];
+	  ian = atomic->species.contracted_orbitals[Hwan];
 
-	  n = F_Rcv_Num_WK[IDR];
+	  n = receive_progress[IDR];
 	  jg = Rcv_GAN[IDR][n];
 
 	  for (j0=0; j0<=fan; j0++){
@@ -4945,10 +4974,10 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 	      Gq_AN = natn[Gc_AN][q_AN];
 	      Mq_AN = F_G2M[Gq_AN];
 	      Qwan = WhatSpecies[Gq_AN];
-	      jan = Spe_Total_CNO[Qwan];
+	      jan = atomic->species.contracted_orbitals[Qwan];
 	      kl = RMI1[Mc_AN][h_AN][q_AN];
 
- 	      dHNL(0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts);
+              dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts, electronic);
 
 	      /* contribution of force = Trace(CDM0*dH) */
 	      /* spin non-polarization */
@@ -4992,8 +5021,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
                 /* for forces */                 
 
-		for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-		  for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+		for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+		  for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		    dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r
 			         + CDM0[1][Mh_AN][kl][i][j]*Hx0[1][i][j].r);
@@ -5028,8 +5057,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
                   /* for forces */ 
 
-		  for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-		    for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+		  for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		      dEx +=
 			  CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r
@@ -5062,8 +5091,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
 		  for (m=1; m<=3; m++){
 		    for (n=1; n<=3; n++){
-		      for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-			for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+		      for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+			for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 			  My_Stress[(m-1)*3+(n-1)] +=
 			          CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
@@ -5083,8 +5112,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
                   /* for forces */ 
 
-		  for (i=0; i<Spe_Total_CNO[Hwan]; i++){  /* Hwan */
-		    for (j=0; j<Spe_Total_CNO[Qwan]; j++){ /* Qwan  */
+		  for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){  /* Hwan */
+		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){ /* Qwan  */
 
 		      dEx += 
 			  CDM0[0][Mh_AN][kl ][i][j]*Hx0[0][i][j].r
@@ -5117,8 +5146,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
 		  for (m=1; m<=3; m++){
 		    for (n=1; n<=3; n++){
-		      for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-			for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+		      for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+			for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 			  My_Stress[(m-1)*3+(n-1)] +=
 			          CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
@@ -5134,13 +5163,13 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
                   /* call dHNL */
 
-		  dHNL(0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts);
+		  dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts, electronic);
 		  kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
                   /* for forces */ 
 
-		  for (i=0; i<Spe_Total_CNO[Qwan]; i++){ /* Qwan */
-		    for (j=0; j<Spe_Total_CNO[Hwan]; j++){ /* Hwan */
+		  for (i=0; i<atomic->species.contracted_orbitals[Qwan]; i++){ /* Qwan */
+		    for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 		      dEx += 
 			  CDM0[0][Mq_AN][kl1][i][j]*Hx1[0][i][j].r
@@ -5173,8 +5202,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
 		  for (m=1; m<=3; m++){
 		    for (n=1; n<=3; n++){
-		      for (i=0; i<Spe_Total_CNO[Qwan]; i++){ /* Qwan */
-			for (j=0; j<Spe_Total_CNO[Hwan]; j++){ /* Hwan */
+		      for (i=0; i<atomic->species.contracted_orbitals[Qwan]; i++){ /* Qwan */
+			for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 			  My_Stress[(m-1)*3+(n-1)] +=
 			          CDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].r
@@ -5209,23 +5238,23 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 	} /* Mc_AN */
 
 	/********************************************
-          increment of F_Rcv_Num_WK[IDR] 
+          increment of receive_progress[IDR]
 	********************************************/
 
-	F_Rcv_Num_WK[IDR]++;
+	receive_progress[IDR]++;
 
-      } /* if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) */
+      } /* if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) */
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) {
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) {
 
 	MPI_Wait(&request,&stat);
-	free(tmp_array);  /* freeing of array */
+	  /* freeing of array */
 
 	/********************************************
-             increment of F_Snd_Num_WK[IDS]
+             increment of send_progress[IDS]
 	********************************************/
 
-	F_Snd_Num_WK[IDS]++;
+	send_progress[IDS]++;
       } 
 
     } /* ID */
@@ -5240,8 +5269,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
       IDS = (myid + ID) % numprocs;
       IDR = (myid - ID + numprocs) % numprocs;
 
-      if ( 0<(F_Snd_Num[IDS]-F_Snd_Num_WK[IDS]) ) po += F_Snd_Num[IDS]-F_Snd_Num_WK[IDS];
-      if ( 0<(F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR]) ) po += F_Rcv_Num[IDR]-F_Rcv_Num_WK[IDR];
+      if ( 0<(F_Snd_Num[IDS]-send_progress[IDS]) ) po += F_Snd_Num[IDS]-send_progress[IDS];
+      if ( 0<(F_Rcv_Num[IDR]-receive_progress[IDR]) ) po += F_Rcv_Num[IDR]-receive_progress[IDR];
     }
 
   } while (po!=0);
@@ -5337,7 +5366,7 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
   dtime(&stime);
 
-#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,Spe_Total_CNO,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,My_Stress_threads) private(Hx0,Hy0,Hz0,Hx1,Hy1,Hz1,H_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,kl1,i,j,k,m,n,kk,pref)
+#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,My_Stress_threads,atomic) private(Hx0,Hy0,Hz0,Hx1,Hy1,Hz1,H_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,kl1,i,j,k,m,n,kk,pref)
   {
 
     /* allocation of array */
@@ -5423,7 +5452,7 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
       Gh_AN = natn[Gc_AN][h_AN];
       Mh_AN = F_G2M[Gh_AN];
       Hwan = WhatSpecies[Gh_AN];
-      ian = Spe_Total_CNO[Hwan];
+      ian = atomic->species.contracted_orbitals[Hwan];
 
       for (q_AN=0; q_AN<=FNAN[Gc_AN]; q_AN++){
 
@@ -5433,10 +5462,10 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 	if (Mq_AN<=Matomnum){
 
 	  Qwan = WhatSpecies[Gq_AN];
-	  jan = Spe_Total_CNO[Qwan];
+	  jan = atomic->species.contracted_orbitals[Qwan];
 	  kl = RMI1[Mc_AN][h_AN][q_AN];
 
-          dHNL(0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts);
+          dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts, electronic);
 
 	  if (SpinP_switch==0){
 
@@ -5512,8 +5541,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
               /* for forces */ 
 
-	      for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-		for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+	      for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		  dEx += 
                       CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r
@@ -5546,8 +5575,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
 	      for (m=1; m<=3; m++){
 		for (n=1; n<=3; n++){
-		  for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-		    for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+		  for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		      My_Stress_threads[OMPID][(m-1)*3+(n-1)] +=
 		   	      CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
@@ -5567,8 +5596,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
               /* for forces */ 
 
-              for (i=0; i<Spe_Total_CNO[Hwan]; i++){  /* Hwan */
-		for (j=0; j<Spe_Total_CNO[Qwan]; j++){ /* Qwan  */
+              for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){  /* Hwan */
+		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){ /* Qwan  */
 
 		  dEx += 
                       CDM0[0][Mh_AN][kl ][i][j]*Hx0[0][i][j].r
@@ -5601,8 +5630,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
 	      for (m=1; m<=3; m++){
 		for (n=1; n<=3; n++){
-		  for (i=0; i<Spe_Total_CNO[Hwan]; i++){
-		    for (j=0; j<Spe_Total_CNO[Qwan]; j++){
+		  for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
+		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		      My_Stress_threads[OMPID][(m-1)*3+(n-1)] +=
 			      CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
@@ -5618,13 +5647,13 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
               /* call dHNL */
 
-              dHNL(0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts);
+              dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts, electronic);
        	      kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
               /* for forces */ 
 
-	      for (i=0; i<Spe_Total_CNO[Qwan]; i++){ /* Qwan */
-		for (j=0; j<Spe_Total_CNO[Hwan]; j++){ /* Hwan */
+	      for (i=0; i<atomic->species.contracted_orbitals[Qwan]; i++){ /* Qwan */
+		for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 		  dEx += 
 		      CDM0[0][Mq_AN][kl1][i][j]*Hx1[0][i][j].r
@@ -5657,8 +5686,8 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
 	      for (m=1; m<=3; m++){
 		for (n=1; n<=3; n++){
-		  for (i=0; i<Spe_Total_CNO[Qwan]; i++){ /* Qwan */
-		    for (j=0; j<Spe_Total_CNO[Hwan]; j++){ /* Hwan */
+		  for (i=0; i<atomic->species.contracted_orbitals[Qwan]; i++){ /* Qwan */
+		    for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 		      My_Stress_threads[OMPID][(m-1)*3+(n-1)] +=
 			      CDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].r
@@ -5830,14 +5859,15 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
   }
   free(R_array);
 
-  free(Snd_DS_NL_Size);
-  free(Rcv_DS_NL_Size);
+
+
 
   for (i=0; i<Nthrds0; i++){
     free(My_Stress_threads[i]);
   }
   free(My_Stress_threads);
 
+  OpenMX_TransferEnd(&projector_transfer);
 }
 
 
@@ -5846,8 +5876,11 @@ void Stress_HNL(double *****CDM0, double *****iDM0)
 
 
 
-void Stress_plus_U_dual(double *****CDM0)
+void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double *****OLP=electronic->OLP;
+
   int i,j;
   int numprocs,myid;
   int Nthrds0;
@@ -5879,7 +5912,7 @@ void Stress_plus_U_dual(double *****CDM0)
 
   /* OpenMP threading for Mc_AN loop */
 
-#pragma omp parallel shared(List_YOUSO,Matomnum,M2G,WhatSpecies,natn,ncn,F_G2M,Spe_Total_NO,Gxyz,atv,FNAN,RMI1,v_eff,OLP,SpinP_switch,CDM0,My_Stress_threads)
+#pragma omp parallel shared(List_YOUSO,Matomnum,M2G,WhatSpecies,natn,ncn,F_G2M,Spe_Total_NO,Gxyz,atv,FNAN,RMI1,local_basis,OLP,SpinP_switch,CDM0,My_Stress_threads)
   {
     int i,j,k,Mc_AN,so,Rn,Gc_AN,Cwan;
     int spin,Gh_AN,Mh_AN,Hwan,h_AN,spinmax;
@@ -5934,14 +5967,14 @@ void Stress_plus_U_dual(double *****CDM0)
 	      tmp3 = 0.0; 
 
 	      for (k=0; k<Spe_Total_NO[Cwan]; k++){
-		tmp = v_eff[spin][Mc_AN][i][k];
+		tmp = openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k];
 		tmp1 += tmp*OLP[1][Mc_AN][h_AN][k][j];
 		tmp2 += tmp*OLP[2][Mc_AN][h_AN][k][j];
 		tmp3 += tmp*OLP[3][Mc_AN][h_AN][k][j];
 	      }
 
 	      for (k=0; k<Spe_Total_NO[Hwan]; k++){
-		tmp = v_eff[spin][Mh_AN][k][j];
+		tmp = openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j];
 		tmp1 += tmp*OLP[1][Mc_AN][h_AN][i][k];
 		tmp2 += tmp*OLP[2][Mc_AN][h_AN][i][k];
 		tmp3 += tmp*OLP[3][Mc_AN][h_AN][i][k];
@@ -6019,7 +6052,7 @@ void Stress_plus_U_dual(double *****CDM0)
 
 
 
-void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
+void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
            Type_DS_VNA *****DS_VNA1, 
            double *****TmpHVNA2, double *****TmpHVNA3, 
            double **Hx, double **Hy, double **Hz, 
@@ -6476,9 +6509,9 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
 
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
-	  Hx[m][n] += HVNA[Mc_AN][kl][m][n]*dx;
-	  Hy[m][n] += HVNA[Mc_AN][kl][m][n]*dy;
-	  Hz[m][n] += HVNA[Mc_AN][kl][m][n]*dz;
+	  Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx;
+	  Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy;
+	  Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz;
         }
       }
 
@@ -6486,15 +6519,15 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
 
       for (m=0; m<ian; m++){
 	for (n=0; n<jan; n++){
-	  H_sts[1][1][m][n] += HVNA[Mc_AN][kl][m][n]*dx*tx;
-	  H_sts[1][2][m][n] += HVNA[Mc_AN][kl][m][n]*dx*ty;
-	  H_sts[1][3][m][n] += HVNA[Mc_AN][kl][m][n]*dx*tz;
-	  H_sts[2][1][m][n] += HVNA[Mc_AN][kl][m][n]*dy*tx;
-	  H_sts[2][2][m][n] += HVNA[Mc_AN][kl][m][n]*dy*ty;
-	  H_sts[2][3][m][n] += HVNA[Mc_AN][kl][m][n]*dy*tz;
-	  H_sts[3][1][m][n] += HVNA[Mc_AN][kl][m][n]*dz*tx;
-	  H_sts[3][2][m][n] += HVNA[Mc_AN][kl][m][n]*dz*ty;
-	  H_sts[3][3][m][n] += HVNA[Mc_AN][kl][m][n]*dz*tz;
+	  H_sts[1][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tx;
+	  H_sts[1][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*ty;
+	  H_sts[1][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tz;
+	  H_sts[2][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tx;
+	  H_sts[2][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*ty;
+	  H_sts[2][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tz;
+	  H_sts[3][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tx;
+	  H_sts[3][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*ty;
+	  H_sts[3][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tz;
 	}
       }
 
@@ -6506,9 +6539,9 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
 
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
-	  Hx[m][n] += HVNA[Mc_AN][kl][n][m]*dx;
-	  Hy[m][n] += HVNA[Mc_AN][kl][n][m]*dy;
-	  Hz[m][n] += HVNA[Mc_AN][kl][n][m]*dz;
+	  Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dx;
+	  Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dy;
+	  Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dz;
         }
       }
 
@@ -6529,12 +6562,15 @@ void dHVNA(int where_flag, int Mc_AN, int h_AN, int q_AN,
 
 
 
-void dHNL(int where_flag,
+void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
           int Mc_AN, int h_AN, int q_AN,
           double ******DS_NL1,
           dcomplex ***Hx, dcomplex ***Hy, dcomplex ***Hz,
-          dcomplex *****H_sts)
+          dcomplex *****H_sts, const OpenMXElectronicViews *electronic)
 {
+  double *****HNL=electronic->HNL;
+  double *****iHNL=electronic->iHNL;
+
   int i,j,k,m,n,l,kg,kan,so,deri_kind;
   int ig,ian,jg,jan,kl,kl1,kl2;
   int wakg,l1,l2,l3,Gc_AN,Mi_AN,Mi_AN2,Mj_AN,Mj_AN2;
@@ -6557,14 +6593,14 @@ void dHNL(int where_flag,
   ig = natn[Gc_AN][h_AN];
   Rni = ncn[Gc_AN][h_AN];
   Mi_AN = F_G2M[ig];
-  ian = Spe_Total_CNO[WhatSpecies[ig]];
-  rcuti = Spe_Atom_Cut1[WhatSpecies[ig]];
+  ian = atomic->species.contracted_orbitals[WhatSpecies[ig]];
+  rcuti = atomic->species.cutoff[WhatSpecies[ig]];
 
   jg = natn[Gc_AN][q_AN];
   Rnj = ncn[Gc_AN][q_AN];
   Mj_AN = F_G2M[jg];
-  jan = Spe_Total_CNO[WhatSpecies[jg]];
-  rcutj = Spe_Atom_Cut1[WhatSpecies[jg]];
+  jan = atomic->species.contracted_orbitals[WhatSpecies[jg]];
+  rcutj = atomic->species.cutoff[WhatSpecies[jg]];
 
   rcut = rcuti + rcutj;
   kl = RMI1[Mc_AN][h_AN][q_AN];
@@ -6603,7 +6639,7 @@ void dHNL(int where_flag,
       kg = natn[Gc_AN][k];
       Rnk = ncn[Gc_AN][k];
       wakg = WhatSpecies[kg];
-      kan = Spe_Total_VPS_Pro[wakg];
+      kan = atomic->species.projector_components[wakg];
       kl = RMI1[Mc_AN][q_AN][k];
 
       tx = Gxyz[Gc_AN][1] - Gxyz[kg][1] - atv[Rnk][1];
@@ -6614,7 +6650,7 @@ void dHNL(int where_flag,
                    l-dependent non-local part
       ****************************************************/
 
-      if (0<=kl && VPS_j_dependency[wakg]==0 && where_flag==0){
+      if (0<=kl && atomic->species.relativistic[wakg]==0 && where_flag==0){
 
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
@@ -6624,13 +6660,13 @@ void dHNL(int where_flag,
 	    sumz = 0.0;
 
 	    l = 0;
-	    for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	    for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	      ene = Spe_VNLE[0][wakg][l1-1];
-	      if      (Spe_VPS_List[wakg][l1]==0) l2 = 0;
-	      else if (Spe_VPS_List[wakg][l1]==1) l2 = 2;
-	      else if (Spe_VPS_List[wakg][l1]==2) l2 = 4;
-	      else if (Spe_VPS_List[wakg][l1]==3) l2 = 6;
+	      ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	      if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) l2 = 0;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) l2 = 2;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) l2 = 4;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) l2 = 6;
 
               if (Mj_AN<=Matomnum) Mj_AN2 = Mj_AN;
               else                 Mj_AN2 = Matomnum + 1; 
@@ -6688,7 +6724,7 @@ void dHNL(int where_flag,
                    j-dependent non-local part
       ****************************************************/
 
-      else if ( 0<=kl && VPS_j_dependency[wakg]==1 && where_flag==0 ){
+      else if ( 0<=kl && atomic->species.relativistic[wakg]==1 && where_flag==0 ){
 
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
@@ -6709,15 +6745,15 @@ void dHNL(int where_flag,
             else                 Mj_AN2 = Matomnum + 1; 
 
 	    l = 0;
-	    for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	    for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	      ene_p = Spe_VNLE[0][wakg][l1-1];
-	      ene_m = Spe_VNLE[1][wakg][l1-1];
+	      ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	      ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1-1];
 
-	      if      (Spe_VPS_List[wakg][l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }  
-	      else if (Spe_VPS_List[wakg][l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
-	      else if (Spe_VPS_List[wakg][l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
-	      else if (Spe_VPS_List[wakg][l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
+	      if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
 
 	      dHNL_SO(&sumx0.r,&sumy0.r,&sumz0.r,
                       &sumx1.r,&sumy1.r,&sumz1.r,
@@ -6739,15 +6775,15 @@ void dHNL(int where_flag,
             if (q_AN==0){
 
 	      l = 0;
-	      for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	      for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-		ene_p = Spe_VNLE[0][wakg][l1-1];
-		ene_m = Spe_VNLE[1][wakg][l1-1];
+		ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+		ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1-1];
 
-		if      (Spe_VPS_List[wakg][l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }  
-		else if (Spe_VPS_List[wakg][l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
-		else if (Spe_VPS_List[wakg][l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
-		else if (Spe_VPS_List[wakg][l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
+		if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }
+		else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
+		else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
+		else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
 
 		dHNL_SO(&sumx0.r,&sumy0.r,&sumz0.r,
 			&sumx1.r,&sumy1.r,&sumz1.r,
@@ -6885,7 +6921,7 @@ void dHNL(int where_flag,
 
     /* h_AN==0 && q_AN==0 */
 
-    if (q_AN==0 && VPS_j_dependency[wakg]==0){
+    if (q_AN==0 && atomic->species.relativistic[wakg]==0){
 
       /* for forces */
 
@@ -6946,14 +6982,14 @@ void dHNL(int where_flag,
 
       kg = natn[Gc_AN][0];
       wakg = WhatSpecies[kg];
-      kan = Spe_Total_VPS_Pro[wakg];
+      kan = atomic->species.projector_components[wakg];
       kl = RMI1[Mc_AN][q_AN][0];
 
       /****************************************************
                    l-dependent non-local part
       ****************************************************/
 
-      if (VPS_j_dependency[wakg]==0){
+      if (atomic->species.relativistic[wakg]==0){
 
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
@@ -6972,13 +7008,13 @@ void dHNL(int where_flag,
 	    }
 
 	    l = 0;
-	    for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	    for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	      ene = Spe_VNLE[0][wakg][l1-1];
-	      if      (Spe_VPS_List[wakg][l1]==0) l2 = 0;
-	      else if (Spe_VPS_List[wakg][l1]==1) l2 = 2;
-	      else if (Spe_VPS_List[wakg][l1]==2) l2 = 4;
-	      else if (Spe_VPS_List[wakg][l1]==3) l2 = 6;
+	      ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	      if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) l2 = 0;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) l2 = 2;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) l2 = 4;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) l2 = 6;
 
 	      for (l3=0; l3<=l2; l3++){
 
@@ -7033,7 +7069,7 @@ void dHNL(int where_flag,
                    j-dependent non-local part
       ****************************************************/
 
-      else if ( VPS_j_dependency[wakg]==1 ){
+      else if ( atomic->species.relativistic[wakg]==1 ){
 
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
@@ -7060,15 +7096,15 @@ void dHNL(int where_flag,
 	    }
 
 	    l = 0;
-	    for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	    for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	      ene_p = Spe_VNLE[0][wakg][l1-1];
-	      ene_m = Spe_VNLE[1][wakg][l1-1];
+	      ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	      ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1-1];
 
-	      if      (Spe_VPS_List[wakg][l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }  
-	      else if (Spe_VPS_List[wakg][l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
-	      else if (Spe_VPS_List[wakg][l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
-	      else if (Spe_VPS_List[wakg][l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
+	      if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
 
        	      /* 1 */
 
@@ -7142,7 +7178,7 @@ void dHNL(int where_flag,
       kg = natn[Gc_AN][k];
       Rnk = ncn[Gc_AN][k];
       wakg = WhatSpecies[kg];
-      kan = Spe_Total_VPS_Pro[wakg];
+      kan = atomic->species.projector_components[wakg];
       kl = RMI1[Mc_AN][h_AN][k];
 
       tx = Gxyz[Gc_AN][1] - Gxyz[kg][1] - atv[Rnk][1];
@@ -7152,7 +7188,7 @@ void dHNL(int where_flag,
       if (Mi_AN<=Matomnum) Mi_AN2 = Mi_AN;
       else                 Mi_AN2 = Matomnum + 1; 
 
-      if (0<=kl && VPS_j_dependency[wakg]==1){
+      if (0<=kl && atomic->species.relativistic[wakg]==1){
 
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
@@ -7170,15 +7206,15 @@ void dHNL(int where_flag,
 	    sumz2 = Complex(0.0,0.0);
 
 	    l = 0;
-	    for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	    for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	      ene_p = Spe_VNLE[0][wakg][l1-1];
-	      ene_m = Spe_VNLE[1][wakg][l1-1];
+	      ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	      ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1-1];
 
-	      if      (Spe_VPS_List[wakg][l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }  
-	      else if (Spe_VPS_List[wakg][l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
-	      else if (Spe_VPS_List[wakg][l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
-	      else if (Spe_VPS_List[wakg][l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
+	      if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
 
 	      dHNL_SO(&sumx0.r,&sumy0.r,&sumz0.r,
                       &sumx1.r,&sumy1.r,&sumz1.r,
@@ -7328,7 +7364,7 @@ void dHNL(int where_flag,
 
     kg = natn[Gc_AN][0];
     wakg = WhatSpecies[kg];
-    kan = Spe_Total_VPS_Pro[wakg];
+    kan = atomic->species.projector_components[wakg];
     kl1 = RMI1[Mc_AN][0][h_AN];
     kl2 = RMI1[Mc_AN][0][q_AN];
 
@@ -7336,7 +7372,7 @@ void dHNL(int where_flag,
                    l-dependent non-local part
     ****************************************************/
 
-    if (VPS_j_dependency[wakg]==0){
+    if (atomic->species.relativistic[wakg]==0){
 
       for (m=0; m<ian; m++){
 	for (n=0; n<jan; n++){
@@ -7346,13 +7382,13 @@ void dHNL(int where_flag,
 	  sumz = 0.0;
 
 	  l = 0;
-	  for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	  for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	    ene = Spe_VNLE[0][wakg][l1-1];
-	    if      (Spe_VPS_List[wakg][l1]==0) l2 = 0;
-	    else if (Spe_VPS_List[wakg][l1]==1) l2 = 2;
-	    else if (Spe_VPS_List[wakg][l1]==2) l2 = 4;
-	    else if (Spe_VPS_List[wakg][l1]==3) l2 = 6;
+	    ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	    if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) l2 = 0;
+	    else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) l2 = 2;
+	    else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) l2 = 4;
+	    else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) l2 = 6;
 
 	    for (l3=0; l3<=l2; l3++){
 	      sumx -= ene*DS_NL1[0][1][Matomnum+1][kl1][m][l]*DS_NL1[0][0][Matomnum+1][kl2][n][l];
@@ -7394,7 +7430,7 @@ void dHNL(int where_flag,
                  j-dependent non-local part
     ****************************************************/
 
-    else if ( VPS_j_dependency[wakg]==1 ){
+    else if ( atomic->species.relativistic[wakg]==1 ){
 
       for (m=0; m<ian; m++){
 	for (n=0; n<jan; n++){
@@ -7412,15 +7448,15 @@ void dHNL(int where_flag,
 	  sumz2 = Complex(0.0,0.0);
 
 	  l = 0;
-	  for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	  for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	    ene_p = Spe_VNLE[0][wakg][l1-1];
-	    ene_m = Spe_VNLE[1][wakg][l1-1];
+	    ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	    ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1-1];
 
-	    if      (Spe_VPS_List[wakg][l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }  
-	    else if (Spe_VPS_List[wakg][l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
-	    else if (Spe_VPS_List[wakg][l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
-	    else if (Spe_VPS_List[wakg][l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
+	    if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }
+	    else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
+	    else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
+	    else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
 
    	    /* 2 */
 
@@ -7475,7 +7511,7 @@ void dHNL(int where_flag,
 
       kg = natn[Gc_AN][0];
       wakg = WhatSpecies[kg];
-      kan = Spe_Total_VPS_Pro[wakg];
+      kan = atomic->species.projector_components[wakg];
       kl1 = RMI1[Mc_AN][0][h_AN];
       kl2 = RMI1[Mc_AN][0][q_AN];
 
@@ -7483,7 +7519,7 @@ void dHNL(int where_flag,
                      l-dependent non-local part
       ****************************************************/
 
-      if (VPS_j_dependency[wakg]==0){
+      if (atomic->species.relativistic[wakg]==0){
 
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
@@ -7493,13 +7529,13 @@ void dHNL(int where_flag,
 	    sumz = 0.0;
 
 	    l = 0;
-	    for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	    for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
-	      ene = Spe_VNLE[0][wakg][l1-1];
-	      if      (Spe_VPS_List[wakg][l1]==0) l2 = 0;
-	      else if (Spe_VPS_List[wakg][l1]==1) l2 = 2;
-	      else if (Spe_VPS_List[wakg][l1]==2) l2 = 4;
-	      else if (Spe_VPS_List[wakg][l1]==3) l2 = 6;
+	      ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	      if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) l2 = 0;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) l2 = 2;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) l2 = 4;
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) l2 = 6;
 
 	      for (l3=0; l3<=l2; l3++){
 		sumx -= ene*DS_NL1[0][0][Matomnum+1][kl1][m][l]*DS_NL1[0][1][Matomnum+1][kl2][n][l];
@@ -7524,7 +7560,7 @@ void dHNL(int where_flag,
                     j-dependent non-local part
       ****************************************************/
 
-      else if ( VPS_j_dependency[wakg]==1 ){
+      else if ( atomic->species.relativistic[wakg]==1 ){
 
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
@@ -7542,15 +7578,15 @@ void dHNL(int where_flag,
 	    sumz2 = Complex(0.0,0.0);
 
 	    l = 0;
-	    for (l1=1; l1<=Spe_Num_RVPS[wakg]; l1++){
+	    for (l1=1; l1<=atomic->species.radial_projectors[wakg]; l1++){
 
- 	      ene_p = Spe_VNLE[0][wakg][l1-1];
-	      ene_m = Spe_VNLE[1][wakg][l1-1];
+              ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1-1];
+	      ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1-1];
 
-	      if      (Spe_VPS_List[wakg][l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }  
-	      else if (Spe_VPS_List[wakg][l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
-	      else if (Spe_VPS_List[wakg][l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
-	      else if (Spe_VPS_List[wakg][l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
+	      if      (openmx_atomic_projector_angular(atomic,wakg)[l1]==0) { l2=0; PFp=1.0;     PFm=0.0;     }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==1) { l2=2; PFp=2.0/3.0; PFm=1.0/3.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==2) { l2=4; PFp=3.0/5.0; PFm=2.0/5.0; }
+	      else if (openmx_atomic_projector_angular(atomic,wakg)[l1]==3) { l2=6; PFp=4.0/7.0; PFm=3.0/7.0; }
 
 	      /* 4 */
 
@@ -8624,7 +8660,7 @@ void MPI_OLP(double *****OLP1)
 
 
 
-void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
+void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4])
 { 
   int n1,ban;
   int Gh_AN,Rn,wan1,wan2;
@@ -8634,7 +8670,7 @@ void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
   Gh_AN = natn[Gc_AN][h_AN];
   Rn = ncn[Gc_AN][h_AN];
   wan1 = WhatSpecies[Gc_AN];
-  ban = Spe_Spe2Ban[wan1];
+  ban = atomic->species.species_index[wan1];
   wan2 = WhatSpecies[Gh_AN];
   dv = dv_EH0[ban];
   
@@ -8655,16 +8691,16 @@ void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
     /* for empty atoms or finite elemens basis */
     if (r<1.0e-10) r = 1.0e-10;
 
-    va0 = VH_AtomF(wan2, 
-                   Spe_Num_Mesh_VPS[wan2], xx, r, 
-                   Spe_VPS_XV[wan2], Spe_VPS_RV[wan2], Spe_VH_Atom[wan2]);
+    va0 = VH_AtomF(atomic->species.core_charge[wan2],
+                   atomic->species.vps_mesh[wan2], xx, r,
+                   openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
 
     sum += wt*va0*rho0;
 
     if (h_AN!=0 && 1.0e-14<r){
-      dr_va0 = Dr_VH_AtomF(wan2, 
-                           Spe_Num_Mesh_VPS[wan2], xx, r, 
-                           Spe_VPS_XV[wan2], Spe_VPS_RV[wan2], Spe_VH_Atom[wan2]);
+      dr_va0 = Dr_VH_AtomF(atomic->species.core_charge[wan2],
+                           atomic->species.vps_mesh[wan2], xx, r,
+                           openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
 
       sumr -= wt*rho0*dr_va0*z2/r;
     }
@@ -8700,7 +8736,7 @@ void EH0_TwoCenter(int Gc_AN, int h_AN, double VH0ij[4])
 
 
 
-void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
+void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
 { 
   int n1,ban;
   double dv,x,y,z,r1,r2,va0,rho0,dr_va0,rcut;
@@ -8709,10 +8745,10 @@ void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
   int OMPID,Nthrds,Nthrds0,Nprocs,Nloop;
   double *my_sum_threads;
 
-  ban = Spe_Spe2Ban[wan1];
+  ban = atomic->species.species_index[wan1];
   dv  = dv_EH0[ban];
 
-  rcut = Spe_Atom_Cut1[wan1] + Spe_Atom_Cut1[wan2];
+  rcut = atomic->species.cutoff[wan1] + atomic->species.cutoff[wan2];
 
   /* get Nthrds0 */  
   /* Dynamic teams may grow after a separate probe region. */
@@ -8725,7 +8761,7 @@ void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
     my_sum_threads[Nloop] = 0.0;
   }
 
-#pragma omp parallel shared(Spe_VH_Atom,Spe_VPS_XV,Spe_VPS_RV,Spe_Num_Mesh_VPS,wan2,Wt_EH0,my_sum_threads,rcut,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,TGN_EH0,ban) private(n1,OMPID,Nthrds,Nprocs,x,y,z,rho0,wt,z2,r2,va0,r,xx)
+#pragma omp parallel shared(atomic,wan2,Wt_EH0,my_sum_threads,rcut,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,TGN_EH0,ban) private(n1,OMPID,Nthrds,Nprocs,x,y,z,rho0,wt,z2,r2,va0,r,xx)
   {
     /* get info. on OpenMP */
 
@@ -8745,9 +8781,9 @@ void EH0_TwoCenter_at_Cutoff(int wan1, int wan2, double VH0ij[4])
       r = sqrt(r2);
       xx = 0.5*log(r2);
 
-      va0 = VH_AtomF(wan2, 
-                     Spe_Num_Mesh_VPS[wan2], xx, r, 
-                     Spe_VPS_XV[wan2], Spe_VPS_RV[wan2], Spe_VH_Atom[wan2]);
+      va0 = VH_AtomF(atomic->species.core_charge[wan2],
+                     atomic->species.vps_mesh[wan2], xx, r,
+                     openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
 
       my_sum_threads[OMPID] += wt*va0*rho0;
     }

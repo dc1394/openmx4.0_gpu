@@ -23,6 +23,7 @@ def body(name):
         s=s.replace("#include "+h,"")
     return s
 globals_=r'''
+#include "openmx_core_atomic.h"
 #define PI 3.14159265358979323846264338327950288
 int mpi_comm_level1=0;
 static int MPI_Abort(int comm,int code){(void)comm;exit(code);}
@@ -48,6 +49,16 @@ static void close_to(double a,double b){
  if(!isfinite(a) || !isfinite(b) || fabs(a-b)>2e-11*(1+fabs(b))){fprintf(stderr,"mismatch %.17g vs %.17g\n",a,b);abort();}
 }
 int main(void){
+ OpenMXAtomicViews atomic={0};
+ atomic.species.species=NS;atomic.species.vps_mesh=Spe_Num_Mesh_VPS;atomic.species.pao_mesh=Spe_Num_Mesh_PAO;
+ atomic.species.cutoff=Spe_Atom_Cut1;atomic.species.core_charge=Spe_Core_Charge;
+ atomic.vps_log_radii=(OpenMXRadialView2){&Spe_VPS_XV[0][0],{NS,MESH}};
+ atomic.vps_radii=(OpenMXRadialView2){&Spe_VPS_RV[0][0],{NS,MESH}};
+ atomic.hartree_potential=(OpenMXRadialView2){&Spe_VH_Atom[0][0],{NS,MESH+2}};
+ atomic.pao_log_radii=(OpenMXRadialView2){&Spe_PAO_XV[0][0],{NS,MESH}};
+ atomic.pao_radii=(OpenMXRadialView2){&Spe_PAO_RV[0][0],{NS,MESH}};
+ atomic.density_backup=(OpenMXRadialView2){&Spe_Atomic_Den2[0][0],{NS,MESH+2}};
+
  List_YOUSO[21]=List_YOUSO[22]=MESH;
  for(int i=0;i<11;i++)for(int j=0;j<NG;j++)grid[i][j]=.03*(i+1)+.02*cos(.3*j+i);
  for(int i=1;i<=3;i++){Grid_Origin[i]=.2*i;for(int j=1;j<=3;j++)gtv[i][j]=i==j?.3:.01*(i+j);}
@@ -80,7 +91,7 @@ int main(void){
   int ban[7],wan[7],deriv[7];double dis[7],dx[7],dy[7],dz[7],rout[4][7],gout[4][7];
   for(int i=0;i<7;i++){ban[i]=i%NS;wan[i]=(i+1)%NS;deriv[i]=i%2;dis[i]=.13*i;dx[i]=.3;dy[i]=-.2;dz[i]=.4;}
   Reference_EH0_TwoCenter(0,7,ban,wan,deriv,dis,dx,dy,dz,rout[0],rout[1],rout[2],rout[3]);
-  TotalEnergy_EH0_TwoCenter_Batch_OpenACC(7,ban,wan,deriv,dis,dx,dy,dz,gout[0],gout[1],gout[2],gout[3]);
+  TotalEnergy_EH0_TwoCenter_Batch_OpenACC(&atomic,7,ban,wan,deriv,dis,dx,dy,dz,gout[0],gout[1],gout[2],gout[3]);
   for(int a=0;a<4;a++)for(int i=0;i<7;i++)close_to(gout[a][i],rout[a][i]);cases++;
   double pairs[15],rsum,gsum,forces[4][3]={{0}};
   Reference_Exc0(0,3,M2G,pairs,4,leb,&rsum);
@@ -89,7 +100,7 @@ int main(void){
    forces[natn[gc][h]][d]+=pairs[3*k+d];forces[gc][d]-=pairs[3*k+d];
   }}
   for(int a=0;a<4;a++)for(int d=0;d<3;d++)Gxyz[a][41+d]=0;
-  TotalEnergy_Exc0_Batch_OpenACC(4,leb,&gsum);close_to(gsum,rsum);
+  TotalEnergy_Exc0_Batch_OpenACC(&atomic,4,leb,&gsum);close_to(gsum,rsum);
   for(int a=0;a<4;a++)for(int d=0;d<3;d++)close_to(Gxyz[a][41+d],forces[a][d]);cases++;
  }
  printf("PASS: %d energy/dipole/EH0/Exc0 comparisons across local, remote and CPU tiers\n",cases);

@@ -17,12 +17,16 @@
 #include "openmx_common.h"
 #include "mpi.h"
  
-static void H_U_onsite();
-static void H_U_full(int SCF_iter, double ****OLP0);
-static void H_U_dual(int SCF_iter, double ****OLP0);
+static void H_U_onsite(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void H_U_full(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void H_U_dual(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
-void Eff_Hub_Pot(int SCF_iter, double ****OLP0)
+void Eff_Hub_Pot(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  double *****iHCH=electronic->iHCH;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   /****************************************************
     Important note: 
 
@@ -44,17 +48,17 @@ void Eff_Hub_Pot(int SCF_iter, double ****OLP0)
 
     /* on site */
     if      (Hub_U_occupation==0){
-      H_U_onsite();
+      H_U_onsite(electronic, local_basis);
     }
 
     /* full */
     else if (Hub_U_occupation==1){
-      H_U_full(SCF_iter, OLP0);
+      H_U_full(SCF_iter, OLP0, electronic, local_basis);
     }
 
     /* dual */
     else if (Hub_U_occupation==2){
-      H_U_dual(SCF_iter, OLP0);
+      H_U_dual(SCF_iter, OLP0, electronic, local_basis);
     }
 
   } /* if */
@@ -119,8 +123,13 @@ void Eff_Hub_Pot(int SCF_iter, double ****OLP0)
 
 
 
-void H_U_onsite()
+void H_U_onsite(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double *****H_Hub=electronic->H_Hub;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   int spin,a,b;  
   int l,fan,j,k,i,jg,kg,ig,wakg,waig,kl,il1,il2,m,n;
   int Cwan,Hwan,Mul1,tno0,tno1,tno2;
@@ -150,7 +159,7 @@ void H_U_onsite()
 	  for (spin=0; spin<=SpinP_switch; spin++){
 	    for (m=0; m<tno0; m++){
 	      for (n=0; n<tno1; n++){
-	        H_Hub[spin][Mc_AN][j][m][n] = v_eff[spin][Mc_AN][m][n];
+	        H_Hub[spin][Mc_AN][j][m][n] = openmx_local_potential_row(local_basis, spin, Mc_AN, m)[n];
 	      }
 	    }
 	  }
@@ -195,15 +204,15 @@ void H_U_onsite()
 
               /* real part */
 
-	      H_Hub[0][Mc_AN][j][m][n] = NC_v_eff[0][0][Mc_AN][m][n].r;
-	      H_Hub[1][Mc_AN][j][m][n] = NC_v_eff[1][1][Mc_AN][m][n].r;
-	      H_Hub[2][Mc_AN][j][m][n] = NC_v_eff[0][1][Mc_AN][m][n].r;
+	      H_Hub[0][Mc_AN][j][m][n] = openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, m)[n].r;
+	      H_Hub[1][Mc_AN][j][m][n] = openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, m)[n].r;
+	      H_Hub[2][Mc_AN][j][m][n] = openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, m)[n].r;
 
               /* imaginary part */
 
-	      iHNL[0][Mc_AN][j][m][n] = iHNL0[0][Mc_AN][j][m][n] + F_U_flag*NC_v_eff[0][0][Mc_AN][m][n].i;
-	      iHNL[1][Mc_AN][j][m][n] = iHNL0[1][Mc_AN][j][m][n] + F_U_flag*NC_v_eff[1][1][Mc_AN][m][n].i;
-	      iHNL[2][Mc_AN][j][m][n] = iHNL0[2][Mc_AN][j][m][n] + F_U_flag*NC_v_eff[0][1][Mc_AN][m][n].i;
+	      iHNL[0][Mc_AN][j][m][n] = iHNL0[0][Mc_AN][j][m][n] + F_U_flag*openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, m)[n].i;
+	      iHNL[1][Mc_AN][j][m][n] = iHNL0[1][Mc_AN][j][m][n] + F_U_flag*openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, m)[n].i;
+	      iHNL[2][Mc_AN][j][m][n] = iHNL0[2][Mc_AN][j][m][n] + F_U_flag*openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, m)[n].i;
 	    }
 	  }
 	}
@@ -227,8 +236,13 @@ void H_U_onsite()
 }
 
 
-void H_U_full(int SCF_iter, double ****OLP0)
+void H_U_full(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double *****H_Hub=electronic->H_Hub;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   int spin,a,b;  
   int l,fan,j,k,i,jg,kg,ig,wakg,waig,kl,il1,il2,m,n;
   int Cwan,Hwan,Mul1,tno0,tno1,tno2;
@@ -461,7 +475,7 @@ void H_U_full(int SCF_iter, double ****OLP0)
 		  sum = 0.0;
 		  for (a=0; a<tno2; a++){
 		    for (b=0; b<tno2; b++){
-		      sum += OLP0[Mc_AN][k][m][a] * v_eff[spin][Mk_AN][a][b] * OLP0[Mj_AN][kl][n][b];
+		      sum += OLP0[Mc_AN][k][m][a] * openmx_local_potential_row(local_basis, spin, Mk_AN, a)[b] * OLP0[Mj_AN][kl][n][b];
 		    }
 		  } 
 
@@ -538,13 +552,13 @@ void H_U_full(int SCF_iter, double ****OLP0)
 		for (a=0; a<tno2; a++){
 		  for (b=0; b<tno2; b++){
 
-		    Resum00 += OLP0[Mc_AN][k][m][a] * NC_v_eff[0][0][Mk_AN][a][b].r * OLP0[Mj_AN][kl][n][b];
-		    Resum11 += OLP0[Mc_AN][k][m][a] * NC_v_eff[1][1][Mk_AN][a][b].r * OLP0[Mj_AN][kl][n][b];
-		    Resum01 += OLP0[Mc_AN][k][m][a] * NC_v_eff[0][1][Mk_AN][a][b].r * OLP0[Mj_AN][kl][n][b];
+		    Resum00 += OLP0[Mc_AN][k][m][a] * openmx_local_complex_potential_row(local_basis, 0, 0, Mk_AN, a)[b].r * OLP0[Mj_AN][kl][n][b];
+		    Resum11 += OLP0[Mc_AN][k][m][a] * openmx_local_complex_potential_row(local_basis, 1, 1, Mk_AN, a)[b].r * OLP0[Mj_AN][kl][n][b];
+		    Resum01 += OLP0[Mc_AN][k][m][a] * openmx_local_complex_potential_row(local_basis, 0, 1, Mk_AN, a)[b].r * OLP0[Mj_AN][kl][n][b];
 
-		    Imsum00 += OLP0[Mc_AN][k][m][a] * NC_v_eff[0][0][Mk_AN][a][b].i * OLP0[Mj_AN][kl][n][b];
-		    Imsum11 += OLP0[Mc_AN][k][m][a] * NC_v_eff[1][1][Mk_AN][a][b].i * OLP0[Mj_AN][kl][n][b];
-		    Imsum01 += OLP0[Mc_AN][k][m][a] * NC_v_eff[0][1][Mk_AN][a][b].i * OLP0[Mj_AN][kl][n][b];
+		    Imsum00 += OLP0[Mc_AN][k][m][a] * openmx_local_complex_potential_row(local_basis, 0, 0, Mk_AN, a)[b].i * OLP0[Mj_AN][kl][n][b];
+		    Imsum11 += OLP0[Mc_AN][k][m][a] * openmx_local_complex_potential_row(local_basis, 1, 1, Mk_AN, a)[b].i * OLP0[Mj_AN][kl][n][b];
+		    Imsum01 += OLP0[Mc_AN][k][m][a] * openmx_local_complex_potential_row(local_basis, 0, 1, Mk_AN, a)[b].i * OLP0[Mj_AN][kl][n][b];
 		  }
 		} 
 
@@ -581,8 +595,13 @@ void H_U_full(int SCF_iter, double ****OLP0)
 
 
 
-void H_U_dual(int SCF_iter, double ****OLP0)
+void H_U_dual(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
+  double *****H_Hub=electronic->H_Hub;
+  double *****iHNL=electronic->iHNL;
+  double *****iHNL0=electronic->iHNL0;
+
   int spin,a,b;  
   int l,fan,j,k,i,jg,kg,ig,wakg,waig,kl,il1,il2,m,n;
   int Cwan,Hwan,Mul1,tno0,tno1,tno2;
@@ -619,11 +638,11 @@ void H_U_dual(int SCF_iter, double ****OLP0)
 	      tmp0 = 0.0; 
 
 	      for (k=0; k<tno0; k++){
-		tmp0 += v_eff[spin][Mc_AN][m][k]*OLP0[Mc_AN][j][k][n];
+		tmp0 += openmx_local_potential_row(local_basis, spin, Mc_AN, m)[k]*OLP0[Mc_AN][j][k][n];
 	      }
 
 	      for (k=0; k<tno1; k++){
-		tmp0 += v_eff[spin][Mj_AN][k][n]*OLP0[Mc_AN][j][m][k];
+		tmp0 += openmx_local_potential_row(local_basis, spin, Mj_AN, k)[n]*OLP0[Mc_AN][j][m][k];
 	      }
 
 	      H_Hub[spin][Mc_AN][j][m][n] = 0.5*tmp0;
@@ -668,24 +687,24 @@ void H_U_dual(int SCF_iter, double ****OLP0)
 
 	    for (k=0; k<tno0; k++){
 
-              Resum00 += NC_v_eff[0][0][Mc_AN][m][k].r * OLP0[Mc_AN][j][k][n]; 
-              Resum11 += NC_v_eff[1][1][Mc_AN][m][k].r * OLP0[Mc_AN][j][k][n]; 
-              Resum01 += NC_v_eff[0][1][Mc_AN][m][k].r * OLP0[Mc_AN][j][k][n]; 
+              Resum00 += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, m)[k].r * OLP0[Mc_AN][j][k][n];
+              Resum11 += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, m)[k].r * OLP0[Mc_AN][j][k][n];
+              Resum01 += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, m)[k].r * OLP0[Mc_AN][j][k][n];
 
-              Imsum00 += NC_v_eff[0][0][Mc_AN][m][k].i * OLP0[Mc_AN][j][k][n]; 
-              Imsum11 += NC_v_eff[1][1][Mc_AN][m][k].i * OLP0[Mc_AN][j][k][n]; 
-              Imsum01 += NC_v_eff[0][1][Mc_AN][m][k].i * OLP0[Mc_AN][j][k][n]; 
+              Imsum00 += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, m)[k].i * OLP0[Mc_AN][j][k][n];
+              Imsum11 += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, m)[k].i * OLP0[Mc_AN][j][k][n];
+              Imsum01 += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, m)[k].i * OLP0[Mc_AN][j][k][n];
 	    }
 
 	    for (k=0; k<tno1; k++){
  
-	      Resum00 += NC_v_eff[0][0][Mj_AN][k][n].r * OLP0[Mc_AN][j][m][k];
-	      Resum11 += NC_v_eff[1][1][Mj_AN][k][n].r * OLP0[Mc_AN][j][m][k];
-	      Resum01 += NC_v_eff[0][1][Mj_AN][k][n].r * OLP0[Mc_AN][j][m][k];
+	      Resum00 += openmx_local_complex_potential_row(local_basis, 0, 0, Mj_AN, k)[n].r * OLP0[Mc_AN][j][m][k];
+	      Resum11 += openmx_local_complex_potential_row(local_basis, 1, 1, Mj_AN, k)[n].r * OLP0[Mc_AN][j][m][k];
+	      Resum01 += openmx_local_complex_potential_row(local_basis, 0, 1, Mj_AN, k)[n].r * OLP0[Mc_AN][j][m][k];
 
-	      Imsum00 += NC_v_eff[0][0][Mj_AN][k][n].i * OLP0[Mc_AN][j][m][k];
-	      Imsum11 += NC_v_eff[1][1][Mj_AN][k][n].i * OLP0[Mc_AN][j][m][k];
-	      Imsum01 += NC_v_eff[0][1][Mj_AN][k][n].i * OLP0[Mc_AN][j][m][k];
+	      Imsum00 += openmx_local_complex_potential_row(local_basis, 0, 0, Mj_AN, k)[n].i * OLP0[Mc_AN][j][m][k];
+	      Imsum11 += openmx_local_complex_potential_row(local_basis, 1, 1, Mj_AN, k)[n].i * OLP0[Mc_AN][j][m][k];
+	      Imsum01 += openmx_local_complex_potential_row(local_basis, 0, 1, Mj_AN, k)[n].i * OLP0[Mc_AN][j][m][k];
 
 	    }
             

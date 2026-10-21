@@ -17,6 +17,7 @@ import tempfile
 
 PREFIX = r'''
 #include <math.h>
+#include "openmx_core_electronic.h"
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +68,7 @@ MAIN = r'''
 int main(void)
 {
     double hsum = 0.0;
+    const OpenMXElectronicViews electronic={.H0=H0,.CntH0=CntH0,.DM=DM};
     omp_set_dynamic(0);
     omp_set_num_threads(4);
     hdir[0] = hatom;
@@ -97,7 +99,7 @@ int main(void)
                     SpinP_switch = spin == 2 ? 3 : spin;
                     calls = 0;
                     time_per_atom[1] = 0.0;
-                    double value = Calc_Ekin();
+                    double value = Calc_Ekin(&electronic);
                     double energy = (spin == 0 ? 2.0 : 3.0) * hsum;
                     double timing = (spin == 1 ? 2.0 : 1.0) * PAIRS;
                     if (value != energy || time_per_atom[1] != timing) {
@@ -135,11 +137,11 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     source = (root / "source/Total_Energy.c").read_text()
-    start = source.index("\ndouble Calc_Ekin()\n")
-    end = source.index("\ndouble Calc_Ena()\n", start)
+    start = source.index("\ndouble Calc_Ekin(")
+    end = source.index("\ndouble Calc_Ena(", start)
     stress = (root / "source/Stress.c").read_text()
     stress_start = stress.index("\nvoid Stress_core()\n")
-    stress_end = stress.index("\nvoid Stress_H0()\n", stress_start)
+    stress_end = stress.index("\nvoid Stress_H0(", stress_start)
     with tempfile.TemporaryDirectory(prefix="openmx_energy_omp_") as directory:
         cfile = Path(directory) / "check.c"
         binary = Path(directory) / "check"
@@ -149,7 +151,7 @@ def main():
             flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         command = shlex.split(os.environ.get("CC", "gcc")) + flags
         command += shlex.split(os.environ.get("CFLAGS", ""))
-        subprocess.run(command + [str(cfile), "-Wl,--wrap=GOMP_parallel", "-lm",
+        subprocess.run(command + ["-I"+str(root / "source"), str(cfile), "-Wl,--wrap=GOMP_parallel", "-lm",
                                   "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 

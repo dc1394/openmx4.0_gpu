@@ -1,6 +1,8 @@
 #ifndef OPENMX_GPU_WORKERS_H
 #define OPENMX_GPU_WORKERS_H
 
+#include "openmx_accelerator.h"
+
 #include "openmx_gpu_backend.h"
 
 #include <stddef.h>
@@ -44,6 +46,10 @@ void openmx_gpu_workers_scope(OpenMXGpuWorkers *workers, size_t items);
    borrow GPUs assigned to other local ranks under the UUID admission lock.
    OPENMX_GPU_WORKERS=0 disables borrowing; =1 prefers the largest group. */
 typedef size_t (*OpenMXGpuWorkerCost)(void *context, int worker, int count);
+/* Some inputs are resident only on their owning device. These callbacks
+   receive the candidate physical ordinal so remote-copy storage is charged
+   to the actual target, even for a one-worker group. */
+typedef size_t (*OpenMXGpuWorkerDeviceCost)(void *context, int worker, int count, int device);
 /* Capacity can change after planning (or module initialization). A caller
    with private results may reject a failed layout and try the remaining
    node-local group sizes before asking other nodes for help. */
@@ -60,6 +66,8 @@ static inline size_t openmx_gpu_worker_retry_cost(void *opaque,int worker,int co
 }
 int openmx_gpu_workers_capacity(OpenMXGpuWorkers *workers, size_t items, int kind,
     OpenMXGpuWorkerCost cost, void *context);
+int openmx_gpu_workers_capacity_device(OpenMXGpuWorkers *workers, size_t items, int kind,
+    OpenMXGpuWorkerDeviceCost cost, void *context);
 int openmx_gpu_workers_capacity_enabled(void);
 
 /* Fault injection for regression tests: skip only the legacy resident fast
@@ -90,6 +98,9 @@ static inline size_t openmx_gpu_worker_cut(size_t items, int index, int count)
 /* Device-binding helpers honor this override inside callbacks. It is
    thread-local; -1 means the ordinary rank binding remains in effect. */
 int openmx_gpu_worker_device(void);
+/* Query actual capability independently of the backend's scheduling policy.
+   Failure returns zero and leaves an unknown, non-authorizing descriptor. */
+int openmx_gpu_device_capabilities(int device, OpenMXAcceleratorCapabilities *caps);
 
 /* Each phase finishes on every device before the next phase starts. All
    input uploads and allocations belong in PREPARE. EXECUTE writes private
@@ -100,6 +111,17 @@ int openmx_gpu_worker_device(void);
    The runtime uses explicit device-index loops, so dynamic OpenMP teams and
    OMP_NUM_THREADS=1 cannot omit work. Returns 0 on an uncommitted failure. */
 int openmx_gpu_workers_run(const OpenMXGpuWorkers *workers,
+    int (*callback)(void *context, int worker, int phase), void *context,
+    const char *label);
+/* Opt-in for callbacks with no device allocation or input upload after
+   PREPARE: GeForce-class CUDA devices release admission before EXECUTE so
+   MPS may overlap private batches. Datacenter GPUs and HIP retain admission
+   by default. OPENMX_GPU_WORKER_OVERLAP=0/1 overrides the hardware policy.
+   Failed PREPARE retains admission through rollback in either mode. */
+int openmx_gpu_worker_can_overlap(int device);
+/* Hardware query only; environment overrides do not change this result. */
+int openmx_gpu_device_weak_fp64(int device);
+int openmx_gpu_workers_run_prepared(const OpenMXGpuWorkers *workers,
     int (*callback)(void *context, int worker, int phase), void *context,
     const char *label);
 

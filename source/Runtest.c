@@ -23,6 +23,9 @@
 #include <dirent.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_local_basis.h"
+#include "openmx_electronic.h"
+#include "openmx_atomic.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "tran_prototypes.h"
@@ -30,6 +33,8 @@
 
 
 int run_main(int argc, char *argv[], int numprocs0, int myid0);
+static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid0,
+                                 OpenMXCoreContext *core);
 int stringcomp( const void *a, const void *b);
 
 static int has_dat_suffix(const char *name)
@@ -45,7 +50,7 @@ typedef struct {
 
  
 
-void Runtest(char *mode, int argc, char *argv[]) 
+void Runtest(char *mode, int argc, char *argv[], OpenMXCoreContext *core)
 { 
   FILE *fp,*fp0,*fp1,*fp2,*fp3;
   int Num_DatFiles,i,j,k,fp_OK;
@@ -152,7 +157,7 @@ void Runtest(char *mode, int argc, char *argv[])
 
     printf("\n*******************************************************\n");  fflush(stdout);
     printf("*******************************************************\n");    fflush(stdout);
-    printf(" Welcome to OpenMX   Ver. %s                           \n",Version_OpenMX); fflush(stdout);
+    printf(" Welcome to OpenMX   Ver. %s                           \n",openmx_core_version()); fflush(stdout);
     printf(" Copyright (C), 2002-2026, T. Ozaki                    \n");    fflush(stdout);
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n");    fflush(stdout);
     printf(" This is free software, and you are welcome to         \n");    fflush(stdout);
@@ -173,8 +178,9 @@ void Runtest(char *mode, int argc, char *argv[])
 
     if(( dp = opendir(dir) ) == NULL ){
       printf("could not find the directory '%s'\n",input_dir);
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return;
     }
 
     Num_DatFiles = 0;
@@ -193,8 +199,9 @@ void Runtest(char *mode, int argc, char *argv[])
 
     if(( dp = opendir(dir) ) == NULL ){
       printf("could not find the directory '%s'\n",input_dir);
+      openmx_core_finish(core);
       MPI_Finalize();
-      exit(0);
+      return;
     }
 
     Num_DatFiles = 0;
@@ -263,7 +270,7 @@ void Runtest(char *mode, int argc, char *argv[])
       /* run openmx */
 
       argv[1] = fname_dat;
-      run_main(argc, argv, numprocs, myid); 
+      run_main_with_context(argc, argv, numprocs, myid, core);
 
       /***********************************************************
           comparison between two files and save the result               
@@ -450,7 +457,7 @@ void Runtest(char *mode, int argc, char *argv[])
       /* run openmx */
 
       argv[1] = fname_dat;
-      run_main(argc, argv, numprocs, myid); 
+      run_main_with_context(argc, argv, numprocs, myid, core);
 
       /***********************************************************
           comparison between two files and save the result               
@@ -600,8 +607,9 @@ void Runtest(char *mode, int argc, char *argv[])
 #endif
 
   MPI_Barrier(mpi_comm_level1);
+  openmx_core_finish(core);
   MPI_Finalize();
-  exit(0);
+  return;
 }
 
 
@@ -613,8 +621,18 @@ int stringcomp( const void *a, const void *b)
 
 
 
-int run_main(int argc, char *argv[], int numprocs0, int myid0) 
+int run_main(int argc, char *argv[], int numprocs0, int myid0)
 {
+  return run_main_with_context(argc,argv,numprocs0,myid0,NULL);
+}
+
+static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid0,
+                                 OpenMXCoreContext *core)
+{
+  OpenMXLocalBasisViews local_basis_storage;
+
+  OpenMXElectronicViews electronic_storage;
+
   int MD_iter,i,j,po,ip;
   char fileE[YOUSO10] = ".ene"; 
   char fileDRC[YOUSO10] = ".md";
@@ -647,7 +665,7 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
   if (myid0==Host_ID){  
     printf("\n*******************************************************\n"); 
     printf("*******************************************************\n"); 
-    printf(" Welcome to OpenMX   Ver. %s                           \n",Version_OpenMX); 
+    printf(" Welcome to OpenMX   Ver. %s                           \n",openmx_core_version());
     printf(" Copyright (C), 2002-2026, T.Ozaki                     \n"); 
     printf(" OpenMX comes with ABSOLUTELY NO WARRANTY.             \n"); 
     printf(" This is free software, and you are welcome to         \n"); 
@@ -665,7 +683,9 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
   ****************************************************/
 
   init_alloc_first();
-  CompTime[myid0][1] = readfile(argv);
+  CompTime[myid0][1] = readfile(argv,core);
+  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
+  const OpenMXAtomicViews *atomic=&atomic_views;
   MPI_Barrier(mpi_comm_level1);
 
   /* initialize PrintMemory routine */
@@ -689,18 +709,18 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
 
   do {
 
-    CompTime[myid0][2] += truncation(MD_iter,1);
+    CompTime[myid0][2] += truncation(MD_iter,1,core);
 
     if (ML_flag==1 && myid0==Host_ID) Get_VSZ(MD_iter);  
 
     if (Solver==4) {
-      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, Spe_Atom_Cut1,
+      TRAN_Calc_GridBound( mpi_comm_level1, atomnum, WhatSpecies, atomic->species.cutoff,
                            Ngrid1, Grid_Origin, Gxyz, tv, gtv, rgtv, Left_tv, Right_tv );
 
       /* output: TRAN_region[], TRAN_grid_bound */
     }
 
-    CompTime[myid0][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1);
+    CompTime[myid0][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
     if (myid0==Host_ID) iterout(MD_iter,MD_TimeStep*MD_iter,filepath,filename);
 
     if (ML_flag==0) CompTime[myid0][4] += MD_pac(MD_iter,argv[1]);
@@ -711,7 +731,7 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
 
   if ( TRAN_output_hks ) {
     /* left is dummy */
-    TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename);
+    TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /****************************************************
@@ -734,7 +754,7 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
   if(Wannier_Func_Calc){
     if (myid0==Host_ID) printf("Calling Generate_Wannier...\n");fflush(0);
 
-    Generate_Wannier(argv[1]);
+    Generate_Wannier(argv[1],core);
   }
 
   /*S MitsuakiKAWAMURA*/
@@ -747,15 +767,15 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
   if (Solver == 4 && TRAN_analysis == 1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */
-    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(0);
+    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
     if (SpinP_switch == 3) {
-      TRAN_Main_Analysis_NC(mpi_comm_level1, argc, argv, Matomnum, M2G,
+      TRAN_Main_Analysis_NC(atomic, mpi_comm_level1, argc, argv, Matomnum, M2G,
         GridN_Atom, GridListAtom, CellListAtom,
         Orbs_Grid, TNumGrid);
     }
     else {
-      TRAN_Main_Analysis(mpi_comm_level1, argc, argv, Matomnum, M2G,
+      TRAN_Main_Analysis(atomic, mpi_comm_level1, argc, argv, Matomnum, M2G,
         GridN_Atom, GridListAtom, CellListAtom,
         Orbs_Grid, TNumGrid);
     }
@@ -766,14 +786,14 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
                   Making of output files
   ****************************************************/
 
-  CompTime[myid0][20] = OutData(argv[1]);
+  CompTime[myid0][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File("write",argv[1]);
+  if (HS_fileout==1) SCF2File(atomic, "write",argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* elapsed time */
 
@@ -800,7 +820,7 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
 
   /* free arrays */
 
-  Free_Arrays(0);
+  Free_Arrays_with_context(0,core);
 
   /* print memory */
 

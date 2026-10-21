@@ -24,8 +24,9 @@
 int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
 
 
-double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0)
+double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
 {
+
   static int firsttime=1;
   int al,L0,Mul0,M0,p,size1,size2;
   int Gc_AN,Mc_AN,Mh_AN,LN,AN,BN,CN;
@@ -97,7 +98,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
   {
     int flags[2], reduced[2];
 
-    local_ok = Set_Density_Grid_GPU_Local_Prepare(Cnt_kind,Calc_CntOrbital_ON);
+    local_ok = Set_Density_Grid_GPU_Local_Prepare(atomic, Cnt_kind,Calc_CntOrbital_ON);
     /* every rank capable (the minimum of ok) and any rank capable (that of -ok) */
     flags[0] = local_ok;
     flags[1] = -local_ok;
@@ -187,12 +188,12 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
  
       Gc_AN = M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
-      NO0 = Spe_Total_CNO[Cwan]; 
+      NO0 = atomic->species.contracted_orbitals[Cwan];
       for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
 
         al = -1;
-	for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[Cwan][L0]; Mul0++){
+	for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 
 	      al++;
@@ -200,7 +201,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 
 	      for (p=0; p<Spe_Specified_Num[Cwan][al]; p++){
 	        j = Spe_Trans_Orbital[Cwan][al][p];  
-	        tmp0 += CntCoes[Mc_AN][al][p]*Orbs_Grid[Mc_AN][Nc][j];/* AITUNE */
+	        tmp0 += openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*Orbs_Grid[Mc_AN][Nc][j];/* AITUNE */
 	      }
 
 	      COrbs_Grid[Mc_AN][al][Nc] = (Type_Orbs_Grid)tmp0;
@@ -239,7 +240,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
           for (n=0; n<F_Snd_Num[IDS]; n++){
             Gc_AN = Snd_GAN[IDS][n];
             Cwan = WhatSpecies[Gc_AN];
-            size1 += GridN_Atom[Gc_AN]*Spe_Total_CNO[Cwan];
+            size1 += GridN_Atom[Gc_AN]*atomic->species.contracted_orbitals[Cwan];
           }
 
           Snd_Size[IDS] = size1;
@@ -296,7 +297,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
             Mc_AN = Snd_MAN[IDS][n];
             Gc_AN = Snd_GAN[IDS][n];
             Cwan = WhatSpecies[Gc_AN];
-            NO0 = Spe_Total_CNO[Cwan]; 
+            NO0 = atomic->species.contracted_orbitals[Cwan];
             for (i=0; i<NO0; i++){
               for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
                 tmp_array[k] = COrbs_Grid[Mc_AN][i][Nc];
@@ -326,7 +327,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
             Mc_AN++;
             Gc_AN = Rcv_GAN[IDR][n];
             Cwan = WhatSpecies[Gc_AN];
-            NO0 = Spe_Total_CNO[Cwan]; 
+            NO0 = atomic->species.contracted_orbitals[Cwan];
 
             for (i=0; i<NO0; i++){
               for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
@@ -356,7 +357,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 
   /* the distributed GPU quadrature fills Tmp_Den_Grid directly; a run-time
      failure on any rank simply falls back to the CPU loop on that rank */
-  if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(CDM,Tmp_Den_Grid)){
+  if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(atomic, CDM,Tmp_Den_Grid)){
     use_local_gpu = 0;
     local_failed = 1;
   }
@@ -390,7 +391,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 	
   /* ========================== AITUNE */ 
 
-#pragma omp parallel shared(myid,G2ID,Orbs_Grid_FNAN,List_YOUSO,time_per_atom,Tmp_Den_Grid,Orbs_Grid,COrbs_Grid,Cnt_switch,Cnt_kind,GListTAtoms2,GListTAtoms1,NumOLG,CDM,SpinP_switch,WhatSpecies,ncn,F_G2M,natn,Spe_Total_CNO,M2G) private(OMPID,Nthrds,Mc_AN,h_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,NO0,Gh_AN,Mh_AN,Rnh,Hwan,NO1,spin,i,j,tmp_CDM,Nog,Nc_0,Nc_1,Nc_2,Nc_3,Nh_0,Nh_1,Nh_2,Nh_3,orbs0_0,orbs0_1,orbs0_2,orbs0_3,orbs1_0,orbs1_1,orbs1_2,orbs1_3,sum_0,sum_1,sum_2,sum_3,tmp0_0,tmp0_1,tmp0_2,tmp0_3,Nc,Nh,orbs0,orbs1,sum,tmp0)
+#pragma omp parallel shared(myid,G2ID,Orbs_Grid_FNAN,List_YOUSO,time_per_atom,Tmp_Den_Grid,Orbs_Grid,COrbs_Grid,Cnt_switch,Cnt_kind,GListTAtoms2,GListTAtoms1,NumOLG,CDM,SpinP_switch,WhatSpecies,ncn,F_G2M,natn,M2G,atomic) private(OMPID,Nthrds,Mc_AN,h_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,NO0,Gh_AN,Mh_AN,Rnh,Hwan,NO1,spin,i,j,tmp_CDM,Nog,Nc_0,Nc_1,Nc_2,Nc_3,Nh_0,Nh_1,Nh_2,Nh_3,orbs0_0,orbs0_1,orbs0_2,orbs0_3,orbs1_0,orbs1_1,orbs1_2,orbs1_3,sum_0,sum_1,sum_2,sum_3,tmp0_0,tmp0_1,tmp0_2,tmp0_3,Nc,Nh,orbs0,orbs1,sum,tmp0)
   {
 
     orbs0 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
@@ -442,7 +443,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 
       Gc_AN = M2G[Mc_AN];
       Cwan = WhatSpecies[Gc_AN];
-      NO0 = Spe_Total_CNO[Cwan]; 
+      NO0 = atomic->species.contracted_orbitals[Cwan];
 	  
       int spin;
       for (spin=0; spin<=SpinP_switch; spin++){
@@ -460,7 +461,7 @@ double Set_Density_Grid(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, d
 	Mh_AN = F_G2M[Gh_AN];
 	Rnh = ncn[Gc_AN][h_AN];
 	Hwan = WhatSpecies[Gh_AN];
-	NO1 = Spe_Total_CNO[Hwan];
+	NO1 = atomic->species.contracted_orbitals[Hwan];
 
 	/* store CDM into tmp_CDM */
 

@@ -18,8 +18,9 @@
 #include "openmx_common.h"
 #include "flpq_dm.h"
 
-void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double *****iCDM)
+void out_openmx_lpq(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double *****iCDM, const OpenMXLocalBasisViews *local_basis)
 {
+
 
   int i,j,k;
   int numprocs,myid,tag=999,ID;
@@ -81,46 +82,46 @@ void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, doubl
     fwrite(Gxyz[i],sizeof(double),YOUSO26,fp);
   }
 
-  fwrite(Spe_Total_NO,    sizeof(int),SpeciesNum,fp);
-  fwrite(Spe_Total_CNO,   sizeof(int),SpeciesNum,fp);
-  fwrite(Spe_Num_Mesh_PAO,sizeof(int),SpeciesNum,fp);
-  fwrite(Spe_MaxL_Basis,  sizeof(int),SpeciesNum,fp);
+  fwrite(atomic->species.orbitals,    sizeof(int),SpeciesNum,fp);
+  fwrite(atomic->species.contracted_orbitals,   sizeof(int),SpeciesNum,fp);
+  fwrite(atomic->species.pao_mesh,sizeof(int),SpeciesNum,fp);
+  fwrite(atomic->species.basis_lmax,  sizeof(int),SpeciesNum,fp);
 
 
   for (i=0; i<SpeciesNum; i++){
-    fwrite(Spe_Num_Basis[i],sizeof(int),Supported_MaxL+1,fp);
+    fwrite(atomic->species.basis_rows[i],sizeof(int),Supported_MaxL+1,fp);
   }  
    
   for (i=0; i<SpeciesNum; i++){
-    fwrite(Spe_Num_CBasis[i],sizeof(int),Supported_MaxL+1,fp);
+    fwrite(atomic->species.contracted_basis_rows[i],sizeof(int),Supported_MaxL+1,fp);
   }  
   
   for (i=0; i<List_YOUSO[18]; i++){
-    fwrite(Spe_PAO_RV[i],sizeof(double),List_YOUSO[21],fp);
+    fwrite(openmx_radial_row2(&atomic->pao_radii,i),sizeof(double),List_YOUSO[21],fp);
   }
 
   for (i=0; i<List_YOUSO[18]; i++){
     for (j=0; j<=List_YOUSO[25]; j++){
       for (k=0; k<List_YOUSO[24]; k++){
-        fwrite(Spe_PAO_RWF[i][j][k],sizeof(double),List_YOUSO[21],fp);
+        fwrite(openmx_radial_row4(&atomic->orbitals,i,j,k),sizeof(double),List_YOUSO[21],fp);
       }
     }
   }
 
-  fwrite(Spe_Atom_Cut1, sizeof(double),SpeciesNum,fp);
+  fwrite(atomic->species.cutoff, sizeof(double),SpeciesNum,fp);
 
   for (i=0; i<SpeciesNum; i++){
-    fwrite(Spe_Specified_Num[i],sizeof(int),Spe_Total_NO[i],fp);
+    fwrite(Spe_Specified_Num[i],sizeof(int),atomic->species.orbitals[i],fp);
   }
 
   for (i=0; i<SpeciesNum; i++){
-    for (j=0; j<Spe_Total_NO[i]; j++){
+    for (j=0; j<atomic->species.orbitals[i]; j++){
       fwrite(Spe_Trans_Orbital[i][j],sizeof(int),List_YOUSO[24],fp);
     }
   }
 
-  fwrite(Spe_WhatAtom, sizeof(int),SpeciesNum,fp);
-  fwrite(Spe_Core_Charge, sizeof(double),SpeciesNum,fp);
+  fwrite(atomic->species.atomic_number, sizeof(int),SpeciesNum,fp);
+  fwrite(atomic->species.core_charge, sizeof(double),SpeciesNum,fp);
   fwrite(InitN_USpin,sizeof(double),atomnum+1,fp);
   fwrite(InitN_DSpin,sizeof(double),atomnum+1,fp);
   
@@ -187,7 +188,13 @@ void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, doubl
     n = 2*CpyCell + 4;
     for (i=0; i<n; i++){
       for (j=0; j<n; j++){
-        fwrite(ratv[i][j],sizeof(int),n,fp);
+        /* Preserve the legacy file dimensions. Padding had no defined
+           value in the old allocation; write an explicit invalid index. */
+        int k;
+        for (k=0; k<n; ++k) {
+          int cell = openmx_periodic_index(CpyCell,i-CpyCell,j-CpyCell,k-CpyCell);
+          fwrite(&cell,sizeof(cell),1,fp);
+        }
       }
     }
 
@@ -228,12 +235,12 @@ void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, doubl
 
         al = -1;
         num = 0;
-        for (L0=0; L0<=Spe_MaxL_Basis[wan]; L0++){
-	  for (Mul0=0; Mul0<Spe_Num_CBasis[wan][L0]; Mul0++){
+        for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
+	  for (Mul0=0; Mul0<atomic->species.contracted_basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	        Tmp_Vec[num] = CntCoes[Mc_AN][al][p];
+	        Tmp_Vec[num] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
                 num++;
 	      }
 	    }
@@ -346,11 +353,11 @@ void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, doubl
 
           Mc_AN = F_G2M[Gc_AN];
           wan1 = WhatSpecies[Gc_AN];
-          TNO1 = Spe_Total_CNO[wan1];
+          TNO1 = atomic->species.contracted_orbitals[wan1];
           for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
             Gh_AN = natn[Gc_AN][h_AN];
             wan2 = WhatSpecies[Gh_AN];
-            TNO2 = Spe_Total_CNO[wan2];
+            TNO2 = atomic->species.contracted_orbitals[wan2];
 
             for (i=0; i<TNO1; i++){
               for (j=0; j<TNO2; j++){
@@ -416,11 +423,11 @@ void out_openmx_lpq(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, doubl
           Mc_AN = F_G2M[Gc_AN];
           //printf("Mc_AN=%d, Gc_AN=%d\n",Mc_AN,Gc_AN);
           wan1 = WhatSpecies[Gc_AN];
-          TNO1 = Spe_Total_CNO[wan1];
+          TNO1 = atomic->species.contracted_orbitals[wan1];
           for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
             Gh_AN = natn[Gc_AN][h_AN];
             wan2 = WhatSpecies[Gh_AN];
-            TNO2 = Spe_Total_CNO[wan2];
+            TNO2 = atomic->species.contracted_orbitals[wan2];
 
             for (i=0; i<TNO1; i++){
               for (j=0; j<TNO2; j++){

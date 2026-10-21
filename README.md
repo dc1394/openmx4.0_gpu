@@ -2,9 +2,14 @@
 
 This repository includes both the NVIDIA CUDA and AMD HIP backends. Select one
 per build with CMake; the existing NVIDIA `make -C source` workflow also works.
+Single-configuration CMake builds default to `Release`, including the C++ core.
+Use `-DCMAKE_BUILD_TYPE=Debug` explicitly for debugging; an existing empty build
+type becomes `Release` when reconfigured. For performance validation against the
+Intel CPU build and earlier GPU versions, see [the regression procedure](docs/PERFORMANCE_REGRESSION.md).
 
 ```sh
-cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA
+# RTX 5080 example; use sm_80 for A100 or sm_90 for H100.
+cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA -DOPENMX_GPU_ARCH=sm_120
 cmake --build build/cuda
 
 # On a ROCm machine; set the site-specific MPI/AOCL paths as described below.
@@ -13,10 +18,201 @@ cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
 cmake --build build/hip
 ```
 
-The executables are `build/cuda/openmx` and `build/hip/openmx`. Objects and
+The executables are `build/cuda/openmx` and `build/hip/openmx`. Each successful
+build also updates `work/openmx`; `OPENMX_WORK_DIR` changes this directory and
+`OPENMX_COPY_TO_WORK=OFF` disables the copy. Objects and
 dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
+
+To install after building, pass the same build directory used with `cmake -B`:
+
+```sh
+# Default: work/openmx and work/lib/libopenmx_core.so
+cmake --install build/cuda
+# For the HIP build: cmake --install build/hip
+
+# Optional prefix: $HOME/.local/bin/openmx and $HOME/.local/lib/libopenmx_core.so
+cmake --install build/cuda --prefix "$HOME/.local"
+```
+
+With no prefix selection, installation puts `openmx` directly in `work/`;
+`OPENMX_WORK_DIR` changes this local directory. A prefix set with
+`-DCMAKE_INSTALL_PREFIX=...` during configuration or with `--prefix` during
+installation uses the `bin/openmx` and `lib/libopenmx_core.so` layout.
+Here `build` is only the parent directory; `cmake --install build` is valid
+if the project was configured with `-B build`. Installation does not build
+the executable, so finish `cmake --build` first.
+
+To switch an existing build from a cached prefix (such as the previous
+`/usr/local` default) to the local default, reconfigure once before installing:
+
+```sh
+cmake -S . -B build/cuda -UCMAKE_INSTALL_PREFIX
+cmake --build build/cuda
+cmake --install build/cuda
+```
+
+An explicit `OPENMX_GPU_ARCH` accepts `80` or `sm_80` and also selects the
+Kokkos/CUDA target when `OPENMX_CORE_BACKEND=CUDA`. It needs no GPU on the build
+node. When `OPENMX_GPU_ARCH` is unset or `auto`, CMake queries `nvidia-smi`
+for the first GPU with a valid compute capability. Configuration fails if the
+command is missing, fails, or reports no usable compute capability; specify
+`-DOPENMX_GPU_ARCH=sm_80` (or the target GPU's architecture) on a login node.
+A cached `CMAKE_CUDA_ARCHITECTURES` value does not bypass this check. Host-only
+core builds do not query a GPU.
+
+The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
+application to C++, explicit ownership and Kokkos. The new `core/` library
+contains radial interpolation and Fourier transforms for PAOs, PAO products, nonlocal
+projectors and neutral-atom potentials, spherical Bessel functions and FFT-grid
+validation. PAO grids, atomic densities, orbitals, VPS/nonlocal-projector data,
+optional VNA expansion tables and their Fourier tables now have
+calculation-scoped C++ ownership, with borrowed views for legacy consumers.
+Ragged PAO-product tables use offsets into one contiguous allocation and
+mdspan block views; their Gauss quadrature uses the common Kokkos kernels.
+VNA separable-projector construction and orthogonalization use an independent
+C++ module with RAII workspaces; their Fourier transforms also use the common
+Kokkos kernels. The legacy PhiF interpolation shares the checked radial code.
+Radial transforms borrow validated input views without copying the input tables;
+their sampled data and workspaces use RAII. Periodic-cell inverse indexing and
+the uniform reciprocal grid no longer use global arrays; PAO/projector
+reciprocal interpolation shares the same C++ implementation across backends.
+The VNA wavevector grid is local to each matrix-construction call.
+Pair Bessel tables for overlap/kinetic integrals and the CPU nonlocal path
+now use invocation-owned C++ workspaces. Cache hits borrow the existing
+contiguous table through mdspan without copying it or allocating per pair.
+Overlap/kinetic integral scratch matrices also use a per-thread C++ owner;
+packed orbital indices replace their six-level pointer tables, and angular
+assembly reads the radial results directly without an intermediate copy.
+Nonlocal integrals use the same CPU evaluator in both backends. Their
+workspaces own projector metadata and pack magnetic components into contiguous
+arrays, replacing the temporary five-level pointer tables.
+VNA2/VNA3 also share one CPU evaluator with per-thread RAII workspaces;
+packed orbital matrices and reusable Bessel tables replace six-level pointer
+tables and per-pair allocation. Their GPU batch state belongs to each call.
+VNA preparation owns a snapshot of species basis metadata, projector indices
+and contiguous weighted radial rows. Both backends share the CPU sampling
+loop, and DS_VNA GPU batches also receive their state explicitly per call.
+DS_VNA CPU assembly now shares one evaluator across CUDA/HIP. Per-thread C++
+workspaces own packed angular matrices, radial sums and Bessel scratch;
+species-local offsets replace temporary five-level pointers and omit empty
+basis groups. The zero-wavevector Bessel derivative initializes the extra order
+it reads, and per-atom timing updates are safe across threads.
+HVNA archive offsets and projector energies now share one C++ owner across
+CUDA/HIP. Resident archives, rank turns and capacity recovery receive explicit
+invocation state; their backend memory budgets and contraction order are preserved.
+CPU HVNA contraction also shares one evaluator for local and received atoms.
+A C++ snapshot owns projector groups, energies and basis sizes; per-worker packed
+matrices replace two-level scratch pointers. Geometry is passed explicitly, and
+HIP returns its per-call stage diagnostic directly to the DFT caller.
+All three VNA stages now share one assembly pipeline and an invocation owner
+for basis metadata, ordered atom pairs, both geometric orientations and wavevectors.
+CPU integrals receive explicit geometry and Fourier-table views. Projector
+communication in VNA, nonlocal integrals, forces, stress and core-hole matrices
+uses per-call C++ owners for progress, message sizes and reusable send/receive
+buffers, replacing shared progress globals and repeated message allocation.
+The final VNA matrices now also have calculation-scoped ownership: four
+primitive and three optional contracted matrix families use contiguous ragged
+blocks with mdspan views. Their seven global arrays are removed. DFT,
+Hamiltonian assembly, total energy, forces and stress receive the matrix state
+explicitly; CPU VNA assembly uses flat views, while native kernels borrow
+stable row adapters. Repartitioning and teardown release these owners without
+walking the old atom or neighbor arrays.
+PAO/nonlocal Fourier tables, neutral projectors and energies, and orbital-product
+Fourier tables now also travel through an explicit calculation view; their
+seven global pointers and the null-context manual allocation/free paths are
+removed. Host interpolation and VNA consumers use flat views. One C++ row plan
+shares restart I/O and MPI distribution across all five Fourier transforms,
+preserving their binary formats and row order. Files close through RAII, and
+MPI ranks agree on restart failure before recomputing. The external C API owns
+the same tables with host radial execution, allowing consecutive calls without
+initializing or finalizing Kokkos for each input.
+Species names, basis counts, meshes, charges and other basic species fields now
+share a calculation-owned C++ store. Its contiguous arrays and label buffers
+replace manual allocation of the corresponding input tables. Real-space atomic
+densities, neutral/Hartree potentials, partial-core densities, VPS coordinates
+and nonlocal projector rows are passed explicitly to input normalization,
+Fourier transforms, initial-density grids, energy, force and stress consumers;
+eight more global pointers are removed. The Hartree interpolator and its radial
+derivative take both their row and asymptotic charge from the caller.
+Orbital values, derivatives and their grids now receive explicit atomic views
+through CPU evaluation, native GPU table/tile packing, nonlocal assembly,
+optical/XANES calculations, transport analysis and orbital exports. The remaining
+PAO-coordinate/orbital and nonlocal angular/energy global pointers are removed.
+Evaluation scratch uses worker-local C++ owners with flat mdspan storage,
+transactional allocation and reusable derivative buffers. No owner lookup or
+allocation is added inside the reusable evaluator's grid-point loops.
+The main SCF matrices now also belong to the calculation: 32 kinetic,
+nonlocal, overlap, Hamiltonian, density and mixing-history families replace
+their global arrays with contiguous C++ storage. Component/atom/neighbor
+offsets describe their unequal block sizes and expose mdspan views. SCF,
+solvers, energy, forces, restart and output pass these matrices explicitly;
+legacy native kernels borrow row adapters into the same storage. Replacement
+is transactional, and release does not depend on old atom or neighbor lists.
+CUDA/HIP share this ownership layer while retaining their current kernel and
+device-specific execution policies. Removing the remaining borrowed pointer
+tables from numerical consumers is a later migration step.
+Onsite density and Hubbard/Zeeman potentials, DC inverse overlaps, LNO
+coefficients/populations and contracted-orbital coefficients now share another
+calculation-owned store. Nine families use contiguous values with explicit
+atom offsets or rectangular strides; ten globals, including one unused Zeeman
+allocation, are removed. Their numerical consumers use flat row views through
+SCF, forces, stress, orbital optimization and output. These nine families now
+expose only flat views; their temporary row adapters are removed. Allocation
+failure preserves the previous state, and repartitioning releases storage
+independently of old topology. The same implementation serves CUDA/HIP and has
+no vendor SDK types. Noncollinear Hamiltonian contraction also handles all four
+spin components without overrunning its accumulation buffer.
+Orbital optimization now runs in the common C++ core. Each DFT invocation owns
+its histories, Hessian, copied topology, halo packet plans and reusable scratch.
+Atoms/species optimization, DIIS/EF updates, normalization and gradients use flat
+matrix/tensor views; MPI and native LAPACK are explicit service callbacks. Seven
+more globals are removed, and the optimization norm travels as an argument.
+CUDA/HIP also share the full-projector Hubbard force derivatives, with one
+contiguous C++ scratch owner replacing their temporary pointer trees. Regression
+tests compare the numerical paths with frozen implementations and check s/p
+gradients with finite differences, including tied magnetic channels and radial
+constraints. Exactly zero gradients and the species DIIS small-gradient limit
+are handled explicitly.
+The collinear/noncollinear Cluster and Band solvers, DC, DC-LNO and both
+Krylov dispatches now share a C++ invocation owner for ordinary host scratch.
+Matrices, integer/MPI work buffers, eigenvalue/PDOS rows and pole residues use
+RAII storage; ragged residues replace six-level numerical pointer trees with
+contiguous atom blocks and explicit offsets. Noncollinear Band spinor scratch
+is local to each call, removing eight shared arrays. Native BLAS/eigensolver
+interfaces borrow owned row adapters. Persistent Band/solver caches, device
+buffers, pinned memory, streams and BLAS/solver handles in these seven CUDA/HIP
+modules now have calculation-scoped C++ owners. Native cache metadata and SDK
+aliases remain borrowed during this transition; existing cache budgets,
+eviction and device-specific execution policies are preserved. DC-LNO histories
+and the CUDA noncollinear Cluster GEMM handle reset with each calculation.
+Deeper Krylov helpers use their own RAII scratch scopes and contiguous matrices;
+FP32 eigenvalue refinement shares its caller's owner for both allocation and
+release. The common ownership module contains no vendor SDK types. Remaining
+native globals, borrowed row interfaces and kernels still require migration.
+Host tensors own contiguous storage and expose Kokkos/mdspan views, or
+`std::mdspan` when the compiler and standard library support it. This is
+an ongoing migration; most application globals and legacy GPU kernels remain.
+See the [C++ core migration guide](docs/CPP_CORE_MIGRATION.md) for ownership,
+CUDA/HIP configuration, tests and the remaining work.
+
+The standalone core also supports a Kokkos SYCL build with an Intel SYCL
+compiler. Device capabilities are described without vendor SDK types; a SYCL
+device lacking FP64 uses the CPU radial implementation. Intel GPU support in
+the full application and a Metal implementation remain future work.
+The [2026-10-20 review response](docs/CODE_REVIEW_20261020.md) records these
+boundaries, GPU error-handling fixes and validation.
+
+The core defaults to the Serial backend independently of the legacy GPU
+backend. Set `OPENMX_CORE_BACKEND=CUDA` or `HIP` to run these radial transforms
+on the selected accelerator. Its unit tests can also run without MPI or a GPU:
+
+```sh
+cmake -S . -B build/core-host -DOPENMX_BUILD_APPLICATION=OFF
+cmake --build build/core-host --parallel 4
+ctest --test-dir build/core-host --output-on-failure
+```
 
 Both backends use the same GPU worker, memory-view, density-matrix, dense
 transform, multi-GPU GEMM and MAGMA transaction code in `source/`. The
@@ -222,6 +418,11 @@ remains available for unsupported sizes and resource limits. Orbital tile
 storage retains its existing format; changing the arithmetic does not change
 that storage contract.
 
+On `sm_80`, native FP64 Hamiltonian quadrature uses 2x2 register tiles,
+separate spin blocks and adaptive point chunks. `OPENMX_SETHAM_FP64_TILED=0`
+restores the original FP64 kernel; `OPENMX_SETHAM_FP64_SPLIT=1..64` overrides
+the chunk count for measurements. GeForce's double-float kernel is unchanged.
+
 On full A100-class `sm_80` devices (at least 100 SMs), real square cluster
 forward products at dimension 6144 or above automatically use full-workspace
 GEMMul8 when memory permits. Smaller transforms keep native FP64; a full
@@ -243,6 +444,9 @@ boundary, avoiding emulation's full-matrix retry backup on A100.
 
 Build instructions, control precedence, regression commands and the new
 validation record are in [the A100 optimization report](doc/a100_optimization.txt).
+The [2026-10-21 validation of the unified code](doc/a100_validation_20261021.txt)
+includes the new quadrature, Kugui's optimized host FFTW build and CPU ELPA
+recovery without a visible GPU.
 
 ### Forward transform of the collinear cluster solver
 The two products of the orthogonalization transform, `B = H X` and `X^T B`, have entry points of their own (`openmx_gemmul8DgemmFixed`), because `X` stays fixed during the SCF.
@@ -348,12 +552,13 @@ Installed on the build machine:
 
 - **NVIDIA build**: the NVIDIA HPC SDK (nvc, nvc++ and nvfortran, its Open MPI, and its LP64 ScaLAPACK, LAPACK and BLAS) with a CUDA toolkit. The default is HPC SDK 26.9 with CUDA 13.4; CUDA 12.3 or later is supported.
 - **AMD build**: ROCm (clang, hipcc, flang and OpenMP offload), AOCL (BLIS, libFLAME, ScaLAPACK, FFTW3 and AOCL Utilities) and an MPI built with ROCm's flang. See [GPU backend build instructions](docs/GPU_BACKENDS.md).
-- **Both**: GNU make, gcc/g++, Python 3.8 or later, and CMake 3.20 or later for the CMake workflow. The bundled ELPA needs autoconf 2.71 or later, automake, libtool, m4, python3 and unzip. MAGMA's build needs `patch`, and in the NVIDIA build also CMake 3.18 or later with CUDA support. The NVIDIA build of FFTW3 needs `rsync`.
+- **Both**: GNU make, a C++20 compiler and standard library for the new core, Python 3.8 or later, and CMake 3.25.2 or later (also used by direct make to build the core). The bundled ELPA needs autoconf 2.71 or later, automake, libtool, m4, python3 and unzip. MAGMA's build needs `patch`, and in the NVIDIA build also CMake with CUDA support. The NVIDIA build of FFTW3 needs `rsync`.
 
-Built by the first `make`:
+Built during configuration or the first build:
 
 | Library | Version | Used for | Backend | Location |
 |---|---|---|---|---|
+| Kokkos / bundled mdspan | 5.2.2 | C++ core execution and multidimensional views | Serial, OpenMP, CUDA, HIP; SYCL in the standalone core | CMake FetchContent; pinned release and SHA-256 in `core/CMakeLists.txt` |
 | ELPA | 2026.02.002 | CPU eigensolvers ("elpa1", "elpa2") and "gpusolver2" | both | `source/third_party/dist/` |
 | COSMA, COSTA, Tiled-MM | 2.8.4 and the commits it pins | distributed matrix products of "gpusolver2" | both | `source/third_party/dist/` |
 | GEMMul8 | v3.5.2 | FP64 matrix products emulated on integer tensor cores | both | Git submodule `source/third_party/GEMMul8` |
@@ -362,8 +567,11 @@ Built by the first `make`:
 | CMake | 3.31.12 | building COSMA when the system CMake is older than 3.24 | both | `source/third_party/dist/` |
 
 Initialize the submodules with `git submodule update --init --recursive`;
-the AMD build needs only GEMMul8. After that the stock Makefile and the
-CMake workflow need no network access. FFTW3's Git sources lack its
+the AMD build needs only GEMMul8. The first core configuration downloads
+Kokkos. For an offline build, provide the extracted pinned release using
+`-DFETCHCONTENT_SOURCE_DIR_KOKKOS=/absolute/path/to/kokkos-5.2.2`
+(direct make: pass it in `OPENMX_CORE_CMAKE_OPTIONS`). After that the stock
+Makefile and the CMake workflow need no network access. FFTW3's Git sources lack its
 generated codelets and `configure`, so the build adds them from the bundled
 3.3.11 release tarball after checking its SHA-256. It downloads the tarball
 from fftw.org only when that file is missing. `Makefile.kugui` also builds
@@ -390,9 +598,10 @@ For the Kugui A100 environment used for the current validation:
 
 ```sh
 cd source
-# First build only: the site's CMake 3.20.2 is below COSMA's 3.24 minimum.
+# First build only: the site's CMake 3.20.2 is below the core's 3.25.2 minimum.
 python3.9 -m pip install --target build/cmake-python 'cmake==3.31.10'
 make -f Makefile.kugui -j3 GPUSOLVER2_JOBS=3 \
+  OPENMX_CORE_CMAKE="$PWD/build/cmake-python/cmake/data/bin/cmake" \
   GPUSOLVER2_CMAKE="$PWD/build/cmake-python/cmake/data/bin/cmake"
 ```
 
@@ -405,6 +614,14 @@ bootstraps its bundled CMake instead. Use one build at a time: `-j8` hit the
 login environment's 500-thread quota during this validation. On another installation, select its SDK/MPI paths and
 pass `GEMMUL8_GPU_ARCH=80` to the normal Makefile. GPU tests run in an
 allocated GPU job.
+
+The site validation above predates this C++ migration. The core additionally
+needs a C++20 compiler. `Makefile.kugui` selects the site's GCC 12.2 for the
+core as well as the CUDA adapters; override it with `OPENMX_CORE_CXX` if needed.
+The updated branch has not yet been revalidated on Kugui. Older NVHPC versions
+can be combined with a separate modern GCC, but there is no C++17 fallback;
+the CUDA core also requires nvcc 12.2 or later. See the
+[compiler compatibility notes](docs/CPP_CORE_MIGRATION.md#古い-nvidia-コンパイラとの組み合わせ).
 
 ### HPC SDK 26.9 / CUDA 13.4 update
 
@@ -789,6 +1006,14 @@ extracted sources: `source/third_party/magma-device-map.patch` (NVIDIA:
 maps MAGMA's logical GPU numbers to the selected Band GPU group) and
 `source/third_party/hip/magma-ozaki2.patch` (AMD: routes the matrix
 products of the eigensolvers through GEMMul8's Ozaki-II emulation).
+
+#### Kokkos and bundled mdspan
+
+The C++ core uses [Kokkos 5.2.2](https://github.com/kokkos/kokkos/releases/tag/5.2.2)
+and its bundled mdspan headers. Both carry `Apache-2.0 WITH LLVM-exception`
+notices. The release's `LICENSE` is retained in the fetched source and installed
+as `share/licenses/openmx_core/Kokkos-LICENSE`. The source URL and SHA-256 are
+pinned in `core/CMakeLists.txt`.
 
 #### CMake (build tool)
 
