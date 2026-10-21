@@ -1,6 +1,7 @@
 #ifndef OPENMX_CORE_NONLOCAL_H
 #define OPENMX_CORE_NONLOCAL_H
 #include "openmx_complex.h"
+#include "openmx_core_two_center.h"
 #include "openmx_core_orbitals.h"
 #include "openmx_core_pair_bessel.h"
 
@@ -28,6 +29,7 @@ typedef struct {
   const int *projector_counts, *projector_angular;
   const size_t *species_offsets, *projector_offsets;
   dcomplex *angular[4], *conversion[4];
+  OpenMXTwoCenterBuffers two_center;
   double *sums[2], *radial, *nonlocal_radial[2];
 } OpenMXNonlocalBuffers;
 

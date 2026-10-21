@@ -1,5 +1,6 @@
 #ifndef OPENMX_VNA_CPU_H
 #define OPENMX_VNA_CPU_H
+#include "openmx_two_center.h"
 #include "openmx_core_vna.h"
 #include "openmx_core_atom_pairs.h"
 #include "openmx_vna_tables.h"
@@ -32,12 +33,7 @@ static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, 
 
     dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
     dcomplex Csum,Csumr,Csumt,Csump;
-    dcomplex CsumS0,CsumSr,CsumSt,CsumSp;
     dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
-    dcomplex *CmatS0;
-    dcomplex *CmatSr;
-    dcomplex *CmatSt;
-    dcomplex *CmatSp;
     dcomplex *TmpHNA;
     dcomplex *TmpHNAr;
     dcomplex *TmpHNAt;
@@ -56,10 +52,6 @@ static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, 
     TmpHNAr = buffers.angular[1];
     TmpHNAt = buffers.angular[2];
     TmpHNAp = buffers.angular[3];
-    CmatS0 = buffers.conversion[0];
-    CmatSr = buffers.conversion[1];
-    CmatSt = buffers.conversion[2];
-    CmatSp = buffers.conversion[3];
     SphB = buffers.bessel[0];
     SphBp = buffers.bessel[1];
     tmp_SphB = buffers.scratch[0];
@@ -295,137 +287,28 @@ static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, 
                        Complex to Real
       ****************************************************/
 
-      num0 = 0;
-      for (L0=0; L0<=preparation->maximum_angular[product_species]; L0++){
-	for (Mul0=0; Mul0<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L0)]; Mul0++){
-
-	  num1 = 0;
-	  for (L1=0; L1<=preparation->maximum_angular[product_species]; L1++){
-	    for (Mul1=0; Mul1<preparation->basis_counts[(size_t)(product_species)*preparation->angular_channels+(L1)]; Mul1++){
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumS0 = Complex(0.0,0.0);
-		  CsumSr = Complex(0.0,0.0);
-		  CsumSt = Complex(0.0,0.0);
-		  CsumSp = Complex(0.0,0.0);
-
-		  for (k=-L0; k<=L0; k++){
-
-		    Ctmp1 = Conjg(SetPro_Conversion(tables,L0,L0+M0,L0+k));
-
-		    /* S */
-
-		    Ctmp0 = TmpHNA[openmx_core_vna_pair(&buffers,L0,Mul0,L0+k,L1,Mul1,L1+M1)];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumS0 = Cadd(CsumS0,Ctmp2);
-
-		    /* dS/dr */
-
-		    Ctmp0 = TmpHNAr[openmx_core_vna_pair(&buffers,L0,Mul0,L0+k,L1,Mul1,L1+M1)];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSr = Cadd(CsumSr,Ctmp2);
-
-		    /* dS/dt */
-
-		    Ctmp0 = TmpHNAt[openmx_core_vna_pair(&buffers,L0,Mul0,L0+k,L1,Mul1,L1+M1)];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSt = Cadd(CsumSt,Ctmp2);
-
-		    /* dS/dp */
-
-		    Ctmp0 = TmpHNAp[openmx_core_vna_pair(&buffers,L0,Mul0,L0+k,L1,Mul1,L1+M1)];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumSp = Cadd(CsumSp,Ctmp2);
-
-		  }
-
-		  CmatS0[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+M1)] = CsumS0;
-		  CmatSr[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+M1)] = CsumSr;
-		  CmatSt[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+M1)] = CsumSt;
-		  CmatSp[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+M1)] = CsumSp;
-
-		}
-	      }
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumS0 = Complex(0.0,0.0);
-		  CsumSr = Complex(0.0,0.0);
-		  CsumSt = Complex(0.0,0.0);
-		  CsumSp = Complex(0.0,0.0);
-
-		  for (k=-L1; k<=L1; k++){
-
-		    /* S */
-
-		    Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
-		    CsumS0 = Cadd(CsumS0,Ctmp1);
-
-		    /* dS/dr */
-
-		    Ctmp1 = Cmul(CmatSr[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
-		    CsumSr = Cadd(CsumSr,Ctmp1);
-
-		    /* dS/dt */
-
-		    Ctmp1 = Cmul(CmatSt[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
-		    CsumSt = Cadd(CsumSt,Ctmp1);
-
-		    /* dS/dp */
-
-		    Ctmp1 = Cmul(CmatSp[(size_t)(L0+M0)*buffers.magnetic_capacity+(L1+k)],SetPro_Conversion(tables,L1,L1+M1,L1+k));
-		    CsumSp = Cadd(CsumSp,Ctmp1);
-
-		  }
-
-		  openmx_double_block_row(HVNA23,0,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 8.0*CsumS0.r;
-
-		  if (h_AN!=0){
-
-		    if (fabs(siT)<10e-14){
-
-		      openmx_double_block_row(HVNA23,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r);
-
-		      openmx_double_block_row(HVNA23,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r);
-
-		      openmx_double_block_row(HVNA23,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-		    }
-
-		    else{
-
-		      openmx_double_block_row(HVNA23,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r
-			     - siP/siT/r*CsumSp.r);
-
-		      openmx_double_block_row(HVNA23,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r
-			     + coP/siT/r*CsumSp.r);
-
-		      openmx_double_block_row(HVNA23,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-		    }
-		  }
-		  else{
-		    openmx_double_block_row(HVNA23,1,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
-		    openmx_double_block_row(HVNA23,2,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
-		    openmx_double_block_row(HVNA23,3,Mc_AN,h_AN,num0+L0+M0)[num1+L1+M1] = 0.0;
-		  }
-
-		}
-	      }
-
-	      num1 = num1 + 2*L1 + 1;
-	    }
-	  }
-
-	  num0 = num0 + 2*L0 + 1;
-	}
+      const OpenMXTwoCenterGeometry geometry={r,siT,coT,siP,coP,h_AN==0};
+      num0=0;
+      for (L0=0; L0<=preparation->maximum_angular[product_species]; ++L0){
+        for (Mul0=0; Mul0<preparation->basis_counts[(size_t)product_species*preparation->angular_channels+L0]; ++Mul0){
+          num1=0;
+          for (L1=0; L1<=preparation->maximum_angular[product_species]; ++L1){
+            for (Mul1=0; Mul1<preparation->basis_counts[(size_t)product_species*preparation->angular_channels+L1]; ++Mul1){
+              OpenMX_TwoCenterTransform(&buffers.two_center,buffers.angular[0],
+                  buffers.orbital_capacity,buffers.orbital_capacity,
+                  openmx_core_orbital_index(buffers.multiplicity,L0,Mul0,0),
+                  openmx_core_orbital_index(buffers.multiplicity,L1,Mul1,0),L0,L1,
+                  tables->conversion,(size_t)preparation->basis_lmax+1,tables->conversion_width,&geometry);
+              for (M0=0; M0<2*L0+1; ++M0)
+                for (M1=0; M1<2*L1+1; ++M1)
+                  for (int channel=0; channel<4; ++channel)
+                    openmx_double_block_row(HVNA23,channel,Mc_AN,h_AN,num0+M0)[num1+M1]=
+                        OpenMX_TwoCenterValue(&buffers.two_center,channel,M0,M1);
+              num1+=2*L1+1;
+            }
+          }
+          num0+=2*L0+1;
+        }
       }
 
       dtime(&Etime_atom);

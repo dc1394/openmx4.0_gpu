@@ -2,6 +2,7 @@
 #define OPENMX_CORE_OVERLAP_H
 
 #include "openmx_complex.h"
+#include "openmx_core_two_center.h"
 #include "openmx_core_pair_bessel.h"
 #include "openmx_core_orbitals.h"
 
@@ -28,6 +29,7 @@ typedef struct {
   double *radial[2], *sums[4];
   int *offsets[2];
   dcomplex *angular[8], *conversion[8];
+  OpenMXTwoCenterBuffers two_center;
 } OpenMXOverlapBuffers;
 
 /* magnetic_index is in [0,2*angular], in the legacy -l..l ordering.

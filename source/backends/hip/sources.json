@@ -1045,7 +1045,10 @@
     "openmx_native_resources.h",
     "openmx_core_grid.h",
     "openmx_grid_assembly.h",
-    "openmx_grid_assembly.c"
+    "openmx_grid_assembly.c",
+    "openmx_two_center.h",
+    "openmx_integral_pairs.h",
+    "openmx_core_two_center.h"
   ],
   "integrated_overrides": {
     "Cluster_DFT_Col.c": "src/Cluster_DFT_Col.c",

@@ -4,6 +4,7 @@
 /* Internal adapter shared by CUDA/HIP. Legacy validation and NLRF_BesselF
    declarations precede this include; the numerical owner has no globals. */
 #include "openmx_core_nonlocal.h"
+#include "openmx_two_center.h"
 
 static OpenMXNonlocalWorkspace *SetNonlocal_Workspace(const OpenMXAtomicViews *atomic, int points, const double *wavevectors,
     int cache_entries, OpenMXNonlocalBuffers *buffers)
@@ -20,6 +21,38 @@ static OpenMXNonlocalWorkspace *SetNonlocal_Workspace(const OpenMXAtomicViews *a
     abort();
   }
   return owner;
+}
+
+/* Shared CPU and GPU-radial postprocessing. No legacy global input is
+   read here; each worker borrows its own C++ numerical workspace. */
+static void SetNonlocal_TransformDSNL(const OpenMXAtomicViews *atomic,
+    const OpenMXNonlocalBuffers *buffers,int central_species,int neighbor_species,
+    int so,int local,int neighbor,double ******matrix,const dcomplex *conversion,
+    size_t conversion_orders,size_t conversion_width,const OpenMXTwoCenterGeometry *geometry)
+{
+  const size_t species_offset=buffers->species_offsets[neighbor_species];
+  const size_t *offsets=buffers->projector_offsets+species_offset;
+  const int *angular=buffers->projector_angular+species_offset;
+  int row=0;
+  for (int l0=0; l0<=atomic->species.basis_lmax[central_species]; ++l0){
+    for (int radial=0; radial<atomic->species.basis[(size_t)central_species*atomic->species.angular_channels+l0]; ++radial){
+      int column=0;
+      for (int p=1; p<=buffers->projector_counts[neighbor_species]; ++p){
+        const int l1=angular[p];
+        OpenMX_TwoCenterTransform(&buffers->two_center,buffers->angular[0],
+            buffers->orbital_capacity,buffers->projector_capacity,
+            openmx_core_orbital_index(buffers->multiplicity,l0,radial,0),offsets[p],l0,l1,
+            conversion,conversion_orders,conversion_width,geometry);
+        for (int m0=0; m0<2*l0+1; ++m0)
+          for (int m1=0; m1<2*l1+1; ++m1)
+            for (int channel=0; channel<4; ++channel)
+              matrix[so][channel][local][neighbor][row+m0][column+m1]=
+                  OpenMX_TwoCenterValue(&buffers->two_center,channel,m0,m1);
+        column+=2*l1+1;
+      }
+      row+=2*l0+1;
+    }
+  }
 }
 
 static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double ******DS_NL, const double *Normk_grid,
@@ -54,28 +87,18 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
       double *SumNLr0;
       int cached_Cwan,cached_Hwan[2];
 
-      dcomplex CsumNL0,CsumNLr,CsumNLt,CsumNLp;
-      dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
+      dcomplex Ctmp2,Cpow;
       dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
       dcomplex *TmpNL;
       dcomplex *TmpNLr;
       dcomplex *TmpNLt;
       dcomplex *TmpNLp;
-      dcomplex *CmatNL0;
-      dcomplex *CmatNLr;
-      dcomplex *CmatNLt;
-      dcomplex *CmatNLp;
 
     workspace = SetNonlocal_Workspace(atomic, grid_dim,Normk_grid,bessel_cache_entries,&buffers);
-    const size_t conversion_columns = buffers.conversion_columns;
     TmpNL = buffers.angular[0];
     TmpNLr = buffers.angular[1];
     TmpNLt = buffers.angular[2];
     TmpNLp = buffers.angular[3];
-    CmatNL0 = buffers.conversion[0];
-    CmatNLr = buffers.conversion[1];
-    CmatNLt = buffers.conversion[2];
-    CmatNLp = buffers.conversion[3];
     SumNL0 = buffers.sums[0];
     SumNLr0 = buffers.sums[1];
     RF_BesselCache = buffers.radial;
@@ -350,140 +373,9 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
                            complex to real
 	****************************************************/
 
-	num0 = 0;
-	for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
-	  for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
-
-	    num1 = 0;
-	    for (L=1; L<=projector_count; L++){
-	      L1 = projector_angular[L];
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumNL0 = Complex(0.0,0.0);
-		  CsumNLr = Complex(0.0,0.0);
-		  CsumNLt = Complex(0.0,0.0);
-		  CsumNLp = Complex(0.0,0.0);
-
-		  for (k=-L0; k<=L0; k++){
-                    const size_t pair_index = openmx_core_nonlocal_pair(&buffers,projector_offsets,L0,Mul0,L0+k,L,L1+M1);
-
-		    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
-
-		    /* S */
-
-		    Ctmp0 = TmpNL[pair_index];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNL0 = Cadd(CsumNL0,Ctmp2);
-
-		    /* dS/dr */
-
-		    Ctmp0 = TmpNLr[pair_index];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNLr = Cadd(CsumNLr,Ctmp2);
-
-		    /* dS/dt */
-
-		    Ctmp0 = TmpNLt[pair_index];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNLt = Cadd(CsumNLt,Ctmp2);
-
-		    /* dS/dp */
-
-		    Ctmp0 = TmpNLp[pair_index];
-		    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-		    CsumNLp = Cadd(CsumNLp,Ctmp2);
-
-		  }
-
-		  CmatNL0[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNL0;
-		  CmatNLr[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLr;
-		  CmatNLt[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLt;
-		  CmatNLp[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLp;
-		}
-	      }
-
-	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-		  CsumNL0 = Complex(0.0,0.0);
-		  CsumNLr = Complex(0.0,0.0);
-		  CsumNLt = Complex(0.0,0.0);
-		  CsumNLp = Complex(0.0,0.0);
-
-		  for (k=-L1; k<=L1; k++){
-
-		    /* S */
-
-		    Ctmp1 = Cmul(CmatNL0[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNL0 = Cadd(CsumNL0,Ctmp1);
-
-		    /* dS/dr */
-
-		    Ctmp1 = Cmul(CmatNLr[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNLr = Cadd(CsumNLr,Ctmp1);
-
-		    /* dS/dt */
-
-		    Ctmp1 = Cmul(CmatNLt[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNLt = Cadd(CsumNLt,Ctmp1);
-
-		    /* dS/dp */
-
-		    Ctmp1 = Cmul(CmatNLp[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-		    CsumNLp = Cadd(CsumNLp,Ctmp1);
-
-		  }
-
-		  DS_NL[so][0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumNL0.r;
-
-		  if (h_AN!=0){
-
-		    if (fabs(siT)<10e-14){
-
-		      DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r);
-
-		      DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r);
-
-		      DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumNLr.r - siT/r*CsumNLt.r);
-
-		    }
-
-		    else{
-
-		      DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r
-			     - siP/siT/r*CsumNLp.r);
-
-		      DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r
-			     + coP/siT/r*CsumNLp.r);
-
-		      DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumNLr.r - siT/r*CsumNLt.r);
-
-		    }
-		  }
-
-		  else{
-		    DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		  }
-
-		}
-	      }
-
-	      num1 = num1 + 2*L1 + 1;
-	    }
-
-	    num0 = num0 + 2*L0 + 1;
-	  }
-	}
+        const OpenMXTwoCenterGeometry geometry={r,siT,coT,siP,coP,h_AN==0};
+        SetNonlocal_TransformDSNL(atomic,&buffers,Cwan,Hwan,so,Mc_AN,h_AN,DS_NL,
+            &Comp2Real[0][0][0], sizeof(Comp2Real)/sizeof(Comp2Real[0]), sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),&geometry);
       } /* so */
 
 

@@ -75,6 +75,18 @@ int rows(OpenMXSolverInvocation* owner,void*,double* result) {
   const OpenMXSolverComplexTensor zplanes={{1,2,5,1},complex[0]};dcomplex*** zaliases;
   require(openmx_core_solver_complex_alias(owner,0,"zplanes",&zplanes,&zaliases,error,sizeof(error)),error);
   equal(zaliases[0][1][4].i,-3);
+  const size_t scratch_shape[4]={3,2,5,1};OpenMXSolverComplexTensor scratch;
+  require(openmx_core_solver_complex(owner,0,"nonlocal",scratch_shape,&scratch,error,sizeof(error)),error);
+  for(size_t c=0;c<3;++c)for(size_t i=0;i<2;++i)for(size_t j=0;j<5;++j)
+    openmx_solver_complex_plane_row(&scratch,c,i)[j]={double(100*c+10*i+j),-double(c+i+j)};
+  for(size_t k=0;k<30;++k)
+    equal(scratch.values[k].r,100*(k/10)+10*((k/5)%2)+k%5);
+  const auto previous=scratch;
+  openmx::test::fail_allocation_after(0);
+  const int reused=openmx_core_solver_complex(owner,0,"nonlocal",scratch_shape,&scratch,error,sizeof(error));
+  openmx::test::fail_allocation_after(-1);
+  require(reused && previous.values==scratch.values,"nonlocal scratch did not reuse its numeric owner");
+  equal(openmx_solver_complex_plane_row(&scratch,2,1)[4].r,214);
   *result=17;return 1;
 }
 int fields(OpenMXSolverInvocation* owner,void*,double* result) {

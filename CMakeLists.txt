@@ -134,6 +134,10 @@ if(BUILD_TESTING)
   set_tests_properties(eigen-refine-resource-lifecycle PROPERTIES LABELS "unit" TIMEOUT 120)
   add_test(NAME build-backend-isolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_unified_build.py")
+  add_test(NAME nonlocal-invocation-lifetime
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_nonlocal_lifetime_cpu.py")
+  set_tests_properties(nonlocal-invocation-lifetime PROPERTIES LABELS "unit;integrals"
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
   add_test(NAME cmake-driver
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cmake_driver.py")
   add_test(NAME gpu-error-boundary

@@ -21,6 +21,8 @@
 #include "openmx_common.h"
 #include "openmx_gpu_task.h"
 #include "openmx_core_overlap.h"
+#include "openmx_two_center.h"
+#include "openmx_integral_pairs.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -199,9 +201,8 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
   double time0;
   double TStime,TEtime;
   int numprocs,myid;
-  int Mc_AN,Gc_AN,h_AN;
   int OneD_Nloop;
-  int *OneD2Mc_AN,*OneD2h_AN;
+  const int *OneD2Mc_AN,*OneD2h_AN;
   SetOLPKinProfileCounters profile = {0};
   long bessel_hits = 0, bessel_misses = 0;
   /* Resolve runtime options before entering OpenMP.  A lazy shared static
@@ -234,29 +235,13 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
     firsttime=0;
   }
 
-  /* one-dimensionalize the Mc_AN and h_AN loops */
-
-  OneD_Nloop = 0;
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD_Nloop++;
-    }
-  }
-
-  OneD2Mc_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
-  OneD2h_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
-
-  OneD_Nloop = 0;
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD2Mc_AN[OneD_Nloop] = Mc_AN;
-      OneD2h_AN[OneD_Nloop]  = h_AN;
-      OneD_Nloop++;
-    }
-  }
-
+  const OpenMXAtomPairInput pair_input={atomnum,Matomnum,SpeciesNum,TCpyCell+1,
+      M2G,WhatSpecies,FNAN,natn,ncn,Gxyz,atv};
+  OpenMXAtomPairBuffers pairs;
+  OpenMXAtomPairPlan *pair_owner=OpenMX_IntegralPairs(&pair_input,&pairs);
+  OneD_Nloop=pairs.count;
+  OneD2Mc_AN=pairs.local;
+  OneD2h_AN=pairs.neighbor;
 
   /* The optional radial offload is called only by the MPI main thread.
      Empty ranks enter the same number of recovery phases as busy ranks. */
@@ -304,7 +289,7 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
     double tmp0,tmp1,tmp2,tmp3,tmp4;
     double siT,coT,siP,coP;
     double kmin,kmax,Sk,Dk,r;
-    double sj,sjp,coe0,coe1;
+    double sj,sjp,coe0;
     double Normk,Normk2;
 	    double gant,SH[2],dSHt[2],dSHp[2];
 	    const double *SphB_flat,*SphBp_flat;
@@ -313,10 +298,7 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
 	    double *sumS0_flat,*sumK0_flat,*sumSr0_flat,*sumKr0_flat;
 
 
-    dcomplex CsumS_Lx,CsumS_Ly,CsumS_Lz;
-    dcomplex CsumS0,CsumSr,CsumSt,CsumSp;
-    dcomplex CsumK0,CsumKr,CsumKt,CsumKp;
-    dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
+    dcomplex Ctmp2,Cpow;
     dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
     dcomplex *TmpOLP;
     dcomplex *TmpOLPr;
@@ -327,14 +309,6 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
     dcomplex *TmpKint;
     dcomplex *TmpKinp;
 
-    dcomplex *CmatS0;
-    dcomplex *CmatSr;
-    dcomplex *CmatSt;
-    dcomplex *CmatSp;
-    dcomplex *CmatK0;
-	    dcomplex *CmatKr;
-	    dcomplex *CmatKt;
-	    dcomplex *CmatKp;
 	    size_t rf_cache_elems;
 	    double prof_t0_local = 0.0, prof_t1_local = 0.0;
 	    double prof_bessel = 0.0, prof_radial = 0.0, prof_gaunt = 0.0, prof_c2r = 0.0;
@@ -350,7 +324,6 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
       fprintf(stderr,"Set_OLP_Kin: %s\n",bessel_error);
       abort();
     }
-    const size_t magnetic_capacity = work_buffers.magnetic_capacity;
     grid_dim = work_buffers.points;
     grid_last = grid_dim-1;
     rf_cache_elems = work_buffers.radial_elements;
@@ -371,14 +344,6 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
     TmpKinr = work_buffers.angular[5];
     TmpKint = work_buffers.angular[6];
     TmpKinp = work_buffers.angular[7];
-    CmatS0 = work_buffers.conversion[0];
-    CmatSr = work_buffers.conversion[1];
-    CmatSt = work_buffers.conversion[2];
-    CmatSp = work_buffers.conversion[3];
-    CmatK0 = work_buffers.conversion[4];
-    CmatKr = work_buffers.conversion[5];
-    CmatKt = work_buffers.conversion[6];
-    CmatKp = work_buffers.conversion[7];
 
 	    cached_Cwan = -1;
 	    cached_Hwan = -1;
@@ -746,278 +711,41 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
                          Complex to Real
       ****************************************************/
 
+      const OpenMXTwoCenterGeometry geometry={r,siT,coT,siP,coP,h_AN==0};
       num0 = 0;
-      for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; L0++){
-	for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; Mul0++){
-
+      for (L0=0; L0<=Spe_MaxL_Basis[Cwan]; ++L0){
+        for (Mul0=0; Mul0<Spe_Num_Basis[Cwan][L0]; ++Mul0){
           num1 = 0;
-          for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; L1++){
-	    for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; Mul1++){
-
-    	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-                  CsumS0 = Complex(0.0,0.0);
-                  CsumSr = Complex(0.0,0.0);
-                  CsumSt = Complex(0.0,0.0);
-                  CsumSp = Complex(0.0,0.0);
-
-                  CsumK0 = Complex(0.0,0.0);
-                  CsumKr = Complex(0.0,0.0);
-                  CsumKt = Complex(0.0,0.0);
-                  CsumKp = Complex(0.0,0.0);
-
-     	          for (k=-L0; k<=L0; k++){
-                    const size_t pair_index = openmx_core_overlap_pair(&work_buffers,L0,Mul0,L0+k,L1,Mul1,L1+M1);
-
-                    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
-
-                    /* S */
-
-                    Ctmp0 = TmpOLP[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumS0 = Cadd(CsumS0,Ctmp2);
-
-                    /* dS/dr */
-
-                    Ctmp0 = TmpOLPr[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumSr = Cadd(CsumSr,Ctmp2);
-
-                    /* dS/dt */
-
-                    Ctmp0 = TmpOLPt[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumSt = Cadd(CsumSt,Ctmp2);
-
-                    /* dS/dp */
-
-                    Ctmp0 = TmpOLPp[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumSp = Cadd(CsumSp,Ctmp2);
-
-                    /* K */
-
-                    Ctmp0 = TmpKin[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumK0 = Cadd(CsumK0,Ctmp2);
-
-                    /* dK/dr */
-
-                    Ctmp0 = TmpKinr[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumKr = Cadd(CsumKr,Ctmp2);
-
-                    /* dK/dt */
-
-                    Ctmp0 = TmpKint[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumKt = Cadd(CsumKt,Ctmp2);
-
-                    /* dK/dp */
-
-                    Ctmp0 = TmpKinp[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumKp = Cadd(CsumKp,Ctmp2);
-
-		  }
-
-                  CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumS0;
-                  CmatSr[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumSr;
-                  CmatSt[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumSt;
-                  CmatSp[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumSp;
-
-                  CmatK0[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumK0;
-                  CmatKr[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumKr;
-                  CmatKt[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumKt;
-                  CmatKp[(size_t)(L0+M0)*magnetic_capacity+(L1+M1)] = CsumKp;
-		}
-	      }
-
-    	      for (M0=-L0; M0<=L0; M0++){
-		for (M1=-L1; M1<=L1; M1++){
-
-                  CsumS_Lx = Complex(0.0,0.0);
-                  CsumS_Ly = Complex(0.0,0.0);
-                  CsumS_Lz = Complex(0.0,0.0);
-
-                  CsumS0 = Complex(0.0,0.0);
-                  CsumSr = Complex(0.0,0.0);
-                  CsumSt = Complex(0.0,0.0);
-                  CsumSp = Complex(0.0,0.0);
-                  CsumK0 = Complex(0.0,0.0);
-                  CsumKr = Complex(0.0,0.0);
-                  CsumKt = Complex(0.0,0.0);
-                  CsumKp = Complex(0.0,0.0);
-
-     	          for (k=-L1; k<=L1; k++){
-
-                    /*** S_Lx ***/
-
-                    /*  Y k+1 */
-                    if (k<L1){
-                      coe0 = sqrt((double)((L1-k)*(L1+k+1)));
-                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k+1)],Comp2Real[L1][L1+M1][L1+k]);
-                      Ctmp1.r = 0.5*coe0*Ctmp1.r;
-                      Ctmp1.i = 0.5*coe0*Ctmp1.i;
-                      CsumS_Lx = Cadd(CsumS_Lx,Ctmp1);
-		    }
-
-                    /*  Y k-1 */
-                    if (-L1<k){
-                      coe1 = sqrt((double)((L1+k)*(L1-k+1)));
-                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k-1)],Comp2Real[L1][L1+M1][L1+k]);
-                      Ctmp1.r = 0.5*coe1*Ctmp1.r;
-                      Ctmp1.i = 0.5*coe1*Ctmp1.i;
-                      CsumS_Lx = Cadd(CsumS_Lx,Ctmp1);
-		    }
-
-                    /*** S_Ly ***/
-
-                    /*  Y k+1 */
-
-                    if (k<L1){
-                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k+1)],Comp2Real[L1][L1+M1][L1+k]);
-                      Ctmp2.r = 0.5*coe0*Ctmp1.i;
-                      Ctmp2.i =-0.5*coe0*Ctmp1.r;
-                      CsumS_Ly = Cadd(CsumS_Ly,Ctmp2);
-		    }
-
-                    /*  Y k-1 */
-
-                    if (-L1<k){
-                      Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k-1)],Comp2Real[L1][L1+M1][L1+k]);
-                      Ctmp2.r =-0.5*coe1*Ctmp1.i;
-                      Ctmp2.i = 0.5*coe1*Ctmp1.r;
-                      CsumS_Ly = Cadd(CsumS_Ly,Ctmp2);
-		    }
-
-                    /*** S_Lz ***/
-
-                    Ctmp1    = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    Ctmp1.r = (double)k*Ctmp1.r;;
-                    Ctmp1.i = (double)k*Ctmp1.i;
-                    CsumS_Lz = Cadd(CsumS_Lz,Ctmp1);
-
-                    /* S */
-
-                    Ctmp1 = Cmul(CmatS0[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumS0 = Cadd(CsumS0,Ctmp1);
-
-                    /* dS/dr */
-
-                    Ctmp1 = Cmul(CmatSr[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumSr = Cadd(CsumSr,Ctmp1);
-
-                    /* dS/dt */
-
-                    Ctmp1 = Cmul(CmatSt[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumSt = Cadd(CsumSt,Ctmp1);
-
-                    /* dS/dp */
-
-                    Ctmp1 = Cmul(CmatSp[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumSp = Cadd(CsumSp,Ctmp1);
-
-                    /* K */
-
-                    Ctmp1 = Cmul(CmatK0[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumK0 = Cadd(CsumK0,Ctmp1);
-
-                    /* dK/dr */
-
-                    Ctmp1 = Cmul(CmatKr[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumKr = Cadd(CsumKr,Ctmp1);
-
-                    /* dK/dt */
-
-                    Ctmp1 = Cmul(CmatKt[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumKt = Cadd(CsumKt,Ctmp1);
-
-                    /* dK/dp */
-
-                    Ctmp1 = Cmul(CmatKp[(size_t)(L0+M0)*magnetic_capacity+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumKp = Cadd(CsumKp,Ctmp1);
-
-		  }
-
-                  OLP_L[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Lx.i;
-                  OLP_L[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Ly.i;
-                  OLP_L[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS_Lz.i;
-
-                  /* add a small value for stabilization of eigenvalue routine */
-
-                  OLP[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumS0.r + 1.0*rnd(1.0e-13);
-		  H0[0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 4.0*CsumK0.r;
-
-                  if (h_AN!=0){
-
-                    if (fabs(siT)<10e-14){
-
-		      OLP[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r);
-
-		      OLP[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r);
-
-		      OLP[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-
-		      H0[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-4.0*(siT*coP*CsumKr.r + coT*coP/r*CsumKt.r);
-
-		      H0[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-4.0*(siT*siP*CsumKr.r + coT*siP/r*CsumKt.r);
-
-		      H0[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-4.0*(coT*CsumKr.r - siT/r*CsumKt.r);
-
-                    }
-
-                    else{
-
-		      OLP[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*coP*CsumSr.r + coT*coP/r*CsumSt.r
-			     - siP/siT/r*CsumSp.r);
-
-		      OLP[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(siT*siP*CsumSr.r + coT*siP/r*CsumSt.r
-			     + coP/siT/r*CsumSp.r);
-
-		      OLP[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-8.0*(coT*CsumSr.r - siT/r*CsumSt.r);
-
-		      H0[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-4.0*(siT*coP*CsumKr.r + coT*coP/r*CsumKt.r
-			     - siP/siT/r*CsumKp.r);
-
-		      H0[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-4.0*(siT*siP*CsumKr.r + coT*siP/r*CsumKt.r
-			     + coP/siT/r*CsumKp.r);
-
-		      H0[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-			-4.0*(coT*CsumKr.r - siT/r*CsumKt.r);
-
-		    }
-		  }
-		  else{
-		    OLP[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-	            OLP[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-		    OLP[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
- 	            H0[1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-	            H0[2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-	            H0[3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
+          for (L1=0; L1<=Spe_MaxL_Basis[Hwan]; ++L1){
+            for (Mul1=0; Mul1<Spe_Num_Basis[Hwan][L1]; ++Mul1){
+              OpenMX_TwoCenterTransform(&work_buffers.two_center,work_buffers.angular[0],
+                  work_buffers.orbital_capacity,work_buffers.orbital_capacity,
+                  openmx_core_overlap_orbital(work_buffers.multiplicity,L0,Mul0,0),
+                  openmx_core_overlap_orbital(work_buffers.multiplicity,L1,Mul1,0),
+                  L0,L1,&Comp2Real[0][0][0], sizeof(Comp2Real)/sizeof(Comp2Real[0]), sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),&geometry);
+              for (M0=0; M0<2*L0+1; ++M0){
+                for (M1=0; M1<2*L1+1; ++M1){
+                  for (int axis=0; axis<3; ++axis)
+                    OLP_L[axis][Mc_AN][h_AN][num0+M0][num1+M1] =
+                        OpenMX_TwoCenterMomentum(&work_buffers.two_center,axis,M0,M1);
+                  /* Keep the stabilization RNG call in the original orbital order. */
+                  OLP[0][Mc_AN][h_AN][num0+M0][num1+M1] =
+                      OpenMX_TwoCenterValue(&work_buffers.two_center,0,M0,M1)+1.0*rnd(1.0e-13);
+                  H0[0][Mc_AN][h_AN][num0+M0][num1+M1] =
+                      OpenMX_TwoCenterValue(&work_buffers.two_center,4,M0,M1);
+                  for (int channel=1; channel<4; ++channel){
+                    OLP[channel][Mc_AN][h_AN][num0+M0][num1+M1] =
+                        OpenMX_TwoCenterValue(&work_buffers.two_center,channel,M0,M1);
+                    H0[channel][Mc_AN][h_AN][num0+M0][num1+M1] =
+                        OpenMX_TwoCenterValue(&work_buffers.two_center,4+channel,M0,M1);
                   }
-
-		}
-	      }
-
-              num1 = num1 + 2*L1 + 1;
-	    }
-	  }
-
-          num0 = num0 + 2*L0 + 1;
-	}
+                }
+              }
+              num1 += 2*L1+1;
+            }
+          }
+          num0 += 2*L0+1;
+        }
       }
 
       if (prof_enabled) {
@@ -1064,8 +792,7 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
             bessel_hits, bessel_misses);
   }
 
-  free(OneD2h_AN);
-  free(OneD2Mc_AN);
+  openmx_core_atom_pairs_destroy(pair_owner);
 
   /* for time */
   dtime(&TEtime);

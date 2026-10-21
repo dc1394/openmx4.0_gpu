@@ -36,20 +36,21 @@
 #include "openmx_gpu_task.h"
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
+#include "openmx_solver_workspace.h"
 #include <omp.h>
 #include "hip_runtime_compat.h"
 #include "set_hip_default_device_from_local_rank.h"
 
 #ifdef kcomp
 static double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
-static void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
+static void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch);
 static void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
-                           int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic);
+                           int Cwan, int Hwan, int wakg, const OpenMXSolverComplexTensor *NLH, const OpenMXElectronicViews *electronic);
 #else
 inline double NLRF_BesselF(const OpenMXReciprocalViews *reciprocal, int Gensi, int L, int so, double R);
-inline void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
+inline void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch);
 inline void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
-                           int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic);
+                           int Cwan, int Hwan, int wakg, const OpenMXSolverComplexTensor *NLH, const OpenMXElectronicViews *electronic);
 #endif
 
 static void SetNonlocal_AbortWithMessage(const char *message)
@@ -276,6 +277,7 @@ static int SetNonlocalUseOpenMP(void)
 }
 
 #include "openmx_nonlocal_cpu.h"
+#include "openmx_integral_pairs.h"
 
 #pragma omp declare target
 static void SetNL_capacity_bessel(double x,int lmax,double *sbv,double *dsbv)
@@ -409,8 +411,8 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
                                          int grid_dim,
                                          int max_Lmax_Four_Int,
                                          int max_sph_rows,
-                                         int *OneD2Mc_AN,
-                                         int *OneD2h_AN,
+                                         const int *OneD2Mc_AN,
+                                         const int *OneD2h_AN,
                                          int OneD_Nloop,
                                          double grid_h, int profile_rank)
 {
@@ -1042,29 +1044,19 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
     double SH[2],dSHt[2],dSHp[2];
     double Stime_atom,Etime_atom;
     double tmp0;
-    dcomplex CsumNL0,CsumNLr,CsumNLt,CsumNLp;
-    dcomplex Ctmp0,Ctmp1,Ctmp2,Cpow;
+    dcomplex Ctmp2,Cpow;
     dcomplex CY,CYt,CYp,CY1,CYt1,CYp1;
     dcomplex *TmpNL;
     dcomplex *TmpNLr;
     dcomplex *TmpNLt;
     dcomplex *TmpNLp;
-    dcomplex *CmatNL0;
-    dcomplex *CmatNLr;
-    dcomplex *CmatNLt;
-    dcomplex *CmatNLp;
 
     OpenMXNonlocalBuffers buffers;
     OpenMXNonlocalWorkspace *workspace = SetNonlocal_Workspace(atomic, 0,NULL,0,&buffers);
-    const size_t conversion_columns = buffers.conversion_columns;
     TmpNL = buffers.angular[0];
     TmpNLr = buffers.angular[1];
     TmpNLt = buffers.angular[2];
     TmpNLp = buffers.angular[3];
-    CmatNL0 = buffers.conversion[0];
-    CmatNLr = buffers.conversion[1];
-    CmatNLt = buffers.conversion[2];
-    CmatNLp = buffers.conversion[3];
 
     OMPID = omp_get_thread_num();
     Nthrds = omp_get_num_threads();
@@ -1201,119 +1193,9 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
           }
         }
 
-        num0 = 0;
-        for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
-          for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
-
-            num1 = 0;
-            for (L=1; L<=projector_count; L++){
-              L1 = projector_angular[L];
-
-              for (M0=-L0; M0<=L0; M0++){
-                for (M1=-L1; M1<=L1; M1++){
-
-                  CsumNL0 = Complex(0.0,0.0);
-                  CsumNLr = Complex(0.0,0.0);
-                  CsumNLt = Complex(0.0,0.0);
-                  CsumNLp = Complex(0.0,0.0);
-
-                  for (k=-L0; k<=L0; k++){
-                    const size_t pair_index = openmx_core_nonlocal_pair(&buffers,projector_offsets,L0,Mul0,L0+k,L,L1+M1);
-
-                    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
-
-                    Ctmp0 = TmpNL[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumNL0 = Cadd(CsumNL0,Ctmp2);
-
-                    Ctmp0 = TmpNLr[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumNLr = Cadd(CsumNLr,Ctmp2);
-
-                    Ctmp0 = TmpNLt[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumNLt = Cadd(CsumNLt,Ctmp2);
-
-                    Ctmp0 = TmpNLp[pair_index];
-                    Ctmp2 = Cmul(Ctmp1,Ctmp0);
-                    CsumNLp = Cadd(CsumNLp,Ctmp2);
-                  }
-
-                  CmatNL0[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNL0;
-                  CmatNLr[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLr;
-                  CmatNLt[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLt;
-                  CmatNLp[(size_t)(L0+M0)*conversion_columns+(L1+M1)] = CsumNLp;
-                }
-              }
-
-              for (M0=-L0; M0<=L0; M0++){
-                for (M1=-L1; M1<=L1; M1++){
-
-                  CsumNL0 = Complex(0.0,0.0);
-                  CsumNLr = Complex(0.0,0.0);
-                  CsumNLt = Complex(0.0,0.0);
-                  CsumNLp = Complex(0.0,0.0);
-
-                  for (k=-L1; k<=L1; k++){
-
-                    Ctmp1 = Cmul(CmatNL0[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumNL0 = Cadd(CsumNL0,Ctmp1);
-
-                    Ctmp1 = Cmul(CmatNLr[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumNLr = Cadd(CsumNLr,Ctmp1);
-
-                    Ctmp1 = Cmul(CmatNLt[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumNLt = Cadd(CsumNLt,Ctmp1);
-
-                    Ctmp1 = Cmul(CmatNLp[(size_t)(L0+M0)*conversion_columns+(L1+k)],Comp2Real[L1][L1+M1][L1+k]);
-                    CsumNLp = Cadd(CsumNLp,Ctmp1);
-                  }
-
-                  DS_NL[so][0][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 8.0*CsumNL0.r;
-
-                  if (h_AN!=0){
-
-                    if (fabs(siT)<10e-14){
-
-                      DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-                        -8.0*(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r);
-
-                      DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-                        -8.0*(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r);
-
-                      DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-                        -8.0*(coT*CsumNLr.r - siT/r*CsumNLt.r);
-                    }
-
-                    else{
-
-                      DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-                        -8.0*(siT*coP*CsumNLr.r + coT*coP/r*CsumNLt.r
-                             - siP/siT/r*CsumNLp.r);
-
-                      DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-                        -8.0*(siT*siP*CsumNLr.r + coT*siP/r*CsumNLt.r
-                             + coP/siT/r*CsumNLp.r);
-
-                      DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] =
-                        -8.0*(coT*CsumNLr.r - siT/r*CsumNLt.r);
-                    }
-                  }
-
-                  else{
-                    DS_NL[so][1][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-                    DS_NL[so][2][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-                    DS_NL[so][3][Mc_AN][h_AN][num0+L0+M0][num1+L1+M1] = 0.0;
-                  }
-                }
-              }
-
-              num1 = num1 + 2*L1 + 1;
-            }
-
-            num0 = num0 + 2*L0 + 1;
-          }
-        }
+        const OpenMXTwoCenterGeometry geometry={r,siT,coT,siP,coP,h_AN==0};
+        SetNonlocal_TransformDSNL(atomic,&buffers,Cwan,Hwan,so,Mc_AN,h_AN,DS_NL,
+            &Comp2Real[0][0][0], sizeof(Comp2Real)/sizeof(Comp2Real[0]), sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),&geometry);
       }
 
       dtime(&Etime_atom);
@@ -1365,23 +1247,43 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
 }
 
 
-double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic)
+static OpenMXSolverComplexTensor SetNonlocal_HamiltonianScratch(OpenMXSolverInvocation *owner,
+    int worker,int orbitals)
 {
-  double TStime,TEtime;
+  const size_t shape[4]={3,(size_t)orbitals,(size_t)orbitals,1};
+  OpenMXSolverComplexTensor view;
+  char error[256];
+  if (!openmx_core_solver_complex(owner,worker,"nonlocal-hamiltonian",shape,&view,error,sizeof(error)))
+    OpenMX_Solver_Failure(error);
+  return view;
+}
 
-  dtime(&TStime);
+typedef struct {
+  const OpenMXAtomicViews *atomic;
+  const OpenMXReciprocalViews *reciprocal;
+  double *****hamiltonian, ******projectors;
+  const OpenMXElectronicViews *electronic;
+} SetNonlocalArguments;
+static int SetNonlocal_Operation(OpenMXSolverInvocation *scratch,void *opaque,double *elapsed)
+{
+  const SetNonlocalArguments *args=opaque;
+  double begin,end;
+  dtime(&begin);
   SetNonlocal_gpu_used = 0;
-
-  Nonlocal0(atomic, reciprocal, HNL, DS_NL, electronic);
-
-  /* for time */
-  dtime(&TEtime);
-  return TEtime - TStime;
+  Nonlocal0(args->atomic,args->reciprocal,args->hamiltonian,args->projectors,args->electronic,scratch);
+  dtime(&end);
+  *elapsed=end-begin;
+  return 1;
+}
+double Set_Nonlocal(const OpenMXAtomicViews *atomic,const OpenMXReciprocalViews *reciprocal,
+    double *****HNL,double ******DS_NL,const OpenMXElectronicViews *electronic)
+{
+  SetNonlocalArguments args={atomic,reciprocal,HNL,DS_NL,electronic};
+  return OpenMX_Solver_Run(SetNonlocal_Operation,&args);
 }
 
 
-
-void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic)
+void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch)
 {
   double *****iHNL=electronic->iHNL;
   double *****iHNL0=electronic->iHNL0;
@@ -1401,7 +1303,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
   int DSNL_on_device;
   int *Snd_DS_NL_Size,*Rcv_DS_NL_Size;
   int t,nthreads_halo;
-  dcomplex ****NLH_halo;
+  OpenMXSolverComplexTensor *NLH_halo;
   int Original_Mc_AN,po;
   double rcutA,rcutB,rcut,dmp;
   double grid_h;
@@ -1418,7 +1320,8 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
   MPI_Request request;
 
   /* for OpenMP */
-  int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
+  int OneD_Nloop;
+  const int *OneD2Mc_AN,*OneD2h_AN;
   const char *bessel_cache_option = getenv("OPENMX_SETNL_BESSEL_CACHE_MAX");
   const int bessel_cache_entries = bessel_cache_option ? atoi(bessel_cache_option) : 128;
 
@@ -1456,7 +1359,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
                                                                     "max_sph_rows"),
                                         "max_sph_rows");
   grid_h = (PAO_Nkmax - Radial_kmin)/(double)OneD_Grid;
-  Normk_grid = (double*)SetNonlocal_MallocArray((size_t)grid_dim,sizeof(double),"Normk_grid");
+  Normk_grid = OpenMX_Solver_Real(scratch,"nonlocal-wavevectors",(size_t)grid_dim);
   for (i=0; i<grid_dim; i++){
     Normk_grid[i] = Radial_kmin + (double)i*grid_h;
   }
@@ -1522,34 +1425,13 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
     }
   }
 
-  /* one-dimensionalize the Mc_AN and h_AN loops */
-
-  OneD_Nloop = 0;
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD_Nloop++;
-    }
-  }
-
-  OneD2Mc_AN = (int*)SetNonlocal_MallocArray(
-                        SetNonlocal_CheckedAddCount((size_t)OneD_Nloop,1u,
-                                                    "OneD2Mc_AN length"),
-                        sizeof(int),"OneD2Mc_AN");
-  OneD2h_AN = (int*)SetNonlocal_MallocArray(
-                       SetNonlocal_CheckedAddCount((size_t)OneD_Nloop,1u,
-                                                   "OneD2h_AN length"),
-                       sizeof(int),"OneD2h_AN");
-
-  OneD_Nloop = 0;
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD2Mc_AN[OneD_Nloop] = Mc_AN;
-      OneD2h_AN[OneD_Nloop] = h_AN;
-      OneD_Nloop++;
-    }
-  }
+  const OpenMXAtomPairInput pair_input={atomnum,Matomnum,SpeciesNum,TCpyCell+1,
+      M2G,WhatSpecies,FNAN,natn,ncn,Gxyz,atv};
+  OpenMXAtomPairBuffers pairs;
+  OpenMXAtomPairPlan *pair_owner=OpenMX_IntegralPairs(&pair_input,&pairs);
+  OneD_Nloop=pairs.count;
+  OneD2Mc_AN=pairs.local;
+  OneD2h_AN=pairs.neighbor;
 
   /****************************************************
                     calculate DS_NL
@@ -1594,16 +1476,9 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
   /* the products of the received blocks are threaded over the local atoms:
      one NLH per thread */
   nthreads_halo = omp_get_max_threads();
-  NLH_halo = (dcomplex****)SetNonlocal_MallocArray((size_t)nthreads_halo,sizeof(dcomplex***),"NLH_halo");
-  for (t=0; t<nthreads_halo; t++){
-    NLH_halo[t] = (dcomplex***)SetNonlocal_MallocArray(3u,sizeof(dcomplex**),"NLH_halo[t]");
-    for (k=0; k<3; k++){
-      NLH_halo[t][k] = (dcomplex**)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex*),"NLH_halo[t][k]");
-      for (i=0; i<List_YOUSO[7]; i++){
-        NLH_halo[t][k][i] = (dcomplex*)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex),"NLH_halo[t][k][i]");
-      }
-    }
-  }
+  NLH_halo=OpenMX_Solver_Bytes(scratch,"nonlocal-halo-views",(size_t)nthreads_halo,sizeof(*NLH_halo));
+  for (t=0; t<nthreads_halo; ++t)
+    NLH_halo[t]=SetNonlocal_HamiltonianScratch(scratch,t,List_YOUSO[7]);
 
   Snd_DS_NL_Size = projector_transfer.buffers.send_sizes;
   Rcv_DS_NL_Size = projector_transfer.buffers.receive_sizes;
@@ -1778,7 +1653,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 #pragma omp parallel for schedule(dynamic,4) private(Mc_AN,Gc_AN,Cwan,fan,rcutA,rcutB,rcut,j0,jg0,Mj_AN0,po,j,Hwan,m,n,k,kg,wakg,kl,dmp,p,i1,j1,Stime_atom,Etime_atom)
         for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
-          dcomplex ***NLHt = NLH_halo[omp_get_thread_num()];
+          OpenMXSolverComplexTensor NLHt = NLH_halo[omp_get_thread_num()];
 
 	  dtime(&Stime_atom);
 
@@ -1806,12 +1681,12 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
 	      for (m=0; m<atomic->species.orbitals[Cwan]; m++){
 		for (n=0; n<atomic->species.orbitals[Hwan]; n++){
-		  NLHt[0][m][n].r = 0.0;     /* <up|VNL|up> */
-		  NLHt[1][m][n].r = 0.0;     /* <dn|VNL|dn> */
-		  NLHt[2][m][n].r = 0.0;     /* <up|VNL|dn> */
-		  NLHt[0][m][n].i = 0.0;
-		  NLHt[1][m][n].i = 0.0;
-		  NLHt[2][m][n].i = 0.0;
+		  openmx_solver_complex_plane_row(&NLHt,0,m)[n].r = 0.0;     /* <up|VNL|up> */
+		  openmx_solver_complex_plane_row(&NLHt,1,m)[n].r = 0.0;     /* <dn|VNL|dn> */
+		  openmx_solver_complex_plane_row(&NLHt,2,m)[n].r = 0.0;     /* <up|VNL|dn> */
+		  openmx_solver_complex_plane_row(&NLHt,0,m)[n].i = 0.0;
+		  openmx_solver_complex_plane_row(&NLHt,1,m)[n].i = 0.0;
+		  openmx_solver_complex_plane_row(&NLHt,2,m)[n].i = 0.0;
 		}
 	      }
 
@@ -1823,7 +1698,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
                 if (0<=kl){
 
-                  Multiply_DS_NL(atomic, Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, NLHt, electronic);
+                  Multiply_DS_NL(atomic, Mc_AN, Matomnum+1, k, kl, Cwan, Hwan, wakg, &NLHt, electronic);
 
 		} /* if (0<=kl) */
 
@@ -1843,11 +1718,11 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 		for (i1=0; i1<atomic->species.orbitals[Cwan]; i1++){
 		  for (j1=0; j1<atomic->species.orbitals[Hwan]; j1++){
 
-		    HNL[p][Mc_AN][j][i1][j1] = dmp*NLHt[p][i1][j1].r*F_NL_flag;
+		    HNL[p][Mc_AN][j][i1][j1] = dmp*openmx_solver_complex_plane_row(&NLHt,p,i1)[j1].r*F_NL_flag;
 
 		    if (SO_switch==1){
-		      iHNL[ p][Mc_AN][j][i1][j1] = dmp*NLHt[p][i1][j1].i*F_NL_flag;
-		      iHNL0[p][Mc_AN][j][i1][j1] = dmp*NLHt[p][i1][j1].i*F_NL_flag;
+		      iHNL[ p][Mc_AN][j][i1][j1] = dmp*openmx_solver_complex_plane_row(&NLHt,p,i1)[j1].i*F_NL_flag;
+		      iHNL0[p][Mc_AN][j][i1][j1] = dmp*openmx_solver_complex_plane_row(&NLHt,p,i1)[j1].i*F_NL_flag;
 		    }
 		  }
 		}
@@ -1899,19 +1774,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
   } while (po!=0);
 
-  /* freeing of array */
-
-
-
-
-  for (t=0; t<nthreads_halo; t++){
-    for (k=0; k<3; k++){
-      for (i=0; i<List_YOUSO[7]; i++) free(NLH_halo[t][k][i]);
-      free(NLH_halo[t][k]);
-    }
-    free(NLH_halo[t]);
-  }
-  free(NLH_halo);
+  /* The same per-worker tensor is reused by the local products below. */
 
   if (measure_time || SetNonlocal_ProfileEnabled()){
     dtime(&etime);
@@ -1940,20 +1803,12 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
     double ene_m,ene_p,dmp;
     double tmp0,tmp1,tmp2,tmp3,tmp4,tmp5,tmp6;
     double PFp,PFm;
-    dcomplex ***NLH;
+    OpenMXSolverComplexTensor NLH;
     dcomplex sum0,sum1,sum2;
 
     /* allocation of arrays */
 
-    NLH = (dcomplex***)SetNonlocal_MallocArray(3u,sizeof(dcomplex**),"OMP NLH");
-    for (k=0; k<3; k++){
-      NLH[k] = (dcomplex**)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex*),
-                                                   "OMP NLH[k]");
-      for (i=0; i<List_YOUSO[7]; i++){
-	NLH[k][i] = (dcomplex*)SetNonlocal_MallocArray((size_t)List_YOUSO[7],sizeof(dcomplex),
-	                                               "OMP NLH[k][i]");
-      }
-    }
+    NLH=SetNonlocal_HamiltonianScratch(scratch,omp_get_thread_num(),List_YOUSO[7]);
 
     /* get info. on OpenMP */
 
@@ -1992,12 +1847,12 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
 	for (m=0; m<atomic->species.orbitals[Cwan]; m++){
 	  for (n=0; n<atomic->species.orbitals[Hwan]; n++){
-	    NLH[0][m][n].r = 0.0;     /* <up|VNL|up> */
-	    NLH[1][m][n].r = 0.0;     /* <dn|VNL|dn> */
-	    NLH[2][m][n].r = 0.0;     /* <up|VNL|dn> */
-	    NLH[0][m][n].i = 0.0;
-	    NLH[1][m][n].i = 0.0;
-	    NLH[2][m][n].i = 0.0;
+	    openmx_solver_complex_plane_row(&NLH,0,m)[n].r = 0.0;     /* <up|VNL|up> */
+	    openmx_solver_complex_plane_row(&NLH,1,m)[n].r = 0.0;     /* <dn|VNL|dn> */
+	    openmx_solver_complex_plane_row(&NLH,2,m)[n].r = 0.0;     /* <up|VNL|dn> */
+	    openmx_solver_complex_plane_row(&NLH,0,m)[n].i = 0.0;
+	    openmx_solver_complex_plane_row(&NLH,1,m)[n].i = 0.0;
+	    openmx_solver_complex_plane_row(&NLH,2,m)[n].i = 0.0;
 	  }
 	}
 
@@ -2009,7 +1864,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
 	  if (0<=kl){
 
-	    Multiply_DS_NL(atomic, Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, NLH, electronic);
+	    Multiply_DS_NL(atomic, Mc_AN, Mj_AN, k, kl, Cwan, Hwan, wakg, &NLH, electronic);
 
 	  } /* if (0<=kl) */
 	} /* k */
@@ -2028,11 +1883,11 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 	  for (i1=0; i1<atomic->species.orbitals[Cwan]; i1++){
 	    for (j1=0; j1<atomic->species.orbitals[Hwan]; j1++){
 
-	      HNL[p][Mc_AN][j][i1][j1] = dmp*NLH[p][i1][j1].r*F_NL_flag;
+	      HNL[p][Mc_AN][j][i1][j1] = dmp*openmx_solver_complex_plane_row(&NLH,p,i1)[j1].r*F_NL_flag;
 
 	      if (SO_switch==1){
-		iHNL[p][Mc_AN][j][i1][j1]  = dmp*NLH[p][i1][j1].i*F_NL_flag;
-		iHNL0[p][Mc_AN][j][i1][j1] = dmp*NLH[p][i1][j1].i*F_NL_flag;
+		iHNL[p][Mc_AN][j][i1][j1]  = dmp*openmx_solver_complex_plane_row(&NLH,p,i1)[j1].i*F_NL_flag;
+		iHNL0[p][Mc_AN][j][i1][j1] = dmp*openmx_solver_complex_plane_row(&NLH,p,i1)[j1].i*F_NL_flag;
 	      }
 	    }
 	  }
@@ -2048,14 +1903,6 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
     /* freeing of array */
 
-    for (k=0; k<3; k++){
-      for (i=0; i<List_YOUSO[7]; i++){
-	free(NLH[k][i]);
-      }
-      free(NLH[k]);
-    }
-    free(NLH);
-
 #pragma omp barrier
 #pragma omp flush(HNL,iHNL,iHNL0)
 
@@ -2065,9 +1912,8 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
   freeing of arrays:
   ****************************************************/
 
-  free(OneD2Mc_AN);
-  free(OneD2h_AN);
-  free(Normk_grid);
+  openmx_core_atom_pairs_destroy(pair_owner);
+
 
   if (measure_time || SetNonlocal_ProfileEnabled()){
     dtime(&etime);
@@ -2093,7 +1939,7 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
 
 
 void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k, int kl,
-                    int Cwan, int Hwan, int wakg, dcomplex ***NLH, const OpenMXElectronicViews *electronic)
+                    int Cwan, int Hwan, int wakg, const OpenMXSolverComplexTensor *NLH, const OpenMXElectronicViews *electronic)
 {
   double ******DS_NL=electronic->DS_NL;
 
@@ -2129,8 +1975,8 @@ void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k
 
 	} /* L1 */
 
-	NLH[0][m][n].r += sum;    /* <up|VNL|up> */
-	NLH[1][m][n].r += sum;    /* <dn|VNL|dn> */
+	openmx_solver_complex_plane_row(NLH,0,m)[n].r += sum;    /* <up|VNL|up> */
+	openmx_solver_complex_plane_row(NLH,1,m)[n].r += sum;    /* <dn|VNL|dn> */
 
       }
     }
@@ -2447,13 +2293,13 @@ void Multiply_DS_NL(const OpenMXAtomicViews *atomic, int Mc_AN, int Mj_AN, int k
 
 	}
 
-	NLH[0][m][n].r += sum0.r;    /* <up|VNL|up> */
-	NLH[1][m][n].r += sum1.r;    /* <dn|VNL|dn> */
-	NLH[2][m][n].r += sum2.r;    /* <up|VNL|dn> */
+	openmx_solver_complex_plane_row(NLH,0,m)[n].r += sum0.r;    /* <up|VNL|up> */
+	openmx_solver_complex_plane_row(NLH,1,m)[n].r += sum1.r;    /* <dn|VNL|dn> */
+	openmx_solver_complex_plane_row(NLH,2,m)[n].r += sum2.r;    /* <up|VNL|dn> */
 
-	NLH[0][m][n].i += sum0.i;    /* <up|VNL|up> */
-	NLH[1][m][n].i += sum1.i;    /* <dn|VNL|dn> */
-	NLH[2][m][n].i += sum2.i;    /* <up|VNL|dn> */
+	openmx_solver_complex_plane_row(NLH,0,m)[n].i += sum0.i;    /* <up|VNL|up> */
+	openmx_solver_complex_plane_row(NLH,1,m)[n].i += sum1.i;    /* <dn|VNL|dn> */
+	openmx_solver_complex_plane_row(NLH,2,m)[n].i += sum2.i;    /* <up|VNL|dn> */
 
       } /* n */
     } /* m */

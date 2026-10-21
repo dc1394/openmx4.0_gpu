@@ -22,8 +22,7 @@ std::size_t orbitals(VnaShape shape)
 
 VnaWorkspace::VnaWorkspace(VnaShape shape)
   : shape_(validated(shape)), angular_({4,orbitals(shape_),orbitals(shape_)}),
-    conversion_({4,static_cast<std::size_t>(2*shape_.maximum_angular+1),
-                   static_cast<std::size_t>(2*shape_.maximum_angular+1)}),
+    two_center_(4,shape_.maximum_angular,shape_.maximum_angular),
     bessel_({2,static_cast<std::size_t>(2*shape_.maximum_angular+1),
                static_cast<std::size_t>(shape_.points)}),
     scratch_({2,static_cast<std::size_t>(2*shape_.maximum_angular+3)})

@@ -2,6 +2,7 @@
 #define OPENMX_CORE_VNA_H
 
 #include "openmx_complex.h"
+#include "openmx_core_two_center.h"
 #include "openmx_core_orbitals.h"
 
 #ifdef __cplusplus
@@ -13,6 +14,7 @@ typedef struct {
   int multiplicity, points;
   size_t orbital_capacity, magnetic_capacity, bessel_orders, scratch_capacity;
   dcomplex *angular[4], *conversion[4];
+  OpenMXTwoCenterBuffers two_center;
   double *bessel[2], *scratch[2];
 } OpenMXVnaBuffers;
 

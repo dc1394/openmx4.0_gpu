@@ -53,8 +53,7 @@ OverlapWorkspace::OverlapWorkspace(OverlapShape shape, Validated)
     sums_({4,static_cast<std::size_t>(2*shape.maximum_angular+1),radial_count(shape)*radial_count(shape)}),
     offsets_({2,radial_count(shape)*radial_count(shape)}),
     angular_({8,orbital_count(shape),orbital_count(shape)}),
-    conversion_({8,static_cast<std::size_t>(2*shape.maximum_angular+1),
-                   static_cast<std::size_t>(2*shape.maximum_angular+1)}),
+    two_center_(8,shape.maximum_angular,shape.maximum_angular),
     bessel_(2*shape.maximum_angular,wavevectors_,shape.bessel_cache_limit)
 {}
 

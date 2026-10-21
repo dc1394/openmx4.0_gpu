@@ -203,6 +203,15 @@ to the corresponding variable name to report the selected implementation.
 CUDA/HIP device kernels, cache budgets and GeForce versus A100/H100 dispatch
 policies are retained. The new host kernels require neither a GPU SDK nor a
 second OpenMP team/runtime.
+`Set_OLP_Kin`, `Set_Nonlocal` and the VNA2/3 CPU fallback in
+`Set_ProExpn_VNA` share a C++ module for real-harmonic transformations,
+Cartesian derivatives and overlap angular momentum. Per-worker RAII tensors
+own its scratch and results; the numerical loop allocates no memory. Nonlocal
+assembly reuses contiguous complex scratch across halo and local products,
+and overlap/nonlocal pair lists use owned topology plans. Native output order,
+onsite derivatives and overlap stabilization calls are preserved. The module
+borrows explicit conversion and geometry views and contains no vendor SDK
+types; the optimized CUDA/HIP device kernels retain their existing policies.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

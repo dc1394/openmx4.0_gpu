@@ -367,6 +367,7 @@ extern "C" OpenMXOverlapWorkspace* openmx_core_overlap_create(const OpenMXOverla
       views.angular[channel] = work.angular().data_handle()+channel*views.orbital_capacity*views.orbital_capacity;
       views.conversion[channel] = work.conversion().data_handle()+channel*views.magnetic_capacity*views.magnetic_capacity;
     }
+    views.two_center = work.two_center();
     *buffers = views;
     result = owner.release();
   });
@@ -448,6 +449,7 @@ extern "C" OpenMXNonlocalWorkspace* openmx_core_nonlocal_create(const OpenMXNonl
             +channel*work.nonlocal_radial().extent(1)*work.nonlocal_radial().extent(2);
       }
     }
+    views.two_center = work.two_center();
     *buffers = views;
     result = owner.release();
   });
@@ -496,6 +498,7 @@ extern "C" OpenMXVnaWorkspace* openmx_core_vna_create(const OpenMXVnaShape* shap
       views.bessel[channel] = work.bessel().data_handle()+channel*views.bessel_orders*views.points;
       views.scratch[channel] = work.scratch().data_handle()+channel*views.scratch_capacity;
     }
+    views.two_center = work.two_center();
     *buffers = views;
     result = owner.release();
   });

@@ -2,6 +2,7 @@
 
 #include <openmx/core/pair_bessel.hpp>
 #include "openmx_complex.h"
+#include <openmx/core/two_center.hpp>
 
 namespace openmx::core {
 
@@ -26,12 +27,13 @@ class OverlapWorkspace {
   auto sums() noexcept { return sums_.view(); }
   auto offsets() noexcept { return offsets_.view(); }
   auto angular() noexcept { return angular_.view(); }
-  auto conversion() noexcept { return conversion_.view(); }
+  auto conversion() noexcept { return two_center_.left(); }
   auto radial() const noexcept { return radial_.view(); }
   auto sums() const noexcept { return sums_.view(); }
   auto offsets() const noexcept { return offsets_.view(); }
   auto angular() const noexcept { return angular_.view(); }
-  auto conversion() const noexcept { return conversion_.view(); }
+  auto conversion() const noexcept { return two_center_.left(); }
+  auto two_center() noexcept { return two_center_.buffers(); }
   PairBesselTable sample(double distance, int angular) { return bessel_.sample(distance,angular); }
   PairBesselStatistics statistics() const noexcept { return bessel_.statistics(); }
 
@@ -44,7 +46,7 @@ class OverlapWorkspace {
   Tensor<double,3> sums_;
   Tensor<int,2> offsets_;
   Tensor<dcomplex,3> angular_;
-  Tensor<dcomplex,3> conversion_;
+  TwoCenterWorkspace two_center_;
   PairBesselWorkspace bessel_;
 };
 

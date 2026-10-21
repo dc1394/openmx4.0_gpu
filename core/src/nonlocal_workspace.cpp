@@ -61,8 +61,7 @@ NonlocalWorkspace::NonlocalWorkspace(NonlocalShape shape, std::span<const Nonloc
   : shape_(validated(shape)), projectors_(shape_.projector_maximum_angular,species),
     points_(grid_points(shape_,projectors_,wavevectors)),
     angular_({4,radial_count(shape_)*(shape_.maximum_angular+1),projectors_.columns()}),
-    conversion_({4,static_cast<std::size_t>(2*shape_.maximum_angular+1),
-                   static_cast<std::size_t>(2*shape_.projector_maximum_angular+1)}),
+    two_center_(4,shape_.maximum_angular,shape_.projector_maximum_angular),
     sums_({2,radial_count(shape_),points_ ? projectors_.slots() : 0}),
     radial_({radial_count(shape_),points_}),
     nonlocal_radial_({2,projectors_.slots(),points_})

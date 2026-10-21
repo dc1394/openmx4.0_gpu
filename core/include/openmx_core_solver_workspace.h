@@ -88,6 +88,11 @@ static inline double *openmx_solver_real_matrix_row(const OpenMXSolverRealTensor
 { return v->extent[1] ? v->values+row*v->extent[1] : v->values; }
 static inline dcomplex *openmx_solver_complex_matrix_row(const OpenMXSolverComplexTensor *v,size_t row)
 { return v->extent[1] ? v->values+row*v->extent[1] : v->values; }
+/* Borrow a row of a validated [component,row,column,1] tensor. This replaces
+   pointer-tree scratch in integral assembly without allocating ABI aliases. */
+static inline dcomplex *openmx_solver_complex_plane_row(const OpenMXSolverComplexTensor *v,
+    size_t component,size_t row)
+{ return v->extent[2] ? v->values+(component*v->extent[1]+row)*v->extent[2] : v->values; }
 static inline int *openmx_solver_int_matrix_row(const OpenMXSolverIntTensor *v,size_t row)
 { return v->extent[1] ? v->values+row*v->extent[1] : v->values; }
 static inline double *openmx_solver_field_row(const OpenMXSolverRealFieldView *v,

@@ -2796,6 +2796,102 @@ multi-GPU GEMM、密度packingの保護対象5ソースも変更前と同一で�
 `build/grid-assembly-refactor-20261021/` に保存します。最終計測・連続テストには
 `optimized/` の固定バイナリとcoreを使用しています。
 
+## 第26段階: 重なり・非局所・VNA積分の共通基底変換
+
+`Set_OLP_Kin`、`Set_Nonlocal`、`Set_ProExpn_VNA` の VNA2/3 CPU fallback に
+重複していた複素球面調和基底から実基底への変換を `core/src/two_center.cpp` へ移しました。
+`Set_Nonlocal` は CPU の動径積分後と CUDA/HIP の GPU 動径積分後の両方から、同じ
+`SetNonlocal_TransformDSNL` を呼び出します。VNA2/3 の両方向も共通モジュールを使います。
+既存の Gaunt 積分、Bessel 関数、動径積分、GPU デバイス上の基底変換はこの段階では
+変更していません。
+
+新しい `TwoCenterWorkspace` を既存の3種類の worker 所有領域に組み込みました。
+複素変換の中間領域、実数の出力、重なりの軌道角運動量を連続した `Tensor` で所有し、
+Kokkos/mdspan または対応環境の `std::mdspan` で参照します。4成分・8成分を分けて
+コンパイルし、積分のブロック内ではメモリ確保しません。C 側は寿命が明示された平坦な
+借用ビューだけを受け取ります。
+
+入力には変換表の幅・角運動量数、元行列の寸法・ブロック位置、距離・三角関数値・
+オンサイト指定を渡します。モジュール自身は `Comp2Real`、原子・化学種の大域表、
+MPI communicator、GPU SDK、既定の計算 context を参照しません。実行は呼び出し側の
+OpenMP チームで行い、別の OpenMP/Kokkos ランタイムを起動しません。変換の縮約順、
+極軸での分岐、オンサイトのゼロ微分、重なり8倍・運動エネルギー4倍の規格化、
+軌道角運動量の符号を保ちました。固有値安定化用 `rnd` は native 側に残し、呼び出す
+軌道・ペア・スレッドの順序を変えていません。コンパイラ間の積和縮約の差は実計算で
+別途検査します。
+
+`Set_OLP_Kin` と CUDA/HIP の `Set_Nonlocal` は、手作業の `OneD2Mc_AN` /
+`OneD2h_AN` 配列を既存の `OpenMXAtomPairPlan` へ置き換えました。局所原子・近接原子の
+順序を保持した所有スナップショットを作り、空 rank も同じインターフェースで扱います。
+`Set_Nonlocal` の波数格子と複素 Hamiltonian scratch は C++ の invocation が所有します。
+ハロー積の `NLH_halo` とローカル積の `NLH` を、同じ worker ごとの連続テンソルに
+統合しました。深部の `Multiply_DS_NL` も寸法付きビューで行を参照するため、数値用の
+3重・4重ポインタと行ごとの malloc/free は不要です。MPI の送受信順・待機位置は維持しました。
+
+ユニットテストは、独立した long double 複素行列積、行列として構築した角運動量演算子、
+Cartesian 有限差分を基準にしています。s〜g の全組合せ、上限の角運動量14、異なる
+左右寸法、非ゼロのブロック位置、極軸付近、オンサイト、独立 invocation、並列実行、
+確保失敗時の解放、計算中の確保ゼロ、不正入力時の旧出力保持を検査します。
+既存 VNA2/3 の解析的 s 波テストは、1/2/8 OpenMP と両方向を引き続き検証します。
+
+ルートの既存 CTest 全219件と追加の非局所 invocation 寿命テスト1件、
+GCC ASan/UBSan・Intel C++・Kokkos CUDA の core 全189件が通過しました。
+新しい寿命テストは両 backend の実際の wrapper と C++ owner を使い、1/2/4/8 OpenMP、
+呼び出し間の scratch 初期化、同じ呼び出し内の再利用、HIP の GPU→CPU 使用表示リセットを
+確認します。このテスト自体も ASan/UBSan で実行しました。
+SYCL は新しい数値試験7件と複素テンソル行ビューの試験を確認しています。
+実SDKで CUDA sm_80・HIP の対象3翻訳単位ずつを O0 コンパイルし、新しい C++ 数値処理と
+3種類の workspace は HIP/gfx942 でもコンパイルしました。AMD・A100/H100・Intel/Apple GPU
+の実機実行は今回行っていません。
+
+CPU/GPU の `-runtest` 各14例を同じ MPI プロセスで連続実行しました。変更前後、
+CPU対GPU、同梱基準との5比較は全て `1e-7` 以内です。同梱基準との差はエネルギーで
+最大 `6.1e-11 Ha`、Force で最大 `7.8e-11 Ha/bohr` でした。
+Cluster/Band の collinear/noncollinear、DC・DC-LNO・Krylov の9経路×CPU/GPU、
+スピン分極DC、2 OpenMP の Krylov、8 MPI の空rankを含むDC-LNOの計23比較でも、
+最大差はエネルギー `1.74e-9 Ha`、Force `4.73e-10 Ha/bohr` で許容値内です。
+原子、座標、格子も一致しました。
+
+小規模 NC の GPU 2例は SCF 回数一致の厳密比較では失敗を残しています。
+Cluster は53→49回、Band は15→16回で、エネルギー差はそれぞれ `2.30e-10 Ha` と
+`1.53e-10 Ha`、Force 最大差は `4.73e-10` と `3.00e-11 Ha/bohr` です。
+この結果を数値一致と分け、元の失敗した `result.json` を変更せずに別ファイルで監査しました。
+CPUのNC Clusterは変更前後とも65回です。単純な一括成功として反復回数の差を隠していません。
+
+他の計算・ビルド・テストと重ねず、18 MPI×1 OpenMP で性能を確認しました。
+RTX 5080＋既存 MPS の sidia は、変更前後とも18クライアント・25 SCF・140³格子です。
+CPU の C60 は27 SCF・84³格子を保ち、初回に見えた約3%の時間差を調べるため
+実行順を入れ替えて各3回測定しました。下表の C60 は各区間の中央値です。
+
+| 条件 | 内部最大計算時間 (秒) | 起動・終了を含む実時間 (秒) | Set_OLP_Kin (秒) | Set_Nonlocal (秒) | Set_ProExpn_VNA (秒) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| sidia GPU＋MPS・変更前 `2dfb1811` | 104.344 | 107.924 | 0.561 | 0.917 | 7.664 |
+| sidia GPU＋MPS・変更後 | 104.280 | 107.718 | 0.535 | 0.890 | 7.702 |
+| C60 CPU・変更前、3回中央値 | 8.696 | 10.786 | 0.110 | 0.172 | 0.819 |
+| C60 CPU・変更後、3回中央値 | 8.716 | 10.837 | 0.113 | 0.175 | 0.857 |
+| C60 CPU・Intel版 `~/openmx4.0`、1回 | 9.912 | 10.436 | 0.502 | 0.907 | 0.604 |
+
+sidia のエネルギー・座標・格子は一致し、Force 最大差は約 `1e-12 Ha/bohr` でした。
+重なり基底変換部分の rank 最大時間は0.060→0.033秒でした。CPU の変更前後は全6回とも
+エネルギー・全Force・座標が一致し、Intel版との差はエネルギー約 `1e-11 Ha`、
+Force 約 `1.4e-11 Ha/bohr` です。全体の CPU 中央値は内部で約0.23%、実時間で約0.47%の差で、
+この入力では概ね同等の性能です。ただし VNA の CPU 区間は0.819→0.857秒で、改善余地が
+残ります。sidia は計算部分の約105秒を維持しましたが、起動・終了を含む105秒は未達です。
+GPU は各1回、Intel版はコンパイラ・MPI・ライブラリ・出力処理も異なるため、
+これらの結果を全入力・全 GPU での性能向上とは解釈しません。CPU の sidia 全計算は
+今回測定していません。
+
+`cmake --install build/cuda` は成功し、`work/openmx` と `work/lib/libopenmx_core.so` は
+実計算・性能測定に使った `candidate/` の固定成果物と同一ハッシュです。A100向けの
+Hamiltonian タイル、multi-GPU GEMM、密度packingの保護対象5ソースも変更前と同一です。
+
+この段階でも native の基底・幾何表の大域参照、`DS_NL` 等の借用行ポインタ、
+`Multiply_DS_NL` の相対論・core-hole の数値ループ、Gaunt/動径の C 実装と一部 GPU の
+一時領域は残っています。今回の共通化はホストの数値処理と所有の境界であり、アプリ全体の
+Kokkos GPU 移行や Intel/Apple GPU 実装の完了を意味しません。
+
+検証成果物は `build/two-center-refactor-20261021/` に保存します。
+
 ## 次の移行単位と完了条件
 
 1. 化学種の基本情報23表と PAO/VPS・Fourier の数値領域の所有、実空間・Fourier 表の
