@@ -245,10 +245,26 @@ static void Force_Reduction_Kernel(size_t first,size_t n,const void *parameters,
     const double *vy=openmx_gpu_task_ragged_data(v[2],n);
     const double *vz=openmx_gpu_task_ragged_data(v[3],n);
     double *Fx=v[4],*Fy=v[5],*Fz=v[6];
-#pragma omp target teams distribute parallel for is_device_ptr(offsets,weights,vx,vy,vz,Fx,Fy,Fz) if(gpu)
+    if (!gpu) {
+        /* Keep the original atom-parallel CPU recovery and its ascending
+           sum within each atom; only the device contraction changes. */
+#pragma omp parallel for
+        for (size_t atom=0;atom<n;atom++) {
+            double sx=0,sy=0,sz=0;
+            for (size_t i=offsets[atom];i<offsets[atom+1];i++) {
+                sx+=weights[i]*vx[i];sy+=weights[i]*vy[i];sz+=weights[i]*vz[i];
+            }
+            Fx[atom]=sx;Fy[atom]=sy;Fz[atom]=sz;
+        }
+        return;
+    }
+    /* Match the CUDA vector reduction: a team cooperates on each ragged
+       atom instead of leaving its entire FP64 sum to one GPU lane. */
+#pragma omp target teams distribute thread_limit(256) is_device_ptr(offsets,weights,vx,vy,vz,Fx,Fy,Fz) if(gpu)
     for (size_t atom=0;atom<n;atom++) {
         double sx=0,sy=0,sz=0;
 
+#pragma omp parallel for reduction(+:sx,sy,sz)
         for (size_t i=offsets[atom];i<offsets[atom+1];i++) {
             sx+=weights[i]*vx[i];sy+=weights[i]*vy[i];sz+=weights[i]*vz[i];
         }

@@ -16,6 +16,14 @@ import shlex
 import subprocess
 import tempfile
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from native_resource_test_bridge import isolate_native_resources
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tests"))
+    from native_resource_test_bridge import isolate_native_resources
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -117,7 +125,7 @@ def main():
     parser.add_argument("--cc", default=os.environ.get("CC", "cc"))
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
-    source = (ROOT / "source/Cluster_DFT_NonCol.c").read_text()
+    source = isolate_native_resources((ROOT / "source/Cluster_DFT_NonCol.c").read_text(), "HIP")
     names = ("ClusterNonCol_DmByGemm", "ClusterNonCol_DeviceSolveKeep", "ClusterNonCol_DeviceFree",
              "ClusterNonCol_DeviceSolveDrop", "ClusterNonCol_DeviceSolveRelease", "ClusterNonCol_DeviceSolveEndStep",
              "ClusterNonCol_DeviceSolveGiveBack", "ClusterNonCol_LogGemmRetry", "ClusterNonCol_LogGemmBackendOnce",

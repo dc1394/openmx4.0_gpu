@@ -244,6 +244,13 @@ if(BUILD_TESTING)
       set_tests_properties(hip-vector-reductions PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OMP_DYNAMIC=FALSE"
         LABELS "gpu;integration" TIMEOUT 240)
+      add_test(NAME hip-force-reductions
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_reductions_hip.py"
+          --rocm "${CMAKE_HIP_COMPILER_ROCM_ROOT}" --cc "${CMAKE_HIP_COMPILER}"
+          --arch "${_vector_test_arch}" --mpicc "${OPENMX_TEST_MPICC}")
+      set_tests_properties(hip-force-reductions PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OMP_DYNAMIC=FALSE"
+        LABELS "gpu;integration" TIMEOUT 240)
       add_test(NAME hip-setham-capacity
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setham_capacity_hip.py"
           --rocm "${CMAKE_HIP_COMPILER_ROCM_ROOT}" --cc "${CMAKE_HIP_COMPILER}"
