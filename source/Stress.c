@@ -26,14 +26,14 @@
 
 /*** subroutine */
 static void MPI_OLP(double *****OLP1);
-static void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic);
+static void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void Stress4(const OpenMXAtomicViews *atomic);
-static void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0);
+static void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
 static void Stress_core();
 static void Stress_H0(const OpenMXAtomicViews *atomic);
 static void Stress_H1();
-static void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic);
-static void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic);
+static void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]); /*from Total_Energy.c*/
 static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
 
@@ -88,8 +88,11 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM, const OpenMXElectronicViews *electronic)
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  dcomplex *****NC_v_eff=local_basis->NC_v_eff;
+  double ****v_eff=local_basis->v_eff;
+
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
   double ******iDM=electronic->iDM;
@@ -1016,15 +1019,15 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
   
   if (Cnt_switch==1){
 
-    Cont_Matrix0(H0[0],CntH0[0]);
-    Cont_Matrix0(H0[1],CntH0[1]);
-    Cont_Matrix0(H0[2],CntH0[2]);
-    Cont_Matrix0(H0[3],CntH0[3]);
+    Cont_Matrix0(H0[0],CntH0[0], local_basis);
+    Cont_Matrix0(H0[1],CntH0[1], local_basis);
+    Cont_Matrix0(H0[2],CntH0[2], local_basis);
+    Cont_Matrix0(H0[3],CntH0[3], local_basis);
 
-    Cont_Matrix0(OLP[0],CntOLP[0]);
-    Cont_Matrix0(OLP[1],CntOLP[1]);
-    Cont_Matrix0(OLP[2],CntOLP[2]);
-    Cont_Matrix0(OLP[3],CntOLP[3]);
+    Cont_Matrix0(OLP[0],CntOLP[0], local_basis);
+    Cont_Matrix0(OLP[1],CntOLP[1], local_basis);
+    Cont_Matrix0(OLP[2],CntOLP[2], local_basis);
+    Cont_Matrix0(OLP[3],CntOLP[3], local_basis);
   }
 
   if ( Hub_U_switch==1 && Hub_U_occupation==1 ){
@@ -1830,7 +1833,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
     printf("  Stress calculation #3\n");fflush(stdout);
   }
 
-  Stress3(atomic, electronic);
+  Stress3(atomic, electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -1854,7 +1857,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
     Stress4(atomic);
   }
   else if (ProExpn_VNA==1 && F_VNA_flag==1){
-    Stress4B(vna, reciprocal, CDM0);
+    Stress4B(vna, reciprocal, CDM0, local_basis);
   }
 
   dtime(&etime);
@@ -2005,7 +2008,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
             Stress from non-local potentials 
   ****************************************************/
 
-  Stress_HNL(atomic, CDM0, iDM0, electronic);
+  Stress_HNL(atomic, CDM0, iDM0, electronic, local_basis);
 
   /* begin(yshiihara) */
   /****************************************************
@@ -2050,7 +2053,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
   ****************************************************/
 
   if (Hub_U_switch==1){
-    if (Hub_U_occupation==2) Stress_plus_U_dual(CDM0, electronic); /* dual */
+    if (Hub_U_occupation==2) Stress_plus_U_dual(CDM0, electronic, local_basis); /* dual */
   }
 
   /****************************************************
@@ -2166,7 +2169,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
 }
 
 
-void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
+void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double ******DM=electronic->DM;
 
@@ -2323,7 +2326,7 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 	  /* AITUNE201704 Get_dOrbitals(Cwan, dx, dy, dz, dorbs0);*/
 	  Get_dOrbitals_work(atomic, Cwan, dx, dy, dz, dorbs0, work_dObs);
 	} else {
-	  Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0);
+	  Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0, local_basis);
 	}
 
 	int k;
@@ -2978,7 +2981,7 @@ void Stress4(const OpenMXAtomicViews *atomic)
 
 
 
-void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0)
+void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis)
 {
   double *****HVNA2=vna->HVNA2;
   double *****HVNA3=vna->HVNA3;
@@ -3089,18 +3092,18 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
 
   if (Cnt_switch==1 && ProExpn_VNA==1){
 
-    Cont_Matrix2(DS_VNA[0],CntDS_VNA[0]);
-    Cont_Matrix2(DS_VNA[1],CntDS_VNA[1]);
-    Cont_Matrix2(DS_VNA[2],CntDS_VNA[2]);
-    Cont_Matrix2(DS_VNA[3],CntDS_VNA[3]);
+    Cont_Matrix2(DS_VNA[0],CntDS_VNA[0], local_basis);
+    Cont_Matrix2(DS_VNA[1],CntDS_VNA[1], local_basis);
+    Cont_Matrix2(DS_VNA[2],CntDS_VNA[2], local_basis);
+    Cont_Matrix2(DS_VNA[3],CntDS_VNA[3], local_basis);
 
-    Cont_Matrix3(HVNA2[1],CntHVNA2[1]);
-    Cont_Matrix3(HVNA2[2],CntHVNA2[2]);
-    Cont_Matrix3(HVNA2[3],CntHVNA2[3]);
+    Cont_Matrix3(HVNA2[1],CntHVNA2[1], local_basis);
+    Cont_Matrix3(HVNA2[2],CntHVNA2[2], local_basis);
+    Cont_Matrix3(HVNA2[3],CntHVNA2[3], local_basis);
 
-    Cont_Matrix4(HVNA3[1],CntHVNA3[1]);
-    Cont_Matrix4(HVNA3[2],CntHVNA3[2]);
-    Cont_Matrix4(HVNA3[3],CntHVNA3[3]);
+    Cont_Matrix4(HVNA3[1],CntHVNA3[1], local_basis);
+    Cont_Matrix4(HVNA3[2],CntHVNA3[2], local_basis);
+    Cont_Matrix4(HVNA3[3],CntHVNA3[3], local_basis);
   }
 
   /*************************************************************
@@ -4596,7 +4599,7 @@ void Stress_H1()
 
 
 
-void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic)
+void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double ******CntDS_NL=electronic->CntDS_NL;
   double ******DS_NL=electronic->DS_NL;
@@ -4699,10 +4702,10 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
   if (Cnt_switch==1){
     for (so=0; so<(SO_switch+1); so++){
-      Cont_Matrix1(atomic, DS_NL[so][0],CntDS_NL[so][0]);
-      Cont_Matrix1(atomic, DS_NL[so][1],CntDS_NL[so][1]);
-      Cont_Matrix1(atomic, DS_NL[so][2],CntDS_NL[so][2]);
-      Cont_Matrix1(atomic, DS_NL[so][3],CntDS_NL[so][3]);
+      Cont_Matrix1(atomic, DS_NL[so][0],CntDS_NL[so][0], local_basis);
+      Cont_Matrix1(atomic, DS_NL[so][1],CntDS_NL[so][1], local_basis);
+      Cont_Matrix1(atomic, DS_NL[so][2],CntDS_NL[so][2], local_basis);
+      Cont_Matrix1(atomic, DS_NL[so][3],CntDS_NL[so][3], local_basis);
     }
   }
 
@@ -5875,8 +5878,10 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
 
 
-void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic)
+void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  double ****v_eff=local_basis->v_eff;
+
   double *****OLP=electronic->OLP;
 
   int i,j;
@@ -5965,14 +5970,14 @@ void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electroni
 	      tmp3 = 0.0; 
 
 	      for (k=0; k<Spe_Total_NO[Cwan]; k++){
-		tmp = v_eff[spin][Mc_AN][i][k];
+		tmp = openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k];
 		tmp1 += tmp*OLP[1][Mc_AN][h_AN][k][j];
 		tmp2 += tmp*OLP[2][Mc_AN][h_AN][k][j];
 		tmp3 += tmp*OLP[3][Mc_AN][h_AN][k][j];
 	      }
 
 	      for (k=0; k<Spe_Total_NO[Hwan]; k++){
-		tmp = v_eff[spin][Mh_AN][k][j];
+		tmp = openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j];
 		tmp1 += tmp*OLP[1][Mc_AN][h_AN][i][k];
 		tmp2 += tmp*OLP[2][Mc_AN][h_AN][i][k];
 		tmp3 += tmp*OLP[3][Mc_AN][h_AN][i][k];

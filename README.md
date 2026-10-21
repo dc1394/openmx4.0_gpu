@@ -153,6 +153,17 @@ is transactional, and release does not depend on old atom or neighbor lists.
 CUDA/HIP share this ownership layer while retaining their current kernel and
 device-specific execution policies. Removing the remaining borrowed pointer
 tables from numerical consumers is a later migration step.
+Onsite density and Hubbard/Zeeman potentials, DC inverse overlaps, LNO
+coefficients/populations and contracted-orbital coefficients now share another
+calculation-owned store. Nine families use contiguous values with explicit
+atom offsets or rectangular strides; ten globals, including one unused Zeeman
+allocation, are removed. Their numerical consumers use flat row views through
+SCF, forces, stress, orbital optimization and output. A few force/stress and
+optimization helpers still borrow temporary row adapters. Allocation failure
+preserves the previous state, and repartitioning releases storage independently
+of old topology. The same implementation serves CUDA/HIP and has no vendor SDK
+types. Noncollinear Hamiltonian contraction also handles all four spin
+components without overrunning its accumulation buffer.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

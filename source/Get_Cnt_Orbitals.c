@@ -16,8 +16,9 @@
 #include "openmx_common.h"
 #include "openmx_orbitals.h"
 
-void Get_Cnt_Orbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double *Chi)
+void Get_Cnt_Orbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double *Chi, const OpenMXLocalBasisViews *local_basis)
 {
+
 
   int Gc_AN,i,j,L0,Mul0,M0,i1,al,wan,p;
   double S_coordinate[3];
@@ -220,7 +221,7 @@ void Get_Cnt_Orbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, doub
 
         tmp0 = 0.0;
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-          tmp0 = tmp0 + CntCoes[Mc_AN][al][p]*RF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
+          tmp0 = tmp0 + openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*RF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
         }        
         Chi[al] = (po==0) ? tmp0*AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(M0)] : 0.0;
       }

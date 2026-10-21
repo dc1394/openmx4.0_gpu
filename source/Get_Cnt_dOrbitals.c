@@ -16,8 +16,9 @@
 #include "openmx_common.h"
 #include "openmx_orbitals.h"
 
-void Get_Cnt_dOrbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi)
+void Get_Cnt_dOrbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi, const OpenMXLocalBasisViews *local_basis)
 {
+
 
   int Gc_AN,i,j,L0,Mul0,M0,i1,al,wan,p;
   int mp_min,mp_max,m,po;
@@ -321,8 +322,8 @@ void Get_Cnt_dOrbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, dou
         tmp0 = 0.0;
         tmp1 = 0.0;
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-          tmp0 = tmp0 + CntCoes[Mc_AN][al][p]*RF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
-          tmp1 = tmp1 + CntCoes[Mc_AN][al][p]*dRF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
+          tmp0 = tmp0 + openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*RF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
+          tmp1 = tmp1 + openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*dRF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
         }        
 
         dChiR = tmp1*AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(M0)];
@@ -343,8 +344,9 @@ void Get_Cnt_dOrbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, dou
 }
 
 
-void Get_Cnt_dOrbitals2(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi)
+void Get_Cnt_dOrbitals2(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi, const OpenMXLocalBasisViews *local_basis)
 {
+
 
   int Gc_AN,i,j,L0,Mul0,M0,i1,al,wan,p;
   int mp_min,mp_max,m,po;
@@ -646,8 +648,8 @@ void Get_Cnt_dOrbitals2(const OpenMXAtomicViews *atomic, int Mc_AN, double x, do
         tmp0 = 0.0;
         tmp1 = 0.0;
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-          tmp0 = tmp0 + CntCoes[Mc_AN][al][p]*RF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
-          tmp1 = tmp1 + CntCoes[Mc_AN][al][p]*dRF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
+          tmp0 = tmp0 + openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*RF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
+          tmp1 = tmp1 + openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*dRF[(size_t)(L0)*orbital_buffers.multiplicity+(p)];
         }        
 
         dChiR = tmp1*AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(M0)];

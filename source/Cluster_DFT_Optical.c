@@ -36,7 +36,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
                    EXX_t *exx,
                    dcomplex ****exx_CDM,
                    double *Uexx,
-                   double Eele0[2], double Eele1[2]);
+                   double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
 static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
                    char *mode,
@@ -47,7 +47,7 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
                    double ****CntOLP,
                    double *****CDM,
                    double *****EDM,
-                   double Eele0[2], double Eele1[2]);
+                   double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
 
 
@@ -64,7 +64,7 @@ double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
 			   EXX_t *exx, 
 			   dcomplex ****exx_CDM,
 			   double *Uexx,
-			   double Eele0[2], double Eele1[2])
+			   double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
   static double time0;
 
@@ -75,7 +75,7 @@ double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
   if ( (SpinP_switch==0 || SpinP_switch==1) && SO_switch==0 ){
 
     time0 = Cluster_collinear_Optical(atomic, mode,SCF_iter,SpinP_switch,Cluster_ReCoes,Cluster_ko,
-                              nh,CntOLP,CDM,EDM,exx,exx_CDM,Uexx,Eele0,Eele1);
+                              nh,CntOLP,CDM,EDM,exx,exx_CDM,Uexx,Eele0,Eele1, local_basis);
   }
 
   /****************************************************
@@ -93,7 +93,7 @@ double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
   ****************************************************/
 
   else if (SpinP_switch==3){
-    time0 = Cluster_non_collinear_Optical(atomic, mode,SCF_iter,SpinP_switch,nh,ImNL,CntOLP,CDM,EDM,Eele0,Eele1);
+    time0 = Cluster_non_collinear_Optical(atomic, mode,SCF_iter,SpinP_switch,nh,ImNL,CntOLP,CDM,EDM,Eele0,Eele1, local_basis);
   }
 
   return time0;
@@ -114,7 +114,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
 				EXX_t *exx,
 				dcomplex ****exx_CDM,
 				double *Uexx,
-				double Eele0[2], double Eele1[2])
+				double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
   static int firsttime=1;
   int i,j,l,n,n2,n1,i1,i1s,j1,k1,l1;
@@ -246,7 +246,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
   /* YTL-start */
 
   /* Step (1) : calculate < phi( atom a, orbital alpha ) | nabla operator | phi( atom b, orbital beta ) > */
-  Calc_NabraMatrixElements(atomic);
+  Calc_NabraMatrixElements(atomic, local_basis);
 
   Set_MPIworld_for_optical(myid0,numprocs0); /* MPI for bands */
   Initialize_optical();
@@ -1027,7 +1027,7 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
 				    double ****CntOLP,
 				    double *****CDM,
 				    double *****EDM,
-				    double Eele0[2], double Eele1[2])
+				    double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
   static int firsttime=1;
   int i,j,l,n,n2,n1,i1,i1s,j1,k1,l1;
@@ -1139,7 +1139,7 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
 */
   /* YTL-start */
   /* Step (1) : calculate < phi( atom a, orbital alpha ) | nabla operator | phi( atom b, orbital beta ) > */
-  Calc_NabraMatrixElements(atomic);
+  Calc_NabraMatrixElements(atomic, local_basis);
 
   Set_MPIworld_for_optical(myid,numprocs); /* MPI for bands */
   Initialize_optical();

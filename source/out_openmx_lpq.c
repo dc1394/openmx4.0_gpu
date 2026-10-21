@@ -18,8 +18,9 @@
 #include "openmx_common.h"
 #include "flpq_dm.h"
 
-void out_openmx_lpq(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double *****iCDM)
+void out_openmx_lpq(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double *****iCDM, const OpenMXLocalBasisViews *local_basis)
 {
+
 
   int i,j,k;
   int numprocs,myid,tag=999,ID;
@@ -239,7 +240,7 @@ void out_openmx_lpq(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntO
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	        Tmp_Vec[num] = CntCoes[Mc_AN][al][p];
+	        Tmp_Vec[num] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
                 num++;
 	      }
 	    }

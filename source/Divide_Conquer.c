@@ -29,10 +29,10 @@
 // #define _BENCHMARK   1
 
 static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
-                     double Eele0[2], double Eele1[2]);
+                     double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
 static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ***** ImNL, double **** OLP0,
-                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
+                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 static void Save_DOS_Col(double ****** Residues, double **** OLP0, double *** EVal, int * Msize);
 static void Save_DOS_NonCol(dcomplex ****** Residues, double **** OLP0, double ** EVal, int * Msize);
@@ -1521,19 +1521,20 @@ static int DCCol_GpuSolver_SolveHamiltonian(int n, int p_min, const double *d_S_
 
 /* Host copy of the transformed overlap, needed only by the CPU solve; the
    GPU path with an S-cache hit skips it until a fallback actually happens. */
-static void DCCol_FillSDCFromS12(int Mc_AN, int n, double **S_DC)
+static void DCCol_FillSDCFromS12(int Mc_AN, int n, double **S_DC, const OpenMXLocalBasisViews *local_basis)
 {
+
     int i1, j1;
 
     for (i1 = 1; i1 <= n; i1++) {
         for (j1 = 1; j1 <= n; j1++) {
-            S_DC[i1][j1] = S12[Mc_AN][i1][j1];
+            S_DC[i1][j1] = openmx_local_inverse_overlap_row(local_basis, Mc_AN, i1)[j1];
         }
     }
 }
 
 double Divide_Conquer(char * mode, int SCF_iter, double ***** Hks, double ***** ImNL, double **** OLP0,
-                      double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
+                      double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
     double time0;
 
@@ -1542,7 +1543,7 @@ double Divide_Conquer(char * mode, int SCF_iter, double ***** Hks, double ***** 
     ****************************************************/
 
     if ((SpinP_switch == 0 || SpinP_switch == 1) && SO_switch == 0) {
-        time0 = DC_Col(mode, SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1);
+        time0 = DC_Col(mode, SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1, local_basis);
     }
 
     /****************************************************
@@ -1550,7 +1551,7 @@ double Divide_Conquer(char * mode, int SCF_iter, double ***** Hks, double ***** 
     ****************************************************/
 
     else if (SpinP_switch == 3) {
-        time0 = DC_NonCol(mode, SCF_iter, Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1, electronic);
+        time0 = DC_NonCol(mode, SCF_iter, Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1, electronic, local_basis);
     }
 
     return time0;
@@ -1558,8 +1559,9 @@ double Divide_Conquer(char * mode, int SCF_iter, double ***** Hks, double ***** 
 
 #pragma optimization_level 2
 static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
-                     double Eele0[2], double Eele1[2])
+                     double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
+
     static int    firsttime = 1;
     int           Mc_AN, Gc_AN, i, Gi, wan, wanA, wanB, Anum;
     int           size1, size2, num, NUM, NUM1, n2, Cwan, Hwan;
@@ -2288,7 +2290,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                     }
                 }
 
-                S12[Mc_AN][0][0] = P_min;
+                openmx_local_inverse_overlap_row(local_basis, Mc_AN, 0)[0] = P_min;
 
                 for (l = 1; l < P_min; l++)
                     M1[l] = 0.0;
@@ -2298,7 +2300,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                 for (i1 = 1; i1 <= NUM; i1++) {
                     for (j1 = 1; j1 <= NUM; j1++) {
                         S_DC[i1][j1]       = S_DC[i1][j1] * M1[j1];
-                        S12[Mc_AN][i1][j1] = S_DC[i1][j1];
+                        openmx_local_inverse_overlap_row(local_basis, Mc_AN, i1)[j1] = S_DC[i1][j1];
                     }
                 }
 
@@ -2311,7 +2313,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
 
             else {
 
-                P_min = (int)S12[Mc_AN][0][0];
+                P_min = (int)openmx_local_inverse_overlap_row(local_basis, Mc_AN, 0)[0];
 
                 if (use_dc_gpu && DC_scache.state == 1 && DC_scache.dim[Mc_AN] == NUM && DC_scache.valid[Mc_AN]) {
                     scache_hit       = 1;
@@ -2319,7 +2321,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                 } else {
                     for (i1 = 1; i1 <= NUM; i1++) {
                         for (j1 = 1; j1 <= NUM; j1++) {
-                            S_DC[i1][j1] = S12[Mc_AN][i1][j1];
+                            S_DC[i1][j1] = openmx_local_inverse_overlap_row(local_basis, Mc_AN, i1)[j1];
                         }
                     }
                 }
@@ -2371,7 +2373,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                     if (!DC_GpuSolver_PrepareGemmBackendForSolve(NUM, NUM1)) {
                         use_dc_gpu = 0;
                         if (!s_dc_host_filled) {
-                            DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC);
+                            DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC, local_basis);
                             s_dc_host_filled = 1;
                         }
                         NUM1       = DCCol_CPU_SolveHamiltonian(NUM, P_min, S_DC, H_DC[spin], ko, C);
@@ -2380,7 +2382,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
                                    H_DC[spin], ko, C)) {
                         use_dc_gpu = 0;
                         if (!s_dc_host_filled) {
-                            DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC);
+                            DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC, local_basis);
                             s_dc_host_filled = 1;
                         }
                         NUM1       = DCCol_CPU_SolveHamiltonian(NUM, P_min, S_DC, H_DC[spin], ko, C);
@@ -2388,7 +2390,7 @@ static double DC_Col(char * mode, int SCF_iter, double ***** Hks, double **** OL
 
                 } else {
                     if (!s_dc_host_filled) {
-                        DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC);
+                        DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC, local_basis);
                         s_dc_host_filled = 1;
                     }
                     NUM1 = DCCol_CPU_SolveHamiltonian(NUM, P_min, S_DC, H_DC[spin], ko, C);
@@ -2870,8 +2872,9 @@ static void DCNonCol_EigenGpuFlat(dcomplex *C_store, int ld, double *ko, int n)
 
 #pragma optimization_level 2
 static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ***** ImNL, double **** OLP0,
-                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
+                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
   double ******iDM=electronic->iDM;
 
     static int      firsttime = 1;
@@ -3795,7 +3798,7 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
                     }
                 }
 
-                S12[Mc_AN][0][0] = P_min;
+                openmx_local_inverse_overlap_row(local_basis, Mc_AN, 0)[0] = P_min;
 
                 for (l = 1; l < P_min; l++)
                     M1[l] = 0.0;
@@ -3805,7 +3808,7 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
                 for (i1 = 1; i1 <= NUM; i1++) {
                     for (j1 = 1; j1 <= NUM; j1++) {
                         S_DC[i1][j1]       = S_DC[i1][j1] * M1[j1];
-                        S12[Mc_AN][i1][j1] = S_DC[i1][j1];
+                        openmx_local_inverse_overlap_row(local_basis, Mc_AN, i1)[j1] = S_DC[i1][j1];
                     }
                 }
                 // dtime(&timeC);
@@ -3814,11 +3817,11 @@ static double DC_NonCol(char * mode, int SCF_iter, double ***** Hks, double ****
 
             else {
 
-                P_min = (int)S12[Mc_AN][0][0];
+                P_min = (int)openmx_local_inverse_overlap_row(local_basis, Mc_AN, 0)[0];
 
                 for (i1 = 1; i1 <= NUM; i1++) {
                     for (j1 = 1; j1 <= NUM; j1++) {
-                        S_DC[i1][j1] = S12[Mc_AN][i1][j1];
+                        S_DC[i1][j1] = openmx_local_inverse_overlap_row(local_basis, Mc_AN, i1)[j1];
                     }
                 }
                 // dtime(&timeC);

@@ -74,6 +74,7 @@ PRELUDE = r'''
 #define SOG_L0MAX 3
 #define SOG_MULMAX 8
 #include "openmx_core_atomic.h"
+#include "openmx_core_local_basis.h"
 #include "openmx_complex.h"
 static int mpi_comm_level1;
 #include "openmx_orbitals.h"
@@ -85,7 +86,8 @@ static int Spe_Num_Mesh_PAO[1]={6}, Spe_MaxL_Basis[1]={0};
 static int Spe_PAO_LMAX[1]={0}, Spe_PAO_Mul[1]={2};
 static int nb[4]={2}, *Spe_Num_Basis[1]={nb}, cb[4]={1}, *Spe_Num_CBasis[1]={cb};
 static int specified[2]={2,0}, *Spe_Specified_Num[1]={specified};
-static double coeff[2]={0.75,-0.25}, *ca[1]={coeff}, **CntCoes[4]={ca,ca,ca,ca};
+static double coeff[2]={0.75,-0.25}, flat_coeff[4][1][2];
+static OpenMXLocalBasisViews local_basis;
 static double radius[8]={NAN,0.1,0.2,0.4,0.8,1.6,3.2,NAN};
 static double wave0[8]={NAN,1.1,-0.3,0.7,1.5,-0.2,0.9,NAN};
 static double wave1[8]={NAN,-0.2,0.8,1.2,-0.4,0.6,-0.7,NAN};
@@ -143,6 +145,8 @@ static void check_derivative(double **d,double *v,double *g,int sign,int count)
 int main(void)
 {
     List_YOUSO[7]=2; List_YOUSO[24]=2; List_YOUSO[25]=0;
+    for(int a=0;a<4;a++) for(int m=0;m<2;m++) flat_coeff[a][0][m]=coeff[m];
+    local_basis.tensors[OPENMX_LOCAL_CONTRACTION]=(OpenMXLocalTensor3){4,1,2,&flat_coeff[0][0][0]};
     atomic->pao_radii=(OpenMXRadialView2){radius+1,{1,6}};
     atomic->orbitals=(OpenMXRadialView4){&flat_wave[0][0][0][0],{1,1,2,6}};
     atomic->species.pao_mesh=Spe_Num_Mesh_PAO;atomic->species.basis_lmax=Spe_MaxL_Basis;
@@ -173,14 +177,14 @@ int main(void)
         Orbitals_on_Grid(atomic,0,0,2,r,0,0,vc,vr,va);
         for(int i=0;i<2;i++) equal(vchi[i],v[i]);
         const double cv=coeff[0]*v[0]+coeff[1]*v[1],cg=coeff[0]*g[0]+coeff[1]*g[1];
-        Get_Cnt_Orbitals(atomic,1,r,0,0,chi); equal(chi[0],cv);
+        Get_Cnt_Orbitals(atomic,1,r,0,0,chi,&local_basis); equal(chi[0],cv);
         v[0]=cv; g[0]=cg;
-        Get_Cnt_dOrbitals(atomic,1,r,0,0,d); check_derivative(d,v,g,-1,1);
-        Get_Cnt_dOrbitals2(atomic,1,r,0,0,d); check_derivative(d,v,g,1,1);
+        Get_Cnt_dOrbitals(atomic,1,r,0,0,d,&local_basis); check_derivative(d,v,g,-1,1);
+        Get_Cnt_dOrbitals2(atomic,1,r,0,0,d,&local_basis); check_derivative(d,v,g,1,1);
         /* Halo indices exceed the rank-local M2G array. */
-        Get_Cnt_Orbitals(atomic,3,r,0,0,chi); equal(chi[0],cv);
-        Get_Cnt_dOrbitals(atomic,3,r,0,0,d); check_derivative(d,v,g,-1,1);
-        Get_Cnt_dOrbitals2(atomic,3,r,0,0,d); check_derivative(d,v,g,1,1);
+        Get_Cnt_Orbitals(atomic,3,r,0,0,chi,&local_basis); equal(chi[0],cv);
+        Get_Cnt_dOrbitals(atomic,3,r,0,0,d,&local_basis); check_derivative(d,v,g,-1,1);
+        Get_Cnt_dOrbitals2(atomic,3,r,0,0,d,&local_basis); check_derivative(d,v,g,1,1);
     }
     openmx_core_orbital_destroy(owner);
     puts("PASS: 196 orbital spline cases, CPU FP64, Force3 inline, Voronoi, contracted halo values, gradients and out-of-mesh zeroes");

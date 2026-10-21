@@ -21,7 +21,7 @@
 #include "mpi.h"
 #include <omp.h>
 
-double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
+double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
 {
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
@@ -92,7 +92,7 @@ double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
           Get_dOrbitals2(atomic, Cwan,x,y,z,dChi);
 	}
 	else{
-          Get_Cnt_dOrbitals2(atomic, Mc_AN,x,y,z,dChi);
+          Get_Cnt_dOrbitals2(atomic, Mc_AN,x,y,z,dChi, local_basis);
 	}
 
 	for (i=0; i<NO0; i++){
@@ -173,7 +173,7 @@ double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
               Get_dOrbitals(atomic, Hwan,x,y,z,dChi);
 	    } 
 	    else{
-              Get_Cnt_dOrbitals(atomic, Mh_AN,x,y,z,dChi);
+              Get_Cnt_dOrbitals(atomic, Mh_AN,x,y,z,dChi, local_basis);
 	    }
 
 	    for (j=0; j<NO1; j++){
@@ -203,7 +203,7 @@ double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 }
 
 // added by YTLee
-double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz) // type = 0,1=x,2=y,3=z
+double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz, const OpenMXLocalBasisViews *local_basis) // type = 0,1=x,2=y,3=z
 {
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
@@ -274,7 +274,7 @@ double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int 
           Get_dOrbitals2(atomic, Cwan,x,y,z,dChi);
   }
   else{
-          Get_Cnt_dOrbitals2(atomic, Mc_AN,x,y,z,dChi);
+          Get_Cnt_dOrbitals2(atomic, Mc_AN,x,y,z,dChi, local_basis);
   }
 
   for (i=0; i<NO0; i++){

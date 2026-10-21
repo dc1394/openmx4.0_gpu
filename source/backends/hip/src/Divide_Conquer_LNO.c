@@ -282,11 +282,11 @@ extern int openmx_hipsolver_release_workspace(void);
 
 static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
-                     double Eele0[2], double Eele1[2]);
+                     double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
 static double DC_NonCol(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                         double ***** Hks, double ***** ImNL, double **** OLP0,
-                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
+                        double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 static void Save_DOS_Col(double ****** Residues, double **** OLP0, double *** EVal,
                          int ** LO_TC, int ** HO_TC);
@@ -1509,17 +1509,17 @@ static int DCLNO_GPUProxy_Col_Service(int active,
 
 double Divide_Conquer_LNO(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                           double ***** Hks, double ***** ImNL, double **** OLP0,
-                          double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
+                          double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
     double time0;
 
     if (SpinP_switch == 0 || SpinP_switch == 1) {
         time0 = DC_Col(mode, MD_iter, SCF_iter, SucceedReadingDMfile,
-                       Hks, OLP0, CDM, EDM, Eele0, Eele1);
+                       Hks, OLP0, CDM, EDM, Eele0, Eele1, local_basis);
     }
     else if (SpinP_switch == 3) {
         time0 = DC_NonCol(mode, MD_iter, SCF_iter, SucceedReadingDMfile,
-                          Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1, electronic);
+                          Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1, electronic, local_basis);
     }
     else {
         time0 = 0.0;
@@ -1534,8 +1534,9 @@ double Divide_Conquer_LNO(char * mode, int MD_iter, int SCF_iter, int SucceedRea
 
 static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
-                     double Eele0[2], double Eele1[2])
+                     double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
+
     static int      firsttime = 1;
     static int      BLAS_allocate_flag = 0;
     static double * BLAS_OLP = NULL;
@@ -1668,7 +1669,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
 
     LNO_recalc_flag = 1;
     if (LNO_recalc_flag == 1) {
-        time0 = LNO(mode, SCF_iter, OLP0, Hks, CDM);
+        time0 = LNO(mode, SCF_iter, OLP0, Hks, CDM, local_basis);
     }
 
     /****************************************************
@@ -2228,7 +2229,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                         sumH = 0.0;
                                         for (k = 0; k < jan; k++) {
                                             sumH += Hks[spin][Mi][kl][m][k] *
-                                                    LNO_coes[spin][Mj][n * jan + k];
+                                                    openmx_local_lno_row(local_basis, spin, Mj)[n * jan + k];
                                         }
                                         H_ref(spin, Anum + m, Bnum + n) = sumH;
                                     }
@@ -2240,7 +2241,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                             sumS = 0.0;
                                             for (k = 0; k < jan; k++) {
                                                 sumS += OLP0[Mi][kl][m][k] *
-                                                        LNO_coes[spin][Mj][n * jan + k];
+                                                        openmx_local_lno_row(local_basis, spin, Mj)[n * jan + k];
                                             }
                                             S_ref(spin, Anum + m, Bnum + n) = sumS;
                                         }
@@ -2260,7 +2261,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                     for (n = 0; n < jan; n++) {
                                         sumH = 0.0;
                                         for (k = 0; k < ian; k++) {
-                                            sumH += LNO_coes[spin][Mi][m * ian + k] *
+                                            sumH += openmx_local_lno_row(local_basis, spin, Mi)[m * ian + k] *
                                                     Hc[n * ian + k];
                                         }
                                         H_ref(spin, Anum + m, Bnum + n) = sumH;
@@ -2278,7 +2279,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                         for (n = 0; n < jan; n++) {
                                             sumS = 0.0;
                                             for (k = 0; k < ian; k++) {
-                                                sumS += LNO_coes[spin][Mi][m * ian + k] *
+                                                sumS += openmx_local_lno_row(local_basis, spin, Mi)[m * ian + k] *
                                                         Sc[n * ian + k];
                                             }
                                             S_ref(spin, Anum + m, Bnum + n) = sumS;
@@ -2299,7 +2300,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                     for (n = 0; n < jan; n++) {
                                         sumH = 0.0;
                                         for (k = 0; k < ian; k++) {
-                                            sumH += LNO_coes[spin][Mi][m * ian + k] *
+                                            sumH += openmx_local_lno_row(local_basis, spin, Mi)[m * ian + k] *
                                                     Hc[n * ian + k];
                                         }
                                         Htmp[m * jan + n] = sumH;
@@ -2311,7 +2312,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                         sumH = 0.0;
                                         for (k = 0; k < jan; k++) {
                                             sumH += Htmp[m * jan + k] *
-                                                    LNO_coes[spin][Mj][n * jan + k];
+                                                    openmx_local_lno_row(local_basis, spin, Mj)[n * jan + k];
                                         }
                                         H_ref(spin, Anum + m, Bnum + n) = sumH;
                                     }
@@ -2329,7 +2330,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                         for (n = 0; n < jan; n++) {
                                             sumS = 0.0;
                                             for (k = 0; k < ian; k++) {
-                                                sumS += LNO_coes[spin][Mi][m * ian + k] *
+                                                sumS += openmx_local_lno_row(local_basis, spin, Mi)[m * ian + k] *
                                                         Sc[n * ian + k];
                                             }
                                             Stmp[m * jan + n] = sumS;
@@ -2341,7 +2342,7 @@ static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingD
                                             sumS = 0.0;
                                             for (k = 0; k < jan; k++) {
                                                 sumS += Stmp[m * jan + k] *
-                                                        LNO_coes[spin][Mj][n * jan + k];
+                                                        openmx_local_lno_row(local_basis, spin, Mj)[n * jan + k];
                                             }
                                             S_ref(spin, Anum + m, Bnum + n) = sumS;
                                         }
@@ -2947,8 +2948,9 @@ static double DC_NonCol(char *mode,
                         double ****OLP0,
 			double *****CDM,
 			double *****EDM,
-			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic)
+			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
   double ******iDM=electronic->iDM;
 
   static int firsttime=1;
@@ -3089,7 +3091,7 @@ static double DC_NonCol(char *mode,
   LNO_recalc_flag = 1;   
 
   if (LNO_recalc_flag==1){
-    time0 = LNO(mode,SCF_iter,OLP0,Hks,CDM);
+    time0 = LNO(mode,SCF_iter,OLP0,Hks,CDM, local_basis);
   }
 
   /****************************************************
@@ -4021,10 +4023,10 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<jan; k++){
-		      sumH00r += Hks[0][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH11r += Hks[1][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01r += Hks[2][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01i += Hks[3][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
+		      sumH00r += Hks[0][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH11r += Hks[1][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01r += Hks[2][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01i += Hks[3][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
 		    } 
 
 		    HNC_ref(Anum+m,     Bnum+n     ).r = sumH00r;
@@ -4052,12 +4054,12 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<jan; k++){
-		      sumH00r +=  Hks[0][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH00i += ImNL[0][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH11r +=  Hks[1][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH11i += ImNL[1][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01r +=  Hks[2][Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01i += (Hks[3][Mi][kl][m][k]+ImNL[2][Mi][kl][m][k])*LNO_coes[0][Mj][n*jan+k];
+		      sumH00r +=  Hks[0][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH00i += ImNL[0][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH11r +=  Hks[1][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH11i += ImNL[1][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01r +=  Hks[2][Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01i += (Hks[3][Mi][kl][m][k]+ImNL[2][Mi][kl][m][k])*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
 		    } 
 
 		    HNC_ref(Anum+m,     Bnum+n     ).r = sumH00r;
@@ -4077,7 +4079,7 @@ static double DC_NonCol(char *mode,
 		  for (n=0; n<jno; n++){
 		    sumS = 0.0;
 		    for (k=0; k<jan; k++){
-		      sumS += OLP0[Mi][kl][m][k]*LNO_coes[0][Mj][n*jan+k];
+		      sumS += OLP0[Mi][kl][m][k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
 		    } 
 
 		    SNC_ref(Anum+m, Bnum+n).r = sumS;
@@ -4113,10 +4115,10 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<ian; k++){
-		      sumH00r += LNO_coes[0][Mi][m*ian+k]*Hc00r[n*ian+k];
-		      sumH11r += LNO_coes[0][Mi][m*ian+k]*Hc11r[n*ian+k];
-		      sumH01r += LNO_coes[0][Mi][m*ian+k]*Hc01r[n*ian+k];
-		      sumH01i += LNO_coes[0][Mi][m*ian+k]*Hc01i[n*ian+k];
+		      sumH00r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc00r[n*ian+k];
+		      sumH11r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc11r[n*ian+k];
+		      sumH01r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01r[n*ian+k];
+		      sumH01i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01i[n*ian+k];
 		    } 
 
 		    HNC_ref(Anum+m,     Bnum+n     ).r = sumH00r;
@@ -4156,12 +4158,12 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<ian; k++){
-		      sumH00r += LNO_coes[0][Mi][m*ian+k]*Hc00r[n*ian+k];
-		      sumH00i += LNO_coes[0][Mi][m*ian+k]*Hc00i[n*ian+k];
-		      sumH11r += LNO_coes[0][Mi][m*ian+k]*Hc11r[n*ian+k];
-		      sumH11i += LNO_coes[0][Mi][m*ian+k]*Hc11i[n*ian+k];
-		      sumH01r += LNO_coes[0][Mi][m*ian+k]*Hc01r[n*ian+k];
-		      sumH01i += LNO_coes[0][Mi][m*ian+k]*Hc01i[n*ian+k];
+		      sumH00r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc00r[n*ian+k];
+		      sumH00i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc00i[n*ian+k];
+		      sumH11r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc11r[n*ian+k];
+		      sumH11i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc11i[n*ian+k];
+		      sumH01r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01r[n*ian+k];
+		      sumH01i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01i[n*ian+k];
 		    } 
 
 		    HNC_ref(Anum+m,     Bnum+n     ).r = sumH00r;
@@ -4187,7 +4189,7 @@ static double DC_NonCol(char *mode,
 		  for (n=0; n<jan; n++){
 		    sumS = 0.0;
 		    for (k=0; k<ian; k++){
-		      sumS += LNO_coes[0][Mi][m*ian+k]*Sc[n*ian+k];
+		      sumS += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Sc[n*ian+k];
 		    } 
 
 		    SNC_ref(Anum+m, Bnum+n).r = sumS;
@@ -4223,10 +4225,10 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<ian; k++){
-		      sumH00r += LNO_coes[0][Mi][m*ian+k]*Hc00r[n*ian+k];
-		      sumH11r += LNO_coes[0][Mi][m*ian+k]*Hc11r[n*ian+k];
-		      sumH01r += LNO_coes[0][Mi][m*ian+k]*Hc01r[n*ian+k];
-		      sumH01i += LNO_coes[0][Mi][m*ian+k]*Hc01i[n*ian+k];
+		      sumH00r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc00r[n*ian+k];
+		      sumH11r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc11r[n*ian+k];
+		      sumH01r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01r[n*ian+k];
+		      sumH01i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01i[n*ian+k];
 		    } 
 
 		    Hc00r_tmp[m*jan+n] = sumH00r;
@@ -4245,10 +4247,10 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<jan; k++){
-		      sumH00r += Hc00r_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH11r += Hc11r_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01r += Hc01r_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01i += Hc01i_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
+		      sumH00r += Hc00r_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH11r += Hc11r_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01r += Hc01r_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01i += Hc01i_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
 		    } 
 
 		    HNC_ref(Anum+m,     Bnum+n     ).r = sumH00r;
@@ -4288,12 +4290,12 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<ian; k++){
-		      sumH00r += LNO_coes[0][Mi][m*ian+k]*Hc00r[n*ian+k];
-		      sumH00i += LNO_coes[0][Mi][m*ian+k]*Hc00i[n*ian+k];
-		      sumH11r += LNO_coes[0][Mi][m*ian+k]*Hc11r[n*ian+k];
-		      sumH11i += LNO_coes[0][Mi][m*ian+k]*Hc11i[n*ian+k];
-		      sumH01r += LNO_coes[0][Mi][m*ian+k]*Hc01r[n*ian+k];
-		      sumH01i += LNO_coes[0][Mi][m*ian+k]*Hc01i[n*ian+k];
+		      sumH00r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc00r[n*ian+k];
+		      sumH00i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc00i[n*ian+k];
+		      sumH11r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc11r[n*ian+k];
+		      sumH11i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc11i[n*ian+k];
+		      sumH01r += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01r[n*ian+k];
+		      sumH01i += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Hc01i[n*ian+k];
 		    } 
 
 		    Hc00r_tmp[m*jan+n] = sumH00r;
@@ -4316,12 +4318,12 @@ static double DC_NonCol(char *mode,
 		    sumH01i = 0.0;
 
 		    for (k=0; k<jan; k++){
-		      sumH00r += Hc00r_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH00i += Hc00i_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH11r += Hc11r_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH11i += Hc11i_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01r += Hc01r_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
-		      sumH01i += Hc01i_tmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
+		      sumH00r += Hc00r_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH00i += Hc00i_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH11r += Hc11r_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH11i += Hc11i_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01r += Hc01r_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
+		      sumH01i += Hc01i_tmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
 		    } 
 
 		    HNC_ref(Anum+m,     Bnum+n     ).r = sumH00r;
@@ -4348,7 +4350,7 @@ static double DC_NonCol(char *mode,
 		  for (n=0; n<jan; n++){
 		    sumS = 0.0;
 		    for (k=0; k<ian; k++){
-		      sumS += LNO_coes[0][Mi][m*ian+k]*Sc[n*ian+k];
+		      sumS += openmx_local_lno_row(local_basis, 0, Mi)[m*ian+k]*Sc[n*ian+k];
 		    } 
 		    Stmp[m*jan+n] = sumS; 
 		  }
@@ -4358,7 +4360,7 @@ static double DC_NonCol(char *mode,
 		  for (n=0; n<jno; n++){
 		    sumS = 0.0;
 		    for (k=0; k<jan; k++){
-		      sumS += Stmp[m*jan+k]*LNO_coes[0][Mj][n*jan+k];
+		      sumS += Stmp[m*jan+k]*openmx_local_lno_row(local_basis, 0, Mj)[n*jan+k];
 		    } 
 
 		    SNC_ref(Anum+m, Bnum+n).r = sumS;

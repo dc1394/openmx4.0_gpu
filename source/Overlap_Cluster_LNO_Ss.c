@@ -18,8 +18,9 @@
 #include "openmx_common.h"
 #include "mpi.h"
 
-void Overlap_Cluster_LNO_Ss(double ****OLP0, double *Ss, int *MP, int spin, int myworld1)
+void Overlap_Cluster_LNO_Ss(double ****OLP0, double *Ss, int *MP, int spin, int myworld1, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,k,p;
   int MA_AN,MB_AN,GA_AN,LB_AN,GB_AN,AN;
   int wanA,wanB,tnoA,tnoB,tnoA0,tnoB0;
@@ -153,7 +154,7 @@ void Overlap_Cluster_LNO_Ss(double ****OLP0, double *Ss, int *MP, int spin, int 
 	  sumS = 0.0;
 
 	  for (k=0; k<tnoA0; k++){
-	    sumS += LNO_coes[spin][MA_AN][tnoA0*i+k]*Sc[tnoA0*j+k];
+	    sumS += openmx_local_lno_row(local_basis, spin, MA_AN)[tnoA0*i+k]*Sc[tnoA0*j+k];
 	  }
 
 	  Stmp[i*tnoB0+j] = sumS;
@@ -167,7 +168,7 @@ void Overlap_Cluster_LNO_Ss(double ****OLP0, double *Ss, int *MP, int spin, int 
 	  sumS = 0.0;
 
 	  for (k=0; k<tnoB0; k++){
-	    sumS += Stmp[i*tnoB0+k]*LNO_coes[spin][MB_AN][tnoB0*j+k];
+	    sumS += Stmp[i*tnoB0+k]*openmx_local_lno_row(local_basis, spin, MB_AN)[tnoB0*j+k];
 	  }
 
 	  S1[p] = sumS;

@@ -76,6 +76,7 @@
 #endif
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_local_basis.h"
 #include "openmx_electronic.h"
 #include "openmx_atomic.h"
 #include "mpi.h"
@@ -108,6 +109,8 @@ int main(int argc, char *argv[])
 
 static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 {
+  OpenMXLocalBasisViews local_basis_storage;
+
   OpenMXElectronicViews electronic_storage;
 
   int numprocs=0,myid=0;
@@ -706,7 +709,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   if (ForceConsistency_flag==1){
 
     Check_Force(argv,core);
-    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
+    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
@@ -744,7 +747,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   if (StressConsistency_flag==1){
     Check_Stress(argv,core);
-    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
+    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
@@ -869,7 +872,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   if (Solver==4 && TRAN_analysis==1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */ 
-    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(atomic, 0);
+    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
     if (SpinP_switch==3) {
       TRAN_Main_Analysis_NC(atomic,  mpi_comm_level1, argc, argv, Matomnum, M2G,
@@ -887,7 +890,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
                   Making of output files
   ****************************************************/
 
-  CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
+  CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density

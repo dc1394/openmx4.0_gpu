@@ -15,8 +15,9 @@
 #include <time.h>
 #include "openmx_common.h"
 
-void Contract_iHNL(double *****iHNL, double *****iCntHNL)
+void Contract_iHNL(double *****iHNL, double *****iCntHNL, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i1,Gc_AN,Mc_AN,h_AN,Mh_AN,Gh_AN;
   int p,q,p0,q0,al,be,Cwan,Hwan;
   double sumiHNL[5],sumS,tmp0;
@@ -40,7 +41,7 @@ void Contract_iHNL(double *****iHNL, double *****iCntHNL)
 
             for (q=0; q<Spe_Specified_Num[Hwan][be]; q++){
               q0 = Spe_Trans_Orbital[Hwan][be][q];
-              tmp0 = CntCoes[Mc_AN][al][p]*CntCoes[Mh_AN][be][q]; 
+              tmp0 = openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*openmx_local_contraction_row(local_basis, Mh_AN, be)[q];
 
               for (i1=0; i1<List_YOUSO[5]; i1++){
                 sumiHNL[i1] += tmp0*iHNL[i1][Mc_AN][h_AN][p0][q0];

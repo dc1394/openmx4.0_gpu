@@ -49,12 +49,12 @@ static int TotalEnergy_ProfileEnabled(void)
 static double Calc_Ecore();
 static double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter);
 static double Calc_Ekin(const OpenMXElectronicViews *electronic);
-static double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic);
-static double Calc_Enl(const OpenMXElectronicViews *electronic);
+static double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static double Calc_ECH(const OpenMXElectronicViews *electronic);
 static void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[]);
 static void Calc_Edc(double ECE[]);
-static double Calc_Ehub();   /* --- added by MJ  */
+static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- added by MJ  */
 static double Calc_EdftD();  /* added by okuno */
 static double Calc_EdftD3(); /* added by Ellner */
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
@@ -116,7 +116,7 @@ static int TotalEnergyUseOpenACC(void)
 
 
 
-double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic)
+double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 { 
   double time0;
   double TStime,TEtime;
@@ -201,7 +201,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
   dtime(&stime);
 
-  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(vna, electronic);
+  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(vna, electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -214,7 +214,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
   dtime(&stime);
 
-  if (F_NL_flag==1)  ECE[4] = Calc_Enl(electronic);
+  if (F_NL_flag==1)  ECE[4] = Calc_Enl(electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -257,7 +257,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
   ****************************************************/
 
   if (F_U_flag==1){
-    if (Hub_U_switch==1)  ECE[8] = Calc_Ehub();
+    if (Hub_U_switch==1)  ECE[8] = Calc_Ehub(local_basis);
     else                  ECE[8] = 0.0;
   }
 
@@ -541,7 +541,7 @@ double Calc_Ekin(const OpenMXElectronicViews *electronic)
 
 
 
-double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic)
+double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double *****CntH0=electronic->CntH0;
   double ******DM=electronic->DM;
@@ -579,7 +579,7 @@ double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *el
 
     if (Cnt_switch==1){
       /* temporaly, we borrow the CntH0 matrix */
-      Cont_Matrix0(vna->HVNA,CntH0[0]);
+      Cont_Matrix0(vna->HVNA,CntH0[0], local_basis);
     }
 
     for (spin=0; spin<=SpinP_switch; spin++){
@@ -712,7 +712,7 @@ double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *el
 
 
 
-double Calc_Enl(const OpenMXElectronicViews *electronic)
+double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double *****CntH0=electronic->CntH0;
   double ******DM=electronic->DM;
@@ -755,7 +755,7 @@ double Calc_Enl(const OpenMXElectronicViews *electronic)
 
       if (Cnt_switch==1){
         /* temporaly, borrow the CntH0 matrix */
-        Cont_Matrix0(HNL[spin],CntH0[0]);
+        Cont_Matrix0(HNL[spin],CntH0[0], local_basis);
       }
 
 #pragma omp parallel shared(spin,SpinP_switch,time_per_atom,CntH0,HNL,DM,My_Enl_threads,Spe_Total_CNO,Cnt_switch,natn,WhatSpecies,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop) private(OMPID,Nthrds,Nprocs,Nloop,Stime_atom,Mc_AN,h_AN,Gc_AN,Cwan,Gh_AN,Hwan,Etime_atom,i,j)
@@ -2796,8 +2796,9 @@ void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2
 
 
 
-double Calc_Ehub()
-{   
+double Calc_Ehub(const OpenMXLocalBasisViews *local_basis)
+{
+
  /****************************************************
          LDA+U energy correction added by MJ
   ****************************************************/
@@ -2853,7 +2854,7 @@ double Calc_Ehub()
 	      Uvalue = Hub_U_Basis[wan1][l1][mul1];
 	      for(m1=0; m1<(2*l1+1); m1++){
 
-                tmpv = 0.5*Uvalue*DM_onsite[0][spin][Mc_AN][cnt1][cnt1];
+                tmpv = 0.5*Uvalue*openmx_local_density_row(local_basis, 0, spin, Mc_AN, cnt1)[cnt1];
 	        My_Ehub += tmpv;
 
 	        cnt1++;
@@ -2879,8 +2880,8 @@ double Calc_Ehub()
 		      if (l1==l2 && mul1==mul2){
                       
 		        Uvalue = Hub_U_Basis[wan1][l1][mul1];
-		        sum -= 0.5*Uvalue*DM_onsite[0][spin][Mc_AN][cnt1][cnt2]*
-			                  DM_onsite[0][spin][Mc_AN][cnt2][cnt1];
+		        sum -= 0.5*Uvalue*openmx_local_density_row(local_basis, 0, spin, Mc_AN, cnt1)[cnt2]*
+			                  openmx_local_density_row(local_basis, 0, spin, Mc_AN, cnt2)[cnt1];
 		      }
 
 		      cnt2++;
@@ -2936,8 +2937,8 @@ double Calc_Ehub()
 	      trace_spin = 0.0;
 	      trace_opp_spin = 0.0;
 	      for(ii=0; ii<(2*l1+1); ii++){
-	        trace_spin += DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+ii];
-	        trace_opp_spin += DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+ii];
+	        trace_spin += openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+ii];
+	        trace_opp_spin += openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+ii];
 	      }
 	      /* dc Energy */
 	      if(dc_Type==1){  /* sFLL */
@@ -2964,15 +2965,15 @@ double Calc_Ehub()
                       switch(dc_Type){
                       case 1:  /* sFLL */
 		        tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-                                      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-			    	       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]);
+                                      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 		        tmpEhub2 = 0.5*(Coulomb_Array[NZUJ][ii][jj][kk][ll]-Coulomb_Array[NZUJ][ii][jj][ll][kk])*
-				      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-				       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]);
+				      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+				       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 	                My_Ehub += tmpEhub1 + tmpEhub2;
                       break;
               
@@ -2992,15 +2993,15 @@ double Calc_Ehub()
 
                       case 3:  /* cFLL */
 		        tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*
-                                      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-			    	       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]);
+                                      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 		        tmpEhub2 = 0.5*(Coulomb_Array[NZUJ][ii][jj][kk][ll]-Coulomb_Array[NZUJ][ii][jj][ll][kk])*
-				      (DM_onsite[0][0][Mc_AN][cnt_start+ii][cnt_start+kk]*
-				       DM_onsite[0][0][Mc_AN][cnt_start+jj][cnt_start+ll]
-                                      +DM_onsite[0][1][Mc_AN][cnt_start+ii][cnt_start+kk]*
-                                       DM_onsite[0][1][Mc_AN][cnt_start+jj][cnt_start+ll]);
+				      (openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+				       openmx_local_density_row(local_basis, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll]
+                                      +openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk]*
+                                       openmx_local_density_row(local_basis, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll]);
 	                My_Ehub += tmpEhub1 + tmpEhub2;
                       break;
 
@@ -3072,8 +3073,8 @@ double Calc_Ehub()
 	    Uvalue = Hub_U_Basis[wan1][l1][mul1];
 	    for(m1=0; m1<(2*l1+1); m1++){
 
-	      tmpv = 0.5*Uvalue*( NC_OcpN[0][0][0][Mc_AN][cnt1][cnt1].r
-			      + NC_OcpN[0][1][1][Mc_AN][cnt1][cnt1].r);
+	      tmpv = 0.5*Uvalue*( openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt1].r
+			      + openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt1].r);
               My_Ehub += tmpv;
 
 	      cnt1++;
@@ -3099,29 +3100,29 @@ double Calc_Ehub()
 
 		      Uvalue = Hub_U_Basis[wan1][l1][mul1];
 
-		      sum -= 0.5*Uvalue*( NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].r*
-			                NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].r
+		      sum -= 0.5*Uvalue*( openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].r*
+			                openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].r
 					    +
-				        NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][0][0][Mc_AN][cnt1][cnt2].i
+				        openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt1)[cnt2].i
 					    +
-				        NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].r*
-					NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].r
+				        openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].r*
+					openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].r
 					    +
-					NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][0][1][Mc_AN][cnt1][cnt2].i
+					openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt1)[cnt2].i
 					    +
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].r*
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].r
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].r*
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].r
 					    +
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][1][0][Mc_AN][cnt1][cnt2].i
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt1)[cnt2].i
 					    +
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].r*
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].r
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].r*
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].r
 					    +
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].i*
-					NC_OcpN[0][1][1][Mc_AN][cnt1][cnt2].i );
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].i*
+					openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt1)[cnt2].i );
 
 		    }
 
@@ -3184,15 +3185,15 @@ double Calc_Ehub()
             trace_N10.i = 0.0;
 
             for(dd=0; dd<(2*l1+1); dd++){
-              trace_N00.r += NC_OcpN[0][0][0][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-	      trace_N00.i += NC_OcpN[0][0][0][Mc_AN][cnt_start+dd][cnt_start+dd].i;
-	      trace_N11.r += NC_OcpN[0][1][1][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-	      trace_N11.i += NC_OcpN[0][1][1][Mc_AN][cnt_start+dd][cnt_start+dd].i;
+              trace_N00.r += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+	      trace_N00.i += openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
+	      trace_N11.r += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+	      trace_N11.i += openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
 
-              trace_N01.r += NC_OcpN[0][0][1][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-              trace_N01.i += NC_OcpN[0][0][1][Mc_AN][cnt_start+dd][cnt_start+dd].i;
-              trace_N10.r += NC_OcpN[0][1][0][Mc_AN][cnt_start+dd][cnt_start+dd].r;
-              trace_N10.i += NC_OcpN[0][1][0][Mc_AN][cnt_start+dd][cnt_start+dd].i;
+              trace_N01.r += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+              trace_N01.i += openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
+              trace_N10.r += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].r;
+              trace_N10.i += openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+dd)[cnt_start+dd].i;
             }
 	    /* Double counting energy */
 	    if(dc_Type==1){  /* sFLL */
@@ -3223,25 +3224,25 @@ double Calc_Ehub()
 	          for(ll=0; ll<(2*l1+1); ll++){
                     switch(dc_Type){
                     case 1:  /* sFLL */
-		      N_00_ac.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_00_ac.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_11_ac.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_11_ac.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_00_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_00_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_11_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_11_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_00_bd.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_00_bd.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_11_bd.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_11_bd.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_00_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_00_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_11_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_11_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
-		      N_01_ac.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_01_ac.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_10_ac.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_10_ac.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_01_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_01_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_10_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_10_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_01_bd.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_01_bd.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_10_bd.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_10_bd.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_01_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_01_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_10_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_10_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
                       /* diagonal term */
    		      tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*
@@ -3291,25 +3292,25 @@ double Calc_Ehub()
                     break;
 
                     case 3:  /* cFLL */
-		      N_00_ac.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_00_ac.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_11_ac.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_11_ac.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_00_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_00_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_11_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_11_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_00_bd.r=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_00_bd.i=NC_OcpN[0][0][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_11_bd.r=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_11_bd.i=NC_OcpN[0][1][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_00_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_00_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_11_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_11_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
-		      N_01_ac.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_01_ac.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+ii][cnt_start+kk].i;
-		      N_10_ac.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].r;
-		      N_10_ac.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+ii][cnt_start+kk].i;
+		      N_01_ac.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_01_ac.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
+		      N_10_ac.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].r;
+		      N_10_ac.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+ii)[cnt_start+kk].i;
 
-		      N_01_bd.r=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_01_bd.i=NC_OcpN[0][0][1][Mc_AN][cnt_start+jj][cnt_start+ll].i;
-		      N_10_bd.r=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].r;
-		      N_10_bd.i=NC_OcpN[0][1][0][Mc_AN][cnt_start+jj][cnt_start+ll].i;
+		      N_01_bd.r=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_01_bd.i=openmx_local_occupation_row(local_basis, 0, 0, 1, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
+		      N_10_bd.r=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].r;
+		      N_10_bd.i=openmx_local_occupation_row(local_basis, 0, 1, 0, Mc_AN, cnt_start+jj)[cnt_start+ll].i;
 
                       /* diagonal term */
    		      tmpEhub1 = 0.5*Coulomb_Array[NZUJ][ii][jj][kk][ll]*

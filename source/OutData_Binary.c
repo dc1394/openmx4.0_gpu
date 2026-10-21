@@ -36,7 +36,7 @@ static void out_coordinates_bulk();
 static void out_Cluster_MO();
 static void out_Cluster_NC_MO();
 static void out_Bulk_MO();
-static void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile);
+static void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXLocalBasisViews *local_basis);
 static void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic);
 static void Set_Partial_Density_Grid(double *****CDM);
 static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue);
@@ -45,7 +45,7 @@ static void Print_VectorData(FILE *fp, char fext[],
                              double *data0, double *data1,
                              double *data2, double *data3);
 
-double OutData_Binary(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic)
+double OutData_Binary(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   char operate[YOUSO10];
   int i,c;
@@ -95,7 +95,7 @@ double OutData_Binary(const OpenMXAtomicViews *atomic, char *inputfile, const Op
   }
 
   if (Cnt_switch==1){
-    out_OrbOpt(atomic, inputfile);
+    out_OrbOpt(atomic, inputfile, local_basis);
   } 
 
   /*************************************************
@@ -1834,8 +1834,9 @@ static void Print_VectorData(FILE *fp, char fext[],
 
 
 
-void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
+void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,natom,po,al,p,wan,L0,Mul0,M0;
   int num,Mc_AN,Gc_AN,pmax,Mul1;
   int al1,al0;
@@ -1924,11 +1925,11 @@ void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
 
               if (Mul1!=Mul0){
 
-                tmp0 = CntCoes[Mc_AN][al0][Mul0]; 
-                tmp1 = CntCoes[Mc_AN][al1][Mul0]; 
+                tmp0 = openmx_local_contraction_row(local_basis, Mc_AN, al0)[Mul0];
+                tmp1 = openmx_local_contraction_row(local_basis, Mc_AN, al1)[Mul0];
 
   	        for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-                  CntCoes[Mc_AN][al1][p] -= CntCoes[Mc_AN][al0][p]/tmp0*tmp1;
+                  openmx_local_contraction_row(local_basis, Mc_AN, al1)[p] -= openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]/tmp0*tmp1;
 		}
               }
 
@@ -1962,16 +1963,16 @@ void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
 
 	      sum = 0.0;
 	      for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-		sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al1][p];
+		sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	      }
 
 	      for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-		Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*CntCoes[Mc_AN][al1][p];
+		Tmp_CntCoes[p] = Tmp_CntCoes[p] + sum*openmx_local_contraction_row(local_basis, Mc_AN, al1)[p];
 	      }
 	    }
 
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      CntCoes[Mc_AN][al0][p] = CntCoes[Mc_AN][al0][p] - Tmp_CntCoes[p];
+	      openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] - Tmp_CntCoes[p];
 	    }
 
 	    /* Normalize */
@@ -1980,9 +1981,9 @@ void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
 	    Max0 = -100.0;
 	    pmax = 0;
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      sum = sum + CntCoes[Mc_AN][al0][p]*CntCoes[Mc_AN][al0][p];
-	      if (Max0<fabs(CntCoes[Mc_AN][al0][p])){
-		Max0 = fabs(CntCoes[Mc_AN][al0][p]);
+	      sum = sum + openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
+	      if (Max0<fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p])){
+		Max0 = fabs(openmx_local_contraction_row(local_basis, Mc_AN, al0)[p]);
 		pmax = p;
 	      }
 	    }
@@ -1992,10 +1993,10 @@ void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
 	    else 
 	      tmp0 = 1.0/sqrt(sum); 
 
-	    tmp1 = sgn(CntCoes[Mc_AN][al0][pmax]);
+	    tmp1 = sgn(openmx_local_contraction_row(local_basis, Mc_AN, al0)[pmax]);
             
 	    for (p=0; p<Spe_Specified_Num[wan][al0]; p++){
-	      CntCoes[Mc_AN][al0][p] = tmp0*tmp1*CntCoes[Mc_AN][al0][p];
+	      openmx_local_contraction_row(local_basis, Mc_AN, al0)[p] = tmp0*tmp1*openmx_local_contraction_row(local_basis, Mc_AN, al0)[p];
 	    }
 
 	  }
@@ -2034,7 +2035,7 @@ void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	        Tmp_Vec[num] = CntCoes[Mc_AN][al][p];
+	        Tmp_Vec[num] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
                 num++;
 	      }
 	    }
@@ -2137,7 +2138,7 @@ void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile)
 	    for (M0=0; M0<=2*L0; M0++){
 	      al++;
 	      for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	        Tmp_Vec[num] = CntCoes[Mc_AN][al][p];
+	        Tmp_Vec[num] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p];
                 num++;
 	      }
 	    }

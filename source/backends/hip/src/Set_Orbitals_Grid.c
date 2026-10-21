@@ -868,7 +868,7 @@ static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int ra
   return done || (pending && ready);
 }
 
-double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
+double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
 {
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
@@ -1251,7 +1251,7 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 
 	}
 	else{
-          Get_Cnt_Orbitals(atomic, Mc_AN,x,y,z,Chi0);
+          Get_Cnt_Orbitals(atomic, Mc_AN,x,y,z,Chi0, local_basis);
 	}
 
 	for (i=0; i<NO0; i++){
@@ -1624,7 +1624,7 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 	    } /* if (Cnt_kind==0) */
 
 	    else{
-              Get_Cnt_Orbitals(atomic, Mh_AN,x,y,z,Chi0);
+              Get_Cnt_Orbitals(atomic, Mh_AN,x,y,z,Chi0, local_basis);
 	    }
 
 	    for (j=0; j<NO1; j++){

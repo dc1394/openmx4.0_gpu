@@ -1768,7 +1768,7 @@ void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair,int n,const int *nc,
   if (!SOG_tiles_distribute(&w)) SOG_Device_EvalPairChunk_Part(&SOG_dev,pair,n,nc,gla,cla,out);
 }
 
-double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
+double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
 {
   SOG_Device_ReleaseAll();   /* the grid frame may have changed */
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
@@ -2148,7 +2148,7 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 
 	}
 	else{
-          Get_Cnt_Orbitals(atomic, Mc_AN,x,y,z,Chi0);
+          Get_Cnt_Orbitals(atomic, Mc_AN,x,y,z,Chi0, local_basis);
 	}
 
 	for (i=0; i<NO0; i++){
@@ -2521,7 +2521,7 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind)
 	    } /* if (Cnt_kind==0) */
 
 	    else{
-              Get_Cnt_Orbitals(atomic, Mh_AN,x,y,z,Chi0);
+              Get_Cnt_Orbitals(atomic, Mh_AN,x,y,z,Chi0, local_basis);
 	    }
 
 	    for (j=0; j<NO1; j++){

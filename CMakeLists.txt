@@ -147,6 +147,12 @@ if(BUILD_TESTING)
   add_test(NAME orbital-evaluation COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_orbital_evaluation_cpu.py" "$<TARGET_FILE:openmx_core>")
   set_tests_properties(orbital-evaluation PROPERTIES TIMEOUT 180 LABELS "unit;orbitals")
+  add_test(NAME local-basis-contraction COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_local_contraction.py")
+  set_tests_properties(local-basis-contraction PROPERTIES TIMEOUT 60 LABELS "unit;orbitals")
+  add_test(NAME suite-output COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/test_suite_output.py")
+  set_tests_properties(suite-output PROPERTIES TIMEOUT 30 LABELS "unit")
   add_test(NAME dftd3-interpolation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_dftd3_interpolation_cpu.py")
   set(_dense_kernel_test "${CMAKE_SOURCE_DIR}/tests/run_gpu_dense_workers_cpu.py")

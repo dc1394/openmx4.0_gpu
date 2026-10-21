@@ -2146,7 +2146,7 @@ static void Force4B_case1_trace_fused(const OpenMXVnaMatrixViews *vna, int Mc_AN
 
 static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP, double**** v_eff,
-    double*** Hx, double*** Hy, double*** Hz);
+    double*** Hx, double*** Hy, double*** Hz, const OpenMXLocalBasisViews *local_basis);
 
 static void dH_U_NC_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP, dcomplex***** NC_v_eff,
@@ -2207,12 +2207,12 @@ static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy
     double***** OLP1);
 
 static void MPI_OLP(double***** OLP1);
-static void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic);
+static void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void Force4(const OpenMXAtomicViews *atomic);
 static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx, double* Fy, double* Fz, size_t* atom_terms);
-static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0);
+static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis);
 
-static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic);
+static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL);
 static void Force_HNL_GpuEnd(void);
 static void Force_HNL_GpuArchiveHalo(double****** DS_NL, int Original_Mc_AN, int Gc_AN);
@@ -2237,8 +2237,11 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM, const OpenMXElectronicViews *electronic)
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  dcomplex *****NC_v_eff=local_basis->NC_v_eff;
+  double ****v_eff=local_basis->v_eff;
+
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
   double ******iDM=electronic->iDM;
@@ -3063,15 +3066,15 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
     if (Cnt_switch == 1) {
 
-        Cont_Matrix0(H0[0], CntH0[0]);
-        Cont_Matrix0(H0[1], CntH0[1]);
-        Cont_Matrix0(H0[2], CntH0[2]);
-        Cont_Matrix0(H0[3], CntH0[3]);
+        Cont_Matrix0(H0[0], CntH0[0], local_basis);
+        Cont_Matrix0(H0[1], CntH0[1], local_basis);
+        Cont_Matrix0(H0[2], CntH0[2], local_basis);
+        Cont_Matrix0(H0[3], CntH0[3], local_basis);
 
-        Cont_Matrix0(OLP[0], CntOLP[0]);
-        Cont_Matrix0(OLP[1], CntOLP[1]);
-        Cont_Matrix0(OLP[2], CntOLP[2]);
-        Cont_Matrix0(OLP[3], CntOLP[3]);
+        Cont_Matrix0(OLP[0], CntOLP[0], local_basis);
+        Cont_Matrix0(OLP[1], CntOLP[1], local_basis);
+        Cont_Matrix0(OLP[2], CntOLP[2], local_basis);
+        Cont_Matrix0(OLP[3], CntOLP[3], local_basis);
     }
 
     if (Hub_U_switch == 1 && Hub_U_occupation == 1) {
@@ -3293,7 +3296,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                                     }
                                 }
 
-                                dH_U_full(Mc_AN, h_AN, q_AN, OLP, v_eff, HUx, HUy, HUz);
+                                dH_U_full(Mc_AN, h_AN, q_AN, OLP, v_eff, HUx, HUy, HUz, local_basis);
 
                                 /* add the contribution to Hx, Hy, and Hz */
 
@@ -3675,7 +3678,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         fflush(stdout);
     }
 
-    Force3(atomic, electronic);
+    Force3(atomic, electronic, local_basis);
 
     dtime(&etime);
     if (force_profile) {
@@ -3746,7 +3749,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
             Force4(atomic);
         }
     } else if (ProExpn_VNA == 1 && F_VNA_flag == 1) {
-        Force4B(vna, reciprocal, CDM0);
+        Force4B(vna, reciprocal, CDM0, local_basis);
     }
 
     dtime(&etime);
@@ -3969,15 +3972,15 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                                     tmp3 = 0.0;
 
                                     for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
-                                        tmp1 += v_eff[spin][Mc_AN][i][k] * OLP[1][Mc_AN][h_AN][k][j];
-                                        tmp2 += v_eff[spin][Mc_AN][i][k] * OLP[2][Mc_AN][h_AN][k][j];
-                                        tmp3 += v_eff[spin][Mc_AN][i][k] * OLP[3][Mc_AN][h_AN][k][j];
+                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[1][Mc_AN][h_AN][k][j];
+                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[2][Mc_AN][h_AN][k][j];
+                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[3][Mc_AN][h_AN][k][j];
                                     }
 
                                     for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
-                                        tmp1 += v_eff[spin][Mh_AN][k][j] * OLP[1][Mc_AN][h_AN][i][k];
-                                        tmp2 += v_eff[spin][Mh_AN][k][j] * OLP[2][Mc_AN][h_AN][i][k];
-                                        tmp3 += v_eff[spin][Mh_AN][k][j] * OLP[3][Mc_AN][h_AN][i][k];
+                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[1][Mc_AN][h_AN][i][k];
+                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[2][Mc_AN][h_AN][i][k];
+                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[3][Mc_AN][h_AN][i][k];
                                     }
 
                                     dx = tmp1 * dege * CDM[spin][Mc_AN][h_AN][i][j];
@@ -4005,15 +4008,15 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                                     tmp3 = 0.0;
 
                                     for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
-                                        tmp1 += v_eff[spin][Mc_AN][i][k] * OLP[1][Mc_AN][h_AN][k][j];
-                                        tmp2 += v_eff[spin][Mc_AN][i][k] * OLP[2][Mc_AN][h_AN][k][j];
-                                        tmp3 += v_eff[spin][Mc_AN][i][k] * OLP[3][Mc_AN][h_AN][k][j];
+                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[1][Mc_AN][h_AN][k][j];
+                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[2][Mc_AN][h_AN][k][j];
+                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[3][Mc_AN][h_AN][k][j];
                                     }
 
                                     for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
-                                        tmp1 += v_eff[spin][Mh_AN][k][j] * OLP[1][Mc_AN][h_AN][i][k];
-                                        tmp2 += v_eff[spin][Mh_AN][k][j] * OLP[2][Mc_AN][h_AN][i][k];
-                                        tmp3 += v_eff[spin][Mh_AN][k][j] * OLP[3][Mc_AN][h_AN][i][k];
+                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[1][Mc_AN][h_AN][i][k];
+                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[2][Mc_AN][h_AN][i][k];
+                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[3][Mc_AN][h_AN][i][k];
                                     }
 
                                     HUx[0][i][j] = tmp1;
@@ -4035,7 +4038,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
                                         p0 = Spe_Trans_Orbital[Cwan][al][p];
                                         for (q = 0; q < Spe_Specified_Num[Hwan][be]; q++) {
                                             q0 = Spe_Trans_Orbital[Hwan][be][q];
-                                            tmp0 = CntCoes[Mc_AN][al][p] * CntCoes[Mh_AN][be][q];
+                                            tmp0 = openmx_local_contraction_row(local_basis, Mc_AN, al)[p] * openmx_local_contraction_row(local_basis, Mh_AN, be)[q];
                                             tmp1 += tmp0 * HUx[0][p0][q0];
                                             tmp2 += tmp0 * HUy[0][p0][q0];
                                             tmp3 += tmp0 * HUz[0][p0][q0];
@@ -4109,56 +4112,56 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
                             for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
 
-                                Re00x += NC_v_eff[0][0][Mc_AN][i][k].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re00y += NC_v_eff[0][0][Mc_AN][i][k].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re00z += NC_v_eff[0][0][Mc_AN][i][k].r * OLP[3][Mc_AN][h_AN][k][j];
+                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].r * OLP[1][Mc_AN][h_AN][k][j];
+                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].r * OLP[2][Mc_AN][h_AN][k][j];
+                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].r * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Re11x += NC_v_eff[1][1][Mc_AN][i][k].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re11y += NC_v_eff[1][1][Mc_AN][i][k].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re11z += NC_v_eff[1][1][Mc_AN][i][k].r * OLP[3][Mc_AN][h_AN][k][j];
+                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].r * OLP[1][Mc_AN][h_AN][k][j];
+                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].r * OLP[2][Mc_AN][h_AN][k][j];
+                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].r * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Re01x += NC_v_eff[0][1][Mc_AN][i][k].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re01y += NC_v_eff[0][1][Mc_AN][i][k].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re01z += NC_v_eff[0][1][Mc_AN][i][k].r * OLP[3][Mc_AN][h_AN][k][j];
+                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].r * OLP[1][Mc_AN][h_AN][k][j];
+                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].r * OLP[2][Mc_AN][h_AN][k][j];
+                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].r * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Im00x += NC_v_eff[0][0][Mc_AN][i][k].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im00y += NC_v_eff[0][0][Mc_AN][i][k].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im00z += NC_v_eff[0][0][Mc_AN][i][k].i * OLP[3][Mc_AN][h_AN][k][j];
+                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].i * OLP[1][Mc_AN][h_AN][k][j];
+                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].i * OLP[2][Mc_AN][h_AN][k][j];
+                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].i * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Im11x += NC_v_eff[1][1][Mc_AN][i][k].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im11y += NC_v_eff[1][1][Mc_AN][i][k].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im11z += NC_v_eff[1][1][Mc_AN][i][k].i * OLP[3][Mc_AN][h_AN][k][j];
+                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].i * OLP[1][Mc_AN][h_AN][k][j];
+                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].i * OLP[2][Mc_AN][h_AN][k][j];
+                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].i * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Im01x += NC_v_eff[0][1][Mc_AN][i][k].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im01y += NC_v_eff[0][1][Mc_AN][i][k].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im01z += NC_v_eff[0][1][Mc_AN][i][k].i * OLP[3][Mc_AN][h_AN][k][j];
+                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].i * OLP[1][Mc_AN][h_AN][k][j];
+                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].i * OLP[2][Mc_AN][h_AN][k][j];
+                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].i * OLP[3][Mc_AN][h_AN][k][j];
                             }
 
                             for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
 
-                                Re00x += NC_v_eff[0][0][Mh_AN][k][j].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re00y += NC_v_eff[0][0][Mh_AN][k][j].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re00z += NC_v_eff[0][0][Mh_AN][k][j].r * OLP[3][Mc_AN][h_AN][i][k];
+                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].r * OLP[1][Mc_AN][h_AN][i][k];
+                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].r * OLP[2][Mc_AN][h_AN][i][k];
+                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].r * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Re11x += NC_v_eff[1][1][Mh_AN][k][j].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re11y += NC_v_eff[1][1][Mh_AN][k][j].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re11z += NC_v_eff[1][1][Mh_AN][k][j].r * OLP[3][Mc_AN][h_AN][i][k];
+                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].r * OLP[1][Mc_AN][h_AN][i][k];
+                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].r * OLP[2][Mc_AN][h_AN][i][k];
+                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].r * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Re01x += NC_v_eff[0][1][Mh_AN][k][j].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re01y += NC_v_eff[0][1][Mh_AN][k][j].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re01z += NC_v_eff[0][1][Mh_AN][k][j].r * OLP[3][Mc_AN][h_AN][i][k];
+                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].r * OLP[1][Mc_AN][h_AN][i][k];
+                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].r * OLP[2][Mc_AN][h_AN][i][k];
+                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].r * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Im00x += NC_v_eff[0][0][Mh_AN][k][j].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im00y += NC_v_eff[0][0][Mh_AN][k][j].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im00z += NC_v_eff[0][0][Mh_AN][k][j].i * OLP[3][Mc_AN][h_AN][i][k];
+                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].i * OLP[1][Mc_AN][h_AN][i][k];
+                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].i * OLP[2][Mc_AN][h_AN][i][k];
+                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].i * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Im11x += NC_v_eff[1][1][Mh_AN][k][j].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im11y += NC_v_eff[1][1][Mh_AN][k][j].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im11z += NC_v_eff[1][1][Mh_AN][k][j].i * OLP[3][Mc_AN][h_AN][i][k];
+                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].i * OLP[1][Mc_AN][h_AN][i][k];
+                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].i * OLP[2][Mc_AN][h_AN][i][k];
+                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].i * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Im01x += NC_v_eff[0][1][Mh_AN][k][j].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im01y += NC_v_eff[0][1][Mh_AN][k][j].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im01z += NC_v_eff[0][1][Mh_AN][k][j].i * OLP[3][Mc_AN][h_AN][i][k];
+                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].i * OLP[1][Mc_AN][h_AN][i][k];
+                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].i * OLP[2][Mc_AN][h_AN][i][k];
+                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].i * OLP[3][Mc_AN][h_AN][i][k];
                             }
 
                             dx = Re00x * CDM0[0][Mc_AN][h_AN][i][j]
@@ -4208,56 +4211,56 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 
                             for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
 
-                                Re00x += NC_v_eff[0][0][Mh_AN][j][k].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re00y += NC_v_eff[0][0][Mh_AN][j][k].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re00z += NC_v_eff[0][0][Mh_AN][j][k].r * OLP[3][Mc_AN][h_AN][i][k];
+                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].r * OLP[1][Mc_AN][h_AN][i][k];
+                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].r * OLP[2][Mc_AN][h_AN][i][k];
+                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].r * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Re11x += NC_v_eff[1][1][Mh_AN][j][k].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re11y += NC_v_eff[1][1][Mh_AN][j][k].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re11z += NC_v_eff[1][1][Mh_AN][j][k].r * OLP[3][Mc_AN][h_AN][i][k];
+                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].r * OLP[1][Mc_AN][h_AN][i][k];
+                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].r * OLP[2][Mc_AN][h_AN][i][k];
+                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].r * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Re01x += NC_v_eff[0][1][Mh_AN][j][k].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re01y += NC_v_eff[0][1][Mh_AN][j][k].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re01z += NC_v_eff[0][1][Mh_AN][j][k].r * OLP[3][Mc_AN][h_AN][i][k];
+                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].r * OLP[1][Mc_AN][h_AN][i][k];
+                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].r * OLP[2][Mc_AN][h_AN][i][k];
+                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].r * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Im00x += NC_v_eff[0][0][Mh_AN][j][k].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im00y += NC_v_eff[0][0][Mh_AN][j][k].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im00z += NC_v_eff[0][0][Mh_AN][j][k].i * OLP[3][Mc_AN][h_AN][i][k];
+                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].i * OLP[1][Mc_AN][h_AN][i][k];
+                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].i * OLP[2][Mc_AN][h_AN][i][k];
+                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].i * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Im11x += NC_v_eff[1][1][Mh_AN][j][k].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im11y += NC_v_eff[1][1][Mh_AN][j][k].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im11z += NC_v_eff[1][1][Mh_AN][j][k].i * OLP[3][Mc_AN][h_AN][i][k];
+                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].i * OLP[1][Mc_AN][h_AN][i][k];
+                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].i * OLP[2][Mc_AN][h_AN][i][k];
+                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].i * OLP[3][Mc_AN][h_AN][i][k];
 
-                                Im01x += NC_v_eff[0][1][Mh_AN][j][k].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im01y += NC_v_eff[0][1][Mh_AN][j][k].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im01z += NC_v_eff[0][1][Mh_AN][j][k].i * OLP[3][Mc_AN][h_AN][i][k];
+                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].i * OLP[1][Mc_AN][h_AN][i][k];
+                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].i * OLP[2][Mc_AN][h_AN][i][k];
+                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].i * OLP[3][Mc_AN][h_AN][i][k];
                             }
 
                             for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
 
-                                Re00x += NC_v_eff[0][0][Mc_AN][k][i].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re00y += NC_v_eff[0][0][Mc_AN][k][i].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re00z += NC_v_eff[0][0][Mc_AN][k][i].r * OLP[3][Mc_AN][h_AN][k][j];
+                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].r * OLP[1][Mc_AN][h_AN][k][j];
+                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].r * OLP[2][Mc_AN][h_AN][k][j];
+                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].r * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Re11x += NC_v_eff[1][1][Mc_AN][k][i].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re11y += NC_v_eff[1][1][Mc_AN][k][i].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re11z += NC_v_eff[1][1][Mc_AN][k][i].r * OLP[3][Mc_AN][h_AN][k][j];
+                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].r * OLP[1][Mc_AN][h_AN][k][j];
+                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].r * OLP[2][Mc_AN][h_AN][k][j];
+                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].r * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Re01x += NC_v_eff[0][1][Mc_AN][k][i].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re01y += NC_v_eff[0][1][Mc_AN][k][i].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re01z += NC_v_eff[0][1][Mc_AN][k][i].r * OLP[3][Mc_AN][h_AN][k][j];
+                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].r * OLP[1][Mc_AN][h_AN][k][j];
+                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].r * OLP[2][Mc_AN][h_AN][k][j];
+                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].r * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Im00x += NC_v_eff[0][0][Mc_AN][k][i].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im00y += NC_v_eff[0][0][Mc_AN][k][i].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im00z += NC_v_eff[0][0][Mc_AN][k][i].i * OLP[3][Mc_AN][h_AN][k][j];
+                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].i * OLP[1][Mc_AN][h_AN][k][j];
+                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].i * OLP[2][Mc_AN][h_AN][k][j];
+                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].i * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Im11x += NC_v_eff[1][1][Mc_AN][k][i].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im11y += NC_v_eff[1][1][Mc_AN][k][i].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im11z += NC_v_eff[1][1][Mc_AN][k][i].i * OLP[3][Mc_AN][h_AN][k][j];
+                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].i * OLP[1][Mc_AN][h_AN][k][j];
+                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].i * OLP[2][Mc_AN][h_AN][k][j];
+                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].i * OLP[3][Mc_AN][h_AN][k][j];
 
-                                Im01x += NC_v_eff[0][1][Mc_AN][k][i].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im01y += NC_v_eff[0][1][Mc_AN][k][i].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im01z += NC_v_eff[0][1][Mc_AN][k][i].i * OLP[3][Mc_AN][h_AN][k][j];
+                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].i * OLP[1][Mc_AN][h_AN][k][j];
+                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].i * OLP[2][Mc_AN][h_AN][k][j];
+                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].i * OLP[3][Mc_AN][h_AN][k][j];
                             }
 
                             dx = Re00x * CDM0[0][Mh_AN][kl][j][i]
@@ -4320,7 +4323,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     ****************************************************/
 
     dtime(&stime);
-    Force_HNL(atomic, CDM0, iDM0, electronic);
+    Force_HNL(atomic, CDM0, iDM0, electronic, local_basis);
     dtime(&etime);
     if (force_profile) {
         Force_profile_report("force-HNL", etime - stime,
@@ -4488,7 +4491,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
 /* OMP by A. Ito */
 
 #ifndef f3omp
-void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
+void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double ******DM=electronic->DM;
 
@@ -5074,7 +5077,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                     /* end: direct inlining of Get_dOrbitals_work */
 
                 } else {
-                    Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0);
+                    Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0, local_basis);
                 }
 
                 int i;
@@ -5422,7 +5425,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 /* OMP by Ozaki */
 
 #else
-void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
+void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double ******DM=electronic->DM;
 
@@ -5517,7 +5520,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                 if (Cnt_switch == 0)
                     Get_dOrbitals(atomic, Cwan, dx, dy, dz, dorbs0);
                 else
-                    Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0);
+                    Get_Cnt_dOrbitals(atomic, Mc_AN, dx, dy, dz, dorbs0, local_basis);
 
                 for (k = 0; k < 3; k++) {
                     for (i = 0; i < NO0; i++) {
@@ -5875,7 +5878,7 @@ void Force4(const OpenMXAtomicViews *atomic)
     }
 }
 
-void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic)
+void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double ******CntDS_NL=electronic->CntDS_NL;
   double ******DS_NL=electronic->DS_NL;
@@ -5966,10 +5969,10 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
     if (Cnt_switch == 1) {
         for (so = 0; so < (SO_switch + 1); so++) {
-            Cont_Matrix1(atomic, DS_NL[so][0], CntDS_NL[so][0]);
-            Cont_Matrix1(atomic, DS_NL[so][1], CntDS_NL[so][1]);
-            Cont_Matrix1(atomic, DS_NL[so][2], CntDS_NL[so][2]);
-            Cont_Matrix1(atomic, DS_NL[so][3], CntDS_NL[so][3]);
+            Cont_Matrix1(atomic, DS_NL[so][0], CntDS_NL[so][0], local_basis);
+            Cont_Matrix1(atomic, DS_NL[so][1], CntDS_NL[so][1], local_basis);
+            Cont_Matrix1(atomic, DS_NL[so][2], CntDS_NL[so][2], local_basis);
+            Cont_Matrix1(atomic, DS_NL[so][3], CntDS_NL[so][3], local_basis);
         }
     }
 
@@ -10798,7 +10801,7 @@ static void Force_HNL_GpuCase2Run(double *****CDM0, const OpenMXElectronicViews 
     Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0, electronic);
 }
 
-void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0)
+void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis)
 {
   double *****HVNA2=vna->HVNA2;
   double *****HVNA3=vna->HVNA3;
@@ -10892,18 +10895,18 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
     if (Cnt_switch == 1 && ProExpn_VNA == 1) {
 
-        Cont_Matrix2(DS_VNA[0], CntDS_VNA[0]);
-        Cont_Matrix2(DS_VNA[1], CntDS_VNA[1]);
-        Cont_Matrix2(DS_VNA[2], CntDS_VNA[2]);
-        Cont_Matrix2(DS_VNA[3], CntDS_VNA[3]);
+        Cont_Matrix2(DS_VNA[0], CntDS_VNA[0], local_basis);
+        Cont_Matrix2(DS_VNA[1], CntDS_VNA[1], local_basis);
+        Cont_Matrix2(DS_VNA[2], CntDS_VNA[2], local_basis);
+        Cont_Matrix2(DS_VNA[3], CntDS_VNA[3], local_basis);
 
-        Cont_Matrix3(HVNA2[1], CntHVNA2[1]);
-        Cont_Matrix3(HVNA2[2], CntHVNA2[2]);
-        Cont_Matrix3(HVNA2[3], CntHVNA2[3]);
+        Cont_Matrix3(HVNA2[1], CntHVNA2[1], local_basis);
+        Cont_Matrix3(HVNA2[2], CntHVNA2[2], local_basis);
+        Cont_Matrix3(HVNA2[3], CntHVNA2[3], local_basis);
 
-        Cont_Matrix4(HVNA3[1], CntHVNA3[1]);
-        Cont_Matrix4(HVNA3[2], CntHVNA3[2]);
-        Cont_Matrix4(HVNA3[3], CntHVNA3[3]);
+        Cont_Matrix4(HVNA3[1], CntHVNA3[1], local_basis);
+        Cont_Matrix4(HVNA3[2], CntHVNA3[2], local_basis);
+        Cont_Matrix4(HVNA3[3], CntHVNA3[3], local_basis);
     }
 
     /*************************************************************
@@ -13837,8 +13840,9 @@ static void dHNL_SO_rows(
 
 void dH_U_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP, double**** v_eff,
-    double*** Hx, double*** Hy, double*** Hz)
+    double*** Hx, double*** Hy, double*** Hz, const OpenMXLocalBasisViews *local_basis)
 {
+
     int i, j, k, m, n, kg, kan, so, deri_kind, Mk_AN;
     int ig, ian, jg, jan, kl, kl1, kl2, spin, spinmax;
     int wakg, l1, l2, l3, Gc_AN, Mi_AN, Mj_AN;
@@ -13955,15 +13959,15 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
                                         Lsum3 = 0.0;
                                         for (p = 0; p < Spe_Specified_Num[Lwan][m]; p++) {
                                             p0 = Spe_Trans_Orbital[Lwan][m][p];
-                                            Lsum1 += CntCoes[Mc_AN][m][p] * OLP[1][Mc_AN][k][p0][l1];
-                                            Lsum2 += CntCoes[Mc_AN][m][p] * OLP[2][Mc_AN][k][p0][l1];
-                                            Lsum3 += CntCoes[Mc_AN][m][p] * OLP[3][Mc_AN][k][p0][l1];
+                                            Lsum1 += openmx_local_contraction_row(local_basis, Mc_AN, m)[p] * OLP[1][Mc_AN][k][p0][l1];
+                                            Lsum2 += openmx_local_contraction_row(local_basis, Mc_AN, m)[p] * OLP[2][Mc_AN][k][p0][l1];
+                                            Lsum3 += openmx_local_contraction_row(local_basis, Mc_AN, m)[p] * OLP[3][Mc_AN][k][p0][l1];
                                         }
 
                                         Rsum0 = 0.0;
                                         for (p = 0; p < Spe_Specified_Num[Rwan][n]; p++) {
                                             p0 = Spe_Trans_Orbital[Rwan][n][p];
-                                            Rsum0 += CntCoes[Mj_AN][n][p] * OLP[0][Mj_AN][kl][p0][l2];
+                                            Rsum0 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[0][Mj_AN][kl][p0][l2];
                                         }
 
                                         ene = v_eff[spin][Mk_AN][l1][l2];
@@ -14065,7 +14069,7 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
 
                                     for (p = 0; p < Spe_Specified_Num[Lwan][m]; p++) {
                                         p0 = Spe_Trans_Orbital[Lwan][m][p];
-                                        Lsum0 += CntCoes[Mc_AN][m][p] * OLP[0][Mc_AN][0][p0][l1];
+                                        Lsum0 += openmx_local_contraction_row(local_basis, Mc_AN, m)[p] * OLP[0][Mc_AN][0][p0][l1];
                                     }
 
                                     Rsum1 = 0.0;
@@ -14074,9 +14078,9 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
 
                                     for (p = 0; p < Spe_Specified_Num[Rwan][n]; p++) {
                                         p0 = Spe_Trans_Orbital[Rwan][n][p];
-                                        Rsum1 += CntCoes[Mj_AN][n][p] * OLP[1][Mj_AN][kl][p0][l2];
-                                        Rsum2 += CntCoes[Mj_AN][n][p] * OLP[2][Mj_AN][kl][p0][l2];
-                                        Rsum3 += CntCoes[Mj_AN][n][p] * OLP[3][Mj_AN][kl][p0][l2];
+                                        Rsum1 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[1][Mj_AN][kl][p0][l2];
+                                        Rsum2 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[2][Mj_AN][kl][p0][l2];
+                                        Rsum3 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[3][Mj_AN][kl][p0][l2];
                                     }
 
                                     ene = v_eff[spin][Mk_AN][l1][l2];
@@ -14141,15 +14145,15 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
                                 Lsum3 = 0.0;
                                 for (p = 0; p < Spe_Specified_Num[Lwan][m]; p++) {
                                     p0 = Spe_Trans_Orbital[Lwan][m][p];
-                                    Lsum1 += CntCoes[Mi_AN][m][p] * OLP[1][Mi_AN][kl1][p0][l1];
-                                    Lsum2 += CntCoes[Mi_AN][m][p] * OLP[2][Mi_AN][kl1][p0][l1];
-                                    Lsum3 += CntCoes[Mi_AN][m][p] * OLP[3][Mi_AN][kl1][p0][l1];
+                                    Lsum1 += openmx_local_contraction_row(local_basis, Mi_AN, m)[p] * OLP[1][Mi_AN][kl1][p0][l1];
+                                    Lsum2 += openmx_local_contraction_row(local_basis, Mi_AN, m)[p] * OLP[2][Mi_AN][kl1][p0][l1];
+                                    Lsum3 += openmx_local_contraction_row(local_basis, Mi_AN, m)[p] * OLP[3][Mi_AN][kl1][p0][l1];
                                 }
 
                                 Rsum0 = 0.0;
                                 for (p = 0; p < Spe_Specified_Num[Rwan][n]; p++) {
                                     p0 = Spe_Trans_Orbital[Rwan][n][p];
-                                    Rsum0 += CntCoes[Mj_AN][n][p] * OLP[0][Mj_AN][kl2][p0][l2];
+                                    Rsum0 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[0][Mj_AN][kl2][p0][l2];
                                 }
 
                                 ene = v_eff[spin][Mk_AN][l1][l2];
@@ -14218,7 +14222,7 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
 
                                             for (p = 0; p < Spe_Specified_Num[Lwan][m]; p++) {
                                                 p0 = Spe_Trans_Orbital[Lwan][m][p];
-                                                Lsum0 += CntCoes[Mi_AN][m][p] * OLP[0][Mi_AN][kl1][p0][l1];
+                                                Lsum0 += openmx_local_contraction_row(local_basis, Mi_AN, m)[p] * OLP[0][Mi_AN][kl1][p0][l1];
                                             }
 
                                             Rsum1 = 0.0;
@@ -14227,9 +14231,9 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
 
                                             for (p = 0; p < Spe_Specified_Num[Rwan][n]; p++) {
                                                 p0 = Spe_Trans_Orbital[Rwan][n][p];
-                                                Rsum1 += CntCoes[Mj_AN][n][p] * OLP[1][Mj_AN][kl2][p0][l2];
-                                                Rsum2 += CntCoes[Mj_AN][n][p] * OLP[2][Mj_AN][kl2][p0][l2];
-                                                Rsum3 += CntCoes[Mj_AN][n][p] * OLP[3][Mj_AN][kl2][p0][l2];
+                                                Rsum1 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[1][Mj_AN][kl2][p0][l2];
+                                                Rsum2 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[2][Mj_AN][kl2][p0][l2];
+                                                Rsum3 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[3][Mj_AN][kl2][p0][l2];
                                             }
 
                                             ene = v_eff[spin][Mk_AN][l1][l2];
@@ -14289,7 +14293,7 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
 
                                     for (p = 0; p < Spe_Specified_Num[Lwan][m]; p++) {
                                         p0 = Spe_Trans_Orbital[Lwan][m][p];
-                                        Lsum0 += CntCoes[Mi_AN][m][p] * OLP[0][Mi_AN][kl1][p0][l1];
+                                        Lsum0 += openmx_local_contraction_row(local_basis, Mi_AN, m)[p] * OLP[0][Mi_AN][kl1][p0][l1];
                                     }
 
                                     Rsum1 = 0.0;
@@ -14298,9 +14302,9 @@ void dH_U_full(int Mc_AN, int h_AN, int q_AN,
 
                                     for (p = 0; p < Spe_Specified_Num[Rwan][n]; p++) {
                                         p0 = Spe_Trans_Orbital[Rwan][n][p];
-                                        Rsum1 += CntCoes[Mj_AN][n][p] * OLP[1][Mj_AN][kl2][p0][l2];
-                                        Rsum2 += CntCoes[Mj_AN][n][p] * OLP[2][Mj_AN][kl2][p0][l2];
-                                        Rsum3 += CntCoes[Mj_AN][n][p] * OLP[3][Mj_AN][kl2][p0][l2];
+                                        Rsum1 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[1][Mj_AN][kl2][p0][l2];
+                                        Rsum2 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[2][Mj_AN][kl2][p0][l2];
+                                        Rsum3 += openmx_local_contraction_row(local_basis, Mj_AN, n)[p] * OLP[3][Mj_AN][kl2][p0][l2];
                                     }
 
                                     ene = v_eff[spin][Mk_AN][l1][l2];

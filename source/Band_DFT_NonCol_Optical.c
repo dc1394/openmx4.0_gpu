@@ -35,7 +35,7 @@ double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
 			       double ****CntOLP,
 			       double *****CDM,
 			       double *****EDM,
-			       double Eele0[2], double Eele1[2])
+			       double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
   static int firsttime=1;
   int i,j,k,l,n,n2,wan;
@@ -393,7 +393,7 @@ double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
     /* YTL-start */
 
     /* Step (1) : calculate < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
-    Calc_NabraMatrixElements(atomic);
+    Calc_NabraMatrixElements(atomic, local_basis);
 
     Initialize_optical();
 

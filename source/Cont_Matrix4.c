@@ -15,8 +15,9 @@
 #include <time.h>
 #include "openmx_common.h"
 
-void Cont_Matrix4(double ****Mat, double ****CMat)
+void Cont_Matrix4(double ****Mat, double ****CMat, const OpenMXLocalBasisViews *local_basis)
 {
+
   int spin,Mc_AN,Gc_AN,h_AN,L,L1,M1;
   int p,q,p0,q0,al,be,Hwan,Gh_AN,Mh_AN;
   double sumS,tmp0;
@@ -38,7 +39,7 @@ void Cont_Matrix4(double ****Mat, double ****CMat)
 	    p0 = Spe_Trans_Orbital[Hwan][al][p];
 	    for (q=0; q<Spe_Specified_Num[Hwan][be]; q++){
 	      q0 = Spe_Trans_Orbital[Hwan][be][q];
-	      tmp0 = CntCoes[Mh_AN][al][p]*CntCoes[Mh_AN][be][q]; 
+	      tmp0 = openmx_local_contraction_row(local_basis, Mh_AN, al)[p]*openmx_local_contraction_row(local_basis, Mh_AN, be)[q];
 	      sumS += tmp0*Mat[Mc_AN][h_AN][p0][q0];
 	    }
 	  }

@@ -23,18 +23,18 @@
 #define  measure_time   0
 
 static double LNO_Col_Projection(char *mode, int SCF_iter,
-			         double ****OLP0, double *****Hks, double *****CDM, const OpenMXElectronicViews *electronic);
+			         double ****OLP0, double *****Hks, double *****CDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 static double LNO_Col_Schur(char *mode, int SCF_iter,
-			    double ****OLP0, double *****Hks, double *****CDM);
+			    double ****OLP0, double *****Hks, double *****CDM, const OpenMXLocalBasisViews *local_basis);
 
 static double LNO_Col_Diag(char *mode, int SCF_iter,
 			   double ****OLP0,
 			   double *****Hks,
-			   double *****CDM);
+			   double *****CDM, const OpenMXLocalBasisViews *local_basis);
 
 static double LNO_NonCol_Diag(char *mode, int SCF_iter,
-		   	      double ****OLP0, double *****CDM);
+                              double ****OLP0, double *****CDM, const OpenMXLocalBasisViews *local_basis);
 
 static void Calc_Inverse(int n, double *A);
 static logical myselect(double wr, double wi);
@@ -43,7 +43,7 @@ double LNO(char *mode,
            int SCF_iter,
            double ****OLP0,
            double *****Hks,
-           double *****CDM)
+           double *****CDM, const OpenMXLocalBasisViews *local_basis)
 {
   double time0;
 
@@ -53,7 +53,7 @@ double LNO(char *mode,
 
   if ( SpinP_switch==0 || SpinP_switch==1){
 
-    time0 = LNO_Col_Diag(mode, SCF_iter, OLP0, Hks, CDM);
+    time0 = LNO_Col_Diag(mode, SCF_iter, OLP0, Hks, CDM, local_basis);
 
     /*
     time0 = LNO_Col_Schur(mode, SCF_iter, OLP0, Hks, CDM);
@@ -76,7 +76,7 @@ double LNO(char *mode,
 
   else if ( SpinP_switch==3 ){
 
-    time0 = LNO_NonCol_Diag(mode, SCF_iter, OLP0, CDM);
+    time0 = LNO_NonCol_Diag(mode, SCF_iter, OLP0, CDM, local_basis);
   }
 
   /****************************************************
@@ -94,8 +94,9 @@ double LNO(char *mode,
 
 
 static double LNO_Col_Projection( char *mode, int SCF_iter,
-                                  double ****OLP0, double *****Hks, double *****CDM, const OpenMXElectronicViews *electronic)
+                                  double ****OLP0, double *****Hks, double *****CDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+
   double *****DM0=electronic->DM0;
 
   int i,j,k,l,n,Mc_AN,Gc_AN,h_AN,Mh_AN,Gh_AN;
@@ -508,14 +509,14 @@ static double LNO_Col_Projection( char *mode, int SCF_iter,
       
       for (j=0; j<tno1; j++){
 	for (i=0; i<tno1; i++){
-	  LNO_coes[spin][Mc_AN][tno1*j+i] = mat0[i+1][(tno1-j-1)+1];
+	  openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i] = mat0[i+1][(tno1-j-1)+1];
 	}
       }
 
       /* store the eigenvalues */
 
       for (i=0; i<tno1; i++){
-        LNO_pops[spin][Mc_AN][i] = ko[(tno1-i-1)+1];
+        openmx_local_lno_population_row(local_basis, spin, Mc_AN)[i] = ko[(tno1-i-1)+1];
       }
 
       /*
@@ -548,7 +549,7 @@ static double LNO_Col_Projection( char *mode, int SCF_iter,
 
 	for (i=0; i<tno1; i++){
 
-	  if (LNO_pops[spin][Mc_AN][i]<LNO_Occ_Cutoff && LNO_Num[Gc_AN]<=i){
+	  if (openmx_local_lno_population_row(local_basis, spin, Mc_AN)[i]<LNO_Occ_Cutoff && LNO_Num[Gc_AN]<=i){
 
 	    LNO_Num[Gc_AN] = i;
 	    break;
@@ -669,7 +670,7 @@ static double LNO_Col_Projection( char *mode, int SCF_iter,
           for (spin=0; spin<=SpinP_switch; spin++){
 	    for (j=0; j<tno2; j++){
 	      for (i=0; i<tno1; i++){
-		tmp_array[num] = LNO_coes[spin][Mc_AN][tno1*j+i];
+		tmp_array[num] = openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i];
 		num++;
 	      }
 	    }
@@ -706,7 +707,7 @@ static double LNO_Col_Projection( char *mode, int SCF_iter,
           for (spin=0; spin<=SpinP_switch; spin++){
 	    for (j=0; j<tno2; j++){
 	      for (i=0; i<tno1; i++){
-		LNO_coes[spin][Mc_AN][tno1*j+i] = tmp_array2[num];
+		openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i] = tmp_array2[num];
 		num++;
 	      }
 	    }
@@ -762,8 +763,9 @@ static double LNO_Col_Projection( char *mode, int SCF_iter,
 
 
 static double LNO_Col_Schur(char *mode, int SCF_iter,
-			    double ****OLP0, double *****Hks, double *****CDM)
+			    double ****OLP0, double *****Hks, double *****CDM, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,k,l,n,Mc_AN,Gc_AN,h_AN,Mh_AN,Gh_AN;
   int Cwan,num,wan1,wan2,tno0,tno1,tno2,spin;
   int Nloop,po,p,q,i1,j1,k1,no;
@@ -905,14 +907,14 @@ static double LNO_Col_Schur(char *mode, int SCF_iter,
       for (j=0; j<tno1; j++){
         k = IWORK[j];
 	for (i=0; i<tno1; i++){
-	  LNO_coes[spin][Mc_AN][tno1*j+i] = VS[tno1*k+i];
+	  openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i] = VS[tno1*k+i];
 	}
       }
 
       /* store the eigenvalues */
 
       for (i=0; i<tno1; i++){
-        LNO_pops[spin][Mc_AN][i] = WR[i];
+        openmx_local_lno_population_row(local_basis, spin, Mc_AN)[i] = WR[i];
       }
 
       /********************************************
@@ -932,7 +934,7 @@ static double LNO_Col_Schur(char *mode, int SCF_iter,
 
 	  for (i=0; i<tno1; i++){
 
-	    if (LNO_pops[spin][Mc_AN][i]<LNO_Occ_Cutoff && LNO_Num[Gc_AN]<=i){
+	    if (openmx_local_lno_population_row(local_basis, spin, Mc_AN)[i]<LNO_Occ_Cutoff && LNO_Num[Gc_AN]<=i){
 
 	      LNO_Num[Gc_AN] = i;
 	      break;
@@ -967,7 +969,7 @@ static double LNO_Col_Schur(char *mode, int SCF_iter,
 	printf("WWW1 myid=%2d LNO_coes spin=%2d Mc_AN=%2d\n",myid,spin,Mc_AN);fflush(stdout);
 	for (i=0; i<tno1; i++){
 	  for (j=0; j<tno1; j++){
-	    printf("%10.5f ",LNO_coes[spin][Mc_AN][tno1*j+i]);fflush(stdout);
+	    printf("%10.5f ",openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i]);fflush(stdout);
 	  }
 	  printf("\n");fflush(stdout);
 	}
@@ -978,7 +980,7 @@ static double LNO_Col_Schur(char *mode, int SCF_iter,
  
             sum = 0.0;
 	    for (k=0; k<tno1; k++){
-              sum += LNO_coes[spin][Mc_AN][tno1*i+k]*LNO_coes[spin][Mc_AN][tno1*j+k];
+              sum += openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*i+k]*openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+k];
   	    }
             printf("%10.5f ",sum);
 	  }
@@ -1096,7 +1098,7 @@ static double LNO_Col_Schur(char *mode, int SCF_iter,
           for (spin=0; spin<=SpinP_switch; spin++){
 	    for (j=0; j<tno2; j++){
 	      for (i=0; i<tno1; i++){
-		tmp_array[num] = LNO_coes[spin][Mc_AN][tno1*j+i];
+		tmp_array[num] = openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i];
 		num++;
 	      }
 	    }
@@ -1133,7 +1135,7 @@ static double LNO_Col_Schur(char *mode, int SCF_iter,
           for (spin=0; spin<=SpinP_switch; spin++){
 	    for (j=0; j<tno2; j++){
 	      for (i=0; i<tno1; i++){
-		LNO_coes[spin][Mc_AN][tno1*j+i] = tmp_array2[num];
+		openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i] = tmp_array2[num];
 		num++;
 	      }
 	    }
@@ -1218,8 +1220,9 @@ static double LNO_Col_Schur(char *mode, int SCF_iter,
 static double LNO_Col_Diag(char *mode, int SCF_iter,
 			   double ****OLP0,
 			   double *****Hks,
-			   double *****CDM)
+			   double *****CDM, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,k,l,n,Mc_AN,Gc_AN,h_AN,Mh_AN,Gh_AN;
   int Cwan,num,wan1,wan2,tno0,tno1,tno2,spin;
   int Nloop,po,p,q;
@@ -1428,24 +1431,24 @@ static double LNO_Col_Diag(char *mode, int SCF_iter,
       for (j=0; j<tno1; j++){
         k = IWORK[j];
 	for (i=0; i<tno1; i++){
-	  LNO_coes[spin][Mc_AN][tno1*j+i] = VR[LDVR*k+i];
+	  openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i] = VR[LDVR*k+i];
 	}
 
         sum = 0.0;
 	for (i=0; i<tno1; i++){
-	  sum += LNO_coes[spin][Mc_AN][tno1*j+i]*LNO_coes[spin][Mc_AN][tno1*j+i];
+	  sum += openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i]*openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i];
 	}
         sum = 1.0/sqrt(sum);
 
 	for (i=0; i<tno1; i++){
-	  LNO_coes[spin][Mc_AN][tno1*j+i] *= sum;
+	  openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i] *= sum;
 	}
       }
 
       /* store the eigenvalues */
 
       for (i=0; i<tno1; i++){
-        LNO_pops[spin][Mc_AN][i] = WR[i];
+        openmx_local_lno_population_row(local_basis, spin, Mc_AN)[i] = WR[i];
       }
 
       /********************************************
@@ -1465,7 +1468,7 @@ static double LNO_Col_Diag(char *mode, int SCF_iter,
 
 	  for (i=0; i<tno1; i++){
 
-	    if (LNO_pops[spin][Mc_AN][i]<LNO_Occ_Cutoff && LNO_Num[Gc_AN]<=i){
+	    if (openmx_local_lno_population_row(local_basis, spin, Mc_AN)[i]<LNO_Occ_Cutoff && LNO_Num[Gc_AN]<=i){
 
 	      LNO_Num[Gc_AN] = i;
 	      break;
@@ -1499,7 +1502,7 @@ static double LNO_Col_Diag(char *mode, int SCF_iter,
 	printf("WWW1 myid=%2d LNO_coes spin=%2d Mc_AN=%2d\n",myid,spin,Mc_AN);fflush(stdout);
 	for (i=0; i<tno1; i++){
 	  for (j=0; j<tno1; j++){
-	    printf("%10.5f ",LNO_coes[spin][Mc_AN][tno1*j+i]);fflush(stdout);
+	    printf("%10.5f ",openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i]);fflush(stdout);
 	  }
 	  printf("\n");fflush(stdout);
 	}
@@ -1651,7 +1654,7 @@ static double LNO_Col_Diag(char *mode, int SCF_iter,
           for (spin=0; spin<=SpinP_switch; spin++){
 	    for (j=0; j<tno2; j++){
 	      for (i=0; i<tno1; i++){
-		tmp_array[num] = LNO_coes[spin][Mc_AN][tno1*j+i];
+		tmp_array[num] = openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i];
 		num++;
 	      }
 	    }
@@ -1688,7 +1691,7 @@ static double LNO_Col_Diag(char *mode, int SCF_iter,
           for (spin=0; spin<=SpinP_switch; spin++){
 	    for (j=0; j<tno2; j++){
 	      for (i=0; i<tno1; i++){
-		LNO_coes[spin][Mc_AN][tno1*j+i] = tmp_array2[num];
+		openmx_local_lno_row(local_basis, spin, Mc_AN)[tno1*j+i] = tmp_array2[num];
 		num++;
 	      }
 	    }
@@ -1763,8 +1766,9 @@ static double LNO_Col_Diag(char *mode, int SCF_iter,
 
 
 static double LNO_NonCol_Diag(char *mode, int SCF_iter,
-		   	      double ****OLP0, double *****CDM)
+                              double ****OLP0, double *****CDM, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j,k,l,n,Mc_AN,Gc_AN,h_AN,Mh_AN,Gh_AN;
   int Cwan,num,wan1,wan2,tno0,tno1,tno2;
   int Nloop,po,p,q;
@@ -1919,24 +1923,24 @@ static double LNO_NonCol_Diag(char *mode, int SCF_iter,
     for (j=0; j<tno1; j++){
       k = IWORK[j];
       for (i=0; i<tno1; i++){
-	LNO_coes[0][Mc_AN][tno1*j+i] = VR[LDVR*k+i];
+	openmx_local_lno_row(local_basis, 0, Mc_AN)[tno1*j+i] = VR[LDVR*k+i];
       }
 
       sum = 0.0;
       for (i=0; i<tno1; i++){
-	sum += LNO_coes[0][Mc_AN][tno1*j+i]*LNO_coes[0][Mc_AN][tno1*j+i];
+	sum += openmx_local_lno_row(local_basis, 0, Mc_AN)[tno1*j+i]*openmx_local_lno_row(local_basis, 0, Mc_AN)[tno1*j+i];
       }
       sum = 1.0/sqrt(sum);
 
       for (i=0; i<tno1; i++){
-	LNO_coes[0][Mc_AN][tno1*j+i] *= sum;
+	openmx_local_lno_row(local_basis, 0, Mc_AN)[tno1*j+i] *= sum;
       }
     }
 
     /* store the eigenvalues */
 
     for (i=0; i<tno1; i++){
-      LNO_pops[0][Mc_AN][i] = WR[i];
+      openmx_local_lno_population_row(local_basis, 0, Mc_AN)[i] = WR[i];
     }
 
     /********************************************
@@ -1955,7 +1959,7 @@ static double LNO_NonCol_Diag(char *mode, int SCF_iter,
         LNO_Num[Gc_AN] = 0;
 	for (i=0; i<tno1; i++){
 
-	  if (LNO_pops[0][Mc_AN][i]<(2.0*LNO_Occ_Cutoff) && LNO_Num[Gc_AN]<=i){
+	  if (openmx_local_lno_population_row(local_basis, 0, Mc_AN)[i]<(2.0*LNO_Occ_Cutoff) && LNO_Num[Gc_AN]<=i){
 
 	    LNO_Num[Gc_AN] = i;
 	    break;
@@ -1989,7 +1993,7 @@ static double LNO_NonCol_Diag(char *mode, int SCF_iter,
       printf("WWW1 myid=%2d LNO_coes Mc_AN=%2d\n",myid,Mc_AN);fflush(stdout);
       for (i=0; i<tno1; i++){
 	for (j=0; j<tno1; j++){
-	  printf("%10.5f ",LNO_coes[0][Mc_AN][tno1*j+i]);fflush(stdout);
+	  printf("%10.5f ",openmx_local_lno_row(local_basis, 0, Mc_AN)[tno1*j+i]);fflush(stdout);
 	}
 	printf("\n");fflush(stdout);
       }
@@ -2138,7 +2142,7 @@ static double LNO_NonCol_Diag(char *mode, int SCF_iter,
 
 	  for (j=0; j<tno2; j++){
 	    for (i=0; i<tno1; i++){
-	      tmp_array[num] = LNO_coes[0][Mc_AN][tno1*j+i];
+	      tmp_array[num] = openmx_local_lno_row(local_basis, 0, Mc_AN)[tno1*j+i];
 	      num++;
 	    }
 	  }
@@ -2173,7 +2177,7 @@ static double LNO_NonCol_Diag(char *mode, int SCF_iter,
 
 	  for (j=0; j<tno2; j++){
 	    for (i=0; i<tno1; i++){
-	      LNO_coes[0][Mc_AN][tno1*j+i] = tmp_array2[num];
+	      openmx_local_lno_row(local_basis, 0, Mc_AN)[tno1*j+i] = tmp_array2[num];
 	      num++;
 	    }
 	  }

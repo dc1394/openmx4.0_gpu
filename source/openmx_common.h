@@ -5,6 +5,7 @@
 #include "openmx_gpu_error.h"
 #include "openmx_core.h"
 #include "openmx_core_electronic.h"
+#include "openmx_core_local_basis.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_core_reciprocal.h"
 #include "openmx_core_atomic.h"
@@ -1163,7 +1164,6 @@ extern Type_Orbs_Grid ****Orbs_Grid_FNAN;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ***LNO_coes;
 
 /*******************************************************
  int *LNOs_Num_predefined;
@@ -1184,7 +1184,6 @@ extern int *LNOs_Num_predefined;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ***LNO_pops;
 
 /*******************************************************
  int *LNO_Num;
@@ -1630,7 +1629,6 @@ extern double *****OLP_p;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ***H_Zeeman_NCO;
 
 /*******************************************************
  double ***TRAN_DecMulP;
@@ -1739,7 +1737,6 @@ extern double ***TRAN_DecMulP;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double *****DM_onsite;     /* --- added by MJ  */
 
 /*******************************************************
  double ****v_eff;     --- added by MJ
@@ -1756,7 +1753,6 @@ extern double *****DM_onsite;     /* --- added by MJ  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ****v_eff;     /* --- added by MJ  */
 
 /*******************************************************
  dcomplex ******NC_OcpN;     
@@ -1775,7 +1771,6 @@ extern double ****v_eff;     /* --- added by MJ  */
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern dcomplex ******NC_OcpN;
 
 /*******************************************************
  dcomplex *****NC_v_eff;     
@@ -1793,7 +1788,6 @@ extern dcomplex ******NC_OcpN;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern dcomplex *****NC_v_eff;
 
 /*******************************************************
  double ******ResidualDM;
@@ -1876,7 +1870,6 @@ extern dcomplex *****NC_v_eff;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ***S12;
 
 /*******************************************************
  int **NumOLG;
@@ -2060,7 +2053,6 @@ extern int **Bulk_HOMO;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ***CntCoes;
 
 /*******************************************************
  double ***CntCoes_Species;
@@ -2073,7 +2065,6 @@ extern double ***CntCoes;
   free:       in truncation.c
               and call as Free_Arrays(0) in openmx.c
 *******************************************************/
-extern double ***CntCoes_Species;
 
 /*******************************************************
  int *CntOrb_Atoms;
@@ -2713,19 +2704,19 @@ double Nonlocal_Basis(const OpenMXAtomicViews *atomic, int wan, int Lnum_index, 
 void Get_Orbitals(const OpenMXAtomicViews *atomic, int wan, double x, double y, double z, double *Chi);
 void Get_dOrbitals(const OpenMXAtomicViews *atomic, int wan, double R, double Q, double P, double **dChi);
 void Get_dOrbitals_work(const OpenMXAtomicViews *atomic, int wan, double R, double Q, double P, double **dChi, OpenMXOrbitalBuffers buffer);
-void Get_Cnt_Orbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double *Chi);
-void Get_Cnt_dOrbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi);
+void Get_Cnt_Orbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double *Chi, const OpenMXLocalBasisViews *local_basis);
+void Get_Cnt_dOrbitals(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi, const OpenMXLocalBasisViews *local_basis);
 
 /* Fukuda+YTL-start */
 void Get_dOrbitals2(const OpenMXAtomicViews *atomic, int wan, double R, double Q, double P, double **dChi);
-void Get_Cnt_dOrbitals2(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi);
-double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind);
-double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz);
+void Get_Cnt_dOrbitals2(const OpenMXAtomicViews *atomic, int Mc_AN, double x, double y, double z, double **dChi, const OpenMXLocalBasisViews *local_basis);
+double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
+double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz, const OpenMXLocalBasisViews *local_basis);
 /* Fukuda+YTL-end */
 
-double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind);
+double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
 double Set_Aden_Grid(const OpenMXAtomicViews *atomic);
-double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0);
+double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
 #if !OPENMX_GPU_HIP
 int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed);
@@ -2737,14 +2728,14 @@ void Data_Grid_Copy_B2C_2(double **data_B, double **data_C);
 void Density_Grid_Copy_B2D(double **Density_Grid_B0);
 double Set_Initial_DM(double *****CDM, double *****H);
 double Mulliken_Charge( char *mode , const OpenMXElectronicViews *electronic);
-double LNO(char *mode, int SCF_iter, double ****OLP0, double *****Hks, double *****CDM);
+double LNO(char *mode, int SCF_iter, double ****OLP0, double *****Hks, double *****CDM, const OpenMXLocalBasisViews *local_basis);
 double Calc_LNAO( double ****OLP0, double *****Hks, double *****CDM);
 double Calc_LNBO( double ****OLP0, double *****Hks, double *****CDM);
 
 /* added by MJ */
-void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode, const OpenMXElectronicViews *electronic);
+void Occupation_Number_LDA_U(int SCF_iter, int SucceedReadingDMfile, double dUele, double ECE[], char *mode, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 /* added by MJ */
-void Eff_Hub_Pot(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic);
+void Eff_Hub_Pot(int SCF_iter, double ****OLP0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 void EulerAngle_Spin( int quickcalc_flag,
                       double Re11, double Re22,
                       double Re12, double Im12,
@@ -2826,9 +2817,9 @@ void DIIS_Mixing_Rhok(int SCF_iter,
  
 void Overlap_Cluster(double ****OLP, double **S,int *MP);
 void Overlap_Cluster_Ss(double ****OLP0, double *Ss, int *MP, int myworld1);
-void Overlap_Cluster_LNO_Ss(double ****OLP0, double *Ss, int *MP, int spin, int myworld1);
+void Overlap_Cluster_LNO_Ss(double ****OLP0, double *Ss, int *MP, int spin, int myworld1, const OpenMXLocalBasisViews *local_basis);
 
-void Set_ContMat_Cluster_LNO(double ****OLP0, double *****nh, double ***S, double ***H, int *MP);
+void Set_ContMat_Cluster_LNO(double ****OLP0, double *****nh, double ***S, double ***H, int *MP, const OpenMXLocalBasisViews *local_basis);
 
 void Hamiltonian_Cluster(double ****RH, double **H, int *MP);
 void Hamiltonian_Cluster_Hs(double ****RH, double *Hs, int *MP, int spin, int myworld1);
@@ -2854,10 +2845,10 @@ void Overlap_Band(int Host_ID1, double ****OLP, dcomplex **S, int *MP,
                   double k1, double k2, double k3);
 
 void Matrix_Band_LNO(int Host_ID1, int spin, double ****OLP, dcomplex **S, int *MP,
-                     double k1, double k2, double k3);
+                     double k1, double k2, double k3, const OpenMXLocalBasisViews *local_basis);
 
-void Initial_CntCoes(double *****nh, double *****OLP);
-void Initial_CntCoes2(double *****nh, double *****OLP);
+void Initial_CntCoes(double *****nh, double *****OLP, const OpenMXLocalBasisViews *local_basis);
+void Initial_CntCoes2(double *****nh, double *****OLP, const OpenMXLocalBasisViews *local_basis);
 double Opt_Contraction(
          int orbitalOpt_iter,
          double TotalE,
@@ -2870,16 +2861,16 @@ double Opt_Contraction(
          double ****His_CntCoes_Species,
          double ****His_D_CntCoes_Species,
          double *His_OrbOpt_Etot,
-         double **OrbOpt_Hessian);
+         double **OrbOpt_Hessian, const OpenMXLocalBasisViews *local_basis);
 
 void Contract_Hamiltonian(double *****H,   double *****CntH,
-                          double *****OLP, double *****CntOLP);
-void Contract_iHNL(double *****iHNL, double *****iCntHNL);
-void Cont_Matrix0(double ****Mat, double ****CMat);
-void Cont_Matrix1(const OpenMXAtomicViews *atomic, double ****Mat, double ****CMat);
-void Cont_Matrix2(Type_DS_VNA ****Mat, Type_DS_VNA ****CMat);
-void Cont_Matrix3(double ****Mat, double ****CMat);
-void Cont_Matrix4(double ****Mat, double ****CMat);
+                          double *****OLP, double *****CntOLP, const OpenMXLocalBasisViews *local_basis);
+void Contract_iHNL(double *****iHNL, double *****iCntHNL, const OpenMXLocalBasisViews *local_basis);
+void Cont_Matrix0(double ****Mat, double ****CMat, const OpenMXLocalBasisViews *local_basis);
+void Cont_Matrix1(const OpenMXAtomicViews *atomic, double ****Mat, double ****CMat, const OpenMXLocalBasisViews *local_basis);
+void Cont_Matrix2(Type_DS_VNA ****Mat, Type_DS_VNA ****CMat, const OpenMXLocalBasisViews *local_basis);
+void Cont_Matrix3(double ****Mat, double ****CMat, const OpenMXLocalBasisViews *local_basis);
+void Cont_Matrix4(double ****Mat, double ****CMat, const OpenMXLocalBasisViews *local_basis);
 
 double Calc_polarization();
 
@@ -2905,7 +2896,7 @@ double Divide_Conquer(char *mode,
                       double ****OLP0,
                       double *****CDM,
                       double *****EDM,
-                      double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
+                      double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 double Divide_Conquer_LNO(char *mode,
                           int MD_iter,
@@ -2916,7 +2907,7 @@ double Divide_Conquer_LNO(char *mode,
                           double ****OLP0,
                           double *****CDM,
                           double *****EDM,
-                          double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic);
+                          double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 double Krylov(char *mode,
               int SCF_iter,
@@ -2992,7 +2983,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
                        double *****H0,
                        double *****HNL,
                        double *****CDM,
-		       double *****H, const OpenMXElectronicViews *electronic);
+		       double *****H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 #if OPENMX_GPU_HIP
 void Set_Hamiltonian_Set_OpenMP_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenMP_Rank_Is_Selected(void);
@@ -3105,17 +3096,17 @@ double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
 double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
-double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic);
+double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 
-	     double *****EDM, const OpenMXElectronicViews *electronic);
+	     double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM, const OpenMXElectronicViews *electronic);
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic);
 double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
 double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electronic);
@@ -3279,7 +3270,7 @@ double Cluster_DFT_Col_LNO(
                    int *SP_NZeros,
                    int *SP_Atoms,
                    double **EVec1,
-                   double *Work1);
+                   double *Work1, const OpenMXLocalBasisViews *local_basis);
 
 
 double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
@@ -3791,7 +3782,7 @@ void Band_DFT_kpath_LNO( int nkpath, int *n_perk,
                          int  SpinP_switch, 
                          double *****nh,
                          double *****ImNL,
-                         double ****CntOLP);
+                         double ****CntOLP, const OpenMXLocalBasisViews *local_basis);
 
 void Band_DFT_MO( int nkpoint, double **kpoint,
                   int SpinP_switch, 
@@ -4027,9 +4018,9 @@ void Allocate_Arrays(int wherefrom);
 void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
 void Free_Arrays(int dokokara);
 void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
-double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic);
+double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 void init_alloc_first();
-int File_CntCoes(char *mode);
+int File_CntCoes(char *mode, const OpenMXLocalBasisViews *local_basis);
 void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile, const OpenMXElectronicViews *electronic);
 void Determine_Cell_from_ECutoff(double tv[4][4], double ECut);
 
@@ -4923,7 +4914,7 @@ void broadcast_Position_matrix_elements_to_all_processes(int myid0); /* position
 
 extern double *****MME_allorb; /* < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
 
-void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic); /* < PAO(atom i, orbital alpha) | nabla | PAO(atom j, orbital beta) > */
+void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic, const OpenMXLocalBasisViews *local_basis); /* < PAO(atom i, orbital alpha) | nabla | PAO(atom j, orbital beta) > */
 
 void Set_MPIworld_for_optical(int myid,int numprocs);
 void Initialize_optical();
@@ -4952,7 +4943,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, int SCF_i
 				      double *S1,
 				      double *CDM1,
 				      double *EDM1,
-				      dcomplex **H);
+				      dcomplex **H, const OpenMXLocalBasisViews *local_basis);
 
 double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
 			       double *koS,
@@ -4964,7 +4955,7 @@ double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
 			       double ****CntOLP,
 			       double *****CDM,
 			       double *****EDM,
-			       double Eele0[2], double Eele1[2]);
+			       double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
 double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
 			   int SCF_iter,
@@ -4979,7 +4970,7 @@ double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
 			   EXX_t *exx, 
 			   dcomplex ****exx_CDM,
 			   double *Uexx,
-			   double Eele0[2], double Eele1[2]);
+			   double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
 double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, char *mode,
                    int SCF_iter,
@@ -5010,7 +5001,7 @@ double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, char *mode
                    int *SP_NZeros,
                    int *SP_Atoms, 
                    double **EVec1,
-                   double *Work1);
+                   double *Work1, const OpenMXLocalBasisViews *local_basis);
 
 
 /* YTL-end */

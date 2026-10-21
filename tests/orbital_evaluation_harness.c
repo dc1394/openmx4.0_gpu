@@ -84,6 +84,8 @@ int main(void) {
   }
   F_M2G=mapping;WhatSpecies=species;CntCoes=coefficient_atoms;Spe_Specified_Num=count_rows;
   Spe_PAO_RV=radii_rows;Spe_PAO_RWF=orbital_species;
+  OpenMXLocalBasisViews local_basis={0};
+  local_basis.tensors[OPENMX_LOCAL_CONTRACTION]=(OpenMXLocalTensor3){3,128,M,&coefficients[0][0][0]};
   OpenMXAtomicViews atomic={0};
   atomic.pao_radii=(OpenMXRadialView2){&radii[0][0],{S,N}};
   atomic.orbitals=(OpenMXRadialView4){&orbitals[0][0][0][0],{S,L,M,N}};
@@ -129,9 +131,9 @@ int main(void) {
         Get_Orbitals(&atomic,s,x,y,z,now[0][0]);
         for(int i=0;i<4;++i)rows[i]=now[1][i];Get_dOrbitals(&atomic,s,x,y,z,rows);
         for(int i=0;i<4;++i)rows[i]=now[2][i];Get_dOrbitals2(&atomic,s,x,y,z,rows);
-        Get_Cnt_Orbitals(&atomic,s+1,x,y,z,now[3][0]);
-        for(int i=0;i<4;++i)rows[i]=now[4][i];Get_Cnt_dOrbitals(&atomic,s+1,x,y,z,rows);
-        for(int i=0;i<4;++i)rows[i]=now[5][i];Get_Cnt_dOrbitals2(&atomic,s+1,x,y,z,rows);
+        Get_Cnt_Orbitals(&atomic,s+1,x,y,z,now[3][0],&local_basis);
+        for(int i=0;i<4;++i)rows[i]=now[4][i];Get_Cnt_dOrbitals(&atomic,s+1,x,y,z,rows,&local_basis);
+        for(int i=0;i<4;++i)rows[i]=now[5][i];Get_Cnt_dOrbitals2(&atomic,s+1,x,y,z,rows,&local_basis);
         for(int i=0;i<4;++i)rows[i]=now[6][i];Get_dOrbitals_work(&atomic,s,x,y,z,rows,buffers);
         for(int k=0;k<7;++k) {
           const int cnt=k>=3 && k<=5,columns=cnt ? nc : no;
@@ -170,14 +172,14 @@ int main(void) {
       for(int i=0;i<4;++i)rows[i]=values[0][i];Get_dOrbitals(&atomic,s,xyz[0],xyz[1],xyz[2],rows);
       for(int i=0;i<4;++i)rows[i]=values[1][i];Get_dOrbitals2(&atomic,s,xyz[0],xyz[1],xyz[2],rows);
       for(int i=0;i<4;++i)rows[i]=values[2][i];Get_dOrbitals_work(&atomic,s,xyz[0],xyz[1],xyz[2],rows,buffers);
-      for(int i=0;i<4;++i)rows[i]=values[3][i];Get_Cnt_dOrbitals(&atomic,s+1,xyz[0],xyz[1],xyz[2],rows);
-      for(int i=0;i<4;++i)rows[i]=values[4][i];Get_Cnt_dOrbitals2(&atomic,s+1,xyz[0],xyz[1],xyz[2],rows);
+      for(int i=0;i<4;++i)rows[i]=values[3][i];Get_Cnt_dOrbitals(&atomic,s+1,xyz[0],xyz[1],xyz[2],rows,&local_basis);
+      for(int i=0;i<4;++i)rows[i]=values[4][i];Get_Cnt_dOrbitals2(&atomic,s+1,xyz[0],xyz[1],xyz[2],rows,&local_basis);
       for(int axis=0;axis<3;++axis) {
         const double save=xyz[axis],h=1e-5,offsets[4]={-2,-1,1,2};
         for(int sample=0;sample<4;++sample) {
           xyz[axis]=save+offsets[sample]*h;
           Get_Orbitals(&atomic,s,xyz[0],xyz[1],xyz[2],shifted[0][sample]);
-          Get_Cnt_Orbitals(&atomic,s+1,xyz[0],xyz[1],xyz[2],shifted[1][sample]);
+          Get_Cnt_Orbitals(&atomic,s+1,xyz[0],xyz[1],xyz[2],shifted[1][sample],&local_basis);
         }
         xyz[axis]=save;
         for(int variant=0;variant<5;++variant) {
@@ -213,12 +215,12 @@ int main(void) {
     for(int i=0;i<4;++i)rows[i]=values[0][i];Get_dOrbitals(&atomic,0,xyz[0],xyz[1],xyz[2],rows);
     for(int i=0;i<4;++i)rows[i]=values[1][i];Get_dOrbitals2(&atomic,0,xyz[0],xyz[1],xyz[2],rows);
     for(int i=0;i<4;++i)rows[i]=values[2][i];Get_dOrbitals_work(&atomic,0,xyz[0],xyz[1],xyz[2],rows,buffers);
-    for(int i=0;i<4;++i)rows[i]=values[3][i];Get_Cnt_dOrbitals(&atomic,1,xyz[0],xyz[1],xyz[2],rows);
-    for(int i=0;i<4;++i)rows[i]=values[4][i];Get_Cnt_dOrbitals2(&atomic,1,xyz[0],xyz[1],xyz[2],rows);
+    for(int i=0;i<4;++i)rows[i]=values[3][i];Get_Cnt_dOrbitals(&atomic,1,xyz[0],xyz[1],xyz[2],rows,&local_basis);
+    for(int i=0;i<4;++i)rows[i]=values[4][i];Get_Cnt_dOrbitals2(&atomic,1,xyz[0],xyz[1],xyz[2],rows,&local_basis);
     for(int i=0;i<4;++i)rows[i]=values[5][i];force_cuda(&atomic,0,xyz[0],xyz[1],xyz[2],rows,buffers);
     for(int i=0;i<4;++i)rows[i]=values[6][i];force_hip(&atomic,0,xyz[0],xyz[1],xyz[2],rows,buffers);
     Get_Orbitals(&atomic,0,xyz[0],xyz[1],xyz[2],plain);
-    Get_Cnt_Orbitals(&atomic,1,xyz[0],xyz[1],xyz[2],contracted_values);
+    Get_Cnt_Orbitals(&atomic,1,xyz[0],xyz[1],xyz[2],contracted_values,&local_basis);
     long double complex oracle[9],shifted[9];
     g_polynomials(xyz[0],xyz[1],xyz[2],oracle);
     for(int axis=0;axis<3;++axis) {

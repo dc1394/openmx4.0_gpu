@@ -46,7 +46,7 @@ static double Species_Opt_Contraction_DIIS(
          double ****His_CntCoes_Species,
          double ****His_D_CntCoes_Species,
          double *His_OrbOpt_Etot,
-         double **OrbOpt_Hessian);
+         double **OrbOpt_Hessian, const OpenMXLocalBasisViews *local_basis);
 
 static double Species_Opt_Contraction_EDIIS(
          int orbitalOpt_iter,
@@ -60,7 +60,7 @@ static double Species_Opt_Contraction_EDIIS(
          double ****His_CntCoes_Species,
          double ****His_D_CntCoes_Species,
          double *His_OrbOpt_Etot,
-         double **OrbOpt_Hessian);
+         double **OrbOpt_Hessian, const OpenMXLocalBasisViews *local_basis);
 
 static double Atoms_Opt_Contraction_DIIS(
          int orbitalOpt_iter,
@@ -69,7 +69,7 @@ static double Atoms_Opt_Contraction_DIIS(
          double *****CDM,
          double *****EDM,
          double ****His_CntCoes,
-         double ****His_D_CntCoes);
+         double ****His_D_CntCoes, const OpenMXLocalBasisViews *local_basis);
 
 
 
@@ -85,7 +85,7 @@ double Opt_Contraction(
          double ****His_CntCoes_Species,
          double ****His_D_CntCoes_Species,
          double *His_OrbOpt_Etot,
-         double **OrbOpt_Hessian)
+         double **OrbOpt_Hessian, const OpenMXLocalBasisViews *local_basis)
 {
 
   double norm_deri;
@@ -99,7 +99,7 @@ double Opt_Contraction(
                      CDM,
                      EDM,
                      His_CntCoes,
-		     His_D_CntCoes);
+		     His_D_CntCoes, local_basis);
   }
 
   else if (ACnt_switch==1){
@@ -116,7 +116,7 @@ double Opt_Contraction(
                      His_CntCoes_Species,
 		     His_D_CntCoes_Species,
                      His_OrbOpt_Etot,
-                     OrbOpt_Hessian);
+                     OrbOpt_Hessian, local_basis);
 
 
     /*
@@ -149,8 +149,10 @@ double Atoms_Opt_Contraction_DIIS(
          double *****CDM,
          double *****EDM,
          double ****His_CntCoes,
-         double ****His_D_CntCoes)
+         double ****His_D_CntCoes, const OpenMXLocalBasisViews *local_basis)
 {
+  double ***CntCoes=local_basis->CntCoes;
+
   static int firsttime=1;
   int i,j,Mc_AN,Gc_AN,Cwan,be,his;
   int his1,his2,diis_dim,al,p,q,p0,q0;
@@ -302,7 +304,7 @@ double Atoms_Opt_Contraction_DIIS(
     Cwan = WhatSpecies[Gc_AN];
     for (be=0; be<Spe_Total_CNO[Cwan]; be++){
       for (p=0; p<Spe_Specified_Num[Cwan][be]; p++){
-	His_CntCoes[0][Mc_AN][be][p] = CntCoes[Mc_AN][be][p];
+	His_CntCoes[0][Mc_AN][be][p] = openmx_local_contraction_row(local_basis, Mc_AN, be)[p];
 	His_D_CntCoes[0][Mc_AN][be][p] = D_CntCoes[Mc_AN][be][p];
       }
     }
@@ -317,7 +319,7 @@ double Atoms_Opt_Contraction_DIIS(
       Cwan = WhatSpecies[Gc_AN];
       for (be=0; be<Spe_Total_CNO[Cwan]; be++){
 	for (p=0; p<Spe_Specified_Num[Cwan][be]; p++){
-	  CntCoes[Mc_AN][be][p] -= mixing_coef*D_CntCoes[Mc_AN][be][p];
+	  openmx_local_contraction_row(local_basis, Mc_AN, be)[p] -= mixing_coef*D_CntCoes[Mc_AN][be][p];
 	}
       }
     }
@@ -414,7 +416,7 @@ double Atoms_Opt_Contraction_DIIS(
 	    sum2 += DIIS_coes[his1]*His_D_CntCoes[his1][Mc_AN][be][p];
 	  }      
 
-	  CntCoes[Mc_AN][be][p] = sum1 - coef_OptG*sum2; 
+	  openmx_local_contraction_row(local_basis, Mc_AN, be)[p] = sum1 - coef_OptG*sum2;
 	}
       }
     }
@@ -445,14 +447,14 @@ double Atoms_Opt_Contraction_DIIS(
 	for (q=0; q<Spe_Specified_Num[Cwan][al]; q++){
           q0 = Spe_Trans_Orbital[Cwan][al][q];
 
-          tmp0 = CntCoes[Mc_AN][al][p]*CntCoes[Mc_AN][al][q];
+          tmp0 = openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*openmx_local_contraction_row(local_basis, Mc_AN, al)[q];
           sum += tmp0*OLP[0][Mc_AN][0][p0][q0]; 
         }
       }
 
       tmp0 = 1.0/sqrt(sum);
       for (p=0; p<Spe_Specified_Num[Cwan][al]; p++){
-        CntCoes[Mc_AN][al][p] = CntCoes[Mc_AN][al][p]*tmp0;
+        openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*tmp0;
       }        
 
     }
@@ -466,7 +468,7 @@ double Atoms_Opt_Contraction_DIIS(
       for (be=0; be<Spe_Total_CNO[Cwan]; be++){
         for (p=0; p<Spe_Specified_Num[Cwan][be]; p++){
           printf("  Mc_AN=%2d Gc_AN=%2d be=%2d p=%2d  %15.12f\n",
-                    Mc_AN,Gc_AN,be,p,CntCoes[Mc_AN][be][p]);
+                    Mc_AN,Gc_AN,be,p,openmx_local_contraction_row(local_basis, Mc_AN, be)[p]);
         }
       }
     }
@@ -561,7 +563,7 @@ double Atoms_Opt_Contraction_DIIS(
           wan = WhatSpecies[Gc_AN]; 
           for (be=0; be<Spe_Total_CNO[wan]; be++){
             for (p=0; p<Spe_Specified_Num[wan][be]; p++){
-              tmp_array[num] = CntCoes[Mc_AN][be][p];
+              tmp_array[num] = openmx_local_contraction_row(local_basis, Mc_AN, be)[p];
               num++;
   	    }
 	  }
@@ -591,7 +593,7 @@ double Atoms_Opt_Contraction_DIIS(
           wan = WhatSpecies[Gc_AN];
           for (be=0; be<Spe_Total_CNO[wan]; be++){
             for (p=0; p<Spe_Specified_Num[wan][be]; p++){
-              CntCoes[Mc_AN][be][p] = tmp_array2[num];
+              openmx_local_contraction_row(local_basis, Mc_AN, be)[p] = tmp_array2[num];
               num++;
 	    }
   	  }
@@ -692,8 +694,10 @@ double Species_Opt_Contraction_DIIS(
          double ****His_CntCoes_Species,
          double ****His_D_CntCoes_Species,
          double *His_OrbOpt_Etot,
-         double **OrbOpt_Hessian)
+         double **OrbOpt_Hessian, const OpenMXLocalBasisViews *local_basis)
 {
+  double ***CntCoes=local_basis->CntCoes;
+
   static int firsttime=1;
   int i,j,Mc_AN,Mc_AN1,Cwan,Gc_AN,be,his,po,my_po;
   int his1,his2,diis_dim,al,p,q,p0,q0;
@@ -836,7 +840,7 @@ double Species_Opt_Contraction_DIIS(
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
           printf("E Init_CntCoes Mc_AN=%2d Gc_AN=%2d al=%2d p=%2d  %15.12f\n",
-                  Mc_AN,Gc_AN,al,p,CntCoes[Mc_AN][al][p]);
+                  Mc_AN,Gc_AN,al,p,openmx_local_contraction_row(local_basis, Mc_AN, al)[p]);
         }
       }
     }
@@ -875,7 +879,7 @@ double Species_Opt_Contraction_DIIS(
   for (wan=0; wan<SpeciesNum; wan++){
     for (al=0; al<Spe_Total_CNO[wan]; al++){
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	His_CntCoes_Species[0][wan][al][p]   = CntCoes_Species[wan][al][p];
+	His_CntCoes_Species[0][wan][al][p]   = openmx_local_species_contraction_row(local_basis, wan, al)[p];
 	His_D_CntCoes_Species[0][wan][al][p] = DCntCoes_Spe[wan][al][p];
       }
     }
@@ -904,7 +908,7 @@ double Species_Opt_Contraction_DIIS(
     for (wan=0; wan<SpeciesNum; wan++){
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	  CntCoes_Species[wan][al][p] -= mixing_coef*DCntCoes_Spe[wan][al][p];
+	  openmx_local_species_contraction_row(local_basis, wan, al)[p] -= mixing_coef*DCntCoes_Spe[wan][al][p];
 	}
       }
     }
@@ -1008,7 +1012,7 @@ double Species_Opt_Contraction_DIIS(
 	    sum2 += DIIS_coes[his1]*His_D_CntCoes_Species[his1][wan][al][p];
 	  }      
 
-	  CntCoes_Species[wan][al][p] = sum1;
+	  openmx_local_species_contraction_row(local_basis, wan, al)[p] = sum1;
           DCntCoes_Spe[wan][al][p]    = sum2;
 	}
       }
@@ -1173,7 +1177,7 @@ double Species_Opt_Contraction_DIIS(
 	for (al=0; al<Spe_Total_CNO[wan]; al++){
 	  for (p=0; p<Spe_Specified_Num[wan][al]; p++){
 
-	    CntCoes_Species[wan][al][p] -= U[0][i];
+	    openmx_local_species_contraction_row(local_basis, wan, al)[p] -= U[0][i];
 	    i++;
 	  }
 	}
@@ -1192,7 +1196,7 @@ double Species_Opt_Contraction_DIIS(
       for (wan=0; wan<SpeciesNum; wan++){
 	for (al=0; al<Spe_Total_CNO[wan]; al++){
 	  for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	    CntCoes_Species[wan][al][p] -= coef_OptG*DCntCoes_Spe[wan][al][p];
+	    openmx_local_species_contraction_row(local_basis, wan, al)[p] -= coef_OptG*DCntCoes_Spe[wan][al][p];
 	  }
 	}
       }
@@ -1262,14 +1266,14 @@ double Species_Opt_Contraction_DIIS(
 	for (q=0; q<Spe_Specified_Num[wan][al]; q++){
 	  q0 = Spe_Trans_Orbital[wan][al][q];
 
-	  tmp0 = CntCoes_Species[wan][al][p]*CntCoes_Species[wan][al][q];
+	  tmp0 = openmx_local_species_contraction_row(local_basis, wan, al)[p]*openmx_local_species_contraction_row(local_basis, wan, al)[q];
 	  sum += tmp0*OLPtmp[wan][p0][q0]; 
 	}
       }
 
       tmp0 = 1.0/sqrt(sum);
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	CntCoes_Species[wan][al][p] = CntCoes_Species[wan][al][p]*tmp0;
+	openmx_local_species_contraction_row(local_basis, wan, al)[p] = openmx_local_species_contraction_row(local_basis, wan, al)[p]*tmp0;
       }        
     }
   }
@@ -1280,7 +1284,7 @@ double Species_Opt_Contraction_DIIS(
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
           printf("  wan=%2d al=%2d p=%2d  %15.12f\n",
-                    wan,al,p,CntCoes_Species[wan][al][p]);fflush(stdout);  
+                    wan,al,p,openmx_local_species_contraction_row(local_basis, wan, al)[p]);fflush(stdout);
         }
       }
     }
@@ -1293,7 +1297,7 @@ double Species_Opt_Contraction_DIIS(
     wan = WhatSpecies[Gc_AN];
     for (al=0; al<Spe_Total_CNO[wan]; al++){
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-        CntCoes[Mc_AN][al][p] = CntCoes_Species[wan][al][p];
+        openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = openmx_local_species_contraction_row(local_basis, wan, al)[p];
       }        
     }
   }
@@ -1381,8 +1385,10 @@ double Species_Opt_Contraction_EDIIS(
          double ****His_CntCoes_Species,
          double ****His_D_CntCoes_Species,
          double *His_OrbOpt_Etot,
-         double **OrbOpt_Hessian)
+         double **OrbOpt_Hessian, const OpenMXLocalBasisViews *local_basis)
 {
+  double ***CntCoes=local_basis->CntCoes;
+
   static int firsttime=1;
   int i,j,Mc_AN,Mc_AN1,Cwan,Gc_AN,be,his,po,my_po;
   int his1,his2,diis_dim,al,p,q,p0,q0;
@@ -1547,7 +1553,7 @@ double Species_Opt_Contraction_EDIIS(
   for (wan=0; wan<SpeciesNum; wan++){
     for (al=0; al<Spe_Total_CNO[wan]; al++){
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	His_CntCoes_Species[0][wan][al][p]   = CntCoes_Species[wan][al][p];
+	His_CntCoes_Species[0][wan][al][p]   = openmx_local_species_contraction_row(local_basis, wan, al)[p];
 	His_D_CntCoes_Species[0][wan][al][p] = DCntCoes_Spe[wan][al][p];
       }
     }
@@ -1576,7 +1582,7 @@ double Species_Opt_Contraction_EDIIS(
     for (wan=0; wan<SpeciesNum; wan++){
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	  CntCoes_Species[wan][al][p] -= mixing_coef*DCntCoes_Spe[wan][al][p];
+	  openmx_local_species_contraction_row(local_basis, wan, al)[p] -= mixing_coef*DCntCoes_Spe[wan][al][p];
 	}
       }
     }
@@ -1696,7 +1702,7 @@ double Species_Opt_Contraction_EDIIS(
 	    sum2 += DIIS_coes[his1]*His_D_CntCoes_Species[his1][wan][al][p];
 	  }      
 
-	  CntCoes_Species[wan][al][p] = sum1;
+	  openmx_local_species_contraction_row(local_basis, wan, al)[p] = sum1;
           DCntCoes_Spe[wan][al][p]    = sum2;
 	}
       }
@@ -1861,7 +1867,7 @@ double Species_Opt_Contraction_EDIIS(
 	for (al=0; al<Spe_Total_CNO[wan]; al++){
 	  for (p=0; p<Spe_Specified_Num[wan][al]; p++){
 
-	    CntCoes_Species[wan][al][p] -= U[0][i];
+	    openmx_local_species_contraction_row(local_basis, wan, al)[p] -= U[0][i];
 	    i++;
 	  }
 	}
@@ -1883,7 +1889,7 @@ double Species_Opt_Contraction_EDIIS(
       for (wan=0; wan<SpeciesNum; wan++){
 	for (al=0; al<Spe_Total_CNO[wan]; al++){
 	  for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-	    CntCoes_Species[wan][al][p] -= coef_OptG*DCntCoes_Spe[wan][al][p];
+	    openmx_local_species_contraction_row(local_basis, wan, al)[p] -= coef_OptG*DCntCoes_Spe[wan][al][p];
 	  }
 	}
       }
@@ -1953,14 +1959,14 @@ double Species_Opt_Contraction_EDIIS(
 	for (q=0; q<Spe_Specified_Num[wan][al]; q++){
           q0 = Spe_Trans_Orbital[wan][al][q];
 
-          tmp0 = CntCoes_Species[wan][al][p]*CntCoes_Species[wan][al][q];
+          tmp0 = openmx_local_species_contraction_row(local_basis, wan, al)[p]*openmx_local_species_contraction_row(local_basis, wan, al)[q];
           sum += tmp0*OLPtmp[wan][p0][q0]; 
         }
       }
 
       tmp0 = 1.0/sqrt(sum);
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-        CntCoes_Species[wan][al][p] = CntCoes_Species[wan][al][p]*tmp0;
+        openmx_local_species_contraction_row(local_basis, wan, al)[p] = openmx_local_species_contraction_row(local_basis, wan, al)[p]*tmp0;
       }        
     }
   }
@@ -1971,7 +1977,7 @@ double Species_Opt_Contraction_EDIIS(
       for (al=0; al<Spe_Total_CNO[wan]; al++){
         for (p=0; p<Spe_Specified_Num[wan][al]; p++){
           printf("  wan=%2d al=%2d p=%2d  %15.12f %15.12f\n",
-                    wan,al,p,CntCoes_Species[wan][al][p],
+                    wan,al,p,openmx_local_species_contraction_row(local_basis, wan, al)[p],
                     His_D_CntCoes_Species[0][wan][al][p]);fflush(stdout);  
         }
       }
@@ -1984,7 +1990,7 @@ double Species_Opt_Contraction_EDIIS(
     wan = WhatSpecies[Gc_AN];
     for (al=0; al<Spe_Total_CNO[wan]; al++){
       for (p=0; p<Spe_Specified_Num[wan][al]; p++){
-        CntCoes[Mc_AN][al][p] = CntCoes_Species[wan][al][p];
+        openmx_local_contraction_row(local_basis, Mc_AN, al)[p] = openmx_local_species_contraction_row(local_basis, wan, al)[p];
       }        
     }
   }

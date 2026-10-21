@@ -1547,7 +1547,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
 
 double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
-                       double ***** H, const OpenMXElectronicViews *electronic)
+                       double ***** H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double *****CntH=electronic->CntH;
   double *****CntOLP=electronic->CntOLP;
@@ -1730,9 +1730,9 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
     }
 
     if (Cnt_kind == 1) {
-        Contract_Hamiltonian(H, CntH, OLP, CntOLP);
+        Contract_Hamiltonian(H, CntH, OLP, CntOLP, local_basis);
         if (SO_switch == 1)
-            Contract_iHNL(iHNL, iCntHNL);
+            Contract_iHNL(iHNL, iCntHNL, local_basis);
     }
 
     /*****************************************************

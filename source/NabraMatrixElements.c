@@ -24,7 +24,7 @@
 // alpha, beta = orbital index of atom i/j
 // Nabla = the first derivative wiht respect to x/y/z
 
-void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic)
+void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic, const OpenMXLocalBasisViews *local_basis)
 {
   double time0;
   int Mc_AN,Gc_AN,Mh_AN,h_AN,Gh_AN;
@@ -211,7 +211,7 @@ void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic)
     Cwan = WhatSpecies[Gc_AN];
     NO0 = atomic->species.contracted_orbitals[Cwan];
     
-    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,1);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,1, local_basis);
 
     for (i=0; i<NO0; i++){
       for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
@@ -233,7 +233,7 @@ void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic)
       }
     }
 
-    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,2);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,2, local_basis);
 
     for (i=0; i<NO0; i++){
       for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
@@ -250,7 +250,7 @@ void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic)
       }
     }
 
-    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,3);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,3, local_basis);
 
     for (i=0; i<NO0; i++){
       for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
@@ -267,7 +267,7 @@ void Calc_NabraMatrixElements(const OpenMXAtomicViews *atomic)
       }
     }
 
-    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,0);
+    Set_dOrbitals_Grid_xyz(atomic, Global_Cnt_kind,0, local_basis);
     
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 

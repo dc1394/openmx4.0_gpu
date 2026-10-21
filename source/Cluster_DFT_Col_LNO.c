@@ -119,7 +119,7 @@ static double Calc_DM_Cluster_collinear_LNO(int myid0,
 					    double *Work1,
 					    double **EVec1, 
 					    int *SP_NZeros,
-					    int *SP_Atoms );
+					    int *SP_Atoms , const OpenMXLocalBasisViews *local_basis);
 
 
 double Cluster_DFT_Col_LNO(
@@ -153,7 +153,7 @@ double Cluster_DFT_Col_LNO(
                    int *SP_NZeros,
                    int *SP_Atoms,
                    double **EVec1,
-                   double *Work1)
+                   double *Work1, const OpenMXLocalBasisViews *local_basis)
 {
   static int firsttime=1;
   int i,j,l,n1,i1,i1s,j1,k1,l1;
@@ -297,11 +297,11 @@ double Cluster_DFT_Col_LNO(
   if (SCF_iter==1){
 
     if (SpinP_switch==1 && numprocs0==1){
-      Overlap_Cluster_LNO_Ss(CntOLP,Cs,MP,0,0);
+      Overlap_Cluster_LNO_Ss(CntOLP,Cs,MP,0,0, local_basis);
     }
     else{
       for (spin=0; spin<=SpinP_switch; spin++){
-	Overlap_Cluster_LNO_Ss(CntOLP,Cs,MP,spin,myworld1);
+	Overlap_Cluster_LNO_Ss(CntOLP,Cs,MP,spin,myworld1, local_basis);
       } 
     }
 
@@ -391,7 +391,7 @@ double Cluster_DFT_Col_LNO(
 
     if (SpinP_switch==1 && numprocs0==1 && spin==0){
       spin++;
-      Overlap_Cluster_LNO_Ss(CntOLP,Cs,MP,spin,spin);
+      Overlap_Cluster_LNO_Ss(CntOLP,Cs,MP,spin,spin, local_basis);
       goto S_diagonalize; 
     }
 
@@ -411,11 +411,11 @@ double Cluster_DFT_Col_LNO(
   ****************************************************/
 
   if (SpinP_switch==1 && numprocs0==1){
-    Overlap_Cluster_LNO_Ss(nh[0],Hs,MP,0,0);
+    Overlap_Cluster_LNO_Ss(nh[0],Hs,MP,0,0, local_basis);
   }
   else{
     for (spin=0; spin<=SpinP_switch; spin++){
-      Overlap_Cluster_LNO_Ss(nh[spin],Hs,MP,spin,myworld1);
+      Overlap_Cluster_LNO_Ss(nh[spin],Hs,MP,spin,myworld1, local_basis);
     } 
   }
   
@@ -876,7 +876,7 @@ double Cluster_DFT_Col_LNO(
 
     time6 += Calc_DM_Cluster_collinear_LNO( myid0,numprocs0,myid1,numprocs1,myworld1,
 					    size_H1,is2,ie2,MP,n,TNum_LNOs,MPI_CommWD1,Comm_World_StartID1,
-					    CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms);
+					    CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms, local_basis);
 
     /****************************************************
                         Bond Energies
@@ -986,8 +986,9 @@ double Calc_DM_Cluster_collinear_LNO(
     double *Work1,
     double **EVec1, 
     int *SP_NZeros,
-    int *SP_Atoms )
+    int *SP_Atoms , const OpenMXLocalBasisViews *local_basis)
 {
+
   int spin,i,j,i0,j0,k,kmin,kmax,po,p,GA_AN,MA_AN,wanA,tnoA,Anum;
   int LB_AN,GB_AN,wanB,tnoB,Bnum,i1,j1,ID,tnoA0,tnoB0,MB_AN;
   double max_x=60.0,dum;
@@ -1164,8 +1165,8 @@ double Calc_DM_Cluster_collinear_LNO(
 	    sum2 = 0.0;
 
 	    for (k=0; k<tnoA; k++){
-	      sum1 += LNO_coes[spin][MA_AN][tnoA0*k+i]*CDM_LNO[k*tnoB+j];
-	      sum2 += LNO_coes[spin][MA_AN][tnoA0*k+i]*EDM_LNO[k*tnoB+j];
+	      sum1 += openmx_local_lno_row(local_basis, spin, MA_AN)[tnoA0*k+i]*CDM_LNO[k*tnoB+j];
+	      sum2 += openmx_local_lno_row(local_basis, spin, MA_AN)[tnoA0*k+i]*EDM_LNO[k*tnoB+j];
 	    }
 
 	    Mat1[i*tnoB+j] = sum1;
@@ -1181,8 +1182,8 @@ double Calc_DM_Cluster_collinear_LNO(
 	    sum2 = 0.0;
 
 	    for (k=0; k<tnoB; k++){
-	      sum1 += Mat1[i*tnoB+k]*LNO_coes[spin][MB_AN][tnoB0*k+j];
-	      sum2 += Mat2[i*tnoB+k]*LNO_coes[spin][MB_AN][tnoB0*k+j];
+	      sum1 += Mat1[i*tnoB+k]*openmx_local_lno_row(local_basis, spin, MB_AN)[tnoB0*k+j];
+	      sum2 += Mat2[i*tnoB+k]*openmx_local_lno_row(local_basis, spin, MB_AN)[tnoB0*k+j];
 	    }
 
 	    CDM[spin][MA_AN][LB_AN][i][j] = sum1;
@@ -1306,8 +1307,8 @@ double Calc_DM_Cluster_collinear_LNO(
 	    sum2 = 0.0;
 
 	    for (k=0; k<tnoA; k++){
-	      sum1 += LNO_coes[spin][MA_AN][tnoA0*k+i]*CDM_LNO[k*tnoB+j];
-	      sum2 += LNO_coes[spin][MA_AN][tnoA0*k+i]*EDM_LNO[k*tnoB+j];
+	      sum1 += openmx_local_lno_row(local_basis, spin, MA_AN)[tnoA0*k+i]*CDM_LNO[k*tnoB+j];
+	      sum2 += openmx_local_lno_row(local_basis, spin, MA_AN)[tnoA0*k+i]*EDM_LNO[k*tnoB+j];
 	    }
 
 	    Mat1[i*tnoB+j] = sum1;
@@ -1323,8 +1324,8 @@ double Calc_DM_Cluster_collinear_LNO(
 	    sum2 = 0.0;
 
 	    for (k=0; k<tnoB; k++){
-	      sum1 += Mat1[i*tnoB+k]*LNO_coes[spin][MB_AN][tnoB0*k+j];
-	      sum2 += Mat2[i*tnoB+k]*LNO_coes[spin][MB_AN][tnoB0*k+j];
+	      sum1 += Mat1[i*tnoB+k]*openmx_local_lno_row(local_basis, spin, MB_AN)[tnoB0*k+j];
+	      sum2 += Mat2[i*tnoB+k]*openmx_local_lno_row(local_basis, spin, MB_AN)[tnoB0*k+j];
 	    }
 
 	    CDM[spin][MA_AN][LB_AN][i][j] = sum1;

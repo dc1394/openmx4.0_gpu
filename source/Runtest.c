@@ -23,6 +23,7 @@
 #include <dirent.h>
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_local_basis.h"
 #include "openmx_electronic.h"
 #include "openmx_atomic.h"
 #include "Inputtools.h"
@@ -628,6 +629,8 @@ int run_main(int argc, char *argv[], int numprocs0, int myid0)
 static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid0,
                                  OpenMXCoreContext *core)
 {
+  OpenMXLocalBasisViews local_basis_storage;
+
   OpenMXElectronicViews electronic_storage;
 
   int MD_iter,i,j,po,ip;
@@ -764,7 +767,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
   if (Solver == 4 && TRAN_analysis == 1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */
-    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(atomic, 0);
+    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
     if (SpinP_switch == 3) {
       TRAN_Main_Analysis_NC(atomic, mpi_comm_level1, argc, argv, Matomnum, M2G,
@@ -783,7 +786,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
                   Making of output files
   ****************************************************/
 
-  CompTime[myid0][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
+  CompTime[myid0][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density

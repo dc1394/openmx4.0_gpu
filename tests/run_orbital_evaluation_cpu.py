@@ -34,6 +34,7 @@ PREFIX = r'''
 #include <stdlib.h>
 #include <math.h>
 #include "openmx_core_atomic.h"
+#include "openmx_core_local_basis.h"
 #include "openmx_complex.h"
 #define PI 3.1415926535897932384626
 #define Supported_MaxL 4

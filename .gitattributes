@@ -11,3 +11,5 @@ source/Population_Analysis_Wannier.c whitespace=blank-at-eol,blank-at-eof,space-
 source/Population_Analysis_Wannier2.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 source/SCF2File.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 source/Voronoi_Orbital_Moment.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Set_Orbitals_Grid.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+source/Set_dOrbitals_Grid.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

@@ -539,8 +539,9 @@ void Set_Density_Grid_GPU_Local_Report(int path, int failed);
 int Set_Density_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
 int openmx_grid_precision_df(void);
 
-double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0)
+double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
 {
+
   static int firsttime=1;
   int al,L0,Mul0,M0,p,size1,size2;
   int Gc_AN,Mc_AN,Mh_AN,LN,AN,BN,CN;
@@ -811,7 +812,7 @@ double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_
 
 	      for (p=0; p<Spe_Specified_Num[Cwan][al]; p++){
 	        j = Spe_Trans_Orbital[Cwan][al][p];  
-	        tmp0 += CntCoes[Mc_AN][al][p]*Orbs_Grid[Mc_AN][Nc][j];/* AITUNE */
+	        tmp0 += openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*Orbs_Grid[Mc_AN][Nc][j];/* AITUNE */
 	      }
 
 	      COrbs_Grid[Mc_AN][al][Nc] = (Type_Orbs_Grid)tmp0;

@@ -45,7 +45,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 		    double *S1,
 		    double *CDM1,
 		    double *EDM1,
-		    dcomplex **H)
+		    dcomplex **H, const OpenMXLocalBasisViews *local_basis)
 {
   static int firsttime=1;
   int i,j,k,l,m,n,wan,MaxN,i0,ks;
@@ -450,7 +450,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
   /* YTL-start */
 
   /* Step (1) : calculate < phi( atom a, orbital alpha) | nabla | phi( atom b, orbital beta) > */
-  Calc_NabraMatrixElements(atomic);
+  Calc_NabraMatrixElements(atomic, local_basis);
 
   Initialize_optical();
 

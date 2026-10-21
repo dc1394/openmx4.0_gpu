@@ -15,8 +15,9 @@
 #include <time.h>
 #include "openmx_common.h"
 
-void Cont_Matrix2(Type_DS_VNA ****Mat, Type_DS_VNA ****CMat)
+void Cont_Matrix2(Type_DS_VNA ****Mat, Type_DS_VNA ****CMat, const OpenMXLocalBasisViews *local_basis)
 {
+
   int i,j;
   int spin,Mc_AN,Gc_AN,h_AN,Gh_AN,L,L1,M1;
   int p,q,p0,q0,al,be,Cwan,Hwan;
@@ -57,7 +58,7 @@ void Cont_Matrix2(Type_DS_VNA ****Mat, Type_DS_VNA ****CMat)
 
 	    for (p=0; p<Spe_Specified_Num[Cwan][al]; p++){
 	      p0 = Spe_Trans_Orbital[Cwan][al][p];
-	      sumS += CntCoes[Mc_AN][al][p]*Mat[Mc_AN][h_AN][p0][be];
+	      sumS += openmx_local_contraction_row(local_basis, Mc_AN, al)[p]*Mat[Mc_AN][h_AN][p0][be];
 	    }
 
 	    CMat[Mc_AN][h_AN][al][be] = sumS;
