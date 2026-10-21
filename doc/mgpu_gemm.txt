@@ -23,10 +23,17 @@ and complex GEMM, rectangular back transforms, padded leading dimensions, host o
 device alpha/beta, and the two products H X followed by X^T H X or X^H H X.
 The two forward products are separate calls; their intermediate matrix returns
 to the source GPU. A worker caches its current operand tiles within one call.
+For CUDA host operands, the traversal compares the bytes required by row-first
+and column-first assignment, including reuse on each worker and partial edge
+tiles. It chooses the smaller transfer volume without changing tile budgets,
+the complete K dimension, or the arithmetic within each output tile.
 
 Each worker owns a nondefault stream and cuBLAS handle. Peer copies and GEMMs are
 queued on these streams; all workers queue their GEMMs before a host-staged gather
-waits. Input readiness comes from an event on the caller's stream. Where peer
+waits. CUDA workers also queue all pinned host-result downloads before waiting
+on the first device. Completed tiles are scattered into the private transaction
+while the remaining devices can continue their downloads. Input readiness comes
+from an event on the caller's stream. Where peer
 access is unavailable or cannot be enabled, bounded portable pinned buffers
 stage transfers through host memory. OPENMX_MGPU_GEMM_FORCE_HOST=1 exercises this
 route even on NVLink systems. Peer enablement is cached per directed device pair.
@@ -72,6 +79,8 @@ OPENMX_MGPU_GEMM_HOST_MB                       256     Pinned staging per worker
 OPENMX_MGPU_GEMM_RESERVE_MB                    512     Free device-memory reserve
 OPENMX_MGPU_GEMM_FORCE_HOST                     0     Force host-staged transport
 OPENMX_MGPU_GEMM_BACKEND                   bridge     bridge or native arithmetic
+OPENMX_MGPU_GEMM_ASYNC_GATHER                   1     Queue CUDA host-result downloads together
+OPENMX_MGPU_GEMM_TRAVERSAL                   auto     CUDA host tiles: auto, row, column
 
 Byte caps use MiB (1024^2 bytes). Zero workspace/host budgets disable the
 corresponding allocation. A zero device-result budget selects host results;
@@ -119,10 +128,11 @@ Run inside an allocated node with at least two physical GPUs:
   source/build/mgpu-tests/mgpu_gemm_smoke --ngpu 2
   compute-sanitizer --tool memcheck --error-exitcode 99 \
     source/build/mgpu-tests/mgpu_gemm_smoke --ngpu 2
-Use --ngpu 4 for four GPUs. The 64-case fixture covers real/complex N/T/C,
+Use --ngpu 4 for four GPUs. The fixture covers real/complex N/T/C,
 alpha/beta, device scalars, NaN C with beta zero, padding, nondefault streams,
 long K, bounded tiling, both forward pairs, rectangular back shapes, peer/host
-paths, a nonzero source device, and transactional rollback after a later worker
+paths, row/column/automatic host tile traversal, a nonzero source device,
+and transactional rollback after a later worker
 rejects its tile. Numerical references use independent long-double sums.
 The default smoke uses a lightweight bridge wrapper to test recursion; it is
 not a numerical test of the external GEMMul8 kernels.
@@ -135,6 +145,19 @@ Add --complex for Z. Omit --forward for a single N/N product and use independent
 reports wall time, relative error against the single-GPU output, active GPUs,
 transport counts and scratch bytes. A decline or wrong active count fails the
 benchmark instead of silently timing a single-GPU fallback.
+
+Add --host to measure the host-backed capacity path against a single GPU
+with host operands/results. Both paths include uploads and downloads; the
+native baseline retains preallocated device scratch. The cooperative warm-up
+registers bounded pinned buffers, which subsequent products reuse inside one
+staging scope. Use OPENMX_MGPU_GEMM_ASYNC_GATHER=0/1 on the same executable
+to compare the sequential and overlapped gathers without changing arithmetic,
+GPU counts or tile budgets. The standalone CUDA builds enable host OpenMP,
+matching the production packing/scattering loops. Set OMP_NUM_THREADS and
+bind the process to the corresponding CPU cores when measuring them.
+Use OPENMX_MGPU_GEMM_TRAVERSAL=row/column/auto to compare tile assignment;
+row retains the previous traversal. Device-operand and HIP calls keep their
+existing row-first assignment.
 
 For the retained production single-GPU arithmetic policy, build the same source
 with the actual bridge and an existing GEMMul8 template object:
@@ -230,5 +253,6 @@ after every tile succeeds. No full owner GPU result allocation is made.
 The independent host result cap is OPENMX_MGPU_GEMM_HOST_RESULT_MB (65536
 MiB); the existing worker and pinned budgets still bound GPU/tile storage.
 These calls serve forced MAGMA and automatic memory recovery regardless of
-the optional performance GEMM toggle. Failure is fatal to the capacity
-caller instead of retrying an oversized native product.
+the optional performance GEMM toggle. Recoverable capacity failures leave C
+unchanged and the runtime uses CPU BLAS. Execution or publication failures
+remain errors, since retrying a partially published result is unsafe.

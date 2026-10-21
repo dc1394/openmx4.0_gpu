@@ -14,7 +14,7 @@ gpu_arch=${GPU_ARCH:-80}
 gemmul8_root=${GEMMUL8_DIR:-$test_root/source/third_party/GEMMul8}
 gemmul8_object=${GEMMUL8_TEST_OBJECT:?reuse a GEMMul8 template object built with the same toolkit/architecture}
 unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH NVCC_PREPEND_FLAGS NVCC_APPEND_FLAGS
-"$nvcc" -ccbin "$host_cxx" -std=c++17 -O2 -arch="sm_$gpu_arch" -DOPENMX_MGPU_BENCH_BRIDGE \
+"$nvcc" -ccbin "$host_cxx" -std=c++17 -O2 -arch="sm_$gpu_arch" -Xcompiler -pthread,-fopenmp -DOPENMX_MGPU_BENCH_BRIDGE \
     -I"$test_root/source" -I"$gemmul8_root/include" -I"$math_root/include" \
     "$test_root/tests/mgpu_gemm_bench.cu" "$test_root/source/openmx_mgpu_gemm.cu" \
     "$test_root/source/gemmul8_bridge.cu" "$gemmul8_object" \

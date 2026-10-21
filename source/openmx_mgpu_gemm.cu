@@ -107,7 +107,7 @@ struct Operation {
 #if OPENMX_GPU_HIP
     bool host_matrices=false,host_result=false;
 #else
-    bool host_matrices=false,host_result=false,pageable=false;
+    bool host_matrices=false,host_result=false,pageable=false,async_gather=true;
 #endif
     OpenMXGpuStream copy_stream=nullptr;
     OpenMXGpuEvent ready=nullptr;
@@ -203,8 +203,14 @@ bool output_copy(Operation &op,Worker &w,void *dst,size_t dpitch,const void *src
             ++report.host_transfers;return true;
         }
 #endif
-        if(OpenMXGpuMemcpyAsync(host,src,width*height,OPENMX_GPU_COPY_DEVICE_TO_HOST,w.ctx->stream)!=OPENMX_GPU_SUCCESS ||
-           OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS) return false;
+        if(OpenMXGpuMemcpyAsync(host,src,width*height,OPENMX_GPU_COPY_DEVICE_TO_HOST,w.ctx->stream)!=OPENMX_GPU_SUCCESS)
+            return false;
+#if !OPENMX_GPU_HIP
+        // Queue every device's download before waiting on any of them. The
+        // pinned output tile remains private until the wave's completion loop.
+        if(op.async_gather) {++report.host_transfers;return true;}
+#endif
+        if(OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS) return false;
 #if !OPENMX_GPU_HIP
         #pragma omp parallel for schedule(static) if(width*height>16*MiB)
 #endif
@@ -311,6 +317,8 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     op.host_matrices=host_matrices;
 #if !OPENMX_GPU_HIP
     op.pageable=host_matrices && option("OPENMX_MGPU_GEMM_PAGEABLE");
+    const char *gather_control=std::getenv("OPENMX_MGPU_GEMM_ASYNC_GATHER");
+    op.async_gather=!(gather_control && std::strcmp(gather_control,"0")==0);
 #endif
     if(OpenMXGpuGetDevice(&op.origin)!=OPENMX_GPU_SUCCESS) {report.reason="current device unavailable";return 0;}
     auto finish=[&](int handled,const char *reason) {
@@ -422,6 +430,23 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     if(worker_bytes>tile_budget) return finish(0,"full K does not fit the worker budget");
     const size_t tile_rows=(size_t(m)+tile_m-1)/tile_m,tile_cols=(size_t(n)+tile_n-1)/tile_n;
     if(tile_rows*tile_cols<size_t(ngpu)) return finish(0,"too few output tiles");
+    bool column_tiles=false;
+#if !OPENMX_GPU_HIP
+    if(host_matrices) {
+        // Each worker retains its last A row and B column. With round-robin
+        // workers, the fast tile index is reused only when its count divides
+        // ngpu. Count operand elements (apart from common K), including edge
+        // tiles, and choose the traversal that uploads less host data.
+        const size_t g=size_t(ngpu);
+        const size_t row_cost=size_t(m)*std::min(tile_cols,g)+size_t(n)*
+            (g%tile_cols==0?std::min(tile_rows,g/tile_cols):tile_rows);
+        const size_t col_cost=size_t(n)*std::min(tile_rows,g)+size_t(m)*
+            (g%tile_rows==0?std::min(tile_cols,g/tile_rows):tile_cols);
+        const char *order=std::getenv("OPENMX_MGPU_GEMM_TRAVERSAL");
+        column_tiles=order && std::strcmp(order,"column")==0 ? true :
+            order && std::strcmp(order,"row")==0 ? false : col_cost<row_cost;
+    }
+#endif
     report.transaction_bytes=result_bytes;report.worker_bytes=worker_bytes;
     if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS) return finish(0,"origin device selection failed");
     if(OpenMXGpuStreamCreateWithFlags(&op.copy_stream,OPENMX_GPU_STREAM_NONBLOCKING)!=OPENMX_GPU_SUCCESS ||
@@ -469,7 +494,9 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         const int active=int(std::min(size_t(ngpu),tile_rows*tile_cols-first));
         for(int i=0;i<active;++i) {
             Worker &w=op.workers[i];
-            w.row=int((first+i)/tile_cols)*tile_m;w.col=int((first+i)%tile_cols)*tile_n;
+            const size_t tile=first+i;
+            w.row=int(column_tiles?tile%tile_rows:tile/tile_cols)*tile_m;
+            w.col=int(column_tiles?tile/tile_rows:tile%tile_cols)*tile_n;
             w.m=std::min(tile_m,m-w.row);w.n=std::min(tile_n,n-w.col);
             T *wa=static_cast<T *>(w.buffer),*wb=wa+a_elements,*wc=wb+b_elements;
             T *ha=static_cast<T *>(w.host),*hb=ha?ha+a_elements:nullptr,*hc=ha?hb+b_elements:nullptr;
@@ -512,6 +539,18 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
             Worker &w=op.workers[i];
             if(OpenMXGpuSetDevice(w.ctx->device)!=OPENMX_GPU_SUCCESS || OpenMXGpuStreamSynchronize(w.ctx->stream)!=OPENMX_GPU_SUCCESS)
                 return finish(0,"worker synchronization failed before commit");
+#if !OPENMX_GPU_HIP
+            if(op.host_result && !op.pageable && op.async_gather) {
+                // Each stream has finished its copy into this worker's pinned
+                // tile. Scatter it while other devices continue downloading;
+                // do not publish any part of the caller's C until all succeed.
+                const T *hc=static_cast<const T *>(w.host)+a_elements+b_elements;
+                T *dst=static_cast<T *>(op.result)+size_t(w.col)*m+w.row;
+                #pragma omp parallel for schedule(static) if(size_t(w.m)*w.n*sizeof(T)>16*MiB)
+                for(int j=0;j<w.n;++j)
+                    std::memcpy(dst+size_t(j)*m,hc+size_t(j)*w.m,size_t(w.m)*sizeof(T));
+            }
+#endif
         }
     }
     if(OpenMXGpuSetDevice(op.origin)!=OPENMX_GPU_SUCCESS || OpenMXGpuStreamSynchronize(op.copy_stream)!=OPENMX_GPU_SUCCESS)

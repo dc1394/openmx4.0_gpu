@@ -40,6 +40,9 @@ int openmx_gpu_bilinear_execute(MPI_Comm,OpenMXBilinearSource *,int local_done,i
 typedef struct {uint64_t left,right,matrix;int n0,n1;double scale[4];} OpenMXBilinearIndex;
 typedef struct {uint64_t rows,terms,orbitals,matrices;int spins,negate_fourth;} OpenMXBilinearHeader;
 int openmx_gpu_bilinear_pack(const OpenMXBilinearSource *,size_t,size_t,void **,size_t *);
+/* Stop before materializing a packet larger than the receiver can hold.
+   Failure leaves the packet null and its size zero. */
+int openmx_gpu_bilinear_pack_limit(const OpenMXBilinearSource *,size_t,size_t,size_t,void **,size_t *);
 
 static inline double openmx_bilinear_value(const OpenMXBilinearSpan *s,int index)
 {
