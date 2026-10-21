@@ -40,6 +40,8 @@ int elpa_setup(elpa_t);
 const char *elpa_strerr(int);
 void elpa_eigenvectors_double(elpa_t, double *, double *, double *, int *);
 void elpa_eigenvectors_double_complex(elpa_t, double complex *, double *, double complex *, int *);
+void elpa_eigenvectors_a_h_a_d(elpa_t, double *, double *, double *, int *);
+void elpa_eigenvectors_a_h_a_dc(elpa_t, double complex *, double *, double complex *, int *);
 '''
 DRIVER = r'''
 #define _POSIX_C_SOURCE 200809L
@@ -70,7 +72,8 @@ int cudaGetDeviceProperties(struct cudaDeviceProp *p, int d) {
     return property_failure && rank_id == 1;
 }
 int cudaGetLastError(void) { return 0; }
-cudaError_t OpenMX_GpuMemGetInfo(size_t *f, size_t *t) { *f = device_free; *t = (size_t)40 << 30; return 0; }
+static int memory_queries;
+cudaError_t OpenMX_GpuMemGetInfo(size_t *f, size_t *t) { ++memory_queries; *f = device_free; *t = (size_t)40 << 30; return 0; }
 int openmx_gpu_local_size_noncollective(void) { return launcher_size; }
 /* The actual rank map is appended from set_cuda_default_device_from_local_rank.c. */
 
@@ -111,6 +114,14 @@ int elpa_setup(elpa_t h) {
     MPI_Barrier(grid_comm); /* All ranks must enter setup together. */
     return fail_setup ? 42 : 0;
 }
+const char *elpa_strerr(int err) { (void)err; return "mock"; }
+static int host_solves;
+/* Model the explicit-name dispatcher's fatal GPU-runtime probe on CPU-only
+   nodes. A host solve must never enter it, even with GPU kernels disabled. */
+void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *err) { CHECK(0); }
+void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
+void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) { ++host_solves; *err=0; }
+void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) { ++host_solves; *err=0; }
 
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
@@ -181,6 +192,15 @@ int main(int argc, char **argv) {
             (void)gs2_get_handle(0, 64, 64, 0, 16, &err);
         }
         CHECK(0); /* inconsistent kernel modes must stop collectively */
+    }
+    else if (strcmp(argv[1], "cpu-dispatch") == 0) {
+        setenv("OPENMX_GS2_ELPA_GPU", "0", 1);
+        int desc[9] = {1, 0, 64, 64, 16, 16, 0, 0, 64};
+        double a[1], w[1], z[1]; double complex ac[1], zc[1];
+        CHECK(openmx_gs2_eigen_real(64, 16, a, desc, w, z, desc)==0);
+        CHECK(openmx_gs2_eigen_complex(64, 16, ac, desc, w, zc, desc)==0);
+        CHECK(host_solves==2 && memory_queries==0);
+        openmx_gs2_grid_free(0); CHECK(live_handles==0);
     }
     else if (strcmp(argv[1], "handle-errors") == 0) {
         setenv("OPENMX_GS2_ELPA_GPU", "0", 1);
@@ -256,7 +276,7 @@ def rank_map():
 
 def main():
     cases = ["cap", "block", "mod", "uuid", "allocation", "query", "grid-change", "grid-cache-skew",
-             "overflow", "mixed-elpa", "mixed-gemm", "handle-errors", "block-change",
+             "overflow", "mixed-elpa", "mixed-gemm", "cpu-dispatch", "handle-errors", "block-change",
              "asymmetric-handle-errors", "handle-cache-skew", "handle-comm-change", "handle-mode-skew"]
     failures = []
     with tempfile.TemporaryDirectory(prefix="openmx-gs2-memory-") as directory:
