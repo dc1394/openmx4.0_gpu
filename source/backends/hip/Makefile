@@ -237,7 +237,7 @@ GPUSOLVER2_LIBS = $(GPUSOLVER2_PREFIX)/lib/libelpa.a \
 CFLAGS  = -g
 CPPFLAGS =
 
-OBJS    = openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o ReLU_inverse.o \
+OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools.o init.o LU_inverse.o ReLU_inverse.o \
           truncation.o readfile.o FT_PAO.o FT_NLP.o FT_ProExpn_VNA.o FT_VNA.o FT_ProductPAO.o \
           Hamiltonian_Cluster.o Hamiltonian_Cluster_Hs.o Hamiltonian_Cluster_NC_Hs2.o Hamiltonian_Band_NC_Hs2.o \
           Overlap_Cluster_NC_Ss2.o Overlap_Band_NC_Ss2.o Overlap_Cluster.o Overlap_Cluster_Ss.o Overlap_Cluster_LNO_Ss.o \
@@ -1554,3 +1554,7 @@ Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_C
 # Calculation-owned native GPU resources.
 DFT.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_Conquer.o Divide_Conquer_LNO.o Krylov.o: openmx_native_resources.h openmx_core_native_resources.h
 Free_Arrays.o: openmx_core_native_resources.h
+
+openmx_grid_assembly.o: openmx_grid_assembly.c openmx_grid_assembly.h openmx_core_grid.h openmx_common.h
+	$(CC_NOACC_O3) -c openmx_grid_assembly.c
+DFT.o Set_Hamiltonian.o Set_Density_Grid.o Free_Arrays.o: openmx_grid_assembly.h openmx_core_grid.h

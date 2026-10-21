@@ -2705,6 +2705,97 @@ A100 用 Hamiltonian タイル、multi-GPU GEMM、密度 packing の保護対象
 保存します。途中の性能測定には `validated/`、ケース終了処理を含む最終測定には `completed/` の固定
 バイナリ・コアを使用しました。
 
+## 第25段階: Hamiltonian・密度格子の共通ホスト積分
+
+`refactor/cpp-kokkos-core` で `Set_Hamiltonian` と `Set_Density_Grid` の
+CPU 格子積分を `core/src/grid_assembly.cpp` に移しました。CUDA/HIP に重複していた
+スピン1/2/4成分の数値処理をまとめ、ネイティブ側には軌道・行列・格子の借用ビューを
+作る共通アダプター `source/openmx_grid_assembly.c` を設けました。DFT が明示的な
+`OpenMXCoreContext` から作業領域を渡し、この移行ではグローバル変数を追加していません。
+
+計算ごとの所有者が、連続密度領域、atom-to-B の送受信値と行表、原子・ペアの実行計画、
+worker ごとの行列・軌道パネル・積分 accumulator、MPI request/status 領域を管理します。
+密度と送受信値には Tensor、数値行列には mdspan を使い、多重ポインタは C ABI 境界の
+借用行表に留めます。寸法が同じ SCF では確保せずに再利用し、寸法変更は新しい領域の
+構築成功後に切り替えます。容量・オフセット積を検査し、失敗時には従来のビューと値を
+保持します。ケース終了時は GPU キャッシュと MPI の利用終了後に解放し、`finish` と
+コンテキスト破棄でも回収します。
+
+密度は HIP 版の原子単位の分担を共通化し、CUDA 版のペアごとの OpenMP バリアと
+worker ごとの全格子複製・集約を除去しました。1ペアの密度行列をスピン交互配置で
+一度だけ pack し、格子点を SIMD lane として縮約します。Hamiltonian は小さい
+スピン非分極行列の16点ブロック積分と、一般形の既存行列を初期値とする積分を保持します。
+各成分の隣接ペア・格子・軌道に対する加算順を維持し、core の積和非縮約の設定も保持します。
+native compiler と C++ compiler の違いによる丸めの差は、実計算比較で別途検査します。
+
+OpenMP チームは native 側で作り、実際の worker 番号・人数を core に渡します。
+予約人数より小さい動的チームも扱い、core 内で別の OpenMP runtime を起動しません。
+`OPENMX_SETHAM_SIMD`、`OPENMX_DENSITY_GRID_COL_SIMD`、
+`OPENMX_DENSITY_GRID_NC_SIMD` は CPU/OS が実行可能な ISA のみを選び、
+`scalar` / `avx2` で上限を指定できます。ホストの ISA 判定を SYCL/CUDA/HIP の
+デバイスコンパイルから分離し、x86 以外では可搬な scalar 経路を使用します。
+
+GPU kernel、on-the-fly 経路、resident table、GPU メモリ配分、MPS、
+GeForce と A100/H100 の既存の計算精度・実行方式は変更していません。
+native adapter が参照する既存の大域配列、B-to-C/B-to-D の通信関数、
+軌道最適化中の native 一時領域、格子 GPU キャッシュの所有化は継続課題です。
+
+worker の Tensor 内に64 byte整列の部分領域を設け、軌道パネルの stride は8要素単位に
+揃えました。13軌道などでも小行列の accumulator は16列を更新し、scalar tail を
+避けます。標準 C++ の所有配列内で整列するため、専用 allocator・SDK を追加せず、
+確保失敗時の巻き戻しも同じ仕組みで検証できます。HIP ヘッダーがホストでも定義する
+`__AMDGCN__` を CPU の ISA 判定の条件にせず、デバイスコンパイルのマクロで分離します。
+ROCm の実コンパイラで、ホストの CPU feature 判定を含むオブジェクトを確認しました。
+
+最終検証ではルートの CTest 全212件、GCC ASan/UBSan・Intel C++・Kokkos CUDA の
+core 全182件、SYCL の新しい格子試験9件が通過しました。新しい格子試験は
+float/double 軌道、縮約・halo 軌道、全スピン成分、奇数寸法、16軌道を超える行列、
+端数・重複格子点、空の原子/rank、実行人数の変動、容量再利用、失敗時の旧領域保持を
+独立した long double 基準と照合します。CUDA sm_80 と HIP の native 6翻訳単位を
+実SDK・O0でコンパイルし、共通 C++ 積分も HIP/gfx942 でコンパイルしました。
+
+CPU・GPU の `-runtest` は各14例を同じ MPI プロセス内で連続実行し、ケースごとの
+所有領域の解放・再生成を確認しました。変更前後、CPU対GPU、同梱基準値との
+エネルギー・全Force成分・原子・格子比較はいずれも `1e-7` 以内です。最終版の同梱基準値
+との差は、エネルギーで最大 `6.1e-11 Ha`、Forceで最大 `1.1e-11 Ha/bohr` でした。
+Cluster/Band の collinear/noncollinear、DC、DC-LNO、Krylov の9経路×CPU/GPU、
+スピン分極DC、2 OpenMP の Krylov、空rankを含むDC-LNOの比較も保存しています。
+
+厳密な SCF 回数一致は、小規模 NC の2例では成立しません。最終版の NC Cluster/CPU は
+46→65 SCF、NC Band/GPU は19→16 SCFでした。前者のエネルギー最大差は約
+`5.8e-9 Ha`、Forceは約 `3.56e-9 Ha/bohr`、後者は約 `2.9e-11 Ha` と
+`1.3e-11 Ha/bohr` で、どちらも数値許容範囲内です。変更前バイナリの CPU 再実行は
+46 SCFを再現しました。積和縮約を試した別ビルドでも反復回数は一致せず、採用していません。
+この2例の反復回数を含む厳密比較の失敗は、エネルギー・Forceの比較結果と分けて残します。
+
+性能は他のビルド・計算と重ねず、18 MPI×1 OpenMP、RTX 5080＋既存 MPS で測定しました。
+元の sidia 入力を使用し、変更前後とも25 SCF・140³格子で正常終了、MPSの18クライアント
+接続を記録しています。CPUのC60は27 SCF・84³格子です。
+
+| 条件 | 内部最大計算時間 (秒) | 起動・終了を含む実時間 (秒) | Set_Hamiltonian (秒) | Set_Density_Grid (秒) |
+| --- | ---: | ---: | ---: | ---: |
+| sidia GPU＋MPS・変更前 `c2ab0e5e` | 105.742 | 109.270 | 20.428 | 13.718 |
+| sidia GPU＋MPS・最終版 | 103.834 | 107.416 | 20.436 | 12.544 |
+| C60 CPU・変更前 `c2ab0e5e` | 8.579 | 10.485 | 0.601 | 0.490 |
+| C60 CPU・最終版 | 8.539 | 10.637 | 0.657 | 0.540 |
+| C60 CPU・Intel版 `~/openmx4.0` | 9.841 | 10.847 | 0.482 | 0.429 |
+
+sidiaのエネルギー・座標・格子は一致、Force最大差は約 `1e-12 Ha/bohr`。
+C60の変更前後はエネルギー・全Force・座標が一致し、Intel版との差も約 `1e-11` です。
+各条件1回の比較で、CPU全体の時間はほぼ維持しましたが、CPUのこの2区間には低下が
+残ります。Intel版はコンパイラ・MPI・ライブラリ構成も異なり、このC60の結果だけで
+CPU全般の優劣を判断しません。sidiaの計算部分で約105秒の目標に達しましたが、
+起動・終了を含む105秒は未達です。CPUのsidia全計算、AMD・A100/H100・Intel/Apple GPUの
+実機性能は今回測定していません。
+
+`cmake --install build/cuda` は成功しました。`work/openmx` と
+`work/lib/libopenmx_core.so` には実計算で検証した固定成果物を配置しています。
+最終のHIPホスト判定修正後もCUDAのcoreは同一ハッシュです。A100用Hamiltonianタイル、
+multi-GPU GEMM、密度packingの保護対象5ソースも変更前と同一です。
+検証前後のバイナリ、入力、反復回数一致の失敗を含む数値結果と全ログは
+`build/grid-assembly-refactor-20261021/` に保存します。最終計測・連続テストには
+`optimized/` の固定バイナリとcoreを使用しています。
+
 ## 次の移行単位と完了条件
 
 1. 化学種の基本情報23表と PAO/VPS・Fourier の数値領域の所有、実空間・Fourier 表の

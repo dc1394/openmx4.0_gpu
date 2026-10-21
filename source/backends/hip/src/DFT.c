@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_grid_assembly.h"
 #include "openmx_native_resources.h"
 #include "openmx_local_basis.h"
 #include "openmx_orbital_optimization.h"
@@ -827,7 +828,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0) /* non-spin-orbit coupling and non-LDA+U */
 	    ){
 
-          time3 += Set_Hamiltonian(atomic, vna, "nostdout",
+          time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), atomic, vna, "nostdout",
                                     MD_iter,
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
@@ -860,7 +861,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  }
 	}
 
-	time3 += Set_Hamiltonian(atomic, vna, "nostdout",
+	time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), atomic, vna, "nostdout",
                                   MD_iter,
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
@@ -928,7 +929,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (xmcd_calc == 1) time4 += Set_XMCD_penalty(1,pre_spin_moment,SCF_iter, electronic); // S. An
 
-      time3 += Set_Hamiltonian(atomic, vna, "stdout",
+      time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), atomic, vna, "stdout",
                                 MD_iter,
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
@@ -1574,7 +1575,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /*
 	time10 += Set_Orbitals_Grid(1);
-	time11 += Set_Density_Grid(1, 0, DM[0], Density_Grid_B);
+	time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 	time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 	time8 += Total_Energy(vna, MD_iter,ECE);
 	time10 += Set_Orbitals_Grid(0);
@@ -1675,7 +1676,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 			  Residual_ReRhok,Residual_ImRhok,
 			  ReVk,ImVk,ReRhoAtomk,ImRhoAtomk, electronic);
 
-      time11 += Set_Density_Grid(atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1694,7 +1695,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     
     else if (Mixing_switch==3 || Mixing_switch==4) {
 
-      time11 += Set_Density_Grid(atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1760,7 +1761,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if (Mixing_switch==5 || Mixing_switch==7){
 
-      time11 += Set_Density_Grid(atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
+      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -2703,7 +2704,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(atomic, 1, local_basis);
-  if (Solver!=12) time11 += Set_Density_Grid(atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
+  if (Solver!=12) time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 
   if (Solver==4) {
     TRAN_Add_Density_Lead(mpi_comm_level1,

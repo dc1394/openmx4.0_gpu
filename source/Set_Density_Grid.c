@@ -16,6 +16,7 @@
 #include <time.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_grid_assembly.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -24,39 +25,31 @@
 int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
 
 
-double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
+double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
 {
 
   static int firsttime=1;
   int al,L0,Mul0,M0,p,size1,size2;
-  int Gc_AN,Mc_AN,Mh_AN,LN,AN,BN,CN;
-  int n1,n2,n3,k1,k2,k3,N3[4];
-  int Cwan,NO0,NO1,Rn,N,Hwan,i,j,k,n;
+  int Gc_AN,Mc_AN,LN,AN,BN;
+  int N3[4];
+  int Cwan,NO0,i,j,k,n;
   int NN_S,NN_R;
   unsigned long long int N2D,n2D,GN; 
   int Max_Size,My_Max;
-  int size_Tmp_Den_Grid;
-  int size_Den_Snd_Grid_A2B;
-  int size_Den_Rcv_Grid_A2B;
-  int h_AN,Gh_AN,Rnh,spin,Nc,GRc,Nh,Nog;
-  int Nc_0,Nc_1,Nc_2,Nc_3,Nh_0,Nh_1,Nh_2,Nh_3;
+  size_t size_Tmp_Den_Grid;
+  size_t size_Den_Snd_Grid_A2B;
+  size_t size_Den_Rcv_Grid_A2B;
+  int spin,Nc,GRc;
 
-  double threshold;
-  double tmp0,tmp1,sk1,sk2,sk3,tot_den,sum;
-  double tmp0_0,tmp0_1,tmp0_2,tmp0_3;
-  double sum_0,sum_1,sum_2,sum_3;
-  double d1,d2,d3,cop,sip,sit,cot;
-  double x,y,z,Cxyz[4];
+  double tmp0,sum;
+
   double TStime,TEtime;
   double ***Tmp_Den_Grid;
   double **Den_Snd_Grid_A2B;
   double **Den_Rcv_Grid_A2B;
   double *tmp_array;
   double *tmp_array2;
-  double *orbs0,*orbs1;
-  double *orbs0_0,*orbs0_1,*orbs0_2,*orbs0_3;
-  double *orbs1_0,*orbs1_1,*orbs1_2,*orbs1_3;
-  double ***tmp_CDM;
+
   int *Snd_Size,*Rcv_Size;
   int numprocs,myid,tag=999,ID,IDS,IDR;
   double Stime_atom, Etime_atom;
@@ -133,37 +126,13 @@ double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_
 
   /* allocation of arrays */
 
-  size_Tmp_Den_Grid = 0;
-  Tmp_Den_Grid = (double***)malloc(sizeof(double**)*(SpinP_switch+1)); 
-  for (i=0; i<(SpinP_switch+1); i++){
-    Tmp_Den_Grid[i] = (double**)malloc(sizeof(double*)*(Matomnum+1)); 
-    Tmp_Den_Grid[i][0] = (double*)malloc(sizeof(double)*1); 
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = F_M2G[Mc_AN];
-      Tmp_Den_Grid[i][Mc_AN] = (double*)malloc(sizeof(double)*GridN_Atom[Gc_AN]);
-	  
-      /* AITUNE */
-      for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
-	Tmp_Den_Grid[i][Mc_AN][Nc] = 0.0;
-      }
-      
-      size_Tmp_Den_Grid += GridN_Atom[Gc_AN];
-    }
-  }
-
-  size_Den_Snd_Grid_A2B = 0; 
-  Den_Snd_Grid_A2B = (double**)malloc(sizeof(double*)*numprocs);
-  for (ID=0; ID<numprocs; ID++){
-    Den_Snd_Grid_A2B[ID] = (double*)malloc(sizeof(double)*Num_Snd_Grid_A2B[ID]*(SpinP_switch+1));
-    size_Den_Snd_Grid_A2B += Num_Snd_Grid_A2B[ID]*(SpinP_switch+1);
-  }  
-
-  size_Den_Rcv_Grid_A2B = 0;   
-  Den_Rcv_Grid_A2B = (double**)malloc(sizeof(double*)*numprocs);
-  for (ID=0; ID<numprocs; ID++){
-    Den_Rcv_Grid_A2B[ID] = (double*)malloc(sizeof(double)*Num_Rcv_Grid_A2B[ID]*(SpinP_switch+1));
-    size_Den_Rcv_Grid_A2B += Num_Rcv_Grid_A2B[ID]*(SpinP_switch+1);   
-  }
+  OpenMXGridDensity density_storage=OpenMX_Grid_Density_Storage(grid);
+  Tmp_Den_Grid=density_storage.atoms;
+  Den_Snd_Grid_A2B=density_storage.send;
+  Den_Rcv_Grid_A2B=density_storage.receive;
+  size_Tmp_Den_Grid=density_storage.atom_values;
+  size_Den_Snd_Grid_A2B=density_storage.send_values;
+  size_Den_Rcv_Grid_A2B=density_storage.receive_values;
 
   /* PrintMemory */
 
@@ -370,316 +339,7 @@ double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_
   }
 
   if (!use_local_gpu){
-
-  /* AITUNE ========================== */
-  int OneD_Nloop = 0;
-  int ai_MaxNc = 0;
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    int Gc_AN = M2G[Mc_AN];    
-    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD_Nloop++;
-      if(ai_MaxNc < GridN_Atom[Gc_AN]) {ai_MaxNc = GridN_Atom[Gc_AN];}
-    }
-  }  
-  /* ai_MaxNc is maximum of GridN_Atom[] */
-
-  /* A separate probe team can be smaller than the actual team below when
-     OpenMP adjusts the team size dynamically.  Reserve the upper bound. */
-  const int gNthrds = omp_get_max_threads();
-
-  double*** ai_tmpDG_all = (double***)malloc(sizeof(double**)*gNthrds);
-	
-  /* ========================== AITUNE */ 
-
-#pragma omp parallel shared(myid,G2ID,Orbs_Grid_FNAN,List_YOUSO,time_per_atom,Tmp_Den_Grid,Orbs_Grid,COrbs_Grid,Cnt_switch,Cnt_kind,GListTAtoms2,GListTAtoms1,NumOLG,CDM,SpinP_switch,WhatSpecies,ncn,F_G2M,natn,M2G,atomic) private(OMPID,Nthrds,Mc_AN,h_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,NO0,Gh_AN,Mh_AN,Rnh,Hwan,NO1,spin,i,j,tmp_CDM,Nog,Nc_0,Nc_1,Nc_2,Nc_3,Nh_0,Nh_1,Nh_2,Nh_3,orbs0_0,orbs0_1,orbs0_2,orbs0_3,orbs1_0,orbs1_1,orbs1_2,orbs1_3,sum_0,sum_1,sum_2,sum_3,tmp0_0,tmp0_1,tmp0_2,tmp0_3,Nc,Nh,orbs0,orbs1,sum,tmp0)
-  {
-
-    orbs0 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs1 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-
-    orbs0_0 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs0_1 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs0_2 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs0_3 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs1_0 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs1_1 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs1_2 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    orbs1_3 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-
-    tmp_CDM = (double***)malloc(sizeof(double**)*(SpinP_switch+1)); 
-    for (i=0; i<(SpinP_switch+1); i++){
-      tmp_CDM[i] = (double**)malloc(sizeof(double*)*List_YOUSO[7]); 
-      for (j=0; j<List_YOUSO[7]; j++){
-	tmp_CDM[i][j] = (double*)malloc(sizeof(double)*List_YOUSO[7]); 
-      }
-    }
-
-    /* get info. on OpenMP */ 
-
-    OMPID = omp_get_thread_num();
-    Nthrds = omp_get_num_threads();
-
-	
-    /* AITUNE ========================== */  
-
-
-    double *ai_tmpDGs[4];
-    {
-      int spin;
-      for (spin=0; spin<=SpinP_switch; spin++){
-	ai_tmpDGs[spin] = (double*)malloc(sizeof(double)* ai_MaxNc);
-      }
-    }
-    ai_tmpDG_all[OMPID] = ai_tmpDGs;
-    /* ==================================== AITUNE */
-
-
-    /* for (Mc_AN=(OMPID+1); Mc_AN<=Matomnum; Mc_AN+=Nthrds){ AITUNE */
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      dtime(&Stime_atom);
-
-      /* set data on Mc_AN */
-
-      Gc_AN = M2G[Mc_AN];
-      Cwan = WhatSpecies[Gc_AN];
-      NO0 = atomic->species.contracted_orbitals[Cwan];
-	  
-      int spin;
-      for (spin=0; spin<=SpinP_switch; spin++){
-	int Nc;
-	for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
-	  ai_tmpDGs[spin][Nc] = 0.0;
-	}
-      }
-
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	/* set data on h_AN */
-    
-	Gh_AN = natn[Gc_AN][h_AN];
-	Mh_AN = F_G2M[Gh_AN];
-	Rnh = ncn[Gc_AN][h_AN];
-	Hwan = WhatSpecies[Gh_AN];
-	NO1 = atomic->species.contracted_orbitals[Hwan];
-
-	/* store CDM into tmp_CDM */
-
-	for (spin=0; spin<=SpinP_switch; spin++){
-	  for (i=0; i<NO0; i++){
-	    for (j=0; j<NO1; j++){
-	      tmp_CDM[spin][i][j] = CDM[spin][Mc_AN][h_AN][i][j];
-	    }
-	  }
-	}
-
-	/* summation of non-zero elements */
-	/* for (Nog=0; Nog<NumOLG[Mc_AN][h_AN]; Nog++){ */
-#pragma omp for
-	for (Nog=0; Nog<NumOLG[Mc_AN][h_AN]-3; Nog+=4){
-
-	  Nc_0 = GListTAtoms1[Mc_AN][h_AN][Nog];
-	  Nc_1 = GListTAtoms1[Mc_AN][h_AN][Nog+1];
-	  Nc_2 = GListTAtoms1[Mc_AN][h_AN][Nog+2];
-	  Nc_3 = GListTAtoms1[Mc_AN][h_AN][Nog+3];
-	  
-	  Nh_0 = GListTAtoms2[Mc_AN][h_AN][Nog];
-	  Nh_1 = GListTAtoms2[Mc_AN][h_AN][Nog+1];
-	  Nh_2 = GListTAtoms2[Mc_AN][h_AN][Nog+2];
-	  Nh_3 = GListTAtoms2[Mc_AN][h_AN][Nog+3];
-	  
-	  /* Now under the orbital optimization */
-	  if (Cnt_kind==0 && Cnt_switch==1){
-	    for (i=0; i<NO0; i++){
-	      orbs0_0[i] = COrbs_Grid[Mc_AN][i][Nc_0];
-	      orbs0_1[i] = COrbs_Grid[Mc_AN][i][Nc_1];
-	      orbs0_2[i] = COrbs_Grid[Mc_AN][i][Nc_2];
-	      orbs0_3[i] = COrbs_Grid[Mc_AN][i][Nc_3];
-	    }
-	    for (j=0; j<NO1; j++){
-	      orbs1_0[j] = COrbs_Grid[Mh_AN][j][Nh_0];
-	      orbs1_1[j] = COrbs_Grid[Mh_AN][j][Nh_1];
-	      orbs1_2[j] = COrbs_Grid[Mh_AN][j][Nh_2];
-	      orbs1_3[j] = COrbs_Grid[Mh_AN][j][Nh_3];
-	    }
-	  }
-	  /* else if ! "now under the orbital optimization" */
-	  else{
-	    for (i=0; i<NO0; i++){
-	      orbs0_0[i] = Orbs_Grid[Mc_AN][Nc_0][i];
-	      orbs0_1[i] = Orbs_Grid[Mc_AN][Nc_1][i];
-	      orbs0_2[i] = Orbs_Grid[Mc_AN][Nc_2][i];
-	      orbs0_3[i] = Orbs_Grid[Mc_AN][Nc_3][i]; 
-	    }
-
-            if (G2ID[Gh_AN]==myid){
-	      for (j=0; j<NO1; j++){
-		orbs1_0[j] = Orbs_Grid[Mh_AN][Nh_0][j];
-		orbs1_1[j] = Orbs_Grid[Mh_AN][Nh_1][j];
-		orbs1_2[j] = Orbs_Grid[Mh_AN][Nh_2][j];
-		orbs1_3[j] = Orbs_Grid[Mh_AN][Nh_3][j]; 
-	      }
-	    }
-            else{
-	      for (j=0; j<NO1; j++){
-		orbs1_0[j] = Orbs_Grid_FNAN[Mc_AN][h_AN][Nog  ][j];
-		orbs1_1[j] = Orbs_Grid_FNAN[Mc_AN][h_AN][Nog+1][j];
-		orbs1_2[j] = Orbs_Grid_FNAN[Mc_AN][h_AN][Nog+2][j];
-		orbs1_3[j] = Orbs_Grid_FNAN[Mc_AN][h_AN][Nog+3][j]; 
-	      }
-	    }
-	  }
-	  
-	  for (spin=0; spin<=SpinP_switch; spin++){
-
-	    /* Tmp_Den_Grid */
-
-	    sum_0 = 0.0;
-	    sum_1 = 0.0;
-	    sum_2 = 0.0;
-	    sum_3 = 0.0;
-
-	    for (i=0; i<NO0; i++){
-
-	      tmp0_0 = 0.0;
-	      tmp0_1 = 0.0;
-	      tmp0_2 = 0.0;
-	      tmp0_3 = 0.0;
-
-	      for (j=0; j<NO1; j++){
-		tmp0_0 += orbs1_0[j]*tmp_CDM[spin][i][j];
-		tmp0_1 += orbs1_1[j]*tmp_CDM[spin][i][j];
-		tmp0_2 += orbs1_2[j]*tmp_CDM[spin][i][j];
-		tmp0_3 += orbs1_3[j]*tmp_CDM[spin][i][j];
-	      }
-
-	      sum_0 += orbs0_0[i]*tmp0_0;
-	      sum_1 += orbs0_1[i]*tmp0_1;
-	      sum_2 += orbs0_2[i]*tmp0_2;
-	      sum_3 += orbs0_3[i]*tmp0_3;
-	    }
-		
-	    ai_tmpDGs[spin][Nc_0] += sum_0;
-	    ai_tmpDGs[spin][Nc_1] += sum_1;
-	    ai_tmpDGs[spin][Nc_2] += sum_2;
-	    ai_tmpDGs[spin][Nc_3] += sum_3;
-
-	    /*
-	    Tmp_Den_Grid[spin][Mc_AN][Nc_0] += sum_0;
-	    Tmp_Den_Grid[spin][Mc_AN][Nc_1] += sum_1;
-	    Tmp_Den_Grid[spin][Mc_AN][Nc_2] += sum_2;
-	    Tmp_Den_Grid[spin][Mc_AN][Nc_3] += sum_3;
-	    */
-
-	  } /* spin */
-	} /* Nog */
-
-#pragma omp for
-	for (Nog = NumOLG[Mc_AN][h_AN] - (NumOLG[Mc_AN][h_AN] % 4); Nog<NumOLG[Mc_AN][h_AN]; Nog++){
-	  /*for (; Nog<NumOLG[Mc_AN][h_AN]; Nog++){*/
-	
-	  Nc = GListTAtoms1[Mc_AN][h_AN][Nog];
-	  Nh = GListTAtoms2[Mc_AN][h_AN][Nog]; 
- 
-
-	  if (Cnt_kind==0 && Cnt_switch==1){
-	    for (i=0; i<NO0; i++){
-	      orbs0[i] = COrbs_Grid[Mc_AN][i][Nc];
-	    }
-	    for (j=0; j<NO1; j++){
-	      orbs1[j] = COrbs_Grid[Mh_AN][j][Nh];
-	    }
-	  }
-	  else{
-	    for (i=0; i<NO0; i++){
-	      orbs0[i] = Orbs_Grid[Mc_AN][Nc][i];
-	    }
-
-	    if (G2ID[Gh_AN]==myid){
-	      for (j=0; j<NO1; j++){
-		orbs1[j] = Orbs_Grid[Mh_AN][Nh][j];
-	      }
-	    }
-	    else{
-	      for (j=0; j<NO1; j++){
-		orbs1[j] = Orbs_Grid_FNAN[Mc_AN][h_AN][Nog][j];
-	      }
-	    }
-	  }
-
-	  for (spin=0; spin<=SpinP_switch; spin++){
- 
- 
-	    sum = 0.0;
-	    for (i=0; i<NO0; i++){
-	      tmp0 = 0.0;
-	      for (j=0; j<NO1; j++){
-		tmp0 += orbs1[j]*tmp_CDM[spin][i][j];
-	      }
-	      sum += orbs0[i]*tmp0;
-	    }
- 
-	    ai_tmpDGs[spin][Nc] += sum;
-	    /*Tmp_Den_Grid[spin][Mc_AN][Nc] += sum;*/
-	  }
-
-	} /* Nog */
-	
-      } /* h_AN */
-
-      /* AITUNE   merge temporary buffer for all omp threads */	
-      for (spin=0; spin<=SpinP_switch; spin++){
-	int Nc;
-#pragma omp for
-	for (Nc=0; Nc<GridN_Atom[Gc_AN]; Nc++){
-	  double sum = 0.0;
-	  int th;
-	  for(th = 0; th < Nthrds; th++){
-	    sum += ai_tmpDG_all[th][spin][Nc];
-	  }
-	  Tmp_Den_Grid[spin][Mc_AN][Nc] += sum;
-	}
-      }
-
-      /* All threads cooperate on this atom; record its wall time once. */
-      if (OMPID==0){
-        dtime(&Etime_atom);
-        time_per_atom[Gc_AN] += Etime_atom - Stime_atom;
-      }
-
-    } /* Mc_AN */
-
-    /* freeing of arrays */ 
-
-    free(orbs0);
-    free(orbs1);
-
-    free(orbs0_0);
-    free(orbs0_1);
-    free(orbs0_2);
-    free(orbs0_3);
-    free(orbs1_0);
-    free(orbs1_1);
-    free(orbs1_2);
-    free(orbs1_3);
-
-    for (i=0; i<(SpinP_switch+1); i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(tmp_CDM[i][j]);
-      }
-      free(tmp_CDM[i]);
-	
-      free(ai_tmpDGs[i]); /* AITUNE */
-	
-    }
-    free(tmp_CDM);
-
-#pragma omp flush(Tmp_Den_Grid)
-
-  } /* #pragma omp parallel */
-
-  free(ai_tmpDG_all);
-
+    OpenMX_Grid_Density_CPU(grid,atomic,Cnt_kind,CDM);
   } /* !use_local_gpu */
 
   dtime(&time2);
@@ -737,10 +397,12 @@ double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_
 
   /* MPI: A to B */  
 
-  request_send = malloc(sizeof(MPI_Request)*NN_A2B_S);
-  request_recv = malloc(sizeof(MPI_Request)*NN_A2B_R);
-  stat_send = malloc(sizeof(MPI_Status)*NN_A2B_S);
-  stat_recv = malloc(sizeof(MPI_Status)*NN_A2B_R);
+  OpenMXGridExchange a2b=OpenMX_Grid_Exchange(grid,OPENMX_GRID_A2B,0,0,
+      (size_t)numprocs,(size_t)numprocs);
+  request_send=a2b.send_requests;
+  request_recv=a2b.receive_requests;
+  stat_send=a2b.send_status;
+  stat_recv=a2b.receive_status;
 
   NN_S = 0;
   NN_R = 0;
@@ -767,10 +429,7 @@ double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_
   if (NN_S!=0) MPI_Waitall(NN_S,request_send,stat_send);
   if (NN_R!=0) MPI_Waitall(NN_R,request_recv,stat_recv);
 
-  free(request_send);
-  free(request_recv);
-  free(stat_send);
-  free(stat_recv);
+  /* Requests are complete; their storage is reused next iteration. */
 
   /* for myid */
   for (i=0; i<Num_Rcv_Grid_A2B[myid]*(SpinP_switch+1); i++){
@@ -854,25 +513,7 @@ double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_
   }
   Set_Density_Grid_GPU_Local_Report(local_path,failed_ranks);
 
-  /* freeing of arrays */
-
-  for (i=0; i<(SpinP_switch+1); i++){
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-      free(Tmp_Den_Grid[i][Mc_AN]);
-    }
-    free(Tmp_Den_Grid[i]);
-  }
-  free(Tmp_Den_Grid);
-
-  for (ID=0; ID<numprocs; ID++){
-    free(Den_Snd_Grid_A2B[ID]);
-  }  
-  free(Den_Snd_Grid_A2B);
-
-  for (ID=0; ID<numprocs; ID++){
-    free(Den_Rcv_Grid_A2B[ID]);
-  }
-  free(Den_Rcv_Grid_A2B);
+  /* Density and packet storage are owned by this calculation. */
 
   /* elapsed time */
   dtime(&TEtime);

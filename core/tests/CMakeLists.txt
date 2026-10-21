@@ -1,4 +1,10 @@
 add_executable(openmx_core_tests test_core.cpp)
+add_executable(openmx_grid_assembly_tests test_grid_assembly.cpp allocation_faults.cpp)
+target_link_libraries(openmx_grid_assembly_tests PRIVATE OpenMX::core)
+foreach(_case density-float density-double hamiltonian-float hamiltonian-double reuse exchange invalid allocation plans)
+  add_test(NAME "core-grid-assembly-${_case}" COMMAND openmx_grid_assembly_tests "${_case}")
+  set_tests_properties("core-grid-assembly-${_case}" PROPERTIES LABELS "unit;core;grid" TIMEOUT 120)
+endforeach()
 target_link_libraries(openmx_core_tests PRIVATE OpenMX::core)
 add_executable(openmx_radial_table_tests test_radial_table.cpp)
 target_link_libraries(openmx_radial_table_tests PRIVATE OpenMX::core)
@@ -78,7 +84,7 @@ foreach(_case layout modes mdspan ownership lifecycle invalid allocation concurr
   set_tests_properties("core-electronic-matrix-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
 endforeach()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
-  set_source_files_properties(test_native_resource_adapters.cpp test_native_resources.cpp test_solver_workspace.cpp test_orbital_optimization.cpp test_local_basis_state.cpp test_electronic_matrices.cpp test_projector_pipeline.cpp test_vna_matrix_storage.cpp test_reciprocal_views.cpp
+  set_source_files_properties(test_grid_assembly.cpp test_native_resource_adapters.cpp test_native_resources.cpp test_solver_workspace.cpp test_orbital_optimization.cpp test_local_basis_state.cpp test_electronic_matrices.cpp test_projector_pipeline.cpp test_vna_matrix_storage.cpp test_reciprocal_views.cpp
     test_reciprocal_archive.cpp test_species_storage.cpp test_atomic_views.cpp test_orbital_workspace.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")

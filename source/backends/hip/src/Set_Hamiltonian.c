@@ -13,6 +13,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_grid_assembly.h"
 extern int openmx_gpu_is_apu(void);
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_task.h"
@@ -77,68 +78,8 @@ static int SetH_ProfileEnabled(void)
         }                                                                                                              \
     } while (0)
 
-enum {
-    SETH_SIMD_BASELINE = 0,
-    SETH_SIMD_AVX2 = 1,
-    SETH_SIMD_AVX512 = 2
-};
-
-#if defined(__x86_64__) && !defined(__AMDGCN__) && \
-    (defined(__clang__) || defined(__GNUC__))
-#define SETH_X86_RUNTIME_DISPATCH 1
-#define SETH_NOINLINE __attribute__((noinline))
-#define SETH_ALWAYS_INLINE __attribute__((always_inline)) inline
-#define SETH_TARGET_AVX2 \
-    __attribute__((target("avx2,fma"),noinline))
-#define SETH_TARGET_AVX512 \
-    __attribute__((target("avx512f,fma"),noinline))
-#else
-#define SETH_X86_RUNTIME_DISPATCH 0
-#define SETH_NOINLINE
-#define SETH_ALWAYS_INLINE inline
-#define SETH_TARGET_AVX2
-#define SETH_TARGET_AVX512
-#endif
-
-static int Set_Hamiltonian_Simd_Mode(void)
-{
-    const char *value = getenv("OPENMX_SETHAM_SIMD");
-    int allow_avx512 = 1;
-
-    if (value != NULL &&
-        (strcmp(value,"0") == 0 || strcasecmp(value,"scalar") == 0)) {
-        return SETH_SIMD_BASELINE;
-    }
-    if (value != NULL && strcasecmp(value,"avx2") == 0) {
-        allow_avx512 = 0;
-    }
-
-#if SETH_X86_RUNTIME_DISPATCH
-    /* These builtins require both CPU support and enabled OS XSAVE/XCR0
-       state, so an AVX-512 CPU with disabled ZMM state safely falls back. */
-    __builtin_cpu_init();
-    if (allow_avx512 && __builtin_cpu_supports("avx512f") &&
-        __builtin_cpu_supports("fma")) {
-        return SETH_SIMD_AVX512;
-    }
-    if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
-        return SETH_SIMD_AVX2;
-    }
-#endif
-
-    return SETH_SIMD_BASELINE;
-}
-
-static const char *Set_Hamiltonian_Simd_Mode_Name(int mode)
-{
-    if (mode == SETH_SIMD_AVX512) return "AVX-512";
-    if (mode == SETH_SIMD_AVX2) return "AVX2";
-    return "baseline";
-}
-
-void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
-static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind, const OpenMXElectronicViews *electronic);
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
+void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
 static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H, const OpenMXElectronicViews *electronic);
 static size_t Set_Hamiltonian_Base_OpenMP_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenMP_DeviceBytes(int Cnt_kind, int myid);
@@ -1182,7 +1123,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
     return Set_Hamiltonian_GpuSolver_Cache.imnl[comp];
 }
 
-double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
+double Set_Hamiltonian(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
                        double ***** H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
@@ -1376,7 +1317,7 @@ double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixVie
   *****************************************************/
 
     SETH_PROF_T0(prof_t0);
-    Calc_MatrixElements_dVH_Vxc_VNA(atomic, Cnt_kind, electronic);
+    Calc_MatrixElements_dVH_Vxc_VNA(grid, atomic, Cnt_kind, electronic);
     SETH_PROF_ADD(matel, prof_t0);
     if (trace_timing) dtime(&trace_matrix_end);
 
@@ -2615,7 +2556,7 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const Ope
     free(mc_table);free(h_table);return local_done || (pending && ready);
 }
 
-void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
+void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
     int myid,use_tables=0,local_done=0;
     Set_Hamiltonian_MatrixElements_GPU_Used=0;
@@ -2623,18 +2564,18 @@ void Calc_MatrixElements_dVH_Vxc_VNA(const OpenMXAtomicViews *atomic, int Cnt_ki
     if(!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())) {
         use_tables=Set_Hamiltonian_MatrixElements_Use_OpenMP(Cnt_kind,myid);
         if(use_tables && (Set_Hamiltonian_ME_CacheReusable(Cnt_kind) || Set_Hamiltonian_ME_KeepDeviceResident())) {
-            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(atomic, Cnt_kind, electronic);local_done=1;
+            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(grid, atomic, Cnt_kind, electronic);local_done=1;
         } else if(Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(atomic, Cnt_kind,myid, electronic)) {
             if(Matomnum>0)Set_Hamiltonian_MatrixElements_GPU_Used=1;
             local_done=1;
         } else if(use_tables) {
-            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(atomic, Cnt_kind, electronic);local_done=1;
+            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(grid, atomic, Cnt_kind, electronic);local_done=1;
         }
     }
     /* All ranks rendezvous after the existing MI300A/Radeon fast paths.
        Completed ranks can lend capacity without adding their matrix twice. */
     if(!SetH_capacity_recover(Cnt_kind,local_done,myid, electronic))
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind, electronic);
+        OpenMX_Grid_Hamiltonian_CPU(grid, Cnt_kind, electronic);
 }
 
 static size_t Set_Hamiltonian_Base_OpenMP_DeviceBytes(int SCF_iter, int myid)
@@ -2970,7 +2911,7 @@ static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF
    iteration moves the vpotbuf/hbuf arrays instead of the multi-GB orbital
    tables, and the resident copies earn their keep instead of merely
    waiting for Force3. */
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(int Cnt_kind, const OpenMXElectronicViews *electronic)
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(OpenMXGridWorkspace *grid, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
   double *****CntH=electronic->CntH;
   double *****H=electronic->H;
@@ -3057,7 +2998,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(int Cnt_kind, const 
            device): the host path, whose blocked loops are an order of
            magnitude faster than a scan of the packed tables; it adds to H
            itself, so the packed results are not written back */
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind, electronic);
+        OpenMX_Grid_Hamiltonian_CPU(grid, Cnt_kind, electronic);
         free(vpotbuf);
         free(hbuf);
         return;
@@ -3092,7 +3033,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(int Cnt_kind, const 
     free(hbuf);
 }
 
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
   double *****CntH=electronic->CntH;
   double *****H=electronic->H;
@@ -3114,7 +3055,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atom
     (void)numprocs;
 
     if (Set_Hamiltonian_ME_CacheReusable(Cnt_kind)) {
-        Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(Cnt_kind, electronic);
+        Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(grid, Cnt_kind, electronic);
         return;
     }
     Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
@@ -3300,7 +3241,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atom
         /* the device call failed: the host path (blocked loops, it adds to
            H itself) instead of a scan of the packed tables; the tables
            are still cached below */
-        Calc_MatrixElements_dVH_Vxc_VNA_CPU(Cnt_kind, electronic);
+        OpenMX_Grid_Hamiltonian_CPU(grid, Cnt_kind, electronic);
         host_done = 1;
     }
 
@@ -3404,839 +3345,4 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(const OpenMXAtomicViews *atom
     free(hbuf);
 }
 
-#define SETH_ME_BLK 16
-#define SETH_ME_MAXNO 16
-
-/* Blocked spin-unpolarized quadrature for one (Mc_AN,h_AN) pair: grid points
-   are staged in panels of SETH_ME_BLK and the NO0xNO1 accumulator block stays
-   L1-resident for the whole pair, instead of re-storing all NO0*NO1 partial
-   sums for every grid point as the generic loop below does. The j dimension
-   is padded to SETH_ME_MAXNO so the inner update vectorizes with full-width
-   FMAs. Only the summation order differs from the generic path. */
-static SETH_ALWAYS_INLINE void Set_Hamiltonian_ME_Pair_Blocked_Spin0_Impl(
-                                                  int Mc_AN, int h_AN, int Mh_AN,
-                                                  int Gh_AN_is_local, int NO0, int NO1,
-                                                  int NOLG, double *restrict acc)
-{
-    const int *restrict nc_list = GListTAtoms1[Mc_AN][h_AN];
-    const int *restrict nh_list = GListTAtoms2[Mc_AN][h_AN];
-    const int *restrict mgrid   = MGridListAtom[Mc_AN];
-    const double *restrict vpot = Vpot_Grid[0];
-    Type_Orbs_Grid **restrict og_c = Orbs_Grid[Mc_AN];
-    Type_Orbs_Grid **restrict og_h = Gh_AN_is_local ? Orbs_Grid[Mh_AN] : NULL;
-    Type_Orbs_Grid **restrict og_f = Gh_AN_is_local ? NULL : Orbs_Grid_FNAN[Mc_AN][h_AN];
-    double w[SETH_ME_BLK][SETH_ME_MAXNO] __attribute__((aligned(64)));
-    double p1[SETH_ME_BLK][SETH_ME_MAXNO] __attribute__((aligned(64)));
-    int    Nog0, g, i, j;
-
-    for (i = 0; i < NO0 * SETH_ME_MAXNO; i++) {
-        acc[i] = 0.0;
-    }
-
-    for (g = 0; g < SETH_ME_BLK; g++) {
-        for (j = NO1; j < SETH_ME_MAXNO; j++) {
-            p1[g][j] = 0.0;
-        }
-    }
-
-    for (Nog0 = 0; Nog0 < NOLG; Nog0 += SETH_ME_BLK) {
-        const int blk = (NOLG - Nog0 < SETH_ME_BLK) ? (NOLG - Nog0) : SETH_ME_BLK;
-
-        for (g = 0; g < blk; g++) {
-            const int Nog = Nog0 + g;
-            const int Nc  = nc_list[Nog];
-            const Type_Orbs_Grid *restrict orbs0 = og_c[Nc];
-            const Type_Orbs_Grid *restrict orbs1 = og_h ? og_h[nh_list[Nog]] : og_f[Nog];
-            const double v = GridVol * vpot[mgrid[Nc]];
-
-            for (i = 0; i < NO0; i++) {
-                w[g][i] = v * (double)orbs0[i];
-            }
-            for (j = 0; j < NO1; j++) {
-                p1[g][j] = (double)orbs1[j];
-            }
-        }
-
-        /* Consume four staged grid points while each accumulator vector is
-           live.  Every element still sees g in ascending order, but the
-           accumulator vectors are loaded/stored once per four rank-1
-           updates instead of once per update. */
-        g = 0;
-        for (; g + 3 < blk; g += 4) {
-            const double *restrict p10 = p1[g + 0];
-            const double *restrict p11 = p1[g + 1];
-            const double *restrict p12 = p1[g + 2];
-            const double *restrict p13 = p1[g + 3];
-
-#if defined(__clang__)
-#pragma clang loop vectorize(disable)
-#endif
-            for (i = 0; i < NO0; i++) {
-                const double a0 = w[g + 0][i];
-                const double a1 = w[g + 1][i];
-                const double a2 = w[g + 2][i];
-                const double a3 = w[g + 3][i];
-                double *restrict accrow = &acc[i * SETH_ME_MAXNO];
-
-#pragma omp simd aligned(accrow,p10,p11,p12,p13:64)
-                for (j = 0; j < SETH_ME_MAXNO; j++) {
-                    double h = accrow[j];
-                    h += a0*p10[j];
-                    h += a1*p11[j];
-                    h += a2*p12[j];
-                    h += a3*p13[j];
-                    accrow[j] = h;
-                }
-            }
-        }
-        for (; g < blk; g++) {
-            const double *restrict p1g = p1[g];
-            const double *restrict wg  = w[g];
-
-#if defined(__clang__)
-#pragma clang loop vectorize(disable)
-#endif
-            for (i = 0; i < NO0; i++) {
-                const double a = wg[i];
-                double *restrict accrow = &acc[i * SETH_ME_MAXNO];
-
-#pragma omp simd aligned(accrow,p1g:64)
-                for (j = 0; j < SETH_ME_MAXNO; j++) {
-                    accrow[j] += a*p1g[j];
-                }
-            }
-        }
-    }
-}
-
-typedef void (*Set_Hamiltonian_Spin0_Pair_Function)(
-                                                  int Mc_AN, int h_AN, int Mh_AN,
-                                                  int Gh_AN_is_local, int NO0, int NO1,
-                                                  int NOLG, double *restrict acc);
-
-static SETH_NOINLINE void Set_Hamiltonian_ME_Pair_Blocked_Spin0_Baseline(
-                                                  int Mc_AN, int h_AN, int Mh_AN,
-                                                  int Gh_AN_is_local, int NO0, int NO1,
-                                                  int NOLG, double *restrict acc)
-{
-    Set_Hamiltonian_ME_Pair_Blocked_Spin0_Impl(
-        Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,acc);
-}
-
-static SETH_TARGET_AVX2 void Set_Hamiltonian_ME_Pair_Blocked_Spin0_AVX2(
-                                                  int Mc_AN, int h_AN, int Mh_AN,
-                                                  int Gh_AN_is_local, int NO0, int NO1,
-                                                  int NOLG, double *restrict acc)
-{
-    Set_Hamiltonian_ME_Pair_Blocked_Spin0_Impl(
-        Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,acc);
-}
-
-static SETH_TARGET_AVX512 void Set_Hamiltonian_ME_Pair_Blocked_Spin0_AVX512(
-                                                  int Mc_AN, int h_AN, int Mh_AN,
-                                                  int Gh_AN_is_local, int NO0, int NO1,
-                                                  int NOLG, double *restrict acc)
-{
-    Set_Hamiltonian_ME_Pair_Blocked_Spin0_Impl(
-        Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,acc);
-}
-
-/* Accumulate four overlap-grid points at a time for the non-collinear CPU
-   path.  Each matrix element stays in a scalar/vector register across the
-   four updates, reducing accumulator traffic without regrouping the floating
-   point sum: for every spin and (i,j), contributions are still added in
-   increasing Nog order. */
-static SETH_ALWAYS_INLINE void Set_Hamiltonian_ME_Pair_NC4_Impl(
-                                       int Mc_AN, int h_AN, int Mh_AN,
-                                       int Gh_AN_is_local, int NO0, int NO1,
-                                       int NOLG, double **restrict tmpH0,
-                                       double **restrict tmpH1,
-                                       double **restrict tmpH2,
-                                       double **restrict tmpH3)
-{
-    const int *restrict nc_list = GListTAtoms1[Mc_AN][h_AN];
-    const int *restrict nh_list = GListTAtoms2[Mc_AN][h_AN];
-    const int *restrict mgrid = MGridListAtom[Mc_AN];
-    const double *restrict vpot0 = Vpot_Grid[0];
-    const double *restrict vpot1 = Vpot_Grid[1];
-    const double *restrict vpot2 = Vpot_Grid[2];
-    const double *restrict vpot3 = Vpot_Grid[3];
-    Type_Orbs_Grid **restrict og_c = Orbs_Grid[Mc_AN];
-    Type_Orbs_Grid **restrict og_h = Gh_AN_is_local ? Orbs_Grid[Mh_AN] : NULL;
-    Type_Orbs_Grid **restrict og_f = Gh_AN_is_local ? NULL : Orbs_Grid_FNAN[Mc_AN][h_AN];
-    int Nog, i, j;
-
-    for (Nog = 0; Nog <= NOLG - 4; Nog += 4) {
-        const int Nc0 = nc_list[Nog];
-        const int Nc1 = nc_list[Nog + 1];
-        const int Nc2 = nc_list[Nog + 2];
-        const int Nc3 = nc_list[Nog + 3];
-        const int MN0 = mgrid[Nc0];
-        const int MN1 = mgrid[Nc1];
-        const int MN2 = mgrid[Nc2];
-        const int MN3 = mgrid[Nc3];
-        const Type_Orbs_Grid *restrict orbs0_0 = og_c[Nc0];
-        const Type_Orbs_Grid *restrict orbs0_1 = og_c[Nc1];
-        const Type_Orbs_Grid *restrict orbs0_2 = og_c[Nc2];
-        const Type_Orbs_Grid *restrict orbs0_3 = og_c[Nc3];
-        const Type_Orbs_Grid *restrict orbs1_0 = og_h ? og_h[nh_list[Nog]] : og_f[Nog];
-        const Type_Orbs_Grid *restrict orbs1_1 = og_h ? og_h[nh_list[Nog + 1]] : og_f[Nog + 1];
-        const Type_Orbs_Grid *restrict orbs1_2 = og_h ? og_h[nh_list[Nog + 2]] : og_f[Nog + 2];
-        const Type_Orbs_Grid *restrict orbs1_3 = og_h ? og_h[nh_list[Nog + 3]] : og_f[Nog + 3];
-        const double v0_0 = GridVol * vpot0[MN0];
-        const double v1_0 = GridVol * vpot1[MN0];
-        const double v2_0 = GridVol * vpot2[MN0];
-        const double v3_0 = GridVol * vpot3[MN0];
-        const double v0_1 = GridVol * vpot0[MN1];
-        const double v1_1 = GridVol * vpot1[MN1];
-        const double v2_1 = GridVol * vpot2[MN1];
-        const double v3_1 = GridVol * vpot3[MN1];
-        const double v0_2 = GridVol * vpot0[MN2];
-        const double v1_2 = GridVol * vpot1[MN2];
-        const double v2_2 = GridVol * vpot2[MN2];
-        const double v3_2 = GridVol * vpot3[MN2];
-        const double v0_3 = GridVol * vpot0[MN3];
-        const double v1_3 = GridVol * vpot1[MN3];
-        const double v2_3 = GridVol * vpot2[MN3];
-        const double v3_3 = GridVol * vpot3[MN3];
-
-        for (i = 0; i < NO0; i++) {
-            const double orb0_0 = (double)orbs0_0[i];
-            const double orb0_1 = (double)orbs0_1[i];
-            const double orb0_2 = (double)orbs0_2[i];
-            const double orb0_3 = (double)orbs0_3[i];
-            const double a0_0 = v0_0 * orb0_0;
-            const double a1_0 = v1_0 * orb0_0;
-            const double a2_0 = v2_0 * orb0_0;
-            const double a3_0 = v3_0 * orb0_0;
-            const double a0_1 = v0_1 * orb0_1;
-            const double a1_1 = v1_1 * orb0_1;
-            const double a2_1 = v2_1 * orb0_1;
-            const double a3_1 = v3_1 * orb0_1;
-            const double a0_2 = v0_2 * orb0_2;
-            const double a1_2 = v1_2 * orb0_2;
-            const double a2_2 = v2_2 * orb0_2;
-            const double a3_2 = v3_2 * orb0_2;
-            const double a0_3 = v0_3 * orb0_3;
-            const double a1_3 = v1_3 * orb0_3;
-            const double a2_3 = v2_3 * orb0_3;
-            const double a3_3 = v3_3 * orb0_3;
-            double *restrict row0 = tmpH0[i];
-            double *restrict row1 = tmpH1[i];
-            double *restrict row2 = tmpH2[i];
-            double *restrict row3 = tmpH3[i];
-
-            for (j = 0; j < NO1; j++) {
-                double h0 = row0[j];
-                double h1 = row1[j];
-                double h2 = row2[j];
-                double h3 = row3[j];
-                double orb1 = (double)orbs1_0[j];
-
-                h0 += a0_0 * orb1;
-                h1 += a1_0 * orb1;
-                h2 += a2_0 * orb1;
-                h3 += a3_0 * orb1;
-
-                orb1 = (double)orbs1_1[j];
-                h0 += a0_1 * orb1;
-                h1 += a1_1 * orb1;
-                h2 += a2_1 * orb1;
-                h3 += a3_1 * orb1;
-
-                orb1 = (double)orbs1_2[j];
-                h0 += a0_2 * orb1;
-                h1 += a1_2 * orb1;
-                h2 += a2_2 * orb1;
-                h3 += a3_2 * orb1;
-
-                orb1 = (double)orbs1_3[j];
-                h0 += a0_3 * orb1;
-                h1 += a1_3 * orb1;
-                h2 += a2_3 * orb1;
-                h3 += a3_3 * orb1;
-
-                row0[j] = h0;
-                row1[j] = h1;
-                row2[j] = h2;
-                row3[j] = h3;
-            }
-        }
-    }
-
-    /* One to three points may remain.  Keep the original single-Nog kernel
-       for this tail, including its arithmetic order. */
-    for (; Nog < NOLG; Nog++) {
-        const int Nc = nc_list[Nog];
-        const int MN = mgrid[Nc];
-        const Type_Orbs_Grid *restrict orbs0 = og_c[Nc];
-        const Type_Orbs_Grid *restrict orbs1 = og_h ? og_h[nh_list[Nog]] : og_f[Nog];
-        const double v0 = GridVol * vpot0[MN];
-        const double v1 = GridVol * vpot1[MN];
-        const double v2 = GridVol * vpot2[MN];
-        const double v3 = GridVol * vpot3[MN];
-
-        for (i = 0; i < NO0; i++) {
-            const double orb0 = (double)orbs0[i];
-            const double a0 = v0 * orb0;
-            const double a1 = v1 * orb0;
-            const double a2 = v2 * orb0;
-            const double a3 = v3 * orb0;
-            double *restrict row0 = tmpH0[i];
-            double *restrict row1 = tmpH1[i];
-            double *restrict row2 = tmpH2[i];
-            double *restrict row3 = tmpH3[i];
-
-            for (j = 0; j < NO1; j++) {
-                const double orb1 = (double)orbs1[j];
-                row0[j] += a0 * orb1;
-                row1[j] += a1 * orb1;
-                row2[j] += a2 * orb1;
-                row3[j] += a3 * orb1;
-            }
-        }
-    }
-}
-
-typedef void (*Set_Hamiltonian_NC4_Pair_Function)(
-                                       int Mc_AN, int h_AN, int Mh_AN,
-                                       int Gh_AN_is_local, int NO0, int NO1,
-                                       int NOLG, double **restrict tmpH0,
-                                       double **restrict tmpH1,
-                                       double **restrict tmpH2,
-                                       double **restrict tmpH3);
-
-static SETH_NOINLINE void Set_Hamiltonian_ME_Pair_NC4_Baseline(
-                                       int Mc_AN, int h_AN, int Mh_AN,
-                                       int Gh_AN_is_local, int NO0, int NO1,
-                                       int NOLG, double **restrict tmpH0,
-                                       double **restrict tmpH1,
-                                       double **restrict tmpH2,
-                                       double **restrict tmpH3)
-{
-    Set_Hamiltonian_ME_Pair_NC4_Impl(
-        Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,
-        tmpH0,tmpH1,tmpH2,tmpH3);
-}
-
-static SETH_TARGET_AVX2 void Set_Hamiltonian_ME_Pair_NC4_AVX2(
-                                       int Mc_AN, int h_AN, int Mh_AN,
-                                       int Gh_AN_is_local, int NO0, int NO1,
-                                       int NOLG, double **restrict tmpH0,
-                                       double **restrict tmpH1,
-                                       double **restrict tmpH2,
-                                       double **restrict tmpH3)
-{
-    Set_Hamiltonian_ME_Pair_NC4_Impl(
-        Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,
-        tmpH0,tmpH1,tmpH2,tmpH3);
-}
-
-static SETH_TARGET_AVX512 void Set_Hamiltonian_ME_Pair_NC4_AVX512(
-                                       int Mc_AN, int h_AN, int Mh_AN,
-                                       int Gh_AN_is_local, int NO0, int NO1,
-                                       int NOLG, double **restrict tmpH0,
-                                       double **restrict tmpH1,
-                                       double **restrict tmpH2,
-                                       double **restrict tmpH3)
-{
-    Set_Hamiltonian_ME_Pair_NC4_Impl(
-        Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,
-        tmpH0,tmpH1,tmpH2,tmpH3);
-}
-
-/* Spin-polarized collinear integration uses the same runtime ISA policy.
-   Keeping the long Nog loop inside a targeted wrapper avoids silently
-   reducing this path to the translation unit's non-AVX baseline. */
-static SETH_ALWAYS_INLINE void Set_Hamiltonian_ME_Pair_Spin1_Impl(
-                                       int Mc_AN, int h_AN, int Mh_AN,
-                                       int Gh_AN_is_local, int NO0, int NO1,
-                                       int NOLG, double **restrict tmpH0,
-                                       double **restrict tmpH1)
-{
-    const int *restrict nc_list = GListTAtoms1[Mc_AN][h_AN];
-    const int *restrict nh_list = GListTAtoms2[Mc_AN][h_AN];
-    const int *restrict mgrid = MGridListAtom[Mc_AN];
-    const double *restrict vpot0 = Vpot_Grid[0];
-    const double *restrict vpot1 = Vpot_Grid[1];
-    Type_Orbs_Grid **restrict og_c = Orbs_Grid[Mc_AN];
-    Type_Orbs_Grid **restrict og_h = Gh_AN_is_local ? Orbs_Grid[Mh_AN] : NULL;
-    Type_Orbs_Grid **restrict og_f = Gh_AN_is_local ? NULL : Orbs_Grid_FNAN[Mc_AN][h_AN];
-    int Nog, i, j;
-
-    for (Nog = 0; Nog < NOLG; Nog++) {
-        const int Nc = nc_list[Nog];
-        const int MN = mgrid[Nc];
-        const Type_Orbs_Grid *restrict orbs0 = og_c[Nc];
-        const Type_Orbs_Grid *restrict orbs1 =
-            og_h ? og_h[nh_list[Nog]] : og_f[Nog];
-        const double v0 = GridVol*vpot0[MN];
-        const double v1 = GridVol*vpot1[MN];
-
-        for (i = 0; i < NO0; i++) {
-            const double orb0 = (double)orbs0[i];
-            const double a0 = v0*orb0;
-            const double a1 = v1*orb0;
-            double *restrict row0 = tmpH0[i];
-            double *restrict row1 = tmpH1[i];
-
-            for (j = 0; j < NO1; j++) {
-                const double orb1 = (double)orbs1[j];
-                row0[j] += a0*orb1;
-                row1[j] += a1*orb1;
-            }
-        }
-    }
-}
-
-typedef void (*Set_Hamiltonian_Spin1_Pair_Function)(
-                                       int Mc_AN, int h_AN, int Mh_AN,
-                                       int Gh_AN_is_local, int NO0, int NO1,
-                                       int NOLG, double **restrict tmpH0,
-                                       double **restrict tmpH1);
-
-#define SETH_DEFINE_SPIN1_WRAPPER(NAME,ATTR) \
-static ATTR void NAME(int Mc_AN, int h_AN, int Mh_AN, \
-                      int Gh_AN_is_local, int NO0, int NO1, int NOLG, \
-                      double **restrict tmpH0, double **restrict tmpH1) \
-{ \
-    Set_Hamiltonian_ME_Pair_Spin1_Impl( \
-        Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,tmpH0,tmpH1); \
-}
-
-SETH_DEFINE_SPIN1_WRAPPER(Set_Hamiltonian_ME_Pair_Spin1_Baseline,SETH_NOINLINE)
-SETH_DEFINE_SPIN1_WRAPPER(Set_Hamiltonian_ME_Pair_Spin1_AVX2,SETH_TARGET_AVX2)
-SETH_DEFINE_SPIN1_WRAPPER(Set_Hamiltonian_ME_Pair_Spin1_AVX512,SETH_TARGET_AVX512)
-
-#undef SETH_DEFINE_SPIN1_WRAPPER
-
-static void Calc_MatrixElements_dVH_Vxc_VNA_CPU(int Cnt_kind, const OpenMXElectronicViews *electronic)
-{
-  double *****CntH=electronic->CntH;
-  double *****H=electronic->H;
-
-    int    Mc_AN, Gc_AN, Mh_AN, h_AN, Gh_AN;
-    int    Nh0, Nh1, Nh2, Nh3;
-    int    Nc0, Nc1, Nc2, Nc3;
-    int    MN0, MN1, MN2, MN3;
-    int    Nloop, OneD_Nloop;
-    int    spin0_simd_mode;
-    int *  OneD2spin, *OneD2Mc_AN, *OneD2h_AN;
-    int    numprocs, myid;
-    double time0, time1, time2, mflops;
-    Set_Hamiltonian_Spin0_Pair_Function spin0_pair_function;
-    Set_Hamiltonian_NC4_Pair_Function nc4_pair_function;
-    Set_Hamiltonian_Spin1_Pair_Function spin1_pair_function;
-
-    if (measure_time)
-        dtime(&time1);
-
-    MPI_Comm_size(mpi_comm_level1, &numprocs);
-    MPI_Comm_rank(mpi_comm_level1, &myid);
-
-    spin0_simd_mode = Set_Hamiltonian_Simd_Mode();
-    if (spin0_simd_mode == SETH_SIMD_AVX512) {
-        spin0_pair_function = Set_Hamiltonian_ME_Pair_Blocked_Spin0_AVX512;
-        nc4_pair_function = Set_Hamiltonian_ME_Pair_NC4_AVX512;
-        spin1_pair_function = Set_Hamiltonian_ME_Pair_Spin1_AVX512;
-    }
-    else if (spin0_simd_mode == SETH_SIMD_AVX2) {
-        spin0_pair_function = Set_Hamiltonian_ME_Pair_Blocked_Spin0_AVX2;
-        nc4_pair_function = Set_Hamiltonian_ME_Pair_NC4_AVX2;
-        spin1_pair_function = Set_Hamiltonian_ME_Pair_Spin1_AVX2;
-    }
-    else {
-        spin0_pair_function = Set_Hamiltonian_ME_Pair_Blocked_Spin0_Baseline;
-        nc4_pair_function = Set_Hamiltonian_ME_Pair_NC4_Baseline;
-        spin1_pair_function = Set_Hamiltonian_ME_Pair_Spin1_Baseline;
-    }
-    {
-        const char *trace = getenv("OPENMX_SETHAM_SIMD_TRACE");
-        if (myid == Host_ID && trace != NULL && atoi(trace) != 0) {
-            printf("<Set_Hamiltonian> matrix-elements SIMD backend=%s\n",
-                   Set_Hamiltonian_Simd_Mode_Name(spin0_simd_mode));
-            fflush(stdout);
-        }
-    }
-
-    if (Cnt_kind != 0 && Cnt_kind != 1) {
-        Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "Cnt_kind must be 0 or 1", myid);
-    }
-
-    if (SpinP_switch != 0 && SpinP_switch != 1 && SpinP_switch != 3) {
-        Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "SpinP_switch must be 0, 1, or 3", myid);
-    }
-
-    /* one-dimensionalization of loops */
-
-    Nloop = 0;
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-        Gc_AN = M2G[Mc_AN];
-        for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-            Nloop++;
-        }
-    }
-
-    OneD2Mc_AN = NULL;
-    OneD2h_AN  = NULL;
-
-    if (0 < Nloop) {
-        if ((size_t)Nloop > ((size_t)-1) / sizeof(int)) {
-            Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "loop table size overflow", myid);
-        }
-
-        OneD2Mc_AN = (int *)malloc(sizeof(int) * (size_t)Nloop);
-        OneD2h_AN  = (int *)malloc(sizeof(int) * (size_t)Nloop);
-
-        if (OneD2Mc_AN == NULL || OneD2h_AN == NULL) {
-            free(OneD2Mc_AN);
-            free(OneD2h_AN);
-            Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "failed to allocate loop tables", myid);
-        }
-    }
-
-    Nloop = 0;
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-        Gc_AN = M2G[Mc_AN];
-        for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-
-            OneD2Mc_AN[Nloop] = Mc_AN;
-            OneD2h_AN[Nloop]  = h_AN;
-            Nloop++;
-        }
-    }
-
-    OneD_Nloop = Nloop;
-
-    if (measure_time) {
-        dtime(&time2);
-        printf("myid=%4d Time3=%18.10f\n", myid, time2 - time1);
-        fflush(stdout);
-    }
-
-    /* numerical integration */
-
-    if (measure_time)
-        dtime(&time1);
-
-#pragma omp parallel if (omp_get_max_threads() > 1)
-    {
-        int     Nloop, spin, Mc_AN, h_AN, Gh_AN, Mh_AN, Hwan, NOLG;
-        int     Gc_AN, Cwan, NO0, NO1, spin0 = -1, Mc_AN0 = 0;
-        int     i, j, Nc, MN, GNA, Nog, Nh, OMPID, Nthrds;
-        int     M, N, K, lda, ldb, ldc, ii, jj;
-        double  alpha, beta, Vpot;
-        double  sum0, sum1, sum2, sum3, sum4;
-        double *ChiV0, *Chi1, *ChiV0_2, *C;
-
-        /* allocation of arrays */
-
-        /* AITUNE */
-        double ** AI_tmpH[4];
-        {
-            /* get size of temporary buffer */
-            int AI_MaxNO = 0;
-            if (Cnt_kind == 0) {
-                int spe;
-                for (spe = 0; spe < SpeciesNum; spe++) {
-                    if (AI_MaxNO < Spe_Total_NO[spe]) {
-                        AI_MaxNO = Spe_Total_NO[spe];
-                    }
-                }
-            } else {
-                int spe;
-                for (spe = 0; spe < SpeciesNum; spe++) {
-                    if (AI_MaxNO < Spe_Total_CNO[spe]) {
-                        AI_MaxNO = Spe_Total_CNO[spe];
-                    }
-                }
-            }
-
-            int spin;
-            for (spin = 0; spin <= SpinP_switch; spin++) {
-                size_t ai_maxno = (size_t)AI_MaxNO;
-                size_t elems;
-
-                if (AI_MaxNO <= 0) {
-                    Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "non-positive orbital buffer size",
-                                          myid);
-                }
-
-                if (ai_maxno > ((size_t)-1) / sizeof(double *)) {
-                    Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "row pointer size overflow", myid);
-                }
-
-                if (ai_maxno > ((size_t)-1) / sizeof(double) / ai_maxno) {
-                    Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "matrix buffer size overflow", myid);
-                }
-
-                elems = ai_maxno * ai_maxno;
-
-                AI_tmpH[spin] = (double **)malloc(sizeof(double *) * ai_maxno);
-
-                int      i;
-                double * p = (double *)malloc(sizeof(double) * elems);
-
-                if (AI_tmpH[spin] == NULL || p == NULL) {
-                    free(AI_tmpH[spin]);
-                    free(p);
-                    Set_Hamiltonian_abort("Calc_MatrixElements_dVH_Vxc_VNA", "failed to allocate matrix buffer",
-                                          myid);
-                }
-
-                for (i = 0; i < AI_MaxNO; i++) {
-                    AI_tmpH[spin][i] = p;
-                    p += AI_MaxNO;
-                }
-            }
-        }
-        /* AITUNE */
-
-        /* starting of one-dimensionalized loop */
-
-#pragma omp for schedule(static, 1) /* guided */       /* AITUNE */
-        for (Nloop = 0; Nloop < OneD_Nloop; Nloop++) { /* AITUNE */
-
-            int Mc_AN = OneD2Mc_AN[Nloop];
-            int h_AN  = OneD2h_AN[Nloop];
-            int Gc_AN = M2G[Mc_AN];
-            int Gh_AN = natn[Gc_AN][h_AN];
-            int Mh_AN = F_G2M[Gh_AN];
-            int Cwan  = WhatSpecies[Gc_AN];
-            int Hwan  = WhatSpecies[Gh_AN];
-            int GNA   = GridN_Atom[Gc_AN];
-            int NOLG  = NumOLG[Mc_AN][h_AN];
-            int Gh_AN_is_local = (G2ID[Gh_AN] == myid);
-
-            int NO0, NO1;
-            if (Cnt_kind == 0) {
-                NO0 = Spe_Total_NO[Cwan];
-                NO1 = Spe_Total_NO[Hwan];
-            } else {
-                NO0 = Spe_Total_CNO[Cwan];
-                NO1 = Spe_Total_CNO[Hwan];
-            }
-
-            /* quadrature for Hij  */
-
-            /* AITUNE change order of loop */
-            if (SpinP_switch == 0 && NO0 <= SETH_ME_MAXNO && NO1 <= SETH_ME_MAXNO) {
-                double acc[SETH_ME_MAXNO * SETH_ME_MAXNO] __attribute__((aligned(64)));
-                int    i, j;
-
-                spin0_pair_function(
-                    Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,NO0,NO1,NOLG,acc);
-
-                if (Cnt_kind == 0) {
-                    for (i = 0; i < NO0; i++) {
-                        for (j = 0; j < NO1; j++) {
-                            H[0][Mc_AN][h_AN][i][j] += acc[i * SETH_ME_MAXNO + j];
-                        }
-                    }
-                } else {
-                    for (i = 0; i < NO0; i++) {
-                        for (j = 0; j < NO1; j++) {
-                            CntH[0][Mc_AN][h_AN][i][j] += acc[i * SETH_ME_MAXNO + j];
-                        }
-                    }
-                }
-
-            } else if (SpinP_switch == 0) {
-                /* AITUNE temporary buffer for "unroll-Jammed" HLO optimization by Intel */
-
-                if (Cnt_kind == 0) {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            AI_tmpH[0][i][j] = H[0][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                } else {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            AI_tmpH[0][i][j] = CntH[0][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                }
-
-                int Nog;
-                for (Nog = 0; Nog < NOLG; Nog++) {
-
-                    int Nc = GListTAtoms1[Mc_AN][h_AN][Nog];
-                    int MN = MGridListAtom[Mc_AN][Nc];
-                    int Nh = GListTAtoms2[Mc_AN][h_AN][Nog];
-                    Type_Orbs_Grid *orbs1 =
-                        Gh_AN_is_local ? Orbs_Grid[Mh_AN][Nh] : Orbs_Grid_FNAN[Mc_AN][h_AN][Nog];
-                    Type_Orbs_Grid *orbs0 = Orbs_Grid[Mc_AN][Nc];
-
-                    double AI_tmp_GVVG = GridVol * Vpot_Grid[0][MN];
-
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-
-                        double AI_tmp_i = AI_tmp_GVVG * orbs0[i];
-                        double *tmp0 = AI_tmpH[0][i];
-                        int    j;
-
-                        for (j = 0; j < NO1; j++) {
-                            tmp0[j] += AI_tmp_i * orbs1[j];
-                        }
-                    }
-
-                } /* Nog */
-
-                if (Cnt_kind == 0) {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            H[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                        }
-                    }
-                } else {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            CntH[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                        }
-                    }
-                }
-
-            } else if (SpinP_switch == 1) {
-
-                /* AITUNE temporary buffer for "unroll-Jammed" HLO optimization by Intel */
-
-                if (Cnt_kind == 0) {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            AI_tmpH[0][i][j] = H[0][Mc_AN][h_AN][i][j];
-                            AI_tmpH[1][i][j] = H[1][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                } else {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            AI_tmpH[0][i][j] = CntH[0][Mc_AN][h_AN][i][j];
-                            AI_tmpH[1][i][j] = CntH[1][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                }
-
-                spin1_pair_function(Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,
-                                    NO0,NO1,NOLG,AI_tmpH[0],AI_tmpH[1]);
-
-                /* AITUNE copy from temporary buffer */
-
-                if (Cnt_kind == 0) {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            H[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                            H[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
-                        }
-                    }
-                } else {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            CntH[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                            CntH[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
-                        }
-                    }
-                }
-
-            }
-
-            else { /* SpinP_switch==3 */
-
-                /* AITUNE temporary buffer for "unroll-Jammed" HLO optimization by Intel */
-
-                if (Cnt_kind == 0) {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            AI_tmpH[0][i][j] = H[0][Mc_AN][h_AN][i][j];
-                            AI_tmpH[1][i][j] = H[1][Mc_AN][h_AN][i][j];
-                            AI_tmpH[2][i][j] = H[2][Mc_AN][h_AN][i][j];
-                            AI_tmpH[3][i][j] = H[3][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                } else {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            AI_tmpH[0][i][j] = CntH[0][Mc_AN][h_AN][i][j];
-                            AI_tmpH[1][i][j] = CntH[1][Mc_AN][h_AN][i][j];
-                            AI_tmpH[2][i][j] = CntH[2][Mc_AN][h_AN][i][j];
-                            AI_tmpH[3][i][j] = CntH[3][Mc_AN][h_AN][i][j];
-                        }
-                    }
-                }
-
-                nc4_pair_function(Mc_AN,h_AN,Mh_AN,Gh_AN_is_local,
-                                  NO0,NO1,NOLG,AI_tmpH[0],AI_tmpH[1],
-                                  AI_tmpH[2],AI_tmpH[3]);
-
-                /* AITUNE copy from temporary buffer */
-
-                if (Cnt_kind == 0) {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            H[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                            H[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
-                            H[2][Mc_AN][h_AN][i][j] = AI_tmpH[2][i][j];
-                            H[3][Mc_AN][h_AN][i][j] = AI_tmpH[3][i][j];
-                        }
-                    }
-                } else {
-                    int i;
-                    for (i = 0; i < NO0; i++) {
-                        int j;
-                        for (j = 0; j < NO1; j++) {
-                            CntH[0][Mc_AN][h_AN][i][j] = AI_tmpH[0][i][j];
-                            CntH[1][Mc_AN][h_AN][i][j] = AI_tmpH[1][i][j];
-                            CntH[2][Mc_AN][h_AN][i][j] = AI_tmpH[2][i][j];
-                            CntH[3][Mc_AN][h_AN][i][j] = AI_tmpH[3][i][j];
-                        }
-                    }
-                }
-            }
-            /* AITUNE change order of loop */
-
-        } /* Nloop */
-
-        /* freeing of arrays */
-        {
-            int spin;
-            for (spin = 0; spin <= SpinP_switch; spin++) {
-                free(AI_tmpH[spin][0]);
-                free(AI_tmpH[spin]);
-            }
-        }
-    } /* pragma omp parallel */
-
-    /* freeing of arrays */
-
-    free(OneD2Mc_AN);
-    free(OneD2h_AN);
-
-    if (measure_time) {
-        dtime(&time2);
-        printf("myid=%4d Time4=%18.10f\n", myid, time2 - time1);
-        fflush(stdout);
-    }
-}
+/* Host quadrature and reusable worker storage live in the shared C++ core. */

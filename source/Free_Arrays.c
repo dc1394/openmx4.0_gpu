@@ -78,6 +78,7 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 #else
     Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
 #endif
+    openmx_core_grid_clear(core);
   }
 
   if      (wherefrom==0) array0(core);

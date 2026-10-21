@@ -4,6 +4,7 @@
 #include "openmx_gpu_backend.h"
 #include "openmx_gpu_error.h"
 #include "openmx_core.h"
+#include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
 #include "openmx_core_vna_matrix.h"
@@ -2715,7 +2716,7 @@ double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int 
 
 double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
 double Set_Aden_Grid(const OpenMXAtomicViews *atomic);
-double Set_Density_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
+double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
 #if !OPENMX_GPU_HIP
 int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed);
@@ -2960,7 +2961,7 @@ double Poisson_ESM(int fft_charge_flag,
 
  /**  ESM end  **/
 
-double Set_Hamiltonian(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char *mode,
+double Set_Hamiltonian(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char *mode,
                        int MD_iter,
                        int SCF_iter,
                        int SCF_iter0,

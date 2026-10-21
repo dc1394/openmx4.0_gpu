@@ -191,6 +191,18 @@ Deeper Krylov helpers use their own RAII scratch scopes and contiguous matrices;
 FP32 eigenvalue refinement shares its caller's owner for both allocation and
 release. The common ownership module contains no vendor SDK types. Remaining
 native globals, borrowed row interfaces and kernels still require migration.
+`Set_Hamiltonian` and `Set_Density_Grid` now share their host quadrature in
+the C++ core. Explicit calculation workspaces own the contiguous density,
+atom/pair plans, per-worker matrix/orbital scratch and A-to-B MPI work storage;
+SCF iterations reuse these allocations. Density workers process whole atoms,
+and Hamiltonian workers retain the small spin-unpolarized blocked integral.
+Host ISA selection checks CPU/OS support. `OPENMX_SETHAM_SIMD`,
+`OPENMX_DENSITY_GRID_COL_SIMD` and `OPENMX_DENSITY_GRID_NC_SIMD` accept
+`scalar` or `avx2` to cap the default automatic selection; append `_TRACE=1`
+to the corresponding variable name to report the selected implementation.
+CUDA/HIP device kernels, cache budgets and GeForce versus A100/H100 dispatch
+policies are retained. The new host kernels require neither a GPU SDK nor a
+second OpenMP team/runtime.
 Host tensors own contiguous storage and expose Kokkos/mdspan views, or
 `std::mdspan` when the compiler and standard library support it. This is
 an ongoing migration; most application globals and legacy GPU kernels remain.

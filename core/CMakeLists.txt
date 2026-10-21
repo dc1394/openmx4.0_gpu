@@ -93,7 +93,7 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vp
   src/atomic_views.cpp src/orbital_workspace.cpp src/ragged_matrix.cpp
   src/electronic_matrices.cpp src/electronic_matrix_api.cpp
   src/local_basis_state.cpp src/local_basis_api.cpp
-  src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/c_api.cpp)
+  src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/c_api.cpp)
 add_library(openmx_core SHARED ${_core_sources})
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC
@@ -101,6 +101,12 @@ target_include_directories(openmx_core PUBLIC
 target_link_libraries(openmx_core PUBLIC Kokkos::kokkos Threads::Threads)
 install(FILES "${kokkos_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/openmx_core RENAME Kokkos-LICENSE)
 target_compile_features(openmx_core PUBLIC cxx_std_20)
+# SIMD directives do not start or link an OpenMP runtime. The native caller
+# supplies its actual team, including when NVHPC C calls a GNU-built core.
+set_property(SOURCE src/grid_assembly.cpp APPEND PROPERTY COMPILE_OPTIONS
+  "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang,IntelLLVM>:-fopenmp-simd>"
+  "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp-simd>"
+  "$<$<COMPILE_LANGUAGE:HIP>:-fopenmp-simd>")
 if(OPENMX_CORE_FORCE_KOKKOS_MDSPAN)
   target_compile_definitions(openmx_core PUBLIC OPENMX_CORE_FORCE_KOKKOS_MDSPAN=1)
 endif()

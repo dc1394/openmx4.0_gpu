@@ -8,6 +8,7 @@
 #include "electronic_matrix_compat.hpp"
 #include "local_basis_compat.hpp"
 #include "native_resources.hpp"
+#include "grid_assembly.hpp"
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
 
@@ -25,5 +26,6 @@ struct OpenMXCoreContext {
   std::unique_ptr<openmx::core::compat::ElectronicMatrixOwner> electronic;
   std::unique_ptr<openmx::core::compat::LocalBasisOwner> local_basis;
   std::unique_ptr<openmx::core::OrbitalOptimization> orbital_optimization;
+  std::unique_ptr<OpenMXGridWorkspace,GridWorkspaceDelete> grid;
   NativeResourceGroups native_resources;
 };
