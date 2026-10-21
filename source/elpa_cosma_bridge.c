@@ -555,14 +555,15 @@ int openmx_gs2_eigen_real(int n, int nev, double *a, int *desca, double *w, doub
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
 
-    free_before = gs2_free_now();
-    elpa_eigenvectors_double(s->h, a, w, z, &err);
+    free_before = s->gpu ? gs2_free_now() : 0;
+    if (s->gpu) elpa_eigenvectors_double(s->h, a, w, z, &err);
+    else elpa_eigenvectors_a_h_a_d(s->h, a, w, z, &err);
     if (err != ELPA_OK) {
         fprintf(stderr, "openmx gpusolver2: elpa_eigenvectors_double failed: %s\n",
                 elpa_strerr(err));
         return err;
     }
-    gs2_update_retained(s, free_before, gs2_free_now());
+    gs2_update_retained(s, free_before, s->gpu ? gs2_free_now() : 0);
     return 0;
 }
 
@@ -576,14 +577,15 @@ int openmx_gs2_eigen_complex(int n, int nev, void *a, int *desca, double *w, voi
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
 
-    free_before = gs2_free_now();
-    elpa_eigenvectors_double_complex(s->h, (double complex *)a, w, (double complex *)z, &err);
+    free_before = s->gpu ? gs2_free_now() : 0;
+    if (s->gpu) elpa_eigenvectors_double_complex(s->h, (double complex *)a, w, (double complex *)z, &err);
+    else elpa_eigenvectors_a_h_a_dc(s->h, (double complex *)a, w, (double complex *)z, &err);
     if (err != ELPA_OK) {
         fprintf(stderr, "openmx gpusolver2: elpa_eigenvectors_double_complex failed: %s\n",
                 elpa_strerr(err));
         return err;
     }
-    gs2_update_retained(s, free_before, gs2_free_now());
+    gs2_update_retained(s, free_before, s->gpu ? gs2_free_now() : 0);
     return 0;
 }
 

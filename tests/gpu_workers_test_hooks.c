@@ -37,6 +37,9 @@ void *openmx_mgpu_admit_devices(const int *devices,int count){
 }
 void openmx_mgpu_release_devices(void *p){assert(p==&gate);pthread_mutex_unlock(&gate);}
 int openmx_gpu_map_rank_to_device(int rank,int size,int count){return count>0?rank/((size+count-1)/count):-1;}
+/* The fixture explicitly initializes its allocated CUDA devices. Production
+   rank binding is supplied by set_cuda_default_device_from_local_rank.c. */
+int gpu_rank_device_usable(void){return 1;}
 cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes,size_t *total_bytes){return cudaMemGetInfo(free_bytes,total_bytes);}
 void OpenMX_GpuPresizeKernelStack(void){}
 

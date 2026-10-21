@@ -236,10 +236,14 @@ static void cpu_eigenvectors(int solver, int is_complex,
     error = cpu_collective_error(error, parent);
     if (error != ELPA_OK) cpu_abort("CPU solver selection", error, rows, cols);
 
+    /* These matrices always live on the host. The explicit-name dispatcher
+       probes CUDA/HIP pointer attributes even with GPU kernels disabled;
+       CUDA's dispatcher exits on a GPU-less node. Use the public host-array
+       entry points (also used by ELPA's generic C API) for CPU recovery. */
     if (is_complex)
-        elpa_eigenvectors_double_complex(handle, matrix_a, ev, matrix_q, &error);
+        elpa_eigenvectors_a_h_a_dc(handle, matrix_a, ev, matrix_q, &error);
     else
-        elpa_eigenvectors_double(handle, matrix_a, ev, matrix_q, &error);
+        elpa_eigenvectors_a_h_a_d(handle, matrix_a, ev, matrix_q, &error);
     error = cpu_collective_error(error, parent);
     if (error != ELPA_OK) cpu_abort("eigenvectors", error, rows, cols);
 

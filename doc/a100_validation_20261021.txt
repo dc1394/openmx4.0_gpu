@@ -1,0 +1,204 @@
+A100 validation of the unified CUDA/HIP tree, 2026-10-21
+=======================================================
+
+Scope and build
+---------------
+Baseline: main at 4d8c7e0f (Share CUDA and HIP GPU infrastructure and
+numerical sources), rebuilt with the original Makefile.kugui settings.
+The comparison does not use the older executable left in work/openmx.
+
+Hardware: one allocated NVIDIA A100-SXM4-40GB, acc008, AMD EPYC 7763.
+PBS job 943216, one GPU slice, 16 CPU cores and 60 GiB host-memory limit.
+Driver 560.35.03, NVHPC 24.7, CUDA 12.5, cuSOLVER 11.6.3,
+GCC 12.2, site Open MPI 4.1.6, bundled ELPA 2026.02.002 and MAGMA.
+A private MPS instance served the MPI ranks and was stopped after testing.
+
+Build and installation from the repository root:
+  make -C source -f Makefile.kugui -j3 openmx WITH_MAGMA=1 MAGMA_JOBS=3 GPUSOLVER2_JOBS=3
+  make -C source -f Makefile.kugui install
+
+Makefile.kugui now uses GCC -O3 and FFTW's SSE2/AVX/AVX2/FMA codelets.
+It does not enable fast-math. The portable CUDA Makefile's default FFTW
+flags and the GeForce precision/solver policies are retained. FFTW compiler,
+flags and configure options have a separate content-based dependency stamp;
+changing them rebuilds FFTW, while an unchanged incremental build does not
+compile or relink anything. The ELPA/COSMA builder also reuses the site's
+available private CMake, as the MAGMA builder already does.
+
+Changes
+-------
+1. FP64 Hamiltonian quadrature on sm_80 uses a 2x2 register tile, stages
+   one spin channel per block, and splits overlap points when a small batch
+   otherwise leaves SMs idle. It retains FP64 accumulation and the existing
+   orbital storage. Heterogeneous pairs, odd orbital counts, empty overlaps,
+   original density indices and accumulated matrix contributions are covered.
+   GeForce's compensated double-float kernel is unchanged.
+   OPENMX_SETHAM_FP64_TILED=0 restores the old FP64 kernel.
+   OPENMX_SETHAM_FP64_TILED=1 explicitly selects the new kernel.
+   OPENMX_SETHAM_FP64_SPLIT=1..64 overrides the adaptive point split.
+   Only sm_80 selects it automatically; other architectures retain their
+   previous default. Other sm_80 products/MIG were not separately measured.
+2. Owner-only quadrature skips multi-GPU metadata downloads and the extra
+   synchronization/host allocation. Actual multi-worker admission still
+   checks the exact pair/point count and uses the established publication
+   and rollback protocol.
+3. The CPU ELPA adapter and gpusolver2 CPU recovery use ELPA's public
+   host-array entry points. The explicit-name dispatcher probed CUDA pointer
+   attributes even with GPU kernels disabled and terminated on a GPU-less
+   node. This failure was reproduced on kugui1, then eliminated. CPU
+   gpusolver2 solves also avoid GPU-memory queries used only for GPU accounting.
+4. Standalone worker and multi-GPU solver fixtures now supply/link the
+   dependencies introduced by the unified tree. The CPU ELPA MPI runner
+   accepts --makefile Makefile.kugui and hides CUDA devices explicitly.
+
+End-to-end results
+------------------
+The unchanged 14-case S suite ran in one MPI job, 8 ranks x 1 thread,
+including sequential-case resource cleanup. Both baseline and optimized
+builds passed the distributed reference outputs (energy and force limits
+1e-7). All 14 before/after comparisons also passed.
+  Sum of application times: 93.57 -> 87.02 seconds (1.075x).
+  Largest before/after total-energy difference: 7.13e-10 Ha.
+  Largest before/after force-component difference: 7.8e-11 Ha/bohr.
+
+Si216 is the 3x3x3 analogue of the supplied sidia555 diamond structure:
+Si7.0-s2p2d1 / Si_PBE19, 200 Ry, two SCF iterations, no geometry update,
+FP32 arithmetic disabled, 4 MPI ranks x 4 threads, one GPU.
+Band uses two k points; the cluster cases are the periodic Gamma-point
+cluster-solver benchmarks. NC uses spin-orbit coupling and 45/15-degree
+initial spin directions. Matrix orders are 2808 (collinear) and 5616 (NC).
+No CPU eigensolver fallback was accepted in these GPU timing comparisons.
+
+Application time, seconds (one paired run per case):
+  case          before       after    before/after   max |dE| Ha   max |dF| Ha/bohr
+  cluster_col     38.363      36.492       1.051      2.05e-12          1.00e-12
+  cluster_nc     107.067     105.526       1.015      1.02e-12          1.00e-12
+  band_col        39.615      39.555       1.002      2.96e-12          1.00e-12
+  band_nc        100.265     100.687       0.996      1.02e-12          1.00e-12
+
+All coordinates, integration grids, SCF steps and energy components also
+agree; the largest component difference is 7.99e-12 Ha. Peak process-tree
+RSS was 27.4--47.7 GiB. The 60-GiB allocation determined this full-application
+size; this is not a new 1000-atom validation. Whole-application gains are much
+smaller than the kernel gains because forces, setup and other stages dominate.
+The NC Band difference is -0.4%; a single paired run cannot establish a small
+speed change of this size. These times are not a statistical speedup claim.
+
+Kernel and library measurements
+-------------------------------
+Production quadrature wrapper, two warmups, 30 repetitions, same optimized
+binary with OPENMX_SETHAM_FP64_TILED=0 versus =1. Times include wrapper and
+synchronization costs. Sixteen atom pairs, 8192 overlap points per pair:
+  orbitals spins       old ms       tiled ms    speedup
+        13     1     0.657346       0.050286      13.07
+        13     2     0.839762       0.086991       9.65
+        13     4     1.136795       0.161907       7.02
+        26     1     1.532579       0.200884       7.63
+        26     2     1.673616       0.359923       4.65
+        26     4     2.316849       0.592037       3.91
+        48     1     2.101167       0.625036       3.36
+        48     2     3.022240       1.178887       2.56
+        48     4     9.602319       1.807384       5.31
+
+The 256-pair x 512-point and 1024-pair x 128-point shapes were also measured
+with all nine orbital/spin combinations. Across all 27 shapes the ratio was
+1.03--13.07x. The many-pair batches benefit less than the underoccupied ones.
+The density kernel was left unchanged; its native FP64 path remained faster
+than DF on this A100. GPU clock policy was not changed.
+
+Independent long-double oracle: 78 full/chunk FP64/DF matrix and density
+cases, 96 guarded density-range checks, and worker rollback/publication
+checks passed. Maximum scaled error 6.343e-14. Compute Sanitizer memcheck
+reported zero errors with the new kernel selected automatically.
+
+FFTW 3.3.11 bench, single-thread execution time, five repetitions:
+  transform           original scalar       GCC -O3 SIMD       speedup
+  complex 216               2.38 us             0.478 us          4.98x
+  complex 512               5.42 us             0.814 us          6.66x
+  complex 1000             13.85 us             2.26 us           6.13x
+  complex 64^3              5.61 ms             1.26 ms           4.45x
+  complex 128^3            71.31 ms            15.00 ms           4.75x
+An independent FFTW verify run also passed. Plan construction is excluded
+from these times and can cost more with additional codelet choices. The
+OpenMX comparisons above include setup and all application stages.
+
+Existing dense dispatch was revalidated, not retuned on a marginal result.
+General real/complex GEMM retains the native-FP64 default. Fixed real
+H X and X^T(H X), n=13000, three repetitions:
+  native FP64: 510.726 ms; automatic GEMMul8: 398.460 ms (1.282x).
+  Relative difference from native: 4.02e-13; sampled long-double reference:
+  8.13e-14. The dimension-6144 automatic GEMMul8 path was also exercised.
+These are matrix-level timings, not a 1000-atom application benchmark.
+
+Additional verification and limits
+----------------------------------
+- cuSOLVER n=2048 real/complex, full/partial spectra and host/device wrappers
+  passed. CUDA 12.5 uses the legacy algorithm under the auto/two-stage
+  compatibility requests; no unsupported new algorithm is claimed.
+- Single-GPU multi-GPU-wrapper fallback: real and complex n=513, nev=117,
+  repeated solves and upper-triangle input passed.
+- gpusolver2 GPU versus forced CPU recovery: collinear and NC cluster,
+  8 Si atoms, 2 MPI ranks, two SCF iterations. Both passed; maximum
+  energy difference 1.20e-11 Ha and force difference 2.78e-10 Ha/bohr.
+- Real CPU ELPA ABI test on the GPU-less login node: six MPI ranks,
+  20 cases per rank, one/two-stage real/complex solves, rectangular grids,
+  subcommunicators, partial vectors and padded leading dimensions.
+  Maximum eigenvalue error 8.44e-15, residual 5.13e-15, orthogonality 1.53e-15.
+- Four full OpenMX CPU-only S cases (Cr2, Crys-MnO, GaAs, H2O) also passed
+  with OPENMX_GPU=0 and no visible CUDA devices.
+- Eighteen real-MPI ELPA/COSMA admission/lifecycle cases passed, including
+  a new CPU-only dispatch check that forbids GPU pointer probes and memory
+  queries (ELPA/CUDA are mocked in this admission test). Nine CUDA/HIP
+  build-isolation checks passed. Existing cuSOLVER,
+  GEMMul8, orbital/grid/density precision, MAGMA pool and multi-GPU runtime
+  policy tests passed, including the strong/weak-FP64 and heterogeneous
+  device cases. These are policy tests, not GPU performance measurements.
+
+Physical validation in this session used one A100. A full-node allocation
+for multiple A100s could not start during the session (estimated start about
+nine hours later); that queued job was cancelled. Multi-A100 execution and
+RTX 5080 hardware performance therefore remain unverified for this revision.
+GeForce's DF arithmetic was additionally exercised on A100 with explicit
+OPENMX_GRID_PRECISION=df and OPENMX_ORBS_EVAL_PRECISION=df. C60, Cr2,
+Crys-MnO, GaAs and Methane all passed before/after comparisons, with maximum
+energy difference 7.0e-12 Ha and force difference 1.0e-12 Ha/bohr. This does
+not substitute for a GeForce performance measurement. The HIP runtime was
+not run.
+
+Reproduction and artifacts
+--------------------------
+Raw commands, frozen binaries, SHA-256 hashes, inputs, logs, timing records
+and JSON comparisons are under work/codex_a100_20261021 (ignored build/test
+artifacts). In particular: compare-S.txt, compare-si216.json,
+compare-df-S.txt, cpu-only-S-reference.txt, gs2-recovery/summary.json,
+quadrature-p*-n*-t*.log, quadrature-memcheck.log, gemm-*.csv,
+elpa-cpu-hidden-gpu.log and gs2-memory-final.log.
+The commands/ scripts record every GPU invocation inside the PBS allocation.
+The sibling multi-allocation.pbs was queued and cancelled, not executed.
+
+Useful site test environment for reproducing standalone builds:
+  export CUDA_HOME=/home/app/hpc_sdk/Linux_x86_64/24.7/cuda/12.5
+  export CUDA_MATH_ROOT=/home/app/hpc_sdk/Linux_x86_64/24.7/math_libs/12.5
+  export NVHPC_ROOT=/home/app/hpc_sdk/Linux_x86_64/24.7
+  export NVCC_HOST=/opt/gcc/12.2.0/bin/g++
+  export HOST_LIBDIR=/opt/gcc/12.2.0/snos/lib64
+  export MPI_INCLUDE=/home/app/openmpi/4.1.6_24.7_cuda11.8/include
+  export GPU_ARCH=80
+  OPENMX_GPU_TEST_COMPILE_ONLY=1 OPENMX_GPU_TEST_BUILD=/path/to/test-build \
+    bash tests/run_gpu_quadrature_smoke.sh setham_point_chunks_gpu
+Run that binary only in an allocated GPU job. SETPOINT_BENCHMARK=30 enables
+both density and matrix timings; SETPOINT_BENCH_PAIRS and
+SETPOINT_BENCH_POINTS select the bounded shape.
+
+CPU ELPA uses the native site compiler, so do not inherit OMPI_CC=gcc from
+mock-test invocations:
+  env -u OMPI_CC -u CC -u CXX python3.9 tests/run_elpa_cpu_mpi.py \
+    --native-source source --makefile Makefile.kugui
+
+Frozen baseline SHA-256:
+  0a6f1cefccb6f140797a11197ecae72f1e322bfd6c048af380598c986adc2ef5
+Validated optimized SHA-256:
+  c53a7d778135d025b1eef99fc90aca151921ead976313406865acc9e619f51aa
+The installed work/openmx is identical to this validated executable; the
+previous work/openmx is preserved as openmx-previous-work in the artifact
+directory.
