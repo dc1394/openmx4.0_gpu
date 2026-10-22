@@ -14,6 +14,7 @@
 #include "openmx_mixing_h_state.h"
 #include "openmx_mixing_rhok_state.h"
 #include "openmx_mixing_dm_state.h"
+#include "openmx_mixing_v_state.h"
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
@@ -2750,7 +2751,7 @@ double Mixing_H( OpenMXMixingHState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0 , const OpenMXElectronicViews *electronic);
 
-double Mixing_V( int MD_iter,
+double Mixing_V(OpenMXMixingVState *state, int MD_iter,
 		 int SCF_iter,
 		 int SCF_iter0 );
 
@@ -2939,7 +2940,7 @@ double Poisson_ESM(int fft_charge_flag,
 
  /**  ESM end  **/
 
-double Set_Hamiltonian(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char *mode,
+double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char *mode,
                        int MD_iter,
                        int SCF_iter,
                        int SCF_iter0,
@@ -3064,7 +3065,7 @@ double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter, const Ope
 double Set_OLP_p(double *****OLP_p);
 
 double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
-void Set_Vpot(const OpenMXAtomicViews *atomic, int MD_iter,
+void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int MD_iter,
               int SCF_iter, 
               int SCF_iter0,
               int TRAN_Poisson_flag2,

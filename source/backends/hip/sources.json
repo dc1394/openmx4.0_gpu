@@ -78,7 +78,6 @@
     "Memory_Leak_test.c",
     "Mio_tester.c",
     "Mio_tester2.c",
-    "Mixing_V.c",
     "MulPCalc.c",
     "MulPOnly.c",
     "NBO_Krylov.c",
@@ -551,7 +550,6 @@
     "Memory_Leak_test.c": "54cc27b144f6602a2f74067dac6873fc7d579798773b0c21e7bb611579ee310e",
     "Mio_tester.c": "cf19f23bcd4b0baab4435596b0409a0d9a716918bd317b10943bb7c258b7d256",
     "Mio_tester2.c": "3d614be694fd9ffa901e90caabfc471eb6d64cb0ba99ff1f5dccd03cfa885d46",
-    "Mixing_V.c": "8af9a6333ac84ae79e88657cc623da48487d19ed25613e3f697cfaa5affc8d2a",
     "MulPCalc.c": "213f46ed2d1177e1bf3d92453b9c72f7bac5664cde1e39e2f1ab2fab9ee2da05",
     "MulPOnly.c": "825cf0ab2704fae8f450f6dfdc7f2b4a39ff8c97efa6b3d04f549c9f1ae57127",
     "NBO_Krylov.c": "f1d4303f4a289558acc37651cd5f4ef20c0b4460588e8ad118221f6ce3314c6f",
@@ -1082,7 +1080,11 @@
     "openmx_mixing_rhok_workspace.h",
     "openmx_mixing_dm_state.h",
     "openmx_mixing_dm_internal.h",
-    "openmx_mixing_dm_workspace.h"
+    "openmx_mixing_dm_workspace.h",
+    "openmx_mixing_v_state.h",
+    "openmx_mixing_v_internal.h",
+    "openmx_mixing_v_workspace.h",
+    "Mixing_V.c"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

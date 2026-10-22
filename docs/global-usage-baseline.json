@@ -1,17 +1,17 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "70611c4d",
+"revision": "3aa4a244",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
-"functions": 3087,
+"functions": 3098,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,
-"function-object edges (common header)": 12909,
+"function-object edges (common header)": 12910,
 "objects with external linkage defined outside openmx_globals.c": 357,
-"file-scope statics": 314,
-"function-local statics": 318,
+"file-scope statics": 313,
+"function-local statics": 316,
 "environment variables (names read, every unit)": 251,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
@@ -4404,9 +4404,9 @@
 "DIIS_Mixing_Rhok_Normal@source/DIIS_Mixing_Rhok.c->Uele",
 "DIIS_Mixing_Rhok_Normal@source/DIIS_Mixing_Rhok.c->mpi_comm_level1",
 "DIIS_Mixing_Rhok_Normal@source/DIIS_Mixing_Rhok.c->rtv",
-"DIIS_Mixing_VKSk.omp_outlined.12@source/Mixing_V.c->ImVKSk",
-"DIIS_Mixing_VKSk.omp_outlined.12@source/Mixing_V.c->My_NumGridB_CB",
-"DIIS_Mixing_VKSk.omp_outlined.12@source/Mixing_V.c->ReVKSk",
+"DIIS_Mixing_VKSk.omp_outlined.26@source/Mixing_V.c->ImVKSk",
+"DIIS_Mixing_VKSk.omp_outlined.26@source/Mixing_V.c->My_NumGridB_CB",
+"DIIS_Mixing_VKSk.omp_outlined.26@source/Mixing_V.c->ReVKSk",
 "DIIS_Mixing_VKSk.omp_outlined@source/Mixing_V.c->My_NumGridB_CB",
 "DIIS_Mixing_VKSk.omp_outlined@source/Mixing_V.c->Residual_ImVKSk",
 "DIIS_Mixing_VKSk.omp_outlined@source/Mixing_V.c->Residual_ReVKSk",
@@ -7561,10 +7561,10 @@
 "Mixing_H@source/Mixing_H.c->mpi_comm_level1",
 "Mixing_Sigma@source/EGAC_DFT.c->Sigma_EGAC",
 "Mixing_Sigma@source/EGAC_DFT.c->dim_GD_EGAC",
-"Mixing_V@source/Mixing_V.c->Mixing_weight",
-"Mixing_V@source/Mixing_V.c->NormRD",
-"Mixing_V@source/Mixing_V.c->Pulay_SCF",
 "Mixing_V@source/Mixing_V.c->mpi_comm_level1",
+"Mixing_V_Compute@source/Mixing_V.c->Mixing_weight",
+"Mixing_V_Compute@source/Mixing_V.c->NormRD",
+"Mixing_V_Compute@source/Mixing_V.c->Pulay_SCF",
 "Mulliken_Charge@source/Mulliken_Charge.c->Angle0_Orbital",
 "Mulliken_Charge@source/Mulliken_Charge.c->Angle0_Spin",
 "Mulliken_Charge@source/Mulliken_Charge.c->Angle1_Orbital",
@@ -8066,6 +8066,7 @@
 "OpenMX_Solver_Failure@source/Kerker_Mixing_Rhok.c->mpi_comm_level1",
 "OpenMX_Solver_Failure@source/Krylov.c->mpi_comm_level1",
 "OpenMX_Solver_Failure@source/Mixing_H.c->mpi_comm_level1",
+"OpenMX_Solver_Failure@source/Mixing_V.c->mpi_comm_level1",
 "OpenMX_Solver_Failure@source/Set_Nonlocal.c->mpi_comm_level1",
 "OpenMX_Solver_Residues@source/Divide_Conquer.c->FNAN",
 "OpenMX_Solver_Residues@source/Divide_Conquer.c->M2G",
@@ -13095,12 +13096,6 @@
 "const": false
 },
 {
-"unit": "source/Mixing_V.c",
-"name": "MixVKSk_fast",
-"type": "{ i32",
-"const": false
-},
-{
 "unit": "source/Set_Density_Grid_GPU.c",
 "name": "SDG_cache",
 "type": "%struct.SetDensityGpuCache zeroinitializer",
@@ -16089,20 +16084,6 @@
 {
 "unit": "source/Matrix_Band_LNO.c",
 "function": "Matrix_Band_LNO",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Mixing_V.c",
-"function": "DIIS_Mixing_VKSk",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Mixing_V.c",
-"function": "Kerker_Mixing_VKSk",
 "variable": "firsttime",
 "type": "i32 1",
 "const": false

@@ -1496,7 +1496,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp)
     return Set_Hamiltonian_GpuSolver_Cache.imnl[comp];
 }
 
-double Set_Hamiltonian(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
+double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
                        double ***** H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
@@ -1695,7 +1695,7 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomi
 
     XC_P_switch = 1;
     SETH_PROF_T0(prof_t0);
-    Set_Vpot(atomic, MD_iter, SCF_iter, SCF_iter0, TRAN_Poisson_flag2, XC_P_switch);
+    Set_Vpot(mixing_v, atomic, MD_iter, SCF_iter, SCF_iter0, TRAN_Poisson_flag2, XC_P_switch);
     SETH_PROF_ADD(vpot, prof_t0);
 
     if (measure_time) {

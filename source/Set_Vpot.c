@@ -35,7 +35,7 @@ static void Make_VNA_Grid(const OpenMXAtomicViews *atomic);
 #endif
 
 
-void Set_Vpot(const OpenMXAtomicViews *atomic, int MD_iter,
+void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int MD_iter,
               int SCF_iter, 
               int SCF_iter0,
               int TRAN_Poisson_flag2,
@@ -346,7 +346,7 @@ void Set_Vpot(const OpenMXAtomicViews *atomic, int MD_iter,
                      call Mixing_V
     *********************************************/
 
-    time16 = Mixing_V(MD_iter,SCF_iter,SCF_iter0);
+    time16 = Mixing_V(mixing_v,MD_iter,SCF_iter,SCF_iter0);
   }
 
   /******************************************************

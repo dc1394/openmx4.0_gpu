@@ -32,6 +32,9 @@ function(openmx_add_native_state_tests)
   add_test(NAME mixing-dm-workspace-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_mixing_dm_workspace_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>")
+  add_test(NAME mixing-v-workspace-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_mixing_v_workspace_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>")
   foreach(_band_kind col noncol)
     add_test(NAME band-${_band_kind}-calculation-state-lifecycle
       COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_band_state_cpu.py"
@@ -42,7 +45,7 @@ function(openmx_add_native_state_tests)
       COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_cluster_${_cluster_kind}_state_cpu.py"
         --core-library "$<TARGET_FILE:openmx_core>")
   endforeach()
-  set_tests_properties(mixing-h-calculation-state-lifecycle mixing-rhok-calculation-state-lifecycle mixing-rhok-workspace-lifecycle mixing-dm-workspace-lifecycle dc-calculation-state-lifecycle dclno-calculation-state-lifecycle
+  set_tests_properties(mixing-h-calculation-state-lifecycle mixing-rhok-calculation-state-lifecycle mixing-rhok-workspace-lifecycle mixing-dm-workspace-lifecycle mixing-v-workspace-lifecycle dc-calculation-state-lifecycle dclno-calculation-state-lifecycle
     krylov-calculation-state-lifecycle band-col-calculation-state-lifecycle
     band-noncol-calculation-state-lifecycle cluster-col-calculation-state-lifecycle
     cluster-noncol-calculation-state-lifecycle PROPERTIES

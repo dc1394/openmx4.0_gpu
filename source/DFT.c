@@ -443,6 +443,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
+  OpenMXMixingVState *mixing_v=Mixing_V_Bind_Resources(core);
   const OpenMXDensityCacheHooks density_cache_hooks=OpenMX_ClusterNonCol_DensityHooks(solver_states.cluster_noncol);
 
   const OpenMXLocalBasisViews local_basis_storage=OpenMX_LocalBasis(core,mpi_comm_level1);
@@ -858,7 +859,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0) /* non-spin-orbit coupling and non-LDA+U */
 	    ){
 
-          time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), atomic, vna, "nostdout",
+          time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "nostdout",
                                     MD_iter,
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
@@ -882,7 +883,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  time4 += TRAN_Poisson(ReVk,ImVk,SCF_iter,TRAN_SCF_Iter_Band,SucceedReadingDMfile);
 	}
 
-	time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), atomic, vna, "nostdout",
+	time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "nostdout",
                                   MD_iter,
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
@@ -941,7 +942,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (xmcd_calc == 1) time4 += Set_XMCD_penalty(1,pre_spin_moment,SCF_iter, electronic); // S. An
 
-      time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), atomic, vna, "stdout",
+      time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "stdout",
                                 MD_iter,
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
