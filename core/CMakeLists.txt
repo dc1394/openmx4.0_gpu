@@ -86,7 +86,7 @@ option(OPENMX_CORE_FORCE_KOKKOS_MDSPAN "Use Kokkos/mdspan even if std::mdspan is
 
 set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vps_storage.cpp
   src/product_storage.cpp src/neutral_projectors.cpp src/pair_bessel.cpp
-  src/force_workspace.cpp src/core_hole.cpp src/two_center.cpp src/overlap_workspace.cpp src/nonlocal_workspace.cpp src/vna_workspace.cpp src/vna_preparation.cpp
+  src/force_workspace.cpp src/core_hole.cpp src/projector_force.cpp src/two_center.cpp src/overlap_workspace.cpp src/nonlocal_workspace.cpp src/vna_workspace.cpp src/vna_preparation.cpp
   src/dsvna_workspace.cpp src/hvna_layout.cpp src/hvna_workspace.cpp src/atom_pairs.cpp
   src/projector_exchange.cpp src/vna_invocation.cpp src/block_matrix.cpp src/vna_matrix_storage.cpp
   src/reciprocal_views.cpp src/reciprocal_archive.cpp src/species_storage.cpp src/species_api.cpp

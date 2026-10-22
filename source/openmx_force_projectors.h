@@ -3,7 +3,33 @@
 /* Shared host projector derivatives. Include after the native prototypes.
    Core-hole coefficients and angular traces belong to the C++ invocation. */
 
-void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
+static void dHNL_block_term(const OpenMXProjectorForceView *projectors,size_t species,
+    const OpenMXElectronicViews *electronic,int a,int ah,int b,int bh,int transpose,
+    double sign,int reverse_energy,int value_first,OpenMXProjectorForceTerm *term)
+{
+    const OpenMXElectronicMatrixView *matrix=&electronic->fields[OPENMX_ELECTRONIC_PROJECTORS];
+    const size_t ab=matrix->atom_offsets[matrix->component_offsets[0]+a]+ah;
+    const size_t bb=matrix->atom_offsets[matrix->component_offsets[0]+b]+bh;
+    memset(term,0,sizeof(*term));
+    term->derivative_rows=matrix->shapes[2*ab];term->derivative_stride=matrix->shapes[2*ab+1];
+    term->value_rows=matrix->shapes[2*bb];term->value_stride=matrix->shapes[2*bb+1];
+    term->sign=sign;term->reverse_energy=reverse_energy;term->transpose=transpose;term->value_first=value_first;
+    if(projectors->species_views[species].components)for(int c=0;c<=projectors->species_views[species].relativistic;++c) {
+        if((size_t)c>=matrix->groups)OpenMX_Solver_Failure("missing nonlocal projector spin block");
+        for(int axis=0;axis<3;++axis)term->derivative[c][axis]=openmx_electronic_row(matrix,c*matrix->channels+axis+1,a,ah,0);
+        term->value[c]=openmx_electronic_row(matrix,c*matrix->channels,b,bh,0);
+    }
+}
+static void dHNL_block(const OpenMXProjectorForceView *projectors,size_t species,
+    const OpenMXProjectorForceTerm *terms,size_t count,size_t rows,size_t columns,size_t capacity,
+    dcomplex ***hx,dcomplex ***hy,dcomplex ***hz,int accumulate)
+{
+    const OpenMXProjectorForceBlock block={rows,columns,capacity,capacity,count,terms,
+        {hx[0][0],hy[0][0],hz[0][0]},accumulate};char error[256];
+    if(!openmx_core_projector_force_block(projectors,species,&block,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
+
+void dHNL(const OpenMXAtomicViews *atomic, const OpenMXProjectorForceView *projectors, int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double****** DS_NL1,
     dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic)
@@ -19,7 +45,6 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
     double tmpx, tmpy, tmpz, tmp, r;
     double x0, y0, z0, x1, y1, z1, dx, dy, dz;
     double rcuti, rcutj, rcut;
-    double PFp, PFm, ene_p, ene_m;
     dcomplex sumx0, sumy0, sumz0;
     dcomplex sumx1, sumy1, sumz1;
     dcomplex sumx2, sumy2, sumz2;
@@ -75,50 +100,52 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                          l-dependent non-local part
             ****************************************************/
 
-            if (0 <= kl && atomic->species.relativistic[wakg] == 0 && where_flag == 0) {
+            if (0 <= kl && projectors->species_views[wakg].relativistic == 0 && where_flag == 0) {
 
-                for (m = 0; m < ian; m++) {
-                    for (n = 0; n < jan; n++) {
+                if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                    if(ian>0 && jan>0) {
+                        if (Mj_AN <= Matomnum) Mj_AN2=Mj_AN; else Mj_AN2=Matomnum+1;
+                        OpenMXProjectorForceTerm terms[2];
+                        dHNL_block_term(projectors,wakg,electronic,Mc_AN,k,Mj_AN2,kl,0,1.0,0,0,&terms[0]);
+                        dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,1);
+                    }
+                }else {
+                    for (m = 0; m < ian; m++) {
+                        for (n = 0; n < jan; n++) {
 
-                        sumx = 0.0;
-                        sumy = 0.0;
-                        sumz = 0.0;
+                            sumx = 0.0;
+                            sumy = 0.0;
+                            sumz = 0.0;
 
-                        l = 0;
-                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                            l = 0;
+                            for (l1 = 1; l1 <= (int)projectors->species_views[wakg].count; l1++) {
 
-                            ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
-                                l2 = 0;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
-                                l2 = 2;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
-                                l2 = 4;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
-                                l2 = 6;
+                                ene = projectors->species_views[wakg].channels[l1-1].energy[0];
+                                l2 = projectors->species_views[wakg].channels[l1-1].twice_angular;
 
-                            if (Mj_AN <= Matomnum)
-                                Mj_AN2 = Mj_AN;
-                            else
-                                Mj_AN2 = Matomnum + 1;
+                                if (Mj_AN <= Matomnum)
+                                    Mj_AN2 = Mj_AN;
+                                else
+                                    Mj_AN2 = Matomnum + 1;
 
-                            for (l3 = 0; l3 <= l2; l3++) {
-                                sumx += ene * DS_NL1[0][1][Mc_AN][k][m][l] * DS_NL1[0][0][Mj_AN2][kl][n][l];
-                                sumy += ene * DS_NL1[0][2][Mc_AN][k][m][l] * DS_NL1[0][0][Mj_AN2][kl][n][l];
-                                sumz += ene * DS_NL1[0][3][Mc_AN][k][m][l] * DS_NL1[0][0][Mj_AN2][kl][n][l];
-                                l++;
+                                for (l3 = 0; l3 <= l2; l3++) {
+                                    sumx += ene * DS_NL1[0][1][Mc_AN][k][m][l] * DS_NL1[0][0][Mj_AN2][kl][n][l];
+                                    sumy += ene * DS_NL1[0][2][Mc_AN][k][m][l] * DS_NL1[0][0][Mj_AN2][kl][n][l];
+                                    sumz += ene * DS_NL1[0][3][Mc_AN][k][m][l] * DS_NL1[0][0][Mj_AN2][kl][n][l];
+                                    l++;
+                                }
                             }
-                        }
 
-                        Hx[0][m][n].r += sumx;
-                        Hy[0][m][n].r += sumy;
-                        Hz[0][m][n].r += sumz;
+                            Hx[0][m][n].r += sumx;
+                            Hy[0][m][n].r += sumy;
+                            Hz[0][m][n].r += sumz;
 
-                        Hx[1][m][n].r += sumx;
-                        Hy[1][m][n].r += sumy;
-                        Hz[1][m][n].r += sumz;
+                            Hx[1][m][n].r += sumx;
+                            Hy[1][m][n].r += sumy;
+                            Hz[1][m][n].r += sumz;
 
-                    } /* n */
+                        } /* n */
+                    }
                 } /* m */
 
             } /* if */
@@ -127,132 +154,91 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                          j-dependent non-local part
             ****************************************************/
 
-            else if (0 <= kl && atomic->species.relativistic[wakg] == 1 && where_flag == 0) {
+            else if (0 <= kl && projectors->species_views[wakg].relativistic == 1 && where_flag == 0) {
 
-                for (m = 0; m < ian; m++) {
-                    for (n = 0; n < jan; n++) {
-
-                        sumx0 = Complex(0.0, 0.0);
-                        sumy0 = Complex(0.0, 0.0);
-                        sumz0 = Complex(0.0, 0.0);
-
-                        sumx1 = Complex(0.0, 0.0);
-                        sumy1 = Complex(0.0, 0.0);
-                        sumz1 = Complex(0.0, 0.0);
-
-                        sumx2 = Complex(0.0, 0.0);
-                        sumy2 = Complex(0.0, 0.0);
-                        sumz2 = Complex(0.0, 0.0);
-
+                if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                    if(ian>0 && jan>0) {
                         if (Mj_AN <= Matomnum)
                             Mj_AN2 = Mj_AN;
                         else
                             Mj_AN2 = Matomnum + 1;
+                        OpenMXProjectorForceTerm terms[2];
+                        dHNL_block_term(projectors,wakg,electronic,Mc_AN,k,Mj_AN2,kl,0,1.0,0,0,&terms[0]);
+                        if(q_AN==0) dHNL_block_term(projectors,wakg,electronic,Mj_AN2,kl,Mc_AN,k,1,-1.0,0,0,&terms[1]);
+                        dHNL_block(projectors,wakg,terms,q_AN==0?2:1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,1);
+                    }
+                }else {
+                    for (m = 0; m < ian; m++) {
+                        for (n = 0; n < jan; n++) {
 
-                        l = 0;
-                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                            sumx0 = Complex(0.0, 0.0);
+                            sumy0 = Complex(0.0, 0.0);
+                            sumz0 = Complex(0.0, 0.0);
 
-                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
+                            sumx1 = Complex(0.0, 0.0);
+                            sumy1 = Complex(0.0, 0.0);
+                            sumz1 = Complex(0.0, 0.0);
 
-                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
-                                l2 = 0;
-                                PFp = 1.0;
-                                PFm = 0.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
-                                l2 = 2;
-                                PFp = 2.0 / 3.0;
-                                PFm = 1.0 / 3.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
-                                l2 = 4;
-                                PFp = 3.0 / 5.0;
-                                PFm = 2.0 / 5.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
-                                l2 = 6;
-                                PFp = 4.0 / 7.0;
-                                PFm = 3.0 / 7.0;
-                            }
+                            sumx2 = Complex(0.0, 0.0);
+                            sumy2 = Complex(0.0, 0.0);
+                            sumz2 = Complex(0.0, 0.0);
 
-                            dHNL_SO_rows(SpinP_switch,&sumx0.r, &sumy0.r, &sumz0.r,
-                                &sumx1.r, &sumy1.r, &sumz1.r,
-                                &sumx2.r, &sumy2.r, &sumz2.r,
-                                &sumx0.i, &sumy0.i, &sumz0.i,
-                                &sumx1.i, &sumy1.i, &sumz1.i,
-                                &sumx2.i, &sumy2.i, &sumz2.i,
-                                1.0,
-                                PFp, PFm,
-                                ene_p, ene_m,
-                                l2, &l,
-                                DS_NL1[0][1][Mc_AN][k][m], DS_NL1[0][2][Mc_AN][k][m], DS_NL1[0][3][Mc_AN][k][m],
-                                DS_NL1[1][1][Mc_AN][k][m], DS_NL1[1][2][Mc_AN][k][m], DS_NL1[1][3][Mc_AN][k][m],
-                                DS_NL1[0][0][Mj_AN2][kl][n], DS_NL1[1][0][Mj_AN2][kl][n]);
-                        }
+                            if (Mj_AN <= Matomnum)
+                                Mj_AN2 = Mj_AN;
+                            else
+                                Mj_AN2 = Matomnum + 1;
 
-                        if (q_AN == 0) {
-
-                            l = 0;
-                            for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
-
-                                ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                                ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
-
-                                if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
-                                    l2 = 0;
-                                    PFp = 1.0;
-                                    PFm = 0.0;
-                                } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
-                                    l2 = 2;
-                                    PFp = 2.0 / 3.0;
-                                    PFm = 1.0 / 3.0;
-                                } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
-                                    l2 = 4;
-                                    PFp = 3.0 / 5.0;
-                                    PFm = 2.0 / 5.0;
-                                } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
-                                    l2 = 6;
-                                    PFp = 4.0 / 7.0;
-                                    PFm = 3.0 / 7.0;
-                                }
-
-                                dHNL_SO_rows(SpinP_switch,&sumx0.r, &sumy0.r, &sumz0.r,
+                            dHNL_SO_rows(projectors,wakg,&sumx0.r, &sumy0.r, &sumz0.r,
                                     &sumx1.r, &sumy1.r, &sumz1.r,
                                     &sumx2.r, &sumy2.r, &sumz2.r,
                                     &sumx0.i, &sumy0.i, &sumz0.i,
                                     &sumx1.i, &sumy1.i, &sumz1.i,
                                     &sumx2.i, &sumy2.i, &sumz2.i,
-                                    -1.0,
-                                    PFp, PFm,
-                                    ene_p, ene_m,
-                                    l2, &l,
-                                    DS_NL1[0][1][Mj_AN2][kl][n], DS_NL1[0][2][Mj_AN2][kl][n], DS_NL1[0][3][Mj_AN2][kl][n],
-                                    DS_NL1[1][1][Mj_AN2][kl][n], DS_NL1[1][2][Mj_AN2][kl][n], DS_NL1[1][3][Mj_AN2][kl][n],
-                                    DS_NL1[0][0][Mc_AN][k][m], DS_NL1[1][0][Mc_AN][k][m]);
+                                    1.0,
+                                    0,
+                                    DS_NL1[0][1][Mc_AN][k][m], DS_NL1[0][2][Mc_AN][k][m], DS_NL1[0][3][Mc_AN][k][m],
+                                    DS_NL1[1][1][Mc_AN][k][m], DS_NL1[1][2][Mc_AN][k][m], DS_NL1[1][3][Mc_AN][k][m],
+                                    DS_NL1[0][0][Mj_AN2][kl][n], DS_NL1[1][0][Mj_AN2][kl][n]);
+
+                            if (q_AN == 0) {
+
+                                dHNL_SO_rows(projectors,wakg,&sumx0.r, &sumy0.r, &sumz0.r,
+                                        &sumx1.r, &sumy1.r, &sumz1.r,
+                                        &sumx2.r, &sumy2.r, &sumz2.r,
+                                        &sumx0.i, &sumy0.i, &sumz0.i,
+                                        &sumx1.i, &sumy1.i, &sumz1.i,
+                                        &sumx2.i, &sumy2.i, &sumz2.i,
+                                        -1.0,
+                                        0,
+                                        DS_NL1[0][1][Mj_AN2][kl][n], DS_NL1[0][2][Mj_AN2][kl][n], DS_NL1[0][3][Mj_AN2][kl][n],
+                                        DS_NL1[1][1][Mj_AN2][kl][n], DS_NL1[1][2][Mj_AN2][kl][n], DS_NL1[1][3][Mj_AN2][kl][n],
+                                        DS_NL1[0][0][Mc_AN][k][m], DS_NL1[1][0][Mc_AN][k][m]);
                             }
+
+                            Hx[0][m][n].r += sumx0.r; /* up-up */
+                            Hy[0][m][n].r += sumy0.r; /* up-up */
+                            Hz[0][m][n].r += sumz0.r; /* up-up */
+
+                            Hx[1][m][n].r += sumx1.r; /* dn-dn */
+                            Hy[1][m][n].r += sumy1.r; /* dn-dn */
+                            Hz[1][m][n].r += sumz1.r; /* dn-dn */
+
+                            Hx[2][m][n].r += sumx2.r; /* up-dn */
+                            Hy[2][m][n].r += sumy2.r; /* up-dn */
+                            Hz[2][m][n].r += sumz2.r; /* up-dn */
+
+                            Hx[0][m][n].i += sumx0.i; /* up-up */
+                            Hy[0][m][n].i += sumy0.i; /* up-up */
+                            Hz[0][m][n].i += sumz0.i; /* up-up */
+
+                            Hx[1][m][n].i += sumx1.i; /* dn-dn */
+                            Hy[1][m][n].i += sumy1.i; /* dn-dn */
+                            Hz[1][m][n].i += sumz1.i; /* dn-dn */
+
+                            Hx[2][m][n].i += sumx2.i; /* up-dn */
+                            Hy[2][m][n].i += sumy2.i; /* up-dn */
+                            Hz[2][m][n].i += sumz2.i; /* up-dn */
                         }
-
-                        Hx[0][m][n].r += sumx0.r; /* up-up */
-                        Hy[0][m][n].r += sumy0.r; /* up-up */
-                        Hz[0][m][n].r += sumz0.r; /* up-up */
-
-                        Hx[1][m][n].r += sumx1.r; /* dn-dn */
-                        Hy[1][m][n].r += sumy1.r; /* dn-dn */
-                        Hz[1][m][n].r += sumz1.r; /* dn-dn */
-
-                        Hx[2][m][n].r += sumx2.r; /* up-dn */
-                        Hy[2][m][n].r += sumy2.r; /* up-dn */
-                        Hz[2][m][n].r += sumz2.r; /* up-dn */
-
-                        Hx[0][m][n].i += sumx0.i; /* up-up */
-                        Hy[0][m][n].i += sumy0.i; /* up-up */
-                        Hz[0][m][n].i += sumz0.i; /* up-up */
-
-                        Hx[1][m][n].i += sumx1.i; /* dn-dn */
-                        Hy[1][m][n].i += sumy1.i; /* dn-dn */
-                        Hz[1][m][n].i += sumz1.i; /* dn-dn */
-
-                        Hx[2][m][n].i += sumx2.i; /* up-dn */
-                        Hy[2][m][n].i += sumy2.i; /* up-dn */
-                        Hz[2][m][n].i += sumz2.i; /* up-dn */
                     }
                 }
             }
@@ -265,7 +251,7 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 
         /* h_AN==0 && q_AN==0 */
 
-        if (q_AN == 0 && atomic->species.relativistic[wakg] == 0) {
+        if (q_AN == 0 && projectors->species_views[wakg].relativistic == 0) {
 
             for (m = 0; m < ian; m++) {
                 for (n = m; n < jan; n++) {
@@ -302,52 +288,55 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                          l-dependent non-local part
             ****************************************************/
 
-            if (atomic->species.relativistic[wakg] == 0) {
+            if (projectors->species_views[wakg].relativistic == 0) {
 
-                for (m = 0; m < ian; m++) {
-                    for (n = 0; n < jan; n++) {
+                if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                    if(ian>0 && jan>0) {
+                        if (Mj_AN <= Matomnum) { Mj_AN2=Mj_AN; kl2=RMI1[Mc_AN][q_AN][0]; }
+                        else { Mj_AN2=Matomnum+1; kl2=RMI1[Mc_AN][0][q_AN]; }
+                        OpenMXProjectorForceTerm terms[2];
+                        dHNL_block_term(projectors,wakg,electronic,Mj_AN2,kl2,Mc_AN,0,1,-1.0,0,1,&terms[0]);
+                        dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,1);
+                    }
+                }else {
+                    for (m = 0; m < ian; m++) {
+                        for (n = 0; n < jan; n++) {
 
-                        sumx = 0.0;
-                        sumy = 0.0;
-                        sumz = 0.0;
+                            sumx = 0.0;
+                            sumy = 0.0;
+                            sumz = 0.0;
 
-                        if (Mj_AN <= Matomnum) {
-                            Mj_AN2 = Mj_AN;
-                            kl2 = RMI1[Mc_AN][q_AN][0];
-                        } else {
-                            Mj_AN2 = Matomnum + 1;
-                            kl2 = RMI1[Mc_AN][0][q_AN];
-                        }
-
-                        l = 0;
-                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
-
-                            ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
-                                l2 = 0;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
-                                l2 = 2;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
-                                l2 = 4;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
-                                l2 = 6;
-
-                            for (l3 = 0; l3 <= l2; l3++) {
-
-                                sumx -= ene * DS_NL1[0][0][Mc_AN][0][m][l] * DS_NL1[0][1][Mj_AN2][kl2][n][l];
-                                sumy -= ene * DS_NL1[0][0][Mc_AN][0][m][l] * DS_NL1[0][2][Mj_AN2][kl2][n][l];
-                                sumz -= ene * DS_NL1[0][0][Mc_AN][0][m][l] * DS_NL1[0][3][Mj_AN2][kl2][n][l];
-                                l++;
+                            if (Mj_AN <= Matomnum) {
+                                Mj_AN2 = Mj_AN;
+                                kl2 = RMI1[Mc_AN][q_AN][0];
+                            } else {
+                                Mj_AN2 = Matomnum + 1;
+                                kl2 = RMI1[Mc_AN][0][q_AN];
                             }
+
+                            l = 0;
+                            for (l1 = 1; l1 <= (int)projectors->species_views[wakg].count; l1++) {
+
+                                ene = projectors->species_views[wakg].channels[l1-1].energy[0];
+                                l2 = projectors->species_views[wakg].channels[l1-1].twice_angular;
+
+                                for (l3 = 0; l3 <= l2; l3++) {
+
+                                    sumx -= ene * DS_NL1[0][0][Mc_AN][0][m][l] * DS_NL1[0][1][Mj_AN2][kl2][n][l];
+                                    sumy -= ene * DS_NL1[0][0][Mc_AN][0][m][l] * DS_NL1[0][2][Mj_AN2][kl2][n][l];
+                                    sumz -= ene * DS_NL1[0][0][Mc_AN][0][m][l] * DS_NL1[0][3][Mj_AN2][kl2][n][l];
+                                    l++;
+                                }
+                            }
+
+                            Hx[0][m][n].r += sumx;
+                            Hy[0][m][n].r += sumy;
+                            Hz[0][m][n].r += sumz;
+
+                            Hx[1][m][n].r += sumx;
+                            Hy[1][m][n].r += sumy;
+                            Hz[1][m][n].r += sumz;
                         }
-
-                        Hx[0][m][n].r += sumx;
-                        Hy[0][m][n].r += sumy;
-                        Hz[0][m][n].r += sumz;
-
-                        Hx[1][m][n].r += sumx;
-                        Hy[1][m][n].r += sumy;
-                        Hz[1][m][n].r += sumz;
                     }
                 }
             }
@@ -356,23 +345,10 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                          j-dependent non-local part
             ****************************************************/
 
-            else if (atomic->species.relativistic[wakg] == 1) {
+            else if (projectors->species_views[wakg].relativistic == 1) {
 
-                for (m = 0; m < ian; m++) {
-                    for (n = 0; n < jan; n++) {
-
-                        sumx0 = Complex(0.0, 0.0);
-                        sumy0 = Complex(0.0, 0.0);
-                        sumz0 = Complex(0.0, 0.0);
-
-                        sumx1 = Complex(0.0, 0.0);
-                        sumy1 = Complex(0.0, 0.0);
-                        sumz1 = Complex(0.0, 0.0);
-
-                        sumx2 = Complex(0.0, 0.0);
-                        sumy2 = Complex(0.0, 0.0);
-                        sumz2 = Complex(0.0, 0.0);
-
+                if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                    if(ian>0 && jan>0) {
                         if (Mj_AN <= Matomnum) {
                             Mj_AN2 = Mj_AN;
                             kl2 = RMI1[Mc_AN][q_AN][0];
@@ -380,71 +356,70 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                             Mj_AN2 = Matomnum + 1;
                             kl2 = RMI1[Mc_AN][0][q_AN];
                         }
+                        OpenMXProjectorForceTerm terms[2];
+                        dHNL_block_term(projectors,wakg,electronic,Mj_AN2,kl2,Mc_AN,0,1,-1.0,1,0,&terms[0]);
+                        dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,1);
+                    }
+                }else {
+                    for (m = 0; m < ian; m++) {
+                        for (n = 0; n < jan; n++) {
 
-                        l = 0;
-                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                            sumx0 = Complex(0.0, 0.0);
+                            sumy0 = Complex(0.0, 0.0);
+                            sumz0 = Complex(0.0, 0.0);
 
-                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
+                            sumx1 = Complex(0.0, 0.0);
+                            sumy1 = Complex(0.0, 0.0);
+                            sumz1 = Complex(0.0, 0.0);
 
-                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
-                                l2 = 0;
-                                PFp = 1.0;
-                                PFm = 0.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
-                                l2 = 2;
-                                PFp = 2.0 / 3.0;
-                                PFm = 1.0 / 3.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
-                                l2 = 4;
-                                PFp = 3.0 / 5.0;
-                                PFm = 2.0 / 5.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
-                                l2 = 6;
-                                PFp = 4.0 / 7.0;
-                                PFm = 3.0 / 7.0;
+                            sumx2 = Complex(0.0, 0.0);
+                            sumy2 = Complex(0.0, 0.0);
+                            sumz2 = Complex(0.0, 0.0);
+
+                            if (Mj_AN <= Matomnum) {
+                                Mj_AN2 = Mj_AN;
+                                kl2 = RMI1[Mc_AN][q_AN][0];
+                            } else {
+                                Mj_AN2 = Matomnum + 1;
+                                kl2 = RMI1[Mc_AN][0][q_AN];
                             }
 
-                            /* 1 */
+                            dHNL_SO_rows(projectors,wakg,&sumx0.r, &sumy0.r, &sumz0.r,
+                                    &sumx1.r, &sumy1.r, &sumz1.r,
+                                    &sumx2.r, &sumy2.r, &sumz2.r,
+                                    &sumx0.i, &sumy0.i, &sumz0.i,
+                                    &sumx1.i, &sumy1.i, &sumz1.i,
+                                    &sumx2.i, &sumy2.i, &sumz2.i,
+                                    -1.0,
+                                    1,
+                                    DS_NL1[0][1][Mj_AN2][kl2][n], DS_NL1[0][2][Mj_AN2][kl2][n], DS_NL1[0][3][Mj_AN2][kl2][n],
+                                    DS_NL1[1][1][Mj_AN2][kl2][n], DS_NL1[1][2][Mj_AN2][kl2][n], DS_NL1[1][3][Mj_AN2][kl2][n],
+                                    DS_NL1[0][0][Mc_AN][0][m], DS_NL1[1][0][Mc_AN][0][m]);
 
-                            dHNL_SO_rows(SpinP_switch,&sumx0.r, &sumy0.r, &sumz0.r,
-                                &sumx1.r, &sumy1.r, &sumz1.r,
-                                &sumx2.r, &sumy2.r, &sumz2.r,
-                                &sumx0.i, &sumy0.i, &sumz0.i,
-                                &sumx1.i, &sumy1.i, &sumz1.i,
-                                &sumx2.i, &sumy2.i, &sumz2.i,
-                                -1.0,
-                                PFp, PFm,
-                                -ene_p, -ene_m,
-                                l2, &l,
-                                DS_NL1[0][1][Mj_AN2][kl2][n], DS_NL1[0][2][Mj_AN2][kl2][n], DS_NL1[0][3][Mj_AN2][kl2][n],
-                                DS_NL1[1][1][Mj_AN2][kl2][n], DS_NL1[1][2][Mj_AN2][kl2][n], DS_NL1[1][3][Mj_AN2][kl2][n],
-                                DS_NL1[0][0][Mc_AN][0][m], DS_NL1[1][0][Mc_AN][0][m]);
+                            Hx[0][m][n].r += sumx0.r; /* up-up */
+                            Hy[0][m][n].r += sumy0.r; /* up-up */
+                            Hz[0][m][n].r += sumz0.r; /* up-up */
+
+                            Hx[1][m][n].r += sumx1.r; /* dn-dn */
+                            Hy[1][m][n].r += sumy1.r; /* dn-dn */
+                            Hz[1][m][n].r += sumz1.r; /* dn-dn */
+
+                            Hx[2][m][n].r += sumx2.r; /* up-dn */
+                            Hy[2][m][n].r += sumy2.r; /* up-dn */
+                            Hz[2][m][n].r += sumz2.r; /* up-dn */
+
+                            Hx[0][m][n].i += sumx0.i; /* up-up */
+                            Hy[0][m][n].i += sumy0.i; /* up-up */
+                            Hz[0][m][n].i += sumz0.i; /* up-up */
+
+                            Hx[1][m][n].i += sumx1.i; /* dn-dn */
+                            Hy[1][m][n].i += sumy1.i; /* dn-dn */
+                            Hz[1][m][n].i += sumz1.i; /* dn-dn */
+
+                            Hx[2][m][n].i += sumx2.i; /* up-dn */
+                            Hy[2][m][n].i += sumy2.i; /* up-dn */
+                            Hz[2][m][n].i += sumz2.i; /* up-dn */
                         }
-
-                        Hx[0][m][n].r += sumx0.r; /* up-up */
-                        Hy[0][m][n].r += sumy0.r; /* up-up */
-                        Hz[0][m][n].r += sumz0.r; /* up-up */
-
-                        Hx[1][m][n].r += sumx1.r; /* dn-dn */
-                        Hy[1][m][n].r += sumy1.r; /* dn-dn */
-                        Hz[1][m][n].r += sumz1.r; /* dn-dn */
-
-                        Hx[2][m][n].r += sumx2.r; /* up-dn */
-                        Hy[2][m][n].r += sumy2.r; /* up-dn */
-                        Hz[2][m][n].r += sumz2.r; /* up-dn */
-
-                        Hx[0][m][n].i += sumx0.i; /* up-up */
-                        Hy[0][m][n].i += sumy0.i; /* up-up */
-                        Hz[0][m][n].i += sumz0.i; /* up-up */
-
-                        Hx[1][m][n].i += sumx1.i; /* dn-dn */
-                        Hy[1][m][n].i += sumy1.i; /* dn-dn */
-                        Hz[1][m][n].i += sumz1.i; /* dn-dn */
-
-                        Hx[2][m][n].i += sumx2.i; /* up-dn */
-                        Hy[2][m][n].i += sumy2.i; /* up-dn */
-                        Hz[2][m][n].i += sumz2.i; /* up-dn */
                     }
                 }
             }
@@ -460,9 +435,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
            if (h_AN!=0 && where_flag==0)
            This happens
            only if
-           ( SpinP_switch==3
+           ( projectors->spin==3
              &&
-             (SO_switch==1 || (Hub_U_switch==1 && F_U_flag==1)
+             (projectors->spin_orbit==1 || (Hub_U_switch==1 && F_U_flag==1)
                || 1<=Constraint_NCS_switch || Zeeman_NCS_switch==1
                || Zeeman_NCO_switch==1)
              &&
@@ -482,85 +457,66 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
             else
                 Mi_AN2 = Matomnum + 1;
 
-            if (0 <= kl && atomic->species.relativistic[wakg] == 1) {
+            if (0 <= kl && projectors->species_views[wakg].relativistic == 1) {
 
-                for (m = 0; m < ian; m++) {
-                    for (n = 0; n < jan; n++) {
+                if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                    if(ian>0 && jan>0) {
+                        OpenMXProjectorForceTerm terms[2];
+                        dHNL_block_term(projectors,wakg,electronic,Mj_AN,k,Mi_AN2,kl,1,-1.0,0,0,&terms[0]);
+                        dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,1);
+                    }
+                }else {
+                    for (m = 0; m < ian; m++) {
+                        for (n = 0; n < jan; n++) {
 
-                        sumx0 = Complex(0.0, 0.0);
-                        sumy0 = Complex(0.0, 0.0);
-                        sumz0 = Complex(0.0, 0.0);
+                            sumx0 = Complex(0.0, 0.0);
+                            sumy0 = Complex(0.0, 0.0);
+                            sumz0 = Complex(0.0, 0.0);
 
-                        sumx1 = Complex(0.0, 0.0);
-                        sumy1 = Complex(0.0, 0.0);
-                        sumz1 = Complex(0.0, 0.0);
+                            sumx1 = Complex(0.0, 0.0);
+                            sumy1 = Complex(0.0, 0.0);
+                            sumz1 = Complex(0.0, 0.0);
 
-                        sumx2 = Complex(0.0, 0.0);
-                        sumy2 = Complex(0.0, 0.0);
-                        sumz2 = Complex(0.0, 0.0);
+                            sumx2 = Complex(0.0, 0.0);
+                            sumy2 = Complex(0.0, 0.0);
+                            sumz2 = Complex(0.0, 0.0);
 
-                        l = 0;
-                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                            dHNL_SO_rows(projectors,wakg,&sumx0.r, &sumy0.r, &sumz0.r,
+                                    &sumx1.r, &sumy1.r, &sumz1.r,
+                                    &sumx2.r, &sumy2.r, &sumz2.r,
+                                    &sumx0.i, &sumy0.i, &sumz0.i,
+                                    &sumx1.i, &sumy1.i, &sumz1.i,
+                                    &sumx2.i, &sumy2.i, &sumz2.i,
+                                    -1.0,
+                                    0,
+                                    DS_NL1[0][1][Mj_AN][k][n], DS_NL1[0][2][Mj_AN][k][n], DS_NL1[0][3][Mj_AN][k][n],
+                                    DS_NL1[1][1][Mj_AN][k][n], DS_NL1[1][2][Mj_AN][k][n], DS_NL1[1][3][Mj_AN][k][n],
+                                    DS_NL1[0][0][Mi_AN2][kl][m], DS_NL1[1][0][Mi_AN2][kl][m]);
 
-                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
+                            Hx[0][m][n].r += sumx0.r; /* up-up */
+                            Hy[0][m][n].r += sumy0.r; /* up-up */
+                            Hz[0][m][n].r += sumz0.r; /* up-up */
 
-                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
-                                l2 = 0;
-                                PFp = 1.0;
-                                PFm = 0.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
-                                l2 = 2;
-                                PFp = 2.0 / 3.0;
-                                PFm = 1.0 / 3.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
-                                l2 = 4;
-                                PFp = 3.0 / 5.0;
-                                PFm = 2.0 / 5.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
-                                l2 = 6;
-                                PFp = 4.0 / 7.0;
-                                PFm = 3.0 / 7.0;
-                            }
+                            Hx[1][m][n].r += sumx1.r; /* dn-dn */
+                            Hy[1][m][n].r += sumy1.r; /* dn-dn */
+                            Hz[1][m][n].r += sumz1.r; /* dn-dn */
 
-                            dHNL_SO_rows(SpinP_switch,&sumx0.r, &sumy0.r, &sumz0.r,
-                                &sumx1.r, &sumy1.r, &sumz1.r,
-                                &sumx2.r, &sumy2.r, &sumz2.r,
-                                &sumx0.i, &sumy0.i, &sumz0.i,
-                                &sumx1.i, &sumy1.i, &sumz1.i,
-                                &sumx2.i, &sumy2.i, &sumz2.i,
-                                -1.0,
-                                PFp, PFm,
-                                ene_p, ene_m,
-                                l2, &l,
-                                DS_NL1[0][1][Mj_AN][k][n], DS_NL1[0][2][Mj_AN][k][n], DS_NL1[0][3][Mj_AN][k][n],
-                                DS_NL1[1][1][Mj_AN][k][n], DS_NL1[1][2][Mj_AN][k][n], DS_NL1[1][3][Mj_AN][k][n],
-                                DS_NL1[0][0][Mi_AN2][kl][m], DS_NL1[1][0][Mi_AN2][kl][m]);
+                            Hx[2][m][n].r += sumx2.r; /* up-dn */
+                            Hy[2][m][n].r += sumy2.r; /* up-dn */
+                            Hz[2][m][n].r += sumz2.r; /* up-dn */
+
+                            Hx[0][m][n].i += sumx0.i; /* up-up */
+                            Hy[0][m][n].i += sumy0.i; /* up-up */
+                            Hz[0][m][n].i += sumz0.i; /* up-up */
+
+                            Hx[1][m][n].i += sumx1.i; /* dn-dn */
+                            Hy[1][m][n].i += sumy1.i; /* dn-dn */
+                            Hz[1][m][n].i += sumz1.i; /* dn-dn */
+
+                            Hx[2][m][n].i += sumx2.i; /* up-dn */
+                            Hy[2][m][n].i += sumy2.i; /* up-dn */
+                            Hz[2][m][n].i += sumz2.i; /* up-dn */
                         }
-
-                        Hx[0][m][n].r += sumx0.r; /* up-up */
-                        Hy[0][m][n].r += sumy0.r; /* up-up */
-                        Hz[0][m][n].r += sumz0.r; /* up-up */
-
-                        Hx[1][m][n].r += sumx1.r; /* dn-dn */
-                        Hy[1][m][n].r += sumy1.r; /* dn-dn */
-                        Hz[1][m][n].r += sumz1.r; /* dn-dn */
-
-                        Hx[2][m][n].r += sumx2.r; /* up-dn */
-                        Hy[2][m][n].r += sumy2.r; /* up-dn */
-                        Hz[2][m][n].r += sumz2.r; /* up-dn */
-
-                        Hx[0][m][n].i += sumx0.i; /* up-up */
-                        Hy[0][m][n].i += sumy0.i; /* up-up */
-                        Hz[0][m][n].i += sumz0.i; /* up-up */
-
-                        Hx[1][m][n].i += sumx1.i; /* dn-dn */
-                        Hy[1][m][n].i += sumy1.i; /* dn-dn */
-                        Hz[1][m][n].i += sumz1.i; /* dn-dn */
-
-                        Hx[2][m][n].i += sumx2.i; /* up-dn */
-                        Hy[2][m][n].i += sumy2.i; /* up-dn */
-                        Hz[2][m][n].i += sumz2.i; /* up-dn */
                     }
                 }
             }
@@ -586,59 +542,60 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                        l-dependent non-local part
         ****************************************************/
 
-        if (atomic->species.relativistic[wakg] == 0) {
+        if (projectors->species_views[wakg].relativistic == 0) {
 
-            for (m = 0; m < ian; m++) {
-                for (n = 0; n < jan; n++) {
+            if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                if(ian>0 && jan>0) {
+                    OpenMXProjectorForceTerm terms[2];
+                    dHNL_block_term(projectors,wakg,electronic,Matomnum + 1,kl1,Matomnum + 1,kl2,0,-1.0,0,0,&terms[0]);
+                    dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,0);
+                }
+            }else {
+                for (m = 0; m < ian; m++) {
+                    for (n = 0; n < jan; n++) {
 
-                    sumx = 0.0;
-                    sumy = 0.0;
-                    sumz = 0.0;
+                        sumx = 0.0;
+                        sumy = 0.0;
+                        sumz = 0.0;
 
-                    l = 0;
-                    for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                        l = 0;
+                        for (l1 = 1; l1 <= (int)projectors->species_views[wakg].count; l1++) {
 
-                        ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                        if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
-                            l2 = 0;
-                        else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
-                            l2 = 2;
-                        else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
-                            l2 = 4;
-                        else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
-                            l2 = 6;
+                            ene = projectors->species_views[wakg].channels[l1-1].energy[0];
+                                l2 = projectors->species_views[wakg].channels[l1-1].twice_angular;
 
-                        for (l3 = 0; l3 <= l2; l3++) {
-                            sumx -= ene * DS_NL1[0][1][Matomnum + 1][kl1][m][l] * DS_NL1[0][0][Matomnum + 1][kl2][n][l];
-                            sumy -= ene * DS_NL1[0][2][Matomnum + 1][kl1][m][l] * DS_NL1[0][0][Matomnum + 1][kl2][n][l];
-                            sumz -= ene * DS_NL1[0][3][Matomnum + 1][kl1][m][l] * DS_NL1[0][0][Matomnum + 1][kl2][n][l];
-                            l++;
+                            for (l3 = 0; l3 <= l2; l3++) {
+                                sumx -= ene * DS_NL1[0][1][Matomnum + 1][kl1][m][l] * DS_NL1[0][0][Matomnum + 1][kl2][n][l];
+                                sumy -= ene * DS_NL1[0][2][Matomnum + 1][kl1][m][l] * DS_NL1[0][0][Matomnum + 1][kl2][n][l];
+                                sumz -= ene * DS_NL1[0][3][Matomnum + 1][kl1][m][l] * DS_NL1[0][0][Matomnum + 1][kl2][n][l];
+                                l++;
+                            }
                         }
+
+                        Hx[0][m][n].r = sumx;
+                        Hy[0][m][n].r = sumy;
+                        Hz[0][m][n].r = sumz;
+
+                        Hx[1][m][n].r = sumx;
+                        Hy[1][m][n].r = sumy;
+                        Hz[1][m][n].r = sumz;
+
+                        Hx[2][m][n].r = 0.0;
+                        Hy[2][m][n].r = 0.0;
+                        Hz[2][m][n].r = 0.0;
+
+                        Hx[0][m][n].i = 0.0;
+                        Hy[0][m][n].i = 0.0;
+                        Hz[0][m][n].i = 0.0;
+
+                        Hx[1][m][n].i = 0.0;
+                        Hy[1][m][n].i = 0.0;
+                        Hz[1][m][n].i = 0.0;
+
+                        Hx[2][m][n].i = 0.0;
+                        Hy[2][m][n].i = 0.0;
+                        Hz[2][m][n].i = 0.0;
                     }
-
-                    Hx[0][m][n].r = sumx;
-                    Hy[0][m][n].r = sumy;
-                    Hz[0][m][n].r = sumz;
-
-                    Hx[1][m][n].r = sumx;
-                    Hy[1][m][n].r = sumy;
-                    Hz[1][m][n].r = sumz;
-
-                    Hx[2][m][n].r = 0.0;
-                    Hy[2][m][n].r = 0.0;
-                    Hz[2][m][n].r = 0.0;
-
-                    Hx[0][m][n].i = 0.0;
-                    Hy[0][m][n].i = 0.0;
-                    Hz[0][m][n].i = 0.0;
-
-                    Hx[1][m][n].i = 0.0;
-                    Hy[1][m][n].i = 0.0;
-                    Hz[1][m][n].i = 0.0;
-
-                    Hx[2][m][n].i = 0.0;
-                    Hy[2][m][n].i = 0.0;
-                    Hz[2][m][n].i = 0.0;
                 }
             }
         }
@@ -647,87 +604,66 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                      j-dependent non-local part
         ****************************************************/
 
-        else if (atomic->species.relativistic[wakg] == 1) {
+        else if (projectors->species_views[wakg].relativistic == 1) {
 
-            for (m = 0; m < ian; m++) {
-                for (n = 0; n < jan; n++) {
+            if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                if(ian>0 && jan>0) {
+                    OpenMXProjectorForceTerm terms[2];
+                    dHNL_block_term(projectors,wakg,electronic,Matomnum + 1,kl1,Matomnum + 1,kl2,0,1.0,1,0,&terms[0]);
+                    dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,0);
+                }
+            }else {
+                for (m = 0; m < ian; m++) {
+                    for (n = 0; n < jan; n++) {
 
-                    sumx0 = Complex(0.0, 0.0);
-                    sumy0 = Complex(0.0, 0.0);
-                    sumz0 = Complex(0.0, 0.0);
+                        sumx0 = Complex(0.0, 0.0);
+                        sumy0 = Complex(0.0, 0.0);
+                        sumz0 = Complex(0.0, 0.0);
 
-                    sumx1 = Complex(0.0, 0.0);
-                    sumy1 = Complex(0.0, 0.0);
-                    sumz1 = Complex(0.0, 0.0);
+                        sumx1 = Complex(0.0, 0.0);
+                        sumy1 = Complex(0.0, 0.0);
+                        sumz1 = Complex(0.0, 0.0);
 
-                    sumx2 = Complex(0.0, 0.0);
-                    sumy2 = Complex(0.0, 0.0);
-                    sumz2 = Complex(0.0, 0.0);
+                        sumx2 = Complex(0.0, 0.0);
+                        sumy2 = Complex(0.0, 0.0);
+                        sumz2 = Complex(0.0, 0.0);
 
-                    l = 0;
-                    for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                        dHNL_SO_rows(projectors,wakg,&sumx0.r, &sumy0.r, &sumz0.r,
+                                &sumx1.r, &sumy1.r, &sumz1.r,
+                                &sumx2.r, &sumy2.r, &sumz2.r,
+                                &sumx0.i, &sumy0.i, &sumz0.i,
+                                &sumx1.i, &sumy1.i, &sumz1.i,
+                                &sumx2.i, &sumy2.i, &sumz2.i,
+                                1.0,
+                                1,
+                                DS_NL1[0][1][Matomnum + 1][kl1][m], DS_NL1[0][2][Matomnum + 1][kl1][m], DS_NL1[0][3][Matomnum + 1][kl1][m],
+                                DS_NL1[1][1][Matomnum + 1][kl1][m], DS_NL1[1][2][Matomnum + 1][kl1][m], DS_NL1[1][3][Matomnum + 1][kl1][m],
+                                DS_NL1[0][0][Matomnum + 1][kl2][n], DS_NL1[1][0][Matomnum + 1][kl2][n]);
 
-                        ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                        ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
+                        Hx[0][m][n].r = sumx0.r; /* up-up */
+                        Hy[0][m][n].r = sumy0.r; /* up-up */
+                        Hz[0][m][n].r = sumz0.r; /* up-up */
 
-                        if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
-                            l2 = 0;
-                            PFp = 1.0;
-                            PFm = 0.0;
-                        } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
-                            l2 = 2;
-                            PFp = 2.0 / 3.0;
-                            PFm = 1.0 / 3.0;
-                        } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
-                            l2 = 4;
-                            PFp = 3.0 / 5.0;
-                            PFm = 2.0 / 5.0;
-                        } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
-                            l2 = 6;
-                            PFp = 4.0 / 7.0;
-                            PFm = 3.0 / 7.0;
-                        }
+                        Hx[1][m][n].r = sumx1.r; /* dn-dn */
+                        Hy[1][m][n].r = sumy1.r; /* dn-dn */
+                        Hz[1][m][n].r = sumz1.r; /* dn-dn */
 
-                        /* 2 */
+                        Hx[2][m][n].r = sumx2.r; /* up-dn */
+                        Hy[2][m][n].r = sumy2.r; /* up-dn */
+                        Hz[2][m][n].r = sumz2.r; /* up-dn */
 
-                        dHNL_SO_rows(SpinP_switch,&sumx0.r, &sumy0.r, &sumz0.r,
-                            &sumx1.r, &sumy1.r, &sumz1.r,
-                            &sumx2.r, &sumy2.r, &sumz2.r,
-                            &sumx0.i, &sumy0.i, &sumz0.i,
-                            &sumx1.i, &sumy1.i, &sumz1.i,
-                            &sumx2.i, &sumy2.i, &sumz2.i,
-                            1.0,
-                            PFp, PFm,
-                            -ene_p, -ene_m,
-                            l2, &l,
-                            DS_NL1[0][1][Matomnum + 1][kl1][m], DS_NL1[0][2][Matomnum + 1][kl1][m], DS_NL1[0][3][Matomnum + 1][kl1][m],
-                            DS_NL1[1][1][Matomnum + 1][kl1][m], DS_NL1[1][2][Matomnum + 1][kl1][m], DS_NL1[1][3][Matomnum + 1][kl1][m],
-                            DS_NL1[0][0][Matomnum + 1][kl2][n], DS_NL1[1][0][Matomnum + 1][kl2][n]);
+                        Hx[0][m][n].i = sumx0.i; /* up-up */
+                        Hy[0][m][n].i = sumy0.i; /* up-up */
+                        Hz[0][m][n].i = sumz0.i; /* up-up */
+
+                        Hx[1][m][n].i = sumx1.i; /* dn-dn */
+                        Hy[1][m][n].i = sumy1.i; /* dn-dn */
+                        Hz[1][m][n].i = sumz1.i; /* dn-dn */
+
+                        Hx[2][m][n].i = sumx2.i; /* up-dn */
+                        Hy[2][m][n].i = sumy2.i; /* up-dn */
+                        Hz[2][m][n].i = sumz2.i; /* up-dn */
                     }
-
-                    Hx[0][m][n].r = sumx0.r; /* up-up */
-                    Hy[0][m][n].r = sumy0.r; /* up-up */
-                    Hz[0][m][n].r = sumz0.r; /* up-up */
-
-                    Hx[1][m][n].r = sumx1.r; /* dn-dn */
-                    Hy[1][m][n].r = sumy1.r; /* dn-dn */
-                    Hz[1][m][n].r = sumz1.r; /* dn-dn */
-
-                    Hx[2][m][n].r = sumx2.r; /* up-dn */
-                    Hy[2][m][n].r = sumy2.r; /* up-dn */
-                    Hz[2][m][n].r = sumz2.r; /* up-dn */
-
-                    Hx[0][m][n].i = sumx0.i; /* up-up */
-                    Hy[0][m][n].i = sumy0.i; /* up-up */
-                    Hz[0][m][n].i = sumz0.i; /* up-up */
-
-                    Hx[1][m][n].i = sumx1.i; /* dn-dn */
-                    Hy[1][m][n].i = sumy1.i; /* dn-dn */
-                    Hz[1][m][n].i = sumz1.i; /* dn-dn */
-
-                    Hx[2][m][n].i = sumx2.i; /* up-dn */
-                    Hy[2][m][n].i = sumy2.i; /* up-dn */
-                    Hz[2][m][n].i = sumz2.i; /* up-dn */
                 }
             }
         }
@@ -748,43 +684,44 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                            l-dependent non-local part
             ****************************************************/
 
-            if (atomic->species.relativistic[wakg] == 0) {
+            if (projectors->species_views[wakg].relativistic == 0) {
 
-                for (m = 0; m < ian; m++) {
-                    for (n = 0; n < jan; n++) {
+                if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                    if(ian>0 && jan>0) {
+                        OpenMXProjectorForceTerm terms[2];
+                        dHNL_block_term(projectors,wakg,electronic,Matomnum + 1,kl2,Matomnum + 1,kl1,1,-1.0,0,1,&terms[0]);
+                        dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,1);
+                    }
+                }else {
+                    for (m = 0; m < ian; m++) {
+                        for (n = 0; n < jan; n++) {
 
-                        sumx = 0.0;
-                        sumy = 0.0;
-                        sumz = 0.0;
+                            sumx = 0.0;
+                            sumy = 0.0;
+                            sumz = 0.0;
 
-                        l = 0;
-                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                            l = 0;
+                            for (l1 = 1; l1 <= (int)projectors->species_views[wakg].count; l1++) {
 
-                            ene = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0)
-                                l2 = 0;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1)
-                                l2 = 2;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2)
-                                l2 = 4;
-                            else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3)
-                                l2 = 6;
+                                ene = projectors->species_views[wakg].channels[l1-1].energy[0];
+                                l2 = projectors->species_views[wakg].channels[l1-1].twice_angular;
 
-                            for (l3 = 0; l3 <= l2; l3++) {
-                                sumx -= ene * DS_NL1[0][0][Matomnum + 1][kl1][m][l] * DS_NL1[0][1][Matomnum + 1][kl2][n][l];
-                                sumy -= ene * DS_NL1[0][0][Matomnum + 1][kl1][m][l] * DS_NL1[0][2][Matomnum + 1][kl2][n][l];
-                                sumz -= ene * DS_NL1[0][0][Matomnum + 1][kl1][m][l] * DS_NL1[0][3][Matomnum + 1][kl2][n][l];
-                                l++;
+                                for (l3 = 0; l3 <= l2; l3++) {
+                                    sumx -= ene * DS_NL1[0][0][Matomnum + 1][kl1][m][l] * DS_NL1[0][1][Matomnum + 1][kl2][n][l];
+                                    sumy -= ene * DS_NL1[0][0][Matomnum + 1][kl1][m][l] * DS_NL1[0][2][Matomnum + 1][kl2][n][l];
+                                    sumz -= ene * DS_NL1[0][0][Matomnum + 1][kl1][m][l] * DS_NL1[0][3][Matomnum + 1][kl2][n][l];
+                                    l++;
+                                }
                             }
+
+                            Hx[0][m][n].r += sumx;
+                            Hy[0][m][n].r += sumy;
+                            Hz[0][m][n].r += sumz;
+
+                            Hx[1][m][n].r += sumx;
+                            Hy[1][m][n].r += sumy;
+                            Hz[1][m][n].r += sumz;
                         }
-
-                        Hx[0][m][n].r += sumx;
-                        Hy[0][m][n].r += sumy;
-                        Hz[0][m][n].r += sumz;
-
-                        Hx[1][m][n].r += sumx;
-                        Hy[1][m][n].r += sumy;
-                        Hz[1][m][n].r += sumz;
                     }
                 }
             }
@@ -793,87 +730,66 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                           j-dependent non-local part
             ****************************************************/
 
-            else if (atomic->species.relativistic[wakg] == 1) {
+            else if (projectors->species_views[wakg].relativistic == 1) {
 
-                for (m = 0; m < ian; m++) {
-                    for (n = 0; n < jan; n++) {
+                if(electronic->fields[OPENMX_ELECTRONIC_PROJECTORS].values) {
+                    if(ian>0 && jan>0) {
+                        OpenMXProjectorForceTerm terms[2];
+                        dHNL_block_term(projectors,wakg,electronic,Matomnum + 1,kl2,Matomnum + 1,kl1,1,-1.0,1,0,&terms[0]);
+                        dHNL_block(projectors,wakg,terms,1,ian,jan,List_YOUSO[7],Hx,Hy,Hz,1);
+                    }
+                }else {
+                    for (m = 0; m < ian; m++) {
+                        for (n = 0; n < jan; n++) {
 
-                        sumx0 = Complex(0.0, 0.0);
-                        sumy0 = Complex(0.0, 0.0);
-                        sumz0 = Complex(0.0, 0.0);
+                            sumx0 = Complex(0.0, 0.0);
+                            sumy0 = Complex(0.0, 0.0);
+                            sumz0 = Complex(0.0, 0.0);
 
-                        sumx1 = Complex(0.0, 0.0);
-                        sumy1 = Complex(0.0, 0.0);
-                        sumz1 = Complex(0.0, 0.0);
+                            sumx1 = Complex(0.0, 0.0);
+                            sumy1 = Complex(0.0, 0.0);
+                            sumz1 = Complex(0.0, 0.0);
 
-                        sumx2 = Complex(0.0, 0.0);
-                        sumy2 = Complex(0.0, 0.0);
-                        sumz2 = Complex(0.0, 0.0);
+                            sumx2 = Complex(0.0, 0.0);
+                            sumy2 = Complex(0.0, 0.0);
+                            sumz2 = Complex(0.0, 0.0);
 
-                        l = 0;
-                        for (l1 = 1; l1 <= atomic->species.radial_projectors[wakg]; l1++) {
+                            dHNL_SO_rows(projectors,wakg,&sumx0.r, &sumy0.r, &sumz0.r,
+                                    &sumx1.r, &sumy1.r, &sumz1.r,
+                                    &sumx2.r, &sumy2.r, &sumz2.r,
+                                    &sumx0.i, &sumy0.i, &sumz0.i,
+                                    &sumx1.i, &sumy1.i, &sumz1.i,
+                                    &sumx2.i, &sumy2.i, &sumz2.i,
+                                    -1.0,
+                                    1,
+                                    DS_NL1[0][1][Matomnum + 1][kl2][n], DS_NL1[0][2][Matomnum + 1][kl2][n], DS_NL1[0][3][Matomnum + 1][kl2][n],
+                                    DS_NL1[1][1][Matomnum + 1][kl2][n], DS_NL1[1][2][Matomnum + 1][kl2][n], DS_NL1[1][3][Matomnum + 1][kl2][n],
+                                    DS_NL1[0][0][Matomnum + 1][kl1][m], DS_NL1[1][0][Matomnum + 1][kl1][m]);
 
-                            ene_p = openmx_radial_row3(&atomic->projector_energies,0,wakg)[l1 - 1];
-                            ene_m = openmx_radial_row3(&atomic->projector_energies,1,wakg)[l1 - 1];
+                            Hx[0][m][n].r += sumx0.r; /* up-up */
+                            Hy[0][m][n].r += sumy0.r; /* up-up */
+                            Hz[0][m][n].r += sumz0.r; /* up-up */
 
-                            if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 0) {
-                                l2 = 0;
-                                PFp = 1.0;
-                                PFm = 0.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 1) {
-                                l2 = 2;
-                                PFp = 2.0 / 3.0;
-                                PFm = 1.0 / 3.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 2) {
-                                l2 = 4;
-                                PFp = 3.0 / 5.0;
-                                PFm = 2.0 / 5.0;
-                            } else if (openmx_atomic_projector_angular(atomic,wakg)[l1] == 3) {
-                                l2 = 6;
-                                PFp = 4.0 / 7.0;
-                                PFm = 3.0 / 7.0;
-                            }
+                            Hx[1][m][n].r += sumx1.r; /* dn-dn */
+                            Hy[1][m][n].r += sumy1.r; /* dn-dn */
+                            Hz[1][m][n].r += sumz1.r; /* dn-dn */
 
-                            /* 4 */
+                            Hx[2][m][n].r += sumx2.r; /* up-dn */
+                            Hy[2][m][n].r += sumy2.r; /* up-dn */
+                            Hz[2][m][n].r += sumz2.r; /* up-dn */
 
-                            dHNL_SO_rows(SpinP_switch,&sumx0.r, &sumy0.r, &sumz0.r,
-                                &sumx1.r, &sumy1.r, &sumz1.r,
-                                &sumx2.r, &sumy2.r, &sumz2.r,
-                                &sumx0.i, &sumy0.i, &sumz0.i,
-                                &sumx1.i, &sumy1.i, &sumz1.i,
-                                &sumx2.i, &sumy2.i, &sumz2.i,
-                                -1.0,
-                                PFp, PFm,
-                                -ene_p, -ene_m,
-                                l2, &l,
-                                DS_NL1[0][1][Matomnum + 1][kl2][n], DS_NL1[0][2][Matomnum + 1][kl2][n], DS_NL1[0][3][Matomnum + 1][kl2][n],
-                                DS_NL1[1][1][Matomnum + 1][kl2][n], DS_NL1[1][2][Matomnum + 1][kl2][n], DS_NL1[1][3][Matomnum + 1][kl2][n],
-                                DS_NL1[0][0][Matomnum + 1][kl1][m], DS_NL1[1][0][Matomnum + 1][kl1][m]);
+                            Hx[0][m][n].i += sumx0.i; /* up-up */
+                            Hy[0][m][n].i += sumy0.i; /* up-up */
+                            Hz[0][m][n].i += sumz0.i; /* up-up */
+
+                            Hx[1][m][n].i += sumx1.i; /* dn-dn */
+                            Hy[1][m][n].i += sumy1.i; /* dn-dn */
+                            Hz[1][m][n].i += sumz1.i; /* dn-dn */
+
+                            Hx[2][m][n].i += sumx2.i; /* up-dn */
+                            Hy[2][m][n].i += sumy2.i; /* up-dn */
+                            Hz[2][m][n].i += sumz2.i; /* up-dn */
                         }
-
-                        Hx[0][m][n].r += sumx0.r; /* up-up */
-                        Hy[0][m][n].r += sumy0.r; /* up-up */
-                        Hz[0][m][n].r += sumz0.r; /* up-up */
-
-                        Hx[1][m][n].r += sumx1.r; /* dn-dn */
-                        Hy[1][m][n].r += sumy1.r; /* dn-dn */
-                        Hz[1][m][n].r += sumz1.r; /* dn-dn */
-
-                        Hx[2][m][n].r += sumx2.r; /* up-dn */
-                        Hy[2][m][n].r += sumy2.r; /* up-dn */
-                        Hz[2][m][n].r += sumz2.r; /* up-dn */
-
-                        Hx[0][m][n].i += sumx0.i; /* up-up */
-                        Hy[0][m][n].i += sumy0.i; /* up-up */
-                        Hz[0][m][n].i += sumz0.i; /* up-up */
-
-                        Hx[1][m][n].i += sumx1.i; /* dn-dn */
-                        Hy[1][m][n].i += sumy1.i; /* dn-dn */
-                        Hz[1][m][n].i += sumz1.i; /* dn-dn */
-
-                        Hx[2][m][n].i += sumx2.i; /* up-dn */
-                        Hy[2][m][n].i += sumy2.i; /* up-dn */
-                        Hz[2][m][n].i += sumz2.i; /* up-dn */
                     }
                 }
             }
@@ -911,11 +827,11 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
         else if (q_AN == 0)
             kl = h_AN;
 
-        if (SpinP_switch == 0)
+        if (projectors->spin == 0)
             somax = 0;
-        else if (SpinP_switch == 1)
+        else if (projectors->spin == 1)
             somax = 1;
-        else if (SpinP_switch == 3)
+        else if (projectors->spin == 3)
             somax = 2;
 
         r = Dis[Gc_AN][kl];
@@ -952,7 +868,7 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
             dz = tmp * (z1 - z0) / r;
         }
 
-        if (SpinP_switch == 0 || SpinP_switch == 1) {
+        if (projectors->spin == 0 || projectors->spin == 1) {
 
             if (h_AN == 0) {
                 for (so = 0; so <= somax; so++) {
@@ -979,7 +895,7 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
             }
         }
 
-        else if (SpinP_switch == 3) {
+        else if (projectors->spin == 3) {
 
             if (h_AN == 0) {
                 for (so = 0; so <= somax; so++) {
@@ -1005,7 +921,7 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                 }
             }
 
-            if (SO_switch == 1) {
+            if (projectors->spin_orbit == 1) {
 
                 if (h_AN == 0) {
                     for (so = 0; so <= somax; so++) {
@@ -1035,7 +951,7 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
     }
 }
 
-static void dHNL_SO_rows(int spin,
+static void dHNL_SO_rows(const OpenMXProjectorForceView *projectors,size_t species,
     double* sumx0r,
     double* sumy0r,
     double* sumz0r,
@@ -1054,335 +970,31 @@ static void dHNL_SO_rows(int spin,
     double* sumx2i,
     double* sumy2i,
     double* sumz2i,
-    double fugou,
-    double PFp,
-    double PFm,
-    double ene_p,
-    double ene_m,
-    int l2, int* l,
+    double fugou,int reverse_energy,
     const double* restrict A0x, const double* restrict A0y, const double* restrict A0z,
     const double* restrict A1x, const double* restrict A1y, const double* restrict A1z,
     const double* restrict B0, const double* restrict B1)
 {
-    const double* restrict A0v[4] = { NULL, A0x, A0y, A0z };
-    const double* restrict A1v[4] = { NULL, A1x, A1y, A1z };
-
-    int l3, i;
-    double tmpx, tmpy, tmpz;
-    double tmp0, tmp1, tmp2;
-    double tmp3, tmp4, tmp5, tmp6;
-    double deri[4];
-
-    /****************************************************
-      off-diagonal contribution to up-dn matrix
-      for spin non-collinear
-    ****************************************************/
-
-    if (spin == 3) {
-
-        /* p */
-        if (l2 == 2) {
-
-            /* real contribution of l+1/2 to off diagonal up-down matrix */
-            tmpx = fugou * (ene_p / 3.0 * A0x[*l] * B0[*l + 2] - ene_p / 3.0 * A0x[*l + 2] * B0[*l]);
-
-            tmpy = fugou * (ene_p / 3.0 * A0y[*l] * B0[*l + 2] - ene_p / 3.0 * A0y[*l + 2] * B0[*l]);
-
-            tmpz = fugou * (ene_p / 3.0 * A0z[*l] * B0[*l + 2] - ene_p / 3.0 * A0z[*l + 2] * B0[*l]);
-
-            *sumx2r += tmpx;
-            *sumy2r += tmpy;
-            *sumz2r += tmpz;
-
-            /* imaginary contribution of l+1/2 to off diagonal up-down matrix */
-
-            tmpx = fugou * (-ene_p / 3.0 * A0x[*l + 1] * B0[*l + 2] + ene_p / 3.0 * A0x[*l + 2] * B0[*l + 1]);
-
-            tmpy = fugou * (-ene_p / 3.0 * A0y[*l + 1] * B0[*l + 2] + ene_p / 3.0 * A0y[*l + 2] * B0[*l + 1]);
-
-            tmpz = fugou * (-ene_p / 3.0 * A0z[*l + 1] * B0[*l + 2] + ene_p / 3.0 * A0z[*l + 2] * B0[*l + 1]);
-
-            *sumx2i += tmpx;
-            *sumy2i += tmpy;
-            *sumz2i += tmpz;
-
-            /* real contribution of l-1/2 for to diagonal up-down matrix */
-
-            tmpx = fugou * (ene_m / 3.0 * A1x[*l] * B1[*l + 2] - ene_m / 3.0 * A1x[*l + 2] * B1[*l]);
-
-            tmpy = fugou * (ene_m / 3.0 * A1y[*l] * B1[*l + 2] - ene_m / 3.0 * A1y[*l + 2] * B1[*l]);
-
-            tmpz = fugou * (ene_m / 3.0 * A1z[*l] * B1[*l + 2] - ene_m / 3.0 * A1z[*l + 2] * B1[*l]);
-
-            *sumx2r -= tmpx;
-            *sumy2r -= tmpy;
-            *sumz2r -= tmpz;
-
-            /* imaginary contribution of l-1/2 to off diagonal up-down matrix */
-
-            tmpx = fugou * (-ene_m / 3.0 * A1x[*l + 1] * B1[*l + 2] + ene_m / 3.0 * A1x[*l + 2] * B1[*l + 1]);
-
-            tmpy = fugou * (-ene_m / 3.0 * A1y[*l + 1] * B1[*l + 2] + ene_m / 3.0 * A1y[*l + 2] * B1[*l + 1]);
-
-            tmpz = fugou * (-ene_m / 3.0 * A1z[*l + 1] * B1[*l + 2] + ene_m / 3.0 * A1z[*l + 2] * B1[*l + 1]);
-
-            *sumx2i -= tmpx;
-            *sumy2i -= tmpy;
-            *sumz2i -= tmpz;
-        }
-
-        /* d */
-        if (l2 == 4) {
-
-            tmp0 = sqrt(3.0);
-            tmp1 = ene_p / 5.0;
-            tmp2 = tmp0 * tmp1;
-
-            /* real contribution of l+1/2 to off diagonal up-down matrix */
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (-tmp2 * A0v[i][*l] * B0[*l + 3] + tmp2 * A0v[i][*l + 3] * B0[*l] + tmp1 * A0v[i][*l + 1] * B0[*l + 3] - tmp1 * A0v[i][*l + 3] * B0[*l + 1] + tmp1 * A0v[i][*l + 2] * B0[*l + 4] - tmp1 * A0v[i][*l + 4] * B0[*l + 2]);
-            }
-            *sumx2r += deri[1];
-            *sumy2r += deri[2];
-            *sumz2r += deri[3];
-
-            /* imaginary contribution of l+1/2 to off diagonal up-down matrix */
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (+tmp2 * A0v[i][*l] * B0[*l + 4] - tmp2 * A0v[i][*l + 4] * B0[*l] + tmp1 * A0v[i][*l + 1] * B0[*l + 4] - tmp1 * A0v[i][*l + 4] * B0[*l + 1] - tmp1 * A0v[i][*l + 2] * B0[*l + 3] + tmp1 * A0v[i][*l + 3] * B0[*l + 2]);
-            }
-            *sumx2i += deri[1];
-            *sumy2i += deri[2];
-            *sumz2i += deri[3];
-
-            /* real contribution of l-1/2 for to diagonal up-down matrix */
-
-            tmp1 = ene_m / 5.0;
-            tmp2 = tmp0 * tmp1;
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (-tmp2 * A1v[i][*l] * B1[*l + 3] + tmp2 * A1v[i][*l + 3] * B1[*l] + tmp1 * A1v[i][*l + 1] * B1[*l + 3] - tmp1 * A1v[i][*l + 3] * B1[*l + 1] + tmp1 * A1v[i][*l + 2] * B1[*l + 4] - tmp1 * A1v[i][*l + 4] * B1[*l + 2]);
-            }
-            *sumx2r -= deri[1];
-            *sumy2r -= deri[2];
-            *sumz2r -= deri[3];
-
-            /* imaginary contribution of l-1/2 to off diagonal up-down matrix */
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (+tmp2 * A1v[i][*l] * B1[*l + 4] - tmp2 * A1v[i][*l + 4] * B1[*l] + tmp1 * A1v[i][*l + 1] * B1[*l + 4] - tmp1 * A1v[i][*l + 4] * B1[*l + 1] - tmp1 * A1v[i][*l + 2] * B1[*l + 3] + tmp1 * A1v[i][*l + 3] * B1[*l + 2]);
-            }
-            *sumx2i -= deri[1];
-            *sumy2i -= deri[2];
-            *sumz2i -= deri[3];
-        }
-
-        /* f */
-        if (l2 == 6) {
-
-            /* real contribution of l+1/2 to off diagonal up-down matrix */
-
-            tmp0 = sqrt(6.0);
-            tmp1 = sqrt(3.0 / 2.0);
-            tmp2 = sqrt(5.0 / 2.0);
-
-            tmp3 = ene_p / 7.0;
-            tmp4 = tmp1 * tmp3; /* sqrt(3.0/2.0) */
-            tmp5 = tmp2 * tmp3; /* sqrt(5.0/2.0) */
-            tmp6 = tmp0 * tmp3; /* sqrt(6.0)     */
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (-tmp6 * A0v[i][*l] * B0[*l + 1] + tmp6 * A0v[i][*l + 1] * B0[*l] - tmp5 * A0v[i][*l + 1] * B0[*l + 3] + tmp5 * A0v[i][*l + 3] * B0[*l + 1] - tmp5 * A0v[i][*l + 2] * B0[*l + 4] + tmp5 * A0v[i][*l + 4] * B0[*l + 2] - tmp4 * A0v[i][*l + 3] * B0[*l + 5] + tmp4 * A0v[i][*l + 5] * B0[*l + 3] - tmp4 * A0v[i][*l + 4] * B0[*l + 6] + tmp4 * A0v[i][*l + 6] * B0[*l + 4]);
-            }
-            *sumx2r += deri[1];
-            *sumy2r += deri[2];
-            *sumz2r += deri[3];
-
-            /* imaginary contribution of l+1/2 to off diagonal up-down matrix */
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (+tmp6 * A0v[i][*l] * B0[*l + 2] - tmp6 * A0v[i][*l + 2] * B0[*l] + tmp5 * A0v[i][*l + 1] * B0[*l + 4] - tmp5 * A0v[i][*l + 4] * B0[*l + 1] - tmp5 * A0v[i][*l + 2] * B0[*l + 3] + tmp5 * A0v[i][*l + 3] * B0[*l + 2] + tmp4 * A0v[i][*l + 3] * B0[*l + 6] - tmp4 * A0v[i][*l + 6] * B0[*l + 3] - tmp4 * A0v[i][*l + 4] * B0[*l + 5] + tmp4 * A0v[i][*l + 5] * B0[*l + 4]);
-            }
-            *sumx2i += deri[1];
-            *sumy2i += deri[2];
-            *sumz2i += deri[3];
-
-            /* real contribution of l-1/2 for to diagonal up-down matrix */
-
-            tmp3 = ene_m / 7.0;
-            tmp4 = tmp1 * tmp3; /* sqrt(3.0/2.0) */
-            tmp5 = tmp2 * tmp3; /* sqrt(5.0/2.0) */
-            tmp6 = tmp0 * tmp3; /* sqrt(6.0)     */
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (-tmp6 * A1v[i][*l] * B1[*l + 1] + tmp6 * A1v[i][*l + 1] * B1[*l] - tmp5 * A1v[i][*l + 1] * B1[*l + 3] + tmp5 * A1v[i][*l + 3] * B1[*l + 1] - tmp5 * A1v[i][*l + 2] * B1[*l + 4] + tmp5 * A1v[i][*l + 4] * B1[*l + 2] - tmp4 * A1v[i][*l + 3] * B1[*l + 5] + tmp4 * A1v[i][*l + 5] * B1[*l + 3] - tmp4 * A1v[i][*l + 4] * B1[*l + 6] + tmp4 * A1v[i][*l + 6] * B1[*l + 4]);
-            }
-            *sumx2r -= deri[1];
-            *sumy2r -= deri[2];
-            *sumz2r -= deri[3];
-
-            /* imaginary contribution of l-1/2 to off diagonal up-down matrix */
-
-            for (i = 1; i <= 3; i++) {
-                deri[i] = fugou * (+tmp6 * A1v[i][*l] * B1[*l + 2] - tmp6 * A1v[i][*l + 2] * B1[*l] + tmp5 * A1v[i][*l + 1] * B1[*l + 4] - tmp5 * A1v[i][*l + 4] * B1[*l + 1] - tmp5 * A1v[i][*l + 2] * B1[*l + 3] + tmp5 * A1v[i][*l + 3] * B1[*l + 2] + tmp4 * A1v[i][*l + 3] * B1[*l + 6] - tmp4 * A1v[i][*l + 6] * B1[*l + 3] - tmp4 * A1v[i][*l + 4] * B1[*l + 5] + tmp4 * A1v[i][*l + 5] * B1[*l + 4]);
-            }
-            *sumx2i -= deri[1];
-            *sumy2i -= deri[2];
-            *sumz2i -= deri[3];
-        }
-    }
-
-    /****************************************************
-        off-diagonal contribution on up-up and dn-dn
-    ****************************************************/
-
-    /* p */
-    if (l2 == 2) {
-
-        tmpx = fugou * (ene_p / 3.0 * A0x[*l] * B0[*l + 1] - ene_p / 3.0 * A0x[*l + 1] * B0[*l]);
-
-        tmpy = fugou * (ene_p / 3.0 * A0y[*l] * B0[*l + 1] - ene_p / 3.0 * A0y[*l + 1] * B0[*l]);
-
-        tmpz = fugou * (ene_p / 3.0 * A0z[*l] * B0[*l + 1] - ene_p / 3.0 * A0z[*l + 1] * B0[*l]);
-
-        /* contribution of l+1/2 for up spin */
-        *sumx0i += -tmpx;
-        *sumy0i += -tmpy;
-        *sumz0i += -tmpz;
-
-        /* contribution of l+1/2 for down spin */
-        *sumx1i += tmpx;
-        *sumy1i += tmpy;
-        *sumz1i += tmpz;
-
-        tmpx = fugou * (ene_m / 3.0 * A1x[*l] * B1[*l + 1] - ene_m / 3.0 * A1x[*l + 1] * B1[*l]);
-
-        tmpy = fugou * (ene_m / 3.0 * A1y[*l] * B1[*l + 1] - ene_m / 3.0 * A1y[*l + 1] * B1[*l]);
-
-        tmpz = fugou * (ene_m / 3.0 * A1z[*l] * B1[*l + 1] - ene_m / 3.0 * A1z[*l + 1] * B1[*l]);
-
-        /* contribution of l-1/2 for up spin */
-        *sumx0i += tmpx;
-        *sumy0i += tmpy;
-        *sumz0i += tmpz;
-
-        /* contribution of l+1/2 for down spin */
-        *sumx1i += -tmpx;
-        *sumy1i += -tmpy;
-        *sumz1i += -tmpz;
-    }
-
-    /* d */
-    else if (l2 == 4) {
-
-        tmpx = fugou * (ene_p * 2.0 / 5.0 * A0x[*l + 1] * B0[*l + 2] - ene_p * 2.0 / 5.0 * A0x[*l + 2] * B0[*l + 1] + ene_p * 1.0 / 5.0 * A0x[*l + 3] * B0[*l + 4] - ene_p * 1.0 / 5.0 * A0x[*l + 4] * B0[*l + 3]);
-
-        tmpy = fugou * (ene_p * 2.0 / 5.0 * A0y[*l + 1] * B0[*l + 2] - ene_p * 2.0 / 5.0 * A0y[*l + 2] * B0[*l + 1] + ene_p * 1.0 / 5.0 * A0y[*l + 3] * B0[*l + 4] - ene_p * 1.0 / 5.0 * A0y[*l + 4] * B0[*l + 3]);
-
-        tmpz = fugou * (ene_p * 2.0 / 5.0 * A0z[*l + 1] * B0[*l + 2] - ene_p * 2.0 / 5.0 * A0z[*l + 2] * B0[*l + 1] + ene_p * 1.0 / 5.0 * A0z[*l + 3] * B0[*l + 4] - ene_p * 1.0 / 5.0 * A0z[*l + 4] * B0[*l + 3]);
-
-        /* contribution of l+1/2 for up spin */
-        *sumx0i += -tmpx;
-        *sumy0i += -tmpy;
-        *sumz0i += -tmpz;
-
-        /* contribution of l+1/2 for down spin */
-        *sumx1i += tmpx;
-        *sumy1i += tmpy;
-        *sumz1i += tmpz;
-
-        tmpx = fugou * (ene_m * 2.0 / 5.0 * A1x[*l + 1] * B1[*l + 2] - ene_m * 2.0 / 5.0 * A1x[*l + 2] * B1[*l + 1] + ene_m * 1.0 / 5.0 * A1x[*l + 3] * B1[*l + 4] - ene_m * 1.0 / 5.0 * A1x[*l + 4] * B1[*l + 3]);
-
-        tmpy = fugou * (ene_m * 2.0 / 5.0 * A1y[*l + 1] * B1[*l + 2] - ene_m * 2.0 / 5.0 * A1y[*l + 2] * B1[*l + 1] + ene_m * 1.0 / 5.0 * A1y[*l + 3] * B1[*l + 4] - ene_m * 1.0 / 5.0 * A1y[*l + 4] * B1[*l + 3]);
-
-        tmpz = fugou * (ene_m * 2.0 / 5.0 * A1z[*l + 1] * B1[*l + 2] - ene_m * 2.0 / 5.0 * A1z[*l + 2] * B1[*l + 1] + ene_m * 1.0 / 5.0 * A1z[*l + 3] * B1[*l + 4] - ene_m * 1.0 / 5.0 * A1z[*l + 4] * B1[*l + 3]);
-
-        /* contribution of l-1/2 for up spin */
-        *sumx0i += tmpx;
-        *sumy0i += tmpy;
-        *sumz0i += tmpz;
-
-        /* contribution of l-1/2 for down spin */
-        *sumx1i += -tmpx;
-        *sumy1i += -tmpy;
-        *sumz1i += -tmpz;
-
-    }
-
-    /* f */
-    else if (l2 == 6) {
-
-        tmpx = fugou * (ene_p * 1.0 / 7.0 * A0x[*l + 1] * B0[*l + 2] - ene_p * 1.0 / 7.0 * A0x[*l + 2] * B0[*l + 1] + ene_p * 2.0 / 7.0 * A0x[*l + 3] * B0[*l + 4] - ene_p * 2.0 / 7.0 * A0x[*l + 4] * B0[*l + 3] + ene_p * 3.0 / 7.0 * A0x[*l + 5] * B0[*l + 6] - ene_p * 3.0 / 7.0 * A0x[*l + 6] * B0[*l + 5]);
-
-        tmpy = fugou * (ene_p * 1.0 / 7.0 * A0y[*l + 1] * B0[*l + 2] - ene_p * 1.0 / 7.0 * A0y[*l + 2] * B0[*l + 1] + ene_p * 2.0 / 7.0 * A0y[*l + 3] * B0[*l + 4] - ene_p * 2.0 / 7.0 * A0y[*l + 4] * B0[*l + 3] + ene_p * 3.0 / 7.0 * A0y[*l + 5] * B0[*l + 6] - ene_p * 3.0 / 7.0 * A0y[*l + 6] * B0[*l + 5]);
-
-        tmpz = fugou * (ene_p * 1.0 / 7.0 * A0z[*l + 1] * B0[*l + 2] - ene_p * 1.0 / 7.0 * A0z[*l + 2] * B0[*l + 1] + ene_p * 2.0 / 7.0 * A0z[*l + 3] * B0[*l + 4] - ene_p * 2.0 / 7.0 * A0z[*l + 4] * B0[*l + 3] + ene_p * 3.0 / 7.0 * A0z[*l + 5] * B0[*l + 6] - ene_p * 3.0 / 7.0 * A0z[*l + 6] * B0[*l + 5]);
-
-        /* contribution of l+1/2 for up spin */
-        *sumx0i += -tmpx;
-        *sumy0i += -tmpy;
-        *sumz0i += -tmpz;
-
-        /* contribution of l+1/2 for down spin */
-        *sumx1i += tmpx;
-        *sumy1i += tmpy;
-        *sumz1i += tmpz;
-
-        tmpx = fugou * (ene_m * 1.0 / 7.0 * A1x[*l + 1] * B1[*l + 2] - ene_m * 1.0 / 7.0 * A1x[*l + 2] * B1[*l + 1] + ene_m * 2.0 / 7.0 * A1x[*l + 3] * B1[*l + 4] - ene_m * 2.0 / 7.0 * A1x[*l + 4] * B1[*l + 3] + ene_m * 3.0 / 7.0 * A1x[*l + 5] * B1[*l + 6] - ene_m * 3.0 / 7.0 * A1x[*l + 6] * B1[*l + 5]);
-
-        tmpy = fugou * (ene_m * 1.0 / 7.0 * A1y[*l + 1] * B1[*l + 2] - ene_m * 1.0 / 7.0 * A1y[*l + 2] * B1[*l + 1] + ene_m * 2.0 / 7.0 * A1y[*l + 3] * B1[*l + 4] - ene_m * 2.0 / 7.0 * A1y[*l + 4] * B1[*l + 3] + ene_m * 3.0 / 7.0 * A1y[*l + 5] * B1[*l + 6] - ene_m * 3.0 / 7.0 * A1y[*l + 6] * B1[*l + 5]);
-
-        tmpz = fugou * (ene_m * 1.0 / 7.0 * A1z[*l + 1] * B1[*l + 2] - ene_m * 1.0 / 7.0 * A1z[*l + 2] * B1[*l + 1] + ene_m * 2.0 / 7.0 * A1z[*l + 3] * B1[*l + 4] - ene_m * 2.0 / 7.0 * A1z[*l + 4] * B1[*l + 3] + ene_m * 3.0 / 7.0 * A1z[*l + 5] * B1[*l + 6] - ene_m * 3.0 / 7.0 * A1z[*l + 6] * B1[*l + 5]);
-
-        /* contribution of l-1/2 for up spin */
-        *sumx0i += tmpx;
-        *sumy0i += tmpy;
-        *sumz0i += tmpz;
-
-        /* contribution of l-1/2 for down spin */
-        *sumx1i += -tmpx;
-        *sumy1i += -tmpy;
-        *sumz1i += -tmpz;
-    }
-
-    /****************************************************
-        diagonal contribution on up-up and dn-dn
-    ****************************************************/
-
-    for (l3 = 0; l3 <= l2; l3++) {
-
-        /* VNL for j=l+1/2 */
-
-        tmpx = PFp * ene_p * A0x[*l] * B0[*l];
-        tmpy = PFp * ene_p * A0y[*l] * B0[*l];
-        tmpz = PFp * ene_p * A0z[*l] * B0[*l];
-
-        *sumx0r += tmpx;
-        *sumy0r += tmpy;
-        *sumz0r += tmpz;
-
-        *sumx1r += tmpx;
-        *sumy1r += tmpy;
-        *sumz1r += tmpz;
-
-        /* VNL for j=l-1/2 */
-
-        tmpx = PFm * ene_m * A1x[*l] * B1[*l];
-        tmpy = PFm * ene_m * A1y[*l] * B1[*l];
-        tmpz = PFm * ene_m * A1z[*l] * B1[*l];
-
-        *sumx0r += tmpx;
-        *sumy0r += tmpy;
-        *sumz0r += tmpz;
-
-        *sumx1r += tmpx;
-        *sumy1r += tmpy;
-        *sumz1r += tmpz;
-
-        *l = *l + 1;
-    }
+    dcomplex sum[9]={
+        {*sumx0r,*sumx0i},{*sumy0r,*sumy0i},{*sumz0r,*sumz0i},
+        {*sumx1r,*sumx1i},{*sumy1r,*sumy1i},{*sumz1r,*sumz1i},
+        {*sumx2r,*sumx2i},{*sumy2r,*sumy2i},{*sumz2r,*sumz2i}
+    };
+    const OpenMXProjectorForceRows input={{{A0x,A0y,A0z},{A1x,A1y,A1z}},
+        {B0,B1},projectors->species_views[species].components,fugou,reverse_energy};
+    char error[256];
+    if(!openmx_core_projector_force_trace(projectors,species,&input,sum,error,sizeof(error)))OpenMX_Solver_Failure(error);
+    *sumx0r=sum[0].r;*sumx0i=sum[0].i;
+    *sumy0r=sum[1].r;*sumy0i=sum[1].i;
+    *sumz0r=sum[2].r;*sumz0i=sum[2].i;
+    *sumx1r=sum[3].r;*sumx1i=sum[3].i;
+    *sumy1r=sum[4].r;*sumy1i=sum[4].i;
+    *sumz1r=sum[5].r;*sumz1i=sum[5].i;
+    *sumx2r=sum[6].r;*sumx2i=sum[6].i;
+    *sumy2r=sum[7].r;*sumy2i=sum[7].i;
+    *sumz2r=sum[8].r;*sumz2i=sum[8].i;
 }
+
 
 void dHCH(const OpenMXAtomicViews *atomic, const OpenMXCoreHoleView *hole, int where_flag,
     int Mc_AN, int h_AN, int q_AN,

@@ -2,6 +2,7 @@
 #include <openmx/core/tensor.hpp>
 #include <openmx/core/orbital_workspace.hpp>
 #include <openmx/core/core_hole.hpp>
+#include <openmx/core/projector_force.hpp>
 #include <array>
 #include <climits>
 #include <cstdio>
@@ -155,6 +156,7 @@ struct OpenMXSolverInvocation {
   std::vector<std::unique_ptr<OpenMXSolverRealField>> fields;
   std::vector<std::unique_ptr<OpenMXSolverResidues>> residues;
   std::vector<std::unique_ptr<openmx::core::CoreHole>> core_holes;
+  std::vector<std::unique_ptr<openmx::core::ProjectorForce>> projector_forces;
   explicit OpenMXSolverInvocation(int n):workers(n) {}
   Worker& worker(int n) {require(n>=0 && size_t(n)<workers.size(),"invalid solver worker ID");return workers[n];}
 };
@@ -180,6 +182,14 @@ extern "C" int openmx_core_core_hole_prepare(OpenMXSolverInvocation* scope,const
     require(scope && input && out,"missing core-hole scope, input or output");
     auto owner=std::make_unique<openmx::core::CoreHole>(*input);const auto view=owner->view();
     scope->core_holes.push_back(std::move(owner));*out=view;
+  });
+}
+extern "C" int openmx_core_projector_force_prepare(OpenMXSolverInvocation* scope,const OpenMXAtomicViews* atomic,
+    int spin,int spin_orbit,OpenMXProjectorForceView* out,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && atomic && out,"missing nonlocal Force scope, input or output");
+    auto owner=std::make_unique<openmx::core::ProjectorForce>(*atomic,spin,spin_orbit);const auto view=owner->view();
+    scope->projector_forces.push_back(std::move(owner));*out=view;
   });
 }
 extern "C" int openmx_core_solver_orbitals(OpenMXSolverInvocation* scope,int worker,const char* name,

@@ -2119,7 +2119,7 @@ static void dH_U_NC_full(int Mc_AN, int h_AN, int q_AN,
     double***** OLP,
     dcomplex**** Hx, dcomplex**** Hy, dcomplex**** Hz, const OpenMXLocalBasisViews *local_basis);
 
-static void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
+static void dHNL(const OpenMXAtomicViews *atomic, const OpenMXProjectorForceView *projectors, int where_flag,
     int Mc_AN, int h_AN, int q_AN,
     double****** DS_NL1,
     dcomplex*** Hx, dcomplex*** Hy, dcomplex*** Hz, const OpenMXElectronicViews *electronic);
@@ -2129,7 +2129,7 @@ static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, in
     double***** TmpHVNA2, double***** TmpHVNA3,
     double** Hx, double** Hy, double** Hz);
 
-static void dHNL_SO_rows(int spin,
+static void dHNL_SO_rows(const OpenMXProjectorForceView *projectors,size_t species,
     double* sumx0r,
     double* sumy0r,
     double* sumz0r,
@@ -2148,12 +2148,7 @@ static void dHNL_SO_rows(int spin,
     double* sumx2i,
     double* sumy2i,
     double* sumz2i,
-    double fugou,
-    double PFp,
-    double PFm,
-    double ene_p,
-    double ene_m,
-        int l2, int* l,
+    double fugou,int reverse_energy,
     const double* restrict A0x, const double* restrict A0y, const double* restrict A0z,
     const double* restrict A1x, const double* restrict A1y, const double* restrict A1z,
     const double* restrict B0, const double* restrict B1);
@@ -5373,6 +5368,9 @@ void Force4(const OpenMXAtomicViews *atomic)
 
 void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
+    OpenMXProjectorForceView projectors;
+    OpenMX_ForcePrepareProjectors(scratch,atomic,SpinP_switch,SO_switch,&projectors);
+
   double ******CntDS_NL=electronic->CntDS_NL;
   double ******DS_NL=electronic->DS_NL;
 
@@ -5454,7 +5452,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
     *************************************************************/
 
     if (Cnt_switch == 1) {
-        for (so = 0; so < (SO_switch + 1); so++) {
+        for (so = 0; so < (projectors.spin_orbit + 1); so++) {
             Cont_Matrix1(atomic, DS_NL[so][0], CntDS_NL[so][0], local_basis);
             Cont_Matrix1(atomic, DS_NL[so][1], CntDS_NL[so][1], local_basis);
             Cont_Matrix1(atomic, DS_NL[so][2], CntDS_NL[so][2], local_basis);
@@ -5686,58 +5684,58 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                             jan = atomic->species.contracted_orbitals[Qwan];
                             kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                            dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0, electronic);
+                            dHNL(atomic, &projectors, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0, electronic);
 
                             /* contribution of force = Trace(CDM0*dH) */
                             /* spin non-polarization */
 
-                            if (SpinP_switch == 0) {
+                            if (projectors.spin == 0) {
 
                                 if (q_AN == h_AN)
                                     pref = 2.0;
                                 else
                                     pref = 4.0;
 
-                                OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                OpenMX_ForceSpinTrace(projectors.spin,0,pref,
                                     ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                                     List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                             }
 
                             /* collinear spin polarized or non-colliear without SO and LDA+U */
 
-                            else if (SpinP_switch == 1 || (SpinP_switch == 3 && SO_switch == 0 && Hub_U_switch == 0 && Constraint_NCS_switch == 0 && Zeeman_NCS_switch == 0 && Zeeman_NCO_switch == 0)) {
+                            else if (projectors.spin == 1 || (projectors.spin == 3 && projectors.spin_orbit == 0 && Hub_U_switch == 0 && Constraint_NCS_switch == 0 && Zeeman_NCS_switch == 0 && Zeeman_NCO_switch == 0)) {
 
                                 if (q_AN == h_AN)
                                     pref = 1.0;
                                 else
                                     pref = 2.0;
 
-                                OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                                OpenMX_ForceSpinTrace(projectors.spin,0,pref,
                                     atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                                     List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                             }
 
                             /* spin non-collinear with spin-orbit coupling or with LDA+U */
 
-                            else if (SpinP_switch == 3 && (SO_switch == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
+                            else if (projectors.spin == 3 && (projectors.spin_orbit == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
 
                                 if (q_AN == h_AN) {
 
-                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                    OpenMX_ForceSpinTrace(projectors.spin,1,1.0,
                                         atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                                         List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                                 }
 
                                 else {
 
-                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                    OpenMX_ForceSpinTrace(projectors.spin,1,1.0,
                                         atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                                         List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
 
-                                    dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
+                                    dHNL(atomic, &projectors, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
                                     kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
-                                    OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                                    OpenMX_ForceSpinTrace(projectors.spin,1,1.0,
                                         atomic->species.contracted_orbitals[Qwan],atomic->species.contracted_orbitals[Hwan],CDM0,iDM0,Mq_AN,kl1,Hx1,Hy1,Hz1,
                                         List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
                                 }
@@ -5828,7 +5826,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
     dtime(&stime);
 
-#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,atomic) private(Hx0, Hy0, Hz0, Hx1, Hy1, Hz1, OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, h_AN, Gh_AN, Mh_AN, Hwan, ian, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, kl1, i, j, kk, pref)
+#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,projectors,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,atomic) private(Hx0, Hy0, Hz0, Hx1, Hy1, Hz1, OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, h_AN, Gh_AN, Mh_AN, Hwan, ian, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, kl1, i, j, kk, pref)
     {
 
         /* allocation of array */
@@ -5880,55 +5878,55 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                     jan = atomic->species.contracted_orbitals[Qwan];
                     kl = RMI1[Mc_AN][h_AN][q_AN];
 
-                    dHNL(atomic, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0, electronic);
+                    dHNL(atomic, &projectors, 0, Mc_AN, h_AN, q_AN, DS_NL, Hx0, Hy0, Hz0, electronic);
 
-                    if (SpinP_switch == 0) {
+                    if (projectors.spin == 0) {
 
                         if (q_AN == h_AN)
                             pref = 2.0;
                         else
                             pref = 4.0;
 
-                        OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                        OpenMX_ForceSpinTrace(projectors.spin,0,pref,
                             ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                             List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                     }
 
                     /* collinear spin polarized or non-colliear without SO and LDA+U */
 
-                    else if (SpinP_switch == 1 || (SpinP_switch == 3 && SO_switch == 0 && Hub_U_switch == 0 && Constraint_NCS_switch == 0 && Zeeman_NCS_switch == 0 && Zeeman_NCO_switch == 0)) {
+                    else if (projectors.spin == 1 || (projectors.spin == 3 && projectors.spin_orbit == 0 && Hub_U_switch == 0 && Constraint_NCS_switch == 0 && Zeeman_NCS_switch == 0 && Zeeman_NCO_switch == 0)) {
 
                         if (q_AN == h_AN)
                             pref = 1.0;
                         else
                             pref = 2.0;
 
-                        OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                        OpenMX_ForceSpinTrace(projectors.spin,0,pref,
                             ian,jan,CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                             List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                     }
 
                     /* spin non-collinear with spin-orbit coupling or with LDA+U */
 
-                    else if (SpinP_switch == 3 && (SO_switch == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
+                    else if (projectors.spin == 3 && (projectors.spin_orbit == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
 
                         if (q_AN == h_AN) {
 
-                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                            OpenMX_ForceSpinTrace(projectors.spin,1,1.0,
                                 atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                                 List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz);
                         }
 
                         else {
 
-                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                            OpenMX_ForceSpinTrace(projectors.spin,1,1.0,
                                 atomic->species.contracted_orbitals[Hwan],atomic->species.contracted_orbitals[Qwan],CDM0,iDM0,Mh_AN,kl,Hx0,Hy0,Hz0,
                                 List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
 
-                            dHNL(atomic, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
+                            dHNL(atomic, &projectors, 0, Mc_AN, q_AN, h_AN, DS_NL, Hx1, Hy1, Hz1, electronic);
 
                             kl1 = RMI1[Mc_AN][q_AN][h_AN];
-                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                            OpenMX_ForceSpinTrace(projectors.spin,1,1.0,
                                 atomic->species.contracted_orbitals[Qwan],atomic->species.contracted_orbitals[Hwan],CDM0,iDM0,Mq_AN,kl1,Hx1,Hy1,Hz1,
                                 List_YOUSO[7],List_YOUSO[7],&dEx,&dEy,&dEz); /* i */
                         }
@@ -6242,7 +6240,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
             ODNloop = 0;
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
 
-                if (SpinP_switch == 3 && (SO_switch == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
+                if (projectors.spin == 3 && (projectors.spin_orbit == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)
                     || (Solver == 5 || Solver == 8 || Solver == 11))
                     start_q_AN = 0;
                 else
@@ -6262,7 +6260,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
             // comment out April 28th, 2023 H. Kawai
 #if !defined(__NVCOMPILER) || NVHPC_VERSION >= 250000
-            #pragma omp parallel shared(ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,dEx_threads,dEy_threads,dEz_threads,CDM0,SpinP_switch,SO_switch,Hub_U_switch,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,F_NL_flag,F_U_flag,atomic) private(OMPID,Nthrds,Nprocs,Hx,Hy,Hz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,km,Nloop,pref)
+            #pragma omp parallel shared(ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,dEx_threads,dEy_threads,dEz_threads,CDM0,projectors,Hub_U_switch,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,F_NL_flag,F_U_flag,atomic) private(OMPID,Nthrds,Nprocs,Hx,Hy,Hz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,km,Nloop,pref)
 #endif
             {
 
@@ -6305,13 +6303,13 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                     if (0 <= kl) {
 
-                        dHNL(atomic, 1, Mc_AN, h_AN, q_AN, DS_NL, Hx, Hy, Hz, electronic);
+                        dHNL(atomic, &projectors, 1, Mc_AN, h_AN, q_AN, DS_NL, Hx, Hy, Hz, electronic);
 
                         /* contribution of force = Trace(CDM0*dH) */
 
                         /* spin non-polarization */
 
-                        if (SpinP_switch == 0) {
+                        if (projectors.spin == 0) {
 
                             if (Solver == 5 || Solver == 8 || Solver == 11) {
                                 pref = 2.0;
@@ -6322,7 +6320,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                     pref = 4.0;
                             }
 
-                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                            OpenMX_ForceSpinTrace(projectors.spin,0,pref,
                                 ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
                                 List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
 
@@ -6330,7 +6328,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
                         /* collinear spin polarized or non-colliear without SO and LDA+U */
 
-                        else if (SpinP_switch == 1 || (SpinP_switch == 3 && SO_switch == 0 && Hub_U_switch == 0 && Constraint_NCS_switch == 0 && Zeeman_NCS_switch == 0 && Zeeman_NCO_switch == 0)) {
+                        else if (projectors.spin == 1 || (projectors.spin == 3 && projectors.spin_orbit == 0 && Hub_U_switch == 0 && Constraint_NCS_switch == 0 && Zeeman_NCS_switch == 0 && Zeeman_NCO_switch == 0)) {
 
                             if (Solver == 5 || Solver == 8 || Solver == 11) {
                                 pref = 1.0;
@@ -6341,18 +6339,18 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                                     pref = 2.0;
                             }
 
-                            OpenMX_ForceSpinTrace(SpinP_switch,0,pref,
+                            OpenMX_ForceSpinTrace(projectors.spin,0,pref,
                                 ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
                                 List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
                         }
 
                         /* spin non-collinear with spin-orbit coupling or with LDA+U */
 
-                        else if (SpinP_switch == 3 && (SO_switch == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
+                        else if (projectors.spin == 3 && (projectors.spin_orbit == 1 || (Hub_U_switch == 1 && F_U_flag == 1) || 1 <= Constraint_NCS_switch || Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1)) {
 
                             pref = 1.0;
 
-                            OpenMX_ForceSpinTrace(SpinP_switch,1,1.0,
+                            OpenMX_ForceSpinTrace(projectors.spin,1,1.0,
                                 ian,jan,CDM0,iDM0,Mh_AN,kl,Hx,Hy,Hz,
                                 List_YOUSO[7],List_YOUSO[7],&dEx_threads[OMPID],&dEy_threads[OMPID],&dEz_threads[OMPID]);
                         }

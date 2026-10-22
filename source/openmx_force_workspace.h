@@ -3,8 +3,16 @@
 #include "openmx_core_force.h"
 #include "openmx_core_local_basis.h"
 #include "openmx_core_core_hole.h"
+#include "openmx_core_projector_force.h"
 #include "openmx_solver_workspace.h"
 #include <string.h>
+
+static inline void OpenMX_ForcePrepareProjectors(OpenMXSolverInvocation *owner,const OpenMXAtomicViews *atomic,
+    int spin,int spin_orbit,OpenMXProjectorForceView *view)
+{
+  char error[256];
+  if(!openmx_core_projector_force_prepare(owner,atomic,spin,spin_orbit,view,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
 
 static inline void OpenMX_ForcePrepareCoreHole(OpenMXSolverInvocation *owner,const OpenMXAtomicViews *atomic,
     int atom,int species,const char *orbital,int state,int spin,int spin_orbit,double penalty,OpenMXCoreHoleView *view)

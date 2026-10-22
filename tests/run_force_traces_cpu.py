@@ -36,7 +36,9 @@ with tempfile.TemporaryDirectory(prefix="openmx-force-traces-") as directory:
             body = production_function((ROOT / path).read_text(), name)
             calls = re.findall(r'OpenMX_ForceSpinTrace\([^;]*;', body)
             assert len(calls) == 13, (backend, name, len(calls))
-            production = "static void production_trace(int number) {switch(number) {\n"
+            production = ("static void production_trace(int number) {\n"
+                          "const OpenMXProjectorForceView projectors={.spin=SpinP_switch};\n"
+                          "switch(number) {\n")
             production += "\n".join(f"case {i}: {call} break;" for i, call in enumerate(calls))
             production += "\ndefault: abort();}}\n"
             source = tmp / f"{backend}-{name}.c"
