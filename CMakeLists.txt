@@ -128,6 +128,9 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME gpu-task-resource-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_task_memory_cpu.py")
+  set_tests_properties(gpu-task-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
   add_test(NAME gemmul8-cache-resource-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gemmul8_cache_cpu.py")
   set_tests_properties(gemmul8-cache-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)

@@ -1381,3 +1381,68 @@ AMD・A100/H100・Intel/Apple GPU実機、L/L2/L3全例、多GPU・多ノード�
 `case-numerical-audit.json` / `baseline-variation.json` が反復数不一致と対照、
 `source-preservation-audit.json` が演算・方針の照合、`validated-state.json` がソースと
 検証・インストール済みバイナリの最終照合です。
+
+## 2026-10-22: 範囲タスクのGPUワーカーと所有権を分離（RTX 5080）
+
+比較元は `c2e9322f` です。GPUワーカーをC++17へ切り出し、GPU領域、一時結果とCSR添字を
+呼び出し内の所有者が管理します。Cの制御・通信・CPU回復は維持し、配置と公開の実装を共有します。
+CPU回復とpackの3関数はバイト単位で不変、配置・公開の5関数はinline指定と共通castだけの変更です。
+通信パケット、容量実行器・collective、両Force/Hamiltonianと保護対象5ソースも不変です。
+所有者のための追加ホスト確保・数値領域のゼロ初期化はありません。
+
+RTX 5080、i9-10980XE、NVHPC 26.9 / CUDA 13.4、SERIALコアで、各18 MPI×1 OpenMPを測定しました。
+ほかのOpenMX計算・ビルド・テストと重ねず、入力・本体・コアを固定した9試行を順番に実行しています。
+GPUでは既存MPSの18 clientと読み込んだコアの絶対パスを照合しました。コア共有ライブラリは前後同一です。
+
+| 入力・経路 | 版 | 試行数 | 内部時間の最大値 (s) | 起動込み (s) | Force 最大 (s) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| sidia333 NC / GPU + MPS | 変更前 | 1 | 103.512 | 107.061 | 15.528 |
+| sidia333 NC / GPU + MPS | 変更後 | 1 | 103.751 | 107.163 | 15.473 |
+| C60 / CPU | 変更前 | 3の中央値 | 8.672 | 10.636 | 0.211 |
+| C60 / CPU | 変更後 | 3の中央値 | 8.604 | 10.687 | 0.200 |
+| C60 / Intel CPU版 `~/openmx4.0` | 参照 | 1 | 9.712 | 10.236 | 0.178 |
+
+sidiaは内部時間 `+0.239 s`、起動込み `+0.103 s` でした。Force-HNLは
+`0.285347 → 0.281941 s`、VNAの `force#4` は `12.316975 → 12.268512 s` です。
+単発の小さな差から高速化や回帰を断定しません。内部時間は約105秒の目標内ですが、起動込み105秒は
+達成していません。元入力の25 SCF・閾値 `1e-13`・`140³` 格子を保ち、両版とも未収束です。
+エネルギーは一致し、全Forceの最大差は約 `1e-12 Ha/bohr` でした。
+
+C60は全6試行が27 SCF・`84³` 格子で収束し、エネルギーと全Forceが一致しました。
+内部時間の中央値は `-0.068 s`、起動込みは `+0.051 s` でした。内部時間の範囲は変更前
+`8.547–8.890 s`、変更後 `8.574–8.687 s`、起動込みは `10.585–10.987 s` と
+`10.636–10.786 s` です。Intel参照より内部時間が短い一方、起動込み中央値は約0.45秒長い結果でした。
+Intel参照との最大差はエネルギー約 `1e-11 Ha`、Force約 `1.4e-11 Ha/bohr` です。
+1入力・Intel参照1試行からCPU全般の性能の同等性を保証するものではありません。
+
+主要9経路のCPU/GPU前後18比較で、エネルギー・全Forceが `1e-7` 以内となり、個別36計算は収束しました。
+GPU Cluster NCの59→46、Band NCの19→18は反復数不一致の厳密比較失敗として保存します。
+同じ変更前バイナリ・コアの対照も59→51、19→17となりました。元の失敗は対照で置き換えていません。
+標準SのCPU/GPU各14例は前後・CPU対GPU・同梱参照の5比較を通過しました。
+
+CTest275件と、試験側のリンク調整後の対象3件の再実行を通過しました。実際のC++ワーカーに対する
+C++17 / ASan / UBSan試験は、CUDA/HIPそれぞれSDK準備失敗18か所とホスト確保失敗6か所、
+通常のRELEASEを省く終了、例外による解放と、確保元GPUへの切り替え・解放の再試行を検査しています。
+既存のC数値モデルも実際のC++ワーカーへ接続し、両バックエンドでタスク・疎DM・energy・grid・
+Hamiltonian・Force・VNAの回復と、HIPのresident/streamの比較を通過しました。
+
+実GPUの単GPU試験は、通常GPU、強制CPU、GPU容量不足、遅いcudaMallocのOOMからのCPU回復の
+4条件が通り、タスク自身のcudaMalloc/cudaFreeを数えた未解放領域は各条件の終了時に0でした。
+Compute Sanitizerの既定MPIではUCX・MPIのCUDAアドレス探索にAPI診断が出ます。MPIのPMLをob1、
+BTLをself/tcp、collectiveをCUDA/UCC/HCOLL以外、acceleratorをnullとしたホスト通信の検査では、
+不正アクセス/API診断は出ませんが、NVHPCの `libaccdevice.so` / `cuda_launch3` 由来の
+launch引数用領域5,120 bytesが1件残ります。`acc_shutdown` 後も同じで、同じ試験を変更前のCワーカーで
+行っても同じ1件・同じサイズでした。検査全体をエラー0とは扱いません。このMPI設定はメモリ検査用で、
+上の性能計測には使用していません。
+
+HIPワーカーのgfx942・gfx1200向けC++17コンパイルと、Hamiltonian/ForceのC製OpenMP target試験の
+gfx942コンパイルを実SDKで通過しました。AMD・A100/H100・Intel/Apple GPU実機、L/L2/L3全例、
+多GPU・多ノードは再検証していません。C専用監査の関数数はワーカー等5関数の移動で3,027→3,022と
+なりましたが、大域実体の削除による減少ではありません。設定298個・構造表278個、共通ヘッダーの
+1,051個・12,912参照組、static・環境変数は不変です。
+
+入力・全Force、固定バイナリ・コア、MPS接続、初回失敗を含む試験・監査は
+`build/task-worker-refactor-20261022/` に保存しています。`performance-summary.json` が性能集計、
+`case-numerical-audit.json` / `baseline-variation.json` が厳密比較と対照、`native-sanitizer-comparison.json`
+がOpenACCの検査報告の前後比較、`source-preservation-audit.json` がコードの照合、
+`validated-state.json` がソースと検証・インストール済みバイナリの最終照合です。

@@ -19,12 +19,28 @@ int MPI_Comm_split_type(MPI_Comm comm,int type,int key,MPI_Info info,MPI_Comm *o
 }
 static int device_base(void){return logical_nodes?rank_id*(logical_nodes==2?1:2):0;}
 static size_t need;
+static void *task_allocations[128];
+static int task_allocations_live;
 /* Link with -Wl,--wrap=cudaMalloc. Exercise an allocation that fails only
    after the capacity query admitted the whole range on its owner. */
 cudaError_t __real_cudaMalloc(void **pointer,size_t bytes);
 cudaError_t __wrap_cudaMalloc(void **pointer,size_t bytes){
  if(mode==7 && bytes>need*3/4){*pointer=NULL;return cudaErrorMemoryAllocation;}
- return __real_cudaMalloc(pointer,bytes);
+ cudaError_t status=__real_cudaMalloc(pointer,bytes);
+ if(status==cudaSuccess && *pointer){
+#pragma omp critical(task_allocations)
+  {int found=0;for(int i=0;i<128;i++)if(!task_allocations[i]){task_allocations[i]=*pointer;task_allocations_live++;found=1;break;}assert(found);}
+ }
+ return status;
+}
+cudaError_t __real_cudaFree(void *pointer);
+cudaError_t __wrap_cudaFree(void *pointer){
+ cudaError_t status=__real_cudaFree(pointer);
+ if(status==cudaSuccess && pointer){
+#pragma omp critical(task_allocations)
+  {int found=0;for(int i=0;i<128;i++)if(task_allocations[i]==pointer){task_allocations[i]=NULL;task_allocations_live--;found=1;break;}assert(found);}
+ }
+ return status;
 }
 static _Thread_local int scope=1;
 int openmx_mgpu_scope_enter(int allowed){int old=scope;scope=allowed;return old;}
@@ -59,9 +75,10 @@ int main(int argc,char **argv){
  if(argc>1 && strcmp(argv[1],"--logical-single")==0)logical_nodes=2;
  int local_only=argc>1 && strcmp(argv[1],"--local")==0;
  int single_gpu=argc>1 && strcmp(argv[1],"--single-gpu-per-node")==0;
- MPI_Init(&argc,&argv);int size;MPI_Comm_rank(MPI_COMM_WORLD,&rank_id);MPI_Comm_size(MPI_COMM_WORLD,&size);assert(size==(local_only?1:2));
+ int single=argc>1 && strcmp(argv[1],"--single")==0;
+ MPI_Init(&argc,&argv);int size;MPI_Comm_rank(MPI_COMM_WORLD,&rank_id);MPI_Comm_size(MPI_COMM_WORLD,&size);assert(size==((local_only || single)?1:2));
  MPI_Comm local;MPI_Comm_split_type(MPI_COMM_WORLD,MPI_COMM_TYPE_SHARED,rank_id,MPI_INFO_NULL,&local);int local_size;MPI_Comm_size(local,&local_size);assert(local_size==1);MPI_Comm_free(&local);
- int devices=0;assert(cudaGetDeviceCount(&devices)==cudaSuccess && devices>=(single_gpu?1:logical_nodes==1?4:2));
+ int devices=0;assert(cudaGetDeviceCount(&devices)==cudaSuccess && devices>=((single || single_gpu)?1:logical_nodes==1?4:2));
  char host[MPI_MAX_PROCESSOR_NAME];int host_length=0;
  MPI_Get_processor_name(host,&host_length);
  printf("placement rank=%d host=%.*s local_size=%d visible_gpus=%d single_gpu=%d\n",
@@ -74,16 +91,19 @@ int main(int argc,char **argv){
  for(mode=0;mode<9;mode++){
   if(local_only && (mode==2 || mode==4 || mode==8))continue;
   if((single_gpu || logical_nodes==2) && (mode==1 || mode==2 || mode==6 || mode==7))continue;
-  cap=mode==5 || mode==8 || single_gpu || logical_nodes==2?1:2;mask=cpu_calls=gpu_calls=0;
+  if(single && (mode==1 || mode==2 || mode==4 || mode==6 || mode==8))continue;
+  cap=mode==5 || mode==8 || single || single_gpu || logical_nodes==2?1:2;mask=cpu_calls=gpu_calls=0;
   for(int i=0;i<N;i++)b[i]=-999;
   OpenMXGpuTask task={0};task.first=17;task.count=N;task.parameters=&factor;task.parameter_bytes=sizeof(factor);
   task.inputs=1;task.outputs=2;task.kernel=kernel;
   task.view[0]=(OpenMXGpuTaskView){a,0,sizeof(double)};task.view[1]=(OpenMXGpuTaskView){b,0,sizeof(double)};task.view[2]=(OpenMXGpuTaskView){&sum,sizeof(double),0};
   int done=openmx_gpu_task_execute(MPI_COMM_WORLD,&task,1,"capacity-integration");
+  assert(task_allocations_live==0);
   double expected_sum=0;for(int i=0;i<N;i++){double expected=factor*a[i]+17+i;assert(b[i]==expected);expected_sum+=expected;}
   assert(fabs(sum-expected_sum)<1e-6);
   if(mode==0)assert(done && (mask>>device_base())==1 && !cpu_calls);
-  if(mode==1||mode==2||mode==7)assert(done && (mask>>device_base())==3 && !cpu_calls);
+  if(mode==1||mode==2||(mode==7 && !single))assert(done && (mask>>device_base())==3 && !cpu_calls);
+  if(mode==7 && single)assert(!done && cpu_calls && !gpu_calls);
   if(mode==3||mode==5)assert(!done && cpu_calls && !gpu_calls);
   if(mode==6)assert(done && !cpu_calls && (mask>>device_base())==2);
   if(mode==8)assert(done && !cpu_calls && (mask>>device_base())==1);
@@ -91,5 +111,5 @@ int main(int argc,char **argv){
   MPI_Barrier(MPI_COMM_WORLD);
   if(!rank_id){printf("PASS mode=%d (owner/local/remote/CPU/occupied-owner/GPU-cap/failed-owner-init/late-OOM)\n",mode);fflush(stdout);}
  }
- free(a);free(b);MPI_Finalize();return 0;
+ free(a);free(b);MPI_Finalize();if(single)acc_shutdown(acc_device_nvidia);return 0;
 }

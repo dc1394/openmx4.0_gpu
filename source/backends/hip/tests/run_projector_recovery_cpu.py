@@ -4,6 +4,7 @@ import ast
 import os
 import resource
 from pathlib import Path
+from task_worker_test_bridge import compile_task_test
 from mock_hip_sources import stage
 import shlex
 import subprocess
@@ -105,6 +106,6 @@ with tempfile.TemporaryDirectory(prefix='openmx-projector-') as folder:
  (p/"hip_runtime_compat.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
  (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
  (p/'check.c').write_text(prefix+body+functions+main)
- subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),*force_gpu_fixture.core_library_flags(),'-lm','-o',str(p/'check')],check=True)
+ compile_task_test(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),*force_gpu_fixture.core_library_flags(),'-lm','-o',str(p/'check')],check=True)
  for count in (17,513):
   subprocess.run([str(p/'check'),str(count)],check=True,timeout=60,preexec_fn=bounded_stack)

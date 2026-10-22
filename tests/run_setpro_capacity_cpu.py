@@ -4,6 +4,7 @@ import ast
 import os
 import re
 from pathlib import Path
+from task_worker_test_bridge import compile_task_test
 import shlex
 import subprocess
 import tempfile
@@ -104,5 +105,5 @@ with tempfile.TemporaryDirectory(prefix='openmx-setpro-') as folder:
  (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
  (p/'check.c').write_text(prefix+body+functions+main)
  flags=['-acc','-gpu=cc80,managed','-mp','-Minfo=accel'] if os.environ.get('OPENMX_TEST_GPU')=='1' else ['-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all']
- subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g']+flags+['-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),'-lm','-o',str(p/'check')],check=True)
+ compile_task_test(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g']+flags+['-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),'-lm','-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True,timeout=60)

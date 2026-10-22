@@ -33,6 +33,7 @@ FIXTURE = r'''
 #include <stdlib.h>
 #include "openmx_target.h"
 #include "openmx_gpu_task.c"
+#include "gpu_task_native_probe.h"
 @FORCE_REDUCTION@
 static int compare_double(const void *a,const void *b) {
   double x=*(const double*)a,y=*(const double*)b;return (x>y)-(x<y);
@@ -75,19 +76,19 @@ int main(void) {
       OpenMXGpuTask task={0};task.count=atoms;task.inputs=4;task.outputs=3;task.kernel=Force_Reduction_Kernel;
       for(int c=0;c<4;c++)task.view[c]=(OpenMXGpuTaskView){input[c],0,0,offsets,sizeof(double)};
       for(int c=0;c<3;c++)task.view[4+c]=(OpenMXGpuTaskView){output[c],0,sizeof(double)};
-      TaskWork work={0};work.pool.count=1;work.pool.items=atoms;work.task=&task;
-      assert(task_worker(&work,0,OPENMX_GPU_WORKER_PREPARE));
-      assert(task_worker(&work,0,OPENMX_GPU_WORKER_EXECUTE));
-      assert(task_worker(&work,0,OPENMX_GPU_WORKER_COMMIT));
-      task_commit(&task,0,atoms,work.result[0],task_bytes(&task,0,atoms,task.inputs,task.inputs+task.outputs));
+      void *work=openmx_test_task_create(&task);assert(work);
+      assert(openmx_test_task_phase(work,OPENMX_GPU_WORKER_PREPARE));
+      assert(openmx_test_task_phase(work,OPENMX_GPU_WORKER_EXECUTE));
+      assert(openmx_test_task_phase(work,OPENMX_GPU_WORKER_COMMIT));
+      task_commit(&task,0,atoms,openmx_test_task_result(work),task_bytes(&task,0,atoms,task.inputs,task.inputs+task.outputs));
       for(int c=0;c<3;c++)verify(output[c],expected[c],atoms);
       if(atoms==3 && lengths[shape]) {
         double times[11];
-        for(int r=0;r<11;r++){double start=omp_get_wtime();assert(task_worker(&work,0,OPENMX_GPU_WORKER_EXECUTE));openmx_target_wait();times[r]=1000*(omp_get_wtime()-start);}
+        for(int r=0;r<11;r++){double start=omp_get_wtime();assert(openmx_test_task_phase(work,OPENMX_GPU_WORKER_EXECUTE));openmx_target_wait();times[r]=1000*(omp_get_wtime()-start);}
         qsort(times,11,sizeof(double),compare_double);
         printf("BENCH atom-force-reduction atoms=%zu terms=%zu median_ms=%.6f\n",atoms,total,times[5]);
       }
-      assert(task_worker(&work,0,OPENMX_GPU_WORKER_RELEASE));free(work.result[0]);
+      assert(openmx_test_task_phase(work,OPENMX_GPU_WORKER_RELEASE));openmx_test_task_destroy(work);
       for(int threads=1;threads<=4;threads*=2) {
         omp_set_num_threads(threads);task_cpu(&task);
         for(int c=0;c<3;c++) {
@@ -131,11 +132,18 @@ def main():
         folder = Path(directory)
         source = folder / "check.c"
         source.write_text(FIXTURE.replace("@FORCE_REDUCTION@", function(args.source.read_text(), "Force_Reduction_Kernel")))
+        probe=folder / "task_probe.o"
+        subprocess.run([str(args.rocm / "llvm/bin/clang++"),"-std=c++17","-O3",
+            "-D__HIP_PLATFORM_AMD__","-ffunction-sections","-fdata-sections",
+            "-I"+str(ROOT / "source"),"-I"+str(ROOT / "source/backends/hip/include"),
+            "-I"+str(args.rocm / "include"),*mpi_flags,
+            "-c",str(ROOT / "tests/gpu_task_native_probe.cpp"),"-o",str(probe)],
+            env=env,check=True,timeout=120)
         command = compiler + ["-x", "c", "-O3", "-std=c11", "-ffp-contract=off", "-fopenmp",
             "--offload-arch=" + args.arch, "-D__HIP_PLATFORM_AMD__", "-ffunction-sections", "-fdata-sections",
-            "-I" + str(ROOT / "source"), "-I" + str(ROOT / "source/backends/hip/include"),
+            "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), "-I" + str(ROOT / "source/backends/hip/include"),
             "-I" + str(args.rocm / "include"), *mpi_flags, str(source), "-L" + str(args.rocm / "lib"),
-            "-lamdhip64", "-lm", "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
+            "-x", "none", str(probe), "-lstdc++", "-lamdhip64", "-lm", "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
         subprocess.run(command, env=env, check=True, timeout=120)
         subprocess.run([str(folder / "check")], env=env, check=True, timeout=120)
 

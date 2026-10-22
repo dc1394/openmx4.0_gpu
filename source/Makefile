@@ -375,6 +375,7 @@ OBJS += openmx_dense_cpu.o
 OBJS += openmx_gpu_collective.o
 OBJS += openmx_gpu_vector.o
 OBJS += openmx_gpu_task.o
+OBJS += openmx_gpu_task_worker.o
 OBJS += openmx_gpu_bilinear.o openmx_gpu_bilinear_pack.o
 
 include openmx_core.mk
@@ -1064,8 +1065,10 @@ openmx_gpu_collective.o: openmx_gpu_collective.c openmx_gpu_collective.h openmx_
 openmx_gpu_vector.o: openmx_gpu_vector.c openmx_gpu_vector.h openmx_gpu_collective.h openmx_gpu_workers.h
 	$(CC) -c openmx_gpu_vector.c
 
-openmx_gpu_task.o: openmx_gpu_task.c openmx_gpu_task.h openmx_gpu_collective.h openmx_gpu_workers.h
+openmx_gpu_task.o: openmx_gpu_task.c openmx_gpu_task.h openmx_gpu_task_layout.h openmx_gpu_collective.h openmx_gpu_workers.h
 	$(CC) -c openmx_gpu_task.c
+openmx_gpu_task_worker.o: openmx_gpu_task_worker.cpp openmx_gpu_task.h openmx_gpu_task_layout.h openmx_gpu_memory.hpp openmx_host_buffer.hpp openmx_gpu_workers.h
+	$(GPUSOLVER2_HOST_CXX) -O3 -std=c++17 $(shell $(MPICC) --showme:compile) -I$(NVHPC_CUDA_HOME)/include -c $< -o $@
 openmx_gpu_bilinear.o: openmx_gpu_bilinear.c openmx_gpu_bilinear.h openmx_gpu_collective.h openmx_gpu_workers.h
 	$(CC) -c openmx_gpu_bilinear.c
 openmx_gpu_bilinear_pack.o: openmx_gpu_bilinear_pack.cpp openmx_gpu_bilinear.h

@@ -139,7 +139,7 @@ def prepare(source_root, build_root, backend):
                 copy_sources(hip / directory, native / directory)
         # Native extraction tests share the ownership-boundary SDK shim with
         # the root tests; keep one implementation in both source projections.
-        for name in ('native_resource_test_bridge.py', 'force_gpu_fixture.py'):
+        for name in ('native_resource_test_bridge.py', 'force_gpu_fixture.py', 'task_worker_test_bridge.py'):
             resource_bridge = source_root / 'tests' / name
             if resource_bridge.is_file():
                 link_file(resource_bridge, native / 'tests' / resource_bridge.name)

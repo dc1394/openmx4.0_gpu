@@ -1,10 +1,10 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "b6579f88",
+"revision": "c2e9322f",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
-"functions": 3027,
+"functions": 3022,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,

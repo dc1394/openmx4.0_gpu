@@ -11,13 +11,16 @@ for directory in $("$mpicc" --showme:incdirs); do includes+=(-I"$directory"); do
 read -r -a mpi_link <<< "$("$mpicc" --showme:link)"
 flags=(-O2 -std=c11 -D_GNU_SOURCE -D__HIP_PLATFORM_AMD__ -fopenmp --offload-arch="$gpu_arch")
 objects=()
-for name in openmx_gpu_task openmx_gpu_workers openmx_gpu_collective; do
+for name in openmx_gpu_task openmx_gpu_workers openmx_gpu_collective openmx_env; do
   "$cc" "${flags[@]}" "${includes[@]}" -c "$root/source/$name.c" -o "$build/$name.o"
   objects+=("$build/$name.o")
 done
+"$hipcc" -std=c++17 -O3 -D__HIP_PLATFORM_AMD__ --offload-arch="$gpu_arch" \
+  "${includes[@]}" -x hip -c "$root/source/openmx_gpu_task_worker.cpp" -o "$build/openmx_gpu_task_worker.o"
+objects+=("$build/openmx_gpu_task_worker.o")
 "$cc" "${flags[@]}" "${includes[@]}" -c "$root/tests/gpu_task_mpi_check.c" -o "$build/fixture.o"
 "$cc" "${flags[@]}" "$build/fixture.o" "${objects[@]}" "${mpi_link[@]}" \
-  -L"$rocm/lib" -lamdhip64 -lpthread -lm -Wl,--wrap=hipMalloc -o "$build/gpu_task_mpi_check"
+  -L"$rocm/lib" -lamdhip64 -lstdc++ -lpthread -lm -Wl,--wrap=hipMalloc -o "$build/gpu_task_mpi_check"
 if [[ ${OPENMX_GPU_TEST_COMPILE_ONLY:-0} != 1 ]]; then
   if [[ ${1:-} == --local || ${1:-} == --single ]]; then
     "${MPIRUN:-mpirun}" -np 1 "$build/gpu_task_mpi_check" "$1"

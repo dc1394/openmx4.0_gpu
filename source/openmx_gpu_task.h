@@ -38,5 +38,11 @@ typedef struct {
 /* Returns 1 when GPU work completed, 0 after CPU completion. GPU capacity
    is always checked before allocation; unsuccessful GPU attempts leave
    the original outputs untouched. Outputs may not alias the inputs. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 int openmx_gpu_task_execute(MPI_Comm comm,OpenMXGpuTask *task,int enabled,const char *label);
+#ifdef __cplusplus
+}
+#endif
 #endif

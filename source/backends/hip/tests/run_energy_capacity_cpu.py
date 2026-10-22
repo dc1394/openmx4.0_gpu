@@ -8,6 +8,7 @@ and packet/table transfer independently of the HIP numerical regression.
 import ast
 import os
 from pathlib import Path
+from task_worker_test_bridge import compile_task_test
 from mock_hip_sources import stage
 import shlex
 import subprocess
@@ -120,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-energy-capacity-") as folder:
     (p/"hip_runtime_compat.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
     (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
     (p/"check.c").write_text(prefix+globals_+body("openmx_gpu_task.c")+body("Total_Energy_GPU.c")+reference+main)
-    subprocess.run(shlex.split(os.environ.get("CC","cc"))+[
+    compile_task_test(shlex.split(os.environ.get("CC","cc"))+[
         "-std=c11","-O1","-g","-Wno-unknown-pragmas","-fsanitize=address,undefined",
         "-fno-sanitize-recover=all","-I"+str(p),"-I"+str(root/"source"),str(p/"check.c"),"-lm","-o",str(p/"check")],check=True)
     subprocess.run([str(p/"check")],check=True,timeout=60)

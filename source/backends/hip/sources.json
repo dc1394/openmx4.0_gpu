@@ -287,7 +287,6 @@
     "openmx_dense_cpu.h",
     "openmx_gpu_collective.h",
     "openmx_gpu_dm_collective.h",
-    "openmx_gpu_task.h",
     "openmx_gpu_vector.h",
     "openmx_gpusolver_dense_utils.h",
     "openmx_host_memory.h",
@@ -774,7 +773,6 @@
     "openmx_gpu_arch_policy.h": "ccd783c8315161f61eeb85b72bfb06dca0842903849f102b508221588b3926a3",
     "openmx_gpu_collective.h": "a27ce760851f2a1782a3fece367b37754dee32b88ee4d27b0c286c6611cfd9b7",
     "openmx_gpu_dm_collective.h": "dd46f5ef8271d99c203803e0524879955d4c547251f82fc44ba5c80eb9e0fc74",
-    "openmx_gpu_task.h": "efe3c203308a9f29d15294f941a024a87841de26a7c9adacbaf48c8c6eb180b6",
     "openmx_gpu_vector.h": "902ee8dacc7acf528c7fbf3e3d26bfc428fcca5e4ee35200dfc059223013a134",
     "openmx_gpusolver_dense_utils.h": "e3ba81939334e5cda81adc59c79c27a51a34b810d5287111704370177baf2111",
     "openmx_host_memory.h": "760690998f03ac96917faffa55216b2d658340f1a66a7397f4d61aaee440dd02",
@@ -1062,7 +1060,11 @@
     "openmx_force_hnl_batch.h",
     "openmx_core_force_hnl_batch.h",
     "openmx_core_core_hole.h",
-    "openmx_core_projector_force.h"
+    "openmx_core_projector_force.h",
+    "openmx_gpu_task.h",
+    "openmx_gpu_task_layout.h",
+    "openmx_gpu_task_worker.cpp",
+    "openmx_host_buffer.hpp"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

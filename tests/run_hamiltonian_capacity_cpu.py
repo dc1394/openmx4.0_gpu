@@ -3,6 +3,7 @@
 import ast
 import os
 from pathlib import Path
+from task_worker_test_bridge import compile_task_test
 import shlex
 import subprocess
 import tempfile
@@ -59,5 +60,5 @@ with tempfile.TemporaryDirectory(prefix='openmx-hamiltonian-') as folder:
  (p/"cuda_runtime.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
  (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
  (p/'check.c').write_text(prefix+body+base+pair+main)
- subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),'-lm','-o',str(p/'check')],check=True)
+ compile_task_test(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),'-lm','-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True,timeout=60)

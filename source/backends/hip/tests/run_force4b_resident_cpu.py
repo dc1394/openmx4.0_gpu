@@ -307,7 +307,7 @@ def make_harness(source: str) -> str:
                           "static size_t free_override, last_wait_bytes;")
     stubs = stubs.replace("static void* Force_gpu_arena_try(size_t n)\n{",
                           "static void* Force_gpu_arena_try(size_t n)\n{\n    last_wait_bytes = n;")
-    task_source = (common.ROOT / "source/openmx_gpu_task.c").read_text()
+    task_source = (common.ROOT / "source/openmx_gpu_task_layout.h").read_text() + "\n" + (common.ROOT / "source/openmx_gpu_task.c").read_text()
     task_api = (common.ROOT / "source/openmx_gpu_task.h").read_text().replace("#include <mpi.h>", "")
     cpu_task = task_api + "\n".join(common.extract_function(task_source,name) for name in
         ("task_add","task_view_bytes","task_bytes","task_copy_view","task_cpu_bytes","task_cpu"))
