@@ -212,6 +212,6 @@ with tempfile.TemporaryDirectory(prefix="openmx-vna-workspace-") as folder:
                    + '\n#include "openmx_vna_cpu.h"\n#include "vna_pair_fixture.h"\n' + '\n#include "block_matrix_fixture.h"\n' + MAIN)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
                    shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +
-                   ["-std=c11", "-fopenmp", "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), str(src), str(CORE),
+                   ["-std=c11", "-D_POSIX_C_SOURCE=200809L", "-fopenmp", "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), "-include", str(ROOT / "source/openmx_env.h"), str(ROOT / "source/openmx_env.c"), str(src), str(CORE),
                     "-Wl,-rpath," + str(CORE.parent), "-lm", "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

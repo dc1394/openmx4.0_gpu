@@ -158,7 +158,7 @@ int main(void)
     assert(a.enabled&&a.pro00==retained);check_batch(&a,&v);
     SetPro_DSVNA_GpuEnd(&a);SetPro_DSVNA_GpuEnd(&a);
     for(size_t i=0;i<sizeof(a);i++)assert(((unsigned char*)&a)[i]==0);
-    allowed=0;assert(!SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&!a.enabled);SetPro_DSVNA_GpuEnd(&a);allowed=1;
+    allowed=0;assert(!openmx_env_set("OPENMX_SETPRO_GPU","0"));assert(!SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&!a.enabled);SetPro_DSVNA_GpuEnd(&a);allowed=1;assert(!openmx_env_unset("OPENMX_SETPRO_GPU"));
     scf_eigen_lib_flag=0;assert(!SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&!a.enabled);scf_eigen_lib_flag=GPUSOLVER;
     openmx_core_vna_preparation_destroy(owner);cases++;
   }
@@ -176,6 +176,6 @@ with tempfile.TemporaryDirectory(prefix="openmx-vna-preparation-") as folder:
                    + function("static void SetPro_DSVNA_GpuEnd(")
                    + '\n#include "openmx_vna_preparation.h"\n' + MAIN)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) + shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +
-                   ["-std=c11", "-fopenmp", "-I" + str(ROOT / "source"), str(src), str(CORE),
+                   ["-std=c11", "-D_POSIX_C_SOURCE=200809L", "-fopenmp", "-I" + str(ROOT / "source"), "-include", str(ROOT / "source/openmx_env.h"), str(ROOT / "source/openmx_env.c"), str(src), str(CORE),
                     "-Wl,-rpath," + str(CORE.parent), "-lm", "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "source/Force.c").read_text()
 prefix = r'''
 #include <assert.h>
+#include "openmx_env.h"
+#include "openmx_core_native_resources.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-force-archive-") as directory:
     (p / "check.c").write_text(prefix + body + main)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
         "-std=c11", "-D_POSIX_C_SOURCE=200809L", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
-        str(p / "check.c"), "-o", str(p / "check")], check=True)
+        "-I"+str(ROOT/"source"), str(ROOT/"source/openmx_env.c"), str(p / "check.c"), "-o", str(p / "check")], check=True)
 
     def sanitizer_stack():
         soft, hard = resource.getrlimit(resource.RLIMIT_STACK)

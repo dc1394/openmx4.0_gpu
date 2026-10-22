@@ -20,6 +20,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import force_gpu_fixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,9 @@ def extract_function(source: str, name: str) -> str:
         name += "_Single"
     matches = list(re.finditer(r"^static [^\n]*\b" + re.escape(name) + r"\(", source, re.M))
     if not matches:
+        shared=(ROOT / "source/openmx_force_gpu_resources.h").read_text()
+        if source != shared and name.startswith("Force4B"):
+            return extract_function(shared,name)
         raise ValueError(f"missing production function: {name}")
     match = next((m for m in matches if ";" not in source[m.end():source.index("{", m.end())]), None)
     if match is None:
@@ -57,6 +61,9 @@ def extract_function(source: str, name: str) -> str:
 
 def extract_struct(source: str, name: str) -> str:
     match = re.search(r"typedef struct\s*\{[^{}]*\}\s*" + re.escape(name) + r";", source)
+    if match is None and name.startswith("Force4B"):
+        shared=(ROOT / "source/openmx_force_gpu_resources.h").read_text()
+        match=re.search(r"typedef struct\s*\{[^{}]*\}\s*"+re.escape(name)+r";",shared)
     if match is None:
         match = re.search(r"struct\s+" + re.escape(name) + r"\s*\{[^{}]*\};", source)
         if match is None:
@@ -153,6 +160,9 @@ static void* test_calloc(size_t count, size_t size)
 }
 #define calloc test_calloc
 '''
+
+
+STUBS += force_gpu_fixture.model()
 
 
 FIXTURE = r'''
@@ -397,11 +407,11 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="openmx-force4b-cpu-") as directory:
             source = Path(directory) / "force4b_stream_cpu.c"
             binary = Path(directory) / "force4b_stream_cpu"
-            source.write_text(harness)
+            source.write_text(force_gpu_fixture.explicit_fixture_contexts(harness))
             subprocess.run(
                 [*compiler, *flags, "-std=c11", "-Wno-unknown-pragmas",
                  "-I", str(ROOT / "source"), str(source),
-                 str(ROOT / "source/openmx_precision.c"), "-lm", "-o", str(binary)],
+                 str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), "-lm", "-o", str(binary)],
                 check=True,
             )
             for enabled in ("1", "0"):

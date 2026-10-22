@@ -136,5 +136,5 @@ with tempfile.TemporaryDirectory(prefix='openmx-dense-index-') as directory:
     sources.extend((root/'source/openmx_gpu_views.c',tmp/'workers.cpp',fixture))
     command=shlex.split(os.environ.get('CXX','c++'))+['-std=c++17','-O1','-g','-fsanitize=address,undefined',
         '-fno-omit-frame-pointer','-I'+str(tmp),'-I'+str(root/'source'),'-x','c++']
-    subprocess.run(command+list(map(str,sources))+['-o',str(tmp/'check')],check=True)
+    subprocess.run(command+list(map(str,sources))+[str(root/'source/openmx_env.c'),'-o',str(tmp/'check')],check=True)
     subprocess.run([str(tmp/'check')],check=True)

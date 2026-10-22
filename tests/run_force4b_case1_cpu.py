@@ -14,6 +14,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import force_gpu_fixture
 
 import run_force4b_stream_cpu as common
 
@@ -378,11 +379,11 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="openmx-force4b-case1-cpu-") as directory:
             source = Path(directory) / "case1.c"
             binary = Path(directory) / "case1"
-            source.write_text(harness)
+            source.write_text(force_gpu_fixture.explicit_fixture_contexts(harness))
             subprocess.run(
                 [*compiler, *flags, "-std=c11", "-Wno-unknown-pragmas",
                  "-I", str(common.ROOT / "source"), str(source),
-                 str(common.ROOT / "source/openmx_precision.c"), "-lm", "-o", str(binary)],
+                 str(common.ROOT / "source/openmx_precision.c"), str(common.ROOT / "source/openmx_env.c"), "-lm", "-o", str(binary)],
                 check=True,
             )
             for enabled in ("1", "0"):

@@ -194,7 +194,7 @@ int main(void)
                 for (mc = 1; mc <= Matomnum; mc++) {
                     for (q = 1; q <= FNAN[M2G[mc]]; q++) {
                         stage_source(F_G2M[natn[M2G[mc]][q]]);
-                        Force4B_case1_trace_fused(mc, M2G[mc], q, cdm, ds,
+                        Force4B_case1_trace_fused(vna, mc, M2G[mc], q, cdm, ds,
                             &expected1[mc][0], &expected1[mc][1], &expected1[mc][2]);
                     }
                 }
@@ -209,7 +209,7 @@ int main(void)
                     Force4B_GpuArchiveHalo(ds, source, F_M2G[source]);
                 }
                 last_wait_bytes = 0;
-                Force4B_GpuCase1Run(cdm);
+                Force4B_GpuCase1Run(vna, cdm);
                 CHECK(failure || last_wait_bytes == work1);
                 for (mc = 1; mc <= Matomnum; mc++) {
                     for (i = 0; i < 3; i++) {
@@ -235,7 +235,7 @@ int main(void)
                     stage_source(source);
                     Force4B_GpuCase1StreamSource(source, cdm, ds);
                 }
-                Force4B_GpuCase1StreamAccumulate(cdm);
+                Force4B_GpuCase1StreamAccumulate(vna, cdm);
                 Force4B_GpuCase1StreamEnd();
                 for (mc = 1; mc <= Matomnum; mc++)
                     CHECK(memcmp(resident[mc], &Gxyz[M2G[mc]][41], sizeof(resident[mc])) == 0);
@@ -317,9 +317,9 @@ def make_harness(source: str) -> str:
              common.extract_struct(source, "Force4BGpuContext"),
              "static Force4BGpuContext F4B_gpu = { 0 };\n"]
     for name in (
-        "Force_gpu_node_reserve", "Force_gpu_arena_off", "Force_host_arena_alloc", "Force_host_arena_free",
+        "Force_gpu_node_reserve", "Force_gpu_arena_off",
         "Force4B_case2_trace_fused", "Force4B_case1_trace_fused_rows", "Force4B_case1_trace_fused",
-        "Force4B_GpuWorkspaceSizes", "Force4B_GpuBegin", "Force4B_GpuEnd", "Force4B_GpuCase2Begin",
+        "Force4B_GpuWorkspaceSizes", "Force4B_GpuEnd", "Force4B_GpuBegin", "Force4B_GpuCase2Begin",
         "Force4B_GpuArchiveHalo", "Force4B_GpuArchiveCase2", "Force4B_GpuCase1Kernel",
         "Force4B_GpuCase1Accumulate",
     ):

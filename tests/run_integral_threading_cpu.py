@@ -170,8 +170,8 @@ with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
                    + cache + profile + nonlocal_profile + bessel + "\n".join(updates) + HARNESS)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2 -g"))
-    subprocess.run(compiler + flags + ["-std=c11", "-fopenmp", "-pthread",
-                   "-I" + str(ROOT / "source"), str(src), str(CORE_LIBRARY),
+    subprocess.run(compiler + flags + ["-std=c11", "-D_POSIX_C_SOURCE=200809L", "-fopenmp", "-pthread",
+                   "-I" + str(ROOT / "source"), "-include", str(ROOT / "source/openmx_env.h"), "-include", "limits.h", str(ROOT / "source/openmx_env.c"), str(src), str(CORE_LIBRARY),
                    "-Wl,-rpath," + str(CORE_LIBRARY.parent), "-lm", "-o", str(exe)], check=True)
     runner = (["valgrind", "--tool=helgrind", "--error-exitcode=99", "--quiet"]
               if "--helgrind" in sys.argv[1:] else [])

@@ -44,7 +44,7 @@ body = "".join(extract_struct(source, n) for n in (
     "Force4BGpuContext", "Force4BGpuItem", "Force4BCapacityParameters",
     "ForceHNLGpuContext", "ForceHNLCapacityItem"))
 body += "".join(extract_function(source, n) for n in (
-    "Force_env_flag", "Force_gpu_stage_default", "Force4B_capacity", "Force_HNL_capacity"))
+    "Force_gpu_stage_default", "Force4B_capacity", "Force_HNL_capacity"))
 main = r'''
 int main(int argc,char **argv) {
  assert(argc==3);int kind=atoi(argv[1]);fail_at=atoi(argv[2]);
@@ -53,10 +53,10 @@ int main(int argc,char **argv) {
   setenv("OPENMX_FORCE_GPU","0",1);assert(Force_gpu_stage_default()==0);
   const char *stages[]={"OPENMX_FORCE3_GPU","OPENMX_FORCE4B_GPU","OPENMX_FORCEHNL_GPU"};
   for(int i=0;i<3;++i) {
-   unsetenv(stages[i]);assert(!Force_env_flag(stages[i],Force_gpu_stage_default()));
-   setenv(stages[i],"1",1);assert(Force_env_flag(stages[i],Force_gpu_stage_default()));
+   unsetenv(stages[i]);assert(!openmx_env_flag(stages[i],Force_gpu_stage_default()));
+   setenv(stages[i],"1",1);assert(openmx_env_flag(stages[i],Force_gpu_stage_default()));
    setenv("OPENMX_FORCE_GPU","1",1);setenv(stages[i],"0",1);
-   assert(!Force_env_flag(stages[i],Force_gpu_stage_default()));
+   assert(!openmx_env_flag(stages[i],Force_gpu_stage_default()));
    setenv("OPENMX_FORCE_GPU","0",1);
   }
   return 0;
@@ -76,8 +76,8 @@ with tempfile.TemporaryDirectory(prefix="openmx-force-packets-") as directory:
         "int MPI_Allreduce(const void*,void*,int,int,int,int);\n")
     (tmp/"test.c").write_text(prefix+body+main)
     subprocess.run(shlex.split(os.environ.get("CC", "cc"))+
-        ["-std=c11", "-O0", "-Wall", "-Wextra", "-Werror=implicit-function-declaration",
-         "-I"+str(tmp), "-I"+str(root/"source"), str(tmp/"test.c"), "-o", str(tmp/"check")], check=True)
+        ["-std=c11", "-D_POSIX_C_SOURCE=200809L", "-O0", "-Wall", "-Wextra", "-Werror=implicit-function-declaration",
+         "-I"+str(tmp), "-I"+str(root/"source"), "-include", str(root/"source/openmx_env.h"), str(root/"source/openmx_env.c"), str(tmp/"test.c"), "-o", str(tmp/"check")], check=True)
     subprocess.run([str(tmp/"check"), "0", "0"], check=True)
     for kind, count in ((1,4),(2,5)):
         for allocation in range(1,count+1):

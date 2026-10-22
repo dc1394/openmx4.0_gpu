@@ -154,6 +154,14 @@ if(BUILD_TESTING)
   add_test(NAME force-hnl-gpu-archives COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_force_hnl_gpu_cpu.py" "$<TARGET_FILE:openmx_core>")
   set_tests_properties(force-hnl-gpu-archives PROPERTIES LABELS "unit;force" TIMEOUT 180)
+  add_test(NAME force-vna-gpu-resources COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_force_vna_gpu_cpu.py" "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(force-vna-gpu-resources PROPERTIES LABELS "unit;force" TIMEOUT 180)
+  foreach(_force_fixture IN ITEMS stream case1 case1_turns)
+    add_test(NAME "force-vna-${_force_fixture}-packing" COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/run_force4b_${_force_fixture}_cpu.py")
+    set_tests_properties("force-vna-${_force_fixture}-packing" PROPERTIES LABELS "unit;force" TIMEOUT 120)
+  endforeach()
   add_test(NAME projector-capacity-recovery COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_projector_recovery_cpu.py")
   set_tests_properties(projector-capacity-recovery PROPERTIES LABELS "unit;force" TIMEOUT 120)

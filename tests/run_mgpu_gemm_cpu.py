@@ -169,7 +169,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-mgpu-cpu-") as tmp:
     subprocess.run(shlex.split(os.environ.get("CXX", "c++")) +
                    ["-std=c++17", "-O2", "-DOPENMX_MGPU_TEST_BRIDGE", "-I" + str(directory),
                     "-I" + str(root / "source"), "-x", "c++", str(directory / "check.cpp"),
-                    str(root / "source/openmx_mgpu_gemm.cu"), "-o", str(binary)], check=True)
+                    str(root / "source/openmx_mgpu_gemm.cu"), str(root / "source/openmx_env.c"), "-o", str(binary)], check=True)
     environment = {k: v for k, v in os.environ.items() if not k.startswith("OPENMX_MGPU_")}
     for ngpu in (2, 4):
         subprocess.run([str(binary), "--ngpu", str(ngpu)], env=environment, check=True)

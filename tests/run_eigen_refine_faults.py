@@ -447,9 +447,9 @@ int main(void) {
             if name!="retry" and args.core_library:
                 library=Path(args.core_library).resolve(strict=True)
                 linkage=["-DTEST_NATIVE_RESOURCES",str(library),"-Wl,-rpath,"+str(library.parent)]
-            subprocess.run(cc + flags + ["-std=c11", "-Wall", "-Wextra", "-Wno-unused-parameter",
+            subprocess.run(cc + flags + ["-std=c11", "-D_POSIX_C_SOURCE=200809L", "-Wall", "-Wextra", "-Wno-unused-parameter",
                 "-Wno-unknown-pragmas", "-I" + str(root / "source"), str(source),
-                str(root / "source/openmx_precision.c"), *linkage, "-lm", "-o", str(exe)], check=True)
+                str(root / "source/openmx_precision.c"), str(root / "source/openmx_env.c"), "-include", str(root / "source/openmx_env.h"), *linkage, "-lm", "-o", str(exe)], check=True)
             subprocess.run([str(exe)], check=True)
 
 

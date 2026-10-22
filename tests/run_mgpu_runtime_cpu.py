@@ -411,7 +411,7 @@ int main() {
  worker=1;CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,1,1,1,&alpha,&a,1,&b,1,&beta,&c,1,&status)==0 && gemm_calls==1);
  // A device-resident product stays on its owner's GPU by default, like the
  // eigensolver; cooperation is opt-in. Unknown values keep it off.
- for(const char *mode:{(const char*)nullptr,"0","off","yes"}) {
+ for(const char *mode:{(const char*)nullptr,"0","off","invalid"}) {
   reset();openmx_mgpu_scope_enter(1);
   if(mode) setenv("OPENMX_MGPU_GEMM",mode,1);
   CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,8192,8192,8192,&alpha,&a,8192,&b,8192,&beta,&c,8192,&status)==0 && gemm_calls==0);
@@ -419,7 +419,7 @@ int main() {
  // Opted-in cooperation (on) is portable to PCIe and skinny matrices. The
  // optional legacy auto policy retains its NVLink and size filters.
  for(int topology=0;topology<=5;++topology) {
-  reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_MGPU_GEMM","on",1);
+  reset();openmx_mgpu_scope_enter(1);setenv("OPENMX_MGPU_GEMM",topology%2?"yes":"on",1);
   setenv("OPENMX_TEST_NVLINK_MODE",std::to_string(topology).c_str(),1);
   peer_support=0;ratio=64;
   CHECK(openmx_mgpu_dispatch_dgemm((void*)1,0,0,17,7,9,&alpha,&a,17,&b,9,&beta,&c,17,&status)==1 && gemm_calls==1);
@@ -571,7 +571,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-mgpu-runtime-") as folder:
                               "-o", str(tmp/"libnvidia-ml.so.1")], check=True)
     command = compiler + ["-std=c++17", "-O1", "-Wall", "-Wextra",
         "-Wno-address", "-fsanitize=undefined", "-fno-sanitize-recover=all", "-pthread", "-I"+str(tmp),
-        "-I"+str(root/"source"), str(tmp/"test.cpp"), "-ldl", "-o", str(tmp/"test")]
+        "-I"+str(root/"source"), str(tmp/"test.cpp"), str(root/"source/openmx_env.c"), "-ldl", "-o", str(tmp/"test")]
     subprocess.run(command, check=True)
     symbols = subprocess.check_output(["nm", "-g", str(tmp/"test")], text=True)
     for name in ("openmx_mgpu_scope_enter", "openmx_mgpu_scope_leave",

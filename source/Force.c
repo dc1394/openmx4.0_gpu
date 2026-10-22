@@ -67,13 +67,11 @@ static void* Force_checked_malloc(size_t size, const char* file, int line)
     abort();
 }
 
-
 /* Per-stage overrides inherit the umbrella, as on the HIP backend. */
 static int Force_gpu_stage_default(void)
 {
     return openmx_env_flag_at(OPENMX_ENV_FORCE_GPU, 1);
 }
-
 
 static void Force_profile_report(const char* label, double local_elapsed,
     MPI_Comm comm, int myid, int numprocs)
@@ -6317,35 +6315,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
    collective node RAM admission and no duplicate local host archive. */
 /* ------------------------------------------------------------------ */
 
-typedef struct {
-    int enabled;
-    float *flat_host,*halo_host,*c2_host;
-    int num_proj;
-
-    /* local DS_VNA rows, direction-major: flat[dir*stride + block]    */
-    float* flat_dev;
-    size_t flat_stride;
-    size_t* mck_off;   /* (Mc,k) block base: mck_off[mck_base[Mc]+k]   */
-    int* mck_base;     /* Mc -> first (Mc,k) slot                      */
-
-    /* case-1 halo archive: direction 0 rows of every received atom    */
-    float* halo_dev;
-    size_t halo_count;
-    size_t* halo_off;  /* (halo_idx, k) block base                     */
-    int* halo_base;    /* halo_idx -> first slot                       */
-
-    /* case-2 per-centre archive: 4 directions of the staged slot;
-       block sizes follow the NEIGHBOUR's orbital count                 */
-    float* c2_dev;
-    size_t c2_stride;
-    size_t* c2_off;    /* (Mc,k) block base, indexed via mck_base      */
-
-    /* host bounce buffer holding one atom's largest one-direction block */
-    float* stage;
-    size_t stage_len;
-} Force4BGpuContext;
-
-static Force4BGpuContext F4B_gpu = { 0 };
+#include "openmx_force_gpu_resources.h"
 
 static void Force4B_gpu_abort(const char* message)
 {
@@ -6356,13 +6326,6 @@ static void Force4B_gpu_abort(const char* message)
 }
 
 /* per-item metadata of the batched case-1/case-2 kernels */
-typedef struct {
-    size_t cdm_off;
-    int k_off;
-    int k_n;
-    int ian;
-    int jan;
-} Force4BGpuItem;
 
 /* Count the same packed buffers as Case1Run/Case2Run before admitting a
    rank.  Dense neighbour lists can make the CDM batch larger than the
@@ -6495,16 +6458,11 @@ static int Force4B_ArchiveGpuPreferred(int resident)
     return !openmx_gpu_device_weak_fp64(device);
 }
 
-static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int stream_case2)
+static int Force4B_GpuBegin(OpenMXSolverInvocation *scratch, Force4BGpuContext **output, Type_DS_VNA***** DS_VNA, int stream_case1, int stream_case2)
 {
-    Force4BGpuContext* g = &F4B_gpu;
     int Mc_AN, k, node_ranks = 1, node_rank = 0;
     size_t pos = 0, slots = 0, halo_slots = 0, c2pos = 0, maxblk = 0;
     size_t free_bytes = 0, total_bytes = 0;
-    MPI_Comm node_comm = MPI_COMM_NULL;
-
-    memset(g, 0, sizeof(*g));
-    g->num_proj = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
 
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
@@ -6512,9 +6470,18 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
     if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (stream_case1 && stream_case2) return 0;
 
-    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
-    MPI_Comm_size(node_comm, &node_ranks);
-    MPI_Comm_rank(node_comm, &node_rank);
+    OpenMXNativeResources *resources;
+    Force4BGpuContext *g=(Force4BGpuContext*)ForceGpu_State(scratch,"force4b-archives",sizeof(*g),&resources);
+    g->resources=resources;
+    Force4B_GpuEnd(g);
+    *output=g;
+    MPI_Comm *node_comm=ForceGpu_NodeComm(resources);
+    g->num_proj = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
+
+    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, node_comm);
+    ForceGpu_CommAdopt(resources,node_comm);
+    MPI_Comm_size(*node_comm, &node_ranks);
+    MPI_Comm_rank(*node_comm, &node_rank);
     if (node_ranks < 1) node_ranks = 1;
 
     /* return every rank's OpenACC freelist (e.g. the Force3 buffers) to CUDA
@@ -6523,8 +6490,8 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
     if (gpu_rank_device_usable() && cudaDeviceSynchronize() == cudaSuccess) {
         acc_clear_freelists();
     }
-    MPI_Barrier(node_comm);
-    MPI_Comm_free(&node_comm);
+    MPI_Barrier(*node_comm);
+    ForceGpu_CommFree(resources,node_comm);
 
     /* size the flat local table (4 dirs) and the halo/case-2 archives;
        also find the largest one-direction atom block for the staging
@@ -6594,14 +6561,13 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
         MPI_Allreduce(&fit,&all_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);if(!all_fit)return 0;
     }
 
-    g->mck_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 2), __FILE__, __LINE__);
-    g->mck_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (slots == 0 ? 1 : slots), __FILE__, __LINE__);
-    g->halo_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(MatomnumF + 2), __FILE__, __LINE__);
-    g->halo_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (halo_slots == 0 ? 1 : halo_slots),
-        __FILE__, __LINE__);
-    g->c2_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (slots == 0 ? 1 : slots), __FILE__, __LINE__);
+    g->mck_base = (int*)ForceGpu_RequiredHost(g->resources,sizeof(int) * (size_t)(Matomnum + 2));
+    g->mck_off = (size_t*)ForceGpu_RequiredHost(g->resources,sizeof(size_t) * (slots == 0 ? 1 : slots));
+    g->halo_base = (int*)ForceGpu_RequiredHost(g->resources,sizeof(int) * (size_t)(MatomnumF + 2));
+    g->halo_off = (size_t*)ForceGpu_RequiredHost(g->resources,sizeof(size_t) * (halo_slots == 0 ? 1 : halo_slots));
+    g->c2_off = (size_t*)ForceGpu_RequiredHost(g->resources,sizeof(size_t) * (slots == 0 ? 1 : slots));
     g->stage_len = (maxblk == 0 ? 1 : maxblk);
-    g->stage = (float*)Force_checked_malloc(sizeof(float) * g->stage_len, __FILE__, __LINE__);
+    g->stage = (float*)ForceGpu_RequiredHost(g->resources,sizeof(float) * g->stage_len);
 
     pos = 0;
     slots = 0;
@@ -6640,21 +6606,18 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
        Force4B_GpuCase1Run has completed, so do not allocate it yet. */
 
     if(resident && !stream_case1){
-        g->flat_dev=Force_gpu_arena_try((g->flat_stride?4U*g->flat_stride:4)*sizeof(float));
-        g->halo_dev=Force_gpu_arena_try((g->halo_count?g->halo_count:1)*sizeof(float));
+        g->flat_dev=(float*)ForceGpu_Arena(g->resources,(g->flat_stride?4U*g->flat_stride:4)*sizeof(float));
+        g->halo_dev=(float*)ForceGpu_Arena(g->resources,(g->halo_count?g->halo_count:1)*sizeof(float));
     }
     int allocated=1,all_allocated;
     if(!stream_case1 && (!g->flat_dev || !g->halo_dev)){
-        if(g->flat_dev)acc_free(g->flat_dev);if(g->halo_dev)acc_free(g->halo_dev);g->flat_dev=g->halo_dev=NULL;
-        g->flat_host=(malloc)((g->flat_stride?4U*g->flat_stride:4)*sizeof(float));
-        g->halo_host=(malloc)((g->halo_count?g->halo_count:1)*sizeof(float));
+        if(g->flat_dev)ForceGpu_ArenaFree(g->resources,g->flat_dev);if(g->halo_dev)ForceGpu_ArenaFree(g->resources,g->halo_dev);g->flat_dev=g->halo_dev=NULL;
+        g->flat_host=(float*)ForceGpu_Host(g->resources,1,(g->flat_stride?4U*g->flat_stride:4)*sizeof(float),0);
+        g->halo_host=(float*)ForceGpu_Host(g->resources,1,(g->halo_count?g->halo_count:1)*sizeof(float),0);
         allocated=g->flat_host && g->halo_host;
     }
     MPI_Allreduce(&allocated,&all_allocated,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-    if(!all_allocated){
-        if(g->flat_dev)acc_free(g->flat_dev);if(g->halo_dev)acc_free(g->halo_dev);
-        free(g->flat_host);free(g->halo_host);free(g->stage);free(g->c2_off);free(g->halo_off);free(g->halo_base);free(g->mck_off);free(g->mck_base);memset(g,0,sizeof(*g));return 0;
-    }
+    if(!all_allocated){Force4B_GpuEnd(g);return 0;}
 
     /* upload the (premultiplied) local DS_VNA rows one atom block at a
        time through the staging buffer */
@@ -6696,52 +6659,29 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
     return 1;
 }
 
-static void Force4B_GpuEnd(void)
-{
-    Force4BGpuContext* g = &F4B_gpu;
-
-    if (!g->enabled) return;
-
-    if (g->flat_dev != NULL) acc_free(g->flat_dev);
-    if (g->halo_dev != NULL) acc_free(g->halo_dev);
-    if (g->c2_dev != NULL) acc_free(g->c2_dev);
-    acc_clear_freelists();
-
-    free(g->flat_host);free(g->halo_host);free(g->c2_host);
-    free(g->stage);
-    free(g->c2_off);
-    free(g->halo_off);
-    free(g->halo_base);
-    free(g->mck_off);
-    free(g->mck_base);
-    memset(g, 0, sizeof(*g));
-}
-
 /* End the first archive lifetime before claiming the second.  In
    particular, a rank with no case-1 pairs returns early from Case1Run
    and can still own its initial archives here. */
-static int Force4B_GpuCase2Begin(int full_batch)
+static int Force4B_GpuCase2Begin(Force4BGpuContext *g, int full_batch)
 {
-    Force4BGpuContext *g=&F4B_gpu;
     if(!g->enabled)return 0;
-    if(g->flat_dev)acc_free(g->flat_dev);if(g->halo_dev)acc_free(g->halo_dev);g->flat_dev=g->halo_dev=NULL;
-    free(g->flat_host);free(g->halo_host);g->flat_host=g->halo_host=NULL;
+    if(g->flat_dev)ForceGpu_ArenaFree(g->resources,g->flat_dev);if(g->halo_dev)ForceGpu_ArenaFree(g->resources,g->halo_dev);g->flat_dev=g->halo_dev=NULL;
+    openmx_core_native_free(g->resources,g->flat_host);openmx_core_native_free(g->resources,g->halo_host);g->flat_host=g->halo_host=NULL;
     if(gpu_rank_device_usable())Force_gpu_pool_flush();
     if(!full_batch)return 1;
     size_t bytes=(g->c2_stride?4U*g->c2_stride:4)*sizeof(float);
-    if(!openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable())g->c2_dev=Force_gpu_arena_try(bytes);
-    if(!g->c2_dev)g->c2_host=(malloc)(bytes);
+    if(!openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable())g->c2_dev=(float*)ForceGpu_Arena(g->resources,bytes);
+    if(!g->c2_dev)g->c2_host=(float*)ForceGpu_Host(g->resources,1,bytes,0);
     int allocated=g->c2_dev || g->c2_host,all_allocated;
     MPI_Allreduce(&allocated,&all_allocated,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-    if(!all_allocated){Force4B_GpuEnd();return 0;}
+    if(!all_allocated){Force4B_GpuEnd(g);return 0;}
     return 1;
 }
 
 /* archive the direction-0 block of the halo atom just received into the
    Matomnum+1 slot of the case-1 communication loop */
-static void Force4B_GpuArchiveHalo(Type_DS_VNA***** DS_VNA, int Original_Mc_AN, int Gc_AN)
+static void Force4B_GpuArchiveHalo(Force4BGpuContext *g, Type_DS_VNA***** DS_VNA, int Original_Mc_AN, int Gc_AN)
 {
-    Force4BGpuContext* g = &F4B_gpu;
     int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
     int halo_idx = Original_Mc_AN - Matomnum;
     size_t base;
@@ -6773,9 +6713,8 @@ static void Force4B_GpuArchiveHalo(Type_DS_VNA***** DS_VNA, int Original_Mc_AN, 
 }
 
 /* archive the staged 4-direction slot of the case-2 centre atom Mc_AN */
-static void Force4B_GpuArchiveCase2(Type_DS_VNA***** DS_VNA, int Mc_AN, int Gc_AN)
+static void Force4B_GpuArchiveCase2(Force4BGpuContext *g, Type_DS_VNA***** DS_VNA, int Mc_AN, int Gc_AN)
 {
-    Force4BGpuContext* g = &F4B_gpu;
     size_t base = g->c2_off[g->mck_base[Mc_AN]];
     size_t blk = 0;
     int k, kk;
@@ -7033,46 +6972,10 @@ static void Force4B_GpuCase1Accumulate(const OpenMXVnaMatrixViews *vna, double**
     Gxyz[Gc_AN][43] += fz;
 }
 
-typedef struct {
-    int nitems;
-    size_t flat_stride, halo_count, rows, cdm_count, bytes;
-    size_t flat, halo, items, row_a, row_b, row_halo, cdm, item_f;
-} Force4BCase1Plan;
-
-typedef struct {
-    char *host, *device;
-    size_t capacity, pair_count;
-    int num_proj;
-    int *source_head, *pair_next, *pair_mc, *pair_q, *pair_rows;
-    double* forces;
-    unsigned char* done;
-} Force4BCase1Stream;
-
-static Force4BCase1Stream F4B_stream1 = { 0 };
-
 static int Force4B_GpuCase1StreamMode(void)
 {
     /* -1: auto */
     return openmx_env_flag_at(OPENMX_ENV_FORCE4B_CASE1_STREAM, -1);
-}
-
-static void Force4B_GpuCase1StreamEnd(void)
-{
-    Force4BCase1Stream* g = &F4B_stream1;
-
-    if (g->device != NULL) {
-        acc_free(g->device);
-        Force_gpu_pool_flush();
-    }
-    free(g->done);
-    free(g->forces);
-    free(g->pair_rows);
-    free(g->pair_q);
-    free(g->pair_mc);
-    free(g->pair_next);
-    free(g->source_head);
-    free(g->host);
-    memset(g, 0, sizeof(*g));
 }
 
 /* SIZE_MAX denotes a batch that cannot be represented.  Admission then
@@ -7132,9 +7035,8 @@ static void Force4B_GpuCase1Layout(Force4BCase1Plan* plan)
     plan->item_f = Force4B_GpuCase1ArenaOff(&plan->bytes, (size_t)plan->nitems, 3U * sizeof(double));
 }
 
-static void Force4B_GpuCase1PlanAdd(Force4BCase1Plan* plan, int pair)
+static void Force4B_GpuCase1PlanAdd(Force4BCase1Stream *g, Force4BCase1Plan* plan, int pair)
 {
-    Force4BCase1Stream* g = &F4B_stream1;
     const int gc = M2G[g->pair_mc[pair]];
     const int gq = natn[gc][g->pair_q[pair]];
     const int ian = Spe_Total_CNO[WhatSpecies[gc]];
@@ -7166,10 +7068,8 @@ static void Force4B_GpuCase1PlanAdd(Force4BCase1Plan* plan, int pair)
 /* All allocations and collectives finish before the MPI receive loop.
    Received direction-0 rows are consumed before their staging slot can
    be overwritten; only three doubles per pair survive until accumulation. */
-static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
+static int Force4B_GpuCase1StreamBegin(OpenMXSolverInvocation *scratch, Force4BCase1Stream **output, int full_batch, int mode)
 {
-    Force4BCase1Stream* g = &F4B_stream1;
-    MPI_Comm node_comm = MPI_COMM_NULL;
     int node_rank, node_ranks, rank, mc, q, source, p = 0;
     int enabled = 0, enabled_ranks, wanted = 0, wanted_ranks;
     int sources = 0;
@@ -7178,19 +7078,27 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
     size_t free_bytes = 0, total_bytes = 0;
     unsigned long long cap_mb = 1024, reported, max_reported;
 
-    Force4B_GpuCase1StreamEnd();
+    if(*output)Force4B_GpuCase1StreamEnd(*output);
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
     if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (mode == 0) return 0;
 
     MPI_Comm_rank(mpi_comm_level1, &rank);
     cap_mb = openmx_env_ulong_at(OPENMX_ENV_FORCE4B_CASE1_STREAM_MB, cap_mb);
-    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
-    MPI_Comm_rank(node_comm, &node_rank);
-    MPI_Comm_size(node_comm, &node_ranks);
+    OpenMXNativeResources *resources;
+    Force4BCase1Stream *g=(Force4BCase1Stream*)ForceGpu_State(scratch,"force4b-case1-stream",sizeof(*g),&resources);
+    g->resources=resources;
+    Force4B_GpuCase1StreamEnd(g);
+    *output=g;
+    MPI_Comm *node_comm=ForceGpu_NodeComm(resources);
+
+    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, node_comm);
+    ForceGpu_CommAdopt(resources,node_comm);
+    MPI_Comm_rank(*node_comm, &node_rank);
+    MPI_Comm_size(*node_comm, &node_ranks);
     reserve = Force_gpu_node_reserve(node_ranks);
     Force_gpu_pool_flush();
-    MPI_Barrier(node_comm);
+    MPI_Barrier(*node_comm);
 
     if (full_batch) goto report;
     if (Matomnum < 0 || MatomnumF < 0 || Matomnum >= INT_MAX - MatomnumF) goto report;
@@ -7212,13 +7120,13 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
         if (projectors > INT_MAX) goto report;
         g->num_proj = (int)projectors;
     }
-    g->source_head = (int*)calloc((size_t)sources + 1, sizeof(int));
-    g->pair_next = (int*)calloc(count, sizeof(int));
-    g->pair_mc = (int*)calloc(count, sizeof(int));
-    g->pair_q = (int*)calloc(count, sizeof(int));
-    g->pair_rows = (int*)calloc(count, sizeof(int));
-    g->forces = (double*)calloc(3U * count, sizeof(double));
-    g->done = (unsigned char*)calloc(count, sizeof(unsigned char));
+    g->source_head = (int*)ForceGpu_Host(g->resources,(size_t)sources + 1, sizeof(int),1);
+    g->pair_next = (int*)ForceGpu_Host(g->resources,count, sizeof(int),1);
+    g->pair_mc = (int*)ForceGpu_Host(g->resources,count, sizeof(int),1);
+    g->pair_q = (int*)ForceGpu_Host(g->resources,count, sizeof(int),1);
+    g->pair_rows = (int*)ForceGpu_Host(g->resources,count, sizeof(int),1);
+    g->forces = (double*)ForceGpu_Host(g->resources,3U * count, sizeof(double),1);
+    g->done = (unsigned char*)ForceGpu_Host(g->resources,count, sizeof(unsigned char),1);
     if (g->source_head == NULL || g->pair_next == NULL || g->pair_mc == NULL
         || g->pair_q == NULL || g->pair_rows == NULL || g->forces == NULL || g->done == NULL)
         goto report;
@@ -7246,9 +7154,9 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
         for (p = g->source_head[source]; p >= 0; p = g->pair_next[p]) {
             Force4BCase1Plan single = { 0 };
             single.halo_count = plan.halo_count;
-            Force4B_GpuCase1PlanAdd(&single, p);
+            Force4B_GpuCase1PlanAdd(g, &single, p);
             if (max_single < single.bytes) max_single = single.bytes;
-            Force4B_GpuCase1PlanAdd(&plan, p);
+            Force4B_GpuCase1PlanAdd(g, &plan, p);
         }
         if (max_source < plan.bytes) max_source = plan.bytes;
     }
@@ -7260,19 +7168,19 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
         capacity = (size_t)cap_mb * (1024U * 1024U);
     if (max_source < capacity) capacity = max_source;
     if (max_single == SIZE_MAX || capacity < max_single || capacity == 0) goto report;
-    g->device = (char*)Force_gpu_arena_try(capacity);
+    g->device = (char*)ForceGpu_Arena(g->resources,capacity);
     if (g->device == NULL) goto report;
-    g->host = (char*)calloc(1, capacity);
+    g->host = (char*)ForceGpu_Host(g->resources,1, capacity,1);
     if (g->host == NULL) goto report;
     g->capacity = capacity;
     enabled = 1;
 
 report:
-    if (!enabled) Force4B_GpuCase1StreamEnd();
+    if (!enabled) Force4B_GpuCase1StreamEnd(g);
     reported = (unsigned long long)(enabled ? capacity : max_single);
-    MPI_Reduce(&reported, &max_reported, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, node_comm);
-    MPI_Reduce(&enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
-    MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
+    MPI_Reduce(&reported, &max_reported, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, (*node_comm));
+    MPI_Reduce(&enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, (*node_comm));
+    MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, (*node_comm));
     if (node_rank == 0 && wanted_ranks != 0 && 2 <= level_stdout) {
         fprintf(stderr,
             "Force4B GPU: streamed case 1 on %d/%d rank(s), %.1f MiB maximum arena/minimum failed item; "
@@ -7281,13 +7189,12 @@ report:
             wanted_ranks - enabled_ranks);
         fflush(stderr);
     }
-    MPI_Comm_free(&node_comm);
+    ForceGpu_CommFree(resources,node_comm);
     return enabled;
 }
 
-static void Force4B_GpuCase1StreamSource(int source, double***** CDM0, Type_DS_VNA***** DS_VNA)
+static void Force4B_GpuCase1StreamSource(Force4BCase1Stream *g, int source, double***** CDM0, Type_DS_VNA***** DS_VNA)
 {
-    Force4BCase1Stream* g = &F4B_stream1;
     const int gq = source <= Matomnum ? M2G[source] : F_M2G[source];
     const int storage = source <= Matomnum ? source : Matomnum + 1;
     const int jan = Spe_Total_CNO[WhatSpecies[gq]];
@@ -7307,7 +7214,7 @@ static void Force4B_GpuCase1StreamSource(int source, double***** CDM0, Type_DS_V
         plan.halo_count = halo_count;
         while (stop >= 0) {
             Force4BCase1Plan next = plan;
-            Force4B_GpuCase1PlanAdd(&next, stop);
+            Force4B_GpuCase1PlanAdd(g, &next, stop);
             if (next.bytes == SIZE_MAX || next.bytes > g->capacity) break;
             plan = next;
             stop = g->pair_next[stop];
@@ -7392,9 +7299,8 @@ static void Force4B_GpuCase1StreamSource(int source, double***** CDM0, Type_DS_V
     }
 }
 
-static void Force4B_GpuCase1StreamAccumulate(const OpenMXVnaMatrixViews *vna, double***** CDM0)
+static void Force4B_GpuCase1StreamAccumulate(Force4BCase1Stream *g, const OpenMXVnaMatrixViews *vna, double***** CDM0)
 {
-    Force4BCase1Stream* g = &F4B_stream1;
     size_t pair;
 
     for (pair = 0; pair < g->pair_count; pair++) {
@@ -7411,43 +7317,16 @@ static void Force4B_GpuCase1StreamAccumulate(const OpenMXVnaMatrixViews *vna, do
    this rank owns its device. All host resources precede the receive loop;
    a failed one-shot device allocation can still use the original CPU
    contraction with these cached rows. */
-typedef struct {
-    Force4BCase1Plan plan;
-    MPI_Comm device_comm;
-    int enabled, num_proj, device_rank, device_ranks;
-    size_t host_bytes, stage_count;
-    size_t *local_off, *halo_off;
-    Type_DS_VNA* halo_host;
-    float* stage;
-    char* metadata;
-    unsigned char* seen;
-} Force4BCase1Turns;
 
 typedef struct {
     int valid;
     unsigned char uuid[16];
 } Force4BCase1Device;
 
-static Force4BCase1Turns F4B_turns1 = { .device_comm = MPI_COMM_NULL };
-
 static int Force4B_GpuCase1TurnsMode(void)
 {
     /* -1: auto */
     return openmx_env_flag_at(OPENMX_ENV_FORCE4B_CASE1_TURNS, -1);
-}
-
-static void Force4B_GpuCase1TurnsEnd(void)
-{
-    Force4BCase1Turns* g = &F4B_turns1;
-    free(g->seen);
-    free(g->metadata);
-    free(g->stage);
-    free(g->halo_host);
-    free(g->halo_off);
-    free(g->local_off);
-    if (g->device_comm != MPI_COMM_NULL) MPI_Comm_free(&g->device_comm);
-    memset(g, 0, sizeof(*g));
-    g->device_comm = MPI_COMM_NULL;
 }
 
 static size_t Force4B_GpuCase1HostAvailable(void)
@@ -7527,21 +7406,20 @@ static int Force4B_GpuCase1TurnsPlan(Force4BCase1Turns* g)
     return 1;
 }
 
-static int Force4B_GpuCase1TurnsAllocate(double***** CDM0)
+static int Force4B_GpuCase1TurnsAllocate(Force4BCase1Turns *g, double***** CDM0)
 {
-    Force4BCase1Turns* g = &F4B_turns1;
     const Force4BCase1Plan* plan = &g->plan;
     Force4BGpuItem* items;
     size_t *row_a, *row_b, apos = 0, hpos = 0, cpos = 0, kpos = 0;
     int *row_halo, item = 0, mc, q, k, i, j;
     double* cdm;
 
-    g->local_off = (size_t*)calloc((size_t)Matomnum + 2U, sizeof(size_t));
-    g->halo_off = (size_t*)calloc((size_t)MatomnumF + 2U, sizeof(size_t));
-    g->seen = (unsigned char*)calloc((size_t)MatomnumF + 2U, 1U);
-    g->halo_host = (Type_DS_VNA*)calloc(plan->halo_count == 0 ? 1 : plan->halo_count, sizeof(Type_DS_VNA));
-    g->stage = (float*)calloc(g->stage_count == 0 ? 1 : g->stage_count, sizeof(float));
-    g->metadata = (char*)calloc(1, plan->bytes - plan->items);
+    g->local_off = (size_t*)ForceGpu_Host(g->resources,(size_t)Matomnum + 2U, sizeof(size_t),1);
+    g->halo_off = (size_t*)ForceGpu_Host(g->resources,(size_t)MatomnumF + 2U, sizeof(size_t),1);
+    g->seen = (unsigned char*)ForceGpu_Host(g->resources,(size_t)MatomnumF + 2U, 1U,1);
+    g->halo_host = (Type_DS_VNA*)ForceGpu_Host(g->resources,plan->halo_count == 0 ? 1 : plan->halo_count, sizeof(Type_DS_VNA),1);
+    g->stage = (float*)ForceGpu_Host(g->resources,g->stage_count == 0 ? 1 : g->stage_count, sizeof(float),1);
+    g->metadata = (char*)ForceGpu_Host(g->resources,1, plan->bytes - plan->items,1);
     if (g->local_off == NULL || g->halo_off == NULL || g->seen == NULL
         || g->halo_host == NULL || g->stage == NULL || g->metadata == NULL) return 0;
     /* Touch the buffers while admission can still choose the original CPU
@@ -7597,10 +7475,8 @@ static int Force4B_GpuCase1TurnsAllocate(double***** CDM0)
         && item == plan->nitems && kpos == plan->rows && cpos == plan->cdm_count;
 }
 
-static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode, double***** CDM0)
+static int Force4B_GpuCase1TurnsBegin(OpenMXSolverInvocation *scratch, Force4BCase1Turns **output, int full_batch, int stream_mode, int mode, double***** CDM0)
 {
-    Force4BCase1Turns* g = &F4B_turns1;
-    MPI_Comm node_comm = MPI_COMM_NULL;
     Force4BCase1Device local = { 0 }, *devices = NULL;
     int rank, ranks, cuda_device, cuda_ok = 0, candidate = 0, allocated = 1;
     int all_allocated, wanted = 0, enabled_ranks, wanted_ranks, color = MPI_UNDEFINED;
@@ -7609,16 +7485,25 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
     unsigned long long device_free, min_device_free = 0, device_need, max_device_need = 0;
     size_t reserve = 0;
 
-    Force4B_GpuCase1TurnsEnd();
+    if(*output)Force4B_GpuCase1TurnsEnd(*output);
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
     if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (stream_mode == 1 || mode == 0) return 0;
-    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
-    MPI_Comm_rank(node_comm, &rank);
-    MPI_Comm_size(node_comm, &ranks);
-    devices = (Force4BCase1Device*)calloc((size_t)ranks, sizeof(*devices));
+    OpenMXNativeResources *resources;
+    Force4BCase1Turns *g=(Force4BCase1Turns*)ForceGpu_State(scratch,"force4b-case1-turns",sizeof(*g),&resources);
+    if(!g->resources)g->device_comm=MPI_COMM_NULL;
+    g->resources=resources;
+    Force4B_GpuCase1TurnsEnd(g);
+    *output=g;
+    MPI_Comm *node_comm=ForceGpu_NodeComm(resources);
+
+    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, node_comm);
+    ForceGpu_CommAdopt(resources,node_comm);
+    MPI_Comm_rank(*node_comm, &rank);
+    MPI_Comm_size(*node_comm, &ranks);
+    devices = (Force4BCase1Device*)ForceGpu_Host(g->resources,(size_t)ranks, sizeof(*devices),1);
     allocated = devices != NULL;
-    MPI_Allreduce(&allocated, &all_allocated, 1, MPI_INT, MPI_MIN, node_comm);
+    MPI_Allreduce(&allocated, &all_allocated, 1, MPI_INT, MPI_MIN, (*node_comm));
     if (!all_allocated) goto finish;
     {
         struct cudaDeviceProp prop;
@@ -7629,7 +7514,7 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
         }
     }
     MPI_Allgather(&local, (int)sizeof(local), MPI_BYTE,
-        devices, (int)sizeof(local), MPI_BYTE, node_comm);
+        devices, (int)sizeof(local), MPI_BYTE, (*node_comm));
     if (cuda_ok) {
         for (int peer = 0; peer < ranks; peer++) {
             if (devices[peer].valid && memcmp(local.uuid, devices[peer].uuid, sizeof(local.uuid)) == 0) {
@@ -7638,9 +7523,10 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
             }
         }
     }
-    MPI_Comm_split(node_comm, color, rank, &g->device_comm);
+    MPI_Comm_split(*node_comm, color, rank, &g->device_comm);
+    ForceGpu_CommAdopt(g->resources,&g->device_comm);
     if (cuda_ok) Force_gpu_pool_flush();
-    MPI_Barrier(node_comm);
+    MPI_Barrier(*node_comm);
     if (g->device_comm != MPI_COMM_NULL) {
         MPI_Comm_rank(g->device_comm, &g->device_rank);
         MPI_Comm_size(g->device_comm, &g->device_ranks);
@@ -7653,26 +7539,26 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
             && min_device_free > reserve && g->plan.bytes <= min_device_free - reserve;
     }
     available = (unsigned long long)Force4B_GpuCase1HostAvailable();
-    MPI_Allreduce(&available, &min_available, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, node_comm);
+    MPI_Allreduce(&available, &min_available, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, (*node_comm));
     host_need = candidate ? (unsigned long long)g->host_bytes : 0;
-    MPI_Allreduce(&host_need, &host_max, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, node_comm);
+    MPI_Allreduce(&host_need, &host_max, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, (*node_comm));
     if (host_max <= ULLONG_MAX / (unsigned)ranks)
-        MPI_Allreduce(&host_need, &host_sum, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, node_comm);
+        MPI_Allreduce(&host_need, &host_sum, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, (*node_comm));
     else
         host_sum = ULLONG_MAX;
     if (host_sum > Force4B_GpuCase1HostLimit((size_t)min_available)) candidate = 0;
-    allocated = !candidate || Force4B_GpuCase1TurnsAllocate(CDM0);
-    MPI_Allreduce(&allocated, &all_allocated, 1, MPI_INT, MPI_MIN, node_comm);
+    allocated = !candidate || Force4B_GpuCase1TurnsAllocate(g, CDM0);
+    MPI_Allreduce(&allocated, &all_allocated, 1, MPI_INT, MPI_MIN, (*node_comm));
     g->enabled = candidate && all_allocated;
     if (g->device_comm != MPI_COMM_NULL) {
         int device_enabled = 0;
         MPI_Allreduce(&g->enabled, &device_enabled, 1, MPI_INT, MPI_SUM, g->device_comm);
-        if (device_enabled == 0) MPI_Comm_free(&g->device_comm);
+        if (device_enabled == 0) ForceGpu_CommFree(g->resources,&g->device_comm);
     }
     device_need = g->enabled ? (unsigned long long)g->plan.bytes : 0;
-    MPI_Reduce(&device_need, &max_device_need, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, node_comm);
-    MPI_Reduce(&g->enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
-    MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
+    MPI_Reduce(&device_need, &max_device_need, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, (*node_comm));
+    MPI_Reduce(&g->enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, (*node_comm));
+    MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, (*node_comm));
     if (rank == 0 && wanted_ranks != 0 && 2 <= level_stdout) {
         fprintf(stderr, "Force4B GPU: case-1 rank turns on %d/%d rank(s), "
             "%.3f GiB host budget claim/node, %.3f GiB maximum device arena; "
@@ -7682,17 +7568,16 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
         fflush(stderr);
     }
 finish:
-    free(devices);
-    MPI_Comm_free(&node_comm);
+    openmx_core_native_free(g->resources,devices);
+    ForceGpu_CommFree(resources,node_comm);
     /* Keep the communicator on noncandidate ranks: they must attend the
        same turn barriers as their admitted device peers. */
-    if (!all_allocated) Force4B_GpuCase1TurnsEnd();
+    if (!all_allocated) Force4B_GpuCase1TurnsEnd(g);
     return g->enabled;
 }
 
-static void Force4B_GpuCase1TurnsArchive(Type_DS_VNA***** DS_VNA, int source)
+static void Force4B_GpuCase1TurnsArchive(Force4BCase1Turns *g, Type_DS_VNA***** DS_VNA, int source)
 {
-    Force4BCase1Turns* g = &F4B_turns1;
     const int halo = source - Matomnum;
     int gc, no, k, i;
     if (halo < 1 || halo > MatomnumF || g->seen[halo])
@@ -7707,11 +7592,10 @@ static void Force4B_GpuCase1TurnsArchive(Type_DS_VNA***** DS_VNA, int source)
     g->seen[halo] = 1;
 }
 
-static int Force4B_GpuCase1TurnsDevice(Type_DS_VNA***** DS_VNA)
+static int Force4B_GpuCase1TurnsDevice(Force4BCase1Turns *g, Type_DS_VNA***** DS_VNA)
 {
-    Force4BCase1Turns* g = &F4B_turns1;
     const Force4BCase1Plan* p = &g->plan;
-    char* arena = (char*)Force_gpu_arena_try(p->bytes);
+    char* arena = (char*)ForceGpu_Arena(g->resources,p->bytes);
     int direction, mc, k, i, l;
     if (arena == NULL) return 0;
     for (direction = 0; direction < 4; direction++) {
@@ -7745,14 +7629,13 @@ static int Force4B_GpuCase1TurnsDevice(Type_DS_VNA***** DS_VNA)
         (const double*)(const void*)(arena + p->cdm), (double*)(void*)(arena + p->item_f));
     acc_memcpy_from_device(g->metadata + (p->item_f - p->items), arena + p->item_f,
         3U * (size_t)p->nitems * sizeof(double));
-    acc_free(arena);
+    ForceGpu_ArenaFree(g->resources,arena);
     Force_gpu_pool_flush();
     return 1;
 }
 
-static void Force4B_GpuCase1TurnsAccumulate(const OpenMXVnaMatrixViews *vna, double***** CDM0, Type_DS_VNA***** DS_VNA, int on_device)
+static void Force4B_GpuCase1TurnsAccumulate(Force4BCase1Turns *g, const OpenMXVnaMatrixViews *vna, double***** CDM0, Type_DS_VNA***** DS_VNA, int on_device)
 {
-    Force4BCase1Turns* g = &F4B_turns1;
     const double* forces = (const double*)(const void*)(g->metadata + (g->plan.item_f - g->plan.items));
     int mc, q, item = 0;
     for (mc = 1; mc <= Matomnum; mc++) {
@@ -7792,13 +7675,12 @@ static int Force4B_GpuCase1TurnsConcurrency(size_t free_bytes, size_t max_arena,
     return (int)fit;
 }
 
-static void Force4B_GpuCase1TurnsRun(const OpenMXVnaMatrixViews *vna, double***** CDM0, Type_DS_VNA***** DS_VNA)
+static void Force4B_GpuCase1TurnsRun(Force4BCase1Turns *g, const OpenMXVnaMatrixViews *vna, double***** CDM0, Type_DS_VNA***** DS_VNA)
 {
-    Force4BCase1Turns* g = &F4B_turns1;
     int on_device = 0, concurrency, local_concurrency, requested = 0;
     size_t free_bytes = 0, total_bytes = 0;
     unsigned long long local_free, min_free, local_arena, max_arena;
-    if (g->device_comm == MPI_COMM_NULL) return;
+    if (!g || g->device_comm == MPI_COMM_NULL) return;
     if (g->enabled) {
         for (int mc = 1; mc <= Matomnum; mc++)
             for (int q = 1; q <= FNAN[M2G[mc]]; q++) {
@@ -7833,7 +7715,7 @@ static void Force4B_GpuCase1TurnsRun(const OpenMXVnaMatrixViews *vna, double****
         const int count = g->device_ranks - turn < concurrency
             ? g->device_ranks - turn : concurrency;
         if (g->enabled && g->device_rank >= turn && g->device_rank - turn < count)
-            on_device = Force4B_GpuCase1TurnsDevice(DS_VNA);
+            on_device = Force4B_GpuCase1TurnsDevice(g, DS_VNA);
         MPI_Barrier(g->device_comm);
         turn += count;
     }
@@ -7844,9 +7726,9 @@ static void Force4B_GpuCase1TurnsRun(const OpenMXVnaMatrixViews *vna, double****
                 fflush(stderr);
             }
         }
-        Force4B_GpuCase1TurnsAccumulate(vna, CDM0, DS_VNA, on_device);
+        Force4B_GpuCase1TurnsAccumulate(g, vna, CDM0, DS_VNA, on_device);
     }
-    Force4B_GpuCase1TurnsEnd();
+    Force4B_GpuCase1TurnsEnd(g);
 }
 
 /* the unified case-1 batch: for every local atom, all q_AN != 0 pairs
@@ -7930,9 +7812,8 @@ static void Force4B_capacity(int kind,Force4BGpuContext *g,int nitems,Force4BGpu
     }
 }
 
-static void Force4B_GpuCase1Run(const OpenMXVnaMatrixViews *vna, double***** CDM0)
+static void Force4B_GpuCase1Run(Force4BGpuContext *g, const OpenMXVnaMatrixViews *vna, double***** CDM0)
 {
-    Force4BGpuContext* g = &F4B_gpu;
     const int num_proj = g->num_proj;
     int Mc_AN, q_AN, k;
     int nitems = 0, kslots = 0;
@@ -7967,14 +7848,14 @@ static void Force4B_GpuCase1Run(const OpenMXVnaMatrixViews *vna, double***** CDM
 
     int gpu_done=nitems==0;
 
-    items = (Force4BGpuItem*)Force_checked_malloc(sizeof(Force4BGpuItem) * (size_t)nitems, __FILE__, __LINE__);
-    item_atom = (int*)Force_checked_malloc(sizeof(int) * (size_t)nitems, __FILE__, __LINE__);
-    item_q = (int*)Force_checked_malloc(sizeof(int) * (size_t)nitems, __FILE__, __LINE__);
-    krowA = (size_t*)Force_checked_malloc(sizeof(size_t) * (kslots == 0 ? 1 : (size_t)kslots), __FILE__, __LINE__);
-    krowB = (size_t*)Force_checked_malloc(sizeof(size_t) * (kslots == 0 ? 1 : (size_t)kslots), __FILE__, __LINE__);
-    krow_halo = (int*)Force_checked_malloc(sizeof(int) * (kslots == 0 ? 1 : (size_t)kslots), __FILE__, __LINE__);
-    cdm_pref = (double*)Force_checked_malloc(sizeof(double) * (cdm_count == 0 ? 1 : cdm_count), __FILE__, __LINE__);
-    item_f = (double*)Force_checked_malloc(sizeof(double) * 3U * (size_t)nitems, __FILE__, __LINE__);
+    items = (Force4BGpuItem*)ForceGpu_RequiredHost(g->resources,sizeof(Force4BGpuItem) * (size_t)nitems);
+    item_atom = (int*)ForceGpu_RequiredHost(g->resources,sizeof(int) * (size_t)nitems);
+    item_q = (int*)ForceGpu_RequiredHost(g->resources,sizeof(int) * (size_t)nitems);
+    krowA = (size_t*)ForceGpu_RequiredHost(g->resources,sizeof(size_t) * (kslots == 0 ? 1 : (size_t)kslots));
+    krowB = (size_t*)ForceGpu_RequiredHost(g->resources,sizeof(size_t) * (kslots == 0 ? 1 : (size_t)kslots));
+    krow_halo = (int*)ForceGpu_RequiredHost(g->resources,sizeof(int) * (kslots == 0 ? 1 : (size_t)kslots));
+    cdm_pref = (double*)ForceGpu_RequiredHost(g->resources,sizeof(double) * (cdm_count == 0 ? 1 : cdm_count));
+    item_f = (double*)ForceGpu_RequiredHost(g->resources,sizeof(double) * 3U * (size_t)nitems);
 
     /* build */
     p = 0;
@@ -8045,7 +7926,7 @@ static void Force4B_GpuCase1Run(const OpenMXVnaMatrixViews *vna, double***** CDM
         const size_t o_khalo = Force_gpu_arena_off(&asz, sizeof(int) * kslots_c);
         const size_t o_cdm = Force_gpu_arena_off(&asz, sizeof(double) * cdm_c);
         const size_t o_itemf = Force_gpu_arena_off(&asz, sizeof(double) * 3U * (size_t)nitems_c);
-        char* arena = (char*)Force_gpu_arena_try(asz);
+        char* arena = (char*)ForceGpu_Arena(g->resources,asz);
 
         if(!arena)goto f4b_capacity;
         acc_memcpy_to_device(arena + o_items, items, sizeof(Force4BGpuItem) * (size_t)nitems_c);
@@ -8068,7 +7949,7 @@ static void Force4B_GpuCase1Run(const OpenMXVnaMatrixViews *vna, double***** CDM
 
         acc_memcpy_from_device(item_f, arena + o_itemf, sizeof(double) * 3U * (size_t)nitems_c);
         gpu_done=1;
-        acc_free(arena);
+        ForceGpu_ArenaFree(g->resources,arena);
         Force_gpu_pool_flush();
     }
 
@@ -8084,14 +7965,14 @@ f4b_capacity:
             items[p].ian, items[p].jan, item_f + 3U * (size_t)p);
     }
 
-    free(item_f);
-    free(cdm_pref);
-    free(krow_halo);
-    free(krowB);
-    free(krowA);
-    free(item_q);
-    free(item_atom);
-    free(items);
+    openmx_core_native_free(g->resources,item_f);
+    openmx_core_native_free(g->resources,cdm_pref);
+    openmx_core_native_free(g->resources,krow_halo);
+    openmx_core_native_free(g->resources,krowB);
+    openmx_core_native_free(g->resources,krowA);
+    openmx_core_native_free(g->resources,item_q);
+    openmx_core_native_free(g->resources,item_atom);
+    openmx_core_native_free(g->resources,items);
 
     /* Force4B_GpuCase2Begin releases both archives before allocating
        the case-2 storage, also when the zero-item path above returns. */
@@ -8155,24 +8036,6 @@ static void Force4B_GpuCase2Kernel(int num_proj, float* c2,
         Force4B_GpuCase2Kernel_Single(num_proj,c2,flat_stride,nitems_c,items,pair_h_off,pair_q_off,cdm_scale,item_f);
 }
 
-typedef struct {
-    size_t stride, bytes, cdm_count;
-    size_t c2, items, hoff, qoff, cdm, item_f;
-    int nitems;
-} Force4BCase2Plan;
-
-typedef struct {
-    char* host;
-    char* device;
-    size_t capacity;
-    size_t* row_off;
-    int num_proj;
-    int pending_items;
-    size_t pending_f;
-} Force4BCase2Stream;
-
-static Force4BCase2Stream F4B_stream = { 0 };
-
 /* auto/unset: use streaming when the full batch does not fit;
    0: disable streaming; 1: force streaming for case 2.  The parent
    OPENMX_FORCE4B_GPU switch always takes precedence. */
@@ -8216,42 +8079,37 @@ static void Force4B_GpuCase2Plan(int mc, Force4BCase2Plan* plan, size_t* row_off
     plan->item_f = Force_gpu_arena_off(&plan->bytes, 3U * (size_t)plan->nitems * sizeof(double));
 }
 
-static void Force4B_GpuCase2StreamEnd(void)
-{
-    if (F4B_stream.device != NULL) {
-        acc_free(F4B_stream.device);
-        Force_gpu_pool_flush();
-    }
-    free(F4B_stream.row_off);
-    free(F4B_stream.host);
-    memset(&F4B_stream, 0, sizeof(F4B_stream));
-}
-
 /* Called collectively after case 1.  The full batch is retained when it
    fits; otherwise each rank independently tries one fixed-size arena for
    its largest centre.  No allocation or MPI collective is needed inside
    the per-centre communication loop. */
-static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
+static int Force4B_GpuCase2StreamBegin(OpenMXSolverInvocation *scratch, Force4BCase2Stream **output, int full_batch, int mode)
 {
-    Force4BCase2Stream* g = &F4B_stream;
-    MPI_Comm node_comm = MPI_COMM_NULL;
     int node_rank, node_ranks, mc, max_neighbors = 0, enabled = 0, enabled_ranks;
     int wanted = 0, wanted_ranks;
     size_t free_bytes = 0, total_bytes = 0, need = 0;
     unsigned long long reported, max_reported;
     size_t reserve = 0;
 
-    Force4B_GpuCase2StreamEnd();
+    if(*output)Force4B_GpuCase2StreamEnd(*output);
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
     if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (mode == 0) return 0;
 
-    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
-    MPI_Comm_rank(node_comm, &node_rank);
-    MPI_Comm_size(node_comm, &node_ranks);
+    OpenMXNativeResources *resources;
+    Force4BCase2Stream *g=(Force4BCase2Stream*)ForceGpu_State(scratch,"force4b-case2-stream",sizeof(*g),&resources);
+    g->resources=resources;
+    Force4B_GpuCase2StreamEnd(g);
+    *output=g;
+    MPI_Comm *node_comm=ForceGpu_NodeComm(resources);
+
+    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, node_comm);
+    ForceGpu_CommAdopt(resources,node_comm);
+    MPI_Comm_rank(*node_comm, &node_rank);
+    MPI_Comm_size(*node_comm, &node_ranks);
     reserve = Force_gpu_node_reserve(node_ranks);
     Force_gpu_pool_flush();
-    MPI_Barrier(node_comm);
+    MPI_Barrier(*node_comm);
 
     if (!full_batch) {
         for (mc = 1; mc <= Matomnum; mc++) {
@@ -8268,24 +8126,24 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
             && need <= (free_bytes - reserve) / (size_t)node_ranks) {
             /* Unlike the mandatory full-batch allocations, a failed
                streaming claim still has the unchanged CPU path. */
-            g->device = (char*)Force_gpu_arena_try(need);
+            g->device = (char*)ForceGpu_Arena(g->resources,need);
             if (g->device != NULL) {
-                g->host = (char*)calloc(1, need);
-                g->row_off = (size_t*)calloc((size_t)max_neighbors, sizeof(size_t));
+                g->host = (char*)ForceGpu_Host(g->resources,1, need,1);
+                g->row_off = (size_t*)ForceGpu_Host(g->resources,(size_t)max_neighbors, sizeof(size_t),1);
                 if (g->host != NULL && g->row_off != NULL) {
                     g->capacity = need;
                     g->num_proj = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
                     enabled = 1;
                 } else {
-                    Force4B_GpuCase2StreamEnd();
+                    Force4B_GpuCase2StreamEnd(g);
                 }
             }
         }
     }
     reported = (unsigned long long)need;
-    MPI_Reduce(&reported, &max_reported, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, node_comm);
-    MPI_Reduce(&enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
-    MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, node_comm);
+    MPI_Reduce(&reported, &max_reported, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, (*node_comm));
+    MPI_Reduce(&enabled, &enabled_ranks, 1, MPI_INT, MPI_SUM, 0, (*node_comm));
+    MPI_Reduce(&wanted, &wanted_ranks, 1, MPI_INT, MPI_SUM, 0, (*node_comm));
     if (node_rank == 0 && wanted_ranks != 0 && 2 <= level_stdout) {
         fprintf(stderr,
             "Force4B GPU: streamed case 2 on %d/%d rank(s), %.1f MiB maximum per rank; "
@@ -8294,15 +8152,14 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
             wanted_ranks - enabled_ranks);
         fflush(stderr);
     }
-    MPI_Comm_free(&node_comm);
+    ForceGpu_CommFree(resources,node_comm);
     return enabled;
 }
 
 /* Prepare/evaluate one centre, but leave accumulation until the host has
    added its special pairs, matching the order of the full GPU batch. */
-static int Force4B_GpuCase2StreamRun(int mc, double***** CDM0, Type_DS_VNA***** DS_VNA)
+static int Force4B_GpuCase2StreamRun(Force4BCase2Stream *g, int mc, double***** CDM0, Type_DS_VNA***** DS_VNA)
 {
-    Force4BCase2Stream* g = &F4B_stream;
     Force4BCase2Plan plan;
     const int gc = M2G[mc];
     Force4BGpuItem* items;
@@ -8395,9 +8252,8 @@ static int Force4B_GpuCase2StreamRun(int mc, double***** CDM0, Type_DS_VNA***** 
     return 1;
 }
 
-static void Force4B_GpuCase2StreamAccumulate(int gc)
+static void Force4B_GpuCase2StreamAccumulate(Force4BCase2Stream *g, int gc)
 {
-    Force4BCase2Stream* g = &F4B_stream;
     const double* item_f;
     int p;
 
@@ -8413,9 +8269,8 @@ static void Force4B_GpuCase2StreamAccumulate(int gc)
 
 /* the case-2 batch: all fused-eligible (h,q) pairs of every centre,
    reading the archived 4-direction stagings */
-static void Force4B_GpuCase2Run(double***** CDM0)
+static void Force4B_GpuCase2Run(Force4BGpuContext *g, double***** CDM0)
 {
-    Force4BGpuContext* g = &F4B_gpu;
     const int num_proj = g->num_proj;
     int Mc_AN, h_AN, q_AN;
     int nitems = 0;
@@ -8447,12 +8302,12 @@ static void Force4B_GpuCase2Run(double***** CDM0)
 
     int gpu_done=nitems==0;
 
-    items = (Force4BGpuItem*)Force_checked_malloc(sizeof(Force4BGpuItem) * (size_t)nitems, __FILE__, __LINE__);
-    pair_h_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)nitems, __FILE__, __LINE__);
-    pair_q_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)nitems, __FILE__, __LINE__);
-    item_atom = (int*)Force_checked_malloc(sizeof(int) * (size_t)nitems, __FILE__, __LINE__);
-    cdm_scale = (double*)Force_checked_malloc(sizeof(double) * (cdm_count == 0 ? 1 : cdm_count), __FILE__, __LINE__);
-    item_f = (double*)Force_checked_malloc(sizeof(double) * 3U * (size_t)nitems, __FILE__, __LINE__);
+    items = (Force4BGpuItem*)ForceGpu_RequiredHost(g->resources,sizeof(Force4BGpuItem) * (size_t)nitems);
+    pair_h_off = (size_t*)ForceGpu_RequiredHost(g->resources,sizeof(size_t) * (size_t)nitems);
+    pair_q_off = (size_t*)ForceGpu_RequiredHost(g->resources,sizeof(size_t) * (size_t)nitems);
+    item_atom = (int*)ForceGpu_RequiredHost(g->resources,sizeof(int) * (size_t)nitems);
+    cdm_scale = (double*)ForceGpu_RequiredHost(g->resources,sizeof(double) * (cdm_count == 0 ? 1 : cdm_count));
+    item_f = (double*)ForceGpu_RequiredHost(g->resources,sizeof(double) * 3U * (size_t)nitems);
 
     p = 0;
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -8524,7 +8379,7 @@ static void Force4B_GpuCase2Run(double***** CDM0)
         const size_t o_qoff = Force_gpu_arena_off(&asz, sizeof(size_t) * (size_t)nitems_c);
         const size_t o_cdm = Force_gpu_arena_off(&asz, sizeof(double) * cdm_c);
         const size_t o_itemf = Force_gpu_arena_off(&asz, sizeof(double) * 3U * (size_t)nitems_c);
-        char* arena = (char*)Force_gpu_arena_try(asz);
+        char* arena = (char*)ForceGpu_Arena(g->resources,asz);
 
         if(!arena)goto f4b_capacity;
         acc_memcpy_to_device(arena + o_items, items, sizeof(Force4BGpuItem) * (size_t)nitems_c);
@@ -8545,7 +8400,7 @@ static void Force4B_GpuCase2Run(double***** CDM0)
 
         acc_memcpy_from_device(item_f, arena + o_itemf, sizeof(double) * 3U * (size_t)nitems_c);
         gpu_done=1;
-        acc_free(arena);
+        ForceGpu_ArenaFree(g->resources,arena);
         Force_gpu_pool_flush();
     }
 
@@ -8561,12 +8416,12 @@ f4b_capacity:
         Gxyz[Gc_AN][43] += item_f[3 * (size_t)p + 2];
     }
 
-    free(item_f);
-    free(cdm_scale);
-    free(item_atom);
-    free(pair_q_off);
-    free(pair_h_off);
-    free(items);
+    openmx_core_native_free(g->resources,item_f);
+    openmx_core_native_free(g->resources,cdm_scale);
+    openmx_core_native_free(g->resources,item_atom);
+    openmx_core_native_free(g->resources,pair_q_off);
+    openmx_core_native_free(g->resources,pair_h_off);
+    openmx_core_native_free(g->resources,items);
 }
 
 /* ------------------------------------------------------------------ */
@@ -9476,6 +9331,10 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
      * device buffers and matches the original contraction.
      */
     const int use_force4b_fused = openmx_env_flag_at(OPENMX_ENV_FORCE4B_FUSED, 1);
+    Force4BGpuContext *f4b_context=NULL;
+    Force4BCase1Stream *f4b_case1_stream=NULL;
+    Force4BCase1Turns *f4b_case1_turns=NULL;
+    Force4BCase2Stream *f4b_case2_stream=NULL;
     int f4b_gpu = 0;
     int f4b_gpu_case1 = 0;
     int f4b_stream_case1 = 0;
@@ -9606,7 +9465,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
        loops, and one kernel per case runs afterwards. */
 
     if (use_force4b_fused) {
-        f4b_gpu=Force4B_GpuBegin(DS_VNA,0,0);f4b_gpu_case1=f4b_gpu;
+        f4b_gpu=Force4B_GpuBegin(scratch, &f4b_context, DS_VNA,0,0);f4b_gpu_case1=f4b_gpu;
     }
 
     /*****************************************}**********************
@@ -9760,11 +9619,11 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 /* free tmp_array2 */
 
                 if (f4b_gpu_case1) {
-                    Force4B_GpuArchiveHalo(DS_VNA, Original_Mc_AN, Gc_AN);
+                    Force4B_GpuArchiveHalo(f4b_context, DS_VNA, Original_Mc_AN, Gc_AN);
                 } else if (f4b_turns_case1) {
-                    Force4B_GpuCase1TurnsArchive(DS_VNA, Original_Mc_AN);
+                    Force4B_GpuCase1TurnsArchive(f4b_case1_turns, DS_VNA, Original_Mc_AN);
                 } else if (f4b_stream_case1) {
-                    Force4B_GpuCase1StreamSource(Original_Mc_AN, CDM0, DS_VNA);
+                    Force4B_GpuCase1StreamSource(f4b_case1_stream, Original_Mc_AN, CDM0, DS_VNA);
                 }
 
                 /*****************************************
@@ -9949,7 +9808,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
     if (f4b_stream_case1) {
         for (int source = 1; source <= Matomnum; source++)
-            Force4B_GpuCase1StreamSource(source, CDM0, DS_VNA);
+            Force4B_GpuCase1StreamSource(f4b_case1_stream, source, CDM0, DS_VNA);
     }
 
     {
@@ -10061,15 +9920,15 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
     /* batched device evaluation of every skipped fused case-1 trace */
     if (f4b_gpu_case1) {
-        Force4B_GpuCase1Run(vna, CDM0);
+        Force4B_GpuCase1Run(f4b_context, vna, CDM0);
     }
     if (f4b_stream_case1) {
-        Force4B_GpuCase1StreamAccumulate(vna, CDM0);
-        Force4B_GpuCase1StreamEnd();
+        Force4B_GpuCase1StreamAccumulate(f4b_case1_stream, vna, CDM0);
+        Force4B_GpuCase1StreamEnd(f4b_case1_stream);
     }
     /* Release every concurrent case-1 allocation before admitting a
        cached-halo rank turn, and keep case 2 out of the turn lifetime. */
-    if(f4b_gpu)f4b_gpu=Force4B_GpuCase2Begin(1);
+    if(f4b_gpu)f4b_gpu=Force4B_GpuCase2Begin(f4b_context, 1);
 
     dtime(&etime);
     if (force_profile) {
@@ -10329,9 +10188,9 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
             f4b_gpu_case2 = f4b_gpu && f4b_stream_mode != 1;
             if (f4b_gpu_case2) {
-                Force4B_GpuArchiveCase2(DS_VNA, Mc_AN, Gc_AN);
+                Force4B_GpuArchiveCase2(f4b_context, DS_VNA, Mc_AN, Gc_AN);
             } else if (f4b_stream) {
-                f4b_gpu_case2 = Force4B_GpuCase2StreamRun(Mc_AN, CDM0, DS_VNA);
+                f4b_gpu_case2 = Force4B_GpuCase2StreamRun(f4b_case2_stream, Mc_AN, CDM0, DS_VNA);
             }
 
             /* one-dimensionalize the h_AN and q_AN loops */
@@ -10467,7 +10326,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             Gxyz[Gc_AN][42] += dEy;
             Gxyz[Gc_AN][43] += dEz;
             if (f4b_stream && f4b_gpu_case2) {
-                Force4B_GpuCase2StreamAccumulate(Gc_AN);
+                Force4B_GpuCase2StreamAccumulate(f4b_case2_stream, Gc_AN);
             }
 
             /* timing */
@@ -10486,10 +10345,10 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
     /* batched device evaluation of every skipped fused case-2 trace */
     if (f4b_gpu) {
-        if (f4b_stream_mode != 1) Force4B_GpuCase2Run(CDM0);
-        Force4B_GpuEnd();
+        if (f4b_stream_mode != 1) Force4B_GpuCase2Run(f4b_context, CDM0);
+        Force4B_GpuEnd(f4b_context);
     }
-    Force4B_GpuCase2StreamEnd();
+    Force4B_GpuCase2StreamEnd(f4b_case2_stream);
 
     if (2 <= level_stdout) {
         for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -10933,13 +10792,7 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
     }
 }
 
-
-
 #include "openmx_hubbard_force.h"
-
-
-
-
 
 void MPI_OLP(double***** OLP1, OpenMXSolverInvocation *scratch)
 {

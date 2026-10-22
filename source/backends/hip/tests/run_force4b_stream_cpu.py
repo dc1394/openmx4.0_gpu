@@ -24,6 +24,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import force_gpu_fixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,9 @@ def extract_function(source: str, name: str) -> str:
     """Extract a static definition, ignoring braces in comments and literals."""
     match = re.search(r"^static [^\n]*\b" + re.escape(name) + r"\([^;{}]*\)\s*\{", source, re.M)
     if match is None:
+        shared=(ROOT / "source/openmx_force_gpu_resources.h").read_text()
+        if source != shared and name.startswith("Force4B"):
+            return extract_function(shared,name)
         raise ValueError(f"missing production function: {name}")
     start = match.start()
     opening = match.end()-1
@@ -53,6 +57,9 @@ def extract_function(source: str, name: str) -> str:
 
 def extract_struct(source: str, name: str) -> str:
     match = re.search(r"typedef struct\s*\{[^{}]*\}\s*" + re.escape(name) + r";", source)
+    if match is None and name.startswith("Force4B"):
+        shared=(ROOT / "source/openmx_force_gpu_resources.h").read_text()
+        match=re.search(r"typedef struct\s*\{[^{}]*\}\s*"+re.escape(name)+r";",shared)
     if match is None:
         raise ValueError(f"missing production structure: {name}")
     return match.group() + "\n"
@@ -174,6 +181,9 @@ static void* test_calloc(size_t count, size_t size)
 }
 #define calloc test_calloc
 '''
+
+
+STUBS += force_gpu_fixture.model(hip=True)
 
 
 FIXTURE = r'''
@@ -429,7 +439,7 @@ int main(void)
 
 def make_harness(source: str) -> str:
     parts = [STUBS, extract_struct(source, "Force4BGpuItem")]
-    for name in ("Force_gpu_node_reserve", "Force_gpu_arena_off", "Force_host_arena_alloc", "Force_host_arena_free",
+    for name in ("Force_gpu_node_reserve", "Force_gpu_arena_off",
                  "Force4B_GpuOrderNLegacy", "Force4B_case2_trace_fused", "Force4B_GpuCase2Kernel"):
         parts.append(extract_function(source, name+"_Single" if name in ("Force4B_GpuCase1Kernel","Force4B_GpuCase2Kernel") else name).replace(name+"_Single",name))
     parts.extend(extract_struct(source, name) for name in ("Force4BCase2Plan", "Force4BCase2Stream"))
@@ -460,11 +470,11 @@ def build_and_run(harness: str, name: str, argv=None) -> int:
     with tempfile.TemporaryDirectory(prefix=f"openmx-{name}-") as directory:
         source = Path(directory) / f"{name}.c"
         binary = Path(directory) / name
-        source.write_text(harness)
+        source.write_text(force_gpu_fixture.explicit_fixture_contexts(harness))
         subprocess.run(
             [*compiler, *flags, "-std=c11", "-Wall", "-Wno-unknown-pragmas", "-Wno-unused-function", "-Wno-unused-variable",
              "-I", str(ROOT / "source"), str(source),
-             str(ROOT / "source/openmx_precision.c"), "-lm", "-o", str(binary)],
+             str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), "-lm", "-o", str(binary)],
             check=True,
         )
         env = dict(os.environ)

@@ -11,6 +11,7 @@ tree=ast.parse((root/'tests/run_gpu_vector_cpu.py').read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(getattr(t,'id','')=='prefix' for t in n.targets))
 body=(root/'source/openmx_gpu_task.c').read_text().replace('#include <cuda_runtime.h>','').replace('#include "set_cuda_default_device_from_local_rank.h"','')
 s=(root/'source/Force.c').read_text()
+s=s.replace('#include "openmx_force_gpu_resources.h"',(root/'source/openmx_force_gpu_resources.h').read_text())
 def function(s,name):
  a=s.index(name);b=s.index('{',a)+1;depth=1
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1

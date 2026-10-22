@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-force-hnl-archives-") as directo
             "-fsanitize=address,undefined", "-fno-sanitize-recover=all", f"-DOPENMX_GPU_HIP={hip}",
             "-I" + str(ROOT / "core/tests"), "-I" + str(ROOT / "core/tests/fixtures/native_resources"),
             "-I" + str(ROOT / "source"), "-I" + str(ROOT / "core/include"),
-            str(program), str(ROOT / "core/tests/allocation_faults.cpp"), str(library),
+            str(program), str(ROOT / "source/openmx_env.c"), str(ROOT / "core/tests/allocation_faults.cpp"), str(library),
             "-Wl,-rpath," + str(library.parent), "-o", str(exe)]
         subprocess.run(command, check=True)
 
