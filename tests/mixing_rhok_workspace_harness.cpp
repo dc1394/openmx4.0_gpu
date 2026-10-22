@@ -58,6 +58,8 @@ static void Eigen_lapack3(double* a,double* eigenvalues,int n,int){
   a[0]=c;a[1]=s;a[2]=-s;a[3]=c;
 }
 
+#include "openmx_mixing_lapack.h"
+
 MixRhok_ScratchArguments expected{};int selected=-1,behavior=0,callbacks=0;
 static void operation(int tag,OpenMXSolverInvocation* scratch,MixingRhokState* state,int control,double weight,
     double*** real,double*** imag,double** residual_real,double** residual_imag,double* potential_real,

@@ -1084,7 +1084,9 @@
     "openmx_mixing_v_state.h",
     "openmx_mixing_v_internal.h",
     "openmx_mixing_v_workspace.h",
-    "Mixing_V.c"
+    "Mixing_V.c",
+    "openmx_mixing_lapack.h",
+    "openmx_core_lu_ops.h"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

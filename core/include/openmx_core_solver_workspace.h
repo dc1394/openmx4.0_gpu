@@ -1,5 +1,6 @@
 #ifndef OPENMX_CORE_SOLVER_WORKSPACE_H
 #define OPENMX_CORE_SOLVER_WORKSPACE_H
+#include "openmx_core_lu_ops.h"
 #include "openmx_core.h"
 #include "openmx_complex.h"
 #include "openmx_core_orbital_workspace.h"
@@ -54,6 +55,16 @@ typedef struct { size_t extent[4]; int *values; } OpenMXSolverIntTensor;
    Other inverse algorithms (pivoted LAPACK/regularized eigen) remain separate. */
 int openmx_core_solver_inverse_unpivoted(OpenMXSolverInvocation*,int worker,int last_index,
     const OpenMXSolverRealTensor *input,const OpenMXSolverRealTensor *inverse,char*,size_t);
+/* Packed pivoted LU through explicit native LAPACK operations. last_index=-1
+   retains the legacy n=0/lda=0 calls and leaves both arrays untouched. For
+   nonempty inputs the arrays must not overlap. Input/inactive output are
+   preserved; validation/allocation errors or a C++ callback exception leave
+   output unchanged. Nonzero INFO is a numerical result, not a C API error.
+   Both library calls run even for nonzero INFO, as in the existing callers.
+   Scratch and the original extra row/column/work/pivot padding are worker-owned. */
+int openmx_core_solver_inverse_pivoted(OpenMXSolverInvocation*,int worker,int last_index,
+    const OpenMXSolverRealTensor *input,const OpenMXSolverRealTensor *inverse,
+    const OpenMXRealLuOperations*,char*,size_t);
 int openmx_core_solver_real(OpenMXSolverInvocation*, int worker, const char *name,
     const size_t shape[4], OpenMXSolverRealTensor*, char*, size_t);
 /* Distinct named storage for producers which overwrite before reading. No

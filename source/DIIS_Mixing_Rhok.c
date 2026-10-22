@@ -21,6 +21,7 @@
 #include "tran_prototypes.h"
 #include "tran_variables.h"
 #include "lapack_prototypes.h"
+#include "openmx_mixing_lapack.h"
 #include <omp.h>
 
 
@@ -1809,38 +1810,11 @@ void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTenso
   }
   
   else if (method_flag==1){
-
-    int i,j,M,N,LDA,INFO;
-    int *IPIV,LWORK;
-    double *A,*WORK;
-
-    A = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-lu-A",(size_t)(n+2)*(size_t)(n+2));
-    WORK = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-lu-WORK",(n+2));
-    IPIV = OpenMX_Solver_Int(scratch,"rhok-Inverse-lu-IPIV",(n+2));
-
-    for (i=0; i<=n; i++){
-      for (j=0; j<=n; j++){
-        A[i*(n+1)+j] = openmx_solver_real_matrix_row(a,i)[j];
-      }
-    }
-
-    M = n + 1;
-    N = M;
-    LDA = M;
-    LWORK = M;
-
-    F77_NAME(dgetrf,DGETRF)( &M, &N, A, &LDA, IPIV, &INFO);
-    F77_NAME(dgetri,DGETRI)( &N, A, &LDA, IPIV, WORK, &LWORK, &INFO);
-
-    for (i=0; i<=n; i++){
-      for (j=0; j<=n; j++){
-        openmx_solver_real_matrix_row(ia,i)[j] = A[i*(n+1)+j];
-      }
-    }
-
-
-
-
+    OpenMXRealLuOperations operations;
+    operations.context=NULL;
+    operations.factor=OpenMX_Mixing_LuFactor;
+    operations.invert=OpenMX_Mixing_LuInvert;
+    OpenMX_Solver_InversePivoted(scratch,n,a,ia,&operations);
   }
 
   else if (method_flag==2){

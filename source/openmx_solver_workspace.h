@@ -46,6 +46,13 @@ static inline void OpenMX_Solver_InverseUnpivoted(OpenMXSolverInvocation *owner,
   if(!openmx_core_solver_inverse_unpivoted(owner,omp_get_thread_num(),last_index,input,inverse,error,sizeof(error)))
     OpenMX_Solver_Failure(error);
 }
+static inline void OpenMX_Solver_InversePivoted(OpenMXSolverInvocation *owner,int last_index,
+    const OpenMXSolverRealTensor *input,const OpenMXSolverRealTensor *inverse,const OpenMXRealLuOperations *operations)
+{
+  char error[256];
+  if(!openmx_core_solver_inverse_pivoted(owner,omp_get_thread_num(),last_index,input,inverse,operations,error,sizeof(error)))
+    OpenMX_Solver_Failure(error);
+}
 static inline OpenMXSolverRealTensor OpenMX_Solver_OverwriteView(OpenMXSolverInvocation *owner,
     const char *name,size_t rows,size_t columns)
 {

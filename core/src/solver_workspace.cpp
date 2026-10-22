@@ -3,6 +3,7 @@
 #include <openmx/core/overwrite_tensor.hpp>
 #include <openmx/core/matrix_scratch.hpp>
 #include <openmx/core/unpivoted_inverse.hpp>
+#include <openmx/core/pivoted_inverse.hpp>
 #include <openmx/core/orbital_workspace.hpp>
 #include <openmx/core/core_hole.hpp>
 #include <openmx/core/projector_force.hpp>
@@ -30,6 +31,14 @@ size_t product(size_t a,size_t b) {
 size_t plus(size_t a,size_t b) {
   if(a>std::numeric_limits<size_t>::max()-b)throw std::length_error("solver offset overflows");
   return a+b;
+}
+openmx::core::UnpivotedInverse::matrix_view inverse_matrix(const OpenMXSolverRealTensor& tensor)
+{
+  require(tensor.extent[2]==1 && tensor.extent[3]==1,"inverse requires a matrix view");
+  const auto count=product(tensor.extent[0],tensor.extent[1]);
+  require(count<=std::size_t(std::numeric_limits<std::ptrdiff_t>::max())/sizeof(double) &&
+      (!count || tensor.values),"invalid inverse matrix storage");
+  return openmx::core::UnpivotedInverse::matrix_view{tensor.values,tensor.extent[0],tensor.extent[1]};
 }
 template<class F> int checked(char* error,size_t capacity,F&& operation) noexcept {
   if(error && capacity)*error='\0';
@@ -72,6 +81,7 @@ struct Worker {
   Slots<int> integers;
   Slots<std::max_align_t> bytes;
   std::unique_ptr<openmx::core::UnpivotedInverse> inverse;
+  std::unique_ptr<openmx::core::PivotedInverse> pivoted_inverse;
   Aliases<double> real_aliases;
   Aliases<dcomplex> complex_aliases;
   std::map<std::string,std::unique_ptr<openmx::core::OrbitalWorkspace>,std::less<>> orbitals;
@@ -195,22 +205,32 @@ extern "C" int openmx_core_solver_inverse_unpivoted(OpenMXSolverInvocation* scop
   return checked(error,capacity,[&] {
     require(scope && input && inverse && last_index>=-1,"invalid unpivoted inverse request");
     auto& slot=scope->worker(worker).inverse;
-    const auto matrix=[](const OpenMXSolverRealTensor& tensor) {
-      require(tensor.extent[2]==1 && tensor.extent[3]==1,"inverse requires a matrix view");
-      const auto count=product(tensor.extent[0],tensor.extent[1]);
-      require(count<=std::size_t(std::numeric_limits<std::ptrdiff_t>::max())/sizeof(double) &&
-          (!count || tensor.values),"invalid inverse matrix storage");
-      return openmx::core::UnpivotedInverse::matrix_view{tensor.values,tensor.extent[0],tensor.extent[1]};
-    };
-    const auto a=matrix(*input);
+
+    const auto a=inverse_matrix(*input);
     if(last_index==-1){openmx::core::UnpivotedInverse::clear(a);return;}
-    const auto b=matrix(*inverse);const auto dimension=size_t(last_index)+1;
+    const auto b=inverse_matrix(*inverse);const auto dimension=size_t(last_index)+1;
     openmx::core::UnpivotedInverse::validate(a,b,dimension);
     if(!slot || slot->capacity()<dimension) {
       auto replacement=std::make_unique<openmx::core::UnpivotedInverse>(dimension);
       slot=std::move(replacement);
     }
     slot->apply(a,b,dimension);
+  });
+}
+extern "C" int openmx_core_solver_inverse_pivoted(OpenMXSolverInvocation* scope,int worker,int last_index,
+    const OpenMXSolverRealTensor* input,const OpenMXSolverRealTensor* inverse,
+    const OpenMXRealLuOperations* operations,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && input && inverse && operations && last_index>=-1,"invalid pivoted inverse request");
+    auto& slot=scope->worker(worker).pivoted_inverse;
+    const auto a=inverse_matrix(*input),b=inverse_matrix(*inverse);
+    const auto dimension=last_index==-1?size_t(0):size_t(last_index)+1;
+    openmx::core::PivotedInverse::validate(a,b,dimension,*operations);
+    if(!slot || slot->capacity()<dimension) {
+      auto replacement=std::make_unique<openmx::core::PivotedInverse>(dimension);
+      slot=std::move(replacement);
+    }
+    slot->apply(a,b,dimension,*operations);
   });
 }
 extern "C" int openmx_core_solver_real(OpenMXSolverInvocation* scope,int worker,const char* name,

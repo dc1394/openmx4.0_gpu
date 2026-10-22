@@ -72,6 +72,8 @@ static void Eigen_lapack3(double* a,double* eigenvalues,int n,int){
 }
 
 
+#include "openmx_mixing_lapack.h"
+
 #define abort allocation_abort
 #include "mixing_v_workspace.inc"
 #undef abort
