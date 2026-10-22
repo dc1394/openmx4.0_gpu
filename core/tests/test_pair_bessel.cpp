@@ -30,6 +30,23 @@ template<class Function> void rejects(Function&& function)
   require(rejected,"invalid pair Bessel input accepted");
 }
 
+// Independent power series for this test's arguments 0 <= x <= 6. libc++
+// does not provide std::sph_bessel. Production uses downward recurrence;
+// the reference deliberately uses a different algorithm on every platform.
+double reference_bessel(int order, double argument)
+{
+  long double term = 1;
+  for (int j = 1; j <= order; ++j) term *= argument/(2*j+1.L);
+  long double sum = term;
+  for (int j = 1; j < 100; ++j) {
+    term *= -static_cast<long double>(argument)*argument/(2*j*(2*order+2*j+1.L));
+    sum += term;
+    if (std::abs(term) <= std::numeric_limits<long double>::epsilon()*std::abs(sum))
+      return static_cast<double>(sum);
+  }
+  throw std::runtime_error("pair Bessel reference series did not converge");
+}
+
 void values_test()
 {
   const std::array wavevectors{0.,.125,.5,1.,3.,8.};
@@ -40,9 +57,9 @@ void values_test()
       const double argument = wavevectors[point]*.75;
       for (int order = 0; order <= angular; ++order) {
         const double expected = argument == 0 ? (order == 0 ? 1. : 0.)
-                                             : std::sph_bessel(order,argument);
+                                             : reference_bessel(order,argument);
         const double derivative = argument == 0 ? (order == 1 ? 1./3 : 0.)
-          : order*expected/argument-std::sph_bessel(order+1,argument);
+          : order*expected/argument-reference_bessel(order+1,argument);
         near(element(table.values,0,order,point),expected);
         near(element(table.values,1,order,point),derivative);
       }
