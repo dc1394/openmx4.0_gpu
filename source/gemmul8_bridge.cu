@@ -763,18 +763,20 @@ struct PreparedKey {
     int id;
     int x_is_left;
     int is_complex;
+    const void *owner = nullptr;
 
     bool operator==(const PreparedKey &other) const
     {
         return device == other.device && id == other.id && x_is_left == other.x_is_left &&
-               is_complex == other.is_complex;
+               is_complex == other.is_complex && owner == other.owner;
     }
 };
 
 struct PreparedKeyHash {
     std::size_t operator()(const PreparedKey &key) const
     {
-        return (static_cast<std::size_t>(key.device) << 40) ^ (static_cast<std::size_t>(key.id) << 8) ^
+        return std::hash<const void*>{}(key.owner) ^
+               (static_cast<std::size_t>(key.device) << 40) ^ (static_cast<std::size_t>(key.id) << 8) ^
                (static_cast<std::size_t>(key.x_is_left) << 1) ^ static_cast<std::size_t>(key.is_complex);
     }
 };
@@ -923,7 +925,7 @@ cublasStatus_t native_gemm(cublasHandle_t handle, cublasOperation_t transa, cubl
 template <typename T>
 cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperation_t op_x, int m, int n, int k,
                             const T *X, int ldx, const T *V, int ldv, T *C, int ldc, int x_id,
-                            unsigned long long x_version)
+                            unsigned long long x_version, const void *owner = nullptr)
 {
     constexpr bool          is_complex = !std::is_same_v<T, double>;
     const T                 one = forward_scalar<T>(1.0), zero = forward_scalar<T>(0.0);
@@ -1012,7 +1014,7 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
 
             if (reuse_stage && cudaGetDevice(&device) == cudaSuccess) {
                 keep  = x_is_left ? size_a : size_b;
-                entry = ensure_prepared(PreparedKey{device, x_id, x_is_left ? 1 : 0, is_complex ? 1 : 0}, keep);
+                entry = ensure_prepared(PreparedKey{device, x_id, x_is_left ? 1 : 0, is_complex ? 1 : 0, owner}, keep);
             }
             if (reuse_stage && entry == nullptr) {
                 /* no room for the retained form: prepare X on every call */
@@ -1112,6 +1114,27 @@ extern "C" cublasStatus_t openmx_gemmul8DgemmFixed(cublasHandle_t handle, int x_
                                                     unsigned long long x_version)
 {
     return forward_gemm<double>(handle, x_is_left != 0, op_x, m, n, k, X, ldx, V, ldv, C, ldc, x_id, x_version);
+}
+
+/* An explicit calculation can use a local generation counter. Distinct
+   calculations never share a prepared operand, even at the same generation.
+   Erase its entries before destroying/reusing the owner identity. */
+extern "C" cublasStatus_t openmx_gemmul8DgemmFixedOwned(const void *owner,
+    cublasHandle_t handle, int x_is_left, cublasOperation_t op_x, int m, int n, int k,
+    const double *X, int ldx, const double *V, int ldv, double *C, int ldc, int x_id,
+    unsigned long long x_version)
+{
+    return forward_gemm<double>(handle, x_is_left != 0, op_x, m, n, k, X, ldx, V, ldv,
+                                C, ldc, x_id, x_version, owner);
+}
+
+extern "C" void openmx_gemmul8ReleasePreparedOwner(const void *owner)
+{
+    std::lock_guard<std::mutex> lock(g_workspace_mutex);
+    for (auto it = g_prepared.begin(); it != g_prepared.end();) {
+        if (it->first.owner == owner) it = g_prepared.erase(it);
+        else ++it;
+    }
 }
 
 extern "C" cublasStatus_t openmx_gemmul8ZgemmFixed(cublasHandle_t handle, int x_is_left, cublasOperation_t op_x,

@@ -1580,3 +1580,5 @@ Free_Arrays.o: openmx_core_native_resources.h
 openmx_grid_assembly.o: openmx_grid_assembly.c openmx_grid_assembly.h openmx_core_grid.h openmx_common.h
 	$(CC_NOACC_O3) -c openmx_grid_assembly.c
 DFT.o Set_Hamiltonian.o Set_Density_Grid.o Free_Arrays.o: openmx_grid_assembly.h openmx_core_grid.h
+
+DFT.o Cluster_DFT_Col.o: openmx_cluster_col_state.h

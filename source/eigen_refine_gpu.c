@@ -205,7 +205,7 @@ static int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, co
         st->b1 = (double *)pb->fp32;
     }
     else {
-        if (dev->try_malloc(&st->own, (size_t)blocks * block_bytes) != cudaSuccess) {
+        if (openmx_eigen_refine_malloc(dev, &st->own, (size_t)blocks * block_bytes) != cudaSuccess) {
             if (OPENMX_STDOUT_LEVEL(2)) {
                 printf("<eigen_refine_gpu> no room for the %.1f MiB of refinement products; FP64 eigensolver%s\n",
                        (double)blocks * (double)block_bytes / (1024.0 * 1024.0),
@@ -344,7 +344,7 @@ static int refine_fp32_attempt(EigenRefineDevice *dev, int cplx, int n, const vo
     }
     if (*dev->d_work_bytes < d_bytes) {
         void *grown = NULL;
-        if (dev->try_malloc(&grown, d_bytes) != cudaSuccess) {
+        if (openmx_eigen_refine_malloc(dev, &grown, d_bytes) != cudaSuccess) {
             if (OPENMX_STDOUT_LEVEL(2)) {
                 printf("<eigen_refine_gpu> no room for the %.1f MiB FP32 eigensolver workspace\n",
                        (double)d_bytes / (1024.0 * 1024.0));
@@ -358,7 +358,7 @@ static int refine_fp32_attempt(EigenRefineDevice *dev, int cplx, int n, const vo
     }
     if (*dev->h_work_bytes < h_bytes) {
         openmx_core_native_free(dev->resources,*dev->h_work);
-        *dev->h_work = dev->host_malloc(h_bytes, 1, "cuSOLVER host workspace");
+        *dev->h_work = openmx_eigen_refine_host_malloc(dev, h_bytes, 1, "cuSOLVER host workspace");
         *dev->h_work_bytes = h_bytes;
     }
     if (two_stage) {
@@ -565,8 +565,8 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
     if (st->capacity < n) {
         openmx_eigen_refine_state_release(st);
         st->resources = dev->resources;
-        if (dev->try_malloc((void **)&st->lam, (size_t)n * sizeof(double)) != cudaSuccess ||
-            dev->try_malloc((void **)&st->occ, (size_t)n * sizeof(double)) != cudaSuccess) {
+        if (openmx_eigen_refine_malloc(dev, (void **)&st->lam, (size_t)n * sizeof(double)) != cudaSuccess ||
+            openmx_eigen_refine_malloc(dev, (void **)&st->occ, (size_t)n * sizeof(double)) != cudaSuccess) {
             if (OPENMX_STDOUT_LEVEL(2)) {
                 printf("<eigen_refine_gpu> no room for the refinement eigenvalues; FP64 eigensolver%s\n",
                        pb->transient ? "" : " for the rest of the SCF cycle");
@@ -638,7 +638,7 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
 #pragma acc parallel loop deviceptr(af, x)
             for (size_t i = 0; i < count; i++) x[i] = (double)af[i];
         }
-        w = (float *)dev->host_malloc((size_t)n, sizeof(float), "FP32 eigenvalues");
+        w = (float *)openmx_eigen_refine_host_malloc(dev, (size_t)n, sizeof(float), "FP32 eigenvalues");
         refine_check(cudaMemcpy(w, wf, (size_t)n * sizeof(float), cudaMemcpyDeviceToHost), "download eigenvalues");
         for (int i = 0; i < n; i++) e0[i] = (double)w[i];
         openmx_core_native_free(dev->resources,w);
@@ -687,9 +687,9 @@ static int refine_rayleigh_ritz(EigenRefineDevice *dev, int cplx, const void *a,
     refine_check(cudaDeviceSynchronize(), "synchronize");
 
     if (m < 256) {
-        double *h = (double *)dev->host_malloc(2 * width * mm, sizeof(double), "cluster Rayleigh-Ritz");
+        double *h = (double *)openmx_eigen_refine_host_malloc(dev, 2 * width * mm, sizeof(double), "cluster Rayleigh-Ritz");
         double *s = h + width * mm;
-        double *rwork = (double *)dev->host_malloc((size_t)(3 * m), sizeof(double), "cluster Rayleigh-Ritz");
+        double *rwork = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)(3 * m), sizeof(double), "cluster Rayleigh-Ritz");
         double query[2] = {0.0, 0.0};
         double *work;
         int itype = 1, dim = m, lwork = -1;
@@ -698,7 +698,7 @@ static int refine_rayleigh_ritz(EigenRefineDevice *dev, int cplx, const void *a,
         if (cplx) zhegv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, query, &lwork, rwork, &info);
         else dsygv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, query, &lwork, &info);
         lwork = (info == 0 && 1.0 <= query[0]) ? (int)query[0] : 3 * m;
-        work = (double *)dev->host_malloc((size_t)width * (size_t)lwork, sizeof(double), "cluster Rayleigh-Ritz");
+        work = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)width * (size_t)lwork, sizeof(double), "cluster Rayleigh-Ritz");
         if (cplx) zhegv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, rwork, &info);
         else dsygv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, &info);
         openmx_core_native_free(dev->resources,work);
@@ -730,7 +730,7 @@ static int refine_rayleigh_ritz(EigenRefineDevice *dev, int cplx, const void *a,
         if (status != CUSOLVER_STATUS_SUCCESS) return 0;
         need = (size_t)lwork * (size_t)width * sizeof(double);
         if (*dev->d_work_bytes < need) {
-            if (dev->try_malloc(&work, need) != cudaSuccess) return 0;
+            if (openmx_eigen_refine_malloc(dev, &work, need) != cudaSuccess) return 0;
             own_work = 1;
         }
         else {
@@ -943,10 +943,10 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
        emptied by index) */
     chain = 30.0 * first_delta;
     {
-        double *lh = (double *)dev->host_malloc((size_t)kc, sizeof(double), "refined eigenvalues");
-        double *fh = (double *)dev->host_malloc((size_t)kc, sizeof(double), "refined occupations");
-        int *c0s = (int *)dev->host_malloc((size_t)kc, sizeof(int), "refinement clusters");
-        int *ms = (int *)dev->host_malloc((size_t)kc, sizeof(int), "refinement clusters");
+        double *lh = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(double), "refined eigenvalues");
+        double *fh = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(double), "refined occupations");
+        int *c0s = (int *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(int), "refinement clusters");
+        int *ms = (int *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(int), "refinement clusters");
         int clusters = 0;
 
         refine_check(cudaMemcpy(lh, lam, (size_t)kc * sizeof(double), cudaMemcpyDeviceToHost), "download lam");
@@ -997,7 +997,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                orthogonality max_i |x_i^H x_j - delta_ij| of the refined
                columns by occupation class, with plain cuBLAS FP64 products
                (occ is free: it holds the per-column values) */
-            double *rh = (double *)dev->host_malloc((size_t)kc, sizeof(double), "refinement check");
+            double *rh = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(double), "refinement check");
             double  res_occ = 0.0, res_part = 0.0, res_empty = 0.0, orth = 0.0;
             int     n_part = 0, worst_occ = -1;
 

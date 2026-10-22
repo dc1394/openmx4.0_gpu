@@ -135,6 +135,23 @@ void prepared_matrices(){
     check(!failed && !live && openmx::test::live_allocations()==heap,"prepared metadata OOM escaped or leaked");
     reset(0);std::cout<<"PASS: prepared reuse/version/growth, failed free/retry, per-device cleanup, scoped destruction and metadata OOM\n";
 }
+void prepared_owner_lifetimes(){
+    clear_caches();reset(1);int first,second;
+    const PreparedKey a{1,0,0,0,&first},b{1,0,0,0,&second},legacy{1,0,0,0};
+    auto* x=ensure_prepared(a,32);auto* y=ensure_prepared(b,32);auto* z=ensure_prepared(legacy,32);
+    check(x && y && z && x!=y && y!=z && live==3,"owner identities shared prepared storage");
+    x->valid=y->valid=z->valid=true;x->version=y->version=z->version=1;
+    void* saved=y->buffer.get();trace.current=3;
+    openmx_gemmul8ReleasePreparedOwner(&first);
+    check(live==2 && !g_prepared.count(a) && g_prepared.at(b).buffer.get()==saved &&
+        g_prepared.at(b).valid && g_prepared.at(legacy).valid && trace.current==3 && !trace.wrong_device_frees,
+        "owner teardown invalidated another calculation/legacy cache or selected wrong device");
+    openmx_gemmul8ReleasePreparedOwner(&first);check(live==2,"owner teardown was not idempotent");
+    x=ensure_prepared(a,32);check(x && !x->valid && !x->version,"reused owner identity inherited a stale generation");
+    openmx_gemmul8ReleasePreparedOwner(&second);check(!g_prepared.count(b) && live==2,"second owner teardown retained storage");
+    clear_caches();check(!live,"owner cache cleanup leaked");reset(0);
+    std::cout<<"PASS: distinct calculation/legacy namespaces, local generations, selective/idempotent drain and reused owner identity\n";
+}
 #endif
 }
 int main(){
@@ -145,6 +162,7 @@ int main(){
         explicit_status_and_retry();reuse_and_cleanup();release_failure_and_trim();preparation_failures();
 #if !OPENMX_GPU_HIP
         prepared_matrices();
+        prepared_owner_lifetimes();
 #endif
         clear_caches();check(!live && !trace.wrong_device_frees,"cache test retained or freed foreign device storage");return 0;
     }catch(const std::exception& error){openmx::test::fail_allocation_after(-1);std::cerr<<error.what()<<'\n';return 1;}

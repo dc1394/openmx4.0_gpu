@@ -24,9 +24,12 @@ if [ -z "${GEMMUL8_TEST_OBJECT:-}" ]; then
         -I"$gemmul8_root/include" -I"$gemmul8_root/src" -I"$math_root/include" \
         -c "$test_root/source/gemmul8_openmx.cu" -o "$gemmul8_object"
 fi
+# Use the same environment registry as the production bridge.
+"${CC:-cc}" -std=c11 -O2 -I"$test_root/source" \
+    -c "$test_root/source/openmx_env.c" -o "$test_tmp/openmx_env.o"
 "$nvcc" -ccbin "$host_cxx" -std=c++20 -O2 -I"$gemmul8_root/include" -I"$math_root/include" \
     "$test_root/tests/gemmul8_forward_smoke.cu" "$test_root/source/gemmul8_bridge.cu" \
-    "$gemmul8_object" -L"$math_root/lib64" -L"$cuda_root/lib64" -lcublas -lcublasLt \
+    "$test_tmp/openmx_env.o" "$gemmul8_object" -L"$math_root/lib64" -L"$cuda_root/lib64" -lcublas -lcublasLt \
     -Xlinker -rpath -Xlinker "$math_root/lib64" \
     -Xlinker -rpath -Xlinker "$cuda_root/lib64" -o "$test_tmp/check"
 

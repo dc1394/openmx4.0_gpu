@@ -31,10 +31,27 @@ typedef struct {
     int32_t           *d_info;
     cudaError_t (*try_malloc)(void **ptr, size_t bytes);
     void *(*host_malloc)(size_t count, size_t elem, const char *label);
+    /* Explicit callback state for migrated solvers. Legacy adapters leave
+       these zero; no current-calculation pointer is installed globally. */
+    void *allocation_context;
+    cudaError_t (*try_malloc_owned)(void *context, void **ptr, size_t bytes);
+    void *(*host_malloc_owned)(void *context, size_t count, size_t elem, const char *label);
     cusolverDnParams_t params32;        /* two-stage algorithm of the FP32 full solve, once tried */
     int                params32_tried;
     OpenMXNativeResources *resources; /* borrowed from the calling calculation */
 } EigenRefineDevice;
+
+static inline cudaError_t openmx_eigen_refine_malloc(const EigenRefineDevice *dev, void **ptr, size_t bytes)
+{
+    return dev->try_malloc_owned ? dev->try_malloc_owned(dev->allocation_context, ptr, bytes)
+                                 : dev->try_malloc(ptr, bytes);
+}
+static inline void *openmx_eigen_refine_host_malloc(const EigenRefineDevice *dev,
+    size_t count, size_t bytes, const char *label)
+{
+    return dev->host_malloc_owned ? dev->host_malloc_owned(dev->allocation_context, count, bytes, label)
+                                  : dev->host_malloc(count, bytes, label);
+}
 
 /* One eigenproblem instance (a spin, a k-point): what persists between its
    solves. */

@@ -128,6 +128,16 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME cluster-col-calculation-state-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_col_state_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(cluster-col-calculation-state-lifecycle PROPERTIES LABELS "unit;gpu;core" TIMEOUT 180)
+  add_test(NAME cluster-col-cpu-density
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_dm_cpu.py")
+  set_tests_properties(cluster-col-cpu-density PROPERTIES LABELS "unit;gpu" TIMEOUT 120)
+  add_test(NAME cusolver-refinement-architecture-policy
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cusolver_policy_cpu.py")
+  set_tests_properties(cusolver-refinement-architecture-policy PROPERTIES LABELS "unit;gpu" TIMEOUT 120)
   add_test(NAME gpu-vector-packet-resource-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_packet_memory.py")
   set_tests_properties(gpu-vector-packet-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)

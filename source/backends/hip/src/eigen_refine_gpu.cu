@@ -469,7 +469,7 @@ int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, const Eig
         st->b1 = (double *)pb->fp32;
     }
     else {
-        if (dev->try_malloc(&st->own, (size_t)blocks * block_bytes) != hipSuccess) {
+        if (openmx_eigen_refine_malloc(dev, &st->own, (size_t)blocks * block_bytes) != hipSuccess) {
             if (OPENMX_STDOUT_LEVEL(2)) {
                 printf("<eigen_refine_gpu> no room for the %.1f MiB of refinement products; FP64 eigensolver%s\n",
                        (double)blocks * (double)block_bytes / (1024.0 * 1024.0),
@@ -565,7 +565,7 @@ int refine_work_ensure(EigenRefineDevice *dev, size_t bytes, const char *what)
             *dev->d_work = NULL;
             *dev->d_work_bytes = 0;
         }
-        if (dev->try_malloc(&grown, bytes) != hipSuccess) {
+        if (openmx_eigen_refine_malloc(dev, &grown, bytes) != hipSuccess) {
             if (OPENMX_STDOUT_LEVEL(2)) {
                 printf("<eigen_refine_gpu> no room for the %.1f MiB %s workspace\n", (double)bytes / (1024.0 * 1024.0),
                        what);
@@ -637,7 +637,7 @@ int refine_fp32_rocsolver(EigenRefineDevice *dev, hipStream_t stream, int cplx, 
         int         *flag = NULL;
         int          finite = 1;
 
-        if (dev->try_malloc((void **)&flag, sizeof(int)) != hipSuccess) return 0;
+        if (openmx_eigen_refine_malloc(dev, (void **)&flag, sizeof(int)) != hipSuccess) return 0;
         refine_check(hipMemcpyAsync(flag, &finite, sizeof(int), hipMemcpyHostToDevice, stream), "upload flag");
         hipLaunchKernelGGL(k_finite_f32, dim3(grid_for(count)), dim3(kThreads), 0, stream, af, count, flag);
         refine_check(hipGetLastError(), "FP32 finite check");
@@ -697,7 +697,7 @@ int refine_fp32_solve(EigenRefineDevice *dev, hipStream_t stream, int cplx, int 
             hipLaunchKernelGGL(k_f64_to_f32, dim3(grid_for(count)), dim3(kThreads), 0, stream, a, af, count);
         refine_check(hipGetLastError(), "convert to FP32");
         if (use_magma) {
-            float *w = (float *)dev->host_malloc((size_t)n, sizeof(float), "FP32 eigenvalues");
+            float *w = (float *)openmx_eigen_refine_host_malloc(dev, (size_t)n, sizeof(float), "FP32 eigenvalues");
             int    info;
 
             refine_check(hipStreamSynchronize(stream), "synchronize");
@@ -715,7 +715,7 @@ int refine_fp32_solve(EigenRefineDevice *dev, hipStream_t stream, int cplx, int 
             openmx_core_native_free(dev->resources,w);
         }
         else if (refine_fp32_rocsolver(dev, stream, cplx, n, af, wf)) {
-            float *w = (float *)dev->host_malloc((size_t)n, sizeof(float), "FP32 eigenvalues");
+            float *w = (float *)openmx_eigen_refine_host_malloc(dev, (size_t)n, sizeof(float), "FP32 eigenvalues");
 
             refine_check(hipMemcpy(w, wf, (size_t)n * sizeof(float), hipMemcpyDeviceToHost), "download eigenvalues");
             for (int i = 0; i < n; i++) e0[i] = (double)w[i];
@@ -750,7 +750,7 @@ int refine_maxima(const EigenRefineDevice *dev, hipStream_t stream, int cplx, co
     double       max_s = 0.0, max_r = 0.0, finite = 1.0;
 
     if (blocks > 1024) blocks = 1024;
-    if (dev->try_malloc((void **)&partial, (size_t)blocks * 3 * sizeof(double)) != hipSuccess) {
+    if (openmx_eigen_refine_malloc(dev, (void **)&partial, (size_t)blocks * 3 * sizeof(double)) != hipSuccess) {
         /* no room even for the check: the caller solves in FP64 */
         if (OPENMX_STDOUT_LEVEL(2)) {
             printf("<eigen_refine_gpu> no room for the refinement check\n");
@@ -760,7 +760,7 @@ int refine_maxima(const EigenRefineDevice *dev, hipStream_t stream, int cplx, co
     }
     hipLaunchKernelGGL(k_maxima, dim3(blocks), dim3(kThreads), 0, stream, b1, b2, n, kc, cplx ? 2 : 1, partial);
     refine_check(hipGetLastError(), "refinement maxima");
-    host = (double *)dev->host_malloc((size_t)blocks * 3, sizeof(double), "refinement maxima");
+    host = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)blocks * 3, sizeof(double), "refinement maxima");
     refine_check(hipMemcpyAsync(host, partial, (size_t)blocks * 3 * sizeof(double), hipMemcpyDeviceToHost, stream),
                  "download maxima");
     refine_check(hipStreamSynchronize(stream), "synchronize");
@@ -797,7 +797,7 @@ int refine_result_finite(const EigenRefineDevice *dev, hipStream_t stream, int w
     int         *flag = NULL;
     int          finite = 1;
 
-    if (dev->try_malloc((void **)&flag, sizeof(int)) != hipSuccess) {
+    if (openmx_eigen_refine_malloc(dev, (void **)&flag, sizeof(int)) != hipSuccess) {
         /* no room even for the check: the caller solves in FP64 */
         if (OPENMX_STDOUT_LEVEL(2)) {
             printf("<eigen_refine_gpu> no room for the refinement check\n");
@@ -848,9 +848,9 @@ int refine_rayleigh_ritz(EigenRefineDevice *dev, hipStream_t stream, int cplx, c
     refine_check(hipStreamSynchronize(stream), "synchronize");
 
     if (m < 256) {
-        double *h = (double *)dev->host_malloc(2 * width * mm, sizeof(double), "cluster Rayleigh-Ritz");
+        double *h = (double *)openmx_eigen_refine_host_malloc(dev, 2 * width * mm, sizeof(double), "cluster Rayleigh-Ritz");
         double *s = h + width * mm;
-        double *rwork = (double *)dev->host_malloc((size_t)(3 * m), sizeof(double), "cluster Rayleigh-Ritz");
+        double *rwork = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)(3 * m), sizeof(double), "cluster Rayleigh-Ritz");
         double  query[2] = {0.0, 0.0};
         double *work;
         int     itype = 1, dim = m, lwork = -1;
@@ -860,7 +860,7 @@ int refine_rayleigh_ritz(EigenRefineDevice *dev, hipStream_t stream, int cplx, c
         else dsygv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, query, &lwork, &info);
         lwork = (info == 0 && 1.0 <= query[0]) ? (int)query[0] : 3 * m;
         if (lwork < 3 * m) lwork = 3 * m;
-        work = (double *)dev->host_malloc((size_t)width * (size_t)lwork, sizeof(double), "cluster Rayleigh-Ritz");
+        work = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)width * (size_t)lwork, sizeof(double), "cluster Rayleigh-Ritz");
         if (cplx) zhegv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, rwork, &info);
         else dsygv_(&itype, "V", "L", &dim, h, &dim, s, &dim, w, work, &lwork, &info);
         openmx_core_native_free(dev->resources,work);
@@ -894,7 +894,7 @@ int refine_rayleigh_ritz(EigenRefineDevice *dev, hipStream_t stream, int cplx, c
         if (lwork < 1) lwork = 1;
         need = (size_t)lwork * (size_t)width * sizeof(double);
         if (*dev->d_work_bytes < need) {
-            if (dev->try_malloc(&work, need) != hipSuccess) return 0;
+            if (openmx_eigen_refine_malloc(dev, &work, need) != hipSuccess) return 0;
             own_work = 1;
         }
         else {
@@ -1159,8 +1159,8 @@ extern "C" int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevi
     if (st->capacity < n) {
         openmx_eigen_refine_state_release(st);
         st->resources = dev->resources;
-        if (dev->try_malloc((void **)&st->lam, (size_t)n * sizeof(double)) != hipSuccess ||
-            dev->try_malloc((void **)&st->occ, (size_t)n * sizeof(double)) != hipSuccess) {
+        if (openmx_eigen_refine_malloc(dev, (void **)&st->lam, (size_t)n * sizeof(double)) != hipSuccess ||
+            openmx_eigen_refine_malloc(dev, (void **)&st->occ, (size_t)n * sizeof(double)) != hipSuccess) {
             if (st->lam != NULL) refine_check(OpenMX_Resource_GpuFree(st->resources,st->lam), "hipFree lam");
             st->lam = NULL;
             if (OPENMX_STDOUT_LEVEL(2)) {
@@ -1387,10 +1387,10 @@ extern "C" int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevic
        emptied by index) */
     chain = 30.0 * first_delta;
     {
-        double *lh = (double *)dev->host_malloc((size_t)kc, sizeof(double), "refined eigenvalues");
-        double *fh = (double *)dev->host_malloc((size_t)kc, sizeof(double), "refined occupations");
-        int    *c0s = (int *)dev->host_malloc((size_t)kc, sizeof(int), "refinement clusters");
-        int    *ms = (int *)dev->host_malloc((size_t)kc, sizeof(int), "refinement clusters");
+        double *lh = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(double), "refined eigenvalues");
+        double *fh = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(double), "refined occupations");
+        int    *c0s = (int *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(int), "refinement clusters");
+        int    *ms = (int *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(int), "refinement clusters");
         int     clusters = 0;
 
         refine_check(hipMemcpy(lh, lam, (size_t)kc * sizeof(double), hipMemcpyDeviceToHost), "download lam");
@@ -1442,7 +1442,7 @@ extern "C" int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevic
                orthogonality max_i |x_i^H x_j - delta_ij| of the refined
                columns by occupation class, with plain hipBLAS FP64 products
                (occ is free: it holds the per-column values) */
-            double *rh = (double *)dev->host_malloc((size_t)kc, sizeof(double), "refinement check");
+            double *rh = (double *)openmx_eigen_refine_host_malloc(dev, (size_t)kc, sizeof(double), "refinement check");
             double  res_occ = 0.0, res_part = 0.0, res_empty = 0.0, orth = 0.0;
             int     n_part = 0, worst_occ = -1;
 

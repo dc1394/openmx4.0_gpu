@@ -10,9 +10,15 @@ import argparse
 import os
 from pathlib import Path
 import re
+import resource
 import shlex
 import subprocess
 import tempfile
+
+
+def bounded_stack():
+    _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    resource.setrlimit(resource.RLIMIT_STACK, (8 * 1024 * 1024, hard))
 
 
 def function(source, name):
@@ -179,6 +185,9 @@ typedef struct {
     int unused; void *(*host_malloc)(size_t,size_t,const char *);
     int (*try_malloc)(void **,size_t);
     OpenMXNativeResources *resources;
+    void *allocation_context;
+    int (*try_malloc_owned)(void *,void **,size_t);
+    void *(*host_malloc_owned)(void *,size_t,size_t,const char *);
 } EigenRefineDevice;
 typedef struct {
     int cplx,n,maxn,iterations,transient,warm,defaulted;
@@ -354,10 +363,13 @@ def main():
     root = Path(__file__).resolve().parents[1]
     retry = (root / "source/openmx_cusolver_compat.c").read_text()
     refine = (root / "source/eigen_refine_gpu.c").read_text()
+    from run_cluster_col_state_cpu import function as allocation_function
+    allocation = "\n".join(allocation_function((root / "source/eigen_refine_gpu.h").read_text(), n)
+        for n in ("openmx_eigen_refine_malloc", "openmx_eigen_refine_host_malloc"))
     bodies = {
         "retry": RETRY_PREFIX + "\n".join(function(retry, name) for name in
              ("openmx_solver_emulated", "openmx_solver_retry", "openmx_solver_both_modes")) + RETRY_HARNESS,
-        "refine": REFINE_PREFIX + "\n".join(function(refine, name) for name in
+        "refine": REFINE_PREFIX + allocation + "\n".join(function(refine, name) for name in
              ("refine_blocks_release", "openmx_eigen_refine_state_release", "refine_maxima", "refine_nonfinite", "refine_result_finite",
               "openmx_eigen_refine_prepare", "openmx_eigen_refine_finish")) + REFINE_HARNESS,
     }
@@ -437,7 +449,7 @@ int main(void) {
     cc = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))
     if args.sanitize:
-        flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+        flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"]
     with tempfile.TemporaryDirectory(prefix="openmx-refine-faults-") as tmp:
         for name, body in bodies.items():
             source = Path(tmp) / f"{name}.c"
@@ -450,7 +462,7 @@ int main(void) {
             subprocess.run(cc + flags + ["-std=c11", "-D_POSIX_C_SOURCE=200809L", "-Wall", "-Wextra", "-Wno-unused-parameter",
                 "-Wno-unknown-pragmas", "-I" + str(root / "source"), str(source),
                 str(root / "source/openmx_precision.c"), str(root / "source/openmx_env.c"), "-include", str(root / "source/openmx_env.h"), *linkage, "-lm", "-o", str(exe)], check=True)
-            subprocess.run([str(exe)], check=True)
+            subprocess.run([str(exe)], check=True, preexec_fn=bounded_stack)
 
 
 if __name__ == "__main__":

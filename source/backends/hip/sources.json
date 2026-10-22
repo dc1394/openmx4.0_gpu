@@ -328,7 +328,6 @@
     "Set_XC_Grid.c": "src/Set_XC_Grid.c",
     "cuda_fp8.h": "include/cuda_fp8.h",
     "cusolverDn.h": "include/cusolverDn.h",
-    "eigen_refine_hooks.h": "include/eigen_refine_hooks.h",
     "gemmul8_openmx.cu": "src/gemmul8_openmx.cu",
     "gpusolver_Syevd.c": "src/gpusolver_Syevd.c",
     "gpusolver_Syevdx.c": "src/gpusolver_Syevdx.c",
@@ -667,7 +666,6 @@
     "diff_gcube.c": "1cd589b1333c10e65153b50e10fe0fcc2c555b9ef6fe069de13c9718367582e8",
     "diff_geo.c": "e90c083e7b10ffec1b2e977c18495154e5cb1de296a8a9c3f8047977abb99934",
     "dtime.c": "c93253896c46187de7aa493d5d345c5336c86fde8cd18be23ab073d8ad823b4d",
-    "eigen_refine_hooks.h": "ac736cdaf6b77bb622c869cbc3ce2e60ef642983aaf267fd2563b62a9370e5f6",
     "elpa_col.c": "6070fd6c528c5f02afab537981f8dc88f9c78735910729d3cf266c6dbcb91294",
     "elpa_cosma_memory.cpp": "dda780f73bb477a966a1cdc5e947eeadcc10a2ad002e8bdc9430c11a6685137e",
     "elpa_noncol.c": "8effb0fd890d43c92fc8702277a807fc274805e4101fedf92bf8496f309c4182",
@@ -1041,6 +1039,7 @@
     "truncation.c",
     "openmx_core_native_resources.h",
     "openmx_native_resources.h",
+    "openmx_cluster_col_state.h",
     "openmx_core_grid.h",
     "openmx_grid_assembly.h",
     "openmx_grid_assembly.c",
@@ -1101,6 +1100,7 @@
     "my_hipblasDgemm.c": "src/my_hipblasDgemm.c",
     "my_hipblasZgemm.c": "src/my_hipblasZgemm.c",
     "eigen_refine_gpu.cu": "src/eigen_refine_gpu.cu",
-    "eigen_refine_gpu.h": "include/eigen_refine_gpu.h"
+    "eigen_refine_gpu.h": "include/eigen_refine_gpu.h",
+    "eigen_refine_hooks.h": "include/eigen_refine_hooks.h"
   }
 }

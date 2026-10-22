@@ -14,13 +14,11 @@
 #include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
-OPENMX_NATIVE_RESOURCE_GROUP(Cluster_DFT_Col,Cluster_DFT_Col_Release_GPU_Caches)
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
 #include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
 
-static int ClusterCol_mgpu_host_dense = 0;
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
@@ -39,31 +37,8 @@ static int ClusterCol_mgpu_host_dense = 0;
 #include <string.h>
 #include <time.h>
 
-/* matrix order for which the automatic capacity fallback of gpusolver
-   chose the distributed gpusolver2 path (0: none); see
-   openmx_cluster_capacity.h */
-static int ClusterCol_gs2_fallback_n = 0;
-
-/* the distributed ELPA/COSMA path: requested by the input, or the capacity
-   fallback of gpusolver for this order */
-static int ClusterCol_UseGs2(int n)
-{
-    return gpusolver2_flag || (0 < n && ClusterCol_gs2_fallback_n == n);
-}
-
-static void ClusterCol_ResetGs2Fallback(void)
-{
-    if (ClusterCol_gs2_fallback_n != 0) openmx_gs2_set_fallback_report(0);
-    ClusterCol_gs2_fallback_n = 0;
-}
-
-/* Grid over every rank of mpi_comm_level1 for the capacity fallback of a
-   spin-polarized run.  The spin worlds are contiguous halves of the ranks,
-   i.e. one node each under the usual block placement, so solving each spin
-   on its own world's grid would never spread one solve over the GPUs of both
-   nodes.  In the fallback both spins are solved in turn on this grid, and
-   each spin's eigenvectors go to its own world in the layout of the
-   ScaLAPACK path (EVec1[spin], states is2..ie2 of the world's ranks). */
+/* Persistent metadata has exactly the explicit calculation lifetime. Native
+   resource owners release buffers/handles; fields below only borrow them. */
 typedef struct {
     int n;                       /* order the grid was built for (0: none) */
     int bhandle, ictxt;
@@ -73,111 +48,7 @@ typedef struct {
     double *Ss, *Hs, *Cs;
     int overlap_n;               /* order whose X = U lambda^-1/2 is in Ss */
 } ClusterColUnionGrid;
-static ClusterColUnionGrid ClusterCol_ugrid;
 
-/* collective over mpi_comm_level1 */
-static void ClusterCol_UnionGrid_Free(void)
-{
-    ClusterColUnionGrid *g = &ClusterCol_ugrid;
-
-    if (g->n == 0) return;
-    openmx_gs2_grid_free(g->ictxt);
-    Cfree_blacs_system_handle(g->bhandle);
-    Cblacs_gridexit(g->ictxt);
-    openmx_core_native_free(Cluster_DFT_Col_resources,g->Ss);
-    openmx_core_native_free(Cluster_DFT_Col_resources,g->Hs);
-    openmx_core_native_free(Cluster_DFT_Col_resources,g->Cs);
-    memset(g, 0, sizeof(*g));
-}
-
-/* collective over mpi_comm_level1: the grid of order n, built like the
-   cluster grids of DFT.c ("Row" order, np_cols the largest divisor of the
-   rank count not above its square root, nblk from 128 down) */
-static void ClusterCol_UnionGrid_Ensure(int n)
-{
-    ClusterColUnionGrid *g = &ClusterCol_ugrid;
-    int numprocs0, myid0, nblk_m, info, ZERO = 0;
-
-    if (g->n == n) return;
-    ClusterCol_UnionGrid_Free();
-
-    MPI_Comm_size(mpi_comm_level1, &numprocs0);
-    MPI_Comm_rank(mpi_comm_level1, &myid0);
-
-    g->np_cols = (int)(sqrt((float)numprocs0));
-    do {
-        if ((numprocs0 % g->np_cols) == 0) break;
-        g->np_cols--;
-    } while (g->np_cols >= 2);
-    if (g->np_cols < 1) g->np_cols = 1;
-    g->np_rows = numprocs0 / g->np_cols;
-
-    nblk_m = NBLK;
-    while ((nblk_m * g->np_rows > n || nblk_m * g->np_cols > n) && (nblk_m > 1)) nblk_m /= 2;
-    if (nblk_m < 1) nblk_m = 1;
-    MPI_Allreduce(&nblk_m, &g->nblk, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
-
-    g->my_prow = myid0 / g->np_cols;
-    g->my_pcol = myid0 % g->np_cols;
-    g->na_rows = numroc_(&n, &g->nblk, &g->my_prow, &ZERO, &g->np_rows);
-    g->na_cols = numroc_(&n, &g->nblk, &g->my_pcol, &ZERO, &g->np_cols);
-
-    g->bhandle = Csys2blacs_handle(mpi_comm_level1);
-    g->ictxt = g->bhandle;
-    Cblacs_gridinit(&g->ictxt, "Row", g->np_rows, g->np_cols);
-
-    MPI_Allreduce(&g->na_rows, &g->na_rows_max, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
-    MPI_Allreduce(&g->na_cols, &g->na_cols_max, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
-
-    g->Ss = (double *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double) * (size_t)g->na_rows * (size_t)g->na_cols + sizeof(double),0);
-    g->Hs = (double *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double) * (size_t)g->na_rows * (size_t)g->na_cols + sizeof(double),0);
-    g->Cs = (double *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double) * (size_t)g->na_rows_max * (size_t)g->na_cols_max + sizeof(double),0);
-    if (g->Ss == NULL || g->Hs == NULL || g->Cs == NULL) {
-        fprintf(stderr, "Cluster_DFT_Col: out of host memory for the %d x %d grid of the"
-                        " distributed capacity fallback (n=%d)\n", g->np_rows, g->np_cols, n);
-        fflush(stderr);
-        MPI_Abort(mpi_comm_level1, 1);
-    }
-
-    descinit_(g->desc, &n, &n, &g->nblk, &g->nblk, &ZERO, &ZERO, &g->ictxt, &g->na_rows, &info);
-    g->n = n;
-    g->overlap_n = 0;
-}
-
-/* Overlap_Cluster_Ss and Hamiltonian_Cluster_Hs fill the local block of
-   the grid described by these globals; point them at the union grid for
-   the duration of a fill */
-typedef struct {
-    int np_rows, np_cols, my_prow, my_pcol, nblk, na_rows, na_cols;
-} ClusterColGridGlobals;
-
-static ClusterColGridGlobals ClusterCol_EnterUnionGridGlobals(void)
-{
-    const ClusterColUnionGrid *g = &ClusterCol_ugrid;
-    ClusterColGridGlobals saved;
-
-    saved.np_rows = np_rows; saved.np_cols = np_cols;
-    saved.my_prow = my_prow; saved.my_pcol = my_pcol;
-    saved.nblk = nblk; saved.na_rows = na_rows; saved.na_cols = na_cols;
-    np_rows = g->np_rows; np_cols = g->np_cols;
-    my_prow = g->my_prow; my_pcol = g->my_pcol;
-    nblk = g->nblk; na_rows = g->na_rows; na_cols = g->na_cols;
-    return saved;
-}
-
-static void ClusterCol_LeaveUnionGridGlobals(ClusterColGridGlobals saved)
-{
-    np_rows = saved.np_rows; np_cols = saved.np_cols;
-    my_prow = saved.my_prow; my_pcol = saved.my_pcol;
-    nblk = saved.nblk; na_rows = saved.na_rows; na_cols = saved.na_cols;
-}
-
-#define  measure_time   0
-
-double *Hex0;
-double *Hex;
-
-/* GPU GpuSolver context (added by H.Kawai, ported from 3.9.9 GPU) */
 typedef struct {
     int                initialized;
     int                device_id;
@@ -210,21 +81,15 @@ typedef struct {
     int                evec_stash_maxn;
 } ClusterColGpuSolverCtx;
 
-static ClusterColGpuSolverCtx ClusterCol_gpusolver_ctx = {0};
+typedef struct {
+    int valid;
+    int n;
+    int entry_count;
+    unsigned long long fingerprint;
+    int *basis0;
+    int *basis1;
+} ClusterColDMEntryCache;
 
-/* The refined FP32 eigensolver (eigen_refine_gpu.c) in the root dense path
-   of the SCF solves, per spin.  OPENMX_EIGEN_REFINE=K (0: off), unset: on
-   by default on GPUs whose FP64 throughput is a small fraction of their
-   FP32 one when the real GEMMul8 products are on (see
-   openmx_eigen_refine_configure); the global root's device decides for all
-   ranks.  The occupations that define the clusters need the chemical
-   potential of both spins: with spin polarization, the two spin worlds'
-   owners exchange the estimates of their FP32 solves (the serialized mode,
-   where one owner solves both spins, and a single rank solving both keep
-   the FP64 eigensolver).  An SCF that ends on a refined step has the step
-   solved once more in FP64 (mode "scf" with Cluster_DFT_Col_RefineForceFP64
-   on, which recomputes the density matrix as well), and the last step
-   scf.maxIter allows is FP64 in any case. */
 typedef struct
 {
     int     iterations;    /* -1 until the environment is read */
@@ -243,28 +108,230 @@ typedef struct
     int     basis_blocked; /* the reservation probe left no room for the basis: FP64 eigensolver this cycle */
 } ClusterColRefineState;
 
-static ClusterColRefineState ClusterCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
-static EigenRefineState      ClusterCol_refine_state[2] = {{0}, {0}};
-static EigenRefineDevice     ClusterCol_refine_dev = {0};
-static double               *ClusterCol_refine_x[2] = {NULL, NULL};   /* the bases, n x n each */
-static int                   ClusterCol_refine_x_n = 0;
+typedef struct {
+    int valid;
+    int n;
+    int tnum;
+    unsigned long long fingerprint;
+    int *dense_index;
+} ClusterColDenseIndexCache;
 
-static void ClusterCol_RefineRelease(void)
+struct OpenMXClusterColState {
+  OpenMXNativeResources *resources; /* borrowed from this calculation */
+  int initialized;
+  int mgpu_host_dense;
+  int gs2_fallback_n;
+  ClusterColUnionGrid ugrid;
+  double *Hex0;
+  double *Hex;
+  ClusterColGpuSolverCtx gpusolver_ctx;
+  ClusterColRefineState refine;
+  EigenRefineState      refine_state[2];
+  double               *refine_x[2];
+  int                   refine_x_n;
+  ClusterColDMEntryCache dm_entry_cache;
+  int sample_geometry;
+  EigenRefineDevice     refine_dev;
+  unsigned long long transformed_s_serial;
+  int cpu_overlap_n;
+  ClusterColDenseIndexCache dense_index_cache;
+  int firsttime;
+  int diag_verdict;
+  int diag_verdict_n;
+  double profile_seconds[4];
+  long profile_solves;
+};
+typedef OpenMXClusterColState ClusterColState;
+
+static void ClusterCol_ReleaseCaches(ClusterColState *state);
+static void ClusterCol_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  ClusterColState *state = (ClusterColState *)metadata;
+  (void)owner;
+  if (state->initialized) ClusterCol_ReleaseCaches(state);
+  openmx_gemmul8ReleasePreparedOwner(state);
+}
+
+OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner = NULL;
+  void *metadata = NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core, "Cluster_DFT_Col",
+      sizeof(ClusterColState), ClusterCol_Reset, &owner, &metadata, error, sizeof(error))) {
+    fprintf(stderr, "OpenMX collinear cluster state: %s\n", error);
+    abort();
+  }
+  ClusterColState *state = (ClusterColState *)metadata;
+  if (!state->initialized) {
+    state->resources = owner;
+    const ClusterColRefineState initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
+    state->refine = initial;
+    state->firsttime = 1;
+    state->diag_verdict = -1;
+    state->initialized = 1;
+  }
+  return state;
+}
+
+/* matrix order for which the automatic capacity fallback of gpusolver
+   chose the distributed gpusolver2 path (0: none); see
+   openmx_cluster_capacity.h */
+
+/* the distributed ELPA/COSMA path: requested by the input, or the capacity
+   fallback of gpusolver for this order */
+static int ClusterCol_UseGs2(ClusterColState *state, int n)
+{
+    return gpusolver2_flag || (0 < n && state->gs2_fallback_n == n);
+}
+
+static void ClusterCol_ResetGs2Fallback(ClusterColState *state)
+{
+    if (state->gs2_fallback_n != 0) openmx_gs2_set_fallback_report(0);
+    state->gs2_fallback_n = 0;
+}
+
+/* Grid over every rank of mpi_comm_level1 for the capacity fallback of a
+   spin-polarized run.  The spin worlds are contiguous halves of the ranks,
+   i.e. one node each under the usual block placement, so solving each spin
+   on its own world's grid would never spread one solve over the GPUs of both
+   nodes.  In the fallback both spins are solved in turn on this grid, and
+   each spin's eigenvectors go to its own world in the layout of the
+   ScaLAPACK path (EVec1[spin], states is2..ie2 of the world's ranks). */
+
+/* collective over mpi_comm_level1 */
+static void ClusterCol_UnionGrid_Free(ClusterColState *state)
+{
+    ClusterColUnionGrid *g = &state->ugrid;
+
+    if (g->n == 0) return;
+    openmx_gs2_grid_free(g->ictxt);
+    Cfree_blacs_system_handle(g->bhandle);
+    Cblacs_gridexit(g->ictxt);
+    openmx_core_native_free(state->resources,g->Ss);
+    openmx_core_native_free(state->resources,g->Hs);
+    openmx_core_native_free(state->resources,g->Cs);
+    memset(g, 0, sizeof(*g));
+}
+
+/* collective over mpi_comm_level1: the grid of order n, built like the
+   cluster grids of DFT.c ("Row" order, np_cols the largest divisor of the
+   rank count not above its square root, nblk from 128 down) */
+static void ClusterCol_UnionGrid_Ensure(ClusterColState *state, int n)
+{
+    ClusterColUnionGrid *g = &state->ugrid;
+    int numprocs0, myid0, nblk_m, info, ZERO = 0;
+
+    if (g->n == n) return;
+    ClusterCol_UnionGrid_Free(state);
+
+    MPI_Comm_size(mpi_comm_level1, &numprocs0);
+    MPI_Comm_rank(mpi_comm_level1, &myid0);
+
+    g->np_cols = (int)(sqrt((float)numprocs0));
+    do {
+        if ((numprocs0 % g->np_cols) == 0) break;
+        g->np_cols--;
+    } while (g->np_cols >= 2);
+    if (g->np_cols < 1) g->np_cols = 1;
+    g->np_rows = numprocs0 / g->np_cols;
+
+    nblk_m = NBLK;
+    while ((nblk_m * g->np_rows > n || nblk_m * g->np_cols > n) && (nblk_m > 1)) nblk_m /= 2;
+    if (nblk_m < 1) nblk_m = 1;
+    MPI_Allreduce(&nblk_m, &g->nblk, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
+
+    g->my_prow = myid0 / g->np_cols;
+    g->my_pcol = myid0 % g->np_cols;
+    g->na_rows = numroc_(&n, &g->nblk, &g->my_prow, &ZERO, &g->np_rows);
+    g->na_cols = numroc_(&n, &g->nblk, &g->my_pcol, &ZERO, &g->np_cols);
+
+    g->bhandle = Csys2blacs_handle(mpi_comm_level1);
+    g->ictxt = g->bhandle;
+    Cblacs_gridinit(&g->ictxt, "Row", g->np_rows, g->np_cols);
+
+    MPI_Allreduce(&g->na_rows, &g->na_rows_max, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
+    MPI_Allreduce(&g->na_cols, &g->na_cols_max, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
+
+    g->Ss = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)g->na_rows * (size_t)g->na_cols + sizeof(double),0);
+    g->Hs = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)g->na_rows * (size_t)g->na_cols + sizeof(double),0);
+    g->Cs = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)g->na_rows_max * (size_t)g->na_cols_max + sizeof(double),0);
+    if (g->Ss == NULL || g->Hs == NULL || g->Cs == NULL) {
+        fprintf(stderr, "Cluster_DFT_Col: out of host memory for the %d x %d grid of the"
+                        " distributed capacity fallback (n=%d)\n", g->np_rows, g->np_cols, n);
+        fflush(stderr);
+        MPI_Abort(mpi_comm_level1, 1);
+    }
+
+    descinit_(g->desc, &n, &n, &g->nblk, &g->nblk, &ZERO, &ZERO, &g->ictxt, &g->na_rows, &info);
+    g->n = n;
+    g->overlap_n = 0;
+}
+
+/* Overlap_Cluster_Ss and Hamiltonian_Cluster_Hs fill the local block of
+   the grid described by these globals; point them at the union grid for
+   the duration of a fill */
+typedef struct {
+    int np_rows, np_cols, my_prow, my_pcol, nblk, na_rows, na_cols;
+} ClusterColGridGlobals;
+
+static ClusterColGridGlobals ClusterCol_EnterUnionGridGlobals(ClusterColState *state)
+{
+    const ClusterColUnionGrid *g = &state->ugrid;
+    ClusterColGridGlobals saved;
+
+    saved.np_rows = np_rows; saved.np_cols = np_cols;
+    saved.my_prow = my_prow; saved.my_pcol = my_pcol;
+    saved.nblk = nblk; saved.na_rows = na_rows; saved.na_cols = na_cols;
+    np_rows = g->np_rows; np_cols = g->np_cols;
+    my_prow = g->my_prow; my_pcol = g->my_pcol;
+    nblk = g->nblk; na_rows = g->na_rows; na_cols = g->na_cols;
+    return saved;
+}
+
+static void ClusterCol_LeaveUnionGridGlobals(ClusterColGridGlobals saved)
+{
+    np_rows = saved.np_rows; np_cols = saved.np_cols;
+    my_prow = saved.my_prow; my_pcol = saved.my_pcol;
+    nblk = saved.nblk; na_rows = saved.na_rows; na_cols = saved.na_cols;
+}
+
+#define  measure_time   0
+
+/* GPU GpuSolver context (added by H.Kawai, ported from 3.9.9 GPU) */
+
+/* The refined FP32 eigensolver (eigen_refine_gpu.c) in the root dense path
+   of the SCF solves, per spin.  OPENMX_EIGEN_REFINE=K (0: off), unset: on
+   by default on GPUs whose FP64 throughput is a small fraction of their
+   FP32 one when the real GEMMul8 products are on (see
+   openmx_eigen_refine_configure); the global root's device decides for all
+   ranks.  The occupations that define the clusters need the chemical
+   potential of both spins: with spin polarization, the two spin worlds'
+   owners exchange the estimates of their FP32 solves (the serialized mode,
+   where one owner solves both spins, and a single rank solving both keep
+   the FP64 eigensolver).  An SCF that ends on a refined step has the step
+   solved once more in FP64 (mode "scf" with Cluster_DFT_Col_RefineForceFP64
+   on, which recomputes the density matrix as well), and the last step
+   scf.maxIter allows is FP64 in any case. */
+
+   /* the bases, n x n each */
+
+static void ClusterCol_RefineRelease(ClusterColState *state)
 {
     for (int spin = 0; spin < 2; spin++) {
-        openmx_eigen_refine_state_release(&ClusterCol_refine_state[spin]);
-        if (ClusterCol_refine_x[spin] != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ClusterCol_refine_x[spin]));
-        ClusterCol_refine_x[spin] = NULL;
+        openmx_eigen_refine_state_release(&state->refine_state[spin]);
+        if (state->refine_x[spin] != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,state->refine_x[spin]));
+        state->refine_x[spin] = NULL;
     }
-    ClusterCol_refine_x_n = 0;
-    openmx_eigen_refine_device_release(&ClusterCol_refine_dev);
+    state->refine_x_n = 0;
+    openmx_eigen_refine_device_release(&state->refine_dev);
 }
 
 /* every rank, once: OPENMX_EIGEN_REFINE, or the default the global root's
    device implies, for all ranks alike */
-static void ClusterCol_RefineConfigure(void)
+static void ClusterCol_RefineConfigure(ClusterColState *state)
 {
-    ClusterColRefineState *st = &ClusterCol_refine;
+    ClusterColRefineState *st = &state->refine;
     int myid, config[2] = {0, 0};
 
     /* Input files in -runtest share a process; do not cache an input veto. */
@@ -278,28 +345,28 @@ static void ClusterCol_RefineConfigure(void)
     st->until = openmx_eigen_refine_until();
 }
 
-static int ClusterCol_RefineIterations(void)
+static int ClusterCol_RefineIterations(ClusterColState *state)
 {
-    return (openmx_fp32_enabled() && 0 < ClusterCol_refine.iterations) ? ClusterCol_refine.iterations : 0;
+    return (openmx_fp32_enabled() && 0 < state->refine.iterations) ? state->refine.iterations : 0;
 }
 
 /* what the refined solve adds to the dense owner's device memory: the basis */
-static size_t ClusterCol_RefineBasisBytes(int n)
+static size_t ClusterCol_RefineBasisBytes(ClusterColState *state, int n)
 {
-    return (0 < ClusterCol_RefineIterations()) ? sizeof(double) * (size_t)n * (size_t)n : 0;
+    return (0 < ClusterCol_RefineIterations(state)) ? sizeof(double) * (size_t)n * (size_t)n : 0;
 }
 
 /* every rank, at the start of the root dense path of a solve */
-static void ClusterCol_RefineBeginSolve(int SCF_iter, int spin_mode, int peer)
+static void ClusterCol_RefineBeginSolve(ClusterColState *state, int SCF_iter, int spin_mode, int peer)
 {
-    ClusterColRefineState *st = &ClusterCol_refine;
+    ClusterColRefineState *st = &state->refine;
 
-    ClusterCol_RefineConfigure();
+    ClusterCol_RefineConfigure(state);
     if (st->scf_mode && SCF_iter == 1) {
         st->final_stage = 0;
         st->cycle_refined = 0;
-        ClusterCol_refine_state[0].basis_valid = 0;   /* a new cycle may come with a new geometry */
-        ClusterCol_refine_state[1].basis_valid = 0;
+        state->refine_state[0].basis_valid = 0;   /* a new cycle may come with a new geometry */
+        state->refine_state[1].basis_valid = 0;
     }
     st->transient = (SCF_iter == 1);
     st->spin_mode = spin_mode;
@@ -309,16 +376,16 @@ static void ClusterCol_RefineBeginSolve(int SCF_iter, int spin_mode, int peer)
     /* the occupations of the refinement are the plain Fermi function of
        one chemical potential: XANES and emptied orbitals or states keep
        the FP64 eigensolver */
-    st->last_refined = (st->scf_mode && 0 < ClusterCol_RefineIterations() && !st->final_stage && !st->force_fp64 &&
+    st->last_refined = (st->scf_mode && 0 < ClusterCol_RefineIterations(state) && !st->final_stage && !st->force_fp64 &&
                         Cnt_switch == 0 && SCF_iter < DFTSCF_loop && spin_mode != 2 && xanes_calc == 0 &&
                         empty_occupation_flag == 0 && empty_states_flag == 0);
 }
 
 /* every rank, at the end of the root dense path: the solves of the owners
    decide the stage for all ranks alike */
-static void ClusterCol_RefineEndSolve(void)
+static void ClusterCol_RefineEndSolve(ClusterColState *state)
 {
-    ClusterColRefineState *st = &ClusterCol_refine;
+    ClusterColRefineState *st = &state->refine;
     int mine[2], all[2];
 
     mine[0] = (st->solved[0] || st->solved[1]) ? 1 : 0;
@@ -333,21 +400,21 @@ static void ClusterCol_RefineEndSolve(void)
     }
 }
 
-int Cluster_DFT_Col_RefineLastRefined(void)
+int Cluster_DFT_Col_RefineLastRefined(ClusterColState *state)
 {
-    return ClusterCol_refine.last_refined;
+    return state->refine.last_refined;
 }
 
-void Cluster_DFT_Col_RefineForceFP64(int on)
+void Cluster_DFT_Col_RefineForceFP64(ClusterColState *state, int on)
 {
-    ClusterCol_refine.force_fp64 = on;
+    state->refine.force_fp64 = on;
 }
 
 /* DFT.c, after the mixing of an SCF step that goes on: normrd is the printed
    NormRD */
-void Cluster_DFT_Col_RefineAfterMixing(double normrd)
+void Cluster_DFT_Col_RefineAfterMixing(ClusterColState *state, double normrd)
 {
-    ClusterColRefineState *st = &ClusterCol_refine;
+    ClusterColRefineState *st = &state->refine;
     int myid;
 
     if (!st->cycle_refined || st->final_stage || st->until <= 0.0 || st->until <= normrd) return;
@@ -407,15 +474,14 @@ static void ClusterCol_RefineOccupations(const double *e, const double *e_other,
     *mu_out = mu;
 }
 
-static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_spin);
-/* Never reset, unlike the context: a rebuilt X must not repeat a number. */
-static unsigned long long ClusterCol_transformed_s_serial = 0;
+static int ClusterCol_RefinedEigenDevice(ClusterColState *state, int spin, int n, int maxn, double *ko_spin);
+/* The generation is monotonic within this calculation, including cache resets. */
+
 /* The CPU overlap is not constructed when the first SCF solve uses the
    GPU. A later memory-admission fallback must build it before using Ss. */
-static int ClusterCol_cpu_overlap_n = 0;
 
-static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H);
-static void Patch2Host_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H);
+static void Patch2Device_Cluster_Owner(ClusterColState *state, double ****RH, int *MP, int owns_dense, int n, double *d_H);
+static void Patch2Host_Cluster_Owner(ClusterColState *state, double ****RH, int *MP, int owns_dense, int n, double *d_H);
 static void ClusterCol_BuildDenseIndex(const int *order_GA, int *MP, int n, int tnum, int *dense_index);
 static void ClusterCol_BuildDeviceDenseFromPacked(const double *H1, const int *dense_index,
                                                   int tnum, int n, double *d_H);
@@ -438,10 +504,10 @@ static size_t ClusterCol_CheckedMulCount(size_t a, size_t b, const char *label)
     return a * b;
 }
 
-static void *ClusterCol_MallocArray(size_t count, size_t elem_size, const char *label)
+static void *ClusterCol_MallocArray(ClusterColState *state, size_t count, size_t elem_size, const char *label)
 {
     size_t bytes = ClusterCol_CheckedMulCount(count, elem_size, label);
-    void *ptr = openmx_core_native_malloc(Cluster_DFT_Col_resources,1,(bytes == 0) ? 1 : bytes,0);
+    void *ptr = openmx_core_native_malloc(state->resources,1,(bytes == 0) ? 1 : bytes,0);
 
     if (ptr == NULL) {
         char msg[512];
@@ -457,12 +523,12 @@ static void *ClusterCol_MallocArray(size_t count, size_t elem_size, const char *
    ladder resolves, but on a device that stays full (many ranks sharing one
    small GPU) it spins silently while every other rank waits in MPI.  Absorb
    short races with a few retries and report a persistent failure instead. */
-static cudaError_t ClusterCol_TryDeviceMalloc(void **ptr, size_t bytes)
+static cudaError_t ClusterCol_TryDeviceMalloc(ClusterColState *state, void **ptr, size_t bytes)
 {
     cudaError_t err = cudaErrorMemoryAllocation;
 
     for (int attempt=0; attempt<8; attempt++){
-        err = OpenMX_Resource_GpuMalloc(Cluster_DFT_Col_resources,ptr,bytes);
+        err = OpenMX_Resource_GpuMalloc(state->resources,ptr,bytes);
         if (err == cudaSuccess) return cudaSuccess;
         (void)cudaGetLastError();
 
@@ -507,9 +573,9 @@ static void ClusterCol_DeviceOutOfMemoryAbort(const char *what, size_t bytes)
     ClusterCol_AbortWithMessage(msg);
 }
 
-static void ClusterCol_GpuSolver_Destroy(void)
+static void ClusterCol_GpuSolver_Destroy(ClusterColState *state)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     int current_device = -1;
     int restore_device = 0;
 
@@ -529,21 +595,21 @@ static void ClusterCol_GpuSolver_Destroy(void)
     }
 
     if (ctx->stream != NULL)     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
-    ClusterCol_RefineRelease();
+    ClusterCol_RefineRelease(state);
 
     for (int spin=0; spin<2; spin++){
-        if (ctx->d_evec_stash[spin] != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_evec_stash[spin]));
+        if (ctx->d_evec_stash[spin] != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_evec_stash[spin]));
     }
-    if (ctx->d_S != NULL)        wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_S));
-    if (ctx->d_H != NULL)        wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_H));
-    if (ctx->d_tmp != NULL)      wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_tmp));
-    if (ctx->d_W != NULL)        wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_W));
-    if (ctx->d_info != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_info));
-    if (ctx->d_work != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_work));
-    if (ctx->h_work != NULL)     openmx_core_native_free(Cluster_DFT_Col_resources,ctx->h_work);
-    if (ctx->gpusolver != NULL)   OpenMXSolverWait(OpenMX_Resource_SolverDestroy(Cluster_DFT_Col_resources,ctx->gpusolver));
-    if (ctx->cublas != NULL)     OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Cluster_DFT_Col_resources,ctx->cublas));
-    if (ctx->stream != NULL)     wait_cudafunc(OpenMX_Resource_StreamDestroy(Cluster_DFT_Col_resources,ctx->stream));
+    if (ctx->d_S != NULL)        wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H != NULL)        wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)      wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_W != NULL)        wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
+    if (ctx->d_work != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
+    if (ctx->h_work != NULL)     openmx_core_native_free(state->resources,ctx->h_work);
+    if (ctx->gpusolver != NULL)   OpenMXSolverWait(OpenMX_Resource_SolverDestroy(state->resources,ctx->gpusolver));
+    if (ctx->cublas != NULL)     OpenMXBlasWait(OpenMX_Resource_BlasDestroy(state->resources,ctx->cublas));
+    if (ctx->stream != NULL)     wait_cudafunc(OpenMX_Resource_StreamDestroy(state->resources,ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
     ctx->device_id = -1;
@@ -551,19 +617,19 @@ static void ClusterCol_GpuSolver_Destroy(void)
     if (restore_device)          wait_cudafunc(cudaSetDevice(current_device));
 }
 
-static void ClusterCol_GpuSolver_Init(void)
+static void ClusterCol_GpuSolver_Init(ClusterColState *state)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     int                    current_device;
 
     wait_cudafunc(cudaGetDevice(&current_device));
 
     if (ctx->initialized && ctx->device_id == current_device) return;
-    if (ctx->initialized) ClusterCol_GpuSolver_Destroy();
+    if (ctx->initialized) ClusterCol_GpuSolver_Destroy(state);
 
-    wait_cudafunc(OpenMX_Resource_StreamCreate(Cluster_DFT_Col_resources,&ctx->stream,cudaStreamNonBlocking));
-    OpenMXBlasWait(OpenMX_Resource_BlasCreate(Cluster_DFT_Col_resources,&ctx->cublas));
-    OpenMXSolverWait(OpenMX_Resource_SolverCreate(Cluster_DFT_Col_resources,&ctx->gpusolver));
+    wait_cudafunc(OpenMX_Resource_StreamCreate(state->resources,&ctx->stream,cudaStreamNonBlocking));
+    OpenMXBlasWait(OpenMX_Resource_BlasCreate(state->resources,&ctx->cublas));
+    OpenMXSolverWait(OpenMX_Resource_SolverCreate(state->resources,&ctx->gpusolver));
     OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
     OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
@@ -571,9 +637,9 @@ static void ClusterCol_GpuSolver_Init(void)
     ctx->device_id   = current_device;
 }
 
-static int ClusterCol_TryEnsureMatrixCapacity(int n)
+static int ClusterCol_TryEnsureMatrixCapacity(ClusterColState *state, int n)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t dense_count;
     size_t matrix_bytes;
     size_t vector_bytes;
@@ -582,7 +648,7 @@ static int ClusterCol_TryEnsureMatrixCapacity(int n)
         ClusterCol_AbortWithMessage("Invalid matrix size in Cluster_DFT_Col.c GpuSolver workspace.");
     }
 
-    ClusterCol_GpuSolver_Init();
+    ClusterCol_GpuSolver_Init(state);
 
     if (n<=ctx->matrix_dim){
         /* Under device pressure the SCF boundary retains only the
@@ -591,10 +657,10 @@ static int ClusterCol_TryEnsureMatrixCapacity(int n)
             ClusterCol_CheckedMulCount((size_t)ctx->matrix_dim,(size_t)ctx->matrix_dim,
                                        "retained overlap dimensions"),
             sizeof(double),"dense scratch bytes");
-        if ((ctx->d_H==NULL && ClusterCol_TryDeviceMalloc((void**)&ctx->d_H,matrix_bytes)!=cudaSuccess) ||
-            (ctx->d_tmp==NULL && ClusterCol_TryDeviceMalloc((void**)&ctx->d_tmp,matrix_bytes)!=cudaSuccess)){
-            if (ctx->d_H!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_H));
-            if (ctx->d_tmp!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_tmp));
+        if ((ctx->d_H==NULL && ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_H,matrix_bytes)!=cudaSuccess) ||
+            (ctx->d_tmp==NULL && ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_tmp,matrix_bytes)!=cudaSuccess)){
+            if (ctx->d_H!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+            if (ctx->d_tmp!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
             ctx->d_H = ctx->d_tmp = NULL;
             return 0;
         }
@@ -602,11 +668,11 @@ static int ClusterCol_TryEnsureMatrixCapacity(int n)
         return 1;
     }
 
-    if (ctx->d_S != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_S));
-    if (ctx->d_H != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_H));
-    if (ctx->d_tmp != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_tmp));
-    if (ctx->d_W != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_W));
-    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_info));
+    if (ctx->d_S != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_W != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
 
     dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"GpuSolver dense matrix");
     matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"GpuSolver dense matrix bytes");
@@ -619,18 +685,18 @@ static int ClusterCol_TryEnsureMatrixCapacity(int n)
     ctx->d_info = NULL;
     ctx->matrix_dim = 0;
 
-    if (ClusterCol_TryDeviceMalloc((void**)&ctx->d_S,matrix_bytes)      != cudaSuccess ||
-        ClusterCol_TryDeviceMalloc((void**)&ctx->d_H,matrix_bytes)      != cudaSuccess ||
-        ClusterCol_TryDeviceMalloc((void**)&ctx->d_tmp,matrix_bytes)    != cudaSuccess ||
-        ClusterCol_TryDeviceMalloc((void**)&ctx->d_W,vector_bytes)      != cudaSuccess ||
-        ClusterCol_TryDeviceMalloc((void**)&ctx->d_info,sizeof(int32_t)) != cudaSuccess){
+    if (ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_S,matrix_bytes)      != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_H,matrix_bytes)      != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_tmp,matrix_bytes)    != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_W,vector_bytes)      != cudaSuccess ||
+        ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_info,sizeof(int32_t)) != cudaSuccess){
         /* release the partial reservation so a peer rank (or the CPU
            fallback that the caller may pick) sees the memory again */
-        if (ctx->d_S != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_S));
-        if (ctx->d_H != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_H));
-        if (ctx->d_tmp != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_tmp));
-        if (ctx->d_W != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_W));
-        if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_info));
+        if (ctx->d_S != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+        if (ctx->d_H != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+        if (ctx->d_tmp != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+        if (ctx->d_W != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+        if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
         ctx->d_S = NULL;
         ctx->d_H = NULL;
         ctx->d_tmp = NULL;
@@ -646,9 +712,9 @@ static int ClusterCol_TryEnsureMatrixCapacity(int n)
     return 1;
 }
 
-static void ClusterCol_GpuSolver_EnsureMatrixCapacity(int n)
+static void ClusterCol_GpuSolver_EnsureMatrixCapacity(ClusterColState *state, int n)
 {
-    if (!ClusterCol_TryEnsureMatrixCapacity(n)){
+    if (!ClusterCol_TryEnsureMatrixCapacity(state, n)){
         size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"GpuSolver dense matrix");
         size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"GpuSolver dense matrix bytes");
 
@@ -662,9 +728,9 @@ static void ClusterCol_GpuSolver_EnsureMatrixCapacity(int n)
    Later partial-range solves reuse the same block when they fit in it.
    Returns 0 when the device cannot hold the workspace, leaving the
    context consistent for ClusterCol_GpuSolver_Destroy(). */
-static int ClusterCol_TryEnsureEigenWorkspace(int n)
+static int ClusterCol_TryEnsureEigenWorkspace(ClusterColState *state, int n)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
     double vl = 0.0;
@@ -678,10 +744,10 @@ static int ClusterCol_TryEnsureEigenWorkspace(int n)
                                                CUDA_R_64F,ctx->d_W,CUDA_R_64F,&d_bytes,&h_bytes));
 
     if (ctx->d_work_bytes<d_bytes){
-        if (ctx->d_work!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_work));
+        if (ctx->d_work!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
         ctx->d_work = NULL;
         ctx->d_work_bytes = 0;
-        if (0<d_bytes && ClusterCol_TryDeviceMalloc((void**)&ctx->d_work,d_bytes) != cudaSuccess){
+        if (0<d_bytes && ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_work,d_bytes) != cudaSuccess){
             return 0;
         }
         ctx->d_work_bytes = d_bytes;
@@ -689,9 +755,9 @@ static int ClusterCol_TryEnsureEigenWorkspace(int n)
     return 1;
 }
 
-static void ClusterCol_GpuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
+static void ClusterCol_GpuSolver_EnsureWorkspace(ClusterColState *state, int n, int maxn, double *d_A)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -705,7 +771,7 @@ static void ClusterCol_GpuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
         ClusterCol_AbortWithMessage("Invalid eigensolver dimensions in Cluster_DFT_Col.c.");
     }
 
-    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(state, n);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
     OpenMXSolverWait(cusolverDnXsyevdx_bufferSize(ctx->gpusolver,NULL,jobz,range,uplo,n,
@@ -713,30 +779,30 @@ static void ClusterCol_GpuSolver_EnsureWorkspace(int n, int maxn, double *d_A)
                                                CUDA_R_64F,ctx->d_W,CUDA_R_64F,&d_bytes,&h_bytes));
 
     if (ctx->d_work_bytes<d_bytes){
-        if (ctx->d_work!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_work));
+        if (ctx->d_work!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
         ctx->d_work = NULL;
         ctx->d_work_bytes = 0;
-        if (0<d_bytes && ClusterCol_TryDeviceMalloc((void**)&ctx->d_work,d_bytes) != cudaSuccess){
+        if (0<d_bytes && ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_work,d_bytes) != cudaSuccess){
             ClusterCol_DeviceOutOfMemoryAbort("the eigensolver workspace",d_bytes);
         }
         ctx->d_work_bytes = d_bytes;
     }
 
     if (h_bytes==0){
-        if (ctx->h_work!=NULL) openmx_core_native_free(Cluster_DFT_Col_resources,ctx->h_work);
+        if (ctx->h_work!=NULL) openmx_core_native_free(state->resources,ctx->h_work);
         ctx->h_work = NULL;
         ctx->h_work_bytes = 0;
     }
     else if (ctx->h_work_bytes<h_bytes){
-        if (ctx->h_work!=NULL) openmx_core_native_free(Cluster_DFT_Col_resources,ctx->h_work);
-        ctx->h_work = ClusterCol_MallocArray(h_bytes,1,"GpuSolver host workspace");
+        if (ctx->h_work!=NULL) openmx_core_native_free(state->resources,ctx->h_work);
+        ctx->h_work = ClusterCol_MallocArray(state, h_bytes,1,"GpuSolver host workspace");
         ctx->h_work_bytes = h_bytes;
     }
 }
 
-static void ClusterCol_GpuSolver_EigenDevice(double *d_A, int n, int maxn, double *ko)
+static void ClusterCol_GpuSolver_EigenDevice(ClusterColState *state, double *d_A, int n, int maxn, double *ko)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -746,7 +812,7 @@ static void ClusterCol_GpuSolver_EigenDevice(double *d_A, int n, int maxn, doubl
     int32_t info = 0;
     char msg[256];
 
-    ClusterCol_GpuSolver_EnsureWorkspace(n,maxn,d_A);
+    ClusterCol_GpuSolver_EnsureWorkspace(state, n,maxn,d_A);
     range = (n==maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
     OpenMXSolverWait(cusolverDnXsyevdx(ctx->gpusolver,NULL,jobz,range,uplo,n,
@@ -764,16 +830,16 @@ static void ClusterCol_GpuSolver_EigenDevice(double *d_A, int n, int maxn, doubl
     }
 }
 
-static void ClusterCol_GpuSolver_PrepareTransformedSDevice(int rebuild, int n, double *ko0)
+static void ClusterCol_GpuSolver_PrepareTransformedSDevice(ClusterColState *state, int rebuild, int n, double *ko0)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     double *old_s;
     double *new_s;
 
-    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(state, n);
 
     if (rebuild || !(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
-        ClusterCol_GpuSolver_EigenDevice(ctx->d_S,n,n,ko0+1);
+        ClusterCol_GpuSolver_EigenDevice(state, ctx->d_S,n,n,ko0+1);
 
         for (int l=1; l<=n; l++){
             if (ko0[l]<1.0e-10) ko0[l] = 1.0e-10;
@@ -792,25 +858,25 @@ static void ClusterCol_GpuSolver_PrepareTransformedSDevice(int rebuild, int n, d
         ctx->d_tmp = old_s;
         ctx->transformed_s_valid = 1;
         ctx->transformed_s_dim = n;
-        ctx->transformed_s_version = ++ClusterCol_transformed_s_serial;
+        ctx->transformed_s_version = ++state->transformed_s_serial;
         wait_cudafunc(cudaStreamSynchronize(ctx->stream));
     }
 }
 
-static void ClusterCol_GpuSolver_PrepareTransformedS(int rebuild, int n, double *S, double *ko0)
+static void ClusterCol_GpuSolver_PrepareTransformedS(ClusterColState *state, int rebuild, int n, double *S, double *ko0)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"transformed overlap");
     size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"transformed overlap bytes");
 
-    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(state, n);
     if (rebuild || !(ctx->transformed_s_valid && ctx->transformed_s_dim==n)){
         wait_cudafunc(cudaMemcpyAsync(ctx->d_S,S,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
     }
-    ClusterCol_GpuSolver_PrepareTransformedSDevice(rebuild,n,ko0);
+    ClusterCol_GpuSolver_PrepareTransformedSDevice(state, rebuild,n,ko0);
 }
 
-static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOperation_t transb,
+static void ClusterCol_GEMMul8Dgemm_Device(ClusterColState *state, cublasOperation_t transa, cublasOperation_t transb,
                                            int m, int n, int k,
                                            const double *A, int lda,
                                            const double *B, int ldb,
@@ -819,8 +885,8 @@ static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOpera
     double const alpha = 1.0;
     double const beta  = 0.0;
 
-    ClusterCol_GpuSolver_Init();
-    OpenMXBlasWait(openmx_gemmul8Dgemm(ClusterCol_gpusolver_ctx.cublas, transa, transb, m, n, k,
+    ClusterCol_GpuSolver_Init(state);
+    OpenMXBlasWait(openmx_gemmul8Dgemm(state->gpusolver_ctx.cublas, transa, transb, m, n, k,
                                       &alpha, A, lda, B, ldb, &beta, C, ldc));
 }
 
@@ -840,11 +906,11 @@ static int ClusterCol_ProfileEnabled(void)
     return openmx_env_flag_at(OPENMX_ENV_CLUSTER_PROFILE, 0);
 }
 
-static double ClusterCol_ProfileLap(double *t0)
+static double ClusterCol_ProfileLap(ClusterColState *state, double *t0)
 {
     double now;
 
-    wait_cudafunc(cudaStreamSynchronize(ClusterCol_gpusolver_ctx.stream));
+    wait_cudafunc(cudaStreamSynchronize(state->gpusolver_ctx.stream));
     now = MPI_Wtime();
     {
         double lap = now - *t0;
@@ -862,11 +928,20 @@ static int ClusterCol_GemmWorkspaceTurnRelease(void);
    both solve in FP64 this step.  Returns 1 when the refined vectors are in
    the first maxn columns of d_H and ko_spin[1..maxn] holds their
    eigenvalues, else 0 with d_H still the symmetric matrix. */
-static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_spin)
+static cudaError_t ClusterCol_RefineDeviceMalloc(void *context, void **ptr, size_t bytes)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
-    ClusterColRefineState *st = &ClusterCol_refine;
-    EigenRefineDevice *dev = &ClusterCol_refine_dev;
+    return ClusterCol_TryDeviceMalloc((ClusterColState *)context, ptr, bytes);
+}
+static void *ClusterCol_RefineHostAllocate(void *context, size_t count, size_t bytes, const char *label)
+{
+    return ClusterCol_MallocArray((ClusterColState *)context, count, bytes, label);
+}
+
+static int ClusterCol_RefinedEigenDevice(ClusterColState *state, int spin, int n, int maxn, double *ko_spin)
+{
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    ClusterColRefineState *st = &state->refine;
+    EigenRefineDevice *dev = &state->refine_dev;
     EigenRefineProblem pb;
     EigenRefineReport rep;
     ClusterColOccupationCtx occ = {0.0};
@@ -874,21 +949,21 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
     double *e0, *f0, *e_peer = NULL;
     int status[2] = {0, 0}, rc;
 
-    if (ClusterCol_refine_x_n != n) {
+    if (state->refine_x_n != n) {
         for (int sp = 0; sp < 2; sp++) {
-            if (ClusterCol_refine_x[sp] != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ClusterCol_refine_x[sp]));
-            ClusterCol_refine_x[sp] = NULL;
-            ClusterCol_refine_state[sp].basis_valid = 0;
+            if (state->refine_x[sp] != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,state->refine_x[sp]));
+            state->refine_x[sp] = NULL;
+            state->refine_state[sp].basis_valid = 0;
         }
-        ClusterCol_refine_x_n = n;
+        state->refine_x_n = n;
     }
     /* the reservation probe may have found the device too full for the
        basis next to the dense buffers: then it is not even attempted (it
        would take the margin the other ranks' transients rely on) and the
        cycle is condemned to FP64 at once, first step or not */
-    if (ClusterCol_refine_x[spin] == NULL &&
+    if (state->refine_x[spin] == NULL &&
         (st->basis_blocked ||
-         ClusterCol_TryDeviceMalloc((void **)&ClusterCol_refine_x[spin], nn * sizeof(double)) != cudaSuccess)) {
+         ClusterCol_TryDeviceMalloc(state, (void **)&state->refine_x[spin], nn * sizeof(double)) != cudaSuccess)) {
         const int condemn = (st->basis_blocked || !st->transient);
 
         if (2 <= level_stdout) {
@@ -911,40 +986,41 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
     dev->h_work = &ctx->h_work;
     dev->h_work_bytes = &ctx->h_work_bytes;
     dev->d_info = ctx->d_info;
-    dev->try_malloc = ClusterCol_TryDeviceMalloc;
-    dev->resources = Cluster_DFT_Col_resources;
-    dev->host_malloc = ClusterCol_MallocArray;
+    dev->allocation_context = state;
+    dev->try_malloc_owned = ClusterCol_RefineDeviceMalloc;
+    dev->resources = state->resources;
+    dev->host_malloc_owned = ClusterCol_RefineHostAllocate;
 
     memset(&pb, 0, sizeof(pb));
     memset(&rep, 0, sizeof(rep));
     pb.cplx = 0;
     pb.n = n;
     pb.maxn = maxn;
-    pb.iterations = ClusterCol_RefineIterations();
+    pb.iterations = ClusterCol_RefineIterations(state);
     pb.a = ctx->d_H;
     pb.w = ctx->d_W;
     pb.fp32 = ctx->d_tmp;
     pb.region = nn * sizeof(double);
-    pb.x = ClusterCol_refine_x[spin];
+    pb.x = state->refine_x[spin];
     pb.transient = st->transient;
-    pb.warm = (rc && openmx_eigen_refine_warm_enabled() && ClusterCol_refine_state[spin].basis_valid &&
-               ClusterCol_refine_state[spin].basis_n == n && !st->transient);
+    pb.warm = (rc && openmx_eigen_refine_warm_enabled() && state->refine_state[spin].basis_valid &&
+               state->refine_state[spin].basis_n == n && !st->transient);
     pb.defaulted = st->defaulted;
     pb.occupation = ClusterCol_RefineFermi;
     pb.occupation_ctx = &occ;
 
-    e0 = (double *)ClusterCol_MallocArray((size_t)n, sizeof(double), "refinement eigenvalues");
-    f0 = (double *)ClusterCol_MallocArray((size_t)n, sizeof(double), "refinement occupations");
+    e0 = (double *)ClusterCol_MallocArray(state, (size_t)n, sizeof(double), "refinement eigenvalues");
+    f0 = (double *)ClusterCol_MallocArray(state, (size_t)n, sizeof(double), "refinement occupations");
     if (rc) {
         if (3 <= level_stdout) {
             printf("<Cluster_DFT_Col> spin %d: %s, %d refinement steps (OPENMX_EIGEN_REFINE)\n", spin,
                    pb.warm ? "warm start from the previous vectors" : "FP32 eigensolver", pb.iterations);
             fflush(stdout);
         }
-        rc = openmx_eigen_refine_prepare(&ClusterCol_refine_state[spin], dev, &pb, e0, &rep);
+        rc = openmx_eigen_refine_prepare(&state->refine_state[spin], dev, &pb, e0, &rep);
         if (rc < 0) {
             pb.warm = 0;
-            rc = openmx_eigen_refine_prepare(&ClusterCol_refine_state[spin], dev, &pb, e0, &rep);
+            rc = openmx_eigen_refine_prepare(&state->refine_state[spin], dev, &pb, e0, &rep);
         }
         if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
     }
@@ -953,7 +1029,7 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
         /* the other spin's estimates, and whether its solve is on */
         MPI_Status mpi_status;
 
-        e_peer = (double *)ClusterCol_MallocArray((size_t)n, sizeof(double), "peer eigenvalues");
+        e_peer = (double *)ClusterCol_MallocArray(state, (size_t)n, sizeof(double), "peer eigenvalues");
         MPI_Sendrecv(status, 1, MPI_INT, st->peer, 2101, &status[1], 1, MPI_INT, st->peer, 2101, mpi_comm_level1,
                      &mpi_status);
         /* A failed prepare may leave e0 uninitialized.  Both owners know
@@ -968,18 +1044,18 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
                        spin);
                 fflush(stdout);
             }
-            openmx_eigen_refine_abandon(&ClusterCol_refine_state[spin]);
+            openmx_eigen_refine_abandon(&state->refine_state[spin]);
             rc = 0;
         }
     }
     if (rc == 1) {
         ClusterCol_RefineOccupations(e0, st->spin_mode == 1 ? e_peer : NULL, n, maxn, f0, &occ.mu);
-        rc = openmx_eigen_refine_finish(&ClusterCol_refine_state[spin], dev, &pb, f0, &rep);
+        rc = openmx_eigen_refine_finish(&state->refine_state[spin], dev, &pb, f0, &rep);
         if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
     }
-    openmx_core_native_free(Cluster_DFT_Col_resources,e0);
-    openmx_core_native_free(Cluster_DFT_Col_resources,f0);
-    openmx_core_native_free(Cluster_DFT_Col_resources,e_peer);
+    openmx_core_native_free(state->resources,e0);
+    openmx_core_native_free(state->resources,f0);
+    openmx_core_native_free(state->resources,e_peer);
     if (rc == 1) {
         wait_cudafunc(cudaMemcpy(ko_spin + 1, ctx->d_W, sizeof(double) * (size_t)maxn, cudaMemcpyDeviceToHost));
         if (3 <= level_stdout) {
@@ -992,18 +1068,17 @@ static int ClusterCol_RefinedEigenDevice(int spin, int n, int maxn, double *ko_s
         st->solved[spin] = 1;
         return 1;
     }
-    ClusterCol_refine_state[spin].basis_valid = 0;
+    state->refine_state[spin].basis_valid = 0;
     return 0;
 }
 
-static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double *ko_spin, double *C, int spin)
+static void ClusterCol_GpuSolver_SolveHamiltonianDevice(ClusterColState *state, int n, int maxn, double *ko_spin, double *C, int spin)
 {
-    static double prof[4] = {0.0,0.0,0.0,0.0};
-    static long prof_solves = 0;
+
     const int profile = ClusterCol_ProfileEnabled();
     const int trim_scratch = ClusterCol_GemmWorkspaceTurnRelease();
     double t0 = 0.0;
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t evec_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"eigenvectors");
     size_t evec_bytes = ClusterCol_CheckedMulCount(evec_count,sizeof(double),"eigenvector bytes");
 
@@ -1011,7 +1086,7 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
         ClusterCol_AbortWithMessage("Transformed overlap is not ready in Cluster_DFT_Col.c.");
     }
 
-    if (profile) (void)ClusterCol_ProfileLap(&t0);
+    if (profile) (void)ClusterCol_ProfileLap(state, &t0);
 
     /* forward transform X^T (H X): X = d_S stays fixed during the SCF.  The
        two products take a full GEMMul8 workspace when the device has room,
@@ -1020,67 +1095,67 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
        find the memory they found before; when the GEMMul8 workspaces are
        kept across the SCF step (OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0) the
        eigensolver workspace is secured first instead. */
-    if (!trim_scratch) ClusterCol_GpuSolver_EnsureWorkspace(n,maxn,ctx->d_H);
-    OpenMXBlasWait(openmx_gemmul8DgemmFixed(ctx->cublas,0,CUBLAS_OP_N,n,n,n,
+    if (!trim_scratch) ClusterCol_GpuSolver_EnsureWorkspace(state, n,maxn,ctx->d_H);
+    OpenMXBlasWait(openmx_gemmul8DgemmFixedOwned(state, ctx->cublas,0,CUBLAS_OP_N,n,n,n,
                                            ctx->d_S,n,ctx->d_H,n,ctx->d_tmp,n,
                                            0,ctx->transformed_s_version));
-    OpenMXBlasWait(openmx_gemmul8DgemmFixed(ctx->cublas,1,CUBLAS_OP_T,n,n,n,
+    OpenMXBlasWait(openmx_gemmul8DgemmFixedOwned(state, ctx->cublas,1,CUBLAS_OP_T,n,n,n,
                                            ctx->d_S,n,ctx->d_tmp,n,ctx->d_H,n,
                                            0,ctx->transformed_s_version));
     if (trim_scratch){
         wait_cudafunc(cudaStreamSynchronize(ctx->stream));
         openmx_gemmul8TrimWorkspaces();
     }
-    if (profile) prof[0] += ClusterCol_ProfileLap(&t0);
+    if (profile) state->profile_seconds[0] += ClusterCol_ProfileLap(state, &t0);
 
-    if (!(0 <= spin && ClusterCol_refine.last_refined && ClusterCol_RefinedEigenDevice(spin,n,maxn,ko_spin))){
-        ClusterCol_GpuSolver_EigenDevice(ctx->d_H,n,maxn,ko_spin+1);
+    if (!(0 <= spin && state->refine.last_refined && ClusterCol_RefinedEigenDevice(state, spin,n,maxn,ko_spin))){
+        ClusterCol_GpuSolver_EigenDevice(state, ctx->d_H,n,maxn,ko_spin+1);
     }
-    if (profile) prof[1] += ClusterCol_ProfileLap(&t0);
+    if (profile) state->profile_seconds[1] += ClusterCol_ProfileLap(state, &t0);
 
-    ClusterCol_GEMMul8Dgemm_Device(CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
+    ClusterCol_GEMMul8Dgemm_Device(state, CUBLAS_OP_T,CUBLAS_OP_T,maxn,n,n,
                                    ctx->d_H,n,ctx->d_S,n,ctx->d_tmp,maxn);
-    if (profile) prof[2] += ClusterCol_ProfileLap(&t0);
+    if (profile) state->profile_seconds[2] += ClusterCol_ProfileLap(state, &t0);
     wait_cudafunc(cudaMemcpyAsync(C,ctx->d_tmp,evec_bytes,cudaMemcpyDeviceToHost,ctx->stream));
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
     if (profile){
         int rank;
 
-        prof[3] += ClusterCol_ProfileLap(&t0);
-        prof_solves++;
+        state->profile_seconds[3] += ClusterCol_ProfileLap(state, &t0);
+        state->profile_solves++;
         MPI_Comm_rank(mpi_comm_level1,&rank);
         printf("CLUSTERPROF rank=%d solves=%ld n=%d forward=%.6f eigen=%.6f back=%.6f evec_d2h=%.6f "
                "(s, cumulative)\n",
-               rank,prof_solves,n,prof[0],prof[1],prof[2],prof[3]);
+               rank,state->profile_solves,n,state->profile_seconds[0],state->profile_seconds[1],state->profile_seconds[2],state->profile_seconds[3]);
         fflush(stdout);
     }
 }
 
-static void ClusterCol_GpuSolver_SolveHamiltonian(int n, int maxn, const double *H, double *ko_spin, double *C)
+static void ClusterCol_GpuSolver_SolveHamiltonian(ClusterColState *state, int n, int maxn, const double *H, double *ko_spin, double *C)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t dense_count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"Hamiltonian");
     size_t matrix_bytes = ClusterCol_CheckedMulCount(dense_count,sizeof(double),"Hamiltonian bytes");
 
-    ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
+    ClusterCol_GpuSolver_EnsureMatrixCapacity(state, n);
     wait_cudafunc(cudaMemcpyAsync(ctx->d_H,H,matrix_bytes,cudaMemcpyHostToDevice,ctx->stream));
-    ClusterCol_GpuSolver_SolveHamiltonianDevice(n,maxn,ko_spin,C,-1);
+    ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n,maxn,ko_spin,C,-1);
 }
 
-static void ClusterCol_InvalidateDeviceEvecStash(void)
+static void ClusterCol_InvalidateDeviceEvecStash(ClusterColState *state)
 {
-    ClusterCol_gpusolver_ctx.evec_stash_valid[0] = 0;
-    ClusterCol_gpusolver_ctx.evec_stash_valid[1] = 0;
+    state->gpusolver_ctx.evec_stash_valid[0] = 0;
+    state->gpusolver_ctx.evec_stash_valid[1] = 0;
 }
 
 /* Large dense scratch can displace the following density-grid/Hamiltonian
    phases from the GPU. Once the density matrix and output are complete,
    retain S (which is reused across SCF steps) but return disposable storage
    when less than half of the device remains free. Small contexts stay hot. */
-static void ClusterCol_TrimScratch(void)
+static void ClusterCol_TrimScratch(ClusterColState *state)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     const int retain = openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_RETAIN_SCRATCH, -1);
     const int release_always = retain==0;
     size_t free_bytes, total_bytes, bytes;
@@ -1095,29 +1170,29 @@ static void ClusterCol_TrimScratch(void)
     for (int spin=0; spin<2; ++spin)
         bytes += sizeof(double)*ctx->evec_stash_count[spin];
     for (int spin=0; spin<2; ++spin)
-        if (ClusterCol_refine_x[spin]!=NULL)
-            bytes += sizeof(double)*(size_t)ClusterCol_refine_x_n*(size_t)ClusterCol_refine_x_n;
+        if (state->refine_x[spin]!=NULL)
+            bytes += sizeof(double)*(size_t)state->refine_x_n*(size_t)state->refine_x_n;
     if (!release_always && bytes<512ULL*1024ULL*1024ULL) return;
     if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess ||
         (!release_always && free_bytes>=total_bytes/2)) return;
 
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
-    if (ctx->d_H!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_H));
-    if (ctx->d_tmp!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_tmp));
-    if (ctx->d_work!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_work));
+    if (ctx->d_H!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_work!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
     ctx->d_H = ctx->d_tmp = NULL;
     ctx->d_work = NULL;
     ctx->d_work_bytes = 0;
     /* the bases of the refined eigensolver go with the scratch; the next
        refined solve starts from an FP32 solve */
     for (int spin=0; spin<2; ++spin){
-        if (ClusterCol_refine_x[spin]!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ClusterCol_refine_x[spin]));
-        ClusterCol_refine_x[spin] = NULL;
-        ClusterCol_refine_state[spin].basis_valid = 0;
+        if (state->refine_x[spin]!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,state->refine_x[spin]));
+        state->refine_x[spin] = NULL;
+        state->refine_state[spin].basis_valid = 0;
     }
-    ClusterCol_refine_x_n = 0;
+    state->refine_x_n = 0;
     for (int spin=0; spin<2; ++spin){
-        if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_evec_stash[spin]));
+        if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_evec_stash[spin]));
         ctx->d_evec_stash[spin] = NULL;
         ctx->evec_stash_count[spin] = 0;
         ctx->evec_stash_valid[spin] = 0;
@@ -1133,9 +1208,9 @@ static void ClusterCol_TrimScratch(void)
 /* Keep the freshly solved eigenvector panel (still in ctx->d_tmp) on the
    device so the DM accumulation of the same SCF step can consume it without
    the D2H/repack/H2D round trip through EVec1. */
-static void ClusterCol_StashDeviceEvec(int spin, int n, int maxn)
+static void ClusterCol_StashDeviceEvec(ClusterColState *state, int spin, int n, int maxn)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t count = ClusterCol_CheckedMulCount((size_t)n,(size_t)maxn,"device eigenvector stash");
     size_t bytes = ClusterCol_CheckedMulCount(count,sizeof(double),"device eigenvector stash bytes");
 
@@ -1144,13 +1219,13 @@ static void ClusterCol_StashDeviceEvec(int spin, int n, int maxn)
     }
 
     if (ctx->d_evec_stash[spin]==NULL || ctx->evec_stash_count[spin]<count){
-        if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Cluster_DFT_Col_resources,ctx->d_evec_stash[spin]));
+        if (ctx->d_evec_stash[spin]!=NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_evec_stash[spin]));
         ctx->d_evec_stash[spin] = NULL;
         ctx->evec_stash_count[spin] = 0;
         /* the stash only short-circuits the host round trip of the DM
            accumulation; when the shared device has no room left the solve
            is already complete, so skip stashing instead of waiting */
-        if (ClusterCol_TryDeviceMalloc((void**)&ctx->d_evec_stash[spin],bytes) != cudaSuccess){
+        if (ClusterCol_TryDeviceMalloc(state, (void**)&ctx->d_evec_stash[spin],bytes) != cudaSuccess){
             ctx->d_evec_stash[spin] = NULL;
             ctx->evec_stash_valid[spin] = 0;
             return;
@@ -1169,9 +1244,9 @@ static void ClusterCol_StashDeviceEvec(int spin, int n, int maxn)
 
 /* Returns the stashed device panel when it covers this rank's state slice
    (only the dense-owning rank, whose slice starts at state 1), else NULL. */
-static const double *ClusterCol_DeviceEvecStash(int spin, int n, int kmin, int kmax, int *lds)
+static const double *ClusterCol_DeviceEvecStash(ClusterColState *state, int spin, int n, int kmin, int kmax, int *lds)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     if (spin<0 || 2<=spin) return NULL;
     if (!ctx->evec_stash_valid[spin]) return NULL;
@@ -1182,18 +1257,18 @@ static const double *ClusterCol_DeviceEvecStash(int spin, int n, int kmin, int k
     return ctx->d_evec_stash[spin];
 }
 
-static void ClusterCol_GEMMul8Dgemm_OpenACC(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+static void ClusterCol_GEMMul8Dgemm_OpenACC(ClusterColState *state, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
                                             double const * A, double const * B, double * C)
 {
     const int lda = (transa==CUBLAS_OP_N) ? m : k;
     const int ldb = (transb==CUBLAS_OP_N) ? k : n;
 
-    ClusterCol_GpuSolver_Init();
+    ClusterCol_GpuSolver_Init(state);
 #pragma acc data      present(A[0 : lda * ((transa==CUBLAS_OP_N) ? k : m)], \
                               B[0 : ldb * ((transb==CUBLAS_OP_N) ? n : k)], C[0 : m * n])
 #pragma acc host_data use_device(A, B, C)
     {
-        ClusterCol_GEMMul8Dgemm_Device(transa,transb,m,n,k,A,lda,B,ldb,C,m);
+        ClusterCol_GEMMul8Dgemm_Device(state, transa,transb,m,n,k,A,lda,B,ldb,C,m);
     }
 }
 
@@ -1278,19 +1353,9 @@ static unsigned long long ClusterCol_LayoutFingerprint(const int *order_GA, int 
     return h;
 }
 
-typedef struct {
-    int valid;
-    int n;
-    int tnum;
-    unsigned long long fingerprint;
-    int *dense_index;
-} ClusterColDenseIndexCache;
-
-static ClusterColDenseIndexCache ClusterCol_dense_index_cache = {0};
-
-static const int *ClusterCol_DenseIndexCache_Get(const int *order_GA, int *MP, int n, int tnum)
+static const int *ClusterCol_DenseIndexCache_Get(ClusterColState *state, const int *order_GA, int *MP, int n, int tnum)
 {
-    ClusterColDenseIndexCache *cache = &ClusterCol_dense_index_cache;
+    ClusterColDenseIndexCache *cache = &state->dense_index_cache;
     unsigned long long fingerprint = ClusterCol_LayoutFingerprint(order_GA,MP,n);
 
     if (cache->valid && cache->n==n && cache->tnum==tnum && cache->fingerprint==fingerprint){
@@ -1301,11 +1366,11 @@ static const int *ClusterCol_DenseIndexCache_Get(const int *order_GA, int *MP, i
         int *old_index = cache->dense_index;
         int old_tnum = cache->tnum;
 #pragma acc exit data delete(old_index[0 : old_tnum])
-        openmx_core_native_free(Cluster_DFT_Col_resources,old_index);
+        openmx_core_native_free(state->resources,old_index);
     }
     memset(cache,0,sizeof(*cache));
 
-    cache->dense_index = (int*)ClusterCol_MallocArray((size_t)tnum,sizeof(int),"dense index cache");
+    cache->dense_index = (int*)ClusterCol_MallocArray(state, (size_t)tnum,sizeof(int),"dense index cache");
     ClusterCol_BuildDenseIndex(order_GA,MP,n,tnum,cache->dense_index);
 
     /* the scatter pattern is geometry-fixed, so keep it resident on the
@@ -1327,42 +1392,31 @@ static const int *ClusterCol_DenseIndexCache_Get(const int *order_GA, int *MP, i
    several GiB of the shared device between SCF cycles.  The force batches
    size themselves from the free device memory, so return everything before
    Force() runs; the next SCF cycle rebuilds on demand. */
-void Cluster_DFT_Col_Release_GPU_Solver(void)
+void Cluster_DFT_Col_Release_GPU_Solver(ClusterColState *state)
 {
-    ClusterColDenseIndexCache *cache = &ClusterCol_dense_index_cache;
+    ClusterColDenseIndexCache *cache = &state->dense_index_cache;
 
     if (cache->dense_index != NULL) {
         int *old_index = cache->dense_index;
         int old_tnum = cache->tnum;
 #pragma acc exit data delete(old_index[0 : old_tnum])
-        openmx_core_native_free(Cluster_DFT_Col_resources,old_index);
+        openmx_core_native_free(state->resources,old_index);
     }
     memset(cache, 0, sizeof(*cache));
 
-    ClusterCol_GpuSolver_Destroy();
+    ClusterCol_GpuSolver_Destroy(state);
 }
 
-typedef struct {
-    int valid;
-    int n;
-    int entry_count;
-    unsigned long long fingerprint;
-    int *basis0;
-    int *basis1;
-} ClusterColDMEntryCache;
-
-static ClusterColDMEntryCache ClusterCol_dm_entry_cache = {0};
-
-static void ClusterCol_DMEntryCache_Ensure(int *MP, int n)
+static void ClusterCol_DMEntryCache_Ensure(ClusterColState *state, int *MP, int n)
 {
-    ClusterColDMEntryCache *cache = &ClusterCol_dm_entry_cache;
+    ClusterColDMEntryCache *cache = &state->dm_entry_cache;
     unsigned long long fingerprint = ClusterCol_LayoutFingerprint(NULL,MP,n);
     int entry_count = 0;
 
     if (cache->valid && cache->n==n && cache->fingerprint==fingerprint) return;
 
-    openmx_core_native_free(Cluster_DFT_Col_resources,cache->basis0);
-    openmx_core_native_free(Cluster_DFT_Col_resources,cache->basis1);
+    openmx_core_native_free(state->resources,cache->basis0);
+    openmx_core_native_free(state->resources,cache->basis1);
     memset(cache,0,sizeof(*cache));
 
     for (int GA_AN=1; GA_AN<=atomnum; GA_AN++){
@@ -1374,8 +1428,8 @@ static void ClusterCol_DMEntryCache_Ensure(int *MP, int n)
         }
     }
 
-    cache->basis0 = (int*)ClusterCol_MallocArray((size_t)(entry_count+1),sizeof(int),"DM entry basis0");
-    cache->basis1 = (int*)ClusterCol_MallocArray((size_t)(entry_count+1),sizeof(int),"DM entry basis1");
+    cache->basis0 = (int*)ClusterCol_MallocArray(state, (size_t)(entry_count+1),sizeof(int),"DM entry basis0");
+    cache->basis1 = (int*)ClusterCol_MallocArray(state, (size_t)(entry_count+1),sizeof(int),"DM entry basis1");
 
     entry_count = 0;
     for (int GA_AN=1; GA_AN<=atomnum; GA_AN++){
@@ -1406,8 +1460,6 @@ static void ClusterCol_DMEntryCache_Ensure(int *MP, int n)
     cache->fingerprint = fingerprint;
     cache->entry_count = entry_count;
 }
-
-
 
 static void ClusterCol_GpuSolver_CheckInfo(const char *where, int info)
 {
@@ -1448,10 +1500,10 @@ static size_t ClusterCol_GpuDiagReserveBytes(void)
    OPENMX_CLUSTER_GPU_DIAG=1 forces the concurrent GPU path, =0 forces the
    fallback.  OPENMX_CLUSTER_GPU_DIAG_SERIAL=0 disables the serialized
    tier, =2 skips the concurrent probe and forces the serialized tier. */
-static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
+static int ClusterCol_OwnerReserveProbe(ClusterColState *state, int n, int myworld1, const char *when)
 {
-    int my_fit = (ClusterCol_TryEnsureMatrixCapacity(n) &&
-                  ClusterCol_TryEnsureEigenWorkspace(n));
+    int my_fit = (ClusterCol_TryEnsureMatrixCapacity(state, n) &&
+                  ClusterCol_TryEnsureEigenWorkspace(state, n));
 
     if (my_fit){
         size_t free_bytes = 0;
@@ -1466,10 +1518,10 @@ static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
         }
         else{
             const size_t reserve = ClusterCol_GpuDiagReserveBytes();
-            const size_t basis = ClusterCol_RefineBasisBytes(n);
+            const size_t basis = ClusterCol_RefineBasisBytes(state, n);
 
             if (reserve+basis<=free_bytes){
-                ClusterCol_refine.basis_blocked = 0;
+                state->refine.basis_blocked = 0;
             }
             else if (reserve<=free_bytes){
                 /* The dense solve fits, the basis of the refined eigensolver
@@ -1477,7 +1529,7 @@ static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
                    keep the GPU path and solve in FP64 for this cycle rather
                    than fall back to ELPA.  Allocating the basis anyway would
                    eat the margin the other ranks' transients rely on. */
-                ClusterCol_refine.basis_blocked = 1;
+                state->refine.basis_blocked = 1;
                 printf("<Cluster_DFT_Col> The dense owner of spin world %d holds its GPU diagonalization"
                        " buffers%s but not the %.1f MiB basis of the refined eigensolver"
                        " (%.1f MiB of %.1f MiB free): FP64 eigensolver for this SCF cycle.\n",
@@ -1511,10 +1563,9 @@ static int ClusterCol_OwnerReserveProbe(int n, int myworld1, const char *when)
     return my_fit;
 }
 
-static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, int numprocs0)
+static int ClusterCol_GpuDiagFits(ClusterColState *state, int SCF_iter, int n, int myworld1, int myid1, int numprocs0)
 {
-    static int verdict = -1;
-    static int verdict_n = 0;
+
     int serial_knob = (int)openmx_env_long_at(OPENMX_ENV_CLUSTER_GPU_DIAG_SERIAL, 1);
     int announce = (myworld1==0 && myid1==0);
     int owner = (myid1==0);
@@ -1524,25 +1575,25 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
     int fit = 0;
 
     /* the reservation probe counts the refined eigensolver's basis */
-    ClusterCol_RefineConfigure();
+    ClusterCol_RefineConfigure(state);
 
-    if (SCF_iter==1 || verdict_n!=n){
-      ClusterCol_mgpu_host_dense=0;
-      ClusterCol_ResetGs2Fallback();
+    if (SCF_iter==1 || state->diag_verdict_n!=n){
+      state->mgpu_host_dense=0;
+      ClusterCol_ResetGs2Fallback(state);
     }
     if (openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DIAG, -1)==0 && !openmx_mgpu_host_required()) return 0;
     if (openmx_mgpu_host_required()) goto host_capacity;
 
-    if (verdict!=-1 && verdict_n==n && 1<SCF_iter){
+    if (state->diag_verdict!=-1 && state->diag_verdict_n==n && 1<SCF_iter){
         int any_released = 0;
-        if (verdict==0) return verdict;
-        MPI_Allreduce(&ClusterCol_gpusolver_ctx.scratch_released,&any_released,
+        if (state->diag_verdict==0) return state->diag_verdict;
+        MPI_Allreduce(&state->gpusolver_ctx.scratch_released,&any_released,
                       1,MPI_INT,MPI_MAX,mpi_comm_level1);
-        if (!any_released) return verdict;
+        if (!any_released) return state->diag_verdict;
         /* Memory admission must be repeated after a trim. Preserve the
            previous serialized spin layout rather than allocating both
            owners merely to discover again that only one can fit. */
-        if (verdict==2) serial_knob = 2;
+        if (state->diag_verdict==2) serial_knob = 2;
     }
 
     /* the serialized tier only helps when two spin worlds share the device,
@@ -1558,14 +1609,14 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
     }
     else{
         if (owner){
-            my_fit = ClusterCol_OwnerReserveProbe(n,myworld1,
+            my_fit = ClusterCol_OwnerReserveProbe(state, n,myworld1,
                                                   serial_allowed ? " concurrently" : "");
         }
         MPI_Allreduce(&my_fit,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     }
 
     if (fit==1){
-        verdict = 1;
+        state->diag_verdict = 1;
     }
     else if (serial_allowed){
         int my_serial = 1;
@@ -1574,16 +1625,16 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
         /* only spin world 0's owner keeps a reservation in the serialized
            mode: release the other owner's buffers first so the probe below
            sees that memory, and order the release before the probe */
-        if (owner && !solver_owner) ClusterCol_GpuSolver_Destroy();
+        if (owner && !solver_owner) ClusterCol_GpuSolver_Destroy(state);
         MPI_Barrier(mpi_comm_level1);
 
         if (solver_owner){
-            my_serial = ClusterCol_OwnerReserveProbe(n,myworld1," for the serialized mode");
+            my_serial = ClusterCol_OwnerReserveProbe(state, n,myworld1," for the serialized mode");
         }
         MPI_Allreduce(&my_serial,&serial_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
         if (serial_fit==1){
-            verdict = 2;
+            state->diag_verdict = 2;
             if (announce && 2<=level_stdout){
                 printf("<Cluster_DFT_Col> The device cannot hold both spin owners' GPU buffers at once;"
                        " spin world 0's owner solves both spins serially on the GPU"
@@ -1592,16 +1643,16 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
             }
         }
         else{
-            verdict = 0;
+            state->diag_verdict = 0;
         }
     }
     else{
-        verdict = 0;
+        state->diag_verdict = 0;
     }
 
-    if (verdict==0){
+    if (state->diag_verdict==0){
 host_capacity:
-        ClusterCol_GpuSolver_Destroy();
+        ClusterCol_GpuSolver_Destroy(state);
         openmx_gemmul8ReleaseWorkspaces();
         acc_wait_all(); acc_clear_freelists();
         MPI_Barrier(mpi_comm_level1);
@@ -1609,9 +1660,9 @@ host_capacity:
            multi-node run, falls back to the distributed gpusolver2 path;
            the choice is broadcast before any rank commits to a path */
         const int capacity = openmx_cluster_capacity_select(mpi_comm_level1,n,0,"Cluster collinear");
-        ClusterCol_mgpu_host_dense=0;
-        ClusterCol_gs2_fallback_n=0;
-        verdict=0;
+        state->mgpu_host_dense=0;
+        state->gs2_fallback_n=0;
+        state->diag_verdict=0;
         if (capacity==OPENMX_CLUSTER_CAPACITY_GS2){
             int admitted;
             /* verdict 0 sends all ranks into the ScaLAPACK layout below,
@@ -1620,15 +1671,15 @@ host_capacity:
                all ranks instead of each spin on its own world's grid (the
                worlds are contiguous halves of the ranks, one node each). */
             if (SpinP_switch==1 && numprocs0>1){
-                ClusterCol_UnionGrid_Ensure(n);
-                ClusterCol_ugrid.overlap_n = 0;
-                admitted = openmx_cluster_gs2_admit(mpi_comm_level1,ClusterCol_ugrid.ictxt,n,ClusterCol_ugrid.nblk,0,
+                ClusterCol_UnionGrid_Ensure(state, n);
+                state->ugrid.overlap_n = 0;
+                admitted = openmx_cluster_gs2_admit(mpi_comm_level1,state->ugrid.ictxt,n,state->ugrid.nblk,0,
                                          "Cluster collinear");
             }
             else{
                 admitted = openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
             }
-            if (admitted) ClusterCol_gs2_fallback_n = n;
+            if (admitted) state->gs2_fallback_n = n;
         }
         else if (capacity==OPENMX_CLUSTER_CAPACITY_MAGMA){
             if (announce) {
@@ -1636,16 +1687,16 @@ host_capacity:
                        n,openmx_mgpu_host_required()?"forced":"cuSOLVER memory limit ->");
                 fflush(stdout);
             }
-            ClusterCol_mgpu_host_dense=1; verdict=1;
+            state->mgpu_host_dense=1; state->diag_verdict=1;
         }
     }
 
     /* the union grid lives only while the fallback of a spin-polarized run
        needs it (every rank reaches this point with the same verdict) */
-    if (!(verdict==0 && ClusterCol_gs2_fallback_n==n)) ClusterCol_UnionGrid_Free();
+    if (!(state->diag_verdict==0 && state->gs2_fallback_n==n)) ClusterCol_UnionGrid_Free(state);
 
-    verdict_n = n;
-    return verdict;
+    state->diag_verdict_n = n;
+    return state->diag_verdict;
 }
 
 static void ClusterCol_SetMaxNAndPartitions(int SCF_iter, const char *mode, double TZ, int n, int numprocs1,
@@ -1718,11 +1769,11 @@ static void ClusterCol_PartitionStates(int MaxN, int nw, int *is2, int *ie2)
    back-transformed matrix g->Hs = (X C)^T on the union grid go to the ranks
    of world `spin`, each receiving its states is2..ie2 for all basis
    functions in the layout of the ScaLAPACK path. */
-static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, int myid1,
+static void ClusterCol_UnionSendEvec(ClusterColState *state, int spin, int n, int MaxN, int myworld1, int myid1,
                                      int *is2, int *ie2, int *NPROCS_WD1,
                                      int *Comm_World_StartID1, double **EVec1)
 {
-    const ClusterColUnionGrid *g = &ClusterCol_ugrid;
+    const ClusterColUnionGrid *g = &state->ugrid;
     const int nw = NPROCS_WD1[spin];
     const int start = Comm_World_StartID1[spin];
     int numprocs0, ID, i, j, k;
@@ -1733,17 +1784,17 @@ static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, in
 
     MPI_Comm_size(mpi_comm_level1, &numprocs0);
 
-    is2s = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)nw,0);
-    ie2s = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)nw,0);
-    owner = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)(MaxN + 1),0);
-    scnt = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,(size_t)numprocs0,sizeof(int),1);
-    sdsp = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
-    rcnt = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
-    rdsp = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
-    iscnt = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
-    isdsp = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
-    ircnt = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
-    irdsp = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
+    is2s = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)nw,0);
+    ie2s = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)nw,0);
+    owner = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(MaxN + 1),0);
+    scnt = (int *)openmx_core_native_malloc(state->resources,(size_t)numprocs0,sizeof(int),1);
+    sdsp = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
+    rcnt = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
+    rdsp = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
+    iscnt = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
+    isdsp = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
+    ircnt = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
+    irdsp = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
     if (!is2s || !ie2s || !owner || !scnt || !sdsp || !rcnt || !rdsp || !iscnt || !isdsp || !ircnt || !irdsp){
         fprintf(stderr, "Cluster_DFT_Col: out of host memory in the eigenvector distribution\n");
         MPI_Abort(mpi_comm_level1, 1);
@@ -1776,10 +1827,10 @@ static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, in
         ircnt[ID] = 2*rcnt[ID]; irdsp[ID] = 2*rdsp[ID];
     }
 
-    idx_snd = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)(2*nsnd + 1),0);
-    val_snd = (double *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double) * (size_t)(nsnd + 1),0);
-    idx_rcv = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)(2*nrcv + 1),0);
-    val_rcv = (double *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double) * (size_t)(nrcv + 1),0);
+    idx_snd = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(2*nsnd + 1),0);
+    val_snd = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)(nsnd + 1),0);
+    idx_rcv = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(2*nrcv + 1),0);
+    val_rcv = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)(nrcv + 1),0);
     if (!idx_snd || !val_snd || !idx_rcv || !val_rcv){
         fprintf(stderr, "Cluster_DFT_Col: out of host memory in the eigenvector distribution\n");
         MPI_Abort(mpi_comm_level1, 1);
@@ -1787,7 +1838,7 @@ static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, in
 
     /* pack in destination order: rows are visited per destination */
     {
-        int *pos = (int *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int) * (size_t)numprocs0,0);
+        int *pos = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)numprocs0,0);
         if (pos == NULL){
             fprintf(stderr, "Cluster_DFT_Col: out of host memory in the eigenvector distribution\n");
             MPI_Abort(mpi_comm_level1, 1);
@@ -1806,7 +1857,7 @@ static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, in
                 val_snd[q] = g->Hs[(size_t)j*(size_t)g->na_rows + (size_t)i];
             }
         }
-        openmx_core_native_free(Cluster_DFT_Col_resources,pos);
+        openmx_core_native_free(state->resources,pos);
     }
 
     MPI_Alltoallv(idx_snd, iscnt, isdsp, MPI_INT, idx_rcv, ircnt, irdsp, MPI_INT, mpi_comm_level1);
@@ -1821,10 +1872,10 @@ static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, in
         }
     }
 
-    openmx_core_native_free(Cluster_DFT_Col_resources,idx_snd); openmx_core_native_free(Cluster_DFT_Col_resources,val_snd); openmx_core_native_free(Cluster_DFT_Col_resources,idx_rcv); openmx_core_native_free(Cluster_DFT_Col_resources,val_rcv);
-    openmx_core_native_free(Cluster_DFT_Col_resources,is2s); openmx_core_native_free(Cluster_DFT_Col_resources,ie2s); openmx_core_native_free(Cluster_DFT_Col_resources,owner);
-    openmx_core_native_free(Cluster_DFT_Col_resources,scnt); openmx_core_native_free(Cluster_DFT_Col_resources,sdsp); openmx_core_native_free(Cluster_DFT_Col_resources,rcnt); openmx_core_native_free(Cluster_DFT_Col_resources,rdsp);
-    openmx_core_native_free(Cluster_DFT_Col_resources,iscnt); openmx_core_native_free(Cluster_DFT_Col_resources,isdsp); openmx_core_native_free(Cluster_DFT_Col_resources,ircnt); openmx_core_native_free(Cluster_DFT_Col_resources,irdsp);
+    openmx_core_native_free(state->resources,idx_snd); openmx_core_native_free(state->resources,val_snd); openmx_core_native_free(state->resources,idx_rcv); openmx_core_native_free(state->resources,val_rcv);
+    openmx_core_native_free(state->resources,is2s); openmx_core_native_free(state->resources,ie2s); openmx_core_native_free(state->resources,owner);
+    openmx_core_native_free(state->resources,scnt); openmx_core_native_free(state->resources,sdsp); openmx_core_native_free(state->resources,rcnt); openmx_core_native_free(state->resources,rdsp);
+    openmx_core_native_free(state->resources,iscnt); openmx_core_native_free(state->resources,isdsp); openmx_core_native_free(state->resources,ircnt); openmx_core_native_free(state->resources,irdsp);
 }
 
 /* The distributed capacity fallback of a spin-polarized run: the overlap
@@ -1832,23 +1883,23 @@ static void ClusterCol_UnionSendEvec(int spin, int n, int MaxN, int myworld1, in
    GPU kernels + COSMA through the gpusolver2 bridge, i.e. every rank and
    GPU of the run), with the same transforms as the ScaLAPACK path.  Every
    rank ends with ko[0] and ko[1]; the ranks of world s with EVec1[s]. */
-static void ClusterCol_UnionGs2Path(int n, int MaxN, double **ko, double *****nh, double ****CntOLP,
+static void ClusterCol_UnionGs2Path(ClusterColState *state, int n, int MaxN, double **ko, double *****nh, double ****CntOLP,
                                     int *MP, int myworld1, int myid1, int *is2, int *ie2,
                                     int *NPROCS_WD1, int *Comm_World_StartID1, double **EVec1)
 {
-    ClusterColUnionGrid *g = &ClusterCol_ugrid;
+    ClusterColUnionGrid *g = &state->ugrid;
     ClusterColGridGlobals saved;
     double alpha = 1.0, beta = 0.0;
     int ONE = 1, spin, i, j, l, info;
 
     if (g->overlap_n != n){
-        double *w = (double *)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double) * (size_t)(n + 1),0);
+        double *w = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)(n + 1),0);
 
         if (w == NULL){
             fprintf(stderr, "Cluster_DFT_Col: out of host memory (overlap eigenvalues)\n");
             MPI_Abort(mpi_comm_level1, 1);
         }
-        saved = ClusterCol_EnterUnionGridGlobals();
+        saved = ClusterCol_EnterUnionGridGlobals(state);
         Overlap_Cluster_Ss(CntOLP, g->Cs, MP, myworld1);
         ClusterCol_LeaveUnionGridGlobals(saved);
 
@@ -1868,13 +1919,13 @@ static void ClusterCol_UnionGs2Path(int n, int MaxN, double **ko, double *****nh
                 g->Ss[(size_t)j*(size_t)g->na_rows + (size_t)i] *= w[jg];
             }
         }
-        openmx_core_native_free(Cluster_DFT_Col_resources,w);
+        openmx_core_native_free(state->resources,w);
         g->overlap_n = n;
     }
 
     for (spin=0; spin<=1; spin++){
 
-        saved = ClusterCol_EnterUnionGridGlobals();
+        saved = ClusterCol_EnterUnionGridGlobals(state);
         Hamiltonian_Cluster_Hs(nh[spin], g->Hs, MP, spin, spin);
         ClusterCol_LeaveUnionGridGlobals(saved);
 
@@ -1901,12 +1952,12 @@ static void ClusterCol_UnionGs2Path(int n, int MaxN, double **ko, double *****nh
         openmx_gs2_pdgemm_("T","T",&n,&n,&n,&alpha,g->Cs,&ONE,&ONE,g->desc,g->Ss,&ONE,&ONE,g->desc,
                            &beta,g->Hs,&ONE,&ONE,g->desc);
 
-        ClusterCol_UnionSendEvec(spin, n, MaxN, myworld1, myid1, is2, ie2, NPROCS_WD1,
+        ClusterCol_UnionSendEvec(state, spin, n, MaxN, myworld1, myid1, is2, ie2, NPROCS_WD1,
                                  Comm_World_StartID1, EVec1);
     }
 }
 
-static void ClusterCol_DistributeDenseEvec(int n, int maxn, int myid1, int numprocs1, int *is2, int *ie2,
+static void ClusterCol_DistributeDenseEvec(ClusterColState *state, int n, int maxn, int myid1, int numprocs1, int *is2, int *ie2,
                                            MPI_Comm comm, const double *dense_evec, double *EVec1)
 {
     const int root = 0;
@@ -1925,7 +1976,7 @@ static void ClusterCol_DistributeDenseEvec(int n, int maxn, int myid1, int numpr
         }
 
         if (0<max_count){
-            send_buf = (double*)ClusterCol_MallocArray((size_t)max_count,sizeof(double),
+            send_buf = (double*)ClusterCol_MallocArray(state, (size_t)max_count,sizeof(double),
                                                        "dense eigenvector send buffer");
         }
 
@@ -1950,7 +2001,7 @@ static void ClusterCol_DistributeDenseEvec(int n, int maxn, int myid1, int numpr
             }
         }
 
-        openmx_core_native_free(Cluster_DFT_Col_resources,send_buf);
+        openmx_core_native_free(state->resources,send_buf);
     }
     else{
         int states = ie2[myid1] - is2[myid1] + 1;
@@ -1971,13 +2022,12 @@ static void ClusterCol_DistributeDenseEvec(int n, int maxn, int myid1, int numpr
    Hamiltonian of the SCF steps listed in OPENMX_GEMM_SAMPLE_ITERS (comma
    separated, default "1"; H_g<geometry>_scf<step>_s<spin>.bin).  The files
    feed the offline precision and reuse study tests/gemmul8_reuse_probe.cu. */
-static int ClusterCol_sample_geometry = 0;
 
-static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *name)
+static void ClusterCol_SampleDeviceMatrix(ClusterColState *state, const double *d_A, int n, const char *name)
 {
-    ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t count = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"sampled matrix");
-    double *A = (double*)ClusterCol_MallocArray(count,sizeof(double),"sampled matrix");
+    double *A = (double*)ClusterCol_MallocArray(state, count,sizeof(double),"sampled matrix");
     char path[4096];
     FILE *fp;
 
@@ -1992,23 +2042,23 @@ static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *
         ClusterCol_AbortWithMessage(msg);
     }
     printf("<Cluster_DFT_Col> sampled %s (n=%d)\n",path,n);
-    openmx_core_native_free(Cluster_DFT_Col_resources,A);
+    openmx_core_native_free(state->resources,A);
 }
 
-static void ClusterCol_SampleTransformedS(int n, int myworld1)
+static void ClusterCol_SampleTransformedS(ClusterColState *state, int n, int myworld1)
 {
     const char *dir = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_DIR);
     char name[64];
 
-    ClusterCol_sample_geometry++;
+    state->sample_geometry++;
     /* both spin worlds hold the same X; one copy is enough */
     if (dir==NULL || dir[0]=='\0' || myworld1!=0) return;
 
-    snprintf(name,sizeof(name),"X_g%d.bin",ClusterCol_sample_geometry);
-    ClusterCol_SampleDeviceMatrix(ClusterCol_gpusolver_ctx.d_S,n,name);
+    snprintf(name,sizeof(name),"X_g%d.bin",state->sample_geometry);
+    ClusterCol_SampleDeviceMatrix(state, state->gpusolver_ctx.d_S,n,name);
 }
 
-static void ClusterCol_SampleHamiltonian(int SCF_iter, int spin, int n)
+static void ClusterCol_SampleHamiltonian(ClusterColState *state, int SCF_iter, int spin, int n)
 {
     const char *dir = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_DIR);
     const char *list = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_ITERS);
@@ -2027,26 +2077,26 @@ static void ClusterCol_SampleHamiltonian(int SCF_iter, int spin, int n)
     }
     if (!wanted) return;
 
-    snprintf(name,sizeof(name),"H_g%d_scf%03d_s%d.bin",ClusterCol_sample_geometry,SCF_iter,spin);
-    ClusterCol_SampleDeviceMatrix(ClusterCol_gpusolver_ctx.d_H,n,name);
+    snprintf(name,sizeof(name),"H_g%d_scf%03d_s%d.bin",state->sample_geometry,SCF_iter,spin);
+    ClusterCol_SampleDeviceMatrix(state, state->gpusolver_ctx.d_H,n,name);
 }
 
-static void ClusterCol_MagmaRootDensePath(int SpinP_switch,double **ko,double *****nh,double ****CntOLP,
+static void ClusterCol_MagmaRootDensePath(ClusterColState *state, int SpinP_switch,double **ko,double *****nh,double ****CntOLP,
     int numprocs0,int myid0,int myworld1,int numprocs1,int myid1,MPI_Comm *MPI_CommWD1,
     int *Comm_World_StartID1,int *MP,int *is2,int *ie2,int n,int MaxN,double **EVec1)
 {
     const int root=(myid0==Host_ID);
     const size_t nn=(size_t)n*n, panel=(size_t)n*MaxN;
     double *s=NULL,*h=NULL,*tmp=NULL,*c=NULL;
-    ClusterCol_InvalidateDeviceEvecStash();
-    ClusterCol_refine.last_refined=0;
+    ClusterCol_InvalidateDeviceEvecStash(state);
+    state->refine.last_refined=0;
     if (root) {
-        s=ClusterCol_MallocArray(nn,sizeof(double),"MAGMA overlap");
-        h=ClusterCol_MallocArray(nn,sizeof(double),"MAGMA Hamiltonian");
-        tmp=ClusterCol_MallocArray(nn,sizeof(double),"MAGMA transform");
+        s=ClusterCol_MallocArray(state, nn,sizeof(double),"MAGMA overlap");
+        h=ClusterCol_MallocArray(state, nn,sizeof(double),"MAGMA Hamiltonian");
+        tmp=ClusterCol_MallocArray(state, nn,sizeof(double),"MAGMA transform");
     }
-    if (root || myid1==0) c=ClusterCol_MallocArray(panel,sizeof(double),"MAGMA eigenvectors");
-    Patch2Host_Cluster_Owner(CntOLP,MP,root,n,s);
+    if (root || myid1==0) c=ClusterCol_MallocArray(state, panel,sizeof(double),"MAGMA eigenvectors");
+    Patch2Host_Cluster_Owner(state, CntOLP,MP,root,n,s);
     if (root) {
         if (!openmx_mgpu_host_solve(n,n,0,s,n,ko[0]+1)) ClusterCol_AbortWithMessage(openmx_mgpu_host_error());
 #pragma omp parallel for
@@ -2056,7 +2106,7 @@ static void ClusterCol_MagmaRootDensePath(int SpinP_switch,double **ko,double **
         }
     }
     for (int spin=0;spin<=SpinP_switch;++spin) {
-        Patch2Host_Cluster_Owner(nh[spin],MP,root,n,h);
+        Patch2Host_Cluster_Owner(state, nh[spin],MP,root,n,h);
         if (root) {
             if (!openmx_mgpu_host_dgemm(CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,h,n,s,n,tmp,n) ||
                 !openmx_mgpu_host_dgemm(CUBLAS_OP_T,CUBLAS_OP_N,n,n,n,s,n,tmp,n,h,n) ||
@@ -2077,12 +2127,12 @@ static void ClusterCol_MagmaRootDensePath(int SpinP_switch,double **ko,double **
             }
         }
         if (myworld1==world)
-            ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,MPI_CommWD1[world],c,EVec1[spin]);
+            ClusterCol_DistributeDenseEvec(state, n,MaxN,myid1,numprocs1,is2,ie2,MPI_CommWD1[world],c,EVec1[spin]);
     }
-    openmx_core_native_free(Cluster_DFT_Col_resources,s); openmx_core_native_free(Cluster_DFT_Col_resources,h); openmx_core_native_free(Cluster_DFT_Col_resources,tmp); openmx_core_native_free(Cluster_DFT_Col_resources,c);
+    openmx_core_native_free(state->resources,s); openmx_core_native_free(state->resources,h); openmx_core_native_free(state->resources,tmp); openmx_core_native_free(state->resources,c);
 }
 
-static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, double **ko,
+static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_iter, int SpinP_switch, double **ko,
                                              double *****nh, double ****CntOLP,
                                              int numprocs0, int myid0, int myworld1,
                                              int numprocs1, int myid1, MPI_Comm *MPI_CommWD1,
@@ -2090,8 +2140,8 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                                              int *MP, int *is2, int *ie2,
                                              int n, int MaxN, double **EVec1)
 {
-    if (ClusterCol_mgpu_host_dense) {
-        ClusterCol_MagmaRootDensePath(SpinP_switch,ko,nh,CntOLP,numprocs0,myid0,myworld1,numprocs1,myid1,
+    if (state->mgpu_host_dense) {
+        ClusterCol_MagmaRootDensePath(state, SpinP_switch,ko,nh,CntOLP,numprocs0,myid0,myworld1,numprocs1,myid1,
             MPI_CommWD1,Comm_World_StartID1,MP,is2,ie2,n,MaxN,EVec1);
         return;
     }
@@ -2110,7 +2160,7 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
 
     /* the stash refers to the previous SCF step's eigenvectors until the
        solves below refresh it */
-    ClusterCol_InvalidateDeviceEvecStash();
+    ClusterCol_InvalidateDeviceEvecStash(state);
 
     /* the refined eigensolver: one spin, or two spin worlds whose owners
        exchange their estimates; a single rank solving both spins and the
@@ -2125,7 +2175,7 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                 peer = Comm_World_StartID1[1-myworld1];
             }
         }
-        ClusterCol_RefineBeginSolve(SCF_iter,spin_mode,peer);
+        ClusterCol_RefineBeginSolve(state, SCF_iter,spin_mode,peer);
     }
 
     if (SpinP_switch==1 && numprocs0!=1){
@@ -2144,13 +2194,13 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
     if (owns_dense){
         size_t nmax = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,"root dense eigenvectors");
 
-        C = (double*)ClusterCol_MallocArray(nmax,sizeof(double),"root dense eigenvectors");
+        C = (double*)ClusterCol_MallocArray(state, nmax,sizeof(double),"root dense eigenvectors");
 
         if (solves_dense){
-            ClusterCol_GpuSolver_EnsureMatrixCapacity(n);
+            ClusterCol_GpuSolver_EnsureMatrixCapacity(state, n);
 
-            if (rebuild_s || !(ClusterCol_gpusolver_ctx.transformed_s_valid &&
-                               ClusterCol_gpusolver_ctx.transformed_s_dim==n)){
+            if (rebuild_s || !(state->gpusolver_ctx.transformed_s_valid &&
+                               state->gpusolver_ctx.transformed_s_dim==n)){
                 rebuild_s = 1;
             }
         }
@@ -2174,17 +2224,17 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                 if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_S == NULL) {
                     ClusterCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Cluster_DFT_Col.c.");
                 }
-                dense_index = ClusterCol_DenseIndexCache_Get(cache_order_GA,MP,n,tnum);
-                ClusterCol_BuildDeviceDenseFromPacked(cache_S,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_S);
+                dense_index = ClusterCol_DenseIndexCache_Get(state, cache_order_GA,MP,n,tnum);
+                ClusterCol_BuildDeviceDenseFromPacked(cache_S,dense_index,tnum,n,state->gpusolver_ctx.d_S);
             }
         }
         else {
-            Patch2Device_Cluster_Owner(CntOLP,MP,owns_dense,n,
-                                       owns_dense ? ClusterCol_gpusolver_ctx.d_S : NULL);
+            Patch2Device_Cluster_Owner(state, CntOLP,MP,owns_dense,n,
+                                       owns_dense ? state->gpusolver_ctx.d_S : NULL);
         }
         if (owns_dense){
-            ClusterCol_GpuSolver_PrepareTransformedSDevice(1,n,ko[0]);
-            ClusterCol_SampleTransformedS(n,myworld1);
+            ClusterCol_GpuSolver_PrepareTransformedSDevice(state, 1,n,ko[0]);
+            ClusterCol_SampleTransformedS(state, n,myworld1);
         }
     }
 
@@ -2200,18 +2250,18 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                     if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
                         ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
                     }
-                    dense_index = ClusterCol_DenseIndexCache_Get(cache_order_GA,MP,n,tnum);
-                    ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_H);
+                    dense_index = ClusterCol_DenseIndexCache_Get(state, cache_order_GA,MP,n,tnum);
+                    ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,state->gpusolver_ctx.d_H);
                 }
             }
             else {
-                Patch2Device_Cluster_Owner(nh[spin],MP,owns_dense,n,
-                                           owns_dense ? ClusterCol_gpusolver_ctx.d_H : NULL);
+                Patch2Device_Cluster_Owner(state, nh[spin],MP,owns_dense,n,
+                                           owns_dense ? state->gpusolver_ctx.d_H : NULL);
             }
             if (owns_dense){
-                ClusterCol_SampleHamiltonian(SCF_iter,spin,n);
-                ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C,spin);
-                ClusterCol_StashDeviceEvec(spin,n,MaxN);
+                ClusterCol_SampleHamiltonian(state, SCF_iter,spin,n);
+                ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n,MaxN,ko[spin],C,spin);
+                ClusterCol_StashDeviceEvec(state, spin,n,MaxN);
             }
             {
                 /* OPENMX_BAND_PROFILE=1: the time of the eigenvector distribution */
@@ -2219,7 +2269,7 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                 const int dist_prof = ClusterCol_DMProfileEnabled();
 
                 if (dist_prof) dtime(&dist_t0);
-                ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+                ClusterCol_DistributeDenseEvec(state, n,MaxN,myid1,numprocs1,is2,ie2,
                                                MPI_CommWD1[myworld1],
                                                owns_dense ? C : NULL,EVec1[spin]);
                 if (dist_prof){
@@ -2258,10 +2308,10 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                     if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
                         ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
                     }
-                    dense_index = ClusterCol_DenseIndexCache_Get(cache_order_GA,MP,n,tnum);
-                    ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,ClusterCol_gpusolver_ctx.d_H);
-                    ClusterCol_SampleHamiltonian(SCF_iter,spin,n);
-                    ClusterCol_GpuSolver_SolveHamiltonianDevice(n,MaxN,ko[spin],C,-1);
+                    dense_index = ClusterCol_DenseIndexCache_Get(state, cache_order_GA,MP,n,tnum);
+                    ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,state->gpusolver_ctx.d_H);
+                    ClusterCol_SampleHamiltonian(state, SCF_iter,spin,n);
+                    ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n,MaxN,ko[spin],C,-1);
 
                     if (spin==1){
                         MPI_Send(&ko[1][1],MaxN,MPI_DOUBLE,remote_owner,ko_tag,mpi_comm_level1);
@@ -2272,11 +2322,11 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                         }
                     }
                     else{
-                        ClusterCol_StashDeviceEvec(0,n,MaxN);
+                        ClusterCol_StashDeviceEvec(state, 0,n,MaxN);
                     }
                 }
             }
-            ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+            ClusterCol_DistributeDenseEvec(state, n,MaxN,myid1,numprocs1,is2,ie2,
                                            MPI_CommWD1[myworld1],
                                            owns_dense ? C : NULL,EVec1[0]);
         }
@@ -2291,7 +2341,7 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
                     MPI_Recv(C+off,(int)len,MPI_DOUBLE,home_owner,evec_tag,mpi_comm_level1,&serial_stat);
                 }
             }
-            ClusterCol_DistributeDenseEvec(n,MaxN,myid1,numprocs1,is2,ie2,
+            ClusterCol_DistributeDenseEvec(state, n,MaxN,myid1,numprocs1,is2,ie2,
                                            MPI_CommWD1[myworld1],
                                            owns_dense ? C : NULL,EVec1[1]);
         }
@@ -2303,8 +2353,8 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
         openmx_gemmul8ReleaseWorkspaces();
     }
 
-    ClusterCol_RefineEndSolve();
-    openmx_core_native_free(Cluster_DFT_Col_resources,C);
+    ClusterCol_RefineEndSolve(state);
+    openmx_core_native_free(state->resources,C);
 
     (void)myid0;
 }
@@ -2315,15 +2365,15 @@ void solve_evp_real_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, do
 void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2,
                                               int *nblk, int *na_cols1, int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld);
 
-static double Lapack_LU_Dinverse(int n, double *A);
-static double Calc_Oscillator_Strength( int n, int UMOmax, int Nocc[2], int *MP,
+static double Lapack_LU_Dinverse(ClusterColState *state, int n, double *A);
+static double Calc_Oscillator_Strength(ClusterColState *state,  int n, int UMOmax, int Nocc[2], int *MP,
                                         int **ind2ind, 
 					double **Z0, double **A, double **Z, 
 					double **Ax, double **Ay, double **Az,
 					double Utot1, double Utot2,
 					double XANES_Res[10] );
 
-static void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1,
+static void Calc_XANES_Col(ClusterColState *state, const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1,
 			    double **ko,
 			    double *****nh, 
 			    double ****CntOLP,
@@ -2351,17 +2401,15 @@ static void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, in
 			    double **EVec1,
 			    double *Work1, const OpenMXElectronicViews *electronic);
 
-static void Save_LCAO_Col( int n, int MaxN, int myid1, int *is2, int *ie2, 
+static void Save_LCAO_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2, int *ie2,
 			   int *MP, double ****OLP0, double **EVec1, 
 			   double **ko, int *NPROCS_WD1, int *Comm_World_StartID1 );
 
-static void Save_DOS_Col( int n, int MaxN, int myid1, int *is2, int *ie2, 
+static void Save_DOS_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2, int *ie2,
 			  int *MP, double *****nh, double ****OLP0, double **EVec1, 
 			  double **ko, int *NPROCS_WD1, int *Comm_World_StartID1 );
 
-
-
-static double Calc_DM_Cluster_collinear(int myid0,
+static double Calc_DM_Cluster_collinear(ClusterColState *state, int myid0,
 					int numprocs0,
 					int myid1,
 					int numprocs1,
@@ -2384,7 +2432,7 @@ static double Calc_DM_Cluster_collinear(int myid0,
 					int *SP_NZeros,
 					int *SP_Atoms , const OpenMXElectronicViews *electronic);
 
-static double Calc_ParDM_Cluster_collinear(
+static double Calc_ParDM_Cluster_collinear(ClusterColState *state,
 					   int myid0,
 					   int numprocs0,
 					   int myid1,
@@ -2405,8 +2453,7 @@ static double Calc_ParDM_Cluster_collinear(
 					   int *SP_NZeros,
 					   int *SP_Atoms );
 
-
-static double Calc_KS_orbitals_on_grid_single(
+static double Calc_KS_orbitals_on_grid_single(ClusterColState *state,
                                         int myid0,
 					int numprocs0,
 					int myid1,
@@ -2430,8 +2477,7 @@ static double Calc_KS_orbitals_on_grid_single(
 					int *SP_NZeros,
 					int *SP_Atoms );
 
-
-static double Calc_HF_Vx_single(
+static double Calc_HF_Vx_single(ClusterColState *state,
     int myid0,
     int numprocs0,
     int myid1,
@@ -2455,12 +2501,10 @@ static double Calc_HF_Vx_single(
     int *SP_NZeros,
     int *SP_Atoms );
 
-
-
-static double Exchange_Poisson( double *work1_on_grid, double *work2_on_grid );
-
+static double Exchange_Poisson(ClusterColState *state,  double *work1_on_grid, double *work2_on_grid );
 
 typedef struct {
+  ClusterColState *state;
   const OpenMXAtomicViews *atomic;
   char *mode;
   int SCF_iter;
@@ -2494,7 +2538,7 @@ typedef struct {
   double *Work1;
   const OpenMXElectronicViews *electronic;
 } Cluster_DFT_Col_arguments;
-static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
+static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -2527,10 +2571,10 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
 static int Cluster_DFT_Col_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   Cluster_DFT_Col_arguments *a=(Cluster_DFT_Col_arguments*)arguments;
-  *result=Cluster_DFT_Col_owned(a->atomic,a->mode,a->SCF_iter,a->SpinP_switch,a->ko,a->nh,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->myworld1,a->NPROCS_ID1,a->Comm_World1,a->NPROCS_WD1,a->Comm_World_StartID1,a->MPI_CommWD1,a->MP,a->is2,a->ie2,a->Ss,a->Cs,a->Hs,a->CDM1,a->EDM1,a->PDM1,a->size_H1,a->SP_NZeros,a->SP_Atoms,a->EVec1,a->Work1,a->electronic,owner);
+  *result=Cluster_DFT_Col_owned(a->state, a->atomic,a->mode,a->SCF_iter,a->SpinP_switch,a->ko,a->nh,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->myworld1,a->NPROCS_ID1,a->Comm_World1,a->NPROCS_WD1,a->Comm_World_StartID1,a->MPI_CommWD1,a->MP,a->is2,a->ie2,a->Ss,a->Cs,a->Hs,a->CDM1,a->EDM1,a->PDM1,a->size_H1,a->SP_NZeros,a->SP_Atoms,a->EVec1,a->Work1,a->electronic,owner);
   return 1;
 }
-double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
+double Cluster_DFT_Col(ClusterColState *state, const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -2561,11 +2605,11 @@ double Cluster_DFT_Col(const OpenMXAtomicViews *atomic,
                    double **EVec1,
                    double *Work1, const OpenMXElectronicViews *electronic)
 {
-  Cluster_DFT_Col_arguments arguments={atomic,mode,SCF_iter,SpinP_switch,ko,nh,CntOLP,CDM,EDM,Eele0,Eele1,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1,electronic};
+  Cluster_DFT_Col_arguments arguments={state,atomic,mode,SCF_iter,SpinP_switch,ko,nh,CntOLP,CDM,EDM,Eele0,Eele1,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1,electronic};
   return OpenMX_Solver_Run(Cluster_DFT_Col_operation,&arguments);
 }
 
-static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
+static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -2602,7 +2646,6 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   int mgpu_scope_previous = openmx_mgpu_scope_enter(
       scf_eigen_lib_flag == GPUSOLVER && !gpusolver2_flag);
 
-  static int firsttime=1;
   int i,j,l,n,n2,n1,i1,i1s,j1,k1,l1;
   int wan,HOMO0,HOMO1;
   int spin,po,num0,num1,ires;
@@ -2665,7 +2708,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   MPI_Comm_size(MPI_CommWD1[myworld1],&numprocs1);
   MPI_Comm_rank(MPI_CommWD1[myworld1],&myid1);
 
-  if (SCF_iter==1) ClusterCol_cpu_overlap_n = 0;
+  if (SCF_iter==1) state->cpu_overlap_n = 0;
 
   /****************************************************
              calculation of the array size
@@ -2765,15 +2808,15 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
 
     /* a solve outside the root dense path is an FP64 one; only SCF solves
        are refined */
-    ClusterCol_refine.last_refined = 0;
-    ClusterCol_refine.scf_mode = (strcasecmp(mode,"scf")==0);
+    state->refine.last_refined = 0;
+    state->refine.scf_mode = (strcasecmp(mode,"scf")==0);
     if (scf_eigen_lib_flag==GPUSOLVER && gpusolver2_flag==0 && (openmx_mgpu_host_required() || Cluster_DFT_Col_GpuSwitchNum()<=n)){
-      gpu_diag_mode = ClusterCol_GpuDiagFits(SCF_iter,n,myworld1,myid1,numprocs0);
+      gpu_diag_mode = ClusterCol_GpuDiagFits(state, SCF_iter,n,myworld1,myid1,numprocs0);
     }
     if (gpu_diag_mode!=0){
       ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
-      firsttime = 0;
-      ClusterCol_GpuSolverRootDensePath(SCF_iter,SpinP_switch,ko,nh,CntOLP,
+      state->firsttime = 0;
+      ClusterCol_GpuSolverRootDensePath(state, SCF_iter,SpinP_switch,ko,nh,CntOLP,
                                        numprocs0,myid0,myworld1,numprocs1,myid1,
                                        MPI_CommWD1,Comm_World_StartID1,gpu_diag_mode,
                                        MP,is2,ie2,n,MaxN,EVec1);
@@ -2782,10 +2825,10 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
     /* the distributed capacity fallback of a spin-polarized run: both spins
        on the grid over all ranks (see ClusterCol_UnionGrid_Ensure) */
     if (!gpusolver2_flag && SpinP_switch==1 && numprocs0>1 &&
-        ClusterCol_gs2_fallback_n==n && ClusterCol_ugrid.n==n){
+        state->gs2_fallback_n==n && state->ugrid.n==n){
       ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
-      firsttime = 0;
-      ClusterCol_UnionGs2Path(n,MaxN,ko,nh,CntOLP,MP,myworld1,myid1,is2,ie2,
+      state->firsttime = 0;
+      ClusterCol_UnionGs2Path(state, n,MaxN,ko,nh,CntOLP,MP,myworld1,myid1,is2,ie2,
                               NPROCS_WD1,Comm_World_StartID1,EVec1);
       goto diagonalize_finished;
     }
@@ -2798,7 +2841,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
 
   MPI_Barrier(mpi_comm_level1);
 
-  if (ClusterCol_cpu_overlap_n!=n){
+  if (state->cpu_overlap_n!=n){
     Overlap_Cluster_Ss(CntOLP,Cs,MP,myworld1);
   }
 
@@ -2811,7 +2854,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
     } 
   }
 
-  if (ClusterCol_cpu_overlap_n!=n){
+  if (state->cpu_overlap_n!=n){
 
     if (measure_time) dtime(&stime);
 
@@ -2821,7 +2864,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
     mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
     mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-    if (ClusterCol_UseGs2(n)){
+    if (ClusterCol_UseGs2(state, n)){
 
       /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels) */
       int gs2_info = openmx_gs2_eigen_real(n, n, Cs, descC, &ko[0][1], Ss, descS);
@@ -2879,7 +2922,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
 	Ss[j*na_rows+i] = Ss[j*na_rows+i]*ko[0][jg];
       }
     }
-    ClusterCol_cpu_overlap_n = n;
+    state->cpu_overlap_n = n;
 
     if (measure_time){
       dtime(&etime);
@@ -3004,7 +3047,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
 
   /* for PrintMemory */
 
-  if (firsttime && memoryusage_fileout){
+  if (state->firsttime && memoryusage_fileout){
     PrintMemory("Cluster_DFT_Col: is1",sizeof(int)*numprocs1,NULL);
     PrintMemory("Cluster_DFT_Col: ie1",sizeof(int)*numprocs1,NULL);
     PrintMemory("Cluster_DFT_Col: Num_Snd_EV",sizeof(int)*numprocs1,NULL);
@@ -3016,7 +3059,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
     PrintMemory("Cluster_DFT_Col: EVec_Snd",sizeof(double)*Max_Num_Snd_EV,NULL);
     PrintMemory("Cluster_DFT_Col: EVec_Rcv",sizeof(double)*Max_Num_Rcv_EV,NULL);
   }
-  firsttime=0;
+  state->firsttime=0;
 
   /* spin=myworld1 */
 
@@ -3035,7 +3078,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   }
 
   Cblacs_barrier(ictxt1,"A");
-  if (ClusterCol_UseGs2(n))
+  if (ClusterCol_UseGs2(state, n))
     openmx_gs2_pdgemm_("N","N",&n,&n,&n,&alpha,Hs,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&beta,Cs,&ONE,&ONE,descC);
   else
     F77_NAME(pdgemm,PDGEMM)("N","N",&n,&n,&n,&alpha,Hs,&ONE,&ONE,descH,Ss,&ONE,&ONE,descS,&beta,Cs,&ONE,&ONE,descC);
@@ -3047,7 +3090,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   }
 
   Cblacs_barrier(ictxt1,"C");
-  if (ClusterCol_UseGs2(n))
+  if (ClusterCol_UseGs2(state, n))
     openmx_gs2_pdgemm_("T","N",&n,&n,&n,&alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&beta,Hs,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","N",&n,&n,&n,&alpha,Ss,&ONE,&ONE,descS,Cs,&ONE,&ONE,descC,&beta,Hs,&ONE,&ONE,descH);
@@ -3070,7 +3113,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
   mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
 
-  if (ClusterCol_UseGs2(n)){
+  if (ClusterCol_UseGs2(state, n)){
 
     /* distributed multi-GPU eigensolver (ELPA, NVIDIA GPU kernels); all n
        eigenvalues are returned but only the lowest MaxN eigenvectors */
@@ -3115,7 +3158,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   for (i=0; i<na_rows*na_cols; i++) Hs[i] = 0.0;
 
   Cblacs_barrier(ictxt1,"A");
-  if (ClusterCol_UseGs2(n))
+  if (ClusterCol_UseGs2(state, n))
     openmx_gs2_pdgemm_("T","T",&n,&n,&n,&alpha,Cs,&ONE,&ONE,descC,Ss,&ONE,&ONE,descS,&beta,Hs,&ONE,&ONE,descH);
   else
     F77_NAME(pdgemm,PDGEMM)("T","T",&n,&n,&n,&alpha,Cs,&ONE,&ONE,descC,Ss,&ONE,&ONE,descS,&beta,Hs,&ONE,&ONE,descH);
@@ -3639,7 +3682,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
                   for up and down spins
     ****************************************************/
 
-    time6 += Calc_DM_Cluster_collinear( myid0,numprocs0,myid1,numprocs1,myworld1,
+    time6 += Calc_DM_Cluster_collinear(state,  myid0,numprocs0,myid1,numprocs1,myworld1,
 					size_H1,is2,ie2,MP,n,MPI_CommWD1,Comm_World_StartID1,
 					CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms, electronic);
 
@@ -3649,7 +3692,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
 
     if ( strcasecmp(mode,"ParDM")==0 ){
 
-      time6 += Calc_ParDM_Cluster_collinear( myid0,numprocs0,myid1,numprocs1,myworld1,
+      time6 += Calc_ParDM_Cluster_collinear(state,  myid0,numprocs0,myid1,numprocs1,myworld1,
   			  		     size_H1,is2,ie2,MP,n,MPI_CommWD1,Comm_World_StartID1,
 					     ParDM,ko,CDM1,Work1,EVec1,SP_NZeros,SP_Atoms);
     }
@@ -4007,15 +4050,15 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   } /* if ( strcasecmp(mode,"scf")==0 ) */
 
   else if ( strcasecmp(mode,"dos")==0 ){
-    Save_DOS_Col(n,MaxN,myid1,is2,ie2,MP,nh,CntOLP,EVec1,ko,NPROCS_WD1,Comm_World_StartID1);
+    Save_DOS_Col(state, n,MaxN,myid1,is2,ie2,MP,nh,CntOLP,EVec1,ko,NPROCS_WD1,Comm_World_StartID1);
   }
 
   else if ( strcasecmp(mode,"lcaoout")==0 ){
-    Save_LCAO_Col(n,MaxN,myid1,is2,ie2,MP,CntOLP,EVec1,ko,NPROCS_WD1,Comm_World_StartID1);
+    Save_LCAO_Col(state, n,MaxN,myid1,is2,ie2,MP,CntOLP,EVec1,ko,NPROCS_WD1,Comm_World_StartID1);
   }
 
   else if ( strcasecmp(mode,"xanes")==0 ){
-    Calc_XANES_Col(atomic,  n,MaxN,myid1,ko,nh,CntOLP,CDM,EDM,Eele0,Eele1,myworld1,NPROCS_ID1,
+    Calc_XANES_Col(state, atomic,  n,MaxN,myid1,ko,nh,CntOLP,CDM,EDM,Eele0,Eele1,myworld1,NPROCS_ID1,
                     Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,
                     MP,is2,ie2,Ss,Cs,Hs,CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1,Work1, electronic);
   }
@@ -4037,7 +4080,7 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
 
   ;
 
-  if (strcasecmp(mode,"scf")==0) ClusterCol_TrimScratch();
+  if (strcasecmp(mode,"scf")==0) ClusterCol_TrimScratch(state);
 
   /* for elapsed time */
 
@@ -4048,14 +4091,10 @@ static double Cluster_DFT_Col_owned(const OpenMXAtomicViews *atomic,
   return time0;
 }
 
-
-
-
-
 /* The local eigenvector panel already stores each basis row contiguously.
    Read it directly instead of duplicating both atoms' rows in every OpenMP
    thread.  size_t row offsets also cover panels larger than INT_MAX entries. */
-static void ClusterCol_AccumulateDM_CPU(int size_H1, int nk, int *MP,
+static void ClusterCol_AccumulateDM_CPU(ClusterColState *state, int size_H1, int nk, int *MP,
                                         const double *occ, const double *eig, const double *docc,
                                         const double *evec, double *DM1, double *EDM1, double *PDM1)
 {
@@ -4066,7 +4105,7 @@ static void ClusterCol_AccumulateDM_CPU(int size_H1, int nk, int *MP,
     /* Empty state partitions contribute only the caller's zeroed arrays. */
     if (nk<=0) return;
 
-    atom_p = (size_t*)ClusterCol_MallocArray((size_t)atomnum+1,sizeof(size_t),"CPU DM atom offsets");
+    atom_p = (size_t*)ClusterCol_MallocArray(state, (size_t)atomnum+1,sizeof(size_t),"CPU DM atom offsets");
     for (int GA_AN=1; GA_AN<=atomnum; GA_AN++){
         const int tnoA = Spe_Total_CNO[WhatSpecies[GA_AN]];
         atom_p[GA_AN] = pcount;
@@ -4076,7 +4115,7 @@ static void ClusterCol_AccumulateDM_CPU(int size_H1, int nk, int *MP,
         }
     }
     if (pcount!=(size_t)size_H1){
-        openmx_core_native_free(Cluster_DFT_Col_resources,atom_p);
+        openmx_core_native_free(state->resources,atom_p);
         ClusterCol_AbortWithMessage("CPU DM entry count mismatch in Cluster_DFT_Col.c.");
     }
 
@@ -4115,10 +4154,10 @@ static void ClusterCol_AccumulateDM_CPU(int size_H1, int nk, int *MP,
             }
         }
     }
-    openmx_core_native_free(Cluster_DFT_Col_resources,atom_p);
+    openmx_core_native_free(state->resources,atom_p);
 }
 
-double Calc_DM_Cluster_collinear(
+double Calc_DM_Cluster_collinear(ClusterColState *state,
     int myid0,
     int numprocs0,
     int myid1,
@@ -4161,8 +4200,8 @@ double Calc_DM_Cluster_collinear(
 
   /* allocation of arrays */
 
-  FF = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*(n+1),0);
-  dFF = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*(n+1),0);
+  FF = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*(n+1),0);
+  dFF = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*(n+1),0);
 
   /* spin=myworld1 */
 
@@ -4223,8 +4262,8 @@ double Calc_DM_Cluster_collinear(
   if(dm_collective){
     int nk=dm_requested && kmin<=kmax?kmax-kmin+1:0;
     int stride=nk;const double *device=NULL;
-    if(nk){ClusterCol_DMEntryCache_Ensure(MP,n);device=ClusterCol_DeviceEvecStash(spin,n,kmin,kmax,&stride);}
-    ClusterColDMEntryCache *cache=&ClusterCol_dm_entry_cache;
+    if(nk){ClusterCol_DMEntryCache_Ensure(state, MP,n);device=ClusterCol_DeviceEvecStash(state, spin,n,kmin,kmax,&stride);}
+    ClusterColDMEntryCache *cache=&state->dm_entry_cache;
     double *outputs[10]={DM1,EDM1,cal_partial_charge?PDM1:NULL};
     openmx_gpu_dm_collective(mpi_comm_level1,OPENMX_GPU_DM_REAL,n,nk,device?stride:nk,
       nk?cache->entry_count:0,device?(const void*)device:(const void*)EVec1[spin],device==NULL,
@@ -4234,7 +4273,7 @@ double Calc_DM_Cluster_collinear(
   }
 
   if (!gpu_dm_done && kmin<=kmax){
-    ClusterCol_AccumulateDM_CPU(size_H1,kmax-kmin+1,MP,FF+kmin,ko[spin]+kmin,
+    ClusterCol_AccumulateDM_CPU(state, size_H1,kmax-kmin+1,MP,FF+kmin,ko[spin]+kmin,
                                cal_partial_charge ? dFF+kmin : NULL,EVec1[spin],
                                DM1,EDM1,cal_partial_charge ? PDM1 : NULL);
   }
@@ -4420,8 +4459,8 @@ double Calc_DM_Cluster_collinear(
 
   /* freeing of arrays */
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,dFF);
-  openmx_core_native_free(Cluster_DFT_Col_resources,FF);
+  openmx_core_native_free(state->resources,dFF);
+  openmx_core_native_free(state->resources,FF);
 
   dtime(&etime);
   if (ClusterCol_DMProfileEnabled()){
@@ -4433,10 +4472,7 @@ double Calc_DM_Cluster_collinear(
 
 }
 
-
-
-
-double Calc_ParDM_Cluster_collinear(
+double Calc_ParDM_Cluster_collinear(ClusterColState *state,
     int myid0,
     int numprocs0,
     int myid1,
@@ -4473,16 +4509,16 @@ double Calc_ParDM_Cluster_collinear(
 
   /* allocation of arrays */
 
-  windowF = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*(n+1),0);
+  windowF = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*(n+1),0);
 
-  TmpEVec0 = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*List_YOUSO[7],0);
+  TmpEVec0 = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*List_YOUSO[7],0);
   for (i=0; i<List_YOUSO[7]; i++){
-    TmpEVec0[i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*(kmax-kmin+1),0);
+    TmpEVec0[i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*(kmax-kmin+1),0);
   }
 
-  TmpEVec1 = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*List_YOUSO[7],0);
+  TmpEVec1 = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*List_YOUSO[7],0);
   for (i=0; i<List_YOUSO[7]; i++){
-    TmpEVec1[i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*(kmax-kmin+1),0);
+    TmpEVec1[i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*(kmax-kmin+1),0);
   }
 
   /* spin=myworld1 */
@@ -4708,30 +4744,24 @@ double Calc_ParDM_Cluster_collinear(
 
   /* freeing of arrays */
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,windowF);
+  openmx_core_native_free(state->resources,windowF);
 
   for (i=0; i<List_YOUSO[7]; i++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,TmpEVec0[i]);
+    openmx_core_native_free(state->resources,TmpEVec0[i]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,TmpEVec0);
+  openmx_core_native_free(state->resources,TmpEVec0);
 
   for (i=0; i<List_YOUSO[7]; i++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,TmpEVec1[i]);
+    openmx_core_native_free(state->resources,TmpEVec1[i]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,TmpEVec1);
+  openmx_core_native_free(state->resources,TmpEVec1);
 
   dtime(&etime);
   return (etime-stime);
 
 }
 
-
-  
-
-
-
-
-void Save_DOS_Col( int n, int MaxN, int myid1, int *is2, int *ie2, 
+void Save_DOS_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2, int *ie2,
                    int *MP, double *****nh, double ****OLP0, double **EVec1, 
                    double **ko, int *NPROCS_WD1, int *Comm_World_StartID1 )
 {
@@ -4759,25 +4789,25 @@ void Save_DOS_Col( int n, int MaxN, int myid1, int *is2, int *ie2,
 
   /* allocation of arrays */
 
-  array0 = (float*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(float)*(n+2),0);
-  is3 = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*numprocs,0);
-  ie3 = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*numprocs,0);
-  SD = (float*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(float)*(atomnum+1)*List_YOUSO[7],0);
+  array0 = (float*)openmx_core_native_malloc(state->resources,1,sizeof(float)*(n+2),0);
+  is3 = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*numprocs,0);
+  ie3 = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*numprocs,0);
+  SD = (float*)openmx_core_native_malloc(state->resources,1,sizeof(float)*(atomnum+1)*List_YOUSO[7],0);
   
   if (COHP_calc_flag==1){
-    COHP = (double***)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double**)*COHP_num_pairs,0);
+    COHP = (double***)openmx_core_native_malloc(state->resources,1,sizeof(double**)*COHP_num_pairs,0);
     for (i=0; i<COHP_num_pairs; i++){
-      COHP[i] = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*List_YOUSO[7],0);
+      COHP[i] = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*List_YOUSO[7],0);
       for (j=0; j<List_YOUSO[7]; j++){
-        COHP[i][j] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*List_YOUSO[7],0);
+        COHP[i][j] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*List_YOUSO[7],0);
       }    
     }
 
-    COOP = (double***)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double**)*COHP_num_pairs,0);
+    COOP = (double***)openmx_core_native_malloc(state->resources,1,sizeof(double**)*COHP_num_pairs,0);
     for (i=0; i<COHP_num_pairs; i++){
-      COOP[i] = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*List_YOUSO[7],0);
+      COOP[i] = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*List_YOUSO[7],0);
       for (j=0; j<List_YOUSO[7]; j++){
-        COOP[i][j] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*List_YOUSO[7],0);
+        COOP[i][j] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*List_YOUSO[7],0);
       }    
     }
   }
@@ -5114,32 +5144,28 @@ void Save_DOS_Col( int n, int MaxN, int myid1, int *is2, int *ie2,
   if (COHP_calc_flag==1){
     for (i=0; i<COHP_num_pairs; i++){
       for (j=0; j<List_YOUSO[7]; j++){
-        openmx_core_native_free(Cluster_DFT_Col_resources,COHP[i][j]);
+        openmx_core_native_free(state->resources,COHP[i][j]);
       }    
-      openmx_core_native_free(Cluster_DFT_Col_resources,COHP[i]);
+      openmx_core_native_free(state->resources,COHP[i]);
     }
-    openmx_core_native_free(Cluster_DFT_Col_resources,COHP);
+    openmx_core_native_free(state->resources,COHP);
 
     for (i=0; i<COHP_num_pairs; i++){
       for (j=0; j<List_YOUSO[7]; j++){
-        openmx_core_native_free(Cluster_DFT_Col_resources,COOP[i][j]);
+        openmx_core_native_free(state->resources,COOP[i][j]);
       }    
-      openmx_core_native_free(Cluster_DFT_Col_resources,COOP[i]);
+      openmx_core_native_free(state->resources,COOP[i]);
     }
-    openmx_core_native_free(Cluster_DFT_Col_resources,COOP);
+    openmx_core_native_free(state->resources,COOP);
   }
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,SD);
-  openmx_core_native_free(Cluster_DFT_Col_resources,array0);
-  openmx_core_native_free(Cluster_DFT_Col_resources,is3);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ie3);
+  openmx_core_native_free(state->resources,SD);
+  openmx_core_native_free(state->resources,array0);
+  openmx_core_native_free(state->resources,is3);
+  openmx_core_native_free(state->resources,ie3);
 }
 
-
-
-
-
-void Save_LCAO_Col( int n, int MaxN, int myid1, int *is2, int *ie2, 
+void Save_LCAO_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2, int *ie2,
                     int *MP, double ****OLP0, double **EVec1, 
                     double **ko, int *NPROCS_WD1, int *Comm_World_StartID1 )
 {
@@ -5165,9 +5191,9 @@ void Save_LCAO_Col( int n, int MaxN, int myid1, int *is2, int *ie2,
 
   /* allocation of arrays */
 
-  array0 = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*(n+2),0);
-  is3 = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*numprocs,0);
-  ie3 = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*numprocs,0);
+  array0 = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*(n+2),0);
+  is3 = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*numprocs,0);
+  ie3 = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*numprocs,0);
 
   /* open file pointer */
 
@@ -5303,15 +5329,12 @@ void Save_LCAO_Col( int n, int MaxN, int myid1, int *is2, int *ie2,
 
   /* freeing of array */
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,array0);
-  openmx_core_native_free(Cluster_DFT_Col_resources,is3);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ie3);
+  openmx_core_native_free(state->resources,array0);
+  openmx_core_native_free(state->resources,is3);
+  openmx_core_native_free(state->resources,ie3);
 }
 
-
-
-
-void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1,
+void Calc_XANES_Col(ClusterColState *state, const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1,
 		     double **ko,
 		     double *****nh, 
 		     double ****CntOLP,
@@ -5384,13 +5407,13 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 
   /* allocation of arrays */
 
-  array0 = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*(n+2),0);
-  is3 = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*numprocs,0);
-  ie3 = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*numprocs,0);
+  array0 = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*(n+2),0);
+  is3 = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*numprocs,0);
+  ie3 = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*numprocs,0);
 
-  C2 = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*(SpinP_switch+1),0);
+  C2 = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*(SpinP_switch+1),0);
   for (spin=0; spin<=SpinP_switch; spin++){
-    C2[spin] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*n*MaxN,0);
+    C2[spin] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*n*MaxN,0);
   }
 
   /* set iemin and imax */
@@ -5499,9 +5522,9 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 
     /* allocation of C1 */
 
-    C1 = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*(SpinP_switch1+1),0);
+    C1 = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*(SpinP_switch1+1),0);
     for (spin=0; spin<=SpinP_switch1; spin++){
-      C1[spin] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*n1*MaxN1,0);
+      C1[spin] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*n1*MaxN1,0);
     }
 
     /* read LCAO coefficients */
@@ -5526,10 +5549,10 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 
   /* OLPmo: matrix for momentum operator */
 
-  OLPmo = (double*****)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double****)*3,0);
+  OLPmo = (double*****)openmx_core_native_malloc(state->resources,1,sizeof(double****)*3,0);
   for (direction=0; direction<3; direction++){
 
-    OLPmo[direction] = (double****)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double***)*(Matomnum+1),0);
+    OLPmo[direction] = (double****)openmx_core_native_malloc(state->resources,1,sizeof(double***)*(Matomnum+1),0);
     FNAN[0] = 0;
     for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
 
@@ -5543,7 +5566,7 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 	tno0 = atomic->species.contracted_orbitals[Cwan];
       }
 
-      OLPmo[direction][Mc_AN] = (double***)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double**)*(FNAN[Gc_AN]+1),0);
+      OLPmo[direction][Mc_AN] = (double***)openmx_core_native_malloc(state->resources,1,sizeof(double**)*(FNAN[Gc_AN]+1),0);
       for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
 
 	if (Mc_AN==0){
@@ -5555,9 +5578,9 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 	  tno1 = atomic->species.contracted_orbitals[Hwan];
 	}
 
-	OLPmo[direction][Mc_AN][h_AN] = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*tno0,0);
+	OLPmo[direction][Mc_AN][h_AN] = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*tno0,0);
 	for (i=0; i<tno0; i++){
-	  OLPmo[direction][Mc_AN][h_AN][i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*tno1,0);
+	  OLPmo[direction][Mc_AN][h_AN][i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*tno1,0);
 	}
       }
     }
@@ -5569,7 +5592,7 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 
   /* set MP */
 
-  MP2 = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*(atomnum+1),0);
+  MP2 = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*(atomnum+1),0);
 
   p = 0; 
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
@@ -5640,34 +5663,34 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 
   /* allocation of arrays */
 
-  XANES_Out = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*Num_XANES_Out,0);
+  XANES_Out = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*Num_XANES_Out,0);
   for (i=0; i<Num_XANES_Out; i++){
-    XANES_Out[i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*10,0);
+    XANES_Out[i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*10,0);
   }
 
-  Z = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*(SpinP_switch+1),0);
+  Z = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*(SpinP_switch+1),0);
   for (spin=0; spin<=SpinP_switch; spin++){
-    Z[spin] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*UMOmax*UMOmax,0);
+    Z[spin] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*UMOmax*UMOmax,0);
   }
 
-  Ax = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*(SpinP_switch+1),0);
+  Ax = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*(SpinP_switch+1),0);
   for (spin=0; spin<=SpinP_switch; spin++){
-    Ax[spin] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*UMOmax*UMOmax,0);
+    Ax[spin] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*UMOmax*UMOmax,0);
   }
 
-  Ay = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*(SpinP_switch+1),0);
+  Ay = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*(SpinP_switch+1),0);
   for (spin=0; spin<=SpinP_switch; spin++){
-    Ay[spin] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*UMOmax*UMOmax,0);
+    Ay[spin] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*UMOmax*UMOmax,0);
   }
 
-  Az = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*(SpinP_switch+1),0);
+  Az = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*(SpinP_switch+1),0);
   for (spin=0; spin<=SpinP_switch; spin++){
-    Az[spin] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*UMOmax*UMOmax,0);
+    Az[spin] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*UMOmax*UMOmax,0);
   }
 
-  ind2ind = (int**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int*)*(SpinP_switch+1),0);
+  ind2ind = (int**)openmx_core_native_malloc(state->resources,1,sizeof(int*)*(SpinP_switch+1),0);
   for (spin=0; spin<=SpinP_switch; spin++){
-    ind2ind[spin] = (int*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*UMOmax,0);
+    ind2ind[spin] = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*UMOmax,0);
   }
 
   /**************************************************************
@@ -5775,7 +5798,7 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 
       Utot3 = Utot2 + ko[spin0][p+k] - ko[spin0][p];
 
-      Calc_Oscillator_Strength( n, UMOmax, HOMO_XANES, MP2, ind2ind, C1, C2, Z, Ax, Ay, Az, Utot1, Utot3, XANES_Res );
+      Calc_Oscillator_Strength(state,  n, UMOmax, HOMO_XANES, MP2, ind2ind, C1, C2, Z, Ax, Ay, Az, Utot1, Utot3, XANES_Res );
 
       XANES_Out[k][0] = XANES_Res[0];
       XANES_Out[k][1] = XANES_Res[1];
@@ -5823,50 +5846,50 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
   *******************************************************/
 
   for (i=0; i<Num_XANES_Out; i++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,XANES_Out[i]);
+    openmx_core_native_free(state->resources,XANES_Out[i]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,XANES_Out);
+  openmx_core_native_free(state->resources,XANES_Out);
 
   for (spin=0; spin<=SpinP_switch; spin++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,Z[spin]);
+    openmx_core_native_free(state->resources,Z[spin]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,Z);
+  openmx_core_native_free(state->resources,Z);
 
   for (spin=0; spin<=SpinP_switch; spin++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,Ax[spin]);
+    openmx_core_native_free(state->resources,Ax[spin]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,Ax);
+  openmx_core_native_free(state->resources,Ax);
 
   for (spin=0; spin<=SpinP_switch; spin++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,Ay[spin]);
+    openmx_core_native_free(state->resources,Ay[spin]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,Ay);
+  openmx_core_native_free(state->resources,Ay);
 
   for (spin=0; spin<=SpinP_switch; spin++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,Az[spin]);
+    openmx_core_native_free(state->resources,Az[spin]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,Az);
+  openmx_core_native_free(state->resources,Az);
 
   for (spin=0; spin<=SpinP_switch; spin++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,ind2ind[spin]);
+    openmx_core_native_free(state->resources,ind2ind[spin]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,ind2ind);
+  openmx_core_native_free(state->resources,ind2ind);
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,MP2);
+  openmx_core_native_free(state->resources,MP2);
 
   for (spin=0; spin<=SpinP_switch; spin++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,C2[spin]);
+    openmx_core_native_free(state->resources,C2[spin]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,C2);
+  openmx_core_native_free(state->resources,C2);
 
   for (spin=0; spin<=SpinP_switch1; spin++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,C1[spin]);
+    openmx_core_native_free(state->resources,C1[spin]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,C1);
+  openmx_core_native_free(state->resources,C1);
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,array0);
-  openmx_core_native_free(Cluster_DFT_Col_resources,is3);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ie3);
+  openmx_core_native_free(state->resources,array0);
+  openmx_core_native_free(state->resources,is3);
+  openmx_core_native_free(state->resources,ie3);
 
   for (direction=0; direction<3; direction++){
 
@@ -5895,25 +5918,19 @@ void Calc_XANES_Col(const OpenMXAtomicViews *atomic,  int n, int MaxN, int myid1
 	}
 
 	for (i=0; i<tno0; i++){
-	  openmx_core_native_free(Cluster_DFT_Col_resources,OLPmo[direction][Mc_AN][h_AN][i]);
+	  openmx_core_native_free(state->resources,OLPmo[direction][Mc_AN][h_AN][i]);
 	}
-	openmx_core_native_free(Cluster_DFT_Col_resources,OLPmo[direction][Mc_AN][h_AN]);
+	openmx_core_native_free(state->resources,OLPmo[direction][Mc_AN][h_AN]);
       }
-      openmx_core_native_free(Cluster_DFT_Col_resources,OLPmo[direction][Mc_AN]);
+      openmx_core_native_free(state->resources,OLPmo[direction][Mc_AN]);
     }
-    openmx_core_native_free(Cluster_DFT_Col_resources,OLPmo[direction]);
+    openmx_core_native_free(state->resources,OLPmo[direction]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,OLPmo);
+  openmx_core_native_free(state->resources,OLPmo);
   OLPmo=NULL;
 }
 
-
-
-
-
-
-
-double Calc_Oscillator_Strength( int n, int UMOmax, int Nocc[2], int *MP,
+double Calc_Oscillator_Strength(ClusterColState *state,  int n, int UMOmax, int Nocc[2], int *MP,
                                  int **ind2ind, 
                                  double **Z0, double **A, double **Z,
                                  double **Ax, double **Ay, double **Az,
@@ -5950,7 +5967,7 @@ double Calc_Oscillator_Strength( int n, int UMOmax, int Nocc[2], int *MP,
   /* calculation of the inverse Z0 */
 
   for (spin=0; spin<=SpinP_switch; spin++){
-    det[spin] = Lapack_LU_Dinverse(Nocc[spin], Z0[spin]);
+    det[spin] = Lapack_LU_Dinverse(state, Nocc[spin], Z0[spin]);
   }
 
   /* calculation of Z0^{-1} * det */
@@ -6050,12 +6067,9 @@ double Calc_Oscillator_Strength( int n, int UMOmax, int Nocc[2], int *MP,
   return (etime-stime);
 }
 
-
-
-
-double Lapack_LU_Dinverse(int n, double *A)
+double Lapack_LU_Dinverse(ClusterColState *state, int n, double *A)
 {
-  static char *thisprogram="Lapack_LU_inverse";
+  const char *thisprogram="Lapack_LU_inverse";
   int *ipiv;
   double *work,tmp,det;
   int lwork;
@@ -6063,7 +6077,7 @@ double Lapack_LU_Dinverse(int n, double *A)
 
   /* L*U factorization */
 
-  ipiv = (int*) openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(int)*n,0);
+  ipiv = (int*) openmx_core_native_malloc(state->resources,1,sizeof(int)*n,0);
 
   F77_NAME(dgetrf,DGETRF)(&n,&n,A,&n,ipiv,&info);
 
@@ -6094,7 +6108,7 @@ double Lapack_LU_Dinverse(int n, double *A)
   /* inverse L*U factorization */
 
   lwork = 4*n;
-  work = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*lwork,0);
+  work = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*lwork,0);
 
   F77_NAME(dgetri,DGETRI)(&n, A, &n, ipiv, work, &lwork, &info);
 
@@ -6102,15 +6116,12 @@ double Lapack_LU_Dinverse(int n, double *A)
     printf("dgetrf failed, info=%i, %s\n",info,thisprogram);
   }
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,work); openmx_core_native_free(Cluster_DFT_Col_resources,ipiv);
+  openmx_core_native_free(state->resources,work); openmx_core_native_free(state->resources,ipiv);
 
   return det;
 }
 
-
-
-
-double Calc_KS_orbitals_on_grid_single(
+double Calc_KS_orbitals_on_grid_single(ClusterColState *state,
     int myid0,
     int numprocs0,
     int myid1,
@@ -6155,30 +6166,30 @@ double Calc_KS_orbitals_on_grid_single(
 
   Nmax = Cluster_HOMO[0];
 
-  work1_on_grid = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
-  work2_on_grid = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+  work1_on_grid = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
+  work2_on_grid = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
   
-  phi_on_grid = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*Nmax,0);
+  phi_on_grid = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*Nmax,0);
   for (i=0; i<Nmax; i++){
-    phi_on_grid[i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+    phi_on_grid[i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
     for (j=0; j<TNumGrid; j++){
       phi_on_grid[i][j] = 0.0;
     }
   }
 
-  b_on_grid = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*Nmax,0);
+  b_on_grid = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*Nmax,0);
   for (i=0; i<Nmax; i++){
-    b_on_grid[i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+    b_on_grid[i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
     for (j=0; j<TNumGrid; j++){
       b_on_grid[i][j] = 0.0;
     }
   }
 
-  B = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*Nmax*Nmax,0);
-  ev = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*Nmax,0);
+  B = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*Nmax*Nmax,0);
+  ev = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*Nmax,0);
 
-  asum = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*List_YOUSO[7],0);
-  proj_chi = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*n,0);
+  asum = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*List_YOUSO[7],0);
+  proj_chi = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*n,0);
 
   /* loop fof orb for the calculation of phi on grid */
   
@@ -6227,7 +6238,7 @@ double Calc_KS_orbitals_on_grid_single(
 
         if (measure_time) dtime(&stime1);
 	
-	Exchange_Poisson( work1_on_grid, work2_on_grid );
+	Exchange_Poisson(state,  work1_on_grid, work2_on_grid );
 
 	if (measure_time){
 	  dtime(&etime1);
@@ -6254,7 +6265,7 @@ double Calc_KS_orbitals_on_grid_single(
 
       for (GN=0; GN<TNumGrid; GN++){ work1_on_grid[GN] *= phi_on_grid[orb1][GN]; }
       
-      Exchange_Poisson( work1_on_grid, work2_on_grid );
+      Exchange_Poisson(state,  work1_on_grid, work2_on_grid );
 
       for (GN=0; GN<TNumGrid; GN++){ work1_on_grid[GN] = 0.0; }
       for (orb2=0; orb2<Nmax; orb2++){
@@ -6287,7 +6298,7 @@ double Calc_KS_orbitals_on_grid_single(
       }
       printf("ZZZ1 sum=%15.12f\n",sum);
       
-      Exchange_Poisson( work1_on_grid, work2_on_grid );
+      Exchange_Poisson(state,  work1_on_grid, work2_on_grid );
 
       sum = 0.0;
       for (GN=0; GN<TNumGrid; GN++){
@@ -6427,24 +6438,24 @@ double Calc_KS_orbitals_on_grid_single(
   
   /* freeing of arrays */
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,work1_on_grid);
-  openmx_core_native_free(Cluster_DFT_Col_resources,work2_on_grid);
+  openmx_core_native_free(state->resources,work1_on_grid);
+  openmx_core_native_free(state->resources,work2_on_grid);
   
   for (i=0; i<Nmax; i++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,phi_on_grid[i]);
+    openmx_core_native_free(state->resources,phi_on_grid[i]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,phi_on_grid);
+  openmx_core_native_free(state->resources,phi_on_grid);
 
   for (i=0; i<Nmax; i++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,b_on_grid[i]);
+    openmx_core_native_free(state->resources,b_on_grid[i]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,b_on_grid);
+  openmx_core_native_free(state->resources,b_on_grid);
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,B);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ev);
+  openmx_core_native_free(state->resources,B);
+  openmx_core_native_free(state->resources,ev);
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,asum);
-  openmx_core_native_free(Cluster_DFT_Col_resources,proj_chi);
+  openmx_core_native_free(state->resources,asum);
+  openmx_core_native_free(state->resources,proj_chi);
 
   //free(Hex);
   
@@ -6453,15 +6464,7 @@ double Calc_KS_orbitals_on_grid_single(
 
 }
 
-
-
-
-
-
-
-
-
-double Exchange_Poisson( double *work1_on_grid, double *work2_on_grid )
+double Exchange_Poisson(ClusterColState *state,  double *work1_on_grid, double *work2_on_grid )
 {
   int i,j,k,k1,k2,k3,GN,GN_in,GN_out;
   double sk1,sk2,sk3,fac_invG2,Gx,Gy,Gz,tmp0;
@@ -6473,11 +6476,11 @@ double Exchange_Poisson( double *work1_on_grid, double *work2_on_grid )
 
   dtime(&stime);
 
-  ReTmp1 = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
-  ImTmp1 = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+  ReTmp1 = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
+  ImTmp1 = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
 
-  ReTmp2 = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
-  ImTmp2 = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+  ReTmp2 = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
+  ImTmp2 = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
   
   in  = fftw_malloc(sizeof(fftw_complex)*List_YOUSO[17]); 
   out = fftw_malloc(sizeof(fftw_complex)*List_YOUSO[17]); 
@@ -6698,11 +6701,11 @@ double Exchange_Poisson( double *work1_on_grid, double *work2_on_grid )
            freeing of arrays
   ***********************************/
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,ReTmp1);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ImTmp1);
+  openmx_core_native_free(state->resources,ReTmp1);
+  openmx_core_native_free(state->resources,ImTmp1);
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,ReTmp2);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ImTmp2);
+  openmx_core_native_free(state->resources,ReTmp2);
+  openmx_core_native_free(state->resources,ImTmp2);
 
   fftw_free(in);
   fftw_free(out);
@@ -6712,10 +6715,7 @@ double Exchange_Poisson( double *work1_on_grid, double *work2_on_grid )
 
 }
 
-
-
-
-double Calc_HF_Vx_single(
+double Calc_HF_Vx_single(ClusterColState *state,
     int myid0,
     int numprocs0,
     int myid1,
@@ -6760,30 +6760,30 @@ double Calc_HF_Vx_single(
 
   Nmax = Cluster_HOMO[0];
 
-  work1_on_grid = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
-  work2_on_grid = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+  work1_on_grid = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
+  work2_on_grid = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
   
-  phi_on_grid = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*Nmax,0);
+  phi_on_grid = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*Nmax,0);
   for (i=0; i<Nmax; i++){
-    phi_on_grid[i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+    phi_on_grid[i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
     for (j=0; j<TNumGrid; j++){
       phi_on_grid[i][j] = 0.0;
     }
   }
 
-  b_on_grid = (double**)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double*)*Nmax,0);
+  b_on_grid = (double**)openmx_core_native_malloc(state->resources,1,sizeof(double*)*Nmax,0);
   for (i=0; i<Nmax; i++){
-    b_on_grid[i] = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*TNumGrid,0);
+    b_on_grid[i] = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*TNumGrid,0);
     for (j=0; j<TNumGrid; j++){
       b_on_grid[i][j] = 0.0;
     }
   }
 
-  B = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*Nmax*Nmax,0);
-  ev = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*Nmax,0);
+  B = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*Nmax*Nmax,0);
+  ev = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*Nmax,0);
 
-  asum = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*List_YOUSO[7],0);
-  proj_chi = (double*)openmx_core_native_malloc(Cluster_DFT_Col_resources,1,sizeof(double)*n,0);
+  asum = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*List_YOUSO[7],0);
+  proj_chi = (double*)openmx_core_native_malloc(state->resources,1,sizeof(double)*n,0);
 
   /* loop fof orb for the calculation of phi on grid */
   
@@ -6830,7 +6830,7 @@ double Calc_HF_Vx_single(
 
       if (measure_time) dtime(&stime1);
 	
-      Exchange_Poisson( work1_on_grid, work2_on_grid );
+      Exchange_Poisson(state,  work1_on_grid, work2_on_grid );
 
       if (measure_time){
 	dtime(&etime1);
@@ -6888,7 +6888,7 @@ double Calc_HF_Vx_single(
   
   /* calculate <chi_i|Vx|chi_j> */
 
-  for (i=0; i<(n*n); i++){ Hex[i] = 0.0; }
+  for (i=0; i<(n*n); i++){ state->Hex[i] = 0.0; }
   
   for (orb=0; orb<Nmax; orb++){
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -6916,7 +6916,7 @@ double Calc_HF_Vx_single(
 
     for (i=0; i<n; i++){
       for (j=0; j<n; j++){
-        Hex[i*n+j] += proj_chi[i]*proj_chi[j]*ev[orb];
+        state->Hex[i*n+j] += proj_chi[i]*proj_chi[j]*ev[orb];
       }
     }
   } // orb
@@ -6934,11 +6934,10 @@ double Calc_HF_Vx_single(
   exit(0);
   */
 
-  
   for (i=0; i<(n*n); i++){
-    Hex[i] = 0.98*Hex0[i] + 0.02*Hex[i];
+    state->Hex[i] = 0.98*state->Hex0[i] + 0.02*state->Hex[i];
     //Hex[i] = 0.0;
-    Hex0[i] = Hex[i];
+    state->Hex0[i] = state->Hex[i];
   }
 
   /*
@@ -6964,24 +6963,24 @@ double Calc_HF_Vx_single(
   
   /* freeing of arrays */
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,work1_on_grid);
-  openmx_core_native_free(Cluster_DFT_Col_resources,work2_on_grid);
+  openmx_core_native_free(state->resources,work1_on_grid);
+  openmx_core_native_free(state->resources,work2_on_grid);
   
   for (i=0; i<Nmax; i++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,phi_on_grid[i]);
+    openmx_core_native_free(state->resources,phi_on_grid[i]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,phi_on_grid);
+  openmx_core_native_free(state->resources,phi_on_grid);
 
   for (i=0; i<Nmax; i++){
-    openmx_core_native_free(Cluster_DFT_Col_resources,b_on_grid[i]);
+    openmx_core_native_free(state->resources,b_on_grid[i]);
   }
-  openmx_core_native_free(Cluster_DFT_Col_resources,b_on_grid);
+  openmx_core_native_free(state->resources,b_on_grid);
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,B);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ev);
+  openmx_core_native_free(state->resources,B);
+  openmx_core_native_free(state->resources,ev);
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,asum);
-  openmx_core_native_free(Cluster_DFT_Col_resources,proj_chi);
+  openmx_core_native_free(state->resources,asum);
+  openmx_core_native_free(state->resources,proj_chi);
 
   //free(Hex);
   
@@ -6989,11 +6988,6 @@ double Calc_HF_Vx_single(
   return (etime-stime);
 
 }
-
-
-
-
-
 
 static void ClusterCol_BuildDenseIndex(const int *order_GA, int *MP, int n, int tnum, int *dense_index)
 {
@@ -7066,7 +7060,7 @@ if (!openmx_gpu_scatter(n,tnum,0,acc_deviceptr((void*)(dense_index)),tnum,acc_de
 #pragma acc exit data delete(H1[0 : tnum])
 }
 
-static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H)
+static void Patch2Device_Cluster_Owner(ClusterColState *state, double ****RH, int *MP, int owns_dense, int n, double *d_H)
 {
   int i,j,k;
   int MA_AN,GA_AN,LB_AN,GB_AN,AN;
@@ -7083,12 +7077,12 @@ static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, i
   MPI_Comm_rank(mpi_comm_level1,&myid);
   MPI_Barrier(mpi_comm_level1);
 
-  My_NZeros = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device My_NZeros");
-  My_Matomnum = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device My_Matomnum");
-  is1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device is1");
-  ie1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device ie1");
-  is2 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device is2");
-  order_GA = (int*)ClusterCol_MallocArray((size_t)(atomnum+2),sizeof(int),"Patch2Device order_GA");
+  My_NZeros = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device My_NZeros");
+  My_Matomnum = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device My_Matomnum");
+  is1 = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device is1");
+  ie1 = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device ie1");
+  is2 = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device is2");
+  order_GA = (int*)ClusterCol_MallocArray(state, (size_t)(atomnum+2),sizeof(int),"Patch2Device order_GA");
 
   My_NZeros[myid] = 0;
   for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
@@ -7150,7 +7144,7 @@ static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, i
     ClusterCol_AbortWithMessage("Orbital count mismatch in Cluster_DFT_Col.c Patch2Device.");
   }
 
-  H1 = (double*)ClusterCol_MallocArray((size_t)(tnum+1),sizeof(double),"Patch2Device sparse buffer");
+  H1 = (double*)ClusterCol_MallocArray(state, (size_t)(tnum+1),sizeof(double),"Patch2Device sparse buffer");
 
   k = is1[myid];
   for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
@@ -7176,20 +7170,20 @@ static void Patch2Device_Cluster_Owner(double ****RH, int *MP, int owns_dense, i
   }
 
   if (owns_dense){
-    dense_index = ClusterCol_DenseIndexCache_Get(order_GA,MP,n,tnum);
+    dense_index = ClusterCol_DenseIndexCache_Get(state, order_GA,MP,n,tnum);
     ClusterCol_BuildDeviceDenseFromPacked(H1,dense_index,tnum,n,d_H);
   }
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,My_NZeros);
-  openmx_core_native_free(Cluster_DFT_Col_resources,My_Matomnum);
-  openmx_core_native_free(Cluster_DFT_Col_resources,is1);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ie1);
-  openmx_core_native_free(Cluster_DFT_Col_resources,is2);
-  openmx_core_native_free(Cluster_DFT_Col_resources,order_GA);
-  openmx_core_native_free(Cluster_DFT_Col_resources,H1);
+  openmx_core_native_free(state->resources,My_NZeros);
+  openmx_core_native_free(state->resources,My_Matomnum);
+  openmx_core_native_free(state->resources,is1);
+  openmx_core_native_free(state->resources,ie1);
+  openmx_core_native_free(state->resources,is2);
+  openmx_core_native_free(state->resources,order_GA);
+  openmx_core_native_free(state->resources,H1);
 }
 
-static void Patch2Host_Cluster_Owner(double ****RH, int *MP, int owns_dense, int n, double *d_H)
+static void Patch2Host_Cluster_Owner(ClusterColState *state, double ****RH, int *MP, int owns_dense, int n, double *d_H)
 {
   int i,j,k;
   int MA_AN,GA_AN,LB_AN,GB_AN,AN;
@@ -7206,12 +7200,12 @@ static void Patch2Host_Cluster_Owner(double ****RH, int *MP, int owns_dense, int
   MPI_Comm_rank(mpi_comm_level1,&myid);
   MPI_Barrier(mpi_comm_level1);
 
-  My_NZeros = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device My_NZeros");
-  My_Matomnum = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device My_Matomnum");
-  is1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device is1");
-  ie1 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device ie1");
-  is2 = (int*)ClusterCol_MallocArray((size_t)numprocs,sizeof(int),"Patch2Device is2");
-  order_GA = (int*)ClusterCol_MallocArray((size_t)(atomnum+2),sizeof(int),"Patch2Device order_GA");
+  My_NZeros = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device My_NZeros");
+  My_Matomnum = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device My_Matomnum");
+  is1 = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device is1");
+  ie1 = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device ie1");
+  is2 = (int*)ClusterCol_MallocArray(state, (size_t)numprocs,sizeof(int),"Patch2Device is2");
+  order_GA = (int*)ClusterCol_MallocArray(state, (size_t)(atomnum+2),sizeof(int),"Patch2Device order_GA");
 
   My_NZeros[myid] = 0;
   for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
@@ -7273,7 +7267,7 @@ static void Patch2Host_Cluster_Owner(double ****RH, int *MP, int owns_dense, int
     ClusterCol_AbortWithMessage("Orbital count mismatch in Cluster_DFT_Col.c Patch2Device.");
   }
 
-  H1 = (double*)ClusterCol_MallocArray((size_t)(tnum+1),sizeof(double),"Patch2Device sparse buffer");
+  H1 = (double*)ClusterCol_MallocArray(state, (size_t)(tnum+1),sizeof(double),"Patch2Device sparse buffer");
 
   k = is1[myid];
   for (MA_AN=1; MA_AN<=Matomnum; MA_AN++){
@@ -7311,29 +7305,29 @@ static void Patch2Host_Cluster_Owner(double ****RH, int *MP, int owns_dense, int
     }
   }
 
-  openmx_core_native_free(Cluster_DFT_Col_resources,My_NZeros);
-  openmx_core_native_free(Cluster_DFT_Col_resources,My_Matomnum);
-  openmx_core_native_free(Cluster_DFT_Col_resources,is1);
-  openmx_core_native_free(Cluster_DFT_Col_resources,ie1);
-  openmx_core_native_free(Cluster_DFT_Col_resources,is2);
-  openmx_core_native_free(Cluster_DFT_Col_resources,order_GA);
-  openmx_core_native_free(Cluster_DFT_Col_resources,H1);
+  openmx_core_native_free(state->resources,My_NZeros);
+  openmx_core_native_free(state->resources,My_Matomnum);
+  openmx_core_native_free(state->resources,is1);
+  openmx_core_native_free(state->resources,ie1);
+  openmx_core_native_free(state->resources,is2);
+  openmx_core_native_free(state->resources,order_GA);
+  openmx_core_native_free(state->resources,H1);
 }
 
 /* Run-boundary reset: geometry and device state must not survive into the
    next -runtest input, whose host allocations can reuse the same addresses.
    Called on every rank before Free_Arrays(0) frees the current system. */
-void Cluster_DFT_Col_Release_GPU_Caches(void)
+static void ClusterCol_ReleaseCaches(ClusterColState *state)
 {
-    ClusterCol_mgpu_host_dense=0;
-    ClusterCol_ResetGs2Fallback();
-    ClusterCol_UnionGrid_Free();
-    ClusterCol_cpu_overlap_n = 0;
-    openmx_core_native_free(Cluster_DFT_Col_resources,ClusterCol_dm_entry_cache.basis0);
-    openmx_core_native_free(Cluster_DFT_Col_resources,ClusterCol_dm_entry_cache.basis1);
-    memset(&ClusterCol_dm_entry_cache, 0, sizeof(ClusterCol_dm_entry_cache));
-    Cluster_DFT_Col_Release_GPU_Solver();
+    state->mgpu_host_dense=0;
+    ClusterCol_ResetGs2Fallback(state);
+    ClusterCol_UnionGrid_Free(state);
+    state->cpu_overlap_n = 0;
+    openmx_core_native_free(state->resources,state->dm_entry_cache.basis0);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.basis1);
+    memset(&state->dm_entry_cache, 0, sizeof(state->dm_entry_cache));
+    Cluster_DFT_Col_Release_GPU_Solver(state);
     /* The next input owns a fresh refinement policy and no prior basis. */
     const ClusterColRefineState initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
-    ClusterCol_refine = initial;
+    state->refine = initial;
 }

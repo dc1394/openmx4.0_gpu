@@ -39,8 +39,14 @@ static void ClusterCol_AbortWithMessage(const char *message)
     fprintf(stderr, "%s\n", message);
     exit(1);
 }
-static void *ClusterCol_MallocArray(size_t count, size_t bytes, const char *label)
+/* The extracted arithmetic uses the same explicit state argument. This
+   scratch-only fixture models its host resource owner with malloc/free. */
+typedef struct { void *resources; } ClusterColState;
+static ClusterColState fixture_state = {NULL};
+static void openmx_core_native_free(void *owner, void *pointer) { (void)owner; free(pointer); }
+static void *ClusterCol_MallocArray(ClusterColState *state, size_t count, size_t bytes, const char *label)
 {
+    (void)state;
     CHECK(bytes == 0 || count <= SIZE_MAX / bytes);
     void *p = malloc(count * bytes);
     if (!p) ClusterCol_AbortWithMessage(label);
@@ -114,7 +120,7 @@ static void check_slices(void)
                     double local[3][CAPACITY] = {{0}};
                     for (int b = 0; b < n; b++)
                         memcpy(packed+b*nk, evec+b*STATES+start, sizeof(double)*(size_t)nk);
-                    ClusterCol_AccumulateDM_CPU(entries, nk, mp, occ+start, eig+start,
+                    ClusterCol_AccumulateDM_CPU(&fixture_state, entries, nk, mp, occ+start, eig+start,
                                                partial ? docc+start : NULL, packed,
                                                local[0], local[1], partial ? local[2] : NULL);
                     for (int q = 0; q < 2+partial; q++)
@@ -133,7 +139,7 @@ static void check_slices(void)
                 }
             }
     /* A rank with no states need not touch even the topology or input arrays. */
-    ClusterCol_AccumulateDM_CPU(0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    ClusterCol_AccumulateDM_CPU(&fixture_state, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     puts("PASS: CPU cluster DM, 18 combinations of threads/partitions/partial charge; empty rank");
 }
 
@@ -162,7 +168,7 @@ static void check_large_offset(void)
         expected += occ[k]*a*a;
         expected_e += occ[k]*a*a*eig[k];
     }
-    ClusterCol_AccumulateDM_CPU(1, nk, (int*)mp, occ, eig, NULL, evec, &dm, &edm, NULL);
+    ClusterCol_AccumulateDM_CPU(&fixture_state, 1, nk, (int*)mp, occ, eig, NULL, evec, &dm, &edm, NULL);
     CHECK(fabs(dm-expected) <= 3e-13*(1+fabs(expected)));
     CHECK(fabs(edm-expected_e) <= 3e-13*(1+fabs(expected_e)));
     free(eig);

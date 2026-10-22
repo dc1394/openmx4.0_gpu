@@ -34,6 +34,8 @@ PREFIX = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_precision.h"
+#include "openmx_env.h"
+#include <limits.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); exit(2); } } while (0)
 typedef int cusolverStatus_t;
 typedef void *cusolverDnHandle_t;
@@ -81,7 +83,7 @@ typedef TestRefineState ClusterColRefineState;
 typedef TestRefineState ClusterNonColRefineState;
 typedef TestRefineState BandColRefineState;
 typedef TestRefineState BandNonColRefineState;
-static TestRefineState ClusterCol_refine = {-1, 0, 0.0};
+typedef struct { ClusterColRefineState refine; } ClusterColState;
 static TestRefineState ClusterNonCol_refine = {-1, 0, 0.0};
 static TestRefineState BandCol_refine = {-1, 0, 0.0};
 static TestRefineState BandNonCol_refine = {-1, 0, 0.0};
@@ -112,6 +114,22 @@ static void cache_case(TestRefineState *state, void (*configure)(void), int (*it
     configure();
     CHECK(iterations() == 3 && mpi_calls == 2);
     checks += 5;
+}
+
+static void collinear_cache_case(void) {
+    ClusterColState first = {{-1, 0, 0.0}}, second = {{-1, 0, 0.0}};
+    openmx_set_fp32_enabled(0); setenv("OPENMX_EIGEN_REFINE", "3", 1); mpi_calls = 0;
+    ClusterCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == -1 && ClusterCol_RefineIterations(&first) == 0 && mpi_calls == 0);
+    openmx_set_fp32_enabled(1); ClusterCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && ClusterCol_RefineIterations(&first) == 3 && mpi_calls == 2);
+    CHECK(first.refine.defaulted == 0 && first.refine.until == 1e-5 && second.refine.iterations == -1);
+    setenv("OPENMX_EIGEN_REFINE", "1", 1); ClusterCol_RefineConfigure(&second);
+    CHECK(second.refine.iterations == 1 && first.refine.iterations == 3 && mpi_calls == 4);
+    openmx_set_fp32_enabled(0); ClusterCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && ClusterCol_RefineIterations(&first) == 0 && mpi_calls == 4);
+    openmx_set_fp32_enabled(1); ClusterCol_RefineConfigure(&first);
+    CHECK(ClusterCol_RefineIterations(&first) == 3 && mpi_calls == 4); checks += 6;
 }
 
 static void solver_case(int device_ratio, const char *override, int expected) {
@@ -171,7 +189,7 @@ int main(void) {
         CHECK(openmx_eigen_refine_configure(c, 0, &out) == 2 && out == 64);
         checks += 4;
     }
-    cache_case(&ClusterCol_refine, ClusterCol_RefineConfigure, ClusterCol_RefineIterations);
+    collinear_cache_case();
     cache_case(&ClusterNonCol_refine, ClusterNonCol_RefineConfigure, ClusterNonCol_RefineIterations);
     cache_case(&BandCol_refine, BandCol_RefineConfigure, BandCol_RefineIterations);
     cache_case(&BandNonCol_refine, BandNonCol_RefineConfigure, BandNonCol_RefineIterations);
@@ -225,7 +243,7 @@ def main():
                 "-std=c11", "-O2", "-Wall", "-Wextra", "-Wno-unused-function",
                 "-Wno-unused-parameter", f"-DCUSOLVER_VERSION={version}",
                 "-I" + str(root / "source"), str(src),
-                str(root / "source/openmx_precision.c"), "-o", str(exe)], check=True)
+                str(root / "source/openmx_precision.c"), str(root / "source/openmx_env.c"), "-o", str(exe)], check=True)
             subprocess.run([str(exe)], check=True)
 
 

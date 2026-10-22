@@ -176,9 +176,9 @@ static inline void *OpenMX_Resource_State(OpenMXNativeResources *owner,const cha
   return state;
 }
 
-/* Each alias below borrows its owner from an explicit core at DFT entry.
+/* Legacy modules below borrow their owners from an explicit core at DFT entry.
    There is no default/global core. Native cache metadata remains in its
-   existing module during this ownership migration; reset invalidates it
+   existing modules during this ownership migration; reset invalidates it
    before the calculation releases the group. */
 #define OPENMX_NATIVE_RESOURCE_GROUP(module,release_all) \
   static OpenMXNativeResources *module##_resources=NULL; \
@@ -191,17 +191,19 @@ static inline void *OpenMX_Resource_State(OpenMXNativeResources *owner,const cha
     } \
   }
 
-void Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext*);
+#include "openmx_cluster_col_state.h"
 void Cluster_DFT_NonCol_Bind_Resources(OpenMXCoreContext*);
 void Band_DFT_Col_Bind_Resources(OpenMXCoreContext*);
 void Band_DFT_NonCol_Bind_Resources(OpenMXCoreContext*);
 void Divide_Conquer_Bind_Resources(OpenMXCoreContext*);
 void Divide_Conquer_LNO_Bind_Resources(OpenMXCoreContext*);
 void Krylov_Bind_Resources(OpenMXCoreContext*);
-static inline void OpenMX_Native_Resources_Bind(OpenMXCoreContext *core)
+static inline OpenMXClusterColState *OpenMX_Native_Resources_Bind(OpenMXCoreContext *core)
 {
-  Cluster_DFT_Col_Bind_Resources(core);Cluster_DFT_NonCol_Bind_Resources(core);
+  OpenMXClusterColState *col=Cluster_DFT_Col_Bind_Resources(core);
+  Cluster_DFT_NonCol_Bind_Resources(core);
   Band_DFT_Col_Bind_Resources(core);Band_DFT_NonCol_Bind_Resources(core);
   Divide_Conquer_Bind_Resources(core);Divide_Conquer_LNO_Bind_Resources(core);Krylov_Bind_Resources(core);
+  return col;
 }
 #endif

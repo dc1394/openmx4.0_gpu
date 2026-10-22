@@ -9,4 +9,5 @@ struct NativeResourceGroups {
   using Group = std::unique_ptr<OpenMXNativeResources, Delete>;
   std::map<std::string,Group,std::less<>> groups;
   OpenMXNativeResources* get(const char*,OpenMXNativeResourceReset);
+  OpenMXNativeResources* get_state(const char*,size_t,OpenMXNativeStateReset);
 };

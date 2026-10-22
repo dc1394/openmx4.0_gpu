@@ -22,6 +22,8 @@ extern "C" cublasStatus_t openmx_gemmul8ZgemmFixed(cublasHandle_t,int,cublasOper
 extern "C" void openmx_gemmul8SetForwardStage(int,int,int,int,int);
 extern "C" size_t openmx_gemmul8ForwardCounters(long long*,double*);
 extern "C" void openmx_gemmul8ReleasePrepared();
+extern "C" cublasStatus_t openmx_gemmul8DgemmFixedOwned(const void*,cublasHandle_t,int,cublasOperation_t,int,int,int,const double*,int,const double*,int,double*,int,int,unsigned long long);
+extern "C" void openmx_gemmul8ReleasePreparedOwner(const void*);
 extern "C" void openmx_gemmul8ReleaseWorkspaces();
 extern "C" void openmx_gemmul8TrimWorkspaces();
 
@@ -305,6 +307,40 @@ void above_the_cap(cublasHandle_t handle)
     expect(cap - slack < used(), "trim frees the capped workspace", type, s.name);
 }
 
+/* Equal local generations in interleaved calculations must never select
+   each other's retained X, even when the device upload pointer is reused. */
+void calculation_owners(cublasHandle_t handle)
+{
+    int first,second;
+    for (bool left : {false,true}) {
+        const Shape s = {"calculation ownership",left,left?CUBLAS_OP_T:CUBLAS_OP_N,50,50,50};
+        Bench<double> bench(handle,s);
+        const auto x1=fill<double>(2500,0.1),x2=fill<double>(2500,0.7),x3=fill<double>(2500,1.3);
+        const auto v=fill<double>(2500,0.4);
+        auto owned=[&](const void* owner) {
+            check(openmx_gemmul8DgemmFixedOwned(owner,handle,left,s.op,50,50,50,
+                bench.dX,50,bench.dV,50,bench.dC,50,0,1));return bench.download();
+        };
+        openmx_gemmul8ReleasePrepared();openmx_gemmul8SetForwardStage(GEMMUL8,15,1,1,1);
+        bench.upload(x1,v);const auto a=owned(&first);
+        bench.upload(x2,v);const auto b=owned(&second);
+        expect(error(s,x1,v,a)<1e-12 && error(s,x2,v,b)<1e-12,"equal generations mixed owners","real",s.name);
+        Counters before;
+        expect(same(owned(&first),a),"interleaving lost first owner's prepared X","real",s.name);
+        bench.upload(x3,v);const auto legacy=bench.fixed(0,1);
+        expect(error(s,x3,v,legacy)<1e-12 && same(owned(&second),b),"legacy/caller namespaces mixed","real",s.name);
+        Counters after;
+        expect(after.reused()-before.reused()==2,"interleaving did not reuse the correct owners","real",s.name);
+        openmx_gemmul8ReleasePreparedOwner(&first);openmx_gemmul8ReleasePreparedOwner(&first);
+        before=Counters();
+        expect(same(owned(&second),b),"selective drain invalidated second owner","real",s.name);
+        const auto fresh=owned(&first);after=Counters();
+        expect(error(s,x3,v,fresh)<1e-12 && after.prepared()-before.prepared()==1 &&
+            after.reused()-before.reused()==1,"reused owner identity retained stale X","real",s.name);
+    }
+    openmx_gemmul8ReleasePrepared();
+}
+
 } // namespace
 
 int main()
@@ -326,6 +362,7 @@ int main()
     }
 
     above_the_cap(handle);
+    calculation_owners(handle);
 
     openmx_gemmul8ReleasePrepared();
     openmx_gemmul8ReleaseWorkspaces();

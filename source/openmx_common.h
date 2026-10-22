@@ -4,6 +4,7 @@
 #include "openmx_gpu_backend.h"
 #include "openmx_gpu_error.h"
 #include "openmx_core.h"
+#include "openmx_cluster_col_state.h"
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
@@ -2963,7 +2964,6 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON,
                                  double *****CDM, double **Density_Grid_B0,
                                  double *elapsed);
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
-void Cluster_DFT_Col_Release_GPU_Solver(void);
 void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 #else
 void Set_Hamiltonian_Set_OpenACC_Rank_Selected(int selected);
@@ -2978,7 +2978,6 @@ void Krylov_Release_GPU_KUCache(void);
 /* Release geometry-dependent GPU caches between inputs in a test suite. */
 void Band_DFT_Col_Release_GPU_Caches(void);
 void Band_DFT_NonCol_Release_GPU_Caches(void);
-void Cluster_DFT_Col_Release_GPU_Caches(void);
 void Cluster_DFT_NonCol_Release_GPU_Caches(void);
 void Divide_Conquer_Release_GPU_Caches(void);
 void Divide_Conquer_LNO_Release_GPU_Caches(void);
@@ -3031,7 +3030,6 @@ size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
 int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid);
-void Cluster_DFT_Col_Release_GPU_Solver(void);
 void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 void Mixing_H_Release_GPU(void);
 int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON);
@@ -3162,7 +3160,7 @@ double truncation(int MD_iter, int UCell_flag, OpenMXCoreContext *core);
 double truncation_FEF(int MD_iter, int UCell_flag);
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core);
 
-double Cluster_DFT_Col(const OpenMXAtomicViews *atomic, char *mode,
+double Cluster_DFT_Col(OpenMXClusterColState *state, const OpenMXAtomicViews *atomic, char *mode,
                    int SCF_iter,
                    int SpinP_switch,
                    double **ko,
@@ -3259,9 +3257,6 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
 
 void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
 int Cluster_DFT_NonCol_RefineLastRefined(void);
-int Cluster_DFT_Col_RefineLastRefined(void);
-void Cluster_DFT_Col_RefineForceFP64(int on);
-void Cluster_DFT_Col_RefineAfterMixing(double normrd);
 int Band_DFT_Col_RefineLastRefined(void);
 void Band_DFT_Col_RefineForceFP64(int on);
 void Band_DFT_Col_RefineAfterMixing(double normrd);
@@ -3917,6 +3912,13 @@ OpenMXBlasStatus openmx_gemmul8DgemmUnblocked(OpenMXBlasHandle handle, OpenMXBla
 OpenMXBlasStatus openmx_gemmul8DgemmFixed(OpenMXBlasHandle handle, int x_is_left, OpenMXBlasOperation op_x, int m, int n,
                                         int k, const double *X, int ldx, const double *V, int ldv, double *C,
                                         int ldc, int x_id, unsigned long long x_version);
+/* Calculation-scoped prepared operands. Release after draining the caller's
+   stream and before the owner identity can be reused. Legacy calls use a
+   separate owner namespace and retain their original ABI. */
+OpenMXBlasStatus openmx_gemmul8DgemmFixedOwned(const void *owner, OpenMXBlasHandle handle,
+    int x_is_left, OpenMXBlasOperation op_x, int m, int n, int k, const double *X,
+    int ldx, const double *V, int ldv, double *C, int ldc, int x_id, unsigned long long x_version);
+void openmx_gemmul8ReleasePreparedOwner(const void *owner);
 OpenMXBlasStatus openmx_gemmul8ZgemmFixed(OpenMXBlasHandle handle, int x_is_left, OpenMXBlasOperation op_x, int m, int n,
                                         int k, const OpenMXGpuComplex *X, int ldx, const OpenMXGpuComplex *V, int ldv,
                                         OpenMXGpuComplex *C, int ldc, int x_id, unsigned long long x_version);

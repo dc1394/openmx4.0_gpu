@@ -45,6 +45,8 @@ struct State {
 
 struct OpenMXNativeResources {
   OpenMXNativeResourceReset reset;
+  OpenMXNativeStateReset reset_state=nullptr;
+  std::unique_ptr<State> bound_state;
   std::mutex mutex;
   std::map<Key,Resource> resources;
   std::map<std::string,State,std::less<>> states;
@@ -52,6 +54,7 @@ struct OpenMXNativeResources {
   ~OpenMXNativeResources() {
     // Native reset calls the same release operations; do not hold the mutex.
     if(reset)reset();
+    if(reset_state)reset_state(this,bound_state->storage.get());
     // Fallback covers partial initialization and omitted native cleanup paths.
     for(auto& item:resources) {
       const auto& release=item.second.get_deleter();
@@ -67,12 +70,28 @@ OpenMXNativeResources* NativeResourceGroups::get(const char* name,OpenMXNativeRe
   require(name && *name,"missing native resource group name");
   auto found=groups.find(name);
   if(found!=groups.end()) {
-    require(found->second->reset==reset,"native resource group has a different reset callback");
+    require(!found->second->bound_state && found->second->reset==reset,"native resource group has a different reset callback");
     return found->second.get();
   }
   Group owner(new OpenMXNativeResources(nullptr));auto* view=owner.get();
   // Publish the callback only after insertion succeeds.
   groups.emplace(name,std::move(owner));view->reset=reset;return view;
+}
+
+OpenMXNativeResources* NativeResourceGroups::get_state(const char* name,size_t bytes,OpenMXNativeStateReset reset) {
+  require(name && *name && bytes,"missing native resource group name/state size");
+  auto found=groups.find(name);
+  if(found!=groups.end()) {
+    auto* view=found->second.get();
+    require(view->bound_state && view->bound_state->bytes==bytes && view->reset_state==reset,
+        "native resource group has a different state size/reset callback");
+    return view;
+  }
+  Group owner(new OpenMXNativeResources(nullptr));auto* view=owner.get();
+  view->bound_state=std::make_unique<State>(bytes);
+  // Neither allocation failure nor failed map insertion may drain a state
+  // which its native caller has not initialized yet.
+  groups.emplace(name,std::move(owner));view->reset_state=reset;return view;
 }
 
 extern "C" int openmx_core_native_resources(OpenMXCoreContext* context,const char* name,
@@ -84,6 +103,14 @@ extern "C" int openmx_core_native_resources(OpenMXCoreContext* context,const cha
 }
 extern "C" void openmx_core_native_resources_clear(OpenMXCoreContext* context) {
   if(context)context->native_resources.groups.clear();
+}
+extern "C" int openmx_core_native_resources_state(OpenMXCoreContext* context,const char* name,
+    size_t bytes,OpenMXNativeStateReset reset,OpenMXNativeResources** out,void** state,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(context && out && state,"missing native resource calculation/output/state");
+    auto* group=context->native_resources.get_state(name,bytes,reset);
+    *out=group;*state=group->bound_state->storage.get();
+  });
 }
 extern "C" int openmx_core_native_adopt(OpenMXNativeResources* owner,int domain,void* value,
     int device,OpenMXNativeResourceRelease release,OpenMXNativeResourceRelease synchronize,

@@ -1,17 +1,17 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "b0d78c6f",
+"revision": "2f697a70",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
-"functions": 3007,
+"functions": 3011,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,
 "function-object edges (common header)": 12912,
-"objects with external linkage defined outside openmx_globals.c": 358,
-"file-scope statics": 447,
-"function-local statics": 386,
+"objects with external linkage defined outside openmx_globals.c": 357,
+"file-scope statics": 432,
+"function-local statics": 380,
 "environment variables (names read, every unit)": 251,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
@@ -13393,96 +13393,6 @@
 },
 {
 "unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_cpu_overlap_n",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_dense_index_cache",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_dm_entry_cache",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_gpusolver_ctx",
-"type": "%struct.ClusterColGpuSolverCtx zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_gs2_fallback_n",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_mgpu_host_dense",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_refine",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_refine_dev",
-"type": "{ ptr",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_refine_state",
-"type": "[2 x %struct.EigenRefineState] zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_refine_x",
-"type": "[2 x ptr] zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_refine_x_n",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_sample_geometry",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_transformed_s_serial",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "ClusterCol_ugrid",
-"type": "%struct.ClusterColUnionGrid zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"name": "Cluster_DFT_Col_resources",
-"type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
 "name": "NBLK",
 "type": "i32 128",
 "const": false
@@ -16164,48 +16074,6 @@
 "function": "Calc_XANES_Col",
 "variable": "xanes_single_flag",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"function": "ClusterCol_GpuDiagFits",
-"variable": "verdict",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"function": "ClusterCol_GpuDiagFits",
-"variable": "verdict_n",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"function": "ClusterCol_GpuSolver_SolveHamiltonianDevice",
-"variable": "prof",
-"type": "[4 x double] zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"function": "ClusterCol_GpuSolver_SolveHamiltonianDevice",
-"variable": "prof_solves",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"function": "Cluster_DFT_Col_owned",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"function": "Lapack_LU_Dinverse",
-"variable": "thisprogram",
-"type": "ptr @.str.276",
 "const": false
 },
 {
@@ -19595,12 +19463,6 @@
 {
 "name": "Hex",
 "defined_in": "source/Hamiltonian_Cluster_Hs.c",
-"type": "ptr null",
-"units": 0
-},
-{
-"name": "Hex0",
-"defined_in": "source/Cluster_DFT_Col.c",
 "type": "ptr null",
 "units": 0
 },
