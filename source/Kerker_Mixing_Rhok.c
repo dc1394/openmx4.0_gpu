@@ -16,6 +16,7 @@
 #include <string.h>
 #include "openmx_common.h"
 #include "openmx_env.h"
+#include "openmx_mixing_rhok_internal.h"
 #include "tran_prototypes.h"
 #include "tran_variables.h"
 #include "mpi.h"
@@ -46,7 +47,7 @@ static void MixKK_RotateSlots(double ***arr, int nslot)
   arr[0] = tmp;
 }
 
-static void Kerker_Mixing_Rhok_Normal(
+static void Kerker_Mixing_Rhok_Normal(MixingRhokState *state,
                                int Change_switch,
 			       double Mix_wgt,
 			       double ***ReRhok,
@@ -59,7 +60,7 @@ static void Kerker_Mixing_Rhok_Normal(
 			       double *ImRhoAtomk);
 
 
-static void Kerker_Mixing_Rhok_NEGF(
+static void Kerker_Mixing_Rhok_NEGF(MixingRhokState *state,
                              int Change_switch,
 			     double Mix_wgt,
 			     double ***ReRhok,
@@ -74,7 +75,7 @@ static void Kerker_Mixing_Rhok_NEGF(
 
 
 
-void Kerker_Mixing_Rhok(int Change_switch,
+void Kerker_Mixing_Rhok(MixingRhokState *state, int Change_switch,
                         double Mix_wgt,
                         double ***ReRhok,
                         double ***ImRhok,
@@ -88,7 +89,7 @@ void Kerker_Mixing_Rhok(int Change_switch,
 
   if (Solver!=4 || TRAN_Poisson_flag==2){
 
-    Kerker_Mixing_Rhok_Normal(Change_switch,
+    Kerker_Mixing_Rhok_Normal(state, Change_switch,
 			      Mix_wgt,
 			      ReRhok,
 			      ImRhok,
@@ -102,7 +103,7 @@ void Kerker_Mixing_Rhok(int Change_switch,
 
   else if (Solver==4){
 
-    Kerker_Mixing_Rhok_NEGF(Change_switch,
+    Kerker_Mixing_Rhok_NEGF(state, Change_switch,
 			    Mix_wgt,
 			    ReRhok,
 			    ImRhok,
@@ -125,7 +126,7 @@ void Kerker_Mixing_Rhok(int Change_switch,
 
 
 
-void Kerker_Mixing_Rhok_Normal(int Change_switch,
+void Kerker_Mixing_Rhok_Normal(MixingRhokState *state, int Change_switch,
 			       double Mix_wgt,
 			       double ***ReRhok,
 			       double ***ImRhok,
@@ -136,7 +137,6 @@ void Kerker_Mixing_Rhok_Normal(int Change_switch,
 			       double *ReRhoAtomk,
 			       double *ImRhoAtomk)
 {
-  static int firsttime=1;
   int ian,jan,Mc_AN,Gc_AN,spin,spinmax;
   int h_AN,Gh_AN,m,n,i,j,k,k1,k2,k3;
   int MN,pSCF_iter,p0,p1;
@@ -160,9 +160,9 @@ void Kerker_Mixing_Rhok_Normal(int Change_switch,
   size_Kerker_weight = My_NumGridB_CB;
   Kerker_weight = (double*)malloc(sizeof(double)*My_NumGridB_CB); 
 
-  if (firsttime)
+  if (state->kerker_first_normal)
   PrintMemory("Kerker_Mixing_Rhok: Kerker_weight",sizeof(double)*size_Kerker_weight,NULL);
-  firsttime=0;
+  state->kerker_first_normal=0;
 
   /* find an optimum G0 */
 
@@ -523,7 +523,7 @@ void Kerker_Mixing_Rhok_Normal(int Change_switch,
 
 
 
-void Kerker_Mixing_Rhok_NEGF(int Change_switch,
+void Kerker_Mixing_Rhok_NEGF(MixingRhokState *state, int Change_switch,
 			     double Mix_wgt,
 			     double ***ReRhok,
 			     double ***ImRhok,
@@ -534,7 +534,6 @@ void Kerker_Mixing_Rhok_NEGF(int Change_switch,
 			     double *ReRhoAtomk,
 			     double *ImRhoAtomk)
 {
-  static int firsttime=1;
   int ian,jan,Mc_AN,Gc_AN,spin,spinmax;
   int h_AN,Gh_AN,m,n,n1,i,j,k,k1,k2,k3;
   int MN,pSCF_iter,p0,p1;
@@ -585,9 +584,9 @@ void Kerker_Mixing_Rhok_NEGF(int Change_switch,
   N2D = Ngrid3*Ngrid2;
   GNs = ((myid*N2D+numprocs-1)/numprocs)*Ngrid1;
 
-  if (firsttime)
+  if (state->kerker_first_negf)
   PrintMemory("Kerker_Mixing_Rhok: Kerker_weight",sizeof(double)*size_Kerker_weight,NULL);
-  firsttime=0;
+  state->kerker_first_negf=0;
 
   for (k=0; k<My_NumGridB_CB; k+=Ngrid1){
 

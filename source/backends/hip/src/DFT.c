@@ -395,6 +395,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
+  OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
   const OpenMXDensityCacheHooks density_cache_hooks=OpenMX_ClusterNonCol_DensityHooks(solver_states.cluster_noncol);
 
   const OpenMXLocalBasisViews local_basis_storage=OpenMX_LocalBasis(core,mpi_comm_level1);
@@ -1669,7 +1670,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	 || Mixing_switch==2
          || Mixing_switch==6 ){
 
-      time6  += Mixing_DM(MD_iter,
+      time6  += Mixing_DM(mixing_rhok, MD_iter,
 			  LSCF_iter-SCF_iter_shift,
 			  SCF_iter-SCF_iter_shift,
 			  SucceedReadingDMfile,
@@ -1741,7 +1742,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	else                                     time15 += FFT2D_Density(3,ReRhoAtomk,ImRhoAtomk);  
       }
 
-      time6 += Mixing_DM(MD_iter,
+      time6 += Mixing_DM(mixing_rhok, MD_iter,
 			 LSCF_iter-SCF_iter_shift,
 			 SCF_iter-SCF_iter_shift,
 			 SucceedReadingDMfile,
@@ -2749,7 +2750,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
     }
 
-    time6 += Mixing_DM(1,
+    time6 += Mixing_DM(mixing_rhok, 1,
                        LSCF_iter-SCF_iter_shift,
                        SCF_iter-SCF_iter_shift,
                        SucceedReadingDMfile,

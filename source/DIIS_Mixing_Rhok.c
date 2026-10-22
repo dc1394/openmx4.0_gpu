@@ -17,6 +17,7 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "openmx_env.h"
+#include "openmx_mixing_rhok_internal.h"
 #include "tran_prototypes.h"
 #include "tran_variables.h"
 #include "lapack_prototypes.h"
@@ -58,27 +59,30 @@ void F77_NAME(dgemv,DGEMV)(const char *trans, const int *m, const int *n,
     legacy shifts.
 *******************************************************************************/
 
-typedef struct {
-  int valid;
-  int last_scf_iter;
-  int last_nummix;
-  int spinmax;
-  int l38;
-  double *A;        /* [l38*l38] cached Allreduced Gram (index [i*l38+j]) */
-} MixRhokFastState;
-
-static MixRhokFastState MixRhok_fast = { 0, -1, 0, 0, 0, NULL };
-
 static int Mix_Fast_Enabled(void)
 {
   if (scf_eigen_lib_flag != GPUSOLVER) return 0;
   return openmx_env_flag_at(OPENMX_ENV_MIX_FAST, 1);
 }
 
-static void MixRhok_Fast_Invalidate(void)
+static void MixRhok_Fast_Invalidate(MixingRhokState *state)
 {
-  MixRhok_fast.valid = 0;
-  MixRhok_fast.last_scf_iter = -1;
+  state->fast.valid = 0;
+  state->fast.last_scf_iter = -1;
+}
+
+/* Preserve the legacy free/allocate/layout-update order. The C++ resource
+   group also drains the cache on partial initialization and context teardown. */
+static int MixRhok_FastResize(MixingRhokState *state, int history, int spinmax)
+{
+  openmx_core_native_free(state->resources,state->fast.A);
+  state->fast.A=(double*)openmx_core_native_malloc(state->resources,1,
+      sizeof(double)*(size_t)history*(size_t)history,0);
+  if (state->fast.A==NULL) return 0;
+  state->fast.l38=history;
+  state->fast.spinmax=spinmax;
+  MixRhok_Fast_Invalidate(state);
+  return 1;
 }
 
 /* rotate the top slot pointers: afterwards slot m holds the former slot m-1
@@ -92,7 +96,7 @@ static void MixRhok_RotateSlots(double ***arr, int nslot)
 }
 
 
-static void DIIS_Mixing_Rhok_Normal(int SCF_iter,
+static void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
 			      double Mix_wgt,
 			      double ***ReRhok,
 			      double ***ImRhok,
@@ -104,7 +108,7 @@ static void DIIS_Mixing_Rhok_Normal(int SCF_iter,
 			      double *ImRhoAtomk);
 
 
-static void DIIS_Mixing_Rhok_NEGF(int SCF_iter,
+static void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
 				  double Mix_wgt,
 				  double ***ReRhok,
 				  double ***ImRhok,
@@ -115,7 +119,7 @@ static void DIIS_Mixing_Rhok_NEGF(int SCF_iter,
 				  double *ReRhoAtomk,
 				  double *ImRhoAtomk);
 	
-void DIIS_Mixing_Rhok(int SCF_iter,
+void DIIS_Mixing_Rhok(MixingRhokState *state, int SCF_iter,
                       double Mix_wgt,
                       double ***ReRhok,
                       double ***ImRhok,
@@ -129,7 +133,7 @@ void DIIS_Mixing_Rhok(int SCF_iter,
 
   if (Solver!=4 || TRAN_Poisson_flag==2){
 
-    DIIS_Mixing_Rhok_Normal(
+    DIIS_Mixing_Rhok_Normal(state,
 			    SCF_iter,
 			    Mix_wgt,
 			    ReRhok,
@@ -144,7 +148,7 @@ void DIIS_Mixing_Rhok(int SCF_iter,
 
   else if (Solver==4){
 
-    DIIS_Mixing_Rhok_NEGF(
+    DIIS_Mixing_Rhok_NEGF(state,
 			  SCF_iter,
 			  Mix_wgt,
 			  ReRhok,
@@ -162,7 +166,7 @@ void DIIS_Mixing_Rhok(int SCF_iter,
 
 
 
-void DIIS_Mixing_Rhok_Normal(int SCF_iter,
+void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
 			     double Mix_wgt,
 			     double ***ReRhok,
 			     double ***ImRhok,
@@ -173,7 +177,6 @@ void DIIS_Mixing_Rhok_Normal(int SCF_iter,
 			     double *ReRhoAtomk,
 			     double *ImRhoAtomk)
 {
-  static int firsttime=1;
   int spin,Mc_AN,Gc_AN,wan1,TNO1,h_AN,Gh_AN;
   int wan2,TNO2,i,j,k,NumMix,NumSlide;
   int SCFi,SCFj,tno1,tno0,Cwan,Hwan,k1,k2,k3,kk2; 
@@ -314,14 +317,14 @@ void DIIS_Mixing_Rhok_Normal(int SCF_iter,
  
   if (SCF_iter==1){
     /* memory calc. done, only 1st iteration */
-    if (firsttime) {
+    if (state->diis_first_normal) {
       PrintMemory("DIIS_Mixing_Rhok: Re_OptRhok",sizeof(double)*size_Re_OptRhok,NULL);
       PrintMemory("DIIS_Mixing_Rhok: Im_OptRhok",sizeof(double)*size_Re_OptRhok,NULL);
       PrintMemory("DIIS_Mixing_Rhok: Kerker_weight",sizeof(double)*size_Kerker_weight,NULL);
-      firsttime=0;
+      state->diis_first_normal=0;
     }
 
-    Kerker_Mixing_Rhok(0,1.00,ReRhok,ImRhok,
+    Kerker_Mixing_Rhok(state, 0,1.00,ReRhok,ImRhok,
                        Residual_ReRhok,Residual_ImRhok,
                        ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
   } 
@@ -355,7 +358,7 @@ void DIIS_Mixing_Rhok_Normal(int SCF_iter,
       }
     }
 
-    Kerker_Mixing_Rhok(0,Mixing_weight,ReRhok,ImRhok,
+    Kerker_Mixing_Rhok(state, 0,Mixing_weight,ReRhok,ImRhok,
                        Residual_ReRhok,Residual_ImRhok,
                        ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
   } 
@@ -404,23 +407,17 @@ void DIIS_Mixing_Rhok_Normal(int SCF_iter,
       int incremental = 0;
 
       if (use_fast){
-        if (MixRhok_fast.A == NULL || MixRhok_fast.l38 != List_YOUSO[38] ||
-            MixRhok_fast.spinmax != spinmax){
-          free(MixRhok_fast.A);
-          MixRhok_fast.A = (double*)malloc(sizeof(double)*
-                             (size_t)List_YOUSO[38]*(size_t)List_YOUSO[38]);
-          if (MixRhok_fast.A == NULL){
+        if (state->fast.A == NULL || state->fast.l38 != List_YOUSO[38] ||
+            state->fast.spinmax != spinmax){
+          if (!MixRhok_FastResize(state,List_YOUSO[38],spinmax)){
             printf("DIIS_Mixing_Rhok: failed to allocate the Gram cache.\n");
             MPI_Abort(mpi_comm_level1,1);
           }
-          MixRhok_fast.l38 = List_YOUSO[38];
-          MixRhok_fast.spinmax = spinmax;
-          MixRhok_Fast_Invalidate();
         }
-        incremental = (MixRhok_fast.valid &&
-                       MixRhok_fast.last_scf_iter+1 == SCF_iter &&
-                       (NumMix == MixRhok_fast.last_nummix ||
-                        NumMix == MixRhok_fast.last_nummix+1));
+        incremental = (state->fast.valid &&
+                       state->fast.last_scf_iter+1 == SCF_iter &&
+                       (NumMix == state->fast.last_nummix ||
+                        NumMix == state->fast.last_nummix+1));
       }
 
       if (incremental){
@@ -429,9 +426,9 @@ void DIIS_Mixing_Rhok_Normal(int SCF_iter,
            older pairs of the (rank-uniform, Allreduced) Gram matrix stay
            valid; only the fresh-residual row is computed and reduced */
 
-        int l38 = MixRhok_fast.l38;
+        int l38 = state->fast.l38;
         int inc1 = 1;
-        double *C = MixRhok_fast.A;
+        double *C = state->fast.A;
         double *my_row = My_NMat;   /* scratch */
         double *row = NMat;
 
@@ -511,22 +508,22 @@ void DIIS_Mixing_Rhok_Normal(int SCF_iter,
         }
 
         if (use_fast){
-          int l38 = MixRhok_fast.l38;
+          int l38 = state->fast.l38;
           for (i=0; i<NumMix; i++){
             for (j=0; j<NumMix; j++){
-              MixRhok_fast.A[i*l38+j] = A[i][j];
+              state->fast.A[i*l38+j] = A[i][j];
             }
           }
         }
       }
 
       if (use_fast){
-        MixRhok_fast.valid = 1;
-        MixRhok_fast.last_scf_iter = SCF_iter;
-        MixRhok_fast.last_nummix = NumMix;
+        state->fast.valid = 1;
+        state->fast.last_scf_iter = SCF_iter;
+        state->fast.last_nummix = NumMix;
       }
       else{
-        MixRhok_Fast_Invalidate();
+        MixRhok_Fast_Invalidate(state);
       }
     }
 
@@ -1022,7 +1019,7 @@ void DIIS_Mixing_Rhok_Normal(int SCF_iter,
 
 
 
-void DIIS_Mixing_Rhok_NEGF(int SCF_iter,
+void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
 			   double Mix_wgt,
 			   double ***ReRhok,
 			   double ***ImRhok,
@@ -1033,7 +1030,6 @@ void DIIS_Mixing_Rhok_NEGF(int SCF_iter,
 			   double *ReRhoAtomk,
 			   double *ImRhoAtomk)
 {
-  static int firsttime=1;
   int spin,Mc_AN,Gc_AN,wan1,TNO1,h_AN,Gh_AN;
   int wan2,TNO2,i,j,k,NumMix,NumSlide;
   int SCFi,SCFj,tno1,tno0,Cwan,Hwan,n1,k1,k2,k3,kk2; 
@@ -1205,14 +1201,14 @@ void DIIS_Mixing_Rhok_NEGF(int SCF_iter,
  
   if (SCF_iter==1){
     /* memory calc. done, only 1st iteration */
-    if (firsttime) {
+    if (state->diis_first_negf) {
       PrintMemory("DIIS_Mixing_Rhok: Re_OptRhok",sizeof(double)*size_Re_OptRhok,NULL);
       PrintMemory("DIIS_Mixing_Rhok: Im_OptRhok",sizeof(double)*size_Re_OptRhok,NULL);
       PrintMemory("DIIS_Mixing_Rhok: Kerker_weight",sizeof(double)*size_Kerker_weight,NULL);
-      firsttime=0;
+      state->diis_first_negf=0;
     }
 
-    Kerker_Mixing_Rhok(0, 1.0, ReRhok, ImRhok,
+    Kerker_Mixing_Rhok(state, 0, 1.0, ReRhok, ImRhok,
                        Residual_ReRhok, Residual_ImRhok,
                        ReVk,ImVk, ReRhoAtomk, ImRhoAtomk);
   } 
@@ -1246,7 +1242,7 @@ void DIIS_Mixing_Rhok_NEGF(int SCF_iter,
       }
     }
 
-    Kerker_Mixing_Rhok(0, Mixing_weight, ReRhok, ImRhok,
+    Kerker_Mixing_Rhok(state, 0, Mixing_weight, ReRhok, ImRhok,
                        Residual_ReRhok, Residual_ImRhok,
                        ReVk,ImVk, ReRhoAtomk, ImRhoAtomk);
   }
@@ -2257,4 +2253,33 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
     free(da[i]);
   }
   free(da);
+}
+
+static void MixRhok_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  MixingRhokState *state=(MixingRhokState*)metadata;
+  (void)owner;
+  /* The group releases every registered allocation after this callback. */
+  memset(state,0,sizeof(*state));
+}
+
+OpenMXMixingRhokState *Mixing_Rhok_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner=NULL;
+  void *metadata=NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core,"Mixing_Rhok",sizeof(MixingRhokState),
+      MixRhok_Reset,&owner,&metadata,error,sizeof(error))) {
+    fprintf(stderr,"OpenMX density mixing state: %s\n",error);
+    abort();
+  }
+  MixingRhokState *state=(MixingRhokState*)metadata;
+  if (!state->initialized) {
+    state->resources=owner;
+    state->fast.last_scf_iter=-1;
+    state->diis_first_normal=state->diis_first_negf=1;
+    state->kerker_first_normal=state->kerker_first_negf=1;
+    state->initialized=1;
+  }
+  return state;
 }

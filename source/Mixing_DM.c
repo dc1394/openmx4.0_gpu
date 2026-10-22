@@ -7,7 +7,7 @@
 
 
 
-double Mixing_DM(int MD_iter,
+double Mixing_DM(OpenMXMixingRhokState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0,
                  int SucceedReadingDMfile,
@@ -116,28 +116,28 @@ double Mixing_DM(int MD_iter,
   else if (Mixing_switch==3){
 
     if (MD_iter==1 && SCF_iter0==1 && SucceedReadingDMfile==0){
-      Kerker_Mixing_Rhok(0, Mixing_weight,
+      Kerker_Mixing_Rhok(state, 0, Mixing_weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
     }
 
     else if (MD_iter==1 && SCF_iter==1){
-      Kerker_Mixing_Rhok(0, Mixing_weight,
+      Kerker_Mixing_Rhok(state, 0, Mixing_weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
     }
 
     else if ( (SCF_iter%30)==1) {
-      Kerker_Mixing_Rhok(1,Max_Mixing_weight,
+      Kerker_Mixing_Rhok(state, 1,Max_Mixing_weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
     }
 
     else{
-      Kerker_Mixing_Rhok(1,Mixing_weight,
+      Kerker_Mixing_Rhok(state, 1,Mixing_weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
@@ -151,14 +151,14 @@ double Mixing_DM(int MD_iter,
   else if (Mixing_switch==4){
  
     if (MD_iter==1 && SCF_iter==1){
-      Kerker_Mixing_Rhok(0,Mixing_weight,
+      Kerker_Mixing_Rhok(state, 0,Mixing_weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
     }
 
     else if (SCF_iter<Pulay_SCF){
-      Kerker_Mixing_Rhok(1,Mixing_weight,
+      Kerker_Mixing_Rhok(state, 1,Mixing_weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
@@ -167,14 +167,14 @@ double Mixing_DM(int MD_iter,
     else{
 
       if (6<SCF_iter){
-	DIIS_Mixing_Rhok(SCF_iter-(Pulay_SCF-3),
+	DIIS_Mixing_Rhok(state, SCF_iter-(Pulay_SCF-3),
 			 Mixing_weight,
 			 ReRhok,ImRhok,
 			 Residual_ReRhok,Residual_ImRhok,
 			 ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
       }
       else{
-	DIIS_Mixing_Rhok(SCF_iter,
+	DIIS_Mixing_Rhok(state, SCF_iter,
 			 Mixing_weight,
 			 ReRhok,ImRhok,
 			 Residual_ReRhok,Residual_ImRhok,

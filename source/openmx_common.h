@@ -12,6 +12,7 @@
 #include "openmx_dclno_state.h"
 #include "openmx_krylov_state.h"
 #include "openmx_mixing_h_state.h"
+#include "openmx_mixing_rhok_state.h"
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
@@ -2731,7 +2732,7 @@ extern int B_spe[30],B_l[30],B_mul[30];
 extern double B_cut[30],lambda[30];
 /*******************/
 
-double Mixing_DM(int MD_iter,
+double Mixing_DM(OpenMXMixingRhokState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0,
                  int SucceedReadingDMfile,
@@ -2768,7 +2769,7 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
 void GR_Pulay_DM(int SCF_iter, double ******ResidualDM, const OpenMXElectronicViews *electronic);
 
 
-void Kerker_Mixing_Rhok(int Change_switch,
+void Kerker_Mixing_Rhok(OpenMXMixingRhokState *state, int Change_switch,
                         double Mix_wgt,
                         double ***ReRhok,
                         double ***ImRhok,
@@ -2779,7 +2780,7 @@ void Kerker_Mixing_Rhok(int Change_switch,
                         double *ReRhoAtomk,
                         double *ImRhoAtomk);
 
-void DIIS_Mixing_Rhok(int SCF_iter,
+void DIIS_Mixing_Rhok(OpenMXMixingRhokState *state, int SCF_iter,
                       double Mix_wgt,
                       double ***ReRhok,
                       double ***ImRhok,
