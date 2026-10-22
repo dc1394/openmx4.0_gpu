@@ -81,12 +81,9 @@ static int check_policy(void)
 '''
 
 BAND_STUBS = r'''
-static int BandCol_mgpu_host_dense;
 static int Cnt_switch, DFTSCF_loop=5, xanes_calc, empty_occupation_flag, empty_states_flag;
-static struct { int basis_valid; } BandCol_refine_state;
-static struct { int refined; } *BandCol_kref;
-static int BandCol_kref_slots, reset_calls;
-static void BandCol_KRefReset(void) { reset_calls++; BandCol_kref=NULL; BandCol_kref_slots=0; }
+static int reset_calls;
+static void BandCol_KRefReset(BandColState *state) { reset_calls++; state->kref=NULL; state->kref_slots=0; }
 '''
 
 BAND_CHECK = r'''
@@ -148,8 +145,11 @@ def main():
             policy = POLICY.replace("STATE", state).replace("CONFIGURE", prefix + "_RefineConfigure")
             policy = policy.replace("ITERATIONS", prefix + "_RefineIterations")
             text = PREFIX + typedef(source, typename)
-            if prefix in ("ClusterCol", "ClusterNonCol"):
-                text += f"\ntypedef struct {{ {typename} refine; }} {prefix}State;\n"
+            if prefix in ("ClusterCol", "ClusterNonCol", "BandCol", "BandNonCol"):
+                fields = ""
+                if prefix == "BandCol":
+                    fields = "int mgpu_host_dense; struct { int basis_valid; } refine_state; struct { int refined; } *kref; int kref_slots;"
+                text += f"\ntypedef struct {{ {typename} refine; {fields} }} {prefix}State;\n"
                 text += f"static {prefix}State fixture;\n"
                 policy = policy.replace(state, "fixture.refine")
                 policy = policy.replace(prefix+"_RefineConfigure()", prefix+"_RefineConfigure(&fixture)")
@@ -161,7 +161,10 @@ def main():
             begin = ""
             if prefix == "BandCol":
                 begin = function(source, "BandCol_RefineBeginStep")
-                text += BAND_STUBS + begin + "\n" + BAND_CHECK
+                check = BAND_CHECK.replace("BandCol_refine_state", "fixture.refine_state").replace("BandCol_kref_slots", "fixture.kref_slots")
+                check = check.replace("BandCol_refine", "fixture.refine").replace("BandCol_kref", "fixture.kref")
+                check = check.replace("BandCol_RefineBeginStep(", "BandCol_RefineBeginStep(&fixture, ")
+                text += BAND_STUBS + begin + "\n" + check
             text += f"\nint main(void) {{ expected_complex={cplx}; int rc=check_policy(); if(rc) return rc;"
             text += "return check_band_cycle(); }\n" if begin else "return 0; }\n"
             src, exe = Path(tmp) / f"{prefix}.c", Path(tmp) / prefix

@@ -16,11 +16,11 @@ import tempfile
 # The SDK/ownership boundary is mocked here; the real ownership adapters are
 # exercised independently by the core-native-resource/adapter tests.
 try:
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
 import unittest
 
 
@@ -62,9 +62,10 @@ def production(text):
     if start < 0:
         raise ValueError('Missing production dense workspace declaration')
     result = text[start:end.end()] + '\n'
-    result += 'static BandNonColDenseGpuWorkspace BandNonCol_dense_gpu_workspace = {0};\n'
+    result += 'typedef struct { BandNonColDenseGpuWorkspace dense_gpu_workspace; } BandNonColState;\n'
+    result += 'static BandNonColState fixture;\nstatic BandNonColState *state=&fixture;\n'
     result += function(text, 'BandNonCol_DenseGpu_HasDeviceResources', optional=True) + '\n'
-    for name in ('ReleaseHipblas', 'Destroy', 'ProcessCleanup',
+    for name in ('ReleaseHipblas', 'Destroy',
                  'ReleaseWaveBuffers', 'ReleaseOverlapMagmaScratch',
                  'ReleasePreMagmaBuffers'):
         result += function(text, 'BandNonCol_DenseGpu_' + name) + '\n'
@@ -85,9 +86,6 @@ static void *host_allocation;
 } } while (0)
 static int hipDeviceSynchronize(void) {
     ++calls; ++syncs; return available ? 0 : 100;
-}
-static int hipSetDevice(int device) {
-    ++calls; ++device_sets; CHECK(device==3); return available ? 0 : 100;
 }
 static int hipFree(void *pointer) {
     ++calls; ++device_frees; CHECK(available && pointer); free(pointer); return 0;
@@ -155,10 +153,10 @@ int main(void) {
     BandNonCol_DenseGpu_ReleasePreMagmaBuffers(1); wave_reset();
     CHECK(!w->h_scale && host_frees==1 && calls==0);
     allocate_host(); w->initialized=1; w->device_id=3;
-    BandNonCol_DenseGpu_ProcessCleanup(); empty_state();
+    BandNonCol_DenseGpu_Destroy(); empty_state();
     CHECK(host_frees==2 && calls==0);
     BandNonCol_DenseGpu_Destroy(); empty_state();
-    BandNonCol_DenseGpu_ProcessCleanup(); empty_state(); CHECK(calls==0);
+    BandNonCol_DenseGpu_Destroy(); empty_state(); CHECK(calls==0);
     /* Test every owned resource independently while initialized is false,
        as can happen after a partial allocation. */
     available=1;
@@ -168,10 +166,10 @@ int main(void) {
         CHECK(syncs>=1);
         CHECK(device_frees==((resource>=1 && resource<=6)?1:0));
         CHECK(handle_frees==(resource==8));
-        BandNonCol_DenseGpu_ProcessCleanup(); empty_state();
+        BandNonCol_DenseGpu_Destroy(); empty_state();
         CHECK(device_frees==(resource<8)); CHECK(handle_frees==(resource==8));
-        CHECK(device_sets==((resource==0 || resource==7)?1:0));
-        int previous=calls; BandNonCol_DenseGpu_ProcessCleanup(); CHECK(calls==previous);
+        CHECK(device_sets==0);
+        int previous=calls; BandNonCol_DenseGpu_Destroy(); CHECK(calls==previous);
     }
     /* A live workspace keeps overlap/scale data after scratch release,
        then progressively releases the remaining resources. */
@@ -189,14 +187,15 @@ int main(void) {
     BandNonCol_DenseGpu_ReleaseOverlapMagmaScratch();
     BandNonCol_DenseGpu_ReleasePreMagmaBuffers(1);
     BandNonCol_DenseGpu_Destroy(); empty_state();
-    BandNonCol_DenseGpu_ProcessCleanup(); empty_state(); CHECK(calls==previous);
-    /* The process-exit path restores the owning device and also handles
-       partial allocations, without wait_hipfunc/MPI error handling. */
+    BandNonCol_DenseGpu_Destroy(); empty_state(); CHECK(calls==previous);
+    /* The calculation-boundary callback handles partial allocations too.
+       The real ownership-adapter tests cover device selection/restoration;
+       this narrow SDK fixture isolates the module's cleanup decisions. */
     counters(); w->device_id=3; allocate_one(2); allocate_one(8); allocate_host();
-    BandNonCol_DenseGpu_ProcessCleanup(); empty_state();
-    CHECK(syncs==1 && device_sets==1 && device_frees==1 && handle_frees==1 && host_frees==1);
-    previous=calls; BandNonCol_DenseGpu_ProcessCleanup(); CHECK(calls==previous);
-    puts("PASS: cold CPU, nine partial resources, live releases and process cleanup");
+    BandNonCol_DenseGpu_Destroy(); empty_state();
+    CHECK(syncs==0 && device_sets==0 && device_frees==1 && handle_frees==1 && host_frees==1);
+    previous=calls; BandNonCol_DenseGpu_Destroy(); CHECK(calls==previous);
+    puts("PASS: cold CPU, nine partial resources, live releases and calculation cleanup");
     return 0;
 }
 '''
@@ -210,7 +209,10 @@ class CleanupTest(unittest.TestCase):
             directory = Path(temporary)
             source = directory / 'check.c'
             binary = directory / 'check'
-            source.write_text(MOCK + production(isolate_native_resources(SOURCE.read_text(), 'HIP')) + DRIVER)
+            text = isolate_native_resources(SOURCE.read_text(), 'HIP')
+            fixture = MOCK + production(text) + DRIVER
+            fixture = fixture.replace('BandNonCol_dense_gpu_workspace', 'state->dense_gpu_workspace')
+            source.write_text(explicit_state_fixture_calls(fixture, text, 'BandNonColState'))
             command = shlex.split(os.environ.get('CC', 'cc'))
             subprocess.run(command + ['-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
                                       str(source), '-o', str(binary)], check=True, timeout=60)

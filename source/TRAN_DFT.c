@@ -105,7 +105,7 @@ static void TRAN_DFT_Kdependent(
 
 
 
-double TRAN_DFT(
+double TRAN_DFT(OpenMXBandColState *band_state,
                 /* input */
                 MPI_Comm comm1,
                 int SucceedReadingDMfile, 
@@ -515,7 +515,7 @@ double TRAN_DFT(
 
     TRAN_SCF_iter = iter; /* TRAN_SCF_iter is passed to Band_DFT_Col. */
 
-    time5 += Band_DFT_Col(1,
+    time5 += Band_DFT_Col(band_state, 1,
                           Kspace_grid1,Kspace_grid2,Kspace_grid3,
                           SpinP_switch,0,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
                           MP,order_GA,ko,koS,EIGEN_Band,

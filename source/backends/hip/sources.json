@@ -1041,6 +1041,8 @@
     "openmx_native_resources.h",
     "openmx_cluster_col_state.h",
     "openmx_cluster_noncol_state.h",
+    "openmx_band_col_state.h",
+    "openmx_band_noncol_state.h",
     "openmx_core_grid.h",
     "openmx_grid_assembly.h",
     "openmx_grid_assembly.c",

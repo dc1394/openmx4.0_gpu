@@ -128,6 +128,18 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME solver-noncollinear-energy-output
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_solver_energy_output_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  set_tests_properties(solver-noncollinear-energy-output
+    PROPERTIES LABELS "unit;solver;core" TIMEOUT 180)
+  foreach(_band_kind col noncol)
+    add_test(NAME band-${_band_kind}-calculation-state-lifecycle
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_band_state_cpu.py"
+        --kind "${_band_kind}" --core-library "$<TARGET_FILE:openmx_core>")
+    set_tests_properties(band-${_band_kind}-calculation-state-lifecycle
+      PROPERTIES LABELS "unit;gpu;core" TIMEOUT 180)
+  endforeach()
   add_test(NAME cluster-noncol-calculation-state-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_noncol_state_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>")

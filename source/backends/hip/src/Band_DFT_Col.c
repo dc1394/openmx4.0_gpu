@@ -16,7 +16,6 @@
 #include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
-OPENMX_NATIVE_RESOURCE_GROUP(Band_DFT_Col,Band_DFT_Col_Release_GPU_Caches)
 #include "openmx_mgpu_runtime.h"
 #include "openmx_gpu_transform.h"
 #include "openmx_mgpu_band_plan.h"
@@ -37,52 +36,8 @@ OPENMX_NATIVE_RESOURCE_GROUP(Band_DFT_Col,Band_DFT_Col_Release_GPU_Caches)
 #include <string.h>
 #include <time.h>
 
-#define measure_time 0
-
-void set_up_blacsgrid_f(int mpi_comm_parent, int np_rows, int np_cols, char layout, int * my_blacs_ctxt, int * my_prow,
-                        int * my_pcol);
-void set_up_blacs_descriptor_f(int na, int nblk, int my_prow, int my_pcol, int np_rows, int np_cols, int * na_rows,
-                               int * na_cols, int sc_desc[9], int my_blacs_ctxt, int * info);
-
-void solve_evp_complex_(int * n1, int * n2, dcomplex * Cs, int * na_rows1, double * ko, dcomplex * Ss, int * na_rows2,
-                        int * nblk, int * mpi_comm_rows_int, int * mpi_comm_cols_int);
-
-void elpa_solve_evp_complex_2stage_double_impl_(int * n, int * MaxN, dcomplex * Hs, int * na_rows1, double * ko,
-                                                dcomplex * Cs, int * na_rows2, int * nblk, int * na_cols1,
-                                                int * mpi_comm_rows_int, int * mpi_comm_cols_int, int * mpiworld);
-
-extern int openmx_magma_zheevdx_gpu(int n, int maxn, void *d_A, double *w, int *mout);
-extern int openmx_hipsolver_zheevd_gpu(int n, int maxn, void *d_A, double *w, int *mout);
-extern int openmx_gpu_eigensolver_use_hipsolver(void);
-extern int openmx_gpu_is_apu(void);
-extern int openmx_magma_release_z_workspace(void);
-extern void openmx_gemmul8TrimWorkspaces(void);
-extern size_t Set_Hamiltonian_DemoteResidency(void);
-extern int openmx_hipsolver_release_workspace(void);
-extern int BandCol_ReleaseDMDeviceWorkspace_HIP(void);
-extern void Set_Density_Grid_GPU_Release_Device_Caches(void);
-extern hipblasStatus_t openmx_gemmul8ZgemmSolve(hipblasHandle_t handle, hipblasOperation_t transa,
-                                                hipblasOperation_t transb, int m, int n, int k,
-                                                const hipDoubleComplex *alpha, const hipDoubleComplex *A, int lda,
-                                                const hipDoubleComplex *B, int ldb, const hipDoubleComplex *beta,
-                                                hipDoubleComplex *C, int ldc);
-
-static void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1,
-                                double k1, double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n,
-                                int use_gpusolver_dense, int owns_global_dense_rank);
-static int  BandCol_LastConstructOnDevice(void);
-
-static double get_max_value(double localValue);
-static void   BandCol_GpuSolver_EnsureMatrixCapacity(int n);
-static void   BandCol_ConstructCache_Reset(void);
-static void   BandCol_RefineRelease(void);
-static void   BandCol_RefineResetStage(void);
-static void   BandCol_RefineDropBasis(void);
-
-static int BandCol_mgpu_host_dense=0, BandCol_host_n=0, BandCol_host_stride=0;
-static dcomplex *BandCol_host_s=NULL,*BandCol_host_h=NULL,*BandCol_host_tmp=NULL;
-static void BandCol_HostEnsure(int n);
-static void BandCol_GpuSolver_Destroy(void);
+/* Persistent metadata has the explicit calculation lifetime. Fields borrow
+   buffers and handles owned by its native resource group. */
 typedef struct
 {
     int                initialized;
@@ -116,25 +71,259 @@ typedef struct
     int                h_transformed_s_dim;
 } BandColGpuSolverCtx;
 
-static BandColGpuSolverCtx BandCol_gpusolver_ctx = {0};
-
 typedef struct {
     dcomplex *matrix;
     double k1, k2, k3;
 } BandColKOverlap;
 
-static BandColKOverlap *BandCol_k_overlap = NULL;
-static int BandCol_k_overlap_n = 0, BandCol_k_overlap_points = 0;
-static size_t BandCol_k_overlap_bytes = 0, BandCol_k_overlap_used = 0;
-
-static void BandCol_KOverlapReset(void)
+typedef struct
 {
-    for (int k = 0; k < BandCol_k_overlap_points; ++k)
-        openmx_core_native_free(Band_DFT_Col_resources,BandCol_k_overlap[k].matrix);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_k_overlap);
-    BandCol_k_overlap = NULL;
-    BandCol_k_overlap_n = BandCol_k_overlap_points = 0;
-    BandCol_k_overlap_bytes = BandCol_k_overlap_used = 0;
+    int      max_tno;
+    int      max_nk;
+    double * buf_Re0;
+    double * buf_Im0;
+    double * buf_Re1;
+    double * buf_Im1;
+    double * TmpEIGEN;
+    double * OccWeight;
+    double **ReEVec0;
+    double **ImEVec0;
+    double **ReEVec1;
+    double **ImEVec1;
+} BandColDMWorkspace;
+
+typedef struct
+{
+    int                valid;
+    int                n;
+    unsigned long long fingerprint;
+    int                entry_count;
+    int                pair_count;
+    int *              basis0;
+    int *              basis1;
+    int *              phase_index;
+    int *              pair_l1;
+    int *              pair_l2;
+    int *              pair_l3;
+    double *           phase_r;
+    double *           phase_i;
+} BandColDMEntryCache;
+
+typedef struct
+{
+    int h_index;
+    int index0;
+    int index1;
+    int l1;
+    int l2;
+    int l3;
+    int phase_index;
+} BandColConstructEntry;
+
+typedef struct
+{
+    int                    valid;
+    int                    n;
+    int                    na_rows;
+    int                    na_cols;
+    int                    nblk;
+    int                    np_rows;
+    int                    np_cols;
+    int                    my_prow;
+    int                    my_pcol;
+    unsigned long long     fingerprint;
+    int                    dense_count;
+    int                    local_count;
+    int                    h_count;
+    int                    dense_phase_count;
+    int                    has_dense;
+    int                    has_local;
+    int *                  dense_phase_l1;
+    int *                  dense_phase_l2;
+    int *                  dense_phase_l3;
+    double *               dense_phase_r;
+    double *               dense_phase_i;
+    /* device-resident: the entries are only ever read by the device
+       construct kernel, so no host copy is kept */
+    BandColConstructEntry *dense_entries_dev;
+    BandColConstructEntry *local_entries;
+} BandColConstructCache;
+
+typedef struct
+{
+    int     iterations;    /* -1 until the environment is read */
+    double  until;         /* printed NormRD below which the FP64 eigensolver takes over; 0 off */
+    int     final_stage;   /* the FP64 eigensolver for the rest of the SCF cycle */
+    int     last_refined;  /* the latest SCF eigensolve was a refined one (any k-point) */
+    int     cycle_refined; /* some eigensolve of this SCF cycle was */
+    int     defaulted;     /* on because of the device, not of OPENMX_EIGEN_REFINE */
+    int     force_fp64;    /* Band_DFT_Col_RefineForceFP64: this call in FP64 whatever the stage */
+    int     transient;     /* the first step of a cycle: its failures do not condemn the cycle */
+    int     pending;       /* this rank's k-point: prepared, waiting for the chemical potential */
+    int     solved;        /* this rank's k-point was refined this step */
+    int     persistent;    /* the strongest persistent failure of this step on this rank */
+    int     kdense;        /* this call refines the k-dense path (several k-points per rank) */
+    int     scf_iter;      /* the step of the call */
+    int     staged;        /* this call refines the one-k-point-per-rank path in serialized GPU turns: pass 1
+                              and pass 2 as on the k-dense path, the bases on the host between them */
+} BandColRefineState;
+
+typedef struct
+{
+    dcomplex *basis;       /* n x n, host */
+    double   *lam;         /* n eigenvalue estimates */
+    int       valid;       /* basis and lam hold the latest refined solve */
+    int       refined;     /* pass 1 of this step refined the k-point */
+} BandColKRefineSlot;
+
+typedef struct
+{
+    double mu;
+} BandColOccupationCtx;
+
+struct OpenMXBandColState {
+  OpenMXNativeResources *resources; /* borrowed from this calculation */
+  int initialized;
+  int refine_e0_n;
+  double *refine_e0;
+  int refine_x_n;
+  dcomplex *refine_x;
+  BandColOccupationCtx refine_occ;
+  EigenRefineProblem refine_pb;
+  EigenRefineDevice refine_dev;
+  EigenRefineState refine_state;
+  BandColRefineState refine;
+  EigenRefineState kref_state;
+  size_t kref_used;
+  int kref_slots;
+  int kref_n;
+  BandColKRefineSlot *kref;
+  int device_ranks_cached;
+  int last_construct_on_device;
+  BandColConstructCache construct_cache;
+  BandColDMEntryCache dm_entry_cache;
+  BandColDMWorkspace dm_workspace;
+  size_t k_overlap_bytes;
+  size_t k_overlap_used;
+  int k_overlap_n;
+  int k_overlap_points;
+  BandColKOverlap *k_overlap;
+  BandColGpuSolverCtx gpusolver_ctx;
+  dcomplex *host_s;
+  dcomplex *host_h;
+  dcomplex *host_tmp;
+  int mgpu_host_dense;
+  int host_n;
+  int host_stride;
+  int Band_DFT_Col_owned_announced;
+  double Band_DFT_Col_owned_partmulsum;
+  double Band_DFT_Col_owned_part4sum;
+  double Band_DFT_Col_owned_part3sum;
+  double Band_DFT_Col_owned_part2_5sum;
+  double Band_DFT_Col_owned_part2_4sum;
+  double Band_DFT_Col_owned_part2_3sum;
+  double Band_DFT_Col_owned_part2_2sum;
+  double Band_DFT_Col_owned_part2_1sum;
+  double Band_DFT_Col_owned_part1sum;
+  int Band_DFT_Col_owned_firsttime;
+  int RefineBasisLimit_checked;
+  size_t RefineBasisLimit_limit;
+  int GemmulBackTransformEnabled_enabled;
+  int SolveTimingEnabled_enabled;
+  int ZgemmLogCpuFallbackOnce_logged;
+  int GpuLibraryReserveBytes_checked;
+  size_t GpuLibraryReserveBytes_reserve;
+  int CacheTraceEnabled_enabled;
+  int GpuPersistentDecide_decided;
+};
+typedef OpenMXBandColState BandColState;
+
+static void BandCol_ReleaseCaches(BandColState *state);
+static void BandCol_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  BandColState *state = (BandColState *)metadata;
+  (void)owner;
+  if (state->initialized) BandCol_ReleaseCaches(state);
+}
+
+OpenMXBandColState *Band_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner = NULL;
+  void *metadata = NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core, "Band_DFT_Col",
+      sizeof(BandColState), BandCol_Reset, &owner, &metadata, error, sizeof(error))) {
+    fprintf(stderr, "OpenMX collinear band state: %s\n", error);
+    abort();
+  }
+  BandColState *state = (BandColState *)metadata;
+  if (!state->initialized) {
+    state->resources = owner;
+    const BandColRefineState initial_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    state->refine = initial_refine;
+    state->Band_DFT_Col_owned_firsttime = 1;
+    state->GemmulBackTransformEnabled_enabled = -1;
+    state->SolveTimingEnabled_enabled = -1;
+    state->CacheTraceEnabled_enabled = -1;
+    state->GpuPersistentDecide_decided = -1;
+    state->initialized = 1;
+  }
+  return state;
+}
+
+#define measure_time 0
+
+void set_up_blacsgrid_f(int mpi_comm_parent, int np_rows, int np_cols, char layout, int * my_blacs_ctxt, int * my_prow,
+                        int * my_pcol);
+void set_up_blacs_descriptor_f(int na, int nblk, int my_prow, int my_pcol, int np_rows, int np_cols, int * na_rows,
+                               int * na_cols, int sc_desc[9], int my_blacs_ctxt, int * info);
+
+void solve_evp_complex_(int * n1, int * n2, dcomplex * Cs, int * na_rows1, double * ko, dcomplex * Ss, int * na_rows2,
+                        int * nblk, int * mpi_comm_rows_int, int * mpi_comm_cols_int);
+
+void elpa_solve_evp_complex_2stage_double_impl_(int * n, int * MaxN, dcomplex * Hs, int * na_rows1, double * ko,
+                                                dcomplex * Cs, int * na_rows2, int * nblk, int * na_cols1,
+                                                int * mpi_comm_rows_int, int * mpi_comm_cols_int, int * mpiworld);
+
+extern int openmx_magma_zheevdx_gpu(int n, int maxn, void *d_A, double *w, int *mout);
+extern int openmx_hipsolver_zheevd_gpu(int n, int maxn, void *d_A, double *w, int *mout);
+extern int openmx_gpu_eigensolver_use_hipsolver(void);
+extern int openmx_gpu_is_apu(void);
+extern int openmx_magma_release_z_workspace(void);
+extern void openmx_gemmul8TrimWorkspaces(void);
+extern size_t Set_Hamiltonian_DemoteResidency(void);
+extern int openmx_hipsolver_release_workspace(void);
+extern int BandCol_ReleaseDMDeviceWorkspace_HIP(void);
+extern void Set_Density_Grid_GPU_Release_Device_Caches(void);
+extern hipblasStatus_t openmx_gemmul8ZgemmSolve(hipblasHandle_t handle, hipblasOperation_t transa,
+                                                hipblasOperation_t transb, int m, int n, int k,
+                                                const hipDoubleComplex *alpha, const hipDoubleComplex *A, int lda,
+                                                const hipDoubleComplex *B, int ldb, const hipDoubleComplex *beta,
+                                                hipDoubleComplex *C, int ldc);
+
+static void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1,
+                                double k1, double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n,
+                                int use_gpusolver_dense, int owns_global_dense_rank);
+static int  BandCol_LastConstructOnDevice(BandColState *state);
+
+static double get_max_value(double localValue);
+static void   BandCol_GpuSolver_EnsureMatrixCapacity(BandColState *state, int n);
+static void   BandCol_ConstructCache_Reset(BandColState *state);
+static void   BandCol_RefineRelease(BandColState *state);
+static void   BandCol_RefineResetStage(BandColState *state);
+static void   BandCol_RefineDropBasis(BandColState *state);
+
+static void BandCol_HostEnsure(BandColState *state, int n);
+static void BandCol_GpuSolver_Destroy(BandColState *state);
+
+static void BandCol_KOverlapReset(BandColState *state)
+{
+    for (int k = 0; k < state->k_overlap_points; ++k)
+        openmx_core_native_free(state->resources,state->k_overlap[k].matrix);
+    openmx_core_native_free(state->resources,state->k_overlap);
+    state->k_overlap = NULL;
+    state->k_overlap_n = state->k_overlap_points = 0;
+    state->k_overlap_bytes = state->k_overlap_used = 0;
 }
 
 /* Overlap and eigenvector caches each receive at most 1/64 of available
@@ -167,120 +356,72 @@ static size_t BandCol_HostCacheLimit(const char *name, double default_mib)
 /* An entry holds the transformed overlap (n x n complex) and, behind it,
    the n overlap eigenvalues, which a hit restores to ko and koS as the
    overlap solve would leave them (the outputs and diagnostics read them). */
-static void BandCol_KOverlapPrepare(int n, int points)
+static void BandCol_KOverlapPrepare(BandColState *state, int n, int points)
 {
     size_t matrix_bytes, bytes;
 
-    if (BandCol_k_overlap_n != n || BandCol_k_overlap_points != points)
-        BandCol_KOverlapReset();
-    if (BandCol_k_overlap != NULL || n <= 0 || points <= 0 ||
+    if (state->k_overlap_n != n || state->k_overlap_points != points)
+        BandCol_KOverlapReset(state);
+    if (state->k_overlap != NULL || n <= 0 || points <= 0 ||
         (size_t)n > SIZE_MAX / (size_t)n / sizeof(dcomplex)) return;
     matrix_bytes = (size_t)n * (size_t)n * sizeof(dcomplex);
     if ((size_t)n > (SIZE_MAX - matrix_bytes) / sizeof(double)) return;
     bytes = matrix_bytes + (size_t)n * sizeof(double);
     if (bytes > BandCol_HostCacheLimit("OPENMX_BAND_COL_OVERLAP_CACHE_MB", 512.0)) return;
-    BandCol_k_overlap = (BandColKOverlap*)openmx_core_native_malloc(Band_DFT_Col_resources,(size_t)points,sizeof(BandColKOverlap),1);
-    if (BandCol_k_overlap == NULL) return;
-    BandCol_k_overlap_n = n;
-    BandCol_k_overlap_points = points;
-    BandCol_k_overlap_bytes = bytes;
+    state->k_overlap = (BandColKOverlap*)openmx_core_native_malloc(state->resources,(size_t)points,sizeof(BandColKOverlap),1);
+    if (state->k_overlap == NULL) return;
+    state->k_overlap_n = n;
+    state->k_overlap_points = points;
+    state->k_overlap_bytes = bytes;
 }
 
-static int BandCol_KOverlapRestore(int point, double k1, double k2, double k3, double *ko, double *koS)
+static int BandCol_KOverlapRestore(BandColState *state, int point, double k1, double k2, double k3, double *ko, double *koS)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     BandColKOverlap *entry;
     size_t matrix_bytes, eigen_bytes;
 
-    if (BandCol_k_overlap == NULL || point < 0 || point >= BandCol_k_overlap_points) return 0;
-    entry = &BandCol_k_overlap[point];
+    if (state->k_overlap == NULL || point < 0 || point >= state->k_overlap_points) return 0;
+    entry = &state->k_overlap[point];
     if (entry->matrix == NULL || entry->k1 != k1 || entry->k2 != k2 || entry->k3 != k3) return 0;
-    matrix_bytes = (size_t)BandCol_k_overlap_n * (size_t)BandCol_k_overlap_n * sizeof(dcomplex);
-    eigen_bytes = (size_t)BandCol_k_overlap_n * sizeof(double);
-    if (BandCol_mgpu_host_dense) {
-        BandCol_HostEnsure(BandCol_k_overlap_n);
-        memcpy(BandCol_host_s,entry->matrix,matrix_bytes);
+    matrix_bytes = (size_t)state->k_overlap_n * (size_t)state->k_overlap_n * sizeof(dcomplex);
+    eigen_bytes = (size_t)state->k_overlap_n * sizeof(double);
+    if (state->mgpu_host_dense) {
+        BandCol_HostEnsure(state, state->k_overlap_n);
+        memcpy(state->host_s,entry->matrix,matrix_bytes);
     } else {
-        BandCol_GpuSolver_EnsureMatrixCapacity(BandCol_k_overlap_n);
+        BandCol_GpuSolver_EnsureMatrixCapacity(state, state->k_overlap_n);
         wait_hipfunc(hipMemcpy(ctx->d_S, entry->matrix, matrix_bytes, hipMemcpyHostToDevice));
     }
     memcpy(ko + 1, (const char*)entry->matrix + matrix_bytes, eigen_bytes);
     memcpy(koS + 1, (const char*)entry->matrix + matrix_bytes, eigen_bytes);
     ctx->transformed_s_valid = 1;
-    ctx->transformed_s_dim = BandCol_k_overlap_n;
+    ctx->transformed_s_dim = state->k_overlap_n;
     return 1;
 }
 
-static void BandCol_KOverlapSave(int point, double k1, double k2, double k3, const double *koS)
+static void BandCol_KOverlapSave(BandColState *state, int point, double k1, double k2, double k3, const double *koS)
 {
     BandColKOverlap *entry;
     size_t matrix_bytes;
 
-    if (BandCol_k_overlap == NULL || point < 0 || point >= BandCol_k_overlap_points) return;
-    entry = &BandCol_k_overlap[point];
+    if (state->k_overlap == NULL || point < 0 || point >= state->k_overlap_points) return;
+    entry = &state->k_overlap[point];
     if (entry->matrix == NULL) {
         size_t limit = BandCol_HostCacheLimit("OPENMX_BAND_COL_OVERLAP_CACHE_MB", 512.0);
-        if (BandCol_k_overlap_used > limit || BandCol_k_overlap_bytes > limit - BandCol_k_overlap_used) return;
-        entry->matrix = (dcomplex*)openmx_core_native_malloc(Band_DFT_Col_resources,1,BandCol_k_overlap_bytes,0);
+        if (state->k_overlap_used > limit || state->k_overlap_bytes > limit - state->k_overlap_used) return;
+        entry->matrix = (dcomplex*)openmx_core_native_malloc(state->resources,1,state->k_overlap_bytes,0);
         if (entry->matrix == NULL) return;
-        BandCol_k_overlap_used += BandCol_k_overlap_bytes;
+        state->k_overlap_used += state->k_overlap_bytes;
     }
-    matrix_bytes = (size_t)BandCol_k_overlap_n * (size_t)BandCol_k_overlap_n * sizeof(dcomplex);
-    if (BandCol_mgpu_host_dense) memcpy(entry->matrix,BandCol_host_s,matrix_bytes);
-    else wait_hipfunc(hipMemcpy(entry->matrix, BandCol_gpusolver_ctx.d_S, matrix_bytes, hipMemcpyDeviceToHost));
-    memcpy((char*)entry->matrix + matrix_bytes, koS + 1, (size_t)BandCol_k_overlap_n * sizeof(double));
+    matrix_bytes = (size_t)state->k_overlap_n * (size_t)state->k_overlap_n * sizeof(dcomplex);
+    if (state->mgpu_host_dense) memcpy(entry->matrix,state->host_s,matrix_bytes);
+    else wait_hipfunc(hipMemcpy(entry->matrix, state->gpusolver_ctx.d_S, matrix_bytes, hipMemcpyDeviceToHost));
+    memcpy((char*)entry->matrix + matrix_bytes, koS + 1, (size_t)state->k_overlap_n * sizeof(double));
     entry->k1 = k1;
     entry->k2 = k2;
     entry->k3 = k3;
 }
-
-typedef struct
-{
-    int      max_tno;
-    int      max_nk;
-    double * buf_Re0;
-    double * buf_Im0;
-    double * buf_Re1;
-    double * buf_Im1;
-    double * TmpEIGEN;
-    double * OccWeight;
-    double **ReEVec0;
-    double **ImEVec0;
-    double **ReEVec1;
-    double **ImEVec1;
-} BandColDMWorkspace;
-
-static BandColDMWorkspace BandCol_dm_workspace = {0};
-
-typedef struct
-{
-    int                valid;
-    int                n;
-    unsigned long long fingerprint;
-    int                entry_count;
-    int                pair_count;
-    int *              basis0;
-    int *              basis1;
-    int *              phase_index;
-    int *              pair_l1;
-    int *              pair_l2;
-    int *              pair_l3;
-    double *           phase_r;
-    double *           phase_i;
-} BandColDMEntryCache;
-
-static BandColDMEntryCache BandCol_dm_entry_cache = {0};
-
-typedef struct
-{
-    int h_index;
-    int index0;
-    int index1;
-    int l1;
-    int l2;
-    int l3;
-    int phase_index;
-} BandColConstructEntry;
 
 /* d_entries is DEVICE-resident (the construct cache keeps no host copy) */
 extern int BandCol_BuildDenseCsHs_HIP(int need_s, int count, int h_count, int phase_count, int n,
@@ -292,38 +433,6 @@ extern int BandCol_AccumulateDenseTransposedDM_HIP(int entry_count, int pair_cou
                                                    const double *phase_r, const double *phase_i,
                                                    const double *eigen, const double *occ_weight,
                                                    const dcomplex *evec_device, double *CDM1, double *EDM1);
-
-typedef struct
-{
-    int                    valid;
-    int                    n;
-    int                    na_rows;
-    int                    na_cols;
-    int                    nblk;
-    int                    np_rows;
-    int                    np_cols;
-    int                    my_prow;
-    int                    my_pcol;
-    unsigned long long     fingerprint;
-    int                    dense_count;
-    int                    local_count;
-    int                    h_count;
-    int                    dense_phase_count;
-    int                    has_dense;
-    int                    has_local;
-    int *                  dense_phase_l1;
-    int *                  dense_phase_l2;
-    int *                  dense_phase_l3;
-    double *               dense_phase_r;
-    double *               dense_phase_i;
-    /* device-resident: the entries are only ever read by the device
-       construct kernel, so no host copy is kept */
-    BandColConstructEntry *dense_entries_dev;
-    BandColConstructEntry *local_entries;
-} BandColConstructCache;
-
-static BandColConstructCache BandCol_construct_cache = {0};
-static int                   BandCol_last_construct_on_device = 0;
 
 static void BandCol_AbortWithMessage(const char * msg)
 {
@@ -339,7 +448,7 @@ static void BandCol_AbortWithMessage(const char * msg)
 
 int Band_DFT_Col_GpuSwitchNum(void)
 {
-    static int cached = -1;
+    int cached = -1;
 
     if (cached < 0) {
         const char *value = openmx_env_get("OPENMX_BAND_GPU_SWITCH_NUM");
@@ -395,13 +504,12 @@ static int BandCol_GpuPersistentEnabled(void)
     return (atoi(value) != 0);
 }
 
-static int BandCol_GpuPersistentDecide(void)
+static int BandCol_GpuPersistentDecide(BandColState *state)
 {
-    static int decided = -1;
 
-    if (decided < 0) {
+    if (state->GpuPersistentDecide_decided < 0) {
         if (!BandCol_GpuPersistentEnabled()) {
-            decided = 0;
+            state->GpuPersistentDecide_decided = 0;
         } else {
             size_t      free_bytes = 0, total_bytes = 0;
             size_t      min_free = 2048ULL * 1024ULL * 1024ULL;
@@ -415,20 +523,20 @@ static int BandCol_GpuPersistentDecide(void)
             }
 
             if (hipMemGetInfo(&free_bytes, &total_bytes) != hipSuccess) {
-                decided = 0;
+                state->GpuPersistentDecide_decided = 0;
             } else if (free_bytes < min_free) {
                 if (2 <= level_stdout) {
                     fprintf(stderr,
                             "Band_DFT_Col: persistent GPU buffers disabled (%.0f MiB free < %.0f MiB threshold).\n",
                             (double)free_bytes / (1024.0 * 1024.0), (double)min_free / (1024.0 * 1024.0));
                 }
-                decided = 0;
+                state->GpuPersistentDecide_decided = 0;
             } else {
-                decided = 1;
+                state->GpuPersistentDecide_decided = 1;
             }
         }
     }
-    return decided;
+    return state->GpuPersistentDecide_decided;
 }
 
 static int BandCol_GemmWorkspaceTurnRelease(void)
@@ -509,15 +617,14 @@ static int BandCol_GpuTurnGroupForScf(int SCF_iter)
     return (int)group;
 }
 
-static int BandCol_CacheTraceEnabled(void)
+static int BandCol_CacheTraceEnabled(BandColState *state)
 {
-    static int enabled = -1;
 
-    if (enabled < 0) {
+    if (state->CacheTraceEnabled_enabled < 0) {
         const char *value = openmx_env_get("OPENMX_BAND_CACHE_TRACE");
-        enabled = (value != NULL && atoi(value) != 0);
+        state->CacheTraceEnabled_enabled = (value != NULL && atoi(value) != 0);
     }
-    return enabled;
+    return state->CacheTraceEnabled_enabled;
 }
 
 static int BandCol_AbortAfterEigenScf(void)
@@ -574,31 +681,28 @@ static int BandCol_MaxConcurrentKGpuTurns(int n)
    rank measured on ROCm 7.2, independent of n, and an allocation failing
    inside hipBLASLt terminates the process.  Charged per concurrently solving
    rank; OPENMX_BAND_GPU_RESERVE_MB overrides the default of 512 MiB. */
-static size_t BandCol_GpuLibraryReserveBytes(void)
+static size_t BandCol_GpuLibraryReserveBytes(BandColState *state)
 {
-    static size_t reserve = 0;
-    static int checked = 0;
 
-    if (!checked){
+    if (!state->GpuLibraryReserveBytes_checked){
         const char *env = openmx_env_get("OPENMX_BAND_GPU_RESERVE_MB");
         long mib = 512L;
         if (env!=NULL && env[0]!='\0'){
             long value = atol(env);
             if (0L<=value) mib = value;
         }
-        reserve = (size_t)mib*1024U*1024U;
-        checked = 1;
+        state->GpuLibraryReserveBytes_reserve = (size_t)mib*1024U*1024U;
+        state->GpuLibraryReserveBytes_checked = 1;
     }
-    return reserve;
+    return state->GpuLibraryReserveBytes_reserve;
 }
 
 /* Ranks of mpi_comm_level1 that share this rank's GPU.  Collective on the
    first call; every rank reaches BandCol_GpuDenseFits together. */
-static int BandCol_device_ranks_cached = 0;
 
-static int BandCol_DeviceRanks(void)
+static int BandCol_DeviceRanks(BandColState *state)
 {
-    if (BandCol_device_ranks_cached==0){
+    if (state->device_ranks_cached==0){
         MPI_Comm node_comm, device_comm;
         int hip_device = 0;
         int device_ranks = 0;
@@ -609,19 +713,19 @@ static int BandCol_DeviceRanks(void)
         MPI_Comm_size(device_comm,&device_ranks);
         MPI_Comm_free(&device_comm);
         MPI_Comm_free(&node_comm);
-        BandCol_device_ranks_cached = (device_ranks<1) ? 1 : device_ranks;
+        state->device_ranks_cached = (device_ranks<1) ? 1 : device_ranks;
     }
-    return BandCol_device_ranks_cached;
+    return state->device_ranks_cached;
 }
 
 /* non-collective: for the per-k-point paths, which not every rank reaches
    the same number of times (BandCol_GpuDenseFits fills the cache first) */
-static int BandCol_DeviceRanksCached(void)
+static int BandCol_DeviceRanksCached(BandColState *state)
 {
-    return (BandCol_device_ranks_cached<1) ? 1 : BandCol_device_ranks_cached;
+    return (state->device_ranks_cached<1) ? 1 : state->device_ranks_cached;
 }
 
-static int BandCol_NativeGpuDenseFits(int n, int owns_dense)
+static int BandCol_NativeGpuDenseFits(BandColState *state, int n, int owns_dense)
 {
     const char *env = openmx_env_get("OPENMX_BAND_GPU_DIAG");
     const char *reserve_env = openmx_env_get("OPENMX_BAND_GPU_DIAG_RESERVE_MB");
@@ -643,8 +747,8 @@ static int BandCol_NativeGpuDenseFits(int n, int owns_dense)
     /* every rank sharing the device pays the library-side fixed cost,
        however many of them solve at a time; collective, so keep it before
        the owner-only check */
-    device_ranks=BandCol_DeviceRanks();
-    fixed_all=BandCol_GpuLibraryReserveBytes()*(size_t)device_ranks;
+    device_ranks=BandCol_DeviceRanks(state);
+    fixed_all=BandCol_GpuLibraryReserveBytes(state)*(size_t)device_ranks;
     if (per_rank!=SIZE_MAX && reserve<=SIZE_MAX-fixed_all &&
         (size_t)turns<=(SIZE_MAX-reserve-fixed_all)/per_rank){
         required=per_rank*(size_t)turns+reserve+fixed_all;
@@ -664,9 +768,9 @@ static int BandCol_NativeGpuDenseFits(int n, int owns_dense)
         MPI_Allreduce(&local_fit,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
         if (fit!=0 || attempt==1) break;
         (void)BandCol_ReleaseDMDeviceWorkspace_HIP();
-        BandCol_ConstructCache_Reset();
+        BandCol_ConstructCache_Reset(state);
         /* the basis the resident refined path keeps for its warm start */
-        BandCol_RefineDropBasis();
+        BandCol_RefineDropBasis(state);
         Set_Density_Grid_GPU_Release_Device_Caches();
         /* the Hamiltonian's resident orbital tables as well, for the rest of
            the run: re-uploaded per call they leave the eigensolver its room */
@@ -686,21 +790,21 @@ static int BandCol_NativeGpuDenseFits(int n, int owns_dense)
                     "(%.3f MiB total), but %.3f MiB is required for the dense GPU diagonalization "
                     "(%.3f MiB library reserve per rank); switching to CPU path.\n",
                     device_ranks,(double)free_bytes/MiB,(double)total_bytes/MiB,
-                    (double)required/MiB,(double)BandCol_GpuLibraryReserveBytes()/MiB);
+                    (double)required/MiB,(double)BandCol_GpuLibraryReserveBytes(state)/MiB);
             fflush(stderr);
         }
     }
     return fit==1;
 }
 
-static int BandCol_GpuDenseFits(int n,int owns_dense)
+static int BandCol_GpuDenseFits(BandColState *state, int n,int owns_dense)
 {
     const char *enabled=openmx_env_get("OPENMX_BAND_GPU_DIAG");
-    BandCol_mgpu_host_dense=0;
+    state->mgpu_host_dense=0;
     if (enabled && atoi(enabled)==0 && !openmx_mgpu_host_required()) return 0;
-    int fit=openmx_mgpu_host_required()?0:BandCol_NativeGpuDenseFits(n,owns_dense);
+    int fit=openmx_mgpu_host_required()?0:BandCol_NativeGpuDenseFits(state, n,owns_dense);
     if (!fit && !gpusolver2_flag) {
-        BandCol_GpuSolver_Destroy();
+        BandCol_GpuSolver_Destroy(state);
         openmx_gemmul8ReleaseWorkspaces();
         MPI_Barrier(mpi_comm_level1);
         int rank;
@@ -716,25 +820,24 @@ static int BandCol_GpuDenseFits(int n,int owns_dense)
             }
         }
         MPI_Bcast(&fit,1,MPI_INT,Host_ID,mpi_comm_level1);
-        BandCol_mgpu_host_dense=fit;
+        state->mgpu_host_dense=fit;
     }
     return fit;
 }
 
-
-static void BandCol_ConstructCache_Reset(void)
+static void BandCol_ConstructCache_Reset(BandColState *state)
 {
-    if (BandCol_construct_cache.dense_entries_dev != NULL) {
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,BandCol_construct_cache.dense_entries_dev));
+    if (state->construct_cache.dense_entries_dev != NULL) {
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,state->construct_cache.dense_entries_dev));
     }
 
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.local_entries);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_l1);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_l2);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_l3);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_r);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_construct_cache.dense_phase_i);
-    memset(&BandCol_construct_cache, 0, sizeof(BandCol_construct_cache));
+    openmx_core_native_free(state->resources,state->construct_cache.local_entries);
+    openmx_core_native_free(state->resources,state->construct_cache.dense_phase_l1);
+    openmx_core_native_free(state->resources,state->construct_cache.dense_phase_l2);
+    openmx_core_native_free(state->resources,state->construct_cache.dense_phase_l3);
+    openmx_core_native_free(state->resources,state->construct_cache.dense_phase_r);
+    openmx_core_native_free(state->resources,state->construct_cache.dense_phase_i);
+    memset(&state->construct_cache, 0, sizeof(state->construct_cache));
 }
 
 static unsigned long long BandCol_ConstructFingerprint(int *order_GA, int *MP)
@@ -766,9 +869,9 @@ static unsigned long long BandCol_ConstructFingerprint(int *order_GA, int *MP)
     return h;
 }
 
-static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int want_dense)
+static void BandCol_ConstructCache_Ensure(BandColState *state, int *order_GA, int *MP, int n, int want_dense)
 {
-    BandColConstructCache *cache = &BandCol_construct_cache;
+    BandColConstructCache *cache = &state->construct_cache;
     unsigned long long     fingerprint = BandCol_ConstructFingerprint(order_GA, MP);
     int                    dense_count = 0;
     int                    local_count = 0;
@@ -788,7 +891,7 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int wan
         return;
     }
 
-    BandCol_ConstructCache_Reset();
+    BandCol_ConstructCache_Reset(state);
 
     for (int AN = 1; AN <= atomnum; AN++) {
         int GA_AN = order_GA[AN];
@@ -844,25 +947,25 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int wan
     }
 
     if (want_dense) {
-        dense_host = (BandColConstructEntry *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(BandColConstructEntry) * (size_t)(dense_count + 1),0);
-        cache->dense_phase_l1 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
-        cache->dense_phase_l2 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
-        cache->dense_phase_l3 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
-        cache->dense_phase_r  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(dense_phase_count + 1),0);
-        cache->dense_phase_i  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(dense_phase_count + 1),0);
+        dense_host = (BandColConstructEntry *)openmx_core_native_malloc(state->resources,1,sizeof(BandColConstructEntry) * (size_t)(dense_count + 1),0);
+        cache->dense_phase_l1 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_l2 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_l3 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_r  = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)(dense_phase_count + 1),0);
+        cache->dense_phase_i  = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)(dense_phase_count + 1),0);
 
         if (dense_host == NULL || cache->dense_phase_l1 == NULL ||
             cache->dense_phase_l2 == NULL || cache->dense_phase_l3 == NULL || cache->dense_phase_r == NULL ||
             cache->dense_phase_i == NULL) {
-            openmx_core_native_free(Band_DFT_Col_resources,dense_host);
-            BandCol_ConstructCache_Reset();
+            openmx_core_native_free(state->resources,dense_host);
+            BandCol_ConstructCache_Reset(state);
             BandCol_AbortWithMessage("Failed to allocate Construct_Band_CsHs cache in Band_DFT_Col.c.");
         }
     } else {
-        cache->local_entries = (BandColConstructEntry *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(BandColConstructEntry) * (size_t)(local_count + 1),0);
+        cache->local_entries = (BandColConstructEntry *)openmx_core_native_malloc(state->resources,1,sizeof(BandColConstructEntry) * (size_t)(local_count + 1),0);
 
         if (cache->local_entries == NULL) {
-            BandCol_ConstructCache_Reset();
+            BandCol_ConstructCache_Reset(state);
             BandCol_AbortWithMessage("Failed to allocate Construct_Band_CsHs cache in Band_DFT_Col.c.");
         }
     }
@@ -972,10 +1075,10 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int wan
            a build scratch and is released right here */
         size_t dense_bytes = sizeof(BandColConstructEntry) * (size_t)dense_count;
 
-        wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&cache->dense_entries_dev,dense_bytes));
+        wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&cache->dense_entries_dev,dense_bytes));
         wait_hipfunc(hipMemcpy(cache->dense_entries_dev, dense_host, dense_bytes, hipMemcpyHostToDevice));
     }
-    openmx_core_native_free(Band_DFT_Col_resources,dense_host);
+    openmx_core_native_free(state->resources,dense_host);
 
     cache->valid       = 1;
     cache->n           = n;
@@ -995,27 +1098,27 @@ static void BandCol_ConstructCache_Ensure(int *order_GA, int *MP, int n, int wan
     cache->has_local   = !want_dense;
 }
 
-static void BandCol_DMWorkspace_Reset(void)
+static void BandCol_DMWorkspace_Reset(BandColState *state)
 {
-    BandColDMWorkspace *ws = &BandCol_dm_workspace;
+    BandColDMWorkspace *ws = &state->dm_workspace;
 
-    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Re0);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Im0);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Re1);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->buf_Im1);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->TmpEIGEN);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->OccWeight);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->ReEVec0);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->ImEVec0);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->ReEVec1);
-    openmx_core_native_free(Band_DFT_Col_resources,ws->ImEVec1);
+    openmx_core_native_free(state->resources,ws->buf_Re0);
+    openmx_core_native_free(state->resources,ws->buf_Im0);
+    openmx_core_native_free(state->resources,ws->buf_Re1);
+    openmx_core_native_free(state->resources,ws->buf_Im1);
+    openmx_core_native_free(state->resources,ws->TmpEIGEN);
+    openmx_core_native_free(state->resources,ws->OccWeight);
+    openmx_core_native_free(state->resources,ws->ReEVec0);
+    openmx_core_native_free(state->resources,ws->ImEVec0);
+    openmx_core_native_free(state->resources,ws->ReEVec1);
+    openmx_core_native_free(state->resources,ws->ImEVec1);
 
     memset(ws, 0, sizeof(*ws));
 }
 
-static void BandCol_DMWorkspace_Ensure(int max_tno, int nk)
+static void BandCol_DMWorkspace_Ensure(BandColState *state, int max_tno, int nk)
 {
-    BandColDMWorkspace *ws = &BandCol_dm_workspace;
+    BandColDMWorkspace *ws = &state->dm_workspace;
     size_t              vec_bytes;
 
     if (max_tno <= 0 || nk <= 0) {
@@ -1026,25 +1129,25 @@ static void BandCol_DMWorkspace_Ensure(int max_tno, int nk)
         return;
     }
 
-    BandCol_DMWorkspace_Reset();
+    BandCol_DMWorkspace_Reset(state);
 
     vec_bytes = sizeof(double) * (size_t)max_tno * (size_t)nk;
 
-    ws->buf_Re0  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
-    ws->buf_Im0  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
-    ws->buf_Re1  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
-    ws->buf_Im1  = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,vec_bytes,0);
-    ws->TmpEIGEN = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)nk,0);
-    ws->OccWeight = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)nk,0);
-    ws->ReEVec0  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
-    ws->ImEVec0  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
-    ws->ReEVec1  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
-    ws->ImEVec1  = (double **)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double *) * (size_t)max_tno,0);
+    ws->buf_Re0  = (double *)openmx_core_native_malloc(state->resources,1,vec_bytes,0);
+    ws->buf_Im0  = (double *)openmx_core_native_malloc(state->resources,1,vec_bytes,0);
+    ws->buf_Re1  = (double *)openmx_core_native_malloc(state->resources,1,vec_bytes,0);
+    ws->buf_Im1  = (double *)openmx_core_native_malloc(state->resources,1,vec_bytes,0);
+    ws->TmpEIGEN = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)nk,0);
+    ws->OccWeight = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)nk,0);
+    ws->ReEVec0  = (double **)openmx_core_native_malloc(state->resources,1,sizeof(double *) * (size_t)max_tno,0);
+    ws->ImEVec0  = (double **)openmx_core_native_malloc(state->resources,1,sizeof(double *) * (size_t)max_tno,0);
+    ws->ReEVec1  = (double **)openmx_core_native_malloc(state->resources,1,sizeof(double *) * (size_t)max_tno,0);
+    ws->ImEVec1  = (double **)openmx_core_native_malloc(state->resources,1,sizeof(double *) * (size_t)max_tno,0);
 
     if (ws->buf_Re0 == NULL || ws->buf_Im0 == NULL || ws->buf_Re1 == NULL || ws->buf_Im1 == NULL ||
         ws->TmpEIGEN == NULL || ws->OccWeight == NULL || ws->ReEVec0 == NULL || ws->ImEVec0 == NULL || ws->ReEVec1 == NULL ||
         ws->ImEVec1 == NULL) {
-        BandCol_DMWorkspace_Reset();
+        BandCol_DMWorkspace_Reset(state);
         BandCol_AbortWithMessage("Failed to allocate DM workspace in Band_DFT_Col.c.");
     }
 
@@ -1067,22 +1170,22 @@ static void BandCol_DMWorkspace_SetPointers(BandColDMWorkspace *ws, int max_tno,
     }
 }
 
-static void BandCol_DMEntryCache_Reset(void)
+static void BandCol_DMEntryCache_Reset(BandColState *state)
 {
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.basis0);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.basis1);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.phase_index);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.pair_l1);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.pair_l2);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.pair_l3);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.phase_r);
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_dm_entry_cache.phase_i);
-    memset(&BandCol_dm_entry_cache, 0, sizeof(BandCol_dm_entry_cache));
+    openmx_core_native_free(state->resources,state->dm_entry_cache.basis0);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.basis1);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.phase_index);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.pair_l1);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.pair_l2);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.pair_l3);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.phase_r);
+    openmx_core_native_free(state->resources,state->dm_entry_cache.phase_i);
+    memset(&state->dm_entry_cache, 0, sizeof(state->dm_entry_cache));
 }
 
-static void BandCol_DMEntryCache_Ensure(int *order_GA, int *MP, int n)
+static void BandCol_DMEntryCache_Ensure(BandColState *state, int *order_GA, int *MP, int n)
 {
-    BandColDMEntryCache *cache = &BandCol_dm_entry_cache;
+    BandColDMEntryCache *cache = &state->dm_entry_cache;
     unsigned long long   fingerprint = BandCol_ConstructFingerprint(order_GA, MP);
     int                  entry_count = 0;
     int                  pair_count = 0;
@@ -1091,7 +1194,7 @@ static void BandCol_DMEntryCache_Ensure(int *order_GA, int *MP, int n)
         return;
     }
 
-    BandCol_DMEntryCache_Reset();
+    BandCol_DMEntryCache_Reset(state);
 
     for (int GA_AN = 1; GA_AN <= atomnum; GA_AN++) {
         int wanA  = WhatSpecies[GA_AN];
@@ -1107,18 +1210,18 @@ static void BandCol_DMEntryCache_Ensure(int *order_GA, int *MP, int n)
         }
     }
 
-    cache->basis0 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
-    cache->basis1 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
-    cache->phase_index = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
-    cache->pair_l1 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
-    cache->pair_l2 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
-    cache->pair_l3 = (int *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
-    cache->phase_r = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(pair_count + 1),0);
-    cache->phase_i = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)(pair_count + 1),0);
+    cache->basis0 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
+    cache->basis1 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
+    cache->phase_index = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(entry_count + 1),0);
+    cache->pair_l1 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
+    cache->pair_l2 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
+    cache->pair_l3 = (int *)openmx_core_native_malloc(state->resources,1,sizeof(int) * (size_t)(pair_count + 1),0);
+    cache->phase_r = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)(pair_count + 1),0);
+    cache->phase_i = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)(pair_count + 1),0);
 
     if (cache->basis0 == NULL || cache->basis1 == NULL || cache->phase_index == NULL || cache->pair_l1 == NULL ||
         cache->pair_l2 == NULL || cache->pair_l3 == NULL || cache->phase_r == NULL || cache->phase_i == NULL) {
-        BandCol_DMEntryCache_Reset();
+        BandCol_DMEntryCache_Reset(state);
         BandCol_AbortWithMessage("Failed to allocate DM entry cache in Band_DFT_Col.c.");
     }
 
@@ -1162,9 +1265,9 @@ static void BandCol_DMEntryCache_Ensure(int *order_GA, int *MP, int n)
     cache->pair_count  = pair_count;
 }
 
-static void BandCol_UpdateDMEntryPhases(double k1, double k2, double k3)
+static void BandCol_UpdateDMEntryPhases(BandColState *state, double k1, double k2, double k3)
 {
-    BandColDMEntryCache *cache = &BandCol_dm_entry_cache;
+    BandColDMEntryCache *cache = &state->dm_entry_cache;
 
     for (int pair = 0; pair < cache->pair_count; pair++) {
         double kRn = k1 * (double)cache->pair_l1[pair] + k2 * (double)cache->pair_l2[pair] +
@@ -1174,7 +1277,7 @@ static void BandCol_UpdateDMEntryPhases(double k1, double k2, double k3)
     }
 }
 
-static void BandCol_AccumulateDenseTransposedDM(int n, int nk, int max_tno, int spin, int kloop, double k1,
+static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int nk, int max_tno, int spin, int kloop, double k1,
                                                 double k2, double k3, const dcomplex *evec_t, int evec_stride,
                                                 int *MP, double ***EIGEN, const double *occ_weight, double *CDM1,
                                                 double *EDM1)
@@ -1187,9 +1290,9 @@ static void BandCol_AccumulateDenseTransposedDM(int n, int nk, int max_tno, int 
     double **           ImEVec1_local;
     size_t              p = 0;
 
-    BandCol_DMWorkspace_Ensure(max_tno, nk);
+    BandCol_DMWorkspace_Ensure(state, max_tno, nk);
 
-    ws = &BandCol_dm_workspace;
+    ws = &state->dm_workspace;
     BandCol_DMWorkspace_SetPointers(ws, max_tno, nk);
 
     TmpEIGEN_local = ws->TmpEIGEN;
@@ -1292,16 +1395,16 @@ static void BandCol_AccumulateDenseTransposedDM(int n, int nk, int max_tno, int 
 /* Returns 0 on success and -1 when the HIP path failed (the device buffers
    are released in that case, CDM1/EDM1 are untouched); the fallback loops
    then redo the k point on the CPU, the dense paths abort. */
-static int BandCol_AccumulateDenseTransposedDM_Device(int n, int nk, int spin, int kloop, double k1, double k2,
+static int BandCol_AccumulateDenseTransposedDM_Device(BandColState *state, int n, int nk, int spin, int kloop, double k1, double k2,
                                                       double k3, const dcomplex *evec_device, int evec_stride, int *MP,
                                                       int *order_GA, double ***EIGEN, const double *occ_weight,
                                                       double *CDM1, double *EDM1, int size_H1, int state_first, MPI_Comm dm_comm, int host_vectors)
 {
     const int active=nk>0 && evec_device!=NULL;
-    BandColDMEntryCache *cache=&BandCol_dm_entry_cache;
+    BandColDMEntryCache *cache=&state->dm_entry_cache;
     int done=0;
     if(active){
-        BandCol_DMEntryCache_Ensure(order_GA,MP,n);BandCol_UpdateDMEntryPhases(k1,k2,k3);
+        BandCol_DMEntryCache_Ensure(state, order_GA,MP,n);BandCol_UpdateDMEntryPhases(state, k1,k2,k3);
         if(cache->entry_count!=size_H1)BandCol_AbortWithMessage("DM entry count mismatch");
         if(!host_vectors && !openmx_gpu_capacity_test_recovery())
             done=BandCol_AccumulateDenseTransposedDM_HIP(cache->entry_count,cache->pair_count,nk,evec_stride,
@@ -1335,7 +1438,7 @@ static int BandCol_UseGpuFallbackDM(int n)
 /* Uploads the host eigenvector panel of one fallback k point; returns NULL
    (leaving no latched HIP error behind) when the device cannot take it, so
    the caller falls back to the CPU loop. */
-static dcomplex *BandCol_FallbackDMUpload(const dcomplex *host, size_t count)
+static dcomplex *BandCol_FallbackDMUpload(BandColState *state, const dcomplex *host, size_t count)
 {
     size_t bytes = count * sizeof(dcomplex);
     size_t free_bytes = 0, total_bytes = 0;
@@ -1349,49 +1452,49 @@ static dcomplex *BandCol_FallbackDMUpload(const dcomplex *host, size_t count)
        own kernel at about the same time, and the launch pays the library
        reserve like the eigensolvers do, so the check is device-wide; a
        kernel that fails to launch for lack of memory cannot be caught. */
-    if (bytes > SIZE_MAX / (size_t)BandCol_DeviceRanksCached() ||
-        free_bytes < (bytes + BandCol_GpuLibraryReserveBytes()) * (size_t)BandCol_DeviceRanksCached()) return NULL;
-    if (OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,&device,bytes) != hipSuccess) {
+    if (bytes > SIZE_MAX / (size_t)BandCol_DeviceRanksCached(state) ||
+        free_bytes < (bytes + BandCol_GpuLibraryReserveBytes(state)) * (size_t)BandCol_DeviceRanksCached(state)) return NULL;
+    if (OpenMX_Resource_GpuMalloc(state->resources,&device,bytes) != hipSuccess) {
         (void)hipGetLastError();
         return NULL;
     }
     if (hipMemcpy(device, host, bytes, hipMemcpyHostToDevice) != hipSuccess) {
         (void)hipGetLastError();
-        if (OpenMX_Resource_GpuFree(Band_DFT_Col_resources,device) != hipSuccess)
+        if (OpenMX_Resource_GpuFree(state->resources,device) != hipSuccess)
             (void)hipGetLastError();
         return NULL;
     }
     return (dcomplex *)device;
 }
 
-static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
+static void BandCol_GpuSolver_ReleaseDeviceMemory(BandColState *state)
 {
-    BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx * ctx = &state->gpusolver_ctx;
 
     if (ctx->d_S != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_S));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
     if (ctx->d_H != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_H));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
     if (ctx->d_tmp != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_tmp));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
     if (ctx->d_evec != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_evec));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_evec));
     if (ctx->d_scale != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_scale));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_scale));
     if (ctx->d_W != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_W));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
     if (ctx->d_info != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_info));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
     if (ctx->d_work != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_work));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
     if (ctx->h_work != NULL)
-        openmx_core_native_free(Band_DFT_Col_resources,ctx->h_work);
+        openmx_core_native_free(state->resources,ctx->h_work);
     if (ctx->h_scale != NULL)
-        openmx_core_native_free(Band_DFT_Col_resources,ctx->h_scale);
+        openmx_core_native_free(state->resources,ctx->h_scale);
     if (ctx->gpusolver != NULL)
-        OpenMXSolverWait(OpenMX_Resource_SolverDestroy(Band_DFT_Col_resources,ctx->gpusolver));
+        OpenMXSolverWait(OpenMX_Resource_SolverDestroy(state->resources,ctx->gpusolver));
     if (ctx->hipblas != NULL)
-        OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Band_DFT_Col_resources,ctx->hipblas));
+        OpenMXBlasWait(OpenMX_Resource_BlasDestroy(state->resources,ctx->hipblas));
 
     ctx->initialized         = 0;
     ctx->device_id           = -1;
@@ -1418,14 +1521,14 @@ static void BandCol_GpuSolver_ReleaseDeviceMemory(void)
     ctx->h_scale             = NULL;
 }
 
-static void BandCol_GpuSolver_Destroy(void)
+static void BandCol_GpuSolver_Destroy(BandColState *state)
 {
-    BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx * ctx = &state->gpusolver_ctx;
 
-    BandCol_RefineRelease();
-    BandCol_GpuSolver_ReleaseDeviceMemory();
-    openmx_core_native_free(Band_DFT_Col_resources,ctx->h_evec);
-    openmx_core_native_free(Band_DFT_Col_resources,ctx->h_transformed_s);
+    BandCol_RefineRelease(state);
+    BandCol_GpuSolver_ReleaseDeviceMemory(state);
+    openmx_core_native_free(state->resources,ctx->h_evec);
+    openmx_core_native_free(state->resources,ctx->h_transformed_s);
     ctx->h_evec     = NULL;
     ctx->h_evec_dim = 0;
     ctx->h_evec_stride = 0;
@@ -1439,25 +1542,25 @@ static void BandCol_GpuSolver_Destroy(void)
    cache validated through a host address or a matrix size could accept
    stale data once malloc reuses an address).  Idempotent; every branch is
    a no-op when the corresponding path never ran. */
-void Band_DFT_Col_Release_GPU_Caches(void)
+static void BandCol_ReleaseCaches(BandColState *state)
 {
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_s); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_h); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_tmp);
-    BandCol_host_s=BandCol_host_h=BandCol_host_tmp=NULL;
-    BandCol_host_n=BandCol_host_stride=BandCol_mgpu_host_dense=0;
-    BandCol_KOverlapReset();
+    openmx_core_native_free(state->resources,state->host_s); openmx_core_native_free(state->resources,state->host_h); openmx_core_native_free(state->resources,state->host_tmp);
+    state->host_s=state->host_h=state->host_tmp=NULL;
+    state->host_n=state->host_stride=state->mgpu_host_dense=0;
+    BandCol_KOverlapReset(state);
     (void)BandCol_ReleaseDMDeviceWorkspace_HIP();
-    BandCol_ConstructCache_Reset();
-    BandCol_DMWorkspace_Reset();
-    BandCol_DMEntryCache_Reset();
-    BandCol_GpuSolver_Destroy();
+    BandCol_ConstructCache_Reset(state);
+    BandCol_DMWorkspace_Reset(state);
+    BandCol_DMEntryCache_Reset(state);
+    BandCol_GpuSolver_Destroy(state);
     /* the refinement's stage (iterations, a cycle or run turned to FP64)
        starts over with the next input, read again by every rank */
-    BandCol_RefineResetStage();
+    BandCol_RefineResetStage(state);
 }
 
-static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(dcomplex *evec_device, int n, int stride)
+static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(BandColState *state, dcomplex *evec_device, int n, int stride)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t              evec_count;
 
     if (evec_device == NULL || n <= 0 || stride <= 0) {
@@ -1467,7 +1570,7 @@ static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(dcomplex *evec_device,
     evec_count = (size_t)n * (size_t)stride;
 
     if (ctx->h_evec_count < evec_count) {
-        dcomplex *new_evec = (dcomplex *)openmx_core_native_realloc(Band_DFT_Col_resources,ctx->h_evec,sizeof(dcomplex) * evec_count);
+        dcomplex *new_evec = (dcomplex *)openmx_core_native_realloc(state->resources,ctx->h_evec,sizeof(dcomplex) * evec_count);
         if (new_evec == NULL) {
             BandCol_AbortWithMessage("Failed to allocate host eigenvector buffer in Band_DFT_Col.c.");
         }
@@ -1477,20 +1580,20 @@ static dcomplex *BandCol_GpuSolver_SaveDeviceEigenvectors(dcomplex *evec_device,
     ctx->h_evec_dim = n;
     ctx->h_evec_stride = stride;
 
-    if (BandCol_mgpu_host_dense) memcpy(ctx->h_evec,evec_device,sizeof(dcomplex)*evec_count);
+    if (state->mgpu_host_dense) memcpy(ctx->h_evec,evec_device,sizeof(dcomplex)*evec_count);
     else wait_hipfunc(hipMemcpy(ctx->h_evec, evec_device, sizeof(dcomplex) * evec_count, hipMemcpyDeviceToHost));
     return ctx->h_evec;
 }
 
-static dcomplex *BandCol_GpuSolver_HostEigenvectors(void)
+static dcomplex *BandCol_GpuSolver_HostEigenvectors(BandColState *state)
 {
-    return BandCol_gpusolver_ctx.h_evec;
+    return state->gpusolver_ctx.h_evec;
 }
 
-static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n)
+static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(BandColState *state, int n)
 {
-    if (BandCol_mgpu_host_dense) return BandCol_gpusolver_ctx.h_evec;
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    if (state->mgpu_host_dense) return state->gpusolver_ctx.h_evec;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t              evec_count;
     int                 stride;
 
@@ -1506,9 +1609,9 @@ static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n)
 
     if (ctx->d_evec_count < evec_count) {
         if (ctx->d_evec != NULL) {
-            wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_evec));
+            wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_evec));
         }
-        wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_evec,sizeof(dcomplex) * evec_count));
+        wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_evec,sizeof(dcomplex) * evec_count));
         ctx->d_evec_count = evec_count;
     }
     ctx->d_evec_dim = n;
@@ -1518,10 +1621,10 @@ static dcomplex *BandCol_GpuSolver_UploadHostEigenvectors(int n)
     return ctx->d_evec;
 }
 
-static int BandCol_GpuSolver_EigenvectorStride(void)
+static int BandCol_GpuSolver_EigenvectorStride(BandColState *state)
 {
-    if (BandCol_mgpu_host_dense) return BandCol_host_stride;
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    if (state->mgpu_host_dense) return state->host_stride;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     if (ctx->d_evec != NULL && 0 < ctx->d_evec_stride) {
         return ctx->d_evec_stride;
@@ -1532,32 +1635,32 @@ static int BandCol_GpuSolver_EigenvectorStride(void)
     return ctx->matrix_dim;
 }
 
-static int BandCol_GpuSolver_HasHostTransformedS(int n)
+static int BandCol_GpuSolver_HasHostTransformedS(BandColState *state, int n)
 {
-    if (BandCol_mgpu_host_dense) return BandCol_host_n==n;
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    if (state->mgpu_host_dense) return state->host_n==n;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     return (ctx->h_transformed_s != NULL && ctx->h_transformed_s_dim == n);
 }
 
-static int BandCol_GpuSolver_HasDeviceTransformedS(int n)
+static int BandCol_GpuSolver_HasDeviceTransformedS(BandColState *state, int n)
 {
-    if (BandCol_mgpu_host_dense) return BandCol_host_n==n;
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    if (state->mgpu_host_dense) return state->host_n==n;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     return (ctx->initialized && ctx->transformed_s_valid && ctx->transformed_s_dim == n);
 }
 
-static void BandCol_GpuSolver_SaveTransformedS(int n)
+static void BandCol_GpuSolver_SaveTransformedS(BandColState *state, int n)
 {
-    if (BandCol_mgpu_host_dense) return;
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    if (state->mgpu_host_dense) return;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t              matrix_count;
 
     matrix_count = (size_t)n * (size_t)n;
 
     if (ctx->h_transformed_s_dim < n) {
-        dcomplex *new_s = (dcomplex *)openmx_core_native_realloc(Band_DFT_Col_resources,ctx->h_transformed_s,sizeof(dcomplex) * matrix_count);
+        dcomplex *new_s = (dcomplex *)openmx_core_native_realloc(state->resources,ctx->h_transformed_s,sizeof(dcomplex) * matrix_count);
         if (new_s == NULL) {
             BandCol_AbortWithMessage("Failed to allocate host transformed-overlap buffer in Band_DFT_Col.c.");
         }
@@ -1568,37 +1671,37 @@ static void BandCol_GpuSolver_SaveTransformedS(int n)
     ctx->h_transformed_s_dim = n;
 }
 
-static void BandCol_GpuSolver_LoadTransformedS(int n)
+static void BandCol_GpuSolver_LoadTransformedS(BandColState *state, int n)
 {
-    if (BandCol_mgpu_host_dense) return;
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    if (state->mgpu_host_dense) return;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t              matrix_count;
 
-    if (!BandCol_GpuSolver_HasHostTransformedS(n)) {
+    if (!BandCol_GpuSolver_HasHostTransformedS(state, n)) {
         BandCol_AbortWithMessage("Cached transformed overlap is not available in Band_DFT_Col.c.");
     }
 
     matrix_count = (size_t)n * (size_t)n;
-    BandCol_GpuSolver_EnsureMatrixCapacity(n);
+    BandCol_GpuSolver_EnsureMatrixCapacity(state, n);
     wait_hipfunc(hipMemcpy(ctx->d_S, ctx->h_transformed_s, sizeof(dcomplex) * matrix_count, hipMemcpyHostToDevice));
     ctx->transformed_s_valid = 1;
     ctx->transformed_s_dim   = n;
 }
 
-static void BandCol_GpuSolver_ClearHostEigenvectors(void)
+static void BandCol_GpuSolver_ClearHostEigenvectors(BandColState *state)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
 
-    openmx_core_native_free(Band_DFT_Col_resources,ctx->h_evec);
+    openmx_core_native_free(state->resources,ctx->h_evec);
     ctx->h_evec     = NULL;
     ctx->h_evec_dim = 0;
     ctx->h_evec_stride = 0;
     ctx->h_evec_count = 0;
 }
 
-static void BandCol_GpuSolver_Init(void)
+static void BandCol_GpuSolver_Init(BandColState *state)
 {
-    BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx * ctx = &state->gpusolver_ctx;
     int                  current_device;
 
     wait_hipfunc(hipGetDevice(&current_device));
@@ -1608,19 +1711,19 @@ static void BandCol_GpuSolver_Init(void)
     }
 
     if (ctx->initialized) {
-        BandCol_GpuSolver_Destroy();
+        BandCol_GpuSolver_Destroy(state);
     }
 
-    OpenMXBlasWait(OpenMX_Resource_BlasCreate(Band_DFT_Col_resources,&ctx->hipblas));
+    OpenMXBlasWait(OpenMX_Resource_BlasCreate(state->resources,&ctx->hipblas));
     ctx->gpusolver = NULL;
 
     ctx->initialized = 1;
     ctx->device_id   = current_device;
 }
 
-static void BandCol_GpuSolver_EnsureMatrixCapacity(int n)
+static void BandCol_GpuSolver_EnsureMatrixCapacity(BandColState *state, int n)
 {
-    BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx * ctx = &state->gpusolver_ctx;
     size_t               matrix_bytes;
     size_t               vector_bytes;
 
@@ -1628,41 +1731,41 @@ static void BandCol_GpuSolver_EnsureMatrixCapacity(int n)
         BandCol_AbortWithMessage("Invalid matrix size in BandCol_GpuSolver_EnsureMatrixCapacity.");
     }
 
-    BandCol_GpuSolver_Init();
+    BandCol_GpuSolver_Init(state);
 
     if (n <= ctx->matrix_dim) {
         return;
     }
 
     if (ctx->d_S != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_S));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
     if (ctx->d_H != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_H));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
     if (ctx->d_tmp != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_tmp));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
     if (ctx->d_scale != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_scale));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_scale));
     if (ctx->d_W != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_W));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
     if (ctx->d_info != NULL)
-        wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_info));
+        wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
 
     matrix_bytes = sizeof(dcomplex) * (size_t)n * (size_t)n;
     vector_bytes = sizeof(dcomplex) * (size_t)n;
 
-    wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_S,matrix_bytes));
-    wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_H,matrix_bytes));
-    wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_tmp,matrix_bytes));
-    wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_scale,vector_bytes));
-    wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_W,sizeof(double) * (size_t)n));
-    wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_info,sizeof(int32_t)));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_S,matrix_bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_H,matrix_bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_tmp,matrix_bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_scale,vector_bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_W,sizeof(double) * (size_t)n));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_info,sizeof(int32_t)));
 
     ctx->matrix_dim          = n;
     ctx->transformed_s_valid = 0;
     ctx->transformed_s_dim   = 0;
 }
 
-static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_host)
+static void BandCol_GpuSolver_Eigen(BandColState *state, dcomplex * d_A, int m, int maxn, double * W_host)
 {
     int  info;
     int  mout = 0;
@@ -1672,7 +1775,7 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
         BandCol_AbortWithMessage("Invalid MAGMA eigensolver dimensions in Band_DFT_Col.c.");
     }
 
-    BandCol_GpuSolver_EnsureMatrixCapacity(m);
+    BandCol_GpuSolver_EnsureMatrixCapacity(state, m);
 
     if (openmx_gpu_eigensolver_use_hipsolver()) {
         info = openmx_hipsolver_zheevd_gpu(m, maxn, d_A, W_host, &mout);
@@ -1691,48 +1794,48 @@ static void BandCol_GpuSolver_Eigen(dcomplex * d_A, int m, int maxn, double * W_
     }
 }
 
-static void BandCol_HostEnsure(int n)
+static void BandCol_HostEnsure(BandColState *state, int n)
 {
-    if (BandCol_host_n==n) return;
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_s); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_h); openmx_core_native_free(Band_DFT_Col_resources,BandCol_host_tmp);
-    BandCol_host_s=openmx_core_native_malloc(Band_DFT_Col_resources,1,(size_t)n*n*sizeof(dcomplex),0);
-    BandCol_host_h=openmx_core_native_malloc(Band_DFT_Col_resources,1,(size_t)n*n*sizeof(dcomplex),0);
-    BandCol_host_tmp=openmx_core_native_malloc(Band_DFT_Col_resources,1,(size_t)n*n*sizeof(dcomplex),0);
-    if (!BandCol_host_s || !BandCol_host_h || !BandCol_host_tmp)
+    if (state->host_n==n) return;
+    openmx_core_native_free(state->resources,state->host_s); openmx_core_native_free(state->resources,state->host_h); openmx_core_native_free(state->resources,state->host_tmp);
+    state->host_s=openmx_core_native_malloc(state->resources,1,(size_t)n*n*sizeof(dcomplex),0);
+    state->host_h=openmx_core_native_malloc(state->resources,1,(size_t)n*n*sizeof(dcomplex),0);
+    state->host_tmp=openmx_core_native_malloc(state->resources,1,(size_t)n*n*sizeof(dcomplex),0);
+    if (!state->host_s || !state->host_h || !state->host_tmp)
         BandCol_AbortWithMessage("Cannot allocate MAGMA host dense workspace");
-    BandCol_host_n=n;
+    state->host_n=n;
 }
 
-static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n, dcomplex * Ss, double * ko,
+static void BandCol_GpuSolver_PrepareTransformedS(BandColState *state, int build_from_overlap, int n, dcomplex * Ss, double * ko,
                                                  double * koS)
 {
-    if (BandCol_mgpu_host_dense) {
-        BandCol_HostEnsure(n);
+    if (state->mgpu_host_dense) {
+        BandCol_HostEnsure(state, n);
         if (build_from_overlap) {
             /* Construct_Band_CsHs populated the private full matrix. Ss
                may be only a local ScaLAPACK block on this MPI rank. */
-            if (!openmx_mgpu_host_solve(n,n,1,BandCol_host_s,n,ko+1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
+            if (!openmx_mgpu_host_solve(n,n,1,state->host_s,n,ko+1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
 #pragma omp parallel for
             for (int j=0;j<n;++j) {
                 if (ko[j+1]<0.0) ko[j+1]=1.0e-10;
                 koS[j+1]=ko[j+1];
                 const double scale=1.0/sqrt(ko[j+1]);
                 for (int i=0;i<n;++i) {
-                    BandCol_host_s[(size_t)j*n+i].r*=scale;
-                    BandCol_host_s[(size_t)j*n+i].i*=scale;
+                    state->host_s[(size_t)j*n+i].r*=scale;
+                    state->host_s[(size_t)j*n+i].i*=scale;
                 }
             }
         }
-        BandCol_gpusolver_ctx.transformed_s_valid=1;
-        BandCol_gpusolver_ctx.transformed_s_dim=n;
+        state->gpusolver_ctx.transformed_s_valid=1;
+        state->gpusolver_ctx.transformed_s_dim=n;
         return;
     }
 
-    BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx * ctx = &state->gpusolver_ctx;
     size_t               matrix_bytes;
     int                  l;
 
-    BandCol_GpuSolver_EnsureMatrixCapacity(n);
+    BandCol_GpuSolver_EnsureMatrixCapacity(state, n);
 
     if (!build_from_overlap && ctx->transformed_s_valid && ctx->transformed_s_dim == n) {
         return;
@@ -1744,10 +1847,10 @@ static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n,
         if (Ss != NULL) {
             wait_hipfunc(hipMemcpy(ctx->d_S, Ss, matrix_bytes, hipMemcpyHostToDevice));
         }
-        BandCol_GpuSolver_Eigen(ctx->d_S, n, n, ko + 1);
+        BandCol_GpuSolver_Eigen(state, ctx->d_S, n, n, ko + 1);
 
         if (n > ctx->scale_dim) {
-            dcomplex *new_scale = (dcomplex *)openmx_core_native_realloc(Band_DFT_Col_resources,ctx->h_scale,sizeof(dcomplex) * (size_t)n);
+            dcomplex *new_scale = (dcomplex *)openmx_core_native_realloc(state->resources,ctx->h_scale,sizeof(dcomplex) * (size_t)n);
             if (new_scale == NULL) {
                 BandCol_AbortWithMessage("Failed to allocate overlap scale buffer in Band_DFT_Col.c.");
             }
@@ -1789,11 +1892,10 @@ static void BandCol_GpuSolver_PrepareTransformedS(int build_from_overlap, int n,
     ctx->transformed_s_dim   = n;
 }
 
-static void BandCol_ZgemmLogCpuFallbackOnce(hipblasStatus_t status, int m, int n, int k)
+static void BandCol_ZgemmLogCpuFallbackOnce(BandColState *state, hipblasStatus_t status, int m, int n, int k)
 {
-    static int logged = 0;
 
-    if (logged) {
+    if (state->ZgemmLogCpuFallbackOnce_logged) {
         return;
     }
     fprintf(stderr,
@@ -1801,7 +1903,7 @@ static void BandCol_ZgemmLogCpuFallbackOnce(hipblasStatus_t status, int m, int n
             "Falling back to CPU BLAS zgemm.\n",
             m, n, k, (int)status);
     fflush(stderr);
-    logged = 1;
+    state->ZgemmLogCpuFallbackOnce_logged = 1;
 }
 
 static void BandCol_ZgemmCpu(hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k,
@@ -1824,10 +1926,10 @@ static void BandCol_ZgemmCpu(hipblasOperation_t transa, hipblasOperation_t trans
 /* ZGEMM on device pointers: GEMMul8 first (which itself falls back to MAGMA when the
    GPU workspace cannot be allocated); if both fail, copy the operands to the host
    and run CPU BLAS zgemm, then copy the result back to the device. */
-static void BandCol_GpuSolver_ZgemmDevice(hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k,
+static void BandCol_GpuSolver_ZgemmDevice(BandColState *state, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k,
                                          dcomplex const *d_A, dcomplex const *d_B, dcomplex *d_C)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     hipDoubleComplex     alpha = make_hipDoubleComplex(1.0, 0.0);
     hipDoubleComplex     beta  = make_hipDoubleComplex(0.0, 0.0);
     hipblasStatus_t      status;
@@ -1840,15 +1942,15 @@ static void BandCol_GpuSolver_ZgemmDevice(hipblasOperation_t transa, hipblasOper
         return;
     }
 
-    BandCol_ZgemmLogCpuFallbackOnce(status, m, n, k);
+    BandCol_ZgemmLogCpuFallbackOnce(state, status, m, n, k);
 
     a_bytes = sizeof(dcomplex) * (size_t)m * (size_t)k;
     b_bytes = sizeof(dcomplex) * (size_t)k * (size_t)n;
     c_bytes = sizeof(dcomplex) * (size_t)m * (size_t)n;
 
-    A = (dcomplex *)openmx_core_native_malloc(Band_DFT_Col_resources,1,a_bytes,0);
-    B = (dcomplex *)openmx_core_native_malloc(Band_DFT_Col_resources,1,b_bytes,0);
-    C = (dcomplex *)openmx_core_native_malloc(Band_DFT_Col_resources,1,c_bytes,0);
+    A = (dcomplex *)openmx_core_native_malloc(state->resources,1,a_bytes,0);
+    B = (dcomplex *)openmx_core_native_malloc(state->resources,1,b_bytes,0);
+    C = (dcomplex *)openmx_core_native_malloc(state->resources,1,c_bytes,0);
     if (A == NULL || B == NULL || C == NULL) {
         BandCol_AbortWithMessage("Out of host memory in CPU ZGEMM fallback in Band_DFT_Col.c.");
     }
@@ -1860,20 +1962,20 @@ static void BandCol_GpuSolver_ZgemmDevice(hipblasOperation_t transa, hipblasOper
 
     wait_hipfunc(hipMemcpy(d_C, C, c_bytes, hipMemcpyHostToDevice));
 
-    openmx_core_native_free(Band_DFT_Col_resources,C);
-    openmx_core_native_free(Band_DFT_Col_resources,B);
-    openmx_core_native_free(Band_DFT_Col_resources,A);
+    openmx_core_native_free(state->resources,C);
+    openmx_core_native_free(state->resources,B);
+    openmx_core_native_free(state->resources,A);
 }
 
-static void BandCol_GpuSolver_Zgemm_OpenMP(hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k,
+static void BandCol_GpuSolver_Zgemm_OpenMP(BandColState *state, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k,
                                            dcomplex const * A, dcomplex const * B, dcomplex * C)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     hipDoubleComplex     alpha = make_hipDoubleComplex(1.0, 0.0);
     hipDoubleComplex     beta  = make_hipDoubleComplex(0.0, 0.0);
     hipblasStatus_t      status = HIPBLAS_STATUS_SUCCESS;
 
-    BandCol_GpuSolver_Init();
+    BandCol_GpuSolver_Init(state);
 
 #pragma omp target data map(present, alloc: A[0 : m * k], B[0 : k * n], C[0 : m * n])
     {
@@ -1884,7 +1986,7 @@ static void BandCol_GpuSolver_Zgemm_OpenMP(hipblasOperation_t transa, hipblasOpe
         }
 
         if (status != HIPBLAS_STATUS_SUCCESS) {
-            BandCol_ZgemmLogCpuFallbackOnce(status, m, n, k);
+            BandCol_ZgemmLogCpuFallbackOnce(state, status, m, n, k);
 #pragma omp target update from(A[0 : m * k], B[0 : k * n])
             BandCol_ZgemmCpu(transa, transb, m, n, k, A, B, C);
 #pragma omp target update to(C[0 : m * n])
@@ -1892,7 +1994,7 @@ static void BandCol_GpuSolver_Zgemm_OpenMP(hipblasOperation_t transa, hipblasOpe
     }
 }
 
-static void BandCol_GpuSolver_EigenHost(dcomplex *A, double *ko, int n, int maxn)
+static void BandCol_GpuSolver_EigenHost(BandColState *state, dcomplex *A, double *ko, int n, int maxn)
 {
     dcomplex *d_A = NULL;
     size_t bytes;
@@ -1905,13 +2007,13 @@ static void BandCol_GpuSolver_EigenHost(dcomplex *A, double *ko, int n, int maxn
     }
 
     bytes = sizeof(dcomplex) * (size_t)n * (size_t)n;
-    wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&d_A,bytes));
+    wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&d_A,bytes));
     wait_hipfunc(hipMemcpy(d_A, A, bytes, hipMemcpyHostToDevice));
 
     info = openmx_magma_zheevdx_gpu(n, maxn, d_A, ko, &mout);
 
     wait_hipfunc(hipMemcpy(A, d_A, bytes, hipMemcpyDeviceToHost));
-    wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,d_A));
+    wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,d_A));
 
     if (info != 0) {
         snprintf(msg, sizeof(msg), "magma_zheevdx_gpu failed in Band_DFT_Col.c host path: info=%d", info);
@@ -1928,13 +2030,13 @@ static void BandCol_GpuSolver_EigenHost(dcomplex *A, double *ko, int n, int maxn
     }
 }
 
-static dcomplex *BandCol_GpuSolver_EnsureEigenvectorCapacity(int n, int stride)
+static dcomplex *BandCol_GpuSolver_EnsureEigenvectorCapacity(BandColState *state, int n, int stride)
 {
-    if(BandCol_mgpu_host_dense){
+    if(state->mgpu_host_dense){
         if(n<=0 || stride<=0 || stride>n)BandCol_AbortWithMessage("Invalid host eigenvector stride");
-        BandCol_HostEnsure(n);BandCol_host_stride=stride;return BandCol_host_tmp;
+        BandCol_HostEnsure(state, n);state->host_stride=stride;return state->host_tmp;
     }
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t              evec_count;
 
     if (n <= 0 || stride <= 0) {
@@ -1944,9 +2046,9 @@ static dcomplex *BandCol_GpuSolver_EnsureEigenvectorCapacity(int n, int stride)
     evec_count = (size_t)n * (size_t)stride;
     if (ctx->d_evec_count < evec_count) {
         if (ctx->d_evec != NULL) {
-            wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,ctx->d_evec));
+            wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_evec));
         }
-        wait_hipfunc(OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,(void **)&ctx->d_evec,sizeof(dcomplex) * evec_count));
+        wait_hipfunc(OpenMX_Resource_GpuMalloc(state->resources,(void **)&ctx->d_evec,sizeof(dcomplex) * evec_count));
         ctx->d_evec_count = evec_count;
     }
 
@@ -1955,14 +2057,14 @@ static dcomplex *BandCol_GpuSolver_EnsureEigenvectorCapacity(int n, int stride)
     return ctx->d_evec;
 }
 
-static int BandCol_SolveTimingEnabled(void)
+static int BandCol_SolveTimingEnabled(BandColState *state)
 {
-    static int enabled = -1;
-    if (enabled < 0) {
+
+    if (state->SolveTimingEnabled_enabled < 0) {
         const char *value = openmx_env_get("OPENMX_SOLVE_TIMING");
-        enabled = (value != NULL && atoi(value) != 0);
+        state->SolveTimingEnabled_enabled = (value != NULL && atoi(value) != 0);
     }
-    return enabled;
+    return state->SolveTimingEnabled_enabled;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1988,24 +2090,6 @@ static int BandCol_SolveTimingEnabled(void)
    (Band_DFT_Col_RefineForceFP64 around a repeated call, which recomputes the
    density matrices), and the last step scf.maxIter allows is FP64 in any
    case.  Ported from the NVIDIA version (openmx4.0_gpu, Band_DFT_Col.c). */
-typedef struct
-{
-    int     iterations;    /* -1 until the environment is read */
-    double  until;         /* printed NormRD below which the FP64 eigensolver takes over; 0 off */
-    int     final_stage;   /* the FP64 eigensolver for the rest of the SCF cycle */
-    int     last_refined;  /* the latest SCF eigensolve was a refined one (any k-point) */
-    int     cycle_refined; /* some eigensolve of this SCF cycle was */
-    int     defaulted;     /* on because of the device, not of OPENMX_EIGEN_REFINE */
-    int     force_fp64;    /* Band_DFT_Col_RefineForceFP64: this call in FP64 whatever the stage */
-    int     transient;     /* the first step of a cycle: its failures do not condemn the cycle */
-    int     pending;       /* this rank's k-point: prepared, waiting for the chemical potential */
-    int     solved;        /* this rank's k-point was refined this step */
-    int     persistent;    /* the strongest persistent failure of this step on this rank */
-    int     kdense;        /* this call refines the k-dense path (several k-points per rank) */
-    int     scf_iter;      /* the step of the call */
-    int     staged;        /* this call refines the one-k-point-per-rank path in serialized GPU turns: pass 1
-                              and pass 2 as on the k-dense path, the bases on the host between them */
-} BandColRefineState;
 
 /* The two-pass solves keep, per k-point and spin, the basis of the latest
    refined solve on the host (the device buffers go with every turn): pass 2
@@ -2013,87 +2097,66 @@ typedef struct
    OPENMX_EIGEN_REFINE_WARM_BAND is on.  The budget is
    OPENMX_BAND_REFINE_BASIS_MB per rank (default 1024), at most 1/8 of the
    node's available memory over its ranks. */
-typedef struct
-{
-    dcomplex *basis;       /* n x n, host */
-    double   *lam;         /* n eigenvalue estimates */
-    int       valid;       /* basis and lam hold the latest refined solve */
-    int       refined;     /* pass 1 of this step refined the k-point */
-} BandColKRefineSlot;
 
-typedef struct
-{
-    double mu;
-} BandColOccupationCtx;
 
-static BandColKRefineSlot  *BandCol_kref = NULL;
-static int                  BandCol_kref_slots = 0, BandCol_kref_n = 0;
-static size_t               BandCol_kref_used = 0;
-static EigenRefineState     BandCol_kref_state;        /* the module's device state of the two-pass solves */
-static const BandColRefineState BandCol_refine_initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static BandColRefineState   BandCol_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static EigenRefineState     BandCol_refine_state;      /* the two-half solves */
-static EigenRefineDevice    BandCol_refine_dev;
-static EigenRefineProblem   BandCol_refine_pb;         /* the two-half solve in progress */
-static BandColOccupationCtx BandCol_refine_occ = {0.0};
-static dcomplex            *BandCol_refine_x = NULL;   /* the device basis, n x n */
-static int                  BandCol_refine_x_n = 0;
-static double              *BandCol_refine_e0 = NULL;  /* the estimates of the first half, n */
-static int                  BandCol_refine_e0_n = 0;
 
-static void BandCol_RefineDropBasis(void)
+
+
+
+static void BandCol_RefineDropBasis(BandColState *state)
 {
-    if (BandCol_refine_x != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Band_DFT_Col_resources,BandCol_refine_x));
-    BandCol_refine_x = NULL;
-    BandCol_refine_x_n = 0;
-    BandCol_refine_state.basis_valid = 0;
-    BandCol_kref_state.basis_valid = 0;
+    if (state->refine_x != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,state->refine_x));
+    state->refine_x = NULL;
+    state->refine_x_n = 0;
+    state->refine_state.basis_valid = 0;
+    state->kref_state.basis_valid = 0;
 }
 
-static void BandCol_KRefReset(void)
+static void BandCol_KRefReset(BandColState *state)
 {
-    if (BandCol_kref != NULL) {
-        for (int slot = 0; slot < BandCol_kref_slots; slot++) {
-            openmx_core_native_free(Band_DFT_Col_resources,BandCol_kref[slot].basis);
-            openmx_core_native_free(Band_DFT_Col_resources,BandCol_kref[slot].lam);
+    if (state->kref != NULL) {
+        for (int slot = 0; slot < state->kref_slots; slot++) {
+            openmx_core_native_free(state->resources,state->kref[slot].basis);
+            openmx_core_native_free(state->resources,state->kref[slot].lam);
         }
-        openmx_core_native_free(Band_DFT_Col_resources,BandCol_kref);
+        openmx_core_native_free(state->resources,state->kref);
     }
-    BandCol_kref = NULL;
-    BandCol_kref_slots = 0;
-    BandCol_kref_n = 0;
-    BandCol_kref_used = 0;
+    state->kref = NULL;
+    state->kref_slots = 0;
+    state->kref_n = 0;
+    state->kref_used = 0;
 }
 
 /* the run boundary (BandCol_GpuSolver_Destroy) */
-static void BandCol_RefineRelease(void)
+static void BandCol_RefineRelease(BandColState *state)
 {
-    openmx_eigen_refine_state_release(&BandCol_refine_state);
-    openmx_eigen_refine_state_release(&BandCol_kref_state);
-    BandCol_KRefReset();
-    openmx_eigen_refine_device_release(&BandCol_refine_dev);
-    BandCol_RefineDropBasis();
-    openmx_core_native_free(Band_DFT_Col_resources,BandCol_refine_e0);
-    BandCol_refine_e0 = NULL;
-    BandCol_refine_e0_n = 0;
+    openmx_eigen_refine_state_release(&state->refine_state);
+    openmx_eigen_refine_state_release(&state->kref_state);
+    BandCol_KRefReset(state);
+    openmx_eigen_refine_device_release(&state->refine_dev);
+    BandCol_RefineDropBasis(state);
+    openmx_core_native_free(state->resources,state->refine_e0);
+    state->refine_e0 = NULL;
+    state->refine_e0_n = 0;
 }
 
 /* the run boundary only (Band_DFT_Col_Release_GPU_Caches, every rank; not
    BandCol_GpuSolver_Destroy, which a device change of one rank also calls):
    the stage of the next input starts over, so a refinement turned off for
    the rest of a run does not reach the next input of -runtest/-runtestL */
-static void BandCol_RefineResetStage(void)
+static void BandCol_RefineResetStage(BandColState *state)
 {
-    BandCol_refine = BandCol_refine_initial;
+    const BandColRefineState BandCol_refine_initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    state->refine = BandCol_refine_initial;
 }
 
 /* every rank, once: OPENMX_EIGEN_REFINE, or the default the global root's
    device implies, and OPENMX_EIGEN_REFINE_UNTIL, the global root's for all
    ranks alike (a stage that differed between the ranks would take them
    into different collectives) */
-static void BandCol_RefineConfigure(void)
+static void BandCol_RefineConfigure(BandColState *state)
 {
-    BandColRefineState *st = &BandCol_refine;
+    BandColRefineState *st = &state->refine;
     double config[3] = {0.0, 0.0, 0.0};
     int    myid;
 
@@ -2114,9 +2177,9 @@ static void BandCol_RefineConfigure(void)
     st->until = config[2];
 }
 
-static int BandCol_RefineIterations(void)
+static int BandCol_RefineIterations(BandColState *state)
 {
-    return (openmx_fp32_enabled() && 0 < BandCol_refine.iterations) ? BandCol_refine.iterations : 0;
+    return (openmx_fp32_enabled() && 0 < state->refine.iterations) ? state->refine.iterations : 0;
 }
 
 /* every rank: whether a dense owner's device has room for what a refined
@@ -2126,13 +2189,13 @@ static int BandCol_RefineIterations(void)
    all (OPENMX_EIGEN_REFINE_MIN_N is read per rank), folded into the common
    verdict so that every rank takes the collective and the same path; a
    refinement that would not fit leaves the step in FP64 */
-static int BandCol_RefineFits(int base, int n, int maxn, int turns, int owns_dense)
+static int BandCol_RefineFits(BandColState *state, int base, int n, int maxn, int turns, int owns_dense)
 {
-    if (BandCol_mgpu_host_dense) return 0;
+    if (state->mgpu_host_dense) return 0;
     size_t const nn = (size_t)n * (size_t)n;
     int          local_fit = base ? 1 : 0, fit = 0;
 
-    if (BandCol_RefineIterations() <= 0) return 0;
+    if (BandCol_RefineIterations(state) <= 0) return 0;
     if (turns < 1) turns = 1;
     if (local_fit && owns_dense) {
         /* only the owners ask (the query creates the FP32 solver's handle) */
@@ -2144,7 +2207,7 @@ static int BandCol_RefineFits(int base, int n, int maxn, int turns, int owns_den
            the next step's warm start (that path's owners alike) is the one
            their next solves use, and it is taken from the free memory
            already: not counted twice */
-        if (BandCol_refine_x != NULL && BandCol_refine_x_n == n) extra -= sizeof(dcomplex) * nn;
+        if (state->refine_x != NULL && state->refine_x_n == n) extra -= sizeof(dcomplex) * nn;
 
         /* the room the FP64 path leaves: its own budget is checked by
            BandCol_GpuDenseFits, with the turns' FP64 buffers allocated
@@ -2162,18 +2225,18 @@ static int BandCol_RefineFits(int base, int n, int maxn, int turns, int owns_den
    call takes the one-k-point-per-rank path with every owner resident,
    possible_staged the same path in serialized turn groups, possible_kdense
    the k-dense path */
-static void BandCol_RefineBeginStep(int SCF_iter, int possible, int possible_kdense, int possible_staged)
+static void BandCol_RefineBeginStep(BandColState *state, int SCF_iter, int possible, int possible_kdense, int possible_staged)
 {
-    if (BandCol_mgpu_host_dense) possible=possible_kdense=possible_staged=0;
-    BandColRefineState *st = &BandCol_refine;
+    if (state->mgpu_host_dense) possible=possible_kdense=possible_staged=0;
+    BandColRefineState *st = &state->refine;
     int common;
 
-    BandCol_RefineConfigure();
+    BandCol_RefineConfigure(state);
     if (SCF_iter == 1) {
         st->final_stage = 0;
         st->cycle_refined = 0;
-        BandCol_refine_state.basis_valid = 0;   /* a new cycle may come with a new geometry */
-        BandCol_KRefReset();
+        state->refine_state.basis_valid = 0;   /* a new cycle may come with a new geometry */
+        BandCol_KRefReset(state);
     }
     st->transient = (SCF_iter == 1);
     st->scf_iter = SCF_iter;
@@ -2184,7 +2247,7 @@ static void BandCol_RefineBeginStep(int SCF_iter, int possible, int possible_kde
        chemical potential: XANES and emptied orbitals or states keep the
        FP64 eigensolver */
     /* Configure and reset a new cycle before consulting its stage flags. */
-    common = (0 < BandCol_RefineIterations() && !st->final_stage && !st->force_fp64 &&
+    common = (0 < BandCol_RefineIterations(state) && !st->final_stage && !st->force_fp64 &&
               Cnt_switch == 0 && SCF_iter < DFTSCF_loop && xanes_calc == 0 &&
               empty_occupation_flag == 0 && empty_states_flag == 0);
     st->last_refined = (possible && common);
@@ -2192,16 +2255,16 @@ static void BandCol_RefineBeginStep(int SCF_iter, int possible, int possible_kde
        chemical potential, so they start at the second step */
     st->kdense = (possible_kdense && 2 <= SCF_iter && common);
     st->staged = (possible_staged && 2 <= SCF_iter && common);
-    if (BandCol_kref != NULL) {
-        for (int slot = 0; slot < BandCol_kref_slots; slot++) BandCol_kref[slot].refined = 0;
+    if (state->kref != NULL) {
+        for (int slot = 0; slot < state->kref_slots; slot++) state->kref[slot].refined = 0;
     }
 }
 
 /* every rank, after the refined solves of a call: the owners' solves decide
    the stage for all ranks alike */
-static void BandCol_RefineEndStep(void)
+static void BandCol_RefineEndStep(BandColState *state)
 {
-    BandColRefineState *st = &BandCol_refine;
+    BandColRefineState *st = &state->refine;
     int mine[2], all[2];
 
     mine[0] = st->solved;
@@ -2216,32 +2279,32 @@ static void BandCol_RefineEndStep(void)
     }
 }
 
-int Band_DFT_Col_RefineLastRefined(void)
+int Band_DFT_Col_RefineLastRefined(BandColState *state)
 {
-    return BandCol_refine.last_refined;
+    return state->refine.last_refined;
 }
 
-void Band_DFT_Col_RefineForceFP64(int on)
+void Band_DFT_Col_RefineForceFP64(BandColState *state, int on)
 {
-    BandCol_refine.force_fp64 = on;
+    state->refine.force_fp64 = on;
 }
 
 /* the end of an SCF cycle: the warm-start bases go (the device one and the
    host slots), so the forces and the next cycle's first step start with the
    memory free */
-void Band_DFT_Col_RefineEndCycle(void)
+void Band_DFT_Col_RefineEndCycle(BandColState *state)
 {
-    BandCol_RefineDropBasis();
-    BandCol_KRefReset();
-    BandCol_refine_state.basis_valid = 0;
-    BandCol_kref_state.basis_valid = 0;
+    BandCol_RefineDropBasis(state);
+    BandCol_KRefReset(state);
+    state->refine_state.basis_valid = 0;
+    state->kref_state.basis_valid = 0;
 }
 
 /* DFT.c, after the mixing of an SCF step that goes on: normrd is the printed
    NormRD */
-void Band_DFT_Col_RefineAfterMixing(double normrd)
+void Band_DFT_Col_RefineAfterMixing(BandColState *state, double normrd)
 {
-    BandColRefineState *st = &BandCol_refine;
+    BandColRefineState *st = &state->refine;
     int myid;
 
     if (!st->cycle_refined || st->final_stage || st->until <= 0.0 || st->until <= normrd) return;
@@ -2296,9 +2359,9 @@ static double BandCol_RefineChemP(double ***EIGEN, int T_knum, int maxn, int Spi
     return mu;
 }
 
-static hipError_t BandCol_TryDeviceMalloc(void **ptr, size_t bytes)
+static hipError_t BandCol_TryDeviceMalloc(BandColState *state, void **ptr, size_t bytes)
 {
-    hipError_t status = OpenMX_Resource_GpuMalloc(Band_DFT_Col_resources,ptr,(bytes == 0) ? 1 : bytes);
+    hipError_t status = OpenMX_Resource_GpuMalloc(state->resources,ptr,(bytes == 0) ? 1 : bytes);
 
     if (status != hipSuccess) {
         *ptr = NULL;
@@ -2307,9 +2370,9 @@ static hipError_t BandCol_TryDeviceMalloc(void **ptr, size_t bytes)
     return status;
 }
 
-static void *BandCol_MallocArray(size_t count, size_t elem_size, const char *label)
+static void *BandCol_MallocArray(BandColState *state, size_t count, size_t elem_size, const char *label)
 {
-    void *ptr = openmx_core_native_malloc(Band_DFT_Col_resources,1,(count * elem_size == 0) ? 1 : count * elem_size,0);
+    void *ptr = openmx_core_native_malloc(state->resources,1,(count * elem_size == 0) ? 1 : count * elem_size,0);
 
     if (ptr == NULL) {
         char msg[256];
@@ -2322,9 +2385,9 @@ static void *BandCol_MallocArray(size_t count, size_t elem_size, const char *lab
 
 /* The forward transform of a k-point's Hamiltonian into d_H: H (uploaded
    from H_in when given, else already on the device) to X^H H X */
-static void BandCol_GpuSolver_ForwardTransformDevice(int n, const dcomplex *H_in)
+static void BandCol_GpuSolver_ForwardTransformDevice(BandColState *state, int n, const dcomplex *H_in)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     if (!(ctx->transformed_s_valid && ctx->transformed_s_dim == n)) {
         BandCol_AbortWithMessage("Transformed overlap is not ready in BandCol_GpuSolver_ForwardTransformDevice.");
@@ -2332,8 +2395,8 @@ static void BandCol_GpuSolver_ForwardTransformDevice(int n, const dcomplex *H_in
     if (H_in != NULL) {
         wait_hipfunc(hipMemcpy(ctx->d_H, H_in, sizeof(dcomplex) * (size_t)n * (size_t)n, hipMemcpyHostToDevice));
     }
-    BandCol_GpuSolver_ZgemmDevice(HIPBLAS_OP_N, HIPBLAS_OP_N, n, n, n, ctx->d_H, ctx->d_S, ctx->d_tmp);
-    BandCol_GpuSolver_ZgemmDevice(HIPBLAS_OP_C, HIPBLAS_OP_N, n, n, n, ctx->d_S, ctx->d_tmp, ctx->d_H);
+    BandCol_GpuSolver_ZgemmDevice(state, HIPBLAS_OP_N, HIPBLAS_OP_N, n, n, n, ctx->d_H, ctx->d_S, ctx->d_tmp);
+    BandCol_GpuSolver_ZgemmDevice(state, HIPBLAS_OP_C, HIPBLAS_OP_N, n, n, n, ctx->d_S, ctx->d_tmp, ctx->d_H);
 }
 
 /* OPENMX_BAND_GEMMUL8_BACKTRANSFORM (default 1): the back transform of the
@@ -2342,26 +2405,25 @@ static void BandCol_GpuSolver_ForwardTransformDevice(int n, const dcomplex *H_in
    share the device); 0 the native FP64 hipBLAS ZGEMM.  On gfx1200, whose
    FP64 rate is 1/32 of FP32, the maxn x n x n native product can dominate a
    k-point's solve once the eigensolver is refined. */
-static int BandCol_GemmulBackTransformEnabled(void)
+static int BandCol_GemmulBackTransformEnabled(BandColState *state)
 {
-    static int enabled = -1;
 
-    if (enabled < 0) {
+    if (state->GemmulBackTransformEnabled_enabled < 0) {
         const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_BACKTRANSFORM");
-        enabled = (value == NULL || atoi(value) != 0);
+        state->GemmulBackTransformEnabled_enabled = (value == NULL || atoi(value) != 0);
     }
-    return enabled;
+    return state->GemmulBackTransformEnabled_enabled;
 }
 
 /* C^T = (S V)^T of the first maxn vectors V in d_H: state-major with
    stride maxn into evec_t */
-static void BandCol_GpuSolver_BackTransformGemm(int n, int maxn, dcomplex *evec_t)
+static void BandCol_GpuSolver_BackTransformGemm(BandColState *state, int n, int maxn, dcomplex *evec_t)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
     hipDoubleComplex     alpha = make_hipDoubleComplex(1.0, 0.0);
     hipDoubleComplex     beta = make_hipDoubleComplex(0.0, 0.0);
 
-    if (BandCol_GemmulBackTransformEnabled()) {
+    if (BandCol_GemmulBackTransformEnabled(state)) {
         OpenMXBlasWait(openmx_gemmul8ZgemmSolve(ctx->hipblas, HIPBLAS_OP_T, HIPBLAS_OP_T, maxn, n, n, &alpha,
                                               (const hipDoubleComplex *)ctx->d_H, n,
                                               (const hipDoubleComplex *)ctx->d_S, n, &beta,
@@ -2376,39 +2438,49 @@ static void BandCol_GpuSolver_BackTransformGemm(int n, int maxn, dcomplex *evec_
 
 /* The back transform of the first maxn vectors in d_H: C^T = (S V)^T, state-
    major with stride maxn, into the eigenvector buffer */
-static dcomplex *BandCol_GpuSolver_BackTransformDevice(int n, int maxn)
+static dcomplex *BandCol_GpuSolver_BackTransformDevice(BandColState *state, int n, int maxn)
 {
-    dcomplex *evec_t = BandCol_GpuSolver_EnsureEigenvectorCapacity(n, maxn);
+    dcomplex *evec_t = BandCol_GpuSolver_EnsureEigenvectorCapacity(state, n, maxn);
 
-    BandCol_GpuSolver_BackTransformGemm(n, maxn, evec_t);
+    BandCol_GpuSolver_BackTransformGemm(state, n, maxn, evec_t);
     return evec_t;
 }
 
 /* the module's view of the solver context */
-static void BandCol_RefineBindDevice(EigenRefineDevice *dev)
+static hipError_t BandCol_RefineDeviceMalloc(void *context, void **ptr, size_t bytes)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
+    return BandCol_TryDeviceMalloc((BandColState *)context, ptr, bytes);
+}
+static void *BandCol_RefineHostAllocate(void *context, size_t count, size_t bytes, const char *label)
+{
+    return BandCol_MallocArray((BandColState *)context, count, bytes, label);
+}
+
+static void BandCol_RefineBindDevice(BandColState *state, EigenRefineDevice *dev)
+{
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     memset(dev, 0, sizeof(*dev));
     dev->hipblas = ctx->hipblas;
     dev->d_work = &ctx->d_work;
     dev->d_work_bytes = &ctx->d_work_bytes;
     dev->d_info = ctx->d_info;
-    dev->try_malloc = BandCol_TryDeviceMalloc;
-    dev->resources = Band_DFT_Col_resources;
-    dev->host_malloc = BandCol_MallocArray;
+    dev->allocation_context = state;
+    dev->try_malloc_owned = BandCol_RefineDeviceMalloc;
+    dev->resources = state->resources;
+    dev->host_malloc_owned = BandCol_RefineHostAllocate;
     dev->shared = 1;   /* the k-point owners' turns share the device */
 }
 
 /* the device basis buffer of the refined solves (n x n complex); 0 when the
    device has no room */
-static int BandCol_RefineEnsureDeviceBasis(int n)
+static int BandCol_RefineEnsureDeviceBasis(BandColState *state, int n)
 {
     size_t const nn = (size_t)n * (size_t)n;
 
-    if (BandCol_refine_x != NULL && BandCol_refine_x_n != n) BandCol_RefineDropBasis();
-    if (BandCol_refine_x == NULL) {
-        if (BandCol_TryDeviceMalloc((void **)&BandCol_refine_x, sizeof(dcomplex) * nn) != hipSuccess) {
+    if (state->refine_x != NULL && state->refine_x_n != n) BandCol_RefineDropBasis(state);
+    if (state->refine_x == NULL) {
+        if (BandCol_TryDeviceMalloc(state, (void **)&state->refine_x, sizeof(dcomplex) * nn) != hipSuccess) {
             if (2 <= level_stdout) {
                 printf("<Band_DFT_Col> no room for the %.1f MiB basis of the refined eigensolver; FP64 eigensolver\n",
                        (double)(sizeof(dcomplex) * nn) / (1024.0 * 1024.0));
@@ -2416,30 +2488,28 @@ static int BandCol_RefineEnsureDeviceBasis(int n)
             }
             return 0;
         }
-        BandCol_refine_x_n = n;
+        state->refine_x_n = n;
     }
     return 1;
 }
 
-static void BandCol_KRefEnsure(int slots, int n)
+static void BandCol_KRefEnsure(BandColState *state, int slots, int n)
 {
-    if (BandCol_kref != NULL && (BandCol_kref_slots != slots || BandCol_kref_n != n)) BandCol_KRefReset();
-    if (BandCol_kref == NULL) {
-        BandCol_kref = (BandColKRefineSlot *)BandCol_MallocArray((size_t)slots, sizeof(BandColKRefineSlot),
+    if (state->kref != NULL && (state->kref_slots != slots || state->kref_n != n)) BandCol_KRefReset(state);
+    if (state->kref == NULL) {
+        state->kref = (BandColKRefineSlot *)BandCol_MallocArray(state, (size_t)slots, sizeof(BandColKRefineSlot),
                                                                  "refined basis slots");
-        memset(BandCol_kref, 0, sizeof(BandColKRefineSlot) * (size_t)slots);
-        BandCol_kref_slots = slots;
-        BandCol_kref_n = n;
+        memset(state->kref, 0, sizeof(BandColKRefineSlot) * (size_t)slots);
+        state->kref_slots = slots;
+        state->kref_n = n;
     }
 }
 
 /* the budget of the slots of one rank */
-static size_t BandCol_RefineBasisLimit(void)
+static size_t BandCol_RefineBasisLimit(BandColState *state)
 {
-    static size_t limit = 0;
-    static int    checked = 0;
 
-    if (!checked) {
+    if (!state->RefineBasisLimit_checked) {
         const char        *env = openmx_env_get("OPENMX_BAND_REFINE_BASIS_MB");
         double             cap = (env == NULL) ? 1024.0 : atof(env);
         unsigned long long available_kib = 0;
@@ -2447,9 +2517,9 @@ static size_t BandCol_RefineBasisLimit(void)
         FILE              *file;
         char               line[256];
 
-        checked = 1;
+        state->RefineBasisLimit_checked = 1;
         if (!(cap > 0.0) || cap >= (double)SIZE_MAX / 1048576.0) return 0;
-        limit = (size_t)(cap * 1048576.0);
+        state->RefineBasisLimit_limit = (size_t)(cap * 1048576.0);
         file = fopen("/proc/meminfo", "r");
         if (file != NULL) {
             while (fgets(line, sizeof(line), file) != NULL) {
@@ -2457,41 +2527,41 @@ static size_t BandCol_RefineBasisLimit(void)
             }
             fclose(file);
             if (ranks < 1) ranks = 1;
-            if (0 < available_kib && available_kib / (unsigned)ranks * (1024ULL / 8ULL) < limit)
-                limit = (size_t)(available_kib / (unsigned)ranks * (1024ULL / 8ULL));
+            if (0 < available_kib && available_kib / (unsigned)ranks * (1024ULL / 8ULL) < state->RefineBasisLimit_limit)
+                state->RefineBasisLimit_limit = (size_t)(available_kib / (unsigned)ranks * (1024ULL / 8ULL));
         }
     }
-    return limit;
+    return state->RefineBasisLimit_limit;
 }
 
 /* the slot's host buffers, within the budget; 0 when there is no room */
-static int BandCol_KRefSlotAllocate(BandColKRefineSlot *slot, int n)
+static int BandCol_KRefSlotAllocate(BandColState *state, BandColKRefineSlot *slot, int n)
 {
     size_t const bytes = sizeof(dcomplex) * (size_t)n * (size_t)n + sizeof(double) * (size_t)n;
-    size_t const limit = BandCol_RefineBasisLimit();
+    size_t const limit = BandCol_RefineBasisLimit(state);
 
     if (slot->basis != NULL) return 1;
-    if (limit < BandCol_kref_used || bytes > limit - BandCol_kref_used) return 0;
-    slot->basis = (dcomplex *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(dcomplex) * (size_t)n * (size_t)n,0);
-    slot->lam = (double *)openmx_core_native_malloc(Band_DFT_Col_resources,1,sizeof(double) * (size_t)n,0);
+    if (limit < state->kref_used || bytes > limit - state->kref_used) return 0;
+    slot->basis = (dcomplex *)openmx_core_native_malloc(state->resources,1,sizeof(dcomplex) * (size_t)n * (size_t)n,0);
+    slot->lam = (double *)openmx_core_native_malloc(state->resources,1,sizeof(double) * (size_t)n,0);
     if (slot->basis == NULL || slot->lam == NULL) {
-        openmx_core_native_free(Band_DFT_Col_resources,slot->basis);
-        openmx_core_native_free(Band_DFT_Col_resources,slot->lam);
+        openmx_core_native_free(state->resources,slot->basis);
+        openmx_core_native_free(state->resources,slot->lam);
         slot->basis = NULL;
         slot->lam = NULL;
         return 0;
     }
-    BandCol_kref_used += bytes;
+    state->kref_used += bytes;
     return 1;
 }
 
-static void BandCol_KRefSlotFree(BandColKRefineSlot *slot, int n)
+static void BandCol_KRefSlotFree(BandColState *state, BandColKRefineSlot *slot, int n)
 {
     if (slot->basis != NULL) {
-        BandCol_kref_used -= sizeof(dcomplex) * (size_t)n * (size_t)n + sizeof(double) * (size_t)n;
+        state->kref_used -= sizeof(dcomplex) * (size_t)n * (size_t)n + sizeof(double) * (size_t)n;
     }
-    openmx_core_native_free(Band_DFT_Col_resources,slot->basis);
-    openmx_core_native_free(Band_DFT_Col_resources,slot->lam);
+    openmx_core_native_free(state->resources,slot->basis);
+    openmx_core_native_free(state->resources,slot->lam);
     slot->basis = NULL;
     slot->lam = NULL;
     slot->valid = 0;
@@ -2503,38 +2573,38 @@ static void BandCol_KRefSlotFree(BandColKRefineSlot *slot, int n)
    (the basis kept on the host when keep is set and there is room).  Returns 1
    when d_H's first maxn columns hold the refined vectors, 0 when the FP64
    eigensolver has to take over (d_H still the Hermitian matrix). */
-static int BandCol_KDenseRefinedSolve(int n, int maxn, double *ko, BandColKRefineSlot *slot, int warm_allowed,
+static int BandCol_KDenseRefinedSolve(BandColState *state, int n, int maxn, double *ko, BandColKRefineSlot *slot, int warm_allowed,
                                       double mu, int keep)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
-    BandColRefineState  *st = &BandCol_refine;
-    EigenRefineDevice   *dev = &BandCol_refine_dev;
-    EigenRefineState    *ks = &BandCol_kref_state;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    BandColRefineState  *st = &state->refine;
+    EigenRefineDevice   *dev = &state->refine_dev;
+    EigenRefineState    *ks = &state->kref_state;
     EigenRefineProblem   pb;
     EigenRefineReport    rep;
     size_t const         nn = (size_t)n * (size_t)n;
     double              *e0, *f0;
     int                  rc;
 
-    BandCol_RefineBindDevice(dev);
+    BandCol_RefineBindDevice(state, dev);
     memset(&pb, 0, sizeof(pb));
     memset(&rep, 0, sizeof(rep));
     pb.cplx = 1;
     pb.n = n;
     pb.maxn = maxn;
-    pb.iterations = BandCol_RefineIterations();
+    pb.iterations = BandCol_RefineIterations(state);
     pb.a = ctx->d_H;
     pb.w = ctx->d_W;
     pb.fp32 = ctx->d_tmp;
     pb.region = sizeof(dcomplex) * nn;
-    pb.x = BandCol_refine_x;
+    pb.x = state->refine_x;
     pb.transient = 0;
     pb.warm = (warm_allowed && slot->valid && slot->basis != NULL && ks->lam != NULL && ks->capacity >= n);
     pb.defaulted = st->defaulted;
     pb.occupation = BandCol_RefineFermi;
-    pb.occupation_ctx = &BandCol_refine_occ;
+    pb.occupation_ctx = &state->refine_occ;
     if (pb.warm) {
-        wait_hipfunc(hipMemcpy(BandCol_refine_x, slot->basis, sizeof(dcomplex) * nn, hipMemcpyHostToDevice));
+        wait_hipfunc(hipMemcpy(state->refine_x, slot->basis, sizeof(dcomplex) * nn, hipMemcpyHostToDevice));
         wait_hipfunc(hipMemcpy(ks->lam, slot->lam, sizeof(double) * (size_t)n, hipMemcpyHostToDevice));
         ks->basis_valid = 1;
         ks->basis_n = n;
@@ -2542,8 +2612,8 @@ static int BandCol_KDenseRefinedSolve(int n, int maxn, double *ko, BandColKRefin
     else {
         ks->basis_valid = 0;
     }
-    e0 = (double *)BandCol_MallocArray((size_t)n, sizeof(double), "refinement eigenvalues");
-    f0 = (double *)BandCol_MallocArray((size_t)n, sizeof(double), "refinement occupations");
+    e0 = (double *)BandCol_MallocArray(state, (size_t)n, sizeof(double), "refinement eigenvalues");
+    f0 = (double *)BandCol_MallocArray(state, (size_t)n, sizeof(double), "refinement occupations");
     rc = openmx_eigen_refine_prepare(ks, dev, &pb, e0, &rep);
     if (rc < 0) {
         pb.warm = 0;
@@ -2551,31 +2621,31 @@ static int BandCol_KDenseRefinedSolve(int n, int maxn, double *ko, BandColKRefin
         rc = openmx_eigen_refine_prepare(ks, dev, &pb, e0, &rep);
     }
     if (rc == 1) {
-        BandCol_refine_occ.mu = mu;
-        for (int i = 0; i < n; i++) f0[i] = BandCol_RefineFermi(e0[i], i + 1, &BandCol_refine_occ);
+        state->refine_occ.mu = mu;
+        for (int i = 0; i < n; i++) f0[i] = BandCol_RefineFermi(e0[i], i + 1, &state->refine_occ);
         rc = openmx_eigen_refine_finish(ks, dev, &pb, f0, &rep);
     }
     if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
-    openmx_core_native_free(Band_DFT_Col_resources,e0);
-    openmx_core_native_free(Band_DFT_Col_resources,f0);
+    openmx_core_native_free(state->resources,e0);
+    openmx_core_native_free(state->resources,f0);
     if (rc != 1) {
         ks->basis_valid = 0;
         slot->valid = 0;
         return 0;
     }
     wait_hipfunc(hipMemcpy(ko + 1, ctx->d_W, sizeof(double) * (size_t)maxn, hipMemcpyDeviceToHost));
-    if (keep && BandCol_KRefSlotAllocate(slot, n)) {
-        wait_hipfunc(hipMemcpy(slot->basis, BandCol_refine_x, sizeof(dcomplex) * nn, hipMemcpyDeviceToHost));
+    if (keep && BandCol_KRefSlotAllocate(state, slot, n)) {
+        wait_hipfunc(hipMemcpy(slot->basis, state->refine_x, sizeof(dcomplex) * nn, hipMemcpyDeviceToHost));
         wait_hipfunc(hipMemcpy(slot->lam, ks->lam, sizeof(double) * (size_t)n, hipMemcpyDeviceToHost));
         slot->valid = 1;
     }
     else {
-        BandCol_KRefSlotFree(slot, n);
+        BandCol_KRefSlotFree(state, slot, n);
     }
     if (3 <= level_stdout) {
         printf("<Band_DFT_Col> k-point slot %d: %s, %d refinement steps of %d columns: max |r| %.1e, max |s| %.1e, "
                "delta %.1e; Rayleigh-Ritz in %d partially occupied clusters (largest %d)\n",
-               (int)(slot - BandCol_kref), pb.warm ? "warm start" : "FP32 eigensolver", pb.iterations, rep.columns,
+               (int)(slot - state->kref), pb.warm ? "warm start" : "FP32 eigensolver", pb.iterations, rep.columns,
                rep.max_r, rep.max_s, rep.delta, rep.rr_clusters, rep.rr_largest);
         fflush(stdout);
     }
@@ -2591,17 +2661,17 @@ static int BandCol_KDenseRefinedSolve(int n, int maxn, double *ko, BandColKRefin
    fails.  Returns 1 when the k-point was handled (refined or not; no
    eigenvectors are built), 0 when the caller is to solve it as usual
    (nothing touched). */
-static int BandCol_KDenseRefinedPass1(int n, int maxn, const dcomplex *H_in, double *ko, int slot_index)
+static int BandCol_KDenseRefinedPass1(BandColState *state, int n, int maxn, const dcomplex *H_in, double *ko, int slot_index)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
-    BandColKRefineSlot  *slot = &BandCol_kref[slot_index];
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    BandColKRefineSlot  *slot = &state->kref[slot_index];
 
-    if (!BandCol_RefineEnsureDeviceBasis(n)) return 0;
-    BandCol_GpuSolver_ForwardTransformDevice(n, H_in);
-    slot->refined = BandCol_KDenseRefinedSolve(n, maxn, ko, slot,
-                                               openmx_eigen_refine_warm_band_step(BandCol_refine.scf_iter), ChemP, 1);
+    if (!BandCol_RefineEnsureDeviceBasis(state, n)) return 0;
+    BandCol_GpuSolver_ForwardTransformDevice(state, n, H_in);
+    slot->refined = BandCol_KDenseRefinedSolve(state, n, maxn, ko, slot,
+                                               openmx_eigen_refine_warm_band_step(state->refine.scf_iter), ChemP, 1);
     if (!slot->refined) {
-        BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1);
+        BandCol_GpuSolver_Eigen(state, ctx->d_H, n, maxn, ko + 1);
     }
     return 1;
 }
@@ -2610,21 +2680,21 @@ static int BandCol_KDenseRefinedPass1(int n, int maxn, const dcomplex *H_in, dou
    refinement from pass 1's basis with the occupations at the step's chemical
    potential, the back transform.  Returns the device eigenvectors (state-
    major, stride maxn), of an FP64 solve when the refinement failed. */
-static dcomplex *BandCol_KDenseRefinedPass2(int n, int maxn, const dcomplex *H_in, double *ko, int slot_index,
+static dcomplex *BandCol_KDenseRefinedPass2(BandColState *state, int n, int maxn, const dcomplex *H_in, double *ko, int slot_index,
                                             double mu)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
-    BandColKRefineSlot  *slot = &BandCol_kref[slot_index];
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    BandColKRefineSlot  *slot = &state->kref[slot_index];
     int                  ok = 0;
 
-    BandCol_GpuSolver_ForwardTransformDevice(n, H_in);
-    if (BandCol_RefineEnsureDeviceBasis(n)) {
-        ok = BandCol_KDenseRefinedSolve(n, maxn, ko, slot, 1, mu, openmx_eigen_refine_warm_band_enabled());
+    BandCol_GpuSolver_ForwardTransformDevice(state, n, H_in);
+    if (BandCol_RefineEnsureDeviceBasis(state, n)) {
+        ok = BandCol_KDenseRefinedSolve(state, n, maxn, ko, slot, 1, mu, openmx_eigen_refine_warm_band_enabled());
     }
     if (!ok) {
-        BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1);
+        BandCol_GpuSolver_Eigen(state, ctx->d_H, n, maxn, ko + 1);
     }
-    return BandCol_GpuSolver_BackTransformDevice(n, maxn);
+    return BandCol_GpuSolver_BackTransformDevice(state, n, maxn);
 }
 
 /* The first half of a refined solve of this rank's k-point (every owner
@@ -2633,21 +2703,21 @@ static dcomplex *BandCol_KDenseRefinedPass2(int n, int maxn, const dcomplex *H_i
    solve pending (BandCol_RefinedSecondHalf finishes it once the chemical
    potential is known), or, when the refinement is not possible, the device
    eigenvectors of an FP64 solve done instead (stride maxn). */
-static dcomplex *BandCol_RefinedFirstHalf(int n, int maxn, const dcomplex *H_in, double *ko)
+static dcomplex *BandCol_RefinedFirstHalf(BandColState *state, int n, int maxn, const dcomplex *H_in, double *ko)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
-    BandColRefineState  *st = &BandCol_refine;
-    EigenRefineDevice   *dev = &BandCol_refine_dev;
-    EigenRefineProblem  *pb = &BandCol_refine_pb;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    BandColRefineState  *st = &state->refine;
+    EigenRefineDevice   *dev = &state->refine_dev;
+    EigenRefineProblem  *pb = &state->refine_pb;
     EigenRefineReport    rep;
     size_t const         nn = (size_t)n * (size_t)n;
     int                  rc = 1;
 
-    BandCol_GpuSolver_ForwardTransformDevice(n, H_in);
+    BandCol_GpuSolver_ForwardTransformDevice(state, n, H_in);
     st->pending = 0;
-    if (BandCol_refine_x != NULL && BandCol_refine_x_n != n) BandCol_RefineDropBasis();
-    if (BandCol_refine_x == NULL) {
-        if (BandCol_TryDeviceMalloc((void **)&BandCol_refine_x, sizeof(dcomplex) * nn) != hipSuccess) {
+    if (state->refine_x != NULL && state->refine_x_n != n) BandCol_RefineDropBasis(state);
+    if (state->refine_x == NULL) {
+        if (BandCol_TryDeviceMalloc(state, (void **)&state->refine_x, sizeof(dcomplex) * nn) != hipSuccess) {
             if (2 <= level_stdout) {
                 printf("<Band_DFT_Col> no room for the %.1f MiB basis of the refined eigensolver; FP64 eigensolver%s\n",
                        (double)(sizeof(dcomplex) * nn) / (1024.0 * 1024.0),
@@ -2658,74 +2728,74 @@ static dcomplex *BandCol_RefinedFirstHalf(int n, int maxn, const dcomplex *H_in,
             rc = 0;
         }
         else {
-            BandCol_refine_x_n = n;
+            state->refine_x_n = n;
         }
     }
-    if (BandCol_refine_e0_n != n) {
-        openmx_core_native_free(Band_DFT_Col_resources,BandCol_refine_e0);
-        BandCol_refine_e0 = (double *)BandCol_MallocArray((size_t)n, sizeof(double), "refinement eigenvalues");
-        BandCol_refine_e0_n = n;
+    if (state->refine_e0_n != n) {
+        openmx_core_native_free(state->resources,state->refine_e0);
+        state->refine_e0 = (double *)BandCol_MallocArray(state, (size_t)n, sizeof(double), "refinement eigenvalues");
+        state->refine_e0_n = n;
     }
     if (rc) {
-        BandCol_RefineBindDevice(dev);
+        BandCol_RefineBindDevice(state, dev);
         memset(pb, 0, sizeof(*pb));
         memset(&rep, 0, sizeof(rep));
         pb->cplx = 1;
         pb->n = n;
         pb->maxn = maxn;
-        pb->iterations = BandCol_RefineIterations();
+        pb->iterations = BandCol_RefineIterations(state);
         pb->a = ctx->d_H;
         pb->w = ctx->d_W;
         pb->fp32 = ctx->d_tmp;
         pb->region = sizeof(dcomplex) * nn;
-        pb->x = BandCol_refine_x;
+        pb->x = state->refine_x;
         pb->transient = st->transient;
-        pb->warm = (openmx_eigen_refine_warm_band_step(st->scf_iter) && BandCol_refine_state.basis_valid &&
-                    BandCol_refine_state.basis_n == n && !st->transient);
+        pb->warm = (openmx_eigen_refine_warm_band_step(st->scf_iter) && state->refine_state.basis_valid &&
+                    state->refine_state.basis_n == n && !st->transient);
         pb->defaulted = st->defaulted;
         pb->occupation = BandCol_RefineFermi;
-        pb->occupation_ctx = &BandCol_refine_occ;
+        pb->occupation_ctx = &state->refine_occ;
         if (3 <= level_stdout) {
             printf("<Band_DFT_Col> this rank's k-point: %s, %d refinement steps (OPENMX_EIGEN_REFINE)\n",
                    pb->warm ? "warm start from the previous vectors" : "FP32 eigensolver", pb->iterations);
             fflush(stdout);
         }
-        rc = openmx_eigen_refine_prepare(&BandCol_refine_state, dev, pb, BandCol_refine_e0, &rep);
+        rc = openmx_eigen_refine_prepare(&state->refine_state, dev, pb, state->refine_e0, &rep);
         if (rc < 0) {
             pb->warm = 0;
-            rc = openmx_eigen_refine_prepare(&BandCol_refine_state, dev, pb, BandCol_refine_e0, &rep);
+            rc = openmx_eigen_refine_prepare(&state->refine_state, dev, pb, state->refine_e0, &rep);
         }
         if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
     }
     if (rc == 1) {
-        for (int l = 1; l <= maxn; l++) ko[l] = BandCol_refine_e0[l - 1];
+        for (int l = 1; l <= maxn; l++) ko[l] = state->refine_e0[l - 1];
         st->pending = 1;
         return NULL;
     }
 
     /* FP64 after all: d_H still holds the Hermitian matrix */
-    BandCol_refine_state.basis_valid = 0;
-    BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1);
-    return BandCol_GpuSolver_BackTransformDevice(n, maxn);
+    state->refine_state.basis_valid = 0;
+    BandCol_GpuSolver_Eigen(state, ctx->d_H, n, maxn, ko + 1);
+    return BandCol_GpuSolver_BackTransformDevice(state, n, maxn);
 }
 
 /* The second half: the refinement with the occupations at mu, the refined
    eigenvalues to ko[1..maxn] and the back transform.  Returns the device
    eigenvectors (stride maxn), of an FP64 solve when the refinement failed. */
-static dcomplex *BandCol_RefinedSecondHalf(int n, int maxn, double *ko, double mu)
+static dcomplex *BandCol_RefinedSecondHalf(BandColState *state, int n, int maxn, double *ko, double mu)
 {
-    BandColGpuSolverCtx *ctx = &BandCol_gpusolver_ctx;
-    BandColRefineState  *st = &BandCol_refine;
-    EigenRefineProblem  *pb = &BandCol_refine_pb;
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    BandColRefineState  *st = &state->refine;
+    EigenRefineProblem  *pb = &state->refine_pb;
     EigenRefineReport    rep;
-    double              *f0 = (double *)BandCol_MallocArray((size_t)n, sizeof(double), "refinement occupations");
+    double              *f0 = (double *)BandCol_MallocArray(state, (size_t)n, sizeof(double), "refinement occupations");
     int                  rc;
 
     memset(&rep, 0, sizeof(rep));
-    BandCol_refine_occ.mu = mu;
-    for (int i = 0; i < n; i++) f0[i] = BandCol_RefineFermi(BandCol_refine_e0[i], i + 1, &BandCol_refine_occ);
-    rc = openmx_eigen_refine_finish(&BandCol_refine_state, &BandCol_refine_dev, pb, f0, &rep);
-    openmx_core_native_free(Band_DFT_Col_resources,f0);
+    state->refine_occ.mu = mu;
+    for (int i = 0; i < n; i++) f0[i] = BandCol_RefineFermi(state->refine_e0[i], i + 1, &state->refine_occ);
+    rc = openmx_eigen_refine_finish(&state->refine_state, &state->refine_dev, pb, f0, &rep);
+    openmx_core_native_free(state->resources,f0);
     st->pending = 0;
     if (rc != 1 && st->persistent < rep.persistent) st->persistent = rep.persistent;
     if (rc == 1) {
@@ -2741,17 +2811,17 @@ static dcomplex *BandCol_RefinedSecondHalf(int n, int maxn, double *ko, double m
     }
     else {
         /* d_H still holds the Hermitian matrix */
-        BandCol_refine_state.basis_valid = 0;
-        BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1);
+        state->refine_state.basis_valid = 0;
+        BandCol_GpuSolver_Eigen(state, ctx->d_H, n, maxn, ko + 1);
     }
-    return BandCol_GpuSolver_BackTransformDevice(n, maxn);
+    return BandCol_GpuSolver_BackTransformDevice(state, n, maxn);
 }
 
 /* ------------------------------------------------------------------ */
 
 /* After pass 1 of a staged refined solve: the device goes to the next turn
    (unless the buffers persist), the basis lives in the host slot */
-static void BandCol_AfterStagedTurn(void)
+static void BandCol_AfterStagedTurn(BandColState *state)
 {
     if (BandCol_GemmWorkspaceTurnRelease()) {
         openmx_gemmul8ReleaseWorkspaces();
@@ -2759,56 +2829,56 @@ static void BandCol_AfterStagedTurn(void)
     else {
         openmx_gemmul8TrimWorkspaces();
     }
-    if (!BandCol_GpuPersistentDecide()) {
-        BandCol_ConstructCache_Reset();
-        BandCol_GpuSolver_ReleaseDeviceMemory();
+    if (!BandCol_GpuPersistentDecide(state)) {
+        BandCol_ConstructCache_Reset(state);
+        BandCol_GpuSolver_ReleaseDeviceMemory(state);
     }
-    BandCol_RefineDropBasis();
+    BandCol_RefineDropBasis(state);
 }
 
 /* After a dense solve of the one-k-point-per-rank path that built the
    eigenvectors: the GEMMul8 workspace goes, and the eigenvectors stay on the
    device or go to the host with the device buffers released, as after the
    FP64 solve */
-static void BandCol_AfterDenseSolve(dcomplex *evec_device, int n)
+static void BandCol_AfterDenseSolve(BandColState *state, dcomplex *evec_device, int n)
 {
-    if (BandCol_mgpu_host_dense) return;
+    if (state->mgpu_host_dense) return;
     if (BandCol_GemmWorkspaceTurnRelease()) {
         openmx_gemmul8ReleaseWorkspaces();
     }
     else {
         openmx_gemmul8TrimWorkspaces();
     }
-    if (BandCol_GpuPersistentDecide()) {
+    if (BandCol_GpuPersistentDecide(state)) {
         (void)evec_device;
     } else {
-        BandCol_GpuSolver_SaveDeviceEigenvectors(evec_device, n, BandCol_GpuSolver_EigenvectorStride());
-        BandCol_ConstructCache_Reset();
-        BandCol_GpuSolver_ReleaseDeviceMemory();
+        BandCol_GpuSolver_SaveDeviceEigenvectors(state, evec_device, n, BandCol_GpuSolver_EigenvectorStride(state));
+        BandCol_ConstructCache_Reset(state);
+        BandCol_GpuSolver_ReleaseDeviceMemory(state);
     }
 }
 
-static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const dcomplex *H_in, double *ko, dcomplex *C_out,
+static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(BandColState *state, int n, int maxn, const dcomplex *H_in, double *ko, dcomplex *C_out,
                                                        int build_eigenvectors)
 {
-    if (BandCol_mgpu_host_dense) {
-        BandCol_HostEnsure(n);
-        if (!openmx_mgpu_host_zgemm(HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,BandCol_host_h,n,BandCol_host_s,n,BandCol_host_tmp,n) ||
-            !openmx_mgpu_host_zgemm(HIPBLAS_OP_C,HIPBLAS_OP_N,n,n,n,BandCol_host_s,n,BandCol_host_tmp,n,BandCol_host_h,n) ||
-            !openmx_mgpu_host_solve(n,maxn,1,BandCol_host_h,n,ko+1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
+    if (state->mgpu_host_dense) {
+        BandCol_HostEnsure(state, n);
+        if (!openmx_mgpu_host_zgemm(HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,state->host_h,n,state->host_s,n,state->host_tmp,n) ||
+            !openmx_mgpu_host_zgemm(HIPBLAS_OP_C,HIPBLAS_OP_N,n,n,n,state->host_s,n,state->host_tmp,n,state->host_h,n) ||
+            !openmx_mgpu_host_solve(n,maxn,1,state->host_h,n,ko+1)) BandCol_AbortWithMessage(openmx_mgpu_host_error());
         if (!build_eigenvectors) return NULL;
-        memset(BandCol_host_tmp,0,(size_t)n*n*sizeof(dcomplex));
-        if (!openmx_mgpu_host_zgemm(HIPBLAS_OP_T,HIPBLAS_OP_T,maxn,n,n,BandCol_host_h,n,BandCol_host_s,n,BandCol_host_tmp,maxn))
+        memset(state->host_tmp,0,(size_t)n*n*sizeof(dcomplex));
+        if (!openmx_mgpu_host_zgemm(HIPBLAS_OP_T,HIPBLAS_OP_T,maxn,n,n,state->host_h,n,state->host_s,n,state->host_tmp,maxn))
             BandCol_AbortWithMessage(openmx_mgpu_host_error());
-        if (C_out) memcpy(C_out,BandCol_host_tmp,(size_t)n*maxn*sizeof(dcomplex));
-        BandCol_host_stride=maxn;
-        return BandCol_host_tmp;
+        if (C_out) memcpy(C_out,state->host_tmp,(size_t)n*maxn*sizeof(dcomplex));
+        state->host_stride=maxn;
+        return state->host_tmp;
     }
 
-    BandColGpuSolverCtx * ctx = &BandCol_gpusolver_ctx;
+    BandColGpuSolverCtx * ctx = &state->gpusolver_ctx;
     size_t               matrix_bytes;
     dcomplex            *evec_t;
-    const int             tdbg = BandCol_SolveTimingEnabled();
+    const int             tdbg = BandCol_SolveTimingEnabled(state);
     double                tt0 = 0.0, tt1 = 0.0, tt2 = 0.0, tt3 = 0.0, tt4 = 0.0, tt5 = 0.0;
 
     if (!(ctx->transformed_s_valid && ctx->transformed_s_dim == n)) {
@@ -2825,15 +2895,15 @@ static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const d
 
     if (tdbg) { wait_hipfunc(hipDeviceSynchronize()); dtime(&tt1); }
 
-    BandCol_GpuSolver_ZgemmDevice(HIPBLAS_OP_N, HIPBLAS_OP_N, n, n, n, ctx->d_H, ctx->d_S, ctx->d_tmp);
+    BandCol_GpuSolver_ZgemmDevice(state, HIPBLAS_OP_N, HIPBLAS_OP_N, n, n, n, ctx->d_H, ctx->d_S, ctx->d_tmp);
 
     if (tdbg) { wait_hipfunc(hipDeviceSynchronize()); dtime(&tt2); }
 
-    BandCol_GpuSolver_ZgemmDevice(HIPBLAS_OP_C, HIPBLAS_OP_N, n, n, n, ctx->d_S, ctx->d_tmp, ctx->d_H);
+    BandCol_GpuSolver_ZgemmDevice(state, HIPBLAS_OP_C, HIPBLAS_OP_N, n, n, n, ctx->d_S, ctx->d_tmp, ctx->d_H);
 
     if (tdbg) { wait_hipfunc(hipDeviceSynchronize()); dtime(&tt3); }
 
-    BandCol_GpuSolver_Eigen(ctx->d_H, n, maxn, ko + 1);
+    BandCol_GpuSolver_Eigen(state, ctx->d_H, n, maxn, ko + 1);
 
     if (tdbg) { wait_hipfunc(hipDeviceSynchronize()); dtime(&tt4); }
 
@@ -2846,8 +2916,8 @@ static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const d
         return NULL;
     }
 
-    evec_t = BandCol_GpuSolver_EnsureEigenvectorCapacity(n, maxn);
-    BandCol_GpuSolver_BackTransformGemm(n, maxn, evec_t);
+    evec_t = BandCol_GpuSolver_EnsureEigenvectorCapacity(state, n, maxn);
+    BandCol_GpuSolver_BackTransformGemm(state, n, maxn, evec_t);
 
     if (C_out != NULL) {
         wait_hipfunc(hipMemcpy(C_out, evec_t, sizeof(dcomplex) * (size_t)n * (size_t)maxn,
@@ -2865,37 +2935,37 @@ static dcomplex *BandCol_GpuSolver_SolveHamiltonianImpl(int n, int maxn, const d
     return evec_t;
 }
 
-static void BandCol_GpuSolver_SolveHamiltonian(int n, int maxn, const dcomplex *H_in, double *ko, dcomplex *C_out)
+static void BandCol_GpuSolver_SolveHamiltonian(BandColState *state, int n, int maxn, const dcomplex *H_in, double *ko, dcomplex *C_out)
 {
-    BandCol_GpuSolver_SolveHamiltonianImpl(n, maxn, H_in, ko, C_out, C_out != NULL);
+    BandCol_GpuSolver_SolveHamiltonianImpl(state, n, maxn, H_in, ko, C_out, C_out != NULL);
 }
 
-static dcomplex *BandCol_GpuSolver_SolveHamiltonianDeviceOnly(int n, int maxn, const dcomplex *H_in, double *ko)
+static dcomplex *BandCol_GpuSolver_SolveHamiltonianDeviceOnly(BandColState *state, int n, int maxn, const dcomplex *H_in, double *ko)
 {
-    return BandCol_GpuSolver_SolveHamiltonianImpl(n, maxn, H_in, ko, NULL, 1);
+    return BandCol_GpuSolver_SolveHamiltonianImpl(state, n, maxn, H_in, ko, NULL, 1);
 }
 
-static dcomplex *BandCol_GpuSolver_SolveHamiltonianDeviceInput(int n, int maxn, double *ko)
+static dcomplex *BandCol_GpuSolver_SolveHamiltonianDeviceInput(BandColState *state, int n, int maxn, double *ko)
 {
-    return BandCol_GpuSolver_SolveHamiltonianImpl(n, maxn, NULL, ko, NULL, 1);
+    return BandCol_GpuSolver_SolveHamiltonianImpl(state, n, maxn, NULL, ko, NULL, 1);
 }
 
-static dcomplex *BandCol_GpuSolver_DeviceEigenvectors(void)
+static dcomplex *BandCol_GpuSolver_DeviceEigenvectors(BandColState *state)
 {
-    if (BandCol_mgpu_host_dense) return BandCol_host_tmp;
-    return BandCol_gpusolver_ctx.d_evec;
+    if (state->mgpu_host_dense) return state->host_tmp;
+    return state->gpusolver_ctx.d_evec;
 }
 
-static int BandCol_LastConstructOnDevice(void)
+static int BandCol_LastConstructOnDevice(BandColState *state)
 {
-    return BandCol_last_construct_on_device;
+    return state->last_construct_on_device;
 }
 
-static void BandCol_ConstructDenseCsHs_HIP(int need_s, int n, double k1, double k2, double k3, const double *S1,
+static void BandCol_ConstructDenseCsHs_HIP(BandColState *state, int need_s, int n, double k1, double k2, double k3, const double *S1,
                                            const double *H1)
 {
-    BandColConstructCache *cache = &BandCol_construct_cache;
-    BandColGpuSolverCtx *   ctx = &BandCol_gpusolver_ctx;
+    BandColConstructCache *cache = &state->construct_cache;
+    BandColGpuSolverCtx *   ctx = &state->gpusolver_ctx;
     BandColConstructEntry *entries = cache->dense_entries_dev;
     double *phase_r = cache->dense_phase_r;
     double *phase_i = cache->dense_phase_i;
@@ -2910,7 +2980,7 @@ static void BandCol_ConstructDenseCsHs_HIP(int need_s, int n, double k1, double 
         BandCol_AbortWithMessage("The dense construct cache is not device-resident in Band_DFT_Col.c.");
     }
 
-    BandCol_GpuSolver_EnsureMatrixCapacity(n);
+    BandCol_GpuSolver_EnsureMatrixCapacity(state, n);
 
     d_H = ctx->d_H;
     d_S = ctx->d_S;
@@ -2936,10 +3006,11 @@ static void BandCol_ConstructDenseCsHs_HIP(int need_s, int n, double k1, double 
         }
     }
 
-    BandCol_last_construct_on_device = 1;
+    state->last_construct_on_device = 1;
 }
 
 typedef struct {
+  BandColState *state;
   int SCF_iter;
   int knum_i;
   int knum_j;
@@ -2986,7 +3057,7 @@ typedef struct {
   MPI_Comm * MPI_CommWD2;
   const OpenMXElectronicViews *electronic;
 } Band_DFT_Col_arguments;
-static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
+static double Band_DFT_Col_owned(BandColState *state, int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
                     double ***** ImNL, double **** CntOLP, double ***** CDM, double ***** EDM, double Eele0[2],
                     double Eele1[2], int * MP, int * order_GA, double * ko, double * koS, double *** EIGEN, double * H1,
                     double * S1, double * CDM1, double * EDM1, dcomplex ** EVec1, dcomplex * Ss, dcomplex * Cs,
@@ -2997,10 +3068,10 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
 static int Band_DFT_Col_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   Band_DFT_Col_arguments *a=(Band_DFT_Col_arguments*)arguments;
-  *result=Band_DFT_Col_owned(a->SCF_iter,a->knum_i,a->knum_j,a->knum_k,a->SpinP_switch,a->ParDM_flag,a->nh,a->ImNL,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->MP,a->order_GA,a->ko,a->koS,a->EIGEN,a->H1,a->S1,a->CDM1,a->EDM1,a->EVec1,a->Ss,a->Cs,a->Hs,a->k_op,a->T_k_op,a->T_k_ID,a->T_KGrids1,a->T_KGrids2,a->T_KGrids3,a->myworld1,a->NPROCS_ID1,a->Comm_World1,a->NPROCS_WD1,a->Comm_World_StartID1,a->MPI_CommWD1,a->myworld2,a->NPROCS_ID2,a->NPROCS_WD2,a->Comm_World2,a->Comm_World_StartID2,a->MPI_CommWD2,a->electronic,owner);
+  *result=Band_DFT_Col_owned(a->state, a->SCF_iter,a->knum_i,a->knum_j,a->knum_k,a->SpinP_switch,a->ParDM_flag,a->nh,a->ImNL,a->CntOLP,a->CDM,a->EDM,a->Eele0,a->Eele1,a->MP,a->order_GA,a->ko,a->koS,a->EIGEN,a->H1,a->S1,a->CDM1,a->EDM1,a->EVec1,a->Ss,a->Cs,a->Hs,a->k_op,a->T_k_op,a->T_k_ID,a->T_KGrids1,a->T_KGrids2,a->T_KGrids3,a->myworld1,a->NPROCS_ID1,a->Comm_World1,a->NPROCS_WD1,a->Comm_World_StartID1,a->MPI_CommWD1,a->myworld2,a->NPROCS_ID2,a->NPROCS_WD2,a->Comm_World2,a->Comm_World_StartID2,a->MPI_CommWD2,a->electronic,owner);
   return 1;
 }
-double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
+double Band_DFT_Col(BandColState *state, int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
                     double ***** ImNL, double **** CntOLP, double ***** CDM, double ***** EDM, double Eele0[2],
                     double Eele1[2], int * MP, int * order_GA, double * ko, double * koS, double *** EIGEN, double * H1,
                     double * S1, double * CDM1, double * EDM1, dcomplex ** EVec1, dcomplex * Ss, dcomplex * Cs,
@@ -3009,11 +3080,11 @@ double Band_DFT_Col(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_
                     int * Comm_World_StartID1, MPI_Comm * MPI_CommWD1, int myworld2, int * NPROCS_ID2, int * NPROCS_WD2,
                     int * Comm_World2, int * Comm_World_StartID2, MPI_Comm * MPI_CommWD2, const OpenMXElectronicViews *electronic)
 {
-  Band_DFT_Col_arguments arguments={SCF_iter,knum_i,knum_j,knum_k,SpinP_switch,ParDM_flag,nh,ImNL,CntOLP,CDM,EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN,H1,S1,CDM1,EDM1,EVec1,Ss,Cs,Hs,k_op,T_k_op,T_k_ID,T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,Comm_World_StartID2,MPI_CommWD2,electronic};
+  Band_DFT_Col_arguments arguments={state,SCF_iter,knum_i,knum_j,knum_k,SpinP_switch,ParDM_flag,nh,ImNL,CntOLP,CDM,EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN,H1,S1,CDM1,EDM1,EVec1,Ss,Cs,Hs,k_op,T_k_op,T_k_ID,T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,Comm_World_StartID2,MPI_CommWD2,electronic};
   return OpenMX_Solver_Run(Band_DFT_Col_operation,&arguments);
 }
 
-static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
+static double Band_DFT_Col_owned(BandColState *state, int SCF_iter, int knum_i, int knum_j, int knum_k, int SpinP_switch, int ParDM_flag, double ***** nh,
                     double ***** ImNL, double **** CntOLP, double ***** CDM, double ***** EDM, double Eele0[2],
                     double Eele1[2], int * MP, int * order_GA, double * ko, double * koS, double *** EIGEN, double * H1,
                     double * S1, double * CDM1, double * EDM1, dcomplex ** EVec1, dcomplex * Ss, dcomplex * Cs,
@@ -3027,7 +3098,7 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
 
     openmx_mgpu_band_scope input_scope={0};
     openmx_mgpu_band_scope_select(&input_scope,0,0,0);
-    static int firsttime = 1;
+
     int        i, j, k, l, m, n, p, wan, MaxN, i0, ks;
     int        i1, i1s, j1, ia, jb, lmax, kmin, kmax, po, po1, spin, s1, e1;
     int        num2, RnB, l1, l2, l3, loop_num, ns, ne;
@@ -3124,8 +3195,8 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
     dtime(&TStime);
 
     if (scf_eigen_lib_flag == GPUSOLVER && SCF_iter == 1) {
-        BandCol_KOverlapReset();
-        BandCol_ConstructCache_Reset();
+        BandCol_KOverlapReset(state);
+        BandCol_ConstructCache_Reset(state);
     }
 
     time1  = 0.0;
@@ -3156,15 +3227,7 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
     double        part3      = 0.0;
     double        part4      = 0.0;
     double        partmul    = 0.0;
-    static double part1sum   = 0.0;
-    static double part2_1sum = 0.0;
-    static double part2_2sum = 0.0;
-    static double part2_3sum = 0.0;
-    static double part2_4sum = 0.0;
-    static double part2_5sum = 0.0;
-    static double part3sum   = 0.0;
-    static double part4sum   = 0.0;
-    static double partmulsum = 0.0;
+
     double        starttime, endtime;
 
     /* MPI */
@@ -3205,9 +3268,9 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
         if (max_tno < tnoA)
             max_tno = tnoA;
     }
-    BandCol_RefineConfigure();
+    BandCol_RefineConfigure(state);
     use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n) &&
-                           BandCol_GpuDenseFits(n,myid1==0));
+                           BandCol_GpuDenseFits(state, n,myid1==0));
 
     /****************************************************
      find TZ
@@ -3622,7 +3685,7 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
         MPI_Bcast(&interleave_k, 1, MPI_INT, Host_ID, mpi_comm_level1);
         if (interleave_k) {
             int *owners=OpenMX_Solver_Int(solver_owner,"owners",((size_t)1)*(size_t)turns);
-            int *next = (int*)openmx_core_native_malloc(Band_DFT_Col_resources,(size_t)numprocs0,sizeof(int),1);
+            int *next = (int*)openmx_core_native_malloc(state->resources,(size_t)numprocs0,sizeof(int),1);
             int turn = 0;
             if (owners == NULL || next == NULL)
                 BandCol_AbortWithMessage("Cannot allocate GPU k-point owner cursors.");
@@ -3647,17 +3710,17 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
                     if (next[owner] < turns) gpu_k_order[turn++] = next[owner]++;
                 }
             }
-            openmx_core_native_free(Band_DFT_Col_resources,next);
+            openmx_core_native_free(state->resources,next);
         }
     }
 
     if (use_gpusolver_dense && all_knum != 1) {
-        BandCol_KOverlapPrepare(n, T_knum);
+        BandCol_KOverlapPrepare(state, n, T_knum);
         if (MaxN > 0 && (size_t)n <= SIZE_MAX / (size_t)MaxN / sizeof(dcomplex)) {
             k_cache_bytes = (size_t)n * (size_t)MaxN * sizeof(dcomplex);
             k_cache_limit = BandCol_HostCacheLimit("OPENMX_BAND_COL_KCACHE_MB", 1024.0);
             if (k_cache_bytes <= k_cache_limit)
-                k_evec_cache = (dcomplex**)openmx_core_native_malloc(Band_DFT_Col_resources,(size_t)Num_Comm_World1 * T_knum,sizeof(dcomplex*),1);
+                k_evec_cache = (dcomplex**)openmx_core_native_malloc(state->resources,(size_t)Num_Comm_World1 * T_knum,sizeof(dcomplex*),1);
         }
     }
 
@@ -3694,17 +3757,17 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
             const int turns = (all_knum == 1) ? ((total_turns <= turn_group) ? total_turns : turn_group)
                                               : BandCol_MaxConcurrentKGpuTurns(n);
 
-            refine_fits = BandCol_RefineFits(refine_base, n, MaxN, turns,
+            refine_fits = BandCol_RefineFits(state, refine_base, n, MaxN, turns,
                                              (all_knum == 1) ? owns_global_dense_rank : owns_dense_k_rank);
         }
-        BandCol_RefineBeginStep(SCF_iter, refine_fits && all_knum == 1 && total_turns <= turn_group,
+        BandCol_RefineBeginStep(state, SCF_iter, refine_fits && all_knum == 1 && total_turns <= turn_group,
                                 refine_fits && all_knum != 1, refine_fits && all_knum == 1 && turn_group < total_turns);
-        if (BandCol_refine.kdense || BandCol_refine.staged) BandCol_KRefEnsure(total_turns, n);
+        if (state->refine.kdense || state->refine.staged) BandCol_KRefEnsure(state, total_turns, n);
         /* the basis the resident path keeps on the device between its steps
            serves only that path's warm start: a call on another path (or in
            FP64) gives its memory back at once instead of at the end of the
            cycle */
-        if (!BandCol_refine.last_refined) BandCol_RefineDropBasis();
+        if (!state->refine.last_refined) BandCol_RefineDropBasis(state);
     }
 
     /***********************************************
@@ -3898,7 +3961,7 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
        PrintMemory
     ****************************************************/
 
-    if (firsttime && memoryusage_fileout) {
+    if (state->Band_DFT_Col_owned_firsttime && memoryusage_fileout) {
         PrintMemory("Band_DFT_Col: My_NZeros", sizeof(int) * numprocs0, NULL);
         PrintMemory("Band_DFT_Col: SP_NZeros", sizeof(int) * numprocs0, NULL);
         PrintMemory("Band_DFT_Col: SP_Atoms", sizeof(int) * numprocs0, NULL);
@@ -4044,11 +4107,11 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                     use_setham_packed_cache ? setham_S1 : S1,
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
                                     use_gpusolver_dense, owns_global_dense_rank);
-                construct_on_device = BandCol_LastConstructOnDevice();
+                construct_on_device = BandCol_LastConstructOnDevice(state);
 
                 /* for blas */
 
@@ -4057,11 +4120,11 @@ diagonalize1:
                 if (measure_time)
                     dtime(&Stime);
 
-                if (BandCol_KOverlapRestore(kloop, k1, k2, k3, ko, koS)) {
+                if (BandCol_KOverlapRestore(state, kloop, k1, k2, k3, ko, koS)) {
                     ++k_overlap_hits;
                 } else {
-                    BandCol_GpuSolver_PrepareTransformedS(1, n, construct_on_device ? NULL : Ss, ko, koS);
-                    BandCol_KOverlapSave(kloop, k1, k2, k3, koS);
+                    BandCol_GpuSolver_PrepareTransformedS(state, 1, n, construct_on_device ? NULL : Ss, ko, koS);
+                    BandCol_KOverlapSave(state, kloop, k1, k2, k3, koS);
                 }
 
                 if (measure_time) {
@@ -4080,30 +4143,30 @@ diagonalize1:
                    basis), so it has nothing for the eigenvector cache */
                 {
                     const int refined_pass1 =
-                        BandCol_refine.kdense &&
-                        BandCol_KDenseRefinedPass1(n, MaxN, construct_on_device ? NULL : Hs, ko, spin * T_knum + kloop);
+                        state->refine.kdense &&
+                        BandCol_KDenseRefinedPass1(state, n, MaxN, construct_on_device ? NULL : Hs, ko, spin * T_knum + kloop);
 
                     if (!refined_pass1) {
                         if (construct_on_device) {
-                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(n, MaxN, ko);
+                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(state, n, MaxN, ko);
                         } else {
-                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(n, MaxN, Hs, ko);
+                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(state, n, MaxN, Hs, ko);
                         }
                         if (k_evec_cache != NULL && k_cache_bytes <= k_cache_limit - k_cache_used) {
                             size_t slot = (size_t)spin * T_knum + kloop;
-                            k_evec_cache[slot] = (dcomplex*)openmx_core_native_malloc(Band_DFT_Col_resources,1,k_cache_bytes,0);
+                            k_evec_cache[slot] = (dcomplex*)openmx_core_native_malloc(state->resources,1,k_cache_bytes,0);
                             if (k_evec_cache[slot] != NULL) {
-                                if(BandCol_mgpu_host_dense)memcpy(k_evec_cache[slot],evec_device,k_cache_bytes);
+                                if(state->mgpu_host_dense)memcpy(k_evec_cache[slot],evec_device,k_cache_bytes);
                                 else wait_hipfunc(hipMemcpy(k_evec_cache[slot],evec_device,k_cache_bytes,hipMemcpyDeviceToHost));
                                 k_cache_used += k_cache_bytes;
                             }
                         }
                     }
-                    BandCol_GpuSolver_ReleaseDeviceMemory();
+                    BandCol_GpuSolver_ReleaseDeviceMemory(state);
                     if (refined_pass1) {
                         /* the basis lives in the host slot until pass 2; the
                            products' unblocked scratch goes with the turn */
-                        BandCol_RefineDropBasis();
+                        BandCol_RefineDropBasis(state);
                         openmx_gemmul8TrimWorkspaces();
                     }
                 }
@@ -4169,17 +4232,17 @@ diagonalize1:
 
                     if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
                         dcomplex *evec_device;
-                        const int persistent_s = BandCol_GpuPersistentDecide();
-                        const int device_s_ready = persistent_s && BandCol_GpuSolver_HasDeviceTransformedS(n);
-                        const int host_s_ready = BandCol_GpuSolver_HasHostTransformedS(n);
+                        const int persistent_s = BandCol_GpuPersistentDecide(state);
+                        const int device_s_ready = persistent_s && BandCol_GpuSolver_HasDeviceTransformedS(state, n);
+                        const int host_s_ready = BandCol_GpuSolver_HasHostTransformedS(state, n);
                         const int build_s = (SCF_iter == 1) || (!device_s_ready && !host_s_ready);
                         const int construct_scf_iter = build_s ? 1 : SCF_iter;
 
-                        Construct_Band_CsHs(construct_scf_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                        Construct_Band_CsHs(state, construct_scf_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                             use_setham_packed_cache ? setham_S1 : S1,
                                             use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs,
                                             n, use_gpusolver_dense, owns_global_dense_rank);
-                        const int construct_on_device = BandCol_LastConstructOnDevice();
+                        const int construct_on_device = BandCol_LastConstructOnDevice(state);
 
                         if (measure_time) {
                             dtime(&endtimesh);
@@ -4193,7 +4256,7 @@ diagonalize1:
                             dtime(&endtime);
                             part1 += endtime - starttime;
                             if (SCF_iter != 1) {
-                                part1sum += part1;
+                                state->Band_DFT_Col_owned_part1sum += part1;
                             }
                         }
 
@@ -4201,7 +4264,7 @@ diagonalize1:
                             dtime(&Stime);
 
                         if (build_s) {
-                            BandCol_GpuSolver_PrepareTransformedS(1, n, construct_on_device ? NULL : Ss, ko, koS);
+                            BandCol_GpuSolver_PrepareTransformedS(state, 1, n, construct_on_device ? NULL : Ss, ko, koS);
                             /* A persistent device cache is already the object
                                consumed by both ZGEMMs.  Copying another n*n
                                matrix to pageable host memory wastes bandwidth
@@ -4209,14 +4272,14 @@ diagonalize1:
                                pages.  Keep a host fallback only when device
                                buffers will be released between SCFs. */
                             if (!persistent_s) {
-                                BandCol_GpuSolver_SaveTransformedS(n);
+                                BandCol_GpuSolver_SaveTransformedS(state, n);
                             }
                         } else if (!device_s_ready) {
-                            BandCol_GpuSolver_LoadTransformedS(n);
+                            BandCol_GpuSolver_LoadTransformedS(state, n);
                         }
                         transformed_s_ready = 1;
 
-                        if (BandCol_CacheTraceEnabled()) {
+                        if (BandCol_CacheTraceEnabled(state)) {
                             printf("<Band_DFT> transformed-S cache rank=%d k=%d SCF=%d: %s%s\n",
                                    myid0, kloop, SCF_iter,
                                    build_s ? "build" : "hit",
@@ -4242,34 +4305,34 @@ diagonalize1:
                                chemical potential is known (pending: nothing is
                                released) */
                             const int staged_pass1 =
-                                BandCol_refine.staged &&
-                                BandCol_KDenseRefinedPass1(n, MaxN, construct_on_device ? NULL : Hs, ko, my_gpu_turn);
+                                state->refine.staged &&
+                                BandCol_KDenseRefinedPass1(state, n, MaxN, construct_on_device ? NULL : Hs, ko, my_gpu_turn);
 
                             evec_device = NULL;
                             if (!staged_pass1) {
-                                if (BandCol_refine.last_refined) {
-                                    evec_device = BandCol_RefinedFirstHalf(n, MaxN, construct_on_device ? NULL : Hs, ko);
+                                if (state->refine.last_refined) {
+                                    evec_device = BandCol_RefinedFirstHalf(state, n, MaxN, construct_on_device ? NULL : Hs, ko);
                                 } else if (construct_on_device) {
-                                    evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(n, MaxN, ko);
+                                    evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(state, n, MaxN, ko);
                                 } else {
-                                    evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(n, MaxN, Hs, ko);
+                                    evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(state, n, MaxN, Hs, ko);
                                 }
                             }
 
                             if (staged_pass1) {
-                                BandCol_AfterStagedTurn();
+                                BandCol_AfterStagedTurn(state);
                             } else if (evec_device != NULL) {
                                 if (BandCol_GemmWorkspaceTurnRelease()) {
                                     openmx_gemmul8ReleaseWorkspaces();
                                 }
 
-                                if (BandCol_GpuPersistentDecide()) {
+                                if (BandCol_GpuPersistentDecide(state)) {
                                     (void)evec_device;
                                 } else {
-                                    BandCol_GpuSolver_SaveDeviceEigenvectors(evec_device, n,
-                                                                             BandCol_GpuSolver_EigenvectorStride());
-                                    BandCol_ConstructCache_Reset();
-                                    BandCol_GpuSolver_ReleaseDeviceMemory();
+                                    BandCol_GpuSolver_SaveDeviceEigenvectors(state, evec_device, n,
+                                                                             BandCol_GpuSolver_EigenvectorStride(state));
+                                    BandCol_ConstructCache_Reset(state);
+                                    BandCol_GpuSolver_ReleaseDeviceMemory(state);
                                 }
                             }
                         }
@@ -4315,7 +4378,7 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                     use_setham_packed_cache ? setham_S1 : S1,
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     use_gpusolver_dense, owns_global_dense_rank);
@@ -4324,10 +4387,9 @@ diagonalize1:
                     dtime(&endtime);
                     part1 += endtime - starttime;
                     if (SCF_iter != 1) {
-                        part1sum += part1;
+                        state->Band_DFT_Col_owned_part1sum += part1;
                     }
                 }
-
 
                 /* diagonalize S */
 
@@ -4355,7 +4417,7 @@ diagonalize1:
                     time2 += Etime - Stime;
                     part2_1 += Etime - Stime;
                     if (SCF_iter != 1) {
-                        part2_1sum += part2_1;
+                        state->Band_DFT_Col_owned_part2_1sum += part2_1;
                     }
                 }
 
@@ -4414,7 +4476,7 @@ diagonalize1:
                     dtime(&Etime);
                     part2_2 += Etime - Stime;
                     if (SCF_iter != 1) {
-                        part2_2sum += part2_2;
+                        state->Band_DFT_Col_owned_part2_2sum += part2_2;
                     }
                 }
 
@@ -4452,7 +4514,7 @@ diagonalize1:
                     time3 += Etime - Stime;
                     part2_3 += Etime - Stime;
                     if (SCF_iter != 1) {
-                        part2_3sum += part2_3;
+                        state->Band_DFT_Col_owned_part2_3sum += part2_3;
                     }
                 }
 
@@ -4480,7 +4542,7 @@ diagonalize1:
                     time4 += Etime - Stime;
                     part2_4 += Etime - Stime;
                     if (SCF_iter != 1) {
-                        part2_4sum += part2_4;
+                        state->Band_DFT_Col_owned_part2_4sum += part2_4;
                     }
                 }
 
@@ -4609,7 +4671,7 @@ diagonalize1:
                 if (scf_eigen_lib_flag == ELPA2 || (use_gpusolver_dense && owns_global_dense_rank)) {
                     part2_5 += Etime - Stime;
                     if (SCF_iter != 1) {
-                        part2_5sum += part2_5;
+                        state->Band_DFT_Col_owned_part2_5sum += part2_5;
                     }
                 }
             }
@@ -4640,7 +4702,7 @@ diagonalize1:
       serialized turn groups (staged)
     ****************************************************/
 
-    if (all_knum == 1 && (BandCol_refine.staged || BandCol_refine.last_refined)) {
+    if (all_knum == 1 && (state->refine.staged || state->refine.last_refined)) {
         const int serialize_gpu_turns = BandCol_SerializeGpuSolverGpuTurns();
         const int total_gpu_turns = Num_Comm_World1 * T_knum;
         const int gpu_turn_group = serialize_gpu_turns ? BandCol_GpuTurnGroupForScf(SCF_iter) : total_gpu_turns;
@@ -4656,15 +4718,14 @@ diagonalize1:
         }
         refine_mu = BandCol_RefineChemP(EIGEN, T_knum, MaxN, SpinP_switch, T_k_op, sum_weights, TZ);
 
-        if (BandCol_refine.staged) {
-            static int announced = 0;
+        if (state->refine.staged) {
 
-            if (!announced && myid0 == Host_ID && 2 <= level_stdout) {
+            if (!state->Band_DFT_Col_owned_announced && myid0 == Host_ID && 2 <= level_stdout) {
                 printf("<Band_DFT_Col> refined eigensolver in serialized GPU turns (%d owners in groups of %d): pass 1 "
                        "with the previous chemical potential, pass 2 from its basis\n", total_gpu_turns,
                        gpu_turn_group);
                 fflush(stdout);
-                announced = 1;
+                state->Band_DFT_Col_owned_announced = 1;
             }
             for (int gpu_turn = 0; gpu_turn < total_gpu_turns; gpu_turn++) {
                 if (gpu_turn % gpu_turn_group == 0) {
@@ -4672,9 +4733,9 @@ diagonalize1:
                 }
                 if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
                     dcomplex *evec_device;
-                    const int persistent_s = BandCol_GpuPersistentDecide();
-                    const int device_s_ready = persistent_s && BandCol_GpuSolver_HasDeviceTransformedS(n);
-                    const int host_s_ready = BandCol_GpuSolver_HasHostTransformedS(n);
+                    const int persistent_s = BandCol_GpuPersistentDecide(state);
+                    const int device_s_ready = persistent_s && BandCol_GpuSolver_HasDeviceTransformedS(state, n);
+                    const int host_s_ready = BandCol_GpuSolver_HasHostTransformedS(state, n);
                     const int build_s = (!device_s_ready && !host_s_ready);
                     int       construct_on_device;
 
@@ -4683,28 +4744,28 @@ diagonalize1:
                     k1 = T_KGrids1[my_kloop];
                     k2 = T_KGrids2[my_kloop];
                     k3 = T_KGrids3[my_kloop];
-                    Construct_Band_CsHs(build_s ? 1 : SCF_iter, all_knum,
+                    Construct_Band_CsHs(state, build_s ? 1 : SCF_iter, all_knum,
                                         use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                         use_setham_packed_cache ? setham_S1 : S1,
                                         use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
                                         use_gpusolver_dense, owns_global_dense_rank);
-                    construct_on_device = BandCol_LastConstructOnDevice();
+                    construct_on_device = BandCol_LastConstructOnDevice(state);
                     if (build_s) {
-                        BandCol_GpuSolver_PrepareTransformedS(1, n, construct_on_device ? NULL : Ss, ko, koS);
-                        if (!persistent_s) BandCol_GpuSolver_SaveTransformedS(n);
+                        BandCol_GpuSolver_PrepareTransformedS(state, 1, n, construct_on_device ? NULL : Ss, ko, koS);
+                        if (!persistent_s) BandCol_GpuSolver_SaveTransformedS(state, n);
                     } else if (!device_s_ready) {
-                        BandCol_GpuSolver_LoadTransformedS(n);
+                        BandCol_GpuSolver_LoadTransformedS(state, n);
                     }
-                    if (BandCol_kref != NULL && BandCol_kref[my_gpu_turn].refined) {
-                        evec_device = BandCol_KDenseRefinedPass2(n, MaxN, construct_on_device ? NULL : Hs, ko,
+                    if (state->kref != NULL && state->kref[my_gpu_turn].refined) {
+                        evec_device = BandCol_KDenseRefinedPass2(state, n, MaxN, construct_on_device ? NULL : Hs, ko,
                                                                  my_gpu_turn, refine_mu);
                     } else if (construct_on_device) {
-                        evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(n, MaxN, ko);
+                        evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(state, n, MaxN, ko);
                     } else {
-                        evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(n, MaxN, Hs, ko);
+                        evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(state, n, MaxN, Hs, ko);
                     }
-                    BandCol_AfterDenseSolve(evec_device, n);
-                    BandCol_RefineDropBasis();
+                    BandCol_AfterDenseSolve(state, evec_device, n);
+                    BandCol_RefineDropBasis(state);
                     for (l = 1; l <= MaxN; l++) {
                         EIGEN[my_spin][my_kloop][l] = ko[l];
                     }
@@ -4713,18 +4774,18 @@ diagonalize1:
             MPI_Barrier(mpi_comm_level1);
         }
         else {
-            if (owns_global_dense_rank && BandCol_refine.pending) {
-                dcomplex *evec_device = BandCol_RefinedSecondHalf(n, MaxN, ko, refine_mu);
+            if (owns_global_dense_rank && state->refine.pending) {
+                dcomplex *evec_device = BandCol_RefinedSecondHalf(state, n, MaxN, ko, refine_mu);
 
-                BandCol_AfterDenseSolve(evec_device, n);
+                BandCol_AfterDenseSolve(state, evec_device, n);
                 /* the basis stays only for a warm start of the next step */
-                if (!openmx_eigen_refine_warm_band_enabled()) BandCol_RefineDropBasis();
+                if (!openmx_eigen_refine_warm_band_enabled()) BandCol_RefineDropBasis(state);
                 for (l = 1; l <= MaxN; l++) {
                     EIGEN[my_spin][my_kloop][l] = ko[l];
                 }
             }
         }
-        BandCol_RefineEndStep();
+        BandCol_RefineEndStep(state);
     }
 
     /****************************************************
@@ -4981,7 +5042,7 @@ diagonalize1:
         time7 += Etime - Stime;
         part3 += Etime - Stime;
         if (SCF_iter != 1) {
-            part3sum += part3;
+            state->Band_DFT_Col_owned_part3sum += part3;
         }
     }
 
@@ -5023,8 +5084,8 @@ diagonalize1:
             if (owns_global_dense_rank) {
                 double *occ_weight;
 
-                BandCol_DMWorkspace_Ensure(max_tno, MaxN);
-                occ_weight = BandCol_dm_workspace.OccWeight;
+                BandCol_DMWorkspace_Ensure(state, max_tno, MaxN);
+                occ_weight = state->dm_workspace.OccWeight;
 
                 for (k = 0; k < MaxN; k++) {
                     occ_weight[k] = 0.0;
@@ -5076,24 +5137,24 @@ diagonalize1:
                     if (owns_global_dense_rank && my_gpu_turn == gpu_turn) {
                         dcomplex *evec_device;
 
-                        if (BandCol_GpuPersistentDecide()) {
-                            evec_device = BandCol_GpuSolver_DeviceEigenvectors();
+                        if (BandCol_GpuPersistentDecide(state)) {
+                            evec_device = BandCol_GpuSolver_DeviceEigenvectors(state);
                         } else {
-                            evec_device = BandCol_GpuSolver_UploadHostEigenvectors(n);
+                            evec_device = BandCol_GpuSolver_UploadHostEigenvectors(state, n);
                         }
 
-                        if (BandCol_AccumulateDenseTransposedDM_Device(n, MaxN, spin, kloop, k1, k2, k3, evec_device,
-                                                                       BandCol_GpuSolver_EigenvectorStride(),
+                        if (BandCol_AccumulateDenseTransposedDM_Device(state, n, MaxN, spin, kloop, k1, k2, k3, evec_device,
+                                                                       BandCol_GpuSolver_EigenvectorStride(state),
                                                                        MP, use_setham_packed_cache ? setham_order_GA : order_GA, EIGEN,
-                                                                       BandCol_dm_workspace.OccWeight, CDM1, EDM1,
-                                                                       size_H1, 1,mpi_comm_level1,BandCol_mgpu_host_dense) != 0) {
+                                                                       state->dm_workspace.OccWeight, CDM1, EDM1,
+                                                                       size_H1, 1,mpi_comm_level1,state->mgpu_host_dense) != 0) {
                             BandCol_AbortWithMessage("Band_DFT_Col HIP density matrix generation failed.");
                         }
-                        if (!BandCol_GpuPersistentDecide()) {
-                            BandCol_GpuSolver_ClearHostEigenvectors();
-                            BandCol_GpuSolver_ReleaseDeviceMemory();
+                        if (!BandCol_GpuPersistentDecide(state)) {
+                            BandCol_GpuSolver_ClearHostEigenvectors(state);
+                            BandCol_GpuSolver_ReleaseDeviceMemory(state);
                         }
-                    } else { BandCol_AccumulateDenseTransposedDM_Device(n,0,spin,0,0,0,0,NULL,0,MP,order_GA,EIGEN,NULL,
+                    } else { BandCol_AccumulateDenseTransposedDM_Device(state, n,0,spin,0,0,0,0,NULL,0,MP,order_GA,EIGEN,NULL,
                             CDM1,EDM1,size_H1,1,mpi_comm_level1,1); }
                 }
                 if (!serialize_gpu_turns) {
@@ -5157,9 +5218,9 @@ diagonalize1:
             MPI_Allreduce(MPI_IN_PLACE,&dm_collective,1,MPI_INT,MPI_MAX,mpi_comm_level1);
             if(dm_collective){
                 int nk=dm_requested && kmin<=kmax?kmax-kmin+1:0;
-                if(nk){BandCol_DMWorkspace_Ensure(max_tno,nk);for(int k=0;k<nk;k++)BandCol_dm_workspace.OccWeight[k]=1;}
-                BandCol_AccumulateDenseTransposedDM_Device(n,nk,spin,kloop,k1,k2,k3,EVec1[spin],
-                    ie2[myid2]-is2[myid2]+1,MP,order_GA,EIGEN,BandCol_dm_workspace.OccWeight,
+                if(nk){BandCol_DMWorkspace_Ensure(state, max_tno,nk);for(int k=0;k<nk;k++)state->dm_workspace.OccWeight[k]=1;}
+                BandCol_AccumulateDenseTransposedDM_Device(state, n,nk,spin,kloop,k1,k2,k3,EVec1[spin],
+                    ie2[myid2]-is2[myid2]+1,MP,order_GA,EIGEN,state->dm_workspace.OccWeight,
                     CDM1,EDM1,size_H1,kmin,mpi_comm_level1,1);
                 gpu_dm_done=nk>0;
             }
@@ -5172,15 +5233,15 @@ diagonalize1:
                 double **ReEVec1_local;
                 double **ImEVec1_local;
 
-                BandCol_DMWorkspace_Ensure(max_tno, nk);
+                BandCol_DMWorkspace_Ensure(state, max_tno, nk);
 
-                TmpEIGEN_local = BandCol_dm_workspace.TmpEIGEN;
-                ReEVec0_local  = BandCol_dm_workspace.ReEVec0;
-                ImEVec0_local  = BandCol_dm_workspace.ImEVec0;
-                ReEVec1_local  = BandCol_dm_workspace.ReEVec1;
-                ImEVec1_local  = BandCol_dm_workspace.ImEVec1;
+                TmpEIGEN_local = state->dm_workspace.TmpEIGEN;
+                ReEVec0_local  = state->dm_workspace.ReEVec0;
+                ImEVec0_local  = state->dm_workspace.ImEVec0;
+                ReEVec1_local  = state->dm_workspace.ReEVec1;
+                ImEVec1_local  = state->dm_workspace.ImEVec1;
 
-                BandCol_DMWorkspace_SetPointers(&BandCol_dm_workspace, max_tno, nk);
+                BandCol_DMWorkspace_SetPointers(&state->dm_workspace, max_tno, nk);
 
                 {
                     const double * src = &EIGEN[spin][kloop][kmin];
@@ -5435,7 +5496,7 @@ diagonalize1:
         time8 += Etime - Stime;
         part4 += Etime - Stime;
         if (SCF_iter != 1) {
-            part4sum += part4;
+            state->Band_DFT_Col_owned_part4sum += part4;
         }
     }
 
@@ -5443,7 +5504,7 @@ diagonalize1:
 
     if (myid0 == Host_ID && 0 < level_stdout) {
         printf("<Band_DFT>  Eigen, time=%lf\n", EiloopTime - SiloopTime);
-        if (SCF_iter == 1 && BandCol_CacheTraceEnabled()) {
+        if (SCF_iter == 1 && BandCol_CacheTraceEnabled(state)) {
             printf("<Band_DFT>  timing scope: Eigen includes occupation/ChemP%s.\n",
                    (all_knum == 1) ? " and density-matrix collectives" : "");
         }
@@ -5557,7 +5618,7 @@ diagonalize1:
                     openmx_mgpu_band_scope_select(&input_scope,scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag,T_knum,kloop);
                     if (!owns_dense_k_rank || gpu_k_order[gpu_turn] / T_knum != spin ||
                         kloop < S_knum || S_knum + num_kloop0 <= kloop) {
-                        BandCol_AccumulateDenseTransposedDM_Device(n,0,spin,0,0,0,0,NULL,0,MP,order_GA,EIGEN,NULL,
+                        BandCol_AccumulateDenseTransposedDM_Device(state, n,0,spin,0,0,0,0,NULL,0,MP,order_GA,EIGEN,NULL,
                             CDM1,EDM1,size_H1,1,mpi_comm_level1,1);
                         continue;
                     }
@@ -5570,33 +5631,33 @@ diagonalize1:
 
                     size_t cache_slot = (size_t)spin * T_knum + kloop;
                     if (k_evec_cache != NULL && k_evec_cache[cache_slot] != NULL) {
-                        BandCol_GpuSolver_Init();
-                        evec_device = BandCol_GpuSolver_EnsureEigenvectorCapacity(n, MaxN);
-                        if(BandCol_mgpu_host_dense)memcpy(evec_device,k_evec_cache[cache_slot],k_cache_bytes);
+                        BandCol_GpuSolver_Init(state);
+                        evec_device = BandCol_GpuSolver_EnsureEigenvectorCapacity(state, n, MaxN);
+                        if(state->mgpu_host_dense)memcpy(evec_device,k_evec_cache[cache_slot],k_cache_bytes);
                         else wait_hipfunc(hipMemcpy(evec_device,k_evec_cache[cache_slot],k_cache_bytes,hipMemcpyHostToDevice));
-                        openmx_core_native_free(Band_DFT_Col_resources,k_evec_cache[cache_slot]);
+                        openmx_core_native_free(state->resources,k_evec_cache[cache_slot]);
                         k_evec_cache[cache_slot] = NULL;
                         memcpy(ko + 1, EIGEN[spin][kloop] + 1, sizeof(double) * (size_t)MaxN);
                         ++k_cache_hits;
                     } else {
                         /* make S and H */
 
-                        Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                        Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                             use_setham_packed_cache ? setham_S1 : S1,
                                             use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
                                             use_gpusolver_dense, owns_global_dense_rank);
-                        construct_on_device = BandCol_LastConstructOnDevice();
+                        construct_on_device = BandCol_LastConstructOnDevice(state);
 
                         /* diagonalize S */
 
                         if (measure_time)
                             dtime(&Stime);
 
-                        if (BandCol_KOverlapRestore(kloop, k1, k2, k3, ko, koS)) {
+                        if (BandCol_KOverlapRestore(state, kloop, k1, k2, k3, ko, koS)) {
                             ++k_overlap_hits;
                         } else {
-                            BandCol_GpuSolver_PrepareTransformedS(1, n, construct_on_device ? NULL : Ss, ko, koS);
-                            BandCol_KOverlapSave(kloop, k1, k2, k3, koS);
+                            BandCol_GpuSolver_PrepareTransformedS(state, 1, n, construct_on_device ? NULL : Ss, ko, koS);
+                            BandCol_KOverlapSave(state, kloop, k1, k2, k3, koS);
                         }
 
                         if (measure_time) {
@@ -5623,17 +5684,17 @@ diagonalize1:
                         if (measure_time)
                             dtime(&Stime);
 
-                        if (BandCol_refine.kdense && BandCol_kref != NULL && BandCol_kref[cache_slot].refined) {
+                        if (state->refine.kdense && state->kref != NULL && state->kref[cache_slot].refined) {
                             /* pass 2 of a k-point refined in pass 1: from its
                                basis, with the step's chemical potential (the
                                density matrix weights stay those of EIGEN, the
                                eigenvalues of pass 1) */
-                            evec_device = BandCol_KDenseRefinedPass2(n, MaxN, construct_on_device ? NULL : Hs, ko,
+                            evec_device = BandCol_KDenseRefinedPass2(state, n, MaxN, construct_on_device ? NULL : Hs, ko,
                                                                      (int)cache_slot, ChemP);
                         } else if (construct_on_device) {
-                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(n, MaxN, ko);
+                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(state, n, MaxN, ko);
                         } else {
-                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(n, MaxN, Hs, ko);
+                            evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceOnly(state, n, MaxN, Hs, ko);
                         }
 
                         if (measure_time) {
@@ -5665,8 +5726,8 @@ diagonalize1:
                     int po   = 0;
                     int kmax = MaxN;
 
-                    BandCol_DMWorkspace_Ensure(max_tno, MaxN);
-                    double *occ_weight = BandCol_dm_workspace.OccWeight;
+                    BandCol_DMWorkspace_Ensure(state, max_tno, MaxN);
+                    double *occ_weight = state->dm_workspace.OccWeight;
 
                     if (measure_time)
                         dtime(&Stime1);
@@ -5703,16 +5764,16 @@ diagonalize1:
                         dtime(&Stime1);
                     }
 
-                    if (BandCol_AccumulateDenseTransposedDM_Device(n, MaxN, spin, kloop, k1, k2, k3, evec_device,
-                                                                   BandCol_GpuSolver_EigenvectorStride(),
+                    if (BandCol_AccumulateDenseTransposedDM_Device(state, n, MaxN, spin, kloop, k1, k2, k3, evec_device,
+                                                                   BandCol_GpuSolver_EigenvectorStride(state),
                                                                    MP, use_setham_packed_cache ? setham_order_GA : order_GA,
-                                                                   EIGEN, occ_weight, CDM1, EDM1, size_H1, 1,mpi_comm_level1,BandCol_mgpu_host_dense) != 0) {
+                                                                   EIGEN, occ_weight, CDM1, EDM1, size_H1, 1,mpi_comm_level1,state->mgpu_host_dense) != 0) {
                         BandCol_AbortWithMessage("Band_DFT_Col HIP density matrix generation failed.");
                     }
-                    BandCol_GpuSolver_ReleaseDeviceMemory();
-                    if (BandCol_refine.kdense) {
+                    BandCol_GpuSolver_ReleaseDeviceMemory(state);
+                    if (state->refine.kdense) {
                         /* the basis waits in the host slot for the next step */
-                        BandCol_RefineDropBasis();
+                        BandCol_RefineDropBasis(state);
                         openmx_gemmul8TrimWorkspaces();
                     }
 
@@ -5732,7 +5793,7 @@ diagonalize1:
             MPI_Allreduce(MPI_IN_PLACE,&collective_dm,1,MPI_INT,MPI_MAX,mpi_comm_level1);
             if(collective_dm)MPI_Allreduce(MPI_IN_PLACE,&dm_kloops,1,MPI_INT,MPI_MAX,mpi_comm_level1);
             for (kloop0 = 0; kloop0 < dm_kloops; kloop0++) {
-                if(kloop0>=num_kloop0){ BandCol_AccumulateDenseTransposedDM_Device(n,0,spin,0,0,0,0,NULL,0,MP,order_GA,EIGEN,NULL,
+                if(kloop0>=num_kloop0){ BandCol_AccumulateDenseTransposedDM_Device(state, n,0,spin,0,0,0,0,NULL,0,MP,order_GA,EIGEN,NULL,
                             CDM1,EDM1,size_H1,1,mpi_comm_level1,1); continue; }
                 kloop = kloop0 + S_knum;
 
@@ -5744,11 +5805,10 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                     use_setham_packed_cache ? setham_S1 : S1,
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     use_gpusolver_dense, owns_global_dense_rank);
-
 
                 /* diagonalize S */
 
@@ -5899,8 +5959,8 @@ diagonalize1:
                 po   = 0;
                 kmax = MaxN;
 
-                BandCol_DMWorkspace_Ensure(max_tno, MaxN);
-                double *occ_weight = BandCol_dm_workspace.OccWeight;
+                BandCol_DMWorkspace_Ensure(state, max_tno, MaxN);
+                double *occ_weight = state->dm_workspace.OccWeight;
 
                 if (measure_time)
                     dtime(&Stime1);
@@ -5941,12 +6001,12 @@ diagonalize1:
 
                     if(collective_dm){
                         int active=BandCol_UseGpuFallbackDM(n);
-                        BandCol_AccumulateDenseTransposedDM_Device(n,active?MaxN:0,spin,kloop,k1,k2,k3,Hs,
+                        BandCol_AccumulateDenseTransposedDM_Device(state, n,active?MaxN:0,spin,kloop,k1,k2,k3,Hs,
                             na_rows,MP,order_GA,EIGEN,occ_weight,CDM1,EDM1,size_H1,1,mpi_comm_level1,1);
                         gpu_dm_done=active;
                     }
                     if (!gpu_dm_done) {
-                        BandCol_AccumulateDenseTransposedDM(n, MaxN, max_tno, spin, kloop, k1, k2, k3, Hs, na_rows,
+                        BandCol_AccumulateDenseTransposedDM(state, n, MaxN, max_tno, spin, kloop, k1, k2, k3, Hs, na_rows,
                                                             MP, EIGEN, occ_weight, CDM1, EDM1);
                     }
                 }
@@ -6097,8 +6157,8 @@ diagonalize1:
 
         /* every rank: the k-dense refined solves of this step decide the
            stage (spin of a single rank is excluded, so this runs once) */
-        if (BandCol_refine.kdense) {
-            BandCol_RefineEndStep();
+        if (state->refine.kdense) {
+            BandCol_RefineEndStep(state);
         }
     } /* if (all_knum!=1) */
 
@@ -6253,16 +6313,16 @@ diagonalize1:
     ;
     if (k_evec_cache != NULL) {
         for (size_t point = 0; point < (size_t)Num_Comm_World1 * T_knum; ++point)
-            openmx_core_native_free(Band_DFT_Col_resources,k_evec_cache[point]);
-        openmx_core_native_free(Band_DFT_Col_resources,k_evec_cache);
+            openmx_core_native_free(state->resources,k_evec_cache[point]);
+        openmx_core_native_free(state->resources,k_evec_cache);
     }
-    if (use_gpusolver_dense && all_knum != 1 && BandCol_CacheTraceEnabled())
+    if (use_gpusolver_dense && all_knum != 1 && BandCol_CacheTraceEnabled(state))
         printf("BAND_COL_CACHE rank=%d SCF=%d evec_hits=%d overlap_hits=%d evec=%.1f MiB overlap=%.1f MiB\n",
                myid0, SCF_iter, k_cache_hits, k_overlap_hits,
-               k_cache_used / 1048576.0, BandCol_k_overlap_used / 1048576.0);
+               k_cache_used / 1048576.0, state->k_overlap_used / 1048576.0);
 
     /* for PrintMemory and allocation */
-    firsttime = 0;
+    state->Band_DFT_Col_owned_firsttime = 0;
 
     /* for elapsed time */
 
@@ -6400,7 +6460,7 @@ diagonalize1:
     return time0;
 }
 
-void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1, double k1,
+void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1, double k1,
                          double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n, int use_gpusolver_dense,
                          int owns_global_dense_rank)
 {
@@ -6411,20 +6471,20 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
          ((all_knum == 1 && owns_global_dense_rank) ||
           (all_knum != 1 && Set_Hamiltonian_OpenMP_Rank_Is_Selected())));
 
-    BandCol_last_construct_on_device = 0;
+    state->last_construct_on_device = 0;
 
     if (use_gpusolver_dense && !dense_gpusolver_owner) {
         return;
     }
 
-    if (dense_gpusolver_owner && BandCol_mgpu_host_dense) {
+    if (dense_gpusolver_owner && state->mgpu_host_dense) {
         /* The cooperative owner needs the complete matrix even when its
            ScaLAPACK descriptor describes only a local MPI block. H1 and S1
            are already globally packed in AN/LB_AN/i/j order. */
         size_t h_index = 0;
-        BandCol_HostEnsure(n);
-        Cs=BandCol_host_s;
-        Hs=BandCol_host_h;
+        BandCol_HostEnsure(state, n);
+        Cs=state->host_s;
+        Hs=state->host_h;
         BandCol_ZeroComplex(Hs, (size_t)n * n);
         if (need_s) BandCol_ZeroComplex(Cs, (size_t)n * n);
         for (int AN = 1; AN <= atomnum; ++AN) {
@@ -6452,16 +6512,16 @@ void Construct_Band_CsHs(int SCF_iter, int all_knum, int * order_GA, int * MP, d
         return;
     }
 
-    BandCol_ConstructCache_Ensure(order_GA, MP, n, dense_gpusolver_owner);
+    BandCol_ConstructCache_Ensure(state, order_GA, MP, n, dense_gpusolver_owner);
 
     if (dense_gpusolver_owner) {
-        BandCol_ConstructDenseCsHs_HIP(need_s, n, k1, k2, k3, S1, H1);
+        BandCol_ConstructDenseCsHs_HIP(state, need_s, n, k1, k2, k3, S1, H1);
         return;
     }
 
     {
-        const BandColConstructEntry *entries = BandCol_construct_cache.local_entries;
-        const int count = BandCol_construct_cache.local_count;
+        const BandColConstructEntry *entries = state->construct_cache.local_entries;
+        const int count = state->construct_cache.local_count;
         int prev_l1 = 0x7fffffff, prev_l2 = 0x7fffffff, prev_l3 = 0x7fffffff;
         double co = 0.0, si = 0.0;
 

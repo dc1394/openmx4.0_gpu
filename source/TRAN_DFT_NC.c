@@ -104,7 +104,7 @@ static void TRAN_DFT_Kdependent(
 
 
 
-double TRAN_DFT_NC(
+double TRAN_DFT_NC(OpenMXBandNonColState *band_state,
 		/* input */
                 MPI_Comm comm1,
                 int SucceedReadingDMfile, 
@@ -441,7 +441,7 @@ double TRAN_DFT_NC(
                calling Band_DFT_NonCol
     ***********************************************/
 
-    time5 += Band_DFT_NonCol("scf",1,
+    time5 += Band_DFT_NonCol(band_state, "scf",1,
 			     Kspace_grid1,Kspace_grid2,Kspace_grid3,
 			     SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 			     MP,order_GA,ko_noncol,koS,EIGEN_Band,

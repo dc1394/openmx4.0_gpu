@@ -1,3 +1,5 @@
+#include "openmx_band_col_state.h"
+#include "openmx_band_noncol_state.h"
 #include "openmx_cluster_col_state.h"
 #include "openmx_cluster_noncol_state.h"
 /* Stage hooks of the refined FP32 eigensolver (eigen_refine_gpu.h) that
@@ -15,16 +17,8 @@
 
 /* Collinear cluster hooks borrow the calculation state declared above. */
 
-int  Band_DFT_Col_RefineLastRefined(void);
-void Band_DFT_Col_RefineForceFP64(int on);
-void Band_DFT_Col_RefineAfterMixing(double normrd);
 /* the end of an SCF cycle: the warm-start bases go, so that the forces and
    the next cycle start with the memory free */
-void Band_DFT_Col_RefineEndCycle(void);
 
-int  Band_DFT_NonCol_RefineLastRefined(void);
-void Band_DFT_NonCol_RefineForceFP64(int on);
-void Band_DFT_NonCol_RefineAfterMixing(double normrd);
-void Band_DFT_NonCol_RefineEndCycle(void);
 
 #endif

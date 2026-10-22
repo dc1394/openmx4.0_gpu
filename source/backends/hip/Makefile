@@ -1586,3 +1586,6 @@ DFT.o Cluster_DFT_Col.o: openmx_cluster_col_state.h
 DFT.o Cluster_DFT_NonCol.o: openmx_cluster_noncol_state.h
 
 Set_Density_Grid.o Set_Density_Grid_GPU.o: openmx_density_cache_hooks.h
+
+DFT.o TRAN_DFT.o Band_DFT_Col.o: openmx_band_col_state.h
+DFT.o TRAN_DFT_NC.o Band_DFT_NonCol.o: openmx_band_noncol_state.h

@@ -27,6 +27,13 @@ import shlex
 import subprocess
 import tempfile
 
+try:
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tests"))
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -279,23 +286,36 @@ int main(void)
 
 
 def make_harness():
-    nc = (ROOT / "source/Band_DFT_NonCol.c").read_text()
-    col = (ROOT / "source/Band_DFT_Col.c").read_text()
-    parts = [PREFIX,
-             "static void BandNonCol_AbortWithMessage(const char *msg) { fprintf(stderr, \"%s\\n\", msg); exit(3); }",
-             function(nc, "BandNonCol_HostCacheLimit"),
-             block(nc, "typedef struct {\n    dcomplex *matrix;\n    double k1, k2, k3;\n} BandNonColKOverlap;",
-                   "static size_t BandNonCol_k_overlap_bytes = 0, BandNonCol_k_overlap_used = 0;"),
-             *(function(nc, name) for name in ("BandNonCol_KOverlapReset", "BandNonCol_KOverlapLimit",
-                                               "BandNonCol_KOverlapPrepare", "BandNonCol_KOverlapRestore",
-                                               "BandNonCol_KOverlapSave")),
-             block(col, "typedef struct {\n    dcomplex *matrix;\n    double k1, k2, k3;\n} BandColKOverlap;",
-                   "static size_t BandCol_k_overlap_bytes = 0, BandCol_k_overlap_used = 0;"),
-             *(function(col, name) for name in ("BandCol_KOverlapReset", "BandCol_HostCacheLimit",
-                                                "BandCol_KOverlapPrepare", "BandCol_KOverlapRestore",
-                                                "BandCol_KOverlapSave")),
-             HARNESS]
-    return "\n\n".join(parts)
+    nc = isolate_native_resources((ROOT / "source/Band_DFT_NonCol.c").read_text(), "HIP")
+    col = isolate_native_resources((ROOT / "source/Band_DFT_Col.c").read_text(), "HIP")
+    prefix = PREFIX.replace("static int BandCol_mgpu_host_dense=0;", "")
+    prefix = prefix.replace("static dcomplex *BandCol_host_s;", "")
+    prefix = prefix.replace("static void BandCol_HostEnsure(int n){(void)n;CHECK(0);}", "")
+    declarations = ""
+    for tag in ["BandCol", "BandNonCol"]:
+        name = tag + "KOverlap"
+        declarations += re.search(r"typedef struct\s*\{[^}]*\}\s*" + name + ";", col if tag == "BandCol" else nc)[0]
+        fields = f"{name} *k_overlap; int k_overlap_n,k_overlap_points; size_t k_overlap_bytes,k_overlap_used;"
+        if tag == "BandCol":
+            fields += "int mgpu_host_dense; dcomplex *host_s; BandColGpuSolverCtx gpusolver_ctx;"
+        declarations += f"\ntypedef struct {{ {fields} }} {tag}State;\n"
+        declarations += f"static {tag}State {tag}_fixture;\nstatic {tag}State *{tag}_state=&{tag}_fixture;\n"
+    prefix = prefix.replace("static BandColGpuSolverCtx BandCol_gpusolver_ctx;", declarations +
+        "\nstatic void BandCol_HostEnsure(BandColState *state,int n){(void)state;(void)n;CHECK(0);}")
+    parts = [prefix,
+        "static void BandNonCol_AbortWithMessage(const char *msg) { fprintf(stderr, \"%s\\n\", msg); exit(3); }",
+        function(nc, "BandNonCol_HostCacheLimit"),
+        *(function(nc, name) for name in ("BandNonCol_KOverlapReset", "BandNonCol_KOverlapLimit",
+            "BandNonCol_KOverlapPrepare", "BandNonCol_KOverlapRestore", "BandNonCol_KOverlapSave")),
+        *(function(col, name) for name in ("BandCol_KOverlapReset", "BandCol_HostCacheLimit",
+            "BandCol_KOverlapPrepare", "BandCol_KOverlapRestore", "BandCol_KOverlapSave")), HARNESS]
+    text = "\n\n".join(parts)
+    for tag, production in [("BandCol", col), ("BandNonCol", nc)]:
+        for field in ["mgpu_host_dense", "host_s", "gpusolver_ctx", "k_overlap", "k_overlap_n",
+                      "k_overlap_points", "k_overlap_bytes", "k_overlap_used"]:
+            text = re.sub(r"\b" + tag + "_" + field + r"\b", tag + "_state->" + field, text)
+        text = explicit_state_fixture_calls(text, production, tag + "State", tag + "_state")
+    return '#include "openmx_env.h"\n' + text
 
 
 def main():
@@ -311,7 +331,7 @@ def main():
         binary = Path(directory) / "overlap"
         source.write_text(make_harness())
         subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", "-D_DEFAULT_SOURCE", str(source),
-                        "-o", str(binary)], check=True)
+                        "-I", str(ROOT / "source"), str(ROOT / "source/openmx_env.c"), "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 
 

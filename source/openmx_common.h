@@ -6,6 +6,8 @@
 #include "openmx_core.h"
 #include "openmx_cluster_col_state.h"
 #include "openmx_cluster_noncol_state.h"
+#include "openmx_band_col_state.h"
+#include "openmx_band_noncol_state.h"
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
@@ -2975,8 +2977,6 @@ void Set_Hamiltonian_Release_OpenACC_DeviceCache(void);
 void Divide_Conquer_Release_GPU_SCache(void);
 void Krylov_Release_GPU_KUCache(void);
 /* Release geometry-dependent GPU caches between inputs in a test suite. */
-void Band_DFT_Col_Release_GPU_Caches(void);
-void Band_DFT_NonCol_Release_GPU_Caches(void);
 void Divide_Conquer_Release_GPU_Caches(void);
 void Divide_Conquer_LNO_Release_GPU_Caches(void);
 void Krylov_Release_GPU_Caches(void);
@@ -3252,14 +3252,6 @@ double Cluster_DFT_NonCol(OpenMXClusterNonColState *state, const OpenMXAtomicVie
                    double *Work1, const OpenMXElectronicViews *electronic);
 #if !OPENMX_GPU_HIP
 
-int Band_DFT_Col_RefineLastRefined(void);
-void Band_DFT_Col_RefineForceFP64(int on);
-void Band_DFT_Col_RefineAfterMixing(double normrd);
-int Band_DFT_NonCol_RefineLastRefined(void);
-void Band_DFT_NonCol_RefineForceFP64(int on);
-void Band_DFT_NonCol_RefineAfterMixing(double normrd);
-void Band_DFT_Col_RefineEndCycle(void);
-void Band_DFT_NonCol_RefineEndCycle(void);
 #endif
 
 
@@ -3313,7 +3305,7 @@ double Cluster_DFT_ON2(char *mode,
 		       double Eele0[2], double Eele1[2]);
 
 
-double Band_DFT_Col(
+double Band_DFT_Col(OpenMXBandColState *state,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -3357,7 +3349,7 @@ double Band_DFT_Col(
 		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic);
 
 
-double Band_DFT_NonCol(
+double Band_DFT_NonCol(OpenMXBandNonColState *state,
                     char *mode,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,

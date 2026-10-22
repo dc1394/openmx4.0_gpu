@@ -1,3 +1,5 @@
+#include "openmx_band_col_state.h"
+#include "openmx_band_noncol_state.h"
 #include "openmx_gpu_backend.h"
 #include "openmx_core_atomic.h"
 #include "openmx_core_electronic.h"
@@ -316,7 +318,7 @@ void TRAN_Credit(MPI_Comm comm1);
  *    double ChemP_e0[2]
  *);*/
 /* TRAN_DFT.c  */
-double TRAN_DFT(
+double TRAN_DFT(OpenMXBandColState *band_state,
                 MPI_Comm comm1,
                 int SucceedReadingDMfile, 
                 int level_stdout,
@@ -736,7 +738,7 @@ void TRAN_Main_Analysis_NC(const OpenMXAtomicViews *atomic,  MPI_Comm comm1,
                             int TNumGrid );
 
 /* revised by Y. Xiao for Noncollinear NEGF calculations */
-double TRAN_DFT_NC(
+double TRAN_DFT_NC(OpenMXBandNonColState *band_state,
                 MPI_Comm comm1,
                 int SucceedReadingDMfile,
                 int level_stdout,

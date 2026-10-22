@@ -18,11 +18,11 @@ import tempfile
 # The SDK/ownership boundary is mocked here; the real ownership adapters are
 # exercised independently by the core-native-resource/adapter tests.
 try:
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -214,7 +214,17 @@ def main():
              'BandNonCol_CheckedMul', 'BandNonCol_ArrayBytes', 'BandNonCol_GpuSolverWorkFallbackBytes',
              'BandNonCol_QueryGpuSolverWorkBytes', 'BandNonCol_DenseGpuEigen',
              'BandNonCol_RootDenseCompleteOneK')
-    harness = '\n'.join([PREFIX, *(function(source, name) for name in names), MAIN])
+    cache = re.search(r"struct\s*\{[^}]*\} QueryGpuSolverWorkBytes_native_cache\[2\];", source)[0]
+    cache += "\nunsigned QueryGpuSolverWorkBytes_native_next;"
+    state = "typedef struct { " + cache + " BandNonColDenseGpuWorkspace dense_gpu_workspace; } BandNonColState;\n"
+    state += "static BandNonColState fixture;\nstatic BandNonColState *state=&fixture;\n"
+    state += "static int BandNonCol_SolveTimingEnabled(BandNonColState *state) { (void)state; return 0; }\n"
+    prefix = PREFIX.replace("static BandNonColDenseGpuWorkspace BandNonCol_dense_gpu_workspace;", state)
+    prefix = prefix.replace("static int BandNonCol_SolveTimingEnabled(void) { return 0; }", "")
+    prefix = prefix.replace("#include <limits.h>", '#include "openmx_env.h"\n#include <limits.h>')
+    harness = '\n'.join([prefix, *(function(source, name) for name in names), MAIN])
+    harness = harness.replace("BandNonCol_dense_gpu_workspace", "state->dense_gpu_workspace")
+    harness = explicit_state_fixture_calls(harness, source, "BandNonColState")
     with tempfile.TemporaryDirectory(prefix='openmx-band-nc-workspace-') as tmp:
         src, exe = Path(tmp) / 'check.c', Path(tmp) / 'check'
         src.write_text(harness)
@@ -223,6 +233,7 @@ def main():
         header_probe = Path(tmp) / 'query_header.c'
         header_probe.write_text(
             '#include "hipsolver_compat.h"\n'
+            + 'typedef struct { ' + cache + ' } BandNonColState;\n' +
             'int BandNonCol_MI300ANativePolicy(int,int);\n'
             'size_t BandNonCol_GpuSolverWorkFallbackBytes(int);\n'
             'size_t BandNonCol_ArrayBytes(size_t,size_t,const char*);\n'
@@ -232,7 +243,7 @@ def main():
         flags = ['-std=c11', '-O2', '-Wall', '-Wextra']
         if args.sanitize:
             flags += ['-O1', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all']
-        subprocess.run([*shlex.split(args.cc), *flags, str(src), '-o', str(exe)], check=True)
+        subprocess.run([*shlex.split(args.cc), *flags, '-I' + str(ROOT / 'source'), str(src), str(ROOT / 'source/openmx_env.c'), '-o', str(exe)], check=True)
         keys = ('OPENMX_GPU_EIGENSOLVER', 'OPENMX_NC_HAMILTONIAN_EIGENSOLVER',
                 'OPENMX_NC_HIPSOLVER_TURN_RELEASE', 'OPENMX_NC_MAGMA_TURN_RELEASE')
         clean_env = {k: v for k, v in os.environ.items() if k not in keys}

@@ -23,6 +23,13 @@ import shlex
 import subprocess
 import tempfile
 
+try:
+    from native_resource_test_bridge import explicit_state_fixture_calls
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tests"))
+    from native_resource_test_bridge import explicit_state_fixture_calls
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -53,7 +60,10 @@ PREFIX = r'''
 
 typedef struct { double r, i; } dcomplex;
 typedef struct { int initialized; hipStream_t stream; hipblasHandle_t hipblas; } BandNonColDMGpuWorkspace;
-static BandNonColDMGpuWorkspace BandNonCol_dm_gpu_workspace;
+typedef struct { BandNonColDMGpuWorkspace dm_gpu_workspace; } BandNonColState;
+static BandNonColState fixture;
+static BandNonColState *state=&fixture;
+#define OpenMXBlasWait(call) CHECK((int)(call)==0)
 static int gemm_calls;
 
 static void BandNonCol_DMGpu_Init(void)
@@ -155,23 +165,33 @@ int main(void)
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--rocm", default=os.environ.get("ROCM_PATH", "/opt/rocm-7.2.0"))
+    parser.add_argument("--compile-only", action="store_true", help="compile device code without running it")
     parser.add_argument("--arch", default=os.environ.get("OFFLOAD_ARCH", "gfx1200"))
     args = parser.parse_args()
     nc = (ROOT / "source/Band_DFT_NonCol.c").read_text()
     source_text = "\n\n".join([PREFIX, function(nc, "BandNonCol_OmpTargetIsPresent"),
                                function(nc, "BandNonCol_DenseWavefunctions_PresentOpenMP"),
                                function(nc, "BandNonCol_DenseWavefunctions_OpenMP"), HARNESS])
+    source_text = source_text.replace("BandNonCol_dm_gpu_workspace", "state->dm_gpu_workspace")
+    source_text = explicit_state_fixture_calls(source_text, nc, "BandNonColState")
     clang = os.path.join(args.rocm, "llvm/bin/clang")
     with tempfile.TemporaryDirectory(prefix="openmx-band-wf-gpu-") as directory:
         source = Path(directory) / "wf.c"
         binary = Path(directory) / "wf"
         source.write_text(source_text)
-        subprocess.run([clang, "-O2", "-std=c11", "-D__HIP_PLATFORM_AMD__", "-fopenmp",
+        command = [clang, "-O2", "-std=c11", "-D__HIP_PLATFORM_AMD__", "-fopenmp",
                         f"--offload-arch={args.arch}", "-I" + os.path.join(args.rocm, "include"),
                         str(source), "-o", str(binary), "-L" + os.path.join(args.rocm, "lib"),
-                        "-Wl,-rpath," + os.path.join(args.rocm, "lib"), "-lhipblas", "-lamdhip64", "-lm"],
-                       check=True)
-        subprocess.run([str(binary)], check=True, timeout=120)
+                        "-Wl,-rpath," + os.path.join(args.rocm, "lib"), "-lhipblas", "-lamdhip64", "-lm"]
+        if args.compile_only:
+            # The object contains host code and the requested target image.
+            command = command[:command.index("-L" + os.path.join(args.rocm, "lib"))]
+            command += ["-c"]
+        subprocess.run(command, check=True)
+        if not args.compile_only:
+            subprocess.run([str(binary)], check=True, timeout=120)
+        else:
+            print("PASS: host and " + args.arch + " wave-function code compiled; hardware execution skipped")
 
 
 if __name__ == "__main__":

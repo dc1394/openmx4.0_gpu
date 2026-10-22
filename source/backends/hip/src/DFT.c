@@ -1074,7 +1074,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	if (SpinP_switch<=1){
 
-	  time5 += Band_DFT_Col(LSCF_iter,
+	  time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,
 				Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				SpinP_switch,0,
                                 H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
@@ -1105,7 +1105,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
           if (GB_switch==0){
 
-  	    time5 += Band_DFT_NonCol("scf", 
+            time5 += Band_DFT_NonCol(solver_states.band_noncol, "scf",
                                      LSCF_iter,
 	  			     Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				     SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
@@ -1145,14 +1145,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       case 4:
 	/* revised by Y. Xiao for Noncollinear NEGF calculations*/
 	if (SpinP_switch<2) {
-	  time5 += TRAN_DFT(mpi_comm_level1, SucceedReadingDMfile,
+	  time5 += TRAN_DFT(solver_states.band_col, mpi_comm_level1, SucceedReadingDMfile,
 			    level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
 			    atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			    M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,
 			    DM[0],iDM[0],EDM,TRAN_DecMulP,Eele0,Eele1,ChemP_e0, electronic);
 	}
 	else {
-	  time5 += TRAN_DFT_NC(mpi_comm_level1, SucceedReadingDMfile,
+	  time5 += TRAN_DFT_NC(solver_states.band_noncol, mpi_comm_level1, SucceedReadingDMfile,
 			       level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
 			       atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			       M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,koS,S_Band,
@@ -1244,7 +1244,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	if (SpinP_switch<=1){
 
-	  time5 += Band_DFT_Col(LSCF_iter,
+	  time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,
 				Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				SpinP_switch,0,
                                 CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, 
@@ -1276,7 +1276,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
           if (GB_switch==0){
 
-	    time5 += Band_DFT_NonCol("scf",
+	    time5 += Band_DFT_NonCol(solver_states.band_noncol, "scf",
                                      LSCF_iter,
 				     Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				     SpinP_switch,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, 
@@ -1316,14 +1316,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       case 4:
 	/* revised by Y. Xiao for Noncollinear NEGF calculations*/
 	if (SpinP_switch<2) {
-	  time5 += TRAN_DFT(mpi_comm_level1, SucceedReadingDMfile,
+	  time5 += TRAN_DFT(solver_states.band_col, mpi_comm_level1, SucceedReadingDMfile,
 			    level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
 			    atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			    M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,
 			    DM[0],iDM[0],EDM,TRAN_DecMulP,Eele0,Eele1,ChemP_e0, electronic);
 	} 
 	else {
-	  time5 += TRAN_DFT_NC(mpi_comm_level1, SucceedReadingDMfile,
+	  time5 += TRAN_DFT_NC(solver_states.band_noncol, mpi_comm_level1, SucceedReadingDMfile,
 			       level_stdout, LSCF_iter,SpinP_switch,H,iHNL,OLP[0],
 			       atomnum,Matomnum,WhatSpecies, atomic->species.contracted_orbitals, FNAN, natn,ncn,
 			       M2G, G2ID, F_G2M, atv_ijk, List_YOUSO,koS,S_Band,
@@ -1417,8 +1417,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     if (po==1 && Cnt_switch==0 && SCF_iter<SCF_MAX &&
         ((Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined(solver_states.cluster_noncol)) ||
          (Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(solver_states.cluster_col)) ||
-         (Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()) ||
-         (Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined()))){
+         (Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined(solver_states.band_col)) ||
+         (Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined(solver_states.band_noncol)))){
 
       static double guard_factor = -1.0;
       double bound, normrd;
@@ -1483,13 +1483,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                       CDM1,size_H1,EVec1_NonCol,Work1, electronic);
     }
 
-    if (po==1 && Cnt_switch==0 && Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()){
+    if (po==1 && Cnt_switch==0 && Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined(solver_states.band_col)){
       if (myid0==Host_ID && 2 <= level_stdout){
         printf("<DFT>  eigensolver: the SCF stops on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
         fflush(stdout);
       }
-      Band_DFT_Col_RefineForceFP64(1);
-      time5 += Band_DFT_Col(LSCF_iter,
+      Band_DFT_Col_RefineForceFP64(solver_states.band_col, 1);
+      time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,
                             Kspace_grid1,Kspace_grid2,Kspace_grid3,
                             SpinP_switch,0,
                             H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,
@@ -1514,7 +1514,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                             Comm_World2,
                             Comm_World_StartID2,
                             MPI_CommWD2, electronic);
-      Band_DFT_Col_RefineForceFP64(0);
+      Band_DFT_Col_RefineForceFP64(solver_states.band_col, 0);
       Uele_OS0 = Eele0[0];
       Uele_OS1 = Eele0[1];
       Uele_IS0 = Eele1[0];
@@ -1523,13 +1523,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     }
 
     if (po==1 && Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0 &&
-        Band_DFT_NonCol_RefineLastRefined()){
+        Band_DFT_NonCol_RefineLastRefined(solver_states.band_noncol)){
       if (myid0==Host_ID && 2 <= level_stdout){
         printf("<DFT>  eigensolver: the SCF stops on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
         fflush(stdout);
       }
-      Band_DFT_NonCol_RefineForceFP64(1);
-      time5 += Band_DFT_NonCol("scf",
+      Band_DFT_NonCol_RefineForceFP64(solver_states.band_noncol, 1);
+      time5 += Band_DFT_NonCol(solver_states.band_noncol, "scf",
                                LSCF_iter,
                                Kspace_grid1,Kspace_grid2,Kspace_grid3,
                                SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,
@@ -1553,7 +1553,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                Comm_World2,
                                Comm_World_StartID2,
                                MPI_CommWD2, electronic);
-      Band_DFT_NonCol_RefineForceFP64(0);
+      Band_DFT_NonCol_RefineForceFP64(solver_states.band_noncol, 0);
       Uele_OS0 = Eele0[0];
       Uele_OS1 = Eele0[1];
       Uele_IS0 = Eele1[0];
@@ -1881,10 +1881,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       Cluster_DFT_Col_RefineAfterMixing(solver_states.cluster_col, sqrt(fabs(NormRD[0])));
     }
     if (po==0 && Cnt_switch==0 && Solver==3 && SpinP_switch<=1){
-      Band_DFT_Col_RefineAfterMixing(sqrt(fabs(NormRD[0])));
+      Band_DFT_Col_RefineAfterMixing(solver_states.band_col, sqrt(fabs(NormRD[0])));
     }
     if (po==0 && Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0){
-      Band_DFT_NonCol_RefineAfterMixing(sqrt(fabs(NormRD[0])));
+      Band_DFT_NonCol_RefineAfterMixing(solver_states.band_noncol, sqrt(fabs(NormRD[0])));
     }
 
     /*****************************************************
@@ -1958,13 +1958,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                       CDM1,size_H1,EVec1_NonCol,Work1, electronic);
   }
 
-  if (Cnt_switch==0 && Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()){
+  if (Cnt_switch==0 && Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined(solver_states.band_col)){
     if (myid0==Host_ID && 2 <= level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
       fflush(stdout);
     }
-    Band_DFT_Col_RefineForceFP64(1);
-      time5 += Band_DFT_Col(LSCF_iter,
+    Band_DFT_Col_RefineForceFP64(solver_states.band_col, 1);
+      time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,
                             Kspace_grid1,Kspace_grid2,Kspace_grid3,
                             SpinP_switch,0,
                             H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,
@@ -1989,7 +1989,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                             Comm_World2,
                             Comm_World_StartID2,
                             MPI_CommWD2, electronic);
-    Band_DFT_Col_RefineForceFP64(0);
+    Band_DFT_Col_RefineForceFP64(solver_states.band_col, 0);
     Uele_OS0 = Eele0[0];
     Uele_OS1 = Eele0[1];
     Uele_IS0 = Eele1[0];
@@ -1997,13 +1997,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     Uele = Uele_IS0 + Uele_IS1;
   }
 
-  if (Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined()){
+  if (Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined(solver_states.band_noncol)){
     if (myid0==Host_ID && 2 <= level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
       fflush(stdout);
     }
-    Band_DFT_NonCol_RefineForceFP64(1);
-      time5 += Band_DFT_NonCol("scf",
+    Band_DFT_NonCol_RefineForceFP64(solver_states.band_noncol, 1);
+      time5 += Band_DFT_NonCol(solver_states.band_noncol, "scf",
                                LSCF_iter,
                                Kspace_grid1,Kspace_grid2,Kspace_grid3,
                                SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,
@@ -2027,7 +2027,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                Comm_World2,
                                Comm_World_StartID2,
                                MPI_CommWD2, electronic);
-    Band_DFT_NonCol_RefineForceFP64(0);
+    Band_DFT_NonCol_RefineForceFP64(solver_states.band_noncol, 0);
     Uele_OS0 = Eele0[0];
     Uele_OS1 = Eele0[1];
     Uele_IS0 = Eele1[0];
@@ -2037,8 +2037,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   /* the end of the SCF cycle: the band solvers' warm-start bases go, so the
      forces and the next cycle start with the memory free */
-  if (Solver==3 && SpinP_switch<=1) Band_DFT_Col_RefineEndCycle();
-  if (Solver==3 && SpinP_switch==3 && GB_switch==0) Band_DFT_NonCol_RefineEndCycle();
+  if (Solver==3 && SpinP_switch<=1) Band_DFT_Col_RefineEndCycle(solver_states.band_col);
+  if (Solver==3 && SpinP_switch==3 && GB_switch==0) Band_DFT_NonCol_RefineEndCycle(solver_states.band_noncol);
 
   /*********************************************************************
    After achieving the SCF, the diagonalization with PAOs is performed
@@ -2255,7 +2255,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
           printf("\n<DFT>  Calculation of MO-type guiding functions for CWFs\n");fflush(stdout);
 	}
 
-	time5 += Band_DFT_Col(LSCF_iter,
+	time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,
 			      Kspace_grid1,Kspace_grid2,Kspace_grid3,
 			      SpinP_switch,1, // flag for ParDM
 			      H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
@@ -2359,7 +2359,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   	  printf("\n<DFT>  Calculation of MO-type guiding functions for CWFs\n");fflush(stdout);
 	}
 
-	time5 += Band_DFT_NonCol("ParDM", 
+	time5 += Band_DFT_NonCol(solver_states.band_noncol, "ParDM",
 				 LSCF_iter,
 				 Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				 SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
@@ -3008,7 +3008,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                 output files for flpq
    The correction:  
    DFT.c
-   iDM is added in calling TRAN_DFT()
+   iDM is added in calling TRAN_DFT(solver_states.band_col, )
    TRAN_DFT.c
    tran_prototypes.h
    flpq_dm.h

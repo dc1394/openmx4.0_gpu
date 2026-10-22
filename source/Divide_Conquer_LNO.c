@@ -2729,6 +2729,14 @@ static double DC_NonCol(char *mode,
 			double *****EDM,
 			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  /* A spinor solve returns the complete bond energy in channel zero.
+     Define the unused channel before DFT sums both entries; callers may
+     reuse uninitialized or poisoned output storage on different ranks. */
+  if (strcasecmp(mode,"scf")==0) {
+    Eele0[1] = 0.0;
+    Eele1[1] = 0.0;
+  }
+
   DC_NonCol_arguments arguments={mode,MD_iter,SCF_iter,SucceedReadingDMfile,Hks,ImNL,OLP0,CDM,EDM,Eele0,Eele1,electronic,local_basis};
   return OpenMX_Solver_Run(DC_NonCol_operation,&arguments);
 }

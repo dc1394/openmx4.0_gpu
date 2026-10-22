@@ -85,8 +85,8 @@ typedef TestRefineState BandColRefineState;
 typedef TestRefineState BandNonColRefineState;
 typedef struct { ClusterColRefineState refine; } ClusterColState;
 typedef struct { ClusterNonColRefineState refine; } ClusterNonColState;
-static TestRefineState BandCol_refine = {-1, 0, 0.0};
-static TestRefineState BandNonCol_refine = {-1, 0, 0.0};
+typedef struct { BandColRefineState refine; } BandColState;
+typedef struct { BandNonColRefineState refine; } BandNonColState;
 static int mpi_calls;
 enum { mpi_comm_level1 = 0, Host_ID = 0, level_stdout = 0, MPI_INT = 0 };
 static void MPI_Comm_rank(int comm, int *rank) { *rank = 0; mpi_calls++; }
@@ -95,27 +95,6 @@ static double openmx_eigen_refine_until(void) { return 1e-5; }
 '''
 
 HARNESS = r'''
-static void cache_case(TestRefineState *state, void (*configure)(void), int (*iterations)(void)) {
-    /* Each solver may first be used by an FP64-only -runtest input. */
-    openmx_set_fp32_enabled(0);
-    setenv("OPENMX_EIGEN_REFINE", "3", 1);
-    mpi_calls = 0;
-    configure();
-    CHECK(state->iterations == -1 && iterations() == 0 && mpi_calls == 0);
-    openmx_set_fp32_enabled(1);
-    configure();
-    CHECK(state->iterations == 3 && iterations() == 3 && mpi_calls == 2);
-    CHECK(state->defaulted == 0 && state->until == 1e-5);
-    /* A later input must veto an already enabled static configuration. */
-    openmx_set_fp32_enabled(0);
-    configure();
-    CHECK(state->iterations == 3 && iterations() == 0 && mpi_calls == 2);
-    openmx_set_fp32_enabled(1);
-    configure();
-    CHECK(iterations() == 3 && mpi_calls == 2);
-    checks += 5;
-}
-
 static void collinear_cache_case(void) {
     ClusterColState first = {{-1, 0, 0.0}}, second = {{-1, 0, 0.0}};
     openmx_set_fp32_enabled(0); setenv("OPENMX_EIGEN_REFINE", "3", 1); mpi_calls = 0;
@@ -146,6 +125,38 @@ static void noncollinear_cache_case(void) {
     CHECK(first.refine.iterations == 3 && ClusterNonCol_RefineIterations(&first) == 0 && mpi_calls == 4);
     openmx_set_fp32_enabled(1); ClusterNonCol_RefineConfigure(&first);
     CHECK(ClusterNonCol_RefineIterations(&first) == 3 && mpi_calls == 4); checks += 6;
+}
+
+static void band_collinear_cache_case(void) {
+    BandColState first = {{-1, 0, 0.0}}, second = {{-1, 0, 0.0}};
+    openmx_set_fp32_enabled(0); setenv("OPENMX_EIGEN_REFINE", "3", 1); mpi_calls = 0;
+    BandCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == -1 && BandCol_RefineIterations(&first) == 0 && mpi_calls == 0);
+    openmx_set_fp32_enabled(1); BandCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && BandCol_RefineIterations(&first) == 3 && mpi_calls == 2);
+    CHECK(first.refine.defaulted == 0 && first.refine.until == 1e-5 && second.refine.iterations == -1);
+    setenv("OPENMX_EIGEN_REFINE", "1", 1); BandCol_RefineConfigure(&second);
+    CHECK(second.refine.iterations == 1 && first.refine.iterations == 3 && mpi_calls == 4);
+    openmx_set_fp32_enabled(0); BandCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && BandCol_RefineIterations(&first) == 0 && mpi_calls == 4);
+    openmx_set_fp32_enabled(1); BandCol_RefineConfigure(&first);
+    CHECK(BandCol_RefineIterations(&first) == 3 && mpi_calls == 4); checks += 6;
+}
+
+static void band_noncollinear_cache_case(void) {
+    BandNonColState first = {{-1, 0, 0.0}}, second = {{-1, 0, 0.0}};
+    openmx_set_fp32_enabled(0); setenv("OPENMX_EIGEN_REFINE", "3", 1); mpi_calls = 0;
+    BandNonCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == -1 && BandNonCol_RefineIterations(&first) == 0 && mpi_calls == 0);
+    openmx_set_fp32_enabled(1); BandNonCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && BandNonCol_RefineIterations(&first) == 3 && mpi_calls == 2);
+    CHECK(first.refine.defaulted == 0 && first.refine.until == 1e-5 && second.refine.iterations == -1);
+    setenv("OPENMX_EIGEN_REFINE", "1", 1); BandNonCol_RefineConfigure(&second);
+    CHECK(second.refine.iterations == 1 && first.refine.iterations == 3 && mpi_calls == 4);
+    openmx_set_fp32_enabled(0); BandNonCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && BandNonCol_RefineIterations(&first) == 0 && mpi_calls == 4);
+    openmx_set_fp32_enabled(1); BandNonCol_RefineConfigure(&first);
+    CHECK(BandNonCol_RefineIterations(&first) == 3 && mpi_calls == 4); checks += 6;
 }
 
 static void solver_case(int device_ratio, const char *override, int expected) {
@@ -207,8 +218,8 @@ int main(void) {
     }
     collinear_cache_case();
     noncollinear_cache_case();
-    cache_case(&BandCol_refine, BandCol_RefineConfigure, BandCol_RefineIterations);
-    cache_case(&BandNonCol_refine, BandNonCol_RefineConfigure, BandNonCol_RefineIterations);
+    band_collinear_cache_case();
+    band_noncollinear_cache_case();
     unsetenv("OPENMX_CUSOLVER_EMULATION"); ratio = 64;
 #if CUSOLVER_VERSION >= 12200
     for (int failure = 1; failure <= 3; failure++) {

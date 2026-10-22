@@ -48,10 +48,10 @@ import tempfile
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tests"))
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, explicit_state_fixture_calls
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -212,11 +212,11 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
     last_transient = pb->transient;
     CHECK(pb->cplx == 1 && pb->a == BandNonCol_dense_gpu_workspace.d_H2 && pb->x != NULL && pb->w != NULL);
     CHECK(pb->fp32 != NULL && pb->region >= 3 * (((size_t)pb->n * (size_t)pb->maxn * 16 + 511) / 512 * 512));
-    CHECK(dev->hipblas != NULL && dev->shared == 1 && dev->try_malloc != NULL && dev->d_info != NULL);
+    CHECK(dev->hipblas != NULL && dev->shared == 1 && dev->try_malloc_owned != NULL && dev->allocation_context == state && dev->d_info != NULL);
     CHECK(pb->iterations == config_iterations && pb->occupation != NULL);
     if (st->capacity < pb->n) {
-        CHECK(dev->try_malloc((void **)&st->lam, (size_t)pb->n * sizeof(double)) == hipSuccess);
-        CHECK(dev->try_malloc((void **)&st->occ, (size_t)pb->n * sizeof(double)) == hipSuccess);
+        CHECK(openmx_eigen_refine_malloc(dev, (void **)&st->lam, (size_t)pb->n * sizeof(double)) == hipSuccess);
+        CHECK(openmx_eigen_refine_malloc(dev, (void **)&st->occ, (size_t)pb->n * sizeof(double)) == hipSuccess);
         st->capacity = pb->n;
     }
     if (pb->warm) {
@@ -570,20 +570,58 @@ def make_harness():
     nc = isolate_native_resources((ROOT / "source/Band_DFT_NonCol.c").read_text(), "HIP")
     header = (ROOT / "source/eigen_refine_gpu.h").read_text()
     types = "typedef struct OpenMXNativeResources OpenMXNativeResources;\n" + block(header, "typedef struct {\n    hipblasHandle_t hipblas;", "} EigenRefineReport;")
-    statics = block(nc, "typedef struct\n{\n    int     iterations;",
-                    "static int                     BandNonCol_refine_e0_n = 0;")
+    for typename in ["BandNonColRefineState", "BandNonColKRefineSlot", "BandNonColOccupationCtx", "BandNonColRefineBuffers"]:
+        types += "\n" + re.search(r"typedef\s+struct\s*\{[^}]*\}\s*" + typename + ";", nc)[0]
+    # A narrow SDK model of fields touched here; the independent real-core
+    # lifecycle test compiles the complete production POD and constructor.
+    state = r'''
+typedef struct {
+    OpenMXNativeResources *resources;
+    int mgpu_host_dense;
+    BandNonColDenseGpuWorkspace dense_gpu_workspace;
+    BandNonColKRefineSlot *kref;
+    int kref_slots,kref_n2;
+    size_t kref_used;
+    BandNonColRefineState refine;
+    EigenRefineState refine_state;
+    EigenRefineDevice refine_dev;
+    EigenRefineProblem refine_pb;
+    EigenRefineReport refine_rep;
+    BandNonColOccupationCtx refine_occ;
+    BandNonColRefineBuffers refine_buf;
+    dcomplex *refine_x;
+    int refine_x_n;
+    double *refine_e0;
+    int refine_e0_n;
+    size_t RefineBasisLimit_limit;
+    int RefineBasisLimit_checked;
+} BandNonColState;
+static BandNonColState fixture;
+static BandNonColState *state=&fixture;
+'''
+    prefix = PREFIX.replace("static int BandNonCol_mgpu_host_dense=0;", "")
+    prefix = prefix.replace("static BandNonColDenseGpuWorkspace BandNonCol_dense_gpu_workspace;", "")
+    cut = prefix.index("static int handle_ensures;")
+    before, after = prefix[:cut], prefix[cut:]
     names = ["BandNonCol_TryDeviceMalloc", "BandNonCol_MallocArray", "BandNonCol_RefineFreeDevice",
-             "BandNonCol_RefineDropDevice", "BandNonCol_KRefReset", "BandNonCol_RefineRelease",
-             "BandNonCol_RefineResetStage", "BandNonCol_RefineConfigure", "BandNonCol_RefineIterations",
-             "BandNonCol_RefineScratchBytes", "BandNonCol_RefineFits", "BandNonCol_RefineBeginStep",
-             "BandNonCol_RefineEndStep", "Band_DFT_NonCol_RefineLastRefined", "Band_DFT_NonCol_RefineForceFP64",
-             "Band_DFT_NonCol_RefineEndCycle", "Band_DFT_NonCol_RefineAfterMixing", "BandNonCol_RefineFermi",
-             "BandNonCol_RefineChemP", "BandNonCol_KRefEnsure", "BandNonCol_RefineBasisLimit",
-             "BandNonCol_KRefSlotAllocate", "BandNonCol_KRefSlotFree", "BandNonCol_RefineEnsureBuffers",
-             "BandNonCol_RefinePrepareH2", "BandNonCol_RefineFinishH2", "BandNonCol_RefinedSolveH2"]
+        "BandNonCol_RefineDropDevice", "BandNonCol_KRefReset", "BandNonCol_RefineRelease",
+        "BandNonCol_RefineResetStage", "BandNonCol_RefineConfigure", "BandNonCol_RefineIterations",
+        "BandNonCol_RefineScratchBytes", "BandNonCol_RefineFits", "BandNonCol_RefineBeginStep",
+        "BandNonCol_RefineEndStep", "Band_DFT_NonCol_RefineLastRefined", "Band_DFT_NonCol_RefineForceFP64",
+        "Band_DFT_NonCol_RefineEndCycle", "Band_DFT_NonCol_RefineAfterMixing", "BandNonCol_RefineFermi",
+        "BandNonCol_RefineChemP", "BandNonCol_KRefEnsure", "BandNonCol_RefineBasisLimit",
+        "BandNonCol_KRefSlotAllocate", "BandNonCol_KRefSlotFree", "BandNonCol_RefineDeviceMalloc",
+        "BandNonCol_RefineHostAllocate", "BandNonCol_RefineEnsureBuffers",
+        "BandNonCol_RefinePrepareH2", "BandNonCol_RefineFinishH2", "BandNonCol_RefinedSolveH2"]
     halves = ["BandNonCol_RootDenseRefinedFirstHalf", "BandNonCol_RootDenseRefinedSecondHalf"]
-    return "\n\n".join([PREFIX, types, statics, MOCK, *(function(nc, name) for name in names),
-                        *(function(nc, name) for name in halves), HARNESS])
+    driver = HARNESS.replace("int main(void)\n{", "int main(void)\n{\n    state->refine.iterations=-1;")
+    text = "\n\n".join([before, types, state, after, MOCK,
+        *(function(nc, name) for name in names), *(function(nc, name) for name in halves), driver])
+    for field in ["mgpu_host_dense", "dense_gpu_workspace", "kref", "kref_slots", "kref_n2", "kref_used",
+                  "refine", "refine_state", "refine_dev", "refine_pb", "refine_rep", "refine_occ", "refine_buf",
+                  "refine_x", "refine_x_n", "refine_e0", "refine_e0_n"]:
+        text = re.sub(r"\bBandNonCol_" + field + r"\b", "state->" + field, text)
+    return '#include "openmx_env.h"\n' + explicit_state_fixture_calls(text, nc, "BandNonColState")
 
 
 def main():
@@ -599,7 +637,7 @@ def main():
         binary = Path(directory) / "refine"
         source.write_text(make_harness())
         subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", "-D_DEFAULT_SOURCE", str(source),
-                        "-I", str(ROOT / "source"), str(ROOT / "source/openmx_precision.c"),
+                        "-I", str(ROOT / "source"), str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"),
                         "-o", str(binary), "-lm"], check=True)
         subprocess.run([str(binary)], check=True, stdout=subprocess.DEVNULL if os.environ.get("QUIET") else None)
 

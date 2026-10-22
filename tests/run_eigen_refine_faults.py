@@ -388,27 +388,31 @@ def main():
         state_type = band[band.rfind("typedef struct", 0, end):end]
         boundary_prefix = r'''
 typedef cuDoubleComplex dcomplex;
-static OpenMXNativeResources *Band_DFT_NonCol_resources;
-static int BandNonCol_mgpu_host_dense;
-static EigenRefineState BandNonCol_refine_state;
-static EigenRefineDevice BandNonCol_refine_dev;
-static dcomplex *BandNonCol_refine_x;
-static double *BandNonCol_refine_e0;
-static int BandNonCol_refine_x_n,BandNonCol_refine_e0_n;
-static struct { double *occ,*eig_occ; } BandNonCol_dm_occ_workspace;
+typedef struct {
+    OpenMXNativeResources *resources;
+    int mgpu_host_dense;
+    EigenRefineState refine_state;
+    EigenRefineDevice refine_dev;
+    dcomplex *refine_x;
+    double *refine_e0;
+    int refine_x_n,refine_e0_n;
+    struct { double *occ,*eig_occ; } dm_occ_workspace;
+    BandNonColRefineState refine;
+} BandNonColState;
+static BandNonColState fixture;
 static int boundary_releases;
 #define wait_cudafunc(status) refine_check(status,"cache cleanup")
-static void BandNonCol_KRefReset(void) {}
+static void BandNonCol_KRefReset(BandNonColState *state) {}
 void openmx_eigen_refine_device_release(EigenRefineDevice *dev) { boundary_releases++; }
-static void BandNonCol_KOverlapReset(void) {}
-static void BandNonCol_ConstructCache_Reset(void) {}
-static void BandNonCol_DMEntryCache_Reset(void) {}
-static void BandNonCol_RootDenseWorkspace_Reset(void) {}
-static void BandNonCol_GpuSolver_Destroy(void) {
-    CHECK(!BandNonCol_refine_state.lam && !BandNonCol_refine_state.occ);
-    CHECK(!BandNonCol_refine_state.resources && !BandNonCol_refine_x && !BandNonCol_refine_e0);
+static void BandNonCol_KOverlapReset(BandNonColState *state) {}
+static void BandNonCol_ConstructCache_Reset(BandNonColState *state) {}
+static void BandNonCol_DMEntryCache_Reset(BandNonColState *state) {}
+static void BandNonCol_RootDenseWorkspace_Reset(BandNonColState *state) {}
+static void BandNonCol_GpuSolver_Destroy(BandNonColState *state) {
+    CHECK(!state->refine_state.lam && !state->refine_state.occ);
+    CHECK(!state->refine_state.resources && !state->refine_x && !state->refine_e0);
 }
-static void BandNonCol_DMGpu_Destroy(void) {}
+static void BandNonCol_DMGpu_Destroy(BandNonColState *state) {}
 '''
         boundary_harness = r'''
 static void *device_buffer(void) {
@@ -419,20 +423,20 @@ static void *device_buffer(void) {
 int main(void) {
     char error[256];OpenMXCoreContext *core=openmx_core_create_host(error,sizeof(error)); CHECK(core);
     CHECK(openmx_core_native_resources(core,"band-boundary",NULL,&resources,error,sizeof(error)));
-    Band_DFT_NonCol_resources=resources;
+    fixture.resources=resources;
     for(int iteration=0;iteration<100;iteration++) {
-        BandNonCol_refine_state.resources=resources;
-        BandNonCol_refine_state.lam=device_buffer();BandNonCol_refine_state.occ=device_buffer();
-        BandNonCol_refine_state.own=device_buffer();BandNonCol_refine_state.capacity=8;
-        BandNonCol_refine_x=device_buffer();BandNonCol_refine_x_n=8;
-        BandNonCol_refine_e0=hmalloc(8,sizeof(double),"estimates");BandNonCol_refine_e0_n=8;
-        BandNonCol_dm_occ_workspace.occ=hmalloc(8,sizeof(double),"occupation");
-        BandNonCol_dm_occ_workspace.eig_occ=hmalloc(8,sizeof(double),"weighted occupation");
-        BandNonCol_refine.iterations=8;BandNonCol_refine.force_fp64=1;BandNonCol_refine.kdense=1;
-        Band_DFT_NonCol_Release_GPU_Caches();Band_DFT_NonCol_Release_GPU_Caches();
+        fixture.refine_state.resources=resources;
+        fixture.refine_state.lam=device_buffer();fixture.refine_state.occ=device_buffer();
+        fixture.refine_state.own=device_buffer();fixture.refine_state.capacity=8;
+        fixture.refine_x=device_buffer();fixture.refine_x_n=8;
+        fixture.refine_e0=hmalloc(8,sizeof(double),"estimates");fixture.refine_e0_n=8;
+        fixture.dm_occ_workspace.occ=hmalloc(8,sizeof(double),"occupation");
+        fixture.dm_occ_workspace.eig_occ=hmalloc(8,sizeof(double),"weighted occupation");
+        fixture.refine.iterations=8;fixture.refine.force_fp64=1;fixture.refine.kdense=1;
+        BandNonCol_ReleaseCaches(&fixture);BandNonCol_ReleaseCaches(&fixture);
         CHECK(!openmx_core_native_resource_count(resources));
-        CHECK(!BandNonCol_refine_x_n && !BandNonCol_refine_e0_n);
-        CHECK(BandNonCol_refine.iterations==-1 && !BandNonCol_refine.force_fp64 && !BandNonCol_refine.kdense);
+        CHECK(!fixture.refine_x_n && !fixture.refine_e0_n);
+        CHECK(fixture.refine.iterations==-1 && !fixture.refine.force_fp64 && !fixture.refine.kdense);
         CHECK(boundary_releases==2*(iteration+1));
     }
     openmx_core_destroy(core);puts("PASS native band boundary: 100 cases, policy/aliases reset before solver teardown");
@@ -440,11 +444,11 @@ int main(void) {
 }
 '''
         bodies["band-boundary"] = (REFINE_PREFIX + state_type +
-            "\nstatic BandNonColRefineState BandNonCol_refine;\n" + boundary_prefix +
+            boundary_prefix +
             "\n".join(function(refine, name) for name in
                 ("refine_blocks_release", "openmx_eigen_refine_state_release")) +
             "\n".join(function(band, name) for name in
-                ("BandNonCol_RefineDropBasis", "BandNonCol_RefineRelease", "Band_DFT_NonCol_Release_GPU_Caches")) +
+                ("BandNonCol_RefineDropBasis", "BandNonCol_RefineRelease", "BandNonCol_ReleaseCaches")) +
             boundary_harness)
     cc = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))

@@ -8,6 +8,46 @@ core-native-resource-* and core-native-adapter-* tests.
 import re
 
 
+def explicit_state_fixture_calls(fixture, production, state_type, state="state"):
+    """Pass a narrow fixture's explicit state through its SDK stubs/calls.
+
+    Production functions already take this argument and are left unchanged.
+    This only updates pre-migration fixture call sites and stub signatures;
+    ownership and initialization need the separate real-core lifecycle tests.
+    """
+    names = set(re.findall(r'\b(\w+)\(\s*' + re.escape(state_type) +
+                           r'\s*\*\s*state\b', production))
+    if not names:
+        raise ValueError("No explicit production functions for " + state_type)
+
+    def blank(match):
+        return "".join("\n" if c == "\n" else " " for c in match[0])
+
+    clean = re.sub(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',
+                   blank, fixture, flags=re.S)
+    edits = []
+    for hit in re.finditer(r'\b(' + '|'.join(sorted(names)) + r')\s*\(', clean):
+        opening, end, depth = clean.index('(', hit.start()), hit.end(), 1
+        while depth:
+            depth += (clean[end] == '(') - (clean[end] == ')')
+            end += 1
+        args = clean[opening + 1:end - 1].strip()
+        if re.match(r'\(?\s*' + re.escape(state_type) + r'\s*\*', args) or re.match(r'(?:state|' + re.escape(state) + r')\s*(?:,|$)', args):
+            continue
+        prefix = clean[clean.rfind('\n', 0, hit.start()) + 1:hit.start()]
+        declaration = re.fullmatch(r'\s*(?:static\s+)?(?:const\s+)?'
+            r'(?:void|int|double|size_t|hipError_t|cudaError_t|\w+Workspace)\s*[*\s]+', prefix)
+        if declaration:
+            parameter = state_type + ' *' + state
+            remaining = fixture[opening + 1:end - 1] if args and args != 'void' else ''
+            edits.append((opening + 1, end - 1, parameter + (', ' + remaining if remaining else '')))
+        else:
+            edits.append((opening + 1, opening + 1, state + (', ' if args else '')))
+    for start, end, replacement in reversed(edits):
+        fixture = fixture[:start] + replacement + fixture[end:]
+    return fixture
+
+
 def calculation_state_declaration(source, alias):
     """Keep the actual POD types/layout in narrow SDK policy fixtures.
 
