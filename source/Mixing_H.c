@@ -17,6 +17,7 @@
 #include "openmx_host_memory.h"
 #include "openmx_native_resources.h"
 #include "openmx_mixing_h_state.h"
+#include "openmx_solver_workspace.h"
 #include <limits.h>
 
 #include "lapack_prototypes.h"
@@ -75,11 +76,25 @@ struct OpenMXMixingHState {
 typedef OpenMXMixingHState MixingHState;
 
 static void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
-static void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
-static void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
-static void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
-static void Inverse(int n, double **a, double **ia);
+static void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia);
 
+
+typedef struct {
+  MixingHState *state;
+  int MD_iter, SCF_iter, SCF_iter0;
+  const OpenMXElectronicViews *electronic;
+} MixH_PulayArguments;
+
+static int MixH_PulayOperation(OpenMXSolverInvocation *scratch, void *opaque, double *result)
+{
+  const MixH_PulayArguments *a=(const MixH_PulayArguments*)opaque;
+  Pulay_Mixing_H(scratch, a->state, a->MD_iter, a->SCF_iter, a->SCF_iter0, a->electronic);
+  *result=0.0;
+  return 1;
+}
 
 double Mixing_H(MixingHState *state,  int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
@@ -110,7 +125,8 @@ double Mixing_H(MixingHState *state,  int MD_iter, int SCF_iter, int SCF_iter0 ,
 
   else{
 
-    Pulay_Mixing_H(state,  MD_iter, SCF_iter, SCF_iter0 , electronic);
+    MixH_PulayArguments arguments={state,MD_iter,SCF_iter,SCF_iter0,electronic};
+    (void)OpenMX_Solver_Run(MixH_PulayOperation,&arguments);
 
     /*
     Pulay_Mixing_H_with_One_Shot_Hessian( MD_iter, SCF_iter, SCF_iter0 );
@@ -134,7 +150,7 @@ double Mixing_H(MixingHState *state,  int MD_iter, int SCF_iter, int SCF_iter0 ,
 
 
 
-void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
+void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
   double ******HisH1=electronic->HisH1;
@@ -149,7 +165,8 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const
   double r,r10,r11,r12,r13,r20,r21,r22;
   double h,h10,h11,h12,h13,h20,h21,h22;
   double my_sy,my_yy,sy,yy,norm,s,y,or,al,be;
-  double **A,**IA,*coes,*coes2,*ror;
+  OpenMXSolverRealTensor A,IA;
+  double *coes,*coes2,*ror;
   char nanchar[300];
 
   /****************************************************
@@ -163,19 +180,13 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const
                 allocation of arrays 
   ****************************************************/
 
-  coes = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  coes2 = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  ror = (double*)malloc(sizeof(double)*List_YOUSO[39]);
+  coes = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_MultiSecant-coes",List_YOUSO[39]);
+  coes2 = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_MultiSecant-coes2",List_YOUSO[39]);
+  ror = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_MultiSecant-ror",List_YOUSO[39]);
 
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  A = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_MultiSecant-A",List_YOUSO[39],List_YOUSO[39]);
 
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  IA = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_MultiSecant-IA",List_YOUSO[39],List_YOUSO[39]);
 
   /****************************************************
                  shift the residual H
@@ -353,24 +364,24 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const
 
       } /* else */
 
-      MPI_Allreduce(&my_sum, &A[m][n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-      A[n][m] = A[m][n];
+      MPI_Allreduce(&my_sum, &openmx_solver_real_matrix_row(&A,m)[n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      openmx_solver_real_matrix_row(&A,n)[m] = openmx_solver_real_matrix_row(&A,m)[n];
 
     } /* n */
   } /* m */
 
-  NormRD[0] = A[0][0]/(double)atomnum;
+  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
-    A[m-1][dim] = -1.0;
-    A[dim][m-1] = -1.0;
+    openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
+    openmx_solver_real_matrix_row(&A,dim)[m-1] = -1.0;
   }
-  A[dim][dim] = 0.0;
+  openmx_solver_real_matrix_row(&A,dim)[dim] = 0.0;
 
-  Inverse(dim,A,IA);
+  Inverse(scratch, dim,&A,&IA);
 
   for (m=1; m<=dim; m++){
-    coes[m] = -IA[m-1][dim];
+    coes[m] = -openmx_solver_real_matrix_row(&IA,m-1)[dim];
   }
 
   /****************************************************
@@ -680,12 +691,12 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const
 
       } /* else */
 
-      MPI_Allreduce(&my_sum, &A[m][n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      MPI_Allreduce(&my_sum, &openmx_solver_real_matrix_row(&A,m)[n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     } /* n */
   } /* m */    
 
-  Inverse(dim-1,A,IA);
+  Inverse(scratch, dim-1,&A,&IA);
 
   /****************************************************
     calculations of inner products of <r|OptResidualH> 
@@ -791,7 +802,7 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const
   for (m=0; m<dim; m++){
     sum = 0.0;  
     for (n=0; n<dim; n++){
-      sum += IA[m][n]*ror[n];  
+      sum += openmx_solver_real_matrix_row(&IA,m)[n]*ror[n];
     }
 
     coes2[m] = sum;
@@ -1025,23 +1036,10 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const
 
   } /* else */
 
-  /****************************************************
-                   freeing of arrays 
-  ****************************************************/
+  /* Invocation owner releases numerical scratch. */
 
-  free(coes);
-  free(coes2);
-  free(ror);
 
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(A[i]);
-  }
-  free(A);
 
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(IA[i]);
-  }
-  free(IA);
 }
 
 
@@ -1053,7 +1051,7 @@ void Pulay_Mixing_H_MultiSecant(int MD_iter, int SCF_iter, int SCF_iter0 , const
 
 
 
-void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
+void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
   double ******HisH1=electronic->HisH1;
@@ -1068,7 +1066,8 @@ void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_ite
   double r,r10,r11,r12,r13,r20,r21,r22;
   double h,h10,h11,h12,h13,h20,h21,h22;
   double my_sy,my_yy,sy,yy,norm,s,y,or,al,be;
-  double **A,**IA,*coes;
+  OpenMXSolverRealTensor A,IA;
+  double *coes;
   char nanchar[300];
 
   /****************************************************
@@ -1082,17 +1081,11 @@ void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_ite
                 allocation of arrays 
   ****************************************************/
 
-  coes = (double*)malloc(sizeof(double)*List_YOUSO[39]);
+  coes = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_with_One_Shot_Hessian-coes",List_YOUSO[39]);
 
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  A = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_with_One_Shot_Hessian-A",List_YOUSO[39],List_YOUSO[39]);
 
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  IA = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_with_One_Shot_Hessian-IA",List_YOUSO[39],List_YOUSO[39]);
 
   /****************************************************
                  shift the residual H
@@ -1270,24 +1263,24 @@ void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_ite
 
       } /* else */
 
-      MPI_Allreduce(&my_sum, &A[m][n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-      A[n][m] = A[m][n];
+      MPI_Allreduce(&my_sum, &openmx_solver_real_matrix_row(&A,m)[n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      openmx_solver_real_matrix_row(&A,n)[m] = openmx_solver_real_matrix_row(&A,m)[n];
 
     } /* n */
   } /* m */
 
-  NormRD[0] = A[0][0]/(double)atomnum;
+  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
-    A[m-1][dim] = -1.0;
-    A[dim][m-1] = -1.0;
+    openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
+    openmx_solver_real_matrix_row(&A,dim)[m-1] = -1.0;
   }
-  A[dim][dim] = 0.0;
+  openmx_solver_real_matrix_row(&A,dim)[dim] = 0.0;
 
-  Inverse(dim,A,IA);
+  Inverse(scratch, dim,&A,&IA);
 
   for (m=1; m<=dim; m++){
-    coes[m] = -IA[m-1][dim];
+    coes[m] = -openmx_solver_real_matrix_row(&IA,m-1)[dim];
   }
 
   /****************************************************
@@ -1790,21 +1783,8 @@ void Pulay_Mixing_H_with_One_Shot_Hessian(int MD_iter, int SCF_iter, int SCF_ite
 
   } /* else */
 
-  /****************************************************
-                   freeing of arrays 
-  ****************************************************/
+  /* Invocation owner releases numerical scratch. */
 
-  free(coes);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(A[i]);
-  }
-  free(A);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(IA[i]);
-  }
-  free(IA);
 }
 
 
@@ -2132,7 +2112,7 @@ static void MixH_PackResidualSlot(MixingHState *state, int m, double *dst, const
 
 /* pack the metric weights (metric[Mc_AN][i], identical for every spin
    plane / component) into the flat layout */
-static void MixH_PackMetricW(MixingHState *state, double **metric, double *dst)
+static void MixH_PackMetricW(MixingHState *state, OpenMXSolverRealFieldView metric, double *dst)
 {
   int Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,spin;
   int ncomp = (SpinP_switch==3) ? 7 : 1;
@@ -2149,7 +2129,7 @@ static void MixH_PackMetricW(MixingHState *state, double **metric, double *dst)
         Gh_AN = natn[Gc_AN][h_AN];
         Hwan = WhatSpecies[Gh_AN];
         for (i=0; i<Spe_Total_NO[Cwan]; i++){
-          double w = metric[Mc_AN][i];
+          double w = metric.blocks[Mc_AN].values[i];
           for (j=0; j<Spe_Total_NO[Hwan]; j++){
             int c;
             for (c=0; c<ncomp; c++) dst[k+c] = w;
@@ -2501,20 +2481,22 @@ static void MixH_Upload(MixingHState *state, int slot)
     MixH_AbortWithMessage("Mixing_H: failed to update a distributed residual-history shard.");
 }
 
-static void MixH_GramDevice(MixingHState *state, int dim,int npair,const int *pm,const int *pn,const int *pslot,double *tri_out)
+static void MixH_GramDevice(OpenMXSolverInvocation *scratch, MixingHState *state, int dim,int npair,const int *pm,const int *pn,const int *pslot,double *tri_out)
 {
   if (state->host_ring) {
-    int *pairs=malloc((size_t)2*npair*sizeof(int));
+    int *pairs=OpenMX_Solver_Int(scratch,"mixh-gram-pairs",(size_t)2*npair);
     if (!pairs) MixH_AbortWithMessage("Mixing_H: cannot allocate Gram pair indices.");
     for (int p=0;p<npair;p++) {pairs[p]=pslot[pm[p]];pairs[npair+p]=pslot[pn[p]];}
     OpenMXGpuVector job={0};job.n=job.ld=state->gpu.L;
     job.columns=state->gpu.nslot;job.pairs=npair;job.data=state->host_ring;
     job.weight=state->host_weight;job.left=pairs;job.right=pairs+npair;job.output=tri_out;
     openmx_gpu_vector_execute(mpi_comm_level1,&job,1,"mixing-Gram");
-    free(pairs);return;
+    return;
   }
   MixH_Work w={0};w.state=state;w.mode=MIXH_GRAM;w.dim=dim;w.npair=npair;w.pm=pm;w.pn=pn;w.pslot=pslot;
-  w.tri=(double*)calloc((size_t)(npair?npair:1)*(size_t)state->workers.count,sizeof(double));
+  const size_t count=(size_t)(npair?npair:1)*(size_t)state->workers.count;
+  w.tri=OpenMX_Solver_OverwriteReal(scratch,"mixh-gram-workers",count);
+  memset(w.tri,0,count*sizeof(double));
   if (!w.tri) MixH_AbortWithMessage("Mixing_H: cannot allocate partial Gram matrices.");
   if (!openmx_gpu_workers_run(&state->workers,MixH_Worker,&w,"mixing-Gram"))
     MixH_AbortWithMessage("Mixing_H: a distributed Gram kernel failed.");
@@ -2522,19 +2504,20 @@ static void MixH_GramDevice(MixingHState *state, int dim,int npair,const int *pm
     tri_out[p]=0.0;
     for (int worker=0;worker<state->workers.count;worker++) tri_out[p]+=w.tri[(size_t)worker*npair+p];
   }
-  free(w.tri);
+
 }
 
-static void MixH_OptResidualDevice(MixingHState *state, int dim,const int *pslot,const double *cshift)
+static void MixH_OptResidualDevice(OpenMXSolverInvocation *scratch, MixingHState *state, int dim,const int *pslot,const double *cshift)
 {
   if (state->host_ring) {
-    double *coeff=calloc((size_t)state->gpu.nslot,sizeof(double));
+    double *coeff=OpenMX_Solver_OverwriteReal(scratch,"mixh-residual-coeff",(size_t)state->gpu.nslot);
+    memset(coeff,0,(size_t)state->gpu.nslot*sizeof(double));
     if (!coeff) MixH_AbortWithMessage("Mixing_H: cannot allocate residual coefficients.");
     for (int i=0;i<dim;i++) coeff[pslot[i]]=cshift[i];
     OpenMXGpuVector job={0};job.n=job.ld=state->gpu.L;job.mode=1;
     job.columns=state->gpu.nslot;job.data=state->host_ring;job.coeff=coeff;job.output=state->gpu.h_r;
     openmx_gpu_vector_execute(mpi_comm_level1,&job,1,"mixing-optimum-residual");
-    free(coeff);return;
+    return;
   }
   MixH_Work w={0};w.state=state;w.mode=MIXH_RESIDUAL;w.dim=dim;w.pslot=pslot;w.coeff=cshift;
   if (!openmx_gpu_workers_run(&state->workers,MixH_Worker,&w,"mixing-optimum-residual"))
@@ -2711,7 +2694,7 @@ static void MixH_IncBuild(MixingHState *state, int nslot)
 
 /* compute the block Gram row of logical slot mlog against logical slots
    0..nmax and store it (symmetrically) under physical indexing */
-static void MixH_IncComputeRow(MixingHState *state, int mlog, int nmax, const OpenMXElectronicViews *electronic)
+static void MixH_IncComputeRow(OpenMXSolverInvocation *scratch, MixingHState *state, int mlog, int nmax, const OpenMXElectronicViews *electronic)
 {
   double ******ResidualH1=electronic->ResidualH1;
   double ******ResidualH2=electronic->ResidualH2;
@@ -2723,7 +2706,7 @@ static void MixH_IncComputeRow(MixingHState *state, int mlog, int nmax, const Op
 
 #pragma omp parallel private(Mc_AN,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,n,spin)
   {
-    double *acc = (double*)malloc(sizeof(double)*(size_t)(nmax+1));
+    double *acc = OpenMX_Solver_OverwriteReal(scratch,"mixh-inc-acc",(size_t)(nmax+1));
 
 #pragma omp for schedule(static)
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -2802,7 +2785,7 @@ static void MixH_IncComputeRow(MixingHState *state, int mlog, int nmax, const Op
       }
     }
 
-    free(acc);
+
   }
 }
 
@@ -2893,7 +2876,7 @@ static void MixH_IncMixSweep(int dim, double alpha, const double *coes, const Op
   }
 }
 
-static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0, int dim, const OpenMXElectronicViews *electronic)
+static void Pulay_Mixing_H_Inc(OpenMXSolverInvocation *scratch, MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0, int dim, const OpenMXElectronicViews *electronic)
 {
   double ******HisH1=electronic->HisH1;
   double ******HisH2=electronic->HisH2;
@@ -2903,24 +2886,20 @@ static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, i
   int Mc_AN,Gc_AN,Cwan,i,m,n,flag_nan;
   int seed;
   double alpha,d;
-  double **A,**IA,*coes,**metric;
+  OpenMXSolverRealTensor A,IA;
+  double *coes;
+  OpenMXSolverRealFieldView metric;
   char nanchar[300];
 
   /* small host work arrays (same shapes as the legacy path) */
 
-  coes = (double*)malloc(sizeof(double)*List_YOUSO[39]);
+  coes = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_Inc-coes",List_YOUSO[39]);
 
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  A = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_Inc-A",List_YOUSO[39],List_YOUSO[39]);
 
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  IA = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_Inc-IA",List_YOUSO[39],List_YOUSO[39]);
 
-  metric = (double**)malloc(sizeof(double*)*(Matomnum+1));
+  metric = OpenMX_Solver_Field(scratch,1,(size_t)Matomnum+1);
   for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
     int tno;
     if (Mc_AN==0){
@@ -2931,7 +2910,7 @@ static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, i
       Cwan = WhatSpecies[Gc_AN];
       tno = Spe_Total_NO[Cwan];
     }
-    metric[Mc_AN] = (double*)malloc(sizeof(double)*tno);
+    OpenMX_Solver_FieldResize(metric,0,Mc_AN,tno);
   }
 
   /* metric used for the norm calculations (identical to the legacy path) */
@@ -2941,8 +2920,8 @@ static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, i
     Cwan = WhatSpecies[Gc_AN];
     for (i=0; i<Spe_Total_NO[Cwan]; i++){
       d = fabs(HisH1[0][0][Mc_AN][0][i][i]-ChemP);
-      metric[Mc_AN][i] = 5.0/(d*d+5.0);
-      state->inc.wblk[state->inc.blk_base[Mc_AN]+i] = metric[Mc_AN][i];
+      metric.blocks[Mc_AN].values[i] = 5.0/(d*d+5.0);
+      state->inc.wblk[state->inc.blk_base[Mc_AN]+i] = metric.blocks[Mc_AN].values[i];
     }
   }
 
@@ -2957,14 +2936,14 @@ static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, i
 
   if (seed){
     for (m=0; m<state->inc.nslot; m++) state->inc.perm[m] = m;
-    for (m=0; m<dim; m++) MixH_IncComputeRow(state, m, m, electronic);
+    for (m=0; m<dim; m++) MixH_IncComputeRow(scratch, state, m, m, electronic);
     state->inc.valid = 1;
   }
   else{
     int last = state->inc.perm[state->inc.nslot-1];
     for (m=state->inc.nslot-1; 0<m; m--) state->inc.perm[m] = state->inc.perm[m-1];
     state->inc.perm[0] = last;
-    MixH_IncComputeRow(state, 0, dim-1, electronic);
+    MixH_IncComputeRow(scratch, state, 0, dim-1, electronic);
   }
   state->inc.last_scf_iter = SCF_iter;
 
@@ -2972,10 +2951,10 @@ static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, i
 
   {
     int npair = dim*(dim+1)/2;
-    int *pmv = (int*)malloc(sizeof(int)*(size_t)npair);
-    int *pnv = (int*)malloc(sizeof(int)*(size_t)npair);
-    double *tri_my = (double*)malloc(sizeof(double)*(size_t)npair);
-    double *tri = (double*)malloc(sizeof(double)*(size_t)npair);
+    int *pmv = OpenMX_Solver_Int(scratch,"mixh-Pulay_Mixing_H_Inc-pmv",(size_t)npair);
+    int *pnv = OpenMX_Solver_Int(scratch,"mixh-Pulay_Mixing_H_Inc-pnv",(size_t)npair);
+    double *tri_my = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_Inc-tri_my",(size_t)npair);
+    double *tri = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_Inc-tri",(size_t)npair);
     int p = 0;
 
     if (pmv==NULL || pnv==NULL || tri_my==NULL || tri==NULL){
@@ -3005,28 +2984,27 @@ static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, i
     MPI_Allreduce(tri_my, tri, npair, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     for (p=0; p<npair; p++){
-      A[pmv[p]][pnv[p]] = tri[p];
-      A[pnv[p]][pmv[p]] = tri[p];
+      openmx_solver_real_matrix_row(&A,pmv[p])[pnv[p]] = tri[p];
+      openmx_solver_real_matrix_row(&A,pnv[p])[pmv[p]] = tri[p];
     }
 
-    free(tri);
-    free(tri_my);
-    free(pnv);
-    free(pmv);
+
+
+
   }
 
-  NormRD[0] = A[0][0]/(double)atomnum;
+  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
-    A[m-1][dim] = -1.0;
-    A[dim][m-1] = -1.0;
+    openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
+    openmx_solver_real_matrix_row(&A,dim)[m-1] = -1.0;
   }
-  A[dim][dim] = 0.0;
+  openmx_solver_real_matrix_row(&A,dim)[dim] = 0.0;
 
-  Inverse(dim,A,IA);
+  Inverse(scratch, dim,&A,&IA);
 
   for (m=1; m<=dim; m++){
-    coes[m] = -IA[m-1][dim];
+    coes[m] = -openmx_solver_real_matrix_row(&IA,m-1)[dim];
   }
 
   /* check "nan", "NaN", "inf" or "Inf" (identical to the legacy path) */
@@ -3069,30 +3047,15 @@ static void Pulay_Mixing_H_Inc(MixingHState *state, int MD_iter, int SCF_iter, i
   if (SpinP_switch==3) MixH_RotatePtr6(HisH2, dim);
   MixH_SaveHistory0(electronic);
 
-  /* freeing of the host work arrays */
+  /* Invocation owner releases the host work arrays. */
 
-  free(coes);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(A[i]);
-  }
-  free(A);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(IA[i]);
-  }
-  free(IA);
-
-  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-    free(metric[Mc_AN]);
-  }
-  free(metric);
+  /* Invocation owner releases metric rows. */
 
   (void)MD_iter;
   (void)SCF_iter0;
 }
 
-static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0, int dim, const OpenMXElectronicViews *electronic)
+static void Pulay_Mixing_H_GPU(OpenMXSolverInvocation *scratch, MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0, int dim, const OpenMXElectronicViews *electronic)
 {
   double ******HisH1=electronic->HisH1;
   double ******HisH2=electronic->HisH2;
@@ -3102,24 +3065,20 @@ static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, i
   int Mc_AN,Gc_AN,Cwan,i,m,n,flag_nan;
   int seed;
   double alpha,d;
-  double **A,**IA,*coes,**metric;
+  OpenMXSolverRealTensor A,IA;
+  double *coes;
+  OpenMXSolverRealFieldView metric;
   char nanchar[300];
 
   /* allocation of the small host work arrays (same shapes as the CPU path) */
 
-  coes = (double*)malloc(sizeof(double)*List_YOUSO[39]);
+  coes = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_GPU-coes",List_YOUSO[39]);
 
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  A = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_GPU-A",List_YOUSO[39],List_YOUSO[39]);
 
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  IA = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H_GPU-IA",List_YOUSO[39],List_YOUSO[39]);
 
-  metric = (double**)malloc(sizeof(double*)*(Matomnum+1));
+  metric = OpenMX_Solver_Field(scratch,1,(size_t)Matomnum+1);
   for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
     int tno;
     if (Mc_AN==0){
@@ -3130,7 +3089,7 @@ static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, i
       Cwan = WhatSpecies[Gc_AN];
       tno = Spe_Total_NO[Cwan];
     }
-    metric[Mc_AN] = (double*)malloc(sizeof(double)*tno);
+    OpenMX_Solver_FieldResize(metric,0,Mc_AN,tno);
   }
 
   /* metric used for the norm calculations (identical to the CPU path) */
@@ -3140,7 +3099,7 @@ static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, i
     Cwan = WhatSpecies[Gc_AN];
     for (i=0; i<Spe_Total_NO[Cwan]; i++){
       d = fabs(HisH1[0][0][Mc_AN][0][i][i]-ChemP);
-      metric[Mc_AN][i] = 5.0/(d*d+5.0);
+      metric.blocks[Mc_AN].values[i] = 5.0/(d*d+5.0);
     }
   }
 
@@ -3187,10 +3146,10 @@ static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, i
 
   {
     int npair = dim*(dim+1)/2;
-    int *pm = (int*)malloc(sizeof(int)*(size_t)npair);
-    int *pn = (int*)malloc(sizeof(int)*(size_t)npair);
-    double *tri_my = (double*)malloc(sizeof(double)*(size_t)npair);
-    double *tri = (double*)malloc(sizeof(double)*(size_t)npair);
+    int *pm = OpenMX_Solver_Int(scratch,"mixh-Pulay_Mixing_H_GPU-pm",(size_t)npair);
+    int *pn = OpenMX_Solver_Int(scratch,"mixh-Pulay_Mixing_H_GPU-pn",(size_t)npair);
+    double *tri_my = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_GPU-tri_my",(size_t)npair);
+    double *tri = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_GPU-tri",(size_t)npair);
     int p = 0;
 
     if (pm==NULL || pn==NULL || tri_my==NULL || tri==NULL){
@@ -3205,32 +3164,31 @@ static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, i
       }
     }
 
-    MixH_GramDevice(state, dim, npair, pm, pn, state->gpu.perm, tri_my);
+    MixH_GramDevice(scratch, state, dim, npair, pm, pn, state->gpu.perm, tri_my);
     MPI_Allreduce(tri_my, tri, npair, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     for (p=0; p<npair; p++){
-      A[pm[p]][pn[p]] = tri[p];
-      A[pn[p]][pm[p]] = tri[p];
+      openmx_solver_real_matrix_row(&A,pm[p])[pn[p]] = tri[p];
+      openmx_solver_real_matrix_row(&A,pn[p])[pm[p]] = tri[p];
     }
 
-    free(tri);
-    free(tri_my);
-    free(pn);
-    free(pm);
+
+
+
   }
 
-  NormRD[0] = A[0][0]/(double)atomnum;
+  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
-    A[m-1][dim] = -1.0;
-    A[dim][m-1] = -1.0;
+    openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
+    openmx_solver_real_matrix_row(&A,dim)[m-1] = -1.0;
   }
-  A[dim][dim] = 0.0;
+  openmx_solver_real_matrix_row(&A,dim)[dim] = 0.0;
 
-  Inverse(dim,A,IA);
+  Inverse(scratch, dim,&A,&IA);
 
   for (m=1; m<=dim; m++){
-    coes[m] = -IA[m-1][dim];
+    coes[m] = -openmx_solver_real_matrix_row(&IA,m-1)[dim];
   }
 
   /* check "nan", "NaN", "inf" or "Inf" (identical to the CPU path) */
@@ -3257,13 +3215,13 @@ static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, i
   /* optimum residual on the device, then the mixing on the host */
 
   {
-    double *cshift = (double*)malloc(sizeof(double)*(size_t)dim);
+    double *cshift = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H_GPU-cshift",(size_t)dim);
     if (cshift==NULL){
       MixH_AbortWithMessage("Mixing_H.c: failed to allocate the coefficient buffer.");
     }
     for (m=0; m<dim; m++) cshift[m] = coes[m+1];
-    MixH_OptResidualDevice(state, dim, state->gpu.perm, cshift);
-    free(cshift);
+    MixH_OptResidualDevice(scratch, state, dim, state->gpu.perm, cshift);
+
   }
 
   if (1.0e-1<=NormRD[0])
@@ -3285,30 +3243,15 @@ static void Pulay_Mixing_H_GPU(MixingHState *state, int MD_iter, int SCF_iter, i
   if (SpinP_switch==3) MixH_RotatePtr6(HisH2, dim);
   MixH_SaveHistory0(electronic);
 
-  /* freeing of the host work arrays */
+  /* Invocation owner releases the host work arrays. */
 
-  free(coes);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(A[i]);
-  }
-  free(A);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(IA[i]);
-  }
-  free(IA);
-
-  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-    free(metric[Mc_AN]);
-  }
-  free(metric);
+  /* Invocation owner releases metric rows. */
 
   (void)MD_iter;
   (void)SCF_iter0;
 }
 
-void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
+void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
   double ******HisH1=electronic->HisH1;
@@ -3322,7 +3265,9 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
   double my_sum,tmp1,tmp2,alpha,max_diff,d;
   double r,r10,r11,r12,r13,r20,r21,r22;
   double h,h10,h11,h12,h13,h20,h21,h22;
-  double **A,**IA,*coes,**metric;
+  OpenMXSolverRealTensor A,IA;
+  double *coes;
+  OpenMXSolverRealFieldView metric;
   char nanchar[300];
 
   /****************************************************
@@ -3340,11 +3285,11 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
     MPI_Comm_rank(mpi_comm_level1,&myid_mixh);
     tier = MixH_GpuPreflight(state, MD_iter, myid_mixh);
     if (tier == 1){
-      Pulay_Mixing_H_GPU(state, MD_iter, SCF_iter, SCF_iter0, dim, electronic);
+      Pulay_Mixing_H_GPU(scratch, state, MD_iter, SCF_iter, SCF_iter0, dim, electronic);
       return;
     }
     if (tier == 2){
-      Pulay_Mixing_H_Inc(state, MD_iter, SCF_iter, SCF_iter0, dim, electronic);
+      Pulay_Mixing_H_Inc(scratch, state, MD_iter, SCF_iter, SCF_iter0, dim, electronic);
       return;
     }
   }
@@ -3353,19 +3298,13 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
                 allocation of arrays 
   ****************************************************/
 
-  coes = (double*)malloc(sizeof(double)*List_YOUSO[39]);
+  coes = OpenMX_Solver_OverwriteReal(scratch,"mixh-Pulay_Mixing_H-coes",List_YOUSO[39]);
 
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  A = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H-A",List_YOUSO[39],List_YOUSO[39]);
 
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  IA = OpenMX_Solver_OverwriteView(scratch,"mixh-Pulay_Mixing_H-IA",List_YOUSO[39],List_YOUSO[39]);
 
-  metric = (double**)malloc(sizeof(double*)*(Matomnum+1));
+  metric = OpenMX_Solver_Field(scratch,1,(size_t)Matomnum+1);
   for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
     if (Mc_AN==0){
       tno = 1; 
@@ -3375,7 +3314,7 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
       Cwan = WhatSpecies[Gc_AN];
       tno = Spe_Total_NO[Cwan];
     }
-    metric[Mc_AN] = (double*)malloc(sizeof(double)*tno);
+    OpenMX_Solver_FieldResize(metric,0,Mc_AN,tno);
   }  
 
   /****************************************************
@@ -3387,7 +3326,7 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
     Cwan = WhatSpecies[Gc_AN];
     for (i=0; i<Spe_Total_NO[Cwan]; i++){
       d = fabs(HisH1[0][0][Mc_AN][0][i][i]-ChemP);
-      metric[Mc_AN][i] = 5.0/(d*d+5.0);       
+      metric.blocks[Mc_AN].values[i] = 5.0/(d*d+5.0);
     }
   }
 
@@ -3513,31 +3452,31 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
 
 		tmp1 = ResidualH1[m][0][Mc_AN][h_AN][i][j];
 		tmp2 = ResidualH1[n][0][Mc_AN][h_AN][i][j];
-                my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 
 		tmp1 = ResidualH1[m][1][Mc_AN][h_AN][i][j];
 		tmp2 = ResidualH1[n][1][Mc_AN][h_AN][i][j];
-                my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 
 		tmp1 = ResidualH1[m][2][Mc_AN][h_AN][i][j];
 		tmp2 = ResidualH1[n][2][Mc_AN][h_AN][i][j];
-                my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 
 		tmp1 = ResidualH1[m][3][Mc_AN][h_AN][i][j];
 		tmp2 = ResidualH1[n][3][Mc_AN][h_AN][i][j];
-                my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 
 		tmp1 = ResidualH2[m][0][Mc_AN][h_AN][i][j];
 		tmp2 = ResidualH2[n][0][Mc_AN][h_AN][i][j];
-                my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 
 		tmp1 = ResidualH2[m][1][Mc_AN][h_AN][i][j];
 		tmp2 = ResidualH2[n][1][Mc_AN][h_AN][i][j];
-                my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 
 		tmp1 = ResidualH2[m][2][Mc_AN][h_AN][i][j];
 		tmp2 = ResidualH2[n][2][Mc_AN][h_AN][i][j];
-                my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 	      }
 	    }
 	  }
@@ -3558,7 +3497,7 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
 		for (j=0; j<Spe_Total_NO[Hwan]; j++){
 		  tmp1 = ResidualH1[m][spin][Mc_AN][h_AN][i][j];
 		  tmp2 = ResidualH1[n][spin][Mc_AN][h_AN][i][j];
-                  my_sum += metric[Mc_AN][i]*tmp1*tmp2; 
+                  my_sum += metric.blocks[Mc_AN].values[i]*tmp1*tmp2;
 		}
 	      }
 	    }
@@ -3567,24 +3506,24 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
 
       } /* else */
 
-      MPI_Allreduce(&my_sum, &A[m][n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-      A[n][m] = A[m][n];
+      MPI_Allreduce(&my_sum, &openmx_solver_real_matrix_row(&A,m)[n], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      openmx_solver_real_matrix_row(&A,n)[m] = openmx_solver_real_matrix_row(&A,m)[n];
 
     } /* n */
   } /* m */
 
-  NormRD[0] = A[0][0]/(double)atomnum;
+  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
-    A[m-1][dim] = -1.0;
-    A[dim][m-1] = -1.0;
+    openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
+    openmx_solver_real_matrix_row(&A,dim)[m-1] = -1.0;
   }
-  A[dim][dim] = 0.0;
+  openmx_solver_real_matrix_row(&A,dim)[dim] = 0.0;
 
-  Inverse(dim,A,IA);
+  Inverse(scratch, dim,&A,&IA);
 
   for (m=1; m<=dim; m++){
-    coes[m] = -IA[m-1][dim];
+    coes[m] = -openmx_solver_real_matrix_row(&IA,m-1)[dim];
   }
 
   /****************************************************
@@ -3883,34 +3822,9 @@ void Pulay_Mixing_H(MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter
 
   } /* else */
 
-  /****************************************************
-                   freeing of arrays 
-  ****************************************************/
+  /* Invocation owner releases numerical scratch. */
 
-  free(coes);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(A[i]);
-  }
-  free(A);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(IA[i]);
-  }
-  free(IA);
-
-  for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-    if (Mc_AN==0){
-      tno = 1; 
-    }
-    else{
-      Gc_AN = M2G[Mc_AN];    
-      Cwan = WhatSpecies[Gc_AN];
-      tno = Spe_Total_NO[Cwan];
-    }
-    free(metric[Mc_AN]);
-  }  
-  free(metric);
+  /* Invocation owner releases metric rows. */
 
 }
 
@@ -4403,7 +4317,7 @@ void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElec
 
 
 
-void Inverse(int n, double **a, double **ia)
+void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia)
 {
   int method_flag=2;
 
@@ -4419,7 +4333,7 @@ void Inverse(int n, double **a, double **ia)
   int i,j,k;
   double w;
   double *x,*y;
-  double **da;
+  OpenMXSolverRealTensor da;
 
   /***************************************************
     allocation of arrays: 
@@ -4429,18 +4343,17 @@ void Inverse(int n, double **a, double **ia)
      da[List_YOUSO[39]][List_YOUSO[39]]
   ***************************************************/
 
-  x = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  y = (double*)malloc(sizeof(double)*List_YOUSO[39]);
+  x = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse-x",List_YOUSO[39]);
+  y = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse-y",List_YOUSO[39]);
   for (i=0; i<List_YOUSO[39]; i++){
     x[i] = 0.0;
     y[i] = 0.0;
   }
 
-  da = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
+  da = OpenMX_Solver_OverwriteView(scratch,"mixh-Inverse-da",List_YOUSO[39],List_YOUSO[39]);
   for (i=0; i<List_YOUSO[39]; i++){
-    da[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
     for (j=0; j<List_YOUSO[39]; j++){
-      da[i][j] = 0.0;
+      openmx_solver_real_matrix_row(&da,i)[j] = 0.0;
     }
   }
 
@@ -4449,14 +4362,14 @@ void Inverse(int n, double **a, double **ia)
   if (n==-1){
     for (i=0; i<List_YOUSO[39]; i++){
       for (j=0; j<List_YOUSO[39]; j++){
-	a[i][j] = 0.0;
+	openmx_solver_real_matrix_row(a,i)[j] = 0.0;
       }
     }
   }
   else{
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	da[i][j] = a[i][j];
+	openmx_solver_real_matrix_row(&da,i)[j] = openmx_solver_real_matrix_row(a,i)[j];
       }
     }
 
@@ -4465,11 +4378,11 @@ void Inverse(int n, double **a, double **ia)
     ****************************************************/
 
     for (k=0; k<=n-1; k++){
-      w = 1.0/a[k][k];
+      w = 1.0/openmx_solver_real_matrix_row(a,k)[k];
       for (i=k+1; i<=n; i++){
-	a[i][k] = w*a[i][k];
+	openmx_solver_real_matrix_row(a,i)[k] = w*openmx_solver_real_matrix_row(a,i)[k];
 	for (j=k+1; j<=n; j++){
-	  a[i][j] = a[i][j] - a[i][k]*a[k][j];
+	  openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(a,i)[j] - openmx_solver_real_matrix_row(a,i)[k]*openmx_solver_real_matrix_row(a,k)[j];
 	}
       }
     }
@@ -4486,7 +4399,7 @@ void Inverse(int n, double **a, double **ia)
 	else
 	  y[i] = 0.0;
 	for (j=0; j<=i-1; j++){
-	  y[i] = y[i] - a[i][j]*y[j];
+	  y[i] = y[i] - openmx_solver_real_matrix_row(a,i)[j]*y[j];
 	}
       }
 
@@ -4497,16 +4410,16 @@ void Inverse(int n, double **a, double **ia)
       for (i=n; 0<=i; i--){
 	x[i] = y[i];
 	for (j=n; (i+1)<=j; j--){
-	  x[i] = x[i] - a[i][j]*x[j];
+	  x[i] = x[i] - openmx_solver_real_matrix_row(a,i)[j]*x[j];
 	}
-	x[i] = x[i]/a[i][i];
-	ia[i][k] = x[i];
+	x[i] = x[i]/openmx_solver_real_matrix_row(a,i)[i];
+	openmx_solver_real_matrix_row(ia,i)[k] = x[i];
       }
     }
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	a[i][j] = da[i][j];
+	openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(&da,i)[j];
       }
     }
   }
@@ -4519,13 +4432,6 @@ void Inverse(int n, double **a, double **ia)
      da[List_YOUSO[39]][List_YOUSO[39]]
   ***************************************************/
 
-  free(x);
-  free(y);
-
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(da[i]);
-  }
-  free(da);
 
   }
   
@@ -4535,13 +4441,13 @@ void Inverse(int n, double **a, double **ia)
     int *IPIV,LWORK;
     double *A,*WORK;
 
-    A = (double*)malloc(sizeof(double)*(n+2)*(n+2));
-    WORK = (double*)malloc(sizeof(double)*(n+2));
-    IPIV = (int*)malloc(sizeof(int)*(n+2));
+    A = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse-lu-A",(n+2)*(n+2));
+    WORK = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse-lu-WORK",(n+2));
+    IPIV = OpenMX_Solver_Int(scratch,"mixh-Inverse-lu-IPIV",(n+2));
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-        A[i*(n+1)+j] = a[i][j];
+        A[i*(n+1)+j] = openmx_solver_real_matrix_row(a,i)[j];
       }
     }
 
@@ -4555,13 +4461,12 @@ void Inverse(int n, double **a, double **ia)
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-        ia[i][j] = A[i*(n+1)+j];
+        openmx_solver_real_matrix_row(ia,i)[j] = A[i*(n+1)+j];
       }
     }
 
-    free(A);
-    free(WORK);
-    free(IPIV);
+
+
   }
 
   else if (method_flag==2){
@@ -4572,13 +4477,13 @@ void Inverse(int n, double **a, double **ia)
 
     N = n + 1;
 
-    A = (double*)malloc(sizeof(double)*(N+2)*(N+2));
-    B = (double*)malloc(sizeof(double)*(N+2)*(N+2));
-    ko = (double*)malloc(sizeof(double)*(N+2));
+    A = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse-eigen-A",(N+2)*(N+2));
+    B = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse-eigen-B",(N+2)*(N+2));
+    ko = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse-eigen-ko",(N+2));
 
     for (i=0; i<N; i++){
       for (j=0; j<N; j++){
-        A[j*N+i] = a[i][j];
+        A[j*N+i] = openmx_solver_real_matrix_row(a,i)[j];
       }
     }
 
@@ -4596,7 +4501,7 @@ void Inverse(int n, double **a, double **ia)
 
     for (i=0; i<N; i++){
       for (j=0; j<N; j++){
-        ia[i][j] = 0.0;
+        openmx_solver_real_matrix_row(ia,i)[j] = 0.0;
       }
     }
 
@@ -4606,18 +4511,17 @@ void Inverse(int n, double **a, double **ia)
 	for (k=0; k<N; k++){
 	  sum += A[k*N+i]*B[k*N+j];
 	}
-        ia[i][j] = sum;
+        openmx_solver_real_matrix_row(ia,i)[j] = sum;
       }
     }
 
-    free(A);
-    free(B);
-    free(ko);
+
+
   }
 }
 
 
-void Inverse0(int n, double **a, double **ia)
+void Inverse0(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia)
 {
   /****************************************************
                   LU decomposition
@@ -4629,7 +4533,7 @@ void Inverse0(int n, double **a, double **ia)
   int i,j,k;
   double w;
   double *x,*y;
-  double **da;
+  OpenMXSolverRealTensor da;
 
   /***************************************************
     allocation of arrays: 
@@ -4639,27 +4543,25 @@ void Inverse0(int n, double **a, double **ia)
     da[List_YOUSO[39]][List_YOUSO[39]]
   ***************************************************/
 
-  x = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  y = (double*)malloc(sizeof(double)*List_YOUSO[39]);
+  x = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse0-x",List_YOUSO[39]);
+  y = OpenMX_Solver_OverwriteReal(scratch,"mixh-Inverse0-y",List_YOUSO[39]);
 
-  da = (double**)malloc(sizeof(double*)*List_YOUSO[39]);
-  for (i=0; i<List_YOUSO[39]; i++){
-    da[i] = (double*)malloc(sizeof(double)*List_YOUSO[39]);
-  }
+  da = OpenMX_Solver_OverwriteView(scratch,"mixh-Inverse0-da",List_YOUSO[39],List_YOUSO[39]);
+
 
   /* start calc. */
 
   if (n==-1){
     for (i=0; i<List_YOUSO[39]; i++){
       for (j=0; j<List_YOUSO[39]; j++){
-	a[i][j] = 0.0;
+	openmx_solver_real_matrix_row(a,i)[j] = 0.0;
       }
     }
   }
   else{
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	da[i][j] = a[i][j];
+	openmx_solver_real_matrix_row(&da,i)[j] = openmx_solver_real_matrix_row(a,i)[j];
       }
     }
 
@@ -4668,11 +4570,11 @@ void Inverse0(int n, double **a, double **ia)
     ****************************************************/
 
     for (k=0; k<=n-1; k++){
-      w = 1.0/a[k][k];
+      w = 1.0/openmx_solver_real_matrix_row(a,k)[k];
       for (i=k+1; i<=n; i++){
-	a[i][k] = w*a[i][k];
+	openmx_solver_real_matrix_row(a,i)[k] = w*openmx_solver_real_matrix_row(a,i)[k];
 	for (j=k+1; j<=n; j++){
-	  a[i][j] = a[i][j] - a[i][k]*a[k][j];
+	  openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(a,i)[j] - openmx_solver_real_matrix_row(a,i)[k]*openmx_solver_real_matrix_row(a,k)[j];
 	}
       }
     }
@@ -4688,7 +4590,7 @@ void Inverse0(int n, double **a, double **ia)
 	else
 	  y[i] = 0.0;
 	for (j=0; j<=i-1; j++){
-	  y[i] = y[i] - a[i][j]*y[j];
+	  y[i] = y[i] - openmx_solver_real_matrix_row(a,i)[j]*y[j];
 	}
       }
 
@@ -4699,16 +4601,16 @@ void Inverse0(int n, double **a, double **ia)
       for (i=n; 0<=i; i--){
 	x[i] = y[i];
 	for (j=n; (i+1)<=j; j--){
-	  x[i] = x[i] - a[i][j]*x[j];
+	  x[i] = x[i] - openmx_solver_real_matrix_row(a,i)[j]*x[j];
 	}
-	x[i] = x[i]/a[i][i];
-	ia[i][k] = x[i];
+	x[i] = x[i]/openmx_solver_real_matrix_row(a,i)[i];
+	openmx_solver_real_matrix_row(ia,i)[k] = x[i];
       }
     }
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	a[i][j] = da[i][j];
+	openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(&da,i)[j];
       }
     }
   }
@@ -4721,13 +4623,7 @@ void Inverse0(int n, double **a, double **ia)
      da[List_YOUSO[39]][List_YOUSO[39]]
   ***************************************************/
 
-  free(x);
-  free(y);
 
-  for (i=0; i<List_YOUSO[39]; i++){
-    free(da[i]);
-  }
-  free(da);
 }
 
 static void MixH_Reset(OpenMXNativeResources *owner, void *metadata)

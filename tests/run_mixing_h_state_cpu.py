@@ -26,7 +26,8 @@ def main():
     names = ['MixH_AbortWithMessage', 'MixH_Align512', 'MixH_ComputeLayout',
              'MixH_GramPart', 'MixH_OptResidualPart', 'MixH_Worker',
              'MixH_Distributed_Free', 'MixH_ShardCost', 'MixH_Distributed_Allocate',
-             'MixH_HostBacked_Allocate', 'MixH_Upload', 'MixH_IncFree',
+             'MixH_HostBacked_Allocate', 'MixH_Upload', 'MixH_GramDevice',
+             'MixH_OptResidualDevice', 'MixH_IncComputeRow', 'Inverse', 'Inverse0', 'MixH_IncFree',
              'MixH_IncBuild', 'Mixing_H_Release_GPU', 'MixH_GpuPreflight',
              'MixH_Reset', 'Mixing_H_Bind_Resources']
     bodies = [function(text, name) for name in names]
@@ -36,6 +37,10 @@ def main():
     generated += pod(text, 'MixH_Work') + '\n' + prototypes + '\n' + '\n'.join(bodies)
     with tempfile.TemporaryDirectory(prefix='openmx-mixing-h-state-') as directory:
         folder = Path(directory)
+        # The SDK-free model executes the production host loops serially.
+        # Real OpenMP mixing is also checked by paired application runs.
+        (folder / 'mpi.h').write_text('#pragma once\ntypedef int MPI_Comm;\n')
+        (folder / 'omp.h').write_text('#pragma once\nstatic int omp_get_thread_num(){return 0;}\nstatic int omp_get_max_threads(){return 1;}\n')
         (folder / 'mixing_h_state.inc').write_text(generated)
         for backend in ['cuda', 'hip']:
             executable = folder / backend

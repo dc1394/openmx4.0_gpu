@@ -1,5 +1,6 @@
 #include "openmx_core_solver_workspace.h"
 #include <openmx/core/tensor.hpp>
+#include <openmx/core/overwrite_tensor.hpp>
 #include <openmx/core/orbital_workspace.hpp>
 #include <openmx/core/core_hole.hpp>
 #include <openmx/core/projector_force.hpp>
@@ -18,6 +19,7 @@
 
 namespace {
 using openmx::core::Tensor;
+using openmx::core::OverwriteTensor;
 void require(bool ok,const char* message) {if(!ok)throw std::invalid_argument(message);}
 size_t product(size_t a,size_t b) {
   if(b && a>std::numeric_limits<size_t>::max()/b)throw std::length_error("solver extent product overflows");
@@ -34,7 +36,7 @@ template<class F> int checked(char* error,size_t capacity,F&& operation) noexcep
   catch(...){if(error && capacity)std::snprintf(error,capacity,"unexpected solver workspace failure");}
   return 0;
 }
-template<class T> struct Buffer {
+template<class T, template<class,std::size_t> class Storage=Tensor> struct Buffer {
   static size_t elements(const std::array<size_t,4>& shape) {
     size_t n=1;for(auto extent:shape)n=product(n,extent);return n;
   }
@@ -43,10 +45,11 @@ template<class T> struct Buffer {
     return {storage.data(),typename Tensor<T,4>::extents_type(shape)};
   }
   std::array<size_t,4> shape;
-  Tensor<T,1> storage;
+  Storage<T,1> storage;
   std::vector<T*> rows;
 };
-template<class T> using Slots=std::map<std::string,std::unique_ptr<Buffer<T>>,std::less<>>;
+template<class T, template<class,std::size_t> class Storage=Tensor>
+using Slots=std::map<std::string,std::unique_ptr<Buffer<T,Storage>>,std::less<>>;
 template<class T> struct AliasRows {
   std::array<size_t,4> shape;
   std::vector<T*> rows;
@@ -61,6 +64,7 @@ template<class T> struct AliasRows {
 template<class T> using Aliases=std::map<std::string,std::unique_ptr<AliasRows<T>>,std::less<>>;
 struct Worker {
   Slots<double> real;
+  Slots<double,OverwriteTensor> real_overwrite;
   Slots<dcomplex> complex_values;
   Slots<int> integers;
   Slots<std::max_align_t> bytes;
@@ -81,7 +85,7 @@ template<class T> T*** alias(Aliases<T>& slots,const char* name,const size_t* di
   }
   found->second->bind(values);return found->second->components.data();
 }
-template<class T> Buffer<T>& buffer(Slots<T>& slots,
+template<class T, template<class,std::size_t> class Storage> Buffer<T,Storage>& buffer(Slots<T,Storage>& slots,
     const char* name,const std::array<size_t,4>& shape,bool rows=false) {
   require(name && *name,"missing solver buffer name");
   auto found=slots.find(name);
@@ -97,7 +101,7 @@ template<class T> Buffer<T>& buffer(Slots<T>& slots,
       return current;
     }
   }
-  auto replacement=std::make_unique<Buffer<T>>(shape);
+  auto replacement=std::make_unique<Buffer<T,Storage>>(shape);
   if(rows) {
     replacement->rows.resize(shape[0]);
     for(size_t i=0;i<shape[0];i++)replacement->rows[i]=shape[1]?replacement->storage.data()+i*shape[1]:replacement->storage.data();
@@ -176,6 +180,12 @@ extern "C" int openmx_core_solver_real(OpenMXSolverInvocation* scope,int worker,
     const size_t* dimensions,OpenMXSolverRealTensor* out,char* error,size_t capacity) {
   return checked(error,capacity,[&]{require(scope && out,"missing solver scope or output");
     const auto shape=shape4(dimensions);auto& b=buffer(scope->worker(worker).real,name,shape);
+    *out={{shape[0],shape[1],shape[2],shape[3]},b.view().data_handle()};});
+}
+extern "C" int openmx_core_solver_real_overwrite(OpenMXSolverInvocation* scope,int worker,const char* name,
+    const size_t* dimensions,OpenMXSolverRealTensor* out,char* error,size_t capacity) {
+  return checked(error,capacity,[&]{require(scope && out,"missing solver scope or output");
+    const auto shape=shape4(dimensions);auto& b=buffer(scope->worker(worker).real_overwrite,name,shape);
     *out={{shape[0],shape[1],shape[2],shape[3]},b.view().data_handle()};});
 }
 extern "C" int openmx_core_solver_resources(OpenMXSolverInvocation* scope,const char* name,

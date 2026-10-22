@@ -1,6 +1,7 @@
 #include "allocation_faults.hpp"
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <new>
 
 // Compile this test-only interposition as ordinary C++, even for CUDA/HIP
@@ -10,11 +11,13 @@ namespace {
 // also supports independent owners being exercised concurrently.
 std::atomic<long> countdown{-1};
 std::atomic<long> live{0};
+std::atomic<int> fill_byte{-1};
 }
 namespace openmx::test {
 void fail_allocation_after(long successes) noexcept { countdown = successes; }
 long remaining_allocations() noexcept { return countdown; }
 long live_allocations() noexcept { return live; }
+void fill_allocations_with(int byte) noexcept { fill_byte=byte; }
 }
 
 namespace {
@@ -26,6 +29,7 @@ void* fault_allocate(std::size_t bytes)
   }
   if (countdown > 0) --countdown;
   if (void* pointer = std::malloc(bytes ? bytes : 1)) {
+    if (const int byte=fill_byte;byte>=0)std::memset(pointer,byte,bytes);
     ++live;
     return pointer;
   }

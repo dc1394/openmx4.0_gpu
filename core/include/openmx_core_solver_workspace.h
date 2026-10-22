@@ -38,6 +38,11 @@ typedef struct { size_t extent[4]; dcomplex *values; } OpenMXSolverComplexTensor
 typedef struct { size_t extent[4]; int *values; } OpenMXSolverIntTensor;
 int openmx_core_solver_real(OpenMXSolverInvocation*, int worker, const char *name,
     const size_t shape[4], OpenMXSolverRealTensor*, char*, size_t);
+/* Distinct named storage for producers which overwrite before reading. No
+   element initialization on allocation/growth; reuse preserves all values.
+   Shape, lifetime and failure guarantees match solver_real. */
+int openmx_core_solver_real_overwrite(OpenMXSolverInvocation*, int worker, const char *name,
+    const size_t shape[4], OpenMXSolverRealTensor*, char*, size_t);
 int openmx_core_solver_complex(OpenMXSolverInvocation*, int worker, const char *name,
     const size_t shape[4], OpenMXSolverComplexTensor*, char*, size_t);
 int openmx_core_solver_int(OpenMXSolverInvocation*, int worker, const char *name,
