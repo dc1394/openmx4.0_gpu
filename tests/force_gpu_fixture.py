@@ -1,10 +1,13 @@
-"""Keep the arithmetic-only Force fixtures independent of the C++ owner.
+"""Shared adapters for native Force extraction fixtures.
 
-They run the production packers/kernels against the original CPU traces.
-run_force_vna_gpu_cpu.py separately tests the real owner and SDK adapters.
+Archive/stream arithmetic fixtures model the SDK and context boundary; recovery
+fixtures link the real C++ packet owner. Separate lifetime tests exercise native
+resource registration and teardown against the actual C++ owner.
 """
 from pathlib import Path
+import os
 import re
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,3 +50,17 @@ def explicit_fixture_contexts(harness):
 def model(hip=False):
     return ("\n#define FORCE_FIXTURE_HIP " + str(int(hip)) + "\n#include \"" +
             str(ROOT / "tests/fixtures/force_gpu_resources_model.h") + "\"\n")
+
+
+def core_library_flags():
+    """Link recovery arithmetic fixtures to the real C++ packet owner."""
+    configured = os.environ.get("OPENMX_CORE_LIBRARY")
+    candidates = [Path(configured)] if configured else [
+        *(parent / "core/libopenmx_core.so" for parent in Path(sys.argv[0]).resolve().parents),
+        *(ROOT / "build" / backend / "core/libopenmx_core.so" for backend in ("cuda", "hip")),
+        ROOT / "build/core/libopenmx_core.so",
+    ]
+    library = next((path.resolve() for path in candidates if path.is_file()), None)
+    if library is None:
+        raise FileNotFoundError("Build openmx_core and set OPENMX_CORE_LIBRARY to its shared library")
+    return [str(library), "-Wl,-rpath," + str(library.parent)]

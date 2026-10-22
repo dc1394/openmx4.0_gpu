@@ -30,6 +30,8 @@ def extract_function(source: str, name: str) -> str:
     """Extract a static definition, ignoring braces in comments and literals."""
     # Arithmetic/planner fixtures exercise the unchanged per-worker kernel.
     # Real CUDA worker admission and transport have separate device tests.
+    for header in ("openmx_force_recovery.h", "openmx_force_archive_lease.h"):
+        source = source.replace('#include "' + header + '"', (ROOT / "source" / header).read_text())
     original_name = name
     if name in ("Force4B_GpuCase1Kernel", "Force4B_GpuCase2Kernel"):
         name += "_Single"

@@ -144,7 +144,7 @@
     X(FORCE4B_GPU, "OPENMX_FORCE4B_GPU", "flag", "global", "1", "Force.c", "") \
     X(FORCEHNL_GPU, "OPENMX_FORCEHNL_GPU", "flag", "global", "1", "openmx_force_hnl_gpu.h", "default 1: Force_HNL GPU batch") \
     X(FORCE_GPU, "OPENMX_FORCE_GPU", "flag", "global", "1", "Force.c", "default 1: Parent gate for all force GPU paths (collective)") \
-    X(FORCE_PROFILE, "OPENMX_FORCE_PROFILE", "flag", "global", "0", "Force.c", "default 0: [Force profile] lines (per-stage max/avg seconds)") \
+    X(FORCE_PROFILE, "OPENMX_FORCE_PROFILE", "flag", "global", "0", "Force.c,openmx_force_archive_lease.h", "default 0: [Force profile] lines (per-stage max/avg seconds)") \
     X(FORCE_RELEASE_SCF_CACHES, "OPENMX_FORCE_RELEASE_SCF_CACHES", "flag", "global", "1", "Force.c", "") \
     X(GEMMUL8_A100_FORWARD_MIN_N, "OPENMX_GEMMUL8_A100_FORWARD_MIN_N", "uint", "global", "6144", "gemmul8_bridge.cu", "") \
     X(GEMMUL8_DISABLE, "OPENMX_GEMMUL8_DISABLE", "flag", "global", "", "gemmul8_bridge.cu", "") \

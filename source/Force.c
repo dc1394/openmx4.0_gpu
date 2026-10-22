@@ -15,6 +15,7 @@
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "openmx_force_workspace.h"
+#include "openmx_core_force_recovery.h"
 #include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_workers.h"
@@ -6381,69 +6382,7 @@ static void Force4B_GpuWorkspaceSizes(size_t* case1, size_t* case2)
     }
 }
 
-/* When all ranks' archives cannot coexist on the GPU, upload each rank's
-   indexed archive once under admission before expanding per-pair recovery
-   packets. Keep the host archive until successful result publication. */
-typedef struct {
-    void *admission;
-    float *first, *second;
-    int kind;
-} Force4BArchiveLease;
-
-static void Force4B_ArchiveEnd(Force4BGpuContext *g, Force4BArchiveLease *lease)
-{
-    if (!lease->admission) return;
-    if (lease->kind == 1) g->flat_dev = g->halo_dev = NULL;
-    if (lease->kind == 2) g->c2_dev = NULL;
-    if (lease->second) cudaFree(lease->second);
-    if (lease->first) cudaFree(lease->first);
-    (void)cudaGetLastError();
-    openmx_mgpu_release_devices(lease->admission);
-    memset(lease, 0, sizeof(*lease));
-}
-
-static int Force4B_ArchiveBegin(Force4BGpuContext *g, int kind, Force4BArchiveLease *lease)
-{
-    int device;
-    size_t free_bytes = 0, total_bytes = 0, workspace1, workspace2;
-    const float *first = kind == 1 ? g->flat_host : g->c2_host;
-    const float *second = kind == 1 ? g->halo_host : NULL;
-    size_t first_bytes = (kind == 1 ? (g->flat_stride ? 4*g->flat_stride : 4)
-                                                 : (g->c2_stride ? 4*g->c2_stride : 4))*sizeof(float);
-    size_t second_bytes = kind == 1 ? (g->halo_count ? g->halo_count : 1)*sizeof(float) : 0;
-
-    memset(lease, 0, sizeof(*lease));
-    if (!first || (kind == 1 && (!second || g->flat_dev || g->halo_dev)) ||
-        (kind == 2 && g->c2_dev) || !gpu_rank_device_usable() ||
-        openmx_gpu_capacity_test_recovery() || cudaGetDevice(&device) != cudaSuccess) return 0;
-    Force4B_GpuWorkspaceSizes(&workspace1, &workspace2);
-    size_t workspace = kind == 1 ? workspace1 : workspace2;
-    size_t reserve = Force_gpu_node_reserve(openmx_gpu_local_size_noncollective());
-    /* Include the complete metadata arena and a margin for runtime buffers. */
-    size_t need = first_bytes + second_bytes + workspace + (size_t)64*1024*1024;
-    lease->admission = openmx_mgpu_admit_devices(&device, 1);
-    if (!lease->admission) return 0;
-    acc_wait_all();
-    if (cudaDeviceSynchronize() != cudaSuccess) goto decline;
-    acc_clear_freelists();
-    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess ||
-        free_bytes <= reserve || need > free_bytes-reserve) goto decline;
-    if (cudaMalloc((void**)&lease->first, first_bytes) != cudaSuccess ||
-        (second_bytes && cudaMalloc((void**)&lease->second, second_bytes) != cudaSuccess)) goto decline;
-    if (cudaMemcpy(lease->first, first, first_bytes, cudaMemcpyHostToDevice) != cudaSuccess ||
-        (second_bytes && cudaMemcpy(lease->second, second, second_bytes, cudaMemcpyHostToDevice) != cudaSuccess)) goto decline;
-    lease->kind = kind;
-    if (kind == 1) { g->flat_dev = lease->first; g->halo_dev = lease->second; }
-    else g->c2_dev = lease->first;
-    if (openmx_env_flag_at(OPENMX_ENV_FORCE_PROFILE, 0)) {
-        fprintf(stderr, "<Force4B> rank %d case=%d archived GPU batch: %.1f MiB uploaded once\n",
-                MYID_MPI_COMM_WORLD, kind, (double)(first_bytes+second_bytes)/1048576.0);
-    }
-    return 1;
-decline:
-    Force4B_ArchiveEnd(g, lease);
-    return 0;
-}
+#include "openmx_force_archive_lease.h"
 
 static int Force4B_ArchiveGpuPreferred(int resident)
 {
@@ -7768,49 +7707,8 @@ static void Force4B_capacity_kernel(size_t first,size_t count,const void *parame
         out[3*row]=fx;out[3*row+1]=fy;out[3*row+2]=fz;
     }
 }
-static void Force4B_capacity_copy(float *dest,const float *host,const float *device,size_t offset,size_t count)
-{
-    if(!count)return;
-    if(host)memcpy(dest,host+offset,count*sizeof(float));
-    else if(cudaMemcpy(dest,device+offset,count*sizeof(float),cudaMemcpyDeviceToHost)!=cudaSuccess)
-        Force4B_gpu_abort("Force4B: cannot read an existing projector archive.");
-}
 static void Force4B_capacity(int kind,Force4BGpuContext *g,int nitems,Force4BGpuItem *items,
-    size_t *a,size_t *b,int *halo,double *cdm,double *output,int done)
-{
-    size_t first=done?(size_t)nitems:0;Force4BCapacityParameters p={kind,g->num_proj,openmx_fp32_enabled()};
-    for(;;){
-        int remaining=first<(size_t)nitems,any;MPI_Allreduce(&remaining,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);if(!any)break;
-        size_t n=0,values=0,cdms=0;
-        while(first+n<(size_t)nitems && n<256){
-            Force4BGpuItem it=items[first+n];size_t add=(size_t)p.num_proj*(kind==1?(size_t)it.k_n*(3*it.ian+it.jan):4*(size_t)(it.ian+it.jan));
-            if(n && values+add>16777216)break;
-            values+=add;cdms+=(size_t)it.ian*it.jan;n++;
-        }
-        size_t *offset=malloc((n+1)*sizeof(size_t)),*coff=malloc((n+1)*sizeof(size_t));
-        float *data=malloc((values?values:1)*sizeof(float));double *weights=malloc((cdms?cdms:1)*sizeof(double));
-        if (!offset || !coff || !data || !weights)
-            Force4B_gpu_abort("Force4B: cannot allocate a bounded host recovery packet.");
-        size_t at=0,ct=0;offset[0]=coff[0]=0;
-        for(size_t i=0;i<n;i++){
-            size_t q=first+i;Force4BGpuItem it=items[q];size_t mn=(size_t)it.ian*it.jan;
-            memcpy(weights+ct,cdm+it.cdm_off,mn*sizeof(double));ct+=mn;
-            if(kind==1)for(int k=it.k_off;k<it.k_off+it.k_n;k++){
-                for(int dir=1;dir<4;dir++){size_t num=(size_t)it.ian*p.num_proj;Force4B_capacity_copy(data+at,g->flat_host,g->flat_dev,dir*g->flat_stride+a[k],num);at+=num;}
-                size_t num=(size_t)it.jan*p.num_proj;Force4B_capacity_copy(data+at,halo[k]?g->halo_host:g->flat_host,halo[k]?g->halo_dev:g->flat_dev,b[k],num);at+=num;
-            }else{
-                for(int dir=0;dir<4;dir++){size_t num=(size_t)it.ian*p.num_proj;Force4B_capacity_copy(data+at,g->c2_host,g->c2_dev,dir*g->c2_stride+a[q],num);at+=num;}
-                for(int dir=0;dir<4;dir++){size_t num=(size_t)it.jan*p.num_proj;Force4B_capacity_copy(data+at,g->c2_host,g->c2_dev,dir*g->c2_stride+b[q],num);at+=num;}
-            }
-            offset[i+1]=at;coff[i+1]=ct;
-        }
-        OpenMXGpuTask task={0};task.count=n;task.inputs=3;task.outputs=1;task.kernel=Force4B_capacity_kernel;task.parameters=&p;task.parameter_bytes=sizeof(p);
-        task.view[0]=(OpenMXGpuTaskView){items+first,0,sizeof(*items)};task.view[1]=(OpenMXGpuTaskView){data,0,0,offset,sizeof(float)};
-        task.view[2]=(OpenMXGpuTaskView){weights,0,0,coff,sizeof(double)};task.view[3]=(OpenMXGpuTaskView){output+3*first,0,3*sizeof(double)};
-        openmx_gpu_task_execute(mpi_comm_level1,&task,1,kind==1?"force-VNA1-capacity":"force-VNA2-capacity");
-        free(offset);free(coff);free(data);free(weights);first+=n;
-    }
-}
+    size_t *a,size_t *b,int *halo,double *cdm,double *output,int done);
 
 static void Force4B_GpuCase1Run(Force4BGpuContext *g, const OpenMXVnaMatrixViews *vna, double***** CDM0)
 {
@@ -7910,11 +7808,11 @@ static void Force4B_GpuCase1Run(Force4BGpuContext *g, const OpenMXVnaMatrixViews
         Force4B_gpu_abort("Force4B GPU: inconsistent case-1 batch.");
     }
 
-    Force4BArchiveLease archive = {0};
+    Force4BArchiveLease *archive = NULL;
     if (nitems) Force4B_ArchiveBegin(g, 1, &archive);
-    if(nitems && g->flat_dev && g->halo_dev){
-        float* flat = g->flat_dev;
-        float* halo = g->halo_dev;
+    float* flat = archive ? archive->first : g->flat_dev;
+    float* halo = archive ? archive->second : g->halo_dev;
+    if(nitems && flat && halo){
         size_t flat_stride = g->flat_stride;
         const int nitems_c = nitems;
         const size_t kslots_c = (kslots == 0 ? 1 : (size_t)kslots);
@@ -7957,7 +7855,7 @@ static void Force4B_GpuCase1Run(Force4BGpuContext *g, const OpenMXVnaMatrixViews
 
 f4b_capacity:
     /* Release admission before the recovery collectives, including on OOM. */
-    Force4B_ArchiveEnd(g, &archive);
+    Force4B_ArchiveEnd(archive);
     Force4B_capacity(1,g,nitems,items,krowA,krowB,krow_halo,cdm_pref,item_f,gpu_done);
 
     for (p = 0; p < nitems; p++) {
@@ -8366,10 +8264,10 @@ static void Force4B_GpuCase2Run(Force4BGpuContext *g, double***** CDM0)
         Force4B_gpu_abort("Force4B GPU: inconsistent case-2 batch.");
     }
 
-    Force4BArchiveLease archive = {0};
+    Force4BArchiveLease *archive = NULL;
     if (nitems) Force4B_ArchiveBegin(g, 2, &archive);
-    if(nitems && g->c2_dev){
-        float* c2 = g->c2_dev;
+    float* c2 = archive ? archive->first : g->c2_dev;
+    if(nitems && c2){
         size_t flat_stride = g->c2_stride;
         const int nitems_c = nitems;
         const size_t cdm_c = (cdm_count == 0 ? 1 : cdm_count);
@@ -8405,7 +8303,7 @@ static void Force4B_GpuCase2Run(Force4BGpuContext *g, double***** CDM0)
     }
 
 f4b_capacity:
-    Force4B_ArchiveEnd(g, &archive);
+    Force4B_ArchiveEnd(archive);
     Force4B_capacity(2,g,nitems,items,pair_h_off,pair_q_off,NULL,cdm_scale,item_f,gpu_done);
 
     for (p = 0; p < nitems; p++) {
@@ -8441,7 +8339,7 @@ f4b_capacity:
 
 #include "openmx_force_hnl_gpu.h"
 
-typedef struct {int kind,ian,jan,kn,h0,nlp;} ForceHNLCapacityItem;
+typedef OpenMXForceHnlRecoveryItem ForceHNLCapacityItem;
 static void Force_HNL_capacity_kernel(size_t first,size_t count,const void *parameters,void *const v[],int gpu)
 {
     const ForceHNLCapacityItem *items=v[0];const size_t *offset=v[1],*nlp_offset=v[2];
@@ -8481,58 +8379,7 @@ static void Force_HNL_capacity_kernel(size_t first,size_t count,const void *para
     }
 }
 
-static void Force_HNL_capacity(int kind,ForceHNLGpuContext *g,int nitems,const Force4BGpuItem *items,
-    const size_t *a,const size_t *b,const int *halo,const int *ene,const int *nlp,const int *h0,
-    const double *cdm,double *output,int done)
-{
-    size_t first=done?(size_t)nitems:0;
-    for(;;){
-        int remaining=first<(size_t)nitems,any;
-        MPI_Allreduce(&remaining,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);if(!any)break;
-        size_t n=0,values=0,nk=0;
-        while(first+n<(size_t)nitems && n<256){
-            const Force4BGpuItem *it=items+first+n;size_t add=(size_t)it->ian*it->jan;
-            if(kind==1)for(int k=it->k_off;k<it->k_off+it->k_n;k++)add+=(size_t)nlp[k]*(1+3*it->ian+it->jan);
-            else add+=(size_t)nlp[first+n]*(1+4*it->ian+4*it->jan);
-            if(n && values+add>8388608)break;
-            values+=add;nk+=kind==1?it->k_n:0;n++;
-        }
-        ForceHNLCapacityItem *prs=malloc((n?n:1)*sizeof(*prs));
-        size_t *offset=malloc((n+1)*sizeof(size_t)),*nlp_offset=malloc((n+1)*sizeof(size_t));
-        double *data=malloc((values?values:1)*sizeof(double));int *length=malloc((nk?nk:1)*sizeof(int));
-        if (!prs || !offset || !nlp_offset || !data || !length)
-            Force4B_gpu_abort("Force_HNL: cannot allocate a bounded host recovery packet.");
-        size_t at=0,ki=0;offset[0]=nlp_offset[0]=0;
-        for(size_t i=0;i<n;i++){
-            size_t p=first+i;const Force4BGpuItem *it=items+p;
-            prs[i]=(ForceHNLCapacityItem){kind,it->ian,it->jan,it->k_n,kind==2?h0[p]:0,kind==2?nlp[p]:0};
-            size_t mn=(size_t)it->ian*it->jan;memcpy(data+at,cdm+it->cdm_off,mn*sizeof(double));at+=mn;
-            if(kind==1){
-                for(int k=it->k_off;k<it->k_off+it->k_n;k++){
-                    int np=nlp[k];length[ki++]=np;memcpy(data+at,g->ene+ene[k],(size_t)np*sizeof(double));at+=np;
-                    for(int dir=1;dir<=3;dir++){size_t num=(size_t)it->ian*np;memcpy(data+at,g->flat+dir*g->flat_stride+a[k],num*sizeof(double));at+=num;}
-                    size_t num=(size_t)it->jan*np;memcpy(data+at,(halo[k]?g->halo:g->flat)+b[k],num*sizeof(double));at+=num;
-                }
-            }else{
-                int np=nlp[p];memcpy(data+at,g->ene+ene[p],(size_t)np*sizeof(double));at+=np;
-                for(int dir=0;dir<4;dir++){
-                    size_t num=(size_t)it->ian*np;
-                    if(h0[p]==1){if(dir==0)memcpy(data+at,g->flat+a[p],num*sizeof(double));else memset(data+at,0,num*sizeof(double));}
-                    else memcpy(data+at,g->c2+dir*g->c2_stride+a[p],num*sizeof(double));at+=num;
-                }
-                for(int dir=0;dir<4;dir++){size_t num=(size_t)it->jan*np;memcpy(data+at,g->c2+dir*g->c2_stride+b[p],num*sizeof(double));at+=num;}
-            }
-            offset[i+1]=at;nlp_offset[i+1]=ki;
-        }
-        OpenMXGpuTask task={0};task.count=n;task.inputs=3;task.outputs=1;task.kernel=Force_HNL_capacity_kernel;
-        task.view[0]=(OpenMXGpuTaskView){prs,0,sizeof(*prs)};
-        task.view[1]=(OpenMXGpuTaskView){data,0,0,offset,sizeof(double)};
-        task.view[2]=(OpenMXGpuTaskView){length,0,0,nlp_offset,sizeof(int)};
-        task.view[3]=(OpenMXGpuTaskView){output+3*first,0,3*sizeof(double)};
-        openmx_gpu_task_execute(mpi_comm_level1,&task,1,kind==1?"force-nonlocal1-capacity":"force-nonlocal2-capacity");
-        free(prs);free(offset);free(nlp_offset);free(data);free(length);first+=n;
-    }
-}
+#include "openmx_force_recovery.h"
 
 /* the unified first-case batch: every (local atom, q_AN != 0) pair;
    local q reads the flat table, halo q reads the halo archive */

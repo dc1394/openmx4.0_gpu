@@ -19,6 +19,7 @@ TemporaryDirectory; all C fixtures are freed.
 import argparse
 from pathlib import Path
 import os
+import resource
 import re
 import shlex
 import subprocess
@@ -32,6 +33,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def extract_function(source: str, name: str) -> str:
     """Extract a static definition, ignoring braces in comments and literals."""
+    source = source.replace('#include "openmx_force_recovery.h"',
+                            (ROOT / "source/openmx_force_recovery.h").read_text())
     match = re.search(r"^static [^\n]*\b" + re.escape(name) + r"\([^;{}]*\)\s*\{", source, re.M)
     if match is None:
         shared=(ROOT / "source/openmx_force_gpu_resources.h").read_text()
@@ -453,7 +456,7 @@ def make_harness(source: str) -> str:
     return "\n".join(parts)
 
 
-def build_and_run(harness: str, name: str, argv=None) -> int:
+def build_and_run(harness: str, name: str, argv=None, link_core=False) -> int:
     """Compile one harness with the requested compiler and run it."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cc", default=os.environ.get("CC", "cc"))
@@ -466,7 +469,7 @@ def build_and_run(harness: str, name: str, argv=None) -> int:
         raise ValueError("--cc must name a C compiler")
     flags = shlex.split(args.cflags)
     if args.sanitize:
-        flags += ["-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
+        flags += ["-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
     with tempfile.TemporaryDirectory(prefix=f"openmx-{name}-") as directory:
         source = Path(directory) / f"{name}.c"
         binary = Path(directory) / name
@@ -474,14 +477,18 @@ def build_and_run(harness: str, name: str, argv=None) -> int:
         subprocess.run(
             [*compiler, *flags, "-std=c11", "-Wall", "-Wno-unknown-pragmas", "-Wno-unused-function", "-Wno-unused-variable",
              "-I", str(ROOT / "source"), str(source),
-             str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), "-lm", "-o", str(binary)],
+             str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), *(force_gpu_fixture.core_library_flags() if link_core else []), "-lm", "-o", str(binary)],
             check=True,
         )
         env = dict(os.environ)
         env.setdefault("ASAN_OPTIONS", "detect_leaks=1")
         for enabled in ("1", "0"):
             env["TEST_FP32_ENABLE"] = enabled
-            result = subprocess.run([str(binary)], text=True, capture_output=True, env=env)
+            def bounded_stack():
+                _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+                resource.setrlimit(resource.RLIMIT_STACK, (8*1024*1024, hard))
+            result = subprocess.run([str(binary)], text=True, capture_output=True, env=env,
+                                    preexec_fn=bounded_stack if args.sanitize else None)
             if result.returncode:
                 sys.stderr.write(result.stderr)
                 sys.stdout.write(result.stdout)

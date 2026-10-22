@@ -165,6 +165,8 @@ if(BUILD_TESTING)
   add_test(NAME projector-capacity-recovery COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_projector_recovery_cpu.py")
   set_tests_properties(projector-capacity-recovery PROPERTIES LABELS "unit;force" TIMEOUT 120)
+  set_tests_properties(projector-capacity-recovery PROPERTIES
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>")
   add_test(NAME nonlocal-invocation-lifetime
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_nonlocal_lifetime_cpu.py")
   set_tests_properties(nonlocal-invocation-lifetime PROPERTIES LABELS "unit;integrals"
@@ -175,6 +177,8 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_error_cpu.py")
   add_test(NAME force-recovery-failures
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_recovery_failures.py")
+  set_tests_properties(force-recovery-failures PROPERTIES
+    ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" LABELS "unit;force" TIMEOUT 120)
   add_test(NAME mgpu-runtime
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_mgpu_runtime_cpu.py")
   add_test(NAME mgpu-gemm
@@ -256,6 +260,8 @@ if(BUILD_TESTING)
     set_tests_properties(orbital-device-tables orbital-compact-gathers PROPERTIES TIMEOUT 120)
     add_test(NAME force-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force4b_archived_cpu.py")
+    set_tests_properties(force-archive-recovery PROPERTIES
+      ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" LABELS "unit;force" TIMEOUT 120)
     add_test(NAME vna-archive-recovery
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setpro_archived_cpu.py")
     add_test(NAME vna-batch-budget

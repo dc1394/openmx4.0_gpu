@@ -326,8 +326,13 @@ def make_harness(source: str) -> str:
         actual = name + "_Single" if name in ("Force4B_GpuCase1Kernel","Force4B_GpuCase2Kernel") else name
         parts.append(common.extract_function(source, actual).replace(actual,name))
     parts.append(common.extract_struct(source,"Force4BCapacityParameters"))
-    for name in ("Force4B_capacity_kernel","Force4B_capacity_copy","Force4B_capacity"):
-        parts.append(common.extract_function(source,name))
+    recovery=(common.ROOT / "source/openmx_force_recovery.h").read_text()
+    parts.append('#include "openmx_core_force_recovery.h"\n#define OpenMXGpuMemcpy hipMemcpy\n'
+                 '#define OPENMX_GPU_COPY_DEVICE_TO_HOST hipMemcpyDeviceToHost\n#define OPENMX_GPU_SUCCESS hipSuccess\n')
+    parts.append(common.extract_struct(recovery,"ForceVnaRecoveryWork"))
+    parts.append(common.extract_function(source,"Force4B_capacity_kernel"))
+    for name in ("ForceRecovery_Failure","Force4B_capacity_copy","Force4B_RecoveryPacket","Force4B_capacity"):
+        parts.append(common.extract_function(recovery,name))
     for name in ("Force4BCase1Plan", "Force4BCase1Stream"):
         parts.append(common.extract_struct(source, name))
     parts.append("static Force4BCase1Stream F4B_stream1 = { 0 };\n")
@@ -362,7 +367,7 @@ def make_harness(source: str) -> str:
 def main() -> int:
     try:
         harness = make_harness((common.ROOT / "source" / "Force.c").read_text())
-        return common.build_and_run(harness, "force4b-resident-cpu")
+        return common.build_and_run(harness, "force4b-resident-cpu", link_core=True)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Force4B resident CPU test failed: {error}", file=sys.stderr)
         return 1
