@@ -1,10 +1,10 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "964e3658",
+"revision": "b0d78c6f",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
-"functions": 3010,
+"functions": 3007,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,
@@ -17927,7 +17927,7 @@
 "unit": "source/openmx_gpu_vector.c",
 "function": "openmx_gpu_vector_execute",
 "variable": "ops",
-"type": "%struct.OpenMXGpuCollectiveOps { ptr @vector_pack",
+"type": "%struct.OpenMXGpuCollectiveOps { ptr @openmx_gpu_vector_pack",
 "const": true
 },
 {

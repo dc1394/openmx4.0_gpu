@@ -1069,7 +1069,9 @@
     "openmx_gpu_task_cpu.h",
     "openmx_gpu_task_cpu.cpp",
     "openmx_gpu_task_packet.h",
-    "openmx_gpu_task_packet.cpp"
+    "openmx_gpu_task_packet.cpp",
+    "openmx_gpu_vector_packet.h",
+    "openmx_gpu_vector_packet.cpp"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

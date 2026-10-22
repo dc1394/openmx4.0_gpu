@@ -67,6 +67,7 @@ int openmx_gpu_collective_retry(MPI_Comm comm,const OpenMXGpuCollectiveOps *ops,
 }
 '''
 main = r'''
+#include <limits.h>
 int main(void){
  enum {N=19,LD=23,C=5,P=15};
  double data[C*LD],weight[N],coeff[C],out[N+2],want[N];int left[P],right[P];
@@ -94,8 +95,8 @@ int main(void){
    assert(out[0]==1234 && out[outputs+1]==1234);cases++;
   }
  }
- VectorPacket bad={UINT64_MAX,0,INT_MAX,INT_MAX};void *result=NULL;size_t bytes;
- assert(!vector_remote(NULL,&bad,sizeof(bad),&result,&bytes));
+ OpenMXGpuVectorPacket bad={UINT64_MAX,0,INT_MAX,INT_MAX};void *result=NULL;size_t bytes;
+ assert(!openmx_gpu_vector_remote(NULL,&bad,sizeof(bad),&result,&bytes));
  /* Planning succeeds, but the first actual allocation fails. The next
     local layout must complete before any remote request is issued. */
  OpenMXGpuVector retry={0};retry.n=N;retry.ld=LD;retry.columns=C;retry.mode=1;

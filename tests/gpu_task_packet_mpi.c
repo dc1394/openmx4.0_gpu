@@ -8,35 +8,13 @@
 #include "openmx_gpu_task_packet.h"
 #include "openmx_gpu_task_cpu.h"
 
-int level_stdout=0;
-static int rank_id,case_id,in_remote,did_fail,remote_calls,tracking,live;
-static void *allocations[512];
-#define CHECK(x) do {if(!(x)){fprintf(stderr,"FAIL task-packet case=%d rank=%d line=%d: %s\n",case_id,rank_id,__LINE__,#x);MPI_Abort(MPI_COMM_WORLD,1);}}while(0)
-static int node_split(MPI_Comm comm,int type,int key,MPI_Info info,MPI_Comm *out){
-    (void)type;(void)info;int rank;MPI_Comm_rank(comm,&rank);
-    return MPI_Comm_split(comm,case_id==9?0:rank/2,key,out);
-}
-static void remember(void *pointer){
-    if(!tracking || !pointer)return;
-    for(int i=0;i<512;++i)if(!allocations[i]){allocations[i]=pointer;++live;return;}
-    CHECK(0);
-}
-void *__real_malloc(size_t);
-void *__real_calloc(size_t,size_t);
-void __real_free(void*);
-void *__wrap_malloc(size_t bytes){
-    if(tracking && case_id==7 && rank_id==2 && !did_fail && bytes>=sizeof(OpenMXGpuTaskPacket)){did_fail=1;return NULL;}
-    void *p=__real_malloc(bytes);remember(p);return p;
-}
-void *__wrap_calloc(size_t count,size_t width){
-    if(tracking && !did_fail && width==1 &&
-       ((case_id==5 && rank_id==0 && count>=sizeof(OpenMXGpuTaskPacket)) ||
-        (case_id==6 && rank_id==2 && in_remote))){did_fail=1;return NULL;}
-    void *p=__real_calloc(count,width);remember(p);return p;
-}
-void __wrap_free(void *pointer){
-    if(pointer)for(int i=0;i<512;++i)if(allocations[i]==pointer){allocations[i]=NULL;--live;break;}
-    __real_free(pointer);
+#define OPENMX_TEST_PACKET_NAME "task"
+#define OPENMX_TEST_PACKET_MINIMUM sizeof(OpenMXGpuTaskPacket)
+#include "fixtures/gpu_packet_mpi.h"
+
+int __real_openmx_gpu_task_pack(void*,size_t,size_t,void**,size_t*);
+int __wrap_openmx_gpu_task_pack(void *context,size_t first,size_t last,void **packet,size_t *bytes){
+    in_pack=1;int rc=__real_openmx_gpu_task_pack(context,first,last,packet,bytes);in_pack=0;return rc;
 }
 int __real_openmx_gpu_task_remote(void*,const void*,size_t,void**,size_t*);
 int __wrap_openmx_gpu_task_remote(void *context,const void *packet,size_t bytes,void **result,size_t *result_bytes){
@@ -44,14 +22,6 @@ int __wrap_openmx_gpu_task_remote(void *context,const void *packet,size_t bytes,
     int rc=__real_openmx_gpu_task_remote(context,packet,bytes,result,result_bytes);
     in_remote=0;return rc;
 }
-#define OPENMX_GPU_BACKEND 0
-#define OPENMX_GPU_DEVICE_H
-#define OPENMX_GPU_RUNTIME_H
-#define MPI_Comm_split_type node_split
-#include "openmx_gpu_collective.c"
-#undef MPI_Comm_split_type
-static int gpu_rank_device_usable(void){return 0;}
-int openmx_gpu_workers_capacity_enabled(void){return 1;}
 #include "openmx_gpu_task.c"
 
 typedef struct {double factor;} Parameters;
@@ -94,11 +64,8 @@ int main(int argc,char **argv){
         task.view[3]=(OpenMXGpuTaskView){output+1,0,sizeof(double),NULL,0};
         task.view[4]=(OpenMXGpuTaskView){sum,sizeof(sum),0,NULL,0};
         task.view[5]=(OpenMXGpuTaskView){NULL,0,sizeof(double),NULL,0};
-        did_fail=remote_calls=in_remote=0;CHECK(!live);tracking=1;
+        packet_model_begin();
         int rc=openmx_gpu_task_execute(MPI_COMM_WORLD,&task,case_id!=8,"task-packet-mpi");
-        CHECK(!live);tracking=0;
-        const int cpu_only=pending && (case_id==4 || case_id==8 || case_id==9);
-        CHECK(rc==!cpu_only);
         long double expected_sum=0,expected_indices=0;
         for(size_t i=0;i<n;++i){
             long double expected=(rank_id+1)*(rank_id*10+(long double)i)+lookup[(task.first+i)%3];
@@ -110,13 +77,7 @@ int main(int argc,char **argv){
         for(int i=0;i<N;++i)CHECK(input[i]==rank_id*10+i && offsets[i+1]-offsets[i]==(size_t)(i%3));
         for(int i=0;i<2*N;++i)CHECK(items[i]==i-3);
         CHECK(lookup[0]==7 && lookup[1]==-2 && lookup[2]==5);
-        int failures=0,calls=0;
-        MPI_Allreduce(&did_fail,&failures,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
-        MPI_Allreduce(&remote_calls,&calls,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
-        CHECK(failures==((case_id==5 || case_id==6 || case_id==7)?1:0));
-        CHECK((calls>0)==(case_id>0 && case_id!=8 && case_id!=9));
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(rank_id==0)printf("PASS: real MPI task packet case %d; source-owned host allocations balanced\n",case_id);
+        packet_model_finish(rc,pending,"task");
     }
     MPI_Finalize();return 0;
 }

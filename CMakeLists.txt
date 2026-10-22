@@ -128,6 +128,9 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME gpu-vector-packet-resource-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_packet_memory.py")
+  set_tests_properties(gpu-vector-packet-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
   add_test(NAME gpu-task-packet-resource-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_task_packet_memory.py")
   set_tests_properties(gpu-task-packet-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
@@ -265,6 +268,11 @@ if(BUILD_TESTING)
     find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
     find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
     if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
+      add_test(NAME gpu-vector-packet-mpi COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_packet_mpi.py")
+      set_tests_properties(gpu-vector-packet-mpi PROPERTIES
+        ENVIRONMENT "MPICC=${OPENMX_TEST_MPICC};MPICXX=${OPENMX_TEST_MPICXX};MPIEXEC=${OPENMX_TEST_MPIEXEC}"
+        LABELS "unit;gpu;mpi" TIMEOUT 150 PROCESSORS 6)
       add_test(NAME gpu-task-packet-mpi COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/run_gpu_task_packet_mpi.py")
       set_tests_properties(gpu-task-packet-mpi PROPERTIES

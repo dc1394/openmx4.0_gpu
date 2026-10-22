@@ -24,12 +24,16 @@ def compile_task_cpu_object(folder, flags=(), **kwargs):
 
 
 def _compile_task_host_object(folder, module, flags=(), **kwargs):
+    return _compile_host_object(folder,'openmx_gpu_task_'+module,flags,**kwargs)
+
+
+def _compile_host_object(folder, module, flags=(), **kwargs):
     folder=Path(folder)
     root=Path(__file__).resolve().parents[1]
-    output=folder/('task_'+module+'_test.o')
+    output=folder/(module+'_test.o')
     subprocess.run(shlex.split(os.environ.get('CXX','c++'))+[
         '-std=c++17','-O1','-g',*flags,'-I'+str(folder),'-I'+str(root/'source'),
-        '-c',str(root/'source'/('openmx_gpu_task_'+module+'.cpp')),'-o',str(output)],**kwargs)
+        '-c',str(root/'source'/(module+'.cpp')),'-o',str(output)],**kwargs)
     return output
 
 
@@ -84,4 +88,6 @@ inline int OpenMXGpuMemcpy(void *out,const void *in,size_t n,int kind){return op
     if worker=='openmx_gpu_task_worker':
         link.append(str(compile_task_cpu_object(folder,sanitizer,**kwargs)))
         link.append(str(_compile_task_host_object(folder,'packet',sanitizer,**kwargs)))
+    elif worker=='openmx_gpu_vector_worker':
+        link.append(str(_compile_host_object(folder,'openmx_gpu_vector_packet',sanitizer,**kwargs)))
     subprocess.run(link,**kwargs)

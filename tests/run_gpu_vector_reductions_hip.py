@@ -140,12 +140,16 @@ def main():
             "-ffunction-sections","-fdata-sections","-I"+str(ROOT/"source"),
             "-I"+str(ROOT/"source/backends/hip/include"),"-I"+str(args.rocm/"include"),*mpi_flags,
             "-c",str(ROOT/"tests/gpu_vector_native_probe.cpp"),"-o",str(probe)],env=env,check=True,timeout=120)
+        packet=folder/"vector_packet.o"
+        subprocess.run([str(args.rocm/"llvm/bin/clang++"),"-std=c++17","-O3",
+            "-I"+str(ROOT/"source"),*mpi_flags,
+            "-c",str(ROOT/"source/openmx_gpu_vector_packet.cpp"),"-o",str(packet)],env=env,check=True,timeout=120)
         command = compiler + ["-x", "c", "-O3", "-std=c11", "-ffp-contract=off", "-fopenmp",
             "--offload-arch=" + args.arch, "-D__HIP_PLATFORM_AMD__",
             "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "source"), "-I"+str(ROOT/"tests"),
             "-I" + str(ROOT / "source/backends/hip/include"),
             "-I" + str(args.rocm / "include"), *mpi_flags, str(source),
-            "-L" + str(args.rocm / "lib"), "-x","none",str(probe),"-lstdc++","-lamdhip64", "-lm",
+            "-L" + str(args.rocm / "lib"), "-x","none",str(probe),str(packet),"-lstdc++","-lamdhip64", "-lm",
             "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
         subprocess.run(command, env=env, check=True, timeout=120)
         subprocess.run([str(folder / "check")], env=env, check=True, timeout=120)

@@ -375,6 +375,7 @@ OBJS += openmx_dense_cpu.o
 OBJS += openmx_gpu_collective.o
 OBJS += openmx_gpu_vector.o
 OBJS += openmx_gpu_vector_worker.o
+OBJS += openmx_gpu_vector_packet.o
 OBJS += openmx_gpu_task.o
 OBJS += openmx_gpu_task_worker.o
 OBJS += openmx_gpu_task_cpu.o
@@ -1065,10 +1066,12 @@ openmx_dense_cpu.o: openmx_dense_cpu.c openmx_dense_cpu.h
 	$(CC_NOACC_O3) -c openmx_dense_cpu.c
 openmx_gpu_collective.o: openmx_gpu_collective.c openmx_gpu_collective.h openmx_gpu_workers.h openmx_stdout_level.h
 	$(CC_NOACC_O3) -c openmx_gpu_collective.c
-openmx_gpu_vector.o: openmx_gpu_vector.c openmx_gpu_vector.h openmx_gpu_vector_worker.h openmx_gpu_collective.h openmx_gpu_workers.h
+openmx_gpu_vector.o: openmx_gpu_vector.c openmx_gpu_vector.h openmx_gpu_vector_worker.h openmx_gpu_vector_packet.h openmx_gpu_collective.h openmx_gpu_workers.h
 	$(CC) -c openmx_gpu_vector.c
 openmx_gpu_vector_worker.o: openmx_gpu_vector_worker.cpp openmx_gpu_vector_worker.h openmx_gpu_vector.h openmx_gpu_workers.h openmx_gpu_memory.hpp openmx_host_buffer.hpp
 	$(NVHPC_COMPILER_BIN)/nvc++ -O3 $(filter-out -std=gnu11 --diag_error=implicit_func_decl,$(COMMON_CFLAGS)) -std=c++17 $(shell $(MPICC) --showme:compile) -c $< -o $@
+openmx_gpu_vector_packet.o: openmx_gpu_vector_packet.cpp openmx_gpu_vector_packet.h openmx_gpu_vector_worker.h openmx_gpu_vector.h openmx_host_buffer.hpp
+	$(GPUSOLVER2_HOST_CXX) -O3 -std=c++17 $(shell $(MPICC) --showme:compile) -c $< -o $@
 
 openmx_gpu_task.o: openmx_gpu_task.c openmx_gpu_task.h openmx_gpu_task_layout.h openmx_gpu_task_cpu.h openmx_gpu_task_packet.h openmx_gpu_collective.h openmx_gpu_workers.h
 	$(CC) -c openmx_gpu_task.c
